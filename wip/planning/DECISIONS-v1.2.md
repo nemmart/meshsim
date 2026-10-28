@@ -81,6 +81,56 @@ Closes planning notes section 7, "Condition handling", and to-do item 3.
 
 ---
 
+## 2. The link word (2026-10-28)
+
+Decided with Tony (O, T). Replaces 3.1's 169-bit word.
+
+- **The link word is 256 bits on every router link**, fixed, so later field changes don't resize the
+  links, FIFOs and route blocks again (102 bits in v1.0, 169 in v1.1).
+- **Fields (181 bits):** payload 128, address 32, size 2, counter 2, mode 3, src 7, dst 7. **75 bits
+  reserved:** sent as 0 and ignored by every receiver; FIFOs and route blocks carry all 256 bits without
+  interpreting them. Bit positions to be laid out.
+- **Cost:** router FIFOs about 50 % larger than at 169 bits, roughly +0.04-0.06 mm² per tile [estimate];
+  256 wires per link direction, with the channel width to confirm in physical design.
+- **Pending:** the 32-bit address (Q6) and the 3-bit mode's code assignment (Q7).
+
+## 3. Counters (2026-10-28)
+
+Decided with Tony (O, T). Replaces 4.12's four named down-counters.
+
+- **The packet names its counter** in the link word's 2-bit counter field: **0 uncounted; 1, 2 and 3
+  general-purpose counters**, assigned to whatever a program needs. Counting no longer depends on the mode.
+- **A fixed delay K:** the traffic director accepts a packet, and its counter is decremented **K cycles
+  later**, through a K-stage delay line carrying the counter id. K is large enough that the packet's write
+  has reached its destination by then. **K = 8 for now** (a parameter).
+- At most one packet per cycle leaves the director, so a counter takes at most one decrement per cycle.
+  `mem_idle` and `cm_idle` drop out of the done rule: a counter at 0 means everything it counted is in place.
+- **Unexpected arrival stays:** a counted packet for a counter already at 0 still sets the condition. A
+  packet wrongly sent with counter 0 lands silently, a sender error like a wrong mode today.
+- **What K must cover** (S1 below): port B and the peripheral are fixed at 2 cycles. For big SRAM, a write
+  only has to have **entered its area's queue** within K: the queue is served in arrival order, so a read
+  issued after the counter reaches 0 queues behind the write and cannot overtake it.
+- **Follow-on:** the wake events' per-counter done bits ([3:0] today) become done events for counters 1-3;
+  [9] counters done stays. HALT flushes the delay line with the counters.
+- **Pending:** the counter field in every packet source (Q8).
+
+---
+
+## Big SRAM: to validate
+
+| # | what | source |
+|---|---|---|
+| S1 | **A write reaches its area's queue within K = 8 cycles** of the director accepting it (input FIFO, pointer stage, a spanning write's second part). Tony estimates about 6. meshsim to flag any counter decrement before its write is queued | 3 |
+| S2 | **Reads come back in order per requesting client** (address generator, GATHER engine), whichever areas they hit; read-port reads in any order | 4.1, 4.5 |
+| S3 | The area macros: compiler numbers for a 128 × 32K area at 1 GHz, one access per cycle; the array's read latency; density and arrangement | spec item 1 |
+| S4 | The area request-queue depth for the hardware (8 in meshsim) | spec item 2 |
+| S5 | Queueing against the group-run timetable: the bound the 64 tokens and return queues must absorb, and the placement rules that keep each phase within one access per area per cycle | spec item 4 |
+| S6 | The `PTR` and `HIST` macros: a write lands intact when port A reads the address port B is writing | spec item 5 |
+| S7 | Write combining of consecutive 32- or 64-bit writes to one row | spec item 3 |
+| S8 | The big-SRAM size per tile (4.25 MB tentative), set by the sumcheck memory squeeze | spec item 107 |
+
+---
+
 ## Pending questions
 
 A running list; each entry names where it came from. Resolved entries move into a decision section above.
@@ -90,4 +140,8 @@ A running list; each entry names where it came from. Resolved entries move into 
 | Q1 | Tony's exact list of implemented CSRs, to define which CSR instructions are legal | 1.1 | waiting on Tony |
 | Q2 | How long a high on the C&C pin counts as "sustained" for the host | 1.5 | open |
 | Q3 | What stops the peripheral and the sender when a condition traps: the hardware on taking the interrupt, or the handler? (Today a halted controller stops them at once.) | 1.7 | open; suggestion: the hardware, so a failed handler can't leave them running |
-| Q4 | The HALT design: one line or separate lines for tiles and controllers, which peripherals stop, what HALT clears, the hold before RUN, per-tile halt | planning notes section 7 | next topic |
+| Q4 | The HALT design: one line or separate lines for tiles and controllers, which peripherals stop, what HALT clears, the hold before RUN, per-tile halt | planning notes section 7 | open |
+| Q5 | Should an area serve writes ahead of queued reads? Not needed for S1 if K covers only the path to the area queue | 3 | open; for Tony |
+| Q6 | The link word's 32-bit address: what it covers | 2 | next topic |
+| Q7 | The 3-bit mode: which of today's nine modes merge or go, now that counting is separate | 2 | open |
+| Q8 | The counter field in every packet source: `STREAM` entries, the send port's header, the sender, the read port's setup, the GATHER engine's gather values, and memory-system requests | 3 | open |

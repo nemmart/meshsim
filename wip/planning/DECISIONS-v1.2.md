@@ -164,6 +164,35 @@ Decided (O). Answers Q6. One map for packet addresses and the controller's own l
   linker script and `mesh.h` change.
 - **Pending:** whether the offset counts bytes or 32-bit words (Q10).
 
+## 6. Modes (2026-10-28)
+
+Decided (O). Answers Q7. With the region choosing the destination (5) and the counter field doing the
+counting (3), the 3-bit mode keeps only what the receiver must do differently:
+
+| code | mode |
+|---|---|
+| 0 | invalid |
+| 1 | gather request (local only) |
+| 2 | big-SRAM write by source, at `PTR[src]` |
+| 3 | **write at address**, any region the packet may reach |
+| 4 | bucket write, at `PTR[digit]` |
+| 5 | augmented write |
+| 6, 7 | reserved |
+
+- **Merged into mode 3:** v1.1's explicit-address big-SRAM write (3), controller-memory write (6),
+  command write (7), reply (8) and peripheral write (9).
+- **Replies** are mode-3 writes to the reply block at word 2·src in the receiver's data memory, counted
+  as the receiver armed. That a sender writes only its own pair becomes a software convention, no longer
+  a hardware guarantee.
+- **Commands** are mode-3 writes, **counter 0**, to the command block in region 0x00: arguments first,
+  then the command word to slot 0. **A write to command slot 0 sets "command landed"** and posts its wake
+  event, decoded from the address by the traffic director. READY, GO and the alternating argument blocks
+  work as today. Commands stay uncounted because they arrive while the tile waits in
+  `wait_for_command()` with its counters at 0.
+- **Follow-on:** the bad-packet rules for modes 7 and 8 go; invariant 11 and "only command writes write
+  the command block, only replies the reply block" become software conventions. Whether a 64- or 128-bit
+  write that covers slot 0 also sets "command landed" is a detail to settle with the spec text.
+
 ---
 
 ## Big SRAM: to validate
@@ -194,7 +223,7 @@ A running list; each entry names where it came from. Resolved entries move into 
 | Q4 | The HALT design: one line or separate lines for tiles and controllers, which peripherals stop, what HALT clears, the hold before RUN, per-tile halt | planning notes section 7 | open |
 | Q5 | Should an area serve writes ahead of queued reads? Not needed for S1 if K covers only the path to the area queue | 3 | open; for Tony |
 | Q6 | The link word's 32-bit address: what it covers | 2 | **resolved: section 5** |
-| Q7 | The 3-bit mode: which of today's nine modes merge or go, now that counting is separate | 2 | open |
+| Q7 | The 3-bit mode: which of today's nine modes merge or go, now that counting is separate | 2 | **resolved: section 6** |
 | Q9 | Does a stream's source stay a 21-bit big-SRAM chunk address, or does the 32-bit address apply to reads too? | 4 | open |
 | Q10 | Is the 24-bit offset in bytes or in 32-bit words? | 5 | open |
 | Q11 | How several peripherals share the slot's interface: service lines in `WAKE_EVENTS`, `PERIPH_STATUS_0`-`7`, the run pulse, conditions 11-13 | 5 | open |

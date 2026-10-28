@@ -1,0 +1,2 @@
+request bus [meas: RequestBusTest]: reqbus_latency unloaded, from the REQUEST_SEND store to the request in its target's queue (readable the next cycle): 17 cycles at reqHopLatency 3 (8 beats, three hops; spec 3.3's estimate 15-20)
+RequestBusTest: 49 passed, 0 failed

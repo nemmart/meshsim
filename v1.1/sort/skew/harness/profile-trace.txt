@@ -1,0 +1,15 @@
+    errors 0  staging max 69002  pieces max 226  L1 4  L2 4
+    sw_prepare       calls     64  max    2253  mean    2253
+    sw_stage1        calls     64  max     732  mean     732
+    th_build         calls     64  max   10121  mean    9758
+    sw_stage2        calls     64  max    3491  mean    3491
+    bt_sweep_init    calls     64  max    1392  mean    1374
+    bt_sweep_cell    calls   8192  max    3284  mean     211
+    bt_sweep_done    calls     64  max    2643  mean    2625
+    bt_desc          calls    256  max    5657  mean    5476
+    bt_held_stats    calls     64  max    7736  mean    7597
+    bt_decide        calls     64  max     422  mean     422
+    bt_hop1_src      calls    128  max   11556  mean   11373
+    bt_hop1_m        calls    512  max    2169  mean    1703
+    bt_hop2_m        calls    512  max    9168  mean    8494
+    bt_hop2_d        calls    512  max    1689  mean    1595

@@ -1,0 +1,274 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="841" viewBox="0 0 1300 841" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif">
+<defs></defs>
+<rect width="1300" height="841" fill="white"/>
+<text x="24.0" y="34.0" font-size="18" text-anchor="start" font-weight="bold" fill="#444441">Figure 2.5. Reset and boot: every state element at chip reset, in HALT and at the RUN/HALT edges</text>
+<text x="24.0" y="56.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#6b6a64">v1.0 (spec/machine-spec.md §6.1, §6.2, §8) — one tile</text>
+<text x="30.0" y="86.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">A. State elements (§6.1, §8's reset values, §6.1)</text>
+<rect x="30.0" y="98.0" width="340.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="112.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">element</text>
+<rect x="370.0" y="98.0" width="150.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="376.0" y="112.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">chip reset</text>
+<rect x="520.0" y="98.0" width="270.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="526.0" y="112.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">in HALT</text>
+<rect x="790.0" y="98.0" width="170.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="796.0" y="112.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">HALT → RUN</text>
+<rect x="960.0" y="98.0" width="150.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="966.0" y="112.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">RUN → HALT</text>
+<rect x="1110.0" y="98.0" width="160.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="1116.0" y="112.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">figure</text>
+<rect x="30.0" y="119.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="133.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">controller core: PC, x1–x31</text>
+<rect x="370.0" y="119.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="376.0" y="133.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">undefined</text>
+<rect x="520.0" y="119.0" width="270.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="526.0" y="133.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">not fetching</text>
+<rect x="790.0" y="119.0" width="170.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="796.0" y="133.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">PC = 0x1F00, x1–x31 = 0</text>
+<rect x="960.0" y="119.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="966.0" y="133.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">stops fetching</text>
+<rect x="1110.0" y="119.0" width="160.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1116.0" y="133.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">8</text>
+<rect x="30.0" y="140.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="154.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">controller halted (bus error, illegal, ecall, ebreak)</text>
+<rect x="370.0" y="140.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="376.0" y="154.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">—</text>
+<rect x="520.0" y="140.0" width="270.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="526.0" y="154.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">—</text>
+<rect x="790.0" y="140.0" width="170.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="796.0" y="154.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">restarted</text>
+<rect x="960.0" y="140.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="966.0" y="154.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">—</text>
+<rect x="1110.0" y="140.0" width="160.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1116.0" y="154.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">18</text>
+<rect x="30.0" y="161.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="175.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">run_q, go_q, both_q</text>
+<rect x="370.0" y="161.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="376.0" y="175.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">0 (RUN low)</text>
+<rect x="520.0" y="161.0" width="270.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="526.0" y="175.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">run_q 0</text>
+<rect x="790.0" y="161.0" width="170.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="796.0" y="175.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">run_q 1</text>
+<rect x="960.0" y="161.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="966.0" y="175.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">run_q 0</text>
+<rect x="1110.0" y="161.0" width="160.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1116.0" y="175.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">26</text>
+<rect x="30.0" y="182.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="196.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">done</text>
+<rect x="370.0" y="182.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="376.0" y="196.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">reads 1 (forced in HALT)</text>
+<rect x="520.0" y="182.0" width="270.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="526.0" y="196.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">reads 1</text>
+<rect x="790.0" y="182.0" width="170.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="796.0" y="196.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">cleared</text>
+<rect x="960.0" y="182.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="966.0" y="196.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">reads 1</text>
+<rect x="1110.0" y="182.0" width="160.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1116.0" y="196.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">26</text>
+<rect x="30.0" y="203.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="217.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">command landed</text>
+<rect x="370.0" y="203.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="376.0" y="217.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">0</text>
+<rect x="520.0" y="203.0" width="270.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="526.0" y="217.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">set by a slot-0 mode-6 write</text>
+<rect x="790.0" y="203.0" width="170.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="796.0" y="217.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">cleared</text>
+<rect x="960.0" y="203.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="966.0" y="217.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">kept</text>
+<rect x="1110.0" y="203.0" width="160.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1116.0" y="217.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">26</text>
+<rect x="30.0" y="224.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="238.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">DMA_CONFIG, DMA_RECORD_BASE_ADDRESS</text>
+<rect x="370.0" y="224.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="376.0" y="238.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">undefined</text>
+<rect x="520.0" y="224.0" width="270.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="526.0" y="238.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">kept</text>
+<rect x="790.0" y="224.0" width="170.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="796.0" y="238.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">kept</text>
+<rect x="960.0" y="224.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="966.0" y="238.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">kept</text>
+<rect x="1110.0" y="224.0" width="160.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1116.0" y="238.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">18</text>
+<rect x="30.0" y="245.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="259.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">ROUTER_SET_HDR, ROUTER_SET_HI, SRAM_RD_DEST_ADDR</text>
+<rect x="370.0" y="245.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="376.0" y="259.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">undefined</text>
+<rect x="520.0" y="245.0" width="270.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="526.0" y="259.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">kept</text>
+<rect x="790.0" y="245.0" width="170.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="796.0" y="259.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">kept</text>
+<rect x="960.0" y="245.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="966.0" y="259.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">kept</text>
+<rect x="1110.0" y="245.0" width="160.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1116.0" y="259.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">18</text>
+<rect x="30.0" y="266.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="280.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">the three down-counters</text>
+<rect x="370.0" y="266.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="376.0" y="280.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">0</text>
+<rect x="520.0" y="266.0" width="270.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="526.0" y="280.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">kept (C&amp;C's packets are never counted)</text>
+<rect x="790.0" y="266.0" width="170.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="796.0" y="280.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">kept</text>
+<rect x="960.0" y="266.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="966.0" y="280.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">kept</text>
+<rect x="1110.0" y="266.0" width="160.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1116.0" y="280.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">16</text>
+<rect x="30.0" y="287.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="301.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">local-wake latch, qualifier, done gate, in-WFI</text>
+<rect x="370.0" y="287.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="376.0" y="301.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">0</text>
+<rect x="520.0" y="287.0" width="270.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="526.0" y="301.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">held 0</text>
+<rect x="790.0" y="287.0" width="170.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="796.0" y="301.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">0</text>
+<rect x="960.0" y="287.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="966.0" y="301.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">0</text>
+<rect x="1110.0" y="287.0" width="160.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1116.0" y="301.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">16</text>
+<rect x="30.0" y="308.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="322.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">TILE_CONDITIONS</text>
+<rect x="370.0" y="308.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="376.0" y="322.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">0</text>
+<rect x="520.0" y="308.0" width="270.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="526.0" y="322.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">sets kept (loading errors survive into RUN)</text>
+<rect x="790.0" y="308.0" width="170.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="796.0" y="322.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">kept</text>
+<rect x="960.0" y="308.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="966.0" y="322.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">cleared</text>
+<rect x="1110.0" y="308.0" width="160.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1116.0" y="322.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">17</text>
+<rect x="30.0" y="329.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="343.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">address generator: state, rd_done</text>
+<rect x="370.0" y="329.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="376.0" y="343.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">IDLE, 0</text>
+<rect x="520.0" y="329.0" width="270.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="526.0" y="343.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">held IDLE; rd_done kept</text>
+<rect x="790.0" y="329.0" width="170.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="796.0" y="343.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">IDLE</text>
+<rect x="960.0" y="329.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="966.0" y="343.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">→ IDLE</text>
+<rect x="1110.0" y="329.0" width="160.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1116.0" y="343.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">19</text>
+<rect x="30.0" y="350.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="364.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">GATHER queue, active register</text>
+<rect x="370.0" y="350.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="376.0" y="364.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">empty, 0</text>
+<rect x="520.0" y="350.0" width="270.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="526.0" y="364.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">held empty</text>
+<rect x="790.0" y="350.0" width="170.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="796.0" y="364.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">empty</text>
+<rect x="960.0" y="350.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="966.0" y="364.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">cleared</text>
+<rect x="1110.0" y="350.0" width="160.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1116.0" y="364.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">20</text>
+<rect x="30.0" y="371.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="385.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">read port's queue, in-flight count</text>
+<rect x="370.0" y="371.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="376.0" y="385.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">empty, 0</text>
+<rect x="520.0" y="371.0" width="270.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="526.0" y="385.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">held empty</text>
+<rect x="790.0" y="371.0" width="170.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="796.0" y="385.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">empty</text>
+<rect x="960.0" y="371.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="966.0" y="385.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">cleared</text>
+<rect x="1110.0" y="371.0" width="160.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1116.0" y="385.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">23</text>
+<rect x="30.0" y="392.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="406.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">token FIFO</text>
+<rect x="370.0" y="392.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="376.0" y="406.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">empty</text>
+<rect x="520.0" y="392.0" width="270.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="526.0" y="406.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">held empty</text>
+<rect x="790.0" y="392.0" width="170.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="796.0" y="406.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">empty</text>
+<rect x="960.0" y="392.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="966.0" y="406.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">cleared</text>
+<rect x="1110.0" y="392.0" width="160.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1116.0" y="406.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">22</text>
+<rect x="30.0" y="413.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="427.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">send port's holding register (send_busy)</text>
+<rect x="370.0" y="413.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="376.0" y="427.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">empty</text>
+<rect x="520.0" y="413.0" width="270.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="526.0" y="427.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">empty (the core is halted)</text>
+<rect x="790.0" y="413.0" width="170.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="796.0" y="427.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">empty</text>
+<rect x="960.0" y="413.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="966.0" y="427.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">—</text>
+<rect x="1110.0" y="413.0" width="160.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1116.0" y="427.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">24</text>
+<rect x="30.0" y="434.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="448.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">router FIFOs, round-robin pointers</text>
+<rect x="370.0" y="434.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="376.0" y="448.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">empty, 0</text>
+<rect x="520.0" y="434.0" width="270.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="526.0" y="448.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">running</text>
+<rect x="790.0" y="434.0" width="170.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="796.0" y="448.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">running</text>
+<rect x="960.0" y="434.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="966.0" y="448.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">running</text>
+<rect x="1110.0" y="434.0" width="160.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1116.0" y="448.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">25</text>
+<rect x="30.0" y="455.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="469.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">write engine FIFO, pointer stage, area queues</text>
+<rect x="370.0" y="455.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="376.0" y="469.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">empty</text>
+<rect x="520.0" y="455.0" width="270.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="526.0" y="469.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">running</text>
+<rect x="790.0" y="455.0" width="170.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="796.0" y="469.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">running</text>
+<rect x="960.0" y="455.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="966.0" y="469.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">running</text>
+<rect x="1110.0" y="455.0" width="160.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1116.0" y="469.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">15, 21</text>
+<rect x="30.0" y="476.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="490.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">halt_q (the conditions' clear)</text>
+<rect x="370.0" y="476.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="376.0" y="490.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">1 (halted)</text>
+<rect x="520.0" y="476.0" width="270.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="526.0" y="490.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">1</text>
+<rect x="790.0" y="476.0" width="170.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="796.0" y="490.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">0</text>
+<rect x="960.0" y="476.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="966.0" y="490.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">1</text>
+<rect x="1110.0" y="476.0" width="160.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1116.0" y="490.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">17</text>
+<rect x="30.0" y="497.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="511.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">PTR, HIST, STREAM, GROUP</text>
+<rect x="370.0" y="497.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="376.0" y="511.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">undefined</text>
+<rect x="520.0" y="497.0" width="270.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="526.0" y="511.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">kept; written by packets</text>
+<rect x="790.0" y="497.0" width="170.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="796.0" y="511.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">kept</text>
+<rect x="960.0" y="497.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="966.0" y="511.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">kept</text>
+<rect x="1110.0" y="497.0" width="160.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1116.0" y="511.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">12</text>
+<rect x="30.0" y="518.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="532.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">instruction and data memory, big SRAM</text>
+<rect x="370.0" y="518.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="376.0" y="532.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">undefined</text>
+<rect x="520.0" y="518.0" width="270.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="526.0" y="532.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">written by modes 5–7 and 2</text>
+<rect x="790.0" y="518.0" width="170.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="796.0" y="532.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">kept</text>
+<rect x="960.0" y="518.0" width="150.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="966.0" y="532.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">kept</text>
+<rect x="1110.0" y="518.0" width="160.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1116.0" y="532.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">5, 7</text>
+<text x="30.0" y="557.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">In HALT the routers, the traffic director and the write engine run, so packets land exactly as in RUN; no packet may be in flight when RUN/HALT changes (a simulator check).</text>
+<text x="30.0" y="589.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">B. Boot (§6.2)</text>
+<text x="30.0" y="613.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">1. Chip reset: every tile in HALT, done reads 1; the controller memories and big SRAM are undefined.</text>
+<text x="30.0" y="632.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">2. C&amp;C broadcasts the resident loader (0x1F00–0x1FFF) and the first image into instruction and data memory by mode 5.</text>
+<text x="30.0" y="651.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">3. C&amp;C sends one marker word to mailbox slot 0 (mode 6): command landed with done = 1 raises READY at once (figure 2.2).</text>
+<text x="30.0" y="670.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">4. With all 64 READY bits set, C&amp;C raises RUN: HALT → RUN resets the core to PC 0x1F00 and clears done and command landed (figure 2.1 (a)).</text>
+<text x="30.0" y="689.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">5. The loader runs: it sets PTR[64] to its staging area in A7, so later images can be staged into big SRAM by mode 2 (never counted: src 64).</text>
+<text x="30.0" y="708.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">6. The software writes every configuration register before use: they are undefined at chip reset and kept over HALT → RUN (§8).</text>
+<circle cx="34" cy="745" r="3.2" fill="#444441"/>
+<text x="44.0" y="749.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">figure numbers: where each element is drawn</text>
+<line x1="24" y1="765" x2="1276" y2="765" stroke="#B4B2A9" stroke-width="0.8"/>
+<text x="24.0" y="787.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">Chip reset puts every tile in HALT with its queues empty and its configuration registers undefined. HALT holds the address generator,</text>
+<text x="24.0" y="803.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">the GATHER engine, the read port and the token FIFO in reset, while the routers, the director and the write engine run. HALT → RUN</text>
+<text x="24.0" y="819.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">resets only the core; RUN → HALT clears the conditions. Boot loads by mode 5, then one marker and RUN.</text>
+<text x="24.0" y="835.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">Source: spec/machine-spec.md v1.0.</text>
+</svg>

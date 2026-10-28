@@ -1,0 +1,93 @@
+--- a/spec/machine-spec.md	2026-10-27 10:51:55.238304977 +0000
++++ b/spec/machine-spec.md	2026-10-27 23:01:17.995067303 +0000
+@@ -186,7 +186,7 @@
+ 
+ Every tile is a leaf at the same depth, two nodes from the root. Which controllers and engines attach, and where, is specified with the endpoint map *(Open, item 82)*.
+ 
+-**Links.** Every hop is **16 bits wide** and moves two bytes per cycle, with **ready/valid back-pressure**: a beat moves only when the next stage can take it, so the bus never drops one. Long wires are pipelined. *(param)* `reqbus_latency`, the unloaded time from a send store to the request being in its target's queue, is about 15–20 cycles [estimate].
++**Links.** Every hop is **16 bits wide** and moves two bytes per cycle, with **ready/valid back-pressure**: a beat moves only when the next stage can take it, so the bus never drops one. Long wires are pipelined. *(param)* `reqbus_latency`, the unloaded time from a send store to the request being in its target's queue, is about 15–20 cycles [estimate]; meshsim measures **17 cycles** unloaded [meas: meshsim, part M].
+ 
+ **The request.** Every request is **128 bits**. The hardware owns its low ten bits; everything above them belongs to the target:
+ 
+@@ -479,7 +479,7 @@
+   - **Against a stream at one packet per cycle: 15 results, cumulatively over the whole stream.** The eject output serves one packet per cycle, so each result that takes an eject slot leaves one incoming packet waiting in its link's eject FIFO, and the stream never lets it drain. 16 results overflow the 16-entry FIFO at most offsets, however they are spread out.
+   - **Against a stream at half rate: 32 results in one burst.** The link's FIFO does not grow (peak 1); the results' own loopback FIFO fills at half a packet per cycle and overflows at 33. The backlog drains between bursts.
+ 
+-  With the v1.1 loopback (4.5, 4.7) *(Proposed)* the loopback FIFO cannot overflow, so the half-rate case becomes a delay rather than a loss; and since the eject output now serves incoming packets before the loopback (4.7), results no longer take slots from a full-rate stream either. The rule stands until the simulator re-measures both cases (items 24 and 70).
++  With the v1.1 loopback (4.5, 4.7) *(Proposed)* the loopback FIFO cannot overflow, so the half-rate case becomes a delay rather than a loss; and since the eject output now serves incoming packets before the loopback (4.7), results no longer take slots from a full-rate stream either. The rule stands until the simulator re-measures both cases (items 24 and 70). **meshsim has now re-measured** [meas: meshsim, part M]: **no loss** when read-port reads overlap incoming traffic, either an all-to-all or a full-rate stream, where v1.0 lost 561 packets. The rule is **unchanged for now and recorded as a candidate to relax** (item 116).
+ 
+   meshsim checks the rule: a packet from outside the tile, other than C&C's mode-7 command words, arriving while the tile has read-port results outstanding is a violation (invariant 14).
+ 
+@@ -1706,7 +1706,7 @@
+ | RUN/HALT | a change at C&C reaches every tile `run_latency` cycles later |
+ | peripheral slot | a mode-9 write lands `rp_latency` = 2 cycles after the director, on every peripheral *(Proposed: the value)*; the sender moves at most one packet per cycle (4.17.5, 4.17.9) |
+ | replayer | a run copies the register image in 64 cycles, then runs one row per 3 cycles (5 for a multiply) when its queues are fed; a mode-9 write lands `rp_latency` = 2 cycles after the director *(Proposed)*; a pass is 65,536 rows, about 216K cycles [estimate] (4.19.7, 4.19.10) |
+-| request bus | one 16-bit beat per cycle per hop; a request is 8 beats; on an idle bus about `reqbus_latency` (≈ 15–20 cycles [estimate]) from the send store to its target's queue; the root passes at most one request per 8 cycles for the whole chip (3.3, 4.18) |
++| request bus | one 16-bit beat per cycle per hop; a request is 8 beats; on an idle bus about `reqbus_latency` (≈ 15–20 cycles [estimate]; 17 [meas: meshsim]) from the send store to its target's queue; the root passes at most one request per 8 cycles for the whole chip (3.3, 4.18) |
+ | wake events | every event is set at the end of the cycle its cause happens ; live events follow their conditions with the same timing; a load of `WAKE_EVENTS` or `WAKE_PEEK` sees it, and a pending event releases a waiting `WFI`, in the next cycle (4.8, 4.12) |
+ 
+ ---
+@@ -1751,6 +1751,7 @@
+ - **Images land back to back,** `PTR[64]` advancing by each packet's size in chunks. With 128-bit packets, each image starts on a row (a chunk address that is a multiple of 4) and is padded to a whole number of rows *(Proposed)*; v1.0's 64-bit packets needed even chunk addresses and even lengths. The loader learns each image's start from the command that names it, or resets `PTR[64]` per image.
+ - **When** (owner, 2026-10-26): staging is counted data (mode 2), so it reaches a tile **only while the tile is halted** (nothing is counted) **or after a command that tells it what to expect**, so the tile arms `DMA_SRAM_REMAINING` first and waits for counters done. Never during a mesh operation. Code overlays follow the same rule (6.5).
+ - **An uncoordinated write** (owner, 2026-10-26): if C&C must write a tile that hasn't armed for it, it **halts the tile first**; while halted, nothing is counted.
++- **Announced staging waits for the arming** (owner, 2026-10-27, part M). After the command that announces staging, the receiving tile arms its counter in the start path, after GO (6.4): about 10 cycles after GO at 2-cycle register loads [derived from the measured start path]. C&C's first staged packet can travel faster than that, so **C&C sends it no sooner than `stage_delay` = 32 cycles after its GO store** *(param, Proposed)*, about three times the arming time; meshsim's harness has used 64. The bound is tied to the start path: a command whose start path arms later says so, and C&C waits correspondingly longer. A packet that beats the counter is an unexpected arrival (condition 2), so a violation cannot go unnoticed, and meshsim flags it.
+ - **Running a staged image:** the tile copies it into controller memory with a mode-6 loopback stream (6.5).
+ - **At first boot** `PTR[64]` isn't set yet, so the loader and the first image go in by mode 6, as above.
+ 
+@@ -1797,7 +1798,7 @@
+ 
+ ### 6.4 Phases that receive
+ 
+-- **A tile whose phase receives** arms its counters **in the start path, after GO: write the counters first (each write adds; at a phase start the count is 0), then pulse start.** Arming them during "configure" would break invariant 4 at configure's `done`; storing them before the start pulse means no arrival can beat its counter. The start path is identical code on every tile, so every tile's start store lands on the same cycle (plus skew), and its first request follows by the lead-in of 4.2. Measured from C&C's GO store to every tile's first request [meas: meshsim, L = 1]: **9–10 cycles** for a stream run started by a counter store then start (5–6 to the start store, then 2L + 2), and **17–18** for a group run on the all-to-all recipe's longer start path (10–11, then 4L + 3); a group run with the shortest start path would take 12–13 [derived from the two measured parts]. Every tile's first request lands within the 0/+1 start skew. The tile then `WFI`s for counters done (4.12) when it has nothing else to do.
++- **A tile whose phase receives** arms its counters **in the start path, after GO: write the counters first (each write adds; at a phase start the count is 0), then pulse start.** Arming them during "configure" would break invariant 4 at configure's `done`; storing them before the start pulse means no arrival can beat its counter. The start path is identical code on every tile, so every tile's start store lands on the same cycle (plus skew), and its first request follows by the lead-in of 4.2. Measured from C&C's GO store to every tile's first request, at 2-cycle register loads, meshsim's reference (4.11) [meas: meshsim]: **12–13 cycles** for a stream run started by a counter write then start (8–9 to the start store, then 2L + 2), and **20–21** for a group run on the all-to-all recipe's longer start path (13–14, then 4L + 3); a group run with the shortest start path would take 15–16 [derived from the two measured parts]. The three cycles over v1.0's 9–10 and 17–18 (1-cycle loads) are GO's event becoming visible one cycle after GO is seen, since event pulses cross into the island through a flop (section 12), and `wait_for_command()`'s two loads at 2 cycles each (owner, 2026-10-27, part M). Every tile's first request lands within the 0/+1 start skew. The tile then `WFI`s for counters done (4.12) when it has nothing else to do.
+ - **Every expected arrival must have landed and every write cleared before the tile pulses `done`** (invariant 4). Counters done guarantees it.
+ - **A tile that only sends** in a phase still waits for `mem_idle` before `done`, because its own loopback writes count.
+ 
+@@ -2192,6 +2193,7 @@
+ | controller read port | request queue of at least 64 entries of 37 bits (address, destination, size); 64 in v1.0; results as mode-6 packets of 32, 64 or 128 bits (4.3) |
+ | controller memories | 8 KB instruction + 8 KB data, each four 512 × 32-bit banks interleaved by word (4.11) |
+ | `cm_latency` (director to port B) | 2 [built] |
++| `stage_delay` | 32 cycles *(Proposed)*: the minimum time from C&C's GO store to its first packet of announced staging, about 3× the receiving start path's arming time (6.2) |
+ | `reg_load_latency` | 1 or 2 per register, implementation-defined and fixed (the same on every access and tile); covers the register block and the table window; meshsim's reference setting 2 (4.11) |
+ | `ready_latency` | 1 in simulation (the GO net's); the physical lines cross the die, more than 1 (8 used for estimates); the physical value is *(Open)* |
+ | `go_latency` | 1 in simulation; the GO net crosses the die like the READY lines, so physically more than 1 *(Open)*; C&C waits `go_latency` + 1 cycles after each GO before sending (6.6) |
+@@ -2199,7 +2201,7 @@
+ | C&C receive FIFO | at least 64 entries (6.6) |
+ | load-use penalty (data memory, registers, table window) | 0 each (the design target; section 12) |
+ | taken-branch penalty, multiply latency | 1, 3 |
+-| request bus | a 16-bit, 8-ary tree: 8 row nodes and a root (with an input per sending controller), a 16-byte buffer per node input, one 16-bit beat per cycle per hop, 8 beats per request; no queues at the root, one credit counter and one forwarding link per target; a 16 × 128-bit receive queue in every tile; `reqbus_latency` ≈ 15–20 cycles [estimate] (3.3) |
++| request bus | a 16-bit, 8-ary tree: 8 row nodes and a root (with an input per sending controller), a 16-byte buffer per node input, one 16-bit beat per cycle per hop, 8 beats per request; no queues at the root, one credit counter and one forwarding link per target; a 16 × 128-bit receive queue in every tile; `reqbus_latency` ≈ 15–20 cycles [estimate], 17 unloaded [meas: meshsim] (3.3) |
+ | request FIFO | 2 KB per tile, 128 × 128 bits (4.18); the receive queue 16 × 128 bits per tile |
+ | wake events | 19 of 32 bits used: [3:0] each down-counter done, [12:8] GO, counters done, command landed, engine run done, request FIFO no longer full, [18:13] the peripheral's six service lines, [19] `REQUEST_PENDING`, [20] sender idle, [21] UART RX not empty, [22] UART TX not full; [7:4] and [31:23] reserved (4.12) |
+ | UART | every tile; 8N1; 16-byte TX and RX FIFOs *(Proposed)*; divisor in reference-oscillator cycles per bit, reset round(`f_ref` / 57,600); `f_ref` *(param, Open)* (4.20) |
+@@ -2269,7 +2271,7 @@
+ 
+ ## 13. Open items
+ 
+-Every item still to be settled, and every proposal not yet ruled on, with the section it affects. Possible later additions are improvements considered and not part of v1.1. Items 1–22 are v1.0's numbering; v1.1's new items start at 23, the request bus's at 60, the wake-event and read-order pass's at 76, the request-port and peripheral-slot pass's at 82, the modes-and-counting pass's at 90, part D's at 102, part E's at 109, part F's at 112, and part G's at 113 (extended by part H).
++Every item still to be settled, and every proposal not yet ruled on, with the section it affects. Possible later additions are improvements considered and not part of v1.1. Items 1–22 are v1.0's numbering; v1.1's new items start at 23, the request bus's at 60, the wake-event and read-order pass's at 76, the request-port and peripheral-slot pass's at 82, the modes-and-counting pass's at 90, part D's at 102, part E's at 109, part F's at 112, part G's at 113 (extended by part H), and part M's at 116.
+ 
+ **Open: to be settled for the hardware**
+ 
+@@ -2357,7 +2359,7 @@
+ **v1.1 request bus: open, to be settled**
+ 
+ 60. **The memory system's side** (6.7, section 7): its cache, LPDDR scheduling and the order it serves reads in, the write-token scheduler, how it shares C&C's port with C&C's controller (and so its share of the one packet per cycle into tile 0), and the C&C registers through which C&C's software reads requests addressed to it and the memory system's error flags (with item 11). Only what a tile sees is specified here.
+-61. **The request tree's physical design** (3.3, 12): where the nodes sit, the pipeline stages per hop and so `reqbus_latency` (15–20 cycles is an estimate), and whether 16 credits per target cover the round trip to its receiver.
++61. **The request tree's physical design** (3.3, 12): where the nodes sit, the pipeline stages per hop and so `reqbus_latency` (15–20 cycles is an estimate; meshsim measures 17 unloaded, part M, though the physical design can still move it), and whether 16 credits per target cover the round trip to its receiver.
+ 62. **Simulating the new paths** (4.5, 4.7, 6.7): once meshsim models the request bus, the deliveries and the protected loopback, confirm item 70's eject priority (no drift in group runs), measure how often loopback reads wait for tokens, and check that the all-to-alls' group runs see no new drift.
+ 
+ **v1.1 request bus: proposed, awaiting a ruling**
+@@ -2454,6 +2456,11 @@
+ 114. **Controller-fed template numbers** (4.19.5): decided (owner, 2026-10-26): the template builder numbers the program's controller-fed templates 0–127; the template set is the words plus an index of number, word offset and length; an instruction maps to its number by its exact instruction word; numbers may share words; at most 128 per program. *(To be measured:)* the number of **distinct controller-fed instruction words per program**, not distinct templates, on the workloads: programs with many distinct CSR accesses, or inlines called with many register combinations, could approach the limit.
+ 115. **The chip's used set of templates** *(Proposed; belongs with the deferred controllers, item 82)* (4.19.2, 4.19.5, 4.19.13): a controller ORs the 64 windows' template bitmaps (word 0 of each state record) into the chip's used set and broadcasts those templates and their index once to every tile, as a coordinated transfer (a command giving the size first, so each tile arms its counter, 4.12); each tile then keeps only the templates its own bitmap names, with every word any of its numbers references. **For now every tile simply preloads the whole set.**
+ 
++
++**v1.1, measurements from meshsim (2026-10-27, part M)**
++
++116. **Read-port reads overlapping incoming traffic** *(Open, a candidate)* (4.3, invariant 14; items 24, 70): meshsim now measures **no loss** when read-port reads overlap an all-to-all or a full-rate stream, where v1.0 lost 561 packets, as 4.3 predicted for the v1.1 loopback (the protected loopback FIFO, and the eject output serving incoming packets first, 4.5, 4.7). The rule and invariant 14 are unchanged for now; revisit them once the reason for the measured change is confirmed, and decide whether to relax the rule.
++
+ The logic budget (section 11) is unreviewed.
+ 
+ ---

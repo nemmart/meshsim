@@ -285,6 +285,24 @@ best effort.
     the materializer interface (item 59).
 12. **Docs:** rebuild `Intro.pdf`, `Reference.pdf` and the figures; refresh the design notes v2 against
     parts A-M.
+13. **Read/write configuration registers** (owner, 2026-10-28; a later spec part, not yet made):
+    - rename `ROUTER_SET_HDR` to `ROUTER_HDR` (0x80C), read/write: a store sets dst, mode and addr; a load
+      returns the latched value with addr as advanced by every send since, i.e. the header the next
+      packet will use. `ROUTER_SET_W0`-`W2` keep their names and stay write-only (they clear after a send);
+    - `SENDER_ADDR` (0x86C) read/write the same way, returning its auto-advanced value;
+    - `DMA_CONFIG` (0x828) read/write, returning the latched fields (spare bits read 0); 8.5's rule
+      against writing it during a run or its arrivals is unchanged;
+    - `DMA_RECORD_BASE_ADDRESS` (0x82C) read/write, returning the latched chunk address;
+    - `SRAM_RD_DEST_ADDR` (0x844) read/write, returning the latched setup: the destination word as advanced
+      by every read queued since (by the read size) and the size field, i.e. where the next result lands.
+    All five follow 4.11's register-load timing. Touches 4.3, 4.11, 8.1, 8.4, 8.5, 8.7, 8.8, 8.12, `REGISTERS.md`
+    and its generator, meshsim's register table and load path, and the software's uses of the name
+    (sort, recipes, `sw/replay/`); keep `ROUTER_SET_HDR` as a deprecated alias in `mesh.h` for one
+    revision.
+14. **Access labels read R/W, not W/R** (owner, 2026-10-28): where an address pairs a load-side and a
+    store-side register (the request port, 0x858-0x864), list the load side first, e.g.
+    `REQUEST_GET_W0` / `REQUEST_SET_W0` with access "R / W", and `REQUEST_RECEIVE` / `REQUEST_SEND`. Applies
+    to spec 8.1 and 8.10 and to `REGISTERS.md`'s generated table (change the generator, not the output).
 
 ---
 

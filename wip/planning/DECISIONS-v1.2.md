@@ -89,7 +89,11 @@ Decided with Tony (O, T). Replaces 3.1's 169-bit word.
   links, FIFOs and route blocks again (102 bits in v1.0, 169 in v1.1).
 - **Fields (181 bits):** payload 128, address 32, size 2, counter 2, mode 3, src 7, dst 7. **75 bits
   reserved:** sent as 0 and ignored by every receiver; FIFOs and route blocks carry all 256 bits without
-  interpreting them. Bit positions to be laid out.
+  interpreting them.
+- **Bit layout:** payload [127:0], address [159:128], size [161:160], counter [163:162], mode [166:164],
+  src [173:167], dst [180:174], reserved [255:181].
+- **Size, counter and mode keep this order everywhere** they appear together (`STREAM_COUNT`, the send
+  port's header, the sender), so hardware copies them as one 7-bit block into link word [166:160].
 - **Cost:** router FIFOs about 50 % larger than at 169 bits, roughly +0.04-0.06 mm² per tile [estimate];
   256 wires per link direction, with the channel width to confirm in physical design.
 - **Pending:** the 32-bit address (Q6) and the 3-bit mode's code assignment (Q7).
@@ -112,7 +116,25 @@ Decided with Tony (O, T). Replaces 4.12's four named down-counters.
   issued after the counter reaches 0 queues behind the write and cannot overtake it.
 - **Follow-on:** the wake events' per-counter done bits ([3:0] today) become done events for counters 1-3;
   [9] counters done stays. HALT flushes the delay line with the counters.
+- **HALT no longer suppresses counting** (replacing 3.1 and 4.12's "a halted tile counts nothing"). Boot
+  loads and staging into a halted tile are sent with counter 0. A counted packet arriving at a halted tile
+  hits a counter at 0 and sets unexpected arrival, which survives into RUN where the loader can see it.
 - **Pending:** the counter field in every packet source (Q8).
+
+## 4. The `STREAM` entry (2026-10-28)
+
+Decided (O). Still three 32-bit arrays, 96 bits, 88 used:
+
+| array | fields |
+|---|---|
+| `STREAM_SRC` | source [20:0], gap after [23:21], spare [31:24] |
+| `STREAM_DEST` | destination address [31:0] |
+| `STREAM_COUNT` | count [17:0], size [19:18], counter [21:20], mode [24:22], *d* [31:25] |
+
+- `STREAM_COUNT` [24:18] is the link word's size, counter and mode block, [166:160] (2).
+- The fields that change every round are still the source and the count, one store each, with fixed bits
+  ORed in (gap after; size, counter, mode and *d*).
+- Assumes the source stays a 21-bit big-SRAM address (Q9).
 
 ---
 
@@ -144,4 +166,5 @@ A running list; each entry names where it came from. Resolved entries move into 
 | Q5 | Should an area serve writes ahead of queued reads? Not needed for S1 if K covers only the path to the area queue | 3 | open; for Tony |
 | Q6 | The link word's 32-bit address: what it covers | 2 | next topic |
 | Q7 | The 3-bit mode: which of today's nine modes merge or go, now that counting is separate | 2 | open |
+| Q9 | Does a stream's source stay a 21-bit big-SRAM chunk address, or does the 32-bit address apply to reads too? | 4 | open |
 | Q8 | The counter field in every packet source: `STREAM` entries, the send port's header, the sender, the read port's setup, the GATHER engine's gather values, and memory-system requests | 3 | open |

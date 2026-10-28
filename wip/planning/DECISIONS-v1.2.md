@@ -62,9 +62,32 @@ Closes planning notes section 7, "Condition handling", and to-do item 3.
   during normal recovery, so the host treats only a sustained high as a failure.
 - **C&C 1's phase watchdog stays** as the backstop for a core that is stuck without raising a condition.
 
-### 1.6 Still open
+### 1.6 REPORT is withdrawn (O; 6.6)
 
-- Tony's CSR list (1.1).
-- How long a high on the pin counts as "sustained" for the host.
-- The HALT design itself (planning notes section 7): separate lines or one, which peripherals stop, what
-  HALT clears, the hold before RUN, per-tile halt.
+- **The REPORT debugging command is removed.** It works only when a failed tile still reaches
+  `wait_for_command()` and the mesh still carries its reply, which are the cases that fail. The handler's
+  request-bus reports (1.4) and the error lines (1.5) replace it.
+
+### 1.7 Spec text these decisions change
+
+- **Section 2 (global nets) and 6.6:** the error line is now one line per tile at fixed latency into C&C 1's
+  three words (1.5), replacing "ORed in a tree into one sticky error bit at C&C".
+- **4.11:** CSR instructions and traps (1.2).
+- **4.13** ("bus errors, illegal instructions, `ecall` and `ebreak` halt the tile's controller only"),
+  **4.17.7, 6.1 and 4.19.11** ("a halted controller" stops the peripheral and the sender): with traps the
+  controller no longer halts itself, so each needs rewording. What stops the peripheral is pending (Q3).
+- **6.6:** REPORT removed (1.6). C&C reuses the tile controller design, so C&C 1 gets the same traps and
+  can take its own interrupt (1.5).
+
+---
+
+## Pending questions
+
+A running list; each entry names where it came from. Resolved entries move into a decision section above.
+
+| # | question | from | status |
+|---|---|---|---|
+| Q1 | Tony's exact list of implemented CSRs, to define which CSR instructions are legal | 1.1 | waiting on Tony |
+| Q2 | How long a high on the C&C pin counts as "sustained" for the host | 1.5 | open |
+| Q3 | What stops the peripheral and the sender when a condition traps: the hardware on taking the interrupt, or the handler? (Today a halted controller stops them at once.) | 1.7 | open; suggestion: the hardware, so a failed handler can't leave them running |
+| Q4 | The HALT design: one line or separate lines for tiles and controllers, which peripherals stop, what HALT clears, the hold before RUN, per-tile halt | planning notes section 7 | next topic |

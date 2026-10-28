@@ -1,0 +1,70 @@
+# Decisions toward v1.2
+
+One entry per decision, newest section last. Labels follow the repository's convention: O owner decision,
+T confirmed by Tony (controller core). The spec session works from this log; `spec/machine-spec.md` stays
+the authority once an entry is written into it. Starting point: `PLANNING-NOTES-2026-10-27.md`.
+
+---
+
+## 1. Condition handling (2026-10-28)
+
+Closes planning notes section 7, "Condition handling", and to-do item 3.
+
+### 1.1 The controller core (T)
+
+- Tony's RV32 core has **two inputs**: a **hard interrupt**, which takes a trap to the handler, and a
+  **wakeup**, which resumes the core from `WFI` without a trap.
+- The wakeup input is **level-sensitive**: if it is high when the core reaches `WFI`, the core does not
+  sleep, even if it went high before the `WFI`.
+- The hard interrupt **takes the trap even while the core is in `WFI`**.
+- The core implements the **CSR instructions and the machine-mode trap CSRs**, but **no privilege modes**:
+  machine mode only, without the CSRs for privilege levels.
+- **Open (T):** the exact list of implemented CSRs, to define which CSR instructions are legal and which
+  still raise the illegal-instruction condition.
+
+### 1.2 Spec changes to the controller (O; 4.11)
+
+- **CSR instructions become legal** for the CSRs the core implements (1.1). 4.11 currently makes every CSR
+  instruction illegal.
+- **Bus errors, illegal instructions, `ecall` and `ebreak` trap to the handler** instead of halting the
+  controller. 4.11 currently halts the controller on each.
+
+### 1.3 Wake (O; 4.12)
+
+- **The `WAKE_*` registers are unchanged.** The existing wake term (4.12's formula over `WAKE_EVENTS`,
+  `WAKE_MASK`, `WAKE_REQUIRED` and the `done` gate) drives the core's wakeup input directly.
+
+### 1.4 The handler (O; 4.13)
+
+- **A condition raises the core's hard interrupt.** The handler reads the state (conditions, `TILE_STATUS`,
+  counters, `mepc`/`mcause`/`mtval`, `PERIPH_STATUS_0`-`7`, x1-x31: about 50 words) and sends it to C&C 1
+  as request-bus reports (about 17; header word: op, sequence number; three data words each).
+- **Parking:** the handler then **clears `WAKE_MASK` and `WAKE_REQUIRED` and loops on `WFI`**, so no event
+  and no GO can wake it. Only HALT recovers the tile (HALT → RUN resets `WAKE_MASK`, 4.12).
+- **Conditions during the `done` gate:** the gate controls only `WFI` wakes. A condition raised between
+  `done` and GO still takes the hard interrupt.
+
+### 1.5 Error lines and the C&C pin (O)
+
+- **Every tile has a dedicated error line to C&C 1**, driven by hardware from its conditions (no software
+  involved), with a **fixed latency**. It still reports a tile whose request path is stuck or whose handler
+  has itself failed.
+- C&C 1 sees the lines as **three 32-bit words**: two for the 64 tiles (one bit per tile) and one for the
+  C&C controllers and other non-tile units. Their bit assignment is part of the endpoint map (to-do item 11).
+- **The three words fold into C&C 1's conditions**, and C&C 1's conditions drive its own hard interrupt, so
+  C&C 1 is interrupted whenever any core fails, itself included.
+- **The fold is live:** it follows the error lines; it does not latch. C&C 1's own conditions stay sticky,
+  as everywhere.
+- **The C&C pin:** an output pin on the ASIC, high while C&C 1 has any condition.
+- **C&C 1's HALT halts everyone but itself.** Entering HALT clears the halted units' conditions (4.13), so
+  their error lines drop, the fold clears and the pin goes low.
+- **So the pin stays high only when C&C 1 itself has failed**, and the host steps in. The pin also pulses
+  during normal recovery, so the host treats only a sustained high as a failure.
+- **C&C 1's phase watchdog stays** as the backstop for a core that is stuck without raising a condition.
+
+### 1.6 Still open
+
+- Tony's CSR list (1.1).
+- How long a high on the pin counts as "sustained" for the host.
+- The HALT design itself (planning notes section 7): separate lines or one, which peripherals stop, what
+  HALT clears, the hold before RUN, per-tile halt.

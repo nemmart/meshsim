@@ -210,6 +210,21 @@ Decided (O). The 32-bit `ROUTER_SET_HDR` (dst 7, mode 4, addr 21) can't hold dst
 - **Toward Q8:** `SENDER_SEND` has room for the counter field (dest 7, mode 3, counter 2, queue 2, count
   16 = 30 bits), and `SENDER_ADDR` becomes a full 32-bit address.
 
+## 8. Pulse registers (2026-10-28)
+
+Decided (O, T). `TILE_PULSE` is replaced by **one register per action**: a store of 1 fires the action
+for one cycle, a store of 0 does nothing, and a load reads 0.
+
+| v1.1 | register | action |
+|---|---|---|
+| `TILE_PULSE` [0] | `TILE_DONE_PULSE` | the `done` pulse (6.3) |
+| `TILE_PULSE` [1] | `DMA_START_PULSE` | start the run in `DMA_CONFIG` (4.2) |
+| `TILE_PULSE` [2] | `PERIPH_1_RUN_PULSE`, `PERIPH_2_RUN_PULSE`, ... | run a peripheral, one register per peripheral (Q11) |
+| `TILE_PULSE` [3] | `TILE_GO_PULSE` | drive the GO net where it is wired (6.3) |
+
+- Firing two actions in one store is no longer possible; 8.6's "in one store, start and run act before
+  `done`" goes. Separate stores act in program order, and the synchronised start path is still one store.
+
 ---
 
 ## Big SRAM: to validate

@@ -172,19 +172,21 @@ counting (3), the 3-bit mode keeps only what the receiver must do differently:
 | code | mode |
 |---|---|
 | 0 | invalid |
-| 1 | gather request (local only) |
+| 1 | **write at address**, any region the packet may reach |
 | 2 | big-SRAM write by source, at `PTR[src]` |
-| 3 | **write at address**, any region the packet may reach |
-| 4 | bucket write, at `PTR[digit]` |
-| 5 | augmented write |
+| 3 | bucket write, at `PTR[digit]` |
+| 4 | augmented write, at `PTR[src]` |
+| 5 | gather request (local only) |
 | 6, 7 | reserved |
 
-- **Merged into mode 3:** v1.1's explicit-address big-SRAM write (3), controller-memory write (6),
+- **Numbering** (owner, 2026-10-28): the general write is 1; the writes that land through `PTR` and step it
+  are adjacent, 2-4; the gather request, the only mode that isn't a write, follows them.
+- **Merged into mode 1:** v1.1's explicit-address big-SRAM write (3), controller-memory write (6),
   command write (7), reply (8) and peripheral write (9).
-- **Replies** are mode-3 writes to the reply block at word 2·src in the receiver's data memory, counted
+- **Replies** are mode-1 writes to the reply block at word 2·src in the receiver's data memory, counted
   as the receiver armed. That a sender writes only its own pair becomes a software convention, no longer
   a hardware guarantee.
-- **Commands** are mode-3 writes, **counter 0**, to the command block in region 0x00: arguments first,
+- **Commands** are mode-1 writes, **counter 0**, to the command block in region 0x00: arguments first,
   then the command word to slot 0. **A write to command slot 0 sets "command landed"** and posts its wake
   event, decoded from the address by the traffic director. READY, GO and the alternating argument blocks
   work as today. Commands stay uncounted because they arrive while the tile waits in

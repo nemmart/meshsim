@@ -1,0 +1,182 @@
+--- a/spec/machine-spec.md	2026-10-27 02:21:01.234229569 +0000
++++ b/spec/machine-spec.md	2026-10-27 05:57:28.612645652 +0000
+@@ -23,7 +23,7 @@
+ - **Send port** (4.11, 8.4): `ROUTER_SET_W0`–`W2` and `ROUTER_SEND_32`, `_64` and `_128` replace `ROUTER_SET_HI` and `ROUTER_SEND_LO`. A packet's words are stored in ascending order, and the send store supplies its top word.
+ - **Registers** (section 8): reordered by family; since part E every family is contiguous, 0x800–0x89C. `DMA_PULSE` is renamed `TILE_PULSE`, and `TILE_STATUS` and `TILE_CONDITIONS` are regrouped.
+ - **The peripheral slot** (4.17): every tile has one slot for a peripheral, connected to its controller through one small interface: a run pulse (`TILE_PULSE` [2], `PERIPH_RUN`), `periph_running` and the peripheral's type in `TILE_STATUS`, six service lines in `WAKE_EVENTS` [18:13], eight status registers `PERIPH_STATUS_0`–`7`, mode 9 as the peripheral's own address space counted in `DMA_PERIPH_REMAINING`, conditions [13:11], and for a peripheral with output, a **sender** (`SENDER_SEND`, `SENDER_ADDR`, sender idle at `WAKE_EVENTS` [20]). A tile with no peripheral reads type 0.
+-- **The replayer** (4.19), peripheral type 1: specified in full. A small ALU with fixed 3- and 5-cycle rows regenerates the tile's 2¹⁶ trace rows from an opcode stream and two log streams (a read log and a write log), each raw or LRU-compressed, kept in big SRAM as far as it allows, fed through credit-managed code, read-log, write-log and expansion queues, with an 8 KB template ROM and a 4 KB decode table: about 41 KB of replayer memory per tile instead of 768 KB. It uses the peripheral slot's interface: its pass is a run, its six service lines are code, read-log, write-log and expansion low-water, new expansion and done, and it reports in `PERIPH_STATUS_0` and `_1`.
++- **The replayer** (4.19), peripheral type 1: specified in full; what each of its 91 row opcodes computes is in **`spec/replayer-opcodes.md`**, normative (part F). A small ALU with fixed 3- and 5-cycle rows regenerates the tile's 2¹⁶ trace rows from an opcode stream and two log streams (a read log and a write log), each raw or LRU-compressed, kept in big SRAM as far as it allows, fed through credit-managed code, read-log, write-log and expansion queues, with an 8 KB template ROM and a 4 KB decode table: about 41 KB of replayer memory per tile instead of 768 KB. It uses the peripheral slot's interface: its pass is a run, its six service lines are code, read-log, write-log and expansion low-water, new expansion and done, and it reports in `PERIPH_STATUS_0` and `_1`.
+ - **Request bus** (3.3, 4.18, 6.7, 8.10): tiles read and write LPDDR, and send debug messages and requests to the controllers, over a dedicated 16-bit, 8-ary tree whose root forwards to each target with credits for its receive queue. Every request is 128 bits; the hardware owns only its requestor [6:0], stamped by the tree, and its target [9:7], and the rest is laid out by the target. Each tile's request port has a send side, a 2 KB request FIFO filled through `REQUEST_SET_W0`–`W2` and `REQUEST_SEND`, and a receive side, a 16-entry receive queue read through `REQUEST_GET_W0`–`W2` and `REQUEST_RECEIVE` with `REQUEST_PENDING` at `WAKE_EVENTS` [19], fed only where the tile is a target's receiver. The memory system answers a read by pushing its data through C&C's port, mode 3 (a big-SRAM write at an explicit address), mode 6 or mode 9, counted against what the requester armed; a request with a value answer gets one **reply** (mode 8). Writes are token-gated: the tile streams its block to C&C as mode 3 only once the memory system's token reply arrives.
+ - **Modes renumbered** (3.1, owner, 2026-10-26): 1 gather request, 2 big-SRAM write by source, 3 big-SRAM write at an explicit address, 4 bucket write, 5 augmented write, 6 controller-memory write, 7 command write, 8 reply, 9 peripheral write; 10–15 reserved. Groups: big SRAM 2–5, controller memory 6–8, the peripheral 9. The wake-event mode is gone.
+ - **Counting from every source** (3.1, 4.12): every mode is counted, from any source, except command writes and gather requests; a halted tile counts nothing; counted data reaches a running tile only when it expects it. C&C halts a tile for an uncoordinated write.
+@@ -1227,7 +1227,7 @@
+ | [47:46] | `rd0` | the rd = x0 policy of the template (4.19.4): 0 none, 1 NOP (the NOP row is virtual), 2 remap, 3 NOP (the NOP row is not virtual: the source is ADDI). Read from a template's first word only |
+ | [50:48] | `format` | the source instruction's immediate format, for code 132: 0 R, 1 I, 2 S, 3 B, 4 U, 5 J; 6 and 7 reserved |
+ | [51] | `virt` | the row's opcode differs from the source instruction's *(Proposed, item 35)* |
+-| [52] | `imm0_pc0` | Jolt's program-end convention: if this row is a JAL whose immediate is 0, its new pc is 0 (4.19.7) *(Proposed, item 56)* |
++| [52] | `imm0_pc0` | Jolt's program-end convention: if this row is a JAL whose immediate is 0, its new pc is 0 (4.19.7). **Set in every JAL word, ROM or controller-fed** (owner, 2026-10-26, item 56) |
+ | [53] | `report_c` | report `is_compressed` on this row when the instruction is compressed (4.19.12) *(Proposed, item 56)* |
+ | [54] | `from_log` | the row consumes one log word: rd's value, or an SD row's memory pre-value (4.19.7) *(Proposed, item 56)* |
+ | [55] | `untraced` | used only by a tracer (owner, 2026-10-26): the row is not traced. **An untraced word must never reach a replayer;** one that does is an invalid expansion (4.19.11) |
+@@ -1303,6 +1303,11 @@
+ 
+ LR/SC, CSRRW, CSRRS, ECALL, EBREAK, MRET and the inlines are exempt (`rd0` = 0), as is every instruction whose rd field is an immediate (stores, branches, `VirtualAssertEQ`, FENCE; `isa/virtual.cpp:104–106`). JAL, JALR and `VirtualHostIO` also allocate their own throwaway register when rd is x0 (`isa/virtual.cpp:1195–1226`); after the generic remap that case never arises, and both paths give rd = 40, so one-word remap templates reproduce them. With the decode table's AMO index (4.19.5), every atomic reaches its own template and the offset handles the remap in hardware.
+ 
++**What the remap and the exemptions produce** (owner, 2026-10-26; `spec/replayer-opcodes.md` section 5):
++- **The remapped link is really written:** a JAL or JALR with rd = x0 leaves its link (pc + `pc_increment`) in v40, which is not an inline temporary and keeps that value across instructions (it is below 48, so the tracer never zeroes it); the record shows rd = 40 and the link.
++- **The exempt instructions emit rows that name x0:** `LD x0` (LR.D), `VirtualPextSigned x0` (LR.W) and `XORI x0` (SC.W, SC.D). Register 0 drops the write (4.19.7), and an LD to x0 reports a memory value of 0 (4.19.7, 4.19.12).
++- **EBREAK's single row is `JAL v40, 0`** (4.19.5): it allocates v40 itself, and ends the program.
++
+ **The temporaries stay in 40–47.** The tracer asserts that no expansion, remap included, allocates beyond register 47 (`isa/virtual.cpp:148–153`), so every correct template keeps 40 + *k* + offset ≤ 47. The replayer doesn't check it *(Proposed, item 36)*.
+ 
+ **Mid-sequence start.** The offset is recomputed from the opcode-stream entry's rd field and the `rd0` of the template's **first word**, ROM[start], not ROM[start + offset]. Controller-fed expansions (inlines and system instructions) are all exempt, so their offset is always 0.
+@@ -1366,10 +1371,10 @@
+ 
+ **The register file** is 128 × 64 bits (1 KB), true dual-port, and holds the working copy of all 128 registers. **Register 0 reads 0 and writes to it are dropped**, as the tracer's `save_rd` drops them (`trace_owner.cpp:85–93`). It is not addressable by mode 9; each start fills it from the image.
+ 
+-**What a row computes** is what `execute_instruction` (`trace_owner.cpp:145–669`) computes for it, reading each slot's value as `read_reg_vals` does (a register slot reads its register, an immediate slot carries its value, `trace_owner.cpp:78–83`), with four departures:
++**What a row computes is defined in `spec/replayer-opcodes.md`** (owner, 2026-10-26, part F; item 112), which is **normative** for it (its sections 1–5): for each of the 91 row opcodes, its slots, the exact rd formula (widths, extension, wraparound, shift masks), its control transfer, its log word and, for LD and SD, its memory fields, all derived from `execute_instruction` (`trace_owner.cpp:145–669`, tracer commit 4f36b3d) and checked against it with about 240 test vectors. This section keeps the classes, the schedules and the pc and `instr_idx` rules. A row reads each slot's value as `read_reg_vals` does (a register slot reads its register, an immediate slot carries its value, `trace_owner.cpp:78–83`), with four departures from the tracer:
+ - **class L rows take the log word** (below) instead of reading memory or computing advice;
+ - **assertions are not evaluated:** the `VirtualAssert…` rows write nothing, and the tracer aborts on a failed assertion while tracing (`release_assert`, e.g. `trace_owner.cpp:334–351`), so a traced program never contains one that fails;
+-- **`VirtualPext` and `VirtualPextSigned`** need only contiguous masks, (rs1 & m) >> tz(m) and its sign-extended form: every mask they receive comes from a `VirtualWindowMask…` row (`expand_load`, `isa/virtual.cpp:237–250`) *(Proposed, item 43)*;
++- **`VirtualPext` and `VirtualPextSigned` take only contiguous, non-zero masks** (owner, 2026-10-26, item 43): every mask they receive comes from a `VirtualWindowMask…` row (`expand_load`, `isa/virtual.cpp:237–250`), so the tracer guarantees it. The replayer builds only (rs1 & m) >> tz(m) and its sign-extended form, not the general bit-extract the appendix defines for any mask; **the result for any other mask is undefined**, and meshsim flags one (invariant 16);
+ - **control flow** follows the pc rules below, with the next `instr_idx` from the log rather than from a pc-to-index table.
+ 
+ **Row classes and their schedules.** Of the tracer's 168 opcodes, 91 occur in Jolt's rows; 74 occur only as source instructions, which their templates replace, and 3 never occur (`VirtualMove` 126, `VirtualAdviceRemU` 161, `VirtualAdviceRemUW` 165) [derived from `isa/virtual.cpp` and `inlines/`; the enumeration, item 34, confirms it]. Codes are the tracer's (`isa/riscv.inc`):
+@@ -1396,7 +1401,11 @@
+ 
+ The multiplier is four 16 × 64 multipliers in parallel, a full 64 × 64 array, which is cheap in area. There is no divider: Jolt's DIV and REM use advice plus checks, and the advice comes from the log. **Stalls** (an empty code, expansion or log queue, a full output queue) delay a row's start; they never change its schedule.
+ 
+-**Semantics that matter for exactness** (from `execute_instruction`): AUIPC adds the source instruction's pc (`trace_owner.cpp:156–160`); JAL and JALR link pc + `pc_increment`, which is 2 or 4 because a JAL or JALR row is always its expansion's last row (`trace_owner.cpp:277–291`); `VirtualHostIO` writes rd's own value back (`trace_owner.cpp:294–299`); the W forms sign-extend their low 32 bits; `VirtualROTRIW` rotates by min(32, tz(imm)) (`trace_owner.cpp:381–385`).
++**The edge cases** (AUIPC's use of the source instruction's pc, JAL and JALR linking pc + `pc_increment`, `VirtualHostIO` writing rd's own value back, `VirtualROTRIW`'s min(32, tz(imm)), the shift masks, MULHU, the advice values) are in `spec/replayer-opcodes.md`. **Extension is per opcode:** several word forms zero-extend rather than sign-extend (`VirtualPow2W`, `VirtualShiftRightBitmaskW`, `VirtualROTRIW` and the `VirtualXORROTW…` forms among them; the appendix's flag F5 lists them), so the appendix's rd formula, not the opcode's name, decides.
++
++**Zero shift masks** (owner, 2026-10-26). The masks reaching `VirtualSRL`, `VirtualSRLI`, `VirtualSRA` and `VirtualSRAI` are **never 0**: each comes from `VirtualShiftRightBitmask` or from the expansion's 2⁶⁴ − 2^shamt, and the tracer guarantees it. The shift is tz(mask), and **the result for a zero mask (tz = 64) is undefined**, as it is in the tracer's C++; meshsim flags one (invariant 16).
++
++**LD's memory fields** (owner, 2026-10-26). An LD row's record forms its memory value (pre = post) from **the value written to rd**, not from the log word, as the tracer does (`trace_owner.cpp:922–925`). So an LD to x0, which only LR.D with rd = x0 produces (4.19.4), consumes its read-log word but reports a memory value of 0 (4.19.12).
+ 
+ **pc and `instr_idx`.** pc is computed, never stored per row; `instr_idx` increments by 1 on every row that continues sequentially, because the committed bytecode lays each expansion out contiguously in program order (`isa/virtual.cpp:1405–1420`). The **new pc** of a row:
+ 
+@@ -1405,17 +1414,19 @@
+ | not its expansion's last row | pc (unchanged) |
+ | last row, no control transfer | pc + `pc_increment` |
+ | conditional branch | pc + imm if the comparator says taken, else as above |
+-| JAL | pc + imm; **0 if imm = 0 and `imm0_pc0` is set**: Jolt's program-end convention (`trace_owner.cpp:281`) |
++| JAL | pc + imm; **0 if imm = 0 and `imm0_pc0` is set**: Jolt's program-end convention (`trace_owner.cpp:281`). The template builder sets `imm0_pc0` in **every JAL word, ROM or controller-fed** (owner, 2026-10-26, item 56), so the replayer matches the tracer, which ends the program on every JAL with imm = 0 |
+ | JALR | (rs1 + imm) & ~1 (`trace_owner.cpp:287`); MRET and traps are JALR rows through mepc (v36) or mtvec (v34) (`isa/virtual.hpp:36–38`; `isa/virtual.cpp:1098–1162`) |
+ | `hold` set | pc (unchanged), and `instr_idx` unchanged |
++| **new pc = 0, from any row** | **the program ends:** pc = 0 and `instr_idx` = 0, checked before the rules below (`trace_owner.cpp:117–119`). Besides a JAL with imm 0, a JALR whose target is 0 or a branch whose pc + imm wraps to 0 also ends it (owner, 2026-10-26, item 57) |
+ 
+ Then, as `finish_instruction` does (`trace_owner.cpp:111–126`): **if the new pc differs from pc,** the row transfers control: pc takes the new pc and the next `instr_idx` is the row's log word (`next_from_value` must be set; a new pc of 0 has the log word 0). **Otherwise** pc += `pc_increment` and `instr_idx` += 1, with no log word, **even for a taken branch or a jump whose target is its own pc** (`trace_owner.cpp:117–124`): Jolt treats a jump to itself as sequential, so the row's pc advances past it.
+ 
+ **Hardwired Jolt behaviour** *(Proposed, item 57)*. Three conventions can't be table data, because they depend on values only known while the row runs; the replayer builds them in, and a change in Jolt would change silicon:
+ - **the self-jump compare:** a control transfer whose new pc equals its pc is sequential (above);
+ - **register 0** reads 0 and drops writes (`trace_owner.cpp:85–93`);
+-- **the row record's memory fields** are formed for LD and SD only, the normalized ISA's only memory opcodes (`trace_owner.hpp:219–235`), and JALR clears bit 0 of its target (`trace_owner.cpp:287`).
+-The ALU's per-opcode arithmetic is hardwired too, by nature: a new Jolt opcode needs new logic. Which rows can transfer control is explicit, not inferred from the row opcode: `next_from_value` is set in the ROM for branches, JAL and JALR, and in the controller's words for the JALR rows of MRET, ECALL and trap returns. No pc-to-index table is needed.
++- **the row record's memory fields** are formed for LD and SD only, the normalized ISA's only memory opcodes (`trace_owner.hpp:219–235`), an LD's from the value written to rd (so 0 for an LD to x0), and JALR clears bit 0 of its target (`trace_owner.cpp:287`);
++- **a new pc of 0 ends the program** from any row (the pc table above).
++The ALU's per-opcode arithmetic is hardwired too, by nature: a new Jolt opcode needs new logic. Which rows can transfer control is explicit, not inferred from the row opcode: `next_from_value` is set in the ROM for branches, JAL and JALR, and in the controller's words for the JALR rows of MRET, ECALL and trap returns, and for EBREAK's JAL (4.19.5). No pc-to-index table is needed.
+ 
+ **Rate.** About 3.3 cycles per row on average with about 10 % multiply rows (item 37 measures the density), so a 64K-row pass is about 216K cycles plus about 1.3K cycles of controller-fed expansion stalls: about 0.22 ms at 1 GHz with everything local, or about 10 ms for the 46 passes of an Akita proof [estimate].
+ 
+@@ -1491,6 +1502,8 @@
+ 
+ **Short runs, not interruption.** The address generator is not interruptible. Instead every run is short: a 1 KB chunk is 64 packets, about 64 cycles, so nothing waits long for the engine, and the controller re-checks the queues after each chunk. Streaming occupies about 11–20 % of a pass [estimate]. Group runs (the sort's all-to-alls) stay exclusive and don't coincide with replay.
+ 
++**EBREAK's expansion** is one controller-fed word (owner, 2026-10-26): **JAL, rd = temporary 0 (v40), immediate 0, with `imm0_pc0` and `next_from_value` set**, as the tracer emits it (`JAL v40, 0`, `isa/virtual.cpp:1164–1192`). EBREAK is exempt from the rd = x0 remap, so the offset is 0 and temporary 0 is v40. It ends the program, which happens once per proof, so it stays controller-fed rather than taking a ROM word.
++
+ **Controller-fed expansions** are only the inlines (custom-0) and ECALL, EBREAK, MRET, CSRRW and CSRRS: about 13 per 64K-row window on Cyclone, about 0.4 % of a pass in stalls [meas: design notes]. CSRRW and CSRRS expand to 1–3 rows depending on their registers (`num_cycles`, `isa/virtual.cpp:1324–1345`), which is one reason they stay with the controller. The current window's inline templates are resident in big SRAM (4.19.13).
+ 
+ #### 4.19.10 Mode 9: the address map, landing and ownership
+@@ -1554,7 +1567,7 @@
+ 
+ #### 4.19.12 The output row
+ 
+-**The record** *(Proposed, item 59: the layout; the field semantics are Jolt's)*. Each row is 640 bits, five 128-bit words, carrying what Jolt's 80-byte trace row `RiscCycle` carries (`trace_owner.hpp:19–94`) plus `instr_idx`, which Jolt's provers take from a separate column (`trace_columns.inc:53`), and less the memory post-value, which the consumer derives (an LD's is the value loaded, an SD's is rs2's value; `trace_owner.hpp:230–235`). The values are those `expand_compressed_chunk` records (`trace_owner.cpp:893–927`):
++**The record** *(Proposed, item 59: the layout; the field semantics are Jolt's)*. Each row is 640 bits, five 128-bit words, carrying what Jolt's 80-byte trace row `RiscCycle` carries (`trace_owner.hpp:19–94`) plus `instr_idx`, which Jolt's provers take from a separate column (`trace_columns.inc:53`), and less the memory post-value, which the consumer derives (an LD's is rd's value after the row, an SD's is rs2's value; `trace_owner.hpp:230–235`). The values are those `expand_compressed_chunk` records (`trace_owner.cpp:893–927`):
+ 
+ | word | bits | field | value |
+ |---|---|---|---|
+@@ -1576,7 +1589,7 @@
+ | 3 | [63:0] | `rd_prev` | rd's value before the row; 0 if an immediate slot |
+ | 3 | [127:64] | `rd` | rd's value after the row; 0 if an immediate slot, and 0 for x0 |
+ | 4 | [63:0] | `mem_addr` | rs1 + imm for LD and SD, else 0 |
+-| 4 | [127:64] | `mem_value` | the value loaded (LD), the memory pre-value from the log (SD), else 0 |
++| 4 | [127:64] | `mem_value` | for LD, **rd's value after the row**: the value loaded, and 0 for an LD to x0 (4.19.7); for SD, the memory pre-value from the log (0 in a pass without the store log, 4.19.2); else 0 |
+ 
+ A padding row's record is all zeros, as Jolt's padded rows are (4.19.2).
+ 
+@@ -2124,7 +2137,7 @@
+ 15. **No conditions:** every tile's `TILE_CONDITIONS` stays 0 (4.13). A program error that the hardware can see shows up here, and on C&C's error bit.
+ 16. **The peripheral slot's and the replayer's invariants** (4.17, 4.19):
+     - the slot's: no bad peripheral write (condition 11); no run while `periph_running` is 1, and none on a tile with no peripheral; no `SENDER_SEND` store while `sender_busy` is 1, or on a tile without peripheral output; and a mode-9 packet's landing `rp_latency` after the director (4.17.5, 4.17.8). Mode 9 may come from any source (4.17.5): v1.1's "only the tile itself and C&C" is withdrawn;
+-    - the replayer's: no queue overrun and no invalid expansion (conditions 12 and 13); no other tile sends the tile mode 9 during a pass (4.19.13); no LPDDR read targets a replayer queue (its overflow goes through big SRAM, 4.19.13); every opcode word and log word a pass is given is consumed in order, and a pass consumes exactly its tile's log; every queue push, whatever its source, has landed before a run (4.19.8); and the replayer's rows equal jolt-cpp's (the validation harness, item 58).
++    - the replayer's: no queue overrun and no invalid expansion (conditions 12 and 13); no other tile sends the tile mode 9 during a pass (4.19.13); no LPDDR read targets a replayer queue (its overflow goes through big SRAM, 4.19.13); every opcode word and log word a pass is given is consumed in order, and a pass consumes exactly its tile's log; every queue push, whatever its source, has landed before a run (4.19.8); no zero mask reaches `VirtualSRL`, `VirtualSRLI`, `VirtualSRA` or `VirtualSRAI`, and no mask that is zero or not contiguous reaches `VirtualPext` or `VirtualPextSigned` (4.19.7; the results are undefined, owner, 2026-10-26); and the replayer's rows equal jolt-cpp's (the validation harness, item 58; the vectors of `spec/replayer-opcodes.md` section 9).
+ 17. **The request contract is kept** (2.1, 3.3, 4.2, 6.7; v1.1's tag clauses withdrawn, owner, 2026-10-26):
+     - a request's data and reply arrive only when the requesting tile has armed its counters for them (4.12);
+     - at most one reply-producing request is outstanding per responder, and its reply is read before the next arrives;
+@@ -2244,7 +2257,7 @@
+ 
+ ## 13. Open items
+ 
+-Every item still to be settled, and every proposal not yet ruled on, with the section it affects. Possible later additions are improvements considered and not part of v1.1. Items 1–22 are v1.0's numbering; v1.1's new items start at 23, the request bus's at 60, the wake-event and read-order pass's at 76, the request-port and peripheral-slot pass's at 82, the modes-and-counting pass's at 90, part D's at 102, and part E's at 109.
++Every item still to be settled, and every proposal not yet ruled on, with the section it affects. Possible later additions are improvements considered and not part of v1.1. Items 1–22 are v1.0's numbering; v1.1's new items start at 23, the request bus's at 60, the wake-event and read-order pass's at 76, the request-port and peripheral-slot pass's at 82, the modes-and-counting pass's at 90, part D's at 102, part E's at 109, and part F's at 112.
+ 
+ **Open: to be settled for the hardware**
+ 
+@@ -2296,16 +2309,16 @@
+ **v1.1, the replayer (4.19): open and proposed**
+ 
+ 33. **The run log, a requirement on our tracer engine** *(Open)* (4.19.2). The tracer engine must write, per tile, the opcode stream (decompressed instructions with bit 0 as the compressed flag, the padding word 0) and a memory log with one 64-bit word for every LD, SD and advice row **and every control transfer's next `instr_idx`**, in row order, plus the checkpoint. It differs from jolt-cpp's memory log on purpose: jolt-cpp computes DIV/REM advice in its interpreter and finds jump targets with a pc-to-index table (`trace_owner.cpp:111–126`, `545–630`), and the replayer has neither.
+-34. **The template enumeration** *(Open)* (4.19.3–4.19.7). Enumerate `expand_virt_seq` against the generated bytecode of both ELFs: the template contents and ROM words, the single non-zero immediate per row, `virt` on rewrites and remapped rows, the inline scratch zeroing, the padding rows, and the 91 opcodes that occur in rows.
++34. **The template enumeration** *(Open; partly addressed)* (4.19.3–4.19.7). Enumerate `expand_virt_seq` against the generated bytecode of both ELFs: the template contents and ROM words, the single non-zero immediate per row, `virt` on rewrites and remapped rows, the inline scratch zeroing, the padding rows, and the 91 opcodes that occur in rows. **Partly addressed** (owner, 2026-10-26, part F): `spec/replayer-opcodes.md` section 6 maps every slot form of every row opcode to the source instructions and emit sites that produce it, and its harness (`tools/replayer-opcodes/`) confirms the 91 opcodes and the last-row status of each. **What remains:** the full template and ROM-word listing.
+ 35. **The `virt` bit and the NOP row's virtual-ness** *(Proposed)* (4.19.3, 4.19.4). Jolt's `is_virtual` depends on whether the row opcode differs from the source's (`isa/virtual.cpp:183`), which the replayer can't see, so it is stored per word (bit 51); `rd0` = 3 marks ADDI, whose rd = x0 NOP row is not virtual. Accepted in principle 2026-10-23.
+-36. **What the replayer executes and checks** *(Proposed)* (4.19.4, 4.19.7). It executes 85 opcodes (classes S and M, LD, SD, `VirtualAdvice`); any other opcode is an invalid expansion. It doesn't check that temporaries stay in 40–47; the tracer guarantees it.
+-37. **The row classes and the multiplier** *(Proposed)* (4.19.7). The per-opcode class table (L, M, S, source-only, never); MULH and MULHSU never reach a row, so the multiplier drops the signed high half and the sign corrections (accepted 2026-10-23). Measure the multiply and MULHU density per 64K-row window, which sets the 3.3-cycle average.
++36. **What the replayer executes and checks** (4.19.4, 4.19.7): **decided** (owner, 2026-10-26, part F, citing `spec/replayer-opcodes.md`): it executes 85 opcodes (classes S and M, LD, SD, `VirtualAdvice`), each as the appendix defines it; any other opcode is an invalid expansion. *(Still Proposed:)* it doesn't check that temporaries stay in 40–47; the tracer guarantees it.
++37. **The row classes and the multiplier** (4.19.7): **decided** (owner, 2026-10-26, part F, citing `spec/replayer-opcodes.md`, whose flag F9 finds every class assignment consistent with the tracer): the per-opcode class table (L, M, S, source-only, never); MULH and MULHSU never reach a row, so the multiplier drops the signed high half and the sign corrections (accepted 2026-10-23). *(Still Open:)* measure the multiply and MULHU density per 64K-row window, which sets the 3.3-cycle average.
+ 38. **The decode index's special groups** *(Proposed)* (4.19.5): index[10] = 1 for AMO, custom-0 and SYSTEM, with index[9:8] choosing the group and the bit positions given there.
+ 39. **The padding and shared NOP rows at ROM words 0 and 1** *(Proposed)* (4.19.6), so the hardware needs no pointer to them.
+ 40. **The ROM's fit** *(Open)* (4.19.6): about 508 of 512 words; share identical words or grow the ROM slightly.
+ 41. **Register 0 of the image is ignored** *(Proposed)* (4.19.2): the working file's register 0 always reads 0.
+ 42. **Fetch and decode overlap the previous row** *(Proposed)* (4.19.7); only execution is strictly sequential, so the 3- and 5-cycle schedules hold with the table and ROM lookups hidden.
+-43. **`VirtualPext` with contiguous masks only** *(Proposed)* (4.19.7): every mask comes from a `VirtualWindowMask…` row; a general bit-extract isn't built.
++43. **`VirtualPext` with contiguous masks only** (4.19.7): **decided** (owner, 2026-10-26, part F, citing `spec/replayer-opcodes.md`): every mask comes from a `VirtualWindowMask…` row and is contiguous and non-zero; a general bit-extract isn't built, and the result for any other mask is undefined (meshsim flags it, invariant 16).
+ 44. **The queue ports by addr[20:18]** *(Proposed, accepted 2026-10-23)* (4.19.10): window 0 the memories, 1 code, 2 value, 3 expansion, 4–7 unmapped; a port ignores addr[17:0].
+ 45. **The sizes each region takes** *(Proposed, accepted)* (4.19.8, 4.19.10): the memories and the expansion port 128 bits, the code port 32, 64 or 128, the value port 64 or 128; a packet's entries are pushed low first.
+ 46. **The offsets in window 0** *(Proposed, accepted)* (4.19.10), with eight decode-table entries per 128-bit packet, entry *e* in bits [16·(*e* & 7) + 15 : 16·(*e* & 7)].
+@@ -2318,8 +2331,8 @@
+ 53. **Rows run in `PERIPH_STATUS_0`** *(Proposed)* (4.19.11, 8.11): rows run reads modulo 2¹⁶. (`replay_wait`, the rest of this item, is gone: owner, 2026-10-26.)
+ 54. **Ownership in HALT** *(Proposed, accepted)* (4.19.10): the memories take mode-9 writes for boot loads, and a queue-port write is a bad peripheral write.
+ 55. **The replayer's conditions** (4.13, 4.19.11): decided, accepted as written by the owner on 2026-10-23: all three are program errors, invalid expansion also a fault detector; an invalid expansion stops the pass and posts done, so the controller loop exits. (The earlier "raise and run" ruling for replayer conditions doesn't apply to it; the owner expects it never to happen.)
+-56. **Jolt's conventions as table data** *(Proposed)* (4.19.3, 4.19.4, 4.19.7). Each convention that can be data is: `virt` (bit 51), `rd0` 1 and 3, `imm0_pc0` (bit 52: a JAL with immediate 0 goes to pc 0, Jolt's program end, `trace_owner.cpp:281`), `report_c` (bit 53: `is_compressed` only on an expansion's last row, `trace_owner.cpp:899`), `from_log` (bit 54: which rows take a log word), and the advice rows written as `VirtualAdvice rd, x0, x0` so the record matches Jolt's masking (`trace_owner.cpp:912–917`) with no logic. A change in Jolt then means new tables, not new silicon. The owner's preference, 2026-10-23.
+-57. **The replayer's hardwired Jolt behaviour** *(Proposed)* (4.19.7). What depends on values known only while a row runs, and so can't be table data: **a control transfer whose new pc equals its pc is sequential**, advancing pc by `pc_increment` and `instr_idx` by 1 with no log word (`trace_owner.cpp:117–124`); register 0 reads 0 and drops writes; the record's memory fields for LD and SD only; JALR's cleared bit 0; and the ALU's arithmetic per opcode. A Jolt change to any of these is a silicon change.
++56. **Jolt's conventions as table data** *(Proposed)* (4.19.3, 4.19.4, 4.19.7). Each convention that can be data is: `virt` (bit 51), `rd0` 1 and 3, `imm0_pc0` (bit 52: a JAL with immediate 0 goes to pc 0, Jolt's program end, `trace_owner.cpp:281`), `report_c` (bit 53: `is_compressed` only on an expansion's last row, `trace_owner.cpp:899`), `from_log` (bit 54: which rows take a log word), and the advice rows written as `VirtualAdvice rd, x0, x0` so the record matches Jolt's masking (`trace_owner.cpp:912–917`) with no logic. A change in Jolt then means new tables, not new silicon. The owner's preference, 2026-10-23. **Added** (owner, 2026-10-26, part F): the template builder sets `imm0_pc0` in **every JAL word, ROM or controller-fed** (EBREAK's included), so the replayer matches the tracer, which ends the program on every JAL with imm = 0 (`spec/replayer-opcodes.md` flag F1).
++57. **The replayer's hardwired Jolt behaviour** *(Proposed)* (4.19.7). What depends on values known only while a row runs, and so can't be table data: **a control transfer whose new pc equals its pc is sequential**, advancing pc by `pc_increment` and `instr_idx` by 1 with no log word (`trace_owner.cpp:117–124`); register 0 reads 0 and drops writes; the record's memory fields for LD and SD only; JALR's cleared bit 0; and the ALU's arithmetic per opcode. A Jolt change to any of these is a silicon change. **Added** (owner, 2026-10-26, part F): **a new pc of 0 ends the program from any row** (a JAL with imm 0, a JALR whose target is 0, a branch whose pc + imm wraps to 0): pc = 0 and `instr_idx` = 0, checked before the other pc rules (`trace_owner.cpp:117–119`).
+ 58. **A validation harness** *(Open; building it is a later session)*. It proves the replayer, the run-log format and the tracer engine's extra log words together. It runs the tracer on both 2²⁹ workloads (EVM Zone and Cyclone), produces our run log, decode table, ROM and per-tile checkpoints, and replays every tile's 65,536 rows in a software model of the replayer that sees only those inputs (4.19.2–4.19.12). It then compares, **row by row and byte for byte**, against jolt-cpp's expanded trace:
+     - every field of jolt-cpp's `RiscCycle` (`trace_owner.hpp:19–94`): pc, opcode, the three register numbers, `inline_sequence_remaining`, `is_compressed`, the virtual flags, `_imm`, rd, rs1, rs2, rd_prev, the memory address, pre-value and post-value, the last derived from our record as 4.19.12 says;
+     - `instr_idx` against jolt-cpp's `instr_idx` column, and the record's three `*_is_imm` bits against the bytecode's at that index;
+@@ -2406,6 +2419,11 @@
+ 110. **The renumbered register map** (8.1): decided (owner, 2026-10-26): every family contiguous, no holes, 0x800–0x89C; offsets 0x800–0x828 unchanged; moved: the record base (0x838 → 0x82C), the counters (0x82C–0x834 → 0x830–0x838; `DMA_PERIPH_REMAINING` 0x854 → 0x83C), the read port (0x83C–0x840 → 0x840–0x844), the wake registers (to 0x848–0x854), `PERIPH_STATUS_` (to 0x870–0x88C) and the UART (to 0x890–0x89C); unmapped from 0x8A0. Reverses part j's "no renumbering" (items 86, 101, 102).
+ 111. **Register-load latency** (4.11, 8.1, 10): decided (owner, 2026-10-26): register-block and table-window loads take 1 or 2 cycles, implementation-defined, fixed per register on every access and tile; a load at *t* with latency *L* samples at the end of *t* + *L* − 2 and takes its side effect at the end of *t* + *L* − 1, removing exactly what it returned; stores are single-cycle and posted (taking effect at the end of their cycle) and accesses complete in program order; meshsim's reference is 2. Every [meas: meshsim] figure that includes controller register loads was taken with 1-cycle loads and is to be re-measured at 2.
+ 
++
++**v1.1, the replayer's opcode semantics (2026-10-26, part F)**
++
++112. **The opcode appendix** (4.19.7): decided (owner, 2026-10-26): `spec/replayer-opcodes.md`, derived from the jolt-cpp tracer at commit 4f36b3d, defines what each of the 91 row opcodes computes; its sections 1–5 are **normative** for that, its sections 6–9 (producers, source-only and never lists, test vectors) informative. 4.19.7 keeps the classes, schedules and pc rules; 4.19.12 the record layout. Its flags F1–F6 are resolved in the spec (F1: `imm0_pc0` in every JAL word, item 56; F2: EBREAK's controller-fed word, 4.19.5; F3: a new pc of 0 from any row, item 57; F4: LD's memory fields from rd, 4.19.7 and 4.19.12; F5: per-opcode extension, 4.19.7; F6: zero shift masks undefined, 4.19.7 and invariant 16). The harness that produced its tables is in `tools/replayer-opcodes/`; regenerating them for a later tracer commit is how the appendix is kept current.
++
+ The logic budget (section 11) is unreviewed.
+ 
+ ---
+--- a/README.md	2026-10-12 19:41:03.000000000 +0000
++++ b/README.md	2026-10-27 05:57:28.613917025 +0000
+@@ -6,7 +6,8 @@
+ |---|---|
+ | `Intro.pdf` | **start here:** how the mesh sorter sorts, a 13-page illustrated introduction for someone new to the project (source and figures in `intro/`) |
+ | `Reference.pdf` | the programmer's register reference: every register, field and rule, with worked examples (built from `sw/REGISTERS.md`) |
+-| `spec/` | **`machine-spec.md`**, the hardware (v1.0), and `schedule.md`, the 16-group all-to-all schedule |
++| `spec/` | **`machine-spec.md`**, the hardware, `replayer-opcodes.md`, the replayer's opcode semantics (normative for what each row computes), and `schedule.md`, the 16-group all-to-all schedule |
++| `tools/replayer-opcodes/` | the harness, built against the jolt-cpp tracer, behind `spec/replayer-opcodes.md`'s tables and test vectors |
+ | `diagrams/` | the figure set: 29 figures in eight parts, from the system down to RTL: `svg/` the figures, `png/` renderings, `src/` the generators (`diagrams/README.md` is the index) |
+ | `sw/` | `mesh.h` 1.0 (generated by meshsim), `CONVENTIONS.md` (the control conventions), `RECIPES.md` (tested code for every common operation), `REGISTERS.md` (the programmer's register reference) and `regdoc/` (its worked-example diagrams and PDF build) |
+ | `meshsim/` | the cycle-level simulator: source, tests, the tile programs' build, and `results/`, the logs of its last full `run_tests.sh` |

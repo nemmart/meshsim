@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="940" height="570" viewBox="0 0 940 570" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif">
+<defs></defs>
+<rect width="940" height="570" fill="white"/>
+<text x="24.0" y="34.0" font-size="18" text-anchor="start" font-weight="bold" fill="#444441">Figure 12. Skewed data: the switch and the four transfer paths</text>
+<text x="24.0" y="56.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#6b6a64">Every tile prices the paths from the same reduced values (the group maxima and a few totals), so every tile makes the same</text>
+<text x="24.0" y="74.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#6b6a64">choice without a message. Planning is paid only as far as the data needs it.</text>
+<rect x="24.0" y="108.0" width="400.0" height="104.0" rx="6" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="38.0" y="129.0" font-size="13" text-anchor="start" font-weight="bold" fill="#444441">Stage 1 (every sort, ≈ 1K cycles)</text>
+<text x="38.0" y="149.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">Price direct and LB from the group maxima.</text>
+<text x="38.0" y="164.8" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">Floor: a lower bound on any two-hop path.</text>
+<text x="38.0" y="180.7" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">If min(direct, LB) ≤ floor: take the cheaper one.</text>
+<rect x="24.0" y="244.0" width="400.0" height="104.0" rx="6" fill="#FAEEDA" stroke="#B5651D" stroke-width="1"/>
+<text x="38.0" y="265.0" font-size="13" text-anchor="start" font-weight="bold" fill="#444441">Stage 2 (≈ 15–19K)</text>
+<text x="38.0" y="285.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">Build TH's window table. If TH needs one layer,</text>
+<text x="38.0" y="300.8" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">its cost is exact: take TH if it is the cheapest.</text>
+<text x="38.0" y="316.7" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">Else estimate BT; if it wouldn't win: direct or LB.</text>
+<rect x="24.0" y="380.0" width="400.0" height="104.0" rx="6" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1"/>
+<text x="38.0" y="401.0" font-size="13" text-anchor="start" font-weight="bold" fill="#444441">Stage 3 (BT's planning, ≈ 150K)</text>
+<text x="38.0" y="421.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">Cut the runs into pieces, give each piece an</text>
+<text x="38.0" y="436.8" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">intermediate tile (a sweep), count the layers.</text>
+<text x="38.0" y="452.7" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">Take BT if its exact cost wins; else direct or LB.</text>
+<polygon points="84.0,244.0 80.0,235.9 88.0,235.9" fill="#444441"/>
+<polyline points="84.0,212.0 84.0,235.9" fill="none" stroke="#444441" stroke-width="1.6" stroke-linejoin="round"/>
+<text x="92.0" y="232.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">else</text>
+<polygon points="84.0,380.0 80.0,371.9 88.0,371.9" fill="#444441"/>
+<polyline points="84.0,348.0 84.0,371.9" fill="none" stroke="#444441" stroke-width="1.6" stroke-linejoin="round"/>
+<text x="92.0" y="368.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">else</text>
+<rect x="470.0" y="108.0" width="446.0" height="62.0" rx="6" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="484.0" y="129.0" font-size="13" text-anchor="start" font-weight="bold" fill="#444441">direct</text>
+<text x="484.0" y="148.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">the 16-group all-to-all of section 3</text>
+<text x="904.0" y="129.0" font-size="11.5" text-anchor="end" font-weight="normal" fill="#6b6a64" font-style="italic">uniform, Zipf ≤ 0.8</text>
+<rect x="470.0" y="178.0" width="446.0" height="94.0" rx="6" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="484.0" y="199.0" font-size="13" text-anchor="start" font-weight="bold" fill="#444441">LB: loopback as a local copy</text>
+<text x="484.0" y="218.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">each tile's records for itself (offset 0) leave group 15 and run</text>
+<text x="484.0" y="233.8" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">as an extra one-stream group at full rate, so they no longer</text>
+<text x="484.0" y="249.7" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">stretch a group on every tile</text>
+<text x="904.0" y="199.0" font-size="11.5" text-anchor="end" font-weight="normal" fill="#6b6a64" font-style="italic">sorted, all equal, 99 % one value</text>
+<rect x="470.0" y="286.0" width="446.0" height="94.0" rx="6" fill="#FAEEDA" stroke="#B5651D" stroke-width="1"/>
+<text x="484.0" y="307.0" font-size="13" text-anchor="start" font-weight="bold" fill="#444441">TH: two hops through windows</text>
+<text x="484.0" y="326.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">each owner's buffer is cut into 64 equal windows, each carried by</text>
+<text x="484.0" y="341.8" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">a different tile: hop 1 to the carriers, hop 2 one window to each</text>
+<text x="484.0" y="357.7" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">owner; only when hop 1 is one layer</text>
+<text x="904.0" y="307.0" font-size="11.5" text-anchor="end" font-weight="normal" fill="#6b6a64" font-style="italic">reverse sorted</text>
+<rect x="470.0" y="394.0" width="446.0" height="94.0" rx="6" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1"/>
+<text x="484.0" y="415.0" font-size="13" text-anchor="start" font-weight="bold" fill="#444441">BT: balanced two hops</text>
+<text x="484.0" y="434.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">every run is cut into pieces of w records; each piece gets an</text>
+<text x="484.0" y="449.8" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">intermediate tile so that no pair of tiles carries too many; both</text>
+<text x="484.0" y="465.7" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">hops run in layers at R = w</text>
+<text x="904.0" y="415.0" font-size="11.5" text-anchor="end" font-weight="normal" fill="#6b6a64" font-style="italic">Zipf 1.0, all nine trace sets</text>
+<polygon points="466.0,128.0 462.3,135.6 457.7,129.6" fill="#444441"/>
+<polyline points="424.0,160.0 460.0,132.6" fill="none" stroke="#444441" stroke-width="1.3" stroke-linejoin="round"/>
+<polygon points="466.0,200.0 457.7,198.4 462.3,192.4" fill="#444441"/>
+<polyline points="424.0,168.0 460.0,195.4" fill="none" stroke="#444441" stroke-width="1.3" stroke-linejoin="round"/>
+<polygon points="466.0,310.0 457.6,311.2 460.0,304.0" fill="#B5651D"/>
+<polyline points="424.0,296.0 458.8,307.6" fill="none" stroke="#B5651D" stroke-width="1.3" stroke-linejoin="round"/>
+<polygon points="466.0,420.0 459.7,425.7 457.7,418.5" fill="#7F77DD"/>
+<polyline points="424.0,432.0 458.7,422.1" fill="none" stroke="#7F77DD" stroke-width="1.3" stroke-linejoin="round"/>
+<text x="24.0" y="508.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">TH and BT move every record twice, but hop 2 lands each record exactly where the direct path would have (augmented, and with</text>
+<text x="24.0" y="524.5" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">its digit counted on arrival), so the second local sort and the gather don't change. Simplified: the cost formulas, the floor</text>
+<text x="24.0" y="541.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">and BT's limits are in sort/skew/skew-v2.md sections 2 and 6.</text>
+</svg>

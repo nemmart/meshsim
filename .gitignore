@@ -1,0 +1,5 @@
+# build outputs (meshsim/.gitignore also covers build/ and *.class)
+*.class
+wip/meshsim/meshsim.jar
+# PNGs are renderings of the SVG masters; regenerate with make_docs.sh
+wip/**/png/

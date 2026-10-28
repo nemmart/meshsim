@@ -1,0 +1,16 @@
+zipf s=1.0                 BT     total   412.8K  plan   98.4K | D   305.2K LB   309.8K TH        - BT   331.0K floor  1
+99% one value              BT     total   301.9K  plan   68.3K | D   434.6K LB   242.4K TH        - BT   251.3K floor  1
+trace hot=100 frac=0.30
+  L=2 w=1024 layers 2/2  total 359.7K (plan 71.1K, transfers+set-up 288.4K) footprint 1087 ok
+  L=3 w=512 layers 3/3  total 339.2K (plan 100.0K, transfers+set-up 239.0K) footprint 1401 ok
+  L=4 w=342 layers 4/4  total 364.2K (plan 127.1K, transfers+set-up 237.1K) footprint 1718 ok
+  L=5 w=256 layers 5/5  total 416.1K (plan 158.6K, transfers+set-up 257.5K) footprint 2042 ok
+  version 0 selects L=7 w=171 (estimate 552.0K): total -
+  version 1 selects L=3 w=512 (estimate 343.5K): total 339.2K
+zipf s=1.0
+  L=2 w=1024 layers 2/2  total - (plan 70.8K, transfers+set-up 0.0K) footprint 1079 ok
+  L=3 w=512 layers 4/4  total 412.8K (plan 98.4K, transfers+set-up 314.3K) footprint 1654 ok
+  L=4 w=342 layers 4/4  total 364.6K (plan 127.7K, transfers+set-up 236.8K) footprint 1718 ok
+  L=5 w=256 layers 5/5  total 407.4K (plan 150.7K, transfers+set-up 256.7K) footprint 2038 ok
+  version 0 selects L=7 w=171 (estimate 552.0K): total -
+  version 1 selects L=3 w=512 (estimate 343.5K): total 412.8K

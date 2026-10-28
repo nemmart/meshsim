@@ -1,0 +1,90 @@
+# Milestone, date or DEV notes left in the simulator's comments (DEVIATIONS.md item 3); file:line: text
+meshsim/src/AddressGenerator.java:2: * The address generator (spec 4.2; "DMA read engine" before 2 October): a state machine that walks STREAM (and GROUP)
+meshsim/src/AddressGenerator.java:7: * Runs are described by DMA_CONFIG (kind, start, count) and started by DMA_PULSE's start (v1.0, decided 12 October: arm
+meshsim/src/AddressGenerator.java:33: * as M7).
+meshsim/src/AddressGenerator.java:37: * simulator reports on each of its visits, M8 Q2), then its gap. Group g starts at
+meshsim/src/AddressGenerator.java:38: * S_g = S_{g-1} + max(R_{g-1} P_{g-1}, 1) + gap_{g-1} (M14: the 1 for R = 0, spec 4.2 of 10 October; was R P + gap, so an
+meshsim/src/AddressGenerator.java:72: // R = 0 groups issued, this run; those with a gap (their cost changed in M14)
+meshsim/src/AddressGenerator.java:77: // a stream with read size 00 (reserved since 2 October, 4.2)
+meshsim/src/AddressGenerator.java:79: /** A group's streams must share one read size (lead's ruling of 3 October, M8 Q2): a programming error, checked here, not in hardware. */
+meshsim/src/AddressGenerator.java:86: *  every entry the generator takes (count 0 included, as DEV 80 for the size); the element still issues with the
+meshsim/src/AddressGenerator.java:100: /** Read-ahead waits at group starts (timetable; counted as late until M13). */
+meshsim/src/BigSRAM.java:32: /** Accesses the M15 rule (room after the cycle's pop) took that 13a's rule (count before the pop) refuses. */
+meshsim/src/BigSRAM.java:71: // 2. arrivals: the SRAM write queue first, then the SRAM read queue (tie order, lead's ruling of 2 October: writes cannot
+meshsim/src/BigSRAM.java:148: /** A phase boundary for the disjoint-buffer check (the test, or GO from M4). */
+meshsim/src/Chip.java:13: * In M1 the tests apply it to the cycle a tile starts sending.
+meshsim/src/Chip.java:153: /** A phase boundary for the disjoint-buffer check on every tile (the test, until GO marks it in M4). */
+meshsim/src/Chip.java:175: /** Lateness and drift of the last address-generator run on every tile (invariant 3; the 2 October ruling). */
+meshsim/src/CnC.java:27: * The REPORT flow (6.6; opt-in, the lead's ruling of 10 October: a debugging flow, not a default): {@link #stopOnError}
+meshsim/src/CnC.java:149: *  2 October), then the command word, with the block's parity in bit 23, into slot 0, last. dst is one tile or a
+meshsim/src/CnC.java:247: *  is 8 hops away [meas: meshsim v4.0 M14, CondTest broadcast]. */
+meshsim/src/CnC.java:253: /** REPORT's settle (10 October: no READY change; a fixed settle from the bound; with margin): twice
+meshsim/src/Config.java:19: // director to port B (built, M1 of v3.11)
+meshsim/src/Config.java:26: // token FIFO, the overflow FIFOs). false: M15's rule (room after the pop), for comparison only
+meshsim/src/Config.java:31: // M8, PROPOSAL-slot-iteration-counter.md); <= 0: the default 2 ts_engine_latency + 2
+meshsim/src/Config.java:32: // M7's stream-run lookahead. Dead since Not read; agLookahead replaces it
+meshsim/src/Config.java:39: // M1-M3 test machines: the GATHER engine is a drain; machine() = real (name kept from M5)
+meshsim/src/Config.java:40: // M1-M3 test machines: tiles start in RUN with no controller; Config.machine() = the spec's
+meshsim/src/ControllerMemories.java:17: * Invariant 8 (3 October: a statistic by default): a mode-7 write (or read-port result) marks its data-memory
+meshsim/src/Drain.java:5: * A stand-in consumer for a unit not built yet (M1: the write engine, the responder, the GATHER engine): takes one
+meshsim/src/Endpoint.java:6: * M1 needs it. {@link #send} is the holding register into tile 0's from-C&C route block (one packet per cycle, any
+meshsim/src/Fields.java:3: * the simulator's proposal (spec 8: "assigned last"), listed in the deviations. M4 generates mesh.h from these.
+meshsim/src/Fields.java:7: *                     4; codes 1-5, 0/6/7 reserved: 9 October), read size [28:27], gap after [31:29]
+meshsim/src/GatherEngine.java:11: * GATHER-queue sticky bit, DEV 9).
+meshsim/src/GatherEngine.java:18: // the request queue (16); null when a drain stands in (M1-M3 machines)
+meshsim/src/InjectionPath.java:14: // the SRAM read queue's returns as packets; a test-fed holding register in M1
+meshsim/src/LinkWord.java:2: * The 102-bit link word (spec 3.1; 4-bit mode decided 9 October): {@code long payload} (64 bits) and
+meshsim/src/Registers.java:37: // v1.0 (V1.0-CHANGES.md, 11-12 October): 13 registers prefixed by owner, ordered TILE_, ROUTER_, DMA_, SRAM_
+meshsim/src/Registers.java:133: // ---------------------------------------------------------------- the minimal resident loader (M6 owns it)
+meshsim/src/Registers.java:134: /** Command words in mailbox slot 0: [31:24] type, [23] argument block (parity), [22:0] argument (lead, 2 October:
+meshsim/src/Router.java:21: * (The eject hold for read-port results, M6-M9, is gone: results now arrive as packets through the loopback.)
+meshsim/src/SRAMReadQueue.java:45: // requests the M15 rule (a token freed this cycle) took that 13a's refuses
+meshsim/src/SRAMReadQueue.java:59: // M12: 4-bit mode
+meshsim/src/TableStore.java:6: * this cycle). The pipeline is inside the memory: ts_engine_latency does not lengthen it (lead, 3 October; M7 wrote
+meshsim/src/TableStore.java:7: * back at t + ts_engine_latency, DEV 92).
+meshsim/src/TableStore.java:68: * The table memories PTR, STREAM and GROUP (spec 4.10, corrected 2 October: four separate macros, each with a
+meshsim/src/TableStore.java:70: * table reads and the write engine's pointer updates never wait for each other (M3's Q6).
+meshsim/src/TableStore.java:77: * (spec 4.10: four separate memories; M7 served both through one FIFO at one read per cycle). The address
+meshsim/src/Tile.java:6: * One tile (spec 4). Owns its units and every intra-tile bus; units hold bus ends only. M1 built the network side:
+meshsim/src/Tile.java:7: * the router, the injection point, the traffic director and port B of the controller memories. M2 adds the big SRAM
+meshsim/src/Tile.java:8: * with its area queues and the SRAM read queue. M3 adds the table store and HIST store, the address generator (the
+meshsim/src/Tile.java:9: * SRAM read queue's client 1) and the write engine. On M1-M3 test machines the GATHER engine is a stand-in drain at one packet
+meshsim/src/Tile.java:11: * (the controller is M4). DMA_CONFIG, DMA_PULSE, DMA_RECORD_BASE_ADDRESS (ATTACH_BASE_ADDRESS until M12) and PTR are set from Java in M3.
+meshsim/src/Tile.java:32: // read-queue clients' request FIFOs (test-fed until M3/M5)
+meshsim/src/Tile.java:38: // stand-in (M1-M3 test machines: Config.realResponder off)
+meshsim/src/Tile.java:89: // test-fed read clients (M2 tests) bypass the read port's queue and accounting
+meshsim/src/Tile.java:143: // ---- the controller's view, set from Java in M3 (registers in M4) ----
+meshsim/src/TileControl.java:143: // spec 4.12; false only in DEV 89's test
+meshsim/src/TrafficDirector.java:3: * It takes at most one packet per cycle and switches on its 4-bit mode alone (modes renumbered 9 October):
+meshsim/src/TrafficDirector.java:10: * Packets from C&C (src 64) are not counted (lead, 2 October, Q12: staging between phases is not unexpected traffic;
+meshsim/src/TrafficDirector.java:11: * extended in M4 to DMA_CM_REMAINING, since boot loads instruction and data memory by mode 5 from C&C: DEV).
+meshsim/src/TrafficDirector.java:17: * Read-port overlap check (spec 4.3's software rule; 4 October: actual overlap in time): a packet from outside
+meshsim/src/WordBuses.java:97: // V1.0 item 5; -Dfifo.afterPop=true: M15's rule (comparison only)
+meshsim/test/A2A.java:8: * M4): data sets as v3.10's AllToAllTest (uniform: Data(seed 7, n), records sorted by destination, (d << 58 | s << 52 | k))
+meshsim/test/AccountingTest.java:5: * M6 step 2: per-phase accounting (PhaseLog). Runs the all-to-all from C (configure, start, exit) and checks the
+meshsim/test/AgBench.java:6: * Written against the API M7 and M8 share (M8-only fields by reflection), so the same file runs on both trees.
+meshsim/test/AgBench.java:26: // ---------------------------------------------------------------- reflection (M7 / M8)
+meshsim/test/EngineTest.java:5: * M3 tests: the address generator (spec 4.2), the write engine (4.9), the table and HIST stores (4.10), augmenting and
+meshsim/test/EngineTest.java:7: * Tables, PTR and DMA_CONFIG are set from Java (the controller is M4).
+meshsim/test/Inputs.java:13: * The inputs of a sort run and their SHA-256 hashes. DEV 100 was two kit versions giving
+meshsim/test/Mach.java:9: * Test harness for M4 onward: a machine as specified (Config.machine(): every tile halted at reset, controllers on)
+meshsim/test/MemTest.java:4: * M2 tests: the big SRAM (spec 4.1), the SRAM read and write queues (spec 4.5), mem_idle and the disjoint-buffer checker
+meshsim/test/MemTest.java:5: * (invariant 2). Arg: shuffle seed (default -1). Prints measured tables for meshsim-v4.0-M2-RESULTS.md.
+meshsim/test/NetTest.java:4: * M1 tests: the network and packets (spec 3, 4.5-4.8, 4.17). Arg: shuffle seed (default -1, fixed child order).
+meshsim/test/NetTest.java:5: * Prints measured tables for meshsim-v4.0-M1-RESULTS.md.
+meshsim/test/PhaseNeutral.java:26: *     When both runs have PhaseLog's slowest-tile columns (M11 with m11-phaselog.patch) and the slowest tile is
+meshsim/test/PhaseNeutral.java:42: /** The v1.0 start rule (meshsim v1.0 against M15): arm is merged into start. (1) A run is counted where it starts, not
+meshsim/test/PhaseNeutral.java:43: *  where M15 armed it, so agRuns and peak_agTable may move between phases if their run totals agree (sum, max).
+meshsim/test/PhaseNeutral.java:45: *  run it starts: M15 pre-armed a run in an earlier command, so its first request went out at the start; in v1.0
+meshsim/test/ReadPortGatherTest.java:6: * The controller read port (spec 4.3, which replaced mode 0, the responder and probe rounds late on 2 October) and the
+meshsim/test/ReadPortGatherTest.java:7: * GATHER engine (4.4). Java-driven runs use M1-M3's coreless tiles with the real GATHER engine (read-port reads
+meshsim/test/ReadPortGatherTest.java:90: /** M10: 64 reads queued on every tile at an all-to-all's start break 4.3's rule (reads while packets arrive): the
+meshsim/test/ReadPortGatherTest.java:291: // a group run reports a reserved code on every visit of the stream, idle or not (as read sizes, M8 Q2)
+meshsim/test/RecipeTest.java:612: // 1: the end-of-phase WFI (M14: the wrong form is done with an arrival outstanding: done early; the done gate)
+meshsim/test/SortCompare.java:6: * Compare two kit results directories run by run (meshsim M8 against M7's results-p4, for example).
+meshsim/test/SortCompare.java:11: * Reads both naming schemes (OLD_COLUMNS: M10's peak_cntReq is M11's peak_histReq).
+meshsim/test/SortCompare.java:60: /** Column names before the 8 October rename (spec 1) read as their new names, so M10 results compare with M11's. */
+meshsim/test/SplitRun.java:19: * (the verification kit's summary reads it; M9's SplitRun has the same human-readable lines without it).
+meshsim/test/Sweep.java:9: * M6 step 3: sensitivity sweeps over the uncertain parameters, so phase totals come with an error band. One parameter
+meshsim/test/VerifySummary.java:14: * The v1.0 verification kit's summary: meshsim v1.0 against M15, from the results directory of the kit's run.sh.
+meshsim/test/VerifySummary.java:29: // percent: the split's image is instruction-identical on M15 and v1.0: S identical

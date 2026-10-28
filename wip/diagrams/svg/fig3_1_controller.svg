@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="986" viewBox="0 0 1300 986" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif">
+<defs><marker id="m1D9E75" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1D9E75"/></marker><marker id="m444441" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#444441"/></marker><marker id="m7F77DD" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7F77DD"/></marker></defs>
+<rect width="1300" height="986" fill="white"/>
+<text x="24.0" y="34.0" font-size="18" text-anchor="start" font-weight="bold" fill="#444441">Figure 3.1. The controller's memories: what it reads and writes, all in the control island</text>
+<text x="24.0" y="56.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#6b6a64">v1.0 (spec/machine-spec.md §4.3, §4.10, §4.11, §8, §12) — arrows point the way data moves</text>
+<rect x="30.0" y="152.0" width="1240.0" height="548.0" rx="12" fill="white" stroke="#7F77DD" stroke-width="1.4" stroke-dasharray="7 4"/>
+<text x="44.0" y="652.0" font-size="12" text-anchor="start" font-weight="bold" fill="#7F77DD">the control island (§12):</text>
+<text x="44.0" y="668.0" font-size="12" text-anchor="start" font-weight="bold" fill="#7F77DD">≈ 0.09 mm², ≈ 0.3 mm across</text>
+<text x="44.0" y="684.0" font-size="12" text-anchor="start" font-weight="bold" fill="#7F77DD">[estimate]</text>
+<rect x="50.0" y="176.0" width="196.0" height="104.0" rx="6" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1"/>
+<text x="148.0" y="210.8" font-size="13" text-anchor="middle" font-weight="bold" fill="#444441">data memory</text>
+<text x="148.0" y="228.3" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">8 KB, 2 banks</text>
+<text x="148.0" y="242.2" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">0x4000–0x5FFF</text>
+<text x="148.0" y="256.1" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">mailbox 0x5C00–0x5FFF</text>
+<rect x="262.0" y="176.0" width="196.0" height="104.0" rx="6" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1"/>
+<text x="360.0" y="210.8" font-size="13" text-anchor="middle" font-weight="bold" fill="#444441">peripheral registers</text>
+<text x="360.0" y="228.3" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">13 registers (§8)</text>
+<text x="360.0" y="242.2" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">0xFFFFF800–</text>
+<text x="360.0" y="256.1" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">DMA_CONFIG, …</text>
+<rect x="474.0" y="176.0" width="196.0" height="104.0" rx="6" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1"/>
+<text x="572.0" y="210.8" font-size="13" text-anchor="middle" font-weight="bold" fill="#444441">HIST[256]</text>
+<text x="572.0" y="228.3" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">17 bits each</text>
+<text x="572.0" y="242.2" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">0x2000–0x23FF</text>
+<text x="572.0" y="256.1" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">the per-digit counts</text>
+<rect x="760.0" y="176.0" width="160.0" height="104.0" rx="6" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1"/>
+<text x="840.0" y="210.8" font-size="13" text-anchor="middle" font-weight="bold" fill="#444441">PTR[256]</text>
+<text x="840.0" y="228.3" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">20 bits each</text>
+<text x="840.0" y="242.2" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">0x2400–0x27FF</text>
+<text x="840.0" y="256.1" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">landing pointers</text>
+<rect x="934.0" y="176.0" width="160.0" height="104.0" rx="6" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1"/>
+<text x="1014.0" y="210.8" font-size="13" text-anchor="middle" font-weight="bold" fill="#444441">STREAM[256]</text>
+<text x="1014.0" y="228.3" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">8 bytes each</text>
+<text x="1014.0" y="242.2" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">0x2800–0x2FFF</text>
+<text x="1014.0" y="256.1" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">stream entries</text>
+<rect x="1108.0" y="176.0" width="150.0" height="104.0" rx="6" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1"/>
+<text x="1183.0" y="210.8" font-size="13" text-anchor="middle" font-weight="bold" fill="#444441">GROUP[64]</text>
+<text x="1183.0" y="228.3" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">8 bytes each</text>
+<text x="1183.0" y="242.2" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">0x3000–0x31FF</text>
+<text x="1183.0" y="256.1" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">group entries</text>
+<text x="148.0" y="80.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">traffic director, port B:</text>
+<text x="148.0" y="93.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">modes 5, 6, 7 (w)</text>
+<polyline points="148.0,102.0 148.0,174.0" fill="none" stroke="#7F77DD" stroke-width="2" stroke-linejoin="round" marker-end="url(#m7F77DD)"/>
+<text x="360.0" y="80.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">configuration to the engines;</text>
+<text x="360.0" y="93.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">status from every unit</text>
+<polyline points="360.0,174.0 360.0,102.0" fill="none" stroke="#444441" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m444441)" marker-start="url(#m444441)"/>
+<text x="572.0" y="80.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">write engine: count-on-arrival</text>
+<text x="572.0" y="93.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">read-modify-write</text>
+<polyline points="572.0,174.0 572.0,102.0" fill="none" stroke="#444441" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m444441)" marker-start="url(#m444441)"/>
+<text x="840.0" y="80.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">write engine: read-</text>
+<text x="840.0" y="93.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">modify-write (modes 2–4)</text>
+<polyline points="840.0,174.0 840.0,102.0" fill="none" stroke="#444441" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m444441)" marker-start="url(#m444441)"/>
+<text x="1014.0" y="80.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">address generator:</text>
+<text x="1014.0" y="93.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">reads (r)</text>
+<polyline points="1014.0,174.0 1014.0,102.0" fill="none" stroke="#444441" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="1183.0" y="80.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">address generator:</text>
+<text x="1183.0" y="93.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">read-ahead (r)</text>
+<polyline points="1183.0,174.0 1183.0,102.0" fill="none" stroke="#444441" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<line x1="148.0" y1="372" x2="1183.0" y2="372" stroke="#1D9E75" stroke-width="5" stroke-linecap="round"/>
+<line x1="470" y1="372" x2="470" y2="436" stroke="#1D9E75" stroke-width="5"/>
+<text x="482.0" y="398.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#1D9E75">data bus (loads and stores), 32-bit</text>
+<polyline points="148.0,368.0 148.0,282.0" fill="none" stroke="#1D9E75" stroke-width="2" stroke-linejoin="round" marker-end="url(#m1D9E75)" marker-start="url(#m1D9E75)"/>
+<text x="156.0" y="346.0" font-size="12" text-anchor="start" font-weight="bold" fill="#1D9E75">r/w</text>
+<polyline points="360.0,368.0 360.0,282.0" fill="none" stroke="#1D9E75" stroke-width="2" stroke-linejoin="round" marker-end="url(#m1D9E75)" marker-start="url(#m1D9E75)"/>
+<text x="368.0" y="346.0" font-size="12" text-anchor="start" font-weight="bold" fill="#1D9E75">r/w</text>
+<polyline points="572.0,368.0 572.0,282.0" fill="none" stroke="#1D9E75" stroke-width="2" stroke-linejoin="round" marker-end="url(#m1D9E75)" marker-start="url(#m1D9E75)"/>
+<text x="580.0" y="346.0" font-size="12" text-anchor="start" font-weight="bold" fill="#1D9E75">r/w</text>
+<polyline points="840.0,368.0 840.0,282.0" fill="none" stroke="#1D9E75" stroke-width="2" stroke-linejoin="round" marker-end="url(#m1D9E75)"/>
+<text x="848.0" y="346.0" font-size="12" text-anchor="start" font-weight="bold" fill="#1D9E75">w</text>
+<polyline points="1014.0,368.0 1014.0,282.0" fill="none" stroke="#1D9E75" stroke-width="2" stroke-linejoin="round" marker-end="url(#m1D9E75)"/>
+<text x="1022.0" y="346.0" font-size="12" text-anchor="start" font-weight="bold" fill="#1D9E75">w</text>
+<polyline points="1183.0,368.0 1183.0,282.0" fill="none" stroke="#1D9E75" stroke-width="2" stroke-linejoin="round" marker-end="url(#m1D9E75)"/>
+<text x="1191.0" y="346.0" font-size="12" text-anchor="start" font-weight="bold" fill="#1D9E75">w</text>
+<text x="742.0" y="404.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64">PTR, STREAM and GROUP: the controller only writes them</text>
+<rect x="150.0" y="436.0" width="470.0" height="92.0" rx="6" fill="#FCEFC7" stroke="#B8860B" stroke-width="1.6"/>
+<text x="385.0" y="464.1" font-size="14" text-anchor="middle" font-weight="bold" fill="#444441">RV32 Controller</text>
+<text x="385.0" y="483.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">RV32I + Zmmul + WFI: in order, one instruction per cycle, no cache;</text>
+<text x="385.0" y="497.5" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">loads, stores and fetches complete in one cycle (load-use 0)</text>
+<text x="385.0" y="512.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">WFI wakes on GO or on the local wake (figure 2.1)</text>
+<rect x="260.0" y="576.0" width="200.0" height="92.0" rx="6" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1"/>
+<text x="360.0" y="604.8" font-size="13" text-anchor="middle" font-weight="bold" fill="#444441">instruction memory</text>
+<text x="360.0" y="622.3" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">8 KB, 2 banks</text>
+<text x="360.0" y="636.2" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">0x0000–0x1FFF</text>
+<text x="360.0" y="650.1" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">loader 0x1F00–0x1FFF</text>
+<line x1="360.0" y1="576" x2="360.0" y2="542" stroke="#7F77DD" stroke-width="5"/>
+<polyline points="360.0,544.0 360.0,530.0" fill="none" stroke="#7F77DD" stroke-width="2" stroke-linejoin="round" marker-end="url(#m7F77DD)"/>
+<text x="370.0" y="554.0" font-size="12" text-anchor="start" font-weight="bold" fill="#7F77DD">r (fetch only): instruction bus, 32-bit</text>
+<polyline points="360.0,730.0 360.0,670.0" fill="none" stroke="#7F77DD" stroke-width="2" stroke-linejoin="round" marker-end="url(#m7F77DD)"/>
+<text x="370.0" y="726.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">traffic director, port B: mode 5 (w)</text>
+<text x="742.0" y="456.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">Why everything is in the island</text>
+<text x="742.0" y="472.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">A fetch or load completes in one cycle and the next instruction</text>
+<text x="742.0" y="488.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">uses it, so every memory on the controller's buses sits by it.</text>
+<text x="742.0" y="504.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">The four tables (HIST, PTR, STREAM, GROUP) are separate macros,</text>
+<text x="742.0" y="520.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">each with its own ports (§4.10), and they go by the controller,</text>
+<text x="742.0" y="536.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">not the engines: the engines' table traffic (read-modify-writes</text>
+<text x="742.0" y="552.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">with bypass, the STREAM and GROUP read-ahead) is pipelined and pays</text>
+<text x="742.0" y="568.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">ts_engine_latency each way; the controller's loads cannot wait.</text>
+<text x="30.0" y="792.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">r = the controller reads (fetch or load); w = it writes; r/w = both. Strict Harvard: it never loads from or stores to instruction memory; code arrives through port B.</text>
+<text x="30.0" y="809.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">The table window (0x2000–0x3FFF) is used only when no engine is using it: the address generator not running, and ts_busy = 0 (§4.10). No hardware clear.</text>
+<text x="30.0" y="826.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">Mode 6 writes the mailbox; mode-7 replies land at the data-memory word their addr names. The controller reads its big SRAM through the read port (§4.3):</text>
+<text x="30.0" y="843.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">its stores queue 32-bit reads, and the results come back as mode-7 packets to the tile itself, through the loopback.</text>
+<text x="30.0" y="860.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">Across the island's edge, the engines' table accesses take ts_engine_latency each way and port B's writes take cm_latency; both are pipelined (§12).</text>
+<line x1="24" y1="926" x2="1276" y2="926" stroke="#B4B2A9" stroke-width="0.8"/>
+<text x="24.0" y="948.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">The controller reaches every memory here in one cycle, so all of them sit with it in the control island. It reads and writes data memory, the registers</text>
+<text x="24.0" y="964.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">and HIST, and only writes PTR, STREAM and GROUP; the engines that use the tables pay ts_engine_latency instead.</text>
+<text x="24.0" y="980.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">Source: spec/machine-spec.md v1.0, §4.3, §4.10, §4.11, §4.12, §8, §12.</text>
+</svg>

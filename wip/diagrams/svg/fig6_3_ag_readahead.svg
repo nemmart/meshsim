@@ -1,0 +1,199 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="1282" viewBox="0 0 1300 1282" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif">
+<defs><marker id="m444441" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#444441"/></marker><marker id="mD85A30" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#D85A30"/></marker></defs>
+<rect width="1300" height="1282" fill="white"/>
+<text x="24.0" y="34.0" font-size="18" text-anchor="start" font-weight="bold" fill="#444441">Figure 6.3. The address generator, reader side: GROUP and STREAM read ahead of the timetable</text>
+<text x="24.0" y="56.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#6b6a64">v1.0 (spec/machine-spec.md §4.2, §4.10) — figure 6.4 is the visit side that consumes the two queues</text>
+<rect x="30.0" y="92.0" width="330.0" height="54.0" rx="6" fill="#FAEEDA" stroke="#D85A30" stroke-width="1"/>
+<text x="195.0" y="115.2" font-size="12.5" text-anchor="middle" font-weight="bold" fill="#444441">DMA_CONFIG: the run (§8.5)</text>
+<text x="195.0" y="132.1" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">kind (stream run or group run), start, count</text>
+<rect x="30.0" y="196.0" width="330.0" height="104.0" rx="6" fill="#F1EFE8" stroke="#444441" stroke-width="1"/>
+<text x="195.0" y="229.7" font-size="12.5" text-anchor="middle" font-weight="bold" fill="#444441">GROUP reader (group runs only)</text>
+<text x="195.0" y="246.5" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">group index g = start … start + count − 1</text>
+<text x="195.0" y="261.1" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">reads GROUP[g], one read per cycle,</text>
+<text x="195.0" y="275.6" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">while the GROUP queue has a free credit</text>
+<rect x="30.0" y="384.0" width="330.0" height="162.0" rx="6" fill="#F1EFE8" stroke="#444441" stroke-width="1"/>
+<text x="42.0" y="424.9" font-size="12.5" text-anchor="start" font-weight="bold" fill="#444441">STREAM reader</text>
+<text x="42.0" y="441.8" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">Group run: for the group at its reader pointer,</text>
+<text x="42.0" y="456.3" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">  rr = 0 … R − 1, i = 0 … t − 1:</text>
+<text x="42.0" y="470.8" font-size="11" text-anchor="start" font-weight="bold" fill="#444441">  read STREAM[start stream + i]</text>
+<text x="42.0" y="485.3" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">  R = 0: no reads, the pointer moves on</text>
+<text x="42.0" y="499.8" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">Stream run: k = 0 … count − 1: read STREAM[start + k]</text>
+<text x="42.0" y="514.4" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">one read per cycle, while a STREAM credit is free</text>
+<polyline points="60.0,146.0 60.0,194.0" fill="none" stroke="#D85A30" stroke-width="1.8" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<circle cx="60.0" cy="172.0" r="3.2" fill="#D85A30"/>
+<polyline points="60.0,172.0 16.0,172.0 16.0,470.0 28.0,470.0" fill="none" stroke="#D85A30" stroke-width="1.8" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<text x="68.0" y="182.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#D85A30">run fields</text>
+<rect x="420.0" y="172.0" width="230.0" height="384.0" rx="12" fill="white" stroke="#7F77DD" stroke-width="1.4" stroke-dasharray="7 4"/>
+<text x="535.0" y="544.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#7F77DD">control island (§12)</text>
+<rect x="455.0" y="212.0" width="160.0" height="72.0" rx="6" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1"/>
+<text x="535.0" y="237.7" font-size="13" text-anchor="middle" font-weight="bold" fill="#444441">GROUP[64]</text>
+<text x="535.0" y="255.3" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">64-bit entries</text>
+<text x="535.0" y="269.1" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">one read per cycle</text>
+<rect x="455.0" y="420.0" width="160.0" height="72.0" rx="6" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1"/>
+<text x="535.0" y="445.7" font-size="13" text-anchor="middle" font-weight="bold" fill="#444441">STREAM[256]</text>
+<text x="535.0" y="463.3" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">64-bit entries</text>
+<text x="535.0" y="477.1" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">one read per cycle</text>
+<polyline points="360.0,240.0 453.0,240.0" fill="none" stroke="#444441" stroke-width="2" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="368.0" y="232.0" font-size="11" text-anchor="start" font-weight="bold" fill="#444441">g</text>
+<text x="368.0" y="256.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">+ L_ts</text>
+<polyline points="360.0,456.0 453.0,456.0" fill="none" stroke="#444441" stroke-width="2" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="368.0" y="448.0" font-size="11" text-anchor="start" font-weight="bold" fill="#444441">index</text>
+<text x="368.0" y="472.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">+ L_ts</text>
+<polyline points="615.0,249.0 738.0,249.0" fill="none" stroke="#444441" stroke-width="2" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="660.0" y="241.0" font-size="11" text-anchor="start" font-weight="bold" fill="#444441">entry</text>
+<text x="660.0" y="265.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">+ L_ts</text>
+<polyline points="615.0,457.0 738.0,457.0" fill="none" stroke="#444441" stroke-width="2" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="660.0" y="449.0" font-size="11" text-anchor="start" font-weight="bold" fill="#444441">entry</text>
+<text x="660.0" y="473.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">+ L_ts</text>
+<text x="740.0" y="216.0" font-size="12.5" text-anchor="start" font-weight="bold" fill="#444441">GROUP queue</text>
+<rect x="740.0" y="226.0" width="58.0" height="46.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="769.0" y="253.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">g + 3</text>
+<rect x="798.0" y="226.0" width="58.0" height="46.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="827.0" y="253.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">g + 2</text>
+<rect x="856.0" y="226.0" width="58.0" height="46.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="885.0" y="253.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">g + 1</text>
+<rect x="914.0" y="226.0" width="58.0" height="46.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="943.0" y="253.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">g</text>
+<text x="978.0" y="220.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">head</text>
+<text x="740.0" y="424.0" font-size="12.5" text-anchor="start" font-weight="bold" fill="#444441">STREAM queue</text>
+<rect x="740.0" y="434.0" width="58.0" height="46.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="769.0" y="461.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">…</text>
+<rect x="798.0" y="434.0" width="58.0" height="46.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="827.0" y="461.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">…</text>
+<rect x="856.0" y="434.0" width="58.0" height="46.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="885.0" y="461.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">…</text>
+<rect x="914.0" y="434.0" width="58.0" height="46.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="943.0" y="461.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">next</text>
+<text x="978.0" y="428.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">head</text>
+<text x="740.0" y="302.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">ag_lookahead entries (4 shown), each</text>
+<text x="740.0" y="316.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">R (18), start stream (8), t − 1 (4), gap (8)</text>
+<text x="740.0" y="510.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">ag_lookahead entries (4 shown), each the whole</text>
+<text x="740.0" y="524.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">entry: source, cm field, count, d, mode, size, gap after</text>
+<rect x="1060.0" y="210.0" width="210.0" height="66.0" rx="6" fill="white" stroke="#444441" stroke-width="1"/>
+<text x="1165.0" y="232.4" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">timetable (figure 6.4)</text>
+<text x="1165.0" y="248.6" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">the head is the current group:</text>
+<text x="1165.0" y="262.5" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">R, t, gap; popped at its end</text>
+<rect x="1060.0" y="420.0" width="210.0" height="66.0" rx="6" fill="white" stroke="#444441" stroke-width="1"/>
+<text x="1165.0" y="442.4" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">visit datapath (figure 6.4)</text>
+<text x="1165.0" y="458.6" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">one entry per visit;</text>
+<text x="1165.0" y="472.5" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">popped as each visit is made</text>
+<polyline points="972.0,249.0 1058.0,249.0" fill="none" stroke="#444441" stroke-width="2" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<polyline points="972.0,457.0 1058.0,457.0" fill="none" stroke="#444441" stroke-width="2" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<polyline points="951.0,272.0 951.0,340.0 300.0,340.0 300.0,382.0" fill="none" stroke="#444441" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<circle cx="951.0" cy="274.0" r="3.2" fill="#444441"/>
+<text x="943.0" y="334.0" font-size="10.5" text-anchor="end" font-weight="normal" fill="#444441">reader pointer, at or after the head: the STREAM reader's group</text>
+<text x="306.0" y="372.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">start stream, t, R</text>
+<polyline points="856.0,226.0 856.0,186.0 330.0,186.0 330.0,194.0" fill="none" stroke="#D85A30" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<text x="864.0" y="180.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#D85A30">credit back when its group ends</text>
+<polyline points="856.0,544.0 856.0,582.0 200.0,582.0 200.0,548.0" fill="none" stroke="#D85A30" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<text x="470.0" y="576.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#D85A30">credit back when a visit uses its entry</text>
+<text x="30.0" y="640.0" font-size="13" text-anchor="start" font-weight="bold" fill="#444441">Example: a group run of three groups. The STREAM reads come out in visit order, so the queue is simply consumed from its head.</text>
+<text x="30.0" y="662.0" font-size="12" text-anchor="start" font-weight="normal" fill="#6b6a64">g0: streams a, b, c (t = 3), R = 2;  g1: streams d, e (t = 2), R = 0;  g2: streams f, g, h, k (t = 4), R = 1</text>
+<text x="30.0" y="706.0" font-size="12" text-anchor="start" font-weight="bold" fill="#444441">STREAM reads</text>
+<text x="30.0" y="780.0" font-size="12" text-anchor="start" font-weight="bold" fill="#444441">GROUP reads</text>
+<rect x="150.0" y="684.0" width="74.0" height="34.0" rx="0" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="187.0" y="706.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">STREAM[a]</text>
+<rect x="224.0" y="684.0" width="74.0" height="34.0" rx="0" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="261.0" y="706.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">STREAM[b]</text>
+<rect x="298.0" y="684.0" width="74.0" height="34.0" rx="0" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="335.0" y="706.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">STREAM[c]</text>
+<rect x="372.0" y="684.0" width="74.0" height="34.0" rx="0" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="409.0" y="706.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">STREAM[a]</text>
+<rect x="446.0" y="684.0" width="74.0" height="34.0" rx="0" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="483.0" y="706.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">STREAM[b]</text>
+<rect x="520.0" y="684.0" width="74.0" height="34.0" rx="0" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="557.0" y="706.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">STREAM[c]</text>
+<rect x="634.0" y="684.0" width="74.0" height="34.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="1"/>
+<text x="671.0" y="706.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">STREAM[f]</text>
+<rect x="708.0" y="684.0" width="74.0" height="34.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="1"/>
+<text x="745.0" y="706.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">STREAM[g]</text>
+<rect x="782.0" y="684.0" width="74.0" height="34.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="1"/>
+<text x="819.0" y="706.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">STREAM[h]</text>
+<rect x="856.0" y="684.0" width="74.0" height="34.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="1"/>
+<text x="893.0" y="706.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">STREAM[k]</text>
+<path d="M152,722 v6 H370 v-6" fill="none" stroke="#6b6a64" stroke-width="1"/>
+<text x="261.0" y="742.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">g0, rr = 0</text>
+<path d="M374,722 v6 H592 v-6" fill="none" stroke="#6b6a64" stroke-width="1"/>
+<text x="483.0" y="742.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">g0, rr = 1</text>
+<text x="614.0" y="699.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#D85A30">g1</text>
+<text x="614.0" y="713.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#D85A30">R = 0</text>
+<path d="M636,722 v6 H928 v-6" fill="none" stroke="#6b6a64" stroke-width="1"/>
+<text x="782.0" y="742.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">g2, rr = 0</text>
+<rect x="150.0" y="760.0" width="92.0" height="30.0" rx="0" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="196.0" y="780.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">GROUP[g0]</text>
+<rect x="242.0" y="760.0" width="92.0" height="30.0" rx="0" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="288.0" y="780.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">GROUP[g1]</text>
+<rect x="334.0" y="760.0" width="92.0" height="30.0" rx="0" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="380.0" y="780.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">GROUP[g2]</text>
+<text x="450.0" y="772.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64">the GROUP reader runs ahead of the STREAM reader; g1's entry is read but</text>
+<text x="450.0" y="786.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64">passed by the reader pointer (no STREAM reads), and takes one cycle on the timetable</text>
+<text x="30.0" y="830.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">• The read order depends only on the entries, never on the data, so both readers run ahead freely; nothing in the visit side feeds back except the credits.</text>
+<text x="30.0" y="849.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">• An entry holds its place from the cycle its read is issued until its visit uses it (a GROUP entry: until its group ends); that place is the credit.</text>
+<text x="30.0" y="868.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">• A table read is a round trip of 2·L_ts + 1 cycles (L_ts = ts_engine_latency each way, one in the memory), so ag_lookahead = 2·L_ts + 2 keeps both queues full whenever every group lasts at least 2 cycles: 4</text>
+<text x="42.0" y="883.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">at the default. Back-to-back one-visit groups would need 4·L_ts + 3, since each STREAM read waits for its GROUP entry; no group of the sort is that short.</text>
+<text x="30.0" y="902.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">• Groups start one per cycle: a zero-length group (R = 0, gap 0) takes one cycle. A group start or visit waiting for its entries waits the same on every tile, since the reads depend only on the tables and</text>
+<text x="42.0" y="917.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">ts_engine_latency: that wait is part of the timetable, not lateness, and at ag_lookahead's bound it doesn't happen [meas: meshsim]. Only an SRAM read queue refusal makes a tile late: the drift condition</text>
+<text x="42.0" y="932.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">(figure 6.4).</text>
+<text x="30.0" y="951.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">• Start begins the readers. A group run's first request goes out once group start's GROUP entry and its first STREAM entry are in: two round trips: 4·L_ts + 3 cycles after the start store (4·L_ts + 2 after</text>
+<text x="42.0" y="966.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">the cycle the start takes effect); a stream run's after one: 2·L_ts + 2 (2·L_ts + 1). A stream run uses only the STREAM reader and queue, and is ready at once.</text>
+<text x="30.0" y="985.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">• Nothing is written back: STREAM and GROUP stay as the controller wrote them, so groups can share streams and a run can be repeated.</text>
+<text x="30.0" y="1026.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">Interface</text>
+<rect x="30.0" y="1038.0" width="220.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="1052.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">signal</text>
+<rect x="250.0" y="1038.0" width="90.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="256.0" y="1052.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">width</text>
+<rect x="340.0" y="1038.0" width="300.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="346.0" y="1052.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">from → to</text>
+<rect x="640.0" y="1038.0" width="630.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="646.0" y="1052.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">meaning</text>
+<rect x="30.0" y="1059.0" width="220.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="1073.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">start, kind, start field, count</text>
+<rect x="250.0" y="1059.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="256.0" y="1073.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1, 1, 8, 9</text>
+<rect x="340.0" y="1059.0" width="300.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="346.0" y="1073.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">DMA_PULSE, DMA_CONFIG (fig 6.2) → here</text>
+<rect x="640.0" y="1059.0" width="630.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="646.0" y="1073.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">begin the readers</text>
+<rect x="30.0" y="1080.0" width="220.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="1094.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">GROUP read: addr, data</text>
+<rect x="250.0" y="1080.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="256.0" y="1094.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">6, 64</text>
+<rect x="340.0" y="1080.0" width="300.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="346.0" y="1094.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">here and the GROUP table</text>
+<rect x="640.0" y="1080.0" width="630.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="646.0" y="1094.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">a round trip of 2·L_ts + 1 cycles</text>
+<rect x="30.0" y="1101.0" width="220.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="1115.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">STREAM read: addr, data</text>
+<rect x="250.0" y="1101.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="256.0" y="1115.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">8, 64</text>
+<rect x="340.0" y="1101.0" width="300.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="346.0" y="1115.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">here and the STREAM table</text>
+<rect x="640.0" y="1101.0" width="630.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="646.0" y="1115.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">a round trip of 2·L_ts + 1 cycles</text>
+<rect x="30.0" y="1122.0" width="220.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="1136.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">GROUP head, valid; STREAM head, valid</text>
+<rect x="250.0" y="1122.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="256.0" y="1136.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">64, 1; 64, 1</text>
+<rect x="340.0" y="1122.0" width="300.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="346.0" y="1136.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">here → sequencer (fig 6.2), visit (fig 6.4)</text>
+<rect x="640.0" y="1122.0" width="630.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="646.0" y="1136.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">ag_lookahead entries each</text>
+<rect x="30.0" y="1143.0" width="220.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="1157.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">pop_group, pop_stream</text>
+<rect x="250.0" y="1143.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="256.0" y="1157.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1, 1</text>
+<rect x="340.0" y="1143.0" width="300.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="346.0" y="1157.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">sequencer (fig 6.2) → here</text>
+<rect x="640.0" y="1143.0" width="630.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="646.0" y="1157.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">return a credit</text>
+<polyline points="30.0,1190.0 70.0,1190.0" fill="none" stroke="#444441" stroke-width="2" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="78.0" y="1194.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">table reads and entries</text>
+<polyline points="260.0,1190.0 300.0,1190.0" fill="none" stroke="#D85A30" stroke-width="1.8" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<text x="308.0" y="1194.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">control: run fields, credits</text>
+<circle cx="530" cy="1190" r="3.2" fill="#444441"/>
+<text x="540.0" y="1194.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">junction (lines that cross without a dot don't connect)</text>
+<line x1="24" y1="1222" x2="1276" y2="1222" stroke="#B4B2A9" stroke-width="0.8"/>
+<text x="24.0" y="1244.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">Two readers walk the tables ahead of the timetable: GROUP entries in group order, STREAM entries in visit order (each group's streams, R times over).</text>
+<text x="24.0" y="1260.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">Two queues of ag_lookahead entries absorb the tables' round trip. The visit side (figure 6.4) pops them and returns a credit for each entry.</text>
+<text x="24.0" y="1276.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">Source: spec/machine-spec.md v1.0, §4.2, §4.10, §10, §12.</text>
+</svg>

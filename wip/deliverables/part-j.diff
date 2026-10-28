@@ -1,0 +1,111 @@
+--- a/spec/machine-spec.md	2026-10-27 08:17:05.761701755 +0000
++++ b/spec/machine-spec.md	2026-10-27 08:22:28.828086880 +0000
+@@ -498,7 +498,7 @@
+       for each active search: compare results[i], update its bracket;
+   ```
+ 
+-  Each step issues at most 63 reads into an empty queue, so the loop needs no free-count checks. The initial poll is the only one, and it never stalls: any earlier read-port reads were in a phase that set `DMA_CM_REMAINING` for them, and **a phase that sets counters ends with a `WFI` before it pulses `done`** (4.12), so their results have all landed and the queue is empty. The poll guards against a program that breaks that rule; it cannot catch results still in flight, so it is no substitute for the rule. Converged searches drop out (an early exit), so a step's reads scale with the searches still active. The split's search loop takes 12.35 cycles per search on uniform data, counted between the split's trace marks 0x600 and 0x601 (the step loop and the final key read, over all tiles, per search step) [meas: meshsim, SplitRun; measured with v1.1's mode-7 results and 1-cycle register loads, to be re-measured at 2]. The split's other traffic in `DMA_CM_REMAINING` (its vectors, an overlay copy) is kept out of a search step.
++  Each step issues at most 63 reads into an empty queue, so the loop needs no free-count checks. The initial poll is the only one, and it never stalls: any earlier read-port reads were in a phase that armed `DMA_CM_REMAINING` for them, and **a phase that arms counters ends with a `WFI` before it pulses `done`** (4.12), so their results have all landed and the queue is empty. The poll guards against a program that breaks that rule; it cannot catch results still in flight, so it is no substitute for the rule. Converged searches drop out (an early exit), so a step's reads scale with the searches still active. The split's search loop takes 12.35 cycles per search on uniform data, counted between the split's trace marks 0x600 and 0x601 (the step loop and the final key read, over all tiles, per search step) [meas: meshsim, SplitRun; measured with v1.1's mode-7 results and 1-cycle register loads, to be re-measured at 2]. The split's other traffic in `DMA_CM_REMAINING` (its vectors, an overlay copy) is kept out of a search step.
+ - **Never between `WFI` and a start store.** The synchronised-start path must be identical on every tile (6.3); read-port traffic belongs before `done` or after the start.
+ 
+ ### 4.4 GATHER engine
+@@ -892,7 +892,7 @@
+ - **Reset and HALT.** Entering HALT clears the four counters, their done events [3:0] and their qualifiers (above). At chip reset and on HALT → RUN, `WAKE_EVENTS`' sticky events, the qualifier, the gate and `WAKE_REQUIRED` are 0 and `WAKE_MASK` is [8] | [9] ([19]–[22] are not in it). Live events follow their conditions: the peripheral's lines are 0 while it is held in reset (4.17.7), and `REQUEST_PENDING` shows the receive queue. The gate is not held in HALT (the core does not run `WFI` there), and on HALT → RUN no counter is set, so nothing can set [9] before the first GO. The director runs in HALT (6.1), so an event can be set while a tile is halted; HALT → RUN clears it.
+ 
+ **Uses:**
+-- a block copy (6.5) or a receiving phase (6.4): set the counters, start, `WFI` with [9] in the mask (the helper consumes it);
++- a block copy (6.5) or a receiving phase (6.4): arm the counters, start, `WFI` with [9] in the mask (the helper consumes it);
+ - a search step through the read port: `DMA_CM_REMAINING` = the number of reads, then `WFI` (4.3);
+ - a read from LPDDR (6.7): arm the destination's counter for the read's packets (the write adds, so other traffic for it may be in flight), send the request, `WFI` for counters done or the counter's own event; reads may be outstanding in any number;
+ - a request with a value answer (a write's token or acknowledgement, an fd, an error code, 6.7): arm `DMA_REPLY_REMAINING` for its reply (by writing 1: writes add), then `WFI` on [2] or for counters done;
+@@ -1494,7 +1494,7 @@
+     if ev.new_expansion: decode PERIPH_STATUS_1 (inlines and system only),
+                          start at PERIPH_STATUS_0.next_offset
+     WAKE_MASK = GO | PERIPH_DONE       ; squelch: only the copy's completion can wake it
+-    set DMA_PERIPH_REMAINING; write STREAM entries; start the run
++    write DMA_PERIPH_REMAINING (adds); write STREAM entries; start the run
+     WFI; load WAKE_EVENTS              ; consumes PERIPH_DONE
+     WAKE_MASK = GO | PERIPH            ; lines raised meanwhile fall through
+     goto loop
+@@ -1794,14 +1794,14 @@
+ 
+ ### 6.4 Phases that receive
+ 
+-- **A tile whose phase receives** sets its counters **in the start path, after GO: store the counters first, then pulse start.** Setting them during "configure" would break invariant 4 at configure's `done`; storing them before the start pulse means no arrival can beat its counter. The start path is identical code on every tile, so every tile's start store lands on the same cycle (plus skew), and its first request follows by the lead-in of 4.2. Measured from C&C's GO store to every tile's first request [meas: meshsim, L = 1]: **9–10 cycles** for a stream run started by a counter store then start (5–6 to the start store, then 2L + 2), and **17–18** for a group run on the all-to-all recipe's longer start path (10–11, then 4L + 3); a group run with the shortest start path would take 12–13 [derived from the two measured parts]. Every tile's first request lands within the 0/+1 start skew. The tile then `WFI`s for counters done (4.12) when it has nothing else to do.
++- **A tile whose phase receives** arms its counters **in the start path, after GO: write the counters first (each write adds; at a phase start the count is 0), then pulse start.** Arming them during "configure" would break invariant 4 at configure's `done`; storing them before the start pulse means no arrival can beat its counter. The start path is identical code on every tile, so every tile's start store lands on the same cycle (plus skew), and its first request follows by the lead-in of 4.2. Measured from C&C's GO store to every tile's first request [meas: meshsim, L = 1]: **9–10 cycles** for a stream run started by a counter store then start (5–6 to the start store, then 2L + 2), and **17–18** for a group run on the all-to-all recipe's longer start path (10–11, then 4L + 3); a group run with the shortest start path would take 12–13 [derived from the two measured parts]. Every tile's first request lands within the 0/+1 start skew. The tile then `WFI`s for counters done (4.12) when it has nothing else to do.
+ - **Every expected arrival must have landed and every write cleared before the tile pulses `done`** (invariant 4). Counters done guarantees it.
+ - **A tile that only sends** in a phase still waits for `mem_idle` before `done`, because its own loopback writes count.
+ 
+ ### 6.5 Block copy into controller memory (overlays, tables)
+ 
+ 1. Write the `STREAM` entry, one store per array that changes: `STREAM_SRC` the source; `STREAM_DEST` the controller-memory destination word, *d* = 0; `STREAM_COUNT` the count, mode 6 and read size 128 (or 64 or 32).
+-2. Write `DMA_CM_REMAINING` = the number of packets (elements). This also clears counters done (`WAKE_EVENTS` [9]) and its qualifier.
++2. Write the number of packets (elements) to `DMA_CM_REMAINING`, which adds it to the count (0 here). This also clears counters done (`WAKE_EVENTS` [9]) and its qualifier.
+ 3. Write `DMA_CONFIG`: a stream run of one stream, starting at that entry.
+ 4. Pulse start (`TILE_PULSE` [1]).
+ 5. `WFI` (the helper, with [9] in `WAKE_MASK`): counters done is set when `DMA_CM_REMAINING` reaches 0 and the port-B pipeline is empty, and the helper's load consumes it.
+@@ -2090,7 +2090,7 @@
+ | `DMA_PERIPH_REMAINING` | 0x83C | R/W | count [19:0] | down-counter for mode 9 from any source, decremented when each lands or is dropped (4.12, 4.17.5); nothing counts in HALT. v1.1's `DMA_REPLAYER_REMAINING` | 0 |
+ | `PERIPH_STATUS_0` … `PERIPH_STATUS_7` | 0x870 + 4·*i* | R | [31:0] | the peripheral's status, meanings its section defines; no side effects; 0 where the peripheral defines none, and on a tile with no peripheral (4.17.4) | per peripheral; 0 when idle |
+ 
+-`DMA_PERIPH_REMAINING` behaves like the other counters (8.7): a store of *N* sets the count and clears counters done (`WAKE_EVENTS` [9]) and its qualifier, a load returns the count, and bits [31:20] are spare. The status registers are read-only: a store is a bus error, and a load returns the state at its sample point (4.11).
++`DMA_PERIPH_REMAINING` behaves like the other counters (8.7): **a write of *N* adds *N*** to the count, atomically and in step with arrivals; *N* > 0 arms it (clears counters done, `WAKE_EVENTS` [9], and its own done event, [3], and sets their qualifiers), 0 does nothing, and a sum past 2²⁰ − 1 wraps (meshsim flags it). The count returns to 0 only by counting down, at chip reset or on entering HALT (4.12). A load returns the count, and bits [31:20] are spare. The status registers are read-only: a store is a bus error, and a load returns the state at its sample point (4.11).
+ 
+ **The replayer's use** (4.19.9):
+ 
+@@ -2473,7 +2473,7 @@
+ **Global totals** (the group maxima for the `GROUP` R fields, or any global sum) use a mesh reduction, not a ring scan.
+ - Each row collects toward its column-0 tile (4 hops from one side, 3 from the other), then column 0 collects toward tile 0 the same way, and tile 0 broadcasts.
+ - That's about 8 controller turnarounds instead of 63.
+-- **One-word totals** move as mode-8 replies: a collector sets `DMA_REPLY_REMAINING` = 2 and `WFI`s; a tile mid-chain sets it to 1.
++- **One-word totals** move as mode-8 replies: a collector arms `DMA_REPLY_REMAINING` with 2 and `WFI`s; a tile mid-chain arms it with 1.
+ - **Vectors** (the 16 group maxima) move as eight 64-bit **mode-6** packets into the receiver's data memory, counted by `DMA_CM_REMAINING` (in v1.1, four 128-bit packets would do).
+ - The ring scan is kept only for exclusive prefixes.
+ 
+--- a/sw/REGISTERS.md	2026-10-27 07:05:22.097890514 +0000
++++ b/sw/REGISTERS.md	2026-10-27 08:22:28.829294761 +0000
+@@ -419,7 +419,7 @@
+ 
+ **Counters done** (figure 2.3; spec 4.12). v1.0's local wake is now the event `WAKE_EVENTS` [9]. It is set on the rising edge of "every counter is done": all four at 0 with `mem_idle` and `cm_idle`, **counted only if some counter has been non-zero since [9] was last set or cleared** (the qualifier).
+ - It is sticky: it stays pending until a load of `WAKE_EVENTS` with [9] in `WAKE_MASK` consumes it, so a wait that finishes before the `WFI` is not lost. A wake does not consume it; `wfi()` in mesh.h loads `WAKE_EVENTS` after waking, which does (2.6).
+-- **Cleared** by any counter store (which also clears the qualifier), by the done pulse, by HALT → RUN and by a consuming load. A set and a clear in the same cycle: the clear wins.
++- **Cleared** by any non-zero counter write (which also clears the qualifier), by the done pulse, by HALT → RUN and by a consuming load. A set and a clear in the same cycle: the clear wins.
+ - **A count of 0 never makes an edge;** a phase that expects nothing must not `WFI` for counters done.
+ - **The done gate:** from the done pulse until GO counters done cannot be set (an edge then is ignored), and only a pending GO can wake `WFI` (2.6), so `wait_for_command()` is only ever woken by GO.
+ 
+@@ -428,7 +428,7 @@
+ **Rules.**
+ - A phase that sets counters ends with a `WFI` before it pulses done.
+ - Counters done waits for every counter. To wait for one class while another is outstanding, use **that counter's done event:** `WAKE_EVENTS` [0] `DMA_SRAM_REMAINING` done (with `mem_idle`), [1] `DMA_CM_REMAINING` done (with `cm_idle`), [2] `DMA_REPLY_REMAINING` done (with `cm_idle`), [3] `DMA_PERIPH_REMAINING` done. Each is sticky, set on its own counter's transition to done if that counter was armed since the event was last cleared, and cleared by arming that counter, by done, by HALT → RUN or by a load that consumes it.
+-- Store the counters before the arrivals can begin: before the start store, or before the command that makes others send.
++- Write the counters before the arrivals can begin: before the start store, or before the command that makes others send.
+ 
+ <a id="record-base"></a>
+ #### 2.3.3 `DMA_RECORD_BASE_ADDRESS`: the run's record buffer
+@@ -648,7 +648,7 @@
+ 
+ **Claiming service.** A load of `WAKE_EVENTS` that returns a service line under `WAKE_MASK` **claims one unit of its service**: it is the program's commitment to handle it. An event line clears; a queue line credits its unit (the replayer: half a queue); an item line pops its next item into its status register. A line whose mask bit is clear isn't claimed, and `WAKE_PEEK` claims nothing, so read `WAKE_PEEK` to look. At most one line per peripheral presents an item in a status register, so one load can't leave a register describing two claims.
+ 
+-**Mode 9** writes into the peripheral's address space (the map is the peripheral's: the replayer's is in 2.8.2), from **any source**: this tile, another tile, or the memory system. It lands a fixed 2 cycles after the traffic director. **`DMA_PERIPH_REMAINING`** counts every mode-9 packet, from any source, when it lands or is dropped; nothing counts while the tile is halted (C&C's boot loads), and data reaches a running tile only after it has armed the counter. A store or add arms it, like the other counters (2.3.2), and `WAKE_EVENTS` [3] is its own done event. A port that places writes in order (a replayer queue) takes **one source at a time**. A mode-9 packet the peripheral can't take is a **bad peripheral write**, dropped with condition [11]; on a tile with no peripheral, every mode-9 packet is.
++**Mode 9** writes into the peripheral's address space (the map is the peripheral's: the replayer's is in 2.8.2), from **any source**: this tile, another tile, or the memory system. It lands a fixed 2 cycles after the traffic director. **`DMA_PERIPH_REMAINING`** counts every mode-9 packet, from any source, when it lands or is dropped; nothing counts while the tile is halted (C&C's boot loads), and data reaches a running tile only after it has armed the counter. A write arms it (writes add), like the other counters (2.3.2), and `WAKE_EVENTS` [3] is its own done event. A port that places writes in order (a replayer queue) takes **one source at a time**. A mode-9 packet the peripheral can't take is a **bad peripheral write**, dropped with condition [11]; on a tile with no peripheral, every mode-9 packet is.
+ 
+ **HALT,** or the controller halting, stops the peripheral and the sender at once and clears its lines; its memories keep their contents.
+ 
+@@ -730,7 +730,7 @@
+ 
+ Anything else is a **bad peripheral write**: dropped, with condition [11]. Mode-9 packets from tiles count in `DMA_PERIPH_REMAINING` when they land, so a `WFI` after a refill run returns when the words are in the queue. Keep other tiles' mode 9 away from a running pass: the loop below counts only its own refills.
+ 
+-**The loop that serves it** (spec 4.19.9): `WAKE_MASK` = GO | [18:13], then `WFI`; load `WAKE_EVENTS` (claiming the lines); exit on done; on new expansion read `PERIPH_STATUS_1` and `PERIPH_STATUS_0`; `WAKE_MASK` = GO | [3] (the squelch: `DMA_PERIPH_REMAINING` done alone, so an LPDDR fetch in flight doesn't hold the refill up); set `DMA_PERIPH_REMAINING`, write the `STREAM` entries and start the refill run; `WFI` and load `WAKE_EVENTS` (consuming [3]); `WAKE_MASK` = GO | [18:13] again. A refill is at most half a queue: 128 entries of code or expansion words, 256 of either log.
++**The loop that serves it** (spec 4.19.9): `WAKE_MASK` = GO | [18:13], then `WFI`; load `WAKE_EVENTS` (claiming the lines); exit on done; on new expansion read `PERIPH_STATUS_1` and `PERIPH_STATUS_0`; `WAKE_MASK` = GO | [3] (the squelch: `DMA_PERIPH_REMAINING` done alone, so an LPDDR fetch in flight doesn't hold the refill up); write `DMA_PERIPH_REMAINING` (it adds), write the `STREAM` entries and start the refill run; `WFI` and load `WAKE_EVENTS` (consuming [3]); `WAKE_MASK` = GO | [18:13] again. A refill is at most half a queue: 128 entries of code or expansion words, 256 of either log.
+ 
+ <a id="uart"></a>
+ ### 2.9 `UART_`: the UART
+@@ -1149,7 +1149,7 @@
+ <div class="figpage"><img src="regdoc/svg/ex3_exchange.svg" alt="Example 3: a one-word exchange, outgoing and incoming on the tile's data path"></div>
+ 
+ **Rules it relies on.**
+-- **The counter is the first store of the command,** made by identical code on every tile. A fast sender's word can arrive a few cycles after GO, and it must find the counter already set (2.3.2).
++- **The counter is the first store of the command,** made by identical code on every tile. A fast sender's word can arrive a few cycles after GO, and it must find the counter already armed (2.3.2).
+ - **A reply lands by source** (section 5): the receiver's reply block has a pair of words per sender, so no sender chooses an address and none can collide.
+ - **The schedule's order** makes each step a permutation of the tiles, so no link carries more than its share. There is no flow control (2.2).
+ - **`ROUTER_SEND_32` sends one 32-bit packet,** so a word needs no `W` store.

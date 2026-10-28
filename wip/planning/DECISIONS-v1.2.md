@@ -193,6 +193,23 @@ counting (3), the 3-bit mode keeps only what the receiver must do differently:
   the command block, only replies the reply block" become software conventions. Whether a 64- or 128-bit
   write that covers slot 0 also sets "command landed" is a detail to settle with the spec text.
 
+## 7. The send port's header (2026-10-28)
+
+Decided (O). The 32-bit `ROUTER_SET_HDR` (dst 7, mode 4, addr 21) can't hold dst, mode, counter and a
+32-bit address (44 bits), so it splits in two, both read/write as planning notes to-do 13 describes:
+
+- **`ROUTER_ADDR`:** the full 32-bit address (5). A store sets it; it auto-advances at each send as today;
+  a load returns the address the next packet will use.
+- **`ROUTER_HDR`:** counter, mode and dst. A store sets them; a load returns them. *(Proposed layout,*
+  *matching `STREAM_COUNT`'s order:)* [1:0] spare (the size comes from the send register), counter [3:2],
+  mode [6:4], dst [13:7], [31:14] spare.
+- **Size stays with the send register** (`ROUTER_SEND_32`, `_64`, `_128`); `ROUTER_SET_W0`-`W2` are
+  unchanged and stay write-only.
+- One extra store when both change; a change of dst alone, the common case in replies and one-word
+  exchanges, is still one store. The register map is renumbered anyway when it moves into region 0xFF.
+- **Toward Q8:** `SENDER_SEND` has room for the counter field (dest 7, mode 3, counter 2, queue 2, count
+  16 = 30 bits), and `SENDER_ADDR` becomes a full 32-bit address.
+
 ---
 
 ## Big SRAM: to validate

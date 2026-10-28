@@ -136,6 +136,34 @@ Decided (O). Still three 32-bit arrays, 96 bits, 88 used:
   ORed in (gap after; size, counter, mode and *d*).
 - Assumes the source stays a 21-bit big-SRAM address (Q9).
 
+## 5. The 32-bit address map (2026-10-28)
+
+Decided (O). Answers Q6. One map for packet addresses and the controller's own loads and stores.
+
+- **An address is an 8-bit region [31:24] and a 24-bit offset [23:0].**
+
+| region | contents |
+|---|---|
+| 0x00 | controller data memory, 32 KB |
+| 0x01 | controller program memory, 32 KB |
+| 0x02 | big SRAM |
+| 0x03 | peripheral 1 |
+| 0x04 | peripheral 2 |
+| ... | further peripherals |
+| 0xFF | controller only: registers and the table window |
+
+- **The region names where a packet lands**, so the mode no longer has to (Q7).
+- **The controller memories become 32 KB + 32 KB** (planning notes to-do 2, spec part N).
+- **A tile may have more than one peripheral**, where 4.17 has one slot (Q11).
+- **The controller sees 0x00, 0x01 and 0xFF only.** It still cannot load or store big SRAM or a
+  peripheral directly (current plan): every existing mechanism for reading and writing big SRAM carries
+  forward (the read port, sending itself packets, address-generator copies).
+- **Region 0xFF is controller only:** a packet addressed to it is a bad packet.
+- **Follow-on:** the controller's map moves (today program memory is at 0x0000, data at 0x4000, the table
+  window at 0x2000 and the registers at 0xFFFFF800), so the reset PC, the resident loader's address, the
+  linker script and `mesh.h` change.
+- **Pending:** whether the offset counts bytes or 32-bit words (Q10).
+
 ---
 
 ## Big SRAM: to validate
@@ -165,7 +193,9 @@ A running list; each entry names where it came from. Resolved entries move into 
 | Q3 | What stops the peripheral and the sender when a condition traps: the hardware on taking the interrupt, or the handler? (Today a halted controller stops them at once.) | 1.7 | open; suggestion: the hardware, so a failed handler can't leave them running |
 | Q4 | The HALT design: one line or separate lines for tiles and controllers, which peripherals stop, what HALT clears, the hold before RUN, per-tile halt | planning notes section 7 | open |
 | Q5 | Should an area serve writes ahead of queued reads? Not needed for S1 if K covers only the path to the area queue | 3 | open; for Tony |
-| Q6 | The link word's 32-bit address: what it covers | 2 | next topic |
+| Q6 | The link word's 32-bit address: what it covers | 2 | **resolved: section 5** |
 | Q7 | The 3-bit mode: which of today's nine modes merge or go, now that counting is separate | 2 | open |
 | Q9 | Does a stream's source stay a 21-bit big-SRAM chunk address, or does the 32-bit address apply to reads too? | 4 | open |
+| Q10 | Is the 24-bit offset in bytes or in 32-bit words? | 5 | open |
+| Q11 | How several peripherals share the slot's interface: service lines in `WAKE_EVENTS`, `PERIPH_STATUS_0`-`7`, the run pulse, conditions 11-13 | 5 | open |
 | Q8 | The counter field in every packet source: `STREAM` entries, the send port's header, the sender, the read port's setup, the GATHER engine's gather values, and memory-system requests | 3 | open |

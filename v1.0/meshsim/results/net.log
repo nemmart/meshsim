@@ -1,0 +1,46 @@
+structure: links all 3 cycles; start skew seed 1: 33 tiles +0, 31 tiles +1
+unicast latency, injection point take -> director accept [meas: NetTest unicast], by hops h: h=0:3 h=1:7 h=2:11 h=3:15 h=4:19 h=5:23 h=6:27 h=7:31  (= 3 + 4h; spec 5's estimate h(k + 2) + 4 = 5h + 4)
+broadcast: every tile exactly one copy from every source and from C&C, none to C&C; slowest copy 35 cycles after injection [meas: NetTest broadcast]
+routes: a unicast packet and a broadcast copy from one source to one destination take different paths for offsets [33, 34, 35, 36, 37, 38, 39, 44, 52, 60] (for 8 to 64 of the 64 sources each; the broadcast tree's copy can take 8 hops where the unicast takes at most 7), so in-order delivery holds within unicast and within broadcast, not between the two [NetTest routes]
+random traffic (p = 0.2 unicast + 0.002 broadcast per tile per cycle, 3,000 cycles, skew on): 62625 packets delivered, in order per (src, dst) within unicast and within broadcast
+  queue peaks:
+    to-right<from-left       3  (t51)
+    to-right<loopback        2  (t0)
+    to-left<from-right       3  (t0)
+    to-left<loopback         3  (t54)
+    to-down<from-left        2  (t4)
+    to-down<from-right       3  (t39)
+    to-down<from-up          3  (t7)
+    to-down<loopback         2  (t18)
+    to-up<from-left          2  (t3)
+    to-up<from-right         2  (t0)
+    to-up<from-down          3  (t9)
+    to-up<loopback           2  (t49)
+    eject<from-left          2  (t45)
+    eject<from-right         2  (t11)
+    eject<from-up            4  (t15)
+    eject<from-down          4  (t50)
+    eject<loopback           1  (t0)
+    write-engine input       1  (t0)
+
+paced at the link bound, offset 1 (one per 1): 32000 packets delivered, in order per (src, dst) within unicast and within broadcast
+paced at the link bound, offset 7 (one per 1): 32000 packets delivered, in order per (src, dst) within unicast and within broadcast
+paced at the link bound, offset 8 (one per 1): 32000 packets delivered, in order per (src, dst) within unicast and within broadcast
+paced at the link bound, offset 9 (one per 1): 32000 packets delivered, in order per (src, dst) within unicast and within broadcast
+paced at the link bound, offset 27 (one per 3): 32000 packets delivered, in order per (src, dst) within unicast and within broadcast
+paced at the link bound, offset 32 (one per 4): 32000 packets delivered, in order per (src, dst) within unicast and within broadcast
+paced at the link bound, offset 33 (one per 4): 32000 packets delivered, in order per (src, dst) within unicast and within broadcast
+paced at the link bound, offset 36 (one per 4): 32000 packets delivered, in order per (src, dst) within unicast and within broadcast
+paced at the link bound, offset 63 (one per 1): 32000 packets delivered, in order per (src, dst) within unicast and within broadcast
+permutations at the link bound (every tile 500 packets, one per max(|a|,|b|) cycles, skew 0/+1): router FIFO peak 3 of 16 [meas: NetTest in-order full rate]
+director: each mode to its unit (0 and 8-15 dropped with the bad-mode sticky bit); counters per mode; invariants 9-13 and 5 fire; a mode-7 reply accepted at t is written at port B at t + 2 (cm_latency 2), readable by a load from t + 3 [meas: NetTest director]
+fan-in to tile 27: largest W per sender with no FIFO overflow, every sender bursting W packets from the same cycle (+ its start skew) [meas: NetTest fan-in]
+  senders  spec   nearest   farthest  random*3  nearest,noskew eject peak   first overflow at W+1 (nearest)
+  63       1      0         0         0         0              0 of 16      t27.eject<from-down
+  32       1      1         1         1         1              10 of 16     t27.eject<from-down
+  16       3      3         3         3         3              16 of 16     t27.eject<from-down
+  8        5      5         7         6         5              15 of 16     t27.eject<from-down
+  4        21     21        15        15        20             16 of 16     t27.eject<from-right
+  1        none   64        64        64        64             1 of 16      no overflow to 64
+  63 x 1: overflows with no skew (v1.0's FIFO rule); with 0/+1 skew it overflows in 120 of 120 skew patterns (receivers 27, 0, 63; seeds 1..40) [meas: NetTest fan-in]
+NetTest: 30509 passed, 0 failed

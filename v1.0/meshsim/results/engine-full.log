@@ -1,0 +1,32 @@
+write engine pointer stage, 200 packets at one a cycle [meas: EngineTest write engine]: L=1: peak 3 of 4; L=2: peak 5 of 6; L=3: peak 7 of 8; L=4: peak 9 of 10; (v3.7 measured 3, 5, 7, 9)
+local copies, one stream run on one tile, area 0 -> area 1 [meas: EngineTest local copy], cycles from the arm+start store to the local-wake condition:
+  64-bit records                      4096 packets:  4114 cycles (18 over the packet count)
+  128-bit values (2 packets each)     4096 packets:  4114 cycles (18 over the packet count)
+  32-bit keys (one per packet)        4096 packets:  4114 cycles (18 over the packet count)
+  1K-word block copy (mode 5)          512 packets:   526 cycles (spec 4.2 estimate: about 512 plus the stream's start)
+stream runs: a count-0 stream takes exactly its gap-after cycles and a stream its elements plus its gap (issue offsets 0, 1, 2, 8, 9, 11 for counts 3, 0, 2, 0, 1 and gaps 2, 3, 0, 1, 0, streams 254 to 2: the numbers wrap, flagged); relative destinations wrap mod 64 [meas: EngineTest stream runs]
+one-word exchange, every tile sends one record to each of the other 63 in the 16-group offset order, stream runs, 0/+1 start skew [meas: EngineTest one-word exchange]:
+  gap after 4:  346 cycles; link FIFO peak  1 of 16, eject peak  1 of 16; STREAM reads 63, PTR request FIFO peak 1 of 16; no overflow
+  gap after 2:  222 cycles; link FIFO peak  1 of 16, eject peak  2 of 16; STREAM reads 63, PTR request FIFO peak 1 of 16; no overflow
+  gap after 1:  160 cycles; link FIFO peak  2 of 16, eject peak  2 of 16; STREAM reads 63, PTR request FIFO peak 1 of 16; no overflow
+  gap after 0:  111 cycles; link FIFO peak  8 of 16, eject peak  5 of 16; STREAM reads 63, PTR request FIFO peak 1 of 16; no overflow
+local radix sort, 64 tiles x 16384 keys, 0/+1 skew [meas: EngineTest radix sort]: augmenting pass 16403 cycles, bucket passes 16403, 16403, 16403, 16403 (N + 19 to N + 19 each); total 82015
+group run with a 16-stream group after a 4-cycle group: group 1 starts 0 cycles late on every tile (M7: 13, the bank prefetch of GROUP + 16 STREAM reads); R = 0 takes 1 cycle plus its gap; no drift, no invariant-3 violation; ag_lookahead 4, STREAM queue peak 4, GROUP queue peak 4, underrun cycles 0 [meas: EngineTest late groups]
+start: the first request 6 cycles after the start takes effect (its GROUP entry, then its first STREAM entry; ts_engine_latency 1) [meas: EngineTest late groups]
+16-group all-to-all as a group run [meas: EngineTest all-to-all]: cycles from the start store to the last tile's local-wake condition; bound = sum 4 R_g + 16 gap; 0/+1 skew
+  data set                   gap    measured      bound   over  queue peaks (of 16; we-in of 4; area of 8)   late / drift
+  uniform (Data(7, 65536))   4         71236      71204     32  link 5, eject 4, we-in 1, area queue 1       rot 0, prefetch-late groups 0 (max 0), drift 0
+  uniform (Data(7, 65536))   0         71176      71140     36  link 5, eject 4, we-in 1, area queue 1       rot 0, prefetch-late groups 0 (max 0), drift 0
+  uniform (Data(7, 65536))   8         71296      71268     28  link 5, eject 4, we-in 1, area queue 1       rot 0, prefetch-late groups 0 (max 0), drift 0
+  zipfraw                    4        294471     294456     15  link 4, eject 3, we-in 1, area queue 1       rot 0, prefetch-late groups 0 (max 0), drift 0
+  zipfraw                    0        294411     294392     19  link 4, eject 3, we-in 1, area queue 1       rot 0, prefetch-late groups 0 (max 0), drift 0
+  zipfraw                    8        294531     294520     11  link 4, eject 3, we-in 1, area queue 1       rot 0, prefetch-late groups 0 (max 0), drift 0
+  trace                      4        706359     706344     15  link 5, eject 4, we-in 1, area queue 1       rot 0, prefetch-late groups 0 (max 0), drift 0
+  trace                      0        706299     706280     19  link 5, eject 4, we-in 1, area queue 1       rot 0, prefetch-late groups 0 (max 0), drift 0
+  trace                      8        706419     706408     11  link 5, eject 4, we-in 1, area queue 1       rot 0, prefetch-late groups 0 (max 0), drift 0
+  one99                      4        434603     434588     15  link 2, eject 2, we-in 1, area queue 1       rot 0, prefetch-late groups 0 (max 0), drift 0
+  one99                      0        434543     434524     19  link 2, eject 2, we-in 1, area queue 1       rot 0, prefetch-late groups 0 (max 0), drift 0
+  one99                      8        434663     434652     11  link 2, eject 2, we-in 1, area queue 1       rot 0, prefetch-late groups 0 (max 0), drift 0
+  reference, measured on simulator v3.10 (gap 8, AllToAllTest measure, schedule-4 RESULTS 4.1): sixteen groups uniform 71,345, zipfraw 294,580, trace 706,470, one99 434,712; nine groups 73,904, 304,647, 800,218, 575,905
+drift: a tile whose incoming writes share its send buffer's area waits at the area (writes first) and runs late: address generator: 158 request stall cycles; rotations late 184 on 1 tiles (max 62 cycles); group starts waiting for read-ahead 2 (max 54, timetable); drift between tiles at a group start 113 (group 15) [meas: EngineTest drift]
+EngineTest full: 374 passed, 0 failed

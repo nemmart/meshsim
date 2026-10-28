@@ -1,0 +1,67 @@
+diff --git a/src/PhaseLog.java b/src/PhaseLog.java
+index c191af5..087f934 100644
+--- a/src/PhaseLog.java
++++ b/src/PhaseLog.java
+@@ -19,6 +19,9 @@ import java.util.function.IntFunction;
+  *   peaks (reset at every GO; the whole run's are kept too): link, eject, to-C&C FIFOs, write-engine input, GATHER
+  *            queue, area queues, PTR and HIST request FIFOs, the AG's table-read FIFO, read-port entries in use;
+  *   C&C: all-READY seen -> this GO store;
++ *   (M12) the slowest tile's own controller: its instructions and its busy cycles (instructions + stall cycles: taken
++ *            branches, multiplies, send retries) in the phase, and every tile's busy cycles (one field, ';'-separated),
++ *            so a cycle change can be traced to the code that made it (PhaseNeutral);
+  *   invariant 8 as a statistic: mode-6 words (and read-port results) overwritten before the core read them.
+  * Counters are sums of deltas over tiles; peaks are maxima over tiles.
+  */
+@@ -28,6 +31,7 @@ final class PhaseLog {
+     final List<Phase> phases = new ArrayList<>();
+     private Phase open;
+     private long[] base;
++    private long[] baseInstr = new long[64], baseBusy = new long[64];
+     final Map<String, Integer> runPeak = new LinkedHashMap<>();
+     private long lastAllReadySeen = -1;
+ 
+@@ -42,6 +46,7 @@ final class PhaseLog {
+         final Map<String, Long> n = new LinkedHashMap<>();
+         final Map<String, Integer> peak = new LinkedHashMap<>();
+         final long[] latMax = new long[3];
++        final long[] tileInstr = new long[64], tileBusy = new long[64];      // M12: per-tile deltas over the phase
+         long cycles() { return endAt - goAt; }
+     }
+ 
+@@ -56,6 +61,7 @@ final class PhaseLog {
+         for (int i = 0; i < 64; i++) { p.tileGo[i] = t + c.cfg.goLatency + c.startSkew[i]; p.tileReady[i] = -1; }
+         phases.add(p); open = p;
+         base = counters();
++        for (Tile x : c.tiles) { baseInstr[x.idx] = x.core.instructions; baseBusy[x.idx] = x.core.instructions + x.core.cyclesStalled; }
+         resetPeaks();
+     }
+     void onAllReady(long t) { lastAllReadySeen = t; if (open != null && open.endAt < 0) open.endAt = t; }
+@@ -76,6 +82,7 @@ final class PhaseLog {
+         int[] pk = peaks();
+         for (int i = 0; i < PEAKS.length; i++) { p.peak.put(PEAKS[i], pk[i]); runPeak.merge(PEAKS[i], pk[i], Math::max); }
+         for (Tile t : c.tiles) for (int k = 0; k < 3; k++) p.latMax[k] = Math.max(p.latMax[k], t.srq.latMax[k]);
++        for (Tile x : c.tiles) { p.tileInstr[x.idx] = x.core.instructions - baseInstr[x.idx]; p.tileBusy[x.idx] = x.core.instructions + x.core.cyclesStalled - baseBusy[x.idx]; }
+         base = now;
+     }
+ 
+@@ -147,7 +154,7 @@ final class PhaseLog {
+         StringBuilder sb = new StringBuilder("phase,name,word,go_at,end_at,cycles,ready_spread,slowest_tile,cnc_reaction");
+         for (String k : COUNTS) sb.append(',').append(k);
+         for (String k : PEAKS) sb.append(",peak_").append(k);
+-        sb.append(",latmax_gather,latmax_ag,latmax_readport\n");
++        sb.append(",latmax_gather,latmax_ag,latmax_readport,slow_instr,slow_busy,tile_busy\n");
+         for (Phase p : phases) {
+             if (p.endAt < 0) continue;
+             long lo = Long.MAX_VALUE, hi = -1; int slow = -1;
+@@ -156,7 +163,10 @@ final class PhaseLog {
+               .append(',').append(hi >= 0 ? hi - lo : -1).append(',').append(slow).append(',').append(p.cncReaction);
+             for (String k : COUNTS) sb.append(',').append(p.n.get(k));
+             for (String k : PEAKS) sb.append(',').append(p.peak.get(k));
+-            sb.append(',').append(p.latMax[0]).append(',').append(p.latMax[1]).append(',').append(p.latMax[2]).append('\n');
++            sb.append(',').append(p.latMax[0]).append(',').append(p.latMax[1]).append(',').append(p.latMax[2]);
++            sb.append(',').append(slow >= 0 ? p.tileInstr[slow] : -1).append(',').append(slow >= 0 ? p.tileBusy[slow] : -1).append(',');
++            for (int i = 0; i < 64; i++) sb.append(i > 0 ? ";" : "").append(p.tileBusy[i]);
++            sb.append('\n');
+         }
+         Files.writeString(f, sb.toString());
+     }

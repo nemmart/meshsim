@@ -1,0 +1,8 @@
+inputs: meshsim.jar=(classes) image/loader.bin=0061a3a1f88449fe235a04093d14bc5539484f5fc79967f10833f977a37cefee image/sort.code.bin=875997fe3c44c5b7ed7bf89566fbf58e0df1fca048185b15f2883908805119a5 image/sort.data.bin=14c65d88cb9d2fb08183082d3e2bb29e3f309f78d3115627d5b5824c3219d075 image/sort.ovinit.bin=c07c8246b2d64ba33e45cd7b44b2950e4dc46bcf4f0534cb3d97c16b682d38f2 image/sort.stage.bin=131bd9acf8c55505de0944f9f04bcdb349c2f4a1a0c861aaf1f06fbd70c7cb8f image/sort.sym=3fd79b106d9ec51ba5e0820743364d198584ae797676b505fb52d4f497d36d5e hops.txt=a3b90f3c2fbc64f1a93c8c0ff916cfbaf40823aae38c4540811482873741d3da
+P1 uniform n=2000 k=2 (augmented): L1 GO -> all READY 23,409; L2 GO -> all READY 20,384  [meas: SortTest p1]
+P1 uniform n=2000 32-bit values (copy): L1 GO -> all READY 17,347; L2 GO -> all READY 14,322  [meas: SortTest p1]
+P1 few n=1000 k=2 (augmented): L1 GO -> all READY 15,409; L2 GO -> all READY 13,384  [meas: SortTest p1]
+P1 ragged n=1000 32-bit values (copy): L1 GO -> all READY 17,347; L2 GO -> all READY 14,322  [meas: SortTest p1]
+P1 sorted n=500 k=2 (augmented): L1 GO -> all READY 11,409; L2 GO -> all READY 9,884  [meas: SortTest p1]
+P1 equal n=500 32-bit values (copy): L1 GO -> all READY 9,847; L2 GO -> all READY 8,322  [meas: SortTest p1]
+SortTest: 54 passed, 0 failed

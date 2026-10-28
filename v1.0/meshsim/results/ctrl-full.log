@@ -1,0 +1,26 @@
+boot [meas: CtrlTest boot]: loader 23 words + hello 36 code + 2 data words = 31 mode-5 packets and 2 mailbox packets from C&C; all 64 READY at cycle 71, RUN raised at 71, every tile at main's ebreak by 150
+registers [meas: CtrlTest registers]: write-only reads 0; counters 20 bits; HIST 17, PTR 20, STREAM/GROUP 64 bits through the window; send port modes 2, 5, 6, 7 to the tile itself with auto-increment +2/+1 and SET_HI cleared per send; local wake after each; status and done readable the next cycle
+command phases [meas: CtrlTest commands]: per GO, all-READY -> GO store (C&C) and READY round trip
+  GO 0: all READY at 264, GO stored at 265, seen by tiles at 266-267
+  GO 1: all READY at 307, GO stored at 308, seen by tiles at 309-310
+  GO 2: all READY at 349, GO stored at 350, seen by tiles at 351-352
+  GO 3: all READY at 391, GO stored at 392, seen by tiles at 393-394
+  GO 4: all READY at 952, GO stored at 953, seen by tiles at 954-955
+  two-command phase: start store 25 cycles after GO on every tile; local copy of 512 records, start -> READY 533 cycles
+  the next command, sent right after GO: its first mailbox write lands 6 cycles after the tile saw GO at the earliest (tile 0), into the other argument block;
+  its slot 0 (zero-argument commands) 6 cycles after GO at the earliest, after the woken tile read the previous command word (the simulator checks every slot-0 landing)
+WFI [meas: CtrlTest wfi]: latch before WFI falls through in 1 cycle; a counter store clears the latch; a count of 0 makes no edge; GO is not latched; READY fires at done when the command landed first; uncounted packets made 256 local-wake edges that the qualifier (DEV) kept from waking
+faults [meas: CtrlTest faults]: store to MASTER_STATUS, load from instruction memory, sub-word register store, the table window's gap and a misaligned load are bus errors; div and a CSR read are illegal; ecall halts; each cause logged, its condition set, no READY; HALT clears the conditions and HALT -> RUN restarts every core at the loader
+invariants [meas: CtrlTest invariants]: 4 (done before arrivals), 5 (a mode-0 packet sent), 7 (packet in flight at a line change), 8 (reply overwritten unread), 9 (unexpected arrival: its condition set; a store to the reserved MASTER_PULSE[3] ignored and flagged; M14) and the table-window check each fire on a bad program
+block copy [meas: CtrlTest block copy]: 1,024 words (512 mode-5 packets) big SRAM -> instruction memory by the 6.5 recipe, from the arm-and-start store to the first instruction after WFI: 527 cycles (spec 6.5: about 512 plus the stream's start)
+    uniform (Data(7, 65536)): address generator: 0 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
+    zipfraw: address generator: 0 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
+    trace: address generator: 0 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
+    one99: address generator: 0 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
+16-group all-to-all programmed from C as a two-command phase, gap 0 [meas: CtrlTest all-to-all]: cycles from C&C's start GO store to all 64 READY at C&C
+  data set                   GO -> all READY     bound   over  | M4 start->last wake (Java-driven, M3 harness)  | v3.10 GO -> all DONE (gap 8)
+  uniform (Data(7, 65536))      71190        71140     50  |      71176                                      | 71,345
+  zipfraw                      294425       294392     33  |     294411                                      | 294,580
+  trace                        706313       706280     33  |     706299                                      | 706,470
+  one99                        434557       434524     33  |     434543                                      | 434,712
+CtrlTest: 5608 passed, 0 failed

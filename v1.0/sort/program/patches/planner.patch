@@ -1,0 +1,64 @@
+diff -u sort/skew/planner/skew.h meshsim/sw/ext/skew-planner/skew.h
+--- sort/skew/planner/skew.h	2026-10-12 14:54:58.452700301 +0000
++++ meshsim/sw/ext/skew-planner/skew.h	2026-10-12 06:02:49.588246847 +0000
+@@ -195,6 +195,7 @@
+ void bt_force(Tile *T, uint32_t L);                      /* harness: a given L at the z-formula's w */
+ void bt_sweep_init(Tile *T);
+ void bt_sweep_cell(Tile *T, uint32_t pass, uint32_t t);  /* uses and updates the token u.sw.cmask */
++void bt_sweep_cell_c(Tile *T, uint32_t pass, uint32_t t, uint32_t (*C)[2]);   /* the same, on token C (worker 8, M7) */
+ void bt_sweep_done(Tile *T);                             /* own L1, the cell order */
+ void bt_desc(Tile *T, uint32_t layer);                   /* u.desc_out[m] for one step-1 layer */
+ void bt_held_stats(Tile *T);                             /* own L1, R1; at m: L2, R2, staging */
+diff -u sort/skew/planner/skew_bt.c meshsim/sw/ext/skew-planner/skew_bt.c
+--- sort/skew/planner/skew_bt.c	2026-10-12 14:54:58.445785732 +0000
++++ meshsim/sw/ext/skew-planner/skew_bt.c	2026-10-10 02:41:09.000000000 +0000
+@@ -16,6 +16,10 @@
+  */
+ #include "skew.h"
+ 
++/* An empty stream (patch: worker 8, M7): count 0 with a valid mode and the kind's read size. A high word of 0 has the
++ * reserved read size 00, which the machine rejects (spec 4.2; the simulator flags it) even at count 0. */
++#define EMPTY_HI(kind) ((2u << 24) | ((kind) ? 3u << 27 : 2u << 27))
++
+ static inline uint32_t mulhu(uint32_t a, uint32_t b)
+ {
+     return (uint32_t)(((uint64_t)a * b) >> 32);
+@@ -121,14 +125,18 @@
+     T->pcur = 0;
+ }
+ 
+-void bt_sweep_cell(Tile *T, uint32_t pass, uint32_t t)
++/* (patch: worker 8, M7) the column token C as an argument, so that the machine can place a cell on the token where
++ * it landed, with no copy; bt_sweep_cell is the original, on T->u.sw.cmask. */
++void bt_sweep_cell(Tile *T, uint32_t pass, uint32_t t) { bt_sweep_cell_c(T, pass, t, T->u.sw.cmask); }
++
++void bt_sweep_cell_c(Tile *T, uint32_t pass, uint32_t t, uint32_t (*C)[2])
+ {
+     uint32_t me = T->me, d = (me + t) & 63;
+     if (!T->row[d]) return;
+     uint32_t k = T->kc[d] + 1u;
+     if ((k >= 4) != (pass == 0)) return;
+     if (T->pcur + k > PMAX) { T->err |= ERR_PIECES; return; }
+-    uint32_t (*R)[2] = T->v.rmask, (*C)[2] = T->u.sw.cmask;
++    uint32_t (*R)[2] = T->v.rmask;
+     uint8_t *r = T->r, *pm = T->piece_m + T->pcur;
+     uint32_t m0 = (me + d) & 63, sh = m0 & 31, v = 0;
+     T->pcur += k;
+@@ -205,7 +213,7 @@
+     uint32_t base = kind ? A5 : A3, scale = kind ? 4 : 2;
+     uint8_t *r = T->r;
+     const uint8_t *pm = T->piece_m;
+-    for (int i = 0; i < 64 * NBANK; i++) HW_STREAM_HI(T, i, 0);
++    for (int i = 0; i < 64 * NBANK; i++) HW_STREAM_HI(T, i, EMPTY_HI(kind));
+     for (int m = 0; m < NT; m++) r[m] = 0;
+     for (uint32_t c = 0; c < T->ncell; c++) {
+         uint32_t d = T->v.order[c], k = T->kc[d] + 1u, src = base + scale * T->rowpos[d];
+@@ -304,7 +312,7 @@
+      * per held entry (meshsim M12, DEV 125) */
+     const uint32_t hi0 = stream_hi_fixed(hop2_mode(T, kind), kind);
+     uint16_t *out = T->u.h2.out2;
+-    for (int i = 0; i < 64; i++) HW_STREAM_HI(T, i, 0);
++    for (int i = 0; i < 64; i++) HW_STREAM_HI(T, i, EMPTY_HI(kind));
+     for (int d = 0; d < NT; d++) out[d] = NONE16;
+     const uint32_t *h = &T->held[0][0];
+     for (uint32_t i = 0; i < n; i++) {

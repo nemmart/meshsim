@@ -1,0 +1,30 @@
+inputs: meshsim.jar=(classes) image/loader.bin=0061a3a1f88449fe235a04093d14bc5539484f5fc79967f10833f977a37cefee image/sort.code.bin=875997fe3c44c5b7ed7bf89566fbf58e0df1fca048185b15f2883908805119a5 image/sort.data.bin=14c65d88cb9d2fb08183082d3e2bb29e3f309f78d3115627d5b5824c3219d075 image/sort.ovinit.bin=c07c8246b2d64ba33e45cd7b44b2950e4dc46bcf4f0534cb3d97c16b682d38f2 image/sort.stage.bin=131bd9acf8c55505de0944f9f04bcdb349c2f4a1a0c861aaf1f06fbd70c7cb8f image/sort.sym=3fd79b106d9ec51ba5e0820743364d198584ae797676b505fb52d4f497d36d5e hops.txt=a3b90f3c2fbc64f1a93c8c0ff916cfbaf40823aae38c4540811482873741d3da keys-16384/trace10-10.keys=112436cd5dd7cabef0618c39dda6901c92a77ffdee4ded22fc0897e2c2aed193
+sort bt16k-kv32 32-bit values [meas: SortTest]: path BT (stage 2 ran); steps (GO -> next GO): L1 89,276 (overlay load 711); SPLIT 313,132 (overlay load 389); XB 7,378; RED 5,223 (overlay load 539); XC 848; TH 18,391 (overlay load 576); SWEEP 54,862; DESC 32,500 (overlay load 415); K1.0 17,907; K1.1 17,287; K1.2 12,118; K2.0 25,050; K2.1 22,132; K2.2 12,764; L2 71,866 (overlay load 187); 5 empty commands 294
+    TOTAL 701,028 cycles (L1 GO -> L2 all READY; real split), of which C&C turnaround 85; ready_latency 8; direct-path bound 4*sum(R) = 467,436; GATHER queue peak 0 of 16; stack headroom 308 B
+    peaks in K1.0: link 5, eject 4, write-engine input 1, area 1
+    peaks in K1.1: link 4, eject 3, write-engine input 1, area 1
+    peaks in K1.2: link 2, eject 2, write-engine input 1, area 1
+    peaks in K2.0: link 5, eject 4, write-engine input 1, area 1
+    peaks in K2.1: link 4, eject 3, write-engine input 1, area 1
+    peaks in K2.2: link 1, eject 1, write-engine input 1, area 1
+    address generator: 0 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
+    M14: zero-length groups 0 (summed over tiles), of which with a gap 0 (1 + gap since 10 October); group-run stall cycles 0 (drift)
+SortTest: 12 passed, 0 failed
+inputs: meshsim.jar=(classes) image/loader.bin=0061a3a1f88449fe235a04093d14bc5539484f5fc79967f10833f977a37cefee image/sort.code.bin=875997fe3c44c5b7ed7bf89566fbf58e0df1fca048185b15f2883908805119a5 image/sort.data.bin=14c65d88cb9d2fb08183082d3e2bb29e3f309f78d3115627d5b5824c3219d075 image/sort.ovinit.bin=c07c8246b2d64ba33e45cd7b44b2950e4dc46bcf4f0534cb3d97c16b682d38f2 image/sort.stage.bin=131bd9acf8c55505de0944f9f04bcdb349c2f4a1a0c861aaf1f06fbd70c7cb8f image/sort.sym=3fd79b106d9ec51ba5e0820743364d198584ae797676b505fb52d4f497d36d5e hops.txt=a3b90f3c2fbc64f1a93c8c0ff916cfbaf40823aae38c4540811482873741d3da keys-16384/trace10-10.keys=112436cd5dd7cabef0618c39dda6901c92a77ffdee4ded22fc0897e2c2aed193
+sort bt16k-k128 128-bit values [meas: SortTest]: path BT (stage 2 ran); steps (GO -> next GO): L1 138,496 (overlay load 711); SPLIT 313,132 (overlay load 389); XB 7,698; RED 5,522 (overlay load 539); XC 848; TH 18,395 (overlay load 576); SWEEP 54,862; DESC 32,604 (overlay load 415); K1.0 17,907; K1.1 17,287; K1.2 12,118; K2.0 25,050; K2.1 22,132; K2.2 22,243; V1.0 34,381; V1.1 33,671; V1.2 14,617; V2.0 41,521; V2.1 38,517; V2.2 25,365; L2 121,086 (overlay load 187); 10 empty commands 588
+    TOTAL 998,040 cycles (L1 GO -> L2 all READY; real split), of which C&C turnaround 96; ready_latency 8; direct-path bound 4*sum(R) = 467,436, V 8*sum(R) = 934,872; GATHER queue peak 5 of 16; stack headroom 308 B
+    peaks in K1.0: link 5, eject 4, write-engine input 1, area 1
+    peaks in K1.1: link 4, eject 3, write-engine input 1, area 1
+    peaks in K1.2: link 2, eject 2, write-engine input 1, area 1
+    peaks in K2.0: link 5, eject 4, write-engine input 1, area 1
+    peaks in K2.1: link 4, eject 3, write-engine input 1, area 1
+    peaks in K2.2: link 1, eject 1, write-engine input 1, area 1
+    peaks in V1.0: link 7, eject 5, write-engine input 1, area 1
+    peaks in V1.1: link 4, eject 4, write-engine input 1, area 1
+    peaks in V1.2: link 2, eject 2, write-engine input 1, area 1
+    peaks in V2.0: link 7, eject 6, write-engine input 1, area 1
+    peaks in V2.1: link 5, eject 4, write-engine input 1, area 1
+    peaks in V2.2: link 1, eject 1, write-engine input 1, area 1
+    address generator: 2096640 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
+    M14: zero-length groups 0 (summed over tiles), of which with a gap 0 (1 + gap since 10 October); group-run stall cycles 0 (drift)
+SortTest: 13 passed, 0 failed

@@ -1,0 +1,412 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="1433" viewBox="0 0 1300 1433" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif">
+<defs><marker id="m444441" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#444441"/></marker><marker id="mC0392B" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#C0392B"/></marker><marker id="mD85A30" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#D85A30"/></marker></defs>
+<rect width="1300" height="1433" fill="white"/>
+<text x="24.0" y="34.0" font-size="18" text-anchor="start" font-weight="bold" fill="#444441">Figure 2.4. The conditions: where each TILE_CONDITIONS bit is set, the register, and the error line</text>
+<text x="24.0" y="56.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#6b6a64">v1.0 (spec/machine-spec.md §4.13, §6.6, §8.2) — one tile</text>
+<rect x="16.0" y="76.0" width="1268.0" height="552.0" rx="10" fill="white" stroke="#B4B2A9" stroke-width="1"/>
+<text x="30.0" y="100.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">A. The twelve sources, the set-only register and the error line (§4.13, §6.6, §8.2)</text>
+<text x="30.0" y="126.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#6b6a64">bit, condition, unit</text>
+<text x="262.0" y="126.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#6b6a64">set this cycle when</text>
+<text x="590.0" y="126.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#6b6a64">kind</text>
+<text x="626.0" y="126.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#6b6a64">detector drawn in</text>
+<text x="800.0" y="126.0" font-size="11" text-anchor="middle" font-weight="bold" fill="#C0392B">TILE_CONDITIONS</text>
+<rect x="22.0" y="139.0" width="720.0" height="38.0" rx="0" fill="#FAF9F5" stroke="none" stroke-width="0"/>
+<text x="30.0" y="155.0" font-size="12" text-anchor="start" font-weight="bold" fill="#C0392B">0</text>
+<text x="54.0" y="155.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">drift</text>
+<text x="54.0" y="170.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">address generator</text>
+<text x="262.0" y="155.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">group run &amp; request offered</text>
+<text x="262.0" y="169.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">&amp; ¬taken by the SRAM read queue</text>
+<circle cx="600" cy="158.0" r="9" fill="white" stroke="#444441" stroke-width="1.3"/>
+<text x="600.0" y="162.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">P</text>
+<text x="626.0" y="162.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">fig 6.4</text>
+<polyline points="712.0,158.0 759.0,158.0" fill="none" stroke="#C0392B" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#mC0392B)"/>
+<text x="746.0" y="153.0" font-size="9" text-anchor="end" font-weight="normal" fill="#C0392B">set[0]</text>
+<rect x="760.0" y="142.0" width="80.0" height="32.0" rx="6" fill="#FBE9E7" stroke="#C0392B" stroke-width="1.5"/>
+<text x="800.0" y="161.0" font-size="11" text-anchor="middle" font-weight="bold" fill="#444441">Q[0]</text>
+<polyline points="770,174 776,166 782,174" fill="none" stroke="#C0392B" stroke-width="1.2"/>
+<polyline points="840.0,158.0 880.0,158.0" fill="none" stroke="#C0392B" stroke-width="1.4" stroke-linejoin="round"/>
+<circle cx="880.0" cy="158.0" r="3.2" fill="#C0392B"/>
+<text x="30.0" y="195.0" font-size="12" text-anchor="start" font-weight="bold" fill="#C0392B">1</text>
+<text x="54.0" y="195.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">router overflow</text>
+<text x="54.0" y="210.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">routers (every tile)</text>
+<text x="262.0" y="195.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">OR over link, eject and C&amp;C FIFOs:</text>
+<text x="262.0" y="209.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">push &amp; full (panel C)</text>
+<circle cx="600" cy="198.0" r="9" fill="white" stroke="#444441" stroke-width="1.3"/>
+<text x="600.0" y="202.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">P</text>
+<text x="626.0" y="202.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">router figure</text>
+<polyline points="712.0,198.0 759.0,198.0" fill="none" stroke="#C0392B" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#mC0392B)"/>
+<text x="746.0" y="193.0" font-size="9" text-anchor="end" font-weight="normal" fill="#C0392B">set[1]</text>
+<rect x="760.0" y="182.0" width="80.0" height="32.0" rx="6" fill="#FBE9E7" stroke="#C0392B" stroke-width="1.5"/>
+<text x="800.0" y="201.0" font-size="11" text-anchor="middle" font-weight="bold" fill="#444441">Q[1]</text>
+<polyline points="770,214 776,206 782,214" fill="none" stroke="#C0392B" stroke-width="1.2"/>
+<polyline points="840.0,198.0 880.0,198.0" fill="none" stroke="#C0392B" stroke-width="1.4" stroke-linejoin="round"/>
+<circle cx="880.0" cy="198.0" r="3.2" fill="#C0392B"/>
+<rect x="22.0" y="219.0" width="720.0" height="38.0" rx="0" fill="#FAF9F5" stroke="none" stroke-width="0"/>
+<text x="30.0" y="235.0" font-size="12" text-anchor="start" font-weight="bold" fill="#C0392B">2</text>
+<text x="54.0" y="235.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">write-engine input overflow</text>
+<text x="54.0" y="250.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">traffic director</text>
+<text x="262.0" y="235.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">modes 2–4 accepted &amp; the 4-entry</text>
+<text x="262.0" y="249.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">input FIFO full (panel C)</text>
+<circle cx="600" cy="238.0" r="9" fill="white" stroke="#444441" stroke-width="1.3"/>
+<text x="600.0" y="242.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">P</text>
+<text x="626.0" y="242.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">fig 5.1</text>
+<polyline points="712.0,238.0 759.0,238.0" fill="none" stroke="#C0392B" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#mC0392B)"/>
+<text x="746.0" y="233.0" font-size="9" text-anchor="end" font-weight="normal" fill="#C0392B">set[2]</text>
+<rect x="760.0" y="222.0" width="80.0" height="32.0" rx="6" fill="#FBE9E7" stroke="#C0392B" stroke-width="1.5"/>
+<text x="800.0" y="241.0" font-size="11" text-anchor="middle" font-weight="bold" fill="#444441">Q[2]</text>
+<polyline points="770,254 776,246 782,254" fill="none" stroke="#C0392B" stroke-width="1.2"/>
+<polyline points="840.0,238.0 880.0,238.0" fill="none" stroke="#C0392B" stroke-width="1.4" stroke-linejoin="round"/>
+<circle cx="880.0" cy="238.0" r="3.2" fill="#C0392B"/>
+<text x="30.0" y="275.0" font-size="12" text-anchor="start" font-weight="bold" fill="#C0392B">3</text>
+<text x="54.0" y="275.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">read-port overflow</text>
+<text x="54.0" y="290.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">controller read port</text>
+<text x="262.0" y="275.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">a SRAM_RD_ADDR_QUEUE store</text>
+<text x="262.0" y="289.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">&amp; no free entry (panel C)</text>
+<circle cx="600" cy="278.0" r="9" fill="white" stroke="#444441" stroke-width="1.3"/>
+<text x="600.0" y="282.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">P</text>
+<text x="626.0" y="282.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">read-port figure</text>
+<polyline points="712.0,278.0 759.0,278.0" fill="none" stroke="#C0392B" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#mC0392B)"/>
+<text x="746.0" y="273.0" font-size="9" text-anchor="end" font-weight="normal" fill="#C0392B">set[3]</text>
+<rect x="760.0" y="262.0" width="80.0" height="32.0" rx="6" fill="#FBE9E7" stroke="#C0392B" stroke-width="1.5"/>
+<text x="800.0" y="281.0" font-size="11" text-anchor="middle" font-weight="bold" fill="#444441">Q[3]</text>
+<polyline points="770,294 776,286 782,294" fill="none" stroke="#C0392B" stroke-width="1.2"/>
+<polyline points="840.0,278.0 880.0,278.0" fill="none" stroke="#C0392B" stroke-width="1.4" stroke-linejoin="round"/>
+<circle cx="880.0" cy="278.0" r="3.2" fill="#C0392B"/>
+<rect x="22.0" y="299.0" width="720.0" height="38.0" rx="0" fill="#FAF9F5" stroke="none" stroke-width="0"/>
+<text x="30.0" y="315.0" font-size="12" text-anchor="start" font-weight="bold" fill="#C0392B">4</text>
+<text x="54.0" y="315.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">unexpected arrival</text>
+<text x="54.0" y="330.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">down-counters</text>
+<text x="262.0" y="315.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">OR over the three counters:</text>
+<text x="262.0" y="329.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">dec_i &amp; zero_i</text>
+<circle cx="600" cy="318.0" r="9" fill="white" stroke="#444441" stroke-width="1.3"/>
+<text x="600.0" y="322.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">P</text>
+<text x="626.0" y="322.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">fig 2.3 A</text>
+<polyline points="712.0,318.0 759.0,318.0" fill="none" stroke="#C0392B" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#mC0392B)"/>
+<text x="746.0" y="313.0" font-size="9" text-anchor="end" font-weight="normal" fill="#C0392B">set[4]</text>
+<rect x="760.0" y="302.0" width="80.0" height="32.0" rx="6" fill="#FBE9E7" stroke="#C0392B" stroke-width="1.5"/>
+<text x="800.0" y="321.0" font-size="11" text-anchor="middle" font-weight="bold" fill="#444441">Q[4]</text>
+<polyline points="770,334 776,326 782,334" fill="none" stroke="#C0392B" stroke-width="1.2"/>
+<polyline points="840.0,318.0 880.0,318.0" fill="none" stroke="#C0392B" stroke-width="1.4" stroke-linejoin="round"/>
+<circle cx="880.0" cy="318.0" r="3.2" fill="#C0392B"/>
+<text x="30.0" y="355.0" font-size="12" text-anchor="start" font-weight="bold" fill="#C0392B">5</text>
+<text x="54.0" y="355.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">table request overflow</text>
+<text x="54.0" y="370.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">PTR and HIST request FIFOs</text>
+<text x="262.0" y="355.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">push &amp; full on either FIFO</text>
+<text x="262.0" y="369.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">(panel C)</text>
+<circle cx="600" cy="358.0" r="9" fill="white" stroke="#B5651D" stroke-width="1.3"/>
+<text x="600.0" y="362.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#B5651D">H</text>
+<text x="626.0" y="362.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">fig 5.2</text>
+<polyline points="712.0,358.0 759.0,358.0" fill="none" stroke="#C0392B" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#mC0392B)"/>
+<text x="746.0" y="353.0" font-size="9" text-anchor="end" font-weight="normal" fill="#C0392B">set[5]</text>
+<rect x="760.0" y="342.0" width="80.0" height="32.0" rx="6" fill="#FBE9E7" stroke="#C0392B" stroke-width="1.5"/>
+<text x="800.0" y="361.0" font-size="11" text-anchor="middle" font-weight="bold" fill="#444441">Q[5]</text>
+<polyline points="770,374 776,366 782,374" fill="none" stroke="#C0392B" stroke-width="1.2"/>
+<polyline points="840.0,358.0 880.0,358.0" fill="none" stroke="#C0392B" stroke-width="1.4" stroke-linejoin="round"/>
+<circle cx="880.0" cy="358.0" r="3.2" fill="#C0392B"/>
+<rect x="22.0" y="379.0" width="720.0" height="38.0" rx="0" fill="#FAF9F5" stroke="none" stroke-width="0"/>
+<text x="30.0" y="395.0" font-size="12" text-anchor="start" font-weight="bold" fill="#C0392B">6</text>
+<text x="54.0" y="395.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">bus error</text>
+<text x="54.0" y="410.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">controller</text>
+<text x="262.0" y="395.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">misaligned, unmapped or instruction-memory</text>
+<text x="262.0" y="409.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">access; a store to a read-only register *</text>
+<circle cx="600" cy="398.0" r="9" fill="white" stroke="#444441" stroke-width="1.3"/>
+<text x="600.0" y="402.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">P</text>
+<text x="626.0" y="402.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">controller</text>
+<polyline points="712.0,398.0 759.0,398.0" fill="none" stroke="#C0392B" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#mC0392B)"/>
+<text x="746.0" y="393.0" font-size="9" text-anchor="end" font-weight="normal" fill="#C0392B">set[6]</text>
+<rect x="760.0" y="382.0" width="80.0" height="32.0" rx="6" fill="#FBE9E7" stroke="#C0392B" stroke-width="1.5"/>
+<text x="800.0" y="401.0" font-size="11" text-anchor="middle" font-weight="bold" fill="#444441">Q[6]</text>
+<polyline points="770,414 776,406 782,414" fill="none" stroke="#C0392B" stroke-width="1.2"/>
+<polyline points="840.0,398.0 880.0,398.0" fill="none" stroke="#C0392B" stroke-width="1.4" stroke-linejoin="round"/>
+<circle cx="880.0" cy="398.0" r="3.2" fill="#C0392B"/>
+<text x="30.0" y="435.0" font-size="12" text-anchor="start" font-weight="bold" fill="#C0392B">7</text>
+<text x="54.0" y="435.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">illegal instruction</text>
+<text x="54.0" y="450.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">controller</text>
+<text x="262.0" y="435.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">an instruction outside RV32I + Zmmul</text>
+<text x="262.0" y="449.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">+ WFI (§4.11)</text>
+<circle cx="600" cy="438.0" r="9" fill="white" stroke="#444441" stroke-width="1.3"/>
+<text x="600.0" y="442.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">P</text>
+<text x="626.0" y="442.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">controller</text>
+<polyline points="712.0,438.0 759.0,438.0" fill="none" stroke="#C0392B" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#mC0392B)"/>
+<text x="746.0" y="433.0" font-size="9" text-anchor="end" font-weight="normal" fill="#C0392B">set[7]</text>
+<rect x="760.0" y="422.0" width="80.0" height="32.0" rx="6" fill="#FBE9E7" stroke="#C0392B" stroke-width="1.5"/>
+<text x="800.0" y="441.0" font-size="11" text-anchor="middle" font-weight="bold" fill="#444441">Q[7]</text>
+<polyline points="770,454 776,446 782,454" fill="none" stroke="#C0392B" stroke-width="1.2"/>
+<polyline points="840.0,438.0 880.0,438.0" fill="none" stroke="#C0392B" stroke-width="1.4" stroke-linejoin="round"/>
+<circle cx="880.0" cy="438.0" r="3.2" fill="#C0392B"/>
+<rect x="22.0" y="459.0" width="720.0" height="38.0" rx="0" fill="#FAF9F5" stroke="none" stroke-width="0"/>
+<text x="30.0" y="475.0" font-size="12" text-anchor="start" font-weight="bold" fill="#C0392B">8</text>
+<text x="54.0" y="475.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">GATHER queue overflow</text>
+<text x="54.0" y="490.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">GATHER engine</text>
+<text x="262.0" y="475.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">mode 1 accepted &amp; the 16-entry</text>
+<text x="262.0" y="489.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">request queue full (panel C)</text>
+<circle cx="600" cy="478.0" r="9" fill="white" stroke="#B5651D" stroke-width="1.3"/>
+<text x="600.0" y="482.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#B5651D">H</text>
+<text x="626.0" y="482.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">GATHER figure</text>
+<polyline points="712.0,478.0 759.0,478.0" fill="none" stroke="#C0392B" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#mC0392B)"/>
+<text x="746.0" y="473.0" font-size="9" text-anchor="end" font-weight="normal" fill="#C0392B">set[8]</text>
+<rect x="760.0" y="462.0" width="80.0" height="32.0" rx="6" fill="#FBE9E7" stroke="#C0392B" stroke-width="1.5"/>
+<text x="800.0" y="481.0" font-size="11" text-anchor="middle" font-weight="bold" fill="#444441">Q[8]</text>
+<polyline points="770,494 776,486 782,494" fill="none" stroke="#C0392B" stroke-width="1.2"/>
+<polyline points="840.0,478.0 880.0,478.0" fill="none" stroke="#C0392B" stroke-width="1.4" stroke-linejoin="round"/>
+<circle cx="880.0" cy="478.0" r="3.2" fill="#C0392B"/>
+<text x="30.0" y="515.0" font-size="12" text-anchor="start" font-weight="bold" fill="#C0392B">9</text>
+<text x="54.0" y="515.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">bad mode</text>
+<text x="54.0" y="530.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">traffic director</text>
+<text x="262.0" y="515.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">a packet accepted with mode 0</text>
+<text x="262.0" y="529.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">or 8–15; it is dropped</text>
+<circle cx="600" cy="518.0" r="9" fill="white" stroke="#444441" stroke-width="1.3"/>
+<text x="600.0" y="522.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">P</text>
+<text x="626.0" y="522.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">fig 5.1</text>
+<polyline points="712.0,518.0 759.0,518.0" fill="none" stroke="#C0392B" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#mC0392B)"/>
+<text x="746.0" y="513.0" font-size="9" text-anchor="end" font-weight="normal" fill="#C0392B">set[9]</text>
+<rect x="760.0" y="502.0" width="80.0" height="32.0" rx="6" fill="#FBE9E7" stroke="#C0392B" stroke-width="1.5"/>
+<text x="800.0" y="521.0" font-size="11" text-anchor="middle" font-weight="bold" fill="#444441">Q[9]</text>
+<polyline points="770,534 776,526 782,534" fill="none" stroke="#C0392B" stroke-width="1.2"/>
+<polyline points="840.0,518.0 880.0,518.0" fill="none" stroke="#C0392B" stroke-width="1.4" stroke-linejoin="round"/>
+<circle cx="880.0" cy="518.0" r="3.2" fill="#C0392B"/>
+<rect x="22.0" y="539.0" width="720.0" height="38.0" rx="0" fill="#FAF9F5" stroke="none" stroke-width="0"/>
+<text x="30.0" y="555.0" font-size="12" text-anchor="start" font-weight="bold" fill="#C0392B">10</text>
+<text x="54.0" y="555.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">done early</text>
+<text x="54.0" y="570.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">the done pulse</text>
+<text x="262.0" y="562.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">done_p &amp; nz_any (any counter ≠ 0)</text>
+<circle cx="600" cy="558.0" r="9" fill="white" stroke="#444441" stroke-width="1.3"/>
+<text x="600.0" y="562.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">P</text>
+<text x="626.0" y="562.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">fig 2.3 D</text>
+<polyline points="712.0,558.0 759.0,558.0" fill="none" stroke="#C0392B" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#mC0392B)"/>
+<text x="746.0" y="553.0" font-size="9" text-anchor="end" font-weight="normal" fill="#C0392B">set[10]</text>
+<rect x="760.0" y="542.0" width="80.0" height="32.0" rx="6" fill="#FBE9E7" stroke="#C0392B" stroke-width="1.5"/>
+<text x="800.0" y="561.0" font-size="11" text-anchor="middle" font-weight="bold" fill="#444441">Q[10]</text>
+<polyline points="770,574 776,566 782,574" fill="none" stroke="#C0392B" stroke-width="1.2"/>
+<polyline points="840.0,558.0 880.0,558.0" fill="none" stroke="#C0392B" stroke-width="1.4" stroke-linejoin="round"/>
+<circle cx="880.0" cy="558.0" r="3.2" fill="#C0392B"/>
+<polyline points="880.0,158.0 880.0,558.0" fill="none" stroke="#C0392B" stroke-width="3" stroke-linejoin="round"/>
+<text x="888.0" y="150.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#C0392B">Q[10:0]</text>
+<path d="M930,190.0 Q950.9,190.0 968,218 Q950.9,246.0 930,246.0 Q939,218 930,190.0 Z" fill="white" stroke="#444441" stroke-width="1.4"/>
+<polyline points="880.0,218.0 934.0,218.0" fill="none" stroke="#C0392B" stroke-width="2.4" stroke-linejoin="round"/>
+<text x="948.0" y="222.0" font-size="11" text-anchor="middle" font-weight="bold" fill="#C0392B">≥1</text>
+<text x="949.0" y="184.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64">OR over 11 bits</text>
+<polyline points="968.0,218.0 1010.0,218.0" fill="none" stroke="#C0392B" stroke-width="2" stroke-linejoin="round" marker-end="url(#mC0392B)"/>
+<rect x="1012.0" y="178.0" width="254.0" height="80.0" rx="6" fill="#FBE9E7" stroke="#C0392B" stroke-width="1.4"/>
+<text x="1139.0" y="200.4" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#444441">error line (1 bit) → tile edge</text>
+<text x="1139.0" y="215.9" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">my TILE_CONDITIONS ≠ 0; figure 1.2's OR tree</text>
+<text x="1139.0" y="229.8" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">over 64 tiles (no equal latency) feeds</text>
+<text x="1139.0" y="243.6" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">C&amp;C's sticky error bit, a wake for C&amp;C</text>
+<polyline points="880.0,378.0 1010.0,378.0" fill="none" stroke="#C0392B" stroke-width="2" stroke-linejoin="round" marker-end="url(#mC0392B)"/>
+<rect x="1012.0" y="332.0" width="254.0" height="92.0" rx="6" fill="white" stroke="#C0392B" stroke-width="1.4"/>
+<text x="1139.0" y="353.4" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#444441">read-back: load 0xFFFFF804</text>
+<text x="1139.0" y="369.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">data = {21'b0, Q[10:0]}: bits 11–31 read 0</text>
+<text x="1139.0" y="382.8" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">a store is a bus error (condition 6),</text>
+<text x="1139.0" y="396.7" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">and nothing is written *</text>
+<text x="1139.0" y="410.5" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">(provisional offset, §8)</text>
+<rect x="940.0" y="520.0" width="74.0" height="34.0" rx="6" fill="#F1EFE8" stroke="#444441" stroke-width="1.5"/>
+<text x="977.0" y="540.0" font-size="11" text-anchor="middle" font-weight="bold" fill="#444441">halt_q</text>
+<polyline points="950,554 956,546 962,554" fill="none" stroke="#444441" stroke-width="1.2"/>
+<path d="M1060,493.0 L1079.0,493.0 A17.0,17.0 0 0 1 1079.0,527.0 L1060,527.0 Z" fill="white" stroke="#444441" stroke-width="1.4"/>
+<text x="1074.0" y="489.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64">RUN → HALT</text>
+<text x="944.0" y="496.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#D85A30">halt = ¬RUN</text>
+<polyline points="940.0,503.0 1059.0,503.0" fill="none" stroke="#D85A30" stroke-width="1.4" stroke-linejoin="round" stroke-dasharray="4 3"/>
+<circle cx="1000.0" cy="503.0" r="3.2" fill="#D85A30"/>
+<polyline points="1000.0,503.0 1000.0,510.0 928.0,510.0 928.0,537.0 939.0,537.0" fill="none" stroke="#D85A30" stroke-width="1.3" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<polyline points="1014.0,537.0 1040.0,537.0 1040.0,517.0 1052.0,517.0" fill="none" stroke="#D85A30" stroke-width="1.3" stroke-linejoin="round" stroke-dasharray="4 3"/>
+<circle cx="1056.0" cy="517.0" r="4" fill="white" stroke="#D85A30" stroke-width="1.3"/>
+<path d="M1130,507.0 Q1150.9,507.0 1168,524 Q1150.9,541.0 1130,541.0 Q1139,524 1130,507.0 Z" fill="white" stroke="#444441" stroke-width="1.4"/>
+<text x="1149.0" y="503.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64">clr</text>
+<polyline points="1096.0,510.0 1134.0,517.0" fill="none" stroke="#D85A30" stroke-width="1.4" stroke-linejoin="round" stroke-dasharray="4 3"/>
+<polyline points="1100.0,560.0 1120.0,560.0 1120.0,531.0 1134.0,531.0" fill="none" stroke="#D85A30" stroke-width="1.3" stroke-linejoin="round" stroke-dasharray="4 3"/>
+<text x="1096.0" y="564.0" font-size="10.5" text-anchor="end" font-weight="normal" fill="#D85A30">chip reset</text>
+<polyline points="1168.0,524.0 1200.0,524.0 1200.0,594.0" fill="none" stroke="#D85A30" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="4 3"/>
+<polyline points="1200.0,594.0 1200.0,594.0 800.0,594.0 800.0,580.0" fill="none" stroke="#D85A30" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<text x="808.0" y="588.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#D85A30">clr to all 11 cells: the clear wins over a set in the same cycle</text>
+<text x="30.0" y="604.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">* A store to TILE_CONDITIONS is a bus error. P: program error. H: hardware-fault detector; no program on a correct design sets it. 6 and 7 can also mean a fault (a corrupted image).</text>
+<rect x="16.0" y="646.0" width="628.0" height="280.0" rx="10" fill="white" stroke="#B4B2A9" stroke-width="1"/>
+<text x="30.0" y="670.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">B. One bit cell: set-only, cleared on entering HALT (§4.13)</text>
+<path d="M150,732.0 Q170.9,732.0 188,749 Q170.9,766.0 150,766.0 Q159,749 150,732.0 Z" fill="white" stroke="#444441" stroke-width="1.4"/>
+<text x="169.0" y="728.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64">OR</text>
+<text x="110.0" y="746.0" font-size="10.5" text-anchor="end" font-weight="bold" fill="#C0392B">set[n]</text>
+<polyline points="114.0,742.0 154.0,742.0" fill="none" stroke="#C0392B" stroke-width="1.5" stroke-linejoin="round"/>
+<path d="M240,739.0 L259.0,739.0 A17.0,17.0 0 0 1 259.0,773.0 L240,773.0 Z" fill="white" stroke="#444441" stroke-width="1.4"/>
+<text x="254.0" y="735.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64">AND</text>
+<polyline points="188.0,749.0 239.0,749.0" fill="none" stroke="#444441" stroke-width="1.5" stroke-linejoin="round"/>
+<text x="196.0" y="797.0" font-size="10.5" text-anchor="end" font-weight="bold" fill="#D85A30">clr</text>
+<polyline points="200.0,793.0 216.0,793.0 216.0,763.0 232.0,763.0" fill="none" stroke="#D85A30" stroke-width="1.4" stroke-linejoin="round" stroke-dasharray="4 3"/>
+<circle cx="236.0" cy="763.0" r="4" fill="white" stroke="#D85A30" stroke-width="1.3"/>
+<rect x="330.0" y="730.0" width="110.0" height="52.0" rx="6" fill="#FBE9E7" stroke="#C0392B" stroke-width="1.5"/>
+<text x="385.0" y="752.2" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#444441">Q[n]</text>
+<text x="385.0" y="767.8" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">register</text>
+<polyline points="340,782 346,774 352,782" fill="none" stroke="#C0392B" stroke-width="1.2"/>
+<polyline points="276.0,756.0 329.0,756.0" fill="none" stroke="#444441" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="300.0" y="750.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64">D</text>
+<polyline points="440.0,756.0 500.0,756.0" fill="none" stroke="#C0392B" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#mC0392B)"/>
+<circle cx="470.0" cy="756.0" r="3.2" fill="#C0392B"/>
+<polyline points="470.0,756.0 470.0,816.0 130.0,816.0 130.0,756.0 154.0,756.0" fill="none" stroke="#C0392B" stroke-width="1.4" stroke-linejoin="round"/>
+<text x="506.0" y="760.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#C0392B">Q[n] → bus</text>
+<text x="30.0" y="872.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">D = (Q | set) &amp; ¬clr: once set, a bit holds until the tile enters HALT; a set in the clear's cycle is lost (the</text>
+<text x="30.0" y="886.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">clear wins). A bit set while halted (say, a bad mode during loading) holds into RUN, where the loader can check it.</text>
+<text x="30.0" y="900.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">Nothing in RUN clears a bit, so a program cannot hide one.</text>
+<rect x="656.0" y="646.0" width="628.0" height="280.0" rx="10" fill="white" stroke="#B4B2A9" stroke-width="1"/>
+<text x="670.0" y="670.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">C. The overflow detector: conditions 1, 2, 3, 5 and 8 (§4.13)</text>
+<text x="736.0" y="735.0" font-size="10.5" text-anchor="end" font-weight="bold" fill="#444441">push</text>
+<polyline points="740.0,731.0 766.0,731.0" fill="none" stroke="#444441" stroke-width="1.5" stroke-linejoin="round"/>
+<circle cx="766.0" cy="731.0" r="3.2" fill="#444441"/>
+<path d="M826,721.0 L845.0,721.0 A17.0,17.0 0 0 1 845.0,755.0 L826,755.0 Z" fill="white" stroke="#444441" stroke-width="1.4"/>
+<text x="840.0" y="717.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64">write enable</text>
+<polyline points="766.0,731.0 825.0,731.0" fill="none" stroke="#444441" stroke-width="1.4" stroke-linejoin="round"/>
+<rect x="916.0" y="708.0" width="150.0" height="60.0" rx="6" fill="#F1EFE8" stroke="#444441" stroke-width="1.4"/>
+<text x="991.0" y="734.2" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#444441">FIFO or queue</text>
+<text x="991.0" y="749.8" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">depth D; full = (count = D)</text>
+<polyline points="862.0,738.0 915.0,738.0" fill="none" stroke="#444441" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<polyline points="991.0,768.0 991.0,790.0" fill="none" stroke="#444441" stroke-width="1.4" stroke-linejoin="round"/>
+<text x="997.0" y="780.0" font-size="10" text-anchor="start" font-weight="normal" fill="#6b6a64">full</text>
+<circle cx="991.0" cy="790.0" r="3.2" fill="#444441"/>
+<polyline points="991.0,790.0 796.0,790.0 796.0,745.0 818.0,745.0" fill="none" stroke="#444441" stroke-width="1.4" stroke-linejoin="round"/>
+<circle cx="822.0" cy="745.0" r="4" fill="white" stroke="#444441" stroke-width="1.3"/>
+<path d="M826,807.0 L845.0,807.0 A17.0,17.0 0 0 1 845.0,841.0 L826,841.0 Z" fill="white" stroke="#444441" stroke-width="1.4"/>
+<polyline points="766.0,731.0 766.0,817.0 825.0,817.0" fill="none" stroke="#444441" stroke-width="1.4" stroke-linejoin="round"/>
+<polyline points="796.0,790.0 796.0,831.0 825.0,831.0" fill="none" stroke="#444441" stroke-width="1.4" stroke-linejoin="round"/>
+<circle cx="796.0" cy="790.0" r="3.2" fill="#444441"/>
+<polyline points="862.0,824.0 956.0,824.0" fill="none" stroke="#C0392B" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#mC0392B)"/>
+<text x="962.0" y="828.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#C0392B">set[n]: the item is dropped</text>
+<text x="670.0" y="872.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">write enable = push &amp; ¬full; set = push &amp; full. The arriving item is dropped on every</text>
+<text x="670.0" y="886.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">overflow. Full is the count before the cycle's pop, so a push at full overflows even with</text>
+<text x="670.0" y="900.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">a pop in the same cycle.</text>
+<text x="30.0" y="946.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">D. What each condition means for the machine</text>
+<rect x="30.0" y="958.0" width="44.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="37.0" y="973.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">bit</text>
+<rect x="74.0" y="958.0" width="216.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="81.0" y="973.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">condition</text>
+<rect x="290.0" y="958.0" width="90.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="297.0" y="973.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">kind</text>
+<rect x="380.0" y="958.0" width="380.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="387.0" y="973.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">what is lost</text>
+<rect x="760.0" y="958.0" width="510.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="767.0" y="973.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">does it stop anything?</text>
+<rect x="30.0" y="979.0" width="44.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="37.0" y="994.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0</text>
+<rect x="74.0" y="979.0" width="216.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="81.0" y="994.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">drift</text>
+<rect x="290.0" y="979.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="297.0" y="994.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">P</text>
+<rect x="380.0" y="979.0" width="380.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="387.0" y="994.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">nothing; the tile falls behind its timetable</text>
+<rect x="760.0" y="979.0" width="510.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="767.0" y="994.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">no</text>
+<rect x="30.0" y="1000.0" width="44.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="37.0" y="1015.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1</text>
+<rect x="74.0" y="1000.0" width="216.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="81.0" y="1015.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">router overflow</text>
+<rect x="290.0" y="1000.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="297.0" y="1015.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">P</text>
+<rect x="380.0" y="1000.0" width="380.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="387.0" y="1015.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">the arriving packet</text>
+<rect x="760.0" y="1000.0" width="510.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="767.0" y="1015.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">no</text>
+<rect x="30.0" y="1021.0" width="44.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="37.0" y="1036.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">2</text>
+<rect x="74.0" y="1021.0" width="216.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="81.0" y="1036.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">write-engine input overflow</text>
+<rect x="290.0" y="1021.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="297.0" y="1036.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">P</text>
+<rect x="380.0" y="1021.0" width="380.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="387.0" y="1036.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">the arriving packet (a 64-bit write)</text>
+<rect x="760.0" y="1021.0" width="510.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="767.0" y="1036.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">no</text>
+<rect x="30.0" y="1042.0" width="44.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="37.0" y="1057.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">3</text>
+<rect x="74.0" y="1042.0" width="216.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="81.0" y="1057.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">read-port overflow</text>
+<rect x="290.0" y="1042.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="297.0" y="1057.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">P</text>
+<rect x="380.0" y="1042.0" width="380.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="387.0" y="1057.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">the read request</text>
+<rect x="760.0" y="1042.0" width="510.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="767.0" y="1057.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">no</text>
+<rect x="30.0" y="1063.0" width="44.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="37.0" y="1078.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">4</text>
+<rect x="74.0" y="1063.0" width="216.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="81.0" y="1078.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">unexpected arrival</text>
+<rect x="290.0" y="1063.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="297.0" y="1078.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">P</text>
+<rect x="380.0" y="1063.0" width="380.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="387.0" y="1078.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">nothing: the packet lands; the counter stays at 0</text>
+<rect x="760.0" y="1063.0" width="510.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="767.0" y="1078.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">no</text>
+<rect x="30.0" y="1084.0" width="44.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="37.0" y="1099.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">5</text>
+<rect x="74.0" y="1084.0" width="216.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="81.0" y="1099.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">table request overflow</text>
+<rect x="290.0" y="1084.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="297.0" y="1099.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#B5651D">H</text>
+<rect x="380.0" y="1084.0" width="380.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="387.0" y="1099.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">the PTR or HIST request (an increment)</text>
+<rect x="760.0" y="1084.0" width="510.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="767.0" y="1099.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">no</text>
+<rect x="30.0" y="1105.0" width="44.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="37.0" y="1120.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">6</text>
+<rect x="74.0" y="1105.0" width="216.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="81.0" y="1120.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">bus error</text>
+<rect x="290.0" y="1105.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="297.0" y="1120.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">P (or fault)</text>
+<rect x="380.0" y="1105.0" width="380.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="387.0" y="1120.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">the access</text>
+<rect x="760.0" y="1105.0" width="510.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="767.0" y="1120.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">halts the tile's controller; engines and router run on</text>
+<rect x="30.0" y="1126.0" width="44.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="37.0" y="1141.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">7</text>
+<rect x="74.0" y="1126.0" width="216.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="81.0" y="1141.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">illegal instruction</text>
+<rect x="290.0" y="1126.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="297.0" y="1141.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">P (or fault)</text>
+<rect x="380.0" y="1126.0" width="380.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="387.0" y="1141.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">the instruction</text>
+<rect x="760.0" y="1126.0" width="510.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="767.0" y="1141.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">halts the tile's controller; engines and router run on</text>
+<rect x="30.0" y="1147.0" width="44.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="37.0" y="1162.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">8</text>
+<rect x="74.0" y="1147.0" width="216.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="81.0" y="1162.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">GATHER queue overflow</text>
+<rect x="290.0" y="1147.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="297.0" y="1162.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#B5651D">H</text>
+<rect x="380.0" y="1147.0" width="380.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="387.0" y="1162.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">the mode-1 request</text>
+<rect x="760.0" y="1147.0" width="510.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="767.0" y="1162.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">no</text>
+<rect x="30.0" y="1168.0" width="44.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="37.0" y="1183.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">9</text>
+<rect x="74.0" y="1168.0" width="216.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="81.0" y="1183.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">bad mode</text>
+<rect x="290.0" y="1168.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="297.0" y="1183.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">P</text>
+<rect x="380.0" y="1168.0" width="380.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="387.0" y="1183.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">the packet (mode 0 or 8–15 is always dropped)</text>
+<rect x="760.0" y="1168.0" width="510.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="767.0" y="1183.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">no</text>
+<rect x="30.0" y="1189.0" width="44.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="37.0" y="1204.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">10</text>
+<rect x="74.0" y="1189.0" width="216.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="81.0" y="1204.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">done early</text>
+<rect x="290.0" y="1189.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="297.0" y="1204.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">P</text>
+<rect x="380.0" y="1189.0" width="380.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="387.0" y="1204.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">nothing: done still pulses</text>
+<rect x="760.0" y="1189.0" width="510.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="767.0" y="1204.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">no</text>
+<text x="30.0" y="1236.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">• A condition means the software did something wrong, or the hardware is faulty: a correct program on correct hardware reads TILE_CONDITIONS = 0 forever. Setting one stops nothing except 6 and 7, which halt</text>
+<text x="42.0" y="1251.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">the controller only.</text>
+<text x="30.0" y="1270.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">• Entering HALT (the RUN → HALT edge, or chip reset) clears every bit; HALT → RUN does not. A program finds new conditions in a phase by reading TILE_CONDITIONS at its start and again at its end. C&amp;C learns</text>
+<text x="42.0" y="1285.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">at once through the error line, and collects the tiles' bits with REPORT (§6.6, a C&amp;C and software protocol).</text>
+<text x="30.0" y="1304.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">• Detectors for 1, 3 and 8 are drawn in the router, read-port and GATHER figures still to come; this figure fixes their set expressions and what they drop.</text>
+<polyline points="30.0,1337.0 70.0,1337.0" fill="none" stroke="#444441" stroke-width="2" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="78.0" y="1341.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">datapath</text>
+<polyline points="160.0,1337.0 200.0,1337.0" fill="none" stroke="#C0392B" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#mC0392B)"/>
+<text x="208.0" y="1341.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">condition sets, Q and the error line</text>
+<polyline points="450.0,1337.0 490.0,1337.0" fill="none" stroke="#D85A30" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<text x="498.0" y="1341.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">clears</text>
+<circle cx="570" cy="1337" r="3.2" fill="#444441"/>
+<text x="580.0" y="1341.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">junction (crossings without a dot don't connect); wedge: clocked register</text>
+<line x1="24" y1="1357" x2="1276" y2="1357" stroke="#B4B2A9" stroke-width="0.8"/>
+<text x="24.0" y="1379.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">TILE_CONDITIONS holds 11 set-only bits, one per error a tile can detect; entering HALT clears them all, and the clear wins over a set in the same cycle.</text>
+<text x="24.0" y="1395.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">Their OR is the tile's error line to C&amp;C. Five are overflow detectors that drop the arriving item; two (5 and 8) can only mean a hardware fault.</text>
+<text x="24.0" y="1411.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">The register is read-only: a store to it is itself a bus error.</text>
+<text x="24.0" y="1427.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">Source: spec/machine-spec.md v1.0, §4.3, §4.4, §4.7, §4.9–§4.13, §4.16, §6.6, §8.3.</text>
+</svg>

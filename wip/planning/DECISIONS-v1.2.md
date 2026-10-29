@@ -163,8 +163,10 @@ Decided with Tony (O, T). Replaces 4.12's four named down-counters.
   after the program arms *N* uses up one of the *N*: done fires one word early, and the batch's last real
   word then raises unexpected arrival. The error is caught, later than in v1.1 and naming the last real
   word rather than the stray; only a second, cancelling bug (a batch armed one too high) would hide it.
-  Considered and not taken: decrement at acceptance and delay only the done. **meshsim checks at
-  acceptance** and names the stray precisely.
+  Considered and not taken: decrement at acceptance and delay only the done. **meshsim models the
+  hardware exactly** (owner, 2026-10-28; W2-16): its `ERRORS` bit and error line follow the decrement, as in
+  hardware, and it **reports the stray separately, as a diagnostic at acceptance**, naming it precisely. The
+  simulated chip never gets out of step with the real one.
 - **HALT no longer suppresses counting** (replacing 3.1 and 4.12's "a halted tile counts nothing"). Boot
   loads and staging into a halted tile are sent with counter 0. ~~A counted packet arriving at a halted
   tile hits a counter at 0 and sets unexpected arrival, which survives into RUN where the loader can see

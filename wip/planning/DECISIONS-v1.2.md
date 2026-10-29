@@ -765,6 +765,10 @@ only way to stop anything**, and coming out of reset means running in the boot R
 - **Loading needs no special state:** a unit asleep in its boot ROM accepts uncounted writes normally. 6.2's
   "halt a tile before an uncoordinated write" goes; staging into a running unit is coordinated by software.
 - **READY is for the phase cycle only**, tiles 0-63: `READY_LINES` bits 65 and 66 (21) aren't needed.
+- **What we gain: starting units one at a time** (owner). Every unit leaves the reset together, but each
+  starts only when its own marker lands; the rest sleep in their boot ROMs. C&C 1 can bring up a single
+  tile at a time (chip bring-up, testing units one by one), or start C&C 2 and C&C 3 and check them before
+  loading the mesh.
 - **What we give up:** stopping a single unit to inspect it. After an error we get what the handler's
   reports carry, then the chip restarts.
 - **Debugging instead** (owner): each tile opens log files through the file system and `printf`s into them;

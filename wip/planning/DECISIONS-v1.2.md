@@ -963,7 +963,7 @@ A running list; each entry names where it came from. Resolved entries move into 
 | Q2 | How long a high on the C&C pin counts as "sustained" for the host | 1.5 | **resolved: section 24** (the error pin never pulses) |
 | Q3 | What stops the peripheral and the sender when a condition traps | 1.7 | **resolved: section 21** (nothing, until the global reset) |
 | Q4 | The HALT design | planning notes section 7 | **resolved: sections 21-23** (no HALT state; the global reset is the only stop) |
-| Q5 | Should an area serve writes ahead of queued reads? Not needed for S1 if K covers only the path to the area queue | 3 | open; for Tony |
+| Q5 | Should an area serve writes ahead of queued reads? | 3 | **resolved: no** (owner, 2026-10-28; W2-15): areas keep strict arrival order. Writes jumping ahead of queued reads would break read-before-write reuse: a stream's source buffer overwritten after its run, and the local sort's ping-pong passes, where pass *n* + 1 writes the buffer pass *n* is still reading |
 | Q6 | The link word's 32-bit address: what it covers | 2 | **resolved: section 5** |
 | Q7 | The 3-bit mode: which of today's nine modes merge or go, now that counting is separate | 2 | **resolved: section 6** |
 | Q9 | Does a stream's source stay a 21-bit big-SRAM chunk address, or does the 32-bit address apply to reads too? | 4 | open |

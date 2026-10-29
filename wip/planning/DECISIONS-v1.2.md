@@ -222,7 +222,7 @@ for one cycle, a store of 0 does nothing, and a load reads 0.
 |---|---|---|
 | `TILE_PULSE` [0] | `TILE_DONE_PULSE` | the `done` pulse (6.3) |
 | `TILE_PULSE` [1] | `DMA_START_PULSE` | start the run in `DMA_CONFIG` (4.2) |
-| `TILE_PULSE` [2] | `PERIPH_1_RUN_PULSE`, `PERIPH_2_RUN_PULSE`, ... | run a peripheral, one register per peripheral (Q11) |
+| `TILE_PULSE` [2] | ~~`PERIPH_1_RUN_PULSE`, ...~~ | moved: word 0 of each peripheral's window (10) |
 | `TILE_PULSE` [3] | `TILE_GO_PULSE` | drive the GO net where it is wired (6.3) |
 
 - Firing two actions in one store is no longer possible; 8.6's "in one store, start and run act before
@@ -252,6 +252,30 @@ Decided (O). Answers most of Q11.
 - **Follow-on:** v1.1's slot interface (4.17) shrinks: `PERIPH_STATUS_0`-`7` and the service lines move
   into each peripheral's window; the per-peripheral run pulses (8) could move there too. The replayer
   (4.19) becomes peripheral 1 on the tiles that have one.
+
+## 10. The standard peripheral window (2026-10-28)
+
+Decided (O). Every peripheral's 0x200-byte register window (9) starts with the same words; word *n* is at
+window base + 4*n*.
+
+| word | name (proposed) | purpose |
+|---|---|---|
+| 0 | `RUN_PULSE` | store 1 to start a run |
+| 1 | `SEND_PULSE` | store 1 to issue the send set up in words 33-34 |
+| 2-31 | `CLEAR_2_PULSE` ... `CLEAR_31_PULSE` | store 1 to clear status flag *n*, e.g. "queue refilled" |
+| 32 | `STATUS` | flag *n* in bit *n*: why the peripheral woke or interrupted the controller. *(Proposed:* bit 0 run in progress, bit 1 send in progress*)* |
+| 33 | `SEND_ADDR` | the send's 32-bit destination address, advancing as words go out |
+| 34 | `SEND_SETUP` | counter, mode and dst in the standard order (2), output queue, word count (2 + 3 + 7 + 2 + 16 = 30 bits) |
+| 35+ | | peripheral-defined |
+
+- Every action is its own address, as in 8: a store of 1 fires it, a store of 0 does nothing.
+- **The sender is optional.** A peripheral without output (the replayer, for one) leaves words 1, 33 and
+  34 unused. This replaces v1.1's tile-level sender (`SENDER_SEND`, `SENDER_ADDR`, `sender_busy`, sender
+  idle at `WAKE_EVENTS` [20]; 4.17.9, 8.12).
+- **The run pulses move into the windows:** section 8's `PERIPH_1_RUN_PULSE`-`PERIPH_3_RUN_PULSE` leave
+  the controller's registers.
+- Replaces v1.1's `PERIPH_STATUS_0`-`7`, `periph_running`, the six service lines and the peripheral
+  conditions [13:11] in the controller's registers (4.17).
 
 ---
 
@@ -286,6 +310,7 @@ A running list; each entry names where it came from. Resolved entries move into 
 | Q7 | The 3-bit mode: which of today's nine modes merge or go, now that counting is separate | 2 | **resolved: section 6** |
 | Q9 | Does a stream's source stay a 21-bit big-SRAM chunk address, or does the 32-bit address apply to reads too? | 4 | open |
 | Q10 | Is the 24-bit offset in bytes or in 32-bit words? | 5 | open |
-| Q11 | How several peripherals share the slot's interface | 5 | **mostly resolved: section 9.** Left: whether conditions 11-13 become per peripheral, and whether the run pulses move into the peripheral windows |
+| Q11 | How several peripherals share the slot's interface | 5 | **resolved: sections 9 and 10** |
+| Q13 | Which peripheral flags only wake the controller (its wake bit) and which raise a tile condition (the hard interrupt), and whether that is per flag | 10 | open |
 | Q12 | meshsim's per-tile debug console without a UART on every tile: request-bus debug messages (6.7) or a simulator-only print register | 9 | open |
 | Q8 | The counter field in every packet source: `STREAM` entries, the send port's header, the sender, the read port's setup, the GATHER engine's gather values, and memory-system requests | 3 | open |

@@ -641,6 +641,14 @@ Decided (O, T), from WORKER1's review (W1-02, W1-04). Revises 1.4's parking rule
   handler's reports carry `mcause`, and the tile parks. The loader's "anything else -> `ebreak`" path
   changes (it can simply stay in its wait loop), and `CMD_EXIT`, simulator only, needs another way for
   meshsim to end a test: a meshsim matter, not a spec one.
+- **Handler conventions** (owner, 2026-10-28; W1-17):
+  - **What it reports:** the tile's `PARAMS`, `STATUS`, `ERRORS`, `EVENTS_PEEK`, the counters,
+    `mepc`/`mcause`/`mtval`, x1-x31, and for each present peripheral its window's standard words (10),
+    about ten words per peripheral, in place of v1.1's `PERIPH_STATUS_0`-`7`. The set is fixed (21).
+  - **It checks `PARAMS` [2:0] before reading a peripheral's window:** reading an absent peripheral's
+    window is a bus error, which would trap inside the handler.
+  - **It reads `EVENTS_PEEK`, never `EVENTS`**, at both levels: a load of `EVENTS` consumes events and
+    would destroy the state it is reporting.
 - **For Q1 (Tony):** the CSR list and their reset values, in particular `mtvec`'s (W1-03). Where `mepc`
   points after a trap taken in `WFI` no longer matters.
 

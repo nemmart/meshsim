@@ -572,7 +572,7 @@ Gone: `periph_running` and `sender_busy` (now each peripheral's `STATUS`), `ts_b
 | bit | error | v1.1 |
 |---|---|---|
 | [0] | router overflow | |
-| [1] | bad packet: bad size, misaligned address, or a region it can't reach | reserved modes no longer count (6) |
+| [1] | bad packet or misaligned access: a misaligned packet or big-SRAM access, or a region it can't reach (26) | reserved modes no longer count (6) |
 | [2] | unexpected arrival | |
 | [3] | drift | |
 | [4] | write-engine input overflow | |
@@ -850,6 +850,18 @@ From W2-06. Defines `ERRORS` [1], "bad packet" (18).
   (controller memory) and the peripherals take 1, 2 or 4 words at any word address; that goes. Read-port
   results, block copies, and DMA or send-port runs must start aligned to their size. The software is
   believed to align already *(to check: WORKER3's inventory, meshsim)*. **The hardware checks alignment.**
+- **The same rule inside big SRAM** (owner, 2026-10-28): **every 64- or 128-bit big-SRAM access, read or
+  write, is naturally aligned**. A `PTR` must be aligned to the size of the packets landing through it;
+  `STREAM_SRC` and each `GROUP` source to the stream's read size; `DMA_RECORD_BASE_ADDRESS` to a record.
+  A misaligned access raises the alignment error (`ERRORS` [1], which becomes "bad packet or misaligned
+  access"). **Spanning accesses go away:** no access ever straddles a row, so 4.1's two-part access, 4.9's
+  spanning write and their extra cycle are removed (one less variable term in W2-01's write path). v1.1
+  allowed any chunk for every width (4.1). A pointer stays aligned only if every packet through it has the
+  same size: mixing 32- and 64-bit packets through one `PTR` breaks it.
+- **Units** (W2-07): anything that travels in a packet or that the controller reaches through its map is in
+  **bytes**; anything inside the tile's engines that points into big SRAM is in **32-bit chunks**
+  (`STREAM_SRC`, `PTR`, `SRAM_RD_ADDR_QUEUE`, `DMA_RECORD_BASE_ADDRESS`, `GROUP` sources, the augmented
+  ordinal).
 
 - **Out of bounds is not checked in hardware** (Tony, 2026-10-28): the check was dropped to make timing on
   the controller core, with the 32 KB data and program memories. **An offset past the end of a memory is

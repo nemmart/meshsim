@@ -836,6 +836,26 @@ Decided (O), from W2-04. Settles what addresses mean at the controllers and engi
 - **Follow-on:** 4.2's "*d* = 64 only with mode 3" and "65-125 reserved", invariant 17's mode-3 clauses, and
   6.6-6.7's description of C&C's port and the memory system change.
 
+## 26. Bad packets under the new map (2026-10-28)
+
+From W2-06. Defines `ERRORS` [1], "bad packet" (18).
+
+- **Natural alignment everywhere** (owner and Tony, 2026-10-28): a **128-bit write must be 4-word aligned
+  and a 64-bit write 2-word aligned**, in every region. A misaligned write is a bad packet. v1.1 let port B
+  (controller memory) and the peripherals take 1, 2 or 4 words at any word address; that goes. Read-port
+  results, block copies, and DMA or send-port runs must start aligned to their size. The software is
+  believed to align already *(to check: WORKER3's inventory, meshsim)*.
+
+*(Proposed, for confirmation:)*
+
+| case | rule |
+|---|---|
+| Size 11 | undefined, not checked (as v1.1, 3.1) |
+| An offset past the end of a memory | the write is dropped silently (as v1.1 did for big SRAM past the tile's size) |
+| Regions 0x07-0xFE, an absent peripheral, 0xFF, the boot ROM (0x02, read-only) | bad packet |
+| Modes 1-4 | ignore the address entirely, region included (as v1.1's "ignored for other modes") |
+| Mode 3 (augmented) at 128 bits | bad packet (as v1.1) |
+
 ---
 
 ## Big SRAM: to validate

@@ -10,7 +10,7 @@ S = wip/spec/machine-spec.md.
 - [x] Planning notes (section 5: C&C 1-3 are tile instances with 2 MB big SRAM on tiles 0-2's fifth links;
       engines 72-74 on each controller's +8 link; routing d>=64 via tile d[2:0])
 - [x] sw: wait_tables() in mesh.h:416 polls rd_running|ts_busy; ~25 calls in RECIPES.md, also CONVENTIONS, REGISTERS
-- [ ] Draft REVIEW.md
+- [x] REVIEW.md written and pushed (W2-01..W2-23); citations checked against the files
 
 ## Candidate findings (raw, to verify)
 1. Counting is not mode-independent: D 3 says "Counting no longer depends on the mode" but mode 4 (gather

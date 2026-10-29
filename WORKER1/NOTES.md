@@ -44,3 +44,34 @@ open items touching C&C/HALT; planning notes section 7. Code checked: `wip/sort/
 15. Q4 misses: CSRs, interrupt input, K delay line, request FIFO, stale REQUEST_SET_W across HALT.
 16. Pin/Q2: depends on 8 and 1.
 17. Handler details: non-present peripheral window -> bus error; use EVENTS_PEEK; word count.
+
+## Round 2 (PROMPT-2.md): resolutions in decisions 19-24, commit 21ae57a
+
+Read: overview, 1.4, 1.5, 3, 5, 15, 19-24, pending. Status draft:
+closed 01 02 04 05 12 15 17; partly 03 06 07 08 09 10 11 13 16; closed-for-2/3 14 (C&C 1's own boot open).
+
+New candidates (D = decisions line at 21ae57a):
+18. Traps with no ERRORS bit (fetch fault, ecall/ebreak, handler re-entry) raise no line: C&C 1 not
+    interrupted; on C&C 1 the error pin stays low. Reports sit in the receive queue and back up the tree.
+    Fix: hardware sets a sticky ERRORS "trap" bit on every trap entry.
+19. Memory system / LPDDR across the reset: not in 21's domain list (D660); in-flight reads land in
+    rebooting units; write token held by a dead tile; cache write-back of flushed logs; LPDDR refresh.
+20. Boundary: request-bus framing torn at reset (S213, 8 beats, no header); root credits vs C&C 1 queue;
+    C&C 1's outgoing path to tile 0 delivers stale packets after release (stale slot-0 write -> ROM jumps);
+    no FIFO-empty status for C&C 1.
+21. C&C 1's own state survives the restart (D699-704): counters (can't be cleared), sticky events,
+    READY_LINES, mesh receive FIFO, own request FIFO; a late counted arrival -> C&C 1 fatal.
+22. Errors at C&C 1 caused by other units (dst-64 counted packet, receive-FIFO overflow, bad write
+    streams, 6.7's flags) would be C&C 1 own errors -> error pin -> host power cycle for a tile bug.
+23. Boot ROM contract: EVENTS_MASK reset lacks command landed [5] (D497); which slot holds the address;
+    command landed stays set after the jump -> first done fires READY at once (stale READY); done's reset
+    value; image covering slot 0 (D248); ROM handler must send the fixed report set (D705) -> not
+    "a few dozen bytes" (D762) and freezes the protocol in silicon.
+24. Marker ordering (D756) holds per kind only (S3.2 line 158, S1771): broadcast image + unicast marker.
+25. Reset timing: run_latency gone, no reset_latency/release pacing; packets into routers still in reset.
+26. Loops: handler re-entry (D637) resends reports; persistent fault -> reset loop; cascades; flush.
+27. Pins: host view table; chip-reset path for C&C 1 undefined (D797); C&C 1's own boot.
+28. Remnants contradicting 23: D69, D87, D145, D161, D320, D557, D619, D624, D668, D681, D692, D716,
+    D719-722, D724; D204 vs ROM fetch; region table row 0xFF displaced.
+29. PULSE_GO vs READY_LINES clear; expected-units mask.
+30. Units started one at a time: counted traffic to a sleeping unit; replayer ownership "in HALT".

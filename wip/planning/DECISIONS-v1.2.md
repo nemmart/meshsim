@@ -331,7 +331,7 @@ first words. *(Proposed: the addresses below.)* In region 0xFF; the low 12 bits 
 | 0x80C | `PULSE_DONE` | W | 8 |
 | 0x810 | `PULSE_DMA` | W | 8 |
 | 0x814 | `PULSE_GO` | W | 8 |
-| 0x818 | `EVENTS` | R | new bit layout (Q14) |
+| 0x818 | `EVENTS` | R | layout in 16 |
 | 0x81C | `EVENTS_PEEK` | R | |
 | 0x820 | `EVENTS_MASK` | R/W | |
 | 0x824 | `EVENTS_REQUIRED` | R/W | tile only |
@@ -437,6 +437,33 @@ Decided (O). Revises 1.5 and settles part of Q4.
 - **Q4 still open:** what HALT clears, which units a halted tile still runs (routers, request port), the
   hold before RUN.
 
+## 16. The tile's `EVENTS` (2026-10-28)
+
+Decided (O). Answers Q14. The layout of `EVENTS`, `EVENTS_PEEK`, `EVENTS_MASK` and `EVENTS_REQUIRED`:
+
+| bit | event | kind |
+|---|---|---|
+| [0] | write counter 1 done | sticky |
+| [1] | write counter 2 done | sticky |
+| [2] | write counter 3 done | sticky |
+| [3] | counters done: all three at 0, at least one armed since it last fired | sticky |
+| [4] | GO | sticky |
+| [5] | command landed | sticky |
+| [6] | DMA run done (v1.1's "engine run done") | sticky |
+| [7] | request FIFO no longer full | sticky |
+| [8] | request pending | live |
+| [9] | peripheral 1: its `EVENTS & EVENTS_MASK` non-zero (10) | live |
+| [10] | peripheral 2 | live |
+| [11] | peripheral 3 | live |
+| [31:12] | reserved, read 0 | |
+
+- **Gone from v1.1:** the fourth counter's done, the six service lines, sender idle and the UART's two
+  events; [7:4]'s gap closes.
+- **Unchanged rules:** `EVENTS_MASK` resets to GO | counters done ([4] | [3]) at chip reset and HALT → RUN;
+  from the `done` pulse until GO only GO wakes `WFI`; a load of `EVENTS` consumes the sticky events under
+  the mask, and one set in the load's own cycle survives. The live events clear only at their source:
+  popping the request, or loading the peripheral's own `EVENTS`.
+
 ---
 
 ## Big SRAM: to validate
@@ -473,6 +500,6 @@ A running list; each entry names where it came from. Resolved entries move into 
 | Q11 | How several peripherals share the slot's interface | 5 | **resolved: sections 9 and 10** |
 | Q13 | Which peripheral flags only wake the controller and which raise a tile condition | 10 | **resolved: section 10** (conditions interrupt, wake events wake) |
 | Q15 | Should `ROUTER_HDR` use the same upper-half layout as `STREAM_COUNT` and `DMA_HDR`? | 7, 10 | **resolved: section 12** |
-| Q14 | The tile's `EVENTS` bit layout: counters 1-3 done, GO, counters done, command landed, peripherals 1-3 (live), the request port's events | 11 | next |
+| Q14 | The tile's `EVENTS` bit layout | 11 | **resolved: section 16** |
 | Q12 | meshsim's per-tile debug console without a UART on every tile: request-bus debug messages (6.7) or a simulator-only print register | 9 | open |
 | Q8 | The counter field in every packet source: `STREAM` entries, the send port's header, the sender, the read port's setup, the GATHER engine's gather values, and memory-system requests | 3 | open |

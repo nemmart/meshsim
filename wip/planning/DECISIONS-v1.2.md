@@ -623,6 +623,11 @@ Decided (O, T), from WORKER1's review (W1-02, W1-04). Revises 1.4's parking rule
   every word of each packet and request it sends.
 - **A second trap inside the handler** (a synchronous exception) restarts the handler at `mtvec`; it is
   still terminal.
+- **`ecall` and `ebreak`** (owner, 2026-10-28; W1-11): no `ERRORS` bit and no hardware for them. We write
+  every controller program and don't use them; if one is ever executed it traps like any exception, the
+  handler's reports carry `mcause`, and the tile parks. The loader's "anything else -> `ebreak`" path
+  changes (it can simply stay in its wait loop), and `CMD_EXIT`, simulator only, needs another way for
+  meshsim to end a test: a meshsim matter, not a spec one.
 - **For Q1 (Tony):** the CSR list and their reset values, in particular `mtvec`'s (W1-03). Where `mepc`
   points after a trap taken in `WFI` no longer matters.
 

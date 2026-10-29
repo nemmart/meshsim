@@ -680,6 +680,9 @@ UART) are outside it**, so the host link survives. The same line is the power-on
   defines the set (ops, order, count); C&C 1 counts each unit's reports against it, and its drain timeout
   covers a unit whose reports never all arrive. A trap inside the handler is not designed for: the
   handler is short resident code that only reads registers and writes the request port.
+- **The UART's line errors are status, not errors** (owner, 2026-10-28; W1-10): framing and overrun are
+  bits in C&C 1's peripheral's `STATUS`, never in its `ERRORS`. C&C 1's own errors are permanent (it is
+  outside the reset domain) and fatal, so line noise on the serial port must not raise one.
 - **Draining matters:** reports left in C&C 1's receive queue back up the request-bus tree, and the
   flush's own requests to C&C 2 would queue behind them in the same rows (W1-09). With all 64 tiles
   failing at once (one bad broadcast), that is about 1,000 reports.

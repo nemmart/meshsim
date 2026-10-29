@@ -10,9 +10,10 @@ The sections below are in the order they were decided, and later ones revise ear
 are marked in place. In brief:
 
 - **Errors** (v1.1's conditions) raise the controller core's hard interrupt; its handler reports to C&C 1
-  over the request bus and parks in `WFI`. Each unit's hardware error line reaches C&C 1's peripheral as
-  `ERROR_LINES_0`-`2` (live); C&C 1 halts and runs units one by one with `RUN_LINES_0`-`2`; a pin reports
-  C&C 1's own failure to the host. REPORT is withdrawn. (1, 15)
+  over the request bus and parks forever: traps are terminal (20). Each unit's error line reaches C&C 1's
+  peripheral (`ERROR_LINES_0`-`2`); C&C 1 drains the reports, has the file system flush its logs, then
+  fires the **global reset**, the only way to stop anything: there is no HALT state (21, 23). Every unit
+  boots from a **boot ROM** and starts itself when its image's marker lands (22). REPORT is withdrawn.
 - **The link word** is 256 bits: payload, a 32-bit address (8-bit region, 24-bit offset), size, a 2-bit
   counter, a 3-bit mode, src, dst; 75 bits reserved. (2, 5)
 - **Counters:** the packet names one of three general write counters (0 uncounted), decremented K = 8
@@ -438,6 +439,9 @@ Decided (O). **The wake registers are renamed** at both levels, the tile's and e
 
 ## 15. C&C 1's peripheral: error and run lines (2026-10-28)
 
+*Revised by 23: there is no HALT state, so `RUN_LINES_0`-`2` and per-unit halt are gone; the unit-error
+bit is `OR(ERROR_LINES)`. The error lines, `RESET` (21) and the READY lines (21, 22) remain.*
+
 Decided (O). Revises 1.5 and settles part of Q4.
 
 - **C&C 1 has one peripheral, Ingress/Egress and the UART.** The error lines and the run lines are
@@ -573,6 +577,10 @@ The peripheral bits take [13:11] so every other error keeps its v1.1 number.
 
 ## 19. What a halted tile does (2026-10-28)
 
+*Superseded by 23: there is no HALT state; the global reset (21) clears everything instead. Kept for the
+record. Still true: big SRAM's in-flight accesses complete, and the router's link FIFOs are never cleared
+except by the reset.*
+
 Decided (O), from WORKER1's review (W1-01, and parts of W1-05 and W1-06). Part of Q4.
 
 - **Halting a tile stops its sending engines:** the address generator, the GATHER engine, the read port,
@@ -665,11 +673,12 @@ UART) are outside it**, so the host link survives. The same line is the power-on
    takes its hard interrupt.
 4. C&C 1's handler **drains every report** (owner, 2026-10-28) while it **flushes the file system's logs
    to LPDDR** through C&C 2. The flush procedure is TBD.
-5. When the flush is complete, C&C 1 asserts the global reset, clears all the run bits, and releases the
-   reset.
+5. When the flush is complete, C&C 1 asserts the global reset and releases it. *(23: there are no run
+   bits to clear.)*
 6. C&C 1 loads the software into tiles 0-63 and into C&C 2 (the file system) and C&C 3 (the pager), with
-   uncounted packets, which halted units accept (19).
-7. C&C 1 sets the run bits: **C&C 2 and C&C 3 first, then the mesh tiles.**
+   uncounted packets, while each unit sleeps in its boot ROM (22).
+7. Each unit starts itself when its marker lands (22): **C&C 2's and C&C 3's markers first, then the
+   mesh tiles'.**
 
 - **The policy is abort and restart:** no job continues with a unit missing. Per-unit run bits remain
   for boot order and for loading.
@@ -743,6 +752,25 @@ of C&C 2 and C&C 3.
 - **READY and GO remain for the phase cycle only** (6.3).
 - **Cost:** a few dozen bytes of ROM per controller, and the ROM's region in the map.
 
+## 23. No HALT state (2026-10-28)
+
+Decided (O, T). With booting from ROM (22), **units have no HALT state at all: the global reset (21) is the
+only way to stop anything**, and coming out of reset means running in the boot ROM. Settles Q4.
+
+- **Gone:** v1.1's RUN/HALT nets and `run_latency`, `RUN_LINES_0`-`2` (15), per-unit halt, and section 19's
+  halted-tile rules (no halted tile exists to drop counted packets or hold its queues empty).
+- **C&C 1's unit-error bit is `OR(ERROR_LINES)`** (15): the run-bit mask (19) isn't needed, since the reset
+  clears every stale error.
+- **Errors are sticky until the reset**, not until a HALT edge (4.13). `EVENTS_MASK` resets at reset.
+- **Loading needs no special state:** a unit asleep in its boot ROM accepts uncounted writes normally. 6.2's
+  "halt a tile before an uncoordinated write" goes; staging into a running unit is coordinated by software.
+- **READY is for the phase cycle only**, tiles 0-63: `READY_LINES` bits 65 and 66 (21) aren't needed.
+- **What we give up:** stopping a single unit to inspect it. After an error we get what the handler's
+  reports carry, then the chip restarts.
+- **Debugging instead** (owner): each tile opens log files through the file system and `printf`s into them;
+  before the reset fires, the file system flushes their tails to LPDDR (21, step 4). This also answers Q12
+  for the hardware; how meshsim shows them (a console per tile) is meshsim's business.
+
 ---
 
 ## Big SRAM: to validate
@@ -770,7 +798,7 @@ A running list; each entry names where it came from. Resolved entries move into 
 | Q1 | Tony's exact list of implemented CSRs, to define which CSR instructions are legal | 1.1 | waiting on Tony |
 | Q2 | How long a high on the C&C pin counts as "sustained" for the host | 1.5 | open |
 | Q3 | What stops the peripheral and the sender when a condition traps | 1.7 | **resolved: section 21** (nothing, until the global reset) |
-| Q4 | The HALT design | planning notes section 7 | **partly resolved: section 15** (one line per unit, set by C&C 1; a halted controller halts its peripheral). Left: what HALT clears, what keeps running, the hold before RUN |
+| Q4 | The HALT design | planning notes section 7 | **resolved: sections 21-23** (no HALT state; the global reset is the only stop) |
 | Q5 | Should an area serve writes ahead of queued reads? Not needed for S1 if K covers only the path to the area queue | 3 | open; for Tony |
 | Q6 | The link word's 32-bit address: what it covers | 2 | **resolved: section 5** |
 | Q7 | The 3-bit mode: which of today's nine modes merge or go, now that counting is separate | 2 | **resolved: section 6** |
@@ -780,5 +808,5 @@ A running list; each entry names where it came from. Resolved entries move into 
 | Q13 | Which peripheral flags only wake the controller and which raise a tile condition | 10 | **resolved: section 10** (conditions interrupt, wake events wake) |
 | Q15 | Should `ROUTER_HDR` use the same upper-half layout as `STREAM_COUNT` and `DMA_HDR`? | 7, 10 | **resolved: section 12** |
 | Q14 | The tile's `EVENTS` bit layout | 11 | **resolved: section 16** |
-| Q12 | meshsim's per-tile debug console without a UART on every tile: request-bus debug messages (6.7) or a simulator-only print register | 9 | open |
+| Q12 | meshsim's per-tile debug console without a UART on every tile | 9 | **resolved for the hardware: section 23** (log files through the file system); meshsim's display is its own business |
 | Q8 | The counter field in every packet source: `STREAM` entries, the send port's header, the sender, the read port's setup, the GATHER engine's gather values, and memory-system requests | 3 | open |

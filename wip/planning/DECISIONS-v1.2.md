@@ -322,7 +322,7 @@ first words. *(Proposed: the addresses below.)* In region 0xFF; the low 12 bits 
 | 0x848-0x854 | `REQUEST_GET_W0`-`W2`, `REQUEST_RECEIVE` / `REQUEST_SET_W0`-`W2`, `REQUEST_SEND` | R / W | unchanged |
 | 0x858 | `DMA_CONFIG` | R/W | readable (planning to-do 13) |
 | 0x85C | `DMA_RECORD_BASE_ADDRESS` | R/W | |
-| 0x860-0x868 | `COUNTER_1`-`COUNTER_3` | R/W | 3 |
+| 0x860-0x868 | `WRITE_COUNTER_1`-`WRITE_COUNTER_3` | R/W | 3 |
 | 0x86C | `SRAM_RD_ADDR_QUEUE` | R/W | unchanged |
 | 0x870 | `SRAM_RD_DEST_ADDR` | R/W | needs a counter field and the new data-memory address |
 | 0x874-0x87C | `ERROR_LINES_0`-`2` | R | the three error words (1.5); C&C 1 only, 0 elsewhere |
@@ -375,6 +375,8 @@ Decided (O). **The wake registers are renamed** at both levels, the tile's and e
 | `WAKE_MASK` | `EVENTS_MASK` |
 | `WAKE_REQUIRED` (tile only) | `EVENTS_REQUIRED` |
 
+- **The counters are `WRITE_COUNTER_1`-`WRITE_COUNTER_3`** (owner, 2026-10-28): every counted packet is a
+  write (modes 1-4), so the name says what they count. The link word's field stays "counter".
 - "Interrupts" was considered and rejected: events only release `WFI` and take no trap, while errors raise
   the hard interrupt (1) and the core's `mie`/`mip` CSRs use the word in the RISC-V sense.
 - This log uses the new names throughout, including where it cites v1.1's bit positions.

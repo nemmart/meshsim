@@ -222,7 +222,7 @@ for one cycle, a store of 0 does nothing, and a load reads 0.
 |---|---|---|
 | `TILE_PULSE` [0] | `PULSE_DONE` | the `done` pulse (6.3) |
 | `TILE_PULSE` [1] | `PULSE_DMA` | start the run in `DMA_CONFIG` (4.2) |
-| `TILE_PULSE` [2] | ~~`PERIPH_1_RUN_PULSE`, ...~~ | moved: word 0 of each peripheral's window (10) |
+| `TILE_PULSE` [2] | ~~`PERIPH_1_RUN_PULSE`, ...~~ | moved: `PULSE_RUN`, word 3 of each peripheral's window (10) |
 | `TILE_PULSE` [3] | `PULSE_GO` | drive the GO net where it is wired (6.3) |
 
 - **Names** (owner, 2026-10-28): `PULSE_DONE`, `PULSE_DMA`, `PULSE_GO`, a `PULSE_` family like the

@@ -130,7 +130,8 @@ Decided with Tony (O, T). Replaces 3.1's 169-bit word.
   line with the spec update.
 - **The full 256 bits are stored** (owner, 2026-10-28; Tony's request), reserved bits included, about 36 Kbit
   of constant-zero flops per tile. **To revisit when the design has settled:** trim the storage to the bits in
-  use while the links and interfaces stay 256 wide.
+  use while the links and interfaces stay 256 wide. **Power is the main reason** (owner): constant-zero flops
+  don't toggle their data but are still clocked every cycle unless gated, which matters more than their area.
 - The 32-bit address is in 5 and the mode codes in 6.
 
 ## 3. Counters (2026-10-28)

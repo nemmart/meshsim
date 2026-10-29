@@ -172,27 +172,33 @@ counting (3), the 3-bit mode keeps only what the receiver must do differently:
 
 | code | mode |
 |---|---|
-| 0 | invalid |
-| 1 | **write at address**, any region the packet may reach |
-| 2 | big-SRAM write by source, at `PTR[src]` |
-| 3 | bucket write, at `PTR[digit]` |
-| 4 | augmented write, at `PTR[src]` |
-| 5 | gather request (local only) |
-| 6, 7 | reserved |
+| 0 | **write at address**, any region the packet may reach |
+| 1 | big-SRAM write by source, at `PTR[src]` |
+| 2 | bucket write, at `PTR[digit]` |
+| 3 | augmented write, at `PTR[src]` |
+| 4 | gather request (local only) |
+| 5-7 | reserved: **discarded at the destination, with no error** |
 
-- **Numbering** (owner, 2026-10-28): the general write is 1; the writes that land through `PTR` and step it
-  are adjacent, 2-4; the gather request, the only mode that isn't a write, follows them.
-- **Merged into mode 1:** v1.1's explicit-address big-SRAM write (3), controller-memory write (6),
+- **Numbering** (owner, 2026-10-28): the general write is 0; the writes that land through `PTR` and step it
+  are adjacent, 1-3; the gather request, the only mode that isn't a write, follows them. There is no
+  invalid code: v1.1's mode 0 is gone.
+- **Reserved modes are discarded silently** (owner, 2026-10-28): the receiver drops the packet, uncounted,
+  and raises no error. meshsim still flags each one.
+- **Accepted consequence:** an all-zero header (a `STREAM` entry, `ROUTER_HDR` or `DMA_HDR` left at 0) is a
+  valid, uncounted write at address 0x00000000, the first word of data memory, and lands silently. v1.1's
+  mode 0 caught that as a bad packet.
+- **Merged into mode 0:** v1.1's explicit-address big-SRAM write (3), controller-memory write (6),
   command write (7), reply (8) and peripheral write (9).
-- **Replies** are mode-1 writes to the reply block at word 2·src in the receiver's data memory, counted
+- **Replies** are mode-0 writes to the reply block at word 2·src in the receiver's data memory, counted
   as the receiver armed. That a sender writes only its own pair becomes a software convention, no longer
   a hardware guarantee.
-- **Commands** are mode-1 writes, **counter 0**, to the command block in region 0x00: arguments first,
+- **Commands** are mode-0 writes, **counter 0**, to the command block in region 0x00: arguments first,
   then the command word to slot 0. **A write to command slot 0 sets "command landed"** and posts its wake
   event, decoded from the address by the traffic director. READY, GO and the alternating argument blocks
   work as today. Commands stay uncounted because they arrive while the tile waits in
   `wait_for_command()` with its counters at 0.
-- **Follow-on:** the bad-packet rules for modes 7 and 8 go; invariant 11 and "only command writes write
+- **Follow-on:** v1.1's bad-packet rules for modes 0, 7, 8 and 10-15 go (reserved modes are now discarded
+  silently); invariant 11 and "only command writes write
   the command block, only replies the reply block" become software conventions. Whether a 64- or 128-bit
   write that covers slot 0 also sets "command landed" is a detail to settle with the spec text.
 
@@ -351,14 +357,14 @@ follows it. The low bits [17:0] are each register's own (a count, a queue, or sp
 ## 13. The read port's destination (2026-10-28)
 
 Decided (O). `SRAM_RD_DEST_ADDR` keeps a minimal header; a full header like the sender's was considered and
-judged not useful, since a read-port result always goes to the tile itself as a mode-1 write.
+judged not useful, since a read-port result always goes to the tile itself as a mode-0 write.
 
 | bits | field |
 |---|---|
 | [17:0] | the destination offset in **data memory only** (region 0x00), advancing by the result's size per queued read; units per Q10 |
 | [19:18] | size: 32, 64 or 128 bits (the common layout, 12) |
 | [21:20] | counter |
-| [31:22] | reserved: mode is always 1 and dst always the tile itself |
+| [31:22] | reserved: mode is always 0 and dst always the tile itself |
 
 - R/W (planning notes to-do 13): a load returns the next result's offset as advanced.
 - **Data memory only** (owner, 2026-10-28): v1.1 let results land anywhere in controller memory, program
@@ -376,7 +382,7 @@ Decided (O). **The wake registers are renamed** at both levels, the tile's and e
 | `WAKE_REQUIRED` (tile only) | `EVENTS_REQUIRED` |
 
 - **The counters are `WRITE_COUNTER_1`-`WRITE_COUNTER_3`** (owner, 2026-10-28): every counted packet is a
-  write (modes 1-4), so the name says what they count. The link word's field stays "counter".
+  write (modes 0-3), so the name says what they count. The link word's field stays "counter".
 - "Interrupts" was considered and rejected: events only release `WFI` and take no trap, while errors raise
   the hard interrupt (1) and the core's `mie`/`mip` CSRs use the word in the RISC-V sense.
 - This log uses the new names throughout, including where it cites v1.1's bit positions.

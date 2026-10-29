@@ -540,7 +540,12 @@ Hardware guarantees this needs:
 | B | **DMA run done fires only after the run's last table read has completed**, not when the last entry is walked |
 | C | **Gather values pass the traffic director like any loopback packet and are counted there** (corrected 2026-10-28, W2-02: they go out as packets to the tile itself and loop back through the router, 4.4, 4.5). Their K delay starts at the director like every other packet's, and a counter still takes at most one decrement per cycle |
 
-- **`ts_busy` and `wait_tables()` go.** `STATUS` becomes diagnostic only: no program needs to poll it.
+- **`PULSE_DMA` clears DMA run done** (`EVENTS` [6]) (owner, 2026-10-28; W2-10), as an arming write clears
+  its counter's done (3), so [6] always refers to the run most recently started and a stale one can't
+  satisfy the next wait.
+- **`ts_busy` and `wait_tables()` go.** Programs wait by events. A helper that must work without knowing
+  what ran before (a pass that starts by checking the tables are free) **may poll `STATUS.rd_running`**, a
+  level, as a software choice (W2-10); otherwise `STATUS` is diagnostic.
 
 ## 18. `PARAMS`, `STATUS` and `ERRORS` (2026-10-28)
 

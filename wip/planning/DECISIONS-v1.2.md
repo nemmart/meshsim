@@ -583,6 +583,9 @@ Decided (O), from WORKER1's review (W1-01, and parts of W1-05 and W1-06). Part o
   never cleared:** they carry other tiles' transit traffic, boot loads and, on tiles 0-2, the controllers'
   fifth links. **The request FIFO is not part of this:** it keeps draining in HALT (4.18), so reports
   already queued still reach C&C 1.
+- **Big SRAM finishes what it has** (owner, 2026-10-28): accesses already in its area queues and pipeline
+  at the RUN → HALT edge complete. Writes land; reads finish, and their results are discarded at the
+  held-empty queues above.
 - **In HALT the ejector drops counted packets** (counter 1-3) silently: no write, no count, no error. It
   accepts uncounted packets (counter 0) as usual, so boot loads, staging and the boot marker still land
   (6.2), and 6.2's "halt a tile before an uncoordinated write" still works.

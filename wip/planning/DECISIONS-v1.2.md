@@ -844,17 +844,26 @@ From W2-06. Defines `ERRORS` [1], "bad packet" (18).
   and a 64-bit write 2-word aligned**, in every region. A misaligned write is a bad packet. v1.1 let port B
   (controller memory) and the peripherals take 1, 2 or 4 words at any word address; that goes. Read-port
   results, block copies, and DMA or send-port runs must start aligned to their size. The software is
-  believed to align already *(to check: WORKER3's inventory, meshsim)*.
+  believed to align already *(to check: WORKER3's inventory, meshsim)*. **The hardware checks alignment.**
 
-*(Proposed, for confirmation:)*
+- **Out of bounds is not checked in hardware** (Tony, 2026-10-28): the check was dropped to make timing on
+  the controller core, with the 32 KB data and program memories. **An offset past the end of a memory is
+  undefined behaviour**: the high offset bits are ignored, so the access aliases into the memory. This
+  holds for packets and for the core's own loads and stores. Staying in bounds is a program obligation,
+  like avoiding size 11.
+- **meshsim checks both strictly** (owner): misalignment and out-of-bounds, for packets and for the core's
+  loads and stores, stop the simulation with an error naming the access. Both are common bugs in kernels
+  of this kind and must be caught in simulation.
+- **The cheap checks stay in hardware:** alignment (above), and the region decode, an 8-bit compare.
 
-| case | rule |
+| case | hardware |
 |---|---|
-| Size 11 | undefined, not checked (as v1.1, 3.1) |
-| An offset past the end of a memory | the write is dropped silently (as v1.1 did for big SRAM past the tile's size) |
-| Regions 0x07-0xFE, an absent peripheral, 0xFF, the boot ROM (0x02, read-only) | bad packet |
-| Modes 1-4 | ignore the address entirely, region included (as v1.1's "ignored for other modes") |
-| Mode 3 (augmented) at 128 bits | bad packet (as v1.1) |
+| a 64- or 128-bit write not aligned to its size | bad packet |
+| an offset past the end of its memory | not checked: undefined (aliases); meshsim errors |
+| regions 0x07-0xFE, an absent peripheral, region 0xFF, the boot ROM (0x02, read-only) | bad packet *(proposed)* |
+| size 11 | undefined, not checked (as v1.1, 3.1); meshsim errors *(proposed)* |
+| modes 1-4 | ignore the address, region included (as v1.1) *(proposed)* |
+| mode 3 (augmented) at 128 bits | bad packet (as v1.1) *(proposed)* |
 
 ---
 

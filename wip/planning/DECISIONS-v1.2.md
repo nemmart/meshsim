@@ -911,6 +911,22 @@ From W2-06. Defines `ERRORS` [1], "bad packet" (18).
 | modes 1-4 | ignore the address, region included (as v1.1) *(proposed)* |
 | mode 3 (augmented) at 128 bits | bad packet (as v1.1) *(proposed)* |
 
+## 27. What the hardware checks and what meshsim checks (2026-10-28)
+
+Decided (O), from W2-13; states a principle applied throughout today's decisions.
+
+- **The hardware checks only what is cheap and catches a bug far from its cause:** the overflows,
+  unexpected arrival, done early, drift, alignment (26), and the region decode (26).
+- **Every other software convention or program obligation is validated in meshsim and ignored by the
+  hardware:** out-of-bounds offsets and running past the end of a memory (26), reserved modes (6), the
+  reply-block and command-block conventions (6), uncounted traffic being mode 0 (17), and the spec's
+  invariants (section 9), which are simulator checks.
+- **Invariant 11's checkable form** (meshsim only): writes into the command block come only from C&C 1-3;
+  writes into the reply block are 32 or 64 bits at the sender's own pair (word 2·src); any other mode-0
+  write to regions 0x00 or 0x01 stays inside its memory and outside both blocks.
+- **The other invariants W2-13 lists** (4, 5, 8, 9, 10, 13, 14, 17, 18) are rewritten mechanically with the
+  spec update.
+
 ---
 
 ## Big SRAM: to validate

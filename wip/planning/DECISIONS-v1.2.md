@@ -688,6 +688,16 @@ UART) are outside it**, so the host link survives. The same line is the power-on
 - **The UART's line errors are status, not errors** (owner, 2026-10-28; W1-10): framing and overrun are
   bits in C&C 1's peripheral's `STATUS`, never in its `ERRORS`. C&C 1's own errors are permanent (it is
   outside the reset domain) and fatal, so line noise on the serial port must not raise one.
+- **Timing of the lines** (owner, 2026-10-28; W1-13):
+  - **The reset is held long enough** for every unit in the domain to be reporting no error on its line
+    when C&C 1 releases it: the hold covers the error line's fixed latency (a spec parameter). C&C 1 just
+    waits; software doesn't check the lines. The run-bit mask (19) makes a stale line harmless anyway.
+  - **`RUN_LINES` are 0 at power-on**; at a C&C 1-driven reset C&C 1 clears them itself (step 5), since
+    they are outside the domain.
+  - **Every per-unit run line has the same latency, `run_latency`**, as v1.1's single line. Boot takes
+    three stores (two words of tiles, one for C&C 2 and 3), and 6.6's "wait `run_latency` + 1 after a
+    RUN/HALT store" applies to the last.
+  - **An error raised in the cycle of a HALT edge is lost** (the clear wins, 4.13). Accepted.
 - **Draining matters:** reports left in C&C 1's receive queue back up the request-bus tree, and the
   flush's own requests to C&C 2 would queue behind them in the same rows (W1-09). With all 64 tiles
   failing at once (one bad broadcast), that is about 1,000 reports.

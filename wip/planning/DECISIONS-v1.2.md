@@ -675,6 +675,11 @@ UART) are outside it**, so the host link survives. The same line is the power-on
   and C&C 1's per-peripheral bit follow, and C&C 1's hard interrupt input goes low before `MIE` is set.
   **Exception:** C&C 1's own errors are sticky and outside the reset domain; if any is set, C&C 1 does not
   re-enable and the failure stays fatal (the pin, 1.5).
+- **The report set is fixed** (owner, 2026-10-28; W1-08): every handler sends the same reports, in the same
+  order, so the count is a constant of the protocol and nothing in the reports needs to carry it. The spec
+  defines the set (ops, order, count); C&C 1 counts each unit's reports against it, and its drain timeout
+  covers a unit whose reports never all arrive. A trap inside the handler is not designed for: the
+  handler is short resident code that only reads registers and writes the request port.
 - **Draining matters:** reports left in C&C 1's receive queue back up the request-bus tree, and the
   flush's own requests to C&C 2 would queue behind them in the same rows (W1-09). With all 64 tiles
   failing at once (one bad broadcast), that is about 1,000 reports.

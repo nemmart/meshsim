@@ -403,7 +403,10 @@ Decided (O). Revises 1.5 and settles part of Q4.
 
 - **Per-unit halt:** C&C 1 halts and runs each controller on its own (v1.1 had one line to every tile).
   Bit 64 is unused, so C&C 1 cannot halt itself.
-- **Errors reach C&C 1 through its peripheral:** any line high is an error of the peripheral, which sets
+- **The unit-error bit** (owner, 2026-10-28): the peripheral's `ERRORS` word (10, word 2) has one bit
+  that is 1 while any of `ERROR_LINES_0`-`2` is non-zero, **live**, the OR of every line. *(Proposed: bit
+  0.)* The peripheral's own errors (Ingress/Egress, the UART) take the other bits and stay sticky.
+- **Errors reach C&C 1 through its peripheral:** the unit-error bit is an error of the peripheral, which sets
   C&C 1's per-peripheral bit in its tile errors (10) and takes the hard interrupt (1). Because the lines are
   live, halting the failed units clears them, the peripheral's error, C&C 1's bit and the C&C pin (1.5).
   This peripheral's tile-error bit is live, an exception to 10's "sticky until HALT".

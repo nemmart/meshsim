@@ -203,9 +203,9 @@ Decided (O). The 32-bit `ROUTER_SET_HDR` (dst 7, mode 4, addr 21) can't hold dst
 
 - **`ROUTER_ADDR`:** the full 32-bit address (5). A store sets it; it auto-advances at each send as today;
   a load returns the address the next packet will use.
-- **`ROUTER_HDR`:** counter, mode and dst. A store sets them; a load returns them. *(Proposed layout,*
-  *matching `STREAM_COUNT`'s order:)* [1:0] spare (the size comes from the send register), counter [3:2],
-  mode [6:4], dst [13:7], [31:14] spare.
+- **`ROUTER_HDR`:** counter, mode and dst. A store sets them; a load returns them. Layout (owner,
+  2026-10-28): [17:0] spare, size [19:18] reserved (the size comes from the send register), counter
+  [21:20], mode [24:22], dst [31:25].
 - **Size stays with the send register** (`ROUTER_SEND_32`, `_64`, `_128`); `ROUTER_SET_W0`-`W2` are
   unchanged and stay write-only.
 - One extra store when both change; a change of dst alone, the common case in replies and one-word
@@ -328,6 +328,21 @@ first words. *(Proposed: the addresses below.)* In region 0xFF; the low 12 bits 
 - **The table window** (`HIST`, `PTR`, `STREAM_*`, `GROUP`; 0x1600 bytes) doesn't fit in the block.
   *(Proposed:)* 0xFFFF2000-0xFFFF35FF, keeping v1.1's low 16 bits.
 
+## 12. One header layout (2026-10-28)
+
+Decided (O). Answers Q15. Every register that carries a packet's header fields lays them out the same way,
+in bits [31:18], in the link word's order (2):
+
+| bits | field |
+|---|---|
+| [19:18] | size (reserved where something else picks the size) |
+| [21:20] | counter |
+| [24:22] | mode |
+| [31:25] | dst |
+
+Used by `STREAM_COUNT` (4), `ROUTER_HDR` (7) and a peripheral's `DMA_HDR` (10); any new header register
+follows it. The low bits [17:0] are each register's own (a count, a queue, or spare).
+
 ---
 
 ## Big SRAM: to validate
@@ -363,7 +378,7 @@ A running list; each entry names where it came from. Resolved entries move into 
 | Q10 | Is the 24-bit offset in bytes or in 32-bit words? | 5 | open |
 | Q11 | How several peripherals share the slot's interface | 5 | **resolved: sections 9 and 10** |
 | Q13 | Which peripheral flags only wake the controller and which raise a tile condition | 10 | **resolved: section 10** (conditions interrupt, wake events wake) |
-| Q15 | Should `ROUTER_HDR` use the same upper-half layout as `STREAM_COUNT` and `DMA_HDR` (counter [21:20], mode [24:22], dst [31:25]) instead of section 7's low-bit proposal? | 7, 10 | open |
+| Q15 | Should `ROUTER_HDR` use the same upper-half layout as `STREAM_COUNT` and `DMA_HDR`? | 7, 10 | **resolved: section 12** |
 | Q14 | The tile's `WAKE_EVENTS` bit layout: counters 1-3 done, GO, counters done, command landed, peripherals 1-3 (live), the request port's events | 11 | next |
 | Q12 | meshsim's per-tile debug console without a UART on every tile: request-bus debug messages (6.7) or a simulator-only print register | 9 | open |
 | Q8 | The counter field in every packet source: `STREAM` entries, the send port's header, the sender, the read port's setup, the GATHER engine's gather values, and memory-system requests | 3 | open |

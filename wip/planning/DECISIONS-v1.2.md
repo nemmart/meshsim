@@ -221,9 +221,12 @@ counting (3), the 3-bit mode keeps only what the receiver must do differently:
 | 1 | big-SRAM write by source, at `PTR[src]` |
 | 2 | bucket write, at `PTR[digit]` |
 | 3 | augmented write, at `PTR[src]` |
-| 4 | gather request (local only) |
+| 4 | gather request (local only); **never counted**: its counter field names the counter its gather values decrement |
 | 5-7 | reserved: **discarded at the destination, with no error** |
 
+- **A gather request never decrements a counter** (owner, 2026-10-28; W2-02), whatever its counter field
+  says: it isn't a write. **Its counter field is passed on to the gather values it produces**, which are
+  counted like any other write when they pass the director. (Answers Q8 for the GATHER engine.)
 - **Numbering** (owner, 2026-10-28): the general write is 0; the writes that land through `PTR` and step it
   are adjacent, 1-3; the gather request, the only mode that isn't a write, follows them. There is no
   invalid code: v1.1's mode 0 is gone.
@@ -518,7 +521,7 @@ Hardware guarantees this needs:
 |---|---|
 | A | **K covers the table update:** by the time a packet's counter decrements, its `PTR` or `HIST` update is complete (S1) |
 | B | **DMA run done fires only after the run's last table read has completed**, not when the last entry is walked |
-| C | **A gather value's delay starts where it enters the write engine:** gather values are made after the traffic director and don't pass it; they carry a counter field (Q8) |
+| C | **Gather values pass the traffic director like any loopback packet and are counted there** (corrected 2026-10-28, W2-02: they go out as packets to the tile itself and loop back through the router, 4.4, 4.5). Their K delay starts at the director like every other packet's, and a counter still takes at most one decrement per cycle |
 
 - **`ts_busy` and `wait_tables()` go.** `STATUS` becomes diagnostic only: no program needs to poll it.
 

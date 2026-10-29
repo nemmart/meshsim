@@ -116,6 +116,20 @@ Decided with Tony (O, T). Replaces 4.12's four named down-counters.
   issued after the counter reaches 0 queues behind the write and cannot overtake it.
 - **Follow-on:** the wake events' per-counter done bits ([3:0] today) become done events for counters 1-3;
   [9] counters done stays. HALT flushes the delay line with the counters.
+- **Additive arming** (owner, 2026-10-28; v1.1's rule kept): a store of *N* adds *N*, atomically and in step
+  with that cycle's decrement; *N* > 0 arms the counter, which **clears its done event** and counters done.
+  So whichever comes first, the last word of an earlier batch or the add, once the add has happened done
+  means **everything added so far has landed**: no stale wake and no early wake. If the count reaches 0 in
+  the same cycle as an add of *N*, it ends at *N* and done doesn't fire.
+- **Usage rule:** one counter per thing a program waits for separately. Adding to a counter means waiting
+  for the union; to learn that batch A has landed while B is outstanding, put them on different counters.
+- **Accepted trade-off of the delay** (owner, 2026-10-28): unexpected arrival is detected when the
+  decrement happens, K cycles after acceptance. A stray packet accepted at count 0 whose decrement lands
+  after the program arms *N* uses up one of the *N*: done fires one word early, and the batch's last real
+  word then raises unexpected arrival. The error is caught, later than in v1.1 and naming the last real
+  word rather than the stray; only a second, cancelling bug (a batch armed one too high) would hide it.
+  Considered and not taken: decrement at acceptance and delay only the done. **meshsim checks at
+  acceptance** and names the stray precisely.
 - **HALT no longer suppresses counting** (replacing 3.1 and 4.12's "a halted tile counts nothing"). Boot
   loads and staging into a halted tile are sent with counter 0. A counted packet arriving at a halted tile
   hits a counter at 0 and sets unexpected arrival, which survives into RUN where the loader can see it.

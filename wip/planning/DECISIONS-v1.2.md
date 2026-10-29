@@ -574,13 +574,15 @@ Decided (O), from WORKER1's review (W1-01, and parts of W1-05 and W1-06). Part o
 - **Halting a tile stops its sending engines:** the address generator, the GATHER engine, the read port,
   the send port's holding register and its peripherals' DMAs. A run in progress is abandoned. The traffic
   director, the write engine and the routers keep running, so a halted tile can still be loaded.
-- **On the RUN → HALT edge the tile's own outgoing traffic is cleared:** the loopback FIFO and the tile's
-  outgoing queues before injection. **Throughout HALT the loopback is held empty** (anything entering it,
-  such as a read result still in big SRAM's pipeline at the edge, is discarded) and **the read-token count
-  is held at 64** (owner: the loopback space tracker is simply reinitialised), so every RUN starts with an
-  empty loopback and every token free. Packets already in the injector or the
-  router flow on and clear the mesh. **The router's link FIFOs are never cleared:** they carry other tiles'
-  transit traffic, boot loads and, on tiles 0-2, the controllers' fifth links.
+- **Throughout HALT every queue feeding the tile's injector is held empty** (owner, 2026-10-28): the
+  loopback FIFO and the tile's outgoing queues before injection are emptied at the RUN → HALT edge and
+  anything that enters them during HALT (a read result still in big SRAM's pipeline at the edge, say) is
+  discarded. **The read-token count is held at 64** (the loopback space tracker simply reinitialised), so
+  every RUN starts with empty queues and every token free. A halted tile has nothing to send on the mesh.
+  Packets already in the injector or the router flow on and clear the mesh. **The router's link FIFOs are
+  never cleared:** they carry other tiles' transit traffic, boot loads and, on tiles 0-2, the controllers'
+  fifth links. **The request FIFO is not part of this:** it keeps draining in HALT (4.18), so reports
+  already queued still reach C&C 1.
 - **In HALT the ejector drops counted packets** (counter 1-3) silently: no write, no count, no error. It
   accepts uncounted packets (counter 0) as usual, so boot loads, staging and the boot marker still land
   (6.2), and 6.2's "halt a tile before an uncoordinated write" still works.
@@ -588,7 +590,7 @@ Decided (O), from WORKER1's review (W1-01, and parts of W1-05 and W1-06). Part o
   in a halted tile and holding its error line high (W1-01).
 - **Accepted trade-off:** a boot load or staging packet sent with a non-zero counter by mistake is dropped
   silently; the loader finds missing data rather than an error. (Section 3 had it raise unexpected arrival.)
-- *(Proposed, W1-01's fix, for confirmation:)* C&C 1's unit-error bit (15) is `OR(ERROR_LINES & RUN_LINES)`,
+- **C&C 1's unit-error bit (15) is `OR(ERROR_LINES & RUN_LINES)`** (owner, 2026-10-28; W1-01's fix),
   so the errors a halted unit can still raise (bad packet, router overflow) don't interrupt C&C 1;
   `ERROR_LINES` stays raw, and the error interrupts C&C 1 when it sets the unit running.
 

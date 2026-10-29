@@ -8,7 +8,7 @@ open items touching C&C/HALT; planning notes section 7. Code checked: `wip/sort/
 ## Status
 - [x] Read everything listed above
 - [x] Candidate findings (below)
-- [ ] REVIEW.md written and pushed
+- [x] REVIEW.md written and pushed (W1-01..W1-17; line refs checked against 2146213)
 
 ## Candidate findings (D = decisions line, S = spec line)
 1. Errors raised in a halted unit (D157 counted arrival in HALT; S1727 director runs in HALT) keep its line

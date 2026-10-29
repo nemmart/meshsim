@@ -155,8 +155,9 @@ Decided with Tony (O, T). Replaces 4.12's four named down-counters.
   Considered and not taken: decrement at acceptance and delay only the done. **meshsim checks at
   acceptance** and names the stray precisely.
 - **HALT no longer suppresses counting** (replacing 3.1 and 4.12's "a halted tile counts nothing"). Boot
-  loads and staging into a halted tile are sent with counter 0. A counted packet arriving at a halted tile
-  hits a counter at 0 and sets unexpected arrival, which survives into RUN where the loader can see it.
+  loads and staging into a halted tile are sent with counter 0. ~~A counted packet arriving at a halted
+  tile hits a counter at 0 and sets unexpected arrival, which survives into RUN where the loader can see
+  it.~~ *Superseded by 19: a halted tile's ejector drops counted packets silently.*
 - **Pending:** the counter field in every packet source (Q8).
 
 ## 4. The `STREAM` entry (2026-10-28)
@@ -565,6 +566,28 @@ Gone: `periph_running` and `sender_busy` (now each peripheral's `STATUS`), `ts_b
 | [14] | receive underflow | |
 
 The peripheral bits take [13:11] so every other error keeps its v1.1 number.
+
+## 19. What a halted tile does (2026-10-28)
+
+Decided (O), from WORKER1's review (W1-01, and parts of W1-05 and W1-06). Part of Q4.
+
+- **Halting a tile stops its sending engines:** the address generator, the GATHER engine, the read port,
+  the send port's holding register and its peripherals' DMAs. A run in progress is abandoned. The traffic
+  director, the write engine and the routers keep running, so a halted tile can still be loaded.
+- **On the RUN → HALT edge the tile's own outgoing traffic is cleared:** the loopback FIFO (its read tokens
+  returned at once) and the tile's outgoing queues before injection. Packets already in the injector or the
+  router flow on and clear the mesh. **The router's link FIFOs are never cleared:** they carry other tiles'
+  transit traffic, boot loads and, on tiles 0-2, the controllers' fifth links.
+- **In HALT the ejector drops counted packets** (counter 1-3) silently: no write, no count, no error. It
+  accepts uncounted packets (counter 0) as usual, so boot loads, staging and the boot marker still land
+  (6.2), and 6.2's "halt a tile before an uncoordinated write" still works.
+- **Why:** a failed phase's late traffic is counted, so it is dropped instead of raising unexpected arrival
+  in a halted tile and holding its error line high (W1-01).
+- **Accepted trade-off:** a boot load or staging packet sent with a non-zero counter by mistake is dropped
+  silently; the loader finds missing data rather than an error. (Section 3 had it raise unexpected arrival.)
+- *(Proposed, W1-01's fix, for confirmation:)* C&C 1's unit-error bit (15) is `OR(ERROR_LINES & RUN_LINES)`,
+  so the errors a halted unit can still raise (bad packet, router overflow) don't interrupt C&C 1;
+  `ERROR_LINES` stays raw, and the error interrupts C&C 1 when it sets the unit running.
 
 ---
 

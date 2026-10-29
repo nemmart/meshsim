@@ -6,8 +6,10 @@ S = wip/spec/machine-spec.md.
 ## Progress
 - [x] Read DECISIONS-v1.2 in full (607 lines)
 - [x] Spec 1-3 (S1-231), 4.1-4.2 (S232-449)
-- [ ] Spec 4.3-4.10, 4.11-4.12, 4.13, 4.15-4.17, 6.7, 8, 9, 10, 11
-- [ ] Planning notes
+- [x] Spec 4.3-4.10 (S450-740), 4.11-4.16 (S740-1000), 4.17-4.18 (S1000-1135), 6 (S1714-1900), 8.1-8.9, 9-12
+- [x] Planning notes (section 5: C&C 1-3 are tile instances with 2 MB big SRAM on tiles 0-2's fifth links;
+      engines 72-74 on each controller's +8 link; routing d>=64 via tile d[2:0])
+- [x] sw: wait_tables() in mesh.h:416 polls rd_running|ts_busy; ~25 calls in RECIPES.md, also CONVENTIONS, REGISTERS
 - [ ] Draft REVIEW.md
 
 ## Candidate findings (raw, to verify)
@@ -53,3 +55,40 @@ S = wip/spec/machine-spec.md.
 - S 4.1: alignment none required except v1.1 mode 3 (explicit address) - never spans.
 - S 4.2: STREAM_DEST v1.1: dest word [20:0], d [27:21]; STREAM_COUNT mode [21:18], size [23:22], gap [26:24].
   v1.2 moves gap to STREAM_SRC [23:21] and d to STREAM_COUNT [31:25].
+
+## Verified (after reading the spec)
+- #2 confirmed: gather values DO pass the director in v1.1: S514 (mode-2 packet to the tile itself), S540
+  ("Everything that leaves a tile ... is a big-SRAM read return turned into a packet"), S530 (k+1 cycles through
+  the one injection point and the one eject). So D 17 C (D511) contradicts the spec. Read-port results too: S466.
+- #3 confirmed and worse: write path = director -> 4-entry input FIFO (S667) -> pointer stage, PTR round trip
+  2*L_ts+1 (S685; L_ts = ts_engine_latency 1-4) -> area queue. HIST RMW and PTR RMW each behind a 16-entry request
+  FIFO (S738). At L_ts = 4 the pointer round trip alone is 9 > K = 8. cm_latency 2 [built], rp_latency 2 (Proposed,
+  item 48; replayer placement open, item 59) - K must be tied to all of them.
+- Area queue: ready_w = count < depth and count <= depth-1 after every cycle (S285-288), so a write is never refused
+  by an area except part 1 of a spanning write (S280-283). FIFO backs up only behind spanning writes / pointer stage.
+- v1.1 port B accepts 1/2/4 words at ANY word address (S771) - no alignment. D 18 ERRORS[1] "misaligned address"
+  would newly reject unaligned controller-memory writes (and read-port results, mode 6 to self).
+- v1.1 big SRAM: no alignment except mode 3 (S277); out-of-range reads 0 / writes dropped, no condition (S305-309).
+- ROUTER_SET_HDR auto-increment: +1/2/4 for modes 3, 6, 9; +1 for mode 7; unchanged for others incl. replies (S788,
+  8.4). v1.2: replies and commands are mode 0, so ROUTER_ADDR advances after every reply -> D 7's "change of dst
+  alone ... is still one store" (D255) fails for replies.
+- 6.7 write path: write stream = mode 3 to d=64 with addr = chunk offset within the write; C&C's port diverts mode 3
+  to the memory system (S792, S1882). v1.2 has no equivalent: mode 3 is now augmented, mode 0 has no "write data"
+  meaning at a controller. Planning notes: LPDDR owned by engine 73.
+- Section 11 cost: link FIFOs 17 x 16 x 169 = 46 Kbit -> ~0.08 mm2 (S2223); fifth port 10 x 16 x 169 = 27 Kbit
+  (S2238); loopback +48 entries (S2231). At 256: +87 bits x (272 + 160 + 48 entries) = 41.8 Kbit; by the spec's own
+  v1.0->v1.1 slope (~1.6 um2/bit) ~ +0.065 mm2; plus padding stages (S153), holding registers, write-engine input
+  FIFO, return-queue/read-port metadata (32-bit addresses).
+- ts_busy (S957): OR of engine table request within L_ts+1 cycles, PTR/HIST request queued/arriving, or last RMW too
+  recent to be readable. Covers uncounted arrivals too; D 17 covers counted ones only.
+- DMA run done ([6], v1.1 [11]) is set on rd_done's rise (S342), sticky, not cleared by start: stale-event risk.
+- 6.7 source-buffer rule (S1880) relies on area arrival-order service -> Q5 (writes ahead of reads) breaks it.
+- 4.17.9 (S1080): mesh tiles' peripherals have no output; v1.2's standard DMA on any peripheral could inject at
+  the tile -> S9's token rule must cover a DMA packet to the tile itself or broadcast.
+
+## Plan for REVIEW.md
+Top five: (1) K can't be guaranteed as a constant; (2) 17 C contradicts the gather path / one decrement per cycle;
+(3) the LPDDR write stream and the meaning of regions at endpoints 64-74; (4) bad-packet/alignment/range rules for
+the new map are undefined (incl. Q10 units); (5) DMA run done is stale-prone and event-only waits lose the
+idempotent "tables free" test. Then ROUTER_ADDR advance, counting vs mode, command landed timing, address carry,
+cost, Q5, S7, S9, invariants, nits.

@@ -540,6 +540,12 @@ Hardware guarantees this needs:
 | B | **DMA run done fires only after the run's last table read has completed**, not when the last entry is walked |
 | C | **Gather values pass the traffic director like any loopback packet and are counted there** (corrected 2026-10-28, W2-02: they go out as packets to the tile itself and loop back through the router, 4.4, 4.5). Their K delay starts at the director like every other packet's, and a counter still takes at most one decrement per cycle |
 
+- **Uncounted traffic** (W2-11): uncounted packets are used only for **commands** (mode 0 to the command
+  block) and **boot and staging** (images; those for big SRAM land through `PTR[64]` by source, 6.2). Rule:
+  **no uncounted mode 1-3 packet arrives while the program could be using `PTR` or `HIST`**; staging happens
+  while the tile sleeps in its boot ROM or is idle between phases, so it holds by construction.
+- **Guarantee A's "complete"** (W2-11) means **readable by a controller load through the table window**,
+  `HIST`'s count-on-arrival included, behind its request FIFO; validated with S1's table-window case.
 - **`PULSE_DMA` clears DMA run done** (`EVENTS` [6]) (owner, 2026-10-28; W2-10), as an arming write clears
   its counter's done (3), so [6] always refers to the run most recently started and a stale one can't
   satisfy the next wait.

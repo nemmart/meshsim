@@ -47,7 +47,7 @@ open items touching C&C/HALT; planning notes section 7. Code checked: `wip/sort/
 
 ## Round 2 (PROMPT-2.md): resolutions in decisions 19-24, commit 21ae57a
 
-Read: overview, 1.4, 1.5, 3, 5, 15, 19-24, pending. Status draft:
+REVIEW-2.md written and pushed (W1-18..W1-30). Read: overview, 1.4, 1.5, 3, 5, 15, 19-24, pending. Status draft:
 closed 01 02 04 05 12 15 17; partly 03 06 07 08 09 10 11 13 16; closed-for-2/3 14 (C&C 1's own boot open).
 
 New candidates (D = decisions line at 21ae57a):

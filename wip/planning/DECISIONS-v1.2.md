@@ -664,15 +664,24 @@ UART) are outside it**, so the host link survives. The same line is the power-on
 
 - **The policy is abort and restart:** no job continues with a unit missing. Per-unit run bits remain
   for boot order and for loading.
+- **C&C 1's handler is a recovery manager** (owner, 2026-10-28), more involved than a tile's. Its duties
+  *(proposed; details for the C&C 1 firmware)*: tell its causes apart (another unit's error starts the
+  recovery; an error of C&C 1 itself is fatal, 1.5); poll `ERROR_LINES_0`-`2` during the recovery, since
+  with `MIE` = 0 further failures don't interrupt it; bound the draining, the flush and any host report
+  with timeouts; restart cleanly.
+- **C&C 1 after the restart** (owner, 2026-10-28): it never returns to the interrupted code (20); its
+  handler continues into the restart, resets its stack, sets `mstatus.MIE` again and enters its main loop.
+  This is safe because **the reset clears every unit's errors**: the lines drop, the live unit-error bit
+  and C&C 1's per-peripheral bit follow, and C&C 1's hard interrupt input goes low before `MIE` is set.
+  **Exception:** C&C 1's own errors are sticky and outside the reset domain; if any is set, C&C 1 does not
+  re-enable and the failure stays fatal (the pin, 1.5).
 - **Draining matters:** reports left in C&C 1's receive queue back up the request-bus tree, and the
   flush's own requests to C&C 2 would queue behind them in the same rows (W1-09). With all 64 tiles
   failing at once (one bad broadcast), that is about 1,000 reports.
 
 *(Proposed, for confirmation:)*
 
-- **C&C 1 after the reboot:** it never returns to the interrupted code (20), but its handler continues
-  into the restart: reset its stack, set `mstatus.MIE` again and enter its main loop, so a later error
-  interrupts it again.
+
 - **The boundary queues:** before releasing the reset, C&C 1 empties the queues it holds facing the reset
   domain (its request receive queue, the FIFOs on tiles 0-2's fifth links), or they reset with the domain,
   so the credits on both sides start out matching.

@@ -464,13 +464,36 @@ Decided (O). Answers Q14. The layout of `EVENTS`, `EVENTS_PEEK`, `EVENTS_MASK` a
   the mask, and one set in the load's own cycle survives. The live events clear only at their source:
   popping the request, or loading the peripheral's own `EVENTS`.
 
+## 17. Waiting for the tables by events (2026-10-28)
+
+Decided (O). Replaces `wait_tables()`, which spin-polls `rd_running` and `ts_busy` before the program
+touches `STREAM`, `GROUP`, `PTR` or `HIST` (about 15 calls in the sort). Software waits for the tables with
+events, like every other wait:
+
+- **The arrival side** (incoming packets updating `PTR` for modes 1-3 and `HIST` for count-on-arrival,
+  and local gather values landing at `PTR[me]`) is covered by the write counter the program armed.
+- **The local side** (the address generator reading `STREAM` and `GROUP`) is covered by DMA run done,
+  `EVENTS` [6].
+- **Software** sets `EVENTS_REQUIRED` to "write counter *n* done and DMA run done" and executes `WFI`. The
+  counters alone are not enough, since arrivals can finish before the tile's own run.
+
+Hardware guarantees this needs:
+
+| # | guarantee |
+|---|---|
+| A | **K covers the table update:** by the time a packet's counter decrements, its `PTR` or `HIST` update is complete (S1) |
+| B | **DMA run done fires only after the run's last table read has completed**, not when the last entry is walked |
+| C | **A gather value's delay starts where it enters the write engine:** gather values are made after the traffic director and don't pass it; they carry a counter field (Q8) |
+
+- **`ts_busy` and `wait_tables()` go.** `STATUS` becomes diagnostic only: no program needs to poll it.
+
 ---
 
 ## Big SRAM: to validate
 
 | # | what | source |
 |---|---|---|
-| S1 | **A write reaches its area's queue within K = 8 cycles** of the director accepting it (input FIFO, pointer stage, a spanning write's second part). Tony estimates about 6. meshsim to flag any counter decrement before its write is queued | 3 |
+| S1 | **A write reaches its area's queue within K = 8 cycles** of the director accepting it (input FIFO, pointer stage, a spanning write's second part), **with its `PTR` or `HIST` update complete** (17). Tony estimates about 6. meshsim to flag any counter decrement before its write is queued | 3, 17 |
 | S2 | **Reads come back in order per requesting client** (address generator, GATHER engine), whichever areas they hit; read-port reads in any order | 4.1, 4.5 |
 | S9 | **The protected loopback:** reads are limited by credits so the loopback queue cannot overflow. 64 tokens; a packet for the tile itself (a loopback read, or a send-port packet to itself or broadcast) holds its token until it leaves the loopback FIFO, which is at least 64 deep, so an excess read waits for a token. **Required** (owner, 2026-10-28), no longer proposed; meshsim part M measured no loss with it | 4.5, 4.7, spec items 74, 116 |
 | S3 | The area macros: compiler numbers for a 128 × 32K area at 1 GHz, one access per cycle; the array's read latency; density and arrangement | spec item 1 |

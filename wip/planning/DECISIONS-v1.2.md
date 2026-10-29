@@ -258,21 +258,21 @@ Decided (O). Answers most of Q11.
 ## 10. The standard peripheral window (2026-10-28)
 
 Decided (O). Every peripheral's 0x200-byte register window (9) starts with the same words, in the same
-order as the controller's block (11): parameters, status, conditions, pulses, wakes, send, then the rest.
+order as the controller's block (11): parameters, status, conditions, pulses, wakes, DMA, then the rest.
 Word *n* is at window base + 4*n*.
 
 | word | register | access | purpose |
 |---|---|---|---|
 | 0 | `PARAMS` | R | constant: the peripheral's type, version, sizes; 0 if it has nothing to say |
-| 1 | `STATUS` | R | live bits: run in progress, send in progress, and the peripheral's own |
+| 1 | `STATUS` | R | live bits: run in progress, DMA in progress, and the peripheral's own |
 | 2 | `CONDITIONS` | R | error bits, sticky until HALT like `TILE_CONDITIONS` |
-| 3 | `RUN_PULSE` | W | store 1 to start a run |
-| 4 | `SEND_PULSE` | W | store 1 to issue the send set up in words 8-9 |
+| 3 | `PULSE_RUN` | W | store 1 to start a run |
+| 4 | `PULSE_DMA` | W | store 1 to start the peripheral's DMA as set up in words 8-9 |
 | 5 | `WAKE_EVENTS` | R | sticky events; a load consumes those in `WAKE_MASK`, as on the tile |
 | 6 | `WAKE_PEEK` | R | what a load of `WAKE_EVENTS` would return, consuming nothing |
 | 7 | `WAKE_MASK` | R/W | the events that count |
-| 8 | `DMA_HDR` | R/W | count [11:0] (32-bit words, up to 4,095), output queue [13:12], spare [17:14], size [19:18] reserved (the sender picks sizes), counter [21:20], mode [24:22], dst [31:25] |
-| 9 | `DMA_ADDR` | R/W | the send's 32-bit destination address, advancing by each packet's size as packets go out |
+| 8 | `DMA_HDR` | R/W | count [11:0] (32-bit words, up to 4,095), output queue [13:12], spare [17:14], size [19:18] reserved (the DMA picks sizes), counter [21:20], mode [24:22], dst [31:25] |
+| 9 | `DMA_ADDR` | R/W | the DMA's 32-bit destination address, advancing by each packet's size as packets go out |
 | 10-31 | | | reserved for future standard words |
 | 32-127 | | | peripheral-defined |
 
@@ -283,12 +283,15 @@ Word *n* is at window base + 4*n*.
   peripheral's `WAKE_EVENTS`. (Answers Q13.)
 - **`WAKE_REQUIRED` is tile-only:** a program needing "peripheral 1 and counter 2" sets both in the tile's.
 - **No clear pulses:** loading `WAKE_EVENTS` consumes events, as on the tile.
+- **Naming** (owner, 2026-10-28): a peripheral's output engine is its **DMA** (v1.1's "sender"), with
+  `PULSE_DMA`, `DMA_HDR` and `DMA_ADDR`; its run is `PULSE_RUN`. Pulses are a `PULSE_` family, as on the
+  controller (8).
 - **`DMA_HDR` and `DMA_ADDR`** (owner, 2026-10-28) parallel the controller's `ROUTER_HDR` and
   `ROUTER_ADDR`. `DMA_HDR` [31:18] is laid out exactly as `STREAM_COUNT` [31:18] (4), so the size,
-  counter, mode and dst block sits at the same bits in both. As in v1.1, a send is 128-bit packets, then a
+  counter, mode and dst block sits at the same bits in both. As with v1.1's sender, a DMA transfer is 128-bit packets, then a
   64-bit and/or a 32-bit packet for the remainder. v1.1's word count was 16 bits; 12 is enough.
-- **The sender is optional.** A peripheral without output (the replayer, for one) leaves words 4, 8 and 9
-  unused (`SEND_PULSE`, `DMA_HDR`, `DMA_ADDR`). This replaces v1.1's tile-level sender (`SENDER_SEND`, `SENDER_ADDR`, `sender_busy`, sender
+- **The DMA is optional.** A peripheral without output (the replayer, for one) leaves words 4, 8 and 9
+  unused (`PULSE_DMA`, `DMA_HDR`, `DMA_ADDR`). This replaces v1.1's tile-level sender (`SENDER_SEND`, `SENDER_ADDR`, `sender_busy`, sender
   idle at `WAKE_EVENTS` [20]; 4.17.9, 8.12).
 - **The run pulses move into the windows:** section 8's `PERIPH_1_RUN_PULSE`-`PERIPH_3_RUN_PULSE` go.
 - Replaces v1.1's `PERIPH_STATUS_0`-`7`, `periph_running`, the six service lines and the peripheral

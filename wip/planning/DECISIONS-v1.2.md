@@ -561,6 +561,10 @@ Hardware guarantees this needs:
   6.2), which the 32-bit address makes possible. So uncounted traffic never touches `PTR` or `HIST`, the
   convention is simply **modes 1-3 are always counted**, and `PTR[64]` stops being special: C&C 1 places
   each image by address.
+- **A running program sends no uncounted writes except commands** (owner, 2026-10-28; W2-17): anything
+  whose landing matters is counted. v1.1's counters done waited for `mem_idle` and `cm_idle`, so uncounted
+  writes had landed by the end of a phase; v1.2's done is the counters only. Commands signal their own
+  landing ("command landed", W2-12); boot and staging end with the marker, which lands last (22).
 - **Guarantee A's "complete"** (W2-11) means **readable by a controller load through the table window**,
   `HIST`'s count-on-arrival included, behind its request FIFO; validated with S1's table-window case.
 - **`PULSE_DMA` clears DMA run done** (`EVENTS` [6]) (owner, 2026-10-28; W2-10), as an arming write clears
@@ -593,14 +597,13 @@ The peripheral type (v1.1's `TILE_STATUS` [15:12]) moves into each peripheral's 
 | [1] | `rd_done` |
 | [2] | GATHER busy |
 | [3] | `send_busy`: the send port's holding register is occupied |
-| [4] | `mem_idle` |
-| [5] | `cm_idle` |
-| [6] | `done` |
-| [7] | command landed |
-| [8] | `request_busy` |
+| [4] | `done` |
+| [5] | command landed |
+| [6] | `request_busy` |
 
 Gone: `periph_running` and `sender_busy` (now each peripheral's `STATUS`), `ts_busy` (17), the constants
-(`PARAMS`).
+(`PARAMS`), and **`mem_idle` and `cm_idle`** (owner, 2026-10-28; W2-17): no rule depends on them any more, so
+they leave the hardware and are kept in meshsim only, as diagnostics.
 
 **`ERRORS`** (sticky until HALT, except [13:11])
 

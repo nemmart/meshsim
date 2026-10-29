@@ -208,7 +208,12 @@ Decided (O). Answers Q6. One map for packet addresses and the controller's own l
 - **Follow-on:** the controller's map moves (today program memory is at 0x0000, data at 0x4000, the table
   window at 0x2000 and the registers at 0xFFFFF800), so the reset PC, the resident loader's address, the
   linker script and `mesh.h` change.
-- **Pending:** whether the offset counts bytes or 32-bit words (Q10).
+- **The offset counts bytes** (owner, 2026-10-28; Q10, W2-07): the 24-bit offset is in the controller's
+  byte space, so a C pointer *is* the packet address, with no `CM_WORD()`-style shifts. 24 bits cover
+  16 MB, above big SRAM's 8 MB maximum. **Big SRAM keeps its 32-bit chunk addresses internally**: `PTR`,
+  `STREAM_SRC`, `SRAM_RD_ADDR_QUEUE` and `DMA_RECORD_BASE_ADDRESS` stay in chunks, so code building a
+  big-SRAM packet address from a chunk address shifts it by 2 (the spec says so in 4.2-4.4). The read
+  port's destination offset (13) is in bytes.
 
 ## 6. Modes (2026-10-28)
 
@@ -897,7 +902,7 @@ A running list; each entry names where it came from. Resolved entries move into 
 | Q6 | The link word's 32-bit address: what it covers | 2 | **resolved: section 5** |
 | Q7 | The 3-bit mode: which of today's nine modes merge or go, now that counting is separate | 2 | **resolved: section 6** |
 | Q9 | Does a stream's source stay a 21-bit big-SRAM chunk address, or does the 32-bit address apply to reads too? | 4 | open |
-| Q10 | Is the 24-bit offset in bytes or in 32-bit words? | 5 | open |
+| Q10 | Is the 24-bit offset in bytes or in 32-bit words? | 5 | **resolved: bytes (5)** |
 | Q11 | How several peripherals share the slot's interface | 5 | **resolved: sections 9 and 10** |
 | Q13 | Which peripheral flags only wake the controller and which raise a tile condition | 10 | **resolved: section 10** (conditions interrupt, wake events wake) |
 | Q15 | Should `ROUTER_HDR` use the same upper-half layout as `STREAM_COUNT` and `DMA_HDR`? | 7, 10 | **resolved: section 12** |

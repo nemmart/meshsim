@@ -574,8 +574,11 @@ Decided (O), from WORKER1's review (W1-01, and parts of W1-05 and W1-06). Part o
 - **Halting a tile stops its sending engines:** the address generator, the GATHER engine, the read port,
   the send port's holding register and its peripherals' DMAs. A run in progress is abandoned. The traffic
   director, the write engine and the routers keep running, so a halted tile can still be loaded.
-- **On the RUN → HALT edge the tile's own outgoing traffic is cleared:** the loopback FIFO (its read tokens
-  returned at once) and the tile's outgoing queues before injection. Packets already in the injector or the
+- **On the RUN → HALT edge the tile's own outgoing traffic is cleared:** the loopback FIFO and the tile's
+  outgoing queues before injection. **Throughout HALT the loopback is held empty** (anything entering it,
+  such as a read result still in big SRAM's pipeline at the edge, is discarded) and **the read-token count
+  is held at 64** (owner: the loopback space tracker is simply reinitialised), so every RUN starts with an
+  empty loopback and every token free. Packets already in the injector or the
   router flow on and clear the mesh. **The router's link FIFOs are never cleared:** they carry other tiles'
   transit traffic, boot loads and, on tiles 0-2, the controllers' fifth links.
 - **In HALT the ejector drops counted packets** (counter 1-3) silently: no write, no count, no error. It

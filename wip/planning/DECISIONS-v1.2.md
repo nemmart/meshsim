@@ -331,8 +331,7 @@ first words. *(Proposed: the addresses below.)* In region 0xFF; the low 12 bits 
 | 0x860-0x868 | `WRITE_COUNTER_1`-`WRITE_COUNTER_3` | R/W | 3 |
 | 0x86C | `SRAM_RD_ADDR_QUEUE` | R/W | unchanged |
 | 0x870 | `SRAM_RD_DEST_ADDR` | R/W | needs a counter field and the new data-memory address |
-| 0x874-0x87C | `ERROR_LINES_0`-`2` | R | the three error words (1.5); C&C 1 only, 0 elsewhere |
-| 0x880-0x9FC | | | reserved |
+| 0x874-0x9FC | | | reserved (`ERROR_LINES_0`-`2` moved to C&C 1's peripheral, 15) |
 
 - **Gone:** `TILE_PULSE`, `ROUTER_SET_HDR`, `DMA_SRAM_`/`DMA_CM_`/`DMA_REPLY_`/`DMA_PERIPH_REMAINING`,
   `PERIPH_STATUS_0`-`7`, `SENDER_SEND`, `SENDER_ADDR`, `UART_TX`/`RX`/`STATUS`/`DIVISOR`.
@@ -387,6 +386,34 @@ Decided (O). **The wake registers are renamed** at both levels, the tile's and e
   the hard interrupt (1) and the core's `mie`/`mip` CSRs use the word in the RISC-V sense.
 - This log uses the new names throughout, including where it cites v1.1's bit positions.
 
+## 15. C&C 1's peripheral: error and run lines (2026-10-28)
+
+Decided (O). Revises 1.5 and settles part of Q4.
+
+- **C&C 1 has one peripheral, Ingress/Egress and the UART.** The error lines and the run lines are
+  registers in its window (peripheral-defined words), not in the controller's block: `ERROR_LINES_0`-`2`
+  leave 0x874-0x87C (11).
+- **Bits follow the endpoint id:** 0-63 the mesh tiles, **64 unused** (C&C 1 itself), 65 C&C 2 (the file
+  system), 66 C&C 3 (the pager); the rest of the third word reserved.
+
+| registers | access | per unit |
+|---|---|---|
+| `ERROR_LINES_0`-`2` | R | 1 while that unit's errors are non-zero; **live**, following the lines |
+| `RUN_LINES_0`-`2` | R/W | **0 halt, 1 run**: one RUN/HALT line per unit |
+
+- **Per-unit halt:** C&C 1 halts and runs each controller on its own (v1.1 had one line to every tile).
+  Bit 64 is unused, so C&C 1 cannot halt itself.
+- **Errors reach C&C 1 through its peripheral:** any line high is an error of the peripheral, which sets
+  C&C 1's per-peripheral bit in its tile errors (10) and takes the hard interrupt (1). Because the lines are
+  live, halting the failed units clears them, the peripheral's error, C&C 1's bit and the C&C pin (1.5).
+  This peripheral's tile-error bit is live, an exception to 10's "sticky until HALT".
+- **The engines are their controllers' peripherals:** 72 (Ingress/Egress) is C&C 1's, 73 (Updater/Binder/RW)
+  C&C 2's and 74 (the Tracer) C&C 3's. An engine's error is its controller's peripheral error, so it
+  raises that controller's error line; halting a controller halts its peripheral. They need no bits of
+  their own.
+- **Q4 still open:** what HALT clears, which units a halted tile still runs (routers, request port), the
+  hold before RUN.
+
 ---
 
 ## Big SRAM: to validate
@@ -414,7 +441,7 @@ A running list; each entry names where it came from. Resolved entries move into 
 | Q1 | Tony's exact list of implemented CSRs, to define which CSR instructions are legal | 1.1 | waiting on Tony |
 | Q2 | How long a high on the C&C pin counts as "sustained" for the host | 1.5 | open |
 | Q3 | What stops the peripheral and the sender when a condition traps: the hardware on taking the interrupt, or the handler? (Today a halted controller stops them at once.) | 1.7 | open; suggestion: the hardware, so a failed handler can't leave them running |
-| Q4 | The HALT design: one line or separate lines for tiles and controllers, which peripherals stop, what HALT clears, the hold before RUN, per-tile halt | planning notes section 7 | open |
+| Q4 | The HALT design | planning notes section 7 | **partly resolved: section 15** (one line per unit, set by C&C 1; a halted controller halts its peripheral). Left: what HALT clears, what keeps running, the hold before RUN |
 | Q5 | Should an area serve writes ahead of queued reads? Not needed for S1 if K covers only the path to the area queue | 3 | open; for Tony |
 | Q6 | The link word's 32-bit address: what it covers | 2 | **resolved: section 5** |
 | Q7 | The 3-bit mode: which of today's nine modes merge or go, now that counting is separate | 2 | **resolved: section 6** |

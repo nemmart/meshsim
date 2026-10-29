@@ -871,6 +871,10 @@ From W2-06. Defines `ERRORS` [1], "bad packet" (18).
 - **meshsim checks both strictly** (owner): misalignment and out-of-bounds, for packets and for the core's
   loads and stores, stop the simulation with an error naming the access. Both are common bugs in kernels
   of this kind and must be caught in simulation.
+- **Auto-advancing past the end is a software bug** (owner, 2026-10-28; W2-08): `STREAM_DEST`,
+  `ROUTER_ADDR`, `DMA_ADDR`, `SRAM_RD_DEST_ADDR` and the memory system's deliveries advance by plain
+  addition; what happens when a run passes the end of its memory (wrap, alias, or carry into the next
+  region) is undefined and not specified. meshsim errors on it, like any out-of-bounds access.
 - **The cheap checks stay in hardware:** alignment (above), and the region decode, an 8-bit compare.
 
 | case | hardware |

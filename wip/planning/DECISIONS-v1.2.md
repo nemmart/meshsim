@@ -808,6 +808,29 @@ Decided (O), from W1-16. Replaces 1.5's C&C pin; settles Q2.
   `LED`, bit 0)*: C&C 1 can blink codes on it while it is healthy (boot progress, which unit failed, a
   recovery in progress).
 
+## 25. The engines and the LPDDR write path (2026-10-28)
+
+Decided (O), from W2-04. Settles what addresses mean at the controllers and engines.
+
+- **The controllers are normal tile instances** (2 MB of big SRAM; planning notes section 5), so the
+  address map (5) means at C&C 1-3 exactly what it means on a tile.
+- **The engines are their controllers' peripherals** (15): Ingress/Egress is C&C 1's, the Updater/Binder/RW
+  engine C&C 2's, the Tracer C&C 3's. A packet reaches an engine at its controller's endpoint, in that
+  peripheral's region. **Endpoints 72-74 go**; each controller's link to its engine is internal to the unit.
+  **Endpoint 65 is C&C 2**, with the memory system as its peripheral (resolving the clash WORKER1 found
+  with 2.1 and 6.7). *(Proposed; to confirm with the endpoint map, item 82.)*
+- **Writing LPDDR, by tags:**
+  1. The file system (C&C 2) owns a pool of **tags**. For each write it picks a tag and sends the RW engine
+     (its own peripheral) a request: the LPDDR destination and the tag.
+  2. **Each tag owns a window of 2-4 KB** in the RW engine's region; **a tag window is a single write.**
+  3. The file system directs the tiles to write the window, as plain mode-0 packets to dst 65 in the RW
+     engine's region. No special mode is needed (v1.1's mode 3 to d = 64 goes).
+  4. When the window is complete, the RW engine writes it to LPDDR and **returns the tag** to the file
+     system. *(How is open, a detail of the engine's design; suggested: an event in the engine's `EVENTS`
+     and a register presenting the closed tag, rather than a request-bus message.)*
+- **Follow-on:** 4.2's "*d* = 64 only with mode 3" and "65-125 reserved", invariant 17's mode-3 clauses, and
+  6.6-6.7's description of C&C's port and the memory system change.
+
 ---
 
 ## Big SRAM: to validate

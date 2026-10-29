@@ -36,7 +36,7 @@ Closes planning notes section 7, "Condition handling", and to-do item 3.
 
 ### 1.4 The handler (O; 4.13)
 
-- **A condition raises the core's hard interrupt.** The handler reads the state (conditions, `TILE_STATUS`,
+- **A condition raises the core's hard interrupt.** The handler reads the state (conditions, `STATUS`,
   counters, `mepc`/`mcause`/`mtval`, `PERIPH_STATUS_0`-`7`, x1-x31: about 50 words) and sends it to C&C 1
   as request-bus reports (about 17; header word: op, sequence number; three data words each).
 - **Parking:** the handler then **clears `EVENTS_MASK` and `EVENTS_REQUIRED` and loops on `WFI`**, so no event
@@ -232,7 +232,7 @@ for one cycle, a store of 0 does nothing, and a load reads 0.
 | `TILE_PULSE` [3] | `PULSE_GO` | drive the GO net where it is wired (6.3) |
 
 - **Names** (owner, 2026-10-28): `PULSE_DONE`, `PULSE_DMA`, `PULSE_GO`, a `PULSE_` family like the
-  `WAKE_` and `ROUTER_` families (first proposed as `TILE_DONE_PULSE`, `DMA_START_PULSE`, `TILE_GO_PULSE`).
+  `EVENTS_` and `ROUTER_` families (first proposed as `TILE_DONE_PULSE`, `DMA_START_PULSE`, `TILE_GO_PULSE`).
 - Firing two actions in one store is no longer possible; 8.6's "in one store, start and run act before
   `done`" goes. Separate stores act in program order, and the synchronised start path is still one store.
 
@@ -271,7 +271,7 @@ Word *n* is at window base + 4*n*.
 |---|---|---|---|
 | 0 | `PARAMS` | R | constant: the peripheral's type, version, sizes; 0 if it has nothing to say |
 | 1 | `STATUS` | R | live bits: run in progress, DMA in progress, and the peripheral's own |
-| 2 | `CONDITIONS` | R | error bits, sticky until HALT like `TILE_CONDITIONS` |
+| 2 | `ERRORS` | R | error bits, sticky until HALT like `ERRORS` |
 | 3 | `PULSE_RUN` | W | store 1 to start a run |
 | 4 | `PULSE_DMA` | W | store 1 to start the peripheral's DMA as set up in words 8-9 |
 | 5 | `EVENTS` | R | sticky events; a load consumes those in `EVENTS_MASK`, as on the tile |
@@ -282,8 +282,8 @@ Word *n* is at window base + 4*n*.
 | 10-31 | | | reserved for future standard words |
 | 32-127 | | | peripheral-defined |
 
-- **Conditions interrupt; wake events wake.** `TILE_CONDITIONS` has one bit per peripheral, set while
-  that peripheral's `CONDITIONS` is non-zero, so a peripheral error raises the hard interrupt. The tile's
+- **Conditions interrupt; wake events wake.** `ERRORS` has one bit per peripheral, set while
+  that peripheral's `ERRORS` is non-zero, so a peripheral error raises the hard interrupt. The tile's
   `EVENTS` has one bit per peripheral, **live** (not sticky): high while the peripheral's
   `EVENTS & EVENTS_MASK` is non-zero. An event is consumed in one place only, by a load of the
   peripheral's `EVENTS`. (Answers Q13.)
@@ -301,7 +301,7 @@ Word *n* is at window base + 4*n*.
   idle at `EVENTS` [20]; 4.17.9, 8.12).
 - **The run pulses move into the windows:** section 8's `PERIPH_1_RUN_PULSE`-`PERIPH_3_RUN_PULSE` go.
 - Replaces v1.1's `PERIPH_STATUS_0`-`7`, `periph_running`, the six service lines and the peripheral
-  conditions [13:11] in the controller's registers (4.17). The peripheral type moves from `TILE_STATUS`
+  conditions [13:11] in the controller's registers (4.17). The peripheral type moves from `STATUS`
   into each peripheral's `PARAMS`.
 
 ## 11. The controller's register block (2026-10-28)
@@ -311,9 +311,9 @@ first words. *(Proposed: the addresses below.)* In region 0xFF; the low 12 bits 
 
 | addr | register | access | notes |
 |---|---|---|---|
-| 0x800 | `TILE_PARAMS` | R | **new**, constant: endpoint id, big-SRAM size, peripheral-present mask [2:0]; split out of v1.1's `TILE_STATUS` |
-| 0x804 | `TILE_STATUS` | R | live bits only: `rd_running`, `rd_done`, `send_busy`, `ts_busy`, `mem_idle`, `cm_idle`, `done`, `request_busy` |
-| 0x808 | `TILE_CONDITIONS` | R | gains one bit per peripheral (10); loses the peripheral conditions [13:11] |
+| 0x800 | `PARAMS` | R | **new**, constant: endpoint id, big-SRAM size, peripheral-present mask [2:0]; split out of v1.1's `TILE_STATUS` |
+| 0x804 | `STATUS` | R | live bits only: `rd_running`, `rd_done`, `send_busy`, `ts_busy`, `mem_idle`, `cm_idle`, `done`, `request_busy` |
+| 0x808 | `ERRORS` | R | gains one bit per peripheral (10); loses the peripheral conditions [13:11] |
 | 0x80C | `PULSE_DONE` | W | 8 |
 | 0x810 | `PULSE_DMA` | W | 8 |
 | 0x814 | `PULSE_GO` | W | 8 |
@@ -369,7 +369,7 @@ judged not useful, since a read-port result always goes to the tile itself as a 
 - **Data memory only** (owner, 2026-10-28): v1.1 let results land anywhere in controller memory, program
   memory included; that goes.
 
-## 14. Names: events and errors (2026-10-28)
+## 14. Names: events, errors and the first words (2026-10-28)
 
 Decided (O). **The wake registers are renamed** at both levels, the tile's and each peripheral's:
 
@@ -382,6 +382,12 @@ Decided (O). **The wake registers are renamed** at both levels, the tile's and e
 
 - **The counters are `WRITE_COUNTER_1`-`WRITE_COUNTER_3`** (owner, 2026-10-28): every counted packet is a
   write (modes 0-3), so the name says what they count. The link word's field stays "counter".
+- **Errors** (owner, 2026-10-28): v1.1's *conditions* are now **errors**, as a concept and in names: the
+  tile's `TILE_CONDITIONS` is `ERRORS`, a peripheral's `CONDITIONS` is `ERRORS`, and a bit is named without
+  repeating the word (`ERRORS_BUS`, not `TILE_COND_BUS_ERROR`). The memory system's "C&C error flags"
+  are a separate thing and keep their name.
+- **No `TILE_` prefix** (owner, 2026-10-28): the tile's first registers are `PARAMS`, `STATUS`, `ERRORS`,
+  the same names as a peripheral's first three words (10), as `EVENTS` already is.
 - "Interrupts" was considered and rejected: events only release `WFI` and take no trap, while errors raise
   the hard interrupt (1) and the core's `mie`/`mip` CSRs use the word in the RISC-V sense.
 - This log uses the new names throughout, including where it cites v1.1's bit positions.

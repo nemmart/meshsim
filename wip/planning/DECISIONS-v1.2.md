@@ -828,6 +828,11 @@ Decided (O), from W2-04. Settles what addresses mean at the controllers and engi
   4. When the window is complete, the RW engine writes it to LPDDR and **returns the tag** to the file
      system. *(How is open, a detail of the engine's design; suggested: an event in the engine's `EVENTS`
      and a register presenting the closed tag, rather than a request-bus message.)*
+- **Requests that cause data to come back** (W2-05; owner: as needed, details to settle with 6.7's request
+  format): the request names the destination as a full 32-bit address (replacing v1.1's destination kind
+  and 128-byte-unit address), and, if the answer must be counted, the data's counter and the reply's
+  counter. Whether requests carry counters at all, or answers arrive uncounted under a convention, is open.
+  Between tiles, which counter a reply uses is agreed by the two programs, a software convention.
 - **Follow-on:** 4.2's "*d* = 64 only with mode 3" and "65-125 reserved", invariant 17's mode-3 clauses, and
   6.6-6.7's description of C&C's port and the memory system change.
 
@@ -869,4 +874,4 @@ A running list; each entry names where it came from. Resolved entries move into 
 | Q15 | Should `ROUTER_HDR` use the same upper-half layout as `STREAM_COUNT` and `DMA_HDR`? | 7, 10 | **resolved: section 12** |
 | Q14 | The tile's `EVENTS` bit layout | 11 | **resolved: section 16** |
 | Q12 | meshsim's per-tile debug console without a UART on every tile | 9 | **resolved for the hardware: section 23** (log files through the file system); meshsim's display is its own business |
-| Q8 | The counter field in every packet source: `STREAM` entries, the send port's header, the sender, the read port's setup, the GATHER engine's gather values, and memory-system requests | 3 | open |
+| Q8 | The counter field in every packet source (narrowed: done for `STREAM`, the send port, a peripheral's DMA, the read port and gather values; left: memory-system requests, 25) : `STREAM` entries, the send port's header, the sender, the read port's setup, the GATHER engine's gather values, and memory-system requests | 3 | open |

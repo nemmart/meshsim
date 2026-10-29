@@ -31,16 +31,16 @@ Closes planning notes section 7, "Condition handling", and to-do item 3.
 
 ### 1.3 Wake (O; 4.12)
 
-- **The `WAKE_*` registers are unchanged.** The existing wake term (4.12's formula over `WAKE_EVENTS`,
-  `WAKE_MASK`, `WAKE_REQUIRED` and the `done` gate) drives the core's wakeup input directly.
+- **The `EVENTS_*` registers are unchanged.** The existing wake term (4.12's formula over `EVENTS`,
+  `EVENTS_MASK`, `EVENTS_REQUIRED` and the `done` gate) drives the core's wakeup input directly.
 
 ### 1.4 The handler (O; 4.13)
 
 - **A condition raises the core's hard interrupt.** The handler reads the state (conditions, `TILE_STATUS`,
   counters, `mepc`/`mcause`/`mtval`, `PERIPH_STATUS_0`-`7`, x1-x31: about 50 words) and sends it to C&C 1
   as request-bus reports (about 17; header word: op, sequence number; three data words each).
-- **Parking:** the handler then **clears `WAKE_MASK` and `WAKE_REQUIRED` and loops on `WFI`**, so no event
-  and no GO can wake it. Only HALT recovers the tile (HALT → RUN resets `WAKE_MASK`, 4.12).
+- **Parking:** the handler then **clears `EVENTS_MASK` and `EVENTS_REQUIRED` and loops on `WFI`**, so no event
+  and no GO can wake it. Only HALT recovers the tile (HALT → RUN resets `EVENTS_MASK`, 4.12).
 - **Conditions during the `done` gate:** the gate controls only `WFI` wakes. A condition raised between
   `done` and GO still takes the hard interrupt.
 
@@ -246,7 +246,7 @@ Decided (O). Answers most of Q11.
 | 0xFFFFFC00-0xFFFFFDFF | peripheral 2 |
 | 0xFFFFFE00-0xFFFFFFFF | peripheral 3 |
 
-- **Each peripheral has one wake bit** in `WAKE_EVENTS`, replacing v1.1's six service lines. What the bit
+- **Each peripheral has one wake bit** in `EVENTS`, replacing v1.1's six service lines. What the bit
   means, and how software learns why it fired, is the peripheral's own business, through its window.
 - **The UART becomes a peripheral** on the tiles wired to a serial port, with TX and RX as registers in its
   window. It leaves every other tile, along with v1.1's `UART_TX`/`UART_RX`/`UART_STATUS`/`UART_CONTROL`
@@ -268,9 +268,9 @@ Word *n* is at window base + 4*n*.
 | 2 | `CONDITIONS` | R | error bits, sticky until HALT like `TILE_CONDITIONS` |
 | 3 | `PULSE_RUN` | W | store 1 to start a run |
 | 4 | `PULSE_DMA` | W | store 1 to start the peripheral's DMA as set up in words 8-9 |
-| 5 | `WAKE_EVENTS` | R | sticky events; a load consumes those in `WAKE_MASK`, as on the tile |
-| 6 | `WAKE_PEEK` | R | what a load of `WAKE_EVENTS` would return, consuming nothing |
-| 7 | `WAKE_MASK` | R/W | the events that count |
+| 5 | `EVENTS` | R | sticky events; a load consumes those in `EVENTS_MASK`, as on the tile |
+| 6 | `EVENTS_PEEK` | R | what a load of `EVENTS` would return, consuming nothing |
+| 7 | `EVENTS_MASK` | R/W | the events that count |
 | 8 | `DMA_HDR` | R/W | count [11:0] (32-bit words, up to 4,095), output queue [13:12], spare [17:14], size [19:18] reserved (the DMA picks sizes), counter [21:20], mode [24:22], dst [31:25] |
 | 9 | `DMA_ADDR` | R/W | the DMA's 32-bit destination address, advancing by each packet's size as packets go out |
 | 10-31 | | | reserved for future standard words |
@@ -278,11 +278,11 @@ Word *n* is at window base + 4*n*.
 
 - **Conditions interrupt; wake events wake.** `TILE_CONDITIONS` has one bit per peripheral, set while
   that peripheral's `CONDITIONS` is non-zero, so a peripheral error raises the hard interrupt. The tile's
-  `WAKE_EVENTS` has one bit per peripheral, **live** (not sticky): high while the peripheral's
-  `WAKE_EVENTS & WAKE_MASK` is non-zero. An event is consumed in one place only, by a load of the
-  peripheral's `WAKE_EVENTS`. (Answers Q13.)
-- **`WAKE_REQUIRED` is tile-only:** a program needing "peripheral 1 and counter 2" sets both in the tile's.
-- **No clear pulses:** loading `WAKE_EVENTS` consumes events, as on the tile.
+  `EVENTS` has one bit per peripheral, **live** (not sticky): high while the peripheral's
+  `EVENTS & EVENTS_MASK` is non-zero. An event is consumed in one place only, by a load of the
+  peripheral's `EVENTS`. (Answers Q13.)
+- **`EVENTS_REQUIRED` is tile-only:** a program needing "peripheral 1 and counter 2" sets both in the tile's.
+- **No clear pulses:** loading `EVENTS` consumes events, as on the tile.
 - **Naming** (owner, 2026-10-28): a peripheral's output engine is its **DMA** (v1.1's "sender"), with
   `PULSE_DMA`, `DMA_HDR` and `DMA_ADDR`; its run is `PULSE_RUN`. Pulses are a `PULSE_` family, as on the
   controller (8).
@@ -292,7 +292,7 @@ Word *n* is at window base + 4*n*.
   64-bit and/or a 32-bit packet for the remainder. v1.1's word count was 16 bits; 12 is enough.
 - **The DMA is optional.** A peripheral without output (the replayer, for one) leaves words 4, 8 and 9
   unused (`PULSE_DMA`, `DMA_HDR`, `DMA_ADDR`). This replaces v1.1's tile-level sender (`SENDER_SEND`, `SENDER_ADDR`, `sender_busy`, sender
-  idle at `WAKE_EVENTS` [20]; 4.17.9, 8.12).
+  idle at `EVENTS` [20]; 4.17.9, 8.12).
 - **The run pulses move into the windows:** section 8's `PERIPH_1_RUN_PULSE`-`PERIPH_3_RUN_PULSE` go.
 - Replaces v1.1's `PERIPH_STATUS_0`-`7`, `periph_running`, the six service lines and the peripheral
   conditions [13:11] in the controller's registers (4.17). The peripheral type moves from `TILE_STATUS`
@@ -311,10 +311,10 @@ first words. *(Proposed: the addresses below.)* In region 0xFF; the low 12 bits 
 | 0x80C | `PULSE_DONE` | W | 8 |
 | 0x810 | `PULSE_DMA` | W | 8 |
 | 0x814 | `PULSE_GO` | W | 8 |
-| 0x818 | `WAKE_EVENTS` | R | new bit layout (Q14) |
-| 0x81C | `WAKE_PEEK` | R | |
-| 0x820 | `WAKE_MASK` | R/W | |
-| 0x824 | `WAKE_REQUIRED` | R/W | tile only |
+| 0x818 | `EVENTS` | R | new bit layout (Q14) |
+| 0x81C | `EVENTS_PEEK` | R | |
+| 0x820 | `EVENTS_MASK` | R/W | |
+| 0x824 | `EVENTS_REQUIRED` | R/W | tile only |
 | 0x828 | `ROUTER_HDR` | R/W | 7 |
 | 0x82C | `ROUTER_ADDR` | R/W | 7 |
 | 0x830-0x838 | `ROUTER_SET_W0`-`W2` | W | unchanged |
@@ -364,6 +364,21 @@ judged not useful, since a read-port result always goes to the tile itself as a 
 - **Data memory only** (owner, 2026-10-28): v1.1 let results land anywhere in controller memory, program
   memory included; that goes.
 
+## 14. Names: events and errors (2026-10-28)
+
+Decided (O). **The wake registers are renamed** at both levels, the tile's and each peripheral's:
+
+| v1.1 | v1.2 |
+|---|---|
+| `WAKE_EVENTS` | `EVENTS` |
+| `WAKE_PEEK` | `EVENTS_PEEK` |
+| `WAKE_MASK` | `EVENTS_MASK` |
+| `WAKE_REQUIRED` (tile only) | `EVENTS_REQUIRED` |
+
+- "Interrupts" was considered and rejected: events only release `WFI` and take no trap, while errors raise
+  the hard interrupt (1) and the core's `mie`/`mip` CSRs use the word in the RISC-V sense.
+- This log uses the new names throughout, including where it cites v1.1's bit positions.
+
 ---
 
 ## Big SRAM: to validate
@@ -400,6 +415,6 @@ A running list; each entry names where it came from. Resolved entries move into 
 | Q11 | How several peripherals share the slot's interface | 5 | **resolved: sections 9 and 10** |
 | Q13 | Which peripheral flags only wake the controller and which raise a tile condition | 10 | **resolved: section 10** (conditions interrupt, wake events wake) |
 | Q15 | Should `ROUTER_HDR` use the same upper-half layout as `STREAM_COUNT` and `DMA_HDR`? | 7, 10 | **resolved: section 12** |
-| Q14 | The tile's `WAKE_EVENTS` bit layout: counters 1-3 done, GO, counters done, command landed, peripherals 1-3 (live), the request port's events | 11 | next |
+| Q14 | The tile's `EVENTS` bit layout: counters 1-3 done, GO, counters done, command landed, peripherals 1-3 (live), the request port's events | 11 | next |
 | Q12 | meshsim's per-tile debug console without a UART on every tile: request-bus debug messages (6.7) or a simulator-only print register | 9 | open |
 | Q8 | The counter field in every packet source: `STREAM` entries, the send port's header, the sender, the read port's setup, the GATHER engine's gather values, and memory-system requests | 3 | open |

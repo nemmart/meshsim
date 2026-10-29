@@ -224,6 +224,11 @@ counting (3), the 3-bit mode keeps only what the receiver must do differently:
 | 4 | gather request (local only); **never counted**: its counter field names the counter its gather values decrement |
 | 5-7 | reserved: **discarded at the destination, with no error** |
 
+- **The counter field counts for modes 0-3 only** (owner, 2026-10-28; W2-03). Mode 4 passes it on to its
+  gather values (below). **Reserved modes 5-7 are discarded with no decrement**, whatever their counter
+  field: a counted one leaves its counter short and the program waits forever, with no error (accepted;
+  meshsim flags every reserved-mode packet). Section 3's "counting no longer depends on the mode" holds for
+  the writes.
 - **A gather request never decrements a counter** (owner, 2026-10-28; W2-02), whatever its counter field
   says: it isn't a write. **Its counter field is passed on to the gather values it produces**, which are
   counted like any other write when they pass the director. (Answers Q8 for the GATHER engine.)

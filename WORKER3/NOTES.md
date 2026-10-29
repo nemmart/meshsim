@@ -6,9 +6,9 @@ deliverable. Line numbers: D = `wip/planning/DECISIONS-v1.2.md`, S = `wip/spec/m
 ## Status
 - [x] Read DECISIONS-v1.2 in full
 - [x] Read spec 4.11-4.20 (relevant parts), 6.1-6.6, 8
-- [ ] REGISTERS.md, mesh.h, CONVENTIONS/RECIPES
-- [ ] sort code, meshsim code: migration inventory
-- [ ] register-map overlap check (script)
+- [x] REGISTERS.md (s.1), mesh.h, planning notes to-do 13-14, spec 9 invariants
+- [x] sort code, meshsim code: migration inventory (grep table below)
+- [x] register-map overlap check: D11 block 0x800-0x870 has no overlaps; all 40 v1.1 registers accounted for
 - [ ] write REVIEW.md
 
 ## Candidate findings (raw)
@@ -49,3 +49,45 @@ deliverable. Line numbers: D = `wip/planning/DECISIONS-v1.2.md`, S = `wip/spec/m
     (UART TX stall now a peripheral word; SENDER_SEND gone).
 17. C&C 1 registers not placed: READY bits, receive FIFO, watchdog, host interface (S 6.6 l.1821-1840).
 18. D4: STREAM_COUNT [31:25] called *d*; D12 calls [31:25] dst. Nit: same field.
+
+19. D12 l.390 calls STREAM_COUNT [31:25] "dst"; v1.1 STREAM_DEST *d* is a RELATIVE offset for 0-63
+    (S l.367, l.385, l.437); ROUTER_HDR/DMA_HDR dst is absolute. "One layout" hides different semantics.
+20. ROUTER_ADDR auto-advance breaks one-store replies: sort exchange.c l.12-16, bt_run.c l.70-74,
+    bt_plan.c l.93-105, split.c (hdr x10), rcp.h l.38 all do `ROUTER_SET_HDR = hdr | DST(dst)` per dst with a
+    fixed address (mode 8 or mode 6 + me). v1.2 needs ROUTER_HDR + ROUTER_ADDR + send per dst.
+21. wait_tables() is a state poll (idempotent); event [6] is an edge (sticky until consumed). Replacing the 15
+    calls by WFI on [6] hangs where no run happened since [6] was last consumed (config.c:13, local.c:32,46,55,
+    95, main.c:30 before ov_load's run...) and passes early on a stale unconsumed [6] (v1.1 [11] is cleared
+    only by a consuming load and HALT->RUN, S l.874/892; wfi()'s reset mask does not consume it).
+22. NULL: v1.1 address 0 = instruction memory, data access = bus error (S l.773) -> free NULL check. v1.2
+    data memory at 0x00000000: NULL deref silently valid; same word the all-zero header writes (D6 l.225).
+23. Trap handler residency: HALT->RUN PC = loader; loader is 64 words (S l.794); handler (D1.4) must be
+    resident too and outside every overlay region (6.5 l.1813); mtvec reset value/when set. loader.S `ebreak`
+    on unknown command, crt0.S `ebreak` exit (meshsim test convention), riscv_test.h PASS/FAIL `ebreak`
+    all change meaning with traps (-> W1 for semantics; inventory here).
+24. C&C 1 boot ROM (planning notes s.5: 16 KB ROM copied into C&C 1, boots from LVDS or the UART, ASCII
+    monitor) must be linked at 0x01000000 and use the UART through C&C 1's peripheral window; C&C 1's reset
+    PC (no RUN line) undefined.
+25. TRACE_REG 0xFFFFFFF0 (split_regs.h l.19, ISS only) and rv32emu RV_SENTINEL 0xFFFFFFF0 now fall in
+    peripheral 3's window (word 124). Relevant to Q12's "simulator-only print register" placement.
+26. Q10 consequence: byte offsets make a C pointer into data/program memory equal to its packet address
+    (CM_WORD/PACKED_WORD/cmWord disappear); word offsets need a conversion everywhere. Big-SRAM addresses
+    exist in two formats either way: 21-bit (PTR, STREAM_SRC, SRAM_RD_ADDR_QUEUE, DMA_RECORD_BASE_ADDRESS)
+    vs 32-bit region+offset (STREAM_DEST, ROUTER_ADDR, DMA_ADDR).
+27. Gaps in the standard window: bit numbers for STATUS's standard bits (run, DMA), PARAMS's type field,
+    a standard event for run done / DMA done (v1.1 had sender idle [20]); PULSE_RUN/PULSE_DMA while busy;
+    DMA_HDR/ADDR changed during a transfer; EVENTS_MASK reset and HALT behaviour; access to reserved words
+    10-31, undefined words, unused DMA words, absent peripheral windows, controller block 0x874-0x9FC (v1.1:
+    unmapped = bus error, undefined PERIPH_STATUS read 0).
+28. Invariants touched: 4 (mem_idle/cm_idle), 5 (bad packet), 11 (now convention; slot-0 writes now fire
+    command landed), 14 ("mode 7"), 15 (TILE_CONDITIONS, C&C error bit), 16 (SENDER_SEND, rp_latency),
+    17 (mode 3 to C&C, d = 64), 18 (modes 2/4/5, mode 9).
+29. to-do 13 (planning notes l.288-301): "keep ROUTER_SET_HDR as a deprecated alias" impossible after D7's
+    split (different layout); SENDER_ADDR R/W moot. Nit.
+30. Per-unit counters: v1.1 4 counters -> 3. Replayer pass with an LPDDR fetch + refill + request reply uses 3;
+    no headroom (inferred). Sort uses at most 2 at once (bt_run.c l.64-65).
+
+## Inventory grep (counts per file)
+Done with a grep over sw/, sort/, meshsim/{sw,src,test}; table kept in REVIEW.md section 6.
+Combined TILE_PULSE stores: none in software (only TileControl.java l.259-264 and CtrlTest.java l.274).
+uart_putc/uart_puts: no callers outside mesh.h; UART exercised by regs.c, CtrlTest, HooksTest, RegDocTest.

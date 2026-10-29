@@ -150,7 +150,8 @@ Decided with Tony (O, T). Replaces 4.12's four named down-counters.
 - **What K must cover** (S1 below): port B and the peripheral are fixed at 2 cycles. For big SRAM, a write
   only has to have **entered its area's queue** within K: the queue is served in arrival order, so a read
   issued after the counter reaches 0 queues behind the write and cannot overtake it.
-- **Follow-on:** HALT flushes the delay line with the counters. The counters' events are in 16.
+- **Follow-on:** the global reset clears the delay line with the counters (21, 23; W2-18: with no HALT
+  state, its edge questions don't arise). The counters' events are in 16.
 - **Additive arming** (owner, 2026-10-28; v1.1's rule kept): a store of *N* adds *N*, atomically and in step
   with that cycle's decrement; *N* > 0 arms the counter, which **clears its done event** and counters done.
   So whichever comes first, the last word of an earlier batch or the add, once the add has happened done
@@ -211,6 +212,9 @@ Decided (O). Answers Q6. One map for packet addresses and the controller's own l
 - **The region names where a packet lands**, so the mode no longer has to (Q7).
 - **The controller memories become 32 KB + 32 KB** (planning notes to-do 2, spec part N).
 - **A tile may have up to three peripherals** (9), where 4.17 has one slot.
+- **Program memory is load-only for the controller** (Tony; W2-19): it fetches from and loads from region
+  0x01, but a store to it is a bus error. Only the traffic director writes it (port B), as in v1.1, where a
+  load was a bus error too. The boot ROM (0x02) is fetch and load only.
 - **The controller sees 0x00, 0x01 and 0xFF only.** It still cannot load or store big SRAM or a
   peripheral directly (current plan): every existing mechanism for reading and writing big SRAM carries
   forward (the read port, sending itself packets, address-generator copies).
@@ -431,8 +435,10 @@ in bits [31:18], in the link word's order (2):
 | [24:22] | mode |
 | [31:25] | dst |
 
-Used by `STREAM_COUNT` (4), `ROUTER_HDR` (7) and a peripheral's `DMA_HDR` (10); any new header register
-follows it. The low bits [17:0] are each register's own (a count, a queue, or spare).
+Used by `STREAM_COUNT` (4), `ROUTER_HDR` (7), a peripheral's `DMA_HDR` (10) and `SRAM_RD_DEST_ADDR` (13,
+size and counter only); any new header register follows it. *(W2-21:)* the block hardware copies straight
+into the link word is size, counter and mode, [24:18]. In `STREAM_COUNT`, [31:25] is *d*, which is relative
+for 0-63 and absolute for 64-125 (4.2), so it is translated into dst, not copied. The low bits [17:0] are each register's own (a count, a queue, or spare).
 
 ## 13. The read port's destination (2026-10-28)
 
@@ -971,6 +977,7 @@ A running list; each entry names where it came from. Resolved entries move into 
 | Q5 | Should an area serve writes ahead of queued reads? | 3 | **resolved: no** (owner, 2026-10-28; W2-15): areas keep strict arrival order. Writes jumping ahead of queued reads would break read-before-write reuse: a stream's source buffer overwritten after its run, and the local sort's ping-pong passes, where pass *n* + 1 writes the buffer pass *n* is still reading |
 | Q6 | The link word's 32-bit address: what it covers | 2 | **resolved: section 5** |
 | Q7 | The 3-bit mode: which of today's nine modes merge or go, now that counting is separate | 2 | **resolved: section 6** |
+| Q8 | The counter field in every packet source | 3 | **mostly resolved:** `STREAM` (4), the send port (7), a peripheral's DMA (10), the read port (13), gather values (6, W2-02). **Left:** memory-system requests, the data and reply counters (25, W2-05) |
 | Q9 | Does a stream's source stay a 21-bit big-SRAM chunk address, or does the 32-bit address apply to reads too? | 4 | open |
 | Q10 | Is the 24-bit offset in bytes or in 32-bit words? | 5 | **resolved: bytes (5)** |
 | Q11 | How several peripherals share the slot's interface | 5 | **resolved: sections 9 and 10** |
@@ -978,4 +985,3 @@ A running list; each entry names where it came from. Resolved entries move into 
 | Q15 | Should `ROUTER_HDR` use the same upper-half layout as `STREAM_COUNT` and `DMA_HDR`? | 7, 10 | **resolved: section 12** |
 | Q14 | The tile's `EVENTS` bit layout | 11 | **resolved: section 16** |
 | Q12 | meshsim's per-tile debug console without a UART on every tile | 9 | **resolved for the hardware: section 23** (log files through the file system); meshsim's display is its own business |
-| Q8 | The counter field in every packet source (narrowed: done for `STREAM`, the send port, a peripheral's DMA, the read port and gather values; left: memory-system requests, 25) : `STREAM` entries, the send port's header, the sender, the read port's setup, the GATHER engine's gather values, and memory-system requests | 3 | open |

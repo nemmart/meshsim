@@ -255,27 +255,74 @@ Decided (O). Answers most of Q11.
 
 ## 10. The standard peripheral window (2026-10-28)
 
-Decided (O). Every peripheral's 0x200-byte register window (9) starts with the same words; word *n* is at
-window base + 4*n*.
+Decided (O). Every peripheral's 0x200-byte register window (9) starts with the same words, in the same
+order as the controller's block (11): parameters, status, conditions, pulses, wakes, send, then the rest.
+Word *n* is at window base + 4*n*.
 
-| word | name (proposed) | purpose |
-|---|---|---|
-| 0 | `RUN_PULSE` | store 1 to start a run |
-| 1 | `SEND_PULSE` | store 1 to issue the send set up in words 33-34 |
-| 2-31 | `CLEAR_2_PULSE` ... `CLEAR_31_PULSE` | store 1 to clear status flag *n*, e.g. "queue refilled" |
-| 32 | `STATUS` | flag *n* in bit *n*: why the peripheral woke or interrupted the controller. *(Proposed:* bit 0 run in progress, bit 1 send in progress*)* |
-| 33 | `SEND_ADDR` | the send's 32-bit destination address, advancing as words go out |
-| 34 | `SEND_SETUP` | counter, mode and dst in the standard order (2), output queue, word count (2 + 3 + 7 + 2 + 16 = 30 bits) |
-| 35+ | | peripheral-defined |
+| word | register | access | purpose |
+|---|---|---|---|
+| 0 | `PARAMS` | R | constant: the peripheral's type, version, sizes; 0 if it has nothing to say |
+| 1 | `STATUS` | R | live bits: run in progress, send in progress, and the peripheral's own |
+| 2 | `CONDITIONS` | R | error bits, sticky until HALT like `TILE_CONDITIONS` |
+| 3 | `RUN_PULSE` | W | store 1 to start a run |
+| 4 | `SEND_PULSE` | W | store 1 to issue the send set up in words 8-9 |
+| 5 | `WAKE_EVENTS` | R | sticky events; a load consumes those in `WAKE_MASK`, as on the tile |
+| 6 | `WAKE_PEEK` | R | what a load of `WAKE_EVENTS` would return, consuming nothing |
+| 7 | `WAKE_MASK` | R/W | the events that count |
+| 8 | `SEND_ADDR` | R/W | the send's 32-bit destination address, advancing as words go out |
+| 9 | `SEND_SETUP` | R/W | counter, mode and dst in the standard order (2), output queue, word count (30 bits) |
+| 10-31 | | | reserved for future standard words |
+| 32-127 | | | peripheral-defined |
 
-- Every action is its own address, as in 8: a store of 1 fires it, a store of 0 does nothing.
-- **The sender is optional.** A peripheral without output (the replayer, for one) leaves words 1, 33 and
-  34 unused. This replaces v1.1's tile-level sender (`SENDER_SEND`, `SENDER_ADDR`, `sender_busy`, sender
+- **Conditions interrupt; wake events wake.** `TILE_CONDITIONS` has one bit per peripheral, set while
+  that peripheral's `CONDITIONS` is non-zero, so a peripheral error raises the hard interrupt. The tile's
+  `WAKE_EVENTS` has one bit per peripheral, **live** (not sticky): high while the peripheral's
+  `WAKE_EVENTS & WAKE_MASK` is non-zero. An event is consumed in one place only, by a load of the
+  peripheral's `WAKE_EVENTS`. (Answers Q13.)
+- **`WAKE_REQUIRED` is tile-only:** a program needing "peripheral 1 and counter 2" sets both in the tile's.
+- **No clear pulses:** loading `WAKE_EVENTS` consumes events, as on the tile.
+- **The sender is optional.** A peripheral without output (the replayer, for one) leaves words 4, 8 and 9
+  unused. This replaces v1.1's tile-level sender (`SENDER_SEND`, `SENDER_ADDR`, `sender_busy`, sender
   idle at `WAKE_EVENTS` [20]; 4.17.9, 8.12).
-- **The run pulses move into the windows:** section 8's `PERIPH_1_RUN_PULSE`-`PERIPH_3_RUN_PULSE` leave
-  the controller's registers.
+- **The run pulses move into the windows:** section 8's `PERIPH_1_RUN_PULSE`-`PERIPH_3_RUN_PULSE` go.
 - Replaces v1.1's `PERIPH_STATUS_0`-`7`, `periph_running`, the six service lines and the peripheral
-  conditions [13:11] in the controller's registers (4.17).
+  conditions [13:11] in the controller's registers (4.17). The peripheral type moves from `TILE_STATUS`
+  into each peripheral's `PARAMS`.
+
+## 11. The controller's register block (2026-10-28)
+
+Decided (O): the order (parameters, status, conditions, pulses, wakes, send, the rest) and the three
+first words. *(Proposed: the addresses below.)* In region 0xFF; the low 12 bits shown.
+
+| addr | register | access | notes |
+|---|---|---|---|
+| 0x800 | `TILE_PARAMS` | R | **new**, constant: endpoint id, big-SRAM size, peripheral-present mask [2:0]; split out of v1.1's `TILE_STATUS` |
+| 0x804 | `TILE_STATUS` | R | live bits only: `rd_running`, `rd_done`, `send_busy`, `ts_busy`, `mem_idle`, `cm_idle`, `done`, `request_busy` |
+| 0x808 | `TILE_CONDITIONS` | R | gains one bit per peripheral (10); loses the peripheral conditions [13:11] |
+| 0x80C | `TILE_DONE_PULSE` | W | 8 |
+| 0x810 | `DMA_START_PULSE` | W | 8 |
+| 0x814 | `TILE_GO_PULSE` | W | 8 |
+| 0x818 | `WAKE_EVENTS` | R | new bit layout (Q14) |
+| 0x81C | `WAKE_PEEK` | R | |
+| 0x820 | `WAKE_MASK` | R/W | |
+| 0x824 | `WAKE_REQUIRED` | R/W | tile only |
+| 0x828 | `ROUTER_HDR` | R/W | 7 |
+| 0x82C | `ROUTER_ADDR` | R/W | 7 |
+| 0x830-0x838 | `ROUTER_SET_W0`-`W2` | W | unchanged |
+| 0x83C-0x844 | `ROUTER_SEND_32`, `_64`, `_128` | W | unchanged |
+| 0x848-0x854 | `REQUEST_GET_W0`-`W2`, `REQUEST_RECEIVE` / `REQUEST_SET_W0`-`W2`, `REQUEST_SEND` | R / W | unchanged |
+| 0x858 | `DMA_CONFIG` | R/W | readable (planning to-do 13) |
+| 0x85C | `DMA_RECORD_BASE_ADDRESS` | R/W | |
+| 0x860-0x868 | `COUNTER_1`-`COUNTER_3` | R/W | 3 |
+| 0x86C | `SRAM_RD_ADDR_QUEUE` | R/W | unchanged |
+| 0x870 | `SRAM_RD_DEST_ADDR` | R/W | needs a counter field and the new data-memory address |
+| 0x874-0x87C | `ERROR_LINES_0`-`2` | R | the three error words (1.5); C&C 1 only, 0 elsewhere |
+| 0x880-0x9FC | | | reserved |
+
+- **Gone:** `TILE_PULSE`, `ROUTER_SET_HDR`, `DMA_SRAM_`/`DMA_CM_`/`DMA_REPLY_`/`DMA_PERIPH_REMAINING`,
+  `PERIPH_STATUS_0`-`7`, `SENDER_SEND`, `SENDER_ADDR`, `UART_TX`/`RX`/`STATUS`/`DIVISOR`.
+- **The table window** (`HIST`, `PTR`, `STREAM_*`, `GROUP`; 0x1600 bytes) doesn't fit in the block.
+  *(Proposed:)* 0xFFFF2000-0xFFFF35FF, keeping v1.1's low 16 bits.
 
 ---
 
@@ -311,6 +358,7 @@ A running list; each entry names where it came from. Resolved entries move into 
 | Q9 | Does a stream's source stay a 21-bit big-SRAM chunk address, or does the 32-bit address apply to reads too? | 4 | open |
 | Q10 | Is the 24-bit offset in bytes or in 32-bit words? | 5 | open |
 | Q11 | How several peripherals share the slot's interface | 5 | **resolved: sections 9 and 10** |
-| Q13 | Which peripheral flags only wake the controller (its wake bit) and which raise a tile condition (the hard interrupt), and whether that is per flag | 10 | open |
+| Q13 | Which peripheral flags only wake the controller and which raise a tile condition | 10 | **resolved: section 10** (conditions interrupt, wake events wake) |
+| Q14 | The tile's `WAKE_EVENTS` bit layout: counters 1-3 done, GO, counters done, command landed, peripherals 1-3 (live), the request port's events | 11 | next |
 | Q12 | meshsim's per-tile debug console without a UART on every tile: request-bus debug messages (6.7) or a simulator-only print register | 9 | open |
 | Q8 | The counter field in every packet source: `STREAM` entries, the send port's header, the sender, the read port's setup, the GATHER engine's gather values, and memory-system requests | 3 | open |

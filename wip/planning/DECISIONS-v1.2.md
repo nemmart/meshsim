@@ -626,6 +626,61 @@ Decided (O, T), from WORKER1's review (W1-02, W1-04). Revises 1.4's parking rule
 - **For Q1 (Tony):** the CSR list and their reset values, in particular `mtvec`'s (W1-03). Where `mepc`
   points after a trap taken in `WFI` no longer matters.
 
+## 21. Reset and error recovery (2026-10-28)
+
+Decided (O, T). Answers the recovery policy (WORKER1's owner question 1), Q3 and most of Q4; settles
+W1-03, W1-06 and W1-07.
+
+**The global reset line.** One line resets tiles 0-63 and their peripherals, and C&C 2 and C&C 3 and
+their peripherals (the Updater/Binder/RW and the Tracer). **C&C 1 and its peripheral (Ingress/Egress, the
+UART) are outside it**, so the host link survives. The same line is the power-on reset:
+
+- **Power-on** holds it until power is stable.
+- **C&C 1** drives it through a register in its peripheral, between the error words and the run words
+  (15): `RESET` *(name proposed)*, **0 asserts reset, 1 releases it**; software holds it at 0 for tens of
+  cycles.
+- **Units come out of reset halted:** C&C 1 clears `RUN_LINES_0`-`2` (they are in its peripheral, outside
+  the domain), loads them, then sets their run bits, as in boot (6.2).
+- A unit in the domain comes out of reset with its controller core reset, `mstatus.MIE` = 0 (W1-03), and
+  every queue, FIFO and error cleared, so a failed phase's traffic is gone (W1-06).
+
+**An error in a tile:**
+
+1. An error sets a bit in the tile's `ERRORS` (for example unexpected arrival: a counted packet for a
+   counter at 0), which raises the tile's hard interrupt.
+2. The tile's handler sends its state to C&C 1 as request-bus reports, then loops forever (20). Its
+   peripherals and engines carry on with whatever they were doing, unserviced by the controller, until the
+   global reset (**answers Q3: nothing stops them before the reset**).
+3. The tile's error line sets its bit in C&C 1's `ERROR_LINES_0`-`2`; the unit-error bit of C&C 1's
+   peripheral (`OR(ERROR_LINES & RUN_LINES)`, 19) sets that peripheral's bit in C&C 1's `ERRORS`, and C&C 1
+   takes its hard interrupt.
+4. C&C 1's handler **drains every report** (owner, 2026-10-28) while it **flushes the file system's logs
+   to LPDDR** through C&C 2. The flush procedure is TBD.
+5. When the flush is complete, C&C 1 asserts the global reset, clears all the run bits, and releases the
+   reset.
+6. C&C 1 loads the software into tiles 0-63 and into C&C 2 (the file system) and C&C 3 (the pager), with
+   uncounted packets, which halted units accept (19).
+7. C&C 1 sets the run bits: **C&C 2 and C&C 3 first, then the mesh tiles.**
+
+- **The policy is abort and restart:** no job continues with a unit missing. Per-unit run bits remain
+  for boot order and for loading.
+- **Draining matters:** reports left in C&C 1's receive queue back up the request-bus tree, and the
+  flush's own requests to C&C 2 would queue behind them in the same rows (W1-09). With all 64 tiles
+  failing at once (one bad broadcast), that is about 1,000 reports.
+
+*(Proposed, for confirmation:)*
+
+- **C&C 1 after the reboot:** it never returns to the interrupted code (20), but its handler continues
+  into the restart: reset its stack, set `mstatus.MIE` again and enter its main loop, so a later error
+  interrupts it again.
+- **The boundary queues:** before releasing the reset, C&C 1 empties the queues it holds facing the reset
+  domain (its request receive queue, the FIFOs on tiles 0-2's fifth links), or they reset with the domain,
+  so the credits on both sides start out matching.
+- **A flush that can't finish** (the failed unit is C&C 2 or C&C 3, or their peripherals): C&C 1 times out
+  and resets anyway.
+- **Open:** whether C&C 1 also reports the failure to the host over Ingress/Egress, or the flushed log is
+  the whole report.
+
 ---
 
 ## Big SRAM: to validate
@@ -652,7 +707,7 @@ A running list; each entry names where it came from. Resolved entries move into 
 |---|---|---|---|
 | Q1 | Tony's exact list of implemented CSRs, to define which CSR instructions are legal | 1.1 | waiting on Tony |
 | Q2 | How long a high on the C&C pin counts as "sustained" for the host | 1.5 | open |
-| Q3 | What stops the peripheral and the sender when a condition traps: the hardware on taking the interrupt, or the handler? (Today a halted controller stops them at once.) | 1.7 | open; suggestion: the hardware, so a failed handler can't leave them running |
+| Q3 | What stops the peripheral and the sender when a condition traps | 1.7 | **resolved: section 21** (nothing, until the global reset) |
 | Q4 | The HALT design | planning notes section 7 | **partly resolved: section 15** (one line per unit, set by C&C 1; a halted controller halts its peripheral). Left: what HALT clears, what keeps running, the hold before RUN |
 | Q5 | Should an area serve writes ahead of queued reads? Not needed for S1 if K covers only the path to the area queue | 3 | open; for Tony |
 | Q6 | The link word's 32-bit address: what it covers | 2 | **resolved: section 5** |

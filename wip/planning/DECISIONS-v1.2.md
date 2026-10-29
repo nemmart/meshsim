@@ -698,6 +698,12 @@ UART) are outside it**, so the host link survives. The same line is the power-on
     three stores (two words of tiles, one for C&C 2 and 3), and 6.6's "wait `run_latency` + 1 after a
     RUN/HALT store" applies to the last.
   - **An error raised in the cycle of a HALT edge is lost** (the clear wins, 4.13). Accepted.
+- **READY lines plug into C&C 1's peripheral** (owner, 2026-10-28; W1-14): `READY_LINES_0`-`2`, by
+  endpoint id like the error and run lines (64 unused), with **C&C 2 and C&C 3 at bits 65 and 66**. Every
+  unit boots the same way: its image, then the marker to command slot 0, then READY (6.2); since packets
+  from one source to one destination arrive in order, READY means the image has landed, and only then
+  does C&C 1 set the unit's run bit. *(Open: how the READY bits clear, as GO does in v1.1, and an "all
+  expected units ready" event in the peripheral's `EVENTS`.)*
 - **Draining matters:** reports left in C&C 1's receive queue back up the request-bus tree, and the
   flush's own requests to C&C 2 would queue behind them in the same rows (W1-09). With all 64 tiles
   failing at once (one bad broadcast), that is about 1,000 reports.

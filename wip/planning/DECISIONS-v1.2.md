@@ -63,8 +63,8 @@ Closes planning notes section 7, "Condition handling", and to-do item 3.
   counters, `mepc`/`mcause`/`mtval`, `PERIPH_STATUS_0`-`7` *(now each peripheral's window, 10)*, x1-x31:
   about 50 words) and sends it to C&C 1
   as request-bus reports (about 17; header word: op, sequence number; three data words each).
-- **Parking:** the handler then **clears `EVENTS_MASK` and `EVENTS_REQUIRED` and loops on `WFI`**, so no event
-  and no GO can wake it. Only HALT recovers the tile (HALT → RUN resets `EVENTS_MASK`, 4.12).
+- **Parking:** ~~the handler then clears `EVENTS_MASK` and `EVENTS_REQUIRED` and loops on `WFI`~~
+  *superseded by 20: traps are terminal; the handler parks in a plain loop.* Only HALT recovers the tile.
 - **Conditions during the `done` gate:** the gate controls only `WFI` wakes. A condition raised between
   `done` and GO still takes the hard interrupt.
 
@@ -596,6 +596,35 @@ Decided (O), from WORKER1's review (W1-01, and parts of W1-05 and W1-06). Part o
 - **C&C 1's unit-error bit (15) is `OR(ERROR_LINES & RUN_LINES)`** (owner, 2026-10-28; W1-01's fix),
   so the errors a halted unit can still raise (bad packet, router overflow) don't interrupt C&C 1;
   `ERROR_LINES` stays raw, and the error interrupts C&C 1 when it sets the unit running.
+
+## 20. Traps are terminal (2026-10-28)
+
+Decided (O, T), from WORKER1's review (W1-02, W1-04). Revises 1.4's parking rule.
+
+- **The handler never executes `mret`.** A trap, whether from an error (the hard interrupt) or a
+  synchronous exception, is a terminal event: the state is assumed bad, and the interrupted code is never
+  resumed. Only HALT → RUN restarts the controller (6.1).
+- **This holds for C&C 1 too.** C&C 1 takes the hard interrupt for another unit's error (15), and its
+  handler runs the abort itself: collect the reports, halt the units, tell the host over Ingress/Egress.
+  It never returns to the code it interrupted.
+- **Tony's answers:** the hard interrupt **stays high until cleared** (level: our `ERRORS` source is
+  sticky, so it stays high until HALT); it is **gated by `mstatus.MIE` and its `mie` enable**, and the same
+  gating applies to `WFI` wake-ups.
+- **So no retrap:** `MIE` is cleared on trap entry and never set again, so the still-asserted interrupt
+  cannot trap a second time. W1-02's report storm cannot happen, and its edge/level question no longer
+  matters for correctness.
+- **The park** *(proposed)*: after its reports the handler loops forever on a plain jump to itself. (A
+  `WFI` loop would also work only if `mie`'s enable is cleared first, since a pending enabled interrupt
+  may release `WFI` with `MIE` = 0; the plain loop doesn't depend on that.) Replaces 1.4's "clear
+  `EVENTS_MASK` and `EVENTS_REQUIRED` and loop on `WFI`", which also failed in the `done` gate (W1-12).
+- **No torn sequences matter** (W1-04): nothing resumes, so a register sequence the main code left half
+  done (the send port's `W` words, the request port's `SET`/`GET` words, a read-modify-write of
+  `RUN_LINES`) is never completed. The handler must not assume those interfaces are clean: it writes
+  every word of each packet and request it sends.
+- **A second trap inside the handler** (a synchronous exception) restarts the handler at `mtvec`; it is
+  still terminal.
+- **For Q1 (Tony):** the CSR list and their reset values, in particular `mtvec`'s (W1-03). Where `mepc`
+  points after a trap taken in `WFI` no longer matters.
 
 ---
 

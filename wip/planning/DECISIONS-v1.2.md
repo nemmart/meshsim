@@ -4,6 +4,29 @@ One entry per decision, newest section last. Labels follow the repository's conv
 T confirmed by Tony (controller core). The spec session works from this log; `spec/machine-spec.md` stays
 the authority once an entry is written into it. Starting point: `PLANNING-NOTES-2026-10-27.md`.
 
+## Where the design stands (read this first)
+
+The sections below are in the order they were decided, and later ones revise earlier ones; superseded points
+are marked in place. In brief:
+
+- **Errors** (v1.1's conditions) raise the controller core's hard interrupt; its handler reports to C&C 1
+  over the request bus and parks in `WFI`. Each unit's hardware error line reaches C&C 1's peripheral as
+  `ERROR_LINES_0`-`2` (live); C&C 1 halts and runs units one by one with `RUN_LINES_0`-`2`; a pin reports
+  C&C 1's own failure to the host. REPORT is withdrawn. (1, 15)
+- **The link word** is 256 bits: payload, a 32-bit address (8-bit region, 24-bit offset), size, a 2-bit
+  counter, a 3-bit mode, src, dst; 75 bits reserved. (2, 5)
+- **Counters:** the packet names one of three general write counters (0 uncounted), decremented K = 8
+  cycles after the traffic director accepts it; additive arming. (3)
+- **Modes:** 0 write at address (replacing five v1.1 modes, including commands and replies), 1 by source,
+  2 bucket, 3 augmented, 4 gather request, 5-7 reserved and discarded silently. (6)
+- **Address map:** 0x00 data memory, 0x01 program memory (32 KB each), 0x02 big SRAM, 0x03-0x05 up to
+  three peripherals, 0xFF the controller's registers and table window; the controller reaches only 0x00,
+  0x01 and 0xFF. (5, 9)
+- **Registers:** the controller's block and each peripheral's window start the same way: `PARAMS`,
+  `STATUS`, `ERRORS`, pulses, events, send, then the rest. One header layout everywhere. (10-14, 16, 18)
+- **Waiting** is by events throughout, including for the tables (`ts_busy` goes). (16, 17)
+- **Open:** the pending questions at the end; big-SRAM guarantees to validate, S1-S9.
+
 ---
 
 ## 1. Condition handling (2026-10-28)
@@ -37,7 +60,8 @@ Closes planning notes section 7, "Condition handling", and to-do item 3.
 ### 1.4 The handler (O; 4.13)
 
 - **A condition raises the core's hard interrupt.** The handler reads the state (conditions, `STATUS`,
-  counters, `mepc`/`mcause`/`mtval`, `PERIPH_STATUS_0`-`7`, x1-x31: about 50 words) and sends it to C&C 1
+  counters, `mepc`/`mcause`/`mtval`, `PERIPH_STATUS_0`-`7` *(now each peripheral's window, 10)*, x1-x31:
+  about 50 words) and sends it to C&C 1
   as request-bus reports (about 17; header word: op, sequence number; three data words each).
 - **Parking:** the handler then **clears `EVENTS_MASK` and `EVENTS_REQUIRED` and loops on `WFI`**, so no event
   and no GO can wake it. Only HALT recovers the tile (HALT → RUN resets `EVENTS_MASK`, 4.12).
@@ -52,7 +76,8 @@ Closes planning notes section 7, "Condition handling", and to-do item 3.
 - C&C 1 sees the lines as **three 32-bit words**: two for the 64 tiles (one bit per tile) and one for the
   C&C controllers and other non-tile units. Their bit assignment is part of the endpoint map (to-do item 11).
 - **The three words fold into C&C 1's conditions**, and C&C 1's conditions drive its own hard interrupt, so
-  C&C 1 is interrupted whenever any core fails, itself included.
+  C&C 1 is interrupted whenever any core fails, itself included. *Superseded by 15: the words are
+  `ERROR_LINES_0`-`2` in C&C 1's peripheral, and they reach C&C 1 through that peripheral's unit-error bit.*
 - **The fold is live:** it follows the error lines; it does not latch. C&C 1's own conditions stay sticky,
   as everywhere.
 - **The C&C pin:** an output pin on the ASIC, high while C&C 1 has any condition.
@@ -96,7 +121,7 @@ Decided with Tony (O, T). Replaces 3.1's 169-bit word.
   port's header, the sender), so hardware copies them as one 7-bit block into link word [166:160].
 - **Cost:** router FIFOs about 50 % larger than at 169 bits, roughly +0.04-0.06 mm² per tile [estimate];
   256 wires per link direction, with the channel width to confirm in physical design.
-- **Pending:** the 32-bit address (Q6) and the 3-bit mode's code assignment (Q7).
+- The 32-bit address is in 5 and the mode codes in 6.
 
 ## 3. Counters (2026-10-28)
 
@@ -114,8 +139,7 @@ Decided with Tony (O, T). Replaces 4.12's four named down-counters.
 - **What K must cover** (S1 below): port B and the peripheral are fixed at 2 cycles. For big SRAM, a write
   only has to have **entered its area's queue** within K: the queue is served in arrival order, so a read
   issued after the counter reaches 0 queues behind the write and cannot overtake it.
-- **Follow-on:** the wake events' per-counter done bits ([3:0] today) become done events for counters 1-3;
-  [9] counters done stays. HALT flushes the delay line with the counters.
+- **Follow-on:** HALT flushes the delay line with the counters. The counters' events are in 16.
 - **Additive arming** (owner, 2026-10-28; v1.1's rule kept): a store of *N* adds *N*, atomically and in step
   with that cycle's decrement; *N* > 0 arms the counter, which **clears its done event** and counters done.
   So whichever comes first, the last word of an earlier batch or the add, once the add has happened done
@@ -230,7 +254,8 @@ Decided (O). The 32-bit `ROUTER_SET_HDR` (dst 7, mode 4, addr 21) can't hold dst
   unchanged and stay write-only.
 - One extra store when both change; a change of dst alone, the common case in replies and one-word
   exchanges, is still one store. The register map is renumbered anyway when it moves into region 0xFF.
-- **Toward Q8:** `SENDER_SEND` has room for the counter field (dest 7, mode 3, counter 2, queue 2, count
+- **Toward Q8** *(superseded by 10: the sender is now a peripheral's DMA, with `DMA_HDR` and `DMA_ADDR`)*:
+  `SENDER_SEND` has room for the counter field (dest 7, mode 3, counter 2, queue 2, count
   16 = 30 bits), and `SENDER_ADDR` becomes a full 32-bit address.
 
 ## 8. Pulse registers (2026-10-28)
@@ -272,7 +297,7 @@ Decided (O). Answers most of Q11.
   window. It leaves every other tile, along with v1.1's `UART_TX`/`UART_RX`/`UART_STATUS`/`UART_CONTROL`
   and wake events [22:21]. meshsim's per-tile console needs a replacement (Q12).
 - **Follow-on:** v1.1's slot interface (4.17) shrinks: `PERIPH_STATUS_0`-`7` and the service lines move
-  into each peripheral's window; the per-peripheral run pulses (8) could move there too. The replayer
+  into each peripheral's window, and so do the run pulses (10). The replayer
   (4.19) becomes peripheral 1 on the tiles that have one.
 
 ## 10. The standard peripheral window (2026-10-28)
@@ -285,7 +310,7 @@ Word *n* is at window base + 4*n*.
 |---|---|---|---|
 | 0 | `PARAMS` | R | constant: the peripheral's type, version, sizes; 0 if it has nothing to say |
 | 1 | `STATUS` | R | live bits: run in progress, DMA in progress, and the peripheral's own |
-| 2 | `ERRORS` | R | error bits, sticky until HALT like `ERRORS` |
+| 2 | `ERRORS` | R | error bits, sticky until HALT like the tile's `ERRORS` (one exception: 15) |
 | 3 | `PULSE_RUN` | W | store 1 to start a run |
 | 4 | `PULSE_DMA` | W | store 1 to start the peripheral's DMA as set up in words 8-9 |
 | 5 | `EVENTS` | R | sticky events; a load consumes those in `EVENTS_MASK`, as on the tile |
@@ -326,7 +351,7 @@ first words. *(Proposed: the addresses below.)* In region 0xFF; the low 12 bits 
 | addr | register | access | notes |
 |---|---|---|---|
 | 0x800 | `PARAMS` | R | **new**, constant: endpoint id, big-SRAM size, peripheral-present mask [2:0]; split out of v1.1's `TILE_STATUS` |
-| 0x804 | `STATUS` | R | live bits only: `rd_running`, `rd_done`, `send_busy`, `ts_busy`, `mem_idle`, `cm_idle`, `done`, `request_busy` |
+| 0x804 | `STATUS` | R | live bits only; layout in 18 (`ts_busy` goes, 17) |
 | 0x808 | `ERRORS` | R | gains one bit per peripheral (10); loses the peripheral conditions [13:11] |
 | 0x80C | `PULSE_DONE` | W | 8 |
 | 0x810 | `PULSE_DMA` | W | 8 |
@@ -486,6 +511,60 @@ Hardware guarantees this needs:
 | C | **A gather value's delay starts where it enters the write engine:** gather values are made after the traffic director and don't pass it; they carry a counter field (Q8) |
 
 - **`ts_busy` and `wait_tables()` go.** `STATUS` becomes diagnostic only: no program needs to poll it.
+
+## 18. `PARAMS`, `STATUS` and `ERRORS` (2026-10-28)
+
+*(Proposed.)* v1.1's positions kept wherever a field survives.
+
+**`PARAMS`** (constant)
+
+| bits | field |
+|---|---|
+| [2:0] | peripherals present: bit *n*-1 for peripheral *n* |
+| [19:3] | spare |
+| [26:20] | endpoint id (v1.1's position) |
+| [31:27] | big-SRAM size in 256 KB units - 1 (v1.1's position) |
+
+The peripheral type (v1.1's `TILE_STATUS` [15:12]) moves into each peripheral's `PARAMS`.
+
+**`STATUS`** (live, diagnostic only: no program needs to poll it, 17)
+
+| bit | field |
+|---|---|
+| [0] | `rd_running` |
+| [1] | `rd_done` |
+| [2] | GATHER busy |
+| [3] | `send_busy`: the send port's holding register is occupied |
+| [4] | `mem_idle` |
+| [5] | `cm_idle` |
+| [6] | `done` |
+| [7] | command landed |
+| [8] | `request_busy` |
+
+Gone: `periph_running` and `sender_busy` (now each peripheral's `STATUS`), `ts_busy` (17), the constants
+(`PARAMS`).
+
+**`ERRORS`** (sticky until HALT, except [13:11])
+
+| bit | error | v1.1 |
+|---|---|---|
+| [0] | router overflow | |
+| [1] | bad packet: bad size, misaligned address, or a region it can't reach | reserved modes no longer count (6) |
+| [2] | unexpected arrival | |
+| [3] | drift | |
+| [4] | write-engine input overflow | |
+| [5] | table request overflow | |
+| [6] | GATHER queue overflow | |
+| [7] | read-port error | |
+| [8] | done early | |
+| [9] | bus error | |
+| [10] | illegal instruction | |
+| [11] | peripheral 1: its `ERRORS` non-zero (live) | was bad peripheral write |
+| [12] | peripheral 2 (live) | was peripheral condition 2 |
+| [13] | peripheral 3 (live) | was peripheral condition 3 |
+| [14] | receive underflow | |
+
+The peripheral bits take [13:11] so every other error keeps its v1.1 number.
 
 ---
 

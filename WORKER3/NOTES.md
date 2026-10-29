@@ -9,7 +9,7 @@ deliverable. Line numbers: D = `wip/planning/DECISIONS-v1.2.md`, S = `wip/spec/m
 - [x] REGISTERS.md (s.1), mesh.h, planning notes to-do 13-14, spec 9 invariants
 - [x] sort code, meshsim code: migration inventory (grep table below)
 - [x] register-map overlap check: D11 block 0x800-0x870 has no overlaps; all 40 v1.1 registers accounted for
-- [ ] write REVIEW.md
+- [x] write REVIEW.md (23 findings, W3-01..W3-23; pushed)
 
 ## Candidate findings (raw)
 1. UART errors (RX overrun, framing) become sticky peripheral ERRORS on C&C 1 (D15 l.453); C&C 1 is never

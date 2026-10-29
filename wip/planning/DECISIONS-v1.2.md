@@ -19,7 +19,8 @@ are marked in place. In brief:
   cycles after the traffic director accepts it; additive arming. (3)
 - **Modes:** 0 write at address (replacing five v1.1 modes, including commands and replies), 1 by source,
   2 bucket, 3 augmented, 4 gather request, 5-7 reserved and discarded silently. (6)
-- **Address map:** 0x00 data memory, 0x01 program memory (32 KB each), 0x02 big SRAM, 0x03-0x05 up to
+- **Address map:** 0x00 data memory, 0x01 program memory (32 KB each), 0x02 the boot ROM, 0x03 big SRAM,
+  0x04-0x06 up to
   three peripherals, 0xFF the controller's registers and table window; the controller reaches only 0x00,
   0x01 and 0xFF. (5, 9)
 - **Registers:** the controller's block and each peripheral's window start the same way: `PARAMS`,
@@ -185,11 +186,14 @@ Decided (O). Answers Q6. One map for packet addresses and the controller's own l
 |---|---|
 | 0x00 | controller data memory, 32 KB |
 | 0x01 | controller program memory, 32 KB |
-| 0x02 | big SRAM |
-| 0x03 | peripheral 1 |
-| 0x04 | peripheral 2 |
-| 0x05 | peripheral 3 |
-| 0x06-0xFE | reserved |
+| 0x02 | **boot ROM**, read and execute only; the reset vector is 0x02000000 (22) |
+| 0x03 | big SRAM |
+| 0x04 | peripheral 1 |
+| 0x05 | peripheral 2 |
+| 0x06 | peripheral 3 |
+| 0x07-0xFE | reserved |
+
+*Renumbered 2026-10-28 (22): the boot ROM took region 0x02; big SRAM was 0x02 and the peripherals 0x03-0x05.*
 | 0xFF | controller only: registers (9) and the table window |
 
 - **The region names where a packet lands**, so the mode no longer has to (Q7).
@@ -280,7 +284,7 @@ for one cycle, a store of 0 does nothing, and a load reads 0.
 
 Decided (O). Answers most of Q11.
 
-- **A tile has at most three peripherals**, in regions 0x03-0x05 (5). Packets reach a peripheral through
+- **A tile has at most three peripherals**, in regions 0x04-0x06 (5). Packets reach a peripheral through
   its region.
 - **Each peripheral has a 0x200-byte register window** in region 0xFF, which the controller loads and
   stores directly:
@@ -718,6 +722,26 @@ UART) are outside it**, so the host link survives. The same line is the power-on
   and resets anyway.
 - **Open:** whether C&C 1 also reports the failure to the host over Ingress/Egress, or the flushed log is
   the whole report.
+
+## 22. Booting from ROM (2026-10-28)
+
+Decided (O, T), from W1-14. Replaces 6.2's halted loading with READY and section 21's READY-based start
+of C&C 2 and C&C 3.
+
+- **Every controller has a small boot ROM** in region 0x02 (5), read and execute only. **The reset vector
+  is 0x02000000.**
+- **The boot ROM's job:** set `mtvec`, sleep in `WFI` until "command landed", then **jump to the address
+  in the command block**. *(Proposed: it also holds a minimal trap handler, report and park (20), for
+  `mtvec` to point at until the loaded image installs its own.)*
+- **Boot:** C&C 1 releases the global reset (21); every unit in the domain starts in its boot ROM and
+  sleeps. C&C 1 sends each unit its image, uncounted, then **the marker to command slot 0, last**.
+  Packets from one source to one destination arrive in order, so when the marker lands the whole image is
+  in place, and **the unit starts itself**.
+- **No handshake is needed:** no READY round trip for booting, no stale READY bits across a reset, no
+  waiting by C&C 1. C&C 2, C&C 3 and the mesh tiles boot the same way. **Boot order is the order of the
+  markers:** C&C 2's and C&C 3's first, then the tiles'.
+- **READY and GO remain for the phase cycle only** (6.3).
+- **Cost:** a few dozen bytes of ROM per controller, and the ROM's region in the map.
 
 ---
 

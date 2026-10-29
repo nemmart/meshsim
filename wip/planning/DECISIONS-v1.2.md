@@ -350,13 +350,14 @@ judged not useful, since a read-port result always goes to the tile itself as a 
 
 | bits | field |
 |---|---|
-| [17:0] | the destination offset in data memory, advancing by the result's size per queued read *(Proposed: data memory only, region 0x00; units per Q10)* |
+| [17:0] | the destination offset in **data memory only** (region 0x00), advancing by the result's size per queued read; units per Q10 |
 | [19:18] | size: 32, 64 or 128 bits (the common layout, 12) |
 | [21:20] | counter |
 | [31:22] | reserved: mode is always 1 and dst always the tile itself |
 
 - R/W (planning notes to-do 13): a load returns the next result's offset as advanced.
-- v1.1 let results land anywhere in controller memory; landing only in data memory is the proposal.
+- **Data memory only** (owner, 2026-10-28): v1.1 let results land anywhere in controller memory, program
+  memory included; that goes.
 
 ---
 

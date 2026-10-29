@@ -268,8 +268,15 @@ Decided (O). The 32-bit `ROUTER_SET_HDR` (dst 7, mode 4, addr 21) can't hold dst
 - **`ROUTER_ADDR`:** the full 32-bit address (5). A store sets it; it auto-advances at each send as today;
   a load returns the address the next packet will use.
 - **`ROUTER_HDR`:** counter, mode and dst. A store sets them; a load returns them. Layout (owner,
-  2026-10-28): [17:0] spare, size [19:18] reserved (the size comes from the send register), counter
+  2026-10-28): [0] no-increment (below), [17:1] spare, size [19:18] reserved (the size comes from the send register), counter
   [21:20], mode [24:22], dst [31:25].
+- **A no-increment bit** (owner, 2026-10-28; W2-09) in `ROUTER_HDR`'s spare low bits *(proposed: [0])*:
+  when set, `ROUTER_ADDR` stays put after a send. A reply always goes to the same address in every
+  receiver (`REPLY` + 8 × the sender's id, 6), so a program sets `ROUTER_ADDR` once and changes only the
+  header per send, keeping the split's all-to-all exchanges at today's cost (one header store and one
+  send per reply). Without it, every reply would need a `ROUTER_ADDR` store too. The same holds for
+  one-word exchanges to many tiles at one address; commands write slot 0 last, below their arguments, so
+  they still store `ROUTER_ADDR` before it.
 - **Size stays with the send register** (`ROUTER_SEND_32`, `_64`, `_128`); `ROUTER_SET_W0`-`W2` are
   unchanged and stay write-only.
 - One extra store when both change; a change of dst alone, the common case in replies and one-word

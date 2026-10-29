@@ -220,11 +220,13 @@ for one cycle, a store of 0 does nothing, and a load reads 0.
 
 | v1.1 | register | action |
 |---|---|---|
-| `TILE_PULSE` [0] | `TILE_DONE_PULSE` | the `done` pulse (6.3) |
-| `TILE_PULSE` [1] | `DMA_START_PULSE` | start the run in `DMA_CONFIG` (4.2) |
+| `TILE_PULSE` [0] | `PULSE_DONE` | the `done` pulse (6.3) |
+| `TILE_PULSE` [1] | `PULSE_DMA` | start the run in `DMA_CONFIG` (4.2) |
 | `TILE_PULSE` [2] | ~~`PERIPH_1_RUN_PULSE`, ...~~ | moved: word 0 of each peripheral's window (10) |
-| `TILE_PULSE` [3] | `TILE_GO_PULSE` | drive the GO net where it is wired (6.3) |
+| `TILE_PULSE` [3] | `PULSE_GO` | drive the GO net where it is wired (6.3) |
 
+- **Names** (owner, 2026-10-28): `PULSE_DONE`, `PULSE_DMA`, `PULSE_GO`, a `PULSE_` family like the
+  `WAKE_` and `ROUTER_` families (first proposed as `TILE_DONE_PULSE`, `DMA_START_PULSE`, `TILE_GO_PULSE`).
 - Firing two actions in one store is no longer possible; 8.6's "in one store, start and run act before
   `done`" goes. Separate stores act in program order, and the synchronised start path is still one store.
 
@@ -303,9 +305,9 @@ first words. *(Proposed: the addresses below.)* In region 0xFF; the low 12 bits 
 | 0x800 | `TILE_PARAMS` | R | **new**, constant: endpoint id, big-SRAM size, peripheral-present mask [2:0]; split out of v1.1's `TILE_STATUS` |
 | 0x804 | `TILE_STATUS` | R | live bits only: `rd_running`, `rd_done`, `send_busy`, `ts_busy`, `mem_idle`, `cm_idle`, `done`, `request_busy` |
 | 0x808 | `TILE_CONDITIONS` | R | gains one bit per peripheral (10); loses the peripheral conditions [13:11] |
-| 0x80C | `TILE_DONE_PULSE` | W | 8 |
-| 0x810 | `DMA_START_PULSE` | W | 8 |
-| 0x814 | `TILE_GO_PULSE` | W | 8 |
+| 0x80C | `PULSE_DONE` | W | 8 |
+| 0x810 | `PULSE_DMA` | W | 8 |
+| 0x814 | `PULSE_GO` | W | 8 |
 | 0x818 | `WAKE_EVENTS` | R | new bit layout (Q14) |
 | 0x81C | `WAKE_PEEK` | R | |
 | 0x820 | `WAKE_MASK` | R/W | |

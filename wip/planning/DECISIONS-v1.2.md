@@ -255,6 +255,11 @@ counting (3), the 3-bit mode keeps only what the receiver must do differently:
   event, decoded from the address by the traffic director. READY, GO and the alternating argument blocks
   work as today. Commands stay uncounted because they arrive while the tile waits in
   `wait_for_command()` with its counters at 0.
+- **When "command landed" is set** (owner, 2026-10-28; W2-12): **when the slot-0 write lands in port B**,
+  not when the traffic director accepts it, so the event (and READY, and the boot ROM's jump, 22) follows
+  the write. **Only writes that come in through the traffic director set it**; any such write covering
+  slot 0 does, a 64- or 128-bit write starting there included (it also writes slots 1-3, harmlessly). The
+  controller's own store to slot 0 doesn't. (Settles the "detail to settle" below.)
 - **Follow-on:** v1.1's bad-packet rules for modes 0, 7, 8 and 10-15 go (reserved modes are now discarded
   silently); invariant 11 and "only command writes write
   the command block, only replies the reply block" become software conventions. Whether a 64- or 128-bit

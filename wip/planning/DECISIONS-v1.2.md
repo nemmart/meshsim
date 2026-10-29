@@ -123,7 +123,14 @@ Decided with Tony (O, T). Replaces 3.1's 169-bit word.
 - **Size, counter and mode keep this order everywhere** they appear together (`STREAM_COUNT`, the send
   port's header, the sender), so hardware copies them as one 7-bit block into link word [166:160].
 - **Cost:** router FIFOs about 50 % larger than at 169 bits, roughly +0.04-0.06 mm² per tile [estimate];
-  256 wires per link direction, with the channel width to confirm in physical design.
+  256 wires per link direction, with the channel width to confirm in physical design. *Revised (W2-14):*
+  with the fifth port's 160 entries and the loopback's extra entries, the FIFOs alone add about **+0.065 mm²**
+  per tile *(inferred)*, plus the padding stages, the send holding register, the director's input stage and
+  metadata growing with the 32-bit address. Still well inside 1.5 mm² per tile; section 11 is redone line by
+  line with the spec update.
+- **The full 256 bits are stored** (owner, 2026-10-28; Tony's request), reserved bits included, about 36 Kbit
+  of constant-zero flops per tile. **To revisit when the design has settled:** trim the storage to the bits in
+  use while the links and interfaces stay 256 wide.
 - The 32-bit address is in 5 and the mode codes in 6.
 
 ## 3. Counters (2026-10-28)

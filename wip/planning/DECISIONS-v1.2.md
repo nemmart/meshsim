@@ -381,6 +381,12 @@ Word *n* is at window base + 4*n*.
   `ROUTER_ADDR`. `DMA_HDR` [31:18] is laid out exactly as `STREAM_COUNT` [31:18] (4), so the size,
   counter, mode and dst block sits at the same bits in both. As with v1.1's sender, a DMA transfer is 128-bit packets, then a
   64-bit and/or a 32-bit packet for the remainder. v1.1's word count was 16 bits; 12 is enough.
+- **A peripheral that sends has its own router port** (owner, 2026-10-28; W2-20): it is paired with a router
+  link the tile doesn't otherwise use, and its packets enter the router there, like a neighbour's, as
+  v1.1's sender did (4.17.9). The tile's injection point keeps its two sources (the address generator and
+  the send port); a DMA packet to its own tile reaches the ejector through the router like any arrival and
+  takes no read token, so S9 holds. Only a tile with a free link can have a sending peripheral; C&C 1-3 have
+  them (25).
 - **The DMA is optional.** A peripheral without output (the replayer, for one) leaves words 4, 8 and 9
   unused (`PULSE_DMA`, `DMA_HDR`, `DMA_ADDR`). This replaces v1.1's tile-level sender (`SENDER_SEND`, `SENDER_ADDR`, `sender_busy`, sender
   idle at `EVENTS` [20]; 4.17.9, 8.12).

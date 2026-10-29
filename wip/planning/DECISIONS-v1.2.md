@@ -269,8 +269,8 @@ Word *n* is at window base + 4*n*.
 | 5 | `WAKE_EVENTS` | R | sticky events; a load consumes those in `WAKE_MASK`, as on the tile |
 | 6 | `WAKE_PEEK` | R | what a load of `WAKE_EVENTS` would return, consuming nothing |
 | 7 | `WAKE_MASK` | R/W | the events that count |
-| 8 | `SEND_ADDR` | R/W | the send's 32-bit destination address, advancing as words go out |
-| 9 | `SEND_SETUP` | R/W | counter, mode and dst in the standard order (2), output queue, word count (30 bits) |
+| 8 | `DMA_HDR` | R/W | count [11:0] (32-bit words, up to 4,095), output queue [13:12], spare [17:14], size [19:18] reserved (the sender picks sizes), counter [21:20], mode [24:22], dst [31:25] |
+| 9 | `DMA_ADDR` | R/W | the send's 32-bit destination address, advancing by each packet's size as packets go out |
 | 10-31 | | | reserved for future standard words |
 | 32-127 | | | peripheral-defined |
 
@@ -281,8 +281,12 @@ Word *n* is at window base + 4*n*.
   peripheral's `WAKE_EVENTS`. (Answers Q13.)
 - **`WAKE_REQUIRED` is tile-only:** a program needing "peripheral 1 and counter 2" sets both in the tile's.
 - **No clear pulses:** loading `WAKE_EVENTS` consumes events, as on the tile.
+- **`DMA_HDR` and `DMA_ADDR`** (owner, 2026-10-28) parallel the controller's `ROUTER_HDR` and
+  `ROUTER_ADDR`. `DMA_HDR` [31:18] is laid out exactly as `STREAM_COUNT` [31:18] (4), so the size,
+  counter, mode and dst block sits at the same bits in both. As in v1.1, a send is 128-bit packets, then a
+  64-bit and/or a 32-bit packet for the remainder. v1.1's word count was 16 bits; 12 is enough.
 - **The sender is optional.** A peripheral without output (the replayer, for one) leaves words 4, 8 and 9
-  unused. This replaces v1.1's tile-level sender (`SENDER_SEND`, `SENDER_ADDR`, `sender_busy`, sender
+  unused (`SEND_PULSE`, `DMA_HDR`, `DMA_ADDR`). This replaces v1.1's tile-level sender (`SENDER_SEND`, `SENDER_ADDR`, `sender_busy`, sender
   idle at `WAKE_EVENTS` [20]; 4.17.9, 8.12).
 - **The run pulses move into the windows:** section 8's `PERIPH_1_RUN_PULSE`-`PERIPH_3_RUN_PULSE` go.
 - Replaces v1.1's `PERIPH_STATUS_0`-`7`, `periph_running`, the six service lines and the peripheral
@@ -359,6 +363,7 @@ A running list; each entry names where it came from. Resolved entries move into 
 | Q10 | Is the 24-bit offset in bytes or in 32-bit words? | 5 | open |
 | Q11 | How several peripherals share the slot's interface | 5 | **resolved: sections 9 and 10** |
 | Q13 | Which peripheral flags only wake the controller and which raise a tile condition | 10 | **resolved: section 10** (conditions interrupt, wake events wake) |
+| Q15 | Should `ROUTER_HDR` use the same upper-half layout as `STREAM_COUNT` and `DMA_HDR` (counter [21:20], mode [24:22], dst [31:25]) instead of section 7's low-bit proposal? | 7, 10 | open |
 | Q14 | The tile's `WAKE_EVENTS` bit layout: counters 1-3 done, GO, counters done, command landed, peripherals 1-3 (live), the request port's events | 11 | next |
 | Q12 | meshsim's per-tile debug console without a UART on every tile: request-bus debug messages (6.7) or a simulator-only print register | 9 | open |
 | Q8 | The counter field in every packet source: `STREAM` entries, the send port's header, the sender, the read port's setup, the GATHER engine's gather values, and memory-system requests | 3 | open |

@@ -149,12 +149,13 @@ Decided (O). Answers Q6. One map for packet addresses and the controller's own l
 | 0x02 | big SRAM |
 | 0x03 | peripheral 1 |
 | 0x04 | peripheral 2 |
-| ... | further peripherals |
-| 0xFF | controller only: registers and the table window |
+| 0x05 | peripheral 3 |
+| 0x06-0xFE | reserved |
+| 0xFF | controller only: registers (9) and the table window |
 
 - **The region names where a packet lands**, so the mode no longer has to (Q7).
 - **The controller memories become 32 KB + 32 KB** (planning notes to-do 2, spec part N).
-- **A tile may have more than one peripheral**, where 4.17 has one slot (Q11).
+- **A tile may have up to three peripherals** (9), where 4.17 has one slot.
 - **The controller sees 0x00, 0x01 and 0xFF only.** It still cannot load or store big SRAM or a
   peripheral directly (current plan): every existing mechanism for reading and writing big SRAM carries
   forward (the read port, sending itself packets, address-generator copies).
@@ -227,6 +228,31 @@ for one cycle, a store of 0 does nothing, and a load reads 0.
 - Firing two actions in one store is no longer possible; 8.6's "in one store, start and run act before
   `done`" goes. Separate stores act in program order, and the synchronised start path is still one store.
 
+## 9. Peripherals and the register space (2026-10-28)
+
+Decided (O). Answers most of Q11.
+
+- **A tile has at most three peripherals**, in regions 0x03-0x05 (5). Packets reach a peripheral through
+  its region.
+- **Each peripheral has a 0x200-byte register window** in region 0xFF, which the controller loads and
+  stores directly:
+
+| address | owner |
+|---|---|
+| 0xFFFFF800-0xFFFFF9FF | the controller's own registers |
+| 0xFFFFFA00-0xFFFFFBFF | peripheral 1 |
+| 0xFFFFFC00-0xFFFFFDFF | peripheral 2 |
+| 0xFFFFFE00-0xFFFFFFFF | peripheral 3 |
+
+- **Each peripheral has one wake bit** in `WAKE_EVENTS`, replacing v1.1's six service lines. What the bit
+  means, and how software learns why it fired, is the peripheral's own business, through its window.
+- **The UART becomes a peripheral** on the tiles wired to a serial port, with TX and RX as registers in its
+  window. It leaves every other tile, along with v1.1's `UART_TX`/`UART_RX`/`UART_STATUS`/`UART_CONTROL`
+  and wake events [22:21]. meshsim's per-tile console needs a replacement (Q12).
+- **Follow-on:** v1.1's slot interface (4.17) shrinks: `PERIPH_STATUS_0`-`7` and the service lines move
+  into each peripheral's window; the per-peripheral run pulses (8) could move there too. The replayer
+  (4.19) becomes peripheral 1 on the tiles that have one.
+
 ---
 
 ## Big SRAM: to validate
@@ -260,5 +286,6 @@ A running list; each entry names where it came from. Resolved entries move into 
 | Q7 | The 3-bit mode: which of today's nine modes merge or go, now that counting is separate | 2 | **resolved: section 6** |
 | Q9 | Does a stream's source stay a 21-bit big-SRAM chunk address, or does the 32-bit address apply to reads too? | 4 | open |
 | Q10 | Is the 24-bit offset in bytes or in 32-bit words? | 5 | open |
-| Q11 | How several peripherals share the slot's interface: service lines in `WAKE_EVENTS`, `PERIPH_STATUS_0`-`7`, the run pulse, conditions 11-13 | 5 | open |
+| Q11 | How several peripherals share the slot's interface | 5 | **mostly resolved: section 9.** Left: whether conditions 11-13 become per peripheral, and whether the run pulses move into the peripheral windows |
+| Q12 | meshsim's per-tile debug console without a UART on every tile: request-bus debug messages (6.7) or a simulator-only print register | 9 | open |
 | Q8 | The counter field in every packet source: `STREAM` entries, the send port's header, the sender, the read port's setup, the GATHER engine's gather values, and memory-system requests | 3 | open |

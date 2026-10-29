@@ -82,7 +82,8 @@ Closes planning notes section 7, "Condition handling", and to-do item 3.
   `ERROR_LINES_0`-`2` in C&C 1's peripheral, and they reach C&C 1 through that peripheral's unit-error bit.*
 - **The fold is live:** it follows the error lines; it does not latch. C&C 1's own conditions stay sticky,
   as everywhere.
-- **The C&C pin:** an output pin on the ASIC, high while C&C 1 has any condition.
+- **The C&C pin:** an output pin on the ASIC, high while C&C 1 has any condition. *Superseded by 24: two
+  pins, a hardware error pin for C&C 1's own errors only and a software pin.*
 - **C&C 1's HALT halts everyone but itself.** Entering HALT clears the halted units' conditions (4.13), so
   their error lines drop, the fold clears and the pin goes low.
 - **So the pin stays high only when C&C 1 itself has failed**, and the host steps in. The pin also pulses
@@ -775,6 +776,22 @@ only way to stop anything**, and coming out of reset means running in the boot R
   before the reset fires, the file system flushes their tails to LPDDR (21, step 4). This also answers Q12
   for the hardware; how meshsim shows them (a console per tile) is meshsim's business.
 
+## 24. The two status pins (2026-10-28)
+
+Decided (O), from W1-16. Replaces 1.5's C&C pin; settles Q2.
+
+- **The error pin**, driven by hardware: high while **C&C 1 has any error of its own**, that is, C&C 1's
+  `ERRORS` with the unit-error bit of its peripheral (15) excluded: C&C 1's own error bits, plus its
+  peripheral's errors other than the unit-error bit. Those are sticky and outside the reset domain (21),
+  so once high the pin stays high until the host acts.
+  - **A unit fails:** only the unit-error bit is set; C&C 1 is interrupted and recovers, and the pin stays
+    low. The pin never pulses, so **Q2's "sustained high" threshold goes away**.
+  - **C&C 1 or its peripheral fails:** the pin goes high and stays high, and the host steps in (chip reset).
+  - It can drive an LED directly: steady on means C&C 1 is dead.
+- **The software pin**, driven by C&C 1 through a register in its peripheral *(name and bit proposed:
+  `LED`, bit 0)*: C&C 1 can blink codes on it while it is healthy (boot progress, which unit failed, a
+  recovery in progress).
+
 ---
 
 ## Big SRAM: to validate
@@ -800,7 +817,7 @@ A running list; each entry names where it came from. Resolved entries move into 
 | # | question | from | status |
 |---|---|---|---|
 | Q1 | Tony's exact list of implemented CSRs, to define which CSR instructions are legal | 1.1 | waiting on Tony |
-| Q2 | How long a high on the C&C pin counts as "sustained" for the host | 1.5 | open |
+| Q2 | How long a high on the C&C pin counts as "sustained" for the host | 1.5 | **resolved: section 24** (the error pin never pulses) |
 | Q3 | What stops the peripheral and the sender when a condition traps | 1.7 | **resolved: section 21** (nothing, until the global reset) |
 | Q4 | The HALT design | planning notes section 7 | **resolved: sections 21-23** (no HALT state; the global reset is the only stop) |
 | Q5 | Should an area serve writes ahead of queued reads? Not needed for S1 if K covers only the path to the area queue | 3 | open; for Tony |

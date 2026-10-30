@@ -9,6 +9,10 @@ Simulator and software for a parallel compute mesh, part of an ASIC for proving 
 | `v1.2_wip/` | snapshot | the v1.2 spec and recipes, read-only, for sessions working against v1.2 while the simulator is ported; not yet frozen. **In use by Tony: nobody changes it without the owner's agreement** |
 | `wip/` | in progress | work toward the next milestone; started as a copy of v1.1 |
 
+**How versions are used:** each frozen version (spec plus meshsim) is the reference the RTL is upgraded against,
+outside this repository. What the RTL work turns up comes back afterwards as a delta, folded into the next version;
+this repository doesn't track the RTL in between.
+
 Frozen folders are never edited. Each one is also tagged (`v1.0`, `v1.1`). When `wip/` reaches a
 milestone it is copied to a new frozen folder and tagged.
 

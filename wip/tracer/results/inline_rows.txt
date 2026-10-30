@@ -1,0 +1,10 @@
+# secp256k1 multiply/square advice as untraced rows, checked against jolt-cpp evaluate()
+# inline	untraced rows	of which MUL/MULHU	peak live registers	traced rows (shapes)	cases	mismatches
+mul_q	204	42	17	186	20000	0
+square_q	200	42	16	167	20000	0
+mul_r	381	80	21	232	20000	0
+square_r	377	80	21	213	20000	0
+# building block: 256 x 256 -> 512-bit product: 113 rows
+# a modular multiply mod q is ~196 rows, mod r ~373 rows (no loads)
+# div_q by Fermat (a^(q-2), ~255 squarings + ~15 multiplies, addition chain): ~52920 rows
+# div_r by Fermat (~255 squarings + ~40 multiplies): ~110035 rows

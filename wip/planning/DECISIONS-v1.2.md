@@ -1486,8 +1486,9 @@ Decided (O).
 Confirmed by Tony. Answers Q16 (W5-04, W5-21); spec item 134 closed, 4.11 updated by the integrator.
 
 - **The 32 KB controller memories meet one-cycle access at 1 GHz.**
-- **Loads take 1 cycle** from data memory, program memory, the boot ROM and the **table window** (`HIST`, `PTR`,
-  `STREAM_*`, `GROUP`).
+- **Loads take 1 cycle** from data memory, program memory, the boot ROM and the **table window**. Of the table
+  memories only `HIST` is loadable by the controller (spec 4.10: `PTR`, `STREAM_*` and `GROUP` are write-only on its
+  side; corrected 2026-10-31).
 - **Loads take 2 cycles** from the **register block**, every peripheral window word included. This fixes v1.1's
   "1 or 2 at the implementation's discretion"; it stays fixed per register and the same on every tile, so a
   synchronised start's identical code stays identical in time.

@@ -41,7 +41,7 @@ pending recipes      "the recipe book (v1.1's RecipeTest; replaced by the v1.2 r
 pending recipes-shuf "shuffled child order (seed 4)" "phase 6"
 pending cond       "errors, the done gate, the error line (cond.c, REPORT, HALT recovery)" "phase 4"
 pending cond-shuf  "shuffled child order (seed 4)" "phase 4"
-pending regdoc     "REGISTERS.md against the generator, mesh.h and the simulator" "phase 2"
+LOG=regdoc    TAIL=1 run "REGISTERS.md and mesh.h against their generators, the draft header and the simulator" $J RegDocTest
 LOG=hooks     TAIL=1 run "the register map, the send port, the pulses (from Java)" $J HooksTest -1
 LOG=hooks-shuf TAIL=1 run "shuffled child order (seed 4)"     $J HooksTest 4
 pending periph     "the peripheral framework" "phase 3"

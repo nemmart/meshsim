@@ -866,6 +866,8 @@ UART) are outside it**, so the host link survives. The same line is the power-on
 
 ## 22. Booting from ROM (2026-10-28)
 
+*Revised by 31: tiles boot through READY/GO; C&C 2 and C&C 3 jump on "command landed" and report "started".*
+
 Decided (O, T), from W1-14. Replaces 6.2's halted loading with READY and section 21's READY-based start
 of C&C 2 and C&C 3.
 
@@ -1074,6 +1076,43 @@ Decided (O), from W3-19. Revises 2, 3, 4, 7, 10, 12, 13, 14 and 16 (each updated
   element count for the same data.
 - **`WRITE_COUNTER_4`** joins the register block (0x86C; the read port's registers move down one word), and
   `EVENTS` gains counter 4's done at [3], renumbering the bits above it (16).
+
+## 31. The boot sequence (2026-10-29)
+
+Decided (O), from W1-23, W1-24, W2-27 and W3-26. Revises 22: the boot ROM is a minimal `wait_for_command()`,
+so tiles boot through the same READY/GO protocol as every phase.
+
+1. **The reset is asserted:** everything in the domain is zeroed as at power-on, **except the memories**:
+   `done`, the `done` gate, "command landed", any pending GO, every counter and event. `EVENTS_MASK` takes its
+   reset value (GO | counters done, 16).
+2. **The reset is released:** every controller starts at 0x02000000, in the boot ROM.
+3. **C&C 1 sends the overlays** into controller memory, uncounted, then **lands the first command**. Overlays
+   and command come from one source to one unit through port B, so the command lands last.
+4. **Tiles:** the ROM has pulsed `done` and waits for GO, so "command landed" raises READY, as in a phase.
+   **When every tile is READY, C&C 1 issues GO**; GO clears `done` and "command landed" as always, and the
+   ROM jumps to the address in the command block. The image starts clean.
+5. **The first program loads big SRAM:** C&C 1 broadcasts how many words it will send and lands a command;
+   each tile arms its counters and signals READY; C&C 1 sends the data **counted**. The command never has to
+   vouch for big-SRAM data (W2-27's overtaking).
+
+**C&C 2 and C&C 3 stay out of READY/GO** (owner), which would otherwise tie them to the phase cycle while they
+trace and run the file system:
+
+- **One ROM for every unit, branching on `PARAMS`' endpoint id:** tiles (0-63) pulse `done` and wait for GO;
+  C&C 2 and C&C 3 set their mask to "command landed", wait for it, and jump.
+- **Their image's start-up sends C&C 1 a "started" request.** C&C 1 waits for both before loading the tiles,
+  so the file system and the pager are up before anything uses them.
+
+**Details this needs:**
+
+- **Asserting `RESET` clears C&C 1's READY bits** (they live in its peripheral, outside the domain, 28), so
+  READY left from before a recovery can't release GO early.
+- **The boot ROM uses registers only, never data memory**, which the overlays are writing while it runs. The
+  reset selects command block 0, so the ROM knows where the jump address is.
+- **C&C 1 drains its request receive queue to empty** before a restart's boot (21's draining), so a stale
+  "started" can't satisfy its wait.
+- The ROM sets `mtvec` first, to a minimal report-and-park handler in the ROM (22), until the image installs
+  its own.
 
 ---
 

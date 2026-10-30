@@ -1022,6 +1022,11 @@ Decided (O), from W2-13; states a principle applied throughout today's decisions
 - **Data memory word 0 is reserved** (owner, 2026-10-28; W2-23): the linker script never places anything at
   address 0x00000000, and **meshsim flags any write to it**. A C null-pointer store and an all-zero header (a
   mode-0 write at address 0, uncounted, 6) both land there, so one check catches both. Costs 4 bytes.
+- **Traps that set no `ERRORS` bit are software bugs, caught by meshsim** (owner, 2026-10-29; W1-18):
+  `ecall`, `ebreak`, a fetch outside program memory and the boot ROM, a misaligned jump target, and a trap
+  inside the handler. **meshsim stops loudly on each.** The hardware adds nothing (no "trap taken" bit): such
+  a trap parks the unit without raising its error line, and on hardware only the phase watchdog notices.
+  Accepted. *Reviewers: this is settled; don't raise it again.*
 - **Invariant 11's checkable form** (meshsim only): writes into the command block come only from C&C 1-3;
   writes into the reply block are 32 or 64 bits at the sender's own pair (word 2·src); any other mode-0
   write to regions 0x00 or 0x01 stays inside its memory and outside both blocks.

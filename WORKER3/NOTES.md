@@ -91,3 +91,21 @@ deliverable. Line numbers: D = `wip/planning/DECISIONS-v1.2.md`, S = `wip/spec/m
 Done with a grep over sw/, sort/, meshsim/{sw,src,test}; table kept in REVIEW.md section 6.
 Combined TILE_PULSE stores: none in software (only TileControl.java l.259-264 and CtrlTest.java l.274).
 uart_putc/uart_puts: no callers outside mesh.h; UART exercised by regs.c, CtrlTest, HooksTest, RegDocTest.
+
+## Round 2 (PROMPT-2.md)
+Log re-read in full (1,096 lines, through 30). Code under wip/sw, wip/sort, wip/meshsim unchanged since round 1.
+Compiled a struct-per-block draft with riscv64-unknown-elf-gcc 13.2 (-march=rv32i_zmmul -O2), in /home/claude/st:
+- single access: `lw a0,-2024(zero)` (x0-relative, as v1.1);
+- two or more accesses in a function: GCC hoists `li a5,-2048` and uses offsets -> +1 instruction on the
+  GO -> start path (wait_for_command's load of EVENTS, counter, PULSE_DMA) vs v1.1's MESH_REG form, which
+  stays x0-relative throughout;
+- `TileRegs t = tile;` compiles and loads all 128 words (consumes EVENTS, pops REQUEST_RECEIVE);
+  `snap = tile` (assignment) is rejected only because members are const;
+- R registers as `const volatile` give compile errors on stores: good;
+- request-port shared offsets need anonymous unions (C11);
+- "type extends PeripheralStd" needs a member-list macro (no inheritance in C) or -fms-extensions.
+Findings drafted: credit leak (expansion queue, short pushes) -> deadlock; item-FIFO kind missing (tags,
+25); reset values (done, gate, GO pending into ROM; W1-23 overlap); struct issues incl. `Tile` clash with
+skew.h l.154; 28 review; alignment of auto-advancing runs (regs.c l.40-42 relies on misaligned 64-bit);
+ERRORS [1] vs [7] for misaligned read-port reads; stale text list; TRACE word flagged by meshsim;
+STREAM_COUNT 16 bits vs the full-size sort's n = 65,536 (local.c l.33, 63-64, 79).

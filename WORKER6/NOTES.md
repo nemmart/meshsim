@@ -42,3 +42,9 @@ Owner's notes:
 ## Log
 
 - Cloned and pulled at d9d6c5c. `machine-spec.md` was still v1.1 then.
+- Round 1: header, check sources, RECIPES.md v1.2 (43 blocks generated from compiled regions).
+- The owner answered F1-F5, F7, F8 in DECISIONS-v1.2 sections 37 and 38. The recipes follow: the ROM jumps
+  only on a landed command, boot part 2 enables interrupts, 16 reserved bytes, the no-increment bit is
+  cleared, request limits are kept with replies. F15 and F16 are new from writing to D38.
+- Round 2: CONVENTIONS.md, FINDINGS.md, REPORT.md. The replayer's words were renamed to the spec's
+  `REPLAYER_STATUS` and `REPLAYER_OPCODE` (W5-09).

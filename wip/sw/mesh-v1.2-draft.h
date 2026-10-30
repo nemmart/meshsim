@@ -96,7 +96,7 @@ typedef struct {
     MESH_RW EVENTS_MASK;          /* 0x820: GO | counters done at reset */
     MESH_RW EVENTS_REQUIRED;      /* 0x824: 0 at reset */
     MESH_RW ROUTER_HDR;           /* 0x828: no-increment [0], counter, mode, dst (D7) */
-    MESH_RW ROUTER_ADDR;          /* 0x82C: the next packet's address; advances by its size unless no-increment */
+    MESH_RW ROUTER_ADDR;          /* 0x82C: the next packet's address; advances by its size unless no-increment (mode 0; spec W5-03) */
     MESH_WO ROUTER_SET_W0, ROUTER_SET_W1, ROUTER_SET_W2;           /* 0x830-0x838: cleared by every send */
     MESH_WO ROUTER_SEND_32, ROUTER_SEND_64, ROUTER_SEND_128;       /* 0x83C-0x844: the last store sends */
     union { MESH_RO REQUEST_GET_W0; MESH_WO REQUEST_SET_W0; };     /* 0x848 */

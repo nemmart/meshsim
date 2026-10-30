@@ -400,6 +400,15 @@ Word *n* is at window base + 4*n*.
     A queue starts with 2 after reset; the controller uses one per refill; the peripheral returns one each
     time it has consumed half a buffer. The controller can never send more than there is room for, and the
     tile's live bit for the peripheral stays high while any credit remains, so `WFI` can't miss a refill.
+  - **When credits are initialised** (owner, 2026-10-29; W3-24): **every queue's credits are set to 2
+    at `PULSE_RUN`**, and **the expansion queue's are set to 2 again each time a new expansion fires**
+    (v1.1 reset the expansion queue's pending count the same way). Each credit is half a queue.
+  - **Code and log queues:** every refill except a stream's last is exactly half a buffer (software rule),
+    so their credits balance. Only the expansion queue sees short refills, and its re-initialisation at each
+    expansion keeps a short one from stranding a credit (W3-24's deadlock).
+  - **Credits with nothing behind them** (after a stream's last refill; the write log in a pass without the
+    store log): the loop removes that queue's bit from the peripheral's `EVENTS_MASK` once it has nothing
+    more to send, so `WFI` doesn't fall through. No gating hardware.
   - **A credit is permission to send up to half a buffer** (owner, 2026-10-28), not one transfer: having
     consumed it, the program may split the refill into smaller moves (a 2 KB credit as two 1 KB moves), as
     long as their total stays within the credit.

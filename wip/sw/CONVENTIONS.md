@@ -1,11 +1,11 @@
 # Tile programs: the v1.2 control conventions (draft)
 
-**v1.2 draft, from `planning/DECISIONS-v1.2.md` sections 1-38 (cited as D*n*), against `sw/mesh-v1.2-draft.h`.** The worked code for every operation is `sw/RECIPES.md`, whose recipes are cited here as R*n*. The spec references are to `spec/machine-spec.md`, which WORKER5 is rewriting to v1.2; where the two disagree the log is the authority until the spec is reviewed. Anything marked *(proposed)* is this draft's choice where the log leaves a number or a name open; WORKER4 settles it in the generated `mesh.h`.
+**v1.2 draft, from `planning/DECISIONS-v1.2.md` sections 1-42 (cited as D*n*), against `sw/mesh-v1.2-draft.h`.** The worked code for every operation is `sw/RECIPES.md`, whose recipes are cited here as R*n*. The spec references are to `spec/machine-spec.md`, which WORKER5 is rewriting to v1.2; where the two disagree the log is the authority until the spec is reviewed. Anything marked *(proposed)* is this draft's choice where the log leaves a number or a name open; WORKER4 settles it in the generated `mesh.h`.
 
 ## 1. Build
 
 - **Toolchain:** `riscv64-unknown-elf-gcc -march=rv32i_zicsr_zmmul -mabi=ilp32 -std=gnu11`. v1.1 built `rv32i_zmmul`. CSR instructions are legal now for the CSRs the core implements (D1.2), and the ROM, the handler and boot part 2 use them, so `zicsr` is needed. `gnu11` (or `c11`) is needed for the register block's anonymous unions (W3-27). A software divide still fails the build unless `ALLOW_SOFTDIV=1`.
-- **Register access:** every register and window word is one `lw`/`sw`. Through the header's pointers (`tile->EVENTS`) GCC 13 at `-O2` emits x0-relative accesses, as v1.1's constants did; checked in the disassembly of every recipe (R13).
+- **Register access:** every register and window word is one `lw`/`sw`. The controller block's addresses are D11's, with D40's seven counters (0x860-0x878) and the read port at 0x87C and 0x880. Through the header's pointers (`tile->EVENTS`) GCC 13 at `-O2` emits x0-relative accesses, as v1.1's constants did; checked in the disassembly of every recipe (R13).
 - **The memory map** *(proposed: the log fixes the regions and sizes, D5, and the reserved bytes, D37.4, not the blocks' addresses)*:
 
   | range | contents |
@@ -33,9 +33,9 @@
 
 1. **The reset**, always the whole chip, from outside (D35), zeroes everything but the memories. Every controller starts in the boot ROM with interrupts off.
 2. **C&C 1** is started by the outside world (its overlays and first command land through Ingress/Egress, or the meshsim harness). It boots C&C 2 and C&C 3 (each jumps when its command lands and sends C&C 1 "started"), then the tiles.
-3. **A tile** sleeps in the ROM with `done` pulsed. C&C 1 sends its overlays, uncounted, then its **first command, which is even: `CMD_JUMP` with the entry address in slot 1**. The overlays and the command are of one kind: all broadcast or all unicast (D36).
-4. The landed command raises READY; at GO the ROM jumps **if a command has landed** (the event [6]); otherwise it pulses `done` again and keeps waiting (D37.1). So C&C 1 lands a tile's first command only when that tile is to start at the next GO.
-5. **Boot part 2** is the image's first command, `CMD_STAGE` with the number of 128-bit packets of big-SRAM data. In its start path the tile arms counter 1, then sets `mtvec` to its own handler and enables `mie.MEIE` and `mstatus.MIE` (D37.2); C&C 1 sends the data counted, to region 0x03 by address, no sooner than `stage_delay` after its GO store; the tile waits for the counter and pulses `done` (R22).
+3. **A tile** sleeps in the ROM with `done` pulsed. C&C 1 streams its overlays from its big SRAM, uncounted, a packet per cycle, with *d* = 126 for all tiles (D41; only the controllers broadcast from streams), and its **first command, which is even: `CMD_JUMP` with the entry address in slot 1**, as one 128-bit packet at slot 0, the same run's last stream. One source and one kind (D36): the command lands last.
+4. The landed command raises READY; at GO the ROM jumps **if a command has landed** (the event [9], which nothing in the reset mask consumes, so the ROM's tile branch mustn't either, D41); otherwise it pulses `done` again and keeps waiting (D37.1). So C&C 1 lands a tile's first command only when that tile is to start at the next GO.
+5. **Boot part 2** is the image's first command, `CMD_STAGE` with the number of 128-bit packets of big-SRAM data. In its start path the tile arms counter 1, then sets `mtvec` to its own handler and enables `mie.MEIE` and `mstatus.MIE` (D37.2); C&C 1 streams the data counted, to region 0x03 by address, no sooner than `stage_delay` after its GO store (timed by `mcycle`, D41); the tile waits for the counter and pulses `done` (R22).
 - **Uncounted traffic is commands and boot overlays only** (D17). Everything a running program receives is counted, and modes 1-3 are always counted. Data C&C 1 sends a running tile is announced first by a command, as in boot part 2 (v1.1's announced staging, 6.2). There is no `PTR[64]` staging area and no "halt the tile first": C&C 1 never sends a tile anything it hasn't armed for.
 
 ## 4. Commands and phases (6.3)
@@ -74,33 +74,35 @@ for (;;) {
 
 | bit | event | kind |
 |---|---|---|
-| [0]-[3] | write counter 1-4 done | sticky |
-| [4] | counters done: all four at 0, one armed since it last fired | sticky |
-| [5] | GO | sticky |
-| [6] | command landed | sticky |
-| [7] | DMA run done (the address generator's run); `PULSE_DMA` clears it | sticky |
-| [8] | request FIFO no longer full | sticky |
-| [9] | request pending (controllers only) | live |
-| [10]-[12] | peripheral 1-3: its `EVENTS & EVENTS_MASK` non-zero | live |
+| [0]-[6] | write counter 1-7 done | sticky |
+| [7] | counters done: all seven at 0, one armed since it last fired | sticky |
+| [8] | GO | sticky |
+| [9] | command landed (nothing in the reset mask consumes it, D41) | sticky |
+| [10] | DMA run done (the address generator's run); `PULSE_DMA` clears it | sticky |
+| [11] | request FIFO no longer full | sticky |
+| [12] | request pending (controllers only) | live |
+| [13]-[15] | peripheral 1-3: its `EVENTS & EVENTS_MASK` non-zero | live |
 
-- **The four counters.** The packet names its counter (D3, D30): 0 uncounted, 1-4. **The convention** *(proposed; the hardware treats the four alike)*: **1 big SRAM, 2 controller memory (read-port results included), 3 replies, 4 peripheral writes** (`CTR_SRAM`, `CTR_CM`, `CTR_REPLY`, `CTR_PERIPH`). A phase may use them otherwise, as long as each thing waited for separately has a counter of its own (D3's usage rule).
+Renumbered by D40. `EVENTS_MASK` resets to GO | counters done.
+
+- **Seven counters.** The packet names its counter (D3, D40): 0 uncounted, 1-7 (`WRITE_COUNTER_1`-`7` at 0x860-0x878). **The convention** *(proposed; the hardware treats the seven alike)*: **1 big SRAM** (local runs, all-to-alls, staged data), **2 controller memory** (block copies, vectors, read-port results), **3 tile-to-tile replies, 4 peripheral writes** (the replayer's refills and state), **5-7 one per outstanding request** (`CTR_REQ(k)`, k = 0-2; section 6b). Each thing a phase waits for separately has a counter of its own (D3's usage rule); a phase may reassign them as long as it keeps to that.
 - **A counter decrements *K* cycles after the director accepts its packet** (D3, D32), by which time the write is readable, a `PTR` or `HIST` update included (D17 A).
 - **A store adds:** *N* > 0 arms the counter, clearing its done event and counters done. **A count of 0 never fires,** so don't wait for an unarmed counter.
 - **Unexpected arrival** (a decrement at 0) and **done early** (`done` with a counter non-zero) are errors, and trap.
 - **The rule: a phase that arms a counter waits for it before `done`.**
 - **The done gate:** from the `done` pulse until GO only GO wakes `WFI`, whatever the mask; counters done can't be set in that window, and the pulse clears it.
-- **The tables** (`STREAM`, `GROUP`, `PTR`, `HIST`) are free when the arrivals are in (their counter) **and** the tile's own run is over (DMA run done, [7]) (D17; R23). **Every phase that runs the address generator waits for both before `done`,** so every command starts with the tables free and nothing waits before touching them. `wait_tables()` and `ts_busy` are gone. A helper that can't know what ran before may poll `STATUS.rd_running` (`wait_rd_idle()`), only when nothing counted can still be arriving.
+- **The tables** (`STREAM`, `GROUP`, `PTR`, `HIST`) are free when the arrivals are in (their counter) **and** the tile's own run is over (DMA run done, [10]) (D17; R23). **Every phase that runs the address generator waits for both before `done`,** so every command starts with the tables free and nothing waits before touching them. `wait_tables()` and `ts_busy` are gone. A helper that can't know what ran before may poll `STATUS.rd_running` (`wait_rd_idle()`), which falls in the same cycle as DMA run done (D17 B, D41); it says nothing about arrivals, so only when nothing counted can still be arriving.
 - **Peripheral events** (D10): each peripheral bit is a small counter, an ordinary event of depth 1 or a queue's credits of depth 2, or a live bit. A load of the peripheral's `EVENTS` takes one count from every set bit in its `EVENTS_MASK` (0 at reset). The tile's bit for the peripheral is live. **A program acts on every bit a consuming load returns,** or narrows the mask around the load (R25, R26). Spurious wakes are allowed: **re-check after every wake.**
-- **What a wait returns is what it consumed;** sticky events outside the mask stay pending. Counters done is left pending by a wait on one counter, and is cleared by the next arming or `done`. Command landed [6] stays pending in a tile, since nothing consumes it.
+- **What a wait returns is what it consumed;** sticky events outside the mask stay pending. Counters done is left pending by a wait on one counter, and is cleared by the next arming or `done`. Command landed [9] stays pending in a tile, since nothing consumes it; the boot ROM relies on that (D41).
 
 ## 6. Sending (D6, D7)
 
 - **The send port:** `ROUTER_HDR` (counter, mode, dst, and the no-increment bit [0]) and `ROUTER_ADDR` (the full 32-bit address), then one store per 32 bits of each packet in ascending order, the last store sending: `send32(w0)`; `send64(w1, w0)`; `send128(w3, w2, w1, w0)`. `send_to(hdr, addr)` stores both. `ROUTER_SET_W0`-`W2` clear at every send.
-- **`ROUTER_ADDR` advances by each packet's size** (4, 8 or 16 bytes), unless no-increment is set. A run that goes down in size and back up re-stores `ROUTER_ADDR`, or its larger packets are misaligned (W3-29).
+- **`ROUTER_ADDR` advances by each packet's size** (4, 8 or 16 bytes) for mode 0 only (D42; modes 1-4 ignore it), unless no-increment is set. A run that goes down in size and back up re-stores `ROUTER_ADDR`, or its larger packets are misaligned (W3-29).
 - **The no-increment bit stays set until the program clears it** (D37.5). A program sending to one address in many tiles (replies, R7) sets it, and clears it when done.
 - **Every header names its counter** as a required macro argument (`ROUTER_HDR_W(dst, mode, ctr)`), and `CTR_NONE` only for commands and boot overlays.
 - **Writes to big SRAM:** mode 0 to region 0x03 at an address (R17), or mode 1 to the tile itself through `PTR[me]`.
-- **One word to another tile** is a reply: a 32-bit mode-0 write to `REPLY_WORD(me)` in the receiver, with no-increment, counted on the counter the receiver armed (counter 3). A tile keeps at most one reply outstanding to each receiver until it has been read. **Several words** go to an address in the receiver's data memory, counted on counter 2.
+- **One word to another tile** is a reply: by default (D40) a 32-bit mode-0 write to `REPLY_WORD(me)` in the receiver, with no-increment, counted on the counter the receiver armed (counter 3). A tile keeps at most one reply outstanding to each receiver until it has been read. **Several words** go to an address in the receiver's data memory, counted on counter 2.
 - **Rate:** one packet per cycle when no read return is waiting; a send store stalls while the holding register is occupied (`STATUS` [3] lets a program avoid that). A packet to the tile itself or a broadcast also waits for a loopback token (S9).
 
 ## 6a. Packet modes (D6)
@@ -122,17 +124,19 @@ for (;;) {
 
 - **A request is 128 bits:** `request_send(w3, w2, w1, w0)`, words 0-2 then the last store pushes, stalling only while the 128-entry request FIFO is full. Software writes the target in [9:7] and 0 in the requestor [6:0], which the tree stamps.
 - **Targets:** 0 C&C 1, 1 C&C 2 (the file system), 2 C&C 3 (the pager) *(spec draft 3.3)*. The layout above [9:0] is the target's; `REQ_CC1(op, ctr, arg)` is a placeholder for C&C 1's.
-- **Outstanding requests per tile** (D38): **at most 1 to C&C 1, 3 to C&C 2, 1 to C&C 3.** A tile issues its next request to a target only after the previous one's reply has come back. Each request names its reply's counter (D25), which the tile arms before sending. The receive queues are in the tree (128, 256 and 128 requests), so normal traffic never runs out of credits and no row stalls.
-- **Error reports are the exception:** the handler sends its 23 at once, with no reply (R24).
-- **A target answers every tile request,** or the tile waits for ever (R27's `drain_requests`).
-- **Receiving** (controllers only): `REQUEST_GET_W0`-`W2` read the oldest request without popping, and `REQUEST_RECEIVE` reads its last word and pops it. Popping an empty queue is receive underflow, an error, so check `EVENTS_PEEK` [9] first.
+- **Outstanding requests per tile** (D38): **at most 1 to C&C 1, 3 to C&C 2, 1 to C&C 3.** A tile issues its next request to a target only after the previous one's reply has come back. The receive queues are in the tree (128, 256 and 128 requests), so normal traffic never runs out of credits and no row stalls.
+- **Every request names its reply's counter and its own reply address**, anywhere in the requester's data memory (D25, D40), so no two outstanding replies share a buffer. **The convention: request slots** (R21). Slot *k* (0-2) owns counter `CTR_REQ(k)` = 5 + *k* and a reply buffer; `request_issue(k, …)` arms the counter (for the reply plus any data the request brings back on it) and sends; `request_wait(k)` waits. Three slots cover C&C 2's limit, so a tile has at most three requests outstanding in all by this convention.
+- **Error reports are the exception:** the handler sends its 24 at once, with no reply (R24).
+- **A target answers every tile request,** at the address and counter it names, or the tile waits for ever (R27's `drain_requests`).
+- **Receiving** (controllers only): `REQUEST_GET_W0`-`W2` read the oldest request without popping, and `REQUEST_RECEIVE` reads its last word and pops it. Popping an empty queue is receive underflow, an error, so check `EVENTS_PEEK` [12] first.
+- **Bounded waits** on a controller use `mcycle` (D41).
 
 ## 7. Parameters, status and errors (D18, D20, D27)
 
 - **`PARAMS`** (constant): peripherals present [2:0], endpoint id [26:20] (`tile_index()`), big-SRAM size in 256 KB units - 1 [31:27] (`sram_chunks()`).
 - **`STATUS`** (live, diagnostic; no program needs to poll it): `rd_running`, `rd_done`, GATHER busy, `send_busy`, `done`, command landed, `request_busy`.
 - **`ERRORS`** (sticky until the reset; [13:11] live): any bit raises the hard interrupt and the error line (R12 has the table). **A running program always reads 0 here**, since the first error traps.
-- **The handler** (R24): terminal (no `mret`), reports the fixed set of 23 requests to C&C 1, then parks. It reads `EVENTS_PEEK`, never `EVENTS`; it checks `PARAMS` [2:0] before reading a window; absent peripherals report zeros (D37.3). The image installs it in boot part 2, and the ROM holds the same code until then.
+- **The handler** (R24): terminal (no `mret`), reports the fixed set of 24 requests to C&C 1 (the spec defines it, D41), then parks. It reads `EVENTS_PEEK`, never `EVENTS`; it checks `PARAMS` [2:0] before reading a window; absent peripherals report zeros (D37.3). The image installs it in boot part 2, and the ROM holds the same code until then.
 - **Traps without an `ERRORS` bit** (`ecall`, `ebreak`, a fetch outside program memory and the ROM, a misaligned jump, a trap in the handler) park the unit with no error line; meshsim stops loudly on each (D27).
 - **Write-only registers read 0**, except the request port's shared offsets, where a load reads the receive side. Reserved words read 0 and ignore stores (meshsim flags them), except the simulator-only trace and exit words. **An absent peripheral's window is a bus error.**
 - **Timing:** a register load returns the state at its sample point; a store at *t* acts from *t* + 1.
@@ -151,6 +155,6 @@ The destination is any data- or program-memory address, 16-byte aligned (the sou
 ## 9. Reading big SRAM: the read port (4.3; D13; R11)
 
 - **`SRAM_RD_DEST_ADDR`** = `RD_DEST(byte_offset, size, counter)`: the data-memory offset of the next result (data memory only), its size, and its counter. It advances by the size per queued read, and a load returns it.
-- **A store to `SRAM_RD_ADDR_QUEUE`** queues a read at a chunk address aligned to the size. It never stalls. A misaligned read is not performed, but its packet still goes out with payload 0 and is counted, and `ERRORS` [1] is set (D36). A store with no free entry is a read-port error ([7]).
+- **A store to `SRAM_RD_ADDR_QUEUE`** queues a read at a chunk address aligned to the size, keeping the counter `SRAM_RD_DEST_ADDR` holds then (each entry carries its own, D42). It never stalls. A misaligned read is not performed, but its packet still goes out with payload 0 and is counted, and `ERRORS` [1] is set (D36). A store with no free entry is a read-port error ([7]).
 - **Results** are mode-0 writes to the tile itself, in any order, each at its own offset, counted on the named counter. Only the counter says they have landed; a free entry means only that its return has left.
 - **Read-port results and incoming traffic:** as in v1.1, a tile does not issue read-port reads while packets are arriving for it, and doesn't start a phase that receives while results are outstanding (invariant 14). Whether S9's required protected loopback lets the spec retire the rule is open.

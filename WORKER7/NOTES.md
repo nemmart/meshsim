@@ -31,3 +31,23 @@ plus a small generator (`wip/tracer/`), as the prompt allows. Q2.
   (`trace_owner.cpp:52–66`, `isa/virtual.cpp:1238–1244`);
 - not row advice, recorded for completeness: the trusted/untrusted advice memory regions (`loader.hpp:25–30`, read
   by ordinary LDs) and the `JOLT_ADVICE_WRITE` syscall, which jolt-cpp ignores (`syscalls.cpp:63–69`).
+
+**Division family** (templates in `wip/tracer/templates.py`).
+- Untraced rows go immediately before the advice row. DIVW's trick: Jolt's DIVW advice equals a 64-bit DIV of the
+  sign-extended operands (overflow gives +2³¹, zero-extended), and the first two traced rows already hold them.
+- Harness compiles against 4f36b3d (`#include`s `virtual.cpp` and `trace_owner.cpp`, as the appendix harness does;
+  `expand_virt_seq` is file-local). Assertion failures caught with SIGABRT + siglongjmp.
+- First mutant run looked like four mutants escaped C1: the harness returned on an assertion failure before
+  comparing advice. Fixed (C1 first). Then a mutant-file name clash (two REM mutants, one file) and a Python
+  slice-copy bug in two mutants; fixed. The clash briefly made the REM mutant look like an unpinned case; the
+  unpinned cases (F3) were re-established with correctly named mutants.
+- Full run: 8,040,000 cases, 0 failures, 84 s. 11/11 mutants caught.
+- Upstream (735355e) read via the API (`api.github.com/repositories/978427161`, the repo is now
+  LayerZero-Labs/jolt): its `trace` advice values match jolt-cpp's in all cases; it also has the advice tape (F2).
+
+**Inlines** (`wip/tracer/inline_rows.py`).
+- Multiply/square advice generated as straight-line rows, run in Python, compared to jolt-cpp `evaluate()` compiled
+  (`harness/secp_advice.cpp`): 4 × 20,000 cases, 0 mismatches; a mutant without the final compare gives ~25 %.
+- Bounds for the rounds: q (c < 2³³): after round 1 H < 2³⁴, after round 2 V < 2²⁵⁶ + 2⁶⁷ < 2m. r (c < 2¹²⁹):
+  H < 2¹³⁰, then < 2⁴, then V < 2²⁵⁶ + 2¹³³ < 2m.
+- GLV and the inverse sized from the blocks, not built.

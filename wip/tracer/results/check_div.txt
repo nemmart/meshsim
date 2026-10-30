@@ -9,13 +9,13 @@ VirtualAdviceRemW	|DIVW| (NegateIf)	625	100	divide by zero (100)	a=0x00000000000
 
 # Templates: Tracer words (out/div_templates.inc) against jolt-cpp
 # template	cases	C1 advice	C2 rows	C3 values+asserts	C4 RV64 M	(of C3: assertion failures)
-DIVU	25000	0	0	0	0	0
-REMU	25000	0	0	0	0	0
-DIV	25000	0	0	0	0	0
-REM	25000	0	0	0	0	0
-DIVUW	25000	0	0	0	0	0
-REMUW	25000	0	0	0	0	0
-DIVW	25000	0	0	0	0	0
-REMW	25000	0	0	0	0	0
+DIVU	1005000	0	0	0	0	0
+REMU	1005000	0	0	0	0	0
+DIV	1005000	0	0	0	0	0
+REM	1005000	0	0	0	0	0
+DIVUW	1005000	0	0	0	0	0
+REMUW	1005000	0	0	0	0	0
+DIVW	1005000	0	0	0	0	0
+REMW	1005000	0	0	0	0	0
 
-# 200000 cases, 0 failures
+# 8040000 cases, 0 failures

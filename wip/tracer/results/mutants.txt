@@ -1,0 +1,13 @@
+# mutant	expected	caught by (C1 advice, C2 rows, C3 values+asserts, C4 RV64 M)
+REM without the divide-by-zero fix-up	C1	C1,C3 (0 cases fail a Jolt assertion)
+REMW without the divide-by-zero fix-up	C1	C1,C3 (0 cases fail a Jolt assertion)
+DIVUW without the zero-extension fix-up	C1	C1,C3 (173 cases fail a Jolt assertion)
+DIVW as a native DIVW of the raw operands	C1	C1,C3 (66 cases fail a Jolt assertion)
+DIV reading the wrong bank-1 register	C1	C1,C3 (25000 cases fail a Jolt assertion)
+DIVU with the untraced row after the advice row	C1	C1,C3 (25000 cases fail a Jolt assertion)
+REM with |DIVU| instead of |DIV|	C1	C1,C3 (9718 cases fail a Jolt assertion)
+DIV with a changed traced row	C2	C2 (0 cases fail a Jolt assertion)
+REMU: DIVU advice replaced by 0 when rs2 = 0	C1	C1,C3 (0 cases fail a Jolt assertion)
+REMUW: DIVUW advice replaced by 0 when rs2[31:0] = 0	C1	C1,C3 (0 cases fail a Jolt assertion)
+DIVU: advice replaced by 0 when rs2 = 0	C1	C1,C3 (1261 cases fail a Jolt assertion)
+# all mutants caught

@@ -15,8 +15,8 @@ are marked in place. In brief:
   fires the **global reset**, the only way to stop anything: there is no HALT state (21, 23). Every unit
   boots from a **boot ROM** and starts itself when its image's marker lands (22). REPORT is withdrawn.
 - **The link word** is 256 bits: payload, a 32-bit address (8-bit region, 24-bit offset), size, a 2-bit
-  counter, a 3-bit mode, src, dst; 75 bits reserved. (2, 5)
-- **Counters:** the packet names one of three general write counters (0 uncounted), decremented K = 8
+  counter, a 3-bit mode, src, dst; 74 bits reserved. (2, 5, 30)
+- **Counters:** the packet names one of four general write counters (0 uncounted; 30), decremented K = 8
   cycles after the traffic director accepts it; additive arming. (3)
 - **Modes:** 0 write at address (replacing five v1.1 modes, including commands and replies), 1 by source,
   2 bucket, 3 augmented, 4 gather request, 5-7 reserved and discarded silently. (6)
@@ -115,13 +115,13 @@ Decided with Tony (O, T). Replaces 3.1's 169-bit word.
 
 - **The link word is 256 bits on every router link**, fixed, so later field changes don't resize the
   links, FIFOs and route blocks again (102 bits in v1.0, 169 in v1.1).
-- **Fields (181 bits):** payload 128, address 32, size 2, counter 2, mode 3, src 7, dst 7. **75 bits
+- **Fields (182 bits; counter widened to 3 by 30):** payload 128, address 32, size 2, counter 3, mode 3, src 7, dst 7. **74 bits
   reserved:** sent as 0 and ignored by every receiver; FIFOs and route blocks carry all 256 bits without
   interpreting them.
-- **Bit layout:** payload [127:0], address [159:128], size [161:160], counter [163:162], mode [166:164],
-  src [173:167], dst [180:174], reserved [255:181].
+- **Bit layout (30):** payload [127:0], address [159:128], size [161:160], counter [164:162], mode [167:165],
+  src [174:168], dst [181:175], reserved [255:182].
 - **Size, counter and mode keep this order everywhere** they appear together (`STREAM_COUNT`, the send
-  port's header, the sender), so hardware copies them as one 7-bit block into link word [166:160].
+  port's header, the sender), so hardware copies them as one 8-bit block into link word [167:160] (30).
 - **Cost:** router FIFOs about 50 % larger than at 169 bits, roughly +0.04-0.06 mm² per tile [estimate];
   256 wires per link direction, with the channel width to confirm in physical design. *Revised (W2-14):*
   with the fifth port's 160 entries and the loopback's extra entries, the FIFOs alone add about **+0.065 mm²**
@@ -138,7 +138,7 @@ Decided with Tony (O, T). Replaces 3.1's 169-bit word.
 
 Decided with Tony (O, T). Replaces 4.12's four named down-counters.
 
-- **The packet names its counter** in the link word's 2-bit counter field: **0 uncounted; 1, 2 and 3
+- **The packet names its counter** in the link word's counter field (3 bits since 30): **0 uncounted; 1-4
   general-purpose counters**, assigned to whatever a program needs. Counting no longer depends on the mode.
 - **A fixed delay K:** the traffic director accepts a packet, and its counter is decremented **K cycles
   later**, through a K-stage delay line carrying the counter id. K is large enough that the packet's write
@@ -182,9 +182,9 @@ Decided (O). Still three 32-bit arrays, 96 bits, 88 used:
 |---|---|
 | `STREAM_SRC` | source [20:0], gap after [23:21], spare [31:24] |
 | `STREAM_DEST` | destination address [31:0] |
-| `STREAM_COUNT` | count [17:0], size [19:18], counter [21:20], mode [24:22], *d* [31:25] |
+| `STREAM_COUNT` | count [16:0], size [18:17], counter [21:19], mode [24:22], *d* [31:25] (30) |
 
-- `STREAM_COUNT` [24:18] is the link word's size, counter and mode block, [166:160] (2).
+- `STREAM_COUNT` [24:17] is the link word's size, counter and mode block, [167:160] (2, 30).
 - The fields that change every round are still the source and the count, one store each, with fixed bits
   ORed in (gap after; size, counter, mode and *d*).
 - Assumes the source stays a 21-bit big-SRAM address (Q9).
@@ -287,8 +287,8 @@ Decided (O). The 32-bit `ROUTER_SET_HDR` (dst 7, mode 4, addr 21) can't hold dst
 - **`ROUTER_ADDR`:** the full 32-bit address (5). A store sets it; it auto-advances at each send as today;
   a load returns the address the next packet will use.
 - **`ROUTER_HDR`:** counter, mode and dst. A store sets them; a load returns them. Layout (owner,
-  2026-10-28): [0] no-increment (below), [17:1] spare, size [19:18] reserved (the size comes from the send register), counter
-  [21:20], mode [24:22], dst [31:25].
+  2026-10-28): [0] no-increment (below), [16:1] spare, size [18:17] reserved (the size comes from the send register), counter
+  [21:19], mode [24:22], dst [31:25] (30).
 - **A no-increment bit** (owner, 2026-10-28; W2-09) in `ROUTER_HDR`'s spare low bits *(proposed: [0])*:
   when set, `ROUTER_ADDR` stays put after a send. A reply always goes to the same address in every
   receiver (`REPLY` + 8 × the sender's id, 6), so a program sets `ROUTER_ADDR` once and changes only the
@@ -362,7 +362,7 @@ Word *n* is at window base + 4*n*.
 | 5 | `EVENTS` | R | sticky events; a load consumes those in `EVENTS_MASK`, as on the tile |
 | 6 | `EVENTS_PEEK` | R | what a load of `EVENTS` would return, consuming nothing |
 | 7 | `EVENTS_MASK` | R/W | the events that count |
-| 8 | `DMA_HDR` | R/W | count [11:0] (32-bit words, up to 4,095), output queue [13:12], spare [17:14], size [19:18] reserved (the DMA picks sizes), counter [21:20], mode [24:22], dst [31:25] |
+| 8 | `DMA_HDR` | R/W | count [11:0] (32-bit words, up to 4,095), output queue [13:12], spare [16:14], size [18:17] reserved (the DMA picks sizes), counter [21:20], mode [24:22], dst [31:25] |
 | 9 | `DMA_ADDR` | R/W | the DMA's 32-bit destination address, advancing by each packet's size as packets go out |
 | 10-31 | | | reserved for future standard words |
 | 32-127 | | | peripheral-defined |
@@ -458,10 +458,10 @@ first words. *(Proposed: the addresses below.)* In region 0xFF; the low 12 bits 
 | 0x848-0x854 | `REQUEST_GET_W0`-`W2`, `REQUEST_RECEIVE` / `REQUEST_SET_W0`-`W2`, `REQUEST_SEND` | R / W | unchanged |
 | 0x858 | `DMA_CONFIG` | R/W | readable (planning to-do 13) |
 | 0x85C | `DMA_RECORD_BASE_ADDRESS` | R/W | |
-| 0x860-0x868 | `WRITE_COUNTER_1`-`WRITE_COUNTER_3` | R/W | 3 |
-| 0x86C | `SRAM_RD_ADDR_QUEUE` | R/W | unchanged |
-| 0x870 | `SRAM_RD_DEST_ADDR` | R/W | needs a counter field and the new data-memory address |
-| 0x874-0x9FC | | | reserved (`ERROR_LINES_0`-`2` moved to C&C 1's peripheral, 15) |
+| 0x860-0x86C | `WRITE_COUNTER_1`-`WRITE_COUNTER_4` | R/W | 3, 30 |
+| 0x870 | `SRAM_RD_ADDR_QUEUE` | R/W | unchanged |
+| 0x874 | `SRAM_RD_DEST_ADDR` | R/W | 13 |
+| 0x878-0x9FC | | | reserved (`ERROR_LINES_0`-`2` moved to C&C 1's peripheral, 15) |
 
 - **Gone:** `TILE_PULSE`, `ROUTER_SET_HDR`, `DMA_SRAM_`/`DMA_CM_`/`DMA_REPLY_`/`DMA_PERIPH_REMAINING`,
   `PERIPH_STATUS_0`-`7`, `SENDER_SEND`, `SENDER_ADDR`, `UART_TX`/`RX`/`STATUS`/`DIVISOR`.
@@ -475,15 +475,15 @@ in bits [31:18], in the link word's order (2):
 
 | bits | field |
 |---|---|
-| [19:18] | size (reserved where something else picks the size) |
-| [21:20] | counter |
+| [18:17] | size (reserved where something else picks the size) |
+| [21:19] | counter |
 | [24:22] | mode |
 | [31:25] | dst |
 
 Used by `STREAM_COUNT` (4), `ROUTER_HDR` (7), a peripheral's `DMA_HDR` (10) and `SRAM_RD_DEST_ADDR` (13,
 size and counter only); any new header register follows it. *(W2-21:)* the block hardware copies straight
-into the link word is size, counter and mode, [24:18]. In `STREAM_COUNT`, [31:25] is *d*, which is relative
-for 0-63 and absolute for 64-125 (4.2), so it is translated into dst, not copied. The low bits [17:0] are each register's own (a count, a queue, or spare).
+into the link word is size, counter and mode, [24:17] (30). In `STREAM_COUNT`, [31:25] is *d*, which is relative
+for 0-63 and absolute for 64-125 (4.2), so it is translated into dst, not copied. The low bits [16:0] are each register's own (a count, a queue, or spare).
 
 ## 13. The read port's destination (2026-10-28)
 
@@ -492,9 +492,9 @@ judged not useful, since a read-port result always goes to the tile itself as a 
 
 | bits | field |
 |---|---|
-| [17:0] | the destination offset in **data memory only** (region 0x00), advancing by the result's size per queued read; units per Q10 |
-| [19:18] | size: 32, 64 or 128 bits (the common layout, 12) |
-| [21:20] | counter |
+| [16:0] | the destination offset in **data memory only** (region 0x00), advancing by the result's size per queued read; units per Q10 |
+| [18:17] | size: 32, 64 or 128 bits (the common layout, 12) |
+| [21:19] | counter |
 | [31:22] | reserved: mode is always 0 and dst always the tile itself |
 
 - R/W (planning notes to-do 13): a load returns the next result's offset as advanced.
@@ -512,7 +512,7 @@ Decided (O). **The wake registers are renamed** at both levels, the tile's and e
 | `WAKE_MASK` | `EVENTS_MASK` |
 | `WAKE_REQUIRED` (tile only) | `EVENTS_REQUIRED` |
 
-- **The counters are `WRITE_COUNTER_1`-`WRITE_COUNTER_3`** (owner, 2026-10-28): every counted packet is a
+- **The counters are `WRITE_COUNTER_1`-`WRITE_COUNTER_4`** (four since 30) (owner, 2026-10-28): every counted packet is a
   write (modes 0-3), so the name says what they count. The link word's field stays "counter".
 - **Errors** (owner, 2026-10-28): v1.1's *conditions* are now **errors**, as a concept and in names: the
   tile's `TILE_CONDITIONS` is `ERRORS`, a peripheral's `CONDITIONS` is `ERRORS`, and a bit is named without
@@ -574,20 +574,23 @@ Decided (O). Answers Q14. The layout of `EVENTS`, `EVENTS_PEEK`, `EVENTS_MASK` a
 | [0] | write counter 1 done | sticky |
 | [1] | write counter 2 done | sticky |
 | [2] | write counter 3 done | sticky |
-| [3] | counters done: all three at 0, at least one armed since it last fired | sticky |
-| [4] | GO | sticky |
-| [5] | command landed | sticky |
-| [6] | DMA run done (v1.1's "engine run done") | sticky |
-| [7] | request FIFO no longer full | sticky |
-| [8] | request pending | live |
-| [9] | peripheral 1: its `EVENTS & EVENTS_MASK` non-zero (10) | live |
-| [10] | peripheral 2 | live |
-| [11] | peripheral 3 | live |
-| [31:12] | reserved, read 0 | |
+| [3] | write counter 4 done (30) | sticky |
+| [4] | counters done: all four at 0, at least one armed since it last fired | sticky |
+| [5] | GO | sticky |
+| [6] | command landed | sticky |
+| [7] | DMA run done (v1.1's "engine run done") | sticky |
+| [8] | request FIFO no longer full | sticky |
+| [9] | request pending | live |
+| [10] | peripheral 1: its `EVENTS & EVENTS_MASK` non-zero (10) | live |
+| [11] | peripheral 2 | live |
+| [12] | peripheral 3 | live |
+| [31:13] | reserved, read 0 | |
+
+*Renumbered by 30 (a fourth counter).*
 
 - **Gone from v1.1:** the fourth counter's done, the six service lines, sender idle and the UART's two
   events; [7:4]'s gap closes.
-- **Unchanged rules:** `EVENTS_MASK` resets to GO | counters done ([4] | [3]) at chip reset and HALT → RUN;
+- **Unchanged rules:** `EVENTS_MASK` resets to GO | counters done ([5] | [4]) at chip reset and HALT → RUN;
   from the `done` pulse until GO only GO wakes `WFI`; a load of `EVENTS` consumes the sticky events under
   the mask, and one set in the load's own cycle survives. The live events clear only at their source:
   popping the request, or loading the peripheral's own `EVENTS`.
@@ -601,7 +604,7 @@ events, like every other wait:
 - **The arrival side** (incoming packets updating `PTR` for modes 1-3 and `HIST` for count-on-arrival,
   and local gather values landing at `PTR[me]`) is covered by the write counter the program armed.
 - **The local side** (the address generator reading `STREAM` and `GROUP`) is covered by DMA run done,
-  `EVENTS` [6].
+  `EVENTS` [7] (30).
 - **Software** sets `EVENTS_REQUIRED` to "write counter *n* done and DMA run done" and executes `WFI`. The
   counters alone are not enough, since arrivals can finish before the tile's own run.
 
@@ -625,7 +628,7 @@ Hardware guarantees this needs:
   landing ("command landed", W2-12); boot and staging end with the marker, which lands last (22).
 - **Guarantee A's "complete"** (W2-11) means **readable by a controller load through the table window**,
   `HIST`'s count-on-arrival included, behind its request FIFO; validated with S1's table-window case.
-- **`PULSE_DMA` clears DMA run done** (`EVENTS` [6]) (owner, 2026-10-28; W2-10), as an arming write clears
+- **`PULSE_DMA` clears DMA run done** (`EVENTS` [7], 30) (owner, 2026-10-28; W2-10), as an arming write clears
   its counter's done (3), so [6] always refers to the run most recently started and a stale one can't
   satisfy the next wait.
 - **`ts_busy` and `wait_tables()` go.** Programs wait by events. A helper that must work without knowing
@@ -710,7 +713,7 @@ Decided (O), from WORKER1's review (W1-01, and parts of W1-05 and W1-06). Part o
 - **Big SRAM finishes what it has** (owner, 2026-10-28): accesses already in its area queues and pipeline
   at the RUN → HALT edge complete. Writes land; reads finish, and their results are discarded at the
   held-empty queues above.
-- **In HALT the ejector drops counted packets** (counter 1-3) silently: no write, no count, no error. It
+- **In HALT the ejector drops counted packets** (counter 1-4, 30) silently: no write, no count, no error. It
   accepts uncounted packets (counter 0) as usual, so boot loads, staging and the boot marker still land
   (6.2), and 6.2's "halt a tile before an uncoordinated write" still works.
 - **Why:** a failed phase's late traffic is counted, so it is dropped instead of raising unexpected arrival
@@ -1034,6 +1037,21 @@ Decided (O), from W2-13; states a principle applied throughout today's decisions
 - **W3-22:** the simulator-only addresses at 0xFFFFFFF0 (the split's `TRACE_REG`, the skew harness's
   sentinel) now fall in peripheral 3's window; they move to a reserved word of the controller block,
   *(proposed)* 0xFFFFF9FC.
+
+## 30. Four counters (2026-10-28)
+
+Decided (O), from W3-19. Revises 2, 3, 4, 7, 10, 12, 13, 14 and 16 (each updated in place).
+
+- **The counter field is 3 bits: 0 uncounted, 1-4 the write counters, 5-7 reserved** (undefined in
+  hardware; meshsim flags them). Three counters came only from squeezing the field into 2 bits; a replayer
+  pass may need three at once (an LPDDR fetch, a refill, a reply) plus headroom.
+- **The common header block** (12) becomes size [18:17], counter [21:19], mode [24:22], dst [31:25]: mode
+  and dst keep their bits, size moves down one, counter grows. The link word: size [161:160], counter
+  [164:162], mode [167:165], src [174:168], dst [181:175]; 74 bits reserved.
+- **`STREAM_COUNT`'s count is 17 bits** (at most 131,071 elements per stream). Enough: 128-bit moves, new
+  since v1.0, halve the element count for the same data.
+- **`WRITE_COUNTER_4`** joins the register block (0x86C; the read port's registers move down one word), and
+  `EVENTS` gains counter 4's done at [3], renumbering the bits above it (16).
 
 ---
 

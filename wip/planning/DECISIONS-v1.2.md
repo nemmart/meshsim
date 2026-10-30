@@ -1459,6 +1459,25 @@ Decided (O). Answers WORKER6's F17.
   armed counter, instead of a reply that writes a word nobody reads.
 - Putting the command inside the run, as the boot recipe does, remains valid.
 
+## 44. Ordering per sending unit, and the spec session's last questions (2026-10-29)
+
+Decided (O).
+
+- **Ordering holds per sending unit** (owner; W5-25, F17), refining 3.2's "one source": packets from **one unit
+  in one tile**, to one destination, of one kind (broadcast or unicast), arrive in the order that unit sent them.
+  A tile's sending units are the **address generator** (streams and group runs), the **send port**
+  (`ROUTER_HDR` / `ROUTER_SEND_*`), the **GATHER engine** and the **read port** (results to the tile itself), and
+  **each sending peripheral's DMA** (its own router port, 10). **Between two units there is no ordering**, even in
+  one tile; a program imposes it with a fence (43) or by putting the packet in the run.
+- **W5-23, when a read stops being outstanding:** "outstanding" is a **software convention**, not a hardware
+  state. In hardware a request holds a slot in its target's receive queue from delivery until the target pops
+  it, well before any answer; the tile can't see the pop. So the convention is deliberately conservative: a
+  request is outstanding until its reply has landed, and **a read, which has no reply, until its data has
+  landed** (its data counter done). That implies 38's hardware bound.
+- **W5-24, the report set:** as WORKER5 defined it: 24 reports (x1-x31, `mepc`, `mcause`, `mtval`, `PARAMS`,
+  `STATUS`, `ERRORS`, `EVENTS_PEEK`, the seven counters, then three per peripheral slot, zeros for an absent
+  one). The header's op and sequence-number fields are settled with C&C 1's request format.
+
 ---
 
 ## Big SRAM: to validate

@@ -15,7 +15,7 @@ public final class EngineTest {
     public static void main(String[] a) throws Exception {
         if (a.length > 0) shuffle = Long.parseLong(a[0]);
         full = a.length > 1 && a[1].equals("full");
-        writeEngine(); localCopy(); streamRuns(); oneWordExchange(); radixSort(); lateGroups(); allToAll(); drift(); counterOverflow();
+        writeEngine(); localCopy(); streamRuns(); oneWordExchange(); radixSort(); lateGroups(); allToAll(); drift(); counterOverflow(); fence();
         System.out.print(report);
         System.exit(T.done("EngineTest" + (shuffle >= 0 ? " (shuffled, seed " + shuffle + ")" : "") + (full ? " full" : "")));
     }
@@ -177,6 +177,33 @@ public final class EngineTest {
     }
 
     // ================================================================ stream runs: timing, count 0, gap-after, relative destinations, wrap
+    /** The fence (3.1, D43): a run that something must follow ends with a count-only packet to the tile itself on a
+     *  spare counter; when that counter reaches 0, every earlier packet of the run has been injected. Count only writes
+     *  nothing, and to the tile itself takes a read token like any loopback packet (4.5). */
+    static void fence() {
+        T.group("fence");
+        Net n = new Net(cfg(false)); Tile p = n.c.tiles[12], q = n.c.tiles[50];
+        int N = 300;
+        for (int i = 0; i < N; i++) p.sram.poke64(0x8000 + 2 * i, 0xF00000L + i);
+        p.setStream(0, Fields.streamSrc(0x8000), 0, Fields.streamCount(N, Fields.SIZE_64, 1, LinkWord.M_SRC, 38));   // to tile 50
+        p.setStream(1, Fields.streamSrc(0x8000), 0, Fields.streamCount(1, Fields.SIZE_32, 7, LinkWord.M_COUNT, 0)); // the fence
+        q.setPtr(12, 0x40000); q.dir.remaining[1] = N; p.dir.remaining[7] = 1;
+        streamRun(p, 0, 2, 0, 0);
+        long inj0 = p.inj.fromRead, ptr0 = p.ptr(12);
+        p.pulse(Fields.PULSE_START);
+        long fenceAt = -1, injAtFence = -1;
+        for (int i = 0; i < 5000 && fenceAt < 0; i++) { n.step(); if (p.dir.remaining[7] == 0) { fenceAt = n.c.cycle; injAtFence = p.inj.fromRead - inj0; } }
+        T.check(fenceAt > 0, "the fence's counter reached 0");
+        T.eq(N + 1, injAtFence, "when it did, every packet of the run had been injected, the fence included");
+        n.c.runUntil(() -> phaseDone(n.c, q) && phaseDone(n.c, p), 5000);
+        T.eq(0, q.dir.remaining[1], "the run's packets all landed at tile 50");
+        T.eq(ptr0, p.ptr(12), "the count-only packet wrote nothing at the tile itself (no PTR moved)");
+        T.eq(1L, p.dir.countOnly, "one count-only packet accepted");
+        T.eq(0, p.srq.held(), "its read token was returned");
+        noViolations(n.c, "fence");
+        out("fence: a " + N + "-packet stream run ending with a count-only packet to the tile itself on counter 7: when counter 7 reached 0, all " + (N + 1) + " packets had been injected [meas: EngineTest fence]");
+    }
+
     static void streamRuns() {
         T.group("stream runs");
         Net n = new Net(cfg(false)); Tile p = n.c.tiles[30];

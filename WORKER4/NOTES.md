@@ -61,7 +61,15 @@ v1.1 recipe suite with the v1.2 recipes.
   ReadPort (byte destination, counter), GatherEngine (counter pass-through), InjectionPath (checks), Router and Chip (C&C
   1-3 at tiles 0-2), Endpoint, TrafficDirector (rewritten: region switch, K delay line, seven counters, checks), WriteEngine
   (mode 0 by address, misaligned PTR dropped but counted, no spanning), ControllerMemories and BankedMemory (32 KB + 32 KB,
-  byte-addressed port B, command landed on covering slot 0), Config (K, rp_latency).
+  byte-addressed port B, command landed on covering slot 0), Config (K, rp_latency, kMin, withTsLatency).
+  Tests: NetTest, MemTest, EngineTest (+ A2A, a fence test), AgTest, ReadPortGatherTest (Java parts), BusTest, AgBench
+  rewritten or rechecked; run_tests.sh reworked (test/PENDING lists the sources left out of the build; each pending suite
+  prints and logs "PENDING (<phase>)").
+  Found while testing: quiescence must include the K delay line (runAll stopped before the last decrements); a sweep of
+  ts_engine_latency must raise K to its bound (Config.withTsLatency); v1.1's mixed-size group (64, 32, 128 into one PTR)
+  now misaligns the PTR and is dropped and flagged, so AgTest uses 128, 64, 32, 32.
+  Not yet testable from Java and left to phase 2: additive arming through the counter registers (TileControl's
+  register path; counters 5-7 have no v1.1 register), the done gate's effect on the per-counter events.
 - **Phase 0** (2026-10-30): branch, toolchain, baseline (above); read the prompt, CHANGES-v1.2, spec 1–4.18 and 5–6.5,
   WORKER3-REVIEW-2 section 6. Still to read in full: 4.19, 6.6–6.7, 8, 9, 10, 13, the recipes and the draft header.
 

@@ -948,6 +948,12 @@ Decided (O), from W2-04. Settles what addresses mean at the controllers and engi
   tiles streaming into open windows at once overflow it. The FS must either keep **one writer in flight at
   a time** (v1.1's one-token rule; the tag pool still lets the RW engine write one window out while the next
   fills) or **pace its writers** to a stated share of one packet per cycle. No hardware changes either way.
+- **The memory system across the global reset** (W1-19; deferred to the FS design): the reset domain's
+  boundary with LPDDR is open. **Owner's expectation:** the RW engine resets with the domain, and everything
+  after its AXI bus (the LPDDR controller and PHY) does not, so refresh and training continue and LPDDR's
+  contents, the flushed logs included, survive. To settle with the FS: the flush ends with any cache in the
+  RW engine written back, and C&C 1 fires the reset only when the memory system has no reads outstanding into
+  the domain, so no late delivery lands in a unit rebooting from ROM.
 - **Requests that cause data to come back** (W2-05; owner: as needed, details to settle with 6.7's request
   format): the request names the destination as a full 32-bit address (replacing v1.1's destination kind
   and 128-byte-unit address), and, if the answer must be counted, the data's counter and the reply's

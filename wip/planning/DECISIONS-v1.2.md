@@ -11,9 +11,9 @@ are marked in place. In brief:
 
 - **Errors** (v1.1's conditions) raise the controller core's hard interrupt; its handler reports to C&C 1
   over the request bus and parks forever: traps are terminal (20). Each unit's error line reaches C&C 1's
-  peripheral (`ERROR_LINES_0`-`2`); C&C 1 drains the reports, tries to flush the file system's logs, dumps state over the UART, and
-  stops checking in: **a watchdog in Ingress/Egress resets the whole chip** (or has the FPGA do it). Nothing
-  recovers on chip; there is no HALT state (23, 34).
+  peripheral (`ERROR_LINES_0`-`2`); C&C 1's handler starts the file system flushing its logs and dumps what it can; Ingress/Egress raises
+  the **"I'm toast" pin** (also on a keep-alive watchdog expiry), and **the outside world resets the chip**,
+  hard or soft (soft keeps LPDDR). Nothing recovers on chip; there is no HALT state (23, 35).
 - **Boot:** after the reset every unit runs a **boot ROM** at 0x02000000. Tiles boot through READY/GO like a
   phase; C&C 2 and C&C 3 jump when their first command lands and report "started" (31).
 - **The link word** is 256 bits: payload, a 32-bit address (8-bit region, 24-bit byte offset), size, a
@@ -927,6 +927,9 @@ only way to stop anything**, and coming out of reset means running in the boot R
 
 ## 24. The two status pins (2026-10-28)
 
+*Revised by 35: the error pin is the "toast" pin, high on any C&C 1 error (unit errors included) or a
+watchdog expiry.*
+
 Decided (O), from W1-16. Replaces 1.5's C&C pin; settles Q2.
 
 - **The error pin**, driven by hardware: high while **C&C 1 has any error of its own**, that is, C&C 1's
@@ -1178,6 +1181,8 @@ Not needed to run the sort and the replayer on v1.2; each comes back with the de
 
 ## 34. Reset by watchdog, no recovery (2026-10-29)
 
+*Superseded by 35: the chip never resets itself; it raises its "toast" pin and the outside world resets it.*
+
 Decided (O, T). **Replaces section 21's recovery flow.** Errors end in a whole-chip reset; nothing on chip
 tries to recover.
 
@@ -1210,6 +1215,32 @@ tries to recover.
 - **Open:** whether this watchdog is the phase watchdog of 28 (C&C 1's main loop checks in; a hung phase is
   something C&C 1 notices itself); how solo or FPGA mode is selected (a strap pin, or a register in
   Ingress/Egress); and on restart, the file system mounting existing state (its own design).
+
+## 35. The toast pin and outside reset (2026-10-29)
+
+Decided (O, T). **The simplest scheme that works; replaces 34.** The chip never resets itself: it says it is
+toast, and the outside world decides when to reset it.
+
+- **When C&C 1's error fires**, its own or a unit's through the unit-error bit (15), C&C 1 takes its interrupt
+  and its handler **immediately tells the file system to start flushing** its logs to LPDDR. It also drains
+  the units' reports and pushes what it can out over the UART or LVDS (21, 34). Best effort: nothing waits
+  for it, and nothing on chip recovers.
+- **Ingress/Egress raises the "I'm toast" pin** as soon as it sees C&C 1's error, **or** when its keep-alive
+  watchdog reaches zero (C&C 1 checks in periodically, 34). It replaces 24's error pin, and covers **every**
+  error, unit errors included: nothing recovers, so every error is terminal, and excluding the unit-error bit
+  no longer means anything. The software pin (`LED`, 24) stays.
+- **The outside world resets the chip** through one of two inputs:
+  - **hard reset:** everything, the AXI bus and the memory side included; LPDDR's contents are lost;
+  - **soft reset:** everything except a short list (the LVDS bus, the AXI bus and what lies beyond it, the
+    LPDDR controller and PHY), so LPDDR keeps the flushed logs. *(The list to settle with Tony.)*
+- **Nothing tells the outside world the flush has finished.** In solo use, someone resets the chip by hand,
+  which takes long enough. With an FPGA monitor, it waits a fixed time after the toast pin rises before a
+  soft reset, **about 0.1 ms** (about 100,000 cycles at 1 GHz) to flush.
+- **After either reset**, every unit boots from scratch through the boot ROM (22, 31). After a soft reset the
+  file system comes back up over LPDDR's contents and the wreckage can be read from it (23).
+- **Gone:** 34's self-reset by the watchdog and its solo/FPGA mode; the handler's checking in during the
+  flush. 28's `WATCHDOG` register is the keep-alive watchdog *(proposed: one watchdog, not a separate phase
+  watchdog)*.
 
 ---
 

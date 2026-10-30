@@ -42,11 +42,11 @@ WHAT TO BUILD, in this order (each phase ends with the suites passing, then a pu
    block (12, 30), `PULSE_DMA` clearing DMA run done (17). Generate `mesh.h` with one struct per block (14).
 3. **Peripherals:** up to three per tile (9); the standard window with counted and live events (10); the UART
    as C&C 1's peripheral, and C&C 1's registers (28, without `RESET`, 34); `ERROR_LINES`, READY with the
-   expected mask, `PULSE_GO`, the keep-alive watchdog, the two pins (15, 24, 28, 34).
+   expected mask, `PULSE_GO`, the keep-alive watchdog, the toast pin and `LED` (15, 24, 28, 35).
 4. **Errors, reset and boot:** terminal traps and the handler conventions (20); no HALT state (23); **the
-   whole-chip reset by watchdog, with no on-chip recovery (34)**: model the watchdog's expiry as a whole-chip
-   reset, with the solo/FPGA choice as a simulation option; the boot ROM and the boot sequence (22, 31). 21's
-   recovery flow is superseded except where 34 keeps it; 33's deferred items are out of scope.
+   toast pin and the outside resets (35)**: model the toast pin, and hard and soft reset as simulation
+   inputs (a test harness plays the outside world); the boot ROM and the boot sequence (22, 31). 21's
+   recovery flow is superseded except where 34 and 35 keep it; 33's deferred items are out of scope.
 5. **meshsim-only checks** (26, 27, 32): out of bounds, running past the end, reserved modes and counter codes,
    unaligned or spanning access, the reply and command conventions, invariant 11, `ecall`/`ebreak` and other
    traps with no `ERRORS` bit, writes to data memory word 0, credits returned to a full counter; and the

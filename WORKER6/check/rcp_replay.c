@@ -63,14 +63,14 @@ static void replay_pass(Feed *code, Feed *rlog, Feed *wlog, int store_log) {
     uint32_t pmask = PEV_RUN_DONE | RP_EV_NEWEXP | (code->left ? RP_EV_CODE : 0) | (rlog->left ? RP_EV_RLOG : 0)
                    | (store_log && wlog->left ? RP_EV_WLOG : 0);   /* no write log without the store log */
     replayer->EVENTS_MASK = pmask;                  /* the expansion's bit joins at the first new expansion */
-    tile->EVENTS_MASK = EV_GO | EV_PERIPH(1);       /* GO can't come mid-pass; the tile's [10] is live */
+    tile->EVENTS_MASK = EV_GO | EV_PERIPH(1);       /* GO can't come mid-pass; the tile's [13] is live */
     replayer->PULSE_RUN = 1;                        /* empties the queues; every credit counter to 2 */
     for (;;) {
         __asm__ volatile ("wfi" ::: "memory");
         uint32_t ev = replayer->EVENTS;             /* consumes: one credit from each set bit under pmask */
         if (ev & PEV_RUN_DONE) break;               /* the pass has ended; no refill is in flight here */
         if (ev & RP_EV_NEWEXP) {                    /* present an expansion: its credits are 2 again */
-            template_lookup(replayer->REPLAYER_OPCODE, RP_NEXT_OFFSET(replayer->REPLAYER_STATUS), &exp.chunk, &exp.left);
+            template_lookup(replayer->EXPANSION_OPCODE, replayer->EXPANSION_OFFSET, &exp.chunk, &exp.left);
             if (exp.left) pmask |= RP_EV_EXP;       /* its first credit is claimed on the next wake */
         }
         unsigned s = 0;
@@ -84,7 +84,7 @@ static void replay_pass(Feed *code, Feed *rlog, Feed *wlog, int store_log) {
         tile->DMA_CONFIG = DMA_CFG_RUN(RUN_STREAMS, 0, s);
         tile->WRITE_COUNTER[CTR_PERIPH - 1] = armed;
         start_run();
-        wait_all(EV_CTR(CTR_PERIPH) | EV_RUN_DONE); /* the squelch: [10] is out of the mask while the run streams */
+        wait_all(EV_CTR(CTR_PERIPH) | EV_RUN_DONE); /* the squelch: [13] is out of the mask while the run streams */
         tile->EVENTS_MASK = EV_GO | EV_PERIPH(1);   /* credits returned meanwhile fall through at once */
     }
     replayer->EVENTS_MASK = 0;

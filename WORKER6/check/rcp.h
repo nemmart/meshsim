@@ -13,7 +13,7 @@
 static inline void local_run(uint32_t config, uint32_t n) {
     tile->DMA_CONFIG = config;
     tile->WRITE_COUNTER[CTR_SRAM - 1] = n;          /* a store adds; the count is 0 here */
-    start_run();                                    /* PULSE_DMA: also clears EVENTS [7] */
+    start_run();                                    /* PULSE_DMA: also clears EVENTS [10] */
     wait_all(n ? EV_CTR(CTR_SRAM) | EV_RUN_DONE : EV_RUN_DONE);
 }
 /* END */
@@ -93,17 +93,29 @@ static inline void delay4(uint32_t n) {
 }
 
 #ifdef RCP_RESULT
+/* RECIPE request */
+/* A request that gets a reply (D25, D38, D40). Slot k (0-2) owns counter CTR_REQ(k) and its own reply buffer, named in
+ * the request, so up to three requests can be outstanding at once (C&C 2 allows three; C&C 1 and C&C 3 one each) and
+ * no reply overwrites another's (F15). The slot's counter is armed before the request goes, for the reply and for
+ * any data the request brings back on the same counter. w0 names the target, the op and CTR_REQ(k). */
+static volatile uint32_t req_reply[REQ_SLOTS][2] __attribute__((aligned(8)));
+static void request_issue(unsigned k, uint32_t w0, uint32_t w2, uint32_t w3, uint32_t data_packets) {
+    tile->WRITE_COUNTER[CTR_REQ(k) - 1] = data_packets + 1;    /* the reply can't come sooner */
+    request_send(w3, w2, (uint32_t)&req_reply[k][0], w0);      /* W1: the reply address (D40) */
+}
+static uint32_t request_wait(unsigned k) {
+    wait_all(EV_CTR(CTR_REQ(k)));                   /* the slot is free again */
+    return req_reply[k][0];
+}
+/* END */
+
 /* RECIPE result_to_cc1 */
-/* A result for C&C 1 (the self-test's signature): one request to target C&C 1 over the request bus (spec 3.3, 4.18),
- * which has back-pressure and never drops anything, so nothing needs pacing (v1.1 paced replies to C&C through
- * REPORT's delay loop). D38: a tile keeps at most one request outstanding to C&C 1, and issues the next only after
- * the previous one's reply has come back; the request names its reply's counter (D25). So: arm counter 3, send,
- * wait for C&C 1's reply, a 32-bit write to this tile's REPLY_WORD(DST_CC1). The format is a placeholder. */
+/* A result for C&C 1 (the self-test's signature): one request on slot 0. The request bus has back-pressure and never
+ * drops anything, so nothing needs pacing (v1.1 paced replies to C&C through REPORT's delay loop). One request
+ * outstanding to C&C 1 (D38): the tile waits for C&C 1's reply before anything else goes to it. */
 static uint32_t result_to_cc1(uint32_t hi, uint32_t lo) {
-    tile->WRITE_COUNTER[CTR_REPLY - 1] = 1;          /* before the request: the reply can't come sooner */
-    request_send(0, hi, lo, REQ_CC1(REQ_OP_RESULT, CTR_REPLY, tile_index()));
-    wait_all(EV_CTR(CTR_REPLY));                    /* the request is no longer outstanding */
-    return REPLY[2 * DST_CC1];                      /* C&C 1's answer */
+    request_issue(0, REQ_CC1(REQ_OP_RESULT, CTR_REQ(0), tile_index()), lo, hi, 0);
+    return request_wait(0);                         /* C&C 1's answer */
 }
 /* END */
 #endif

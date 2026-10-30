@@ -1,7 +1,7 @@
-/* Recipe 24: the error handler (D20, D21). Report the fixed set to C&C 1 over the request bus, then park.
+/* Recipe 24: the error handler (D20, D21, D41). Report the fixed set to C&C 1 over the request bus, then park.
  * It never writes data memory and needs no stack, so the boot ROM can hold the same code (D22, D36). Every value is
  * sent before the register that held it is reused: x1-x3 are free once their own report has gone. Reports are
- * the exception to D38's one-outstanding rule: they get no reply, and the handler sends all 23 at once. */
+ * the exception to D38's one-outstanding rule: they get no reply, and the handler sends all 24 at once. */
 #include "../../wip/sw/mesh-v1.2-draft.h"
 #define W0   X0REL(OFF_REQUEST_SET_W0)
 #define W1   X0REL(OFF_REQUEST_SET_W1)
@@ -48,11 +48,15 @@ trap_handler:                           /* mtvec points here; MIE is now 0 and i
     lw   x2, X0REL(OFF_WRITE_COUNTER_1 + 8)(zero)
     lw   x3, X0REL(OFF_WRITE_COUNTER_1 + 12)(zero)
     REPORT_123(13)
-    /* reports 14-22: three per peripheral, present or not, so the count is fixed (D21; FINDINGS F3). An absent
-     * peripheral's window is a bus error (D10), so PARAMS [2:0] decides, and its reports carry zeros. */
+    lw   x1, X0REL(OFF_WRITE_COUNTER_1 + 16)(zero)   /* report 14: counters 5-7 (D40) */
+    lw   x2, X0REL(OFF_WRITE_COUNTER_1 + 20)(zero)
+    lw   x3, X0REL(OFF_WRITE_COUNTER_1 + 24)(zero)
+    REPORT_123(14)
+    /* reports 15-23: three per peripheral, present or not, so the count is fixed (D21; FINDINGS F3). An absent
+     * peripheral's window is a bus error (D10), so PARAMS [2:0] decides, and its reports carry zeros (D37.3). */
     lw   x5, X0REL(OFF_PARAMS)(zero)    /* x5: the present mask; x6: the window's x0-relative base; x7: seq */
     li   x6, X0REL(0x200)
-    li   x7, 14
+    li   x7, 15
 1:  andi x8, x5, 1
     li   x1, 0
     li   x2, 0
@@ -86,7 +90,7 @@ trap_handler:                           /* mtvec points here; MIE is now 0 and i
     addi x7, x7, 1
     srli x5, x5, 1                      /* the next peripheral */
     addi x6, x6, 0x200
-    li   x8, 23
+    li   x8, 24
     bltu x7, x8, 1b
 park:
     j    park                           /* terminal: only the reset restarts the controller (D20) */

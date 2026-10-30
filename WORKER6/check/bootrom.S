@@ -15,17 +15,18 @@ _reset:
     li   t3, 1                          /* 3. a tile: pulse done; "command landed" then raises READY */
 3:  sw   t3, X0REL(OFF_PULSE_DONE)(zero)
 1:  wfi                                 /* the done gate: only GO wakes it */
-    lw   t4, X0REL(OFF_EVENTS)(zero)    /* consumes GO (the reset mask holds it), and returns [6] unconsumed */
+    lw   t4, X0REL(OFF_EVENTS)(zero)    /* consumes GO (the reset mask holds it), and returns [9] unconsumed */
     andi t5, t4, EV_GO
     beqz t5, 1b
     andi t5, t4, EV_COMMAND             /* D37.1: jump only if a command has landed. The event, not STATUS [5]: */
-    beqz t5, 3b                         /* GO cleared the status bit. A GO for other tiles: done again, wait */
+    beqz t5, 3b                         /* GO cleared the status bit. A GO for other tiles: done again, wait.
+                                           The tile branch never consumes [9] (D41): its mask is the reset's */
     j    jump
 controller:                             /* 4. C&C 1-3 (64-66): wait for "command landed" itself */
     li   t3, EV_COMMAND
     sw   t3, X0REL(OFF_EVENTS_MASK)(zero)
 2:  wfi
-    lw   t4, X0REL(OFF_EVENTS)(zero)    /* consumes [6] */
+    lw   t4, X0REL(OFF_EVENTS)(zero)    /* consumes [9] (the mask holds only it) */
     andi t5, t4, EV_COMMAND
     beqz t5, 2b
     li   t3, EV_RESET_MASK

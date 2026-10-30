@@ -33,7 +33,7 @@
 #define DST_CC1            64u   /* C&C 1 */
 #define DST_CC2            65u   /* C&C 2, the file system */
 #define DST_CC3            66u   /* C&C 3, the pager */
-#define DST_BROADCAST      126u  /* tiles 0-63 */
+#define DST_BROADCAST      126u  /* tiles 0-63; a stream may name it as d = 126 (D41; controllers only, by convention) */
 
 /* ---- register blocks (D9, D10, D11, D14) ---- */
 #define MESH_RO const volatile uint32_t   /* read-only: a store doesn't compile (W3-27) */
@@ -59,15 +59,16 @@
 
 typedef struct { PERIPHERAL_STD_MEMBERS; uint32_t _defined[96]; } PeripheralStd;
 
-/* the replayer, peripheral type 1 (W3-REVIEW-2 section 5, proposed): words 32-33 are v1.1's PERIPH_STATUS_0-1 */
+/* the replayer, peripheral type 1: words 32-34 one field each (D39); v1.1's PERIPH_STATUS_0-1 */
 typedef struct {
     PERIPHERAL_STD_MEMBERS;
-    MESH_RO REPLAYER_STATUS; /* 32: rows run in this pass [15:0], next offset [31:16] (v1.1's PERIPH_STATUS_0; proposed) */
-    MESH_RO REPLAYER_OPCODE; /* 33: the instruction word of the expansion to supply (v1.1's PERIPH_STATUS_1) */
-    uint32_t _defined[94];
+    MESH_RO ROWS_RUN;         /* 32: rows of this pass completed, modulo 2^16 (D39) */
+    MESH_RO EXPANSION_OFFSET; /* 33: the row within the current expansion where the next row starts */
+    MESH_RO EXPANSION_OPCODE; /* 34: the instruction awaiting a controller-fed expansion */
+    uint32_t _defined[93];
 } ReplayerRegs;
 
-/* C&C 1's peripheral, Ingress/Egress and the UART (D28, D36). The order is D28's; the offsets are proposed */
+/* C&C 1's peripheral, Ingress/Egress and the UART (D28, D36): words 32-45 in D28's order (D42) */
 typedef struct {
     PERIPHERAL_STD_MEMBERS;
     MESH_RO ERROR_LINES[3];   /* 32-34: live, by endpoint id; bit 64 unused */
@@ -83,13 +84,13 @@ typedef struct {
     uint32_t _defined[82];    /* 46-127: the host interface's words (deferred) */
 } Cnc1Regs;
 
-/* the controller's own block, 0xFFFFF800 (D11, D30) */
+/* the controller's own block, 0xFFFFF800 (D11, D30, D40) */
 typedef struct {
     MESH_RO PARAMS;               /* 0x800 */
     MESH_RO STATUS;               /* 0x804: diagnostic (D18) */
     MESH_RO ERRORS;               /* 0x808 */
     MESH_WO PULSE_DONE;           /* 0x80C */
-    MESH_WO PULSE_DMA;            /* 0x810: start the address generator's run in DMA_CONFIG; clears EVENTS [7] (D17) */
+    MESH_WO PULSE_DMA;            /* 0x810: start the address generator's run in DMA_CONFIG; clears EVENTS [10] (D17) */
     uint32_t _was_pulse_go;       /* 0x814: reserved (PULSE_GO moved to C&C 1's peripheral, D28) */
     MESH_RO EVENTS;               /* 0x818 */
     MESH_RO EVENTS_PEEK;          /* 0x81C */
@@ -105,11 +106,11 @@ typedef struct {
     union { MESH_RO REQUEST_RECEIVE; MESH_WO REQUEST_SEND; };      /* 0x854: a load pops; a store pushes */
     MESH_RW DMA_CONFIG;           /* 0x858 */
     MESH_RW DMA_RECORD_BASE_ADDRESS;   /* 0x85C: chunks */
-    MESH_RW WRITE_COUNTER[4];     /* 0x860-0x86C: WRITE_COUNTER_1-4 are [0]-[3]; a store adds */
-    MESH_RW SRAM_RD_ADDR_QUEUE;   /* 0x870: a store queues a read (chunks); a load returns the free entries */
-    MESH_RW SRAM_RD_DEST_ADDR;    /* 0x874: data-memory byte offset, size, counter (D13) */
-    uint32_t _reserved[96];       /* 0x878-0x9F4 */
-    MESH_WO SIM_EXIT;             /* 0x9F8: simulator only, ends a meshsim test (D36; proposed: "beside the trace word") */
+    MESH_RW WRITE_COUNTER[7];     /* 0x860-0x878: WRITE_COUNTER_1-7 are [0]-[6]; a store adds (D40) */
+    MESH_RW SRAM_RD_ADDR_QUEUE;   /* 0x87C: a store queues a read (chunks) with the counter in SRAM_RD_DEST_ADDR; a load: free entries */
+    MESH_RW SRAM_RD_DEST_ADDR;    /* 0x880: data-memory byte offset, size, counter (D13); each queued read keeps its own (D42) */
+    uint32_t _reserved[93];       /* 0x884-0x9F4 */
+    MESH_WO SIM_EXIT;             /* 0x9F8: simulator only, ends a meshsim test (D36, D42) */
     MESH_WO TRACE;                /* 0x9FC: simulator only (D29, D32) */
 } TileRegs;
 
@@ -127,8 +128,8 @@ _Static_assert(sizeof(PeripheralStd) == 0x200 && sizeof(ReplayerRegs) == 0x200 &
 _Static_assert(sizeof(TileRegs) == 0x200, "block size");
 _Static_assert(__builtin_offsetof(TileRegs, EVENTS) == 0x18 && __builtin_offsetof(TileRegs, ROUTER_HDR) == 0x28 &&
                __builtin_offsetof(TileRegs, REQUEST_SEND) == 0x54 && __builtin_offsetof(TileRegs, WRITE_COUNTER) == 0x60 &&
-               __builtin_offsetof(TileRegs, SRAM_RD_DEST_ADDR) == 0x74 && __builtin_offsetof(TileRegs, TRACE) == 0x1FC, "D11 offsets");
-_Static_assert(__builtin_offsetof(PeripheralStd, DMA_ADDR) == 36 && __builtin_offsetof(ReplayerRegs, REPLAYER_STATUS) == 128 &&
+               __builtin_offsetof(TileRegs, SRAM_RD_DEST_ADDR) == 0x80 && __builtin_offsetof(TileRegs, TRACE) == 0x1FC, "D11 offsets");
+_Static_assert(__builtin_offsetof(PeripheralStd, DMA_ADDR) == 36 && __builtin_offsetof(ReplayerRegs, EXPANSION_OPCODE) == 136 &&
                __builtin_offsetof(Cnc1Regs, ERROR_LINES) == 128, "D10 offsets");
 _Static_assert(__builtin_offsetof(TableRegs, PTR) == 0x400 && __builtin_offsetof(TableRegs, GROUP) == 0x1400 &&
                sizeof(TableRegs) == 0x1600, "table window");
@@ -189,15 +190,15 @@ _Static_assert(__builtin_offsetof(TableRegs, PTR) == 0x400 && __builtin_offsetof
 #define ERR_PERIPH(n)      (1 << (10 + (n)))   /* n = 1-3, live: that peripheral's ERRORS non-zero */
 #define ERR_RECV_UNDERFLOW (1 << 14)
 
-/* ---- EVENTS, EVENTS_PEEK, EVENTS_MASK, EVENTS_REQUIRED (D16, D30) ---- */
-#define EV_CTR(n)          (1 << ((n) - 1))   /* write counter n done, n = 1-4 (sticky) */
-#define EV_CTRS_DONE       (1 << 4)    /* all four at 0, one armed since it last fired (sticky) */
-#define EV_GO              (1 << 5)    /* sticky */
-#define EV_COMMAND         (1 << 6)    /* command landed (sticky) */
-#define EV_RUN_DONE        (1 << 7)    /* the address generator's run done; cleared by PULSE_DMA (sticky) */
-#define EV_REQ_ROOM        (1 << 8)    /* request FIFO no longer full (sticky) */
-#define EV_REQ_PENDING     (1 << 9)    /* a received request is waiting (live) */
-#define EV_PERIPH(n)       (1 << (9 + (n)))   /* n = 1-3: that peripheral's EVENTS & EVENTS_MASK non-zero (live) */
+/* ---- EVENTS, EVENTS_PEEK, EVENTS_MASK, EVENTS_REQUIRED (D16, renumbered by D40) ---- */
+#define EV_CTR(n)          (1 << ((n) - 1))   /* write counter n done, n = 1-7 (sticky) */
+#define EV_CTRS_DONE       (1 << 7)    /* all seven at 0, one armed since it last fired (sticky) */
+#define EV_GO              (1 << 8)    /* sticky */
+#define EV_COMMAND         (1 << 9)    /* command landed (sticky); nothing in the reset mask consumes it (D41) */
+#define EV_RUN_DONE        (1 << 10)   /* the address generator's run done; cleared by PULSE_DMA (sticky) */
+#define EV_REQ_ROOM        (1 << 11)   /* request FIFO no longer full (sticky) */
+#define EV_REQ_PENDING     (1 << 12)   /* a received request is waiting (live; controllers only) */
+#define EV_PERIPH(n)       (1 << (12 + (n)))   /* n = 1-3: that peripheral's EVENTS & EVENTS_MASK non-zero (live) */
 #define EV_RESET_MASK      (EV_GO | EV_CTRS_DONE)
 
 /* ---- the common header block, bits [31:17] (D12, D30) ---- */
@@ -216,11 +217,14 @@ _Static_assert(__builtin_offsetof(TableRegs, PTR) == 0x400 && __builtin_offsetof
 #define MODE_AUGMENT       3u   /* augmented write at PTR[src]: 32 or 64 bits, never 128 */
 #define MODE_GATHER        4u   /* gather request, local only; never counted; its counter field passes to the values */
 #define CTR_NONE           0u   /* uncounted: commands, boot overlays, and nothing else (D17) */
-/* The recipes' counter convention (CONVENTIONS 5): v1.1's four counters, one to one. A convention only. */
-#define CTR_SRAM           1u
-#define CTR_CM             2u
-#define CTR_REPLY          3u
-#define CTR_PERIPH         4u
+/* The recipes' counter convention (CONVENTIONS 5), seven counters (D40). A convention only: the hardware treats
+ * them alike. One counter per thing waited for separately (D3). */
+#define CTR_SRAM           1u   /* big-SRAM writes: local runs, all-to-alls, staged data */
+#define CTR_CM             2u   /* controller-memory writes: block copies, vectors, read-port results */
+#define CTR_REPLY          3u   /* tile-to-tile replies */
+#define CTR_PERIPH         4u   /* writes to this tile's peripherals: the replayer's refills and state */
+#define CTR_REQ(k)         (5u + (k))   /* k = 0-2: request slot k's data and reply (at most three outstanding) */
+#define REQ_SLOTS          3u
 
 /* ROUTER_HDR (D7): no counter default, on purpose (W3-REVIEW-2 section 6: a default 0 makes silent uncounted writes) */
 #define ROUTER_NOINC       1u   /* [0]: ROUTER_ADDR stays put after a send */
@@ -255,14 +259,13 @@ _Static_assert(__builtin_offsetof(TableRegs, PTR) == 0x400 && __builtin_offsetof
 #define PEV_DMA_DONE       (1 << 1)
 #define PARAMS_TYPE(p)     ((p) & 0xFFu)
 #define PTYPE_REPLAYER     1u
-/* the replayer's events (W3-REVIEW-2 section 5, proposed): credits have depth 2, the others 1 */
+/* the replayer's events (W3-REVIEW-2 section 5; spec 4.19.9): credits have depth 2, the others 1 */
 #define RP_EV_CODE         (1 << 2)
 #define RP_EV_RLOG         (1 << 3)
 #define RP_EV_WLOG         (1 << 4)
 #define RP_EV_EXP          (1 << 5)
 #define RP_EV_NEWEXP       (1 << 6)
-#define RP_NEXT_OFFSET(s)  ((s) >> 16)
-/* the replayer's region 0x04 in bytes (spec 4.19.10's word map x 4; windows at offset [22:20]; proposed) */
+/* the replayer's region 0x04 in bytes (spec 4.19.10; the part-select at byte offset [22:20], D42) */
 #define RP_STATE           (REGION_PERIPH(1) + 0x000000u)   /* state word, 16 bytes */
 #define RP_STREAMS         (REGION_PERIPH(1) + 0x000010u)   /* stream word */
 #define RP_IMAGE           (REGION_PERIPH(1) + 0x000020u)   /* register image, 64 x 16 bytes */
@@ -274,7 +277,7 @@ _Static_assert(__builtin_offsetof(TableRegs, PTR) == 0x400 && __builtin_offsetof
 #define RP_HALF_LOG        256u
 #define RP_HALF_EXP        128u
 
-/* C&C 1's peripheral events (D28, proposed bits) */
+/* C&C 1's peripheral events (D28, D42) */
 #define CC1_EV_ALL_READY   (1 << 2)    /* live: (READY & EXPECT) == EXPECT and EXPECT != 0 */
 #define CC1_EV_WATCHDOG    (1 << 3)    /* depth 1 */
 #define CC1_EV_UART_RX     (1 << 4)    /* live */
@@ -286,8 +289,9 @@ _Static_assert(__builtin_offsetof(TableRegs, PTR) == 0x400 && __builtin_offsetof
 #define TARGET_CC1         0u   /* spec draft 3.3, proposed */
 #define TARGET_CC2         1u
 #define TARGET_CC3         2u
-/* C&C 1's request format: undefined in the log; requests name their reply's counter (D25). Placeholder:
- * op [17:10], the reply's counter [20:18], an argument [31:21]. */
+/* C&C 1's request format: undefined in the log. Every request that gets a reply names its reply's counter and its
+ * reply address, anywhere in the requester's data memory (D25, D40). Placeholder: W0 op [17:10], the reply's counter
+ * [20:18], an argument [31:21]; W1 the reply address; W2-W3 data. An error report has no reply: W1-W3 are data. */
 #define REQ_CC1(op, ctr, arg) (REQ_TARGET(TARGET_CC1) | (((uint32_t)(op) & 0xFFu) << 10) | (((uint32_t)(ctr) & 0x7u) << 18) | ((uint32_t)(arg) << 21))
 #define REQ_OP(w0)         (((w0) >> 10) & 0xFFu)
 #define REQ_REPLY_CTR(w0)  (((w0) >> 18) & 0x7u)
@@ -343,7 +347,7 @@ static inline uint32_t wait_for_command(void) {
     (void)tile->EVENTS;
     return COMMAND[0];
 }
-/* start the address generator's run in DMA_CONFIG; clears EVENTS [7] (D17) */
+/* start the address generator's run in DMA_CONFIG; clears EVENTS [10] (D17) */
 static inline void start_run(void) { tile->PULSE_DMA = 1; }
 /* STATUS.rd_running: a level a helper may poll when it can't know what ran before (D17) */
 static inline void wait_rd_idle(void) { while (tile->STATUS & ST_RD_RUNNING) ; }
@@ -357,6 +361,9 @@ static inline void send128(uint32_t w3, uint32_t w2, uint32_t w1, uint32_t w0)
 /* the request port (4.18): words 0-2, then the last store pushes */
 static inline void request_send(uint32_t w3, uint32_t w2, uint32_t w1, uint32_t w0)
     { tile->REQUEST_SET_W0 = w0; tile->REQUEST_SET_W1 = w1; tile->REQUEST_SET_W2 = w2; tile->REQUEST_SEND = w3; }
+
+/* the cycle counter (D41: the core implements mcycle and mtime): the low 32 bits, for bounded waits */
+static inline uint32_t mcycle(void) { uint32_t c; __asm__ volatile ("csrr %0, mcycle" : "=r"(c)); return c; }
 
 /* simulator only (D36): end a meshsim test with a value */
 static inline void sim_exit(uint32_t v) { tile->SIM_EXIT = v; for (;;) ; }

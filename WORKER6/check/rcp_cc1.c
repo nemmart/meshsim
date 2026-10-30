@@ -3,7 +3,6 @@
 #include "rcp.h"
 #define GO_LATENCY   1      /* go_latency (param) */
 #define STAGE_DELAY  32     /* stage_delay (param, spec 6.2) */
-typedef struct { uint32_t pmem_words, dmem_words; const uint32_t *pmem, *dmem; uint32_t entry; } Image;
 static unsigned parity[67];                         /* per unit: the next command's parity; tiles move together on broadcasts */
 volatile uint32_t results[64][2];
 
@@ -28,15 +27,16 @@ static void command(unsigned dst, uint32_t type, uint32_t arg, const uint32_t *a
  * READY 0-63, drives GO and restarts the watchdog, in one store. Requests that aren't errors (C&C 2's and 3's "started",
  * tiles' results) arrive meanwhile, and C&C 1 answers each tile's, since the tile waits for that reply before its
  * next request (D38). An error never comes this way: it raises C&C 1's hard interrupt (recipe 27's toast path).
- * Software re-checks after every wake: the live bit may lag a store by a cycle (D10). */
+ * Software re-checks after every wake: the live bit may lag a store by a cycle (D10). C&C 1 replies to the address
+ * and counter each request names (D40). */
 static void drain_requests(void) {
     while (tile->EVENTS_PEEK & EV_REQ_PENDING) {    /* popping an empty queue would be receive underflow, an error */
         uint32_t w0 = tile->REQUEST_GET_W0, w1 = tile->REQUEST_GET_W1, w2 = tile->REQUEST_GET_W2;
-        (void)tile->REQUEST_RECEIVE;                /* the last word pops */
+        uint32_t w3 = tile->REQUEST_RECEIVE;        /* the last word pops */
         if (REQ_OP(w0) != REQ_OP_RESULT) continue;
         unsigned t = REQ_REQUESTOR(w0) & 63;
-        results[t][0] = w2; results[t][1] = w1;
-        send_to(ROUTER_HDR_W(t, MODE_WRITE, REQ_REPLY_CTR(w0)), REPLY_WORD(DST_CC1));
+        results[t][0] = w2; results[t][1] = w3;
+        send_to(ROUTER_HDR_W(t, MODE_WRITE, REQ_REPLY_CTR(w0)), w1);   /* to the reply address it named (D40) */
         send32(1);                                  /* the reply ends the tile's outstanding request (D38) */
     }
 }
@@ -51,10 +51,12 @@ static void wait_all_ready(void) {
         if (pev & CC1_EV_ALL_READY) return;
     }
 }
-static void go(uint32_t watchdog_limit) {
-    cc1->WATCHDOG = watchdog_limit;                 /* above this phase's expected length; a write restarts it */
+static uint32_t go(uint32_t watchdog_limit) {
+    cc1->WATCHDOG = watchdog_limit;                 /* above this phase's expected length, in cycles (D42); a write restarts it */
     cc1->PULSE_GO = 1;
-    delay4((GO_LATENCY + 1 + 3) / 4 + 1);           /* go_latency + 1 before anything else is sent (6.6) */
+    uint32_t t = mcycle();                          /* about the GO store's cycle (D41: mcycle) */
+    while (mcycle() - t <= GO_LATENCY) ;            /* go_latency + 1 before anything else is sent (6.6) */
+    return t;
 }
 static void phase(uint32_t type, uint32_t arg, const uint32_t *args, unsigned n, uint32_t limit) {
     wait_all_ready();                               /* every tile has finished and its next command has landed */
@@ -64,45 +66,53 @@ static void phase(uint32_t type, uint32_t arg, const uint32_t *args, unsigned n,
 /* END */
 
 /* RECIPE cc1_boot */
-/* After the reset (D31, D36): every unit sleeps in its ROM. C&C 1 (itself started by the outside world) boots C&C 2
- * and C&C 3 first, and waits for their "started" requests; then the tiles, overlays and first command of one kind
- * (here all broadcast), READY, GO; then the first program's big-SRAM data by announced staging (step 5). */
-static void overlay(unsigned dst, uint32_t addr, const uint32_t *w, uint32_t words) {   /* 16-byte aligned, padded */
-    send_to(ROUTER_HDR_W(dst, MODE_WRITE, CTR_NONE), addr);
-    for (uint32_t i = 0; i < words; i += 4) send128(w[i + 3], w[i + 2], w[i + 1], w[i]);
+/* After the reset (D31, D36, D37, D41): every unit sleeps in its ROM. C&C 1 (itself started by the outside world) boots
+ * C&C 2 and C&C 3 first and waits for their "started" requests; then the tiles; then boot part 2, the first program's
+ * big-SRAM data. Every image is in C&C 1's big SRAM (put there by the host, or the harness), 4-chunk aligned, and goes
+ * out from C&C 1's address generator at a packet per cycle: a stream may name the broadcast, d = 126, or a controller
+ * absolutely, d = 65 or 66 (D41). The first command is the run's last stream, one 128-bit packet at slot 0 (the
+ * command word, then the entry address in slot 1): from one source, after every overlay packet (S2), it lands last
+ * (3.2). Sent from the send port instead, it could overtake the run's last packets (FINDINGS F17). */
+typedef struct { uint32_t pmem, pmem_packets, dmem, dmem_packets, cmd; } Boot;   /* chunk addresses in C&C 1's big SRAM */
+static void put_command(uint32_t chunk, uint32_t entry) {   /* the boot command's packet, into C&C 1's own big SRAM */
+    tile->WRITE_COUNTER[CTR_SRAM - 1] = 1;
+    send_to(ROUTER_HDR_W(DST_CC1, MODE_WRITE, CTR_SRAM), SRAM_ADDR(chunk));
+    send128(0, 0, entry, CMD_WORD(CMD_JUMP, 0, 0));    /* slots 0-3; even: the entry in slot 1 (D36) */
+    wait_all(EV_CTR(CTR_SRAM));
 }
-static void stage(uint32_t chunk, const uint32_t *w, uint32_t words) {   /* counted: the tiles armed for it */
-    send_to(ROUTER_HDR_W(DST_BROADCAST, MODE_WRITE, CTR_SRAM), SRAM_ADDR(chunk));
-    for (uint32_t i = 0; i < words; i += 4) send128(w[i + 3], w[i + 2], w[i + 1], w[i]);
+static void boot_unit(unsigned d, const Boot *b) {  /* overlays and command, uncounted, one kind (D36), one run */
+    set_stream(0, STREAM_SRC_W(b->pmem, 0), REGION_PMEM, STREAM_COUNT_W(b->pmem_packets, SIZE_128, CTR_NONE, MODE_WRITE, d));
+    set_stream(1, STREAM_SRC_W(b->dmem, 0), REGION_DMEM + DMEM_FIRST, STREAM_COUNT_W(b->dmem_packets, SIZE_128, CTR_NONE, MODE_WRITE, d));
+    set_stream(2, STREAM_SRC_W(b->cmd, 0), COMMAND_BASE, STREAM_COUNT_W(1, SIZE_128, CTR_NONE, MODE_WRITE, d));
+    tile->DMA_CONFIG = DMA_CFG_RUN(RUN_STREAMS, 0, 3);
+    start_run();
+    wait_all(EV_RUN_DONE);                          /* C&C 1's tables are free for the next run */
+    if (d == DST_BROADCAST) for (unsigned t = 0; t < 64; t++) parity[t] = 1;   /* the next command is odd */
+    else parity[d] = 1;
 }
-static void boot_unit(unsigned dst, const Image *im) {
-    overlay(dst, REGION_PMEM, im->pmem, im->pmem_words);
-    overlay(dst, REGION_DMEM + DMEM_FIRST, im->dmem, im->dmem_words);   /* 0x00-0x0F are reserved (D37.4) */
-    uint32_t entry = im->entry;
-    command(dst, CMD_JUMP, 0, &entry, 1);           /* the first command is even: entry in slot 1 (D36) */
-}
-static void cc1_boot(const Image *fs, const Image *pager, const Image *tiles,
-                     const uint32_t *data, uint32_t stage_words, uint32_t stage_chunk) {
-    boot_unit(DST_CC2, fs);                         /* unicast to each: overlays and command of one kind */
+static void cc1_boot(const Boot *fs, const Boot *pager, const Boot *tiles, uint32_t data, uint32_t packets, uint32_t at) {
+    boot_unit(DST_CC2, fs);                         /* unicast: d absolute */
     boot_unit(DST_CC3, pager);
-    for (unsigned started = 0; started < 2; ) {     /* their start-up sends C&C 1 "started" (D31) */
-        tile->EVENTS_MASK = EV_REQ_PENDING;
+    tile->EVENTS_MASK = EV_REQ_PENDING;             /* their start-up sends C&C 1 "started" (D31) */
+    for (unsigned started = 0; started < 2; ) {
         __asm__ volatile ("wfi" ::: "memory");
         while (tile->EVENTS_PEEK & EV_REQ_PENDING) {
             uint32_t w0 = tile->REQUEST_GET_W0;
             (void)tile->REQUEST_RECEIVE;
-            started += REQ_OP(w0) == REQ_OP_STARTED;   /* a controller's request: no reply needed (D38) */
+            started += REQ_OP(w0) == REQ_OP_STARTED;   /* a controller's request: no reply (D38) */
         }
     }
-    boot_unit(DST_BROADCAST, tiles);                /* broadcast: the same kind as its first command (D36) */
-    cc1->READY_EXPECT[0] = ~0u;                     /* all 64 here; one at a time works too since D37.1 */
+    boot_unit(DST_BROADCAST, tiles);                /* d = 126 */
+    cc1->READY_EXPECT[0] = ~0u;                     /* all 64 here; one at a time works too (D37.1) */
     cc1->READY_EXPECT[1] = ~0u;
-    uint32_t n = stage_words / 4;                   /* boot part 2: announce the data, READY, GO, then the data */
-    phase(CMD_STAGE, n, 0, 0, 0);                   /* waits for the boot command's READY, GOs, sends CMD_STAGE */
+    phase(CMD_STAGE, packets, 0, 0, 0);             /* boot GO; then CMD_STAGE, the images' first command */
     wait_all_ready();                               /* CMD_STAGE has landed and the images wait in wait_for_command() */
-    go(0);
-    delay4(STAGE_DELAY / 4);                        /* no sooner than stage_delay after the GO store (6.2) */
-    stage(stage_chunk, data, stage_words);         /* each tile waits for counter 1, then done */
+    uint32_t t = go(0);
+    while (mcycle() - t < STAGE_DELAY) ;            /* no sooner than stage_delay after the GO store (6.2) */
+    set_stream(0, STREAM_SRC_W(data, 0), SRAM_ADDR(at), STREAM_COUNT_W(packets, SIZE_128, CTR_SRAM, MODE_WRITE, DST_BROADCAST));
+    tile->DMA_CONFIG = DMA_CFG_RUN(RUN_STREAMS, 0, 1);
+    start_run();                                    /* counted on counter 1, which every tile armed */
+    wait_all(EV_RUN_DONE);
 }
 /* END */
 
@@ -112,10 +122,11 @@ static void cc1_boot(const Image *fs, const Image *pager, const Image *tiles,
  * the reports into data memory as they arrive (so the tree's rows don't stall behind C&C 1's 128-entry queue, D38),
  * then send the dump out: down LVDS when an FPGA is in the loop, which waits as long as it needs before resetting, or
  * over the UART when a person resets by hand (D37). The host words are deferred, so the UART stands for both here.
- * Bounded by a loop count: C&C 1 has no timer but the watchdog. C&C 2's flush request format is a placeholder. */
+ * Bounded by mcycle (D41). C&C 2's flush request format is a placeholder. */
 #define REQ_OP_FLUSH 0x10
-#define MAX_REPORTS  (64 * 23)                      /* every tile failing at once, 23 reports each (recipe 24) */
-static uint32_t reports[MAX_REPORTS][4];            /* 23 KB of C&C 1's 32 KB data memory */
+#define MAX_REPORTS  (64 * 24)                      /* every tile failing at once, 24 reports each (recipe 24) */
+#define DRAIN_QUIET  100000                         /* cycles with nothing new before the dump starts */
+static uint32_t reports[MAX_REPORTS][4];            /* 24 KB of C&C 1's 32 KB data memory */
 static void uart_hex(uint32_t v) {
     for (int i = 28; i >= 0; i -= 4) cc1->UART_TX = "0123456789abcdef"[(v >> i) & 15];   /* stalls while TX is full */
     cc1->UART_TX = ' ';
@@ -123,14 +134,14 @@ static void uart_hex(uint32_t v) {
 void cc1_toast(uint32_t mcause, uint32_t mepc) {
     request_send(0, 0, 0, REQ_TARGET(TARGET_CC2) | (REQ_OP_FLUSH << 10));   /* 1. flush the logs to LPDDR (D35) */
     uint32_t n = 0;
-    for (uint32_t idle = 0; idle < 20000 && n < MAX_REPORTS; idle++) {   /* 2. drain: never pop an empty queue */
-        if (!(tile->EVENTS_PEEK & EV_REQ_PENDING)) continue;
+    for (uint32_t last = mcycle(); mcycle() - last < DRAIN_QUIET && n < MAX_REPORTS; ) {   /* 2. drain */
+        if (!(tile->EVENTS_PEEK & EV_REQ_PENDING)) continue;   /* never pop an empty queue */
         reports[n][0] = tile->REQUEST_GET_W0;       /* requestor [6:0], then the op and sequence */
         reports[n][1] = tile->REQUEST_GET_W1;
         reports[n][2] = tile->REQUEST_GET_W2;
         reports[n][3] = tile->REQUEST_RECEIVE;      /* pops */
         n++;
-        idle = 0;
+        last = mcycle();
     }
     uart_hex(mcause); uart_hex(mepc);               /* 3. what C&C 1 knows, then the reports (LVDS or UART) */
     for (int i = 0; i < 3; i++) uart_hex(cc1->ERROR_LINES[i]);
@@ -143,7 +154,8 @@ void cc1_toast(uint32_t mcause, uint32_t mepc) {
 /* END */
 
 int main(void) {
-    static const Image im = { 0, 0, 0, 0, 0x01000000 };
-    cc1_boot(&im, &im, &im, 0, 0, 0x30000);
+    static const Boot b = { 0x10000, 64, 0x11000, 16, 0x12000 };
+    put_command(b.cmd, 0x01000000);
+    cc1_boot(&b, &b, &b, 0x20000, 256, 0x30000);
     for (;;) phase(1, 0, 0, 0, 1000000);
 }

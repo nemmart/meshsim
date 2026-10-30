@@ -28,6 +28,9 @@ final class Registers {
      *  (two words per source) at the top, the stack below them. */
     static final int DMEM_FIRST = 0x10, COMMAND_BASE = 0x7FC0, COMMAND_SLOTS = 16, REPLY_BASE = 0x7BC0, REPLY_WORDS = 256;
     static final int STACK_TOP = REPLY_BASE;
+    /** PHASE-2 INTERIM (until phase 4's boot ROM): v1.1's resident loader, at the top 256 bytes of program memory; HALT ->
+     *  RUN starts the core there. */
+    static final int LOADER_BASE = PMEM_BASE + 0x7F00, LOADER_SIZE = 0x100;
     /** The table window (8.9; Proposed, item 120). */
     static final int TABLE_BASE = 0xFFFF2000, HIST_BASE = 0xFFFF2000, PTR_BASE = 0xFFFF2400, STREAM_SRC_BASE = 0xFFFF2800,
             STREAM_DEST_BASE = 0xFFFF2C00, STREAM_COUNT_BASE = 0xFFFF3000, GROUP_BASE = 0xFFFF3400, TABLE_END = 0xFFFF3600;

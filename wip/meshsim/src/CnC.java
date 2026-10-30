@@ -182,9 +182,8 @@ final class CnC implements Component {
         return ps.isEmpty() ? this : send(ps);
     }
     long loadPackets;
-    /** PHASE-1 INTERIM (until phase 4 boots through the ROM): a v1.1 image byte address (code from 0, data from
-     *  Registers.DMEM_BASE) as the v1.2 packet address in region 0x01 or 0x00. */
-    static int cmAddr(int byteAddr) { return byteAddr < Registers.DMEM_BASE ? LinkWord.R_PMEM << 24 | byteAddr : byteAddr - Registers.DMEM_BASE; }
+    /** An image's byte address is its v1.2 packet address (regions 0x00 and 0x01, 2.2). */
+    static int cmAddr(int byteAddr) { return byteAddr; }
 
     /** Wait until all 64 READY bits are set, then (cnc_reaction later) clear them and GO. */
     CnC go() {
@@ -231,6 +230,8 @@ final class CnC implements Component {
      *  are waiting): that command is discarded, by design. Its READY has already fired, so READY cannot say when REPORT
      *  has landed; C&C waits a fixed reportSettle() cycles instead, twice the worst-case broadcast latency. The command-read check counts the
      *  discarded word as discarded, not as a violation (ControllerMemories.discardNext, simulator only). */
+    /** PHASE-2 INTERIM: v1.1's REPORT command (6.6 at v1.1), until phase 4's handler reports replace it. */
+    static final int CMD_REPORT = 0x52;
     /* RECIPE cnc_report */
     CnC report() {
         steps.add((Instant) (c, t) -> {
@@ -238,7 +239,7 @@ final class CnC implements Component {
             for (Tile p : chip.tiles) p.cmem.discardNext = true;
             return true;
         });
-        command(LinkWord.BROADCAST, Registers.CMD_REPORT << 24);
+        command(LinkWord.BROADCAST, CMD_REPORT << 24);
         final long[] sentAt = { -1 };
         steps.add((Instant) (c, t) -> { sentAt[0] = t; return true; });
         steps.add((c, t) -> t >= sentAt[0] + reportSettle());

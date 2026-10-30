@@ -37,11 +37,11 @@ final class Sender {
     /** A SENDER_SEND store at t (applied at the end of t). */
     void start(long t, int v) {
         Peripheral p = tile.slot.p;
-        int qq = Registers.SN_QUEUE.get(v);
+        int qq = (v >>> 11) & 3;                                     // PHASE-2 INTERIM: v1.1's SENDER_SEND fields (phase 3 retires the sender)
         if (busy) { ignored++; tile.ctl.violate(t, "SENDER_SEND while sender_busy: ignored (4.17.9)"); return; }
         if (p == null || p.outputQueues() == 0) { ignored++; tile.ctl.violate(t, "SENDER_SEND on a tile whose peripheral has no output: ignored (4.17.9)"); return; }
         if (qq >= p.outputQueues()) { ignored++; tile.ctl.violate(t, "SENDER_SEND naming output queue " + qq + ", which the peripheral doesn't have: ignored (4.17.9)"); return; }
-        dest = Registers.SN_DEST.get(v); mode = Registers.SN_MODE.get(v); q = qq; left = Registers.SN_COUNT.get(v); have = 0;
+        dest = v & 0x7F; mode = (v >>> 7) & 7; q = qq; left = (v >>> 13) & 0xFFFF; have = 0;
         busy = true; startedAt = t; sends++;
         if (left > 0) p.outStart(t, q, left);
     }

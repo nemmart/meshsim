@@ -17,6 +17,7 @@ final class Config {
     int readPortDepth = 64;              // the controller read port's request queue (4.3: at least 64, guaranteed)
     int gatherDepth = 16;                // GATHER request queue
     int cmLatency = 2;                   // director to port B (built, M1 of v3.11)
+    boolean logTrace = Boolean.getBoolean("meshsim.trace");   // log every TRACE store (8.15)
     int rpLatency = 2;                   // director to a peripheral's write landing (4.17.5: required of every peripheral; Proposed value, item 48)
     int K = Integer.getInteger("meshsim.K", 8);
     /** K's lower bound (4.8): max(2 L + 3, L + 4, cm_latency, rp_latency). */

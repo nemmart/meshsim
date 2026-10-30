@@ -1,50 +1,50 @@
 import java.util.ArrayDeque;
 
 /**
- * A tile's control (spec 4.12, 4.13, 6, 8; v1.1 at 2026-10-26n): the register block the controller reaches through its
- * peripheral window, the down-counters' controller side, `done` and "command landed", the READY edge, the GO and RUN/HALT
- * lines as this tile sees them, the wake events (WAKE_EVENTS, WAKE_MASK, WAKE_REQUIRED, WAKE_PEEK), the error
- * conditions (TILE_CONDITIONS) and TILE_STATUS.
+ * A unit's control (spec v1.2: 4.12, 4.13, 6, 8): the controller's register block (8.1) and its side of the write
+ * counters, `done` and "command landed", the READY edge, the GO line as this unit sees it, the events (EVENTS,
+ * EVENTS_PEEK, EVENTS_MASK, EVENTS_REQUIRED) and the done gate, ERRORS, PARAMS and STATUS, the send port (ROUTER_HDR
+ * with no-increment, ROUTER_ADDR, the W words), the read port's setup and the simulator-only words (SIM_EXIT, TRACE).
+ * PHASE-2 INTERIM until phase 4: the RUN/HALT line still starts and stops the core (v1.1's; the reset replaces it), and
+ * entering HALT clears ERRORS. PHASE-2 INTERIM until phase 3: the peripheral windows decode here, minimally (word 0 the
+ * peripheral's type, PULSE_RUN to the v1.1 slot, the rest 0), and EVENTS [13] is the slot's service lines.
  *
- * Timing (spec 4.11): a store at t updates its register at the end of t, and the owning unit acts from t + 1. A load
- * reaches {@link #read} in the cycle it samples; the controller models the register-load latency L (Config.regLoadLatency)
- * by holding a register or table-window load for L - 1 cycles and then reading, so a load issued at t returns the state
- * at the end of t + L - 2 and takes its side effect (a consuming WAKE_EVENTS load, a REQUEST_RECEIVE or UART_RX pop) at
- * the end of t + L - 1. {@link #endCycle} runs after every unit of the tile has run cycle t, so the order in which the
- * units ran does not matter. Within it the order is:
- *   1. line edges seen at t: GO (clears done and command landed, ends the done gate, sets GO's event), HALT -> RUN (clears
- *      done, command landed, the gate, the sticky events, their qualifiers and WAKE_REQUIRED; WAKE_MASK = [8] | [9]),
- *      RUN -> HALT (clears the conditions, the four counters, their done events and qualifiers; the engines, the
- *      peripheral and the sender are held in reset);
- *   2. the controller's store of cycle t (TILE_PULSE: start and run before done; a done pulse with a down-counter non-zero
- *      sets done early, closes the done gate and clears the counters' events; a counter write adds);
- *   3. a command write to slot 0 at t sets command landed and its event; in HALT, done is forced to 1;
- *   4. a consuming load's clear (only the bits it returned, under WAKE_MASK); then the edge events of t ([10], [11],
- *      [12], [20], the per-counter done events [3:0] and counters done [9]); a clear by a counter write, the done pulse or
- *      HALT -> RUN beats a set of [9] and [3:0] in the same cycle;
- *   5. new events set conditions; READY on the rising edge of done AND command landed; TILE_STATUS for t + 1.
+ * Timing (4.11): a store at t updates its register at the end of t, and the owning unit acts from t + 1. A load reaches
+ * {@link #read} in the cycle it samples (the controller holds a block or window load for one cycle, latency 2), so a load
+ * issued at t returns the state at the end of t + L - 2 and takes its side effect (a consuming EVENTS load, a
+ * REQUEST_RECEIVE pop) at the end of t + L - 1. {@link #endCycle} runs after every unit of the tile has run cycle t:
+ *   1. line edges seen at t: GO (clears done and command landed, ends the done gate, sets [8]), HALT -> RUN, RUN -> HALT;
+ *   2. the controller's store of cycle t (a done pulse with a counter non-zero sets done early, closes the done gate and
+ *      clears the counters' events; a counter write adds and arms; PULSE_DMA clears [10]);
+ *   3. a director write covering slot 0 at t sets command landed and [9];
+ *   4. a consuming load's clear (only the sticky bits it returned, under EVENTS_MASK); then the edge events of t ([10],
+ *      [11], the per-counter done events [6:0] and counters done [7]); a clear in the same cycle beats a set;
+ *   5. new errors; READY on the rising edge of done AND command landed; STATUS for t + 1.
  *
  * The wake term (4.12): wake = gate ? GO pending : ((events & mask & ~required) != 0) | (required != 0 && (events &
- * required) == required). A wake consumes nothing; the mesh.h helpers load WAKE_EVENTS after every WFI.
+ * required) == required). A wake consumes nothing; the mesh.h helpers load EVENTS after every WFI.
  */
 final class TileControl {
     final Tile tile;
     final Config cfg;
     final int idx;
-    // ---- configuration registers (write-only ones hold their value for the units; reads return 0) ----
-    int setHdr, recordBase, rdSetup;
+    // ---- configuration registers ----
+    int routerHdr, routerAddr, dmaConfig, recordBase, rdSetup;
     final int[] setW = new int[3];                                // ROUTER_SET_W0..W2
     // ---- the controller's store this cycle ----
     private int pendIdx = -1, pendVal; private long pendT = Long.MIN_VALUE;
     // ---- state ----
     boolean done, landed, halted, gate;
     private boolean readyLevel;
-    int events;                                                   // WAKE_EVENTS' sticky events, as at the end of the last cycle
-    int wakeMask = Registers.WAKE_MASK_RESET, wakeRequired;
-    // qualifiers (4.12): counters done [9] and each counter's done event [0]-[3]
+    int events;                                                   // EVENTS' sticky events, as at the end of the last cycle
+    int wakeMask = Registers.EVENTS_MASK_RESET, wakeRequired;
+    // qualifiers (4.12): counters done [7] and each counter's done event [6:0]
     private boolean qAll; private final boolean[] qOne = new boolean[TrafficDirector.N_COUNTERS + 1];
     private boolean condAllPrev = true; private final boolean[] condOnePrev = { true, true, true, true, true, true, true, true };
-    private boolean rdDonePrev, requestBusyPrev, senderBusyPrev;
+    private boolean rdDonePrev, requestBusyPrev;
+    long reservedAccesses;                                        // loads and stores of reserved words (8.1: meshsim flags them)
+    long simExitAt = -1; int simExitValue;                        // SIM_EXIT (8.15)
+    long traceStores; int lastTrace;
     private int consumeBits; private long consumeT = Long.MIN_VALUE; // a consuming load's clear, at the end of its cycle
     long latchSets, spuriousEdges, gatedEdges;
     int conditions, status;
@@ -60,7 +60,7 @@ final class TileControl {
     long dones, readies, gos, runEdges, sends, lastSendAt = -1;
     final long[] sendsBySize = new long[3];                       // send stores by size (32, 64, 128)
     long goWakes, eventWakes;
-    long doneEarlyEvents, wakeInDone, counterWraps, goPulses;
+    long doneEarlyEvents, wakeInDone, counterWraps;
     /** The cycle of the last write to each down-counter (its store's cycle), -1 if none: measurements only. */
     final long[] counterWriteAt = { -1, -1, -1, -1, -1, -1, -1, -1 };
     long violations; String lastViolation;
@@ -91,17 +91,16 @@ final class TileControl {
     boolean pendingLines() { return !goQ.isEmpty() || !runQ.isEmpty(); }
 
     // ================================================================ the wake events
-    /** The live events and the peripheral's lines as a load sampling at t reads them (4.12, 4.17.3). */
+    /** The live events as a load sampling at t reads them (4.12): request pending, and the peripherals' bits.
+     *  PHASE-2 INTERIM: peripheral 1's bit is the v1.1 slot's service lines (phase 3: its EVENTS & EVENTS_MASK). */
     private int liveEvents(long t) {
-        int v = tile.slot.lines(t) << Registers.EV_PERIPH_1;
+        int v = tile.slot.lines(t) != 0 ? 1 << Registers.EV_PERIPH_1 : 0;
         if (tile.req.pending(t)) v |= 1 << Registers.EV_REQUEST_PENDING;
-        if (tile.uart.rxNotEmpty()) v |= 1 << Registers.EV_UART_RX;
-        if (tile.uart.txNotFull()) v |= 1 << Registers.EV_UART_TX;
         return v;
     }
-    /** WAKE_EVENTS as a load sampling at t returns it: the sticky events as at the end of t - 1, the live events and the
-     *  service lines at t. GO seen at t is set at the end of t (4.12's timing): a load or a WFI sees it from t + 1. */
-    int eventsAt(long t) { advance(t); return (events | liveEvents(t)) & Registers.WAKE_VALID; }
+    /** EVENTS as a load sampling at t returns it: the sticky events as at the end of t - 1 and the live events at t. GO
+     *  seen at t is set at the end of t (4.12's timing): a load or a WFI sees it from t + 1. */
+    int eventsAt(long t) { advance(t); return (events | liveEvents(t)) & Registers.EVENTS_VALID; }
     /** The wake term at t (4.12): the done gate overrides it to GO pending. */
     boolean wakeTerm(long t) {
         int e = eventsAt(t);
@@ -124,44 +123,74 @@ final class TileControl {
     long lastDoneAt = -1, lastLandedAt = -1;
 
     // ================================================================ the controller's register accesses
-    /** A load sampling at t (null = bus error). Write-only registers read 0; status is the value computed at t - 1. A
-     *  consuming load (WAKE_EVENTS, REQUEST_RECEIVE, UART_RX) takes its side effect at the end of t. */
+    /** A load of the block or a window sampling at t; null = bus error (an absent peripheral's window). Write-only and
+     *  reserved words read 0 (8.1); a reserved word is flagged. A consuming load (EVENTS, REQUEST_RECEIVE) takes its
+     *  side effect at the end of t. */
     Integer read(long t, int addr) {
+        int n = Registers.windowOf(addr);
+        if (n != 0) return windowRead(t, n, ((addr - Registers.windowBase(n)) >> 2));
         Registers.Reg r = Registers.loadAt(addr);
-        if (r == null) return null;
-        if (r == Registers.TILE_STATUS) return statusAt(t);
-        if (r == Registers.TILE_CONDITIONS) return conditions;
-        if (Registers.isCounter(r)) return tile.dir.counterAtStart(Registers.counterIndex(r) + 1, t);   // PHASE-1 INTERIM: v1.1's four registers are counters 1-4
+        if (r == null) {
+            int i = (addr - Registers.REG_BASE) >> 2;
+            if (Registers.STORE[i] == null) reserved(t, "load of the reserved register-block word 0x" + Integer.toHexString(0x800 + 4 * i));
+            return 0;                                              // a write-only register, or reserved: reads 0
+        }
+        if (r == Registers.PARAMS) return params();
+        if (r == Registers.STATUS) return statusAt(t);
+        if (r == Registers.ERRORS) return errorsAt(t);
+        if (Registers.isCounter(r)) return tile.dir.counterAtStart(Registers.counterOf(r), t);
         if (r == Registers.SRAM_RD_ADDR_QUEUE) return tile.readPort.free(t);
-        if (r == Registers.WAKE_EVENTS) {
-            int v = eventsAt(t), c = v & wakeMask;
-            if (c != 0) { consumeBits = c; consumeT = t; int lines = (c & Registers.WAKE_PERIPH_LINES) >>> Registers.EV_PERIPH_1; if (lines != 0) tile.slot.claim(t, lines); }
+        if (r == Registers.SRAM_RD_DEST_ADDR) return rdSetup;
+        if (r == Registers.EVENTS) {
+            int v = eventsAt(t), c = v & wakeMask & ~Registers.EVENTS_LIVE;
+            if (c != 0) { consumeBits = c; consumeT = t; }
             return v;
         }
-        if (r == Registers.WAKE_PEEK) return eventsAt(t);
-        if (r == Registers.WAKE_MASK) return wakeMask;
-        if (r == Registers.WAKE_REQUIRED) return wakeRequired;
+        if (r == Registers.EVENTS_PEEK) return eventsAt(t);
+        if (r == Registers.EVENTS_MASK) return wakeMask;
+        if (r == Registers.EVENTS_REQUIRED) return wakeRequired;
+        if (r == Registers.ROUTER_HDR) return routerHdr;
+        if (r == Registers.ROUTER_ADDR) return routerAddr;
+        if (r == Registers.DMA_CONFIG) return dmaConfig;
+        if (r == Registers.DMA_RECORD_BASE_ADDRESS) return recordBase;
         if (r == Registers.REQUEST_GET_W0) return tile.req.get(t, 0);
         if (r == Registers.REQUEST_GET_W1) return tile.req.get(t, 1);
         if (r == Registers.REQUEST_GET_W2) return tile.req.get(t, 2);
         if (r == Registers.REQUEST_RECEIVE) return tile.req.receive(t);
-        if (r.index >= Registers.PERIPH_STATUS[0].index && r.index <= Registers.PERIPH_STATUS[7].index) return tile.slot.status(t, Registers.periphStatusIndex(r));
-        if (r == Registers.UART_RX) return tile.uart.rx(t);
-        if (r == Registers.UART_STATUS) return tile.uart.status();
-        if (r == Registers.UART_DIVISOR) return tile.uart.divisor();
         return 0;
     }
-    /** A store at t; false = bus error (unmapped or read-only). A send store (ROUTER_SEND_32, _64, _128) is the controller's
-     *  own (it fills the holding register in the store's cycle); this records it for the auto-increment and the clears. */
+    /** A store at t to the block or a window; false = bus error (a read-only register, an absent peripheral's window). A
+     *  reserved word ignores the store (flagged). A send store (ROUTER_SEND_32, _64, _128) is the controller's own (it
+     *  fills the holding register in the store's cycle); this records it for ROUTER_ADDR's advance and the clears. */
     boolean write(long t, int addr, int v) {
+        int n = Registers.windowOf(addr);
+        if (n != 0) return windowWrite(t, n, (addr - Registers.windowBase(n)) >> 2, v);
         Registers.Reg r = Registers.storeAt(addr);
-        if (r == null || !r.writable()) return false;
+        if (r == null) {
+            int i = (addr - Registers.REG_BASE) >> 2;
+            if (Registers.LOAD[i] != null) return false;           // a read-only register: bus error
+            reserved(t, "store to the reserved register-block word 0x" + Integer.toHexString(0x800 + 4 * i));
+            return true;
+        }
         pendIdx = r.index; pendVal = v; pendT = t;
+        return true;
+    }
+    private void reserved(long t, String m) { reservedAccesses++; violate(t, m + ": reads 0, stores ignored (8.1)"); }
+
+    /** PHASE-2 INTERIM (phase 3 builds the peripheral framework): peripheral n's window. Absent: a bus error. Peripheral 1
+     *  (the v1.1 slot): PARAMS reads its type; the other words read 0. */
+    private Integer windowRead(long t, int n, int word) {
+        if ((tile.dir.periphPresent >> (n - 1) & 1) == 0) return null;
+        return word == 0 ? tile.slot.type() : 0;
+    }
+    private boolean windowWrite(long t, int n, int word, int v) {
+        if ((tile.dir.periphPresent >> (n - 1) & 1) == 0) return false;
+        if (word == 3 && (v & 1) != 0) tile.slot.run(t);           // PULSE_RUN
         return true;
     }
     /** A counter write of N at t adds N at the end of t: the director judges a same-cycle arrival against count + N. */
     int pendingAdd(int c, long t) {
-        return pendT == t && Registers.isCounter(Registers.STORE[pendIdx]) && Registers.counterIndex(Registers.STORE[pendIdx]) + 1 == c ? pendVal & TrafficDirector.COUNTER_MASK : 0;
+        return pendT == t && Registers.isCounter(Registers.STORE[pendIdx]) && Registers.counterOf(Registers.STORE[pendIdx]) == c ? pendVal & TrafficDirector.COUNTER_MASK : 0;
     }
     /** The packet a send store of word v at t sends (8.4), from the registers as they stand at t: the store supplies the
      *  packet's top word, ROUTER_SET_W0-W2 the words below it; words beyond the size are 0. */
@@ -170,16 +199,14 @@ final class TileControl {
                 : (long) setW[1] << 32 | (setW[0] & 0xFFFFFFFFL);
     }
     long sendHi(int v, int size) { return size == LinkWord.SIZE_128 ? (long) v << 32 | (setW[2] & 0xFFFFFFFFL) : 0; }
-    /** PHASE-1 INTERIM: v1.1's ROUTER_SET_HDR read as a v1.2 header (mode [2:0] of v1.1's field, uncounted, the 21-bit
-     *  address as is). Phase 2 replaces it with ROUTER_HDR and ROUTER_ADDR. */
+    /** The header a send store at t captures (8.4): ROUTER_HDR's counter, mode and dst, ROUTER_ADDR, the store's size. */
     long sendHeader(int size) {
-        return LinkWord.hdr(0, Registers.H_DST.get(setHdr), Registers.H_MODE.get(setHdr) & 7, 0, Registers.H_ADDR.get(setHdr), size);
+        return LinkWord.hdr(0, Registers.HDR_DST.get(routerHdr), Registers.HDR_MODE.get(routerHdr), Registers.HDR_CTR.get(routerHdr), routerAddr, size);
     }
-    /** PHASE-1 INTERIM: the read port's setup (8.8) from v1.1's word: the next result's byte offset in data memory, the
-     *  size, counter 2. Phase 2 replaces it with v1.2's SRAM_RD_DEST_ADDR. */
-    int rdDest() { return (Registers.RD_DEST.get(rdSetup) & 0x7FF) << 2; }
-    int rdSize() { return Registers.RD_SIZE.get(rdSetup); }
-    int rdCounter() { return 2; }
+    /** The read port's setup (8.8): the next result's byte offset in data memory, the size and the counter. */
+    int rdDest() { return Registers.RD_DEST.get(rdSetup); }
+    int rdSize() { return Registers.HDR_SIZE.get(rdSetup); }
+    int rdCounter() { return Registers.HDR_CTR.get(rdSetup); }
 
     // ================================================================ end of cycle
     void endCycle(long t) {
@@ -189,17 +216,17 @@ final class TileControl {
             events |= 1 << Registers.EV_GO;
             tile.sram.newPhase();
         }
-        if (runEdgeAt == t) {                                     // HALT -> RUN (6.1)
+        if (runEdgeAt == t) {                                     // PHASE-2 INTERIM: HALT -> RUN, as v1.1's (6.1)
             done = false; landed = false; gate = false; events = 0; qAll = false; java.util.Arrays.fill(qOne, false);
-            wakeRequired = 0; wakeMask = Registers.WAKE_MASK_RESET;
+            wakeRequired = 0; wakeMask = Registers.EVENTS_MASK_RESET;
             tile.slot.setHalted(t, false);
         }
-        if (haltEdgeAt == t) {                                    // RUN -> HALT: conditions, counters, their events and qualifiers (6.1)
+        if (haltEdgeAt == t) {                                    // PHASE-2 INTERIM: RUN -> HALT clears the errors, counters, their events and qualifiers
             conditions = 0; errorSince = -1; tile.haltReset(t);
             tile.dir.resetCounters();
-            events &= ~(0xF | 1 << Registers.EV_COUNTERS_DONE); qAll = false; java.util.Arrays.fill(qOne, false);
+            events &= ~COUNTER_EVENTS; qAll = false; java.util.Arrays.fill(qOne, false);
         }
-        int clearBits = 0;                                        // clears that beat a same-cycle set of [9] and [3:0]
+        int clearBits = 0;                                        // clears that beat a same-cycle set of [7] and [6:0]
         if (pendT == t) clearBits = apply(t, pendIdx, pendVal);
         if (tile.cmem.landedAt == t) { landed = true; lastLandedAt = t; events |= 1 << Registers.EV_COMMAND; }
         if (halted) done = true;
@@ -208,7 +235,7 @@ final class TileControl {
         if (rd && !readyLevel) { readyPulseAt = t; readies++; }
         readyLevel = rd;
         // a consuming load's clear: only the sticky bits it returned (an event set after its sample point survives)
-        if (consumeT == t) events &= ~(consumeBits & ~Registers.WAKE_LIVE & ~Registers.WAKE_PERIPH_LINES);
+        if (consumeT == t) events &= ~(consumeBits & ~Registers.EVENTS_LIVE);
         // edge events
         boolean rdDone = tile.ag.doneForStatus();
         if (rdDone && !rdDonePrev) events |= 1 << Registers.EV_RUN_DONE;
@@ -216,15 +243,13 @@ final class TileControl {
         boolean rb = tile.req.busy(t);
         if (!rb && requestBusyPrev) events |= 1 << Registers.EV_REQUEST_ROOM;
         requestBusyPrev = rb;
-        boolean sb = tile.sender.busy();
-        if (!sb && senderBusyPrev && !tile.sender.abandonedAt(t)) events |= 1 << Registers.EV_SENDER_IDLE;
-        senderBusyPrev = sb;
         counterEvents(t, clearBits);
-        if (halted) events &= ~(0xF | 1 << Registers.EV_COUNTERS_DONE);   // the counters are 0 and their events clear while halted
+        if (halted) events &= ~COUNTER_EVENTS;                     // the counters are 0 and their events clear while halted
         if (!cfg.coreless) status = computeStatus(t);              // only a controller can read it (simulator speed)
     }
 
-    /** The per-counter done events [3:0] and counters done [9] (4.12): set on the rising edge of each one's done
+    static final int COUNTER_EVENTS = 0x7F | 1 << Registers.EV_COUNTERS_DONE;
+    /** The per-counter done events [6:0] and counters done [7] (4.12): set on the rising edge of each one's done
      *  condition when its qualifier holds, not while the done gate is closed (an edge there is ignored and consumes the
      *  qualifier); a clear in the same cycle wins. */
     private void counterEvents(long t, int clearBits) {
@@ -233,10 +258,10 @@ final class TileControl {
         for (int c = 1; c <= TrafficDirector.N_COUNTERS; c++) {     // v1.2 (4.12): done means landed, by K; mem_idle and cm_idle take no part
             if (r[c] != 0) { qOne[c] = true; any = true; }
             boolean cond = r[c] == 0;
-            int bit = evBitOf(c);
+            int bit = Registers.evCounter(c);
             if (cond && !condOnePrev[c] && qOne[c]) {
                 qOne[c] = false;
-                if (!gated && bit >= 0 && (clearBits & 1 << bit) == 0) events |= 1 << bit;
+                if (!gated && (clearBits & 1 << bit) == 0) events |= 1 << bit;
             }
             condOnePrev[c] = cond;
         }
@@ -252,74 +277,68 @@ final class TileControl {
 
     boolean everyCounterDone(long t) { return countersZero(); }
     boolean countersZero() { int[] r = tile.dir.remaining; for (int c = 1; c <= TrafficDirector.N_COUNTERS; c++) if (r[c] != 0) return false; return true; }
-    /** PHASE-1 INTERIM: counter c's done event bit in v1.1's WAKE_EVENTS ([3:0] for counters 1-4; none for 5-7). Phase 2
-     *  moves to v1.2's EVENTS ([6:0]). */
-    static int evBitOf(int c) { return c <= 4 ? c - 1 : -1; }
-    /** Counters done ([9]) is pending (tests; the v1.0 local-wake latch). */
+    /** Counters done ([7]) is pending (tests). */
     boolean countersDonePending() { return (events & 1 << Registers.EV_COUNTERS_DONE) != 0; }
 
     /** The controller's store of cycle t; returns the event bits it clears this cycle (beating a same-cycle set). */
     private int apply(long t, int i, int v) {
         Registers.Reg r = Registers.STORE[i];
         int clears = 0;
-        if (r == Registers.DMA_CONFIG) tile.setMasterConfig(v);
-        else if (r == Registers.TILE_PULSE) {
-            if (Registers.P_GO.get(v) != 0) {                      // [3] GO: wired only on C&C (6.3, 8.6); no mesh tile drives the net
-                goPulses++;
-                violate(t, "a store of 1 to TILE_PULSE [3], GO, on a tile whose GO pulse isn't wired to the GO net (8.6): ignored");
-            }
-            if (Registers.P_START.get(v) != 0) tile.ag.pulse(Fields.PULSE_START);   // start and run act before done (8.6)
-            if (Registers.P_PERIPH_RUN.get(v) != 0) tile.slot.run(t);
-            if (Registers.P_DONE.get(v) != 0) {
+        if (r == Registers.PULSE_DONE) {
+            if ((v & 1) != 0) {
                 checkInvariant4(t);
-                if (!countersZero()) doneEarlyEvents++;            // done early (4.13): a down-counter non-zero
+                if (!countersZero()) doneEarlyEvents++;            // done early (4.13): a write counter non-zero
                 if ((wakeMask & 1 << Registers.EV_GO) == 0)
-                    violate(t, "done pulsed (wait_for_command()) with GO clear in WAKE_MASK: the GO it waits for would not be consumed (item 79, 4.12)");
+                    violate(t, "done pulsed (wait_for_command()) with GO clear in EVENTS_MASK: the GO it waits for would not be consumed (4.12)");
                 done = true; dones++; lastDoneAt = t;
                 if (cfg.doneGate) gate = true;                    // the done gate (4.12)
-                clears |= 0xF | 1 << Registers.EV_COUNTERS_DONE;  // done clears counters done and the per-counter events, with their qualifiers
+                clears |= COUNTER_EVENTS;                         // done clears counters done and the per-counter events, with their qualifiers
                 events &= ~clears; qAll = false; java.util.Arrays.fill(qOne, false);
             }
         }
-        else if (r == Registers.DMA_RECORD_BASE_ADDRESS) { recordBase = v; tile.setRecordBase(v); }
+        else if (r == Registers.PULSE_DMA) {
+            if ((v & 1) != 0) {
+                if (tile.ag.running) { /* ignored, flagged by the address generator (8.6) */ }
+                else { clears |= 1 << Registers.EV_RUN_DONE; events &= ~clears; }
+                tile.ag.pulse(Fields.PULSE_START);
+            }
+        }
+        else if (r == Registers.DMA_CONFIG) { dmaConfig = v; tile.setMasterConfig(v); }
+        else if (r == Registers.DMA_RECORD_BASE_ADDRESS) { recordBase = v & Registers.RB_CHUNK.mask(); tile.setRecordBase(v); }
         else if (Registers.isCounter(r)) {                         // 4.12: a write adds; N > 0 arms; 0 does nothing
-            int k = Registers.counterIndex(r) + 1, n = v & TrafficDirector.COUNTER_MASK;
+            int k = Registers.counterOf(r), n = v & TrafficDirector.COUNTER_MASK;
             counterWriteAt[k] = t;                                 // the store's cycle: armed from the end of t
             if (n != 0) {
                 long sum = (long) tile.dir.remaining[k] + n;
                 if (sum > TrafficDirector.COUNTER_MASK) { counterWraps++; violate(t, TrafficDirector.counterName(k) + " written past 2^20 - 1: the count wraps (4.12)"); }
                 tile.dir.remaining[k] = (int) (sum & TrafficDirector.COUNTER_MASK);
-                clears |= (evBitOf(k) >= 0 ? 1 << evBitOf(k) : 0) | 1 << Registers.EV_COUNTERS_DONE;
+                clears |= 1 << Registers.evCounter(k) | 1 << Registers.EV_COUNTERS_DONE;
                 events &= ~clears; qAll = true; qOne[k] = true;
             }
         }
-        else if (r == Registers.ROUTER_SET_HDR) setHdr = v;
+        else if (r == Registers.ROUTER_HDR) routerHdr = v & ~(Registers.HDR_SIZE.mask() << Registers.HDR_SIZE.lo) & ~0x1FFFE;   // size and spare: stores ignored, read 0
+        else if (r == Registers.ROUTER_ADDR) routerAddr = v;
         else if (r == Registers.ROUTER_SET_W0) setW[0] = v;
         else if (r == Registers.ROUTER_SET_W1) setW[1] = v;
         else if (r == Registers.ROUTER_SET_W2) setW[2] = v;
-        else if (Registers.isSend(r)) {                            // captured at t (8.4): auto-increment; W0-W2 all clear
+        else if (Registers.isSend(r)) {                            // captured at t (8.4): ROUTER_ADDR advances (mode 0, no no-increment); W0-W2 clear
             sends++; lastSendAt = t; sendsBySize[Registers.sendSize(r)]++;
-            int mode = Registers.H_MODE.get(setHdr), a = Registers.H_ADDR.get(setHdr);
-            int inc = (mode & 7) == LinkWord.M_WRITE ? LinkWord.bytes(Registers.sendSize(r)) : 0;   // PHASE-1 INTERIM
-            if (inc != 0) setHdr = (setHdr & ~(Registers.H_ADDR.mask() << Registers.H_ADDR.lo)) | Registers.H_ADDR.place(a + inc);
+            if (Registers.HDR_MODE.get(routerHdr) == LinkWord.M_WRITE && Registers.RH_NOINC.get(routerHdr) == 0) routerAddr += LinkWord.bytes(Registers.sendSize(r));
             setW[0] = setW[1] = setW[2] = 0;
         }
-        else if (r == Registers.SRAM_RD_ADDR_QUEUE) {              // the read was queued (or dropped) at t: the next result's word (8.8)
-            int n = rdSize() == LinkWord.SIZE_UNDEF ? 0 : LinkWord.chunks(rdSize());
+        else if (r == Registers.SRAM_RD_ADDR_QUEUE) {              // the read was queued (or dropped) at t: the next result's offset (8.8)
+            int n = rdSize() == LinkWord.SIZE_UNDEF ? 0 : LinkWord.bytes(rdSize());
             rdSetup = (rdSetup & ~Registers.RD_DEST.mask()) | Registers.RD_DEST.place(rdDest() + n);
         }
-        else if (r == Registers.SRAM_RD_DEST_ADDR) rdSetup = v;
-        else if (r == Registers.WAKE_MASK) wakeMask = v & Registers.WAKE_VALID;
-        else if (r == Registers.WAKE_REQUIRED) wakeRequired = v & Registers.WAKE_VALID;
+        else if (r == Registers.SRAM_RD_DEST_ADDR) rdSetup = v & 0x3FFFFF;                       // reserved [31:22]
+        else if (r == Registers.EVENTS_MASK) wakeMask = v & Registers.EVENTS_VALID;
+        else if (r == Registers.EVENTS_REQUIRED) wakeRequired = v & Registers.EVENTS_VALID;
         else if (r == Registers.REQUEST_SET_W0) tile.req.setW(0, v);
         else if (r == Registers.REQUEST_SET_W1) tile.req.setW(1, v);
         else if (r == Registers.REQUEST_SET_W2) tile.req.setW(2, v);
         else if (r == Registers.REQUEST_SEND) tile.req.send(t, v);
-        else if (r == Registers.SENDER_SEND) tile.sender.start(t, v);
-        else if (r == Registers.SENDER_ADDR) tile.sender.addr = v & 0x1FFFFF;
-        else if (r == Registers.UART_TX) tile.uart.tx(t, v);
-        else if (r == Registers.UART_STATUS) tile.uart.writeStatus(v);
-        else if (r == Registers.UART_DIVISOR) tile.uart.writeDivisor(v);
+        else if (r == Registers.SIM_EXIT) { simExitAt = t; simExitValue = v; tile.chip.log(t, tile.idx, "SIM_EXIT 0x" + Integer.toHexString(v)); }
+        else if (r == Registers.TRACE) { traceStores++; lastTrace = v; if (cfg.logTrace) tile.chip.log(t, tile.idx, "TRACE 0x" + Integer.toHexString(v)); }
         return clears;
     }
 
@@ -354,17 +373,17 @@ final class TileControl {
 
     private int computeStatus(long t) {
         AddressGenerator a = tile.ag;
-        int s = Registers.ST_RD_RUNNING.place(a.runningForStatus() ? 1 : 0) | Registers.ST_RD_DONE.place(a.doneForStatus() ? 1 : 0)
-                | Registers.ST_GATHER_BUSY.place(tile.gather.busy(t) ? 1 : 0)
-                | Registers.ST_SENDER_BUSY.place(tile.sender.busy() ? 1 : 0)
-                | Registers.ST_SEND_BUSY.place(tile.sendHold.isEmpty(t) ? 0 : 1)
-                | Registers.ST_TS_BUSY.place(tile.tsBusy(t) ? 1 : 0) | Registers.ST_MEM_IDLE.place(tile.memIdle(t) ? 1 : 0)
-                | Registers.ST_CM_IDLE.place(tile.dir.cmIdle(t) ? 1 : 0) | Registers.ST_DONE.place(done ? 1 : 0)
-                | Registers.ST_LANDED.place(landed ? 1 : 0) | Registers.ST_REQUEST_BUSY.place(tile.req.busy(t) ? 1 : 0);
-        s |= Registers.ST_PERIPH_TYPE.place(tile.slot.type()) | Registers.ST_ID.place(idx)
-                | Registers.ST_SIZE.place((cfg.memChunks >>> Registers.SIZE_UNIT_SHIFT) - 1);
-        return s;
+        return (a.runningForStatus() ? 1 << Registers.ST_RD_RUNNING : 0) | (a.doneForStatus() ? 1 << Registers.ST_RD_DONE : 0)
+                | (tile.gather.busy(t) ? 1 << Registers.ST_GATHER_BUSY : 0) | (tile.sendHold.isEmpty(t) ? 0 : 1 << Registers.ST_SEND_BUSY)
+                | (done ? 1 << Registers.ST_DONE : 0) | (landed ? 1 << Registers.ST_LANDED : 0) | (tile.req.busy(t) ? 1 << Registers.ST_REQUEST_BUSY : 0);
     }
-    /** TILE_STATUS as a load sampling at t reads it: periph_running from the peripheral at t. */
-    int statusAt(long t) { return status | Registers.ST_PERIPH_RUNNING.place(tile.slot.running(t) ? 1 : 0); }
+    /** STATUS as a load sampling at t reads it (computed at the end of t - 1). */
+    int statusAt(long t) { return status; }
+    /** PARAMS (8.2): constant. */
+    int params() {
+        return Registers.PA_PERIPH.place(tile.dir.periphPresent) | Registers.PA_ID.place(idx) | Registers.PA_SIZE.place((cfg.memChunks >>> Registers.SIZE_UNIT_SHIFT) - 1);
+    }
+    /** ERRORS as a load sampling at t reads it (4.13): the sticky bits; [13:11] live (PHASE-2 INTERIM: v1.1's sticky bad
+     *  peripheral write stays at [11] until phase 3). */
+    int errorsAt(long t) { return conditions; }
 }

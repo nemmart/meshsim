@@ -1294,6 +1294,34 @@ the integrator's recommendation. Each is a correction or a precision; none chang
 - **Ending a test in meshsim:** a simulator-only exit word beside the trace word (32), since `ebreak` now stops
   loudly (27).
 
+## 37. From the recipes' walk-throughs (2026-10-29)
+
+From WORKER6's first round. 1 and 2 are the owner's; the rest are on the integrator's recommendation, to review.
+
+1. **The boot ROM jumps only if a command has landed** (W6): GO reaches every tile, so with one-at-a-time
+   start-up (23, 28) a tile still waiting in the ROM would otherwise jump into empty memory. **After GO, a
+   tile's ROM jumps only if a command has landed; otherwise it pulses `done` again and keeps waiting.** A ROM
+   change only; revises 36's listing, step 3.
+2. **Enabling interrupts is the image's job** (owner): the ROM leaves them off. **Boot part 2**, the first
+   command, which receives the big-SRAM size and loads it (31, step 5), sets `mtvec` to the image's handler
+   and enables `mie.MEIE` and `MIE`. A software convention, not a hardware rule.
+3. **The report set stays fixed:** a tile sends the standard words of every peripheral slot, with zeros for an
+   absent peripheral (reconciling 20's "each present peripheral" with 21's fixed set).
+4. **The first 16 bytes of data memory are reserved**, not 4 (revises 27's word 0): 128-bit overlays starting
+   at address 0 would otherwise hit the reserved word. Overlays start at 0x10; meshsim flags any write to
+   0x00-0x0F after boot.
+5. **The no-increment bit stays set until the program clears it** (7): the program clears it when it is done
+   with a fixed address.
+
+**Accepted limitations:**
+
+- **C&C 1's UART dump can't finish before an FPGA reset:** a report line takes about 6 ms at 57,600 baud, and
+  the FPGA monitor resets after about 0.1 ms (35). The UART is best effort; the file system's flush is the
+  record that survives. In solo use, a person resets slowly enough for the dump.
+- **Reports can be stuck on the request bus** behind earlier requests to a target that has stopped popping
+  (the file system, say), since a row blocks behind its head. Deferred with the file system and the request
+  bus's design (33): fixing it means per-target queues.
+
 ---
 
 ## Big SRAM: to validate

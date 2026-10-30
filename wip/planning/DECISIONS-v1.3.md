@@ -80,12 +80,30 @@ Decided (O).
 - *(Inferred, to confirm:)* the RV64's architectural state carries across a proof boundary; only the view of
   memory changes.
 
+## 6. The Tracer's output per window (2026-10-29)
+
+Agreed (O). The Tracer's output is defined from the replayer's side (spec 4.19); per window of 2¹⁶ rows it
+produces:
+
+- **The state record**, 67 × 128-bit words (1,072 bytes; spec 4.19.2):
+
+| word | contents | goes to |
+|---|---|---|
+| 0 | **template bitmap**, 128 bits: bit *i* set if the window uses controller-fed template *i* (0-127, spec 4.19.5) | the controllers: the tile's, to stage only the templates its window uses, and the chip's used set (spec item 115) |
+| 1 | **state word**: pc, `instr_idx`, next offset, the four flags (code, read log, write log compressed; includes store log) | replayer part 0, offset 0x000 |
+| 2 | **stream word**: the three streams' exact lengths in bits | replayer part 0, offset 0x010 |
+| 3-66 | **register image**: 64 words, two registers each | replayer part 0, offset 0x020 |
+
+- **The three streams**, code, read log and write log, each raw or LRU-compressed (3), into the replayer's queues.
+- The compressed flags in the state word and the lengths in the stream word are the two-pass compression's choice
+  and counts (3).
+
 ---
 
 ## Pending questions
 
 | # | question | from | status |
 |---|---|---|---|
-| T1 | What the 8 KB and 4 KB expansion memories hold | 1 | open |
+| T1 | What the 8 KB and 4 KB expansion memories hold | 1 | *proposed (integrator):* the replayer's ROM (8 KB of expansion templates) and decode table (4 KB), the same sizes, so the Tracer expands instructions into rows exactly as the replayer will: to count rows, place window boundaries mid-expansion (the next offset) and know which rows are untraced. To confirm |
 | T2 | The RV64 initial state: what it contains and where it comes from | 1 | open |
 | T3 | The page table: its size, format and how C&C 3 maintains it | 1 | open |

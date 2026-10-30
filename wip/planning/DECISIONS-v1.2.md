@@ -18,7 +18,7 @@ are marked in place. In brief:
   phase; C&C 2 and C&C 3 jump when their first command lands and report "started" (31).
 - **The link word** is 256 bits: payload, a 32-bit address (8-bit region, 24-bit byte offset), size, a
   3-bit counter, a 3-bit mode, src, dst; 74 bits reserved (2, 5, 30).
-- **Counters:** the packet names one of **four** write counters (0 uncounted), decremented K cycles after the
+- **Counters:** the packet names one of **seven** write counters (0 uncounted; 40), decremented K cycles after the
   traffic director accepts it, K a formula (3, 30, 32).
 - **Modes:** 0 write at address (commands and replies included), 1 by source, 2 bucket, 3 augmented,
   4 gather request, 5-7 reserved and discarded (6).
@@ -471,10 +471,10 @@ first words. *(Proposed: the addresses below.)* In region 0xFF; the low 12 bits 
 | 0x848-0x854 | `REQUEST_GET_W0`-`W2`, `REQUEST_RECEIVE` / `REQUEST_SET_W0`-`W2`, `REQUEST_SEND` | R / W | unchanged |
 | 0x858 | `DMA_CONFIG` | R/W | readable (planning to-do 13) |
 | 0x85C | `DMA_RECORD_BASE_ADDRESS` | R/W | |
-| 0x860-0x86C | `WRITE_COUNTER_1`-`WRITE_COUNTER_4` | R/W | 3, 30 |
-| 0x870 | `SRAM_RD_ADDR_QUEUE` | R/W | unchanged |
-| 0x874 | `SRAM_RD_DEST_ADDR` | R/W | 13 |
-| 0x878-0x9FC | | | reserved (`ERROR_LINES_0`-`2` moved to C&C 1's peripheral, 15) |
+| 0x860-0x878 | `WRITE_COUNTER_1`-`WRITE_COUNTER_7` | R/W | 3, 30, 40 |
+| 0x87C | `SRAM_RD_ADDR_QUEUE` | R/W | unchanged |
+| 0x880 | `SRAM_RD_DEST_ADDR` | R/W | 13 |
+| 0x884-0x9FC | | | reserved (`ERROR_LINES_0`-`2` moved to C&C 1's peripheral, 15) |
 
 - **Gone:** `TILE_PULSE`, `ROUTER_SET_HDR`, `DMA_SRAM_`/`DMA_CM_`/`DMA_REPLY_`/`DMA_PERIPH_REMAINING`,
   `PERIPH_STATUS_0`-`7`, `SENDER_SEND`, `SENDER_ADDR`, `UART_TX`/`RX`/`STATUS`/`DIVISOR`.
@@ -525,7 +525,7 @@ Decided (O). **The wake registers are renamed** at both levels, the tile's and e
 | `WAKE_MASK` | `EVENTS_MASK` |
 | `WAKE_REQUIRED` (tile only) | `EVENTS_REQUIRED` |
 
-- **The counters are `WRITE_COUNTER_1`-`WRITE_COUNTER_4`** (four since 30) (owner, 2026-10-28): every counted packet is a
+- **The counters are `WRITE_COUNTER_1`-`WRITE_COUNTER_7`** (four since 30, seven since 40) (owner, 2026-10-28): every counted packet is a
   write (modes 0-3), so the name says what they count. The link word's field stays "counter".
 - **Errors** (owner, 2026-10-28): v1.1's *conditions* are now **errors**, as a concept and in names: the
   tile's `TILE_CONDITIONS` is `ERRORS`, a peripheral's `CONDITIONS` is `ERRORS`, and a bit is named without
@@ -590,26 +590,23 @@ Decided (O). Answers Q14. The layout of `EVENTS`, `EVENTS_PEEK`, `EVENTS_MASK` a
 
 | bit | event | kind |
 |---|---|---|
-| [0] | write counter 1 done | sticky |
-| [1] | write counter 2 done | sticky |
-| [2] | write counter 3 done | sticky |
-| [3] | write counter 4 done (30) | sticky |
-| [4] | counters done: all four at 0, at least one armed since it last fired | sticky |
-| [5] | GO | sticky |
-| [6] | command landed | sticky |
-| [7] | DMA run done (v1.1's "engine run done") | sticky |
-| [8] | request FIFO no longer full | sticky |
-| [9] | request pending | live |
-| [10] | peripheral 1: its `EVENTS & EVENTS_MASK` non-zero (10) | live |
-| [11] | peripheral 2 | live |
-| [12] | peripheral 3 | live |
-| [31:13] | reserved, read 0 | |
+| [6:0] | write counters 1-7 done, one bit each (bit *n* − 1 for counter *n*) | sticky |
+| [7] | counters done: all seven at 0, at least one armed since it last fired | sticky |
+| [8] | GO | sticky |
+| [9] | command landed | sticky |
+| [10] | DMA run done (v1.1's "engine run done") | sticky |
+| [11] | request FIFO no longer full | sticky |
+| [12] | request pending | live |
+| [13] | peripheral 1: its `EVENTS & EVENTS_MASK` non-zero (10) | live |
+| [14] | peripheral 2 | live |
+| [15] | peripheral 3 | live |
+| [31:16] | reserved, read 0 | |
 
-*Renumbered by 30 (a fourth counter).*
+*Renumbered by 30 (a fourth counter) and again by 40 (seven counters).*
 
 - **Gone from v1.1:** the six service lines, sender idle and the UART's two
   events; [7:4]'s gap closes.
-- **Unchanged rules:** `EVENTS_MASK` resets to GO | counters done ([5] | [4]) at the reset (23);
+- **Unchanged rules:** `EVENTS_MASK` resets to GO | counters done ([8] | [7], 40) at the reset (23);
   from the `done` pulse until GO only GO wakes `WFI`; a load of `EVENTS` consumes the sticky events under
   the mask, and one set in the load's own cycle survives. The live events clear only at their source:
   popping the request, or loading the peripheral's own `EVENTS`.
@@ -623,7 +620,7 @@ events, like every other wait:
 - **The arrival side** (incoming packets updating `PTR` for modes 1-3 and `HIST` for count-on-arrival,
   and local gather values landing at `PTR[me]`) is covered by the write counter the program armed.
 - **The local side** (the address generator reading `STREAM` and `GROUP`) is covered by DMA run done,
-  `EVENTS` [7] (30).
+  `EVENTS` [10] (40).
 - **Software** sets `EVENTS_REQUIRED` to "write counter *n* done and DMA run done" and executes `WFI`. The
   counters alone are not enough, since arrivals can finish before the tile's own run.
 
@@ -643,8 +640,8 @@ Hardware guarantees this needs:
   or `HIST`, the convention is simply **modes 1-3 are always counted**, and `PTR[64]` stops being special.
 - **Guarantee A's "complete"** (W2-11) means **readable by a controller load through the table window**,
   `HIST`'s count-on-arrival included, behind its request FIFO; validated with S1's table-window case.
-- **`PULSE_DMA` clears DMA run done** (`EVENTS` [7], 30) (owner, 2026-10-28; W2-10), as an arming write clears
-  its counter's done (3), so [7] always refers to the run most recently started and a stale one can't
+- **`PULSE_DMA` clears DMA run done** (`EVENTS` [10], 40) (owner, 2026-10-28; W2-10), as an arming write clears
+  its counter's done (3), so [10] always refers to the run most recently started and a stale one can't
   satisfy the next wait.
 - **`ts_busy` and `wait_tables()` go.** Programs wait by events. A helper that must work without knowing
   what ran before (a pass that starts by checking the tables are free) **may poll `STATUS.rd_running`**, a
@@ -1092,6 +1089,8 @@ integrator's recommendation, 2026-10-29. To be reviewed again when C&C 1's firmw
 
 ## 30. Four counters (2026-10-28)
 
+*Revised by 40: seven counters, codes 1-7; nothing is reserved.*
+
 Decided (O), from W3-19. Revises 2, 3, 4, 7, 10, 12, 13, 14 and 16 (each updated in place).
 
 - **The counter field is 3 bits: 0 uncounted, 1-4 the write counters, 5-7 reserved** (accepted and treated
@@ -1162,7 +1161,7 @@ trace and run the file system:
 | **Misaligned engine accesses** (W2-32, W3-30) | The access is dropped, **still counted** (so nothing hangs), and sets `ERRORS` [1]; the read port's misaligned read sets [1] too, not [7]. meshsim flags it |
 | **Big SRAM out of range** (W2-33) | Undefined in hardware, like controller memory (26); big SRAM's size isn't a power of two, so it doesn't promise aliasing. meshsim errors |
 | **Alignment of pointers and runs** (W2-34, W3-29) | Stated per register in the spec update: a run's start is aligned to its element size and every step keeps it aligned; `PTR` to its packets' size; an augmented `PTR` to a record (two chunks) |
-| **Counter codes 5-7** (W2-35) | Reserved: the packet is accepted and treated as uncounted; meshsim errors |
+| ~~Counter codes 5-7~~ (W2-35) | *Moot since 40: codes 1-7 are all counters* |
 | **The trace word** (W3-32) | 0xFFFFF9FC is a named simulator-only word in the register table, exempt from meshsim's reserved-word check; a store there is harmless on hardware |
 
 ## 33. Deferred (2026-10-29)
@@ -1365,6 +1364,25 @@ the spec's `REPLAYER_STATUS` and `REPLAYER_OPCODE`, the draft header's `RUN_STAT
 No prefix: the names are scoped by the replayer's struct (14). These are outputs the controller reads; the
 **state word** (pc, `instr_idx`, next offset, flags) is an input at offset 0 of the replayer's region (4.19.10),
 written with the checkpoint.
+
+## 40. Reply addresses and seven counters (2026-10-29)
+
+Decided (O, T). From WORKER6's F15.
+
+- **Every request names its own reply address**, beside its reply's counter (25): **anywhere in the
+  requester's data memory** (region 0x00; program memory is load-only, 5). F15: with up to three requests
+  outstanding to C&C 2 (38), replies to a fixed slot in the reply block would overwrite each other; each
+  outstanding request now gets its own buffer. **The reply block becomes the default for tile-to-tile replies,
+  not a rule**; invariant 11's reply-block clause (27) applies to replies sent there.
+- **Seven counters** (Tony): the 3-bit counter field's codes **1-7 are all write counters**; 0 is uncounted.
+  Revises 30 (codes 5-7 reserved) and 32's call on them. A replayer tile can have an LPDDR fetch, a refill
+  and replies in flight together, plus up to three file-system requests, each waited on separately.
+  - **Registers:** `WRITE_COUNTER_1`-`WRITE_COUNTER_7` at 0x860-0x878; the read port's two registers move to
+    0x87C and 0x880 (11, *proposed addresses*).
+  - **`EVENTS`** (16): counters 1-7 done at [6:0], counters done [7], GO [8], command landed [9], DMA run done
+    [10], request FIFO no longer full [11], request pending [12], peripherals 1-3 [15:13]. `EVENTS_MASK` resets
+    to GO | counters done.
+  - The delay line already carries the 3-bit field; each counter adds a register, an adder and a done bit.
 
 ---
 

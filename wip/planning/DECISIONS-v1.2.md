@@ -520,6 +520,13 @@ Decided (O). **The wake registers are renamed** at both levels, the tile's and e
   are a separate thing and keep their name.
 - **No `TILE_` prefix** (owner, 2026-10-28): the tile's first registers are `PARAMS`, `STATUS`, `ERRORS`,
   the same names as a peripheral's first three words (10), as `EVENTS` already is.
+- **Headers use one struct per block** (owner, 2026-10-28; W3-16): the tile's register block and each
+  peripheral's window are declared as C structs overlaid on their addresses (a `PeripheralStd` for words
+  0-9, a type per peripheral that extends it, e.g. `ReplayerPeripheral peripheral1`), so names are scoped:
+  `tile.EVENTS`, `peripheral1.EVENTS`. The register-table generator emits the structs. Every member is
+  `volatile uint32_t`, accessed one word at a time and never copied whole, since some loads have side effects.
+- **"DMA" keeps both meanings** (owner, W3-16): the tile's address-generator run and a peripheral's output
+  engine, told apart by their struct (`tile.PULSE_DMA`, `peripheral1.PULSE_DMA`).
 - "Interrupts" was considered and rejected: events only release `WFI` and take no trap, while errors raise
   the hard interrupt (1) and the core's `mie`/`mip` CSRs use the word in the RISC-V sense.
 - This log uses the new names throughout, including where it cites v1.1's bit positions.

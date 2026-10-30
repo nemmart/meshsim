@@ -4,7 +4,7 @@ Working notes, kept so the work survives a context compaction. Newest status at 
 
 ## Status
 
-- All passes done; CHANGES-v1.2.md, QUESTIONS.md and REPORT.md written (2026-10-29). Next: round 2, check WORKER6's recipes against the spec.
+- Round 1 done (2026-10-29). Round 2 done: decisions 37-42 applied (28f9f8f), QUESTIONS updated, recipes checked against the spec (RECIPE-CHECK.md: M1-M8; spec fixes for M1, M2).
 
 ## Owner's adjustments to the plan (2026-10-29)
 

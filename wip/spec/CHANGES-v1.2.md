@@ -121,3 +121,11 @@ Applied after the first round. Each row names the spec sections it touched.
 | D41 (F6) | `rd_running` falls in the same cycle as DMA run done (guarantee B) | 4.2, 4.10 |
 | D42 | port B takes one 128-bit write per cycle, built as the implementer likes (W5-05); W5-02, 03, 07, 08, 10, 11, 12, 14, 16, 18, 19, 20 accepted, their *(Proposed)* markers dropped; W5-04 and W5-21 are with Tony (item 134); S9's protected loopback marked required | 3.1, 4.3, 4.5, 4.7, 4.9, 4.11, 6.1, 6.7, 8.1, 8.13–8.15, 10, 11, 12, 13 |
 | 13 | status rows for items 61, 64, 85, 92, 93, 99 updated; 121–123, 127, 131–133 updated or closed; new items 134 (Q16) and 135 (what "outstanding" means for a read) | 13 |
+
+### From the recipe check (round 2)
+
+| what | sections |
+|---|---|
+| a note on a unit's two injection sources, which aren't ordered by the spec; open item 136 (WORKER6's F17) | 3.2, 6.2, 13 |
+| the replayer's controller loop waits on the refill counter **and** DMA run done, as its own table rule (4.10) and recipe 26 require | 4.19.9 |
+| the `done` pulse clears no event but the counters'; a stale "[4]" corrected to [7] | 4.12 |

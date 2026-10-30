@@ -27,8 +27,10 @@ INPUTS
 - jolt-cpp: `trace_owner.cpp` (it computes the DIV/REM advice in its interpreter, around lines 545-630, and logs
   `VirtualAdvice` around 822-855), `isa/virtual.cpp` (the expansions), and the inline instructions.
 - **The template builder:** the replayer's templates are built by a table builder that isn't in this repository.
-  Find it (jolt-cpp, or the `jolt-asic-planning` repository's `tracer-standalone` branch, which the spec cites as
-  its reference copy); if you can't, say so, and write your templates as data plus a small generator instead.
+  Find it: in jolt-cpp, or in **https://github.com/quarky93/jolt-asic-planning**, PR #1, the `tracer-standalone`
+  branch (the spec cites commit `4f36b3d` as its reference copy of the tracer). If that repository needs access you
+  don't have, say so in QUESTIONS.md. If you can't find the builder, say so, and write your templates as data plus a
+  small generator instead.
 
 WHAT TO DO
 1. **Inventory every advice source** in Jolt's expansions: the DIV/REM family, every use of `VirtualAdvice`

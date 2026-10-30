@@ -18,14 +18,14 @@ public final class ReadPortGatherTest {
         if (args.length > 0) shuffle = Long.parseLong(args[0]);
         full = args.length > 1 && args[1].equals("full");
         if (shuffle >= 0) System.out.println("shuffled child order, seed " + shuffle);
-        T.pending("readPortFromC", "phase 2 (the C programs and mesh.h move to v1.2)");
+        readPortFromC();
         readPortUnderTraffic();
         readPortTolerance();
         overlapCheck();
         disjointPerRun();
         reservedStreams();
         gather();
-        T.pending("gatherFromC", "phase 2 (the C programs and mesh.h move to v1.2)");
+        gatherFromC();
         System.exit(T.done("ReadPortGatherTest" + (shuffle >= 0 ? " (shuffled, seed " + shuffle + ")" : "") + (full ? " full" : "")));
     }
 
@@ -66,25 +66,28 @@ public final class ReadPortGatherTest {
         for (Tile p : m.c.tiles) for (int x = 0; x < 0x1100; x++) p.sram.poke(0x1000 + x, p.idx << 20 | x);
         Mach.Image im = m.boot("rdport");
         boolean ok = m.run(m::allStopped, 20000);
-        T.check(ok && m.allEbreak(), "every tile ran rdport: " + m.haltSummary());
+        T.check(ok && m.allExited(), "every tile ran rdport: " + m.haltSummary());
         for (Tile p : m.c.tiles) {
             String tl = "tile " + p.idx + ": ";
             int bad = 0;
             for (int i = 0; i < 40; i++) if (m.word(p.idx, im, "res", i) != (p.idx << 20 | (i * 37 & 0xFFF))) bad++;
-            if (p.idx != 7) T.eq(0, bad, tl + "40 results in issue order at MEM_RD_DEST_ADDR + i");
+            if (p.idx != 7) T.eq(0, bad, tl + "40 results at the destination + 4 i bytes");
             T.eq(64, m.word(p.idx, im, "r", 0), tl + "64 free entries at the start");
             T.check(m.word(p.idx, im, "r", 1) < 64, tl + "fewer free while reads are outstanding (" + m.word(p.idx, im, "r", 1) + ")");
             T.eq(64, m.word(p.idx, im, "r", 2), tl + "64 free after the local wake: every entry freed as its return was injected");
-            T.eq(0, m.word(p.idx, im, "r", 3), tl + "CM_REMAINING counted down to 0");
+            T.eq(0, m.word(p.idx, im, "r", 3), tl + "WRITE_COUNTER_2 counted down to 0");
+            T.eq(im.sym("wide") + 128 | Registers.HDR_SIZE.place(LinkWord.SIZE_128) | Registers.HDR_CTR.place(2), m.word(p.idx, im, "r", 6),
+                    tl + "SRAM_RD_DEST_ADDR reads the next destination, advanced by the size in bytes, with the size and counter");
             boolean w64 = true, w128 = true;
             for (int i = 0; i < 16; i++) if (m.word(p.idx, im, "wide", i) != (p.idx << 20 | 0x100 + i)) w64 = false;
-            for (int i = 0; i < 16; i++) if (m.word(p.idx, im, "wide", 16 + i) != (p.idx << 20 | 0x200 + i)) w128 = false;
-            T.check(w64, tl + "8 64-bit reads: two words each, at the destination + 2 i");
-            T.check(w128, tl + "4 128-bit reads: four words each, at the destination + 4 i");
+            for (int i = p.idx == 6 ? 4 : 0; i < 16; i++) if (m.word(p.idx, im, "wide", 16 + i) != (p.idx << 20 | 0x200 + i)) w128 = false;   // tile 6 reuses wide[16..19]
+            T.check(w64, tl + "8 64-bit reads: two words each, at the destination + 8 i bytes");
+            T.check(w128, tl + "4 128-bit reads: four words each, at the destination + 16 i bytes");
         }
-        // PHASE 2: rewrite against v1.2 (4.3, D32): a misaligned read is not performed, its result sent with payload 0, ERRORS [1]
+        // v1.2 (4.3, D32): a misaligned read is not performed, its result lands with payload 0, ERRORS [1]
         T.eq(1 << Conditions.BAD_MODE_OR_SIZE, m.word(6, im, "r", 4), "tile 6: a misaligned 128-bit read set ERRORS [1], and only it");
         T.eq(1L, m.c.tiles[6].srq.misalignedReads, "tile 6: one misaligned read not performed");
+        T.eq(0, m.word(6, im, "r", 7), "tile 6: its result landed as 0 (counted)");
         Tile t7 = m.c.tiles[7];
         T.eq(1 << Conditions.READ_PORT, m.word(7, im, "r", 4), "tile 7: the 65th store into a full queue set the read-port-error condition, and only it");
         T.eq(1, t7.readPort.overflows, "tile 7: one read dropped");
@@ -92,7 +95,7 @@ public final class ReadPortGatherTest {
                 && m.c.violationMessages.stream().anyMatch(v -> v.contains("tile 6") && v.contains("not aligned")), "the overflow (invariant 8) and the misaligned read, and nothing else, reported: " + m.c.violationReport());
         int bad = 0; for (int i = 0; i < 64; i++) if (m.word(7, im, "res", i) != (7 << 20 | 0x1000 + i)) bad++;
         T.eq(0, bad, "tile 7: the 64 queued reads all landed");
-        out("read port from C [meas: ReadPortGatherTest read port from C]: 40 32-bit, 8 64-bit and 4 128-bit reads land at the setup register's destination + the size in words per read, counting DMA_CM_REMAINING; the free count reads 64, then less, then 64 after counters done; a misaligned read and a 65th store into a full queue are dropped with the read-port error");
+        out("read port from C [meas: ReadPortGatherTest read port from C]: 40 32-bit, 8 64-bit and 4 128-bit reads land at the setup register's destination + the size in bytes per read, counting on their counter; the free count reads 64, then less, then 64 after counters done; a misaligned read lands 0 with ERRORS [1]; a 65th store into a full queue is dropped with the read-port error");
     }
 
     // ================================================================ the read port under an all-to-all (lowest priority)
@@ -377,7 +380,7 @@ public final class ReadPortGatherTest {
         Mach.Image im = m.boot("gather");
         m.c.cc.command(LinkWord.BROADCAST, 1 << 24 | N).go().command(LinkWord.BROADCAST, 2 << 24).go();
         boolean ok = m.run(m::allStopped, 5_000_000);
-        T.check(ok && m.allEbreak(), "every tile ran gather to its exit: " + m.haltSummary());
+        T.check(ok && m.allExited(), "every tile ran gather to its exit: " + m.haltSummary());
         long bad = 0;
         for (Tile p : m.c.tiles) for (int i = 0; i < N; i++) for (int e = 0; e < k; e++)
             if (p.sram.peek64(OUT + 2 * k * i + 2 * e) != ((long) p.idx << 48 | (long) perm[p.idx][i] << 8 | e)) bad++;

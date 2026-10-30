@@ -37,7 +37,7 @@ public final class CtrlTest {
         Mach m = new Mach(Mach.cfg(shuffle));
         Mach.Image im = m.boot("regs");
         boolean ok = m.run(m::allStopped, 40000);
-        T.check(ok && m.allEbreak(), "every tile ran regs to its ebreak: " + m.haltSummary());
+        T.check(ok && m.allExited(), "every tile ran regs to its ebreak: " + m.haltSummary());
         for (Tile p : m.c.tiles) {
             int i = p.idx;
             int[] r = new int[36]; for (int k = 0; k < 36; k++) r[k] = m.word(i, im, "r", k);
@@ -116,7 +116,7 @@ public final class CtrlTest {
             }
             return m.allStopped();
         }, 100000);
-        T.check(ok && m.allEbreak(), "every tile ran the command loop to its exit: " + m.haltSummary());
+        T.check(ok && m.allExited(), "every tile ran the command loop to its exit: " + m.haltSummary());
         for (Tile p : m.c.tiles) {
             int i = p.idx;
             T.eq(42, p.core.x[10], "tile " + i + ": sum of the two one-command phases");
@@ -155,7 +155,7 @@ public final class CtrlTest {
              .waitCycles(700)
              .command(LinkWord.BROADCAST, 3 << 24).go();                       // lands during D's spin; READY at done
         boolean ok = m.run(m::allStopped, 20000);
-        T.check(ok && m.allEbreak(), "every tile ran wfi to its ebreak: " + m.haltSummary());
+        T.check(ok && m.allExited(), "every tile ran wfi to its ebreak: " + m.haltSummary());
         for (Tile p : m.c.tiles) {
             String tl = "tile " + p.idx + ": ";
             List<long[]> w = p.core.wfiLog;
@@ -202,7 +202,7 @@ public final class CtrlTest {
         // HALT, then RUN with a marker whose slot 2 says "restart": every core restarts at the loader; entering HALT cleared the sticky bits
         m.c.cc.halt().command(LinkWord.BROADCAST, Registers.CMD_JUMP << 24, im.sym("_start"), 0x600D).runWhenReady();
         boolean ok = m.run(() -> m.c.cc.runStores == 3 && m.c.cycle > m.c.cc.lastRunAt + 5 && m.allStopped(), 5000);
-        T.check(ok && m.allEbreak(), "after HALT -> RUN every tile restarted and exited: " + m.haltSummary());
+        T.check(ok && m.allExited(), "after HALT -> RUN every tile restarted and exited: " + m.haltSummary());
         for (Tile p : m.c.tiles) {
             T.eq(0x600D0000 + p.idx, m.word(p.idx, im, "ok", 0), "tile " + p.idx + ": restarted at the loader");
             T.eq(0, m.word(p.idx, im, "st", 0), "tile " + p.idx + ": entering HALT cleared the conditions (MASTER_CONDITIONS reads 0)");
@@ -219,7 +219,7 @@ public final class CtrlTest {
         m.c.cfg.strictReplies = true;                    // invariant 8 strict for this test
         Mach.Image im = m.boot("inv");
         m.run(m::allStopped, 10000);
-        T.check(m.allEbreak(), "every tile ran inv: " + m.haltSummary());
+        T.check(m.allExited(), "every tile ran inv: " + m.haltSummary());
         String[] want = { "invariant 4", "invariant 8", "address generator is running", "invariant 9", "TILE_PULSE [3]" };
         for (Tile p : m.c.tiles) {
             String key = "tile " + p.idx + ": ";
@@ -298,7 +298,7 @@ public final class CtrlTest {
         for (Tile p : m.c.tiles) for (int i = 0; i < N; i++) p.sram.poke(0x1000 + i, ov[i]);
         Mach.Image im = m.boot("blockcopy");
         boolean ok = m.run(m::allStopped, 20000);
-        T.check(ok && m.allEbreak(), "every tile copied, woke and called the overlay: " + m.haltSummary());
+        T.check(ok && m.allExited(), "every tile copied, woke and called the overlay: " + m.haltSummary());
         long cyc = -1; boolean same = true;
         for (Tile p : m.c.tiles) {
             boolean match = true; for (int i = 0; i < N; i++) if (p.core.peekLocal(DST + 4 * i) != ov[i]) match = false;
@@ -343,7 +343,7 @@ public final class CtrlTest {
             Mach.Image im = m.boot("a2a");
             m.c.cc.command(LinkWord.BROADCAST, 1 << 24).go().command(LinkWord.BROADCAST, 2 << 24).go().command(LinkWord.BROADCAST, 3 << 24).go();
             boolean ok = m.run(m::allStopped, 2_000_000);
-            T.check(ok && m.allEbreak(), set[0] + ": every tile ran a2a to its exit: " + m.haltSummary());
+            T.check(ok && m.allExited(), set[0] + ": every tile ran a2a to its exit: " + m.haltSummary());
             T.eq(0, a.verify(m.c), set[0] + ": every record landed where it belongs");
             noViolations(m.c, set[0].toString());
             List<long[]> ph = m.c.cc.phaseLog;          // GO 0 configure, 1 start, 2 exit
@@ -363,7 +363,7 @@ public final class CtrlTest {
         for (Tile p : m.c.tiles) T.check(!p.ctl.running(0) && p.ctl.done, "tile " + p.idx + " halted at reset with done forced to 1");
         Mach.Image im = m.boot("hello");
         boolean ok = m.run(m::allStopped, 20000);
-        T.check(ok && m.allEbreak(), "every tile ran hello to its ebreak: " + m.haltSummary());
+        T.check(ok && m.allExited(), "every tile ran hello to its ebreak: " + m.haltSummary());
         for (Tile p : m.c.tiles) {
             int i = p.idx;
             T.eq(i, m.word(i, im, "result", 0), "tile " + i + ": tile index from TILE_STATUS");

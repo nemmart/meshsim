@@ -47,7 +47,7 @@ public final class SplitRun {
         for (int j = 0; j < 66; j++) m.c.cc.command(LinkWord.BROADCAST, 2 << 24).go();
         m.c.cc.command(LinkWord.BROADCAST, 3 << 24).go();
         boolean ok = m.run(m::allStopped, 50_000_000);
-        T.check(ok && m.allEbreak(), name + ": every tile finished: " + m.haltSummary());
+        T.check(ok && m.allExited(), name + ": every tile finished: " + m.haltSummary());
         int bad = 0;
         for (Tile p : m.c.tiles) for (int q = 1; q < 64; q++) if (m.word(p.idx, im, "c", q) != exp[q][p.idx]) bad++;
         T.eq(0, bad, name + ": every tile's c[1..63] exact");

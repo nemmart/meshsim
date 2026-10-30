@@ -67,7 +67,7 @@ public final class AgTest {
         p.setPtr(3, 0x60000); p.dir.remaining[1] = 50; c.newPhase();
         p.setMasterConfig(Fields.masterConfig(Fields.RUN_STREAMS, 11, 1, 0, 0, 1));
         long ts = c.cycle + 1;
-        p.core.store(ts, Registers.TILE_PULSE.addr(), Registers.P_START.place(1), -1); c.step();
+        p.core.store(ts, Registers.PULSE_DMA.addr(), 1, -1); c.step();
         T.check(!p.ag.running && p.ag.runningForStatus(), "at the end of the start store's cycle the run has not begun, but TILE_STATUS's rd_running (computed then, read at + 1) is 1");
         T.check(!p.ag.doneForStatus(), "... and rd_done is 0");
         c.runUntil(() -> p.ag.done && p.dir.remaining[1] == 0 && p.memIdle(c.cycle), 5000);

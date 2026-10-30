@@ -55,7 +55,7 @@ public final class SearchBench {
                 k++;
             }
             m.c.cc.command(LinkWord.BROADCAST, 2 << 24).go();
-            T.check(m.run(m::allStopped, 100000) && m.allEbreak(), "N = " + N + ": every tile exited: " + m.haltSummary());
+            T.check(m.run(m::allStopped, 100000) && m.allExited(), "N = " + N + ": every tile exited: " + m.haltSummary());
             T.eq(0, bad, "N = " + N + ": every run's lower bounds exact on every tile (checksums)");
             T.check(m.c.violations == 0, "N = " + N + ": no violations " + m.c.violationReport());
             long ovf = 0; for (Tile p : m.c.tiles) ovf += p.readPort.overflows;

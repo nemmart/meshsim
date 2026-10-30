@@ -43,14 +43,14 @@ final class Mach {
     static int[] loader() { try { return words(SW.resolve("loader.bin")); } catch (IOException e) { throw new RuntimeException(e); } }
 
     // ---------------------------------------------------------------- boot (6.2)
-    /** C&C's boot: with every tile halted, broadcast the loader and the image by mode 5, the marker (CMD_JUMP to the
-     *  image's entry), wait for all 64 READY, raise RUN. */
+    /** C&C's boot (PHASE-2 INTERIM, until phase 4's boot ROM): with every tile halted, broadcast the loader and the image
+     *  by uncounted mode-0 writes, the marker (CMD_JUMP to the image's entry), wait for all 64 READY, raise RUN. */
     Image boot(String name) {
         Image im = new Image(name);
         bootStart = c.cycle;
         c.cc.loadWords(LinkWord.BROADCAST, Registers.LOADER_BASE, loader())
-            .loadWords(LinkWord.BROADCAST, Registers.IMEM_BASE, im.code)
-            .loadWords(LinkWord.BROADCAST, Registers.DMEM_BASE, im.data)
+            .loadWords(LinkWord.BROADCAST, Registers.PMEM_BASE, im.code)
+            .loadWords(LinkWord.BROADCAST, im.sym("_data_start"), im.data)
             .command(LinkWord.BROADCAST, Registers.CMD_JUMP << 24, im.sym("_start"))
             .runWhenReady()
             .call(() -> runAt = c.cc.lastRunAt);
@@ -60,13 +60,15 @@ final class Mach {
     // ---------------------------------------------------------------- running
     boolean run(BooleanSupplier cond, long max) { return c.runUntil(cond, max); }
     boolean allStopped() { for (Tile p : c.tiles) if (p.core.halt == Controller.RUN) return false; return true; }
-    boolean allEbreak() { for (Tile p : c.tiles) if (p.core.halt != Controller.HALT_EBREAK) return false; return true; }
+    /** Every tile's program has ended through SIM_EXIT (8.15). */
+    boolean allExited() { for (Tile p : c.tiles) if (p.core.halt != Controller.HALT_EXIT) return false; return true; }
+    int exitValue(int tile) { return c.tiles[tile].ctl.simExitValue; }
     boolean allInWfi() { for (Tile p : c.tiles) if (!p.core.inWfi) return false; return true; }
     int word(int tile, int byteAddr) { return c.tiles[tile].core.peekLocal(byteAddr); }
     int word(int tile, Image im, String sym, int i) { return word(tile, im.sym(sym) + 4 * i); }
     String haltSummary() {
         StringBuilder sb = new StringBuilder();
-        for (Tile p : c.tiles) if (p.core.halt != Controller.HALT_EBREAK) { sb.append(p.core.haltReport()).append(" pc=0x").append(Integer.toHexString(p.core.pc)).append(p.core.inWfi ? " (WFI)" : "").append("; "); if (sb.length() > 400) break; }
+        for (Tile p : c.tiles) if (p.core.halt != Controller.HALT_EXIT) { sb.append(p.core.haltReport()).append(" pc=0x").append(Integer.toHexString(p.core.pc)).append(p.core.inWfi ? " (WFI)" : "").append("; "); if (sb.length() > 400) break; }
         return sb.toString();
     }
 }

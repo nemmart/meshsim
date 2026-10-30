@@ -25,7 +25,7 @@ public final class AccountingTest {
         }
         m.boot("a2a");
         m.c.cc.command(LinkWord.BROADCAST, 1 << 24).go().command(LinkWord.BROADCAST, 2 << 24).go().command(LinkWord.BROADCAST, 3 << 24).go();
-        T.check(m.run(m::allStopped, 3_000_000) && m.allEbreak(), "the run finished: " + m.haltSummary());
+        T.check(m.run(m::allStopped, 3_000_000) && m.allExited(), "the run finished: " + m.haltSummary());
         m.c.phases.close();
         T.eq(0, a.verify(m.c), "every record landed");
         List<PhaseLog.Phase> ph = m.c.phases.phases;

@@ -42,7 +42,7 @@ public final class RecipeTest {
     static void finish(Mach m, String what, long max) {
         m.c.cc.command(LinkWord.BROADCAST, 0).go();
         boolean ok = m.run(m::allStopped, max);
-        T.check(ok && m.allEbreak(), what + ": every tile ran to its exit: " + m.haltSummary());
+        T.check(ok && m.allExited(), what + ": every tile ran to its exit: " + m.haltSummary());
     }
     /** Cycles from command k's GO (0 = the first command after boot) to all 64 READY after it. */
     static long goToReady(Mach m, int k) { List<long[]> ph = m.c.cc.phaseLog; return ph.get(k + 1)[0] - ph.get(k)[1]; }
@@ -128,7 +128,7 @@ public final class RecipeTest {
         m.c.cc.go().command(LinkWord.BROADCAST, 1 << 24 | a31.length, a31).go();
         m.c.cc.command(LinkWord.BROADCAST, 2 << 24).go();
         boolean ok = m.run(m::allStopped, 20000);
-        T.check(ok && m.allEbreak(), "every tile ran the command loop to CMD_EXIT: " + m.haltSummary());
+        T.check(ok && m.allExited(), "every tile ran the command loop to CMD_EXIT: " + m.haltSummary());
         for (Tile p : m.c.tiles) {
             int me = p.idx;
             T.eq(60 + me, m.word(me, im, "res", 0), "tile " + me + ": broadcast, even block, 3 arguments");

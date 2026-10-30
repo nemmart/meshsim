@@ -23,4 +23,7 @@ milestone it is copied to a new frozen folder and tagged.
 
 ## Working here
 
-Each session works on a short-lived branch and merges into `main`. Only `wip/` changes.
+Only `wip/` changes. A session that changes code works on a branch and leaves merging to the owner and the
+integrator. A session that owns its own files (a review, the spec, the recipes) may commit straight to `main`,
+running `git pull --rebase` before every push. Work-in-progress session folders (`WORKERn/`) sit at the top
+level while a session is running and are cleaned up when it closes.

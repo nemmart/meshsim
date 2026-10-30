@@ -1045,129 +1045,130 @@ There are two selectors: the **bucket digit** (mode 2, `DMA_CONFIG` [20:18]) and
 - **The memory system's traffic** enters at tile 1: it is C&C 2's peripheral (2, 6.7), so its deliveries come in through tile 1's "from the controller" route block, and writes into its tag windows leave through tile 1's "to the controller" output. Several tiles writing into open windows at once fan in there with no flow control; the file system keeps one writer in flight or paces its writers (6.7).
 - **Pacing is policy.** Every packet a controller sends during an all-to-all adds load to its tile's links that the schedule's queue bounds don't count (one broadcast per 64 cycles raised tile 0's link queues to 12 of 16 [meas: meshsim]). So the controllers send commands and bulk data between passes, or pace them.
 
-### 4.17 The peripheral slot
+### 4.17 Peripherals
 
-*No figures yet; the figure set gains a peripheral-slot part (handoff in `CHANGES-v1.1.md`).*
+*No figures yet; the figure set gains a peripherals part.*
 
-Every tile has **one peripheral slot**: a place for one unit that works beside the controller on a job of its own. The replayer (4.19) is today's only peripheral; the tracer, Ingress/Egress and the Updater/Binder/RW engine are expected later. **Every peripheral connects to its tile's controller through the same small interface** (owner, 2026-10-26), so the replayer is no longer a special case and the tile's control logic is one design whatever its slot holds:
+A **peripheral** is a unit that works beside its controller on a job of its own: the replayer (4.19) on every mesh tile; Ingress/Egress and the UART, the Updater/Binder/RW engine and the Tracer as C&C 1's, C&C 2's and C&C 3's (section 2, 6.6). **A unit has up to three** (owner, 2026-10-28), and **every peripheral connects to its controller the same way** (owner, 2026-10-28), so the control logic is one design whatever a unit holds:
 
 | part | where | role | section |
 |---|---|---|---|
-| type | `TILE_STATUS` [15:12] | which peripheral the slot holds; 0 none | 4.17.1 |
-| run | `TILE_PULSE` [2], `PERIPH_RUN` | starts the peripheral's work | 4.17.2 |
-| running | `TILE_STATUS` [3], `periph_running` | the peripheral's ownership state | 4.17.2 |
-| service lines | `WAKE_EVENTS` [18:13], `PERIPH_SERVICE_1`–`6` | the peripheral's calls for service | 4.17.3 |
-| status registers | `PERIPH_STATUS_0`–`7` (0x870–0x88C) | read-only state | 4.17.4 |
-| peripheral write | mode 9, counted in `DMA_PERIPH_REMAINING` (0x83C) | data into the peripheral's own address space | 4.17.5 |
-| conditions | `TILE_CONDITIONS` [13:11] | [11] bad peripheral write; [12] and [13] the peripheral's | 4.17.6 |
-| output | the sender: `SENDER_SEND`, `SENDER_ADDR` (0x868, 0x86C), `sender_busy` (`TILE_STATUS` [4]), sender idle (`WAKE_EVENTS` [20]) | bulk output, for a peripheral that has it | 4.17.9 |
+| presence and type | the controller's `PARAMS` [2:0]; the peripheral's `PARAMS` [7:0] | which peripherals the unit has, and what each is | 4.17.1 |
+| region | 0x04, 0x05, 0x06 | where packets reach the peripheral | 4.17.5 |
+| register window | 0xFFFFFA00, 0xFFFFFC00, 0xFFFFFE00, 0x200 bytes each | the controller's loads and stores | 4.17.4 |
+| run | `PULSE_RUN`, `STATUS` [0] | starts the peripheral's work; its ownership state | 4.17.2 |
+| events | the peripheral's `EVENTS`, `EVENTS_PEEK`, `EVENTS_MASK`; one live bit in the controller's `EVENTS` [10]–[12] | the peripheral's calls for service, counted or live | 4.17.3 |
+| errors | the peripheral's `ERRORS`; one live bit in the controller's `ERRORS` [11]–[13] | its errors, which raise the hard interrupt | 4.17.6 |
+| output (optional) | `PULSE_DMA`, `DMA_HDR`, `DMA_ADDR`, `STATUS` [1] | the peripheral's DMA, on a router port of its own | 4.17.9 |
 
-**What each peripheral's section defines:** what its run does and when it ends; what each service line means, its kind and the unit a claim takes; which status registers it uses and what they hold; its mode-9 address map, the sizes each region takes and its ownership rules; conditions 12 and 13; and its output queues, if it has any. The replayer's section (4.19) is the first; it keeps v1.1's behaviour bit for bit under the new names.
+**What each peripheral's section defines:** its type and version; what its run does and when it ends; its peripheral-defined `STATUS`, `ERRORS` and `EVENTS` bits, each event's kind and depth; its words from 32 up; its region's map, the sizes each part takes and its ownership rules; and its DMA, if it has one. The replayer's section (4.19) is the first; C&C 1's peripheral is in 6.6 and 8.14.
 
-#### 4.17.1 The slot and its type
+#### 4.17.1 The peripherals and their types
 
-- **One slot, one peripheral.** A tile's slot holds at most one peripheral, fixed when the chip is built.
-- **The type** is `TILE_STATUS` [15:12] (8.2), a constant of the tile: **0 none, 1 the replayer** (4.19), 2–15 reserved for future peripherals. Every mesh tile (0–63) holds a replayer, type 1 (confirmed, owner, 2026-10-27).
-- **A tile with no peripheral** reads type 0 and never raises a line (4.17.7).
+- **Up to three per unit,** fixed when the chip is built: peripheral *n* (1–3) has region 0x03 + *n* (2.2) and the register window at 0xFFFFF800 + 0x200·*n* (8.1).
+- **Presence** is the controller's `PARAMS` [2:0], bit *n* − 1 for peripheral *n* (8.2). **The type** is the peripheral's own `PARAMS` [7:0], and its version [15:8] (4.17.4): **1 the replayer** (4.19); the engines' types are assigned with their designs *(Open, item 82)*. Every mesh tile (0–63) holds a replayer as peripheral 1 (owner, 2026-10-27); C&C 1–3 each hold their engine as peripheral 1 (6.6).
+- **An absent peripheral** has neither region nor window: **any word of its window is a bus error** (4.11), so a handler checks `PARAMS` [2:0] first (4.13), and **a packet to its region is a bad packet** (3.1). Its bits in the controller's `EVENTS` and `ERRORS` read 0.
 
-#### 4.17.2 Run and `periph_running`
+#### 4.17.2 Run: `PULSE_RUN` and `STATUS` [0]
 
-- **`TILE_PULSE` [2], `PERIPH_RUN`** (8.6), starts the peripheral's work, as its section defines: for the replayer, one pass (4.19.11). **Run only, no resume,** as for every engine: a run while `periph_running` is 1 is ignored with no condition, and meshsim flags it (4.13's principle). In one store, start and run act before `done`.
-- **`periph_running`** (`TILE_STATUS` [3]) is the peripheral's **ownership state**: 1 from the end of the run store's cycle until the peripheral's work ends or a halt stops it. While it is 1 the peripheral owns whatever its section says (the replayer: its single-ported memories, 4.19.10), and mode-9 writes the ownership forbids are bad peripheral writes (4.17.6). It reads 0 while the peripheral is idle, so a program that never runs it sees v1.0's behaviour.
-- **The end of the work** is reported on a service line if the peripheral defines one (the replayer: line 5, done).
+- **`PULSE_RUN`** (window word 3) starts the peripheral's work, as its section defines: for the replayer, one pass (4.19.11). A store of 1 fires it; a store of 0 does nothing; a load reads 0. **Run only, no resume,** as for every engine: **a run while one is in progress is ignored** (meshsim flags it) (4.13's principle).
+- **`STATUS` [0], run in progress,** is the peripheral's **ownership state**: 1 from the end of the run store's cycle until the work ends. While it is 1 the peripheral owns whatever its section says (the replayer: its single-ported memories, 4.19.10), and writes the ownership forbids are the peripheral's errors (4.17.6). It reads 0 while the peripheral is idle.
+- **The end of the work** posts **run done**, `EVENTS` [0] (depth 1, 4.17.3).
 
-#### 4.17.3 The service lines
+#### 4.17.3 Events: counted and live
 
-**Six lines** (owner, 2026-10-26; five until part D). `PERIPH_SERVICE_1`–`6` are six standard `WAKE_EVENTS` bits, **[13]–[18]** (4.12, 8.10). What each line means, and its kind, the peripheral's section defines. The controller chooses what to sleep on with `WAKE_MASK` and `WAKE_REQUIRED`, as for any event.
+A peripheral's events are in its window: **`EVENTS`** (word 5), **`EVENTS_PEEK`** (word 6) and **`EVENTS_MASK`** (word 7) (owner, 2026-10-28). They replace v1.1's six service lines.
 
-**Consuming a line claims one unit of service** (owner, 2026-10-26). A load of `WAKE_EVENTS` that returns a line under `WAKE_MASK` consumes it, as for every event (4.12); for a service line that load is **the controller's commitment to handle one unit of service**, and the peripheral responds by giving that unit up. A line is one of three kinds, by the peripheral's definition:
+- **Every `EVENTS` bit is backed by a small counter** (owner, 2026-10-28), and the bit reads 1 while the count is above 0. **The peripheral adds 1** when the event happens; **a consuming load of `EVENTS` subtracts 1** from each bit that is set and masked (rather than clearing it). Each peripheral's section gives every bit's **depth**: **1 for an ordinary event** (v1.1's sticky behaviour: adding to a full count of 1 leaves it at 1), **2 for a double-buffered queue's credits** (4.19.8). A bit may instead be **live**: it follows its source and is never consumed, like the UART's "RX not empty" (4.20). (meshsim flags a peripheral returning a credit to a full counter.)
+- **The standard bits:** [0] **run done** and [1] **DMA done**, each depth 1. The rest are peripheral-defined.
+- **`EVENTS_MASK`** (R/W) chooses which events count toward the controller's bit and which a load consumes. **It is 0 at reset:** a peripheral wakes nobody until the program asks.
+- **A load of `EVENTS`** returns every bit and consumes one count from each bit set in `EVENTS_MASK`, at 4.11's sampling rule. **Rule for software:** a load consumes one count from every masked bit that is set, so the program acts on every bit the load returns, or masks only what it is about to service. **`EVENTS_PEEK`** returns the same value and consumes nothing. There are no clear pulses, and there is no `EVENTS_REQUIRED` in a window: a program that needs "peripheral 1 and write counter 2" sets both in the controller's (4.12).
+- **The controller's bit** for peripheral *n*, `EVENTS` [9 + *n*], is **live**: high while the peripheral's `EVENTS & EVENTS_MASK` is non-zero (4.12). **An event is consumed in one place only,** by a load of the peripheral's `EVENTS`; a load of the controller's `EVENTS` never touches it. The controller's bit may lag a consuming load by a cycle or so, so a following `WFI` may wake spuriously, and **software always re-checks after a wake** (owner, 2026-10-28; 4.12).
+- **Reads have no other side effects:** every window word reads the peripheral's state at its sample point (4.11) and changes nothing, except `EVENTS` and the pops a peripheral defines for its own words (the UART's RX, 4.20).
+- **Items** (v1.1's item-FIFO line kind, which presented one item per claim in a status register) are not part of the standard window. *(Deferred, item 119: a peripheral event kind for a queue of items, for returning the RW engine's closed tags and for the host interface.)* The replayer presents its one item, the instruction awaiting an expansion, in a word of its own (4.19.9).
 
-| kind | while it is up | a claim |
-|---|---|---|
-| **event** (sticky) | the peripheral has posted it | clears it in the peripheral (the replayer's new expansion and done) |
-| **queue condition** (live) | a condition on the peripheral's state holds | gives one unit, for example half a queue credited, which may end the condition (the replayer's low-water lines, 4.19.8) |
-| **item FIFO** (live) | the peripheral holds items for the controller | pops one item into the line's status register (below); the line stays up while more remain |
+#### 4.17.4 The standard window
 
-- **A load with the line's mask bit clear claims nothing,** and neither does a load of `WAKE_PEEK`, which is how software looks at the lines without claiming anything (4.12, 8.10). A line the peripheral raises in the same cycle as a load survives to the next load, as every event does.
-- **One presented line** (owner, 2026-10-26). At most one of a peripheral's lines **presents an item**, and it presents it in **one designated status register** (4.17.4), so a single load of `WAKE_EVENTS` can never leave a status register describing two claims. A presented item is in its register from the claim at the latest until the next claim of that line; a peripheral may show it earlier (the replayer sets it with the event, 4.19.9).
-- **Lines are 0 while the peripheral is held in reset** (4.17.7), and its sticky events are cleared there.
+Every peripheral's 0x200-byte window (owner, 2026-10-28) starts with the same words, in the same order as the controller's block (8.1): parameters, status, errors, pulses, events, DMA, then the rest. Word *n* is at the window's base + 4*n*.
 
-#### 4.17.4 The status registers
-
-`PERIPH_STATUS_0`–`PERIPH_STATUS_7` (0x870–0x88C, 8.11) are eight **read-only** registers whose meanings each peripheral defines.
-- **Reads never have side effects:** a load returns the peripheral's state at its sample point (4.11) and changes nothing. Claims are made only through `WAKE_EVENTS` (4.17.3).
-- A register the peripheral doesn't define reads 0; on a tile with no peripheral all eight read 0. A store is a bus error.
-- **The replayer** uses two: `PERIPH_STATUS_0`, rows run [15:0] and next offset [31:16] (v1.1's `REPLAYER_STATUS`), and `PERIPH_STATUS_1`, the instruction awaiting a controller-fed expansion, the designated register of its presented line, new expansion (v1.1's `REPLAYER_OPCODE`) (4.19.9).
-
-#### 4.17.5 Mode 9, the peripheral write
-
-**Mode 9 writes data into the tile's peripheral's own address space** (3.1, 4.8): addr is a 21-bit word address, and the peripheral's section gives the map, the sizes each region takes, and when each may be written (the replayer's, 4.19.10). The traffic director only hands the packet over; the peripheral's write port judges it.
-
-**From any source** (owner, 2026-10-26): the tile itself (its streams and its send port), another tile, or a non-tile endpoint (the memory system's deliveries for a request's destination kind 2, C&C's boot loads). A mode-9 packet from another tile is no longer an error.
-
-**Landing.** The traffic director hands each mode-9 packet to the peripheral's write port, one per cycle, and the write lands a fixed **`rp_latency`** = 2 cycles later, with no queue on the path *(Proposed, item 48: the value)*. **This fixed latency is a requirement on every peripheral** (4.17.8): it is what lets `DMA_PERIPH_REMAINING` count each write when it lands, so a count of 0 proves that every counted mode-9 write has landed, a request's data included (6.7).
-
-**Counting** (owner, 2026-10-26). **`DMA_PERIPH_REMAINING`** (0x83C, 8.11) counts **every mode-9 packet, from any source** (the tile itself, other tiles, C&C, the memory system), **when it lands, or when it is dropped** (a bad peripheral write, 4.17.6, or a drop the peripheral defines, such as the replayer's queue overrun). A count of 0 therefore means every counted write has landed or been refused, and no idle bit is needed. This follows the counting policy (4.12, owner, 2026-10-26, replacing this section's earlier "tile sources only"): nothing is counted while the tile is halted, so C&C's boot loads are uncounted, and any other mode-9 data reaches a running tile only when it has armed the counter. An arrival for the counter at 0 sets unexpected arrival (4.12). A program that expects mode-9 packets from other sources, as well as its own, counts them all.
-
-**One source at a time per order-placed port** (owner, 2026-10-26; invariant 18). Where a peripheral places a port's writes in arrival order (the replayer's queue ports), only one source feeds that port at once: one of the tile's own clients (4.5), or one other tile, or one non-tile endpoint. Packets from two sources would interleave unpredictably.
-
-#### 4.17.6 The conditions
-
-The slot owns three `TILE_CONDITIONS` bits (4.13, 8.3), raise and run, as in v1.0:
-
-| bit | condition | set when | kind |
+| word | register | access | purpose |
 |---|---|---|---|
-| 11 | **bad peripheral write** (generic, owner, 2026-10-26) | a mode-9 packet was dropped by the peripheral's write port: an address its map doesn't have, a size its region doesn't take, or a write its ownership state forbids, as its section lists; and every mode-9 packet on a tile with no peripheral (4.17.7) | P |
-| 12 | peripheral condition 2 | defined by the peripheral (the replayer: queue overrun, 4.19.8) | per peripheral |
-| 13 | peripheral condition 3 | defined by the peripheral (the replayer: invalid expansion, 4.19.11) | per peripheral |
+| 0 | `PARAMS` | R | constant: [7:0] type, [15:8] version, the rest peripheral-defined (sizes); 0 if it has nothing to say |
+| 1 | `STATUS` | R | live bits: [0] run in progress, [1] DMA in progress; the rest peripheral-defined |
+| 2 | `ERRORS` | R | the peripheral's errors, sticky until the reset (4.17.6) |
+| 3 | `PULSE_RUN` | W | store 1 to start a run (4.17.2) |
+| 4 | `PULSE_DMA` | W | store 1 to start the peripheral's DMA as set up in words 8–9 (4.17.9) |
+| 5 | `EVENTS` | R | counted and live events; a load consumes one count from each set bit in `EVENTS_MASK` (4.17.3) |
+| 6 | `EVENTS_PEEK` | R | what a load of `EVENTS` would return, consuming nothing |
+| 7 | `EVENTS_MASK` | R/W | the events that count toward the controller's bit and that a load consumes; 0 at reset |
+| 8 | `DMA_HDR` | R/W | count [11:0] (32-bit words, up to 4,095), output queue [13:12], spare [16:14], size [18:17] reserved (the DMA picks sizes), counter [21:19], mode [24:22], dst [31:25] (4.17.9) |
+| 9 | `DMA_ADDR` | R/W | the DMA's 32-bit destination address, advancing by each packet's size as packets go out |
+| 10–31 | | | reserved for future standard words |
+| 32–127 | | | peripheral-defined |
 
-A peripheral's conditions follow 4.13's principle: each is a program error or a hardware-fault detector, never information. A peripheral that defines no condition 12 or 13 never sets it.
+- **Access rules** (owner, 2026-10-28): **reserved or undefined words**, in a window or the controller's block, **read 0 and ignore stores** (meshsim flags the access); a store to a defined read-only word is a bus error, as in the controller's block (4.11); **any word of an absent peripheral's window is a bus error** (4.17.1). Every word is 32 bits, accessed one word at a time, at the register-load latency fixed for it (4.11).
+- **A peripheral without a DMA** leaves words 4, 8 and 9 unused (reserved) and `STATUS` [1] at 0.
+- **The C header** (owner and integrator, 2026-10-28/29; W3-27; to be confirmed with the generator): each window is declared as a C struct overlaid on its address, a `PeripheralStd` macro listing the ten standard members at the top of each peripheral's struct, and a type per peripheral ending in `Regs` (`ReplayerRegs`). Access is through pointers (`#define peripheral1 ((volatile ReplayerRegs *)0xFFFFFA00)`, used as `peripheral1->EVENTS`), so a whole-block copy, which would consume events, needs an explicit dereference. Every member is `volatile uint32_t`. The register-table generator emits the structs (8.1).
 
-#### 4.17.7 HALT, a halted controller and the empty slot
+#### 4.17.5 Writes into a peripheral's region
 
-- **HALT holds the peripheral and the sender in reset** (6.1), and **a halted controller stops them at once** (a bus error, an illegal instruction, `ecall`, `ebreak`): `periph_running` and `sender_busy` drop, the peripheral's service lines and events clear, its own state resets as its section says, and a send in progress is abandoned with no sender-idle event. Memories keep their contents, and in HALT take mode-9 writes as the peripheral's section allows (the replayer: boot loads, 4.19.10). The peripheral stays idle until the next run.
-- **A tile with no peripheral (type 0):** `PERIPH_RUN` is ignored (meshsim flags it); `periph_running` is 0; the service lines and `PERIPH_STATUS_0`–`7` read 0; **every mode-9 packet is a bad peripheral write** (condition 11), dropped and counted in `DMA_PERIPH_REMAINING` at once (in RUN); conditions 12 and 13 never set; and the sender has no output (4.17.9).
+v1.1's mode 9 is gone: **a packet reaches a peripheral as a mode-0 write to its region** (3.1, 4.8), 0x04, 0x05 or 0x06, at a **byte offset**, naturally aligned (2.2). The peripheral's section gives the map, the sizes each part takes and when each may be written (the replayer's, 4.19.10). The traffic director only hands the packet over; the peripheral's write port judges it.
+
+**From any source** (owner, 2026-10-26): the tile itself (its streams and its send port), another tile, or a non-tile endpoint (the memory system's deliveries, 6.7; C&C 1's boot loads, 6.2).
+
+**Landing.** The traffic director hands each packet to the peripheral's write port, one per cycle, and the write lands a fixed **`rp_latency`** = 2 cycles later, with no queue on the path *(Proposed, item 48: the value)*. **Every peripheral, up to three per unit, lands its writes within K of acceptance** (owner, 2026-10-28; 4.8): it is what lets a counter's done prove that every counted write into the region has landed, a request's data included (6.7).
+
+**Counting.** A write into a peripheral is counted by its counter field like any other write (3.1), K cycles after the director accepts it (4.12). **A write the peripheral drops** (one its map, sizes or ownership state refuses, or a drop it defines, such as the replayer's queue overrun) **is still counted**, its decrement having been scheduled at the director, and sets the peripheral's own error (4.17.6). So a counter's done means every counted write has landed or been refused, and an error says which. v1.1's `DMA_PERIPH_REMAINING` is gone: a program uses any write counter for its peripheral's refills.
+
+**One source at a time per order-placed port** (owner, 2026-10-26; invariant 18). Where a peripheral places a port's writes in arrival order (the replayer's queue ports), only one source feeds that port at once: one of the tile's own clients (4.5), or one other tile, or one non-tile endpoint. Packets from two sources would interleave unpredictably (meshsim).
+
+#### 4.17.6 Errors
+
+- **A peripheral's errors are in its own `ERRORS`** (window word 2; owner, 2026-10-28), **sticky until the reset** like the controller's (one exception: the unit-error bit of C&C 1's peripheral, live, 6.6). Every bit is peripheral-defined; v1.1's generic "bad peripheral write" is now an error bit of each peripheral that can refuse a write (the replayer's, 4.19.10).
+- **Errors interrupt; events wake** (owner, 2026-10-28). **The controller's `ERRORS` has one bit per peripheral,** [11]–[13], **live**: 1 while that peripheral's `ERRORS` is non-zero (4.13). So a peripheral's error raises its controller's hard interrupt and its error line, and the handler reports the window's standard words (4.13).
+- **A peripheral's errors follow 4.13's principle:** each is a program error (P) or a hardware-fault detector (H), never information. Its section gives each bit's kind.
+
+#### 4.17.7 (removed)
+
+*Removed in v1.2: v1.1's "HALT, a halted controller and the empty slot". See `CHANGES-v1.2.md`.*
 
 #### 4.17.8 What every peripheral must do
 
-So that the slot's interface means the same on every tile, a peripheral:
-- **lands mode 9 a fixed `rp_latency` after the director,** with no queue on the path (4.17.5);
-- **reads idle when idle:** `periph_running` 0, its live lines down, and no condition raised by a program that never runs it;
-- **is held in reset by HALT and stopped by a halted controller** (4.17.7);
-- **presents at most one line's items,** in one designated status register (4.17.3), and its status registers have no read side effects (4.17.4);
-- **sends nothing unsolicited:** a peripheral with output produces it only when its controller has started the transfer (4.17.9);
-- **keeps conditions to errors** (4.17.6).
+So that the interface means the same everywhere, a peripheral:
+- **lands its writes within `rp_latency`**, at most K, after the director, with no queue on the path (4.17.5);
+- **implements the standard words** of its window (4.17.4), with the standard bits and access rules;
+- **reads idle when idle:** `STATUS` [0] and [1] at 0, no event counted and no error raised by a program that never runs it;
+- **resets with its unit** at the reset (6.1), and is stopped by nothing else: a trap of its controller leaves it running, unserviced, until the reset (4.13);
+- **counts its events** with the depths its section states, or makes them live (4.17.3), and has no other read side effects except where its section defines a pop;
+- **sends nothing unsolicited:** a peripheral with a DMA sends only when its controller has started the transfer (4.17.9);
+- **keeps errors to errors** (4.17.6).
 
-#### 4.17.9 Peripheral output and the sender
+#### 4.17.9 Peripheral output: the DMA
 
-**Mesh tiles' peripherals have no output.** The replayer's rows stay inside the tile, for their consumer (4.19.12), and it never injects a packet. Peripherals that send bulk data belong to non-mesh tiles, which connect through an extra router port, as C&C does at tile 0 (4.16) (owner, 2026-10-26); that connection and the peripheral's endpoint id are specified with the endpoint map *(Open, item 82)*. This section specifies the tile's side up to **the sender's output port**.
+**A peripheral may have a DMA**, its output engine (owner, 2026-10-28; v1.1's "sender"). The replayer has none: its rows stay inside the tile, for their consumer (4.19.12). **Only C&C 1–3's engines send** (6.6).
 
-**The path.** peripheral → its **output queues** (up to 4, numbered 0–3) → the **sender** → the sender's output port. The sender is a separate unit of the tile; it moves one transfer at a time from one output queue, and the peripheral fills its queues only for a transfer its controller has started (no unsolicited traffic).
+**The path.** peripheral → its **output queues** (up to 4, numbered 0–3) → its **DMA** → **a router port of its own** (below). The DMA moves one transfer at a time from one output queue, and the peripheral fills its queues only for a transfer its controller has started (no unsolicited traffic).
 
-**Its registers** (8.12):
+**Its registers** (window words 4, 8 and 9):
+- **`DMA_HDR`** (R/W): count [11:0] in 32-bit words (up to 4,095), output queue [13:12], spare [16:14], size [18:17] reserved, counter [21:19], mode [24:22], dst [31:25] (absolute), in the common header layout (8.1). `DMA_HDR` [24:17] is laid out exactly as `STREAM_COUNT` [24:17]; [31:25] is the absolute dst here and the relative *d* there.
+- **`DMA_ADDR`** (R/W): the destination's 32-bit address (2.2), advancing by each packet's size in bytes as packets go out.
+- **`PULSE_DMA`** (W): a store of 1 starts the transfer set up in `DMA_HDR` and `DMA_ADDR`.
 
-| register | access | bits | function |
-|---|---|---|---|
-| `SENDER_SEND` (0x868) | W | dest [6:0] (7-bit endpoint id), mode [10:7], output queue [12:11], word count [28:13] (32-bit words), spare [31:29] | **a store starts one send** (it is the pulse); reads 0 |
-| `SENDER_ADDR` (0x86C) | W | [20:0] word address; [31:21] spare | the first packet's addr for modes 3, 6 and 9; sticky, advancing per packet; a configuration register (8.1) |
-
-**A send.** A store to `SENDER_SEND` sends *n* words, the word count, from the named output queue to dest, every packet stamped with the mode:
+**A transfer** sends *n* words, the count, from the named output queue to dst, every packet stamped with the header's counter and mode:
 - **Packets:** ⌊*n*/4⌋ 128-bit packets, then the remainder: a 64-bit packet for 2, a 32-bit packet for 1, and **a 64-bit packet then a 32-bit packet for 3** (owner, 2026-10-26). Words go in queue order, the first in a packet's bits [31:0].
-- **addr:** for modes 3, 6 and 9 the packet carries `SENDER_ADDR`, which then advances by the packet's size in words (+4, +2 or +1), so consecutive sends continue where the last stopped; other modes carry addr 0 *(Proposed)*. A mode-3 send that starts at a multiple of 4 keeps every packet aligned (3.1).
-- **Pacing:** the sender takes words as the peripheral makes them available, at most one packet per cycle, and waits while its queue is empty.
-- **The sender checks nothing,** like the send port (4.11): bad modes, a bad dest and misaligned mode-3 packets go out as written, and the receiver or the simulator catches them.
+- **The address:** each packet carries `DMA_ADDR`, which then advances by the packet's size (16, 8 or 4 bytes). A transfer that starts aligned to 16 bytes keeps every packet aligned, the remainder included (4.1); a transfer that continues where another stopped needs the earlier one's count to be a multiple of 4 (the next transfer through the same `DMA_ADDR` after a remainder starts misaligned).
+- **Pacing:** the DMA takes words as the peripheral makes them available, at most one packet per cycle, and waits while its queue is empty.
+- **The DMA checks nothing,** like the send port (4.11): reserved modes, a bad dst and misaligned packets go out as written, and the receiver or the simulator catches them.
 
-**One send at a time.** **`sender_busy`** (`TILE_STATUS` [4]) is 1 from the end of the `SENDER_SEND` store's cycle until the send's last packet has left through the output port. **A store to `SENDER_SEND` while `sender_busy` is 1 is ignored**, with no condition, and meshsim flags it (owner, 2026-10-26): a stalling store could deadlock, since the sender may be waiting for data its own controller hasn't yet let the peripheral produce. When `sender_busy` falls the tile posts **sender idle**, `WAKE_EVENTS` [20] (sticky, 4.12). A count of 0 ends at once: `sender_busy` rises and falls, and [20] is posted.
+**One transfer at a time.** `STATUS` [1], **DMA in progress**, is 1 from the end of the `PULSE_DMA` store's cycle until the transfer's last packet has left. When it falls the peripheral posts **DMA done**, `EVENTS` [1] (depth 1). **`PULSE_DMA` while a transfer is in progress is ignored** (meshsim flags it): a stalling store could deadlock, since the DMA may be waiting for data its own controller hasn't yet let the peripheral produce. **A count of 0** does nothing, and DMA done is still posted. **`DMA_HDR` or `DMA_ADDR` changed mid-transfer** is undefined (meshsim flags it); a load returns the live, advancing values. A transfer naming an output queue the peripheral doesn't have is ignored (meshsim flags it).
 
-**No output attached.** On a tile whose peripheral has no output (every tile 0–63 today, and every type-0 slot) the registers exist but nothing is attached: **a send there is ignored** (`sender_busy` stays 0 and no event is posted) and meshsim flags it, so it cannot hang silently. So is a send naming an output queue the peripheral doesn't have.
-
-**HALT** holds the sender in reset with the peripheral (4.17.7).
+**Its router port** (owner, 2026-10-28). **A peripheral that sends has its own router port:** it is paired with a router link the unit doesn't otherwise use, and its packets enter the router there, like a neighbour's. The unit's injection point keeps its two sources (4.5), and a DMA packet to its own unit reaches the ejector through the router like any arrival and takes no read token, so the loopback stays protected (4.5). Only a unit with a free link can have a sending peripheral; C&C 1–3 have them. *(Deferred, item 118: the port's src, the routing inside the controllers' routers, and its flow control.)*
 
 ### 4.18 Request port
 
 The tile's end of the request bus (3.3). **It has two directions in every tile,** so every tile is one design (owner, 2026-10-26):
 - **the send side:** four write-only registers (8.10) in front of a **2 KB request FIFO**, which drains into the tile's row node;
-- **the receive side:** four read-only registers through which a receiver reads the requests addressed to it. **On tiles 0–63 it is connected to nothing:** its queue is always empty and `REQUEST_PENDING` never rises. On the tiles that receive requests (the controllers, later) it is fed by the root's link for their target (3.3); which tiles those are is specified with the endpoint map *(Open, item 82)*.
+- **the receive side:** four read-only registers through which a receiver reads the requests addressed to it. **On tiles 0–63 it is connected to nothing:** its queue is always empty and request pending never rises. On the units that receive requests, C&C 1–3, it is fed by the root's link for their target (3.3); target 3's receiver is deferred with the file system (item 119).
 
 **Send and receive share offsets:** a store sends, a load receives (8.10).
 
@@ -1178,20 +1179,20 @@ The tile's end of the request bus (3.3). **It has two directions in every tile,*
 - **At the push, `REQUEST_SET_W0`–`W2` all clear to 0** *(Proposed)*, as the send port's do, so a stale word never reaches the next request.
 
 **The request FIFO** *(Proposed: its format)*: 2 KB, **128 entries of 128 bits**, one request each. The port drains the head request into its row node one 16-bit beat per cycle, bits [15:0] first (3.3), as fast as the bus takes them, and frees its entry when its last beat has left.
-- **The stall rule** *(Proposed)*: a `REQUEST_SEND` store stalls only if the FIFO is full and no entry is freed in that cycle. This is the send port's rule (4.11): a stall, not an overflow. The FIFO never overflows, so it has no condition.
-- **`request_busy`** (`TILE_STATUS` [11], 8.2): the FIFO is full. A program that sees it 0 can push one request without stalling. When it falls, the FIFO posts **request FIFO no longer full**, `WAKE_EVENTS` [12] (4.12), so a program can sleep instead of stalling. Heavy use stalls only the tile that sends.
+- **The stall rule** *(Proposed)*: a `REQUEST_SEND` store stalls only if the FIFO is full and no entry is freed in that cycle. This is the send port's rule (4.11): a stall, not an overflow. The FIFO never overflows, so it has no error.
+- **`request_busy`** (`STATUS` [6], 8.2): the FIFO is full. A program that sees it 0 can push one request without stalling. When it falls, the FIFO posts **request FIFO no longer full**, `EVENTS` [8] (4.12), so a program can sleep instead of stalling. Heavy use stalls only the tile that sends.
 - **No acknowledgement for issuing.** A request's effect shows only through its answer (6.7). The depth is for debug messages, which have no answer and come in bursts.
 - **Timing:** a send store at *t* pushes at the end of *t*, and the port sends the request's first beat at *t* + 1 at the earliest; on an idle bus the request is in its target's queue about `reqbus_latency` after the store (3.3).
 
-**Receiving a request** (a tile that is a target's receiver; on tiles 0–63 the queue is always empty):
+**Receiving a request** (a unit that is a target's receiver; on tiles 0–63 the queue is always empty):
 - **`REQUEST_GET_W0`, `REQUEST_GET_W1`, `REQUEST_GET_W2`** (loads) return bits [31:0], [63:32] and [95:64] of the **oldest** request in the receive queue, without removing it. `REQUEST_GET_W0` carries the requestor [6:0], stamped by the tree, and the target [9:7].
 - **`REQUEST_RECEIVE`** (a load) returns bits [127:96] of the oldest request and **pops it.** Software loads a request's words in ascending order, and the last load pops, mirroring the send.
-- **An empty queue.** A load of `REQUEST_RECEIVE` with the queue empty returns 0, pops nothing and sets **receive underflow**, `TILE_CONDITIONS` [14] (4.13); on tiles 0–63 every such load does. A load of `REQUEST_GET_W0`–`W2` with the queue empty returns 0 and sets nothing *(Proposed)*.
-- **`REQUEST_PENDING`**, `WAKE_EVENTS` [19] (4.12), is a **live** event: true while the receive queue holds a request. A load of `WAKE_EVENTS` that consumes it changes nothing; only `REQUEST_RECEIVE` removes a request, so **queued requests never merge into one wake**: a `WFI` with [19] in the mask falls straight through while any request is waiting. Its `WAKE_MASK` bit resets to 0. On tiles 0–63 it is always 0.
+- **An empty queue.** A load of `REQUEST_RECEIVE` with the queue empty returns 0, pops nothing and sets **receive underflow**, `ERRORS` [14] (4.13); on tiles 0–63 every such load does. A load of `REQUEST_GET_W0`–`W2` with the queue empty returns 0 and sets nothing *(Proposed)*.
+- **Request pending**, `EVENTS` [9] (4.12), is a **live** event: true while the receive queue holds a request. A load of `EVENTS` changes nothing about it; only `REQUEST_RECEIVE` removes a request, so **queued requests never merge into one wake**: a `WFI` with [9] in the mask falls straight through while any request is waiting. Its `EVENTS_MASK` bit resets to 0. On tiles 0–63 it is always 0.
 - **The receive queue is in every tile** (owner, 2026-10-26, reversing part A's "no storage in the tile"): **16 entries of 128 bits** (2 Kbit), fed by the root's link for the tile's target, with one credit per entry held at the root (3.3). Every `REQUEST_RECEIVE` pop returns a credit. On tiles 0–63 nothing feeds it.
-- **Timing** (4.11's sampling rule): a load returns the queue's head as it stood at its sample point; a `REQUEST_RECEIVE` load pops at the end of its last cycle, so the next load sees the next request, and [19] falls then if it popped the last one.
+- **Timing** (4.11's sampling rule): a load returns the queue's head as it stood at its sample point; a `REQUEST_RECEIVE` load pops at the end of its last cycle, so the next load sees the next request, and [9] falls then if it popped the last one.
 
-**HALT** *(Proposed, accepted for the receive queue, owner, 2026-10-26)*: the send side and the tree are not held in reset. Like the routers (6.1) they keep running, so a halted tile's FIFO drains and no request is ever cut short. **HALT keeps the receive queue's contents**, and requests may still arrive while credits last; chip reset empties it and restores the credits. The `W` registers are configuration registers: undefined at chip reset and kept across HALT → RUN (8.1).
+**After an error** the request port keeps running (4.13): the handler's reports go out through it, and a receiver's queue keeps filling while credits last. **The reset** (6.1), always the whole chip, empties every request FIFO, the tree and every receive queue together and restores the credits, so no request is cut short on one side only. The `W` registers are configuration registers: undefined at reset (8.1).
 
 **What a program must keep to** (arming before sending, one reply-producing request per responder, no reads across a group run) is in the memory system's contract (6.7).
 
@@ -1199,13 +1200,13 @@ The tile's end of the request bus (3.3). **It has two directions in every tile,*
 
 *No figures yet; the figure set gains a replayer part (handoff in `CHANGES-v1.1.md`).*
 
-The **replayer** is a tile unit that regenerates the tile's share of a proof's execution trace, 2¹⁶ rows of Jolt's expanded trace, from the run log the tracer engine writes, and streams the rows to the unit that consumes them (the materializer, outside this specification). It recomputes every row it can with a small ALU and takes from the log only the words it cannot compute. It is **peripheral type 1** in the tile's peripheral slot (4.17) and uses the slot's interface throughout: its pass is a run, its requests are the six service lines, and it reports in two status registers. This section specifies it in full; it follows the owner's design notes *Replayer and mesh v1.1* (updated 2026-10-23) and their shared-resource allocation table.
+The **replayer** is a tile unit that regenerates the tile's share of a proof's execution trace, 2¹⁶ rows of Jolt's expanded trace, from the run log the tracer engine writes, and streams the rows to the unit that consumes them (the materializer, outside this specification). It recomputes every row it can with a small ALU and takes from the log only the words it cannot compute. It is **peripheral 1, type 1**, on every mesh tile (4.17), and uses the standard window throughout: its pass is a run, its queues' refills are counted credits, and it reports in two words of its own. This section specifies it in full; it follows the owner's design notes *Replayer and mesh v1.1* (updated 2026-10-23) and their shared-resource allocation table.
 
 **Ground truth** (owner, 2026-10-26, parts G and H; item 113). The trace the replayer reproduces is upstream Jolt's: the 80-byte trace row and the sequence of pc and `instr_idx`. "Upstream Jolt" means **the version our baseline is built against: `LayerZero-Research/jolt` at commit `735355e43026e9ef392b36b4ab5ed0f5e680127f`** (vendored by jolt-cpp at `309b4c4`; see jolt-asic-planning `docs/provenance.md`). Later upstream versions, `a16z/jolt` HEAD included, are tracked as future compatibility, not as the authority. **For now jolt-cpp is the gold standard** (owner, 2026-10-26, part H): the replayer, its tests and the reference rows match **jolt-cpp's interpreter rows** (`execute_instruction` and `expand_compressed_chunk`), the path of the tracer port from which this section's file:line references and `spec/replayer-opcodes.md` are derived (owner, 2026-10-27). jolt-cpp's JIT is not a reference; where it disagrees, that is recorded as a finding (item 113). **Upstream at 735355e overrides jolt-cpp only once a difference is confirmed by running both;** then the appendix, and if need be jolt-cpp, is corrected. `spec/replayer-opcodes.md` is normative for the replayer as built. The formats that are ours (the run log and its streams, the LRU coder, the checkpoint record, how template words are delivered) are ours to define, provided the rows that come out match. Every rule with a potential difference from upstream, found so far by reading source and not yet confirmed (item 113 lists them), is tagged *(pending the upstream check, item 113)*.
 
 #### 4.19.1 Overview
 
-**What a pass is.** A run of the replayer (`TILE_PULSE` [2], `PERIPH_RUN`, 4.19.11) loads the tile's checkpoint and runs exactly **65,536 rows**, then stops; that is one **pass**. The replayer runs many passes per proof, once for every sumcheck stage that needs the trace (46 per Akita proof in the repo's kernel scratchpad plan [estimate]), and every pass starts from the same checkpoint, because replay never writes it.
+**What a pass is.** A run of the replayer (`PULSE_RUN`, 4.19.11) loads the tile's checkpoint and runs exactly **65,536 rows**, then stops; that is one **pass**. The replayer runs many passes per proof, once for every sumcheck stage that needs the trace (46 per Akita proof in the repo's kernel scratchpad plan [estimate]), and every pass starts from the same checkpoint, because replay never writes it.
 
 **The parts.**
 
@@ -1223,7 +1224,7 @@ The **replayer** is a tile unit that regenerates the tile's share of a proof's e
 | ALU, comparator, two adders | — | row results, branch outcomes, memory address, pc + imm | 4.19.7 |
 | output queue | 32 rows of 80 B | rows waiting for the consumer | 4.19.12 |
 
-**Its interfaces** are the peripheral slot's (4.17). Every replayer memory and queue is written by **mode 9** (4.19.10). The controller starts a pass with `PERIPH_RUN` (`TILE_PULSE` [2]), follows it with `periph_running` (`TILE_STATUS` [3]), reads `PERIPH_STATUS_0` and `PERIPH_STATUS_1` (8.11), counts its refills in `DMA_PERIPH_REMAINING`, and is woken by its six service lines, `PERIPH_SERVICE_1`–`6` in `WAKE_EVENTS` [18:13] (4.19.9). Its errors are `TILE_CONDITIONS` [13:11]: the slot's bad peripheral write, and its own queue overrun and invalid expansion (4.19.11). It has no output: its rows go to their consumer inside the tile (4.19.12), and it never uses the sender (4.17.9). Under the slot's names it keeps v1.1's behaviour bit for bit, except that v1.1's `replay_wait` is gone: the new-expansion line already says the replayer is waiting.
+**Its interfaces** are the standard peripheral window's (4.17; its words, 4.19.9 and 8.11). Every replayer memory and queue is written by **mode-0 packets to its region, 0x04** (4.19.10). The controller starts a pass with `PULSE_RUN`, follows it with `STATUS` [0], reads `REPLAYER_STATUS` and `REPLAYER_OPCODE` (words 32 and 33), counts its refills on a write counter of its choice, and is woken by the replayer's events, run done, four queues' credits and new expansion, through the tile's live bit `EVENTS` [10] (4.19.9). Its errors, bad write, queue overrun and invalid expansion, are in its own `ERRORS`, which reaches the tile's `ERRORS` [11] and traps the controller (4.19.11). It has no DMA: its rows go to their consumer inside the tile (4.19.12). It keeps v1.1's behaviour, except that **its queues' low-water lines are now counted credits** (4.19.8) and its errors are terminal.
 
 **Rate.** A row takes a fixed 3 cycles, or 5 for a multiply (4.19.7): about 3.3 cycles per row with about 10 % multiply rows [estimate; to be measured, item 37], so a pass is about 216K cycles plus about 1.3K cycles of controller-fed expansion stalls, about 0.22 ms at 1 GHz with everything local [estimate]. The consuming kernels likely need 3–6 cycles per row anyway [estimate].
 
@@ -1259,14 +1260,14 @@ The measured densities (words per row, LD / SD / advice / non-sequential) are 0.
 
 **A requirement on our tracer engine.** The run log differs from jolt-cpp's memory log on purpose. jolt-cpp logs only LD, SD and `VirtualAdvice` (`trace_owner.cpp:822–855`): it computes the DIV/REM advice in its interpreter (`trace_owner.cpp:545–630`) and looks a jump's next index up in a pc-to-index table (`finish_instruction`, `trace_owner.cpp:111–126`). The replayer has no divider and no such table, so **the tracer engine must write the DIV/REM advice and the next `instr_idx` of every control transfer into the run log**, in row order with the other log words (item 33). The validation harness (item 58) proves the format, the tracer engine's extra words and the replayer together.
 
-**The checkpoint.** Per tile, loaded by mode 9 into region 0 (4.19.10), **state first** (owner, 2026-10-26), so a sequential load writes the state, then the streams' descriptor, then the registers:
+**The checkpoint.** Per tile, loaded by mode-0 writes into the replayer's part 0 (4.19.10), **state first** (owner, 2026-10-26), so a sequential load writes the state, then the streams' descriptor, then the registers:
 - the **state word** (128-bit word 0): pc [63:0], `instr_idx` [95:64], next offset [111:96] (the rows of the first instruction's expansion that the previous tile already ran), and the **per-run flags** (owner, 2026-10-26): [112] code stream LRU-compressed, [113] read log LRU-compressed, [114] write log LRU-compressed, [115] **includes store log**; spare [127:116];
 - the **stream word** (word 1): the three streams' exact lengths in bits (4.19.15): code [23:0], read log [55:32], write log [87:64]; the rest spare;
 - the **register image** (words 2–65): all 128 registers, as 64 words of 128 bits, each a pair, the low register in the low half: image word *i* (128-bit word 2 + *i*) holds register 2*i* in bits [63:0] and 2*i* + 1 in [127:64], so registers 0 and 1 are in the first and 126 and 127 in the last.
 
-**The tracer's state record** (owner, 2026-10-26, part G) is one record per window, 67 × 128-bit words (1,072 bytes): **word 0 is the window's template bitmap** (bit *i* set if the window uses controller-fed template *i*, 4.19.5), and **words 1–66 are the region-0 image** exactly as above (state word, stream word, register image). The replayer never sees word 0: a controller sends the record **from byte 16 onward**, so the rest still streams straight into region 0, which itself is unchanged. A future tracer peripheral's state queue emits records in this same form.
+**The tracer's state record** (owner, 2026-10-26, part G) is one record per window, 67 × 128-bit words (1,072 bytes): **word 0 is the window's template bitmap** (bit *i* set if the window uses controller-fed template *i*, 4.19.5), and **words 1–66 are the part-0 image** exactly as above (state word, stream word, register image). The replayer never sees word 0: a controller sends the record **from byte 16 onward**, so the rest still streams straight into part 0, which itself is unchanged. A future tracer peripheral's state queue emits records in this same form.
 
-**Includes store log** (state word [115], owner, 2026-10-26). When 1, SD rows pop the write log as above. **When 0, the pass doesn't use stores' pre-values:** SD rows pop nothing and output a pre-value of 0, the write-log queue is never fed, and its low-water line stays quiet for the whole pass (4.19.8). Write-log entry 15 may keep updating on LDs (4.19.15); it is never read. An SD's pre-value never feeds a register, so register state is unaffected. The tracer emits [115] = 1; a controller clears it for a pass whose consumer doesn't need pre-values, and so never fetches the write log.
+**Includes store log** (state word [115], owner, 2026-10-26). When 1, SD rows pop the write log as above. **When 0, the pass doesn't use stores' pre-values:** SD rows pop nothing and output a pre-value of 0, the write-log queue is never fed, and the controller loop leaves its credit bit out of the mask for the whole pass (4.19.8). Write-log entry 15 may keep updating on LDs (4.19.15); it is never read. An SD's pre-value never feeds a register, so register state is unaffected. The tracer emits [115] = 1; a controller clears it for a pass whose consumer doesn't need pre-values, and so never fetches the write log.
 
 Sending all 128 registers avoids special-casing a mid-sequence start, at 1 KB per tile. **A tile that starts inside an expansion** has that instruction as its first opcode-stream entry, and the next offset says where in the expansion to begin. jolt-cpp's chunked replay instead rewinds to the start of the expansion when inline scratch registers are live (`trace_owner.cpp:722–739`); the full image makes that unnecessary. **Register 0** of the image is ignored: the working file's register 0 always reads 0 *(Proposed, item 41)*.
 
@@ -1382,7 +1383,7 @@ LR/SC *(pending the upstream check, item 113)*, CSRRW, CSRRS, ECALL, EBREAK, MRE
 
 **Every expansion word, ROM or controller-fed** (owner, 2026-10-26, part G, ruling N3). The rd = x0 handling applies to every expansion the same way: the ROM is a cache of templates (4.19.6), so a word means the same whichever path delivers it. Today's controller-fed expansions (the inlines and system instructions) happen to be exempt, so their offset is 0, but that describes the current templates, not a rule. The controller-fed path follows the same rule with two mechanisms:
 - **`rd0` is read from the first word delivered** for an expansion (4.19.3): on a mid-sequence start the controller sends words from the next offset, so it **copies the template's `rd0` into the first word it sends**;
-- **under a NOP policy with rd = x0,** the controller supplies **the single NOP word** (the shared NOP row, 4.19.6) instead of the template. It knows the instruction word (`PERIPH_STATUS_1`) and the template's policy. **That word carries the template's `rd0` (1 or 3) in bits [47:46]**; otherwise the word is ROM word 1's. So the NOP row's virtual flag comes out as on the ROM path: `rd0` is read from the first word delivered (4.19.3), and the NOP word is the only word delivered (owner, 2026-10-26, part I) *(pending the upstream check, item 113)*.
+- **under a NOP policy with rd = x0,** the controller supplies **the single NOP word** (the shared NOP row, 4.19.6) instead of the template. It knows the instruction word (`REPLAYER_OPCODE`) and the template's policy. **That word carries the template's `rd0` (1 or 3) in bits [47:46]**; otherwise the word is ROM word 1's. So the NOP row's virtual flag comes out as on the ROM path: `rd0` is read from the first word delivered (4.19.3), and the NOP word is the only word delivered (owner, 2026-10-26, part I) *(pending the upstream check, item 113)*.
 
 #### 4.19.5 The decode table and its index
 
@@ -1415,7 +1416,7 @@ There is no length field: each ROM word's `seq_remaining` marks the template's e
 
 #### 4.19.6 The ROM and its contents
 
-**The ROM is 8 KB, 512 × 128-bit words, dual-ported,** loaded by mode 9 (4.19.10); one port serves the replayer's reads and the other mode-9 writes, which it accepts even while a pass runs. It is a RAM; "ROM" says that replay never writes it. **It is a cache of the program's most frequent templates,** filled by the table builder (owner, 2026-10-26): **any instruction may be controller-fed** through its decode class (4.19.5), so what the ROM holds is a choice, not a requirement. Today's fill:
+**The ROM is 8 KB, 512 × 128-bit words, dual-ported,** loaded by mode-0 writes to the replayer's region (4.19.10); one port serves the replayer's reads and the other the writes, which it accepts even while a pass runs. It is a RAM; "ROM" says that replay never writes it. **It is a cache of the program's most frequent templates,** filled by the table builder (owner, 2026-10-26): **any instruction may be controller-fed** through its decode class (4.19.5), so what the ROM holds is a choice, not a requirement. Today's fill:
 
 | content | words |
 |---|---|
@@ -1429,7 +1430,7 @@ The fit is tight; reusing identical words or a slightly larger ROM restores head
 
 **How a template is read.** A ROM template is consecutive words from `start` (from `start` + offset on a mid-sequence start), each word one row, until the word with `seq_remaining` = 0. A template that would run past word 511 (a word at 511 with `seq_remaining` > 0, or `start` + offset > 511) is an invalid expansion (4.19.11).
 
-**Loading.** The table and ROM load through mode 9, broadcast by C&C at boot (4.19.10).
+**Loading.** The table and ROM load by mode-0 writes to the replayer's region, broadcast by C&C 1 at boot (4.19.10).
 
 #### 4.19.7 Executing a row: the register file, the ALU and the schedules
 
@@ -1441,7 +1442,7 @@ The fit is tight; reusing identical words or a slightly larger ROM restores head
 
 An instruction's opcode word leaves the code queue when its expansion's last row (`seq_remaining` = 0) completes. Fetch and decode for the next row overlap the current row; only execution is strictly sequential *(Proposed, item 42)*.
 
-**The register file** is 128 × 64 bits (1 KB), true dual-port, and holds the working copy of all 128 registers. **Register 0 reads 0 and writes to it are dropped**, as the tracer's `save_rd` drops them (`trace_owner.cpp:85–93`). It is not addressable by mode 9; each start fills it from the image.
+**The register file** is 128 × 64 bits (1 KB), true dual-port, and holds the working copy of all 128 registers. **Register 0 reads 0 and writes to it are dropped**, as the tracer's `save_rd` drops them (`trace_owner.cpp:85–93`). It is not addressable by packets; each start fills it from the image.
 
 **What a row computes is defined in `spec/replayer-opcodes.md`** (owner, 2026-10-26, part F; item 112), which is **normative** for it (its sections 1–5): for each of the 91 row opcodes, its slots, the exact rd formula (widths, extension, wraparound, shift masks), its control transfer, its log word and, for LD and SD, its memory fields, all derived from `execute_instruction` (`trace_owner.cpp:145–669`, tracer commit 4f36b3d) and checked against it with about 240 test vectors. This section keeps the classes, the schedules and the pc and `instr_idx` rules. A row reads each slot's value as `read_reg_vals` does (a register slot reads its register, an immediate slot carries its value, `trace_owner.cpp:78–83`), with four departures from the tracer:
 - **class L rows take the log word** (below) instead of reading memory or computing advice;
@@ -1502,7 +1503,7 @@ The ALU's per-opcode arithmetic is hardwired too, by nature: a new Jolt opcode n
 
 **Rate.** About 3.3 cycles per row on average with about 10 % multiply rows (item 37 measures the density), so a 64K-row pass is about 216K cycles plus about 1.3K cycles of controller-fed expansion stalls: about 0.22 ms at 1 GHz with everything local, or about 10 ms for the 46 passes of an Akita proof [estimate].
 
-#### 4.19.8 The queues, their mode-9 ports and credits
+#### 4.19.8 The queues, their ports and credits
 
 Four queues feed the replayer. They are **true FIFOs**: producers push at the tail and the replayer pops, with no slot addresses (decided 2026-10-23). **Every queue holds 128-bit entries** (owner, 2026-10-26): the code and log queues hold their streams as delivered, raw or compressed, and their decompressors unpack them (4.19.15).
 
@@ -1515,62 +1516,79 @@ Four queues feed the replayer. They are **true FIFOs**: producers push at the ta
 
 All four are dual-ported, so pushes land while the replayer runs. Every refill is local (4.19.13), and a half covers the local refill latency (a few hundred cycles) with room to spare. The two logs are 8 KB each *(Proposed, owner, 2026-10-26; item 103: the tracer to measure the read/write split)*.
 
-**The ports.** In mode 9 an address window names a queue (4.19.10): the packet is appended at the tail and the rest of its address is ignored, so the address generator's per-packet stepping stays inside the port. **Every queue port takes 128-bit packets only,** one entry each (owner, 2026-10-26); a 32- or 64-bit packet is a bad peripheral write. Each stream is padded to a whole entry, and its exact bit length marks its end (4.19.15).
+**The ports.** In the replayer's region a range of offsets names a queue (4.19.10): the packet is appended at the tail and the rest of its address is ignored, so the address generator's per-packet stepping stays inside the port. **Every queue port takes 128-bit packets only,** one entry each (owner, 2026-10-26); a 32- or 64-bit packet is a bad write (4.19.11). Each stream is padded to a whole entry, and its exact bit length marks its end (4.19.15).
 
-**Credits.** Each queue tracks its **occupancy** (entries landed and not yet popped) and its **pending** count (entries promised but not landed). Its **low-water line** (`PERIPH_SERVICE_1` [13] code, `_2` [14] read log, `_3` [15] write log, `_4` [16] expansion; 4.19.9) is a live condition (for the write log, only in a pass with includes-store-log set, 4.19.2), true while the replayer runs and
+**Credits** (owner, 2026-10-28 and 2026-10-29; W3-24). Each queue's **credit** is one of the replayer's counted events (4.17.3), **depth 2**, and **each credit is half a queue**: "half a buffer is free, send half a buffer".
+- **Initialised at the start:** **`PULSE_RUN` sets every queue's credits to 2**, and **each new expansion sets the expansion queue's to 2 again** (as v1.1 reset the expansion queue's pending count at each expansion).
+- **Returned by the replayer:** each time it has **popped half a queue's worth of entries** since the last return, it adds one credit to that queue.
+- **Taken by the controller:** a consuming load of the replayer's `EVENTS` takes one credit from each queue bit that is set and masked (4.17.3); the program then refills every queue whose credit it took. **A credit is permission to send up to half a queue** (owner, 2026-10-28), not one transfer: the program may split the refill into smaller moves (a 2 KB credit as two 1 KB moves), as long as their total stays within the credit.
+- **So the controller can never send more than there is room for,** up to two refills can be outstanding, which keeps a draining queue fed, and the tile's live bit for the replayer stays high while any masked credit remains, so `WFI` can't miss a refill. A queue that empties simply stalls the replayer until data lands.
+- **Code and log queues:** every refill except a stream's last is exactly half a queue (a software rule), so their credits balance. Only the expansion queue sees short refills, and its re-initialisation at each expansion keeps a short one from stranding a credit.
+- **Credits with nothing behind them** (after a stream's last refill; the write log in a pass without the store log, 4.19.2; the expansion queue once the current expansion is all sent): the loop removes that queue's bit from the replayer's `EVENTS_MASK` once it has nothing more to send, so `WFI` doesn't fall through (4.19.9). There is no gating hardware.
+- v1.1's occupancy-and-pending low-water condition, its claim rule (item 50) and the expansion's "still has words to deliver" test (item 51) are replaced by these credits.
 
-  capacity − occupancy − pending ≥ half,
+**Overrun.** A push into a full queue (occupancy at capacity before the cycle's pop, as for every FIFO, 4.13) is dropped, still counted at the director (4.17.5), and sets **queue overrun** in the replayer's `ERRORS` (4.19.11). With credits it means the program sent more than it was credited.
 
-and, for the expansion queue only, while the current controller-fed expansion still has words that nobody has asked for: the newest landed word's `seq_remaining` (the words after it) exceeds pending *(Proposed, item 51: how "still has words to deliver" is judged)*.
-- **A read of `WAKE_EVENTS` that returns a low-water line under `WAKE_MASK` claims it (4.17.3) and adds half to that queue's pending,** which drops the condition. Each landed entry moves one entry from pending to occupancy (pending stops at 0). A read with the line's mask bit clear changes nothing, and neither does `WAKE_PEEK` (4.19.9).
-- **Up to two refills can be outstanding,** which keeps a draining queue fed; a queue that empties simply stalls the replayer until data lands.
-- **The controller sends min(half, entries remaining).** A short final push overstates pending, which only suppresses requests that aren't needed; the count resets at the next expansion or start. It may also deliver a half as several smaller chunks; the queue doesn't care.
-- **A new expansion** (4.19.9): claiming the new-expansion line credits the expansion queue's first 128 words (pending = 128), so the controller sends min(128, the expansion's words from the start offset) at once, before any word has landed to judge the low-water condition by.
+**The start clears the queues** (owner, 2026-10-23). A run (a pass's start) empties all four queues, their contents and occupancy, and sets their credits to 2. There is **no preloading and no end-of-pass reset**: done leaves the queues as they are, and whatever is in them, or lands in them while the replayer is stopped, is discarded by the next start (4.19.10). The reset (6.1) also empties them. **Software rule:** before a start, every queue push has landed, whatever its source: the refill counter's done for the controller's refill runs, and the counters of any other pushes it counts (4.19.13). Over-pushed or late data from one pass can then never leak into the next. After the start every queue holds two credits, and the controller fills them, a few hundred cycles per pass.
 
-**Overrun.** A push into a full queue (occupancy at capacity before the cycle's pop, as for every FIFO, 4.13) is dropped and sets **queue overrun** (`TILE_CONDITIONS` [12]).
+#### 4.19.9 The events, the words and the controller loop
 
-**Reset: the run clears the queues** (owner, 2026-10-23). A run (a pass's start) empties all four queues: their contents, occupancy and pending. There is **no preloading and no end-of-pass reset**: done leaves the queues as they are, and whatever is in them, or lands in them while the replayer is stopped, is discarded by the next start (4.19.10). The queues are also cleared **in HALT** and **when the controller halts** (4.19.11), and the expansion queue's pending at each new expansion. **Software rule:** before a start, every queue push has landed, whatever its source: counters done for the controller's refill runs and for any other pushes it counts (4.19.13). Over-pushed or late data from one pass can then never leak into the next. After the start the empty queues raise their low-water lines at once, and the controller fills them, a few hundred cycles per pass.
+**The replayer's window** (4.17.4; owner, 2026-10-28; *(Proposed, item 123: the bit and word assignments, after WORKER3's review W3-27)*):
 
-#### 4.19.9 The service lines and the controller loop
+| word or bit | v1.2 | v1.1 |
+|---|---|---|
+| `PARAMS` [7:0] | type 1 | `TILE_STATUS` [15:12] |
+| `STATUS` [0] | run in progress: the ownership state (4.19.10, 4.19.11) | `periph_running` |
+| `STATUS` [1] | always 0 (no DMA) | — |
+| `ERRORS` | [0] bad write, [1] queue overrun, [2] invalid expansion (4.19.11) | the tile's conditions 11–13 |
+| `PULSE_RUN` | a pass (4.19.11) | `TILE_PULSE` [2], `PERIPH_RUN` |
+| words 4, 8, 9 | reserved (no DMA) | the sender, unattached |
+| word 32, `REPLAYER_STATUS` (R) | rows run [15:0], **next offset** [31:16] | `PERIPH_STATUS_0` |
+| word 33, `REPLAYER_OPCODE` (R) | the instruction awaiting a controller-fed expansion: the presented item of new expansion | `PERIPH_STATUS_1` |
 
-**The service lines.** The replayer's six service lines (4.17.3; owner, 2026-10-26) are the slot's `PERIPH_SERVICE_1`–`6` in the shared `WAKE_EVENTS` register (4.12, 8.10), which wakes `WFI` through `WAKE_MASK` and `WAKE_REQUIRED`:
+**Its events** (4.17.3), in its own `EVENTS`, reaching the tile's `EVENTS` [10] while any masked one is set:
 
-| bit | line | meaning | kind (4.17.3) | a claim takes |
-|---|---|---|---|---|
-| [13] | `PERIPH_SERVICE_1` | code low-water | queue condition (live, 4.19.8) | half the code queue credited |
-| [14] | `PERIPH_SERVICE_2` | read-log low-water | queue condition (live, 4.19.8) | half the read-log queue credited |
-| [15] | `PERIPH_SERVICE_3` | write-log low-water | queue condition (live, 4.19.8) | half the write-log queue credited |
-| [16] | `PERIPH_SERVICE_4` | expansion low-water | queue condition (live, 4.19.8) | half the expansion queue credited |
-| [17] | `PERIPH_SERVICE_5` | new expansion: the replayer has reached an instruction whose decode class is controller (1 or 2), presents it in `PERIPH_STATUS_1` and waits. **Its presented line** (4.17.3) | event (sticky) | the event clears, and the first 128 expansion words are credited |
-| [18] | `PERIPH_SERVICE_6` | done: the pass has ended (`periph_running` has fallen, 4.19.11) | event (sticky) | the event clears |
+| bit | event | kind and depth |
+|---|---|---|
+| [0] | **run done:** the pass has ended (`STATUS` [0] has fallen, 4.19.11) | counted, depth 1 |
+| [1] | DMA done: never set (no DMA) | — |
+| [2] | **code credit** (4.19.8) | counted, depth 2 |
+| [3] | **read-log credit** | counted, depth 2 |
+| [4] | **write-log credit** | counted, depth 2 |
+| [5] | **expansion credit** | counted, depth 2 |
+| [6] | **new expansion:** the replayer has reached an instruction whose decode class is controller (1 or 2), presents it in `REPLAYER_OPCODE` and waits | counted, depth 1 |
 
-A load of `WAKE_EVENTS` returns every pending event and **consumes** only those under `WAKE_MASK`; consuming a line claims one unit of service, the last column (4.17.3). **A read with a bit's mask clear** changes nothing for that bit, and `WAKE_PEEK` (8.10) changes nothing at all, so credits move only on a read of `WAKE_EVENTS` that returns the event under the mask *(Proposed, item 50)*. To look without consuming, software reads `WAKE_PEEK`. A sticky event the replayer sets in the same cycle as the read survives to the next read. Software acts on value & mask. Nothing but the tile's own controller reads the register.
+A load of the replayer's `EVENTS` returns every bit and consumes one count from each bit set under its `EVENTS_MASK` (4.17.3): for a queue bit that is taking one credit, for run done and new expansion clearing the event. A load of `EVENTS_PEEK` consumes nothing. An event the replayer posts in the same cycle as the load survives to the next. Software acts on value & mask. Nothing but the tile's own controller reads the window.
 
-**What the controller reads with them** (the slot's status registers, 4.17.4; no read has a side effect). `PERIPH_STATUS_1` (8.11) holds the instruction word of the expansion it must supply (the stored opcode-stream word, bit 0 clear for a compressed instruction), from the cycle the new-expansion line is raised until the next one; it was v1.1's `REPLAYER_OPCODE`. `PERIPH_STATUS_0` (8.11), v1.1's `REPLAYER_STATUS`, gives the rows run in this pass and the **next offset**: the row within the current expansion where the next row starts, which is where the controller begins sending the expansion's words (non-zero only for a tile that starts mid-expansion).
+**What the controller reads with them** (no read has a side effect). `REPLAYER_OPCODE` holds the instruction word of the expansion it must supply (the stored opcode-stream word, bit 0 clear for a compressed instruction), from the cycle new expansion is posted until the next one. `REPLAYER_STATUS` gives the rows run in this pass and the **next offset**: the row within the current expansion where the next row starts, which is where the controller begins sending the expansion's words (non-zero only for a tile that starts mid-expansion).
 
-**The controller loop.** Every `WFI` has exactly the sources its mask allows. `PERIPH` below is the replayer's lines, [18:13], and `PERIPH_DONE` is [3], `DMA_PERIPH_REMAINING` done (4.12); GO, [8], stays in the mask throughout (4.12) but can't arrive mid-pass, and `WAKE_REQUIRED` is 0.
+**The controller loop** (W3-24, W3-27). Every `WFI` has exactly the sources its mask allows. `rp` is the replayer's window (`peripheral1`), `QUEUES` its credit bits that have something left to send, `REFILL` the done event of the write counter the loop uses for its refills (say counter 4, `EVENTS` [3]), and `PERIPH1` the tile's `EVENTS` [10]; GO, [5], stays in the tile's mask throughout (4.12) but can't arrive mid-pass, and `EVENTS_REQUIRED` is 0.
 
 ```
-    WAKE_MASK = GO | PERIPH            ; only a service line can come
-    TILE_PULSE = PERIPH_RUN            ; a pass; empties the queues: low-water at once
+    rp->EVENTS_MASK   = RUN_DONE | NEW_EXP | QUEUES   ; the write log only with the store log
+    tile->EVENTS_MASK = GO | PERIPH1                  ; only the replayer can come
+    rp->PULSE_RUN     = 1                             ; a pass: empties the queues, two credits each
 loop:
-    WFI                                ; only a service line can wake it
-    ev = WAKE_EVENTS & PERIPH          ; claims the lines: credits taken
-    if ev.done: exit
-    if ev.new_expansion: decode PERIPH_STATUS_1 (inlines and system only),
-                         start at PERIPH_STATUS_0.next_offset
-    WAKE_MASK = GO | PERIPH_DONE       ; squelch: only the copy's completion can wake it
-    write DMA_PERIPH_REMAINING (adds); write STREAM entries; start the run
-    WFI; load WAKE_EVENTS              ; consumes PERIPH_DONE
-    WAKE_MASK = GO | PERIPH            ; lines raised meanwhile fall through
+    WFI                                               ; the replayer's live bit
+    ev = rp->EVENTS & rp->EVENTS_MASK                 ; claims: one credit from each set queue bit
+    if ev == 0: goto loop                             ; a spurious wake: re-check (4.12)
+    if ev.run_done: exit
+    if ev.new_expansion: decode rp->REPLAYER_OPCODE (inlines and system only),
+                         start at rp->REPLAYER_STATUS.next_offset; add EXPANSION to rp->EVENTS_MASK
+    for each credit taken: queue a refill of min(half, what that stream has left)
+    for each stream with nothing left: remove its bit from rp->EVENTS_MASK
+    tile->EVENTS_MASK = GO | REFILL                   ; squelch: only the refills' counter can wake it
+    tile->WRITE_COUNTER_4 = packets; write STREAM entries; start the run
+    WFI; load tile->EVENTS                            ; consumes REFILL
+    tile->EVENTS_MASK = GO | PERIPH1                  ; credits returned meanwhile fall through
     goto loop
 ```
 
-The wake term is `(WAKE_EVENTS & WAKE_MASK) ≠ 0` here, `WAKE_REQUIRED` being 0 (4.12). The squelch is a mask setting: while the run streams, the replayer's lines accumulate, and only `DMA_PERIPH_REMAINING` done ([3]) can wake the core. `DMA_PERIPH_REMAINING` counts the run's mode-9 packets as they land (4.19.10), so the second `WFI` returns when every word is in its queue, and the load after it consumes [3]. Waiting on [3] rather than counters done (owner, 2026-10-26) means an LPDDR fetch outstanding in `DMA_SRAM_REMAINING` (4.19.13) doesn't hold the refill up. Events posted during the run stay pending and, the wake being a level, make the next `WFI` fall through once the mask is restored. GO can't arrive mid-pass, no other mode-9 traffic is armed, and no other tile sends the tile mode 9 during a pass (4.19.13), so `DMA_PERIPH_REMAINING` counts only the loop's own refills.
+The squelch is a mask setting: while the run streams, the replayer's credits accumulate, and only the refill counter's done can wake the core. The counter counts the run's packets K cycles after the director accepts them, by which time each is in its queue (4.19.10), so the second `WFI` returns when every word has landed, and the load after it consumes the event. **Waiting on the refill counter's own done rather than counters done** (owner, 2026-10-26) means an LPDDR fetch outstanding on another counter (4.19.13) doesn't hold the refill up. Credits returned during the run stay counted and, the tile's bit being live, make the next `WFI` fall through once the mask is restored. GO can't arrive mid-pass and no other tile writes the replayer's region during a pass (4.19.13), so the refill counter counts only the loop's own refills.
 
 **Data from LPDDR** (4.19.13) never goes straight into a queue (owner, 2026-10-26): the overflow is fetched into big SRAM and refilled locally like resident data, so every refill is a local run and the loop is the same for all of them.
 
-**Between passes.** The loop exits only at the top, after its last refill run has landed ([3] consumed), so every queue push has landed when the next start empties the queues (4.19.8).
+**Between passes.** The loop exits only at the top, after its last refill run has landed (its counter's done consumed), so every queue push has landed when the next start empties the queues (4.19.8).
 
 **Short runs, not interruption.** The address generator is not interruptible. Instead every run is short: a 1 KB chunk is 64 packets, about 64 cycles, so nothing waits long for the engine, and the controller re-checks the queues after each chunk. Streaming occupies about 11–20 % of a pass [estimate]. Group runs (the sort's all-to-alls) stay exclusive and don't coincide with replay.
 
@@ -1580,64 +1598,63 @@ The wake term is `(WAKE_EVENTS & WAKE_MASK) ≠ 0` here, `WAKE_REQUIRED` being 0
 
 **Controller-fed expansions** are only the inlines (custom-0) and ECALL, EBREAK, MRET, CSRRW and CSRRS: about 13 per 64K-row window on Cyclone, about 0.4 % of a pass in stalls [meas: design notes]. CSRRW and CSRRS expand to 1–3 rows depending on their registers (`num_cycles`, `isa/virtual.cpp:1324–1345`), which is one reason they stay with the controller. The program's controller-fed template set is resident in big SRAM: for now every tile preloads the whole set (4.19.13; item 115).
 
-#### 4.19.10 Mode 9: the address map, landing and ownership
+#### 4.19.10 Its region: the address map, landing and ownership
 
-The slot's rules for mode 9 (4.17.5) apply: any source, landing `rp_latency` after the director, counting in `DMA_PERIPH_REMAINING`. This subsection is the replayer's address space.
+The rules for writes into a peripheral (4.17.5) apply: mode 0 to region 0x04, from any source, landing `rp_latency` after the director, counted by the packet's counter field. This subsection is the replayer's map of its region.
 
-**The map.** Everything the replayer reads is written by mode 9, whose addr is a 21-bit word address stepped by 1, 2 or 4 per packet (3.1, 4.2, 4.11). addr[20:18] selects a window *(Proposed, item 44)*:
+**The map.** Everything the replayer reads is written by mode-0 packets to region 0x04, whose 24-bit **byte offset** steps by 4, 8 or 16 per packet (3.1, 4.2, 4.11); the packet address is 0x04000000 | offset. **Offset bits [22:20] select a part** *(Proposed, item 44; v1.1's word-address bits [20:18], now in bytes)*:
 
-| addr (32-bit words) | addr[20:18] | region | size | sizes taken | ports |
+| offset (bytes) | offset[22:20] | part | size | sizes taken | ports |
 |---|---|---|---|---|---|
-| 0x00000–0x00003 | 0 | **state word:** pc [63:0], `instr_idx` [95:64], next offset [111:96]; flags [112] code compressed, [113] read log compressed, [114] write log compressed, [115] includes store log; [127:116] spare | 16 B | 128 | single |
-| 0x00004–0x00007 | 0 | **stream word** (owner, 2026-10-26): code length [23:0], read-log length [55:32], write-log length [87:64], exact, in bits (4.19.15); the rest spare | 16 B | 128 | single |
-| 0x00008–0x00107 | 0 | **register image:** 64 × 128-bit words, image word *i* (registers 2*i* low, 2*i* + 1 high) at 0x00008 + 4*i* | 1 KB | 128 | single |
-| 0x00400–0x007FF | 0 | decode table: entry *e* in the packet at 0x400 + 4·(*e* >> 3), bits [16·(*e* & 7) + 15 : 16·(*e* & 7)] | 4 KB | 128 | single |
-| 0x00800–0x00FFF | 0 | ROM: word *j* at 0x800 + 4*j* | 8 KB | 128 | dual |
-| 0x40000–0x7FFFF | 1 | code queue port | 4 KB queue | 128 | dual |
-| 0x80000–0x9FFFF | 2 | read-log queue port | 8 KB queue | 128 | dual |
-| 0xA0000–0xBFFFF | 2 | write-log queue port | 8 KB queue | 128 | dual |
-| 0xC0000–0xFFFFF | 3 | expansion queue port | 4 KB queue | 128 | dual |
+| 0x000000–0x00000F | 0 | **state word:** pc [63:0], `instr_idx` [95:64], next offset [111:96]; flags [112] code compressed, [113] read log compressed, [114] write log compressed, [115] includes store log; [127:116] spare | 16 B | 128 | single |
+| 0x000010–0x00001F | 0 | **stream word** (owner, 2026-10-26): code length [23:0], read-log length [55:32], write-log length [87:64], exact, in bits (4.19.15); the rest spare | 16 B | 128 | single |
+| 0x000020–0x00041F | 0 | **register image:** 64 × 128-bit words, image word *i* (registers 2*i* low, 2*i* + 1 high) at 0x20 + 16*i* | 1 KB | 128 | single |
+| 0x001000–0x001FFF | 0 | decode table: entry *e* in the packet at 0x1000 + 16·(*e* >> 3), bits [16·(*e* & 7) + 15 : 16·(*e* & 7)] | 4 KB | 128 | single |
+| 0x002000–0x003FFF | 0 | ROM: word *j* at 0x2000 + 16*j* | 8 KB | 128 | dual |
+| 0x100000–0x1FFFFF | 1 | code queue port | 4 KB queue | 128 | dual |
+| 0x200000–0x27FFFF | 2 | read-log queue port | 8 KB queue | 128 | dual |
+| 0x280000–0x2FFFFF | 2 | write-log queue port | 8 KB queue | 128 | dual |
+| 0x300000–0x3FFFFF | 3 | expansion queue port | 4 KB queue | 128 | dual |
 | everything else | 0, 4–7 | unmapped | — | — | — |
 
-*(Proposed, items 44–46: the windows, the offsets in window 0 and the sizes each region takes.)* The notes' map is in 128-bit words (packet addr = 4 ×); in those units the state word is 0, the stream word 1, the register image 2–65 (owner, 2026-10-26: state first; it was image 0–63 and state 64), the decode table 256–511 and the ROM 512–1023. A 128-bit write in window 0 must start at a multiple of 4.
+*(Proposed, items 44–46: the parts, the offsets in part 0 and the sizes each part takes.)* In 128-bit words (offset / 16) the state word is 0, the stream word 1, the register image 2–65 (owner, 2026-10-26: state first), the decode table 256–511 and the ROM 512–1023. Every part takes 128-bit packets only, so every write is 16-byte aligned; a misaligned one is a bad packet at the director (3.1).
 
-**How a controller loads and edits region 0** (owner, 2026-10-26, recommended practice; worked example in `REGISTERS.md` 2.8.2). The controller keeps its window's checkpoint in data memory: the state and stream words (32 bytes), and the register image too if it loads it this way (1,056 bytes in all). With the replayer stopped (`periph_running` = 0): `ROUTER_SET_HDR` once (dst = its own id, mode 9, addr 0); a write of the number of 128-bit words to `DMA_PERIPH_REMAINING`; per word `ROUTER_SET_W0`–`W2` then `ROUTER_SEND_128`, addr advancing by 4 each send (4.11); then wait on `WAKE_EVENTS` [3] and pulse `PERIPH_RUN`. A full checkpoint is 66 words, about 264 stores; a per-pass change such as flipping [115] resends only the state word, about seven stores. Region 0 persists across passes, so the image isn't resent. A controller may instead stream the checkpoint from big SRAM with the address generator, starting at the record's byte 16 (its word 1), since word 0 is the template bitmap (4.19.2). The working register file (1 KB, true dual-port) isn't addressable; each start fills it from the image.
+**How a controller loads and edits part 0** (owner, 2026-10-26, recommended practice; worked example in `REGISTERS.md`). The controller keeps its window's checkpoint in data memory: the state and stream words (32 bytes), and the register image too if it loads it this way (1,056 bytes in all). With the replayer stopped (`STATUS` [0] = 0): `ROUTER_HDR` once (dst = its own id, mode 0, a counter *n*) and `ROUTER_ADDR` = 0x04000000; a write of the number of 128-bit words to `WRITE_COUNTER_n`; per word `ROUTER_SET_W0`–`W2` then `ROUTER_SEND_128`, the address advancing by 16 each send (4.11); then wait on counter *n*'s done and pulse `PULSE_RUN`. A full checkpoint is 66 words, about 264 stores; a per-pass change such as flipping [115] resends only the state word, about seven stores. Part 0 persists across passes, so the image isn't resent. A controller may instead stream the checkpoint from big SRAM with the address generator, starting at the record's byte 16 (its word 1), since word 0 is the template bitmap (4.19.2). The working register file (1 KB, true dual-port) isn't addressable; each start fills it from the image.
 
-**A bad peripheral write** (`TILE_CONDITIONS` [11], 4.17.6) is, for the replayer, a mode-9 packet that is dropped because it addresses an unmapped word, has a size its region doesn't take, starts a 128-bit write in window 0 off a multiple of 4, writes a single-ported memory while a pass runs, or writes a queue port in HALT (below) *(Proposed, item 47)*.
+**A bad write** (the replayer's `ERRORS` [0], 4.19.11) is a packet the replayer drops because it addresses an unmapped offset, has a size its part doesn't take, or writes a single-ported memory while a pass runs *(Proposed, item 47)*. It is still counted (4.17.5).
 
-**Landing.** The traffic director hands each mode-9 packet to the replayer's write port, one per cycle; the write lands a fixed **`rp_latency`** = 2 cycles later, with no queue on the path, as the slot requires (4.17.5) *(Proposed, item 48: the value)*.
+**Landing.** The traffic director hands each packet to the replayer's write port, one per cycle; the write lands a fixed **`rp_latency`** = 2 cycles later, with no queue on the path, within K as every peripheral must (4.17.5) *(Proposed, item 48: the value)*.
 
-**Counting** follows the slot's rule (4.17.5, owner, 2026-10-26): a mode-9 packet **from any source** counts 1 in **`DMA_PERIPH_REMAINING`** (8.11) **when it lands**, or when it is dropped as a bad peripheral write or a queue overrun, so a count of 0 means every counted write has landed or been refused and no idle bit is needed *(Proposed, item 48)*. Nothing counts while the tile is halted (4.12), so C&C's boot loads, made in HALT, are uncounted. A mode-9 packet from another tile is allowed and counted (item 49 is superseded); since a queue port takes one source at a time (invariant 18) and the controller loop counts only its own refills (4.19.9), software keeps other tiles' mode 9 out of a running pass (4.19.13). An arrival for the counter at 0 sets unexpected arrival (4.12).
+**Counting** follows the rule for every write (4.17.5): a packet **from any source** decrements the counter its counter field names, K cycles after the director accepts it, whether it lands or is dropped as a bad write or a queue overrun, so a counter's done means every counted write has landed or been refused (and an error says which). C&C 1's boot loads are uncounted mode-0 writes (6.2). A packet from another tile is allowed and counted; since a queue port takes one source at a time (invariant 18) and the controller loop counts only its own refills (4.19.9), software keeps other tiles' writes out of a running pass (4.19.13). An arrival for a counter at 0 sets unexpected arrival (4.12).
 
-**Ownership** follows `periph_running` and the RUN/HALT line:
+**Ownership** follows `STATUS` [0] (W1-30: "idle" in place of HALT):
 
 | state | state word, stream word, image, decode table | ROM | queue ports |
 |---|---|---|---|
-| **stopped** (in RUN, `periph_running` = 0) | written | written | pushed, and discarded by the next run |
-| **running** (`periph_running` = 1) | bad peripheral write | written (second port) | pushed |
-| **HALT** | written (boot loads) | written | bad peripheral write |
+| **stopped** (`STATUS` [0] = 0) | written | written | pushed, and discarded by the next run |
+| **running** (`STATUS` [0] = 1) | bad write | written (second port) | pushed |
 
-*(Proposed, item 54: the HALT row; the notes give the first two.)* A halt hands everything back. **A push while stopped** is accepted like any other, with no condition, and simply lands in the queue; there is no preloading, so the next start discards it (4.19.8) *(Proposed, accepted, item 76)*. This is what happens to a late push from the previous pass, which the software rule of 4.19.8 keeps from crossing a start.
+v1.1's HALT row (item 54) is gone with HALT. **A push while stopped** is accepted like any other, with no error, and simply lands in the queue; there is no preloading, so the next start discards it (4.19.8) *(Proposed, accepted, item 76)*. This is what happens to a late push from the previous pass, which the software rule of 4.19.8 keeps from crossing a start. Boot loads (6.2) find every replayer stopped, since the reset leaves it idle.
 
-#### 4.19.11 Run, done, halt and the conditions
+#### 4.19.11 Run, done and the errors
 
-**`TILE_PULSE` [2], `PERIPH_RUN`: a pass** (4.17.2). Sets `periph_running` (`TILE_STATUS` [3]), giving the replayer its single-ported memories until it finishes or halts; **empties all four queues** (contents, occupancy and pending, 4.19.8) and resets the decompressors' tables (4.19.15); copies the state word into working pc, `instr_idx` and offset, latches the state word's four flags and the stream word's three lengths, and copies the register image into the working file (64 cycles); clears the rows-run count. Replay never writes region 0, so every pass of the same window starts identically. The first row starts when the copy is done. **Run only, no resume,** as for every engine: a run while the replayer runs is ignored (meshsim flags it, 4.13).
+**`PULSE_RUN`: a pass** (4.17.2). Sets `STATUS` [0], giving the replayer its single-ported memories until it finishes; **empties all four queues** (contents and occupancy) and sets every queue's credits to 2 (4.19.8) and resets the decompressors' tables (4.19.15); copies the state word into working pc, `instr_idx` and offset, latches the state word's four flags and the stream word's three lengths, and copies the register image into the working file (64 cycles); clears the rows-run count. Replay never writes region 0, so every pass of the same window starts identically. The first row starts when the copy is done. **Run only, no resume,** as for every engine: a run while the replayer runs is ignored (meshsim flags it, 4.13).
 
-**`TILE_STATUS` [3] `periph_running`.** 1 from the end of the run store's cycle until the pass's last row has been pushed into the output queue, or a halt; it reads 0 while the replayer is idle, so a program that never runs it sees v1.0's behaviour. v1.1's `replay_wait` ([4]) is gone (owner, 2026-10-26): the new-expansion line says the replayer is waiting, and [4] is now the sender's `sender_busy` (4.17.9).
+**`STATUS` [0], run in progress.** 1 from the end of the run store's cycle until the pass's last row has been pushed into the output queue; it reads 0 while the replayer is idle. v1.1's `replay_wait` is gone (owner, 2026-10-26): the new-expansion event says the replayer is waiting.
 
-**Done.** The pass ends after its **65,536th row**: `periph_running` falls and the done line (`PERIPH_SERVICE_6`, [18]) is posted. The queues are not reset: anything left in them stays until the next start empties them (4.19.8). Rows still in the output queue drain to the consumer. Done is `periph_running` = 0.
+**Done.** The pass ends after its **65,536th row**: `STATUS` [0] falls and **run done** (`EVENTS` [0]) is posted. The queues are not reset: anything left in them stays until the next start empties them (4.19.8). Rows still in the output queue drain to the consumer.
 
-**Halt.** C&C's HALT, or the controller halting itself (bus error, illegal instruction, `ecall`, `ebreak`; 6.1), stops the replayer at once (4.17.7): `periph_running` drops, its queues, its service lines and its stop state reset, and it stays idle until the next start. HALT holds it in reset. Its memories keep their contents and, in HALT, take mode-9 writes (4.19.10).
+**After a trap** of its controller (4.13) the replayer carries on, unserviced: it stalls when a queue runs dry, until **the reset** (6.1), which empties its queues and resets its state; its memories keep their contents (6.2).
 
-**The conditions** (raise and run, as in v1.0):
+**The errors** (the replayer's `ERRORS`, sticky until the reset; any one sets the tile's `ERRORS` [11], which traps the controller, 4.17.6) *(Proposed, item 123: the bit positions)*:
 
-| bit | condition | set when | kind |
+| bit | error | set when | kind |
 |---|---|---|---|
-| 11 | bad peripheral write (the slot's, 4.17.6) | a mode-9 packet was dropped (4.19.10) | P |
-| 12 | queue overrun | a push found its queue full and was dropped (4.19.8) | P |
-| 13 | invalid expansion | a decode-table class 3; an expansion word with a reserved operand code (146–255), `format` 6 or 7, an opcode the replayer doesn't execute (4.19.7), or `untraced` set (4.19.3); a template running past ROM word 511 (4.19.6); or a pop past a stream's length (4.19.15) | P, and H on a corrupted table or ROM |
+| 0 | bad write | a packet to its region was dropped (4.19.10) | P |
+| 1 | queue overrun | a push found its queue full and was dropped (4.19.8) | P |
+| 2 | invalid expansion | a decode-table class 3; an expansion word with a reserved operand code (146–255), `format` 6 or 7, an opcode the replayer doesn't execute (4.19.7), or `untraced` set (4.19.3); a template running past ROM word 511 (4.19.6); or a pop past a stream's length (4.19.15) | P, and H on a corrupted table or ROM |
 
-(Item 55, accepted as written by the owner on 2026-10-23: the kinds and the opcode check.) **An invalid expansion stops the pass** as if it had ended: `periph_running` falls and the done line is posted, so the controller loop exits instead of waiting for rows that can't be right; the condition says why. The owner expects it never to happen, since the tracer catches bad expansions. The other two conditions leave the replayer running.
+(Item 55, accepted as written by the owner on 2026-10-23: the kinds and the opcode check.) **An invalid expansion stops the pass** as if it had ended: `STATUS` [0] falls and run done is posted. Since every error now traps its controller terminally (4.13), this matters only for meshsim's reports. The owner expects it never to happen, since the tracer catches bad expansions. The other two conditions leave the replayer running. The other two errors leave the replayer running.
 
 #### 4.19.12 The output row
 
@@ -1671,23 +1688,24 @@ A padding row's record is all zeros, as Jolt's padded rows are (4.19.2).
 
 #### 4.19.13 The resident replay region (the software contract)
 
-The trace stays in big SRAM for the whole proof, in a **replay region** per tile, a software-managed cache. **Residency is best effort** (owner, 2026-10-26): each stage keeps as much of a window's streams resident as its free big SRAM allows, and the rest streams from LPDDR through a **staging buffer in big SRAM** and is refilled locally. No fixed size is guaranteed; normal programs fit, and adversarial ones (dense windows) stream, which the host prices. The hardware knows nothing of it: it sees only the mode-9 packets the controller's streams and the memory system send. This subsection is the contract software keeps so that the hardware above works.
+The trace stays in big SRAM for the whole proof, in a **replay region** per tile, a software-managed cache. **Residency is best effort** (owner, 2026-10-26): each stage keeps as much of a window's streams resident as its free big SRAM allows, and the rest streams from LPDDR through a **staging buffer in big SRAM** and is refilled locally. No fixed size is guaranteed; normal programs fit, and adversarial ones (dense windows) stream, which the host prices. The hardware knows nothing of it: it sees only the packets the controller's streams and the memory system send to its region. This subsection is the contract software keeps so that the hardware above works.
 
 **Layout.**
 1. **This window's templates first:** only the controller-fed templates its 64K rows actually use (often none; a window of BLAKE3 calls needs about 20 KB [estimate]). The tracer engine lists the set with the checkpoint.
 2. **Then code and the two logs** as 4 KB blocks in consumption order, code, read-log and write-log blocks interleaved, so "resident" is a single boundary. A pass that needs only one log keeps and fetches only that one.
-3. **The rest,** beyond what the stage's free big SRAM holds (with a 512 KB region, at most about 190 KB in the densest windows [meas: design notes]), stays in LPDDR and is **fetched over the request bus into big SRAM** (mode 3, 4 KB requests, counted in `DMA_SRAM_REMAINING`) ahead of the replayer, then **refilled locally like resident data** (owner, 2026-10-26). The direct read from LPDDR into a queue port is no longer part of the replayer's contract. A fetch counts in `DMA_SRAM_REMAINING` while it is outstanding; the controller loop's refill waits on `DMA_PERIPH_REMAINING` done alone ([3], 4.19.9), so a fetch in flight never holds a refill up (owner, 2026-10-26, item 94). Before refilling from a fetched block, the controller waits for that fetch (`DMA_SRAM_REMAINING` done, [0], or its own count).
+3. **The rest,** beyond what the stage's free big SRAM holds (with a 512 KB region, at most about 190 KB in the densest windows [meas: design notes]), stays in LPDDR and is **fetched over the request bus into big SRAM** (mode-0 writes into region 0x03, 4 KB requests, counted on a write counter of their own) ahead of the replayer, then **refilled locally like resident data** (owner, 2026-10-26). The direct read from LPDDR into a queue port is no longer part of the replayer's contract. The controller loop's refill waits on its refill counter's done alone (4.19.9), so a fetch in flight on another counter never holds a refill up (owner, 2026-10-26, item 94). Before refilling from a fetched block, the controller waits for that fetch's counter.
 
 The median window's trace is about 335 KB and the densest about 700 KB [meas: design notes]. At the stages whose scratchpad margin is too small, the controller shrinks or evicts the region and reloads it afterwards (at 512 KB per tile, about 33 MB per chip, about 2 ms [estimate]). The same mechanism can spill compact, expensive-to-rebuild intermediates; anything the trace can regenerate is better replayed (about 0.2 ms per pass) than spilled. In sumcheck tails the controller can prefetch the next pass's streams from LPDDR (about 21 MB per chip, about 1.3 ms at 16–17 GB/s [estimate]), into areas the remaining rounds don't use, with C&C pacing the fill so it never fans in.
 
 **The rules software keeps:**
 - **Stream to a queue port from its window's base** (4.19.10), in 128-bit packets, with runs of at most a half; a refill is min(half, entries remaining) (4.19.8). Local refills may have two outstanding.
 - **No LPDDR read targets a queue** (part C): fetches go into the staging buffer, and the loop refills from there.
-- **No other tile sends the tile mode 9 during a pass,** and a queue port takes one source at a time (invariant 18): mode 9 may come from any source (4.17.5), but the controller loop counts only its own refills (4.19.9).
-- **Load the checkpoint, the decode table and the ROM while the replayer is stopped or the tile is halted** (4.19.10). There is no preloading of the queues: the start empties them (4.19.8).
-- **Before a start, every queue push has landed** (owner, 2026-10-23): `DMA_PERIPH_REMAINING` done for the controller's refill runs (4.19.9). meshsim flags a start with a push still in flight (invariant 16).
+- **No other tile writes the replayer's region during a pass,** and a queue port takes one source at a time (invariant 18): the region may be written from any source (4.17.5), but the controller loop counts only its own refills (4.19.9).
+- **Load the checkpoint, the decode table and the ROM while the replayer is stopped** (4.19.10). There is no preloading of the queues: the start empties them (4.19.8).
+- **Before a start, every queue push has landed** (owner, 2026-10-23): the refill counter's done for the controller's refill runs (4.19.9). meshsim flags a start with a push still in flight (invariant 16).
+- **Every refill except a stream's last is exactly half a queue,** and a credit's refill never exceeds half (4.19.8).
 
-**Code is not in big SRAM.** Each tile controller has its own instruction and data memories, and stage overlays are broadcast by C&C at stage boundaries into a parked controller (6.5), so the earlier plan's 256 KiB code reservation in big SRAM is reclaimed for data.
+**Code is not in big SRAM.** Each tile controller has its own program and data memories, and stage overlays are broadcast by C&C 1 at stage boundaries into a parked controller (6.5), so the earlier plan's 256 KiB code reservation in big SRAM is reclaimed for data.
 
 #### 4.19.14 Cost
 
@@ -1730,26 +1748,26 @@ The table update happens as each value is produced; the core takes one code valu
 
 ### 4.20 UART
 
-*(Owner, 2026-10-26, part D.)* **Every tile has the same small UART.** Only a tile whose pins are wired to a serial port uses it: C&C's, once C&C is a tile (item 82). Every compute tile's is unwired.
+*(Owner, 2026-10-26, part D; a peripheral since 2026-10-28.)* **The UART is part of C&C 1's peripheral,** Ingress/Egress and the UART (6.6), the only unit wired to a serial port (owner, 2026-10-28). It has left every other unit, along with v1.1's tile registers `UART_TX`, `UART_RX`, `UART_STATUS` and `UART_DIVISOR` and its events [22:21]. Its registers are peripheral-defined words of C&C 1's peripheral's window (8.14).
 
 - **Frame:** 8 data bits, no parity, 1 stop bit, fixed.
 - **FIFOs:** a TX FIFO and an RX FIFO of 16 bytes each *(Proposed)*.
 - **Bit timing** is counted from the board's **reference oscillator**, not the core PLL, so the rate is right before the PLL is configured. `UART_DIVISOR` holds reference-oscillator cycles per bit; its reset value gives **57,600 baud**: round(`f_ref` / 57,600), where `f_ref` is the oscillator's frequency *(param, Open: the board isn't chosen)*. A 25 MHz oscillator gives 434. A new divisor takes effect at the next idle point of each direction, so a byte in flight is never cut.
-- **Receive errors:** a byte arriving with the RX FIFO full is dropped and sets **RX overrun**; a byte with a bad stop bit is dropped and sets **framing error** (both sticky in `UART_STATUS`, cleared by writing 1).
+- **Line errors are status, not errors** (owner, 2026-10-28): a byte arriving with the RX FIFO full is dropped and sets **RX overrun**; a byte with a bad stop bit is dropped and sets **framing error**. Both are sticky bits in **`UART_STATUS`**, cleared by **writing 1**, and never in the peripheral's `ERRORS`: every C&C 1 error raises the toast pin (6.1), and line noise on the serial port must not. `UART_STATUS` is a word of its own, not the standard `STATUS`, which is read-only and live (4.17.4).
 
-**The registers** (0x890–0x89C, 8.13): `UART_TX` (W) pushes a byte, **stalling while the TX FIFO is full** (a third stall source beside the send and request stores, 4.11; at most one byte time, about 174 µs at 57,600 baud); `UART_RX` (R) returns the oldest byte with a valid bit and pops it only when valid; `UART_STATUS` (R/W) gives both occupancies and the two error bits, and its reads have no side effects; `UART_DIVISOR` (R/W).
+**The registers** (C&C 1's peripheral, 8.14): `UART_TX` (W) pushes a byte, **stalling while the TX FIFO is full** (a third stall source beside the send and request stores, 4.11; at most one byte time, about 174 µs at 57,600 baud); `UART_RX` (R) returns the oldest byte with a valid bit and pops it only when valid (a read side effect, at 4.11's sampling rule); `UART_STATUS` (R/W1C) gives both occupancies and the two line-error bits, and its reads have no side effects; `UART_DIVISOR` (R/W).
 
-**Wake events** (4.12), both **live**, both mask bits reset to 0, and a load that consumes them changes nothing: **[21] UART RX not empty** and **[22] UART TX not full**.
+**Events** (C&C 1's peripheral's `EVENTS`, 4.17.3), both **live**, never consumed: **UART RX not empty** and **UART TX not full** (8.14). Like every peripheral event they reach C&C 1's `EVENTS` [10] while masked in the peripheral's `EVENTS_MASK`, which resets to 0.
 
-**On an unwired tile** (every compute tile today) the registers decode, so no access is a bus error, but they are no-ops: `UART_TX` writes are dropped and never stall; `UART_DIVISOR` and `UART_STATUS` writes are ignored; `UART_DIVISOR` reads its reset value, round(`f_ref` / 57,600); `UART_RX` reads valid = 0; `UART_STATUS` reads empty FIFOs and no errors. So TX not full is always true and RX not empty never is.
+**At the reset** (6.1) both FIFOs empty, the status bits clear and the divisor takes its reset value.
 
-**HALT doesn't reset the UART:** its FIFOs, status and divisor keep running across HALT, like the routers (6.1), so a console survives a halt. **Chip reset** empties both FIFOs, clears the status bits and loads the reset divisor.
+**Debug output from other units** goes to log files through the file system (owner, 2026-10-28; 6.6), whose tails are flushed to LPDDR when the chip fails (6.1). How meshsim shows each unit's output is meshsim's business.
 
-**In simulation,** meshsim prints every tile's `UART_TX` writes to that tile's console log, wired or not: a debug print channel for every tile.
-
-**Cost:** two 16-byte FIFOs, a 16-bit divisor and the two shifters: about 0.002 mm² per tile [estimate].
+**Cost:** two 16-byte FIFOs, a 16-bit divisor and the two shifters: about 0.002 mm², in C&C 1 only [estimate].
 
 ---
+
+## 5. Timing summary---
 
 ## 5. Timing summary
 

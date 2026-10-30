@@ -386,6 +386,11 @@ Word *n* is at window base + 4*n*.
   `EVENTS` has one bit per peripheral, **live** (not sticky): high while the peripheral's
   `EVENTS & EVENTS_MASK` is non-zero. An event is consumed in one place only, by a load of the
   peripheral's `EVENTS`. (Answers Q13.)
+- **v1.1's register rules extend to every window** (W3-15; spec-update items): register-load latency is fixed
+  per register for every window word too (4.11); the sampling rule for side-effecting loads gains the
+  consuming load of a peripheral's `EVENTS` and the UART's RX pop; the store-stall list loses `SENDER_SEND`
+  and `UART_TX` moves into C&C 1's window; and every peripheral, up to three per tile, lands its writes within
+  K of acceptance (4.17.8; 2 cycles today).
 - **Counted and live events** (owner, 2026-10-28; W3-02): **every peripheral `EVENTS` bit is backed by a small
   counter**, and the bit reads 1 while the count is above 0. The peripheral adds 1; **a consuming load
   subtracts 1** from each set, masked bit (rather than clearing it). Each peripheral's spec gives the depth:

@@ -340,7 +340,7 @@ Decided (O). Answers most of Q11.
 - **Each peripheral has one wake bit** in `EVENTS`, replacing v1.1's six service lines. What the bit
   means, and how software learns why it fired, is the peripheral's own business, through its window.
 - **The UART becomes a peripheral** on the tiles wired to a serial port, with TX and RX as registers in its
-  window. It leaves every other tile, along with v1.1's `UART_TX`/`UART_RX`/`UART_STATUS`/`UART_CONTROL`
+  window. It leaves every other tile, along with v1.1's `UART_TX`/`UART_RX`/`UART_STATUS`/`UART_DIVISOR`
   and wake events [22:21]. meshsim's per-tile console needs a replacement (Q12).
 - **Follow-on:** v1.1's slot interface (4.17) shrinks: `PERIPH_STATUS_0`-`7` and the service lines move
   into each peripheral's window, and so do the run pulses (10). The replayer
@@ -446,7 +446,7 @@ first words. *(Proposed: the addresses below.)* In region 0xFF; the low 12 bits 
 | 0x808 | `ERRORS` | R | gains one bit per peripheral (10); loses the peripheral conditions [13:11] |
 | 0x80C | `PULSE_DONE` | W | 8 |
 | 0x810 | `PULSE_DMA` | W | 8 |
-| 0x814 | `PULSE_GO` | W | 8 |
+| 0x814 | ~~`PULSE_GO`~~ | | moved to C&C 1's peripheral (28) |
 | 0x818 | `EVENTS` | R | layout in 16 |
 | 0x81C | `EVENTS_PEEK` | R | |
 | 0x820 | `EVENTS_MASK` | R/W | |
@@ -1002,6 +1002,38 @@ Decided (O), from W2-13; states a principle applied throughout today's decisions
   write to regions 0x00 or 0x01 stays inside its memory and outside both blocks.
 - **The other invariants W2-13 lists** (4, 5, 8, 9, 10, 13, 14, 17, 18) are rewritten mechanically with the
   spec update.
+
+## 28. C&C 1's registers (2026-10-28)
+
+*(Integrator's proposal, W3-18: the owner asked the integrator to decide; **to review**.)*
+
+- **Every chip-level C&C function lives in C&C 1's peripheral** (Ingress/Egress, the UART), and **the
+  controller block is identical on every unit**, C&C 1 included. `PULSE_GO` leaves the controller block (11).
+- **C&C 1's peripheral-defined words** (from word 32; order and offsets to be laid out):
+  - `ERROR_LINES_0`-`2` (15), `RESET` (21);
+  - `READY_LINES_0`-`1`: the tiles' sticky READY bits (64 bits; READY is tiles only, 23);
+  - `PULSE_GO`: clears READY bits 0-63 and drives GO, in one store; a READY pulse arriving in the same
+    cycle is kept;
+  - the phase watchdog (its limit and count);
+  - the host interface (Ingress/Egress);
+  - the UART's TX, RX and divisor, and its line-error status (21);
+  - `LED`, the software pin (24).
+- **C&C 1's peripheral `EVENTS`:** all tiles READY; the watchdog expired; the UART's RX not empty and TX not
+  full (live); the host interface's events. The unit-error bit is an **error**, in the peripheral's `ERRORS`
+  (15), not an event.
+- **The request receive FIFO stays with the request port** (`REQUEST_GET_W0`-`W2`, `REQUEST_RECEIVE`), which
+  every controller has; C&C 1 receives the reports through it like any request.
+
+## 29. Housekeeping from WORKER3 (2026-10-28)
+
+- **W3-17:** settled by bytes (5) and the units rule (26). Converting a chunk address to a packet address is
+  `0x03000000 | chunk << 2` (big SRAM is region 0x03, 22).
+- **W3-20:** v1.1's UART register is `UART_DIVISOR`, not `UART_CONTROL` (9 corrected).
+- **W3-21:** planning notes to-do 13's `ROUTER_SET_HDR` alias and readable `SENDER_ADDR` are superseded by 7
+  and 10.
+- **W3-22:** the simulator-only addresses at 0xFFFFFFF0 (the split's `TRACE_REG`, the skew harness's
+  sentinel) now fall in peripheral 3's window; they move to a reserved word of the controller block,
+  *(proposed)* 0xFFFFF9FC.
 
 ---
 

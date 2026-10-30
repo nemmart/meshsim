@@ -36,3 +36,13 @@ those two uses (for example a tile copying an overlay into its own program memor
 write outside regions 0x00 and 0x01, whatever its source. A tile's own block copies are counted (6.5 says so).
 
 **Status:** proposed; the code follows it (TrafficDirector.checkUncounted).
+
+## W4-04: who owns `wip/sw/REGISTERS.md`
+
+**What.** RegDoc.java generated the register tables in `wip/sw/REGISTERS.md`, which is still the v1.1 document and was
+outside my scope.
+
+**Answer (owner, 2026-10-30):** no session owns it now; it is in WORKER4's scope. RegDoc comes back and regenerates it
+as the v1.2 document.
+
+**Status:** agreed; done in phase 2.

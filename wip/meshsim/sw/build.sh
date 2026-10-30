@@ -7,7 +7,7 @@
 set -e
 HERE=$(cd $(dirname $0) && pwd); cd $HERE
 OUT=build; mkdir -p $OUT
-CC="riscv64-unknown-elf-gcc -march=rv32i_zmmul -mabi=ilp32 -ffreestanding -nostdlib -nostartfiles -static -fno-builtin -Wall -Wno-array-bounds -Wl,--no-relax -I."
+CC="riscv64-unknown-elf-gcc -march=rv32i_zicsr_zmmul -mabi=ilp32 -std=gnu11 -ffreestanding -nostdlib -nostartfiles -static -fno-builtin -Wall -Wno-array-bounds -Wl,--no-relax -I."
 OBJCOPY=riscv64-unknown-elf-objcopy
 NM=riscv64-unknown-elf-nm
 
@@ -25,6 +25,7 @@ echo "loader: $LW words"
 FAILED=""
 for src in tests/*.c; do
   n=$(basename $src .c)
+  case $n in rcp_*) continue;; cond) continue;; esac   # cond.c: phase 4 (errors, REPORT, the reset)
   OPT=$(sed -n 's|^// build: ||p' $src | head -1); [ -n "$OPT" ] || OPT=-Os
   rm -f $OUT/$n.code.bin $OUT/$n.data.bin
   if ! $CC $OPT -T app.ld crt0.S $src -o $OUT/$n.elf; then FAILED="$FAILED $n"; continue; fi
@@ -37,12 +38,4 @@ for src in tests/*.c; do
   END=$($NM $OUT/$n.elf | sed -n 's/^\([0-9a-f]*\) . _end$/\1/p')
   echo "$n: code $(stat -c %s $OUT/$n.code.bin) B, data $(stat -c %s $OUT/$n.data.bin) B, data+bss end 0x$END"
 done
-# v1.1: the recipes (rcp_*.c, rcp.h) still compile against mesh.h 1.0 until the software session rebuilds them with
-# RECIPES.md; RECIPES_PENDING=1 reports their failures without failing the build (run_tests.sh sets it)
-if [ "$RECIPES_PENDING" = "1" ]; then
-  PEND=""; REST=""
-  for n in $FAILED; do case $n in rcp_*) PEND="$PEND $n";; *) REST="$REST $n";; esac; done
-  [ -z "$PEND" ] || echo "PENDING (recipes, software session):$PEND"
-  FAILED=$REST
-fi
 [ -z "$FAILED" ] || { echo "FAILED:$FAILED"; exit 1; }

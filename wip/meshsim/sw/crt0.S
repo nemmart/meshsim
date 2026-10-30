@@ -1,6 +1,6 @@
-/* Program start-up (meshsim v4.0): entered from the resident loader's CMD_JUMP with the code in instruction memory and
- * .rodata/.data in data memory. Sets the stack, zeroes .bss, calls main(); if main returns, ebreak with a0 = its
- * return value (a simulator-only exit; real programs loop on wait_for_command()). */
+/* Program start-up (meshsim v1.2): entered from the loader's CMD_JUMP with the code in program memory and .rodata/.data
+ * in data memory. Sets the stack, zeroes .bss, calls main(); when main returns, its return value goes to the
+ * simulator-only exit word (8.15), which ends the test. Real programs loop on wait_for_command(). */
 #include "mesh.h"
     .section .text.init
     .globl _start
@@ -13,5 +13,5 @@ _start:
     addi  t1, t1, 4
     j     1b
 2:  call  main
-    ebreak
+    sw    a0, X0REL(OFF_SIM_EXIT)(zero)
 3:  j     3b

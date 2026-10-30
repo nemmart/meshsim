@@ -145,6 +145,14 @@ Decided (O, T).
 
 ---
 
+## Studies for other sessions
+
+| # | study | why |
+|---|---|---|
+| ST1 | **Compare the two Jolt tracers' traces:** jolt-cpp (https://github.com/snarkify/jolt-cpp, ours) and the Rust Jolt tracer (https://github.com/a16z/jolt). They are written differently and may work slightly differently but are believed to produce the same traces. Run the same guest programs through both and find every place the traces mismatch (rows, `instr_idx`, advice, memory values, padding) | A mismatch is either a bug in one tracer or a difference our hardware must pick a side on. The spec's ground truth is upstream Jolt (spec 4.19, item 113), and our replayer and Tracer are validated against jolt-cpp |
+
+---
+
 ## Pending questions
 
 | # | question | from | status |

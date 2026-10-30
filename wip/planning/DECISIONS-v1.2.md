@@ -636,15 +636,11 @@ Hardware guarantees this needs:
 | C | **Gather values pass the traffic director like any loopback packet and are counted there** (corrected 2026-10-28, W2-02: they go out as packets to the tile itself and loop back through the router, 4.4, 4.5). Their K delay starts at the director like every other packet's, and a counter still takes at most one decrement per cycle |
 
 - **Uncounted traffic is mode 0 only** (owner, 2026-10-28; W2-11): uncounted packets are used for
-  **commands** and **boot and staging**, and all of them are mode-0 writes at explicit addresses. **Boot and
-  staging images for big SRAM go to region 0x03 by address**, no longer by source through `PTR[64]` (v1.1's
-  6.2), which the 32-bit address makes possible. So uncounted traffic never touches `PTR` or `HIST`, the
-  convention is simply **modes 1-3 are always counted**, and `PTR[64]` stops being special: C&C 1 places
-  each image by address.
-- **A running program sends no uncounted writes except commands** (owner, 2026-10-28; W2-17): anything
-  whose landing matters is counted. v1.1's counters done waited for `mem_idle` and `cm_idle`, so uncounted
-  writes had landed by the end of a phase; v1.2's done is the counters only. Commands signal their own
-  landing ("command landed", W2-12); boot and staging end with the marker, which lands last (22).
+  **commands** and **boot overlays** (into controller memory), all mode-0 writes at explicit addresses.
+  ~~Boot and staging images for big SRAM go to region 0x03 by address, uncounted.~~ *Superseded by 31 and 36
+  (W2-27, W5-15): big-SRAM data is always sent **counted**, after the first command; images go to region 0x03
+  by address, no longer by source through `PTR[64]` (v1.1's 6.2).* So uncounted traffic never touches `PTR`
+  or `HIST`, the convention is simply **modes 1-3 are always counted**, and `PTR[64]` stops being special.
 - **Guarantee A's "complete"** (W2-11) means **readable by a controller load through the table window**,
   `HIST`'s count-on-arrival included, behind its request FIFO; validated with S1's table-window case.
 - **`PULSE_DMA` clears DMA run done** (`EVENTS` [7], 30) (owner, 2026-10-28; W2-10), as an arming write clears
@@ -975,10 +971,10 @@ Decided (O), from W2-04. Settles what addresses mean at the controllers and engi
   contents, the flushed logs included, survive. To settle with the FS: the flush ends with any cache in the
   RW engine written back, and C&C 1 fires the reset only when the memory system has no reads outstanding into
   the domain, so no late delivery lands in a unit rebooting from ROM.
-- **Requests that cause data to come back** (W2-05; owner: as needed, details to settle with 6.7's request
-  format): the request names the destination as a full 32-bit address (replacing v1.1's destination kind
-  and 128-byte-unit address), and, if the answer must be counted, the data's counter and the reply's
-  counter. Whether requests carry counters at all, or answers arrive uncounted under a convention, is open.
+- **Requests that cause data to come back name their counters** (owner, 2026-10-29; W2-05, W5-17): the
+  request carries the destination as a full 32-bit address (replacing v1.1's destination kind and
+  128-byte-unit address), **the data's counter and the reply's counter**. Standardising it makes every
+  request's answers counted the same way; the exact request layout is settled with 6.7 and the file system.
   Between tiles, which counter a reply uses is agreed by the two programs, a software convention.
 - **Follow-on:** 4.2's "*d* = 64 only with mode 3" and "65-125 reserved", invariant 17's mode-3 clauses, and
   6.6-6.7's description of C&C's port and the memory system change.
@@ -1329,7 +1325,7 @@ A running list; each entry names where it came from. Resolved entries move into 
 | Q5 | Should an area serve writes ahead of queued reads? | 3 | **resolved: no** (owner, 2026-10-28; W2-15): areas keep strict arrival order. Writes jumping ahead of queued reads would break read-before-write reuse: a stream's source buffer overwritten after its run, and the local sort's ping-pong passes, where pass *n* + 1 writes the buffer pass *n* is still reading |
 | Q6 | The link word's 32-bit address: what it covers | 2 | **resolved: section 5** |
 | Q7 | The 3-bit mode: which of today's nine modes merge or go, now that counting is separate | 2 | **resolved: section 6** |
-| Q8 | The counter field in every packet source | 3 | **mostly resolved:** `STREAM` (4), the send port (7), a peripheral's DMA (10), the read port (13), gather values (6, W2-02). **Left:** memory-system requests, the data and reply counters (25, W2-05) |
+| Q8 | The counter field in every packet source | 3 | **resolved:** `STREAM` (4), the send port (7), a peripheral's DMA (10), the read port (13), gather values (6), and memory-system requests, which name the data and reply counters (25, W5-17) |
 | Q9 | Does a stream's source stay a 21-bit big-SRAM chunk address, or does the 32-bit address apply to reads too? | 4 | open |
 | Q10 | Is the 24-bit offset in bytes or in 32-bit words? | 5 | **resolved: bytes (5)** |
 | Q11 | How several peripherals share the slot's interface | 5 | **resolved: sections 9 and 10** |

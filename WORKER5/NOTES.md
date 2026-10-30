@@ -86,7 +86,7 @@ See the checklist below; R = rewrite, U = update, K = keep, X = removed (stub), 
 - [x] Pass 1: front matter, 1, 2, 3
 - [x] Pass 2: 4.1-4.16
 - [x] Pass 3: 4.17-4.20
-- [ ] Pass 4: 5, 6, 7 done; 8 next
+- [x] Pass 4: 5, 6, 7, 8
 - [ ] Pass 5: 9-14
 - [ ] CHANGES-v1.2.md, QUESTIONS.md, REPORT.md
 
@@ -94,7 +94,7 @@ See the checklist below; R = rewrite, U = update, K = keep, X = removed (stub), 
 
 - 117 storage of the reserved link bits (trim later, power) (3.1)
 - 118 sending peripherals' router ports (W2-31, deferred) (4.17.9)
-- 119 file system: tag windows, window protocol, request target 3, requests' counters (deferred) (3.3, 6.7)
+- 119 file system: tag windows, window protocol, request target 3, request layout (deferred) (3.3, 6.7)
 - 120 table window address 0xFFFF2000 (proposed, log 11) (4.10, 8.9)
 - 121 Q1: CSR list and reset values, mtvec (Tony) (4.11)
 - 122 handler report set: ops, order, count (4.13)
@@ -103,6 +103,12 @@ See the checklist below; R = rewrite, U = update, K = keep, X = removed (stub), 
 - 125 candidate: signed counters (6.2)
 - 126 requests dropped at the root: hardware record? (6.7)
 - superseded: items 50, 51 (credits), 54 (HALT row), 87 (sender), 48 stays (rp_latency)
+
+## Owner's rulings, round 2 (2026-10-29)
+
+- W5-01, W5-06: as written. W5-15, W5-17: decided in the log (dd6c651); spec updated, (Proposed) dropped.
+- W5-13: no reset hold; error-line flops reset with the whole chip; spec says why (6.1).
+- Log also: stream bound slip (4.19.15 fixed: 4.3 Mbit); 1x4 test chip added to 33's deferred list (13).
 
 ## Questions raised so far (mirror of QUESTIONS.md)
 
@@ -122,4 +128,7 @@ See the checklist below; R = rewrite, U = update, K = keep, X = removed (stub), 
 - W5-15 big-SRAM staging is always counted (31/W2-27) though 17 lists "boot and staging images for big SRAM" among uncounted traffic (6.2)
 - W5-16 memory system's errors: a peripheral error of C&C 2 -> toast (6.7)
 - W5-17 requests name the data and reply counters (25 leaves open; deferred item 119) (6.7)
+- W5-18 C&C 1's peripheral word numbers and EVENTS bits (8.14); WATCHDOG load returns the count
+- W5-19 exit word at 0xFFFFF9F8 (8.15)
+- W5-20 controller block addresses (log 11 says proposed) (8.1)
 - W5-08 region decode for bad packets, size 11, modes 1-4 ignore address, mode 3 at 128: log 26's (proposed) rows kept proposed (3.1)

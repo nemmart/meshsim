@@ -1182,6 +1182,14 @@ Not needed to run the sort and the replayer on v1.2; each comes back with the de
   writes from running tiles (W2-29); the window protocol and the read direction (W2-30); whether requests
   carry counters (W2-05); a peripheral event kind for a queue of items, for returning closed tags and for
   the host interface (W3-25).
+- **A 1×4 test chip** (owner, 2026-10-29; an MPW: C&C 1-3 plus 4 compute tiles). Expected to work: the sort's
+  algorithm doesn't depend on the tile count, and its all-to-all keeps v1.1's mechanism (lockstep group runs,
+  so every destination hears from one source at a time). On the ±1 ring of four tiles the schedule is one
+  group of the four offsets {0, 1, 2, 3}: offset 2 goes clockwise and its second hop falls in the cycle the
+  tiles send offset 3 counter-clockwise, so no link carries more than one packet per cycle. What changes is
+  software and parameters: the schedule table, the split's 64-sized arrays and exchanges, the ring forms of
+  the routing offsets, the relative *d* and the mesh reduction. **Mesh size to be made a parameter** in
+  meshsim, the spec and the sort when the test chip is taken up.
 - **Sending peripherals' router ports** (W2-31): src, routing inside the controllers' routers, flow control.
   Only C&C 1-3's engines send, and the replayer doesn't.
 

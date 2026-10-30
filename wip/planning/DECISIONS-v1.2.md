@@ -21,7 +21,7 @@ are marked in place. In brief:
 - **Counters:** the packet names one of **seven** write counters (0 uncounted; 40), decremented K cycles after the
   traffic director accepts it, K a formula (3, 30, 32).
 - **Modes:** 0 write at address (commands and replies included), 1 by source, 2 bucket, 3 augmented,
-  4 gather request, 5-7 reserved and discarded (6).
+  4 gather request, 5 count only (fences), 6-7 reserved and discarded (6, 43).
 - **Address map:** 0x00 data memory, 0x01 program memory (32 KB each), 0x02 the boot ROM, 0x03 big SRAM,
   0x04-0x06 up to three peripherals, 0xFF the registers and table window (5, 9, 22).
 - **Every access is naturally aligned**, checked in hardware; out-of-bounds is unchecked (26).
@@ -245,7 +245,8 @@ counting (3), the 3-bit mode keeps only what the receiver must do differently:
 | 2 | bucket write, at `PTR[digit]` |
 | 3 | augmented write, at `PTR[src]` |
 | 4 | gather request (local only); **never counted**: its counter field names the counter its gather values decrement |
-| 5-7 | reserved: **discarded at the destination, with no error** |
+| 5 | **count only** (43): decrements its counter at the destination, writes nothing |
+| 6-7 | reserved: **discarded at the destination, with no error** |
 
 - **The counter field counts for modes 0-3 only** (owner, 2026-10-28; W2-03). Mode 4 passes it on to its
   gather values (below). **Reserved modes 5-7 are discarded with no decrement**, whatever their counter
@@ -1432,6 +1433,31 @@ W5-09 is 39.
 - **For Tony:** W5-04, whether loads from program memory and the boot ROM take one cycle like data memory; and
   W5-21, whether the 32 KB memories meet one-cycle access at 1 GHz (about 0.15 mm² in all, fine for area; spec
   item 127).
+
+## 43. A count-only mode, and fences (2026-10-29)
+
+Decided (O). Answers WORKER6's F17.
+
+- **F17:** "DMA run done" means the run's last table read is done (17, guarantee B), not that its last packet
+  has left: some may still be in big SRAM's read pipeline. A packet the core then sends from the send port can
+  be injected first and overtake them, e.g. a command landing before the end of the code it starts. Tracking
+  each run's last packet in hardware was judged too expensive.
+- **The spec states no ordering between the address generator and the send port.** "DMA run done" keeps its
+  meaning.
+- **Mode 5 is "count only":** the packet decrements its counter at the destination and writes nothing. Any size
+  is accepted and the payload and address are ignored (the smallest packet is the natural choice); from a stream,
+  the address generator reads its source as usual and the payload is discarded; to the tile itself it takes a
+  read token like any loopback packet (S9). Revises 6's modes: **5 count only, 6-7 reserved.** Counted like modes
+  0-3 (the counter field counts for modes 0-3 and 5); a count-only packet with counter 0 does nothing, and meshsim
+  flags it.
+- **The fence:** when something must follow a run's packets, the run ends with **a count-only packet to the tile
+  itself**, counted on a spare counter. A sequential run injects its packets in order, so when the fence's counter
+  reaches 0, everything earlier in the run has been injected, and whatever the core sends next follows it to each
+  destination (same kind only, broadcast or unicast, 36). In a group run, the fence goes in the stream that ends
+  last. **Cost: one packet per run that needs it.**
+- **Also a signal between tiles:** "done" or "your data is all sent" as one count-only packet on the receiver's
+  armed counter, instead of a reply that writes a word nobody reads.
+- Putting the command inside the run, as the boot recipe does, remains valid.
 
 ---
 

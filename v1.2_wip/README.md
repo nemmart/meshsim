@@ -10,6 +10,7 @@ of this snapshot; this folder is replaced, not edited, when a newer snapshot is 
 | `spec/machine-spec.md` | the machine spec, v1.2: the authority. Section 13 lists what is still open, *(Proposed)* or *(Deferred)* |
 | `spec/CHANGES-v1.2.md` | every change from v1.1, section by section, each citing its decision |
 | `spec/replayer-opcodes.md` | the replayer's opcode table (spec 4.19) |
+| `spec/schedule.md` | the all-to-all's group schedule (spec 4.2) |
 | `sw/RECIPES.md` | the programming recipes, v1.2: how a tile program does each common job, with a walk-through of what each tile executes |
 | `sw/CONVENTIONS.md` | the software conventions |
 | `sw/mesh-v1.2-draft.h` | the draft header the recipes compile against (the generated `mesh.h` replaces it with the simulator) |

@@ -183,13 +183,23 @@ Decided (O). From WORKER7's F1.
     compaction network. `VirtualPextSigned` sign-extends from the last bit placed. Rows run at fixed cycle counts
     otherwise, so a multi-run PEXT stalls its pipeline; no current expansion produces one.
   - Gone: `VirtualAlignAddr` and the alignment assertions.
-- **Timing** *(proposed)*: **v1.2 stays on `4f36b3d`**, so the simulator port, the sort and the replayer run against
+- **Timing** (owner, 2026-10-31): **v1.2 stays on `4f36b3d`**, so the simulator port, the sort and the replayer run against
   what was built and measured; **the move is v1.3 work**, together with the Tracer, since both the replayer's and the
   Tracer's tables are rebuilt anyway. Pin a specific `main` commit when the work starts, not a moving branch.
 - **The work:** diff the two versions' expansions in full; rebuild the replayer's opcode table, ROM templates and
   decode table (spec 4.19.6's template count and ROM fill); add `shift_offset` to the expansion word; regenerate the
   replayer's test vectors; and the same for the Tracer's tables (7, 8). WORKER7's advice work is unaffected (the
   division-family advice code is byte-identical).
+
+---
+
+## v1.3 work list
+
+Work agreed for v1.3, each with the decisions it carries out. Studies (below) are separate.
+
+| # | task | from | status |
+|---|---|---|---|
+| W1 | **Bring the replayer and the Tracer up to date with jolt-cpp's latest.** Pin a current `main` commit; diff its expansions against `4f36b3d` in full; rebuild the replayer's opcode table, ROM templates and decode table (spec 4.19.3-4.19.7, the template count and ROM fill); add `shift_offset` to the expansion word; add the new row operations (`VirtualLoad`/`Store`, `WindowMask`, `ShiftData`, PEXT one run per cycle); drop `VirtualAlignAddr` and the alignment assertions; regenerate the replayer's test vectors; rebuild the Tracer's tables (7) and re-check its advice templates (8) | 9 | agreed (owner, 2026-10-31) |
 
 ---
 

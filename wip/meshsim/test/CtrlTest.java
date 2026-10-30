@@ -37,47 +37,53 @@ public final class CtrlTest {
         Mach m = new Mach(Mach.cfg(shuffle));
         Mach.Image im = m.boot("regs");
         boolean ok = m.run(m::allStopped, 40000);
-        T.check(ok && m.allExited(), "every tile ran regs to its ebreak: " + m.haltSummary());
+        T.check(ok && m.allExited(), "every tile ran regs to its exit: " + m.haltSummary());
+        int buf = im.sym("buf");
         for (Tile p : m.c.tiles) {
             int i = p.idx;
             int[] r = new int[36]; for (int k = 0; k < 36; k++) r[k] = m.word(i, im, "r", k);
             String tl = "tile " + i + ": ";
-            for (int k = 0; k <= 10; k++) T.eq(0, r[k], tl + "write-only register " + k + " reads 0");
-            T.eq(0x12345, r[11], tl + "SRAM_REMAINING reads back"); T.eq(0xFFFFF, r[12], tl + "CM_REMAINING keeps 20 bits"); T.eq(3, r[13], tl + "REPLY_REMAINING: a write of 0 adds nothing");
+            T.eq(0xBCDEF, r[0], tl + "DMA_CONFIG reads back (v1.2: readable)"); T.eq(0, r[1], tl + "PULSE_DMA reads 0");
+            T.eq(0x54321, r[2], tl + "DMA_RECORD_BASE_ADDRESS reads back"); T.eq(0, r[3], tl + "SRAM_RD_DEST_ADDR: 0 at reset");
+            T.eq(Registers.HDR_DST.place(i) | Registers.HDR_MODE.place(LinkWord.M_SRC) | Registers.HDR_CTR.place(1), r[4], tl + "ROUTER_HDR reads back without the size and the spare bits (stores ignore them)");
+            for (int k = 5; k <= 8; k++) T.eq(0, r[k], tl + "write-only register " + k + " (ROUTER_SET_W0-W2, ROUTER_SEND_32) reads 0");
+            T.eq(0x12345678, r[9], tl + "ROUTER_ADDR reads back"); T.eq(0, r[10], tl + "PULSE_DONE reads 0");
+            T.eq(0x12345, r[11], tl + "WRITE_COUNTER_1 reads back"); T.eq(0xFFFFF, r[12], tl + "WRITE_COUNTER_2 keeps 20 bits"); T.eq(3, r[13], tl + "WRITE_COUNTER_3: a write of 0 adds nothing");
             T.eq(3L, p.ctl.counterWraps, tl + "three writes past 2^20 - 1 wrapped to 0 (flagged)");
             T.eq(0x1FFFF, r[14], tl + "HIST keeps 17 bits"); T.eq(0x1FFFFF, p.ptr(i ^ 1), tl + "PTR keeps 21 bits (read through the simulator: PTR is write-only)");
             T.eq(0xDEADBEEF, p.ts.peek(TableStore.STREAM_SRC + 3), tl + "STREAM_SRC[3]"); T.eq(0x12345678, p.ts.peek(TableStore.STREAM_DEST + 3), tl + "STREAM_DEST[3]");
             T.eq(0x0BADBEEF, p.ts.peek(TableStore.STREAM_COUNT + 3), tl + "STREAM_COUNT[3]");
-            T.eq(0x0BADF00D, p.ts.peek(TableStore.GROUP + 126), tl + "GROUP[63] low (0x35F8)"); T.eq(0xFEEDFACE, p.ts.peek(TableStore.GROUP + 127), tl + "GROUP[63] high (0x35FC)");
-            T.eq(0xAAAA0000 + i, r[15], tl + "64-bit reply, word 0 (W0) at REPLY[2 me]"); T.eq(0xBBBB0000 + i, r[16], tl + "word 1 (the sending word)");
+            T.eq(0x0BADF00D, p.ts.peek(TableStore.GROUP + 126), tl + "GROUP[63] low"); T.eq(0xFEEDFACE, p.ts.peek(TableStore.GROUP + 127), tl + "GROUP[63] high");
+            T.eq(0xAAAA0000 + i, r[15], tl + "64-bit reply, word 0 (W0) at REPLY + 8 me"); T.eq(0xBBBB0000 + i, r[16], tl + "word 1 (the sending word)");
             T.eq(0xCCCC0000 + i, r[17], tl + "32-bit reply: word 0"); T.eq(0xBBBB0000 + i, r[18], tl + "a 32-bit reply leaves word 1 alone");
-            T.eq(0x11110000 + i, r[19], tl + "mode-6 128-bit word 0 (W0)"); T.eq(0xAAAA0000 + i, r[20], tl + "word 1 (W1)");
-            T.eq(0xBBBB0000 + i, r[21], tl + "word 2 (W2)"); T.eq(0xCCCC0000 + i, r[22], tl + "word 3 (the sending word)");
-            T.eq(0x22220000 + i, r[23], tl + "mode-6 32-bit packet at addr + 4: one word, W0 not sent");
-            T.eq(0, r[24], tl + "mode-6 64-bit packet at addr + 5: its word 0 is 0 (W0 cleared by the 32-bit send)"); T.eq(0x33330000 + i, r[25], tl + "its word 1 the sending word");
-            T.eq(0x7777, r[26], tl + "nothing past the last packet (addr + 7 untouched)");
-            T.eq(0x55500000 + i, r[27], tl + "mode-7 command slot 14"); T.eq(0x55510000 + i, r[28], tl + "mode-7 slot 15 (addr + 1)");
-            T.eq(0x107, p.ptr(i), tl + "mode 2 at PTR[me]: PTR advanced by 4, 2 and 1 (128, 64, 32 bits)");
-            T.eq(0xD0D00000L + i | (0xD1D10000L + i) << 32, p.sram.peek64(0x100), tl + "mode-2 128-bit packet, chunks 0-1");
-            T.eq(0xD2D20000L + i | (0xD3D30000L + i) << 32, p.sram.peek64(0x102), tl + "mode-2 128-bit packet, chunks 2-3");
-            T.eq(0xA0A00000L + i | (0xB0B00000L + i) << 32, p.sram.peek64(0x104), tl + "mode-2 64-bit packet");
-            T.eq(0xC0C00000 + i, p.sram.peek(0x106), tl + "mode-2 32-bit packet: one chunk");
-            int s = r[29];
-            T.eq(1, Registers.ST_MEM_IDLE.get(s), tl + "status: mem_idle"); T.eq(1, Registers.ST_CM_IDLE.get(s), tl + "status: cm_idle");
-            T.eq(0, Registers.ST_DONE.get(s), tl + "status: done cleared by RUN"); T.eq(0, Registers.ST_LANDED.get(s), tl + "status: command landed cleared by RUN");
-            T.eq(0, s & (0xF << 16), tl + "status: the spare [19:16] reads 0"); T.eq(0, p.ctl.conditions, tl + "no conditions");
-            T.eq(i, Registers.ST_ID.get(s), tl + "status: endpoint id"); T.eq(15, Registers.ST_SIZE.get(s), tl + "status: size 16 units of 256 KB - 1 (4 MB)");
-            T.eq(Registers.WAKE_MASK_RESET, r[30], tl + "WAKE_MASK = [8] | [9] after HALT -> RUN"); T.eq(0, r[31], tl + "WAKE_REQUIRED = 0"); T.eq(7, r[32], tl + "WAKE_PEEK: the per-counter done events [2:0] still pending (not in the reset mask, so wfi() didn't consume them); counters done consumed");
-            T.eq(0, r[33], tl + "DMA_PERIPH_REMAINING = 0");
-            T.eq(1, Registers.ST_DONE.get(r[34]), tl + "status: done after TILE_PULSE[0], readable the next cycle");
+            T.eq(Registers.REPLY_BASE + 8 * i, r[19], tl + "ROUTER_ADDR stays put under no-increment");
+            T.eq(0x11110000 + i, r[20], tl + "mode-0 128-bit word 0 (W0)"); T.eq(0xAAAA0000 + i, r[21], tl + "word 1 (W1)");
+            T.eq(0xBBBB0000 + i, r[22], tl + "word 2 (W2)"); T.eq(0xCCCC0000 + i, r[23], tl + "word 3 (the sending word)");
+            T.eq(0x22220000 + i, r[24], tl + "mode-0 32-bit packet at ROUTER_ADDR + 16: one word, W0 not sent");
+            T.eq(0, r[25], tl + "buf[5] untouched");
+            T.eq(0, r[26], tl + "the 64-bit packet's word 0 is 0 (W0 cleared by the 32-bit send)"); T.eq(0x33330000 + i, r[27], tl + "its word 1 the sending word");
+            T.eq(buf + 32, r[28], tl + "ROUTER_ADDR advanced by 8 past the 64-bit packet");
+            T.eq(0x107, p.ptr(i), tl + "mode 1 at PTR[me]: PTR advanced by 4, 2 and 1 (128, 64, 32 bits)");
+            T.eq(0xD0D00000L + i | (0xD1D10000L + i) << 32, p.sram.peek64(0x100), tl + "mode-1 128-bit packet, chunks 0-1");
+            T.eq(0xD2D20000L + i | (0xD3D30000L + i) << 32, p.sram.peek64(0x102), tl + "mode-1 128-bit packet, chunks 2-3");
+            T.eq(0xA0A00000L + i | (0xB0B00000L + i) << 32, p.sram.peek64(0x104), tl + "mode-1 64-bit packet");
+            T.eq(0xC0C00000 + i, p.sram.peek(0x106), tl + "mode-1 32-bit packet: one chunk");
+            T.eq(0, r[29], tl + "STATUS: the idle machine (no run, done and command landed cleared by RUN)"); T.eq(0, p.ctl.conditions, tl + "no errors");
+            T.eq(Registers.EVENTS_MASK_RESET, r[30], tl + "EVENTS_MASK = [8] | [7] after HALT -> RUN"); T.eq(0, r[31], tl + "EVENTS_REQUIRED = 0");
+            T.eq(7, r[32], tl + "EVENTS_PEEK: counters 1-3's done events [2:0] still pending (not in the reset mask, so wfi() didn't consume them); counters done consumed");
+            T.eq(buf + 32, r[33], tl + "modes 1-5 leave ROUTER_ADDR alone");
+            T.eq(1 << Registers.ST_DONE, r[34], tl + "STATUS: done after PULSE_DONE, readable the next cycle");
             T.eq(35, r[35], tl + "every step ran");
             T.eq(4, p.ctl.eventWakes, tl + "four WFIs, each left by an event (counters done)");
             T.eq(0, p.ctl.readies - 1, tl + "READY only at boot (done without a landed command makes none)");
+            int par = p.ctl.params();
+            T.eq(1, Registers.PA_PERIPH.get(par), tl + "PARAMS: peripheral 1 present"); T.eq(i, Registers.PA_ID.get(par), tl + "PARAMS: endpoint id");
+            T.eq(15, Registers.PA_SIZE.get(par), tl + "PARAMS: size 16 units of 256 KB - 1 (4 MB)");
         }
         T.eq(64 * 3L, m.c.violations, "the 192 violations are the three counter wraps on every tile");
         m.c.violations = 0; m.c.violationMessages.clear();
         noViolations(m.c, "registers");
-        out("registers [meas: CtrlTest registers]: write-only reads 0; counters 20 bits, writes add and wrap (flagged); HIST 17, PTR 21, the STREAM arrays and GROUP 32 bits a word through the window; send port modes 2, 6, 7, 8 to the tile itself at 32, 64 and 128 bits with auto-increment +1/+2/+4 (mode 6) and +1 (mode 7), W0-W2 cleared per send; counters done after each; the wake registers' resets; status and done readable the next cycle");
+        out("registers [meas: CtrlTest registers]: the configuration registers read back, write-only ones read 0; counters 20 bits, writes add and wrap (flagged); HIST 17, PTR 21, the STREAM arrays and GROUP 32 bits a word through the window; the send port in modes 0 and 1 to the tile itself at 32, 64 and 128 bits, ROUTER_ADDR + 4/8/16 at mode 0 and fixed under no-increment, W0-W2 cleared per send; counters done after each; the events' registers at reset; STATUS and done readable the next cycle");
     }
 
     // ================================================================ one- and two-command phases (6.3)
@@ -155,7 +161,7 @@ public final class CtrlTest {
              .waitCycles(700)
              .command(LinkWord.BROADCAST, 3 << 24).go();                       // lands during D's spin; READY at done
         boolean ok = m.run(m::allStopped, 20000);
-        T.check(ok && m.allExited(), "every tile ran wfi to its ebreak: " + m.haltSummary());
+        T.check(ok && m.allExited(), "every tile ran wfi to its exit: " + m.haltSummary());
         for (Tile p : m.c.tiles) {
             String tl = "tile " + p.idx + ": ";
             List<long[]> w = p.core.wfiLog;
@@ -163,7 +169,7 @@ public final class CtrlTest {
             if (w.size() < 4) continue;
             T.check(w.get(0)[1] == w.get(0)[0] && w.get(0)[2] == TileControl.WAKE_EVENT, tl + "A: counters done set before WFI, which falls straight through");
             int a = m.word(p.idx, im, "r", 2);
-            T.eq(1 << Registers.EV_COUNTERS_DONE | 1 << Registers.EV_CM_DONE, a & ~(1 << Registers.EV_UART_TX | 1 << Registers.EV_COMMAND), tl + "A: wfi() returns WAKE_EVENTS: counters done and DMA_CM_REMAINING done (and command landed if command 1 is in)");
+            T.eq(1 << Registers.EV_COUNTERS_DONE | 1 << Registers.evCounter(2), a & ~(1 << Registers.EV_COMMAND), tl + "A: wfi() returns EVENTS: counters done and counter 2 done (and command landed if command 1 is in)");
             T.check(w.get(1)[2] == TileControl.WAKE_GO && w.get(1)[1] > w.get(1)[0], tl + "B: done cleared counters done, so wait_for_command waits for GO");
             long goC = firstGo[0] + m.c.cfg.goLatency + m.c.startSkew[p.idx];
             T.check(w.get(2)[0] > goC, tl + "C: the GO arrived before WFI");
@@ -205,10 +211,10 @@ public final class CtrlTest {
         T.check(ok && m.allExited(), "after HALT -> RUN every tile restarted and exited: " + m.haltSummary());
         for (Tile p : m.c.tiles) {
             T.eq(0x600D0000 + p.idx, m.word(p.idx, im, "ok", 0), "tile " + p.idx + ": restarted at the loader");
-            T.eq(0, m.word(p.idx, im, "st", 0), "tile " + p.idx + ": entering HALT cleared the conditions (MASTER_CONDITIONS reads 0)");
+            T.eq(0, m.word(p.idx, im, "st", 0), "tile " + p.idx + ": entering HALT cleared the errors (ERRORS reads 0; PHASE-2 INTERIM)");
         }
         noViolations(m.c, "restart");
-        out("faults [meas: CtrlTest faults]: store to TILE_STATUS, load from instruction memory, sub-word register store, the table window's gap and a misaligned load are bus errors; div and a CSR read are illegal; ecall halts; each cause logged, its condition set, no READY; HALT clears the conditions and HALT -> RUN restarts every core at the loader");
+        out("faults [meas: CtrlTest faults] (PHASE-2 INTERIM: a fault halts; phase 4 traps): a store to STATUS, a store to program memory, a sub-word register store, a load from PTR and a misaligned load are bus errors; div and a CSR read are illegal; ecall halts; each cause logged, its error set, no READY; HALT clears the errors and HALT -> RUN restarts every core at the loader");
     }
 
     // ================================================================ programming errors the simulator catches (spec 9)
@@ -220,16 +226,17 @@ public final class CtrlTest {
         Mach.Image im = m.boot("inv");
         m.run(m::allStopped, 10000);
         T.check(m.allExited(), "every tile ran inv: " + m.haltSummary());
-        String[] want = { "invariant 4", "invariant 8", "address generator is running", "invariant 9", "TILE_PULSE [3]" };
+        String[] want = { "invariant 4", "invariant 8", "address generator is running", "invariant 9", "reserved register-block word" };
         for (Tile p : m.c.tiles) {
             String key = "tile " + p.idx + ": ";
             long n = m.c.violationMessages.stream().filter(v -> v.contains(key) && v.contains(want[p.idx & 3])).count();
             T.check(n >= 1, "tile " + p.idx + ": " + want[p.idx & 3] + " reported");
-            if ((p.idx & 3) == 0) T.eq(1 << Conditions.DONE_EARLY, p.ctl.conditions, key + "done with DMA_SRAM_REMAINING non-zero: done early, and only it");
+            if ((p.idx & 3) == 0) T.eq(1 << Conditions.DONE_EARLY, p.ctl.conditions, key + "done with WRITE_COUNTER_1 non-zero: done early, and only it");
             if ((p.idx & 3) == 3) {
-                T.eq(1 << Conditions.UNEXPECTED, m.word(p.idx, im, "r", 0), key + "the unexpected-arrival condition set, and only it");
-                T.eq(m.word(p.idx, im, "r", 0), m.word(p.idx, im, "r", 1), key + "a store of 1 to TILE_PULSE[3] (reserved) is ignored: the condition stays");
-                T.check(m.c.violationMessages.stream().anyMatch(v -> v.contains(key) && v.contains(want[4])), key + "and meshsim flags the reserved bit");
+                T.eq(1 << Conditions.UNEXPECTED, m.word(p.idx, im, "r", 0), key + "the unexpected-arrival error set, and only it");
+                T.eq(0, m.word(p.idx, im, "r", 1), key + "a reserved register-block word reads 0");
+                T.eq(m.word(p.idx, im, "r", 0), m.word(p.idx, im, "r", 2), key + "and its load changes nothing");
+                T.check(m.c.violationMessages.stream().anyMatch(v -> v.contains(key) && v.contains(want[4])), key + "and meshsim flags the access");
             }
         }
         long other = m.c.violationMessages.stream().filter(v -> { for (String w : want) if (v.contains(w)) return false; return true; }).count();
@@ -242,14 +249,14 @@ public final class CtrlTest {
         long ow = 0; for (Tile p : d.c.tiles) ow += p.cmem.overwrittenUnread;
         T.eq(16L, ow, "invariant 8 by default: the 16 overwritten-unread replies (tiles 1, 5, ...) are counted");
         T.check(d.c.violationMessages.stream().noneMatch(v -> v.contains("invariant 8")), "invariant 8 by default: no violation");
-        // invariant 5 (no packet with a bad mode; 0 or 8-15; is sent) and invariant 7 (a packet in flight when the line changes)
+        // invariant 5 (no bad packet is sent: a misaligned mode 0) and invariant 7 (a packet in flight when the line changes)
         Mach h = new Mach(Mach.cfg(shuffle));
-        h.c.cc.send(5, LinkWord.M_INVALID, 0x100, 0x800).waitCycles(30)
-               .send(9, LinkWord.M_CMD, 3, LinkWord.SIZE_32, 1, 0).then((c, t) -> { c.storeRun(t, true); return true; });
+        h.c.cc.send(5, LinkWord.M_WRITE, 0x104, 0x800).waitCycles(30)
+               .send(9, LinkWord.M_WRITE, Registers.COMMAND_BASE + 12, LinkWord.SIZE_32, 1, 0).then((c, t) -> { c.storeRun(t, true); return true; });
         h.c.run(60);
-        T.check(h.c.violationMessages.stream().anyMatch(v -> v.contains("invariant 5")), "invariant 5: a mode-0 packet sent");
+        T.check(h.c.violationMessages.stream().anyMatch(v -> v.contains("invariant 5")), "invariant 5: a misaligned mode-0 packet sent");
         T.check(h.c.violationMessages.stream().anyMatch(v -> v.contains("invariant 7")), "invariant 7: RUN raised with a packet in flight");
-        out("invariants [meas: CtrlTest invariants]: 4 (done before arrivals), 5 (a mode-0 packet sent), 7 (packet in flight at a line change), 8 (reply overwritten unread), 9 (unexpected arrival: its condition set; a store to the reserved MASTER_PULSE[3] ignored and flagged; M14) and the table-window check each fire on a bad program");
+        out("invariants [meas: CtrlTest invariants]: 4 (done before arrivals), 5 (a bad packet sent), 7 (packet in flight at a line change), 8 (reply overwritten unread), 9 (unexpected arrival: its error set), a reserved register-block word (reads 0, flagged) and the table-window check each fire on a bad program");
     }
 
     // ================================================================ mesh.h's field table agrees with the engines' encoders
@@ -257,33 +264,38 @@ public final class CtrlTest {
         T.group("fields");
         java.util.Random r = new java.util.Random(5);
         for (int k = 0; k < 200; k++) {
-            int src = r.nextInt(1 << 21), word = r.nextInt(1 << 21), cnt = r.nextInt(1 << 18), d = r.nextInt(128), mode = r.nextInt(16), size = r.nextInt(4), gap = r.nextInt(8);
-            T.eq(Fields.streamSrc(src), Registers.SS_ADDR.place(src), "STREAM_SRC");
-            T.eq(Fields.streamDest(word, d), Registers.SD_WORD.place(word) | Registers.SD_D.place(d), "STREAM_DEST");
-            T.eq(Fields.streamCount(cnt, mode, size, gap), Registers.SC_N.place(cnt) | Registers.SC_MODE.place(mode) | Registers.SC_SIZE.place(size) | Registers.SC_GAP.place(gap), "STREAM_COUNT");
-            long e0 = Fields.streamE0(Fields.streamSrc(src), Fields.streamDest(word, d)), e1 = Fields.streamCount(cnt, mode, size, gap) & 0xFFFFFFFFL;
-            T.check(Fields.sSrc(e0) == src && Fields.sWord(e0) == word && Fields.sD(e0) == d && Fields.sCount(e1) == cnt && Fields.sMode(e1) == mode
-                    && Fields.sSize(e1) == size && Fields.sGap(e1) == gap, "STREAM entry decodes as encoded");
+            int src = r.nextInt(1 << 21), dest = r.nextInt(), cnt = r.nextInt(1 << 17), d = r.nextInt(128), mode = r.nextInt(8), size = r.nextInt(4), gap = r.nextInt(8), ctr = r.nextInt(8);
+            T.eq(Fields.streamSrc(src, gap), Registers.SS_CHUNK.place(src) | Registers.SS_GAP.place(gap), "STREAM_SRC");
+            T.eq(Fields.streamCount(cnt, size, ctr, mode, d), Registers.SC_N.place(cnt) | Registers.HDR_SIZE.place(size) | Registers.HDR_CTR.place(ctr)
+                    | Registers.HDR_MODE.place(mode) | Registers.HDR_DST.place(d), "STREAM_COUNT (the common header layout, 8.1)");
+            long e0 = Fields.streamE0(Fields.streamSrc(src, gap), dest), e1 = Fields.streamCount(cnt, size, ctr, mode, d) & 0xFFFFFFFFL;
+            T.check(Fields.sSrc(e0) == src && Fields.sGap(e0) == gap && Fields.sDest(e0) == dest && Fields.sD(e1) == d && Fields.sCount(e1) == cnt
+                    && Fields.sMode(e1) == mode && Fields.sSize(e1) == size && Fields.sCounter(e1) == ctr, "STREAM entry decodes as encoded");
             int R = r.nextInt(1 << 18), st = r.nextInt(256), t = 1 + r.nextInt(16), g = r.nextInt(256);
             T.eq(Fields.groupLo(R), Registers.GRL_R.place(R), "GROUP low");
             T.eq(Fields.groupHi(st, t, g), Registers.GRH_START.place(st) | Registers.GRH_TM1.place(t - 1) | Registers.GRH_GAP.place(g), "GROUP high");
             int kind = r.nextInt(2), s0 = r.nextInt(256), c = 1 + r.nextInt(256), bd = r.nextInt(5), cd = r.nextInt(5), kk = 1 + r.nextInt(8);
             T.eq(Fields.masterConfig(kind, s0, c, bd, cd, kk), Registers.MC_KIND.place(kind) | Registers.MC_START.place(s0) | Registers.MC_COUNT.place(c)
-                    | Registers.MC_BUCKET.place(bd) | Registers.MC_HIST.place(cd) | Registers.MC_KM1.place(kk - 1), "MASTER_CONFIG");
+                    | Registers.MC_BUCKET.place(bd) | Registers.MC_HIST.place(cd) | Registers.MC_KM1.place(kk - 1), "DMA_CONFIG");
         }
-        T.eq(Fields.PULSE_DONE | Fields.PULSE_START, Registers.P_DONE.place(1) | Registers.P_START.place(1), "TILE_PULSE: done [0], start [1]");
-        T.eq(4, Registers.P_PERIPH_RUN.place(1), "TILE_PULSE [2] is PERIPH_RUN (8.6)"); T.eq(8, Registers.P_GO.place(1), "TILE_PULSE [3] is GO (8.6)");
-        T.eq(Fields.PULSE_REPLAY, Registers.P_PERIPH_RUN.place(1), "Fields agrees on [2]");
-        int used = 0; for (Registers.Field f : Registers.FIELDS) if (f.word.equals("TILE_ST")) { T.eq(0, used & (f.mask() << f.lo), "TILE_STATUS fields do not overlap: " + f.name); used |= f.mask() << f.lo; }
-        T.eq(~(0xF << 16), used, "TILE_STATUS (8.2, 26n): live [11:0], peripheral type [15:12], endpoint id [26:20], size [31:27]; [19:16] spare");
-        T.eq(0xFFFFF804L, Registers.TILE_CONDITIONS.addr() & 0xFFFFFFFFL, "TILE_CONDITIONS at 0xFFFFF804");
-        T.check(Registers.TILE_CONDITIONS.readable() && !Registers.TILE_CONDITIONS.writable(), "TILE_CONDITIONS is read-only");
-        T.eq(0x7FFF, Conditions.MASK, "fifteen conditions in [14:0]");
-        T.eq(40, Registers.N_REGS, "40 offsets, 0xFFFFF800 + 4 i, 0x800-0x89C (8.1, part E)");
+        // the common header layout (8.1): size [18:17], counter [21:19], mode [24:22], dst [31:25]
+        int hUsed = 0; for (Registers.Field f : Registers.FIELDS) if (f.word.equals("HDR")) { T.eq(0, hUsed & (f.mask() << f.lo), "header fields do not overlap: " + f.name); hUsed |= f.mask() << f.lo; }
+        T.eq(0xFFFE0000, hUsed, "the common header block is [31:17]");
+        T.eq(LinkWord.hdr(0, 5, 3, 6, 0, 1) >>> 7 & 0x7F, 5, "LinkWord: dst"); 
+        T.eq(Fields.hdrBits(1, 6, 3, 5), Registers.HDR_SIZE.place(1) | Registers.HDR_CTR.place(6) | Registers.HDR_MODE.place(3) | Registers.HDR_DST.place(5), "Fields.hdrBits agrees");
+        // the block (8.1): offsets
+        int[][] off = { { Registers.PARAMS.addr(), 0xFFFFF800 }, { Registers.ERRORS.addr(), 0xFFFFF808 }, { Registers.PULSE_DONE.addr(), 0xFFFFF80C },
+            { Registers.PULSE_DMA.addr(), 0xFFFFF810 }, { Registers.EVENTS.addr(), 0xFFFFF818 }, { Registers.EVENTS_REQUIRED.addr(), 0xFFFFF824 },
+            { Registers.ROUTER_HDR.addr(), 0xFFFFF828 }, { Registers.ROUTER_ADDR.addr(), 0xFFFFF82C }, { Registers.ROUTER_SEND_128.addr(), 0xFFFFF844 },
+            { Registers.REQUEST_SEND.addr(), 0xFFFFF854 }, { Registers.DMA_CONFIG.addr(), 0xFFFFF858 }, { Registers.WRITE_COUNTER[1].addr(), 0xFFFFF860 },
+            { Registers.WRITE_COUNTER[7].addr(), 0xFFFFF878 }, { Registers.SRAM_RD_ADDR_QUEUE.addr(), 0xFFFFF87C }, { Registers.SRAM_RD_DEST_ADDR.addr(), 0xFFFFF880 },
+            { Registers.SIM_EXIT.addr(), 0xFFFFF9F8 }, { Registers.TRACE.addr(), 0xFFFFF9FC } };
+        for (int[] o : off) T.eq(o[1], o[0], "register at 0x" + Integer.toHexString(o[1]));
+        T.check(Registers.ERRORS.readable() && !Registers.ERRORS.writable(), "ERRORS is read-only");
+        T.eq(0x7FFF, Conditions.MASK, "fifteen errors in [14:0]");
         int mcUsed = 0; for (Registers.Field f : Registers.FIELDS) if (f.word.equals("DMA_CFG")) { T.eq(0, mcUsed & (f.mask() << f.lo), "DMA_CONFIG fields do not overlap: " + f.name); mcUsed |= f.mask() << f.lo; }
-        T.eq((1 << 27) - 1, mcUsed, "DMA_CONFIG is 27 bits (8.1)");
-        int hUsed = 0; for (Registers.Field f : Registers.FIELDS) if (f.word.equals("ROUTER_HDR")) hUsed |= f.mask() << f.lo;
-        T.eq(-1, hUsed, "ROUTER_SET_HDR: dst [6:0], mode [10:7], addr [31:11]: no spare bit");
+        T.eq((1 << 27) - 1, mcUsed, "DMA_CONFIG is 27 bits (8.5)");
+        T.check(Registers.reservedWord(5) && Registers.reservedWord(33) && Registers.reservedWord(125) && !Registers.reservedWord(126), "reserved words: 0x814, 0x884-0x9F4");
     }
 
     // ================================================================ block copy into controller memory (6.5)
@@ -363,19 +375,19 @@ public final class CtrlTest {
         for (Tile p : m.c.tiles) T.check(!p.ctl.running(0) && p.ctl.done, "tile " + p.idx + " halted at reset with done forced to 1");
         Mach.Image im = m.boot("hello");
         boolean ok = m.run(m::allStopped, 20000);
-        T.check(ok && m.allExited(), "every tile ran hello to its ebreak: " + m.haltSummary());
+        T.check(ok && m.allExited(), "every tile ran hello to its exit: " + m.haltSummary());
         for (Tile p : m.c.tiles) {
             int i = p.idx;
-            T.eq(i, m.word(i, im, "result", 0), "tile " + i + ": tile index from TILE_STATUS");
+            T.eq(i, m.word(i, im, "result", 0), "tile " + i + ": tile index from PARAMS");
             T.eq(0xC0FFEE00 + i, m.word(i, im, "result", 1), "tile " + i + ": .rodata constant + index");
-            T.eq(1 << 20, m.word(i, im, "result", 2), "tile " + i + ": big-SRAM size from TILE_STATUS");
-            T.eq(0xF4000, p.ptr(64), "tile " + i + ": the loader set PTR[64] = 0xF4000, below the sort scratch (read through the simulator)");
-            T.eq(7, p.core.x[10], "tile " + i + ": main's return value in a0");
+            T.eq(1 << 20, m.word(i, im, "result", 2), "tile " + i + ": big-SRAM size from PARAMS");
+            T.eq(1, m.word(i, im, "result", 3), "tile " + i + ": PARAMS: peripheral 1 present");
+            T.eq(7, m.exitValue(i), "tile " + i + ": main's return value through SIM_EXIT");
         }
         noViolations(m.c, "boot");
         long last = 0; for (Tile p : m.c.tiles) last = Math.max(last, p.core.haltPc >= 0 ? 0 : 0);
         int words = Mach.loader().length + im.code.length + im.data.length;
-        out(String.format("boot [meas: CtrlTest boot]: loader %d words + hello %d code + %d data words = %d 128-bit mode-6 packets (spec 6.2) and 2 command writes (mode 7) from C&C; all 64 READY at cycle %d, RUN raised at %d, every tile at main's ebreak by %d",
+        out(String.format("boot [meas: CtrlTest boot] (PHASE-2 INTERIM: the resident loader): loader %d words + hello %d code + %d data words = %d 128-bit mode-0 packets and 2 command writes from C&C; all 64 READY at cycle %d, RUN raised at %d, every tile at main's exit by %d",
                 Mach.loader().length, im.code.length, im.data.length, (Mach.loader().length + 3) / 4 + (im.code.length + 3) / 4 + (im.data.length + 3) / 4, m.c.cc.lastAllReadyAt, m.runAt, m.c.cycle));
     }
 }

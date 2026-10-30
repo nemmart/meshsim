@@ -706,7 +706,7 @@ One unit straight after the eject selector, and **the only path into the tile**.
 - **controller memory:** port B lands a write `cm_latency` = 2 cycles after the director [built];
 - **a peripheral** lands it within `rp_latency` = 2 cycles (4.17.8);
 - **big SRAM:** a write only has to have **entered its area's request queue**, which is served in arrival order, so a read issued after the counter reaches 0 queues behind it and cannot overtake it (4.1). With spanning gone (4.1) the write path is fixed, and its loaded worst case is **2·L + 3** cycles, L = `ts_engine_latency` [derived];
-- **the tables:** a `PTR` or `HIST` update is readable through the table window **L + 4** cycles after acceptance [derived] (guarantee A, 4.10).
+- **the tables:** a `PTR` or `HIST` update is complete **L + 4** cycles after acceptance [derived] (guarantee A, 4.10); of the two, only `HIST` is loadable through the table window.
 
 So **K ≥ max(2·L + 3, L + 4, `cm_latency`, `rp_latency`)**: 5 at the default L = 1, and K = 8 covers L ≤ 2. meshsim errors if K is set below the formula, and its measurement of the margin (item S1, 13) becomes a check of the formula. Write combining (item 3) stays out unless it fits under K.
 
@@ -1806,7 +1806,7 @@ Network: injection at cycle t → route decision (1) → output FIFO (≥ 1) →
 | write counters | a counted packet decrements its counter K cycles after the traffic director accepts it, K a parameter, default 8, at least max(2·L + 3, L + 4, `cm_latency`, `rp_latency`) (4.8); its write is then readable, and counters done (`EVENTS` [7]) or the counter's own done event is set (4.12, 4.14) |
 | table memories | engine requests and returns cross `ts_engine_latency` each way; controller window one cycle (4.10) |
 | controller-memory path | mode-0 writes to regions 0x00 and 0x01 reach port B `cm_latency` = 2 cycles after the director [built] |
-| controller | one instruction per cycle; loads and stores to data memory in one cycle, load-use 0; **loads from the registers and the table window 1 or 2 cycles**, fixed per register by the implementation (meshsim's reference 2; 4.11); stores to them single-cycle and posted; taken branch +1; multiply 3; stalls only on an occupied send holding register, a full request FIFO, a full UART TX FIFO (C&C 1), or in `WFI` (4.11, 4.18, 4.20) |
+| controller | one instruction per cycle; loads and stores to data memory in one cycle, load-use 0; **loads from the register block and the peripheral windows 2 cycles, from the table window (`HIST`) 1 cycle** (T, 4.11); stores to them single-cycle and posted; taken branch +1; multiply 3; stalls only on an occupied send holding register, a full request FIFO, a full UART TX FIFO (C&C 1), or in `WFI` (4.11, 4.18, 4.20) |
 | registers | a store at *t* takes effect at the end of *t*, seen by the owning unit at *t* + 1 and by any later load; a load issued at *t* with latency *L* returns the state at the end of *t* + *L* − 2 (its sample point) and takes any side effect at the end of *t* + *L* − 1 (4.11); status computed at *t* is visible to a load whose sample point is *t* or later |
 | address generator | a run's first request is offered 4·`ts_engine_latency` + 3 cycles after the start store for a group run (S_0), 2·`ts_engine_latency` + 2 for a stream run; one cycle less counted from the cycle the start takes effect (4.2) |
 | GO | a `PULSE_GO` store in C&C 1's peripheral reaches every tile `go_latency` cycles later; a pulse at t sets `EVENTS` [8] at the end of t, wakes every core in `WFI` at t+1, ends the `done` gate and clears `done` and "command landed"; engines start at the start store (`PULSE_DMA`) that follows (6.3) |
@@ -2401,7 +2401,7 @@ The reset empties both FIFOs, clears [17:16] and loads the reset divisor (4.20).
 | controller memories | **32 KB data + 32 KB program**; port B one 128-bit write per cycle, built as the implementer likes; program memory fetch-and-load only (4.11) |
 | `cm_latency` (director to port B) | 2 [built] |
 | `stage_delay` | 32 cycles *(Proposed)*: the minimum time from C&C 1's GO store to its first packet of announced staging, about 3× the receiving start path's arming time (6.2) |
-| `reg_load_latency` | 1 or 2 per register, implementation-defined and fixed (the same on every access and unit); covers the register block, the peripheral windows and the table window; meshsim's reference setting 2 (4.11) |
+| `reg_load_latency` | **2** for the register block and the peripheral windows, **1** for the table window (`HIST`), fixed on every access and unit (T, 4.11) |
 | `ready_latency` | 1 in simulation (the GO net's); the physical lines cross the die, more than 1 (8 used for estimates); the physical value is *(Open)* |
 | `go_latency` | 1 in simulation; the GO net crosses the die like the READY lines, so physically more than 1 *(Open)*; C&C 1 waits `go_latency` + 1 cycles after each `PULSE_GO` before sending (6.6) |
 | **K** | **8** (default); a parameter, at least max(2·`ts_engine_latency` + 3, `ts_engine_latency` + 4, `cm_latency`, `rp_latency`), 5 at the default `ts_engine_latency`; K = 8 covers `ts_engine_latency` ≤ 2; meshsim errors below the formula (4.8) |
@@ -2410,7 +2410,7 @@ The reset empties both FIFOs, clears [17:16] and loads the reset divisor (4.20).
 | boot ROM | in every controller, region 0x02, reset vector 0x02000000; a few dozen bytes (6.2) |
 | keep-alive watchdog | `WATCHDOG` in C&C 1's peripheral, off at reset (6.1) |
 | flush wait before a soft reset | about 0.1 ms (about 100,000 cycles at 1 GHz), the outside world's (6.1) |
-| load-use penalty (data memory, program memory, boot ROM) | 0 each (the design target; section 12); registers, windows and the table window at `reg_load_latency` |
+| load-use penalty (data memory, program memory, boot ROM) | 0 each (the design target; section 12); registers and windows 2 cycles, the table window 1 (`reg_load_latency`) |
 | taken-branch penalty, multiply latency | 1, 3 |
 | request bus | a 16-bit, 8-ary tree: 8 row nodes and a root (with an input per sending controller), a 16-byte buffer per node input, one 16-bit beat per cycle per hop, 8 beats per request; the receive queues in the tree, at the root: 128, 256 and 128 × 128 bits for C&C 1, 2 and 3, one credit counter per target set to its depth; at most 1, 3 and 1 requests outstanding per tile; `reqbus_latency` ≈ 15–20 cycles [estimate], 17 unloaded [meas: meshsim] (3.3) |
 | request FIFO | 2 KB per unit, 128 × 128 bits (4.18) |

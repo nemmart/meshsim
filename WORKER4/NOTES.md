@@ -73,6 +73,14 @@ v1.1 recipe suite with the v1.2 recipes.
 - **Phase 0** (2026-10-30): branch, toolchain, baseline (above); read the prompt, CHANGES-v1.2, spec 1–4.18 and 5–6.5,
   WORKER3-REVIEW-2 section 6. Still to read in full: 4.19, 6.6–6.7, 8, 9, 10, 13, the recipes and the draft header.
 
+- **Phase 2** (2026-10-30, in progress). Plan: Registers.java's v1.2 table and a generator (MeshHeader.java) that
+  emits the draft's struct-based mesh.h; Conditions as ERRORS; TileControl (PARAMS/STATUS/ERRORS, the pulses, EVENTS,
+  the done gate, the send port with no-increment, the counters' registers, the read port's setup, DMA_CONFIG readable,
+  reserved words, SIM_EXIT and TRACE); the Controller's v1.2 map and load latencies (2 for the block and windows, 1 for
+  the table window and memories); the request port and the receive queues in the tree; sw/ (crt0, linker script at the
+  v1.2 map, the test programs ending through SIM_EXIT); the C-driven suites back. **Interim until phase 4:** a resident
+  loader in program memory and the RUN line still start the programs (the boot ROM and the reset are phase 4).
+
 ## Phase 1's results (`results/`, committed at the close)
 
 `run_tests.sh quick` all passed (PENDING suites aside); the full-mode extras run separately on this box:
@@ -99,3 +107,4 @@ Every other suite logs "PENDING (phase 2 / 3 / 6 / sort port)". Still v1.1's in 
 | phase 0 (no code changed) | RecipeTest `[snippets]` (46, both seeds), as in the baseline |
 | phase 1, simulator rewritten (`src/` compiles) | **the tests don't compile** (about 230 errors): every suite fails until the Java suites are rewritten |
 | phase 1, closed (`651c15c` and after) | none: the quick run passes; the C-driven suites are PENDING (phase 2), not failing |
+| phase 2, Registers.java rewritten | **src/ doesn't compile** (Registers' callers and the header generator are being rewritten) |

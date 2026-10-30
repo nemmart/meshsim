@@ -4,6 +4,8 @@ final class T {
     static String current = "";
 
     static void group(String name) { current = name; }
+    /** A part of a suite waiting for a later phase: reported, neither passed nor failed. */
+    static void pending(String what, String until) { System.out.println("PENDING (" + until + "): " + what); }
 
     static void check(boolean ok, String what) {
         if (ok) passed++;

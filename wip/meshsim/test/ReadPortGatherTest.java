@@ -18,14 +18,14 @@ public final class ReadPortGatherTest {
         if (args.length > 0) shuffle = Long.parseLong(args[0]);
         full = args.length > 1 && args[1].equals("full");
         if (shuffle >= 0) System.out.println("shuffled child order, seed " + shuffle);
-        readPortFromC();
+        T.pending("readPortFromC", "phase 2 (the C programs and mesh.h move to v1.2)");
         readPortUnderTraffic();
         readPortTolerance();
         overlapCheck();
         disjointPerRun();
         reservedStreams();
         gather();
-        gatherFromC();
+        T.pending("gatherFromC", "phase 2 (the C programs and mesh.h move to v1.2)");
         System.exit(T.done("ReadPortGatherTest" + (shuffle >= 0 ? " (shuffled, seed " + shuffle + ")" : "") + (full ? " full" : "")));
     }
 
@@ -82,8 +82,9 @@ public final class ReadPortGatherTest {
             T.check(w64, tl + "8 64-bit reads: two words each, at the destination + 2 i");
             T.check(w128, tl + "4 128-bit reads: four words each, at the destination + 4 i");
         }
-        T.eq(1 << Conditions.READ_PORT, m.word(6, im, "r", 4), "tile 6: a misaligned 128-bit read set the read-port error, and only it");
-        T.eq(1L, m.c.tiles[6].readPort.misaligned, "tile 6: one misaligned read dropped");
+        // PHASE 2: rewrite against v1.2 (4.3, D32): a misaligned read is not performed, its result sent with payload 0, ERRORS [1]
+        T.eq(1 << Conditions.BAD_MODE_OR_SIZE, m.word(6, im, "r", 4), "tile 6: a misaligned 128-bit read set ERRORS [1], and only it");
+        T.eq(1L, m.c.tiles[6].srq.misalignedReads, "tile 6: one misaligned read not performed");
         Tile t7 = m.c.tiles[7];
         T.eq(1 << Conditions.READ_PORT, m.word(7, im, "r", 4), "tile 7: the 65th store into a full queue set the read-port-error condition, and only it");
         T.eq(1, t7.readPort.overflows, "tile 7: one read dropped");
@@ -109,7 +110,7 @@ public final class ReadPortGatherTest {
             a.load(c, 0);
             if (withReads == 1) for (Tile p : c.tiles) {
                 p.dir.remaining[2] = 64;
-                for (int i = 0; i < 64; i++) p.readPort.hostQueue(0xE0000 + 2 * i, 0x900 + i);
+                for (int i = 0; i < 64; i++) p.readPort.hostQueue(0xE0000 + 2 * i, Net.cm(0x900 + i));
             }
             cyc[withReads] = A2A.run(c, 3_000_000);
             c.runUntil(() -> { for (Tile p : c.tiles) if (!p.readPort.idle(c.cycle)) return false; return true; }, 100000);
@@ -210,7 +211,7 @@ public final class ReadPortGatherTest {
             x.dir.remaining[2] = 4 + 8;
             EngineTest.streamRun(p, 0, 4, 0, 0);
             p.pulse(Fields.PULSE_START);
-            for (int i = 0; i < 8; i++) x.readPort.hostQueue(0x1000 + i, 0xE00 + i);
+            for (int i = 0; i < 8; i++) x.readPort.hostQueue(0x1000 + i, Net.cm(0xE00 + i));
             c.runUntil(() -> x.dir.remaining[2] == 0 && x.dir.cmIdle(c.cycle), 10000);
             T.check(x.dir.readPortOverlaps > 0 && c.violations > 0 && c.violationReport().contains("read-port overlap"), "4 mode-5 packets arriving with 8 results outstanding: flagged (" + x.dir.readPortOverlaps + " packets)");
         }
@@ -220,7 +221,7 @@ public final class ReadPortGatherTest {
             Tile x = c.tiles[20], p = c.tiles[21];
             for (int j = 0; j < 4; j++) p.setStream(j, Fields.streamSrc(2 * j), Net.cm(0x800 + 2 * j), Fields.streamCount(1, Fields.SIZE_64, 2, LinkWord.M_WRITE, 63));
             x.dir.remaining[2] = 8;
-            for (int i = 0; i < 8; i++) x.readPort.hostQueue(0x1000 + i, 0xE00 + i);
+            for (int i = 0; i < 8; i++) x.readPort.hostQueue(0x1000 + i, Net.cm(0xE00 + i));
             c.runUntil(() -> x.dir.remaining[2] == 0 && x.dir.cmIdle(c.cycle) && x.readPort.allAccepted(), 10000);
             x.dir.remaining[2] = 4;
             EngineTest.streamRun(p, 0, 4, 0, 0);
@@ -229,19 +230,21 @@ public final class ReadPortGatherTest {
             T.eq(0, x.dir.readPortOverlaps, "results first, then the stream: no overlap");
             noViolations(c, "results first, then the stream");
         }
-        // (c) C&C: a mode-7 command word during a search is exempt; a mode-6 packet from C&C is not
-        for (int mode : new int[] { LinkWord.M_CMD, LinkWord.M_CMEM }) {
+        // (c) C&C 1: a command write (uncounted mode 0 into the command block) during a search is exempt; any other
+        // packet from C&C 1 (a counted data-memory write) is not
+        for (int cmd = 1; cmd >= 0; cmd--) {
             Chip c = new Chip(cfg());
             Tile x = c.tiles[20];
-            x.dir.remaining[2] = 32 + (mode == LinkWord.M_CMEM ? 1 : 0);
-            for (int i = 0; i < 32; i++) x.readPort.hostQueue(0x1000 + i, 0xE00 + i);
+            x.dir.remaining[2] = 32 + (cmd == 0 ? 1 : 0);
+            for (int i = 0; i < 32; i++) x.readPort.hostQueue(0x1000 + i, Net.cm(0xE00 + i));
             c.run(4);
-            c.cnc.send(c.cycle, 20, mode, mode == LinkWord.M_CMD ? 1 : 0x900, LinkWord.SIZE_32, 0x1234, 0);
+            if (cmd == 1) c.cnc.send(c.cycle, 20, LinkWord.M_WRITE, 0, ControllerMemories.COMMAND + 4, LinkWord.SIZE_32, 0x1234, 0);
+            else c.cnc.send(c.cycle, 20, LinkWord.M_WRITE, 2, 0x400, LinkWord.SIZE_32, 0x1234, 0);
             c.runUntil(() -> x.dir.remaining[2] == 0 && x.dir.cmIdle(c.cycle) && c.quiescent(), 10000);
-            if (mode == LinkWord.M_CMD) { T.eq(0, x.dir.readPortOverlaps, "C&C's command word during the results: exempt"); noViolations(c, "C&C's command word"); }
-            else T.check(x.dir.readPortOverlaps == 1 && c.violations > 0, "C&C's mode-6 packet during the results: flagged");
+            if (cmd == 1) { T.eq(0, x.dir.readPortOverlaps, "C&C 1's command write during the results: exempt"); noViolations(c, "C&C 1's command write"); }
+            else T.check(x.dir.readPortOverlaps == 1 && c.violations > 0, "C&C 1's data-memory write during the results: flagged");
         }
-        out("overlap check [meas: ReadPortGatherTest read-port overlap check]: an outside packet accepted while read-port results are outstanding is a violation (Config.checkReadPortOverlap, default on); C&C's mode-6 command words are exempt, its other packets are not; results first and the stream after: none");
+        out("overlap check [meas: ReadPortGatherTest read-port overlap check]: an outside packet accepted while read-port results are outstanding is a violation (Config.checkReadPortOverlap, default on); C&C 1's command writes are exempt, its other packets are not; results first and the stream after: none");
     }
 
     // ================================================================ the disjoint-buffer checker per engine run (local wake)
@@ -253,13 +256,13 @@ public final class ReadPortGatherTest {
         final int A = 0x20000, B = 0x40000, N = 64;
         for (int i = 0; i < N; i++) p.sram.poke64(A + 2 * i, 0xA000L + i);
         p.setStream(0, Fields.streamSrc(A), 0, Fields.streamCount(N, Fields.SIZE_64, 1, LinkWord.M_SRC, 0));
-        p.setPtr(12, B); p.dir.remaining[TrafficDirector.SRAM] = N;
+        p.setPtr(12, B); p.dir.remaining[1] = N;
         EngineTest.streamRun(p, 0, 1, 0, 0);
         p.pulse(Fields.PULSE_START);
         c.runUntil(() -> p.ctl.countersDonePending(), 2000);
         T.check(p.ctl.countersDonePending(), "run 1 ended with counters done");
         p.setStream(1, Fields.streamSrc(B), 0, Fields.streamCount(N, Fields.SIZE_64, 1, LinkWord.M_SRC, 0));
-        p.setPtr(12, A); p.dir.remaining[TrafficDirector.SRAM] = N;
+        p.setPtr(12, A); p.dir.remaining[1] = N;
         EngineTest.streamRun(p, 1, 1, 0, 0);
         p.pulse(Fields.PULSE_START);
         c.runUntil(() -> EngineTest.phaseDone(c, p), 2000);
@@ -269,7 +272,7 @@ public final class ReadPortGatherTest {
         Chip d = new Chip(cfg());
         Tile q = d.tiles[12];
         q.setStream(0, Fields.streamSrc(A), 0, Fields.streamCount(N, Fields.SIZE_64, 1, LinkWord.M_SRC, 0));
-        q.setPtr(12, A + 2 * N - 16); q.dir.remaining[TrafficDirector.SRAM] = N;
+        q.setPtr(12, A + 2 * N - 16); q.dir.remaining[1] = N;
         EngineTest.streamRun(q, 0, 1, 0, 0);
         q.pulse(Fields.PULSE_START);
         d.runUntil(() -> EngineTest.phaseDone(d, q), 2000);
@@ -282,36 +285,36 @@ public final class ReadPortGatherTest {
         T.group("reserved streams");
         Chip c = new Chip(cfg());
         Tile p = c.tiles[3];
-        p.setStream(0, Fields.streamSrc(0x1000), 0, Fields.streamCount(1, Fields.SIZE_32, 1, 0, 1));
+        p.setStream(0, Fields.streamSrc(0x1000), 0, Fields.streamCount(1, Fields.SIZE_32, 1, 6, 1));            // mode 6: reserved
         p.setStream(1, Fields.streamSrc(0x1000), 0, Fields.streamCount(1, Fields.SIZE_UNDEF, 1, LinkWord.M_SRC, 1));
-        p.setStream(2, Fields.streamSrc(0x1000), 0, Fields.streamCount(0, Fields.SIZE_64, 1, 7, 1));      // code 7 (command writes: the send port's), count 0
-        p.setStream(3, Fields.streamSrc(0x1000), 0, Fields.streamCount(0, Fields.SIZE_64, 1, 8, 1));      // code 8 (replies: the send port's), count 0
-        p.setStream(4, Fields.streamSrc(0x1000), 0, Fields.streamCount(0, Fields.SIZE_64, 1, 10, 1));     // code 10, count 0
-        p.setStream(5, Fields.streamSrc(0x1000), 0, Fields.streamCount(1, Fields.SIZE_128, 1, LinkWord.M_AUG, 1));   // mode 5 at 128
-        p.setStream(6, Fields.streamSrc(0x1000), 0, Fields.streamCount(1, Fields.SIZE_64, 1, 15, 1));     // code 15: a bad packet
-        EngineTest.streamRun(p, 0, 7, 0, 0);
+        p.setStream(2, Fields.streamSrc(0x1000), 0, Fields.streamCount(0, Fields.SIZE_64, 1, 7, 1));            // mode 7, count 0
+        p.setStream(3, Fields.streamSrc(0x1000), 0, Fields.streamCount(1, Fields.SIZE_128, 1, LinkWord.M_AUG, 1));   // mode 3 at 128
+        p.setStream(4, Fields.streamSrc(0x1000), 0x0200, Fields.streamCount(1, Fields.SIZE_64, 2, LinkWord.M_WRITE, 1));   // mode 0 at 0x200 (fine)
+        EngineTest.streamRun(p, 0, 5, 0, 0);
+        c.tiles[4].dir.remaining[1] = 1; c.tiles[4].dir.remaining[2] = 1; c.tiles[4].setPtr(3, 0x40000);
         p.pulse(Fields.PULSE_START);
         c.run(100);
-        T.check(c.violationMessages.stream().anyMatch(v -> v.contains("tile 3") && v.contains("invariant 5")), "a code-0 stream: invariant 5 at the sender");
         T.eq(1L, p.ag.sizeViolations, "a stream with read size 11 (undefined): reported");
-        for (int code : new int[] { 0, 7, 8, 10, 15 })
-            T.check(c.violationMessages.stream().anyMatch(v -> v.contains("tile 3") && v.contains("reserved mode code " + code)), "STREAM mode code " + code + " rejected (4.2)" + (code > 0 && code < 15 ? ", even at count 0" : ""));
-        T.eq(5L, p.ag.modeViolations, "five reserved mode codes, one report each");
-        T.eq(1L, p.ag.aug128Violations, "a mode-5 stream at read size 128: reported (4.2)");
-        T.eq(3, c.tiles[4].dir.droppedBad, "the mode-0, mode-15 and 128-bit mode-5 packets are dropped at their director (bad packets)");
+        for (int code : new int[] { 6, 7 })
+            T.check(c.violationMessages.stream().anyMatch(v -> v.contains("tile 3") && v.contains("reserved mode " + code)), "STREAM mode " + code + " rejected (4.2)" + (code == 7 ? ", even at count 0" : ""));
+        T.eq(2L, p.ag.modeViolations, "two reserved modes, one report each");
+        T.eq(1L, p.ag.aug128Violations, "a mode-3 stream at read size 128: reported (4.2)");
+        T.eq(1, c.tiles[4].dir.droppedBad, "the 128-bit mode-3 packet is dropped at its director (a bad packet)");
+        T.eq(1L, c.tiles[4].dir.reservedDiscarded, "the mode-6 packet is discarded silently at its director");
         T.eq(1L, c.tiles[4].dir.undefinedSize, "the size-11 packet: flagged and dropped at the director (meshsim's choice)");
-        T.check((c.tiles[4].conditions() & (1 << Conditions.BAD_MODE_OR_SIZE)) != 0, "and the bad packets set its bad-mode-or-size condition");
-        // a group run reports a reserved code on every visit of the stream, idle or not (as read sizes, M8 Q2)
+        T.check((c.tiles[4].conditions() & (1 << Conditions.BAD_MODE_OR_SIZE)) != 0, "and the bad packet sets ERRORS [1]");
+        T.eq(0, c.tiles[4].dir.remaining[2], "the good mode-0 packet landed and counted");
+        // a group run reports a reserved mode on every visit of the stream, idle or not
         Chip c2 = new Chip(cfg());
         Tile q = c2.tiles[3];
         q.setStream(0, Fields.streamSrc(0x1000), 0, Fields.streamCount(2, Fields.SIZE_64, 1, LinkWord.M_SRC, 1));
-        q.setStream(1, Fields.streamSrc(0x2000), 0, Fields.streamCount(0, Fields.SIZE_64, 1, 7, 2));     // code 7, idle
+        q.setStream(1, Fields.streamSrc(0x2000), 0, Fields.streamCount(0, Fields.SIZE_64, 1, 7, 2));     // mode 7, idle
         q.setGroup(0, Fields.groupLo(2), Fields.groupHi(0, 2, 0));
         c2.tiles[4].dir.remaining[1] = 2; c2.tiles[4].setPtr(3, 0x40000);
         q.setMasterConfig(Fields.masterConfig(Fields.RUN_GROUPS, 0, 1, 0, 0, 1));
         q.pulse(Fields.PULSE_START);
         c2.run(100);
-        T.eq(2L, q.ag.modeViolations, "group run: code 7 reported on both of its visits (R = 2)");
+        T.eq(2L, q.ag.modeViolations, "group run: mode 7 reported on both of its visits (R = 2)");
         T.eq(2L, c2.tiles[4].writer.taken, "the valid stream's two packets still land");
     }
 
@@ -329,7 +332,7 @@ public final class ReadPortGatherTest {
             p.setStream(195, Fields.streamSrc(IDX), 0, Fields.streamCount(N, Fields.SIZE_64, 1, LinkWord.M_GATHER, 0));
             p.setPtr(p.idx, OUT);
             p.gather.base = VAL;
-            p.dir.remaining[TrafficDirector.SRAM] = N * k;
+            p.dir.remaining[1] = N * k;
             p.setMasterConfig(Fields.masterConfig(Fields.RUN_STREAMS, 195, 1, 0, 0, k));
         }
         long cyc = runAll(c, 10_000_000);

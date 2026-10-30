@@ -112,9 +112,13 @@ Agreed (O). Answers T1.
     read it through `advice_reg` (expansion word [62:56]). The replayer's template has the traced rows only and pops
     the advice from the run log; an `untraced` word (expansion word [55]) reaching a replayer is an invalid
     expansion (spec 4.19.11). This is why the run log differs from jolt-cpp's memory log on purpose (spec 4.19.2).
-  - **Coverage** *(inferred, to confirm)*: the replayer's ROM is a cache of the most frequent templates, with the
-    rare ones fed by its controller; the Tracer can't wait for a controller at row rate, so it needs every
-    template the program uses locally, or a policy of its own for the rare ones.
+  - **Coverage** (owner, 2026-10-29; T4): a defined list of templates goes in the Tracer's 8 KB ROM, and **the few
+    that don't fit are fed by its controller, C&C 3, in the replayer's style** (spec 4.19.5): the Tracer reaches
+    such an instruction, presents it and waits, and C&C 3 supplies the expansion words (the Tracer's variant, with
+    any untraced advice rows).
+  - **Consequences:** the Tracer has an **expansion queue** that C&C 3 writes, a **"new expansion" event** and an
+    **`EXPANSION_OPCODE`** word in its peripheral window (as the replayer's, v1.2 section 39), and **stalls** while
+    C&C 3 responds; rare, as for the replayer (about 13 per window, around 0.4 % of a pass, spec 4.19.5).
 
 ---
 
@@ -123,6 +127,6 @@ Agreed (O). Answers T1.
 | # | question | from | status |
 |---|---|---|---|
 | T1 | What the 8 KB and 4 KB expansion memories hold | 1 | **answered: section 7** (same format and builder as the replayer's ROM and decode table; different contents) |
-| T4 | The Tracer's template coverage: every template local, or its own policy for the rare ones (inlines such as BLAKE3, `ECALL`); and whether 8 KB holds them | 7 | open |
+| T4 | The Tracer's template coverage | 7 | **answered: section 7** (a list in the ROM; the rest fed by C&C 3, replayer-style) |
 | T2 | The RV64 initial state: what it contains and where it comes from | 1 | open |
 | T3 | The page table: its size, format and how C&C 3 maintains it | 1 | open |

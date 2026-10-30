@@ -100,3 +100,24 @@ their engines as peripherals.
 `wait_tables()`, the RUN/HALT net and `run_latency`, the resident loader at 0x1F00, packed 14-bit
 controller-memory words, v1.1's modes 0 and 5–15 (as numbered there), REPORT, C&C's receive FIFO and its
 error flag, write tokens and mode-3 write streams to C&C, the spanning big-SRAM access.
+
+## Round 2: decisions 37–42 (2026-10-29)
+
+Applied after the first round. Each row names the spec sections it touched.
+
+| decision | what changed | sections |
+|---|---|---|
+| D37.1, D41 (F13) | the boot ROM's tile branch jumps only if the load that consumed GO returned "command landed" (`EVENTS` [9], the event, not `STATUS` [5], which GO clears); otherwise it pulses `done` again and waits. The event stays pending after a unit's first command, and the ROM relies on it | 4.12, 6.2, 6.3 |
+| D37.2 | interrupts stay off in the ROM; boot part 2 sets `mtvec` and enables `mie.MEIE` and `MIE` (a software convention). Until then an error raises the error line and the toast pin but takes no trap | 4.13, 6.2 |
+| D37.3, D41 (F16) | the report set is defined exactly: 24 reports in a fixed order, three per peripheral slot with zeros for an absent one; the handler reads seven standard words per window (`EVENTS_PEEK`, never `EVENTS`; not the write-only pulses); reports are exempt from the per-tile limits | 4.13 |
+| D37.4 | the first 16 bytes of data memory are reserved (0x00–0x0F); overlays start at 0x10 | 2.2, 3.1, 4.11, 9 (22) |
+| D37.5 | the no-increment bit stays set until the program clears it | 4.11 |
+| D37 (limitations) | C&C 1 sends the dump down LVDS when an FPGA is in the loop (which waits as long as it wants; 0.1 ms is a default), over the UART otherwise | 6.1 |
+| D38 | the receive queues are in the request tree, at the root, one per target: 128, 256 and 128 for C&C 1, 2 and 3; credits equal the depths; a tile keeps at most 1, 3 and 1 requests outstanding; error reports excepted; tiles have no receive queue | 3.3, 4.18, 6.6, 6.7, 8.10, 9 (17), 10, 11, 12 |
+| D39 | the replayer's status words: 32 `ROWS_RUN`, 33 `EXPANSION_OFFSET`, 34 `EXPANSION_OPCODE`, one field per word | 4.19.1, 4.19.5, 4.19.9, 8.11 |
+| D40 | every request names its own reply address, anywhere in data memory; the reply block is the default for tile-to-tile replies; **seven counters**, codes 1–7 (none reserved), `WRITE_COUNTER_1`–`7` at 0x860–0x878, the read port at 0x87C and 0x880; **`EVENTS` renumbered**: counters [6:0], counters done [7], GO [8], command landed [9], DMA run done [10], request FIFO no longer full [11], request pending [12], peripherals [15:13]; the reset mask [8] \| [7] | 3.1, 4.2, 4.8, 4.10, 4.12, 4.13, 4.14, 4.17, 4.18, 4.19, 4.20, 5, 6.1–6.7, 8.1, 8.6, 8.7, 8.8, 8.10, 9, 10, 11 |
+| D41 (F12) | the core implements `mcycle` and `mtime`; C&C 1 bounds its waits by cycle count | 4.11, 6.1 |
+| D41 (F14) | a stream's *d* may be 126 (the broadcast) in hardware; its own copy takes a read token; only the controllers broadcast from streams, by convention; meshsim errors on a mesh tile | 4.2, 4.5, 6.2, 9 (17) |
+| D41 (F6) | `rd_running` falls in the same cycle as DMA run done (guarantee B) | 4.2, 4.10 |
+| D42 | port B takes one 128-bit write per cycle, built as the implementer likes (W5-05); W5-02, 03, 07, 08, 10, 11, 12, 14, 16, 18, 19, 20 accepted, their *(Proposed)* markers dropped; W5-04 and W5-21 are with Tony (item 134); S9's protected loopback marked required | 3.1, 4.3, 4.5, 4.7, 4.9, 4.11, 6.1, 6.7, 8.1, 8.13–8.15, 10, 11, 12, 13 |
+| 13 | status rows for items 61, 64, 85, 92, 93, 99 updated; 121–123, 127, 131–133 updated or closed; new items 134 (Q16) and 135 (what "outstanding" means for a read) | 13 |

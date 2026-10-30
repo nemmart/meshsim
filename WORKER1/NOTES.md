@@ -78,3 +78,7 @@ New candidates (D = decisions line at 21ae57a):
 
 Round-2 addendum (b8bd504): owner Qs 1, 3, 6 partly resolved (25, 26, 28); 2, 4, 5, 7 and Tony open;
 W1-29 resolved by 28 (proposal). Appended to REVIEW-2.md section 6.
+
+## Round 3 (PROMPT-3.md, 50f6f46)
+REVIEW-3.md pushed. Verdict: ready to implement after W1-31..W1-34 (overlay/command kind, C&C 1 boot,
+exact ROM incl. consuming GO, one watchdog + toast latch/reset value). Round-2 findings: 9 closed, 3 partly.

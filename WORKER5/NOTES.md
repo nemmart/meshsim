@@ -4,7 +4,7 @@ Working notes, kept so the work survives a context compaction. Newest status at 
 
 ## Status
 
-- Pass 0 (map): done. Passes 1-5: see the checklist at the bottom.
+- All passes done; CHANGES-v1.2.md, QUESTIONS.md and REPORT.md written (2026-10-29). Next: round 2, check WORKER6's recipes against the spec.
 
 ## Owner's adjustments to the plan (2026-10-29)
 
@@ -88,7 +88,7 @@ See the checklist below; R = rewrite, U = update, K = keep, X = removed (stub), 
 - [x] Pass 3: 4.17-4.20
 - [x] Pass 4: 5, 6, 7, 8
 - [x] Pass 5: 9-14 (13: status table for 1-116, new items 117-133)
-- [ ] CHANGES-v1.2.md, QUESTIONS.md, REPORT.md
+- [x] CHANGES-v1.2.md, QUESTIONS.md, REPORT.md
 
 ## New open-item numbers (section 13 continues from 116)
 
@@ -133,4 +133,5 @@ See the checklist below; R = rewrite, U = update, K = keep, X = removed (stub), 
 - W5-19 exit word at 0xFFFFF9F8 (8.15)
 - W5-20 controller block addresses (log 11 says proposed) (8.1)
 - W5-21 budget: controller memories 32+32 KB estimated ~0.15 mm2; total 0.52-0.61 mm2 (11)
+- W5-22 (merged into W5-09) WORKER6 names words 32/33 RUN_STATUS/PRESENTED
 - W5-08 region decode for bad packets, size 11, modes 1-4 ignore address, mode 3 at 128: log 26's (proposed) rows kept proposed (3.1)

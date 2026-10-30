@@ -11,8 +11,9 @@ are marked in place. In brief:
 
 - **Errors** (v1.1's conditions) raise the controller core's hard interrupt; its handler reports to C&C 1
   over the request bus and parks forever: traps are terminal (20). Each unit's error line reaches C&C 1's
-  peripheral (`ERROR_LINES_0`-`2`); C&C 1 drains the reports, has the file system flush its logs, then fires
-  the **global reset**, the only way to stop anything: there is no HALT state (21, 23).
+  peripheral (`ERROR_LINES_0`-`2`); C&C 1 drains the reports, tries to flush the file system's logs, dumps state over the UART, and
+  stops checking in: **a watchdog in Ingress/Egress resets the whole chip** (or has the FPGA do it). Nothing
+  recovers on chip; there is no HALT state (23, 34).
 - **Boot:** after the reset every unit runs a **boot ROM** at 0x02000000. Tiles boot through READY/GO like a
   phase; C&C 2 and C&C 3 jump when their first command lands and report "started" (31).
 - **The link word** is 256 bits: payload, a 32-bit address (8-bit region, 24-bit byte offset), size, a
@@ -786,6 +787,10 @@ Decided (O, T), from WORKER1's review (W1-02, W1-04). Revises 1.4's parking rule
 
 ## 21. Reset and error recovery (2026-10-28)
 
+*Superseded in large part by 34: C&C 1 doesn't recover; a watchdog in Ingress/Egress resets the whole chip.
+Still true: the tile side (steps 1-3), C&C 1 draining reports, the fixed report set, the UART line errors as
+status, the handler conventions.*
+
 Decided (O, T). Answers the recovery policy (WORKER1's owner question 1), Q3 and most of Q4; settles
 W1-03, W1-06 and W1-07.
 
@@ -896,6 +901,8 @@ of C&C 2 and C&C 3.
 - **Cost:** a few dozen bytes of ROM per controller, and the ROM's region in the map.
 
 ## 23. No HALT state (2026-10-28)
+
+*34: the reset is now always the whole chip, C&C 1 included.*
 
 Decided (O, T). With booting from ROM (22), **units have no HALT state at all: the global reset (21) is the
 only way to stop anything**, and coming out of reset means running in the boot ROM. Settles Q4.
@@ -1057,7 +1064,7 @@ integrator's recommendation, 2026-10-29. To be reviewed again when C&C 1's firmw
 | register | access | meaning |
 |---|---|---|
 | `ERROR_LINES_0`-`2` | R | live unit errors, by endpoint id, 64 unused (15) |
-| `RESET` | R/W | 0 asserts the global reset, 1 releases it (21). **Powers on at 0**, so the domain stays in reset until C&C 1's firmware releases it. Asserting it also clears the READY bits (31) |
+| ~~`RESET`~~ | | *gone (34): the watchdog resets the whole chip* |
 | `READY_LINES_0`-`1` | R | the tiles' sticky READY bits (64; READY is tiles only) |
 | `READY_EXPECT_0`-`1` | R/W | the tiles C&C 1 is waiting for: "all tiles READY" fires when `READY & EXPECT == EXPECT`, so one-at-a-time bring-up works (23) |
 | `PULSE_GO` | W | clears READY bits 0-63 and drives GO, in one store; a READY pulse arriving in the same cycle is kept; also restarts the watchdog |
@@ -1168,6 +1175,41 @@ Not needed to run the sort and the replayer on v1.2; each comes back with the de
   the host interface (W3-25).
 - **Sending peripherals' router ports** (W2-31): src, routing inside the controllers' routers, flow control.
   Only C&C 1-3's engines send, and the replayer doesn't.
+
+## 34. Reset by watchdog, no recovery (2026-10-29)
+
+Decided (O, T). **Replaces section 21's recovery flow.** Errors end in a whole-chip reset; nothing on chip
+tries to recover.
+
+- **Ingress/Egress (C&C 1's peripheral) has a keep-alive watchdog.** C&C 1 checks in periodically ("I'm
+  OK").
+- **Ingress/Egress also watches C&C 1's error output** (the error pin's signal, 24).
+- **On any error reaching C&C 1**, its own or a unit's through the unit-error bit (15), C&C 1 takes its
+  interrupt. Its handler:
+  1. captures state, draining the units' reports (21's draining and fixed report set still apply);
+  2. **tries to flush the file system's logs to LPDDR** (owner), so that after the restart the file system
+     comes back up and the wreckage can be read from it (23's debugging plan);
+  3. pushes what it has out over the UART or the host link;
+  4. **does not recover**: it stops checking in with the watchdog.
+- **The watchdog expires** and either **(1) resets the whole chip**, when running solo, or **(2) raises a pin
+  so the FPGA resets everything** through an input pin.
+- **The reset is always the whole chip**, C&C 1 included; every unit boots from scratch through the boot ROM
+  and the boot sequence (22, 31), exactly as at power-on.
+- **Gone:** C&C 1's `RESET` register and the C&C 1-driven domain reset (21, 28); the domain boundary at C&C 1
+  and C&C 1's restart. **Most of 33's deferred reset group dissolves:** W1-20, W1-21, W1-22, W1-25, W1-26 and
+  W1-27 were about C&C 1 surviving a reset it caused.
+
+*(Proposed, for confirmation:)*
+
+- **LPDDR's contents survive the reset:** the LPDDR controller and PHY are outside the watchdog's reset (the
+  owner's expectation in 25: nothing past the RW engine's AXI bus resets), or the flush ends by putting LPDDR
+  into self-refresh, which the controller exits after the restart. With the FPGA reset, the FPGA's design does
+  the same.
+- **The watchdog doesn't fire mid-flush:** the handler keeps checking in while the flush makes progress, and
+  stops when it is done or after its own timeout, so a hung flush still ends in a reset.
+- **Open:** whether this watchdog is the phase watchdog of 28 (C&C 1's main loop checks in; a hung phase is
+  something C&C 1 notices itself); how solo or FPGA mode is selected (a strap pin, or a register in
+  Ingress/Egress); and on restart, the file system mounting existing state (its own design).
 
 ---
 

@@ -25,7 +25,7 @@ INPUTS
   are `wip/meshsim/sw/tests/rcp_*.c`.
 - `wip/spec/machine-spec.md` (v1.1), for whatever the log doesn't change. WORKER5's v1.2 draft may appear in
   the same file as you work; the log remains your authority.
-- `WORKER3/REVIEW-2.md` section 6 (the migration inventory) and the reviews in `WORKER1/` to `WORKER3/`.
+- `wip/planning/reviews/WORKER3-REVIEW-2.md` section 6 (the migration inventory) and the reviews in `wip/planning/reviews/`.
 
 WHAT TO WRITE
 - **Port every v1.1 recipe** that still applies to v1.2: modes, four counters, byte addresses, natural

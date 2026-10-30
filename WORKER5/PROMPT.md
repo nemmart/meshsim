@@ -22,9 +22,9 @@ INPUTS
 - `wip/spec/machine-spec.md` (v1.1): the starting point and the authority for everything the log doesn't
   change. Keep its conventions: the labels (O, T, H, S, *(Proposed)*, [estimate]), its section numbering where
   the subject survives, its style.
-- **Checklists of what changes, section by section:** `WORKER2/REVIEW-2.md` section 4, `WORKER1/REVIEW-2.md`
-  and `WORKER3/REVIEW-2.md` (their "spec sections to update"), and the three `REVIEW-3.md` files.
-- The reviews in `WORKER1/` to `WORKER3/`, for the reasoning behind decisions.
+- **Checklists of what changes, section by section:** `wip/planning/reviews/WORKER2-REVIEW-2.md` section 4, `wip/planning/reviews/WORKER1-REVIEW-2.md`
+  and `wip/planning/reviews/WORKER3-REVIEW-2.md` (their "spec sections to update"), and the three `wip/planning/reviews/WORKER*-REVIEW-3.md` files.
+- The reviews in `wip/planning/reviews/`, for the reasoning behind decisions.
 
 WHAT TO WRITE
 - **Rewrite `machine-spec.md` as v1.2**, describing the machine as it now is, not how it changed. Remove what

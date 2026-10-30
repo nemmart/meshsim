@@ -32,14 +32,14 @@ public final class Sweep {
         pts.add(new Point("default", "", k -> {}));
         for (int v : new int[] { 1, 3, 4 }) pts.add(new Point("array read latency", "" + v, k -> k.sramReadLatency = v));
         for (int v : new int[] { 4, 16 }) pts.add(new Point("area queue depth", "" + v, k -> k.areaQueueDepth = v));
-        for (int v : new int[] { 2, 3, 4 }) pts.add(new Point("ts_engine_latency", "" + v, k -> k.tsEngineLatency = v));
+        for (int v : new int[] { 2, 3, 4 }) pts.add(new Point("ts_engine_latency", "" + v, k -> k.withTsLatency(v)));
         for (int v : new int[] { 4, 8 }) pts.add(new Point("ready_latency", "" + v, k -> k.readyLatency = v));
         for (int v : new int[] { 4, 8 }) pts.add(new Point("go/run latency", "" + v, k -> { k.goLatency = v; k.runLatency = v; }));
         for (int v : new int[] { 2, 4 }) pts.add(new Point("link latency", "" + v, k -> k.linkLatency = v));
         pts.add(new Point("start skew", "off", k -> k.skew = false));
         for (long s : new long[] { 2, 3, 4, 5, 6 }) pts.add(new Point("start skew", "seed " + s, k -> k.skewSeed = s));
         pts.add(new Point("cm_latency", "4", k -> k.cmLatency = 4));
-        pts.add(new Point("corner (all pessimistic)", "", k -> { k.sramReadLatency = 4; k.areaQueueDepth = 4; k.tsEngineLatency = 4; k.readyLatency = 8;
+        pts.add(new Point("corner (all pessimistic)", "", k -> { k.sramReadLatency = 4; k.areaQueueDepth = 4; k.withTsLatency(4); k.readyLatency = 8;
             k.goLatency = 8; k.runLatency = 8; k.linkLatency = 4; k.cmLatency = 4; }));
 
         StringBuilder sb = new StringBuilder("sensitivity sweep (" + (full ? "full" : "quick") + "), main-phase cycles GO -> all READY; delta vs default; peaks link/eject/area/weIn [meas: Sweep]\n");

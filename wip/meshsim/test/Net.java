@@ -28,6 +28,9 @@ final class Net {
     void at(int tile, long T, int dst, int mode, int counter, int addr, int size, long lo, long hi) {
         q[tile].add(new long[] { T, lo, LinkWord.hdr(0, dst, mode, counter, addr, size), hi });
     }
+    /** A v1.1 packed controller-memory word (0x000-0x7FF program memory, 0x800-0xFFF data memory) as its v1.2 packet
+     *  address (regions 0x01 and 0x00, byte offsets): for tests carried over from v1.1. */
+    static int cm(int packedWord) { return packedWord < 0x800 ? LinkWord.R_PMEM << 24 | packedWord << 2 : (packedWord - 0x800) << 2; }
     /** Payload with the injection cycle in the low half. */
     static long tagged(long seq, long T) { return seq << 32 | (T & 0xFFFFFFFFL); }
 

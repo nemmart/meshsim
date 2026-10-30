@@ -37,11 +37,11 @@ public final class AgBench {
 
     /** Arm; once ready wait `idle` cycles (the sort arms at configure time) then start; or arm + start in one store. */
     static Res run(int L, int la, boolean stalls, boolean oneStore, int idle, Setup s) {
-        Config k = Config.defaults(); k.checkUnexpected = false; k.tsEngineLatency = L;
+        Config k = Config.defaults(); k.checkUnexpected = false; k.withTsLatency(L);
         if (la > 0) setLa(k, la);
         Chip c = new Chip(k); Tile p = c.tiles[0];
         int[] r = s.write(p, SRC);
-        p.setPtr(0, stalls ? DST_SAME : DST_OTHER); p.dir.remaining[0] = r[3];
+        p.setPtr(0, stalls ? DST_SAME : DST_OTHER); p.dir.remaining[1] = r[3];
         p.setMasterConfig(Fields.masterConfig(r[0], r[1], r[2], 0, 0, 1));
         long storeAt = c.cycle;                          // the host pulse stands for a DMA_PULSE store in this cycle
         Res out = new Res();
@@ -67,7 +67,7 @@ public final class AgBench {
             for (int i = 0; i < g; i++) {
                 int R = Rs[i % Rs.length];
                 p.setGroup(i, Fields.groupLo(R), Fields.groupHi(stream & 255, t, 0));
-                for (int s = 0; s < t; s++, stream++) { p.setStream(stream & 255, Fields.streamSrc(src), Fields.streamDest(0, 0), Fields.streamCount(R, LinkWord.M_SRC, size, 0)); src += R * cpe; el += R; }   // v1.1: one packet per element
+                for (int s = 0; s < t; s++, stream++) { p.setStream(stream & 255, Fields.streamSrc(src), 0, Fields.streamCount(R, size, 1, LinkWord.M_SRC, 0)); src += R * cpe; el += R; }   // v1.1: one packet per element
             }
             return new int[] { Fields.RUN_GROUPS, 0, g, el };
         };
@@ -75,7 +75,7 @@ public final class AgBench {
     /** A stream run of n streams of count c, gap after gap. */
     static Setup streams(int n, int cnt, int gap) {
         return (p, base) -> {
-            for (int s = 0; s < n; s++) p.setStream(s, Fields.streamSrc(base + 2 * cnt * s), Fields.streamDest(0, 0), Fields.streamCount(cnt, LinkWord.M_SRC, Fields.SIZE_64, gap));
+            for (int s = 0; s < n; s++) p.setStream(s, Fields.streamSrc(base + 2 * cnt * s, gap), 0, Fields.streamCount(cnt, Fields.SIZE_64, 1, LinkWord.M_SRC, 0));
             return new int[] { Fields.RUN_STREAMS, 0, n, n * cnt };
         };
     }
@@ -86,7 +86,7 @@ public final class AgBench {
             int[] R = new int[k + 3]; R[0] = 1; R[k + 1] = 2; R[k + 2] = 1;
             for (int i = 0; i < k + 3; i++) {
                 p.setGroup(g++, Fields.groupLo(R[i]), Fields.groupHi(stream, 4, 0));
-                for (int s = 0; s < 4; s++, stream++) { p.setStream(stream, Fields.streamSrc(src), Fields.streamDest(0, 0), Fields.streamCount(R[i], LinkWord.M_SRC, Fields.SIZE_64, 0)); src += 2 * R[i]; }
+                for (int s = 0; s < 4; s++, stream++) { p.setStream(stream, Fields.streamSrc(src), 0, Fields.streamCount(R[i], Fields.SIZE_64, 1, LinkWord.M_SRC, 0)); src += 2 * R[i]; }
             }
             return new int[] { Fields.RUN_GROUPS, 0, k + 3, 4 * 4 };
         };
@@ -157,9 +157,9 @@ public final class AgBench {
     /** A stream run: a count-4 stream, k count-0 gap-0 streams, a count-4 stream (the cycles of the run, start to rd_done). */
     static Setup zeroStreams(int k) {
         return (p, base) -> {
-            p.setStream(0, Fields.streamSrc(base), Fields.streamDest(0, 0), Fields.streamCount(4, LinkWord.M_SRC, Fields.SIZE_64, 0));
-            for (int i = 1; i <= k; i++) p.setStream(i, Fields.streamSrc(base), Fields.streamDest(0, 0), Fields.streamCount(0, LinkWord.M_SRC, Fields.SIZE_64, 0));
-            p.setStream(k + 1, Fields.streamSrc(base + 8), Fields.streamDest(0, 0), Fields.streamCount(4, LinkWord.M_SRC, Fields.SIZE_64, 0));
+            p.setStream(0, Fields.streamSrc(base), 0, Fields.streamCount(4, Fields.SIZE_64, 1, LinkWord.M_SRC, 0));
+            for (int i = 1; i <= k; i++) p.setStream(i, Fields.streamSrc(base), 0, Fields.streamCount(0, Fields.SIZE_64, 1, LinkWord.M_SRC, 0));
+            p.setStream(k + 1, Fields.streamSrc(base + 8), 0, Fields.streamCount(4, Fields.SIZE_64, 1, LinkWord.M_SRC, 0));
             return new int[] { Fields.RUN_STREAMS, 0, k + 2, 8 };
         };
     }

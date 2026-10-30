@@ -108,7 +108,7 @@ public final class ReadPortGatherTest {
             Chip c = new Chip(cf);
             a.load(c, 0);
             if (withReads == 1) for (Tile p : c.tiles) {
-                p.dir.remaining[TrafficDirector.CM] = 64;
+                p.dir.remaining[2] = 64;
                 for (int i = 0; i < 64; i++) p.readPort.hostQueue(0xE0000 + 2 * i, 0x900 + i);
             }
             cyc[withReads] = A2A.run(c, 3_000_000);
@@ -145,13 +145,13 @@ public final class ReadPortGatherTest {
         Tile x = c.tiles[20], p = c.tiles[21];
         final int pk = 256;
         for (int i = 0; i < pk; i++) p.sram.poke64(2 * i, (long) p.idx << 32 | i);
-        for (int j = 0; j < pk; j++) p.setStream(j & 255, Fields.streamSrc(2 * j), Fields.streamDest(0x800 + 2 * (j & 127), 63), Fields.streamCount(1, LinkWord.M_CMEM, Fields.SIZE_64, gap));
-        x.dir.remaining[TrafficDirector.CM] = pk + reads;   // read-port results are mode-6 packets too (4.3)
+        for (int j = 0; j < pk; j++) p.setStream(j & 255, Fields.streamSrc(2 * j, gap), Net.cm(0x800 + 2 * (j & 127)), Fields.streamCount(1, Fields.SIZE_64, 2, LinkWord.M_WRITE, 63));
+        x.dir.remaining[2] = pk + reads;   // read-port results are mode-6 packets too (4.3)
         EngineTest.streamRun(p, 0, pk, 0, 0);
         p.pulse(Fields.PULSE_START);
         for (int i = 0; i < delay; i++) c.step();
         for (int i = 0; i < reads; i++) x.readPort.hostQueue(0x1000 + i, 0xD00 + (i & 0xFF));
-        c.runUntil(() -> x.dir.remaining[TrafficDirector.CM] == 0 && x.dir.cmIdle(c.cycle), 100000);
+        c.runUntil(() -> x.dir.remaining[2] == 0 && x.dir.cmIdle(c.cycle), 100000);
         c.scanOverflows();
         long lb = 0, lk = 0, ovf = 0;
         int lbSlot = x.router.slotOfPort(Router.EJECT, Router.LOOPBACK);
@@ -206,26 +206,26 @@ public final class ReadPortGatherTest {
         {
             Chip c = new Chip(cfg());
             Tile x = c.tiles[20], p = c.tiles[21];
-            for (int j = 0; j < 4; j++) p.setStream(j, Fields.streamSrc(2 * j), Fields.streamDest(0x800 + 2 * j, 63), Fields.streamCount(1, LinkWord.M_CMEM, Fields.SIZE_64, 0));
-            x.dir.remaining[TrafficDirector.CM] = 4 + 8;
+            for (int j = 0; j < 4; j++) p.setStream(j, Fields.streamSrc(2 * j), Net.cm(0x800 + 2 * j), Fields.streamCount(1, Fields.SIZE_64, 2, LinkWord.M_WRITE, 63));
+            x.dir.remaining[2] = 4 + 8;
             EngineTest.streamRun(p, 0, 4, 0, 0);
             p.pulse(Fields.PULSE_START);
             for (int i = 0; i < 8; i++) x.readPort.hostQueue(0x1000 + i, 0xE00 + i);
-            c.runUntil(() -> x.dir.remaining[TrafficDirector.CM] == 0 && x.dir.cmIdle(c.cycle), 10000);
+            c.runUntil(() -> x.dir.remaining[2] == 0 && x.dir.cmIdle(c.cycle), 10000);
             T.check(x.dir.readPortOverlaps > 0 && c.violations > 0 && c.violationReport().contains("read-port overlap"), "4 mode-5 packets arriving with 8 results outstanding: flagged (" + x.dir.readPortOverlaps + " packets)");
         }
         // (b) the same stream after every result has been accepted: no violation
         {
             Chip c = new Chip(cfg());
             Tile x = c.tiles[20], p = c.tiles[21];
-            for (int j = 0; j < 4; j++) p.setStream(j, Fields.streamSrc(2 * j), Fields.streamDest(0x800 + 2 * j, 63), Fields.streamCount(1, LinkWord.M_CMEM, Fields.SIZE_64, 0));
-            x.dir.remaining[TrafficDirector.CM] = 8;
+            for (int j = 0; j < 4; j++) p.setStream(j, Fields.streamSrc(2 * j), Net.cm(0x800 + 2 * j), Fields.streamCount(1, Fields.SIZE_64, 2, LinkWord.M_WRITE, 63));
+            x.dir.remaining[2] = 8;
             for (int i = 0; i < 8; i++) x.readPort.hostQueue(0x1000 + i, 0xE00 + i);
-            c.runUntil(() -> x.dir.remaining[TrafficDirector.CM] == 0 && x.dir.cmIdle(c.cycle) && x.readPort.allAccepted(), 10000);
-            x.dir.remaining[TrafficDirector.CM] = 4;
+            c.runUntil(() -> x.dir.remaining[2] == 0 && x.dir.cmIdle(c.cycle) && x.readPort.allAccepted(), 10000);
+            x.dir.remaining[2] = 4;
             EngineTest.streamRun(p, 0, 4, 0, 0);
             p.pulse(Fields.PULSE_START);
-            c.runUntil(() -> x.dir.remaining[TrafficDirector.CM] == 0 && x.dir.cmIdle(c.cycle), 10000);
+            c.runUntil(() -> x.dir.remaining[2] == 0 && x.dir.cmIdle(c.cycle), 10000);
             T.eq(0, x.dir.readPortOverlaps, "results first, then the stream: no overlap");
             noViolations(c, "results first, then the stream");
         }
@@ -233,11 +233,11 @@ public final class ReadPortGatherTest {
         for (int mode : new int[] { LinkWord.M_CMD, LinkWord.M_CMEM }) {
             Chip c = new Chip(cfg());
             Tile x = c.tiles[20];
-            x.dir.remaining[TrafficDirector.CM] = 32 + (mode == LinkWord.M_CMEM ? 1 : 0);
+            x.dir.remaining[2] = 32 + (mode == LinkWord.M_CMEM ? 1 : 0);
             for (int i = 0; i < 32; i++) x.readPort.hostQueue(0x1000 + i, 0xE00 + i);
             c.run(4);
             c.cnc.send(c.cycle, 20, mode, mode == LinkWord.M_CMD ? 1 : 0x900, LinkWord.SIZE_32, 0x1234, 0);
-            c.runUntil(() -> x.dir.remaining[TrafficDirector.CM] == 0 && x.dir.cmIdle(c.cycle) && c.quiescent(), 10000);
+            c.runUntil(() -> x.dir.remaining[2] == 0 && x.dir.cmIdle(c.cycle) && c.quiescent(), 10000);
             if (mode == LinkWord.M_CMD) { T.eq(0, x.dir.readPortOverlaps, "C&C's command word during the results: exempt"); noViolations(c, "C&C's command word"); }
             else T.check(x.dir.readPortOverlaps == 1 && c.violations > 0, "C&C's mode-6 packet during the results: flagged");
         }
@@ -252,13 +252,13 @@ public final class ReadPortGatherTest {
         Tile p = c.tiles[12];
         final int A = 0x20000, B = 0x40000, N = 64;
         for (int i = 0; i < N; i++) p.sram.poke64(A + 2 * i, 0xA000L + i);
-        p.setStream(0, Fields.streamSrc(A), Fields.streamDest(0, 0), Fields.streamCount(N, LinkWord.M_SRC, Fields.SIZE_64, 0));
+        p.setStream(0, Fields.streamSrc(A), 0, Fields.streamCount(N, Fields.SIZE_64, 1, LinkWord.M_SRC, 0));
         p.setPtr(12, B); p.dir.remaining[TrafficDirector.SRAM] = N;
         EngineTest.streamRun(p, 0, 1, 0, 0);
         p.pulse(Fields.PULSE_START);
         c.runUntil(() -> p.ctl.countersDonePending(), 2000);
         T.check(p.ctl.countersDonePending(), "run 1 ended with counters done");
-        p.setStream(1, Fields.streamSrc(B), Fields.streamDest(0, 0), Fields.streamCount(N, LinkWord.M_SRC, Fields.SIZE_64, 0));
+        p.setStream(1, Fields.streamSrc(B), 0, Fields.streamCount(N, Fields.SIZE_64, 1, LinkWord.M_SRC, 0));
         p.setPtr(12, A); p.dir.remaining[TrafficDirector.SRAM] = N;
         EngineTest.streamRun(p, 1, 1, 0, 0);
         p.pulse(Fields.PULSE_START);
@@ -268,7 +268,7 @@ public final class ReadPortGatherTest {
         // one run that reads and writes the same buffer: flagged
         Chip d = new Chip(cfg());
         Tile q = d.tiles[12];
-        q.setStream(0, Fields.streamSrc(A), Fields.streamDest(0, 0), Fields.streamCount(N, LinkWord.M_SRC, Fields.SIZE_64, 0));
+        q.setStream(0, Fields.streamSrc(A), 0, Fields.streamCount(N, Fields.SIZE_64, 1, LinkWord.M_SRC, 0));
         q.setPtr(12, A + 2 * N - 16); q.dir.remaining[TrafficDirector.SRAM] = N;
         EngineTest.streamRun(q, 0, 1, 0, 0);
         q.pulse(Fields.PULSE_START);
@@ -282,13 +282,13 @@ public final class ReadPortGatherTest {
         T.group("reserved streams");
         Chip c = new Chip(cfg());
         Tile p = c.tiles[3];
-        p.setStream(0, Fields.streamSrc(0x1000), Fields.streamDest(0, 1), Fields.streamCount(1, 0, Fields.SIZE_32, 0));
-        p.setStream(1, Fields.streamSrc(0x1000), Fields.streamDest(0, 1), Fields.streamCount(1, LinkWord.M_SRC, Fields.SIZE_UNDEF, 0));
-        p.setStream(2, Fields.streamSrc(0x1000), Fields.streamDest(0, 1), Fields.streamCount(0, 7, Fields.SIZE_64, 0));      // code 7 (command writes: the send port's), count 0
-        p.setStream(3, Fields.streamSrc(0x1000), Fields.streamDest(0, 1), Fields.streamCount(0, 8, Fields.SIZE_64, 0));      // code 8 (replies: the send port's), count 0
-        p.setStream(4, Fields.streamSrc(0x1000), Fields.streamDest(0, 1), Fields.streamCount(0, 10, Fields.SIZE_64, 0));     // code 10, count 0
-        p.setStream(5, Fields.streamSrc(0x1000), Fields.streamDest(0, 1), Fields.streamCount(1, LinkWord.M_AUG, Fields.SIZE_128, 0));   // mode 5 at 128
-        p.setStream(6, Fields.streamSrc(0x1000), Fields.streamDest(0, 1), Fields.streamCount(1, 15, Fields.SIZE_64, 0));     // code 15: a bad packet
+        p.setStream(0, Fields.streamSrc(0x1000), 0, Fields.streamCount(1, Fields.SIZE_32, 1, 0, 1));
+        p.setStream(1, Fields.streamSrc(0x1000), 0, Fields.streamCount(1, Fields.SIZE_UNDEF, 1, LinkWord.M_SRC, 1));
+        p.setStream(2, Fields.streamSrc(0x1000), 0, Fields.streamCount(0, Fields.SIZE_64, 1, 7, 1));      // code 7 (command writes: the send port's), count 0
+        p.setStream(3, Fields.streamSrc(0x1000), 0, Fields.streamCount(0, Fields.SIZE_64, 1, 8, 1));      // code 8 (replies: the send port's), count 0
+        p.setStream(4, Fields.streamSrc(0x1000), 0, Fields.streamCount(0, Fields.SIZE_64, 1, 10, 1));     // code 10, count 0
+        p.setStream(5, Fields.streamSrc(0x1000), 0, Fields.streamCount(1, Fields.SIZE_128, 1, LinkWord.M_AUG, 1));   // mode 5 at 128
+        p.setStream(6, Fields.streamSrc(0x1000), 0, Fields.streamCount(1, Fields.SIZE_64, 1, 15, 1));     // code 15: a bad packet
         EngineTest.streamRun(p, 0, 7, 0, 0);
         p.pulse(Fields.PULSE_START);
         c.run(100);
@@ -304,10 +304,10 @@ public final class ReadPortGatherTest {
         // a group run reports a reserved code on every visit of the stream, idle or not (as read sizes, M8 Q2)
         Chip c2 = new Chip(cfg());
         Tile q = c2.tiles[3];
-        q.setStream(0, Fields.streamSrc(0x1000), Fields.streamDest(0, 1), Fields.streamCount(2, LinkWord.M_SRC, Fields.SIZE_64, 0));
-        q.setStream(1, Fields.streamSrc(0x2000), Fields.streamDest(0, 2), Fields.streamCount(0, 7, Fields.SIZE_64, 0));     // code 7, idle
+        q.setStream(0, Fields.streamSrc(0x1000), 0, Fields.streamCount(2, Fields.SIZE_64, 1, LinkWord.M_SRC, 1));
+        q.setStream(1, Fields.streamSrc(0x2000), 0, Fields.streamCount(0, Fields.SIZE_64, 1, 7, 2));     // code 7, idle
         q.setGroup(0, Fields.groupLo(2), Fields.groupHi(0, 2, 0));
-        c2.tiles[4].dir.remaining[0] = 2; c2.tiles[4].setPtr(3, 0x40000);
+        c2.tiles[4].dir.remaining[1] = 2; c2.tiles[4].setPtr(3, 0x40000);
         q.setMasterConfig(Fields.masterConfig(Fields.RUN_GROUPS, 0, 1, 0, 0, 1));
         q.pulse(Fields.PULSE_START);
         c2.run(100);
@@ -326,7 +326,7 @@ public final class ReadPortGatherTest {
             perm[p.idx] = pm;
             for (int i = 0; i < N; i++) p.sram.poke64(IDX + 2 * i, (long) pm[i] << 32 | 0xAB000000L | i);
             for (int v = 0; v < N; v++) for (int i = 0; i < k; i++) p.sram.poke64(VAL + 2 * k * v + 2 * i, (long) p.idx << 48 | (long) v << 8 | i);
-            p.setStream(195, Fields.streamSrc(IDX), Fields.streamDest(0, 0), Fields.streamCount(N, LinkWord.M_GATHER, Fields.SIZE_64, 0));
+            p.setStream(195, Fields.streamSrc(IDX), 0, Fields.streamCount(N, Fields.SIZE_64, 1, LinkWord.M_GATHER, 0));
             p.setPtr(p.idx, OUT);
             p.gather.base = VAL;
             p.dir.remaining[TrafficDirector.SRAM] = N * k;

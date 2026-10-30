@@ -38,12 +38,12 @@ public final class AgTest {
         T.eq(0, c.violations, "count 0 is not flagged");
         // past the table's end: wraps, flagged
         p.setPtr(3, 0x40000);
-        p.setStream(255, Fields.streamSrc(0x100), Fields.streamDest(0, 0), Fields.streamCount(1, LinkWord.M_SRC, Fields.SIZE_64, 0));
-        p.setStream(0, Fields.streamSrc(0x200), Fields.streamDest(0, 0), Fields.streamCount(1, LinkWord.M_SRC, Fields.SIZE_64, 0));
+        p.setStream(255, Fields.streamSrc(0x100), 0, Fields.streamCount(1, Fields.SIZE_64, 1, LinkWord.M_SRC, 0));
+        p.setStream(0, Fields.streamSrc(0x200), 0, Fields.streamCount(1, Fields.SIZE_64, 1, LinkWord.M_SRC, 0));
         p.sram.poke64(0x100, 0x1111); p.sram.poke64(0x200, 0x2222);
-        p.dir.remaining[0] = 2; c.newPhase();
+        p.dir.remaining[1] = 2; c.newPhase();
         p.setMasterConfig(Fields.masterConfig(Fields.RUN_STREAMS, 255, 2, 0, 0, 1)); p.pulse(Fields.PULSE_START);
-        c.runUntil(() -> p.ag.done && p.dir.remaining[0] == 0 && p.memIdle(c.cycle), 2000);
+        c.runUntil(() -> p.ag.done && p.dir.remaining[1] == 0 && p.memIdle(c.cycle), 2000);
         T.eq(0x1111L, p.sram.peek64(0x40000), "a stream run 255 + 2: stream 255 first ...");
         T.eq(0x2222L, p.sram.peek64(0x40002), "... then stream 0 (the numbers wrap)");
         T.check(c.violationMessages.stream().anyMatch(v -> v.contains("past the table's end")), "and meshsim flags it");
@@ -54,23 +54,23 @@ public final class AgTest {
         T.check(c.violations > v0 && c.violationMessages.stream().anyMatch(v -> v.contains("reserved digit selector")), "and meshsim flags them");
         // a start while running
         v0 = c.violations;
-        p.setStream(10, Fields.streamSrc(0x100), Fields.streamDest(0, 0), Fields.streamCount(200, LinkWord.M_SRC, Fields.SIZE_64, 0));
-        p.setPtr(3, 0x60000); p.dir.remaining[0] = 200; c.newPhase();
+        p.setStream(10, Fields.streamSrc(0x100), 0, Fields.streamCount(200, Fields.SIZE_64, 1, LinkWord.M_SRC, 0));
+        p.setPtr(3, 0x60000); p.dir.remaining[1] = 200; c.newPhase();
         p.setMasterConfig(Fields.masterConfig(Fields.RUN_STREAMS, 10, 1, 0, 0, 1)); p.pulse(Fields.PULSE_START); c.run(2);
         long started = p.ag.startedAt;
         p.pulse(Fields.PULSE_START); c.run(2);
         T.eq(started, p.ag.startedAt, "a start while running is ignored (the lead-in included)");
         T.check(c.violations > v0 && c.violationMessages.stream().anyMatch(v -> v.contains("a start while the address generator is running")), "and meshsim flags it");
-        c.runUntil(() -> p.ag.done && p.dir.remaining[0] == 0 && p.memIdle(c.cycle), 5000);
+        c.runUntil(() -> p.ag.done && p.dir.remaining[1] == 0 && p.memIdle(c.cycle), 5000);
         // rd_running is visible to a load right after the start store (wait_tables() after start_run() waits for the run)
-        p.setStream(11, Fields.streamSrc(0x100), Fields.streamDest(0, 0), Fields.streamCount(50, LinkWord.M_SRC, Fields.SIZE_64, 0));
-        p.setPtr(3, 0x60000); p.dir.remaining[0] = 50; c.newPhase();
+        p.setStream(11, Fields.streamSrc(0x100), 0, Fields.streamCount(50, Fields.SIZE_64, 1, LinkWord.M_SRC, 0));
+        p.setPtr(3, 0x60000); p.dir.remaining[1] = 50; c.newPhase();
         p.setMasterConfig(Fields.masterConfig(Fields.RUN_STREAMS, 11, 1, 0, 0, 1));
         long ts = c.cycle + 1;
         p.core.store(ts, Registers.TILE_PULSE.addr(), Registers.P_START.place(1), -1); c.step();
         T.check(!p.ag.running && p.ag.runningForStatus(), "at the end of the start store's cycle the run has not begun, but TILE_STATUS's rd_running (computed then, read at + 1) is 1");
         T.check(!p.ag.doneForStatus(), "... and rd_done is 0");
-        c.runUntil(() -> p.ag.done && p.dir.remaining[0] == 0 && p.memIdle(c.cycle), 5000);
+        c.runUntil(() -> p.ag.done && p.dir.remaining[1] == 0 && p.memIdle(c.cycle), 5000);
         // dst 65
         v0 = c.violations;
         long t = c.cycle + 1;
@@ -87,14 +87,14 @@ public final class AgTest {
         Net n = new Net(cfg()); Tile p = n.c.tiles[12];
         int[] count = { 2, 0, 3 }, src = { 0x100, 0x200, 0x400 };
         for (int s = 0; s < 3; s++) {
-            p.setStream(40 + s, Fields.streamSrc(src[s]), Fields.streamDest(0, 0), Fields.streamCount(count[s], LinkWord.M_SRC, Fields.SIZE_64, 0));
+            p.setStream(40 + s, Fields.streamSrc(src[s]), 0, Fields.streamCount(count[s], Fields.SIZE_64, 1, LinkWord.M_SRC, 0));
             for (int e = 0; e < 4; e++) p.sram.poke64(src[s] + 2 * e, (long) (s + 0xA) << 8 | e);
         }
         p.setGroup(7, Fields.groupLo(3), Fields.groupHi(40, 3, 0));
         String[] before = new String[3]; for (int s = 0; s < 3; s++) before[s] = streamWords(p, 40 + s);
         for (int rep = 0; rep < 2; rep++) {
             n.clearLogs();
-            p.setPtr(12, 0x40000); p.dir.remaining[0] = 5;
+            p.setPtr(12, 0x40000); p.dir.remaining[1] = 5;
             p.setMasterConfig(Fields.masterConfig(Fields.RUN_GROUPS, 7, 1, 0, 0, 1));
             EngineTest.runLocal(n, 12);
             List<long[]> l = n.log(12);
@@ -126,9 +126,9 @@ public final class AgTest {
             int chunks = SRAMReadQueue.chunksOf(size), N = 5, base = 0x800;
             int word0 = mode == LinkWord.M_CMEM ? 0x900 : 0x1FFFFE;           // mode 9: across the 21-bit wrap
             for (int i = 0; i < N * chunks; i++) p.sram.poke(base + i, 0x5000 + i);
-            p.setStream(9, Fields.streamSrc(base), Fields.streamDest(word0, 0), Fields.streamCount(N, mode, size, 0));
+            p.setStream(9, Fields.streamSrc(base), 0, Fields.streamCount(N, size, 1, mode, 0));
             p.setGroup(2, Fields.groupLo(N), Fields.groupHi(9, 1, 0));
-            p.dir.remaining[mode == LinkWord.M_CMEM ? TrafficDirector.CM : TrafficDirector.PERIPH] = N;   // one count per packet, whatever its size
+            p.dir.remaining[mode == LinkWord.M_CMEM ? 2 : 4] = N;   // one count per packet, whatever its size
             p.setMasterConfig(Fields.masterConfig(kind, kind == Fields.RUN_STREAMS ? 9 : 2, 1, 0, 0, 1));
             EngineTest.runLocal(n, 3);
             if (mode == LinkWord.M_PERIPH) n.c.run(40);
@@ -152,7 +152,7 @@ public final class AgTest {
                 T.check(landed, what + ": " + N * chunks + " words in data memory");
             } else {
                 T.eq((long) N, p.slot.badWrites, what + ": every packet reached the slot (type 0: bad peripheral writes, 4.17.7)");
-                T.eq(0, p.dir.remaining[TrafficDirector.PERIPH], what + ": each counted once");
+                T.eq(0, p.dir.remaining[4], what + ": each counted once");
                 p.ctl.conditions = 0;
             }
             EngineTest.noViolations(n.c, what);
@@ -163,16 +163,16 @@ public final class AgTest {
     static void queueBounds() {
         T.group("queue bounds");
         for (int L = 1; L <= 4; L++) for (int la : new int[] { 1, 2, 2 * L + 2, 9 }) {
-            Config k = cfg(); k.tsEngineLatency = L; k.agLookahead = la;
+            Config k = cfg(); k.withTsLatency(L); k.agLookahead = la;
             Net n = new Net(k); Tile p = n.c.tiles[0];
             // groups t = 1 .. 16, R = 1 .. 3, with R = 0 groups between
             int stream = 0, g = 0, total = 0;
             for (int t = 1; t <= 16; t += 3) for (int R = 0; R <= 3; R++) {
-                for (int s = 0; s < t; s++) p.setStream(stream + s, Fields.streamSrc(0x100 * g + 2 * s), Fields.streamDest(0, 0), Fields.streamCount(R, LinkWord.M_SRC, Fields.SIZE_64, 0));
+                for (int s = 0; s < t; s++) p.setStream(stream + s, Fields.streamSrc(0x100 * g + 2 * s), 0, Fields.streamCount(R, Fields.SIZE_64, 1, LinkWord.M_SRC, 0));
                 p.setGroup(g, Fields.groupLo(R), Fields.groupHi(stream, t, 0));
                 stream += t; g++; total += R * t;
             }
-            p.setPtr(0, 0x40000); p.dir.remaining[0] = total;
+            p.setPtr(0, 0x40000); p.dir.remaining[1] = total;
             p.setMasterConfig(Fields.masterConfig(Fields.RUN_GROUPS, 0, g, 0, 0, 1));
             EngineTest.runLocal(n, 0);
             T.check(p.ag.streamQPeak <= la && p.ag.groupQPeak <= la, "L " + L + ", ag_lookahead " + la + ": peaks " + p.ag.streamQPeak + ", " + p.ag.groupQPeak);
@@ -194,11 +194,11 @@ public final class AgTest {
         Net n = new Net(cfg()); Tile p = n.c.tiles[5];
         int[] size = { Fields.SIZE_64, Fields.SIZE_32, Fields.SIZE_128 }, src = { 0x200, 0x300, 0x400 };
         for (int s = 0; s < 3; s++) {
-            p.setStream(60 + s, Fields.streamSrc(src[s]), Fields.streamDest(0, 0), Fields.streamCount(2, LinkWord.M_SRC, size[s], 0));
+            p.setStream(60 + s, Fields.streamSrc(src[s]), 0, Fields.streamCount(2, size[s], 1, LinkWord.M_SRC, 0));
             for (int c = 0; c < 8; c++) p.sram.poke(src[s] + c, 0x1000 * (s + 1) + c);
         }
         p.setGroup(1, Fields.groupLo(2), Fields.groupHi(60, 3, 0));
-        p.setPtr(5, 0x40000); p.dir.remaining[0] = 6;
+        p.setPtr(5, 0x40000); p.dir.remaining[1] = 6;
         p.setMasterConfig(Fields.masterConfig(Fields.RUN_GROUPS, 1, 1, 0, 0, 1));
         EngineTest.runLocal(n, 5);
         List<long[]> l = n.log(5);
@@ -228,7 +228,7 @@ public final class AgTest {
 
     static void figure12Ptr(int L) {
         T.group("figure 12, PTR, ts_engine_latency " + L);
-        Config k = cfg(); k.tsEngineLatency = L;
+        Config k = cfg(); k.withTsLatency(L);
         Chip c = new Chip(k); Tile p = c.tiles[7];
         p.setPtr(9, 0x1000); p.setPtr(5, 0x2000);
         // 1. a controller store on the write-back cycle (t + 1) is lost; the increment lands
@@ -274,7 +274,7 @@ public final class AgTest {
 
     static void figure12Hist(int L) {
         T.group("figure 12, HIST, ts_engine_latency " + L);
-        Config k = cfg(); k.tsEngineLatency = L;
+        Config k = cfg(); k.withTsLatency(L);
         Chip c = new Chip(k); Tile p = c.tiles[20];
         p.hist.poke(3, 100); p.hist.poke(4, 7);
         long tr = rmw(c, p.weHistReq, 0, 3, 1, () -> p.hist.rmws);

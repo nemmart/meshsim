@@ -26,7 +26,7 @@ public final class EngineTest {
     /** Tile p has finished a phase: its run is over, every expected arrival landed, the stores are quiet. */
     static boolean phaseDone(Chip c, Tile p) {
         long t = c.cycle;
-        return !p.ag.running && p.dir.remaining[0] == 0 && p.dir.remaining[1] == 0 && p.dir.remaining[2] == 0
+        return !p.ag.running && p.ctl.countersZero() && p.dir.inFlight() == 0
                 && p.memIdle(t) && p.dir.cmIdle(t) && !p.tsBusy(t);
     }
     /** Start a local run on the given tiles (+ start skew), run to the end; cycles from the store. */
@@ -48,7 +48,7 @@ public final class EngineTest {
         Net n = new Net(cfg(false));
         Tile r = n.c.tiles[10];
         // mode 2 at PTR[src], count-on-arrival on digit 1
-        r.setPtr(9, 0x20000); r.setMasterConfig(Fields.masterConfig(0, 0, 0, 0, 1, 1)); r.dir.remaining[0] = 20;
+        r.setPtr(9, 0x20000); r.setMasterConfig(Fields.masterConfig(0, 0, 0, 0, 1, 1)); r.dir.remaining[1] = 20;
         for (int j = 0; j < 20; j++) n.at(9, 2 + j, 10, LinkWord.M_SRC, 0, 0xABCD0000_00000000L | (j % 5));
         n.runAll(1000);
         boolean ok = true; for (int j = 0; j < 20; j++) if (r.sram.peek64(0x20000 + 2 * j) != (0xABCD0000_00000000L | (j % 5))) ok = false;
@@ -57,7 +57,7 @@ public final class EngineTest {
         for (int k = 0; k < 5; k++) T.eq(4, r.hist.peek(k), "count-on-arrival HIST[" + k + "]");
         // mode 3 at PTR[bucket digit 2]
         for (int b = 0; b < 256; b++) r.setPtr(b, 0x60000 + 64 * b);
-        r.setMasterConfig(Fields.masterConfig(0, 0, 0, 2, 0, 1)); r.dir.remaining[0] = 30;
+        r.setMasterConfig(Fields.masterConfig(0, 0, 0, 2, 0, 1)); r.dir.remaining[1] = 30;
         long[] keys = new long[30]; Random rnd = new Random(3);
         for (int j = 0; j < 30; j++) { keys[j] = rnd.nextInt() & 0xFFFFFFFFL; n.at(9, n.c.cycle + 2 + j, 10, LinkWord.M_BUCKET, 0, keys[j]); }
         n.runAll(1000);
@@ -65,13 +65,13 @@ public final class EngineTest {
         for (long k : keys) { int b = (int) ((k >>> 8) & 0xFF); if (r.sram.peek64(0x60000 + 64 * b + 2 * seen[b]++) != k) ok = false; }
         T.check(ok, "mode 3 lands at PTR[digit 2], in arrival order per bucket");
         // all on one bucket at one a cycle: the bypass keeps every pointer update
-        r.setPtr(7, 0x70000); r.setMasterConfig(Fields.masterConfig(0, 0, 0, 1, 0, 1)); r.dir.remaining[0] = 50;
+        r.setPtr(7, 0x70000); r.setMasterConfig(Fields.masterConfig(0, 0, 0, 1, 0, 1)); r.dir.remaining[1] = 50;
         for (int j = 0; j < 50; j++) n.at(9, n.c.cycle + 2 + j, 10, LinkWord.M_BUCKET, 0, (long) j << 32 | 7);
         n.runAll(1000);
         ok = true; for (int j = 0; j < 50; j++) if (r.sram.peek64(0x70000 + 2 * j) != ((long) j << 32 | 7)) ok = false;
         T.check(ok, "50 packets to one bucket, one a cycle: consecutive (pointer bypass)");
         // mode 4 (augmented; was attach on mode 2): the high half becomes (target - base) / 2
-        r.setPtr(9, 0x30010); r.setRecordBase(0x30000); r.setMasterConfig(Fields.masterConfig(0, 0, 0, 0, 0, 1)); r.dir.remaining[0] = 10;
+        r.setPtr(9, 0x30010); r.setRecordBase(0x30000); r.setMasterConfig(Fields.masterConfig(0, 0, 0, 0, 0, 1)); r.dir.remaining[1] = 10;
         for (int j = 0; j < 10; j++) n.at(9, n.c.cycle + 2 + j, 10, LinkWord.M_AUG, 0, 0xFFFFFFFF00000000L | (1000 + j));
         n.runAll(1000);
         ok = true; for (int j = 0; j < 10; j++) if (r.sram.peek64(0x30010 + 2 * j) != ((long) (8 + j) << 32 | (1000 + j))) ok = false;
@@ -79,7 +79,7 @@ public final class EngineTest {
         // modes 2 and 4 mixed in one phase (4.9): two senders, each interleaving mode 2 and mode 4; both modes
         // advance PTR[src] in arrival order, and only the mode-4 payloads get an ordinal
         r.setPtr(9, 0x34000); r.setPtr(11, 0x34100); r.setRecordBase(0x34000); r.setMasterConfig(Fields.masterConfig(0, 0, 0, 0, 1, 1));
-        r.dir.remaining[0] = 40; long hist0 = r.hist.peek(0x5A);
+        r.dir.remaining[1] = 40; long hist0 = r.hist.peek(0x5A);
         boolean[][] aug = new boolean[2][20];
         for (int s = 0; s < 2; s++) for (int j = 0; j < 20; j++) {
             aug[s][j] = ((j * 7 + s * 3) % 5) < 2;                                   // an irregular mix, different per sender
@@ -97,21 +97,33 @@ public final class EngineTest {
         T.check(ok, "modes 2 and 4 mixed in one phase: arrival order at PTR[src] kept, ordinals only on the " + nAug + " mode-4 payloads");
         T.eq(0x34000 + 40, r.ptr(9), "PTR[9] advanced by both modes"); T.eq(0x34100 + 40, r.ptr(11), "PTR[11] advanced by both modes");
         T.eq(hist0 + 40, (long) r.hist.peek(0x5A), "count-on-arrival counts both modes");
-        T.eq(0, r.dir.remaining[0], "SRAM_REMAINING counts both modes");
-        // a write at chunk = 3 mod 4 spans two rows: two accesses
-        r.setPtr(9, 0x50003); r.setMasterConfig(0); r.dir.remaining[0] = 4; long w0 = r.sram.writes[2];
-        for (int j = 0; j < 4; j++) n.at(9, n.c.cycle + 2 + j, 10, LinkWord.M_SRC, 0, 0x1111111100000000L * (j + 1) + j);
-        n.runAll(1000);
-        ok = true; for (int j = 0; j < 4; j++) if (r.sram.peek64(0x50003 + 2 * j) != 0x1111111100000000L * (j + 1) + j) ok = false;
-        T.check(ok, "row-spanning writes land");
-        T.eq(2, r.writer.splits, "two of the four span rows (chunks 3 and 7 mod 8... 0x50003, 0x50007)");
-        T.eq(6, r.sram.writes[2] - w0, "each spanning write is two accesses");
+        T.eq(0, r.dir.remaining[1], "SRAM_REMAINING counts both modes");
         noViolations(n.c, "write engine");
+        // v1.2 (4.9, D32): a write through a PTR not aligned to its size is dropped, still counted, the pointer still
+        // advances, and ERRORS [1] is set; meshsim flags it (invariant 20). No write ever spans a row.
+        r.setPtr(9, 0x50003); r.setMasterConfig(0); r.dir.remaining[1] = 4; long w0 = r.sram.writes[2]; long v0 = n.c.violations;
+        r.sram.poke(0x50003, 0); r.sram.poke(0x50004, 0);
+        for (int j = 0; j < 2; j++) n.at(9, n.c.cycle + 2 + j, 10, LinkWord.M_SRC, 0, 0x1111111100000000L * (j + 1) + j);
+        n.runAll(1000);
+        T.eq(0, r.dir.remaining[1] - 2, "both counted (two of four)");
+        T.eq(0x50007, r.ptr(9), "PTR[9] still advanced by 2 per write");
+        T.eq(0, r.sram.writes[2] - w0, "neither written");
+        T.eq(0, r.sram.peek(0x50003) | r.sram.peek(0x50004), "nothing landed");
+        T.eq(2L, r.writer.misalignedWrites, "two misaligned writes");
+        T.check((r.conditions() & (1 << Conditions.BAD_MODE_OR_SIZE)) != 0, "ERRORS [1] set");
+        T.eq(2L, n.c.violations - v0, "flagged twice (invariant 20)");
+        // a 32-bit write through the same (odd) PTR is aligned: it lands
+        for (int j = 0; j < 2; j++) n.at(9, n.c.cycle + 2 + j, 10, LinkWord.M_SRC, 1, 0, LinkWord.SIZE_32, 0x7700 + j, 0);
+        n.runAll(1000);
+        T.eq(0x7700, r.sram.peek(0x50007), "a 32-bit write at an odd chunk lands"); T.eq(0x7701, r.sram.peek(0x50008), "and the next");
+        T.eq(0, r.dir.remaining[1], "all four counted");
+        T.eq(2L, n.c.violations - v0, "no more violations");
+
         // the pointer stage against ts_engine_latency
         StringBuilder sb = new StringBuilder("write engine pointer stage, 200 packets at one a cycle [meas: EngineTest write engine]:");
         for (int L = 1; L <= 4; L++) {
-            Config k = cfg(false); k.tsEngineLatency = L;
-            Net m = new Net(k); Tile q = m.c.tiles[10]; q.setPtr(9, 0x20000); q.dir.remaining[0] = 200;
+            Config k = cfg(false); k.withTsLatency(L);
+            Net m = new Net(k); Tile q = m.c.tiles[10]; q.setPtr(9, 0x20000); q.dir.remaining[1] = 200;
             for (int j = 0; j < 200; j++) m.at(9, 2 + j, 10, LinkWord.M_SRC, 0, j);
             m.runAll(5000);
             boolean good = true; for (int j = 0; j < 200; j++) if (q.sram.peek64(0x20000 + 2 * j) != j) good = false;
@@ -135,8 +147,8 @@ public final class EngineTest {
             Net n = new Net(cfg(false)); Tile p = n.c.tiles[20];
             for (int i = 0; i < 2 * N; i++) p.sram.poke(i, 0x5000_0000 + i);
             int size = cases[k][0], count = cases[k][1], packets = count;   // v1.1: one packet per element, whatever its size
-            p.setStream(0, Fields.streamSrc(0), Fields.streamDest(0, 0), Fields.streamCount(count, LinkWord.M_SRC, size, 0));
-            p.setPtr(20, 0x20000); p.dir.remaining[0] = packets; streamRun(p, 0, 1, 0, 0);
+            p.setStream(0, Fields.streamSrc(0), 0, Fields.streamCount(count, size, 1, LinkWord.M_SRC, 0));
+            p.setPtr(20, 0x20000); p.dir.remaining[1] = packets; streamRun(p, 0, 1, 0, 0);
             long cyc = runLocal(n, 20);
             boolean ok = true;
             int chunks = count * SRAMReadQueue.chunksOf(size);           // 32 bits land packed (PTR += 1), v1.0 padded them to 64
@@ -152,8 +164,8 @@ public final class EngineTest {
             Net n = new Net(cfg(false)); Tile p = n.c.tiles[21];
             for (int i = 0; i < 1024; i++) p.sram.poke(0x10000 + i, 0x7000_0000 + i);
             int pk = 1024 >> size;
-            p.setStream(5, Fields.streamSrc(0x10000), Fields.streamDest(0x000, 0), Fields.streamCount(pk, LinkWord.M_CMEM, size, 0));
-            p.dir.remaining[TrafficDirector.CM] = pk; streamRun(p, 5, 1, 0, 0);
+            p.setStream(5, Fields.streamSrc(0x10000), Net.cm(0x000), Fields.streamCount(pk, size, 2, LinkWord.M_WRITE, 0));
+            p.dir.remaining[2] = pk; streamRun(p, 5, 1, 0, 0);
             long cyc = runLocal(n, 21);
             boolean ok = true; for (int i = 0; i < 1024; i++) if (p.cmem.imem.peek(i) != 0x7000_0000 + i) ok = false;
             T.check(ok, "mode-5 block copy, " + (32 << size) + "-bit packets: 1K words in instruction memory");
@@ -170,8 +182,8 @@ public final class EngineTest {
         Net n = new Net(cfg(false)); Tile p = n.c.tiles[30];
         for (int i = 0; i < 64; i++) p.sram.poke64(2 * i, i);
         int[] counts = { 3, 0, 2, 0, 1 }, gaps = { 2, 3, 0, 1, 0 }; int src = 0;
-        for (int s = 0; s < 5; s++) { p.setStream(254 + s & 255, Fields.streamSrc(2 * src), Fields.streamDest(0, 0), Fields.streamCount(counts[s], LinkWord.M_SRC, Fields.SIZE_64, gaps[s])); src += counts[s]; }
-        p.setPtr(30, 0x20000); p.dir.remaining[0] = 6; streamRun(p, 254, 5, 0, 0);
+        for (int s = 0; s < 5; s++) { p.setStream(254 + s & 255, Fields.streamSrc(2 * src, gaps[s]), 0, Fields.streamCount(counts[s], Fields.SIZE_64, 1, LinkWord.M_SRC, 0)); src += counts[s]; }
+        p.setPtr(30, 0x20000); p.dir.remaining[1] = 6; streamRun(p, 254, 5, 0, 0);
         runLocal(n, 30);
         List<long[]> l = n.log(30);
         T.eq(6, l.size(), "six packets");
@@ -179,10 +191,10 @@ public final class EngineTest {
         T.eqo("[0, 1, 2, 8, 9, 11]", Arrays.toString(rel), "issue cycles: 3 elements + gap 2, count 0 with gap 3, 2 elements, count 0 with gap 1, 1 element (streams 254, 255, 0, 1, 2)");
         for (int j = 0; j < 6; j++) T.eq(j, p.sram.peek64(0x20000 + 2 * j), "data " + j);
         // relative destinations: d = 5 from tile 30 reaches tile 35; d = 40 reaches tile 6
-        p.setStream(10, Fields.streamSrc(0), Fields.streamDest(0, 5), Fields.streamCount(2, LinkWord.M_SRC, Fields.SIZE_64, 0));
-        p.setStream(11, Fields.streamSrc(4), Fields.streamDest(0, 40), Fields.streamCount(2, LinkWord.M_SRC, Fields.SIZE_64, 0));
+        p.setStream(10, Fields.streamSrc(0), 0, Fields.streamCount(2, Fields.SIZE_64, 1, LinkWord.M_SRC, 5));
+        p.setStream(11, Fields.streamSrc(4), 0, Fields.streamCount(2, Fields.SIZE_64, 1, LinkWord.M_SRC, 40));
         n.c.tiles[35].setPtr(30, 0x30000); n.c.tiles[6].setPtr(30, 0x30000);
-        n.c.tiles[35].dir.remaining[0] = 2; n.c.tiles[6].dir.remaining[0] = 2;
+        n.c.tiles[35].dir.remaining[1] = 2; n.c.tiles[6].dir.remaining[1] = 2;
         streamRun(p, 10, 2, 0, 0);
         runLocal(n, 30);
         n.c.runUntil(() -> phaseDone(n.c, n.c.tiles[35]) && phaseDone(n.c, n.c.tiles[6]), 1000);
@@ -205,10 +217,10 @@ public final class EngineTest {
                 for (int s = 0; s < 63; s++) {
                     int d = (p.idx + order[s]) & 63;
                     p.sram.poke64(2 * s, (long) p.idx << 32 | d);
-                    p.setStream(s, Fields.streamSrc(2 * s), Fields.streamDest(0, order[s]), Fields.streamCount(1, LinkWord.M_SRC, Fields.SIZE_64, gap));
+                    p.setStream(s, Fields.streamSrc(2 * s, gap), 0, Fields.streamCount(1, Fields.SIZE_64, 1, LinkWord.M_SRC, order[s]));
                 }
                 for (int s = 0; s < 64; s++) p.setPtr(s, 0x20000 + 2 * s);
-                p.dir.remaining[0] = 63; streamRun(p, 0, 63, 0, 0);
+                p.dir.remaining[1] = 63; streamRun(p, 0, 63, 0, 0);
             }
             long t0 = n.c.cycle;
             boolean[] st = new boolean[64];
@@ -245,8 +257,8 @@ public final class EngineTest {
         long[] passCycles = new long[5];
         // pass 0: raw 32-bit keys, one per packet, mode 4 (augmented) to the tile itself, histogram digit 1
         for (Tile p : n.c.tiles) {
-            p.setStream(0, Fields.streamSrc(A), Fields.streamDest(0, 0), Fields.streamCount(N, LinkWord.M_AUG, Fields.SIZE_32, 0));
-            p.setPtr(p.idx, B); p.setRecordBase(B); p.dir.remaining[0] = N; streamRun(p, 0, 1, 0, 1);
+            p.setStream(0, Fields.streamSrc(A), 0, Fields.streamCount(N, Fields.SIZE_32, 1, LinkWord.M_AUG, 0));
+            p.setPtr(p.idx, B); p.setRecordBase(B); p.dir.remaining[1] = N; streamRun(p, 0, 1, 0, 1);
         }
         passCycles[0] = runAll(n);
         int src = B, dst = C;
@@ -255,8 +267,8 @@ public final class EngineTest {
                 int pre = 0;
                 for (int b = 0; b < 256; b++) { int c = p.hist.peek(b); p.setPtr(b, dst + 2 * pre); pre += c; p.hist.poke(b, 0); }
                 T.eq(N, pre, "tile " + p.idx + " pass " + d + ": counts sum to N");
-                p.setStream(0, Fields.streamSrc(src), Fields.streamDest(0, 0), Fields.streamCount(N, LinkWord.M_BUCKET, Fields.SIZE_64, 0));
-                p.dir.remaining[0] = N; streamRun(p, 0, 1, d, d < 4 ? d + 1 : 0);
+                p.setStream(0, Fields.streamSrc(src), 0, Fields.streamCount(N, Fields.SIZE_64, 1, LinkWord.M_BUCKET, 0));
+                p.dir.remaining[1] = N; streamRun(p, 0, 1, d, d < 4 ? d + 1 : 0);
             }
             n.c.newPhase();
             passCycles[d] = runAll(n);
@@ -304,7 +316,7 @@ public final class EngineTest {
             for (int g = 0; g < 4; g++) {
                 p.setGroup(g, Fields.groupLo(R[g]), Fields.groupHi(stream, grp[g].length, gap[g]));
                 for (int k : grp[g]) {
-                    p.setStream(stream++, Fields.streamSrc(src), Fields.streamDest(0, k), Fields.streamCount(R[g], LinkWord.M_SRC, Fields.SIZE_64, 0));
+                    p.setStream(stream++, Fields.streamSrc(src), 0, Fields.streamCount(R[g], Fields.SIZE_64, 1, LinkWord.M_SRC, k));
                     for (int j = 0; j < R[g]; j++) p.sram.poke64(src + 2 * j, (long) p.idx << 32 | k << 8 | j);
                     src += 2 * R[g]; expect[(p.idx + k) & 63] += R[g];
                 }
@@ -312,7 +324,7 @@ public final class EngineTest {
             for (int s = 0; s < 64; s++) p.setPtr(s, 0x40000 + 0x100 * s);
             p.setMasterConfig(Fields.masterConfig(Fields.RUN_GROUPS, 0, 4, 0, 0, 1));
         }
-        for (Tile p : n.c.tiles) p.dir.remaining[0] = expect[p.idx];
+        for (Tile p : n.c.tiles) p.dir.remaining[1] = expect[p.idx];
         long cyc = A2A.run(n.c, 10000);
         T.check(cyc > 0, "finished");
         Tile t5 = n.c.tiles[5];
@@ -327,7 +339,7 @@ public final class EngineTest {
         noViolations(n.c, "late groups");
         out(String.format("group run with a 16-stream group after a 4-cycle group: group 1 starts %d cycles late on every tile (M7: 13, the bank prefetch of GROUP + 16 STREAM reads); R = 0 takes 1 cycle plus its gap; no drift, no invariant-3 violation; ag_lookahead %d, STREAM queue peak %d, GROUP queue peak %d, underrun cycles %d [meas: EngineTest late groups]", late1, t5.ag.lookahead, t5.ag.streamQPeak, t5.ag.groupQPeak, t5.ag.underrunCycles));
         // a second start (v1.0: start loads the run): group 0 begins after the lead-in, which is not a read-ahead wait
-        for (Tile p : n.c.tiles) p.dir.remaining[0] = expect[p.idx];
+        for (Tile p : n.c.tiles) p.dir.remaining[1] = expect[p.idx];
         for (Tile p : n.c.tiles) for (int s = 0; s < 64; s++) p.setPtr(s, 0x60000 + 0x100 * s);
         n.c.newPhase();
         n.c.pulseAll(Fields.PULSE_START);
@@ -394,7 +406,7 @@ public final class EngineTest {
     static void counterOverflow() {
         T.group("invariant 6");
         Net n = new Net(cfg(false)); Tile r = n.c.tiles[3];
-        r.hist.poke(5, 0x1FFFF); r.setMasterConfig(Fields.masterConfig(0, 0, 0, 0, 1, 1)); r.setPtr(2, 0x20000); r.dir.remaining[0] = 1;
+        r.hist.poke(5, 0x1FFFF); r.setMasterConfig(Fields.masterConfig(0, 0, 0, 0, 1, 1)); r.setPtr(2, 0x20000); r.dir.remaining[1] = 1;
         n.at(2, 2, 3, LinkWord.M_SRC, 0, 5);
         n.runAll(500);
         T.check(r.hist.histOverflow, "counter past 17 bits flagged");

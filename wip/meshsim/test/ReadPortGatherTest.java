@@ -207,7 +207,7 @@ public final class ReadPortGatherTest {
         {
             Chip c = new Chip(cfg());
             Tile x = c.tiles[20], p = c.tiles[21];
-            for (int j = 0; j < 4; j++) p.setStream(j, Fields.streamSrc(2 * j), Net.cm(0x800 + 2 * j), Fields.streamCount(1, Fields.SIZE_64, 2, LinkWord.M_WRITE, 63));
+            for (int j = 0; j < 4; j++) p.setStream(j, Fields.streamSrc(2 * j), Net.cm(0x810 + 2 * j), Fields.streamCount(1, Fields.SIZE_64, 2, LinkWord.M_WRITE, 63));
             x.dir.remaining[2] = 4 + 8;
             EngineTest.streamRun(p, 0, 4, 0, 0);
             p.pulse(Fields.PULSE_START);
@@ -219,7 +219,7 @@ public final class ReadPortGatherTest {
         {
             Chip c = new Chip(cfg());
             Tile x = c.tiles[20], p = c.tiles[21];
-            for (int j = 0; j < 4; j++) p.setStream(j, Fields.streamSrc(2 * j), Net.cm(0x800 + 2 * j), Fields.streamCount(1, Fields.SIZE_64, 2, LinkWord.M_WRITE, 63));
+            for (int j = 0; j < 4; j++) p.setStream(j, Fields.streamSrc(2 * j), Net.cm(0x810 + 2 * j), Fields.streamCount(1, Fields.SIZE_64, 2, LinkWord.M_WRITE, 63));
             x.dir.remaining[2] = 8;
             for (int i = 0; i < 8; i++) x.readPort.hostQueue(0x1000 + i, Net.cm(0xE00 + i));
             c.runUntil(() -> x.dir.remaining[2] == 0 && x.dir.cmIdle(c.cycle) && x.readPort.allAccepted(), 10000);

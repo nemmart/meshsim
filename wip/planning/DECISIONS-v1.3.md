@@ -98,12 +98,31 @@ produces:
 - The compressed flags in the state word and the lengths in the stream word are the two-pass compression's choice
   and counts (3).
 
+## 7. The Tracer's expansion tables (2026-10-29)
+
+Agreed (O). Answers T1.
+
+- **The 8 KB and 4 KB memories are a ROM of expansion templates and a decode table**, the replayer's sizes and
+  **format** (spec 4.19.3-4.19.6), built by the same table builder. The Tracer expands each instruction into rows
+  as the replayer will, to count rows, place window boundaries inside an expansion (the next offset) and know
+  which rows are traced.
+- **Their contents differ from the replayer's** (as concluded in a v1.1 session, reconstructed here):
+  - **Untraced advice rows.** Where Jolt's expansion takes advice (DIV and REM, for example), the Tracer's
+    template adds **untraced rows** that compute the advice in the register file's second bank, and the traced rows
+    read it through `advice_reg` (expansion word [62:56]). The replayer's template has the traced rows only and pops
+    the advice from the run log; an `untraced` word (expansion word [55]) reaching a replayer is an invalid
+    expansion (spec 4.19.11). This is why the run log differs from jolt-cpp's memory log on purpose (spec 4.19.2).
+  - **Coverage** *(inferred, to confirm)*: the replayer's ROM is a cache of the most frequent templates, with the
+    rare ones fed by its controller; the Tracer can't wait for a controller at row rate, so it needs every
+    template the program uses locally, or a policy of its own for the rare ones.
+
 ---
 
 ## Pending questions
 
 | # | question | from | status |
 |---|---|---|---|
-| T1 | What the 8 KB and 4 KB expansion memories hold | 1 | *proposed (integrator):* the replayer's ROM (8 KB of expansion templates) and decode table (4 KB), the same sizes, so the Tracer expands instructions into rows exactly as the replayer will: to count rows, place window boundaries mid-expansion (the next offset) and know which rows are untraced. To confirm |
+| T1 | What the 8 KB and 4 KB expansion memories hold | 1 | **answered: section 7** (same format and builder as the replayer's ROM and decode table; different contents) |
+| T4 | The Tracer's template coverage: every template local, or its own policy for the rare ones (inlines such as BLAKE3, `ECALL`); and whether 8 KB holds them | 7 | open |
 | T2 | The RV64 initial state: what it contains and where it comes from | 1 | open |
 | T3 | The page table: its size, format and how C&C 3 maintains it | 1 | open |

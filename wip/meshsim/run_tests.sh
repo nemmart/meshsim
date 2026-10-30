@@ -32,7 +32,7 @@ LOG=ctrl      TAIL=1 run "control and the controller (from C)"  $J CtrlTest -1
 LOG=ctrl-shuf TAIL=1 run "shuffled child order (seed 4)"      $J CtrlTest 4
 LOG=riscv     TAIL=1 run "riscv-tests rv32ui/rv32um on the controller" $J RiscvTest
 LOG=rdport    TAIL=1 run "read port, GATHER (Java; the C parts PENDING (phase 2))" $J ReadPortGatherTest -1
-LOG=accounting TAIL=1 run "per-phase accounting (from C)"    $J AccountingTest
+LOG=accounting TAIL=1 run "per-phase accounting (from C)"    $J AccountingTest -1
 LOG=searchbench TAIL=3 run "search steps through the read port (microbenchmark, from C)" $J SearchBench
 LOG=rdport-shuf TAIL=1 run "shuffled child order (seed 4)" $J ReadPortGatherTest 4
 LOG=agtest    TAIL=1 run "address generator read-ahead, figure 12's PTR/HIST ports" $J AgTest -1
@@ -42,8 +42,8 @@ pending recipes-shuf "shuffled child order (seed 4)" "phase 6"
 pending cond       "errors, the done gate, the error line (cond.c, REPORT, HALT recovery)" "phase 4"
 pending cond-shuf  "shuffled child order (seed 4)" "phase 4"
 pending regdoc     "REGISTERS.md against the generator, mesh.h and the simulator" "phase 2"
-pending hooks      "the register map, the send port, the pulses (from Java)" "phase 2"
-pending hooks-shuf "shuffled child order (seed 4)" "phase 2"
+LOG=hooks     TAIL=1 run "the register map, the send port, the pulses (from Java)" $J HooksTest -1
+LOG=hooks-shuf TAIL=1 run "shuffled child order (seed 4)"     $J HooksTest 4
 pending periph     "the peripheral framework" "phase 3"
 pending periph-shuf "shuffled child order (seed 4)" "phase 3"
 pending sender     "v1.1's sender (becomes a peripheral's DMA)" "phase 3"
@@ -59,9 +59,9 @@ if [ "$MODE" != quick ]; then
   pending sort-bt-kv32 "BT, forced, trace hot 10 / 10 % at 64 x 16,384, 32-bit values" "sort port"
   pending sort-bt-k128 "the same, 128-bit values" "sort port"
   LOG=rdport-full TAIL=1 run "gather 1 at full size (Java; the C parts PENDING (phase 2))" java $JX -cp build ReadPortGatherTest -1 full
-  LOG=accounting-full TAIL=1 run "per-phase accounting, full-size all-to-all from C" java $JX -cp build AccountingTest full
+  LOG=accounting-full TAIL=1 run "per-phase accounting, full-size all-to-all from C" java $JX -cp build AccountingTest -1 full
   LOG=agbench TAIL=3 run "read-ahead measurements: ag_lookahead, zero-length groups, start to first request (a few minutes)" $J AgBench
-  pending sweep-quick "parameter sweep (from C)" "phase 2"
+  LOG=sweep-quick TAIL=4 run "parameter sweep, quick (about 1 minute; 'java Sweep full' takes about 25)" $J Sweep quick
   LOG=ctrl-full TAIL=1 run "the all-to-all from C on the four data sets" java $JX -cp build CtrlTest -1 full
   LOG=engine-full TAIL=1 run "full-size all-to-alls (4 data sets) and radix sort (about 1.5 minutes)" java $JX -cp build EngineTest -1 full
   LOG=skewtable TAIL=1 run "fan-in under 0/+1 skew, 40 skew patterns (several minutes)" $J NetTest -1 skewtable 40

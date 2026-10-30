@@ -2251,7 +2251,7 @@ Peripheral 2's window is at 0xC00 and peripheral 3's at 0xE00, with the same wor
 
 *Removed in v1.2: v1.1's sender registers, `SENDER_SEND` and `SENDER_ADDR`. A peripheral's output is its DMA (4.17.9, 8.11). See `CHANGES-v1.2.md`.*
 
-### 8.13 The UART: `UART_TX`, `UART_RX`, `UART_STATUS`, `UART_DIVISOR` (C&C 1's peripheral, words 42–45)
+### 8.13 The UART: `UART_TX`, `UART_RX`, `UART_STATUS`, `UART_DIVISOR` (C&C 1's peripheral, words 42–45, in the decisions' 28 order: TX, RX, divisor, status)
 
 The UART's registers are peripheral-defined words of C&C 1's peripheral (4.20, 8.14); no other unit has them *(Proposed: the word numbers)*.
 
@@ -2259,8 +2259,8 @@ The UART's registers are peripheral-defined words of C&C 1's peripheral (4.20, 8
 |---|---|---|---|---|
 | 42 (0xAA8) | `UART_TX` | W | [7:0] the byte; [31:8] spare | pushed into the TX FIFO; **the store stalls while the FIFO is full**. Reads 0 |
 | 43 (0xAAC) | `UART_RX` | R | [7:0] the oldest received byte; [8] valid; [31:9] 0 | pops the byte only when valid; with the RX FIFO empty it returns valid = 0 and pops nothing. A store is a bus error |
-| 44 (0xAB0) | `UART_STATUS` | R/W1C | [4:0] TX occupancy (0–16); [12:8] RX occupancy; [16] RX overrun; [17] framing error; others spare | reads have no side effects; [16] and [17] are sticky and **cleared by writing 1** to them. Line errors are status, never the peripheral's `ERRORS` (4.20) |
-| 45 (0xAB4) | `UART_DIVISOR` | R/W | [15:0] reference-oscillator cycles per bit; [31:16] spare | takes effect at the next idle point of each direction. Reset: round(`f_ref` / 57,600), 57,600 baud |
+| 44 (0xAB0) | `UART_DIVISOR` | R/W | [15:0] reference-oscillator cycles per bit; [31:16] spare | takes effect at the next idle point of each direction. Reset: round(`f_ref` / 57,600), 57,600 baud |
+| 45 (0xAB4) | `UART_STATUS` | R/W1C | [4:0] TX occupancy (0–16); [12:8] RX occupancy; [16] RX overrun; [17] framing error; others spare | reads have no side effects; [16] and [17] are sticky and **cleared by writing 1** to them. Line errors are status, never the peripheral's `ERRORS` (4.20) |
 
 The reset empties both FIFOs, clears [17:16] and loads the reset divisor (4.20).
 

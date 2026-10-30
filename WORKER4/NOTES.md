@@ -55,7 +55,7 @@ v1.1 recipe suite with the v1.2 recipes.
 
 ## Log
 
-- **Phase 1** (2026-10-30, in progress): LinkWord (256-bit word, 32-bit address, counter field, modes 0-7, bad-packet
+- **Phase 1** (2026-10-30, **closed**: owner's agreement; W4-02 and W4-03 agreed): LinkWord (256-bit word, 32-bit address, counter field, modes 0-7, bad-packet
   rules), Fields (STREAM layout, the common header layout), SRAMReadQueue (counter field, 32-bit destination, misaligned
   reads not performed with payload 0, no spanning), AddressGenerator (STREAM fields, d = 64-66 and 126, entry checks),
   ReadPort (byte destination, counter), GatherEngine (counter pass-through), InjectionPath (checks), Router and Chip (C&C
@@ -73,9 +73,29 @@ v1.1 recipe suite with the v1.2 recipes.
 - **Phase 0** (2026-10-30): branch, toolchain, baseline (above); read the prompt, CHANGES-v1.2, spec 1–4.18 and 5–6.5,
   WORKER3-REVIEW-2 section 6. Still to read in full: 4.19, 6.6–6.7, 8, 9, 10, 13, the recipes and the draft header.
 
+## Phase 1's results (`results/`, committed at the close)
+
+`run_tests.sh quick` all passed (PENDING suites aside); the full-mode extras run separately on this box:
+
+| suite | v1.2 |
+|---|---|
+| BusTest | 154 |
+| NetTest (−1, 5, 11; quick) | 31,329 each |
+| MemTest (−1, 3, 8) | 177 each |
+| EngineTest (−1, 4) | 371 each; full 398 |
+| AgTest (−1, 4) | 239 each |
+| ReadPortGatherTest (−1, 4; Java parts) | 40 each; full 45 |
+| ReplayerTest | 1,183 |
+| AgBench | output identical to v1.1's |
+| NetTest skewtable (40 patterns) | output identical to v1.1's |
+
+Every other suite logs "PENDING (phase 2 / 3 / 6 / sort port)". Still v1.1's in `results/`, until their phases rerun them:
+`phases-a2a*.csv`, `sweep-quick.csv` (phase 2), `replay-build.log`, `stageb-*.log` (phase 3).
+
 ## Known-failing at each push
 
 | push | known-failing |
 |---|---|
 | phase 0 (no code changed) | RecipeTest `[snippets]` (46, both seeds), as in the baseline |
 | phase 1, simulator rewritten (`src/` compiles) | **the tests don't compile** (about 230 errors): every suite fails until the Java suites are rewritten |
+| phase 1, closed (`651c15c` and after) | none: the quick run passes; the C-driven suites are PENDING (phase 2), not failing |

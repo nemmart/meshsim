@@ -1,12 +1,1 @@
-/usr/lib/gcc/riscv64-unknown-elf/13.2.0/../../../riscv64-unknown-elf/bin/ld: warning: orphan section `.rela.text.init' from `/tmp/ccPWo2aV.o' being placed in section `.rela.dyn'
-/usr/lib/gcc/riscv64-unknown-elf/13.2.0/../../../riscv64-unknown-elf/bin/ld: warning: orphan section `.rela.text.ov_load' from `/tmp/ccPWo2aV.o' being placed in section `.rela.dyn'
-/usr/lib/gcc/riscv64-unknown-elf/13.2.0/../../../riscv64-unknown-elf/bin/ld: warning: orphan section `.rela.rodata.OVT' from `/tmp/ccPWo2aV.o' being placed in section `.rela.dyn'
-sort image (M7): kernel 2072 B (0x0000-0x0818); overlay region at 0x0818, 5864 B
-  .ov_local    1032 B ( 17% of the region), 129 packets, staged at +0x0 chunks
-  .ov_split    5152 B ( 87% of the region), 644 packets, staged at +0x102 chunks
-  .ov_xfer     2672 B ( 45% of the region), 334 packets, staged at +0x60a chunks
-  .ov_th       3848 B ( 65% of the region), 481 packets, staged at +0x8a6 chunks
-  .ov_btplan   4208 B ( 71% of the region), 526 packets, staged at +0xc68 chunks
-  .ov_btrun    2776 B ( 47% of the region), 347 packets, staged at +0x1084 chunks
-  staged in all: 19688 B
-data: .rodata+.data 280 B; shared region 0x4118-0x5790 (5752 B: split 4312 B, planner + RED buffers 5752 B); .bss end 0x59dc; 484 B to the stack top (0x5BC0)
+PENDING (sort port)

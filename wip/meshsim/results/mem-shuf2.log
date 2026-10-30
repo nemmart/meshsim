@@ -22,4 +22,4 @@ one area shared by the SRAM read queue (reads every Pr cycles) and incoming writ
   2    1    1.50    398            387            0              1 of 4       all 400 writes landed; last read packet at cycle 818 (last read issued on schedule at 800)
   1    2    1.50    13             377            0              1 of 4       all 400 writes landed; last read packet at cycle 796 (last read issued on schedule at 401)
   1    1    2.00    405            394            0              1 of 4       all 400 writes landed; last read packet at cycle 813 (last read issued on schedule at 401)
-MemTest (shuffled, seed 8): 173 passed, 0 failed
+MemTest (shuffled, seed 8): 177 passed, 0 failed

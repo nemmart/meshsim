@@ -372,6 +372,18 @@ Word *n* is at window base + 4*n*.
   `EVENTS` has one bit per peripheral, **live** (not sticky): high while the peripheral's
   `EVENTS & EVENTS_MASK` is non-zero. An event is consumed in one place only, by a load of the
   peripheral's `EVENTS`. (Answers Q13.)
+- **Counted and live events** (owner, 2026-10-28; W3-02): **every peripheral `EVENTS` bit is backed by a small
+  counter**, and the bit reads 1 while the count is above 0. The peripheral adds 1; **a consuming load
+  subtracts 1** from each set, masked bit (rather than clearing it). Each peripheral's spec gives the depth:
+  **1 for an ordinary event** (v1.1's sticky behaviour), **2 for a double-buffered queue's credits**. A bit may
+  instead be **live** (following its source, never consumed), like the UART's "RX not empty".
+  - **The replayer's low-water lines are credits:** each means "half a buffer is free, send half a buffer".
+    A queue starts with 2 after reset; the controller uses one per refill; the peripheral returns one each
+    time it has consumed half a buffer. The controller can never send more than there is room for, and the
+    tile's live bit for the peripheral stays high while any credit remains, so `WFI` can't miss a refill.
+  - **Rule for software** (as for the tile's `EVENTS`): a load consumes one credit from every masked bit that
+    is set, so the program acts on every bit the load returns, or masks only what it is about to service.
+  - **meshsim flags** a peripheral returning a credit to a full counter.
 - **`EVENTS_REQUIRED` is tile-only:** a program needing "peripheral 1 and counter 2" sets both in the tile's.
 - **No clear pulses:** loading `EVENTS` consumes events, as on the tile.
 - **Naming** (owner, 2026-10-28): a peripheral's output engine is its **DMA** (v1.1's "sender"), with

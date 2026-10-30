@@ -83,12 +83,18 @@ See the checklist below; R = rewrite, U = update, K = keep, X = removed (stub), 
 
 ## Checklist
 
-- [ ] Pass 1: front matter, 1, 2, 3
+- [x] Pass 1: front matter, 1, 2, 3
 - [ ] Pass 2: 4.1-4.16
 - [ ] Pass 3: 4.17-4.20
 - [ ] Pass 4: 5, 6, 7, 8
 - [ ] Pass 5: 9-14
 - [ ] CHANGES-v1.2.md, QUESTIONS.md, REPORT.md
+
+## New open-item numbers (section 13 continues from 116)
+
+- 117 storage of the reserved link bits (trim later, power) (3.1)
+- 118 sending peripherals' router ports (W2-31, deferred) (4.17.9)
+- 119 file system: tag windows, window protocol, request target 3, requests' counters (deferred) (3.3, 6.7)
 
 ## Questions raised so far (mirror of QUESTIONS.md)
 

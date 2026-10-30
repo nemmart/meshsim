@@ -1,82 +1,81 @@
-# Machine specification — 64-tile mesh processor, v1.1
+# Machine specification — 64-tile mesh processor, v1.2
 
 This document specifies the hardware of the 64-tile mesh sorter: the tiles, the network that joins them, the control that sequences them, and the registers a tile program uses. It is written for an engineer who will build the machine.
 
 **Companion material** (paths in the package):
-- `diagrams/`: the figure set, numbered part.figure (1.0–8.1); `diagrams/README.md` is the index. Each section below names the figures that draw it.
+- `spec/CHANGES-v1.2.md`: what changed from v1.1, section by section, each item citing its decision. A section removed in v1.2 keeps its number here as a one-line stub pointing there.
+- `planning/DECISIONS-v1.2.md`: the decisions log behind v1.2, kept as the history. Where the log and this document differ, this document is the authority.
+- `diagrams/`: the figure set, numbered part.figure (1.0–8.1); `diagrams/README.md` is the index. Each section below names the figures that draw it. **The figures are still at v1.1** (the 169-bit link word, modes 0–15, the peripheral slot, RUN/HALT) and are to be redrawn.
 - `spec/schedule.md`: the 16-group all-to-all schedule (4.2) and the routing ties it fixes (4.6).
-- `sw/mesh.h` (version 1.1): the tile-program interface, generated from the same register table as `sw/REGISTERS.md`, the programmer's register reference. Both must match section 8.
-- `sw/CONVENTIONS.md`, `sw/RECIPES.md`: the software conventions and the recipe book.
-- `meshsim/`: the cycle-level simulator, which models every unit described here and is where the measured numbers come from.
+- `sw/mesh.h` and `sw/REGISTERS.md`: the tile-program interface and the programmer's register reference, generated from the register tables of section 8. Both must match section 8; **they are still at v1.1** until regenerated.
+- `sw/CONVENTIONS.md`, `sw/RECIPES.md`: the software conventions and the recipe book (being rewritten for v1.2).
+- `meshsim/`: the cycle-level simulator, which models every unit described here and is where the measured numbers come from. **meshsim is still at v1.1**; its port to this document follows.
 - `results/`: the measured sort.
 
-**Markers.** An unmarked statement is decided. *(Proposed)* means suggested and not yet ruled on; *(Open)* means still to be settled; *(likely to change)* marks a decided value expected to move. Section 13 gathers every proposed and open item. Numbers are marked [meas: meshsim] (measured on the simulator, with the test where it matters), [meas: RV32 ISS] (measured on a 64-tile RV32 instruction-set simulator), [built] (as implemented in the simulator), [model] (from a model) or [estimate] (a rough estimate). A measured number that v1.1's changes may invalidate carries **v1.0 measurement; to be re-measured in v1.1** in its label: it is kept as the best number known until the simulator is updated.
+**Markers.** An unmarked statement is decided. *(Proposed)* means suggested and not yet ruled on; *(Open)* means still to be settled; *(Deferred)* means set aside until the design it belongs to (the file system, C&C 1's firmware), listed in section 13; *(likely to change)* marks a decided value expected to move. Section 13 gathers every proposed, open and deferred item. Numbers are marked [meas: meshsim] (measured on the simulator, with the test where it matters), [meas: RV32 ISS] (measured on a 64-tile RV32 instruction-set simulator), [built] (as implemented in the simulator), [model] (from a model), [derived] or [estimate] (a rough estimate). **Every measurement in this document was taken on meshsim v1.1 or earlier**; one that v1.2's changes may invalidate carries **v1.1 measurement; to be re-measured in v1.2** (or v1.0) in its label, and is kept as the best number known until the simulator is updated. Decisions cite the owner (O), Tony (T) for the controller core and the link, or the integrator, with a date where it helps.
 
-**Changes from v1.0** (section by section: `CHANGES-v1.1.md` at the top of the package, which also lists the figures, recipes and generated files still at v1.0):
-- **Link word** (3.1): 169 bits, with a 21-bit addr, with a 2-bit size (00 = 32, 01 = 64, 10 = 128 bits, so an element is 1 << size chunks; 11 is undefined) and a 128-bit payload. One element of any width is one packet. Bad packets (mode 0 or 10–15, mode 5 at 128 bits, a mode-3 packet not aligned to its size, mode 7 above 32 bits, mode 8 at 128 bits) set the bad-mode-or-size condition.
-- **Mode 9,** the peripheral write (3.1, 4.8, 4.17.5): data into the tile's peripheral's own address space, from any source; counted in `DMA_PERIPH_REMAINING` on landing or drop.
-- **Address generator** (4.2): one packet per element at every size, stamped with the read size. A 128-bit visit takes one cycle, so a group's period is *t*, and the schedule runs 128-bit values at T = 4. Modes 3, 6 and 9 step their destination word by 1, 2 or 4.
-- **`STREAM`** (4.2, 4.10, 8.9): three 256 × 32-bit arrays, `STREAM_SRC`, `STREAM_DEST` and `STREAM_COUNT`, with a 4-bit mode, a 21-bit source and a 21-bit destination word. `GROUP` moves to 0x3400.
-- **Return path** (4.5): every return carries its size, and a 128-bit read is one packet.
-- **Write engine** (4.9): `PTR` steps 1, 2 or 4 chunks by size, and a 128-bit packet is one write. Mode 5 takes 32- or 64-bit packets and always writes a 64-bit (key, ordinal) record.
-- **Controller memories** (4.11): four word-interleaved banks each; port B writes 1, 2 or 4 words a cycle.
-- **Send port** (4.11, 8.4): `ROUTER_SET_W0`–`W2` and `ROUTER_SEND_32`, `_64` and `_128` replace `ROUTER_SET_HI` and `ROUTER_SEND_LO`. A packet's words are stored in ascending order, and the send store supplies its top word.
-- **Registers** (section 8): reordered by family; since part E every family is contiguous, 0x800–0x89C. `DMA_PULSE` is renamed `TILE_PULSE`, and `TILE_STATUS` and `TILE_CONDITIONS` are regrouped.
-- **The peripheral slot** (4.17): every tile has one slot for a peripheral, connected to its controller through one small interface: a run pulse (`TILE_PULSE` [2], `PERIPH_RUN`), `periph_running` and the peripheral's type in `TILE_STATUS`, six service lines in `WAKE_EVENTS` [18:13], eight status registers `PERIPH_STATUS_0`–`7`, mode 9 as the peripheral's own address space counted in `DMA_PERIPH_REMAINING`, conditions [13:11], and for a peripheral with output, a **sender** (`SENDER_SEND`, `SENDER_ADDR`, sender idle at `WAKE_EVENTS` [20]). A tile with no peripheral reads type 0.
-- **The replayer** (4.19), peripheral type 1: specified in full; what each of its 91 row opcodes computes is in **`spec/replayer-opcodes.md`**, normative (part F). A small ALU with fixed 3- and 5-cycle rows regenerates the tile's 2¹⁶ trace rows from an opcode stream and two log streams (a read log and a write log), each raw or LRU-compressed, kept in big SRAM as far as it allows, fed through credit-managed code, read-log, write-log and expansion queues, with an 8 KB template ROM and a 4 KB decode table: about 41 KB of replayer memory per tile instead of 768 KB. It uses the peripheral slot's interface: its pass is a run, its six service lines are code, read-log, write-log and expansion low-water, new expansion and done, and it reports in `PERIPH_STATUS_0` and `_1`.
-- **Request bus** (3.3, 4.18, 6.7, 8.10): tiles read and write LPDDR, and send debug messages and requests to the controllers, over a dedicated 16-bit, 8-ary tree whose root forwards to each target with credits for its receive queue. Every request is 128 bits; the hardware owns only its requestor [6:0], stamped by the tree, and its target [9:7], and the rest is laid out by the target. Each tile's request port has a send side, a 2 KB request FIFO filled through `REQUEST_SET_W0`–`W2` and `REQUEST_SEND`, and a receive side, a 16-entry receive queue read through `REQUEST_GET_W0`–`W2` and `REQUEST_RECEIVE` with `REQUEST_PENDING` at `WAKE_EVENTS` [19], fed only where the tile is a target's receiver. The memory system answers a read by pushing its data through C&C's port, mode 3 (a big-SRAM write at an explicit address), mode 6 or mode 9, counted against what the requester armed; a request with a value answer gets one **reply** (mode 8). Writes are token-gated: the tile streams its block to C&C as mode 3 only once the memory system's token reply arrives.
-- **Modes renumbered** (3.1, owner, 2026-10-26): 1 gather request, 2 big-SRAM write by source, 3 big-SRAM write at an explicit address, 4 bucket write, 5 augmented write, 6 controller-memory write, 7 command write, 8 reply, 9 peripheral write; 10–15 reserved. Groups: big SRAM 2–5, controller memory 6–8, the peripheral 9. The wake-event mode is gone.
-- **Counting from every source** (3.1, 4.12): every mode is counted, from any source, except command writes and gather requests; a halted tile counts nothing; counted data reaches a running tile only when it expects it. C&C halts a tile for an uncoordinated write.
-- **The command block and the reply block** (4.12, 6.3): the 1 KB mailbox is replaced by a 16-word **command block** at the top of data memory (slot 0 the command word, slots 1–15 arguments, written only by 32-bit command writes) and a 256-word **reply block** below it, where a 32- or 64-bit reply lands by its source, at word 2·src.
-- **The read port returns controller-memory writes** (4.3, 8.8): each read fetches 1, 2 or 4 aligned words and lands them as one mode-6 packet to the tile itself, counted in `DMA_CM_REMAINING`; `SRAM_RD_DEST_ADDR` holds a 14-bit destination and the size.
-- **Additive counters** (4.12, 8.7; part E): a write of *N* to a `DMA_*_REMAINING` counter adds *N* atomically, in step with arrivals, so a request can be armed or topped up while other traffic for that counter is in flight; a counter is never overwritten, and returns to 0 only by counting down, at chip reset or on entering HALT. Per-counter done events at `WAKE_EVENTS` [3:0].
-- **Register map renumbered** (8.1; part E): every family contiguous, no holes, 0x800–0x89C, unmapped from 0x8A0.
-- **Register-load latency** (4.11, 8.1; part E): a load from the register block or the table window takes 1 or 2 cycles, fixed per register by the implementation (meshsim's reference: 2); stores are single-cycle and posted.
-- **UART** (4.20, 8.13): every tile has the same 8N1 UART with 16-byte FIFOs at 0x890–0x89C, timed from the reference oscillator (57,600 baud at reset); only a tile wired to a serial port uses it, and on the others its registers are no-ops. RX not empty and TX not full are live wake events [21] and [22]. meshsim prints every tile's `UART_TX` bytes.
-- **Six service lines** (4.17.3): `PERIPH_SERVICE_1`–`6` at `WAKE_EVENTS` [18:13]; `REQUEST_PENDING` moves to [19] and sender idle to [20].
-- **The replayer's run log in three streams** (4.19.2, 4.19.8, 4.19.15): code, a read log and a write log, each raw or LRU-compressed per window, in four queues of 128-bit entries (the logs 8 KB each); the checkpoint's state word carries each stream's compressed flag and an includes-store-log flag, and its stream word (0x00004) each stream's exact bit length. Residency is best effort (4.19.13). The expansion word gains `untraced` [55] and `advice_reg` [62:56]; the ROM is a cache of frequent templates.
-- **`TILE_PULSE` [3], GO** (8.6): drives the global GO net where it is wired (C&C, today); elsewhere ignored.
-- **All wakes are events** (4.12, 8.10): `WAKE_EVENTS` holds every reason to wake: [3:0] each down-counter done, [8] GO, [9] counters done (v1.0's local wake, as a sticky event), [10] command landed, [11] engine run done, [12] request FIFO no longer full, [18:13] the peripheral's six service lines, [19] a request received, [20] sender idle, [21] UART RX not empty and [22] UART TX not full; [7:4] and [31:23] are reserved ([7:0] were v1.1's request tags, withdrawn with mode 10). `WFI` wakes on `WAKE_MASK` and `WAKE_REQUIRED` (0x854) and nothing else; a load consumes the events under the mask, `WAKE_PEEK` (0x84C) reads them without consuming, and from `done` until GO the `done` gate lets only GO wake the core. `WAKE_MASK` resets to GO and counters done.
-- **Streams to non-tile endpoints** (4.2): `STREAM_DEST`'s *d* is 7 bits, and 64–125 name a non-tile endpoint absolutely, so a write stream can go to C&C.
-- **Per-client big-SRAM read order and a loopback that cannot overflow** (4.1, 4.5, 4.7): big SRAM returns each client's reads in the order that client issued them, with no order between clients, and each ordered client has an in-order return queue; *(Proposed)* the loopback eject FIFO is as deep as the token count, and a loopback read keeps its token until its packet leaves the loopback FIFO.
-- **Measurements** that v1.1 may invalidate are kept, labelled *v1.0 measurement; to be re-measured in v1.1*.
+**Who checks what** (owner, 2026-10-28). The hardware checks only what is cheap and catches a bug far from its cause: the overflows, unexpected arrival, done early, drift, alignment and the region decode. Every other rule a program must keep is checked by **meshsim**, which stops with an error naming the access, and is ignored by the hardware. Rules in this document say which side checks them: **(hardware)**, or **(meshsim)** for a rule the hardware does not check. Section 9 lists the invariants, all of them meshsim checks.
+
+**v1.2 in brief** (in full, with the decisions behind each item: `CHANGES-v1.2.md`):
+- **The link word** (3.1) is 256 bits: a 128-bit payload, a 32-bit byte address, size, a 3-bit counter field, a 3-bit mode, src and dst; 74 bits reserved.
+- **One 32-bit address map** (2.2) for packets and for the controller's own loads and stores: data memory, program memory, the boot ROM, big SRAM, up to three peripherals, and the registers, each a region named by the top byte.
+- **Five modes** (3.1): write at address (commands and replies included), big-SRAM write by source, bucket write, augmented write, gather request; 5–7 are reserved and discarded.
+- **Four write counters** (4.12): a packet names the counter it decrements, K cycles after the traffic director accepts it; counting no longer depends on the mode.
+- **Natural alignment everywhere**, checked in hardware; spanning big-SRAM accesses are gone (3.1, 4.1).
+- **Registers** (section 8): the controller's block and each peripheral's window start with the same words (`PARAMS`, `STATUS`, `ERRORS`, pulses, events, DMA). Pulses are one register per action. v1.1's conditions are now **errors**, and the wake registers are `EVENTS`, `EVENTS_PEEK`, `EVENTS_MASK` and `EVENTS_REQUIRED`.
+- **Peripherals** (4.17): up to three per tile, each with a region, a standard register window, counted or live events, and optionally a DMA. The sender, mode 9 and the service lines are gone. The replayer (4.19) is peripheral 1 where present, its low-water lines now credits.
+- **Errors are terminal** (4.13): an error raises the controller's hard interrupt; the handler reports to C&C 1 and parks. **There is no HALT state** (6.1): the chip raises its "toast" pin and the outside world resets it, hard or soft; every unit then starts in its **boot ROM** (6.2).
+- **The three controllers** (2, 6.6) are tile instances at endpoints 64–66, with their engines as their peripherals; every chip-level function of C&C 1 is in its peripheral.
 
 ---
 
 ## 1. Conventions
 
 - **Cycle.** One global clock. Every unit updates once per cycle. All tiles run at the same frequency; there is no requirement that they agree on phase, which is modelled by per-link latency (section 3).
-- **Packet.** The unit of link transfer: a *payload* of 32, 64 or 128 bits, named by the packet's 2-bit *size*, plus header fields (3.1). One element of any width is one packet.
-- **Chunk.** 32 bits. The big SRAM is addressed in chunks.
+- **Packet.** The unit of link transfer: a *payload* of 32, 64 or 128 bits, named by the packet's 2-bit *size*, plus header fields, in one 256-bit link word (3.1). One element of any width is one packet.
+- **Chunk.** 32 bits. Inside a tile's engines the big SRAM is addressed in chunks.
 - **Record.** 64 bits = 2 chunks. Record index *i* corresponds to chunk address 2*i* within a region.
 - **Row.** 128 bits = 4 chunks, one access of a big-SRAM area (4.1).
-- **Tile.** One processor, idx = 0..63; tile idx is at column `col = idx mod 8`, row `row = idx div 8`.
+- **Tile.** One processor, idx = 0..63; tile idx is at column `col = idx mod 8`, row `row = idx div 8`. The three controllers C&C 1–3 are tile instances too (2), at endpoints 64–66; "tile" without qualification means one of the 64 mesh tiles, and "unit" any of the 67.
 - **Relative tile offset.** *d* names tile (`me` + *d*) mod 64; *d* = 0 is the tile itself.
-- **Controller.** The tile's RV32 processor (4.11). C&C's processor is the **C&C controller** (section 6).
-- **Addresses.** Big-SRAM addresses are 21-bit chunk addresses: at most 2²¹ chunks = 8 MB per tile. The big SRAM's size is a multiple of 256 KB; the default is 4 MB. All 21-bit addresses are ordinary; none is reserved.
+- **Controller.** A unit's RV32 processor (4.11). The controllers of C&C 1–3 are the **C&C controllers** (section 6).
+- **Addresses** (2.2). **Anything that travels in a packet or that the controller reaches through its map is a 32-bit byte address:** an 8-bit region [31:24] and a 24-bit byte offset [23:0]. **Anything inside the tile's engines that points into big SRAM is a 21-bit chunk address** (`STREAM_SRC`, `PTR`, `SRAM_RD_ADDR_QUEUE`, `DMA_RECORD_BASE_ADDRESS`): at most 2²¹ chunks = 8 MB per tile. The packet address of chunk *c* is `0x03000000 | c << 2`. The big SRAM's size is a multiple of 256 KB; the default is 4 MB.
+- **Alignment.** A 64-bit access is **naturally aligned** when its byte address is a multiple of 8 (its chunk address a multiple of 2), a 128-bit access when it is a multiple of 16 (chunk address a multiple of 4). Every access in every region is naturally aligned (3.1, 4.1).
 - **Bits** are written [*hi*:*lo*].
 - `x mod n` is the non-negative remainder.
-- **Names.** `HIST` is the histogram table, `PTR` the landing pointers, `STREAM` the stream table (three arrays, `STREAM_SRC`, `STREAM_DEST` and `STREAM_COUNT`) and `GROUP` the group table (4.10). Registers are named by owner (section 8): `TILE_`, `ROUTER_`, `DMA_`, `SRAM_`, `WAKE_`, `PERIPH_`, `REQUEST_`, `SENDER_` and `UART_`.
+- **Names.** `HIST` is the histogram table, `PTR` the landing pointers, `STREAM` the stream table (three arrays, `STREAM_SRC`, `STREAM_DEST` and `STREAM_COUNT`) and `GROUP` the group table (4.10). The controller's first registers are `PARAMS`, `STATUS` and `ERRORS`, the same names as the first words of every peripheral's window; the other registers are named by family (section 8): `PULSE_`, `EVENTS_`, `ROUTER_`, `REQUEST_`, `DMA_`, `WRITE_COUNTER_` and `SRAM_`. "DMA" names both the tile's address-generator run (`PULSE_DMA` in the controller's block) and a peripheral's output engine (`PULSE_DMA` in its window).
+- **Errors.** v1.1's *conditions* are **errors** (4.13), a bit is named without repeating the word (`ERRORS_BUS`), and an error raises the controller's hard interrupt. **Events** only release `WFI` (4.12).
 
 ---
 
 ## 2. System
 
-*Figures 1.1, 1.2.*
+*Figures 1.1, 1.2 (at v1.1).*
 
-64 tiles (section 4), **identical in design; differing only in big-SRAM size and in what is attached and strapped** (owner, 2026-10-26): every router has a fifth port, connected only where something is attached (today tile 0's, to C&C, 4.16), every tile has a request receive queue (4.18) and a GO pulse (8.6), and the endpoint id and peripheral type are strapped (8.2). Tile idx has four bidirectional links to tiles (idx+1) mod 64, (idx−1) mod 64, (idx+8) mod 64 and (idx−8) mod 64, called **right, left, down, up** respectively.
+64 tiles (section 4), **identical in design; differing only in big-SRAM size and in what is attached and strapped** (owner, 2026-10-26): every router has a fifth port, connected only where something is attached (4.16), every tile has a request port (4.18), and the endpoint id and the peripherals present are strapped (`PARAMS`, 8.2). Tile idx has four bidirectional links to tiles (idx+1) mod 64, (idx−1) mod 64, (idx+8) mod 64 and (idx−8) mod 64, called **right, left, down, up** respectively.
 
 The ±1 links form one ring through all 64 tiles in index order (tile 7 is left of tile 8, tile 63 is left of tile 0). The ±8 links are columns with wraparound (tile 56+m is above tile m).
 
-One more endpoint is attached to tile 0's router: **command and control (C&C)**, address 64 (section 6), through the fifth port (4.16). The **memory subsystem** (section 7) hangs off C&C, not off the mesh.
+**The three controllers** (owner, 2026-10-28). Command and control is three units, **C&C 1, C&C 2 and C&C 3, at endpoints 64, 65 and 66**, attached to the fifth ports of tiles 0, 1 and 2 (4.16). **Each is a normal tile instance**, with 2 MB of big SRAM, so the address map (2.2), the registers (section 8) and the controller (4.11) mean at C&C 1–3 exactly what they mean on a tile. Each has **one peripheral, its engine** (4.17, 6.6):
 
-**The request bus** (3.3): a 16-bit, 8-ary tree from every tile to the endpoints that serve requests (its targets: today the memory system and C&C), separate from the mesh. It is the tiles' only path for requests to the memory system; answers come back over the mesh, through C&C's port (6.7).
+| unit | endpoint | role | its peripheral (peripheral 1) |
+|---|---|---|---|
+| C&C 1 | 64 | the proof flow (READY/GO), boot, the outside world | **Ingress/Egress and the UART**: the host link, and every chip-level register (6.6, 8.14) |
+| C&C 2 | 65 | the file system | **the Updater/Binder/RW engine**, the only bulk LPDDR client: the memory system (section 7) |
+| C&C 3 | 66 | the page manager | **the Tracer** |
+
+A packet reaches an engine at its controller's endpoint, in that peripheral's region (2.2); each controller's link to its engine is internal to the unit. *(Proposed: the assignment of 65 and 66, to be confirmed with the endpoint map, item 82.)*
+
+**The request bus** (3.3): a 16-bit, 8-ary tree from every tile to the units that serve requests (its targets), separate from the mesh. It is the tiles' only path for requests to the controllers and the memory system; answers come back over the mesh (6.7).
 
 **Global nets** (section 6), besides the links:
-- **RUN/HALT:** one line from C&C to every tile, fixed latency `run_latency`.
-- **GO:** one line from C&C to every tile, balanced so every tile sees a pulse on the same cycle.
-- **READY:** one line per tile to C&C, 64 in all, at equal latency `ready_latency`.
-- **Error line:** one line per tile, ORed into one sticky error bit at C&C (6.6).
+- **GO:** one line from C&C 1's peripheral (`PULSE_GO`, 8.14) to every mesh tile, balanced so every tile sees a pulse on the same cycle. C&C 2 and C&C 3 aren't wired to it.
+- **READY:** one line per mesh tile into C&C 1's peripheral (`READY_LINES_0`–`1`, 8.14), 64 in all, at equal latency `ready_latency`.
+- **Error lines:** one line per unit into C&C 1's peripheral (`ERROR_LINES_0`–`2`, by endpoint id; 8.14), each high while that unit's `ERRORS` is non-zero, driven by hardware at a fixed latency `error_latency`; bit 64 (C&C 1 itself) is unused (4.13, 6.1).
+- **The reset inputs:** two chip inputs, **hard reset** and **soft reset**; the chip never resets itself (6.1).
+- **Two output pins:** the **"toast" pin**, raised by C&C 1's peripheral when anything has failed (6.1), and the software **`LED`** pin (8.14).
+
+There is no RUN/HALT net (6.1).
 
 What sits above the chip (the cards, their FPGAs and each chip's DDR4, figure 1.1) is not specified here.
 
@@ -85,13 +84,37 @@ What sits above the chip (the cards, their FPGAs and each chip's DDR4, figure 1.
 | value | meaning |
 |---|---|
 | 0–63 | tile idx |
-| 64 | C&C |
-| 65 | the memory system: reserved; in v1.1 it is served at C&C's port, so its packets carry src 64 and packets for it go to dst 64 (6.7) |
-| 66–125 | reserved for future non-tile engines |
-| 126 | broadcast (valid only as a destination) |
+| 64 | C&C 1 |
+| 65 | C&C 2 (the file system; its peripheral is the memory system) |
+| 66 | C&C 3 (the page manager; its peripheral is the Tracer) |
+| 67–125 | reserved |
+| 126 | broadcast to tiles 0–63 (valid only as a destination) |
 | 127 | none (as source: idle packet) |
 
-Addresses 64–125 are the **non-tile endpoints**. In v1.1 only 64 exists; a packet for 65–125 has no endpoint and is a programming error (meshsim flags it). A stream may name a non-tile endpoint absolutely (4.2). Their packets are counted like any other (4.12, owner, 2026-10-26).
+Addresses 64–66 are the **controllers**, and 64–125 the **non-tile endpoints**. A packet for 67–125 has no endpoint and is a programming error (meshsim). v1.1's engine endpoints 72–74 are gone: the engines are their controllers' peripherals (2). A stream may name a controller absolutely (4.2). Their packets are counted like any other (4.12).
+
+### 2.2 The 32-bit address map
+
+*(New in v1.2.)* One map serves **packet addresses** and **the controller's own loads, stores and fetches** (owner, 2026-10-28). An address is an **8-bit region** [31:24] and a **24-bit byte offset** [23:0]; a C pointer is the packet address, with no shifts.
+
+| region | contents | the controller | a packet |
+|---|---|---|---|
+| 0x00 | **data memory**, 32 KB (4.11) | load, store | mode 0 |
+| 0x01 | **program memory**, 32 KB (4.11) | fetch, load; **a store is a bus error** | mode 0 |
+| 0x02 | **boot ROM**; the reset vector is 0x02000000 (6.2) | fetch, load | bad packet |
+| 0x03 | **big SRAM** (4.1) | none: reached through the read port and packets (4.3) | mode 0; modes 1–3 land through `PTR` |
+| 0x04 | **peripheral 1** (4.17) | none: reached through its window | mode 0, if present |
+| 0x05 | **peripheral 2** | none | mode 0, if present |
+| 0x06 | **peripheral 3** | none | mode 0, if present |
+| 0x07–0xFE | reserved | bus error | bad packet |
+| 0xFF | **controller only:** the controller's register block, the peripherals' register windows and the table window (8.1) | load, store | bad packet |
+
+- **Packets** reach regions 0x00, 0x01, 0x03 and a present peripheral's region; a packet addressed anywhere else is a **bad packet** (3.1; hardware, an 8-bit compare). Program memory is written only by packets, through the traffic director's port B (4.11).
+- **The controller** sees regions 0x00, 0x01, 0x02 and 0xFF. It cannot load or store big SRAM or a peripheral directly: it reads big SRAM through the read port (4.3), writes it by sending itself packets, and copies through the address generator (4.11). An access to an unmapped address is a bus error (4.11).
+- **Offsets are in bytes.** 24 bits cover 16 MB, above big SRAM's 8 MB maximum. The engines' big-SRAM pointers stay in 21-bit chunks (1, Addresses).
+- **Out of bounds is not checked** (Tony, 2026-10-28): an offset past the end of a memory, in a packet or in the core's own access, is **undefined behaviour**. In the 32 KB controller memories the high offset bits are ignored, so the access aliases into the memory; big SRAM, whose size need not be a power of two, promises nothing (4.1). Staying in bounds is a program obligation (meshsim errors on every out-of-bounds access, packet or core).
+- **Auto-advancing past the end** of a memory (`STREAM_DEST`, `ROUTER_ADDR`, a peripheral's `DMA_ADDR`, `SRAM_RD_DEST_ADDR`, the memory system's deliveries) is a software bug: they advance by plain addition, and what happens past the end (wrap, alias, or carry into the next region) is undefined (meshsim errors).
+- **Data memory word 0 is reserved** (owner, 2026-10-28): the linker never places anything at address 0x00000000, so a C null-pointer store and an all-zero header (an uncounted mode-0 write at address 0, 3.1) both land there harmlessly (meshsim flags any write to it).
 
 ---
 
@@ -99,49 +122,63 @@ Addresses 64–125 are the **non-tile endpoints**. In v1.1 only 64 exists; a pac
 
 ### 3.1 Link word (packet)
 
-*Figure 1.4.*
+*Figure 1.4 (at v1.1's 169-bit word).*
 
-Every link carries one **169-bit** packet per cycle in each direction:
+Every link carries one **256-bit link word** per cycle in each direction (O, T, 2026-10-28). 182 bits are fields; **74 are reserved**:
 
 | field | bits | meaning |
 |---|---|---|
-| src | 7 | address of the originator, stamped by the injecting tile's hardware |
-| dst | 7 | destination address (absolute, section 2.1) |
-| mode | 4 | what the packet is (table below) |
-| addr | 21 | receiver-local address; its meaning depends on the mode |
-| size | 2 | the payload's width: 00 = 32 bits, 01 = 64 bits, 10 = 128 bits, so 1 << size chunks; 11 is reserved and its behaviour undefined (a programming error; meshsim flags it) |
-| payload | 128 | data: a 32-bit payload in bits [31:0], a 64-bit payload in [63:0]; the bits above the size are 0 |
+| payload | [127:0] | data: a 32-bit payload in [31:0], a 64-bit payload in [63:0]; the bits above the size are 0 |
+| address | [159:128] | the receiver's 32-bit address (2.2): region [31:24], byte offset [23:0]. Used by mode 0; modes 1–4 ignore it, region included (senders put 0) |
+| size | [161:160] | the payload's width: 00 = 32 bits, 01 = 64, 10 = 128, so 1 << size chunks; **11 is undefined** (below) |
+| counter | [164:162] | the write counter the packet decrements at the receiver (4.12): 0 uncounted, 1–4 `WRITE_COUNTER_1`–`4`, 5–7 reserved (below) |
+| mode | [167:165] | what the receiver does (below) |
+| src | [174:168] | the originator's endpoint id (2.1), stamped by the injecting hardware |
+| dst | [181:175] | the destination's endpoint id |
+| reserved | [255:182] | **sent as 0 and ignored by every receiver** |
 
-A packet with src = 127 is an **idle packet** and carries nothing. A sender supplies dst, mode, addr, size and payload; the router adds src. Bits on the mesh are cheap: the mode field costs 4 bits per FIFO entry and per link, and its fourth bit gives codes 8–15: 8 is the reply, 9 the peripheral write (4.17.5), and 10–15 are free for packet types still to come.
+- **The width is fixed** so later field changes don't resize the links, FIFOs and route blocks again (102 bits in v1.0, 169 in v1.1). **The full 256 bits are stored** in every FIFO and pipeline stage, reserved bits included (owner, 2026-10-28, at Tony's request); trimming the storage to the bits in use, mainly for power, is to be revisited when the design has settled (item 117).
+- **Size, counter and mode** keep this order wherever they appear together: bits [167:160] of the link word are bits [24:17] of every header register (`STREAM_COUNT`, `ROUTER_HDR`, a peripheral's `DMA_HDR`; the common header layout, 8.1), so hardware copies them as one 8-bit block.
+- A packet with src = 127 is an **idle packet** and carries nothing. A sender supplies dst, mode, counter, address, size and payload; the router adds src.
 
-**Size.** Every packet names its payload's width. The address generator stamps it from the stream's read size (4.2), the send port from the send register used (4.11), and the read port from its setup register (4.3). One element of any width is one packet: a 128-bit element is no longer two. Receivers act on the size wherever the mode writes the payload (modes 2–9); only mode 1 reads fixed payload bits (below).
+**Size.** Every packet names its payload's width. The address generator stamps it from the stream's read size (4.2), the send port from the send register used (4.11), the read port from `SRAM_RD_DEST_ADDR` (4.3), and a peripheral's DMA from its own choice (4.17.9). One element of any width is one packet. **Size 11 is undefined behaviour:** no hardware checks it (meshsim errors) *(Proposed: as v1.1)*. Only a `STREAM` entry with read size 11 (4.2) can produce one; the send port has no size-11 register.
 
-**Packet modes.** The receiving tile's traffic director (4.8) routes every packet by its mode alone. The last column is the down-counter the packet decrements (4.12):
+**Packet modes** (owner, 2026-10-28). The region names where a write lands (2.2) and the counter field does the counting (below), so the 3-bit mode keeps only what the receiver must do differently:
 
-| mode | packet | uses addr | lands | counted in |
+| mode | packet | uses the address | lands | counted |
 |---|---|---|---|---|
-| 0 | **invalid** | — | dropped; sets the bad-mode-or-size condition (4.13) | — (bad packet) |
-| 1 | **gather request** (local only): payload = (key, ordinal), the ordinal in bits [63:32]; the GATHER engine reads *k* records at `DMA_RECORD_BASE_ADDRESS` + 2*k*·ordinal and injects them as 64-bit mode-2 packets to the tile itself | no | GATHER engine (4.4) | never (its gather values count, as mode 2) |
-| 2 | **big-SRAM write by source:** the payload, 32, 64 or 128 bits by its size, at `PTR[src]`, then `PTR[src]` += 1, 2 or 4 (its size in chunks) | no | `PTR[src]` | `DMA_SRAM_REMAINING` |
-| 3 | **big-SRAM write at an explicit address:** the payload, 32, 64 or 128 bits by its size, at chunk address addr (4.9), a word address that must be **aligned to the size**: a multiple of 2 for a 64-bit packet and of 4 for a 128-bit one; a misaligned mode-3 packet is a bad packet. The memory system uses it to deliver reads into big SRAM (6.7); any sender may use it. At C&C (dst 64) it is a write stream's data, with addr the chunk offset within the write (6.7) | yes | big SRAM at addr (4.9) | `DMA_SRAM_REMAINING` |
-| 4 | **bucket write:** as mode 2, at `PTR[t]`, *t* = the payload's bucket digit (4.15) | no | `PTR[t]` | `DMA_SRAM_REMAINING` |
-| 5 | **augmented write:** a 32- or 64-bit packet's low 32 bits (the key) and the ordinal, (target chunk address − `DMA_RECORD_BASE_ADDRESS`) / 2, as one 64-bit record at `PTR[src]`, then `PTR[src]` += 2 (4.9). A 128-bit mode-5 packet is a bad packet | no | `PTR[src]` | `DMA_SRAM_REMAINING` |
-| 6 | **controller-memory write:** 1, 2 or 4 consecutive words (the payload's size) at the packed word addr, outside the command and reply blocks | yes | instruction or data memory (4.11) | `DMA_CM_REMAINING` |
-| 7 | **command write** (v1.1's mailbox write): **32 bits only**, the payload to command slot addr[3:0]; addr above [3:0] is ignored (senders put 0). A 64- or 128-bit command write is a bad packet | yes | the command block (4.12); slot 0 sets "command landed" (6.3) | never |
-| 8 | **reply:** **32 or 64 bits**, landing **by source** at the reply block's word 2·src: a 32-bit reply writes word 0 of its source's pair and leaves word 1 alone, a 64-bit reply writes both. addr is unused (senders put 0). A 128-bit reply is a bad packet | no | the reply block (4.12) | `DMA_REPLY_REMAINING` |
-| 9 | **peripheral write:** the payload into the tile's peripheral's own address space, at the 21-bit word address addr; the peripheral's section gives the map and the sizes each region takes (4.17.5; the replayer's, 4.19.10). From any source | yes | the peripheral (4.17) | `DMA_PERIPH_REMAINING`, on landing or drop (4.17.5) |
-| 10–15 | reserved | — | dropped; sets the bad-mode-or-size condition (4.13) | — (bad packet) |
+| 0 | **write at address:** the payload, 32, 64 or 128 bits by its size, at the address, in any region a packet may reach (2.2): data or program memory through port B (4.11), big SRAM (4.9), a peripheral's region (4.17.5). **Commands and replies are mode-0 writes** to the command and reply blocks in data memory (4.12) | yes | the region named | by its counter field |
+| 1 | **big-SRAM write by source:** the payload, 32, 64 or 128 bits by its size, at `PTR[src]`, then `PTR[src]` += 1, 2 or 4 (its size in chunks) | no | `PTR[src]` | by its counter field |
+| 2 | **bucket write:** as mode 1, at `PTR[t]`, *t* = the payload's bucket digit (4.15) | no | `PTR[t]` | by its counter field |
+| 3 | **augmented write:** a 32- or 64-bit packet's low 32 bits (the key) and the ordinal, (target chunk address − `DMA_RECORD_BASE_ADDRESS`) / 2, as one 64-bit record at `PTR[src]`, then `PTR[src]` += 2 (4.9). A 128-bit mode-3 packet is a bad packet | no | `PTR[src]` | by its counter field |
+| 4 | **gather request** (local only): payload = (key, ordinal), the ordinal in bits [51:32] (sent at 64 bits); the GATHER engine reads *k* records at `DMA_RECORD_BASE_ADDRESS` + 2*k*·ordinal and injects them as 64-bit mode-1 packets to the tile itself (4.4) | no | GATHER engine (4.4) | **never;** its counter field is passed on to the gather values it produces, which are counted as they pass the director |
+| 5–7 | reserved | — | **discarded at the destination, with no error and no decrement**, whatever the counter field (meshsim flags every one) | never |
 
-The modes fall in groups by where they land (owner, 2026-10-26): **big SRAM 2–5, controller memory 6–8, the peripheral 9.** v1.1's mode 10, the wake event, is withdrawn: a request is answered by its data and, if it has a value, by a reply (6.7).
+The general write is 0; the writes that land through `PTR` and step it are 1–3; the gather request, the only mode that isn't a write, follows them. **There is no invalid code**, so an all-zero header (a `STREAM` entry, `ROUTER_HDR` or `DMA_HDR` left at 0) is a valid, uncounted mode-0 write to address 0x00000000, the reserved first word of data memory (2.2) (meshsim flags it). A counted packet in a reserved mode leaves its counter short and the program waits forever with no error (accepted; meshsim flags it).
 
-**Counting** (owner, 2026-10-26; 4.12). **Every mode is counted, from any source** (tiles, C&C and anything else), in the counter of the last column, **except the command write and the gather request**, which are never counted, and bad packets, which are dropped uncounted. **A halted tile counts nothing:** in HALT the traffic director lands packets as usual but decrements no counter and sets no unexpected arrival, which covers boot loads. **Data in a counted mode reaches a running tile only when the tile expects it,** having armed its counters for it (4.12).
+**Counting** (owner and Tony, 2026-10-28; 4.12). **The packet names its counter.** For modes 0–3, a counter field of 1–4 decrements that `WRITE_COUNTER` at the receiver, **K cycles after the traffic director accepts the packet** (4.8, 4.12); 0 is uncounted. Counting no longer depends on the mode or the source. A gather request is never counted (above), and a bad packet is dropped uncounted (below).
+- **Counter codes 5–7 are reserved:** the packet is accepted and treated as uncounted (hardware) (meshsim errors) (integrator, 2026-10-29).
+- **A counted packet for a counter at 0** raises **unexpected arrival** (4.13) when its decrement happens, K cycles after acceptance (4.12).
+- **Uncounted traffic is mode 0 only** (owner, 2026-10-28): commands (4.12), and boot and staging loads (6.2), all at explicit addresses. **Modes 1–3 are always counted**, and **a running program sends no uncounted writes except commands**: anything whose landing matters is counted (meshsim checks both, 9).
 
 Where the address is unused, senders put 0.
 
-**Bad packets.** A packet is a **bad packet** if it has mode 0 or 10–15, mode 5 at 128 bits, mode 3 with an addr not aligned to its size (64 bits at an odd addr, 128 bits at an addr that isn't a multiple of 4), mode 7 at 64 or 128 bits, or mode 8 at 128 bits. The traffic director drops it without counting it and sets the bad-mode-or-size condition (4.13). **Size 11 is undefined behaviour, not a bad packet:** no hardware checks for it, and meshsim flags it. Only a `STREAM` entry with read size 11 (4.2), or C&C's send register (6.6), can produce one; the tile's send port has no size-11 register (4.11).
+**Bad packets** (owner and Tony, 2026-10-28). The traffic director drops a **bad packet** without writing or counting it and sets `ERRORS` [1], "bad packet or misaligned access" (4.13). The hardware checks only the cheap cases, the alignment and the region decode:
 
-**Fixed payload bits.** Mode 1 reads the ordinal in [51:32] whatever its size (4.4), and the sort sends it at 64 bits. Mode 7 is 32 bits only; mode 8 writes its 32 or 64 bits. Two principles shape the table:
-- **At most one streaming reader of big SRAM per tile at a time,** plus the dependent single reads of the GATHER engine and the controller read port. There are no remote pulls: gathers are local only (mode 1), and the controller reads only its own big SRAM (4.3).
+| case | hardware |
+|---|---|
+| a 64- or 128-bit packet not naturally aligned (2.2), mode 0 in any region | bad packet |
+| mode 0 to region 0x02 (the boot ROM), 0x07–0xFE, 0xFF, or an absent peripheral's region | bad packet *(Proposed)* |
+| mode 3 at 128 bits | bad packet *(Proposed: as v1.1)* |
+| modes 1–4 | ignore the address, region included *(Proposed: as v1.1)* |
+| an offset past the end of its memory | not checked: undefined (2.2) (meshsim errors) |
+| size 11 | not checked: undefined (meshsim errors) *(Proposed)* |
+| modes 5–7 | not bad packets: discarded silently (above) |
+
+A write through a misaligned `PTR` (modes 1–3) passes the director as a good packet; the write engine drops it, still counted, and sets [1] (4.9).
+
+**Two principles shape the table:**
+- **At most one streaming reader of big SRAM per tile at a time,** plus the dependent single reads of the GATHER engine and the controller read port. There are no remote pulls: gathers are local only (mode 4), and the controller reads only its own big SRAM (4.3).
 - **Bulk movement is a push.** Anything larger than one word is requested with a small descriptor and delivered by the owner's address generator. A tile's reads of LPDDR follow the same shape: a request on the request bus (3.3), answered by the memory system's push (6.7).
 
 ### 3.2 Latency, throughput and ordering
@@ -150,14 +187,14 @@ Where the address is unused, senders put 0.
 
 Each link direction is a fixed-delay pipe: a packet placed on it at cycle t is available to the far end's route block at cycle t + k. One packet per cycle per direction, no backpressure, no acknowledgement. Packets are never dropped or reordered by a link.
 
-- **Every link takes exactly 3 cycles** (`link_latency` = 3): three register stages from the output selector to the far route block's input. Shorter links are padded with pipeline stages: 169 flops per stage per link direction. The longest link must fit in 3 cycles, which is a physical-design check. Uniform latency keeps every tile's packets in lockstep, so the schedule's per-window load bounds hold exactly (4.2).
+- **Every link takes exactly 3 cycles** (`link_latency` = 3): three register stages from the output selector to the far route block's input. Shorter links are padded with pipeline stages: 256 flops per stage per link direction (3.1). The longest link must fit in 3 cycles, which is a physical-design check. Uniform latency keeps every tile's packets in lockstep, so the schedule's per-window load bounds hold exactly (4.2).
 - **A hop costs `link_latency` + 1 = 4 cycles:** the route block and the FIFO write take the cycle after the packet arrives (4.6, 4.7).
 - **Start skew:** tiles may start a run up to 1 cycle apart, despite the balanced GO net. On a link this adds at most one packet from an adjacent window, so queues grow by about 1 at a window boundary and drain within the next. The simulator models each tile with a random 0 or +1 cycle offset.
 
-**In-order delivery per sender.** Packets from one source to one destination arrive in the order sent: routes are fixed per (source, destination) and FIFOs never reorder (4.6, 4.7). The boot handshake, the command convention (section 6) and the mode-2 landing of multi-packet values (4.9) rely on it.
+**In-order delivery per sender.** Packets from one source to one destination arrive in the order sent: routes are fixed per (source, destination) and FIFOs never reorder (4.6, 4.7). The boot sequence (6.2), the command convention (4.12) and the landing of multi-packet values through `PTR` (4.9) rely on it.
 - **Within one kind only.** A unicast and a broadcast from the same source to the same tile can take different paths (offsets 33–39, 44, 52 and 60), so they may arrive out of order relative to each other [meas: meshsim]. **Rule:** a sender's packets that must arrive in order go all unicast or all broadcast; a command's packets to a tile are never mixed.
 
-**No flow control.** Many-to-one traffic must be paced by the program. Measured fan-in limits with the 0/+1 start skew [meas: meshsim, NetTest skewtable; the minimum over nearest, farthest and three random sender sets and 40 skew patterns; v1.0 measurement; to be re-measured in v1.1], every sender bursting W packets to one tile in the same cycle. The limits are in packets: in v1.1 a 128-bit value is one packet, not two, so a burst of 128-bit values is half v1.0's packets.
+**No flow control.** Many-to-one traffic must be paced by the program. Measured fan-in limits with the 0/+1 start skew [meas: meshsim, NetTest skewtable; the minimum over nearest, farthest and three random sender sets and 40 skew patterns; v1.0 measurement; to be re-measured in v1.2], every sender bursting W packets to one tile in the same cycle. The limits are in packets: in v1.1 a 128-bit value is one packet, not two, so a burst of 128-bit values is half v1.0's packets.
 
 | senders | largest safe W per sender | without skew (nearest senders) |
 |---|---|---|
@@ -173,7 +210,7 @@ Each link direction is a fixed-delay pipe: a packet placed on it at cycle t is a
 | 2 | 30 | 30 |
 | 1 | no overflow | no overflow |
 
-63 × 1 overflows in every case measured, with or without skew (120 of 120 skew patterns, receivers 27, 0 and 63) [meas: NetTest fan-in; v1.0 measurement; to be re-measured in v1.1]: a FIFO is full by its count before the cycle's pop (4.13), so a push into a full FIFO is lost even in a cycle that pops it. The first FIFO to overflow is one of the receiver's eject FIFOs. Schedule-ordered exchanges (stream runs in the 16-group order) are permutations, so they don't fan in.
+63 × 1 overflows in every case measured, with or without skew (120 of 120 skew patterns, receivers 27, 0 and 63) [meas: NetTest fan-in; v1.0 measurement; to be re-measured in v1.2]: a FIFO is full by its count before the cycle's pop (4.13), so a push into a full FIFO is lost even in a cycle that pops it. The first FIFO to overflow is one of the receiver's eject FIFOs. Schedule-ordered exchanges (stream runs in the 16-group order) are permutations, so they don't fan in.
 
 ### 3.3 Request bus
 
@@ -196,7 +233,7 @@ Every tile is a leaf at the same depth, two nodes from the root. Which controlle
 | [9:7] | target | software | which receiver the root delivers the request to: 8 targets (below) |
 | [127:10] | the request proper | software | **defined by the target,** and specified with each receiver: its operation, tag, addresses or (fd, offset), length, destination and so on |
 
-v1.1's earlier 64-bit request and its fixed field table (target, op, destination kind, tag, LPDDR address, count, tile address) are withdrawn. The tile-side rules that every target's answers follow (destination kinds, completions, ordering, tokens) stay in 6.7.
+The rules every target's answers follow are in 6.7.
 
 **Targets** *(Proposed: the numbering, to be confirmed with the endpoint map, item 82)*:
 
@@ -205,10 +242,10 @@ v1.1's earlier 64-bit request and its fixed field table (target, op, destination
 | 0 | C&C 1 (endpoint 64) |
 | 1 | C&C 2 (endpoint 65) |
 | 2 | C&C 3 (endpoint 66) |
-| 3 | the Updater/Binder/RW engine (endpoint 73) |
+| 3 | the Updater/Binder/RW engine, C&C 2's peripheral *(Deferred: whether it stays a target of its own, and where its receive queue sits, now that the engine is inside C&C 2, come with the file system's window protocol, item 119)* |
 | 4–7 | reserved |
 
-2.1 still gives v1.1's endpoint assignment (65 the memory system, served at C&C's port); the two are reconciled with the endpoint map. A request for a reserved target, or a target with no receiver, is dropped at the root and flagged (6.7).
+A request for a reserved target, or a target with no receiver, is dropped at the root (meshsim flags it, 6.7).
 
 **Framing.** There is no header byte and no size: a request is **8 beats** of 16 bits, bits [15:0] first. Beat 0 carries the requestor and the target, so a node knows where a request goes before the rest of it arrives *(Proposed)*.
 

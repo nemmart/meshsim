@@ -118,3 +118,8 @@ Raw round-2 points (to verify):
 - 30: 16-bit stream count vs sort sizes (65,536 keys per tile?) - check section 14.
 - Nits: overview "2-bit counter"; 17 "[6]" stale; 16 stale text; 13 "units per Q10"; 4 "88 used"; 5's table split
   by the italic note; 26 "GROUP sources", "augmented ordinal" in chunks; 7 "[0] proposed" vs layout.
+
+Round 2 done: WORKER2/REVIEW-2.md pushed (status table W2-01..23; new W2-24..W2-36). Verified: the sort writes stream
+counts of 65,536 (local.c:33,63,64,79; spec item 25), so the 16-bit count truncates to 0. meshsim WriteEngine
+stalls only on spanning or area refusal; area never refuses a write (count <= depth-1), so without spanning the
+write path is 2L+3 fixed *(inferred)*.

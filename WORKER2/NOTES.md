@@ -92,3 +92,29 @@ Top five: (1) K can't be guaranteed as a constant; (2) 17 C contradicts the gath
 the new map are undefined (incl. Q10 units); (5) DMA run done is stale-prone and event-only waits lose the
 idempotent "tables free" test. Then ROUTER_ADDR advance, counting vs mode, command landed timing, address carry,
 cost, Q5, S7, S9, invariants, nits.
+
+# Round 2 (PROMPT-2.md)
+Read: decisions overview, 2-7, 9-13, 16-30, S list, Q list (log now 1,096 lines; regions renumbered:
+0x02 boot ROM, 0x03 big SRAM, 0x04-0x06 peripherals).
+
+Raw round-2 points (to verify):
+- Natural alignment removes spanning -> the write path may become fixed-length (area queue never refuses a write:
+  count <= depth-1 after every cycle, S286-S290), so K can be a formula 2*L_ts+3(+combining) *(inferred)*.
+- S1 table-window case: no read path in the margin; and a late PTR/HIST increment after a controller STORE
+  overwrites it (increment wins, 4.10) - WAW, not just stale read. "Reaction >= 4 cycles" assumes the helper's
+  EVENTS load; polling a counter register is faster.
+- Boot (22) / staging: marker lands in port B; big-SRAM image writes (region 0x03) use the write-engine path, so
+  in-order arrival doesn't put them "in place" when the marker lands.
+- 17 "no uncounted writes except commands" vs 25's tag-window writes from running tiles (counter 0 at C&C 2).
+- Tag windows: several tiles writing windows at once fan in at tile 1's fifth-port output with no flow control
+  (v1.1's single write token prevented this, S1882 area / 4.16). Window length/completion, tile-side ack,
+  read direction undefined.
+- Sending peripheral port: src = unit id (shares reply pair / PTR[src] with the controller); controller routers
+  are "normal tile instances" but not on the torus; DMA-to-self eject FIFO has no flow control.
+- 26: misaligned ENGINE reads (STREAM_SRC, GATHER base) - what is done with the read? Read port: [7] or [1]?
+- 26: "high offset bits ignored, aliases" - big SRAM sizes are not powers of two (4.25 MB, partial areas).
+- 26: "mixing sizes breaks it" - descending sizes from an aligned start are fine; but DMA remainders leave the
+  next transfer misaligned.
+- 30: 16-bit stream count vs sort sizes (65,536 keys per tile?) - check section 14.
+- Nits: overview "2-bit counter"; 17 "[6]" stale; 16 stale text; 13 "units per Q10"; 4 "88 used"; 5's table split
+  by the italic note; 26 "GROUP sources", "augmented ordinal" in chunks; 7 "[0] proposed" vs layout.

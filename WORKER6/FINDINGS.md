@@ -1,10 +1,10 @@
 # WORKER6 findings: what writing out the v1.2 recipes found
 
 Each finding was found by walking a recipe: what each tile and C&C 1 execute, in order, and what can arrive
-when. Most important first. **Status** says how the decisions log answered it (D37, D38, D40, D41). The recipes
+when. Most important first. **Status** says how the decisions log answered it (D37, D38, D40, D41, D43, D44). The recipes
 (`wip/sw/RECIPES.md`, R*n*) follow every answer and mark each finding where it bites as **[F*n*]**.
 F1-F14 are the first round's, F15-F16 came from writing to D38, and F17 from round 2's boot by streams.
-**All of F1-F16 are answered; F17 is open.** Bit numbers in the bodies below are as they were found; D40
+**All seventeen are answered.** Bit numbers in the bodies below are as they were found; D40
 renumbered `EVENTS` (counters done [7], GO [8], command landed [9], DMA run done [10]).
 
 | # | finding | severity | status |
@@ -16,7 +16,7 @@ renumbered `EVENTS` (counters done [7], GO [8], command landed [9], DMA run done
 | F5 | Reports could wait on the request tree behind a stopped target | medium | **fixed, D38** |
 | F4 | C&C 1's UART dump looked too slow for an FPGA reset | medium | **not a limitation, D37** |
 | F6 | Polling `rd_running` is only as good as guarantee B | medium | **answered, D17 B (D41)** |
-| F17 | A command from the send port isn't ordered after a stream's packets | low | **open** |
+| F17 | A command from the send port isn't ordered after a stream's packets | low | **answered, D43, D44** (ordering per sending unit; mode 5 and the fence) |
 | F7 | A 128-bit overlay at address 0 writes the reserved word | low | **answered, D37.4** |
 | F8 | A forgotten no-increment bit is a silent pile-up | low | **answered, D37.5** |
 | F16 | The report count: 23 by D20's list, "about 17" in D1.4 and D38 | low | **answered, D41** (the spec defines the set; 24 with seven counters) |
@@ -251,7 +251,7 @@ stating whether a stream on a controller may name 126.
 controllers broadcast from streams, and meshsim errors on a mesh tile's. R22 now streams every image from C&C
 1's big SRAM, a packet per cycle; the first command rides in the same run (F17).
 
-## F17. A command from the send port isn't ordered after a stream's packets (low) — open
+## F17. A command from the send port isn't ordered after a stream's packets (low) — answered by D43 and D44
 
 **What.** With D41, C&C 1 boots by streaming the overlays from its big SRAM. The natural next step is to
 send the first command from the send port once the run is done, but nothing orders the two. DMA run done
@@ -273,3 +273,13 @@ source as the overlays, and the run's reads return in order (S2). It needs no ne
 **Suggested fix.** One sentence in 3.2 saying whether a tile's address generator and send port are one source
 for ordering. If they are, the send-port form also works; if not, the spec states the same-run form as the
 rule for boot (and for any command that must follow a stream's data).
+
+**Answer (D43, D44).** Tracking each run's last packet in hardware was judged too expensive, so DMA run done
+keeps its meaning. **Ordering holds per sending unit** (D44): the address generator, the send port, the GATHER
+engine, the read port and each peripheral's DMA are separate units, and between two units there is no ordering,
+even in one tile. **Mode 5, count only** (D43), gives the program the order it needs: a **fence** ends the run
+with a count-only packet to the tile itself on a spare counter, and once that counter reaches 0 every earlier
+packet of the run has been injected, so the send port's next packet follows them. Putting the command in the run
+stays valid. The recipes: rule 12 (ordering per unit); recipe 28 (the fence, as C&C 1 booting a unit from the
+send port, and a count-only signal between tiles); recipe 22 keeps the command in the run and points to the
+fence as the general pattern.

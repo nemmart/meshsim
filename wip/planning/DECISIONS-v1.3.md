@@ -143,6 +143,47 @@ Decided (O, T).
 - **Still open:** the inlines' `VirtualAdvice` (BLAKE3, secp256k1 and others, which C&C 3 feeds, 7): computed by
   untraced rows, or by C&C 3's software when it supplies their expansion words (T5).
 
+## 9. Moving to jolt-cpp's current expansions (2026-10-30)
+
+Decided (O). From WORKER7's F1.
+
+- **The hardware moves to jolt-cpp `main`**, away from the spec's reference copy (jolt-asic-planning `4f36b3d`, taken
+  from jolt-cpp on 2026-10-19). The trace our hardware produces has to match what the Jolt prover we pair with
+  expects, so following Jolt is not optional, only when.
+- **Why Jolt changed:** `main` re-expands the sub-word loads and stores and the 32-bit atomics around "load the aligned
+  doubleword, then work on the byte lane", and the expansions are much shorter:
+
+| instruction | `4f36b3d` rows | `main` rows |
+|---|---|---|
+| LB, LBU | 4 | 3 |
+| LH, LHU, LW, LWU | 5 | 3 |
+| SB | 8 | 6 |
+| SH, SW | 9 | 6 |
+| LR.W | 9 | 7 |
+| SC.W | 26 | 21 |
+| AMOSWAP.W | 18 | 8 |
+| AMOADD/AND/XOR/OR.W | 19 | 9 |
+| AMOMIN/MAX(U).W | 24 | 13 |
+
+- **New row operations** the replayer and the Tracer must compute (jolt-cpp `main` at `52fbbab`, `src/tracer/isa/
+  virtual.cpp` and `trace_owner.cpp`):
+  - `VirtualLoadB/H/W`, `VirtualStoreB/H/W`: load or store the doubleword containing the access (address rounded down);
+    memory rows like LD/SD.
+  - `VirtualWindowMaskB/H/W`: the lane's mask from the address's low bits, e.g. `0xFF << 8 × (addr & 7)`.
+  - `VirtualShiftDataB/H/W`: the store value moved into its lane, `(v & 0xFF) << 8 × ((base + offset) & 7)`; needs the
+    store's offset as a new field (`shift_offset`), so the **expansion word must carry it**.
+  - `VirtualPext`, `VirtualPextSigned`: **parallel bit extract** by the mask, optionally sign-extended. Every use in
+    `main` feeds a single contiguous lane (from `WindowMask`), where it is a right shift plus zero- or sign-extension;
+    Jolt defines general PEXT (T6).
+  - Gone: `VirtualAlignAddr` and the alignment assertions.
+- **Timing** *(proposed)*: **v1.2 stays on `4f36b3d`**, so the simulator port, the sort and the replayer run against
+  what was built and measured; **the move is v1.3 work**, together with the Tracer, since both the replayer's and the
+  Tracer's tables are rebuilt anyway. Pin a specific `main` commit when the work starts, not a moving branch.
+- **The work:** diff the two versions' expansions in full; rebuild the replayer's opcode table, ROM templates and
+  decode table (spec 4.19.6's template count and ROM fill); add `shift_offset` to the expansion word; regenerate the
+  replayer's test vectors; and the same for the Tracer's tables (7, 8). WORKER7's advice work is unaffected (the
+  division-family advice code is byte-identical).
+
 ---
 
 ## Studies for other sessions
@@ -161,4 +202,5 @@ Decided (O, T).
 | T4 | The Tracer's template coverage | 7 | **answered: section 7** (a list in the ROM; the rest fed by C&C 3, replayer-style) |
 | T2 | The RV64 initial state: what it contains and where it comes from | 1 | open |
 | T3 | The page table: its size, format and how C&C 3 maintains it | 1 | open |
+| T6 | `VirtualPext`/`VirtualPextSigned`: build general parallel bit extract, or only the contiguous-lane case every current use needs (a shift plus extension), relying on Jolt never using another mask | 9 | for Tony |
 | T5 | The inlines' advice (`VirtualAdvice`): untraced rows, or C&C 3's software when it feeds their templates | 8 | open |

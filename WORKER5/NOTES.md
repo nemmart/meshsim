@@ -84,7 +84,7 @@ See the checklist below; R = rewrite, U = update, K = keep, X = removed (stub), 
 ## Checklist
 
 - [x] Pass 1: front matter, 1, 2, 3
-- [ ] Pass 2: 4.1-4.16
+- [x] Pass 2: 4.1-4.16
 - [ ] Pass 3: 4.17-4.20
 - [ ] Pass 4: 5, 6, 7, 8
 - [ ] Pass 5: 9-14
@@ -95,7 +95,17 @@ See the checklist below; R = rewrite, U = update, K = keep, X = removed (stub), 
 - 117 storage of the reserved link bits (trim later, power) (3.1)
 - 118 sending peripherals' router ports (W2-31, deferred) (4.17.9)
 - 119 file system: tag windows, window protocol, request target 3, requests' counters (deferred) (3.3, 6.7)
+- 120 table window address 0xFFFF2000 (proposed, log 11) (4.10, 8.9)
+- 121 Q1: CSR list and reset values, mtvec (Tony) (4.11)
+- 122 handler report set: ops, order, count (4.13)
 
 ## Questions raised so far (mirror of QUESTIONS.md)
 
-(none yet)
+- W5-01 command and reply blocks at the top of the 32 KB data memory (0x7FC0, 0x7BC0) (4.11, 4.12)
+- W5-02 a write through a misaligned PTR: does the pointer still advance? proposed yes (4.9)
+- W5-03 ROUTER_ADDR advances for mode 0 only (as v1.1 for modes using addr) (4.11)
+- W5-04 loads from program memory and the boot ROM are single-cycle (4.11)
+- W5-05 32 KB memories as four 2K x 32 banks (4.11)
+- W5-06 write-engine input overflow stays P (W2-REVIEW-2 said it becomes H; not in the log) (4.13)
+- W5-07 read-port request-queue entries carry the counter (setup register may change between reads) (4.3)
+- W5-08 region decode for bad packets, size 11, modes 1-4 ignore address, mode 3 at 128: log 26's (proposed) rows kept proposed (3.1)

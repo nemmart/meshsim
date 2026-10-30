@@ -285,15 +285,15 @@ A request for a reserved target, or a target with no receiver, is dropped at the
 | 4.9 | DMA write engine |
 | 4.10 | table memories (`HIST`, `PTR`, `STREAM`, `GROUP`) |
 | 4.11 | controller, with its instruction and data memories |
-| 4.12 | the command and reply blocks, counters and the wake events |
-| 4.13 | status and conditions |
+| 4.12 | the command and reply blocks, the write counters and the events |
+| 4.13 | status and errors; traps |
 | 4.14 | commit ordering |
 | 4.15 | digits |
-| 4.16 | the fifth router port (every tile; connected at tile 0, to C&C) |
-| 4.17 | the peripheral slot and the sender (4.17.1–4.17.9) |
+| 4.16 | the fifth router port (every tile; connected at tiles 0–2, to C&C 1–3) |
+| 4.17 | peripherals: up to three per tile, the standard window, the DMA (4.17.1–4.17.9) |
 | 4.18 | the request port (the tile's end of the request bus, 3.3), send and receive |
 | 4.19 | the replayer, peripheral type 1 (4.19.1–4.19.15) |
-| 4.20 | the UART (every tile; wired only where a serial port is attached) |
+| 4.20 | the UART (part of C&C 1's peripheral) |
 
 Where each sits on the die: section 12. Unless stated otherwise, every unit-to-unit transfer inside a tile takes one cycle (*(param)* `intra_tile_latency`, default 1 per stage; exact values affect latency only).
 
@@ -308,16 +308,16 @@ Where each sits on the die: section 12. Unless stated otherwise, every unit-to-u
 - **Capacity** *(param)* `mem_chunks`: a multiple of 256 KB (65,536 chunks), default 1,048,576 chunks (4 MB), at most 2,097,152 (8 MB). When the size isn't a whole number of areas, the last area is partial (for example a half-height 512 KB area, 16K rows).
 - **Each area does one read or one write per cycle,** of one 128-bit row. The areas work independently, so up to one access per area happens per cycle in total when the clients' data sits in different areas. A sequential stream stays in one area at 4 chunks per access.
 - **Service is in arrival order:** reads and writes to an area are served in the order they arrive, with no priority.
-- **Read order is per client, not global** (owner, 2026-10-23): the big SRAM hands back **each client's reads in the order that client issued them**, whichever areas they hit: the address generator's in its order, the GATHER engine's in its order, each with both rows of a spanning read merged (4.5). **Reads of different clients may complete in any order** relative to each other, so a gather's scattered reads never wait behind a stream's sequential ones. **The read port's reads need no order:** each mode-6 result carries its own destination word (4.3), so they may come back in any order. Areas still serve their own queues in arrival order and may finish out of order; putting each ordered client's returns back in order is the big SRAM's job, a requirement on its design rather than on its clients, so the clients' return queues (4.5) hold only per-read metadata. Because order holds only within a client, two clients never send order-placed packets to the same destination at once (4.5, invariant 18).
+- **Read order is per client, not global** (owner, 2026-10-23): the big SRAM hands back **each client's reads in the order that client issued them**, whichever areas they hit: the address generator's in its order, the GATHER engine's in its order (4.5). **Reads of different clients may complete in any order** relative to each other, so a gather's scattered reads never wait behind a stream's sequential ones. **The read port's reads need no order:** each result carries its own destination address (4.3), so they may come back in any order. Areas still serve their own queues in arrival order and may finish out of order; putting each ordered client's returns back in order is the big SRAM's job, a requirement on its design rather than on its clients, so the clients' return queues (4.5) hold only per-read metadata. Because order holds only within a client, two clients never send order-placed packets to the same destination at once (4.5, invariant 18).
 - **Unloaded read latency: 4 cycles** with an array latency of 2 [meas: meshsim]. The array's read latency for the hardware is *(Open)*.
-- **Partial writes.** A 32-bit write fills a quarter of a row and a 64-bit write half; a 128-bit write at chunk 0 fills the whole row. The areas have **write enables per 32-bit chunk**, so a partial write is one access, not a read-modify-write. Every area access is a whole 128-bit row; reads select their chunks in the return path (4.5).
-- **Alignment: none required.** A read or write may start at **any chunk address**, for every width (32, 64 or 128 bits). An access that doesn't fit in one row (a 64-bit access starting at chunk 3 of a row, or a 128-bit access not starting at chunk 0) **spans two rows**, row and row + 1, possibly in the next area. The sort lays records and values out so that this rarely happens in streams, but it is always allowed, **except for mode 3**, whose address must be aligned to its size (3.1): a mode-3 write never spans.
-- **A spanning access is one request from its client** (and, for a read, one token, 4.5), **but two area accesses:**
-  - **part 0** goes when its area accepts it;
-  - **part 1** follows, ahead of every client, waiting while its area is full;
-  - **the client's next request waits meanwhile.** In a group run that wait is lateness and sets drift (4.13): whether an access spans depends on each tile's own buffer addresses, so tiles would fall out of lockstep. **Group runs should therefore use row-aligned elements** (4.2).
+- **Partial writes.** A 32-bit write fills a quarter of a row and a 64-bit write half; a 128-bit write fills the whole row. The areas have **write enables per 32-bit chunk**, so a partial write is one access, not a read-modify-write. Every area access is a whole 128-bit row; reads select their chunks in the return path (4.5).
+- **Natural alignment** (owner and Tony, 2026-10-28). **Every 64- or 128-bit big-SRAM access, read or write, is naturally aligned:** a 64-bit access at an even chunk, a 128-bit access at chunk 0 of a row. So **no access ever straddles a row**: v1.1's spanning access, its two area accesses and its extra cycle are gone, and every access is one request, one token (for a read, 4.5) and one area access. The pointers and runs that generate addresses keep them aligned (integrator, 2026-10-29): a stream's source is aligned to its read size and every step keeps it aligned (4.2); a `PTR` is aligned to the size of the writes landing through it, an augmented `PTR` to a record (4.9); `DMA_RECORD_BASE_ADDRESS` to a record (4.4). A pointer stays aligned only if every write through it has the same size, or if sizes descend from an aligned start (a DMA's 128s, then a 64, then a 32, 4.17.9); a run that continues where another stopped needs the earlier run's length to be a multiple of its own size.
+- **A misaligned access is checked in hardware** and sets `ERRORS` [1], "bad packet or misaligned access" (4.13) (integrator, 2026-10-29):
+  - **a packet** (mode 0) not aligned to its size is a bad packet, dropped uncounted by the traffic director (3.1);
+  - **a write through a misaligned `PTR`** (modes 1–3) is dropped by the write engine but **still counted**, since its decrement was scheduled when the director accepted it (4.9);
+  - **a misaligned read** by the address generator, the GATHER engine or the read port **is not performed, but its packet still goes out as usual with payload 0**, so the receiver's director counts it (one decrement point, and lockstep timing kept); [1] is set at the tile that issued the read (4.2–4.4).
 
-  For a read, the two rows' chunks are merged in the return path (4.5); for a write, the write engine splits the payload between the two accesses with per-chunk enables (4.9). For invariant 2 and the token count a spanning access is one access; for the areas it is two.
+  So nothing hangs and the error names the tile. meshsim flags every case.
 
 **The area interface.**
 - **Each area has one request queue** holding its reads and writes in arrival order. It accepts up to **two pushes a cycle**, one read (from the SRAM read queue, 4.5) and one write (from the write engine, 4.9), and serves one whole row a cycle.
@@ -325,7 +325,7 @@ Where each sits on the die: section 12. Unless stated otherwise, every unit-to-u
 - **Same-cycle ties: the write goes in first.** Writes can't wait, since nothing behind the SRAM write queue has flow control, but reads can: the address generator simply waits. A tie therefore costs time, not data. An area asked for more than one access per cycle is a placement error; under writes-first it shows as a late or drifting address generator, not as lost writes.
 - **Acceptance.** An area accepts when its count before the cycle's pop is below its depth (4.13's rule). With two pushes in one cycle the read is accepted only if there is room after the write: `ready_r` = count + `push_w` < depth.
 - **The queue depth** is a parameter: 8 in meshsim, *(Open)* for the hardware.
-- **The traffic director never stalls.** A sustained overload of one area fills the write engine's 4-entry input FIFO, which overflows (the write-engine-input-overflow condition, 4.13); the eject FIFOs stay clear. Blocking the director would also block commands and replies, so it is not done.
+- **The traffic director never stalls.** A sustained overload of one area fills the write engine's 4-entry input FIFO, which overflows (write-engine input overflow, `ERRORS` [4], 4.13); the eject FIFOs stay clear. Blocking the director would also block commands and replies, so it is not done.
 
 **No coherence.** The memory system makes no ordering promise between a run's reads and its writes. **The rule is that within one engine run, no buffer is both read and written.** The rule is per engine run, not per GO-to-GO phase, since a one-command local phase runs several passes, each reading what the previous one wrote after its writes have landed. A phase reads from some buffers and writes to others, and as long as they never overlap, the result is correct.
 - **What follows the rule:**
@@ -333,22 +333,19 @@ Where each sits on the die: section 12. Unless stated otherwise, every unit-to-u
   - the gathers (index and values in, output out);
   - the all-to-alls (send buffer out, receive buffer in);
   - the split's searches through the read port, which read sorted keys that nothing writes during the split.
-- **Ordering across phases comes from the phase boundary:** everything written in a phase is in the array before the tile reports done (`mem_idle` and the counters, 4.12). The next phase reads it after GO.
+- **Ordering across phases comes from the phase boundary:** by the time a write's counter decrements, the write has entered its area's request queue (K, 4.12), and areas serve in arrival order, so a read issued after the counter is done queues behind it. A phase that waits for its counters before it reports done has its writes ordered before every read of the next phase, which starts after GO.
 - There is no flush, no merge logic and no line state.
 
-**`mem_idle`** (a status bit): the whole big-SRAM write path is empty — a packet passing from the traffic director to the write engine, the write engine's input FIFO, the pointer stage and every area's request queue. It covers mode 3 as well as modes 2, 4 and 5, so counters done covers a mode-3 delivery too (6.7). (The GATHER engine's pending reads are covered by `DMA_SRAM_REMAINING`, since each gather value counts on arrival.) A tile checks it, through its counters and counters done (4.12), before it reports done.
+**`mem_idle` is gone** (owner, 2026-10-28): no rule depends on it any more, since a counter's done now covers the write path by K (4.12); meshsim keeps it as a diagnostic.
 
-**Wrap and out-of-range.**
-- Addresses are modulo 2²¹: an access past 0x1FFFFF wraps to address 0, the bottom of area 0.
-- **A device smaller than 8 MB**, which includes the default 4 MB: `TILE_STATUS` gives the size in 256 KB units (8.2). Any chunk at or above the end of the memory, up to 0x1FFFFF, **reads as 0**, and **writes to it are dropped**; this includes the missing rows of a partial last area. Past 0x1FFFFF an access wraps to address 0, which is real memory again.
-- Neither case sets a condition.
+**Out of range** (integrator, 2026-10-29). An access at or past the end of the memory, including the missing rows of a partial last area, is **undefined in hardware**: big SRAM's size need not be a power of two, so it doesn't promise aliasing. The engines' chunk addresses advance by plain addition, and a run that passes the end is a software bug (2.2) (meshsim errors on both). No error bit is set.
 
 **Clients.**
 - **Readers:** the address generator (4.2), the GATHER engine (4.4) and the controller read port (4.3).
-- **Writer:** the write engine (4.9), the only writer. The GATHER engine writes through it, by sending its gather values as mode-2 packets, and the memory system by sending mode-3 packets (6.7).
+- **Writer:** the write engine (4.9), the only writer. The GATHER engine writes through it, by sending its gather values as mode-1 packets, and every sender at an explicit address, the memory system included (6.7), by sending mode-0 packets to region 0x03.
 - **There is one SRAM read queue and one SRAM write queue** (4.5). They meet only at the areas.
 - All clients queue at the areas they address, so **several clients can be active at once** without static selectors.
-- The controller reads big SRAM only through the **controller read port** (4.3) and writes it only by sending itself packets (mode 2 at `PTR[me]`, or mode 3 at an explicit address); its copies go through the address generator and the loopback (4.11).
+- The controller reads big SRAM only through the **controller read port** (4.3) and writes it only by sending itself packets (mode 1 at `PTR[me]`, or mode 0 at an explicit address in region 0x03); its copies go through the address generator and the loopback (4.11).
 - **Throughput comes from placement:** buffers that one phase uses together should sit in different areas. A read can wait in its area's queue behind writes and other clients' reads, so its latency depends on the phase's placement and traffic; the tokens and the return queues absorb it (4.2, 4.5). The bound, and the placement rules that keep each phase's traffic per area within one access per cycle, are *(Open)* (section 13).
 
 ### 4.2 Address generator
@@ -367,16 +364,16 @@ The address generator ranks **below the GATHER engine and above the controller r
 | start | [8:1] | the first stream (0–255), or the first `GROUP` entry (0–63) |
 | count | [17:9] | streams (1–256), or groups (1–64) |
 
-**Start** (`TILE_PULSE` [1], 8.6) acts on it:
-- **Start loads the run** described in `DMA_CONFIG`, clears `rd_done`, sets `rd_running` and begins the table read-ahead (below). GO does not start a run; start is the only way.
+**Start** (`PULSE_DMA`, 8.6) acts on it:
+- **Start loads the run** described in `DMA_CONFIG`, clears `rd_done`, sets `rd_running`, clears **DMA run done** (`EVENTS` [7], 4.12), so [7] always refers to the run most recently started, and begins the table read-ahead (below). GO does not start a run; start is the only way.
 - **The first request is offered as soon as its entries are in.** A start store in cycle *t* takes effect in cycle *t* + 1 (4.11).
   - **Group run:** the first request is offered **4·`ts_engine_latency` + 3 cycles after the start store** (4·`ts_engine_latency` + 2 after the cycle the start takes effect; 7 and 6 at the default). The run reads the `GROUP` entry, then the `STREAM` entry (its three arrays read in parallel, 4.10), which needs the group's start stream; each read is a round trip of 2·`ts_engine_latency` + 1 [meas: meshsim, as the read-ahead's latency].
   - **Stream run:** the first request is offered **2·`ts_engine_latency` + 2 cycles after the start store** (2·`ts_engine_latency` + 1 after the cycle the start takes effect), the time of one `STREAM` read.
   - **There is no fixed lead-in counter:** the time depends only on the run kind, the tables and the latency, so it is the same on every tile and a synchronised start stays in lockstep.
-- **`rd_running` = 1 and `rd_done` = 0 from the end of the start store's cycle,** so the next instruction's load of `TILE_STATUS` already sees them; `rd_running` stays 1 through the lead-in until the run has walked its last entry. (A program that polls the tables right after a start, as `wait_tables()` does, relies on this.)
-- **A start while a run is running is ignored**, lead-in included, with no condition: the run the program expected doesn't happen, so its arrivals never come and the tile hangs, which C&C's watchdog catches next to the cause (4.13's principle). meshsim flags it as a program violation.
+- **`rd_running` = 1 and `rd_done` = 0 from the end of the start store's cycle,** so the next instruction's load of `STATUS` already sees them; `rd_running` stays 1 through the lead-in until the run has finished (below). (A helper that polls `STATUS.rd_running` to learn whether the tables are free relies on this, 4.10.)
+- **A start while a run is running is ignored**, lead-in included, with no error: the run the program expected doesn't happen, so its arrivals never come and the tile hangs, which C&C 1's watchdog catches (4.13's principle) (meshsim flags it).
 - **A local run** is one start store. **A synchronised start** is the same start store, executed by every tile on the same cycle after GO wakes it (6.3).
-- **Finishing:** the run ends when the address generator has **walked its last entry**: every stream of a stream run, every group of a group run, including trailing count-0 streams and R = 0 groups, each at its timetable cost. The last entry's gap-after is not waited out. The sequencer cannot know a request is the last without examining the entries after it, so it simply walks them. Then `rd_running` = 0 and `rd_done` = 1; `rd_done` stays 1 until the next start. The rise of `rd_done` also posts **engine run done**, `WAKE_EVENTS` [11] (4.12).
+- **Finishing:** the run ends when the address generator has **walked its last entry**: every stream of a stream run, every group of a group run, including trailing count-0 streams and R = 0 groups, each at its timetable cost. The last entry's gap-after is not waited out. The sequencer cannot know a request is the last without examining the entries after it, so it simply walks them. Then, **once the run's last table read has completed** (guarantee B, 4.10), `rd_running` = 0 and `rd_done` = 1; `rd_done` stays 1 until the next start. The rise of `rd_done` also posts **DMA run done**, `EVENTS` [7] (4.12).
 - **Drift.** In a group run, a request refused by the SRAM read queue holds its visit until taken, every later time shifts by the stall, and drift is set (4.13). A loopback read that waits for a token because earlier loopback packets still hold theirs in the loopback FIFO (4.5) is refused like any other. The timetable's times are the cycles a request is offered; read latency after that is separate (4.5).
 
 **Stream runs** go through streams *start* … *start* + *count* − 1 **one after another**. Each stream's whole run is sent before the next stream begins.
@@ -384,44 +381,43 @@ The address generator ranks **below the GATHER engine and above the controller r
 - **A count-0 stream** issues nothing and takes only its gap-after cycles; its table read-ahead waits, which matter only for long runs of them, are part of the timetable (below). Lockstep rounds that must keep a fixed shape send dummy requests instead.
 - **A stream run reads big SRAM only.** Values the controller computes in data memory (cuts, counts, maxima) go from the send port instead (4.11).
 - **Uses:**
-  - block copies (mode 6);
-  - local passes (modes 2, 4 and 5 to the tile itself);
-  - gather streams (mode 1);
+  - block copies into controller memory (mode 0 to the tile's own region 0x00 or 0x01);
+  - local passes (modes 1, 2 and 3 to the tile itself);
+  - gather streams (mode 4);
   - one-word exchanges;
-  - write streams to the memory system (mode 3 to C&C, *d* = 64, 6.7).
+  - writes at explicit addresses into another unit's memory or a peripheral's region (mode 0), the file system's tag windows among them (to C&C 2, *d* = 65, 6.7).
 - **A one-word exchange of big-SRAM data** is 63 streams of count 1, with *d* in the 16-group offset order, and **gap after = 4 on every stream**, so a round takes ≈ 63 × 5 ≈ 315 cycles with loads far below any overflow.
 - **The gapless form** *(Open)* would run the streams back to back in about 63 cycles. Every tile sends to the same offset on the same cycle, so each step is a permutation, and each 4-stream window has link loads ≤ 4 per direction. Running gapless relies on **uniform 3-cycle links** and **at most 1 cycle of start skew** between tiles (3.2), which keep the windows together. The queue peaks at window boundaries are still to be confirmed in simulation (section 13).
 
 **Group runs** are for the digit all-to-alls. They run groups *start* … *start* + *count* − 1, each a round-robin over its streams for R rotations, then its gap. The address generator keeps **no per-stream working state**. One **rotation counter** *r* runs 0 … R − 1 for the group, and each visit reads its stream's `STREAM` entry (read ahead, below): the stream sends element *r* if *r* < count, and its time is idle otherwise. Every stream of a group is on the same rotation, so one counter serves the whole group. Every visit takes one cycle whatever its read size, so a group's period is its stream count *t*, and its streams may have different read sizes *(Proposed)*: v1.0 required one size per group because a 128-bit visit took two cycles.
 
-**Stream table** `STREAM[0..255]`: entry *i* is word *i* of three 256 × 32-bit arrays, each its own memory, read in parallel at the same index as one access (4.10). The controller writes each word with one store (8.9):
+**Stream table** `STREAM[0..255]`: entry *i* is word *i* of three 256 × 32-bit arrays, each its own memory, read in parallel at the same index as one access (4.10). The controller writes each word with one store (8.9). 96 bits, 88 used (owner, 2026-10-28):
 
 | array | field | bits | meaning |
 |---|---|---|---|
-| `STREAM_SRC` | source | [20:0] | the run's first element, as a 21-bit **chunk address** (any chunk: 4.1) |
-| `STREAM_SRC` | spare | [31:21] | |
-| `STREAM_DEST` | destination word | [20:0] | modes 3, 6 and 9 only: the first element's addr (for mode 6 a packed controller-memory word, 4.11; for mode 9 a word address in the peripheral's address space, 4.17.5; for mode 3 a chunk address, or in a write stream the chunk offset within the write, 6.7), + 1, 2 or 4 per element by read size; ignored for other modes |
-| `STREAM_DEST` | destination | [27:21] | *d*, 7 bits: 0–63 a **relative** tile offset, the packets going to (`me` + *d*) mod 64, *d* = 0 the tile itself; 64–125 a non-tile endpoint, named **absolutely** (2.1): 64 C&C, 65–125 reserved (no endpoint in v1.1); 126–127 invalid for streams |
-| `STREAM_DEST` | spare | [31:28] | |
-| `STREAM_COUNT` | count | [17:0] | elements in the stream's run (0 = padding) |
-| `STREAM_COUNT` | mode | [21:18] | the packet mode stamped on every packet of the stream: 1–6 or 9 (mode 1 only with *d* = 0; *d* = 64 only with mode 3). Codes 0, 7, 8 and 10–15 are reserved: command writes and replies come only from the send port |
-| `STREAM_COUNT` | read size | [23:22] | 00 32 bits, 01 64 bits, 10 128 bits (1 << size chunks per element), 11 reserved and undefined; stamped as every packet's size (3.1) |
-| `STREAM_COUNT` | gap after | [26:24] | stream runs only: idle cycles (0–7) after this stream's run *(likely to change)* |
-| `STREAM_COUNT` | spare | [31:27] | |
+| `STREAM_SRC` | source | [20:0] | the run's first element, as a 21-bit **chunk address** in big SRAM, **aligned to the read size** (4.1) |
+| `STREAM_SRC` | gap after | [23:21] | stream runs only: idle cycles (0–7) after this stream's run *(likely to change)* |
+| `STREAM_SRC` | spare | [31:24] | |
+| `STREAM_DEST` | destination address | [31:0] | **mode 0 only:** the first element's 32-bit byte address at the receiver (2.2), aligned to the read size, + 4, 8 or 16 bytes per element by read size; ignored for modes 1–4 |
+| `STREAM_COUNT` | count | [16:0] | elements in the stream's run (0 = padding), at most 131,071 |
+| `STREAM_COUNT` | read size | [18:17] | 00 32 bits, 01 64 bits, 10 128 bits (1 << size chunks per element), 11 reserved and undefined; stamped as every packet's size (3.1) |
+| `STREAM_COUNT` | counter | [21:19] | the counter field stamped on every packet (3.1): the receiver's write counter, 0 uncounted |
+| `STREAM_COUNT` | mode | [24:22] | the packet mode stamped on every packet of the stream: 0–4 (mode 4 only with *d* = 0) |
+| `STREAM_COUNT` | destination | [31:25] | *d*, 7 bits: 0–63 a **relative** tile offset, the packets going to (`me` + *d*) mod 64, *d* = 0 the tile itself; 64–125 a non-tile endpoint, named **absolutely** (2.1): 64–66 the controllers, 67–125 reserved (no endpoint); 126–127 invalid for streams |
 
-The fields that change every round are the source and the count, one store each.
+`STREAM_COUNT` [24:17] is the link word's size, counter and mode block, bits [167:160] (3.1), laid out as in every header register (8.1); [31:25] is the relative *d*, translated into dst rather than copied. The fields that change every round are still the source and the count, one store each, with the fixed bits (gap after; size, counter, mode and *d*) ORed in.
 
 - **Read size.** Each element is one packet of the read size:
   - **32 bits:** one chunk per element, a 32-bit packet. This is how raw 32-bit keys are sent one per packet (step 1 of the sort, 4.9).
   - **64 bits:** one record per element, a 64-bit packet.
   - **128 bits:** one row's worth per element, **one 128-bit packet**, so a visit takes 1 cycle like the others. (v1.0 sent two 64-bit packets on consecutive cycles and took 2.)
-  - **Reserved encodings are errors wherever they appear:** a stream with read size 11 (undefined: what it reads and sends is not specified), or with mode 0, 7, 8 or 10–15, or with *d* = 65–127, or with *d* = 64 and a mode other than 3, is an error even at count 0. So is a mode-5 stream with read size 128, or a mode-3 stream with read size 64 or 128 whose destination word isn't aligned to it (a multiple of 2 or 4), whose packets are bad packets at the receiver (3.1). None has a hardware check at the sender; meshsim reports them.
+  - **Reserved encodings are errors wherever they appear:** a stream with read size 11 (undefined: what it reads and sends is not specified), with mode 5–7, with *d* = 67–127, or a mode-4 stream with *d* ≠ 0, is an error even at count 0. So is a mode-3 stream with read size 128, or a mode-0 stream whose destination address isn't aligned to its read size, whose packets are bad packets at the receiver (3.1), and a stream whose source isn't aligned to its read size (4.1). None has a hardware check at the sender (meshsim reports them); a misaligned source is caught when it is read (below).
 - **Gap after** *(likely to change)*. In a stream run, the address generator issues nothing for this many cycles after the stream's last element, for example 4 on every stream of a one-word exchange (above). Group runs ignore it and use the group gap.
-- **Element addresses are computed, never stored.** Element *e* of a stream (*e* = *j* in a stream run, *r* in a group run) is read at source + *e* × (chunks per element: 1, 2 or 4), a shift and a 21-bit add, wrapping mod 2²¹. No alignment is required (4.1), but **group runs should use row-aligned elements**: a 64-bit element at chunk 3 of a row, or a 128-bit element not at chunk 0, is two area accesses, and the wait for the second sets drift (4.1). For modes 3, 6 and 9 the destination word is `STREAM_DEST`'s field + 1, 2 or 4 (the read size in words or chunks) per element before it, wrapping mod 2²¹; v1.0's mode 5 (its controller-memory write) always stepped 2 and wrote a zero high word for a 32-bit element. The address generator never writes `STREAM`, so a run leaves its entries as the controller wrote them. There is no base register: 21 bits of chunk address cover up to 8 MB.
-- **No destination offset.** Big-SRAM destinations are chosen by the receiver: modes 2 and 5 land at `PTR[src]` and mode 4 at `PTR[bucket digit]`. A local copy is a mode-2 stream to *d* = 0 with `PTR[me]` as the destination. A mode-1 stream is a gather stream to the tile itself (4.4).
+- **Element addresses are computed, never stored.** Element *e* of a stream (*e* = *j* in a stream run, *r* in a group run) is read at source + *e* × (chunks per element: 1, 2 or 4), a shift and a 21-bit add. The source is aligned to the read size, so every element is (4.1). **A misaligned element is not read:** its packet still goes out, with payload 0, and `ERRORS` [1] is set (4.1). For mode 0 the destination address is `STREAM_DEST` + *e* × (4, 8 or 16 bytes), by plain addition; a run past the end of its memory is a software bug (2.2). The address generator never writes `STREAM`, so a run leaves its entries as the controller wrote them. There is no base register: 21 bits of chunk address cover up to 8 MB.
+- **Receiver-placed destinations.** For modes 1–3 big-SRAM destinations are chosen by the receiver: modes 1 and 3 land at `PTR[src]` and mode 2 at `PTR[bucket digit]`. A local copy is a mode-1 stream to *d* = 0 with `PTR[me]` as the destination, or a mode-0 stream to an explicit address in the tile's own region 0x03. A mode-4 stream is a gather stream to the tile itself (4.4).
 - **Relative destinations** make the destination, mode and size of every stream identical on every tile for the 16-group schedule, which is defined in offsets. The cost is a 6-bit adder and a select on *d*'s top bit; packets on the wire carry the absolute dst.
-- **The address generator sends to tiles 0–63 and to C&C** (*d* = 64, a write stream, 6.7), never to broadcast. *d* = 65–125 names an endpoint that doesn't exist in v1.1 and 126–127 are invalid; both are programming errors with no hardware check (meshsim flags them). v1.1 before the request bus had a 6-bit *d* and sent only to tiles.
-- **Count** is in elements: 18 bits covers a tile's 128-bit values as well as its keys (section 13 records how much of it the sort uses).
+- **The address generator sends to tiles 0–63 and to the controllers** (*d* = 64–66), never to broadcast. *d* = 67–125 names no endpoint and 126–127 are invalid; both are programming errors with no hardware check (meshsim flags them).
+- **Count** is in elements, **17 bits**: at most 131,071 per stream (owner, 2026-10-29). The full-size sort's local streams have exactly 65,536 elements, the keys per tile, which 16 bits would truncate to an empty stream. Longer moves are split into several streams; moves are better broken into smaller transfers anyway (about 64K cycles each already).
 
 **Group table** `GROUP[0..63]`, one 64-bit entry per group:
 
@@ -458,7 +454,7 @@ The fields that change every round are the source and the count, one store each.
 - Groups of a single one-cycle visit back to back need `ag_lookahead` ≥ 4·L_ts + 3, since each `STREAM` read waits for its `GROUP` entry [meas: meshsim]. No group of the sort is that short, and one-word exchanges are stream runs, so `ag_lookahead` is 2·L_ts + 2.
 - **A group starts** when its `GROUP` entry is in and, if R > 0, its first `STREAM` entry, **one group per cycle**: a zero-length group (R = 0 with gap 0) takes one cycle. A run of them longer than about `ag_lookahead` − 1 fills the `GROUP` queue, and the next group then also waits about 2·L_ts + 1 cycles for its entries [meas: meshsim].
 - In a stream run, count-0 streams with gap after 0 take no cycles while their entries are in; a run of them longer than the queue takes about one cycle each.
-- **Such waits are part of the timetable,** not lateness: the read timing depends only on the tables and `ts_engine_latency`, which are the same on every tile, so every tile waits the same and the run stays in lockstep. This holds because the address generator is the only engine reader of `STREAM` and `GROUP`, each in memories of its own (4.10). Only a wait caused by the SRAM read queue refusing a request is lateness, reported as the **drift** condition (4.13).
+- **Such waits are part of the timetable,** not lateness: the read timing depends only on the tables and `ts_engine_latency`, which are the same on every tile, so every tile waits the same and the run stays in lockstep. This holds because the address generator is the only engine reader of `STREAM` and `GROUP`, each in memories of its own (4.10). Only a wait caused by the SRAM read queue refusing a request is lateness, reported as the **drift** error, `ERRORS` [3] (4.13).
 
 **Timetable** (group runs). Group *g* begins at cycle `S_g = S_{g−1} + max(R_{g−1}·P_{g−1}, 1) + gap_{g−1}`, where **S_0 is the first-request cycle: 4·L_ts + 3 cycles after the start store** (4·L_ts + 2 after the cycle the start takes effect; the lead-in, above). A stream run has no timetable; its first request is offered 2·L_ts + 2 cycles after the start store. Its rotations begin at `S_g`, `S_g + P_g`, `S_g + 2·P_g`, …
 - A rotation visits the group's streams in order, one visit time each.
@@ -468,74 +464,74 @@ The fields that change every round are the source and the count, one store each.
 - A visit whose `STREAM` entry is not in yet waits; that wait is part of the timetable, identical on every tile, not lateness (above). With `ag_lookahead` at its bound it doesn't happen [meas: meshsim].
 - **The timetable assumes a bounded read latency.** A read can wait in its area's queue (4.1). The 64 tokens and the return queue must absorb the queueing, which the phase's placement bounds *(Open)*.
 
-**A visit** (modes 1–6 and 9) offers one read request per element, of any read size, and the element returns as one packet:
-- payload = the element;
+**A visit** (modes 0–4) offers one read request per element, of any read size, and the element returns as one packet:
+- payload = the element (0 if its read was misaligned, above);
 - size = the stream's read size;
-- dst = (`me` + *d*) mod 64 for *d* < 64, or 64 for *d* = 64;
-- mode = the stream's mode;
-- addr = 0, or for modes 3, 6 and 9 the stream's current destination word.
+- dst = (`me` + *d*) mod 64 for *d* < 64, or *d* for *d* = 64–66;
+- mode and counter = the stream's;
+- address = for mode 0 the stream's current destination address, otherwise 0.
 
-**One read per element.** Each element is one read-queue request; its return goes straight to injection (4.5). A stream of row-aligned elements of any size therefore uses one access per cycle in its source area, within budget when sources and destinations are in different areas, which placement already requires.
+**One read per element.** Each element is one read-queue request; its return goes straight to injection (4.5). A stream of elements of any size therefore uses one access per cycle in its source area, within budget when sources and destinations are in different areas, which placement already requires.
 
 **Loopback runs.** A stream with *d* = 0 sends to the tile itself.
-- **A copy into controller memory** (an overlay, a table) is a one-stream mode-6 stream run. At 128 bits per cycle (read size 128, row-aligned) a 1K-word image takes ≈ 256 cycles plus the stream's start [estimate]; v1.0's 64-bit packets took ≈ 512. Section 6.5 gives the sequence.
-- **A copy into the peripheral** is a mode-9 stream run into its address space (4.17.5): for the replayer, one of its memories or queue ports (4.19.10).
-- **A local big-SRAM copy** is a mode-2 run with `PTR[me]` as the destination.
-- **The local sort's scatter passes** are mode-4 runs to the tile itself.
-- **Gather streams** are mode-1 runs to the tile itself (4.4).
+- **A copy into controller memory** (an overlay, a table) is a one-stream mode-0 stream run to the tile's own region 0x00 or 0x01. At 128 bits per cycle (read size 128) a 1K-word image takes ≈ 256 cycles plus the stream's start [estimate]; v1.0's 64-bit packets took ≈ 512. Section 6.5 gives the sequence.
+- **A copy into a peripheral** is a mode-0 stream run into its region (4.17.5): for the replayer, one of its memories or queue ports (4.19.10).
+- **A local big-SRAM copy** is a mode-1 run with `PTR[me]` as the destination, or a mode-0 run at an explicit address.
+- **The local sort's scatter passes** are mode-2 runs to the tile itself.
+- **Gather streams** are mode-4 runs to the tile itself (4.4).
 
 ### 4.3 Controller read port
 
 *Figure 3.3.*
 
-The controller reads its own big SRAM without stalling: it queues reads by stores, and the results land in controller memory as controller-memory writes (owner, 2026-10-26).
+The controller reads its own big SRAM without stalling: it queues reads by stores, and the results land in data memory as mode-0 writes to the tile itself (owner, 2026-10-26; destination, owner, 2026-10-28).
 
-| register | write | read |
+| register | store | load |
 |---|---|---|
-| `SRAM_RD_DEST_ADDR` | the **setup register:** destination [13:0], the packed controller-memory word (4.11) of the next result, 14 bits (upper bits 0 at today's 8 KB + 8 KB); size [15:14], 00 = 32 bits, 01 = 64, 10 = 128, 11 reserved; [31:16] spare | 0 |
-| `SRAM_RD_ADDR_QUEUE` | queue a read of 1, 2 or 4 consecutive words (the setup register's size) at the 21-bit big-SRAM chunk address written, which must be aligned to the size | the number of free entries in the request queue |
+| `SRAM_RD_DEST_ADDR` | the **setup register**, R/W (8.8): **destination** [16:0], the byte offset in **data memory** (region 0x00) of the next result; **size** [18:17], 00 = 32 bits, 01 = 64, 10 = 128, 11 reserved; **counter** [21:19], the write counter the results decrement; [31:22] reserved (the mode is always 0 and the dst the tile itself). The layout is the common header's (8.1) | the next result's destination, as advanced, with the size and counter |
+| `SRAM_RD_ADDR_QUEUE` | queue a read of 32, 64 or 128 bits (the setup register's size) at the 21-bit big-SRAM chunk address written, which must be aligned to the size | the number of free entries in the request queue |
 
-- **Issuing.** A store to `SRAM_RD_ADDR_QUEUE` puts an entry (the read address, the current destination and the size) into the **request queue**, then the destination advances by the size in words (1, 2 or 4), wrapping within 14 bits. **The store never stalls.**
-- **Alignment.** The address must be aligned to the size (a multiple of 2 for 64 bits, of 4 for 128). **A misaligned read is dropped and sets the read-port-error condition** (4.13), so it can't go unnoticed (owner, 2026-10-26); the destination advances anyway, as for a dropped overflow. Size 11 is undefined behaviour (meshsim flags it).
-- **The request queue** is a parameter of **at least 64 entries** (64 × 37 bits, ≈ 2.4 Kbit: a 21-bit address, a 14-bit destination and a 2-bit size; 64 in v1.0).
-- **Free entries** = depth − (queued + in flight). An in-flight counter rises when the SRAM read queue takes a read-port read and falls when that read's token is injected (the read carries a read-port bit, 4.5). Read-port results may come back in any order (4.1): each carries its own destination word.
+- **Issuing.** A store to `SRAM_RD_ADDR_QUEUE` puts an entry (the read address, the current destination, the size and the counter) into the **request queue**, then the destination advances by the size in bytes (4, 8 or 16). **The store never stalls.** The destination stays in data memory (owner, 2026-10-28: v1.1 let results land anywhere in controller memory, program memory included); running past its end is a software bug (2.2). Size 11 is undefined behaviour (meshsim).
+- **Alignment** (integrator, 2026-10-29). The read address must be aligned to the size (4.1). **A misaligned read is not performed, but its packet still goes out as usual with payload 0**, so the director counts it, and `ERRORS` [1], "bad packet or misaligned access", is set (4.13). (v1.1 dropped it and set the read-port error, [7].) The destination must be aligned to the size too; a misaligned destination makes a misaligned mode-0 packet, a bad packet at the director (3.1).
+- **The request queue** is a parameter of **at least 64 entries** (64 × 43 bits, ≈ 2.8 Kbit: a 21-bit address, a 17-bit destination, a 2-bit size and a 3-bit counter).
+- **Free entries** = depth − (queued + in flight). An in-flight counter rises when the SRAM read queue takes a read-port read and falls when that read's token is injected (the read carries a read-port bit, 4.5). Read-port results may come back in any order (4.1): each carries its own destination.
 - **Reading.** The queue drains into the SRAM read queue at the **lowest priority** (4.5), so it never delays the address generator's timetable or the GATHER engine. During an all-to-all it simply waits.
-- **Results come back as packets.** Each return becomes **one mode-6 packet** (a controller-memory write) **to the tile itself**: dst = `me`, addr [13:0] = the entry's destination (upper bits 0), size = the entry's size, payload = the 1, 2 or 4 words read. It leaves through the injection point like any other read return, loops back through the router into the traffic director, which writes it through port B and counts **`DMA_CM_REMAINING`** (4.12), as for any mode-6 packet. It must stay out of the command and reply blocks, like every mode-6 packet (invariant 11). Results may land in any order (4.1, 4.5): each lands at the word its entry named, so the order of issue still decides where each result goes. The read port has no path of its own into port B.
+- **Results come back as packets.** Each return becomes **one mode-0 packet to the tile itself**: dst = `me`, address = 0x00000000 + the entry's destination, size and counter = the entry's, payload = the 32, 64 or 128 bits read. It leaves through the injection point like any other read return, loops back through the router into the traffic director, which writes it through port B and decrements the entry's counter K cycles later (4.12). It must stay out of the command and reply blocks (invariant 11, meshsim). Results may land in any order (4.1, 4.5): each lands where its entry named, so the order of issue still decides where each result goes. The read port has no path of its own into port B.
 - **The loopback's cost** is small: a search step's fixed cost through it is 27.9 cycles [meas: meshsim, SearchBench; 1-cycle register loads, to be re-measured at 2], 2 cycles more than a direct path into port B, with the per-read cost unchanged; on a uniform split it costs ≈ 0.25K cycles (200,749 against 200,509, +0.12 % [meas: meshsim, SplitRun; 1-cycle register loads, to be re-measured at 2]).
-- **No stalls.** The queue is guaranteed to hold at least 64 entries, so a whole round of one search per owner (63 reads) can always be issued at once into an empty queue. Reading `SRAM_RD_ADDR_QUEUE` gives the free entries, and `DMA_CM_REMAINING` (readable) gives the results still outstanding. Software issues as many reads as are free. Everything issued minus everything outstanding is how many results have landed, but not which: results may land in any order (4.1), so a loop that needs particular results waits for its whole batch (`DMA_CM_REMAINING` = 0), as the search loop below does. A deeper queue only makes such a loop more efficient.
+- **No stalls.** The queue is guaranteed to hold at least 64 entries, so a whole round of one search per owner (63 reads) can always be issued at once into an empty queue. Reading `SRAM_RD_ADDR_QUEUE` gives the free entries, and the counter the program armed for the reads (readable, 8.7) gives the results still outstanding. Software issues as many reads as are free. Results may land in any order (4.1), so a loop that needs particular results waits for its whole batch (its counter done), as the search loop below does. A deeper queue only makes such a loop more efficient.
 - **Read-port results and incoming traffic.** Results return as packets through the tile's own injection point, loopback FIFO and eject output, sharing them with the tile's other outgoing read returns and with every packet arriving from the links. The network has no flow control (3.2): a full FIFO drops the packet, and that is an error.
 
   **Software rule: a tile does not issue read-port reads while packets are arriving for it, and does not start a phase that receives packets while read-port results are still outstanding.** In practice:
   - read-port reads run in steps of their own;
   - before a search step, every expected arrival has landed (its counter is done);
-  - before the next exchange, every read-port result has landed (`DMA_CM_REMAINING` is done).
+  - before the next exchange, every read-port result has landed (its counter is done).
 
-  The split works this way. C&C's next command word (mode 7, a command write), sent right after each GO (6.6), may land during a search step; it is one packet, uncounted, and it is allowed.
+  The split works this way. C&C 1's next command (uncounted mode-0 writes to the command block, 4.12), sent right after each GO (6.6), may land during a search step; it is allowed.
 
-  Memory-system deliveries (6.7) are incoming traffic like any other. The hardware tolerates little overlap, and programs must not rely on it [meas: meshsim, ReadPortGatherTest read-port tolerance; R results issued one per cycle at offsets 0–24 cycles from a mode-6 stream's start; v1.0 measurement; to be re-measured in v1.1]:
+  Memory-system deliveries (6.7) are incoming traffic like any other. The hardware tolerates little overlap, and programs must not rely on it [meas: meshsim, ReadPortGatherTest read-port tolerance; R results issued one per cycle at offsets 0–24 cycles from a controller-memory stream's start; v1.0 measurement; to be re-measured in v1.2]:
   - **Against a stream at one packet per cycle: 15 results, cumulatively over the whole stream.** The eject output serves one packet per cycle, so each result that takes an eject slot leaves one incoming packet waiting in its link's eject FIFO, and the stream never lets it drain. 16 results overflow the 16-entry FIFO at most offsets, however they are spread out.
   - **Against a stream at half rate: 32 results in one burst.** The link's FIFO does not grow (peak 1); the results' own loopback FIFO fills at half a packet per cycle and overflows at 33. The backlog drains between bursts.
 
   With the v1.1 loopback (4.5, 4.7) *(Proposed)* the loopback FIFO cannot overflow, so the half-rate case becomes a delay rather than a loss; and since the eject output now serves incoming packets before the loopback (4.7), results no longer take slots from a full-rate stream either. The rule stands until the simulator re-measures both cases (items 24 and 70). **meshsim has now re-measured** [meas: meshsim, part M]: **no loss** when read-port reads overlap incoming traffic, either an all-to-all or a full-rate stream, where v1.0 lost 561 packets. The rule is **unchanged for now and recorded as a candidate to relax** (item 116).
 
-  meshsim checks the rule: a packet from outside the tile, other than C&C's mode-7 command words, arriving while the tile has read-port results outstanding is a violation (invariant 14).
+  meshsim checks the rule: a packet from outside the tile, other than C&C 1's command writes, arriving while the tile has read-port results outstanding is a violation (invariant 14).
 
   *This rule exists because the routes have no flow control. If flow control is added, it should be revisited, together with the deadlock questions that flow control raises.*
-- **Overflow:** a store to `SRAM_RD_ADDR_QUEUE` with no free entry is a programming error: the read is dropped and the read-port-error condition is set (4.13). The destination advances on every store, a dropped read included (the simplest hardware: the increment needs no gating).
-- **An entry is freed when its return is injected.** `DMA_CM_REMAINING` counts the landing, so when it reaches 0 for every read a program has issued, every result is in data memory and the queue is empty, with at least 64 entries free. The converse does not hold: 64 free entries say every return has left, and the last results can still be in the loopback for a few cycles. Only `DMA_CM_REMAINING` says they have landed.
+- **Overflow:** a store to `SRAM_RD_ADDR_QUEUE` with no free entry is a programming error: the read is dropped and the read-port error, `ERRORS` [7], is set (4.13). The destination advances on every store, a dropped read included (the simplest hardware: the increment needs no gating). A dropped read sends no packet, so its counter stays short and the program waits; the error says why.
+- **An entry is freed when its return is injected.** Its counter counts the result K cycles after the director accepts it, by which time the result is in data memory (4.12), so when the counter is done every result is readable and the queue is empty, with at least 64 entries free. The converse does not hold: 64 free entries say every return has left, and the last results can still be in the loopback for a few cycles. Only the counter's done says they have landed.
 - **The search loop** (the split):
 
   ```c
-  while (SRAM_RD_ADDR_QUEUE < 64) ;      // once, before the first step: never stalls (below)
+  while (tile->SRAM_RD_ADDR_QUEUE < 64) ;     // once, before the first step: never stalls (below)
   for each step, while searches are active:
-      DMA_CM_REMAINING    = n_active;    // at most 63
-      SRAM_RD_DEST_ADDR   = results | SIZE_32; // results[i] belongs to the i-th read issued
-      for each active search: SRAM_RD_ADDR_QUEUE = its midpoint;
-      wfi();                             // every result has landed: the queue is empty again
+      tile->WRITE_COUNTER_2   = n_active;      // at most 63
+      tile->SRAM_RD_DEST_ADDR = (uint32_t)results | SIZE_32 | COUNTER_2;
+      for each active search: tile->SRAM_RD_ADDR_QUEUE = its midpoint;
+      wfi();                                   // every result has landed: the queue is empty again
       for each active search: compare results[i], update its bracket;
   ```
 
-  Each step issues at most 63 reads into an empty queue, so the loop needs no free-count checks. The initial poll is the only one, and it never stalls: any earlier read-port reads were in a phase that armed `DMA_CM_REMAINING` for them, and **a phase that arms counters ends with a `WFI` before it pulses `done`** (4.12), so their results have all landed and the queue is empty. The poll guards against a program that breaks that rule; it cannot catch results still in flight, so it is no substitute for the rule. Converged searches drop out (an early exit), so a step's reads scale with the searches still active. The split's search loop takes 12.35 cycles per search on uniform data, counted between the split's trace marks 0x600 and 0x601 (the step loop and the final key read, over all tiles, per search step) [meas: meshsim, SplitRun; measured with v1.1's mode-7 results and 1-cycle register loads, to be re-measured at 2]. The split's other traffic in `DMA_CM_REMAINING` (its vectors, an overlay copy) is kept out of a search step.
+  Each step issues at most 63 reads into an empty queue, so the loop needs no free-count checks. The initial poll is the only one, and it never stalls: any earlier read-port reads were in a phase that armed a counter for them, and **a phase that arms counters ends with a `WFI` before it pulses `done`** (4.12), so their results have all landed and the queue is empty. The poll guards against a program that breaks that rule; it cannot catch results still in flight, so it is no substitute for the rule. Converged searches drop out (an early exit), so a step's reads scale with the searches still active. The split's search loop takes 12.35 cycles per search on uniform data, counted between the split's trace marks 0x600 and 0x601 (the step loop and the final key read, over all tiles, per search step) [meas: meshsim, SplitRun; measured with v1.1's results and 1-cycle register loads, to be re-measured at 2]. The split's other traffic on the same counter (its vectors, an overlay copy) is kept out of a search step.
 - **Never between `WFI` and a start store.** The synchronised-start path must be identical on every tile (6.3); read-port traffic belongs before `done` or after the start.
 
 ### 4.4 GATHER engine
@@ -545,30 +541,30 @@ The controller reads its own big SRAM without stalling: it queues reads by store
 The sort reorders values by a sorted index stream twice (section 14, steps 2 and 6), and both operations have the same shape. **The address generator only streams the index, and a small GATHER engine after the traffic director does the value reads.** Gathers are **local only**.
 
 **How it works.**
-1. **The address generator streams the sorted (key, ordinal) words to the tile itself as mode 1** (a mode-1 stream with *d* = 0, 4.2). The ordinal is in bits 63–32, where augmenting stamps it (mode 5, 4.9). Only these 64-bit words cross the loopback.
-2. **The traffic director passes each mode-1 packet to the GATHER engine** through a **16-entry request queue**.
+1. **The address generator streams the sorted (key, ordinal) words to the tile itself as mode 4** (a mode-4 stream with *d* = 0, 4.2), the gather request. The ordinal is in bits 63–32, where augmenting stamps it (mode 3, 4.9). Only these 64-bit words cross the loopback.
+2. **The traffic director passes each mode-4 packet to the GATHER engine** through a **16-entry request queue**, with its counter field.
 3. **For each request the GATHER engine puts *k* gather-value reads in the SRAM read queue** (4.5), at `DMA_RECORD_BASE_ADDRESS` + 2*k*·ordinal + 2*i* for *i* = 0 … *k* − 1, 64 bits each. They rank above the address generator and the controller read port.
-4. **Each return goes out as a 64-bit mode-2 packet to the tile itself** (dst = `me`, addr 0): a **gather value**. The value reads stay 64-bit in v1.1; reading a row-aligned 128-bit value as one packet is section 13's item.
+4. **Each return goes out as a 64-bit mode-1 packet to the tile itself** (dst = `me`, address 0), **carrying the request's counter field**: a **gather value**. The value reads stay 64-bit in v1.1; reading a row-aligned 128-bit value as one packet is section 13's item.
 5. **The gather values land at `PTR[me]`,** which advances by 2 per packet. The controller sets it to the start of the reorder buffer. The index arrives in sorted order and the output is one sequential run, so value *i* lands at base + 2*k*·*i* with no addresses.
 
 **Parameters.**
-- **`DMA_RECORD_BASE_ADDRESS`** (8.7): in a gather run, a 21-bit chunk address, the start of the value buffer. Ordinals count 0, 1, 2, … from the base of the run that augmented the keys (4.9), so value *i* is at the base + 2*k*·*i* with no offset arithmetic. One base serves each run: no run both augments and gathers.
+- **`DMA_RECORD_BASE_ADDRESS`** (8.7): in a gather run, a 21-bit chunk address, the start of the value buffer, **aligned to a record** (even). Ordinals count 0, 1, 2, … from the base of the run that augmented the keys (4.9), so value *i* is at the base + 2*k*·*i* with no offset arithmetic. One base serves each run: no run both augments and gathers.
 - ***k*:** the value size in records, **1–8**, a `DMA_CONFIG` field (*k* − 1 in [26:24], 8.5).
 - **`PTR[me]`:** the output start.
 
 **Datapath.**
-- **Each request-queue entry holds only the 20-bit ordinal** (payload bits 51–32); the key half and bits 63–52 are dropped.
-- **The start address** `DMA_RECORD_BASE_ADDRESS` + 2*k*·ordinal is computed in the cycle a request reaches the queue's head, and its first read is offered the next cycle. The *k* reads follow, one offered per cycle at priority 1 (4.5), each stepping the address by 2 and pushing a token that sends the value back to the tile as mode 2. Addresses wrap mod 2²¹, as every chunk address does, and need no alignment (4.1).
-- **A mode-1 packet arriving with the queue full** is dropped and sets the GATHER-queue-overflow condition (4.13).
-- **GATHER busy** (`TILE_STATUS`, 8.2): the request queue is non-empty, or a request is part-way through its *k* reads. Reads issued but not yet landed are not included; `DMA_SRAM_REMAINING` covers their landing.
+- **Each request-queue entry holds only the 20-bit ordinal** (payload bits 51–32) and the 3-bit counter field; the key half and bits 63–52 are dropped.
+- **The start address** `DMA_RECORD_BASE_ADDRESS` + 2*k*·ordinal is computed in the cycle a request reaches the queue's head, and its first read is offered the next cycle. The *k* reads follow, one offered per cycle at priority 1 (4.5), each stepping the address by 2 and pushing a token that sends the value back to the tile as mode 1. With an even base every read is aligned; with an odd one each read is not performed, its gather value goes out with payload 0, and `ERRORS` [1] is set (4.1). Running past the end of big SRAM is a software bug (4.1).
+- **A mode-4 packet arriving with the queue full** is dropped and sets GATHER queue overflow, `ERRORS` [6] (4.13).
+- **GATHER busy** (`STATUS` [2], 8.2): the request queue is non-empty, or a request is part-way through its *k* reads. Reads issued but not yet landed are not included; their write counter covers their landing.
 
-**Counting.** Mode-1 requests are **not** counted. Only the gather values (mode 2) count down `DMA_SRAM_REMAINING`, as any mode-2 arrival does, so a gather of *n* values sets it to *n*·*k*. Counters done (`WAKE_EVENTS` [9], 4.12) is set once the last gather value has been written and `mem_idle` is set.
+**Counting** (owner, 2026-10-28). Gather requests (mode 4) are **never** counted, whatever their counter field says: they aren't writes. **Their counter field is passed on to the gather values** (mode 1), which are counted like any other write as they pass the traffic director (guarantee C, 4.10), so a gather of *n* values arms that counter with *n*·*k*. Its done event, and counters done (4.12), follow K cycles after the last gather value's acceptance.
 
 **Rate.** Every value costs 1 request packet plus *k* gather-value packets through the one injection point and the one eject, so **≈ *k* + 1 cycles per value**: 3 at *k* = 2, about 196K cycles per 64K values [estimate]. The value reads (*k* per value, 64 bits each) and the gather values' writes fit within one access per cycle per area if index, values and output sit in three different areas (4.1).
 
-**Back-pressure is implicit.** The address generator gets a turn in the SRAM read queue only when no gather value is waiting, so once requests are queued its index reads stop and the queue drains. The queue then holds at most what was already in flight: index reads issued before the first request looped back, about the read latency plus the loopback, ≈ 10 at one per cycle, under 16 [estimate]. A tile's own sources cannot outrun the engine: requests from the address generator wait for the SRAM read queue, where the GATHER engine outranks it, and requests from the send port share the injection point with the gather values. With *k* = 8 and 64 requests sent as fast as the send port goes, the queue peaked at 0 of 16 [meas: meshsim, CondTest's GATHER probe]. So the queue overflows only on a fault (4.13, condition 6, H). The rate under a heavier read-queue load from the tile's other clients, which can only slow the sources further, is *(Open)* (section 13). A gather phase sends only to the tile itself, so there is no network timetable for the waiting to disturb.
+**Back-pressure is implicit.** The address generator gets a turn in the SRAM read queue only when no gather value is waiting, so once requests are queued its index reads stop and the queue drains. The queue then holds at most what was already in flight: index reads issued before the first request looped back, about the read latency plus the loopback, ≈ 10 at one per cycle, under 16 [estimate]. A tile's own sources cannot outrun the engine: requests from the address generator wait for the SRAM read queue, where the GATHER engine outranks it, and requests from the send port share the injection point with the gather values. With *k* = 8 and 64 requests sent as fast as the send port goes, the queue peaked at 0 of 16 [meas: meshsim, CondTest's GATHER probe]. So the queue overflows only on a fault (4.13, `ERRORS` [6], H). The rate under a heavier read-queue load from the tile's other clients, which can only slow the sources further, is *(Open)* (section 13). A gather phase sends only to the tile itself, so there is no network timetable for the waiting to disturb.
 
-**Why gathers are local.** Mode 1 is sent only to the tile itself (invariant 10). A remote gather would work mechanically, but its gather values would land grouped by owner at `PTR[owner]`, not in one sorted sequence, and the requester's eject would see *k* packets per request with the owner's address generator stalling, which breaks the timetable.
+**Why gathers are local.** Mode 4 is sent only to the tile itself (invariant 10). A remote gather would work mechanically, but its gather values would land grouped by owner at `PTR[owner]`, not in one sorted sequence, and the requester's eject would see *k* packets per request with the owner's address generator stalling, which breaks the timetable.
 
 ### 4.5 SRAM read queue, return path and injection
 
@@ -579,10 +575,11 @@ The sort reorders values by a sorted index stream twice (section 14, steps 2 and
 | field | meaning |
 |---|---|
 | source address | the chunk address to read, consumed by the memory (kept in the return for debugging) |
-| destination address | the outgoing packet's addr field: 0, the destination word for modes 3, 6 and 9, or for a read-port read the controller-memory word for its result (a mode-6 packet to the tile itself, 4.3) |
+| destination address | the outgoing packet's 32-bit address: for mode 0 the stream's current destination address, for a read-port read its result's place in data memory (a mode-0 packet to the tile itself, 4.3); otherwise 0 |
 | width | 32, 64 or 128 bits; stamped as the outgoing packet's size |
+| counter | the outgoing packet's counter field |
 | mode | the outgoing packet's mode |
-| dst | the outgoing packet's tile |
+| dst | the outgoing packet's destination |
 
 **Request priority,** highest first:
 1. **gather value:** the GATHER engine's value reads (4.4);
@@ -591,60 +588,60 @@ The sort reorders values by a sorted index stream twice (section 14, steps 2 and
 
 The address generator is never starved in a digit all-to-all, where it is the only source besides a waiting read port.
 
-**The SRAM read queue has no storage of its own.** It is the fixed-priority choice among its three clients plus the steering to the area (addr [20:17] the area, [16:2] the row, [1:0] the chunk, at meshsim's default geometry). It takes the chosen request only if **the area has room** (4.1) **and a token is free** (below). Otherwise nobody is served that cycle: lower-priority clients do not get the slot (no bypass). A refusal of the address generator in a group run is drift (4.2, 4.13). **Part 1 of a spanning read** (4.1) goes ahead of every client, waiting while its area is full; the read is one request and one token.
+**The SRAM read queue has no storage of its own.** It is the fixed-priority choice among its three clients plus the steering to the area (chunk-address bits [20:17] the area, [16:2] the row, [1:0] the chunk, at meshsim's default geometry). It takes the chosen request only if **the area has room** (4.1) **and a token is free** (below). Otherwise nobody is served that cycle: lower-priority clients do not get the slot (no bypass). A refusal of the address generator in a group run is drift (4.2, 4.13).
 
 **Tokens and the return queues.** There are **64 tokens**, one pool shared by the three clients *(Proposed, accepted)*, and every read the queue takes holds one. The **address generator** and the **GATHER engine** each have an **in-order return queue**: a plain queue of that client's held reads' metadata, the request's fields, in the order its reads were taken. A read-port read also holds a token; its metadata travels with the read and carries a read-port bit (4.3). The return queues replace v1.1's earlier single token FIFO in request order (item 74).
-- **Each ordered client's returns come back in its own order** (4.1, owner, 2026-10-23): the big SRAM hands back the address generator's reads in the order it issued them, and the GATHER engine's in theirs, so each such return pairs with the head of its client's return queue and goes to injection with it. The order is required within a client: mode-2 packets and gather values land at `PTR` in arrival order, so a stream's packets must leave in the order the stream issued them. **Between clients there is no order,** so a gather's scattered reads never wait behind a stream's sequential ones. **Read-port returns come back in any order** (4.3). (In v1.0 each token had a 128-bit data slot and a valid bit, the areas returned rows in any order into their tokens' slots, and the head was released when its data was valid.)
+- **Each ordered client's returns come back in its own order** (4.1, owner, 2026-10-23): the big SRAM hands back the address generator's reads in the order it issued them, and the GATHER engine's in theirs, so each such return pairs with the head of its client's return queue and goes to injection with it. The order is required within a client: mode-1 packets and gather values land at `PTR` in arrival order, so a stream's packets must leave in the order the stream issued them. **Between clients there is no order,** so a gather's scattered reads never wait behind a stream's sequential ones. **Read-port returns come back in any order** (4.3). (In v1.0 each token had a 128-bit data slot and a valid bit, the areas returned rows in any order into their tokens' slots, and the head was released when its data was valid.)
 - **Injection order among the clients** *(Proposed, accepted)*: in a cycle when more than one client has a return ready, the injection point takes them by the request priority above, gather value first, then the address generator, then the read port. A return that loses waits, and its client's later returns wait behind it.
-- **One client per order-placed destination** (owner, 2026-10-23). Order holds only within a client, so **a tile never has two clients sending order-placed packets to the same destination at once**: modes 2, 4 and 5 into the same `PTR` entry of the same receiver, or mode 9 into the same order-placed port of a peripheral (a replayer queue). Such a mix would interleave unpredictably. The clients are the address generator, the GATHER engine and, as a source of packets, the send port (4.11) (owner, 2026-10-23, item 80). **A peripheral's order-placed port takes one source at a time** across sources too (owner, 2026-10-26): mode 9 may come from any source (4.17.5), so no two tiles, or a tile and a non-tile endpoint, feed the same queue port at once. meshsim flags a violation (invariant 18).
+- **One client per order-placed destination** (owner, 2026-10-23). Order holds only within a client, so **a tile never has two clients sending order-placed packets to the same destination at once**: modes 1, 2 and 3 into the same `PTR` entry of the same receiver, or writes into the same order-placed port of a peripheral (a replayer queue, 4.19.10). Such a mix would interleave unpredictably. The clients are the address generator, the GATHER engine and, as a source of packets, the send port (4.11) (owner, 2026-10-23, item 80). **A peripheral's order-placed port takes one source at a time** across sources too (owner, 2026-10-26): a peripheral's region may be written from any source (4.17.5), so no two tiles, or a tile and a non-tile endpoint, feed the same queue port at once (meshsim flags a violation, invariant 18).
 - **A token is freed** when its packet is injected, **except a loopback packet's** *(Proposed)*: a packet for the tile itself (dst = `me`) holds its token until it leaves the loopback FIFO for the eject selector (4.7). **The send port's loopback packets take a token too:** a send-port packet for the tile itself, or a broadcast (whose copy for the tile itself goes through the loopback), waits in the holding register until a token is free, takes it when injected and holds it the same way (4.11).
 - **So the loopback FIFO cannot overflow,** whatever arrives from the links: at most 64 packets are ever on their way into it or in it, and it is at least 64 deep (4.7). When the eject output is busy with incoming traffic, the tile's own loopback reads wait for tokens instead. In a group run that wait is a refusal like any other (drift, 4.2), so the all-to-alls, which send little to the tile itself, are unaffected in a correct program. **This exists only because the mesh has no flow control** (3.2); with flow control it would be revisited.
-- **Chunk selection,** for an access starting at **any chunk** (no alignment, 4.1): the data is taken from the returned row, or from two consecutive rows for an access that spans a row boundary, starting at the address's chunk.
+- **Chunk selection.** Every access is naturally aligned (4.1), so the data is taken from the one returned row, starting at the address's chunk.
   - a 32-bit read gives one chunk, a 32-bit packet (payload [31:0]);
   - a 64-bit read gives two consecutive chunks, a 64-bit packet;
   - a 128-bit read gives four consecutive chunks, **one 128-bit packet**. (v1.0 sent them as two 64-bit packets on consecutive cycles.)
-- **An out-of-range read** (a smaller device, 4.1) returns payload 0, in its client's order like any other.
+- **A misaligned read** is not performed: the return carries payload 0 and goes out as usual, in its client's order (4.1). **An out-of-range read** is undefined (4.1).
 
-A return carries the request's fields, its size among them, plus the data, and goes straight to the injection point as one packet. A read-port return goes there like the others, as a mode-6 packet to the tile itself (4.3).
+A return carries the request's fields, its size among them, plus the data, and goes straight to the injection point as one packet. A read-port return goes there like the others, as a mode-0 packet to the tile itself (4.3).
 
-**The SRAM write queue** is the other half: one queue of 32-, 64- and 128-bit writes from the traffic director (modes 2–5, 4.9). The two queues meet only at the areas, which serve in arrival order (4.1). There are no client selectors and no priority bits.
+**The SRAM write queue** is the other half: one queue of 32-, 64- and 128-bit writes from the traffic director (mode 0 to region 0x03, and modes 1–3, 4.9). The two queues meet only at the areas, which serve in arrival order (4.1). There are no client selectors and no priority bits.
 
 **The injection point** takes at most one packet per cycle, from:
 1. **the SRAM read queue's returns;**
 2. **the controller's send port** (4.11).
 
-Each supplies dst, mode, addr, size and payload (7 + 4 + 21 + 2 + 128 bits); the router adds src.
-- **Priority:** read returns first; the controller's packet waits in its holding register, with no fairness, and a send-port packet for the tile itself or a broadcast also waits for a free token (above). Every return, 128-bit ones included, takes the injection point for one cycle. Injection never stalls (the network has no flow control; a full output FIFO is a router overflow, condition 0).
-- **C&C does not use this path:** its packets enter tile 0's router through tile 0's fifth port (4.16).
+Each supplies dst, mode, counter, address, size and payload (7 + 3 + 3 + 32 + 2 + 128 bits); the router adds src and the reserved zeros (3.1).
+- **Priority:** read returns first; the controller's packet waits in its holding register, with no fairness, and a send-port packet for the tile itself or a broadcast also waits for a free token (above). Every return, 128-bit ones included, takes the injection point for one cycle. Injection never stalls (the network has no flow control; a full output FIFO is a router overflow, `ERRORS` [0]).
+- **The injection point keeps these two sources** (owner, 2026-10-28). A controller's packets for the mesh enter tiles 0–2's routers through their fifth ports (4.16), and a peripheral that sends uses a router port of its own (4.17.9); neither passes through a tile's injection point.
 
 The injected packet takes the same route decision as a link input (4.6, with "arriving direction" = none):
 - a packet whose dst is `me` or 126 goes to the eject queues via the **loopback** input;
-- a packet for the endpoint attached at this tile's fifth port goes to the fifth-port output (4.16): today, dst 64 at tile 0;
+- a packet for the endpoint attached at this tile's fifth port goes to the fifth-port output (4.16): dst 64, 65 and 66 at tiles 0, 1 and 2;
 - otherwise it goes to a link output queue.
 
 ### 4.6 Route blocks
 
 *Figures 4.1–4.3.*
 
-There is one route block per link input (from left, from right, from up, from down) and one for the loopback; tile 0 has a sixth, for the input from C&C (4.16). Each cycle a route block takes the packet arriving on its input (idle packets are discarded) and forwards it, in one cycle, to one or more output queues (4.7) or the eject queue.
+There is one route block per link input (from left, from right, from up, from down) and one for the loopback; tiles 0, 1 and 2 each have a sixth, for the input from their controller (4.16). Each cycle a route block takes the packet arriving on its input (idle packets are discarded) and forwards it, in one cycle, to one or more output queues (4.7) or the eject queue.
 
-**Unicast (dst in 0–63, 64).** The route is fixed per (source tile s, destination d): horizontal first, then vertical.
-- Let k = (d − s) mod 64 (for d = 64 use d = 0).
+**Unicast (dst in 0–66).** The route is fixed per (source tile s, destination d): horizontal first, then vertical. A controller's id stands for the tile it is attached to, id − 64, as source and as destination.
+- Let k = (d − s) mod 64 (for d = 64–66 use d − 64).
 - The machine holds a 64-entry **offset table** `hops[k] = (b_k, a_k)`, a hard-wired ROM identical on every tile, with k ≡ 8·a_k + b_k (mod 64), |b_k| ≤ 4, |a_k| ≤ 4 and |a_k| + |b_k| minimal.
 - Where the minimum is not unique (only for a_k = ±4), the table records the schedule's choice: offsets 29–32 go down and 33–35 go up (`spec/schedule.md`).
 - A packet travels |b_k| hops horizontally (right if b_k > 0, left if b_k < 0), then |a_k| hops vertically (down if a_k > 0, up if a_k < 0).
 
 A route block decides from src, dst and `me`:
-1. k = (dst − src) mod 64 (dst 64 → 0); look up (b_k, a_k).
+1. k = (dst − src) mod 64 (src or dst 64–66 → id − 64); look up (b_k, a_k).
 2. Horizontal progress: if b_k ≥ 0, `hb = (col(me) − col(src)) mod 8`, else `hb = −((col(src) − col(me)) mod 8)`.
 3. If hb ≠ b_k: forward horizontally in the direction of sign(b_k).
-4. Else if me ≠ d: forward vertically in the direction of sign(a_k).
-5. Else: EJECT (place in this route block's eject FIFO) — except a packet for the endpoint attached at this tile's fifth port (today dst 64 at tile 0), which goes to this route block's FIFO of the fifth-port output (4.16).
+4. Else if me ≠ d (d = dst, or dst − 64 for a controller): forward vertically in the direction of sign(a_k).
+5. Else: EJECT (place in this route block's eject FIFO) — except a packet for the controller attached at this tile's fifth port (dst = 64 + me at tiles 0–2), which goes to this route block's FIFO of the fifth-port output (4.16).
 
-Packets from C&C carry src = 64 and are treated as tile 0 for routing. C&C's route block on tile 0 decides as an injection at tile 0 (arriving direction none).
+Packets from a controller carry its id (64–66) as src and are routed as from its tile (src − 64). Its route block on that tile decides as an injection there (arriving direction none).
 
-**Broadcast (dst = 126).** Every tile receives exactly one copy. With s = src (64 treated as 0):
-- **On injection at the source** (for C&C, at C&C's route block on tile 0): eject a copy, and send copies right, left, down and up. A broadcast is not delivered to C&C.
+**Broadcast (dst = 126).** Every tile 0–63 receives exactly one copy. With s = src (64–66 treated as src − 64):
+- **On injection at the source** (for a controller, at its route block on its tile): eject a copy, and send copies right, left, down and up. A broadcast is not delivered to the controllers.
 - **Arriving from the left:** eject a copy; if `(col(me) − col(s)) mod 8 ≠ 4`, send a copy right; send copies down and up.
 - **Arriving from the right:** eject a copy; if `(col(s) − col(me)) mod 8 ≠ 3`, send a copy left; send copies down and up.
 - **Arriving from up:** eject a copy; if `(row(me) − row(s)) mod 8 ≠ 4`, send a copy down.
@@ -654,7 +651,7 @@ Packets from C&C carry src = 64 and are treated as tile 0 for routing. C&C's rou
 
 *Figures 4.1–4.3.*
 
-There are five outputs: to-right, to-left, to-down, to-up and eject. Each has one FIFO per possible feeder, **16 entries** *(param `queue_depth`)* of one **169-bit** packet, except the eject output's **loopback FIFO**, which is **at least as deep as the token count** (4.5): 64 entries at the default *(Proposed)*:
+There are five outputs: to-right, to-left, to-down, to-up and eject. Each has one FIFO per possible feeder, **16 entries** *(param `queue_depth`)* of one **256-bit** link word (3.1), except the eject output's **loopback FIFO**, which is **at least as deep as the token count** (4.5): 64 entries at the default *(Proposed)*:
 
 | output | feeders |
 |---|---|
@@ -666,80 +663,91 @@ There are five outputs: to-right, to-left, to-down, to-up and eject. Each has on
 
 That is 17 FIFOs per tile.
 - **Selection.** Each cycle each output's **selector** removes one packet from one non-empty FIFO and sends it out (onto the link for link outputs, 3.2; to the traffic director for eject). It is round-robin with a rotating pointer: it serves the first non-empty FIFO at or after the pointer, then moves the pointer one past it. Pointers are 0 at reset.
-- **The eject output serves its loopback FIFO last.** Its selector takes from the loopback FIFO only in a cycle when every other eject FIFO is empty (from-left, from-right, from-up, from-down, and on tile 0 from-C&C); those are served round-robin among themselves, as above. Incoming packets therefore never wait behind the tile's own traffic, so an eject FIFO fed by a link drains as fast as its link fills it, whatever the tile sends itself. The loopback can wait safely because it is token-protected (4.5): its sources simply hold back. A tile's self-stream now gets only the eject slots its links leave free; that this causes no drift in group runs is to be confirmed in simulation *(Open*, item 70*)*. (Before the request bus, the loopback FIFO was one of the round-robin's five.)
-- **Overflow.** A FIFO receives at most one packet per cycle from its feeder. A push to a full FIFO (full by its count before the cycle's pop, 4.13) is an **overflow**: the packet is lost and the router-overflow condition (4.13) records it. Overflow never occurs under a correct program, and the loopback FIFO cannot overflow at all: every packet entering it holds a token until it leaves (4.5).
+- **The eject output serves its loopback FIFO last.** Its selector takes from the loopback FIFO only in a cycle when every other eject FIFO is empty (from-left, from-right, from-up, from-down, and on tiles 0–2 from their controller); those are served round-robin among themselves, as above. Incoming packets therefore never wait behind the tile's own traffic, so an eject FIFO fed by a link drains as fast as its link fills it, whatever the tile sends itself. The loopback can wait safely because it is token-protected (4.5): its sources simply hold back. A tile's self-stream now gets only the eject slots its links leave free; that this causes no drift in group runs is to be confirmed in simulation *(Open*, item 70*)*. (Before the request bus, the loopback FIFO was one of the round-robin's five.)
+- **Overflow.** A FIFO receives at most one packet per cycle from its feeder. A push to a full FIFO (full by its count before the cycle's pop, 4.13) is an **overflow**: the packet is lost and router overflow, `ERRORS` [0] (4.13), records it. Overflow never occurs under a correct program, and the loopback FIFO cannot overflow at all: every packet entering it holds a token until it leaves (4.5).
 - **Order.** Packets are never reordered within a FIFO, so packets from one source to one destination arrive in the order sent.
-- **Every tile** has a fifth-port feeder FIFO on each of these five outputs and a sixth output, the fifth port's (4.16); they carry traffic only where something is attached (today tile 0's "from C&C" and "to C&C").
+- **Every tile** has a fifth-port feeder FIFO on each of these five outputs and a sixth output, the fifth port's (4.16); they carry traffic only where something is attached (tiles 0–2's, from and to C&C 1–3).
 
 ### 4.8 Traffic director
 
-*Figure 5.1.*
+*Figure 5.1 (at v1.1).*
 
-One unit straight after the eject selector, and **the only path into the tile**. It takes at most one packet per cycle and switches on the packet's **mode** alone:
+One unit straight after the eject selector, and **the only path into the tile**. It takes at most one packet per cycle and switches on the packet's **mode**, and for mode 0 on its address's **region** (2.2):
 
-| mode | goes to |
+| packet | goes to |
 |---|---|
-| 0, 10–15, and every bad packet (3.1: mode 5 at 128 bits, a misaligned mode 3, mode 7 above 32 bits, mode 8 at 128 bits) | dropped, uncounted; sets the bad-mode-or-size condition (4.13) |
-| 1 | the GATHER engine's request queue (4.4); never counted |
-| 2, 4, 5 | the write engine, at `PTR` (4.9); counted in `DMA_SRAM_REMAINING` |
-| 3 | the write engine: a write at the packet's addr (4.9); counted in `DMA_SRAM_REMAINING` |
-| 6 | port B of instruction or data memory: 1, 2 or 4 words by size (4.11); counted in `DMA_CM_REMAINING` |
-| 7 | port B of data memory: command slot addr[3:0] of the command block (4.12); never counted |
-| 8 | port B of data memory: the reply block, at word 2·src (4.12); counted in `DMA_REPLY_REMAINING` |
-| 9 | the peripheral's write port (4.17.5); counted on landing or drop; on a tile with no peripheral, dropped as a bad peripheral write (4.17.7) |
+| a bad packet (3.1) | dropped, uncounted; sets `ERRORS` [1] (4.13) |
+| mode 0, region 0x00 or 0x01 | port B of data or program memory: 32, 64 or 128 bits by size (4.11) |
+| mode 0, region 0x03 | the write engine: a write at the packet's address (4.9) |
+| mode 0, region 0x04–0x06 | that peripheral's write port (4.17.5) |
+| modes 1, 2 and 3 | the write engine, at `PTR` (4.9) |
+| mode 4 | the GATHER engine's request queue (4.4); never counted |
+| modes 5–7 | discarded: no write, no count, no error (meshsim flags them) |
+
+**Counting: the delay line** (owner and Tony, 2026-10-28). For each packet it accepts in modes 0–3 with a counter field of 1–4, the director puts the counter's id into a **K-stage delay line**, and K cycles later that `WRITE_COUNTER` is decremented (4.12). A counter field of 0, or a reserved 5–7, decrements nothing. At most one packet per cycle leaves the director, so a counter takes at most one decrement per cycle. Unexpected arrival is judged at the decrement (4.12).
+
+**K** (integrator, 2026-10-29; owner, 2026-10-29) is a parameter, **default 8**, large enough that by the time a packet's counter decrements, **its write is in place**:
+- **controller memory:** port B lands a write `cm_latency` = 2 cycles after the director [built];
+- **a peripheral** lands it within `rp_latency` = 2 cycles (4.17.8);
+- **big SRAM:** a write only has to have **entered its area's request queue**, which is served in arrival order, so a read issued after the counter reaches 0 queues behind it and cannot overtake it (4.1). With spanning gone (4.1) the write path is fixed, and its loaded worst case is **2·L + 3** cycles, L = `ts_engine_latency` [derived];
+- **the tables:** a `PTR` or `HIST` update is readable through the table window **L + 4** cycles after acceptance [derived] (guarantee A, 4.10).
+
+So **K ≥ max(2·L + 3, L + 4, `cm_latency`, `rp_latency`)**: 5 at the default L = 1, and K = 8 covers L ≤ 2. meshsim errors if K is set below the formula, and its measurement of the margin (item S1, 13) becomes a check of the formula. Write combining (item 3) stays out unless it fits under K.
+
+**Command landed** (owner, 2026-10-28). The director decodes command slot 0 from the address: **a write that comes in through the director and covers command slot 0 sets "command landed" when it lands in port B**, not when the director accepts it, so the event (and READY, and the boot ROM's jump, 6.2) follows the write. Any such write sets it, a 64- or 128-bit write starting at slot 0 included (it also writes slots 1–3, harmlessly). The controller's own store to slot 0 doesn't (4.12).
 
 **Consequences:**
 - **Port B has one writer.** Port B of both controller memories is written only by the director, at most once per cycle (up to 128 bits across its four banks, 4.11), so it needs no arbitration and no ownership setting.
-- **Routing is the same in HALT and in RUN; only counting differs.** Nothing is forced in HALT: C&C can load the controller memories (modes 6 and 7) while the tiles are halted, and big SRAM is staged with mode 2 once the loader has set `PTR[64]` (6.2). **In HALT the director lands every packet but decrements no counter and sets no unexpected arrival** (owner, 2026-10-26), which covers boot loads and staging.
+- **No state of the unit changes routing or counting.** A unit asleep in its boot ROM lands uncounted writes like any other (6.2); there is no HALT state (6.1).
 - **Unicast and broadcast** are handled alike at the director; dst does not matter here.
-- **src is used** by the router (routes, the broadcast tree), by modes 2 and 5 (`PTR[src]`), by mode 8 (the reply block, by source) and by C&C (READY bits are per line, not per packet). It is never stored in memory.
-- **At a connected fifth port,** packets for the attached endpoint leave through the fifth-port output instead of the eject path (4.16): today, C&C's (dst 64) at tile 0.
+- **src is used** by the router (routes, the broadcast tree) and by modes 1 and 3 (`PTR[src]`). It is never stored in memory.
+- **At a connected fifth port,** packets for the attached controller leave through the fifth-port output instead of the eject path (4.16).
 
-The controller-memory path carries modes 6–8 to port B with a fixed latency (`cm_latency` = 2 [built]) and needs no queue. Mode 9 goes to the peripheral's write port, one packet per cycle, and lands `rp_latency` = 2 cycles later with no queue, a requirement on every peripheral (4.17.5, 4.17.8) *(Proposed, item 48: the value)*; the replayer's address map, sizes and ownership are in 4.19.10. **The director decrements the down-counters** (4.12) as it accepts each counted packet, in RUN only, and keeps `cm_idle`; `DMA_PERIPH_REMAINING` alone is decremented when its packet lands or is dropped (4.17.5). Packets accepted are then in the write path or the port-B pipeline, covered by `mem_idle` and `cm_idle`, which counters done waits for (4.1, 4.12).
+The controller-memory path carries mode-0 packets for regions 0x00 and 0x01 to port B with a fixed latency (`cm_latency` = 2 [built]) and needs no queue. A peripheral's write port takes one packet per cycle and lands it within `rp_latency` = 2 cycles with no queue, a requirement on every peripheral (4.17.5, 4.17.8) *(Proposed, item 48: the value)*; the replayer's address map, sizes and ownership are in 4.19.10. v1.1's `cm_idle` and `mem_idle` are gone from the hardware (owner, 2026-10-28): K covers both paths, so counters done waits for the counters only (4.12).
 
 ### 4.9 DMA write engine
 
-*Figures 5.1, 5.2.*
+*Figures 5.1, 5.2 (at v1.1).*
 
-The write engine receives modes 2–5 from the director (at most one per cycle, through a 4-entry input FIFO) and queues each as one write at its area (4.1): the payload at its size for modes 2–4, a 64-bit record for mode 5. **The packet's mode says where every payload goes; the engine has no mode of its own.**
+The write engine receives big-SRAM writes from the director (at most one per cycle, through a 4-entry input FIFO), mode 0 to region 0x03 and modes 1–3, and queues each as one write at its area (4.1): the payload at its size for modes 0–2, a 64-bit record for mode 3. **The packet's mode says where every payload goes; the engine has no mode of its own.**
 
 | mode | target chunk address |
 |---|---|
-| 2 | `PTR[src]`, then `PTR[src]` += 1, 2 or 4 (the size in chunks) |
-| 3 | `PTR[t]`, *t* = the payload's bucket digit (4.15), then `PTR[t]` += 1, 2 or 4 |
-| 4 | `PTR[src]`, then `PTR[src]` += 2: the record (key, ordinal), from a 32- or 64-bit packet's low 32 bits (augmenting, below) |
-| 9 | addr, the packet's own chunk address; no `PTR` access (below) |
+| 0 | the packet's address: its byte offset / 4; no `PTR` access (below) |
+| 1 | `PTR[src]`, then `PTR[src]` += 1, 2 or 4 (the size in chunks) |
+| 2 | `PTR[t]`, *t* = the payload's bucket digit (4.15), then `PTR[t]` += 1, 2 or 4 |
+| 3 | `PTR[src]`, then `PTR[src]` += 2: the record (key, ordinal), from a 32- or 64-bit packet's low 32 bits (augmenting, below) |
 
 **`PTR[0..255]`** is its own memory (4.10). Each entry is a 21-bit chunk address set by the controller between phases.
-- **Modes 2, 4 and 5 are the same write:** at `PTR[i]`, then `PTR[i]` += the chunks written, with *i* = src for modes 2 and 5 (0–63, or 64 for C&C) and the payload's bucket digit for mode 4 (0–255). Modes 2 and 4 write the payload at its size, 1, 2 or 4 chunks; mode 5 always writes a 2-chunk record. The mode picks the index, and mode 5 also augments.
-- **A 32-bit packet in mode 2 or 4 writes 32 bits** and steps `PTR` by 1. (v1.0 wrote every packet as 64 bits, a 32-bit element with a zero high word, and stepped by 2.)
-- **One user per phase:** `PTR[src]` (modes 2 and 5, which may mix) or `PTR[t]` (mode 4), never both.
+- **Modes 1, 2 and 3 are the same write:** at `PTR[i]`, then `PTR[i]` += the chunks written, with *i* = src for modes 1 and 3 (0–63, or 64–66 for a controller) and the payload's bucket digit for mode 2 (0–255). Modes 1 and 2 write the payload at its size, 1, 2 or 4 chunks; mode 3 always writes a 2-chunk record. The mode picks the index, and mode 3 also augments.
+- **A 32-bit packet in mode 1 or 2 writes 32 bits** and steps `PTR` by 1.
+- **One user per phase:** `PTR[src]` (modes 1 and 3, which may mix) or `PTR[t]` (mode 2), never both.
 - **One sending client per entry at a time** (owner, 2026-10-23): a sender's packets into one `PTR` entry land in order only if one of its clients sends them, since big SRAM orders reads per client, not globally (4.1, 4.5, invariant 18). A tile's own stream into `PTR[me]` and its gather values into `PTR[me]`, for example, never run at once.
-- **`PTR[64]` is C&C's staging pointer** (6.2). Each tile's loader sets it to the tile's own staging area. C&C stages only while tiles are halted, or after a command that tells them what to expect (6.2), never during a mesh operation, so staging never meets a mode-4 phase. But a mode-4 phase uses all 256 entries and overwrites `PTR[64]`, so **the loader re-sets `PTR[64]` after any phase with mode 4**, before C&C stages again.
+- **`PTR[64]` is no longer special** (owner, 2026-10-28): boot and staging images go to region 0x03 by address (6.2), so uncounted traffic never touches `PTR` or `HIST`, and modes 1–3 are always counted (3.1).
 - **The receiver decides where each sender's stream lands.** For an all-to-all it sets `PTR[p]` from the counts it already has (prefix sums), so senders need no destination addresses.
-- **Stepping by size is general.** In-order delivery means a value sent as several mode-2 packets from one sender lands contiguously, whatever their sizes; the gather values of a *k*-record value are *k* 64-bit packets (4.4).
-- **No alignment.** `PTR` may hold any chunk address (4.1). A write that spans a row boundary (a 64-bit write at chunk 3 of a row, or a 128-bit write not at chunk 0) is split by the write engine into two area accesses with per-chunk enables: part 0 goes when its area accepts it, part 1 follows ahead of every other write, and the engine's next write waits meanwhile (4.1).
+- **Stepping by size is general.** In-order delivery means a value sent as several mode-1 packets from one sender lands contiguously, whatever their sizes; the gather values of a *k*-record value are *k* 64-bit packets (4.4).
+- **Alignment** (integrator, 2026-10-29). A `PTR` must be aligned to the size of the **writes** landing through it: for mode 3 to a record (even), whatever the packets' size (4.1). **A write through a misaligned `PTR` is dropped by the engine but still counted**, since its decrement was scheduled when the director accepted it, and sets `ERRORS` [1] (4.13). *(Proposed: the pointer still advances by the size, as for a good write.)* meshsim flags it.
 - **The pointer round trip.** Every write reads and updates its pointer in `PTR`; the packet waits in a **pointer stage** until the old pointer returns, across `ts_engine_latency` each way. The stage holds **2·`ts_engine_latency` + 2 entries** (4 at the default 1) [meas: meshsim, peaks 3, 5, 7, 9 at `ts_engine_latency` 1–4].
-- **Mode 3 writes at an explicit address** *(Proposed: its path)*. The packet's addr is the chunk address. It passes the pointer stage in order with the writes around it, so the engine's writes still reach the areas in arrival order, but it makes no `PTR` access and moves no pointer. It writes the payload at its size, wraps mod 2²¹ and follows 4.1's out-of-range rule. **Its addr is aligned to its size** (owner, 2026-10-26): a multiple of 2 for 64 bits and of 4 for 128, so a mode-3 write never spans two rows; a misaligned one is a bad packet, dropped by the traffic director before it reaches the engine with the bad-mode-or-size condition (3.1), so the mistake cannot go unnoticed. Count-on-arrival ignores it and no counter counts it (4.12). The memory system delivers reads into big SRAM this way (6.7), and a controller can write a chosen address from the send port without touching `PTR[me]`. (Before the request bus there was no explicit-address write: every big-SRAM write landed through `PTR`.)
-- **A 128-bit packet is one write:** at chunk 0 of a row it is one full-row access, and elsewhere it spans two rows like any spanning write. (v1.0 sent a 128-bit value as two 64-bit packets, and combining them into one access was open.)
+- **Mode 0 writes at an explicit address.** Its byte offset / 4 is the chunk address. It passes the pointer stage in order with the writes around it, so the engine's writes still reach the areas in arrival order, but it makes no `PTR` access and moves no pointer. It writes the payload at its size. Its alignment is checked at the director, where a misaligned one is a bad packet (3.1); out of range is undefined (4.1). Count-on-arrival ignores it. The memory system delivers reads into big SRAM this way (6.7), boot and staging images land this way (6.2), and a controller can write a chosen address from the send port without touching `PTR[me]`.
+- **A 128-bit packet is one write,** one full-row access.
 
 **Count-on-arrival** (`DMA_CONFIG`'s histogram digit, 0 = off). For every accepted payload, the counter at the payload's histogram digit (4.15) is incremented in `HIST` (4.10).
-- It works with modes 2, 4 and 5, not with mode 3.
-- In a mode-4 pass, the pointer update and the counter update are taken in the same cycle, so a pass can bucket by the current digit and count the next one at one payload per cycle [meas: meshsim].
+- It works with modes 1, 2 and 3, not with mode 0.
+- In a mode-2 pass, the pointer update and the counter update are taken in the same cycle, so a pass can bucket by the current digit and count the next one at one payload per cycle [meas: meshsim].
 - **In an all-to-all**, the receiver counts the first digit of its next sort while the keys arrive, which saves a counting pass over the records: one full pass per sort.
 
-**Augmenting** (mode 5). A mode-5 packet is 32 or 64 bits; the write engine keeps its low 32 bits, the key, and writes the 64-bit record (key, **ordinal**), the ordinal in bits 63–32: (target chunk address − `DMA_RECORD_BASE_ADDRESS`) / 2, which counts **0, 1, 2, …** across the buffer. A 128-bit mode-5 packet is a bad packet, dropped by the traffic director before it reaches the engine (3.1). Records land 2 chunks apart starting at the base, so the difference is always even, whether the buffer starts at an even or an odd chunk. The sender chooses augmenting per stream; the receiver sets `DMA_RECORD_BASE_ADDRESS` (8.7) for the run.
-- **The ordinal is a position in the buffer, not an arrival count.** With mode 2, each sender's keys land in their own run at `PTR[src]`, and that sender's values land in the same order in the value buffer, so key *i*'s value is value *i* only if *i* counts buffer positions. Packets from different senders interleave on arrival, so an arrival counter would break the match.
+**Augmenting** (mode 3). A mode-3 packet is 32 or 64 bits; the write engine keeps its low 32 bits, the key, and writes the 64-bit record (key, **ordinal**), the ordinal in bits 63–32: (target chunk address − `DMA_RECORD_BASE_ADDRESS`) / 2, which counts **0, 1, 2, …** across the buffer. A 128-bit mode-3 packet is a bad packet, dropped by the traffic director before it reaches the engine (3.1). Records land 2 chunks apart starting at the base, which is aligned to a record, so the difference is always even. The sender chooses augmenting per stream; the receiver sets `DMA_RECORD_BASE_ADDRESS` (8.7) for the run.
+- **The ordinal is a position in the buffer, not an arrival count.** With mode 1, each sender's keys land in their own run at `PTR[src]`, and that sender's values land in the same order in the value buffer, so key *i*'s value is value *i* only if *i* counts buffer positions. Packets from different senders interleave on arrival, so an arrival counter would break the match.
 - **Use:**
-  - the keys all-to-all's streams send mode 5, so keys arrive as (key, *i*), ready to sort;
-  - the values all-to-all's streams send mode 2;
-  - **step 1** (local keys): raw 32-bit keys are streamed to the tile itself with read size 32 (4.2), one key per 32-bit packet, in mode 5, each landing as a 64-bit record, with `PTR[me]` = `DMA_RECORD_BASE_ADDRESS` = a new buffer. Each key gets *j* = 0, 1, 2, … One pass, one key per cycle.
+  - the keys all-to-all's streams send mode 3, so keys arrive as (key, *i*), ready to sort;
+  - the values all-to-all's streams send mode 1;
+  - **step 1** (local keys): raw 32-bit keys are streamed to the tile itself with read size 32 (4.2), one key per 32-bit packet, in mode 3, each landing as a 64-bit record, with `PTR[me]` = `DMA_RECORD_BASE_ADDRESS` = a new buffer. Each key gets *j* = 0, 1, 2, … One pass, one key per cycle.
 - **The ordinal sits in bits 63–32,** where the GATHER engine reads it (4.4).
-- **Mode 4 has no augmented form:** augmenting stamps the landing position, which in mode 4 is the position after bucketing, not the input order. An arrival-order form is a possible later addition (section 13).
+- **Mode 2 has no augmented form:** augmenting stamps the landing position, which in a bucket write is the position after bucketing, not the input order. An arrival-order form is a possible later addition (section 13).
 
-**Counting.** Modes 2, 4 and 5 decrement `DMA_SRAM_REMAINING` in the director, on acceptance, including the gather values; mode 3 is never counted. Together with `mem_idle`, that tells the tile when its writes are in memory (4.12, 4.14).
+**Counting.** Every write the engine takes was counted by its counter field at the director (4.8), the gather values included, K cycles after acceptance; K covers the engine's path into its area's queue, so a counter's done tells the tile its writes are ordered before any later read (4.12, 4.14).
 
-**Overflow** of the input FIFO is an error (4.13). It would overflow if an area's queue backed up for longer than the FIFO can absorb, so placement must keep a phase's writes and reads to one area within its one access per cycle.
+**Overflow** of the input FIFO is an error, `ERRORS` [4] (4.13). It would overflow if an area's queue backed up for longer than the FIFO can absorb, so placement must keep a phase's writes and reads to one area within its one access per cycle.
 
 ### 4.10 Table memories
 
@@ -750,7 +758,7 @@ The tables are **separate macro memories**, each with its own ports: `HIST`, `PT
 | memory | contents | size | written by | read or updated by |
 |---|---|---|---|---|
 | `HIST` | `HIST[0..255]`, 17 bits each | 256 × 17 bits | controller (clears) | count-on-arrival: one read-modify-write per cycle with bypass |
-| `PTR` | `PTR[0..255]`, 21 bits each | 256 × 21 bits | controller (sets starts) | write engine, modes 2, 4 and 5: one read-modify-write per cycle with bypass |
+| `PTR` | `PTR[0..255]`, 21 bits each | 256 × 21 bits | controller (sets starts) | write engine, modes 1, 2 and 3: one read-modify-write per cycle with bypass |
 | `STREAM_SRC`, `STREAM_DEST`, `STREAM_COUNT` | `STREAM[0..255]` as three arrays of 256 × 32 bits, read in parallel at the same index (4.2) | 3 KB (3 × 1 KB) | controller | address generator: one entry (one word of each array) per visit, read ahead (4.2) |
 | `GROUP` | `GROUP[0..63]`, 64 bits each (4.2) | 512 B | controller | address generator: one entry per group, read ahead (4.2) |
 
@@ -772,252 +780,270 @@ The tables are **separate macro memories**, each with its own ports: `HIST`, `PT
 
 **Placement:** next to the controller (section 12). The controller's accesses through its window take one cycle, and the engines pay the distance: every engine request and return crosses *(param)* `ts_engine_latency` cycles each way (default 1; 1–4 measured).
 
-**Read-modify-writes** (`PTR` and `HIST`) take up to one per cycle each. A **bypass** covers the whole read-to-write-back pipeline, including the write-back cycle, so updates to the same entry at any spacing are not lost. The pipeline is inside each memory, so `ts_engine_latency` doesn't lengthen it. Each has a 16-entry request FIFO (overflow is the table-request-overflow condition, 4.13). A `HIST` count that would exceed 17 bits is an error (invariant 6).
+**Read-modify-writes** (`PTR` and `HIST`) take up to one per cycle each. A **bypass** covers the whole read-to-write-back pipeline, including the write-back cycle, so updates to the same entry at any spacing are not lost. The pipeline is inside each memory, so `ts_engine_latency` doesn't lengthen it. Each has a 16-entry request FIFO (overflow is table request overflow, `ERRORS` [5], 4.13). A `HIST` count that would exceed 17 bits is an error (invariant 6).
 
-**Controller access.** Through its window (0x2000–0x3FFF, 8.9), decoded to the memories: `HIST` at 0x2000, `PTR` at 0x2400, `STREAM_SRC` at 0x2800, `STREAM_DEST` at 0x2C00, `STREAM_COUNT` at 0x3000, `GROUP` at 0x3400. Only `HIST` can be loaded; `PTR`, the `STREAM` arrays and `GROUP` take stores only. One cycle per access, only when no engine is using that memory: **when the address generator is not running (`rd_running` = 0) and `ts_busy` = 0** (8.2). `rd_running` covers a run's lead-in from its start (4.2); `rd_done` is no guide, since it is 0 before a tile's first run. A tile's arrivals can finish before its own address generator does, so the counters alone don't say the tables are free. A window access that meets an engine access is a programming error, with no hardware check: for `PTR` and `HIST` the result is defined (the increment wins), for `STREAM` and `GROUP` it is undefined. There is no hardware clear; the controller writes zeros.
+**Controller access.** Through its window in region 0xFF, **0xFFFF2000–0xFFFF35FF** *(Proposed: v1.1's low 16 bits kept, item 120)* (8.9), decoded to the memories: `HIST` at 0xFFFF2000, `PTR` at 0xFFFF2400, `STREAM_SRC` at 0xFFFF2800, `STREAM_DEST` at 0xFFFF2C00, `STREAM_COUNT` at 0xFFFF3000, `GROUP` at 0xFFFF3400. Only `HIST` can be loaded; `PTR`, the `STREAM` arrays and `GROUP` take stores only. One access at a time, at the register-load latency (4.11), and only when no engine is using that memory. A window access that meets an engine access is a programming error, with no hardware check (meshsim): for `PTR` and `HIST` the result is defined (the increment wins), for `STREAM` and `GROUP` it is undefined. There is no hardware clear; the controller writes zeros.
+
+**Waiting for the tables** (owner, 2026-10-28). Software waits for the tables **by events**, like every other wait: it sets `EVENTS_REQUIRED` to "write counter *n* done and DMA run done" and executes `WFI` (4.12).
+- **The arrival side** (incoming packets updating `PTR` for modes 1–3 and `HIST` for count-on-arrival, and gather values landing at `PTR[me]`) is covered by the write counter the program armed for them.
+- **The local side** (the address generator reading `STREAM` and `GROUP`) is covered by **DMA run done**, `EVENTS` [7] (4.2). The counters alone are not enough, since a tile's arrivals can finish before its own run.
+- **v1.1's `ts_busy` and `wait_tables()` are gone.** A helper that must work without knowing what ran before (a pass that starts by checking the tables are free) **may poll `STATUS.rd_running`**, a level, as a software choice (owner, 2026-10-28); otherwise `STATUS` is diagnostic.
+
+The hardware guarantees this needs:
+
+| # | guarantee |
+|---|---|
+| A | **K covers the table update:** by the time a packet's counter decrements, its `PTR` or `HIST` update is **complete**, meaning readable by a controller load through the window, `HIST`'s count-on-arrival included, behind its request FIFO (4.8) |
+| B | **DMA run done fires only after the run's last table read has completed,** not when the last entry is walked (4.2) |
+| C | **Gather values pass the traffic director like any loopback packet and are counted there** (4.4, 4.5): their K delay starts at the director like every other packet's, and a counter still takes at most one decrement per cycle |
+
+**A window access right after done** is safe by K alone (integrator, 2026-10-29): there is no interlock hardware, and meshsim checks that no table-window access after a counter's done precedes a pending `PTR` or `HIST` update.
 
 ### 4.11 Controller
 
-*Figures 3.1, 3.2, 3.4.*
+*Figures 3.1, 3.2, 3.4 (at v1.1).*
 
-The tile's processor: an in-order **RV32I + Zmmul + `WFI`** core (hardware multiply `mul`, `mulh`, `mulhsu`, `mulhu`; no divide; no C, A or CSR extensions; no cache).
+The unit's processor (Tony's core): an in-order **RV32I + Zmmul** core with **`WFI`**, the **CSR instructions** and the **machine-mode trap CSRs** (T, 2026-10-28): hardware multiply (`mul`, `mulh`, `mulhsu`, `mulhu`); no divide; no C or A extensions; **machine mode only**, with no privilege levels or their CSRs; no cache. Every unit's controller is the same design, C&C 1–3's included.
+
+**Inputs** (T, 2026-10-28). The core has two:
+- **the hard interrupt,** which takes a trap to the handler at `mtvec`, **even while the core is in `WFI`**. It is driven by the unit's errors, `ERRORS` ≠ 0 (4.13), a **level** that stays high until the reset. It is gated by `mstatus.MIE` and its `mie` enable, and the same gating applies to its release of `WFI`;
+- **the wakeup,** which resumes the core from `WFI` **without a trap**. It is driven by the wake term (4.12) and is **level-sensitive**: if it is high when the core reaches `WFI`, the core does not sleep, even if it went high before the `WFI`.
 
 **Instruction set.**
-- **`WFI`** is the only privileged instruction: no CSRs, no traps, no interrupts, no `mtvec`, `mepc` or `mret`. `WFI` stalls the core until a wake event (4.12, 6.3), then continues at the next instruction.
-- **Illegal:** divide opcodes (`div`, `divu`, `rem`, `remu`) and CSR instructions set the illegal-instruction condition, and the controller halts. `ecall` and `ebreak` halt it.
-- **Programs** are C, built bare-metal (`gcc` for `riscv64-unknown-elf`, `-march=rv32i_zmmul -mabi=ilp32`, with `WFI` from inline assembly) with a start-up file, a linker script and the generated register header `sw/mesh.h`. A C `/` or `%` by a non-power of two compiles to a library call. Register accesses compile to single x0-relative `lw`/`sw`.
+- **`WFI`** stalls the core until the wakeup input is high (4.12, 6.3), then continues at the next instruction.
+- **CSR instructions are legal** for the CSRs the core implements. *(Open, Q1 with Tony, item 121: the exact list and the CSRs' reset values, `mtvec`'s in particular.)* A CSR instruction on any other CSR is illegal.
+- **Illegal:** divide opcodes (`div`, `divu`, `rem`, `remu`), and CSR instructions on CSRs the core lacks, set illegal instruction, `ERRORS` [10], and trap.
+- **Traps** (owner and Tony, 2026-10-28): bus errors, illegal instructions, `ecall` and `ebreak` **trap to the handler** at `mtvec` instead of halting the controller, as do a fetch outside program memory and the boot ROM and a misaligned jump target. **Every trap is terminal** (4.13): the handler never executes `mret`. `ecall`, `ebreak`, the fetch and the jump set no `ERRORS` bit (meshsim stops loudly on each, 4.13).
+- **Programs** are C, built bare-metal (`gcc` for `riscv64-unknown-elf`, `-march=rv32i_zmmul_zicsr -mabi=ilp32`, with `WFI` and the CSR accesses from inline assembly) with a start-up file, a linker script and the generated register header `sw/mesh.h`. A C `/` or `%` by a non-power of two compiles to a library call. The register block and the peripheral windows sit in the top 2 KB of the map, so a register access compiles to an x0-relative `lw` or `sw`; through the header's struct pointers (8.1) a compiler may add one base-address instruction, the same on every unit (owner, 2026-10-29).
 
 **Timing.** One instruction per cycle.
-- Every load and store — to data memory, to any register and to the table window — completes in one cycle, and the loaded value is usable by the next instruction (load-use 0).
+- Every load and store to data memory completes in one cycle, and the loaded value is usable by the next instruction (load-use 0). Loads from program memory and the boot ROM take one cycle too *(Proposed)*.
 - A taken branch or jump costs one extra cycle; a multiply takes 3 cycles.
 - A store at t updates the register at the end of t; a load at t+1 and the owning unit at t+1 see it. Status computed at t is readable at t+1.
-- **Register-load latency** (owner, 2026-10-26, part E). A load from the register block (0xFFFFF800 and up) or from the table window (0x2000–0x3FFF) takes **1 or 2 cycles**, at the implementation's discretion, and may differ between registers. It is **fixed per register for a given implementation: the same on every access and every tile, never data- or traffic-dependent**, so the identical code of a synchronised start (6.3) stays identical in time. Software must not depend on the value: a load returns when its data is ready. Loads from instruction and data memory are unchanged (single-cycle). meshsim models 2 cycles for every register and table-window load, the worst case allowed, so its measured timings are upper bounds; 2 is its reference setting (section 10). *Rationale:* the register block's read mux spans units across the tile (router, DMA engine, read port, peripheral, UART), and the tables are shared with the DMA engine and the address generator, so an implementation may give such a load a second cycle rather than hold it to the core's single-cycle path; the hot paths are store-dominated, so either choice costs little.
-- **The sampling rule.** A register or table-window load issued at cycle *t* with latency *L* **returns the state at the end of cycle *t* + *L* − 2** (its sample point) and **takes any side effect at the end of *t* + *L* − 1**, removing exactly what it returned: `WAKE_EVENTS` clears the masked events it returned, `REQUEST_RECEIVE` and `UART_RX` pop the entry they returned. Anything set after the sample point survives. With *L* = 1 this is v1.1's rule (the state at the end of *t* − 1, the effect at the end of *t*).
-- **Stores** to the register block and the table window are **single-cycle and posted:** the core doesn't wait, and a store takes effect at the end of its cycle, as before. **Register and table accesses complete in program order,** so a load sees every earlier store. The only stores that stall are those that already did: a send store on the send port's occupied holding register (`ROUTER_SEND_32`, `_64` or `_128`, below), a request store on a full request FIFO (`REQUEST_SEND`, 4.18), and a `UART_TX` store on a wired tile's full TX FIFO (4.20); a store to `SENDER_SEND` never stalls (4.17.9).
+- **Register-load latency** (owner, 2026-10-26, part E). A load from the register block (0xFFFFF800 and up) or from the table window (0xFFFF2000–0xFFFF35FF) takes **1 or 2 cycles**, at the implementation's discretion, and may differ between registers. It is **fixed per register, every peripheral window word included, for a given implementation: the same on every access and every tile, never data- or traffic-dependent**, so the identical code of a synchronised start (6.3) stays identical in time. Software must not depend on the value: a load returns when its data is ready. Loads from data memory, program memory and the boot ROM are single-cycle. meshsim models 2 cycles for every register and table-window load, the worst case allowed, so its measured timings are upper bounds; 2 is its reference setting (section 10). *Rationale:* the register block's read mux spans units across the tile (router, DMA engine, read port, request port), and each peripheral's window is in its own unit, and the tables are shared with the DMA engine and the address generator, so an implementation may give such a load a second cycle rather than hold it to the core's single-cycle path; the hot paths are store-dominated, so either choice costs little.
+- **The sampling rule.** A register or table-window load issued at cycle *t* with latency *L* **returns the state at the end of cycle *t* + *L* − 2** (its sample point) and **takes any side effect at the end of *t* + *L* − 1**, removing exactly what it returned: the controller's `EVENTS` clears the masked events it returned; a peripheral's `EVENTS` subtracts one count from each masked bit it returned set (4.17.3); `REQUEST_RECEIVE` and the UART's RX word pop the entry they returned. This holds for every word of every window (owner, 2026-10-28). Anything set after the sample point survives. With *L* = 1: the state at the end of *t* − 1, the effect at the end of *t*.
+- **Stores** to the register block, the peripheral windows and the table window are **single-cycle and posted:** the core doesn't wait, and a store takes effect at the end of its cycle. **Register and table accesses complete in program order,** so a load sees every earlier store. The only stores that stall are a send store on the send port's occupied holding register (`ROUTER_SEND_32`, `_64` or `_128`, below), a request store on a full request FIFO (`REQUEST_SEND`, 4.18), and a store to the UART's TX word on a full TX FIFO (4.20, in C&C 1's peripheral).
 
-**Memories (strict Harvard).**
+**Memories (strict Harvard)** (owner, 2026-10-28; 2.2):
 
 | address | memory | port A | port B |
 |---|---|---|---|
-| 0x0000–0x1FFF | **instruction memory, 8 KB**; resident loader at 0x1F00–0x1FFF | instruction fetch only | the traffic director (mode 6) |
-| 0x2000–0x3FFF | table window (4.10, 8.9) | | |
-| 0x4000–0x5FFF | **data memory, 8 KB**; the command block in its top 16 words, 0x5FC0–0x5FFF, and the reply block below it, 0x5BC0–0x5FBF (4.12) | controller loads and stores | the traffic director (modes 6–8) |
-| 0xFFFFF800–0xFFFFFFFF | peripheral registers (section 8) | | |
+| 0x00000000–0x00007FFF | **data memory, 32 KB**; the command block in its top 16 words, 0x00007FC0–0x00007FFF, and the reply block below it, 0x00007BC0–0x00007FBF (4.12) *(Proposed: the blocks at the top of the 32 KB memory, as in v1.1's 8 KB one)*; word 0 reserved (2.2) | controller loads and stores | the traffic director (mode 0) |
+| 0x01000000–0x01007FFF | **program memory, 32 KB** | instruction fetch and **loads** (T); **a store is a bus error** | the traffic director (mode 0) |
+| 0x02000000– | **boot ROM** (6.2) | instruction fetch and loads | none |
+| 0xFFFF2000–0xFFFF35FF | table window (4.10, 8.9) *(Proposed)* | | |
+| 0xFFFFF800–0xFFFFFFFF | the controller's register block and the peripherals' windows (8.1) | | |
 
-- **Banks.** Each memory is **four 512 × 32-bit banks** (2 KB each), interleaved by word: word *w* is in bank *w* mod 4. That makes eight macros in all (four in v1.0, two 1K × 32 banks per memory).
-- **Port B** writes 1, 2 or 4 consecutive words per cycle at any word address (a mode-6 packet of 32, 64 or 128 bits): up to four consecutive words always fall in four different banks. Mode 7 writes one word, mode 8 one or two.
+- **Banks.** Each memory is **four word-interleaved banks**: word *w* is in bank *w* mod 4 *(Proposed: four 2K × 32-bit banks, 8 KB each; the macros are the core's implementer's choice)*.
+- **Port B** writes 32, 64 or 128 bits per cycle at a naturally aligned address (a mode-0 packet), so the words of a 128-bit write fall in four different banks.
 - **Port A** touches one bank per access.
-- **Bus errors.** The bus-error condition is set and the controller halts on: loads and stores to instruction memory; misaligned and unmapped accesses; sub-word accesses to the registers or the table window; stores to read-only registers; and loads from `PTR`, the `STREAM` arrays or `GROUP` (8.1, 8.9). Write-only registers read 0, except the request port's, whose offsets a load reads as the receive side (8.10).
-- Constants (`.rodata`) and initialised data (`.data`) live in data memory. Every instruction is fetched as stored, so code written into instruction memory through port B runs the next time it is fetched.
+- **Bus errors.** `ERRORS` [9] is set, and the controller traps, on: a store to program memory or the boot ROM; a misaligned access; an access to an unmapped address (regions 0x03–0xFE, the unused parts of region 0xFF, and **any word of an absent peripheral's window**, 4.17); a sub-word access to the registers, a window or the table window; a store to a read-only register; and a load from `PTR`, the `STREAM` arrays or `GROUP` (8.1, 8.9). Write-only registers read 0, except the request port's, whose addresses a load reads as the receive side (8.10). Reserved words in the register block and the windows read 0 and ignore stores (meshsim flags the access). **An offset past the end of data or program memory is not checked** (2.2): the high bits are ignored and the access aliases (meshsim errors).
+- Constants (`.rodata`) and initialised data (`.data`) live in data memory; program memory is readable, so they may live there instead *(a software choice)*. Every instruction is fetched as stored, so code written into program memory through port B runs the next time it is fetched.
 
-**Controller-memory word addresses** (mode 6, `STREAM_DEST`'s destination word for mode 6, `SRAM_RD_DEST_ADDR`, `ROUTER_SET_HDR`'s addr). These are **packed** word addresses of **up to 14 bits** (owner, 2026-10-26), leaving room for larger controller memories: at today's 8 KB + 8 KB, words 0x000–0x7FF are instruction memory and 0x800–0xFFF data memory, with the reply block at 0xEF0–0xFEF and the command block at 0xFF0–0xFFF, and the upper bits are 0.
-- A mode-6 packet any of whose words is beyond both memories (packed 0x1000 and up at today's sizes, addr above [13:0] included), or inside the command or reply block, is a **programming error**, with no hardware check; the simulator checks it (invariant 11). A 128-bit packet's four words are checked one by one: four words starting at packed 0x7FE, for example, run from instruction memory into data memory.
+**Controller-memory addresses** are byte addresses (2.2): a mode-0 packet to region 0x00 or 0x01 writes at its offset, naturally aligned, and port B decodes the region. v1.1's packed 14-bit word addresses are gone. A mode-0 packet into the command or reply block outside their conventions (4.12) is a programming error (invariant 11, meshsim).
 
 **No big-SRAM port.** The controller has no memory port onto big SRAM.
-- **Copies** from big SRAM into instruction or data memory are mode-6 address-generator runs to the tile itself (4.2; sequence in 6.5).
-- **Writes** to big SRAM are mode-2 packets the controller sends to itself, landing at `PTR[me]`, or mode-3 packets, landing at their addr (4.9).
-- **Reads** of big SRAM go through the controller read port (4.3): queued by stores, with results returning as mode-6 packets (controller-memory writes) to the tile itself.
+- **Copies** from big SRAM into program or data memory are mode-0 address-generator runs to the tile itself (4.2; sequence in 6.5).
+- **Writes** to big SRAM are packets the controller sends itself: mode 1, landing at `PTR[me]`, or mode 0, landing at its address in region 0x03 (4.9).
+- **Reads** of big SRAM go through the controller read port (4.3): queued by stores, with results returning as mode-0 packets to the tile itself.
 
-**Send port.** Seven write-only registers (8.4) fill a one-packet **holding register** in front of the injection point (4.5).
-- **`ROUTER_SET_HDR`** holds dst [6:0] (absolute; 126 = broadcast, 64 = C&C), mode [10:7] and addr [31:11]: all 32 bits, none spare. The router adds src, making the 169-bit link word. The size is not in the header: the send register chooses it.
-- **`ROUTER_SET_W0`, `ROUTER_SET_W1`, `ROUTER_SET_W2`** hold the payload's words 0, 1 and 2: bits [31:0], [63:32] and [95:64].
-- **`ROUTER_SEND_32`, `ROUTER_SEND_64`, `ROUTER_SEND_128`** each supply the packet's **top word** and send a packet of that size: `ROUTER_SEND_32` supplies bits [31:0], `ROUTER_SEND_64` bits [63:32] (below them `ROUTER_SET_W0`), `ROUTER_SEND_128` bits [127:96] (below them `ROUTER_SET_W0`–`W2`). Software therefore stores a packet's words in ascending order, and the last store sends. The store captures {`ROUTER_SET_HDR`, the size, the `W` words below its own word, its own data} into the holding register; `W` words the size doesn't cover are not used. The send port cannot send size 11.
-- **At that capture,** addr auto-increments by the words sent: **+1, +2 or +4 for modes 3, 6 and 9** (by the size, in words or chunks), **+1 for mode 7** (the next command slot), unchanged for modes that don't use addr (mode 8 among them); and `ROUTER_SET_W0`–`W2` all clear to 0. Both may therefore change while the packet waits. A run of consecutive words costs one `ROUTER_SET_HDR`, then one store per 32 bits of each packet, in ascending word order: `ROUTER_SEND_32` alone, `ROUTER_SET_W0` + `ROUTER_SEND_64`, or `ROUTER_SET_W0`, `W1`, `W2` + `ROUTER_SEND_128`.
-- **v1.0** had two payload registers, `ROUTER_SET_HI` (bits [63:32]) and `ROUTER_SEND_LO` (bits [31:0], sending 64 bits). v1.1 reverses the order: the low word is set first and the high word sends.
+**Send port.** Seven registers (8.4) fill a one-packet **holding register** in front of the injection point (4.5).
+- **`ROUTER_ADDR`** (R/W; owner, 2026-10-28): the packet's full 32-bit address (2.2). A store sets it; a load returns the address the next packet will use.
+- **`ROUTER_HDR`** (R/W; owner, 2026-10-28): **no-increment** [0], spare [16:1], size [18:17] reserved (the send register chooses the size; stores ignore it, loads return 0), **counter** [21:19], **mode** [24:22], **dst** [31:25] (absolute: 0–66, 126 = broadcast), in the common header layout (8.1). The router adds src, making the 256-bit link word.
+- **`ROUTER_SET_W0`, `ROUTER_SET_W1`, `ROUTER_SET_W2`** (write-only) hold the payload's words 0, 1 and 2: bits [31:0], [63:32] and [95:64].
+- **`ROUTER_SEND_32`, `ROUTER_SEND_64`, `ROUTER_SEND_128`** (write-only) each supply the packet's **top word** and send a packet of that size: `ROUTER_SEND_32` supplies bits [31:0], `ROUTER_SEND_64` bits [63:32] (below them `ROUTER_SET_W0`), `ROUTER_SEND_128` bits [127:96] (below them `ROUTER_SET_W0`–`W2`). Software therefore stores a packet's words in ascending order, and the last store sends. The store captures {`ROUTER_HDR`, `ROUTER_ADDR`, the size, the `W` words below its own word, its own data} into the holding register; `W` words the size doesn't cover are not used. The send port cannot send size 11.
+- **At that capture,** `ROUTER_ADDR` advances by the size in bytes (4, 8 or 16) for mode 0, **unless no-increment is set**, when it stays put (owner, 2026-10-28); modes 1–4, which ignore the address, leave it unchanged *(Proposed: as v1.1, which advanced only modes that use the address)*. `ROUTER_SET_W0`–`W2` all clear to 0. Both may therefore change while the packet waits. A run of consecutive words costs one `ROUTER_HDR` and one `ROUTER_ADDR` store, then one store per 32 bits of each packet, in ascending word order: `ROUTER_SEND_32` alone, `ROUTER_SET_W0` + `ROUTER_SEND_64`, or `ROUTER_SET_W0`, `W1`, `W2` + `ROUTER_SEND_128`.
+- **No-increment** is for writes that go to the same address in many receivers: a reply always lands at `REPLY` + 8 × the sender's id in every receiver (4.12), so a program sets `ROUTER_ADDR` once and changes only `ROUTER_HDR`'s dst per send, keeping an all-to-all of replies at one header store and one send per reply. A change of dst alone is one store; a change of both is two. Commands write slot 0 last, below their arguments, so they store `ROUTER_ADDR` before it.
 - **Timing.** A send store at *t* loads the holding register at the end of *t*; its earliest injection is *t* + 1. `send_busy` = the holding register is full. A packet for the tile itself or a broadcast also waits there for a free token (4.5), so it can keep the register full while the loopback is busy. **The store stalls only if the holding register is full and not being injected that cycle**, which gives one packet per cycle when no read return is waiting (gather value, address generator or read port, 4.5). This is a stall rule, not an overflow rule, and deliberately differs from the FIFOs' "count before the pop" rule (4.13).
-- **The send port checks nothing:** invalid modes, mode 5 at 128 bits, a misaligned mode 3, a command write above 32 bits, a 128-bit reply, mode 1 to another tile and dst 65 (unused) go out as written, and the receiver or the simulator catches them.
-- C&C's port ignores mode and addr, except that mode 3 is a write stream's data for the memory system (6.7), so packets to C&C (errors, results) may carry anything there but mode 3. It keeps the size with the payload (6.6).
+- **The send port checks nothing:** reserved modes and counter codes, mode 3 at 128 bits, a misaligned or unreachable address, mode 4 to another unit and dst 67–125 go out as written, and the receiver or the simulator catches them.
 
-**The resident loader.** A 64-word loader sits at 0x1F00–0x1FFF , loaded by C&C while the tiles are halted. It is where HALT → RUN starts (6.1). Overlay swaps are done by local mode-6 copies, so the loader's job is boot and image management; its interface is a software convention (the boot document, section 13).
+**The boot ROM** replaces v1.1's resident loader: every controller has a small fetch-and-load ROM in region 0x02, and its reset vector is 0x02000000 (6.2).
 
-### 4.12 The command and reply blocks, counters and the wake events
+### 4.12 The command and reply blocks, the write counters and the events
 
-*Figures 2.1, 2.3.*
+*Figures 2.1, 2.3 (at v1.1).*
 
-**The command block** (owner, 2026-10-26; v1.1's 1 KB mailbox is withdrawn).
-- **Layout:** **16 × 32-bit slots at the top of data memory,** 0x5FC0–0x5FFF (packed words 0xFF0–0xFFF, 4.11); slot *s* is the word at 0x5FC0 + 4*s*. **Slot 0 is the command word; slots 1–15 are its arguments,** written first (6.3).
-- **Mode 7, the command write,** writes slot addr[3:0]; addr above [3:0] is ignored (senders put 0). It is **32 bits only**: a 64- or 128-bit command write is a bad packet (3.1). It is effectively **C&C's command channel**, and it is never counted.
-- **A command write to slot 0 sets "command landed"** (6.3) and posts the command-landed event, `WAKE_EVENTS` [10] (below). No other slot affects control.
-- **Only command writes write the command block:** a mode-6 write into it is a programming error (invariant 11), and mode 8 cannot reach it.
+**The command block** (owner, 2026-10-26; mode 0, owner, 2026-10-28).
+- **Layout:** **16 × 32-bit slots at the top of data memory,** 0x00007FC0–0x00007FFF *(Proposed, 4.11)*; slot *s* is the word at 0x00007FC0 + 4*s*. **Slot 0 is the command word; slots 1–15 are its arguments,** written first, in the alternating argument blocks of 6.3.
+- **Commands are mode-0 writes, counter 0,** to the command block in region 0x00: arguments first, then the command word to slot 0. They stay uncounted because they arrive while the unit waits in `wait_for_command()` with its counters at 0. Every unit's command block is written this way, the boot ROM's first command included (6.2).
+- **"Command landed"** is set when a write that comes in through the traffic director and covers slot 0 lands in port B (4.8), and posts the command-landed event, `EVENTS` [6] (below). The controller's own store to slot 0 doesn't set it. No other slot affects control.
+- **Conventions** (meshsim; invariant 11): writes into the command block come only from C&C 1–3, uncounted. The hardware doesn't check who writes the block.
 
-**The reply block** (owner, 2026-10-26).
-- **Layout:** **256 × 32-bit words directly below the command block,** 0x5BC0–0x5FBF (packed words 0xEF0–0xFEF): two words for each of the 128 sources.
-- **Mode 8, the reply, lands by source,** like a big-SRAM write by source: at the reply block's word 2·src, where src is the replying endpoint, so its addr is unused (senders put 0). A **32-bit reply writes word 0** of its source's pair and leaves word 1 alone; **a 64-bit reply writes both.** A 128-bit reply is a bad packet (3.1). Replies count in `DMA_REPLY_REMAINING`.
-- Replies carry one-word results between tiles (cuts, counts, maxima, probe keys), and a request's value answers (6.7). Since every source has its own pair, **replies from different sources never collide**; two replies from one source to one tile overwrite each other, so a sender has at most one reply outstanding to each receiver until the receiver has read it (software's part).
-- **Only replies write the reply block:** a mode-6 write into it is a programming error (invariant 11).
+**The reply block** (owner, 2026-10-26; mode 0, owner, 2026-10-28).
+- **Layout:** **256 × 32-bit words directly below the command block,** 0x00007BC0–0x00007FBF *(Proposed, 4.11)*: two words for each of the 128 sources, so the pair for source *s* is at `REPLY` + 8*s*.
+- **A reply is a mode-0 write of 32 or 64 bits to the receiver's reply block at the sender's own pair**, counted on the counter the receiver armed for it. A **32-bit reply writes word 0** of the pair and leaves word 1 alone; **a 64-bit reply writes both.** Because the address is the same in every receiver, a sender sets `ROUTER_ADDR` once, with no-increment, and changes only the dst per reply (4.11).
+- Replies carry one-word results between tiles (cuts, counts, maxima, probe keys), and a request's value answers (6.7). Since every source has its own pair, **replies from different sources never collide**; two replies from one source to one tile overwrite each other, so a sender has at most one reply outstanding to each receiver until the receiver has read it (software's part). Which counter a reply uses is agreed by the two programs.
+- **That a sender writes only its own pair is a software convention** (owner, 2026-10-28), no longer a hardware guarantee: meshsim checks that writes into the reply block are 32 or 64 bits at the sender's own pair (invariant 11).
 
-**Below them, the stack** grows down from 0x5BC0 (software convention, `sw/CONVENTIONS.md`); the rest of v1.1's 1 KB mailbox region is ordinary data memory.
+**Below them, the stack** grows down from 0x00007BC0 (software convention, `sw/CONVENTIONS.md`).
 
-**Four down-counters.** Each is written by software with the number of arrivals it expects (arming it). Each counted arrival of its kind decrements it when the traffic director accepts the packet, except `DMA_PERIPH_REMAINING`, which counts its packet when it lands or is dropped (4.17.5):
-
-| counter | counts down | done when |
-|---|---|---|
-| `DMA_SRAM_REMAINING` | modes 2–5 (big-SRAM writes, including gather values and the memory system's deliveries) | 0 and `mem_idle` (4.1) |
-| `DMA_CM_REMAINING` | mode 6 (controller-memory writes, including read-port results, 4.3) | 0 and `cm_idle` |
-| `DMA_REPLY_REMAINING` | mode 8 (replies) | 0 and `cm_idle` |
-| `DMA_PERIPH_REMAINING` | mode 9, on landing or drop (4.17.5) | 0 |
-
-- **`cm_idle`** (a status bit): the port-B pipeline is empty. It drains within `cm_latency` cycles of the last accepted packet.
-- **Each packet counts 1,** whatever its size: a 128-bit mode-6 packet writes 4 words and counts 1.
+**Four write counters** (owner and Tony, 2026-10-28; four since 2026-10-28), **`WRITE_COUNTER_1`–`WRITE_COUNTER_4`** (8.7). Every counted packet names one in its counter field (3.1), and **the traffic director decrements it K cycles after accepting the packet** (4.8). Every counted packet is a write (modes 0–3), hence the name.
+- **Each packet counts 1,** whatever its size: a 128-bit packet writes four words and counts 1.
 - **Width: 20 bits each.** A gather of 64K values at *k* = 2 counts 131,072 packets, and *k* = 8 at the largest X needs 20 bits.
-- **The counting policy** (owner, 2026-10-26, replacing v1.1's "packets from non-tile sources are never counted"):
-  - **every mode is counted, from any source** (tiles, C&C, the memory system and anything else), **except the command write (mode 7) and the gather request (mode 1),** which are never counted: mode 7 is signalled by "command landed", and mode 1's gather values count as mode 2;
-  - **bad packets** are dropped uncounted and set the bad-mode-or-size condition, as before;
-  - **a halted tile counts nothing:** in HALT the director decrements no counter and sets no unexpected arrival (4.8), which covers boot loads;
-  - **counted data reaches a running tile only when the tile expects it,** having armed the counter for it. Staging into a waiting tile therefore happens while it is halted, or after a command that tells it what to expect, so it arms its counters first; code overlays follow the same rule (6.2). **If C&C needs an uncoordinated write, it halts the tile first;** while halted, nothing is counted (owner, 2026-10-26). This replaces v1.1's allowance for uncounted staging.
-- **A request's answer is counted** against what the requesting tile armed when it sent the request: its data in the counter of the destination's mode, and its reply, if it has one, in `DMA_REPLY_REMAINING` (6.7).
-- **Separate counters let different traffic overlap and be tracked on its own,** for example a big-SRAM copy and a controller-memory overlay.
-- **An arrival at a counter already at 0** is unexpected traffic. It leaves the counter at 0 and sets the unexpected-arrival condition (4.13). In HALT nothing is counted, so nothing is unexpected.
+- **Done means landed:** by the time a packet's decrement happens, its write is in place (K, 4.8), so a counter at 0 means everything it counted is in place.
+- **Which counter** is the program's choice, from any source (tiles, the controllers, the memory system). **Usage rule:** one counter per thing a program waits for separately. Adding to a counter means waiting for the union; to learn that batch A has landed while B is outstanding, put them on different counters.
+- **A request's answer is counted** against what the requesting tile armed when it sent the request (6.7).
+- **Unexpected arrival** (4.13): a decrement of a counter already at 0 leaves it at 0 and sets `ERRORS` [2]. It is detected **at the decrement**, K cycles after acceptance. **Accepted trade-off** (owner, 2026-10-28): a stray packet accepted at count 0 whose decrement lands after the program arms *N* uses up one of the *N*: done fires one word early, and the batch's last real word then raises unexpected arrival. The error is caught, later than in v1.1 and naming the last real word rather than the stray; only a second, cancelling bug (a batch armed one too high) would hide it. **meshsim models the hardware exactly** (its `ERRORS` bit and error line follow the decrement) and **also reports the stray as a diagnostic at acceptance**, naming it precisely.
+- **Writes are additive** (owner, 2026-10-26; kept 2026-10-28). A write of *N* to a counter **adds *N* atomically, in step with that cycle's decrement**: `next = count + N − dec`, a decrement in the same cycle is judged against count + *N*, `unexpected = dec & (count + N == 0)`. **A write of *N* > 0 arms the counter:** it clears counters done ([4]) and the counter's own done event ([0]–[3]) and sets their qualifiers, whether the counter was at 0 or not. If the count reaches 0 in the same cycle as an add of *N*, it ends at *N* and done doesn't fire. So whichever comes first, the last word of an earlier batch or the add, **once the add has happened, done means everything added so far has landed**: no stale wake and no early wake. **A write of 0 does nothing.** A sum past 2²⁰ − 1 wraps; that is a programming error (meshsim).
+- **A counter is never overwritten.** It returns to 0 only by counting down, or at the reset, which also clears the delay line (6.1).
 
-- **Writes are additive** (owner, 2026-10-26, part E; replacing v1.1's store and the 0x8A0 add aliases). A write of *N* to a counter **adds *N* atomically, in step with arrivals**: `next = count + N − arrive`, an arrival in the same cycle is judged against count + *N*, `unexpected = arrive & (count + N == 0)`. So a requester can arm a request's packets, or top a counter up, while other traffic for that counter is in flight. **A write of *N* > 0 arms the counter:** it clears counters done ([9]) and the counter's own done event ([0]–[3], below) and sets their qualifiers, whether the counter was at 0 or not. **A write of 0 does nothing.** A sum past 2²⁰ − 1 wraps; that is a programming error, and meshsim flags it. When the counter is 0, the normal case at a phase start, the write is exactly v1.1's store, so existing arming code is unchanged.
-- **A counter is never overwritten.** It returns to 0 only by counting down, at chip reset, or **on entering HALT**: the RUN → HALT edge clears all four counters, their done events and their qualifiers, and they stay 0 while the tile is halted, since a halted tile counts nothing (owner, 2026-10-26). HALT is the recovery path for a stuck count.
-
-**Counters done.** v1.0's local wake is now an event, **counters done**, `WAKE_EVENTS` [9] (owner, 2026-10-23).
-- **It is set on the rising edge of "every counter is done":** the 1 → 0 transition that leaves all four counters at 0, once `mem_idle` and `cm_idle` hold, **counted only if some counter was non-zero since [9] was last set or cleared** (the qualifier). Without the qualifier, an uncounted packet passing through port B (a command) drops `cm_idle` briefly and makes a spurious edge. So [9] is set when the last outstanding counter the tile was waiting on reaches 0 and the writes have cleared.
-- **It is sticky,** like every event: it stays pending until a load of `WAKE_EVENTS` with [9] in `WAKE_MASK` consumes it (below). An edge before `WFI` is not lost: if a copy finishes before the core reaches `WFI`, the `WFI` falls straight through. **A wake does not consume it,** so no `WFI` can swallow another's wake.
-- **It is cleared,** with its qualifier, by a non-zero write to any counter (so every new wait starts clean), by the `done` pulse and by HALT → RUN, as well as by a load that consumes it. A set and a clear in the same cycle: the clear wins.
-- **Polling and `WFI`, and the end of a phase.** Within a phase a program may poll one counter to 0 and act on it, then `WFI` for the rest. [9] stays pending until a load consumes it or a non-zero counter write clears it, so that `WFI` returns at once if everything has already landed, and waits otherwise. **Rule: a phase that sets counters must end with a `WFI` for counters done before it pulses `done`.** That `WFI` proves the arrivals are in (invariant 4); `done` with a counter still non-zero is the done-early condition (4.13). No store-to-clear idiom is needed.
+**Counters done,** `EVENTS` [4] (owner, 2026-10-23).
+- **It is set on the rising edge of "every counter is at 0":** the transition that leaves all four write counters at 0, **counted only if some counter was armed since [4] was last set or cleared** (the qualifier). So [4] is set when the last outstanding counter the tile was waiting on reaches 0, and by K its writes are in place. v1.1's `mem_idle` and `cm_idle` no longer take part (owner, 2026-10-28).
+- **It is sticky,** like every event: it stays pending until a load of `EVENTS` with [4] in `EVENTS_MASK` consumes it (below). An edge before `WFI` is not lost: if a copy finishes before the core reaches `WFI`, the `WFI` falls straight through. **A wake does not consume it,** so no `WFI` can swallow another's wake.
+- **It is cleared,** with its qualifier, by a non-zero write to any counter (so every new wait starts clean), by the `done` pulse, and by a load that consumes it. A set and a clear in the same cycle: the clear wins.
+- **Polling and `WFI`, and the end of a phase.** Within a phase a program may poll one counter to 0 and act on it, then `WFI` for the rest. [4] stays pending until a load consumes it or a non-zero counter write clears it, so that `WFI` returns at once if everything has already landed, and waits otherwise. **Rule: a phase that sets counters must end with a `WFI` for counters done before it pulses `done`.** That `WFI` proves the arrivals are in (invariant 4); `done` with a counter still non-zero is done early, `ERRORS` [8] (4.13).
 - **A count of 0 never makes an edge.** A phase that expects nothing must not `WFI` for counters done.
-- **Counters done waits for every counter.** To sleep on one class of arrivals while another is expected, a tile uses that counter's own done event (below).
+- **Counters done waits for every counter.** To sleep on one batch while another is expected, a tile uses that counter's own done event (below).
 
-**Per-counter done events** (owner, 2026-10-26), in `WAKE_EVENTS` [3:0], freed by the request tags: **[0] `DMA_SRAM_REMAINING` done, [1] `DMA_CM_REMAINING` done, [2] `DMA_REPLY_REMAINING` done, [3] `DMA_PERIPH_REMAINING` done.**
-- **Each is sticky and set on its own counter's transition to done** (the "done when" column above: `DMA_SRAM_REMAINING` 0 with `mem_idle`, `DMA_CM_REMAINING` and `DMA_REPLY_REMAINING` 0 with `cm_idle`, `DMA_PERIPH_REMAINING` 0), **counted only if that counter was armed since the event was last set or cleared:** each has its own qualifier, as [9] has.
-- **Each is cleared,** with its qualifier, by a non-zero write to its own counter, on entering HALT, by the `done` pulse and by HALT → RUN, as well as by a load that consumes it; like [9] it cannot be set while the `done` gate is closed.
-- **[9] keeps its meaning:** all four counters done. A program waits on [9] for everything, or on one bit for one class. The replayer's refill wait uses [3] alone, so an LPDDR fetch outstanding in `DMA_SRAM_REMAINING` doesn't hold it up (4.19.9).
+**Per-counter done events,** `EVENTS` [3:0]: **[0] write counter 1 done, [1] write counter 2 done, [2] write counter 3 done, [3] write counter 4 done.**
+- **Each is sticky and set on its own counter's transition to 0, counted only if that counter was armed since the event was last set or cleared:** each has its own qualifier, as [4] has.
+- **Each is cleared,** with its qualifier, by a non-zero write to its own counter, by the `done` pulse, and by a load that consumes it; like [4] it cannot be set while the `done` gate is closed.
+- **[4] keeps its meaning:** all four counters done. A program waits on [4] for everything, or on one bit for one batch. The replayer's refill wait uses its refill counter's bit alone, so an LPDDR fetch outstanding on another counter doesn't hold it up (4.19.9).
 
-**The wake events** (`WAKE_EVENTS`, `WAKE_MASK`, `WAKE_REQUIRED` and `WAKE_PEEK`, 8.10). **All wakes are events** (owner, 2026-10-23): `WAKE_EVENTS` collects every one-bit event a program may sleep on, from the counters, C&C and the units, and `WFI` wakes on it and nothing else. It is laid out to keep a large block free for future units:
+**The events** (`EVENTS`, `EVENTS_MASK`, `EVENTS_REQUIRED` and `EVENTS_PEEK`, 8.10; owner, 2026-10-28). **All wakes are events** (owner, 2026-10-23): `EVENTS` collects every one-bit event a program may sleep on, from the counters, C&C 1, the units and the peripherals, and the core's wakeup input is driven by it and nothing else (4.11). **Errors are not events:** they raise the hard interrupt (4.13).
 
 | bit | event | set by | kind |
 |---|---|---|---|
-| [0] | **`DMA_SRAM_REMAINING` done** | its counter's transition to done (below) | sticky |
-| [1] | **`DMA_CM_REMAINING` done** | likewise | sticky |
-| [2] | **`DMA_REPLY_REMAINING` done** | likewise | sticky |
-| [3] | **`DMA_PERIPH_REMAINING` done** | likewise | sticky |
-| [7:4] | reserved, read 0 (with [3:0], v1.1's request tags, withdrawn with the wake-event mode, owner, 2026-10-26) | — | — |
-| [8] | **GO** | C&C's barrier release (6.3) | sticky |
-| [9] | **counters done** | the rising edge above | sticky |
-| [10] | **command landed** | a command write (mode 7) to command slot 0 (6.3) | sticky |
-| [11] | **engine run done** | the rise of `rd_done`: the address generator's run has finished (4.2) | sticky |
-| [12] | **request FIFO no longer full** | the fall of `request_busy` (4.18) | sticky |
-| [18:13] | **`PERIPH_SERVICE_1`–`6`,** the peripheral's six service lines | the tile's peripheral, with meanings its own section defines (4.17.3); the replayer's: [13] code low-water, [14] read-log low-water, [15] write-log low-water, [16] expansion low-water, [17] new expansion, [18] done (4.19.9) | service line: live or sticky by the peripheral's definition; a consuming load claims one unit of service (4.17.3) |
-| [19] | **`REQUEST_PENDING`:** a received request is waiting | the request port's receive side, while its queue holds a request (4.18); always 0 on tiles 0–63 | live |
-| [20] | **sender idle** | the fall of `sender_busy`: a send has finished (4.17.9) | sticky |
-| [21] | **UART RX not empty** | the UART's RX FIFO holds a byte (4.20); never on an unwired tile | live |
-| [22] | **UART TX not full** | the UART's TX FIFO has room (4.20); always true on an unwired tile | live |
-| [31:23] | reserved for future units; read 0 | — | — |
+| [0] | **write counter 1 done** | its counter's transition to 0 (above) | sticky |
+| [1] | **write counter 2 done** | likewise | sticky |
+| [2] | **write counter 3 done** | likewise | sticky |
+| [3] | **write counter 4 done** | likewise | sticky |
+| [4] | **counters done:** all four at 0, at least one armed since it last fired | the rising edge above | sticky |
+| [5] | **GO** | C&C 1's barrier release (6.3); mesh tiles only, since C&C 2 and C&C 3 aren't wired to GO | sticky |
+| [6] | **command landed** | a director write covering command slot 0 (above, 4.8) | sticky |
+| [7] | **DMA run done** | the rise of `rd_done`: the address generator's run has finished (4.2); cleared by `PULSE_DMA` | sticky |
+| [8] | **request FIFO no longer full** | the fall of `request_busy` (4.18) | sticky |
+| [9] | **request pending:** a received request is waiting | the request port's receive side, while its queue holds a request (4.18) | live |
+| [10] | **peripheral 1:** its `EVENTS & EVENTS_MASK` is non-zero | the peripheral (4.17.3) | live |
+| [11] | **peripheral 2** | likewise | live |
+| [12] | **peripheral 3** | likewise | live |
+| [31:13] | reserved, read 0 | — | — |
 
-The other bits keep their v1.1 positions.
+- **Sticky events** are set by their cause and stay pending until a load consumes them. Setting one that is already pending leaves it set. [6], [7] and [8] are set on the edge, in the cycle the matching status bit sets or falls; the status bits themselves ("command landed", `rd_done`, `request_busy` in `STATUS`) keep their meanings and are separate state. **`PULSE_DMA` clears [7]** (owner, 2026-10-28), as an arming write clears its counter's done, so [7] always refers to the run most recently started and a stale one can't satisfy the next wait.
+- **Live events** are true while their condition holds; they are not stored, so no load of `EVENTS` clears them. They clear only at their source (owner, 2026-10-28): **request pending** stays true while requests are queued, and only a load of `REQUEST_RECEIVE` removes one (4.18), so queued requests never merge into one wake; **a peripheral's bit** stays true while that peripheral's `EVENTS & EVENTS_MASK` is non-zero, and its events are consumed in one place only, by a load of the peripheral's own `EVENTS` (4.17.3).
+- **Spurious wakes are allowed but not wanted** (owner, 2026-10-28). After a consuming load of a peripheral's `EVENTS`, the tile's live bit for that peripheral may lag, so a following `WFI` may return with nothing to do. **Software always re-checks after a wake**, as standard RISC-V `WFI` allows. **The hardware aims to make the bit current by the next instruction,** a short path inside one unit, so in practice spurious wakes don't happen; meshsim models the hardware's actual latency.
+- **`EVENTS_MASK`** chooses the events that wake `WFI` on their own and the events a load of `EVENTS` consumes. It is read/write and **hardware never writes it**, except its reset to **[5] | [4]**, GO and counters done (6.1). A program stops an event from waking it by clearing that bit, not with a pulse.
+- **`EVENTS_REQUIRED`** (R/W, 0 at reset; **the controller's only**: a peripheral's window has none) adds an AND to the mask's OR: a required event wakes `WFI` only when **every** required event is pending. A program needing "peripheral 1 and write counter 2" sets both bits here.
+- **The wake term,** which drives the core's wakeup input (4.11):
 
-- **Sticky events** are set by their cause and stay pending until a load consumes them. Setting one that is already pending leaves it set. [10], [11], [12] and [20] are set on the edge, in the cycle the matching status bit sets or falls (item 81); the status bits themselves (`done`, "command landed", `rd_done`, `request_busy`, `sender_busy` in `TILE_STATUS`) keep their meanings and are separate state.
-- **Live events** are true while their condition holds; they are not stored, so no clear touches them. What a load that consumes one does is defined by its source, one of three cases (owner, 2026-10-26):
-  - **a credit:** a peripheral's queue condition gives one unit of service, for example half a queue credited, which may end the condition (the replayer's low-water lines, 4.19.8);
-  - **nothing:** `REQUEST_PENDING` stays true while requests are queued, and only a load of `REQUEST_RECEIVE` removes one (4.18), so queued requests never merge into one wake; the UART's two events likewise follow their FIFOs (4.20);
-  - **a pop:** a peripheral's FIFO of items presents its next item in its status register, and the line stays up while more remain (4.17.3).
-- **`WAKE_MASK`** chooses the events that wake `WFI` on their own and the events a load of `WAKE_EVENTS` consumes. It is read/write and **hardware never writes it**, except its reset to **[8] | [9]**, GO and counters done, at chip reset and on HALT → RUN. A program stops an event from waking it by clearing that bit, not with a pulse.
-- **`WAKE_REQUIRED`** (R/W, 0 at chip reset) adds an AND to the mask's OR: a required event wakes `WFI` only when **every** required event is pending. It is also cleared by HALT → RUN (item 81).
-- **The wake term,** the only way `WFI` completes:
+  `wake = gate ? EVENTS[5] : ((EVENTS & EVENTS_MASK & ~EVENTS_REQUIRED) ≠ 0) OR (EVENTS_REQUIRED ≠ 0 AND (EVENTS & EVENTS_REQUIRED) == EVENTS_REQUIRED)`
 
-  `wake = gate ? WAKE_EVENTS[8] : ((WAKE_EVENTS & WAKE_MASK & ~WAKE_REQUIRED) ≠ 0) OR (WAKE_REQUIRED ≠ 0 AND (WAKE_EVENTS & WAKE_REQUIRED) == WAKE_REQUIRED)`
-
-  where `gate` is the `done` gate (below). A mask bit that isn't required wakes on its own (the escape hatch: an event the program must not sleep through while it waits for a set); a required bit never wakes alone. With `WAKE_REQUIRED` = 0 the term is `(WAKE_EVENTS & WAKE_MASK) ≠ 0`. So one `WFI` can wait for several events at once, for example the end of an engine run and a peripheral's done line together.
-- **A load of `WAKE_EVENTS` consumes under the mask:** it returns **every** pending event, whatever the mask, and clears exactly the returned bits that are 1 in `WAKE_MASK`. `WAKE_REQUIRED` plays no part in clearing, so required events meant to be consumed are put in the mask too. Software acts only on *value* & *mask*, the events it has just consumed. **An event set after the load's sample point survives** (4.11: with latency *L*, the load samples at the end of *t* + *L* − 2 and clears at the end of *t* + *L* − 1; with *L* = 1, an event set in the load's own cycle): it is not in the value returned and is not cleared, so the next load sees it. Consuming a peripheral's service line also claims one unit of its service (4.17.3).
-- **`WAKE_PEEK`** (R, 0x84C) returns exactly what a load of `WAKE_EVENTS` would return in the same cycle and **never clears or credits anything**. It is an alias of the same state, with no storage of its own (owner, 2026-10-23). Software reads `WAKE_PEEK` to look and `WAKE_EVENTS` to consume. (A load of `WAKE_EVENTS` with a bit's mask clear still leaves that bit alone, but it is not the way to peek.)
-- **A wake consumes nothing** (owner, 2026-10-23): hardware never consumes an event on wake, so a program consumes or masks an event before its next `WFI`, or that `WFI` falls straight through. **The `sw/mesh.h` wait helpers follow every `WFI` with a load of `WAKE_EVENTS`**: `wfi()` consumes what woke it (counters done, at the reset mask), and `wait_for_command()` consumes GO (6.3). Every tile program is rebuilt against `mesh.h` 1.1, so **a program that uses the helpers behaves as in v1.0** without ever writing `WAKE_MASK`. The load costs 1 or 2 cycles, fixed for the register on every tile (4.11), and is the same code on every tile, so synchronised starts (6.3) are unaffected.
-- **Keep GO in the mask** (owner, 2026-10-23, item 79). The `done` gate lets GO wake the core whatever the mask holds, but only a load with [8] in `WAKE_MASK` consumes it. So a program keeps [8] in `WAKE_MASK` whenever it calls `wait_for_command()` (the reset mask has it); otherwise the GO stays pending, and the next `wait_for_command()` falls through before its own GO.
-- **The `done` gate** (owner, 2026-10-23): from the `done` pulse until GO, **the wake term is overridden to "GO ([8]) pending"** and nothing else can wake `WFI`, whatever `WAKE_MASK` and `WAKE_REQUIRED` hold. Counters done cannot be set in that window (an edge then is ignored), and the `done` pulse clears it. So `wait_for_command()` can only ever be woken by GO, whatever a program gets wrong. The gate is a gate, not a mask setting: it writes no register, so after GO the program's own `WAKE_MASK` is in force with nothing to restore. Any other event set in the window stays pending, and wakes the core after GO if it is still enabled. A down-counter still non-zero at `done` is a program error, reported as the **done early** condition (4.13); an arrival after `done` for a counter already at 0 is **unexpected arrival**.
-- **Timing.** An event is set at the end of the cycle its cause happens; a load sees it, and a pending event releases a waiting `WFI`, in the next cycle. So a GO pulse at cycle *t* sets [8] at the end of *t* and wakes the core at *t* + 1, and counters done set at the end of *t* releases a waiting `WFI` in *t* + 1, both as in v1.0.
-- **Reset and HALT.** Entering HALT clears the four counters, their done events [3:0] and their qualifiers (above). At chip reset and on HALT → RUN, `WAKE_EVENTS`' sticky events, the qualifier, the gate and `WAKE_REQUIRED` are 0 and `WAKE_MASK` is [8] | [9] ([19]–[22] are not in it). Live events follow their conditions: the peripheral's lines are 0 while it is held in reset (4.17.7), and `REQUEST_PENDING` shows the receive queue. The gate is not held in HALT (the core does not run `WFI` there), and on HALT → RUN no counter is set, so nothing can set [9] before the first GO. The director runs in HALT (6.1), so an event can be set while a tile is halted; HALT → RUN clears it.
+  where `gate` is the `done` gate (below). A mask bit that isn't required wakes on its own (the escape hatch: an event the program must not sleep through while it waits for a set); a required bit never wakes alone. With `EVENTS_REQUIRED` = 0 the term is `(EVENTS & EVENTS_MASK) ≠ 0`. So one `WFI` can wait for several events at once, for example the end of a DMA run and a write counter together (4.10).
+- **A load of `EVENTS` consumes under the mask:** it returns **every** pending event, whatever the mask, and clears exactly the returned sticky bits that are 1 in `EVENTS_MASK`. `EVENTS_REQUIRED` plays no part in clearing, so required events meant to be consumed are put in the mask too. Software acts only on *value* & *mask*, the events it has just consumed. **An event set after the load's sample point survives** (4.11: with latency *L*, the load samples at the end of *t* + *L* − 2 and clears at the end of *t* + *L* − 1): it is not in the value returned and is not cleared, so the next load sees it.
+- **`EVENTS_PEEK`** (R) returns exactly what a load of `EVENTS` would return in the same cycle and **never clears anything**. It is an alias of the same state, with no storage of its own (owner, 2026-10-23). Software reads `EVENTS_PEEK` to look and `EVENTS` to consume; the trap handler reads only `EVENTS_PEEK` (4.13).
+- **A wake consumes nothing** (owner, 2026-10-23): hardware never consumes an event on wake, so a program consumes or masks an event before its next `WFI`, or that `WFI` falls straight through. **The `sw/mesh.h` wait helpers follow every `WFI` with a load of `EVENTS`**: `wfi()` consumes what woke it (counters done, at the reset mask), and `wait_for_command()` consumes GO (6.3). The load costs 1 or 2 cycles, fixed for the register on every tile (4.11), and is the same code on every tile, so synchronised starts (6.3) are unaffected.
+- **Keep GO in the mask** (owner, 2026-10-23, item 79). The `done` gate lets GO wake the core whatever the mask holds, but only a load with [5] in `EVENTS_MASK` consumes it. So a program keeps [5] in `EVENTS_MASK` whenever it calls `wait_for_command()` (the reset mask has it); otherwise the GO stays pending, and the next `wait_for_command()` falls through before its own GO.
+- **The `done` gate** (owner, 2026-10-23): from the `done` pulse until GO, **the wake term is overridden to "GO ([5]) pending"** and nothing else can wake `WFI`, whatever `EVENTS_MASK` and `EVENTS_REQUIRED` hold. Counters done and the per-counter done events cannot be set in that window (an edge then is ignored), and the `done` pulse clears them. So `wait_for_command()` can only ever be woken by GO, whatever a program gets wrong. The gate is a gate, not a mask setting: it writes no register, so after GO the program's own `EVENTS_MASK` is in force with nothing to restore. Any other event set in the window stays pending, and wakes the core after GO if it is still enabled. **The gate controls only `WFI` wakes:** an error raised between `done` and GO still takes the hard interrupt (4.11, 4.13). A write counter still non-zero at `done` is a program error, done early (4.13); an arrival after `done` for a counter already at 0 is unexpected arrival.
+- **Timing.** An event is set at the end of the cycle its cause happens; a load sees it, and a pending event releases a waiting `WFI`, in the next cycle. So a GO pulse at cycle *t* sets [5] at the end of *t* and wakes the core at *t* + 1, and counters done set at the end of *t* releases a waiting `WFI` in *t* + 1.
+- **At the reset** (6.1): every counter, the delay line, the done events and their qualifiers, the gate, `done`, "command landed" and any pending GO are 0; `EVENTS`' sticky events and `EVENTS_REQUIRED` are 0 and `EVENTS_MASK` is [5] | [4]. Live events follow their sources.
 
 **Uses:**
-- a block copy (6.5) or a receiving phase (6.4): arm the counters, start, `WFI` with [9] in the mask (the helper consumes it);
-- a search step through the read port: `DMA_CM_REMAINING` = the number of reads, then `WFI` (4.3);
-- a read from LPDDR (6.7): arm the destination's counter for the read's packets (the write adds, so other traffic for it may be in flight), send the request, `WFI` for counters done or the counter's own event; reads may be outstanding in any number;
-- a request with a value answer (a write's token or acknowledgement, an fd, an error code, 6.7): arm `DMA_REPLY_REMAINING` for its reply (by writing 1: writes add), then `WFI` on [2] or for counters done;
-- one class of arrivals while another is outstanding: its counter's done event ([0]–[3]);
-- the end of a run (`rd_done`, [11]), room in the request FIFO ([12]), the peripheral's service lines (4.17.3; the replayer's loop, 4.19.9), a received request ([19], 4.18), the end of a send ([20], 4.17.9) and the UART ([21], [22], 4.20).
+- a block copy (6.5) or a receiving phase (6.4): arm a counter, start, `WFI` with [4] in the mask (the helper consumes it);
+- a search step through the read port: arm the reads' counter with the number of reads, then `WFI` (4.3);
+- waiting for the tables: `EVENTS_REQUIRED` = the counter's done and [7] (4.10);
+- a read from LPDDR (6.7): arm a counter for the read's packets (the write adds, so other traffic for it may be in flight), send the request, `WFI` for counters done or the counter's own event; reads may be outstanding in any number;
+- a request with a value answer (an fd, an error code, 6.7): arm the reply's counter with 1, then `WFI` on its done event or for counters done;
+- one batch of arrivals while another is outstanding: its counter's done event ([0]–[3]);
+- the end of a run ([7]), room in the request FIFO ([8]), a received request ([9], 4.18), and a peripheral's events ([10]–[12]; the replayer's loop, 4.19.9; the UART, 4.20).
 
-### 4.13 Status and conditions
+### 4.13 Status and errors; traps
 
-*Figure 2.4.*
+*Figure 2.4 (at v1.1).*
 
-Two read-only registers: **`TILE_STATUS`** (8.2) holds what a program reads to steer itself (the live bits, the peripheral type, the endpoint id, the big-SRAM size); **`TILE_CONDITIONS`** (8.3) holds the error conditions.
+The controller's block starts with three read-only registers (owner, 2026-10-28), the same three words that start every peripheral's window (4.17.4): **`PARAMS`** (8.2), the unit's constants; **`STATUS`** (8.2), its live bits; and **`ERRORS`** (8.3), its errors. v1.1's `TILE_STATUS` is split into `PARAMS` and `STATUS`, and `TILE_CONDITIONS` is `ERRORS`.
 
-**Live bits** (in `TILE_STATUS`):
+**`PARAMS`** (constant, strapped): the peripherals present [2:0] (bit *n* − 1 for peripheral *n*), the endpoint id [26:20] and the big-SRAM size [31:27] (8.2). Each peripheral's type is in its own `PARAMS` (4.17.1).
+
+**`STATUS`** (live, **diagnostic only**: no program needs to poll it, 4.10, 4.12):
 - `rd_running`, `rd_done` (4.2);
 - GATHER busy (4.4);
-- `periph_running` (4.17.2);
-- `sender_busy` (4.17.9);
 - `send_busy` (4.11);
-- `request_busy` (4.18);
-- `ts_busy` (4.14);
-- `mem_idle`, `cm_idle` (4.1, 4.12);
-- `done`, "command landed" (6.3).
+- `done`, "command landed" (6.3);
+- `request_busy` (4.18).
 
-**Conditions** (`TILE_CONDITIONS`). **A condition means the software did something wrong** (or the hardware is faulty): in a correct program on correct hardware, `TILE_CONDITIONS` reads 0 forever. Anything informational belongs in the simulator's reports, not here. Each condition is one of two kinds, marked in the table: a **program error** (P), which a program can cause, and a **hardware-fault detector** (H), which no program on a correct design can cause, so it can only mean a fault. Both raise the error line alike.
+v1.1's `periph_running` and `sender_busy` are now each peripheral's `STATUS` (4.17.4); `ts_busy` is gone (4.10); and `mem_idle` and `cm_idle` have left the hardware, kept in meshsim only as diagnostics (owner, 2026-10-28).
 
-| bit | condition | set when |
+**Errors** (`ERRORS`). **An error means the software did something wrong** (or the hardware is faulty): in a correct program on correct hardware, `ERRORS` reads 0 forever. Anything informational belongs in the simulator's reports, not here. Each error is one of two kinds, marked in the table: a **program error** (P), which a program can cause, and a **hardware-fault detector** (H), which no program on a correct design can cause, so it can only mean a fault. Both raise the hard interrupt and the error line alike.
+
+| bit | error | set when |
 |---|---|---|
-| 0 | router overflow | a link, eject or C&C FIFO overflowed (4.7, 4.16) |
-| 1 | bad mode or size | a bad packet arrived and was dropped, uncounted: mode 0 or 10–15, mode 5 at 128 bits, mode 3 with an addr not aligned to its size, a mode-7 command write above 32 bits, or a mode-8 reply at 128 bits (3.1, 4.8; invariant 5) |
-| 2 | unexpected arrival | a packet arrived for a down-counter already at 0 (4.12) |
+| 0 | router overflow | a link, eject or fifth-port FIFO overflowed (4.7, 4.16) |
+| 1 | bad packet or misaligned access | a bad packet arrived and was dropped, uncounted (3.1: a misaligned packet, a region it can't reach, mode 3 at 128 bits; invariant 5); a write through a misaligned `PTR` was dropped, still counted (4.9); or a misaligned read by the address generator, the GATHER engine or the read port was not performed, its packet sent with payload 0 (4.1) |
+| 2 | unexpected arrival | a counted packet's decrement found its write counter already at 0 (4.12) |
 | 3 | drift | in a group run, the SRAM read queue refused an address-generator request, so the tile fell behind its timetable (4.2): a placement error, too much traffic on one area. Zero-length groups and group starts are timetable, not lateness (4.2) |
 | 4 | write-engine input overflow | 4.9 |
 | 5 | table request overflow | the `PTR` or `HIST` request FIFO (4.10). **(H)**: every engine issues at most one request per cycle and the FIFO drains one per cycle [meas: meshsim] |
-| 6 | GATHER queue overflow | a mode-1 packet arrived with the GATHER engine's 16-entry request queue full (4.4). **(H)**: mode 1 only comes from the tile itself, and both of its sources share a resource with the engine: the address generator yields the SRAM read queue to it, and the send port shares injection with its gather values (4.4) |
-| 7 | read-port error | a `SRAM_RD_ADDR_QUEUE` store with no free entry, or a read not aligned to the setup register's size; the read is dropped (4.3) |
-| 8 | done early | `done` was pulsed while a down-counter was non-zero: the tile declared itself finished with arrivals outstanding (4.12, 6.3) |
+| 6 | GATHER queue overflow | a mode-4 packet arrived with the GATHER engine's 16-entry request queue full (4.4). **(H)**: mode 4 only comes from the tile itself, and both of its sources share a resource with the engine: the address generator yields the SRAM read queue to it, and the send port shares injection with its gather values (4.4) |
+| 7 | read-port error | a `SRAM_RD_ADDR_QUEUE` store with no free entry; the read is dropped (4.3). A misaligned read-port read sets [1] instead |
+| 8 | done early | `done` was pulsed while a write counter was non-zero: the unit declared itself finished with arrivals outstanding (4.12, 6.3) |
 | 9 | bus error | 4.11 |
 | 10 | illegal instruction | 4.11 |
-| 11 | bad peripheral write | a mode-9 packet was dropped by the peripheral's write port: an address its map doesn't have, a size its region doesn't take, or a write its ownership state forbids, as the peripheral's section lists; on a tile with no peripheral, every mode-9 packet (4.17.6, 4.17.7). The replayer's cases: 4.19.10 |
-| 12 | peripheral condition 2 | defined by the peripheral (4.17.6). The replayer: **queue overrun**, a push into a full replayer queue was dropped (4.19.8) |
-| 13 | peripheral condition 3 | defined by the peripheral (4.17.6). The replayer: **invalid expansion**, a reserved decode class, operand code or `format`, an opcode it doesn't execute, or a template running past ROM word 511; the pass stops (4.19.11) |
-| 14 | receive underflow | a load of `REQUEST_RECEIVE` with the receive queue empty: it returned 0 and popped nothing (4.18). On tiles 0–63, whose receive side is unconnected, every such load |
+| 11 | peripheral 1 | **live:** 1 while peripheral 1's `ERRORS` is non-zero (4.17.6). The replayer's: 4.19.11 |
+| 12 | peripheral 2 | likewise, live |
+| 13 | peripheral 3 | likewise, live |
+| 14 | receive underflow | a load of `REQUEST_RECEIVE` with the receive queue empty: it returned 0 and popped nothing (4.18). On a unit that is no target's receiver, every such load |
 
-Bits 15–31 are reserved and read 0. The bits are grouped by unit: the network (0, 1), the arrivals (2), the address generator (3), the write engine (4), the tables (5), the GATHER engine (6), the read port (7), control (8), the controller (9, 10), the peripheral (11–13) and the request port (14); v1.0 numbered them in another order (section 8.3). **Kinds:** 5 and 6 are hardware-fault detectors (H); the rest are program errors (P): 0, 1, 2, 3, 4, 7, 8, 11 and 14 always; 9 and 10 also on a fault (a corrupted image). Each peripheral gives the kinds of 12 and 13: the replayer's are program errors (P), and 13 also a fault detector (a corrupted decode table or ROM) (item 55).
+Bits 15–31 are reserved and read 0. The bits are grouped by unit: the network (0, 1), the arrivals (2), the address generator (3), the write engine (4), the tables (5), the GATHER engine (6), the read port (7), control (8), the controller (9, 10), the peripherals (11–13) and the request port (14). The peripheral bits take [13:11] so every other error keeps its v1.1 number. **Kinds:** 5 and 6 are hardware-fault detectors (H); the rest are program errors (P): 0, 1, 2, 3, 4, 7, 8 and 14 always; 9 and 10 also on a fault (a corrupted image). 11–13 take the kinds of the peripheral's own errors (4.17.6).
 
-- **Read-only to the controller.** Nothing in RUN clears a condition, so a program cannot hide one. A store to `TILE_CONDITIONS` is a bus error (condition 9). **Entering HALT clears them all** (the RUN → HALT edge, and chip reset); conditions from loading a halted tile therefore survive into RUN, where the loader can check them.
-- **Any non-zero condition raises the tile's error line** to C&C (6.6), so C&C learns of it at once.
-- **A program can still detect new conditions in a phase** by reading `TILE_CONDITIONS` at its start and comparing at its end.
-- **What earns a condition:** a condition exists for a mistake that would otherwise **go unnoticed or surface far from its cause**: silent corruption or lost data (done early, unexpected arrival, every overflow, drift, bad mode). A mistake that **stops the machine** (a tile that hangs) needs no condition: C&C's watchdog and READY bits catch it and name the tile. A misuse the hardware **ignores**, leading to such a hang (a start while its engine is running, a 1 written to a reserved `TILE_PULSE` bit), is flagged by the simulator only.
-- **Same-cycle rule and overflows:** a condition set in the same cycle as the clear on entering HALT is cleared (the clear wins, as everywhere else). **On every overflow the arriving item is dropped**: the packet, write, request or gather request that found its FIFO or queue full is lost, and only the condition records it (conditions 0, 4, 5, 6 and 7). **"Full" is the count before the cycle's pop:** a push into a full FIFO overflows even if an entry leaves in the same cycle (no bypass from pop to push), so no FIFO ever holds more than its depth.
-- **Setting a condition does not stop the machine.** Bus errors, illegal instructions, `ecall` and `ebreak` halt the tile's controller only; its engines and router keep running.
+- **Sticky until the reset** (owner, 2026-10-28). Bits 0–10 and 14 stay set until the reset (6.1); nothing else clears them, so a program cannot hide one. Bits 11–13 are **live**: they follow the peripheral's `ERRORS`, whose own bits are sticky until the reset (one exception: the unit-error bit of C&C 1's peripheral, which is live, 6.6). A store to `ERRORS` is a bus error ([9]).
+- **Any non-zero `ERRORS` raises the unit's hard interrupt** (4.11) and **its error line** into C&C 1's peripheral (2, 6.1). The line is driven by hardware from `ERRORS`, with no software involved and a fixed latency, `error_latency` (section 10), so it still reports a unit whose request path is stuck or whose handler has itself failed.
+- **What earns an error:** an error exists for a mistake that would otherwise **go unnoticed or surface far from its cause**: silent corruption or lost data (done early, unexpected arrival, every overflow, drift, bad packet or misaligned access). A mistake that **stops the machine** (a unit that hangs) needs no error: C&C 1's READY bits and its watchdog catch it (6.1, 6.6). A misuse the hardware **ignores**, leading to such a hang (a start while its engine is running, a pulse while a peripheral is busy), is flagged by meshsim only.
+- **Same-cycle rule and overflows:** an error raised in the same cycle as the reset is lost (the reset wins). **On every overflow the arriving item is dropped**: the packet, write, request or gather request that found its FIFO or queue full is lost, and only the error records it (errors 0, 4, 5, 6 and 7). **"Full" is the count before the cycle's pop:** a push into a full FIFO overflows even if an entry leaves in the same cycle (no bypass from pop to push), so no FIFO ever holds more than its depth.
+
+**Traps are terminal** (owner and Tony, 2026-10-28).
+- **An error raises the hard interrupt,** and a bus error, an illegal instruction, `ecall`, `ebreak`, a fetch outside program memory and the boot ROM, or a misaligned jump target traps synchronously (4.11). **Either way the trap is terminal:** the state is assumed bad, **the handler never executes `mret`**, and the interrupted code is never resumed. Only the reset restarts the controller (6.1). This holds for every unit, C&C 1 included (6.6).
+- **No retrap.** The interrupt stays high until the reset (`ERRORS` is sticky), but `mstatus.MIE` is cleared on trap entry and never set again, so it cannot trap a second time.
+- **A second trap inside the handler** (a synchronous exception) restarts the handler at `mtvec`; it is still terminal.
+- **The unit's engines and peripherals carry on** with whatever they were doing, unserviced, until the reset: nothing stops them before it (owner, 2026-10-28).
+- **Traps that set no `ERRORS` bit are software bugs, caught by meshsim** (owner, 2026-10-29): `ecall`, `ebreak`, the fetch, the misaligned jump and a trap inside the handler. **meshsim stops loudly on each.** The hardware adds nothing for them: such a trap parks the unit without raising its error line, and on hardware only C&C 1's watchdog notices (6.1). Accepted.
+
+**The handler** (owner, 2026-10-28; conventions for every unit's handler):
+- **It reports** the unit's `PARAMS`, `STATUS`, `ERRORS`, `EVENTS_PEEK`, the four write counters, `mepc`, `mcause` and `mtval`, x1–x31, and for each present peripheral its window's standard words 0–9 (4.17.4): about 50 words, plus ten per peripheral. It sends them to C&C 1 as **request-bus reports** (target 0, 3.3), each a header word (op, sequence number) and three data words: about 17 reports for a unit with no peripheral.
+- **The report set is fixed:** every handler sends the same reports, in the same order, so the count is a constant of the protocol and nothing in the reports needs to carry it. C&C 1 counts each unit's reports against it (6.1). *(Proposed: the ops, the order and the count are written with the handler and `mesh.h`, item 122.)*
+- **It checks `PARAMS` [2:0] before reading a peripheral's window:** reading an absent peripheral's window is a bus error, which would trap inside the handler.
+- **It reads `EVENTS_PEEK`, never `EVENTS`,** at both levels: a load of `EVENTS` consumes events and would destroy the state it is reporting.
+- **It assumes no interface is clean:** a register sequence the main code left half done (the send port's `W` words, the request port's `SET`/`GET` words) is never completed, since nothing resumes, so the handler writes every word of each request it sends.
+- **It parks** in a plain jump to itself *(Proposed)*. A `WFI` loop would also work only if `mie`'s enable is cleared first, since a pending enabled interrupt may release `WFI` with `MIE` = 0; the plain loop doesn't depend on that.
+- Until a loaded image installs its own, `mtvec` points at the **boot ROM's report-and-park handler**, which follows the same conventions and never writes data memory (6.2).
 
 ### 4.14 Commit ordering
 
-There is no coherence (4.1), so "committed" matters only at phase boundaries. A tile knows a phase's writes are readable when its counters are done:
-- **big SRAM:** `DMA_SRAM_REMAINING` = 0 and `mem_idle`, which means every expected payload was accepted and every write has reached its area;
-- **controller memory and the reply block:** `DMA_CM_REMAINING` or `DMA_REPLY_REMAINING` = 0 and `cm_idle`, after which a load reads the word;
-- **a memory-system read** (6.7) is counted like any other data, so the same conditions prove it has landed. Mode 9 lands in the peripheral a fixed `rp_latency` after the director (4.17.5), and has landed when `DMA_PERIPH_REMAINING` reaches 0.
+There is no coherence (4.1), so "committed" matters only at phase boundaries. **A unit knows a write has landed when its counter has decremented,** K cycles after the traffic director accepted it (4.8), by which time:
+- **controller memory:** port B has written it, and a load reads it;
+- **a peripheral's region:** it has landed (4.17.8);
+- **big SRAM:** it has entered its area's request queue, ahead of any read issued later (4.1);
+- **the tables:** its `PTR` or `HIST` update is readable through the window (guarantee A, 4.10).
 
-Counters done (`WAKE_EVENTS` [9], 4.12) is set on exactly this condition. **The peripheral:** `DMA_PERIPH_REMAINING` = 0, which counts mode-9 packets as they land (4.17.5). Boot loads arrive while the tile is halted and are uncounted; C&C's command follows them (4.12, 6.2).
+So a counter's done event, and counters done (`EVENTS` [4], 4.12), are set exactly when the writes they counted are readable. **A memory-system read** (6.7) is counted like any other data, so the same events prove it has landed.
 
-**Counters-ready:** `ts_busy` → 0 (4.10) is one bit for all the table memories. It is the OR of: an engine put a table request within the last `ts_engine_latency` + 1 cycles; `PTR` or `HIST` has a request arriving or queued, or took its last read-modify-write too recently for the result to be readable.
+**Uncounted writes** are commands, and boot and staging loads (3.1). A command signals its own landing ("command landed", 4.12); boot and staging images into controller memory are followed by the command, which lands last from the same source through port B (6.2); big-SRAM data after boot is sent counted (6.2).
 
 There is no flush.
 
 ### 4.15 Digits (shared definition)
 
-Mode 4 and count-on-arrival select a **digit** of the 32-bit key in the payload's bits 31–0, with a 3-bit selector in `DMA_CONFIG` (8.5):
+The bucket write (mode 2) and count-on-arrival select a **digit** of the 32-bit key in the payload's bits 31–0, with a 3-bit selector in `DMA_CONFIG` (8.5):
 
 | selector | meaning |
 |---|---|
-| 0 | none (count-on-arrival off; mode 4 not used) |
+| 0 | none (count-on-arrival off; mode 2 not used) |
 | 1–4 | byte *d* of the key, bits [8*d* − 1 : 8(*d* − 1)]; **1 is the least significant byte** |
 
-There are two selectors: the **bucket digit** (mode 4, `DMA_CONFIG` [20:18]) and the **histogram digit** (count-on-arrival, `DMA_CONFIG` [23:21]).
+There are two selectors: the **bucket digit** (mode 2, `DMA_CONFIG` [20:18]) and the **histogram digit** (count-on-arrival, `DMA_CONFIG` [23:21]).
 
 ### 4.16 The fifth router port
 
-*Figure 4.1.*
+*Figure 4.1 (at v1.1).*
 
-**Every tile's router has a fifth input and a fifth output** (owner, 2026-10-26), so all tiles are one design. **A port is connected only where something is attached;** an unconnected port never receives, and routing never chooses it, since no endpoint is attached there. Today only **tile 0's** is connected, to **C&C** (section 6); the endpoint map will attach others (item 82). The rest of this section describes the connected port, with C&C as its endpoint:
+**Every tile's router has a fifth input and a fifth output** (owner, 2026-10-26), so all tiles are one design. **A port is connected only where something is attached;** an unconnected port never receives, and routing never chooses it. **Tiles 0, 1 and 2's are connected, to C&C 1, C&C 2 and C&C 3** (endpoints 64, 65 and 66, section 2). The rest of this section describes a connected port at tile *c*, with C&C *c* + 1 (endpoint 64 + *c*) as its endpoint:
 
-- **Input "from C&C":** a sixth route block (4.6). A packet from C&C (src = 64) is routed as a packet injected at tile 0: unicast as from tile 0, and a broadcast rooted at tile 0. It does not pass through tile 0's injection point (4.5), so it never waits behind tile 0's address generator.
-- **"From C&C" FIFOs:** each of tile 0's four link outputs and its eject output gains a "from C&C" FIFO (five FIFOs, 16 entries), and each of those selectors gains an input. C&C therefore gets a fair round-robin share of every output, even while tile 0's address generator injects every cycle.
-- **Output "to C&C":** FIFOs from left, right, up and down and from tile 0's own injection (five FIFOs, 16 entries), with their own round-robin selector, one packet per cycle to C&C. Every packet for dst 64 leaves here instead of through tile 0's eject path. With READY lines (section 6), it carries only errors and results. The output has no back-pressure: C&C accepts one packet a cycle into its receive FIFO (6.6).
-- **Cost:** ten extra FIFOs of 16 × 169 bits (~27 Kbit of flops) plus the wider selectors, ≈ 0.03–0.05 mm² [estimate; v1.0's 102-bit FIFOs were ≈ 0.02–0.03], tile 0 only (section 11). Their overflows are reported like the other router FIFOs.
-- **The memory system's traffic** enters here too: it is served at C&C's port (6.7), so its deliveries come in through the "from C&C" route block, and a tile's write stream leaves through the "to C&C" output. The memory system grants one write token at a time, so write streams never fan in at the "to C&C" output.
-- **Pacing is policy.** Every packet C&C sends during an all-to-all adds load to tile 0's links that the schedule's queue bounds don't count (one broadcast per 64 cycles raised tile 0's link queues to 12 of 16 [meas: meshsim]). So C&C sends commands and bulk data between passes, or paces them.
+- **Input "from the controller":** a sixth route block (4.6). A packet from the controller (src = 64 + *c*) is routed as a packet injected at tile *c*: unicast as from tile *c*, and a broadcast rooted at tile *c*. It does not pass through tile *c*'s injection point (4.5), so it never waits behind tile *c*'s address generator.
+- **"From the controller" FIFOs:** each of the tile's four link outputs and its eject output gains a "from the controller" FIFO (five FIFOs, 16 entries), and each of those selectors gains an input. The controller therefore gets a fair round-robin share of every output, even while the tile's address generator injects every cycle.
+- **Output "to the controller":** FIFOs from left, right, up and down and from the tile's own injection (five FIFOs, 16 entries), with their own round-robin selector, one packet per cycle to the controller. Every packet for dst 64 + *c* leaves here instead of through the tile's eject path. The output has no back-pressure: the controller takes one packet a cycle.
+- **Inside the controller.** The controller is a tile instance with its own router, and this link is its only link to the mesh. *(Deferred, item 118: which port of the controller's router the link enters, routing inside the controllers' routers, and the router ports of their sending peripherals, 4.17.9.)*
+- **Cost:** ten extra FIFOs of 16 × 256 bits (~41 Kbit of flops) plus the wider selectors, ≈ 0.04–0.07 mm² [estimate; scaled from v1.1's 169-bit ≈ 0.03–0.05], tiles 0–2 only (section 11). Their overflows are reported like the other router FIFOs.
+- **The memory system's traffic** enters at tile 1: it is C&C 2's peripheral (2, 6.7), so its deliveries come in through tile 1's "from the controller" route block, and writes into its tag windows leave through tile 1's "to the controller" output. Several tiles writing into open windows at once fan in there with no flow control; the file system keeps one writer in flight or paces its writers (6.7).
+- **Pacing is policy.** Every packet a controller sends during an all-to-all adds load to its tile's links that the schedule's queue bounds don't count (one broadcast per 64 cycles raised tile 0's link queues to 12 of 16 [meas: meshsim]). So the controllers send commands and bulk data between passes, or pace them.
 
 ### 4.17 The peripheral slot
 

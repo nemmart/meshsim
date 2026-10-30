@@ -381,6 +381,9 @@ Word *n* is at window base + 4*n*.
     A queue starts with 2 after reset; the controller uses one per refill; the peripheral returns one each
     time it has consumed half a buffer. The controller can never send more than there is room for, and the
     tile's live bit for the peripheral stays high while any credit remains, so `WFI` can't miss a refill.
+  - **A credit is permission to send up to half a buffer** (owner, 2026-10-28), not one transfer: having
+    consumed it, the program may split the refill into smaller moves (a 2 KB credit as two 1 KB moves), as
+    long as their total stays within the credit.
   - **Rule for software** (as for the tile's `EVENTS`): a load consumes one credit from every masked bit that
     is set, so the program acts on every bit the load returns, or masks only what it is about to service.
   - **meshsim flags** a peripheral returning a credit to a full counter.

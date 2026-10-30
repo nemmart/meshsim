@@ -1403,6 +1403,7 @@ From WORKER6's F6, F9-F14 and F16. F6 is in 17's guarantee B.
   special case; a broadcast stream's packet to its own tile takes a read token like the send port's (S9).
   **Software convention:** only the controllers broadcast from streams, as C&C 1 does at boot, streaming
   overlays from its big SRAM at a packet per cycle instead of four stores per packet through its send port.
+  **meshsim errors loudly** on a stream with *d* = 126 from a mesh tile (owner), a convention check under 27.
 
 ---
 

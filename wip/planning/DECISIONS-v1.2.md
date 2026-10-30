@@ -362,7 +362,7 @@ Word *n* is at window base + 4*n*.
 | 5 | `EVENTS` | R | sticky events; a load consumes those in `EVENTS_MASK`, as on the tile |
 | 6 | `EVENTS_PEEK` | R | what a load of `EVENTS` would return, consuming nothing |
 | 7 | `EVENTS_MASK` | R/W | the events that count |
-| 8 | `DMA_HDR` | R/W | count [11:0] (32-bit words, up to 4,095), output queue [13:12], spare [16:14], size [18:17] reserved (the DMA picks sizes), counter [21:20], mode [24:22], dst [31:25] |
+| 8 | `DMA_HDR` | R/W | count [11:0] (32-bit words, up to 4,095), output queue [13:12], spare [16:14], size [18:17] reserved (the DMA picks sizes), counter [21:19], mode [24:22], dst [31:25] (30) |
 | 9 | `DMA_ADDR` | R/W | the DMA's 32-bit destination address, advancing by each packet's size as packets go out |
 | 10-31 | | | reserved for future standard words |
 | 32-127 | | | peripheral-defined |
@@ -417,7 +417,7 @@ Word *n* is at window base + 4*n*.
   `PULSE_DMA`, `DMA_HDR` and `DMA_ADDR`; its run is `PULSE_RUN`. Pulses are a `PULSE_` family, as on the
   controller (8).
 - **`DMA_HDR` and `DMA_ADDR`** (owner, 2026-10-28) parallel the controller's `ROUTER_HDR` and
-  `ROUTER_ADDR`. `DMA_HDR` [31:18] is laid out exactly as `STREAM_COUNT` [31:18] (4), so the size,
+  `ROUTER_ADDR`. `DMA_HDR` [31:17] is laid out exactly as `STREAM_COUNT` [31:17] (4), so the size,
   counter, mode and dst block sits at the same bits in both. As with v1.1's sender, a DMA transfer is 128-bit packets, then a
   64-bit and/or a 32-bit packet for the remainder. v1.1's word count was 16 bits; 12 is enough.
 - **A peripheral that sends has its own router port** (owner, 2026-10-28; W2-20): it is paired with a router
@@ -471,7 +471,7 @@ first words. *(Proposed: the addresses below.)* In region 0xFF; the low 12 bits 
 ## 12. One header layout (2026-10-28)
 
 Decided (O). Answers Q15. Every register that carries a packet's header fields lays them out the same way,
-in bits [31:18], in the link word's order (2):
+in bits [31:17] (30), in the link word's order (2):
 
 | bits | field |
 |---|---|

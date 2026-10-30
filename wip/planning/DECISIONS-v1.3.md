@@ -127,6 +127,22 @@ Agreed (O). Answers T1.
     **`EXPANSION_OPCODE`** word in its peripheral window (as the replayer's, v1.2 section 39), and **stalls** while
     C&C 3 responds; rare, as for the replayer (about 13 per window, around 0.4 % of a pass, spec 4.19.5).
 
+## 8. A divider for advice (2026-10-29)
+
+Decided (O, T).
+
+- **The Tracer's row ALU includes the RV64 M extension's division as base operations:** DIV, DIVU, REM, REMU and
+  the W forms (DIVW, DIVUW, REMW, REMUW). They are used **only by untraced rows**; the replayer never executes
+  them (an untraced word reaching a replayer is already an invalid expansion, spec 4.19.11), so it needs no divider.
+- **The DIV/REM advice** (Jolt's `VirtualAdviceDivU`, `Div`, `Rem` and their W forms, spec 4.19.7) is then **one
+  untraced row** with the native operation, writing a bank-1 register (7), which the traced advice row reads through
+  `advice_reg`.
+- **To verify, not assume:** that Jolt's advice values equal RISC-V M's results in the edge cases (division by zero:
+  quotient all ones, remainder the dividend; signed overflow, −2⁶³ ÷ −1; the W forms' 32-bit sign extension). Where
+  Jolt differs, the untraced expansion adds a fix-up row.
+- **Still open:** the inlines' `VirtualAdvice` (BLAKE3, secp256k1 and others, which C&C 3 feeds, 7): computed by
+  untraced rows, or by C&C 3's software when it supplies their expansion words (T5).
+
 ---
 
 ## Pending questions
@@ -137,3 +153,4 @@ Agreed (O). Answers T1.
 | T4 | The Tracer's template coverage | 7 | **answered: section 7** (a list in the ROM; the rest fed by C&C 3, replayer-style) |
 | T2 | The RV64 initial state: what it contains and where it comes from | 1 | open |
 | T3 | The page table: its size, format and how C&C 3 maintains it | 1 | open |
+| T5 | The inlines' advice (`VirtualAdvice`): untraced rows, or C&C 3's software when it feeds their templates | 8 | open |

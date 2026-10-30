@@ -61,8 +61,8 @@ typedef struct { PERIPHERAL_STD_MEMBERS; uint32_t _defined[96]; } PeripheralStd;
 /* the replayer, peripheral type 1 (W3-REVIEW-2 section 5, proposed): words 32-33 are v1.1's PERIPH_STATUS_0-1 */
 typedef struct {
     PERIPHERAL_STD_MEMBERS;
-    MESH_RO RUN_STATUS;   /* 32: rows run in this pass [15:0], next offset [31:16] (v1.1's PERIPH_STATUS_0; proposed) */
-    MESH_RO PRESENTED;    /* 33: the instruction word of the expansion to supply (v1.1's PERIPH_STATUS_1) */
+    MESH_RO REPLAYER_STATUS; /* 32: rows run in this pass [15:0], next offset [31:16] (v1.1's PERIPH_STATUS_0; proposed) */
+    MESH_RO REPLAYER_OPCODE; /* 33: the instruction word of the expansion to supply (v1.1's PERIPH_STATUS_1) */
     uint32_t _defined[94];
 } ReplayerRegs;
 
@@ -127,7 +127,7 @@ _Static_assert(sizeof(TileRegs) == 0x200, "block size");
 _Static_assert(__builtin_offsetof(TileRegs, EVENTS) == 0x18 && __builtin_offsetof(TileRegs, ROUTER_HDR) == 0x28 &&
                __builtin_offsetof(TileRegs, REQUEST_SEND) == 0x54 && __builtin_offsetof(TileRegs, WRITE_COUNTER) == 0x60 &&
                __builtin_offsetof(TileRegs, SRAM_RD_DEST_ADDR) == 0x74 && __builtin_offsetof(TileRegs, TRACE) == 0x1FC, "D11 offsets");
-_Static_assert(__builtin_offsetof(PeripheralStd, DMA_ADDR) == 36 && __builtin_offsetof(ReplayerRegs, RUN_STATUS) == 128 &&
+_Static_assert(__builtin_offsetof(PeripheralStd, DMA_ADDR) == 36 && __builtin_offsetof(ReplayerRegs, REPLAYER_STATUS) == 128 &&
                __builtin_offsetof(Cnc1Regs, ERROR_LINES) == 128, "D10 offsets");
 _Static_assert(__builtin_offsetof(TableRegs, PTR) == 0x400 && __builtin_offsetof(TableRegs, GROUP) == 0x1400 &&
                sizeof(TableRegs) == 0x1600, "table window");

@@ -70,7 +70,7 @@ static void replay_pass(Feed *code, Feed *rlog, Feed *wlog, int store_log) {
         uint32_t ev = replayer->EVENTS;             /* consumes: one credit from each set bit under pmask */
         if (ev & PEV_RUN_DONE) break;               /* the pass has ended; no refill is in flight here */
         if (ev & RP_EV_NEWEXP) {                    /* present an expansion: its credits are 2 again */
-            template_lookup(replayer->PRESENTED, RP_NEXT_OFFSET(replayer->RUN_STATUS), &exp.chunk, &exp.left);
+            template_lookup(replayer->REPLAYER_OPCODE, RP_NEXT_OFFSET(replayer->REPLAYER_STATUS), &exp.chunk, &exp.left);
             if (exp.left) pmask |= RP_EV_EXP;       /* its first credit is claimed on the next wake */
         }
         unsigned s = 0;

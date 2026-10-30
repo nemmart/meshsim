@@ -103,26 +103,36 @@ static void cc1_boot(const Image *fs, const Image *pager, const Image *tiles,
 
 /* RECIPE cc1_toast */
 /* C&C 1's error path (D35, D36), from its trap handler: a unit's error (its line, through the unit-error bit) or its
- * own. MIE is 0 and stays 0; toast is already latched in hardware. Best effort, nothing waits for it: start the file
- * system's flush, drain what reports arrive, push them out over the UART, park. Bounded by a loop count: C&C 1 has no
- * timer but the watchdog (FINDINGS). The request formats are placeholders: C&C 2's flush op isn't defined yet. */
+ * own. MIE is 0 and stays 0; toast is already latched in hardware, and an FPGA monitor soft-resets about 0.1 ms later.
+ * Best effort, nothing waits for it: start the file system's flush, drain the reports into data memory (fast), then
+ * print them over the UART (slow: likely cut short by the reset; FINDINGS F4). Bounded by a loop count: C&C 1 has no
+ * timer but the watchdog. The request formats are placeholders: C&C 2's flush op isn't defined yet. */
 #define REQ_OP_FLUSH 0x10
+#define MAX_REPORTS  (64 * 23)                      /* every tile failing at once, 23 reports each (recipe 24) */
+static uint32_t reports[MAX_REPORTS][4];            /* 23 KB of C&C 1's 32 KB data memory */
 static void uart_hex(uint32_t v) {
     for (int i = 28; i >= 0; i -= 4) cc1->UART_TX = "0123456789abcdef"[(v >> i) & 15];   /* stalls while TX is full */
     cc1->UART_TX = ' ';
 }
 void cc1_toast(uint32_t mcause, uint32_t mepc) {
     request_send(0, 0, 0, REQ_TARGET(TARGET_CC2) | (REQ_OP_FLUSH << 10));   /* 1. flush the logs to LPDDR (D35) */
-    uart_hex(mcause); uart_hex(mepc);
-    uart_hex(cc1->ERROR_LINES[0]); uart_hex(cc1->ERROR_LINES[1]); uart_hex(cc1->ERROR_LINES[2]);
-    for (uint32_t idle = 0; idle < 100000; idle++) {    /* 2. drain the reports: 23 per failed unit (recipe 24) */
+    uint32_t n = 0;
+    for (uint32_t idle = 0; idle < 20000 && n < MAX_REPORTS; idle++) {   /* 2. drain: never pop an empty queue */
         if (!(tile->EVENTS_PEEK & EV_REQ_PENDING)) continue;
-        uart_hex(tile->REQUEST_GET_W0); uart_hex(tile->REQUEST_GET_W1); uart_hex(tile->REQUEST_GET_W2);
-        uart_hex(tile->REQUEST_RECEIVE);
-        cc1->UART_TX = '\n';
+        reports[n][0] = tile->REQUEST_GET_W0;       /* requestor [6:0], then the op and sequence */
+        reports[n][1] = tile->REQUEST_GET_W1;
+        reports[n][2] = tile->REQUEST_GET_W2;
+        reports[n][3] = tile->REQUEST_RECEIVE;      /* pops */
+        n++;
         idle = 0;
     }
-    for (;;) ;                                      /* 3. park: the outside world resets the chip */
+    uart_hex(mcause); uart_hex(mepc);               /* 3. what C&C 1 knows, then the reports */
+    for (int i = 0; i < 3; i++) uart_hex(cc1->ERROR_LINES[i]);
+    for (uint32_t r = 0; r < n; r++) {
+        for (int i = 0; i < 4; i++) uart_hex(reports[r][i]);
+        cc1->UART_TX = '\n';
+    }
+    for (;;) ;                                      /* 4. park: the outside world resets the chip */
 }
 /* END */
 

@@ -1291,6 +1291,10 @@ the integrator's recommendation. Each is a correction or a precision; none chang
   receiver's director counts it as usual (one decrement point); `ERRORS` [1] is set at the tile that issued
   the read.
 - **K is a parameter, default 8** (W2's short list); meshsim errors if it is set below 32's formula.
+- **A slip in the replayer's stream bound** (integrator, 2026-10-29; found in v1.3's Tracer work): v1.1's
+  4.19.15 bounds a stream's length by "64K rows × at most two log words × 66 bits" (about 8.6 Mbit), which
+  contradicts its own rule that a row takes at most one log value. The bound is 64K × 66 bits, about 4.3 Mbit,
+  within the 24-bit length field. The v1.2 spec should state it that way.
 - **Ending a test in meshsim:** a simulator-only exit word beside the trace word (32), since `ebreak` now stops
   loudly (27).
 

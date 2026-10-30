@@ -1,0 +1,73 @@
+# Decisions toward v1.3
+
+One entry per decision, in the order made; later entries may revise earlier ones, and superseded points are
+marked in place. Labels: O owner decision, T confirmed by Tony. Builds on v1.2 (`DECISIONS-v1.2.md` and, once
+written, the v1.2 spec). **v1.3's focus is the Tracer** (owner, 2026-10-29).
+
+---
+
+## 1. The Tracer: components (2026-10-29)
+
+The Tracer is C&C 3's peripheral (v1.2, 25): the RV64 row machine that executes the guest program and writes
+each shard's run log, the streams the tiles' replayers consume (spec 4.19). Around its RV64 core (O):
+
+1. **The RV64 initial state** the core starts a window from.
+2. **The page table**, held locally.
+3. **Two local expansion memories, 8 KB and 4 KB.**
+4. **The LRU compressors: two sets of three**, one compressor per stream (code, read log, write log) in each set.
+5. **The big FIFOs** (2).
+
+## 2. The big FIFOs (2026-10-29)
+
+Decided (O).
+
+- **Two FIFOs, each 72 × 1,024 = 73,728 entries**: one window of 2¹⁶ rows plus an eighth of headroom.
+  - **The code FIFO, 32 bits wide:** one opcode word per native instruction, at most one per row.
+  - **The log FIFO, 65 bits wide:** a 64-bit read-log or write-log word, and **a tag bit** saying which. One
+    FIFO with the tag, rather than a separate 1-bit FIFO kept in lockstep. The words stay in row order, which
+    is what the write log's last-load entry (E[15], spec 4.19.15) needs when the logs are compressed.
+- **At most one log word per row** (spec 4.19.15: "the core takes one code value per instruction and at most
+  one log value per row": an LD row pops the read log, an SD row the write log, no row both). So a window's
+  log words always fit. **This bound sizes the FIFO, so it must hold**: a row producing two log words would
+  overflow the FIFO mid-window, and since a window can't drain before it ends, the Tracer would deadlock.
+  *To validate:* the tracer model and the delivered run logs confirm no window exceeds 65,536 log words.
+- **Windows are pipelined:** window *n* drains while window *n* + 1 fills behind it. The drain is expected to
+  be much faster than the fill; the eighth is margin against a slow one. If the FIFO ever fills, back-pressure
+  stalls the RV64.
+- *(Spec slip, passed to the v1.2 spec:* v1.1's 4.19.15 bounds a stream's length by "64K rows × at most two log
+  words × 66 bits", about 8.6 Mbit, which contradicts its own one-value-per-row rule. The bound is
+  64K × 66 bits, about 4.3 Mbit, within the 24-bit length field.)
+
+## 3. Two-pass compression (2026-10-29)
+
+Decided (O).
+
+- **Set 1 sizes:** as each raw word enters its FIFO, the same word runs through set 1's compressor for its
+  stream, which counts the compressed size and discards the output.
+- **At the window's end**, each stream's compressed size is compared with its raw size.
+- **Set 2 compresses on the way out:** a stream drains through set 2 if compressed is smaller, raw otherwise.
+  The choice is per window and per stream, recorded in the run log's per-run flags (spec 4.19.15, item 108).
+- **Set 1 sizes window *n* + 1 while set 2 compresses window *n*** (2).
+- **Set 2 reproduces set 1 exactly:** both start each window from the same table state and apply the same
+  rules, so set 2's output is exactly the size set 1 counted.
+
+## 4. The LRU tables (2026-10-29)
+
+Decided (O). The Tracer's encoders match the replayer's decoders (spec 4.19.15, item 104) exactly.
+
+- **Reset to all zeros at every window start**, as the replayer's decoder resets. Seeding the table with
+  distinct values was considered and dropped: it saves at most a few hits in a 65,536-row window.
+- **The encoder's tie rule:** a value matching several entries (duplicates are legal, 4.19.15) is coded as the
+  **lowest matching index**; in the write log, a match with the last-load entry E[15] is coded as index 15
+  first (4.19.15's existing rule). The decoder doesn't depend on the choice; it makes the encoding
+  deterministic, which set 2 reproducing set 1 requires.
+
+---
+
+## Pending questions
+
+| # | question | from | status |
+|---|---|---|---|
+| T1 | What the 8 KB and 4 KB expansion memories hold | 1 | open |
+| T2 | The RV64 initial state: what it contains and where it comes from | 1 | open |
+| T3 | The page table: its size, format and how C&C 3 maintains it | 1 | open |

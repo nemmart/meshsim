@@ -5,7 +5,8 @@
  * WORKER6/REPORT.md. Section 14's rules: one struct per block, reached through a pointer (tile->EVENTS); every
  * member volatile uint32_t, accessed one word at a time and never copied whole (some loads consume).
  *
- * Build: riscv64-unknown-elf-gcc -march=rv32i_zmmul -mabi=ilp32 -std=gnu11 (anonymous unions, D14/W3-27). */
+ * Build: riscv64-unknown-elf-gcc -march=rv32i_zicsr_zmmul -mabi=ilp32 -std=gnu11 (CSRs: the ROM, the handler and boot
+ * part 2; anonymous unions: D14, W3-27). */
 #ifndef MESH_V12_DRAFT_H
 #define MESH_V12_DRAFT_H
 #define MESH_H_VERSION 0x0102   /* 1.2 draft */
@@ -21,12 +22,12 @@
 /* a big-SRAM chunk address (the engines' unit, 21 bits) to a packet address (D29): region 0x03, bytes */
 #define SRAM_ADDR(chunk)   (REGION_SRAM | ((uint32_t)(chunk) << 2))
 
-/* data-memory layout (proposed: the log fixes the blocks' shape, not their addresses; v1.1 put them at the top) */
+/* data-memory layout: decided (W5-01; spec 4.11, 4.12; D37.4). The ROM reads COMMAND_BASE, so it is a silicon constant */
 #define DMEM_RESERVED      0x00000000   /* bytes 0x00-0x0F: never placed, meshsim flags any write after boot (D27, D37.4) */
 #define DMEM_FIRST         0x00000010   /* the first byte an image may use; overlays start here */
 #define COMMAND_BASE       0x00007FC0   /* the command block: 16 slots; slot 0 the command word (D6) */
 #define REPLY_BASE         0x00007BC0   /* the reply block: two words per source, 128 sources (D6); 8-byte aligned */
-#define STACK_TOP          0x00007BC0   /* the stack grows down from below the reply block */
+#define STACK_TOP          0x00007BC0   /* the stack grows down from below the reply block (a convention) */
 #define REPLY_WORD(src)    (REPLY_BASE + 8u * (src))   /* byte address of src's reply pair */
 
 /* endpoints (spec 2.1) */
@@ -211,11 +212,14 @@ _Static_assert(__builtin_offsetof(TableRegs, PTR) == 0x400 && __builtin_offsetof
 #define SIZE_32            0u
 #define SIZE_64            1u
 #define SIZE_128           2u
-#define MODE_WRITE         0u   /* write at address: any region a packet may reach; commands and replies too */
+#define MODE_WRITE         0u   /* write at address: any region a packet may reach; commands and replies too. The counter
+                                   field counts modes 0-3 and 5 (D43) */
 #define MODE_SRC           1u   /* big-SRAM write by source, at PTR[src] */
 #define MODE_BUCKET        2u   /* bucket write, at PTR[digit] */
 #define MODE_AUGMENT       3u   /* augmented write at PTR[src]: 32 or 64 bits, never 128 */
 #define MODE_GATHER        4u   /* gather request, local only; never counted; its counter field passes to the values */
+#define MODE_COUNT         5u   /* count only (D43): decrements its counter at the destination, writes nothing; any size,
+                                   payload and address ignored; counter 0 does nothing (meshsim flags). 6-7 reserved */
 #define CTR_NONE           0u   /* uncounted: commands, boot overlays, and nothing else (D17) */
 /* The recipes' counter convention (CONVENTIONS 5), seven counters (D40). A convention only: the hardware treats
  * them alike. One counter per thing waited for separately (D3). */
@@ -223,8 +227,10 @@ _Static_assert(__builtin_offsetof(TableRegs, PTR) == 0x400 && __builtin_offsetof
 #define CTR_CM             2u   /* controller-memory writes: block copies, vectors, read-port results */
 #define CTR_REPLY          3u   /* tile-to-tile replies */
 #define CTR_PERIPH         4u   /* writes to this tile's peripherals: the replayer's refills and state */
-#define CTR_REQ(k)         (5u + (k))   /* k = 0-2: request slot k's data and reply (at most three outstanding) */
+#define CTR_REQ(k)         (5u + (k))   /* k = 0-2: request slot k's reply and data (at most three outstanding) */
 #define REQ_SLOTS          3u
+#define CTR_FENCE          7u   /* a fence (D43): any counter the phase isn't using; 7 is request slot 2's, so don't fence
+                                   while slot 2 is outstanding */
 
 /* ROUTER_HDR (D7): no counter default, on purpose (W3-REVIEW-2 section 6: a default 0 makes silent uncounted writes) */
 #define ROUTER_NOINC       1u   /* [0]: ROUTER_ADDR stays put after a send */

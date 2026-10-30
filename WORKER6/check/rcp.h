@@ -7,7 +7,7 @@
 
 /* RECIPE local_run */
 /* A local run of the address generator into big SRAM (spec 4.2; D3, D17): DMA_CONFIG, arm counter 1 with the n packets
- * the run writes to this tile, start, then wait for both the counter and DMA run done (EVENTS [7]): the run's writes
+ * the run writes to this tile, start, then wait for both the counter and DMA run done (EVENTS [10]): the run's writes
  * have landed and its last table read is complete, so the tables are free. n = 0 (a run that writes nothing here)
  * waits for the run alone: an unarmed counter never fires. */
 static inline void local_run(uint32_t config, uint32_t n) {
@@ -94,17 +94,19 @@ static inline void delay4(uint32_t n) {
 
 #ifdef RCP_RESULT
 /* RECIPE request */
-/* A request that gets a reply (D25, D38, D40). Slot k (0-2) owns counter CTR_REQ(k) and its own reply buffer, named in
- * the request, so up to three requests can be outstanding at once (C&C 2 allows three; C&C 1 and C&C 3 one each) and
- * no reply overwrites another's (F15). The slot's counter is armed before the request goes, for the reply and for
- * any data the request brings back on the same counter. w0 names the target, the op and CTR_REQ(k). */
+/* A request on slot k (0-2): the slot owns counter CTR_REQ(k) and its own reply buffer, named in the request (D25,
+ * D38, D40), so up to three requests can be outstanding at once (C&C 2 allows three; C&C 1 and C&C 3 one each) and no
+ * reply overwrites another's (F15). The slot's counter is armed before the request goes, for everything it brings
+ * back: its reply if it has one, and its data. A request stays outstanding, and its slot busy, until all of that has
+ * landed (D44, a software convention): a read, which has no reply, until its data has. w0 names the target, the op
+ * and CTR_REQ(k). */
 static volatile uint32_t req_reply[REQ_SLOTS][2] __attribute__((aligned(8)));
-static void request_issue(unsigned k, uint32_t w0, uint32_t w2, uint32_t w3, uint32_t data_packets) {
-    tile->WRITE_COUNTER[CTR_REQ(k) - 1] = data_packets + 1;    /* the reply can't come sooner */
+static void request_issue(unsigned k, uint32_t w0, uint32_t w2, uint32_t w3, uint32_t data_packets, int reply) {
+    tile->WRITE_COUNTER[CTR_REQ(k) - 1] = data_packets + (reply ? 1 : 0);   /* nothing can come back sooner */
     request_send(w3, w2, (uint32_t)&req_reply[k][0], w0);      /* W1: the reply address (D40) */
 }
 static uint32_t request_wait(unsigned k) {
-    wait_all(EV_CTR(CTR_REQ(k)));                   /* the slot is free again */
+    wait_all(EV_CTR(CTR_REQ(k)));                   /* reply and data landed: no longer outstanding, the slot is free */
     return req_reply[k][0];
 }
 /* END */
@@ -114,7 +116,7 @@ static uint32_t request_wait(unsigned k) {
  * drops anything, so nothing needs pacing (v1.1 paced replies to C&C through REPORT's delay loop). One request
  * outstanding to C&C 1 (D38): the tile waits for C&C 1's reply before anything else goes to it. */
 static uint32_t result_to_cc1(uint32_t hi, uint32_t lo) {
-    request_issue(0, REQ_CC1(REQ_OP_RESULT, CTR_REQ(0), tile_index()), lo, hi, 0);
+    request_issue(0, REQ_CC1(REQ_OP_RESULT, CTR_REQ(0), tile_index()), lo, hi, 0, 1);   /* no data, one reply */
     return request_wait(0);                         /* C&C 1's answer */
 }
 /* END */

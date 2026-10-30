@@ -3,6 +3,7 @@
 #include "rcp.h"
 #define GO_LATENCY   1      /* go_latency (param) */
 #define STAGE_DELAY  32     /* stage_delay (param, spec 6.2) */
+void cc1_toast(uint32_t mcause, uint32_t mepc);   /* recipe 27's toast path, below */
 static unsigned parity[67];                         /* per unit: the next command's parity; tiles move together on broadcasts */
 volatile uint32_t results[64][2];
 
@@ -47,7 +48,7 @@ static void wait_all_ready(void) {
         __asm__ volatile ("wfi" ::: "memory");
         drain_requests();
         uint32_t pev = cc1->EVENTS;                 /* consumes the watchdog's event; ALL_READY is live */
-        if (pev & CC1_EV_WATCHDOG) for (;;) ;       /* toast is latched already (D36): the outside world resets */
+        if (pev & CC1_EV_WATCHDOG) cc1_toast(0, 0); /* toast is latched (D36); no error traps C&C 1, so dump what it has */
         if (pev & CC1_EV_ALL_READY) return;
     }
 }
@@ -116,6 +117,26 @@ static void cc1_boot(const Boot *fs, const Boot *pager, const Boot *tiles, uint3
 }
 /* END */
 
+/* RECIPE fence */
+/* The fence (D43): something must follow a run's packets but leave by another sending unit, here the send port. DMA run
+ * done says only that the run's last table read is done; ordering holds per sending unit (D44), not per tile. So the
+ * run ends with a count-only packet (mode 5) to the tile itself on a spare counter: a stream run injects its packets
+ * in order, so when that counter reaches 0 every earlier packet of the run has been injected, and what the send port
+ * sends next follows them to each destination (of the same kind, D36). Here C&C 1 streams an image to a unit and then
+ * sends its first command from the send port: the general form of recipe 22, which instead puts the command in the
+ * run. The fence packet reads a chunk as usual (any will do) and its payload is discarded. */
+static void boot_unit_fenced(unsigned d, const Boot *b, uint32_t entry) {
+    set_stream(0, STREAM_SRC_W(b->pmem, 0), REGION_PMEM, STREAM_COUNT_W(b->pmem_packets, SIZE_128, CTR_NONE, MODE_WRITE, d));
+    set_stream(1, STREAM_SRC_W(b->dmem, 0), REGION_DMEM + DMEM_FIRST, STREAM_COUNT_W(b->dmem_packets, SIZE_128, CTR_NONE, MODE_WRITE, d));
+    set_stream(2, STREAM_SRC_W(b->cmd, 0), 0, STREAM_COUNT_W(1, SIZE_32, CTR_FENCE, MODE_COUNT, DST_CC1));   /* the fence */
+    tile->DMA_CONFIG = DMA_CFG_RUN(RUN_STREAMS, 0, 3);
+    tile->WRITE_COUNTER[CTR_FENCE - 1] = 1;         /* before the start: the fence comes from this run */
+    start_run();
+    wait_all(EV_CTR(CTR_FENCE) | EV_RUN_DONE);      /* every overlay packet has left; the tables are free */
+    command(d, CMD_JUMP, 0, &entry, 1);             /* from the send port: it follows them, one kind, to each unit */
+}
+/* END */
+
 /* RECIPE cc1_toast */
 /* C&C 1's error path (D35, D36, D37), from its trap handler: a unit's error (its line, through the unit-error bit) or its
  * own. MIE is 0 and stays 0; toast is already latched in hardware. Best effort: start the file system's flush, drain
@@ -124,9 +145,9 @@ static void cc1_boot(const Boot *fs, const Boot *pager, const Boot *tiles, uint3
  * over the UART when a person resets by hand (D37). The host words are deferred, so the UART stands for both here.
  * Bounded by mcycle (D41). C&C 2's flush request format is a placeholder. */
 #define REQ_OP_FLUSH 0x10
-#define MAX_REPORTS  (64 * 24)                      /* every tile failing at once, 24 reports each (recipe 24) */
+#define MAX_REPORTS  (66 * 24)                      /* every unit but C&C 1 failing at once, 24 reports each (recipe 24) */
 #define DRAIN_QUIET  100000                         /* cycles with nothing new before the dump starts */
-static uint32_t reports[MAX_REPORTS][4];            /* 24 KB of C&C 1's 32 KB data memory */
+static uint32_t reports[MAX_REPORTS][4];            /* about 25 KB of C&C 1's 32 KB data memory */
 static void uart_hex(uint32_t v) {
     for (int i = 28; i >= 0; i -= 4) cc1->UART_TX = "0123456789abcdef"[(v >> i) & 15];   /* stalls while TX is full */
     cc1->UART_TX = ' ';
@@ -157,5 +178,6 @@ int main(void) {
     static const Boot b = { 0x10000, 64, 0x11000, 16, 0x12000 };
     put_command(b.cmd, 0x01000000);
     cc1_boot(&b, &b, &b, 0x20000, 256, 0x30000);
+    boot_unit_fenced(DST_CC3, &b, 0x01000000);
     for (;;) phase(1, 0, 0, 0, 1000000);
 }

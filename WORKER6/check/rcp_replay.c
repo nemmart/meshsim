@@ -12,7 +12,7 @@ static int replayer_present(void) {
     return (PARAMS_PERIPH_PRESENT(tile->PARAMS) & 1) && PARAMS_TYPE(replayer->PARAMS) == PTYPE_REPLAYER;
 }
 /* Load the state and stream words (two 128-bit words, st[0..7]) into region 0x04 while the replayer is stopped
- * (STATUS [0] = 0: region 0 is written then, spec 4.19.10): mode-0 writes to the tile's own peripheral region, 16-byte
+ * (STATUS [0] = 0: its part 0 is written only then, spec 4.19.10): mode-0 writes to the tile's own peripheral region, 16-byte
  * aligned, counted on counter 4 like any write (they land within K, D10). */
 static void replayer_load_state(const uint32_t *st) {
     while (replayer->STATUS & PST_RUN) ;           /* only between passes; the loop below ends a pass by its event */

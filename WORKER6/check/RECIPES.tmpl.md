@@ -1,6 +1,6 @@
 # Programming a tile: the recipe book (v1.2 draft)
 
-**v1.2 draft, written from `planning/DECISIONS-v1.2.md` (sections 1-42, cited as D*n*).** Short, careful C for the common operations of a tile program, one recipe per operation, against the draft header `sw/mesh-v1.2-draft.h`. Each recipe gives what it does, what it relies on, the code, and a **walk**: what each tile and C&C 1 do, in order, and what can arrive when, checked against the counters' rules (arming, done early, unexpected arrival), the `done` gate, the GO-to-arming window, alignment and the events' consume rules. Where a walk showed a protocol problem the recipe is marked **[F*n*]**, a finding in `WORKER6/FINDINGS.md`; sections 37, 38, 40 and 41 of the log answer all sixteen of the first round's, and the recipes follow those answers.
+**v1.2 draft, written from `planning/DECISIONS-v1.2.md` (sections 1-44, cited as D*n*).** Short, careful C for the common operations of a tile program, one recipe per operation, against the draft header `sw/mesh-v1.2-draft.h`. Each recipe gives what it does, what it relies on, the code, and a **walk**: what each tile and C&C 1 do, in order, and what can arrive when, checked against the counters' rules (arming, done early, unexpected arrival), the `done` gate, the GO-to-arming window, alignment and the events' consume rules. Where a walk showed a protocol problem the recipe is marked **[F*n*]**, a finding in `WORKER6/FINDINGS.md`; sections 37, 38 and 40-44 of the log answer all seventeen, and the recipes follow those answers.
 
 **The code is compiled, not run.** There is no v1.2 simulator yet. Every code block is a region of a file in `WORKER6/check/`, marked `/* RECIPE name */` … `/* END */` and named in an HTML comment before the block. `build.sh` compiles them all against the draft header (`riscv64-unknown-elf-gcc -march=rv32i_zicsr_zmmul -mabi=ilp32 -std=gnu11 -O2 -Wall -Wextra -Werror`), and `check_book.py` confirms that each block equals its region. When meshsim v1.2 exists, those files become the `rcp_*.c` tests, as in v1.1.
 
@@ -11,9 +11,9 @@
 - **Cycles:** every v1.1 measurement is void until meshsim v1.2 measures it again; section 14 marks each figure "to measure".
 - Buffers in the examples sit in different big-SRAM areas, as in v1.1: area *a* starts at chunk *a* · 0x20000.
 
-**What changed from v1.1, in brief.** Modes 0 write at address (commands and replies included), 1 by source, 2 bucket, 3 augmented, 4 gather request. The counter is named by the packet. Every 64- and 128-bit access is naturally aligned, checked in hardware. Waiting is by events, the tables included (`wait_tables()` is gone). Errors trap and the trap is terminal: no HALT and no REPORT. Every unit boots from a ROM. Requests to the controllers are limited per tile, name their own reply address and counter, and wait for their replies (D38, D40). Seven write counters (D40).
+**What changed from v1.1, in brief.** Modes 0 write at address (commands and replies included), 1 by source, 2 bucket, 3 augmented, 4 gather request, 5 count only (D43). The counter is named by the packet. Every 64- and 128-bit access is naturally aligned, checked in hardware. Waiting is by events, the tables included (`wait_tables()` is gone). Errors trap and the trap is terminal: no HALT and no REPORT. Every unit boots from a ROM. Requests to the controllers are limited per tile, name their own reply address and counter, and wait for their replies (D38, D40). Seven write counters (D40). Ordering holds per sending unit, not per tile (D44).
 
-**Contents.** 0 helpers · 1 the command loop · 2 a stream run (local copy) · 3 block copy into controller memory · 4 histogram, prefix sum and bucket passes · 5 augmented transfers · 6 gather · 7 the one-word exchange and words to one tile · 8 a vector exchange · 9 an all-to-all · 10 a mesh reduction · 11 the read port · 12 parameters, status and errors · 13 the synchronised start · 14 cycles · 15 the rules that bite · 16 gaps and awkwardness · 17 write a block into big SRAM · 18 fill with pseudo-random data · 19 hash a block · 20 *retired: REPORT* · 21 the self-test · **new:** 22 the boot ROM and the boot sequence · 23 waiting for the tables by events · 24 the error handler · 25 a peripheral window through its struct · 26 the replayer's refill loop · 27 C&C 1's side of a phase.
+**Contents.** 0 helpers · 1 the command loop · 2 a stream run (local copy) · 3 block copy into controller memory · 4 histogram, prefix sum and bucket passes · 5 augmented transfers · 6 gather · 7 the one-word exchange and words to one tile · 8 a vector exchange · 9 an all-to-all · 10 a mesh reduction · 11 the read port · 12 parameters, status and errors · 13 the synchronised start · 14 cycles · 15 the rules that bite · 16 gaps and awkwardness · 17 write a block into big SRAM · 18 fill with pseudo-random data · 19 hash a block · 20 *retired: REPORT* · 21 the self-test · **new:** 22 the boot ROM and the boot sequence · 23 waiting for the tables by events · 24 the error handler · 25 a peripheral window through its struct · 26 the replayer's refill loop · 27 C&C 1's side of a phase · 28 count-only packets: the fence and a signal between tiles.
 
 ---
 
@@ -356,11 +356,15 @@ v1.1's five rules, rewritten, and the ones the v1.2 walks added. Each right form
 
 **Rule 11: at most 1, 3 and 1 requests outstanding to C&C 1, C&C 2 and C&C 3** (D38). A tile issues its next request to a target only after the previous one's reply has come back. Each request names its reply's counter and its own reply address in data memory (D25, D40), so no reply overwrites another's (F15). The recipes give each outstanding request a **slot** (R21's `request_issue`): slot *k* owns counter 5 + *k* and its own reply buffer, which the tile arms before sending. Three slots cover C&C 2's limit, so by this convention a tile has at most three requests outstanding in all; a program needing more shares a counter and waits for the union. The targets' receive queues (128, 256 and 128 requests, in the request tree) then never run out of credits, so the root never stalls a row. **Error reports are the exception**: the handler sends its 24 at once and expects no reply (recipe 24). C&C 1 answers every tile request at the address it names (recipe 27's `drain_requests`); a target that didn't would leave the tile waiting for ever.
 
+**Rule 12: ordering holds per sending unit, not per tile** (D44). Packets from one unit of one tile, to one destination, of one kind (broadcast or unicast), arrive in the order that unit sent them. A tile's sending units are the address generator (streams and group runs), the send port, the GATHER engine, the read port (results to the tile itself) and each peripheral's DMA. **Between two units there is no ordering, even in one tile.** DMA run done doesn't help: it says the run's last table read is done, not that its last packet has left (D43). When a packet from one unit must follow another unit's, either put it in the same run (recipe 22's boot command) or **fence** the run: end it with a count-only packet to the tile itself on a spare counter, and send once that counter reaches 0 (recipe 28). Counted data needs neither: its receiver's counter says when it is all in, whatever the order. **[F17]**
+
+**Rule 13: a request stays outstanding until everything it brings back has landed** (D44, a software convention): its reply, if it has one, and its data. A read, which has no reply, is outstanding until its data counter is done. So the 1/3/1 limits (rule 11) count a read until its last data packet lands, and `request_issue` arms the slot's counter for both, so `request_wait` frees the slot only then.
+
 ## 16. Gaps and awkwardness found
 
 v1.1 listed three. Two are gone: a stuck counter now ends in an error, the toast pin and an outside reset (D35), not in a HALT; and REPORT's settle went with REPORT. The third remains: table request overflow and GATHER queue overflow still can't be caused by a program, so they stay hardware-fault detectors.
 
-What the v1.2 walks found is in `WORKER6/FINDINGS.md`, most important first, each with the log's answer. All sixteen of the first two rounds are answered:
+What the v1.2 walks found is in `WORKER6/FINDINGS.md`, most important first, each with the log's answer. All seventeen are answered:
 
 - **[F1]** GO reached tiles asleep in the boot ROM. *D37.1:* the ROM jumps only if a command has landed (recipe 22).
 - **[F2]** Nothing enabled the hard interrupt. *D37.2:* boot part 2 does (recipe 22).
@@ -377,7 +381,7 @@ What the v1.2 walks found is in `WORKER6/FINDINGS.md`, most important first, eac
 - **[F15]** Three replies from C&C 2 in one reply-block pair. *D40:* every request names its own reply address (rule 11).
 - **[F16]** The report count. *D41:* the spec defines the set (24 with seven counters, recipe 24).
 
-New in this round, open: **[F17]** C&C 1's first command can't follow its overlay stream from the send port, since DMA run done says only that the run's tables have been read, not that its packets have left; recipe 22 puts the command in the same run.
+- **[F17]** A command from the send port isn't ordered after a stream's packets: DMA run done doesn't mean they have left. *D43, D44:* ordering holds per sending unit; a fence (a count-only packet on a spare counter) or the same run orders them (rule 12, recipe 28).
 
 ## 17. Write a block from data memory into big SRAM
 
@@ -436,7 +440,7 @@ Two ways to seed: a seed per tile from C&C 1 (one unicast command each, the 64-b
 The command sequence, from C&C 1: fill (`2`, base seed, n), configure (`3`), start (`4`), hash (`5`, the receive buffer, n), signature (`6`). C&C 1 pops the 64 requests and answers each.
 
 - **The signatures go over the request bus**, not the mesh. v1.1 sent them as replies to C&C, paced by REPORT's delay loop so nothing fanned in. The request bus has back-pressure and never drops anything, so no pacing is needed.
-- **Request slots** (D38, D40, rule 11): `request_issue(k, …)` arms slot *k*'s counter (5 + *k*) for the reply and any data, names slot *k*'s own reply buffer in the request's word 1, and sends; `request_wait(k)` waits for that counter. Up to three slots can be in flight, the most any target allows (C&C 2's three), and their replies land in separate buffers.
+- **Request slots** (D38, D40, D44, rules 11 and 13): `request_issue(k, …, data, reply)` arms slot *k*'s counter (5 + *k*) for everything the request brings back (its data packets, plus 1 if it has a reply), names slot *k*'s own reply buffer in the request's word 1, and sends; `request_wait(k)` waits for that counter. A read (data, no reply) is outstanding until its data has landed. Up to three slots can be in flight, the most any target allows (C&C 2's three), and their replies land in separate buffers.
 - **One request outstanding to C&C 1:** the self-test uses slot 0 and waits for C&C 1's reply before `done`. C&C 1 answers each result at the address it names (recipe 27). The layout below the target is C&C 1's to define; the draft's `REQ_CC1` (op, reply counter, argument; word 1 the reply address) is a placeholder.
 
 **Walk.** C&C 1 sends command 6 right after the hash's GO and waits for all READY. Each tile wakes, arms counter 5 (slot 0) with 1, and pushes its request, naming `req_reply[0]`; 64 requests reach C&C 1's 128-entry receive queue, so none waits for a credit. C&C 1's wait loop sees [12], pops each and writes its reply to the address and counter the request named. Each tile's counter 5 reaches 0 and it pulses `done`; READY follows. A reply can't arrive before the tile's arming, which precedes its request.
@@ -479,7 +483,7 @@ The command sequence, from C&C 1: fill (`2`, base seed, n), configure (`3`), sta
 - **[F2]** `MIE` is 0 at reset (W1-03), and the log didn't say who sets it. D37.2: boot part 2 does, after its counter store, so the start path stays the counter store first.
 - **The first command after a reset is even** (D36), so C&C 1's per-unit parity starts at 0 after every reset.
 - **[F13]** The ROM depends on "command landed" [9] staying pending: nothing in the reset mask consumes it, so the load that consumes GO still returns it. D41: the spec says so, and **the ROM's tile branch must not consume it**: putting [9] in its mask would break the test. In the image, [9] then stays pending for ever (harmless; every report's `EVENTS_PEEK` shows it).
-- **[F14], [F17]** Streaming from big SRAM sends a packet per cycle, against four stores per packet from the send port (D41). **The first command is in the same run, not sent afterwards from the send port.** C&C 1's DMA run done says only that the run's last table read is done; its last overlay packets may still be in the read-return and injection pipeline, and a packet from the send port, a different injector, isn't ordered with them. Whether 3.2's in-order rule covers a tile's two injection sources at all is open (F17); the recipe doesn't depend on it.
+- **[F14], [F17]** Streaming from big SRAM sends a packet per cycle, against four stores per packet from the send port (D41). **The first command is in the same run, not sent afterwards from the send port.** C&C 1's DMA run done says only that the run's last table read is done; its last overlay packets may still be in the read-return and injection pipeline, and a packet from the send port, a different injector, isn't ordered with them. D44 settles it: ordering holds per sending unit, and between units there is none. The general pattern for anything that must follow a run's packets from another unit is the fence (recipe 28: a count-only packet ending the run, then send); for the boot the command in the run is simpler.
 - **The ROM's handler never writes data memory** (D31): recipe 24's handler needs none, so the same code serves in the ROM and in the image.
 
 ## 23. Waiting for the tables by events
@@ -531,7 +535,7 @@ The command sequence, from C&C 1: fill (`2`, base seed, n), configure (`3`), sta
 ## 25. A peripheral window through its struct
 
 **What it does.** Reaches a peripheral through its struct (D14): checks it is present, loads the replayer's state before a pass, and runs a peripheral's DMA.
-**Relies on:** D9 and D10 (the standard window; counted events; the optional DMA; landing within *K*), D14, spec 4.19.10 (the replayer's region 0 is written while it is stopped).
+**Relies on:** D9 and D10 (the standard window; counted events; the optional DMA; landing within *K*), D14, spec 4.19.10 (the replayer's part 0 is written only while it is stopped).
 
 @@periph_window rcp_replay.c@@
 
@@ -541,7 +545,7 @@ The command sequence, from C&C 1: fill (`2`, base seed, n), configure (`3`), sta
 - **`periph_dma`** narrows the window's mask to DMA done around its consuming load, because a load of `EVENTS` takes one count from every set, masked bit (rule 8). That is three extra accesses. **[F9]**
 
 **Walk (`periph_dma`).**
-1. Set the window's mask to DMA done alone; the tile's live bit [9 + n] can only rise for it.
+1. Set the window's mask to DMA done alone; the tile's live bit [12 + n] can only rise for it.
 2. Set `DMA_HDR` and `DMA_ADDR`, then `PULSE_DMA`. The receiver armed its counter beforehand: a DMA's packets are counted at their destination like any other.
 3. The DMA sends 128-bit packets, then a 64- and/or 32-bit remainder. When the last has left, it posts DMA done (depth 1), and the tile's live bit rises.
 4. `WFI` wakes; the load of the window's `EVENTS` consumes DMA done. If the live bit lagged and the wake was spurious, the load returns 0 and the loop sleeps again (D10).
@@ -600,4 +604,37 @@ The command sequence, from C&C 1: fill (`2`, base seed, n), configure (`3`), sta
 2. `cc1_toast` asks the file system to flush (C&C 2's request format: placeholder).
 3. It drains reports to data memory as they arrive, never popping an empty queue (receive underflow is an error, though with toast already latched it changes nothing). Draining fast keeps C&C 1's 128-entry queue from filling and stalling rows (D38).
 4. Then it sends the dump out and parks. With an FPGA in the loop the dump goes down LVDS and the FPGA waits as long as it needs before resetting; solo, it goes over the UART and a person resets by hand (D37). The host words are deferred, so the code shows the UART. **[F4]**
-- **The drain ends** when no report has arrived for `DRAIN_QUIET` cycles of `mcycle` (D41), or the buffer is full.
+- **The drain ends** when no report has arrived for `DRAIN_QUIET` cycles of `mcycle` (D41), or the buffer is full. The buffer holds 24 reports from each of 66 units (every unit but C&C 1 sends the set).
+- **The watchdog's expiry** latches the toast pin but is an event, not an error: nothing traps C&C 1. So `wait_all_ready()` calls the toast path itself, which flushes, drains and dumps what C&C 1 has.
+
+## 28. Count-only packets: the fence, and a signal between tiles
+
+**What it does.** Two uses of mode 5, "count only": the packet decrements its counter at the destination and writes nothing (D43). A **fence** orders a send-port packet after a run's packets; a **signal** tells another tile "done" or "your data is all sent" for the cost of one packet.
+**Relies on:** D43 (mode 5; any size, payload and address ignored; counted like modes 0-3; to the tile itself it takes a read token, S9; the fence), D44 (ordering per sending unit), D3 (arming), D42 (`ROUTER_ADDR` advances for mode 0 only).
+
+**The fence**, shown as C&C 1 booting a unit from the send port (the general form of recipe 22's boot):
+
+@@fence rcp_cc1.c@@
+
+**A signal**, shown as a ring pipeline that frees each inbox with a signal:
+
+@@signal rcp_signal.c@@
+
+- **Which counter for a fence:** any the phase isn't using. The draft's `CTR_FENCE` is counter 7, request slot 2's, so a tile doesn't fence while slot 2 is outstanding.
+- **In a group run** the fence goes in the stream that ends last (D43). In a stream run it is the last entry.
+- **Cost:** one packet per run that needs a fence, and the read of one chunk (its payload is discarded).
+- **A count-only packet with counter 0 does nothing,** and meshsim flags it: a signal always names an armed counter.
+- **Where signals are natural:** credits back to a sender (the ring above); "done" from a tile that had nothing to send this step, so its receiver still has one packet to wait for; and barriers between neighbours without C&C 1. Where the data is counted anyway, its counter already says it is all in, and no signal is needed.
+
+**Walk (the fence).**
+1. C&C 1 arms counter 7 with 1, then starts a three-stream run: the program image and the data image to the unit, then one count-only packet to itself on counter 7.
+2. The address generator injects the run's packets in stream order, one unit, in order (D44).
+3. The fence packet loops back through C&C 1's director *K* cycles before its decrement; by then every earlier packet of the run has been injected into the network. Counter 7 reaches 0, and [6] is set. The run's last table read is done too ([10]).
+4. `wait_all` returns. The command now goes from the send port, a different unit. It follows the overlays to each destination because they were injected before it, on the same fixed routes, of the same kind (unicast here; broadcast for the tiles). Routes and FIFOs never reorder (3.2).
+5. Without the fence, the command could be injected while the image's last reads were still in big SRAM's pipeline, and land first: "command landed" with the image incomplete (F17).
+
+**Walk (the ring).**
+1. *Step 0.* Every tile arms counter 2 for its left neighbour's PW/2 packets, first in the command; the left neighbour's data can't come sooner, by identical code (R5's argument). It arms counter 3 for 1 and sends its vector right.
+2. It waits for counter 2 (the data from its left is in), copies it out, arms counter 2 for step 1's data, and only then signals its left neighbour on counter 3. So the left neighbour's step-1 data, which follows the signal, can't beat the arming.
+3. *Step s > 0.* It waits for counter 3: the right neighbour's release of step s - 1, which can only follow the data it released. Then it re-arms counter 3 and sends again.
+4. After the last step it waits for the last release. Every counter is at 0 at `done`, and none is armed for anything still to come: no done early, no unexpected arrival.

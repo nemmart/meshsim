@@ -1,0 +1,1535 @@
+# Decisions toward v1.2
+
+One entry per decision, newest section last. Labels follow the repository's convention: O owner decision,
+T confirmed by Tony (controller core). The spec session works from this log; `spec/machine-spec.md` stays
+the authority once an entry is written into it. Starting point: `PLANNING-NOTES-2026-10-27.md`.
+
+## Where the design stands (read this first)
+
+The sections below are in the order they were decided, and later ones revise earlier ones; superseded points
+are marked in place. In brief:
+
+- **Errors** (v1.1's conditions) raise the controller core's hard interrupt; its handler reports to C&C 1
+  over the request bus and parks forever: traps are terminal (20). Each unit's error line reaches C&C 1's
+  peripheral (`ERROR_LINES_0`-`2`); C&C 1's handler starts the file system flushing its logs and dumps what it can; Ingress/Egress raises
+  the **"I'm toast" pin** (also on a keep-alive watchdog expiry), and **the outside world resets the chip**,
+  hard or soft (soft keeps LPDDR). Nothing recovers on chip; there is no HALT state (23, 35).
+- **Boot:** after the reset every unit runs a **boot ROM** at 0x02000000. Tiles boot through READY/GO like a
+  phase; C&C 2 and C&C 3 jump when their first command lands and report "started" (31).
+- **The link word** is 256 bits: payload, a 32-bit address (8-bit region, 24-bit byte offset), size, a
+  3-bit counter, a 3-bit mode, src, dst; 74 bits reserved (2, 5, 30).
+- **Counters:** the packet names one of **seven** write counters (0 uncounted; 40), decremented K cycles after the
+  traffic director accepts it, K a formula (3, 30, 32).
+- **Modes:** 0 write at address (commands and replies included), 1 by source, 2 bucket, 3 augmented,
+  4 gather request, 5 count only (fences), 6-7 reserved and discarded (6, 43).
+- **Address map:** 0x00 data memory, 0x01 program memory (32 KB each), 0x02 the boot ROM, 0x03 big SRAM,
+  0x04-0x06 up to three peripherals, 0xFF the registers and table window (5, 9, 22).
+- **Every access is naturally aligned**, checked in hardware; out-of-bounds is unchecked (26).
+- **Registers:** the controller block and each peripheral window start the same way (`PARAMS`, `STATUS`,
+  `ERRORS`, pulses, events, DMA), with one header layout everywhere (10-14, 16, 18, 30); C&C 1's chip-level
+  registers are in its peripheral (28). Peripheral events can be counted (credits) or live (10).
+- **What hardware checks and what meshsim checks** (27): software bugs are meshsim's job.
+- **Waiting** is by events throughout, including for the tables (16, 17).
+- **Open:** the pending questions; big-SRAM guarantees S1-S9; the integrator's calls (32); deferred work (33).
+
+---
+
+## 1. Condition handling (2026-10-28)
+
+Closes planning notes section 7, "Condition handling", and to-do item 3.
+
+### 1.1 The controller core (T)
+
+- Tony's RV32 core has **two inputs**: a **hard interrupt**, which takes a trap to the handler, and a
+  **wakeup**, which resumes the core from `WFI` without a trap.
+- The wakeup input is **level-sensitive**: if it is high when the core reaches `WFI`, the core does not
+  sleep, even if it went high before the `WFI`.
+- The hard interrupt **takes the trap even while the core is in `WFI`**.
+- The core implements the **CSR instructions and the machine-mode trap CSRs**, but **no privilege modes**:
+  machine mode only, without the CSRs for privilege levels.
+- **Open (T):** the exact list of implemented CSRs, to define which CSR instructions are legal and which
+  still raise the illegal-instruction condition.
+
+### 1.2 Spec changes to the controller (O; 4.11)
+
+- **CSR instructions become legal** for the CSRs the core implements (1.1). 4.11 currently makes every CSR
+  instruction illegal.
+- **Bus errors, illegal instructions, `ecall` and `ebreak` trap to the handler** instead of halting the
+  controller. 4.11 currently halts the controller on each.
+
+### 1.3 Wake (O; 4.12)
+
+- **The `EVENTS_*` registers are unchanged.** The existing wake term (4.12's formula over `EVENTS`,
+  `EVENTS_MASK`, `EVENTS_REQUIRED` and the `done` gate) drives the core's wakeup input directly.
+
+### 1.4 The handler (O; 4.13)
+
+- **A condition raises the core's hard interrupt.** The handler reads the state (conditions, `STATUS`,
+  counters, `mepc`/`mcause`/`mtval`, `PERIPH_STATUS_0`-`7` *(now each peripheral's window, 10)*, x1-x31:
+  about 50 words) and sends it to C&C 1
+  as request-bus reports (about 17; header word: op, sequence number; three data words each).
+- **Parking:** ~~the handler then clears `EVENTS_MASK` and `EVENTS_REQUIRED` and loops on `WFI`~~
+  *superseded by 20: traps are terminal; the handler parks in a plain loop.* Only the global reset recovers the tile (21, 23).
+- **Conditions during the `done` gate:** the gate controls only `WFI` wakes. A condition raised between
+  `done` and GO still takes the hard interrupt.
+
+### 1.5 Error lines and the C&C pin (O)
+
+- **Every tile has a dedicated error line to C&C 1**, driven by hardware from its conditions (no software
+  involved), with a **fixed latency**. It still reports a tile whose request path is stuck or whose handler
+  has itself failed.
+- C&C 1 sees the lines as **three 32-bit words**: two for the 64 tiles (one bit per tile) and one for the
+  C&C controllers and other non-tile units. Their bit assignment is part of the endpoint map (to-do item 11).
+- **The three words fold into C&C 1's conditions**, and C&C 1's conditions drive its own hard interrupt, so
+  C&C 1 is interrupted whenever any core fails, itself included. *Superseded by 15: the words are
+  `ERROR_LINES_0`-`2` in C&C 1's peripheral, and they reach C&C 1 through that peripheral's unit-error bit.*
+- **The fold is live:** it follows the error lines; it does not latch. C&C 1's own conditions stay sticky,
+  as everywhere.
+- **The C&C pin:** an output pin on the ASIC, high while C&C 1 has any condition. *Superseded by 24: two
+  pins, a hardware error pin for C&C 1's own errors only and a software pin.*
+- *(Superseded by 21 and 23: there is no HALT; the global reset is the only stop.)* **C&C 1's HALT halts everyone but itself.** Entering HALT clears the halted units' conditions (4.13), so
+  their error lines drop, the fold clears and the pin goes low.
+- **So the pin stays high only when C&C 1 itself has failed**, and the host steps in. The pin also pulses
+  during normal recovery, so the host treats only a sustained high as a failure.
+- **C&C 1's phase watchdog stays** as the backstop for a core that is stuck without raising a condition.
+
+### 1.6 REPORT is withdrawn (O; 6.6)
+
+- **The REPORT debugging command is removed.** It works only when a failed tile still reaches
+  `wait_for_command()` and the mesh still carries its reply, which are the cases that fail. The handler's
+  request-bus reports (1.4) and the error lines (1.5) replace it.
+
+### 1.7 Spec text these decisions change
+
+- **Section 2 (global nets) and 6.6:** the error line is now one line per tile at fixed latency into C&C 1's
+  three words (1.5), replacing "ORed in a tree into one sticky error bit at C&C".
+- **4.11:** CSR instructions and traps (1.2).
+- **4.13** ("bus errors, illegal instructions, `ecall` and `ebreak` halt the tile's controller only"),
+  **4.17.7, 6.1 and 4.19.11** ("a halted controller" stops the peripheral and the sender): with traps the
+  controller no longer halts itself, so each needs rewording. What stops the peripheral is pending (Q3).
+- **6.6:** REPORT removed (1.6). C&C reuses the tile controller design, so C&C 1 gets the same traps and
+  can take its own interrupt (1.5).
+
+---
+
+## 2. The link word (2026-10-28)
+
+Decided with Tony (O, T). Replaces 3.1's 169-bit word.
+
+- **The link word is 256 bits on every router link**, fixed, so later field changes don't resize the
+  links, FIFOs and route blocks again (102 bits in v1.0, 169 in v1.1).
+- **Fields (182 bits; counter widened to 3 by 30):** payload 128, address 32, size 2, counter 3, mode 3, src 7, dst 7. **74 bits
+  reserved:** sent as 0 and ignored by every receiver; FIFOs and route blocks carry all 256 bits without
+  interpreting them.
+- **Bit layout (30):** payload [127:0], address [159:128], size [161:160], counter [164:162], mode [167:165],
+  src [174:168], dst [181:175], reserved [255:182].
+- **Size, counter and mode keep this order everywhere** they appear together (`STREAM_COUNT`, the send
+  port's header, the sender), so hardware copies them as one 8-bit block into link word [167:160] (30).
+- **Cost:** router FIFOs about 50 % larger than at 169 bits, roughly +0.04-0.06 mm² per tile [estimate];
+  256 wires per link direction, with the channel width to confirm in physical design. *Revised (W2-14):*
+  with the fifth port's 160 entries and the loopback's extra entries, the FIFOs alone add about **+0.065 mm²**
+  per tile *(inferred)*, plus the padding stages, the send holding register, the director's input stage and
+  metadata growing with the 32-bit address. Still well inside 1.5 mm² per tile; section 11 is redone line by
+  line with the spec update.
+- **The full 256 bits are stored** (owner, 2026-10-28; Tony's request), reserved bits included, about 36 Kbit
+  of constant-zero flops per tile. **To revisit when the design has settled:** trim the storage to the bits in
+  use while the links and interfaces stay 256 wide. **Power is the main reason** (owner): constant-zero flops
+  don't toggle their data but are still clocked every cycle unless gated, which matters more than their area.
+- The 32-bit address is in 5 and the mode codes in 6.
+
+## 3. Counters (2026-10-28)
+
+Decided with Tony (O, T). Replaces 4.12's four named down-counters.
+
+- **The packet names its counter** in the link word's counter field (3 bits since 30): **0 uncounted; 1-4
+  general-purpose counters**, assigned to whatever a program needs. Counting no longer depends on the mode.
+- **A fixed delay K:** the traffic director accepts a packet, and its counter is decremented **K cycles
+  later**, through a K-stage delay line carrying the counter id. K is large enough that the packet's write
+  has reached its destination by then. **K = 8 for now** (a parameter).
+- At most one packet per cycle leaves the director, so a counter takes at most one decrement per cycle.
+  `mem_idle` and `cm_idle` drop out of the done rule: a counter at 0 means everything it counted is in place.
+- **Unexpected arrival stays:** a counted packet for a counter already at 0 still sets the condition. A
+  packet wrongly sent with counter 0 lands silently, a sender error like a wrong mode today.
+- **What K must cover** (S1 below): port B and the peripheral are fixed at 2 cycles. For big SRAM, a write
+  only has to have **entered its area's queue** within K: the queue is served in arrival order, so a read
+  issued after the counter reaches 0 queues behind the write and cannot overtake it.
+- **Follow-on:** the global reset clears the delay line with the counters (21, 23; W2-18: with no HALT
+  state, its edge questions don't arise). The counters' events are in 16.
+- **Additive arming** (owner, 2026-10-28; v1.1's rule kept): a store of *N* adds *N*, atomically and in step
+  with that cycle's decrement; *N* > 0 arms the counter, which **clears its done event** and counters done.
+  So whichever comes first, the last word of an earlier batch or the add, once the add has happened done
+  means **everything added so far has landed**: no stale wake and no early wake. If the count reaches 0 in
+  the same cycle as an add of *N*, it ends at *N* and done doesn't fire.
+- **Usage rule:** one counter per thing a program waits for separately. Adding to a counter means waiting
+  for the union; to learn that batch A has landed while B is outstanding, put them on different counters.
+- **Accepted trade-off of the delay** (owner, 2026-10-28): unexpected arrival is detected when the
+  decrement happens, K cycles after acceptance. A stray packet accepted at count 0 whose decrement lands
+  after the program arms *N* uses up one of the *N*: done fires one word early, and the batch's last real
+  word then raises unexpected arrival. The error is caught, later than in v1.1 and naming the last real
+  word rather than the stray; only a second, cancelling bug (a batch armed one too high) would hide it.
+  Considered and not taken: decrement at acceptance and delay only the done. **meshsim models the
+  hardware exactly** (owner, 2026-10-28; W2-16): its `ERRORS` bit and error line follow the decrement, as in
+  hardware, and it **reports the stray separately, as a diagnostic at acceptance**, naming it precisely. The
+  simulated chip never gets out of step with the real one.
+- **HALT no longer suppresses counting** (replacing 3.1 and 4.12's "a halted tile counts nothing"). Boot
+  loads and staging are sent with counter 0 *(23: there are no halted tiles; units sleep in the boot ROM, 31)*. ~~A counted packet arriving at a halted
+  tile hits a counter at 0 and sets unexpected arrival, which survives into RUN where the loader can see
+  it.~~ *Superseded by 19: a halted tile's ejector drops counted packets silently.*
+- **Pending:** the counter field in every packet source (Q8).
+
+## 4. The `STREAM` entry (2026-10-28)
+
+Decided (O). Still three 32-bit arrays, 96 bits, 88 used:
+
+| array | fields |
+|---|---|
+| `STREAM_SRC` | source [20:0], gap after [23:21], spare [31:24] |
+| `STREAM_DEST` | destination address [31:0] |
+| `STREAM_COUNT` | count [16:0], size [18:17], counter [21:19], mode [24:22], *d* [31:25] (30) |
+
+- `STREAM_COUNT` [24:17] is the link word's size, counter and mode block, [167:160] (2, 30).
+- The fields that change every round are still the source and the count, one store each, with fixed bits
+  ORed in (gap after; size, counter, mode and *d*).
+- Assumes the source stays a 21-bit big-SRAM address (Q9).
+
+## 5. The 32-bit address map (2026-10-28)
+
+Decided (O). Answers Q6. One map for packet addresses and the controller's own loads and stores.
+
+- **An address is an 8-bit region [31:24] and a 24-bit offset [23:0].**
+
+| region | contents |
+|---|---|
+| 0x00 | controller data memory, 32 KB |
+| 0x01 | controller program memory, 32 KB |
+| 0x02 | **boot ROM**, read and execute only; the reset vector is 0x02000000 (22) |
+| 0x03 | big SRAM |
+| 0x04 | peripheral 1 |
+| 0x05 | peripheral 2 |
+| 0x06 | peripheral 3 |
+| 0x07-0xFE | reserved |
+| 0xFF | controller only: registers (9) and the table window |
+
+*Renumbered 2026-10-28 (22): the boot ROM took region 0x02; big SRAM was 0x02 and the peripherals 0x03-0x05.*
+
+- **The region names where a packet lands**, so the mode no longer has to (Q7).
+- **The controller memories become 32 KB + 32 KB** (planning notes to-do 2, spec part N).
+- **A tile may have up to three peripherals** (9), where 4.17 has one slot.
+- **Program memory is load-only for the controller** (Tony; W2-19): it fetches from and loads from region
+  0x01, but a store to it is a bus error. Only the traffic director writes it (port B), as in v1.1, where a
+  load was a bus error too. The boot ROM (0x02) is fetch and load only.
+- **The controller sees 0x00, 0x01 and 0xFF, and fetches and loads the boot ROM, 0x02 (22).** A packet to
+  0x02 is a bad packet (26). It still cannot load or store big SRAM or a
+  peripheral directly (current plan): every existing mechanism for reading and writing big SRAM carries
+  forward (the read port, sending itself packets, address-generator copies).
+- **Region 0xFF is controller only:** a packet addressed to it is a bad packet.
+- **Follow-on:** the controller's map moves (today program memory is at 0x0000, data at 0x4000, the table
+  window at 0x2000 and the registers at 0xFFFFF800), so the linker script and `mesh.h` change; the reset PC
+  is the boot ROM's 0x02000000 (22, 31), which replaces v1.1's resident loader.
+- **The offset counts bytes** (owner, 2026-10-28; Q10, W2-07): the 24-bit offset is in the controller's
+  byte space, so a C pointer *is* the packet address, with no `CM_WORD()`-style shifts. 24 bits cover
+  16 MB, above big SRAM's 8 MB maximum. **Big SRAM keeps its 21-bit addresses of 32-bit chunks internally**: `PTR`,
+  `STREAM_SRC`, `SRAM_RD_ADDR_QUEUE` and `DMA_RECORD_BASE_ADDRESS` stay in chunks, so code building a
+  big-SRAM packet address from a chunk address shifts it by 2 (the spec says so in 4.2-4.4). The read
+  port's destination offset (13) is in bytes.
+
+## 6. Modes (2026-10-28)
+
+Decided (O). Answers Q7. With the region choosing the destination (5) and the counter field doing the
+counting (3), the 3-bit mode keeps only what the receiver must do differently:
+
+| code | mode |
+|---|---|
+| 0 | **write at address**, any region the packet may reach |
+| 1 | big-SRAM write by source, at `PTR[src]` |
+| 2 | bucket write, at `PTR[digit]` |
+| 3 | augmented write, at `PTR[src]` |
+| 4 | gather request (local only); **never counted**: its counter field names the counter its gather values decrement |
+| 5 | **count only** (43): decrements its counter at the destination, writes nothing |
+| 6-7 | reserved: **discarded at the destination, with no error** |
+
+- **The counter field counts for modes 0-3 only** (owner, 2026-10-28; W2-03). Mode 4 passes it on to its
+  gather values (below). **Reserved modes 5-7 are discarded with no decrement**, whatever their counter
+  field: a counted one leaves its counter short and the program waits forever, with no error (accepted;
+  meshsim flags every reserved-mode packet). Section 3's "counting no longer depends on the mode" holds for
+  the writes.
+- **A gather request never decrements a counter** (owner, 2026-10-28; W2-02), whatever its counter field
+  says: it isn't a write. **Its counter field is passed on to the gather values it produces**, which are
+  counted like any other write when they pass the director. (Answers Q8 for the GATHER engine.)
+- **Numbering** (owner, 2026-10-28): the general write is 0; the writes that land through `PTR` and step it
+  are adjacent, 1-3; the gather request, the only mode that isn't a write, follows them. There is no
+  invalid code: v1.1's mode 0 is gone.
+- **Reserved modes are discarded silently** (owner, 2026-10-28): the receiver drops the packet, uncounted,
+  and raises no error. meshsim still flags each one.
+- **Accepted consequence:** an all-zero header (a `STREAM` entry, `ROUTER_HDR` or `DMA_HDR` left at 0) is a
+  valid, uncounted write at address 0x00000000, the first word of data memory, and lands silently. v1.1's
+  mode 0 caught that as a bad packet.
+- **Merged into mode 0:** v1.1's explicit-address big-SRAM write (3), controller-memory write (6),
+  command write (7), reply (8) and peripheral write (9).
+- **Replies** are mode-0 writes to the reply block at word 2·src in the receiver's data memory, counted
+  as the receiver armed. That a sender writes only its own pair becomes a software convention, no longer
+  a hardware guarantee.
+- **Commands** are mode-0 writes, **counter 0**, to the command block in region 0x00: arguments first,
+  then the command word to slot 0. **A write to command slot 0 sets "command landed"** and posts its wake
+  event, decoded from the address by the traffic director. READY, GO and the alternating argument blocks
+  work as today. Commands stay uncounted because they arrive while the tile waits in
+  `wait_for_command()` with its counters at 0.
+- **When "command landed" is set** (owner, 2026-10-28; W2-12): **when the slot-0 write lands in port B**,
+  not when the traffic director accepts it, so the event (and READY, and the boot ROM's jump, 22) follows
+  the write. **Only writes that come in through the traffic director set it**; any such write covering
+  slot 0 does, a 64- or 128-bit write starting there included (it also writes slots 1-3, harmlessly). The
+  controller's own store to slot 0 doesn't. (Settles the "detail to settle" below.)
+- **Follow-on:** v1.1's bad-packet rules for modes 0, 7, 8 and 10-15 go (reserved modes are now discarded
+  silently); invariant 11 and "only command writes write
+  the command block, only replies the reply block" become software conventions. Whether a 64- or 128-bit
+  write that covers slot 0 also sets "command landed" is a detail to settle with the spec text.
+
+## 7. The send port's header (2026-10-28)
+
+Decided (O). The 32-bit `ROUTER_SET_HDR` (dst 7, mode 4, addr 21) can't hold dst, mode, counter and a
+32-bit address (44 bits), so it splits in two, both read/write as planning notes to-do 13 describes:
+
+- **`ROUTER_ADDR`:** the full 32-bit address (5). A store sets it; it auto-advances at each send as today;
+  a load returns the address the next packet will use.
+- **`ROUTER_HDR`:** counter, mode and dst. A store sets them; a load returns them. Layout (owner,
+  2026-10-28): [0] no-increment (below), [16:1] spare, size [18:17] reserved (the size comes from the send register), counter
+  [21:19], mode [24:22], dst [31:25] (30).
+- **A no-increment bit** (owner, 2026-10-28; W2-09) in `ROUTER_HDR` [0]:
+  when set, `ROUTER_ADDR` stays put after a send. A reply always goes to the same address in every
+  receiver (`REPLY` + 8 × the sender's id, 6), so a program sets `ROUTER_ADDR` once and changes only the
+  header per send, keeping the split's all-to-all exchanges at today's cost (one header store and one
+  send per reply). Without it, every reply would need a `ROUTER_ADDR` store too. The same holds for
+  one-word exchanges to many tiles at one address; commands write slot 0 last, below their arguments, so
+  they still store `ROUTER_ADDR` before it.
+- **Size stays with the send register** (`ROUTER_SEND_32`, `_64`, `_128`); `ROUTER_SET_W0`-`W2` are
+  unchanged and stay write-only.
+- One extra store when both change; a change of dst alone, the common case in replies and one-word
+  exchanges, is still one store. The register map is renumbered anyway when it moves into region 0xFF.
+- **Toward Q8** *(superseded by 10: the sender is now a peripheral's DMA, with `DMA_HDR` and `DMA_ADDR`)*:
+  `SENDER_SEND` has room for the counter field (dest 7, mode 3, counter 2, queue 2, count
+  16 = 30 bits), and `SENDER_ADDR` becomes a full 32-bit address.
+
+## 8. Pulse registers (2026-10-28)
+
+Decided (O, T). `TILE_PULSE` is replaced by **one register per action**: a store of 1 fires the action
+for one cycle, a store of 0 does nothing, and a load reads 0.
+
+| v1.1 | register | action |
+|---|---|---|
+| `TILE_PULSE` [0] | `PULSE_DONE` | the `done` pulse (6.3) |
+| `TILE_PULSE` [1] | `PULSE_DMA` | start the run in `DMA_CONFIG` (4.2) |
+| `TILE_PULSE` [2] | ~~`PERIPH_1_RUN_PULSE`, ...~~ | moved: `PULSE_RUN`, word 3 of each peripheral's window (10) |
+| `TILE_PULSE` [3] | `PULSE_GO` | drive the GO net where it is wired (6.3) |
+
+- **Names** (owner, 2026-10-28): `PULSE_DONE`, `PULSE_DMA`, `PULSE_GO`, a `PULSE_` family like the
+  `EVENTS_` and `ROUTER_` families (first proposed as `TILE_DONE_PULSE`, `DMA_START_PULSE`, `TILE_GO_PULSE`).
+- Firing two actions in one store is no longer possible; 8.6's "in one store, start and run act before
+  `done`" goes. Separate stores act in program order, and the synchronised start path is still one store.
+
+## 9. Peripherals and the register space (2026-10-28)
+
+Decided (O). Answers most of Q11.
+
+- **A tile has at most three peripherals**, in regions 0x04-0x06 (5). Packets reach a peripheral through
+  its region.
+- **Each peripheral has a 0x200-byte register window** in region 0xFF, which the controller loads and
+  stores directly:
+
+| address | owner |
+|---|---|
+| 0xFFFFF800-0xFFFFF9FF | the controller's own registers |
+| 0xFFFFFA00-0xFFFFFBFF | peripheral 1 |
+| 0xFFFFFC00-0xFFFFFDFF | peripheral 2 |
+| 0xFFFFFE00-0xFFFFFFFF | peripheral 3 |
+
+- **Each peripheral has one wake bit** in `EVENTS`, replacing v1.1's six service lines. What the bit
+  means, and how software learns why it fired, is the peripheral's own business, through its window.
+- **The UART becomes a peripheral** on the tiles wired to a serial port, with TX and RX as registers in its
+  window. It leaves every other tile, along with v1.1's `UART_TX`/`UART_RX`/`UART_STATUS`/`UART_DIVISOR`
+  and wake events [22:21]. meshsim's per-tile console needs a replacement (Q12).
+- **Follow-on:** v1.1's slot interface (4.17) shrinks: `PERIPH_STATUS_0`-`7` and the service lines move
+  into each peripheral's window, and so do the run pulses (10). The replayer
+  (4.19) becomes peripheral 1 on the tiles that have one.
+
+## 10. The standard peripheral window (2026-10-28)
+
+Decided (O). Every peripheral's 0x200-byte register window (9) starts with the same words, in the same
+order as the controller's block (11): parameters, status, conditions, pulses, wakes, DMA, then the rest.
+Word *n* is at window base + 4*n*.
+
+| word | register | access | purpose |
+|---|---|---|---|
+| 0 | `PARAMS` | R | constant: the peripheral's type, version, sizes; 0 if it has nothing to say |
+| 1 | `STATUS` | R | live bits: run in progress, DMA in progress, and the peripheral's own |
+| 2 | `ERRORS` | R | error bits, sticky until the reset like the tile's `ERRORS` (one exception: the unit-error bit, 15, 28, is live) |
+| 3 | `PULSE_RUN` | W | store 1 to start a run |
+| 4 | `PULSE_DMA` | W | store 1 to start the peripheral's DMA as set up in words 8-9 |
+| 5 | `EVENTS` | R | counted (and live) events; a load consumes one count from each set bit in `EVENTS_MASK` (below) |
+| 6 | `EVENTS_PEEK` | R | what a load of `EVENTS` would return, consuming nothing |
+| 7 | `EVENTS_MASK` | R/W | the events that count |
+| 8 | `DMA_HDR` | R/W | count [11:0] (32-bit words, up to 4,095), output queue [13:12], spare [16:14], size [18:17] reserved (the DMA picks sizes), counter [21:19], mode [24:22], dst [31:25] (30) |
+| 9 | `DMA_ADDR` | R/W | the DMA's 32-bit destination address, advancing by each packet's size as packets go out |
+| 10-31 | | | reserved for future standard words |
+| 32-127 | | | peripheral-defined |
+
+- **Standard fields and access rules** (owner, 2026-10-28; W3-14):
+
+| item | rule |
+|---|---|
+| `STATUS` | [0] run in progress, [1] DMA in progress; the rest peripheral-defined |
+| `PARAMS` | [7:0] type, [15:8] version; the rest peripheral-defined; 0 means nothing to say |
+| `EVENTS` | [0] run done, [1] DMA done (depth 1); the rest peripheral-defined |
+| `EVENTS_MASK` at reset | 0: a peripheral wakes nobody until the program asks |
+| `PULSE_RUN` / `PULSE_DMA` while that unit is busy | ignored; meshsim flags it |
+| `DMA_HDR` / `DMA_ADDR` changed mid-transfer | undefined; meshsim flags it. A load returns the live, advancing values |
+| a DMA count of 0 | does nothing; DMA done is still posted |
+| reserved or undefined words, in a window or the controller's block | read 0, ignore stores; meshsim flags the access |
+| any word of an absent peripheral's window | bus error (v1.1's rule for unmapped addresses); hence the handler checks `PARAMS` [2:0] first (20) |
+
+- **Conditions interrupt; wake events wake.** `ERRORS` has one bit per peripheral, set while
+  that peripheral's `ERRORS` is non-zero, so a peripheral error raises the hard interrupt. The tile's
+  `EVENTS` has one bit per peripheral, **live** (not sticky): high while the peripheral's
+  `EVENTS & EVENTS_MASK` is non-zero. An event is consumed in one place only, by a load of the
+  peripheral's `EVENTS`. (Answers Q13.)
+- **v1.1's register rules extend to every window** (W3-15; spec-update items): register-load latency is fixed
+  per register for every window word too (4.11); the sampling rule for side-effecting loads gains the
+  consuming load of a peripheral's `EVENTS` and the UART's RX pop; the store-stall list loses `SENDER_SEND`
+  and `UART_TX` moves into C&C 1's window; and every peripheral, up to three per tile, lands its writes within
+  K of acceptance (4.17.8; 2 cycles today).
+- **Counted and live events** (owner, 2026-10-28; W3-02): **every peripheral `EVENTS` bit is backed by a small
+  counter**, and the bit reads 1 while the count is above 0. The peripheral adds 1; **a consuming load
+  subtracts 1** from each set, masked bit (rather than clearing it). Each peripheral's spec gives the depth:
+  **1 for an ordinary event** (v1.1's sticky behaviour), **2 for a double-buffered queue's credits**. A bit may
+  instead be **live** (following its source, never consumed), like the UART's "RX not empty".
+  - **The replayer's low-water lines are credits:** each means "half a buffer is free, send half a buffer".
+    A queue starts with 2 after reset; the controller uses one per refill; the peripheral returns one each
+    time it has consumed half a buffer. The controller can never send more than there is room for, and the
+    tile's live bit for the peripheral stays high while any credit remains, so `WFI` can't miss a refill.
+  - **When credits are initialised** (owner, 2026-10-29; W3-24): **every queue's credits are set to 2
+    at `PULSE_RUN`**, and **the expansion queue's are set to 2 again each time a new expansion fires**
+    (v1.1 reset the expansion queue's pending count the same way). Each credit is half a queue.
+  - **Code and log queues:** every refill except a stream's last is exactly half a buffer (software rule),
+    so their credits balance. Only the expansion queue sees short refills, and its re-initialisation at each
+    expansion keeps a short one from stranding a credit (W3-24's deadlock).
+  - **Credits with nothing behind them** (after a stream's last refill; the write log in a pass without the
+    store log): the loop removes that queue's bit from the peripheral's `EVENTS_MASK` once it has nothing
+    more to send, so `WFI` doesn't fall through. No gating hardware.
+  - **A credit is permission to send up to half a buffer** (owner, 2026-10-28), not one transfer: having
+    consumed it, the program may split the refill into smaller moves (a 2 KB credit as two 1 KB moves), as
+    long as their total stays within the credit.
+  - **Rule for software** (as for the tile's `EVENTS`): a load consumes one credit from every masked bit that
+    is set, so the program acts on every bit the load returns, or masks only what it is about to service.
+  - **meshsim flags** a peripheral returning a credit to a full counter.
+- **Spurious wakes are allowed but not wanted** (owner, 2026-10-28; W3-06): after a consuming load of a
+  peripheral's `EVENTS`, the tile's live bit for that peripheral may lag, so a following `WFI` may return with
+  nothing to do. **Software always re-checks after a wake** (as standard RISC-V `WFI` allows). **The hardware
+  aims to make the bit current by the next instruction**, a short path inside one tile, so in practice
+  spurious wakes don't happen. meshsim models the hardware's actual latency.
+- **`EVENTS_REQUIRED` is tile-only:** a program needing "peripheral 1 and counter 2" sets both in the tile's.
+- **No clear pulses:** loading `EVENTS` consumes events, as on the tile.
+- **Naming** (owner, 2026-10-28): a peripheral's output engine is its **DMA** (v1.1's "sender"), with
+  `PULSE_DMA`, `DMA_HDR` and `DMA_ADDR`; its run is `PULSE_RUN`. Pulses are a `PULSE_` family, as on the
+  controller (8).
+- **`DMA_HDR` and `DMA_ADDR`** (owner, 2026-10-28) parallel the controller's `ROUTER_HDR` and
+  `ROUTER_ADDR`. `DMA_HDR` [24:17] (size, counter, mode) is laid out exactly as `STREAM_COUNT` [24:17] (4); [31:25] is dst in
+  `DMA_HDR` and the relative *d* in `STREAM_COUNT` (12). As with v1.1's sender, a DMA transfer is 128-bit packets, then a
+  64-bit and/or a 32-bit packet for the remainder. v1.1's word count was 16 bits; 12 is enough.
+- **A peripheral that sends has its own router port** (owner, 2026-10-28; W2-20): it is paired with a router
+  link the tile doesn't otherwise use, and its packets enter the router there, like a neighbour's, as
+  v1.1's sender did (4.17.9). The tile's injection point keeps its two sources (the address generator and
+  the send port); a DMA packet to its own tile reaches the ejector through the router like any arrival and
+  takes no read token, so S9 holds. Only a tile with a free link can have a sending peripheral; C&C 1-3 have
+  them (25).
+- **The DMA is optional.** A peripheral without output (the replayer, for one) leaves words 4, 8 and 9
+  unused (`PULSE_DMA`, `DMA_HDR`, `DMA_ADDR`). This replaces v1.1's tile-level sender (`SENDER_SEND`, `SENDER_ADDR`, `sender_busy`, sender
+  idle at `EVENTS` [20]; 4.17.9, 8.12).
+- **The run pulses move into the windows:** section 8's `PERIPH_1_RUN_PULSE`-`PERIPH_3_RUN_PULSE` go.
+- Replaces v1.1's `PERIPH_STATUS_0`-`7`, `periph_running`, the six service lines and the peripheral
+  conditions [13:11] in the controller's registers (4.17). The peripheral type moves from `STATUS`
+  into each peripheral's `PARAMS`.
+
+## 11. The controller's register block (2026-10-28)
+
+Decided (O): the order (parameters, status, conditions, pulses, wakes, send, the rest) and the three
+first words. *(Proposed: the addresses below.)* In region 0xFF; the low 12 bits shown.
+
+| addr | register | access | notes |
+|---|---|---|---|
+| 0x800 | `PARAMS` | R | **new**, constant: endpoint id, big-SRAM size, peripheral-present mask [2:0]; split out of v1.1's `TILE_STATUS` |
+| 0x804 | `STATUS` | R | live bits only; layout in 18 (`ts_busy` goes, 17) |
+| 0x808 | `ERRORS` | R | gains one bit per peripheral (10); loses the peripheral conditions [13:11] |
+| 0x80C | `PULSE_DONE` | W | 8 |
+| 0x810 | `PULSE_DMA` | W | 8 |
+| 0x814 | ~~`PULSE_GO`~~ | | moved to C&C 1's peripheral (28) |
+| 0x818 | `EVENTS` | R | layout in 16 |
+| 0x81C | `EVENTS_PEEK` | R | |
+| 0x820 | `EVENTS_MASK` | R/W | |
+| 0x824 | `EVENTS_REQUIRED` | R/W | tile only |
+| 0x828 | `ROUTER_HDR` | R/W | 7 |
+| 0x82C | `ROUTER_ADDR` | R/W | 7 |
+| 0x830-0x838 | `ROUTER_SET_W0`-`W2` | W | unchanged |
+| 0x83C-0x844 | `ROUTER_SEND_32`, `_64`, `_128` | W | unchanged |
+| 0x848-0x854 | `REQUEST_GET_W0`-`W2`, `REQUEST_RECEIVE` / `REQUEST_SET_W0`-`W2`, `REQUEST_SEND` | R / W | unchanged |
+| 0x858 | `DMA_CONFIG` | R/W | readable (planning to-do 13) |
+| 0x85C | `DMA_RECORD_BASE_ADDRESS` | R/W | |
+| 0x860-0x878 | `WRITE_COUNTER_1`-`WRITE_COUNTER_7` | R/W | 3, 30, 40 |
+| 0x87C | `SRAM_RD_ADDR_QUEUE` | R/W | unchanged |
+| 0x880 | `SRAM_RD_DEST_ADDR` | R/W | 13 |
+| 0x884-0x9FC | | | reserved (`ERROR_LINES_0`-`2` moved to C&C 1's peripheral, 15) |
+
+- **Gone:** `TILE_PULSE`, `ROUTER_SET_HDR`, `DMA_SRAM_`/`DMA_CM_`/`DMA_REPLY_`/`DMA_PERIPH_REMAINING`,
+  `PERIPH_STATUS_0`-`7`, `SENDER_SEND`, `SENDER_ADDR`, `UART_TX`/`RX`/`STATUS`/`DIVISOR`.
+- **The table window** (`HIST`, `PTR`, `STREAM_*`, `GROUP`; 0x1600 bytes) doesn't fit in the block.
+  *(Proposed:)* 0xFFFF2000-0xFFFF35FF, keeping v1.1's low 16 bits.
+
+## 12. One header layout (2026-10-28)
+
+Decided (O). Answers Q15. Every register that carries a packet's header fields lays them out the same way,
+in bits [31:17] (30), in the link word's order (2):
+
+| bits | field |
+|---|---|
+| [18:17] | size (reserved where something else picks the size) |
+| [21:19] | counter |
+| [24:22] | mode |
+| [31:25] | dst |
+
+Used by `STREAM_COUNT` (4), `ROUTER_HDR` (7), a peripheral's `DMA_HDR` (10) and `SRAM_RD_DEST_ADDR` (13,
+size and counter only); any new header register follows it. *(W2-21:)* the block hardware copies straight
+into the link word is size, counter and mode, [24:17] (30). In `STREAM_COUNT`, [31:25] is *d*, which is relative
+for 0-63 and absolute for 64-125 (4.2), so it is translated into dst, not copied. The low bits [16:0] are each register's own (a count, a queue, or spare).
+
+## 13. The read port's destination (2026-10-28)
+
+Decided (O). `SRAM_RD_DEST_ADDR` keeps a minimal header; a full header like the sender's was considered and
+judged not useful, since a read-port result always goes to the tile itself as a mode-0 write.
+
+| bits | field |
+|---|---|
+| [16:0] | the destination offset in **data memory only** (region 0x00), in bytes (5), advancing by the result's size per queued read |
+| [18:17] | size: 32, 64 or 128 bits (the common layout, 12) |
+| [21:19] | counter |
+| [31:22] | reserved: mode is always 0 and dst always the tile itself |
+
+- R/W (planning notes to-do 13): a load returns the next result's offset as advanced.
+- **Data memory only** (owner, 2026-10-28): v1.1 let results land anywhere in controller memory, program
+  memory included; that goes.
+
+## 14. Names: events, errors and the first words (2026-10-28)
+
+Decided (O). **The wake registers are renamed** at both levels, the tile's and each peripheral's:
+
+| v1.1 | v1.2 |
+|---|---|
+| `WAKE_EVENTS` | `EVENTS` |
+| `WAKE_PEEK` | `EVENTS_PEEK` |
+| `WAKE_MASK` | `EVENTS_MASK` |
+| `WAKE_REQUIRED` (tile only) | `EVENTS_REQUIRED` |
+
+- **The counters are `WRITE_COUNTER_1`-`WRITE_COUNTER_7`** (four since 30, seven since 40) (owner, 2026-10-28): every counted packet is a
+  write (modes 0-3), so the name says what they count. The link word's field stays "counter".
+- **Errors** (owner, 2026-10-28): v1.1's *conditions* are now **errors**, as a concept and in names: the
+  tile's `TILE_CONDITIONS` is `ERRORS`, a peripheral's `CONDITIONS` is `ERRORS`, and a bit is named without
+  repeating the word (`ERRORS_BUS`, not `TILE_COND_BUS_ERROR`). The memory system's "C&C error flags"
+  are a separate thing and keep their name.
+- **No `TILE_` prefix** (owner, 2026-10-28): the tile's first registers are `PARAMS`, `STATUS`, `ERRORS`,
+  the same names as a peripheral's first three words (10), as `EVENTS` already is.
+- **Headers use one struct per block** (owner, 2026-10-28; W3-16): the tile's register block and each
+  peripheral's window are declared as C structs overlaid on their addresses (a `PeripheralStd` for words
+  0-9, a type per peripheral that extends it), so names are scoped. *(Spelling as in the header details
+  below: `ReplayerRegs`, `tile->EVENTS`.)* The register-table generator emits the structs. Every member is
+  `volatile uint32_t`, accessed one word at a time and never copied whole, since some loads have side effects.
+- **Header details** (integrator, 2026-10-29; W3-27; Tony may redo them): access through pointers, not
+  struct objects (`#define tile ((volatile TileRegs *)0xFFFFF800)`, used as `tile->EVENTS`), so a whole-block
+  copy, which would consume events and pop requests, needs an explicit `*tile`; "extends `PeripheralStd`" is
+  a macro listing the ten standard members at the top of each peripheral's struct; type names end in `Regs`
+  (`TileRegs`, `ReplayerRegs`) to avoid the sort planner's `Tile`. The base-address instruction on the
+  GO-to-start path is identical on every tile, so harmless.
+- **"DMA" keeps both meanings** (owner, W3-16): the tile's address-generator run and a peripheral's output
+  engine, told apart by their struct (`tile.PULSE_DMA`, `peripheral1.PULSE_DMA`).
+- "Interrupts" was considered and rejected: events only release `WFI` and take no trap, while errors raise
+  the hard interrupt (1) and the core's `mie`/`mip` CSRs use the word in the RISC-V sense.
+- This log uses the new names throughout, including where it cites v1.1's bit positions.
+
+## 15. C&C 1's peripheral: error and run lines (2026-10-28)
+
+*Revised by 23: there is no HALT state, so `RUN_LINES_0`-`2` and per-unit halt are gone; the unit-error
+bit is `OR(ERROR_LINES)`. The error lines, `RESET` (21) and the READY lines (21, 22) remain.*
+
+Decided (O). Revises 1.5 and settles part of Q4.
+
+- **C&C 1 has one peripheral, Ingress/Egress and the UART.** The error lines and the run lines are
+  registers in its window (peripheral-defined words), not in the controller's block: `ERROR_LINES_0`-`2`
+  leave the controller block (11).
+- **Bits follow the endpoint id:** 0-63 the mesh tiles, **64 unused** (C&C 1 itself), 65 C&C 2 (the file
+  system), 66 C&C 3 (the pager); the rest of the third word reserved.
+
+| registers | access | per unit |
+|---|---|---|
+| `ERROR_LINES_0`-`2` | R | 1 while that unit's errors are non-zero; **live**, following the lines |
+| `RUN_LINES_0`-`2` | R/W | **0 halt, 1 run**: one RUN/HALT line per unit |
+
+- **Per-unit halt:** C&C 1 halts and runs each controller on its own (v1.1 had one line to every tile).
+  Bit 64 is unused, so C&C 1 cannot halt itself.
+- **The unit-error bit** (owner, 2026-10-28): the peripheral's `ERRORS` word (10, word 2) has one bit
+  that is 1 while any of `ERROR_LINES_0`-`2` is non-zero, **live**, the OR of every line. *(Proposed: bit
+  0.)* The peripheral's own errors (Ingress/Egress, the UART) take the other bits and stay sticky.
+- **Errors reach C&C 1 through its peripheral:** the unit-error bit is an error of the peripheral, which sets
+  C&C 1's per-peripheral bit in its tile errors (10) and takes the hard interrupt (1). Because the lines are
+  live, halting the failed units clears them, the peripheral's error, C&C 1's bit and the C&C pin (1.5).
+  This peripheral's tile-error bit is live, an exception to 10's "sticky until the reset".
+- **The engines are their controllers' peripherals:** 72 (Ingress/Egress) is C&C 1's, 73 (Updater/Binder/RW)
+  C&C 2's and 74 (the Tracer) C&C 3's. An engine's error is its controller's peripheral error, so it
+  raises that controller's error line; halting a controller halts its peripheral. They need no bits of
+  their own.
+- **Q4 still open:** what HALT clears, which units a halted tile still runs (routers, request port), the
+  hold before RUN.
+
+## 16. The tile's `EVENTS` (2026-10-28)
+
+Decided (O). Answers Q14. The layout of `EVENTS`, `EVENTS_PEEK`, `EVENTS_MASK` and `EVENTS_REQUIRED`:
+
+| bit | event | kind |
+|---|---|---|
+| [6:0] | write counters 1-7 done, one bit each (bit *n* − 1 for counter *n*) | sticky |
+| [7] | counters done: all seven at 0, at least one armed since it last fired | sticky |
+| [8] | GO | sticky |
+| [9] | command landed | sticky |
+| [10] | DMA run done (v1.1's "engine run done") | sticky |
+| [11] | request FIFO no longer full | sticky |
+| [12] | request pending | live |
+| [13] | peripheral 1: its `EVENTS & EVENTS_MASK` non-zero (10) | live |
+| [14] | peripheral 2 | live |
+| [15] | peripheral 3 | live |
+| [31:16] | reserved, read 0 | |
+
+*Renumbered by 30 (a fourth counter) and again by 40 (seven counters).*
+
+- **Gone from v1.1:** the six service lines, sender idle and the UART's two
+  events; [7:4]'s gap closes.
+- **Unchanged rules:** `EVENTS_MASK` resets to GO | counters done ([8] | [7], 40) at the reset (23);
+  from the `done` pulse until GO only GO wakes `WFI`; a load of `EVENTS` consumes the sticky events under
+  the mask, and one set in the load's own cycle survives. The live events clear only at their source:
+  popping the request, or loading the peripheral's own `EVENTS`.
+
+## 17. Waiting for the tables by events (2026-10-28)
+
+Decided (O). Replaces `wait_tables()`, which spin-polls `rd_running` and `ts_busy` before the program
+touches `STREAM`, `GROUP`, `PTR` or `HIST` (about 15 calls in the sort). Software waits for the tables with
+events, like every other wait:
+
+- **The arrival side** (incoming packets updating `PTR` for modes 1-3 and `HIST` for count-on-arrival,
+  and local gather values landing at `PTR[me]`) is covered by the write counter the program armed.
+- **The local side** (the address generator reading `STREAM` and `GROUP`) is covered by DMA run done,
+  `EVENTS` [10] (40).
+- **Software** sets `EVENTS_REQUIRED` to "write counter *n* done and DMA run done" and executes `WFI`. The
+  counters alone are not enough, since arrivals can finish before the tile's own run.
+
+Hardware guarantees this needs:
+
+| # | guarantee |
+|---|---|
+| A | **K covers the table update:** by the time a packet's counter decrements, its `PTR` or `HIST` update is complete (S1) |
+| B | **DMA run done fires only after the run's last table read has completed**, not when the last entry is walked. **`STATUS.rd_running` falls in the same cycle** (owner, 2026-10-29; F6), so polling it means exactly what the event means |
+| C | **Gather values pass the traffic director like any loopback packet and are counted there** (corrected 2026-10-28, W2-02: they go out as packets to the tile itself and loop back through the router, 4.4, 4.5). Their K delay starts at the director like every other packet's, and a counter still takes at most one decrement per cycle |
+
+- **Uncounted traffic is mode 0 only** (owner, 2026-10-28; W2-11): uncounted packets are used for
+  **commands** and **boot overlays** (into controller memory), all mode-0 writes at explicit addresses.
+  ~~Boot and staging images for big SRAM go to region 0x03 by address, uncounted.~~ *Superseded by 31 and 36
+  (W2-27, W5-15): big-SRAM data is always sent **counted**, after the first command; images go to region 0x03
+  by address, no longer by source through `PTR[64]` (v1.1's 6.2).* So uncounted traffic never touches `PTR`
+  or `HIST`, the convention is simply **modes 1-3 are always counted**, and `PTR[64]` stops being special.
+- **Guarantee A's "complete"** (W2-11) means **readable by a controller load through the table window**,
+  `HIST`'s count-on-arrival included, behind its request FIFO; validated with S1's table-window case.
+- **`PULSE_DMA` clears DMA run done** (`EVENTS` [10], 40) (owner, 2026-10-28; W2-10), as an arming write clears
+  its counter's done (3), so [10] always refers to the run most recently started and a stale one can't
+  satisfy the next wait.
+- **`ts_busy` and `wait_tables()` go.** Programs wait by events. A helper that must work without knowing
+  what ran before (a pass that starts by checking the tables are free) **may poll `STATUS.rd_running`**, a
+  level, as a software choice (W2-10); otherwise `STATUS` is diagnostic.
+
+## 18. `PARAMS`, `STATUS` and `ERRORS` (2026-10-28)
+
+*(Proposed.)* `PARAMS` and `ERRORS` keep v1.1's positions wherever a field survives. **`STATUS` is renumbered
+compactly** (owner, 2026-10-28; W3-07): it is diagnostic, and the tests and macros that hard-code its
+positions are updated once, in the migration.
+
+**`PARAMS`** (constant)
+
+| bits | field |
+|---|---|
+| [2:0] | peripherals present: bit *n*-1 for peripheral *n* |
+| [19:3] | spare |
+| [26:20] | endpoint id (v1.1's position) |
+| [31:27] | big-SRAM size in 256 KB units - 1 (v1.1's position) |
+
+The peripheral type (v1.1's `TILE_STATUS` [15:12]) moves into each peripheral's `PARAMS`.
+
+**`STATUS`** (live, diagnostic only: no program needs to poll it, 17)
+
+| bit | field |
+|---|---|
+| [0] | `rd_running` |
+| [1] | `rd_done` |
+| [2] | GATHER busy |
+| [3] | `send_busy`: the send port's holding register is occupied |
+| [4] | `done` |
+| [5] | command landed |
+| [6] | `request_busy` |
+
+Gone: `periph_running` and `sender_busy` (now each peripheral's `STATUS`), `ts_busy` (17), the constants
+(`PARAMS`), and **`mem_idle` and `cm_idle`** (owner, 2026-10-28; W2-17): no rule depends on them any more, so
+they leave the hardware and are kept in meshsim only, as diagnostics.
+
+**`ERRORS`** (sticky until the reset, 23; [13:11] live)
+
+| bit | error | v1.1 |
+|---|---|---|
+| [0] | router overflow | |
+| [1] | bad packet or misaligned access: a misaligned packet or big-SRAM access, or a region it can't reach (26) | reserved modes no longer count (6) |
+| [2] | unexpected arrival | |
+| [3] | drift | |
+| [4] | write-engine input overflow | |
+| [5] | table request overflow | |
+| [6] | GATHER queue overflow | |
+| [7] | read-port error | |
+| [8] | done early | |
+| [9] | bus error | |
+| [10] | illegal instruction | |
+| [11] | peripheral 1: its `ERRORS` non-zero (live) | was bad peripheral write |
+| [12] | peripheral 2 (live) | was peripheral condition 2 |
+| [13] | peripheral 3 (live) | was peripheral condition 3 |
+| [14] | receive underflow | |
+
+The peripheral bits take [13:11] so every other error keeps its v1.1 number.
+
+## 19. What a halted tile does (2026-10-28)
+
+*Superseded by 23: there is no HALT state; the global reset (21) clears everything instead. Kept for the
+record. Still true: big SRAM's in-flight accesses complete, and the router's link FIFOs are never cleared
+except by the reset.*
+
+Decided (O), from WORKER1's review (W1-01, and parts of W1-05 and W1-06). Part of Q4.
+
+- **Halting a tile stops its sending engines:** the address generator, the GATHER engine, the read port,
+  the send port's holding register and its peripherals' DMAs. A run in progress is abandoned. The traffic
+  director, the write engine and the routers keep running, so a halted tile can still be loaded.
+- **Throughout HALT every queue feeding the tile's injector is held empty** (owner, 2026-10-28): the
+  loopback FIFO and the tile's outgoing queues before injection are emptied at the RUN → HALT edge and
+  anything that enters them during HALT (a read result still in big SRAM's pipeline at the edge, say) is
+  discarded. **The read-token count is held at 64** (the loopback space tracker simply reinitialised), so
+  every RUN starts with empty queues and every token free. A halted tile has nothing to send on the mesh.
+  Packets already in the injector or the router flow on and clear the mesh. **The router's link FIFOs are
+  never cleared:** they carry other tiles' transit traffic, boot loads and, on tiles 0-2, the controllers'
+  fifth links. **The request FIFO is not part of this:** it keeps draining in HALT (4.18), so reports
+  already queued still reach C&C 1.
+- **Big SRAM finishes what it has** (owner, 2026-10-28): accesses already in its area queues and pipeline
+  at the RUN → HALT edge complete. Writes land; reads finish, and their results are discarded at the
+  held-empty queues above.
+- **In HALT the ejector drops counted packets** (counter 1-4, 30) silently: no write, no count, no error. It
+  accepts uncounted packets (counter 0) as usual, so boot loads, staging and the boot marker still land
+  (6.2), and 6.2's "halt a tile before an uncoordinated write" still works.
+- **Why:** a failed phase's late traffic is counted, so it is dropped instead of raising unexpected arrival
+  in a halted tile and holding its error line high (W1-01).
+- **Accepted trade-off:** a boot load or staging packet sent with a non-zero counter by mistake is dropped
+  silently; the loader finds missing data rather than an error. (Section 3 had it raise unexpected arrival.)
+- **C&C 1's unit-error bit (15) is `OR(ERROR_LINES & RUN_LINES)`** (owner, 2026-10-28; W1-01's fix),
+  so the errors a halted unit can still raise (bad packet, router overflow) don't interrupt C&C 1;
+  `ERROR_LINES` stays raw, and the error interrupts C&C 1 when it sets the unit running.
+
+## 20. Traps are terminal (2026-10-28)
+
+Decided (O, T), from WORKER1's review (W1-02, W1-04). Revises 1.4's parking rule.
+
+- **The handler never executes `mret`.** A trap, whether from an error (the hard interrupt) or a
+  synchronous exception, is a terminal event: the state is assumed bad, and the interrupted code is never
+  resumed. Only the global reset restarts the controller (21, 23).
+- **This holds for C&C 1 too.** C&C 1 takes the hard interrupt for another unit's error (15), and its
+  handler runs the abort itself: collect the reports, halt the units, tell the host over Ingress/Egress.
+  It never returns to the code it interrupted.
+- **Tony's answers:** the hard interrupt **stays high until cleared** (level: our `ERRORS` source is
+  sticky, so it stays high until the reset); it is **gated by `mstatus.MIE` and its `mie` enable**, and the same
+  gating applies to `WFI` wake-ups.
+- **So no retrap:** `MIE` is cleared on trap entry and never set again, so the still-asserted interrupt
+  cannot trap a second time. W1-02's report storm cannot happen, and its edge/level question no longer
+  matters for correctness.
+- **The park** *(proposed)*: after its reports the handler loops forever on a plain jump to itself. (A
+  `WFI` loop would also work only if `mie`'s enable is cleared first, since a pending enabled interrupt
+  may release `WFI` with `MIE` = 0; the plain loop doesn't depend on that.) Replaces 1.4's "clear
+  `EVENTS_MASK` and `EVENTS_REQUIRED` and loop on `WFI`", which also failed in the `done` gate (W1-12).
+- **No torn sequences matter** (W1-04): nothing resumes, so a register sequence the main code left half
+  done (the send port's `W` words, the request port's `SET`/`GET` words, a read-modify-write of
+  `RUN_LINES`) is never completed. The handler must not assume those interfaces are clean: it writes
+  every word of each packet and request it sends.
+- **A second trap inside the handler** (a synchronous exception) restarts the handler at `mtvec`; it is
+  still terminal.
+- **`ecall` and `ebreak`** (owner, 2026-10-28; W1-11): no `ERRORS` bit and no hardware for them. We write
+  every controller program and don't use them; if one is ever executed it traps like any exception, the
+  handler's reports carry `mcause`, and the tile parks. The loader's "anything else -> `ebreak`" path
+  changes (it can simply stay in its wait loop), and `CMD_EXIT`, simulator only, needs another way for
+  meshsim to end a test: a meshsim matter, not a spec one.
+- **Handler conventions** (owner, 2026-10-28; W1-17):
+  - **What it reports:** the tile's `PARAMS`, `STATUS`, `ERRORS`, `EVENTS_PEEK`, the counters,
+    `mepc`/`mcause`/`mtval`, x1-x31, and for each present peripheral its window's standard words (10),
+    about ten words per peripheral, in place of v1.1's `PERIPH_STATUS_0`-`7`. The set is fixed (21).
+  - **It checks `PARAMS` [2:0] before reading a peripheral's window:** reading an absent peripheral's
+    window is a bus error, which would trap inside the handler.
+  - **It reads `EVENTS_PEEK`, never `EVENTS`**, at both levels: a load of `EVENTS` consumes events and
+    would destroy the state it is reporting.
+- **For Q1 (Tony):** the CSR list and their reset values, in particular `mtvec`'s (W1-03). Where `mepc`
+  points after a trap taken in `WFI` no longer matters.
+
+## 21. Reset and error recovery (2026-10-28)
+
+*Superseded in large part by 34: C&C 1 doesn't recover; a watchdog in Ingress/Egress resets the whole chip.
+Still true: the tile side (steps 1-3), C&C 1 draining reports, the fixed report set, the UART line errors as
+status, the handler conventions.*
+
+Decided (O, T). Answers the recovery policy (WORKER1's owner question 1), Q3 and most of Q4; settles
+W1-03, W1-06 and W1-07.
+
+**The global reset line.** One line resets tiles 0-63 and their peripherals, and C&C 2 and C&C 3 and
+their peripherals (the Updater/Binder/RW and the Tracer). **C&C 1 and its peripheral (Ingress/Egress, the
+UART) are outside it**, so the host link survives. The same line is the power-on reset:
+
+- **Power-on** holds it until power is stable.
+- **C&C 1** drives it through a register in its peripheral, between the error words and the run words
+  (15): `RESET` *(name proposed)*, **0 asserts reset, 1 releases it**; software holds it at 0 for tens of
+  cycles.
+- ~~**Units come out of reset halted:** C&C 1 clears `RUN_LINES_0`-`2`, loads them, then sets their run bits.~~
+  *Superseded by 23 and 31: units come out of reset running in the boot ROM.*
+- A unit in the domain comes out of reset with its controller core reset, `mstatus.MIE` = 0 (W1-03), and
+  every queue, FIFO and error cleared, so a failed phase's traffic is gone (W1-06).
+
+**An error in a tile:**
+
+1. An error sets a bit in the tile's `ERRORS` (for example unexpected arrival: a counted packet for a
+   counter at 0), which raises the tile's hard interrupt.
+2. The tile's handler sends its state to C&C 1 as request-bus reports, then loops forever (20). Its
+   peripherals and engines carry on with whatever they were doing, unserviced by the controller, until the
+   global reset (**answers Q3: nothing stops them before the reset**).
+3. The tile's error line sets its bit in C&C 1's `ERROR_LINES_0`-`2`; the unit-error bit of C&C 1's
+   peripheral (`OR(ERROR_LINES)`, 23) sets that peripheral's bit in C&C 1's `ERRORS`, and C&C 1
+   takes its hard interrupt.
+4. C&C 1's handler **drains every report** (owner, 2026-10-28) while it **flushes the file system's logs
+   to LPDDR** through C&C 2. The flush procedure is TBD.
+5. When the flush is complete, C&C 1 asserts the global reset and releases it. *(23: there are no run
+   bits to clear.)*
+6. C&C 1 loads the software into tiles 0-63 and into C&C 2 (the file system) and C&C 3 (the pager), with
+   uncounted packets, while each unit sleeps in its boot ROM (22).
+7. Each unit starts itself when its marker lands (22): **C&C 2's and C&C 3's markers first, then the
+   mesh tiles'.**
+
+- **The policy is abort and restart:** no job continues with a unit missing. *(The per-unit run bits are gone, 23.)*
+- **C&C 1's handler is a recovery manager** (owner, 2026-10-28), more involved than a tile's. Its duties
+  *(proposed; details for the C&C 1 firmware)*: tell its causes apart (another unit's error starts the
+  recovery; an error of C&C 1 itself is fatal, 1.5); poll `ERROR_LINES_0`-`2` during the recovery, since
+  with `MIE` = 0 further failures don't interrupt it; bound the draining, the flush and any host report
+  with timeouts; restart cleanly.
+- **C&C 1 after the restart** (owner, 2026-10-28): it never returns to the interrupted code (20); its
+  handler continues into the restart, resets its stack, sets `mstatus.MIE` again and enters its main loop.
+  This is safe because **the reset clears every unit's errors**: the lines drop, the live unit-error bit
+  and C&C 1's per-peripheral bit follow, and C&C 1's hard interrupt input goes low before `MIE` is set.
+  **Exception:** C&C 1's own errors are sticky and outside the reset domain; if any is set, C&C 1 does not
+  re-enable and the failure stays fatal (the pin, 1.5).
+- **The report set is fixed** (owner, 2026-10-28; W1-08): every handler sends the same reports, in the same
+  order, so the count is a constant of the protocol and nothing in the reports needs to carry it. The spec
+  defines the set (ops, order, count); C&C 1 counts each unit's reports against it, and its drain timeout
+  covers a unit whose reports never all arrive. A trap inside the handler is not designed for: the
+  handler is short resident code that only reads registers and writes the request port.
+- **The UART's line errors are status, not errors** (owner, 2026-10-28; W1-10): framing and overrun are
+  bits in C&C 1's peripheral's `UART_STATUS` (28; first written as its `STATUS`), never in its `ERRORS`. C&C 1's own errors are permanent (it is
+  outside the reset domain) and fatal, so line noise on the serial port must not raise one.
+- **Timing of the lines** (owner, 2026-10-28; W1-13):
+  - **The reset is held long enough** for every unit in the domain to be reporting no error on its line
+    when C&C 1 releases it: the hold covers the error line's fixed latency (a spec parameter). C&C 1 just
+    waits; software doesn't check the lines. *(The run-bit mask is gone (23), so the hold alone protects C&C 1's
+    re-enable of `MIE`.)*
+  - **`RUN_LINES` are 0 at power-on**; at a C&C 1-driven reset C&C 1 clears them itself (step 5), since
+    they are outside the domain.
+  - **Every per-unit run line has the same latency, `run_latency`**, as v1.1's single line. Boot takes
+    three stores (two words of tiles, one for C&C 2 and 3), and 6.6's "wait `run_latency` + 1 after a
+    RUN/HALT store" applies to the last.
+  - **An error raised in the cycle of a HALT edge is lost** (the clear wins, 4.13). Accepted.
+- **READY lines plug into C&C 1's peripheral** (owner, 2026-10-28; W1-14): `READY_LINES_0`-`2`, by
+  endpoint id like the error and run lines (64 unused), with **C&C 2 and C&C 3 at bits 65 and 66**. Every
+  unit boots the same way: its image, then the marker to command slot 0, then READY (6.2); since packets
+  from one source to one destination arrive in order, READY means the image has landed, and only then
+  does C&C 1 set the unit's run bit. *(Open: how the READY bits clear, as GO does in v1.1, and an "all
+  expected units ready" event in the peripheral's `EVENTS`.)*
+- **Draining matters:** reports left in C&C 1's receive queue back up the request-bus tree, and the
+  flush's own requests to C&C 2 would queue behind them in the same rows (W1-09). With all 64 tiles
+  failing at once (one bad broadcast), that is about 1,000 reports.
+
+*(Proposed, for confirmation:)*
+
+
+- **The boundary queues:** before releasing the reset, C&C 1 empties the queues it holds facing the reset
+  domain (its request receive queue, the FIFOs on tiles 0-2's fifth links), or they reset with the domain,
+  so the credits on both sides start out matching.
+- **A flush that can't finish** (the failed unit is C&C 2 or C&C 3, or their peripherals): C&C 1 times out
+  and resets anyway.
+- **Open:** whether C&C 1 also reports the failure to the host over Ingress/Egress, or the flushed log is
+  the whole report.
+
+## 22. Booting from ROM (2026-10-28)
+
+*Revised by 31: tiles boot through READY/GO; C&C 2 and C&C 3 jump on "command landed" and report "started".*
+
+Decided (O, T), from W1-14. Replaces 6.2's halted loading with READY and section 21's READY-based start
+of C&C 2 and C&C 3.
+
+- **Every controller has a small boot ROM** in region 0x02 (5), read and execute only. **The reset vector
+  is 0x02000000.**
+- **The boot ROM's job:** set `mtvec`, sleep in `WFI` until "command landed", then **jump to the address
+  in the command block**. *(Proposed: it also holds a minimal trap handler, report and park (20), for
+  `mtvec` to point at until the loaded image installs its own.)*
+- **Boot:** C&C 1 releases the global reset (21); every unit in the domain starts in its boot ROM and
+  sleeps. C&C 1 sends each unit its image, uncounted, then **the marker to command slot 0, last**.
+  Packets from one source to one destination arrive in order, so when the marker lands the whole image is
+  in place, and **the unit starts itself**.
+- **No handshake is needed:** no READY round trip for booting, no stale READY bits across a reset, no
+  waiting by C&C 1. C&C 2, C&C 3 and the mesh tiles boot the same way. **Boot order is the order of the
+  markers:** C&C 2's and C&C 3's first, then the tiles'.
+- **READY and GO remain for the phase cycle only** (6.3).
+- **Cost:** a few dozen bytes of ROM per controller, and the ROM's region in the map.
+
+## 23. No HALT state (2026-10-28)
+
+*34: the reset is now always the whole chip, C&C 1 included.*
+
+Decided (O, T). With booting from ROM (22), **units have no HALT state at all: the global reset (21) is the
+only way to stop anything**, and coming out of reset means running in the boot ROM. Settles Q4.
+
+- **Gone:** v1.1's RUN/HALT nets and `run_latency`, `RUN_LINES_0`-`2` (15), per-unit halt, and section 19's
+  halted-tile rules (no halted tile exists to drop counted packets or hold its queues empty).
+- **C&C 1's unit-error bit is `OR(ERROR_LINES)`** (15): the run-bit mask (19) isn't needed, since the reset
+  clears every stale error.
+- **Errors are sticky until the reset**, not until a HALT edge (4.13). `EVENTS_MASK` resets at reset.
+- **Loading needs no special state:** a unit asleep in its boot ROM accepts uncounted writes normally. 6.2's
+  "halt a tile before an uncoordinated write" goes; staging into a running unit is coordinated by software.
+- **READY is for the phase cycle only**, tiles 0-63: `READY_LINES` bits 65 and 66 (21) aren't needed.
+- **What we gain: starting units one at a time** (owner). Every unit leaves the reset together, but each
+  starts only when its own marker lands; the rest sleep in their boot ROMs. C&C 1 can bring up a single
+  tile at a time (chip bring-up, testing units one by one), or start C&C 2 and C&C 3 and check them before
+  loading the mesh.
+- **What we give up:** stopping a single unit to inspect it. After an error we get what the handler's
+  reports carry, then the chip restarts.
+- **Debugging instead** (owner): each tile opens log files through the file system and `printf`s into them;
+  before the reset fires, the file system flushes their tails to LPDDR (21, step 4). This also answers Q12
+  for the hardware; how meshsim shows them (a console per tile) is meshsim's business.
+
+## 24. The two status pins (2026-10-28)
+
+*Revised by 35: the error pin is the "toast" pin, high on any C&C 1 error (unit errors included) or a
+watchdog expiry.*
+
+Decided (O), from W1-16. Replaces 1.5's C&C pin; settles Q2.
+
+- **The error pin**, driven by hardware: high while **C&C 1 has any error of its own**, that is, C&C 1's
+  `ERRORS` with the unit-error bit of its peripheral (15) excluded: C&C 1's own error bits, plus its
+  peripheral's errors other than the unit-error bit. Those are sticky and outside the reset domain (21),
+  so once high the pin stays high until the host acts.
+  - **A unit fails:** only the unit-error bit is set; C&C 1 is interrupted and recovers, and the pin stays
+    low. The pin never pulses, so **Q2's "sustained high" threshold goes away**.
+  - **C&C 1 or its peripheral fails:** the pin goes high and stays high, and the host steps in (chip reset).
+  - It can drive an LED directly: steady on means C&C 1 is dead.
+- **The software pin**, driven by C&C 1 through a register in its peripheral *(name and bit proposed:
+  `LED`, bit 0)*: C&C 1 can blink codes on it while it is healthy (boot progress, which unit failed, a
+  recovery in progress).
+
+## 25. The engines and the LPDDR write path (2026-10-28)
+
+Decided (O), from W2-04. Settles what addresses mean at the controllers and engines.
+
+- **The controllers are normal tile instances** (2 MB of big SRAM; planning notes section 5), so the
+  address map (5) means at C&C 1-3 exactly what it means on a tile.
+- **The engines are their controllers' peripherals** (15): Ingress/Egress is C&C 1's, the Updater/Binder/RW
+  engine C&C 2's, the Tracer C&C 3's. A packet reaches an engine at its controller's endpoint, in that
+  peripheral's region. **Endpoints 72-74 go**; each controller's link to its engine is internal to the unit.
+  **Endpoint 65 is C&C 2**, with the memory system as its peripheral (resolving the clash WORKER1 found
+  with 2.1 and 6.7). *(Proposed; to confirm with the endpoint map, item 82.)*
+- **Writing LPDDR, by tags:**
+  1. The file system (C&C 2) owns a pool of **tags**. For each write it picks a tag and sends the RW engine
+     (its own peripheral) a request: the LPDDR destination and the tag.
+  2. **Each tag owns a window of 2-4 KB** in the RW engine's region; **a tag window is a single write.**
+  3. The file system directs the tiles to write the window, as plain mode-0 packets to dst 65 in the RW
+     engine's region. No special mode is needed (v1.1's mode 3 to d = 64 goes).
+  4. When the window is complete, the RW engine writes it to LPDDR and **returns the tag** to the file
+     system. *(How is open, a detail of the engine's design; suggested: an event in the engine's `EVENTS`
+     and a register presenting the closed tag, rather than a request-bus message.)*
+- **Constraint for the file system's design** (W2-28; deferred to when the FS and RW engine are built):
+  every write into a tag window reaches C&C 2 through one link, and the mesh has no flow control, so several
+  tiles streaming into open windows at once overflow it. The FS must either keep **one writer in flight at
+  a time** (v1.1's one-token rule; the tag pool still lets the RW engine write one window out while the next
+  fills) or **pace its writers** to a stated share of one packet per cycle. No hardware changes either way.
+- **The memory system across the global reset** (W1-19; deferred to the FS design): the reset domain's
+  boundary with LPDDR is open. **Owner's expectation:** the RW engine resets with the domain, and everything
+  after its AXI bus (the LPDDR controller and PHY) does not, so refresh and training continue and LPDDR's
+  contents, the flushed logs included, survive. To settle with the FS: the flush ends with any cache in the
+  RW engine written back, and C&C 1 fires the reset only when the memory system has no reads outstanding into
+  the domain, so no late delivery lands in a unit rebooting from ROM.
+- **Requests that cause data to come back name their counters** (owner, 2026-10-29; W2-05, W5-17): the
+  request carries the destination as a full 32-bit address (replacing v1.1's destination kind and
+  128-byte-unit address), **the data's counter and the reply's counter**. Standardising it makes every
+  request's answers counted the same way; the exact request layout is settled with 6.7 and the file system.
+  Between tiles, which counter a reply uses is agreed by the two programs, a software convention.
+- **Follow-on:** 4.2's "*d* = 64 only with mode 3" and "65-125 reserved", invariant 17's mode-3 clauses, and
+  6.6-6.7's description of C&C's port and the memory system change.
+
+## 26. Bad packets under the new map (2026-10-28)
+
+From W2-06. Defines `ERRORS` [1], "bad packet" (18).
+
+- **Natural alignment everywhere** (owner and Tony, 2026-10-28): a **128-bit write must be 4-word aligned
+  and a 64-bit write 2-word aligned**, in every region. A misaligned write is a bad packet. v1.1 let port B
+  (controller memory) and the peripherals take 1, 2 or 4 words at any word address; that goes. Read-port
+  results, block copies, and DMA or send-port runs must start aligned to their size. The software is
+  believed to align already *(to check: WORKER3's inventory, meshsim)*. **The hardware checks alignment.**
+- **The same rule inside big SRAM** (owner, 2026-10-28): **every 64- or 128-bit big-SRAM access, read or
+  write, is naturally aligned**. A `PTR` must be aligned to the size of the packets landing through it;
+  `STREAM_SRC` and each `GROUP` source to the stream's read size; `DMA_RECORD_BASE_ADDRESS` to a record.
+  A misaligned access raises the alignment error (`ERRORS` [1], which becomes "bad packet or misaligned
+  access"). **Spanning accesses go away:** no access ever straddles a row, so 4.1's two-part access, 4.9's
+  spanning write and their extra cycle are removed (one less variable term in W2-01's write path). v1.1
+  allowed any chunk for every width (4.1). A pointer stays aligned only if every packet through it has the
+  same size: mixing 32- and 64-bit packets through one `PTR` breaks it.
+- **Units** (W2-07): anything that travels in a packet or that the controller reaches through its map is in
+  **bytes**; anything inside the tile's engines that points into big SRAM is in **32-bit chunks**
+  (`STREAM_SRC`, `PTR`, `SRAM_RD_ADDR_QUEUE`, `DMA_RECORD_BASE_ADDRESS`). `GROUP` entries hold no address,
+  and the augmented ordinal counts records.
+
+- **Out of bounds is not checked in hardware** (Tony, 2026-10-28): the check was dropped to make timing on
+  the controller core, with the 32 KB data and program memories. **An offset past the end of a memory is
+  undefined behaviour**: the high offset bits are ignored, so the access aliases into the memory. This
+  holds for packets and for the core's own loads and stores. Staying in bounds is a program obligation,
+  like avoiding size 11.
+- **meshsim checks both strictly** (owner): misalignment and out-of-bounds, for packets and for the core's
+  loads and stores, stop the simulation with an error naming the access. Both are common bugs in kernels
+  of this kind and must be caught in simulation.
+- **Auto-advancing past the end is a software bug** (owner, 2026-10-28; W2-08): `STREAM_DEST`,
+  `ROUTER_ADDR`, `DMA_ADDR`, `SRAM_RD_DEST_ADDR` and the memory system's deliveries advance by plain
+  addition; what happens when a run passes the end of its memory (wrap, alias, or carry into the next
+  region) is undefined and not specified. meshsim errors on it, like any out-of-bounds access.
+- **The cheap checks stay in hardware:** alignment (above), and the region decode, an 8-bit compare.
+
+| case | hardware |
+|---|---|
+| a 64- or 128-bit write not aligned to its size | bad packet |
+| an offset past the end of its memory | not checked: undefined (aliases); meshsim errors |
+| regions 0x07-0xFE, an absent peripheral, region 0xFF, the boot ROM (0x02, read-only) | bad packet *(proposed)* |
+| size 11 | undefined, not checked (as v1.1, 3.1); meshsim errors *(proposed)* |
+| modes 1-4 | ignore the address, region included (as v1.1) *(proposed)* |
+| mode 3 (augmented) at 128 bits | bad packet (as v1.1) *(proposed)* |
+
+## 27. What the hardware checks and what meshsim checks (2026-10-28)
+
+Decided (O), from W2-13; states a principle applied throughout today's decisions.
+
+- **The hardware checks only what is cheap and catches a bug far from its cause:** the overflows,
+  unexpected arrival, done early, drift, alignment (26), and the region decode (26).
+- **Every other software convention or program obligation is validated in meshsim and ignored by the
+  hardware:** out-of-bounds offsets and running past the end of a memory (26), reserved modes (6), the
+  reply-block and command-block conventions (6), uncounted traffic being mode 0 (17), and the spec's
+  invariants (section 9), which are simulator checks.
+- **Data memory word 0 is reserved** (owner, 2026-10-28; W2-23): the linker script never places anything at
+  address 0x00000000, and **meshsim flags any write to it**. A C null-pointer store and an all-zero header (a
+  mode-0 write at address 0, uncounted, 6) both land there, so one check catches both. Costs 4 bytes.
+- **Traps that set no `ERRORS` bit are software bugs, caught by meshsim** (owner, 2026-10-29; W1-18):
+  `ecall`, `ebreak`, a fetch outside program memory and the boot ROM, a misaligned jump target, and a trap
+  inside the handler. **meshsim stops loudly on each.** The hardware adds nothing (no "trap taken" bit): such
+  a trap parks the unit without raising its error line, and on hardware only the phase watchdog notices.
+  Accepted. *Reviewers: this is settled; don't raise it again.*
+- **Invariant 11's checkable form** (meshsim only): writes into the command block come only from C&C 1-3;
+  writes into the reply block are 32 or 64 bits at the sender's own pair (word 2·src); any other mode-0
+  write to regions 0x00 or 0x01 stays inside its memory and outside both blocks.
+- **The other invariants W2-13 lists** (4, 5, 8, 9, 10, 13, 14, 17, 18) are rewritten mechanically with the
+  spec update.
+
+## 28. C&C 1's registers (2026-10-28, revised 2026-10-29)
+
+*(Integrator's proposal (W3-18), revised with WORKER3's review (W3-28) and accepted by the owner on the
+integrator's recommendation, 2026-10-29. To be reviewed again when C&C 1's firmware is written.)*
+
+- **Every chip-level C&C function lives in C&C 1's peripheral** (Ingress/Egress, the UART), and **the
+  controller block is identical on every unit**, C&C 1 included. `PULSE_GO` leaves the controller block (11).
+- **The request receive FIFO stays with the request port** (`REQUEST_GET_W0`-`W2`, `REQUEST_RECEIVE`), which
+  every controller has; C&C 1 receives the reports through it like any request.
+
+**C&C 1's peripheral-defined words, from word 32, in this order** (exact offsets with the register table):
+
+| register | access | meaning |
+|---|---|---|
+| `ERROR_LINES_0`-`2` | R | live unit errors, by endpoint id, 64 unused (15) |
+| ~~`RESET`~~ | | *gone (34): the watchdog resets the whole chip* |
+| `READY_LINES_0`-`1` | R | the tiles' sticky READY bits (64; READY is tiles only) |
+| `READY_EXPECT_0`-`1` | R/W | the tiles C&C 1 is waiting for. "All tiles READY" is a **live** event bit (36): (`READY & EXPECT`) == `EXPECT` **and** `EXPECT` ≠ 0; so one-at-a-time bring-up works (23) and C&C 1 can't miss it whatever order it writes `EXPECT` in |
+| `PULSE_GO` | W | clears READY bits 0-63 and drives GO, in one store; a READY pulse arriving in the same cycle is kept; also restarts the watchdog |
+| `WATCHDOG` | R/W | the one watchdog (36): 0 (the reset value) is off; writing a limit *N* > 0 starts it; a write or `PULSE_GO` restarts it from the last *N*; reaching 0 posts the event and latches the toast pin |
+| `LED` | R/W | the software pin (24), bit 0 |
+| UART words | | TX, RX, divisor, and **`UART_STATUS`**: line errors (framing, overrun), **write-1-to-clear** as in v1.1. Not in the standard `STATUS`, which is read-only and live (10), so a sticky line error there could never clear (W3-01) |
+| host-interface words | | Ingress/Egress |
+
+- **C&C 1's peripheral `ERRORS`:** [0] is **the unit-error bit**, `OR(ERROR_LINES)` (15, 23), live; ~~the error
+  pin excludes exactly that bit (24)~~ *(35: the toast pin covers every error)*. Other bits are the peripheral's own errors, sticky.
+- **C&C 1's peripheral `EVENTS`:** all tiles READY (as defined above); the watchdog expired (depth 1); the
+  UART's RX not empty and TX not full (live); the host interface's events.
+- **Tiles' `EVENTS` [5], GO**, keeps its meaning with GO now driven from C&C 1's peripheral. C&C 2 and C&C 3
+  aren't wired to GO and never see it (31).
+
+## 29. Housekeeping from WORKER3 (2026-10-28)
+
+- **W3-17:** settled by bytes (5) and the units rule (26). Converting a chunk address to a packet address is
+  `0x03000000 | chunk << 2` (big SRAM is region 0x03, 22).
+- **W3-20:** v1.1's UART register is `UART_DIVISOR`, not `UART_CONTROL` (9 corrected).
+- **W3-21:** planning notes to-do 13's `ROUTER_SET_HDR` alias and readable `SENDER_ADDR` are superseded by 7
+  and 10.
+- **W3-22:** the simulator-only addresses at 0xFFFFFFF0 (the split's `TRACE_REG`, the skew harness's
+  sentinel) now fall in peripheral 3's window; they move to a reserved word of the controller block,
+  *(proposed)* 0xFFFFF9FC.
+
+## 30. Four counters (2026-10-28)
+
+*Revised by 40: seven counters, codes 1-7; nothing is reserved.*
+
+Decided (O), from W3-19. Revises 2, 3, 4, 7, 10, 12, 13, 14 and 16 (each updated in place).
+
+- **The counter field is 3 bits: 0 uncounted, 1-4 the write counters, 5-7 reserved** (accepted and treated
+  as uncounted, 32; meshsim errors). Three counters came only from squeezing the field into 2 bits; a replayer
+  pass may need three at once (an LPDDR fetch, a refill, a reply) plus headroom.
+- **The common header block** (12) becomes size [18:17], counter [21:19], mode [24:22], dst [31:25]: mode
+  and dst keep their bits, size moves down one, counter grows. The link word: size [161:160], counter
+  [164:162], mode [167:165], src [174:168], dst [181:175]; 74 bits reserved.
+- **`STREAM_COUNT`'s count is 17 bits**, [16:0], at most 131,071 elements per stream (owner, 2026-10-29;
+  W2-24, W3-33). A 16-bit count with [16] spare was chosen first, but the full-size sort's local streams
+  have count exactly 65,536 (the keys per tile), which 16 bits would truncate to 0, a silent empty stream.
+  Long moves are still better broken into smaller transfers (about 64K cycles each already).
+- **`WRITE_COUNTER_4`** joins the register block (0x86C; the read port's registers move down one word), and
+  `EVENTS` gains counter 4's done at [3], renumbering the bits above it (16).
+
+## 31. The boot sequence (2026-10-29)
+
+*Corrected by 36: step 5's order; the ROM written out exactly; the overlays and first command of one kind;
+C&C 1's own boot.*
+
+Decided (O), from W1-23, W1-24, W2-27 and W3-26. Revises 22: the boot ROM is a minimal `wait_for_command()`,
+so tiles boot through the same READY/GO protocol as every phase.
+
+1. **The reset is asserted** (the whole chip, 34): everything is zeroed as at power-on, **except the memories**:
+   `done`, the `done` gate, "command landed", any pending GO, every counter and event. `EVENTS_MASK` takes its
+   reset value (GO | counters done, 16).
+2. **The reset is released:** every controller starts at 0x02000000, in the boot ROM.
+3. **C&C 1 sends the overlays** into controller memory, uncounted, then **lands the first command**. Overlays
+   and command come from one source to one unit through port B, so the command lands last.
+4. **Tiles:** the ROM has pulsed `done` and waits for GO, so "command landed" raises READY, as in a phase.
+   **When every tile is READY, C&C 1 issues GO**; GO clears `done` and "command landed" as always, and the
+   ROM jumps to the address in the command block. The image starts clean.
+5. **The first program loads big SRAM** *(order corrected by 36)*: the command announces the data; READY; GO;
+   each tile arms its counters in its start path; C&C 1 sends the data **counted**, no sooner than
+   `stage_delay` after its GO store; each tile waits for counters done, then pulses `done` (v1.1's announced
+   staging, 6.2, 6.4). The command never has to
+   vouch for big-SRAM data (W2-27's overtaking).
+
+**C&C 2 and C&C 3 stay out of READY/GO** (owner), which would otherwise tie them to the phase cycle while they
+trace and run the file system:
+
+- **One ROM for every unit, branching on `PARAMS`' endpoint id:** tiles (0-63) pulse `done` and wait for GO;
+  C&C 2 and C&C 3 set their mask to "command landed", wait for it, and jump.
+- **Their image's start-up sends C&C 1 a "started" request.** C&C 1 waits for both before loading the tiles,
+  so the file system and the pager are up before anything uses them.
+
+**Details this needs:**
+
+- ~~**Asserting `RESET` clears C&C 1's READY bits**~~ *(34: the whole-chip reset clears them, with everything
+  else in C&C 1's peripheral.)*
+- **The boot ROM never writes data memory** (no stack, no variables), which the overlays are writing while it
+  runs; it reads only the command block, after the command has landed. The first command has parity 0, so the
+  jump address is in slot 1 (36).
+- ~~**C&C 1 drains its request receive queue to empty** before a restart's boot~~ *(34: the whole-chip reset
+  empties it.)*
+- The ROM sets `mtvec` first, to a minimal report-and-park handler in the ROM (22), until the image installs
+  its own.
+
+## 32. Integrator's calls for implementation (2026-10-29)
+
+*(The owner asked the integrator to settle these so implementation can start; to review.)*
+
+| item | call |
+|---|---|
+| **K** (W2-25) | With spanning gone the big-SRAM write path is fixed, so K is a formula: **K = max(2·L + 3, L + 4, `cm_latency`, `rp_latency`)**, L = `ts_engine_latency`; K = 8 covers L ≤ 2. Write combining stays out unless it fits under K. S1's measurement becomes a check of the formula |
+| **The table window after done** (W2-26) | Guaranteed by K (17 A): meshsim checks that no table-window access after done precedes a pending `PTR`/`HIST` update. No interlock hardware |
+| **Big-SRAM images** (W2-27) | Settled by 31: big-SRAM data arrives counted, after the first command |
+| **Misaligned engine accesses** (W2-32, W3-30) | The access is dropped, **still counted** (so nothing hangs), and sets `ERRORS` [1]; the read port's misaligned read sets [1] too, not [7]. meshsim flags it |
+| **Big SRAM out of range** (W2-33) | Undefined in hardware, like controller memory (26); big SRAM's size isn't a power of two, so it doesn't promise aliasing. meshsim errors |
+| **Alignment of pointers and runs** (W2-34, W3-29) | Stated per register in the spec update: a run's start is aligned to its element size and every step keeps it aligned; `PTR` to its packets' size; an augmented `PTR` to a record (two chunks) |
+| ~~Counter codes 5-7~~ (W2-35) | *Moot since 40: codes 1-7 are all counters* |
+| **The trace word** (W3-32) | 0xFFFFF9FC is a named simulator-only word in the register table, exempt from meshsim's reserved-word check; a store there is harmless on hardware |
+
+## 33. Deferred (2026-10-29)
+
+Not needed to run the sort and the replayer on v1.2; each comes back with the design it belongs to.
+
+- **Reset and recovery, with C&C 1's firmware:** the reset boundary at C&C 1 (W1-20); C&C 1's own state
+  across its restart, and the option of putting its tile logic inside the reset (W1-21); errors at C&C 1
+  caused by other units becoming fatal (W1-22); release timing and pacing (W1-25); loops in recovery (W1-26);
+  the host's view (W1-27; C&C 1's own boot is in 36); one-at-a-time start-up against the replayer's
+  ownership rules (W1-30); the memory system across the reset (W1-19, in 25).
+- **The file system and the RW engine:** tag-window fan-in (W2-28, in 25); tag-window writes being uncounted
+  writes from running tiles (W2-29); the window protocol and the read direction (W2-30); whether requests
+  carry counters (W2-05); a peripheral event kind for a queue of items, for returning closed tags and for
+  the host interface (W3-25).
+- **A 1×4 test chip** (owner, 2026-10-29; an MPW: C&C 1-3 plus 4 compute tiles). Expected to work: the sort's
+  algorithm doesn't depend on the tile count, and its all-to-all keeps v1.1's mechanism (lockstep group runs,
+  so every destination hears from one source at a time). On the ±1 ring of four tiles the schedule is one
+  group of the four offsets {0, 1, 2, 3}: offset 2 goes clockwise and its second hop falls in the cycle the
+  tiles send offset 3 counter-clockwise, so no link carries more than one packet per cycle. What changes is
+  software and parameters: the schedule table, the split's 64-sized arrays and exchanges, the ring forms of
+  the routing offsets, the relative *d* and the mesh reduction. **Mesh size to be made a parameter** in
+  meshsim, the spec and the sort when the test chip is taken up.
+- **Sending peripherals' router ports** (W2-31): src, routing inside the controllers' routers, flow control.
+  Only C&C 1-3's engines send, and the replayer doesn't.
+
+## 34. Reset by watchdog, no recovery (2026-10-29)
+
+*Superseded by 35: the chip never resets itself; it raises its "toast" pin and the outside world resets it.*
+
+Decided (O, T). **Replaces section 21's recovery flow.** Errors end in a whole-chip reset; nothing on chip
+tries to recover.
+
+- **Ingress/Egress (C&C 1's peripheral) has a keep-alive watchdog.** C&C 1 checks in periodically ("I'm
+  OK").
+- **Ingress/Egress also watches C&C 1's error output** (the error pin's signal, 24).
+- **On any error reaching C&C 1**, its own or a unit's through the unit-error bit (15), C&C 1 takes its
+  interrupt. Its handler:
+  1. captures state, draining the units' reports (21's draining and fixed report set still apply);
+  2. **tries to flush the file system's logs to LPDDR** (owner), so that after the restart the file system
+     comes back up and the wreckage can be read from it (23's debugging plan);
+  3. pushes what it has out over the UART or the host link;
+  4. **does not recover**: it stops checking in with the watchdog.
+- **The watchdog expires** and either **(1) resets the whole chip**, when running solo, or **(2) raises a pin
+  so the FPGA resets everything** through an input pin.
+- **The reset is always the whole chip**, C&C 1 included; every unit boots from scratch through the boot ROM
+  and the boot sequence (22, 31), exactly as at power-on.
+- **Gone:** C&C 1's `RESET` register and the C&C 1-driven domain reset (21, 28); the domain boundary at C&C 1
+  and C&C 1's restart. **Most of 33's deferred reset group dissolves:** W1-20, W1-21, W1-22, W1-25, W1-26 and
+  W1-27 were about C&C 1 surviving a reset it caused.
+
+*(Proposed, for confirmation:)*
+
+- **LPDDR's contents survive the reset:** the LPDDR controller and PHY are outside the watchdog's reset (the
+  owner's expectation in 25: nothing past the RW engine's AXI bus resets), or the flush ends by putting LPDDR
+  into self-refresh, which the controller exits after the restart. With the FPGA reset, the FPGA's design does
+  the same.
+- **The watchdog doesn't fire mid-flush:** the handler keeps checking in while the flush makes progress, and
+  stops when it is done or after its own timeout, so a hung flush still ends in a reset.
+- **Open:** whether this watchdog is the phase watchdog of 28 (C&C 1's main loop checks in; a hung phase is
+  something C&C 1 notices itself); how solo or FPGA mode is selected (a strap pin, or a register in
+  Ingress/Egress); and on restart, the file system mounting existing state (its own design).
+
+## 35. The toast pin and outside reset (2026-10-29)
+
+Decided (O, T). **The simplest scheme that works; replaces 34.** The chip never resets itself: it says it is
+toast, and the outside world decides when to reset it.
+
+- **When C&C 1's error fires**, its own or a unit's through the unit-error bit (15), C&C 1 takes its interrupt
+  and its handler **immediately tells the file system to start flushing** its logs to LPDDR. It also drains
+  the units' reports and pushes what it can out over the UART or LVDS (21, 34). Best effort: nothing waits
+  for it, and nothing on chip recovers.
+- **Ingress/Egress raises the "I'm toast" pin** as soon as it sees C&C 1's error, **or** when its keep-alive
+  watchdog reaches zero (C&C 1 checks in periodically, 34). It replaces 24's error pin, and covers **every**
+  error, unit errors included: nothing recovers, so every error is terminal, and excluding the unit-error bit
+  no longer means anything. The software pin (`LED`, 24) stays.
+- **The outside world resets the chip** through one of two inputs:
+  - **hard reset:** everything, the AXI bus and the memory side included; LPDDR's contents are lost;
+  - **soft reset:** everything except a short list (the LVDS bus, the AXI bus and what lies beyond it, the
+    LPDDR controller and PHY), so LPDDR keeps the flushed logs. *(The list to settle with Tony.)*
+- **Nothing tells the outside world the flush has finished.** In solo use, someone resets the chip by hand,
+  which takes long enough. With an FPGA monitor, it waits a fixed time after the toast pin rises before a
+  soft reset, **about 0.1 ms** (about 100,000 cycles at 1 GHz) to flush.
+- **After either reset**, every unit boots from scratch through the boot ROM (22, 31). After a soft reset the
+  file system comes back up over LPDDR's contents and the wreckage can be read from it (23).
+- **Gone:** 34's self-reset by the watchdog and its solo/FPGA mode; the handler's checking in during the
+  flush. 28's `WATCHDOG` register is the keep-alive watchdog *(proposed: one watchdog, not a separate phase
+  watchdog)*.
+
+## 36. Sign-off fixes (2026-10-29)
+
+From the three sign-off reviews (W1-31 to W1-34, W2-37, W2-38, W3-34 to W3-36), all accepted by the owner on
+the integrator's recommendation. Each is a correction or a precision; none changes the design.
+
+- **Boot step 5's order** (W2-37, W3-34): arming before the READY `done` pulse would raise done early, so 31's
+  step 5 now follows v1.1's announced staging: command, READY, GO, arm in the start path, data no sooner than
+  `stage_delay` after GO, wait for counters done, `done`.
+  - **The window between GO and arming is kept** (owner): every phase has it, and v1.1 closes it by timing
+    (identical start paths; nothing arrives sooner than `stage_delay`). If it fails, unexpected arrival says
+    so. *Candidate for later: signed counters, so an arrival before arming just goes negative and the order
+    stops mattering; strays are then caught as done early.*
+- **The boot ROM, exactly** (W1-33):
+  1. set `mtvec` to the ROM's report-and-park handler (which never writes data memory);
+  2. branch on `PARAMS`' endpoint id;
+  3. **tiles (0-63):** pulse `done`; loop `WFI` and load `EVENTS` until GO is seen (so GO is consumed);
+  4. **C&C 1-3 (64-66):** set `EVENTS_MASK` to "command landed" [6]; loop `WFI` and load `EVENTS` until [6] is
+     seen; restore `EVENTS_MASK` to its reset value;
+  5. load the command word (slot 0), then the jump address (slot 1), and jump.
+- **The overlays and the first command are of one kind** (W1-31): all broadcast or all unicast, since the mesh
+  orders packets only within a kind. meshsim checks that no overlay write lands after a unit's "command
+  landed" and before its start.
+- **C&C 1's own boot** (W1-32, W3-36): endpoint 64 takes the C&C 2/3 branch of the ROM, and **the outside
+  world lands C&C 1's overlays and first command**: the host through Ingress/Egress on silicon, the test
+  harness in meshsim. **In meshsim v1.2, C&C 1 stays a behavioural Java model** (as `CnC.java` in v1.1),
+  driving 28's registers from the harness; likewise C&C 2 and C&C 3 until their firmware exists.
+- **One watchdog and the toast pin** (W1-34, W3-35): one watchdog, `WATCHDOG` in C&C 1's peripheral (28), off
+  at reset; a limit *N* > 0 starts it; a write or `PULSE_GO` restarts it; reaching 0 posts the event and
+  latches the toast pin. **Toast = C&C 1's `ERRORS` ≠ 0 (the unit-error bit included) or the watchdog
+  expired, latched until the reset.** C&C 1 sets the limit above each phase's expected length. "All tiles
+  READY" is live (28).
+- **A misaligned read** (W2-38) is not performed, but its packet still goes out with payload 0, so the
+  receiver's director counts it as usual (one decrement point); `ERRORS` [1] is set at the tile that issued
+  the read.
+- **K is a parameter, default 8** (W2's short list); meshsim errors if it is set below 32's formula.
+- **A slip in the replayer's stream bound** (integrator, 2026-10-29; found in v1.3's Tracer work): v1.1's
+  4.19.15 bounds a stream's length by "64K rows × at most two log words × 66 bits" (about 8.6 Mbit), which
+  contradicts its own rule that a row takes at most one log value. The bound is 64K × 66 bits, about 4.3 Mbit,
+  within the 24-bit length field. The v1.2 spec should state it that way.
+- **Ending a test in meshsim:** a simulator-only exit word beside the trace word (32), since `ebreak` now stops
+  loudly (27).
+
+## 37. From the recipes' walk-throughs (2026-10-29)
+
+From WORKER6's first round. 1 and 2 are the owner's; the rest are on the integrator's recommendation, to review.
+
+1. **The boot ROM jumps only if a command has landed** (W6): GO reaches every tile, so with one-at-a-time
+   start-up (23, 28) a tile still waiting in the ROM would otherwise jump into empty memory. **After GO, a
+   tile's ROM jumps only if a command has landed; otherwise it pulses `done` again and keeps waiting.** A ROM
+   change only; revises 36's listing, step 3.
+2. **Enabling interrupts is the image's job** (owner): the ROM leaves them off. **Boot part 2**, the first
+   command, which receives the big-SRAM size and loads it (31, step 5), sets `mtvec` to the image's handler
+   and enables `mie.MEIE` and `MIE`. A software convention, not a hardware rule.
+3. **The report set stays fixed:** a tile sends the standard words of every peripheral slot, with zeros for an
+   absent peripheral (reconciling 20's "each present peripheral" with 21's fixed set).
+4. **The first 16 bytes of data memory are reserved**, not 4 (revises 27's word 0): 128-bit overlays starting
+   at address 0 would otherwise hit the reserved word. Overlays start at 0x10; meshsim flags any write to
+   0x00-0x0F after boot.
+5. **The no-increment bit stays set until the program clears it** (7): the program clears it when it is done
+   with a fixed address.
+
+**Accepted limitations:**
+
+- ~~C&C 1's UART dump can't finish before an FPGA reset~~ **Not a limitation** (owner): with an FPGA in the
+  loop, C&C 1 sends the dump down LVDS and the FPGA waits as long as it wants before resetting (the 0.1 ms of
+  35 is only a default); with no FPGA, a person resets slowly enough for the UART.
+- ~~Reports can be stuck on the request bus~~ **Fixed by 38**: deep receive queues and per-tile limits
+  mean normal traffic never exhausts a target's credits, so no row stalls behind another target's traffic.
+
+## 38. Request receive queues in the tree (2026-10-29)
+
+Decided (O). Fixes W6's finding that a tile's error reports could wait on the request bus behind requests
+to a target that had stopped popping. Revises 3.3 and 4.18 (v1.1's 16-entry receive queue in every tile,
+16 credits per target, and "no queues at the root", 2026-10-26).
+
+- **Why rows stalled:** when a target runs out of credits, the root skips every input whose next request is
+  for it, and that input's whole row stalls behind it, including requests for other targets.
+- **The receive queues belong to the request tree**, at its roots, one per target, sized by the target's
+  traffic rather than by the tile hardware (the tree is its own unit: many leaves, a few roots). Every depth
+  is a power of two:
+
+| target | receive queue | outstanding per tile |
+|---|---|---|
+| C&C 1 | 128 requests | 1 |
+| C&C 2 (the file system) | 256 requests | 3, so a tile can have several log streams in flight |
+| C&C 3 (the pager) | 128 requests | 1 |
+
+- **Outstanding** means: a tile issues its next request to a target only after the previous one's reply has
+  come back (requests name their reply's counter, 25). The controllers' own requests to each other fit in
+  the room the per-tile limits leave (64 entries at each target).
+- **So normal traffic can never exhaust a target's credits**: the root never skips, no row stalls, and traffic
+  for one target never blocks traffic for another. Each target's credit count is its queue's depth.
+- **Error reports are the exception** (about 17 per failed tile, no replies): in a mass failure they can fill
+  C&C 1's queue and stall rows, but the chip is going down and C&C 1 drains them one by one (accepted).
+- **Tiles that aren't targets need no receive queue.** The memory system's own target (3.3's target 3) is
+  deferred with the file system (33).
+- **Cost:** 128-bit entries, so 32 Kbit for C&C 2's queue and 16 Kbit each for C&C 1's and C&C 3's; cheap.
+
+## 39. The replayer's status words (2026-10-29)
+
+Decided (O). Answers W5-09. The replayer's peripheral-defined words 32-33 (v1.1's `PERIPH_STATUS_0`-`1`,
+the spec's `REPLAYER_STATUS` and `REPLAYER_OPCODE`, the draft header's `RUN_STATUS` and `PRESENTED`) become
+**one field per word**:
+
+| word | name | access | contents |
+|---|---|---|---|
+| 32 | `ROWS_RUN` | R | rows of this pass completed, modulo 2¹⁶ |
+| 33 | `EXPANSION_OFFSET` | R | the row within the current expansion where the next row starts |
+| 34 | `EXPANSION_OPCODE` | R | the instruction awaiting a controller-fed expansion (presented from the new-expansion event until the next) |
+
+No prefix: the names are scoped by the replayer's struct (14). These are outputs the controller reads; the
+**state word** (pc, `instr_idx`, next offset, flags) is an input at offset 0 of the replayer's region (4.19.10),
+written with the checkpoint.
+
+## 40. Reply addresses and seven counters (2026-10-29)
+
+Decided (O, T). From WORKER6's F15.
+
+- **Every request names its own reply address**, beside its reply's counter (25): **anywhere in the
+  requester's data memory** (region 0x00; program memory is load-only, 5). F15: with up to three requests
+  outstanding to C&C 2 (38), replies to a fixed slot in the reply block would overwrite each other; each
+  outstanding request now gets its own buffer. **The reply block becomes the default for tile-to-tile replies,
+  not a rule**; invariant 11's reply-block clause (27) applies to replies sent there.
+- **Seven counters** (Tony): the 3-bit counter field's codes **1-7 are all write counters**; 0 is uncounted.
+  Revises 30 (codes 5-7 reserved) and 32's call on them. A replayer tile can have an LPDDR fetch, a refill
+  and replies in flight together, plus up to three file-system requests, each waited on separately.
+  - **Registers:** `WRITE_COUNTER_1`-`WRITE_COUNTER_7` at 0x860-0x878; the read port's two registers move to
+    0x87C and 0x880 (11, *proposed addresses*).
+  - **`EVENTS`** (16): counters 1-7 done at [6:0], counters done [7], GO [8], command landed [9], DMA run done
+    [10], request FIFO no longer full [11], request pending [12], peripherals 1-3 [15:13]. `EVENTS_MASK` resets
+    to GO | counters done.
+  - The delay line already carries the 3-bit field; each counter adds a register, an adder and a done bit.
+
+## 41. The rest of the recipes' findings (2026-10-29)
+
+From WORKER6's F6, F9-F14 and F16. F6 is in 17's guarantee B.
+
+- **F16, the report count:** 20's list plus 37.3's peripheral slots make about 23 requests (more with seven
+  counters, 40), not "about 17". **The spec defines the exact set; C&C 1 counts against it.** 38's conclusion
+  stands (a mass failure fills C&C 1's queue; accepted).
+- **F9, F10, F11: accepted costs, no change.** Claiming one peripheral event costs narrowing the mask around the
+  load (the cost of counted events, 10; act on every bit returned where possible). The table wait's four stores
+  may be replaced in a helper by a loop that ORs what each wake consumed. About 13 extra wakes per replayer
+  window.
+- **F12, bounded waits on C&C 1:** Tony's core implements **`mcycle` and `mtime`** (part of Q1), so C&C 1 bounds
+  its waits by cycle count.
+- **F13, "command landed" stays pending** in a tile after its first command: nothing in the reset mask consumes
+  it. 37.1's ROM relies on that, so the spec says it, and the ROM's tile branch must not consume it.
+- **F14, a stream may name the broadcast** (owner, 2026-10-29): **in hardware, a stream's *d* may be 126**, with no
+  special case; a broadcast stream's packet to its own tile takes a read token like the send port's (S9).
+  **Software convention:** only the controllers broadcast from streams, as C&C 1 does at boot, streaming
+  overlays from its big SRAM at a packet per cycle instead of four stores per packet through its send port.
+  **meshsim errors loudly** on a stream with *d* = 126 from a mesh tile (owner), a convention check under 27.
+
+## 42. Answers to the spec session's questions (2026-10-29)
+
+WORKER5's open questions (`WORKER5/QUESTIONS.md`). W5-01, W5-06, W5-13, W5-15 and W5-17 were ruled earlier;
+W5-09 is 39.
+
+- **W5-05, the controller memories' port B** (owner): **one 128-bit write per cycle**. How the memory is built to
+  do it (banks, macros) is the implementer's choice; the spec states the requirement only.
+- **Accepted as WORKER5 proposed:**
+  - W5-02: a write through a misaligned `PTR` is dropped but counted, and the pointer still advances by the size.
+  - W5-03: `ROUTER_ADDR` advances for mode 0 only; modes 1-4 ignore it.
+  - W5-07: each read-port request-queue entry carries its own counter.
+  - W5-08: 26's proposed rows (bad packets by region, mode 3 at 128 bits, modes 1-4 ignoring the address, size
+    11 unchecked).
+  - W5-10: the replayer's part-select bits are byte offset [22:20].
+  - W5-11: a controller takes its fifth-port packets one a cycle, no back-pressure, as in v1.1; which port of
+    its router is deferred with W2-31 (33).
+  - W5-12: `WATCHDOG` counts core cycles.
+  - W5-14: `LED` resets to 0.
+  - W5-16: the memory system reports a request it can't serve as one of its peripheral's errors, raising C&C 2's
+    error line and the toast pin.
+  - W5-18: C&C 1's peripheral words 32-45 in 28's order (the UART as TX, RX, divisor, status); `EVENTS` [2] all
+    tiles READY, [3] watchdog, [4] RX not empty, [5] TX not full; a load of `WATCHDOG` returns the current count.
+  - W5-19: the exit word at 0xFFFFF9F8.
+  - W5-20: the controller block's addresses as given by 11, 30 and 40 (seven counters).
+- **For Tony:** W5-04, whether loads from program memory and the boot ROM take one cycle like data memory; and
+  W5-21, whether the 32 KB memories meet one-cycle access at 1 GHz (about 0.15 mm² in all, fine for area; spec
+  item 127).
+
+## 43. A count-only mode, and fences (2026-10-29)
+
+Decided (O). Answers WORKER6's F17.
+
+- **F17:** "DMA run done" means the run's last table read is done (17, guarantee B), not that its last packet
+  has left: some may still be in big SRAM's read pipeline. A packet the core then sends from the send port can
+  be injected first and overtake them, e.g. a command landing before the end of the code it starts. Tracking
+  each run's last packet in hardware was judged too expensive.
+- **The spec states no ordering between the address generator and the send port.** "DMA run done" keeps its
+  meaning.
+- **Mode 5 is "count only":** the packet decrements its counter at the destination and writes nothing. Any size
+  is accepted and the payload and address are ignored (the smallest packet is the natural choice); from a stream,
+  the address generator reads its source as usual and the payload is discarded; to the tile itself it takes a
+  read token like any loopback packet (S9). Revises 6's modes: **5 count only, 6-7 reserved.** Counted like modes
+  0-3 (the counter field counts for modes 0-3 and 5); a count-only packet with counter 0 does nothing, and meshsim
+  flags it.
+- **The fence:** when something must follow a run's packets, the run ends with **a count-only packet to the tile
+  itself**, counted on a spare counter. A sequential run injects its packets in order, so when the fence's counter
+  reaches 0, everything earlier in the run has been injected, and whatever the core sends next follows it to each
+  destination (same kind only, broadcast or unicast, 36). In a group run, the fence goes in the stream that ends
+  last. **Cost: one packet per run that needs it.**
+- **Also a signal between tiles:** "done" or "your data is all sent" as one count-only packet on the receiver's
+  armed counter, instead of a reply that writes a word nobody reads.
+- Putting the command inside the run, as the boot recipe does, remains valid.
+
+## 44. Ordering per sending unit, and the spec session's last questions (2026-10-29)
+
+Decided (O).
+
+- **Ordering holds per sending unit** (owner; W5-25, F17), refining 3.2's "one source": packets from **one unit
+  in one tile**, to one destination, of one kind (broadcast or unicast), arrive in the order that unit sent them.
+  A tile's sending units are the **address generator** (streams and group runs), the **send port**
+  (`ROUTER_HDR` / `ROUTER_SEND_*`), the **GATHER engine** and the **read port** (results to the tile itself), and
+  **each sending peripheral's DMA** (its own router port, 10). **Between two units there is no ordering**, even in
+  one tile; a program imposes it with a fence (43) or by putting the packet in the run.
+- **W5-23, when a read stops being outstanding:** "outstanding" is a **software convention**, not a hardware
+  state. In hardware a request holds a slot in its target's receive queue from delivery until the target pops
+  it, well before any answer; the tile can't see the pop. So the convention is deliberately conservative: a
+  request is outstanding until its reply has landed, and **a read, which has no reply, until its data has
+  landed** (its data counter done). That implies 38's hardware bound.
+- **W5-24, the report set:** as WORKER5 defined it: 24 reports (x1-x31, `mepc`, `mcause`, `mtval`, `PARAMS`,
+  `STATUS`, `ERRORS`, `EVENTS_PEEK`, the seven counters, then three per peripheral slot, zeros for an absent
+  one). The header's op and sequence-number fields are settled with C&C 1's request format.
+- **W5-26, one-at-a-time starts:** the spec's boot section states C&C 1's rule: **land a tile's first command only
+  when that tile should start at the next GO**, since the ROM jumps at the first GO after a command has landed
+  (37.1).
+
+## 45. Load latencies (2026-10-29)
+
+Confirmed by Tony. Answers Q16 (W5-04, W5-21); spec item 134 closed, 4.11 updated by the integrator.
+
+- **The 32 KB controller memories meet one-cycle access at 1 GHz.**
+- **Loads take 1 cycle** from data memory, program memory, the boot ROM and the **table window** (`HIST`, `PTR`,
+  `STREAM_*`, `GROUP`).
+- **Loads take 2 cycles** from the **register block**, every peripheral window word included. This fixes v1.1's
+  "1 or 2 at the implementation's discretion"; it stays fixed per register and the same on every tile, so a
+  synchronised start's identical code stays identical in time.
+- meshsim models exactly these.
+
+---
+
+## Big SRAM: to validate
+
+| # | what | source |
+|---|---|---|
+| S1 | **Every read a program issues in response to a counter's done arrives after the writes it was waiting for** (restated 2026-10-28, W2-01). A write needn't have landed when its counter decrements (K = 8 after the director): the margin is K, plus the controller's reaction (waking from `WFI`, loading `EVENTS`, at least 4 cycles), plus the read's own path through its queues to the area queue. The write path's loaded worst case is 2·L + 3 cycles at `ts_engine_latency` L now that spanning is gone (W2-25). Thinnest case: the controller reading `PTR` or `HIST` through the table window right after done (17 A), while the last update may sit in a 16-entry request FIFO. meshsim measures the margin across workloads and flags any read that overtakes the write it waited for | 3, 17, W2-01 |
+| S2 | **Reads come back in order per requesting client** (address generator, GATHER engine), whichever areas they hit; read-port reads in any order | 4.1, 4.5 |
+| S9 | **The protected loopback:** reads are limited by credits so the loopback queue cannot overflow. 64 tokens; a packet for the tile itself (a loopback read, or a send-port packet to itself or broadcast) holds its token until it leaves the loopback FIFO, which is at least 64 deep, so an excess read waits for a token. **Required** (owner, 2026-10-28), no longer proposed; meshsim part M measured no loss with it | 4.5, 4.7, spec items 74, 116 |
+| S3 | The area macros: compiler numbers for a 128 × 32K area at 1 GHz, one access per cycle; the array's read latency; density and arrangement | spec item 1 |
+| S4 | The area request-queue depth for the hardware (8 in meshsim) | spec item 2 |
+| S5 | Queueing against the group-run timetable: the bound the 64 tokens and return queues must absorb, and the placement rules that keep each phase within one access per area per cycle | spec item 4 |
+| S6 | The `PTR` and `HIST` macros: a write lands intact when port A reads the address port B is writing | spec item 5 |
+| S7 | Write combining of consecutive 32- or 64-bit writes to one row | spec item 3 |
+| S8 | The big-SRAM size per tile (4.25 MB tentative), set by the sumcheck memory squeeze | spec item 107 |
+
+---
+
+## Pending questions
+
+A running list; each entry names where it came from. Resolved entries move into a decision section above.
+
+| # | question | from | status |
+|---|---|---|---|
+| Q1 | Tony's exact list of implemented CSRs | 1.1 | **partly answered:** the trap CSRs, `mcycle` and `mtime` (41); the full list and reset values still to come |
+| Q2 | How long a high on the C&C pin counts as "sustained" for the host | 1.5 | **resolved: section 24** (the error pin never pulses) |
+| Q3 | What stops the peripheral and the sender when a condition traps | 1.7 | **resolved: section 21** (nothing, until the global reset) |
+| Q4 | The HALT design | planning notes section 7 | **resolved: sections 21-23** (no HALT state; the global reset is the only stop) |
+| Q5 | Should an area serve writes ahead of queued reads? | 3 | **resolved: no** (owner, 2026-10-28; W2-15): areas keep strict arrival order. Writes jumping ahead of queued reads would break read-before-write reuse: a stream's source buffer overwritten after its run, and the local sort's ping-pong passes, where pass *n* + 1 writes the buffer pass *n* is still reading |
+| Q6 | The link word's 32-bit address: what it covers | 2 | **resolved: section 5** |
+| Q7 | The 3-bit mode: which of today's nine modes merge or go, now that counting is separate | 2 | **resolved: section 6** |
+| Q8 | The counter field in every packet source | 3 | **resolved:** `STREAM` (4), the send port (7), a peripheral's DMA (10), the read port (13), gather values (6), and memory-system requests, which name the data and reply counters (25, W5-17) |
+| Q9 | Does a stream's source stay a 21-bit big-SRAM chunk address, or does the 32-bit address apply to reads too? | 4 | open |
+| Q10 | Is the 24-bit offset in bytes or in 32-bit words? | 5 | **resolved: bytes (5)** |
+| Q11 | How several peripherals share the slot's interface | 5 | **resolved: sections 9 and 10** |
+| Q12 | meshsim's per-tile debug console without a UART on every tile | 9 | **resolved for the hardware: section 23** (log files through the file system); meshsim's display is its own business |
+| Q13 | Which peripheral flags only wake the controller and which raise a tile condition | 10 | **resolved: section 10** (conditions interrupt, wake events wake) |
+| Q14 | The tile's `EVENTS` bit layout | 11 | **resolved: section 16** |
+| Q15 | Should `ROUTER_HDR` use the same upper-half layout as `STREAM_COUNT` and `DMA_HDR`? | 7, 10 | **resolved: section 12** |
+| Q16 | The 32 KB controller memories' timing (W5-04, W5-21) | 42 | **resolved: section 45** |

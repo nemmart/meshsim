@@ -6,6 +6,7 @@ Simulator and software for a parallel compute mesh, part of an ASIC for proving 
 |---|---|---|
 | `v1.0/` | frozen | sorting and basic mesh routing; full docs and diagrams |
 | `v1.1/` | frozen | adds the RV64 trace replayer |
+| `v1.2_wip/` | snapshot | the v1.2 spec and recipes, read-only, for sessions working against v1.2 while the simulator is ported; not yet frozen |
 | `wip/` | in progress | work toward the next milestone; started as a copy of v1.1 |
 
 Frozen folders are never edited. Each one is also tagged (`v1.0`, `v1.1`). When `wip/` reaches a

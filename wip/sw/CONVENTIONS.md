@@ -1,211 +1,156 @@
-# Tile programs: mesh.h 1.1 and the control conventions
+# Tile programs: the v1.2 control conventions (draft)
 
-**meshsim v1.1, `mesh.h` version 1.1, spec 2026-10-26n.** The register reference is `sw/REGISTERS.md`; tested code for every common operation is `sw/RECIPES.md`.
-
-Spec references are to `spec/machine-spec.md`.
+**v1.2 draft, from `planning/DECISIONS-v1.2.md` sections 1-38 (cited as D*n*), against `sw/mesh-v1.2-draft.h`.** The worked code for every operation is `sw/RECIPES.md`, whose recipes are cited here as R*n*. The spec references are to `spec/machine-spec.md`, which WORKER5 is rewriting to v1.2; where the two disagree the log is the authority until the spec is reviewed. Anything marked *(proposed)* is this draft's choice where the log leaves a number or a name open; WORKER4 settles it in the generated `mesh.h`.
 
 ## 1. Build
 
-- **Build script:** `sw/build.sh` builds `sw/loader.S` and every `sw/tests/*.c`. The toolchain is `riscv64-unknown-elf-gcc -march=rv32i_zmmul -mabi=ilp32`. A software divide fails the build unless `ALLOW_SOFTDIV=1`.
-- **Outputs:** each program produces `<name>.code.bin` (from 0x0000), `<name>.data.bin` (from 0x4000) and `<name>.sym`.
-- **Memory map** (`sw/app.ld`):
+- **Toolchain:** `riscv64-unknown-elf-gcc -march=rv32i_zicsr_zmmul -mabi=ilp32 -std=gnu11`. v1.1 built `rv32i_zmmul`. CSR instructions are legal now for the CSRs the core implements (D1.2), and the ROM, the handler and boot part 2 use them, so `zicsr` is needed. `gnu11` (or `c11`) is needed for the register block's anonymous unions (W3-27). A software divide still fails the build unless `ALLOW_SOFTDIV=1`.
+- **Register access:** every register and window word is one `lw`/`sw`. Through the header's pointers (`tile->EVENTS`) GCC 13 at `-O2` emits x0-relative accesses, as v1.1's constants did; checked in the disassembly of every recipe (R13).
+- **The memory map** *(proposed: the log fixes the regions and sizes, D5, and the reserved bytes, D37.4, not the blocks' addresses)*:
 
   | range | contents |
   |---|---|
-  | 0x0000–0x1EFF | code |
-  | 0x1F00–0x1FFF | the resident loader |
-  | 0x4000–0x5BBF | `.rodata`, `.data`, `.bss`, and the stack, which grows down from 0x5BC0 (`STACK_TOP`) |
-  | 0x5BC0–0x5FBF | the reply block: 256 words, two per source, written only by replies (mode 8) |
-  | 0x5FC0–0x5FFF | the command block: 16 slots, written only by command writes (mode 7) |
+  | 0x01000000-0x01007FFF | program memory, 32 KB: code, and `.rodata` if wanted (the controller fetches and loads it; a store is a bus error, D5) |
+  | 0x00000000-0x0000000F | reserved: never placed; meshsim flags any write after boot (D27, D37.4) |
+  | 0x00000010-0x00007BBF | `.data`, `.bss`, then the stack, growing down from 0x7BC0 (`STACK_TOP`) |
+  | 0x00007BC0-0x00007FBF | the reply block: 256 words, two per source endpoint (D6) |
+  | 0x00007FC0-0x00007FFF | the command block: 16 slots (D6) |
+  | 0x02000000 | the boot ROM: the reset vector (D22) |
 
-- **`.bss` is not loaded.** `crt0.S` zeroes it, then calls `main()`. If `main` returns, the core executes `ebreak` with a0 = the return value; that is a simulator-only exit.
-- **Registers:** every register is one `lw`/`sw`. A load from a register or the table window takes 2 cycles in meshsim (spec 4.11: 1 or 2, fixed per register; meshsim models the worst case); data-memory loads and every store take 1.
+- **Images** are loaded by C&C 1 as uncounted 128-bit mode-0 overlays (R22), so each is padded to 16 bytes and starts 16-byte aligned: program memory at 0x01000000, data memory at 0x00000010.
+- **`.bss` is not loaded.** `crt0` zeroes it and calls `main`, which never returns. A meshsim test ends by storing to the simulator-only exit word (`sim_exit()`, D36); `ebreak` now traps (D27).
 
 ## 2. Addresses
 
-- **Big SRAM chunk addresses are 21 bits** (up to 8 MB); the device's size is `sram_chunks()` (`TILE_STATUS` [31:27], in 256 KB units). Chunks past the end read 0 and writes there are dropped.
-- **Packed controller-memory words** (mode-6 `addr`, `STREAM_DEST`'s word for mode 6, the read port's destination): words 0x000–0x7FF are instruction memory and 0x800–0xFFF data memory; convert a byte address with `CM_WORD(byte_addr)`. Mode 6 never writes the reply block (packed 0xEF0–0xFEF) or the command block (0xFF0–0xFFF) (invariant 11).
-- **The command block:** `COMMAND[s]`, slot *s*; `COMMAND[0]` is the command word. **The reply block:** `REPLY[2 s]` and `REPLY[2 s + 1]` hold source *s*'s last reply (`REPLY_WORD(s)` is its byte address).
-- **Table window** (4.10):
-  - `HIST[256]` holds 17 bits and is read/write.
-  - `PTR[256]` holds 21 bits; write-only.
-  - `STREAM` is three write-only arrays, one word per stream each: `STREAM_SRC[i]` (the source), `STREAM_DEST[i]` (destination word and *d*), `STREAM_COUNT[i]` (count, mode, size, gap). `set_stream(i, src, dest, count)` writes all three; a new round usually rewrites only `STREAM_SRC` and `STREAM_COUNT`. `GROUP[2g]` is group *g*'s low word, `GROUP[2g+1]` its high word.
-  - Touch a table only when its engine is not using it: the address generator not running (its lead-in included) and `ts_busy` = 0: `wait_tables()`. The simulator reports a window access that meets the engine.
-  - 0x3600–0x3FFF is unmapped, and any access there is a bus error.
+- **One 32-bit map for packets and the core** (D5): region [31:24], byte offset [23:0]. A C pointer to controller memory *is* the packet address; `CM_WORD()` is gone.
+- **Big SRAM keeps 21-bit chunk addresses inside the tile's engines:** `PTR`, `STREAM_SRC`, `SRAM_RD_ADDR_QUEUE`, `DMA_RECORD_BASE_ADDRESS`. A packet to big SRAM uses `SRAM_ADDR(chunk)` = 0x03000000 | chunk << 2 (D29). `sram_chunks()` reads the size from `PARAMS` [31:27].
+- **Natural alignment everywhere** (D26): every 64-bit access 8-byte aligned and every 128-bit access 16-byte aligned, packets and big-SRAM accesses alike, checked in hardware (`ERRORS` [1]). In C, a landing buffer for 64- or 128-bit packets is declared `__attribute__((aligned(8)))` or `aligned(16)`. A `PTR` is aligned to its packets' size, and one pointer takes one size. A stream's source and every element it reads are aligned to the read size.
+- **Out of bounds is not checked in hardware** (D26): it aliases or is undefined. meshsim errors on it, and on any auto-advancing address that runs past the end of its memory.
+- **The command block:** `COMMAND[s]`, slot *s*; `COMMAND[0]` is the command word. **The reply block:** `REPLY[2 s]` and `REPLY[2 s + 1]` hold source *s*'s last reply; `REPLY_WORD(s)` is its byte address. That only commands write the first and only a source's own replies write its pair is a software convention now, checked by meshsim (D6, D27).
+- **The table window** (`tables->`): `HIST`, `PTR`, the three `STREAM` arrays and `GROUP` at 0xFFFF2000 *(proposed: v1.1's low 16 bits, D11)*. Only `HIST` can be loaded. **When the tables may be touched:** section 5.
 
-## 3. Boot (6.2)
+## 3. Boot (D22, D31, D36, D37)
 
-1. **Load.** With every tile halted, C&C broadcasts the loader, then the image's code and data, by mode 6, as 128-bit packets (an image padded to whole packets: up to three zero words land past its end). A halted tile counts nothing.
-2. **The marker.** C&C writes the entry address (`_start`) as the first argument of its block (slot 1, or slot 8 for an odd command), then slot 0 (`CMD_JUMP << 24` with the parity bit), all as 32-bit command writes. Further arguments may follow it.
-3. **RUN.** All 64 READY fire, since `done` is forced to 1 in HALT. C&C raises RUN, then waits run_latency + 1 cycles before sending anything else; a packet in flight across the line change breaks invariant 7.
-4. **The loader** runs on every core from 0x1F00 (23 words). It reads slot 0 and its block's first slot first, then sets `PTR[64]` = top of big SRAM − `STAGE_CHUNKS` = `stage_base()` (C&C's mode-2 staging area: the 64 KB below the top 128 KB, which is sort scratch, spec 6.2; 0xF4000 on the 4 MB device), then jumps to the entry address.
-
-**Staging after boot.** C&C stages images and overlays by mode 2 into `PTR[64]`, and mode 2 is counted (4.12): **anything C&C writes into a running tile is announced first.** C&C sends `CMD_STAGE` with the number of packets as its argument; the tile writes `DMA_SRAM_REMAINING` with it, `wfi()`s until they have landed, then calls `wait_for_command()`. C&C sends the first staged packet no sooner than `stage_delay` = 32 cycles after its GO store (spec 6.2, Proposed); the sort's tiles arm 14-15 cycles after it [meas: SortTest staging]. **An uncoordinated write needs the tile halted:** C&C halts it, writes (nothing is counted in HALT), and boots it again.
-
-HALT → RUN also restarts a core halted by a fault (bus error, illegal instruction, `ecall`, `ebreak`). Entering HALT clears the conditions, the four down-counters and their done events (section 5).
+1. **The reset**, always the whole chip, from outside (D35), zeroes everything but the memories. Every controller starts in the boot ROM with interrupts off.
+2. **C&C 1** is started by the outside world (its overlays and first command land through Ingress/Egress, or the meshsim harness). It boots C&C 2 and C&C 3 (each jumps when its command lands and sends C&C 1 "started"), then the tiles.
+3. **A tile** sleeps in the ROM with `done` pulsed. C&C 1 sends its overlays, uncounted, then its **first command, which is even: `CMD_JUMP` with the entry address in slot 1**. The overlays and the command are of one kind: all broadcast or all unicast (D36).
+4. The landed command raises READY; at GO the ROM jumps **if a command has landed** (the event [6]); otherwise it pulses `done` again and keeps waiting (D37.1). So C&C 1 lands a tile's first command only when that tile is to start at the next GO.
+5. **Boot part 2** is the image's first command, `CMD_STAGE` with the number of 128-bit packets of big-SRAM data. In its start path the tile arms counter 1, then sets `mtvec` to its own handler and enables `mie.MEIE` and `mstatus.MIE` (D37.2); C&C 1 sends the data counted, to region 0x03 by address, no sooner than `stage_delay` after its GO store; the tile waits for the counter and pulses `done` (R22).
+- **Uncounted traffic is commands and boot overlays only** (D17). Everything a running program receives is counted, and modes 1-3 are always counted. Data C&C 1 sends a running tile is announced first by a command, as in boot part 2 (v1.1's announced staging, 6.2). There is no `PTR[64]` staging area and no "halt the tile first": C&C 1 never sends a tile anything it hasn't armed for.
 
 ## 4. Commands and phases (6.3)
 
-**C&C's command convention:**
-- **Argument blocks alternate.** Even commands put their arguments in slots 1–7, odd commands in slots 8–15: **seven arguments at most.**
-- **The command word carries the parity.** Its layout is [31:24] type, [23] parity, [22:0] argument.
-- **Slot 0 goes last.** C&C writes the arguments first, then the command word to slot 0, all as 32-bit command writes (mode 7).
-- **Parity is counted per tile.** A broadcast command needs every tile at the same parity.
-- **One kind per command.** All packets of one command to a tile are of one kind: all broadcast or all unicast.
+**C&C 1's command convention** (R27):
+- **Argument blocks alternate.** Even commands put their arguments in slots 1-7, odd commands in slots 8-15: seven at most.
+- **The command word carries the parity:** [31:24] type, [23] parity, [22:0] argument.
+- **Slot 0 goes last.** Commands are uncounted mode-0 writes (D6): the arguments, then the word to slot 0. The slot-0 write sets "command landed" when it lands in port B, so the whole command has landed by then. A single 64- or 128-bit packet covering slot 0 does too.
+- **Parity is counted per tile, and starts at 0 after every reset.** A broadcast needs every tile at the same parity.
+- **One kind per command:** all of a command's packets to a tile are broadcast, or all unicast.
 
-**The tile's command loop:**
+**The tile's command loop** (R1):
 ```c
 for (;;) {
-    uint32_t w = wait_for_command();           /* pulse done, then WFI (two back-to-back instructions); on waking (by GO
-                                                  alone: the done gate) a load of WAKE_EVENTS consumes GO, then a load of
-                                                  slot 0 returns the command word */
-    volatile uint32_t *arg = CMD_ARGS(w);      /* this command's block: arg[0], arg[1], ... (7 at most) */
+    uint32_t w = wait_for_command();          /* pulse done, then WFI (back to back); woken by GO alone (the done gate),
+                                                 a load of EVENTS consumes GO, then a load of slot 0 */
+    volatile uint32_t *arg = CMD_ARGS(w);     /* arg[0], arg[1], ... (7 at most) */
     ...
 }
 ```
+- **Every wake from a command goes through `wait_for_command()`,** barriers included.
+- **Keep GO in `EVENTS_MASK`** whenever `done` is pulsed (the reset mask has it).
+- **C&C 1 waits `go_latency` + 1 cycles after a GO store** before sending anything, then sends the next command at once.
 
-**Why the blocks.**
-- C&C sends the next command right after GO. Its arguments go to the other block, so they never overwrite the block the woken tile is reading.
-- **Every wake from a command goes through `wait_for_command()`,** which reads slot 0 on waking. A barrier is a command like any other: route it through `wait_for_command()`, even if it ignores the word.
-- Only slot 0 is shared. The simulator flags any slot-0 landing while the previous command word there is still unread.
-- **Keep GO (`WAKE_GO`) in `WAKE_MASK`** whenever you call `wait_for_command()` (the reset mask has it); meshsim flags a `done` pulse without it.
+**A phase whose engines must start together** (an all-to-all, R9) uses two commands:
+1. **Configure:** the tables, `DMA_CONFIG`, `DMA_RECORD_BASE_ADDRESS`. **Arm nothing**: `done` with a counter armed is done early.
+2. **Start:** wake, **arm the counters first, then `PULSE_DMA`**, then wait for the counters and DMA run done, then `done`.
 
-**C&C waits for GO to settle.** After a GO store, C&C sends nothing until GO has reached every tile: go_latency + 1 cycles. GO clears "command landed"; a command landing before its tile has seen GO would be overwritten unread. After a RUN/HALT store, C&C likewise waits run_latency + 1.
+**The code from `WFI` to the start store is identical on every tile.** Counter values may differ. The window between GO and arming is closed by this timing (D36): nothing arrives sooner than a sender's own start store plus the lead-in and a link. If it fails, unexpected arrival says so, and traps.
 
-**A one-command phase** (a local pass, a gather): wake, read the command, run the phase, call `wait_for_command()`.
+**The lead-in** (spec 4.2), with *L* = `ts_engine_latency`: a group run's first request 4*L* + 3 cycles after the start store, a stream run's 2*L* + 2. The cycles from GO to the start store are to measure on meshsim v1.2.
 
-**A phase whose engines must start together** (an all-to-all) uses two commands:
-1. **Configure:** write `STREAM`/`GROUP`/`PTR`/`HIST`, `DMA_CONFIG` and `DMA_RECORD_BASE_ADDRESS`; then `wait_for_command()`. Nothing starts yet.
-   - **Do not arm the counters here.** `done` with a counter still expecting arrivals breaks invariant 4.
-   - The run is static from here on: `DMA_CONFIG` and the tables stay as they are until the run ends.
-2. **Start:** wake, then in this order:
-   1. **write the counters first** (`DMA_SRAM_REMAINING`, `DMA_CM_REMAINING`, `DMA_REPLY_REMAINING`, `DMA_PERIPH_REMAINING`, whichever the phase receives; a write adds, and at a phase start the count is 0);
-   2. **then pulse start** with `start_run()`;
-   3. then `wfi()` for counters done;
-   4. then `wait_for_command()`.
+## 5. Waiting: counters and events (D3, D16, D17, spec 4.12)
 
-   The earliest packet arrives a few cycles after any tile's start pulse, so no arrival can beat its counter.
+**All wakes are events.** `EVENTS` collects them; `WFI` wakes on `EVENTS & EVENTS_MASK` (with `EVENTS_REQUIRED` for all-of waits) and consumes nothing. The helpers do: `wfi()` is `WFI` then a load of `EVENTS`, which consumes the pending events in the mask and returns them all; `wait_all(ev)` waits until every event in *ev* is pending (R0). `EVENTS_PEEK` looks without consuming.
 
-**The lead-in** (spec 4.2, 8.6), with *L* = `ts_engine_latency`:
-- **a group run:** the first request 4*L* + 3 cycles after the start store; 7 at the default;
-- **a stream run:** 2*L* + 2 cycles after it; 4 at the default.
+| bit | event | kind |
+|---|---|---|
+| [0]-[3] | write counter 1-4 done | sticky |
+| [4] | counters done: all four at 0, one armed since it last fired | sticky |
+| [5] | GO | sticky |
+| [6] | command landed | sticky |
+| [7] | DMA run done (the address generator's run); `PULSE_DMA` clears it | sticky |
+| [8] | request FIFO no longer full | sticky |
+| [9] | request pending (controllers only) | live |
+| [10]-[12] | peripheral 1-3: its `EVENTS & EVENTS_MASK` non-zero | live |
 
-`rd_running` = 1 (and `rd_done` = 0) from the end of the start store's cycle; a start while running is ignored (meshsim flags it). The rise of `rd_done` posts engine run done (`WAKE_RUN_DONE`).
+- **The four counters.** The packet names its counter (D3, D30): 0 uncounted, 1-4. **The convention** *(proposed; the hardware treats the four alike)*: **1 big SRAM, 2 controller memory (read-port results included), 3 replies, 4 peripheral writes** (`CTR_SRAM`, `CTR_CM`, `CTR_REPLY`, `CTR_PERIPH`). A phase may use them otherwise, as long as each thing waited for separately has a counter of its own (D3's usage rule).
+- **A counter decrements *K* cycles after the director accepts its packet** (D3, D32), by which time the write is readable, a `PTR` or `HIST` update included (D17 A).
+- **A store adds:** *N* > 0 arms the counter, clearing its done event and counters done. **A count of 0 never fires,** so don't wait for an unarmed counter.
+- **Unexpected arrival** (a decrement at 0) and **done early** (`done` with a counter non-zero) are errors, and trap.
+- **The rule: a phase that arms a counter waits for it before `done`.**
+- **The done gate:** from the `done` pulse until GO only GO wakes `WFI`, whatever the mask; counters done can't be set in that window, and the pulse clears it.
+- **The tables** (`STREAM`, `GROUP`, `PTR`, `HIST`) are free when the arrivals are in (their counter) **and** the tile's own run is over (DMA run done, [7]) (D17; R23). **Every phase that runs the address generator waits for both before `done`,** so every command starts with the tables free and nothing waits before touching them. `wait_tables()` and `ts_busy` are gone. A helper that can't know what ran before may poll `STATUS.rd_running` (`wait_rd_idle()`), only when nothing counted can still be arriving.
+- **Peripheral events** (D10): each peripheral bit is a small counter, an ordinary event of depth 1 or a queue's credits of depth 2, or a live bit. A load of the peripheral's `EVENTS` takes one count from every set bit in its `EVENTS_MASK` (0 at reset). The tile's bit for the peripheral is live. **A program acts on every bit a consuming load returns,** or narrows the mask around the load (R25, R26). Spurious wakes are allowed: **re-check after every wake.**
+- **What a wait returns is what it consumed;** sticky events outside the mask stay pending. Counters done is left pending by a wait on one counter, and is cleared by the next arming or `done`. Command landed [6] stays pending in a tile, since nothing consumes it.
 
-**The code from `WFI` to the start store must be identical on every tile.** Counter values may differ per tile; a store costs one cycle whatever its value, and a register load is fixed-latency. Every address generator then starts the same number of cycles after GO, plus each tile's 0/+1 skew. In the shortest start path (the counter write, then the start store) the start store lands 8–9 cycles after C&C's GO store, the first request 12–13 cycles after it for a stream run (20–21 for a group run on the all-to-all recipe's longer path) [meas: RecipeTest sync, a2a; 2-cycle register loads].
+## 6. Sending (D6, D7)
 
-**A tile that only sends** in a phase still waits for `mem_idle` before `done`, because its own loopback writes count.
+- **The send port:** `ROUTER_HDR` (counter, mode, dst, and the no-increment bit [0]) and `ROUTER_ADDR` (the full 32-bit address), then one store per 32 bits of each packet in ascending order, the last store sending: `send32(w0)`; `send64(w1, w0)`; `send128(w3, w2, w1, w0)`. `send_to(hdr, addr)` stores both. `ROUTER_SET_W0`-`W2` clear at every send.
+- **`ROUTER_ADDR` advances by each packet's size** (4, 8 or 16 bytes), unless no-increment is set. A run that goes down in size and back up re-stores `ROUTER_ADDR`, or its larger packets are misaligned (W3-29).
+- **The no-increment bit stays set until the program clears it** (D37.5). A program sending to one address in many tiles (replies, R7) sets it, and clears it when done.
+- **Every header names its counter** as a required macro argument (`ROUTER_HDR_W(dst, mode, ctr)`), and `CTR_NONE` only for commands and boot overlays.
+- **Writes to big SRAM:** mode 0 to region 0x03 at an address (R17), or mode 1 to the tile itself through `PTR[me]`.
+- **One word to another tile** is a reply: a 32-bit mode-0 write to `REPLY_WORD(me)` in the receiver, with no-increment, counted on the counter the receiver armed (counter 3). A tile keeps at most one reply outstanding to each receiver until it has been read. **Several words** go to an address in the receiver's data memory, counted on counter 2.
+- **Rate:** one packet per cycle when no read return is waiting; a send store stalls while the holding register is occupied (`STATUS` [3] lets a program avoid that). A packet to the tile itself or a broadcast also waits for a loopback token (S9).
 
-## 5. Waiting: the counters and the wake events (4.12)
+## 6a. Packet modes (D6)
 
-**All wakes are events.** `WAKE_EVENTS` collects them; `WFI` wakes on `WAKE_EVENTS & WAKE_MASK` (with `WAKE_REQUIRED` for all-of waits) and **consumes nothing**. The helpers do: `wfi()` is `WFI` then a load of `WAKE_EVENTS`, which consumes the pending events that are in `WAKE_MASK` and returns them all. At the reset mask (GO and counters done) a program that uses the helpers behaves as in v1.0. `wake_peek()` looks without consuming.
+| mode | `mesh-v1.2-draft.h` | packet | lands | from a stream |
+|---|---|---|---|---|
+| 0 | `MODE_WRITE` | write at the address: any region a packet may reach (0x00, 0x01, 0x03, a present peripheral) | at the address | yes |
+| 1 | `MODE_SRC` | big-SRAM write by source | `PTR[src]` | yes |
+| 2 | `MODE_BUCKET` | bucket write | `PTR[digit]` | yes |
+| 3 | `MODE_AUGMENT` | augmented write: the low word and the ordinal as a 64-bit record (32 or 64 bits, never 128) | `PTR[src]` | yes |
+| 4 | `MODE_GATHER` | gather request, to the tile itself; never counted; its counter field is its values' | the GATHER engine | yes, *d* = 0 |
+| 5-7 | — | reserved: discarded with no error and no decrement (meshsim flags) | — | — |
 
-- **The counters.**
-  - `DMA_SRAM_REMAINING` counts modes 2–5 (big-SRAM writes, gather values included); `DMA_CM_REMAINING` mode 6 (read-port results included); `DMA_REPLY_REMAINING` mode 8 (replies); `DMA_PERIPH_REMAINING` mode 9, when it lands. Each is 20 bits, and each packet counts 1 whatever its size.
-  - **Every mode is counted from any source** (other tiles, C&C, the memory system), except command writes (mode 7) and gather requests (mode 1). **A halted tile counts nothing.**
-  - **A write adds** its value, atomically with arrivals; a write of 0 does nothing; a sum past 2²⁰ − 1 wraps (meshsim flags it). **Nothing overwrites a count:** it returns to 0 by counting down, or on entering HALT. HALT is the recovery for a count that can never finish.
-  - An arrival at a counter already at 0 (in RUN) sets the unexpected-arrival condition; it is also invariant 9.
-- **Counters done** (`WAKE_COUNTERS_DONE`, [9]) is set on the rising edge of "every counter is done": all four at 0, with `mem_idle` and `cm_idle`, if some counter was non-zero since it was last set or cleared.
-  - It is sticky: an edge before `WFI` is not lost, and the `WFI` falls straight through.
-  - A non-zero counter write clears it, so every new wait starts clean; so do `done` and HALT → RUN.
-  - **A count of 0 never makes an edge.** Don't `wfi()` in a phase that expects nothing.
-- **Per-counter done events** ([0]–[3]: `WAKE_SRAM_DONE`, `WAKE_CM_DONE`, `WAKE_REPLY_DONE`, `WAKE_PERIPH_DONE`) wait for one class of arrivals while another is outstanding: put the bit in `WAKE_MASK`. They are not in the reset mask, so they stay pending until a load with them in the mask consumes them.
-- **The rule: a phase that arms counters ends with a `WFI` for counters done before it pulses `done`:** the `WFI` proves every arrival is in. `done` with a counter still non-zero is the **done-early** condition (spec 4.13) and invariant 4.
-- **The done gate** (spec 4.12). From the `done` pulse until GO only a pending GO wakes the core, whatever `WAKE_MASK` holds; counters done cannot be set in that window, and the `done` pulse clears it. So `wait_for_command()` is woken by GO and nothing else. meshsim flags any other wake with `done` set (`Config.doneGate` off, test only, shows it).
-- **Other events:** command landed ([10]), engine run done ([11]), request FIFO no longer full ([12]), the peripheral's service lines ([18:13]), a received request ([19], live), sender idle ([20]), the UART ([21], [22], live). Sticky events stay until consumed; live ones follow their condition.
+- **The counter field counts modes 0-3**; mode 4 passes it to its values; 5-7 decrement nothing.
+- **Modes 1 and 3 may mix in one phase** (both through `PTR[src]`); mode 2 never shares a phase with them.
+- **Bad packets** (`ERRORS` [1]): a misaligned 64- or 128-bit write; a region a packet can't reach (0x02, 0x07-0xFE, 0xFF, an absent peripheral); mode 3 at 128 bits. **An all-zero header is a valid uncounted write to address 0** (D6), which is why the first 16 bytes are reserved and meshsim flags writes there.
 
-## 6. Sending (4.11)
+## 6b. Requests (spec 3.3, 4.18; D21, D25, D38)
 
-- **The send sequence:** `ROUTER_SET_HDR = ROUTER_HDR(dst, mode, addr)` once per run of consecutive words. Then send each packet with its words in ascending order, the last store sending: `send32(w0)`; `send64(w1, w0)` (`ROUTER_SET_W0` = w0, then `ROUTER_SEND_64` = w1); `send128(w3, w2, w1, w0)` (`ROUTER_SET_W0`–`W2`, then `ROUTER_SEND_128` = w3).
-- **Auto-increment:** after each send, addr advances by 1, 2 or 4 (the size) for modes 3, 6 and 9, and by 1 for mode 7. It stays put for the other modes.
-- **`ROUTER_SET_W0`–`W2` are cleared to 0 by every send.**
-- **Rate:** one packet per cycle when no read return is waiting. A send store stalls while the holding register is occupied; `TILE_ST_SEND_BUSY` lets a program avoid that stall. A packet to the tile itself or a broadcast also waits for a loopback token.
-- **Writes to big SRAM** are mode 2 to the tile itself (landing at `PTR[me]`) or mode 3 at an explicit address aligned to the size.
-- **One word to another tile** is a reply (mode 8): it lands by source at `REPLY[2 me]` there, so a sender keeps at most one reply outstanding to each receiver until it has been read. **Several words** to another tile's data memory are mode 6.
-- **Replies to C&C** use dst 64; C&C's port ignores mode and addr (except mode 3, a write stream for the memory system).
+- **A request is 128 bits:** `request_send(w3, w2, w1, w0)`, words 0-2 then the last store pushes, stalling only while the 128-entry request FIFO is full. Software writes the target in [9:7] and 0 in the requestor [6:0], which the tree stamps.
+- **Targets:** 0 C&C 1, 1 C&C 2 (the file system), 2 C&C 3 (the pager) *(spec draft 3.3)*. The layout above [9:0] is the target's; `REQ_CC1(op, ctr, arg)` is a placeholder for C&C 1's.
+- **Outstanding requests per tile** (D38): **at most 1 to C&C 1, 3 to C&C 2, 1 to C&C 3.** A tile issues its next request to a target only after the previous one's reply has come back. Each request names its reply's counter (D25), which the tile arms before sending. The receive queues are in the tree (128, 256 and 128 requests), so normal traffic never runs out of credits and no row stalls.
+- **Error reports are the exception:** the handler sends its 23 at once, with no reply (R24).
+- **A target answers every tile request,** or the tile waits for ever (R27's `drain_requests`).
+- **Receiving** (controllers only): `REQUEST_GET_W0`-`W2` read the oldest request without popping, and `REQUEST_RECEIVE` reads its last word and pops it. Popping an empty queue is receive underflow, an error, so check `EVENTS_PEEK` [9] first.
 
-## 6a. Packet modes (3.1)
+## 7. Parameters, status and errors (D18, D20, D27)
 
-| mode | `mesh.h` | packet | lands | counted in | from a stream |
-|---|---|---|---|---|---|
-| 0 | — | invalid | dropped, bad-mode-or-size condition | — | no (an error) |
-| 1 | `MODE_GATHER` | gather request, to the tile itself | GATHER engine | — (never) | yes, *d* = 0 |
-| 2 | `MODE_SRC` | big-SRAM write at `PTR[src]` | big SRAM | `DMA_SRAM_REMAINING` | yes |
-| 3 | `MODE_EXPLICIT` | big-SRAM write at addr, aligned to its size | big SRAM | `DMA_SRAM_REMAINING` | yes |
-| 4 | `MODE_BUCKET` | bucket write at `PTR[bucket digit]` | big SRAM | `DMA_SRAM_REMAINING` | yes |
-| 5 | `MODE_AUGMENT` | augmented write: the low 32 bits and the ordinal as a 64-bit record at `PTR[src]` (not 128 bits) | big SRAM | `DMA_SRAM_REMAINING` | yes |
-| 6 | `MODE_CM` | 1, 2 or 4 words into controller memory at addr | instruction or data memory | `DMA_CM_REMAINING` | yes |
-| 7 | `MODE_COMMAND` | command write, 32 bits, to slot addr[3:0] | the command block | — (never) | no (an error) |
-| 8 | `MODE_REPLY` | reply, 32 or 64 bits, by source | the reply block at word 2·src | `DMA_REPLY_REMAINING` | no (an error) |
-| 9 | `MODE_PERIPH` | peripheral write | the peripheral (the replayer on every mesh tile) | `DMA_PERIPH_REMAINING`, on landing | yes |
-| 10–15 | — | reserved | dropped, bad-mode-or-size condition | — | — |
+- **`PARAMS`** (constant): peripherals present [2:0], endpoint id [26:20] (`tile_index()`), big-SRAM size in 256 KB units - 1 [31:27] (`sram_chunks()`).
+- **`STATUS`** (live, diagnostic; no program needs to poll it): `rd_running`, `rd_done`, GATHER busy, `send_busy`, `done`, command landed, `request_busy`.
+- **`ERRORS`** (sticky until the reset; [13:11] live): any bit raises the hard interrupt and the error line (R12 has the table). **A running program always reads 0 here**, since the first error traps.
+- **The handler** (R24): terminal (no `mret`), reports the fixed set of 23 requests to C&C 1, then parks. It reads `EVENTS_PEEK`, never `EVENTS`; it checks `PARAMS` [2:0] before reading a window; absent peripherals report zeros (D37.3). The image installs it in boot part 2, and the ROM holds the same code until then.
+- **Traps without an `ERRORS` bit** (`ecall`, `ebreak`, a fetch outside program memory and the ROM, a misaligned jump, a trap in the handler) park the unit with no error line; meshsim stops loudly on each (D27).
+- **Write-only registers read 0**, except the request port's shared offsets, where a load reads the receive side. Reserved words read 0 and ignore stores (meshsim flags them), except the simulator-only trace and exit words. **An absent peripheral's window is a bus error.**
+- **Timing:** a register load returns the state at its sample point; a store at *t* acts from *t* + 1.
 
-- **Augmenting is the sender's choice, per stream.** The receiver sets `DMA_RECORD_BASE_ADDRESS`; a mode-5 payload landing at chunk *a* becomes the record (key, (*a* − base) / 2). Modes 2 and 5 may mix in one phase, both advancing `PTR[src]`; mode 4 never shares a phase with them.
-- **The sort:** step 1's input pass and the keys all-to-all's key streams send `MODE_AUGMENT` with 128-bit values and `MODE_SRC` with 32-bit values (`KEY_MODE(k128)` in `sort.h`); on the two-hop paths hop 1 is mode 2 and hop 2's key streams, built on the intermediate tile, are mode 5 (the planner's `hop2_mode()`).
-- **Bad packets** (dropped uncounted, with the bad-mode-or-size condition): modes 0 and 10–15, mode 5 at 128 bits, a misaligned mode 3, mode 7 above 32 bits, mode 8 at 128 bits. Size 11 is undefined (meshsim flags it). A program never sends one (invariant 5).
-
-## 7. Status and conditions (8.2, 8.3, 4.13)
-
-**`TILE_STATUS`** holds what a program steers by:
-
-| bits | field |
-|---|---|
-| [11:0] | live bits: `rd_running`, `rd_done`, GATHER busy, `periph_running`, `sender_busy`, `send_busy`, `ts_busy`, `mem_idle`, `cm_idle`, `done`, command landed, `request_busy` |
-| [15:12] | peripheral type: 0 none, 1 the replayer (every mesh tile) |
-| [19:16] | spare (reads 0) |
-| [26:20] | endpoint id: the tile index (`tile_index()`) |
-| [31:27] | big-SRAM size in 256 KB units − 1 (`sram_chunks()` = (size + 1) << `SIZE_UNIT_SHIFT`) |
-
-**`TILE_CONDITIONS`** (read-only; `conditions()`) holds the errors, bit *n* = condition *n* (`TILE_COND_*`, [14:0]): router overflow, bad mode or size, unexpected arrival, drift, write-engine input overflow, table request overflow, GATHER queue overflow, read-port error, done early, bus error, illegal instruction, bad peripheral write, the peripheral's two, receive underflow.
-- **A correct program on correct hardware reads 0 here for ever.** The test is `conditions() == 0`; no mask.
-- **Read-only, cleared only on entering HALT** (the RUN → HALT edge, and chip reset). Nothing in RUN clears them.
-- **A phase sees what it caused** by reading `conditions()` at its start and comparing at its end (RECIPES 12).
-- **Any non-zero condition raises the tile's error line**, ORed at C&C into one sticky error bit that wakes C&C; C&C's REPORT (spec 6.6, RECIPES 20) then collects every tile's conditions. Tile programs answer `CMD_REPORT` with `report()` (`sw/tests/rcp.h`), first in the command.
-- **Drift** is set only when, in a group run, the SRAM read queue refuses an address-generator request (an element spanning two rows does this: keep group runs row-aligned). Zero-length groups and group starts are timetable.
-- **Program errors and hardware-fault detectors.** Table request overflow and GATHER queue overflow can't be caused by a program in meshsim: they mean a hardware fault.
-- **Timing:** a register load returns the state at its sample point (meshsim: the cycle before the load completes). A store at *t* acts from *t* + 1.
-- **There is no "controller halted" bit.** A crashed tile shows up at C&C as a missing READY, and the simulator logs the cause.
-- **Write-only registers read 0**, except the request port's four offsets, where a load reads the receive side (`REQUEST_GET_W0`–`W2`, `REQUEST_RECEIVE`).
-- **Ignored and flagged:** `TILE_PULSE` [3] (GO; wired only on C&C), `PERIPH_RUN` while the peripheral runs, a `SENDER_SEND` on a tile whose peripheral has no output (every mesh tile).
-- **Bus errors** (the core halts): a store to a read-only register; a load from `PTR`, a `STREAM` array or `GROUP`; a sub-word access to a register or the table window; a misaligned access; an access to instruction memory; register offsets 0x8A0–0xFFC and any other unmapped address.
-- **Illegal instructions** (the core halts): divide opcodes and CSR instructions. **`ecall` and `ebreak`** halt the core.
-
-## 8. Block copy into controller memory (6.5)
+## 8. Block copy into controller memory (6.5; R3)
 
 ```c
-set_stream(s, STREAM_SRC_ADDR(src_chunk), STREAM_DEST_ENTRY(CM_WORD(dst_byte), 0), STREAM_COUNT_ENTRY(n, MODE_CM, SIZE_128, 0));
-DMA_CM_REMAINING = n;                              /* n 128-bit packets, 4n words; the count is 0 here, the write arms it */
-DMA_CONFIG = DMA_CFG_RUN(RUN_STREAMS, s, 1);
-TILE_PULSE = TILE_PULSE_START(1);
-wfi();                                         /* counters done: the last word is in memory */
+set_stream(s, STREAM_SRC_W(src_chunk, 0), dst_addr, STREAM_COUNT_W(n, SIZE_128, CTR_CM, MODE_WRITE, 0));
+tile->DMA_CONFIG = DMA_CFG_RUN(RUN_STREAMS, s, 1);
+tile->WRITE_COUNTER[CTR_CM - 1] = n;              /* n 128-bit packets, 4n words */
+start_run();
+wait_all(EV_CTR(CTR_CM) | EV_RUN_DONE);           /* the last word is in memory; the tables are free */
 ```
-A row-aligned source at read size 128 writes four words a cycle. The code doing the copy must sit outside the region being overwritten. 1,024 words into instruction memory take about 270 cycles from the start store to the first instruction after `WFI` [meas: CtrlTest block copy]. `sw/tests/a2a.c` fetches its parameters this way (at 64 bits).
+The destination is any data- or program-memory address, 16-byte aligned (the source 4-chunk aligned). The code doing the copy must sit outside the region being overwritten.
 
-## 9. Reading big SRAM: the controller read port (4.3)
+## 9. Reading big SRAM: the read port (4.3; D13; R11)
 
-**The registers.**
-- **`SRAM_RD_DEST_ADDR`** (write-only) is the setup register: the packed controller-memory word of the next result and the read size, `SRAM_RD_DEST(CM_WORD(&results[0]), SRAM_RD_SIZE_32)` (or `_64`, `_128`).
-- **A store to `SRAM_RD_ADDR_QUEUE`** queues a read of 1, 2 or 4 words (the size) at a 21-bit chunk address aligned to the size, and advances the destination by the size in words. It never stalls. A misaligned read, or a store with no free entry, is dropped with the read-port-error condition.
-- **Reading `SRAM_RD_ADDR_QUEUE`** returns the free entries. The queue holds `READ_PORT_DEPTH` = 64, guaranteed.
-
-**Results** return as mode-6 packets to the tile itself, through its injection point and loopback (spec 4.3), each landing at its own destination word, **in any order**, counting `DMA_CM_REMAINING`. Wait for a batch with the counter and `wfi()`.
-
-**An entry is freed when its return is injected,** not when it lands. So 64 free entries mean every return has left, not that every result is in data memory. Only `DMA_CM_REMAINING` reaching 0 says they have landed. The search loop's initial poll never stalls because of section 5's rule: any earlier read-port reads were in a phase that armed `DMA_CM_REMAINING` for them and ended with a `WFI` before `done`.
-
-**The search loop** (the spec's, measured in `sw/tests/search.c`):
-```c
-while (SRAM_RD_ADDR_QUEUE < READ_PORT_DEPTH) ;      /* once: never stalls (earlier phases ended with a WFI) */
-while (n_active) {
-    DMA_CM_REMAINING = n_active;                        /* at most 63; the count is 0 here */
-    SRAM_RD_DEST_ADDR = SRAM_RD_DEST(CM_WORD((uint32_t)&results[0]), SRAM_RD_SIZE_32);
-    for each active search: SRAM_RD_ADDR_QUEUE = KEYS + mid;
-    wfi();
-    for each active search: compare results[i], update, drop it if converged;
-}
-```
-
-**Rules.**
-- **Invariant 8 is a statistic.** A result or reply written twice before the program reads it is counted per phase (`PhaseLog`), not flagged. A test can make it strict (`Config.strictReplies`).
-- **Priority:** the read port has the lowest priority in the SRAM read queue. During an address-generator run it waits; queued reads never delay the run [meas: ReadPortGatherTest].
-- **Read-port results and incoming traffic** (spec 4.3). **A tile does not issue read-port reads while packets are arriving for it, and does not start a phase that receives packets while read-port results are outstanding:** read-port reads run in steps of their own; before a search step every expected arrival has landed; before the next exchange every result has landed. C&C's next command word (mode 7), sent right after each GO, may land during a search; that is allowed. meshsim checks the rule (invariant 14, `Config.checkReadPortOverlap`). With the token-protected loopback served last (4.5, 4.7) the v1.0 overflow hazard is gone in meshsim [meas: ReadPortGatherTest: no loss under an all-to-all or a full-rate stream]; the rule stands until the spec revisits it.
-- **Not between `WFI` and a start store.** Read-port traffic belongs before `done` or after the start.
+- **`SRAM_RD_DEST_ADDR`** = `RD_DEST(byte_offset, size, counter)`: the data-memory offset of the next result (data memory only), its size, and its counter. It advances by the size per queued read, and a load returns it.
+- **A store to `SRAM_RD_ADDR_QUEUE`** queues a read at a chunk address aligned to the size. It never stalls. A misaligned read is not performed, but its packet still goes out with payload 0 and is counted, and `ERRORS` [1] is set (D36). A store with no free entry is a read-port error ([7]).
+- **Results** are mode-0 writes to the tile itself, in any order, each at its own offset, counted on the named counter. Only the counter says they have landed; a free entry means only that its return has left.
+- **Read-port results and incoming traffic:** as in v1.1, a tile does not issue read-port reads while packets are arriving for it, and doesn't start a phase that receives while results are outstanding (invariant 14). Whether S9's required protected loopback lets the spec retire the rule is open.

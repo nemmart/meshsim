@@ -387,6 +387,11 @@ Word *n* is at window base + 4*n*.
   - **Rule for software** (as for the tile's `EVENTS`): a load consumes one credit from every masked bit that
     is set, so the program acts on every bit the load returns, or masks only what it is about to service.
   - **meshsim flags** a peripheral returning a credit to a full counter.
+- **Spurious wakes are allowed but not wanted** (owner, 2026-10-28; W3-06): after a consuming load of a
+  peripheral's `EVENTS`, the tile's live bit for that peripheral may lag, so a following `WFI` may return with
+  nothing to do. **Software always re-checks after a wake** (as standard RISC-V `WFI` allows). **The hardware
+  aims to make the bit current by the next instruction**, a short path inside one tile, so in practice
+  spurious wakes don't happen. meshsim models the hardware's actual latency.
 - **`EVENTS_REQUIRED` is tile-only:** a program needing "peripheral 1 and counter 2" sets both in the tile's.
 - **No clear pulses:** loading `EVENTS` consumes events, as on the tile.
 - **Naming** (owner, 2026-10-28): a peripheral's output engine is its **DMA** (v1.1's "sender"), with

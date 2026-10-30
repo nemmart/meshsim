@@ -182,7 +182,7 @@ Decided (O). Still three 32-bit arrays, 96 bits, 88 used:
 |---|---|
 | `STREAM_SRC` | source [20:0], gap after [23:21], spare [31:24] |
 | `STREAM_DEST` | destination address [31:0] |
-| `STREAM_COUNT` | count [16:0], size [18:17], counter [21:19], mode [24:22], *d* [31:25] (30) |
+| `STREAM_COUNT` | count [15:0], spare [16], size [18:17], counter [21:19], mode [24:22], *d* [31:25] (30) |
 
 - `STREAM_COUNT` [24:17] is the link word's size, counter and mode block, [167:160] (2, 30).
 - The fields that change every round are still the source and the count, one store each, with fixed bits
@@ -1048,8 +1048,10 @@ Decided (O), from W3-19. Revises 2, 3, 4, 7, 10, 12, 13, 14 and 16 (each updated
 - **The common header block** (12) becomes size [18:17], counter [21:19], mode [24:22], dst [31:25]: mode
   and dst keep their bits, size moves down one, counter grows. The link word: size [161:160], counter
   [164:162], mode [167:165], src [174:168], dst [181:175]; 74 bits reserved.
-- **`STREAM_COUNT`'s count is 17 bits** (at most 131,071 elements per stream). Enough: 128-bit moves, new
-  since v1.0, halve the element count for the same data.
+- **`STREAM_COUNT`'s count is 16 bits** (at most 65,535 elements per stream), with bit [16] spare (owner,
+  2026-10-28). A stream that long already runs about 64K cycles, longer than any one transfer should hold
+  the system; longer moves are broken into smaller transfers. 128-bit moves, new since v1.0, also halve the
+  element count for the same data.
 - **`WRITE_COUNTER_4`** joins the register block (0x86C; the read port's registers move down one word), and
   `EVENTS` gains counter 4's done at [3], renumbering the bits above it (16).
 

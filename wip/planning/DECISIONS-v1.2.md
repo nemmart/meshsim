@@ -1318,9 +1318,37 @@ From WORKER6's first round. 1 and 2 are the owner's; the rest are on the integra
 - ~~C&C 1's UART dump can't finish before an FPGA reset~~ **Not a limitation** (owner): with an FPGA in the
   loop, C&C 1 sends the dump down LVDS and the FPGA waits as long as it wants before resetting (the 0.1 ms of
   35 is only a default); with no FPGA, a person resets slowly enough for the UART.
-- **Reports can be stuck on the request bus** behind earlier requests to a target that has stopped popping
-  (the file system, say), since a row blocks behind its head. Deferred with the file system and the request
-  bus's design (33): fixing it means per-target queues.
+- ~~Reports can be stuck on the request bus~~ **Fixed by 38**: deep receive queues and per-tile limits
+  mean normal traffic never exhausts a target's credits, so no row stalls behind another target's traffic.
+
+## 38. Request receive queues in the tree (2026-10-29)
+
+Decided (O). Fixes W6's finding that a tile's error reports could wait on the request bus behind requests
+to a target that had stopped popping. Revises 3.3 and 4.18 (v1.1's 16-entry receive queue in every tile,
+16 credits per target, and "no queues at the root", 2026-10-26).
+
+- **Why rows stalled:** when a target runs out of credits, the root skips every input whose next request is
+  for it, and that input's whole row stalls behind it, including requests for other targets.
+- **The receive queues belong to the request tree**, at its roots, one per target, sized by the target's
+  traffic rather than by the tile hardware (the tree is its own unit: many leaves, a few roots). Every depth
+  is a power of two:
+
+| target | receive queue | outstanding per tile |
+|---|---|---|
+| C&C 1 | 128 requests | 1 |
+| C&C 2 (the file system) | 256 requests | 3, so a tile can have several log streams in flight |
+| C&C 3 (the pager) | 128 requests | 1 |
+
+- **Outstanding** means: a tile issues its next request to a target only after the previous one's reply has
+  come back (requests name their reply's counter, 25). The controllers' own requests to each other fit in
+  the room the per-tile limits leave (64 entries at each target).
+- **So normal traffic can never exhaust a target's credits**: the root never skips, no row stalls, and traffic
+  for one target never blocks traffic for another. Each target's credit count is its queue's depth.
+- **Error reports are the exception** (about 17 per failed tile, no replies): in a mass failure they can fill
+  C&C 1's queue and stall rows, but the chip is going down and C&C 1 drains them one by one (accepted).
+- **Tiles that aren't targets need no receive queue.** The memory system's own target (3.3's target 3) is
+  deferred with the file system (33).
+- **Cost:** 128-bit entries, so 32 Kbit for C&C 2's queue and 16 Kbit each for C&C 1's and C&C 3's; cheap.
 
 ---
 

@@ -30,7 +30,7 @@ LOG=engine    TAIL=1 run "address generator, write engine, all-to-all (small)" $
 LOG=eng-shuf  TAIL=1 run "shuffled child order (seed 4)"      $J EngineTest 4
 LOG=ctrl      TAIL=1 run "control and the controller (from C)"  $J CtrlTest -1
 LOG=ctrl-shuf TAIL=1 run "shuffled child order (seed 4)"      $J CtrlTest 4
-pending riscv      "riscv-tests rv32ui/rv32um on the controller" "phase 2"
+LOG=riscv     TAIL=1 run "riscv-tests rv32ui/rv32um on the controller" $J RiscvTest
 LOG=rdport    TAIL=1 run "read port, GATHER (Java; the C parts PENDING (phase 2))" $J ReadPortGatherTest -1
 pending accounting "per-phase accounting (from C)" "phase 2"
 pending searchbench "search steps through the read port (microbenchmark, from C)" "phase 2"

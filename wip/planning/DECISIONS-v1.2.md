@@ -1113,7 +1113,7 @@ Decided (O), from W3-19. Revises 2, 3, 4, 7, 10, 12, 13, 14 and 16 (each updated
 Decided (O), from W1-23, W1-24, W2-27 and W3-26. Revises 22: the boot ROM is a minimal `wait_for_command()`,
 so tiles boot through the same READY/GO protocol as every phase.
 
-1. **The reset is asserted:** everything in the domain is zeroed as at power-on, **except the memories**:
+1. **The reset is asserted** (the whole chip, 34): everything is zeroed as at power-on, **except the memories**:
    `done`, the `done` gate, "command landed", any pending GO, every counter and event. `EVENTS_MASK` takes its
    reset value (GO | counters done, 16).
 2. **The reset is released:** every controller starts at 0x02000000, in the boot ROM.
@@ -1136,12 +1136,12 @@ trace and run the file system:
 
 **Details this needs:**
 
-- **Asserting `RESET` clears C&C 1's READY bits** (they live in its peripheral, outside the domain, 28), so
-  READY left from before a recovery can't release GO early.
+- ~~**Asserting `RESET` clears C&C 1's READY bits**~~ *(34: the whole-chip reset clears them, with everything
+  else in C&C 1's peripheral.)*
 - **The boot ROM uses registers only, never data memory**, which the overlays are writing while it runs. The
   reset selects command block 0, so the ROM knows where the jump address is.
-- **C&C 1 drains its request receive queue to empty** before a restart's boot (21's draining), so a stale
-  "started" can't satisfy its wait.
+- ~~**C&C 1 drains its request receive queue to empty** before a restart's boot~~ *(34: the whole-chip reset
+  empties it.)*
 - The ROM sets `mtvec` first, to a minimal report-and-park handler in the ROM (22), until the image installs
   its own.
 

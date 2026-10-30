@@ -112,6 +112,13 @@ Agreed (O). Answers T1.
     read it through `advice_reg` (expansion word [62:56]). The replayer's template has the traced rows only and pops
     the advice from the run log; an `untraced` word (expansion word [55]) reaching a replayer is an invalid
     expansion (spec 4.19.11). This is why the run log differs from jolt-cpp's memory log on purpose (spec 4.19.2).
+  - **Registers for untraced work** (owner, 2026-10-29): an advice expansion runs with tracing off in **bank 1**, the
+    register file's second 128 registers; the result stays in a bank-1 register, which the traced row reads through
+    `advice_reg`. Bank 0 (0-127: x0-x31 and the virtual registers) is all the register image carries and all the
+    replayer sees. Operand codes 128-145 are taken by the special operands (spec 4.19.3), so **untraced work uses
+    registers 146-255**: code *c* names register *c*, and registers 128-145 are left unused (no remapping). Placing the
+    special codes at the top instead would have given the same 110 registers, only starting at 128; renumbering now
+    would ripple through the replayer, its model, the table builder and the test vectors for no capacity, so it stays.
   - **Coverage** (owner, 2026-10-29; T4): a defined list of templates goes in the Tracer's 8 KB ROM, and **the few
     that don't fit are fed by its controller, C&C 3, in the replayer's style** (spec 4.19.5): the Tracer reaches
     such an instruction, presents it and waits, and C&C 3 supplies the expansion words (the Tracer's variant, with

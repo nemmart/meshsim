@@ -110,3 +110,9 @@ skew.h l.154; 28 review; alignment of auto-advancing runs (regs.c l.40-42 relies
 ERRORS [1] vs [7] for misaligned read-port reads; stale text list; TRACE word flagged by meshsim;
 STREAM_COUNT 16 bits vs the full-size sort's n = 65,536 (local.c l.33, 63-64, 79).
 - [x] REVIEW-2.md pushed (5335175): status table, W3-24..W3-33, replayer section, inventory with flags.
+
+## Round 3 (PROMPT-3.md)
+Read summary, 28-35, 10, 14, 4, 30, WORKER4/PROMPT.md. Blocking: W3-34 boot step 5 (arm -> READY ->
+counted data) = done early + gate blocks counter events; W3-35 watchdog reset/expiry and all-READY
+event kind; W3-36 C&C 1 in meshsim (behavioural vs programmed) + WORKER4 prompt points at REVIEW-2
+section 4 (inventory is section 6). REVIEW-3.md pushed.

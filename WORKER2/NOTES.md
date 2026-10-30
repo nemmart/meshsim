@@ -123,3 +123,9 @@ Round 2 done: WORKER2/REVIEW-2.md pushed (status table W2-01..23; new W2-24..W2-
 counts of 65,536 (local.c:33,63,64,79; spec item 25), so the 16-bit count truncates to 0. meshsim WriteEngine
 stalls only on spanning or area refusal; area never refuses a write (count <= depth-1), so without spanning the
 write path is 2L+3 fixed *(inferred)*.
+
+# Round 3 (PROMPT-3.md)
+Read: overview, 31-35, 32's calls, 4, 25, 30, S1, WORKER4/PROMPT.md. Verdict: ready with two fixes.
+- W2-37: 31 step 5 (arm, then READY = done pulse) -> done early [8]; use v1.1's announced-staging order (6.2/6.4).
+- W2-38: "dropped, still counted" for misaligned READS: send the packet with payload 0 (one decrement point).
+meshsim v1.1 models no LPDDR/memory system, so 33's deferred items don't block WORKER4.

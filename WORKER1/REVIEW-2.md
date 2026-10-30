@@ -274,3 +274,30 @@ GO is `PULSE_GO`, in the controller's register block (8, 11), while the READY bi
 7. **Retries** (W1-26). How many recoveries before C&C 1 gives up?
 
 For Tony: the CSR reset values (Q1, still open), and whether a "trap taken" bit on trap entry is free in his core (W1-18).
+
+## 6. Addendum: the round-2 questions after sections 25–30
+
+The log was checked again at commit b8bd504, after the rulings on WORKER2's and WORKER3's questions. Line
+numbers below are at that commit. **No question is fully resolved.** Four are partly resolved, and one
+of the round-2 findings, W1-29, is answered by a proposal.
+
+### Questions for the owner
+
+| # | question | status | evidence |
+|---|---|---|---|
+| 1 | the memory system and LPDDR across the reset (W1-19) | **partly** | 25 makes the memory system C&C 2's peripheral, which puts it inside the reset domain (21). Its in-flight reads and its state are therefore cleared by the reset. v1.1's write token is gone, replaced by tag windows. **Still open:** a cache write-back at the end of the flush, and LPDDR refresh and the PHY across the reset, so the flushed logs survive |
+| 2 | a hardware "trap taken" error bit (W1-18) | **open** | not addressed. It would fit 27's rule, which keeps cheap checks that catch a bug far from its cause in hardware |
+| 3 | errors at C&C 1 caused by other units (W1-22) | **partly** | 25 removes two of the four causes: mode-3 write streams at C&C's port are gone, and the controllers are normal tile instances, so v1.1's receive FIFO and its overflow flag go *(inferred)*. **Still open:** a counted packet sent to dst 64 (unexpected arrival at C&C 1), and requests dropped at the root. 26 also **adds a cause**: a misaligned or bad-region packet from another unit is a bad packet at C&C 1, so a fatal C&C 1 error |
+| 4 | the host's view: a reset input for C&C 1, C&C 1's own boot, reporting recoveries (W1-27) | **open** | 28 places the watchdog, `LED` and the host interface in C&C 1's peripheral. It doesn't add a reset input, C&C 1's boot path, or say whether recoveries are reported. 21's open point (D855) is unchanged |
+| 5 | the boot READY: does the ROM clear "command landed" (W1-23) | **open** | W2-12 (D272–276) settles *when* "command landed" is set: when the slot-0 write lands, by any director write covering slot 0. That confirms W1-23's point that an image reaching the command block starts the unit early. Nothing clears "command landed" after the ROM's jump, so the image's first `done` still fires READY |
+| 6 | a C&C 1 soft restart (W1-21) | **partly** | 28's `PULSE_GO` clears the READY bits, so stale READY bits are gone after the first GO. They can still mislead C&C 1's first all-ready wait. C&C 1's counters (now four, 30), its sticky events and its request port are not addressed |
+| 7 | retries before C&C 1 gives up (W1-26) | **open** | not addressed |
+| Tony | the CSR reset values; whether a trap-taken bit is free | **open** | Q1 is still "waiting on Tony" |
+
+### Findings affected by the new sections
+
+| finding | status | evidence |
+|---|---|---|
+| W1-29 (`PULSE_GO`, clearing READY) | **resolved, as a proposal to review** | 28: `PULSE_GO` moves to C&C 1's peripheral and clears READY bits 0–63 while driving GO, in one store, keeping a same-cycle pulse; the peripheral's `EVENTS` gets "all tiles READY". The expected-units mask for one-at-a-time bring-up is not included |
+| W1-24 (marker ordering) | **open** | W2-17 restates that the marker "lands last (22)" (D628), but the guarantee still holds within one kind only (3.2) |
+| W1-28 (remnants) | **mostly open** | D69, D87, D782 and D830 are unchanged, and D218 still says the controller sees only 0x00, 0x01 and 0xFF, against the ROM at 0x02, which W2-19's text now makes fetch and load (D217). 26's table now makes a packet to the boot ROM a bad packet (proposed), which answers that sub-point |

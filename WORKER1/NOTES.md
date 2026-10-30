@@ -75,3 +75,6 @@ New candidates (D = decisions line at 21ae57a):
     D719-722, D724; D204 vs ROM fetch; region table row 0xFF displaced.
 29. PULSE_GO vs READY_LINES clear; expected-units mask.
 30. Units started one at a time: counted traffic to a sleeping unit; replayer ownership "in HALT".
+
+Round-2 addendum (b8bd504): owner Qs 1, 3, 6 partly resolved (25, 26, 28); 2, 4, 5, 7 and Tony open;
+W1-29 resolved by 28 (proposal). Appended to REVIEW-2.md section 6.

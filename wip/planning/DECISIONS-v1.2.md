@@ -1315,9 +1315,9 @@ From WORKER6's first round. 1 and 2 are the owner's; the rest are on the integra
 
 **Accepted limitations:**
 
-- **C&C 1's UART dump can't finish before an FPGA reset:** a report line takes about 6 ms at 57,600 baud, and
-  the FPGA monitor resets after about 0.1 ms (35). The UART is best effort; the file system's flush is the
-  record that survives. In solo use, a person resets slowly enough for the dump.
+- ~~C&C 1's UART dump can't finish before an FPGA reset~~ **Not a limitation** (owner): with an FPGA in the
+  loop, C&C 1 sends the dump down LVDS and the FPGA waits as long as it wants before resetting (the 0.1 ms of
+  35 is only a default); with no FPGA, a person resets slowly enough for the UART.
 - **Reports can be stuck on the request bus** behind earlier requests to a target that has stopped popping
   (the file system, say), since a row blocks behind its head. Deferred with the file system and the request
   bus's design (33): fixing it means per-target queues.

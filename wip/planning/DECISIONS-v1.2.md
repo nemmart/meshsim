@@ -1405,6 +1405,34 @@ From WORKER6's F6, F9-F14 and F16. F6 is in 17's guarantee B.
   overlays from its big SRAM at a packet per cycle instead of four stores per packet through its send port.
   **meshsim errors loudly** on a stream with *d* = 126 from a mesh tile (owner), a convention check under 27.
 
+## 42. Answers to the spec session's questions (2026-10-29)
+
+WORKER5's open questions (`WORKER5/QUESTIONS.md`). W5-01, W5-06, W5-13, W5-15 and W5-17 were ruled earlier;
+W5-09 is 39.
+
+- **W5-05, the controller memories' port B** (owner): **one 128-bit write per cycle**. How the memory is built to
+  do it (banks, macros) is the implementer's choice; the spec states the requirement only.
+- **Accepted as WORKER5 proposed:**
+  - W5-02: a write through a misaligned `PTR` is dropped but counted, and the pointer still advances by the size.
+  - W5-03: `ROUTER_ADDR` advances for mode 0 only; modes 1-4 ignore it.
+  - W5-07: each read-port request-queue entry carries its own counter.
+  - W5-08: 26's proposed rows (bad packets by region, mode 3 at 128 bits, modes 1-4 ignoring the address, size
+    11 unchecked).
+  - W5-10: the replayer's part-select bits are byte offset [22:20].
+  - W5-11: a controller takes its fifth-port packets one a cycle, no back-pressure, as in v1.1; which port of
+    its router is deferred with W2-31 (33).
+  - W5-12: `WATCHDOG` counts core cycles.
+  - W5-14: `LED` resets to 0.
+  - W5-16: the memory system reports a request it can't serve as one of its peripheral's errors, raising C&C 2's
+    error line and the toast pin.
+  - W5-18: C&C 1's peripheral words 32-45 in 28's order (the UART as TX, RX, divisor, status); `EVENTS` [2] all
+    tiles READY, [3] watchdog, [4] RX not empty, [5] TX not full; a load of `WATCHDOG` returns the current count.
+  - W5-19: the exit word at 0xFFFFF9F8.
+  - W5-20: the controller block's addresses as given by 11, 30 and 40 (seven counters).
+- **For Tony:** W5-04, whether loads from program memory and the boot ROM take one cycle like data memory; and
+  W5-21, whether the 32 KB memories meet one-cycle access at 1 GHz (about 0.15 mm² in all, fine for area; spec
+  item 127).
+
 ---
 
 ## Big SRAM: to validate
@@ -1444,3 +1472,4 @@ A running list; each entry names where it came from. Resolved entries move into 
 | Q13 | Which peripheral flags only wake the controller and which raise a tile condition | 10 | **resolved: section 10** (conditions interrupt, wake events wake) |
 | Q14 | The tile's `EVENTS` bit layout | 11 | **resolved: section 16** |
 | Q15 | Should `ROUTER_HDR` use the same upper-half layout as `STREAM_COUNT` and `DMA_HDR`? | 7, 10 | **resolved: section 12** |
+| Q16 | The 32 KB controller memories: one-cycle loads from program memory and the boot ROM (W5-04), and one-cycle access at 1 GHz (W5-21) | 42 | for Tony |

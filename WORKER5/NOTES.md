@@ -86,7 +86,7 @@ See the checklist below; R = rewrite, U = update, K = keep, X = removed (stub), 
 - [x] Pass 1: front matter, 1, 2, 3
 - [x] Pass 2: 4.1-4.16
 - [x] Pass 3: 4.17-4.20
-- [ ] Pass 4: 5, 6, 7, 8
+- [ ] Pass 4: 5, 6, 7 done; 8 next
 - [ ] Pass 5: 9-14
 - [ ] CHANGES-v1.2.md, QUESTIONS.md, REPORT.md
 
@@ -99,6 +99,9 @@ See the checklist below; R = rewrite, U = update, K = keep, X = removed (stub), 
 - 121 Q1: CSR list and reset values, mtvec (Tony) (4.11)
 - 122 handler report set: ops, order, count (4.13)
 - 123 the replayer's window: STATUS/ERRORS/EVENTS bits, words 32-33 names (REPLAYER_STATUS, REPLAYER_OPCODE) (4.19.9, 4.19.11)
+- 124 soft reset's keep list (Tony) (6.1)
+- 125 candidate: signed counters (6.2)
+- 126 requests dropped at the root: hardware record? (6.7)
 - superseded: items 50, 51 (credits), 54 (HALT row), 87 (sender), 48 stays (rp_latency)
 
 ## Questions raised so far (mirror of QUESTIONS.md)
@@ -113,4 +116,10 @@ See the checklist below; R = rewrite, U = update, K = keep, X = removed (stub), 
 - W5-09 replayer: bit/word assignments (W3's table) and the names REPLAYER_STATUS/REPLAYER_OPCODE kept from v1.1 (4.19.9)
 - W5-10 replayer: the "part" bits are byte-offset [22:20] (mechanical from addr[20:18]) (4.19.10)
 - W5-11 4.16: a controller takes one packet a cycle from tile c's fifth port; which port of its router is deferred (item 118)
+- W5-12 watchdog counts core cycles (6.1)
+- W5-13 reset hold >= error_latency (from log 21; still needed with outside reset?) (6.1)
+- W5-14 LED resets to 0 (6.1)
+- W5-15 big-SRAM staging is always counted (31/W2-27) though 17 lists "boot and staging images for big SRAM" among uncounted traffic (6.2)
+- W5-16 memory system's errors: a peripheral error of C&C 2 -> toast (6.7)
+- W5-17 requests name the data and reply counters (25 leaves open; deferred item 119) (6.7)
 - W5-08 region decode for bad packets, size 11, modes 1-4 ignore address, mode 3 at 128: log 26's (proposed) rows kept proposed (3.1)

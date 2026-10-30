@@ -1,5 +1,8 @@
 # Worker 4: meshsim to v1.2
 
+> **On hold** (2026-10-29): the spec (WORKER5) and the recipes (WORKER6) come first. This prompt will be
+> rewritten against the v1.2 spec before WORKER4 starts.
+
 You are bringing meshsim, the cycle-level simulator of the mesh (part of an ASIC for proving the Jolt zkVM),
 from the v1.1 machine to the v1.2 design. The v1.2 design exists only as a decisions log so far; the spec
 (`wip/spec/machine-spec.md`) is still v1.1. meshsim is the first thing to move: the sort (WORKER5) and the

@@ -946,6 +946,9 @@ Decided (O), from W2-13; states a principle applied throughout today's decisions
   hardware:** out-of-bounds offsets and running past the end of a memory (26), reserved modes (6), the
   reply-block and command-block conventions (6), uncounted traffic being mode 0 (17), and the spec's
   invariants (section 9), which are simulator checks.
+- **Data memory word 0 is reserved** (owner, 2026-10-28; W2-23): the linker script never places anything at
+  address 0x00000000, and **meshsim flags any write to it**. A C null-pointer store and an all-zero header (a
+  mode-0 write at address 0, uncounted, 6) both land there, so one check catches both. Costs 4 bytes.
 - **Invariant 11's checkable form** (meshsim only): writes into the command block come only from C&C 1-3;
   writes into the reply block are 32 or 64 bits at the sender's own pair (word 2·src); any other mode-0
   write to regions 0x00 or 0x01 stays inside its memory and outside both blocks.

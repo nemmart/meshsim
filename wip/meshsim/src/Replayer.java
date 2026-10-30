@@ -4,8 +4,13 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * The replayer, peripheral type 1 (spec 4.19), cycle by cycle. It implements the slot's interface ({@link Peripheral},
- * 4.17) and nothing else reaches it. Row semantics are {@link ReplayerAlu}'s (spec/replayer-opcodes.md, normative).
+ * The replayer, peripheral type 1 (spec 4.19), cycle by cycle. It implements the peripheral interface ({@link Peripheral},
+ * 4.17, v1.2) and nothing else reaches it. v1.2 (phase 3, as far as the replayer recipes need): its region in bytes
+ * (offset [22:20] the part, 4.19.10; the v1.1 word address is offset / 4 inside); its events counted (4.17.3, 4.19.9):
+ * [0] run done (depth 1), [2]-[5] the code, read-log, write-log and expansion credits (depth 2, every queue's set to 2
+ * by PULSE_RUN and the expansion's again at each new expansion, one returned per half a queue popped), [6] new
+ * expansion (depth 1); its ERRORS [0] bad write, [1] queue overrun, [2] invalid expansion, sticky; its words 32-34
+ * (ROWS_RUN, EXPANSION_OFFSET, EXPANSION_OPCODE). v1.1's service lines and claims are gone. Row semantics are {@link ReplayerAlu}'s (spec/replayer-opcodes.md, normative).
  *
  * <h3>What is modelled</h3>
  * The mode-9 write port (4.19.10: the map, the sizes, ownership, rp_latency, counting); the four queues as true FIFOs
@@ -34,8 +39,11 @@ final class Replayer implements Peripheral {
     static final int OUTQ_ROWS = 32;
     static final int REC_LONGS = 10;                 // 5 × 128 bits = 80 bytes
 
-    // service lines, bit i = PERIPH_SERVICE_(i+1)
-    static final int L_CODE = 1, L_RLOG = 2, L_WLOG = 4, L_EXP = 8, L_NEWEXP = 16, L_DONE = 32;
+    // events (4.19.9): bit numbers
+    static final int EV_RUN_DONE = 0, EV_CODE = 2, EV_RLOG = 3, EV_WLOG = 4, EV_EXP = 5, EV_NEWEXP = 6;
+    final EventCounts ev = new EventCounts(new int[] { 1, 0, 2, 2, 2, 2, 1 }, new boolean[] { false, false, true, true, true, true, false });
+    /** ERRORS (4.19.11): [0] bad write, [1] queue overrun, [2] invalid expansion; sticky until the reset. */
+    static final int ERR_BAD_WRITE = 0, ERR_OVERRUN = 1, ERR_INVALID = 2;
 
     final int me;
     /**
@@ -57,6 +65,7 @@ final class Replayer implements Peripheral {
     final Stream code = new Stream("code", 256, 32, false);
     final Stream rlog = new Stream("read log", 512, 64, false);
     final Stream wlog = new Stream("write log", 512, 64, true);
+    { code.credit = EV_CODE; rlog.credit = EV_RLOG; wlog.credit = EV_WLOG; }
     final ExpQueue exp = new ExpQueue();
 
     // ================================================================ core state
@@ -98,6 +107,13 @@ final class Replayer implements Peripheral {
         this.rowsPerPass = rowsPerPass;
     }
     @Override public int type() { return 1; }
+    @Override public int params() { return 1; }                    // type 1, version 0
+    @Override public EventCounts events() { return ev; }
+    @Override public int errors(long t) { settle(t); int e = 0; for (int k = 0; k < 3; k++) if (condEvents[k] > 0) e |= 1 << k; return e; }
+    @Override public Integer word(long t, int w) {
+        settle(t);
+        return switch (w) { case 32 -> sStatus0 & 0xFFFF; case 33 -> sStatus0 >>> 16; case 34 -> sStatus1; default -> null; };
+    }
 
     // ================================================================ inputs, deferred to the end of their cycle
     private record Input(long t, int kind, int a, int b, int c, long lo, long hi) {}
@@ -115,17 +131,19 @@ final class Replayer implements Peripheral {
         lastInputT = t;
     }
 
-    @Override public void accept(long t, int src, int addr, int size, long lo, long hi) {
+    /** A mode-0 write into region 0x04 at its byte offset (4.19.10): offset / 4 is v1.1's word address, which the
+     *  write port below decodes (offset [22:20] the part). Offsets from 0x400000 are unmapped. */
+    @Override public void accept(long t, int src, int offset, int size, long lo, long hi) {
+        int addr = offset >= 0x400000 ? 0x100000 | offset >>> 2 : offset >>> 2;   // past part 3: an unmapped word address
         noteInput(t);
         if (acceptN > 0 && acceptTimes[(acceptN - 1) & 7] == t) throw new IllegalStateException("replayer " + me + ": two mode-9 packets in cycle " + t);
         acceptTimes[acceptN++ & 7] = t;
         landing.add(new Input(t + RP_LATENCY, src, addr, size, 0, lo, hi));
     }
     @Override public void run(long t) { noteInput(t); inputs.add(new Input(t, IN_RUN, 0, 0, 0, 0, 0)); }
-    @Override public void claim(long t, int lines) { noteInput(t); if ((lines & 63) != 0) inputs.add(new Input(t, IN_CLAIM, lines & 63, 0, 0, 0, 0)); }
     @Override public void setHalted(long t, boolean h) { noteInput(t); inputs.add(new Input(t, IN_HALT, h ? 1 : 0, 0, 0, 0, 0)); }
 
-    @Override public int landed(long t) {
+    int landed(long t) {
         for (int i = 0; i < Math.min(acceptN, 8); i++) if (acceptTimes[(acceptN - 1 - i) & 7] == t - RP_LATENCY) return 1;
         return 0;
     }
@@ -135,18 +153,17 @@ final class Replayer implements Peripheral {
     private int sLines, sStatus0, sStatus1;
 
     @Override public boolean running(long t) { settle(t); return sRunning; }
-    @Override public int lines(long t) { settle(t); return sLines; }
-    @Override public int status(long t, int i) { settle(t); return i == 0 ? sStatus0 : i == 1 ? sStatus1 : 0; }
+    /** Bring the model to the start of t (the slot calls it before reading the events). */
+    @Override public void sync(long t) { settle(t); }
+    /** v1.1's PERIPH_STATUS_0/1, for the replayer's own tests: rows done [15:0] | the next offset [31:16]; the presented item. */
+    int status(long t, int i) { settle(t); return i == 0 ? sStatus0 : i == 1 ? sStatus1 : 0; }
 
     // ================================================================ conditions
     final long[] condEvents = new long[3];
-    @Override public long conditionEvents(int k) { return condEvents[k]; }
+    long conditionEvents(int k) { return condEvents[k]; }
 
     // ================================================================ no output (4.17.9)
-    @Override public int outputQueues() { return 0; }
-    @Override public boolean outReady(long t, int q) { return false; }
-    @Override public int outTake(long t, int q) { throw new IllegalStateException("the replayer has no output queue"); }
-    @Override public void outStart(long t, int q, int words) {}
+
 
     /**
      * Bring the state to the start of cycle T: apply every input and landing of earlier cycles (end-of-cycle effects,
@@ -162,7 +179,6 @@ final class Replayer implements Peripheral {
             if (tl == tm) { Input p = landing.poll(); land(p.t(), p.kind(), p.a(), p.b(), p.lo(), p.hi()); continue; }
             Input in = inputs.poll();
             switch (in.kind()) {
-                case IN_CLAIM -> doClaim(in.t(), in.a());
                 case IN_RUN -> doRun(in.t());
                 case IN_HALT -> doHalt(in.t(), in.a() != 0);
                 default -> throw new IllegalStateException();
@@ -170,22 +186,8 @@ final class Replayer implements Peripheral {
         }
         settled = T;
         sRunning = running;
-        sLines = computeLines();
         sStatus0 = (rowsDone & 0xFFFF) | (nextOffset() & 0xFFFF) << 16;
         sStatus1 = presented;
-    }
-
-    private int computeLines() {
-        int l = 0;
-        if (running) {
-            if (code.lowWater()) l |= L_CODE;
-            if (rlog.lowWater()) l |= L_RLOG;
-            if (fStore && wlog.lowWater()) l |= L_WLOG;
-            if (exp.lowWater()) l |= L_EXP;
-        }
-        if (newExpSetAt != Long.MIN_VALUE) l |= L_NEWEXP;
-        if (doneSetAt != Long.MIN_VALUE) l |= L_DONE;
-        return l;
     }
 
     private int nextOffset() {
@@ -196,20 +198,7 @@ final class Replayer implements Peripheral {
     }
     private int stoppedOffset;                         // the next offset when the pass ended (a window ending mid-expansion)
 
-    // ================================================================ claims, run, halt (end of their cycle)
-    private void doClaim(long t, int lines) {
-        // sticky events: cleared if they were set before the claim's cycle (one set in that cycle survives, 4.17.3)
-        if ((lines & L_NEWEXP) != 0 && newExpSetAt != Long.MIN_VALUE && newExpSetAt < t) { newExpSetAt = Long.MIN_VALUE; exp.pend = 128; }
-        if ((lines & L_DONE) != 0 && doneSetAt != Long.MIN_VALUE && doneSetAt < t) doneSetAt = Long.MIN_VALUE;
-        // live queue conditions: a claim credits half (4.19.8)
-        if ((lines & L_CODE) != 0) code.pend += code.half;
-        if ((lines & L_RLOG) != 0) rlog.pend += rlog.half;
-        if ((lines & L_WLOG) != 0) wlog.pend += wlog.half;
-        if ((lines & L_EXP) != 0) exp.pend += 128;
-        claims++;
-    }
-    long claims;
-
+    // ================================================================ run, halt (end of their cycle)
     private void doRun(long t) {
         if (halted) { violate(t, "PERIPH_RUN in HALT: ignored"); return; }
         if (running) { violate(t, "PERIPH_RUN while periph_running: ignored (4.17.2, 4.13)"); return; }
@@ -221,6 +210,7 @@ final class Replayer implements Peripheral {
         fCode = ((sHi >>> 48) & 1) != 0; fRlog = ((sHi >>> 49) & 1) != 0; fWlog = ((sHi >>> 50) & 1) != 0; fStore = ((sHi >>> 51) & 1) != 0;
         code.reset(fCode, (int) (lLo & 0xFFFFFF)); rlog.reset(fRlog, (int) ((lLo >>> 32) & 0xFFFFFF)); wlog.reset(fWlog, (int) (lHi & 0xFFFFFF));
         exp.reset();
+        for (int b = EV_CODE; b <= EV_EXP; b++) ev.set(t, b, 2);   // every queue's credits to 2 (4.19.8)
         for (int i = 0; i < 64; i++) { regs[2 * i] = region0[4 + 2 * i]; regs[2 * i + 1] = region0[4 + 2 * i + 1]; }
         regs[0] = 0;
         running = true;
@@ -235,7 +225,7 @@ final class Replayer implements Peripheral {
         if (h == halted) return;
         halted = h;
         if (h) { stopCore(t, false); expDiscard = 0; }
-        newExpSetAt = Long.MIN_VALUE; doneSetAt = Long.MIN_VALUE;
+        newExpSetAt = Long.MIN_VALUE; doneSetAt = Long.MIN_VALUE; ev.clearAll();
         code.clear(); rlog.clear(); wlog.clear(); exp.reset();
     }
 
@@ -243,7 +233,7 @@ final class Replayer implements Peripheral {
     private void stopCore(long t, boolean postDone) {
         if (running) { passEndAt = t; stoppedOffset = nextOffset(); }   // PERIPH_STATUS_0 keeps the next offset after the pass
         running = false; inflight = null; cur = null; nxt = null;
-        if (postDone) doneSetAt = t;
+        if (postDone) { doneSetAt = t; ev.post(t, EV_RUN_DONE); }
     }
 
     // ================================================================ the write port (4.19.10)
@@ -258,7 +248,7 @@ final class Replayer implements Peripheral {
         return null;
     }
 
-    private void bad(long t, String why) { condEvents[COND_BAD_WRITE]++; badWrites.add("@" + t + " " + why); }
+    private void bad(long t, String why) { condEvents[ERR_BAD_WRITE]++; badWrites.add("@" + t + " " + why); }
     final List<String> badWrites = new ArrayList<>();
 
     /** A mode-9 packet lands (or is dropped) at the end of cycle t. */
@@ -290,7 +280,7 @@ final class Replayer implements Peripheral {
             srcOf[qi] = src;
         }
         boolean ok = qi == 3 ? exp.push(t, lo, hi) : (qi == 0 ? code : qi == 1 ? rlog : wlog).push(t, lo, hi);
-        if (!ok) { condEvents[COND_2]++; overruns.add("@" + t + " queue " + qi); }
+        if (!ok) { condEvents[ERR_OVERRUN]++; overruns.add("@" + t + " queue " + qi); }
     }
     final List<String> overruns = new ArrayList<>();
 
@@ -360,7 +350,7 @@ final class Replayer implements Peripheral {
                 else { in.kind = K_ROM; in.offset = rdField == 0 && in.rd0 == 2 ? 1 : 0; }
             } else {
                 in.kind = K_CTRL;
-                presented = w; newExpSetAt = T; exp.newExpansion(); newExpansions++;
+                presented = w; newExpSetAt = T; exp.newExpansion(); ev.post(T, EV_NEWEXP); newExpansions++;
             }
         }
         nxt = in;
@@ -581,7 +571,7 @@ final class Replayer implements Peripheral {
     }
 
     private void invalid(long T, String why) {
-        condEvents[COND_3]++;
+        condEvents[ERR_INVALID]++;
         invalids.add("@" + T + " " + why);
         stopCore(T, true);
     }
@@ -603,7 +593,8 @@ final class Replayer implements Peripheral {
         static final int AVAIL = 0, WAIT = 1, END = 2;
         final String name; final int cap, half, valueBits; final boolean isWrite;
         final long[] lo, hi;
-        int head, occ, pend;
+        int head, occ, pend, poppedSince;
+        int credit = -1;      // its credit bit (4.19.8)
         long base;            // stream bit position of the head entry's bit 0
         long consumed;        // stream bit position of the next unread bit
         long len;             // the exact length in bits (latched at the run)
@@ -618,7 +609,7 @@ final class Replayer implements Peripheral {
             this.name = name; this.cap = cap; this.half = cap / 2; this.valueBits = valueBits; this.isWrite = isWrite;
             lo = new long[cap]; hi = new long[cap];
         }
-        void clear() { head = 0; occ = 0; pend = 0; base = 0; consumed = 0; }
+        void clear() { head = 0; occ = 0; pend = 0; base = 0; consumed = 0; poppedSince = 0; }
         void reset(boolean compressed, int lenBits) { clear(); comp = compressed; len = lenBits; java.util.Arrays.fill(E, 0); }
 
         boolean lowWater() { return cap - occ - pend >= half; }
@@ -692,6 +683,7 @@ final class Replayer implements Peripheral {
                 head = (head + 1) % cap; occ--; base += 128;
                 if (popCycle != cycle) { popCycle = cycle; pops = 0; }
                 pops++;
+                if (++poppedSince == half) { poppedSince = 0; if (credit >= 0) ev.post(cycle, credit); }   // a credit back per half popped (4.19.8)
             }
         }
     }
@@ -700,13 +692,13 @@ final class Replayer implements Peripheral {
     final class ExpQueue {
         static final int CAP = 256, HALF = 128;
         final long[] lo = new long[CAP], hi = new long[CAP];
-        int head, occ, pend;
+        int head, occ, pend, poppedSince;
         boolean newestValid; int newestSeq;
         long cycle; int pops; long popCycle = Long.MIN_VALUE;
 
-        void reset() { head = 0; occ = 0; pend = 0; newestValid = false; }
-        /** A new expansion is presented: pending restarts (it is credited 128 by the claim), and the newest-word judgement. */
-        void newExpansion() { pend = 0; newestValid = false; }
+        void reset() { head = 0; occ = 0; pend = 0; newestValid = false; poppedSince = 0; }
+        /** A new expansion is presented: its credits to 2 again (4.19.8), and the newest-word judgement. */
+        void newExpansion() { pend = 0; newestValid = false; poppedSince = 0; ev.set(cycle, EV_EXP, 2); }
         boolean lowWater() { return CAP - occ - pend >= HALF && newestValid && newestSeq > pend; }
         boolean push(long t, long l, long h) {
             int popsAtT = popCycle == t ? pops : 0;
@@ -722,6 +714,7 @@ final class Replayer implements Peripheral {
             head = (head + 1) % CAP; occ--;
             if (popCycle != cycle) { popCycle = cycle; pops = 0; }
             pops++;
+            if (++poppedSince == HALF) { poppedSince = 0; ev.post(cycle, EV_EXP); }
         }
     }
 }

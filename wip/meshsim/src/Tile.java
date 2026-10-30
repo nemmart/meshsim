@@ -40,9 +40,7 @@ final class Tile implements Component {
     final WordHold gatherOut;
     final ReadPort readPort;                      // the controller read port (4.3)
     final PeripheralSlot slot;                    // the peripheral slot (4.17)
-    final Sender sender;                          // the sender (4.17.9)
     final RequestPort req;                        // the request port (4.18)
-    final Uart uart;                              // the UART (4.20)
     // control
     final TileControl ctl;
     final Controller core;
@@ -57,7 +55,8 @@ final class Tile implements Component {
         inj = new InjectionPath(idx);
         dir = new TrafficDirector(idx, cfg);
         Peripheral tp = cfg.testPeripheral != null ? cfg.testPeripheral.apply(idx) : null;
-        slot = tp != null ? new PeripheralSlot(this, tp) : new PeripheralSlot(this, cfg.periphTypeOf(idx)); dir.periph = slot; sender = new Sender(this); req = new RequestPort(this, cfg); uart = new Uart(this);
+        Peripheral p1 = tp != null ? tp : cfg.periphTypeOf(idx) == 1 ? new Replayer(idx) : null;   // every mesh tile's peripheral 1: the replayer (4.17.1)
+        slot = new PeripheralSlot(this, p1); dir.periph = slot; req = new RequestPort(this, cfg);
         cmem = new ControllerMemories(cfg);
         String p = "t" + idx + ".";
         readReturn = new WordHold(p + "readReturn");
@@ -69,7 +68,7 @@ final class Tile implements Component {
         gatherIn = new WordFIFO(p + "gather-q", cfg.gatherDepth);
         inj.readReturn = readReturn; inj.send = sendHold; inj.toRouter = injBus;
         router.fromInjection = injBus; router.toDirector = ejectBus;
-        dir.periphPresent = cfg.periphTypeOf(idx) != 0 || cfg.testPeripheral != null ? 1 : 0;
+        dir.periphPresent = slot.present();
         dir.in = ejectBus; dir.toGather = gatherIn; dir.toWriteEngine = weIn; dir.toPortB = portB;
         cmem.portB = portB;
         sram = new BigSRAM(idx, cfg); srq = new SRAMReadQueue(idx, cfg); writer = new WriteEngine(idx, cfg);
@@ -121,7 +120,7 @@ final class Tile implements Component {
         }
         boolean held = !ctl.running(t);               // HALT holds the address generator idle (6.1)
         for (Component c : children) { if (held && c == ag) continue; c.runCycle(t); }
-        slot.runCycle(t); sender.runCycle(t);
+        slot.runCycle(t);
         slot.endCycle(t);
         ctl.endCycle(t);
     }
@@ -142,9 +141,7 @@ final class Tile implements Component {
         c[Conditions.GATHER_OVF] = gatherIn.overflowCount;
         c[Conditions.BAD_MODE_OR_SIZE] = dir.badTotal + srq.misalignedReads + writer.misalignedWrites;   // ERRORS [1] (4.13)
         c[Conditions.DONE_EARLY] = ctl.doneEarlyEvents;
-        c[Conditions.BAD_PERIPH_WRITE] = slot.conditionEvents(0);
-        c[Conditions.PERIPH_2] = slot.conditionEvents(1);
-        c[Conditions.PERIPH_3] = slot.conditionEvents(2);
+        // ERRORS [13:11] are live (the peripherals' ERRORS != 0), not counted events: TileControl.errorsAt
         c[Conditions.RECV_UNDERFLOW] = req.underflows;
         return c;
     }
@@ -176,7 +173,7 @@ final class Tile implements Component {
     /** Entering HALT (13a, 6.1): the address generator to IDLE; the GATHER engine's queue and active register, the read
      *  port's queue and in-flight count, and the return queues clear; the peripheral and the sender are held in reset. Nothing is in flight when RUN/HALT changes
      *  (invariant 7), so in a correct program this changes nothing. */
-    void haltReset(long t) { ag.haltReset(); gather.haltReset(); readPort.haltReset(); srq.haltReset(); slot.setHalted(t, true); sender.haltReset(t); }
+    void haltReset(long t) { ag.haltReset(); gather.haltReset(); readPort.haltReset(); srq.haltReset(); slot.setHalted(t, true); }
     void setPtr(int i, int chunk) { ts.poke(TableStore.PTR + i, chunk & 0x1FFFFF); }
     int ptr(int i) { return ts.peek(TableStore.PTR + i); }
     /** STREAM[i] from Java (coreless tests): its three words (Fields.streamSrc, streamDest, streamCount). */

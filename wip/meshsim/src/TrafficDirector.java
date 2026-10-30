@@ -141,7 +141,7 @@ final class TrafficDirector implements Component {
     void resetCounters() { java.util.Arrays.fill(remaining, 0); java.util.Arrays.fill(inLine, 0); java.util.Arrays.fill(lineT, Long.MIN_VALUE); }
 
     // ================================================================ meshsim's checks
-    /** Invariant 22: uncounted traffic is mode 0 only, and only commands and boot overlays into controller memory, from a
+    /** W4-03. Invariant 22: uncounted traffic is mode 0 only, and only commands and boot overlays into controller memory, from a
      *  controller (3.1, 6.2). Modes 1-3 are always counted; big-SRAM data and peripheral writes are always counted. */
     private void checkUncounted(long d, long h, long hi, int mode, int src, int a) {
         if (mode != LinkWord.M_WRITE) { violate("uncounted mode-" + mode + " packet: modes 1-3 are always counted (3.1, invariant 22): " + LinkWord.describe(d, h, hi)); return; }
@@ -154,7 +154,7 @@ final class TrafficDirector implements Component {
         int off = LinkWord.offset(a), n = LinkWord.bytes(size);
         if (off + n > ControllerMemories.BYTES) { violate("write past the end of " + (LinkWord.region(a) == 0 ? "data" : "program") + " memory: the high offset bits are ignored and it aliases (2.2; invariant 19): " + LinkWord.describe(d, h, hi)); return; }
         if (LinkWord.region(a) != LinkWord.R_DMEM) return;
-        if (off < 16) violate("write into data memory's reserved first 16 bytes (2.2; invariant 22): " + LinkWord.describe(d, h, hi));
+        if (off < 16) violate(   /* W4-02: at any time */"write into data memory's reserved first 16 bytes (2.2; invariant 22): " + LinkWord.describe(d, h, hi));
         boolean cmd = ControllerMemories.inCommand(off) || ControllerMemories.inCommand(off + n - 1);
         boolean rep = ControllerMemories.inReply(off) || ControllerMemories.inReply(off + n - 1);
         if (cmd && (ctr != 0 || !LinkWord.controller(src) || !ControllerMemories.inCommand(off) || !ControllerMemories.inCommand(off + n - 1)))

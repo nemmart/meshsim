@@ -62,6 +62,24 @@ Decided (O). The Tracer's encoders match the replayer's decoders (spec 4.19.15, 
   first (4.19.15's existing rule). The decoder doesn't depend on the choice; it makes the encoding
   deterministic, which set 2 reproducing set 1 requires.
 
+## 5. Window and proof boundaries (2026-10-29)
+
+Decided (O).
+
+- **Between windows** (every 2¹⁶ rows): **nothing is flushed.** The caches and the page table carry straight on;
+  a window boundary is only a cut point in the run log.
+- **Between proofs** (every 4M cycles, i.e. 64 windows, one per tile): the next proof runs over a different memory
+  image, so the Tracer
+  - **invalidates its D-cache, discarding dirty lines** (no write-back), and its I-cache;
+  - **loads the next proof's page table** from the pager (C&C 3).
+- **Why discarding is safe:** the Tracer writes to a **throwaway layer** (planning notes section 5); the next
+  proof's image is built separately, by the Updater from the update stream. Within a proof, a dirty line that is
+  evicted is still written to the throwaway layer's pages in LPDDR, since the program may read it back later in
+  the same proof; at the proof boundary everything the Tracer wrote is garbage, and the pager frees those pages
+  with the proof's bitmap.
+- *(Inferred, to confirm:)* the RV64's architectural state carries across a proof boundary; only the view of
+  memory changes.
+
 ---
 
 ## Pending questions

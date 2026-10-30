@@ -1350,6 +1350,22 @@ to a target that had stopped popping. Revises 3.3 and 4.18 (v1.1's 16-entry rece
   deferred with the file system (33).
 - **Cost:** 128-bit entries, so 32 Kbit for C&C 2's queue and 16 Kbit each for C&C 1's and C&C 3's; cheap.
 
+## 39. The replayer's status words (2026-10-29)
+
+Decided (O). Answers W5-09. The replayer's peripheral-defined words 32-33 (v1.1's `PERIPH_STATUS_0`-`1`,
+the spec's `REPLAYER_STATUS` and `REPLAYER_OPCODE`, the draft header's `RUN_STATUS` and `PRESENTED`) become
+**one field per word**:
+
+| word | name | access | contents |
+|---|---|---|---|
+| 32 | `ROWS_RUN` | R | rows of this pass completed, modulo 2¹⁶ |
+| 33 | `EXPANSION_OFFSET` | R | the row within the current expansion where the next row starts |
+| 34 | `EXPANSION_OPCODE` | R | the instruction awaiting a controller-fed expansion (presented from the new-expansion event until the next) |
+
+No prefix: the names are scoped by the replayer's struct (14). These are outputs the controller reads; the
+**state word** (pc, `instr_idx`, next offset, flags) is an input at offset 0 of the replayer's region (4.19.10),
+written with the checkpoint.
+
 ---
 
 ## Big SRAM: to validate

@@ -35,19 +35,35 @@ public final class NetTest {
         Config k = Net.cfg(shuffle); k.skew = false;
         Chip c0 = new Chip(k); int s = 0; for (int x : c0.startSkew) s += x;
         T.eq(0, s, "skew off: all 0");
-        // header fields round-trip; 7 + 7 + 4 + 21 + 2 + 128 = 169 bits (21-bit addr, the 2-bit size, the 128-bit payload)
-        long h = LinkWord.hdr(0x55, 0x2A, 6, 0x1ABCDE, LinkWord.SIZE_64);
-        T.eq(0x55, LinkWord.src(h), "src"); T.eq(0x2A, LinkWord.dst(h), "dst"); T.eq(6, LinkWord.mode(h), "mode"); T.eq(0x1ABCDE, LinkWord.addr(h), "addr (21 bits)");
-        T.eq(LinkWord.SIZE_64, LinkWord.size(h), "size");
-        T.eq(0, h >>> 41, "header fits 41 bits (+ 128 payload = 169)");
-        long h15 = LinkWord.hdr(0x7F, 0x7F, 15, 0x1FFFFF, 3);
-        T.eq(15, LinkWord.mode(h15), "mode 15 round-trips (4 bits)"); T.eq(0x1FFFFF, LinkWord.addr(h15), "addr beside mode 15"); T.eq(3, LinkWord.size(h15), "size 11 round-trips beside mode 15");
-        T.eq(0, h15 >>> 41, "every field set: still 41 bits");
-        for (int sz = 0; sz < 3; sz++) T.eq(1 << sz, LinkWord.chunks(sz), "size " + sz + ": 1 << size chunks");
+        // header fields round-trip (3.1, v1.2): src 7, dst 7, mode 3, counter 3, size 2, address 32 = 54 bits + 128 payload
+        // (182 field bits of the 256-bit word; the 74 reserved bits are always 0 and not carried)
+        long h = LinkWord.hdr(0x55, 0x2A, 6, 5, 0xFF1ABCDE, LinkWord.SIZE_64);
+        T.eq(0x55, LinkWord.src(h), "src"); T.eq(0x2A, LinkWord.dst(h), "dst"); T.eq(6, LinkWord.mode(h), "mode"); T.eq(5, LinkWord.counter(h), "counter");
+        T.eq(0xFF1ABCDE, LinkWord.addr(h), "address (32 bits)"); T.eq(LinkWord.SIZE_64, LinkWord.size(h), "size");
+        T.eq(0, h >>> 54, "header fits 54 bits");
+        long h7 = LinkWord.hdr(0x7F, 0x7F, 7, 7, -1, 3);
+        T.eq(7, LinkWord.mode(h7), "mode 7 round-trips (3 bits)"); T.eq(7, LinkWord.counter(h7), "counter 7 beside it"); T.eq(-1, LinkWord.addr(h7), "address all ones");
+        T.eq(3, LinkWord.size(h7), "size 11 round-trips"); T.eq(0, h7 >>> 54, "every field set: still 54 bits");
+        for (int sz = 0; sz < 3; sz++) { T.eq(1 << sz, LinkWord.chunks(sz), "size " + sz + ": 1 << size chunks"); T.eq(4 << sz, LinkWord.bytes(sz), "size " + sz + ": 4 << size bytes"); }
         T.check(!LinkWord.readPortTag(h) && LinkWord.readPortTag(h | LinkWord.TAG_READPORT), "the simulator-only read-port tag is header bit 63");
-        T.eq(0, (int) ((LinkWord.TAG_READPORT & LinkWord.HDR_MASK) >>> 1), "the tag is outside the link word's 41 header bits");
+        T.eq(0L, LinkWord.TAG_READPORT & LinkWord.HDR_MASK, "the tags are outside the link word's 54 header bits");
+        T.eq(0x0300040C, LinkWord.sramAddr(0x103), "the packet address of chunk c is 0x03000000 | c << 2 (1, Addresses)");
+        // bad packets (3.1): mode 0 misaligned or to a region a packet can't reach; mode 3 at 128; modes 1-5 ignore the address
+        T.check(!LinkWord.badPacket(LinkWord.M_WRITE, LinkWord.SIZE_128, 0x00000010, 1), "mode 0, 128 bits at 0x10: good");
+        T.check(LinkWord.badPacket(LinkWord.M_WRITE, LinkWord.SIZE_128, 0x00000018, 1), "mode 0, 128 bits at 0x18: misaligned");
+        T.check(LinkWord.badPacket(LinkWord.M_WRITE, LinkWord.SIZE_64, 0x01000004, 1), "mode 0, 64 bits at 0x01000004: misaligned");
+        T.check(!LinkWord.badPacket(LinkWord.M_WRITE, LinkWord.SIZE_32, 0x03000004, 1), "mode 0, 32 bits into big SRAM: good");
+        T.check(LinkWord.badPacket(LinkWord.M_WRITE, LinkWord.SIZE_32, 0x02000000, 1), "mode 0 to the boot ROM: bad");
+        T.check(LinkWord.badPacket(LinkWord.M_WRITE, LinkWord.SIZE_32, 0x07000000, 7), "mode 0 to region 0x07: bad");
+        T.check(LinkWord.badPacket(LinkWord.M_WRITE, LinkWord.SIZE_32, 0xFFFFF800, 7), "mode 0 to region 0xFF: bad");
+        T.check(!LinkWord.badPacket(LinkWord.M_WRITE, LinkWord.SIZE_32, 0x04000000, 1), "mode 0 to peripheral 1, present: good");
+        T.check(LinkWord.badPacket(LinkWord.M_WRITE, LinkWord.SIZE_32, 0x05000000, 1), "mode 0 to peripheral 2, absent: bad");
+        T.check(LinkWord.badPacket(LinkWord.M_AUG, LinkWord.SIZE_128, 0, 1), "mode 3 at 128 bits: bad");
+        T.check(!LinkWord.badPacket(LinkWord.M_SRC, LinkWord.SIZE_64, 0xFF000004, 0), "mode 1 ignores the address, region included");
+        T.check(!LinkWord.badPacket(LinkWord.M_COUNT, LinkWord.SIZE_128, 0x02000001, 0), "mode 5 ignores it too");
+        T.check(!LinkWord.badPacket(6, LinkWord.SIZE_32, 0x02000001, 0), "modes 6-7 are not bad packets (discarded silently)");
         T.eq(0x13, LinkWord.src(LinkWord.withSrc(h, 0x13)), "stamp src");
-        T.eq(6, LinkWord.mode(LinkWord.withSrc(h, 0x13)), "stamp keeps mode");
+        T.eq(6, LinkWord.mode(LinkWord.withSrc(h, 0x13)), "stamp keeps mode"); T.eq(0xFF1ABCDE, LinkWord.addr(LinkWord.withSrc(h, 0x13)), "and the address");
         T.eq(0x78, LinkWord.digit(0x12345678L, 1), "digit 1 = LS byte"); T.eq(0x12, LinkWord.digit(0x12345678L, 4), "digit 4");
         T.eq(0, LinkWord.digit(0x12345678L, 0), "digit 0 = none");
         out(String.format("structure: links all 3 cycles; start skew seed 1: %d tiles +0, %d tiles +1", zero, one));
@@ -173,42 +189,56 @@ public final class NetTest {
                 + " (for 8 to 64 of the 64 sources each; the broadcast tree's copy can take 8 hops where the unicast takes at most 7), so in-order delivery holds within unicast and within broadcast, not between the two [NetTest routes]");
     }
 
-    // ------------------------------------------------------------------ C&C port (tile 0's fifth port) and address 65
+    // ------------------------------------------------------------------ the controllers' ports (tiles 0-2's fifth ports, 4.16)
     static void cncPort() {
-        T.group("C&C port");
+        T.group("C&C 1-3 ports");
         Net n = new Net(Net.cfg(shuffle));
-        Hops hops = n.c.cfg.hops;
-        // C&C -> every tile, one at a time (latency by hops from tile 0)
-        for (int d = 0; d < 64; d++) {
+        // C&C 1 -> every tile, one at a time; C&C 2 and C&C 3 likewise (each routed as an injection at its tile)
+        for (int c = 0; c < 3; c++) for (int d = 0; d < 64; d++) {
             n.clearLogs(); long T0 = n.c.cycle + 2;
-            n.cncSends.add(new long[] { T0, d, LinkWord.M_CMD, 1, 0x1234, LinkWord.SIZE_32, 0 });
+            n.c.ccs[c].send(n.c.cycle, d, LinkWord.M_COUNT, 1, 0, LinkWord.SIZE_32, 0x1234, 0);
             n.runAll(300);
-            T.eq(1, n.log(d).size(), "C&C -> tile " + d);
-            if (n.log(d).size() == 1) T.eq(LinkWord.CNC, LinkWord.src(n.log(d).get(0)[2]), "src 64 from C&C");
+            T.eq(1, n.log(d).size(), "C&C " + (c + 1) + " -> tile " + d);
+            if (n.log(d).size() == 1) T.eq(64 + c, LinkWord.src(n.log(d).get(0)[2]), "src " + (64 + c) + " from C&C " + (c + 1));
         }
-        // every tile -> C&C and -> memory subsystem
+        // every tile -> C&C 1, 2 and 3
         for (int s = 0; s < 64; s++) {
             n.clearLogs(); long T0 = n.c.cycle + 2;
-            n.at(s, T0, LinkWord.CNC, LinkWord.M_REPLY, 0, Net.tagged(s, T0));
-            n.at(s, T0 + 1, LinkWord.MEMSUB, LinkWord.M_SRC, 0, Net.tagged(s, T0 + 1));
+            for (int c = 0; c < 3; c++) n.at(s, T0 + c, 64 + c, LinkWord.M_WRITE, 3, 0x00000100, LinkWord.SIZE_32, s, 0);
             n.runAll(300);
-            T.eq(1, n.c.cnc.received.size(), "tile " + s + " -> C&C");
-            T.eq(1, n.c.memsub.received.size(), "tile " + s + " -> memory subsystem");
-            if (n.c.cnc.received.size() == 1) T.eq(s, LinkWord.src(n.c.cnc.received.get(0)[2]), "C&C sees src");
-            T.eq(0, n.log(0).size(), "nothing for 64/65 reaches tile 0's director");
+            for (int c = 0; c < 3; c++) {
+                T.eq(1, n.c.ccs[c].received.size(), "tile " + s + " -> C&C " + (c + 1));
+                if (n.c.ccs[c].received.size() == 1) T.eq(s, LinkWord.src(n.c.ccs[c].received.get(0)[2]), "C&C " + (c + 1) + " sees src");
+            }
+            for (int c = 0; c < 3; c++) T.eq(0, n.log(c).size(), "nothing for 64-66 reaches tile " + c + "'s director");
         }
-        T.eq(0, n.c.tiles[0].inj.injected - 2, "tile 0's injection point carried only its own two packets");
-        T.eq(64L, n.c.violations, "every packet sent to dst 65 flagged (2.1: no endpoint; the memory system is served at C&C's port, 64)");
+        // C&C 2 -> C&C 3 and back (controller to controller, through the mesh)
+        n.clearLogs();
+        n.c.ccs[1].send(n.c.cycle, 66, LinkWord.M_WRITE, 2, 0x200, LinkWord.SIZE_64, 0x77, 0);
+        n.runAll(300);
+        T.eq(1, n.c.cc3.received.size(), "C&C 2 -> C&C 3");
+        // a broadcast from C&C 2 reaches tiles 0-63 once each, and no controller
+        n.clearLogs();
+        n.c.ccs[1].send(n.c.cycle, LinkWord.BROADCAST, LinkWord.M_COUNT, 1, 0, LinkWord.SIZE_32, 9, 0);
+        n.runAll(300);
+        for (int d = 0; d < 64; d++) T.eq(1, n.log(d).size(), "C&C 2's broadcast reaches tile " + d + " once");
+        for (Endpoint e : n.c.ccs) T.eq(0, e.received.size(), "a broadcast is not delivered to C&C " + (e.address - 63));
+        noViolations(n.c, "the controllers' ports");
         int unconnected = 0;
         for (Tile p : n.c.tiles) {
             T.eq(6, p.router.nOut, "tile " + p.idx + ": the router has the fifth port's output (4.16: one tile design)");
-            if (p.idx == 0) continue;
+            T.check(p.router.attached == (p.idx < 3), "tile " + p.idx + ": fifth port connected only at tiles 0-2");
+            if (p.idx < 3) continue;
             boolean quiet = true; for (WordFIFO f : p.router.q[Router.TO_CNC]) if (f.highWater > 0) quiet = false;
             for (int o = 0; o < 5; o++) { int f = p.router.slotOfPort(o, Router.FROM_CNC); if (f >= 0 && p.router.q[o][f].highWater > 0) quiet = false; }
-            if (quiet && !p.router.attached) unconnected++;
+            if (quiet) unconnected++;
         }
-        T.eq(63, unconnected, "on tiles 1-63 the fifth port is unconnected: it never receives and routing never chooses it");
-        T.check(n.c.violationMessages.stream().allMatch(v -> v.contains("dst 65")), "and nothing else");
+        T.eq(61, unconnected, "on tiles 3-63 the fifth port never receives and routing never chooses it");
+        // a packet to 67-125 has no endpoint (invariant 17)
+        Net m = new Net(Net.cfg(shuffle));
+        m.at(5, m.c.cycle + 2, 70, LinkWord.M_COUNT, 1, 0, LinkWord.SIZE_32, 0, 0);
+        m.runAll(300);
+        T.check(m.c.violations >= 1 && m.c.violationMessages.get(0).contains("no endpoint"), "a packet for 70 is flagged: " + m.c.violationReport());
     }
 
     // ------------------------------------------------------------------ in-order delivery
@@ -271,127 +301,147 @@ public final class NetTest {
         out("permutations at the link bound (every tile 500 packets, one per max(|a|,|b|) cycles, skew 0/+1): router FIFO peak " + worst + " of 16 [meas: NetTest in-order full rate]");
     }
 
-    // ------------------------------------------------------------------ the traffic director
+    // ------------------------------------------------------------------ the traffic director (4.8, v1.2)
+    static final int RPL = ControllerMemories.REPLY, CMD = ControllerMemories.COMMAND, RW = ControllerMemories.REPLY_DWORD;
     static void director() {
         T.group("director");
-        Config k = Net.cfg(shuffle); k.checkUnexpected = true; k.periphType = 0;   // tile 9's slot empty: mode 9 is a bad peripheral write
+        Config k = Net.cfg(shuffle); k.checkUnexpected = true; k.periphType = 0;   // no peripheral: mode 0 to region 0x04 is a bad packet
         Net n = new Net(k);
         Tile r = n.c.tiles[9];
         r.gatherStub.record(); r.writer.record();
         TrafficDirector d = r.dir;
-        d.remaining[TrafficDirector.SRAM] = 4; d.remaining[TrafficDirector.CM] = 3; d.remaining[TrafficDirector.REPLY] = 2; d.remaining[TrafficDirector.PERIPH] = 1;
+        T.eq(0, d.periphPresent, "a tile built without a peripheral: PARAMS [2:0] = 0");
+        d.remaining[1] = 4; d.remaining[2] = 3; d.remaining[3] = 2; d.remaining[4] = 1;
         long T0 = n.c.cycle + 2; long t = T0;
-        n.at(5, t++, 9, LinkWord.M_INVALID, 0x12345, 0x800 + 7);       // mode 0: invalid: dropped, bad-mode-or-size condition, invariant 5 at the sender
-        n.at(9, T0, 9, LinkWord.M_GATHER, 0, 0x0000000500000077L);     // gather request to self
-        n.at(5, t++, 9, LinkWord.M_SRC, 0, 0xAAAAL);
-        n.at(5, t++, 9, LinkWord.M_EXPLICIT, 0x102, 0xEEEEL);           // mode 3, 64 bits at an even addr: to the write engine
-        n.at(5, t++, 9, LinkWord.M_BUCKET, 0, 0xBBBBL);
-        n.at(5, t++, 9, LinkWord.M_AUG, 0, LinkWord.SIZE_32, 0xCCCCL, 0);   // mode 5 at 32 bits: augmented write, to the write engine
-        n.at(5, t++, 9, LinkWord.M_CMEM, 0x010, 0x2222222211111111L);   // 64 bits: instruction memory words 0x10, 0x11
-        n.at(5, t++, 9, LinkWord.M_CMEM, 0x900, LinkWord.SIZE_32, 0x33333333L, 0);   // 32 bits: data memory word 0x100 only
-        n.at(5, t++, 9, LinkWord.M_CMEM, 0x7FE, LinkWord.SIZE_128, 0x6666666655555555L, 0x8888888877777777L);   // 128 bits straddling: imem 0x7FE, 0x7FF, dmem 0x000, 0x001
-        n.at(5, t++, 9, LinkWord.M_CMD, 0x23, LinkWord.SIZE_32, 0xCAFE0003L, 0);   // command slot addr[3:0] = 3; the rest of addr ignored
-        n.at(5, t++, 9, LinkWord.M_REPLY, 0, LinkWord.SIZE_32, 0xABCD0006L, 0);   // a 32-bit reply from src 5: reply word 10 only
-        n.at(6, t, 9, LinkWord.M_REPLY, 0x55, 0x1234567800C0FFEEL);     // a 64-bit reply from src 6: reply words 12 and 13 (addr unused)
-        n.at(5, t++, 9, LinkWord.M_CMD, 0, LinkWord.SIZE_32, 0x0000C0DEL, 0);   // slot 0: command landed
-        n.at(5, t++, 9, LinkWord.M_PERIPH, 0x123, LinkWord.SIZE_128, 0x8888L, 0x9999L);   // mode 9 on a tile with no peripheral (this build): a bad peripheral write, counted
-        n.at(5, t++, 9, 15, 0, 0xFFFFL);                                // mode 15: reserved (bad), dropped, invariant 5 at the sender
-        n.at(5, t++, 9, LinkWord.M_AUG, 0, LinkWord.SIZE_128, 0xDDDDL, 0);   // mode 5 at 128 bits: a bad packet (3.1)
-        n.at(5, t++, 9, LinkWord.M_EXPLICIT, 0x101, 0xDDDDL);           // mode 3, 64 bits at an odd addr: misaligned, a bad packet
-        n.at(5, t++, 9, LinkWord.M_EXPLICIT, 0x102, LinkWord.SIZE_128, 0xDDDDL, 0);   // mode 3, 128 bits at addr 2 mod 4: a bad packet
-        n.at(5, t++, 9, LinkWord.M_CMD, 1, 0xDDDDL);                    // mode 7 at 64 bits: a bad packet
-        n.at(5, t++, 9, LinkWord.M_REPLY, 0, LinkWord.SIZE_128, 0xDDDDL, 0);   // mode 8 at 128 bits: a bad packet
+        n.at(9, T0, 9, LinkWord.M_GATHER, 4, 0, LinkWord.SIZE_64, 0x0000000500000077L, 0);   // gather request to self: never counted
+        n.at(5, t++, 9, LinkWord.M_SRC, 1, 0, LinkWord.SIZE_64, 0xAAAAL, 0);
+        n.at(5, t++, 9, LinkWord.M_WRITE, 1, LinkWord.sramAddr(0x102), LinkWord.SIZE_64, 0xEEEEL, 0);   // mode 0 into big SRAM, at chunk 0x102
+        n.at(5, t++, 9, LinkWord.M_BUCKET, 1, 0, LinkWord.SIZE_64, 0xBBBBL, 0);
+        n.at(5, t++, 9, LinkWord.M_AUG, 1, 0, LinkWord.SIZE_32, 0xCCCCL, 0);
+        n.at(5, t++, 9, LinkWord.M_WRITE, 2, 0x01000040, LinkWord.SIZE_64, 0x2222222211111111L, 0);   // program memory words 0x10, 0x11
+        n.at(5, t++, 9, LinkWord.M_WRITE, 2, 0x00000400, LinkWord.SIZE_32, 0x33333333L, 0);   // data memory word 0x100 only
+        n.at(5, t++, 9, LinkWord.M_WRITE, 2, 0x000007F0, LinkWord.SIZE_128, 0x6666666655555555L, 0x8888888877777777L);   // data words 0x1FC-0x1FF
+        n.at(5, t++, 9, LinkWord.M_WRITE, 3, RPL + 8 * 5, LinkWord.SIZE_32, 0xABCD0006L, 0);   // a 32-bit reply from src 5 at its pair
+        n.at(6, t, 9, LinkWord.M_WRITE, 3, RPL + 8 * 6, LinkWord.SIZE_64, 0x1234567800C0FFEEL, 0);   // a 64-bit reply from src 6
+        n.at(5, t++, 9, LinkWord.M_COUNT, 4, 0, LinkWord.SIZE_32, 0, 0);       // count only: nothing written, counter 4
+        n.at(5, t++, 9, 6, 1, 0, LinkWord.SIZE_32, 0xFFFFL, 0);                 // mode 6: discarded, no count, no error
+        // bad packets: dropped, uncounted, ERRORS [1]
+        n.at(5, t++, 9, LinkWord.M_WRITE, 2, 0x00000404, LinkWord.SIZE_64, 0xD1L, 0);   // misaligned
+        n.at(5, t++, 9, LinkWord.M_WRITE, 2, 0x02000000, LinkWord.SIZE_32, 0xD2L, 0);   // the boot ROM
+        n.at(5, t++, 9, LinkWord.M_WRITE, 2, 0xFFFFF800, LinkWord.SIZE_32, 0xD3L, 0);   // region 0xFF
+        n.at(5, t++, 9, LinkWord.M_WRITE, 2, 0x04000000, LinkWord.SIZE_32, 0xD4L, 0);   // peripheral 1, absent on this tile
+        n.at(5, t++, 9, LinkWord.M_AUG, 1, 0, LinkWord.SIZE_128, 0xD5L, 0);             // mode 3 at 128 bits
+        n.at(5, t++, 9, LinkWord.M_WRITE, 1, LinkWord.sramAddr(0x102), LinkWord.SIZE_128, 0xD6L, 0);   // big SRAM, 128 bits at chunk 2 of a row
+        // a command from C&C 1: an argument (slot 3), then slot 0; uncounted mode 0
+        n.cncSends.add(new long[] { T0, 9, LinkWord.M_WRITE, CMD + 12, 0xCAFE0003L, LinkWord.SIZE_32, 0, 0 });
+        n.cncSends.add(new long[] { T0 + 1, 9, LinkWord.M_WRITE, CMD, 0x0000C0DEL, LinkWord.SIZE_32, 0, 0 });
         T.check(n.runAll(300), "drained");
-        T.eq(7, d.droppedBad, "mode 0, mode 15, mode 5 at 128, two misaligned mode 3, mode 7 at 64 and mode 8 at 128 -> dropped (bad packets)");
-        T.eq(7, d.badModeTotal, "bad-packet count");
-        T.check((r.conditions() & (1 << Conditions.BAD_MODE_OR_SIZE)) != 0, "bad-mode-or-size condition set (TILE_CONDITIONS bit " + Conditions.BAD_MODE_OR_SIZE + ")");
-        T.eq(1L, r.slot.badWrites, "mode 9 on a type-0 slot: a bad peripheral write (4.17.7)");
-        T.check((r.conditions() & (1 << Conditions.BAD_PERIPH_WRITE)) != 0, "bad-peripheral-write condition set (bit 11)");
-        T.eq(1, r.gatherStub.log.size(), "mode 1 -> GATHER queue");
-        T.eq(4, r.writer.log.size(), "modes 2, 3, 4 and 5 -> write engine");
-        if (r.writer.log.size() == 4) { T.eq(LinkWord.M_SRC, LinkWord.mode(r.writer.log.get(0)[2]), "mode 2 first"); T.eq(LinkWord.M_EXPLICIT, LinkWord.mode(r.writer.log.get(1)[2]), "mode 3 second");
-            T.eq(LinkWord.M_BUCKET, LinkWord.mode(r.writer.log.get(2)[2]), "mode 4 third"); T.eq(LinkWord.M_AUG, LinkWord.mode(r.writer.log.get(3)[2]), "mode 5 fourth"); }
-        T.eq(0xEEEE, r.sram.peek(0x102), "mode 3 written at its explicit addr (no PTR)");
+        T.eq(6, d.droppedBad, "six bad packets dropped: misaligned, boot ROM, region 0xFF, absent peripheral, mode 3 at 128, misaligned big SRAM");
+        T.check((r.conditions() & (1 << Conditions.BAD_MODE_OR_SIZE)) != 0, "ERRORS [1], bad packet or misaligned access (v1.1's bit " + Conditions.BAD_MODE_OR_SIZE + ")");
+        T.eq(1, r.gatherStub.log.size(), "mode 4 -> GATHER queue");
+        T.eq(4, r.writer.log.size(), "modes 1, 0 (big SRAM), 2 and 3 -> write engine");
+        if (r.writer.log.size() == 4) { T.eq(LinkWord.M_SRC, LinkWord.mode(r.writer.log.get(0)[2]), "mode 1 first"); T.eq(LinkWord.M_WRITE, LinkWord.mode(r.writer.log.get(1)[2]), "mode 0 second");
+            T.eq(LinkWord.M_BUCKET, LinkWord.mode(r.writer.log.get(2)[2]), "mode 2 third"); T.eq(LinkWord.M_AUG, LinkWord.mode(r.writer.log.get(3)[2]), "mode 3 fourth"); }
+        T.eq(0xEEEE, r.sram.peek(0x102), "mode 0 written at its address's chunk (no PTR)");
         ControllerMemories m = r.cmem;
-        T.eq(0x11111111, m.imem.peek(0x10), "mode 6 (64) imem word 0x10"); T.eq(0x22222222, m.imem.peek(0x11), "mode 6 (64) imem word 0x11");
-        T.eq(0x33333333, m.dmem.peek(0x100), "mode 6 (32) dmem word 0x100"); T.eq(0, m.dmem.peek(0x101), "mode 6 (32) writes one word only");
-        T.eq(0x55555555, m.imem.peek(0x7FE), "mode 6 (128) imem 0x7FE"); T.eq(0x66666666, m.imem.peek(0x7FF), "mode 6 (128) imem 0x7FF");
-        T.eq(0x77777777, m.dmem.peek(0), "mode 6 (128) straddles: dmem 0"); T.eq(0x88888888, m.dmem.peek(1), "mode 6 (128) straddles: dmem 1");
-        T.eq(0xCAFE0003, m.dmem.peek(0x7F3), "mode 7 slot 3 = data word 0x7F3 (byte 0x5FCC)");
-        T.eq(0xABCD0006, m.dmem.peek(0x6F0 + 10), "mode 8 from src 5 (32 bits): reply word 10 (byte 0x5BC0 + 40)");
-        T.eq(0, m.dmem.peek(0x6F0 + 11), "a 32-bit reply leaves word 1 of its pair alone");
-        T.eq(0x00C0FFEE, m.dmem.peek(0x6F0 + 12), "mode 8 from src 6 (64 bits): reply word 12");
-        T.eq(0x12345678, m.dmem.peek(0x6F0 + 13), "mode 8 from src 6 (64 bits): reply word 13");
-        T.check(m.landedAt >= 0, "mode 7 slot 0 sets command landed");
-        T.eq(0x0000C0DE, m.dmem.peek(0x7F0), "slot 0 word");
-        long[] pm = d.perMode; int[] want = { 1, 1, 1, 3, 1, 2, 3, 3, 3, 1, 0, 0, 0, 0, 0, 1 };
-        for (int i = 0; i < 16; i++) T.eq(want[i], pm[i], "director accepted mode " + i);
-        T.eq(0, d.remaining[TrafficDirector.SRAM], "SRAM_REMAINING 4 -> 0 (modes 2, 3, 4, 5; the bad ones not counted)");
-        T.eq(0, d.remaining[TrafficDirector.CM], "CM_REMAINING 3 -> 0 (three mode 6: a packet counts 1 whatever its size)");
-        T.eq(0, d.remaining[TrafficDirector.REPLY], "REPLY_REMAINING 2 -> 0 (two replies)");
-        T.eq(0, d.remaining[TrafficDirector.PERIPH], "PERIPH_REMAINING 1 -> 0 (the dropped mode-9 packet counts)");
-        T.eq(0, r.conditions() & (1 << Conditions.UNEXPECTED), "no unexpected arrival yet (modes 1 and 7 are never counted)");
-        T.eq(7, n.c.violations, "seven violations so far: the seven bad packets sent (invariant 5)");
-        T.check(n.c.violationMessages.get(0).contains("invariant 5"), "it is invariant 5");
-        // unexpected arrivals: one more mode-2, mode-6 and mode-8 with the counters at 0
-        t = n.c.cycle + 2;
-        n.at(5, t, 9, LinkWord.M_SRC, 0, 1); n.at(5, t + 1, 9, LinkWord.M_CMEM, 0x20, 1); n.at(5, t + 2, 9, LinkWord.M_REPLY, 0, 1);
+        T.eq(0x11111111, m.imem.peek(0x10), "program memory word 0x10"); T.eq(0x22222222, m.imem.peek(0x11), "program memory word 0x11");
+        T.eq(0x33333333, m.dmem.peek(0x100), "data memory word 0x100"); T.eq(0, m.dmem.peek(0x101), "a 32-bit write writes one word only");
+        T.eq(0x55555555, m.dmem.peek(0x1FC), "128 bits: word 0x1FC"); T.eq(0x88888888, m.dmem.peek(0x1FF), "128 bits: word 0x1FF");
+        T.eq(0xCAFE0003, m.dmem.peek(ControllerMemories.CMD_DWORD + 3), "command slot 3 (0x7FCC)");
+        T.eq(0xABCD0006, m.dmem.peek(RW + 10), "32-bit reply from src 5: word 0 of its pair (0x7BC0 + 40)");
+        T.eq(0, m.dmem.peek(RW + 11), "a 32-bit reply leaves word 1 of its pair alone");
+        T.eq(0x00C0FFEE, m.dmem.peek(RW + 12), "64-bit reply from src 6: word 0"); T.eq(0x12345678, m.dmem.peek(RW + 13), "and word 1");
+        T.check(m.landedAt >= 0, "a write covering slot 0 sets command landed"); T.eq(0x0000C0DE, m.dmem.peek(ControllerMemories.CMD_DWORD), "slot 0 word");
+        long[] pm = d.perMode;
+        T.eq(1, pm[LinkWord.M_SRC], "accepted mode 1 once"); T.eq(1, pm[LinkWord.M_BUCKET], "mode 2 once"); T.eq(2, pm[LinkWord.M_AUG], "mode 3 twice (one bad)");
+        T.eq(1, pm[LinkWord.M_GATHER], "mode 4 once"); T.eq(1, pm[LinkWord.M_COUNT], "mode 5 once"); T.eq(1, pm[6], "mode 6 once"); T.eq(13, pm[LinkWord.M_WRITE], "mode 0: 6 good, 5 bad, 2 commands");
+        for (int c = 1; c <= 4; c++) T.eq(0, d.remaining[c], "WRITE_COUNTER_" + c + " counted down to 0");
+        T.eq(1L, d.countOnly, "the count-only packet wrote nothing and counted"); T.eq(1L, d.reservedDiscarded, "mode 6 discarded");
+        T.eq(0, r.conditions() & (1 << Conditions.UNEXPECTED), "no unexpected arrival (mode 4 and mode 6 aren't counted; bad packets aren't)");
+        // violations: 6 bad packets at the director, 5 of them also at the sender (an absent peripheral is the receiver's to judge), mode 6 at both
+        T.eq(13, n.c.violations, "13 violations: bad packets (invariant 5) and mode 6 (invariant 21): " + n.c.violationReport());
+        // the delay line (4.8): a packet accepted at t decrements its counter at t + K
+        d.remaining[1] = 1;
+        long acc0 = d.accepted;
+        n.at(5, n.c.cycle + 2, 9, LinkWord.M_SRC, 1, 0, LinkWord.SIZE_32, 1, 0);
+        long accT = -1, decT = -1;
+        for (int i = 0; i < 100 && decT < 0; i++) { n.step(); if (accT < 0 && d.accepted > acc0) accT = n.c.cycle; if (d.remaining[1] == 0) decT = n.c.cycle; }
+        T.eq(accT + k.K, decT, "the counter decrements K = " + k.K + " cycles after the director accepts the packet");
+        // unexpected arrival: the error at the decrement, the stray named at acceptance
+        long v0 = n.c.violations;
+        n.at(5, n.c.cycle + 2, 9, LinkWord.M_SRC, 1, 0, LinkWord.SIZE_32, 1, 0);
         n.runAll(300);
-        T.eq(3, d.unexpected, "three unexpected arrivals");
-        T.check((r.conditions() & (1 << Conditions.UNEXPECTED)) != 0, "unexpected-arrival condition set");
-        T.eq(0, d.remaining[TrafficDirector.SRAM], "counter stays 0, no wrap");
-        T.eq(10, n.c.violations, "invariant 9 x 3, invariant 5 x 7");
-        // modes 0, 1 and 7 are never counted
-        n.at(5, n.c.cycle + 2, 9, LinkWord.M_INVALID, 0, 0); n.at(5, n.c.cycle + 3, 9, LinkWord.M_CMD, 9, LinkWord.SIZE_32, 0, 0); n.at(9, n.c.cycle + 2, 9, LinkWord.M_GATHER, 0, 0);
+        T.eq(1L, d.unexpected, "unexpected arrival at the decrement (counter 1 at 0)");
+        T.check((r.conditions() & (1 << Conditions.UNEXPECTED)) != 0, "ERRORS [2] set");
+        T.eq(0, d.remaining[1], "the counter stays 0, no wrap");
+        T.eq(1L, n.c.violations - v0, "the stray reported once, at acceptance (invariant 9)");
+        T.check(n.c.violationMessages.get(n.c.violationMessages.size() - 1).contains("stray"), "named as a stray");
+        // the accepted trade-off (4.12): a stray accepted at 0, then the counter armed before its decrement: no error, the
+        // stray uses up one of the N; meshsim still names it at acceptance
+        long u0 = d.unexpected; v0 = n.c.violations;
+        n.at(5, n.c.cycle + 2, 9, LinkWord.M_SRC, 1, 0, LinkWord.SIZE_32, 1, 0);
+        acc0 = d.accepted;
+        for (int i = 0; i < 50 && d.accepted == acc0; i++) n.step();
+        d.remaining[1] = 3;                                                     // armed after acceptance, before the decrement
         n.runAll(300);
-        T.eq(3, d.unexpected, "modes 0, 1 and 7 not counted");
-        // a counted packet from C&C (src 64) counts too (the counting policy, 4.12)
-        d.remaining[TrafficDirector.CM] = 1;
-        n.cncSends.add(new long[] { n.c.cycle + 2, 9, LinkWord.M_CMEM, 0x30, 0x77L, LinkWord.SIZE_32, 0 });
-        n.runAll(300);
-        T.eq(0, d.remaining[TrafficDirector.CM], "C&C's mode-6 packet is counted (4.12: every mode from any source)");
-        T.eq(3, d.unexpected, "and is expected");
-        // size 11 (3.1): undefined, no hardware check; meshsim flags it at the sender and at the director, which drops it
-        // uncounted with no condition (meshsim's choice for undefined behaviour)
-        long v1 = n.c.violations; int cond1 = r.conditions(); long bad1 = d.badModeTotal;
-        d.remaining[TrafficDirector.SRAM] = 1;
-        n.at(5, n.c.cycle + 2, 9, LinkWord.M_SRC, 0, LinkWord.SIZE_UNDEF, 0x1111L, 0x2222L);
+        T.eq(u0, d.unexpected, "armed within K: no unexpected arrival");
+        T.eq(2, d.remaining[1], "the stray used up one of the three");
+        T.eq(1L, n.c.violations - v0, "but meshsim named the stray at acceptance");
+        d.remaining[1] = 0;
+        // size 11 (3.1): undefined; flagged at the sender and the director, which drops it uncounted with no error
+        v0 = n.c.violations; int cond1 = r.conditions(); long bad1 = d.badTotal;
+        d.remaining[1] = 1;
+        n.at(5, n.c.cycle + 2, 9, LinkWord.M_SRC, 1, 0, LinkWord.SIZE_UNDEF, 0x1111L, 0x2222L);
         n.runAll(300);
         T.eq(1L, d.undefinedSize, "size 11: flagged and dropped at the director");
-        T.eq(1, d.remaining[TrafficDirector.SRAM], "size 11: not counted");
-        T.eq(bad1, d.badModeTotal, "size 11 is not a bad packet");
-        T.eq(cond1, r.conditions(), "size 11 sets no condition (the hardware has no check)");
-        T.eq(2, n.c.violations - v1, "size 11 flagged twice: at the sender's injection and at the receiving director");
-        d.remaining[TrafficDirector.SRAM] = 0;
-        // address checks, invariants 11-13, and mode 1 to another tile (invariant 10)
-        long v0 = n.c.violations;
-        d.remaining[TrafficDirector.CM] = 4;
-        t = n.c.cycle + 2;
-        n.at(5, t++, 9, LinkWord.M_CMEM, 0xFF0, 0);     // into the command block
-        n.at(5, t++, 9, LinkWord.M_CMEM, 0xFFF, 0);     // the command block, and its second word outside (64 bits)
-        n.at(5, t++, 9, LinkWord.M_CMEM, 0x1000, 0);    // outside the packed map
-        n.at(5, t++, 9, LinkWord.M_CMEM, 0xEEE, LinkWord.SIZE_128, 0, 0);   // 128 bits: words 2 and 3 in the reply block (checked per word)
-        n.at(5, t++, 9, LinkWord.M_GATHER, 0, 0);       // mode 1 to another tile
-        n.runAll(300);
-        T.eq(5, n.c.violations - v0, "five address/locality violations");
-        String all = String.join("\n", n.c.violationMessages);
-        for (String inv : new String[] { "invariant 10", "invariant 11" }) T.check(all.contains(inv), inv + " reported");
-        // port-B timing and cm_idle: accept at t, written at t + cm_latency, readable from t + cm_latency + 1
-        d.remaining[TrafficDirector.REPLY] = 1;
+        T.eq(1, d.remaining[1], "size 11: not counted");
+        T.eq(bad1, d.badTotal, "size 11 is not a bad packet");
+        T.eq(cond1, r.conditions(), "size 11 sets no error (the hardware has no check)");
+        T.eq(2, n.c.violations - v0, "size 11 flagged twice: at the sender's injection and at the receiving director");
+        d.remaining[1] = 0;
+        // meshsim's checks: invariants 10, 11, 19, 21, 22
+        d.remaining[2] = 20; d.remaining[1] = 2;
+        String[][] cases = {
+            { "uncounted mode 1", "invariant 22" }, { "uncounted mode-0 data-memory write from a tile", "invariant 22" },
+            { "uncounted big-SRAM write", "invariant 22" }, { "a tile's write into the command block", "invariant 11" },
+            { "a reply at another sender's pair", "invariant 11" }, { "a 128-bit write into the reply block", "invariant 11" },
+            { "a write into data memory's first 16 bytes", "invariant 22" }, { "a write past the end of data memory", "invariant 19" },
+            { "a big-SRAM write past its end", "invariant 19" }, { "count-only on counter 0", "invariant 21" }, { "mode 4 to another tile", "invariant 10" } };
+        long[][] pk = {
+            { LinkWord.M_SRC, 0, 0, LinkWord.SIZE_32 }, { LinkWord.M_WRITE, 0, 0x100, LinkWord.SIZE_32 },
+            { LinkWord.M_WRITE, 0, LinkWord.sramAddr(0x200), LinkWord.SIZE_32 }, { LinkWord.M_WRITE, 2, CMD + 4, LinkWord.SIZE_32 },
+            { LinkWord.M_WRITE, 2, RPL + 8 * 7, LinkWord.SIZE_32 }, { LinkWord.M_WRITE, 2, RPL + 8 * 4, LinkWord.SIZE_128 },
+            { LinkWord.M_WRITE, 2, 0x8, LinkWord.SIZE_32 }, { LinkWord.M_WRITE, 2, 0x8000, LinkWord.SIZE_32 },
+            { LinkWord.M_WRITE, 1, LinkWord.sramAddr(k.memChunks), LinkWord.SIZE_32 }, { LinkWord.M_COUNT, 0, 0, LinkWord.SIZE_32 },
+            { LinkWord.M_GATHER, 0, 0, LinkWord.SIZE_64 } };
+        for (int c = 0; c < cases.length; c++) {
+            v0 = n.c.violations;
+            n.at(5, n.c.cycle + 2, 9, (int) pk[c][0], (int) pk[c][1], (int) pk[c][2], (int) pk[c][3], 0, 0);
+            n.runAll(300);
+            T.check(n.c.violations > v0 && n.c.violationMessages.get(n.c.violationMessages.size() - 1).contains(cases[c][1]), cases[c][0] + " flagged (" + cases[c][1] + "): " + n.c.violationMessages.get(n.c.violationMessages.size() - 1));
+        }
+        // K's formula (4.8): meshsim errors below max(2L + 3, L + 4, cm_latency, rp_latency)
+        Config bad = Net.cfg(shuffle); bad.K = 4;
+        boolean threw = false; try { new Chip(bad); } catch (IllegalArgumentException e) { threw = e.getMessage().contains("below"); }
+        T.check(threw, "K = 4 at L = 1 is rejected (the formula's 5)");
+        Config ok5 = Net.cfg(shuffle); ok5.K = 5; new Chip(ok5); T.check(true, "K = 5 at L = 1 is accepted");
+        // port-B timing: accept at t, written at t + cm_latency, readable from t + cm_latency + 1
+        d.remaining[3] = 1;
         n.clearLogs();
-        n.at(5, n.c.cycle + 2, 9, LinkWord.M_REPLY, 0, LinkWord.SIZE_32, 0x5A5A, 0);
+        n.at(5, n.c.cycle + 2, 9, LinkWord.M_WRITE, 3, RPL + 40, LinkWord.SIZE_32, 0x5A5A, 0);
         long accept = -1, written = -1; boolean sawIdle = false;
         for (int i = 0; i < 100; i++) {
             n.step();
             if (accept < 0 && !d.log.isEmpty()) accept = d.log.get(0)[0];
             if (accept >= 0 && n.c.cycle < accept + k.cmLatency && d.cmIdle(n.c.cycle)) sawIdle = true;
-            if (written < 0 && m.dmem.peek(0x6F0 + 10) == 0x5A5A) written = n.c.cycle;
+            if (written < 0 && m.dmem.peek(RW + 10) == 0x5A5A) written = n.c.cycle;
         }
-        // host peeks show end-of-cycle state: written at the end of accept + cm_latency, so a load reads it from accept + cm_latency + 1
-        T.eq(accept + k.cmLatency, written, "mode 8 written at port B cm_latency cycles after the director accepts it");
+        T.eq(accept + k.cmLatency, written, "a reply written at port B cm_latency cycles after the director accepts it");
+        T.check(written < accept + k.K, "and before its counter's decrement at K (4.8)");
         T.check(!sawIdle, "cm_idle low while the write is in the port-B pipe");
-        T.check(d.cmIdle(n.c.cycle), "cm_idle afterwards");
-        out("director: each mode to its unit (bad packets dropped with the bad-mode sticky bit); counters per mode; invariants 9-11 and 5 fire; a mode-8 reply accepted at t is written at port B at t + " + (written - accept) + " (cm_latency " + k.cmLatency + "), readable by a load from t + " + (written - accept + 1) + " [meas: NetTest director]");
+        out("director: each mode and region to its unit (bad packets dropped with ERRORS [1]); counters by the counter field, decremented K = " + k.K
+                + " cycles after acceptance; unexpected arrival at the decrement, the stray named at acceptance; a reply accepted at t is written at port B at t + " + (written - accept)
+                + " (cm_latency " + k.cmLatency + ") [meas: NetTest director]");
     }
 
     // ------------------------------------------------------------------ the injection point
@@ -402,7 +452,7 @@ public final class NetTest {
         long T0 = n.c.cycle + 2;
         for (int j = 0; j < 10; j++) n.at(3, T0 + j, 4, LinkWord.M_SRC, 0, j);        // read returns, back to back
         n.step();                                                                     // feed puts read 0 at T0-1
-        s.sendHold.put(n.c.cycle, 100, LinkWord.hdr(0, 4, LinkWord.M_SRC, 0, LinkWord.SIZE_64), 0);     // send port, visible at T0 too
+        s.sendHold.put(n.c.cycle, 100, LinkWord.hdr(0, 4, LinkWord.M_SRC, 1, 0, LinkWord.SIZE_64), 0);     // send port, visible at T0 too
         T.check(n.runAll(300), "drained");
         List<long[]> l = n.log(4);
         T.eq(11, l.size(), "11 packets");
@@ -413,7 +463,7 @@ public final class NetTest {
         // send port alone sustains one packet per cycle (a store each cycle into its holding register)
         n.clearLogs();
         long t0 = n.c.cycle;
-        for (int j = 0; j < 20; j++) { s.sendHold.put(n.c.cycle, 200 + j, LinkWord.hdr(0, 4, LinkWord.M_SRC, 0, LinkWord.SIZE_64), 0); n.step(); }
+        for (int j = 0; j < 20; j++) { s.sendHold.put(n.c.cycle, 200 + j, LinkWord.hdr(0, 4, LinkWord.M_SRC, 1, 0, LinkWord.SIZE_64), 0); n.step(); }
         n.runAll(300);
         T.eq(0, s.sendHold.refusals, "no refusals");
         T.eq(20, n.log(4).size(), "20 send-port packets");
@@ -431,7 +481,7 @@ public final class NetTest {
         for (int j = 0; j < 300; j++) n.at(8, T0 + j, 9, LinkWord.M_SRC, 0, 1_000_000L + j);   // a full-rate stream from tile 8
         int sent = 0; long firstSelf = -1;
         for (int i = 0; i < 2000 && (sent < 120 || !n.c.quiescent()); i++) {
-            if (sent < 120 && r.sendHold.isEmpty(n.c.cycle + 1) && n.c.cycle >= T0 + 10) { r.sendHold.put(n.c.cycle + 1, sent, LinkWord.hdr(0, 9, LinkWord.M_SRC, 0, LinkWord.SIZE_32), 0); sent++; }
+            if (sent < 120 && r.sendHold.isEmpty(n.c.cycle + 1) && n.c.cycle >= T0 + 10) { r.sendHold.put(n.c.cycle + 1, sent, LinkWord.hdr(0, 9, LinkWord.M_SRC, 1, 0, LinkWord.SIZE_32), 0); sent++; }
             n.step();
         }
         List<long[]> l = r.dir.log;

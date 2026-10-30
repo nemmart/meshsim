@@ -198,6 +198,7 @@ final class Tile implements Component {
         for (WordDelayLine l : sram.ret) if (l.inFlight(t) > 0) return false;
         if (!gatherOut.isEmpty(t) || !readPort.idle(t)) return false;
         if (!readReturn.isEmpty(t) || !sendHold.isEmpty(t) || injBus.inFlight(t) > 0 || ejectBus.inFlight(t) > 0 || portB.inFlight(t) > 0 || slot.inFlight(t)) return false;
+        if (dir.inFlight() > 0) return false;                     // the K delay line: decrements still to come (4.8)
         for (WordFIFO f : hardwareFifos) if (!f.isEmpty(t)) return false;
         return true;
     }

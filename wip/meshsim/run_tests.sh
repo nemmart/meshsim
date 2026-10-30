@@ -32,8 +32,8 @@ LOG=ctrl      TAIL=1 run "control and the controller (from C)"  $J CtrlTest -1
 LOG=ctrl-shuf TAIL=1 run "shuffled child order (seed 4)"      $J CtrlTest 4
 LOG=riscv     TAIL=1 run "riscv-tests rv32ui/rv32um on the controller" $J RiscvTest
 LOG=rdport    TAIL=1 run "read port, GATHER (Java; the C parts PENDING (phase 2))" $J ReadPortGatherTest -1
-pending accounting "per-phase accounting (from C)" "phase 2"
-pending searchbench "search steps through the read port (microbenchmark, from C)" "phase 2"
+LOG=accounting TAIL=1 run "per-phase accounting (from C)"    $J AccountingTest
+LOG=searchbench TAIL=3 run "search steps through the read port (microbenchmark, from C)" $J SearchBench
 LOG=rdport-shuf TAIL=1 run "shuffled child order (seed 4)" $J ReadPortGatherTest 4
 LOG=agtest    TAIL=1 run "address generator read-ahead, figure 12's PTR/HIST ports" $J AgTest -1
 LOG=agtest-shuf TAIL=1 run "shuffled child order (seed 4)"   $J AgTest 4
@@ -59,7 +59,7 @@ if [ "$MODE" != quick ]; then
   pending sort-bt-kv32 "BT, forced, trace hot 10 / 10 % at 64 x 16,384, 32-bit values" "sort port"
   pending sort-bt-k128 "the same, 128-bit values" "sort port"
   LOG=rdport-full TAIL=1 run "gather 1 at full size (Java; the C parts PENDING (phase 2))" java $JX -cp build ReadPortGatherTest -1 full
-  pending accounting-full "per-phase accounting, full-size all-to-all from C" "phase 2"
+  LOG=accounting-full TAIL=1 run "per-phase accounting, full-size all-to-all from C" java $JX -cp build AccountingTest full
   LOG=agbench TAIL=3 run "read-ahead measurements: ag_lookahead, zero-length groups, start to first request (a few minutes)" $J AgBench
   pending sweep-quick "parameter sweep (from C)" "phase 2"
   LOG=ctrl-full TAIL=1 run "the all-to-all from C on the four data sets" java $JX -cp build CtrlTest -1 full

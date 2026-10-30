@@ -45,6 +45,9 @@ final class TileControl {
     long reservedAccesses;                                        // loads and stores of reserved words (8.1: meshsim flags them)
     long simExitAt = -1; int simExitValue;                        // SIM_EXIT (8.15)
     long traceStores; int lastTrace;
+    /** Simulator-only: called with each TRACE store (8.15), at its cycle (tests and benchmarks). */
+    interface TraceHook { void onTrace(long t, int v); }
+    TraceHook traceHook;
     private int consumeBits; private long consumeT = Long.MIN_VALUE; // a consuming load's clear, at the end of its cycle
     long latchSets, spuriousEdges, gatedEdges;
     int conditions, status;
@@ -338,7 +341,7 @@ final class TileControl {
         else if (r == Registers.REQUEST_SET_W2) tile.req.setW(2, v);
         else if (r == Registers.REQUEST_SEND) tile.req.send(t, v);
         else if (r == Registers.SIM_EXIT) { simExitAt = t; simExitValue = v; tile.chip.log(t, tile.idx, "SIM_EXIT 0x" + Integer.toHexString(v)); }
-        else if (r == Registers.TRACE) { traceStores++; lastTrace = v; if (cfg.logTrace) tile.chip.log(t, tile.idx, "TRACE 0x" + Integer.toHexString(v)); }
+        else if (r == Registers.TRACE) { traceStores++; lastTrace = v; if (traceHook != null) traceHook.onTrace(t, v); if (cfg.logTrace) tile.chip.log(t, tile.idx, "TRACE 0x" + Integer.toHexString(v)); }
         return clears;
     }
 

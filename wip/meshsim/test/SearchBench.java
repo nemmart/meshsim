@@ -29,9 +29,8 @@ public final class SearchBench {
                 for (int i = 0; i < 64; i++) { targets[p.idx][i] = i == 0 ? 0 : i == 1 ? -1 : r.nextInt(); p.sram.poke(0xF0002 + i, targets[p.idx][i]); }
             }
             Mach.Image im = m.boot("search");
-            final int exitEbreak = im.sym("_start") + 0x30;
             List<List<Long>> marks = new ArrayList<>(); for (int i = 0; i < 64; i++) marks.add(new ArrayList<>());
-            for (Tile p : m.c.tiles) { final int i = p.idx; p.core.debugHook = (c, t) -> { if (c.pc == exitEbreak) return false; marks.get(i).add(t); return true; }; }
+            for (Tile p : m.c.tiles) { final int i = p.idx; p.ctl.traceHook = (t, v) -> marks.get(i).add(t); }   // search.c's mark(): a TRACE store (8.15)
             List<TreeMap<Integer, long[]>> byActive = List.of(new TreeMap<>(), new TreeMap<>());   // active -> {cycles, steps}
             long[][] total = new long[2][64];
             int bad = 0, k = 0;

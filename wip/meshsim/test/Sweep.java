@@ -134,8 +134,6 @@ public final class Sweep {
                     for (int i = 0; i < 64; i++) p.sram.poke(0xF0002 + i, r.nextInt());
                 }
                 Mach.Image im = m.boot("search");
-                final int exitEbreak = im.sym("_start") + 0x30;
-                for (Tile p : m.c.tiles) p.core.debugHook = (c, t) -> c.pc != exitEbreak;
                 m.c.cc.command(LinkWord.BROADCAST, 1 << 24 | 1 << 8 | 63).go().command(LinkWord.BROADCAST, 2 << 24).go();
                 m.run(m::allStopped, 10_000_000);
                 m.c.phases.close();

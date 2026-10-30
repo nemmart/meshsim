@@ -14,6 +14,7 @@ static void self_reply(void) {
     tile->WRITE_COUNTER[CTR_REPLY - 1] = 1;
     send_to(ROUTER_HDR_W(me, MODE_WRITE, CTR_REPLY) | ROUTER_NOINC, REPLY_WORD(me));
     send32(7);
+    tile->ROUTER_HDR &= ~ROUTER_NOINC;              /* the bit stays set until cleared (D37.5) */
     wait_all(EV_CTR(CTR_REPLY));                    /* the reply is in */
     rbox = REPLY[2 * me];
 }

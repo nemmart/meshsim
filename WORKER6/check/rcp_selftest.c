@@ -114,7 +114,7 @@ int main(void) {
         case 2: seed_from_index(arg, &hi, &lo); n_rec = arg[2]; fill(SRC, n_rec, &hi, &lo); break;
         case 3: a2a_uniform_configure(n_rec); break;
         case 5: hash_block(arg[0], arg[1], &hi, &lo); sig[0] = lo; sig[1] = hi; break;
-        case 6: result_to_cc1(sig[1], sig[0]); break;
+        case 6: (void)result_to_cc1(sig[1], sig[0]); break;
         case 7: write_block(WB, blk, BLK); break;
         default: sim_exit(0);
         }

@@ -22,7 +22,8 @@
 #define SRAM_ADDR(chunk)   (REGION_SRAM | ((uint32_t)(chunk) << 2))
 
 /* data-memory layout (proposed: the log fixes the blocks' shape, not their addresses; v1.1 put them at the top) */
-#define DMEM_RESERVED_0    0x00000000   /* word 0: never placed, meshsim flags any write (D27) */
+#define DMEM_RESERVED      0x00000000   /* bytes 0x00-0x0F: never placed, meshsim flags any write after boot (D27, D37.4) */
+#define DMEM_FIRST         0x00000010   /* the first byte an image may use; overlays start here */
 #define COMMAND_BASE       0x00007FC0   /* the command block: 16 slots; slot 0 the command word (D6) */
 #define REPLY_BASE         0x00007BC0   /* the reply block: two words per source, 128 sources (D6); 8-byte aligned */
 #define STACK_TOP          0x00007BC0   /* the stack grows down from below the reply block */
@@ -285,10 +286,20 @@ _Static_assert(__builtin_offsetof(TableRegs, PTR) == 0x400 && __builtin_offsetof
 #define TARGET_CC1         0u   /* spec draft 3.3, proposed */
 #define TARGET_CC2         1u
 #define TARGET_CC3         2u
-/* C&C 1's request format: undefined in the log. Placeholder: op [17:10], sequence or argument [31:18] */
-#define REQ_CC1(op, seq)   (REQ_TARGET(TARGET_CC1) | (((uint32_t)(op) & 0xFFu) << 10) | ((uint32_t)(seq) << 18))
-#define REQ_OP_REPORT      1u   /* the handler's reports (D20, D21) */
-#define REQ_OP_STARTED     2u   /* C&C 2's and C&C 3's start-up (D31) */
+/* C&C 1's request format: undefined in the log; requests name their reply's counter (D25). Placeholder:
+ * op [17:10], the reply's counter [20:18], an argument [31:21]. */
+#define REQ_CC1(op, ctr, arg) (REQ_TARGET(TARGET_CC1) | (((uint32_t)(op) & 0xFFu) << 10) | (((uint32_t)(ctr) & 0x7u) << 18) | ((uint32_t)(arg) << 21))
+#define REQ_OP(w0)         (((w0) >> 10) & 0xFFu)
+#define REQ_REPLY_CTR(w0)  (((w0) >> 18) & 0x7u)
+#define REQ_ARG(w0)        ((w0) >> 21)
+#define REQ_REQUESTOR(w0)  ((w0) & 0x7Fu)
+/* outstanding requests per tile and target (D38): the next only after the previous one's reply has come back.
+ * Error reports are the exception. The targets' receive queues, in the tree: 128, 256, 128 */
+#define REQ_LIMIT_CC1      1
+#define REQ_LIMIT_CC2      3
+#define REQ_LIMIT_CC3      1
+#define REQ_OP_REPORT      1   /* the handler's reports (D20, D21): no reply */
+#define REQ_OP_STARTED     2   /* C&C 2's and C&C 3's start-up (D31): a controller's request */
 #define REQ_OP_RESULT      3u   /* a tile's result for C&C 1 (the self-test's signature) */
 
 /* ---- the command convention (CONVENTIONS 4): [31:24] type, [23] parity, [22:0] argument ---- */

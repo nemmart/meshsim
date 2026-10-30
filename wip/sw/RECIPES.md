@@ -1,6 +1,6 @@
 # Programming a tile: the recipe book (v1.2 draft)
 
-**v1.2 draft, written from `planning/DECISIONS-v1.2.md` (sections 1-36, cited as D*n*).** Short, careful C for the common operations of a tile program, one recipe per operation, against the draft header `sw/mesh-v1.2-draft.h`. Each recipe gives what it does, what it relies on, the code, and a **walk**: what each tile and C&C 1 do, in order, and what can arrive when, checked against the counters' rules (arming, done early, unexpected arrival), the `done` gate, the GO-to-arming window, alignment and the events' consume rules. Where a walk shows a protocol problem the recipe is written the best way the design allows and marked **[F*n*]**, a finding in `WORKER6/FINDINGS.md`.
+**v1.2 draft, written from `planning/DECISIONS-v1.2.md` (sections 1-38, cited as D*n*).** Short, careful C for the common operations of a tile program, one recipe per operation, against the draft header `sw/mesh-v1.2-draft.h`. Each recipe gives what it does, what it relies on, the code, and a **walk**: what each tile and C&C 1 do, in order, and what can arrive when, checked against the counters' rules (arming, done early, unexpected arrival), the `done` gate, the GO-to-arming window, alignment and the events' consume rules. Where a walk showed a protocol problem the recipe is marked **[F*n*]**, a finding in `WORKER6/FINDINGS.md`; sections 37 and 38 of the log answer the first five, and the recipes follow those answers.
 
 **The code is compiled, not run.** There is no v1.2 simulator yet. Every code block is a region of a file in `WORKER6/check/`, marked `/* RECIPE name */` … `/* END */` and named in an HTML comment before the block. `build.sh` compiles them all against the draft header (`riscv64-unknown-elf-gcc -march=rv32i_zicsr_zmmul -mabi=ilp32 -std=gnu11 -O2 -Wall -Wextra -Werror`), and `check_book.py` confirms that each block equals its region. When meshsim v1.2 exists, those files become the `rcp_*.c` tests, as in v1.1.
 
@@ -11,7 +11,7 @@
 - **Cycles:** every v1.1 measurement is void until meshsim v1.2 measures it again; section 14 marks each figure "to measure".
 - Buffers in the examples sit in different big-SRAM areas, as in v1.1: area *a* starts at chunk *a* · 0x20000.
 
-**What changed from v1.1, in brief.** Modes 0 write at address (commands and replies included), 1 by source, 2 bucket, 3 augmented, 4 gather request. The counter is named by the packet. Every 64- and 128-bit access is naturally aligned, checked in hardware. Waiting is by events, the tables included (`wait_tables()` is gone). Errors trap and the trap is terminal: no HALT and no REPORT. Every unit boots from a ROM.
+**What changed from v1.1, in brief.** Modes 0 write at address (commands and replies included), 1 by source, 2 bucket, 3 augmented, 4 gather request. The counter is named by the packet. Every 64- and 128-bit access is naturally aligned, checked in hardware. Waiting is by events, the tables included (`wait_tables()` is gone). Errors trap and the trap is terminal: no HALT and no REPORT. Every unit boots from a ROM. Requests to the controllers are limited per tile and wait for their replies (D38).
 
 **Contents.** 0 helpers · 1 the command loop · 2 a stream run (local copy) · 3 block copy into controller memory · 4 histogram, prefix sum and bucket passes · 5 augmented transfers · 6 gather · 7 the one-word exchange and words to one tile · 8 a vector exchange · 9 an all-to-all · 10 a mesh reduction · 11 the read port · 12 parameters, status and errors · 13 the synchronised start · 14 cycles · 15 the rules that bite · 16 gaps and awkwardness · 17 write a block into big SRAM · 18 fill with pseudo-random data · 19 hash a block · 20 *retired: REPORT* · 21 the self-test · **new:** 22 the boot ROM and the boot sequence · 23 waiting for the tables by events · 24 the error handler · 25 a peripheral window through its struct · 26 the replayer's refill loop · 27 C&C 1's side of a phase.
 
@@ -302,7 +302,8 @@ static void gather(uint32_t idx, uint32_t vals, uint32_t out, uint32_t n, unsign
  * address in every receiver, so ROUTER_ADDR is set once with no-increment and each send changes only ROUTER_HDR's
  * dst. Afterwards in[s] holds tile s's word to this tile, copied from REPLY[2 s]. Counted on counter 3 (replies),
  * which every receiver arms first in the command, by identical code: the fastest sender's word can arrive a few
- * cycles after GO. A tile keeps at most one reply outstanding to each receiver until it has been read. */
+ * cycles after GO. A tile keeps at most one reply outstanding to each receiver until it has been read. The
+ * no-increment bit stays set until the program clears it (D37.5), so the exchange clears it when it is done. */
 static void xchg(const uint32_t *out, volatile uint32_t *in) {
     unsigned me = tile_index();
     tile->WRITE_COUNTER[CTR_REPLY - 1] = 64;        /* including this tile's word to itself */
@@ -313,6 +314,7 @@ static void xchg(const uint32_t *out, volatile uint32_t *in) {
             tile->ROUTER_HDR = ROUTER_HDR_W(d, MODE_WRITE, CTR_REPLY) | ROUTER_NOINC;
             send32(out[d]);
         }
+    tile->ROUTER_HDR &= ~ROUTER_NOINC;              /* done with the fixed address: clear it (D37.5) */
     wait_all(EV_CTR(CTR_REPLY));                    /* every word to this tile is in */
     for (int s = 0; s < 64; s++) in[s] = REPLY[2 * s];
 }
@@ -330,7 +332,7 @@ static void send_words(unsigned dst, volatile uint32_t *at, const uint32_t *w, u
 ```
 
 - **One store per reply** (D7): every receiver's landing address is the same, `REPLY_WORD(me)`, so `ROUTER_ADDR` is set once with no-increment set in `ROUTER_HDR`, and each send changes only the header's dst. That keeps v1.1's cost: one header store and one send per word.
-- **The no-increment bit is sticky:** it stays in `ROUTER_HDR` until the next header store. `send_words()` stores a header without it. **[F8]**
+- **The no-increment bit stays set until the program clears it** (D37.5). `xchg` clears it when it is done with the fixed address, with a read-modify-write of `ROUTER_HDR` (readable, D7), and `send_words()` stores a header without it anyway. **[F8]**
 - **Schedule order** makes each step a permutation of the tiles, so no link carries more than its share.
 - **That a sender writes only its own pair is now a software convention** (D6), checked by meshsim (invariant 11's form, D27).
 
@@ -657,6 +659,7 @@ static void self_reply(void) {
     tile->WRITE_COUNTER[CTR_REPLY - 1] = 1;
     send_to(ROUTER_HDR_W(me, MODE_WRITE, CTR_REPLY) | ROUTER_NOINC, REPLY_WORD(me));
     send32(7);
+    tile->ROUTER_HDR &= ~ROUTER_NOINC;              /* the bit stays set until cleared (D37.5) */
     wait_all(EV_CTR(CTR_REPLY));                    /* the reply is in */
     rbox = REPLY[2 * me];
 }
@@ -731,23 +734,25 @@ static void two_streams_one_group(uint32_t n, uint32_t n_left) {
 
 **Rule 9: keep GO in `EVENTS_MASK` whenever `done` is pulsed** (spec 4.12). The gate lets GO wake the core whatever the mask, but only a load with GO masked consumes it. A program that changes the mask (recipe 26) puts it back, with GO, before its next `wait_for_command()`.
 
-**Rule 10: the no-increment bit lives in `ROUTER_HDR`** (D7) and stays set until the next header store. Every run of sends to consecutive addresses stores its own header. **[F8]**
+**Rule 10: clear the no-increment bit when done with a fixed address** (D7, D37.5). It stays set until the program clears it; a later run of sends meant for consecutive addresses would otherwise land every packet at one address, counted and silent. `xchg` and `self_reply` clear it as they finish. **[F8]**
+
+**Rule 11: at most 1, 3 and 1 requests outstanding to C&C 1, C&C 2 and C&C 3** (D38). A tile issues its next request to a target only after the previous one's reply has come back; the request names its reply's counter (D25), which the tile arms before sending. The targets' receive queues (128, 256 and 128 requests, in the request tree) then never run out of credits, so the root never stalls a row. **Error reports are the exception**: the handler sends its 23 at once and expects no reply (recipe 24). C&C 1 answers every tile request (recipe 27's `drain_requests`); a target that didn't would leave the tile waiting for ever.
 
 ## 16. Gaps and awkwardness found
 
 v1.1 listed three. Two are gone: a stuck counter now ends in an error, the toast pin and an outside reset (D35), not in a HALT; and REPORT's settle went with REPORT. The third remains: table request overflow and GATHER queue overflow still can't be caused by a program, so they stay hardware-fault detectors.
 
-What the v1.2 walks found is in `WORKER6/FINDINGS.md`, most important first. In brief:
+What the v1.2 walks found is in `WORKER6/FINDINGS.md`, most important first, each with the log's answer. In brief:
 
-- **[F1]** GO reaches every tile still asleep in the boot ROM, and the ROM jumps on any GO, so starting units one at a time (D23) doesn't work yet.
-- **[F2]** Nothing enables the hard interrupt: `mstatus.MIE` is 0 at reset and the log never says who sets it. Recipe 22's start-up does.
-- **[F3]** The handler's report set is fixed (D21), but which peripherals it reports varies by tile (D20). Recipe 24 pads absent peripherals with zeros.
-- **[F4]** C&C 1's UART dump can't finish within the FPGA monitor's 0.1 ms. Recipe 27 drains to memory first.
-- **[F5]** Reports share the request tree with everything else, and the tree's head-of-line blocking can hold them behind requests to a stopped target.
-- **[F6]** Polling `STATUS.rd_running` (D17) is only as good as guarantee B, which the log states for [7] alone.
-- **[F7]** A 128-bit data overlay starting at address 0 writes the reserved word 0, which meshsim flags.
-- **[F8]** The sticky no-increment bit turns a forgotten header store into a silent pile-up at one address.
-- **[F9]–[F14]**, smaller: mask juggling around consuming loads; `wait_all`'s cost and the stale counters done it leaves; an extra wake per expansion in the replayer loop; no timer for C&C 1's bounded waits; a stale "command landed" in every tile's `EVENTS`; and a stream can't name the broadcast, so C&C 1 boots tiles through its send port.
+- **[F1]** GO reached every tile still asleep in the boot ROM, which jumped on any GO, so units couldn't be started one at a time. *Answered by D37.1:* the ROM jumps only if a command has landed (recipe 22).
+- **[F2]** Nothing enabled the hard interrupt. *Answered by D37.2:* boot part 2, the image's first command, does (recipe 22).
+- **[F3]** The handler's report set was fixed (D21) but covered only present peripherals (D20). *Answered by D37.3:* every slot, zeros for an absent one (recipe 24).
+- **[F4]** C&C 1's UART dump looked too slow for the FPGA monitor's 0.1 ms. *Not a limitation (D37):* with an FPGA the dump goes down LVDS and the FPGA waits.
+- **[F5]** Reports could wait on the request tree behind requests to a stopped target. *Fixed by D38:* deep receive queues in the tree and per-tile limits (rule 11).
+- **[F6]** Polling `STATUS.rd_running` (D17) is only as good as guarantee B, which the log states for [7] alone. *Open.*
+- **[F7]** A 128-bit data overlay at address 0 wrote the reserved word. *Answered by D37.4:* 16 bytes reserved; overlays start at 0x10.
+- **[F8]** The no-increment bit made a forgotten header store a silent pile-up. *Answered by D37.5:* the program clears it (rule 10).
+- **[F9]–[F14]**, smaller and open: mask juggling around consuming loads; `wait_all`'s cost and the stale counters done it leaves; an extra wake per expansion in the replayer loop; no timer for C&C 1's bounded waits; a stale "command landed" in every tile's `EVENTS`; and a stream can't name the broadcast, so C&C 1 boots tiles through its send port.
 
 ## 17. Write a block from data memory into big SRAM
 
@@ -916,26 +921,33 @@ static void a2a_uniform_start(void) {
 
 <!-- recipe: result_to_cc1 (rcp.h) -->
 ```c
-/* A result for C&C 1 (the self-test's signature): one request to target C&C 1 over the request bus (spec 3.3, 4.18).
- * The bus has back-pressure and never drops anything, so unlike v1.1's paced replies to C&C (REPORT's delay loop)
- * nothing needs pacing, and C&C 1 arms no counter: it pops 64 requests. The request format is C&C 1's to define;
- * the draft header's REQ_CC1 is a placeholder. */
-static void result_to_cc1(uint32_t hi, uint32_t lo) {
-    request_send(0, hi, lo, REQ_CC1(REQ_OP_RESULT, tile_index()));
+/* A result for C&C 1 (the self-test's signature): one request to target C&C 1 over the request bus (spec 3.3, 4.18),
+ * which has back-pressure and never drops anything, so nothing needs pacing (v1.1 paced replies to C&C through
+ * REPORT's delay loop). D38: a tile keeps at most one request outstanding to C&C 1, and issues the next only after
+ * the previous one's reply has come back; the request names its reply's counter (D25). So: arm counter 3, send,
+ * wait for C&C 1's reply, a 32-bit write to this tile's REPLY_WORD(DST_CC1). The format is a placeholder. */
+static uint32_t result_to_cc1(uint32_t hi, uint32_t lo) {
+    tile->WRITE_COUNTER[CTR_REPLY - 1] = 1;          /* before the request: the reply can't come sooner */
+    request_send(0, hi, lo, REQ_CC1(REQ_OP_RESULT, CTR_REPLY, tile_index()));
+    wait_all(EV_CTR(CTR_REPLY));                    /* the request is no longer outstanding */
+    return REPLY[2 * DST_CC1];                      /* C&C 1's answer */
 }
 ```
 
-The command sequence, from C&C 1: fill (`2`, base seed, n), configure (`3`), start (`4`), hash (`5`, the receive buffer, n), signature (`6`). C&C 1 then pops 64 requests.
+The command sequence, from C&C 1: fill (`2`, base seed, n), configure (`3`), start (`4`), hash (`5`, the receive buffer, n), signature (`6`). C&C 1 pops the 64 requests and answers each.
 
-- **The signatures go over the request bus**, not the mesh. v1.1 sent them as replies to C&C, paced by REPORT's delay loop so nothing fanned in. The request bus has back-pressure and never drops anything, so no pacing and no counter at C&C 1 are needed. The request's layout below its target is C&C 1's to define; the draft's `REQ_CC1` is a placeholder.
+- **The signatures go over the request bus**, not the mesh. v1.1 sent them as replies to C&C, paced by REPORT's delay loop so nothing fanned in. The request bus has back-pressure and never drops anything, so no pacing is needed.
+- **One request outstanding to C&C 1** (D38, rule 11): the tile arms counter 3, sends, and waits for C&C 1's one-word reply before `done`. C&C 1 answers each result as it drains them (recipe 27). The request's layout below its target is C&C 1's to define; the draft's `REQ_CC1` (op, reply counter, argument) is a placeholder.
+
+**Walk.** C&C 1 sends command 6 right after the hash's GO and waits for all READY. Each tile wakes, arms counter 3 with 1, and pushes its request; 64 requests reach C&C 1's 128-entry receive queue, so none waits for a credit. C&C 1's wait loop sees [9], pops each and writes its reply to the requestor's `REPLY_WORD(64)` with the counter the request named. Each tile's counter 3 reaches 0 and it pulses `done`; READY follows. A reply can't arrive before the tile's arming, which precedes its request.
 - **Checked in v1.1, to check again:** all 64 signatures equal the simulator's, and a record corrupted on one tile after the fill shows up only in its receiver's signature.
 
 ## 22. The boot ROM and the boot sequence
 
 **What it does.** Brings the chip from reset to every tile running its image with its first data in big SRAM. Three pieces of code: the ROM every unit runs, the image's start-up, and C&C 1's side.
-**Relies on:** D22, D23, D31 and D36 (the ROM exactly, the order of step 5, one kind for overlays and command, C&C 1's own boot), D6 ("command landed" when the slot-0 write lands in port B), D20 (`mtvec`, traps), D27 (data word 0).
+**Relies on:** D22, D23, D31 and D36 (the ROM, the order of step 5, one kind for overlays and command, C&C 1's own boot), D37.1 (the ROM jumps only if a command has landed), D37.2 (boot part 2 enables interrupts), D37.4 (16 reserved bytes), D6 ("command landed" when the slot-0 write lands in port B), D20 (`mtvec`, traps).
 
-**The ROM**, exactly as D36 lists it (assembly, since it is silicon):
+**The ROM**, as D36 lists it with D37.1's change to step 3 (assembly, since it is silicon):
 
 <!-- recipe: bootrom (bootrom.S) -->
 ```asm
@@ -948,11 +960,13 @@ _reset:
     li   t2, 64
     bgeu t1, t2, controller
     li   t3, 1                          /* 3. a tile: pulse done; "command landed" then raises READY */
-    sw   t3, X0REL(OFF_PULSE_DONE)(zero)
+3:  sw   t3, X0REL(OFF_PULSE_DONE)(zero)
 1:  wfi                                 /* the done gate: only GO wakes it */
-    lw   t4, X0REL(OFF_EVENTS)(zero)    /* consumes GO (the reset mask holds it) */
+    lw   t4, X0REL(OFF_EVENTS)(zero)    /* consumes GO (the reset mask holds it), and returns [6] unconsumed */
     andi t5, t4, EV_GO
     beqz t5, 1b
+    andi t5, t4, EV_COMMAND             /* D37.1: jump only if a command has landed. The event, not STATUS [5]: */
+    beqz t5, 3b                         /* GO cleared the status bit. A GO for other tiles: done again, wait */
     j    jump
 controller:                             /* 4. C&C 1-3 (64-66): wait for "command landed" itself */
     li   t3, EV_COMMAND
@@ -976,19 +990,31 @@ jump:                                   /* 5. slot 0, then slot 1 (the first com
 ```asm
 _start:
     li   sp, STACK_TOP                  /* the stack grows down from below the reply block */
-    la   t0, trap_handler               /* this image's handler (recipe 24); the ROM's served until now */
-    csrw mtvec, t0
     la   t0, __bss_start                /* zero .bss: .bss is not loaded */
     la   t1, __bss_end
 1:  bgeu t0, t1, 2f
     sw   zero, 0(t0)
     addi t0, t0, 4
     j    1b
-2:  li   t0, 1 << 11                    /* enable the hard interrupt: mie.MEIE (assumed; Q1, the CSR list) */
-    csrs mie, t0
-    csrsi mstatus, 1 << 3               /* and mstatus.MIE: from here an error traps (FINDINGS F2) */
-    call main                           /* main never returns: it loops in wait_for_command() */
+2:  call main                           /* never returns; interrupts stay off until boot part 2 (D37.2) */
 3:  j    3b
+```
+
+**Boot part 2**, the image's first command (D31 step 5, D37.2):
+
+<!-- recipe: boot_part2 (rcp_boot.c) -->
+```c
+/* Boot part 2: the image's first command after the ROM's jump, CMD_STAGE with the number of 128-bit packets of
+ * big-SRAM data C&C 1 sends, counted on counter 1, no sooner than stage_delay after its GO store (6.2). The counter
+ * store comes first in the start path, so no packet can beat it. Then this image's handler and the hard interrupt
+ * (D37.2: the ROM leaves interrupts off, and enabling them is the image's job), then the wait. */
+static void boot_part2(uint32_t packets) {
+    tile->WRITE_COUNTER[CTR_SRAM - 1] = packets;    /* first: the data may follow GO by stage_delay */
+    __asm__ volatile ("csrw mtvec, %0" :: "r"(trap_handler));
+    __asm__ volatile ("csrs mie, %0" :: "r"(1u << 11));   /* mie.MEIE (the bit is Q1's, the CSR list) */
+    __asm__ volatile ("csrsi mstatus, 8");          /* mstatus.MIE: from here an error traps */
+    if (packets) wait_all(EV_CTR(CTR_SRAM));        /* the data is in big SRAM; then done, in wait_for_command() */
+}
 ```
 
 **C&C 1's side**, firmware for later (C&C 1 is a behavioural Java model in meshsim v1.2, D36). It uses `command()`, `phase()`, `wait_all_ready()` and `go()` from recipe 27:
@@ -1008,7 +1034,7 @@ static void stage(uint32_t chunk, const uint32_t *w, uint32_t words) {   /* coun
 }
 static void boot_unit(unsigned dst, const Image *im) {
     overlay(dst, REGION_PMEM, im->pmem, im->pmem_words);
-    overlay(dst, REGION_DMEM + 0x10, im->dmem, im->dmem_words);   /* word 0 stays unwritten (D27; FINDINGS F7) */
+    overlay(dst, REGION_DMEM + DMEM_FIRST, im->dmem, im->dmem_words);   /* 0x00-0x0F are reserved (D37.4) */
     uint32_t entry = im->entry;
     command(dst, CMD_JUMP, 0, &entry, 1);           /* the first command is even: entry in slot 1 (D36) */
 }
@@ -1022,13 +1048,13 @@ static void cc1_boot(const Image *fs, const Image *pager, const Image *tiles,
         while (tile->EVENTS_PEEK & EV_REQ_PENDING) {
             uint32_t w0 = tile->REQUEST_GET_W0;
             (void)tile->REQUEST_RECEIVE;
-            started += ((w0 >> 10) & 0xFF) == REQ_OP_STARTED;
+            started += REQ_OP(w0) == REQ_OP_STARTED;   /* a controller's request: no reply needed (D38) */
         }
     }
     boot_unit(DST_BROADCAST, tiles);                /* broadcast: the same kind as its first command (D36) */
-    cc1->READY_EXPECT[0] = ~0u;                     /* all 64 tiles; one at a time doesn't work yet: FINDINGS F1 */
+    cc1->READY_EXPECT[0] = ~0u;                     /* all 64 here; one at a time works too since D37.1 */
     cc1->READY_EXPECT[1] = ~0u;
-    uint32_t n = stage_words / 4;                   /* step 5: announce the data, READY, GO, then the data */
+    uint32_t n = stage_words / 4;                   /* boot part 2: announce the data, READY, GO, then the data */
     phase(CMD_STAGE, n, 0, 0, 0);                   /* waits for the boot command's READY, GOs, sends CMD_STAGE */
     wait_all_ready();                               /* CMD_STAGE has landed and the images wait in wait_for_command() */
     go(0);
@@ -1042,15 +1068,16 @@ static void cc1_boot(const Image *fs, const Image *pager, const Image *tiles,
 1. **The reset is asserted** by the outside world, the whole chip (D35). Everything but the memories is zeroed: `done`, the gate (open), "command landed", every counter and event; `EVENTS_MASK` = GO | counters done; `mstatus.MIE` = 0.
 2. **The reset is released.** Every controller starts at 0x02000000. The outside world lands C&C 1's own overlays and first command (D36); C&C 1 takes the controller branch and jumps.
 3. **C&C 2 and C&C 3** sleep in the controller branch, their mask set to "command landed" alone. C&C 1 sends each its overlays, unicast and uncounted, then its first command, also unicast. One source, one destination, one kind: the command lands last (3.2). The ROM sees [6], restores the reset mask and jumps. Each image's start-up sends C&C 1 "started", and C&C 1 waits for both.
-4. **The tiles** pulsed `done` in the ROM and sleep behind the gate. C&C 1 broadcasts the overlays, then the first command, also broadcast (D36: one kind, or a unicast command could overtake a broadcast overlay). The program image goes to region 0x01; the data image to region 0x00 from byte 0x10, because word 0 is reserved (D27) and a 128-bit packet covering it would write it. **[F7]**
+4. **The tiles** pulsed `done` in the ROM and sleep behind the gate. C&C 1 broadcasts the overlays, then the first command, also broadcast (D36: one kind, or a unicast command could overtake a broadcast overlay). The program image goes to region 0x01; the data image to region 0x00 from byte 0x10, since the first 16 bytes are reserved (D37.4). **[F7]**
 5. **READY.** Each command lands in port B after every overlay packet, sets "command landed", and with `done` set raises READY. C&C 1, with `READY_EXPECT` = all 64, sleeps until "all tiles READY", then stores `PULSE_GO`.
-6. **GO** clears `done` and "command landed" and wakes each tile's ROM. The load of `EVENTS` consumes GO, so the image doesn't start with a pending GO (W1-33). The ROM reads slot 0, then slot 1, and jumps.
-7. **The start-up** sets the stack and `mtvec`, zeroes `.bss`, and **enables the hard interrupt**. Before this point an error raises the tile's error line but takes no trap, and nothing in the log sets `mstatus.MIE` at all. **[F2]** `main` then calls `wait_for_command()`.
-8. **Step 5: the first program's big-SRAM data.** C&C 1 sent `CMD_STAGE` right after the boot GO; it is the second command, odd, in slots 8-15. The data can't come with the boot command: the start-up isn't a short fixed start path, and data arriving before `.bss` is zeroed and the counter armed would be unexpected arrival. The tile reaches `wait_for_command()`; `done` and the landed `CMD_STAGE` raise READY; GO. In its start path the tile arms counter 1 with the count. C&C 1 waits `stage_delay` after its GO store, then broadcasts the data, counted, to region 0x03 by address. The tile waits for counter 1, then `done`.
+6. **GO** clears `done` and the status bit "command landed", and wakes each tile's ROM. The load of `EVENTS` consumes GO, so the image doesn't start with a pending GO (W1-33). The same load returns the command-landed event [6], which the reset mask doesn't consume: GO cleared the status bit, not the event. With [6] the ROM reads slot 0, then slot 1, and jumps (D37.1). Without it, the GO was for other tiles: the ROM pulses `done` again and waits for the next GO. **[F1]**
+7. **The start-up** sets the stack, zeroes `.bss` and calls `main`, with interrupts still off and `mtvec` still at the ROM's handler. An error before boot part 2 raises the tile's error line, which reaches C&C 1 at once, but takes no trap. `main` calls `wait_for_command()`.
+8. **Boot part 2, the first program's big-SRAM data** (D31 step 5). C&C 1 sent `CMD_STAGE` right after the boot GO; it is the image's first command, odd, in slots 8-15. The data can't come with the boot command: the start-up isn't a short fixed start path, and data arriving before `.bss` is zeroed and the counter armed would be unexpected arrival. The tile reaches `wait_for_command()`; `done` and the landed `CMD_STAGE` raise READY; GO. In its start path the tile arms counter 1 with the count, then sets `mtvec` to its own handler and enables `mie.MEIE` and `MIE` (D37.2) **[F2]**. C&C 1 waits `stage_delay` after its GO store, then broadcasts the data, counted, to region 0x03 by address. The tile waits for counter 1, then `done`.
 
-**What the walk found.**
-- **[F1] GO reaches tiles still in the ROM.** GO is one global net. A tile whose image hasn't been loaded is asleep in the ROM's tile branch; the next GO meant for other tiles wakes it, the ROM consumes GO, reads whatever is in slots 0 and 1, and jumps there. Data memory isn't cleared by reset, so that is garbage, and it takes a trap with no error line (D27). So **every tile must be loaded before the first GO**. `READY_EXPECT` exists so that units can be brought up one at a time (D23, D28), but that doesn't work with this ROM. The recipe loads all 64 together. The suggested fix is in the ROM: jump only if the load that returned GO also shows "command landed" [6] (still pending, since the reset mask doesn't consume it); otherwise pulse `done` again and keep waiting.
-- **The first command must be even** (D36), so C&C 1's per-tile parity starts at 0 after every reset.
+**What the walk found, and the answers.**
+- **[F1]** GO is one global net, so the next GO reaches every tile still asleep in the ROM. D36's ROM jumped on any GO, into whatever memory held. D37.1's check of [6] fixes it, which makes `READY_EXPECT`'s one-at-a-time bring-up (D23, D28) work. **C&C 1's rule:** it lands a tile's first command only when that tile is to start at the next GO, and adds it to `READY_EXPECT` then. A tile whose command has landed jumps at the next GO, whatever `READY_EXPECT` says.
+- **[F2]** `MIE` is 0 at reset (W1-03), and the log didn't say who sets it. D37.2: boot part 2 does, after its counter store, so the start path stays the counter store first.
+- **The first command after a reset is even** (D36), so C&C 1's per-unit parity starts at 0 after every reset.
 - **The ROM's handler never writes data memory** (D31): recipe 24's handler needs none, so the same code serves in the ROM and in the image.
 
 ## 23. Waiting for the tables by events
@@ -1086,7 +1113,7 @@ static void tables_free_unknown(void) {
 ## 24. The error handler
 
 **What it does.** On any error (the hard interrupt) or synchronous exception: send the fixed set of reports to C&C 1 over the request bus, then park for ever.
-**Relies on:** D20 (traps are terminal; `MIE` cleared on entry and never set again, so no retrap; no `mret`; torn port sequences), D21 (the fixed report set; C&C 1 counts against it), D10 (an absent peripheral's window is a bus error), spec 3.3 and 4.18 (128-bit requests, back-pressure).
+**Relies on:** D20 (traps are terminal; `MIE` cleared on entry and never set again, so no retrap; no `mret`; torn port sequences), D21 and D37.3 (the fixed report set; C&C 1 counts against it), D38 (reports need no reply), D10 (an absent peripheral's window is a bus error), spec 3.3 and 4.18 (128-bit requests, back-pressure).
 
 <!-- recipe: handler (handler.S) -->
 ```asm
@@ -1135,7 +1162,7 @@ trap_handler:                           /* mtvec points here; MIE is now 0 and i
     lw   x1, 0(x9)
     lw   x2, 4(x9)
     lw   x3, 8(x9)
-2:  slli x4, x7, 18                     /* header for seq x7 */
+2:  slli x4, x7, 21                     /* header for seq x7 */
     ori  x4, x4, 1 << 10
     sw   x1, W1(zero); sw x2, W2(zero); sw x4, W0(zero); sw x3, SEND(zero)
     addi x7, x7, 1
@@ -1146,14 +1173,14 @@ trap_handler:                           /* mtvec points here; MIE is now 0 and i
     lw   x1, 24(x9)                     /* EVENTS_PEEK (word 6), EVENTS_MASK (7), DMA_HDR (8) */
     lw   x2, 28(x9)
     lw   x3, 32(x9)
-3:  slli x4, x7, 18
+3:  slli x4, x7, 21
     ori  x4, x4, 1 << 10
     sw   x1, W1(zero); sw x2, W2(zero); sw x4, W0(zero); sw x3, SEND(zero)
     addi x7, x7, 1
     li   x1, 0
     beqz x8, 4f
     lw   x1, 36(x9)                     /* DMA_ADDR (word 9); two words spare */
-4:  slli x4, x7, 18
+4:  slli x4, x7, 21
     ori  x4, x4, 1 << 10
     sw   x1, W1(zero); sw zero, W2(zero); sw x4, W0(zero); sw zero, SEND(zero)
     addi x7, x7, 1
@@ -1177,16 +1204,17 @@ park:
 - **No memory, no scratch register.** Every store is x0-relative (the register block is at the top of the address space). A register is sent before it is reused: once x1 and x2 are in the port's `W1` and `W2` holding registers, x1 is free to build the header. So the handler reports x1–x31 exactly as the trap found them, and the ROM can hold the same code (D31).
 - **It reads `EVENTS_PEEK`, never `EVENTS`,** at both levels: a load of `EVENTS` consumes (D20). Of a window's ten standard words it reads seven; `PULSE_RUN` and `PULSE_DMA` are write-only, and `EVENTS` consumes.
 - **`PARAMS` [2:0] decides** whether a window is read: an absent one is a bus error, which would trap inside the handler.
-- **Absent peripherals still get their three reports, as zeros**, so every unit sends the same number. D20 says to report "each present peripheral" and D21 says the set is fixed; they disagree when tiles differ. **[F3]**
+- **Absent peripherals still get their three reports, as zeros**, so every unit sends the same number (D37.3). **[F3]**
+- **No replies:** reports are D38's exception to one request outstanding to C&C 1.
 - **The request header** (op, sequence) is a placeholder: C&C 1's request format isn't defined.
 
 **Walk.**
-1. An error sets a sticky `ERRORS` bit. The hard interrupt rises; with `mie` and `mstatus.MIE` set (recipe 22) the trap is taken, even in `WFI` and even in the `done` gate (D1.4). `MIE` drops on entry.
+1. An error sets a sticky `ERRORS` bit. The hard interrupt rises; with `mie` and `mstatus.MIE` set (boot part 2, recipe 22) the trap is taken, even in `WFI` and even in the `done` gate (D1.4). `MIE` drops on entry.
 2. In parallel, the error line reaches C&C 1's `ERROR_LINES` at a fixed latency, with no software (D1.5); C&C 1 takes its own interrupt and runs recipe 27's toast path.
 3. The handler stores 23 requests. A `REQUEST_SEND` stalls only while the 128-entry FIFO is full, so all 23 fit without a stall.
-4. The tree delivers them to C&C 1's 16-entry receive queue by credits; C&C 1 drains it.
+4. The tree delivers them to C&C 1's 128-entry receive queue, at the tree's root, by credits (D38); C&C 1 drains it.
 5. The handler parks in a jump to itself. Its peripherals carry on, unserviced, until the reset (D21).
-- **A report can wait behind requests to another target.** The tree keeps each tile's requests in order and blocks a whole row behind a request for a target with no credit (spec 3.3, accepted). If the file system has stopped popping, a tile that queued a log request before its error can't get its reports out. **[F5]**
+- **Reports never wait behind other targets' traffic.** Before D38 a tile's reports could sit behind its own earlier log request to a file system that had stopped popping, with the whole row stalled. With D38's queues and per-tile limits (rule 11), normal traffic never exhausts a target's credits, so the root never stalls a row. Only a mass failure, with more than 128 reports for C&C 1 at once, stalls rows, and C&C 1 drains them one by one (accepted). **[F5]**
 
 ## 25. A peripheral window through its struct
 
@@ -1319,7 +1347,7 @@ static void replay_pass(Feed *code, Feed *rlog, Feed *wlog, int store_log) {
 ## 27. C&C 1's side of a phase
 
 **What it does.** C&C 1's firmware for the phase cycle: send a command, wait until every expected tile is READY, GO, and on an error the toast path. C&C 1 is a behavioural model in meshsim v1.2 (D36); this is the shape of its firmware for later.
-**Relies on:** D28 (C&C 1's peripheral: `ERROR_LINES`, `READY_LINES`, `READY_EXPECT`, `PULSE_GO`, `WATCHDOG`, the UART), D35 and D36 (the toast pin, one watchdog), D6 (commands), D21 (draining reports), spec 6.3 and 6.6 (the GO settle).
+**Relies on:** D28 (C&C 1's peripheral: `ERROR_LINES`, `READY_LINES`, `READY_EXPECT`, `PULSE_GO`, `WATCHDOG`, the UART), D35-D37 (the toast pin, one watchdog, the dump down LVDS), D38 (C&C 1's 128-entry queue; tiles wait for its replies), D6 (commands), D21 (draining reports), spec 6.3 and 6.6 (the GO settle).
 
 <!-- recipe: cc1_command (rcp_cc1.c) -->
 ```c
@@ -1339,16 +1367,21 @@ static void command(unsigned dst, uint32_t type, uint32_t arg, const uint32_t *a
 
 <!-- recipe: cc1_phase (rcp_cc1.c) -->
 ```c
-/* C&C 1's side of a phase (6.3; D28, D36). The next command was sent right after the last GO; C&C 1 sleeps until every
+/* C&C 1's side of a phase (6.3; D28, D36, D38). The next command was sent right after the last GO; C&C 1 sleeps until every
  * expected tile is READY, then GO. "All tiles READY" is live: (READY & EXPECT) == EXPECT, EXPECT != 0. PULSE_GO clears
  * READY 0-63, drives GO and restarts the watchdog, in one store. Requests that aren't errors (C&C 2's and 3's "started",
- * tiles' results) arrive meanwhile; an error never comes this way: it raises C&C 1's hard interrupt (recipe 27's toast
- * path). Software re-checks after every wake: the live bit may lag a store by a cycle (D10). */
+ * tiles' results) arrive meanwhile, and C&C 1 answers each tile's, since the tile waits for that reply before its
+ * next request (D38). An error never comes this way: it raises C&C 1's hard interrupt (recipe 27's toast path).
+ * Software re-checks after every wake: the live bit may lag a store by a cycle (D10). */
 static void drain_requests(void) {
     while (tile->EVENTS_PEEK & EV_REQ_PENDING) {    /* popping an empty queue would be receive underflow, an error */
         uint32_t w0 = tile->REQUEST_GET_W0, w1 = tile->REQUEST_GET_W1, w2 = tile->REQUEST_GET_W2;
         (void)tile->REQUEST_RECEIVE;                /* the last word pops */
-        if (((w0 >> 10) & 0xFF) == REQ_OP_RESULT) { results[w0 >> 18 & 63][0] = w2; results[w0 >> 18 & 63][1] = w1; }
+        if (REQ_OP(w0) != REQ_OP_RESULT) continue;
+        unsigned t = REQ_REQUESTOR(w0) & 63;
+        results[t][0] = w2; results[t][1] = w1;
+        send_to(ROUTER_HDR_W(t, MODE_WRITE, REQ_REPLY_CTR(w0)), REPLY_WORD(DST_CC1));
+        send32(1);                                  /* the reply ends the tile's outstanding request (D38) */
     }
 }
 static void wait_all_ready(void) {
@@ -1376,11 +1409,12 @@ static void phase(uint32_t type, uint32_t arg, const uint32_t *args, unsigned n,
 
 <!-- recipe: cc1_toast (rcp_cc1.c) -->
 ```c
-/* C&C 1's error path (D35, D36), from its trap handler: a unit's error (its line, through the unit-error bit) or its
- * own. MIE is 0 and stays 0; toast is already latched in hardware, and an FPGA monitor soft-resets about 0.1 ms later.
- * Best effort, nothing waits for it: start the file system's flush, drain the reports into data memory (fast), then
- * print them over the UART (slow: likely cut short by the reset; FINDINGS F4). Bounded by a loop count: C&C 1 has no
- * timer but the watchdog. The request formats are placeholders: C&C 2's flush op isn't defined yet. */
+/* C&C 1's error path (D35, D36, D37), from its trap handler: a unit's error (its line, through the unit-error bit) or its
+ * own. MIE is 0 and stays 0; toast is already latched in hardware. Best effort: start the file system's flush, drain
+ * the reports into data memory as they arrive (so the tree's rows don't stall behind C&C 1's 128-entry queue, D38),
+ * then send the dump out: down LVDS when an FPGA is in the loop, which waits as long as it needs before resetting, or
+ * over the UART when a person resets by hand (D37). The host words are deferred, so the UART stands for both here.
+ * Bounded by a loop count: C&C 1 has no timer but the watchdog. C&C 2's flush request format is a placeholder. */
 #define REQ_OP_FLUSH 0x10
 #define MAX_REPORTS  (64 * 23)                      /* every tile failing at once, 23 reports each (recipe 24) */
 static uint32_t reports[MAX_REPORTS][4];            /* 23 KB of C&C 1's 32 KB data memory */
@@ -1400,7 +1434,7 @@ void cc1_toast(uint32_t mcause, uint32_t mepc) {
         n++;
         idle = 0;
     }
-    uart_hex(mcause); uart_hex(mepc);               /* 3. what C&C 1 knows, then the reports */
+    uart_hex(mcause); uart_hex(mepc);               /* 3. what C&C 1 knows, then the reports (LVDS or UART) */
     for (int i = 0; i < 3; i++) uart_hex(cc1->ERROR_LINES[i]);
     for (uint32_t r = 0; r < n; r++) {
         for (int i = 0; i < 4; i++) uart_hex(reports[r][i]);
@@ -1418,14 +1452,13 @@ void cc1_toast(uint32_t mcause, uint32_t mepc) {
 **Walk (a phase).**
 1. C&C 1 sent command k + 1 right after GO k, `go_latency` + 1 cycles after its store. The tiles are running phase k.
 2. Each tile finishes phase k and pulses `done`; command k + 1 has landed, so READY sets its bit in `READY_LINES`.
-3. When the last expected bit sets, "all tiles READY" rises, the peripheral's masked event raises C&C 1's [10], and `WFI` returns. `drain_requests` pops anything that came meanwhile. `cc1->EVENTS` returns the live bit (and would consume a watchdog expiry).
+3. When the last expected bit sets, "all tiles READY" rises, the peripheral's masked event raises C&C 1's [10], and `WFI` returns. `drain_requests` pops anything that came meanwhile and answers each tile's request, which the tile is waiting for before it can pulse `done` (D38). Without that answer the tile would never become READY. `cc1->EVENTS` returns the live bit (and would consume a watchdog expiry).
 4. `go()`: the watchdog's limit, `PULSE_GO` (READY cleared, GO driven, watchdog restarted), the settle.
 5. The next command goes out, and phase k + 1 runs.
 
 **Walk (the toast path).**
 1. A tile's error raises its line. C&C 1's peripheral's unit-error bit (`ERRORS` [0], `OR(ERROR_LINES)`, live) sets C&C 1's `ERRORS` [11] and the toast pin latches (D36); C&C 1's hard interrupt traps it, with `MIE` = 0 from here on.
 2. `cc1_toast` asks the file system to flush (C&C 2's request format: placeholder).
-3. It drains reports to data memory as they arrive, never popping an empty queue (receive underflow is an error, though with toast already latched it changes nothing).
-4. Then it prints them over the UART, and parks.
-- **The outside world resets the chip:** by hand when solo, or an FPGA monitor after about 0.1 ms (D35). At 57,600 baud a 36-character report line takes about 6 ms, so the UART dump of even one report is cut short by an FPGA reset. Hence draining to memory first, and the file system's flush is the path that survives (a soft reset keeps LPDDR). **[F4]**
+3. It drains reports to data memory as they arrive, never popping an empty queue (receive underflow is an error, though with toast already latched it changes nothing). Draining fast keeps C&C 1's 128-entry queue from filling and stalling rows (D38).
+4. Then it sends the dump out and parks. With an FPGA in the loop the dump goes down LVDS and the FPGA waits as long as it needs before resetting; solo, it goes over the UART and a person resets by hand (D37). The host words are deferred, so the code shows the UART. **[F4]**
 - **No timer:** C&C 1's bounded waits count loop iterations; the only timer, the watchdog, ends in toast. **[F12]**

@@ -1,4 +1,4 @@
-/* Recipe 22: the boot ROM, exactly as D36 writes it. One ROM for every unit, at 0x02000000, the reset vector.
+/* Recipe 22: the boot ROM, as D36 writes it with D37.1's change. One ROM for every unit, at 0x02000000, the reset vector.
  * It never writes data memory; it reads only the command block, after the command has landed (D31). */
 #include "../../wip/sw/mesh-v1.2-draft.h"
     .section .bootrom, "ax"
@@ -13,11 +13,13 @@ _reset:
     li   t2, 64
     bgeu t1, t2, controller
     li   t3, 1                          /* 3. a tile: pulse done; "command landed" then raises READY */
-    sw   t3, X0REL(OFF_PULSE_DONE)(zero)
+3:  sw   t3, X0REL(OFF_PULSE_DONE)(zero)
 1:  wfi                                 /* the done gate: only GO wakes it */
-    lw   t4, X0REL(OFF_EVENTS)(zero)    /* consumes GO (the reset mask holds it) */
+    lw   t4, X0REL(OFF_EVENTS)(zero)    /* consumes GO (the reset mask holds it), and returns [6] unconsumed */
     andi t5, t4, EV_GO
     beqz t5, 1b
+    andi t5, t4, EV_COMMAND             /* D37.1: jump only if a command has landed. The event, not STATUS [5]: */
+    beqz t5, 3b                         /* GO cleared the status bit. A GO for other tiles: done again, wait */
     j    jump
 controller:                             /* 4. C&C 1-3 (64-66): wait for "command landed" itself */
     li   t3, EV_COMMAND

@@ -1,12 +1,13 @@
 /* Recipe 24: the error handler (D20, D21). Report the fixed set to C&C 1 over the request bus, then park.
  * It never writes data memory and needs no stack, so the boot ROM can hold the same code (D22, D36). Every value is
- * sent before the register that held it is reused: x1-x3 are free once their own report has gone. */
+ * sent before the register that held it is reused: x1-x3 are free once their own report has gone. Reports are
+ * the exception to D38's one-outstanding rule: they get no reply, and the handler sends all 23 at once. */
 #include "../../wip/sw/mesh-v1.2-draft.h"
 #define W0   X0REL(OFF_REQUEST_SET_W0)
 #define W1   X0REL(OFF_REQUEST_SET_W1)
 #define W2   X0REL(OFF_REQUEST_SET_W2)
 #define SEND X0REL(OFF_REQUEST_SEND)
-#define HDR(seq) ((1 << 10) | ((seq) << 18))      /* REQ_CC1(REQ_OP_REPORT, seq): target 0 (C&C 1), op 1; placeholder */
+#define HDR(seq) ((1 << 10) | ((seq) << 21))      /* REQ_CC1(REQ_OP_REPORT, 0, seq): target 0, op 1, no reply; placeholder */
 /* report seq carrying three registers ra, rb, rc; x1 is free once the first report's words are in the port */
 #define REPORT_REGS(seq, ra, rb, rc)  sw ra, W1(zero); sw rb, W2(zero); li x1, HDR(seq); sw x1, W0(zero); sw rc, SEND(zero)
 /* report seq carrying three words already in x1-x3 (x3 last: its store sends), with the header built in x4 */
@@ -61,7 +62,7 @@ trap_handler:                           /* mtvec points here; MIE is now 0 and i
     lw   x1, 0(x9)
     lw   x2, 4(x9)
     lw   x3, 8(x9)
-2:  slli x4, x7, 18                     /* header for seq x7 */
+2:  slli x4, x7, 21                     /* header for seq x7 */
     ori  x4, x4, 1 << 10
     sw   x1, W1(zero); sw x2, W2(zero); sw x4, W0(zero); sw x3, SEND(zero)
     addi x7, x7, 1
@@ -72,14 +73,14 @@ trap_handler:                           /* mtvec points here; MIE is now 0 and i
     lw   x1, 24(x9)                     /* EVENTS_PEEK (word 6), EVENTS_MASK (7), DMA_HDR (8) */
     lw   x2, 28(x9)
     lw   x3, 32(x9)
-3:  slli x4, x7, 18
+3:  slli x4, x7, 21
     ori  x4, x4, 1 << 10
     sw   x1, W1(zero); sw x2, W2(zero); sw x4, W0(zero); sw x3, SEND(zero)
     addi x7, x7, 1
     li   x1, 0
     beqz x8, 4f
     lw   x1, 36(x9)                     /* DMA_ADDR (word 9); two words spare */
-4:  slli x4, x7, 18
+4:  slli x4, x7, 21
     ori  x4, x4, 1 << 10
     sw   x1, W1(zero); sw zero, W2(zero); sw x4, W0(zero); sw zero, SEND(zero)
     addi x7, x7, 1

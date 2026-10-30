@@ -29,7 +29,8 @@ static const uint8_t SCHED[16][4] __attribute__((unused)) = { { 1, 29, 35, 63 },
  * address in every receiver, so ROUTER_ADDR is set once with no-increment and each send changes only ROUTER_HDR's
  * dst. Afterwards in[s] holds tile s's word to this tile, copied from REPLY[2 s]. Counted on counter 3 (replies),
  * which every receiver arms first in the command, by identical code: the fastest sender's word can arrive a few
- * cycles after GO. A tile keeps at most one reply outstanding to each receiver until it has been read. */
+ * cycles after GO. A tile keeps at most one reply outstanding to each receiver until it has been read. The
+ * no-increment bit stays set until the program clears it (D37.5), so the exchange clears it when it is done. */
 static void xchg(const uint32_t *out, volatile uint32_t *in) {
     unsigned me = tile_index();
     tile->WRITE_COUNTER[CTR_REPLY - 1] = 64;        /* including this tile's word to itself */
@@ -40,6 +41,7 @@ static void xchg(const uint32_t *out, volatile uint32_t *in) {
             tile->ROUTER_HDR = ROUTER_HDR_W(d, MODE_WRITE, CTR_REPLY) | ROUTER_NOINC;
             send32(out[d]);
         }
+    tile->ROUTER_HDR &= ~ROUTER_NOINC;              /* done with the fixed address: clear it (D37.5) */
     wait_all(EV_CTR(CTR_REPLY));                    /* every word to this tile is in */
     for (int s = 0; s < 64; s++) in[s] = REPLY[2 * s];
 }
@@ -92,12 +94,16 @@ static inline void delay4(uint32_t n) {
 
 #ifdef RCP_RESULT
 /* RECIPE result_to_cc1 */
-/* A result for C&C 1 (the self-test's signature): one request to target C&C 1 over the request bus (spec 3.3, 4.18).
- * The bus has back-pressure and never drops anything, so unlike v1.1's paced replies to C&C (REPORT's delay loop)
- * nothing needs pacing, and C&C 1 arms no counter: it pops 64 requests. The request format is C&C 1's to define;
- * the draft header's REQ_CC1 is a placeholder. */
-static void result_to_cc1(uint32_t hi, uint32_t lo) {
-    request_send(0, hi, lo, REQ_CC1(REQ_OP_RESULT, tile_index()));
+/* A result for C&C 1 (the self-test's signature): one request to target C&C 1 over the request bus (spec 3.3, 4.18),
+ * which has back-pressure and never drops anything, so nothing needs pacing (v1.1 paced replies to C&C through
+ * REPORT's delay loop). D38: a tile keeps at most one request outstanding to C&C 1, and issues the next only after
+ * the previous one's reply has come back; the request names its reply's counter (D25). So: arm counter 3, send,
+ * wait for C&C 1's reply, a 32-bit write to this tile's REPLY_WORD(DST_CC1). The format is a placeholder. */
+static uint32_t result_to_cc1(uint32_t hi, uint32_t lo) {
+    tile->WRITE_COUNTER[CTR_REPLY - 1] = 1;          /* before the request: the reply can't come sooner */
+    request_send(0, hi, lo, REQ_CC1(REQ_OP_RESULT, CTR_REPLY, tile_index()));
+    wait_all(EV_CTR(CTR_REPLY));                    /* the request is no longer outstanding */
+    return REPLY[2 * DST_CC1];                      /* C&C 1's answer */
 }
 /* END */
 #endif

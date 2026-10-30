@@ -23,16 +23,21 @@ static void command(unsigned dst, uint32_t type, uint32_t arg, const uint32_t *a
 /* END */
 
 /* RECIPE cc1_phase */
-/* C&C 1's side of a phase (6.3; D28, D36). The next command was sent right after the last GO; C&C 1 sleeps until every
+/* C&C 1's side of a phase (6.3; D28, D36, D38). The next command was sent right after the last GO; C&C 1 sleeps until every
  * expected tile is READY, then GO. "All tiles READY" is live: (READY & EXPECT) == EXPECT, EXPECT != 0. PULSE_GO clears
  * READY 0-63, drives GO and restarts the watchdog, in one store. Requests that aren't errors (C&C 2's and 3's "started",
- * tiles' results) arrive meanwhile; an error never comes this way: it raises C&C 1's hard interrupt (recipe 27's toast
- * path). Software re-checks after every wake: the live bit may lag a store by a cycle (D10). */
+ * tiles' results) arrive meanwhile, and C&C 1 answers each tile's, since the tile waits for that reply before its
+ * next request (D38). An error never comes this way: it raises C&C 1's hard interrupt (recipe 27's toast path).
+ * Software re-checks after every wake: the live bit may lag a store by a cycle (D10). */
 static void drain_requests(void) {
     while (tile->EVENTS_PEEK & EV_REQ_PENDING) {    /* popping an empty queue would be receive underflow, an error */
         uint32_t w0 = tile->REQUEST_GET_W0, w1 = tile->REQUEST_GET_W1, w2 = tile->REQUEST_GET_W2;
         (void)tile->REQUEST_RECEIVE;                /* the last word pops */
-        if (((w0 >> 10) & 0xFF) == REQ_OP_RESULT) { results[w0 >> 18 & 63][0] = w2; results[w0 >> 18 & 63][1] = w1; }
+        if (REQ_OP(w0) != REQ_OP_RESULT) continue;
+        unsigned t = REQ_REQUESTOR(w0) & 63;
+        results[t][0] = w2; results[t][1] = w1;
+        send_to(ROUTER_HDR_W(t, MODE_WRITE, REQ_REPLY_CTR(w0)), REPLY_WORD(DST_CC1));
+        send32(1);                                  /* the reply ends the tile's outstanding request (D38) */
     }
 }
 static void wait_all_ready(void) {
@@ -72,7 +77,7 @@ static void stage(uint32_t chunk, const uint32_t *w, uint32_t words) {   /* coun
 }
 static void boot_unit(unsigned dst, const Image *im) {
     overlay(dst, REGION_PMEM, im->pmem, im->pmem_words);
-    overlay(dst, REGION_DMEM + 0x10, im->dmem, im->dmem_words);   /* word 0 stays unwritten (D27; FINDINGS F7) */
+    overlay(dst, REGION_DMEM + DMEM_FIRST, im->dmem, im->dmem_words);   /* 0x00-0x0F are reserved (D37.4) */
     uint32_t entry = im->entry;
     command(dst, CMD_JUMP, 0, &entry, 1);           /* the first command is even: entry in slot 1 (D36) */
 }
@@ -86,13 +91,13 @@ static void cc1_boot(const Image *fs, const Image *pager, const Image *tiles,
         while (tile->EVENTS_PEEK & EV_REQ_PENDING) {
             uint32_t w0 = tile->REQUEST_GET_W0;
             (void)tile->REQUEST_RECEIVE;
-            started += ((w0 >> 10) & 0xFF) == REQ_OP_STARTED;
+            started += REQ_OP(w0) == REQ_OP_STARTED;   /* a controller's request: no reply needed (D38) */
         }
     }
     boot_unit(DST_BROADCAST, tiles);                /* broadcast: the same kind as its first command (D36) */
-    cc1->READY_EXPECT[0] = ~0u;                     /* all 64 tiles; one at a time doesn't work yet: FINDINGS F1 */
+    cc1->READY_EXPECT[0] = ~0u;                     /* all 64 here; one at a time works too since D37.1 */
     cc1->READY_EXPECT[1] = ~0u;
-    uint32_t n = stage_words / 4;                   /* step 5: announce the data, READY, GO, then the data */
+    uint32_t n = stage_words / 4;                   /* boot part 2: announce the data, READY, GO, then the data */
     phase(CMD_STAGE, n, 0, 0, 0);                   /* waits for the boot command's READY, GOs, sends CMD_STAGE */
     wait_all_ready();                               /* CMD_STAGE has landed and the images wait in wait_for_command() */
     go(0);
@@ -102,11 +107,12 @@ static void cc1_boot(const Image *fs, const Image *pager, const Image *tiles,
 /* END */
 
 /* RECIPE cc1_toast */
-/* C&C 1's error path (D35, D36), from its trap handler: a unit's error (its line, through the unit-error bit) or its
- * own. MIE is 0 and stays 0; toast is already latched in hardware, and an FPGA monitor soft-resets about 0.1 ms later.
- * Best effort, nothing waits for it: start the file system's flush, drain the reports into data memory (fast), then
- * print them over the UART (slow: likely cut short by the reset; FINDINGS F4). Bounded by a loop count: C&C 1 has no
- * timer but the watchdog. The request formats are placeholders: C&C 2's flush op isn't defined yet. */
+/* C&C 1's error path (D35, D36, D37), from its trap handler: a unit's error (its line, through the unit-error bit) or its
+ * own. MIE is 0 and stays 0; toast is already latched in hardware. Best effort: start the file system's flush, drain
+ * the reports into data memory as they arrive (so the tree's rows don't stall behind C&C 1's 128-entry queue, D38),
+ * then send the dump out: down LVDS when an FPGA is in the loop, which waits as long as it needs before resetting, or
+ * over the UART when a person resets by hand (D37). The host words are deferred, so the UART stands for both here.
+ * Bounded by a loop count: C&C 1 has no timer but the watchdog. C&C 2's flush request format is a placeholder. */
 #define REQ_OP_FLUSH 0x10
 #define MAX_REPORTS  (64 * 23)                      /* every tile failing at once, 23 reports each (recipe 24) */
 static uint32_t reports[MAX_REPORTS][4];            /* 23 KB of C&C 1's 32 KB data memory */
@@ -126,7 +132,7 @@ void cc1_toast(uint32_t mcause, uint32_t mepc) {
         n++;
         idle = 0;
     }
-    uart_hex(mcause); uart_hex(mepc);               /* 3. what C&C 1 knows, then the reports */
+    uart_hex(mcause); uart_hex(mepc);               /* 3. what C&C 1 knows, then the reports (LVDS or UART) */
     for (int i = 0; i < 3; i++) uart_hex(cc1->ERROR_LINES[i]);
     for (uint32_t r = 0; r < n; r++) {
         for (int i = 0; i < 4; i++) uart_hex(reports[r][i]);

@@ -943,6 +943,11 @@ Decided (O), from W2-04. Settles what addresses mean at the controllers and engi
   4. When the window is complete, the RW engine writes it to LPDDR and **returns the tag** to the file
      system. *(How is open, a detail of the engine's design; suggested: an event in the engine's `EVENTS`
      and a register presenting the closed tag, rather than a request-bus message.)*
+- **Constraint for the file system's design** (W2-28; deferred to when the FS and RW engine are built):
+  every write into a tag window reaches C&C 2 through one link, and the mesh has no flow control, so several
+  tiles streaming into open windows at once overflow it. The FS must either keep **one writer in flight at
+  a time** (v1.1's one-token rule; the tag pool still lets the RW engine write one window out while the next
+  fills) or **pace its writers** to a stated share of one packet per cycle. No hardware changes either way.
 - **Requests that cause data to come back** (W2-05; owner: as needed, details to settle with 6.7's request
   format): the request names the destination as a full 32-bit address (replacing v1.1's destination kind
   and 128-byte-unit address), and, if the answer must be counted, the data's counter and the reply's

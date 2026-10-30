@@ -1,0 +1,14 @@
+# Test sources run_tests.sh leaves out of the build until the phase that rewrites them (WORKER4, meshsim v1.2).
+# One file per line: the file, then why. Delete a line when its file compiles again.
+CondTest.java      phase 2: the v1.1 register map, conditions and REPORT (C programs)
+CtrlTest.java      phase 2: the v1.1 register map and the C programs
+HooksTest.java     phase 2: the v1.1 register map, the send port, TILE_PULSE (from Java and C)
+RegDocTest.java    phase 2: REGISTERS.md and mesh.h are regenerated from the v1.2 register table
+RiscvTest.java     phase 2: relinked at the v1.2 map; PASS/FAIL by the exit word (8.15), not ebreak
+RequestBusTest.java  phase 2: the request port's v1.2 registers and the receive queues in the tree (from Java and C)
+PeripheralSlotTest.java  phase 3: the peripheral framework replaces v1.1's slot
+SenderTest.java    phase 3: the sender becomes a peripheral's DMA (retired as such)
+SortTest.java      sort port: the sort is ported onto the v1.2 simulator after WORKER4
+Inputs.java        sort port (SortTest's inputs)
+SortSummary.java   sort port
+VerifySummary.java sort port

@@ -17,7 +17,7 @@ run() { echo "== $1"; shift; "$@" 2>&1 | tee results/$LOG.log | tail -${TAIL:-1}
 pending() { echo "== $2"; echo "PENDING ($3)" | tee results/$1.log; }
 Q=; [ "$MODE" = quick ] && Q=quick
 pending layout     "the layout: meshsim's copies of sw/ and sort/ (tools/check_layout.sh)" "sort port"
-pending sw-build   "building the tile programs (sw/build.sh; regenerates sw/mesh.h)" "phase 2"
+LOG=sw-build TAIL=3 run "building the tile programs (sw/build.sh; regenerates sw/mesh.h)" sh sw/build.sh
 pending sort-build "building the sort program (sw/ext/sort/build.sh)" "sort port"
 LOG=bus       TAIL=1 run "bus primitives"                         $J BusTest
 LOG=net       TAIL=1 run "network, packets, director"         $J NetTest -1 $Q
@@ -28,8 +28,8 @@ LOG=mem-shuf  TAIL=1 run "shuffled child order (seed 3)"      $J MemTest 3
 LOG=mem-shuf2 TAIL=1 run "shuffled child order (seed 8)"      $J MemTest 8
 LOG=engine    TAIL=1 run "address generator, write engine, all-to-all (small)" $J EngineTest -1
 LOG=eng-shuf  TAIL=1 run "shuffled child order (seed 4)"      $J EngineTest 4
-pending ctrl       "control and the controller (from C)" "phase 2"
-pending ctrl-shuf  "shuffled child order (seed 4)" "phase 2"
+LOG=ctrl      TAIL=1 run "control and the controller (from C)"  $J CtrlTest -1
+LOG=ctrl-shuf TAIL=1 run "shuffled child order (seed 4)"      $J CtrlTest 4
 pending riscv      "riscv-tests rv32ui/rv32um on the controller" "phase 2"
 LOG=rdport    TAIL=1 run "read port, GATHER (Java; the C parts PENDING (phase 2))" $J ReadPortGatherTest -1
 pending accounting "per-phase accounting (from C)" "phase 2"
@@ -39,8 +39,8 @@ LOG=agtest    TAIL=1 run "address generator read-ahead, figure 12's PTR/HIST por
 LOG=agtest-shuf TAIL=1 run "shuffled child order (seed 4)"   $J AgTest 4
 pending recipes      "the recipe book (v1.1's RecipeTest; replaced by the v1.2 recipes)" "phase 6"
 pending recipes-shuf "shuffled child order (seed 4)" "phase 6"
-pending cond       "conditions, the done gate, the error line" "phase 2"
-pending cond-shuf  "shuffled child order (seed 4)" "phase 2"
+pending cond       "errors, the done gate, the error line (cond.c, REPORT, HALT recovery)" "phase 4"
+pending cond-shuf  "shuffled child order (seed 4)" "phase 4"
 pending regdoc     "REGISTERS.md against the generator, mesh.h and the simulator" "phase 2"
 pending hooks      "the register map, the send port, the pulses (from Java)" "phase 2"
 pending hooks-shuf "shuffled child order (seed 4)" "phase 2"
@@ -62,7 +62,7 @@ if [ "$MODE" != quick ]; then
   pending accounting-full "per-phase accounting, full-size all-to-all from C" "phase 2"
   LOG=agbench TAIL=3 run "read-ahead measurements: ag_lookahead, zero-length groups, start to first request (a few minutes)" $J AgBench
   pending sweep-quick "parameter sweep (from C)" "phase 2"
-  pending ctrl-full "the all-to-all from C on the four data sets" "phase 2"
+  LOG=ctrl-full TAIL=1 run "the all-to-all from C on the four data sets" java $JX -cp build CtrlTest -1 full
   LOG=engine-full TAIL=1 run "full-size all-to-alls (4 data sets) and radix sort (about 1.5 minutes)" java $JX -cp build EngineTest -1 full
   LOG=skewtable TAIL=1 run "fan-in under 0/+1 skew, 40 skew patterns (several minutes)" $J NetTest -1 skewtable 40
 fi

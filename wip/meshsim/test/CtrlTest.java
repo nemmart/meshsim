@@ -302,7 +302,7 @@ public final class CtrlTest {
     static void blockCopy() {
         T.group("block copy");
         Mach m = new Mach(Mach.cfg(shuffle));
-        final int N = 1024, DST = 0x0800;
+        final int N = 1024, DST = Registers.PMEM_BASE + 0x4000;
         // the overlay: "add a0, a0, a0; addi a0, a0, 0x123; ret" at its start, then filler words
         int[] ov = new int[N];
         ov[0] = 0x00a50533; ov[1] = 0x12350513; ov[2] = 0x00008067;
@@ -314,7 +314,7 @@ public final class CtrlTest {
         long cyc = -1; boolean same = true;
         for (Tile p : m.c.tiles) {
             boolean match = true; for (int i = 0; i < N; i++) if (p.core.peekLocal(DST + 4 * i) != ov[i]) match = false;
-            T.check(match, "tile " + p.idx + ": 1,024 words landed in instruction memory");
+            T.check(match, "tile " + p.idx + ": 1,024 words landed in program memory");
             T.eq(2L * p.idx + 0x123, m.word(p.idx, im, "res", 0), "tile " + p.idx + ": the copied code ran");
             T.eq(1, p.core.wfiLog.size(), "tile " + p.idx + ": one WFI");
             if (p.core.wfiLog.size() == 1) {
@@ -325,7 +325,7 @@ public final class CtrlTest {
         }
         T.check(same, "the same copy time on every tile");
         noViolations(m.c, "block copy");
-        out(String.format("block copy [meas: CtrlTest block copy]: 1,024 words (256 128-bit mode-6 packets) big SRAM -> instruction memory by the 6.5 sequence, from the start store to the first instruction after WFI: %d cycles (spec 4.2: about 256 plus the stream's start; v1.0's 512 64-bit packets took 527)", cyc));
+        out(String.format("block copy [meas: CtrlTest block copy]: 1,024 words (256 128-bit mode-0 packets) big SRAM -> program memory by the 6.5 sequence (mode 0, counter 2), from the start store to the first instruction after WFI: %d cycles (spec 4.2: about 256 plus the stream's start; v1.0's 512 64-bit packets took 527)", cyc));
     }
 
     // ================================================================ the all-to-all from C (two-command phase)

@@ -282,7 +282,7 @@ final class Controller implements Component {
         SRAMMacro m = base == Registers.GROUP_BASE ? tile.ts.group : base == Registers.STREAM_COUNT_BASE ? tile.ts.streamCount
                 : base == Registers.STREAM_DEST_BASE ? tile.ts.streamDest : tile.ts.streamSrc;
         int w = (a - base) >> 2;
-        if (!tile.ag.idle()) ctl.violate(t, "table window: " + m.name + " accessed while the address generator is running, its lead-in included (4.10)");
+        if (!tile.ag.idle() || tile.ag.runningForStatus()) ctl.violate(t, "table window: " + m.name + " accessed while the address generator is running, its lead-in included (4.10)");
         if (write) { m.write32(1, t, w, v); return 0; }               // port 1: the controller side
         return m.read32(1, t, w);
     }

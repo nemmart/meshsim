@@ -92,10 +92,9 @@ final class Registers {
     static final Reg[] ALL = regs.toArray(new Reg[0]);
     static final Reg[] STORE = new Reg[BLOCK_WORDS], LOAD = new Reg[BLOCK_WORDS];
     static {
-        for (Reg r : ALL) {
-            boolean shared = r.index >= 18 && r.index <= 21;
-            if (!shared || r.writable()) STORE[r.index] = r;
-            if (!shared || r.readable()) LOAD[r.index] = r;
+        for (Reg r : ALL) {                                      // STORE: the writable register at each word; LOAD: the readable one
+            if (r.writable()) STORE[r.index] = r;
+            if (r.readable()) LOAD[r.index] = r;
         }
     }
     static boolean isSend(Reg r) { return r == ROUTER_SEND_32 || r == ROUTER_SEND_64 || r == ROUTER_SEND_128; }

@@ -11,23 +11,25 @@ are marked in place. In brief:
 
 - **Errors** (v1.1's conditions) raise the controller core's hard interrupt; its handler reports to C&C 1
   over the request bus and parks forever: traps are terminal (20). Each unit's error line reaches C&C 1's
-  peripheral (`ERROR_LINES_0`-`2`); C&C 1 drains the reports, has the file system flush its logs, then
-  fires the **global reset**, the only way to stop anything: there is no HALT state (21, 23). Every unit
-  boots from a **boot ROM** and starts itself when its image's marker lands (22). REPORT is withdrawn.
-- **The link word** is 256 bits: payload, a 32-bit address (8-bit region, 24-bit offset), size, a 3-bit
-  counter, a 3-bit mode, src, dst; 74 bits reserved. (2, 5, 30)
-- **Counters:** the packet names one of four general write counters (0 uncounted; 30), decremented K = 8
-  cycles after the traffic director accepts it; additive arming. (3)
-- **Modes:** 0 write at address (replacing five v1.1 modes, including commands and replies), 1 by source,
-  2 bucket, 3 augmented, 4 gather request, 5-7 reserved and discarded silently. (6)
+  peripheral (`ERROR_LINES_0`-`2`); C&C 1 drains the reports, has the file system flush its logs, then fires
+  the **global reset**, the only way to stop anything: there is no HALT state (21, 23).
+- **Boot:** after the reset every unit runs a **boot ROM** at 0x02000000. Tiles boot through READY/GO like a
+  phase; C&C 2 and C&C 3 jump when their first command lands and report "started" (31).
+- **The link word** is 256 bits: payload, a 32-bit address (8-bit region, 24-bit byte offset), size, a
+  3-bit counter, a 3-bit mode, src, dst; 74 bits reserved (2, 5, 30).
+- **Counters:** the packet names one of **four** write counters (0 uncounted), decremented K cycles after the
+  traffic director accepts it, K a formula (3, 30, 32).
+- **Modes:** 0 write at address (commands and replies included), 1 by source, 2 bucket, 3 augmented,
+  4 gather request, 5-7 reserved and discarded (6).
 - **Address map:** 0x00 data memory, 0x01 program memory (32 KB each), 0x02 the boot ROM, 0x03 big SRAM,
-  0x04-0x06 up to
-  three peripherals, 0xFF the controller's registers and table window; the controller reaches 0x00, 0x01, 0x02
-  (fetch and load) and 0xFF. (5, 9)
-- **Registers:** the controller's block and each peripheral's window start the same way: `PARAMS`,
-  `STATUS`, `ERRORS`, pulses, events, send, then the rest. One header layout everywhere. (10-14, 16, 18)
-- **Waiting** is by events throughout, including for the tables (`ts_busy` goes). (16, 17)
-- **Open:** the pending questions at the end; big-SRAM guarantees to validate, S1-S9.
+  0x04-0x06 up to three peripherals, 0xFF the registers and table window (5, 9, 22).
+- **Every access is naturally aligned**, checked in hardware; out-of-bounds is unchecked (26).
+- **Registers:** the controller block and each peripheral window start the same way (`PARAMS`, `STATUS`,
+  `ERRORS`, pulses, events, DMA), with one header layout everywhere (10-14, 16, 18, 30); C&C 1's chip-level
+  registers are in its peripheral (28). Peripheral events can be counted (credits) or live (10).
+- **What hardware checks and what meshsim checks** (27): software bugs are meshsim's job.
+- **Waiting** is by events throughout, including for the tables (16, 17).
+- **Open:** the pending questions; big-SRAM guarantees S1-S9; the integrator's calls (32); deferred work (33).
 
 ---
 
@@ -535,6 +537,12 @@ Decided (O). **The wake registers are renamed** at both levels, the tile's and e
   0-9, a type per peripheral that extends it, e.g. `ReplayerPeripheral peripheral1`), so names are scoped:
   `tile.EVENTS`, `peripheral1.EVENTS`. The register-table generator emits the structs. Every member is
   `volatile uint32_t`, accessed one word at a time and never copied whole, since some loads have side effects.
+- **Header details** (integrator, 2026-10-29; W3-27; Tony may redo them): access through pointers, not
+  struct objects (`#define tile ((volatile TileRegs *)0xFFFFF800)`, used as `tile->EVENTS`), so a whole-block
+  copy, which would consume events and pop requests, needs an explicit `*tile`; "extends `PeripheralStd`" is
+  a macro listing the ten standard members at the top of each peripheral's struct; type names end in `Regs`
+  (`TileRegs`, `ReplayerRegs`) to avoid the sort planner's `Tile`. The base-address instruction on the
+  GO-to-start path is identical on every tile, so harmless.
 - **"DMA" keeps both meanings** (owner, W3-16): the tile's address-generator run and a peripheral's output
   engine, told apart by their struct (`tile.PULSE_DMA`, `peripheral1.PULSE_DMA`).
 - "Interrupts" was considered and rejected: events only release `WFI` and take no trap, while errors raise
@@ -1129,6 +1137,37 @@ trace and run the file system:
   "started" can't satisfy its wait.
 - The ROM sets `mtvec` first, to a minimal report-and-park handler in the ROM (22), until the image installs
   its own.
+
+## 32. Integrator's calls for implementation (2026-10-29)
+
+*(The owner asked the integrator to settle these so implementation can start; to review.)*
+
+| item | call |
+|---|---|
+| **K** (W2-25) | With spanning gone the big-SRAM write path is fixed, so K is a formula: **K = max(2·L + 3, L + 4, `cm_latency`, `rp_latency`)**, L = `ts_engine_latency`; K = 8 covers L ≤ 2. Write combining stays out unless it fits under K. S1's measurement becomes a check of the formula |
+| **The table window after done** (W2-26) | Guaranteed by K (17 A): meshsim checks that no table-window access after done precedes a pending `PTR`/`HIST` update. No interlock hardware |
+| **Big-SRAM images** (W2-27) | Settled by 31: big-SRAM data arrives counted, after the first command |
+| **Misaligned engine accesses** (W2-32, W3-30) | The access is dropped, **still counted** (so nothing hangs), and sets `ERRORS` [1]; the read port's misaligned read sets [1] too, not [7]. meshsim flags it |
+| **Big SRAM out of range** (W2-33) | Undefined in hardware, like controller memory (26); big SRAM's size isn't a power of two, so it doesn't promise aliasing. meshsim errors |
+| **Alignment of pointers and runs** (W2-34, W3-29) | Stated per register in the spec update: a run's start is aligned to its element size and every step keeps it aligned; `PTR` to its packets' size; an augmented `PTR` to a record (two chunks) |
+| **Counter codes 5-7** (W2-35) | Reserved: the packet is accepted and treated as uncounted; meshsim errors |
+| **The trace word** (W3-32) | 0xFFFFF9FC is a named simulator-only word in the register table, exempt from meshsim's reserved-word check; a store there is harmless on hardware |
+
+## 33. Deferred (2026-10-29)
+
+Not needed to run the sort and the replayer on v1.2; each comes back with the design it belongs to.
+
+- **Reset and recovery, with C&C 1's firmware:** the reset boundary at C&C 1 (W1-20); C&C 1's own state
+  across its restart, and the option of putting its tile logic inside the reset (W1-21); errors at C&C 1
+  caused by other units becoming fatal (W1-22); release timing and pacing (W1-25); loops in recovery (W1-26);
+  the host's view and C&C 1's own power-on boot (W1-27); one-at-a-time start-up against the replayer's
+  ownership rules (W1-30); the memory system across the reset (W1-19, in 25).
+- **The file system and the RW engine:** tag-window fan-in (W2-28, in 25); tag-window writes being uncounted
+  writes from running tiles (W2-29); the window protocol and the read direction (W2-30); whether requests
+  carry counters (W2-05); a peripheral event kind for a queue of items, for returning closed tags and for
+  the host interface (W3-25).
+- **Sending peripherals' router ports** (W2-31): src, routing inside the controllers' routers, flow control.
+  Only C&C 1-3's engines send, and the replayer doesn't.
 
 ---
 

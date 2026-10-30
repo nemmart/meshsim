@@ -48,3 +48,7 @@ Owner's notes:
   cleared, request limits are kept with replies. F15 and F16 are new from writing to D38.
 - Round 2: CONVENTIONS.md, FINDINGS.md, REPORT.md. The replayer's words were renamed to the spec's
   `REPLAYER_STATUS` and `REPLAYER_OPCODE` (W5-09).
+- Round 2 (D39-D42): the replayer's words 32-34, seven counters and the renumbered `EVENTS`, request slots
+  with their own reply buffers (counters 5-7), 24 reports, `mcycle`, and the boot streamed from C&C 1's big
+  SRAM with the command in the same run. F6 and F9-F16 are answered; F17 is new (open). REPORT-2.md is
+  written for WORKER5.

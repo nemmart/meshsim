@@ -87,7 +87,7 @@ See the checklist below; R = rewrite, U = update, K = keep, X = removed (stub), 
 - [x] Pass 2: 4.1-4.16
 - [x] Pass 3: 4.17-4.20
 - [x] Pass 4: 5, 6, 7, 8
-- [ ] Pass 5: 9-14
+- [ ] Pass 5: 9-12 done; 13, 14 next
 - [ ] CHANGES-v1.2.md, QUESTIONS.md, REPORT.md
 
 ## New open-item numbers (section 13 continues from 116)
@@ -102,6 +102,7 @@ See the checklist below; R = rewrite, U = update, K = keep, X = removed (stub), 
 - 124 soft reset's keep list (Tony) (6.1)
 - 125 candidate: signed counters (6.2)
 - 126 requests dropped at the root: hardware record? (6.7)
+- 127 controller memories at 32 KB: macros, area (~0.15 mm2 est), one-cycle access (11, 12)
 - superseded: items 50, 51 (credits), 54 (HALT row), 87 (sender), 48 stays (rp_latency)
 
 ## Owner's rulings, round 2 (2026-10-29)
@@ -131,4 +132,5 @@ See the checklist below; R = rewrite, U = update, K = keep, X = removed (stub), 
 - W5-18 C&C 1's peripheral word numbers and EVENTS bits (8.14); WATCHDOG load returns the count
 - W5-19 exit word at 0xFFFFF9F8 (8.15)
 - W5-20 controller block addresses (log 11 says proposed) (8.1)
+- W5-21 budget: controller memories 32+32 KB estimated ~0.15 mm2; total 0.52-0.61 mm2 (11)
 - W5-08 region decode for bad packets, size 11, modes 1-4 ignore address, mode 3 at 128: log 26's (proposed) rows kept proposed (3.1)

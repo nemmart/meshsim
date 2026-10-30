@@ -710,6 +710,8 @@ One unit straight after the eject selector, and **the only path into the tile**.
 
 So **K ≥ max(2·L + 3, L + 4, `cm_latency`, `rp_latency`)**: 5 at the default L = 1, and K = 8 covers L ≤ 2. meshsim errors if K is set below the formula, and its measurement of the margin (item S1, 13) becomes a check of the formula. Write combining (item 3) stays out unless it fits under K.
 
+**One K for every destination, deliberately** (owner, 2026-10-31). Writes to controller memory and peripherals land in 2 cycles, but their counters also decrement at K = 8, so a round trip through a counter costs about 6 cycles more than v1.1, which counted those writes at landing. Measured (meshsim, a read-port search step): 35.9 + 37.42 per active search, against v1.1's 29.8 + 37.43. **The extra is per step, shared by every search active in it, not per query**: about a hundred cycles per split, a few hundred per sort. A separate 2-cycle delay for controller memory and peripherals would win it back but is **not adopted**; it would be reconsidered only if the cost became per query (the v1.3 log's candidate C1).
+
 **Command landed** (owner, 2026-10-28). The director decodes command slot 0 from the address: **a write that comes in through the director and covers command slot 0 sets "command landed" when it lands in port B**, not when the director accepts it, so the event (and READY, and the boot ROM's jump, 6.2) follows the write. Any such write sets it, a 64- or 128-bit write starting at slot 0 included (it also writes slots 1–3, harmlessly). The controller's own store to slot 0 doesn't (4.12).
 
 **Consequences:**

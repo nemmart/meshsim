@@ -12,5 +12,5 @@ for line in open(os.path.join(here, 'RECIPES.tmpl.md')).read().split('\n'):
         out.append('<!-- recipe: %s (%s) -->\n```%s\n%s\n```' % (name, f, lang, region(f, name)))
     else:
         out.append(line)
-open(os.path.join(here, '../../wip/sw/RECIPES.md'), 'w').write('\n'.join(out))
+open(os.path.join(here, '../RECIPES.md'), 'w').write('\n'.join(out))
 print('wrote wip/sw/RECIPES.md')

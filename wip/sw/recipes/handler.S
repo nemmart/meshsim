@@ -2,7 +2,7 @@
  * It never writes data memory and needs no stack, so the boot ROM can hold the same code (D22, D36). Every value is
  * sent before the register that held it is reused: x1-x3 are free once their own report has gone. Reports are
  * the exception to D38's one-outstanding rule: they get no reply, and the handler sends all 24 at once. */
-#include "../../wip/sw/mesh-v1.2-draft.h"
+#include "../mesh-v1.2-draft.h"
 #define W0   X0REL(OFF_REQUEST_SET_W0)
 #define W1   X0REL(OFF_REQUEST_SET_W1)
 #define W2   X0REL(OFF_REQUEST_SET_W2)

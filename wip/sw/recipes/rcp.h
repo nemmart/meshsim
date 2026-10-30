@@ -3,7 +3,7 @@
  * not run: there is no v1.2 simulator yet. */
 #ifndef RCP_H
 #define RCP_H
-#include "../../wip/sw/mesh-v1.2-draft.h"
+#include "../mesh-v1.2-draft.h"
 
 /* RECIPE local_run */
 /* A local run of the address generator into big SRAM (spec 4.2; D3, D17): DMA_CONFIG, arm counter 1 with the n packets

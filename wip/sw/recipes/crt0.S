@@ -1,6 +1,6 @@
 /* Recipe 22: the image's start-up. The ROM jumps here with MIE = 0 (W1-03) and mtvec at the ROM's handler;
  * both stay so until boot part 2 (D37.2). */
-#include "../../wip/sw/mesh-v1.2-draft.h"
+#include "../mesh-v1.2-draft.h"
     .section .text.start, "ax"
     .globl _start
 /* RECIPE crt0 */

@@ -1,4 +1,4 @@
-# WORKER6/check: the v1.2 recipes as compiled code
+# wip/sw/recipes: the v1.2 recipes as compiled code
 
 Each recipe in `wip/sw/RECIPES.md` is quoted from a region of these files, marked `/* RECIPE name */` …
 `/* END */`, as v1.1's `meshsim/sw/tests/rcp_*.c` are. `check_book.py` confirms that every code block in the

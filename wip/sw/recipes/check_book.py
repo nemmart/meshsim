@@ -3,7 +3,7 @@
 import re, os, sys
 here = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, here)
-book = open(os.path.join(here, '../../wip/sw/RECIPES.md')).read()
+book = open(os.path.join(here, '../RECIPES.md')).read()
 from regions import region  # noqa: E402
 bad = 0
 blocks = re.findall(r'<!-- recipe: (\S+) \((\S+)\) -->\n```\w*\n(.*?)\n```', book, re.S)

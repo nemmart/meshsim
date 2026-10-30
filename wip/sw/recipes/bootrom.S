@@ -1,6 +1,6 @@
 /* Recipe 22: the boot ROM, as D36 writes it with D37.1's change. One ROM for every unit, at 0x02000000, the reset vector.
  * It never writes data memory; it reads only the command block, after the command has landed (D31). */
-#include "../../wip/sw/mesh-v1.2-draft.h"
+#include "../mesh-v1.2-draft.h"
     .section .bootrom, "ax"
     .globl _reset
 /* RECIPE bootrom */

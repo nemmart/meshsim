@@ -179,7 +179,7 @@ Decided with Tony (O, T). Replaces 4.12's four named down-counters.
 
 ## 4. The `STREAM` entry (2026-10-28)
 
-Decided (O). Still three 32-bit arrays, 96 bits, 87 used:
+Decided (O). Still three 32-bit arrays, 96 bits, 88 used:
 
 | array | fields |
 |---|---|
@@ -535,8 +535,8 @@ Decided (O). **The wake registers are renamed** at both levels, the tile's and e
   the same names as a peripheral's first three words (10), as `EVENTS` already is.
 - **Headers use one struct per block** (owner, 2026-10-28; W3-16): the tile's register block and each
   peripheral's window are declared as C structs overlaid on their addresses (a `PeripheralStd` for words
-  0-9, a type per peripheral that extends it, e.g. `ReplayerPeripheral peripheral1`), so names are scoped:
-  `tile.EVENTS`, `peripheral1.EVENTS`. The register-table generator emits the structs. Every member is
+  0-9, a type per peripheral that extends it), so names are scoped. *(Spelling as in the header details
+  below: `ReplayerRegs`, `tile->EVENTS`.)* The register-table generator emits the structs. Every member is
   `volatile uint32_t`, accessed one word at a time and never copied whole, since some loads have side effects.
 - **Header details** (integrator, 2026-10-29; W3-27; Tony may redo them): access through pointers, not
   struct objects (`#define tile ((volatile TileRegs *)0xFFFFF800)`, used as `tile->EVENTS`), so a whole-block
@@ -1069,15 +1069,15 @@ integrator's recommendation, 2026-10-29. To be reviewed again when C&C 1's firmw
 | `ERROR_LINES_0`-`2` | R | live unit errors, by endpoint id, 64 unused (15) |
 | ~~`RESET`~~ | | *gone (34): the watchdog resets the whole chip* |
 | `READY_LINES_0`-`1` | R | the tiles' sticky READY bits (64; READY is tiles only) |
-| `READY_EXPECT_0`-`1` | R/W | the tiles C&C 1 is waiting for: "all tiles READY" fires when `READY & EXPECT == EXPECT`, so one-at-a-time bring-up works (23) |
+| `READY_EXPECT_0`-`1` | R/W | the tiles C&C 1 is waiting for. "All tiles READY" is a **live** event bit (36): (`READY & EXPECT`) == `EXPECT` **and** `EXPECT` ≠ 0; so one-at-a-time bring-up works (23) and C&C 1 can't miss it whatever order it writes `EXPECT` in |
 | `PULSE_GO` | W | clears READY bits 0-63 and drives GO, in one store; a READY pulse arriving in the same cycle is kept; also restarts the watchdog |
-| `WATCHDOG` | R/W | the phase watchdog's limit; a write (re)starts the count, as does `PULSE_GO` |
+| `WATCHDOG` | R/W | the one watchdog (36): 0 (the reset value) is off; writing a limit *N* > 0 starts it; a write or `PULSE_GO` restarts it from the last *N*; reaching 0 posts the event and latches the toast pin |
 | `LED` | R/W | the software pin (24), bit 0 |
 | UART words | | TX, RX, divisor, and **`UART_STATUS`**: line errors (framing, overrun), **write-1-to-clear** as in v1.1. Not in the standard `STATUS`, which is read-only and live (10), so a sticky line error there could never clear (W3-01) |
 | host-interface words | | Ingress/Egress |
 
-- **C&C 1's peripheral `ERRORS`:** [0] is **the unit-error bit**, `OR(ERROR_LINES)` (15, 23), live; the error
-  pin excludes exactly that bit (24). Other bits are the peripheral's own errors, sticky.
+- **C&C 1's peripheral `ERRORS`:** [0] is **the unit-error bit**, `OR(ERROR_LINES)` (15, 23), live; ~~the error
+  pin excludes exactly that bit (24)~~ *(35: the toast pin covers every error)*. Other bits are the peripheral's own errors, sticky.
 - **C&C 1's peripheral `EVENTS`:** all tiles READY (as defined above); the watchdog expired (depth 1); the
   UART's RX not empty and TX not full (live); the host interface's events.
 - **Tiles' `EVENTS` [5], GO**, keeps its meaning with GO now driven from C&C 1's peripheral. C&C 2 and C&C 3
@@ -1098,8 +1098,8 @@ integrator's recommendation, 2026-10-29. To be reviewed again when C&C 1's firmw
 
 Decided (O), from W3-19. Revises 2, 3, 4, 7, 10, 12, 13, 14 and 16 (each updated in place).
 
-- **The counter field is 3 bits: 0 uncounted, 1-4 the write counters, 5-7 reserved** (undefined in
-  hardware; meshsim flags them). Three counters came only from squeezing the field into 2 bits; a replayer
+- **The counter field is 3 bits: 0 uncounted, 1-4 the write counters, 5-7 reserved** (accepted and treated
+  as uncounted, 32; meshsim errors). Three counters came only from squeezing the field into 2 bits; a replayer
   pass may need three at once (an LPDDR fetch, a refill, a reply) plus headroom.
 - **The common header block** (12) becomes size [18:17], counter [21:19], mode [24:22], dst [31:25]: mode
   and dst keep their bits, size moves down one, counter grows. The link word: size [161:160], counter
@@ -1113,6 +1113,9 @@ Decided (O), from W3-19. Revises 2, 3, 4, 7, 10, 12, 13, 14 and 16 (each updated
 
 ## 31. The boot sequence (2026-10-29)
 
+*Corrected by 36: step 5's order; the ROM written out exactly; the overlays and first command of one kind;
+C&C 1's own boot.*
+
 Decided (O), from W1-23, W1-24, W2-27 and W3-26. Revises 22: the boot ROM is a minimal `wait_for_command()`,
 so tiles boot through the same READY/GO protocol as every phase.
 
@@ -1125,8 +1128,10 @@ so tiles boot through the same READY/GO protocol as every phase.
 4. **Tiles:** the ROM has pulsed `done` and waits for GO, so "command landed" raises READY, as in a phase.
    **When every tile is READY, C&C 1 issues GO**; GO clears `done` and "command landed" as always, and the
    ROM jumps to the address in the command block. The image starts clean.
-5. **The first program loads big SRAM:** C&C 1 broadcasts how many words it will send and lands a command;
-   each tile arms its counters and signals READY; C&C 1 sends the data **counted**. The command never has to
+5. **The first program loads big SRAM** *(order corrected by 36)*: the command announces the data; READY; GO;
+   each tile arms its counters in its start path; C&C 1 sends the data **counted**, no sooner than
+   `stage_delay` after its GO store; each tile waits for counters done, then pulses `done` (v1.1's announced
+   staging, 6.2, 6.4). The command never has to
    vouch for big-SRAM data (W2-27's overtaking).
 
 **C&C 2 and C&C 3 stay out of READY/GO** (owner), which would otherwise tie them to the phase cycle while they
@@ -1141,8 +1146,9 @@ trace and run the file system:
 
 - ~~**Asserting `RESET` clears C&C 1's READY bits**~~ *(34: the whole-chip reset clears them, with everything
   else in C&C 1's peripheral.)*
-- **The boot ROM uses registers only, never data memory**, which the overlays are writing while it runs. The
-  reset selects command block 0, so the ROM knows where the jump address is.
+- **The boot ROM never writes data memory** (no stack, no variables), which the overlays are writing while it
+  runs; it reads only the command block, after the command has landed. The first command has parity 0, so the
+  jump address is in slot 1 (36).
 - ~~**C&C 1 drains its request receive queue to empty** before a restart's boot~~ *(34: the whole-chip reset
   empties it.)*
 - The ROM sets `mtvec` first, to a minimal report-and-park handler in the ROM (22), until the image installs
@@ -1170,7 +1176,7 @@ Not needed to run the sort and the replayer on v1.2; each comes back with the de
 - **Reset and recovery, with C&C 1's firmware:** the reset boundary at C&C 1 (W1-20); C&C 1's own state
   across its restart, and the option of putting its tile logic inside the reset (W1-21); errors at C&C 1
   caused by other units becoming fatal (W1-22); release timing and pacing (W1-25); loops in recovery (W1-26);
-  the host's view and C&C 1's own power-on boot (W1-27); one-at-a-time start-up against the replayer's
+  the host's view (W1-27; C&C 1's own boot is in 36); one-at-a-time start-up against the replayer's
   ownership rules (W1-30); the memory system across the reset (W1-19, in 25).
 - **The file system and the RW engine:** tag-window fan-in (W2-28, in 25); tag-window writes being uncounted
   writes from running tiles (W2-29); the window protocol and the read direction (W2-30); whether requests
@@ -1241,6 +1247,44 @@ toast, and the outside world decides when to reset it.
 - **Gone:** 34's self-reset by the watchdog and its solo/FPGA mode; the handler's checking in during the
   flush. 28's `WATCHDOG` register is the keep-alive watchdog *(proposed: one watchdog, not a separate phase
   watchdog)*.
+
+## 36. Sign-off fixes (2026-10-29)
+
+From the three sign-off reviews (W1-31 to W1-34, W2-37, W2-38, W3-34 to W3-36), all accepted by the owner on
+the integrator's recommendation. Each is a correction or a precision; none changes the design.
+
+- **Boot step 5's order** (W2-37, W3-34): arming before the READY `done` pulse would raise done early, so 31's
+  step 5 now follows v1.1's announced staging: command, READY, GO, arm in the start path, data no sooner than
+  `stage_delay` after GO, wait for counters done, `done`.
+  - **The window between GO and arming is kept** (owner): every phase has it, and v1.1 closes it by timing
+    (identical start paths; nothing arrives sooner than `stage_delay`). If it fails, unexpected arrival says
+    so. *Candidate for later: signed counters, so an arrival before arming just goes negative and the order
+    stops mattering; strays are then caught as done early.*
+- **The boot ROM, exactly** (W1-33):
+  1. set `mtvec` to the ROM's report-and-park handler (which never writes data memory);
+  2. branch on `PARAMS`' endpoint id;
+  3. **tiles (0-63):** pulse `done`; loop `WFI` and load `EVENTS` until GO is seen (so GO is consumed);
+  4. **C&C 1-3 (64-66):** set `EVENTS_MASK` to "command landed" [6]; loop `WFI` and load `EVENTS` until [6] is
+     seen; restore `EVENTS_MASK` to its reset value;
+  5. load the command word (slot 0), then the jump address (slot 1), and jump.
+- **The overlays and the first command are of one kind** (W1-31): all broadcast or all unicast, since the mesh
+  orders packets only within a kind. meshsim checks that no overlay write lands after a unit's "command
+  landed" and before its start.
+- **C&C 1's own boot** (W1-32, W3-36): endpoint 64 takes the C&C 2/3 branch of the ROM, and **the outside
+  world lands C&C 1's overlays and first command**: the host through Ingress/Egress on silicon, the test
+  harness in meshsim. **In meshsim v1.2, C&C 1 stays a behavioural Java model** (as `CnC.java` in v1.1),
+  driving 28's registers from the harness; likewise C&C 2 and C&C 3 until their firmware exists.
+- **One watchdog and the toast pin** (W1-34, W3-35): one watchdog, `WATCHDOG` in C&C 1's peripheral (28), off
+  at reset; a limit *N* > 0 starts it; a write or `PULSE_GO` restarts it; reaching 0 posts the event and
+  latches the toast pin. **Toast = C&C 1's `ERRORS` ≠ 0 (the unit-error bit included) or the watchdog
+  expired, latched until the reset.** C&C 1 sets the limit above each phase's expected length. "All tiles
+  READY" is live (28).
+- **A misaligned read** (W2-38) is not performed, but its packet still goes out with payload 0, so the
+  receiver's director counts it as usual (one decrement point); `ERRORS` [1] is set at the tile that issued
+  the read.
+- **K is a parameter, default 8** (W2's short list); meshsim errors if it is set below 32's formula.
+- **Ending a test in meshsim:** a simulator-only exit word beside the trace word (32), since `ebreak` now stops
+  loudly (27).
 
 ---
 

@@ -87,7 +87,7 @@ See the checklist below; R = rewrite, U = update, K = keep, X = removed (stub), 
 - [x] Pass 2: 4.1-4.16
 - [x] Pass 3: 4.17-4.20
 - [x] Pass 4: 5, 6, 7, 8
-- [ ] Pass 5: 9-12 done; 13, 14 next
+- [x] Pass 5: 9-14 (13: status table for 1-116, new items 117-133)
 - [ ] CHANGES-v1.2.md, QUESTIONS.md, REPORT.md
 
 ## New open-item numbers (section 13 continues from 116)

@@ -1481,6 +1481,18 @@ Decided (O).
   when that tile should start at the next GO**, since the ROM jumps at the first GO after a command has landed
   (37.1).
 
+## 45. Load latencies (2026-10-29)
+
+Confirmed by Tony. Answers Q16 (W5-04, W5-21); spec item 134 closed, 4.11 updated by the integrator.
+
+- **The 32 KB controller memories meet one-cycle access at 1 GHz.**
+- **Loads take 1 cycle** from data memory, program memory, the boot ROM and the **table window** (`HIST`, `PTR`,
+  `STREAM_*`, `GROUP`).
+- **Loads take 2 cycles** from the **register block**, every peripheral window word included. This fixes v1.1's
+  "1 or 2 at the implementation's discretion"; it stays fixed per register and the same on every tile, so a
+  synchronised start's identical code stays identical in time.
+- meshsim models exactly these.
+
 ---
 
 ## Big SRAM: to validate
@@ -1520,4 +1532,4 @@ A running list; each entry names where it came from. Resolved entries move into 
 | Q13 | Which peripheral flags only wake the controller and which raise a tile condition | 10 | **resolved: section 10** (conditions interrupt, wake events wake) |
 | Q14 | The tile's `EVENTS` bit layout | 11 | **resolved: section 16** |
 | Q15 | Should `ROUTER_HDR` use the same upper-half layout as `STREAM_COUNT` and `DMA_HDR`? | 7, 10 | **resolved: section 12** |
-| Q16 | The 32 KB controller memories: one-cycle loads from program memory and the boot ROM (W5-04), and one-cycle access at 1 GHz (W5-21) | 42 | for Tony |
+| Q16 | The 32 KB controller memories' timing (W5-04, W5-21) | 42 | **resolved: section 45** |

@@ -1477,6 +1477,9 @@ Decided (O).
 - **W5-24, the report set:** as WORKER5 defined it: 24 reports (x1-x31, `mepc`, `mcause`, `mtval`, `PARAMS`,
   `STATUS`, `ERRORS`, `EVENTS_PEEK`, the seven counters, then three per peripheral slot, zeros for an absent
   one). The header's op and sequence-number fields are settled with C&C 1's request format.
+- **W5-26, one-at-a-time starts:** the spec's boot section states C&C 1's rule: **land a tile's first command only
+  when that tile should start at the next GO**, since the ROM jumps at the first GO after a command has landed
+  (37.1).
 
 ---
 

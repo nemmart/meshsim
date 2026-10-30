@@ -629,7 +629,7 @@ Hardware guarantees this needs:
 | # | guarantee |
 |---|---|
 | A | **K covers the table update:** by the time a packet's counter decrements, its `PTR` or `HIST` update is complete (S1) |
-| B | **DMA run done fires only after the run's last table read has completed**, not when the last entry is walked |
+| B | **DMA run done fires only after the run's last table read has completed**, not when the last entry is walked. **`STATUS.rd_running` falls in the same cycle** (owner, 2026-10-29; F6), so polling it means exactly what the event means |
 | C | **Gather values pass the traffic director like any loopback packet and are counted there** (corrected 2026-10-28, W2-02: they go out as packets to the tile itself and loop back through the router, 4.4, 4.5). Their K delay starts at the director like every other packet's, and a counter still takes at most one decrement per cycle |
 
 - **Uncounted traffic is mode 0 only** (owner, 2026-10-28; W2-11): uncounted packets are used for

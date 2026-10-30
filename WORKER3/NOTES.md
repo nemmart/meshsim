@@ -109,3 +109,4 @@ Findings drafted: credit leak (expansion queue, short pushes) -> deadlock; item-
 skew.h l.154; 28 review; alignment of auto-advancing runs (regs.c l.40-42 relies on misaligned 64-bit);
 ERRORS [1] vs [7] for misaligned read-port reads; stale text list; TRACE word flagged by meshsim;
 STREAM_COUNT 16 bits vs the full-size sort's n = 65,536 (local.c l.33, 63-64, 79).
+- [x] REVIEW-2.md pushed (5335175): status table, W3-24..W3-33, replayer section, inventory with flags.

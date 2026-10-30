@@ -35,7 +35,7 @@ answer (written into the spec, marked *(Proposed)* unless ruled), and its status
 | W5-20 | the controller block's addresses | **as given by D11, D30 and D40** (seven counters at 0x860–0x878, the read port at 0x87C and 0x880) (D42) |
 | W5-21 | one-cycle access of the 32 KB memories at 1 GHz; their area | **area fine** (about 0.15 mm²); **timing with Tony** (Q16); spec item 134 |
 
-## Open (round 2)
+## Round 2 questions (all answered in the decisions log, sections 43 and 44)
 
 | # | question | where | proposed answer | item |
 |---|---|---|---|---|
@@ -46,3 +46,14 @@ answer (written into the spec, marked *(Proposed)* unless ruled), and its status
 | W5-26 | Should 6.2 state C&C 1's rule for one-at-a-time starts: land a tile's first command only when that tile should start at the next GO? It follows from the ROM's test (D37.1), and recipe 22 states it | 6.2 | yes, one sentence | — |
 
 Recipe mismatches found in round 2 are in `WORKER5/RECIPE-CHECK.md`; questions that need a ruling are added here.
+
+## Rulings on round 2's questions (decisions 43 and 44, 2026-10-29)
+
+| # | ruling |
+|---|---|
+| W5-23 | **answered (D44):** "outstanding" is a software convention: a request until its reply lands, a read until its data lands. In hardware a request holds its receive-queue slot only until the target pops it; the convention is conservative and implies the bound. Item 135 closed |
+| W5-24 | **answered (D44):** the 24-report set as defined; the header's op and sequence-number fields come with C&C 1's request format (item 122, deferred) |
+| W5-25 | **answered (D43, D44):** ordering holds per sending unit; between units there is none. A program orders them with a fence (mode 5, count only, to the tile itself at the end of the run) or by putting the packet in the run. Item 136 closed |
+| W5-26 | **answered (D44):** 6.2 states that C&C 1 lands a tile's first command only when that tile should start at the next GO |
+
+No WORKER5 question is open.

@@ -129,3 +129,14 @@ Applied after the first round. Each row names the spec sections it touched.
 | a note on a unit's two injection sources, which aren't ordered by the spec; open item 136 (WORKER6's F17) | 3.2, 6.2, 13 |
 | the replayer's controller loop waits on the refill counter **and** DMA run done, as its own table rule (4.10) and recipe 26 require | 4.19.9 |
 | the `done` pulse clears no event but the counters'; a stale "[4]" corrected to [7] | 4.12 |
+
+## Round 3: decisions 43–44 (2026-10-29)
+
+| decision | what changed | sections |
+|---|---|---|
+| D43 | **mode 5 is count only:** it decrements its counter at the destination and writes nothing; any size, payload and address ignored; from a stream the source is read and the payload discarded; to the tile itself it takes a read token; counter 0 does nothing (meshsim flags it). Modes 6–7 stay reserved. The counter field counts modes 0–3 and 5 | front matter, 3.1, 4.2, 4.5, 4.8, 4.12, 9 (21) |
+| D43 | **the fence:** a run that something must follow ends with a count-only packet to the tile itself on a spare counter; when that counter reaches 0, everything earlier in the run has been injected. DMA run done keeps its meaning (the last table read). Count-only packets also serve as "done" signals between tiles | 3.1, 3.2, 6.2 |
+| D44 | **ordering per sending unit:** packets from one unit in one tile (the address generator, the send port, the GATHER engine, the read port, each sending peripheral's DMA), to one destination, of one kind, arrive in the order sent; between units there is none; a fence or putting the packet in the run imposes it. Round 2's note and item 136 are replaced | 3.2, 6.2, 13 (136 closed) |
+| D44 (W5-23) | "outstanding" is a software convention: a request until its reply lands, a read until its data lands; in hardware a request holds its receive-queue slot only until the target pops it | 3.3, 4.12, 6.7, 13 (135 closed) |
+| D44 (W5-24) | the 24-report set is decided as defined; its header's op and sequence fields come with C&C 1's request format | 4.13, 13 (122) |
+| D44 (W5-26) | C&C 1 lands a tile's first command only when that tile should start at the next GO | 6.2 |

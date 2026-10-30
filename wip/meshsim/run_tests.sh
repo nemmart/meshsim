@@ -48,8 +48,8 @@ pending periph     "the peripheral framework" "phase 3"
 pending periph-shuf "shuffled child order (seed 4)" "phase 3"
 pending sender     "v1.1's sender (becomes a peripheral's DMA)" "phase 3"
 pending sender-shuf "shuffled child order (seed 4)" "phase 3"
-pending reqbus     "the request port and the request bus" "phase 2"
-pending reqbus-shuf "shuffled child order (seed 4)" "phase 2"
+LOG=reqbus    TAIL=2 run "the request port, the request bus and the receive queues in the tree" $J RequestBusTest -1
+LOG=reqbus-shuf TAIL=1 run "shuffled child order (seed 4)"    $J RequestBusTest 4
 [ -n "$DELIVERY" ] && pending stageb "Stage B (sw/replay) on a tracer delivery's guest windows" "phase 3"
 LOG=replayer  TAIL=1 run "the replayer model (cp11, its owner's suite): the ALU against vec.tsv, the unit tests" $J ReplayerTest ../tools/replayer-opcodes/vec.tsv
 pending sort-p1   "the sort's local sorts (L1, L2)" "sort port"

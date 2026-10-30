@@ -60,7 +60,6 @@ final class Chip implements Component {
         phases = new PhaseLog(this);
         reqBus = new RequestBus(this);
         for (Tile p : tiles) p.req.bus = reqBus;
-        if (cfg.targetReceiver != null) for (int k = 0; k < cfg.targetReceiver.length; k++) if (cfg.targetReceiver[k] >= 0) tiles[cfg.targetReceiver[k]].req.receivesTarget = k;
         cc = new CnC(this, cnc);
         children = new Component[68];
         children[0] = cnc; children[1] = memsub; children[2] = cc3; children[67] = cc;

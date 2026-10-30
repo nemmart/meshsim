@@ -608,7 +608,9 @@ Hardware guarantees this needs:
 
 ## 18. `PARAMS`, `STATUS` and `ERRORS` (2026-10-28)
 
-*(Proposed.)* v1.1's positions kept wherever a field survives.
+*(Proposed.)* `PARAMS` and `ERRORS` keep v1.1's positions wherever a field survives. **`STATUS` is renumbered
+compactly** (owner, 2026-10-28; W3-07): it is diagnostic, and the tests and macros that hard-code its
+positions are updated once, in the migration.
 
 **`PARAMS`** (constant)
 

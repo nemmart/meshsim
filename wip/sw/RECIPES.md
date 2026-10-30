@@ -752,6 +752,8 @@ What the v1.2 walks found is in `WORKER6/FINDINGS.md`, most important first, eac
 - **[F6]** Polling `STATUS.rd_running` (D17) is only as good as guarantee B, which the log states for [7] alone. *Open.*
 - **[F7]** A 128-bit data overlay at address 0 wrote the reserved word. *Answered by D37.4:* 16 bytes reserved; overlays start at 0x10.
 - **[F8]** The no-increment bit made a forgotten header store a silent pile-up. *Answered by D37.5:* the program clears it (rule 10).
+- **[F15]** D38 lets a tile keep 3 requests outstanding to C&C 2, but its replies would share one reply-block pair. *Open:* each request names its own reply address (D25 allows it).
+- **[F16]** The report set by D20's list is 23 requests, not the "about 17" D38 sizes against. *Open.*
 - **[F9]–[F14]**, smaller and open: mask juggling around consuming loads; `wait_all`'s cost and the stale counters done it leaves; an extra wake per expansion in the replayer loop; no timer for C&C 1's bounded waits; a stale "command landed" in every tile's `EVENTS`; and a stream can't name the broadcast, so C&C 1 boots tiles through its send port.
 
 ## 17. Write a block from data memory into big SRAM
@@ -1192,7 +1194,7 @@ park:
     j    park                           /* terminal: only the reset restarts the controller (D20) */
 ```
 
-**The report set** (23 requests, three data words each, in this order):
+**The report set** (23 requests, three data words each, in this order; D1.4 and D38 estimate "about 17" **[F16]**):
 
 | reports | words |
 |---|---|

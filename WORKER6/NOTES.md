@@ -52,3 +52,8 @@ Owner's notes:
   with their own reply buffers (counters 5-7), 24 reports, `mcycle`, and the boot streamed from C&C 1's big
   SRAM with the command in the same run. F6 and F9-F16 are answered; F17 is new (open). REPORT-2.md is
   written for WORKER5.
+- Round 3 (closing; D43, D44 and WORKER5's RECIPE-CHECK): M3-M8 fixed, and both observations taken (the
+  watchdog now calls the toast path; MAX_REPORTS is 66 x 24). Mode 5 and `CTR_FENCE` are in the header. Recipe 28
+  covers the fence and a signal between tiles. Rules 12 (ordering per sending unit) and 13 (a read is
+  outstanding until its data lands) are new, and `request_issue` takes a reply flag. F17 is answered;
+  REPORT-3.md is written.

@@ -831,7 +831,7 @@ UART) are outside it**, so the host link survives. The same line is the power-on
   covers a unit whose reports never all arrive. A trap inside the handler is not designed for: the
   handler is short resident code that only reads registers and writes the request port.
 - **The UART's line errors are status, not errors** (owner, 2026-10-28; W1-10): framing and overrun are
-  bits in C&C 1's peripheral's `STATUS`, never in its `ERRORS`. C&C 1's own errors are permanent (it is
+  bits in C&C 1's peripheral's `UART_STATUS` (28; first written as its `STATUS`), never in its `ERRORS`. C&C 1's own errors are permanent (it is
   outside the reset domain) and fatal, so line noise on the serial port must not raise one.
 - **Timing of the lines** (owner, 2026-10-28; W1-13):
   - **The reset is held long enough** for every unit in the domain to be reporting no error on its line
@@ -1033,26 +1033,36 @@ Decided (O), from W2-13; states a principle applied throughout today's decisions
 - **The other invariants W2-13 lists** (4, 5, 8, 9, 10, 13, 14, 17, 18) are rewritten mechanically with the
   spec update.
 
-## 28. C&C 1's registers (2026-10-28)
+## 28. C&C 1's registers (2026-10-28, revised 2026-10-29)
 
-*(Integrator's proposal, W3-18: the owner asked the integrator to decide; **to review**.)*
+*(Integrator's proposal (W3-18), revised with WORKER3's review (W3-28) and accepted by the owner on the
+integrator's recommendation, 2026-10-29. To be reviewed again when C&C 1's firmware is written.)*
 
 - **Every chip-level C&C function lives in C&C 1's peripheral** (Ingress/Egress, the UART), and **the
   controller block is identical on every unit**, C&C 1 included. `PULSE_GO` leaves the controller block (11).
-- **C&C 1's peripheral-defined words** (from word 32; order and offsets to be laid out):
-  - `ERROR_LINES_0`-`2` (15), `RESET` (21);
-  - `READY_LINES_0`-`1`: the tiles' sticky READY bits (64 bits; READY is tiles only, 23);
-  - `PULSE_GO`: clears READY bits 0-63 and drives GO, in one store; a READY pulse arriving in the same
-    cycle is kept;
-  - the phase watchdog (its limit and count);
-  - the host interface (Ingress/Egress);
-  - the UART's TX, RX and divisor, and its line-error status (21);
-  - `LED`, the software pin (24).
-- **C&C 1's peripheral `EVENTS`:** all tiles READY; the watchdog expired; the UART's RX not empty and TX not
-  full (live); the host interface's events. The unit-error bit is an **error**, in the peripheral's `ERRORS`
-  (15), not an event.
 - **The request receive FIFO stays with the request port** (`REQUEST_GET_W0`-`W2`, `REQUEST_RECEIVE`), which
   every controller has; C&C 1 receives the reports through it like any request.
+
+**C&C 1's peripheral-defined words, from word 32, in this order** (exact offsets with the register table):
+
+| register | access | meaning |
+|---|---|---|
+| `ERROR_LINES_0`-`2` | R | live unit errors, by endpoint id, 64 unused (15) |
+| `RESET` | R/W | 0 asserts the global reset, 1 releases it (21). **Powers on at 0**, so the domain stays in reset until C&C 1's firmware releases it. Asserting it also clears the READY bits (31) |
+| `READY_LINES_0`-`1` | R | the tiles' sticky READY bits (64; READY is tiles only) |
+| `READY_EXPECT_0`-`1` | R/W | the tiles C&C 1 is waiting for: "all tiles READY" fires when `READY & EXPECT == EXPECT`, so one-at-a-time bring-up works (23) |
+| `PULSE_GO` | W | clears READY bits 0-63 and drives GO, in one store; a READY pulse arriving in the same cycle is kept; also restarts the watchdog |
+| `WATCHDOG` | R/W | the phase watchdog's limit; a write (re)starts the count, as does `PULSE_GO` |
+| `LED` | R/W | the software pin (24), bit 0 |
+| UART words | | TX, RX, divisor, and **`UART_STATUS`**: line errors (framing, overrun), **write-1-to-clear** as in v1.1. Not in the standard `STATUS`, which is read-only and live (10), so a sticky line error there could never clear (W3-01) |
+| host-interface words | | Ingress/Egress |
+
+- **C&C 1's peripheral `ERRORS`:** [0] is **the unit-error bit**, `OR(ERROR_LINES)` (15, 23), live; the error
+  pin excludes exactly that bit (24). Other bits are the peripheral's own errors, sticky.
+- **C&C 1's peripheral `EVENTS`:** all tiles READY (as defined above); the watchdog expired (depth 1); the
+  UART's RX not empty and TX not full (live); the host interface's events.
+- **Tiles' `EVENTS` [5], GO**, keeps its meaning with GO now driven from C&C 1's peripheral. C&C 2 and C&C 3
+  aren't wired to GO and never see it (31).
 
 ## 29. Housekeeping from WORKER3 (2026-10-28)
 

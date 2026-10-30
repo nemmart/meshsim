@@ -1384,6 +1384,26 @@ Decided (O, T). From WORKER6's F15.
     to GO | counters done.
   - The delay line already carries the 3-bit field; each counter adds a register, an adder and a done bit.
 
+## 41. The rest of the recipes' findings (2026-10-29)
+
+From WORKER6's F6, F9-F14 and F16. F6 is in 17's guarantee B.
+
+- **F16, the report count:** 20's list plus 37.3's peripheral slots make about 23 requests (more with seven
+  counters, 40), not "about 17". **The spec defines the exact set; C&C 1 counts against it.** 38's conclusion
+  stands (a mass failure fills C&C 1's queue; accepted).
+- **F9, F10, F11: accepted costs, no change.** Claiming one peripheral event costs narrowing the mask around the
+  load (the cost of counted events, 10; act on every bit returned where possible). The table wait's four stores
+  may be replaced in a helper by a loop that ORs what each wake consumed. About 13 extra wakes per replayer
+  window.
+- **F12, bounded waits on C&C 1:** Tony's core implements **`mcycle` and `mtime`** (part of Q1), so C&C 1 bounds
+  its waits by cycle count.
+- **F13, "command landed" stays pending** in a tile after its first command: nothing in the reset mask consumes
+  it. 37.1's ROM relies on that, so the spec says it, and the ROM's tile branch must not consume it.
+- **F14, a stream may name the broadcast** (owner, 2026-10-29): **in hardware, a stream's *d* may be 126**, with no
+  special case; a broadcast stream's packet to its own tile takes a read token like the send port's (S9).
+  **Software convention:** only the controllers broadcast from streams, as C&C 1 does at boot, streaming
+  overlays from its big SRAM at a packet per cycle instead of four stores per packet through its send port.
+
 ---
 
 ## Big SRAM: to validate
@@ -1408,7 +1428,7 @@ A running list; each entry names where it came from. Resolved entries move into 
 
 | # | question | from | status |
 |---|---|---|---|
-| Q1 | Tony's exact list of implemented CSRs, to define which CSR instructions are legal | 1.1 | waiting on Tony |
+| Q1 | Tony's exact list of implemented CSRs | 1.1 | **partly answered:** the trap CSRs, `mcycle` and `mtime` (41); the full list and reset values still to come |
 | Q2 | How long a high on the C&C pin counts as "sustained" for the host | 1.5 | **resolved: section 24** (the error pin never pulses) |
 | Q3 | What stops the peripheral and the sender when a condition traps | 1.7 | **resolved: section 21** (nothing, until the global reset) |
 | Q4 | The HALT design | planning notes section 7 | **resolved: sections 21-23** (no HALT state; the global reset is the only stop) |

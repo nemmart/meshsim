@@ -367,6 +367,20 @@ Word *n* is at window base + 4*n*.
 | 10-31 | | | reserved for future standard words |
 | 32-127 | | | peripheral-defined |
 
+- **Standard fields and access rules** (owner, 2026-10-28; W3-14):
+
+| item | rule |
+|---|---|
+| `STATUS` | [0] run in progress, [1] DMA in progress; the rest peripheral-defined |
+| `PARAMS` | [7:0] type, [15:8] version; the rest peripheral-defined; 0 means nothing to say |
+| `EVENTS` | [0] run done, [1] DMA done (depth 1); the rest peripheral-defined |
+| `EVENTS_MASK` at reset | 0: a peripheral wakes nobody until the program asks |
+| `PULSE_RUN` / `PULSE_DMA` while that unit is busy | ignored; meshsim flags it |
+| `DMA_HDR` / `DMA_ADDR` changed mid-transfer | undefined; meshsim flags it. A load returns the live, advancing values |
+| a DMA count of 0 | does nothing; DMA done is still posted |
+| reserved or undefined words, in a window or the controller's block | read 0, ignore stores; meshsim flags the access |
+| any word of an absent peripheral's window | bus error (v1.1's rule for unmapped addresses); hence the handler checks `PARAMS` [2:0] first (20) |
+
 - **Conditions interrupt; wake events wake.** `ERRORS` has one bit per peripheral, set while
   that peripheral's `ERRORS` is non-zero, so a peripheral error raises the hard interrupt. The tile's
   `EVENTS` has one bit per peripheral, **live** (not sticky): high while the peripheral's

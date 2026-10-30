@@ -53,7 +53,7 @@ final class Tile implements Component {
 
     Tile(int idx, Config cfg) {
         this.idx = idx; this.cfg = cfg;
-        router = new Router(idx, cfg.hops, cfg.queueDepth, cfg.loopbackDepth > 0 ? cfg.loopbackDepth : cfg.readTokens, idx == 0);
+        router = new Router(idx, cfg.hops, cfg.queueDepth, cfg.loopbackDepth > 0 ? cfg.loopbackDepth : cfg.readTokens, idx < 3);
         inj = new InjectionPath(idx);
         dir = new TrafficDirector(idx, cfg);
         Peripheral tp = cfg.testPeripheral != null ? cfg.testPeripheral.apply(idx) : null;
@@ -69,6 +69,7 @@ final class Tile implements Component {
         gatherIn = new WordFIFO(p + "gather-q", cfg.gatherDepth);
         inj.readReturn = readReturn; inj.send = sendHold; inj.toRouter = injBus;
         router.fromInjection = injBus; router.toDirector = ejectBus;
+        dir.periphPresent = cfg.periphTypeOf(idx) != 0 || cfg.testPeripheral != null ? 1 : 0;
         dir.in = ejectBus; dir.toGather = gatherIn; dir.toWriteEngine = weIn; dir.toPortB = portB;
         cmem.portB = portB;
         sram = new BigSRAM(idx, cfg); srq = new SRAMReadQueue(idx, cfg); writer = new WriteEngine(idx, cfg);
@@ -139,7 +140,7 @@ final class Tile implements Component {
         c[Conditions.BUS_ERROR] = core.busErrors;
         c[Conditions.ILLEGAL] = core.illegals;
         c[Conditions.GATHER_OVF] = gatherIn.overflowCount;
-        c[Conditions.BAD_MODE_OR_SIZE] = dir.badModeTotal;
+        c[Conditions.BAD_MODE_OR_SIZE] = dir.badTotal + srq.misalignedReads + writer.misalignedWrites;   // ERRORS [1] (4.13)
         c[Conditions.DONE_EARLY] = ctl.doneEarlyEvents;
         c[Conditions.BAD_PERIPH_WRITE] = slot.conditionEvents(0);
         c[Conditions.PERIPH_2] = slot.conditionEvents(1);

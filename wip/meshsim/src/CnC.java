@@ -129,15 +129,15 @@ final class CnC implements Component {
     CnC then(Step s) { steps.add(s); return this; }
     CnC call(Runnable r) { steps.add((Instant) (c, t) -> { r.run(); return true; }); return this; }
 
-    /** Send packets in order, one per cycle. Each packet: {dst, mode, addr, payload [63:0]} (a 64-bit packet) or
-     *  {dst, mode, addr, payload [63:0], size, payload [127:64]}. */
+    /** Send packets in order, one per cycle. Each packet: {dst, mode, addr, payload [63:0]} (a 64-bit, uncounted packet),
+     *  {dst, mode, addr, payload [63:0], size, payload [127:64]} (uncounted) or {..., counter}. */
     CnC send(List<long[]> packets) {
         final int[] i = { 0 };
         steps.add((c, t) -> {
             if (i[0] >= packets.size()) return true;
             long[] p = packets.get(i[0]++);
-            if (p.length >= 6) ep.send(t, (int) p[0], (int) p[1], (int) p[2], (int) p[4], p[3], p[5]);
-            else ep.send(t, (int) p[0], (int) p[1], (int) p[2], LinkWord.SIZE_64, p[3], 0);
+            if (p.length >= 6) ep.send(t, (int) p[0], (int) p[1], p.length >= 7 ? (int) p[6] : 0, (int) p[2], (int) p[4], p[3], p[5]);
+            else ep.send(t, (int) p[0], (int) p[1], 0, (int) p[2], LinkWord.SIZE_64, p[3], 0);
             packetsSent++;
             return i[0] >= packets.size();
         });
@@ -160,11 +160,11 @@ final class CnC implements Component {
         } else par = commandsTo[dst]++ & 1;
         int base = par == 0 ? Registers.ARGS_EVEN : Registers.ARGS_ODD;
         List<long[]> ps = new ArrayList<>();
-        for (int i = 0; i < args.length; i++) ps.add(new long[] { dst, LinkWord.M_CMD, base + i, args[i] & 0xFFFFFFFFL, LinkWord.SIZE_32, 0 });
+        for (int i = 0; i < args.length; i++) ps.add(new long[] { dst, LinkWord.M_WRITE, ControllerMemories.COMMAND + 4 * (base + i), args[i] & 0xFFFFFFFFL, LinkWord.SIZE_32, 0 });
         int w = (word & ~(1 << Registers.CMD_PARITY_BIT)) | par << Registers.CMD_PARITY_BIT;
         final int cw = word;
         steps.add((Instant) (c, t) -> { lastCommandWord = cw; return true; });
-        ps.add(new long[] { dst, LinkWord.M_CMD, 0, w & 0xFFFFFFFFL, LinkWord.SIZE_32, 0 });   // a command write: mode 7, 32 bits (3.1)
+        ps.add(new long[] { dst, LinkWord.M_WRITE, ControllerMemories.COMMAND, w & 0xFFFFFFFFL, LinkWord.SIZE_32, 0 });   // a command: an uncounted mode-0 write to slot 0, last (4.12)
         return send(ps);
     }
 
@@ -176,13 +176,15 @@ final class CnC implements Component {
         for (int i = 0; i < words.length; i += 4) {
             long[] w = new long[4];
             for (int k = 0; k < 4; k++) w[k] = i + k < words.length ? words[i + k] & 0xFFFFFFFFL : 0;
-            ps.add(new long[] { dst, LinkWord.M_CMEM, cmWord(byteAddr + 4 * i), w[1] << 32 | w[0], LinkWord.SIZE_128, w[3] << 32 | w[2] });
+            ps.add(new long[] { dst, LinkWord.M_WRITE, cmAddr(byteAddr + 4 * i), w[1] << 32 | w[0], LinkWord.SIZE_128, w[3] << 32 | w[2] });
             loadPackets++;
         }
         return ps.isEmpty() ? this : send(ps);
     }
     long loadPackets;
-    static int cmWord(int byteAddr) { return byteAddr < Registers.DMEM_BASE ? byteAddr >> 2 : 0x800 + ((byteAddr - Registers.DMEM_BASE) >> 2); }
+    /** PHASE-1 INTERIM (until phase 4 boots through the ROM): a v1.1 image byte address (code from 0, data from
+     *  Registers.DMEM_BASE) as the v1.2 packet address in region 0x01 or 0x00. */
+    static int cmAddr(int byteAddr) { return byteAddr < Registers.DMEM_BASE ? LinkWord.R_PMEM << 24 | byteAddr : byteAddr - Registers.DMEM_BASE; }
 
     /** Wait until all 64 READY bits are set, then (cnc_reaction later) clear them and GO. */
     CnC go() {

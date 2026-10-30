@@ -42,12 +42,26 @@ v1.1 recipe suite with the v1.2 recipes.
 
 ## Decisions of my own (to be listed in REPORT.md)
 
+- **The phase-1 line** (agreed with the owner, 2026-10-30): phase 1 ends with the Java-level hardware suites rewritten
+  to v1.2 and passing (BusTest, NetTest, MemTest, EngineTest, AgTest, the Java side of ReadPortGatherTest); the C-driven
+  suites report "PENDING (phase 2)", since the v1.1 programs use v1.1's modes, addresses and register map until phase 2
+  regenerates `mesh.h` and rewrites them; the sort's steps report "PENDING (sort port)".
+- **PHASE-1 INTERIM** marks code that keeps the build whole between phase 1 and the phase that replaces it: TileControl's
+  send header, read-port setup and counter registers (v1.1's map, counters 1-4), CnC's command and image addresses,
+  Sender's address step, PeripheralSlot's hand-over (the replayer still takes v1.1's word address).
 - **The sort's suites** (`check_layout.sh`, `sw/ext/sort/build.sh`, SortTest and its runs) leave `run_tests.sh` when
   the packet path changes in phase 1: the sort is not mine and is ported onto this simulator afterwards. Listed in
   QUESTIONS.md (W4-01) for confirmation.
 
 ## Log
 
+- **Phase 1** (2026-10-30, in progress): LinkWord (256-bit word, 32-bit address, counter field, modes 0-7, bad-packet
+  rules), Fields (STREAM layout, the common header layout), SRAMReadQueue (counter field, 32-bit destination, misaligned
+  reads not performed with payload 0, no spanning), AddressGenerator (STREAM fields, d = 64-66 and 126, entry checks),
+  ReadPort (byte destination, counter), GatherEngine (counter pass-through), InjectionPath (checks), Router and Chip (C&C
+  1-3 at tiles 0-2), Endpoint, TrafficDirector (rewritten: region switch, K delay line, seven counters, checks), WriteEngine
+  (mode 0 by address, misaligned PTR dropped but counted, no spanning), ControllerMemories and BankedMemory (32 KB + 32 KB,
+  byte-addressed port B, command landed on covering slot 0), Config (K, rp_latency).
 - **Phase 0** (2026-10-30): branch, toolchain, baseline (above); read the prompt, CHANGES-v1.2, spec 1–4.18 and 5–6.5,
   WORKER3-REVIEW-2 section 6. Still to read in full: 4.19, 6.6–6.7, 8, 9, 10, 13, the recipes and the draft header.
 
@@ -56,3 +70,4 @@ v1.1 recipe suite with the v1.2 recipes.
 | push | known-failing |
 |---|---|
 | phase 0 (no code changed) | RecipeTest `[snippets]` (46, both seeds), as in the baseline |
+| phase 1, simulator rewritten (`src/` compiles) | **the tests don't compile** (about 230 errors): every suite fails until the Java suites are rewritten |

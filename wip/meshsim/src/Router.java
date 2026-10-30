@@ -1,7 +1,7 @@
 
 /**
- * Router (design v2 spec 4.6, 4.7, 4.17; from meshsim v3.10, widened to the 101-bit packet): the route blocks
- * (four link inputs, the loopback input from the injection point, and on tile 0 a sixth, "from C&C"), the output
+ * Router (spec 4.6, 4.7, 4.16; v1.2): the route blocks
+ * (four link inputs, the loopback input from the injection point, and on tiles 0-2 a sixth, "from the controller"), the output
  * queue sets (one overflow FIFO of queue_depth packets per feeder) with round-robin selectors, and the link
  * outputs (delay lines owned by Chip).
  *
@@ -9,14 +9,13 @@
  * addr, payload; this router stamps src = me). The eject selector puts at most one packet per cycle on
  * {@link #toDirector}, the whole header kept: the traffic director switches on its mode.
  *
- * Tile 0 only (spec 4.17): input "from C&C" is a route block routed as an injection at tile 0; every one of
- * tile 0's five outputs gains a "from C&C" feeder FIFO (appended as the last slot), and a sixth output "to C&C"
- * has FIFOs from the loopback (tile 0's own packets), left, right, up and down with its own round-robin
- * selector. Every packet for dst 64 or 65 reaching tile 0 goes to "to C&C". Memory subsystem (65), as v3.10's
- * proposal (spec 7 open): it shares the port -- the from-C&C input takes C&C's packet, else the memory
- * subsystem's; after the to-C&C selector, dst 64 goes to C&C and dst 65 to the memory subsystem.
+ * The fifth port (4.16, v1.2): every router has it; tiles 0, 1 and 2's are connected, to C&C 1, C&C 2 and C&C 3
+ * (endpoints 64, 65, 66). Input "from the controller" is a route block routed as an injection at tile c (a controller's
+ * id stands for its tile, id - 64, as source and destination, 4.6); every one of the five outputs has a "from the
+ * controller" feeder FIFO (the last slot), and a sixth output "to the controller" has FIFOs from the loopback, left,
+ * right, up and down with its own round-robin selector. Every packet for dst 64 + c reaching tile c leaves there.
  *
- * Every bus here carries the 168-bit link word as three longs (payload [63:0], header, payload [127:64]); the header's
+ * Every bus here carries the 256-bit link word as three longs (payload [63:0], header, payload [127:64]); the header's
  * simulator-only bit 63 ({@link LinkWord#TAG_READPORT}) marks a read-port return and changes no routing decision.
  * (The eject hold for read-port results, M6-M9, is gone: results now arrive as packets through the loopback.)
  */
@@ -36,7 +35,7 @@ final class Router implements Component {
         { LOOPBACK, FROM_LEFT, FROM_RIGHT, FROM_UP, FROM_DOWN, FROM_CNC },
         { LOOPBACK, FROM_LEFT, FROM_RIGHT, FROM_UP, FROM_DOWN } };
     /** The feeders of each output: every tile's router has the fifth port (4.16, one tile design); it is connected only
-     *  where something is attached (tile 0's, to C&C), and an unconnected port never receives and is never chosen. */
+     *  where something is attached (tiles 0-2's, to C&C 1-3), and an unconnected port never receives and is never chosen. */
     static int[][] feeders(int me) { return FEEDERS_TILE0; }
 
     final int me;
@@ -54,15 +53,15 @@ final class Router implements Component {
     final WordSink[] linkOut = new WordSink[4];       // delay lines, indexed by output direction
     WordSource fromInjection;                         // injection point -> loopback route block (src stamped here)
     WordSink toDirector;                              // eject selector -> traffic director
-    WordSource fromCnc, fromMemsub;                   // tile 0: holding registers into the from-C&C route block (C&C first)
-    WordSink toCnc, toMemsub;                         // tile 0: after the to-C&C selector, by dst
+    WordSource fromCnc;                               // tiles 0-2: the controller's holding register into the from-controller route block
+    WordSink toCnc;                                   // tiles 0-2: after the to-controller selector
 
     long injected, routed, ejected, ejectErrors, routeErrors, fromCncWords, toCncWords;
 
-    final boolean attached;                     // the fifth port is connected (tile 0: C&C)
+    final boolean attached;                     // the fifth port is connected (tiles 0-2: C&C 1-3)
     final int loopSlot;                         // the eject output's loopback FIFO
     SRAMReadQueue tokens;                       // freed as a token-holding packet leaves the loopback FIFO (4.5)
-    Router(int me, Hops hops, int depth) { this(me, hops, depth, depth, me == 0); }
+    Router(int me, Hops hops, int depth) { this(me, hops, depth, depth, me < 3); }
     Router(int me, Hops hops, int depth, int loopDepth, boolean attached) {
         this.me = me; this.hops = hops; this.attached = attached;
         feeders = feeders(me);
@@ -100,7 +99,7 @@ final class Router implements Component {
         }
         if (attached && select(TO_CNC, t)) {
             toCncWords++;
-            (LinkWord.dst(selAddr) == LinkWord.MEMSUB ? toMemsub : toCnc).put(t, selData, selAddr, selTag);
+            toCnc.put(t, selData, selAddr, selTag);
         }
         // route blocks: link inputs
         for (int p = 0; p < 4; p++) {
@@ -114,10 +113,9 @@ final class Router implements Component {
             injected++;
             route(t, LOOPBACK, d, LinkWord.withSrc(a, me), c);
         }
-        // tile 0: the from-C&C route block (C&C's holding register first, then the memory subsystem's)
-        if (fromCnc != null) {
-            WordSource src = fromCnc.ready(t) ? fromCnc : fromMemsub != null && fromMemsub.ready(t) ? fromMemsub : null;
-            if (src != null) { long d = src.peekA(t), a = src.peekB(t), c = src.peekC(t); src.take(t); fromCncWords++; route(t, FROM_CNC, d, a, c); }
+        // tiles 0-2: the from-controller route block (src stamped by the controller's router: 64 + me)
+        if (fromCnc != null && fromCnc.ready(t)) {
+            long d = fromCnc.peekA(t), a = fromCnc.peekB(t), c = fromCnc.peekC(t); fromCnc.take(t); fromCncWords++; route(t, FROM_CNC, d, a, c);
         }
     }
 
@@ -172,23 +170,23 @@ final class Router implements Component {
     }
 
     int unicast(int src, int dst) {
-        boolean toCncPort = dst == LinkWord.CNC || dst == LinkWord.MEMSUB;
-        int s = src >= 64 ? 0 : src;
-        int d = toCncPort ? 0 : dst;
+        boolean toCncPort = LinkWord.controller(dst);
+        int s = LinkWord.tileOf(src) & 63;
+        int d = LinkWord.tileOf(dst) & 63;
         int k = (d - s) & 63;
         int b = hops.b[k], a = hops.a[k];
         int cs = s & 7, cm = me & 7;
         int hb = b >= 0 ? (cm - cs) & 7 : -((cs - cm) & 7);
         if (hb != b) return b > 0 ? RIGHT : LEFT;
         if (me != d) return a > 0 ? DOWN : UP;
-        return toCncPort ? CNC : EJ;               // tile 0: words for C&C / the memory subsystem leave through to-C&C (spec 4.17)
+        return toCncPort ? CNC : EJ;               // tile c: packets for 64 + c leave through the to-controller output (4.16)
     }
 
     int broadcast(int port, int src) {
-        int s = src >= 64 ? 0 : src;
+        int s = LinkWord.tileOf(src) & 63;
         int cs = s & 7, cm = me & 7, rs = s >> 3, rm = me >> 3;
         switch (port) {
-            case LOOPBACK: case FROM_CNC: return EJ | RIGHT | LEFT | DOWN | UP;     // a broadcast rooted here (C&C's: at tile 0); never delivered to C&C
+            case LOOPBACK: case FROM_CNC: return EJ | RIGHT | LEFT | DOWN | UP;     // a broadcast rooted here (a controller's: at its tile); never delivered to a controller
             case FROM_LEFT: { int m = EJ | DOWN | UP; if (((cm - cs) & 7) != 4) m |= RIGHT; return m; }
             case FROM_RIGHT: { int m = EJ | DOWN | UP; if (((cs - cm) & 7) != 3) m |= LEFT; return m; }
             case FROM_UP: { int m = EJ; if (((rm - rs) & 7) != 4) m |= DOWN; return m; }

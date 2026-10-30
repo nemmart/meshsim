@@ -3,11 +3,16 @@
  * requests from three clients at fixed priority -- 0 the GATHER engine (gather values), 1 the address generator, 2 the
  * controller read port (4.3) -- and their returns, turned into packets for the injection point.
  *
- * Client request words: a = source chunk address (21) | width (2) << 21 | mode (4) << 23 | dst (7) << 27,
- * b = destination address (21, the packet's addr) | reply address (12) << 24.
+ * Client request words (v1.2): a = source chunk address (21) | width (2) << 21 | mode (3) << 23 | counter (3) << 26 |
+ * dst (7) << 29; b = the outgoing packet's 32-bit address (mode 0; otherwise 0).
  * Width: the size code (3.1): 0 32 bits, 1 64 bits, 2 128 bits; 3 is undefined, and meshsim makes it a zero-width entry
- * (no memory access, payload 0). Every return is stamped with its width as the packet's size. A read-port return carries
- * the simulator-only {@link LinkWord#TAG_READPORT}.
+ * (no memory access, payload 0). Every return is stamped with its width as the packet's size and with its counter field.
+ * A read-port return carries the simulator-only {@link LinkWord#TAG_READPORT}.
+ *
+ * Natural alignment (4.1, D26, D32): a read whose source chunk isn't aligned to its size is not performed: it becomes a
+ * zero-width entry (no area access, payload 0), its packet still goes out as usual in its client's order, and the tile's
+ * ERRORS [1] is set ({@link #misalignedReads}, the error's source); meshsim flags it. No access ever spans a row. A read
+ * at or past the end of big SRAM is undefined in hardware (4.1): meshsim reads 0 and flags it (invariant 19).
  *
  * Tokens (4.5): one pool of `readTokens` (64), shared by the three clients. Every read the queue takes holds one. A token
  * is freed when its packet is injected ({@link #injected}), except a loopback packet's (dst = me or broadcast), which
@@ -18,8 +23,7 @@
  *
  * Issue: one request per cycle, the highest-priority client with one ready, while a token is free and the area has
  * room. A request goes to the SRAM's read holding register; if the SRAM leaves the previous one there (its area's
- * queue is full) the put is refused and retried: the queue stalls at its head (no bypass). A request that does not fit
- * in one row goes as two parts on consecutive cycles (part 1 ahead of every client).
+ * queue is full) the put is refused and retried: the queue stalls at its head (no bypass).
  *
  * Returns (4.1, 4.5, item 77): the big SRAM hands back each ordered client's reads in the order it issued them, so the
  * address generator and the GATHER engine each have an in-order return queue of their held reads' metadata; the read
@@ -45,18 +49,17 @@ final class SRAMReadQueue implements Component {
     private final java.util.ArrayDeque<Integer> free = new java.util.ArrayDeque<>();
     private final java.util.ArrayDeque<Integer>[] order;   // per ordered client: its held reads in issue order (GATHER, AG)
     private final java.util.TreeSet<long[]> rpReady = new java.util.TreeSet<>((x, y) -> x[0] != y[0] ? Long.compare(x[0], y[0]) : Long.compare(x[1], y[1]));
-    private final boolean[] rpIsReady;
+    private final boolean[] rpIsReady, zero;          // zero: a read not performed (misaligned, out of range, size 11): payload 0
     private int reads;                                // reads held (issued, not yet injected)
     private int loopHeld;                             // tokens held by packets on their way through the loopback
     private long lastT = Long.MIN_VALUE; private int startHeld, takenNow, freesPending;
-    // ---- issue state ----
-    private int splitTok = -1, splitAddr, splitN;     // the second part of a request spanning two rows
     // ---- stats ----
     final long[] issued = new long[3];
     private final int[] inFlightBy = new int[3];
     final long[] firstIssueT = { -1, -1, -1 }, lastIssueT = { -1, -1, -1 };
-    long spans;                                       // reads that cross a row boundary: two area accesses (4.1: allowed)
-    long outOfRange;                                  // reads wholly out of range (a smaller device): no area access, payload 0
+    long misalignedReads;                             // monotonic: reads not performed for misalignment (ERRORS [1], 4.1)
+    long outOfRange;                                  // reads at or past the end of big SRAM: undefined, flagged, payload 0 (invariant 19)
+    long violations; String lastViolation;
     long stallCycles, windowFullCycles, packets, sendTokenWaits;
     int peakHeld;
     final long[] latMax = new long[3], latSum = new long[3], latN = new long[3];
@@ -66,7 +69,7 @@ final class SRAMReadQueue implements Component {
         this.me = me; this.cfg = cfg;
         cap = cfg.readTokens;
         reqA = new long[cap]; reqB = new long[cap]; issueT = new long[cap]; readyT = new long[cap]; lo = new long[cap]; hi = new long[cap];
-        partsLeft = new int[cap]; cl = new int[cap]; rpIsReady = new boolean[cap];
+        partsLeft = new int[cap]; cl = new int[cap]; rpIsReady = new boolean[cap]; zero = new boolean[cap];
         for (int i = 0; i < cap; i++) free.add(i);
         order = new java.util.ArrayDeque[] { new java.util.ArrayDeque<Integer>(), new java.util.ArrayDeque<Integer>() };
     }
@@ -93,7 +96,7 @@ final class SRAMReadQueue implements Component {
     /** The injection point injected a read return at t (its header): the token is freed, or held through the loopback. */
     void injected(long t, long h) {
         advance(t);
-        int tok = (int) ((h >>> 41) & 0x3F);
+        int tok = LinkWord.token(h);
         reads--; inFlightBy[cl[tok]]--;
         long lat = t - issueT[tok]; int c = cl[tok];
         latSum[c] += lat; latN[c]++; if (lat > latMax[c]) latMax[c] = lat;
@@ -104,12 +107,15 @@ final class SRAMReadQueue implements Component {
     boolean tokensOn = true;                          // false: an experiment (Config.loopbackTokens)
 
     /** A client's request: (a, b) words. */
-    static long reqA(int srcChunk, int width, int mode, int dst) { return (srcChunk & 0x1FFFFF) | (long) (width & 3) << 21 | (long) (mode & 15) << 23 | (long) (dst & 0x7F) << 27; }
+    static long reqA(int srcChunk, int width, int mode, int counter, int dst) {
+        return (srcChunk & 0x1FFFFF) | (long) (width & 3) << 21 | (long) (mode & 7) << 23 | (long) (counter & 7) << 26 | (long) (dst & 0x7F) << 29;
+    }
     static int aAddr(long a) { return (int) (a & 0x1FFFFF); }
     static int aWidth(long a) { return (int) ((a >>> 21) & 3); }
-    static int aMode(long a) { return (int) ((a >>> 23) & 15); }
-    static int aDst(long a) { return (int) ((a >>> 27) & 0x7F); }
-    static long reqB(int dstAddr, int replyAddr) { return (dstAddr & 0x1FFFFF) | (long) (replyAddr & 0xFFF) << 24; }
+    static int aMode(long a) { return (int) ((a >>> 23) & 7); }
+    static int aCounter(long a) { return (int) ((a >>> 26) & 7); }
+    static int aDst(long a) { return (int) ((a >>> 29) & 0x7F); }
+    static long reqB(int dstAddr) { return dstAddr & 0xFFFFFFFFL; }
     /** Chunks read for a size code: 1, 2 or 4; 0 for the undefined code 11 (meshsim reads nothing: a zero-width entry). */
     static int chunksOf(int size) { return size == LinkWord.SIZE_UNDEF ? 0 : 1 << size; }
 
@@ -129,7 +135,6 @@ final class SRAMReadQueue implements Component {
         release(t);
         // 3. issue
         if (toSram.refused(t)) { toSram.retry(t); stallCycles++; return; }
-        if (splitTok >= 0) { putPart(t, splitTok, splitAddr, splitN, 1); splitTok = -1; return; }
         if (!tokenFree(t)) { for (WordSource c : client) if (c != null && c.ready(t)) { windowFullCycles++; break; } return; }
         for (int c = 0; c < 3; c++) {
             WordSource s = client[c];
@@ -151,34 +156,31 @@ final class SRAMReadQueue implements Component {
         issued[c]++; inFlightBy[c]++;
         if (firstIssueT[c] < 0) firstIssueT[c] = t; lastIssueT[c] = t;
         int width = aWidth(a), n = chunksOf(width), addr = aAddr(a);
-        if (n == 0) { partsLeft[tok] = 0; ready(tok, t + 2 + cfg.sramReadLatency); return; }
-        int o = addr & 3;
-        if (o + n > 4) spans++;
-        // an out-of-range part (a smaller device) makes no area access: its chunks read 0, and it counts as returned
-        boolean out0 = addr >= cfg.memChunks;
-        if (o + n <= 4) { partsLeft[tok] = out0 ? 0 : 1; if (!out0) putPart(t, tok, addr, n, 0); }
-        else {
-            int a1 = (addr + 4 - o) & 0x1FFFFF;
-            boolean out1 = a1 >= cfg.memChunks;
-            partsLeft[tok] = (out0 ? 0 : 1) + (out1 ? 0 : 1);
-            if (!out0) putPart(t, tok, addr, 4 - o, 0);
-            if (!out1) { if (out0) putPart(t, tok, a1, n - (4 - o), 1); else { splitTok = tok; splitAddr = a1; splitN = n - (4 - o); } }
+        if (n != 0 && !LinkWord.chunkAligned(addr, width)) {            // not performed: payload 0, ERRORS [1] (4.1)
+            misalignedReads++; violations++;
+            lastViolation = CLIENT[c] + " read of chunk 0x" + Integer.toHexString(addr) + " not aligned to its size (" + LinkWord.SIZE_NAME[width]
+                    + " bits): not performed, its packet sent with payload 0, ERRORS [1] (4.1; invariant 20)";
+            n = 0;
+        } else if (n != 0 && addr + n > cfg.memChunks) {                // undefined in hardware (4.1); meshsim reads 0
+            outOfRange++; violations++;
+            lastViolation = CLIENT[c] + " read of chunk 0x" + Integer.toHexString(addr) + " at or past the end of big SRAM (0x" + Integer.toHexString(cfg.memChunks)
+                    + " chunks): undefined (4.1; invariant 19)";
+            n = 0;
         }
-        if (partsLeft[tok] == 0) { ready(tok, t); outOfRange++; }
+        if (n == 0) { partsLeft[tok] = 0; zero[tok] = true; ready(tok, t + 2 + cfg.sramReadLatency); return; }
+        zero[tok] = false; partsLeft[tok] = 1; putPart(t, tok, addr, n, 0);
     }
     private void putPart(long t, int tok, int addr, int n, int part) {
         toSram.put(t, BigSRAM.readReq(addr, n, tok, part), 0, 0);
     }
 
-    /** Store a returned row's chunks into the entry: part 0 holds chunks from the request's offset, part 1 the rest. */
+    /** Store a returned row's chunks into the entry: the read's chunks, from its (aligned) offset in the row (4.5). */
     private void place(int tok, int part, long rlo, long rhi) {
         int addr = aAddr(reqA[tok]), n = chunksOf(aWidth(reqA[tok])), o = addr & 3;
-        int first = part == 0 ? o : 0, cnt = part == 0 ? Math.min(n, 4 - o) : n - (4 - o), dstFirst = part == 0 ? 0 : 4 - o;
-        for (int j = 0; j < cnt; j++) {
-            int k = first + j;
+        for (int j = 0; j < n; j++) {
+            int k = o + j;
             long v = ((k < 2 ? rlo : rhi) >>> (32 * (k & 1))) & 0xFFFFFFFFL;
-            int d = dstFirst + j;
-            if (d < 2) lo[tok] |= v << (32 * d); else hi[tok] |= v << (32 * (d - 2));
+            if (j < 2) lo[tok] |= v << (32 * j); else hi[tok] |= v << (32 * (j - 2));
         }
     }
 
@@ -196,21 +198,21 @@ final class SRAMReadQueue implements Component {
      *  token travels in the simulator-only header bits [46:41] until the injection point frees it. */
     private void emit(long t, int tok) {
         long a = reqA[tok], b = reqB[tok];
-        int mode = aMode(a), dst = aDst(a), dstAddr = (int) (b & 0x1FFFFF);
+        int mode = aMode(a), dst = aDst(a), dstAddr = (int) b;
         int size = aWidth(a);
-        long pl = chunksOf(size) == 0 ? 0 : lo[tok], ph = chunksOf(size) == 0 ? 0 : hi[tok];
-        long h = LinkWord.hdr(0, dst, mode, dstAddr, size) | (long) tok << 41 | LinkWord.TAG_FROM_SRQ
+        long pl = zero[tok] ? 0 : lo[tok], ph = zero[tok] ? 0 : hi[tok];
+        long h = LinkWord.hdr(0, dst, mode, aCounter(a), dstAddr, size) | (long) tok << LinkWord.TOKEN_SHIFT | LinkWord.TAG_FROM_SRQ
                 | (cl[tok] == READPORT ? LinkWord.TAG_READPORT : 0) | (tokensOn && loops(dst) ? LinkWord.TAG_TOKEN : 0);
         toInjection.put(t, LinkWord.maskLo(pl, size), h, LinkWord.maskHi(ph, size));
         packets++;
     }
     int inFlightOf(int c) { return inFlightBy[c]; }
 
-    boolean idle() { return reads == 0 && splitTok < 0; }
+    boolean idle() { return reads == 0; }
     /** HALT (6.1): the return queues clear and every read's token is free (nothing is in flight when RUN/HALT changes:
      *  invariant 7). Loopback packets keep theirs until they leave the loopback FIFO. */
     void haltReset() {
-        order[0].clear(); order[1].clear(); rpReady.clear(); splitTok = -1;
+        order[0].clear(); order[1].clear(); rpReady.clear();
         free.clear(); for (int i = 0; i < cap; i++) free.add(i);
         reads = 0; java.util.Arrays.fill(inFlightBy, 0);
     }

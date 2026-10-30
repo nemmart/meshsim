@@ -6,8 +6,11 @@
  * A read-port return (tagged {@link LinkWord#TAG_READPORT} by the SRAM read queue, simulator-only) frees its read-port entry when
  * it is injected (spec 4.3); the tag travels with the packet to the director.
  *
- * Checks (spec 9): invariant 5 (no bad packet, 3.1, and no size 11, is sent), invariant 10 (a mode-1 packet goes only to the
- * tile itself) and 2.1 (no packet for 65-125, which have no endpoint; none for 127). A violating packet is still injected, as the hardware would.
+ * Checks (spec 9; meshsim only, the send port and the read returns check nothing in hardware): invariant 5 (no bad packet,
+ * judged against peripheral 1 alone, which every unit has; the receiving director judges the rest), size 11, invariant 10
+ * (a mode-4 packet goes only to the tile itself), invariant 21 (no mode 6-7, no count-only packet on counter 0) and
+ * invariant 17 (no packet for 67-125, which have no endpoint, or 127). A violating packet is still injected, as the
+ * hardware would.
  */
 final class InjectionPath implements Component {
     final int me;
@@ -43,10 +46,13 @@ final class InjectionPath implements Component {
         if (src == readReturn && (h & LinkWord.TAG_FROM_SRQ) != 0 && srq != null) srq.injected(t, h);
         if (LinkWord.readPortTag(h) && src == readReturn && readPort != null) readPort.injectedAt(t);
         int mode = LinkWord.mode(h), dst = LinkWord.dst(h);
-        if (LinkWord.badPacket(h)) violate("bad packet sent (invariant 5: mode 0 or 10-15, mode 5 at 128, a misaligned mode 3, mode 7 above 32 or mode 8 at 128 bits): " + LinkWord.describe(d, h, c));
+        String bad = LinkWord.whyBad(h, 1);
+        if (bad != null) violate("bad packet sent (" + bad + "; 3.1, invariant 5): " + LinkWord.describe(d, h, c));
         if (LinkWord.size(h) == LinkWord.SIZE_UNDEF) violate("packet with size 11, undefined, sent (3.1, invariant 5): " + LinkWord.describe(d, h, c));
-        if (dst > LinkWord.CNC && dst < LinkWord.BROADCAST || dst == LinkWord.NONE) violate("a packet sent to dst " + dst + ", which has no endpoint (2.1: only 64 exists of 64-125; 127 is not a destination): " + LinkWord.describe(d, h, c));
-        if (mode == LinkWord.M_GATHER && dst != me) violate("mode-1 packet to another tile (invariant 10): " + LinkWord.describe(d, h));
+        if (dst > LinkWord.CC3 && dst < LinkWord.BROADCAST || dst == LinkWord.NONE) violate("a packet sent to dst " + dst + ", which has no endpoint (2.1: 67-125 reserved; 127 is not a destination; invariant 17): " + LinkWord.describe(d, h, c));
+        if (mode == LinkWord.M_GATHER && dst != me) violate("mode-4 packet to another unit (invariant 10): " + LinkWord.describe(d, h));
+        if (LinkWord.reservedMode(mode)) violate("packet in the reserved mode " + mode + " sent (3.1, invariant 21): " + LinkWord.describe(d, h, c));
+        if (mode == LinkWord.M_COUNT && LinkWord.counter(h) == 0) violate("count-only packet on counter 0 sent: it does nothing (3.1, invariant 21): " + LinkWord.describe(d, h, c));
         toRouter.put(t, d, h, c);
         injected++;
         if (src == readReturn) fromRead++; else fromSend++;

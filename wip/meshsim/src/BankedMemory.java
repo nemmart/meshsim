@@ -1,12 +1,13 @@
 /**
- * One controller memory (spec 4.11, v1.1): 8 KB = 2,048 words as four 512 x 32-bit banks interleaved by word, word w in
+ * One controller memory (spec 4.11, v1.2): 32 KB = 8,192 words as four 2,048 x 32-bit banks interleaved by word, word w in
  * bank w mod 4 at row w / 4. Each bank is its own {@link SRAMMacro} with two ports (A: the core, B: the traffic director),
  * so the banking is checked, not assumed: port A touches one bank per access, and port B's 1, 2 or 4 consecutive words
- * (a mode-5 packet of 32, 64 or 128 bits) always fall in different banks, one write per bank port per cycle (a second
- * access to one bank port in a cycle throws, as for every macro). v1.0 had two 1K x 32 banks per memory.
+ * (a naturally aligned mode-0 packet of 32, 64 or 128 bits) always fall in different banks, one write per bank port per
+ * cycle (a second access to one bank port in a cycle throws, as for every macro). The spec leaves port B's build to the
+ * implementer (4.11, D42: one 128-bit write per cycle); four word-interleaved banks is meshsim's.
  */
 final class BankedMemory {
-    static final int BANKS = 4, WORDS = 2048, BANK_WORDS = WORDS / BANKS;
+    static final int BANKS = 4, WORDS = 8192, BANK_WORDS = WORDS / BANKS, BYTES = 4 * WORDS;
     final String name;
     final SRAMMacro[] bank = new SRAMMacro[BANKS];
 

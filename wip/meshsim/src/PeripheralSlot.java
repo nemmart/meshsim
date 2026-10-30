@@ -42,14 +42,13 @@ final class PeripheralSlot implements Peripheral.Host {
     private long lastAcceptT = Long.MIN_VALUE / 2;
     /** A mode-9 packet handed over and not yet landed (in the rp_latency path). */
     boolean inFlight(long t) { return lastAcceptT + Peripheral.RP_LATENCY >= t; }
-    void accept(long t, boolean halted, long lo, long h, long hi) {
+    /** v1.2 (4.17.5): a mode-0 write into peripheral n's region; counted at the director by its counter field (K), not
+     *  here. PHASE-1 INTERIM: the peripheral still takes v1.1's word address (the byte offset / 4) until phase 3 moves the
+     *  replayer onto its v1.2 map. */
+    void accept(long t, int n, long lo, long h, long hi) {
         accepted++; lastAcceptT = t;
-        if (p == null) {                             // 4.17.7: a bad peripheral write, counted at once
-            badWrites++;
-            if (!halted) tile.dir.countArrival(t, TrafficDirector.PERIPH, LinkWord.describe(lo, h, hi));
-            return;
-        }
-        p.accept(t, LinkWord.src(h), LinkWord.addr(h), LinkWord.size(h), lo, hi);
+        if (p == null || n != 1) { badWrites++; return; }   // the director drops packets to an absent peripheral; defensive
+        p.accept(t, LinkWord.src(h), LinkWord.offset(LinkWord.addr(h)) >>> 2, LinkWord.size(h), lo, hi);
     }
     /** PERIPH_RUN stored at t (4.17.2). */
     void run(long t) {
@@ -66,8 +65,8 @@ final class PeripheralSlot implements Peripheral.Host {
     /** Monotonic counts for TILE_CONDITIONS [11], [12], [13]. */
     long conditionEvents(int k) { return (k == 0 ? badWrites : 0) + (p == null ? 0 : p.conditionEvents(k)); }
     void runCycle(long t) { if (p != null) p.runCycle(t); }
-    /** After every child has run cycle t: count a mode-9 packet that landed or was dropped at t (in RUN only). */
+    /** After every child has run cycle t: a write that landed or was dropped at t (v1.2 counts at the director). */
     void endCycle(long t) {
-        if (p != null && p.landed(t) != 0 && !tile.dir.halted(t)) { landedCounted++; tile.dir.countArrival(t, TrafficDirector.PERIPH, "a mode-9 packet landing"); }
+        if (p != null && p.landed(t) != 0) landedCounted++;
     }
 }

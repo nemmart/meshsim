@@ -42,8 +42,8 @@ final class TileControl {
     int events;                                                   // WAKE_EVENTS' sticky events, as at the end of the last cycle
     int wakeMask = Registers.WAKE_MASK_RESET, wakeRequired;
     // qualifiers (4.12): counters done [9] and each counter's done event [0]-[3]
-    private boolean qAll; private final boolean[] qOne = new boolean[TrafficDirector.N_COUNTERS];
-    private boolean condAllPrev = true; private final boolean[] condOnePrev = { true, true, true, true };
+    private boolean qAll; private final boolean[] qOne = new boolean[TrafficDirector.N_COUNTERS + 1];
+    private boolean condAllPrev = true; private final boolean[] condOnePrev = { true, true, true, true, true, true, true, true };
     private boolean rdDonePrev, requestBusyPrev, senderBusyPrev;
     private int consumeBits; private long consumeT = Long.MIN_VALUE; // a consuming load's clear, at the end of its cycle
     long latchSets, spuriousEdges, gatedEdges;
@@ -62,7 +62,7 @@ final class TileControl {
     long goWakes, eventWakes;
     long doneEarlyEvents, wakeInDone, counterWraps, goPulses;
     /** The cycle of the last write to each down-counter (its store's cycle), -1 if none: measurements only. */
-    final long[] counterWriteAt = { -1, -1, -1, -1 };
+    final long[] counterWriteAt = { -1, -1, -1, -1, -1, -1, -1, -1 };
     long violations; String lastViolation;
 
     TileControl(Tile tile, Config cfg) {
@@ -131,7 +131,7 @@ final class TileControl {
         if (r == null) return null;
         if (r == Registers.TILE_STATUS) return statusAt(t);
         if (r == Registers.TILE_CONDITIONS) return conditions;
-        if (Registers.isCounter(r)) return tile.dir.counterAtStart(Registers.counterIndex(r), t);
+        if (Registers.isCounter(r)) return tile.dir.counterAtStart(Registers.counterIndex(r) + 1, t);   // PHASE-1 INTERIM: v1.1's four registers are counters 1-4
         if (r == Registers.SRAM_RD_ADDR_QUEUE) return tile.readPort.free(t);
         if (r == Registers.WAKE_EVENTS) {
             int v = eventsAt(t), c = v & wakeMask;
@@ -161,7 +161,7 @@ final class TileControl {
     }
     /** A counter write of N at t adds N at the end of t: the director judges a same-cycle arrival against count + N. */
     int pendingAdd(int c, long t) {
-        return pendT == t && pendIdx == Registers.DMA_SRAM_REMAINING.index + c ? pendVal & TrafficDirector.COUNTER_MASK : 0;
+        return pendT == t && Registers.isCounter(Registers.STORE[pendIdx]) && Registers.counterIndex(Registers.STORE[pendIdx]) + 1 == c ? pendVal & TrafficDirector.COUNTER_MASK : 0;
     }
     /** The packet a send store of word v at t sends (8.4), from the registers as they stand at t: the store supplies the
      *  packet's top word, ROUTER_SET_W0-W2 the words below it; words beyond the size are 0. */
@@ -170,12 +170,16 @@ final class TileControl {
                 : (long) setW[1] << 32 | (setW[0] & 0xFFFFFFFFL);
     }
     long sendHi(int v, int size) { return size == LinkWord.SIZE_128 ? (long) v << 32 | (setW[2] & 0xFFFFFFFFL) : 0; }
+    /** PHASE-1 INTERIM: v1.1's ROUTER_SET_HDR read as a v1.2 header (mode [2:0] of v1.1's field, uncounted, the 21-bit
+     *  address as is). Phase 2 replaces it with ROUTER_HDR and ROUTER_ADDR. */
     long sendHeader(int size) {
-        return LinkWord.hdr(0, Registers.H_DST.get(setHdr), Registers.H_MODE.get(setHdr), Registers.H_ADDR.get(setHdr), size);
+        return LinkWord.hdr(0, Registers.H_DST.get(setHdr), Registers.H_MODE.get(setHdr) & 7, 0, Registers.H_ADDR.get(setHdr), size);
     }
-    /** The read port's setup (8.8): the next result's packed word and the read size. */
-    int rdDest() { return Registers.RD_DEST.get(rdSetup); }
+    /** PHASE-1 INTERIM: the read port's setup (8.8) from v1.1's word: the next result's byte offset in data memory, the
+     *  size, counter 2. Phase 2 replaces it with v1.2's SRAM_RD_DEST_ADDR. */
+    int rdDest() { return (Registers.RD_DEST.get(rdSetup) & 0x7FF) << 2; }
     int rdSize() { return Registers.RD_SIZE.get(rdSetup); }
+    int rdCounter() { return 2; }
 
     // ================================================================ end of cycle
     void endCycle(long t) {
@@ -192,7 +196,7 @@ final class TileControl {
         }
         if (haltEdgeAt == t) {                                    // RUN -> HALT: conditions, counters, their events and qualifiers (6.1)
             conditions = 0; errorSince = -1; tile.haltReset(t);
-            java.util.Arrays.fill(tile.dir.remaining, 0);
+            tile.dir.resetCounters();
             events &= ~(0xF | 1 << Registers.EV_COUNTERS_DONE); qAll = false; java.util.Arrays.fill(qOne, false);
         }
         int clearBits = 0;                                        // clears that beat a same-cycle set of [9] and [3:0]
@@ -225,19 +229,19 @@ final class TileControl {
      *  qualifier); a clear in the same cycle wins. */
     private void counterEvents(long t, int clearBits) {
         int[] r = tile.dir.remaining;
-        boolean memIdle = tile.memIdle(t), cmIdle = tile.dir.cmIdle(t);
         boolean any = false, gated = gate && cfg.doneGate;
-        for (int c = 0; c < TrafficDirector.N_COUNTERS; c++) {
+        for (int c = 1; c <= TrafficDirector.N_COUNTERS; c++) {     // v1.2 (4.12): done means landed, by K; mem_idle and cm_idle take no part
             if (r[c] != 0) { qOne[c] = true; any = true; }
-            boolean cond = r[c] == 0 && (c == TrafficDirector.SRAM ? memIdle : c == TrafficDirector.PERIPH || cmIdle);
+            boolean cond = r[c] == 0;
+            int bit = evBitOf(c);
             if (cond && !condOnePrev[c] && qOne[c]) {
                 qOne[c] = false;
-                if (!gated && (clearBits & 1 << c) == 0) events |= 1 << c;
+                if (!gated && bit >= 0 && (clearBits & 1 << bit) == 0) events |= 1 << bit;
             }
             condOnePrev[c] = cond;
         }
         if (any) qAll = true;
-        boolean cond = r[0] == 0 && r[1] == 0 && r[2] == 0 && r[3] == 0 && memIdle && cmIdle;
+        boolean cond = countersZero();
         if (cond && !condAllPrev && qAll && gated) { qAll = false; gatedEdges++; }
         else if (cond && !condAllPrev && qAll) {
             qAll = false;
@@ -246,8 +250,11 @@ final class TileControl {
         condAllPrev = cond;
     }
 
-    boolean everyCounterDone(long t) { return countersZero() && tile.memIdle(t) && tile.dir.cmIdle(t); }
-    boolean countersZero() { int[] r = tile.dir.remaining; return r[0] == 0 && r[1] == 0 && r[2] == 0 && r[3] == 0; }
+    boolean everyCounterDone(long t) { return countersZero(); }
+    boolean countersZero() { int[] r = tile.dir.remaining; for (int c = 1; c <= TrafficDirector.N_COUNTERS; c++) if (r[c] != 0) return false; return true; }
+    /** PHASE-1 INTERIM: counter c's done event bit in v1.1's WAKE_EVENTS ([3:0] for counters 1-4; none for 5-7). Phase 2
+     *  moves to v1.2's EVENTS ([6:0]). */
+    static int evBitOf(int c) { return c <= 4 ? c - 1 : -1; }
     /** Counters done ([9]) is pending (tests; the v1.0 local-wake latch). */
     boolean countersDonePending() { return (events & 1 << Registers.EV_COUNTERS_DONE) != 0; }
 
@@ -276,13 +283,13 @@ final class TileControl {
         }
         else if (r == Registers.DMA_RECORD_BASE_ADDRESS) { recordBase = v; tile.setRecordBase(v); }
         else if (Registers.isCounter(r)) {                         // 4.12: a write adds; N > 0 arms; 0 does nothing
-            int k = Registers.counterIndex(r), n = v & TrafficDirector.COUNTER_MASK;
+            int k = Registers.counterIndex(r) + 1, n = v & TrafficDirector.COUNTER_MASK;
             counterWriteAt[k] = t;                                 // the store's cycle: armed from the end of t
             if (n != 0) {
                 long sum = (long) tile.dir.remaining[k] + n;
-                if (sum > TrafficDirector.COUNTER_MASK) { counterWraps++; violate(t, TrafficDirector.COUNTER_NAME[k] + " written past 2^20 - 1: the count wraps (4.12)"); }
+                if (sum > TrafficDirector.COUNTER_MASK) { counterWraps++; violate(t, TrafficDirector.counterName(k) + " written past 2^20 - 1: the count wraps (4.12)"); }
                 tile.dir.remaining[k] = (int) (sum & TrafficDirector.COUNTER_MASK);
-                clears |= 1 << k | 1 << Registers.EV_COUNTERS_DONE;
+                clears |= (evBitOf(k) >= 0 ? 1 << evBitOf(k) : 0) | 1 << Registers.EV_COUNTERS_DONE;
                 events &= ~clears; qAll = true; qOne[k] = true;
             }
         }
@@ -293,8 +300,7 @@ final class TileControl {
         else if (Registers.isSend(r)) {                            // captured at t (8.4): auto-increment; W0-W2 all clear
             sends++; lastSendAt = t; sendsBySize[Registers.sendSize(r)]++;
             int mode = Registers.H_MODE.get(setHdr), a = Registers.H_ADDR.get(setHdr);
-            int inc = mode == LinkWord.M_EXPLICIT || mode == LinkWord.M_CMEM || mode == LinkWord.M_PERIPH ? LinkWord.chunks(Registers.sendSize(r))
-                    : mode == LinkWord.M_CMD ? 1 : 0;
+            int inc = (mode & 7) == LinkWord.M_WRITE ? LinkWord.bytes(Registers.sendSize(r)) : 0;   // PHASE-1 INTERIM
             if (inc != 0) setHdr = (setHdr & ~(Registers.H_ADDR.mask() << Registers.H_ADDR.lo)) | Registers.H_ADDR.place(a + inc);
             setW[0] = setW[1] = setW[2] = 0;
         }
@@ -323,9 +329,11 @@ final class TileControl {
     private void checkInvariant4(long t) {
         if (halted) return;
         int[] r = tile.dir.remaining;
-        if (!countersZero() || !tile.memIdle(t) || !tile.dir.countedCmIdle(t))
-            violate(t, "done pulsed before every expected arrival landed (invariant 4): SRAM_REMAINING " + r[0] + ", CM_REMAINING " + r[1]
-                    + ", REPLY_REMAINING " + r[2] + ", PERIPH_REMAINING " + r[3] + ", mem_idle " + tile.memIdle(t) + ", cm_idle " + tile.dir.cmIdle(t));
+        if (!countersZero()) {
+            StringBuilder b = new StringBuilder();
+            for (int c = 1; c <= TrafficDirector.N_COUNTERS; c++) if (r[c] != 0) b.append(' ').append(TrafficDirector.counterName(c)).append(' ').append(r[c]);
+            violate(t, "done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]):" + b);
+        }
     }
 
     void violate(long t, String m) { violations++; lastViolation = m; }

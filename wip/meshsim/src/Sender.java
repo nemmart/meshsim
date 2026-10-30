@@ -56,13 +56,13 @@ final class Sender {
         while (have < need && p.outReady(t, q)) buf[have++] = p.outTake(t, q);
         if (have < need) return;
         int size = need == 4 ? LinkWord.SIZE_128 : need == 2 ? LinkWord.SIZE_64 : LinkWord.SIZE_32;
-        boolean addrMode = mode == LinkWord.M_EXPLICIT || mode == LinkWord.M_CMEM || mode == LinkWord.M_PERIPH;
+        boolean addrMode = mode == LinkWord.M_WRITE;                      // PHASE-1 INTERIM: the DMA is phase 3
         long lo = buf[0] & 0xFFFFFFFFL, hi = 0;
         if (need >= 2) lo |= (long) buf[1] << 32;
         if (need == 4) hi = (buf[2] & 0xFFFFFFFFL) | (long) buf[3] << 32;
         sink.add(new long[] { t, dest, mode, addrMode ? addr : 0, size, lo, hi });
         packets++;
-        if (addrMode) addr = (addr + need) & 0x1FFFFF;
+        if (addrMode) addr += 4 * need;
         left -= need; have = 0;
         if (left == 0) busy = false;
     }

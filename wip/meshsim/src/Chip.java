@@ -5,8 +5,9 @@ import java.util.Random;
 import java.util.Set;
 
 /**
- * The whole machine (spec 2): 64 tiles, 256 link delay lines (every one link_latency cycles, spec 3.2), and the two
- * endpoints on tile 0's fifth port (C&C 64, memory subsystem 65). Every child runs once per cycle (in a per-cycle
+ * The whole machine (spec 2): 64 tiles, 256 link delay lines (every one link_latency cycles, spec 3.2), and the three
+ * controllers' endpoints on tiles 0-2's fifth ports (C&C 1-3, endpoints 64-66; 4.16). C&C 1 is the behavioural model
+ * {@link CnC}; C&C 2 (whose peripheral is the memory system) and C&C 3 are endpoints driven by tests. Every child runs once per cycle (in a per-cycle
  * shuffled order when shuffleSeed >= 0), then the invariants of spec 9 are checked.
  *
  * Start skew (spec 3.2): each tile has a fixed offset {@link #startSkew}[i] of 0 or +1 cycle, applied to GO and RUN
@@ -18,7 +19,8 @@ final class Chip implements Component {
     final WordDelayLine[][] links = new WordDelayLine[64][4];   // [tile][direction]
     final int[][] linkLatency = new int[64][4];
     final int[] startSkew = new int[64];
-    final Endpoint cnc, memsub;
+    final Endpoint[] ccs = new Endpoint[3];                     // C&C 1-3 at tiles 0-2's fifth ports (4.16)
+    final Endpoint cnc, memsub, cc3;                             // C&C 1; C&C 2 (the memory system's unit); C&C 3
     final CnC cc;                                                // C&C's sequencer and register block
     final PhaseLog phases;                                       // per-phase accounting
     final RequestBus reqBus;                                     // the request bus (3.3), run first every cycle
@@ -50,18 +52,19 @@ final class Chip implements Component {
             tiles[i].router.linkOut[d] = links[i][d];
             tiles[neighbour(i, d)].router.linkIn[arrivalPort(d)] = links[i][d];
         }
-        cnc = new Endpoint(LinkWord.CNC, cfg.queueDepth);
-        memsub = new Endpoint(LinkWord.MEMSUB, cfg.queueDepth);
-        Router r0 = tiles[0].router;
-        r0.fromCnc = cnc.send; r0.fromMemsub = memsub.send; r0.toCnc = cnc.rx; r0.toMemsub = memsub.rx;
+        for (int c = 0; c < 3; c++) {
+            ccs[c] = new Endpoint(LinkWord.CC1 + c, cfg.queueDepth);
+            tiles[c].router.fromCnc = ccs[c].send; tiles[c].router.toCnc = ccs[c].rx;
+        }
+        cnc = ccs[0]; memsub = ccs[1]; cc3 = ccs[2];
         phases = new PhaseLog(this);
         reqBus = new RequestBus(this);
         for (Tile p : tiles) p.req.bus = reqBus;
         if (cfg.targetReceiver != null) for (int k = 0; k < cfg.targetReceiver.length; k++) if (cfg.targetReceiver[k] >= 0) tiles[cfg.targetReceiver[k]].req.receivesTarget = k;
         cc = new CnC(this, cnc);
-        children = new Component[67];
-        children[0] = cnc; children[1] = memsub; children[66] = cc;
-        for (int i = 0; i < 64; i++) children[2 + i] = tiles[i];
+        children = new Component[68];
+        children[0] = cnc; children[1] = memsub; children[2] = cc3; children[67] = cc;
+        for (int i = 0; i < 64; i++) children[3 + i] = tiles[i];
         shuffle = cfg.shuffleSeed >= 0 ? new Random(cfg.shuffleSeed) : null;
         if (shuffle != null) for (Tile p : tiles) p.shuffle = new Random(shuffle.nextLong());
     }
@@ -125,20 +128,23 @@ final class Chip implements Component {
             if (p.ctl.violations != s2[i][0]) { s2[i][0] = p.ctl.violations; violation(t, i, p.ctl.lastViolation); }
             if (p.cmem.violations != s2[i][1]) { s2[i][1] = p.cmem.violations; violation(t, i, p.cmem.lastViolation); }
             if (p.readPort.violations != s2[i][2]) { s2[i][2] = p.readPort.violations; violation(t, i, p.readPort.lastViolation); }
-            long agv = p.ag.sizeViolations + p.ag.modeViolations + p.ag.aug128Violations + p.ag.destViolations + p.ag.startsWhileRunning + p.ag.tableWraps;
+            long agv = p.ag.sizeViolations + p.ag.modeViolations + p.ag.aug128Violations + p.ag.destViolations + p.ag.alignViolations + p.ag.startsWhileRunning + p.ag.tableWraps;
             if (agv != s2[i][3]) { s2[i][3] = agv; violation(t, i, p.ag.lastViolation); }
             if (p.ctl.lineChange(t) && !inv7Checked[i]) {
                 String f = packetInFlight(t);
                 if (f != null) violation(t, i, "the RUN/HALT line changed with a packet in flight (invariant 7): " + f);
             }
+            if (p.srq.violations != s2[i][4]) { s2[i][4] = p.srq.violations; violation(t, i, p.srq.lastViolation); }
+            if (p.writer.violations != s2[i][5]) { s2[i][5] = p.writer.violations; violation(t, i, p.writer.lastViolation); }
             if (p.readReturn.refusals != 0 && !refusalReported[i]) { refusalReported[i] = true; violation(t, i, "SIMULATOR: a read return was refused by the injection point"); }
         }
         if (reqBus.violations != seenReqBus) { seenReqBus = reqBus.violations; violation(t, -1, reqBus.lastViolation); }
         if (cc.rxLost != seenRxLost) { seenRxLost = cc.rxLost; violation(t, -1, "C&C's receive FIFO was full: a packet for C&C was lost (6.6)"); }
-        if (cnc.violations + memsub.violations != seenEndpoint) { seenEndpoint = cnc.violations + memsub.violations; violation(t, -1, cnc.lastViolation != null ? cnc.lastViolation : memsub.lastViolation); }
+        long ev = 0; String el = null; for (Endpoint e : ccs) { ev += e.violations; if (e.lastViolation != null) el = e.lastViolation; }
+        if (ev != seenEndpoint) { seenEndpoint = ev; violation(t, -1, el); }
     }
     private long seenEndpoint, seenRxLost, seenReqBus;
-    private final long[][] s2 = new long[64][4];
+    private final long[][] s2 = new long[64][6];
     private final boolean[] inv7Checked = new boolean[64];
 
     /** Invariant 7: a packet anywhere between an injection point and the units behind a director (null if none). */
@@ -151,7 +157,7 @@ final class Chip implements Component {
             if (p.injBus.inFlight(t) > 0 || p.ejectBus.inFlight(t) > 0 || p.portB.inFlight(t) > 0 || p.slot.inFlight(t)) return "t" + i + " intra-tile stage";
             if (!p.weIn.isEmpty(t) || !p.gatherIn.isEmpty(t)) return "t" + i + " engine input FIFO";
         }
-        if (!cnc.send.isEmpty(t) || !memsub.send.isEmpty(t) || !cnc.rx.isEmpty(t) || !memsub.rx.isEmpty(t)) return "tile 0's fifth port";
+        for (Endpoint e : ccs) if (!e.send.isEmpty(t) || !e.rx.isEmpty(t)) return "the fifth port of tile " + (e.address - 64);
         return null;
     }
     private final boolean[] refusalReported = new boolean[64];
@@ -163,13 +169,14 @@ final class Chip implements Component {
     void scanOverflows() {
         for (int i = 0; i < 64; i++)
             for (WordFIFO f : tiles[i].hardwareFifos) if (f.overflow && reportedOverflows.add(f.name)) violation(f.overflowCycle, i, "FIFO overflow " + f.name + " (invariant 1)");
-        for (WordFIFO f : new WordFIFO[] { cnc.rx, memsub.rx }) if (f.overflow && reportedOverflows.add(f.name)) violation(f.overflowCycle, -1, "FIFO overflow " + f.name + " (invariant 1)");
+        for (WordFIFO f : new WordFIFO[] { cnc.rx, memsub.rx, cc3.rx }) if (f.overflow && reportedOverflows.add(f.name)) violation(f.overflowCycle, -1, "FIFO overflow " + f.name + " (invariant 1)");
     }
 
     boolean quiescent() {
         long t = cycle;
         for (int i = 0; i < 64; i++) { if (!tiles[i].quiescent(t)) return false; for (int d = 0; d < 4; d++) if (links[i][d].inFlight(t) > 0) return false; }
-        return cnc.send.isEmpty(t) && memsub.send.isEmpty(t) && cnc.rx.isEmpty(t) && memsub.rx.isEmpty(t);
+        for (Endpoint e : ccs) if (!e.send.isEmpty(t) || !e.rx.isEmpty(t)) return false;
+        return true;
     }
 
     /** Back door (tests): copy words into every tile's controller memory (instruction or data) at a byte address. */
@@ -218,7 +225,7 @@ final class Chip implements Component {
         return sb.toString();
     }
 
-    void resetStats() { for (Tile p : tiles) p.resetStats(cycle); cnc.rx.resetStats(cycle); memsub.rx.resetStats(cycle); }
+    void resetStats() { for (Tile p : tiles) p.resetStats(cycle); for (Endpoint e : ccs) e.rx.resetStats(cycle); }
 
     String violationReport() {
         scanOverflows();

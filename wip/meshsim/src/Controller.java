@@ -232,7 +232,7 @@ final class Controller implements Component {
             if (mask != -1) return "sub-word store to a register";
             if (!ctl.write(t, a, v)) return Registers.at(a) == null ? "store to an unmapped register" : "store to a read-only register";
             Registers.Reg reg = Registers.storeAt(a);
-            if (reg == Registers.SRAM_RD_ADDR_QUEUE) { tile.readPort.store(t, v, ctl.rdDest(), ctl.rdSize()); if (pc >= profLo && pc < profHi) profStores++; if (inLoop) loopStores++; }   // never stalls (4.3)
+            if (reg == Registers.SRAM_RD_ADDR_QUEUE) { tile.readPort.store(t, v, ctl.rdDest(), ctl.rdSize(), ctl.rdCounter()); if (pc >= profLo && pc < profHi) profStores++; if (inLoop) loopStores++; }   // never stalls (4.3)
             if (Registers.isSend(reg)) {                                  // 8.4: the size is the register's
                 int size = Registers.sendSize(reg);
                 tile.sendHold.put(t, ctl.sendLo(v, size), ctl.sendHeader(size), ctl.sendHi(v, size));

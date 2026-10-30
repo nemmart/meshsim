@@ -175,6 +175,13 @@ Decided (O). From WORKER7's F1.
   - `VirtualPext`, `VirtualPextSigned`: **parallel bit extract** by the mask, optionally sign-extended. Every use in
     `main` feeds a single contiguous lane (from `WindowMask`), where it is a right shift plus zero- or sign-extension;
     Jolt defines general PEXT (T6).
+  - **PEXT in hardware** (owner, 2026-10-30; answers T6): **one run of ones per cycle.** Each cycle the unit takes the
+    mask's lowest run, *n* ones starting *m* bits up (the mask's low end has the form `x…x 1ⁿ 0ᵐ`), shifts those *n*
+    bits of the value down, appends them to the result, clears the run from the mask, and repeats until the mask is
+    empty. A contiguous mask, every current use, takes **one cycle**; a scattered mask takes one cycle per run, at most
+    32. Per cycle: two trailing-zero counts (*m*, then *n*), a shifter and a mask generator, far smaller than a full
+    compaction network. `VirtualPextSigned` sign-extends from the last bit placed. Rows run at fixed cycle counts
+    otherwise, so a multi-run PEXT stalls its pipeline; no current expansion produces one.
   - Gone: `VirtualAlignAddr` and the alignment assertions.
 - **Timing** *(proposed)*: **v1.2 stays on `4f36b3d`**, so the simulator port, the sort and the replayer run against
   what was built and measured; **the move is v1.3 work**, together with the Tracer, since both the replayer's and the
@@ -202,5 +209,5 @@ Decided (O). From WORKER7's F1.
 | T4 | The Tracer's template coverage | 7 | **answered: section 7** (a list in the ROM; the rest fed by C&C 3, replayer-style) |
 | T2 | The RV64 initial state: what it contains and where it comes from | 1 | open |
 | T3 | The page table: its size, format and how C&C 3 maintains it | 1 | open |
-| T6 | `VirtualPext`/`VirtualPextSigned`: build general parallel bit extract, or only the contiguous-lane case every current use needs (a shift plus extension), relying on Jolt never using another mask | 9 | for Tony |
+| T6 | `VirtualPext`/`VirtualPextSigned` in hardware | 9 | **answered: section 9** (one run of ones per cycle) |
 | T5 | The inlines' advice (`VirtualAdvice`): untraced rows, or C&C 3's software when it feeds their templates | 8 | open |

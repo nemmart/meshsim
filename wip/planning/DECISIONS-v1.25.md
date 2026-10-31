@@ -114,6 +114,23 @@ Decided (O). From WORKER9's part 2 (its REPORT, "system instructions in the ROM"
   instructions are rare in guest code, so the controller feeding them costs almost nothing. **Rare is good** (owner).
 - So **the controller feeds the inlines, the advice generators and the CSR instructions**, and nothing else.
 
+## 7. From meshsim's replayer at v1.25 (2026-11-01)
+
+From WORKER11's questions; the integrator's answers, to review.
+
+- **Q1, signedness in the reference rows:** with `sign_imm` in the expansion word, a row that carries a raw immediate would
+  leave whatever reads the rows needing its own list of signed opcodes. **Preferred: the row carries the immediate already
+  extended to 64 bits**, if the 80-byte row layout has room; **otherwise a flag in the row** (WORKER11 proposes word 0 bit
+  [86]). WORKER10 decides it in the spec; the replayer model and WORKER9's delivery writer follow exactly.
+- **Q2, the write log's last-load entry (E[15]) is updated by every load row**, the new `VirtualLoad*` rows included. The
+  delivery writer's encoder does the same.
+- **Q3:** `offset_imm` is set only on `ShiftData*` rows (jolt-cpp records their immediate as the shift offset); meshsim flags it
+  on any other opcode.
+- **Q4:** a misaligned memory row (LD and SD included) is a violation meshsim flags, since jolt-cpp aborts on one.
+- **The acceptance runs generate and discard their deliveries:** the runner has a 45-minute limit per task and a full program's
+  delivery is about 31 GB, so each task generates its shard of windows with the delivery writer, replays them at once and keeps
+  only the results. WORKER9's part 3 and WORKER11's kit are built to that.
+
 ---
 
 ## Definition of done (owner, 2026-11-01)

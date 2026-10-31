@@ -166,6 +166,27 @@ windows each, every one proven by the writer's own replay).
   outside the timed replay: reading the window's files (46 GB) and checking their SHA-256, and the JVMs' uneven tails.
   The estimate (23-25 min) was about 15% short; the task still has 16 minutes of margin under the limit.
 
+**Task 084, cyclone-29: PASS** (godspeed, 08:43-09:11 UTC, 28.1 min wall).
+- **Every window matched:**
+  - Stage A: 8,192 of 8,192 windows (536,870,912 rows), row for row, with the streams consumed exactly and the end
+    states equal.
+  - Stage B (tile 0 alone): 8,192 of 8,192.
+  - Stage F (the full chip): the 128 windows checked, cycle counts equal to Stage B's.
+- **No CORRUPT file and no violation.**
+- **Per JVM:** A 0.04 s, B 1.40 s, F 10.3 s per window.
+
+**DECISIONS-v1.25 s2 is met for both programs:** every window of EVM Zone and Cyclone at 2²⁹ rows, replayed by meshsim's
+replayer and its controller, matches jolt-cpp `821e1bd`'s trace row for row. `v1.25-meshsim` was merged into main
+(7f83553).
+
+**The freeze check, Quest task 086** (`086-w11-main-v125-verify`, claimed in NUMBERS.md). It runs main as merged (0d63132):
+- run_tests.sh's quick suite (`tools/run_quick.sh`, 8 at a time), the sort's steps included;
+- the full-mode extras with the sort's BT pair (`tools/run_full.sh`, 4 at a time);
+- the full-size sort `p4/uniform-k128` at 64 × 65,536.
+
+The sort runner is WORKER8's kit from task 077, with `meshsim.jar` rebuilt from main. The sort image, the boot ROM and
+`hops.txt` are byte-identical to 077's, and `HASHES` is updated for the jar. Smoke-tested locally before submission.
+
 ## 6. For the merge: changes outside the replayer
 
 One change is in WORKER4's area of the simulator (`src/Chip.java`): it is opt-in, off by default, and nothing but Stage B

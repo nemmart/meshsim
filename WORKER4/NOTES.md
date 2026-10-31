@@ -143,6 +143,13 @@ v1.1 recipe suite with the v1.2 recipes.
   K's formula per D49 (W4-08), RECIPES.md section 14 filled, REPORT.md written. Task 076 on the runner: the quick
   suite and the full extras; AgBench's failure fixed as the table says.
 
+- **The merge with v1.2-sort** (2026-10-31, `c85f372`, merge not rebase): WORKER8's sort files and run_tests.sh's
+  sort steps stand (R1); test/PENDING is empty (the only conflict: it listed the sort's files on one side and v1.1's
+  RecipeTest on the other, both now built). check_layout passes; the sort image builds; SortTest p1 passes (42).
+  WORKER8/runner's kit rebuilt on the combined branch (the boot ROM in place of the interim loader, HASHES
+  regenerated) and smoke-tested at n = 2,000. Verification on the runner: task 077 (the quick suite with the sort's
+  steps, the full extras with its BT pair, one full-size sort: p4/uniform-k128 at 64 x 65,536).
+
 ## Phase 1's results (`results/`, committed at the close)
 
 `run_tests.sh quick` all passed (PENDING suites aside); the full-mode extras run separately on this box:

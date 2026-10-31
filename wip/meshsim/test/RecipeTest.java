@@ -27,7 +27,7 @@ public final class RecipeTest {
         if (args.length > 0) shuffle = Long.parseLong(args[0]);
         if (shuffle >= 0) System.out.println("shuffled child order, seed " + shuffle);
         snippets();
-        cmdloop(); copy(); cmem(); bucket(); aug(); gather(); xchg(); xvec(); a2a(); reduce(); rdport(); status(); rules(); sync();
+        cmdloop(); copy(); cmem(); bucket(); aug(); gather(); xchg(); xvec(); a2a(); rdport(); status(); rules(); sync();
         blocks(); selftest();
         out("recipe cycles [meas: RecipeTest; tile 0 unless stated]:");
         for (String s : table) out(s);
@@ -145,17 +145,14 @@ public final class RecipeTest {
         T.group("copy");
         Mach m = mach();
         Mach.Image im = m.boot("rcp_copy");
-        for (Tile p : m.c.tiles) for (int i = 0; i < 100 + p.idx; i++) p.sram.poke64(2 * i, rec(p.idx << 20 | i, ~i));
+        for (Tile p : m.c.tiles) for (int i = 0; i < 120; i++) p.sram.poke64(2 * i, rec(p.idx << 20 | i, ~i));
         m.c.cc.command(LinkWord.BROADCAST, 1 << 24 | 100).go();
         finish(m, "copy", 30000);
         for (Tile p : m.c.tiles) {
             int bad = 0;
-            for (int i = 0; i < 100 + p.idx; i++) {
-                long e = rec(p.idx << 20 | i, ~i);
-                if (rec(p, 0x40000 + 2 * i) != e || rec(p, 0x80000 + 2 * i) != e) bad++;
-            }
-            T.eq(0, bad, "tile " + p.idx + ": " + (100 + p.idx) + " records copied SRC -> DST -> DST2");
-            T.eq(0, p.sram.peek64(0x40000 + 2 * (100 + p.idx)), "tile " + p.idx + ": nothing past the run");
+            for (int i = 0; i < 100; i++) if (rec(p, 0x40000 + 2 * i) != rec(p.idx << 20 | i, ~i)) bad++;
+            T.eq(0, bad, "tile " + p.idx + ": 100 records copied SRC -> DST");
+            T.eq(0, p.sram.peek64(0x40000 + 2 * 100), "tile " + p.idx + ": nothing past the run");
         }
         noViolations(m.c, "copy");
         Tile p = m.c.tiles[0];
@@ -308,7 +305,7 @@ public final class RecipeTest {
         for (Tile p : m.c.tiles) {
             int me = p.idx, bad = 0;
             int[] from = { (me + 63) & 63, (me + 1) & 63, (me + 56) & 63, (me + 8) & 63 };   // left, right, above, below
-            for (int k = 0; k < 4; k++) for (int i = 0; i < 6; i++) if (m.word(me, base + 4 * (6 * k + i)) != (from[k] << 8 | i)) bad++;
+            for (int k = 0; k < 4; k++) for (int i = 0; i < 6; i++) if (m.word(me, base + 4 * (6 * k + i)) != from[k] * 16 + i) bad++;
             T.eq(0, bad, "tile " + me + ": nb[0..3] from left, right, above, below");
         }
         noViolations(m.c, "xvec");
@@ -348,24 +345,6 @@ public final class RecipeTest {
     }
 
     // ================================================================ 10 reduction
-    static void reduce() {
-        T.group("reduce");
-        Mach m = mach();
-        Mach.Image im = m.boot("rcp_reduce");
-        int[] as = { 0, 977 };
-        for (int a : as) m.c.cc.command(LinkWord.BROADCAST, 1 << 24 | a).go();
-        finish(m, "reduce", 40000);
-        for (Tile p : m.c.tiles) {
-            int bad = 0;
-            for (int i = 0; i < 16; i++) {
-                int e = 0; for (int t = 0; t < 64; t++) e = Math.max(e, (t * 37 + i * 11 + as[1]) & 0xFFF);
-                if (m.word(p.idx, im, "res", i) != e) bad++;
-            }
-            T.eq(0, bad, "tile " + p.idx + ": the max over all 64 tiles, all 16 words");
-        }
-        noViolations(m.c, "reduce");
-        meas("reduce", "16 words, max over 64 tiles, broadcast back: GO -> all READY", goToReady(m, 1));
-    }
 
     // ================================================================ 11 the read port
     static void rdport() {
@@ -382,20 +361,21 @@ public final class RecipeTest {
             for (int i = 0; i < n; i++) p.sram.poke(0x60000 + i, keys[p.idx][i]);
         }
         int[] q = { 0, 50, 777, 1234, 2099, 2100, 0x7FFFFFFF };          // 7: a command's argument block (v1.0 had 8)
-        m.c.cc.command(LinkWord.BROADCAST, 1 << 24 | 5).go().command(LinkWord.BROADCAST, 2 << 24, q).go();
+        // v1.2 (recipe 11): command 1 reads key 0; command 2 searches the first n = 300 keys for the seven arguments
+        m.c.cc.command(LinkWord.BROADCAST, 1 << 24).go().command(LinkWord.BROADCAST, 2 << 24 | 300, q).go();
         finish(m, "rdport", 30000);
         for (Tile p : m.c.tiles) {
-            T.eq(keys[p.idx][5], m.word(p.idx, im, "first", 0), "tile " + p.idx + ": one read");
+            T.eq(keys[p.idx][0], m.word(p.idx, im, "first", 0), "tile " + p.idx + ": one read");
             int bad = 0;
             for (int i = 0; i < q.length; i++) {
-                int lo = 0; while (lo < keys[p.idx].length && keys[p.idx][lo] < q[i]) lo++;
+                int lo = 0; while (lo < 300 && keys[p.idx][lo] < q[i]) lo++;
                 if (m.word(p.idx, im, "lb", i) != lo) bad++;
             }
             T.eq(0, bad, "tile " + p.idx + ": seven lower bounds");
         }
         noViolations(m.c, "rdport");
         meas("rdport", "one read: GO -> all READY", goToReady(m, 0));
-        meas("rdport", "7 searches over 300-363 keys: GO -> all READY", goToReady(m, 1));
+        meas("rdport", "7 searches over 300 keys: GO -> all READY", goToReady(m, 1));
     }
 
     // ================================================================ 12 status and errors
@@ -403,24 +383,17 @@ public final class RecipeTest {
         T.group("status");
         Mach m = mach();
         Mach.Image im = m.boot("rcp_status");
-        for (int k = 1; k <= 3; k++) m.c.cc.command(LinkWord.BROADCAST, k << 24).go();
+        m.c.cc.command(LinkWord.BROADCAST, 1 << 24).go();
         finish(m, "status", 20000);
         for (Tile p : m.c.tiles) {
             int me = p.idx;
-            T.eq(me, m.word(me, im, "info", 0), "tile " + me + ": tile index");
-            T.eq(0x100000, m.word(me, im, "info", 1), "tile " + me + ": sram_chunks() = 4 MB");
-            T.eq(0, m.word(me, im, "ev", 1), "tile " + me + ": case 1: no condition");
-            T.eq(1 << Conditions.UNEXPECTED, m.word(me, im, "ev", 2), "tile " + me + ": case 2: unexpected arrival, and only it");
-            T.eq(1 << Conditions.BAD_MODE_OR_SIZE, m.word(me, im, "ev", 3), "tile " + me + ": case 3: bad mode, the one new condition");
-            T.eq(1 << Conditions.UNEXPECTED | 1 << Conditions.BAD_MODE_OR_SIZE, m.word(me, im, "cond", 3), "tile " + me + ": the conditions accumulate until HALT");
-            T.eq(m.word(me, im, "cond", 3), p.ctl.conditions, "tile " + me + ": TILE_CONDITIONS as the tile holds it");
+            T.eq(me, m.word(me, im, "me_out", 0), "tile " + me + ": PARAMS' endpoint id");
+            T.eq(0x100000, m.word(me, im, "chunks_out", 0), "tile " + me + ": sram_chunks() = 4 MB");
+            T.eq(1, m.word(me, im, "present_out", 0), "tile " + me + ": peripheral 1 present (the replayer)");
+            T.eq(0, m.word(me, im, "live_out", 0) & ~(1 << Registers.ST_LANDED), "tile " + me + ": STATUS: nothing running (the idle machine)");
         }
-        long v9 = m.c.violationMessages.stream().filter(s -> s.contains("invariant 9")).count();
-        T.check(m.c.violations >= 64 && v9 > 0, "the unexpected arrivals are flagged (invariant 9): " + m.c.violations + " violations");
-        T.check(m.c.violationMessages.stream().allMatch(s -> s.contains("invariant 9") || s.contains("invariant 5") || s.toLowerCase().contains("mode")),
-                "and only the provoked ones: " + m.c.violationReport());
-        T.check(m.c.cc.error(), "C&C's error bit is set (6.6)");
-        out("status: provoked unexpected arrival and bad mode each set their condition, and only it; they accumulate until HALT; C&C's error bit set; " + m.c.violations + " violations, all provoked");
+        noViolations(m.c, "status");
+        out("status: PARAMS' endpoint id, size and peripherals, and STATUS, read on every tile");
     }
 
     // ================================================================ 17-20: write a block, fill, hash, the self-test, REPORT

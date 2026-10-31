@@ -5,15 +5,14 @@ import java.util.ArrayDeque;
  * counters, `done` and "command landed", the READY edge, the GO line as this unit sees it, the events (EVENTS,
  * EVENTS_PEEK, EVENTS_MASK, EVENTS_REQUIRED) and the done gate, ERRORS, PARAMS and STATUS, the send port (ROUTER_HDR
  * with no-increment, ROUTER_ADDR, the W words), the read port's setup and the simulator-only words (SIM_EXIT, TRACE).
- * PHASE-2 INTERIM until phase 4: the RUN/HALT line still starts and stops the core (v1.1's; the reset replaces it), and
- * entering HALT clears ERRORS. The peripheral windows decode in {@link PeripheralSlot} (4.17.4); EVENTS [15:13] and
+ * The reset ({@link #reset}, 6.1) is the only way to stop anything; there is no HALT. The peripheral windows decode in {@link PeripheralSlot} (4.17.4); EVENTS [15:13] and
  * ERRORS [13:11] are its live bits.
  *
  * Timing (4.11): a store at t updates its register at the end of t, and the owning unit acts from t + 1. A load reaches
  * {@link #read} in the cycle it samples (the controller holds a block or window load for one cycle, latency 2), so a load
  * issued at t returns the state at the end of t + L - 2 and takes its side effect (a consuming EVENTS load, a
  * REQUEST_RECEIVE pop) at the end of t + L - 1. {@link #endCycle} runs after every unit of the tile has run cycle t:
- *   1. line edges seen at t: GO (clears done and command landed, ends the done gate, sets [8]), HALT -> RUN, RUN -> HALT;
+ *   1. GO seen at t (clears done and command landed, ends the done gate, sets [8]);
  *   2. the controller's store of cycle t (a done pulse with a counter non-zero sets done early, closes the done gate and
  *      clears the counters' events; a counter write adds and arms; PULSE_DMA clears [10]);
  *   3. a director write covering slot 0 at t sets command landed and [9];

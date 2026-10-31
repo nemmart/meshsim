@@ -202,7 +202,7 @@ _Static_assert(__builtin_offsetof(TableRegs, PTR) == 0x400 && __builtin_offsetof
 
 /* ---- ERRORS (8.3, 4.13): sticky until the reset; any bit raises the hard interrupt and the error line ---- */
 #define ERR_ROUTER_OVF     (1 << 0)   /* router overflow */
-#define ERR_BAD_PACKET     (1 << 1)   /* bad mode or size */
+#define ERR_BAD_PACKET     (1 << 1)   /* bad packet or misaligned access */
 #define ERR_UNEXPECTED     (1 << 2)   /* unexpected arrival */
 #define ERR_DRIFT          (1 << 3)   /* drift */
 #define ERR_WE_IN_OVF      (1 << 4)   /* write-engine input overflow */

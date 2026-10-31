@@ -12,7 +12,9 @@ import java.util.List;
  *  - region writes (4.17.5): mode 0 at a byte offset, landing rp_latency after the director, counted at K;
  *  - the DMA (4.17.9): 128-bit packets, then 64 and 32 for the remainder, DMA_ADDR advancing, STATUS [1], DMA done, a
  *    count of 0, PULSE_DMA while busy and a missing output queue ignored and flagged;
- *  - the replayer through its window: type 1, its words 32-34, its credits after PULSE_RUN.
+ *  - the replayer through its window: type 1, its words 32-34, its credits after PULSE_RUN;
+ *  - C&C 1's peripheral (8.14, 4.20): READY_LINES and READY_EXPECT, all tiles READY, PULSE_GO, ERROR_LINES and the
+ *    unit-error bit, the watchdog and the toast pin, LED, the UART's FIFOs, timing, line errors and events.
  * Usage: java PeripheralSlotTest [shuffle seed | -1]
  */
 public final class PeripheralSlotTest {
@@ -25,6 +27,7 @@ public final class PeripheralSlotTest {
         landing();
         dma();
         replayer();
+        cc1();
         System.exit(T.done("PeripheralSlotTest" + (shuffle >= 0 ? " (shuffled, seed " + shuffle + ")" : "")));
     }
 
@@ -179,5 +182,70 @@ public final class PeripheralSlotTest {
         T.eq(0b111100, (int) load(n, p, w(EVENTS_PEEK)) & 0b111100, "PULSE_RUN: every queue's credit up");
         T.eq(0, (int) load(n, p, w(4)), "word 4 (no DMA): reserved, reads 0");
         T.eq(0, (int) load(n, p, w(32)), "ROWS_RUN");
+    }
+
+    static void cc1() {
+        T.group("C&C 1's peripheral");
+        Config k = Config.machine(); k.shuffleSeed = shuffle; k.refCycle = 1;
+        Net n = new Net(k);
+        Cnc1Peripheral c = n.c.cc1p;
+        long t = n.c.cycle;
+        // READY and GO
+        c.write(t, Cnc1Peripheral.READY_EXPECT, 0b1010); c.write(t, Cnc1Peripheral.READY_EXPECT + 1, 0);
+        c.readyPulse(1, t); c.readyPulse(3, t); n.step(); n.step();
+        T.eq(0b1010, c.read(n.c.cycle, Cnc1Peripheral.READY_LINES), "READY_LINES_0: tiles 1 and 3 (sticky)");
+        T.eq(1 << Cnc1Peripheral.EV_ALL_READY, c.read(n.c.cycle, 6) & 1 << Cnc1Peripheral.EV_ALL_READY, "all tiles READY: (READY & EXPECT) == EXPECT (live)");
+        long go0 = n.c.cc.gos;
+        c.write(n.c.cycle, Cnc1Peripheral.PULSE_GO, 1); n.step(); n.step();
+        T.eq(go0 + 1, n.c.cc.gos, "PULSE_GO drives GO");
+        T.eq(0, c.read(n.c.cycle, Cnc1Peripheral.READY_LINES), "and clears READY 0-63");
+        T.eq(0, c.read(n.c.cycle, 6) & 1 << Cnc1Peripheral.EV_ALL_READY, "all tiles READY falls");
+        // the error lines
+        n.c.tiles[33].ctl.conditions = 1 << Conditions.DRIFT;
+        for (int i = 0; i < 5; i++) n.step();
+        T.eq(2, c.read(n.c.cycle, Cnc1Peripheral.ERROR_LINES + 1), "ERROR_LINES_1 bit 1: tile 33's ERRORS non-zero (live)");
+        T.eq(1, c.read(n.c.cycle, 2), "ERRORS [0], the unit-error bit");
+        T.check(c.toast, "the toast pin latches on a C&C 1 error");
+        n.c.tiles[33].ctl.conditions = 0;
+        for (int i = 0; i < 5; i++) n.step();
+        T.eq(0, c.read(n.c.cycle, Cnc1Peripheral.ERROR_LINES + 1), "the line follows its unit");
+        T.check(c.toast, "the toast pin stays latched (until the reset)");
+        // the watchdog
+        Net m = new Net(k); Cnc1Peripheral d = m.c.cc1p;
+        d.write(m.c.cycle, Cnc1Peripheral.WATCHDOG, 20);
+        for (int i = 0; i < 10; i++) m.step();
+        d.write(m.c.cycle, Cnc1Peripheral.PULSE_GO, 1);                    // restarts it from 20
+        for (int i = 0; i < 15; i++) m.step();
+        T.check(!d.toast && d.read(m.c.cycle, Cnc1Peripheral.WATCHDOG) > 0, "PULSE_GO restarted the watchdog");
+        for (int i = 0; i < 10; i++) m.step();
+        T.eq(1 << Cnc1Peripheral.EV_WATCHDOG, d.read(m.c.cycle, 6) & 1 << Cnc1Peripheral.EV_WATCHDOG, "watchdog expired: its event");
+        T.check(d.toast, "and the toast pin");
+        d.write(m.c.cycle, Cnc1Peripheral.LED, 3);
+        T.eq(1, d.read(m.c.cycle, Cnc1Peripheral.LED), "LED [0]");
+        // the UART
+        Net u = new Net(k); Cnc1Peripheral x = u.c.cc1p;
+        T.eq(Cnc1Peripheral.RESET_DIVISOR, x.read(u.c.cycle, Cnc1Peripheral.UART_DIVISOR), "UART_DIVISOR resets to 434 (57,600 baud at 25 MHz)");
+        x.write(u.c.cycle, Cnc1Peripheral.UART_DIVISOR, 3);              // 30 cycles a frame (refCycle 1)
+        int pushed = 0; for (char ch : "hello, world!!!!!".toCharArray()) if (x.write(u.c.cycle, Cnc1Peripheral.UART_TX, ch) == 1) pushed++;
+        T.eq(16, pushed, "UART_TX: a 16-byte FIFO");
+        T.eq(-2, x.write(u.c.cycle, Cnc1Peripheral.UART_TX, '?'), "a store to a full TX FIFO stalls");
+        T.eq(0, u.c.cc1p.events().value(u.c.cycle + 1) & 1 << Cnc1Peripheral.EV_UART_TX, "TX not full: down");
+        long t0 = u.c.cycle;
+        for (int i = 0; i < 16 * 30 + 5; i++) u.step();
+        T.eqo("hello, world!!!!", x.serialOut.toString(), "the bytes went out in order");
+        T.eq(30L, x.serialLog.get(1)[0] - x.serialLog.get(0)[0], "a frame every 10 x divisor reference cycles");
+        x.rxByte(u.c.cycle, 'A', false); x.rxByte(u.c.cycle, 'B', false); x.rxByte(u.c.cycle, 'C', true);
+        u.step();
+        int us = x.read(u.c.cycle, Cnc1Peripheral.UART_STATUS);
+        T.eq(2, us >> 8 & 0x1F, "UART_STATUS: RX occupancy 2"); T.eq(1, us >> 17 & 1, "and the framing error (the bad stop bit dropped)");
+        T.eq(1 << Cnc1Peripheral.EV_UART_RX, x.read(u.c.cycle, 6) & 1 << Cnc1Peripheral.EV_UART_RX, "RX not empty (live)");
+        T.eq('A' | 0x100, x.read(u.c.cycle, Cnc1Peripheral.UART_RX), "UART_RX: the oldest byte, valid");
+        T.eq('B' | 0x100, x.read(u.c.cycle, Cnc1Peripheral.UART_RX), "popped: the next");
+        T.eq(0, x.read(u.c.cycle, Cnc1Peripheral.UART_RX), "empty: valid = 0, nothing popped");
+        x.write(u.c.cycle, Cnc1Peripheral.UART_STATUS, 1 << 17);
+        T.eq(0, x.read(u.c.cycle, Cnc1Peripheral.UART_STATUS) & 1 << 17, "framing error cleared by writing 1");
+        for (int i = 0; i < 20; i++) x.rxByte(u.c.cycle, i, false);
+        T.eq(1 << 16, x.read(u.c.cycle, Cnc1Peripheral.UART_STATUS) & 1 << 16, "a 17th byte: RX overrun (status, not an error)");
+        T.eq(0, x.read(u.c.cycle, 2) & ~1, "line errors never reach ERRORS");
     }
 }

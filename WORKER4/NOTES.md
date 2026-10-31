@@ -100,6 +100,15 @@ v1.1 recipe suite with the v1.2 recipes.
   bits EVENTS [15:13] and ERRORS [13:11], the DMA engine with DMA_HDR, DMA_ADDR, PULSE_DMA, STATUS [1], DMA done);
   the replayer moved onto it (byte offsets; credits depth 2, run done, new expansion; ERRORS [2:0]; words 32-34);
   Sender retired (its logic is the DMA); the mesh tiles' UART removed (the UART is C&C 1's peripheral, next).
+  Then: C&C 1's peripheral (Cnc1Peripheral: ERROR_LINES, READY_LINES/EXPECT, PULSE_GO as the model's GO path, the
+  watchdog and toast pin, LED, the UART with 16-byte FIFOs, divisor timing at Config.refCycle core cycles per
+  reference cycle, line errors as status); peripheral types per D46 (replayer 4, Ingress/Egress 1; W4-05);
+  PeripheralSlotTest rewritten (window, events, region writes, the DMA, the replayer's window, C&C 1's peripheral);
+  SenderTest retired. The replayer port (scope update 2026-10-31, mine end to end): ReplayDriver and ReplayerUnitTests
+  on v1.2 (ReplayerTest 1,188, the program pass's timing unchanged); sw/replay/replay_ctl.c on mesh.h 1.2 and the credit
+  loop (replay_regs.h, its crt0 and linker script gone); StageB on v1.2, with `StageB synthetic` (Stage A's windows on
+  a tile, 18, each matching row for row) in run_tests; DELIVERY runs as before when a delivery is given. The replayer
+  recipe (wip/sw/recipes/rcp_replay.c) runs in phase 6 with the other recipes.
 
 ## Phase 1's results (`results/`, committed at the close)
 

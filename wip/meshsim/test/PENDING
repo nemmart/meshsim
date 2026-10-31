@@ -7,4 +7,3 @@ SortSummary.java   sort port
 VerifySummary.java sort port
 RecipeTest.java    phase 6: the v1.1 recipe book; replaced by the v1.2 recipes as suites
 SelfTest.java      phase 6 (RecipeTest's)
-StageB.java        phase 3: Stage B (sw/replay) on the v1.2 replayer and map

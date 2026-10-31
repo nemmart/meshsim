@@ -1,0 +1,35 @@
+{
+ "jolt_cpp": "821e1bd2f433d6ca62300afbbbba031db50e7dc9",
+ "builder": "jolt-asic-planning tracer-standalone-main, tracer/tables/build_tables.cpp",
+ "scope": "universal: every RV64IMAC instruction and every jolt-cpp inline",
+ "files": {
+  "opcode_table.txt": {
+   "bytes": 2772,
+   "sha256": "09d5f9cdcc3c85b8f0c6c7205e963d8b775a6f2c29ce19ab3724a21bd2e38003"
+  },
+  "replayer/check.txt": {
+   "bytes": 5565,
+   "sha256": "5a84b1e68cac2c7679a102c2f7f3b5e8d8b0ed0c5c332c5f5d7f1e8f47f6a364"
+  },
+  "replayer/decode_table.bin": {
+   "bytes": 4096,
+   "sha256": "b42445b28890a0b57946ee912b6c83dbaa801cc0ea241c8b55a2dae0dec49db0"
+  },
+  "replayer/listing.txt": {
+   "bytes": 25190,
+   "sha256": "8211c89cc1e4dfb07ef763f28cdb3ca0ecce1544058164a81e4e74630872cb0d"
+  },
+  "replayer/rom.bin": {
+   "bytes": 8192,
+   "sha256": "061ce69d3692aa2e71e6495f3ca64442d5179e0658eee8cfcdf81bc1c461a4f9"
+  },
+  "replayer/template_index.bin": {
+   "bytes": 1200,
+   "sha256": "0f039d69a1317eafd9db171778dda05d5f89d9b459ea787ccf7c09bbf783db57"
+  },
+  "replayer/templates.bin": {
+   "bytes": 221136,
+   "sha256": "465298c21fa706a21ab35a46ea2120454273f6a541b27a5aa5ee701b1a667b1b"
+  }
+ }
+}

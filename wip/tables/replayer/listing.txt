@@ -1,0 +1,386 @@
+ROM: 388 of 512 words (words 0-1 padding and shared NOP)
+  ADD                      index  384  start   2  words   1
+  ADDI                     index  128  start   3  words   1
+  ADDI                     index  129  start   3  words   1
+  ADDI                     index  130  start   3  words   1
+  ADDI                     index  131  start   3  words   1
+  SUB                      index  386  start   4  words   1
+  XOR                      index  400  start   5  words   1
+  XORI                     index  144  start   6  words   1
+  XORI                     index  145  start   6  words   1
+  XORI                     index  146  start   6  words   1
+  XORI                     index  147  start   6  words   1
+  OR                       index  408  start   7  words   1
+  ORI                      index  152  start   8  words   1
+  ORI                      index  153  start   8  words   1
+  ORI                      index  154  start   8  words   1
+  ORI                      index  155  start   8  words   1
+  AND                      index  412  start   9  words   1
+  ANDI                     index  156  start  10  words   1
+  ANDI                     index  157  start  10  words   1
+  ANDI                     index  158  start  10  words   1
+  ANDI                     index  159  start  10  words   1
+  SLL                      index  388  start  11  words   2
+  SLLI                     index  132  start  13  words   1
+  SLLI                     index  133  start  13  words   1
+  SLLI                     index  134  start  13  words   1
+  SLLI                     index  135  start  13  words   1
+  SRL                      index  404  start  14  words   2
+  SRLI                     index  148  start  16  words   1
+  SRLI                     index  149  start  16  words   1
+  SRA                      index  406  start  17  words   2
+  SRAI                     index  150  start  19  words   1
+  SRAI                     index  151  start  19  words   1
+  SLT                      index  392  start  20  words   1
+  SLTI                     index  136  start  21  words   1
+  SLTI                     index  137  start  21  words   1
+  SLTI                     index  138  start  21  words   1
+  SLTI                     index  139  start  21  words   1
+  SLTU                     index  396  start  22  words   1
+  SLTIU                    index  140  start  23  words   1
+  SLTIU                    index  141  start  23  words   1
+  SLTIU                    index  142  start  23  words   1
+  SLTIU                    index  143  start  23  words   1
+  LB                       index    0  start  24  words   3
+  LB                       index    1  start  24  words   3
+  LB                       index    2  start  24  words   3
+  LB                       index    3  start  24  words   3
+  LH                       index    4  start  27  words   3
+  LH                       index    5  start  27  words   3
+  LH                       index    6  start  27  words   3
+  LH                       index    7  start  27  words   3
+  LW                       index    8  start  30  words   3
+  LW                       index    9  start  30  words   3
+  LW                       index   10  start  30  words   3
+  LW                       index   11  start  30  words   3
+  LBU                      index   16  start  33  words   3
+  LBU                      index   17  start  33  words   3
+  LBU                      index   18  start  33  words   3
+  LBU                      index   19  start  33  words   3
+  LHU                      index   20  start  36  words   3
+  LHU                      index   21  start  36  words   3
+  LHU                      index   22  start  36  words   3
+  LHU                      index   23  start  36  words   3
+  SB                       index  256  start  39  words   6
+  SB                       index  257  start  39  words   6
+  SB                       index  258  start  39  words   6
+  SB                       index  259  start  39  words   6
+  SH                       index  260  start  45  words   6
+  SH                       index  261  start  45  words   6
+  SH                       index  262  start  45  words   6
+  SH                       index  263  start  45  words   6
+  SW                       index  264  start  51  words   6
+  SW                       index  265  start  51  words   6
+  SW                       index  266  start  51  words   6
+  SW                       index  267  start  51  words   6
+  BEQ                      index  768  start  57  words   1
+  BEQ                      index  769  start  57  words   1
+  BEQ                      index  770  start  57  words   1
+  BEQ                      index  771  start  57  words   1
+  BNE                      index  772  start  58  words   1
+  BNE                      index  773  start  58  words   1
+  BNE                      index  774  start  58  words   1
+  BNE                      index  775  start  58  words   1
+  BLT                      index  784  start  59  words   1
+  BLT                      index  785  start  59  words   1
+  BLT                      index  786  start  59  words   1
+  BLT                      index  787  start  59  words   1
+  BGE                      index  788  start  60  words   1
+  BGE                      index  789  start  60  words   1
+  BGE                      index  790  start  60  words   1
+  BGE                      index  791  start  60  words   1
+  BLTU                     index  792  start  61  words   1
+  BLTU                     index  793  start  61  words   1
+  BLTU                     index  794  start  61  words   1
+  BLTU                     index  795  start  61  words   1
+  BGEU                     index  796  start  62  words   1
+  BGEU                     index  797  start  62  words   1
+  BGEU                     index  798  start  62  words   1
+  BGEU                     index  799  start  62  words   1
+  JAL                      index  864  start  63  words   1
+  JAL                      index  865  start  63  words   1
+  JAL                      index  866  start  63  words   1
+  JAL                      index  867  start  63  words   1
+  JAL                      index  868  start  63  words   1
+  JAL                      index  869  start  63  words   1
+  JAL                      index  870  start  63  words   1
+  JAL                      index  871  start  63  words   1
+  JAL                      index  872  start  63  words   1
+  JAL                      index  873  start  63  words   1
+  JAL                      index  874  start  63  words   1
+  JAL                      index  875  start  63  words   1
+  JAL                      index  876  start  63  words   1
+  JAL                      index  877  start  63  words   1
+  JAL                      index  878  start  63  words   1
+  JAL                      index  879  start  63  words   1
+  JAL                      index  880  start  63  words   1
+  JAL                      index  881  start  63  words   1
+  JAL                      index  882  start  63  words   1
+  JAL                      index  883  start  63  words   1
+  JAL                      index  884  start  63  words   1
+  JAL                      index  885  start  63  words   1
+  JAL                      index  886  start  63  words   1
+  JAL                      index  887  start  63  words   1
+  JAL                      index  888  start  63  words   1
+  JAL                      index  889  start  63  words   1
+  JAL                      index  890  start  63  words   1
+  JAL                      index  891  start  63  words   1
+  JAL                      index  892  start  63  words   1
+  JAL                      index  893  start  63  words   1
+  JAL                      index  894  start  63  words   1
+  JAL                      index  895  start  63  words   1
+  JALR                     index  800  start  64  words   1
+  JALR                     index  801  start  64  words   1
+  JALR                     index  802  start  64  words   1
+  JALR                     index  803  start  64  words   1
+  JALR                     index  804  start  64  words   1
+  JALR                     index  805  start  64  words   1
+  JALR                     index  806  start  64  words   1
+  JALR                     index  807  start  64  words   1
+  JALR                     index  808  start  64  words   1
+  JALR                     index  809  start  64  words   1
+  JALR                     index  810  start  64  words   1
+  JALR                     index  811  start  64  words   1
+  JALR                     index  812  start  64  words   1
+  JALR                     index  813  start  64  words   1
+  JALR                     index  814  start  64  words   1
+  JALR                     index  815  start  64  words   1
+  JALR                     index  816  start  64  words   1
+  JALR                     index  817  start  64  words   1
+  JALR                     index  818  start  64  words   1
+  JALR                     index  819  start  64  words   1
+  JALR                     index  820  start  64  words   1
+  JALR                     index  821  start  64  words   1
+  JALR                     index  822  start  64  words   1
+  JALR                     index  823  start  64  words   1
+  JALR                     index  824  start  64  words   1
+  JALR                     index  825  start  64  words   1
+  JALR                     index  826  start  64  words   1
+  JALR                     index  827  start  64  words   1
+  JALR                     index  828  start  64  words   1
+  JALR                     index  829  start  64  words   1
+  JALR                     index  830  start  64  words   1
+  JALR                     index  831  start  64  words   1
+  AUIPC                    index  160  start  65  words   1
+  AUIPC                    index  161  start  65  words   1
+  AUIPC                    index  162  start  65  words   1
+  AUIPC                    index  163  start  65  words   1
+  AUIPC                    index  164  start  65  words   1
+  AUIPC                    index  165  start  65  words   1
+  AUIPC                    index  166  start  65  words   1
+  AUIPC                    index  167  start  65  words   1
+  AUIPC                    index  168  start  65  words   1
+  AUIPC                    index  169  start  65  words   1
+  AUIPC                    index  170  start  65  words   1
+  AUIPC                    index  171  start  65  words   1
+  AUIPC                    index  172  start  65  words   1
+  AUIPC                    index  173  start  65  words   1
+  AUIPC                    index  174  start  65  words   1
+  AUIPC                    index  175  start  65  words   1
+  AUIPC                    index  176  start  65  words   1
+  AUIPC                    index  177  start  65  words   1
+  AUIPC                    index  178  start  65  words   1
+  AUIPC                    index  179  start  65  words   1
+  AUIPC                    index  180  start  65  words   1
+  AUIPC                    index  181  start  65  words   1
+  AUIPC                    index  182  start  65  words   1
+  AUIPC                    index  183  start  65  words   1
+  AUIPC                    index  184  start  65  words   1
+  AUIPC                    index  185  start  65  words   1
+  AUIPC                    index  186  start  65  words   1
+  AUIPC                    index  187  start  65  words   1
+  AUIPC                    index  188  start  65  words   1
+  AUIPC                    index  189  start  65  words   1
+  AUIPC                    index  190  start  65  words   1
+  AUIPC                    index  191  start  65  words   1
+  LUI                      index  416  start  66  words   1
+  LUI                      index  417  start  66  words   1
+  LUI                      index  418  start  66  words   1
+  LUI                      index  419  start  66  words   1
+  LUI                      index  420  start  66  words   1
+  LUI                      index  421  start  66  words   1
+  LUI                      index  422  start  66  words   1
+  LUI                      index  423  start  66  words   1
+  LUI                      index  424  start  66  words   1
+  LUI                      index  425  start  66  words   1
+  LUI                      index  426  start  66  words   1
+  LUI                      index  427  start  66  words   1
+  LUI                      index  428  start  66  words   1
+  LUI                      index  429  start  66  words   1
+  LUI                      index  430  start  66  words   1
+  LUI                      index  431  start  66  words   1
+  LUI                      index  432  start  66  words   1
+  LUI                      index  433  start  66  words   1
+  LUI                      index  434  start  66  words   1
+  LUI                      index  435  start  66  words   1
+  LUI                      index  436  start  66  words   1
+  LUI                      index  437  start  66  words   1
+  LUI                      index  438  start  66  words   1
+  LUI                      index  439  start  66  words   1
+  LUI                      index  440  start  66  words   1
+  LUI                      index  441  start  66  words   1
+  LUI                      index  442  start  66  words   1
+  LUI                      index  443  start  66  words   1
+  LUI                      index  444  start  66  words   1
+  LUI                      index  445  start  66  words   1
+  LUI                      index  446  start  66  words   1
+  LUI                      index  447  start  66  words   1
+  ECALL                    index 1544  start  67  words   7
+  EBREAK                   index 1545  start  74  words   1
+  MRET                     index 1546  start  75  words   1
+  MUL                      index  385  start  76  words   1
+  MULH                     index  389  start  77  words   7
+  MULHU                    index  397  start  84  words   1
+  MULHSU                   index  393  start  85  words  11
+  DIV                      index  401  start  96  words  12
+  DIVU                     index  405  start 108  words   8
+  REM                      index  409  start 116  words   9
+  REMU                     index  413  start 125  words   7
+  FENCE                    index   96  start 132  words   1
+  FENCE                    index   97  start 132  words   1
+  FENCE                    index   98  start 132  words   1
+  FENCE                    index   99  start 132  words   1
+  SD                       index  268  start 133  words   1
+  SD                       index  269  start 133  words   1
+  SD                       index  270  start 133  words   1
+  SD                       index  271  start 133  words   1
+  LD                       index   12  start 134  words   1
+  LD                       index   13  start 134  words   1
+  LD                       index   14  start 134  words   1
+  LD                       index   15  start 134  words   1
+  LWU                      index   24  start 135  words   3
+  LWU                      index   25  start 135  words   3
+  LWU                      index   26  start 135  words   3
+  LWU                      index   27  start 135  words   3
+  SLLW                     index  452  start 138  words   2
+  SLLIW                    index  196  start 140  words   1
+  SLLIW                    index  197  start 141  words   1
+  SLLIW                    index  198  start 140  words   1
+  SLLIW                    index  199  start 141  words   1
+  SRLW                     index  468  start 142  words   2
+  SRLIW                    index  212  start 144  words   1
+  SRLIW                    index  213  start 144  words   1
+  SRAW                     index  470  start 145  words   2
+  SRAIW                    index  214  start 147  words   1
+  SRAIW                    index  215  start 147  words   1
+  SUBW                     index  450  start 148  words   1
+  ADDW                     index  448  start 149  words   1
+  ADDIW                    index  192  start 150  words   1
+  ADDIW                    index  193  start 150  words   1
+  ADDIW                    index  194  start 150  words   1
+  ADDIW                    index  195  start 150  words   1
+  MULW                     index  449  start 151  words   1
+  DIVW                     index  465  start 152  words  14
+  DIVUW                    index  469  start 166  words  11
+  REMW                     index  473  start 177  words  11
+  REMUW                    index  477  start 188  words   9
+  VirtualRev8W             index  705  start 197  words   1
+  VirtualAssertEQ          index  708  start 198  words   1
+  VirtualAssertEQ          index  709  start 198  words   1
+  VirtualAssertEQ          index  710  start 198  words   1
+  VirtualAssertEQ          index  711  start 198  words   1
+  VirtualHostIO            index  712  start 199  words   1
+  VirtualHostIO            index  713  start 199  words   1
+  VirtualHostIO            index  714  start 199  words   1
+  VirtualHostIO            index  715  start 199  words   1
+  LR_W                     index 1026  start 200  words   7  (atomic)
+  LR_D                     index 1058  start 207  words   5  (atomic)
+  SC_W                     index 1027  start 212  words  21  (atomic)
+  SC_D                     index 1059  start 233  words  12  (atomic)
+  AMOSWAP_W                index 1025  start 245  words   8  (atomic)
+  AMOSWAP_D                index 1057  start 253  words   3  (atomic)
+  AMOADD_W                 index 1024  start 256  words   9  (atomic)
+  AMOADD_D                 index 1056  start 265  words   4  (atomic)
+  AMOXOR_W                 index 1028  start 269  words   9  (atomic)
+  AMOXOR_D                 index 1060  start 278  words   4  (atomic)
+  AMOAND_W                 index 1036  start 282  words   9  (atomic)
+  AMOAND_D                 index 1068  start 291  words   4  (atomic)
+  AMOOR_W                  index 1032  start 295  words   9  (atomic)
+  AMOOR_D                  index 1064  start 304  words   4  (atomic)
+  AMOMIN_W                 index 1040  start 308  words  13  (atomic)
+  AMOMIN_D                 index 1072  start 321  words   7  (atomic)
+  AMOMAX_W                 index 1044  start 328  words  13  (atomic)
+  AMOMAX_D                 index 1076  start 341  words   7  (atomic)
+  AMOMINU_W                index 1048  start 348  words  13  (atomic)
+  AMOMINU_D                index 1080  start 361  words   7  (atomic)
+  AMOMAXU_W                index 1052  start 368  words  13  (atomic)
+  AMOMAXU_D                index 1084  start 381  words   7  (atomic)
+atomics: 188 ROM words
+CSR templates (controller-fed): 60 keys, 102 words (60 distinct templates, 102 words if identical ones shared)
+controller-fed: 75 template numbers, 13821 words in templates.bin; key = word with register fields renamed by first appearance
+    0  key 0000000b  SHA256_INLINE              class 1  offset      0  words 1900
+    1  key 0000100b  SHA256_INIT_INLINE         class 1  offset   1900  words 1864
+    2  key 0200000b  KECCAK256                  class 1  offset   3764  words 3087
+    3  key 0200100b  KECCAK256_ABSORB_PERMUTE   class 1  offset   6851  words 3121
+    4  key 0400000b  BLAKE2_INLINE              class 1  offset   9972  words 1067
+    5  key 0600000b  BLAKE3_INLINE              class 1  offset  11039  words  648
+    6  key 0600100b  BLAKE3_KEYED64_INLINE      class 1  offset  11687  words  646
+    7  key 0800000b  BIGINT256_MUL_INLINE       class 1  offset  12333  words  141
+    8  key 0a00000b  SECP256K1_MULQ_INLINE      class 1  offset  12474  words  186
+    9  key 0a00100b  SECP256K1_SQUAREQ_INLINE   class 1  offset  12660  words  167
+   10  key 0a00200b  SECP256K1_DIVQ_INLINE      class 1  offset  12827  words  194
+   11  key 0a00400b  SECP256K1_MULR_INLINE      class 1  offset  13021  words  232
+   12  key 0a00500b  SECP256K1_SQUARER_INLINE   class 1  offset  13253  words  213
+   13  key 0a00600b  SECP256K1_DIVR_INLINE      class 1  offset  13466  words  240
+   14  key 0a00700b  SECP256K1_GLVR_ADV_INLINE  class 1  offset  13706  words   13
+   15  key 30001073  CSRRW                      class 2  offset  13719  words    1
+   16  key 300010f3  CSRRW                      class 2  offset  13720  words    2
+   17  key 30002073  CSRRS                      class 2  offset  13722  words    1
+   18  key 300020f3  CSRRS                      class 2  offset  13723  words    1
+   19  key 30009073  CSRRW                      class 2  offset  13724  words    1
+   20  key 300090f3  CSRRW                      class 2  offset  13725  words    3
+   21  key 3000a073  CSRRS                      class 2  offset  13728  words    1
+   22  key 3000a0f3  CSRRS                      class 2  offset  13729  words    3
+   23  key 300110f3  CSRRW                      class 2  offset  13732  words    2
+   24  key 300120f3  CSRRS                      class 2  offset  13734  words    2
+   25  key 30501073  CSRRW                      class 2  offset  13736  words    1
+   26  key 305010f3  CSRRW                      class 2  offset  13737  words    2
+   27  key 30502073  CSRRS                      class 2  offset  13739  words    1
+   28  key 305020f3  CSRRS                      class 2  offset  13740  words    1
+   29  key 30509073  CSRRW                      class 2  offset  13741  words    1
+   30  key 305090f3  CSRRW                      class 2  offset  13742  words    3
+   31  key 3050a073  CSRRS                      class 2  offset  13745  words    1
+   32  key 3050a0f3  CSRRS                      class 2  offset  13746  words    3
+   33  key 305110f3  CSRRW                      class 2  offset  13749  words    2
+   34  key 305120f3  CSRRS                      class 2  offset  13751  words    2
+   35  key 34001073  CSRRW                      class 2  offset  13753  words    1
+   36  key 340010f3  CSRRW                      class 2  offset  13754  words    2
+   37  key 34002073  CSRRS                      class 2  offset  13756  words    1
+   38  key 340020f3  CSRRS                      class 2  offset  13757  words    1
+   39  key 34009073  CSRRW                      class 2  offset  13758  words    1
+   40  key 340090f3  CSRRW                      class 2  offset  13759  words    3
+   41  key 3400a073  CSRRS                      class 2  offset  13762  words    1
+   42  key 3400a0f3  CSRRS                      class 2  offset  13763  words    3
+   43  key 340110f3  CSRRW                      class 2  offset  13766  words    2
+   44  key 340120f3  CSRRS                      class 2  offset  13768  words    2
+   45  key 34101073  CSRRW                      class 2  offset  13770  words    1
+   46  key 341010f3  CSRRW                      class 2  offset  13771  words    2
+   47  key 34102073  CSRRS                      class 2  offset  13773  words    1
+   48  key 341020f3  CSRRS                      class 2  offset  13774  words    1
+   49  key 34109073  CSRRW                      class 2  offset  13775  words    1
+   50  key 341090f3  CSRRW                      class 2  offset  13776  words    3
+   51  key 3410a073  CSRRS                      class 2  offset  13779  words    1
+   52  key 3410a0f3  CSRRS                      class 2  offset  13780  words    3
+   53  key 341110f3  CSRRW                      class 2  offset  13783  words    2
+   54  key 341120f3  CSRRS                      class 2  offset  13785  words    2
+   55  key 34201073  CSRRW                      class 2  offset  13787  words    1
+   56  key 342010f3  CSRRW                      class 2  offset  13788  words    2
+   57  key 34202073  CSRRS                      class 2  offset  13790  words    1
+   58  key 342020f3  CSRRS                      class 2  offset  13791  words    1
+   59  key 34209073  CSRRW                      class 2  offset  13792  words    1
+   60  key 342090f3  CSRRW                      class 2  offset  13793  words    3
+   61  key 3420a073  CSRRS                      class 2  offset  13796  words    1
+   62  key 3420a0f3  CSRRS                      class 2  offset  13797  words    3
+   63  key 342110f3  CSRRW                      class 2  offset  13800  words    2
+   64  key 342120f3  CSRRS                      class 2  offset  13802  words    2
+   65  key 34301073  CSRRW                      class 2  offset  13804  words    1
+   66  key 343010f3  CSRRW                      class 2  offset  13805  words    2
+   67  key 34302073  CSRRS                      class 2  offset  13807  words    1
+   68  key 343020f3  CSRRS                      class 2  offset  13808  words    1
+   69  key 34309073  CSRRW                      class 2  offset  13809  words    1
+   70  key 343090f3  CSRRW                      class 2  offset  13810  words    3
+   71  key 3430a073  CSRRS                      class 2  offset  13813  words    1
+   72  key 3430a0f3  CSRRS                      class 2  offset  13814  words    3
+   73  key 343110f3  CSRRW                      class 2  offset  13817  words    2
+   74  key 343120f3  CSRRS                      class 2  offset  13819  words    2
+decode table: 306 ROM entries, 17 controller entries, 1725 invalid

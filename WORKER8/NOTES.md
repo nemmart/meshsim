@@ -42,3 +42,8 @@ phase-3 tip, whose replayer tests don't compile). Merge `v1.2-meshsim` again onc
   empty streams; now SK_MODE_SRC per build. Patches regenerated (split-barrier.patch is now a plain diff against the
   ported split.c). `sw/ext/sort/build.sh` builds: code 21,856 B, data 240 B, .bss end 0x2a94. Not run yet: SortTest
   still v1.1 (next).
+- **Step 2** (2026-10-31): SortTest, Inputs, SortSummary, VerifySummary ported (owner: mine on this branch) and taken
+  off test/PENDING: boot through meshsim's interim loader (as Mach.boot), no staging, exit through SIM_EXIT with 0,
+  ERRORS = 0, the PTR[64] checks retired, counters 1-3 in the state dump; Inputs hashes the interim loader as
+  image/loader.bin. First runs: P1 all six sets pass (42 checks; v1.1 54, the 12 PTR[64] checks gone), L1 -1,708 and
+  L2 -1,200 cycles on every set; the whole sort, uniform kv32 n=2000, passes: 236,037 vs v1.1's 241,114.

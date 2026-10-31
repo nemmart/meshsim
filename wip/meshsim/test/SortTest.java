@@ -12,7 +12,8 @@ import java.util.Map;
 import java.util.Random;
 
 /**
- * The sort program on meshsim v4.0 (worker 6's driver; integrated into the simulator tree as a suite by worker 8).
+ * The sort program on meshsim (worker 6's driver; integrated into the simulator tree as a suite by worker 8; ported to
+ * meshsim v1.2 by WORKER8, who owns this file and Inputs, SortSummary and VerifySummary on the sort's branch).
  *
  * C&C's sequence is built with the simulator's Java sequencer (CnC). The harness's own jobs, all simulator-only:
  *   - the INPUT-LOAD STAND-IN: it places each tile's input in big SRAM and its record count in S.n_in while every tile
@@ -20,9 +21,9 @@ import java.util.Random;
  *   - (P1 only) the L2 test's stand-in for the keys all-to-all;
  *   - (an image with the oracle split) the oracle's answer;
  *   - verification and measurement.
- * Boot (outside the sort's total): the loader, the resident image and its first overlay by mode 5, then (an image with
- * overlays) the staged overlay images, broadcast by mode 2 into every tile's staging area (spec 6.2; lead, 3 Oct: C&C's
- * staging is boot, the tiles' copies into instruction memory count in the sort).
+ * Boot (outside the sort's total; PHASE-2 INTERIM, as Mach.boot, until meshsim's boot ROM): C&C broadcasts the interim
+ * loader, the image's program memory and data memory as uncounted mode-0 writes, then CMD_JUMP, and raises RUN. v1.2's
+ * image has no overlays, so nothing is staged.
  *
  * Accounting: PhaseLog, one phase per GO, named by command (the split's barriers are SPLIT phases). A step's cycles
  * are its GO to the next step's GO (C&C's turnaround after it included); the last step's end is its all-READY. The sum
@@ -47,7 +48,6 @@ final class SortTest {
         CMD_BARRIER = 0x30, CMD_EXIT = 0x7F, FMT_KV32 = 0, FMT_K128 = 1;
     // struct sort_state word offsets (sort.h): fmt, n_in, n_recv, red_in, path, plan_wanted, shaped, groups, bt_wanted
     static final int S_NIN = 1, S_NRECV = 2, S_PATH = 4, S_PLAN = 5, S_BT = 8;
-    static final int STAGE_BELOW_TOP = 0xC000, STAGE_BASE = (1 << 20) - STAGE_BELOW_TOP;     // 0xF4000 (mesh.h v3)
     static final String[] PATHS = { "direct", "LB", "TH", "BT", "PLAN" };
 
     static Path build = Path.of(System.getProperty("sort.build", "sw/ext/sort/build"));
@@ -77,12 +77,12 @@ final class SortTest {
 
     // ================================================================ the image
     static final class Image {
-        final int[] loader, code, data, ovInit, stage; final int ovBase; final Map<String, Integer> sym = new HashMap<>();
+        final int[] code, data; final Map<String, Integer> sym = new HashMap<>();
         final java.util.TreeMap<Integer, String> funcs = new java.util.TreeMap<>();
         final Map<String, Integer> sizes = new HashMap<>();
         Image() {
             try {
-                loader = words(build.resolve("loader.bin")); code = words(build.resolve("sort.code.bin")); data = words(build.resolve("sort.data.bin"));
+                code = words(build.resolve("sort.code.bin")); data = words(build.resolve("sort.data.bin"));
                 for (String l : Files.readAllLines(build.resolve("sort.sym"))) {      // nm -S: addr [size] type name
                     String[] f = l.trim().split("\\s+");
                     if (f.length < 3) continue;
@@ -90,12 +90,8 @@ final class SortTest {
                     String type = f[f.length - 2], name = f[f.length - 1];
                     sym.putIfAbsent(name, a);
                     if (size > 0) sizes.putIfAbsent(name, size);
-                    if ((type.equals("T") || type.equals("t")) && a < Registers.LOADER_BASE) funcs.putIfAbsent(a, name);
+                    if ((type.equals("T") || type.equals("t")) && a >= Registers.PMEM_BASE && a < Registers.LOADER_BASE) funcs.putIfAbsent(a, name);
                 }
-                Path oi = build.resolve("sort.ovinit.bin"), st = build.resolve("sort.stage.bin");
-                ovInit = Files.exists(oi) ? words(oi) : null;
-                stage = Files.exists(st) ? words(st) : null;
-                ovBase = sym.getOrDefault("_ov_base", -1);
             } catch (IOException e) { throw new RuntimeException("run sw/ext/sort/build.sh first: " + e.getMessage()); }
         }
         int sym(String s) { Integer v = sym.get(s); if (v == null) throw new IllegalArgumentException("no symbol " + s); return v; }
@@ -109,19 +105,16 @@ final class SortTest {
     }
 
     // ================================================================ a machine running the sort
-    static boolean stageReported;
     static final class Machine {
         final Chip c; final Image im = new Image(); final CnC cc;
         final boolean[] wasWfi = new boolean[64];
         long allReadyAt = -1;
         int minSp = Integer.MAX_VALUE;                          // the lowest stack pointer any core reached
-        // tile 0's cycles (awake or in WFI) per function, per phase (PhaseLog index), and over the run. Overlay functions share
-        // addresses: the name is the first symbol at the address (a profile is only exact for the resident image)
+        // tile 0's cycles (awake or in WFI) per function, per phase (PhaseLog index), and over the run
         final Map<Integer, Map<String, Long>> profByPhase = new HashMap<>();
         final Map<String, Long> prof = new LinkedHashMap<>();
         // -Dsort.watch=f1,f2,...: every tile's cycles with its pc inside each named function (by its symbol's address and
-        // size), per phase. Overlay functions share addresses with other images' code, so a figure is only meaningful
-        // in the steps where that function's image is loaded.
+        // size), per phase.
         final String[] watch = System.getProperty("sort.watch", "").isEmpty() ? new String[0] : System.getProperty("sort.watch").split(",");
         final int[] wLo, wHi;
         final Map<Integer, long[][]> watchByPhase = new HashMap<>();   // phase -> [function][tile]
@@ -135,43 +128,20 @@ final class SortTest {
                 wLo[i] = im.sym(nm); wHi[i] = wLo[i] + im.sizes.getOrDefault(nm, 0);
             }
         }
-        /** Boot (spec 6.2), outside the sort's total. */
+        /** Boot (spec 6.2; PHASE-2 INTERIM, as Mach.boot), outside the sort's total: the interim loader (sw/build/loader.bin,
+         *  built by sw/build.sh), program memory, data memory from _data_start, CMD_JUMP to _start, then RUN. */
         void boot() {
-            cc.loadWords(LinkWord.BROADCAST, Registers.LOADER_BASE, im.loader)
-              .loadWords(LinkWord.BROADCAST, Registers.IMEM_BASE, im.code);
-            if (im.ovInit != null) cc.loadWords(LinkWord.BROADCAST, im.ovBase, im.ovInit);
-            cc.loadWords(LinkWord.BROADCAST, Registers.DMEM_BASE, im.data)
+            cc.loadWords(LinkWord.BROADCAST, Registers.LOADER_BASE, Mach.loader())
+              .loadWords(LinkWord.BROADCAST, Registers.PMEM_BASE, im.code)
+              .loadWords(LinkWord.BROADCAST, im.sym("_data_start"), im.data)
               .command(LinkWord.BROADCAST, Registers.CMD_JUMP << 24, im.sym("_start"))
               .runWhenReady();
             boolean ok = c.runUntil(() -> !cc.busy() && allWaiting(), 100_000);
             T.check(ok, "boot: every tile waits for its first command");
-            if (im.stage != null) {        // C&C stages the overlay images: mode 2, broadcast, landing at PTR[64] (6.2)
-                List<long[]> pk = new ArrayList<>();
-                for (int i = 0; i < im.stage.length; i += 2)
-                    pk.add(new long[] { LinkWord.BROADCAST, LinkWord.M_SRC, 0, (im.stage[i] & 0xFFFFFFFFL) | (i + 1 < im.stage.length ? (long) im.stage[i + 1] << 32 : 0) });
-                // 26n: every mode-2 packet is counted, C&C's too, so C&C announces the staging (CMD_STAGE, the packet
-                // count): every tile arms DMA_SRAM_REMAINING and waits, then waits for its next command; C&C sends after the tiles have armed (a margin
-                // past GO: the tiles' counter write comes about 10 cycles after it).
-                long[] goAt = { -1 }, firstAt = { Long.MAX_VALUE };
-                cc.command(LinkWord.BROADCAST, Registers.CMD_STAGE << 24 | pk.size()).go().call(() -> goAt[0] = cc.lastGoAt).waitCycles(c.cfg.stageDelay);
-                cc.send(pk);
-                ok = c.runUntil(() -> {
-                    if (firstAt[0] == Long.MAX_VALUE) for (Tile p : c.tiles) if (p.dir.remaining[TrafficDirector.SRAM] < pk.size() && p.ctl.counterWriteAt[TrafficDirector.SRAM] >= 0) firstAt[0] = c.cycle;
-                    return !cc.busy() && stagingLanded(pk.size()) && allWaiting();
-                }, 1_000_000);
-                long lo = Long.MAX_VALUE, hi = 0;
-                for (Tile p : c.tiles) { long a = p.ctl.counterWriteAt[TrafficDirector.SRAM] - goAt[0]; lo = Math.min(lo, a); hi = Math.max(hi, a); }
-                if (!stageReported) { stageReported = true;
-                    out(String.format("staging [meas: SortTest staging]: from C&C's GO store, every tile's DMA_SRAM_REMAINING store at cycle +%d..+%d (armed from the end of that cycle; the sort's CMD_STAGE path: wait_for_command(), the type test, the counter write); C&C's first staging packet sent at +%d (stage_delay), the first one counted at +%d", lo, hi, c.cfg.stageDelay, firstAt[0] - goAt[0])); }
-                T.check(ok, "boot: the overlay images are staged on every tile");
-            }
-        }
-        boolean stagingLanded(int packets) {
-            for (Tile p : c.tiles) if (p.ts.peek(TableStore.PTR + 64) != STAGE_BASE + 2 * packets || !p.sram.idle()) return false;
-            return true;
         }
         boolean allWaiting() { for (Tile p : c.tiles) if (!p.core.inWfi || p.core.halt != Controller.RUN) return false; return true; }
         boolean allStopped() { for (Tile p : c.tiles) if (p.core.halt == Controller.RUN) return false; return true; }
+        boolean allExited() { for (Tile p : c.tiles) if (p.core.halt != Controller.HALT_EXIT) return false; return true; }
         void pokeS(int tile, int field, int v) { c.tiles[tile].core.pokeLocal(im.sym("S") + 4 * field, v); }
         int peekS(int tile, int field) { return c.tiles[tile].core.peekLocal(im.sym("S") + 4 * field); }
 
@@ -197,7 +167,7 @@ final class SortTest {
             Tile p = c.tiles[0];               // wall time: a WFI's cycles go to the function waiting in it
             if (p.core.halt == Controller.RUN) {
                 String f;
-                if (p.core.pc >= Registers.LOADER_BASE) f = "loader";
+                if (p.core.pc >= Registers.LOADER_BASE && p.core.pc < Registers.LOADER_BASE + Registers.LOADER_SIZE) f = "loader";
                 else { Map.Entry<Integer, String> e = im.funcs.floorEntry(p.core.pc); f = e == null ? "?" : e.getValue(); }
                 prof.merge(f, 1L, Long::sum);
                 profByPhase.computeIfAbsent(c.phases.phases.size() - 1, x -> new LinkedHashMap<>()).merge(f, 1L, Long::sum);
@@ -205,15 +175,15 @@ final class SortTest {
         }
         String haltSummary() {
             StringBuilder sb = new StringBuilder();
-            for (Tile p : c.tiles) if (p.core.halt != Controller.HALT_EBREAK || p.core.x[10] != 0) { sb.append(p.core.haltReport()).append(" a0=").append(p.core.x[10]).append("; "); if (sb.length() > 400) break; }
+            for (Tile p : c.tiles) if (p.core.halt != Controller.HALT_EXIT || p.ctl.simExitValue != 0) { sb.append(p.core.haltReport()).append(" exit=0x").append(Integer.toHexString(p.ctl.simExitValue)).append(" pc=0x").append(Integer.toHexString(p.core.pc)).append("; "); if (sb.length() > 400) break; }
             return sb.toString();
         }
         void dumpState() {
             Map<String, List<Integer>> st = new java.util.TreeMap<>();
             for (Tile p : c.tiles) {
                 Map.Entry<Integer, String> e = im.funcs.floorEntry(p.core.pc);
-                String k = String.format("pc 0x%x%s wfi %b sram %d cm %d reply %d ag running %b done %b",
-                    p.core.pc, e == null ? "" : " (" + e.getValue() + ")", p.core.inWfi, p.dir.remaining[0], p.dir.remaining[1], p.dir.remaining[2],
+                String k = String.format("pc 0x%x%s wfi %b counters 1-3: sram %d cm %d reply %d; ag running %b done %b",
+                    p.core.pc, e == null ? "" : " (" + e.getValue() + ")", p.core.inWfi, p.dir.remaining[1], p.dir.remaining[2], p.dir.remaining[3],
                     p.ag.running, p.ag.done);
                 st.computeIfAbsent(k, x -> new ArrayList<>()).add(p.idx);
             }
@@ -224,12 +194,12 @@ final class SortTest {
             StringBuilder sw = new StringBuilder("    tile 0's S, first 16 words:"); for (int i = 0; i < 16; i++) sw.append(" " + peekS(0, i)); out(sw.toString());
         }
         void checkEnd(String what) {
-            T.check(allStopped(), what + ": every core exited");
-            T.check(haltSummary().isEmpty(), what + ": every core exited by ebreak with a0 = 0: " + haltSummary());
+            T.check(allExited(), what + ": every core exited through SIM_EXIT");
+            T.check(haltSummary().isEmpty(), what + ": every core exited with 0: " + haltSummary());
             T.check(c.violations == 0, what + ": no invariant violations" + (c.violations == 0 ? "" : "\n" + c.violationReport()));
             for (Tile p : c.tiles) {
-                int cond = p.ctl.conditions;            // Invariant 15, strict (drift included; was: the sticky bits but GO seen and late)
-                if (cond != 0) { T.check(false, what + ": tile " + p.idx + " conditions 0x" + Integer.toHexString(cond) + " (" + Conditions.names(cond) + ")"); break; }
+                int cond = p.ctl.conditions;            // ERRORS (4.13) = 0 on every tile, drift included
+                if (cond != 0) { T.check(false, what + ": tile " + p.idx + " ERRORS 0x" + Integer.toHexString(cond) + " (" + Conditions.names(cond) + ")"); break; }
             }
         }
     }
@@ -302,8 +272,8 @@ final class SortTest {
         }
         int[][] k2 = keys(kind, n, 77 + kind.hashCode());
         long[][] l2Expect = new long[64][];
-        final int[] l1Bad = new int[1]; final long[] ptr64 = new long[1];
-        final int base = m.cc.phaseLog.size();                    // boot's phases (CMD_STAGE) come first
+        final int[] l1Bad = new int[1];
+        final int base = m.cc.phaseLog.size();
         m.cc.command(LinkWord.BROADCAST, CMD_L1 << 24 | fmt).go().command(LinkWord.BROADCAST, CMD_L2 << 24);
         final long[] l1Ready = new long[1];
         m.atAllReady(() -> {
@@ -311,7 +281,6 @@ final class SortTest {
             for (Tile p : m.c.tiles) {
                 int i = p.idx;
                 l1Bad[0] += mismatches(m.c, i, BUF_X, l1Expect[i]);
-                if (p.ts.peek(TableStore.PTR + 64) != STAGE_BASE) ptr64[0]++;
                 long[] rec = new long[k2[i].length]; int[] cnt = new int[256];
                 for (int j = 0; j < rec.length; j++) { rec[j] = (k2[i][j] & 0xFFFFFFFFL) | (long) j << 32; p.sram.poke64(BUF_Y + 2 * j, rec[j]); cnt[k2[i][j] & 0xFF]++; }
                 for (int t = 0; t < 256; t++) p.hist.poke(t, cnt[t]);
@@ -324,10 +293,9 @@ final class SortTest {
         boolean ok = m.finish(30_000_000);
         T.check(ok, what + ": the sequence ran to its end");
         T.eq(0, l1Bad[0], what + ": L1: every tile's BUF_X holds its input, stably sorted by key");
-        int l2Bad = 0; long ptrBad = 0;
-        for (Tile p : m.c.tiles) { l2Bad += mismatches(m.c, p.idx, BUF_Y, l2Expect[p.idx]); if (p.ts.peek(TableStore.PTR + 64) != STAGE_BASE) ptrBad++; }
+        int l2Bad = 0;
+        for (Tile p : m.c.tiles) l2Bad += mismatches(m.c, p.idx, BUF_Y, l2Expect[p.idx]);
         T.eq(0, l2Bad, what + ": L2: every tile's BUF_Y holds its records, stably sorted by key");
-        T.eq(0, ptr64[0] + ptrBad, what + ": PTR[64] re-set to the staging area after L1 and L2");
         for (Tile p : m.c.tiles) for (int t = 0; t < 256; t++) if (p.hist.peek(t) != 0) { T.check(false, what + ": HIST clear at the end (tile " + p.idx + ")"); t = 256; break; }
         m.checkEnd(what);
         List<long[]> ph = m.cc.phaseLog;
@@ -476,8 +444,6 @@ final class SortTest {
         T.eq(0, bad, what + ": the keys are in global (key, tile, position) order on every owner, "
                 + (fmt == FMT_KV32 ? "every value with its key" : "every ordinal naming its key's receive position"));
         if (fmt == FMT_K128) T.eq(0, vBad, what + ": the final values (A5-A6) are in the same order as the final keys, every value its key's");
-        long ptrBad = 0; for (Tile p : m.c.tiles) if (p.ts.peek(TableStore.PTR + 64) != STAGE_BASE) ptrBad++;
-        T.eq(0, ptrBad, what + ": PTR[64] = the staging area at the end");
         for (Tile p : m.c.tiles) for (int t = 0; t < 256; t++) if (p.hist.peek(t) != 0) { T.check(false, what + ": HIST clear at the end (tile " + p.idx + ")"); t = 256; break; }
         m.checkEnd(what);
 
@@ -486,7 +452,7 @@ final class SortTest {
         List<Step> steps = new ArrayList<>(); Step cur = null;
         int lastSort = ph.size() - 1;                             // the EXIT phase is not the sort's
         while (lastSort >= 0 && !ph.get(lastSort).name.equals("L2")) lastSort--;
-        int firstSort = 0;                                        // boot's CMD_STAGE phase is not the sort's
+        int firstSort = 0;                                        // anything before L1 is not the sort's
         while (firstSort < lastSort && !ph.get(firstSort).name.equals("L1")) firstSort++;
         for (int i = firstSort; i <= lastSort; i++) {
             PhaseLog.Phase p = ph.get(i);

@@ -21,8 +21,9 @@ import java.util.Map;
  *   java Inputs check [HASHES]          every file in HASHES that exists here must match; exit 1 if one differs
  */
 final class Inputs {
-    /** The tile image's files, in a fixed order (the kit's image/ directory). */
-    static final String[] IMAGE = { "loader.bin", "sort.code.bin", "sort.data.bin", "sort.ovinit.bin", "sort.stage.bin", "sort.sym" };
+    /** The tile image's files, in a fixed order (the kit's image/ directory). v1.2 (WORKER8): one image, no overlays; the
+     *  interim loader is meshsim's (sw/build/loader.bin, PHASE-2 INTERIM), hashed as image/loader.bin. */
+    static final String[] IMAGE = { "sort.code.bin", "sort.data.bin", "sort.sym" };
 
     static String sha256(Path p) throws IOException {
         try (InputStream in = Files.newInputStream(p)) {
@@ -49,6 +50,7 @@ final class Inputs {
         Map<String, String> m = new LinkedHashMap<>();
         Path j = jar();
         m.put("meshsim.jar", j == null ? "(classes)" : hash(j));
+        m.put("image/loader.bin", hash(Mach.SW.resolve("loader.bin")));
         for (String f : IMAGE) m.put("image/" + f, hash(build.resolve(f)));
         m.put("hops.txt", hash(Path.of("hops.txt")));
         if (keys != null) {

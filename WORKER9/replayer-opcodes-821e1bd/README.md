@@ -24,7 +24,7 @@ last bit placed, which is what the owner's "correct for any mask" ruling require
 - Row opcodes: 88 at 821e1bd (`wip/tables/opcode_table.txt`), against 85 executed at 4f36b3d: added `VirtualLoadB/H/W`
   (class L, imm in rs2 like LD) and `VirtualStoreB/H/W` (class L, imm in rd like SD); removed `VirtualAlignAddr`,
   `VirtualAssertHalfwordAlignment`, `VirtualAssertWordAlignment`. **Every opcode number from `VirtualLoadB` (110) on
-  shifts**; `VirtualAdvice` is now 125 (was 122).
+  shifts**; `VirtualAdvice` is now 126 (was 122).
 - `VirtualShiftDataB/H/W`: lane from `(rs2 + shift_offset) & 7` (`& 6`, `& 4`), rs2 now the base register; the row's
   immediate is `shift_offset`, signed.
 - Signed immediates (`sign_imm`): loads, stores (the six Virtual ones included), branches and `ShiftData*`.

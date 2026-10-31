@@ -74,7 +74,8 @@ void bt_phase(unsigned kh, unsigned l) {
             tile->ROUTER_HDR = hdr | HDR_DST(dst);
             send32(SK.u.h2.out2[dst]);
         }
-        wait_counters();                                     /* the transfer's arrivals and the half-words */
+        wait_counters();     /* the transfer's arrivals and the half-words: counters 1 and 3 both armed and both wanted,
+                                so counters done (all seven at 0) is the wait (DECISIONS-v1.2 47, Q3) */
         for (int m = 0; m < NT; m++) SK.desc_in[m] = REPLY[2 * m];   /* the half-words, by source */
     } else wait_run(SRAM_EV(S.next_rem));                    /* the transfer's arrivals and this tile's run */
     if (more) bt_config(nkh, nl);

@@ -15,7 +15,8 @@
 #define SR_HDR(dst) (ROUTER_HDR_W((dst), MODE_WRITE, CTR_REPLY) | ROUTER_NOINC)
 /* the read port's setup for 32-bit results landing from p on, counted on counter 2 (RECIPES 11) */
 #define SR_RD_DEST32(p) RD_DEST((uint32_t)(uintptr_t)(p), SIZE_32, CTR_CM)
-/* every armed counter done (counters done, under the reset mask), as v1.1's wfi() for counters done */
+/* every armed counter done (counters done, under the reset mask), as v1.1's wfi() for counters done: the split arms one
+ * counter at a time (2 or 3), as DECISIONS-v1.2 47 (Q3) requires */
 static inline void sr_wait(void) { while (!(wfi() & EV_CTRS_DONE)) ; }
 
 #ifdef SPLIT_TRACE

@@ -17,6 +17,9 @@
  *     end, so it never reaches 0 early.
  * v1.2: tokens and credits are 64-bit mode-0 writes on counter 2, so a send names its address in ROUTER_ADDR, one
  * store more per token and per credit than v1.1's header-borne address (WORKER8/REPORT.md).
+ * Polling is valid here (DECISIONS-v1.2 47, Q2): a token's 16 words and its sequence word are all mode-0 writes into
+ * data memory (SK), one sending unit to one destination, which port B writes in order; nothing the sequence word
+ * vouches for goes to big SRAM. The same holds for DESC's markers (below).
  * Measured before this version (two buffers, a copy into u.sw.cmask, a send loop): 82.3K on trace hot 100, 30 %, 32-bit
  * values, of which about 187 cycles per round of copying and sending on the critical path. A C&C barrier per round
  * instead of credits would cost at least the sum over rounds of the slowest tile's cell (106.8K on that set, worker 5's
@@ -110,7 +113,7 @@ void bt_descs(void) {
             send32(1);
         }
     }
-    /* The descriptors alone, by polling: a WFI would also wait for the children's R3 packets, which they send only
+    /* The descriptors alone, by polling (valid, DECISIONS-v1.2 47: every descriptor and marker lands in data memory): a WFI would also wait for the children's R3 packets, which they send only
      * after their own held statistics, so bt_held_stats (7-8K) would run one tree level at a time (measured in v1.0:
      * DESC 86K instead of about 40K on trace hot 100, 30 %). Every sender's marker in: every descriptor is in held[][]
      * (one sender's packets arrive in order). With children, the counters-done edge comes when the last packet of all

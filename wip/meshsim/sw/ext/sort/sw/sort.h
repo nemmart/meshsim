@@ -104,7 +104,9 @@ void sort_barrier(void);
 
 /* ---- waiting (CONVENTIONS 5, RECIPES 0 and 23) ----
  * wait_counters(): every armed counter is done (counters done, EVENTS [7], which the reset mask holds and wfi()'s load
- * consumes), as v1.1's wfi() for counters done. For phases that arm counters and run nothing.
+ * consumes), as v1.1's wfi() for counters done. For phases that arm counters and run nothing. Sanctioned by
+ * DECISIONS-v1.2 47 (Q3) when no other counter is armed, since [7] needs all seven at 0. Every call site arms one
+ * counter only, except bt_phase's step-2 case, which arms 1 and 3 and wants both (bt_run.c).
  * wait_run(ctrs): the arrivals on the counters in ctrs (EV_CTR bits; 0 for none) and this tile's own run (DMA run done,
  * [10]): the tables are free afterwards (D17). Every phase that runs the address generator ends with it (rule 6). */
 static inline void wait_counters(void) { while (!(wfi() & EV_CTRS_DONE)) ; }

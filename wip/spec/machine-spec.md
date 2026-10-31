@@ -1261,7 +1261,7 @@ The **replayer** is a tile unit that regenerates the tile's share of a proof's e
 | read-log queue | 8 KB, 512 × 128 bits | the read log, raw or compressed: load values, advice, the next `instr_idx` of non-sequential rows | 4.19.8 |
 | write-log queue | 8 KB, 512 × 128 bits | the write log, raw or compressed: store rows' pre-values | 4.19.8 |
 | decompressors | three: code, read log, write log | 16-entry LRU decoding between each stream's queue and the core | 4.19.15 |
-| decode table | 4 KB, 2K × 16 bits | instruction → template | 4.19.5 |
+| decode table | 4 KB, 2K × 16 bits, built as 256 × 128 (4.19.10) | instruction → template | 4.19.5 |
 | ROM | 8 KB, 512 × 128 bits, dual-ported | the templates: one expansion word per row | 4.19.6 |
 | state word, stream word, register image | 16 B + 16 B + 1 KB | the checkpoint, in that order | 4.19.2 |
 | working register file | 1 KB, 128 × 64 bits, true dual-port | the registers a pass reads and writes | 4.19.7 |
@@ -1688,6 +1688,8 @@ The rules for writes into a peripheral (4.17.5) apply: mode 0 to region 0x04, fr
 **A bad write** (the replayer's `ERRORS` [0], 4.19.11) is a packet the replayer drops because it addresses an unmapped offset, has a size its part doesn't take, or writes a single-ported memory while a pass runs *(Proposed, item 47)*. It is still counted (4.17.5).
 
 **Landing.** The traffic director hands each packet to the replayer's write port, one per cycle; the write lands a fixed **`rp_latency`** = 2 cycles later, with no queue on the path, within K as every peripheral must (4.17.5) *(Proposed, item 48: the value)*.
+
+**Implementation note: the decode table's organization** (v1.25; a note, not a requirement). The decode table is logically 2,048 × 16 bits (4.19.5), but it is naturally **built as 256 × 128 bits, one row per 128-bit packet**: entry *e* lives in row *e* >> 3, bits [16·(*e* & 7) + 15 : 16·(*e* & 7)], exactly as the map above places it. A write is then **one row in one cycle**, which keeps the write port taking a packet per cycle and landing it within `rp_latency`, and a lookup reads row *e* >> 3 and selects 16 bits by *e* & 7. A 16-bit-wide build would need eight banks, one per *e* & 7, to take a packet per cycle. The implementation may organize it differently, as long as it takes a packet per cycle.
 
 **Counting** follows the rule for every write (4.17.5): a packet **from any source** decrements the counter its counter field names, K cycles after the director accepts it, whether it lands or is dropped as a bad write or a queue overrun, so a counter's done means every counted write has landed or been refused (and an error says which). C&C 1's boot loads are uncounted mode-0 writes (6.2). A packet from another tile is allowed and counted; since a queue port takes one source at a time (invariant 18) and the controller loop counts only its own refills (4.19.9), software keeps other tiles' writes out of a running pass (4.19.13). An arrival for a counter at 0 sets unexpected arrival (4.12).
 

@@ -219,3 +219,33 @@ The controller stays at cp12; option (a) is kept as `replay_ctl-option-a.patch`.
 - That is small next to proposal P1.
 
 **A spec note for (a), and for any variant that starts a run while another's arrivals land (N12):** 8.5 forbids updating `DMA_CONFIG` "while … the phase's arrivals are still landing". The rule protects engines that read the digits and *k* as packets arrive. Mode-9 arrivals read none of them, and the controller writes those fields as 0 every time. So the rule could be narrowed to "while arrivals that read its digit or *k* fields are landing". meshsim doesn't check it.
+
+## v1.25 (WORKER11, 2026-11-01): jolt-cpp 821e1bd, the universal tables
+
+What changed in the model (`Replayer`, `ReplayerAlu`), the controller (`sw/replay/replay_ctl.c`) and the harnesses, each
+from DECISIONS-v1.25 (s1, s4-s7) and WORKER9's work:
+- **Opcodes:** 821e1bd's numbering (`wip/tables/opcode_table.txt`, 88 row opcodes; `ReplayerTest` checks the model's
+  table against it). Added `VirtualLoadB/H/W` (class L: rd = the read-log doubleword; imm in rs2) and
+  `VirtualStoreB/H/W` (class L: a write-log pre-value; imm in rd); removed `VirtualAlignAddr` and the two alignment
+  assertions. Their `mem_addr` is rs1 + imm rounded down to the doubleword.
+- **`ShiftData*`:** rs2 is the base register; the lane comes from base + `shift_offset`, which is the source immediate
+  under `offset_imm` [63], else 0. The record's `imm` is the shift offset. `offset_imm` on any other opcode is flagged (Q3).
+- **`sign_imm` [62]** goes into the record, word 0 [86] (`Replayer.REC_SIGN_IMM`): Q1, *Proposed* until WORKER10's spec
+  decides (it may carry the immediate extended instead).
+- **PEXT for any mask** (the general extract; signed: from the last bit placed; mask 0 gives 0). Invariant 16's PEXT
+  check is gone; the shift-mask checks stay.
+- **`VirtualHostIO`** is operand-free (every slot an immediate): it reads and writes nothing.
+- **Write log E[15]** follows every load row (Q2). **Misaligned memory rows** (any width, LD and SD included) are
+  flagged (Q4): jolt-cpp aborts on them.
+- **Decode class 3** is an invalid instruction (unused entries of the universal table). `seq_remaining` counts traced
+  words: the replayer only ever sees traced words, so nothing changes in the model.
+- **The controller:** the template index is keyed by key(w) (`tkey`, `ReplayTables.key`); the fast path holds only the
+  templates the window's bitmap names (75 universal keys can't all be collision-free in 128 slots), and the N3 NOP check
+  moved to run time (a key has no rd). Layout version 2: templates at chunk 0x58000 (the universal set is 221 KB).
+- **Vectors:** `data/vec-821e1bd.tsv` is WORKER9's regeneration (`WORKER9/replayer-opcodes-821e1bd/vec.tsv`, copied):
+  225 match, 4 C++-UB shift masks flagged, 23 not applicable (aborting assertions, advice opcodes); every executed
+  opcode but NOP (the padding row, unit-tested) has a vector. ShiftData's offsets aren't printed in vec.tsv; they are
+  vec.cpp's, listed in `ReplayerTest.SHIFT_OFFSETS`.
+- **`SyntheticDelivery`** (test/): a delivery in the v1.25 format from the universal tables and a random RV64IMAC
+  program, cross-checked against an RV64 interpreter. For the acceptance kit's tests and speed figures; its rows are
+  this model's semantics, not jolt-cpp's.

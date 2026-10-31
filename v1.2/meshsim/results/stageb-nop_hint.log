@@ -1,0 +1,2 @@
+nop_hint     window     0  state      OK     65536 rows  pass   196869 cycles  3.004 cycles/row  newexp 0 (served 0), refills 128, stalls [64, 103, 0, 0, 94, 0, 0]  [meas: StageB]
+StageB nop_hint state: 1 windows, 0 failed

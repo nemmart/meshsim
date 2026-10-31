@@ -1,0 +1,248 @@
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.BooleanSupplier;
+
+/**
+ * C&C (spec 6.6), in Java for now (Q11): a sequencer over a modelled register block, so that an
+ * RV32 C&C can replace the sequencer later without changing the machine.
+ *
+ * Registers modelled:
+ *   send   the holding register into tile 0's "from C&C" route block ({@link Endpoint#send}): one packet per cycle,
+ *          any dst/mode/addr, src = 64; a refused put is retried;
+ *   READY  64 sticky bits, bit s set by a pulse on tile s's READY line (visible ready_latency after the tile's edge);
+ *          a clear stored at t clears what is visible at t, and a pulse arriving during t is kept;
+ *   GO     a store at t pulses GO; tile s sees it at t + go_latency + skew[s];
+ *   RUN    a store at t sets the RUN/HALT line; tile s sees it at t + run_latency + skew[s];
+ *   ERROR  (spec 6.6) one sticky bit: the OR of every tile's error line ("my TILE_CONDITIONS is non-zero"),
+ *          visible error_latency after the tiles' conditions change; a clear store at t clears it, and it sets again
+ *          from t + 1 while the line is still high (only HALT clears the conditions);
+ *   RX     (spec 6.6) the receive FIFO: packets for dst 64, taken one per cycle from tile 0's to-C&C output into
+ *          cncRxDepth (>= 64) entries of payload + src; read through a register pair (data; src with a valid bit), one
+ *          entry per read; a packet arriving with the FIFO full is lost and sets the receive-overflow flag. Room freed by a
+ *          read at t is room from t + 1. Endpoint.received stays the trace of every packet for dst 64.
+ * C&C's WFI and its wake sources (all READY, a packet in the receive FIFO, the error bit, the watchdog) are modelled by
+ * steps that re-check their condition every cycle.
+ *
+ * The sequencer runs {@link Step}s in order, at most one register action per cycle; a step that waits re-checks every
+ * cycle (the Java stand-in for C&C's WFI on all-READY). Seeing all 64 READY bits at t, {@link #go()} stores clear and
+ * GO at t + cnc_reaction.
+ */
+final class CnC implements Component {
+    interface Step { boolean run(CnC c, long t); }    // true = finished (move to the next step from the next cycle)
+
+    final Chip chip;
+    final Endpoint ep;
+    final Config cfg;
+    private final ArrayDeque<Step> steps = new ArrayDeque<>();
+    // READY bits
+    // stats
+    long gos, runStores, packetsSent, readyWaitCycles;
+    long lastGoAt = -1, lastAllReadyAt = -1, lastRunAt = -1;
+    final List<long[]> phaseLog = new ArrayList<>();   // {allReady t, GO t} per GO
+    // ---- The error bit and the receive FIFO ----
+    private final ArrayDeque<long[]> errLine = new ArrayDeque<>();   // {visible at, 0/1} changes of the OR'd error line
+    private boolean errLineSeen, errLineLast, errorBit;
+    long errorSetAt = -1, errorSets, errorFirstAt = -1;   // the cycle the bit set (since the last clear), times it set, the first ever
+    private final ArrayDeque<long[]> rxq = new ArrayDeque<>();   // {payload [63:0], src, arrival cycle, payload [127:64], size} (6.6, item 29)
+    boolean rxOverflow; long rxLost, rxTaken, rxReads; int rxPeak;
+
+    CnC(Chip chip, Endpoint ep) {
+        this.chip = chip; this.ep = ep; this.cfg = chip.cfg;
+        ep.drainedByCnC = true;
+    }
+
+    // ---- the error bit (6.6) ----
+    /** The OR'd error line as it stands at the end of cycle t (Chip, after every tile has run t). */
+    void errorLine(long t, boolean high) {
+        if (high != errLineLast) { errLine.add(new long[] { t + Math.max(1, cfg.errorLatency()), high ? 1 : 0 }); errLineLast = high; }
+    }
+    boolean error() { return errorBit; }
+    /** A clear store at t: the bit is 0 from t + 1 unless the line is still high. */
+    void clearError(long t) { errorBit = false; errorSetAt = -1; }
+    // ---- the receive FIFO (6.6) ----
+    int rxCount() { return rxq.size(); }
+    /** Read the receive registers (6.6, item 29): {payload [63:0], src, arrival, payload [127:64], size}, or null when the FIFO is empty (the valid bit 0). */
+    long[] rxPop() { long[] e = rxq.poll(); if (e != null) rxReads++; return e; }
+
+    // ================================================================ registers
+    // v1.2 (8.14): the READY bits are C&C 1's peripheral's READY_LINES (Chip.cc1p); the model expects all 64 tiles
+    void readyPulse(int tile, long tEdge) { chip.cc1p.readyPulse(tile, tEdge); }
+    boolean ready(int tile, long t) { return chip.cc1p.ready(tile, t); }
+    boolean allReady(long t) { return chip.cc1p.allReady(t); }
+    long readyBits(long t) { return chip.cc1p.readyBits(t); }
+    /** A clear stored at t acts at the end of t: every pulse visible at t is cleared; one arriving during t (visible at
+     *  t + 1) is kept. (PULSE_GO clears them too; RUN, PHASE-2 INTERIM, needs this alone.) */
+    void clearReady(long t) { chip.cc1p.clearReady(t); }
+    int lastCommandWord = -1;                          // the command word most recently queued for slot 0 (phase names)
+    /** C&C 1's PULSE_GO (8.14): clears READY, drives GO, restarts the watchdog. */
+    void storeGo(long t) { chip.cc1p.write(t, Cnc1Peripheral.PULSE_GO, 1); }
+    /** GO's net, driven by the peripheral's PULSE_GO. */
+    void goNet(long t) {
+        gos++; lastGoAt = t;
+        chip.phases.onGo(t, lastCommandWord);
+        for (Tile p : chip.tiles) p.ctl.scheduleGo(t + cfg.goLatency + chip.startSkew[p.idx]);
+    }
+    /** The reset's effect on C&C 1's model (6.1): the receive FIFO and the error bit; the step queue goes on (the
+     *  harness, the outside world, drives it). */
+    void resetModel(long t) { rxq.clear(); errLine.clear(); errLineSeen = false; errLineLast = false; errorBit = false; errorSetAt = -1; }
+
+    // ================================================================ cycle
+    @Override public void runCycle(long t) {
+        while (!errLine.isEmpty() && errLine.peek()[0] <= t) errLineSeen = errLine.poll()[1] == 1;
+        if (errLineSeen && !errorBit) { errorBit = true; errorSetAt = t; if (errorSets++ == 0) errorFirstAt = t; }
+        if (drainReports && chip.reqBus.pending(0, t)) {
+            long[] r = chip.reqBus.peekRequest(0, t); chip.reqBus.receive(0, t);
+            long[] e = { t, r[0], r[1], r[2], r[3] };
+            int op = (int) (r[0] >>> 10) & 0xFF, src = (int) r[0] & 0x7F;
+            if (op == REQ_OP_REPORT) reports.add(e);
+            else {
+                requests.add(e);
+                if (op == REQ_OP_RESULT) { results.add(new long[] { t, src, r[2], r[3] }); replies.add(new long[] { src, r[1], (r[0] >>> 18) & 7 }); }
+            }
+        }
+        if (ep.rx.ready(t)) {                          // tile 0's to-C&C output into the receive FIFO, one packet per cycle
+            long d = ep.rx.peekA(t), h = ep.rx.peekB(t), hi = ep.rx.peekC(t); ep.rx.take(t);
+            ep.received.add(new long[] { t, d, h, hi });
+            if (rxq.size() >= cfg.cncRxDepth) { rxOverflow = true; rxLost++; }
+            else { rxq.add(new long[] { d, LinkWord.src(h), t, hi, LinkWord.size(h) }); rxTaken++; rxPeak = Math.max(rxPeak, rxq.size()); }
+        }
+        if (ep.send.refused(t)) { ep.send.retry(t); return; }
+        if (!replies.isEmpty()) {                          // C&C 1's answers first: a 32-bit mode-0 write to the address the request named (6.7)
+            long[] r = replies.poll();
+            ep.send(t, (int) r[0], LinkWord.M_WRITE, (int) r[2], (int) r[1], LinkWord.SIZE_32, 0, 0);
+            packetsSent++;
+            return;
+        }
+        while (!steps.isEmpty()) {
+            Step s = steps.peek();
+            boolean fin = s.run(this, t);
+            if (!fin) return;
+            steps.poll();
+            if (!(s instanceof Instant)) return;       // one register action per cycle
+        }
+    }
+    boolean busy() { return !steps.isEmpty(); }
+
+    // ================================================================ sequencer steps
+    /** A step that takes no cycle of its own (bookkeeping). */
+    private interface Instant extends Step {}
+    CnC then(Step s) { steps.add(s); return this; }
+    CnC call(Runnable r) { steps.add((Instant) (c, t) -> { r.run(); return true; }); return this; }
+
+    /** Send packets in order, one per cycle. Each packet: {dst, mode, addr, payload [63:0]} (a 64-bit, uncounted packet),
+     *  {dst, mode, addr, payload [63:0], size, payload [127:64]} (uncounted) or {..., counter}. */
+    CnC send(List<long[]> packets) {
+        final int[] i = { 0 };
+        steps.add((c, t) -> {
+            if (i[0] >= packets.size()) return true;
+            long[] p = packets.get(i[0]++);
+            if (p.length >= 6) ep.send(t, (int) p[0], (int) p[1], p.length >= 7 ? (int) p[6] : 0, (int) p[2], (int) p[4], p[3], p[5]);
+            else ep.send(t, (int) p[0], (int) p[1], 0, (int) p[2], LinkWord.SIZE_64, p[3], 0);
+            packetsSent++;
+            return i[0] >= packets.size();
+        });
+        return this;
+    }
+    CnC send(int dst, int mode, int addr, long payload) { return send(List.of(new long[] { dst, mode, addr, payload })); }
+    CnC send(int dst, int mode, int addr, int size, long lo, long hi) { return send(List.of(new long[] { dst, mode, addr, lo, size, hi })); }
+
+    /** Commands sent to each tile so far: its next command's parity (argument block). */
+    final int[] commandsTo = new int[64];
+    /** A command (6.3): the arguments into the tile's next argument block (even commands slots 1-7, odd 8-15; owner,
+     *  2026-10-26), then the command word, with the block's parity in bit 23, into slot 0, last. dst is one tile or a
+     *  broadcast (every tile must then be at the same parity). The parity is fixed when the step is queued. */
+    CnC command(int dst, int word, int... args) {
+        if (args.length > Registers.ARGS_PER_BLOCK) throw new IllegalArgumentException("more than 7 arguments");
+        int par;
+        if (dst == LinkWord.BROADCAST) {
+            par = commandsTo[0] & 1;
+            for (int i = 0; i < 64; i++) { if ((commandsTo[i] & 1) != par) throw new IllegalStateException("broadcast command: tiles at different parities"); commandsTo[i]++; }
+        } else par = commandsTo[dst]++ & 1;
+        int base = par == 0 ? Registers.ARGS_EVEN : Registers.ARGS_ODD;
+        List<long[]> ps = new ArrayList<>();
+        for (int i = 0; i < args.length; i++) ps.add(new long[] { dst, LinkWord.M_WRITE, ControllerMemories.COMMAND + 4 * (base + i), args[i] & 0xFFFFFFFFL, LinkWord.SIZE_32, 0 });
+        int w = (word & ~(1 << Registers.CMD_PARITY_BIT)) | par << Registers.CMD_PARITY_BIT;
+        final int cw = word;
+        steps.add((Instant) (c, t) -> { lastCommandWord = cw; return true; });
+        ps.add(new long[] { dst, LinkWord.M_WRITE, ControllerMemories.COMMAND, w & 0xFFFFFFFFL, LinkWord.SIZE_32, 0 });   // a command: an uncounted mode-0 write to slot 0, last (4.12)
+        return send(ps);
+    }
+
+    /** Words into controller memory by mode 6 from a byte address (4.11 packed map), as 128-bit packets: four words each,
+     *  addr + 4 per packet, the image padded with zero words to whole packets (spec 6.2, v1.1; v1.0 sent two words per
+     *  64-bit packet). */
+    CnC loadWords(int dst, int byteAddr, int[] words) {
+        List<long[]> ps = new ArrayList<>();
+        for (int i = 0; i < words.length; i += 4) {
+            long[] w = new long[4];
+            for (int k = 0; k < 4; k++) w[k] = i + k < words.length ? words[i + k] & 0xFFFFFFFFL : 0;
+            ps.add(new long[] { dst, LinkWord.M_WRITE, cmAddr(byteAddr + 4 * i), w[1] << 32 | w[0], LinkWord.SIZE_128, w[3] << 32 | w[2] });
+            loadPackets++;
+        }
+        return ps.isEmpty() ? this : send(ps);
+    }
+    long loadPackets;
+    /** An image's byte address is its v1.2 packet address (regions 0x00 and 0x01, 2.2). */
+    static int cmAddr(int byteAddr) { return byteAddr; }
+
+    /** Wait until all 64 READY bits are set, then (cnc_reaction later) clear them and GO. */
+    CnC go() {
+        final long[] seen = { -1 };
+        steps.add((c, t) -> {
+            if (seen[0] < 0) { if (!allReady(t)) { readyWaitCycles++; return false; } seen[0] = t; lastAllReadyAt = t; chip.phases.onAllReady(t); }
+            if (t < seen[0] + cfg.cncReaction) return false;
+            clearReady(t); storeGo(t); phaseLog.add(new long[] { seen[0], t });
+            return true;
+        });
+        // GO must reach every tile before the next command can land there: GO clears "command landed", and a command
+        // landing first would be overwritten unread and its READY lost (meas: hangs at go_latency >= 6 without this)
+        if (cfg.cncGoSettle) steps.add((c, t) -> t >= lastGoAt + cfg.goLatency + 1);
+        return this;
+    }
+    /** Boot (6.2): the tiles wait in the boot ROM, done pulsed; their first command raises READY; when every expected
+     *  tile is READY, GO, and the ROM jumps. */
+    CnC runWhenReady() { lastRunAt = -1; return go().call(() -> lastRunAt = lastGoAt); }
+    /** The outside world resets the chip (6.1): a step that takes effect at the end of its cycle. */
+    CnC reset(boolean hard) {
+        steps.add((c, t) -> { chip.reset(hard); runStores++; return true; });
+        waitCycles(2);
+        steps.add((c, t) -> { chip.cc1p.expect = -1L; return true; });   // the model's firmware: READY_EXPECT, all 64 tiles (reset to 0)
+        return this;
+    }
+    // ================================================================ the handlers' reports (4.13, 6.1)
+    /** C&C 1's request service, modelled (its firmware's job, 6.1, 6.7): drain target 0's receive queue, one request per
+     *  cycle: the units' error reports (REQ_OP_REPORT, 24 per failed unit) into {@link #reports}; a tile's result
+     *  (REQ_OP_RESULT) into {@link #results} ({t, requestor, w2, w3}), answered with a 32-bit mode-0 write to the
+     *  address in W1 on the request's reply counter; anything else into {@link #requests}. Off by default: tests may
+     *  drain the queue themselves. */
+    static final int REQ_OP_REPORT = 1, REQ_OP_STARTED = 2, REQ_OP_RESULT = 3;
+    boolean drainReports;
+    final List<long[]> requests = new ArrayList<>(), results = new ArrayList<>();
+    private final java.util.ArrayDeque<long[]> replies = new java.util.ArrayDeque<>();
+    final List<long[]> reports = new ArrayList<>();
+    /** The reports of unit id, in arrival order. */
+    List<long[]> reportsOf(int id) { List<long[]> r = new ArrayList<>(); for (long[] e : reports) if ((e[1] & 0x7F) == id) r.add(e); return r; }
+
+    /** The depth of C&C's broadcast tree: a broadcast from C&C is rooted at tile 0 (4.17), and its farthest tile (36)
+     *  is 8 hops away [meas: meshsim v4.0 M14, CondTest broadcast]. */
+    static final int BROADCAST_DEPTH = 8;
+    /** The worst-case latency of a one-packet broadcast from C&C, from its send to "command landed" at the farthest tile,
+     *  on an idle mesh: 2 + intra_tile_latency + cm_latency + BROADCAST_DEPTH x (link_latency + 1) = 37 at the defaults
+     *  [meas: CondTest broadcast, link latency 2-4, cm_latency 2-4, intra_tile_latency 1-2, exact]. */
+    int broadcastBound() { return 2 + cfg.intraTileLatency + cfg.cmLatency + BROADCAST_DEPTH * (cfg.linkLatency + 1); }
+    /** A step: read the receive FIFO, one entry per cycle, into {arrival cycle, src, payload} rows until n have
+     *  come or max cycles have passed (the watchdog). */
+    CnC collect(int n, int max, List<long[]> into) {
+        final long[] from = { -1 }; final int[] got = { 0 };
+        steps.add((c, t) -> {
+            if (from[0] < 0) from[0] = t;
+            long[] e = rxPop();
+            if (e != null) { into.add(new long[] { e[2], e[1], e[0] }); got[0]++; }
+            return got[0] >= n || t >= from[0] + max;
+        });
+        return this;
+    }
+    CnC waitCycles(int n) { final int[] k = { n }; steps.add((c, t) -> --k[0] <= 0); return this; }
+    CnC waitUntil(BooleanSupplier cond) { steps.add((c, t) -> cond.getAsBoolean()); return this; }
+}

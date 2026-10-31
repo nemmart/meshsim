@@ -6,8 +6,9 @@ Simulator and software for a parallel compute mesh, part of an ASIC for proving 
 |---|---|---|
 | `v1.0/` | frozen | sorting and basic mesh routing; full docs and diagrams |
 | `v1.1/` | frozen | adds the RV64 trace replayer |
-| `v1.2_wip/` | snapshot | the v1.2 spec and recipes, read-only, for sessions working against v1.2 while the simulator is ported; not yet frozen. **In use by Tony: nobody changes it without the owner's agreement** |
-| `wip/` | in progress | work toward the next milestone; started as a copy of v1.1 |
+| `v1.2/` | frozen | the v1.2 machine: the 256-bit link word, byte addresses and regions, seven counters, the boot ROM, terminal traps and the toast pin, peripherals behind a standard window; the spec, meshsim (every suite, the sort at full size, the replayer on StageB synthetic) and the recipes; jolt-cpp reference `4f36b3d`. Known gaps: the boot ROM's branch for C&C 1-3 and C&C 2/3's "started" requests are not exercised (the controllers are Java models), the replayer is checked on synthetic windows rather than real ones, and `rcp_cc1.c` is built but not run |
+| `v1.2_wip/` | snapshot | the v1.2 spec and recipes, read-only, for sessions working against v1.2 while the simulator is ported; superseded by `v1.2/`. **In use by Tony: nobody changes it without the owner's agreement** |
+| `wip/` | in progress | work toward **v1.25** (the replayer and its tables at jolt-cpp `821e1bd`), then v1.3 (the Tracer); started from v1.2 |
 
 **How versions are used:** each frozen version (spec plus meshsim) is the reference the RTL is upgraded against,
 outside this repository. What the RTL work turns up comes back afterwards as a delta, folded into the next version;

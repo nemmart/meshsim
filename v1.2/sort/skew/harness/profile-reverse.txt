@@ -1,0 +1,7 @@
+    sw_prepare       calls     64  max    2253  mean    2253
+    sw_stage1        calls     64  max     732  mean     732
+    th_build         calls     64  max    5531  mean    5530
+    sw_stage2        calls     64  max     492  mean     492
+    th_desc          calls     64  max     841  mean     841
+    th_hop1          calls    128  max    3849  mean    3801
+    th_hop2          calls    128  max    3702  mean    3589

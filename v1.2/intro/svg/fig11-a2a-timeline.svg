@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="940" height="530" viewBox="0 0 940 530" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif">
+<defs></defs>
+<rect width="940" height="530" fill="white"/>
+<text x="24.0" y="34.0" font-size="18" text-anchor="start" font-weight="bold" fill="#444441">Figure 11. One tile's keys all-to-all: 16 groups, run as one group run</text>
+<text x="24.0" y="56.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#6b6a64">Every tile runs the same timetable, started on the same cycle; only the data differs. A group runs R rotations, R being its</text>
+<text x="24.0" y="74.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#6b6a64">largest stream anywhere on the mesh, and the next group starts on the same cycle everywhere.</text>
+<text x="24.0" y="110.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">16 groups, one after another (uniform keys: R ≈ 1,110 in every group, ≈ 4,450 cycles each)</text>
+<rect x="24.0" y="120.0" width="52.8" height="30.0" rx="3" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="50.4" y="139.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441">g0</text>
+<rect x="79.8" y="120.0" width="52.8" height="30.0" rx="3" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="106.1" y="139.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441">g1</text>
+<rect x="135.5" y="120.0" width="52.8" height="30.0" rx="3" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="161.9" y="139.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441">g2</text>
+<rect x="191.2" y="120.0" width="52.8" height="30.0" rx="3" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="217.6" y="139.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441">g3</text>
+<rect x="247.0" y="120.0" width="52.8" height="30.0" rx="3" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="273.4" y="139.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441">g4</text>
+<rect x="302.8" y="120.0" width="52.8" height="30.0" rx="3" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="329.1" y="139.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441">g5</text>
+<rect x="358.5" y="120.0" width="52.8" height="30.0" rx="3" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="384.9" y="139.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441">g6</text>
+<rect x="414.2" y="120.0" width="52.8" height="30.0" rx="3" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="440.6" y="139.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441">g7</text>
+<rect x="470.0" y="120.0" width="52.8" height="30.0" rx="3" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="496.4" y="139.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441">g8</text>
+<rect x="525.8" y="120.0" width="52.8" height="30.0" rx="3" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="552.1" y="139.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441">g9</text>
+<rect x="581.5" y="120.0" width="52.8" height="30.0" rx="3" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="607.9" y="139.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441">g10</text>
+<rect x="637.2" y="120.0" width="52.8" height="30.0" rx="3" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="663.6" y="139.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441">g11</text>
+<rect x="693.0" y="120.0" width="52.8" height="30.0" rx="3" fill="#FFF4CC" stroke="#C99A06" stroke-width="1.6"/>
+<text x="719.4" y="139.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#444441">g12</text>
+<rect x="748.8" y="120.0" width="52.8" height="30.0" rx="3" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="775.1" y="139.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441">g13</text>
+<rect x="804.5" y="120.0" width="52.8" height="30.0" rx="3" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="830.9" y="139.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441">g14</text>
+<rect x="860.2" y="120.0" width="52.8" height="30.0" rx="3" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="886.6" y="139.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441">g15</text>
+<text x="916.0" y="166.0" font-size="11" text-anchor="end" font-weight="normal" fill="#6b6a64">time →</text>
+<path d="M693.0,150 L24,192 M745.75,150 L916,192" fill="none" stroke="#C99A06" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="470.0" y="214.0" font-size="12.5" text-anchor="middle" font-weight="bold" fill="#444441">group 12 in detail: offsets +14, +18, +46, +50, one cycle per visit</text>
+<rect x="24.0" y="226.0" width="21.0" height="34.0" rx="0" fill="#FAECE7" stroke="#D85A30" stroke-width="1"/>
+<text x="34.5" y="247.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">+14</text>
+<rect x="46.0" y="226.0" width="21.0" height="34.0" rx="0" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1"/>
+<text x="56.5" y="247.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">+18</text>
+<rect x="68.0" y="226.0" width="21.0" height="34.0" rx="0" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1"/>
+<text x="78.5" y="247.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">+46</text>
+<rect x="90.0" y="226.0" width="21.0" height="34.0" rx="0" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1"/>
+<text x="100.5" y="247.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">+50</text>
+<path d="M24,268 v6 h87 v-6" fill="none" stroke="#6b6a64" stroke-width="1"/>
+<text x="68.0" y="288.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">rotation 0</text>
+<rect x="120.0" y="226.0" width="21.0" height="34.0" rx="0" fill="#FAECE7" stroke="#D85A30" stroke-width="1"/>
+<text x="130.5" y="247.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">+14</text>
+<rect x="142.0" y="226.0" width="21.0" height="34.0" rx="0" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1"/>
+<text x="152.5" y="247.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">+18</text>
+<rect x="164.0" y="226.0" width="21.0" height="34.0" rx="0" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1"/>
+<text x="174.5" y="247.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">+46</text>
+<rect x="186.0" y="226.0" width="21.0" height="34.0" rx="0" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1"/>
+<text x="196.5" y="247.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">+50</text>
+<path d="M120,268 v6 h87 v-6" fill="none" stroke="#6b6a64" stroke-width="1"/>
+<text x="164.0" y="288.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">rotation 1</text>
+<rect x="216.0" y="226.0" width="21.0" height="34.0" rx="0" fill="#FAECE7" stroke="#D85A30" stroke-width="1"/>
+<text x="226.5" y="247.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">+14</text>
+<rect x="238.0" y="226.0" width="21.0" height="34.0" rx="0" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1"/>
+<text x="248.5" y="247.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">+18</text>
+<rect x="260.0" y="226.0" width="21.0" height="34.0" rx="0" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1"/>
+<text x="270.5" y="247.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">+46</text>
+<rect x="282.0" y="226.0" width="21.0" height="34.0" rx="0" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1"/>
+<text x="292.5" y="247.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">+50</text>
+<path d="M216,268 v6 h87 v-6" fill="none" stroke="#6b6a64" stroke-width="1"/>
+<text x="260.0" y="288.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">rotation 2</text>
+<text x="336.0" y="248.0" font-size="16" text-anchor="middle" font-weight="normal" fill="#6b6a64">· · ·</text>
+<rect x="362.0" y="226.0" width="21.0" height="34.0" rx="0" fill="#FAECE7" stroke="#D85A30" stroke-width="1"/>
+<text x="372.5" y="247.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">+14</text>
+<rect x="384.0" y="226.0" width="21.0" height="34.0" rx="0" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1"/>
+<text x="394.5" y="247.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">+18</text>
+<rect x="406.0" y="226.0" width="21.0" height="34.0" rx="0" fill="white" stroke="#B4B2A9" stroke-width="1" stroke-dasharray="3 2"/>
+<text x="416.5" y="247.0" font-size="8.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">idle</text>
+<rect x="428.0" y="226.0" width="21.0" height="34.0" rx="0" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1"/>
+<text x="438.5" y="247.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">+50</text>
+<path d="M362,268 v6 h87 v-6" fill="none" stroke="#6b6a64" stroke-width="1"/>
+<text x="406.0" y="288.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">rotation R−3</text>
+<rect x="458.0" y="226.0" width="21.0" height="34.0" rx="0" fill="#FAECE7" stroke="#D85A30" stroke-width="1"/>
+<text x="468.5" y="247.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">+14</text>
+<rect x="480.0" y="226.0" width="21.0" height="34.0" rx="0" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1"/>
+<text x="490.5" y="247.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">+18</text>
+<rect x="502.0" y="226.0" width="21.0" height="34.0" rx="0" fill="white" stroke="#B4B2A9" stroke-width="1" stroke-dasharray="3 2"/>
+<text x="512.5" y="247.0" font-size="8.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">idle</text>
+<rect x="524.0" y="226.0" width="21.0" height="34.0" rx="0" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1"/>
+<text x="534.5" y="247.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">+50</text>
+<path d="M458,268 v6 h87 v-6" fill="none" stroke="#6b6a64" stroke-width="1"/>
+<text x="502.0" y="288.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">rotation R−2</text>
+<rect x="554.0" y="226.0" width="21.0" height="34.0" rx="0" fill="#FAECE7" stroke="#D85A30" stroke-width="1"/>
+<text x="564.5" y="247.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">+14</text>
+<rect x="576.0" y="226.0" width="21.0" height="34.0" rx="0" fill="white" stroke="#B4B2A9" stroke-width="1" stroke-dasharray="3 2"/>
+<text x="586.5" y="247.0" font-size="8.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">idle</text>
+<rect x="598.0" y="226.0" width="21.0" height="34.0" rx="0" fill="white" stroke="#B4B2A9" stroke-width="1" stroke-dasharray="3 2"/>
+<text x="608.5" y="247.0" font-size="8.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">idle</text>
+<rect x="620.0" y="226.0" width="21.0" height="34.0" rx="0" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1"/>
+<text x="630.5" y="247.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">+50</text>
+<path d="M554,268 v6 h87 v-6" fill="none" stroke="#6b6a64" stroke-width="1"/>
+<text x="598.0" y="288.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">rotation R−1</text>
+<rect x="650.0" y="226.0" width="266.0" height="34.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="783.0" y="247.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441">group 13: next cycle (gap 0)</text>
+<text x="24.0" y="326.0" font-size="13" text-anchor="start" font-weight="bold" fill="#444441">What the controller wrote for it (spec 4.2)</text>
+<rect x="24.0" y="336.0" width="300.0" height="92.0" rx="5" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1"/>
+<text x="36.0" y="356.0" font-size="12" text-anchor="start" font-weight="bold" fill="#444441">GROUP[12]</text>
+<text x="36.0" y="371.8" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">R = the group's global maximum count</text>
+<text x="36.0" y="387.7" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">start stream = s, streams t = 4, gap = 0</text>
+<text x="36.0" y="403.5" font-size="12" text-anchor="start" font-weight="normal" fill="#6b6a64">the R field is rewritten every all-to-all</text>
+<rect x="340.0" y="336.0" width="576.0" height="92.0" rx="5" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1"/>
+<text x="352.0" y="356.0" font-size="12" text-anchor="start" font-weight="bold" fill="#444441">STREAM[s … s + 3], one per offset</text>
+<text x="352.0" y="371.8" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">source = the start of this tile's run for (me + d) mod 64, count = its length,</text>
+<text x="352.0" y="387.7" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">d = 14, 18, 46, 50 (relative, the same on every tile), mode 4 (keys) or 2 (values),</text>
+<text x="352.0" y="403.5" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">read size 64 bits (keys) or 128 bits (values: two packets per visit, period 8)</text>
+<text x="24.0" y="454.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">A rotation sends one element of each stream that still has one; a stream that has run out (+46 here) leaves its cycle idle. One</text>
+<text x="24.0" y="470.5" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">large stream anywhere therefore stretches its group on every tile: this is where skew costs (section 4). The whole all-to-all takes</text>
+<text x="24.0" y="487.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">Σ 4 × R_g cycles for the keys (8 × R_g for 128-bit values) plus a short start and tail.</text>
+</svg>

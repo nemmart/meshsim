@@ -1,0 +1,32 @@
+# Milestone, date or DEV notes left in the simulator's string literals (test output and labels) (DEVIATIONS.md item 3); file:line: text
+meshsim/src/BigSRAM.java:57: "memChunks: whole 512 KB areas, up to 4 MB (M12: MASTER_STATUS's size field counts areas)"
+meshsim/test/AgBench.java:20: "M8 (read-ahead)"
+meshsim/test/AgBench.java:20: "M7 (banks + prefetch)"
+meshsim/test/BusTest.java:45: "OverflowFIFO (generic, not used by the design: M15's rule, a pop makes room in its cycle)"
+meshsim/test/CtrlTest.java:237: "invariants [meas: CtrlTest invariants]: 4 (done before arrivals), 5 (a mode-0 packet sent), 7 (packet in flight at a line change), 8 (reply overwritten unread)
+meshsim/test/CtrlTest.java:303: "  data set                   GO -> all READY     bound   over  | M4 start->last wake (Java-driven, M3 harness)  | v3.10 GO -> all DONE (gap 8)\n"
+meshsim/test/EngineTest.java:316: "group 1 starts on time (M8 read-ahead; M7's bank prefetch made it 13 cycles late)"
+meshsim/test/EngineTest.java:322: "group 2 (R = 0) takes 1 cycle plus its gap (spec 4.2, 10 October; M14, was only its gap)"
+meshsim/test/EngineTest.java:324: "group run with a 16-stream group after a 4-cycle group: group 1 starts %d cycles late on every tile (M7: 13, the bank prefetch of GROUP + 16 STREAM reads); R =
+meshsim/test/MemTest.java:88: " after a cycle (room is judged by the count before the pop, 13a); from then on every freed slot goes to the write (writes win the tie, ruled 2 October), so the
+meshsim/test/NetTest.java:286: "bad mode is MASTER_CONDITIONS bit 9 (COND_BAD_MODE; M14, was MASTER_STATUS bit 20)"
+meshsim/test/NetTest.java:457: "63 x 1 with no skew: overflows (v1.0: a push at full overflows even with a same-cycle pop; M15: fitted at 16 of 16)"
+meshsim/test/ReadPortGatherTest.java:81: "tile 7: the 65th store into a full queue set the read-port-overflow condition, and only it (M14: MASTER_CONDITIONS)"
+meshsim/test/ReadPortGatherTest.java:174: " offsets). Results return as mode-7 packets through tile 20's loopback (4.3, M10). Eject FIFO peaks, of 16:\n"
+meshsim/test/ReadPortGatherTest.java:287: " rejected (4.2, 9 October)"
+meshsim/test/SortSummary.java:143: "%n**%d runs have no inputs line (a kit before M9, or no log); their inputs are unknown:** %s%n"
+meshsim/test/SortTest.java:509: "    M14: zero-length groups "
+meshsim/test/SortTest.java:509: " (1 + gap since 10 October); group-run stall cycles "
+meshsim/test/VerifySummary.java:119: "# v1.0 verification: meshsim v1.0 against M15\n\n"
+meshsim/test/VerifySummary.java:125: "| set | label | exact M15 / v1.0 | S M15 | S v1.0 | change | % | cyc/step M15 | v1.0 | inv. 8 M15 | v1.0 | violations M15 / v1.0 | overlaps v1.0 | flags |\n|--
+meshsim/test/VerifySummary.java:144: "M15 violations"
+meshsim/test/VerifySummary.java:158: ": M15 and v1.0 read different set files"
+meshsim/test/VerifySummary.java:166: "every log matches; M15 and v1.0 read the same set files.\n"
+meshsim/test/VerifySummary.java:174: "\n## The sort kit's runs at 64 × 2,000: v1.0 against M15, phase by phase\n\n"
+meshsim/test/VerifySummary.java:175: "Expected: every check passing on both; the same path; the **data plane identical in every phase** (address-generator requests, stalls, gather requests, read-po
+meshsim/test/VerifySummary.java:175: ", or 0 <= r <= one lead-in (4 ts_engine_latency + 2) per run the phase starts (M15 pre-armed such runs, so their first request went out at the start). TOTALs m
+meshsim/test/VerifySummary.java:178: "| run | path M15 / v1.0 | checks M15 | checks v1.0 | TOTAL M15 | TOTAL v1.0 | change | = controller cycles | + overlay | + residual (max) | inv. 8 M15 / v1.0 |
+meshsim/test/VerifySummary.java:179: "# v1.0 against M15, the kit's runs phase by phase (PhaseNeutral, v1.0 start rule)\n\n| run | changed phases: name dCycles = the slowest tile's busy-cycle chang
+meshsim/test/VerifySummary.java:207: "\n## The full-size BT runs (64 × 65,536, trace hot=10 frac=0.10): v1.0 against M15, phase by phase\n\n"
+meshsim/test/VerifySummary.java:211: "| run | path M15 / v1.0 | checks M15 | checks v1.0 | TOTAL M15 | TOTAL v1.0 | change | = controller cycles | + overlay | + residual (max) | flags |\n|---|---|-
+meshsim/test/VerifySummary.java:212: "# v1.0 against M15, the full-size BT runs phase by phase (PhaseNeutral, v1.0 start rule)\n\n| run | changed phases: name dCycles = the slowest tile's busy-cycl

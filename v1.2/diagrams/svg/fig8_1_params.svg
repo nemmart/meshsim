@@ -1,0 +1,237 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="784" viewBox="0 0 1300 784" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif">
+<defs></defs>
+<rect width="1300" height="784" fill="white"/>
+<text x="24.0" y="34.0" font-size="18" text-anchor="start" font-weight="bold" fill="#444441">Figure 8.1. Parameters: every depth, width and latency, with its default</text>
+<text x="24.0" y="56.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#6b6a64">v1.0 (spec/machine-spec.md §10) — [meas] measured in meshsim, [model] from the model, open: not fixed for the hardware</text>
+<rect x="30.0" y="76.0" width="350.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="90.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">parameter</text>
+<rect x="380.0" y="76.0" width="340.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="90.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">default</text>
+<rect x="720.0" y="76.0" width="180.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="726.0" y="90.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">status</text>
+<rect x="900.0" y="76.0" width="370.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="906.0" y="90.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">used in</text>
+<rect x="30.0" y="97.0" width="350.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="111.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">link_latency</text>
+<rect x="380.0" y="97.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="111.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">3 per link direction</text>
+<rect x="720.0" y="97.0" width="180.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="726.0" y="111.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">decided</text>
+<rect x="900.0" y="97.0" width="370.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="906.0" y="111.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">figure 4.3 (three link stages; a hop is 4 cycles)</text>
+<rect x="30.0" y="118.0" width="350.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="132.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">start skew between tiles</text>
+<rect x="380.0" y="118.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="132.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0 or +1 cycle</text>
+<rect x="720.0" y="118.0" width="180.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="726.0" y="132.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">decided</text>
+<rect x="900.0" y="118.0" width="370.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="906.0" y="132.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">§3.2; figure 2.1 (c)</text>
+<rect x="30.0" y="139.0" width="350.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="153.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">queue_depth (each router FIFO)</text>
+<rect x="380.0" y="139.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="153.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">16 × 102 bits</text>
+<rect x="720.0" y="139.0" width="180.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="726.0" y="153.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">decided</text>
+<rect x="900.0" y="139.0" width="370.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="906.0" y="153.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">figure 4.3</text>
+<rect x="30.0" y="160.0" width="350.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="174.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">intra_tile_latency</text>
+<rect x="380.0" y="160.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="174.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1 per stage</text>
+<rect x="720.0" y="160.0" width="180.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="726.0" y="174.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">decided</text>
+<rect x="900.0" y="160.0" width="370.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="906.0" y="174.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">every register stage drawn</text>
+<rect x="30.0" y="181.0" width="350.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="195.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">STREAM, GROUP</text>
+<rect x="380.0" y="181.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="195.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">256 and 64 entries × 64 bits</text>
+<rect x="720.0" y="181.0" width="180.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="726.0" y="195.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">decided</text>
+<rect x="900.0" y="181.0" width="370.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="906.0" y="195.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">figures 6.1, 6.3</text>
+<rect x="30.0" y="202.0" width="350.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="216.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">ts_engine_latency (L_ts)</text>
+<rect x="380.0" y="202.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="216.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1 (1–4 measured)</text>
+<rect x="720.0" y="202.0" width="180.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="726.0" y="216.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">[meas]</text>
+<rect x="900.0" y="202.0" width="370.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="906.0" y="216.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">figures 5.2, 6.2, 6.3</text>
+<rect x="30.0" y="223.0" width="350.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="237.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">address-generator lead-in</text>
+<rect x="380.0" y="223.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="237.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">4·L_ts + 3 (group), 2·L_ts + 2 (stream)</text>
+<rect x="720.0" y="223.0" width="180.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="726.0" y="237.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">decided</text>
+<rect x="900.0" y="223.0" width="370.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="906.0" y="237.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">after the start store; one less from its effect (6.1–6.3)</text>
+<rect x="30.0" y="244.0" width="350.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="258.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">ag_lookahead</text>
+<rect x="380.0" y="244.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="258.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">2·L_ts + 2 entries per read-ahead queue (4)</text>
+<rect x="720.0" y="244.0" width="180.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="726.0" y="258.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">decided</text>
+<rect x="900.0" y="244.0" width="370.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="906.0" y="258.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">figure 6.3</text>
+<rect x="30.0" y="265.0" width="350.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="279.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">pointer stage depth</text>
+<rect x="380.0" y="265.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="279.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">2·L_ts + 2 (4)</text>
+<rect x="720.0" y="265.0" width="180.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="726.0" y="279.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">decided</text>
+<rect x="900.0" y="265.0" width="370.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="906.0" y="279.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">figure 5.2</text>
+<rect x="30.0" y="286.0" width="350.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="300.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">mem_chunks</text>
+<rect x="380.0" y="286.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="300.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1,048,576: 8 areas × 128 bits × 32K rows</text>
+<rect x="720.0" y="286.0" width="180.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="726.0" y="300.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">decided</text>
+<rect x="900.0" y="286.0" width="370.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="906.0" y="300.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">figures 7.1, 7.2 (smaller devices defined)</text>
+<rect x="30.0" y="307.0" width="350.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="321.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">area_queue_depth</text>
+<rect x="380.0" y="307.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="321.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">8 in meshsim</text>
+<rect x="720.0" y="307.0" width="180.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="726.0" y="321.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">open</text>
+<rect x="900.0" y="307.0" width="370.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="906.0" y="321.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">figure 7.2</text>
+<rect x="30.0" y="328.0" width="350.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="342.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">area tie order</text>
+<rect x="380.0" y="328.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="342.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">writes first</text>
+<rect x="720.0" y="328.0" width="180.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="726.0" y="342.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">decided</text>
+<rect x="900.0" y="328.0" width="370.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="906.0" y="342.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">figure 7.2</text>
+<rect x="30.0" y="349.0" width="350.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="363.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">big-SRAM read latency</text>
+<rect x="380.0" y="349.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="363.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">queueing + the array's latency (4 unloaded)</text>
+<rect x="720.0" y="349.0" width="180.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="726.0" y="363.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">open; [meas] unloaded</text>
+<rect x="900.0" y="349.0" width="370.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="906.0" y="363.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">figures 7.2, 7.3</text>
+<rect x="30.0" y="370.0" width="350.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="384.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">token FIFO</text>
+<rect x="380.0" y="370.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="384.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">64 entries, 128-bit data slots</text>
+<rect x="720.0" y="370.0" width="180.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="726.0" y="384.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">decided</text>
+<rect x="900.0" y="370.0" width="370.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="906.0" y="384.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">figure 7.3</text>
+<rect x="30.0" y="391.0" width="350.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="405.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">GATHER request queue</text>
+<rect x="380.0" y="391.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="405.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">16 × 20 bits</text>
+<rect x="720.0" y="391.0" width="180.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="726.0" y="405.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">decided</text>
+<rect x="900.0" y="391.0" width="370.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="906.0" y="405.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">figure 7.5</text>
+<rect x="30.0" y="412.0" width="350.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="426.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">k (records per gather value)</text>
+<rect x="380.0" y="412.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="426.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1–8</text>
+<rect x="720.0" y="412.0" width="180.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="726.0" y="426.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">decided</text>
+<rect x="900.0" y="412.0" width="370.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="906.0" y="426.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">figures 3.2, 7.5</text>
+<rect x="30.0" y="433.0" width="350.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="447.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">write engine input FIFO</text>
+<rect x="380.0" y="433.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="447.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">4 entries</text>
+<rect x="720.0" y="433.0" width="180.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="726.0" y="447.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">decided</text>
+<rect x="900.0" y="433.0" width="370.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="906.0" y="447.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">figures 5.1, 7.2</text>
+<rect x="30.0" y="454.0" width="350.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="468.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">read port's queue</text>
+<rect x="380.0" y="454.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="468.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">64 entries (at least 64)</text>
+<rect x="720.0" y="454.0" width="180.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="726.0" y="468.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">decided</text>
+<rect x="900.0" y="454.0" width="370.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="906.0" y="468.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">figure 3.3</text>
+<rect x="30.0" y="475.0" width="350.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="489.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">cm_latency (director to port B)</text>
+<rect x="380.0" y="475.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="489.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">2</text>
+<rect x="720.0" y="475.0" width="180.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="726.0" y="489.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">[built]</text>
+<rect x="900.0" y="475.0" width="370.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="906.0" y="489.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">figures 3.1, 5.1</text>
+<rect x="30.0" y="496.0" width="350.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="510.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">ready_latency</text>
+<rect x="380.0" y="496.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="510.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1 in simulation; about 8 physically</text>
+<rect x="720.0" y="496.0" width="180.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="726.0" y="510.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">open for the hardware</text>
+<rect x="900.0" y="496.0" width="370.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="906.0" y="510.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">figure 2.2</text>
+<rect x="30.0" y="517.0" width="350.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="531.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">run_latency</text>
+<rect x="380.0" y="517.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="531.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">as GO</text>
+<rect x="720.0" y="517.0" width="180.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="726.0" y="531.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">decided</text>
+<rect x="900.0" y="517.0" width="370.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="906.0" y="531.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">figure 2.2</text>
+<rect x="30.0" y="538.0" width="350.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="552.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">load-use penalty (data memory, registers, table window)</text>
+<rect x="380.0" y="538.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="552.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0</text>
+<rect x="720.0" y="538.0" width="180.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="726.0" y="552.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">the design target</text>
+<rect x="900.0" y="538.0" width="370.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="906.0" y="552.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">figure 3.1</text>
+<rect x="30.0" y="559.0" width="350.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="573.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">taken-branch penalty, multiply latency</text>
+<rect x="380.0" y="559.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="573.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1, 3</text>
+<rect x="720.0" y="559.0" width="180.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="726.0" y="573.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">decided</text>
+<rect x="900.0" y="559.0" width="370.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="906.0" y="573.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">§4.11</text>
+<rect x="30.0" y="580.0" width="350.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="594.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">controller memories</text>
+<rect x="380.0" y="580.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="594.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">8 KB instruction + 8 KB data, two 1K × 32 banks each</text>
+<rect x="720.0" y="580.0" width="180.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="726.0" y="594.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">decided</text>
+<rect x="900.0" y="580.0" width="370.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="906.0" y="594.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">figure 3.1</text>
+<rect x="30.0" y="601.0" width="350.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="615.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">mailbox</text>
+<rect x="380.0" y="601.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="615.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0x5C00–0x5FFF, 256 slots</text>
+<rect x="720.0" y="601.0" width="180.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="726.0" y="615.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">decided</text>
+<rect x="900.0" y="601.0" width="370.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="906.0" y="615.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">figures 3.1, 5.1</text>
+<rect x="30.0" y="622.0" width="350.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="636.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">peripheral registers</text>
+<rect x="380.0" y="622.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="636.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">13 at 0xFFFFF800 + 4·i</text>
+<rect x="720.0" y="622.0" width="180.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="726.0" y="636.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">v1.0</text>
+<rect x="900.0" y="622.0" width="370.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="906.0" y="636.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">figure 3.2</text>
+<rect x="30.0" y="643.0" width="350.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="657.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">conditions</text>
+<rect x="380.0" y="643.0" width="340.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="657.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">11, TILE_CONDITIONS [10:0]</text>
+<rect x="720.0" y="643.0" width="180.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="726.0" y="657.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">v1.0</text>
+<rect x="900.0" y="643.0" width="370.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="906.0" y="657.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">figure 2.4</text>
+<circle cx="34" cy="688" r="3.2" fill="#444441"/>
+<text x="44.0" y="692.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">status: decided, open, [meas] measured, [built] as built in meshsim</text>
+<line x1="24" y1="708" x2="1276" y2="708" stroke="#B4B2A9" stroke-width="0.8"/>
+<text x="24.0" y="730.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">Every depth, width and latency the figures use, with its default. Open: the area queue depth, the array's read latency and the</text>
+<text x="24.0" y="746.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">physical ready_latency are still to be fixed for the hardware; the token FIFO's 64 entries must absorb the area queueing a phase's</text>
+<text x="24.0" y="762.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">placement allows (§4.2).</text>
+<text x="24.0" y="778.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">Source: spec/machine-spec.md v1.0.</text>
+</svg>

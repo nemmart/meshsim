@@ -1,0 +1,356 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="1601" viewBox="0 0 1300 1601" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif">
+<defs><marker id="m1D9E75" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1D9E75"/></marker><marker id="m3B6EA5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#3B6EA5"/></marker><marker id="m444441" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#444441"/></marker><marker id="m7F77DD" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7F77DD"/></marker><marker id="mB4B2A9" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#B4B2A9"/></marker><marker id="mD85A30" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#D85A30"/></marker></defs>
+<rect width="1300" height="1601" fill="white"/>
+<text x="24.0" y="34.0" font-size="18" text-anchor="start" font-weight="bold" fill="#444441">Figure 5.1. The traffic director: routing by mode, and how each mode's address is formed</text>
+<text x="24.0" y="56.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#6b6a64">v1.0 (spec/machine-spec.md §3.1, §4.3, §4.8, §4.9, §4.11, §4.12, §4.15) — the only path into the tile</text>
+<text x="30.0" y="92.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">A. One packet a cycle, routed by its mode alone (§4.8)</text>
+<rect x="30.0" y="160.0" width="140.0" height="84.0" rx="6" fill="#F1EFE8" stroke="#444441" stroke-width="1"/>
+<text x="100.0" y="184.6" font-size="12.5" text-anchor="middle" font-weight="bold" fill="#444441">eject selector</text>
+<text x="100.0" y="201.5" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">round-robin over the</text>
+<text x="100.0" y="215.4" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">router's eject FIFOs</text>
+<text x="100.0" y="229.2" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">(figures 4.1, 4.2)</text>
+<rect x="232.0" y="124.0" width="120.0" height="270.0" rx="6" fill="white" stroke="#444441" stroke-width="1.6"/>
+<text x="292.0" y="241.6" font-size="12.5" text-anchor="middle" font-weight="bold" fill="#444441">mode decode</text>
+<text x="292.0" y="258.5" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">4-bit mode</text>
+<text x="292.0" y="272.4" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">→ one of five</text>
+<text x="292.0" y="286.2" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">outputs</text>
+<polyline points="170.0,202.0 230.0,202.0" fill="none" stroke="#444441" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="176.0" y="230.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">src, mode,</text>
+<text x="176.0" y="243.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">addr, payload</text>
+<polyline points="352.0,155.0 538.0,155.0" fill="none" stroke="#1D9E75" stroke-width="2" stroke-linejoin="round" marker-end="url(#m1D9E75)"/>
+<text x="362.0" y="149.0" font-size="11" text-anchor="start" font-weight="bold" fill="#1D9E75">mode 1</text>
+<rect x="540.0" y="132.0" width="220.0" height="46.0" rx="6" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1"/>
+<text x="650.0" y="151.4" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">GATHER request queue</text>
+<text x="650.0" y="167.6" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">16 entries (§4.4)</text>
+<polyline points="352.0,215.0 538.0,215.0" fill="none" stroke="#3B6EA5" stroke-width="2" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<text x="362.0" y="209.0" font-size="11" text-anchor="start" font-weight="bold" fill="#3B6EA5">modes 2, 3, 4</text>
+<rect x="540.0" y="192.0" width="220.0" height="46.0" rx="6" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1"/>
+<text x="650.0" y="211.4" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">write engine input FIFO</text>
+<text x="650.0" y="227.6" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">4 entries; overflow: condition 2</text>
+<polyline points="650.0,238.0 650.0,262.0 330.0,262.0 330.0,470.0" fill="none" stroke="#3B6EA5" stroke-width="1.8" stroke-linejoin="round" stroke-dasharray="9 3"/>
+<polyline points="352.0,286.0 650.0,286.0 650.0,470.0" fill="none" stroke="#7F77DD" stroke-width="2.2" stroke-linejoin="round"/>
+<text x="362.0" y="280.0" font-size="11" text-anchor="start" font-weight="bold" fill="#7F77DD">modes 5, 6, 7</text>
+<text x="658.0" y="280.0" font-size="11" text-anchor="start" font-weight="bold" fill="#7F77DD">port B (panel B2)</text>
+<text x="380.0" y="318.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#1D9E75">read-port results arrive here as mode-7 packets</text>
+<text x="380.0" y="331.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#1D9E75">the tile sent itself, through the loopback (§4.3)</text>
+<polyline points="352.0,389.0 410.0,389.0" fill="none" stroke="#B4B2A9" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#mB4B2A9)"/>
+<text x="356.0" y="383.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#6b6a64">0, 8–15</text>
+<rect x="412.0" y="374.0" width="150.0" height="30.0" rx="4" fill="#F1EFE8" stroke="#B4B2A9" stroke-width="1.2"/>
+<text x="487.0" y="394.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">dropped; bad-mode condition</text>
+<rect x="800.0" y="132.0" width="470.0" height="166.0" rx="6" fill="#FAEEDA" stroke="#D85A30" stroke-width="1"/>
+<text x="814.0" y="156.0" font-size="12.5" text-anchor="start" font-weight="bold" fill="#444441">counters and command landed (§4.12)</text>
+<text x="814.0" y="172.9" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">DMA_SRAM_REMAINING − 1: each accepted mode-2, 3 or 4 packet</text>
+<text x="814.0" y="187.4" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">DMA_CM_REMAINING − 1: each accepted mode-5 packet (64 bits count 1)</text>
+<text x="814.0" y="201.9" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">DMA_REPLY_REMAINING − 1: each mode-7 packet (read-port results included)</text>
+<text x="814.0" y="216.4" font-size="11" text-anchor="start" font-weight="bold" fill="#444441">never for src = 64 (C&amp;C), in any counter</text>
+<text x="814.0" y="231.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">a decrement at 0 sets the unexpected-arrival condition (bit 4) instead</text>
+<text x="814.0" y="245.5" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">command landed ← a mode-6 write to slot 0 (addr[7:0] = 0)</text>
+<text x="814.0" y="260.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64">modes 1 and 6 are never counted; modes 0 and 8–15 set the bad-mode condition (bit 9)</text>
+<polyline points="292.0,394.0 292.0,420.0 1035.0,420.0 1035.0,300.0" fill="none" stroke="#D85A30" stroke-width="1.4" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<text x="700.0" y="414.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#D85A30">count enables: mode, src = 64, accepted</text>
+<rect x="30.0" y="470.0" width="610.0" height="420.0" rx="10" fill="white" stroke="#3B6EA5" stroke-width="1.3"/>
+<text x="44.0" y="494.0" font-size="13" text-anchor="start" font-weight="bold" fill="#3B6EA5">B1. Write engine: modes 2, 3 and 4 (§4.9, §4.15)</text>
+<rect x="46.0" y="512.0" width="64.0" height="22.0" rx="4" fill="#F1EFE8" stroke="#888780" stroke-width="1.1"/>
+<text x="78.0" y="527.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">src (7)</text>
+<rect x="118.0" y="512.0" width="150.0" height="22.0" rx="4" fill="#F1EFE8" stroke="#888780" stroke-width="1.1"/>
+<text x="193.0" y="527.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">payload[31:0]: the key</text>
+<rect x="276.0" y="512.0" width="118.0" height="22.0" rx="4" fill="#F1EFE8" stroke="#888780" stroke-width="1.1"/>
+<text x="335.0" y="527.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">payload[63:32]</text>
+<rect x="420.0" y="512.0" width="208.0" height="22.0" rx="4" fill="#FAEEDA" stroke="#D85A30" stroke-width="1.1"/>
+<text x="524.0" y="527.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">DMA_CONFIG: digit selectors</text>
+<rect x="118.0" y="566.0" width="150.0" height="50.0" rx="6" fill="white" stroke="#444441" stroke-width="1"/>
+<text x="193.0" y="581.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#444441">digit select</text>
+<text x="193.0" y="596.5" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">byte d of the key, d = the</text>
+<text x="193.0" y="609.7" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">bucket digit selector</text>
+<rect x="118.0" y="770.0" width="150.0" height="50.0" rx="6" fill="white" stroke="#444441" stroke-width="1"/>
+<text x="193.0" y="785.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#444441">digit select</text>
+<text x="193.0" y="800.5" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">byte d, d = the histogram</text>
+<text x="193.0" y="813.7" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">digit selector</text>
+<polyline points="193.0,534.0 193.0,564.0" fill="none" stroke="#444441" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<circle cx="160.0" cy="560.0" r="3.2" fill="#444441"/>
+<polyline points="160.0,560.0 100.0,560.0 100.0,795.0 116.0,795.0" fill="none" stroke="#444441" stroke-width="1.4" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<polygon points="300.0,540.0 340.0,556.0 340.0,608.0 300.0,624.0" fill="white" stroke="#444441" stroke-width="1.4"/>
+<text x="309.0" y="566.0" font-size="10" text-anchor="middle" font-weight="bold" fill="#6b6a64">0</text>
+<text x="309.0" y="608.0" font-size="10" text-anchor="middle" font-weight="bold" fill="#6b6a64">1</text>
+<polyline points="78.0,534.0 78.0,562.0 298.0,562.0" fill="none" stroke="#444441" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<polyline points="268.0,604.0 298.0,604.0" fill="none" stroke="#444441" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="272.0" y="598.0" font-size="11" text-anchor="start" font-weight="bold" fill="#444441">t</text>
+<polyline points="320.0,642.0 320.0,619.0" fill="none" stroke="#D85A30" stroke-width="1.2" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<text x="326.0" y="652.0" font-size="10" text-anchor="start" font-weight="normal" fill="#D85A30">mode = 3</text>
+<polyline points="340.0,582.0 378.0,582.0" fill="none" stroke="#444441" stroke-width="2" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="346.0" y="576.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">i (8)</text>
+<rect x="380.0" y="558.0" width="120.0" height="52.0" rx="6" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1"/>
+<text x="440.0" y="574.1" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">PTR[i]</text>
+<text x="440.0" y="590.3" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">read, then += 2</text>
+<text x="440.0" y="603.5" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">(figure 5.2)</text>
+<polyline points="500.0,584.0 624.0,584.0 624.0,670.0" fill="none" stroke="#444441" stroke-width="2" stroke-linejoin="round"/>
+<text x="506.0" y="578.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">chunk addr a (20)</text>
+<circle cx="560.0" cy="584.0" r="3.2" fill="#444441"/>
+<polyline points="560.0,584.0 560.0,624.0 485.0,624.0 485.0,636.0" fill="none" stroke="#444441" stroke-width="1.4" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<rect x="410.0" y="638.0" width="150.0" height="50.0" rx="6" fill="white" stroke="#444441" stroke-width="1"/>
+<text x="485.0" y="659.6" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#444441">ordinal</text>
+<text x="485.0" y="675.1" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">(a − DMA_RECORD_BASE_ADDRESS) &gt;&gt; 1</text>
+<polygon points="370.0,716.0 470.0,716.0 452.0,742.0 388.0,742.0" fill="white" stroke="#444441" stroke-width="1.4"/>
+<text x="396.0" y="729.0" font-size="10" text-anchor="middle" font-weight="bold" fill="#6b6a64">0</text>
+<text x="450.0" y="729.0" font-size="10" text-anchor="middle" font-weight="bold" fill="#6b6a64">1</text>
+<polyline points="286.0,534.0 286.0,698.0 396.0,698.0 396.0,714.0" fill="none" stroke="#444441" stroke-width="1.4" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<polyline points="452.0,688.0 452.0,714.0" fill="none" stroke="#444441" stroke-width="1.4" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<polyline points="462.0,706.0 500.0,706.0" fill="none" stroke="#D85A30" stroke-width="1.2" stroke-linejoin="round" stroke-dasharray="4 3"/>
+<polyline points="500.0,706.0 500.0,729.0 461.0,729.0" fill="none" stroke="#D85A30" stroke-width="1.2" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<text x="506.0" y="710.0" font-size="10" text-anchor="start" font-weight="normal" fill="#D85A30">mode = 4</text>
+<polyline points="420.0,742.0 420.0,758.0" fill="none" stroke="#444441" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="426.0" y="754.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">high 32 bits</text>
+<polyline points="624.0,670.0 624.0,758.0" fill="none" stroke="#444441" stroke-width="2" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<rect x="370.0" y="760.0" width="254.0" height="46.0" rx="6" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1"/>
+<text x="497.0" y="779.4" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">64-bit write at chunk a</text>
+<text x="497.0" y="795.6" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">→ its area's queue; two if it spans a row (7.2)</text>
+<polyline points="268.0,795.0 340.0,795.0 340.0,847.0 368.0,847.0" fill="none" stroke="#444441" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="272.0" y="789.0" font-size="11" text-anchor="start" font-weight="bold" fill="#444441">c</text>
+<rect x="370.0" y="824.0" width="150.0" height="46.0" rx="6" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1"/>
+<text x="445.0" y="843.7" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">HIST[c] += 1</text>
+<text x="445.0" y="859.9" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">(figure 5.2)</text>
+<text x="530.0" y="842.0" font-size="10" text-anchor="start" font-weight="normal" fill="#D85A30">only if the histogram</text>
+<text x="530.0" y="854.0" font-size="10" text-anchor="start" font-weight="normal" fill="#D85A30">digit selector ≠ 0</text>
+<text x="46.0" y="854.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">low 32 bits: the key,</text>
+<text x="46.0" y="867.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">unchanged</text>
+<rect x="660.0" y="470.0" width="610.0" height="420.0" rx="10" fill="white" stroke="#7F77DD" stroke-width="1.3"/>
+<text x="674.0" y="494.0" font-size="13" text-anchor="start" font-weight="bold" fill="#7F77DD">B2. Port B: modes 5, 6 and 7</text>
+<rect x="676.0" y="512.0" width="88.0" height="22.0" rx="4" fill="#F1EFE8" stroke="#888780" stroke-width="1.1"/>
+<text x="720.0" y="527.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">addr[11]</text>
+<rect x="772.0" y="512.0" width="100.0" height="22.0" rx="4" fill="#F1EFE8" stroke="#888780" stroke-width="1.1"/>
+<text x="822.0" y="527.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">addr[10:0]</text>
+<rect x="880.0" y="512.0" width="88.0" height="22.0" rx="4" fill="#F1EFE8" stroke="#888780" stroke-width="1.1"/>
+<text x="924.0" y="527.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">addr[7:0]</text>
+<rect x="976.0" y="512.0" width="64.0" height="22.0" rx="4" fill="#F1EFE8" stroke="#888780" stroke-width="1.1"/>
+<text x="1008.0" y="527.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">mode</text>
+<rect x="1048.0" y="512.0" width="206.0" height="22.0" rx="4" fill="#F1EFE8" stroke="#888780" stroke-width="1.1"/>
+<text x="1151.0" y="527.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">payload: 64 bits (mode 5), else low 32</text>
+<polyline points="924.0,534.0 924.0,560.0" fill="none" stroke="#444441" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<rect x="860.0" y="562.0" width="128.0" height="50.0" rx="6" fill="white" stroke="#444441" stroke-width="1"/>
+<text x="924.0" y="583.7" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">0x700 +</text>
+<text x="924.0" y="599.9" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">slot → mailbox word</text>
+<polygon points="760.0,636.0 960.0,636.0 936.0,664.0 784.0,664.0" fill="white" stroke="#444441" stroke-width="1.4"/>
+<text x="822.0" y="650.0" font-size="10" text-anchor="middle" font-weight="bold" fill="#6b6a64">0</text>
+<text x="924.0" y="650.0" font-size="10" text-anchor="middle" font-weight="bold" fill="#6b6a64">1</text>
+<polyline points="822.0,534.0 822.0,634.0" fill="none" stroke="#444441" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<polyline points="924.0,612.0 924.0,634.0" fill="none" stroke="#444441" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<polyline points="1008.0,534.0 1008.0,650.0 949.0,650.0" fill="none" stroke="#D85A30" stroke-width="1.2" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<text x="1014.0" y="646.0" font-size="10" text-anchor="start" font-weight="normal" fill="#D85A30">mode = 6</text>
+<text x="866.0" y="680.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">w: word (11 bits)</text>
+<rect x="1060.0" y="690.0" width="196.0" height="56.0" rx="6" fill="white" stroke="#444441" stroke-width="1"/>
+<text x="1158.0" y="708.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#444441">memory select</text>
+<text x="1158.0" y="723.5" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">instruction if mode 5 and</text>
+<text x="1158.0" y="736.7" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">addr[11] = 0; else data</text>
+<polyline points="720.0,534.0 720.0,620.0 1158.0,620.0 1158.0,688.0" fill="none" stroke="#444441" stroke-width="1.4" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<polyline points="860.0,664.0 860.0,694.0" fill="none" stroke="#444441" stroke-width="2" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<rect x="700.0" y="696.0" width="340.0" height="112.0" rx="6" fill="#F1EFE8" stroke="#444441" stroke-width="1"/>
+<text x="712.0" y="717.6" font-size="12" text-anchor="start" font-weight="bold" fill="#444441">banks: even words | odd words (§4.11)</text>
+<text x="712.0" y="733.8" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">one word (modes 6 and 7):</text>
+<text x="712.0" y="747.7" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">bank w[0], row w &gt;&gt; 1</text>
+<text x="712.0" y="761.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">two words w, w + 1 (mode 5):</text>
+<text x="712.0" y="775.4" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">even bank row (w + 1) &gt;&gt; 1, odd bank row w &gt;&gt; 1;</text>
+<text x="712.0" y="789.2" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">the low half goes to bank w[0]</text>
+<polyline points="870.0,808.0 870.0,824.0" fill="none" stroke="#7F77DD" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m7F77DD)"/>
+<polyline points="1158.0,746.0 1158.0,824.0" fill="none" stroke="#444441" stroke-width="1.4" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<polyline points="1150.0,534.0 1150.0,606.0 1250.0,606.0 1250.0,824.0" fill="none" stroke="#444441" stroke-width="1.4" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="1244.0" y="770.0" font-size="10.5" text-anchor="end" font-weight="normal" fill="#444441">data</text>
+<rect x="700.0" y="826.0" width="556.0" height="46.0" rx="6" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1"/>
+<text x="978.0" y="845.4" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">port B write: two 32-bit banks of instruction or data memory</text>
+<text x="978.0" y="861.6" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">cm_latency 2; cm_idle when the pipeline is empty (figure 3.1)</text>
+<text x="30.0" y="930.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">C. Every mode: the fields it uses and where it lands</text>
+<rect x="30.0" y="942.0" width="80.0" height="23.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="38.0" y="958.0" font-size="11" text-anchor="start" font-weight="bold" fill="#444441">mode</text>
+<rect x="110.0" y="942.0" width="120.0" height="23.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="118.0" y="958.0" font-size="11" text-anchor="start" font-weight="bold" fill="#444441">goes to</text>
+<rect x="230.0" y="942.0" width="190.0" height="23.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="238.0" y="958.0" font-size="11" text-anchor="start" font-weight="bold" fill="#444441">fields used</text>
+<rect x="420.0" y="942.0" width="530.0" height="23.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="428.0" y="958.0" font-size="11" text-anchor="start" font-weight="bold" fill="#444441">address formed</text>
+<rect x="950.0" y="942.0" width="90.0" height="23.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="958.0" y="958.0" font-size="11" text-anchor="start" font-weight="bold" fill="#444441">written</text>
+<rect x="1040.0" y="942.0" width="230.0" height="23.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="1048.0" y="958.0" font-size="11" text-anchor="start" font-weight="bold" fill="#444441">counted in</text>
+<rect x="30.0" y="965.0" width="80.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="38.0" y="981.0" font-size="11" text-anchor="start" font-weight="bold" fill="#444441">1</text>
+<rect x="110.0" y="965.0" width="120.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="118.0" y="981.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">GATHER engine</text>
+<rect x="230.0" y="965.0" width="190.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="238.0" y="981.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">payload: key, ordinal</text>
+<rect x="420.0" y="965.0" width="530.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="428.0" y="981.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">none here: the engine reads DMA_RECORD_BASE_ADDRESS + 2k·ordinal (fig. 7.4)</text>
+<rect x="950.0" y="965.0" width="90.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="958.0" y="981.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">—</text>
+<rect x="1040.0" y="965.0" width="230.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1048.0" y="981.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">— (its values)</text>
+<rect x="30.0" y="988.0" width="80.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="38.0" y="1004.0" font-size="11" text-anchor="start" font-weight="bold" fill="#444441">2</text>
+<rect x="110.0" y="988.0" width="120.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="118.0" y="1004.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">write engine</text>
+<rect x="230.0" y="988.0" width="190.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="238.0" y="1004.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">src, payload</text>
+<rect x="420.0" y="988.0" width="530.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="428.0" y="1004.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">PTR[src], then += 2</text>
+<rect x="950.0" y="988.0" width="90.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="958.0" y="1004.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">64 bits</text>
+<rect x="1040.0" y="988.0" width="230.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1048.0" y="1004.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">DMA_SRAM_REMAINING</text>
+<rect x="30.0" y="1011.0" width="80.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="38.0" y="1027.0" font-size="11" text-anchor="start" font-weight="bold" fill="#444441">3</text>
+<rect x="110.0" y="1011.0" width="120.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="118.0" y="1027.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">write engine</text>
+<rect x="230.0" y="1011.0" width="190.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="238.0" y="1027.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">payload's bucket digit</text>
+<rect x="420.0" y="1011.0" width="530.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="428.0" y="1027.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">PTR[t], then += 2</text>
+<rect x="950.0" y="1011.0" width="90.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="958.0" y="1027.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">64 bits</text>
+<rect x="1040.0" y="1011.0" width="230.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1048.0" y="1027.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">DMA_SRAM_REMAINING</text>
+<rect x="30.0" y="1034.0" width="80.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="38.0" y="1050.0" font-size="11" text-anchor="start" font-weight="bold" fill="#444441">4</text>
+<rect x="110.0" y="1034.0" width="120.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="118.0" y="1050.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">write engine</text>
+<rect x="230.0" y="1034.0" width="190.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="238.0" y="1050.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">src, payload[31:0]</text>
+<rect x="420.0" y="1034.0" width="530.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="428.0" y="1050.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">PTR[src], then += 2; the ordinal replaces bits 63–32</text>
+<rect x="950.0" y="1034.0" width="90.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="958.0" y="1050.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">64 bits</text>
+<rect x="1040.0" y="1034.0" width="230.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1048.0" y="1050.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">DMA_SRAM_REMAINING</text>
+<rect x="30.0" y="1057.0" width="80.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="38.0" y="1073.0" font-size="11" text-anchor="start" font-weight="bold" fill="#444441">5</text>
+<rect x="110.0" y="1057.0" width="120.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="118.0" y="1073.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">port B</text>
+<rect x="230.0" y="1057.0" width="190.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="238.0" y="1073.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">addr[11:0], payload</text>
+<rect x="420.0" y="1057.0" width="530.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="428.0" y="1073.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">addr[11]: memory; words w, w + 1 with w = addr[10:0]</text>
+<rect x="950.0" y="1057.0" width="90.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="958.0" y="1073.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">64 bits</text>
+<rect x="1040.0" y="1057.0" width="230.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1048.0" y="1073.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">DMA_CM_REMAINING</text>
+<rect x="30.0" y="1080.0" width="80.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="38.0" y="1096.0" font-size="11" text-anchor="start" font-weight="bold" fill="#444441">6</text>
+<rect x="110.0" y="1080.0" width="120.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="118.0" y="1096.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">port B</text>
+<rect x="230.0" y="1080.0" width="190.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="238.0" y="1096.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">addr[7:0], payload[31:0]</text>
+<rect x="420.0" y="1080.0" width="530.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="428.0" y="1096.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">data word 0x700 + addr[7:0]; slot 0 sets command landed</text>
+<rect x="950.0" y="1080.0" width="90.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="958.0" y="1096.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">32 bits</text>
+<rect x="1040.0" y="1080.0" width="230.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1048.0" y="1096.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">—</text>
+<rect x="30.0" y="1103.0" width="80.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="38.0" y="1119.0" font-size="11" text-anchor="start" font-weight="bold" fill="#444441">7</text>
+<rect x="110.0" y="1103.0" width="120.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="118.0" y="1119.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">port B</text>
+<rect x="230.0" y="1103.0" width="190.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="238.0" y="1119.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">addr[11:0], payload[31:0]</text>
+<rect x="420.0" y="1103.0" width="530.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="428.0" y="1119.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">data word addr[10:0] (addr[11] = 1)</text>
+<rect x="950.0" y="1103.0" width="90.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="958.0" y="1119.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">32 bits</text>
+<rect x="1040.0" y="1103.0" width="230.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1048.0" y="1119.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">DMA_REPLY_REMAINING</text>
+<rect x="30.0" y="1126.0" width="80.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="38.0" y="1142.0" font-size="11" text-anchor="start" font-weight="bold" fill="#444441">read port</text>
+<rect x="110.0" y="1126.0" width="120.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="118.0" y="1142.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">a mode-7 packet</text>
+<rect x="230.0" y="1126.0" width="190.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="238.0" y="1142.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">SRAM_RD_DEST_ADDR → addr</text>
+<rect x="420.0" y="1126.0" width="530.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="428.0" y="1142.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">sent to the tile itself, then as mode 7</text>
+<rect x="950.0" y="1126.0" width="90.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="958.0" y="1142.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">32 bits</text>
+<rect x="1040.0" y="1126.0" width="230.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1048.0" y="1142.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">DMA_REPLY_REMAINING</text>
+<rect x="30.0" y="1149.0" width="80.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="38.0" y="1165.0" font-size="11" text-anchor="start" font-weight="bold" fill="#444441">0, 8–15</text>
+<rect x="110.0" y="1149.0" width="120.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="118.0" y="1165.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">dropped</text>
+<rect x="230.0" y="1149.0" width="190.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="238.0" y="1165.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">—</text>
+<rect x="420.0" y="1149.0" width="530.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="428.0" y="1165.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">— (bad-mode condition, TILE_CONDITIONS bit 9)</text>
+<rect x="950.0" y="1149.0" width="90.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="958.0" y="1165.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">—</text>
+<rect x="1040.0" y="1149.0" width="230.0" height="23.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1048.0" y="1165.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">—</text>
+<text x="30.0" y="1198.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">• The director accepts one packet a cycle and routes it by mode alone, and never stalls: an overflow of the write-engine input FIFO sets condition 2. Port B has no other writer.</text>
+<text x="30.0" y="1217.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">• Read-port results share the tile's loopback and eject path with every arriving packet, and the network has no flow control, so no packet from outside the tile, other than C&amp;C's mode-6 command words, may</text>
+<text x="42.0" y="1232.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">arrive while read-port results are outstanding (§4.3, invariant 14). The hardware tolerates only 15 results against a full-rate stream, or 32 per burst at half rate [meas: meshsim].</text>
+<text x="30.0" y="1251.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">• Programming errors with no hardware check (the simulator checks them): a mode-5 address outside both memories (invariant 11); a mode-7 address in the mailbox or outside data memory (invariants 12, 13);</text>
+<text x="42.0" y="1266.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">mode 5 into the mailbox.</text>
+<text x="30.0" y="1285.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">• The packed 12-bit map (mode 5's addresses, and mode 7's as SRAM_RD_DEST_ADDR writes them, §4.3) and the mailbox at 0x5C00–0x5FFF (data words 0x700–0x7FF).</text>
+<text x="30.0" y="1324.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">Interface</text>
+<rect x="30.0" y="1336.0" width="220.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="1350.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">signal</text>
+<rect x="250.0" y="1336.0" width="90.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="256.0" y="1350.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">width</text>
+<rect x="340.0" y="1336.0" width="300.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="346.0" y="1350.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">from → to</text>
+<rect x="640.0" y="1336.0" width="630.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="646.0" y="1350.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">meaning</text>
+<rect x="30.0" y="1357.0" width="220.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="1371.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">packet</text>
+<rect x="250.0" y="1357.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="256.0" y="1371.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">102</text>
+<rect x="340.0" y="1357.0" width="300.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="346.0" y="1371.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">eject selector (fig 4.3) → here</text>
+<rect x="640.0" y="1357.0" width="630.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="646.0" y="1371.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">one per cycle; the director never stalls</text>
+<rect x="30.0" y="1378.0" width="220.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="1392.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">push, ordinal</text>
+<rect x="250.0" y="1378.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="256.0" y="1392.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1, 20</text>
+<rect x="340.0" y="1378.0" width="300.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="346.0" y="1392.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">here → GATHER queue (fig 7.5)</text>
+<rect x="640.0" y="1378.0" width="630.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="646.0" y="1392.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">mode 1</text>
+<rect x="30.0" y="1399.0" width="220.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="1413.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">push, src, mode, payload</text>
+<rect x="250.0" y="1399.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="256.0" y="1413.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1, 7, 4, 64</text>
+<rect x="340.0" y="1399.0" width="300.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="346.0" y="1413.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">here → write engine FIFO</text>
+<rect x="640.0" y="1399.0" width="630.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="646.0" y="1413.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">modes 2–4</text>
+<rect x="30.0" y="1420.0" width="220.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="1434.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">port B: addr, wdata, we[1:0], memory</text>
+<rect x="250.0" y="1420.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="256.0" y="1434.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">11, 64, 2, 1</text>
+<rect x="340.0" y="1420.0" width="300.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="346.0" y="1434.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">here → controller memories (fig 3.1)</text>
+<rect x="640.0" y="1420.0" width="630.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="646.0" y="1434.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">modes 5–7; cm_latency 2; cm_idle when empty</text>
+<rect x="30.0" y="1441.0" width="220.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="1455.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">dec_S, dec_C, dec_R; slot0</text>
+<rect x="250.0" y="1441.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="256.0" y="1455.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1 each</text>
+<rect x="340.0" y="1441.0" width="300.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="346.0" y="1455.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">here → counters, landed (figs 2.3, 2.2)</text>
+<rect x="640.0" y="1441.0" width="630.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="646.0" y="1455.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">counted packets (src ≠ 64); a mode-6 write to slot 0</text>
+<rect x="30.0" y="1462.0" width="220.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="1476.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">set[9]</text>
+<rect x="250.0" y="1462.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="256.0" y="1476.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1</text>
+<rect x="340.0" y="1462.0" width="300.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="346.0" y="1476.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">here → TILE_CONDITIONS (fig 2.4)</text>
+<rect x="640.0" y="1462.0" width="630.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="646.0" y="1476.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">mode 0 or 8–15: dropped</text>
+<polyline points="30.0,1509.0 70.0,1509.0" fill="none" stroke="#1D9E75" stroke-width="2" stroke-linejoin="round" marker-end="url(#m1D9E75)"/>
+<text x="78.0" y="1513.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">read side</text>
+<polyline points="170.0,1509.0 210.0,1509.0" fill="none" stroke="#3B6EA5" stroke-width="2" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<text x="218.0" y="1513.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">write side</text>
+<polyline points="320.0,1509.0 360.0,1509.0" fill="none" stroke="#7F77DD" stroke-width="2" stroke-linejoin="round" marker-end="url(#m7F77DD)"/>
+<text x="368.0" y="1513.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">port B</text>
+<polyline points="450.0,1509.0 490.0,1509.0" fill="none" stroke="#D85A30" stroke-width="1.4" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<text x="498.0" y="1513.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">control and selects</text>
+<line x1="24" y1="1541" x2="1276" y2="1541" stroke="#B4B2A9" stroke-width="0.8"/>
+<text x="24.0" y="1563.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">Every packet is routed by its 4-bit mode: mode 1 to the GATHER engine, 2–4 to the write engine (which forms the address from PTR), 5–7 to port B</text>
+<text x="24.0" y="1579.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">(which forms memory, word and banks from addr); 0 and 8–15 are dropped with the bad-mode condition. Read-port results are mode-7 packets. Counting happens on acceptance.</text>
+<text x="24.0" y="1595.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">Source: spec/machine-spec.md v1.0, §3.1, §4.3, §4.8, §4.9, §4.11, §4.12, §4.13, §4.15.</text>
+</svg>

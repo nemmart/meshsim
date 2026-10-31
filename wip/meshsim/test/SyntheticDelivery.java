@@ -38,6 +38,9 @@ public final class SyntheticDelivery {
     Path out; String program = "synthetic"; int windows = 4, rows = Replayer.ROWS_PER_PASS, first = 0; long seed = 1;
     int inlineWeight = 2; boolean end = true; Path tablesDir = ReplayTables.defaultDir();
     ReplayTables tb;
+    /** --w9-layout: as WORKER9's delivery_writer lays a delivery out: OUT/PROGRAM.manifest.json beside OUT/PROGRAM/, file keys
+     *  without the window prefix, no rows_sha256 and no tables/ (the replayer's are assumed). */
+    boolean w9;
 
     public static void main(String[] a) throws Exception {
         SyntheticDelivery g = new SyntheticDelivery();
@@ -51,6 +54,7 @@ public final class SyntheticDelivery {
             case "--inline-weight" -> g.inlineWeight = Integer.parseInt(a[++i]);
             case "--no-end" -> g.end = false;
             case "--tables" -> g.tablesDir = Path.of(a[++i]);
+            case "--w9-layout" -> g.w9 = true;
             default -> throw new IllegalArgumentException(a[i]);
         }
         long t0 = System.nanoTime();
@@ -338,9 +342,12 @@ public final class SyntheticDelivery {
         f.regs[2] = BASE2; f.regs[3] = BASE3; f.regs[4] = BASE4; f.regs[34] = MTVEC; f.regs[39] = 0x1800;
         f.pc = 0x8000_0000L; f.idx = 1;
         System.arraycopy(f.regs, 0, ref.x, 0, 32); ref.pc = f.pc;
-        Path pd = out.resolve(program); Files.createDirectories(pd); Files.createDirectories(out.resolve("tables"));
-        for (String n : new String[] { "decode_table.bin", "rom.bin", "templates.bin", "template_index.bin" })
-            Files.write(out.resolve("tables").resolve(n), Files.readAllBytes(tablesDir.resolve(n)));
+        Path pd = out.resolve(program); Files.createDirectories(pd);
+        if (!w9) {
+            Files.createDirectories(out.resolve("tables"));
+            for (String n : new String[] { "decode_table.bin", "rom.bin", "templates.bin", "template_index.bin" })
+                Files.write(out.resolve("tables").resolve(n), Files.readAllBytes(tablesDir.resolve(n)));
+        }
         int total = first + windows;
         List<Map<String, Object>> entries = new ArrayList<>();
         boolean ended = false; int afterEnd = 0;
@@ -425,7 +432,8 @@ public final class SyntheticDelivery {
         long[] rr = new long[10 * rowsOut.size()]; for (int i = 0; i < rowsOut.size(); i++) System.arraycopy(rowsOut.get(i), 0, rr, 10 * i, 10);
         byte[] rb = bytes(rr); Files.write(pd.resolve(base + "rows.bin"), rb);
         files.put(base + "rows.bin", Map.of("bytes", (long) rb.length, "sha256", ReplayTables.sha256(rb)));
-        e.put("files", files); e.put("rows_sha256", ReplayTables.sha256(rb));
+        if (w9) { Map<String, Object> f2 = new LinkedHashMap<>(); for (var x : files.entrySet()) f2.put(x.getKey().substring(base.length()), x.getValue()); files = f2; }
+        e.put("files", files); if (!w9) e.put("rows_sha256", ReplayTables.sha256(rb));
         e.put("templates", new ArrayList<>(used));
         long reads = logs.stream().filter(Log::hasRead).count(), writes = logs.stream().filter(Log::hasWrite).count();
         e.put("counts", Map.of("instructions", (long) code.size(), "read_log_words", reads, "write_log_words", writes,
@@ -454,7 +462,7 @@ public final class SyntheticDelivery {
         s.append(" \"tables\": \"tables\",\n \"programs\": [{\"name\": \"").append(program).append("\", \"window_rows\": ").append(rows).append(", \"window_entries\": [\n");
         for (int i = 0; i < entries.size(); i++) s.append("  ").append(json(entries.get(i))).append(i + 1 < entries.size() ? ",\n" : "\n");
         s.append(" ]}]\n}\n");
-        Files.writeString(out.resolve("manifest.json"), s.toString());
+        Files.writeString(out.resolve(w9 ? program + ".manifest.json" : "manifest.json"), s.toString());
     }
     @SuppressWarnings("unchecked")
     static String json(Object o) {

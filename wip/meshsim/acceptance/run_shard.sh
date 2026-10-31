@@ -4,7 +4,8 @@
 # Stage A and Stage B by JOBS JVMs. The delivery is only read: results go to OUTDIR. Java 17+; nothing else.
 #
 #   ./run_shard.sh -d DELIVERY -p PROGRAM -f FIRST -n COUNT [-j JOBS] [-s AB] [-m MANIFEST_SHA256] OUTDIR
-#     -d  the delivery's directory (manifest.json, PROGRAM/window_NNNNN.*, tables/ optional)
+#     -d  the delivery's directory: PROGRAM/window_NNNNN.*, and the manifest as manifest.json or PROGRAM.manifest.json
+#         (WORKER9's delivery_writer: /tmp/w9-deliveries with PROGRAM.manifest.json beside PROGRAM/); tables/ optional
 #     -f, -n  window indices FIRST..FIRST+COUNT-1     -j  JVMs in parallel (default nproc)
 #     -s  stages (default AB): A the model, B the controller on tile 0 alone (the 63 idle tiles parked), F the same on
 #         the full chip; with B and F both, each window's cycles must agree
@@ -20,9 +21,11 @@ while getopts d:p:f:n:j:s:m: o; do case $o in d) D=$OPTARG;; p) P=$OPTARG;; f) F
 shift $((OPTIND - 1)); OUT=${1:-}
 [ -n "$D" ] && [ -n "$P" ] && [ -n "$F" ] && [ -n "$N" ] && [ -n "$OUT" ] || { sed -n '2,14p' "$0"; exit 2; }
 D=$(cd "$D" && pwd) || { echo "no delivery at $D"; exit 2; }
-[ -f "$D/manifest.json" ] || { echo "no $D/manifest.json"; exit 2; }
+MF="$D/manifest.json"; [ -f "$MF" ] || MF="$D/$P.manifest.json"
+[ -f "$MF" ] || { echo "no manifest.json or $P.manifest.json in $D"; exit 2; }
+[ -d "$D/$P" ] || { echo "no $D/$P"; exit 2; }
 if [ -n "$MS" ]; then
-  GOT=$(sha256sum "$D/manifest.json" | cut -d' ' -f1)
+  GOT=$(sha256sum "$MF" | cut -d' ' -f1)
   [ "$GOT" = "$MS" ] || { echo "manifest.json sha256 $GOT, expected $MS"; exit 2; }
 fi
 mkdir -p "$OUT"; OUT=$(cd "$OUT" && pwd); : > "$OUT/results.csv"
@@ -30,7 +33,7 @@ JAVA="java -Xmx1500m -Dreplay.tables=$HERE/tables/replayer -Dreplay.build=$HERE/
 T0=$(date +%s)
 echo "shard: $P windows $F..$((F + N - 1)) of $D, stages $S, $J JVMs, start $(date -u)"
 for ((k = 0; k < J; k++)); do
-  (cd "$HERE" && $JAVA ReplayShard "$D" "$P" "$OUT/part-$k.csv" --stages "$S" --first "$F" --count "$N" --stride "$J" --phase "$k" > "$OUT/jvm-$k.log" 2>&1) &
+  (cd "$HERE" && $JAVA ReplayShard "$D" "$P" "$OUT/part-$k.csv" --manifest "$MF" --stages "$S" --first "$F" --count "$N" --stride "$J" --phase "$k" > "$OUT/jvm-$k.log" 2>&1) &
 done
 wait
 cat "$OUT"/part-*.csv >> "$OUT/results.csv" 2>/dev/null; rm -f "$OUT"/part-*.csv

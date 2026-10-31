@@ -13,7 +13,7 @@ import java.util.Map;
  * names, rows.bin, end.bin) is checked against the manifest's SHA-256 (a corrupt delivery is reported as CORRUPT, not
  * as a mismatch). The delivery is only read (DECISIONS-v1.25 s7 revised: it stays on the runner box for all shards).
  *
- * <p>Usage: java ReplayShard DELIVERY PROGRAM CSV [--stages ABF] [--variant V] [--first F --count N]
+ * <p>Usage: java ReplayShard DELIVERY PROGRAM CSV [--stages ABF] [--variant V] [--first F --count N] [--manifest M]
  * [--stride S --phase K]: windows with index F..F+N-1 (default all), every S-th of them from the K-th
  * <br>V: the state-record variant (default state-pick if the window has one, else state). Appends one CSV line per
  * window and stage: program,window,first_row,stage,verdict,rows,cycles,wall_ms,detail. Exit 0 if every line is OK.
@@ -21,7 +21,7 @@ import java.util.Map;
 public final class ReplayShard {
     public static void main(String[] a) throws Exception {
         Path dir = Path.of(a[0]); String prog = a[1]; Path csv = Path.of(a[2]);
-        String stages = "AB", variant = null; int stride = 1, phase = 0; long firstW = 0, countW = Long.MAX_VALUE;
+        String stages = "AB", variant = null; int stride = 1, phase = 0; long firstW = 0, countW = Long.MAX_VALUE; Path manifest = null;
         for (int i = 3; i < a.length; i++) switch (a[i]) {
             case "--stages" -> stages = a[++i];
             case "--variant" -> variant = a[++i];
@@ -29,9 +29,12 @@ public final class ReplayShard {
             case "--phase" -> phase = Integer.parseInt(a[++i]);
             case "--first" -> firstW = Long.parseLong(a[++i]);
             case "--count" -> countW = Long.parseLong(a[++i]);
+            case "--manifest" -> manifest = Path.of(a[++i]);
             default -> throw new IllegalArgumentException(a[i]);
         }
-        Map<String, Object> m = ReplayDelivery.Json.object(Files.readString(dir.resolve("manifest.json")));
+        // the manifest: given, or DELIVERY/manifest.json, or DELIVERY/PROGRAM.manifest.json (WORKER9's delivery_writer)
+        if (manifest == null) manifest = Files.exists(dir.resolve("manifest.json")) ? dir.resolve("manifest.json") : dir.resolve(prog + ".manifest.json");
+        Map<String, Object> m = ReplayDelivery.Json.object(Files.readString(manifest));
         Path pd = dir.resolve(prog);
         ReplayTables tb = ReplayDelivery.tablesFor(dir, pd);
         List<String> bad = ReplayTables.checkManifest(tb.dir, ReplayTables.defaultDir().resolve("../manifest.json"), "replayer/");
@@ -93,6 +96,7 @@ public final class ReplayShard {
         StringBuilder bad = new StringBuilder();
         for (String f : names) {
             Object e = files.get(f);
+            if (e == null) e = files.get(f.substring(base.length()));       // delivery_writer: keys without the window prefix
             String want = e instanceof String str ? str : e instanceof Map<?, ?> m ? (String) m.get("sha256") : null;
             if (want == null) { bad.append(f).append(": no SHA-256 in the manifest; "); continue; }
             Path p = pd.resolve(f);

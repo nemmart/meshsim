@@ -59,7 +59,7 @@ The appendix's opcode table was also checked by script against the model (number
   - an 8,192-window manifest parses in about 1 s.
 
 `calibrate.sh` builds a 128-window synthetic delivery in scratch and replays it at 1, 4, 8 and 16 JVMs.
-**Quest task 077** runs it on the runner.
+**Quest task 078** (`078-w11-calibrate`, renumbered from 077, which WORKER4 also took) runs it on the runner.
 
 ## 3. Stage B on a minimal machine (the owner's point 3)
 
@@ -87,7 +87,7 @@ and about 4-7× faster:
 It's cheap (about 20 lines in `Chip`, opt-in). A smaller topology (`hops.txt`) isn't possible: meshsim's network is the
 fixed 8×8 torus.
 
-## 4. The hours and the shard plan (preliminary: replaced by task 077's measurements)
+## 4. The hours and the shard plan (preliminary: replaced by task 078's measurements)
 
 **Windows:** 8,192 per program (2²⁹ rows padded). The real rows are 354.9M (EVM Zone, about 5,415 windows) and 371.5M
 (Cyclone, about 5,669). All 16,384 windows are replayed, padding included.
@@ -101,7 +101,7 @@ fixed 8×8 torus.
     run_shard.sh -d /tmp/w9-deliveries -p evm-zone-29 -f 0 -n 8192 -j 16 -x 64 -m <manifest sha256> $RES/evm-zone-29
 
 The estimate is about 18 minutes for A + B, plus about 1 minute for the 128 full-chip windows. That fits one task under
-the 45-minute limit with more than 2× margin. If task 077 shows the box slower or scaling worse, the shard is split in
+the 45-minute limit with more than 2× margin. If task 078 shows the box slower or scaling worse, the shard is split in
 two (`-f 0 -n 4096`, `-f 4096 -n 4096`).
 
 **Inputs needed from WORKER9:** each delivery's path (expected `/tmp/w9-deliveries`, from tasks 070/071) and its
@@ -110,5 +110,5 @@ manifest's SHA-256 (in `results/070…/manifest.sha256`). The tasks are made wit
 
 ## 5. Open
 
-- Task 077's numbers, to finalize section 4.
+- Task 078's numbers, to finalize section 4.
 - The acceptance tasks themselves, after WORKER9's writer tasks have run.

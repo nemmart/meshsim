@@ -58,3 +58,5 @@ acceptance kit). Until WORKER10's `v1.25` spec branch exists, the design is DECI
   Next: read results/077-w11-calibrate/calib/j*/SUMMARY.txt, finalize REPORT section 4, then the shard tasks once
   WORKER9 gives delivery paths + manifest SHA-256 (tasks/hold/070, 071 write /tmp/w9-deliveries/{evm-zone-29,cyclone-29}).
 - Quest identity: git config user.name WORKER11 in /home/claude/quest.
+- Task renumbered **078-w11-calibrate** (quest 994d8ca; kit2 sha ca5bc4aa..., includes -x): WORKER4 also pushed a 077.
+  It queues behind WORKER4's 077-meshsim-v12-combined (full run_tests + full-size sort).

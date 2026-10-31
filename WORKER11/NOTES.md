@@ -60,3 +60,5 @@ acceptance kit). Until WORKER10's `v1.25` spec branch exists, the design is DECI
 - Quest identity: git config user.name WORKER11 in /home/claude/quest.
 - Task renumbered **078-w11-calibrate** (quest 994d8ca; kit2 sha ca5bc4aa..., includes -x): WORKER4 also pushed a 077.
   It queues behind WORKER4's 077-meshsim-v12-combined (full run_tests + full-size sort).
+- Quest now has **NUMBERS.md**: claim a number by appending a line, commit "claim NNN", push before writing the task.
+  WORKER9's deliveries are tasks 079 (EVM Zone) and 080 (Cyclone), queued after 078.

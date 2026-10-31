@@ -1,0 +1,51 @@
+{
+ "jolt_cpp": "821e1bd2f433d6ca62300afbbbba031db50e7dc9",
+ "builder": "jolt-asic-planning tracer-standalone-main, tracer/tables/build_tables.cpp",
+ "variant": "replayer",
+ "files": {
+  "opcode_table.txt": {
+   "bytes": 2772,
+   "sha256": "09d5f9cdcc3c85b8f0c6c7205e963d8b775a6f2c29ce19ab3724a21bd2e38003"
+  },
+  "evm-zone-4e3451c1d8c5/replayer/decode_table.bin": {
+   "bytes": 4096,
+   "sha256": "a5bae768055746235f7e772f3f9a6234cdadfd8b311547b03e29b676a6ff1498"
+  },
+  "evm-zone-4e3451c1d8c5/replayer/listing.txt": {
+   "bytes": 15208,
+   "sha256": "d9bc6bd2791de950cd65fb4ec49141446c662a8c3ff56841d4c47f6d45067ee2"
+  },
+  "evm-zone-4e3451c1d8c5/replayer/rom.bin": {
+   "bytes": 8192,
+   "sha256": "4442f0f2f06dbe92a44a7c9c47afa61cdb1e063c4c1726fcfb48ddba064cb5b8"
+  },
+  "evm-zone-4e3451c1d8c5/replayer/template_index.bin": {
+   "bytes": 560,
+   "sha256": "6fa0021b86e7d4e4d1cc34151c873f3980e973273d597bd1379693bff809431a"
+  },
+  "evm-zone-4e3451c1d8c5/replayer/templates.bin": {
+   "bytes": 86512,
+   "sha256": "aa25443ad2bcca14d26da00f60c767a5bedfa7961f24bb24d86fc94b6e485e5a"
+  },
+  "cyclone/replayer/decode_table.bin": {
+   "bytes": 4096,
+   "sha256": "6eca8973a346c54a8dc0cbc95ace0d2015084f1112838de32456b94b3e476cfc"
+  },
+  "cyclone/replayer/listing.txt": {
+   "bytes": 14632,
+   "sha256": "e2f8491f85989f1bf6c2f5087d5e14d7467994431586113f4b6af266c5921fe6"
+  },
+  "cyclone/replayer/rom.bin": {
+   "bytes": 8192,
+   "sha256": "945bba7f6aced9b4f7c3584dd8fee7781f3da98b0d8f8b88e3c9e69dc5ad0031"
+  },
+  "cyclone/replayer/template_index.bin": {
+   "bytes": 368,
+   "sha256": "98d45f3c728b5d43d6b59cc9f9535b7f3ae5ea5b65ce8bf5fa8e151c0563616d"
+  },
+  "cyclone/replayer/templates.bin": {
+   "bytes": 65632,
+   "sha256": "2fefa78de64678c4c24f894866c185a0b21e385cc6861251c25f7ef83b6ffe2a"
+  }
+ }
+}

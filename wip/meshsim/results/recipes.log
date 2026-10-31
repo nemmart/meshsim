@@ -2,15 +2,15 @@ snippets: 46 code blocks in RECIPES.md, 46 RECIPE regions in wip/sw/recipes/
 status: PARAMS' endpoint id, size and peripherals, and STATUS, read on every tile
 rules: the right form of each rule (rule_wait, rule_disjoint, rule_start, rule_align) runs clean on every tile
   sync: the shortest start path's counter store, from C&C's GO store: cycle +8..+9 over the 64 tiles [meas: RecipeTest sync]
-blocks [meas: RecipeTest blocks]: cycles per 64-bit record, marginal (the difference of two sizes over their difference): write_block 21.87, fill -18.65, hash -17.74 (-8.87 per 32-bit word read)
+blocks [meas: RecipeTest blocks]: cycles per 64-bit record, marginal (the difference of two sizes over their difference): write_block 7.20 (256 records, not marginal), fill 23.00, hash 36.44 (18.22 per 32-bit word read)
 selftest [meas: RecipeTest selftest]: fill from the index seed, a uniform all-to-all (16 records per pair), hash, signatures to C&C 1 as requests (answered): all 64 equal the simulator's; one corrupted record changes exactly its receiver's
 recipe cycles [meas: RecipeTest; tile 0 unless stated]:
   cmdloop        a 3-argument command: GO -> all 64 READY                                      207
   cmdloop        a 7-argument command: GO -> all 64 READY                                       62
   copy           100 records (tile 0): start store -> first instruction after WFI              132
   cmem           256 words into program memory: start store -> wake                            104
-  bucket         200-263 records: count copy + 4 bucket passes + PTR[64]: GO -> all READY    13071
-  aug            local form, 64 keys (size 32, mode 5): GO -> all READY                        118
+  bucket         200 records: count copy + 4 bucket passes: GO -> all READY                  13071
+  aug            local form, 64 keys: GO -> all READY                                          118
   aug            remote form, start command (two neighbours, 20-35 records each): GO -> all READY      116
   gather         k = 1, 50-113 values per tile: GO -> all READY                                347
   gather         k = 2, 50-113 values per tile: GO -> all READY                                449
@@ -31,12 +31,11 @@ recipe cycles [meas: RecipeTest; tile 0 unless stated]:
   sync           start (a stream run): GO store -> start store, every tile                    9-10
   sync           start (a stream run): start store -> first request (the lead-in)                4
   sync           start (a stream run): GO store -> first request, every tile                 13-14
-  write_block    64 records: GO -> all READY                                                  1843
-  write_block    256 records: GO -> all READY                                                 6042
-  fill           256 records, C&C's seed: GO -> all READY                                    23706
-  fill           1024 records: GO -> all READY                                                9385
-  hash           256 records (512 words): GO -> all READY                                    37369
-  hash           1024 records: GO -> all READY                                               23747
+  write_block    256 records: GO -> all READY                                                 1843
+  fill           256 records, C&C's seed: GO -> all READY                                     6042
+  fill           1024 records: GO -> all READY                                               23706
+  hash           256 records (512 words): GO -> all READY                                     9385
+  hash           1024 records: GO -> all READY                                               37369
   selftest       fill (1024 records, index seed): GO -> all READY                            23747
   selftest       configure: GO -> all READY                                                   2065
   selftest       start (timetable 16 x 4 x 16 = 1024): GO -> all READY                        1127

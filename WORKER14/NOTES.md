@@ -12,8 +12,8 @@ gets a few hook calls into a new `CcCores` class, beside WORKER11's `Chip.parked
 | phase | what | status |
 |---|---|---|
 | 0 | branch, toolchain, the quick-suite baseline, these notes, QUESTIONS.md | done |
-| 1 | the three controller tiles (ids 64-66, their peripherals' presence and types), the controller router and its link to tiles 0-2; the boot ROM's 64-66 branch runs with the harness landing a command | |
-| 2 | `Cnc1Peripheral` in C&C 1's slot (READY/GO, error lines, watchdog, toast, UART); stub engines for C&C 2/3; controllers on the request tree, C&C 1's request port reading target 0; C&C 2/3's error lines | |
+| 1 | the three controller tiles (ids 64-66, their peripherals' presence and types), the controller router and its link to tiles 0-2; the boot ROM's 64-66 branch runs with the harness landing a command | done (turn 1): CcCoresTest |
+| 2 | `Cnc1Peripheral` in C&C 1's slot (READY/GO, error lines, watchdog, toast, UART); stub engines for C&C 2/3; controllers on the request tree, C&C 1's request port reading target 0; C&C 2/3's error lines | wired in turn 1 (the request path tested); the peripheral's paths are tested with the firmware (phases 3-4) |
 | 3 | firmware (`sw/cc/`): C&C 1 boots C&C 2/3, waits for "started", boots the tiles, then a phase loop on harness commands; C&C 2/3 start-up and "started"; `Mach.bootCores()`; the boot test | |
 | 4 | `rcp_cc1.c` run on C&C 1 (RecipeTest's cc1 driver); the error path end to end | |
 | 5 | measurements (boot vs the model's 120 cycles; a phase vs the model); full suites with the switch off on the runner; REPORT.md | |
@@ -36,4 +36,13 @@ sort 104 (140 s); sort-shuf 104.
 
 ## Log
 
-- Turn 1: phase 0.
+- Turn 1: phase 0; phase 1 and most of phase 2's wiring.
+  - New: `src/CcCores.java` (the controller tiles, their links, the host port, the stub engines, their checks),
+    `test/CcCoresTest.java` (19 checks; in run_tests.sh's quick suite with a shuffled run).
+  - Changed, all inert with the switch off: `Config` (`ccCores`, `ccLinkLatency`); `Router` (a controller's routing
+    when me >= 64; a null link input skipped); `SRAMReadQueue.loops` (a controller's broadcast takes no loopback token:
+    it never reaches itself); `Tile` (a constructor taking peripheral 1); `RequestPort` (a controller's receive side reads
+    its target's queue); `RequestBus` (the controllers' request ports feed the root); `Cnc1Peripheral.unitErrors` (C&C
+    1's own ERRORS latch the toast pin); `Chip` (seven hook lines, beside `parked`).
+  - With the switch off: 15 quick steps rerun after the change (bus, net, mem, engine, ctrl, riscv, accounting, agtest,
+    recipes, cond, regdoc, hooks, periph, reqbus, replayer), counts equal to the baseline. The rest at phase 5.

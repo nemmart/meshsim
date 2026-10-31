@@ -34,11 +34,16 @@ final class RequestPort {
     /** request_busy (4.18): the FIFO is full. */
     boolean busy(long t) { return fifo.size() >= depth; }
 
-    // ---- receive side: connected to nothing on a mesh tile (4.18)
-    boolean pending(long t) { return false; }
-    int get(long t, int i) { return 0; }
-    /** REQUEST_RECEIVE: an empty queue, always: 0, and receive underflow (ERRORS [14]). */
-    int receive(long t) { underflows++; return 0; }
+    // ---- receive side: connected to nothing on a mesh tile (4.18); on a controller (Config.ccCores), its target's queue
+    /** The receive queue this port reads: -1 on a mesh tile; C&C 1-3 read targets 0-2 (4.18, 6.6). */
+    int target = -1;
+    boolean pending(long t) { return target >= 0 && bus.pending(target, t); }
+    int get(long t, int i) { return target >= 0 ? bus.get(target, t, i) : 0; }
+    /** REQUEST_RECEIVE: pops the head (its bits [127:96]); an empty queue reads 0 and sets receive underflow (ERRORS [14]). */
+    int receive(long t) {
+        if (target < 0 || !bus.pending(target, t)) { underflows++; if (target >= 0) bus.underflows++; return 0; }
+        return bus.receive(target, t);
+    }
     boolean idle() { return fifo.isEmpty(); }
     /** The reset (6.1): the request FIFO empties. */
     void reset() { fifo.clear(); beatsSent = 0; setW[0] = setW[1] = setW[2] = 0; freedAt = Long.MIN_VALUE; }

@@ -55,3 +55,14 @@ broadcast, `READY_EXPECT`, then GO when all are READY), and exit (`SIM_EXIT`). C
 in a mailbox word in its data memory that the harness reads (W14-02).
 
 **Status:** proposed.
+
+## W14-05: a controller's relative d (4.2)
+
+**What.** A stream's d is relative (0-63) or absolute (64-), and meshsim resolves a relative d from the unit's tile:
+on a controller, its tile *c* (`AddressGenerator`: `tileOf(me) + d`). So on C&C 1 d = 0 names tile 0, not C&C 1 itself,
+and a controller's own block copy (6.5's d = 0) must use its absolute id.
+
+**Proposed.** Keep meshsim's reading (relative to tile *c*: C&C 1's d = 0 is tile 0); a controller copies into its own
+memories with d = 64 + *c*. The firmware does so (6.5's sequence with that d). 4.2 could say it.
+
+**Status:** proposed; the code follows it (no change: the existing rule).

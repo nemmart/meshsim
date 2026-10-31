@@ -59,11 +59,12 @@ final class Router implements Component {
     long injected, routed, ejected, ejectErrors, routeErrors, fromCncWords, toCncWords;
 
     final boolean attached;                     // the fifth port is connected (tiles 0-2: C&C 1-3)
+    final boolean cc;                           // a controller's router (me = 64-66, Config.ccCores; W14-01)
     final int loopSlot;                         // the eject output's loopback FIFO
     SRAMReadQueue tokens;                       // freed as a token-holding packet leaves the loopback FIFO (4.5)
     Router(int me, Hops hops, int depth) { this(me, hops, depth, depth, me < 3); }
     Router(int me, Hops hops, int depth, int loopDepth, boolean attached) {
-        this.me = me; this.hops = hops; this.attached = attached;
+        this.me = me; this.hops = hops; this.attached = attached; this.cc = me >= 64;
         feeders = feeders(me);
         nOut = feeders.length; nPort = 6;
         q = new WordFIFO[nOut][];
@@ -80,10 +81,16 @@ final class Router implements Component {
         }
         loopSlot = slotOf[EJECT][LOOPBACK];
         for (int src = 0; src < 128; src++) {
-            for (int dst = 0; dst < 128; dst++) uniTable[src * 128 + dst] = (byte) unicast(src, dst);
-            for (int port = 0; port < 6; port++) bcTable[port * 128 + src] = (byte) broadcast(port, src);
+            for (int dst = 0; dst < 128; dst++) uniTable[src * 128 + dst] = (byte) (me >= 64 ? ccRoute(LOOPBACK, dst) : unicast(src, dst));
+            for (int port = 0; port < 6; port++) bcTable[port * 128 + src] = (byte) (me >= 64 ? ccRoute(port, LinkWord.BROADCAST) : broadcast(port, src));
         }
     }
+    /** A controller's router (Config.ccCores; W14-01, item 118 deferred): the link to tile c's fifth port enters at
+     *  FROM_LEFT and leaves at TO_RIGHT, and meshsim's host port (W14-02) enters at FROM_RIGHT. From the loopback, a packet
+     *  for the controller itself is ejected and any other (broadcasts included) goes out on the link; from any other
+     *  input, every packet is ejected (the eject selector flags one that isn't for this controller). */
+    static final int CC_LINK_IN = FROM_LEFT, CC_LINK_OUT = TO_RIGHT, CC_HOST_IN = FROM_RIGHT;
+    private int ccRoute(int port, int dst) { return port != LOOPBACK ? EJ : dst == me ? EJ : RIGHT; }
     /** Feeder slot of an input port at an output, -1 if none. */
     int slotOfPort(int o, int port) { return slotOf[o][port]; }
 
@@ -104,7 +111,7 @@ final class Router implements Component {
         // route blocks: link inputs
         for (int p = 0; p < 4; p++) {
             WordSource in = linkIn[p];
-            if (in.ready(t)) { long d = in.peekA(t), a = in.peekB(t), c = in.peekC(t); in.take(t); route(t, p, d, a, c); }
+            if (in != null && in.ready(t)) { long d = in.peekA(t), a = in.peekB(t), c = in.peekC(t); in.take(t); route(t, p, d, a, c); }
         }
         // loopback route block: the injection point's one packet per cycle, source stamped here
         if (fromInjection.ready(t)) {
@@ -153,7 +160,7 @@ final class Router implements Component {
     private void route(long t, int port, long d, long a, long c) {
         routed++;
         int src = LinkWord.src(a), dst = LinkWord.dst(a);
-        int mask = dst == LinkWord.BROADCAST ? bcTable[port * 128 + src] : uniTable[src * 128 + dst];
+        int mask = cc && port != LOOPBACK ? EJ : dst == LinkWord.BROADCAST ? bcTable[port * 128 + src] : uniTable[src * 128 + dst];
         if ((mask & RIGHT) != 0) push(t, TO_RIGHT, port, d, a, c);
         if ((mask & LEFT) != 0) push(t, TO_LEFT, port, d, a, c);
         if ((mask & DOWN) != 0) push(t, TO_DOWN, port, d, a, c);

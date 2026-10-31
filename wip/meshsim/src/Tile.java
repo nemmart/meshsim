@@ -49,13 +49,17 @@ final class Tile implements Component {
     private final Component[] children;
     Random shuffle;
 
-    Tile(int idx, Config cfg) {
+    Tile(int idx, Config cfg) { this(idx, cfg, meshPeripheral(idx, cfg)); }
+    private static Peripheral meshPeripheral(int idx, Config cfg) {
+        Peripheral tp = cfg.testPeripheral != null ? cfg.testPeripheral.apply(idx) : null;
+        return tp != null ? tp : cfg.periphTypeOf(idx) == 4 ? new Replayer(idx) : null;   // every mesh tile's peripheral 1: the replayer, type 4 (4.17.1)
+    }
+    /** A unit with peripheral 1 p1: a mesh tile (0-63), or a controller (64-66, Config.ccCores: CcCores builds it with its engine). */
+    Tile(int idx, Config cfg, Peripheral p1) {
         this.idx = idx; this.cfg = cfg;
         router = new Router(idx, cfg.hops, cfg.queueDepth, cfg.loopbackDepth > 0 ? cfg.loopbackDepth : cfg.readTokens, idx < 3);
         inj = new InjectionPath(idx);
         dir = new TrafficDirector(idx, cfg);
-        Peripheral tp = cfg.testPeripheral != null ? cfg.testPeripheral.apply(idx) : null;
-        Peripheral p1 = tp != null ? tp : cfg.periphTypeOf(idx) == 4 ? new Replayer(idx) : null;   // every mesh tile's peripheral 1: the replayer, type 4 (4.17.1)
         slot = new PeripheralSlot(this, p1); dir.periph = slot; req = new RequestPort(this, cfg);
         cmem = new ControllerMemories(cfg);
         String p = "t" + idx + ".";

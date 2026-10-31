@@ -49,6 +49,8 @@ LOG=periph    TAIL=1 run "the peripheral framework: the standard window, events,
 LOG=periph-shuf TAIL=1 run "shuffled child order (seed 4)"   $J PeripheralSlotTest 4
 LOG=reqbus    TAIL=2 run "the request port, the request bus and the receive queues in the tree" $J RequestBusTest -1
 LOG=reqbus-shuf TAIL=1 run "shuffled child order (seed 4)"    $J RequestBusTest 4
+LOG=cccores   TAIL=1 run "C&C 1-3 as cores (Config.ccCores, WORKER14): the boot ROM's controller branch, the link, the request tree" $J CcCoresTest -1
+LOG=cccores-shuf TAIL=1 run "shuffled child order (seed 4)"   $J CcCoresTest 4
 LOG=replay-build TAIL=1 run "the replay controller (sw/replay/build.sh)" sh sw/replay/build.sh
 LOG=stageb    TAIL=1 run "Stage B: replay_ctl.c on a tile against Stage A, synthetic windows" $J StageB synthetic
 if [ -n "$DELIVERY" ]; then   # Stage B on a tracer delivery's guest windows: DELIVERY=<replay-inputs dir>

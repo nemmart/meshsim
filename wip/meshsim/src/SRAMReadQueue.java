@@ -103,7 +103,7 @@ final class SRAMReadQueue implements Component {
         if (tokensOn && loops(LinkWord.dst(h))) loopHeld++;           // the token moves to the loopback packet: still held
         free.add(tok);
     }
-    boolean loops(int dst) { return dst == me || dst == LinkWord.BROADCAST; }
+    boolean loops(int dst) { return dst == me || dst == LinkWord.BROADCAST && me < 64; }   // a controller's broadcast never reaches itself (W14-01)
     boolean tokensOn = true;                          // false: an experiment (Config.loopbackTokens)
 
     /** A client's request: (a, b) words. */

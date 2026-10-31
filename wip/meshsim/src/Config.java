@@ -52,6 +52,8 @@ final class Config {
     int regLoadLatency = 2;              // register and table-window load latency, cycles (4.11: 1 or 2, fixed per register; meshsim models 2, the worst case: its reference setting)
     // ---- C&C (spec 6.2, section 10) ----
     int stageDelay = 32;                 // stage_delay: C&C's first staged packet no sooner than this after its GO store (Proposed)
+    boolean ccCores = false;             // WORKER14: C&C 1-3 as cores (controller tiles 64-66, CcCores); off = the Java model (CnC)
+    int ccLinkLatency = 1;               // WORKER14 (W14-01): a controller's link to its tile's fifth port, cycles each way
     // ---- the request bus (spec 3.3, 4.18) ----
     int requestFifoDepth = 128;          // the request FIFO: 128 x 128 bits (4.18)
     int[] receiveQueueDepth = { 128, 256, 128 };   // the targets' receive queues in the tree, and their credits at the root (3.3)

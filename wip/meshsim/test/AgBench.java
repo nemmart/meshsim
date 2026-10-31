@@ -37,7 +37,7 @@ public final class AgBench {
 
     /** Arm; once ready wait `idle` cycles (the sort arms at configure time) then start; or arm + start in one store. */
     static Res run(int L, int la, boolean stalls, boolean oneStore, int idle, Setup s) {
-        Config k = Config.defaults(); k.checkUnexpected = false; k.withTsLatency(L);
+        Config k = Config.defaults(); k.checkUnexpected = false; k.checkErrors = false; k.withTsLatency(L);
         if (la > 0) setLa(k, la);
         Chip c = new Chip(k); Tile p = c.tiles[0];
         int[] r = s.write(p, SRC);

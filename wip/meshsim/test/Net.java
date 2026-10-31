@@ -19,7 +19,7 @@ final class Net {
         for (int i = 0; i < 64; i++) { q[i] = new ArrayDeque<>(); c.tiles[i].dir.log = new ArrayList<>(); for (int k = 0; k < 3; k++) rq[i][k] = new ArrayDeque<>(); }
     }
 
-    static Config cfg(long shuffle) { Config k = Config.defaults(); k.shuffleSeed = shuffle; k.checkUnexpected = false; return k; }
+    static Config cfg(long shuffle) { Config k = Config.defaults(); k.shuffleSeed = shuffle; k.checkUnexpected = false; k.checkErrors = false; return k; }   // network tests count loosely: ERRORS [2] is expected
 
     /** Schedule tile's packet for injection at cycle T (nondecreasing T per tile): 64 bits, on counter 1 (v1.2: modes 1-3
      *  are always counted; network tests run with Config.checkUnexpected off). */

@@ -190,6 +190,7 @@ public final class CtrlTest {
     static void faults() {
         T.group("faults");
         Mach m = new Mach(Mach.cfg(shuffle));
+        m.c.cfg.checkErrors = false;                      // the faults are deliberate: their ERRORS bits are checked below
         Mach.Image im = m.boot("faults");
         m.run(m::allStopped, 5000);
         // v1.2 (4.11, 4.13): a bus error or an illegal instruction sets its ERRORS bit and traps to mtvec, here the boot
@@ -236,6 +237,7 @@ public final class CtrlTest {
     static void invariants() {
         T.group("invariants");
         Mach m = new Mach(Mach.cfg(shuffle));
+        m.c.cfg.checkErrors = false;                      // deliberate bugs, flagged by their own invariants
         m.c.cfg.maxViolationMessages = 1000;
         m.c.cfg.strictReplies = true;                    // invariant 8 strict for this test
         Mach.Image im = m.boot("inv");

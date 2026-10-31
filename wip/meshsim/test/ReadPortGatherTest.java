@@ -62,6 +62,7 @@ public final class ReadPortGatherTest {
     static void readPortFromC() {
         T.group("read port from C");
         Mach m = new Mach(Mach.cfg(shuffle));
+        m.c.cfg.checkErrors = false;                      // tiles 6 and 7's errors are deliberate (checked below)
         m.c.cfg.maxViolationMessages = 100;
         for (Tile p : m.c.tiles) for (int x = 0; x < 0x1100; x++) p.sram.poke(0x1000 + x, p.idx << 20 | x);
         Mach.Image im = m.boot("rdport");

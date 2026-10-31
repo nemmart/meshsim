@@ -20,7 +20,7 @@ public final class EngineTest {
         System.exit(T.done("EngineTest" + (shuffle >= 0 ? " (shuffled, seed " + shuffle + ")" : "") + (full ? " full" : "")));
     }
 
-    static Config cfg(boolean skew) { Config c = Config.defaults(); c.shuffleSeed = shuffle; c.skew = skew; return c; }
+    static Config cfg(boolean skew) { Config c = Config.defaults(); c.shuffleSeed = shuffle; c.skew = skew; c.checkErrors = false; return c; }   // deliberate errors are counted by their own invariants
     static void noViolations(Chip c, String what) { c.scanOverflows(); T.check(c.violations == 0, what + ": no violations " + c.violationReport()); }
 
     /** Tile p has finished a phase: its run is over, every expected arrival landed, the stores are quiet. */

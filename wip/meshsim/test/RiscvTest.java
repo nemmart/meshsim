@@ -20,7 +20,8 @@ public final class RiscvTest {
         long instr = 0;
         for (Path f : files) {
             String name = f.getFileName().toString().replace(".code.bin", "");
-            Chip c = new Chip(Config.machine());
+            Config k = Config.machine(); k.checkErrors = !(name.startsWith("div") || name.startsWith("rem"));   // div's ERRORS [10] is the point
+            Chip c = new Chip(k);
             Controller core = c.tiles[0].core;
             int[] code = Mach.words(f), data = Mach.words(dir.resolve(name + ".data.bin"));
             for (int i = 0; i < code.length; i++) core.pokeLocal(Registers.PMEM_BASE + 4 * i, code[i]);

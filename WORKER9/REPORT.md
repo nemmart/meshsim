@@ -118,3 +118,57 @@ words are unaffected.
 
 Related: spec item 112's opcode appendix (`replayer-opcodes.md`, derived at 4f36b3d with `tools/replayer-opcodes/`)
 is now stale for the changed rows; see QUESTIONS.md Q3.
+
+---
+
+# Part 2: the expansion tables (in progress)
+
+## The builder
+
+`tracer/tables/build_tables.cpp` in PR #2 (with `build.sh`). It `#include`s the tracer's `decoder.cpp` and
+`virtual.cpp` and calls jolt-cpp's own `expand_virt_seq`, `has_side_effects_beyond_rd`, `rd0_is_handled_internally`,
+`signed_immediate` and `uncompress_instruction`. Templates are **derived**: sample instruction words are expanded and
+every row slot is mapped to an operand code (129-131 only where the field varies, 132-136 for the source immediate and
+its masks, 137-144 temporaries, 128/145 constants, literals otherwise), with `offset_imm` where `shift_offset` equals the
+source immediate and `sign_imm` from `signed_immediate`; anything that fits no code is an error. A resolver turns
+template words back into rows exactly as `Replayer.java` does (decode index, rd = x0 policy and offset, operand
+codes, derived `is_first`/`is_virtual`), and the check compares them with jolt-cpp's rows field by field, flags
+included (`next_from_value`, `imm0_pc0`, `report_c`, `from_log`, `hold`, `untraced`).
+
+Expansion word (DECISIONS-v1.25 s4-s5): `offset_imm` [63], `sign_imm` [62], `advice_reg` [61:56] = register - 146.
+
+## The replayer's tables: universal (v1.25 s5), delivered to `wip/tables/`
+
+| | |
+|---|---|
+| ROM | **379 of 512 words**, every RV64IMAC template including **all atomics (188 words)**; v1.1 ~508 with atomics partly controller-fed |
+| decode table | 303 ROM entries, 20 controller entries, 1,725 invalid (class 3) |
+| controller-fed | 78 template numbers (15 inlines, 63 system keys: ECALL, EBREAK, MRET, CSRRW/CSRRS for the six supported CSRs by register pattern), 13,830 words |
+| opcode table | 171 opcodes at 821e1bd, 88 executed row opcodes |
+
+**New: the template-index key.** Universal tables can't list every instruction word, so an entry's key is the word with
+register fields cleared (inlines: their templates resolve any registers, x0 and aliasing included, through codes
+129-131) or renamed by first appearance (system: jolt-cpp's CSR expansions depend on rd = x0, rs1 = x0 and rd = rs1).
+The controller normalizes the presented word the same way before the lookup. This changes the Stage B controller's
+lookup and `REPLAY-INPUT-REQUIREMENTS.md`'s index description.
+
+## Checks
+
+- **Random**: every decode index and every key, random words with x0 and aliasing cases: **117,843 words over 107
+  source opcodes, 0 failures** (`wip/tables/replayer/check.txt`).
+- **Real programs**: every instruction of EVM Zone `4e3451c1d8c5` (616,231) and Cyclone (545,760), resolved from the
+  universal tables and compared with jolt-cpp's own bytecode rows: **0 failures**.
+- **Mutants**: 500 single-field changes in ROM and fed words (opcode, operand codes, `seq_remaining`, flags, `rd0`,
+  format, `sign_imm`, `offset_imm`, const, `hold`), excluding the spec's don't-cares (e.g. `rd0` beyond a template's
+  first word, `offset_imm` outside `ShiftData`): **497 caught**; the 3 not caught are in rarely-sampled decode indices
+  (`VirtualRev8W` and two others) where the mutant run drew too few valid words.
+- **Opcode appendix (Q3)**: meshsim's `tools/replayer-opcodes` regenerated at 821e1bd (`WORKER9/replayer-opcodes-821e1bd/`,
+  with the differences for the spec editor): new vectors for `VirtualLoad*`/`VirtualStore*`, `ShiftData*` with offsets,
+  and non-contiguous `PEXT` masks (signed: extends from the last bit placed).
+- **Division family**: WORKER7's harness at 821e1bd, only the opcode numbers changed: identical result, 8,040,000 cases,
+  0 failures (`WORKER9/tracer-div-821e1bd/`).
+
+## Still to do
+
+The Tracer's variant (division family re-encoded; all seven secp256k1 inlines' advice as untraced rows, the division
+inlines' Fermat inverse as loop body + repeat count, GLV), the replayer-to-Tracer template-number mapping, and its checks.

@@ -217,8 +217,8 @@ Decided (O). Answers T5; makes Q10 moot.
     pieces as C&C 3 likes (v1.2 section 10), so C&C 3 generates the words on the fly and sends them in batches as credits
     arrive. No buffer holds the whole expansion, and no streaming rate is required: if C&C 3 falls behind, the Tracer
     waits, which is acceptable at this rarity.
-  - **The expansion's total length is known up front** and sent in the first word, as for any controller-fed template,
-    since the Tracer counts the words remaining.
+  - **The expansion's length is known up front** and sent in the first word, as for any controller-fed template.
+    *(Revised by v1.25 section 5, Q6: it counts **traced** words only; untraced words are marked and uncounted.)*
 - **For the table builder:** a long data-independent expansion is emitted as **a loop body plus a repeat count** (and
   any prologue and epilogue), not as its full word sequence.
 

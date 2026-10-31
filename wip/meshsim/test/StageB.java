@@ -25,8 +25,8 @@ import java.util.Map;
  * sw/replay/build (sw/replay/build.sh).
  */
 public final class StageB {
-    static final int HDR = 0x00000, TABLES = 0x00040, INDEX = 0x00C40, RECORD = 0x00E40, TEMPLATES = 0x01000,
-            CODE = 0x08000, RLOG = 0x18000, WLOG = 0x38000;
+    static final int HDR = 0x00000, TABLES = 0x00040, INDEX = 0x00C40, RECORD = 0x00E40, TEMPLATES = 0x58000,   // v1.25: 1.4 MB for the universal set
+            CODE = 0x08000, RLOG = 0x18000, WLOG = 0x38000, LAYOUT_VERSION = 2;
 
     public static void main(String[] args) throws Exception {
         if (args[0].equals("synthetic")) { synthetic(); return; }
@@ -47,7 +47,7 @@ public final class StageB {
                 int index = ((Number) we.get("index")).intValue();
                 if (!only.isEmpty() && !only.contains(index)) continue;
                 windows++;
-                if (!runWindow(im, pd, we, variant, prog)) failed++;
+                if (!runWindow(im, ReplayDelivery.tablesFor(dir, pd), pd, we, variant, prog)) failed++;
             }
         }
         System.out.println("StageB " + prog + " " + variant + ": " + windows + " windows, " + failed + " failed");
@@ -74,7 +74,7 @@ public final class StageB {
         return n;
     }
 
-    static boolean runWindow(Image im, Path pd, Map<String, Object> we, String variant, String prog) throws IOException {
+    static boolean runWindow(Image im, ReplayTables tb, Path pd, Map<String, Object> we, String variant, String prog) throws IOException {
         int index = ((Number) we.get("index")).intValue(), rows = ((Number) we.get("rows")).intValue();
         String base = String.format("window_%05d.", index);
         Config k = Config.machine(); k.periphType = 0;
@@ -87,13 +87,13 @@ public final class StageB {
         r.rowListener = got::add;
 
         // ---- the loader: the window into tile 0's big SRAM (replay_layout.h)
-        byte[] table = Files.readAllBytes(pd.resolve("decode_table.bin")), rom = Files.readAllBytes(pd.resolve("rom.bin"));
+        byte[] table = tb.decodeBytes, rom = tb.romBytes;
         byte[] tables = new byte[table.length + rom.length];
         System.arraycopy(table, 0, tables, 0, table.length); System.arraycopy(rom, 0, tables, table.length, rom.length);
         put(p, TABLES, tables);
-        byte[] ixb = Files.readAllBytes(pd.resolve("template_index.bin"));
+        byte[] ixb = tb.indexBytes;
         put(p, INDEX, ixb);
-        put(p, TEMPLATES, Files.readAllBytes(pd.resolve("templates.bin")));
+        put(p, TEMPLATES, tb.templateBytes);
         byte[] rec = Files.readAllBytes(pd.resolve(base + variant + ".bin"));
         put(p, RECORD, rec);
         ByteBuffer rb = ReplayDelivery.le(rec);
@@ -104,7 +104,7 @@ public final class StageB {
         byte[] wlog = Files.readAllBytes(pd.resolve(base + (wc ? "wlog-lru" : "wlog") + ".bin"));
         put(p, CODE, code); put(p, RLOG, rlog); put(p, WLOG, wlog);
         int[] h = new int[16];
-        h[0] = 0x594C5052; h[1] = 1; h[2] = TABLES; h[3] = INDEX; h[4] = ixb.length / 16; h[5] = TEMPLATES; h[6] = RECORD;
+        h[0] = 0x594C5052; h[1] = LAYOUT_VERSION; h[2] = TABLES; h[3] = INDEX; h[4] = ixb.length / 16; h[5] = TEMPLATES; h[6] = RECORD;
         h[7] = CODE; h[8] = code.length / 16; h[9] = RLOG; h[10] = rlog.length / 16; h[11] = WLOG; h[12] = wlog.length / 16; h[13] = 1;
         for (int i = 0; i < 16; i++) p.sram.poke(HDR + i, h[i]);
 
@@ -217,8 +217,8 @@ public final class StageB {
         for (int e = 0; e < 2048; e++) tab[2 * (e >> 3) + ((e & 7) >> 2)] |= (w.table[e] & 0xFFFFL) << (16 * (e & 3));
         for (int j = 0; j < 512; j++) { tab[2 * (256 + j)] = w.romLo[j]; tab[2 * (256 + j) + 1] = w.romHi[j]; }
         put(p, TABLES, bytes(tab));
-        // the template index (16 B each: word, offset in 128-bit words, length in words, rd0 | class << 8) and the words
-        List<Integer> ws = new ArrayList<>(w.templates.keySet()); java.util.Collections.sort(ws);
+        // the template index (16 B each: key, offset in 128-bit words, length in words, rd0 | class << 8), sorted by key
+        List<Integer> ws = new ArrayList<>(w.templates.keySet()); ws.sort(Integer::compareUnsigned);
         long[] ix = new long[2 * ws.size()]; List<long[]> tw = new ArrayList<>(); int off = 0;
         for (int q = 0; q < ws.size(); q++) {
             long[] t = w.templates.get(ws.get(q)); int words = t.length / 2;
@@ -230,12 +230,13 @@ public final class StageB {
         put(p, INDEX, bytes(ix)); put(p, TEMPLATES, bytes(tpl));
         // the record: word 0 the template bitmap (unused), then the state word, the stream word and the 64-word image
         long[] rec = new long[2 * 67];
+        for (int q = 0; q < ws.size(); q++) rec[q >>> 6] |= 1L << (q & 63);       // word 0: the bitmap, every template
         rec[2] = w.stateLo(); rec[3] = w.stateHi(); rec[4] = w.streamLo(); rec[5] = w.streamHi();
         for (int i = 0; i < 128; i++) rec[6 + i] = w.regs[i];
         put(p, RECORD, bytes(rec));
         put(p, CODE, bytes(w.code)); put(p, RLOG, bytes(w.rlog)); put(p, WLOG, bytes(w.wlog));
         int[] h = new int[16];
-        h[0] = 0x594C5052; h[1] = 1; h[2] = TABLES; h[3] = INDEX; h[4] = ws.size(); h[5] = TEMPLATES; h[6] = RECORD;
+        h[0] = 0x594C5052; h[1] = LAYOUT_VERSION; h[2] = TABLES; h[3] = INDEX; h[4] = ws.size(); h[5] = TEMPLATES; h[6] = RECORD;
         h[7] = CODE; h[8] = w.code.length / 2; h[9] = RLOG; h[10] = w.rlog.length / 2; h[11] = WLOG; h[12] = w.wlog.length / 2; h[13] = 1;
         for (int i = 0; i < 16; i++) p.sram.poke(HDR + i, h[i]);
         c.cc1p.expect = 1;                                      // only tile 0 starts (6.2): the others wait in their ROMs

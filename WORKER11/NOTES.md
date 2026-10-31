@@ -22,6 +22,10 @@ acceptance kit). Until WORKER10's `v1.25` spec branch exists, the design is DECI
 ## Progress
 - [x] model (ReplayerAlu renumbering, new opcodes, PEXT, sign_imm [86], offset_imm, HostIO, E[15] on every load,
       misalignment flagged); ReplayerTest 1457/0 on data/vec-821e1bd.tsv + opcode table; StageB synthetic 18/18
-- [ ] controller (key, universal tables, bitmap-driven fast path)
+- [x] controller: replay_ctl.c keys presented words (tkey) and looks up by key; fast path holds only the window's
+      bitmap templates, NOP-policy check moved to run time (DM_NOP); layout v2: templates at chunk 0x58000 (1.4 MB).
+      Java side: test/ReplayTables.java (load, key, lookup, manifest check); ReplayWindow/ReplayDriver keyed by key;
+      ReplayDelivery.tablesFor (program dir, else delivery tables/, else ../tables/replayer). StageB synthetic 18/18
+      (controller-fed 3.513 cycles/row, was 3.452: the key's cost on the fast path).
 - [ ] tests (vec.tsv at 821e1bd, unit tests, StageB synthetic), REPLAY-INPUT-REQUIREMENTS.md
 - [ ] synthetic delivery generator + acceptance kit + speed measurement + estimate

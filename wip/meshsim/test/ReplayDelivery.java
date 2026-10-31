@@ -37,7 +37,7 @@ public final class ReplayDelivery {
             String name = (String) p.get("name");
             if (!only.isEmpty() && !only.contains(name)) continue;
             Path pd = dir.resolve(name);
-            Program prog = Program.load(pd);
+            ReplayTables prog = tablesFor(dir, pd);
             for (Object wo : Json.list(p.get("window_entries"))) {
                 Map<String, Object> we = Json.object(wo);
                 if (!we.containsKey("files")) continue;
@@ -56,29 +56,15 @@ public final class ReplayDelivery {
         System.exit(failed == 0 ? 0 : 1);
     }
 
-    // ================================================================ a program's files
-    static final class Program {
-        final short[] table = new short[2048];
-        final long[] romLo = new long[512], romHi = new long[512];
-        final Map<Integer, long[]> templates = new LinkedHashMap<>();
-        final Map<Integer, Integer> rd0 = new LinkedHashMap<>();
-        static Program load(Path pd) throws IOException {
-            Program p = new Program();
-            ByteBuffer t = le(Files.readAllBytes(pd.resolve("decode_table.bin")));
-            for (int e = 0; e < 2048; e++) p.table[e] = t.getShort(2 * e);
-            ByteBuffer r = le(Files.readAllBytes(pd.resolve("rom.bin")));
-            for (int j = 0; j < 512; j++) { p.romLo[j] = r.getLong(16 * j); p.romHi[j] = r.getLong(16 * j + 8); }
-            ByteBuffer words = le(Files.readAllBytes(pd.resolve("templates.bin")));
-            byte[] ixb = Files.readAllBytes(pd.resolve("template_index.bin"));
-            ByteBuffer ix = le(ixb);
-            for (int k = 0; k < ixb.length / 16; k++) {                // count = file size / 16
-                int w = ix.getInt(16 * k), off = ix.getInt(16 * k + 4), len = ix.getInt(16 * k + 8), rd0 = ix.get(16 * k + 12) & 0xFF;
-                long[] tw = new long[2 * len];
-                for (int i = 0; i < len; i++) { tw[2 * i] = words.getLong(16 * (off + i)); tw[2 * i + 1] = words.getLong(16 * (off + i) + 8); }
-                p.templates.put(w, tw); p.rd0.put(w, rd0);
-            }
-            return p;
-        }
+    // ================================================================ a program's tables
+    /**
+     * The tables a program's windows replay with (v1.25): the program directory's own copies if it has them, else the
+     * delivery's top-level tables/ directory, else the universal tables in the repository (-Dreplay.tables=dir).
+     */
+    static ReplayTables tablesFor(Path delivery, Path pd) throws IOException {
+        if (Files.exists(pd.resolve("decode_table.bin"))) return ReplayTables.load(pd);
+        if (delivery != null && Files.exists(delivery.resolve("tables/decode_table.bin"))) return ReplayTables.load(delivery.resolve("tables"));
+        return ReplayTables.load(ReplayTables.defaultDir());
     }
 
     // ================================================================ one window
@@ -89,7 +75,7 @@ public final class ReplayDelivery {
         }
     }
 
-    static Result runWindow(Program prog, Path pd, Map<String, Object> we, String variant) throws IOException {
+    static Result runWindow(ReplayTables prog, Path pd, Map<String, Object> we, String variant) throws IOException {
         Result res = new Result();
         int index = ((Number) we.get("index")).intValue(), rows = ((Number) we.get("rows")).intValue();
         res.index = index;
@@ -97,9 +83,7 @@ public final class ReplayDelivery {
         ByteBuffer rec = le(Files.readAllBytes(pd.resolve(base + variant + ".bin")));
         ReplayWindow w = new ReplayWindow();
         w.rows = rows;
-        System.arraycopy(prog.table, 0, w.table, 0, 2048);
-        System.arraycopy(prog.romLo, 0, w.romLo, 0, 512); System.arraycopy(prog.romHi, 0, w.romHi, 0, 512);
-        w.templates.putAll(prog.templates); w.templateRd0.putAll(prog.rd0);
+        w.useTables(prog);
         w.region0 = new long[132];
         for (int i = 0; i < 132; i++) w.region0[i] = rec.getLong(16 + 8 * i);
         long sHi = w.region0[1], lLo = w.region0[2], lHi = w.region0[3];

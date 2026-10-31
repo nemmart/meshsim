@@ -78,9 +78,10 @@ final class ReplayDriver {
                 if ((l & 1 << Replayer.EV_RLOG) != 0) rlogNext = refill(w.rlog, rlogNext, 0x80000, 256);
                 if ((l & 1 << Replayer.EV_WLOG) != 0) wlogNext = refill(w.wlog, wlogNext, 0xA0000, 256);
                 if ((l & 1 << Replayer.EV_NEWEXP) != 0) {
-                    long[] tpl = w.templates.get(st1);
-                    if (tpl == null) { missingTemplates++; log.add("@" + t + " no template for 0x" + Integer.toHexString(st1)); tpl = new long[0]; }
-                    int off = st0 >>> 16, rd0 = w.templateRd0.getOrDefault(st1, (int) (tpl.length > 0 ? (tpl[0] >>> 46) & 3 : 0));
+                    int key = ReplayTables.key(st1);                // v1.25: the index is keyed by key(w)
+                    long[] tpl = w.templates.get(key);
+                    if (tpl == null) { missingTemplates++; log.add("@" + t + " no template for 0x" + Integer.toHexString(st1) + " (key 0x" + Integer.toHexString(key) + ")"); tpl = new long[0]; }
+                    int off = st0 >>> 16, rd0 = w.templateRd0.getOrDefault(key, (int) (tpl.length > 0 ? (tpl[0] >>> 46) & 3 : 0));
                     if (((st1 >>> 7) & 31) == 0 && (rd0 == 1 || rd0 == 3)) {
                         // N3: a NOP policy with rd = x0: the single NOP word (ROM word 1) carrying the template's rd0
                         expWords = new long[] { w.romLo[1] & ~(3L << 46) | (long) rd0 << 46, w.romHi[1] }; expNext = 0;

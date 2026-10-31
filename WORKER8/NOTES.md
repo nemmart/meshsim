@@ -84,3 +84,17 @@ phase-3 tip, whose replayer tests don't compile). Merge `v1.2-meshsim` again onc
   then run_tests's full-mode extras (/tmp/extras.sh → /tmp/extras.txt). **Task 071 pushed:** per-function watches on
   both versions (BT 16K kv32/k128: BT's functions; uniform and trace100-30 at full size: the split's) to finish
   explaining SPLIT and the BT layers. The runner kit's image refreshed to HEAD (HASHES regenerated; Java unchanged).
+- **Step 7** (2026-10-31): task 070 (43 full-size P4 runs) all pass, every run on v1.1's path; task 071 (per-function
+  watches, both versions) 8 of 8 pass, the per-step differences explained (REPORT). plan_transfer/k_start step
+  pointers (XB back to v1.1's). **run_tests.sh's full-mode extras on this branch (after the merges), run locally:**
+
+  | step | result |
+  |---|---|
+  | rdport-full (ReadPortGatherTest -1 full) | 567 passed, 0 failed |
+  | accounting-full (AccountingTest -1 full) | 11 passed, 0 failed |
+  | agbench (AgBench) | exit 0 (measurement output; nothing to fail) |
+  | sweep-quick (Sweep quick) | exit 0 (measurement output) |
+  | ctrl-full (CtrlTest -1 full) | 6,793 passed, 0 failed |
+  | engine-full (EngineTest -1 full) | cut off at the turn's end: to the runner |
+  | skewtable (NetTest -1 skewtable 40) | not started: to the runner |
+  | sort-bt-kv32, sort-bt-k128 | pass (results/sort-bt-*.log) |

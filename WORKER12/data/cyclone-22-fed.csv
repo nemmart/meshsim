@@ -1,0 +1,15 @@
+template,key,label,executions,windows_with,mean_per_window,max_per_window,max_window,traced_rows,untraced_rows
+4,0400000b,BLAKE2_INLINE,59,10,1.405,42,12,62953,0
+5,0600000b,BLAKE3_INLINE,4,1,0.095,4,11,2592,0
+6,0600100b,BLAKE3_KEYED64_INLINE,286,9,6.810,38,40,184756,0
+18,300020f3,"CSRRS mstatus (rd,rs1)=(1,0)",51,14,1.214,12,32,51,0
+19,30009073,"CSRRW mstatus (rd,rs1)=(0,1)",51,14,1.214,12,32,51,0
+29,30509073,"CSRRW mtvec (rd,rs1)=(0,1)",1,1,0.024,1,0,1,0
+35,34001073,"CSRRW mscratch (rd,rs1)=(0,0)",51,14,1.214,12,32,51,0
+38,340020f3,"CSRRS mscratch (rd,rs1)=(1,0)",102,14,2.429,24,32,102,0
+39,34009073,"CSRRW mscratch (rd,rs1)=(0,1)",0,0,0.000,0,,0,0
+40,340090f3,"CSRRW mscratch (rd,rs1)=(1,1)",51,14,1.214,12,32,153,0
+48,341020f3,"CSRRS mepc (rd,rs1)=(1,0)",51,14,1.214,12,32,51,0
+49,34109073,"CSRRW mepc (rd,rs1)=(0,1)",51,14,1.214,12,32,51,0
+58,342020f3,"CSRRS mcause (rd,rs1)=(1,0)",51,14,1.214,12,32,51,0
+68,343020f3,"CSRRS mtval (rd,rs1)=(1,0)",51,14,1.214,12,32,51,0

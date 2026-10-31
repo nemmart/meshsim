@@ -149,19 +149,29 @@ file for what changed between them.
 - `v1.2-meshsim` and `v1.2-sort` merged into `main`, a full `run_tests.sh` and the full-size sort on the runner, then the
   freeze.
 
-**v1.25, frozen as `v1.25/`** (jolt-cpp `821e1bd`):
-- the universal replayer and Tracer tables (WORKER9 part 2, `wip/tables/`);
-- the delivery writer (WORKER9 part 3, jolt-asic-planning PR #2);
-- the spec: 4.19 updated (the six new opcodes and the changed ones, `offset_imm`, `sign_imm`, PEXT for any mask, the
-  decode classes, universal tables), with the parameters and open items;
-- meshsim's replayer model updated to match and running the universal tables;
-- acceptance (section 2): every window of EVM Zone and Cyclone at 2²⁹, matched row for row against jolt-cpp, on the runner;
-- the sort re-run unchanged (it doesn't use the replayer);
-- **`CHANGES-v1.25.md`**: the delta from v1.2, section by section, each item citing its decision.
+**v1.25, frozen as `v1.25/`** (jolt-cpp `821e1bd`): **the spec, the simulator and the software** (owner, 2026-11-01).
+- **The spec:** 4.19 updated (the six new opcodes and the changed ones, `offset_imm`, `sign_imm`, PEXT for any mask, the decode
+  classes, universal tables, the normalized template-index key), the parameters, invariants and open items. *Done (WORKER10;
+  on `main`).*
+- **The tables:** the universal replayer and Tracer tables (WORKER9 part 2, `wip/tables/`). *Done.*
+- **The simulator:** meshsim's replayer model updated to match and running the universal tables (WORKER11, `v1.25-meshsim`).
+- **The software:**
+  - the replayer's controller software, `replay_ctl.c`: the normalized lookup and the universal tables (WORKER11);
+  - the recipes: the replayer recipe (26) and its test-side `template_lookup` for the normalized key; the rest of the book is
+    unchanged (WORKER11's scope, since it owns the replayer's software);
+  - the sort: unchanged, re-run on v1.25 to confirm;
+  - the table builder and the delivery writer (WORKER9, jolt-asic-planning PR #2).
+- **Acceptance** (section 2): every window of EVM Zone and Cyclone at 2²⁹, matched row for row against jolt-cpp, on the runner
+  (WORKER9's deliveries, Quest 079-080; WORKER11's kit).
+- **`CHANGES-v1.25.md`**, the delta from v1.2 (done), and **a change guide from v1.1 to v1.25** for the RTL, which is upgraded from
+  v1.1 straight to v1.25 (the v1.2 waypoint stays frozen as `v1.2/`, useful in its own right): `CHANGES-v1.2.md` and
+  `CHANGES-v1.25.md` folded together by spec section, so each unit's changes are in one place (integrator, once the spec is final).
 
 ## Work list
 
 | # | task | from | status |
 |---|---|---|---|
 | W1 | **Bring the replayer and the Tracer's tables up to date with jolt-cpp's latest** (1), and pass the acceptance runs (2) | v1.3 log, section 9 and its former W1 | the tables (WORKER9 part 2) and the delivery writer (part 3) under way; the spec and meshsim's replayer after v1.2 is frozen |
-| W2 | **`CHANGES-v1.25.md`**: the delta from v1.2 | owner | after the spec |
+| W2 | **`CHANGES-v1.25.md`**: the delta from v1.2 | owner | done (WORKER10) |
+| W3 | **The change guide from v1.1 to v1.25**, for the RTL | owner | integrator, after the spec is final |
+| W4 | **The replayer recipe** (26) and its `template_lookup` for the normalized key | owner | WORKER11 |

@@ -3,3 +3,7 @@
 wip/meshsim/meshsim.jar
 # PNGs are renderings of the SVG masters; regenerate with make_docs.sh
 wip/**/png/
+
+# Python bytecode caches
+__pycache__/
+*.pyc

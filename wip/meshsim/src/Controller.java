@@ -38,6 +38,7 @@ final class Controller implements Component {
     long mcycle;
     boolean inHandler, parked;                // a trap was taken (terminal); the handler reached its park loop
     long traps, trapAt = -1; int trapCause = -1, trapPc;
+    long firstImageAt = -1;                   // the first fetch from program memory since the reset: the image running
     /** The boot ROM (6.2), shared by every unit: words from 0x02000000, from sw/bootrom.hex (sw/build.sh assembles it). */
     static int[] bootRom = loadBootRom();
     static int[] loadBootRom() {
@@ -107,14 +108,14 @@ final class Controller implements Component {
         java.util.Arrays.fill(x, 0);
         pc = Registers.BOOTROM_BASE; halt = RUN; inWfi = false; stall = 0; pendingT = Long.MIN_VALUE;
         mstatus = mie = mtvec = mscratch = mepc = mcause = mtval = 0; mcycle = 0;
-        inHandler = false; parked = false; trapCause = -1; trapAt = -1;
+        inHandler = false; parked = false; trapCause = -1; trapAt = -1; firstImageAt = -1;
     }
     boolean interruptPending(long t) { return (mstatus & MSTATUS_MIE) != 0 && (mie & MEIE) != 0 && ctl.errorsAt(t) != 0; }
 
     private void step(long t) {
         int ipc = pc;
         int ins;
-        if ((ipc & 3) == 0 && LinkWord.region(ipc) == LinkWord.R_PMEM) ins = cm.imem.read32(ControllerMemories.PORT_A, t, memWord(t, ipc));
+        if ((ipc & 3) == 0 && LinkWord.region(ipc) == LinkWord.R_PMEM) { ins = cm.imem.read32(ControllerMemories.PORT_A, t, memWord(t, ipc)); if (firstImageAt < 0) firstImageAt = t; }
         else if ((ipc & 3) == 0 && LinkWord.region(ipc) == LinkWord.R_BOOTROM && LinkWord.offset(ipc) >>> 2 < bootRom.length) ins = bootRom[LinkWord.offset(ipc) >>> 2];
         else { stopLoudly(t, HALT_FETCH, ipc, 0, "fetch at 0x" + Integer.toHexString(ipc)); return; }
         execute(t, ins, ipc);

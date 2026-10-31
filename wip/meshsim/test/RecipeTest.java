@@ -630,6 +630,19 @@ public final class RecipeTest {
         }
         T.eq(0, bad, "the 16 staged rows are in every tile's big SRAM (counted, broadcast)");
         T.eq(64, irq, "boot part 2 set mtvec to the image's handler and enabled the hard interrupt on every tile");
+        long running = 0; for (Tile p : m.c.tiles) running = Math.max(running, p.core.firstImageAt);
+        meas("boot", "reset release -> all 64 tiles running their image (overlays " + (im.code.length + im.data.length + 3) / 4 + " packets, broadcast)", running);
+        // the handler (recipe 24): an error on tile 9 with the hard interrupt enabled -> its 24 reports in C&C 1's queue
+        m.c.cfg.checkErrors = false;
+        m.c.cc.drainReports = true;
+        m.c.tiles[9].ctl.conditions |= 1 << Conditions.DRIFT;
+        Tile t9 = m.c.tiles[9];
+        T.check(m.run(() -> m.c.cc.reportsOf(9).size() >= 24, 40000), "tile 9's handler sent its 24 reports to C&C 1");
+        T.check(t9.core.trapCause == Controller.CAUSE_EXTERNAL && t9.core.mtvec == im.sym("trap_handler"), "through the image's handler (the hard interrupt)");
+        meas("handler", "trap -> the last of 24 reports in C&C 1's receive queue (tile 9)", m.c.cc.reportsOf(9).get(23)[0] - t9.core.trapAt);
+        m.c.cfg.checkErrors = true; m.c.violations = 0; m.c.violationMessages.clear();
+        m.c.cc.reset(false).command(LinkWord.BROADCAST, Registers.CMD_JUMP << 24, im.sym("_start")).runWhenReady();
+        T.check(m.run(() -> m.c.resets == 1 && idle(m), 40000), "a reset and the boot again");
         finish(m, "boot", 20000);
         noViolations(m.c, "boot");
         meas("boot", "CMD_STAGE with 16 broadcast rows: GO -> all READY", goToReady(m, 0));

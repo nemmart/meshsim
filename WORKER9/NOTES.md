@@ -84,3 +84,19 @@ To do: a mechanical check (dump every opcode's expansion at both commits and dif
 - Prompt now has part 3 (delivery writer; a rebuild). Owner: note `trace_owner.hpp`'s signedness change for the
   table builder.
 - PLAN-PART2.md: proposed plan, awaiting go-ahead.
+
+## Turn 4 (2026-11-01): part 2 started
+
+- Owner approved part 2 (DECISIONS-v1.25 s4, v1.3 s10): `offset_imm` [63]; `sign_imm` as a bit (position mine);
+  Tracer computes all advice (division family + all seven secp256k1 inlines' VirtualAdvice, incl. the modular inverse
+  as loop body + repeat count, Fermat p-2); emit the replayer<->Tracer template-number mapping; Q3 yes; Q4 fine.
+- The expansion word has only one spare bit ([63]). Proposal: `sign_imm` at [62], `advice_reg` narrowed to [61:56] =
+  register - 146 (bank-1 registers 146-209). To record in QUESTIONS.
+- `tracer/tables/build_tables.cpp` (pushed): derives templates by expanding sampled words through `expand_virt_seq`
+  and mapping slots to codes; a resolver mirroring Replayer.java checks them. **Universal check: every decode index,
+  85,363 random words (rd/rs = x0 edge cases included), 0 failures.** ROM if every ROM-able template were resident:
+  379 of 512 words (89 distinct templates over 303 decode entries); 105 per-word controller templates; 87 row opcodes.
+- Found and fixed in my code: S-format immediate zero-extension (u32 promotion); CSR templates are per word (their
+  expansion depends on rs1 = x0), so controller-fed templates are derived from the exact word.
+- Open: seq_remaining is 12 bits, but the Tracer's inverse expansion is 53k-110k words and WORKER7 Q4 counts untraced
+  words in seq_remaining. Needs a ruling (to QUESTIONS).

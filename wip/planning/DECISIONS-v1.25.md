@@ -162,7 +162,10 @@ file for what changed between them.
   - the sort: unchanged, re-run on v1.25 to confirm;
   - the table builder and the delivery writer (WORKER9, jolt-asic-planning PR #2).
 - **Acceptance** (section 2): every window of EVM Zone and Cyclone at 2²⁹, matched row for row against jolt-cpp, on the runner
-  (WORKER9's deliveries, Quest 079-080; WORKER11's kit).
+  (WORKER9's deliveries, Quest 079-080; WORKER11's kit). ***Passed* (2026-11-01, Quest 083 and 084):** for each program all
+  8,192 windows (536,870,912 rows) matched in Stage A (the model) and Stage B (the controller on one tile), every stream consumed
+  exactly, every end state matched, no corrupt files, no violations; the full chip agreed with Stage B cycle for cycle on every
+  64th window. Stage B ran at 3.21 cycles per row on EVM Zone (3.00-3.59 per window).
 - **`CHANGES-v1.25.md`**, the delta from v1.2 (done), and **a change guide from v1.1 to v1.25** for the RTL, which is upgraded from
   v1.1 straight to v1.25 (the v1.2 waypoint stays frozen as `v1.2/`, useful in its own right): `CHANGES-v1.2.md` and
   `CHANGES-v1.25.md` folded together by spec section, so each unit's changes are in one place (integrator, once the spec is final).
@@ -171,7 +174,7 @@ file for what changed between them.
 
 | # | task | from | status |
 |---|---|---|---|
-| W1 | **Bring the replayer and the Tracer's tables up to date with jolt-cpp's latest** (1), and pass the acceptance runs (2) | v1.3 log, section 9 and its former W1 | the tables (WORKER9 part 2) and the delivery writer (part 3) under way; the spec and meshsim's replayer after v1.2 is frozen |
+| W1 | **Bring the replayer and the Tracer's tables up to date with jolt-cpp's latest** (1), and pass the acceptance runs (2) | v1.3 log, section 9 and its former W1 | **done:** the tables and the delivery writer (WORKER9), the spec (WORKER10), the replayer and the kit (WORKER11), merged into `main`; acceptance passed (Quest 083, 084) |
 | W2 | **`CHANGES-v1.25.md`**: the delta from v1.2 | owner | done (WORKER10) |
 | W3 | **The change guide to v1.25, from v1.1 and from v1.2** (`wip/spec/CHANGES-to-v1.25.md`), for the RTL | owner | WORKER13 |
 | W4 | **The replayer recipe** (26) and its `template_lookup` for the normalized key | owner | done (WORKER11, on `v1.25-meshsim`): keyed lookup, the book regenerated, the key cross-checked against the Java model on 20,000 words |

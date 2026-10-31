@@ -1,7 +1,7 @@
 # WORKER8 report: the sort on v1.2
 
 Branch `v1.2-sort`, from `v1.2-meshsim` at `e7a2106` (phase 2's last commit; owner's choice). Merged since: `v1.2-meshsim`
-(WORKER4's phase 3) and `main` (DECISIONS-v1.2 47).
+(WORKER4's phases 3 and 4: the boot ROM) and `main` (DECISIONS-v1.2 47 and 48).
 
 **Status: done.** The sort builds and passes every suite `run_tests.sh` gives it on the v1.2 simulator (P1; the ten
 built-in sets in fixed and shuffled child order; forced BT at 16,384 in both formats), with every set on v1.1's path;
@@ -38,18 +38,18 @@ between the two units is needed; every other polled-or-counted dependency is wit
 | `exchange.c` | `xchg`: mode 0 to `REPLY_WORD(me)`, `ROUTER_ADDR` once, no-increment, counter 3; `send_vector`: mode 0 by byte address on counter 2; RED's buffers `aligned(8)` (were in the shared region) |
 | `transfer.c`, `config.c` | `STREAM`/`GROUP`/`PTR` through `tables->`; *d* in `STREAM_COUNT`; every stream counted on counter 1; K and V end with `wait_run`; `plan_transfer`'s and `k_start`'s table loops step explicit pointers, and the direct path's streams leave `STREAM_DEST` unwritten (modes 1-5 ignore it) |
 | `skew.c`, `bt_plan.c`, `bt_run.c` | counters by register; waits by events; tokens, credits and descriptors as mode-0 writes (one `ROUTER_ADDR` store per token and per credit, once per descriptor layer); `bt_phase`'s step-2 configure waits for DMA run done alone before rewriting bank 0's streams (QUESTIONS Q1) |
-| `sort.ld`, `build.sh` | one image: program memory 0x01000000-0x01007EFF (below the interim loader), data from 0x10; `rv32i_zicsr_zmmul`, `gnu11`; `loader.S` deleted |
+| `sort.ld`, `build.sh` | one image: program memory 0x01000000-0x01007FFF, entered from the boot ROM's jump; data from 0x10; `rv32i_zicsr_zmmul`, `gnu11`; `loader.S` deleted |
 | `sort/skew/planner/skew.h`, `skew_th.c`, `skew_bt.c` | the machine section on mesh.h 1.2; **fixed: hop 1's streams hard-coded mode 2 (v1.1's write by source; v1.2's bucket write)**, now `SK_MODE_SRC` per build (the host shadow keeps 2) |
 | `patches/planner.patch` | regenerated: `EMPTY_HI` uses `SK_MODE_SRC` |
 | `sort/split/split.c`, `split_regs.h` | `split_regs.h` now includes the generated mesh.h (W3-REVIEW-2's advice); replies as mode 0 with no-increment on counter 3, read-port results on counter 2, `wait_for_command()` as the default barrier |
 | `patches/split-barrier.patch` | regenerated as a unified diff against the ported split.c |
 | `meshsim/sw/ext/` | copies of the above (check_layout.sh) and `sort/build.sh` |
-| `test/SortTest.java` | boot as `Mach.boot` (interim loader, no staging); exit through `SIM_EXIT` with 0; `ERRORS` = 0; `PTR[64]` checks retired; counters 1-3 in the state dump |
-| `test/Inputs.java` | the image is three files; the interim loader hashed as `image/loader.bin` |
+| `test/SortTest.java` | boot as `Mach.boot` (the boot ROM since WORKER4's phase 4: code and data broadcast, `CMD_JUMP`, GO; no staging); exit through `SIM_EXIT` with 0; `ERRORS` = 0; `PTR[64]` checks retired; counters 1-3 in the state dump |
+| `test/Inputs.java` | the image is three files; the boot ROM's image hashed as `sw/bootrom.hex` |
 | `run_tests.sh` | the sort's seven steps back |
-| `test/SortTest.java` (later) | `-Dsort.prof=lo-hi` (tile 0's cycles in a pc range, debug); the interim loader read from the image directory when it has one (a kit's `image/`) |
-| `WORKER8/runner/` | the v1.2 runner kit (v1.1's job 1 with the v1.2 jar, image and HASHES); Quest tasks 070 and 071 carry it |
-| `WORKER8/results/` | the runner's outputs: 070 (the 43 P4 runs, `COMPARE-065.md`), 071 (the watches, both versions) |
+| `test/SortTest.java` (later) | `-Dsort.prof=lo-hi` (tile 0's cycles in a pc range, debug) |
+| `WORKER8/runner/` | the v1.2 runner kit as tasks 070 and 071 ran it (before the boot ROM: interim loader); a later use needs the jar rebuilt and `sw/bootrom.hex` added (README there) |
+| `WORKER8/results/` | the runner's outputs: 070 (the 43 P4 runs, `COMPARE-065.md`), 071 (the watches, both versions), 072 (ctrl-full, engine-full, skewtable) |
 
 **Stale, left unported (owner, 2026-10-31):** `sw/ext/split-bisect/splitdrv.c` and `test/SplitRun.java`. They were
 already stale at v1.1 (`splitdrv.c` uses v1.0's register names) and aren't in `run_tests.sh`.

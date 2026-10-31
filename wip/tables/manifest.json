@@ -1,51 +1,35 @@
 {
  "jolt_cpp": "821e1bd2f433d6ca62300afbbbba031db50e7dc9",
  "builder": "jolt-asic-planning tracer-standalone-main, tracer/tables/build_tables.cpp",
- "variant": "replayer",
+ "scope": "universal: every RV64IMAC instruction and every jolt-cpp inline",
  "files": {
   "opcode_table.txt": {
    "bytes": 2772,
    "sha256": "09d5f9cdcc3c85b8f0c6c7205e963d8b775a6f2c29ce19ab3724a21bd2e38003"
   },
-  "evm-zone-4e3451c1d8c5/replayer/decode_table.bin": {
+  "replayer/check.txt": {
+   "bytes": 4816,
+   "sha256": "822ce77ab47e7baac935a65aab4b3b473fa48c5f05d4b1599a48e3bc43d8c6bc"
+  },
+  "replayer/decode_table.bin": {
    "bytes": 4096,
-   "sha256": "a5bae768055746235f7e772f3f9a6234cdadfd8b311547b03e29b676a6ff1498"
+   "sha256": "7dda982648bd35e0087a78f8ca1554173c6656faf019cc0d0b300c5731bc2fa4"
   },
-  "evm-zone-4e3451c1d8c5/replayer/listing.txt": {
-   "bytes": 15208,
-   "sha256": "d9bc6bd2791de950cd65fb4ec49141446c662a8c3ff56841d4c47f6d45067ee2"
+  "replayer/listing.txt": {
+   "bytes": 25148,
+   "sha256": "fcdbcb2ca1cffb5313a02daccf3966e7b230d84f61dbec7f0d667b4b73ae6ea2"
   },
-  "evm-zone-4e3451c1d8c5/replayer/rom.bin": {
+  "replayer/rom.bin": {
    "bytes": 8192,
-   "sha256": "4442f0f2f06dbe92a44a7c9c47afa61cdb1e063c4c1726fcfb48ddba064cb5b8"
+   "sha256": "166221c5be704d665dc475eb0b2043b3ed5c7c96128bb51e44b562ff93e64602"
   },
-  "evm-zone-4e3451c1d8c5/replayer/template_index.bin": {
-   "bytes": 560,
-   "sha256": "6fa0021b86e7d4e4d1cc34151c873f3980e973273d597bd1379693bff809431a"
+  "replayer/template_index.bin": {
+   "bytes": 1248,
+   "sha256": "9f05d024a707195ab949be721650a6f277edad2f926a04de841a00bf6b3a0b1c"
   },
-  "evm-zone-4e3451c1d8c5/replayer/templates.bin": {
-   "bytes": 86512,
-   "sha256": "aa25443ad2bcca14d26da00f60c767a5bedfa7961f24bb24d86fc94b6e485e5a"
-  },
-  "cyclone/replayer/decode_table.bin": {
-   "bytes": 4096,
-   "sha256": "6eca8973a346c54a8dc0cbc95ace0d2015084f1112838de32456b94b3e476cfc"
-  },
-  "cyclone/replayer/listing.txt": {
-   "bytes": 14632,
-   "sha256": "e2f8491f85989f1bf6c2f5087d5e14d7467994431586113f4b6af266c5921fe6"
-  },
-  "cyclone/replayer/rom.bin": {
-   "bytes": 8192,
-   "sha256": "945bba7f6aced9b4f7c3584dd8fee7781f3da98b0d8f8b88e3c9e69dc5ad0031"
-  },
-  "cyclone/replayer/template_index.bin": {
-   "bytes": 368,
-   "sha256": "98d45f3c728b5d43d6b59cc9f9535b7f3ae5ea5b65ce8bf5fa8e151c0563616d"
-  },
-  "cyclone/replayer/templates.bin": {
-   "bytes": 65632,
-   "sha256": "2fefa78de64678c4c24f894866c185a0b21e385cc6861251c25f7ef83b6ffe2a"
+  "replayer/templates.bin": {
+   "bytes": 221280,
+   "sha256": "0ea000b1bbf9184d0ff64f62514da93bcf3894b15af1a9914565ca4803d82527"
   }
  }
 }

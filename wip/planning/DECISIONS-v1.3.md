@@ -195,6 +195,33 @@ Decided (O). From WORKER7's F1.
   replayer's test vectors; and the same for the Tracer's tables (7, 8). WORKER7's advice work is unaffected (the
   division-family advice code is byte-identical).
 
+## 10. The Tracer computes all its advice; C&C 3 generates long expansions (2026-11-01)
+
+Decided (O). Answers T5; makes Q10 moot.
+
+- **The Tracer computes every advice value itself, through expansions** (untraced rows, 7-8). **C&C 3 never computes
+  advice**; it only feeds template words. "Every advice" in jolt-cpp is the division family (six advice opcodes,
+  WORKER7's templates) and `VirtualAdvice` in the seven secp256k1 inlines: the field and scalar multiply and square
+  (200-381 untraced rows, generated and checked by WORKER7), the two division inlines and GLV. Upstream Rust Jolt's
+  advice tape doesn't apply (jolt-cpp doesn't implement it; WORKER7's F2).
+- **Q10 is moot:** C&C 3 never needs the inline's operands, so it never reads the Tracer's dirty cache lines.
+- **Long expansions are generated, not stored.** The division inlines' advice needs a modular inverse, about 53,000-
+  110,000 untraced rows as one straight-line template (about 1.7 MB of `templates.bin`, more than C&C 3 can hold). But
+  **C&C 3 produces the template words, so it can loop**: a Fermat inverse repeats one short block (square, and multiply
+  where the exponent's bit is 1), so C&C 3 holds the block once, a few hundred words, and emits it the required number
+  of times.
+  - **The sequence must not depend on the data**, since C&C 3 never sees the operands. Fermat's method qualifies: the
+    exponent is the fixed p − 2, so the order of rows is the same every time. A data-dependent inverse (binary GCD)
+    would not.
+  - **The feed is paced by the credits** (owner): a credit is permission to send up to half a queue, filled in as many
+    pieces as C&C 3 likes (v1.2 section 10), so C&C 3 generates the words on the fly and sends them in batches as credits
+    arrive. No buffer holds the whole expansion, and no streaming rate is required: if C&C 3 falls behind, the Tracer
+    waits, which is acceptable at this rarity.
+  - **The expansion's total length is known up front** and sent in the first word, as for any controller-fed template,
+    since the Tracer counts the words remaining.
+- **For the table builder:** a long data-independent expansion is emitted as **a loop body plus a repeat count** (and
+  any prologue and epilogue), not as its full word sequence.
+
 ---
 
 ## v1.3 work list
@@ -236,4 +263,4 @@ Options recorded for later, each with the evidence that would justify it.
 | T2 | The RV64 initial state: what it contains and where it comes from | 1 | open |
 | T3 | The page table: its size, format and how C&C 3 maintains it | 1 | open |
 | T6 | `VirtualPext`/`VirtualPextSigned` in hardware | 9 | **answered: section 9** (any mask must work; the method is the implementation's) |
-| T5 | The inlines' advice (`VirtualAdvice`): untraced rows, or C&C 3's software when it feeds their templates | 8 | open |
+| T5 | The inlines' advice | 8 | **answered: section 10** (the Tracer computes all advice through expansions; C&C 3 generates long ones by looping) |

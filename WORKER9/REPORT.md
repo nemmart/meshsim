@@ -141,27 +141,59 @@ Expansion word (DECISIONS-v1.25 s4-s5): `offset_imm` [63], `sign_imm` [62], `adv
 
 | | |
 |---|---|
-| ROM | **379 of 512 words**, every RV64IMAC template including **all atomics (188 words)**; v1.1 ~508 with atomics partly controller-fed |
-| decode table | 303 ROM entries, 20 controller entries, 1,725 invalid (class 3) |
-| controller-fed | 78 template numbers (15 inlines, 63 system keys: ECALL, EBREAK, MRET, CSRRW/CSRRS for the six supported CSRs by register pattern), 13,830 words |
+| ROM | **388 of 512 words**: every RV64IMAC template, **all atomics** (188 words), ECALL, EBREAK, MRET; v1.1 ~508 with atomics partly controller-fed |
+| decode table | 306 ROM entries, 17 controller entries (15 inlines; CSRRW, CSRRS), 1,725 invalid (class 3) |
+| controller-fed | 75 template numbers: 15 inlines, 60 CSR keys; 13,821 words |
 | opcode table | 171 opcodes at 821e1bd, 88 executed row opcodes |
 
-**New: the template-index key.** Universal tables can't list every instruction word, so an entry's key is the word with
-register fields cleared (inlines: their templates resolve any registers, x0 and aliasing included, through codes
-129-131) or renamed by first appearance (system: jolt-cpp's CSR expansions depend on rd = x0, rs1 = x0 and rd = rs1).
-The controller normalizes the presented word the same way before the lookup. This changes the Stage B controller's
-lookup and `REPLAY-INPUT-REQUIREMENTS.md`'s index description.
+### The CSR instructions (for the owner)
+
+The goal is every expansion except the inlines and the advice generators in the ROM. ECALL, EBREAK and MRET are exact
+words with their own decode entries and are now in the ROM (9 words). **The CSR instructions need 102 words (60
+templates) and 124 words are free, so they fit in size, but the decode index can't select them**: it sees CSRRW and
+CSRRS as one entry each ({10, 0000, funct3}), while jolt-cpp's expansion depends on
+- the **CSR number** (bits [31:20]): each CSR is a different virtual register (mstatus v39, mtvec v34, mscratch v35,
+  mepc v36, mcause v37, mtval v38), named literally in the rows; no operand code maps a CSR number to a register;
+- the **register pattern**: rd = x0, rs1 = x0, rd = rs1 or none, which changes the row count (1-3 rows).
+
+Options: (a) keep them controller-fed (today; 60 keys); (b) give the SYSTEM group its own index layout under
+index[9:8] = 10: {CSRRS?, a 3-bit CSR id from a small table loaded with the decode table (jolt-cpp's six CSRs; others
+invalid), a 3-bit register pattern computed by the decoder} plus the ECALL/EBREAK/MRET selectors, 8 bits in all, and
+the 60 templates in the ROM (102 words, leaving 22 free); (c) a CSR operand code plus pattern-dependent row skipping in
+the replayer: new datapath, not recommended. The owner decides.
+
+### The template-index key (a format change)
+
+Universal tables can't list every instruction word, so the index's key is no longer the word itself. The 16-byte
+entry keeps its layout (bytes 0-3 the key, 4-7 the word offset into `templates.bin`, 8-11 the length, 12 `rd0`,
+13 class, 14-15 spare); entries are sorted by key, ascending, and an entry's template number is its position. To serve
+a presented code-stream word *w*, the controller computes **key(w)** and looks it up. key(w) keeps every bit of *w*
+except the register fields:
+- **class 1, inline** (*w*[6:0] = 0001011): rd [11:7], rs1 [19:15], rs2 [24:20] **cleared**; one entry per inline.
+  The template's codes 129-131 resolve any registers correctly, x0 and aliasing included (checked).
+- **class 2, CSRRW/CSRRS** (*w*[6:0] = 1110011, funct3 1 or 2): rd and rs1 **renamed by first appearance**: x0 stays 0,
+  a non-zero rd becomes 1; rs1 becomes 0 if x0, 1 if it equals a non-zero rd or if rd is x0, else 2; the CSR field is
+  kept. Five patterns per CSR and instruction: (rd, rs1) = (0,0), (0,1), (1,0), (1,1), (1,2). Entries exist for the six
+  CSRs jolt-cpp supports; any other CSR has no entry, an error, as in jolt-cpp.
+- Operand codes 129-131 still resolve against the presented word, not the key.
+
+This replaces "one entry per distinct instruction word" in `REPLAY-INPUT-REQUIREMENTS.md` section 2 and changes the
+Stage B controller's lookup (normalize, then search).
 
 ## Checks
 
-- **Random**: every decode index and every key, random words with x0 and aliasing cases: **117,843 words over 107
+- **Random**: every decode index and every key, random words with x0 and aliasing cases: **117,676 words over 108
   source opcodes, 0 failures** (`wip/tables/replayer/check.txt`).
 - **Real programs**: every instruction of EVM Zone `4e3451c1d8c5` (616,231) and Cyclone (545,760), resolved from the
   universal tables and compared with jolt-cpp's own bytecode rows: **0 failures**.
-- **Mutants**: 500 single-field changes in ROM and fed words (opcode, operand codes, `seq_remaining`, flags, `rd0`,
-  format, `sign_imm`, `offset_imm`, const, `hold`), excluding the spec's don't-cares (e.g. `rd0` beyond a template's
-  first word, `offset_imm` outside `ShiftData`): **497 caught**; the 3 not caught are in rarely-sampled decode indices
-  (`VirtualRev8W` and two others) where the mutant run drew too few valid words.
+- **Mutants**: 500 single-field changes in ROM and fed words (opcode, operand codes, `seq_remaining`, each flag, `rd0`,
+  format, `sign_imm`, `offset_imm`, const, `hold`): **all 500 caught**. Changes the replayer can't see by the spec are
+  not mutants and are skipped: `rd0` beyond a template's first word, or 0 vs 2 in a template with no temporary or
+  source rd; `offset_imm` outside `ShiftData` or under format R; `virt` in a multi-row template; format or const where
+  no code reads them; the immediate-zero codes (145, 132 under format R, 128 with const 0) among themselves; temporary
+  *k* vs literal register 40 + *k* where the template's `rd0` isn't remap. The first run caught 497: the 3 misses were
+  in rarely drawn decode indices, so the mutant check now uses every derivation sample plus its x0 variants plus up to
+  60 fresh valid words per index.
 - **Opcode appendix (Q3)**: meshsim's `tools/replayer-opcodes` regenerated at 821e1bd (`WORKER9/replayer-opcodes-821e1bd/`,
   with the differences for the spec editor): new vectors for `VirtualLoad*`/`VirtualStore*`, `ShiftData*` with offsets,
   and non-contiguous `PEXT` masks (signed: extends from the last bit placed).

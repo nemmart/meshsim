@@ -17,6 +17,16 @@ final class Config {
     int readPortDepth = 64;              // the controller read port's request queue (4.3: at least 64, guaranteed)
     int gatherDepth = 16;                // GATHER request queue
     int cmLatency = 2;                   // director to port B (built, M1 of v3.11)
+    boolean logTrace = Boolean.getBoolean("meshsim.trace");   // log every TRACE store (8.15)
+    /** Core cycles per reference-oscillator cycle (4.20: f_ref is Open; 1 GHz / 25 MHz = 40). */
+    int refCycle = 40;
+    int rpLatency = 2;                   // director to a peripheral's write landing (4.17.5: required of every peripheral; Proposed value, item 48)
+    int K = Integer.getInteger("meshsim.K", 8);
+    /** meshsim's K reference (4.7, D49; W4-08): max(2 L + 4, L + 4, cm_latency, rp_latency), over meshsim's measured
+     *  write path (S1Bench). K in the hardware is implementation-defined: this is meshsim's formula, not a promise. */
+    int kMin() { int L = tsEngineLatency; return Math.max(Math.max(2 * L + 4, L + 4), Math.max(cmLatency, rpLatency)); }
+    /** Set ts_engine_latency and raise K to its bound if the default falls below it (tests that sweep L). */
+    Config withTsLatency(int L) { tsEngineLatency = L; K = Math.max(K, kMin()); return this; }   // the write counters' delay line (4.7): at least kMin()
     // ---- big SRAM (spec 4.1) ----
     int memChunks = 1 << 20;             // 4 MB; any multiple of 256 KB (65,536 chunks) up to 8 MB (2^21); the last area may be partial (4.1)
     int areaQueueDepth = 8;              // per-area request queue (open in the spec; agreed default)
@@ -44,12 +54,10 @@ final class Config {
     int stageDelay = 32;                 // stage_delay: C&C's first staged packet no sooner than this after its GO store (Proposed)
     // ---- the request bus (spec 3.3, 4.18) ----
     int requestFifoDepth = 128;          // the request FIFO: 128 x 128 bits (4.18)
-    int receiveQueueDepth = 16;          // the receive queue in every tile, and each target's credits at the root (3.3)
+    int[] receiveQueueDepth = { 128, 256, 128 };   // the targets' receive queues in the tree, and their credits at the root (3.3)
     int reqHopLatency = 3;               // cycles a beat takes on each hop's pipelined wires (meshsim's choice: reqbus_latency is an estimate, 3.3)
-    /** Test only: target k's receiver is tile targetReceiver[k] (-1 or null: no receiver; the endpoint map is deferred, item 82). */
-    int[] targetReceiver;
     // ---- the peripheral slot (spec 4.17): the type on every tile (4.17.1: 1, the replayer, on tiles 0-63), or per tile ----
-    int periphType = 1;
+    int periphType = 4;                  // every mesh tile's peripheral 1: 4 the replayer (4.17.1, D46), 0 none
     int[] periphTypes;                   // per-tile override (null: periphType everywhere)
     int periphTypeOf(int tile) { return periphTypes != null ? periphTypes[tile] : periphType; }
     /** Tests only: a peripheral built by the test for a tile (null: the tile's type). */
@@ -72,6 +80,8 @@ final class Config {
     boolean checkDisjoint = true;        // invariant 2's buffer check (a program property: sweeps may turn it off for speed)
     long shuffleSeed = -1;               // >= 0: child order shuffled every cycle
     int maxViolationMessages = 50;
+    boolean measureS1 = true;           // item S1: every counted write's acceptance -> completion against K (invariant 24)
+    boolean checkErrors = true;          // invariant 15: a unit's ERRORS bit set is a violation (once per tile and bit, until the reset)
     boolean checkUnexpected = true;      // invariant 9 (a pure network test with no counters set turns it off)
     // ---- Conditions, the done gate, the error line, C&C's receive FIFO ----
     boolean doneGate = true;             // spec 4.12: from done until GO only GO wakes the core; done clears the latch. false: TEST ONLY,

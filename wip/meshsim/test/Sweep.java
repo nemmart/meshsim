@@ -13,6 +13,7 @@ import java.util.function.Consumer;
  * invariant violation. The disjoint-buffer check is off (a program property, independent of these parameters).
  * Usage: {@code java Sweep [quick|full]}; writes results/sweep-<mode>.csv.
  */
+// v1.2: phase 0 is the boot (the boot ROM's GO, 6.2); each workload's phases follow it
 public final class Sweep {
     record Point(String param, String value, Consumer<Config> set) {}
     record Res(long cycles, long violations, int link, int eject, int area, int weIn, String firstViolation) {}
@@ -32,14 +33,14 @@ public final class Sweep {
         pts.add(new Point("default", "", k -> {}));
         for (int v : new int[] { 1, 3, 4 }) pts.add(new Point("array read latency", "" + v, k -> k.sramReadLatency = v));
         for (int v : new int[] { 4, 16 }) pts.add(new Point("area queue depth", "" + v, k -> k.areaQueueDepth = v));
-        for (int v : new int[] { 2, 3, 4 }) pts.add(new Point("ts_engine_latency", "" + v, k -> k.tsEngineLatency = v));
+        for (int v : new int[] { 2, 3, 4 }) pts.add(new Point("ts_engine_latency", "" + v, k -> k.withTsLatency(v)));
         for (int v : new int[] { 4, 8 }) pts.add(new Point("ready_latency", "" + v, k -> k.readyLatency = v));
         for (int v : new int[] { 4, 8 }) pts.add(new Point("go/run latency", "" + v, k -> { k.goLatency = v; k.runLatency = v; }));
         for (int v : new int[] { 2, 4 }) pts.add(new Point("link latency", "" + v, k -> k.linkLatency = v));
         pts.add(new Point("start skew", "off", k -> k.skew = false));
         for (long s : new long[] { 2, 3, 4, 5, 6 }) pts.add(new Point("start skew", "seed " + s, k -> k.skewSeed = s));
         pts.add(new Point("cm_latency", "4", k -> k.cmLatency = 4));
-        pts.add(new Point("corner (all pessimistic)", "", k -> { k.sramReadLatency = 4; k.areaQueueDepth = 4; k.tsEngineLatency = 4; k.readyLatency = 8;
+        pts.add(new Point("corner (all pessimistic)", "", k -> { k.sramReadLatency = 4; k.areaQueueDepth = 4; k.withTsLatency(4); k.readyLatency = 8;
             k.goLatency = 8; k.runLatency = 8; k.linkLatency = 4; k.cmLatency = 4; }));
 
         StringBuilder sb = new StringBuilder("sensitivity sweep (" + (full ? "full" : "quick") + "), main-phase cycles GO -> all READY; delta vs default; peaks link/eject/area/weIn [meas: Sweep]\n");
@@ -90,7 +91,7 @@ public final class Sweep {
                 m.c.cc.command(LinkWord.BROADCAST, 1 << 24).go().command(LinkWord.BROADCAST, 2 << 24).go().command(LinkWord.BROADCAST, 3 << 24).go();
                 m.run(m::allStopped, 10_000_000);
                 m.c.phases.close();
-                PhaseLog.Phase p = m.c.phases.phases.size() > 1 ? m.c.phases.phases.get(1) : null;
+                PhaseLog.Phase p = m.c.phases.phases.size() > 2 ? m.c.phases.phases.get(2) : null;
                 Res r = result(m, p);
                 if (a.verify(m.c) != 0) return new Res(r.cycles, r.violations + 1, r.link, r.eject, r.area, r.weIn, "records did not all land");
                 return r;
@@ -114,7 +115,7 @@ public final class Sweep {
                 m.c.cc.command(LinkWord.BROADCAST, 1 << 24 | n).go().command(LinkWord.BROADCAST, 2 << 24).go();
                 m.run(m::allStopped, 10_000_000);
                 m.c.phases.close();
-                return result(m, m.c.phases.phases.isEmpty() ? null : m.c.phases.phases.get(0));
+                return result(m, m.c.phases.phases.size() > 1 ? m.c.phases.phases.get(1) : null);
             }
         };
     }
@@ -134,12 +135,10 @@ public final class Sweep {
                     for (int i = 0; i < 64; i++) p.sram.poke(0xF0002 + i, r.nextInt());
                 }
                 Mach.Image im = m.boot("search");
-                final int exitEbreak = im.sym("_start") + 0x30;
-                for (Tile p : m.c.tiles) p.core.debugHook = (c, t) -> c.pc != exitEbreak;
                 m.c.cc.command(LinkWord.BROADCAST, 1 << 24 | 1 << 8 | 63).go().command(LinkWord.BROADCAST, 2 << 24).go();
                 m.run(m::allStopped, 10_000_000);
                 m.c.phases.close();
-                return result(m, m.c.phases.phases.isEmpty() ? null : m.c.phases.phases.get(0));
+                return result(m, m.c.phases.phases.size() > 1 ? m.c.phases.phases.get(1) : null);
             }
         };
     }
@@ -154,7 +153,7 @@ public final class Sweep {
                 m.c.cc.command(LinkWord.BROADCAST, 1 << 24 | 1, 1).go().command(LinkWord.BROADCAST, 1 << 24 | 2, 2).go().command(LinkWord.BROADCAST, 4 << 24).go();
                 m.run(m::allStopped, 100_000);
                 m.c.phases.close();
-                return result(m, m.c.phases.phases.size() > 1 ? m.c.phases.phases.get(1) : null);
+                return result(m, m.c.phases.phases.size() > 2 ? m.c.phases.phases.get(2) : null);
             }
         };
     }

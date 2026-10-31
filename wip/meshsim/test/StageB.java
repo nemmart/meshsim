@@ -11,21 +11,25 @@ import java.util.Map;
  * Stage B: the replay controller (sw/replay/replay_ctl.c) on a meshsim tile, feeding the tile's replayer through the
  * peripheral slot, against a tracer delivery (replay-inputs/1). For each window: the Java-side loader writes the window
  * into tile 0's big SRAM as sw/replay/replay_layout.h lays it out; C&C boots replay_ctl on tile 0 (the other tiles run
- * only the loader, which ebreaks); the program loads the tables and region 0, runs the pass with the 4.19.9 service loop
- * and returns. The rows the replayer emits are compared byte for byte with rows.bin, as Stage A does
+ * only the loader, which exits); the program loads the tables and part 0, runs the pass with the 4.19.9 credit loop
+ * and returns through the exit word (v1.2). The rows the replayer emits are compared byte for byte with rows.bin, as Stage A does
  * (ReplayDelivery), and so are the streams' consumption and the end state.
  *
  * The figure that matters is cycles per row: the pass (the replayer's run to its end), against Stage A's ideal
  * controller (ReplayDriver: every line answered in the cycle it is seen, the port at one packet a cycle).
  *
  * Usage: java StageB <delivery dir> <variant: state | state-lru | state-pick> <program> [window ...]
- * (no windows: every delivered window of the program). Requires sw/replay/build (sw/replay/build.sh).
+ * (no windows: every delivered window of the program), or java StageB synthetic: Stage A's synthetic windows
+ * (ReplayerUnitTests: the program window in every compression and store-log combination, a controller-fed expansion,
+ * and its mid-sequence start), each run on the tile and compared row for row with Stage A's ideal controller. Requires
+ * sw/replay/build (sw/replay/build.sh).
  */
 public final class StageB {
     static final int HDR = 0x00000, TABLES = 0x00040, INDEX = 0x00C40, RECORD = 0x00E40, TEMPLATES = 0x01000,
             CODE = 0x08000, RLOG = 0x18000, WLOG = 0x38000;
 
     public static void main(String[] args) throws Exception {
+        if (args[0].equals("synthetic")) { synthetic(); return; }
         Path dir = Path.of(args[0]);
         String variant = args[1], prog = args[2];
         List<Integer> only = new ArrayList<>();
@@ -105,12 +109,11 @@ public final class StageB {
         for (int i = 0; i < 16; i++) p.sram.poke(HDR + i, h[i]);
 
         // ---- boot: the loader everywhere; replay_ctl and its boot marker on tile 0 only (the others' loaders ebreak)
-        int[] loader = Image.words(Path.of("sw/build/loader.bin"));
-        c.cc.loadWords(LinkWord.BROADCAST, Registers.LOADER_BASE, loader)
-            .loadWords(0, Registers.IMEM_BASE, im.code);
-        if (im.data.length > 0) c.cc.loadWords(0, Registers.DMEM_BASE, im.data);
+        c.cc1p.expect = 1;                                      // only tile 0 starts (6.2): the others wait in their ROMs
+        c.cc.loadWords(0, Registers.PMEM_BASE, im.code);
+        if (im.data.length > 0) c.cc.loadWords(0, im.sym.get("_data_start"), im.data);
         c.cc.command(0, Registers.CMD_JUMP << 24, im.sym.get("_start"))
-            .waitCycles(200).then((cnc, t) -> { cnc.storeRun(t, true); return true; });
+            .go();                                                   // the ROM jumps at the first GO after the command landed (6.2)
         // -Dstageb.profile: the controller's pc during the replayer's new-expansion stalls, by function
         final boolean prof = System.getProperty("stageb.profile") != null;
         final Map<Integer, Long> pcs = new HashMap<>(); final long[] last = { 0 };
@@ -121,14 +124,14 @@ public final class StageB {
         if (prof) {
             Map<String, Long> byFn = new java.util.TreeMap<>();
             for (var e : pcs.entrySet()) {
-                String fn = "WFI"; if (e.getKey() >= 0) { int best = -1; for (var sy : im.sym.entrySet()) if (sy.getValue() <= e.getKey() && sy.getValue() > best && sy.getValue() < 0x2000) { best = sy.getValue(); fn = sy.getKey(); } }
+                String fn = "WFI"; if (e.getKey() >= 0) { int best = -1; for (var sy : im.sym.entrySet()) if (sy.getValue() <= e.getKey() && sy.getValue() > best && LinkWord.region(sy.getValue()) == LinkWord.R_PMEM) { best = sy.getValue(); fn = sy.getKey(); } }
                 byFn.merge(fn, e.getValue(), Long::sum);
             }
             System.out.println("  new-expansion stall cycles by the controller's pc: " + byFn);
             pcs.entrySet().stream().sorted((x, y) -> Long.compare(y.getValue(), x.getValue())).limit(40)
                .forEach(e -> System.out.println(String.format("    pc 0x%x %d", e.getKey(), e.getValue())));
         }
-        ok = p.core.halt == Controller.HALT_EBREAK;
+        ok = p.core.halt == Controller.HALT_EXIT;
         int res = im.sym.get("rp_results");
         int status = p.core.peekLocal(res), passes = p.core.peekLocal(res + 4), cond = p.core.peekLocal(res + 8),
             newexp = p.core.peekLocal(res + 12), refills = p.core.peekLocal(res + 16), missing = p.core.peekLocal(res + 20),
@@ -157,7 +160,7 @@ public final class StageB {
         if (!r.violations.isEmpty() || !r.invalids.isEmpty() || !r.overruns.isEmpty() || !r.badWrites.isEmpty())
             detail.add("replayer: violations " + r.violations + ", invalid " + r.invalids + ", overruns " + r.overruns + ", bad writes " + r.badWrites);
         if (c.violations > 0) detail.add("meshsim: " + c.violationReport().replace("\n", "; "));
-        if (!ok) detail.add("tile 0 did not reach its ebreak: " + p.core.halt + " pc 0x" + Integer.toHexString(p.core.pc));
+        if (!ok) detail.add("tile 0 did not reach its exit: " + p.core.halt + " pc 0x" + Integer.toHexString(p.core.pc));
         if (status != 1) detail.add("rp_results: status " + status + " conditions 0x" + Integer.toHexString(cond) + " missing 0x" + Integer.toHexString(missing));
         boolean pass = detail.isEmpty();
         long cyc = r.passEndAt - r.passStartAt;
@@ -165,6 +168,96 @@ public final class StageB {
                 prog, index, variant, pass ? "OK  " : "FAIL", same, cyc, (double) cyc / Math.max(1, same), r.newExpansions, newexp, slow, refills,
                 java.util.Arrays.toString(r.stalls)));
         for (String d : detail) System.out.println("    " + d);
+        return pass;
+    }
+
+    // ================================================================ synthetic windows (no tracer delivery needed)
+    static byte[] bytes(long[] pairs) {
+        ByteBuffer b = ReplayDelivery.le(new byte[8 * pairs.length]);
+        for (int i = 0; i < pairs.length; i++) b.putLong(8 * i, pairs[i]);
+        return b.array();
+    }
+    static void synthetic() throws Exception {
+        Image im = new Image(Path.of("sw/replay/build"));
+        int failed = 0, n = 0;
+        for (int v = 0; v < 16; v++) {
+            ReplayWindow w = ReplayerUnitTests.programWindow((v & 1) != 0, (v & 2) != 0, (v & 4) != 0, (v & 8) != 0);
+            w.rows = 25; n++;
+            if (!runSynthetic(im, w, "program " + v)) failed++;
+        }
+        for (int mid = 0; mid < 2; mid++) {
+            int inline = ReplayerUnitTests.r(0, 2, 1, 0, 3, ReplayerUnitTests.CUSTOM0), len = 300;
+            ReplayWindow w = new ReplayWindow(); w.fixedRom(); w.decodeClass(inline, 1);
+            ReplayWindow.W[] words = new ReplayWindow.W[len];
+            for (int k = 0; k < len; k++) words[k] = ReplayWindow.W.op(ReplayerAlu.ADDI).rd(137 + (k % 8)).rs1(0).rs2(128).cnst(k + 1).fmt(0);
+            words[len - 1].reportC();
+            w.template(inline, words);
+            w.pc = 0x2000; w.instrIdx = 100; w.nextOffset = mid == 1 ? 250 : 0;
+            w.setCode(new int[] { inline, inline }, false); w.setLogs(List.of(), false, false);
+            w.rows = mid == 1 ? 50 + len : 2 * len; n++;
+            if (!runSynthetic(im, w, mid == 1 ? "controller-fed, mid-sequence" : "controller-fed")) failed++;
+        }
+        System.out.println("StageB synthetic: " + n + " windows, " + failed + " failed");
+        System.exit(failed == 0 ? 0 : 1);
+    }
+
+    /** One synthetic window: Stage A's rows (ReplayDriver), then the tile's (replay_ctl.c) from the same window. */
+    static boolean runSynthetic(Image im, ReplayWindow w, String name) throws IOException {
+        ReplayDriver d = new ReplayDriver(w, new Replayer(0, w.rows)); d.load(); List<long[]> ref = d.pass(400_000);
+        Config k = Config.machine(); k.periphType = 0;
+        Replayer[] rp = new Replayer[1];
+        k.testPeripheral = tile -> tile == 0 ? (rp[0] = new Replayer(0, w.rows)) : null;
+        Chip c = new Chip(k);
+        Tile p = c.tiles[0];
+        Replayer r = rp[0];
+        List<long[]> got = new ArrayList<>();
+        r.rowListener = got::add;
+        // the tables: the decode table (256 x 128 bits, entry e at word e >> 3, bits 16 (e & 7)), then the ROM (512 words)
+        long[] tab = new long[2 * (256 + 512)];
+        for (int e = 0; e < 2048; e++) tab[2 * (e >> 3) + ((e & 7) >> 2)] |= (w.table[e] & 0xFFFFL) << (16 * (e & 3));
+        for (int j = 0; j < 512; j++) { tab[2 * (256 + j)] = w.romLo[j]; tab[2 * (256 + j) + 1] = w.romHi[j]; }
+        put(p, TABLES, bytes(tab));
+        // the template index (16 B each: word, offset in 128-bit words, length in words, rd0 | class << 8) and the words
+        List<Integer> ws = new ArrayList<>(w.templates.keySet()); java.util.Collections.sort(ws);
+        long[] ix = new long[2 * ws.size()]; List<long[]> tw = new ArrayList<>(); int off = 0;
+        for (int q = 0; q < ws.size(); q++) {
+            long[] t = w.templates.get(ws.get(q)); int words = t.length / 2;
+            int rd0 = w.templateRd0.getOrDefault(ws.get(q), words > 0 ? (int) ((t[0] >>> 46) & 3) : 0);
+            ix[2 * q] = (ws.get(q) & 0xFFFFFFFFL) | (long) off << 32; ix[2 * q + 1] = words | (long) (rd0 | 1 << 8) << 32;
+            tw.add(t); off += words;
+        }
+        long[] tpl = new long[2 * off]; int at = 0; for (long[] t : tw) { System.arraycopy(t, 0, tpl, at, t.length); at += t.length; }
+        put(p, INDEX, bytes(ix)); put(p, TEMPLATES, bytes(tpl));
+        // the record: word 0 the template bitmap (unused), then the state word, the stream word and the 64-word image
+        long[] rec = new long[2 * 67];
+        rec[2] = w.stateLo(); rec[3] = w.stateHi(); rec[4] = w.streamLo(); rec[5] = w.streamHi();
+        for (int i = 0; i < 128; i++) rec[6 + i] = w.regs[i];
+        put(p, RECORD, bytes(rec));
+        put(p, CODE, bytes(w.code)); put(p, RLOG, bytes(w.rlog)); put(p, WLOG, bytes(w.wlog));
+        int[] h = new int[16];
+        h[0] = 0x594C5052; h[1] = 1; h[2] = TABLES; h[3] = INDEX; h[4] = ws.size(); h[5] = TEMPLATES; h[6] = RECORD;
+        h[7] = CODE; h[8] = w.code.length / 2; h[9] = RLOG; h[10] = w.rlog.length / 2; h[11] = WLOG; h[12] = w.wlog.length / 2; h[13] = 1;
+        for (int i = 0; i < 16; i++) p.sram.poke(HDR + i, h[i]);
+        c.cc1p.expect = 1;                                      // only tile 0 starts (6.2): the others wait in their ROMs
+        c.cc.loadWords(0, Registers.PMEM_BASE, im.code);
+        if (im.data.length > 0) c.cc.loadWords(0, im.sym.get("_data_start"), im.data);
+        c.cc.command(0, Registers.CMD_JUMP << 24, im.sym.get("_start")).go();
+        c.runUntil(() -> p.core.halt != Controller.RUN && p.core.halt != 0, 2_000_000);
+        int res = im.sym.get("rp_results"), status = p.core.peekLocal(res);
+        List<String> detail = new ArrayList<>();
+        if (p.core.halt != Controller.HALT_EXIT) detail.add("tile 0 did not reach its exit: " + p.core.haltReport());
+        if (status != 1) detail.add("rp_results status " + status + " missing 0x" + Integer.toHexString(p.core.peekLocal(res + 20)));
+        if (got.size() != ref.size()) detail.add("rows: tile " + got.size() + ", Stage A " + ref.size());
+        for (int i = 0; i < Math.min(got.size(), ref.size()); i++) if (!java.util.Arrays.equals(got.get(i), ref.get(i))) { detail.add("first mismatching row " + i); break; }
+        if (!r.violations.isEmpty() || !r.overruns.isEmpty() || !r.badWrites.isEmpty() || !r.invalids.isEmpty())
+            detail.add("replayer: violations " + r.violations + ", overruns " + r.overruns + ", bad writes " + r.badWrites + ", invalid " + r.invalids);
+        if (c.violations > 0) detail.add("meshsim: " + c.violationReport().replace("\n", "; "));
+        boolean pass = detail.isEmpty();
+        long cyc = r.passEndAt - r.passStartAt;
+        System.out.println(String.format("synthetic %-30s %s %5d rows  pass %7d cycles  %.3f cycles/row (Stage A %.3f)  newexp %d, refills %d  [meas: StageB synthetic]",
+                name, pass ? "OK  " : "FAIL", got.size(), cyc, (double) cyc / Math.max(1, got.size()),
+                (double) (d.r.passEndAt - d.r.passStartAt) / Math.max(1, ref.size()), r.newExpansions, p.core.peekLocal(res + 16)));
+        for (String x : detail) System.out.println("    " + x);
         return pass;
     }
 }

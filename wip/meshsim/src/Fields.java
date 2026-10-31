@@ -1,39 +1,44 @@
 /**
- * Bit layouts of the table entries and DMA_CONFIG (spec 4.2, 8.5, 8.9; v1.1). The engines' Java encoders and decoders;
- * {@link Registers} holds the same fields for mesh.h and REGISTERS.md (RegDocTest checks they agree).
+ * Bit layouts of the table entries and DMA_CONFIG (spec 4.2, 8.1, 8.5, 8.9; v1.2). The engines' Java encoders and
+ * decoders; {@link Registers} holds the same fields for mesh.h and REGISTERS.md (RegDocTest checks they agree).
  *
- * STREAM[i] (v1.1): one word in each of three 256 x 32 arrays, read in parallel at the same index (4.10):
- *   STREAM_SRC[i]:   source chunk address [20:0]
- *   STREAM_DEST[i]:  destination word [20:0] (modes 3, 6 and 9: element 0's addr, + 1, 2 or 4 per element), d [27:21]
- *                    (0-63 a relative tile, 64 C&C, 65-127 errors)
- *   STREAM_COUNT[i]: count [17:0], mode [21:18] (4 bits: 1-5 or 8), read size [23:22] (00 32, 01 64, 10 128; 11
- *                    undefined), gap after [26:24]
+ * STREAM[i] (v1.2, D4): one word in each of three 256 x 32 arrays, read in parallel at the same index (4.10):
+ *   STREAM_SRC[i]:   source chunk address [20:0], gap after [23:21], spare [31:24]
+ *   STREAM_DEST[i]:  the first element's 32-bit byte address at the receiver (mode 0 only)
+ *   STREAM_COUNT[i]: count [16:0], read size [18:17], counter [21:19], mode [24:22], d [31:25] (the common header
+ *                    layout, 8.1: [24:17] is the link word's size, counter and mode block)
  * The address generator's read-ahead entry is two longs: e0 = STREAM_SRC | STREAM_DEST << 32, e1 = STREAM_COUNT.
  * GROUP[g], low:     R [17:0]
  * GROUP[g], high:    start stream [7:0], t - 1 [11:8], gap [19:12]
  * DMA_CONFIG:         run kind [0] (0 stream run, 1 group run), run start [8:1], run count [17:9], bucket digit [20:18],
  *                     histogram digit [23:21], k - 1 [26:24]
- * TILE_PULSE:         [0] done, [1] start, [2] replay start (reserved until the replayer is specified), [3] reserved
  */
 final class Fields {
     private Fields() {}
     /** Read sizes (3.1, 4.2): 00 32 bits, 01 64, 10 128 (an element is 1 << size chunks); 11 undefined. */
     static final int SIZE_32 = LinkWord.SIZE_32, SIZE_64 = LinkWord.SIZE_64, SIZE_128 = LinkWord.SIZE_128, SIZE_UNDEF = LinkWord.SIZE_UNDEF;
+    static final int COUNT_MAX = 0x1FFFF;                    // 17 bits: 131,071 elements (D30)
 
-    static int streamSrc(int src) { return src & 0x1FFFFF; }
-    static int streamDest(int word, int d) { return (word & 0x1FFFFF) | (d & 0x7F) << 21; }
-    static int streamCount(int count, int mode, int size, int gapAfter) {
-        return (count & 0x3FFFF) | (mode & 15) << 18 | (size & 3) << 22 | (gapAfter & 7) << 24;
-    }
+    /** The common header layout (8.1): size [18:17], counter [21:19], mode [24:22], dst (or d) [31:25]. */
+    static int hdrBits(int size, int counter, int mode, int dst) { return (size & 3) << 17 | (counter & 7) << 19 | (mode & 7) << 22 | (dst & 0x7F) << 25; }
+    static int hSize(int v)    { return (v >>> 17) & 3; }
+    static int hCounter(int v) { return (v >>> 19) & 7; }
+    static int hMode(int v)    { return (v >>> 22) & 7; }
+    static int hDst(int v)     { return (v >>> 25) & 0x7F; }
+
+    static int streamSrc(int chunk, int gapAfter) { return (chunk & 0x1FFFFF) | (gapAfter & 7) << 21; }
+    static int streamSrc(int chunk) { return streamSrc(chunk, 0); }
+    static int streamCount(int count, int size, int counter, int mode, int d) { return (count & COUNT_MAX) | hdrBits(size, counter, mode, d); }
     /** The read-ahead entry's first long: STREAM_SRC and STREAM_DEST. */
     static long streamE0(int src, int dest) { return (src & 0xFFFFFFFFL) | (long) dest << 32; }
     static int sSrc(long e0)      { return (int) (e0 & 0x1FFFFF); }
-    static int sWord(long e0)     { return (int) ((e0 >>> 32) & 0x1FFFFF); }
-    static int sD(long e0)        { return (int) ((e0 >>> 53) & 0x7F); }
-    static int sCount(long e1)    { return (int) (e1 & 0x3FFFF); }
-    static int sMode(long e1)     { return (int) ((e1 >>> 18) & 15); }
-    static int sSize(long e1)     { return (int) ((e1 >>> 22) & 3); }
-    static int sGap(long e1)      { return (int) ((e1 >>> 24) & 7); }
+    static int sGap(long e0)      { return (int) ((e0 >>> 21) & 7); }
+    static int sDest(long e0)     { return (int) (e0 >>> 32); }
+    static int sCount(long e1)    { return (int) (e1 & COUNT_MAX); }
+    static int sSize(long e1)     { return hSize((int) e1); }
+    static int sCounter(long e1)  { return hCounter((int) e1); }
+    static int sMode(long e1)     { return hMode((int) e1); }
+    static int sD(long e1)        { return hDst((int) e1); }
 
     static int groupLo(int R) { return R & 0x3FFFF; }
     static int groupHi(int startStream, int t, int gap) { return (startStream & 0xFF) | ((t - 1) & 0xF) << 8 | (gap & 0xFF) << 12; }
@@ -54,5 +59,6 @@ final class Fields {
     static int mcHistDigit(int v)   { return (v >>> 21) & 7; }
     static int mcK(int v)           { return ((v >>> 24) & 7) + 1; }
 
-    static final int PULSE_DONE = 1, PULSE_START = 2, PULSE_REPLAY = 4, PULSE_RSVD3 = 8;
+    /** Java-side start (coreless tests and the controller's PULSE_DMA store): the run in DMA_CONFIG. */
+    static final int PULSE_START = 2;
 }

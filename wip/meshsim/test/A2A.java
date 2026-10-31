@@ -61,12 +61,12 @@ final class A2A {
             for (int g = 0; g < 16; g++) {
                 for (int i = 0; i < 4; i++) {
                     int off = G4[g][i], d = (s + off) & 63;
-                    p.setStream(4 * g + i, Fields.streamSrc(SRC + 2 * first(s, d)), Fields.streamDest(0, off), Fields.streamCount(cnt[s][d], LinkWord.M_SRC, Fields.SIZE_64, 0));
+                    p.setStream(4 * g + i, Fields.streamSrc(SRC + 2 * first(s, d)), 0, Fields.streamCount(cnt[s][d], Fields.SIZE_64, 1, LinkWord.M_SRC, off));
                 }
                 p.setGroup(g, Fields.groupLo(R[g]), Fields.groupHi(4 * g, 4, gap));
             }
             for (int src = 0; src < 64; src++) p.setPtr(src, INBOX + 2 * dstoff[src][s]);
-            p.dir.remaining[TrafficDirector.SRAM] = expected(s);
+            p.dir.remaining[1] = expected(s);
             p.setMasterConfig(Fields.masterConfig(Fields.RUN_GROUPS, 0, 16, 0, 0, 1));
         }
     }
@@ -94,7 +94,7 @@ final class A2A {
             for (Tile p : c.tiles) if (!started[p.idx] && c.cycle >= t0 + c.startSkew[p.idx]) { p.pulse(Fields.PULSE_START); started[p.idx] = true; }
             c.step();
             boolean all = true;
-            for (Tile p : c.tiles) if (!(p.ag.done && p.dir.remaining[TrafficDirector.SRAM] == 0 && p.memIdle(c.cycle))) { all = false; break; }
+            for (Tile p : c.tiles) if (!(p.ag.done && p.dir.remaining[1] == 0 && p.memIdle(c.cycle))) { all = false; break; }
             if (all) { end = c.cycle; break; }
         }
         c.scanOverflows();

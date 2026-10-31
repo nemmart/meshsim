@@ -1,9 +1,8 @@
-inputs: meshsim.jar=(classes) image/loader.bin=7a98846a920bc60c8d530d9901b6b46a38c4ef1e02b8e5888f09ca27e885848c image/sort.code.bin=55e6dd09d4e588e5091d418643fde42ad37a8341f3b9662357737c7342fb8d4b image/sort.data.bin=88a4d480891db5d0162772002f62e18890fdb74c0e67d0b51c3cedd9a1c73552 image/sort.ovinit.bin=89164ab7f7379239b3af0518bd9dace1fb32423555144791596a48eb393ce44b image/sort.stage.bin=f605670fbc9abe345ab7957989a98e302160b6fa5be3935b6cddb4c8daf36924 image/sort.sym=3e292ddff08ac03e2274b58c6c734b60b1e853217542f66b53fc281997a3a634 hops.txt=a3b90f3c2fbc64f1a93c8c0ff916cfbaf40823aae38c4540811482873741d3da
-staging [meas: SortTest staging]: from C&C's GO store, every tile's DMA_SRAM_REMAINING store at cycle +14..+15 (armed from the end of that cycle; the sort's CMD_STAGE path: wait_for_command(), the type test, the counter write); C&C's first staging packet sent at +32 (stage_delay), the first one counted at +38
-P1 uniform n=2000 k=2 (augmented): L1 GO -> all READY 24,471; L2 GO -> all READY 21,451  [meas: SortTest p1]
-P1 uniform n=2000 32-bit values (copy): L1 GO -> all READY 18,402; L2 GO -> all READY 15,382  [meas: SortTest p1]
-P1 few n=1000 k=2 (augmented): L1 GO -> all READY 16,471; L2 GO -> all READY 14,451  [meas: SortTest p1]
-P1 ragged n=1000 32-bit values (copy): L1 GO -> all READY 18,402; L2 GO -> all READY 15,382  [meas: SortTest p1]
-P1 sorted n=500 k=2 (augmented): L1 GO -> all READY 12,471; L2 GO -> all READY 10,951  [meas: SortTest p1]
-P1 equal n=500 32-bit values (copy): L1 GO -> all READY 10,902; L2 GO -> all READY 9,382  [meas: SortTest p1]
-SortTest: 54 passed, 0 failed
+inputs: meshsim.jar=(classes) sw/bootrom.hex=23ca7f154c85b8ae30fbc4ee9fbcc01fc71839147172a229f78989189353707c image/sort.code.bin=60060d9cf9447de464764d4905f19e16f955abedb17784b7ffe25da912ca9437 image/sort.data.bin=412d9f3fa18dac9d629472b3935d12acd529a0725f39f848ae270d71fc5c31f7 image/sort.sym=b46445aa2230f47f1b296fbccf101f985a03f3da1fbf6d891bf6f8336c654750 hops.txt=a3b90f3c2fbc64f1a93c8c0ff916cfbaf40823aae38c4540811482873741d3da
+P1 uniform n=2000 k=2 (augmented): L1 GO -> all READY 22,766; L2 GO -> all READY 20,252  [meas: SortTest p1]
+P1 uniform n=2000 32-bit values (copy): L1 GO -> all READY 16,694; L2 GO -> all READY 14,182  [meas: SortTest p1]
+P1 few n=1000 k=2 (augmented): L1 GO -> all READY 14,766; L2 GO -> all READY 13,252  [meas: SortTest p1]
+P1 ragged n=1000 32-bit values (copy): L1 GO -> all READY 16,694; L2 GO -> all READY 14,182  [meas: SortTest p1]
+P1 sorted n=500 k=2 (augmented): L1 GO -> all READY 10,766; L2 GO -> all READY 9,752  [meas: SortTest p1]
+P1 equal n=500 32-bit values (copy): L1 GO -> all READY 9,194; L2 GO -> all READY 8,182  [meas: SortTest p1]
+SortTest: 42 passed, 0 failed

@@ -2,15 +2,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The 26n register map and the tile hooks a Java test can drive without a tile image (the C side is CtrlTest's and
- * CondTest's):
- *  - the map (8.1): 40 offsets 0x800-0x89C, every family contiguous; 0x8A0-0xFFC and the window's 0x3600-0x3FFF are bus
- *    errors; the request port's shared offsets decode stores and loads separately; write-only registers read 0;
- *  - TILE_PULSE [2] (PERIPH_RUN) on a tile with no peripheral and [3] (GO, unwired) are ignored and flagged;
- *  - the send port (8.4): ROUTER_SET_W0-W2 below the sending word, ROUTER_SEND_32/_64/_128 supplying the top word, words
- *    beyond the size 0, W0-W2 cleared at every send, addr +1/+2/+4 for modes 3, 6 and 9 and +1 for mode 7;
- *  - the empty slot (4.17.7): mode 9 a counted bad peripheral write; the lines and PERIPH_STATUS_0-7 read 0;
- *  - the unwired UART (4.20): no-ops, TX printed to the console.
+ * The v1.2 register map and the hooks a Java test can drive without a tile image (the C side is CtrlTest's):
+ *  - the map (8.1): the block's offsets, the request port's shared offsets (stores and loads decode separately), reserved
+ *    words (read 0, stores ignored, flagged), read-only stores and sub-word accesses (bus errors), write-only reads (0),
+ *    the table window (only HIST loads), an absent peripheral's window and the rest of region 0xFF (bus errors);
+ *  - the pulses (8.6): a store of 1 fires, 0 does nothing; PULSE_DMA clears EVENTS [10] and is ignored while a run runs;
+ *  - the send port (8.4): ROUTER_HDR and ROUTER_ADDR, ROUTER_SET_W0-W2 below the sending word, words beyond the size 0,
+ *    W0-W2 cleared at every send, ROUTER_ADDR + 4/8/16 at mode 0, fixed under no-increment and for modes 1-5;
+ *  - a tile with no peripheral (PARAMS [2:0] = 0): mode 0 to region 0x04 is a bad packet; its window is a bus error;
+ *  - the load latencies (4.11): 2 cycles for the block, 1 for the table window, and the sampling rule.
  * Usage: java HooksTest [shuffle seed | -1]
  */
 public final class HooksTest {
@@ -23,103 +23,123 @@ public final class HooksTest {
         busErrors();
         sendPort();
         emptySlot();
-        uart();
-        loadLatency(2); loadLatency(1);
+        loadLatency();
         System.exit(T.done("HooksTest" + (shuffle >= 0 ? " (shuffled, seed " + shuffle + ")" : "")));
     }
 
     /** A specified machine (controllers on, TILE_STATUS computed) whose tiles all sit in a WFI loop at the loader. */
     static Net machine() { return machine(0); }
-    /** periphType 0: an empty slot on every tile (these hooks test the tile's side); 1: the replayer. */
+    /** periphType 0: no peripheral on any tile (these hooks test the tile's side); 4: the replayer. */
     static Net machine(int periphType) {
         Config k = Config.machine(); k.shuffleSeed = shuffle; k.periphType = periphType;
         Net n = new Net(k);
-        for (Tile p : n.c.tiles) { p.core.pokeLocal(Registers.LOADER_BASE, Controller.WFI); p.core.pokeLocal(Registers.LOADER_BASE + 4, RiscvTest.jal(0, -4)); }
-        n.c.cc.then((cc, t) -> { cc.storeRun(t, true); return true; });
-        n.c.run(10);
+        // v1.2: every core boots into the boot ROM and waits there (done pulsed, WFI for GO)
+        settle(n);
         return n;
     }
     static Integer load(Net n, Tile p, int addr) { return p.core.load(n.c.cycle + 1, addr, 4); }
-    static int status(Tile p, Net n) { return load(n, p, Registers.TILE_STATUS.addr()); }
+    static int status(Tile p, Net n) { return load(n, p, Registers.STATUS.addr()); }
     static void store(Net n, Tile p, int addr, int v) { String e = p.core.store(n.c.cycle + 1, addr, v, -1); if (e != null) throw new IllegalStateException(e); n.c.step(); }
 
-    // ================================================================ TILE_PULSE [2] and [3]
+    // ================================================================ the pulses (8.6)
     static void pulses() {
-        T.group("TILE_PULSE");
+        T.group("pulses");
         Net n = machine(); Tile p = n.c.tiles[7];
-        T.eq(0xFFFFF808L, Registers.TILE_PULSE.addr() & 0xFFFFFFFFL, "TILE_PULSE at 0x808");
-        long v0 = p.ctl.violations; boolean done0 = p.ctl.done;
-        store(n, p, Registers.TILE_PULSE.addr(), 1 << 2);
+        T.eq(0xFFFFF80CL, Registers.PULSE_DONE.addr() & 0xFFFFFFFFL, "PULSE_DONE at 0x80C"); T.eq(0xFFFFF810L, Registers.PULSE_DMA.addr() & 0xFFFFFFFFL, "PULSE_DMA at 0x810");
+        long v0 = p.ctl.violations; long dones = p.ctl.dones;
+        store(n, p, Registers.PULSE_DONE.addr(), 0); store(n, p, Registers.PULSE_DMA.addr(), 0);
         n.c.run(5);
-        T.eq(v0 + 1, p.ctl.violations, "[2], PERIPH_RUN on a type-0 tile: flagged");
-        T.check(p.ctl.lastViolation.contains("PERIPH_RUN"), "the flag names PERIPH_RUN: " + p.ctl.lastViolation);
-        T.check(!p.ag.running && p.ag.startedAt < 0 && p.ctl.done == done0, "[2] does nothing else: no run started, done unchanged");
-        T.eq(0, Registers.ST_PERIPH_RUNNING.get(status(p, n)), "periph_running stays 0");
-        store(n, p, Registers.TILE_PULSE.addr(), 1 << 3);
-        n.c.run(5);
-        T.eq(v0 + 2, p.ctl.violations, "[3], GO on a tile whose pulse isn't wired: flagged");
-        T.check(p.ctl.lastViolation.contains("GO"), "the flag names GO");
-        // [1] with [2]: start still acts (an empty run), [2] still flagged
+        T.check(p.ctl.dones == dones && p.ag.startedAt < 0, "a store of 0 does nothing");
+        T.eq(v0, p.ctl.violations, "and isn't flagged");
+        // the old PULSE_GO word (0x814) is reserved: stores ignored, flagged
+        store(n, p, Registers.REG_BASE + 0x14, 1);
+        T.eq(v0 + 1, p.ctl.violations, "a store to 0x814 (reserved; PULSE_GO moved to C&C 1's peripheral) is flagged");
+        T.eq(0, (int) load(n, p, Registers.REG_BASE + 0x14), "and the word reads 0");
+        // PULSE_DMA starts the run and clears EVENTS [10]; a start while running is ignored (flagged)
         p.setMasterConfig(Fields.masterConfig(Fields.RUN_STREAMS, 0, 0, 0, 0, 1));
-        store(n, p, Registers.TILE_PULSE.addr(), (1 << 1) | (1 << 2));
-        n.c.run(5);
-        T.check(p.ag.startedAt >= 0 && p.ag.done, "start in the same store acts (a count-0 run ends at once)");
-        T.eq(v0 + 3, p.ctl.violations, "and [2] is flagged again");
-        T.eq(0, p.ctl.conditions, "an ignored pulse sets no condition (4.13)");
-        T.eq(0, (int) load(n, p, Registers.TILE_PULSE.addr()), "TILE_PULSE reads 0");
+        store(n, p, Registers.PULSE_DMA.addr(), 1);
+        n.c.run(10);
+        T.check(p.ag.startedAt >= 0 && p.ag.done, "PULSE_DMA starts the run (a count-0 run ends at once)");
+        int rd = 1 << Registers.EV_RUN_DONE;
+        T.eq(rd, load(n, p, Registers.EVENTS_PEEK.addr()) & rd, "DMA run done ([10]) set when rd_done rose");
+        p.setStream(0, Fields.streamSrc(0), 0, Fields.streamCount(400, Fields.SIZE_32, 1, LinkWord.M_COUNT, 0));
+        p.setMasterConfig(Fields.masterConfig(Fields.RUN_STREAMS, 0, 1, 0, 0, 1));
+        p.dir.remaining[1] = 400;
+        store(n, p, Registers.PULSE_DMA.addr(), 1);
+        T.eq(0, load(n, p, Registers.EVENTS_PEEK.addr()) & rd, "PULSE_DMA cleared [10]");
+        n.c.run(10);
+        long started = p.ag.startedAt; long v1 = n.c.violations;
+        store(n, p, Registers.PULSE_DMA.addr(), 1); n.c.run(2);
+        T.eq(started, p.ag.startedAt, "PULSE_DMA while the run runs: ignored");
+        T.check(n.c.violations > v1, "and flagged");
+        n.c.runUntil(() -> p.ag.done && p.dir.remaining[1] == 0, 5000);
+        T.eq(0, p.ctl.conditions, "an ignored pulse sets no error (4.13)");
+        T.eq(0, (int) load(n, p, Registers.PULSE_DMA.addr()), "PULSE_DMA reads 0");
     }
 
-    // ================================================================ bus errors and the decode
+    // ================================================================ the map and the bus errors (8.1, 4.11)
     static void busErrors() {
         T.group("register map and window");
         Net n = machine(); Tile p = n.c.tiles[2]; Controller core = p.core;
-        String[] names = { "TILE_STATUS", "TILE_CONDITIONS", "TILE_PULSE", "ROUTER_SET_HDR", "ROUTER_SET_W0", "ROUTER_SET_W1", "ROUTER_SET_W2",
-                "ROUTER_SEND_32", "ROUTER_SEND_64", "ROUTER_SEND_128", "DMA_CONFIG", "DMA_RECORD_BASE_ADDRESS", "DMA_SRAM_REMAINING", "DMA_CM_REMAINING",
-                "DMA_REPLY_REMAINING", "DMA_PERIPH_REMAINING", "SRAM_RD_ADDR_QUEUE", "SRAM_RD_DEST_ADDR", "WAKE_EVENTS", "WAKE_PEEK", "WAKE_MASK",
-                "WAKE_REQUIRED", "REQUEST_SET_W0", "REQUEST_SET_W1", "REQUEST_SET_W2", "REQUEST_SEND", "SENDER_SEND", "SENDER_ADDR",
-                "PERIPH_STATUS_0", "PERIPH_STATUS_1", "PERIPH_STATUS_2", "PERIPH_STATUS_3", "PERIPH_STATUS_4", "PERIPH_STATUS_5", "PERIPH_STATUS_6",
-                "PERIPH_STATUS_7", "UART_TX", "UART_RX", "UART_STATUS", "UART_DIVISOR" };
-        T.eq(40, names.length, "40 offsets (8.1, part E)");
+        String[] names = { "PARAMS", "STATUS", "ERRORS", "PULSE_DONE", "PULSE_DMA", null, "EVENTS", "EVENTS_PEEK", "EVENTS_MASK", "EVENTS_REQUIRED",
+                "ROUTER_HDR", "ROUTER_ADDR", "ROUTER_SET_W0", "ROUTER_SET_W1", "ROUTER_SET_W2", "ROUTER_SEND_32", "ROUTER_SEND_64", "ROUTER_SEND_128",
+                "REQUEST_SET_W0", "REQUEST_SET_W1", "REQUEST_SET_W2", "REQUEST_SEND", "DMA_CONFIG", "DMA_RECORD_BASE_ADDRESS",
+                "WRITE_COUNTER_1", "WRITE_COUNTER_2", "WRITE_COUNTER_3", "WRITE_COUNTER_4", "WRITE_COUNTER_5", "WRITE_COUNTER_6", "WRITE_COUNTER_7",
+                "SRAM_RD_ADDR_QUEUE", "SRAM_RD_DEST_ADDR" };
         for (int i = 0; i < names.length; i++) {
+            if (names[i] == null) continue;
             Registers.Reg r = Registers.byName(names[i]);
             T.check(r != null && r.addr() == 0xFFFFF800 + 4 * i, names[i] + " at offset 0x" + Integer.toHexString(0x800 + 4 * i));
         }
         String[] loads = { "REQUEST_GET_W0", "REQUEST_GET_W1", "REQUEST_GET_W2", "REQUEST_RECEIVE" };
         for (int i = 0; i < 4; i++) {
-            int a = 0xFFFFF858 + 4 * i;
-            T.check(Registers.loadAt(a) == Registers.byName(loads[i]) && Registers.storeAt(a) == Registers.byName(names[22 + i]),
-                    "offset 0x" + Integer.toHexString(0x858 + 4 * i) + ": a store reaches " + names[22 + i] + ", a load " + loads[i]);
+            int a = 0xFFFFF848 + 4 * i;
+            T.check(Registers.loadAt(a) == Registers.byName(loads[i]) && Registers.storeAt(a) == Registers.byName(names[18 + i]),
+                    "offset 0x" + Integer.toHexString(0x848 + 4 * i) + ": a store reaches " + names[18 + i] + ", a load " + loads[i]);
         }
-        for (int off : new int[] { 0x8A0, 0x8A4, 0x900, 0xFFC }) {
-            int a = 0xFFFFF000 | off;
-            T.check(Registers.at(a) == null, "offset 0x" + Integer.toHexString(off) + " unmapped (8.1: no holes, unmapped from 0x8A0)");
-            T.check(core.load(n.c.cycle + 1, a, 4) == null, "a load from 0x" + Integer.toHexString(off) + " is a bus error");
-            T.check(core.store(n.c.cycle + 1, a, 0, -1) != null, "a store to 0x" + Integer.toHexString(off) + " is a bus error");
+        // reserved words: read 0, stores ignored, flagged (8.1)
+        for (int off : new int[] { 0x814, 0x884, 0x900, 0x9F4 }) {
+            int a = 0xFFFFF000 | off; long v0 = p.ctl.reservedAccesses;
+            T.check(core.load(n.c.cycle + 1, a, 4) == 0, "offset 0x" + Integer.toHexString(off) + " reserved: reads 0");
+            T.check(core.store(n.c.cycle + 1, a, 5, -1) == null, "a store there is ignored, not a bus error");
+            T.eq(v0 + 2, p.ctl.reservedAccesses, "both flagged");
         }
-        for (Registers.Reg r : new Registers.Reg[] { Registers.TILE_STATUS, Registers.WAKE_EVENTS, Registers.WAKE_PEEK, Registers.PERIPH_STATUS[3], Registers.UART_RX })
+        for (Registers.Reg r : new Registers.Reg[] { Registers.PARAMS, Registers.STATUS, Registers.ERRORS, Registers.EVENTS, Registers.EVENTS_PEEK })
             T.check(core.store(n.c.cycle + 1, r.addr(), 0, -1) != null, "a store to the read-only " + r.name + " is a bus error");
-        for (Registers.Reg r : new Registers.Reg[] { Registers.SENDER_ADDR, Registers.SENDER_SEND, Registers.UART_TX, Registers.DMA_CONFIG, Registers.ROUTER_SET_W2 })
+        for (Registers.Reg r : new Registers.Reg[] { Registers.PULSE_DONE, Registers.PULSE_DMA, Registers.ROUTER_SET_W0, Registers.ROUTER_SEND_128, Registers.SIM_EXIT, Registers.TRACE })
             T.eq(0, (int) load(n, p, r.addr()), "the write-only " + r.name + " reads 0");
-        for (int a : new int[] { 0x3600, 0x37FC, 0x3FFC }) {
-            T.check(core.load(n.c.cycle + 1, a, 4) == null, "a load from the window's 0x" + Integer.toHexString(a) + " is a bus error");
-            T.check(core.store(n.c.cycle + 1, a, 0, -1) != null, "a store to the window's 0x" + Integer.toHexString(a) + " is a bus error");
+        T.check(core.load(n.c.cycle + 1, Registers.STATUS.addr(), 2) == null, "a halfword load from a register is a bus error");
+        T.check(core.store(n.c.cycle + 1, Registers.ROUTER_SET_W1.addr(), 1, 0xFF) != null, "a byte store to a register is a bus error");
+        // region 0xFF outside the block, the windows and the table window; other regions
+        for (int a : new int[] { 0xFFFF0000, 0xFFFF3600, 0xFFFFF7FC, 0x03000000, 0x05000000, 0x80000000 }) {
+            T.check(core.load(n.c.cycle + 1, a, 4) == null, "a load from 0x" + Integer.toHexString(a) + " is a bus error");
+            T.check(core.store(n.c.cycle + 1, a, 0, -1) != null, "a store to 0x" + Integer.toHexString(a) + " is a bus error");
         }
-        for (int a : new int[] { 0x2800, 0x2C00, 0x3000, 0x3400 })
+        T.check(core.store(n.c.cycle + 1, Registers.PMEM_BASE + 0x100, 0, -1) != null, "a store to program memory is a bus error");
+        T.check(core.load(n.c.cycle + 1, Registers.PMEM_BASE + 0x100, 4) != null, "a load from program memory is not");
+        // the windows (8.1): peripheral 1 present (the replayer), 2 and 3 absent
+        Tile q = machine(4).c.tiles[2];
+        T.check(q.core.load(0, Registers.windowBase(1), 4) != null, "peripheral 1's window: present");
+        T.check(q.core.load(0, Registers.windowBase(2), 4) == null && q.core.store(0, Registers.windowBase(3) + 0x1FC, 0, -1) != null, "peripherals 2 and 3's windows: absent, bus errors");
+        // the table window: only HIST loads; PTR, STREAM and GROUP are write-only
+        for (int a : new int[] { Registers.PTR_BASE, Registers.STREAM_SRC_BASE, Registers.STREAM_DEST_BASE, Registers.STREAM_COUNT_BASE, Registers.GROUP_BASE })
             T.check(core.load(n.c.cycle + 1, a, 4) == null, "a load from 0x" + Integer.toHexString(a) + " (write-only table) is a bus error");
-        store(n, p, 0x2800 + 4 * 255, 0x12345); store(n, p, 0x2C00 + 4 * 3, 0x2ABCDE); store(n, p, 0x3000 + 4 * 7, 0x7777);
-        store(n, p, 0x3400, 0x111); store(n, p, 0x35FC, 0x222);
-        T.eq(0x12345, p.ts.peek(TableStore.STREAM_SRC + 255), "0x2BFC: STREAM_SRC[255]");
-        T.eq(0x2ABCDE, p.ts.peek(TableStore.STREAM_DEST + 3), "0x2C0C: STREAM_DEST[3]");
-        T.eq(0x7777, p.ts.peek(TableStore.STREAM_COUNT + 7), "0x301C: STREAM_COUNT[7]");
-        T.eq(0x111, p.ts.peek(TableStore.GROUP), "0x3400: GROUP[0] low");
-        T.eq(0x222, p.ts.peek(TableStore.GROUP + 127), "0x35FC: GROUP[63] high");
+        store(n, p, Registers.STREAM_SRC_BASE + 4 * 255, 0x12345); store(n, p, Registers.STREAM_DEST_BASE + 4 * 3, 0x2ABCDE); store(n, p, Registers.STREAM_COUNT_BASE + 4 * 7, 0x7777);
+        store(n, p, Registers.GROUP_BASE, 0x111); store(n, p, Registers.TABLE_END - 4, 0x222); store(n, p, Registers.HIST_BASE + 8, 0x1234);
+        T.eq(0x12345, p.ts.peek(TableStore.STREAM_SRC + 255), "0xFFFF2BFC: STREAM_SRC[255]");
+        T.eq(0x2ABCDE, p.ts.peek(TableStore.STREAM_DEST + 3), "0xFFFF2C0C: STREAM_DEST[3]");
+        T.eq(0x7777, p.ts.peek(TableStore.STREAM_COUNT + 7), "0xFFFF301C: STREAM_COUNT[7]");
+        T.eq(0x111, p.ts.peek(TableStore.GROUP), "0xFFFF3400: GROUP[0] low");
+        T.eq(0x222, p.ts.peek(TableStore.GROUP + 127), "0xFFFF35FC: GROUP[63] high");
+        n.c.run(10);
+        T.eq(0x1234, (int) core.load(n.c.cycle + 1, Registers.HIST_BASE + 8, 4), "HIST[2] loads back");
         T.check(p.ts.peek(TableStore.STREAM_SRC) == 0 && p.ts.peek(TableStore.STREAM_COUNT + 255) == 0, "no stray writes");
-        int st = status(p, n);
-        T.eq(2, Registers.ST_ID.get(st), "TILE_STATUS [26:20]: the endpoint id, tile 2");
-        T.eq(15, Registers.ST_SIZE.get(st), "TILE_STATUS [31:27]: 4 MB = 16 units of 256 KB - 1");
-        T.eq(0, Registers.ST_PERIPH_TYPE.get(st), "TILE_STATUS [15:12]: peripheral type 0 (this machine's slots are empty)");
-        T.eq(1, Registers.ST_PERIPH_TYPE.get(status(machine(1).c.tiles[2], machine(1))), "and 1 with the replayer (the default on every mesh tile, 4.17.1)");
-        T.eq(0, st & (0xF << 16), "TILE_STATUS [19:16] spare, read 0");
+        int par = load(n, p, Registers.PARAMS.addr());
+        T.eq(2, Registers.PA_ID.get(par), "PARAMS [26:20]: the endpoint id, tile 2");
+        T.eq(15, Registers.PA_SIZE.get(par), "PARAMS [31:27]: 4 MB = 16 units of 256 KB - 1");
+        T.eq(0, Registers.PA_PERIPH.get(par), "PARAMS [2:0]: no peripheral on this machine");
+        T.eq(1, Registers.PA_PERIPH.get(q.ctl.params()), "and 0b001 with the replayer (every mesh tile's, 4.17.1)");
+        T.eq(0, par & 0x000FFFF8, "PARAMS [19:3] spare, read 0");
     }
 
     // ================================================================ the send port (8.4)
@@ -127,110 +147,91 @@ public final class HooksTest {
         T.group("send port");
         Net n = machine(); Tile s = n.c.tiles[6], r = n.c.tiles[7];
         r.dir.log = new ArrayList<>();
-        int HDR = Registers.ROUTER_SET_HDR.addr(), W0 = Registers.ROUTER_SET_W0.addr(), W1 = Registers.ROUTER_SET_W1.addr(), W2 = Registers.ROUTER_SET_W2.addr();
+        int HDR = Registers.ROUTER_HDR.addr(), ADDR = Registers.ROUTER_ADDR.addr(), W0 = Registers.ROUTER_SET_W0.addr(), W1 = Registers.ROUTER_SET_W1.addr(), W2 = Registers.ROUTER_SET_W2.addr();
         int S32 = Registers.ROUTER_SEND_32.addr(), S64 = Registers.ROUTER_SEND_64.addr(), S128 = Registers.ROUTER_SEND_128.addr();
-        // mode 9: +4, +2, +1 by size (on a type-0 tile the packets are bad peripheral writes; this checks what is sent)
-        store(n, s, HDR, Registers.H_DST.place(7) | Registers.H_MODE.place(LinkWord.M_PERIPH) | Registers.H_ADDR.place(0x10));
-        store(n, s, W0, 0xA0); store(n, s, W1, 0xA1); store(n, s, W2, 0xA2); store(n, s, S128, 0xA3);
-        T.eq(0x14, Registers.H_ADDR.get(s.ctl.setHdr), "mode 9, ROUTER_SEND_128: addr + 4");
-        T.check(s.ctl.setW[0] == 0 && s.ctl.setW[1] == 0 && s.ctl.setW[2] == 0, "W0-W2 cleared by the send");
-        store(n, s, W0, 0xB0); store(n, s, W1, 0xB1); store(n, s, S64, 0xB2);
-        T.eq(0x16, Registers.H_ADDR.get(s.ctl.setHdr), "mode 9, ROUTER_SEND_64: addr + 2");
-        T.check(s.ctl.setW[1] == 0, "W1 cleared by a 64-bit send too");
-        store(n, s, W0, 0xC0); store(n, s, W2, 0xC2); store(n, s, S32, 0xC3);
-        T.eq(0x17, Registers.H_ADDR.get(s.ctl.setHdr), "mode 9, ROUTER_SEND_32: addr + 1");
-        n.c.run(40);
-        List<long[]> l = r.dir.log;
-        T.eq(3, l.size(), "three mode-9 packets at tile 7");
-        if (l.size() == 3) {
-            T.check(LinkWord.size(l.get(0)[2]) == LinkWord.SIZE_128 && l.get(0)[1] == (0xA1L << 32 | 0xA0) && l.get(0)[3] == (0xA3L << 32 | 0xA2) && LinkWord.addr(l.get(0)[2]) == 0x10,
-                    "ROUTER_SEND_128: size 128, payload {data, W2, W1, W0}, addr 0x10");
-            T.check(LinkWord.size(l.get(1)[2]) == LinkWord.SIZE_64 && l.get(1)[1] == (0xB2L << 32 | 0xB0) && l.get(1)[3] == 0 && LinkWord.addr(l.get(1)[2]) == 0x14,
-                    "ROUTER_SEND_64: size 64, payload {data, W0}, W1 not sent, addr 0x14");
-            T.check(LinkWord.size(l.get(2)[2]) == LinkWord.SIZE_32 && l.get(2)[1] == 0xC3 && l.get(2)[3] == 0 && LinkWord.addr(l.get(2)[2]) == 0x16,
-                    "ROUTER_SEND_32: size 32, payload the data only (W0, W2 below the sending word go unused), addr 0x16");
-        }
-        T.eq(3L, r.slot.badWrites, "on a type-0 tile they are bad peripheral writes (4.17.7)");
-        HooksTest.halt(n);
-        n = machine(); s = n.c.tiles[6]; r = n.c.tiles[7];
-        // mode 6: +4/+2/+1 and the words land; mode 7: +1; mode 3: +4/+2/+1; mode 8 and mode 2: unchanged
-        r.dir.remaining[TrafficDirector.CM] = 3; r.dir.remaining[TrafficDirector.REPLY] = 1; r.dir.remaining[TrafficDirector.SRAM] = 2; r.setPtr(6, 0x30000);
-        store(n, s, HDR, Registers.H_DST.place(7) | Registers.H_MODE.place(LinkWord.M_CMEM) | Registers.H_ADDR.place(0x900));
+        int dmem = 0x400;
+        r.dir.remaining[2] = 3; r.dir.remaining[3] = 2; r.dir.remaining[1] = 2; r.setPtr(6, 0x30000);
+        // mode 0 into data memory: + 16, + 8, + 4
+        store(n, s, HDR, Registers.HDR_DST.place(7) | Registers.HDR_MODE.place(LinkWord.M_WRITE) | Registers.HDR_CTR.place(2));
+        store(n, s, ADDR, dmem);
         store(n, s, W0, 1); store(n, s, W1, 2); store(n, s, W2, 3); store(n, s, S128, 4);
-        store(n, s, W0, 5); store(n, s, S64, 6);
-        store(n, s, S32, 7);
-        T.eq(0x907, Registers.H_ADDR.get(s.ctl.setHdr), "mode 6: + 4, + 2, + 1");
-        store(n, s, HDR, Registers.H_DST.place(7) | Registers.H_MODE.place(LinkWord.M_CMD) | Registers.H_ADDR.place(5));
-        store(n, s, S32, 0x55);
-        T.eq(6, Registers.H_ADDR.get(s.ctl.setHdr), "mode 7: + 1 (the next command slot)");
-        store(n, s, HDR, Registers.H_DST.place(7) | Registers.H_MODE.place(LinkWord.M_REPLY) | Registers.H_ADDR.place(0));
+        T.eq(dmem + 16, s.ctl.routerAddr, "mode 0, ROUTER_SEND_128: ROUTER_ADDR + 16");
+        T.check(s.ctl.setW[0] == 0 && s.ctl.setW[1] == 0 && s.ctl.setW[2] == 0, "W0-W2 cleared by the send");
+        store(n, s, W0, 5); store(n, s, W1, 0xEE); store(n, s, S64, 6);
+        T.eq(dmem + 24, s.ctl.routerAddr, "ROUTER_SEND_64: + 8");
+        store(n, s, W0, 0xEE); store(n, s, S32, 7);
+        T.eq(dmem + 28, s.ctl.routerAddr, "ROUTER_SEND_32: + 4");
+        T.eq(dmem + 28, (int) load(n, s, ADDR), "a load of ROUTER_ADDR returns the next packet's address");
+        // no-increment: replies to the same address
+        store(n, s, HDR, Registers.HDR_DST.place(7) | Registers.HDR_MODE.place(LinkWord.M_WRITE) | Registers.HDR_CTR.place(3) | Registers.RH_NOINC.place(1));
+        store(n, s, ADDR, Registers.REPLY_BASE + 8 * 6);
         store(n, s, W0, 0x99); store(n, s, S64, 0x77);
-        T.eq(0, Registers.H_ADDR.get(s.ctl.setHdr), "mode 8: addr unused and unchanged");
-        store(n, s, HDR, Registers.H_DST.place(7) | Registers.H_MODE.place(LinkWord.M_EXPLICIT) | Registers.H_ADDR.place(0x20000));
-        store(n, s, W0, 0x31); store(n, s, S64, 0x32);
-        T.eq(0x20002, Registers.H_ADDR.get(s.ctl.setHdr), "mode 3: + 2 after a 64-bit send");
-        store(n, s, HDR, Registers.H_DST.place(7) | Registers.H_MODE.place(LinkWord.M_SRC) | Registers.H_ADDR.place(0));
+        store(n, s, S32, 0x55);
+        T.eq(Registers.REPLY_BASE + 8 * 6, s.ctl.routerAddr, "no-increment: ROUTER_ADDR stays put");
+        T.eq(Registers.HDR_DST.place(7) | Registers.HDR_MODE.place(0) | Registers.HDR_CTR.place(3) | 1, (int) load(n, s, HDR), "ROUTER_HDR reads back, no-increment set until cleared");
+        // modes 1-5 leave ROUTER_ADDR alone
+        store(n, s, HDR, Registers.HDR_DST.place(7) | Registers.HDR_MODE.place(LinkWord.M_SRC) | Registers.HDR_CTR.place(1));
+        store(n, s, ADDR, 0x0300ABC0);
         store(n, s, W0, 0x8); store(n, s, W1, 0x9); store(n, s, W2, 0xA); store(n, s, S128, 0xB);
-        T.eq(0, Registers.H_ADDR.get(s.ctl.setHdr), "mode 2: addr unchanged");
+        store(n, s, HDR, Registers.HDR_DST.place(7) | Registers.HDR_MODE.place(LinkWord.M_COUNT) | Registers.HDR_CTR.place(1));
+        store(n, s, S32, 0);
+        T.eq(0x0300ABC0, s.ctl.routerAddr, "modes 1 and 5: ROUTER_ADDR unchanged");
         n.c.run(60);
+        List<long[]> l = r.dir.log;
+        T.eq(7, l.size(), "seven packets at tile 7");
+        if (l.size() == 7) {
+            T.check(LinkWord.size(l.get(0)[2]) == LinkWord.SIZE_128 && l.get(0)[1] == (2L << 32 | 1) && l.get(0)[3] == (4L << 32 | 3) && LinkWord.addr(l.get(0)[2]) == dmem
+                    && LinkWord.counter(l.get(0)[2]) == 2 && LinkWord.mode(l.get(0)[2]) == 0, "ROUTER_SEND_128: size 128, payload {data, W2, W1, W0}, its address, counter and mode");
+            T.check(LinkWord.size(l.get(1)[2]) == LinkWord.SIZE_64 && l.get(1)[1] == (6L << 32 | 5) && l.get(1)[3] == 0 && LinkWord.addr(l.get(1)[2]) == dmem + 16,
+                    "ROUTER_SEND_64: size 64, payload {data, W0}, W1 not sent");
+            T.check(LinkWord.size(l.get(2)[2]) == LinkWord.SIZE_32 && l.get(2)[1] == 7 && l.get(2)[3] == 0 && LinkWord.addr(l.get(2)[2]) == dmem + 24,
+                    "ROUTER_SEND_32: size 32, the data only");
+            T.eq(Registers.REPLY_BASE + 48, LinkWord.addr(l.get(3)[2]), "the first reply at REPLY + 8 x 6"); T.eq(Registers.REPLY_BASE + 48, LinkWord.addr(l.get(4)[2]), "the second at the same address");
+        }
         boolean words = true; for (int i = 0; i < 7; i++) if (r.cmem.dmem.peek(0x100 + i) != i + 1) words = false;
-        T.check(words, "mode 6 at 128, 64, 32 bits: seven consecutive words at 0x900 (" + r.cmem.dmem.peek(0x100) + ", ...)");
-        T.eq(0x55, r.cmem.dmem.peek(0x7F5), "mode 7: command slot 5");
-        T.eq(0x99, r.cmem.dmem.peek(0x6F0 + 12), "mode 8 from src 6: reply word 12 = W0");
-        T.eq(0x77, r.cmem.dmem.peek(0x6F0 + 13), "mode 8 from src 6: reply word 13 = the sending word");
-        T.check(r.sram.peek(0x20000) == 0x31 && r.sram.peek(0x20001) == 0x32, "mode 3: 64 bits at its explicit addr");
-        T.check(r.sram.peek(0x30000) == 8 && r.sram.peek(0x30001) == 9 && r.sram.peek(0x30002) == 0xA && r.sram.peek(0x30003) == 0xB, "mode 2 at 128 bits: one row at PTR[6]");
+        T.check(words, "mode 0 at 128, 64, 32 bits: seven consecutive words at 0x400");
+        T.eq(0x55, r.cmem.dmem.peek(ControllerMemories.REPLY_DWORD + 12), "the 32-bit reply over the 64-bit one: word 0");
+        T.eq(0x77, r.cmem.dmem.peek(ControllerMemories.REPLY_DWORD + 13), "word 1 from the 64-bit reply");
+        T.check(r.sram.peek(0x30000) == 8 && r.sram.peek(0x30001) == 9 && r.sram.peek(0x30002) == 0xA && r.sram.peek(0x30003) == 0xB, "mode 1 at 128 bits: one row at PTR[6]");
         T.eq(0x30004, r.ptr(6), "PTR[6] += 4");
-        T.eq(2L, s.ctl.sendsBySize[LinkWord.SIZE_128], "two 128-bit sends (modes 6 and 2)");
-        T.eq(0, r.ctl.conditions | s.ctl.conditions, "no conditions");
-        T.eq(0, r.dir.remaining[0] + r.dir.remaining[1] + r.dir.remaining[2], "every counted packet counted once");
+        T.eq(2L, s.ctl.sendsBySize[LinkWord.SIZE_128], "two 128-bit sends (modes 0 and 1)");
+        T.eq(0, r.ctl.conditions | s.ctl.conditions, "no errors");
+        T.eq(0, r.dir.remaining[1] + r.dir.remaining[2] + r.dir.remaining[3], "every counted packet counted once");
+        T.eq(0L, n.c.violations, "no violations " + n.c.violationReport());
     }
-    static void halt(Net n) {}
 
-    // ================================================================ the empty slot (4.17.7)
+    // ================================================================ a tile with no peripheral
     static void emptySlot() {
-        T.group("empty slot");
+        T.group("no peripheral");
         Net n = machine(); Tile p = n.c.tiles[12];
-        for (int i = 0; i < 8; i++) T.eq(0, (int) load(n, p, Registers.PERIPH_STATUS[i].addr()), "PERIPH_STATUS_" + i + " reads 0");
-        T.eq(0, load(n, p, Registers.WAKE_PEEK.addr()) & Registers.WAKE_PERIPH_LINES, "the service lines read 0");
-        p.dir.remaining[TrafficDirector.PERIPH] = 2;
-        n.at(3, n.c.cycle + 2, 12, LinkWord.M_PERIPH, 0x400, LinkWord.SIZE_128, 1, 2);
-        n.c.cc.send(12, LinkWord.M_PERIPH, 0x404, LinkWord.SIZE_128, 3, 4);           // from C&C too (4.17.5: any source)
+        T.eq(0, p.dir.periphPresent, "PARAMS [2:0] = 0");
+        p.dir.remaining[4] = 2;
+        n.at(3, n.c.cycle + 2, 12, LinkWord.M_WRITE, 4, 0x04000400, LinkWord.SIZE_128, 1, 2);
+        n.c.cnc.send(n.c.cycle, 12, LinkWord.M_WRITE, 4, 0x04000410, LinkWord.SIZE_128, 3, 4);   // from C&C 1 too
         n.runAll(200);
-        T.eq(2L, p.slot.badWrites, "two mode-9 packets: bad peripheral writes");
-        T.eq(0, p.dir.remaining[TrafficDirector.PERIPH], "both counted in DMA_PERIPH_REMAINING at once");
-        T.check((p.ctl.conditions & 1 << Conditions.BAD_PERIPH_WRITE) != 0, "condition 11");
-        T.eq(0, (int) load(n, p, Registers.DMA_PERIPH_REMAINING.addr()), "DMA_PERIPH_REMAINING reads 0");
-    }
-
-    // ================================================================ the unwired UART (4.20)
-    static void uart() {
-        T.group("UART (unwired)");
-        Net n = machine(); Tile p = n.c.tiles[5];
-        for (char ch : "hi\n".toCharArray()) store(n, p, Registers.UART_TX.addr(), ch);
-        T.eqo("hi\n", p.uart.console.toString(), "UART_TX bytes printed to the tile's console");
-        T.eq(0, (int) load(n, p, Registers.UART_RX.addr()), "UART_RX: valid = 0");
-        T.eq(0, (int) load(n, p, Registers.UART_STATUS.addr()), "UART_STATUS: empty FIFOs, no errors");
-        store(n, p, Registers.UART_DIVISOR.addr(), 100);
-        T.eq(Uart.RESET_DIVISOR, (int) load(n, p, Registers.UART_DIVISOR.addr()), "UART_DIVISOR: writes ignored, reads its reset value (434 at 25 MHz)");
-        int ev = load(n, p, Registers.WAKE_PEEK.addr());
-        T.eq(1 << Registers.EV_UART_TX, ev & (3 << Registers.EV_UART_RX), "TX not full always, RX not empty never");
-        T.eq(0, p.ctl.conditions, "no conditions");
+        T.eq(2, p.dir.droppedBad, "two mode-0 packets to region 0x04: bad packets, dropped");
+        T.eq(2, p.dir.remaining[4], "uncounted");
+        T.check((p.ctl.conditions & 1 << Conditions.BAD_MODE_OR_SIZE) != 0, "ERRORS [1]");
+        T.check(p.core.load(n.c.cycle + 1, Registers.windowBase(1), 4) == null, "peripheral 1's window: a bus error");
+        p.dir.remaining[4] = 0;
     }
 
     // ================================================================ register-load latency and the sampling rule (4.11)
     static int lw(int rd, int off) { return (off & 0xFFF) << 20 | 0 << 15 | 2 << 12 | rd << 7 | 0x03; }
-    static void loadLatency(int L) {
-        T.group("register-load latency " + L);
-        Config k = Config.machine(); k.shuffleSeed = shuffle; k.periphType = 0; k.regLoadLatency = L;
+    static void loadLatency() {
+        int L = 2;
+        T.group("register-load latency");
+        Config k = Config.machine(); k.shuffleSeed = shuffle; k.periphType = 0;
         Net n = new Net(k); Tile p = n.c.tiles[3];
-        for (Tile q : n.c.tiles) { q.core.pokeLocal(Registers.LOADER_BASE, Controller.WFI); q.core.pokeLocal(Registers.LOADER_BASE + 4, RiscvTest.jal(0, -4)); }
-        p.core.pokeLocal(Registers.LOADER_BASE, 0x00000013);              // nop
-        p.core.pokeLocal(Registers.LOADER_BASE + 4, lw(10, 0x848));       // lw a0, WAKE_EVENTS  (issued at R + 1)
-        p.core.pokeLocal(Registers.LOADER_BASE + 8, lw(11, 0x84C));       // lw a1, WAKE_PEEK
-        p.core.pokeLocal(Registers.LOADER_BASE + 12, 0x00100073);         // ebreak
-        n.c.cc.then((cc, t) -> { cc.storeRun(t, true); return true; });
-        while (p.ctl.runEdges == 0) n.step();                            // cycle R: the run edge; the nop
+        int B = Registers.PMEM_BASE;
+        p.core.pokeLocal(B, 0x00000013);                                 // nop
+        p.core.pokeLocal(B + 4, lw(10, 0x818));                          // lw a0, EVENTS  (issued at R + 1)
+        p.core.pokeLocal(B + 8, lw(11, 0x81C));                          // lw a1, EVENTS_PEEK
+        p.core.pokeLocal(B + 12, 0x0000006F);                            // j . (the end)
+        n.c.cc1p.expect = 1L << 3;                                       // only tile 3 starts (6.2): its command, then GO
+        n.c.cc.command(3, Registers.CMD_JUMP << 24, B).go();
+        while (p.core.pc != B + 4) n.step();                             // cycle R: the ROM has jumped and the nop has run
+        long s0 = p.core.stallRegLoad;
         long R = n.c.cycle, issue = R + 1, last = issue + L - 1;         // the load's sample point is the end of issue + L - 2
         int c9 = 1 << Registers.EV_COUNTERS_DONE, go = 1 << Registers.EV_GO;
         p.ctl.events |= c9;                                              // pending from the end of R: before the sample point
@@ -239,8 +240,17 @@ public final class HooksTest {
         T.eq(c9, p.core.x[10] & (c9 | go), "L = " + L + ": the load returns counters done (pending at its sample point), not GO (set in its last cycle)");
         T.eq(go, p.ctl.events & (c9 | go), "L = " + L + ": its side effect at the end of its last cycle cleared counters done; GO, set in that cycle, survives");
         while (n.c.cycle < last + L) n.step();
-        T.eq(go, p.core.x[11] & (c9 | go), "L = " + L + ": the next load (WAKE_PEEK) sees GO, not counters done");
-        T.eq(2L * (L - 1), p.core.stallRegLoad, "L = " + L + ": each register load costs " + L + " cycle(s)");
+        T.eq(go, p.core.x[11] & (c9 | go), "L = " + L + ": the next load (EVENTS_PEEK) sees GO, not counters done");
+        T.eq(2L * (L - 1), p.core.stallRegLoad - s0, "L = " + L + ": each register-block load costs " + L + " cycles");
         T.eq(0L, n.c.violations, "no violations " + n.c.violationReport());
+        // the table window: a HIST load takes 1 cycle (4.11)
+        s0 = p.core.stallRegLoad;
+        T.check(p.core.load(n.c.cycle + 1, Registers.HIST_BASE, 4) != null, "a HIST load");
+        T.eq(s0, p.core.stallRegLoad, "a table-window load stalls nothing: 1 cycle");
+    }
+
+    /** Every core has reached the boot ROM's WFI (done pulsed): Java may now drive the registers without racing the ROM. */
+    static void settle(Net n) {
+        for (int i = 0; i < 200; i++) { boolean all = true; for (Tile p : n.c.tiles) if (n.c.cfg.coreless ? false : !p.core.inWfi) all = false; if (all) break; n.step(); }
     }
 }

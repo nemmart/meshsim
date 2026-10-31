@@ -4,6 +4,7 @@
  * it returns the visible value. ready() is false until the first value has become visible.
  */
 final class Latch<T> extends AbstractBus<T> {
+    @Override void flush() { super.flush(); valid = false; pending = null; }
     private T value, pending;
     private boolean valid;
 
@@ -27,6 +28,7 @@ final class Latch<T> extends AbstractBus<T> {
  * when it becomes visible (a link delivers one word per cycle); exceeding it is a simulator bug.
  */
 final class DelayLine<T> extends AbstractBus<T> {
+    @Override void flush() { super.flush(); head = 0; count = 0; pending = null; }
     final int latency;
     private final Object[] vals;
     private final long[] at;
@@ -75,6 +77,7 @@ final class DelayLine<T> extends AbstractBus<T> {
  * with the cycle of the first overflow.
  */
 abstract class TimedFIFO<T> extends AbstractBus<T> {
+    @Override void flush() { super.flush(); head = 0; count = 0; pending = null; overflow = false; overflowCycle = -1; }
     final int capacity;
     private final Object[] vals;
     private int head, count;          // visible entries

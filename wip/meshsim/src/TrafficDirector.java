@@ -1,135 +1,192 @@
 /**
- * The traffic director (spec 4.8, v1.1 as renumbered 2026-10-26): one unit straight after the eject selector and the
- * only path into the tile. It takes at most one packet per cycle (169 bits: the bus's three words) and switches on its
- * 4-bit mode alone:
- *   1 -> the GATHER engine's request queue (never counted);
- *   2, 3, 4, 5 -> the write engine's input FIFO (DMA_SRAM_REMAINING; mode 3 at its explicit, aligned addr);
- *   6 -> port B: 1, 2 or 4 words at the packed word addr (DMA_CM_REMAINING);
- *   7 -> port B: command slot addr[3:0] of the command block (32 bits; never counted; slot 0 sets command landed);
- *   8 -> port B: the reply block, word 2 src (32 bits: word 0; 64 bits: both) (DMA_REPLY_REMAINING);
- *   9 -> the peripheral slot's write port (DMA_PERIPH_REMAINING, on landing or drop: {@link PeripheralSlot});
- *   every bad packet (3.1) -> dropped, uncounted, setting the bad-mode-or-size condition (4.13; {@link #badModeTotal}).
- * Size 11 is undefined (3.1): meshsim flags it and drops the packet, uncounted, with no condition ({@link #undefinedSize}).
+ * The traffic director (spec 4.8, v1.2): one unit straight after the eject selector and the only path into the tile. It
+ * takes at most one packet per cycle and switches on its mode, and for mode 0 on its address's region (2.2):
+ *   a bad packet (3.1: mode 0 misaligned or to a region it can't reach, mode 3 at 128 bits) -> dropped, uncounted,
+ *     ERRORS [1] ({@link #badTotal}, the error's source);
+ *   mode 0, region 0x00 or 0x01 -> port B, through the cm_latency pipe;
+ *   mode 0, region 0x03 -> the write engine, at its address;
+ *   mode 0, region 0x04-0x06 -> that peripheral's write port (rp_latency, 4.17.5);
+ *   modes 1, 2, 3 -> the write engine, at PTR;
+ *   mode 4 -> the GATHER engine's request queue; never counted (its counter field travels to the gather values);
+ *   mode 5 -> count only: nothing written;
+ *   modes 6-7 -> discarded: no write, no count, no error (meshsim flags them, invariant 21).
+ * Size 11 is undefined (3.1): meshsim flags it and drops the packet, uncounted, with no error ({@link #undefinedSize}).
  *
- * Counting (3.1, 4.12; owner, 2026-10-26): every mode from any source is counted, except modes 1 and 7 and bad packets.
- * A halted tile counts nothing and sets no unexpected arrival ({@link #halted}); routing is the same in HALT and RUN.
- * An arrival for a counter already at 0 (in RUN) leaves it at 0 and sets unexpected arrival (invariant 9). Counter
- * writes (additive, TileControl) are applied at the end of the cycle; the controller's load samples the counter as it
- * stood at its sample point ({@link #counterAtStart}).
+ * Counting (3.1, 4.8, 4.12; D3, D14, D40): for a packet it accepts in modes 0-3 or 5 with a counter field of 1-7, the
+ * director puts the counter's id into a K-stage delay line, and K cycles later that write counter is decremented. A
+ * write the receiver drops after acceptance (a misaligned PTR, a peripheral's refusal) is still counted. Unexpected
+ * arrival is judged at the decrement (4.12, the accepted trade-off): a decrement of a counter at 0 leaves it at 0 and
+ * sets ERRORS [2] ({@link #unexpectedTotal}); a counter write in the same cycle is judged first (count + N == 0). meshsim
+ * also reports the stray at its acceptance, naming it ({@link #strays}: the counter, less the decrements already in the
+ * line, plus a same-cycle write, is 0), as a violation of invariant 9 when Config.checkUnexpected is set.
  *
- * Read-port overlap (4.3's rule, invariant 14): a packet from outside the tile (src != me) accepted while the tile has
- * read-port results outstanding is a violation when Config.checkReadPortOverlap is set, and is always counted; C&C's
- * command writes (mode 7) are exempt. Read-port results are recognised only by the simulator-only TAG_READPORT.
+ * K (4.7): Config.K, default 8; the constructor errors if K < Config.kMin() = max(2 L + 4, L + 4, cm_latency, rp_latency)
+ * (meshsim's reference, D49: its measured write path; the hardware's K is implementation-defined).
  *
- * Address checks (invariant 11; packed map, 4.11): every word of a mode-6 packet inside instruction or data memory and
- * outside the command block (0xFF0-0xFFF) and the reply block (0xEF0-0xFEF). The hardware has no check.
+ * meshsim's checks here (spec 9): invariant 5 (bad packets, size 11), 11 (the command and reply blocks), 14 (read-port
+ * overlap), 19 (bounds), 21 (modes 6-7, count-only on counter 0), 22 (uncounted traffic is commands and overlays only;
+ * nothing lands in data memory's first 16 bytes).
  */
 final class TrafficDirector implements Component {
-    static final int SRAM = 0, CM = 1, REPLY = 2, PERIPH = 3, N_COUNTERS = 4;
-    static final String[] COUNTER_NAME = { "SRAM_REMAINING", "CM_REMAINING", "REPLY_REMAINING", "PERIPH_REMAINING" };
+    static final int N_COUNTERS = LinkWord.N_COUNTERS;               // 1-7; index 0 unused
     static final int COUNTER_MASK = (1 << 20) - 1;
-    /** Packed controller-memory words (4.11): the reply block 0xEF0-0xFEF, the command block 0xFF0-0xFFF. */
-    static final int REPLY_WORD = 0xEF0, COMMAND_WORD = 0xFF0;
+    static String counterName(int c) { return "WRITE_COUNTER_" + c; }
 
     final int me;
     final Config cfg;
+    final int K;
     WordSource in;                                   // eject selector -> director
     WordSink toGather, toWriteEngine;                // input FIFOs (overflow-checked)
     ReadPort readPort;
     long readPortResults;
     long readPortOverlaps;                           // outside packets accepted with read-port results outstanding (monotonic)
-    WordDelayLine toPortB;                           // modes 6-8, cm_latency
-    final int[] remaining = new int[N_COUNTERS];     // the down-counters (20 bits)
-    private final long[] decAt = new long[N_COUNTERS];
+    WordDelayLine toPortB;                           // mode 0 to regions 0x00, 0x01; cm_latency
+    int periphPresent = 1;                           // the unit's PARAMS [2:0] (4.17.1): every mesh tile has the replayer as peripheral 1
+    final int[] remaining = new int[N_COUNTERS + 1]; // the write counters (20 bits), index 1-7
+    private final int[] lineCtr;                     // the K-stage delay line: the counter decremented at cycle (t mod K), 0 = none
+    private final long[] lineT;                      // ... and the cycle it is due
+    private final int[] inLine = new int[N_COUNTERS + 1];   // decrements scheduled and not yet applied, per counter
+    private final long[] decAt = new long[N_COUNTERS + 1];
     { java.util.Arrays.fill(decAt, Long.MIN_VALUE); }
-    final long[] counted = new long[N_COUNTERS];     // monotonic: counted arrivals per counter (for the per-counter events)
+    final long[] counted = new long[N_COUNTERS + 1]; // monotonic: decrements scheduled per counter
     TileControl ctl;
-    PeripheralSlot periph;                           // mode 9 (4.17)
-    long unexpected, unexpectedTotal;                // arrivals that met a counter at 0 (per run; monotonic)
+    PeripheralSlot periph;                           // mode 0 to region 0x04 (4.17.5)
+    long unexpected, unexpectedTotal, strays;        // decrements that met a counter at 0 (per run; monotonic); strays seen at acceptance
     final long[] perMode = new long[LinkWord.N_MODES];
-    long accepted, fromCnc, haltedArrivals;
-    long droppedBad, badModeTotal;                   // bad packets dropped: per run; monotonic (the condition's source)
+    long accepted, fromControllers, countOnly, reservedDiscarded;
+    long droppedBad, badTotal;                       // bad packets dropped: per run; monotonic
     long undefinedSize;                              // size-11 packets (undefined; flagged and dropped by meshsim), monotonic
     java.util.List<long[]> log;                      // {t, payload [63:0], hdr, payload [127:64]} of every accepted packet, when non-null (tests)
     long violations; String lastViolation;
 
-    TrafficDirector(int me, Config cfg) { this.me = me; this.cfg = cfg; }
-
-    /** In HALT the director lands every packet but counts nothing (4.8). */
-    boolean halted(long t) { return ctl != null && !ctl.running(t); }
+    TrafficDirector(int me, Config cfg) {
+        this.me = me; this.cfg = cfg; this.K = cfg.K;
+        int L = cfg.tsEngineLatency, need = cfg.kMin();
+        if (K < need) throw new IllegalArgumentException("K = " + K + " is below meshsim's max(2L + 4, L + 4, cm_latency, rp_latency) = " + need + " at L = " + L + " (4.7, D49; invariant 24)");
+        lineCtr = new int[K]; lineT = new long[K]; java.util.Arrays.fill(lineT, Long.MIN_VALUE);
+    }
 
     @Override public void runCycle(long t) {
+        decrement(t);
         if (!in.ready(t)) return;
         long d = in.peekA(t), h = in.peekB(t), hi = in.peekC(t);
         in.take(t);
         accepted++;
         if (log != null) log.add(new long[] { t, d, h, hi });
-        int mode = LinkWord.mode(h), src = LinkWord.src(h);
+        int mode = LinkWord.mode(h), src = LinkWord.src(h), ctr = LinkWord.counter(h), a = LinkWord.addr(h), size = LinkWord.size(h);
         perMode[mode]++;
-        if (src == LinkWord.CNC) fromCnc++;
+        if (LinkWord.controller(src)) fromControllers++;
+        boolean command = mode == LinkWord.M_WRITE && ctr == 0 && LinkWord.controller(src) && LinkWord.region(a) == LinkWord.R_DMEM
+                && ControllerMemories.inCommand(LinkWord.offset(a));
         if (LinkWord.readPortTag(h)) { readPortResults++; if (readPort != null) readPort.acceptedAt(t); }
-        else if (readPort != null && readPort.outstanding() > 0 && src != me && mode != LinkWord.M_CMD) {
+        else if (readPort != null && readPort.outstanding() > 0 && src != me && !command) {
             readPortOverlaps++;
             if (cfg.checkReadPortOverlap) violate("packet arrived with " + readPort.outstanding() + " read-port result(s) outstanding (spec 4.3's rule, invariant 14; read-port overlap): " + LinkWord.describe(d, h, hi));
         }
-        if (LinkWord.badPacket(h)) { droppedBad++; badModeTotal++; return; }      // dropped, uncounted, condition 1
-        if (LinkWord.size(h) == LinkWord.SIZE_UNDEF) {                             // undefined (3.1): meshsim's choice, flagged, dropped, no condition
+        String bad = LinkWord.whyBad(h, periphPresent);
+        if (bad != null) { droppedBad++; badTotal++; violate("bad packet dropped, uncounted, ERRORS [1] (" + bad + "; 3.1, invariant 5): " + LinkWord.describe(d, h, hi)); return; }
+        if (size == LinkWord.SIZE_UNDEF) {                                   // undefined (3.1): meshsim's choice, flagged, dropped, no error
             undefinedSize++;
             violate("packet with size 11 (undefined, 3.1; invariant 5) arrived and was dropped: " + LinkWord.describe(d, h, hi));
             return;
         }
-        boolean halted = halted(t);
-        if (halted) haltedArrivals++;
+        if (LinkWord.reservedMode(mode)) { reservedDiscarded++; violate("packet in the reserved mode " + mode + " discarded (3.1, invariant 21): " + LinkWord.describe(d, h, hi)); return; }
+        if (mode == LinkWord.M_COUNT && ctr == 0) violate("count-only packet on counter 0: it does nothing (3.1, invariant 21): " + LinkWord.describe(d, h, hi));
+        if (ctr == 0 && mode != LinkWord.M_GATHER && mode != LinkWord.M_COUNT) checkUncounted(d, h, hi, mode, src, a);
+        if (ctr == 0 && mode == LinkWord.M_WRITE && LinkWord.controller(src) && (LinkWord.region(a) == LinkWord.R_DMEM || LinkWord.region(a) == LinkWord.R_PMEM)) bootKinds(d, h, hi, a);
+        if (ctr != 0 && LinkWord.countedMode(mode)) schedule(t, ctr, d, h, hi);
         switch (mode) {
+            case LinkWord.M_WRITE -> {
+                int r = LinkWord.region(a);
+                if (r == LinkWord.R_DMEM || r == LinkWord.R_PMEM) { checkCmem(d, h, hi, src, ctr, a, size); toPortB.put(t, d, h, hi); }
+                else if (r == LinkWord.R_SRAM) {
+                    int c = LinkWord.offset(a) >>> 2;
+                    if (c + LinkWord.chunks(size) > cfg.memChunks) violate("mode-0 write at or past the end of big SRAM (chunk 0x" + Integer.toHexString(c) + "): undefined (2.2; invariant 19): " + LinkWord.describe(d, h, hi));
+                    toWriteEngine.put(t, d, h, hi); if (acceptQ != null) acceptQ.add(t);
+                }
+                else periph.accept(t, r - LinkWord.R_PERIPH1 + 1, d, h, hi);
+            }
+            case LinkWord.M_SRC, LinkWord.M_BUCKET, LinkWord.M_AUG -> { toWriteEngine.put(t, d, h, hi); if (acceptQ != null) acceptQ.add(t); }
             case LinkWord.M_GATHER -> toGather.put(t, d, h, hi);
-            case LinkWord.M_SRC, LinkWord.M_EXPLICIT, LinkWord.M_BUCKET, LinkWord.M_AUG -> { if (!halted) count(t, SRAM, d, h); toWriteEngine.put(t, d, h, hi); }
-            case LinkWord.M_CMEM -> { if (!halted && count(t, CM, d, h)) countedPortB = t; checkCmem(d, h, hi); toPortB.put(t, d, h, hi); }
-            case LinkWord.M_CMD -> toPortB.put(t, d, h, hi);
-            case LinkWord.M_REPLY -> { if (!halted && count(t, REPLY, d, h)) countedPortB = t; toPortB.put(t, d, h, hi); }
-            case LinkWord.M_PERIPH -> periph.accept(t, halted, d, h, hi);           // counted when it lands or is dropped (4.17.5)
+            case LinkWord.M_COUNT -> countOnly++;
             default -> throw new IllegalStateException("unreachable: mode " + mode);
         }
     }
 
-    /** Decrement counter c for an accepted packet (in RUN); true (it is counted). */
-    private boolean count(long t, int c, long d, long h) {
-        countArrival(t, c, LinkWord.describe(d, h));
-        return true;
-    }
-    /** One counted arrival for counter c at t (the director's, or the peripheral's landing): decrement it, or set
-     *  unexpected arrival if it is at 0 (judged after this cycle's counter write: TileControl adds it first). */
-    void countArrival(long t, int c, String what) {
-        counted[c]++;
+    // ================================================================ the write counters' delay line (4.8, 4.12)
+    /** Schedule counter c's decrement for t + K; report a stray (invariant 9's diagnostic at acceptance). */
+    private void schedule(long t, int c, long d, long h, long hi) {
+        int slot = (int) ((t + K) % K);
+        lineCtr[slot] = c; lineT[slot] = t + K; inLine[c]++; counted[c]++;
         int pend = ctl != null ? ctl.pendingAdd(c, t) : 0;
-        if (remaining[c] + pend == 0) {
-            unexpected++; unexpectedTotal++;
-            if (cfg.checkUnexpected) violate("unexpected arrival, " + COUNTER_NAME[c] + " already 0 (invariant 9): " + what);
-        } else { remaining[c]--; decAt[c] = t; }
+        if (remaining[c] - (inLine[c] - 1) + pend <= 0) {
+            strays++;
+            if (cfg.checkUnexpected) violate("unexpected arrival (a stray, at acceptance): " + counterName(c) + " has nothing armed for it (invariant 9; the error follows at its decrement, K = " + K + " cycles later): " + LinkWord.describe(d, h, hi));
+        }
     }
-    /** The counter as it stood at the start of cycle t (an arrival accepted at t has already decremented it). */
+    /** Apply the decrement due at t, if any (before this cycle's acceptance, which schedules t + K). */
+    private void decrement(long t) {
+        int slot = (int) (t % K);
+        if (lineT[slot] != t) return;
+        int c = lineCtr[slot]; lineT[slot] = Long.MIN_VALUE; inLine[c]--;
+        int pend = ctl != null ? ctl.pendingAdd(c, t) : 0;
+        if (remaining[c] + pend == 0) { unexpected++; unexpectedTotal++; }       // stays 0; ERRORS [2] (4.12)
+        else { remaining[c]--; decAt[c] = t; }
+    }
+    /** The counter as it stood at the start of cycle t (a decrement applied at t is undone). */
     int counterAtStart(int c, long t) { return remaining[c] + (decAt[c] == t ? 1 : 0); }
     /** The cycle counter c was last decremented. */
     long lastDecrement(int c) { return decAt[c]; }
+    /** Decrements scheduled and not yet applied (all counters): the delay line's occupancy. */
+    int inFlight() { int s = 0; for (int c = 1; c <= N_COUNTERS; c++) s += inLine[c]; return s; }
+    /** The reset (6.1): the counters and the delay line clear. */
+    void resetCounters() { overlayKinds = 0; java.util.Arrays.fill(remaining, 0); java.util.Arrays.fill(inLine, 0); java.util.Arrays.fill(lineT, Long.MIN_VALUE); }
 
-    static boolean inCommand(int w) { return w >= COMMAND_WORD && w < COMMAND_WORD + 16; }
-    static boolean inReply(int w) { return w >= REPLY_WORD && w < REPLY_WORD + 256; }
-
-    /** Invariant 11, per word (4.11): each of the packet's 1, 2 or 4 words inside instruction or data memory (packed
-     *  0x000-0xFFF) and outside the command and reply blocks. One report per packet. */
-    private void checkCmem(long d, long h, long hi) {
-        int a = LinkWord.addr(h), n = LinkWord.chunks(LinkWord.size(h));
-        for (int i = 0; i < n; i++) {
-            int w = a + i;
-            if (w > 0xFFF) { violate("mode-6 packet: word " + i + " outside controller memory (invariant 11): " + LinkWord.describe(d, h, hi)); return; }
-            if (inCommand(w) || inReply(w)) { violate("mode-6 packet: word " + i + " in the " + (inCommand(w) ? "command" : "reply") + " block (invariant 11): " + LinkWord.describe(d, h, hi)); return; }
-        }
+    // ================================================================ meshsim's checks
+    /** W4-03. Invariant 22: uncounted traffic is mode 0 only, and only commands and boot overlays into controller memory, from a
+     *  controller (3.1, 6.2). Modes 1-3 are always counted; big-SRAM data and peripheral writes are always counted. */
+    private void checkUncounted(long d, long h, long hi, int mode, int src, int a) {
+        if (mode != LinkWord.M_WRITE) { violate("uncounted mode-" + mode + " packet: modes 1-3 are always counted (3.1, invariant 22): " + LinkWord.describe(d, h, hi)); return; }
+        int r = LinkWord.region(a);
+        if (r != LinkWord.R_DMEM && r != LinkWord.R_PMEM) violate("uncounted write to region 0x" + Integer.toHexString(r) + ": big-SRAM data and peripheral writes are always counted (3.1, 6.2; invariant 22): " + LinkWord.describe(d, h, hi));
+        else if (!LinkWord.controller(src)) violate("uncounted write into controller memory from unit " + src + ": only commands and boot overlays, from C&C 1-3, are uncounted (3.1; invariant 22): " + LinkWord.describe(d, h, hi));
+        else if (ctl != null && ctl.landed && !(r == LinkWord.R_DMEM && ControllerMemories.inCommand(LinkWord.offset(a))))
+            violate("an overlay write landed after the unit's command and before its start (6.2: the overlays and the first command are of one kind, the command last): " + LinkWord.describe(d, h, hi));
+    }
+    /** Invariants 11, 19 and 22 for a mode-0 write into controller memory (4.11, 4.12, 2.2). */
+    private void checkCmem(long d, long h, long hi, int src, int ctr, int a, int size) {
+        int off = LinkWord.offset(a), n = LinkWord.bytes(size);
+        if (off + n > ControllerMemories.BYTES) { violate("write past the end of " + (LinkWord.region(a) == 0 ? "data" : "program") + " memory: the high offset bits are ignored and it aliases (2.2; invariant 19): " + LinkWord.describe(d, h, hi)); return; }
+        if (LinkWord.region(a) != LinkWord.R_DMEM) return;
+        if (off < 16) violate(   /* W4-02: at any time */"write into data memory's reserved first 16 bytes (2.2; invariant 22): " + LinkWord.describe(d, h, hi));
+        boolean cmd = ControllerMemories.inCommand(off) || ControllerMemories.inCommand(off + n - 1);
+        boolean rep = ControllerMemories.inReply(off) || ControllerMemories.inReply(off + n - 1);
+        if (cmd && (ctr != 0 || !LinkWord.controller(src) || !ControllerMemories.inCommand(off) || !ControllerMemories.inCommand(off + n - 1)))
+            violate("write into the command block other than an uncounted one from C&C 1-3 inside it (4.12; invariant 11): " + LinkWord.describe(d, h, hi));
+        if (rep && (size == LinkWord.SIZE_128 || off != ControllerMemories.REPLY + 8 * src))
+            violate("write into the reply block other than a 32- or 64-bit reply at the sender's own pair, REPLY + 8 x " + src + " (4.12; invariant 11): " + LinkWord.describe(d, h, hi));
     }
 
-    /** cm_idle (spec 4.12): the port-B pipeline is empty. */
+    /** Invariant 25 (6.2): a unit's overlays and its first command are all broadcast or all unicast (the mesh orders
+     *  packets only within a kind). Overlays since the last command: bit 0 unicast, bit 1 broadcast. */
+    private int overlayKinds;
+    private void bootKinds(long d, long h, long hi, int a) {
+        int kind = LinkWord.dst(h) == LinkWord.BROADCAST ? 2 : 1;
+        int off = LinkWord.offset(a);
+        boolean slot0 = LinkWord.region(a) == LinkWord.R_DMEM && off <= ControllerMemories.COMMAND && off + LinkWord.bytes(LinkWord.size(h)) > ControllerMemories.COMMAND;
+        if (ControllerMemories.inCommand(off) && LinkWord.region(a) == LinkWord.R_DMEM) {
+            if (slot0) {
+                if ((overlayKinds & ~kind) != 0) violate("a command (" + (kind == 2 ? "broadcast" : "unicast") + ") after overlays of the other kind: the mesh orders packets only within a kind (6.2; invariant 25): " + LinkWord.describe(d, h, hi));
+                overlayKinds = 0;
+            }
+        } else overlayKinds |= kind;
+    }
+
+    /** S1's bookkeeping: the acceptance cycle of every packet handed to the write engine, in order (simulator only). */
+    java.util.ArrayDeque<Long> acceptQ;
+
+    /** cm_idle (a diagnostic only in v1.2, 4.8): the port-B pipeline is empty. */
     boolean cmIdle(long t) { return toPortB.inFlight(t) == 0; }
-    private long countedPortB = Long.MIN_VALUE / 2;
-    /** No counted packet (mode 6 or 8) is in the port-B pipe at the end of t (invariant 4's check). */
-    boolean countedCmIdle(long t) { return countedPortB + cfg.cmLatency <= t; }
 
     void violate(String m) { violations++; lastViolation = m; }
     void resetStats() { java.util.Arrays.fill(perMode, 0); accepted = droppedBad = unexpected = 0; }

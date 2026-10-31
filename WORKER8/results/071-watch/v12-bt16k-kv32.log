@@ -1,0 +1,32 @@
+inputs: meshsim.jar=a2aebd6cdd4f7747f74d3e49fcad0836875f11830756bfe3293e9d0de9e48221 image/loader.bin=8e4b8898df976fe97f1871cbbf57cd380bfd38180890234014a014ea273552eb image/sort.code.bin=60060d9cf9447de464764d4905f19e16f955abedb17784b7ffe25da912ca9437 image/sort.data.bin=412d9f3fa18dac9d629472b3935d12acd529a0725f39f848ae270d71fc5c31f7 image/sort.sym=b46445aa2230f47f1b296fbccf101f985a03f3da1fbf6d891bf6f8336c654750 hops.txt=a3b90f3c2fbc64f1a93c8c0ff916cfbaf40823aae38c4540811482873741d3da keys-16384/trace10-10.keys=112436cd5dd7cabef0618c39dda6901c92a77ffdee4ded22fc0897e2c2aed193
+sort bt16k-kv32 32-bit values [meas: SortTest]: path BT (stage 2 ran); steps (GO -> next GO): L1 88,623; SPLIT 315,772; XB 7,846; RED 4,652; XC 1,306; TH 17,785; SWEEP 55,416; DESC 34,456; K1.0 18,105; K1.1 17,485; K1.2 13,052; K2.0 25,931; K2.1 23,004; K2.2 12,768; L2 71,726; 5 empty commands 294
+    TOTAL 708,221 cycles (L1 GO -> L2 all READY; real split), of which C&C turnaround 85; ready_latency 8; direct-path bound 4*sum(R) = 467,436; GATHER queue peak 0 of 16; stack headroom 20540 B
+    peaks in K1.0: link 5, eject 4, write-engine input 1, area 1
+    peaks in K1.1: link 4, eject 3, write-engine input 1, area 1
+    peaks in K1.2: link 2, eject 1, write-engine input 1, area 1
+    peaks in K2.0: link 5, eject 5, write-engine input 1, area 1
+    peaks in K2.1: link 4, eject 3, write-engine input 1, area 1
+    peaks in K2.2: link 1, eject 1, write-engine input 1, area 1
+    address generator: 0 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
+    M14: zero-length groups 0 (summed over tiles), of which with a gap 0 (1 + gap since 10 October); group-run stall cycles 0 (drift)
+    watch in L1 (cycles per tile: mean / max):
+    watch in SPLIT (cycles per tile: mean / max):
+    watch in XB (cycles per tile: mean / max):
+    watch in RED (cycles per tile: mean / max): tree_reduce 4,032 / 4,049;
+    watch in XC (cycles per tile: mean / max):
+    watch in TH (cycles per tile: mean / max): tree_reduce 4,335 / 4,974;
+    watch in SWEEP (cycles per tile: mean / max): bt_sweep 11,872 / 11,878; tree_reduce 1,587 / 3,060;
+    watch in DESC (cycles per tile: mean / max): bt_first 624 / 624; bt_hop1_src 8,060 / 8,694; bt_hop1_m 1,468 / 1,468; bt_descs 5,095 / 5,785; bt_desc 10,045 / 11,114; tree_reduce 3,608 / 3,909;
+    watch in K (cycles per tile: mean / max):
+    watch in K1.0 (cycles per tile: mean / max): bt_phase 16,548 / 16,552; bt_hop1_m 1,247 / 1,291;
+    watch in K1.1 (cycles per tile: mean / max): bt_phase 16,524 / 16,551; bt_hop1_m 884 / 893;
+    watch in K1.2 (cycles per tile: mean / max): bt_phase 4,229 / 4,313; bt_hop2_m 6,557 / 6,592; bt_hop2_d 1,879 / 1,880;
+    watch in K1.3 (cycles per tile: mean / max): bt_phase 24 / 24;
+    watch in K1.4 (cycles per tile: mean / max): bt_phase 24 / 24;
+    watch in K2.0 (cycles per tile: mean / max): bt_phase 18,381 / 18,632; bt_hop2_m 5,518 / 5,756; bt_hop2_d 1,524 / 1,790;
+    watch in K2.1 (cycles per tile: mean / max): bt_phase 18,247 / 18,322; bt_hop2_m 3,746 / 3,806; bt_hop2_d 918 / 933;
+    watch in K2.2 (cycles per tile: mean / max): bt_phase 12,730 / 12,730;
+    watch in K2.3 (cycles per tile: mean / max): bt_phase 22 / 22;
+    watch in K2.4 (cycles per tile: mean / max): bt_phase 22 / 22;
+    watch in L2 (cycles per tile: mean / max):
+SortTest: 10 passed, 0 failed

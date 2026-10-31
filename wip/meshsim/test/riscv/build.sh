@@ -1,6 +1,6 @@
 #!/bin/sh
-# Builds the riscv-tests rv32ui / rv32um programs for meshsim v4.0: code at 0x0000 (instruction memory), data at
-# 0x4000 (data memory), as two flat binaries per program. usage: build.sh <riscv-tests dir> <out dir>
+# Builds the riscv-tests rv32ui / rv32um programs for meshsim v1.2: code at 0x01000000 (program memory), data at
+# 0x00000010 (data memory), as two flat binaries per program; PASS and FAIL end through the exit word (8.15). usage: build.sh <riscv-tests dir> <out dir>
 # Excluded: ma_data (a misaligned access is a bus error here) and fence_i (it stores into its own code, impossible on
 # the strict Harvard core).
 set -e

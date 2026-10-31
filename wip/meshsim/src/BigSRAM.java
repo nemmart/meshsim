@@ -87,6 +87,7 @@ final class BigSRAM implements Component {
                 long lo = writeReq.peekB(t), hi = writeReq.peekC(t);
                 writeReq.take(t);
                 if (merge) combine(a, mask, addr & 3, lo, hi); else enqueue(a, true, row(addr), mask, 0, 0, lo, hi);
+                if (s1Acc != null) for (int k = 0; k < n; k++) { Long acc = s1Acc.get(addr + k); if (acc != null) s1Ordered(t, t - acc, "big SRAM chunk 0x" + Integer.toHexString(addr + k)); }
             } else writeStallCycles++;
         }
         if (readReq.ready(t)) {
@@ -132,7 +133,11 @@ final class BigSRAM implements Component {
         accesses++;
         if (qWrite[a][i]) {
             writes[a]++; qWrites[a]--;
-            for (int j = 0; j < 4; j++) if (((mask >>> j) & 1) != 0) { mark(wrBits, rdBits, base + j, "written", "read"); store(base + j, qData[a][i][j]); }
+            for (int j = 0; j < 4; j++) if (((mask >>> j) & 1) != 0) {
+                mark(wrBits, rdBits, base + j, "written", "read"); store(base + j, qData[a][i][j]);
+                Long acc = s1Acc == null ? null : s1Acc.remove(base + j);
+                if (acc != null && s1 != null) s1.sram(t - acc);                 // S1's report: acceptance -> stored
+            }
         } else {
             reads[a]++;
             for (int j = 0; j < 4; j++) if (((mask >>> j) & 1) != 0) mark(rdBits, wrBits, base + j, "read", "written");
@@ -166,10 +171,22 @@ final class BigSRAM implements Component {
     boolean noWritesQueued() { for (int a = 0; a < AREAS; a++) if (qWrites[a] > 0) return false; return true; }
     boolean idle() { for (int a = 0; a < AREAS; a++) if (qCount[a] > 0) return false; return true; }
     int queued(int a) { return qCount[a]; }
+    // S1 (simulator only): the acceptance of each counted write awaiting its store; the measurement; K
+    java.util.Map<Integer, Long> s1Acc; S1 s1; int s1K;
+    private int lastS1Chunk = -1;
+    /** S1's check (invariant 24): a write is ordered ahead of any later read of its area once it is in the area's queue
+     *  (the queue serves in order), so the hazard is a write entering its queue later than K + the controller's reaction. */
+    void s1Ordered(long t, long lat, String what) {
+        if (s1 == null) return;
+        s1.sramOrder(lat);
+        if (lat > s1K + S1.REACTION) { s1.late++; s1.lastLate = "tile " + me + ": " + what + " in its area's queue " + lat + " cycles after acceptance, past K + 4 = " + (s1K + S1.REACTION) + " (invariant 24)"; }
+    }
     void resetQueuePeaks() { for (int a = 0; a < AREAS; a++) queuePeak[a] = qCount[a]; }
     void resetStats() {
         java.util.Arrays.fill(reads, 0); java.util.Arrays.fill(writes, 0); java.util.Arrays.fill(combined, 0);
         for (int a = 0; a < AREAS; a++) queuePeak[a] = qCount[a];
         readStallCycles = writeStallCycles = accesses = 0;
     }
+    /** The reset (6.1): the area queues empty (a queued write is lost; the memory keeps what it holds). */
+    void reset() { java.util.Arrays.fill(qHead, 0); java.util.Arrays.fill(qCount, 0); java.util.Arrays.fill(qWrites, 0); }
 }

@@ -32,4 +32,4 @@ ALU vectors: 242 rows; 210 match the tracer; 7 undefined for the replayer and fl
   n/a  VirtualAssertHalfwordAlignment rs1 0x0000000000000001 imm 0x0000000000000000: the tracer aborts (a failing assertion never reaches a replayer)
   n/a  VirtualAssertWordAlignment rs1 0x0000000000000002 imm 0x0000000000000001: the tracer aborts (a failing assertion never reaches a replayer)
   program pass: 143 cycles from the run to the last row: rows 79, stalls [64, 0, 0, 0, 0, 0, 0] [IMAGE, CODE, NEWEXP, EXP, RLOG, WLOG, OUTQ]
-ReplayerTest: 1183 passed, 0 failed
+ReplayerTest: 1188 passed, 0 failed

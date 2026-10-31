@@ -1,16 +1,16 @@
 shuffled child order, seed 4
-read port from C [meas: ReadPortGatherTest read port from C]: 40 32-bit, 8 64-bit and 4 128-bit reads land at the setup register's destination + the size in words per read, counting DMA_CM_REMAINING; the free count reads 64, then less, then 64 after counters done; a misaligned read and a 65th store into a full queue are dropped with the read-port error
+read port from C [meas: ReadPortGatherTest read port from C]: 40 32-bit, 8 64-bit and 4 128-bit reads land at the setup register's destination + the size in bytes per read, counting on their counter; the free count reads 64, then less, then 64 after counters done; a misaligned read lands 0 with ERRORS [1]; a 65th store into a full queue is dropped with the read-port error
 the 16-group all-to-all (uniform, Data(7, 2000), gap 0) with every tile's read port holding 64 queued reads from the start, against 4.3's rule [meas: ReadPortGatherTest read port under an all-to-all]:
-  without: 3118 cycles; with: 3118 cycles (+0); late rotations or groups: 0; the longest read-port read waited 5 cycles in the SRAM read queue
+  without: 3120 cycles; with: 3120 cycles (+0); late rotations or groups: 0; the longest read-port read waited 5 cycles in the SRAM read queue
   with: 9,527 packets accepted with results outstanding; 0 packets lost to FIFO overflows (eject<loopback); records failing the all-to-all's check: 0
 read-port tolerance (quick): 8 and 32 results against a full-rate mode-6 stream never overflow (the token-protected loopback, served last, 4.5, 4.7); 'ReadPortGatherTest -1 full' measures the table
-overlap check [meas: ReadPortGatherTest read-port overlap check]: an outside packet accepted while read-port results are outstanding is a violation (Config.checkReadPortOverlap, default on); C&C's mode-6 command words are exempt, its other packets are not; results first and the stream after: none
+overlap check [meas: ReadPortGatherTest read-port overlap check]: an outside packet accepted while read-port results are outstanding is a violation (Config.checkReadPortOverlap, default on); C&C 1's command writes are exempt, its other packets are not; results first and the stream after: none
 disjoint buffers [meas: ReadPortGatherTest disjoint buffers per engine run]: a copy A -> B, then B -> A after its local wake with no GO between, passes; one run reading and writing one buffer is flagged
 local gather on every tile: the index stream (mode 1, d = 0, 64-bit) from area 3, values from area 1, output at PTR[me] in area 5; 0/+1 skew [meas: ReadPortGatherTest gather]:
-  k = 1  N =   4096       8215 cycles   2.006 per value (k + 1 = 2)  GATHER queue peak  1 of 16  address generator stalled 4090 cycles, area queue peak 1
-  k = 2  N =   4096      12311 cycles   3.006 per value (k + 1 = 3)  GATHER queue peak  5 of 16  address generator stalled 8180 cycles, area queue peak 1
-  k = 3  N =   4096      16407 cycles   4.006 per value (k + 1 = 4)  GATHER queue peak  7 of 16  address generator stalled 12270 cycles, area queue peak 1
-  k = 4  N =   4096      20503 cycles   5.006 per value (k + 1 = 5)  GATHER queue peak  7 of 16  address generator stalled 16360 cycles, area queue peak 1
-  k = 8  N =   4096      36887 cycles   9.006 per value (k + 1 = 9)  GATHER queue peak  8 of 16  address generator stalled 32720 cycles, area queue peak 1
-gather 1 from C (sw/tests/gather.c, one-command phase, 4,096 values, k = 2) [meas: ReadPortGatherTest gather from C]: C&C's GO -> all 64 READY 12,337 cycles (3.012 per value)
-ReadPortGatherTest (shuffled, seed 4): 499 passed, 0 failed
+  k = 1  N =   4096       8217 cycles   2.006 per value (k + 1 = 2)  GATHER queue peak  1 of 16  address generator stalled 4090 cycles, area queue peak 1
+  k = 2  N =   4096      12313 cycles   3.006 per value (k + 1 = 3)  GATHER queue peak  5 of 16  address generator stalled 8180 cycles, area queue peak 1
+  k = 3  N =   4096      16409 cycles   4.006 per value (k + 1 = 4)  GATHER queue peak  7 of 16  address generator stalled 12270 cycles, area queue peak 1
+  k = 4  N =   4096      20505 cycles   5.006 per value (k + 1 = 5)  GATHER queue peak  7 of 16  address generator stalled 16360 cycles, area queue peak 1
+  k = 8  N =   4096      36889 cycles   9.006 per value (k + 1 = 9)  GATHER queue peak  8 of 16  address generator stalled 32720 cycles, area queue peak 1
+gather 1 from C (sw/tests/gather.c, one-command phase, 4,096 values, k = 2) [meas: ReadPortGatherTest gather from C]: C&C's GO -> all 64 READY 50 cycles (0.012 per value)
+ReadPortGatherTest (shuffled, seed 4): 562 passed, 0 failed

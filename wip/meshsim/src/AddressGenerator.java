@@ -75,26 +75,26 @@ final class AddressGenerator implements Component {
     long totZeroGroups() { return cumZeroGroups + zeroGroups; }
     long totZeroGroupsWithGap() { return cumZeroGroupsWithGap + zeroGroupsWithGap; }
     long totGroupStall() { return cumGroupStall + groupStallCycles; }
-    /** Reserved STREAM encodings (4.2, v1.1 as renumbered 2026-10-26), errors wherever they appear, count 0 included,
-     *  checked on every entry the generator takes (a stream run: once per stream; a group run: on each visit). None has a
-     *  hardware check: the element still issues as written. Read size 11 is undefined (3.1): meshsim reads nothing and
-     *  sends a zero payload stamped 11, which the receiver's director flags and drops (meshsim's choice). Modes 0, 7, 8 and
-     *  10-15 are reserved for streams (7 and 8 come only from the send port); d = 65-127 names no endpoint and d = 64 is
-     *  for mode 3 only (a write stream to C&C, 6.7); mode 1 only with d = 0; mode 5 at read size 128 and a mode-3 stream at
-     *  64 or 128 bits whose destination word isn't aligned to it send bad packets. */
-    long sizeViolations, modeViolations, aug128Violations, destViolations; String lastViolation;
-    static boolean reservedStreamMode(int m) { return m == 0 || m == LinkWord.M_CMD || m == LinkWord.M_REPLY || m > LinkWord.M_PERIPH; }
-    /** Modes whose packets carry the stream's destination word as addr (4.2): 3, 6 and 9. */
-    static boolean addrMode(int m) { return m == LinkWord.M_EXPLICIT || m == LinkWord.M_CMEM || m == LinkWord.M_PERIPH; }
+    /** Reserved STREAM encodings and stream errors (4.2, v1.2), errors wherever they appear, count 0 included, checked on
+     *  every entry the generator takes (a stream run: once per stream; a group run: on each visit). None has a hardware
+     *  check at the sender: the element still issues as written. Read size 11 is undefined (3.1): meshsim reads nothing
+     *  and sends a zero payload stamped 11, which the receiver's director flags and drops (meshsim's choice). Errors: read
+     *  size 11; mode 6-7; d = 67-125 or 127; a mode-4 stream with d != 0; a mode-3 stream at read size 128; a mode-0 stream
+     *  whose destination address isn't aligned to its read size; a source not aligned to its read size (caught when read,
+     *  4.1, and flagged here too); a mode-5 stream on counter 0 (invariant 21); and d = 126 from a mesh tile (only the
+     *  controllers broadcast from streams, D41 F14: meshsim errors loudly). */
+    long sizeViolations, modeViolations, aug128Violations, destViolations, alignViolations; String lastViolation;
     private void checkEntry(long e0, long e1) {
-        int m = Fields.sMode(e1), z = Fields.sSize(e1), d = Fields.sD(e0);
-        if (reservedStreamMode(m)) { modeViolations++; lastViolation = "stream with the reserved mode code " + m + " (4.2: codes 0, 7, 8 and 10-15)"; }
+        int m = Fields.sMode(e1), z = Fields.sSize(e1), d = Fields.sD(e1), ctr = Fields.sCounter(e1);
+        if (LinkWord.reservedMode(m)) { modeViolations++; lastViolation = "stream with the reserved mode " + m + " (3.1, 4.2: modes 6-7; invariant 21)"; }
         if (z == Fields.SIZE_UNDEF) { sizeViolations++; lastViolation = "stream with read size 11, undefined (3.1, 4.2)"; }
-        if (m == LinkWord.M_AUG && z == Fields.SIZE_128) { aug128Violations++; lastViolation = "mode-5 stream with read size 128: its packets are bad packets (3.1, 4.2)"; }
-        if (m == LinkWord.M_EXPLICIT && z != Fields.SIZE_UNDEF && (Fields.sWord(e0) & ((1 << z) - 1)) != 0) { aug128Violations++; lastViolation = "mode-3 stream whose destination word is not aligned to its read size: its packets are bad packets (3.1, 4.2)"; }
-        if (d > 64) { destViolations++; lastViolation = "stream with d = " + d + " (4.2: 65-125 name no endpoint, 126-127 are invalid)"; }
-        else if (d == 64 && m != LinkWord.M_EXPLICIT) { destViolations++; lastViolation = "stream with d = 64 (C&C) and mode " + m + " (4.2: d = 64 only with mode 3)"; }
-        if (m == LinkWord.M_GATHER && d != 0) { destViolations++; lastViolation = "mode-1 stream with d = " + d + " (4.2: mode 1 only with d = 0)"; }
+        if (m == LinkWord.M_AUG && z == Fields.SIZE_128) { aug128Violations++; lastViolation = "mode-3 stream with read size 128: its packets are bad packets (3.1, 4.2)"; }
+        if (m == LinkWord.M_WRITE && !LinkWord.aligned(Fields.sDest(e0), z)) { alignViolations++; lastViolation = "mode-0 stream whose destination address 0x" + Integer.toHexString(Fields.sDest(e0)) + " is not aligned to its read size: its packets are bad packets (3.1, 4.2; invariant 20)"; }
+        if (!LinkWord.chunkAligned(Fields.sSrc(e0), z)) { alignViolations++; lastViolation = "stream whose source chunk 0x" + Integer.toHexString(Fields.sSrc(e0)) + " is not aligned to its read size: its reads are not performed (4.1, 4.2; invariant 20)"; }
+        if (d > LinkWord.CC3 && d != LinkWord.BROADCAST) { destViolations++; lastViolation = "stream with d = " + d + " (4.2: 67-125 name no endpoint, 127 is invalid; invariant 17)"; }
+        else if (d == LinkWord.BROADCAST && me < 64) { destViolations++; lastViolation = "stream with d = 126 (the broadcast) on mesh tile " + me + " (4.2, D41 F14: only the controllers broadcast from streams; invariant 17)"; }
+        if (m == LinkWord.M_GATHER && d != 0) { destViolations++; lastViolation = "mode-4 stream with d = " + d + " (4.2: a gather stream goes to the tile itself, d = 0; invariant 10)"; }
+        if (m == LinkWord.M_COUNT && ctr == 0) { modeViolations++; lastViolation = "count-only stream on counter 0: it does nothing (3.1; invariant 21)"; }
     }
     long driftEvents;                                    // monotonic: refused requests in group runs, the drift condition's source
     long cumRequests, cumStall, cumRotLate, cumGrpLate, runs;   // earlier runs' counters (accounting: totals = cum + this run's)
@@ -126,7 +126,7 @@ final class AddressGenerator implements Component {
     @Override public void runCycle(long t) {
         if (pStart) {
             pStart = false;
-            if (running) { startsWhileRunning++; lastViolation = "a start while the address generator is running (its lead-in included): ignored (spec 8.2; V1.0-CHANGES item 8)"; }
+            if (running) { startsWhileRunning++; lastViolation = "a start while the address generator is running (its lead-in included): ignored (8.6; invariant 26)"; }
             else {
                 load(t); begin(t);
                 int size = kind == Fields.RUN_STREAMS ? 256 : 64;
@@ -229,7 +229,7 @@ final class AddressGenerator implements Component {
     // ================================================================ stream runs
     private int slRun;                                            // streams run
     private boolean cur;                                          // a stream is loaded
-    private int cSrc, cWord, cCount, cJ, cD, cMode, cSize, cGap;  // the current stream's entry and its element counter j
+    private int cSrc, cDest, cCount, cJ, cD, cMode, cSize, cGap, cCtr;  // the current stream's entry and its element counter j
     private int gapLeft;
 
     private void streamIssue(long t) {
@@ -252,17 +252,17 @@ final class AddressGenerator implements Component {
     }
     private void endStream() { cur = false; slRun++; if (slRun >= runCount) finishedIssuing = true; }
     private void loadStream(long e0, long e1) {
-        cSrc = Fields.sSrc(e0); cWord = Fields.sWord(e0); cD = Fields.sD(e0);
-        cCount = Fields.sCount(e1); cMode = Fields.sMode(e1); cSize = Fields.sSize(e1); cGap = Fields.sGap(e1); cJ = 0;
+        cSrc = Fields.sSrc(e0); cDest = Fields.sDest(e0); cGap = Fields.sGap(e0); cD = Fields.sD(e1);
+        cCount = Fields.sCount(e1); cMode = Fields.sMode(e1); cSize = Fields.sSize(e1); cCtr = Fields.sCounter(e1); cJ = 0;
     }
 
     /** One request for element e of the current entry: computed from the entry, nothing stored. */
     private void issueElement(long t, int e) {
-        int dst = cD < 64 ? (me + cD) & 63 : cD;                                                           // d: relative 0-63, absolute 64- (4.2)
+        int dst = cD < 64 ? (LinkWord.tileOf(me) + cD) & 63 : cD;                                         // d: relative 0-63, absolute 64- (4.2)
         int dstAddr = 0, n = SRAMReadQueue.chunksOf(cSize);                                                // 1, 2 or 4 (0: size 11)
-        if (addrMode(cMode)) dstAddr = (cWord + e * n) & 0x1FFFFF;                                          // + 1, 2 or 4 per element, 21-bit wrap
+        if (cMode == LinkWord.M_WRITE) dstAddr = cDest + e * (4 * n);                                     // + 4, 8 or 16 bytes per element, plain addition (4.2)
         int src = (cSrc + e * n) & 0x1FFFFF;                                                               // source + (e << size)
-        out.put(t, SRAMReadQueue.reqA(src, cSize, cMode, dst), SRAMReadQueue.reqB(dstAddr, 0), 0);
+        out.put(t, SRAMReadQueue.reqA(src, cSize, cMode, cCtr, dst), SRAMReadQueue.reqB(dstAddr), 0);
         if (firstRequestAt < 0) firstRequestAt = t;
         requests++; putThisCycle = true;
     }

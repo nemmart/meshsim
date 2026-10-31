@@ -2,551 +2,331 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
- * The generated tables of REGISTERS.md, the programmer's register reference. Names, offsets, fields and access come
- * from {@link Registers} (which also generates mesh.h); {@link #PREFIX} maps each multi-field register to its field
- * macros' prefix.
- *
- * Everything else a reference needs and mesh.h doesn't carry (diagram labels, reset values, what a load returns, the
- * widths of the one-field registers, the packet modes) is here, and RegDocTest checks it against the simulator.
- * REGISTERS.md holds blocks {@code <!-- generated: ID -->} ... {@code <!-- end generated -->}; the prose around them is
- * hand-written. {@code java RegDoc [path]} rewrites every block in place (default: ../sw/REGISTERS.md, else sw/); {@code --check} reports blocks that
- * differ, are missing or are unknown, and exits 1 if any do.
+ * Generates sw/REGISTERS.md (v1.2), the programmer's register reference, from {@link Registers} and {@link LinkWord}:
+ * the address map and the access rules, the controller's block (every register, its reset value and what a load returns,
+ * the fields), the peripheral windows' standard words, the table window, the packet fields and modes, the command and
+ * reply blocks. The spec (spec/machine-spec.md v1.2: 2.2, 3.1, 4.11-4.13, 8) is the source of truth; where the two
+ * differ, this document is wrong. RegDocTest checks the file is this generator's output and that the simulator behaves
+ * as each row says. {@code java RegDoc [path]} writes it (default ../sw/REGISTERS.md, else sw/REGISTERS.md).
  */
 final class RegDoc {
     private RegDoc() {}
 
-    // ================================================================ the registers
-    /** Always true since mesh.h 1.0 (kept for the generator's branches that show mesh.h names). v1.1: mesh.h 1.1. */
-    static final boolean DIRECT = true;
-
-    /** A register as this document shows it: name, address, access, and the simulator register behind it. */
-    record Reg(String name, int addr, int access, List<Registers.Reg> sim) {}
-    static final List<Reg> REGS = new ArrayList<>();
+    /** One register as the document shows it: reset, a load's value, the function; null fields read "-". */
+    record Row(Registers.Reg reg, String reset, String load, String function) {}
+    static final List<Row> ROWS = new ArrayList<>();
+    private static void row(Registers.Reg r, String reset, String load, String fn) { ROWS.add(new Row(r, reset, load, fn)); }
     static {
-        for (Registers.Reg r : Registers.ALL) REGS.add(new Reg(r.name, r.addr(), r.access, List.of(r)));
+        row(Registers.PARAMS, "the unit's constant", "the constant", "peripherals present [2:0], endpoint id [26:20], big-SRAM size [31:27]");
+        row(Registers.STATUS, "0 (the idle machine)", "the live bits", "diagnostic: rd_running, rd_done, GATHER busy, send_busy, done, command landed, request_busy");
+        row(Registers.ERRORS, "0", "the errors", "sticky until the reset; [13:11] live (the peripherals')");
+        row(Registers.PULSE_DONE, "-", "0", "store 1: the done pulse (wait_for_command())");
+        row(Registers.PULSE_DMA, "-", "0", "store 1: start the run in DMA_CONFIG; clears EVENTS [10]; ignored while a run runs");
+        row(Registers.EVENTS, "0 (sticky events)", "every pending event; consumes the sticky ones under EVENTS_MASK", "the events");
+        row(Registers.EVENTS_PEEK, "-", "what EVENTS would return; consumes nothing", "the same, for looking");
+        row(Registers.EVENTS_MASK, "[8] | [7] = 0x180", "the mask", "the events that wake WFI on their own and that a load of EVENTS consumes");
+        row(Registers.EVENTS_REQUIRED, "0", "the value", "the events that wake WFI only all together");
+        row(Registers.ROUTER_HDR, "undefined (meshsim 0)", "no-increment, counter, mode, dst; size and spare read 0", "the header of outgoing packets");
+        row(Registers.ROUTER_ADDR, "undefined (meshsim 0)", "the address the next packet will use", "the next packet's 32-bit address; + 4, 8, 16 at each mode-0 send unless no-increment");
+        row(Registers.ROUTER_SET_W0, "undefined", "0", "payload [31:0]; cleared by every send");
+        row(Registers.ROUTER_SET_W1, "undefined", "0", "payload [63:32]; cleared by every send");
+        row(Registers.ROUTER_SET_W2, "undefined", "0", "payload [95:64]; cleared by every send");
+        row(Registers.ROUTER_SEND_32, "-", "0", "payload [31:0]; sends a 32-bit packet");
+        row(Registers.ROUTER_SEND_64, "-", "0", "payload [63:32]; sends a 64-bit packet, ROUTER_SET_W0 below");
+        row(Registers.ROUTER_SEND_128, "-", "0", "payload [127:96]; sends a 128-bit packet, ROUTER_SET_W0-W2 below");
+        row(Registers.REQUEST_SET_W0, "undefined", "(the receive side: REQUEST_GET_W0)", "the request's [31:0]: target [9:7], requestor [6:0] written 0");
+        row(Registers.REQUEST_SET_W1, "undefined", "(REQUEST_GET_W1)", "the request's [63:32]");
+        row(Registers.REQUEST_SET_W2, "undefined", "(REQUEST_GET_W2)", "the request's [95:64]");
+        row(Registers.REQUEST_SEND, "-", "(REQUEST_RECEIVE)", "the request's [127:96]; pushes it (stalls while the request FIFO is full)");
+        row(Registers.REQUEST_GET_W0, "-", "the oldest received request's [31:0]; 0 when empty", "receive side; on tiles 0-63 always empty");
+        row(Registers.REQUEST_GET_W1, "-", "its [63:32]; 0 when empty", "receive side");
+        row(Registers.REQUEST_GET_W2, "-", "its [95:64]; 0 when empty", "receive side");
+        row(Registers.REQUEST_RECEIVE, "-", "its [127:96], and pops it; empty: 0 and receive underflow (ERRORS [14])", "receive side");
+        row(Registers.DMA_CONFIG, "undefined (meshsim 0)", "what was stored", "the run, the bucket and histogram digits, k");
+        row(Registers.DMA_RECORD_BASE_ADDRESS, "undefined (meshsim 0)", "chunk address [20:0]", "the run's record buffer");
+        for (int n = 1; n <= 7; n++) row(Registers.WRITE_COUNTER[n], "0", "the count [19:0]", "write counter " + n + ": a store adds N, N > 0 arms it");
+        row(Registers.SRAM_RD_ADDR_QUEUE, "empty", "free entries (at least 64 when empty)", "store: queue a read at a chunk address [20:0], aligned to the size");
+        row(Registers.SRAM_RD_DEST_ADDR, "undefined (meshsim 0)", "the next result's destination, as advanced, with the size and counter", "the read port's setup");
+        row(Registers.SIM_EXIT, "-", "0", "simulator only: a store ends a meshsim test with the value");
+        row(Registers.TRACE, "-", "0", "simulator only: a store is logged with the cycle and the unit");
     }
-    static Reg reg(String name) {
-        for (Reg r : REGS) if (r.name.equals(name)) return r;
-        throw new IllegalArgumentException("unknown register " + name);
-    }
-    /** Text from Registers (field meanings), as is. */
-    static String v1(String s) { return s; }
+    static Row row(String name) { for (Row r : ROWS) if (r.reg.name.equals(name)) return r; throw new IllegalArgumentException(name); }
 
-    // ================================================================ the conditions
-    /** The conditions in bit order (Conditions index of bit i). */
-    static final List<Integer> COND = new ArrayList<>();
-    static { for (int i = 0; i < Conditions.N; i++) COND.add(i); }
-    /** Kinds (spec 4.13): P a program error, H a hardware-fault detector (Conditions.KIND). */
-    static String condKind(String cname) { for (int i = 0; i < Conditions.N; i++) if (Conditions.CNAME[i].equals(cname)) return Conditions.KIND[i]; throw new IllegalArgumentException(cname); }
-    /** When each condition is set (spec 4.13's table, shortened). */
-    static final Map<String, String> COND_WHEN = Map.ofEntries(
-        Map.entry("DRIFT", "in a group run, the SRAM read queue refused an address-generator request: the tile fell behind its timetable"),
-        Map.entry("ROUTER_OVF", "a link, eject or fifth-port FIFO of this tile's router overflowed"),
-        Map.entry("WE_IN_OVF", "a mode-2, 3, 4 or 5 packet found the write engine's input FIFO full"),
-        Map.entry("READ_PORT", "a `SRAM_RD_ADDR_QUEUE` store found no free entry, or its address wasn't aligned to the read size; the read is dropped"),
-        Map.entry("UNEXPECTED", "a counted packet arrived for a down-counter already at 0 (in RUN)"),
-        Map.entry("TABLE_OVF", "the `PTR` or `HIST` request FIFO overflowed"),
-        Map.entry("BUS_ERROR", "a load or store broke the access rules (section 1); the controller halts"),
-        Map.entry("ILLEGAL", "a divide opcode or a CSR instruction; the controller halts"),
-        Map.entry("GATHER_OVF", "a mode-1 packet found the GATHER engine's 16-entry request queue full"),
-        Map.entry("BAD_MODE_OR_SIZE", "a bad packet arrived (mode 0 or 10-15, mode 5 at 128 bits, a misaligned mode 3, mode 7 above 32 bits, mode 8 at 128 bits); it was dropped, uncounted"),
-        Map.entry("DONE_EARLY", "done was pulsed while a down-counter was non-zero"),
-        Map.entry("BAD_PERIPH_WRITE", "the peripheral's write port dropped a mode-9 packet (an address, size or ownership it doesn't take); every mode-9 packet on a tile with no peripheral"),
-        Map.entry("PERIPH_2", "defined by the peripheral; the replayer: queue overrun"),
-        Map.entry("PERIPH_3", "defined by the peripheral; the replayer: invalid expansion (the pass stops)"),
-        Map.entry("RECV_UNDERFLOW", "a `REQUEST_RECEIVE` load found the receive queue empty (on tiles 0-63, every one)"));
+    static String hex(int v) { return String.format("0x%08X", v); }
+    static String off(Registers.Reg r) { return String.format("0x%03X", r.off()); }
+    static String acc(int a) { return a == Registers.R ? "R" : a == Registers.W ? "W" : "R/W"; }
 
-    // ================================================================ words and their fields
-    /** One field of a 32-bit word. reset: the value at chip reset ("undef" = undefined, "—" = no state). */
-    record DF(int lo, int width, String label, String reset, String macro, String doc) {
-        int hi() { return lo + width - 1; }
-    }
-    /** A 32-bit word: fields, a name for its unused bits ("spare" or "reserved"), and ranges drawn as one box. */
-    record Word(String id, List<DF> fields, String gapName, List<int[]> collapse, List<String> collapseLabel) {}
+    static String document() {
+        StringBuilder b = new StringBuilder();
+        b.append("""
+# Unit registers: the programmer's reference (v1.2)
 
-    static final String UNDEF = "undef", NONE = "—";
-    /** This document's word ids -> the field prefixes in Registers (mesh.h). mesh.h 1.0 may rename the prefixes: update here. */
-    static final Map<String, String> PREFIX = Map.ofEntries(Map.entry("DMA_CONFIG", "DMA_CFG"), Map.entry("TILE_PULSE", "TILE_PULSE"), Map.entry("TILE_STATUS", "TILE_ST"),
-            Map.entry("ROUTER_SET_HDR", "ROUTER_HDR"), Map.entry("STREAM_SRC", "STREAM_SRC"), Map.entry("STREAM_DEST", "STREAM_DEST"), Map.entry("STREAM_COUNT", "STREAM_COUNT"),
-            Map.entry("GROUP_LO", "GROUP_LO"), Map.entry("GROUP_HI", "GROUP_HI"), Map.entry("SRAM_RD_DEST_ADDR", "SRAM_RD_SETUP"), Map.entry("SENDER_SEND", "SENDER"),
-            Map.entry("UART_RX", "UART_RX"), Map.entry("UART_STATUS", "UART_ST"));
-    static final Map<String, Word> WORDS = new LinkedHashMap<>();
+**v1.2 (`mesh.h` 1.2, meshsim v1.2).** Everything a controller program reaches with loads and stores: the address map,
+the register block, the peripheral windows, the table window, and the packets and command words programs build.
+`spec/machine-spec.md` v1.2 is the source of truth (2.2, 3.1, 4.11-4.13, 8); where the two differ, this document is
+wrong. **This file is generated** by meshsim (`src/RegDoc.java`, from the register table in `src/Registers.java`,
+which also generates `sw/mesh.h`); edit the generator, not the file. `test/RegDocTest.java` checks the simulator
+behaves as every row says.
 
-    // ---- one-field registers and table entries: widths not in mesh.h (RegDocTest checks them against the simulator)
-    static final int BASE_WIDTH = 21, COUNTER_WIDTH = 20, RDQ_ADDR_WIDTH = 21, RD_DEST_WIDTH = 14, HIST_WIDTH = 17, PTR_WIDTH = 21, SENDER_ADDR_WIDTH = 21, DIVISOR_WIDTH = 16;
+## 1. The address map
 
-    private static String lower(String s) { return s.toLowerCase().replace('_', ' '); }
-    private static List<DF> fromRegisters(String word, Map<String, String> labels, Map<String, String> resets, String defReset) {
-        String prefix = PREFIX.get(word);
-        List<DF> out = new ArrayList<>();
-        for (Registers.Field f : Registers.FIELDS) {
-            if (!f.word.equals(prefix)) continue;
-            out.add(new DF(f.lo, f.width, labels.getOrDefault(f.name, lower(f.name)), resets.getOrDefault(f.name, defReset),
-                    f.word + "_" + f.name, v1(f.doc)));
+An address is an 8-bit region [31:24] and a 24-bit byte offset [23:0] (2.2). A C pointer is the packet address.
+
+| address | contents | the controller | packets (mode 0) |
+|---|---|---|---|
+""");
+        b.append(String.format("| `%s`-`%s` | data memory, 32 KB; the first 16 bytes reserved; the reply block at `0x%08X`, the command block at `0x%08X` | loads, stores (1 cycle) | yes |%n",
+                hex(Registers.DMEM_BASE), hex(Registers.DMEM_BASE + Registers.DMEM_SIZE - 1), Registers.REPLY_BASE, Registers.COMMAND_BASE));
+        b.append(String.format("| `%s`-`%s` | program memory, 32 KB | fetch, loads; a store is a bus error | yes |%n", hex(Registers.PMEM_BASE), hex(Registers.PMEM_BASE + Registers.PMEM_SIZE - 1)));
+        b.append(String.format("| `%s`- | the boot ROM | fetch, loads | no (a bad packet) |%n", hex(Registers.BOOTROM_BASE)));
+        b.append(String.format("| `%s`- | big SRAM: chunk *c* at `0x03000000 + 4c` | bus error (no port) | yes |%n", hex(Registers.REGION_SRAM)));
+        b.append("| `0x04000000`-`0x06FFFFFF` | peripherals 1-3's regions | bus error | yes, if present |\n");
+        b.append("| `0x07000000`-`0xFEFFFFFF` | unmapped | bus error | no |\n");
+        b.append(String.format("| `%s`-`%s` | the table window (section 4) | word accesses; only `HIST` loads (1 cycle) | no |%n", hex(Registers.TABLE_BASE), hex(Registers.TABLE_END - 1)));
+        b.append(String.format("| `%s`-`%s` | the controller's register block (section 2) | word accesses (loads 2 cycles) | no |%n", hex(Registers.REG_BASE), hex(Registers.REG_BASE + 4 * Registers.BLOCK_WORDS - 1)));
+        for (int n = 1; n <= 3; n++) b.append(String.format("| `%s`-`%s` | peripheral %d's window (section 3) | word accesses (2 cycles); absent: bus error | no |%n", hex(Registers.windowBase(n)), hex(Registers.windowBase(n) + 0x1FF), n));
+        b.append("| the rest of region 0xFF | unmapped | bus error | no |\n");
+        b.append("""
+
+**Access rules** (4.11, 8.1):
+- **Bus errors** (`ERRORS` [9]): a store to program memory or the boot ROM; a misaligned access; an unmapped address,
+  an absent peripheral's window included; a sub-word access to the block, a window or the table window; a store to a
+  read-only register; a load from `PTR`, the `STREAM` arrays or `GROUP`.
+- **Write-only registers read 0.** The request port's four words are the exception: a load reads the receive side.
+- **Reserved words** in the block and the windows read 0 and ignore stores (meshsim flags the access). Reserved and
+  spare bits are ignored on a store and read 0.
+- **An offset past the end of data or program memory is not checked**: the high bits are ignored and the access
+  aliases (meshsim flags it). meshsim also flags any write into data memory's first 16 bytes.
+- **Timing:** a load from the block or a window takes 2 cycles and returns the state at the end of its first cycle,
+  taking any side effect (a consuming load of `EVENTS`, a pop of `REQUEST_RECEIVE`) at the end of its second; a load from
+  the memories or the table window takes 1. Stores are single-cycle and posted, taking effect at the end of their
+  cycle. Only a send store on an occupied send holding register and a `REQUEST_SEND` on a full request FIFO stall.
+- **Pulse registers:** a store of 1 fires the action for one cycle, a store of 0 does nothing; a load reads 0.
+
+## 2. The controller's register block
+
+One per unit, identical on every unit, at `0xFFFFF800`; register *i* at `0xFFFFF800 + 4i`, reached from `x0` (the
+offset below is the address's low 12 bits). In C: `tile->NAME` (`TileRegs`, `mesh.h`).
+
+| offset | register | access | reset | a load returns | function |
+|---|---|---|---|---|---|
+""");
+        for (Row r : ROWS) {
+            String o = r.reg.name.startsWith("REQUEST_GET") || r.reg.name.equals("REQUEST_RECEIVE") ? off(r.reg) + " (load)" : off(r.reg);
+            b.append(String.format("| `%s` | `%s` | %s | %s | %s | %s |%n", o, r.reg.name, acc(r.reg.access), r.reset, r.load, r.function));
+            if (r.reg == Registers.PULSE_DMA) b.append("| `0x814` | reserved (was `PULSE_GO`, now C&C 1's peripheral) | | | 0 | |\n");
+            if (r.reg == Registers.SRAM_RD_DEST_ADDR) b.append("| `0x884`-`0x9F4` | reserved | | | 0 | stores ignored (meshsim flags them) |\n");
         }
-        if (out.isEmpty()) throw new IllegalStateException("RegDoc: no fields with prefix " + prefix + " for " + word + " (update RegDoc.PREFIX for mesh.h 1.1)");
-        return out;
-    }
-    private static void word(String id, List<DF> fields, String gap) { WORDS.put(id, new Word(id, fields, gap, List.of(), List.of())); }
-    private static DF one(int width, String label, String reset, String doc) { return new DF(0, width, label, reset, NONE, doc); }
+        b.append("\n### 2.1 `PARAMS` and `STATUS`\n\n| register | bits | field |\n|---|---|---|\n");
+        for (Registers.Field f : Registers.FIELDS) if (f.word.equals("PARAMS")) b.append(fieldRow("PARAMS", f));
+        for (int i = 0; i < Registers.ST_NAME.length; i++) b.append(String.format("| `STATUS` | [%d] | `%s` (`ST_%s`) |%n", i, Registers.ST_NAME[i].toLowerCase(), Registers.ST_NAME[i]));
+        b.append("""
 
-    static {
-        List<DF> st = new ArrayList<>(fromRegisters("TILE_STATUS", Map.of("ID", "endpoint id", "SIZE", "size-1", "PERIPH_TYPE", "type"),
-                Map.ofEntries(Map.entry("RD_RUNNING", "0"), Map.entry("RD_DONE", "0"), Map.entry("SEND_BUSY", "0"),
-                        Map.entry("TS_BUSY", "0"), Map.entry("MEM_IDLE", "1"), Map.entry("CM_IDLE", "1"), Map.entry("DONE", "1"),
-                        Map.entry("LANDED", "0"), Map.entry("GATHER_BUSY", "0"), Map.entry("PERIPH_RUNNING", "0"), Map.entry("SENDER_BUSY", "0"),
-                        Map.entry("REQUEST_BUSY", "0"), Map.entry("PERIPH_TYPE", "1 (tiles 0-63)"), Map.entry("ID", "the tile's id"), Map.entry("SIZE", "device")), "0"));
-        st.sort((a, b) -> Integer.compare(a.lo, b.lo));
-        WORDS.put("TILE_STATUS", new Word("TILE_STATUS", st, "spare", List.<int[]>of(new int[] { Registers.ST_REQUEST_BUSY.lo, 0 }), List.of("live bits (table)")));
-        List<DF> cond = new ArrayList<>();
-        for (int b = 0; b < COND.size(); b++) {
-            int i = COND.get(b); String c = Conditions.CNAME[i];
-            cond.add(new DF(b, 1, Conditions.NAME[i], "0", "TILE_COND_" + c, "**" + condKind(c) + "** " + COND_WHEN.get(c)));
-        }
-        WORDS.put("TILE_CONDITIONS", new Word("TILE_CONDITIONS", cond, "reserved", List.<int[]>of(new int[] { COND.size() - 1, 0 }), List.of("conditions (table)")));
-        word("ROUTER_SET_HDR", fromRegisters("ROUTER_SET_HDR", Map.of(), Map.of(), UNDEF), "spare");
-        word("ROUTER_SET_W0", List.of(one(32, "payload [31:0]", UNDEF, "the next packet's payload bits 31-0 (64- and 128-bit sends); 0 after each send")), "spare");
-        word("ROUTER_SET_W1", List.of(one(32, "payload [63:32]", UNDEF, "the next packet's payload bits 63-32 (128-bit sends); 0 after each send")), "spare");
-        word("ROUTER_SET_W2", List.of(one(32, "payload [95:64]", UNDEF, "the next packet's payload bits 95-64 (128-bit sends); 0 after each send")), "spare");
-        word("ROUTER_SEND_32", List.of(one(32, "payload [31:0]", NONE, "the packet's payload bits 31-0: the store sends a 32-bit packet")), "spare");
-        word("ROUTER_SEND_64", List.of(one(32, "payload [63:32]", NONE, "the packet's payload bits 63-32: the store sends a 64-bit packet, `ROUTER_SET_W0` below")), "spare");
-        word("ROUTER_SEND_128", List.of(one(32, "payload [127:96]", NONE, "the packet's payload bits 127-96: the store sends a 128-bit packet, `ROUTER_SET_W0`-`W2` below")), "spare");
-        word("DMA_CONFIG", fromRegisters("DMA_CONFIG", Map.of("KIND", "kind", "START", "start", "COUNT", "count", "BUCKETDIG", "bucket digit",
-                "HISTDIG", "hist digit", "KM1", "k-1"), Map.of(), UNDEF), "spare");
-        word("TILE_PULSE", fromRegisters("TILE_PULSE", Map.of("PERIPH_RUN", "periph run", "GO", "GO"), Map.of(), NONE), "spare");
-        word("COUNTER", List.of(one(COUNTER_WIDTH, "count", "0", "store: N is added to the count (0 adds nothing; N > 0 arms it); load: the count")), "spare");
-        word("DMA_RECORD_BASE_ADDRESS", List.of(one(BASE_WIDTH, "chunk address", UNDEF, "the run's record buffer: augment's landing buffer or gather's value buffer")), "spare");
-        word("RDQ_ST", List.of(one(RDQ_ADDR_WIDTH, "chunk address", NONE, "the big-SRAM chunk to read: 1, 2 or 4 words by the setup register's size, aligned to it")), "spare");
-        word("RDQ_LD", List.of(one(32, "free entries", "depth", "free entries in the request queue (at least 64 when empty)")), "spare");
-        word("SRAM_RD_DEST_ADDR", fromRegisters("SRAM_RD_DEST_ADDR", Map.of("DEST", "destination", "SIZE", "size"), Map.of(), UNDEF), "spare");
-        List<DF> wake = new ArrayList<>();
-        String[] evDoc = { "`DMA_SRAM_REMAINING` done (sticky)", "`DMA_CM_REMAINING` done (sticky)", "`DMA_REPLY_REMAINING` done (sticky)", "`DMA_PERIPH_REMAINING` done (sticky)" };
-        String[] evLbl = { "sram", "cm", "reply", "periph" };
-        for (int i = 0; i < 4; i++) wake.add(new DF(i, 1, evLbl[i], "0", "WAKE_" + Registers.EV_NAME[i], evDoc[i]));
-        wake.add(new DF(4, 4, "reserved", "0", NONE, "reserved, read 0"));
-        wake.add(new DF(Registers.EV_GO, 1, "GO", "0", "WAKE_GO", "GO (sticky): C&C's barrier release"));
-        wake.add(new DF(Registers.EV_COUNTERS_DONE, 1, "ctrs", "0", "WAKE_COUNTERS_DONE", "counters done (sticky): every counter done, the writes landed"));
-        wake.add(new DF(Registers.EV_COMMAND, 1, "cmd", "0", "WAKE_COMMAND", "command landed (sticky): a command write to slot 0"));
-        wake.add(new DF(Registers.EV_RUN_DONE, 1, "run", "0", "WAKE_RUN_DONE", "engine run done (sticky): `rd_done` rose"));
-        wake.add(new DF(Registers.EV_REQUEST_ROOM, 1, "req", "0", "WAKE_REQUEST_ROOM", "request FIFO no longer full (sticky): `request_busy` fell"));
-        wake.add(new DF(Registers.EV_PERIPH_1, 6, "service lines", "0", "WAKE_PERIPH(n)", "`PERIPH_SERVICE_1`-`6`: the peripheral's lines; a consuming load claims one unit of service (2.8)"));
-        wake.add(new DF(Registers.EV_REQUEST_PENDING, 1, "pend", "live", "WAKE_REQUEST_PENDING", "`REQUEST_PENDING` (live): a received request waits; consuming it changes nothing"));
-        wake.add(new DF(Registers.EV_SENDER_IDLE, 1, "idle", "0", "WAKE_SENDER_IDLE", "sender idle (sticky): `sender_busy` fell"));
-        wake.add(new DF(Registers.EV_UART_RX, 1, "rx", "live", "WAKE_UART_RX", "UART RX not empty (live); never on an unwired tile"));
-        wake.add(new DF(Registers.EV_UART_TX, 1, "tx", "live", "WAKE_UART_TX", "UART TX not full (live); always on an unwired tile"));
-        WORDS.put("WAKE", new Word("WAKE", wake, "reserved", List.of(), List.of()));
-        word("REQ_W0", List.of(new DF(0, 7, "requestor", NONE, "REQ_REQUESTOR", "the sender's endpoint id: written 0, stamped by the tree"),
-                new DF(7, 3, "target", NONE, "REQ_TARGET", "the receiver the root delivers to (8 targets)"), new DF(10, 22, "request [31:10]", NONE, NONE, "defined by the target")), "spare");
-        word("REQ_W1", List.of(one(32, "request [63:32]", NONE, "the request's bits 63-32; store: sticky until the next send, then 0")), "spare");
-        word("REQ_W2", List.of(one(32, "request [95:64]", NONE, "the request's bits 95-64; store: sticky until the next send, then 0")), "spare");
-        word("REQ_W3", List.of(one(32, "request [127:96]", NONE, "the request's bits 127-96: a store pushes the request, a load pops the oldest received one")), "spare");
-        word("SENDER_SEND", fromRegisters("SENDER_SEND", Map.of("DEST", "dest", "MODE", "mode", "QUEUE", "queue", "COUNT", "word count"), Map.of(), NONE), "spare");
-        word("SENDER_ADDR", List.of(one(SENDER_ADDR_WIDTH, "word address", UNDEF, "the first packet's addr for modes 3, 6 and 9; advancing by each packet's words")), "spare");
-        word("PERIPH_STATUS", List.of(one(32, "status", "0", "defined by the peripheral; 0 where it defines none (the replayer: 2.8.2)")), "spare");
-        word("UART_TX", List.of(one(8, "byte", NONE, "pushed into the TX FIFO (stalls while it is full); on an unwired tile dropped, never stalls; meshsim prints it")), "spare");
-        word("UART_RX", fromRegisters("UART_RX", Map.of("BYTE", "byte", "VALID", "valid"), Map.of(), NONE), "spare");
-        word("UART_STATUS", fromRegisters("UART_STATUS", Map.of("TX_OCC", "tx occupancy", "RX_OCC", "rx occupancy", "OVERRUN", "overrun", "FRAMING", "framing"), Map.of(), "0"), "spare");
-        word("UART_DIVISOR", List.of(one(DIVISOR_WIDTH, "divisor", "434 at 25 MHz", "reference-oscillator cycles per bit; reset round(f_ref / 57,600); on an unwired tile writes are ignored and it reads its reset value")), "spare");
-        word("HIST", List.of(one(HIST_WIDTH, "count", UNDEF, "count-on-arrival's count for this digit value (modes 2, 4, 5)")), "spare");
-        word("PTR", List.of(one(PTR_WIDTH, "chunk address", UNDEF, "where the next packet for this entry lands; + 1, 2 or 4 by the packet's size (modes 2, 4), + 2 (mode 5)")), "spare");
-        word("STREAM_SRC", fromRegisters("STREAM_SRC", Map.of("ADDR", "source"), Map.of(), UNDEF), "spare");
-        word("STREAM_DEST", fromRegisters("STREAM_DEST", Map.of("WORD", "dest word", "D", "d"), Map.of(), UNDEF), "spare");
-        word("STREAM_COUNT", fromRegisters("STREAM_COUNT", Map.of("N", "count", "SIZE", "size", "GAP", "gap"), Map.of(), UNDEF), "spare");
-        word("GROUP_LO", fromRegisters("GROUP_LO", Map.of("R", "R"), Map.of(), UNDEF), "spare");
-        word("GROUP_HI", fromRegisters("GROUP_HI", Map.of("TM1", "t-1"), Map.of(), UNDEF), "spare");
-        word("CMD", List.of(new DF(0, Registers.CMD_PARITY_BIT, "argument", NONE, "CMD_ARG(w)", "the command's own argument"),
-                new DF(Registers.CMD_PARITY_BIT, 1, "parity", NONE, "CMD_PARITY(w)", "0: arguments in slots " + Registers.ARGS_EVEN + "-" + (Registers.ARGS_ODD - 1) + "; 1: slots " + Registers.ARGS_ODD + "-" + (Registers.COMMAND_SLOTS - 1)),
-                new DF(24, 8, "type", NONE, "CMD_TYPE(w)", "the command (jump, report, stage, the program's own)")), "spare");
-    }
+`PARAMS` [2:0] is 0b001 on tiles 0-63 (the replayer) and on C&C 1-3; the endpoint id is 0-63 on a mesh tile and 64-66
+on C&C 1-3; the size is 15 at the default 4 MB (`sram_chunks()` = (size + 1) << 16). `STATUS` is diagnostic only: no
+program needs to poll it; programs wait by events.
 
-    // ================================================================ what a reference adds per register
-    /** Per register: the word(s) a store and a load use, what a load returns, the reset value, the entry and its anchor. */
-    record RD(String storeWord, String loadWord, String loads, String reset, String entry, String anchor) {}
-    static final Map<String, RD> DOCS = new LinkedHashMap<>();
-    static {
-        String cfg = "undefined; kept across HALT → RUN";
-        DOCS.put("TILE_STATUS", new RD(null, "TILE_STATUS", "live bits, peripheral type, endpoint id, size", "the idle machine", "2.1.1", "tile-status"));
-        DOCS.put("TILE_CONDITIONS", new RD(null, "TILE_CONDITIONS", "the conditions", "0", "2.1.2", "tile-conditions"));
-        DOCS.put("TILE_PULSE", new RD("TILE_PULSE", null, "0", "— (no state)", "2.1.3", "tile-pulse"));
-        DOCS.put("ROUTER_SET_HDR", new RD("ROUTER_SET_HDR", null, "0", cfg, "2.2", "send-port"));
-        for (String w : new String[] { "ROUTER_SET_W0", "ROUTER_SET_W1", "ROUTER_SET_W2" }) DOCS.put(w, new RD(w, null, "0", cfg, "2.2", "send-port"));
-        for (String w : new String[] { "ROUTER_SEND_32", "ROUTER_SEND_64", "ROUTER_SEND_128" }) DOCS.put(w, new RD(w, null, "0", "— (no state)", "2.2", "send-port"));
-        DOCS.put("DMA_CONFIG", new RD("DMA_CONFIG", null, "0", cfg, "2.3.1", "dma-config"));
-        DOCS.put("DMA_RECORD_BASE_ADDRESS", new RD("DMA_RECORD_BASE_ADDRESS", null, "0", cfg, "2.3.3", "record-base"));
-        for (String c : new String[] { "DMA_SRAM_REMAINING", "DMA_CM_REMAINING", "DMA_REPLY_REMAINING" }) DOCS.put(c, new RD("COUNTER", "COUNTER", "the count", "0", "2.3.2", "down-counters"));
-        DOCS.put("DMA_PERIPH_REMAINING", new RD("COUNTER", "COUNTER", "the count", "0", "2.8", "replayer"));
-        DOCS.put("SRAM_RD_ADDR_QUEUE", new RD("RDQ_ST", "RDQ_LD", "free entries", "queue empty", "2.4", "read-port"));
-        DOCS.put("SRAM_RD_DEST_ADDR", new RD("SRAM_RD_DEST_ADDR", null, "0", cfg, "2.4", "read-port"));
-        DOCS.put("WAKE_EVENTS", new RD(null, "WAKE", "every pending event; consumes those in `WAKE_MASK`", "0 (live events: their state)", "2.6", "wake-events"));
-        DOCS.put("WAKE_PEEK", new RD(null, "WAKE", "every pending event; consumes nothing", "as `WAKE_EVENTS`", "2.6", "wake-events"));
-        DOCS.put("WAKE_MASK", new RD("WAKE", "WAKE", "the mask", "[8] \\| [9]; again at HALT → RUN", "2.6", "wake-events"));
-        DOCS.put("WAKE_REQUIRED", new RD("WAKE", "WAKE", "the required set", "0; again at HALT → RUN", "2.6", "wake-events"));
-        DOCS.put("REQUEST_SET_W0", new RD("REQ_W0", null, "(a load: `REQUEST_GET_W0`)", cfg, "2.7", "request-port"));
-        DOCS.put("REQUEST_SET_W1", new RD("REQ_W1", null, "(a load: `REQUEST_GET_W1`)", cfg, "2.7", "request-port"));
-        DOCS.put("REQUEST_SET_W2", new RD("REQ_W2", null, "(a load: `REQUEST_GET_W2`)", cfg, "2.7", "request-port"));
-        DOCS.put("REQUEST_SEND", new RD("REQ_W3", null, "(a load: `REQUEST_RECEIVE`)", "— (no state)", "2.7", "request-port"));
-        DOCS.put("REQUEST_GET_W0", new RD(null, "REQ_W0", "the oldest received request's bits 31-0; 0 when empty", "queue empty", "2.7", "request-port"));
-        DOCS.put("REQUEST_GET_W1", new RD(null, "REQ_W1", "its bits 63-32; 0 when empty", "queue empty", "2.7", "request-port"));
-        DOCS.put("REQUEST_GET_W2", new RD(null, "REQ_W2", "its bits 95-64; 0 when empty", "queue empty", "2.7", "request-port"));
-        DOCS.put("REQUEST_RECEIVE", new RD(null, "REQ_W3", "its bits 127-96, and pops it; empty: 0 and receive underflow", "queue empty", "2.7", "request-port"));
-        DOCS.put("SENDER_SEND", new RD("SENDER_SEND", null, "0", "— (no state)", "2.8.1", "sender"));
-        DOCS.put("SENDER_ADDR", new RD("SENDER_ADDR", null, "0", cfg, "2.8.1", "sender"));
-        for (int i = 0; i < 8; i++) DOCS.put("PERIPH_STATUS_" + i, new RD(null, "PERIPH_STATUS", "the peripheral's status " + i + "; no side effects", "per peripheral; 0 when idle", "2.8", "replayer"));
-        DOCS.put("UART_TX", new RD("UART_TX", null, "0", "— (no state)", "2.9", "uart"));
-        DOCS.put("UART_RX", new RD(null, "UART_RX", "the oldest byte and valid; pops when valid", "FIFO empty", "2.9", "uart"));
-        DOCS.put("UART_STATUS", new RD("UART_STATUS", "UART_STATUS", "occupancies and errors; no side effects", "0", "2.9", "uart"));
-        DOCS.put("UART_DIVISOR", new RD("UART_DIVISOR", "UART_DIVISOR", "the divisor", "round(f_ref / 57,600)", "2.9", "uart"));
-        for (Reg r : REGS) if (!DOCS.containsKey(r.name)) throw new IllegalStateException("RegDoc: no entry for " + r.name);
-    }
-    /** How a word's unused bits behave: by whether the program stores it, loads it, or both. */
-    static final Map<String, String> DIRECTION = Map.ofEntries(
-        Map.entry("DMA_CONFIG", "ignored on a store"), Map.entry("TILE_PULSE", "ignored on a store"), Map.entry("TILE_STATUS", "reads 0"),
-        Map.entry("TILE_CONDITIONS", "reads 0"), Map.entry("ROUTER_SET_HDR", "ignored on a store"), Map.entry("DMA_RECORD_BASE_ADDRESS", "ignored on a store"),
-        Map.entry("RDQ_ST", "ignored on a store"), Map.entry("SRAM_RD_DEST_ADDR", "ignored on a store"), Map.entry("PTR", "ignored on a store"),
-        Map.entry("STREAM_SRC", "ignored on a store"), Map.entry("STREAM_DEST", "ignored on a store"), Map.entry("STREAM_COUNT", "ignored on a store"),
-        Map.entry("GROUP_LO", "ignored on a store"), Map.entry("GROUP_HI", "ignored on a store"), Map.entry("SENDER_SEND", "ignored on a store"),
-        Map.entry("SENDER_ADDR", "ignored on a store"), Map.entry("UART_TX", "ignored on a store"), Map.entry("UART_RX", "reads 0"),
-        Map.entry("REQ_W0", "—"), Map.entry("WAKE", "ignored on a store, reads 0"));
-    /** Meanings that say more than mesh.h's one-line comments (keyed word.label). */
-    static final Map<String, String> DOC = Map.ofEntries(
-        Map.entry("ROUTER_SET_HDR.addr", "the packet's addr: modes 3, 6, 7 and 9 (0 otherwise); after each send + 1, 2 or 4 by the size sent (modes 3, 6, 9) or + 1 (mode 7)"),
-        Map.entry("ROUTER_SET_HDR.mode", "packet mode, 4 bits: 1-9 (0 and 10-15 are bad modes; mode 5 not at 128 bits, mode 7 only at 32, mode 8 not at 128, mode 3 aligned to its size)"),
-        Map.entry("TILE_STATUS.done", "live: done pulsed since the last GO or HALT -> RUN (forced to 1 in HALT)"),
-        Map.entry("TILE_STATUS.landed", "live: a command write to slot 0 since the last GO or HALT -> RUN"),
-        Map.entry("TILE_STATUS.size-1", "big-SRAM size in 256 KB units, minus 1 (fixed per device; 15 at 4 MB)"),
-        Map.entry("TILE_STATUS.endpoint id", "this tile's endpoint id: the tile index, 0-63 (fixed)"),
-        Map.entry("TILE_STATUS.type", "the peripheral slot's type: 0 none, 1 the replayer (fixed; 1 on every mesh tile)"),
-        Map.entry("TILE_PULSE.periph run", "peripheral run: start the peripheral's work; ignored while periph_running and on a type-0 tile (meshsim flags both)"),
-        Map.entry("TILE_PULSE.GO", "GO: drives the GO net where wired (C&C's); on every mesh tile ignored, and meshsim flags a 1"),
-        Map.entry("DMA_CONFIG.k-1", "gather value size k - 1, in records (k = 1-8)"),
-        Map.entry("STREAM_SRC.source", "element 0's chunk address; element e at source + e × (1, 2 or 4 chunks by the read size), mod 2^21"),
-        Map.entry("STREAM_DEST.dest word", "modes 3, 6 and 9: element 0's addr (mode 6: a packed word; mode 3: a chunk, aligned to the size); + 1, 2 or 4 per element by the read size, mod 2^21. Other modes: ignored"),
-        Map.entry("STREAM_DEST.d", "destination: 0-63 a tile offset, dst = (me + d) mod 64; 64 C&C (mode 3 only); 65-127 errors"),
-        Map.entry("STREAM_COUNT.count", "elements in the stream (0: the stream sends nothing)"),
-        Map.entry("STREAM_COUNT.mode", "packet mode, 4 bits: 1-6 or 9 (0, 7, 8 and 10-15 are errors; mode 5 needs read size 32 or 64)"),
-        Map.entry("STREAM_COUNT.size", "read size, stamped as every packet's size: 0 32 bits, 1 64 bits, 2 128 bits (3 undefined)"),
-        Map.entry("STREAM_COUNT.gap", "stream runs: idle cycles after the stream (group runs ignore it)"),
-        Map.entry("GROUP_LO.R", "rotations: the group's maximum count over all tiles"),
-        Map.entry("GROUP_HI.start", "first stream of the group (0-255)"),
-        Map.entry("GROUP_HI.t-1", "streams in the group, minus 1 (t = 1-16)"),
-        Map.entry("GROUP_HI.gap", "idle cycles after the group"),
-        Map.entry("SRAM_RD_DEST_ADDR.destination", "packed controller-memory word of the next result; + 1, 2 or 4 (the size) per queued read, a dropped one included, wrapping in 14 bits"),
-        Map.entry("SRAM_RD_DEST_ADDR.size", "read size: 0 32 bits, 1 64, 2 128 (3 reserved); each result one mode-6 packet of that size"));
+### 2.2 `ERRORS`
 
-    static String access(int a) { return a == Registers.R ? "R" : a == Registers.W ? "W" : "R/W"; }
-    static String hex8(int v) { return String.format("0x%08X", v); }
-    static String hex(int v) { return String.format("0x%X", v); }
-    static String bits(int hi, int lo) { return hi == lo ? "[" + hi + "]" : "[" + hi + ":" + lo + "]"; }
+Any non-zero bit raises the unit's hard interrupt and its error line (4.13). In a correct program on correct hardware
+`ERRORS` reads 0 forever.
 
-    // ================================================================ rendering a word
-    record Seg(int hi, int lo, String label) {}
+| bit | `mesh.h` | error |
+|---|---|---|
+""");
+        String[] en = { "ERR_ROUTER_OVF", "ERR_BAD_PACKET", "ERR_UNEXPECTED", "ERR_DRIFT", "ERR_WE_IN_OVF", "ERR_TABLE_OVF", "ERR_GATHER_OVF",
+                "ERR_READ_PORT", "ERR_DONE_EARLY", "ERR_BUS", "ERR_ILLEGAL", "ERR_PERIPH(1)", "ERR_PERIPH(2)", "ERR_PERIPH(3)", "ERR_RECV_UNDERFLOW" };
+        String[] ed = { "router overflow: a link, eject or fifth-port FIFO overflowed", "bad packet or misaligned access: a bad packet dropped, a write through a misaligned `PTR` dropped (still counted), or a misaligned read not performed (payload 0)",
+                "unexpected arrival: a decrement found its counter at 0", "drift: in a group run the SRAM read queue refused the address generator",
+                "write-engine input overflow", "table request overflow (a hardware fault)", "GATHER queue overflow (a hardware fault)",
+                "read-port error: a `SRAM_RD_ADDR_QUEUE` store with no free entry (the read is dropped)", "done early: `done` with a write counter non-zero",
+                "bus error", "illegal instruction", "peripheral 1 (live: its `ERRORS` non-zero)", "peripheral 2 (live)", "peripheral 3 (live)",
+                "receive underflow: `REQUEST_RECEIVE` on an empty queue" };
+        for (int i = 0; i < en.length; i++) b.append(String.format("| %d | `%s` | %s |%n", i, en[i], ed[i]));
+        b.append("""
 
-    /** The word's boxes, high bits first: fields, collapsed ranges and the unused bits between them. */
-    static List<Seg> segs(Word w) {
-        boolean[] used = new boolean[32];
-        for (DF f : w.fields)
-            for (int b = f.lo; b <= f.hi(); b++) { if (used[b]) throw new IllegalStateException(w.id + ": bit " + b + " twice"); used[b] = true; }
-        List<Seg> s = new ArrayList<>();
-        for (int b = 31; b >= 0; ) {
-            final int bb = b;
-            int ci = -1;
-            for (int i = 0; i < w.collapse.size(); i++) if (w.collapse.get(i)[0] == b) ci = i;
-            if (ci >= 0) { int[] c = w.collapse.get(ci); s.add(new Seg(c[0], c[1], w.collapseLabel.get(ci))); b = c[1] - 1; continue; }
-            DF f = w.fields.stream().filter(x -> x.hi() == bb).findFirst().orElse(null);
-            if (f != null) { s.add(new Seg(f.hi(), f.lo, f.label)); b = f.lo - 1; continue; }
-            int lo = b;
-            while (lo - 1 >= 0 && !used[lo - 1] && !startsCollapse(w, lo - 1)) lo--;
-            s.add(new Seg(b, lo, w.gapName));
-            b = lo - 1;
-        }
-        return s;
-    }
-    private static boolean startsCollapse(Word w, int b) { for (int[] c : w.collapse) if (c[0] == b) return true; return false; }
+Bits 0-10 and 14 are sticky until the reset; 11-13 follow the peripherals. [31:15] read 0. A store is a bus error.
 
-    static final int MAX_LINE = 80;
+### 2.3 The events: `EVENTS`, `EVENTS_PEEK`, `EVENTS_MASK`, `EVENTS_REQUIRED`
 
-    /** The ASCII diagram (bit 31 on the left): bit numbers, boxes, labels, widths; split at bit 16 if wider than MAX_LINE. */
-    static String diagram(Word w) {
-        List<Seg> all = segs(w);
-        String one = draw(all);
-        if (one.lines().mapToInt(String::length).max().orElse(0) <= MAX_LINE) return one;
-        List<Seg> hi = new ArrayList<>(), lo = new ArrayList<>();
-        for (Seg g : all) {
-            if (g.lo >= 16) hi.add(g);
-            else if (g.hi < 16) lo.add(g);
-            else { hi.add(new Seg(g.hi, 16, g.label)); lo.add(new Seg(15, g.lo, g.label)); }
-        }
-        return draw(hi) + "\n" + draw(lo);
-    }
-    private static String draw(List<Seg> segs) {
-        StringBuilder num = new StringBuilder(" "), bord = new StringBuilder("+"), lab = new StringBuilder("|"), wid = new StringBuilder(" ");
-        for (Seg g : segs) {
-            String h = Integer.toString(g.hi), l = Integer.toString(g.lo), n = Integer.toString(g.hi - g.lo + 1);
-            int w = Math.max(g.label.length(), g.hi == g.lo ? h.length() : h.length() + l.length() + 1) + 2;
-            w = Math.max(w, n.length() + 2);
-            num.append(g.hi == g.lo ? center(h, w) : h + " ".repeat(w - h.length() - l.length()) + l).append(' ');
-            bord.append("-".repeat(w)).append('+');
-            lab.append(center(g.label, w)).append('|');
-            wid.append(center(n, w)).append(' ');
-        }
-        return rtrim(num) + "\n" + bord + "\n" + lab + "\n" + bord + "\n" + rtrim(wid) + "\n";
-    }
-    private static String center(String s, int w) { int l = (w - s.length()) / 2; return " ".repeat(l) + s + " ".repeat(w - s.length() - l); }
-    private static String rtrim(StringBuilder sb) { return sb.toString().replaceAll("\\s+$", ""); }
+| bit | `mesh.h` | event | kind |
+|---|---|---|---|
+| [6:0] | `EV_CTR(n)` | write counter *n* done (bit *n* - 1): its count reached 0, armed since the event last set or cleared | sticky |
+| [7] | `EV_CTRS_DONE` | counters done: all seven at 0, one armed since it last fired | sticky |
+| [8] | `EV_GO` | GO, C&C 1's barrier release (mesh tiles only) | sticky |
+| [9] | `EV_COMMAND` | command landed: a director write covering command slot 0 | sticky |
+| [10] | `EV_RUN_DONE` | DMA run done: `rd_done` rose; cleared by `PULSE_DMA` | sticky |
+| [11] | `EV_REQ_ROOM` | request FIFO no longer full: `request_busy` fell | sticky |
+| [12] | `EV_REQ_PENDING` | request pending: the unit's receive queue holds a request (C&C 1-3 only) | live |
+| [15:13] | `EV_PERIPH(n)` | peripheral *n*: its `EVENTS & EVENTS_MASK` non-zero | live |
 
-    /** The field table, bit 0 first (the diagram above it has bit 31 on the left), with the unused bits. */
-    static String fieldTable(Word w, boolean showMacro, boolean showReset) {
-        StringBuilder sb = new StringBuilder("| bits | field | width |" + (showReset ? " reset |" : "") + (showMacro ? " `mesh.h` |" : "") + " meaning |\n|---|---|---|"
-                + (showReset ? "---|" : "") + (showMacro ? "---|" : "") + "---|\n");
-        List<Seg> rows = new ArrayList<>(segs(new Word(w.id, w.fields, w.gapName, List.of(), List.of())));
-        Collections.reverse(rows);
-        String dir = DIRECTION.getOrDefault(w.id, "ignored on a store, reads 0");
-        for (Seg g : rows) {
-            DF f = w.fields.stream().filter(x -> x.hi() == g.hi && x.lo == g.lo).findFirst().orElse(null);
-            String label = f != null ? f.label : g.label, reset = f != null ? f.reset : (dir.equals("ignored on a store") ? NONE : "0");
-            String doc = f != null ? DOC.getOrDefault(w.id + "." + f.label, f.doc) : (w.gapName.equals("reserved") ? "reserved: " : "") + dir;
-            String macro = f == null || f.macro.equals(NONE) ? NONE : "`" + f.macro + "`";
-            sb.append("| ").append(bits(g.hi, g.lo)).append(" | ").append(label).append(" | ").append(g.hi - g.lo + 1);
-            if (showReset) sb.append(" | ").append(reset);
-            if (showMacro) sb.append(" | ").append(macro);
-            sb.append(" | ").append(doc).append(" |\n");
-        }
-        return sb.toString();
-    }
-    static String wordBlock(String id) {
-        Word w = WORDS.get(id);
-        boolean macros = DIRECT && w.fields.stream().anyMatch(f -> !f.macro.equals(NONE));
-        boolean resets = w.fields.stream().anyMatch(f -> !f.reset.equals(NONE));
-        return "```text\n" + diagram(w) + "```\n\n" + fieldTable(w, macros, resets);
-    }
+- **A load of `EVENTS`** returns every pending event and clears exactly the returned sticky bits that are in
+  `EVENTS_MASK`; an event set after its sample point survives. `EVENTS_PEEK` returns the same and clears nothing.
+- **The wake term:** `wake = gate ? EVENTS[8] : ((EVENTS & EVENTS_MASK & ~EVENTS_REQUIRED) != 0) OR (EVENTS_REQUIRED != 0
+  AND (EVENTS & EVENTS_REQUIRED) == EVENTS_REQUIRED)`. A wake consumes nothing: `wfi()` loads `EVENTS` after `WFI`.
+- **The done gate:** from the `done` pulse until GO only GO wakes `WFI`, and the counters' done events can't be set.
+  `done` clears [7] and [6:0]. Keep [8] in `EVENTS_MASK` whenever `wait_for_command()` runs.
+- **A counter write** of *N* > 0 clears [7] and that counter's own done event and arms both.
 
-    // ================================================================ the blocks
-    static String render(String id) {
-        String[] p = id.trim().split("\\s+");
-        return switch (p[0]) {
-            case "addressmap" -> addressMap();
-            case "summary" -> summary();
-            case "reg" -> regs(Arrays.copyOfRange(p, 1, p.length));
-            case "window" -> window();
-            case "entry" -> entry(p[1]);
-            case "modes" -> modes();
-            case "linkword" -> linkWord();
-            case "cmword" -> cmWord();
-            case "cmwrites" -> cmWrites();
-            case "command" -> command();
-            default -> throw new IllegalArgumentException("unknown block: " + id);
-        };
-    }
+### 2.4 The common header layout
 
-    static int regEnd() { return Registers.REG_BASE + 4 * Registers.N_OFFSETS; }
+Every register that carries a packet's header fields lays them out in [31:17], in the link word's order:
 
-    static String addressMap() {
-        return "| address | size | contents | data access |\n|---|---|---|---|\n"
-            + row(Registers.IMEM_BASE, Registers.LOADER_BASE - 1, "instruction memory: code (fetched; written only by mode 6)", "bus error")
-            + row(Registers.LOADER_BASE, Registers.LOADER_BASE + Registers.LOADER_SIZE - 1, "instruction memory: the resident loader", "bus error")
-            + row(Registers.HIST_BASE, Registers.PTR_BASE - 1, "table window: `HIST`", "`lw`, `sw`")
-            + row(Registers.PTR_BASE, Registers.STREAM_SRC_BASE - 1, "table window: `PTR`", "`sw` only")
-            + row(Registers.STREAM_SRC_BASE, Registers.STREAM_DEST_BASE - 1, "table window: `STREAM_SRC`", "`sw` only")
-            + row(Registers.STREAM_DEST_BASE, Registers.STREAM_COUNT_BASE - 1, "table window: `STREAM_DEST`", "`sw` only")
-            + row(Registers.STREAM_COUNT_BASE, Registers.GROUP_BASE - 1, "table window: `STREAM_COUNT`", "`sw` only")
-            + row(Registers.GROUP_BASE, Registers.TABLES_END - 1, "table window: `GROUP`", "`sw` only")
-            + row(Registers.TABLES_END, Registers.TABLE_END - 1, "unmapped", "bus error")
-            + row(Registers.DMEM_BASE, Registers.REPLY_BASE - 1, "data memory: `.rodata`, `.data`, `.bss`, stack", "any width")
-            + row(Registers.REPLY_BASE, Registers.COMMAND_BASE - 1, "data memory: the reply block, 256 words (2 per source)", "any width")
-            + row(Registers.COMMAND_BASE, Registers.DMEM_BASE + Registers.DMEM_SIZE - 1, "data memory: the command block, 16 slots", "any width")
-            + row(Registers.DMEM_BASE + Registers.DMEM_SIZE, Registers.REG_BASE - 1, "unmapped", "bus error")
-            + row(Registers.REG_BASE, regEnd() - 1, "registers: " + Registers.N_OFFSETS + " words (section 2)", "`lw`, `sw` per register")
-            + row(regEnd(), -1, "unmapped", "bus error");
-    }
-    private static String row(int a, int b, String what, String access) {
-        long size = Integer.toUnsignedLong(b) - Integer.toUnsignedLong(a) + 1;
-        String sz = size >= 1L << 30 ? "≈\u00A04\u00A0GB" : size % 1024 == 0 ? (size / 1024) + "\u00A0KB" : size + "\u00A0B";   // no-break spaces
-        return "| `" + hex8(a) + "`–`" + hex8(b) + "` | " + sz + " | " + what + " | " + access + " |\n";
-    }
+| bits | field | `mesh.h` |
+|---|---|---|
+""");
+        for (Registers.Field f : Registers.FIELDS) if (f.word.equals("HDR")) b.append(String.format("| [%d:%d] | %s | `HDR_%s()` |%n", f.lo + f.width - 1, f.lo, f.doc, f.name));
+        b.append("""
 
-    static String summary() {
-        StringBuilder sb = new StringBuilder("| offset | register | access | a load returns | reset | entry |\n|---|---|---|---|---|---|\n");
-        for (Reg r : REGS) {
-            if (r.name.startsWith("REQUEST_GET_") || r.name.equals("REQUEST_RECEIVE")) continue;   // shown with its store register
-            RD d = DOCS.get(r.name);
-            String nm = r.name.startsWith("REQUEST_") ? "`" + r.name + "` / `" + (r.name.equals("REQUEST_SEND") ? "REQUEST_RECEIVE" : r.name.replace("SET", "GET")) + "`" : "`" + r.name + "`";
-            String acc = r.name.startsWith("REQUEST_") ? "W / R" : access(r.access);
-            sb.append("| `").append(hex(r.addr & 0xFFF)).append("` | ").append(nm).append(" | ").append(acc).append(" | ")
-              .append(d.loads).append(" | ").append(d.reset).append(" | [").append(d.entry).append("](#").append(d.anchor).append(") |\n");
-        }
-        return sb.toString();
-    }
+Used by `ROUTER_HDR` (with no-increment [0]), `STREAM_COUNT` (count [16:0]; [31:25] is the relative *d*),
+`SRAM_RD_DEST_ADDR` (destination [16:0]; size and counter) and a peripheral's `DMA_HDR` (count [11:0], queue [13:12]).
 
-    static String regs(String[] names) {
-        List<Reg> rs = new ArrayList<>();
-        for (String n : names) rs.add(reg(n));
-        StringBuilder sb = new StringBuilder("| register | address | access | a load returns | reset |\n|---|---|---|---|---|\n");
-        for (Reg r : rs) {
-            RD d = DOCS.get(r.name);
-            sb.append("| `").append(r.name).append("` | `").append(hex8(r.addr)).append("` | ").append(access(r.access))
-              .append(" | ").append(d.loads).append(" | ").append(d.reset).append(" |\n");
-        }
-        List<String[]> parts = new ArrayList<>();          // {label, word id}
-        for (Reg r : rs) {
-            RD d = DOCS.get(r.name);
-            if (d.storeWord != null && d.storeWord.equals(d.loadWord)) parts.add(new String[] { "`" + r.name + "`, store and load", d.storeWord });
-            else {
-                if (d.storeWord != null) parts.add(new String[] { "`" + r.name + "`, store", d.storeWord });
-                if (d.loadWord != null) parts.add(new String[] { "`" + r.name + "`, load", d.loadWord });
-            }
-        }
-        Set<String> distinct = new LinkedHashSet<>();
-        for (String[] pt : parts) distinct.add(pt[1]);
-        Set<String> done = new LinkedHashSet<>();
-        for (String[] pt : parts) {
-            if (!done.add(pt[1])) continue;
-            // registers sharing one word (the three send registers) are named together: `A`, `B` and `C`, store
-            List<String> nm = new ArrayList<>();
-            for (String[] q : parts) if (q[1].equals(pt[1])) nm.add(q[0].substring(0, q[0].lastIndexOf(',')));
-            String label = nm.size() == 1 ? pt[0] : String.join(", ", nm.subList(0, nm.size() - 1)) + " and " + nm.get(nm.size() - 1) + pt[0].substring(pt[0].lastIndexOf(','));
-            sb.append("\n");
-            if (distinct.size() > 1) sb.append("**").append(label).append(".**\n\n");
-            sb.append(wordBlock(pt[1]));
-        }
-        return sb.toString();
-    }
+### 2.5 The send port
 
-    static String window() {
-        return "| table | window | entries | entry | index from the address | load | store |\n|---|---|---|---|---|---|---|\n"
-            + "| `HIST` | `" + hex(Registers.HIST_BASE) + "`–`" + hex(Registers.PTR_BASE - 1) + "` | 256 | one word, " + HIST_WIDTH + " bits | *i* = addr[9:2] | the count | the count |\n"
-            + "| `PTR` | `" + hex(Registers.PTR_BASE) + "`–`" + hex(Registers.STREAM_SRC_BASE - 1) + "` | 256 | one word, " + PTR_WIDTH + " bits | *i* = addr[9:2] | bus error | the pointer |\n"
-            + "| `STREAM_SRC` | `" + hex(Registers.STREAM_SRC_BASE) + "`–`" + hex(Registers.STREAM_DEST_BASE - 1) + "` | 256 | one word | *i* = addr[9:2] | bus error | the word |\n"
-            + "| `STREAM_DEST` | `" + hex(Registers.STREAM_DEST_BASE) + "`–`" + hex(Registers.STREAM_COUNT_BASE - 1) + "` | 256 | one word | *i* = addr[9:2] | bus error | the word |\n"
-            + "| `STREAM_COUNT` | `" + hex(Registers.STREAM_COUNT_BASE) + "`–`" + hex(Registers.GROUP_BASE - 1) + "` | 256 | one word | *i* = addr[9:2] | bus error | the word |\n"
-            + "| `GROUP` | `" + hex(Registers.GROUP_BASE) + "`–`" + hex(Registers.TABLES_END - 1) + "` | 64 | two words: low, high | *g* = addr[8:3]; addr[2]: 0 low, 1 high | bus error | one word |\n"
-            + "| — | `" + hex(Registers.TABLES_END) + "`–`" + hex(Registers.TABLE_END - 1) + "` | — | unmapped | — | bus error | bus error |\n";
-    }
+`ROUTER_HDR` (no-increment [0], counter, mode, dst) and `ROUTER_ADDR` set the next packets' header and address; then one
+store per 32 bits of each packet, in ascending word order, the last store sending: `ROUTER_SEND_32` alone,
+`ROUTER_SET_W0` + `ROUTER_SEND_64`, or `ROUTER_SET_W0`-`W2` + `ROUTER_SEND_128`. At each send `ROUTER_ADDR` advances by
+4, 8 or 16 for mode 0 unless no-increment is set (modes 1-5 leave it); `ROUTER_SET_W0`-`W2` clear. The router stamps src.
+A send store stalls only if the holding register is full and not being injected that cycle. The send port checks
+nothing: the receiver and meshsim do.
 
-    static String entry(String id) {
-        if (!List.of("HIST", "PTR", "STREAM_SRC", "STREAM_DEST", "STREAM_COUNT", "GROUP_LO", "GROUP_HI").contains(id)) throw new IllegalArgumentException("unknown entry " + id);
-        return wordBlock(id);
-    }
+### 2.6 `DMA_CONFIG` and the write counters
 
-    // ---- packets
-    /** Per mode: mesh.h name (DIRECT only), packet, lands, uses addr, ROUTER_SET_HDR's addr after a send, counter, STREAM. */
-    static final String[][] MODES = {
-        { "0", "", "invalid", "dropped; bad mode or size", "no", "unchanged", "—", "no" },
-        { "1", "MODE_GATHER", "gather request (to the tile itself)", "the GATHER engine", "no", "unchanged", "— (never; its values count)", "yes, *d* = 0" },
-        { "2", "MODE_SRC", "big-SRAM write by source", "big SRAM at `PTR[src]`", "no", "unchanged", "`DMA_SRAM_REMAINING`", "yes" },
-        { "3", "MODE_EXPLICIT", "big-SRAM write at an explicit address, aligned to its size (misaligned: a bad packet)", "big SRAM at addr; never spans", "yes", "+1, +2 or +4 by size", "`DMA_SRAM_REMAINING`", "yes; *d* = 64 a write stream to C&C" },
-        { "4", "MODE_BUCKET", "bucket write", "big SRAM at `PTR[bucket digit]`", "no", "unchanged", "`DMA_SRAM_REMAINING`", "yes" },
-        { "5", "MODE_AUGMENT", "augmented write: a 32- or 64-bit packet's low word as a 64-bit record (128 bits: a bad packet)", "big SRAM at `PTR[src]`, ordinal in [63:32]", "no", "unchanged", "`DMA_SRAM_REMAINING`", "yes, not at 128 bits" },
-        { "6", "MODE_CM", "controller-memory write, 1, 2 or 4 words by size", "instruction or data memory at addr, outside both blocks", "yes", "+1, +2 or +4 by size", "`DMA_CM_REMAINING`", "yes" },
-        { "7", "MODE_COMMAND", "command write: 32 bits only", "command slot addr[3:0]", "yes", "+1", "— (never; slot 0: command landed)", "no" },
-        { "8", "MODE_REPLY", "reply: 32 or 64 bits (128: a bad packet)", "the reply block at word 2·src (32 bits: word 0 only)", "no", "unchanged", "`DMA_REPLY_REMAINING`", "no" },
-        { "9", "MODE_PERIPH", "peripheral write", "the peripheral's address space at addr (2.8)", "yes", "+1, +2 or +4 by size", "`DMA_PERIPH_REMAINING`, on landing or drop", "yes" },
-        { "10–15", "", "reserved", "dropped; bad mode or size", "no", "unchanged", "—", "no" },
-    };
-    static String modes() {
-        StringBuilder sb = new StringBuilder("| mode |" + (DIRECT ? " `mesh.h` |" : "") + " packet | lands | uses addr | `ROUTER_SET_HDR` addr after a send | counted in | in `STREAM` |\n|---|"
-                + (DIRECT ? "---|" : "") + "---|---|---|---|---|---|\n");
-        for (String[] m : MODES) {
-            sb.append("| ").append(m[0]);
-            if (DIRECT) sb.append(" | ").append(m[1].isEmpty() ? NONE : "`" + m[1] + "`");
-            for (int i = 2; i < m.length; i++) sb.append(" | ").append(m[i]);
-            sb.append(" |\n");
-        }
-        return sb.toString();
-    }
-    /** The link word's fields and widths (spec 3.1); bit positions on the wire are not visible to a program. */
-    static final Object[][] LINK = {
-        { "src", 7, "the injecting tile's router (127: idle packet)", "—" },
-        { "dst", 7, "the sender: tile 0–63, 64 C&C, 126 broadcast", "`ROUTER_SET_HDR`.dst; `STREAM`: (`me` + *d*) mod 64, or 64; the read port: `me`" },
-        { "mode", 4, "the sender", "`ROUTER_SET_HDR`.mode; `STREAM_COUNT`.mode; the read port: 6" },
-        { "addr", 21, "the sender, for modes 3, 6, 7 and 9; 0 otherwise", "`ROUTER_SET_HDR`.addr; `STREAM_DEST`'s word for modes 3, 6 and 9, else 0; the read port: its setup register's destination" },
-        { "size", 2, "the sender: 00 32, 01 64, 10 128 bits (11 undefined)", "the send register (`ROUTER_SEND_32`, `_64`, `_128`); `STREAM_COUNT`.size; the read port: its setup register's size" },
-        { "payload", 128, "the sender; bits above the size are 0", "`ROUTER_SET_W0`–`W2` and the send store's data; `STREAM`: the element; the read port: the words read" },
-    };
-    static String linkWord() {
-        StringBuilder sb = new StringBuilder("| field | width | set by | from a program |\n|---|---|---|---|\n");
-        int total = 0;
-        for (Object[] f : LINK) { sb.append("| ").append(f[0]).append(" | ").append(f[1]).append(" | ").append(f[2]).append(" | ").append(f[3]).append(" |\n"); total += (Integer) f[1]; }
-        sb.append("| **total** | **").append(total).append("** | | |\n");
-        return sb.toString();
-    }
-    static String cmWord() {
-        int rb = 0x800 + ((Registers.REPLY_BASE - Registers.DMEM_BASE) >> 2), cb = 0x800 + ((Registers.COMMAND_BASE - Registers.DMEM_BASE) >> 2);
-        return "| packed word | byte address | memory |\n|---|---|---|\n"
-            + "| `0x000`–`0x7FF` | `" + hex(Registers.IMEM_BASE) + "`–`" + hex(Registers.IMEM_BASE + Registers.IMEM_SIZE - 4) + "` | instruction memory (mode 6) |\n"
-            + "| `0x800`–`" + hex(rb - 1) + "` | `" + hex(Registers.DMEM_BASE) + "`–`" + hex(Registers.REPLY_BASE - 4) + "` | data memory below the blocks (mode 6) |\n"
-            + "| `" + hex(rb) + "`–`" + hex(cb - 1) + "` | `" + hex(Registers.REPLY_BASE) + "`–`" + hex(Registers.COMMAND_BASE - 4) + "` | the reply block (mode 8 writes it by source; mode 6 must not) |\n"
-            + "| `" + hex(cb) + "`–`0xFFF` | `" + hex(Registers.COMMAND_BASE) + "`–`" + hex(Registers.DMEM_BASE + Registers.DMEM_SIZE - 4) + "` | the command block (mode 7 writes it by slot; mode 6 must not) |\n";
-    }
-    /** The three producers of controller-memory writes and their address sources (section 2.5). */
-    static String cmWrites() {
-        return "| producer | packets | typical use | the address comes from | advances | counted in |\n|---|---|---|---|---|---|\n"
-            + "| the address generator | mode 6 (from a `STREAM` entry) | block copies and vector exchanges | `STREAM_DEST`'s destination word | +1, +2 or +4 per packet (its size) | `DMA_CM_REMAINING` |\n"
-            + "| the send port | mode 6 | words or vectors sent by a program | `ROUTER_SET_HDR`'s addr | +1, +2 or +4 per packet (its size) | `DMA_CM_REMAINING` |\n"
-            + "| the read port | mode 6, to the tile itself | scattered reads: searches, hashing | `SRAM_RD_DEST_ADDR`'s destination | +1, +2 or +4 per read (its size) | `DMA_CM_REMAINING` |\n";
-    }
-    static String command() {
-        int ae = Registers.ARGS_EVEN, ao = Registers.ARGS_ODD;
-        return wordBlock("CMD") + "\n| command slots | use |\n|---|---|\n"
-            + "| 0 | the command word, written last |\n"
-            + "| " + ae + "–" + (ao - 1) + " | arguments of an even command |\n"
-            + "| " + ao + "–" + (Registers.COMMAND_SLOTS - 1) + " | arguments of an odd command |\n";
-    }
-    // ================================================================ the document
-    static final Pattern BLOCK = Pattern.compile("<!-- generated: ([^>]*?) -->\\n(.*?)<!-- end generated -->", Pattern.DOTALL);
-    static final List<String> REQUIRED = List.of("addressmap", "summary", "window", "entry HIST", "entry PTR", "entry STREAM_SRC",
-            "entry STREAM_DEST", "entry STREAM_COUNT", "entry GROUP_LO", "entry GROUP_HI", "modes", "linkword", "cmword", "cmwrites", "command");
+| bits | field |
+|---|---|
+""");
+        for (Registers.Field f : Registers.FIELDS) if (f.word.equals("DMA_CFG")) b.append(String.format("| [%d:%d] | %s |%n", f.lo + f.width - 1, f.lo, f.doc));
+        b.append("""
 
-    /** The document with every block regenerated. */
-    static String sync(String doc) {
-        Matcher m = BLOCK.matcher(doc);
-        StringBuilder sb = new StringBuilder();
-        while (m.find()) m.appendReplacement(sb, Matcher.quoteReplacement("<!-- generated: " + m.group(1) + " -->\n" + render(m.group(1)) + "<!-- end generated -->"));
-        m.appendTail(sb);
-        return sb.toString();
+`DMA_CONFIG` is written once per run, before the start, and holds while the run's arrivals land. The write counters
+(`WRITE_COUNTER_1`-`7`, `tile->WRITE_COUNTER[n - 1]`) are 20 bits; a store of *N* adds *N* atomically with that cycle's
+decrement; a sum past 2^20 - 1 wraps (meshsim flags it); the count returns to 0 only by counting down or at the reset.
+A packet's counter field names one; the traffic director decrements it K cycles after accepting the packet, so a
+counter at 0 means everything it counted is in place.
+
+### 2.7 The read port
+
+A store to `SRAM_RD_ADDR_QUEUE` queues a read of 32, 64 or 128 bits at a chunk address aligned to the size, with
+`SRAM_RD_DEST_ADDR`'s destination (a data-memory byte offset [16:0]), size [18:17] and counter [21:19]; the
+destination then advances by the size in bytes. Each result lands as a mode-0 packet to the tile itself, counted on
+that counter. A misaligned read isn't performed (its result lands as 0, `ERRORS` [1]); a store with no free entry is
+dropped (`ERRORS` [7]). `RD_DEST(byte_off, size, ctr)` builds the setup word.
+
+### 2.8 The request port
+
+Software stores the request's words 0-2 (`REQUEST_SET_W0`-`W2`), then `REQUEST_SEND` (bits [127:96]) pushes the
+128-bit request into the 128-entry request FIFO. Word 0 carries the target [9:7] (0 C&C 1, 1 C&C 2, 2 C&C 3; 3-7
+dropped at the root) and 0 in the requestor [6:0], which the tree stamps. The receive queues are in the request tree
+(128, 256 and 128 entries); C&C 1-3 read theirs through `REQUEST_GET_W0`-`W2` and `REQUEST_RECEIVE`, which pops. On
+tiles 0-63 the receive side reads an empty queue: `REQUEST_RECEIVE` returns 0 and sets receive underflow.
+
+### 2.9 The simulator-only words
+
+`SIM_EXIT` (`0x9F8`): a store ends a meshsim test with the stored value (`sim_exit(v)`; `crt0` stores `main`'s return
+value). `TRACE` (`0x9FC`): a store is logged with the cycle and the unit (`sim_trace(v)`). On hardware both are reserved
+words.
+
+## 3. The peripheral windows
+
+Peripheral *n* (1-3) has a 128-word window at `0xFFFFF800 + 0x200n`, if present (`PARAMS` [*n* - 1]); an absent
+peripheral's window is a bus error. Words 0-9 are standard, 10-31 reserved standard words, 32-127 the peripheral's own.
+In C: `peripheral(n)->NAME` (`PeripheralStd`), `replayer->NAME`, `cc1->NAME`.
+
+| word | name | access | function |
+|---|---|---|---|
+""");
+        String[] sd = { "[7:0] type, [15:8] version", "[0] run in progress, [1] DMA in progress", "sticky until the reset", "store 1: start a run; ignored while one runs",
+                "store 1: start the DMA set up in DMA_HDR and DMA_ADDR", "a load returns the events and consumes one count from each set bit in EVENTS_MASK",
+                "what a load of EVENTS would return", "the events that count: wake the unit's EVENTS bit, are consumed; 0 at reset",
+                "the DMA: count [11:0], queue [13:12], counter, mode, dst", "the DMA's 32-bit destination, advancing per packet" };
+        for (int i = 0; i < Registers.STD_WORDS; i++) b.append(String.format("| %d | `%s` | %s | %s |%n", i, Registers.STD_WORD[i], acc(Registers.STD_ACCESS[i]), sd[i]));
+        b.append("""
+
+The replayer (type 4, every mesh tile's peripheral 1): `ROWS_RUN` (32), `EXPANSION_OFFSET` (33), `EXPANSION_OPCODE`
+(34). C&C 1's peripheral (type 1, Ingress/Egress): `ERROR_LINES[3]` (32-34), `READY_LINES[2]` (35-36), `READY_EXPECT[2]` (37-38), `PULSE_GO`
+(39), `WATCHDOG` (40), `LED` (41), and the UART: `UART_TX` (42), `UART_RX` (43), `UART_DIVISOR` (44), `UART_STATUS`
+(45). Spec 4.17, 4.19, 8.11-8.14 give their meanings.
+
+## 4. The table window
+
+""");
+        b.append(String.format("""
+| table | addresses | entries | load | store |
+|---|---|---|---|---|
+| `HIST` | `%s`-`%s` | 256 words; count [16:0] | the count | the count |
+| `PTR` | `%s`-`%s` | 256 words; chunk address [20:0] | bus error | the pointer |
+| `STREAM_SRC` | `%s`-`%s` | 256 words; source chunk [20:0], gap after [23:21] | bus error | the word |
+| `STREAM_DEST` | `%s`-`%s` | 256 words; the first element's 32-bit address (mode 0 only) | bus error | the word |
+| `STREAM_COUNT` | `%s`-`%s` | 256 words; count [16:0], read size, counter, mode, *d* [31:25] | bus error | the word |
+| `GROUP` | `%s`-`%s` | 64 entries, low word then high word | bus error | one word |
+""", hex(Registers.HIST_BASE), hex(Registers.PTR_BASE - 1), hex(Registers.PTR_BASE), hex(Registers.STREAM_SRC_BASE - 1),
+                hex(Registers.STREAM_SRC_BASE), hex(Registers.STREAM_DEST_BASE - 1), hex(Registers.STREAM_DEST_BASE), hex(Registers.STREAM_COUNT_BASE - 1),
+                hex(Registers.STREAM_COUNT_BASE), hex(Registers.GROUP_BASE - 1), hex(Registers.GROUP_BASE), hex(Registers.TABLE_END - 1)));
+        b.append("""
+
+`GROUP[g]` low: R [17:0]; high: start stream [7:0], *t* - 1 [11:8], gap [19:12]. In C: `tables->HIST[i]`,
+`set_stream(i, STREAM_SRC_W(chunk, gap), dest, STREAM_COUNT_W(n, size, ctr, mode, d))`, `set_group(g, lo, hi)`.
+**When the controller may touch them** (4.10): `STREAM` and `GROUP` only while the address generator isn't running (its
+lead-in included); `PTR` and `HIST` only while no arrivals use them. *d*: 0-63 a relative tile, (me + *d*) mod 64;
+64-66 C&C 1-3; 126 the broadcast (controllers only); mode 4 needs *d* = 0.
+
+## 5. Packets
+
+The 256-bit link word: payload [127:0], address [159:128], size [161:160], counter [164:162], mode [167:165], src
+[174:168], dst [181:175]; [255:182] reserved. Sizes: 0 32 bits, 1 64, 2 128 (3 undefined); a payload's bits above its
+size are 0. Every access is naturally aligned to its size.
+
+| mode | `mesh.h` | what the receiver does | counted |
+|---|---|---|---|
+| 0 | `MODE_WRITE` | writes the payload at the address: data or program memory, big SRAM, a present peripheral's region | by its counter field |
+| 1 | `MODE_SRC` | big SRAM at `PTR[src]`, then `PTR[src]` += 1, 2 or 4 chunks | by its counter field |
+| 2 | `MODE_BUCKET` | big SRAM at `PTR[digit]` (`DMA_CONFIG`'s bucket digit) | by its counter field |
+| 3 | `MODE_AUGMENT` | a 64-bit record at `PTR[src]`: the payload's low word and the ordinal (32 or 64 bits only) | by its counter field |
+| 4 | `MODE_GATHER` | a gather request, to the tile itself only; its counter field passes to the values | never |
+| 5 | `MODE_COUNT` | nothing written | by its counter field |
+| 6-7 | | reserved: discarded (meshsim flags them) | no |
+
+**Bad packets** are dropped, uncounted, and set `ERRORS` [1]: a mode-0 packet not aligned to its size or for a region
+a packet can't reach (the boot ROM, 0x07-0xFF, an absent peripheral's), and a 128-bit mode 3. Counter field 0 is
+uncounted: only commands and boot overlays, from C&C 1-3, travel uncounted.
+
+## 6. The command block, the reply block and the command word
+
+- **The command block:** 16 words at `0x00007FC0`; slot 0 the command word, slots 1-15 its arguments: even commands
+  use slots 1-7, odd ones 8-15. C&C 1-3 write the arguments, then the command word, as uncounted mode-0 writes; a write
+  covering slot 0 sets command landed (`EVENTS` [9]). `COMMAND[s]` in C.
+- **The command word:** [31:24] type, [23] parity (the argument block), [22:0] argument: `CMD_WORD(type, parity, arg)`,
+  `CMD_TYPE(w)`, `CMD_ARG(w)`, `CMD_ARGS(w)`. `CMD_JUMP` (0x4A): jump to the address in the argument block's first slot.
+- **The reply block:** 256 words below it, at `0x00007BC0`: two words per source, `REPLY_WORD(src)` = `0x00007BC0 + 8 src`.
+  A reply is a 32- or 64-bit mode-0 write at the sender's own pair; a sender sets `ROUTER_ADDR` once with no-increment
+  and changes only the dst. Every request may name its own reply address instead.
+- **The stack** grows down from `0x00007BC0`; images place data from `0x00000010`.
+
+## 7. Common sequences (`mesh.h`'s helpers)
+
+- `wait_for_command()`: the done pulse and `WFI`, back to back; GO wakes it; it consumes GO and returns slot 0.
+- A local run: `set_stream`/`set_group`, `tile->DMA_CONFIG`, arm the counter (`tile->WRITE_COUNTER[c - 1] = N`), then
+  `start_run()`, then `wfi()` for counters done.
+- A block copy into controller memory: a mode-0 stream to the tile itself (*d* = 0) at the destination address, counted;
+  `wfi()`.
+- Several events at once: `wait_all(EV_CTR(2) | EV_RUN_DONE)`.
+- A reply: `send_to(ROUTER_HDR_W(dst, MODE_WRITE, ctr) | ROUTER_NOINC, REPLY_WORD(me))`, then `send32(v)` per receiver
+  (changing `tile->ROUTER_HDR` for each).
+""");
+        return b.toString();
     }
-    /** Problems: blocks that differ from the generator, and registers, entries or blocks the document lacks. */
-    static List<String> check(String doc) {
-        List<String> bad = new ArrayList<>();
-        Matcher m = BLOCK.matcher(doc);
-        Set<String> regs = new LinkedHashSet<>(), ids = new LinkedHashSet<>();
-        while (m.find()) {
-            String id = m.group(1).trim();
-            if (!ids.add(id)) bad.add("block '" + id + "' appears twice");
-            String want;
-            try { want = render(id); } catch (RuntimeException e) { bad.add("block '" + id + "': " + e.getMessage()); continue; }
-            if (!want.equals(m.group(2))) bad.add("block '" + id + "' differs from the generator (java RegDoc sw/REGISTERS.md)");
-            if (id.startsWith("reg ")) regs.addAll(Arrays.asList(id.substring(4).trim().split("\\s+")));
-        }
-        for (Reg r : REGS) if (!regs.contains(r.name)) bad.add("register " + r.name + " has no generated entry");
-        for (String need : REQUIRED) if (!ids.contains(need)) bad.add("block '" + need + "' is missing");
-        return bad;
+    static String fieldRow(String word, Registers.Field f) {
+        return String.format("| `%s` | [%d:%d] | %s (`%s_%s`) |%n", word, f.lo + f.width - 1, f.lo, f.doc, word, f.name);
     }
 
     public static void main(String[] args) throws IOException {
-        boolean checkOnly = args.length > 0 && args[0].equals("--check");
-        Path p = Path.of(args.length > (checkOnly ? 1 : 0) ? args[checkOnly ? 1 : 0] : Registers.doc("REGISTERS.md").toString());
-        String doc = Files.readString(p);
-        System.out.println("RegDoc: mesh.h 1.1");
-        if (checkOnly) {
-            List<String> bad = check(doc);
-            bad.forEach(b -> System.out.println("REGISTERS.md: " + b));
-            System.out.println(bad.isEmpty() ? p + ": every generated block matches" : p + ": " + bad.size() + " problem(s)");
-            System.exit(bad.isEmpty() ? 0 : 1);
-        }
-        String out = sync(doc);
-        if (out.equals(doc)) { System.out.println(p + " unchanged"); return; }
-        Files.writeString(p, out);
-        System.out.println("wrote " + p);
+        Path out = args.length > 0 ? Path.of(args[0]) : Registers.doc("REGISTERS.md");
+        String d = document();
+        if (Files.exists(out) && Files.readString(out).equals(d)) { System.out.println(out + " unchanged"); return; }
+        Files.writeString(out, d);
+        System.out.println("wrote " + out);
     }
 }

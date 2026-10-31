@@ -33,7 +33,7 @@ paced at the link bound, offset 33 (one per 4): 32000 packets delivered, in orde
 paced at the link bound, offset 36 (one per 4): 32000 packets delivered, in order per (src, dst) within unicast and within broadcast
 paced at the link bound, offset 63 (one per 1): 32000 packets delivered, in order per (src, dst) within unicast and within broadcast
 permutations at the link bound (every tile 500 packets, one per max(|a|,|b|) cycles, skew 0/+1): router FIFO peak 3 of 16 [meas: NetTest in-order full rate]
-director: each mode to its unit (bad packets dropped with the bad-mode sticky bit); counters per mode; invariants 9-11 and 5 fire; a mode-8 reply accepted at t is written at port B at t + 2 (cm_latency 2), readable by a load from t + 3 [meas: NetTest director]
+director: each mode and region to its unit (bad packets dropped with ERRORS [1]); counters by the counter field, decremented K = 8 cycles after acceptance; unexpected arrival at the decrement, the stray named at acceptance; a reply accepted at t is written at port B at t + 2 (cm_latency 2) [meas: NetTest director]
 loopback [meas: NetTest loopback]: a full-rate stream into tile 9 with 120 self-sends from its send port: the loopback FIFO peaked at 64 (depth 64), the send port waited 167 cycles for tokens, no overflow; the self-sends landed after the stream (eject serves the loopback last)
 fan-in to tile 27: largest W per sender with no FIFO overflow, every sender bursting W packets from the same cycle (+ its start skew) [meas: NetTest fan-in]
   senders  spec   nearest   farthest  random*3  nearest,noskew eject peak   first overflow at W+1 (nearest)
@@ -44,4 +44,4 @@ fan-in to tile 27: largest W per sender with no FIFO overflow, every sender burs
   4        21     21        15        -         20             16 of 16     t27.eject<from-right
   1        none   64        64        -         64             1 of 16      no overflow to 64
   63 x 1: overflows with no skew (v1.0's FIFO rule); with 0/+1 skew it overflows in 30 of 30 skew patterns (receivers 27, 0, 63; seeds 1..10) [meas: NetTest fan-in]
-NetTest (shuffled, seed 11): 30602 passed, 0 failed
+NetTest (shuffled, seed 11): 31330 passed, 0 failed

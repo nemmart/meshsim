@@ -1,0 +1,186 @@
+{
+ "name": "evm-23",
+ "traced_rows": 5833069,
+ "executions": 4426721,
+ "untraced_rows": 32389265,
+ "untraced_share_of_all": 0.8473910829202633,
+ "untraced_per_traced": 5.552697045071814,
+ "windows": 90,
+ "full_windows": 89,
+ "windows_with_untraced": 7,
+ "untraced_per_window": {
+  "mean": 359880.72222222225,
+  "p50": 0,
+  "p90": 0,
+  "p99": 11066469,
+  "p999": 11066469,
+  "max": 11066469
+ },
+ "top_windows": [
+  {
+   "window": 34,
+   "first_row": 2228224,
+   "untraced_rows": 11066469,
+   "divq": 89,
+   "divr": 0,
+   "inline_execs": 227
+  },
+  {
+   "window": 35,
+   "first_row": 2293760,
+   "untraced_rows": 11065296,
+   "divq": 89,
+   "divr": 0,
+   "inline_execs": 222
+  },
+  {
+   "window": 36,
+   "first_row": 2359296,
+   "untraced_rows": 5845058,
+   "divq": 47,
+   "divr": 0,
+   "inline_execs": 124
+  },
+  {
+   "window": 33,
+   "first_row": 2162688,
+   "untraced_rows": 4412439,
+   "divq": 32,
+   "divr": 2,
+   "inline_execs": 95
+  },
+  {
+   "window": 43,
+   "first_row": 2818048,
+   "untraced_rows": 1,
+   "divq": 0,
+   "divr": 0,
+   "inline_execs": 0
+  },
+  {
+   "window": 47,
+   "first_row": 3080192,
+   "untraced_rows": 1,
+   "divq": 0,
+   "divr": 0,
+   "inline_execs": 0
+  },
+  {
+   "window": 72,
+   "first_row": 4718592,
+   "untraced_rows": 1,
+   "divq": 0,
+   "divr": 0,
+   "inline_execs": 0
+  }
+ ],
+ "top_untraced_by_opcode": [
+  {
+   "opcode": "SECP256K1_DIVQ_INLINE",
+   "executions": 257,
+   "untraced_rows": 31862603,
+   "share": 0.9837396124919784
+  },
+  {
+   "opcode": "SECP256K1_DIVR_INLINE",
+   "executions": 2,
+   "untraced_rows": 429914,
+   "share": 0.013273348438132201
+  },
+  {
+   "opcode": "SECP256K1_SQUAREQ_INLINE",
+   "executions": 267,
+   "untraced_rows": 62211,
+   "share": 0.0019207289822723672
+  },
+  {
+   "opcode": "SECP256K1_MULQ_INLINE",
+   "executions": 140,
+   "untraced_rows": 33180,
+   "share": 0.0010244134900869162
+  },
+  {
+   "opcode": "SECP256K1_GLVR_ADV_INLINE",
+   "executions": 1,
+   "untraced_rows": 940,
+   "share": 2.9021961443089244e-05
+  },
+  {
+   "opcode": "SECP256K1_MULR_INLINE",
+   "executions": 1,
+   "untraced_rows": 414,
+   "share": 1.2782012805786114e-05
+  },
+  {
+   "opcode": "DIVU",
+   "executions": 3,
+   "untraced_rows": 3,
+   "share": 9.262328120134866e-08
+  }
+ ],
+ "top_untraced_by_template": [
+  {
+   "label": "SECP256K1_DIVQ_INLINE",
+   "key": 167780363,
+   "executions": 257,
+   "untraced_per_exec": 123979,
+   "untraced_rows": 31862603
+  },
+  {
+   "label": "SECP256K1_DIVR_INLINE",
+   "key": 167796747,
+   "executions": 2,
+   "untraced_per_exec": 214957,
+   "untraced_rows": 429914
+  },
+  {
+   "label": "SECP256K1_SQUAREQ_INLINE",
+   "key": 167776267,
+   "executions": 267,
+   "untraced_per_exec": 233,
+   "untraced_rows": 62211
+  },
+  {
+   "label": "SECP256K1_MULQ_INLINE",
+   "key": 167772171,
+   "executions": 140,
+   "untraced_per_exec": 237,
+   "untraced_rows": 33180
+  },
+  {
+   "label": "SECP256K1_GLVR_ADV_INLINE",
+   "key": 167800843,
+   "executions": 1,
+   "untraced_per_exec": 940,
+   "untraced_rows": 940
+  },
+  {
+   "label": "SECP256K1_MULR_INLINE",
+   "key": 167788555,
+   "executions": 1,
+   "untraced_per_exec": 414,
+   "untraced_rows": 414
+  },
+  {
+   "label": "DIVU",
+   "key": 405,
+   "executions": 3,
+   "untraced_per_exec": 1,
+   "untraced_rows": 3
+  }
+ ],
+ "controller_fed": {
+  "inline_execs": 668,
+  "csr_execs": 0,
+  "inline_traced_rows": 121212,
+  "csr_traced_rows": 0,
+  "max_inline_per_window": 227,
+  "max_csr_per_window": 0,
+  "windows_with_csr": 0
+ },
+ "divq_execs": 257,
+ "divr_execs": 2,
+ "templates_in_program": 214,
+ "templates_executed": 183,
+ "checks": "count_exec: rows = num_cycles, every row on a program pc, every execution contiguous at jolt-cpp length; tables: traced words = jolt-cpp rows and source opcode names agree for every template of the program; window sums = run totals"
+}

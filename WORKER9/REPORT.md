@@ -146,21 +146,17 @@ Expansion word (DECISIONS-v1.25 s4-s5): `offset_imm` [63], `sign_imm` [62], `adv
 | controller-fed | 75 template numbers: 15 inlines, 60 CSR keys; 13,821 words |
 | opcode table | 171 opcodes at 821e1bd, 88 executed row opcodes |
 
-### The CSR instructions (for the owner)
+### The CSR instructions: controller-fed (owner, DECISIONS-v1.25 s6)
 
-The goal is every expansion except the inlines and the advice generators in the ROM. ECALL, EBREAK and MRET are exact
-words with their own decode entries and are now in the ROM (9 words). **The CSR instructions need 102 words (60
-templates) and 124 words are free, so they fit in size, but the decode index can't select them**: it sees CSRRW and
-CSRRS as one entry each ({10, 0000, funct3}), while jolt-cpp's expansion depends on
-- the **CSR number** (bits [31:20]): each CSR is a different virtual register (mstatus v39, mtvec v34, mscratch v35,
-  mepc v36, mcause v37, mtval v38), named literally in the rows; no operand code maps a CSR number to a register;
-- the **register pattern**: rd = x0, rs1 = x0, rd = rs1 or none, which changes the row count (1-3 rows).
-
-Options: (a) keep them controller-fed (today; 60 keys); (b) give the SYSTEM group its own index layout under
-index[9:8] = 10: {CSRRS?, a 3-bit CSR id from a small table loaded with the decode table (jolt-cpp's six CSRs; others
-invalid), a 3-bit register pattern computed by the decoder} plus the ECALL/EBREAK/MRET selectors, 8 bits in all, and
-the 60 templates in the ROM (102 words, leaving 22 free); (c) a CSR operand code plus pattern-dependent row skipping in
-the replayer: new datapath, not recommended. The owner decides.
+ECALL, EBREAK and MRET are exact words with their own decode entries and are in the ROM (9 words). **The CSR
+instructions (CSRRW, CSRRS: 60 templates, 102 words) stay controller-fed, the one deliberate exception to the goal of
+every expansion except the inlines and the advice generators in the ROM** (owner's option (a)). They would fit in the
+124 free words, but the decode index sees CSRRW and CSRRS as one entry each, while jolt-cpp's expansion depends on the
+CSR number (each CSR is a different virtual register, named literally in the rows) and on the register pattern
+(rd = x0, rs1 = x0, rd = rs1, which changes the row count). The alternatives were a special SYSTEM decode layout with a
+loaded CSR-id table and a computed pattern, or new replayer datapath; CSR instructions are rare, so the controller
+feeding them costs almost nothing. So the controller feeds the inlines, the advice generators and the CSR
+instructions, and nothing else.
 
 ### The template-index key (a format change)
 
@@ -200,7 +196,68 @@ Stage B controller's lookup (normalize, then search).
 - **Division family**: WORKER7's harness at 821e1bd, only the opcode numbers changed: identical result, 8,040,000 cases,
   0 failures (`WORKER9/tracer-div-821e1bd/`).
 
+## The Tracer's tables (`wip/tables/tracer/`)
+
+Built by `tracer_tables.py` (PR #2) from the replayer's universal tables. Same decode entries and template numbers
+(`template_map.txt`: identity, both units have the same controller-fed set); **every traced word bit-identical to the
+replayer's** (checked over all 2,048 decode entries and 75 templates; only the Tracer-only `advice_reg` differs).
+Untraced words compute every advice value in bank 1 (results in 146-209, scratch above; at most 26 registers live).
+
+- **ROM 404 of 512**: the replayer's 388 plus the division family's 16 untraced words (WORKER7's rows, renumbered).
+- **The seven secp256k1 inlines** (controller-fed): multiply and square by product scanning and WORKER7's reduction
+  (233-414 untraced rows); GLV (940 rows: k mod r, two rounded divisions by r, two signed 128-bit differences,
+  branch-free); the two division inlines: reduce a and b, **Fermat inverse b^(m-2) as one loop body x 256** (square,
+  multiply, select by the exponent's top bit, shift the exponent: the row sequence never depends on the data), then the
+  output and the witness quotient. DIVQ: 123,979 untraced rows from 1,069 stored words; DIVR: 214,957 rows from 1,777.
+- **Segments** (`segments.bin`, index byte 14): a template is its segments in order, each repeated as given.
+- **Check**: every untraced program executed from the words, loops instantiated, against jolt-cpp's own advice
+  (`advice_ref.cpp`: jolt-cpp's expansion executed by `execute_instruction`, the inline advice by `evaluate`):
+  division family 8 x 200 cases with the edge cases, multiply/square 4 x 200, GLV 200, DIVQ and DIVR 10 each:
+  **0 mismatches**.
+- The inverse is larger than WORKER7's addition-chain estimate (53,000-110,000) because the loop body always
+  multiplies; an addition chain (255 squarings, ~15 multiplies for q) would roughly halve DIVQ but needs several
+  segments with different bodies (runs of squarings between multiplies). The segment format already allows it.
+  **On hold** (v1.25 s6): WORKER12 is counting how often each inline runs in both 2^29 workloads; the single loop
+  stays until the owner decides.
+- **The untraced `LD`** (WORKER7 Q9, QUESTIONS Q9): **confirmed, on one condition: it reads through the Tracer's D-cache
+  like any load**, so it sees the program's own earlier stores (an inline's operands may have just been written by the
+  guest). It writes a bank-1 register and logs nothing.
+
 ## Still to do
 
-The Tracer's variant (division family re-encoded; all seven secp256k1 inlines' advice as untraced rows, the division
-inlines' Fermat inverse as loop body + repeat count, GLV), the replayer-to-Tracer template-number mapping, and its checks.
+Part 2 is complete; Q8 (loop vs addition chain) is on hold for WORKER12's counts. Part 3 (the delivery writer) is
+under way (PLAN-PART3.md, approved).
+
+---
+
+# Part 3: the delivery writer
+
+`tracer/delivery/delivery_writer.cpp` in PR #2 (README there): a functional model of the Tracer's output from
+jolt-cpp 821e1bd's own trace, writing per window the reference rows, the three state-record variants (raw, LRU, the
+Tracer's pick), the three streams raw and compressed, `end.bin` and a manifest with SHA-256, and **proving every window
+by replaying it from the delivered files alone**: the streams decoded, code words resolved through the universal
+tables exactly as the replayer does, rows executed with jolt-cpp's row semantics on the log-driven path, transfers
+taking their next `instr_idx` from the read log; every record compared with `rows.bin`, every stream consumed exactly,
+the end state equal to the next window's start. A flipped bit in any stream, in `rows.bin` or in a ROM word is caught.
+
+| program | rows | windows | replay (3 variants) | wall (1 CPU) | peak RSS |
+|---|---|---|---|---|---|
+| PR #1's EVM Zone trace-23 | 4,278,784 | 128 | all OK | 13 s | |
+| Cyclone input/22 | 2,705,819 | 64 | all OK | 7 s | |
+| **EVM Zone `4e3451c1d8c5` trace-29** | 354,861,942 | 8,192 | **all OK** (1,064,585,826 rows) | 1,014 s | 1.44 GB |
+| **Cyclone input/29** | 371,526,406 | 8,192 | **all OK** (1,114,579,218 rows) | 819 s | 1.63 GB |
+
+So a full 2^29 program is generated and proved in 14-17 minutes on one CPU without keeping files, inside the runner's
+45-minute limit (v1.25 s7's generate, replay, discard shards).
+
+- **Selected windows** (12 EVM Zone, 13 Cyclone; README lists the categories; EVM Zone has no atomics, Cyclone's
+  densest-atomics window has 104): written and proved, 137 MB, delivered to the owner as
+  `w9-selected-windows-821e1bd.tgz` (SHA-256 `f4b11501...71bd641`), not committed.
+- **Full-program deliveries**: Quest tasks 070 (EVM Zone) and 071 (Cyclone), held, input `w9-delivery.tgz` (SHA-256
+  `4000c1ac...c3da1ce10`, the tracer tree at `121c271` plus the universal replayer tables and a libelf fallback). Each
+  writes every window with `--keep=all` to `/tmp/w9-deliveries/` on the box (about 31 GB) and proves it; results get the
+  log, size and the manifest's SHA-256.
+- **Notes.** The row immediate is jolt-cpp's raw 64-bit `_imm`, pending WORKER10's ruling (v1.25 s7 Q1). A register the
+  program hasn't touched before a window holds 0 in that window's image (its first observed value otherwise); no row
+  can observe it. The read log's control-transfer rule is the spec's: a row with `next_from_value` whose new pc differs
+  from its pc, which is jolt-cpp's `finish_instruction` test.

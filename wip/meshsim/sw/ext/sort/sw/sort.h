@@ -1,6 +1,10 @@
 /* sort.h -- the six-step sort on design v2 (worker 6): constants, command set, shared state.
- * Spec: spec/machine-spec.md (v1.1, 2026-10-26n); interface: mesh.h 1.1 and sw/CONVENTIONS.md;
- * plan: design_v2/sort/sort-walkthrough.md (where it differs from the spec, the spec wins). */
+ * Spec: spec/machine-spec.md v1.2; interface: the generated mesh.h 1.2, sw/CONVENTIONS.md and sw/RECIPES.md (the v1.2
+ * port: WORKER8); plan: design_v2/sort/sort-walkthrough.md (where it differs from the spec, the spec wins).
+ * Counters (CONVENTIONS 5): 1 CTR_SRAM, every big-SRAM arrival (local passes, gathers, the all-to-alls and their
+ * layers); 2 CTR_CM, controller-memory writes (RED's vectors, BT's tokens, credits and descriptors, the split's
+ * read-port results); 3 CTR_REPLY, the one-word exchanges and BT's half-words. 4-7 unused: no peripheral writes, no
+ * requests, and no fence (no send-port packet has to follow a run's packets; WORKER8/REPORT.md). */
 #ifndef SORT_H
 #define SORT_H
 #include "mesh.h"
@@ -14,9 +18,8 @@
 #define BUF_VS       AREA(5)     /* values in sorted-key order (A5-A6); gather 2's output */
 #define BUF_VR       AREA(1)     /* V: the values received (A1-A2, over the input values gather 1 has read) */
 
-/* ---- C&C staging and sort scratch (spec 6.2, mesh.h v3): stage_base() = top - STAGE_CHUNKS (0xF4000 on 4 MB), 64 KB,
- * below the top 128 KB of sort scratch, scratch_base(). The loader sets PTR[64] = stage_base() at boot, and the sort
- * re-sets it after every phase with mode 3 (which overwrites PTR[64]). */
+/* v1.2: no staging area. The image has no overlays (32 KB + 32 KB hold it all), so C&C stages nothing, and PTR[64] is
+ * an ordinary pointer (D17): v1.1's restore after every bucket pass is gone. */
 
 /* ---- STREAM allocation (walk-through section 2) ---- */
 #define STR_K         0           /* K: keys all-to-all, group g in streams 4g .. 4g+3, schedule-4 order */
@@ -30,7 +33,6 @@
 #define STR_IN        192         /* L1: augmenting pass (k = 2) or copy pass (32-bit values), A0 -> A3 */
 #define STR_FROM_X    193         /* bucket pass reading BUF_X */
 #define STR_FROM_Y    194         /* bucket pass reading BUF_Y */
-#define STR_OV        197         /* an overlay load: one mode-6 loopback stream, staging -> instruction memory (6.5) */
 
 /* ---- the sort's command set (C&C -> slot 0; [31:24] type, [23] parity, [22:0] argument) ---- */
 #define CMD_L1       0x10        /* argument: FMT_* */
@@ -51,11 +53,11 @@
 #define CMD_V1       0x26
 #define CMD_V2       0x27
 #define CMD_BARRIER  0x30        /* C&C's answer to one of the split's own barriers (its word is read and ignored) */
-#define CMD_EXIT     0x7F        /* simulator only: main returns, the core ebreaks */
+#define CMD_EXIT     0x7F        /* simulator only: main returns 0, crt0 stores it to the exit word (8.15) */
 #define FMT_KV32     0           /* 32-bit key + 32-bit value: 64-bit records in */
 #define FMT_K128     1           /* 32-bit key + 128-bit value (k = 2): keys and values in separate arrays */
-/* The keys' packet mode (meshsim M12, spec 3.1 and 4.9 of 9 October): 4, the augmented write, with 128-bit values (the
- * receiver stamps each key's ordinal), else 2. Arithmetic, not a branch: k128 is 0 or 1. */
+/* The keys' packet mode (spec 3.1, 4.9): 3, the augmented write, with 128-bit values (the receiver stamps each key's
+ * ordinal), else 1, by source. Arithmetic, not a branch: k128 is 0 or 1. */
 #define KEY_MODE(k128) (MODE_SRC + (MODE_AUGMENT - MODE_SRC) * (k128))
 
 #ifndef __ASSEMBLER__
@@ -64,7 +66,7 @@
 /* The planner's per-tile state (5,352 B). The sort shares its fields rather than keeping copies: n[] (the split's
  * output), col[] (XB's counts received: copied out of the reply block by xchg), row[], rowpos[],
  * inpos[], M[], and the reduced RED vector. */
-extern Tile SK;                  /* in the shared region (sort.ld), over the split's state */
+extern Tile SK;                  /* .bss, 8-byte aligned (BT's landing buffers in it take 64-bit packets) */
 enum { RB_R, RB_L, RB_D, RB_U }; /* RED's receive buffers: from me + 1, me - 1, me + 8, me - 8 */
 #define RV (NG + 2)              /* RED's vector: 16 direct group maxima, group 15 without the loopback, the loopback */
 
@@ -73,13 +75,13 @@ struct sort_state {
     uint32_t fmt;                /* FMT_*, from CMD_L1 */
     uint32_t n_in;               /* records this tile holds at the start: INPUT-LOAD STAND-IN, placed by the harness */
     uint32_t n_recv;             /* records this tile receives in K (sort 2's size); set by XB (P1 test: the harness) */
-    uint32_t red_in;             /* RED: mode-6 packets this tile receives before it sends (RV / 2 per child) */
+    uint32_t red_in;             /* RED: 64-bit packets this tile receives before it sends (RV / 2 per child) */
     uint32_t path;               /* the transfer path taken (PATH_*), identical on every tile */
     uint32_t plan_wanted;        /* stage 1 said PATH_PLAN (stage 2 needed; S1 falls back to min(direct, LB)) */
     uint32_t shaped;             /* the split's targets: 0 balanced, 1 the input's shape (CMD_SPLIT's argument) */
     uint32_t groups;             /* groups in the K and V group runs: 16 direct, 17 LB */
     uint32_t bt_wanted;          /* stage 2 chose BT (the final decision, after R3, may still fall back) */
-    uint32_t next_rem;           /* DMA_SRAM_REMAINING of the next two-hop layer phase, set when it is configured */
+    uint32_t next_rem;           /* counter 1's arming for the next two-hop layer phase, set when it is configured */
     uint32_t bt_L1, bt_L2;       /* BT: the global step-1 and step-2 layer counts (R3) */
     uint32_t force_bt;           /* TEST ONLY (TH's argument, bit 0): take BT whenever it is feasible */
     uint32_t red_children;       /* RED's tree: children, their buffers (mask of RB_*), the parent and its buffer */
@@ -95,14 +97,21 @@ extern struct sort_state S;
  * tile: c[q] = the number of this tile's sorted records whose global rank, in (key, tile, position) order, is below
  * R_q, q = 0..64 (c[0] = 0, c[64] = n_me); n[p] = tile p's record count. c and n are at the same address on every
  * tile. This is the state after the walk-through's XA. Worker 4's split (../split-bisect/split.c, design v1's bisection
- * through the read port), an overlay; its 66 barriers (65 shaped) go through sort_barrier(), i.e. wait_for_command(). */
+ * through the read port); its 66 barriers (65 shaped) go through sort_barrier(), i.e. wait_for_command(). */
 void split_get_cuts(uint32_t run_chunk, uint32_t n_me, uint32_t shaped, uint32_t c[65], uint32_t n[64]);
 
-/* ---- overlays (M7; lead, 3 Oct): one region at _ov_base, images staged by C&C at boot (stage_base()), copied in
- * by ov_load() (kernel) in a command's tail, or at the start of a local-only command (L2). */
-enum { OV_LOCAL = 0, OV_SPLIT, OV_XFER, OV_TH, OV_BTPLAN, OV_BTRUN, OV_N };
-void ov_load(unsigned id);
 void sort_barrier(void);
+
+/* ---- waiting (CONVENTIONS 5, RECIPES 0 and 23) ----
+ * wait_counters(): every armed counter is done (counters done, EVENTS [7], which the reset mask holds and wfi()'s load
+ * consumes), as v1.1's wfi() for counters done. For phases that arm counters and run nothing. Sanctioned by
+ * DECISIONS-v1.2 47 (Q3) when no other counter is armed, since [7] needs all seven at 0. Every call site arms one
+ * counter only, except bt_phase's step-2 case, which arms 1 and 3 and wants both (bt_run.c).
+ * wait_run(ctrs): the arrivals on the counters in ctrs (EV_CTR bits; 0 for none) and this tile's own run (DMA run done,
+ * [10]): the tables are free afterwards (D17). Every phase that runs the address generator ends with it (rule 6). */
+static inline void wait_counters(void) { while (!(wfi() & EV_CTRS_DONE)) ; }
+static inline void wait_run(uint32_t ctrs) { wait_all(ctrs | EV_RUN_DONE); }
+#define SRAM_EV(n) ((n) ? EV_CTR(CTR_SRAM) : 0u)    /* counter 1's done event when n arrivals were armed, else nothing */
 
 void xb(void);
 void red(void);
@@ -115,10 +124,10 @@ void skew_th(void);
 void skew_desc(void);
 void th_phase(unsigned phase);
 void zero_planner(void);
-/* a one-word exchange (32-bit replies, send port, schedule order): out[d] goes to tile d, in[s] copied out of REPLY[2 s]. Call it
- * FIRST in a command (it stores DMA_REPLY_REMAINING before anything can arrive). */
+/* a one-word exchange (32-bit mode-0 writes to REPLY_WORD(me), no-increment, counter 3, schedule order): out[d] goes to
+ * tile d, in[s] copied out of REPLY[2 s]. Call it FIRST in a command (it arms counter 3 before anything can arrive). */
 void xchg(const uint32_t *out, uint32_t *in);
-/* a max-reduction of 'words' (<= 20) words over RED's tree, broadcast back: the caller has stored DMA_CM_REMAINING =
+/* a max-reduction of 'words' (<= 20) words over RED's tree, broadcast back: the caller has armed counter 2 with
  * S.red_children * packets FIRST in the command; vec is merged in place (an odd vector must have one word after it
  * that may be sent and overwritten); the global result lands in out */
 void tree_reduce(uint32_t *vec, unsigned words, uint32_t *out, unsigned wait);   /* wait = 0: the children's packets
@@ -127,11 +136,10 @@ void bt_sweep(void);             /* BT (BTPLAN): SWEEP, the 128 token rounds and
 void bt_descs(void);             /* BT (BTPLAN): DESC, the descriptor exchanges, held statistics, R3, the decision */
 void bt_first(void);             /* BT (BTRUN): the layer GROUP high words, K1.0 configured */
 void bt_phase(unsigned kh, unsigned layer);   /* BT (BTRUN): a layer phase, kh 0 K1, 1 K2, 2 V1, 3 V2 */
-/* wait_tables() (the table window may be touched only when the address generator is not running, and
- * ts_busy = 0: spec 4.10) is in mesh.h from v9 (M14); this file's copy, the same code, is gone. */
+/* v1.2: no wait_tables(). Every phase that runs the address generator waits for its arrivals and DMA run done before
+ * done (wait_run), so every command starts with the tables free (RECIPES 15 rule 6, 23). */
 
 void l1(uint32_t fmt);
 void l2(void);
-void restore_stage_ptr(void);
 #endif
 #endif

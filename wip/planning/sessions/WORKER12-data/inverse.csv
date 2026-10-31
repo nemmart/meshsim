@@ -1,0 +1,6 @@
+inline,variant,squarings,multiplies,step_rows,prologue,epilogue,untraced_rows,vs_fermat
+DIVQ,Fermat loop (as built),256,256,482,129,458,123979,1.0
+DIVQ,libsecp256k1 chain,255,15,229,121,458,62409,0.5033836375515208
+DIVQ,sliding window k=5,252,66,229,121,458,73401,0.5920438138717041
+DIVR,Fermat loop (as built),256,256,836,129,812,214957,1.0
+DIVR,sliding window k=5,252,63,406,121,812,128823,0.5992966035067478

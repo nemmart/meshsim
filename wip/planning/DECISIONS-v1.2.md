@@ -1156,7 +1156,7 @@ trace and run the file system:
 
 | item | call |
 |---|---|
-| **K** (W2-25) | With spanning gone the big-SRAM write path is fixed, so K is a formula: **K = max(2·L + 3, L + 4, `cm_latency`, `rp_latency`)**, L = `ts_engine_latency`; K = 8 covers L ≤ 2. Write combining stays out unless it fits under K. S1's measurement becomes a check of the formula |
+| **K** (W2-25; *revised by 49: 2·L + 4 in meshsim, K implementation-defined in hardware*) | With spanning gone the big-SRAM write path is fixed, so K is a formula: **K = max(2·L + 3, L + 4, `cm_latency`, `rp_latency`)**, L = `ts_engine_latency`; K = 8 covers L ≤ 2. Write combining stays out unless it fits under K. S1's measurement becomes a check of the formula |
 | **The table window after done** (W2-26) | Guaranteed by K (17 A): meshsim checks that no table-window access after done precedes a pending `PTR`/`HIST` update. No interlock hardware |
 | **Big-SRAM images** (W2-27) | Settled by 31: big-SRAM data arrives counted, after the first command |
 | **Misaligned engine accesses** (W2-32, W3-30) | The access is dropped, **still counted** (so nothing hangs), and sets `ERRORS` [1]; the read port's misaligned read sets [1] too, not [7]. meshsim flags it |
@@ -1531,6 +1531,19 @@ Integrator's answers to WORKER4's W4-06 and W4-07, to review.
   fixed report set (20, 21) reads them on every peripheral, the replayer included, without special cases.
 - **W4-07, `mtime`'s rate:** implementation-defined. meshsim counts reference-oscillator cycles through the `time` CSR;
   Tony to say what his core does. Software bounds its waits with `mcycle` (41, F12), so nothing depends on the rate.
+
+## 49. K is the implementation's; meshsim's formula is 2L + 4 (2026-11-01)
+
+Decided (O). Answers WORKER4's W4-08, from its S1 measurement (S1Bench).
+
+- **meshsim's big-SRAM write path measures 2L + 4 cycles**, one more than 32's formula of 2L + 3 (L = `ts_engine_latency`,
+  the one-way delay between an engine and the table memories, set by placement: default 1, swept 1-4). At L = 3 and 4 the
+  formula left K a cycle short, and the radix sort's back-to-back bucket passes read chunks before they were stored.
+- **meshsim's formula becomes K ≥ max(2L + 4, L + 4, `cm_latency`, `rp_latency`)**: 6 at L = 1, so meshsim's default K = 8
+  still covers L ≤ 2; at L = 3 meshsim needs K = 10, at L = 4 K = 12.
+- **K in hardware is the implementation's** (owner): the requirement is only that K covers the implementation's slowest write
+  path. The formula is meshsim's reference, not a hardware promise; the real K comes from the RTL's measured paths, as part of
+  its delta. Spec 4.7, the summary table, the parameters and invariant 24 updated (in `wip/`).
 
 ---
 

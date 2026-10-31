@@ -1,0 +1,44 @@
+ok   p4/few5-k128: TOTAL 1,730,625 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/zipf10-k128: TOTAL 2,000,163 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/zipfraw10-k128: TOTAL 1,812,047 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/trace10-10-k128: TOTAL 1,981,260 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/trace10-30-k128: TOTAL 1,987,033 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/trace10-60-k128: TOTAL 1,990,233 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/trace100-10-k128: TOTAL 1,975,991 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/trace100-30-k128: TOTAL 2,012,254 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/trace100-60-k128: TOTAL 2,033,649 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/trace10000-10-k128: TOTAL 1,975,460 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/trace10000-30-k128: TOTAL 1,995,786 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/trace10000-60-k128: TOTAL 2,021,528 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/reverse-k128: TOTAL 1,527,474 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/zipf08-k128: TOTAL 1,482,373 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/zipfraw08-k128: TOTAL 1,380,119 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/one99-k128: TOTAL 1,534,708 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/uniform-k128: TOTAL 1,360,453 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/zipf05-k128: TOTAL 1,420,934 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/zipfraw05-k128: TOTAL 1,354,659 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/sorted-k128: TOTAL 1,365,923 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/equal-k128: TOTAL 1,166,397 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/trace10-10-kv32: TOTAL 1,309,965 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/trace10-30-kv32: TOTAL 1,316,132 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/trace10-60-kv32: TOTAL 1,319,208 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/trace100-10-kv32: TOTAL 1,304,272 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/trace100-30-kv32: TOTAL 1,342,452 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/trace100-60-kv32: TOTAL 1,361,959 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/trace10000-10-kv32: TOTAL 1,304,681 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/trace10000-30-kv32: TOTAL 1,326,516 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/trace10000-60-kv32: TOTAL 1,353,427 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/shaped-k128: TOTAL 1,488,986 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/zipf08-kv32: TOTAL 1,007,435 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/zipfraw08-kv32: TOTAL 897,426 cycles (L1 GO -> L2 all READY; real split), of
+ok   p4/zipf10-kv32: TOTAL 1,296,168 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/zipfraw10-kv32: TOTAL 1,101,153 cycles (L1 GO -> L2 all READY; real split), 
+ok   p4/reverse-kv32: TOTAL 992,314 cycles (L1 GO -> L2 all READY; real split), of
+ok   p4/one99-kv32: TOTAL 896,889 cycles (L1 GO -> L2 all READY; real split), of
+ok   p4/uniform-kv32: TOTAL 893,879 cycles (L1 GO -> L2 all READY; real split), of
+ok   p4/zipf05-kv32: TOTAL 953,964 cycles (L1 GO -> L2 all READY; real split), of
+ok   p4/zipfraw05-kv32: TOTAL 887,180 cycles (L1 GO -> L2 all READY; real split), of
+ok   p4/sorted-kv32: TOTAL 904,868 cycles (L1 GO -> L2 all READY; real split), of
+ok   p4/equal-kv32: TOTAL 705,342 cycles (L1 GO -> L2 all READY; real split), of
+ok   p4/ragged-kv32: TOTAL 823,436 cycles (L1 GO -> L2 all READY; real split), of
+== 43 runs, 0 failed, 1097 s

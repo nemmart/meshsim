@@ -1,0 +1,454 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="1804" viewBox="0 0 1300 1804" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif">
+<defs><marker id="m444441" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#444441"/></marker><marker id="mC0392B" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#C0392B"/></marker><marker id="mD85A30" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#D85A30"/></marker></defs>
+<rect width="1300" height="1804" fill="white"/>
+<text x="24.0" y="34.0" font-size="18" text-anchor="start" font-weight="bold" fill="#444441">Figure 3.2. Register decode: the data-bus address map, the 13 registers and their bit layouts</text>
+<text x="24.0" y="56.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#6b6a64">v1.0 (spec/machine-spec.md §4.10, §4.11, §8) — the address map, the 13 registers and their bit layouts; fields as in sw/mesh.h</text>
+<rect x="16.0" y="76.0" width="1268.0" height="404.0" rx="10" fill="white" stroke="#B4B2A9" stroke-width="1"/>
+<text x="30.0" y="100.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">A. The controller's data-bus address decode (§4.11, §4.10, §8): every load and store, one cycle</text>
+<text x="30.0" y="144.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">addr[31:0], load/store, size (byte, half, word)</text>
+<polyline points="40.0,150.0 40.0,406.0" fill="none" stroke="#444441" stroke-width="3" stroke-linejoin="round"/>
+<polyline points="40.0,183.0 68.0,183.0" fill="none" stroke="#444441" stroke-width="1.4" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<circle cx="40.0" cy="183.0" r="3.2" fill="#444441"/>
+<rect x="70.0" y="168.0" width="270.0" height="30.0" rx="6" fill="#F1EFE8" stroke="#444441" stroke-width="1.2"/>
+<text x="205.0" y="186.5" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">addr[31:13] = 0</text>
+<polyline points="340.0,183.0 380.0,183.0" fill="none" stroke="#444441" stroke-width="1.4" stroke-linejoin="round"/>
+<text x="386.0" y="180.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">sel_imem</text>
+<text x="386.0" y="193.0" font-size="10" text-anchor="start" font-weight="normal" fill="#6b6a64">instruction memory 0x0000–0x1FFF</text>
+<polyline points="40.0,229.0 68.0,229.0" fill="none" stroke="#444441" stroke-width="1.4" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<circle cx="40.0" cy="229.0" r="3.2" fill="#444441"/>
+<rect x="70.0" y="214.0" width="270.0" height="30.0" rx="6" fill="#F1EFE8" stroke="#444441" stroke-width="1.2"/>
+<text x="205.0" y="232.5" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">addr[31:13] = 1</text>
+<polyline points="340.0,229.0 380.0,229.0" fill="none" stroke="#444441" stroke-width="1.4" stroke-linejoin="round"/>
+<text x="386.0" y="226.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">sel_tw</text>
+<text x="386.0" y="239.0" font-size="10" text-anchor="start" font-weight="normal" fill="#6b6a64">table window 0x2000–0x3FFF</text>
+<polyline points="40.0,275.0 68.0,275.0" fill="none" stroke="#444441" stroke-width="1.4" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<circle cx="40.0" cy="275.0" r="3.2" fill="#444441"/>
+<rect x="70.0" y="260.0" width="270.0" height="30.0" rx="6" fill="#F1EFE8" stroke="#444441" stroke-width="1.2"/>
+<text x="205.0" y="278.5" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">addr[31:13] = 2</text>
+<polyline points="340.0,275.0 380.0,275.0" fill="none" stroke="#444441" stroke-width="1.4" stroke-linejoin="round"/>
+<text x="386.0" y="272.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">sel_dmem</text>
+<text x="386.0" y="285.0" font-size="10" text-anchor="start" font-weight="normal" fill="#6b6a64">data memory 0x4000–0x5FFF</text>
+<polyline points="40.0,321.0 68.0,321.0" fill="none" stroke="#444441" stroke-width="1.4" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<circle cx="40.0" cy="321.0" r="3.2" fill="#444441"/>
+<rect x="70.0" y="306.0" width="270.0" height="30.0" rx="6" fill="#F1EFE8" stroke="#444441" stroke-width="1.2"/>
+<text x="205.0" y="324.5" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">addr[31:11] = all 1s</text>
+<polyline points="340.0,321.0 380.0,321.0" fill="none" stroke="#444441" stroke-width="1.4" stroke-linejoin="round"/>
+<text x="386.0" y="318.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">sel_reg</text>
+<text x="386.0" y="331.0" font-size="10" text-anchor="start" font-weight="normal" fill="#6b6a64">registers 0xFFFFF800–0xFFFFFFFF</text>
+<polyline points="40.0,367.0 68.0,367.0" fill="none" stroke="#444441" stroke-width="1.4" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<circle cx="40.0" cy="367.0" r="3.2" fill="#444441"/>
+<rect x="70.0" y="352.0" width="270.0" height="30.0" rx="6" fill="#F1EFE8" stroke="#444441" stroke-width="1.2"/>
+<text x="205.0" y="370.5" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">word: addr[1:0] ≠ 0; half: addr[0]</text>
+<polyline points="340.0,367.0 380.0,367.0" fill="none" stroke="#444441" stroke-width="1.4" stroke-linejoin="round"/>
+<text x="386.0" y="364.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">misaligned</text>
+<text x="386.0" y="377.0" font-size="10" text-anchor="start" font-weight="normal" fill="#6b6a64">misaligned</text>
+<rect x="586.0" y="128.0" width="352.0" height="196.0" rx="6" fill="white" stroke="#444441" stroke-width="1.2"/>
+<text x="596.0" y="146.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">table-window sub-decode (sel_tw; §4.10, §8.9)</text>
+<rect x="594.0" y="156.0" width="92.0" height="20.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="600.0" y="170.0" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">addr</text>
+<rect x="686.0" y="156.0" width="106.0" height="20.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="692.0" y="170.0" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">table</text>
+<rect x="792.0" y="156.0" width="138.0" height="20.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="798.0" y="170.0" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">entry; word</text>
+<rect x="594.0" y="176.0" width="92.0" height="20.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="600.0" y="190.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">0x2000–0x23FF</text>
+<rect x="686.0" y="176.0" width="106.0" height="20.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="692.0" y="190.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">HIST, 32-bit</text>
+<rect x="792.0" y="176.0" width="138.0" height="20.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="798.0" y="190.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">i = addr[9:2]</text>
+<rect x="594.0" y="196.0" width="92.0" height="20.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="600.0" y="210.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">0x2400–0x27FF</text>
+<rect x="686.0" y="196.0" width="106.0" height="20.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="692.0" y="210.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">PTR, 32-bit</text>
+<rect x="792.0" y="196.0" width="138.0" height="20.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="798.0" y="210.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">i = addr[9:2]</text>
+<rect x="594.0" y="216.0" width="92.0" height="20.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="600.0" y="230.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">0x2800–0x2FFF</text>
+<rect x="686.0" y="216.0" width="106.0" height="20.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="692.0" y="230.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">STREAM, 64-bit</text>
+<rect x="792.0" y="216.0" width="138.0" height="20.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="798.0" y="230.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">i = addr[10:3]; addr[2]</text>
+<rect x="594.0" y="236.0" width="92.0" height="20.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="600.0" y="250.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">0x3000–0x31FF</text>
+<rect x="686.0" y="236.0" width="106.0" height="20.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="692.0" y="250.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">GROUP, 64-bit</text>
+<rect x="792.0" y="236.0" width="138.0" height="20.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="798.0" y="250.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">g = addr[8:3]; addr[2]</text>
+<rect x="594.0" y="256.0" width="92.0" height="20.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="600.0" y="270.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">0x3200–0x3FFF</text>
+<rect x="686.0" y="256.0" width="106.0" height="20.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="692.0" y="270.0" font-size="10" text-anchor="start" font-weight="normal" fill="#C0392B">unmapped: bus error</text>
+<rect x="792.0" y="256.0" width="138.0" height="20.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="798.0" y="270.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">—</text>
+<text x="596.0" y="304.0" font-size="10" text-anchor="start" font-weight="normal" fill="#6b6a64">addr[2]: 0 the low word, 1 the high word. Word accesses only;</text>
+<text x="596.0" y="317.0" font-size="10" text-anchor="start" font-weight="normal" fill="#6b6a64">loads from HIST only (PTR, STREAM, GROUP are write-only).</text>
+<rect x="950.0" y="128.0" width="318.0" height="196.0" rx="6" fill="white" stroke="#444441" stroke-width="1.2"/>
+<text x="960.0" y="146.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">register offset decode (sel_reg; §8)</text>
+<text x="960.0" y="168.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">i = addr[10:2]: register i at 0xFFFFF800 + 4·i</text>
+<text x="960.0" y="183.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">i = 0–12: one of the 13 registers (panel B);</text>
+<text x="960.0" y="198.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">one-hot select reg_sel[12:0]</text>
+<text x="960.0" y="213.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#C0392B">i = 13–511 (0x834–0xFFC): unmapped,</text>
+<text x="960.0" y="228.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#C0392B">a bus error</text>
+<text x="960.0" y="243.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441"></text>
+<text x="960.0" y="258.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">per register, from its access attribute:</text>
+<text x="960.0" y="273.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">st_X = store &amp; reg_sel[X] &amp; writable(X)</text>
+<text x="960.0" y="288.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">load data = readable(X) ? value(X) : 0</text>
+<path d="M760,361.0 Q780.9,361.0 798,406 Q780.9,451.0 760,451.0 Q769,406 760,361.0 Z" fill="white" stroke="#444441" stroke-width="1.4"/>
+<text x="779.0" y="357.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64">bus error</text>
+<polyline points="736.0,371.0 764.0,371.0" fill="none" stroke="#C0392B" stroke-width="1.2" stroke-linejoin="round"/>
+<text x="732.0" y="375.0" font-size="10" text-anchor="end" font-weight="normal" fill="#C0392B">sel_imem (a data access to instruction memory)</text>
+<polyline points="736.0,385.0 764.0,385.0" fill="none" stroke="#C0392B" stroke-width="1.2" stroke-linejoin="round"/>
+<text x="732.0" y="389.0" font-size="10" text-anchor="end" font-weight="normal" fill="#C0392B">none of sel_imem, sel_tw, sel_dmem, sel_reg (unmapped)</text>
+<polyline points="736.0,399.0 764.0,399.0" fill="none" stroke="#C0392B" stroke-width="1.2" stroke-linejoin="round"/>
+<text x="732.0" y="403.0" font-size="10" text-anchor="end" font-weight="normal" fill="#C0392B">misaligned</text>
+<polyline points="736.0,413.0 764.0,413.0" fill="none" stroke="#C0392B" stroke-width="1.2" stroke-linejoin="round"/>
+<text x="732.0" y="417.0" font-size="10" text-anchor="end" font-weight="normal" fill="#C0392B">sel_reg &amp; (size ≠ word | i ≥ 13 | store &amp; read-only(i))</text>
+<polyline points="736.0,427.0 764.0,427.0" fill="none" stroke="#C0392B" stroke-width="1.2" stroke-linejoin="round"/>
+<text x="732.0" y="431.0" font-size="10" text-anchor="end" font-weight="normal" fill="#C0392B">sel_tw &amp; (size ≠ word | 0x3200–0x3FFF)</text>
+<polyline points="736.0,441.0 764.0,441.0" fill="none" stroke="#C0392B" stroke-width="1.2" stroke-linejoin="round"/>
+<text x="732.0" y="445.0" font-size="10" text-anchor="end" font-weight="normal" fill="#C0392B">sel_tw &amp; load &amp; (PTR | STREAM | GROUP)</text>
+<polyline points="798.0,406.0 840.0,406.0" fill="none" stroke="#C0392B" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#mC0392B)"/>
+<rect x="842.0" y="376.0" width="340.0" height="60.0" rx="6" fill="#FBE9E7" stroke="#C0392B" stroke-width="1.4"/>
+<text x="1012.0" y="395.3" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#444441">bus error</text>
+<text x="1012.0" y="410.8" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">sets condition 6 (figure 2.4) and halts the</text>
+<text x="1012.0" y="424.7" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">tile's controller; engines and router run on (§4.11)</text>
+<text x="30.0" y="464.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">Sub-word accesses to data memory are allowed;</text>
+<text x="30.0" y="474.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">the controller never loads or stores instruction memory.</text>
+<text x="30.0" y="500.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">B. The 13 registers: offset, access, what a store does, what a load returns, reset (§8)</text>
+<rect x="30.0" y="512.0" width="56.0" height="22.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="527.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">offset</text>
+<rect x="86.0" y="512.0" width="196.0" height="22.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="92.0" y="527.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">register</text>
+<rect x="282.0" y="512.0" width="48.0" height="22.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="288.0" y="527.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">access</text>
+<rect x="330.0" y="512.0" width="470.0" height="22.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="527.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">a store</text>
+<rect x="800.0" y="512.0" width="236.0" height="22.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="806.0" y="527.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">a load returns</text>
+<rect x="1036.0" y="512.0" width="234.0" height="22.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="1042.0" y="527.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">after chip reset</text>
+<rect x="30.0" y="534.0" width="56.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="549.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0x800</text>
+<rect x="86.0" y="534.0" width="196.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="92.0" y="549.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">TILE_STATUS</text>
+<rect x="282.0" y="534.0" width="48.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="288.0" y="549.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">R</text>
+<rect x="330.0" y="534.0" width="470.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="549.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">bus error</text>
+<rect x="800.0" y="534.0" width="236.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="806.0" y="549.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">live bits, tile index, size (panel D)</text>
+<rect x="1036.0" y="534.0" width="234.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1042.0" y="549.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">live; index, size fixed</text>
+<rect x="30.0" y="556.0" width="56.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="571.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0x804</text>
+<rect x="86.0" y="556.0" width="196.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="92.0" y="571.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">TILE_CONDITIONS</text>
+<rect x="282.0" y="556.0" width="48.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="288.0" y="571.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">R</text>
+<rect x="330.0" y="556.0" width="470.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="571.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">bus error (condition 6)</text>
+<rect x="800.0" y="556.0" width="236.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="806.0" y="571.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">the conditions, [10:0] (fig 2.4)</text>
+<rect x="1036.0" y="556.0" width="234.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1042.0" y="571.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0</text>
+<rect x="30.0" y="578.0" width="56.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="593.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0x808</text>
+<rect x="86.0" y="578.0" width="196.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="92.0" y="593.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">ROUTER_SET_HDR</text>
+<rect x="282.0" y="578.0" width="48.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="288.0" y="593.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">W</text>
+<rect x="330.0" y="578.0" width="470.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="593.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">loads dst, mode, addr (panel D); addr += 2 or 1 per send</text>
+<rect x="800.0" y="578.0" width="236.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="806.0" y="593.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0</text>
+<rect x="1036.0" y="578.0" width="234.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1042.0" y="593.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">undefined; kept over HALT → RUN</text>
+<rect x="30.0" y="600.0" width="56.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="615.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0x80C</text>
+<rect x="86.0" y="600.0" width="196.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="92.0" y="615.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">ROUTER_SET_HI</text>
+<rect x="282.0" y="600.0" width="48.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="288.0" y="615.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">W</text>
+<rect x="330.0" y="600.0" width="470.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="615.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">loads the next payload's high 32 bits; each send clears it</text>
+<rect x="800.0" y="600.0" width="236.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="806.0" y="615.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0</text>
+<rect x="1036.0" y="600.0" width="234.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1042.0" y="615.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">undefined; kept over HALT → RUN</text>
+<rect x="30.0" y="622.0" width="56.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="637.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0x810</text>
+<rect x="86.0" y="622.0" width="196.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="92.0" y="637.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">ROUTER_SEND_LO</text>
+<rect x="282.0" y="622.0" width="48.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="288.0" y="637.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">W</text>
+<rect x="330.0" y="622.0" width="470.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="637.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">sends {ROUTER_SET_HI, data} with ROUTER_SET_HDR; stalls while the holding register is full</text>
+<rect x="800.0" y="622.0" width="236.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="806.0" y="637.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0</text>
+<rect x="1036.0" y="622.0" width="234.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1042.0" y="637.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">— (no state)</text>
+<rect x="30.0" y="644.0" width="56.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="659.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0x814</text>
+<rect x="86.0" y="644.0" width="196.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="92.0" y="659.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">DMA_CONFIG</text>
+<rect x="282.0" y="644.0" width="48.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="288.0" y="659.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">W</text>
+<rect x="330.0" y="644.0" width="470.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="659.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">loads the run, digits and k (panel D)</text>
+<rect x="800.0" y="644.0" width="236.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="806.0" y="659.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0</text>
+<rect x="1036.0" y="644.0" width="234.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1042.0" y="659.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">undefined; kept over HALT → RUN</text>
+<rect x="30.0" y="666.0" width="56.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="681.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0x818</text>
+<rect x="86.0" y="666.0" width="196.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="92.0" y="681.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">DMA_PULSE</text>
+<rect x="282.0" y="666.0" width="48.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="288.0" y="681.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">W</text>
+<rect x="330.0" y="666.0" width="470.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="681.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">fires start, done for one cycle (panel C)</text>
+<rect x="800.0" y="666.0" width="236.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="806.0" y="681.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0</text>
+<rect x="1036.0" y="666.0" width="234.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1042.0" y="681.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">— (no state)</text>
+<rect x="30.0" y="688.0" width="56.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="703.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0x81C</text>
+<rect x="86.0" y="688.0" width="196.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="92.0" y="703.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">DMA_SRAM_REMAINING</text>
+<rect x="282.0" y="688.0" width="48.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="288.0" y="703.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">R/W</text>
+<rect x="330.0" y="688.0" width="470.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="703.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">loads [19:0]; clears the local-wake latch (fig 2.3)</text>
+<rect x="800.0" y="688.0" width="236.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="806.0" y="703.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">the count, [19:0]</text>
+<rect x="1036.0" y="688.0" width="234.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1042.0" y="703.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0</text>
+<rect x="30.0" y="710.0" width="56.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="725.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0x820</text>
+<rect x="86.0" y="710.0" width="196.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="92.0" y="725.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">DMA_CM_REMAINING</text>
+<rect x="282.0" y="710.0" width="48.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="288.0" y="725.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">R/W</text>
+<rect x="330.0" y="710.0" width="470.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="725.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">loads [19:0]; clears the local-wake latch (fig 2.3)</text>
+<rect x="800.0" y="710.0" width="236.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="806.0" y="725.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">the count, [19:0]</text>
+<rect x="1036.0" y="710.0" width="234.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1042.0" y="725.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0</text>
+<rect x="30.0" y="732.0" width="56.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="747.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0x824</text>
+<rect x="86.0" y="732.0" width="196.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="92.0" y="747.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">DMA_REPLY_REMAINING</text>
+<rect x="282.0" y="732.0" width="48.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="288.0" y="747.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">R/W</text>
+<rect x="330.0" y="732.0" width="470.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="747.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">loads [19:0]; clears the local-wake latch (fig 2.3)</text>
+<rect x="800.0" y="732.0" width="236.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="806.0" y="747.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">the count, [19:0]</text>
+<rect x="1036.0" y="732.0" width="234.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1042.0" y="747.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0</text>
+<rect x="30.0" y="754.0" width="56.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="769.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0x828</text>
+<rect x="86.0" y="754.0" width="196.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="92.0" y="769.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">DMA_RECORD_BASE_ADDRESS</text>
+<rect x="282.0" y="754.0" width="48.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="288.0" y="769.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">W</text>
+<rect x="330.0" y="754.0" width="470.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="769.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">loads [19:0], a chunk address: augment's origin or gather's values; one base per run</text>
+<rect x="800.0" y="754.0" width="236.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="806.0" y="769.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0</text>
+<rect x="1036.0" y="754.0" width="234.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1042.0" y="769.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">undefined; kept over HALT → RUN</text>
+<rect x="30.0" y="776.0" width="56.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="791.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0x82C</text>
+<rect x="86.0" y="776.0" width="196.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="92.0" y="791.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">SRAM_RD_ADDR_QUEUE</text>
+<rect x="282.0" y="776.0" width="48.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="288.0" y="791.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">R/W</text>
+<rect x="330.0" y="776.0" width="470.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="791.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">the read port's queue: pushes a read of chunk [19:0]; full: dropped, condition 3</text>
+<rect x="800.0" y="776.0" width="236.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="806.0" y="791.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">free entries (≥ 64 when empty)</text>
+<rect x="1036.0" y="776.0" width="234.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1042.0" y="791.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">empty</text>
+<rect x="30.0" y="798.0" width="56.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="813.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0x830</text>
+<rect x="86.0" y="798.0" width="196.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="92.0" y="813.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">SRAM_RD_DEST_ADDR</text>
+<rect x="282.0" y="798.0" width="48.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="288.0" y="813.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">W</text>
+<rect x="330.0" y="798.0" width="470.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="813.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">loads [11:0], a packed word; +1 on every queue store, a dropped read too</text>
+<rect x="800.0" y="798.0" width="236.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="806.0" y="813.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0</text>
+<rect x="1036.0" y="798.0" width="234.0" height="22.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1042.0" y="813.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">undefined; kept over HALT → RUN</text>
+<text x="30.0" y="838.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">W: write-only, a load returns 0. R: read-only, a store is a bus error. A store to an unmapped offset (0x834–0xFFC) or a sub-word access to any register is a bus error.</text>
+<text x="30.0" y="853.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">Bits outside a register's fields are ignored on a store and read 0. A store takes effect at the end of its cycle; a load returns the value at the end of the previous cycle.</text>
+<text x="30.0" y="868.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">HALT → RUN keeps every register's value (§6.1). The configuration registers are undefined at chip reset: software writes each before use (§8), as for the tables.</text>
+<rect x="16.0" y="892.0" width="1268.0" height="236.0" rx="10" fill="white" stroke="#B4B2A9" stroke-width="1"/>
+<text x="30.0" y="916.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">C. DMA_PULSE and the other store side effects (§8.6, §4.2, §6.3)</text>
+<text x="80.0" y="948.0" font-size="10.5" text-anchor="end" font-weight="bold" fill="#D85A30">st_pulse</text>
+<polyline points="84.0,944.0 146.0,944.0 146.0,1072.0" fill="none" stroke="#D85A30" stroke-width="1.4" stroke-linejoin="round" stroke-dasharray="4 3"/>
+<path d="M180,947.0 L199.0,947.0 A17.0,17.0 0 0 1 199.0,981.0 L180,981.0 Z" fill="white" stroke="#444441" stroke-width="1.4"/>
+<polyline points="146.0,957.0 179.0,957.0" fill="none" stroke="#D85A30" stroke-width="1.3" stroke-linejoin="round" stroke-dasharray="4 3"/>
+<circle cx="146.0" cy="957.0" r="3.2" fill="#D85A30"/>
+<text x="130.0" y="981.0" font-size="10.5" text-anchor="end" font-weight="normal" fill="#444441">wdata[1]</text>
+<polyline points="134.0,971.0 179.0,971.0" fill="none" stroke="#444441" stroke-width="1.3" stroke-linejoin="round"/>
+<polyline points="216.0,964.0 270.0,964.0" fill="none" stroke="#D85A30" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<text x="276.0" y="968.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#D85A30">start_p</text>
+<text x="336.0" y="968.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">start: load the run from DMA_CONFIG and begin the read-ahead (fig 6.2)</text>
+<path d="M180,993.0 L199.0,993.0 A17.0,17.0 0 0 1 199.0,1027.0 L180,1027.0 Z" fill="white" stroke="#444441" stroke-width="1.4"/>
+<polyline points="146.0,1003.0 179.0,1003.0" fill="none" stroke="#D85A30" stroke-width="1.3" stroke-linejoin="round" stroke-dasharray="4 3"/>
+<circle cx="146.0" cy="1003.0" r="3.2" fill="#D85A30"/>
+<text x="130.0" y="1027.0" font-size="10.5" text-anchor="end" font-weight="normal" fill="#444441">wdata[0]</text>
+<polyline points="134.0,1017.0 179.0,1017.0" fill="none" stroke="#444441" stroke-width="1.3" stroke-linejoin="round"/>
+<polyline points="216.0,1010.0 270.0,1010.0" fill="none" stroke="#D85A30" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<text x="276.0" y="1014.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#D85A30">done_p</text>
+<text x="336.0" y="1014.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">done: after start in the same store (fig 2.1, fig 2.3, fig 2.4 bit 10)</text>
+<text x="30.0" y="1106.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">One cycle each. wdata[3:2] (reserved) and [31:4] are ignored. Start acts before done within the store's cycle.</text>
+<text x="700.0" y="944.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">the other side effects, one store strobe each</text>
+<text x="700.0" y="966.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">st_S, st_C, st_R: load the counter, clear the local-wake latch</text>
+<text x="700.0" y="981.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">      and the qualifier (fig 2.3 A, B)</text>
+<text x="700.0" y="996.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">st_rdq: push {chunk, SRAM_RD_DEST_ADDR} to the read port's</text>
+<text x="700.0" y="1011.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">      queue; SRAM_RD_DEST_ADDR += 1 on every such store; full: drop, set 3</text>
+<text x="700.0" y="1026.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">st_sendlo: the send port (item 10): with the holding register</text>
+<text x="700.0" y="1041.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">      full the store stalls the core; once it is taken, ROUTER_SET_HI ← 0</text>
+<text x="700.0" y="1056.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">      and ROUTER_SET_HDR.addr += 2 (mode 5) or 1 (modes 6, 7)</text>
+<text x="30.0" y="1148.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">D. Bit layouts of the multi-field registers (bit 31 on the left; fields as in mesh.h)</text>
+<text x="30.0" y="1192.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">DMA_CONFIG</text>
+<text x="30.0" y="1208.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">0x814, W</text>
+<rect x="196.0" y="1174.0" width="165.0" height="40.0" rx="0" fill="#EDEBE4" stroke="#888780" stroke-width="1"/>
+<text x="278.5" y="1192.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">spare</text>
+<text x="278.5" y="1207.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">5</text>
+<rect x="361.0" y="1174.0" width="99.0" height="40.0" rx="0" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="410.5" y="1192.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">k − 1</text>
+<text x="410.5" y="1207.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">3</text>
+<rect x="460.0" y="1174.0" width="99.0" height="40.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="1"/>
+<text x="509.5" y="1192.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">hist digit</text>
+<text x="509.5" y="1207.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">3</text>
+<rect x="559.0" y="1174.0" width="99.0" height="40.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="1"/>
+<text x="608.5" y="1192.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">bucket digit</text>
+<text x="608.5" y="1207.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">3</text>
+<rect x="658.0" y="1174.0" width="297.0" height="40.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="806.5" y="1192.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">run count</text>
+<text x="806.5" y="1207.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">9</text>
+<rect x="955.0" y="1174.0" width="264.0" height="40.0" rx="0" fill="#FAEEDA" stroke="#888780" stroke-width="1"/>
+<text x="1087.0" y="1192.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">run start</text>
+<text x="1087.0" y="1207.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">8</text>
+<rect x="1219.0" y="1174.0" width="33.0" height="40.0" rx="0" fill="#FAECE7" stroke="#888780" stroke-width="1"/>
+<text x="1235.5" y="1198.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">1</text>
+<text x="200.0" y="1170.0" font-size="9" text-anchor="start" font-weight="normal" fill="#6b6a64">31</text>
+<text x="357.0" y="1170.0" font-size="9" text-anchor="end" font-weight="normal" fill="#6b6a64">27</text>
+<text x="365.0" y="1170.0" font-size="9" text-anchor="start" font-weight="normal" fill="#6b6a64">26</text>
+<text x="456.0" y="1170.0" font-size="9" text-anchor="end" font-weight="normal" fill="#6b6a64">24</text>
+<text x="464.0" y="1170.0" font-size="9" text-anchor="start" font-weight="normal" fill="#6b6a64">23</text>
+<text x="555.0" y="1170.0" font-size="9" text-anchor="end" font-weight="normal" fill="#6b6a64">21</text>
+<text x="563.0" y="1170.0" font-size="9" text-anchor="start" font-weight="normal" fill="#6b6a64">20</text>
+<text x="654.0" y="1170.0" font-size="9" text-anchor="end" font-weight="normal" fill="#6b6a64">18</text>
+<text x="662.0" y="1170.0" font-size="9" text-anchor="start" font-weight="normal" fill="#6b6a64">17</text>
+<text x="951.0" y="1170.0" font-size="9" text-anchor="end" font-weight="normal" fill="#6b6a64">9</text>
+<text x="959.0" y="1170.0" font-size="9" text-anchor="start" font-weight="normal" fill="#6b6a64">8</text>
+<text x="1215.0" y="1170.0" font-size="9" text-anchor="end" font-weight="normal" fill="#6b6a64">1</text>
+<text x="1223.0" y="1170.0" font-size="9" text-anchor="start" font-weight="normal" fill="#6b6a64">0</text>
+<text x="196.0" y="1232.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">[0] kind: stream run or group run. run start: first stream or GROUP entry. run count: 0–256 streams or 0–64 groups (0: no entries, rd_done at once); numbers past the table's end wrap.</text>
+<text x="196.0" y="1246.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">bucket digit: 0 none, 1–4 the key byte (mode 3); hist digit: 0 off, 1–4; 5–7 reserved, decoded as none. k − 1: the gather value size, k = 1–8.</text>
+<text x="30.0" y="1296.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">DMA_PULSE</text>
+<text x="30.0" y="1312.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">0x818, W</text>
+<rect x="196.0" y="1278.0" width="924.0" height="40.0" rx="0" fill="#EDEBE4" stroke="#888780" stroke-width="1"/>
+<text x="658.0" y="1296.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">ignored</text>
+<text x="658.0" y="1311.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">28</text>
+<rect x="1120.0" y="1278.0" width="33.0" height="40.0" rx="0" fill="#EDEBE4" stroke="#888780" stroke-width="1"/>
+<text x="1136.5" y="1302.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">1</text>
+<rect x="1153.0" y="1278.0" width="33.0" height="40.0" rx="0" fill="#EDEBE4" stroke="#888780" stroke-width="1"/>
+<text x="1169.5" y="1302.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">1</text>
+<rect x="1186.0" y="1278.0" width="33.0" height="40.0" rx="0" fill="#FAECE7" stroke="#888780" stroke-width="1"/>
+<text x="1202.5" y="1302.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">1</text>
+<rect x="1219.0" y="1278.0" width="33.0" height="40.0" rx="0" fill="#FAECE7" stroke="#888780" stroke-width="1"/>
+<text x="1235.5" y="1302.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">1</text>
+<text x="200.0" y="1274.0" font-size="9" text-anchor="start" font-weight="normal" fill="#6b6a64">31</text>
+<text x="1116.0" y="1274.0" font-size="9" text-anchor="end" font-weight="normal" fill="#6b6a64">4</text>
+<text x="1124.0" y="1274.0" font-size="9" text-anchor="start" font-weight="normal" fill="#6b6a64">3</text>
+<text x="1157.0" y="1274.0" font-size="9" text-anchor="start" font-weight="normal" fill="#6b6a64">2</text>
+<text x="1190.0" y="1274.0" font-size="9" text-anchor="start" font-weight="normal" fill="#6b6a64">1</text>
+<text x="1223.0" y="1274.0" font-size="9" text-anchor="start" font-weight="normal" fill="#6b6a64">0</text>
+<text x="196.0" y="1336.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">[0] done, [1] start, [3:2] reserved (ignored, read 0). In one store start acts before done.</text>
+<text x="30.0" y="1386.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">TILE_STATUS</text>
+<text x="30.0" y="1402.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">0x800, R</text>
+<rect x="196.0" y="1368.0" width="99.0" height="40.0" rx="0" fill="#FAEEDA" stroke="#888780" stroke-width="1"/>
+<text x="245.5" y="1386.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">size − 1</text>
+<text x="245.5" y="1401.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">3</text>
+<rect x="295.0" y="1368.0" width="66.0" height="40.0" rx="0" fill="#EDEBE4" stroke="#888780" stroke-width="1"/>
+<text x="328.0" y="1386.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">spare</text>
+<text x="328.0" y="1401.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">2</text>
+<rect x="361.0" y="1368.0" width="198.0" height="40.0" rx="0" fill="#FAEEDA" stroke="#888780" stroke-width="1"/>
+<text x="460.0" y="1386.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">tile index</text>
+<text x="460.0" y="1401.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">6</text>
+<rect x="559.0" y="1368.0" width="363.0" height="40.0" rx="0" fill="#EDEBE4" stroke="#888780" stroke-width="1"/>
+<text x="740.5" y="1386.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">spare</text>
+<text x="740.5" y="1401.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">11</text>
+<rect x="922.0" y="1368.0" width="330.0" height="40.0" rx="0" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="1087.0" y="1386.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">live</text>
+<text x="1087.0" y="1401.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">10</text>
+<text x="200.0" y="1364.0" font-size="9" text-anchor="start" font-weight="normal" fill="#6b6a64">31</text>
+<text x="291.0" y="1364.0" font-size="9" text-anchor="end" font-weight="normal" fill="#6b6a64">29</text>
+<text x="299.0" y="1364.0" font-size="9" text-anchor="start" font-weight="normal" fill="#6b6a64">28</text>
+<text x="357.0" y="1364.0" font-size="9" text-anchor="end" font-weight="normal" fill="#6b6a64">27</text>
+<text x="365.0" y="1364.0" font-size="9" text-anchor="start" font-weight="normal" fill="#6b6a64">26</text>
+<text x="555.0" y="1364.0" font-size="9" text-anchor="end" font-weight="normal" fill="#6b6a64">21</text>
+<text x="563.0" y="1364.0" font-size="9" text-anchor="start" font-weight="normal" fill="#6b6a64">20</text>
+<text x="918.0" y="1364.0" font-size="9" text-anchor="end" font-weight="normal" fill="#6b6a64">10</text>
+<text x="926.0" y="1364.0" font-size="9" text-anchor="start" font-weight="normal" fill="#6b6a64">9</text>
+<text x="1248.0" y="1364.0" font-size="9" text-anchor="end" font-weight="normal" fill="#6b6a64">0</text>
+<text x="196.0" y="1426.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">live [9:0]: 0 rd_running, 1 rd_done, 2 spare, 3 send_busy, 4 ts_busy, 5 mem_idle, 6 cm_idle, 7 done, 8 command landed, 9 GATHER busy.</text>
+<text x="196.0" y="1440.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">size − 1: big SRAM in 512 KB areas (0–7). Index and size are fixed per tile and chip.</text>
+<text x="30.0" y="1490.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">TILE_CONDITIONS</text>
+<text x="30.0" y="1506.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">0x804, R</text>
+<rect x="196.0" y="1472.0" width="693.0" height="40.0" rx="0" fill="#EDEBE4" stroke="#888780" stroke-width="1"/>
+<text x="542.5" y="1490.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">reserved</text>
+<text x="542.5" y="1505.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">21</text>
+<rect x="889.0" y="1472.0" width="363.0" height="40.0" rx="0" fill="#FBE9E7" stroke="#888780" stroke-width="1"/>
+<text x="1070.5" y="1490.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">conditions</text>
+<text x="1070.5" y="1505.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">11</text>
+<text x="200.0" y="1468.0" font-size="9" text-anchor="start" font-weight="normal" fill="#6b6a64">31</text>
+<text x="885.0" y="1468.0" font-size="9" text-anchor="end" font-weight="normal" fill="#6b6a64">11</text>
+<text x="893.0" y="1468.0" font-size="9" text-anchor="start" font-weight="normal" fill="#6b6a64">10</text>
+<text x="1248.0" y="1468.0" font-size="9" text-anchor="end" font-weight="normal" fill="#6b6a64">0</text>
+<text x="196.0" y="1530.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">bit n = condition n (figure 2.4): 0 drift … 10 done early. Read-only; cleared only on entering HALT.</text>
+<text x="30.0" y="1580.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">ROUTER_SET_HDR</text>
+<text x="30.0" y="1596.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">0x808, W</text>
+<rect x="196.0" y="1562.0" width="33.0" height="40.0" rx="0" fill="#EDEBE4" stroke="#888780" stroke-width="1"/>
+<text x="212.5" y="1586.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">1</text>
+<rect x="229.0" y="1562.0" width="660.0" height="40.0" rx="0" fill="#FAEEDA" stroke="#888780" stroke-width="1"/>
+<text x="559.0" y="1580.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">addr</text>
+<text x="559.0" y="1595.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">20</text>
+<rect x="889.0" y="1562.0" width="132.0" height="40.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="1"/>
+<text x="955.0" y="1580.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">mode</text>
+<text x="955.0" y="1595.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">4</text>
+<rect x="1021.0" y="1562.0" width="231.0" height="40.0" rx="0" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="1136.5" y="1580.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">dst</text>
+<text x="1136.5" y="1595.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">7</text>
+<text x="200.0" y="1558.0" font-size="9" text-anchor="start" font-weight="normal" fill="#6b6a64">31</text>
+<text x="233.0" y="1558.0" font-size="9" text-anchor="start" font-weight="normal" fill="#6b6a64">30</text>
+<text x="885.0" y="1558.0" font-size="9" text-anchor="end" font-weight="normal" fill="#6b6a64">11</text>
+<text x="893.0" y="1558.0" font-size="9" text-anchor="start" font-weight="normal" fill="#6b6a64">10</text>
+<text x="1017.0" y="1558.0" font-size="9" text-anchor="end" font-weight="normal" fill="#6b6a64">7</text>
+<text x="1025.0" y="1558.0" font-size="9" text-anchor="start" font-weight="normal" fill="#6b6a64">6</text>
+<text x="1248.0" y="1558.0" font-size="9" text-anchor="end" font-weight="normal" fill="#6b6a64">0</text>
+<text x="196.0" y="1620.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">dst: tile 0–63, 64 C&amp;C, 126 broadcast. mode: 4 bits. addr: auto-increments after each send (+2 mode 5, +1 modes 6 and 7; §8.4).</text>
+<text x="30.0" y="1648.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">One-field registers: DMA_RECORD_BASE_ADDRESS, the three counters and SRAM_RD_ADDR_QUEUE's store use [19:0]; ROUTER_SET_HI and ROUTER_SEND_LO use</text>
+<text x="30.0" y="1663.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">all 32 bits; SRAM_RD_DEST_ADDR uses [11:0], a packed data-memory word. Unused bits are ignored on a store and read 0.</text>
+<polyline points="30.0,1708.0 70.0,1708.0" fill="none" stroke="#444441" stroke-width="2" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="78.0" y="1712.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">address and data</text>
+<polyline points="220.0,1708.0 260.0,1708.0" fill="none" stroke="#D85A30" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<text x="268.0" y="1712.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">strobes and pulses</text>
+<polyline points="420.0,1708.0 460.0,1708.0" fill="none" stroke="#C0392B" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#mC0392B)"/>
+<text x="468.0" y="1712.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">bus-error terms</text>
+<circle cx="600" cy="1708" r="3.2" fill="#444441"/>
+<text x="610.0" y="1712.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">junction (crossings without a dot don't connect)</text>
+<line x1="24" y1="1728" x2="1276" y2="1728" stroke="#B4B2A9" stroke-width="0.8"/>
+<text x="24.0" y="1750.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">Every load and store is decoded in one cycle into instruction memory (never a data access), the table window, data memory or one of 13 registers at</text>
+<text x="24.0" y="1766.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">0xFFFFF800 + 4·i. Anything else, a misaligned or sub-word access to a register or the table window, a load from a table the controller only writes,</text>
+<text x="24.0" y="1782.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">or a store to a read-only register is a bus error. DMA_PULSE fires one-cycle pulses, start before done; write-only registers read 0.</text>
+<text x="24.0" y="1798.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">Source: spec/machine-spec.md v1.0, §4.10, §4.11, §8; sw/mesh.h for bit positions.</text>
+</svg>

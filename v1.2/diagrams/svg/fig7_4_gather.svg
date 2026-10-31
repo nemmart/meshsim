@@ -1,0 +1,153 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="1110" viewBox="0 0 1300 1110" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif">
+<defs><marker id="m1D9E75" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1D9E75"/></marker><marker id="m3B6EA5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#3B6EA5"/></marker><marker id="m444441" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#444441"/></marker></defs>
+<rect width="1300" height="1110" fill="white"/>
+<text x="24.0" y="34.0" font-size="18" text-anchor="start" font-weight="bold" fill="#444441">Figure 7.4. The local gather: mode-1 requests to the tile itself, gather values to PTR[me]</text>
+<text x="24.0" y="56.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#6b6a64">v1.0 (spec/machine-spec.md §4.4, §4.5, §4.9) — reorders values by a sorted index stream (the sort's steps 2 and 6); gathers are local only</text>
+<rect x="300.0" y="112.0" width="200.0" height="70.0" rx="6" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1"/>
+<text x="400.0" y="143.3" font-size="13" text-anchor="middle" font-weight="bold" fill="#444441">injection point</text>
+<text x="400.0" y="160.9" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">read returns become packets</text>
+<rect x="560.0" y="112.0" width="200.0" height="70.0" rx="6" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="660.0" y="143.3" font-size="13" text-anchor="middle" font-weight="bold" fill="#444441">router: loopback</text>
+<text x="660.0" y="160.9" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">dst = me → eject</text>
+<rect x="820.0" y="112.0" width="220.0" height="70.0" rx="6" fill="#F1EFE8" stroke="#444441" stroke-width="1"/>
+<text x="930.0" y="143.3" font-size="13" text-anchor="middle" font-weight="bold" fill="#444441">traffic director</text>
+<text x="930.0" y="160.9" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">routes by mode</text>
+<polyline points="500.0,147.0 558.0,147.0" fill="none" stroke="#444441" stroke-width="2" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<polyline points="760.0,147.0 818.0,147.0" fill="none" stroke="#444441" stroke-width="2" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="286.0" y="134.0" font-size="11" text-anchor="end" font-weight="normal" fill="#6b6a64">both loops pass here:</text>
+<text x="286.0" y="150.0" font-size="11" text-anchor="end" font-weight="normal" fill="#6b6a64">one injection point and</text>
+<text x="286.0" y="166.0" font-size="11" text-anchor="end" font-weight="normal" fill="#6b6a64">one eject per tile</text>
+<rect x="40.0" y="300.0" width="280.0" height="96.0" rx="6" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1"/>
+<text x="180.0" y="337.1" font-size="13" text-anchor="middle" font-weight="bold" fill="#444441">address generator</text>
+<text x="180.0" y="354.6" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">a mode-1 stream run, d = 0, read size 64:</text>
+<text x="180.0" y="369.1" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">one (key, ordinal) word per visit</text>
+<rect x="470.0" y="300.0" width="330.0" height="120.0" rx="6" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1"/>
+<text x="635.0" y="322.0" font-size="13" text-anchor="middle" font-weight="bold" fill="#444441">GATHER engine</text>
+<rect x="495.0" y="334.0" width="15.0" height="22.0" rx="1" fill="white" stroke="#1D9E75" stroke-width="0.8"/>
+<rect x="512.5" y="334.0" width="15.0" height="22.0" rx="1" fill="white" stroke="#1D9E75" stroke-width="0.8"/>
+<rect x="530.0" y="334.0" width="15.0" height="22.0" rx="1" fill="white" stroke="#1D9E75" stroke-width="0.8"/>
+<rect x="547.5" y="334.0" width="15.0" height="22.0" rx="1" fill="white" stroke="#1D9E75" stroke-width="0.8"/>
+<rect x="565.0" y="334.0" width="15.0" height="22.0" rx="1" fill="white" stroke="#1D9E75" stroke-width="0.8"/>
+<rect x="582.5" y="334.0" width="15.0" height="22.0" rx="1" fill="white" stroke="#1D9E75" stroke-width="0.8"/>
+<rect x="600.0" y="334.0" width="15.0" height="22.0" rx="1" fill="white" stroke="#1D9E75" stroke-width="0.8"/>
+<rect x="617.5" y="334.0" width="15.0" height="22.0" rx="1" fill="white" stroke="#1D9E75" stroke-width="0.8"/>
+<rect x="635.0" y="334.0" width="15.0" height="22.0" rx="1" fill="white" stroke="#1D9E75" stroke-width="0.8"/>
+<rect x="652.5" y="334.0" width="15.0" height="22.0" rx="1" fill="white" stroke="#1D9E75" stroke-width="0.8"/>
+<rect x="670.0" y="334.0" width="15.0" height="22.0" rx="1" fill="white" stroke="#1D9E75" stroke-width="0.8"/>
+<rect x="687.5" y="334.0" width="15.0" height="22.0" rx="1" fill="white" stroke="#1D9E75" stroke-width="0.8"/>
+<rect x="705.0" y="334.0" width="15.0" height="22.0" rx="1" fill="white" stroke="#1D9E75" stroke-width="0.8"/>
+<rect x="722.5" y="334.0" width="15.0" height="22.0" rx="1" fill="white" stroke="#1D9E75" stroke-width="0.8"/>
+<rect x="740.0" y="334.0" width="15.0" height="22.0" rx="1" fill="white" stroke="#1D9E75" stroke-width="0.8"/>
+<rect x="757.5" y="334.0" width="15.0" height="22.0" rx="1" fill="white" stroke="#1D9E75" stroke-width="0.8"/>
+<text x="635.0" y="372.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">16-entry request queue</text>
+<text x="635.0" y="390.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">per request: k reads of 64 bits at</text>
+<text x="635.0" y="406.0" font-size="11" text-anchor="middle" font-weight="bold" fill="#444441">DMA_RECORD_BASE_ADDRESS + 2k·ordinal + 2i,  i = 0 … k − 1</text>
+<rect x="940.0" y="300.0" width="320.0" height="96.0" rx="6" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1"/>
+<text x="1100.0" y="337.1" font-size="13" text-anchor="middle" font-weight="bold" fill="#444441">write engine (mode 2)</text>
+<text x="1100.0" y="354.6" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">each gather value at PTR[me],</text>
+<text x="1100.0" y="369.1" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">then PTR[me] += 2</text>
+<rect x="40.0" y="490.0" width="760.0" height="52.0" rx="6" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1.4"/>
+<text x="54.0" y="512.0" font-size="12.5" text-anchor="start" font-weight="bold" fill="#444441">SRAM read queue</text>
+<text x="54.0" y="530.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">1 gather value  &gt;  2 address generator  &gt;  3 read port (idle here)</text>
+<rect x="40.0" y="620.0" width="280.0" height="66.0" rx="4" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1.4"/>
+<text x="180.0" y="646.0" font-size="13" text-anchor="middle" font-weight="bold" fill="#444441">index buffer</text>
+<text x="180.0" y="666.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#1D9E75">area X — read</text>
+<rect x="470.0" y="620.0" width="330.0" height="66.0" rx="4" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1.4"/>
+<text x="635.0" y="646.0" font-size="13" text-anchor="middle" font-weight="bold" fill="#444441">value buffer at DMA_RECORD_BASE_ADDRESS</text>
+<text x="635.0" y="666.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#1D9E75">area Y — read</text>
+<rect x="940.0" y="620.0" width="320.0" height="66.0" rx="4" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1.4" stroke-dasharray="9 3"/>
+<text x="1100.0" y="646.0" font-size="13" text-anchor="middle" font-weight="bold" fill="#444441">output buffer at PTR[me]</text>
+<text x="1100.0" y="666.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#3B6EA5">area Z — written</text>
+<text x="1260.0" y="708.0" font-size="11" text-anchor="end" font-weight="normal" fill="#6b6a64">index, values and output in three different areas keep every area within one access per cycle</text>
+<polyline points="130.0,396.0 130.0,488.0" fill="none" stroke="#1D9E75" stroke-width="2" stroke-linejoin="round" marker-end="url(#m1D9E75)"/>
+<text x="138.0" y="452.0" font-size="11" text-anchor="start" font-weight="normal" fill="#1D9E75">requests, priority 2</text>
+<polyline points="130.0,542.0 130.0,618.0" fill="none" stroke="#1D9E75" stroke-width="2" stroke-linejoin="round" marker-end="url(#m1D9E75)" marker-start="url(#m1D9E75)"/>
+<rect x="89.0" y="441.0" width="22.0" height="22.0" rx="11" fill="white" stroke="#1D9E75" stroke-width="1.4"/>
+<text x="100.0" y="457.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#1D9E75">1</text>
+<polyline points="385.0,488.0 385.0,236.0 360.0,236.0 360.0,184.0" fill="none" stroke="#1D9E75" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#m1D9E75)"/>
+<text x="248.0" y="210.0" font-size="11" text-anchor="end" font-weight="normal" fill="#1D9E75">read returns become packets:</text>
+<text x="248.0" y="224.0" font-size="11" text-anchor="end" font-weight="normal" fill="#1D9E75">(key, ordinal) words: mode 1, dst me</text>
+<text x="248.0" y="238.0" font-size="11" text-anchor="end" font-weight="normal" fill="#1D9E75">gather values: mode 2, dst me</text>
+<polyline points="870.0,182.0 870.0,262.0 720.0,262.0 720.0,298.0" fill="none" stroke="#444441" stroke-width="2" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="730.0" y="256.0" font-size="11" text-anchor="start" font-weight="normal" fill="#444441">mode 1: gather requests</text>
+<rect x="691.0" y="269.0" width="22.0" height="22.0" rx="11" fill="white" stroke="#444441" stroke-width="1.4"/>
+<text x="702.0" y="285.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">2</text>
+<polyline points="630.0,420.0 630.0,488.0" fill="none" stroke="#1D9E75" stroke-width="2" stroke-linejoin="round" marker-end="url(#m1D9E75)"/>
+<text x="638.0" y="466.0" font-size="11" text-anchor="start" font-weight="normal" fill="#1D9E75">k value reads, priority 1</text>
+<polyline points="630.0,542.0 630.0,618.0" fill="none" stroke="#1D9E75" stroke-width="2" stroke-linejoin="round" marker-end="url(#m1D9E75)" marker-start="url(#m1D9E75)"/>
+<rect x="589.0" y="449.0" width="22.0" height="22.0" rx="11" fill="white" stroke="#1D9E75" stroke-width="1.4"/>
+<text x="600.0" y="465.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#1D9E75">3</text>
+<polyline points="990.0,182.0 990.0,262.0 1100.0,262.0 1100.0,298.0" fill="none" stroke="#3B6EA5" stroke-width="2" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<text x="1110.0" y="256.0" font-size="11" text-anchor="start" font-weight="normal" fill="#3B6EA5">mode 2: gather values</text>
+<rect x="1069.0" y="269.0" width="22.0" height="22.0" rx="11" fill="white" stroke="#3B6EA5" stroke-width="1.4"/>
+<text x="1080.0" y="285.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#3B6EA5">4</text>
+<polyline points="1100.0,396.0 1100.0,618.0" fill="none" stroke="#3B6EA5" stroke-width="2" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<text x="1110.0" y="520.0" font-size="11" text-anchor="start" font-weight="normal" fill="#3B6EA5">SRAM write queue</text>
+<rect x="1069.0" y="509.0" width="22.0" height="22.0" rx="11" fill="white" stroke="#3B6EA5" stroke-width="1.4"/>
+<text x="1080.0" y="525.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#3B6EA5">5</text>
+<text x="40.0" y="760.0" font-size="12.5" text-anchor="start" font-weight="bold" fill="#444441">Example, k = 2 (a 128-bit value is 2 records): value i sits at DMA_RECORD_BASE_ADDRESS + 4i, output position j at PTR[me] start + 4j</text>
+<text x="40.0" y="786.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">index: (key, ordinal) words, keys a ≤ b ≤ c ≤ d</text>
+<rect x="40.0" y="794.0" width="58.0" height="32.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="69.0" y="815.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">a,5</text>
+<rect x="98.0" y="794.0" width="58.0" height="32.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="127.0" y="815.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">b,0</text>
+<rect x="156.0" y="794.0" width="58.0" height="32.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="185.0" y="815.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">c,3</text>
+<rect x="214.0" y="794.0" width="58.0" height="32.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="243.0" y="815.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">d,1</text>
+<rect x="272.0" y="794.0" width="58.0" height="32.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="301.0" y="815.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">…</text>
+<text x="470.0" y="786.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">value buffer: V0 at DMA_RECORD_BASE_ADDRESS, V1 at + 4, …</text>
+<rect x="470.0" y="794.0" width="58.0" height="32.0" rx="0" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="499.0" y="815.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">V0</text>
+<rect x="528.0" y="794.0" width="58.0" height="32.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="557.0" y="815.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">V1</text>
+<rect x="586.0" y="794.0" width="58.0" height="32.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="615.0" y="815.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">V2</text>
+<rect x="644.0" y="794.0" width="58.0" height="32.0" rx="0" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="673.0" y="815.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">V3</text>
+<rect x="702.0" y="794.0" width="58.0" height="32.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="731.0" y="815.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">V4</text>
+<rect x="760.0" y="794.0" width="58.0" height="32.0" rx="0" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="789.0" y="815.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">V5</text>
+<rect x="818.0" y="794.0" width="58.0" height="32.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="847.0" y="815.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">…</text>
+<text x="940.0" y="786.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">output: one sequential run</text>
+<rect x="940.0" y="794.0" width="58.0" height="32.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="1"/>
+<text x="969.0" y="815.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">V5</text>
+<rect x="998.0" y="794.0" width="58.0" height="32.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="1"/>
+<text x="1027.0" y="815.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">V0</text>
+<rect x="1056.0" y="794.0" width="58.0" height="32.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="1"/>
+<text x="1085.0" y="815.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">V3</text>
+<rect x="1114.0" y="794.0" width="58.0" height="32.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="1"/>
+<text x="1143.0" y="815.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">V1</text>
+<rect x="1172.0" y="794.0" width="58.0" height="32.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="1"/>
+<text x="1201.0" y="815.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">…</text>
+<path d="M 69.0 826 C 69.0 870, 789.0 870, 789.0 828" fill="none" stroke="#1D9E75" stroke-width="1.2" marker-end="url(#m1D9E75)"/>
+<path d="M 789.0 826 C 789.0 884, 969.0 884, 969.0 828" fill="none" stroke="#3B6EA5" stroke-width="1.2" stroke-dasharray="5 3" marker-end="url(#m3B6EA5)"/>
+<path d="M 127.0 826 C 127.0 870, 499.0 870, 499.0 828" fill="none" stroke="#1D9E75" stroke-width="1.2" marker-end="url(#m1D9E75)"/>
+<path d="M 499.0 826 C 499.0 884, 1027.0 884, 1027.0 828" fill="none" stroke="#3B6EA5" stroke-width="1.2" stroke-dasharray="5 3" marker-end="url(#m3B6EA5)"/>
+<path d="M 185.0 826 C 185.0 870, 673.0 870, 673.0 828" fill="none" stroke="#1D9E75" stroke-width="1.2" marker-end="url(#m1D9E75)"/>
+<path d="M 673.0 826 C 673.0 884, 1085.0 884, 1085.0 828" fill="none" stroke="#3B6EA5" stroke-width="1.2" stroke-dasharray="5 3" marker-end="url(#m3B6EA5)"/>
+<text x="40.0" y="920.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">Counting.</text>
+<text x="40.0" y="936.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">Mode-1 requests are not counted; each gather value is a</text>
+<text x="40.0" y="952.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">mode-2 arrival, so a gather of n values sets DMA_SRAM_REMAINING</text>
+<text x="40.0" y="968.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">= n·k (a 20-bit counter). The local wake fires when the last</text>
+<text x="40.0" y="984.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">value is written and mem_idle is set.</text>
+<text x="470.0" y="920.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">Rate and back-pressure.</text>
+<text x="470.0" y="936.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">≈ k + 1 cycles per value through the one injection point and</text>
+<text x="470.0" y="952.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">one eject: 3 at k = 2, ≈ 196K cycles per 64K values [estimate].</text>
+<text x="470.0" y="968.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">Gather-value reads outrank the address generator, so its index</text>
+<text x="470.0" y="984.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">reads stop while requests are queued; the queue then holds</text>
+<text x="470.0" y="1000.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">what was in flight, ≈ 10 [estimate; to be confirmed].</text>
+<text x="940.0" y="920.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">Parameters.</text>
+<text x="940.0" y="936.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">DMA_RECORD_BASE_ADDRESS: value buffer start (20-bit chunk address).</text>
+<text x="940.0" y="952.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">k: records per value (DMA_CONFIG)</text>
+<text x="940.0" y="968.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">PTR[me]: the output start.</text>
+<text x="940.0" y="984.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#B5651D">Open: the queue's in-flight bound under 16; the range of k;</text>
+<text x="940.0" y="1000.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#B5651D">one 128-bit read per row-aligned value (halves the reads).</text>
+<line x1="24" y1="1050" x2="1276" y2="1050" stroke="#B4B2A9" stroke-width="0.8"/>
+<text x="24.0" y="1072.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">The address generator streams the sorted (key, ordinal) words to the tile itself as mode 1; the director hands each to the GATHER engine, whose</text>
+<text x="24.0" y="1088.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">value reads return as mode-2 gather values that land in order at PTR[me]. Mode 1 is only ever sent to the tile itself (invariant 10).</text>
+<text x="24.0" y="1104.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">Source: spec/machine-spec.md v1.0, §3.1, §4.2, §4.4, §4.5, §4.9, §4.12, §9, §13.</text>
+</svg>

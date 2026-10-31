@@ -2,13 +2,13 @@ import java.util.Random;
 
 /**
  * Item S1, measured (DECISIONS-v1.2 S1; spec 4.8, 4.10, invariant 24): for every counted write into big SRAM, PTR and
- * HIST, acceptance -> complete, against K, across workloads and ts_engine_latency L = 1-4 (K = max(8, kMin(L))), and the
+ * HIST, acceptance -> complete, against K, across workloads and ts_engine_latency L = 1-4 (K = max(8, kMin(L)): 8, 8, 10,
+ * 12, meshsim's formula max(2L + 4, L + 4, cm_latency, rp_latency), 4.7, D49), and the
  * table-window case (a controller load of HIST right after a counting pass's done). Workloads, from C: the v1.2 recipes'
  * radix sort (rcp_bucket: count-on-arrival into HIST, prefix sums read through the table window, bucket passes through
  * PTR), the all-to-all (rcp_a2a) and gather (rcp_gather). meshsim flags a write complete later than K + 4 (the
- * controller's least reaction); the margin reported is K minus the largest latency. Finding (W4-08): meshsim's
- * big-SRAM write path is 2L + 4, one more than the formula's 2L + 3, so at K = 2L + 3 (L >= 3) the margin is -1: the
- * radix sort's back-to-back passes then trip invariant 2; K = 2L + 4 clears it. L <= 2 (K = 8) is clean.
+ * controller's least reaction); the margin reported is K minus the largest latency. meshsim's big-SRAM write path is
+ * 2L + 4 (W4-08), which the formula now covers (D49): every L is clean, with margin 0 at L = 2, 3 and 4.
  * Usage: java S1Bench
  */
 public final class S1Bench {
@@ -34,13 +34,9 @@ public final class S1Bench {
                 T.check(ok && m.allExited(), "L = " + L + ", " + w + ": ran to its exit: " + m.haltSummary());
                 T.eq(0L, m.c.s1.late, "L = " + L + ", " + w + ": no write complete later than K + 4");
                 long worst = Math.max(m.c.s1.sramMax, Math.max(m.c.s1.ptrMax, m.c.s1.histMax));
-                if (L <= 2) {                                        // K = 8: the default, covering L <= 2 (4.8)
-                    T.check(m.c.violations == 0, "L = " + L + ", " + w + ": no violations " + m.c.violationReport());
-                    T.check(worst <= k.K, "L = " + L + ", " + w + ": every write complete by its decrement (K = " + k.K + ")");
-                } else {                                             // W4-08: at K = 2L + 3 the measured write path is 2L + 4
-                    T.eq(2L * L + 4, m.c.s1.sramMax, "L = " + L + ", " + w + ": the big-SRAM write path is 2L + 4 in meshsim (W4-08)");
-                    System.out.println("  W4-08: L = " + L + ", " + w + ": " + m.c.violations + " violations at K = " + k.K + (m.c.violations > 0 ? " (" + m.c.violationMessages.get(0) + ")" : ""));
-                }
+                T.check(m.c.violations == 0, "L = " + L + ", " + w + ": no violations " + m.c.violationReport());
+                T.check(worst <= k.K, "L = " + L + ", " + w + ": every write complete by its decrement (K = " + k.K + ")");
+                T.eq(2L * L + 4, m.c.s1.sramMax, "L = " + L + ", " + w + ": the big-SRAM write path is 2L + 4 (W4-08, D49)");
                 System.out.println(String.format("L = %d, K = %d, %-11s %s [meas: S1Bench]", L, k.K, w + ":", m.c.s1.report(k.K)));
             }
         }

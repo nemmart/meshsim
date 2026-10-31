@@ -1,0 +1,214 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="1114" viewBox="0 0 1300 1114" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif">
+<defs><marker id="m1D9E75" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1D9E75"/></marker><marker id="m444441" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#444441"/></marker><marker id="m7F77DD" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7F77DD"/></marker><marker id="mD85A30" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#D85A30"/></marker></defs>
+<rect width="1300" height="1114" fill="white"/>
+<text x="24.0" y="34.0" font-size="18" text-anchor="start" font-weight="bold" fill="#444441">Figure 3.4. The controller send port: ROUTER_SET_HDR, ROUTER_SET_HI, ROUTER_SEND_LO and the holding register</text>
+<text x="24.0" y="56.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#6b6a64">v1.0 (spec/machine-spec.md §4.11, §8.4) — one packet a cycle when no read return is waiting</text>
+<rect x="16.0" y="76.0" width="1268.0" height="400.0" rx="10" fill="white" stroke="#B4B2A9" stroke-width="1"/>
+<text x="30.0" y="100.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">A. Datapath (§4.11, §4.11)</text>
+<rect x="40.0" y="146.0" width="250.0" height="64.0" rx="6" fill="#FAEEDA" stroke="#444441" stroke-width="1.5"/>
+<text x="165.0" y="167.3" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#444441">ROUTER_SET_HDR</text>
+<text x="165.0" y="182.8" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">dst [6:0], mode [10:7], addr [30:11]</text>
+<text x="165.0" y="196.7" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">a store loads it; addr steps at capture</text>
+<polyline points="50,210 56,202 62,210" fill="none" stroke="#444441" stroke-width="1.2"/>
+<rect x="40.0" y="246.0" width="250.0" height="58.0" rx="6" fill="#FAEEDA" stroke="#444441" stroke-width="1.5"/>
+<text x="165.0" y="264.3" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#444441">ROUTER_SET_HI</text>
+<text x="165.0" y="279.8" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">the payload's high 32 bits</text>
+<text x="165.0" y="293.7" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">a store loads it; cleared at capture</text>
+<polyline points="50,304 56,296 62,304" fill="none" stroke="#444441" stroke-width="1.2"/>
+<text x="40.0" y="338.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#D85A30">ROUTER_SEND_LO store: wdata = the payload's low 32 bits</text>
+<rect x="340.0" y="128.0" width="230.0" height="54.0" rx="6" fill="#F1EFE8" stroke="#444441" stroke-width="1.3"/>
+<text x="455.0" y="145.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#444441">addr + inc</text>
+<text x="455.0" y="160.5" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">inc = mode 5: 2; modes 6, 7: 1; else 0</text>
+<text x="455.0" y="173.7" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">mod 2^20, written back at capture</text>
+<polyline points="290.0,166.0 339.0,166.0" fill="none" stroke="#444441" stroke-width="1.4" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<polyline points="455.0,127.0 455.0,116.0 165.0,116.0 165.0,145.0" fill="none" stroke="#444441" stroke-width="1.4" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<rect x="640.0" y="196.0" width="280.0" height="120.0" rx="6" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1.5"/>
+<text x="780.0" y="231.4" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#444441">holding register (one packet)</text>
+<text x="780.0" y="247.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">valid; dst, mode, addr; payload 64</text>
+<text x="780.0" y="260.8" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441"></text>
+<text x="780.0" y="274.7" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">capture = st_sendlo &amp; ¬stall:</text>
+<text x="780.0" y="288.5" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">{SET_HDR, SET_HI, wdata} → holding</text>
+<polyline points="650,316 656,308 662,316" fill="none" stroke="#7F77DD" stroke-width="1.2"/>
+<polyline points="290.0,190.0 600.0,190.0 600.0,226.0 639.0,226.0" fill="none" stroke="#444441" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<polyline points="290.0,275.0 600.0,275.0 600.0,256.0 639.0,256.0" fill="none" stroke="#444441" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<polyline points="400.0,330.0 620.0,330.0 620.0,286.0 639.0,286.0" fill="none" stroke="#D85A30" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#mD85A30)"/>
+<text x="590.0" y="324.0" font-size="10" text-anchor="end" font-weight="normal" fill="#D85A30">wdata</text>
+<polyline points="920.0,256.0 1250.0,256.0" fill="none" stroke="#7F77DD" stroke-width="2" stroke-linejoin="round" marker-end="url(#m7F77DD)"/>
+<text x="1250.0" y="248.0" font-size="10.5" text-anchor="end" font-weight="bold" fill="#7F77DD">to the injection point (figure 7.3), input 2</text>
+<polyline points="1180.0,296.0 921.0,296.0" fill="none" stroke="#D85A30" stroke-width="1.4" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<text x="1180.0" y="312.0" font-size="10" text-anchor="end" font-weight="normal" fill="#D85A30">send_taken: injected this cycle</text>
+<path d="M700,372.0 L712.0,372.0 A24.0,24.0 0 0 1 712.0,420.0 L700,420.0 Z" fill="white" stroke="#444441" stroke-width="1.4"/>
+<text x="714.0" y="368.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64">stall</text>
+<polyline points="630.0,382.0 699.0,382.0" fill="none" stroke="#D85A30" stroke-width="1.3" stroke-linejoin="round" stroke-dasharray="4 3"/>
+<text x="626.0" y="386.0" font-size="10.5" text-anchor="end" font-weight="normal" fill="#D85A30">st_sendlo</text>
+<polyline points="630.0,396.0 699.0,396.0" fill="none" stroke="#7F77DD" stroke-width="1.3" stroke-linejoin="round"/>
+<text x="626.0" y="400.0" font-size="10.5" text-anchor="end" font-weight="normal" fill="#7F77DD">valid</text>
+<polyline points="630.0,410.0 692.0,410.0" fill="none" stroke="#D85A30" stroke-width="1.3" stroke-linejoin="round" stroke-dasharray="4 3"/>
+<text x="626.0" y="414.0" font-size="10.5" text-anchor="end" font-weight="normal" fill="#D85A30">send_taken</text>
+<circle cx="696.0" cy="410.0" r="4" fill="white" stroke="#D85A30" stroke-width="1.3"/>
+<polyline points="736.0,396.0 800.0,396.0" fill="none" stroke="#D85A30" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<text x="806.0" y="400.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#D85A30">stall the core: hold the store this cycle</text>
+<text x="806.0" y="422.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#7F77DD">send_busy = valid → TILE_STATUS [3]</text>
+<text x="30.0" y="376.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">Valid clears on send_taken, and is set by</text>
+<text x="30.0" y="391.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">a capture; both in one cycle: set. The store</text>
+<text x="30.0" y="406.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">stalls only if the register is full and not</text>
+<text x="30.0" y="421.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">injected this cycle (§4.11), so back-to-back</text>
+<text x="30.0" y="436.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">sends go out one a cycle.</text>
+<rect x="16.0" y="496.0" width="1268.0" height="290.0" rx="10" fill="white" stroke="#B4B2A9" stroke-width="1"/>
+<text x="30.0" y="520.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">B. Cycle by cycle: three sends, the third behind a two-packet return</text>
+<text x="242.5" y="542.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#6b6a64">t</text>
+<line x1="190" y1="548" x2="190" y2="704" stroke="#ECEAE3" stroke-width="1"/>
+<text x="347.5" y="542.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#6b6a64">t+1</text>
+<line x1="295" y1="548" x2="295" y2="704" stroke="#ECEAE3" stroke-width="1"/>
+<text x="452.5" y="542.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#6b6a64">t+2</text>
+<line x1="400" y1="548" x2="400" y2="704" stroke="#ECEAE3" stroke-width="1"/>
+<text x="557.5" y="542.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#6b6a64">t+3</text>
+<line x1="505" y1="548" x2="505" y2="704" stroke="#ECEAE3" stroke-width="1"/>
+<text x="662.5" y="542.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#6b6a64">t+4</text>
+<line x1="610" y1="548" x2="610" y2="704" stroke="#ECEAE3" stroke-width="1"/>
+<text x="767.5" y="542.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#6b6a64">t+5</text>
+<line x1="715" y1="548" x2="715" y2="704" stroke="#ECEAE3" stroke-width="1"/>
+<text x="872.5" y="542.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#6b6a64">t+6</text>
+<line x1="820" y1="548" x2="820" y2="704" stroke="#ECEAE3" stroke-width="1"/>
+<text x="977.5" y="542.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#6b6a64">t+7</text>
+<line x1="925" y1="548" x2="925" y2="704" stroke="#ECEAE3" stroke-width="1"/>
+<text x="1082.5" y="542.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#6b6a64">t+8</text>
+<line x1="1030" y1="548" x2="1030" y2="704" stroke="#ECEAE3" stroke-width="1"/>
+<text x="1187.5" y="542.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#6b6a64">t+9</text>
+<line x1="1135" y1="548" x2="1135" y2="704" stroke="#ECEAE3" stroke-width="1"/>
+<text x="30.0" y="565.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">core</text>
+<polygon points="190,562 194,554 291,554 295,562 291,570 194,570" fill="#EEEDFE" stroke="#888780" stroke-width="1"/>
+<text x="242.5" y="566.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">SEND_LO a</text>
+<polygon points="295,562 299,554 396,554 400,562 396,570 299,570" fill="#EEEDFE" stroke="#888780" stroke-width="1"/>
+<text x="347.5" y="566.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">SEND_LO b</text>
+<polygon points="400,562 404,554 501,554 505,562 501,570 404,570" fill="#EEEDFE" stroke="#888780" stroke-width="1"/>
+<text x="452.5" y="566.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">SEND_LO c</text>
+<polygon points="505,562 509,554 606,554 610,562 606,570 509,570" fill="#EEEDFE" stroke="#888780" stroke-width="1"/>
+<text x="557.5" y="566.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">SEND_LO c</text>
+<polygon points="610,562 614,554 711,554 715,562 711,570 614,570" fill="#EEEDFE" stroke="#888780" stroke-width="1"/>
+<text x="662.5" y="566.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">SEND_LO c</text>
+<polygon points="715,562 719,554 816,554 820,562 816,570 719,570" fill="#EEEDFE" stroke="#888780" stroke-width="1"/>
+<text x="767.5" y="566.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">next</text>
+<polygon points="820,562 824,554 921,554 925,562 921,570 824,570" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="872.5" y="566.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441"></text>
+<polygon points="925,562 929,554 1026,554 1030,562 1026,570 929,570" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="977.5" y="566.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441"></text>
+<polygon points="1030,562 1034,554 1131,554 1135,562 1131,570 1034,570" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="1082.5" y="566.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441"></text>
+<polygon points="1135,562 1139,554 1236,554 1240,562 1236,570 1139,570" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="1187.5" y="566.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441"></text>
+<text x="30.0" y="591.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">stall</text>
+<polyline points="190.0,596.0 295.0,596.0 295.0,596.0 295.0,596.0 400.0,596.0 400.0,596.0 400.0,580.0 505.0,580.0 505.0,580.0 505.0,580.0 610.0,580.0 610.0,580.0 610.0,596.0 715.0,596.0 715.0,596.0 715.0,596.0 820.0,596.0 820.0,596.0 820.0,596.0 925.0,596.0 925.0,596.0 925.0,596.0 1030.0,596.0 1030.0,596.0 1030.0,596.0 1135.0,596.0 1135.0,596.0 1135.0,596.0 1240.0,596.0" fill="none" stroke="#D85A30" stroke-width="1.8" stroke-linejoin="round"/>
+<text x="30.0" y="617.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">holding</text>
+<polygon points="190,614 194,606 291,606 295,614 291,622 194,622" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="242.5" y="618.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441"></text>
+<polygon points="295,614 299,606 396,606 400,614 396,622 299,622" fill="#EEEDFE" stroke="#888780" stroke-width="1"/>
+<text x="347.5" y="618.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">a</text>
+<polygon points="400,614 404,606 501,606 505,614 501,622 404,622" fill="#EEEDFE" stroke="#888780" stroke-width="1"/>
+<text x="452.5" y="618.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">b</text>
+<polygon points="505,614 509,606 606,606 610,614 606,622 509,622" fill="#EEEDFE" stroke="#888780" stroke-width="1"/>
+<text x="557.5" y="618.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">b</text>
+<polygon points="610,614 614,606 711,606 715,614 711,622 614,622" fill="#EEEDFE" stroke="#888780" stroke-width="1"/>
+<text x="662.5" y="618.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">b</text>
+<polygon points="715,614 719,606 816,606 820,614 816,622 719,622" fill="#EEEDFE" stroke="#888780" stroke-width="1"/>
+<text x="767.5" y="618.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">c</text>
+<polygon points="820,614 824,606 921,606 925,614 921,622 824,622" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="872.5" y="618.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441"></text>
+<polygon points="925,614 929,606 1026,606 1030,614 1026,622 929,622" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="977.5" y="618.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441"></text>
+<polygon points="1030,614 1034,606 1131,606 1135,614 1131,622 1034,622" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="1082.5" y="618.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441"></text>
+<polygon points="1135,614 1139,606 1236,606 1240,614 1236,622 1139,622" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="1187.5" y="618.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441"></text>
+<text x="30.0" y="643.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">return waiting</text>
+<polyline points="190.0,648.0 295.0,648.0 295.0,648.0 295.0,648.0 400.0,648.0 400.0,648.0 400.0,632.0 505.0,632.0 505.0,632.0 505.0,632.0 610.0,632.0 610.0,632.0 610.0,648.0 715.0,648.0 715.0,648.0 715.0,648.0 820.0,648.0 820.0,648.0 820.0,648.0 925.0,648.0 925.0,648.0 925.0,648.0 1030.0,648.0 1030.0,648.0 1030.0,648.0 1135.0,648.0 1135.0,648.0 1135.0,648.0 1240.0,648.0" fill="none" stroke="#1D9E75" stroke-width="1.8" stroke-linejoin="round"/>
+<text x="30.0" y="669.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">injected</text>
+<polygon points="190,666 194,658 291,658 295,666 291,674 194,674" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="242.5" y="670.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441"></text>
+<polygon points="295,666 299,658 396,658 400,666 396,674 299,674" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="347.5" y="670.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">a</text>
+<polygon points="400,666 404,658 501,658 505,666 501,674 404,674" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="452.5" y="670.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">ret lo</text>
+<polygon points="505,666 509,658 606,658 610,666 606,674 509,674" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="557.5" y="670.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">ret hi</text>
+<polygon points="610,666 614,658 711,658 715,666 711,674 614,674" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="662.5" y="670.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">b</text>
+<polygon points="715,666 719,658 816,658 820,666 816,674 719,674" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="767.5" y="670.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">c</text>
+<polygon points="820,666 824,658 921,658 925,666 921,674 824,674" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="872.5" y="670.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441"></text>
+<polygon points="925,666 929,658 1026,658 1030,666 1026,674 929,674" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="977.5" y="670.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441"></text>
+<polygon points="1030,666 1034,658 1131,658 1135,666 1131,674 1034,674" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="1082.5" y="670.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441"></text>
+<polygon points="1135,666 1139,658 1236,658 1240,666 1236,674 1139,674" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="1187.5" y="670.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441"></text>
+<text x="30.0" y="695.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">send_taken</text>
+<polyline points="190.0,700.0 295.0,700.0 295.0,700.0 295.0,684.0 400.0,684.0 400.0,684.0 400.0,700.0 505.0,700.0 505.0,700.0 505.0,700.0 610.0,700.0 610.0,700.0 610.0,684.0 715.0,684.0 715.0,684.0 715.0,684.0 820.0,684.0 820.0,684.0 820.0,700.0 925.0,700.0 925.0,700.0 925.0,700.0 1030.0,700.0 1030.0,700.0 1030.0,700.0 1135.0,700.0 1135.0,700.0 1135.0,700.0 1240.0,700.0" fill="none" stroke="#D85A30" stroke-width="1.8" stroke-linejoin="round"/>
+<text x="30.0" y="724.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">t: a is captured; t+1: a goes out while b is captured (no stall: the register is being emptied). t+2, t+3: a 128-bit return holds the</text>
+<text x="30.0" y="739.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">injection point for two packets, so b waits and the store of c stalls. t+4: b goes out and c is captured; t+5: c goes out.</text>
+<text x="30.0" y="806.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">C. Interface</text>
+<rect x="30.0" y="818.0" width="250.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="832.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">signal</text>
+<rect x="280.0" y="818.0" width="100.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="286.0" y="832.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">width</text>
+<rect x="380.0" y="818.0" width="280.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="832.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">from → to</text>
+<rect x="660.0" y="818.0" width="610.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="666.0" y="832.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">meaning</text>
+<rect x="30.0" y="839.0" width="250.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="853.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">st_hdr, st_hi, st_sendlo, wdata</text>
+<rect x="280.0" y="839.0" width="100.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="286.0" y="853.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1, 1, 1, 32</text>
+<rect x="380.0" y="839.0" width="280.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="853.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">register decode (fig 3.2) → here</text>
+<rect x="660.0" y="839.0" width="610.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="666.0" y="853.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">stores to ROUTER_SET_HDR, ROUTER_SET_HI, ROUTER_SEND_LO</text>
+<rect x="30.0" y="860.0" width="250.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="874.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">stall</text>
+<rect x="280.0" y="860.0" width="100.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="286.0" y="874.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1</text>
+<rect x="380.0" y="860.0" width="280.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="874.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">here → controller</text>
+<rect x="660.0" y="860.0" width="610.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="666.0" y="874.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">hold the ROUTER_SEND_LO store this cycle</text>
+<rect x="30.0" y="881.0" width="250.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="895.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">holding valid, packet</text>
+<rect x="280.0" y="881.0" width="100.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="286.0" y="895.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1, 95</text>
+<rect x="380.0" y="881.0" width="280.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="895.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">here → injection point (fig 7.3)</text>
+<rect x="660.0" y="881.0" width="610.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="666.0" y="895.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">dst 7, mode 4, addr 20, payload 64</text>
+<rect x="30.0" y="902.0" width="250.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="916.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">send_taken</text>
+<rect x="280.0" y="902.0" width="100.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="286.0" y="916.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1</text>
+<rect x="380.0" y="902.0" width="280.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="916.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">injection point → here</text>
+<rect x="660.0" y="902.0" width="610.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="666.0" y="916.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">the packet was injected this cycle</text>
+<rect x="30.0" y="923.0" width="250.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="937.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">send_busy</text>
+<rect x="280.0" y="923.0" width="100.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="286.0" y="937.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1</text>
+<rect x="380.0" y="923.0" width="280.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="386.0" y="937.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">here → TILE_STATUS [3] (fig 3.2)</text>
+<rect x="660.0" y="923.0" width="610.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="666.0" y="937.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">the holding register is full</text>
+<text x="30.0" y="970.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">• No checks at the sender (§4.11): an invalid mode, mode 1 to another tile, or dst 65 (unused) go out as written; the receiver drops a bad mode (condition 9 there), and the simulator checks the rest.</text>
+<text x="42.0" y="985.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">ROUTER_SET_HDR and ROUTER_SET_HI are undefined at chip reset (§8).</text>
+<polyline points="30.0,1018.0 70.0,1018.0" fill="none" stroke="#7F77DD" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#m7F77DD)"/>
+<text x="78.0" y="1022.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">the controller</text>
+<polyline points="186.1,1018.0 226.1,1018.0" fill="none" stroke="#1D9E75" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#m1D9E75)"/>
+<text x="234.1" y="1022.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">returns</text>
+<polyline points="303.2,1018.0 343.2,1018.0" fill="none" stroke="#D85A30" stroke-width="1.8" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<text x="351.2" y="1022.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">control</text>
+<circle cx="424.24" cy="1018" r="3.2" fill="#444441"/>
+<text x="434.2" y="1022.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">junction; wedge: clocked register</text>
+<line x1="24" y1="1038" x2="1276" y2="1038" stroke="#B4B2A9" stroke-width="0.8"/>
+<text x="24.0" y="1060.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">A ROUTER_SEND_LO store captures the header, the high word and its own data into the one-packet holding register; the header's addr then</text>
+<text x="24.0" y="1076.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">steps by the words the packet writes, and ROUTER_SET_HI clears. The store stalls only while the register is full and not leaving this cycle,</text>
+<text x="24.0" y="1092.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">so sends run one a cycle unless read returns, which go first, hold the injection point.</text>
+<text x="24.0" y="1108.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">Source: spec/machine-spec.md v1.0.</text>
+</svg>

@@ -420,11 +420,14 @@ public final class NetTest {
             n.runAll(300);
             T.check(n.c.violations > v0 && n.c.violationMessages.get(n.c.violationMessages.size() - 1).contains(cases[c][1]), cases[c][0] + " flagged (" + cases[c][1] + "): " + n.c.violationMessages.get(n.c.violationMessages.size() - 1));
         }
-        // K's formula (4.8): meshsim errors below max(2L + 3, L + 4, cm_latency, rp_latency)
-        Config bad = Net.cfg(shuffle); bad.K = 4;
+        // K's formula (4.7, D49): meshsim errors below max(2L + 4, L + 4, cm_latency, rp_latency)
+        Config bad = Net.cfg(shuffle); bad.K = 5;
         boolean threw = false; try { new Chip(bad); } catch (IllegalArgumentException e) { threw = e.getMessage().contains("below"); }
-        T.check(threw, "K = 4 at L = 1 is rejected (the formula's 5)");
-        Config ok5 = Net.cfg(shuffle); ok5.K = 5; new Chip(ok5); T.check(true, "K = 5 at L = 1 is accepted");
+        T.check(threw, "K = 5 at L = 1 is rejected (the formula's 6)");
+        Config ok6 = Net.cfg(shuffle); ok6.K = 6; new Chip(ok6); T.check(true, "K = 6 at L = 1 is accepted");
+        Config bad3 = Net.cfg(shuffle); bad3.tsEngineLatency = 3; bad3.K = 9;
+        threw = false; try { new Chip(bad3); } catch (IllegalArgumentException e) { threw = true; }
+        T.check(threw && Net.cfg(shuffle).withTsLatency(3).K == 10 && Net.cfg(shuffle).withTsLatency(4).K == 12, "K = 9 at L = 3 is rejected; withTsLatency(3) and (4) give K = 10 and 12");
         // port-B timing: accept at t, written at t + cm_latency, readable from t + cm_latency + 1
         d.remaining[3] = 1;
         n.clearLogs();

@@ -1,0 +1,158 @@
+{
+ "name": "cyclone-29",
+ "traced_rows": 371526406,
+ "executions": 265664724,
+ "untraced_rows": 96687,
+ "untraced_share_of_all": 0.00026017489715043083,
+ "untraced_per_traced": 0.00026024260574361433,
+ "windows": 5670,
+ "full_windows": 5669,
+ "windows_with_untraced": 2869,
+ "untraced_per_window": {
+  "mean": 17.052380952380954,
+  "p50": 1,
+  "p90": 55,
+  "p99": 93,
+  "p999": 120,
+  "max": 129
+ },
+ "top_windows": [
+  {
+   "window": 5018,
+   "first_row": 328859648,
+   "untraced_rows": 129,
+   "divq": 0,
+   "divr": 0,
+   "inline_execs": 0
+  },
+  {
+   "window": 2392,
+   "first_row": 156762112,
+   "untraced_rows": 121,
+   "divq": 0,
+   "divr": 0,
+   "inline_execs": 0
+  },
+  {
+   "window": 2460,
+   "first_row": 161218560,
+   "untraced_rows": 120,
+   "divq": 0,
+   "divr": 0,
+   "inline_execs": 0
+  },
+  {
+   "window": 2512,
+   "first_row": 164626432,
+   "untraced_rows": 120,
+   "divq": 0,
+   "divr": 0,
+   "inline_execs": 0
+  },
+  {
+   "window": 3578,
+   "first_row": 234487808,
+   "untraced_rows": 120,
+   "divq": 0,
+   "divr": 0,
+   "inline_execs": 0
+  },
+  {
+   "window": 3973,
+   "first_row": 260374528,
+   "untraced_rows": 120,
+   "divq": 0,
+   "divr": 0,
+   "inline_execs": 0
+  },
+  {
+   "window": 4931,
+   "first_row": 323158016,
+   "untraced_rows": 120,
+   "divq": 0,
+   "divr": 0,
+   "inline_execs": 0
+  },
+  {
+   "window": 3753,
+   "first_row": 245956608,
+   "untraced_rows": 112,
+   "divq": 0,
+   "divr": 0,
+   "inline_execs": 0
+  },
+  {
+   "window": 2598,
+   "first_row": 170262528,
+   "untraced_rows": 111,
+   "divq": 0,
+   "divr": 0,
+   "inline_execs": 0
+  },
+  {
+   "window": 2722,
+   "first_row": 178388992,
+   "untraced_rows": 111,
+   "divq": 0,
+   "divr": 0,
+   "inline_execs": 0
+  }
+ ],
+ "top_untraced_by_opcode": [
+  {
+   "opcode": "REMU",
+   "executions": 95893,
+   "untraced_rows": 95893,
+   "share": 0.9917879342621035
+  },
+  {
+   "opcode": "DIVU",
+   "executions": 791,
+   "untraced_rows": 791,
+   "share": 0.008181037781707985
+  },
+  {
+   "opcode": "DIVW",
+   "executions": 3,
+   "untraced_rows": 3,
+   "share": 3.102795618852586e-05
+  }
+ ],
+ "top_untraced_by_template": [
+  {
+   "label": "REMU",
+   "key": 413,
+   "executions": 95893,
+   "untraced_per_exec": 1,
+   "untraced_rows": 95893
+  },
+  {
+   "label": "DIVU",
+   "key": 405,
+   "executions": 791,
+   "untraced_per_exec": 1,
+   "untraced_rows": 791
+  },
+  {
+   "label": "DIVW",
+   "key": 465,
+   "executions": 3,
+   "untraced_per_exec": 1,
+   "untraced_rows": 3
+  }
+ ],
+ "controller_fed": {
+  "inline_execs": 28034,
+  "csr_execs": 8751,
+  "inline_traced_rows": 24643755,
+  "csr_traced_rows": 10501,
+  "max_inline_per_window": 57,
+  "max_csr_per_window": 160,
+  "windows_with_csr": 489
+ },
+ "divq_execs": 0,
+ "divr_execs": 0,
+ "templates_in_program": 227,
+ "templates_executed": 205,
+ "checks": "count_exec: rows = num_cycles, every row on a program pc, every execution contiguous at jolt-cpp length; tables: traced words = jolt-cpp rows and source opcode names agree for every template of the program; window sums = run totals"
+}

@@ -20,7 +20,8 @@
  * also reports the stray at its acceptance, naming it ({@link #strays}: the counter, less the decrements already in the
  * line, plus a same-cycle write, is 0), as a violation of invariant 9 when Config.checkUnexpected is set.
  *
- * K (4.8): Config.K, default 8; the constructor errors if K < max(2 L + 3, L + 4, cm_latency, rp_latency).
+ * K (4.7): Config.K, default 8; the constructor errors if K < Config.kMin() = max(2 L + 4, L + 4, cm_latency, rp_latency)
+ * (meshsim's reference, D49: its measured write path; the hardware's K is implementation-defined).
  *
  * meshsim's checks here (spec 9): invariant 5 (bad packets, size 11), 11 (the command and reply blocks), 14 (read-port
  * overlap), 19 (bounds), 21 (modes 6-7, count-only on counter 0), 22 (uncounted traffic is commands and overlays only;
@@ -60,8 +61,8 @@ final class TrafficDirector implements Component {
 
     TrafficDirector(int me, Config cfg) {
         this.me = me; this.cfg = cfg; this.K = cfg.K;
-        int L = cfg.tsEngineLatency, need = Math.max(Math.max(2 * L + 3, L + 4), Math.max(cfg.cmLatency, cfg.rpLatency));
-        if (K < need) throw new IllegalArgumentException("K = " + K + " is below max(2L + 3, L + 4, cm_latency, rp_latency) = " + need + " at L = " + L + " (4.8; invariant 24)");
+        int L = cfg.tsEngineLatency, need = cfg.kMin();
+        if (K < need) throw new IllegalArgumentException("K = " + K + " is below meshsim's max(2L + 4, L + 4, cm_latency, rp_latency) = " + need + " at L = " + L + " (4.7, D49; invariant 24)");
         lineCtr = new int[K]; lineT = new long[K]; java.util.Arrays.fill(lineT, Long.MIN_VALUE);
     }
 

@@ -1,0 +1,200 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="1170" viewBox="0 0 1300 1170" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif">
+<defs></defs>
+<rect width="1300" height="1170" fill="white"/>
+<text x="24.0" y="34.0" font-size="18" text-anchor="start" font-weight="bold" fill="#444441">Figure 1.4. The link word and the packet modes</text>
+<text x="24.0" y="56.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#6b6a64">v1.0 (spec/machine-spec.md §3.1, §4.8, §4.12) — the receiving tile's traffic director routes every packet by its mode alone</text>
+<text x="44.0" y="92.0" font-size="13" text-anchor="start" font-weight="bold" fill="#444441">link word: 102 bits, one per cycle per link direction</text>
+<rect x="44.0" y="104.0" width="83.3" height="46.0" rx="0" fill="#FAEEDA" stroke="#888780" stroke-width="1"/>
+<text x="85.7" y="125.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">src</text>
+<text x="85.7" y="140.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">7</text>
+<rect x="127.3" y="104.0" width="83.3" height="46.0" rx="0" fill="#FAEEDA" stroke="#888780" stroke-width="1"/>
+<text x="168.9" y="125.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">dst</text>
+<text x="168.9" y="140.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">7</text>
+<rect x="210.6" y="104.0" width="47.6" height="46.0" rx="0" fill="#FAECE7" stroke="#888780" stroke-width="1"/>
+<text x="234.4" y="125.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">mode</text>
+<text x="234.4" y="140.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">4</text>
+<rect x="258.2" y="104.0" width="238.0" height="46.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="377.2" y="125.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">addr</text>
+<text x="377.2" y="140.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">20</text>
+<rect x="496.2" y="104.0" width="761.6" height="46.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="877.0" y="125.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">payload</text>
+<text x="877.0" y="140.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">64</text>
+<text x="44.0" y="178.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">src (7)</text>
+<text x="136.0" y="178.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">address of the originator, added by the router; 127 = idle packet (carries nothing)</text>
+<text x="44.0" y="195.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">dst (7)</text>
+<text x="136.0" y="195.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">destination, absolute: 0–63 tiles, 64 C&amp;C, 126 broadcast; 65 unused</text>
+<text x="44.0" y="212.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">mode (4)</text>
+<text x="136.0" y="212.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">what the packet is: the table below (4 bits)</text>
+<text x="654.0" y="178.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">addr (20)</text>
+<text x="746.0" y="178.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">receiver-local address; its meaning depends on the mode (0 where unused)</text>
+<text x="654.0" y="195.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">payload (64)</text>
+<text x="746.0" y="195.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">data; a 32-bit use is the low half (bits 31–0); a key sits in bits 31–0,</text>
+<text x="654.0" y="212.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441"></text>
+<text x="746.0" y="212.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">and a mode-4 packet gets the ordinal in bits 63–32 (§4.9)</text>
+<text x="1257.8" y="92.0" font-size="11" text-anchor="end" font-weight="normal" fill="#6b6a64" font-style="italic">field order as listed in §3.1; bit positions are not assigned in the draft</text>
+<rect x="44.0" y="252.0" width="1212.0" height="30.0" rx="0" fill="#E9E7E0" stroke="#888780" stroke-width="1"/>
+<text x="52.0" y="272.0" font-size="12.5" text-anchor="start" font-weight="bold" fill="#444441">mode</text>
+<text x="104.0" y="272.0" font-size="12.5" text-anchor="start" font-weight="bold" fill="#444441">packet</text>
+<text x="254.0" y="272.0" font-size="12.5" text-anchor="start" font-weight="bold" fill="#444441">sent by</text>
+<text x="492.0" y="272.0" font-size="12.5" text-anchor="start" font-weight="bold" fill="#444441">addr</text>
+<text x="642.0" y="272.0" font-size="12.5" text-anchor="start" font-weight="bold" fill="#444441">director sends it to</text>
+<text x="806.0" y="272.0" font-size="12.5" text-anchor="start" font-weight="bold" fill="#444441">what happens</text>
+<text x="1136.0" y="272.0" font-size="12.5" text-anchor="start" font-weight="bold" fill="#444441">counted in</text>
+<rect x="44.0" y="282.0" width="1212.0" height="46.0" rx="0" fill="white" stroke="#D9D7CF" stroke-width="0.8"/>
+<rect x="54.0" y="290.0" width="32.0" height="24.0" rx="4" fill="#FAECE7" stroke="#D85A30" stroke-width="1"/>
+<text x="70.0" y="307.0" font-size="14" text-anchor="middle" font-weight="bold" fill="#444441">0</text>
+<text x="104.0" y="301.0" font-size="12" text-anchor="start" font-weight="bold" fill="#444441">invalid</text>
+<text x="254.0" y="301.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">never sent (invariant 5)</text>
+<text x="492.0" y="301.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">—</text>
+<rect x="640.0" y="289.0" width="152.0" height="32.0" rx="4" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="647.0" y="301.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">dropped; sets the</text>
+<text x="647.0" y="316.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">bad-mode condition</text>
+<text x="1136.0" y="301.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">—</text>
+<rect x="44.0" y="328.0" width="1212.0" height="57.0" rx="0" fill="white" stroke="#D9D7CF" stroke-width="0.8"/>
+<rect x="54.0" y="336.0" width="32.0" height="24.0" rx="4" fill="#FAECE7" stroke="#D85A30" stroke-width="1"/>
+<text x="70.0" y="353.0" font-size="14" text-anchor="middle" font-weight="bold" fill="#444441">1</text>
+<text x="104.0" y="347.0" font-size="12" text-anchor="start" font-weight="bold" fill="#444441">gather request</text>
+<text x="254.0" y="347.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">the address generator: a mode-1</text>
+<text x="254.0" y="362.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">stream with d = 0 (local only,</text>
+<text x="254.0" y="377.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">invariant 10)</text>
+<text x="492.0" y="347.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">unused (0)</text>
+<rect x="640.0" y="335.0" width="152.0" height="43.0" rx="4" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1"/>
+<text x="647.0" y="347.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">the GATHER engine's</text>
+<text x="647.0" y="362.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">request queue (§4.4)</text>
+<text x="806.0" y="347.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">payload = (key, ordinal); k reads at</text>
+<text x="806.0" y="362.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">DMA_RECORD_BASE_ADDRESS + 2k·ordinal, each sent back</text>
+<text x="806.0" y="377.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">to the tile itself as a mode-2 gather value</text>
+<text x="1136.0" y="347.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">— (its gather</text>
+<text x="1136.0" y="362.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">values count)</text>
+<rect x="44.0" y="385.0" width="1212.0" height="87.0" rx="0" fill="white" stroke="#D9D7CF" stroke-width="0.8"/>
+<rect x="54.0" y="393.0" width="32.0" height="24.0" rx="4" fill="#FAECE7" stroke="#D85A30" stroke-width="1"/>
+<text x="70.0" y="410.0" font-size="14" text-anchor="middle" font-weight="bold" fill="#444441">2</text>
+<text x="104.0" y="404.0" font-size="12" text-anchor="start" font-weight="bold" fill="#444441">big-SRAM write by</text>
+<text x="104.0" y="419.0" font-size="12" text-anchor="start" font-weight="bold" fill="#444441">source</text>
+<text x="254.0" y="404.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">address-generator streams</text>
+<text x="254.0" y="419.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">(all-to-alls, local copies); the</text>
+<text x="254.0" y="434.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">GATHER engine's values; the</text>
+<text x="254.0" y="449.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">controller's send port; C&amp;C staging</text>
+<text x="254.0" y="464.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">(src 64)</text>
+<text x="492.0" y="404.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">unused (0)</text>
+<rect x="640.0" y="392.0" width="152.0" height="73.0" rx="4" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1"/>
+<text x="647.0" y="404.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">the write engine (§4.9)</text>
+<text x="806.0" y="404.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">64 bits written at PTR[src], then PTR[src] += 2;</text>
+<text x="806.0" y="419.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">count-on-arrival applies if set</text>
+<text x="1136.0" y="404.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">DMA_SRAM_REMAINING</text>
+<rect x="44.0" y="472.0" width="1212.0" height="57.0" rx="0" fill="white" stroke="#D9D7CF" stroke-width="0.8"/>
+<rect x="54.0" y="480.0" width="32.0" height="24.0" rx="4" fill="#FAECE7" stroke="#D85A30" stroke-width="1"/>
+<text x="70.0" y="497.0" font-size="14" text-anchor="middle" font-weight="bold" fill="#444441">3</text>
+<text x="104.0" y="491.0" font-size="12" text-anchor="start" font-weight="bold" fill="#444441">bucket write</text>
+<text x="254.0" y="491.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">the address generator: mode-3 streams</text>
+<text x="254.0" y="506.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">(the local sort's bucket passes, to</text>
+<text x="254.0" y="521.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">the tile itself)</text>
+<text x="492.0" y="491.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">unused (0)</text>
+<rect x="640.0" y="479.0" width="152.0" height="43.0" rx="4" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1"/>
+<text x="647.0" y="491.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">the write engine (§4.9)</text>
+<text x="806.0" y="491.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">64 bits written at PTR[t], t = the payload's bucket</text>
+<text x="806.0" y="506.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">digit (§4.15), then PTR[t] += 2</text>
+<text x="1136.0" y="491.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">DMA_SRAM_REMAINING</text>
+<rect x="44.0" y="529.0" width="1212.0" height="72.0" rx="0" fill="white" stroke="#D9D7CF" stroke-width="0.8"/>
+<rect x="54.0" y="537.0" width="32.0" height="24.0" rx="4" fill="#FAECE7" stroke="#D85A30" stroke-width="1"/>
+<text x="70.0" y="554.0" font-size="14" text-anchor="middle" font-weight="bold" fill="#444441">4</text>
+<text x="104.0" y="548.0" font-size="12" text-anchor="start" font-weight="bold" fill="#444441">augmented write</text>
+<text x="254.0" y="548.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">the address generator: mode-4 streams</text>
+<text x="254.0" y="563.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">(step 1's local pass, the keys</text>
+<text x="254.0" y="578.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">all-to-all)</text>
+<text x="492.0" y="548.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">unused (0)</text>
+<rect x="640.0" y="536.0" width="152.0" height="58.0" rx="4" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1"/>
+<text x="647.0" y="548.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">the write engine (§4.9)</text>
+<text x="806.0" y="548.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">as mode 2, at PTR[src], with the high 32 bits</text>
+<text x="806.0" y="563.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">replaced by the ordinal, (target chunk −</text>
+<text x="806.0" y="578.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">DMA_RECORD_BASE_ADDRESS) / 2; may mix with mode 2 in</text>
+<text x="806.0" y="593.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">a phase</text>
+<text x="1136.0" y="548.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">DMA_SRAM_REMAINING</text>
+<rect x="44.0" y="601.0" width="1212.0" height="103.0" rx="0" fill="white" stroke="#D9D7CF" stroke-width="0.8"/>
+<rect x="54.0" y="609.0" width="32.0" height="24.0" rx="4" fill="#FAECE7" stroke="#D85A30" stroke-width="1"/>
+<text x="70.0" y="626.0" font-size="14" text-anchor="middle" font-weight="bold" fill="#444441">5</text>
+<text x="104.0" y="620.0" font-size="12" text-anchor="start" font-weight="bold" fill="#444441">controller-memory</text>
+<text x="104.0" y="635.0" font-size="12" text-anchor="start" font-weight="bold" fill="#444441">write</text>
+<text x="254.0" y="620.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">the address generator: a mode-5</text>
+<text x="254.0" y="635.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">stream with d = 0 (block copy, §6.5);</text>
+<text x="254.0" y="650.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">C&amp;C, loading halted tiles at boot; a</text>
+<text x="254.0" y="665.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">send port (vectors such as the group</text>
+<text x="254.0" y="680.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">maxima, §14)</text>
+<text x="492.0" y="620.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">word address in</text>
+<text x="492.0" y="635.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">instruction or data</text>
+<text x="492.0" y="650.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">memory</text>
+<rect x="640.0" y="608.0" width="152.0" height="89.0" rx="4" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1"/>
+<text x="647.0" y="620.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">port B of instruction</text>
+<text x="647.0" y="635.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">or data memory</text>
+<text x="806.0" y="620.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">2 consecutive words (64 bits) written at addr; an</text>
+<text x="806.0" y="635.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">addr outside both memories or in the mailbox is a</text>
+<text x="806.0" y="650.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">programming error, unchecked in hardware (invariant</text>
+<text x="806.0" y="665.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">11)</text>
+<text x="1136.0" y="620.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">DMA_CM_REMAINING</text>
+<rect x="44.0" y="704.0" width="1212.0" height="72.0" rx="0" fill="white" stroke="#D9D7CF" stroke-width="0.8"/>
+<rect x="54.0" y="712.0" width="32.0" height="24.0" rx="4" fill="#FAECE7" stroke="#D85A30" stroke-width="1"/>
+<text x="70.0" y="729.0" font-size="14" text-anchor="middle" font-weight="bold" fill="#444441">6</text>
+<text x="104.0" y="723.0" font-size="12" text-anchor="start" font-weight="bold" fill="#444441">mailbox write</text>
+<text x="254.0" y="723.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">C&amp;C: commands (arguments to slots</text>
+<text x="254.0" y="738.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">1–63 first, the command word to slot</text>
+<text x="254.0" y="753.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">0 last); the only mode that writes</text>
+<text x="254.0" y="768.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">the mailbox</text>
+<text x="492.0" y="723.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">slot = addr[7:0] (256</text>
+<text x="492.0" y="738.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">slots)</text>
+<rect x="640.0" y="711.0" width="152.0" height="58.0" rx="4" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1"/>
+<text x="647.0" y="723.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">port B of data memory:</text>
+<text x="647.0" y="738.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">the mailbox</text>
+<text x="806.0" y="723.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">the low 32 bits written to the slot; a write to slot</text>
+<text x="806.0" y="738.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">0 sets "command landed" (§6.3)</text>
+<text x="1136.0" y="723.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">— ("command</text>
+<text x="1136.0" y="738.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">landed")</text>
+<rect x="44.0" y="776.0" width="1212.0" height="102.0" rx="0" fill="white" stroke="#D9D7CF" stroke-width="0.8"/>
+<rect x="54.0" y="784.0" width="32.0" height="24.0" rx="4" fill="#FAECE7" stroke="#D85A30" stroke-width="1"/>
+<text x="70.0" y="801.0" font-size="14" text-anchor="middle" font-weight="bold" fill="#444441">7</text>
+<text x="104.0" y="795.0" font-size="12" text-anchor="start" font-weight="bold" fill="#444441">reply</text>
+<text x="254.0" y="795.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">a tile's send port: one-word</text>
+<text x="254.0" y="810.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">exchanges such as the split's probe</text>
+<text x="254.0" y="825.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">keys, and per-tile totals (addr by</text>
+<text x="254.0" y="840.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">convention: base + own index); the</text>
+<text x="254.0" y="855.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">read port's results, to the tile</text>
+<text x="254.0" y="870.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">itself (§4.3)</text>
+<text x="492.0" y="795.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">the data-memory word</text>
+<text x="492.0" y="810.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">to write, chosen by</text>
+<text x="492.0" y="825.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">the requester</text>
+<rect x="640.0" y="783.0" width="152.0" height="88.0" rx="4" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1"/>
+<text x="647.0" y="795.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">port B of data memory</text>
+<text x="806.0" y="795.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">the low 32 bits written at addr in data memory; an</text>
+<text x="806.0" y="810.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">addr in the mailbox or outside data memory is a</text>
+<text x="806.0" y="825.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">programming error (invariants 12, 13)</text>
+<text x="1136.0" y="795.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">DMA_REPLY_REMAINING</text>
+<rect x="44.0" y="878.0" width="1212.0" height="46.0" rx="0" fill="white" stroke="#D9D7CF" stroke-width="0.8"/>
+<rect x="49.0" y="886.0" width="42.0" height="24.0" rx="4" fill="#FAECE7" stroke="#D85A30" stroke-width="1"/>
+<text x="70.0" y="903.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">8–15</text>
+<text x="104.0" y="897.0" font-size="12" text-anchor="start" font-weight="bold" fill="#444441">reserved</text>
+<text x="254.0" y="897.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">never sent (invariant 5); free for</text>
+<text x="254.0" y="912.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">packet types still to come</text>
+<text x="492.0" y="897.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">—</text>
+<rect x="640.0" y="885.0" width="152.0" height="32.0" rx="4" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="647.0" y="897.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">dropped; sets the</text>
+<text x="647.0" y="912.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">bad-mode condition</text>
+<text x="1136.0" y="897.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">—</text>
+<line x1="96" y1="252" x2="96" y2="924" stroke="#D9D7CF" stroke-width="0.8"/>
+<line x1="246" y1="252" x2="246" y2="924" stroke="#D9D7CF" stroke-width="0.8"/>
+<line x1="484" y1="252" x2="484" y2="924" stroke="#D9D7CF" stroke-width="0.8"/>
+<line x1="634" y1="252" x2="634" y2="924" stroke="#D9D7CF" stroke-width="0.8"/>
+<line x1="798" y1="252" x2="798" y2="924" stroke="#D9D7CF" stroke-width="0.8"/>
+<line x1="1128" y1="252" x2="1128" y2="924" stroke="#D9D7CF" stroke-width="0.8"/>
+<rect x="44.0" y="252.0" width="1212.0" height="672.0" rx="0" fill="none" stroke="#888780" stroke-width="1"/>
+<text x="44.0" y="954.0" font-size="12" text-anchor="start" font-weight="bold" fill="#444441">Two principles behind the table (§3.1):</text>
+<text x="44.0" y="971.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">• At most one streaming reader of big SRAM per tile at a time, plus the dependent single reads of the GATHER engine and the controller read port.</text>
+<text x="44.0" y="988.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">   There are no remote pulls: gathers are local only (mode 1), and the controller reads only its own big SRAM (§4.3).</text>
+<text x="44.0" y="1005.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">• Bulk movement is a push: anything larger than one word is requested with a small descriptor and delivered by the owner's address generator.</text>
+<text x="44.0" y="1034.0" font-size="12" text-anchor="start" font-weight="bold" fill="#444441">Counting (§4.12):</text>
+<text x="44.0" y="1051.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">each counted packet decrements its 20-bit counter by 1 as the director accepts it, a 64-bit mode-5 packet included. An arrival at a counter already at 0 sets</text>
+<text x="44.0" y="1068.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">the unexpected-arrival condition instead of wrapping (§4.13). Packets from C&amp;C (src 64) are never counted, in any of the three counters (§4.12).</text>
+<text x="44.0" y="1085.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">Modes 0 and 8–15 are dropped and set the bad-mode condition, TILE_CONDITIONS bit 9 (§4.13).</text>
+<line x1="24" y1="1110" x2="1276" y2="1110" stroke="#B4B2A9" stroke-width="0.8"/>
+<text x="24.0" y="1132.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">Every packet carries a 4-bit mode, and the receiver's traffic director routes on it alone: mode 1 feeds the GATHER engine, 2–4 the write engine,</text>
+<text x="24.0" y="1148.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">5–7 port B of the controller's memories; 0 and 8–15 are dropped with the bad-mode condition. Three down-counters count modes 2–4, 5 and 7.</text>
+<text x="24.0" y="1164.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">Source: spec/machine-spec.md v1.0, §3.1, §4.2–§4.4, §4.8, §4.9, §4.11, §4.12, §4.13, §9.</text>
+</svg>

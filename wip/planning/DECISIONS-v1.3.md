@@ -222,6 +222,38 @@ Decided (O). Answers T5; makes Q10 moot.
 - **For the table builder:** a long data-independent expansion is emitted as **a loop body plus a repeat count** (and
   any prologue and epilogue), not as its full word sequence.
 
+## 11. The Tracer's time budget, and what the workloads cost it (2026-11-01)
+
+From WORKER12's counts (`WORKER12/REPORT.md`; both workloads at 2²⁹, traced totals matching WORKER9's). *Corrected the same
+day: the first version assumed one row per cycle and counted only window 34's untraced rows; the Tracer runs at **about 4 cycles
+per row** (owner), and windows 33-36 all fall in the same proof.*
+
+- **The Tracer's time budget: under 100 ms** (owner), taken here **per proof** of 4M traced rows *(to confirm)*.
+- **What the workloads cost**, at about 4 cycles per row and 1 GHz:
+  - **Cyclone:** 96,687 untraced rows against 371.5 M traced (0.026 %), all from the division family; at most 129 in any window.
+    No secp256k1 inlines. A proof is about 17 ms.
+  - **EVM Zone:** 32.0 M untraced rows (9.0 % of traced), 98 % from 254 DIVQ and 2 DIVR, **all in windows 33-36, so all in its
+    first proof** (window 34 alone: 11.07 M untraced against 65,536 traced).
+
+| EVM Zone's first proof | traced | untraced | at 4 cycles per row |
+|---|---|---|---|
+| single Fermat loop, as built | 4.19 M | about 32.0 M | **about 145 ms: over the budget** |
+| addition chain (C4) | 4.19 M | about 16.8 M | **about 84 ms: under, with about 16 % margin** |
+
+- **Q8 and T7: keep the single Fermat loop, with host-supplied advice as the backup** (owner, 2026-11-01). The loop puts EVM
+  Zone's first proof at about 145 ms, over the budget, but the system has a fallback that needs no Tracer hardware:
+  - **The host already knows every advice value**, in order, because it emulates the program itself.
+  - **C&C 3 already generates the inverse's expansion on the fly** (10). Instead of the 124,000-row loop it can send **a short
+    expansion that puts the known results into the right bank-1 registers** (a few untraced rows, the values as constants); the
+    traced rows read them through `advice_reg` exactly as before, so the trace and the replayer are unchanged.
+  - **What it needs, if used:** the host delivers each advice result to C&C 3 through Ingress **before the Tracer reaches the
+    call**, keyed by its position in the run (`instr_idx`), and C&C 3 matches them; the values equal jolt-cpp's, as they will if
+    the host computes them with jolt-cpp.
+  - It is a fallback for any heavy advice, not only the inverse. Used only if a workload's advice threatens the budget.
+  - The addition chain stays candidate C4; an inverse unit in the Tracer is not needed.
+- **The CSR decision holds** (v1.25 section 6): Cyclone runs 8,751 CSR instructions (10 per trap, 875 traps, at most 160 in any
+  window), EVM Zone none.
+
 ---
 
 ## v1.3 work list
@@ -242,6 +274,7 @@ Options recorded for later, each with the evidence that would justify it.
 |---|---|---|---|
 | C1 | **Rejected** (owner, 2026-10-31; stated in spec 4.7): not worth fixing at a cost per step; it would be if the cost were per query. **A delay per destination:** decrement a counter **2 cycles** after acceptance for writes to controller memory and peripherals (their landing time is fixed, `cm_latency`, `rp_latency`), and K = 8 only for big SRAM | WORKER4's measurement: a read-port search step costs about **6 cycles more** than in v1.1 (35.9 + 37.42 per active search against 29.8 + 37.43), because v1.2 decrements at K = 8 where v1.1 counted controller-memory writes at landing. The extra is in the **fixed** term: about 6 cycles **per search step**, shared by all the searches active in it, not per probe (the per-search slope is unchanged). So roughly 6 × the steps per split, about a hundred cycles per split and a few hundred per sort: **negligible today**. Streaming work doesn't notice | two delay taps; a counter may then take two decrements in one cycle (one from each tap), a small adder change. Adopt if the sort's measurements show the split slowing |
 | C2 | **Signed counters** (v1.2 section 36): an arrival before arming just goes negative, so the order of arming and arrival stops mattering, and strays are caught as done early | removes the GO-to-arming window | a signed counter; the immediate stray report becomes meshsim's only |
+| C4 | **An addition chain for the modular inverse** (11): libsecp256k1's for DIVQ, a hand-built one for DIVR | halves the inverse's untraced rows: EVM Zone's first proof about 145 ms → about 84 ms against a 100 ms budget | the segment format already supports it (WORKER9); see T7 |
 | C3 | **Trim the 256-bit word's storage** to the bits in use, with the links staying 256 wide (v1.2 section 2) | power: constant-zero flops are still clocked | revisit when the design has settled |
 
 ---
@@ -263,4 +296,5 @@ Options recorded for later, each with the evidence that would justify it.
 | T2 | The RV64 initial state: what it contains and where it comes from | 1 | open |
 | T3 | The page table: its size, format and how C&C 3 maintains it | 1 | open |
 | T6 | `VirtualPext`/`VirtualPextSigned` in hardware | 9 | **answered: section 9** (any mask must work; the method is the implementation's) |
+| T7 | The modular inverse within the Tracer's 100 ms budget | 11 | **answered: section 11** (keep the single loop; host-supplied advice as the backup) |
 | T5 | The inlines' advice | 8 | **answered: section 10** (the Tracer computes all advice through expansions; C&C 3 generates long ones by looping) |

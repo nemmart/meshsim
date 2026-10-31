@@ -214,7 +214,7 @@ public final class RecipeTest {
             T.eq(0, h, "tile " + p.idx + ": HIST clear at the end");
         }
         noViolations(m.c, "bucket");
-        meas("bucket", "200-263 records: count copy + 4 bucket passes + PTR[64]: GO -> all READY", goToReady(m, 0));
+        meas("bucket", "200 records: count copy + 4 bucket passes: GO -> all READY", goToReady(m, 0));
     }
 
     // ================================================================ 5 augmented transfers
@@ -241,7 +241,7 @@ public final class RecipeTest {
             T.eq(0, bad, "tile " + me + ": remote form: the left's " + nl + " then the right's " + nr + " records, high word = position in the buffer");
         }
         noViolations(m.c, "aug");
-        meas("aug", "local form, 64 keys (size 32, mode 5): GO -> all READY", goToReady(m, 0));
+        meas("aug", "local form, 64 keys: GO -> all READY", goToReady(m, 0));
         meas("aug", "remote form, start command (two neighbours, 20-35 records each): GO -> all READY", goToReady(m, 2));
     }
 
@@ -456,17 +456,17 @@ public final class RecipeTest {
         java.util.Set<Long> firsts = new java.util.HashSet<>(); for (Tile p : m.c.tiles) firsts.add(sram(p, B_SRC, 1)[0]);
         T.eq(64, firsts.size(), "index seeds: 64 different sequences");
         noViolations(m.c, "blocks");
-        long w1 = goToReady(m, 0), w2 = goToReady(m, 1), f1 = goToReady(m, 2), f2 = goToReady(m, 3), h1 = goToReady(m, 4), h2 = goToReady(m, 5);
-        meas("write_block", W1 + " records: GO -> all READY", w1);
+        long w2 = goToReady(m, 0), f1 = goToReady(m, 1), f2 = goToReady(m, 2), h1 = goToReady(m, 3), h2 = goToReady(m, 4);   // v1.2: one write phase
+        if (System.getenv("RCP_DEBUG") != null) for (long[] e : m.c.cc.phaseLog) System.out.println("  phaseLog " + Arrays.toString(e));
         meas("write_block", W2 + " records: GO -> all READY", w2);
         meas("fill", F1 + " records, C&C's seed: GO -> all READY", f1);
         meas("fill", F2 + " records: GO -> all READY", f2);
         meas("hash", F1 + " records (" + 2 * F1 + " words): GO -> all READY", h1);
         meas("hash", F2 + " records: GO -> all READY", h2);
         out("blocks [meas: RecipeTest blocks]: cycles per 64-bit record, marginal (the difference of two sizes over their difference): write_block "
-                + perRec(w1, w2, W1, W2) + ", fill " + perRec(f1, f2, F1, F2) + ", hash " + perRec(h1, h2, F1, F2)
+                + String.format("%.2f (256 records, not marginal)", w2 / 256.0) + ", fill " + perRec(f1, f2, F1, F2) + ", hash " + perRec(h1, h2, F1, F2)
                 + " (" + String.format("%.2f", (double) (h2 - h1) / (2 * (F2 - F1))) + " per 32-bit word read)");
-        perRecord.put("write_block", perRec(w1, w2, W1, W2)); perRecord.put("fill", perRec(f1, f2, F1, F2)); perRecord.put("hash", perRec(h1, h2, F1, F2));
+        perRecord.put("write_block", String.format("%.1f", w2 / 256.0)); perRecord.put("fill", perRec(f1, f2, F1, F2)); perRecord.put("hash", perRec(h1, h2, F1, F2));
     }
     static final Map<String, String> perRecord = new LinkedHashMap<>();
 
@@ -630,6 +630,19 @@ public final class RecipeTest {
         }
         T.eq(0, bad, "the 16 staged rows are in every tile's big SRAM (counted, broadcast)");
         T.eq(64, irq, "boot part 2 set mtvec to the image's handler and enabled the hard interrupt on every tile");
+        long running = 0; for (Tile p : m.c.tiles) running = Math.max(running, p.core.firstImageAt);
+        meas("boot", "reset release -> all 64 tiles running their image (overlays " + (im.code.length + im.data.length + 3) / 4 + " packets, broadcast)", running);
+        // the handler (recipe 24): an error on tile 9 with the hard interrupt enabled -> its 24 reports in C&C 1's queue
+        m.c.cfg.checkErrors = false;
+        m.c.cc.drainReports = true;
+        m.c.tiles[9].ctl.conditions |= 1 << Conditions.DRIFT;
+        Tile t9 = m.c.tiles[9];
+        T.check(m.run(() -> m.c.cc.reportsOf(9).size() >= 24, 40000), "tile 9's handler sent its 24 reports to C&C 1");
+        T.check(t9.core.trapCause == Controller.CAUSE_EXTERNAL && t9.core.mtvec == im.sym("trap_handler"), "through the image's handler (the hard interrupt)");
+        meas("handler", "trap -> the last of 24 reports in C&C 1's receive queue (tile 9)", m.c.cc.reportsOf(9).get(23)[0] - t9.core.trapAt);
+        m.c.cfg.checkErrors = true; m.c.violations = 0; m.c.violationMessages.clear();
+        m.c.cc.reset(false).command(LinkWord.BROADCAST, Registers.CMD_JUMP << 24, im.sym("_start")).runWhenReady();
+        T.check(m.run(() -> m.c.resets == 1 && idle(m), 40000), "a reset and the boot again");
         finish(m, "boot", 20000);
         noViolations(m.c, "boot");
         meas("boot", "CMD_STAGE with 16 broadcast rows: GO -> all READY", goToReady(m, 0));

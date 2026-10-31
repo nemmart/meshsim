@@ -79,3 +79,4 @@ acceptance kit). Until WORKER10's `v1.25` spec branch exists, the design is DECI
 - Task 080 done (cyclone-29.manifest.json f8a0622e...). **Task 084 pushed.** 083 next in the queue.
 - Task 083 PASS (8192/8192 A and B, 128/128 F; 28.7 min). 084 running from ~08:43.
 - 084 PASS. Merged into main (7f83553). Freeze check task 086 pushed (quest 366695a, kit sha d99064ec...).
+- Task 086 PASS: quick 34/34, full 10/10, p4/uniform-k128 1,360,082 cycles (= 077). Last check before the freeze.

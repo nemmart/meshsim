@@ -187,6 +187,14 @@ replayer and its controller, matches jolt-cpp `821e1bd`'s trace row for row. `v1
 The sort runner is WORKER8's kit from task 077, with `meshsim.jar` rebuilt from main. The sort image, the boot ROM and
 `hops.txt` are byte-identical to 077's, and `HASHES` is updated for the jar. Smoke-tested locally before submission.
 
+**Task 086: PASS** (godspeed, about 14 min).
+- **The quick suite:** 34 of 34 steps, 0 failed. Every suite and its shuffled runs, RecipeTest 2042, ReplayerTest 1461,
+  StageB synthetic 18/18, and the sort's P1 42, sort 104 and sort-shuf 104.
+- **The full-mode extras:** 10 of 10, the sort's BT pair at 64 × 16,384 included.
+- **The full-size sort `p4/uniform-k128`:** every check passed, **1,360,082 cycles**, the same as task 077's. So the
+  sort is unchanged on v1.25.
+- **That is the last check before v1.25's freeze.**
+
 ## 6. For the merge: changes outside the replayer
 
 One change is in WORKER4's area of the simulator (`src/Chip.java`): it is opt-in, off by default, and nothing but Stage B

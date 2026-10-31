@@ -619,7 +619,7 @@ final class ReplayerUnitTests {
         T.eq(code | rlog | wlog | exp, r.events().value(d.t), "one consuming load: code still has a credit");
         r.events().consume(code); d.step(); r.sync(d.t);
         T.eq(rlog | wlog | exp, r.events().value(d.t), "two: code's bit falls (two refills may be outstanding)");
-        T.eq(1, r.params(), "PARAMS: type 1, version 0");
+        T.eq(4, r.params(), "PARAMS: type 4 (4.17.1, D46), version 0");
         T.eq(0, r.status(d.t, 1), "EXPANSION_OPCODE: nothing presented yet");
         T.eq((int) r.word(d.t, 34), r.status(d.t, 1), "word 34 is EXPANSION_OPCODE");
         T.check(r.word(d.t, 35) == null, "word 35 undefined");

@@ -53,4 +53,8 @@ as the v1.2 document.
 
 **Proposed.** meshsim reads 0 ("nothing to say", 4.17.4) until item 82 assigns it.
 
-**Status:** proposed; the code follows it (Cnc1Peripheral.params).
+**Answer (owner, 2026-10-31; DECISIONS-v1.2 section 46, spec 4.17.1):** 0 none, 1 Ingress/Egress with the UART and the
+chip lines (C&C 1's peripheral), 2 Updater/Binder/RW, 3 Tracer, 4 the replayer (type 1 in v1.1).
+
+**Status:** answered; done (Replayer 4, Cnc1Peripheral 1, mesh.h's PTYPE_*; the draft's PTYPE_REPLAYER 1 is a listed
+difference).

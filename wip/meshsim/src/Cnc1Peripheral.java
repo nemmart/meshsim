@@ -16,7 +16,7 @@ import java.util.ArrayDeque;
  * overrun [16], framing error [17]; write 1 to clear).
  * ERRORS: [0] the unit-error bit, OR(ERROR_LINES), live. EVENTS: [0] run done, [1] DMA done (never: no run, no DMA in
  * meshsim), [2] all tiles READY (live), [3] watchdog expired (depth 1), [4] UART RX not empty, [5] UART TX not full
- * (live). PARAMS: type 0 (the engines' types are Open, item 82; W4-05).
+ * (live). PARAMS: type 1, Ingress/Egress with the UART and the chip lines (4.17.1, D46; W4-05).
  * UART timing: one frame (start, 8 data, stop) takes 10 x divisor reference cycles, Config.refCycle core cycles each.
  */
 final class Cnc1Peripheral implements Peripheral {
@@ -50,8 +50,8 @@ final class Cnc1Peripheral implements Peripheral {
     long gos;
 
     Cnc1Peripheral(Config cfg) { this.cfg = cfg; java.util.Arrays.fill(readyAt, Long.MIN_VALUE); }
-    @Override public int type() { return 0; }
-    @Override public int params() { return 0; }
+    @Override public int type() { return 1; }
+    @Override public int params() { return 1; }                    // type 1, Ingress/Egress with the UART (4.17.1, D46), version 0
     @Override public void attach(Host h) { host = h; }
     @Override public EventCounts events() { return ev; }
     @Override public void accept(long t, int src, int offset, int size, long lo, long hi) { violate(t, "a write into C&C 1's peripheral region: its map is Ingress/Egress's, deferred"); }

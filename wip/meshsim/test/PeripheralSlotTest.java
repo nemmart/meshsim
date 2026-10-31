@@ -2,7 +2,7 @@ import java.util.List;
 
 /**
  * The peripheral framework (spec 4.17, v1.2) from a unit's side, with a test peripheral ({@link TestPeripheral}) and with
- * the replayer (type 1, every mesh tile's peripheral 1):
+ * the replayer (type 4, every mesh tile's peripheral 1):
  *  - presence: PARAMS [2:0]; an absent peripheral's window is a bus error, a packet to its region a bad packet;
  *  - the standard window (4.17.4): PARAMS, STATUS (run, DMA), ERRORS, PULSE_RUN (a run while running ignored and
  *    flagged), reserved and undefined words (read 0, stores ignored, flagged), a defined read-only word (a bus error);
@@ -12,7 +12,7 @@ import java.util.List;
  *  - region writes (4.17.5): mode 0 at a byte offset, landing rp_latency after the director, counted at K;
  *  - the DMA (4.17.9): 128-bit packets, then 64 and 32 for the remainder, DMA_ADDR advancing, STATUS [1], DMA done, a
  *    count of 0, PULSE_DMA while busy and a missing output queue ignored and flagged;
- *  - the replayer through its window: type 1, its words 32-34, its credits after PULSE_RUN;
+ *  - the replayer through its window: type 4, its words 32-34, its credits after PULSE_RUN;
  *  - C&C 1's peripheral (8.14, 4.20): READY_LINES and READY_EXPECT, all tiles READY, PULSE_GO, ERROR_LINES and the
  *    unit-error bit, the watchdog and the toast pin, LED, the UART's FIFOs, timing, line errors and events.
  * Usage: java PeripheralSlotTest [shuffle seed | -1]
@@ -174,7 +174,7 @@ public final class PeripheralSlotTest {
         for (Tile q : n.c.tiles) { q.core.pokeLocal(Registers.LOADER_BASE, Controller.WFI); q.core.pokeLocal(Registers.LOADER_BASE + 4, RiscvTest.jal(0, -4)); }
         n.c.cc.then((cc, t) -> { cc.storeRun(t, true); return true; });
         for (int i = 0; i < 10; i++) n.step();
-        T.eq(1, (int) load(n, p, w(PARAMS)), "PARAMS: type 1");
+        T.eq(4, (int) load(n, p, w(PARAMS)), "PARAMS: type 4, the replayer (4.17.1, D46)");
         T.eq(0, (int) load(n, p, w(STATUS)), "STATUS: idle");
         T.eq(0, (int) load(n, p, w(EVENTS_PEEK)), "no event before a pass");
         store(n, p, w(PULSE_RUN), 1);
@@ -195,6 +195,7 @@ public final class PeripheralSlotTest {
         c.readyPulse(1, t); c.readyPulse(3, t); n.step(); n.step();
         T.eq(0b1010, c.read(n.c.cycle, Cnc1Peripheral.READY_LINES), "READY_LINES_0: tiles 1 and 3 (sticky)");
         T.eq(1 << Cnc1Peripheral.EV_ALL_READY, c.read(n.c.cycle, 6) & 1 << Cnc1Peripheral.EV_ALL_READY, "all tiles READY: (READY & EXPECT) == EXPECT (live)");
+        T.eq(1, c.read(t, 0), "PARAMS: type 1, Ingress/Egress with the UART (4.17.1, D46)");
         long go0 = n.c.cc.gos;
         c.write(n.c.cycle, Cnc1Peripheral.PULSE_GO, 1); n.step(); n.step();
         T.eq(go0 + 1, n.c.cc.gos, "PULSE_GO drives GO");

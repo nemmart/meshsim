@@ -55,7 +55,7 @@ final class Tile implements Component {
         inj = new InjectionPath(idx);
         dir = new TrafficDirector(idx, cfg);
         Peripheral tp = cfg.testPeripheral != null ? cfg.testPeripheral.apply(idx) : null;
-        Peripheral p1 = tp != null ? tp : cfg.periphTypeOf(idx) == 1 ? new Replayer(idx) : null;   // every mesh tile's peripheral 1: the replayer (4.17.1)
+        Peripheral p1 = tp != null ? tp : cfg.periphTypeOf(idx) == 4 ? new Replayer(idx) : null;   // every mesh tile's peripheral 1: the replayer, type 4 (4.17.1)
         slot = new PeripheralSlot(this, p1); dir.periph = slot; req = new RequestPort(this, cfg);
         cmem = new ControllerMemories(cfg);
         String p = "t" + idx + ".";

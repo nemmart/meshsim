@@ -235,8 +235,8 @@ In C: `peripheral(n)->NAME` (`PeripheralStd`), `replayer->NAME`, `cc1->NAME`.
 | 8 | `DMA_HDR` | R/W | the DMA: count [11:0], queue [13:12], counter, mode, dst |
 | 9 | `DMA_ADDR` | R/W | the DMA's 32-bit destination, advancing per packet |
 
-The replayer (type 1, every mesh tile's peripheral 1): `ROWS_RUN` (32), `EXPANSION_OFFSET` (33), `EXPANSION_OPCODE`
-(34). C&C 1's peripheral: `ERROR_LINES[3]` (32-34), `READY_LINES[2]` (35-36), `READY_EXPECT[2]` (37-38), `PULSE_GO`
+The replayer (type 4, every mesh tile's peripheral 1): `ROWS_RUN` (32), `EXPANSION_OFFSET` (33), `EXPANSION_OPCODE`
+(34). C&C 1's peripheral (type 1, Ingress/Egress): `ERROR_LINES[3]` (32-34), `READY_LINES[2]` (35-36), `READY_EXPECT[2]` (37-38), `PULSE_GO`
 (39), `WATCHDOG` (40), `LED` (41), and the UART: `UART_TX` (42), `UART_RX` (43), `UART_DIVISOR` (44), `UART_STATUS`
 (45). Spec 4.17, 4.19, 8.11-8.14 give their meanings.
 

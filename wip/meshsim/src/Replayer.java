@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * The replayer, peripheral type 1 (spec 4.19), cycle by cycle. It implements the peripheral interface ({@link Peripheral},
+ * The replayer, peripheral type 4 (spec 4.19; 4.17.1, D46: type 1 in v1.1), cycle by cycle. It implements the peripheral interface ({@link Peripheral},
  * 4.17, v1.2) and nothing else reaches it. v1.2 (phase 3, as far as the replayer recipes need): its region in bytes
  * (offset [22:20] the part, 4.19.10; the v1.1 word address is offset / 4 inside); its events counted (4.17.3, 4.19.9):
  * [0] run done (depth 1), [2]-[5] the code, read-log, write-log and expansion credits (depth 2, every queue's set to 2
@@ -106,8 +106,8 @@ final class Replayer implements Peripheral {
         if (rowsPerPass < 1 || rowsPerPass > ROWS_PER_PASS) throw new IllegalArgumentException("rows per pass " + rowsPerPass + ": 1 to 65,536");
         this.rowsPerPass = rowsPerPass;
     }
-    @Override public int type() { return 1; }
-    @Override public int params() { return 1; }                    // type 1, version 0
+    @Override public int type() { return 4; }
+    @Override public int params() { return 4; }                    // type 4 (4.17.1, D46), version 0
     @Override public EventCounts events() { return ev; }
     @Override public int errors(long t) { settle(t); int e = 0; for (int k = 0; k < 3; k++) if (condEvents[k] > 0) e |= 1 << k; return e; }
     @Override public Integer word(long t, int w) {

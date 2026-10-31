@@ -74,7 +74,7 @@ final class MeshHeader {
         int own = Registers.WINDOW_WORDS - Registers.STD_RESERVED_END;
         b.append("typedef struct { PERIPHERAL_STD_MEMBERS; uint32_t _defined[" + own + "]; } PeripheralStd;\n\n");
         b.append("""
-/* the replayer, peripheral type 1: words 32-34 one field each */
+/* the replayer, peripheral type 4: words 32-34 one field each */
 typedef struct {
     PERIPHERAL_STD_MEMBERS;
     MESH_RO ROWS_RUN;         /* 32: rows of this pass completed, modulo 2^16 */
@@ -255,7 +255,12 @@ _Static_assert(__builtin_offsetof(TableRegs, PTR) == 0x%X && __builtin_offsetof(
 #define PEV_RUN_DONE       (1 << 0)
 #define PEV_DMA_DONE       (1 << 1)
 #define PARAMS_TYPE(p)     ((p) & 0xFFu)
-#define PTYPE_REPLAYER     1u
+/* peripheral types (4.17.1, D46) */
+#define PTYPE_NONE         0u
+#define PTYPE_INGRESS      1u   /* Ingress/Egress with the UART and the chip lines: C&C 1's peripheral */
+#define PTYPE_RW           2u   /* Updater/Binder/RW: C&C 2's */
+#define PTYPE_TRACER       3u   /* the Tracer: C&C 3's */
+#define PTYPE_REPLAYER     4u   /* every mesh tile's peripheral 1 */
 /* the replayer's events (4.19.9): credits have depth 2, the others 1 */
 #define RP_EV_CODE         (1 << 2)
 #define RP_EV_RLOG         (1 << 3)

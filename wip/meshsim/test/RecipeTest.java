@@ -75,7 +75,7 @@ public final class RecipeTest {
     static long sk(Mach m, Tile p) { return m.c.cfg.goLatency + m.c.startSkew[p.idx]; }
 
     // ================================================================ the snippet check
-    static final Pattern MD = Pattern.compile("<!-- recipe: (\\S+) \\((\\S+)\\) -->\\s*```(?:c|java)\\n(.*?)```", Pattern.DOTALL);
+    static final Pattern MD = Pattern.compile("<!-- recipe: (\\S+) \\((\\S+)\\) -->\\s*```(?:c|java|asm)\\n(.*?)```", Pattern.DOTALL);
     static final Pattern SRC = Pattern.compile("/\\* RECIPE (\\S+) \\*/\\n(.*?)\\n[ \\t]*/\\* END \\*/", Pattern.DOTALL);
     static String norm(String s) {
         String[] l = s.replaceAll("[ \\t]+\\n", "\n").stripTrailing().split("\n", -1);
@@ -175,19 +175,20 @@ public final class RecipeTest {
             for (int i = 0; i < 256; i++) p.sram.poke(0x21000 + i, ov[i]);
         }
         Mach.Image im = m.boot("rcp_cmem");
-        T.check(im.code.length * 4 <= 0x1800, "the program's code lies below the overlay at 0x1800");
+        final int OVL = Registers.PMEM_BASE + 0x6000;              // v1.2: the recipe's overlay address (program memory)
+        T.check(im.code.length * 4 <= 0x6000, "the program's code lies below the overlay at 0x01006000");
         m.c.cc.command(LinkWord.BROADCAST, 1 << 24).go();
         finish(m, "cmem", 20000);
         for (Tile p : m.c.tiles) {
             int me = p.idx, s = 0; for (int i = 0; i < 16; i++) s += me * 1000 + i;
             T.eq(s, m.word(me, im, "par_sum", 0), "tile " + me + ": 16 parameter words in data memory");
-            boolean match = true; for (int i = 0; i < 256; i++) if (p.core.peekLocal(0x1800 + 4 * i) != ov[i]) match = false;
-            T.check(match, "tile " + me + ": 256 overlay words in instruction memory");
+            boolean match = true; for (int i = 0; i < 256; i++) if (p.core.peekLocal(OVL + 4 * i) != ov[i]) match = false;
+            T.check(match, "tile " + me + ": 256 overlay words in program memory");
             T.eq(2 * (me * 1000) + 0x123, m.word(me, im, "res", 0), "tile " + me + ": the overlay ran on params[0]");
         }
         noViolations(m.c, "cmem");
         List<long[]> w = m.c.tiles[0].core.wfiLog;
-        meas("cmem", "256 words into instruction memory: start store -> wake", w.get(w.size() - 1)[1] - m.c.tiles[0].ag.startedAt + 1);
+        meas("cmem", "256 words into program memory: start store -> wake", w.get(w.size() - 1)[1] - m.c.tiles[0].ag.startedAt + 1);
     }
 
     // ================================================================ 4 histogram digit, prefix sum, bucket passes
@@ -259,15 +260,15 @@ public final class RecipeTest {
                 perm[p.idx] = new int[n];
                 for (int i = 0; i < n; i++) perm[p.idx][i] = i;
                 for (int i = n - 1; i > 0; i--) { int j = r.nextInt(i + 1), x = perm[p.idx][i]; perm[p.idx][i] = perm[p.idx][j]; perm[p.idx][j] = x; }
-                for (int i = 0; i < n; i++) p.sram.poke64(0x60000 + 2 * i, rec(i * 11, perm[p.idx][i]));
-                for (int j = 0; j < n; j++) for (int q = 0; q < k; q++) p.sram.poke64(0x20000 + 2 * k * j + 2 * q, rec(p.idx << 24 | j << 4 | q, 0xBEEF0000 | k));
+                for (int i = 0; i < n; i++) p.sram.poke64(0x00000 + 2 * i, rec(i * 11, perm[p.idx][i]));
+                for (int j = 0; j < n; j++) for (int q = 0; q < k; q++) p.sram.poke64(0x40000 + 2 * k * j + 2 * q, rec(p.idx << 24 | j << 4 | q, 0xBEEF0000 | k));
             }
             m.c.cc.command(LinkWord.BROADCAST, 1 << 24 | k).go();
             T.check(m.run(() -> idle(m), 40000), "k = " + k + ": every tile gathered");
             for (Tile p : m.c.tiles) {
                 int bad = 0, n = 50 + p.idx;
                 for (int i = 0; i < n; i++) for (int q = 0; q < k; q++)
-                    if (rec(p, 0xA0000 + 2 * k * i + 2 * q) != rec(p.idx << 24 | perm[p.idx][i] << 4 | q, 0xBEEF0000 | k)) bad++;
+                    if (rec(p, 0x80000 + 2 * k * i + 2 * q) != rec(p.idx << 24 | perm[p.idx][i] << 4 | q, 0xBEEF0000 | k)) bad++;
                 T.eq(0, bad, "tile " + p.idx + ", k = " + k + ": " + n + " values in index order");
             }
         }
@@ -286,12 +287,11 @@ public final class RecipeTest {
         finish(m, "xchg", 20000);
         for (Tile p : m.c.tiles) {
             int me = p.idx, bad = 0;
-            for (int s = 0; s < 64; s++) if (m.word(me, im, "in", s) != (s << 8 | me)) bad++;
-            T.eq(0, bad, "tile " + me + ": in[s] = tile s's word to this tile, all 64");
-            int l = (me + 63) & 63; bad = 0;
-            for (int i = 0; i < 4; i++) if (m.word(me, im, "in4", i) != (l << 8 | 0xF0 | i)) bad++;
-            T.eq(0, bad, "tile " + me + ": the left neighbour's four words, auto-incremented");
+            for (int s = 0; s < 64; s++) if (m.word(me, im, "in", s) != s * 64 + me) bad++;
+            T.eq(0, bad, "tile " + me + ": in[s] = tile s's word to this tile (s x 64 + me), all 64");
         }
+        int bad4 = 0; for (int i = 0; i < 4; i++) if (m.word(0, im, "box", i) != 64 + i) bad4++;
+        T.eq(0, bad4, "tile 0: tile 1's four words in box, ROUTER_ADDR auto-incremented");
         noViolations(m.c, "xchg");
         meas("xchg", "one-word exchange, 64 words per tile: GO -> all READY", goToReady(m, 0));
         meas("xchg", "four words to one tile: GO -> all READY", goToReady(m, 1));
@@ -571,103 +571,42 @@ public final class RecipeTest {
     }
     static void rules() {
         T.group("rules");
-        Mach.Image im = new Mach.Image("rcp_rules");
-        // 1: the end-of-phase WFI (M14: the wrong form is done with an arrival outstanding: done early; the done gate)
-        for (int wrong = 0; wrong < 2; wrong++) {
-            Mach m = ruleMach("rule 1", 1, wrong, null, null);
-            long fell = 0, local = 0, early = 0, gated = 0, doneEarly = 0, landed = 0;
-            long exitGo = m.c.cc.phaseLog.get(1)[1];
-            for (Tile p : m.c.tiles) {
-                List<long[]> wl = p.core.wfiLog;
-                for (long[] w : wl) if (w[2] == TileControl.WAKE_EVENT) local++;
-                long[] last = wl.get(wl.size() - 1);                 // the wait_for_command() after the phase
-                if (last[2] != TileControl.WAKE_GO) fell++;
-                if (last[1] < exitGo) early++;
-                gated += p.ctl.gatedEdges;
-                if (p.ctl.conditions == 1 << Conditions.DONE_EARLY) doneEarly++;
-                if (p.cmem.dmem.peek(ControllerMemories.REPLY_DWORD + 2 * p.idx) == 7) landed++;   // the reply lands by source: REPLY[2 me]
-            }
-            T.eq(64, landed, "1 " + (wrong == 0 ? "right" : "wrong") + ": every reply landed");
-            T.eq(0, fell, "1 " + (wrong == 0 ? "right" : "wrong") + ": every wait_for_command() woken by GO");
-            T.eq(0, early, "1 " + (wrong == 0 ? "right" : "wrong") + ": no tile acted on the next command before its GO");
-            if (wrong == 0) { T.eq(64, local, "1 right: the phase's own WFI took the edge"); T.eq(0, doneEarly, "1 right: no condition"); noViolations(m.c, "rule 1 right"); }
-            else {
-                T.eq(64, doneEarly, "1 wrong: done with the reply outstanding sets done early, and only it, on every tile");
-                T.eq(64, gated, "1 wrong: the reply's edge came after done and was ignored (the done gate)");
-                T.check(m.c.cc.error(), "1 wrong: C&C's error bit is set");
-                long v4 = m.c.violationMessages.stream().filter(s -> s.contains("invariant 4")).count();
-                T.check(v4 > 0 && v4 == m.c.violationMessages.size(), "1 wrong: flagged as invariant 4, and nothing else: " + v4);
-            }
+        // v1.2 (recipe 15): the right forms only, each run on every tile; the wrong forms are described in the book
+        Mach m = mach();
+        Mach.Image im = m.boot("rcp_rules");
+        for (Tile p : m.c.tiles) {
+            for (int i = 0; i < 64; i++) p.sram.poke64(2 * i, rec(p.idx << 16 | i, 0xA0000 + i));
+            for (int i = 0; i < 64; i++) p.sram.poke(0x40000 + 3 + i, 0xB0000 + i);
         }
-        // 2: disjoint buffers per run
-        java.util.function.Consumer<Mach> poke2 = m -> { for (Tile p : m.c.tiles) for (int i = 0; i < 48; i++) p.sram.poke64(2 * i, rec(p.idx << 16 | i, i)); };
-        for (int wrong = 0; wrong < 2; wrong++) {
-            Mach m = ruleMach("rule 2", 2, wrong, poke2, null);
-            if (wrong == 0) {
-                int bad = 0;
-                for (Tile p : m.c.tiles) for (int i = 0; i < 40; i++) if (rec(p, 2 * (8 + i)) != rec(p.idx << 16 | i, i)) bad++;
-                T.eq(0, bad, "2 right: shifted by 8 records through a second buffer");
-                noViolations(m.c, "rule 2 right");
-            } else {
-                long n = m.c.violationMessages.stream().filter(s -> s.contains("invariant 2")).count();
-                T.check(n > 0 && n == m.c.violationMessages.size(), "2 wrong: reading and writing one buffer in a run is flagged (invariant 2): " + n);
-            }
+        // rule_wait: a self-reply, waited for before done
+        m.c.cc.command(LinkWord.BROADCAST, 1 << 24).go();
+        T.check(m.run(() -> idle(m), 40000), "rule_wait ran");
+        for (Tile p : m.c.tiles) T.eq(7, m.word(p.idx, im, "rbox", 0), "tile " + p.idx + ": rule_wait: the reply was in before done");
+        // rule_disjoint: shift 64 records up by 8, through B
+        m.c.cc.command(LinkWord.BROADCAST, 2 << 24).go();
+        T.check(m.run(() -> idle(m), 80000), "rule_disjoint ran");
+        int bad = 0;
+        for (Tile p : m.c.tiles) for (int i = 0; i < 64; i++) if (rec(p, 2 * (8 + i)) != rec(p.idx << 16 | i, 0xA0000 + i)) bad++;
+        T.eq(0, bad, "rule_disjoint: every tile's 64 records moved up by 8, through a disjoint buffer");
+        for (Tile p : m.c.tiles) for (int i = 0; i < 64; i++) p.sram.poke64(2 * i, rec(p.idx << 16 | i, 0xA0000 + i));
+        // rule_start: configure (3), then the start by identical code (4): 20 + (me & 7) records to the right-hand tile
+        m.c.cc.command(LinkWord.BROADCAST, 3 << 24).go().command(LinkWord.BROADCAST, 4 << 24).go();
+        T.check(m.run(() -> idle(m), 80000), "rule_start ran");
+        bad = 0;
+        for (Tile p : m.c.tiles) { int l = (p.idx + 63) & 63; for (int i = 0; i < 20 + (l & 7); i++) if (rec(p, 0x80000 + 2 * i) != rec(l << 16 | i, 0xA0000 + i)) bad++; }
+        T.eq(0, bad, "rule_start: every tile received its left neighbour's 20 + (l & 7) records");
+        // rule_align: a 64-bit stream to itself and a 32-bit stream to the right-hand tile in one group
+        m.c.cc.command(LinkWord.BROADCAST, 5 << 24).go();
+        T.check(m.run(() -> idle(m), 80000), "rule_align ran");
+        bad = 0;
+        for (Tile p : m.c.tiles) {
+            for (int i = 0; i < 32; i++) if (rec(p, 0x80000 + 2 * i) != rec(p.idx << 16 | i, 0xA0000 + i)) bad++;
+            for (int i = 0; i < 32; i++) if (p.sram.peek(0x88000 + i) != 0xB0000 + i) bad++;
         }
-        // 3: identical code from WFI to the start store
-        java.util.function.Consumer<Mach> poke3 = m -> { for (Tile p : m.c.tiles) for (int i = 0; i < 20 + (p.idx & 7); i++) p.sram.poke64(2 * i, rec(p.idx << 16 | i, i)); };
-        for (int wrong = 0; wrong < 2; wrong++) {
-            Mach m = ruleMach("rule 3", 3, wrong, poke3, null);
-            java.util.Set<Long> starts = new java.util.TreeSet<>();
-            int bad = 0;
-            for (Tile p : m.c.tiles) {
-                starts.add(p.ag.startedAt - m.c.startSkew[p.idx]);
-                int l = (p.idx + 63) & 63;
-                for (int i = 0; i < 20 + (l & 7); i++) if (rec(p, 0x80000 + 2 * i) != rec(l << 16 | i, i)) bad++;
-            }
-            T.eq(0, bad, "3 " + (wrong == 0 ? "right" : "wrong") + ": the records arrived");
-            if (wrong == 0) { T.eq(1, starts.size(), "3 right: every tile started on the same cycle (after its skew)"); noViolations(m.c, "rule 3 right"); }
-            else {
-                T.check(starts.size() > 1, "3 wrong: a per-tile delay before the start store: the tiles start on " + starts.size() + " different cycles");
-                meas("rules", "3 wrong: spread of the start cycles across tiles (right: 0)", ((java.util.TreeSet<Long>) starts).last() - ((java.util.TreeSet<Long>) starts).first());
-            }
-        }
-        // 4: row-aligned elements in a group run (v1.1: a group's streams may mix read sizes, item 27; a spanning element
-        //    in a group run sets drift, 4.1)
-        java.util.function.Consumer<Mach> poke4 = m -> { for (Tile p : m.c.tiles) for (int i = 0; i < 16 + p.idx; i++) { p.sram.poke64(2 * i, rec(0xA0000 + i, p.idx)); p.sram.poke(0x40000 + i, 0xB0000 + i); } };
-        for (int wrong = 0; wrong < 2; wrong++) {
-            Mach m = ruleMach("rule 4", 4, wrong, poke4, null);
-            if (wrong == 0) {
-                int bad = 0;
-                for (Tile p : m.c.tiles) {
-                    int l = (p.idx + 63) & 63;
-                    for (int r = 0; r < 16 + p.idx; r++) if (rec(p, 0x80000 + 2 * r) != rec(0xA0000 + r, p.idx)) bad++;
-                    for (int r = 0; r < 16 + l; r++) if (p.sram.peek(0x88000 + r) != 0xB0000 + r) bad++;
-                }
-                T.eq(0, bad, "4 right: a 64-bit and a 32-bit stream in one group: the records to itself, the words from the left");
-                noViolations(m.c, "rule 4 right");
-            } else {
-                int drift = 0; for (Tile p : m.c.tiles) if ((p.ctl.conditions & 1 << Conditions.DRIFT) != 0) drift++;
-                T.eq(64, drift, "4 wrong: 64-bit elements from chunk 3 span rows, and the group run drifts on every tile");
-            }
-        }
-        // 5: PTR[64] restored after mode 4; C&C stages afterwards (into halted tiles: an uncoordinated write)
-        java.util.function.Consumer<Mach> poke5 = m -> { for (Tile p : m.c.tiles) for (int i = 0; i < 30 + p.idx; i++) p.sram.poke64(2 * i, rec(i * 37 & 0xFF, i)); };
-        for (int wrong = 0; wrong < 2; wrong++) {
-            final int w = wrong;
-            Mach m = ruleMach("rule 5", 5, wrong, poke5, mm -> {
-                mm.c.cc.waitUntil(() -> tilesIdle(mm));
-                mm.c.cc.halt();                                   // an uncoordinated write: C&C halts the tiles first (4.12, 6.2)
-                List<long[]> ps = new ArrayList<>();
-                for (int t = 0; t < 64; t++) for (int i = 0; i < 4; i++) ps.add(new long[] { t, LinkWord.M_SRC, 0, 0x5717_0000_0000_0000L | t << 8 | i });
-                mm.c.cc.send(ps).waitCycles(50);
-                mm.c.cc.command(LinkWord.BROADCAST, Registers.CMD_JUMP << 24, new Mach.Image("rcp_rules").sym("_start")).runWhenReady();   // boot again
-            });
-            int at = 0x100000 - Registers.STAGE_CHUNKS, ok = 0;
-            for (Tile p : m.c.tiles) { boolean here = true; for (int i = 0; i < 4; i++) if (rec(p, at + 2 * i) != (0x5717_0000_0000_0000L | p.idx << 8 | i)) here = false; if (here) ok++; }
-            if (w == 0) { T.eq(64, ok, "5 right: C&C's staged words land at stage_base()"); noViolations(m.c, "rule 5 right"); }
-            else T.eq(0, ok, "5 wrong: without the restore, C&C's staged words land where the bucket pass left PTR[64], not at stage_base()");
-        }
-        out("rules: each right form passes; each wrong form fails as described (1 a fall-through wait_for_command(), 2 invariant 2, 3 unaligned starts, 4 drift from row-spanning elements, 5 staging lands elsewhere)");
+        T.eq(0, bad, "rule_align: the records to itself and the words from the left, in one group");
+        finish(m, "rules", 20000);
+        noViolations(m.c, "rules");
+        out("rules: the right form of each rule (rule_wait, rule_disjoint, rule_start, rule_align) runs clean on every tile");
     }
 
     // ================================================================ 14 the synchronised start by identical code

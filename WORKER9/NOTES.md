@@ -132,3 +132,9 @@ To do: a mechanical check (dump every opcode's expansion at both commits and dif
   all three variants (EVM 1,014 s, Cyclone 819 s on 1 CPU). Corruption test hook catches stream, rows and ROM flips.
 - Selected windows written and proved; tarball to the owner (not committed). Quest 070/071 held for the full
   deliveries (need /tmp/w9-delivery.tgz). Task 069 still held.
+
+## Final turn (2026-10-31)
+
+- 069b (--validate at 2^29): all three OK. 079/080: full deliveries on the box, all windows proved; WORKER11's
+  acceptance (083/084) matched every row. PR #2 retitled, description rewritten, marked ready for review.
+- REPORT: complete, with "Left open". Quest numbers used: 069 (failed, no tarball), 069b, 079, 080, 081, 082, 082b.

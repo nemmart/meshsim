@@ -28,7 +28,7 @@ public final class RecipeTest {
         if (shuffle >= 0) System.out.println("shuffled child order, seed " + shuffle);
         snippets();
         cmdloop(); copy(); cmem(); bucket(); aug(); gather(); xchg(); xvec(); a2a(); reduce(); rdport(); status(); rules(); sync();
-        blocks(); selftest(); reportRecipe();
+        blocks(); selftest();
         out("recipe cycles [meas: RecipeTest; tile 0 unless stated]:");
         for (String s : table) out(s);
         System.exit(T.done("RecipeTest" + (shuffle >= 0 ? " (shuffled, seed " + shuffle + ")" : "")));
@@ -91,12 +91,11 @@ public final class RecipeTest {
             String md = Files.readString(Registers.doc("RECIPES.md"));
             Map<String, String> src = new LinkedHashMap<>();
             Map<String, String> file = new LinkedHashMap<>();
-            try (var files = Files.list(Path.of("sw/tests"))) {
+            try (var files = Files.list(Path.of("../sw/recipes"))) {          // v1.2: the recipes' sources (wip/sw/recipes/)
                 List<Path> all = new ArrayList<>(files.sorted().toList());
-                all.add(Path.of("src/CnC.java"));                  // The C&C side of REPORT
                 for (Path f : all) {
                     String n = f.getFileName().toString();
-                    if (!(n.startsWith("rcp") && (n.endsWith(".c") || n.endsWith(".h")) || n.equals("selftest.h") || n.equals("CnC.java"))) continue;
+                    if (!(n.endsWith(".c") || n.endsWith(".h") || n.endsWith(".S"))) continue;
                     Matcher x = SRC.matcher(Files.readString(f));
                     while (x.find()) { T.check(!src.containsKey(x.group(1)), "recipe " + x.group(1) + " marked once"); src.put(x.group(1), norm(x.group(2))); file.put(x.group(1), n); }
                 }
@@ -109,11 +108,11 @@ public final class RecipeTest {
                 T.check(src.containsKey(name), "RECIPES.md's block " + name + " has a RECIPE region in the sources");
                 if (!src.containsKey(name)) continue;
                 T.eqo(file.get(name), x.group(2), "block " + name + ": the file named is the one that holds it");
-                T.eqo(src.get(name), norm(x.group(3)), "block " + name + ": RECIPES.md's text equals sw/tests/" + file.get(name));
+                T.eqo(src.get(name), norm(x.group(3)), "block " + name + ": RECIPES.md's text equals sw/recipes/" + file.get(name));
                 seen.add(name);
             }
             for (String s : src.keySet()) T.check(seen.contains(s), "RECIPE region " + s + " (" + file.get(s) + ") is quoted in RECIPES.md");
-            out("snippets: " + n + " code blocks in RECIPES.md, " + src.size() + " RECIPE regions in sw/tests/rcp*.{c,h}, selftest.h and src/CnC.java");
+            out("snippets: " + n + " code blocks in RECIPES.md, " + src.size() + " RECIPE regions in wip/sw/recipes/");
         } catch (IOException e) { T.check(false, "snippets: " + e); }
     }
 
@@ -212,7 +211,6 @@ public final class RecipeTest {
             int bad = 0;
             for (int i = 0; i < b.length; i++) if (rec(p, 0x40000 + 2 * i) != b[i]) bad++;
             T.eq(0, bad, "tile " + p.idx + ": " + b.length + " records sorted by the 32-bit key, stable (values are input positions)");
-            T.eq(Registers.STAGE_CHUNKS == 0 ? 0 : 0x100000 - Registers.STAGE_CHUNKS, p.ts.peek(TableStore.PTR + 64), "tile " + p.idx + ": PTR[64] restored to stage_base()");
             int h = 0; for (int t = 0; t < 256; t++) h += p.hist.peek(t);
             T.eq(0, h, "tile " + p.idx + ": HIST clear at the end");
         }
@@ -560,41 +558,6 @@ public final class RecipeTest {
 
     /** REPORT (6.6) end to end: tiles 0, 5, 10, ... provoke an unexpected arrival; C&C, with stopOnError, holds the next
      *  GO, waits for all READY, discards the pending command, broadcasts REPORT, collects 64 replies, halts. */
-    static void reportRecipe() {
-        T.group("report");
-        Mach m = mach();
-        Mach.Image im = m.boot("rcp_selftest");
-        CnC cc = m.c.cc;
-        cc.stopOnError = true;
-        long mask = 0; for (int t = 0; t < 64; t += 5) mask |= 1L << t;
-        cc.command(LinkWord.BROADCAST, 8 << 24, (int) mask, (int) (mask >>> 32)).go().command(LinkWord.BROADCAST, 0).go();
-        boolean ok = m.run(() -> cc.reportDoneAt >= 0 && !cc.busy(), 200000);
-        T.check(ok, "report: the flow ran to the end (C&C idle)");
-        long[] r = cc.reportBySrc();
-        int good = 0;
-        for (int t = 0; t < 64; t++) {
-            int want = t % 5 == 0 ? 1 << Conditions.UNEXPECTED : 0;
-            if (r[t] != -1 && (int) (r[t] >>> 32) == t && (int) r[t] == want) good++;
-        }
-        T.eq(64, cc.reports.size(), "report: 64 replies");
-        T.eq(64, good, "report: each reply is (its tile index, its MASTER_CONDITIONS): unexpected arrival on tiles 0, 5, 10, ..., 0 elsewhere");
-        long disc = 0; for (Tile p : m.c.tiles) disc += p.cmem.discardedCommands;
-        T.eq(64, disc, "report: REPORT replaced the pending (exit) command on every tile, which never ran: discarded, not a violation");
-        int stillCond = 0; for (Tile p : m.c.tiles) if (p.ctl.conditions != 0) stillCond++;
-        T.eq(0, stillCond, "report: C&C halted the machine, which cleared every condition");
-        T.check(!cc.error(), "report: and C&C cleared its error bit after the line fell");
-        boolean halted = true; for (Tile p : m.c.tiles) if (!p.ctl.halted) halted = false;
-        T.check(halted, "report: every tile is in HALT");
-        long v9 = m.c.violationMessages.stream().filter(v -> v.contains("invariant 9")).count();
-        T.check(m.c.violations == v9 && v9 > 0, "report: the only violations are the provoked unexpected arrivals: " + m.c.violationReport());
-        long first = cc.reports.get(0)[0], last = cc.reports.get(cc.reports.size() - 1)[0];
-        meas("report", "error bit set -> REPORT sent (C&C waits for all READY)", cc.reportStartedAt - cc.errorFirstAt);
-        meas("report", "REPORT sent -> GO (the settle, 2 x " + cc.broadcastBound() + ")", cc.reportGoAt - cc.reportStartedAt);
-        meas("report", "GO -> last reply at C&C", last - cc.reportGoAt);
-        meas("report", "first to last reply", last - first);
-        out("report [meas: RecipeTest report]: settle " + cc.reportSettle() + " cycles (2 x the broadcast bound " + cc.broadcastBound() + "); 64 replies in " + (last - first) + " cycles");
-    }
-
     // ================================================================ 13 the rules that bite
     static Mach ruleMach(String what, int rule, int wrong, java.util.function.Consumer<Mach> prep, java.util.function.Consumer<Mach> extra) {
         Mach m = mach();

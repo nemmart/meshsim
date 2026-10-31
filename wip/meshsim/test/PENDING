@@ -4,5 +4,3 @@ SortTest.java      sort port: the sort is ported onto the v1.2 simulator after W
 Inputs.java        sort port (SortTest's inputs)
 SortSummary.java   sort port
 VerifySummary.java sort port
-RecipeTest.java    phase 6: the v1.1 recipe book; replaced by the v1.2 recipes as suites
-SelfTest.java      phase 6 (RecipeTest's)

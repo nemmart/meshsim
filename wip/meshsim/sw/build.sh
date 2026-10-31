@@ -2,8 +2,7 @@
 # Builds the boot ROM and every C program in sw/tests into sw/build (meshsim v1.2).
 #   bootrom.hex                           the boot ROM (6.2), committed: meshsim loads it into every controller
 #   build/<name>.code.bin, <name>.data.bin   the image: program memory from 0x01000000, data memory from 0x00000010
-# Left out: the v1.1 recipes (tests/rcp_*.c; phase 6 builds the v1.2 recipes in wip/sw/recipes/ instead) and cond.c
-# (phase 4: the errors, REPORT and the reset).
+# Left out: the v1.1 recipes (tests/rcp_*.c; phase 6 builds the v1.2 recipes in wip/sw/recipes/ instead).
 # Toolchain: riscv64-unknown-elf-gcc -march=rv32i_zicsr_zmmul -mabi=ilp32 (no divider: a program that pulls in a
 # software divide fails the build unless ALLOW_SOFTDIV=1). A line "// build: <flags>" in a source replaces the default -Os.
 set -e
@@ -28,7 +27,7 @@ echo "boot ROM: $(wc -l < bootrom.hex) words"
 FAILED=""
 for src in tests/*.c; do
   n=$(basename $src .c)
-  case $n in rcp_*) continue;; cond) continue;; esac   # cond.c: phase 4 (errors, REPORT, the reset)
+  case $n in rcp_*) continue;; esac
   OPT=$(sed -n 's|^// build: ||p' $src | head -1); [ -n "$OPT" ] || OPT=-Os
   rm -f $OUT/$n.code.bin $OUT/$n.data.bin
   if ! $CC $OPT -T app.ld crt0.S $src -o $OUT/$n.elf; then FAILED="$FAILED $n"; continue; fi

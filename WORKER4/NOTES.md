@@ -147,8 +147,12 @@ v1.1 recipe suite with the v1.2 recipes.
   sort steps stand (R1); test/PENDING is empty (the only conflict: it listed the sort's files on one side and v1.1's
   RecipeTest on the other, both now built). check_layout passes; the sort image builds; SortTest p1 passes (42).
   WORKER8/runner's kit rebuilt on the combined branch (the boot ROM in place of the interim loader, HASHES
-  regenerated) and smoke-tested at n = 2,000. Verification on the runner: task 077 (the quick suite with the sort's
-  steps, the full extras with its BT pair, one full-size sort: p4/uniform-k128 at 64 x 65,536).
+  regenerated) and smoke-tested at n = 2,000. Verification on the runner, task 077: **all three parts passed** (the
+  quick suite with the sort's steps, 34/34; the full extras with its BT pair, 10/10; one full-size sort,
+  p4/uniform-k128 at 64 x 65,536: 1,360,082 cycles, every check passed, inputs matching HASHES). The task shows FAILED
+  only because its script lacked an `exit` before the embedded kit (the base64 ran as commands after the verdicts);
+  it is parked in the Quest repo's tasks/hold/ so the runner doesn't retry it. Logs: results/ (sort-p4/ for the
+  full-size run). **The branch is ready for the integrator's merge into main.**
 
 ## Phase 1's results (`results/`, committed at the close)
 
@@ -185,4 +189,5 @@ Every other suite logs "PENDING (phase 2 / 3 / 6 / sort port)". Still v1.1's in 
 | phase 4, closed (tasks 074, 075) | none: the quick suite and the full extras pass; PENDING: phase 6 (the recipes, until `6c1cea1`) and the sort port |
 | phase 5 (`0318159` to `92ddf47`) | none: the new checks are off only where a test makes errors on purpose |
 | phase 6 (WIP, `6c1cea1`) | none known; RecipeTest passes, five recipes (boot, cc1, replay, signal, tables) have no driver yet |
+| the combined branch (task 077) | none: the quick suite with the sort, the full extras with its BT pair, one full-size sort |
 | phase 6, closed (task 076 at `d121db5`; AgBench and S1Bench rerun at the close) | none: the quick suite (31 steps) and 7 of 8 full extras on the runner; AgBench tripped S1's check (a write delayed in a contended area queue past K + 4, which no later read can overtake: the queue serves in order), so the check moved to the ordering point (the write entering its area's queue); AgBench and S1Bench then pass. PENDING: the sort port (until the merge) |

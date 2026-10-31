@@ -4,6 +4,12 @@ meshsim on branch `v1.2-meshsim` implements `wip/spec/machine-spec.md` v1.2 (wit
 Six phases, each closed with the quick suite and the full extras passing (the last on the Quest runner, task 076).
 This report is for the merge with `v1.2-sort` (WORKER8) and for the v1.25 work (WORKER11's `v1.25-meshsim`).
 
+**Status (2026-11-01): ready for main.** `v1.2-sort` is merged in (`c85f372`); on the combined branch the runner
+(Quest task 077) passed run_tests.sh's quick suite with the sort's steps (34/34), its full extras with the sort's BT
+pair (10/10), and one full-size sort, p4/uniform-k128 at 64 x 65,536 (1,360,082 cycles; logs in
+`wip/meshsim/results/`, the full-size run in `results/sort-p4/`). WORKER8's runner kit (`WORKER8/runner/kit`) is
+rebuilt on this branch.
+
 ## What was built, by phase
 
 1. **The link word, the director, the engines** (phase 1): the 256-bit word with a 32-bit address and a 3-bit counter

@@ -165,23 +165,27 @@ Decided (O). From WORKER7's F1.
 | AMOADD/AND/XOR/OR.W | 19 | 9 |
 | AMOMIN/MAX(U).W | 24 | 13 |
 
-- **New row operations** the replayer and the Tracer must compute (jolt-cpp `main` at `52fbbab`, `src/tracer/isa/
-  virtual.cpp` and `trace_owner.cpp`):
-  - `VirtualLoadB/H/W`, `VirtualStoreB/H/W`: load or store the doubleword containing the access (address rounded down);
-    memory rows like LD/SD.
-  - `VirtualWindowMaskB/H/W`: the lane's mask from the address's low bits, e.g. `0xFF << 8 × (addr & 7)`.
-  - `VirtualShiftDataB/H/W`: the store value moved into its lane, `(v & 0xFF) << 8 × ((base + offset) & 7)`; needs the
-    store's offset as a new field (`shift_offset`), so the **expansion word must carry it**.
-  - `VirtualPext`, `VirtualPextSigned`: **parallel bit extract** by the mask, optionally sign-extended. Every use in
-    `main` feeds a single contiguous lane (from `WindowMask`), where it is a right shift plus zero- or sign-extension;
-    Jolt defines general PEXT (T6).
-  - **PEXT in hardware** (owner, 2026-10-30; answers T6): **one run of ones per cycle.** Each cycle the unit takes the
-    mask's lowest run, *n* ones starting *m* bits up (the mask's low end has the form `x…x 1ⁿ 0ᵐ`), shifts those *n*
-    bits of the value down, appends them to the result, clears the run from the mask, and repeats until the mask is
-    empty. A contiguous mask, every current use, takes **one cycle**; a scattered mask takes one cycle per run, at most
-    32. Per cycle: two trailing-zero counts (*m*, then *n*), a shifter and a mask generator, far smaller than a full
-    compaction network. `VirtualPextSigned` sign-extends from the last bit placed. Rows run at fixed cycle counts
-    otherwise, so a multi-run PEXT stalls its pipeline; no current expansion produces one.
+- **What changed in the row operations** *(corrected 2026-10-31 by WORKER9's diff of `821e1bd` against `4f36b3d`; the
+  first version of this list, read at `52fbbab`, wrongly called `VirtualPext`, `WindowMask` and `ShiftData` new: they
+  already existed at `4f36b3d` and are in v1.2's replayer opcode table, spec 4.19.7)*:
+  - **New opcodes, only:** `VirtualLoadB/H/W` and `VirtualStoreB/H/W`, which load or store the doubleword containing
+    the access (address rounded down); memory rows like LD/SD.
+  - **`ShiftData*` changed meaning:** its second operand is now the base register, with the access's offset in a new
+    field, `shift_offset` (signed), so **the expansion word must carry it**.
+  - **Narrow memory rows** now carry the access's immediate, and the address is rounded down to the doubleword.
+  - **A misaligned access** aborts the tracer instead of producing an assertion row; `VirtualAlignAddr` and the
+    alignment assertions are gone.
+  - **`VirtualHostIO`** has no operands any more (still one row, different contents).
+  - **The AMO\*.W bodies** changed beyond their length (e.g. `AMOMAXU/MINU.W` now sign-extend).
+  - **The opcode numbering** shifted: 6 opcodes inserted, 3 removed.
+  - **PEXT** (owner, 2026-10-31; revises the 2026-10-30 entry; answers T6). **The spec requires `VirtualPext` and
+    `VirtualPextSigned` to be correct for any mask, contiguous or not**, replacing v1.1's narrowing to contiguous masks
+    (spec invariant 16). Jolt's prover proves the general case (jolt-cpp's PEXT lookup table and its prefix/suffix
+    split handle any mask), so a future expansion could use a scattered mask, and the hardware must still run it.
+    **How is the implementation's choice**, not the spec's: a single-pass extract network, or an iterative unit taking
+    one run of ones per cycle (the mask's lowest run `x…x 1ⁿ 0ᵐ` each cycle: two trailing-zero counts, a shifter and a
+    mask generator), as Tony first sketched. **The spec promises full speed only for contiguous masks**, every mask
+    current Jolt produces; any other mask takes an implementation-defined number of cycles.
   - Gone: `VirtualAlignAddr` and the alignment assertions.
 - **Timing** (owner, 2026-10-31; *revised: the move is milestone v1.25, between v1.2 and v1.3*): **v1.2 stays on `4f36b3d`**, so the simulator port, the sort and the replayer run against
   what was built and measured; **the move is v1.3 work**, together with the Tracer, since both the replayer's and the
@@ -231,5 +235,5 @@ Options recorded for later, each with the evidence that would justify it.
 | T4 | The Tracer's template coverage | 7 | **answered: section 7** (a list in the ROM; the rest fed by C&C 3, replayer-style) |
 | T2 | The RV64 initial state: what it contains and where it comes from | 1 | open |
 | T3 | The page table: its size, format and how C&C 3 maintains it | 1 | open |
-| T6 | `VirtualPext`/`VirtualPextSigned` in hardware | 9 | **answered: section 9** (one run of ones per cycle) |
+| T6 | `VirtualPext`/`VirtualPextSigned` in hardware | 9 | **answered: section 9** (any mask must work; the method is the implementation's) |
 | T5 | The inlines' advice (`VirtualAdvice`): untraced rows, or C&C 3's software when it feeds their templates | 8 | open |

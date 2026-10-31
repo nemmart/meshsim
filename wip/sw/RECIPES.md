@@ -1142,6 +1142,10 @@ static void tables_free_unknown(void) {
 
 - **Both events, not one** (D17): a tile's arrivals can finish before its own run (it sends more than it receives), and its run can finish before its arrivals (it receives more). `PULSE_DMA` clears [10] (D17), as arming clears a counter's done (D3), so neither event can be stale.
 - **Where the waits sit in the recipes:** at the end of every phase that ran the address generator (`local_run()`, the start commands of recipes 5, 9, 13 and 21, the replayer's refill). By rule 6 the next command starts with the tables free, so no recipe waits *before* touching them. v1.1 had about 15 `wait_tables()` calls in the sort; each becomes either nothing (the previous phase waited) or this wait.
+- **Free per memory** (D47, Q1 of the sort port): each table is its own memory, so "free" is per table. **`STREAM` and
+  `GROUP` are free once DMA run done [10] fires** (only the address generator reads them); **`PTR` and `HIST` once the
+  arrivals' counter fires** (only arriving packets update them). A program may rewrite `STREAM` while arrivals still
+  update `PTR`, as the sort's BT configure does; waiting for both, as above, is for touching both.
 - **The poll** is a fallback, and only half of the condition: `STATUS.rd_running` falls in the same cycle as DMA run done (D17 B, D41), so it says exactly what [10] says about the local side, and nothing about arrivals. **[F6]**
 
 **Walk (an all-to-all's end, both orders).**

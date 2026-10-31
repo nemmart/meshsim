@@ -121,6 +121,8 @@ final class SortTest {
 
         Machine(Opts o) {
             c = new Chip(o.config()); cc = c.cc;
+            String pr = System.getProperty("sort.prof");       // debug: -Dsort.prof=lo-hi (hex pcs): tile 0's cycles in [lo, hi)
+            if (pr != null) { String[] f = pr.split("-"); c.tiles[0].core.profLo = (int) Long.parseLong(f[0], 16); c.tiles[0].core.profHi = (int) Long.parseLong(f[1], 16); }
             wLo = new int[watch.length]; wHi = new int[watch.length];
             for (int i = 0; i < watch.length; i++) {            // a name, or GCC's clone of it (name.constprop.0, name.isra.0)
                 final String w = watch[i];
@@ -507,6 +509,7 @@ final class SortTest {
             }
         }
         if (System.getProperty("sort.phases") != null) out(m.c.phases.report());
+        if (System.getProperty("sort.prof") != null) out("    sort.prof " + System.getProperty("sort.prof") + ": tile 0 cycles " + m.c.tiles[0].core.profCycles);
         Result res = new Result(PATHS[path0], plan0 != 0, bt0 != 0, total - oracleCyc, oracleCyc, steps, T.failed - failed0);
         try {
             if (op.phasesCsv != null) m.c.phases.csv(Path.of(op.phasesCsv));

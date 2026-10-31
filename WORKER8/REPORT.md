@@ -77,8 +77,18 @@ overlay load: **to explain**), K1.0-K1.2 +193, +193, +432, K2.0-K2.2 +422, +497,
 - **SPLIT −2,620 (uniform):** its overlay load (405) and `zero_planner()` gone; read-port search steps are ~6 cycles
   slower (WORKER4's SearchBench: K = 8); to be itemised.
 - **XB +385:** `xchg` +80 (`ROUTER_HDR`'s dst moved from [6:0] to [31:25]: one shift per send, 64; the last word's
-  decrement at K), `plan_transfer` +306 (to confirm: *d* moved into `STREAM_COUNT`).
-- **RED +62:** `config_direct_lb` +83 (as plan_transfer), `tree_reduce` −19.
+  decrement at K = 8); `plan_transfer` +306, measured (`-Dsort.watch`, `-Dsort.prof`) and itemised from the
+  disassembly: the `PTR` loop takes 12 instructions per entry against v1.1's 9 (+192 over 64: GCC indexes
+  `tables->PTR[p]` from the window base 0xFFFF2000, a `lui`, a shift and an add, where v1.1's window at 0x2400 compiled
+  to a stepped pointer), the stream loop 2 more per stream (+128: *d* now shifted into `STREAM_COUNT` [31:25], and the
+  explicit zero `STREAM_DEST` store), and v1.1's `wait_tables()` poll gone (about −5); +315 predicted, +306 measured.
+  The stream loop's 1,855 cycles on v1.2 equal its static count (64 × (25 instructions + 2 taken branches)).
+- **RED +62:** `config_direct_lb` +83 (the same table-store code generation, 16 groups), `tree_reduce` −19.
+- **A model difference, not the program's:** in v1.1 a load through the table window (`HIST`, the prefix sums) took
+  the register-load latency, 2 cycles; in v1.2 a table-window load takes 1 (`Controller.java`'s header, both
+  versions). Every prefix sum (256 `HIST` loads per bucket pass, 4 passes in L1 and in L2) gains from it.
+- **Possible saving, not taken:** stepping a pointer over `tables->PTR`/`STREAM_*` in the sort's loops would recover
+  most of the table-store cost; left as is so the program stays a straight port (to revisit after the comparison).
 
 ## What the recipes didn't cover
 

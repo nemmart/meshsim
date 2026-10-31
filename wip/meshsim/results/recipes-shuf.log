@@ -1,1 +1,50 @@
-PENDING (phase 6)
+shuffled child order, seed 4
+snippets: 46 code blocks in RECIPES.md, 46 RECIPE regions in wip/sw/recipes/
+status: PARAMS' endpoint id, size and peripherals, and STATUS, read on every tile
+rules: the right form of each rule (rule_wait, rule_disjoint, rule_start, rule_align) runs clean on every tile
+  sync: the shortest start path's counter store, from C&C's GO store: cycle +8..+9 over the 64 tiles [meas: RecipeTest sync]
+blocks [meas: RecipeTest blocks]: cycles per 64-bit record, marginal (the difference of two sizes over their difference): write_block 7.20 (256 records, not marginal), fill 23.00, hash 36.44 (18.22 per 32-bit word read)
+selftest [meas: RecipeTest selftest]: fill from the index seed, a uniform all-to-all (16 records per pair), hash, signatures to C&C 1 as requests (answered): all 64 equal the simulator's; one corrupted record changes exactly its receiver's
+recipe cycles [meas: RecipeTest; tile 0 unless stated]:
+  cmdloop        a 3-argument command: GO -> all 64 READY                                      207
+  cmdloop        a 7-argument command: GO -> all 64 READY                                       62
+  copy           100 records (tile 0): start store -> first instruction after WFI              132
+  cmem           256 words into program memory: start store -> wake                            104
+  bucket         200 records: count copy + 4 bucket passes: GO -> all READY                  13071
+  aug            local form, 64 keys: GO -> all READY                                          118
+  aug            remote form, start command (two neighbours, 20-35 records each): GO -> all READY      116
+  gather         k = 1, 50-113 values per tile: GO -> all READY                                347
+  gather         k = 2, 50-113 values per tile: GO -> all READY                                449
+  xchg           one-word exchange, 64 words per tile: GO -> all READY                        1317
+  xchg           four words to one tile: GO -> all READY                                        48
+  xvec           6 words to each of 4 neighbours: GO -> all READY                              131
+  a2a            counts exchange + group maxima: GO -> all READY                              2126
+  a2a            reduction of R + configure: GO -> all READY                                  7634
+  a2a            start: GO -> all READY (timetable sum R_g * 4 = 416)                          485
+  a2a            start (a group run): GO store -> start store, every tile                    17-18
+  a2a            start (a group run): start store -> first request (the lead-in)                 7
+  a2a            start (a group run): GO store -> first request, every tile                  24-25
+  rdport         one read: GO -> all READY                                                      55
+  rdport         7 searches over 300 keys: GO -> all READY                                    2919
+  sync           set-up command (per-tile lengths): GO -> all READY                            810
+  sync           start command: GO -> the start taking effect (tile 0, after its skew)          10
+  sync           start command: GO -> all READY                                                114
+  sync           start (a stream run): GO store -> start store, every tile                    9-10
+  sync           start (a stream run): start store -> first request (the lead-in)                4
+  sync           start (a stream run): GO store -> first request, every tile                 13-14
+  write_block    256 records: GO -> all READY                                                 1843
+  fill           256 records, C&C's seed: GO -> all READY                                     6042
+  fill           1024 records: GO -> all READY                                               23706
+  hash           256 records (512 words): GO -> all READY                                     9385
+  hash           1024 records: GO -> all READY                                               37369
+  selftest       fill (1024 records, index seed): GO -> all READY                            23747
+  selftest       configure: GO -> all READY                                                   2065
+  selftest       start (timetable 16 x 4 x 16 = 1024): GO -> all READY                        1127
+  selftest       hash of the received 1024 records: GO -> all READY                          37369
+  selftest       signatures to C&C 1 over the request bus, answered: GO -> all READY           585
+  selftest       signatures at C&C 1: first to last                                            504
+  boot           reset release -> all 64 tiles running their image (overlays 62 packets, broadcast)      120
+  handler        trap -> the last of 24 reports in C&C 1's receive queue (tile 9)              263
+  boot           CMD_STAGE with 16 broadcast rows: GO -> all READY                             409
+  signal         a 4-step ring of 8-word vectors, released by signals: GO -> all READY         568
+RecipeTest (shuffled, seed 4): 2042 passed, 0 failed

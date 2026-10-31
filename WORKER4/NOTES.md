@@ -139,6 +139,10 @@ v1.1 recipe suite with the v1.2 recipes.
   Not exercised: the ROM's controller branch (C&C 1-3 are Java models without cores) and C&C 2/3's start-up requests.
   Test machines now settle in the ROM's WFI before Java drives a tile's registers (the ROM's own stores would race).
 
+- **Phase 6** (2026-10-31, **closed**): the recipes as suites (all 19, RecipeTest 2,042), S1 measured (S1Bench) and
+  K's formula per D49 (W4-08), RECIPES.md section 14 filled, REPORT.md written. Task 076 on the runner: the quick
+  suite and the full extras; AgBench's failure fixed as the table says.
+
 ## Phase 1's results (`results/`, committed at the close)
 
 `run_tests.sh quick` all passed (PENDING suites aside); the full-mode extras run separately on this box:
@@ -174,3 +178,4 @@ Every other suite logs "PENDING (phase 2 / 3 / 6 / sort port)". Still v1.1's in 
 | phase 4, closed (tasks 074, 075) | none: the quick suite and the full extras pass; PENDING: phase 6 (the recipes, until `6c1cea1`) and the sort port |
 | phase 5 (`0318159` to `92ddf47`) | none: the new checks are off only where a test makes errors on purpose |
 | phase 6 (WIP, `6c1cea1`) | none known; RecipeTest passes, five recipes (boot, cc1, replay, signal, tables) have no driver yet |
+| phase 6, closed (task 076 at `d121db5`; AgBench and S1Bench rerun at the close) | none: the quick suite (31 steps) and 7 of 8 full extras on the runner; AgBench tripped S1's check (a write delayed in a contended area queue past K + 4, which no later read can overtake: the queue serves in order), so the check moved to the ordering point (the write entering its area's queue); AgBench and S1Bench then pass. PENDING: the sort port (until the merge) |

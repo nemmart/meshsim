@@ -44,4 +44,4 @@ fan-in to tile 27: largest W per sender with no FIFO overflow, every sender burs
   4        21     21        15        -         20             16 of 16     t27.eject<from-right
   1        none   64        64        -         64             1 of 16      no overflow to 64
   63 x 1: overflows with no skew (v1.0's FIFO rule); with 0/+1 skew it overflows in 30 of 30 skew patterns (receivers 27, 0, 63; seeds 1..10) [meas: NetTest fan-in]
-NetTest: 31329 passed, 0 failed
+NetTest: 31330 passed, 0 failed

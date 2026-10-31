@@ -52,7 +52,9 @@ errors on purpose; S1 flags a write later than K + 4 (the controller's least rea
 ## Measurements
 
 - **The recipes:** RECIPES.md section 14, from RecipeTest (`results/recipes.log`).
-- **Item S1** (`results/s1bench.log`): big SRAM's write path 2L + 4, PTR and HIST L + 3; K = 8 covers L <= 2 (margin
+- **Item S1** (`results/s1bench.log`): big SRAM's write path 2L + 4 to the store (2L + 3 into its area's queue, the
+  ordering point: a later read of the area queues behind it, so invariant 24 flags a write entering its queue later
+  than K + 4; under AgBench's deliberate contention a store can come later than that, harmlessly), PTR and HIST L + 3; K = 8 covers L <= 2 (margin
   2 at L = 1, 0 at L = 2); at L = 3 and 4, K = 10 and 12 (margin 0). The table-window case: HIST loads come 24-25
   cycles after the last update in the radix sort.
 - **A read-port search step** costs about 6 cycles more than in v1.1 (35.9 + 37.42 per active search): K = 8 after

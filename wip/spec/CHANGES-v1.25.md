@@ -50,7 +50,8 @@ per jolt-cpp version, with every expansion but the inlines and the CSR instructi
 | 8.1 | **erratum of v1.2:** the general rule's "a load takes 1 or 2 cycles" is now DECISIONS-v1.2 section 45's: 2 cycles for the register block and the peripheral windows, 1 for the table window and the memories, as 4.11 already said | D45 |
 | 9 (16) | the contiguous-PEXT clause withdrawn: a non-contiguous mask is reported as a statistic; added: `offset_imm` only on `ShiftData…` rows, no misaligned memory row; the rows equal jolt-cpp `821e1bd`'s | V1, V7 (Q3, Q4), O |
 | 10 | the replayer's row: the reference, the universal tables' fill, 88 executed opcodes, the new expansion-word bits | V1, V5, V6 |
-| 13 | a status table for items 33, 34, 36, 40, 43, 56, 58, 112, 113, 114; new items 137 (citations at `821e1bd`), 138 (v1.25's measurements), 139 (what the controller feeds), 140 (PEXT for any mask: the method), 141 (the Tracer's tables, deferred) | V1–V7, O |
+| 4.19.1, 4.19.2, 4.19.7, 4.19.9 (measurements) | **item 138 closed:** the row rate, stalls, multiply density and controller-fed expansions are now v1.25's, measured on the acceptance runs (Quest 083, 084): 3.32 and 3.16 cycles per row on EVM Zone's and Cyclone's real windows (3.21 and 3.11 over all windows), multiply rows 15.7 % and 7.1 %, controller-fed expansions 0.12 and 6.6 per window; the log densities stay `4f36b3d`'s with the derived correction, since the runs didn't count log words | O |
+| 13 | a status table for items 33, 34, 36, 40, 43, 56, 58, 112, 113, 114; new items 137 (citations at `821e1bd`), 138 (v1.25's measurements; closed by the acceptance runs, item 37 with it), 139 (what the controller feeds), 140 (PEXT for any mask: the method), 141 (the Tracer's tables, deferred) | V1–V7, O |
 
 ## The opcode appendix (`spec/replayer-opcodes.md`)
 

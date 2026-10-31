@@ -1,8 +1,10 @@
-# WORKER8 report: the sort on v1.2 (draft, in progress)
+# WORKER8 report: the sort on v1.2
 
-Branch `v1.2-sort`, from `v1.2-meshsim` at `e7a2106` (phase 2's last commit; owner's choice). Status: the sort builds
-and passes its quick suites on the v1.2 simulator; the full-mode BT pair, the shuffled suite and the full-size runs on
-the Quest runner are in progress (NOTES.md).
+Branch `v1.2-sort`, from `v1.2-meshsim` at `e7a2106` (phase 2's last commit; owner's choice). Status: the sort builds and
+passes every suite `run_tests.sh` gives it on the v1.2 simulator (P1, the ten built-in sets in fixed and shuffled
+child order, forced BT at 16,384 in both formats), and **all 43 full-size P4 runs on the Quest runner (task 070), each
+on v1.1's path.** Still open: the per-function watches of task 071 (SPLIT's and BT's remaining differences) and
+`run_tests.sh`'s full-mode extras (WORKER4's suites) on this branch (NOTES.md).
 
 ## Ownership (agreed with the owner, 2026-10-31)
 
@@ -31,7 +33,7 @@ between the two units is needed; every other polled-or-counted dependency is wit
 | `main.c` | no overlays (`ov_load`, the images, the shared region) and so no `zero_planner()`; `CMD_STAGE` gone (nothing to stage); `SK` 8-byte aligned in `.bss` |
 | `local.c` | `run_pass` arms counter 1, starts, waits for it and DMA run done (RECIPES 0); `wait_tables()` ×5 and `restore_stage_ptr()` gone; streams in `STREAM_COUNT_W` form; gather's stream names counter 1 for its values |
 | `exchange.c` | `xchg`: mode 0 to `REPLY_WORD(me)`, `ROUTER_ADDR` once, no-increment, counter 3; `send_vector`: mode 0 by byte address on counter 2; RED's buffers `aligned(8)` (were in the shared region) |
-| `transfer.c`, `config.c` | `STREAM`/`GROUP`/`PTR` through `tables->`; *d* in `STREAM_COUNT`; every stream counted on counter 1; K and V end with `wait_run` |
+| `transfer.c`, `config.c` | `STREAM`/`GROUP`/`PTR` through `tables->`; *d* in `STREAM_COUNT`; every stream counted on counter 1; K and V end with `wait_run`; `plan_transfer`'s and `k_start`'s table loops step explicit pointers, and the direct path's streams leave `STREAM_DEST` unwritten (modes 1-5 ignore it) |
 | `skew.c`, `bt_plan.c`, `bt_run.c` | counters by register; waits by events; tokens, credits and descriptors as mode-0 writes (one `ROUTER_ADDR` store per token and per credit, once per descriptor layer); `bt_phase`'s step-2 configure waits for DMA run done alone before rewriting bank 0's streams (QUESTIONS Q1) |
 | `sort.ld`, `build.sh` | one image: program memory 0x01000000-0x01007EFF (below the interim loader), data from 0x10; `rv32i_zicsr_zmmul`, `gnu11`; `loader.S` deleted |
 | `sort/skew/planner/skew.h`, `skew_th.c`, `skew_bt.c` | the machine section on mesh.h 1.2; **fixed: hop 1's streams hard-coded mode 2 (v1.1's write by source; v1.2's bucket write)**, now `SK_MODE_SRC` per build (the host shadow keeps 2) |
@@ -42,6 +44,8 @@ between the two units is needed; every other polled-or-counted dependency is wit
 | `test/SortTest.java` | boot as `Mach.boot` (interim loader, no staging); exit through `SIM_EXIT` with 0; `ERRORS` = 0; `PTR[64]` checks retired; counters 1-3 in the state dump |
 | `test/Inputs.java` | the image is three files; the interim loader hashed as `image/loader.bin` |
 | `run_tests.sh` | the sort's seven steps back |
+| `test/SortTest.java` (later) | `-Dsort.prof=lo-hi` (tile 0's cycles in a pc range, debug); the interim loader read from the image directory when it has one (a kit's `image/`) |
+| `WORKER8/runner/` | the v1.2 runner kit (v1.1's job 1 with the v1.2 jar, image and HASHES); Quest tasks 070 and 071 carry it |
 
 **Stale, left unported (owner, 2026-10-31):** `sw/ext/split-bisect/splitdrv.c` and `test/SplitRun.java`. They were
 already stale at v1.1 (`splitdrv.c` uses v1.0's register names) and aren't in `run_tests.sh`.

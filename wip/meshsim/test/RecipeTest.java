@@ -45,11 +45,11 @@ public final class RecipeTest {
         T.check(ok && m.allExited(), what + ": every tile ran to its exit: " + m.haltSummary());
     }
     /** Cycles from command k's GO (0 = the first command after boot) to all 64 READY after it. */
-    static long goToReady(Mach m, int k) { List<long[]> ph = m.c.cc.phaseLog; return ph.get(k + 1)[0] - ph.get(k)[1]; }
+    static long goToReady(Mach m, int k) { List<long[]> ph = m.c.cc.phaseLog; return ph.get(k + 2)[0] - ph.get(k + 1)[1]; }   // v1.2: entry 0 is the boot's GO
     /** A synchronised start (spec 6.4): from C&C's GO store (phase k) to each tile's start store and first request.
      *  Returns {min, max} over tiles of the first request, and prints the breakdown. */
     static long[] goToFirstRequest(Mach m, int k, String recipe, String run) {
-        long go = m.c.cc.phaseLog.get(k)[1];
+        long go = m.c.cc.phaseLog.get(k + 1)[1];                     // v1.2: entry 0 is the boot's GO
         long fmin = Long.MAX_VALUE, fmax = 0, smin = Long.MAX_VALUE, smax = 0, lead = -1; boolean sameLead = true;
         for (Tile p : m.c.tiles) {
             long f = p.ag.firstRequestAt - go, st = p.ag.startedAt - 1 - go, l = p.ag.firstRequestAt - (p.ag.startedAt - 1);
@@ -178,7 +178,8 @@ public final class RecipeTest {
         finish(m, "cmem", 20000);
         for (Tile p : m.c.tiles) {
             int me = p.idx, s = 0; for (int i = 0; i < 16; i++) s += me * 1000 + i;
-            T.eq(s, m.word(me, im, "par_sum", 0), "tile " + me + ": 16 parameter words in data memory");
+            int got = 0; for (int i = 0; i < 16; i++) got += m.word(me, im, "params", i);
+            T.eq(s, got, "tile " + me + ": 16 parameter words in data memory (params[])");
             boolean match = true; for (int i = 0; i < 256; i++) if (p.core.peekLocal(OVL + 4 * i) != ov[i]) match = false;
             T.check(match, "tile " + me + ": 256 overlay words in program memory");
             T.eq(2 * (me * 1000) + 0x123, m.word(me, im, "res", 0), "tile " + me + ": the overlay ran on params[0]");
@@ -196,7 +197,7 @@ public final class RecipeTest {
         long[][] in = new long[64][];
         for (Tile p : m.c.tiles) {
             Random r = new Random(1000 + p.idx);
-            int n = 200 + p.idx;
+            int n = 200;                                          // v1.2: the command's n on every tile
             in[p.idx] = new long[n];
             for (int i = 0; i < n; i++) { int key = p.idx % 8 == 0 ? r.nextInt(16) * 0x01010101 : r.nextInt(); in[p.idx][i] = rec(key, i); p.sram.poke64(2 * i, in[p.idx][i]); }
         }
@@ -232,8 +233,8 @@ public final class RecipeTest {
         finish(m, "aug", 30000);
         for (Tile p : m.c.tiles) {
             int me = p.idx, bad = 0;
-            for (int i = 0; i < 64 + me; i++) if (rec(p, 0x40000 + 2 * i) != rec(0x7000_0000 + me * 0x1000 + i * 3, i)) bad++;
-            T.eq(0, bad, "tile " + me + ": local form: " + (64 + me) + " raw keys -> (key, j), j = 0, 1, 2, ...");
+            for (int i = 0; i < 64; i++) if (rec(p, 0x40000 + 2 * i) != rec(0x7000_0000 + me * 0x1000 + i * 3, i)) bad++;
+            T.eq(0, bad, "tile " + me + ": local form: 64 raw keys -> (key, j), j = 0, 1, 2, ... (v1.2: 64 on every tile)");
             int l = (me + 63) & 63, r = (me + 1) & 63, nl = nAug(l), nr = nAug(r); bad = 0;
             for (int j = 0; j < nl; j++) if (rec(p, 0x80000 + 2 * j) != rec(l << 16 | j, j)) bad++;
             for (int j = 0; j < nr; j++) if (rec(p, 0x80000 + 2 * (nl + j)) != rec(r << 16 | j, nl + j)) bad++;
@@ -410,7 +411,10 @@ public final class RecipeTest {
         Random rnd = new Random(14);
         for (int i = 0; i < 64; i++) seeds[i] = i == 5 ? 0 : rnd.nextLong();          // tile 5: a zero seed (st_seed makes it 1)
         CnC cc = m.c.cc;
-        cc.command(LinkWord.BROADCAST, 7 << 24, W1).go().command(LinkWord.BROADCAST, 7 << 24, W2).go();      // phases 0, 1: write a block
+        int blk = im.sym("blk");                                                                            // v1.2: the program's block in data memory
+        cc.waitUntil(() -> tilesIdle(m)).call(() -> {                                                       // after crt0 has zeroed .bss
+            for (Tile p : m.c.tiles) for (int i = 0; i < W2; i++) { p.core.pokeLocal(blk + 8 * i, p.idx << 16 | i); p.core.pokeLocal(blk + 8 * i + 4, 0xB10C0000 | i); } });
+        cc.command(LinkWord.BROADCAST, 7 << 24).go();                                                       // phase 0: write the block (256 records)
         for (int n : new int[] { F1, F2 }) {                                                               // phases 2, 3: fill, C&C's seeds
             for (int i = 0; i < 64; i++) cc.command(i, 1 << 24, (int) seeds[i], (int) (seeds[i] >>> 32), n);
             cc.go();
@@ -420,7 +424,7 @@ public final class RecipeTest {
         cc.command(LinkWord.BROADCAST, 2 << 24, (int) BASE, (int) (BASE >>> 32), F2).go();                  // phase 6: fill, index seed + base
         cc.command(LinkWord.BROADCAST, 2 << 24, 0, 0, F1).go();                                             // phase 7: fill, index seed alone
         long[][] wrote = new long[64][], filled = new long[64][], sig = new long[64][2];
-        boolean ok = m.run(() -> cc.phaseLog.size() >= 6 && tilesIdle(m), 400000);
+        boolean ok = m.run(() -> cc.phaseLog.size() >= 6 && tilesIdle(m), 400000);   // the boot's GO, then five phases
         T.check(ok, "blocks: write, fill and hash phases ran");
         for (Tile p : m.c.tiles) {
             int me = p.idx;
@@ -485,7 +489,8 @@ public final class RecipeTest {
             Mach m = mach();
             m.boot("rcp_selftest");
             CnC cc = m.c.cc;
-            List<long[]> sigs = new ArrayList<>();
+            cc.drainReports = true;                                        // v1.2: the signatures are requests to C&C 1, which answers each
+            List<long[]> sigs = cc.results;
             final int CORRUPT = 17, REC = 22 * M + 3;                      // tile 17's block for tile 22: a record of it
             cc.command(LinkWord.BROADCAST, 2 << 24, (int) BASE, (int) (BASE >>> 32), N).go();
             if (round == 1) cc.then((c, t) -> {                          // after the fill, before configure: the block is at rest
@@ -494,39 +499,30 @@ public final class RecipeTest {
             cc.command(LinkWord.BROADCAST, 3 << 24).go()
               .command(LinkWord.BROADCAST, 4 << 24).go()
               .command(LinkWord.BROADCAST, 5 << 24, B_DST, N).go()
-              .command(LinkWord.BROADCAST, 6 << 24).go()
-              .collect(64, 2000, sigs);
+              .command(LinkWord.BROADCAST, 6 << 24).go();
             finish(m, "selftest round " + round, 400000);
             long[] got = new long[64]; Arrays.fill(got, -1);
-            for (long[] e : sigs) got[(int) e[1]] = e[2];
+            for (long[] e : sigs) got[(int) e[1]] = e[3] << 32 | (e[2] & 0xFFFFFFFFL);
             int match = 0, miss = 0;
             for (int t = 0; t < 64; t++) if (got[t] == expect[t]) match++; else miss++;
             if (round == 0) {
-                T.eq(64, sigs.size(), "round 0: 64 signatures reached C&C's receive FIFO");
+                T.eq(64, sigs.size(), "round 0: 64 signatures reached C&C 1 as requests (and each was answered)");
                 T.eq(64, match, "round 0: every tile's signature equals the one the simulator computed");
                 long first = sigs.get(0)[0], last = sigs.get(sigs.size() - 1)[0];
-                int paced = 0; long base = Long.MIN_VALUE;
-                for (Tile p : m.c.tiles) {                                 // tile k sends 4 k cycles after tile 0 (after its skew): the delay loop
-                    long at = p.ctl.lastSendAt - m.c.startSkew[p.idx] - 4L * p.idx;
-                    if (base == Long.MIN_VALUE) base = at;
-                    if (at == base) paced++;
-                }
-                T.eq(64, paced, "round 0: tile k's send 4 k cycles after tile 0's (after its skew): the (me + 1) x 4 delay loop is exact");
-                T.check(m.c.cc.rxPeak <= 2, "round 0: C&C's receive FIFO never held more than 2 (" + m.c.cc.rxPeak + ")");
                 noViolations(m.c, "selftest round 0");
                 meas("selftest", "fill (" + N + " records, index seed): GO -> all READY", goToReady(m, 0));
                 meas("selftest", "configure: GO -> all READY", goToReady(m, 1));
                 meas("selftest", "start (timetable 16 x 4 x " + M + " = " + 64 * M + "): GO -> all READY", goToReady(m, 2));
                 meas("selftest", "hash of the received " + N + " records: GO -> all READY", goToReady(m, 3));
-                meas("selftest", "signatures to C&C: GO -> all READY", goToReady(m, 4));
-                meas("selftest", "signatures to C&C: first to last arrival", last - first);
+                meas("selftest", "signatures to C&C 1 over the request bus, answered: GO -> all READY", goToReady(m, 4));
+                meas("selftest", "signatures at C&C 1: first to last", last - first);
             } else {
                 T.eq(63, match, "round 1 (tile " + CORRUPT + "'s record " + REC + " corrupted): 63 signatures still match");
                 T.check(got[22] != expect[22], "round 1: the one that differs is tile 22's, which received the record");
                 noViolations(m.c, "selftest round 1");
             }
         }
-        out("selftest [meas: RecipeTest selftest]: fill from the index seed, a uniform all-to-all (" + M + " records per pair), hash, signatures paced to C&C: all 64 equal the simulator's; one corrupted record changes exactly its receiver's");
+        out("selftest [meas: RecipeTest selftest]: fill from the index seed, a uniform all-to-all (" + M + " records per pair), hash, signatures to C&C 1 as requests (answered): all 64 equal the simulator's; one corrupted record changes exactly its receiver's");
     }
 
     /** REPORT (6.6) end to end: tiles 0, 5, 10, ... provoke an unexpected arrival; C&C, with stopOnError, holds the next
@@ -568,7 +564,9 @@ public final class RecipeTest {
         bad = 0;
         for (Tile p : m.c.tiles) { int l = (p.idx + 63) & 63; for (int i = 0; i < 20 + (l & 7); i++) if (rec(p, 0x80000 + 2 * i) != rec(l << 16 | i, 0xA0000 + i)) bad++; }
         T.eq(0, bad, "rule_start: every tile received its left neighbour's 20 + (l & 7) records");
-        // rule_align: a 64-bit stream to itself and a 32-bit stream to the right-hand tile in one group
+        // rule_align: a 64-bit stream to itself and a 32-bit stream to the right-hand tile in one group (B was rule_disjoint's
+        // scratch buffer: its words are written again)
+        for (Tile p : m.c.tiles) for (int i = 0; i < 64; i++) p.sram.poke(0x40000 + 3 + i, 0xB0000 + i);
         m.c.cc.command(LinkWord.BROADCAST, 5 << 24).go();
         T.check(m.run(() -> idle(m), 80000), "rule_align ran");
         bad = 0;

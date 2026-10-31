@@ -37,8 +37,9 @@ LOG=searchbench TAIL=3 run "search steps through the read port (microbenchmark, 
 LOG=rdport-shuf TAIL=1 run "shuffled child order (seed 4)" $J ReadPortGatherTest 4
 LOG=agtest    TAIL=1 run "address generator read-ahead, figure 12's PTR/HIST ports" $J AgTest -1
 LOG=agtest-shuf TAIL=1 run "shuffled child order (seed 4)"   $J AgTest 4
-pending recipes      "the recipe book (v1.1's RecipeTest; replaced by the v1.2 recipes)" "phase 6"
-pending recipes-shuf "shuffled child order (seed 4)" "phase 6"
+LOG=recipes-build TAIL=1 run "building the v1.2 recipes (sw/build_recipes.sh: wip/sw/recipes/, unedited)" sh sw/build_recipes.sh
+LOG=recipes   TAIL=2 run "the v1.2 recipes as suites, and the book's code blocks against their sources" $J RecipeTest -1
+LOG=recipes-shuf TAIL=1 run "shuffled child order (seed 4)"    $J RecipeTest 4
 LOG=cond      TAIL=2 run "the errors end to end: ERRORS, the handler's reports, the error lines, the toast pin, the reset" $J CondTest -1
 LOG=cond-shuf TAIL=1 run "shuffled child order (seed 4)"      $J CondTest 4
 LOG=regdoc    TAIL=1 run "REGISTERS.md and mesh.h against their generators, the draft header and the simulator" $J RegDocTest

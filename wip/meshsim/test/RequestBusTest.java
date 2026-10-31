@@ -31,7 +31,7 @@ public final class RequestBusTest {
         Config k = Config.machine(); k.shuffleSeed = shuffle;
         Net n = new Net(k);
         // v1.2: every core boots into the boot ROM and waits there (done pulsed, WFI for GO)
-        n.c.run(10);
+        settle(n);
         return n;
     }
     static void store(Net n, Tile p, int addr, int v) { String e = p.core.store(n.c.cycle + 1, addr, v, -1); if (e != null) throw new IllegalStateException(e); n.step(); }
@@ -206,5 +206,10 @@ public final class RequestBusTest {
         T.eq(0L, m.c.violations, "no violations " + m.c.violationReport());
         int c = 0; for (Tile p : m.c.tiles) c |= p.ctl.conditions;
         T.eq(0, c, "no errors");
+    }
+
+    /** Every core has reached the boot ROM's WFI (done pulsed): Java may now drive the registers without racing the ROM. */
+    static void settle(Net n) {
+        for (int i = 0; i < 200; i++) { boolean all = true; for (Tile p : n.c.tiles) if (n.c.cfg.coreless ? false : !p.core.inWfi) all = false; if (all) break; n.step(); }
     }
 }

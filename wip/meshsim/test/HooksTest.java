@@ -34,7 +34,7 @@ public final class HooksTest {
         Config k = Config.machine(); k.shuffleSeed = shuffle; k.periphType = periphType;
         Net n = new Net(k);
         // v1.2: every core boots into the boot ROM and waits there (done pulsed, WFI for GO)
-        n.c.run(10);
+        settle(n);
         return n;
     }
     static Integer load(Net n, Tile p, int addr) { return p.core.load(n.c.cycle + 1, addr, 4); }
@@ -230,8 +230,7 @@ public final class HooksTest {
         p.core.pokeLocal(B + 12, 0x0000006F);                            // j . (the end)
         n.c.cc1p.expect = 1L << 3;                                       // only tile 3 starts (6.2): its command, then GO
         n.c.cc.command(3, Registers.CMD_JUMP << 24, B).go();
-        while (p.core.pc != B) n.step();                                 // the ROM has jumped: the nop is next
-        n.step();                                                        // cycle R: the nop
+        while (p.core.pc != B + 4) n.step();                             // cycle R: the ROM has jumped and the nop has run
         long s0 = p.core.stallRegLoad;
         long R = n.c.cycle, issue = R + 1, last = issue + L - 1;         // the load's sample point is the end of issue + L - 2
         int c9 = 1 << Registers.EV_COUNTERS_DONE, go = 1 << Registers.EV_GO;
@@ -248,5 +247,10 @@ public final class HooksTest {
         s0 = p.core.stallRegLoad;
         T.check(p.core.load(n.c.cycle + 1, Registers.HIST_BASE, 4) != null, "a HIST load");
         T.eq(s0, p.core.stallRegLoad, "a table-window load stalls nothing: 1 cycle");
+    }
+
+    /** Every core has reached the boot ROM's WFI (done pulsed): Java may now drive the registers without racing the ROM. */
+    static void settle(Net n) {
+        for (int i = 0; i < 200; i++) { boolean all = true; for (Tile p : n.c.tiles) if (n.c.cfg.coreless ? false : !p.core.inWfi) all = false; if (all) break; n.step(); }
     }
 }

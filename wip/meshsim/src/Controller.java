@@ -2,7 +2,7 @@
  * A unit's controller (spec v1.2, 4.11): an in-order RV32I + Zmmul + WFI core, ported from meshsim v3.10's RV32Controller.
  *
  * Address map (2.2, 4.11): data memory 0x00000000-0x00007FFF (loads and stores), program memory 0x01000000-0x01007FFF
- * (fetch and loads; a store is a bus error), the boot ROM from 0x02000000 (PHASE-2 INTERIM: none yet, phase 4), the table
+ * (fetch and loads; a store is a bus error), the boot ROM from 0x02000000 (fetch and loads), the table
  * window 0xFFFF2000-0xFFFF35FF (word accesses; only HIST loads), the register block 0xFFFFF800-0xFFFFF9FF and the three
  * peripheral windows to 0xFFFFFFFF ({@link TileControl}). An offset past the end of data or program memory aliases and
  * meshsim flags it (2.2). Loads from the memories and the table window take one cycle; a load from the block or a window
@@ -11,15 +11,15 @@
  * send holding register in the store's cycle; if it is refused the store is retried and the core stalls, one cycle at a
  * time; a REQUEST_SEND store stalls while the request FIFO is full (4.18).
  *
- * Bus errors (PHASE-2 INTERIM: halt, ERRORS [9]; phase 4 traps): a fetch outside program memory; a store to program
+ * Bus errors (ERRORS [9], and a trap): a fetch outside program memory; a store to program
  * memory; a misaligned access; an unmapped address (regions 0x02-0xFE, the unused parts of region 0xFF, an absent
  * peripheral's window); a sub-word access to the block, a window or the table window; a store to a read-only register; a
- * load from PTR, STREAM or GROUP. Illegal (halt, ERRORS [10]): divide opcodes, CSR instructions (phase 4 adds the trap
- * CSRs, mcycle and mtime), anything unimplemented. ecall and ebreak halt (a simulator-only {@link DebugHook} may continue
- * an ebreak). A store to SIM_EXIT (8.15) stops the core: the test is over. The cause of every stop is logged.
+ * load from PTR, STREAM or GROUP. Illegal (ERRORS [10], and a trap): divide opcodes, CSRs the core lacks (it has the
+ * machine-mode trap CSRs, mcycle and mtime), anything unimplemented. ecall and ebreak stop the core loudly (a
+ * simulator-only {@link DebugHook} may continue an ebreak). A store to SIM_EXIT (8.15) stops the core: the test is over.
  *
- * WFI (0x10500073) stalls until the wake term holds (TileControl.takeWake; 4.12). HALT (PHASE-2 INTERIM, v1.1's RUN/HALT
- * line low): no fetch. HALT -> RUN: pc = Registers.LOADER_BASE, x1-x31 = 0.
+ * WFI (0x10500073) stalls until the wake term holds (TileControl.takeWake; 4.12). The reset (6.1) starts the core at
+ * 0x02000000, in the boot ROM ({@link #bootRom}, sw/bootrom.hex).
  */
 final class Controller implements Component {
     /** Why a core stopped (meshsim only: the hardware traps and parks, 4.13). HALT_ILLEGAL and HALT_BUSERR are no longer

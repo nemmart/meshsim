@@ -69,7 +69,10 @@ access to a reserved word (8.1). So every replayer tile's handler would be flagg
 hardware does). Alternatively 4.13 could report words 8-9 only for a peripheral whose `STATUS`/type says it has a DMA,
 but the report set is fixed by design.
 
-**Status:** proposed; the code follows it (PeripheralSlot.reserved).
+**Answer (D48):** on a peripheral without a DMA, words 8 and 9 read 0 and a load isn't flagged, for any reader; only a
+store is.
+
+**Status:** answered; done (PeripheralSlot.reserved).
 
 ## W4-07: `mtime` (4.11)
 
@@ -80,4 +83,6 @@ neither its CSR number nor its clock is given.
 reference-oscillator cycles (core cycles / Config.refCycle, 40 at 1 GHz and 25 MHz). `mcycle`/`mcycleh` (0xB00, 0xB80)
 count core cycles from the reset.
 
-**Status:** proposed; the code follows it (Controller.csrRead).
+**Answer (D48):** the rate is implementation-defined; meshsim's choice stands (Tony to say what his core does).
+
+**Status:** answered; as built.

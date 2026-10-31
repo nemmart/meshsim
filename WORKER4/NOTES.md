@@ -115,6 +115,19 @@ v1.1 recipe suite with the v1.2 recipes.
   v1.2-sort's versions stand. R2: when phase 4's boot ROM replaces the interim loader, this file says so (below, in the
   phase 4 entry). R3: SplitRun and splitdrv.c stay unported (owner), stale, listed in REPORT.md.
 
+- **Phase 4** (2026-10-31, in progress). **R2 for WORKER8: the boot ROM has replaced the interim loader** (commit
+  of this entry): `sw/loader.S`, `sw/loader.ld`, `build/loader.bin` and `Registers.LOADER_BASE` are gone, and there is no
+  RUN/HALT line. Every core starts at 0x02000000 in the boot ROM (sw/bootrom.S, its image sw/bootrom.hex, loaded by
+  Controller.bootRom) and waits there with done pulsed. `Mach.boot` now: broadcast the code to program memory
+  (0x01000000) and the data to data memory (from the image's `_data_start`), uncounted mode 0; then the first command
+  (`CMD_JUMP`, slot 1 the entry); then `CnC.runWhenReady()`, which is GO when every tile in `READY_EXPECT` is READY
+  (C&C 1's model sets all 64; after `CnC.reset()` it sets them again); the ROM jumps. To start only some tiles, set
+  `chip.cc1p.expect` to their mask (RiscvTest does: tile 0). The reset is `CnC.reset(hard)` (a step) or
+  `Chip.reset(hard)`, taking effect at the end of the cycle.
+  Done so far: traps, the trap CSRs, mcycle/mtime, the hard interrupt, meshsim's loud stops; the boot ROM; the reset;
+  RUN/HALT removed; D48 (W4-06, W4-07); the suites on the ROM boot: CtrlTest (faults on traps, the handler's 24
+  reports, the reset), RiscvTest, HooksTest, PeripheralSlotTest, RequestBusTest, AccountingTest (the boot is a phase).
+
 ## Phase 1's results (`results/`, committed at the close)
 
 `run_tests.sh quick` all passed (PENDING suites aside); the full-mode extras run separately on this box:

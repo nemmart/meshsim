@@ -37,7 +37,7 @@ public final class PeripheralSlotTest {
         k.testPeripheral = tile -> tile == tp ? (out[0] = new TestPeripheral()) : null;
         Net n = new Net(k);
         // v1.2: every core boots into the boot ROM and waits there (done pulsed, WFI for GO)
-        for (int i_ = 0; i_ < 10; i_++) n.step();
+        settle(n);
         return n;
     }
     static Integer load(Net n, Tile p, int addr) { Integer v = p.core.load(n.c.cycle + 1, addr, 4); n.step(); return v; }
@@ -246,5 +246,10 @@ public final class PeripheralSlotTest {
         for (int i = 0; i < 20; i++) x.rxByte(u.c.cycle, i, false);
         T.eq(1 << 16, x.read(u.c.cycle, Cnc1Peripheral.UART_STATUS) & 1 << 16, "a 17th byte: RX overrun (status, not an error)");
         T.eq(0, x.read(u.c.cycle, 2) & ~1, "line errors never reach ERRORS");
+    }
+
+    /** Every core has reached the boot ROM's WFI (done pulsed): Java may now drive the registers without racing the ROM. */
+    static void settle(Net n) {
+        for (int i = 0; i < 200; i++) { boolean all = true; for (Tile p : n.c.tiles) if (n.c.cfg.coreless ? false : !p.core.inWfi) all = false; if (all) break; n.step(); }
     }
 }

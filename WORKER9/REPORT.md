@@ -297,25 +297,28 @@ Both written with `--keep=all` and every window proved by the writer's functiona
 
 ---
 
-# Left open
+# Closing: settled items and rebuild notes
 
-- **T7 (was Q8): the division inlines' inverse.** Single Fermat loop as built (DIVQ 123,979 and DIVR 214,957 untraced
-  rows); an addition chain would roughly halve them, as several segments, which `segments.bin` already supports. On hold
-  for WORKER12's inline counts (DECISIONS-v1.3 s11).
-- **Formats others follow** (written down here and in `wip/tables/README.md`, not edited by me): the normalized
-  template-index key replaces "one entry per distinct word" in `REPLAY-INPUT-REQUIREMENTS.md` section 2 and changes the
-  Stage B controller's lookup; `segments.bin` and index byte 14 for the Tracer; the Tracer's `seq_remaining` rule
-  (traced words only) and `advice_reg` [61:56].
-- **The opcode appendix** (`spec/replayer-opcodes.md`): the 821e1bd harness outputs and the list of differences are in
-  `WORKER9/replayer-opcodes-821e1bd/` for the spec editor.
-- **The Tracer's untraced `LD`** must read through its D-cache (owner's condition): a hardware requirement, outside the
-  functional model, which reads guest memory directly.
-- **PR #1** is still open; PR #2 is stacked on its branch and should be retargeted to `main` if PR #1 merges first.
+**Settled while the work went on:**
+- **T7 (was Q8), the division inlines' inverse: answered.** Keep the single Fermat loop as built (DIVQ 123,979 and
+  DIVR 214,957 untraced rows), with host-supplied advice as the backup (DECISIONS-v1.3 s11).
+- **The normalized template-index key: done.** WORKER11 updated `REPLAY-INPUT-REQUIREMENTS.md` and the controller's
+  lookup, merged into main.
+- **The opcode appendix: done.** WORKER10 updated `spec/replayer-opcodes.md` from the 821e1bd harness outputs
+  (`WORKER9/replayer-opcodes-821e1bd/`).
+- **The Tracer's formats and requirements are v1.3 Tracer work**, recorded in DECISIONS-v1.3: `segments.bin` and index
+  byte 14, `seq_remaining` counting traced words only, `advice_reg` [61:56], and the untraced `LD` reading through the
+  Tracer's D-cache.
+
+**Still to keep in mind:**
+- **PR #2** is stacked on PR #1's branch; retarget it to `main` if PR #1 merges first.
 - **The deliveries live in `/tmp` on the runner box** (`/tmp/w9-deliveries`, `/tmp/w9-deliveries-selected`,
-  `/tmp/w9-selected-windows.tgz`), so a reboot or clean-up loses them; they can be rebuilt from `w9-delivery.tgz` by
-  re-running 079 and 080 as new task numbers (about 7 minutes each).
-- **A later jolt-cpp**: the tables and deliveries are tied to `821e1bd`. For a new commit: re-copy the tracer (PR #1's
-  rules), rerun `build_tables` and `tracer_tables.py` (their checks run as part of the build), and regenerate the
-  deliveries.
+  `/tmp/w9-selected-windows.tgz`), so a reboot or clean-up loses them. Rebuild them from `w9-delivery.tgz` by re-running
+  079 and 080 under new task numbers (claimed in Quest's `NUMBERS.md`), about 7 minutes each; the manifests' SHA-256
+  above identify the same content.
+- **A later jolt-cpp:** the tables and deliveries are tied to `821e1bd`. For a new commit: re-copy the tracer under
+  PR #1's rules, rerun `build_tables` and `tracer_tables.py` (their checks run as part of the build), regenerate the
+  opcode-appendix harness outputs, and regenerate the deliveries with `delivery_writer`, which proves each window as it
+  writes it.
 - A register a program hasn't touched before a window holds 0 in that window's image (no row can observe it); if the
   real Tracer captures the hardware value instead, the images differ only in such registers.

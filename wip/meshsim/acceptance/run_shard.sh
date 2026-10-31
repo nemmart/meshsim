@@ -10,19 +10,21 @@
 #     -s  stages (default AB): A the model, B the controller on tile 0 alone (the 63 idle tiles parked), F the same on
 #         the full chip; with B and F both, each window's cycles must agree
 #     -m  the manifest's SHA-256, as WORKER9's writer task reported it: checked before anything is read
+#     -M  the manifest file (default DELIVERY/manifest.json, else DELIVERY/PROGRAM.manifest.json). The per-program one is
+#         stable while a later writer task rewrites the combined manifest.json
 #     -x  K: also stage F (the full chip) on every window whose index is a multiple of K, its cycles checked against B
 # Every file a window's replay reads is checked against the manifest's SHA-256 first (ReplayShard). Writes
 # OUTDIR/results.csv (one line per window and stage), OUTDIR/jvm-*.log, SUMMARY.txt and VERDICT.txt. Exit 0 only if
 # every window of the range is in the manifest and matched in every stage.
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
-D=; P=; F=; N=; J=$(nproc); S=AB; MS=; X=0
-while getopts d:p:f:n:j:s:m:x: o; do case $o in d) D=$OPTARG;; p) P=$OPTARG;; f) F=$OPTARG;; n) N=$OPTARG;; j) J=$OPTARG;;
-  s) S=$OPTARG;; m) MS=$OPTARG;; x) X=$OPTARG;; *) sed -n '2,16p' "$0"; exit 2;; esac; done
+D=; P=; F=; N=; J=$(nproc); S=AB; MS=; X=0; MF=
+while getopts d:p:f:n:j:s:m:x:M: o; do case $o in d) D=$OPTARG;; p) P=$OPTARG;; f) F=$OPTARG;; n) N=$OPTARG;; j) J=$OPTARG;;
+  s) S=$OPTARG;; m) MS=$OPTARG;; x) X=$OPTARG;; M) MF=$OPTARG;; *) sed -n '2,18p' "$0"; exit 2;; esac; done
 shift $((OPTIND - 1)); OUT=${1:-}
 [ -n "$D" ] && [ -n "$P" ] && [ -n "$F" ] && [ -n "$N" ] && [ -n "$OUT" ] || { sed -n '2,14p' "$0"; exit 2; }
 D=$(cd "$D" && pwd) || { echo "no delivery at $D"; exit 2; }
-MF="$D/manifest.json"; [ -f "$MF" ] || MF="$D/$P.manifest.json"
+[ -n "$MF" ] || { MF="$D/manifest.json"; [ -f "$MF" ] || MF="$D/$P.manifest.json"; }
 [ -f "$MF" ] || { echo "no manifest.json or $P.manifest.json in $D"; exit 2; }
 [ -d "$D/$P" ] || { echo "no $D/$P"; exit 2; }
 if [ -n "$MS" ]; then

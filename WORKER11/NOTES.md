@@ -71,3 +71,8 @@ acceptance kit). Until WORKER10's `v1.25` spec branch exists, the design is DECI
 - Deliveries (WORKER9): /tmp/w9-deliveries (combined manifest.json, evm-zone-29 + cyclone-29, tables in each program
   dir) and /tmp/w9-deliveries-selected; imm_signed [86]. Not /tmp/w9-selected-windows-821e1bd.tgz (pre-[86]).
   Waiting for tasks 079/080 and WORKER9's manifest checksums; then claim two numbers in NUMBERS.md.
+- Task 079 done (EVM Zone delivery: 8192 windows, 46 GB, /tmp/w9-deliveries/evm-zone-29; evm-zone-29.manifest.json
+  sha 7142e894...; the combined manifest.json is rewritten by 080, so tasks use -M PROGRAM.manifest.json).
+- Claimed 083, 084 in NUMBERS.md (quest ed5aa54). **Task 083 pushed** (kitA sha 9a1acd88..., evm-zone-29).
+  084 (cyclone-29) waits for task 080's cyclone-29.manifest.json SHA-256: then
+  `acceptance/make_acceptance_task.sh KIT 084 cyclone-29 <sha>` (rebuild the kit with make_kit.sh first).

@@ -76,3 +76,11 @@ phase-3 tip, whose replayer tests don't compile). Merge `v1.2-meshsim` again onc
   are restored with `git checkout -- wip/meshsim/results` before every commit. Quest task 070 queued, not yet picked
   up. Next: the rest of run_tests; the BT -Dsort.watch runs on both versions (16K, kv32 and k128) to confirm the BT
   steps' explanation; 070's results into REPORT.md.
+- **Step 6** (2026-10-31): background jobs don't survive a turn's end (run_tests stopped mid-sort: 9 of 10 sets had
+  passed); long runs now either finish within a turn or go to the runner. `pkill -f`/`pgrep -f` with a pattern that
+  appears in the tool call's own command line kills the call: don't. plan_transfer and k_start step explicit
+  pointers (XB back to v1.1's; REPORT). **Task 070: all 43 full-size runs pass, every run on v1.1's path**
+  (WORKER8/results/070-p4-full, COMPARE-065.md). Quick sort suite after the change passes (104); shuffled running,
+  then run_tests's full-mode extras (/tmp/extras.sh → /tmp/extras.txt). **Task 071 pushed:** per-function watches on
+  both versions (BT 16K kv32/k128: BT's functions; uniform and trace100-30 at full size: the split's) to finish
+  explaining SPLIT and the BT layers. The runner kit's image refreshed to HEAD (HASHES regenerated; Java unchanged).

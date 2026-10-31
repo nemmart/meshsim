@@ -174,4 +174,4 @@ file for what changed between them.
 | W1 | **Bring the replayer and the Tracer's tables up to date with jolt-cpp's latest** (1), and pass the acceptance runs (2) | v1.3 log, section 9 and its former W1 | the tables (WORKER9 part 2) and the delivery writer (part 3) under way; the spec and meshsim's replayer after v1.2 is frozen |
 | W2 | **`CHANGES-v1.25.md`**: the delta from v1.2 | owner | done (WORKER10) |
 | W3 | **The change guide to v1.25, from v1.1 and from v1.2** (`wip/spec/CHANGES-to-v1.25.md`), for the RTL | owner | WORKER13 |
-| W4 | **The replayer recipe** (26) and its `template_lookup` for the normalized key | owner | WORKER11 |
+| W4 | **The replayer recipe** (26) and its `template_lookup` for the normalized key | owner | done (WORKER11, on `v1.25-meshsim`): keyed lookup, the book regenerated, the key cross-checked against the Java model on 20,000 words |

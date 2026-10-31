@@ -13,7 +13,7 @@ Spec commit at start: `4856c0b` (main). Inputs read: CHANGES-v1.2, CHANGES-v1.25
 | 1 | pass A, v1.2 → v1.25 (mechanical diff) | **done** |
 | 1 | pass B, v1.1 → v1.2, front matter to 13 | **done** |
 | 1 | spec fixes from pass A/B taken by WORKER10 (`0b4ba20`: 4.17.1 types, 4.19.7 renumbering, 8.1 timing, CHANGES-v1.25 errata) | **pulled; the guide uses the fixed text** |
-| 2 | the guide: reading guide, overviews, removed/new lists, per-unit sections | in progress |
+| 2 | the guide: 0 reading guide, 1 overviews + removed/new, 2.1 link/network, 2.2 address map, 2.3 engines, 2.4 controller, 2.5 peripherals | **written**; next: 2.6 replayer (row/table v1.25, interface v1.2, few both), 2.7 control/reset/boot, 2.8 C&C 1–3 |
 | 3 | register tables, sections 9–10 | |
 | 4 | QUESTIONS.md, REPORT.md, final pull, spec commit stamped | |
 
@@ -377,3 +377,12 @@ PTR advances: accepted), 139 (CSR in ROM: possible later), 140 (PEXT method, wit
 proposed), 44–47 (replayer map details, proposed).
 
 **Step 1 complete.**
+
+## Step 2 log
+
+- Guide sections 0, 1, 2.1–2.5 written and pushed. IDs: L (link/network), A (address map), T (engines), C (controller),
+  P (peripherals). Every **[not in CHANGES]** tag is to be collected into guide section 5 and QUESTIONS.md.
+- Someone added `v1.2/ERRATA.md` (E1–E4) on main while this ran: read it next turn and cite it where it overlaps.
+- Still to write in the guide: 2.6 replayer, 2.7 control/reset/boot (5, 6.1–6.5), 2.8 C&C 1–3 (6.6, 6.7, 7, 8.14); 3
+  register tables (block, `EVENTS`, `ERRORS`, `STATUS`/`PARAMS`, windows, C&C 1, replayer words, link word, expansion
+  word, output row, opcode renumbering → appendix 2.0); 4 parameters and invariants; 5 differences not in CHANGES.

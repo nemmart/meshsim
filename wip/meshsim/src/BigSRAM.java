@@ -132,7 +132,11 @@ final class BigSRAM implements Component {
         accesses++;
         if (qWrite[a][i]) {
             writes[a]++; qWrites[a]--;
-            for (int j = 0; j < 4; j++) if (((mask >>> j) & 1) != 0) { mark(wrBits, rdBits, base + j, "written", "read"); store(base + j, qData[a][i][j]); }
+            for (int j = 0; j < 4; j++) if (((mask >>> j) & 1) != 0) {
+                mark(wrBits, rdBits, base + j, "written", "read"); store(base + j, qData[a][i][j]);
+                Long acc = s1Acc == null ? null : s1Acc.remove(base + j);
+                if (acc != null) s1Done(t, t - acc, "big SRAM chunk 0x" + Integer.toHexString(base + j));
+            }
         } else {
             reads[a]++;
             for (int j = 0; j < 4; j++) if (((mask >>> j) & 1) != 0) mark(rdBits, wrBits, base + j, "read", "written");
@@ -166,6 +170,14 @@ final class BigSRAM implements Component {
     boolean noWritesQueued() { for (int a = 0; a < AREAS; a++) if (qWrites[a] > 0) return false; return true; }
     boolean idle() { for (int a = 0; a < AREAS; a++) if (qCount[a] > 0) return false; return true; }
     int queued(int a) { return qCount[a]; }
+    // S1 (simulator only): the acceptance of each counted write awaiting its store; the measurement; K
+    java.util.Map<Integer, Long> s1Acc; S1 s1; int s1K;
+    private int lastS1Chunk = -1;
+    void s1Done(long t, long lat, String what) {
+        if (s1 == null) return;
+        s1.sram(lat);
+        if (lat > s1K + S1.REACTION) { s1.late++; s1.lastLate = "tile " + me + ": " + what + " complete " + lat + " cycles after acceptance, past K = " + s1K + " (invariant 24)"; }
+    }
     void resetQueuePeaks() { for (int a = 0; a < AREAS; a++) queuePeak[a] = qCount[a]; }
     void resetStats() {
         java.util.Arrays.fill(reads, 0); java.util.Arrays.fill(writes, 0); java.util.Arrays.fill(combined, 0);

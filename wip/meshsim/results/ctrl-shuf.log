@@ -19,4 +19,4 @@ block copy [meas: CtrlTest block copy]: 1,024 words (256 128-bit mode-0 packets)
 16-group all-to-all programmed from C as a two-command phase, gap 0 [meas: CtrlTest all-to-all]: cycles from C&C's start GO store to all 64 READY at C&C
   data set                   GO -> all READY     bound   over  | M4 start->last wake (Java-driven, M3 harness)  | v3.10 GO -> all DONE (gap 8)
   uniform (Data(7, 2000))        3463         3080    383  |       3120                                      |
-CtrlTest (shuffled, seed 4): 6891 passed, 0 failed
+CtrlTest (shuffled, seed 4): 6893 passed, 0 failed

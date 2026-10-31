@@ -115,7 +115,10 @@ v1.1 recipe suite with the v1.2 recipes.
   v1.2-sort's versions stand. R2: when phase 4's boot ROM replaces the interim loader, this file says so (below, in the
   phase 4 entry). R3: SplitRun and splitdrv.c stay unported (owner), stale, listed in REPORT.md.
 
-- **Phase 4** (2026-10-31, in progress). **R2 for WORKER8: the boot ROM has replaced the interim loader** (commit
+- **Phase 4** (2026-10-31, **closed**: the quick suite on the Quest runner, task 075 at `2f45c7f`, 29 steps all
+  passed; the full extras, task 074 at `92ddf47`: CtrlTest full 6,902, AccountingTest full 12, ReadPortGatherTest full
+  567, EngineTest full 398; the sweep rerun locally after Sweep's boot-phase fix (`35cc4b4`), its bands equal to
+  phase 2's. Task 073's three attempts failed on a kit without hops.txt: kits are smoke-tested locally since). **R2 for WORKER8: the boot ROM has replaced the interim loader** (commit
   of this entry): `sw/loader.S`, `sw/loader.ld`, `build/loader.bin` and `Registers.LOADER_BASE` are gone, and there is no
   RUN/HALT line. Every core starts at 0x02000000 in the boot ROM (sw/bootrom.S, its image sw/bootrom.hex, loaded by
   Controller.bootRom) and waits there with done pulsed. `Mach.boot` now: broadcast the code to program memory
@@ -168,3 +171,6 @@ Every other suite logs "PENDING (phase 2 / 3 / 6 / sort port)". Still v1.1's in 
 | phase 3 (WIP), the peripheral framework | src/ compiles; the replayer's tests (ReplayDriver, ReplayerUnitTests) and TestPeripheral don't yet (v1.1's lines and claims are gone) |
 | phase 3, closed (`39facff` and the close) | none: the quick run and the full extras pass; PENDING: phase 4 (CondTest), phase 6 (recipes), the sort port |
 | phase 4 (WIP), `2adfe2a` to `83c4142` | src/ compiles; a few suites failed while they moved to the ROM boot (fixed by `f7c694f`) |
+| phase 4, closed (tasks 074, 075) | none: the quick suite and the full extras pass; PENDING: phase 6 (the recipes, until `6c1cea1`) and the sort port |
+| phase 5 (`0318159` to `92ddf47`) | none: the new checks are off only where a test makes errors on purpose |
+| phase 6 (WIP, `6c1cea1`) | none known; RecipeTest passes, five recipes (boot, cc1, replay, signal, tables) have no driver yet |

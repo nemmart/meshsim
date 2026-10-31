@@ -56,3 +56,22 @@ Every invariant is a meshsim check unless noted. "Where" is the class that flags
   port): the receiver can't tell the clients apart in time without a model of "at once"; left for a later version.
 - **16, "every refill but a stream's last is exactly half a queue"**: a software balancing rule the loop keeps; the
   credit check catches the harmful case (a refill past its credits).
+
+## The recipes as suites (phase 6)
+
+`sw/build_recipes.sh` builds all 19 of `wip/sw/recipes/`, unedited, against the generated `mesh.h` (with the recipes'
+own `crt0.S` and `handler.S`, `sw/recipes.ld`, and `sw/recipes_support.c` for what a recipe leaves to its program:
+`template_lookup`). RecipeTest runs one driver per program and checks the book's code blocks against their sources.
+
+- **Not run: `rcp_cc1.c`** (recipe 27, C&C 1's side of a phase): C&C 1 is a Java model without a core in v1.2, so the
+  program only builds. The model's own GO, READY and request service stand in for it.
+- **`rcp_replay.c`'s `state[]` is never written** (a placeholder for the program's checkpoint): gcc folds it to zeros,
+  so the pass it starts has an empty code stream and the replayer raises invalid expansion at its first pop. The
+  driver checks the loop's shape (the state load, PULSE_RUN, credits within their limits, the masks restored) and that
+  error alone; the replayer's real check is `StageB synthetic` (`sw/replay/replay_ctl.c`). For the recipes' owner: a
+  state worth loading would make recipe 26 testable end to end.
+- **`rcp_tables.c`'s `expected` is never set** either: command 1 is a run that writes nothing here, so `a2a_finish`
+  waits for DMA run done alone; the driver sets up an 8-stream empty run from Java.
+- Drivers changed from v1.1's where the v1.2 programs differ: sizes the same on every tile (bucket 200, aug 64, copy
+  100, rdport 300), the selftest's signatures as requests to C&C 1 (answered by its model), the rules' right forms only,
+  `blk` and `vecs` filled from Java after start-up (the programs leave them zero).

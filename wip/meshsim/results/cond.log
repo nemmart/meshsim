@@ -1,2 +1,2 @@
 errors [meas: CondTest]: errors 0, 1, 2, 3, 7, 8, 9, 10 and 14 provoked from C, 4, 5 and 6 injected: each sets its ERRORS bit and takes the tile to the boot ROM's handler (the hard interrupt, or the trap for 9 and 10), which sends its 24 reports to C&C 1 in order and parks; the error line reaches ERROR_LINES, the unit-error bit and the toast pin rise; a soft reset clears them all and the tiles boot again
-CondTest: 140 passed, 0 failed
+CondTest: 141 passed, 0 failed

@@ -37,8 +37,9 @@ LOG=searchbench TAIL=3 run "search steps through the read port (microbenchmark, 
 LOG=rdport-shuf TAIL=1 run "shuffled child order (seed 4)" $J ReadPortGatherTest 4
 LOG=agtest    TAIL=1 run "address generator read-ahead, figure 12's PTR/HIST ports" $J AgTest -1
 LOG=agtest-shuf TAIL=1 run "shuffled child order (seed 4)"   $J AgTest 4
-pending recipes      "the recipe book (v1.1's RecipeTest; replaced by the v1.2 recipes)" "phase 6"
-pending recipes-shuf "shuffled child order (seed 4)" "phase 6"
+LOG=recipes-build TAIL=1 run "building the v1.2 recipes (sw/build_recipes.sh: wip/sw/recipes/, unedited)" sh sw/build_recipes.sh
+LOG=recipes   TAIL=2 run "the v1.2 recipes as suites, and the book's code blocks against their sources" $J RecipeTest -1
+LOG=recipes-shuf TAIL=1 run "shuffled child order (seed 4)"    $J RecipeTest 4
 LOG=cond      TAIL=2 run "the errors end to end: ERRORS, the handler's reports, the error lines, the toast pin, the reset" $J CondTest -1
 LOG=cond-shuf TAIL=1 run "shuffled child order (seed 4)"      $J CondTest 4
 LOG=regdoc    TAIL=1 run "REGISTERS.md and mesh.h against their generators, the draft header and the simulator" $J RegDocTest
@@ -63,6 +64,7 @@ if [ "$MODE" != quick ]; then
   LOG=rdport-full TAIL=1 run "gather 1 at full size (Java; the C parts PENDING (phase 2))" java $JX -cp build ReadPortGatherTest -1 full
   LOG=accounting-full TAIL=1 run "per-phase accounting, full-size all-to-all from C" java $JX -cp build AccountingTest -1 full
   LOG=agbench TAIL=3 run "read-ahead measurements: ag_lookahead, zero-length groups, start to first request (a few minutes)" $J AgBench
+  LOG=s1bench TAIL=8 run "item S1: K's margin over the write path, L = 1-4, and the table-window case (a few minutes)" $J S1Bench
   LOG=sweep-quick TAIL=4 run "parameter sweep, quick (about 1 minute; 'java Sweep full' takes about 25)" $J Sweep quick
   LOG=ctrl-full TAIL=1 run "the all-to-all from C on the four data sets" java $JX -cp build CtrlTest -1 full
   LOG=engine-full TAIL=1 run "full-size all-to-alls (4 data sets) and radix sort (about 1.5 minutes)" java $JX -cp build EngineTest -1 full

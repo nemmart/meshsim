@@ -22,6 +22,9 @@ final class Chip implements Component {
     final Endpoint[] ccs = new Endpoint[3];                     // C&C 1-3 at tiles 0-2's fifth ports (4.16)
     final Endpoint cnc, memsub, cc3;
     final Cnc1Peripheral cc1p;
+    /** Item S1's measurement (Config.measureS1; spec 4.8, invariant 24). */
+    final S1 s1 = new S1();
+    private long s1LateSeen;
     private final java.util.List<BusBase> buses;                 // every bus the chip has (the reset empties them)
     private int resetRequest;                                    // 0 none, 1 soft, 2 hard
     long resets, lastResetAt = -1;                                   // C&C 1's peripheral 1: READY, GO, the error lines, the watchdog, the UART (8.14)
@@ -71,6 +74,7 @@ final class Chip implements Component {
         for (Tile p : tiles) p.req.bus = reqBus;
         cc = new CnC(this, cnc);
         cc1p.goNet = cc::goNet;
+        if (cfg.measureS1) for (Tile p : tiles) p.s1Attach(s1);
         BusBase.REGISTRY.remove();
         children = new Component[68];
         children[0] = cnc; children[1] = memsub; children[2] = cc3; children[67] = cc;
@@ -99,6 +103,7 @@ final class Chip implements Component {
             if (e != errSeen[p.idx]) { errSeen[p.idx] = e; cc1p.errorLine(t, p.idx, e); }   // ERROR_LINES (8.14)
         }
         cc1p.runCycle(t);
+        if (s1.late != s1LateSeen) { s1LateSeen = s1.late; violation(t, -1, s1.lastLate); }
         if (resetRequest != 0) doReset(t);
         cc.errorLine(t, err);                                    // the error lines, OR'd, to C&C's error bit (6.6)
         if (err) for (Tile p : tiles) {                          // invariant 15 (v1.2: a check): every ERRORS stays 0

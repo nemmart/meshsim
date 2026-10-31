@@ -91,7 +91,16 @@ final class CnC implements Component {
     @Override public void runCycle(long t) {
         while (!errLine.isEmpty() && errLine.peek()[0] <= t) errLineSeen = errLine.poll()[1] == 1;
         if (errLineSeen && !errorBit) { errorBit = true; errorSetAt = t; if (errorSets++ == 0) errorFirstAt = t; }
-        if (drainReports && chip.reqBus.pending(0, t)) { long[] r = chip.reqBus.peekRequest(0, t); chip.reqBus.receive(0, t); reports.add(new long[] { t, r[0], r[1], r[2], r[3] }); }
+        if (drainReports && chip.reqBus.pending(0, t)) {
+            long[] r = chip.reqBus.peekRequest(0, t); chip.reqBus.receive(0, t);
+            long[] e = { t, r[0], r[1], r[2], r[3] };
+            int op = (int) (r[0] >>> 10) & 0xFF, src = (int) r[0] & 0x7F;
+            if (op == REQ_OP_REPORT) reports.add(e);
+            else {
+                requests.add(e);
+                if (op == REQ_OP_RESULT) { results.add(new long[] { t, src, r[2], r[3] }); replies.add(new long[] { src, r[1], (r[0] >>> 18) & 7 }); }
+            }
+        }
         if (ep.rx.ready(t)) {                          // tile 0's to-C&C output into the receive FIFO, one packet per cycle
             long d = ep.rx.peekA(t), h = ep.rx.peekB(t), hi = ep.rx.peekC(t); ep.rx.take(t);
             ep.received.add(new long[] { t, d, h, hi });
@@ -99,6 +108,12 @@ final class CnC implements Component {
             else { rxq.add(new long[] { d, LinkWord.src(h), t, hi, LinkWord.size(h) }); rxTaken++; rxPeak = Math.max(rxPeak, rxq.size()); }
         }
         if (ep.send.refused(t)) { ep.send.retry(t); return; }
+        if (!replies.isEmpty()) {                          // C&C 1's answers first: a 32-bit mode-0 write to the address the request named (6.7)
+            long[] r = replies.poll();
+            ep.send(t, (int) r[0], LinkWord.M_WRITE, (int) r[2], (int) r[1], LinkWord.SIZE_32, 0, 0);
+            packetsSent++;
+            return;
+        }
         while (!steps.isEmpty()) {
             Step s = steps.peek();
             boolean fin = s.run(this, t);
@@ -196,9 +211,15 @@ final class CnC implements Component {
         return this;
     }
     // ================================================================ the handlers' reports (4.13, 6.1)
-    /** C&C 1's handler's job, modelled: drain target 0's receive queue (the units' error reports, 24 per failed unit),
-     *  one request per cycle, into {@link #reports} ({t, w0, w1, w2, w3}). Off by default: tests may drain it themselves. */
+    /** C&C 1's request service, modelled (its firmware's job, 6.1, 6.7): drain target 0's receive queue, one request per
+     *  cycle: the units' error reports (REQ_OP_REPORT, 24 per failed unit) into {@link #reports}; a tile's result
+     *  (REQ_OP_RESULT) into {@link #results} ({t, requestor, w2, w3}), answered with a 32-bit mode-0 write to the
+     *  address in W1 on the request's reply counter; anything else into {@link #requests}. Off by default: tests may
+     *  drain the queue themselves. */
+    static final int REQ_OP_REPORT = 1, REQ_OP_STARTED = 2, REQ_OP_RESULT = 3;
     boolean drainReports;
+    final List<long[]> requests = new ArrayList<>(), results = new ArrayList<>();
+    private final java.util.ArrayDeque<long[]> replies = new java.util.ArrayDeque<>();
     final List<long[]> reports = new ArrayList<>();
     /** The reports of unit id, in arrival order. */
     List<long[]> reportsOf(int id) { List<long[]> r = new ArrayList<>(); for (long[] e : reports) if ((e[1] & 0x7F) == id) r.add(e); return r; }

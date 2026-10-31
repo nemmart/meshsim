@@ -108,6 +108,8 @@ final class Replayer implements Peripheral {
     enum Stall { IMAGE, CODE, NEWEXP, EXP, RLOG, WLOG, OUTQ }
     final long[] stalls = new long[Stall.values().length];
     long passCycles, rowsTotal, rowsM, rowsCtrl, newExpansions, passes;
+    /** PEXT rows whose mask isn't one contiguous run (v1.25: computed and timed like any row; a statistic, 4.19.7). */
+    long pextNonContiguous;
     long passStartAt, passEndAt;
 
     Replayer(int me) { this.me = me; }
@@ -512,6 +514,8 @@ final class Replayer implements Peripheral {
         boolean compressed = (w & 1) == 0;
         int pcInc = !last ? 0 : compressed ? 2 : 4;
         ReplayerAlu.exec(op, vRs1, vRs2, vRd, pc, pcInc, imm0pc0, logWord, so, aluOut);
+        if ((op == ReplayerAlu.PEXT || op == ReplayerAlu.PEXT_S) && vRs2 != 0 && ((vRs2 >>> Long.numberOfTrailingZeros(vRs2)) & ((vRs2 >>> Long.numberOfTrailingZeros(vRs2)) + 1)) != 0)
+            pextNonContiguous++;
         if (aluOut.undefined != null) violate(T, "undefined result (invariant 16): " + aluOut.undefined + " in " + ReplayerAlu.name(op));
         Pending p = new Pending();
         p.instr = in; p.lastOfInstr = last;

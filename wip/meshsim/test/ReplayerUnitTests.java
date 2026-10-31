@@ -13,6 +13,7 @@ final class ReplayerUnitTests {
         programCompressed();
         storeLogOff();
         midStart();
+        pextAnyMask();
         ldToX0();
         controllerFed();
         controllerFedRd0();
@@ -313,6 +314,23 @@ final class ReplayerUnitTests {
     }
 
     // ================================================================ mid-sequence starts (4.19.2, 4.19.4)
+    /** v1.25: PEXT for any mask, timed like any row; a non-contiguous mask is counted, not flagged (4.19.7). */
+    static void pextAnyMask() {
+        T.group("PEXT, a non-contiguous mask");
+        ReplayWindow w = new ReplayWindow(); w.fixedRom();
+        int ins = r(0, A1, A0, 0, A2, OP);                                  // add a2, a0, a1, served by a PEXT_S template
+        w.rom(20, ReplayWindow.W.op(ReplayerAlu.PEXT_S).rd(129).rs1(130).rs2(131).fmt(0).reportC());
+        w.decodeRom(ins, 20);
+        w.pc = 0x1000; w.instrIdx = 1; w.regs[A0] = 0x8000_0000_0000_0001L; w.regs[A1] = 0x8000_0000_0000_0001L;
+        w.setCode(new int[] { ins, ins }, false); w.setLogs(List.of(), false, false);
+        ReplayDriver d = runWindow(w, 2);
+        T.eq(-1L, d.rows.get(0)[7], "two single-bit runs, top bit set: sign-extended from the last bit placed");
+        T.eq(2, d.r.pextNonContiguous, "counted as a statistic");
+        T.check(d.r.violations.isEmpty() && d.r.invalids.isEmpty(), "not flagged: " + d.r.violations + d.r.invalids);
+        long cyc = d.r.passEndAt - d.r.passStartAt;
+        T.check(cyc < 64 + 2 * 3 + 20, "timed like any S row (3 cycles): pass " + cyc);
+    }
+
     static void midStart() {
         T.group("mid-sequence start");
         ReplayWindow w = new ReplayWindow(); templates(w);

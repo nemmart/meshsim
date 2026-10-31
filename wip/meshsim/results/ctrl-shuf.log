@@ -1,1 +1,21 @@
-PENDING (phase 2)
+shuffled child order, seed 4
+boot [meas: CtrlTest boot] (PHASE-2 INTERIM: the resident loader): loader 17 words + hello 38 code + 4 data words = 16 128-bit mode-0 packets and 2 command writes from C&C; all 64 READY at cycle 56, RUN raised at 56, every tile at main's exit by 132
+registers [meas: CtrlTest registers]: the configuration registers read back, write-only ones read 0; counters 20 bits, writes add and wrap (flagged); HIST 17, PTR 21, the STREAM arrays and GROUP 32 bits a word through the window; the send port in modes 0 and 1 to the tile itself at 32, 64 and 128 bits, ROUTER_ADDR + 4/8/16 at mode 0 and fixed under no-increment, W0-W2 cleared per send; counters done after each; the events' registers at reset; STATUS and done readable the next cycle
+command phases [meas: CtrlTest commands]: per GO, all-READY -> GO store (C&C) and READY round trip
+  GO 0: all READY at 222, GO stored at 223, seen by tiles at 224-225
+  GO 1: all READY at 265, GO stored at 266, seen by tiles at 267-268
+  GO 2: all READY at 307, GO stored at 308, seen by tiles at 309-310
+  GO 3: all READY at 349, GO stored at 350, seen by tiles at 351-352
+  GO 4: all READY at 917, GO stored at 918, seen by tiles at 919-920
+  two-command phase: start store 28 cycles after GO on every tile; local copy of 512 records, start -> READY 537 cycles
+  the next command, sent right after GO: its first mailbox write lands 6 cycles after the tile saw GO at the earliest (tile 0), into the other argument block;
+  its slot 0 (zero-argument commands) 6 cycles after GO at the earliest, after the woken tile read the previous command word (the simulator checks every slot-0 landing)
+WFI [meas: CtrlTest wfi]: counters done before WFI falls through in 1 cycle and wfi()'s load returns it; done clears it; GO is sticky (a WFI after a missed GO falls through); READY fires at done when the command landed first; uncounted packets made 0 counters-done edges that the qualifier kept from setting it
+faults [meas: CtrlTest faults] (PHASE-2 INTERIM: a fault halts; phase 4 traps): a store to STATUS, a store to program memory, a sub-word register store, a load from PTR and a misaligned load are bus errors; div and a CSR read are illegal; ecall halts; each cause logged, its error set, no READY; HALT clears the errors and HALT -> RUN restarts every core at the loader
+invariants [meas: CtrlTest invariants]: 4 (done before arrivals), 5 (a bad packet sent), 7 (packet in flight at a line change), 8 (reply overwritten unread), 9 (unexpected arrival: its error set), a reserved register-block word (reads 0, flagged) and the table-window check each fire on a bad program
+block copy [meas: CtrlTest block copy]: 1,024 words (256 128-bit mode-0 packets) big SRAM -> program memory by the 6.5 sequence (mode 0, counter 2), from the start store to the first instruction after WFI: 277 cycles (spec 4.2: about 256 plus the stream's start; v1.0's 512 64-bit packets took 527)
+    uniform (Data(7, 2000)): address generator: 0 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
+16-group all-to-all programmed from C as a two-command phase, gap 0 [meas: CtrlTest all-to-all]: cycles from C&C's start GO store to all 64 READY at C&C
+  data set                   GO -> all READY     bound   over  | M4 start->last wake (Java-driven, M3 harness)  | v3.10 GO -> all DONE (gap 8)
+  uniform (Data(7, 2000))        3139         3080     59  |       3120                                      |
+CtrlTest (shuffled, seed 4): 6784 passed, 0 failed

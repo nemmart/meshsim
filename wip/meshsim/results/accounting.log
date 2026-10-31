@@ -1,1 +1,8 @@
-PENDING (phase 2)
+phase accounting, 16-group all-to-all from C (Data(7, 2000)) [meas: AccountingTest]:
+  #  phase              GO at    cycles  READY spread (slowest)  instr/tile  WFI%   AG req/tile  late  gather/tile  rd-port/tile  AG read lat (max)  inj%  ej%   peaks: link ej toCnC weIn gQ area ptr hist rdPort  C&C
+  0  configure            1011      3463       0 (t0 )              3269     0            0     0            0             0       0.0 (   0)     0    0           1  1     0    0  0    0   0   0      0  1
+  1  start (a2a)          4475      3139      91 (t11)                15    99         2000     0            0             0       5.0 (   5)    64   64           4  3     0    1  0    1   1   0      0  1
+  2  exit                 7615        30       - (t- )                24     5            0     0            0             0       0.0 (   0)     0    0           0  0     0    0  0    0   0   0      0  1
+  total GO -> all READY over 3 phases: 6,632 cycles; whole-run peaks: {link=4, eject=3, toCnC=0, weIn=1, gatherQ=0, area=1, ptrReq=1, histReq=0, agTable=1, readPort=0}
+
+AccountingTest: 11 passed, 0 failed

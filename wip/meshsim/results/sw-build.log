@@ -1,1 +1,13 @@
-PENDING (phase 2)
+loader: 17 words
+a2a: code 724 B, data 64 B, data+bss end 0x0000029c
+blockcopy: code 172 B, data 0 B, data+bss end 0x00000014
+cmd: code 388 B, data 0 B, data+bss end 0x00000058
+faults: code 288 B, data 32 B, data+bss end 0x00000038
+gather: code 228 B, data 0 B, data+bss end 0x00000010
+hello: code 152 B, data 16 B, data+bss end 0x00000030
+inv: code 340 B, data 0 B, data+bss end 0x00000020
+rdport: code 680 B, data 0 B, data+bss end 0x000001b0
+regs: code 952 B, data 0 B, data+bss end 0x00000130
+req: code 152 B, data 0 B, data+bss end 0x00000020
+search: code 1216 B, data 0 B, data+bss end 0x0000051c
+wfi: code 460 B, data 0 B, data+bss end 0x00000040

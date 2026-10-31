@@ -92,6 +92,7 @@ final class TrafficDirector implements Component {
         if (LinkWord.reservedMode(mode)) { reservedDiscarded++; violate("packet in the reserved mode " + mode + " discarded (3.1, invariant 21): " + LinkWord.describe(d, h, hi)); return; }
         if (mode == LinkWord.M_COUNT && ctr == 0) violate("count-only packet on counter 0: it does nothing (3.1, invariant 21): " + LinkWord.describe(d, h, hi));
         if (ctr == 0 && mode != LinkWord.M_GATHER && mode != LinkWord.M_COUNT) checkUncounted(d, h, hi, mode, src, a);
+        if (ctr == 0 && mode == LinkWord.M_WRITE && LinkWord.controller(src) && (LinkWord.region(a) == LinkWord.R_DMEM || LinkWord.region(a) == LinkWord.R_PMEM)) bootKinds(d, h, hi, a);
         if (ctr != 0 && LinkWord.countedMode(mode)) schedule(t, ctr, d, h, hi);
         switch (mode) {
             case LinkWord.M_WRITE -> {
@@ -138,7 +139,7 @@ final class TrafficDirector implements Component {
     /** Decrements scheduled and not yet applied (all counters): the delay line's occupancy. */
     int inFlight() { int s = 0; for (int c = 1; c <= N_COUNTERS; c++) s += inLine[c]; return s; }
     /** The reset (6.1): the counters and the delay line clear. */
-    void resetCounters() { java.util.Arrays.fill(remaining, 0); java.util.Arrays.fill(inLine, 0); java.util.Arrays.fill(lineT, Long.MIN_VALUE); }
+    void resetCounters() { overlayKinds = 0; java.util.Arrays.fill(remaining, 0); java.util.Arrays.fill(inLine, 0); java.util.Arrays.fill(lineT, Long.MIN_VALUE); }
 
     // ================================================================ meshsim's checks
     /** W4-03. Invariant 22: uncounted traffic is mode 0 only, and only commands and boot overlays into controller memory, from a
@@ -163,6 +164,21 @@ final class TrafficDirector implements Component {
             violate("write into the command block other than an uncounted one from C&C 1-3 inside it (4.12; invariant 11): " + LinkWord.describe(d, h, hi));
         if (rep && (size == LinkWord.SIZE_128 || off != ControllerMemories.REPLY + 8 * src))
             violate("write into the reply block other than a 32- or 64-bit reply at the sender's own pair, REPLY + 8 x " + src + " (4.12; invariant 11): " + LinkWord.describe(d, h, hi));
+    }
+
+    /** Invariant 25 (6.2): a unit's overlays and its first command are all broadcast or all unicast (the mesh orders
+     *  packets only within a kind). Overlays since the last command: bit 0 unicast, bit 1 broadcast. */
+    private int overlayKinds;
+    private void bootKinds(long d, long h, long hi, int a) {
+        int kind = LinkWord.dst(h) == LinkWord.BROADCAST ? 2 : 1;
+        int off = LinkWord.offset(a);
+        boolean slot0 = LinkWord.region(a) == LinkWord.R_DMEM && off <= ControllerMemories.COMMAND && off + LinkWord.bytes(LinkWord.size(h)) > ControllerMemories.COMMAND;
+        if (ControllerMemories.inCommand(off) && LinkWord.region(a) == LinkWord.R_DMEM) {
+            if (slot0) {
+                if ((overlayKinds & ~kind) != 0) violate("a command (" + (kind == 2 ? "broadcast" : "unicast") + ") after overlays of the other kind: the mesh orders packets only within a kind (6.2; invariant 25): " + LinkWord.describe(d, h, hi));
+                overlayKinds = 0;
+            }
+        } else overlayKinds |= kind;
     }
 
     /** cm_idle (a diagnostic only in v1.2, 4.8): the port-B pipeline is empty. */

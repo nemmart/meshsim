@@ -280,6 +280,12 @@ public final class CtrlTest {
         o.c.cc.command(9, Registers.CMD_JUMP << 24, Registers.PMEM_BASE).waitCycles(60).send(9, LinkWord.M_WRITE, 0x400, 0x5);
         o.c.run(200);
         T.check(o.c.violationMessages.stream().anyMatch(v -> v.contains("overlay write landed after")), "an overlay after the first command is flagged (6.2)");
+        // invariant 25: unicast overlays, then a broadcast command
+        Mach q = new Mach(Mach.cfg(shuffle));
+        q.c.run(40);
+        q.c.cc.loadWords(9, Registers.PMEM_BASE, new int[] { 1, 2, 3, 4 }).command(LinkWord.BROADCAST, Registers.CMD_JUMP << 24, Registers.PMEM_BASE);
+        q.c.run(300);
+        T.check(q.c.violationMessages.stream().anyMatch(v -> v.contains("invariant 25")), "overlays and a command of different kinds are flagged (6.2, invariant 25)");
         out("invariants [meas: CtrlTest invariants]: 4 (done before arrivals), 5 (a bad packet sent), a packet in flight at a reset (gone), 8 (reply overwritten unread), 9 (unexpected arrival: its error set), a reserved register-block word (reads 0, flagged) and the table-window check each fire on a bad program");
     }
 

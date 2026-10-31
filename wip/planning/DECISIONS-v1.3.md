@@ -222,6 +222,23 @@ Decided (O). Answers T5; makes Q10 moot.
 - **For the table builder:** a long data-independent expansion is emitted as **a loop body plus a repeat count** (and
   any prologue and epilogue), not as its full word sequence.
 
+## 11. The Tracer's time budget, and what the workloads cost it (2026-11-01)
+
+Decided (O). From WORKER12's counts (`WORKER12/REPORT.md`; both workloads at 2²⁹, traced totals matching WORKER9's).
+
+- **The Tracer's time budget: under 100 ms** (owner), taken here **per proof** of 4M traced rows *(to confirm)*.
+- **What the workloads cost** (at about one row per cycle, 1 GHz):
+  - **Cyclone:** 96,687 untraced rows against 371.5 M traced (0.026 %), all from the division family; at most 129 in any window.
+    No secp256k1 inlines.
+  - **EVM Zone:** 32.0 M untraced rows (9.0 % of traced), 98 % of them from 254 DIVQ and 2 DIVR, all in windows 33-36 near the
+    start. **Window 34: 11.07 M untraced rows against 65,536 traced.** Its proof costs about 4 ms of traced rows plus about 11 ms
+    of untraced: **about 15 ms, inside the budget.**
+- **Q8: keep the single Fermat loop** (as built and checked by WORKER9). An addition chain halves the inverse (DIVQ 123,979 →
+  62,409 untraced rows; EVM Zone's total 32.0 M → 16.2 M, window 34 11.07 M → 5.59 M), but isn't needed within the budget; it is
+  candidate C4. A modular-inverse unit in the Tracer is not needed either.
+- **The CSR decision holds** (v1.25 section 6): Cyclone runs 8,751 CSR instructions (10 per trap, 875 traps, at most 160 in any
+  window), EVM Zone none.
+
 ---
 
 ## v1.3 work list
@@ -242,6 +259,7 @@ Options recorded for later, each with the evidence that would justify it.
 |---|---|---|---|
 | C1 | **Rejected** (owner, 2026-10-31; stated in spec 4.7): not worth fixing at a cost per step; it would be if the cost were per query. **A delay per destination:** decrement a counter **2 cycles** after acceptance for writes to controller memory and peripherals (their landing time is fixed, `cm_latency`, `rp_latency`), and K = 8 only for big SRAM | WORKER4's measurement: a read-port search step costs about **6 cycles more** than in v1.1 (35.9 + 37.42 per active search against 29.8 + 37.43), because v1.2 decrements at K = 8 where v1.1 counted controller-memory writes at landing. The extra is in the **fixed** term: about 6 cycles **per search step**, shared by all the searches active in it, not per probe (the per-search slope is unchanged). So roughly 6 × the steps per split, about a hundred cycles per split and a few hundred per sort: **negligible today**. Streaming work doesn't notice | two delay taps; a counter may then take two decrements in one cycle (one from each tap), a small adder change. Adopt if the sort's measurements show the split slowing |
 | C2 | **Signed counters** (v1.2 section 36): an arrival before arming just goes negative, so the order of arming and arrival stops mattering, and strays are caught as done early | removes the GO-to-arming window | a signed counter; the immediate stray report becomes meshsim's only |
+| C4 | **An addition chain for the modular inverse** (11): libsecp256k1's for DIVQ, a hand-built one for DIVR | halves the inverse's untraced rows (EVM Zone 32.0 M → 16.2 M; window 34 11.07 M → 5.59 M) | the segment format already supports it (WORKER9); adopt if a workload runs far more inverses than EVM Zone |
 | C3 | **Trim the 256-bit word's storage** to the bits in use, with the links staying 256 wide (v1.2 section 2) | power: constant-zero flops are still clocked | revisit when the design has settled |
 
 ---

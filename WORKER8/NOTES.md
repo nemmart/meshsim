@@ -32,6 +32,7 @@ phase-3 tip, whose replayer tests don't compile). Merge `v1.2-meshsim` again onc
 |---|---|
 | branch made at `e7a2106` | none (the sort's steps PENDING (sort port), as on v1.2-meshsim) |
 | step 1 (the program ported) | none in run_tests (the sort's steps still PENDING); the sort builds but has not run |
+| step 3 | none known: layout, build, p1 and sort pass; sort-shuf and the full-mode BT runs not yet run on v1.2 |
 
 ## Log
 
@@ -47,3 +48,10 @@ phase-3 tip, whose replayer tests don't compile). Merge `v1.2-meshsim` again onc
   ERRORS = 0, the PTR[64] checks retired, counters 1-3 in the state dump; Inputs hashes the interim loader as
   image/loader.bin. First runs: P1 all six sets pass (42 checks; v1.1 54, the 12 PTR[64] checks gone), L1 -1,708 and
   L2 -1,200 cycles on every set; the whole sort, uniform kv32 n=2000, passes: 236,037 vs v1.1's 241,114.
+- **Step 3** (2026-10-31): run_tests.sh's sort steps back (layout, build, p1, sort, sort-shuf; full mode: the BT pair
+  with KeyGen's trace10-10 at 16,384); split-barrier.patch is now a unified diff (check_layout applies it). The quick
+  sort suite passes: 104 checks (v1.1 124: the 20 PTR[64] checks retired), every set on v1.1's path, every total
+  2,669-5,230 cycles below v1.1's. v1.1 built from `main` in a worktree (/tmp/v11) for per-function comparisons
+  (-Dsort.watch). Explained so far: xchg +80 (ROUTER_HDR's dst moved to [31:25]: one shift per send, + the last
+  decrement's K); plan_transfer +306 and config_direct_lb +83 (to confirm in the disassembly: d in STREAM_COUNT).
+  Still to run: sort-shuf (in progress), the BT pair, the full suite; then the Quest runner.

@@ -488,3 +488,236 @@ Unchanged in all three versions: the queues' sizes; the ROM (512 × 128) and dec
 | X7 | a value answer is a mode-8 reply | a 32/64-bit **mode-0 write to the named reply address**, on the named counter (6.7) | changed | v1.2 | D6, D40 |
 | X8 | writes: token-gated mode-3 write streams to C&C | **by tags**: the file system owns a pool, each tag a 2–4 KB window in the RW engine's region, written by plain mode-0 packets to dst 65; fan-in is the file system's to pace *(Deferred, item 119)* (6.7) | changed | v1.2 | D25, D33 |
 | X9 | — | LPDDR controller and PHY behind the engine's AXI bus, kept across a soft reset (7) | new | v1.2 | D35 |
+
+---
+
+## 3. Register and field tables
+
+**Conventions.**
+- Every table has a **v1.1**, a **v1.2** and a **v1.25** column. Outside the replayer's words, v1.2 and v1.25 are identical; "=" in the v1.2 column means "as v1.25".
+- Addresses are the low 12 bits of 0xFFFFF8xx–0xFFFFFFxx unless marked.
+- Access: R, W, R/W, R/W1C.
+
+### 3.1 The controller's register block (8.1)
+
+Every offset moved at **v1.2**, so every image is rebuilt against `mesh.h` 1.2. Rows are in v1.25 order. v1.1 registers with no v1.25 counterpart are at the end.
+
+| v1.25 offset | v1.25 register (access) | v1.2 | v1.1 offset, register (access) | note |
+|---|---|---|---|---|
+| 0x800 | `PARAMS` (R) | = | 0x800 `TILE_STATUS` (R), its constant fields | 3.2 |
+| 0x804 | `STATUS` (R) | = | 0x800 `TILE_STATUS`, its live bits | 3.2; bits renumbered |
+| 0x808 | `ERRORS` (R) | = | 0x804 `TILE_CONDITIONS` (R) | 3.3 |
+| 0x80C | `PULSE_DONE` (W) | = | 0x808 `TILE_PULSE` [0] | C35 |
+| 0x810 | `PULSE_DMA` (W) | = | 0x808 `TILE_PULSE` [1] | T6 |
+| 0x814 | reserved | = | (`TILE_PULSE` [3] GO → C&C 1's `PULSE_GO`; [2] → a window's `PULSE_RUN`) | |
+| 0x818 | `EVENTS` (R) | = | 0x848 `WAKE_EVENTS` (R) | 3.4 |
+| 0x81C | `EVENTS_PEEK` (R) | = | 0x84C `WAKE_PEEK` (R) | |
+| 0x820 | `EVENTS_MASK` (R/W) | = | 0x850 `WAKE_MASK` (R/W) | [15:0] (was [22:0]) |
+| 0x824 | `EVENTS_REQUIRED` (R/W) | = | 0x854 `WAKE_REQUIRED` (R/W) | [15:0] |
+| 0x828 | `ROUTER_HDR` (R/W) | = | 0x80C `ROUTER_SET_HDR` (W) | 3.5 |
+| 0x82C | `ROUTER_ADDR` (R/W) | = | (in `ROUTER_SET_HDR` [31:11]) | 32-bit |
+| 0x830–0x838 | `ROUTER_SET_W0`–`W2` (W) | = | 0x810–0x818 | unchanged behaviour |
+| 0x83C–0x844 | `ROUTER_SEND_32`, `_64`, `_128` (W) | = | 0x81C–0x824 | unchanged behaviour |
+| 0x848–0x854 | `REQUEST_SET_W0`–`W2`, `REQUEST_SEND` (W) / `REQUEST_GET_W0`–`W2`, `REQUEST_RECEIVE` (R) | = | 0x858–0x864 | T37–T39 |
+| 0x858 | `DMA_CONFIG` (R/W) | = | 0x828 `DMA_CONFIG` (W) | fields unchanged |
+| 0x85C | `DMA_RECORD_BASE_ADDRESS` (R/W) | = | 0x82C (W) | record-aligned (T20) |
+| 0x860–0x878 | `WRITE_COUNTER_1`–`7` (R/W), 20 bits, a write adds | = | 0x830 `DMA_SRAM_REMAINING`, 0x834 `DMA_CM_REMAINING`, 0x838 `DMA_REPLY_REMAINING`, 0x83C `DMA_PERIPH_REMAINING` | C16 |
+| 0x87C | `SRAM_RD_ADDR_QUEUE` (R/W) | = | 0x840 (R/W) | |
+| 0x880 | `SRAM_RD_DEST_ADDR` (R/W) | = | 0x844 (W) | 3.5 |
+| 0x884–0x9F4 | reserved: read 0, stores ignored | = | (0x8A0– unmapped: bus error) | C9, C34 |
+| 0x9F8 | simulator-only exit word (W) | = | — | reserved on hardware |
+| 0x9FC | simulator-only trace word (W) | = | — (trace at 0xFFFFFFF0) | reserved on hardware |
+| 0xA00–0xBFC | peripheral 1's window | = | (0xA00– unmapped) | 3.6 |
+| 0xC00–0xDFC | peripheral 2's window | = | — | |
+| 0xE00–0xFFC | peripheral 3's window | = | — | |
+| — | gone | — | 0x868 `SENDER_SEND`, 0x86C `SENDER_ADDR` | P11 |
+| — | gone | — | 0x870–0x88C `PERIPH_STATUS_0`–`7` | R9 |
+| — | gone (→ C&C 1's peripheral, 3.7) | — | 0x890 `UART_TX`, 0x894 `UART_RX`, 0x898 `UART_STATUS`, 0x89C `UART_DIVISOR` | P13 |
+| table window | 0xFFFF2000–0xFFFF35FF *(Proposed, item 120)* | = | 0x00002000–0x00003FFF | T31 |
+
+**Load latency** (C6, T33): **2 cycles** for every word of the block and the windows, **1** for the table window. v1.1 allowed 1 or 2, at the implementation's choice.
+
+### 3.2 `PARAMS` and `STATUS` (8.2)
+
+| field | v1.1 `TILE_STATUS` | v1.2 | v1.25 |
+|---|---|---|---|
+| `rd_running` | [0] | = | `STATUS` [0]; falls with DMA run done (T7) |
+| `rd_done` | [1] | = | `STATUS` [1] |
+| GATHER busy | [2] | = | `STATUS` [2] |
+| `periph_running` | [3] | = | → the peripheral's `STATUS` [0] |
+| `sender_busy` | [4] | = | → the peripheral's `STATUS` [1] (DMA in progress) |
+| `send_busy` | [5] | = | `STATUS` [3] |
+| `ts_busy` | [6] | = | gone |
+| `mem_idle` (reset 1) | [7] | = | gone |
+| `cm_idle` (reset 1) | [8] | = | gone |
+| `done` | [9], **reset 1**, forced 1 in HALT | = | `STATUS` [4], **reset 0** (C28) |
+| command landed | [10] | = | `STATUS` [5] |
+| `request_busy` | [11] | = | `STATUS` [6] |
+| peripheral type | [15:12] (1 = replayer) | = | → each peripheral's `PARAMS` [7:0] (replayer = **4**) |
+| peripherals present | — | = | `PARAMS` [2:0], bit *n* − 1 for peripheral *n*; 0b001 on tiles and C&C 1–3 |
+| endpoint id | [26:20], 0–63 | = | `PARAMS` [26:20], 0–66 |
+| big-SRAM size (256 KB units − 1) | [31:27] | = | `PARAMS` [31:27]; 7 on C&C 1–3 (2 MB) |
+| other bits | [19:16] spare | = | `PARAMS` [19:3] spare; `STATUS` [31:7] reserved |
+
+### 3.3 `ERRORS` (8.3; v1.1 `TILE_CONDITIONS`)
+
+| bit | v1.1 | v1.2 | v1.25 | kind |
+|---|---|---|---|---|
+| 0 | router overflow | = | router overflow (link, eject, fifth-port FIFOs) | P |
+| 1 | bad mode or size | = | **bad packet or misaligned access** (L7, T2) | P |
+| 2 | unexpected arrival (at acceptance) | = | unexpected arrival (**at the decrement**) | P |
+| 3 | drift | = | drift | P |
+| 4 | write-engine input overflow | = | = | P |
+| 5 | table request overflow | = | = | H |
+| 6 | GATHER queue overflow | = | = | H |
+| 7 | read-port error (overflow or misaligned) | = | read-port **overflow only** | P |
+| 8 | done early | = | = | P |
+| 9 | bus error | = | bus error (now traps; wider set, C9) | P (H) |
+| 10 | illegal instruction | = | illegal instruction (traps) | P (H) |
+| 11 | bad peripheral write | = | **peripheral 1, live** (its `ERRORS` ≠ 0) | per peripheral |
+| 12 | peripheral condition 2 (replayer: queue overrun) | = | **peripheral 2, live** | per peripheral |
+| 13 | peripheral condition 3 (replayer: invalid expansion) | = | **peripheral 3, live** | per peripheral |
+| 14 | receive underflow | = | = (every `REQUEST_RECEIVE` load on a tile) | P |
+| clearing | entering HALT and chip reset | = | **sticky until the reset** ([13:11] follow their peripheral) | |
+
+### 3.4 `EVENTS` (8.10; v1.1 `WAKE_EVENTS`)
+
+| bit | v1.1 | v1.2 | v1.25 |
+|---|---|---|---|
+| 0 | `DMA_SRAM_REMAINING` done | = | write counter 1 done |
+| 1 | `DMA_CM_REMAINING` done | = | write counter 2 done |
+| 2 | `DMA_REPLY_REMAINING` done | = | write counter 3 done |
+| 3 | `DMA_PERIPH_REMAINING` done | = | write counter 4 done |
+| 4–6 | reserved | = | write counters 5–7 done |
+| 7 | reserved | = | **counters done** |
+| 8 | GO | = | GO (mesh tiles only) |
+| 9 | counters done | = | **command landed** |
+| 10 | command landed | = | **DMA run done** (cleared by `PULSE_DMA`) |
+| 11 | engine run done | = | request FIFO no longer full |
+| 12 | request FIFO no longer full | = | request pending (live) |
+| 13 | service line 1 (replayer: code low-water) | = | **peripheral 1** (live) |
+| 14 | service line 2 (read-log low-water) | = | **peripheral 2** (live) |
+| 15 | service line 3 (write-log low-water) | = | **peripheral 3** (live) |
+| 16 | service line 4 (expansion low-water) | = | reserved |
+| 17 | service line 5 (new expansion) | = | reserved |
+| 18 | service line 6 (done) | = | reserved |
+| 19 | `REQUEST_PENDING` (live) | = | reserved |
+| 20 | sender idle | = | reserved |
+| 21 | UART RX not empty (live) | = | reserved (→ C&C 1's peripheral) |
+| 22 | UART TX not full (live) | = | reserved (→ C&C 1's peripheral) |
+| mask reset | [8] \| [9] | = | **[8] \| [7]** |
+
+### 3.5 Header registers and the common layout (8.1)
+
+All four share [31:17] = dst/*d* [31:25], mode [24:22], counter [21:19], size [18:17], copied as [24:17] → link [167:160].
+
+| register | v1.1 | v1.2 | v1.25 |
+|---|---|---|---|
+| `STREAM_SRC` | source [20:0]; spare [31:21] | = | source [20:0]; **gap after [23:21]**; spare [31:24] |
+| `STREAM_DEST` | dest word [20:0]; *d* [27:21]; spare [31:28] | = | **destination address [31:0]** (mode 0 only) |
+| `STREAM_COUNT` | count [17:0]; mode [21:18]; read size [23:22]; gap after [26:24]; spare [31:27] | = | count [16:0]; read size [18:17]; **counter [21:19]**; mode [24:22]; ***d* [31:25]** |
+| `ROUTER_HDR` (v1.1 `ROUTER_SET_HDR`, W) | dst [6:0]; mode [10:7]; addr [31:11] | = | R/W: **no-increment [0]**; spare [16:1]; size [18:17] reserved (reads 0); counter [21:19]; mode [24:22]; dst [31:25] |
+| `ROUTER_ADDR` | — | = | R/W, [31:0] |
+| `SRAM_RD_DEST_ADDR` (W in v1.1) | destination [13:0] (packed CM word); size [15:14]; spare [31:16] | = | R/W: destination [16:0] (data-memory byte offset); size [18:17]; counter [21:19]; reserved [31:22] |
+| `SRAM_RD_ADDR_QUEUE` | store: chunk [20:0] (1, 2 or 4 words); load: free entries | = | store: chunk [20:0] (32, 64 or 128 bits); load: free entries |
+| a window's `DMA_HDR` (v1.1 `SENDER_SEND`) | dest [6:0]; mode [10:7]; queue [12:11]; count [28:13]; spare [31:29] | = | count [11:0]; queue [13:12]; spare [16:14]; size [18:17] reserved; counter [21:19]; mode [24:22]; dst [31:25] |
+| a window's `DMA_ADDR` (v1.1 `SENDER_ADDR`) | word address [20:0] | = | [31:0] byte address |
+| `DMA_CONFIG` | kind [0]; start [8:1]; count [17:9]; bucket digit [20:18]; histogram digit [23:21]; *k* − 1 [26:24] (W) | = | same fields, **R/W** |
+| `DMA_RECORD_BASE_ADDRESS` | chunk [20:0] (W) | = | chunk [20:0], record-aligned (R/W) |
+| write counters | count [19:0] | = | count [19:0] |
+
+### 3.6 A peripheral's standard window (4.17.4, 8.11)
+
+Peripheral *n*'s word *w* is at 0xFFFFF800 + 0x200·*n* + 4*w*. All of it is **new at v1.2**. v1.1's equivalents are noted.
+
+| word | register (access) | bits | v1.1 equivalent |
+|---|---|---|---|
+| 0 | `PARAMS` (R) | [7:0] type, [15:8] version, rest peripheral-defined | `TILE_STATUS` [15:12] |
+| 1 | `STATUS` (R) | [0] run in progress, [1] DMA in progress | `periph_running`, `sender_busy` |
+| 2 | `ERRORS` (R) | peripheral-defined, sticky | `TILE_CONDITIONS` [13:11] |
+| 3 | `PULSE_RUN` (W) | store 1 | `TILE_PULSE` [2] |
+| 4 | `PULSE_DMA` (W) | store 1 | `SENDER_SEND` (as a pulse) |
+| 5 | `EVENTS` (R) | [0] run done, [1] DMA done, rest defined; counted per bit | service lines `WAKE_EVENTS` [18:13], sender idle [20] |
+| 6 | `EVENTS_PEEK` (R) | as `EVENTS` | `WAKE_PEEK` |
+| 7 | `EVENTS_MASK` (R/W) | 0 at reset | `WAKE_MASK`'s line bits |
+| 8 | `DMA_HDR` (R/W) | 3.5 | `SENDER_SEND` |
+| 9 | `DMA_ADDR` (R/W) | [31:0] | `SENDER_ADDR` |
+| 10–31 | reserved | | |
+| 32–127 | peripheral-defined | | `PERIPH_STATUS_0`–`7` |
+
+### 3.7 C&C 1's peripheral, peripheral-defined words (8.13, 8.14)
+
+All of it is **new at v1.2**. Base 0xFFFFFA00.
+
+| word (offset) | register (access) | v1.1 equivalent |
+|---|---|---|
+| 32–34 (0xA80–0xA88) | `ERROR_LINES_0`–`2` (R, live) | C&C's single ORed error bit |
+| 35–36 (0xA8C–0xA90) | `READY_LINES_0`–`1` (R, sticky) | C&C's READY bits |
+| 37–38 (0xA94–0xA98) | `READY_EXPECT_0`–`1` (R/W) | — |
+| 39 (0xA9C) | `PULSE_GO` (W) | `TILE_PULSE` [3] on C&C |
+| 40 (0xAA0) | `WATCHDOG` (R/W) | C&C's watchdog (software) |
+| 41 (0xAA4) | `LED` (R/W) [0] | — |
+| 42 (0xAA8) | `UART_TX` (W) | 0x890 |
+| 43 (0xAAC) | `UART_RX` (R) | 0x894 |
+| 44 (0xAB0) | `UART_DIVISOR` (R/W) | **0x89C** |
+| 45 (0xAB4) | `UART_STATUS` (R/W1C) | **0x898** |
+| 46–63 | reserved | |
+| 64–127 | host interface *(Deferred)* | |
+| `ERRORS` [0] | unit-error bit (live) | |
+| `EVENTS` [2]–[5] | all tiles READY (live), watchdog (d1), UART RX not empty (live), UART TX not full (live) | `WAKE_EVENTS` [21], [22] |
+
+### 3.8 The replayer (4.19.3, 4.19.9, 4.19.12, 8.11)
+
+**Its window's words.**
+
+| word | v1.1 | v1.2 | v1.25 |
+|---|---|---|---|
+| `PARAMS` [7:0] | type 1 in `TILE_STATUS` [15:12] | **4** | 4 |
+| `STATUS` [0] | `periph_running` | run in progress | = v1.2 |
+| `ERRORS` | tile [11] bad write, [12] overrun, [13] invalid expansion | [0] bad write, [1] overrun, [2] invalid expansion | = v1.2 |
+| `EVENTS` | service lines [18:13] | [0] run done, [2]–[5] code, read-log, write-log, expansion credits (depth 2), [6] new expansion | = v1.2 |
+| 32 `ROWS_RUN` | `PERIPH_STATUS_0` [15:0] | [15:0] | = v1.2 |
+| 33 `EXPANSION_OFFSET` | `PERIPH_STATUS_0` [31:16] | [15:0] | = v1.2 |
+| 34 `EXPANSION_OPCODE` | `PERIPH_STATUS_1` | [31:0] | = v1.2 |
+
+Its region map is R3.
+
+**The expansion word (128 bits; only [63:0] defined).**
+
+| bits | v1.1 | v1.2 | v1.25 |
+|---|---|---|---|
+| [7:0] `opcode` | 0–167 | = v1.1 | **0–170, renumbered** (3.9) |
+| [15:8], [23:16], [31:24] `rd`, `rs1`, `rs2` operand codes | | = | = (146–255 invalid in a replayer) |
+| [43:32] `seq_remaining` | | = | = |
+| [44] `next_from_value`, [45] `hold`, [47:46] `rd0`, [50:48] `format`, [51] `virt`, [52] `imm0_pc0`, [53] `report_c`, [54] `from_log`, [55] `untraced` | | = | = |
+| [62:56] | `advice_reg` (tracer only) | = | **[61:56] `advice_reg`** (register − 146) |
+| [62] | (part of `advice_reg`) | = | **`sign_imm`** |
+| [63] | spare | = | **`offset_imm`** |
+
+**The output row (5 × 128 bits).**
+
+| word, bits | v1.1 | v1.2 | v1.25 |
+|---|---|---|---|
+| 0 [39:32] `opcode` | `VirtualAdvice` = 122 | = | **126**, and every renumbered opcode |
+| 0 [86] | spare | = | **`imm_signed`** |
+| 0 [127:87] | spare | = | spare |
+| 1 [127:64] `imm` | sum of immediate slots | = | the row's immediate (`ShiftData…`: `shift_offset`); 0 for advice |
+| 4 [63:0] `mem_addr` | rs1 + imm for LD, SD | = | the eight memory opcodes; narrow rows rounded down |
+| 4 [127:64] `mem_value` | LD: rd after; SD: pre-value | = | load rows: rd after; store rows: pre-value |
+| everything else | | = | = |
+
+### 3.9 The row-opcode renumbering
+
+`spec/replayer-opcodes.md` **section 2.0** lists all 61 changes. In brief:
+
+| v1.1 = v1.2 codes | v1.25 codes | shift |
+|---|---|---|
+| 0–109 | 0–109 | none |
+| — | 110–115 | new: `VirtualLoadB/H/W`, `VirtualStoreB/H/W` |
+| 110–111 | 116–117 | +6 |
+| 112–113 | — | removed: the alignment assertions |
+| 114–153 | 118–157 | +4 |
+| 154 | — | removed: `VirtualAlignAddr` |
+| 155–167 | 158–170 | +3 |
+
+The complete map, generated from the two appendices, is also in `WORKER13/opcode-map.txt`.

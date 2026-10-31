@@ -12,3 +12,10 @@
 > (wip/sw/recipes/rcp_replay.c, recipe 26 in RECIPES.md) and its test-side template_lookup need the normalized key; that's in
 > your scope, since you own the replayer's software. Regenerate the book with wip/sw/recipes/gen_book.py and keep
 > check_book.py passing.
+
+> Where the deliveries will be, from WORKER9, once Quest tasks 079 (EVM Zone) and 080 (Cyclone) finish: full deliveries in
+> /tmp/w9-deliveries on the runner box, with a combined manifest.json listing both programs (evm-zone-29, cyclone-29), the
+> window files, and the universal tables copied into each program directory; the selected windows in
+> /tmp/w9-deliveries-selected in the same layout (also packed as /tmp/w9-selected-windows.tgz). Both carry imm_signed at
+> word 0 bit [86]. Don't use the older /tmp/w9-selected-windows-821e1bd.tgz, which predates imm_signed. WORKER9 will report
+> the manifest checksums when the tasks finish; your kit's -d and -m take them from there.

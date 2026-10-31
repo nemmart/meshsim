@@ -1,6 +1,6 @@
-# meshsim v1.2 (WORKER8's sort port, branch v1.2-sort) kit: SHA-256 of every input a run reads (java Inputs check HASHES)
-a2aebd6cdd4f7747f74d3e49fcad0836875f11830756bfe3293e9d0de9e48221  meshsim.jar
-8e4b8898df976fe97f1871cbbf57cd380bfd38180890234014a014ea273552eb  image/loader.bin
+# meshsim v1.2 (the sort port; rebuilt by WORKER4 on the combined v1.2-meshsim, the boot ROM in place of the interim loader) kit: SHA-256 of every input a run reads (java Inputs check HASHES)
+ec35181e0e38759402a019978dcf0e9c438dded9eb206780d11179841bf22135  meshsim.jar
+23ca7f154c85b8ae30fbc4ee9fbcc01fc71839147172a229f78989189353707c  sw/bootrom.hex
 60060d9cf9447de464764d4905f19e16f955abedb17784b7ffe25da912ca9437  image/sort.code.bin
 412d9f3fa18dac9d629472b3935d12acd529a0725f39f848ae270d71fc5c31f7  image/sort.data.bin
 b46445aa2230f47f1b296fbccf101f985a03f3da1fbf6d891bf6f8336c654750  image/sort.sym

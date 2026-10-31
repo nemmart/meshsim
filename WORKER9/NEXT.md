@@ -8,5 +8,6 @@ first. Then:
 > row, the new VirtualLoad* rows included; make the encoder do the same. (2) The acceptance runs won't store full
 > deliveries: each runner task will generate its shard of windows with your writer, replay them at once and discard them.
 > So make the writer able to produce any range of windows on its own, quickly, without first producing the whole program.
-> Also: the reference rows carry a sign flag (sign_imm shapes Jolt's 128-bit imm()), proposed at word 0 bit [86]; follow
-> the spec when WORKER10 confirms the position.
+> Also: the reference rows carry a sign flag, **`imm_signed` at word 0 bit [86]**, equal to the expansion word's
+> `sign_imm` (sign_imm shapes Jolt's 128-bit imm()). WORKER10 has confirmed it in the v1.25 spec (branch v1.25,
+> 4.19; its WORKER10/REPORT.md states the layout exactly); the writer must set it.

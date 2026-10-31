@@ -120,9 +120,9 @@ From WORKER11's questions; the integrator's answers, to review.
 
 - **Q1, signedness in the reference rows: a flag in the row** (revised 2026-11-01, from WORKER10's finding). The row's
   immediate is already 64 bits; what `sign_imm` determines is how Jolt forms its **128-bit `imm()`** from it, so extending
-  the stored immediate can't carry the information, and the row needs **a spare bit saying it**: *(proposed)* word 0 bit
-  [86], as WORKER11 proposed. WORKER10 fixes the position in the spec; the replayer model and WORKER9's delivery writer
-  follow exactly.
+  the stored immediate can't carry the information, and the row needs **a spare bit saying it**: **word 0 bit [86], `imm_signed`**,
+  equal to the expansion word's `sign_imm` (confirmed by WORKER10 in the v1.25 spec: word 0 [127:86] was spare and the 80-byte
+  row has no other spare bits). The replayer model and WORKER9's delivery writer follow exactly.
 - **Q2, the write log's last-load entry (E[15]) is updated by every load row**, the new `VirtualLoad*` rows included. The
   delivery writer's encoder does the same.
 - **Q3:** `offset_imm` is set only on `ShiftData*` rows (jolt-cpp records their immediate as the shift offset); meshsim flags it

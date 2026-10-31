@@ -52,3 +52,9 @@ acceptance kit). Until WORKER10's `v1.25` spec branch exists, the design is DECI
   the time spread over all 64 tiles' routers/SRAM/queues. Parking tiles 1-63 gives identical rows, cycles and stalls
   on every window tried; end-of-run guard Chip.parkedUntouched. ~1.8 s per 65,536-row window warm (36K rows/s) vs
   7.9-13 s full chip: ~4-7x. run_shard -s ABF checks B and F cycles agree.
+- Kit reads WORKER9's layout (/tmp/w9-deliveries/PROG/, PROG.manifest.json beside, keys without window prefix);
+  `-x K` adds full-chip Stage F on every K-th window (cycles must equal B's).
+- **Quest task 077-w11-calibrate** pushed (quest 84fd71b; kit sha 6c3d5307..., built before -x, which calibrate doesn't use).
+  Next: read results/077-w11-calibrate/calib/j*/SUMMARY.txt, finalize REPORT section 4, then the shard tasks once
+  WORKER9 gives delivery paths + manifest SHA-256 (tasks/hold/070, 071 write /tmp/w9-deliveries/{evm-zone-29,cyclone-29}).
+- Quest identity: git config user.name WORKER11 in /home/claude/quest.

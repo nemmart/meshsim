@@ -1,5 +1,10 @@
 # Worker 4: meshsim to v1.2
 
+> **Scope update** (2026-10-31): you own **the replayer port end to end**, including the replayer's software in
+> `wip/meshsim/sw/replay/`, its suites (ReplayerTest, StageB) and its recipe. **The sort port is WORKER8's**, on the
+> branch `v1.2-sort`, made from yours; it may change the sort's steps in `run_tests.sh`. Requests from it for
+> simulator changes arrive in `WORKER8/REQUESTS.md`.
+
 You are bringing meshsim, the cycle-level simulator of the mesh (part of an ASIC for proving the Jolt zkVM),
 from the v1.1 machine to v1.2. The v1.2 spec is written and reviewed, and the v1.2 recipes are written and
 compile; none of it has run. **Your simulator is where v1.2 first runs**, and the recipes are its first tests.

@@ -107,3 +107,11 @@ phase-3 tip, whose replayer tests don't compile). Merge `v1.2-meshsim` again onc
   program memory is the full 32 KB. Cycle-identical (uniform kv32 235,663). On the merged branch: P1 42 passed, the
   sort 104 passed, shuffled running. WORKER4's own suites after their phase 4 are theirs (their NOTES: green from
   f7c694f).
+- **Step 9, ready to merge** (2026-10-31): on the branch after the phase-4 merge (the boot ROM), P1 (42), the sort (104)
+  and the shuffled sort (104) pass, cycle-identical to the logs before the merge on every set (results/sort*.log
+  replaced with these runs). The BT pair and the full-size runs were run before the ROM merge (tasks 070-072 and
+  results/sort-bt-*.log); the ROM changes only boot, which is outside the sort's measured total.
+
+  | push | known-failing |
+  |---|---|
+  | step 9 (ready to merge) | none in the sort's steps; WORKER4's suites as their NOTES say for the merged commit |

@@ -45,3 +45,4 @@ See bottom: per-turn log.
   not kept: section 2 rows rebuilt from WORKER9 summary.txt + case ranges in PR #2's trace_owner.cpp, sections 6-9 from
   WORKER9 outputs), CHANGES-v1.25.md, REPORT.md. Remaining: item 137's re-citation; follow WORKER11's findings and
   WORKER9's Tracer tables if the replayer's tables change.
+- T2: merged main's K change (DECISIONS-v1.2 s49) cleanly; v1.25's text equals v1.2's there, so no CHANGES-v1.25 entry (WORKER10/NEXT.md done).

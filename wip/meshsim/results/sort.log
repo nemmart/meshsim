@@ -1,48 +1,48 @@
-inputs: meshsim.jar=(classes) image/loader.bin=8e4b8898df976fe97f1871cbbf57cd380bfd38180890234014a014ea273552eb image/sort.code.bin=79bb6d2677bb3297574d3978d64fca9660dea2bd37f69bd4df39e66a1318c69c image/sort.data.bin=412d9f3fa18dac9d629472b3935d12acd529a0725f39f848ae270d71fc5c31f7 image/sort.sym=c76545340ae08a6f64bb4d19cb2a1d160eab3263541204feae44e3cf55141dcf hops.txt=a3b90f3c2fbc64f1a93c8c0ff916cfbaf40823aae38c4540811482873741d3da
-sort uniform n=2000 128-bit values [meas: SortTest]: path direct; steps (GO -> next GO): L1 22,768; SPLIT 188,151; XB 8,597; RED 5,457; K 3,909; V 3,186; L2 20,253; 24 empty commands 1,032
-    TOTAL 253,353 cycles (L1 GO -> L2 all READY; real split), of which C&C turnaround 96; ready_latency 1; direct-path bound 4*sum(R) = 3,112, V 8*sum(R) = 6,224; GATHER queue peak 5 of 16; stack headroom 20540 B
+inputs: meshsim.jar=(classes) image/loader.bin=8e4b8898df976fe97f1871cbbf57cd380bfd38180890234014a014ea273552eb image/sort.code.bin=60060d9cf9447de464764d4905f19e16f955abedb17784b7ffe25da912ca9437 image/sort.data.bin=412d9f3fa18dac9d629472b3935d12acd529a0725f39f848ae270d71fc5c31f7 image/sort.sym=b46445aa2230f47f1b296fbccf101f985a03f3da1fbf6d891bf6f8336c654750 hops.txt=a3b90f3c2fbc64f1a93c8c0ff916cfbaf40823aae38c4540811482873741d3da
+sort uniform n=2000 128-bit values [meas: SortTest]: path direct; steps (GO -> next GO): L1 22,768; SPLIT 188,151; XB 8,287; RED 5,457; K 3,848; V 3,186; L2 20,253; 24 empty commands 1,032
+    TOTAL 252,982 cycles (L1 GO -> L2 all READY; real split), of which C&C turnaround 96; ready_latency 1; direct-path bound 4*sum(R) = 3,112, V 8*sum(R) = 6,224; GATHER queue peak 5 of 16; stack headroom 20540 B
     address generator: 254720 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
     M14: zero-length groups 0 (summed over tiles), of which with a gap 0 (1 + gap since 10 October); group-run stall cycles 0 (drift)
-sort uniform n=2000 32-bit values [meas: SortTest]: path direct; steps (GO -> next GO): L1 16,696; SPLIT 188,151; XB 8,213; RED 4,998; K 3,194; L2 14,183; 14 empty commands 602
-    TOTAL 236,037 cycles (L1 GO -> L2 all READY; real split), of which C&C turnaround 85; ready_latency 1; direct-path bound 4*sum(R) = 3,112; GATHER queue peak 0 of 16; stack headroom 20540 B
+sort uniform n=2000 32-bit values [meas: SortTest]: path direct; steps (GO -> next GO): L1 16,696; SPLIT 188,151; XB 7,839; RED 4,998; K 3,194; L2 14,183; 14 empty commands 602
+    TOTAL 235,663 cycles (L1 GO -> L2 all READY; real split), of which C&C turnaround 85; ready_latency 1; direct-path bound 4*sum(R) = 3,112; GATHER queue peak 0 of 16; stack headroom 20540 B
     address generator: 0 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
     M14: zero-length groups 0 (summed over tiles), of which with a gap 0 (1 + gap since 10 October); group-run stall cycles 0 (drift)
-sort few n=1000 128-bit values [meas: SortTest]: path direct (stage 2 ran); steps (GO -> next GO): L1 14,768; SPLIT 140,603; XB 8,597; RED 4,944; XC 1,299; TH 13,496; K 15,187; V 14,464; L2 13,253; 22 empty commands 946
-    TOTAL 227,557 cycles (L1 GO -> L2 all READY; real split), of which C&C turnaround 96; ready_latency 1; direct-path bound 4*sum(R) = 14,396, V 8*sum(R) = 28,792; GATHER queue peak 5 of 16; stack headroom 20540 B
+sort few n=1000 128-bit values [meas: SortTest]: path direct (stage 2 ran); steps (GO -> next GO): L1 14,768; SPLIT 140,603; XB 8,287; RED 4,944; XC 1,299; TH 13,496; K 15,126; V 14,464; L2 13,253; 22 empty commands 946
+    TOTAL 227,186 cycles (L1 GO -> L2 all READY; real split), of which C&C turnaround 96; ready_latency 1; direct-path bound 4*sum(R) = 14,396, V 8*sum(R) = 28,792; GATHER queue peak 5 of 16; stack headroom 20540 B
     address generator: 126720 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
     M14: zero-length groups 0 (summed over tiles), of which with a gap 0 (1 + gap since 10 October); group-run stall cycles 0 (drift)
-sort ragged n=1000 32-bit values [meas: SortTest]: path direct; steps (GO -> next GO): L1 16,696; SPLIT 177,779; XB 8,213; RED 4,998; K 2,726; L2 10,311; 14 empty commands 602
-    TOTAL 221,325 cycles (L1 GO -> L2 all READY; real split), of which C&C turnaround 85; ready_latency 1; direct-path bound 4*sum(R) = 2,644; GATHER queue peak 0 of 16; stack headroom 20540 B
+sort ragged n=1000 32-bit values [meas: SortTest]: path direct; steps (GO -> next GO): L1 16,696; SPLIT 177,779; XB 7,839; RED 4,998; K 2,726; L2 10,311; 14 empty commands 602
+    TOTAL 220,951 cycles (L1 GO -> L2 all READY; real split), of which C&C turnaround 85; ready_latency 1; direct-path bound 4*sum(R) = 2,644; GATHER queue peak 0 of 16; stack headroom 20540 B
     address generator: 0 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
     M14: zero-length groups 0 (summed over tiles), of which with a gap 0 (1 + gap since 10 October); group-run stall cycles 0 (drift)
-sort sorted n=2000 128-bit values [meas: SortTest]: path LB; steps (GO -> next GO): L1 22,768; SPLIT 187,460; XB 8,597; RED 5,578; K 2,798; V 2,075; L2 20,253; 24 empty commands 1,032
-    TOTAL 250,561 cycles (L1 GO -> L2 all READY; real split), of which C&C turnaround 96; ready_latency 1; direct-path bound 4*sum(R) = 8,000, V 8*sum(R) = 16,000; GATHER queue peak 5 of 16; stack headroom 20540 B
+sort sorted n=2000 128-bit values [meas: SortTest]: path LB; steps (GO -> next GO): L1 22,768; SPLIT 187,460; XB 8,287; RED 5,578; K 2,737; V 2,075; L2 20,253; 24 empty commands 1,032
+    TOTAL 250,190 cycles (L1 GO -> L2 all READY; real split), of which C&C turnaround 96; ready_latency 1; direct-path bound 4*sum(R) = 8,000, V 8*sum(R) = 16,000; GATHER queue peak 5 of 16; stack headroom 20540 B
     address generator: 254720 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
     M14: zero-length groups 2048 (summed over tiles), of which with a gap 0 (1 + gap since 10 October); group-run stall cycles 0 (drift)
-sort equal n=2000 32-bit values [meas: SortTest]: path LB; steps (GO -> next GO): L1 16,696; SPLIT 21,494; XB 8,213; RED 5,106; K 2,083; L2 14,183; 14 empty commands 602
-    TOTAL 68,377 cycles (L1 GO -> L2 all READY; real split), of which C&C turnaround 85; ready_latency 1; direct-path bound 4*sum(R) = 8,000; GATHER queue peak 0 of 16; stack headroom 20540 B
+sort equal n=2000 32-bit values [meas: SortTest]: path LB; steps (GO -> next GO): L1 16,696; SPLIT 21,494; XB 7,839; RED 5,106; K 2,083; L2 14,183; 14 empty commands 602
+    TOTAL 68,003 cycles (L1 GO -> L2 all READY; real split), of which C&C turnaround 85; ready_latency 1; direct-path bound 4*sum(R) = 8,000; GATHER queue peak 0 of 16; stack headroom 20540 B
     address generator: 0 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
     M14: zero-length groups 1024 (summed over tiles), of which with a gap 0 (1 + gap since 10 October); group-run stall cycles 0 (drift)
-sort equal n=2000 128-bit values [meas: SortTest]: path LB; steps (GO -> next GO): L1 22,768; SPLIT 21,494; XB 8,597; RED 5,578; K 2,798; V 2,075; L2 20,253; 24 empty commands 1,032
-    TOTAL 84,595 cycles (L1 GO -> L2 all READY; real split), of which C&C turnaround 96; ready_latency 1; direct-path bound 4*sum(R) = 8,000, V 8*sum(R) = 16,000; GATHER queue peak 5 of 16; stack headroom 20540 B
+sort equal n=2000 128-bit values [meas: SortTest]: path LB; steps (GO -> next GO): L1 22,768; SPLIT 21,494; XB 8,287; RED 5,578; K 2,737; V 2,075; L2 20,253; 24 empty commands 1,032
+    TOTAL 84,224 cycles (L1 GO -> L2 all READY; real split), of which C&C turnaround 96; ready_latency 1; direct-path bound 4*sum(R) = 8,000, V 8*sum(R) = 16,000; GATHER queue peak 5 of 16; stack headroom 20540 B
     address generator: 254720 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
     M14: zero-length groups 2048 (summed over tiles), of which with a gap 0 (1 + gap since 10 October); group-run stall cycles 0 (drift)
-sort reverse n=2000 128-bit values [meas: SortTest]: path TH (stage 2 ran); steps (GO -> next GO): L1 22,768; SPLIT 187,459; XB 8,597; RED 4,944; XC 1,299; TH 11,191; DESC 5,575; K1.0 6,620; K2.0 6,585; V1.0 6,844; V2.0 2,204; L2 20,253; 19 empty commands 817
-    TOTAL 285,156 cycles (L1 GO -> L2 all READY; real split), of which C&C turnaround 96; ready_latency 1; direct-path bound 4*sum(R) = 64,000, V 8*sum(R) = 128,000; GATHER queue peak 5 of 16; stack headroom 20540 B
+sort reverse n=2000 128-bit values [meas: SortTest]: path TH (stage 2 ran); steps (GO -> next GO): L1 22,768; SPLIT 187,459; XB 8,287; RED 4,944; XC 1,299; TH 11,191; DESC 5,575; K1.0 6,620; K2.0 6,585; V1.0 6,844; V2.0 2,204; L2 20,253; 19 empty commands 817
+    TOTAL 284,846 cycles (L1 GO -> L2 all READY; real split), of which C&C turnaround 96; ready_latency 1; direct-path bound 4*sum(R) = 64,000, V 8*sum(R) = 128,000; GATHER queue peak 5 of 16; stack headroom 20540 B
     peaks in K1.0: link 4, eject 5, write-engine input 1, area 1
     peaks in K2.0: link 4, eject 5, write-engine input 1, area 1
     peaks in V1.0: link 4, eject 5, write-engine input 1, area 1
     peaks in V2.0: link 4, eject 5, write-engine input 1, area 1
     address generator: 254720 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
     M14: zero-length groups 0 (summed over tiles), of which with a gap 0 (1 + gap since 10 October); group-run stall cycles 0 (drift)
-sort reverse n=2000 32-bit values [meas: SortTest]: path TH (stage 2 ran); steps (GO -> next GO): L1 16,696; SPLIT 187,459; XB 8,213; RED 4,645; XC 1,299; TH 10,962; DESC 5,575; K1.0 6,620; K2.0 2,219; L2 14,183; 10 empty commands 430
-    TOTAL 258,301 cycles (L1 GO -> L2 all READY; real split), of which C&C turnaround 85; ready_latency 1; direct-path bound 4*sum(R) = 64,000; GATHER queue peak 0 of 16; stack headroom 20540 B
+sort reverse n=2000 32-bit values [meas: SortTest]: path TH (stage 2 ran); steps (GO -> next GO): L1 16,696; SPLIT 187,459; XB 7,839; RED 4,645; XC 1,299; TH 10,962; DESC 5,575; K1.0 6,620; K2.0 2,219; L2 14,183; 10 empty commands 430
+    TOTAL 257,927 cycles (L1 GO -> L2 all READY; real split), of which C&C turnaround 85; ready_latency 1; direct-path bound 4*sum(R) = 64,000; GATHER queue peak 0 of 16; stack headroom 20540 B
     peaks in K1.0: link 4, eject 5, write-engine input 1, area 1
     peaks in K2.0: link 4, eject 5, write-engine input 1, area 1
     address generator: 0 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
     M14: zero-length groups 0 (summed over tiles), of which with a gap 0 (1 + gap since 10 October); group-run stall cycles 0 (drift)
-sort ragged n=1000 128-bit values shaped [meas: SortTest]: path direct; steps (GO -> next GO): L1 22,768; SPLIT 170,178; XB 8,597; RED 5,457; K 4,879; V 4,156; L2 20,253; 24 empty commands 1,032
-    TOTAL 237,320 cycles (L1 GO -> L2 all READY; real split), of which C&C turnaround 95; ready_latency 1; direct-path bound 4*sum(R) = 4,100, V 8*sum(R) = 8,200; GATHER queue peak 5 of 16; stack headroom 20540 B
+sort ragged n=1000 128-bit values shaped [meas: SortTest]: path direct; steps (GO -> next GO): L1 22,768; SPLIT 170,178; XB 8,287; RED 5,457; K 4,818; V 4,156; L2 20,253; 24 empty commands 1,032
+    TOTAL 236,949 cycles (L1 GO -> L2 all READY; real split), of which C&C turnaround 95; ready_latency 1; direct-path bound 4*sum(R) = 4,100, V 8*sum(R) = 8,200; GATHER queue peak 5 of 16; stack headroom 20540 B
     address generator: 131260 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
     M14: zero-length groups 0 (summed over tiles), of which with a gap 0 (1 + gap since 10 October); group-run stall cycles 0 (drift)
 SortTest: 104 passed, 0 failed

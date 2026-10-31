@@ -128,9 +128,12 @@ From WORKER11's questions; the integrator's answers, to review.
 - **Q3:** `offset_imm` is set only on `ShiftData*` rows (jolt-cpp records their immediate as the shift offset); meshsim flags it
   on any other opcode.
 - **Q4:** a misaligned memory row (LD and SD included) is a violation meshsim flags, since jolt-cpp aborts on one.
-- **The acceptance runs generate and discard their deliveries:** the runner has a 45-minute limit per task and a full program's
-  delivery is about 31 GB, so each task generates its shard of windows with the delivery writer, replays them at once and keeps
-  only the results. WORKER9's part 3 and WORKER11's kit are built to that.
+- **The acceptance runs' deliveries** *(revised 2026-11-01, from WORKER9's part 3)*: generating any window needs the whole
+  program traced from the start, but **the delivery writer produces and proves a whole 2²⁹ program in about 17 minutes on one
+  CPU** (EVM Zone: all 8,192 windows, all three variants, 1,064,585,826 rows, peak 1.44 GB), inside the runner's 45-minute
+  limit. So **one writer task per program produces its delivery on the runner box and keeps it there** for the acceptance runs,
+  whose shards read their windows from it; it is discarded afterwards (about 31 GB per program; disk space on the box to check).
+  Nothing is committed.
 
 ---
 

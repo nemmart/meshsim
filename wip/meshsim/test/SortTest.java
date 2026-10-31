@@ -21,9 +21,9 @@ import java.util.Random;
  *   - (P1 only) the L2 test's stand-in for the keys all-to-all;
  *   - (an image with the oracle split) the oracle's answer;
  *   - verification and measurement.
- * Boot (outside the sort's total; PHASE-2 INTERIM, as Mach.boot, until meshsim's boot ROM): C&C broadcasts the interim
- * loader, the image's program memory and data memory as uncounted mode-0 writes, then CMD_JUMP, and raises RUN. v1.2's
- * image has no overlays, so nothing is staged.
+ * Boot (outside the sort's total; as Mach.boot, spec 6.2): every core waits in the boot ROM; C&C broadcasts the image's
+ * program memory and data memory as uncounted mode-0 writes, then CMD_JUMP (slot 1 the entry), then GO when every tile
+ * is READY, and the ROM jumps. v1.2's image has no overlays, so nothing is staged.
  *
  * Accounting: PhaseLog, one phase per GO, named by command (the split's barriers are SPLIT phases). A step's cycles
  * are its GO to the next step's GO (C&C's turnaround after it included); the last step's end is its all-READY. The sum
@@ -51,10 +51,6 @@ final class SortTest {
     static final String[] PATHS = { "direct", "LB", "TH", "BT", "PLAN" };
 
     static Path build = Path.of(System.getProperty("sort.build", "sw/ext/sort/build"));
-    /** The interim loader (PHASE-2 INTERIM): the image directory's loader.bin when it has one (a kit's image/), else
-     *  meshsim's own (sw/build/loader.bin, built by sw/build.sh). */
-    static Path loaderPath() { Path p = build.resolve("loader.bin"); return Files.exists(p) ? p : Mach.SW.resolve("loader.bin"); }
-    static int[] loader() { try { return Image.words(loaderPath()); } catch (IOException e) { throw new RuntimeException("no interim loader (run sw/build.sh): " + e.getMessage()); } }
     static void out(String s) { System.out.println(s); }
 
     /** Run options. */
@@ -94,7 +90,7 @@ final class SortTest {
                     String type = f[f.length - 2], name = f[f.length - 1];
                     sym.putIfAbsent(name, a);
                     if (size > 0) sizes.putIfAbsent(name, size);
-                    if ((type.equals("T") || type.equals("t")) && a >= Registers.PMEM_BASE && a < Registers.LOADER_BASE) funcs.putIfAbsent(a, name);
+                    if ((type.equals("T") || type.equals("t")) && a >= Registers.PMEM_BASE && a < Registers.PMEM_BASE + Registers.PMEM_SIZE) funcs.putIfAbsent(a, name);
                 }
             } catch (IOException e) { throw new RuntimeException("run sw/ext/sort/build.sh first: " + e.getMessage()); }
         }
@@ -134,11 +130,10 @@ final class SortTest {
                 wLo[i] = im.sym(nm); wHi[i] = wLo[i] + im.sizes.getOrDefault(nm, 0);
             }
         }
-        /** Boot (spec 6.2; PHASE-2 INTERIM, as Mach.boot), outside the sort's total: the interim loader (loaderPath()),
-         *  program memory, data memory from _data_start, CMD_JUMP to _start, then RUN. */
+        /** Boot (spec 6.2, as Mach.boot), outside the sort's total: program memory, data memory from _data_start,
+         *  CMD_JUMP to _start, then GO when all are READY; the boot ROM jumps. */
         void boot() {
-            cc.loadWords(LinkWord.BROADCAST, Registers.LOADER_BASE, loader())
-              .loadWords(LinkWord.BROADCAST, Registers.PMEM_BASE, im.code)
+            cc.loadWords(LinkWord.BROADCAST, Registers.PMEM_BASE, im.code)
               .loadWords(LinkWord.BROADCAST, im.sym("_data_start"), im.data)
               .command(LinkWord.BROADCAST, Registers.CMD_JUMP << 24, im.sym("_start"))
               .runWhenReady();
@@ -173,7 +168,7 @@ final class SortTest {
             Tile p = c.tiles[0];               // wall time: a WFI's cycles go to the function waiting in it
             if (p.core.halt == Controller.RUN) {
                 String f;
-                if (p.core.pc >= Registers.LOADER_BASE && p.core.pc < Registers.LOADER_BASE + Registers.LOADER_SIZE) f = "loader";
+                if (p.core.pc >= Registers.BOOTROM_BASE && p.core.pc < Registers.BOOTROM_BASE + 0x01000000) f = "bootrom";
                 else { Map.Entry<Integer, String> e = im.funcs.floorEntry(p.core.pc); f = e == null ? "?" : e.getValue(); }
                 prof.merge(f, 1L, Long::sum);
                 profByPhase.computeIfAbsent(c.phases.phases.size() - 1, x -> new LinkedHashMap<>()).merge(f, 1L, Long::sum);

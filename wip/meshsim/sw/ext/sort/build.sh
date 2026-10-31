@@ -43,6 +43,6 @@ for l in open(out + "/sort.sym"):
     f = l.split()
     if len(f) >= 3: sym[f[-1]] = int(f[0], 16)
 t = secs[".text"][0]; d = secs[".data"][0]; be = sym["_end"]
-print(f"sort image (v1.2): code {t} B of 0x7F00 (below the interim loader); .rodata+.data {d} B; .bss end 0x{be:04x}; "
+print(f"sort image (v1.2): code {t} B of 0x8000; .rodata+.data {d} B; .bss end 0x{be:04x}; "
       f"{0x7bc0 - be} B to the stack top (0x7BC0)")
 PY

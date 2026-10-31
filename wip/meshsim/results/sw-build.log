@@ -1,7 +1,8 @@
-loader: 17 words
+boot ROM: 182 words
 a2a: code 724 B, data 64 B, data+bss end 0x0000029c
 blockcopy: code 172 B, data 0 B, data+bss end 0x00000014
 cmd: code 388 B, data 0 B, data+bss end 0x00000058
+cond: code 1108 B, data 64 B, data+bss end 0x00000190
 faults: code 288 B, data 32 B, data+bss end 0x00000038
 gather: code 228 B, data 0 B, data+bss end 0x00000010
 hello: code 152 B, data 16 B, data+bss end 0x00000030

@@ -12,5 +12,5 @@ local gather on every tile: the index stream (mode 1, d = 0, 64-bit) from area 3
   k = 3  N =   4096      16409 cycles   4.006 per value (k + 1 = 4)  GATHER queue peak  7 of 16  address generator stalled 12270 cycles, area queue peak 1
   k = 4  N =   4096      20505 cycles   5.006 per value (k + 1 = 5)  GATHER queue peak  7 of 16  address generator stalled 16360 cycles, area queue peak 1
   k = 8  N =   4096      36889 cycles   9.006 per value (k + 1 = 9)  GATHER queue peak  8 of 16  address generator stalled 32720 cycles, area queue peak 1
-gather 1 from C (sw/tests/gather.c, one-command phase, 4,096 values, k = 2) [meas: ReadPortGatherTest gather from C]: C&C's GO -> all 64 READY 12,339 cycles (3.012 per value)
+gather 1 from C (sw/tests/gather.c, one-command phase, 4,096 values, k = 2) [meas: ReadPortGatherTest gather from C]: C&C's GO -> all 64 READY 50 cycles (0.012 per value)
 ReadPortGatherTest (shuffled, seed 4): 562 passed, 0 failed

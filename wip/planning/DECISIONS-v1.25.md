@@ -52,7 +52,7 @@ Decided (O).
 
 ## 4. The expansion word's new bits, and the tables (2026-11-01)
 
-Decided (O). From WORKER9's part-2 plan (`WORKER9/PLAN-PART2.md`).
+Decided (O). From WORKER9's part-2 plan (`sessions/WORKER9-PLAN-PART2.md`).
 
 - **`offset_imm`** (WORKER9's proposal, spare bit [63]): when set, the row's `shift_offset` is the source instruction's
   immediate; when clear, 0. That covers every current use (the stores use their immediate; SC.W and the AMOs use 0).
@@ -134,6 +134,9 @@ From WORKER11's questions; the integrator's answers, to review.
   limit. So **one writer task per program produces its delivery on the runner box and keeps it there** for the acceptance runs,
   whose shards read their windows from it; it is discarded afterwards (about 31 GB per program; disk space on the box to check).
   Nothing is committed.
+- **Where the deliveries are** (2026-11-01): `/tmp/w9-deliveries/` on the runner box (`evm-zone-29/`, 46 GB; `cyclone-29/`, 44 GB;
+  their manifests' SHA-256 in `sessions/WORKER9-REPORT.md`), and the selected windows in `/tmp/w9-deliveries-selected/`. **`/tmp`
+  isn't permanent:** to rebuild, re-run Quest 079 and 080 under new numbers (about 7 minutes each; the steps are in WORKER9's report).
 
 ---
 

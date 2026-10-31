@@ -9,7 +9,7 @@ import java.util.List;
  */
 public final class ReplayerTest {
     public static void main(String[] args) throws Exception {
-        // v1.25: WORKER9's regenerated vectors at jolt-cpp 821e1bd (WORKER9/replayer-opcodes-821e1bd/vec.tsv, copied)
+        // v1.25: WORKER9's regenerated vectors at jolt-cpp 821e1bd (wip/tools/replayer-opcodes/out-821e1bd/vec.tsv, copied)
         String vec = args.length > 0 ? args[0] : "data/vec-821e1bd.tsv";
         String opt = args.length > 1 ? args[1] : "../tables/opcode_table.txt";
         opcodeTable(Path.of(opt));

@@ -242,7 +242,7 @@ from DECISIONS-v1.25 (s1, s4-s7) and WORKER9's work:
 - **The controller:** the template index is keyed by key(w) (`tkey`, `ReplayTables.key`); the fast path holds only the
   templates the window's bitmap names (75 universal keys can't all be collision-free in 128 slots), and the N3 NOP check
   moved to run time (a key has no rd). Layout version 2: templates at chunk 0x58000 (the universal set is 221 KB).
-- **Vectors:** `data/vec-821e1bd.tsv` is WORKER9's regeneration (`WORKER9/replayer-opcodes-821e1bd/vec.tsv`, copied):
+- **Vectors:** `data/vec-821e1bd.tsv` is WORKER9's regeneration (`wip/tools/replayer-opcodes/out-821e1bd/vec.tsv`, copied):
   225 match, 4 C++-UB shift masks flagged, 23 not applicable (aborting assertions, advice opcodes); every executed
   opcode but NOP (the padding row, unit-tested) has a vector. ShiftData's offsets aren't printed in vec.tsv; they are
   vec.cpp's, listed in `ReplayerTest.SHIFT_OFFSETS`.

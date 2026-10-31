@@ -149,6 +149,14 @@ final class RequestBus implements Component {
         }
         return -1;
     }
+    /** The reset (6.1): the tree and every receive queue empty, every credit returned. */
+    void reset() {
+        for (Buf b : rootIn) { b.reqs.clear(); b.arrivals.clear(); b.occ = 0; }
+        for (Buf[] row : rowIn) for (Buf b : row) { b.reqs.clear(); b.arrivals.clear(); b.occ = 0; }
+        java.util.Arrays.fill(rowCur, -1); java.util.Arrays.fill(rowRr, 7); rootCur = -1; rootRr = ROOT_INPUTS - 1;
+        for (int k = 0; k < TARGETS; k++) { queue[k].clear(); credits[k] = cfg.receiveQueueDepth[k]; }
+        creditReturns.clear(); toReceiver.clear();
+    }
     boolean idle() {
         if (!toReceiver.isEmpty()) return false;
         for (Buf b : rootIn) if (b.occ > 0 || !b.reqs.isEmpty()) return false;

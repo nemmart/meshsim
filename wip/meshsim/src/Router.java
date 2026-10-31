@@ -198,4 +198,6 @@ final class Router implements Component {
         for (WordFIFO[] fs : q) for (WordFIFO f : fs) f.resetStats(t);
         injected = routed = ejected = ejectErrors = routeErrors = fromCncWords = toCncWords = 0;
     }
+    /** The reset (6.1): the round-robin pointers to 0; the FIFOs are buses, emptied by Chip.reset. */
+    void reset() { java.util.Arrays.fill(rr, 0); java.util.Arrays.fill(maybe, 0); loopbackLast = true; }
 }

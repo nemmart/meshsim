@@ -34,7 +34,7 @@ final class TileControl {
     // ---- the controller's store this cycle ----
     private int pendIdx = -1, pendVal; private long pendT = Long.MIN_VALUE;
     // ---- state ----
-    boolean done, landed, halted, gate;
+    boolean done, landed, gate;
     private boolean readyLevel;
     int events;                                                   // EVENTS' sticky events, as at the end of the last cycle
     int wakeMask = Registers.EVENTS_MASK_RESET, wakeRequired;
@@ -55,9 +55,7 @@ final class TileControl {
     long errorSince = -1;                                         // the cycle the conditions last became non-zero (the error line, 6.6)
     // ---- lines from C&C, as this tile sees them (scheduled by Chip; each already includes this tile's skew) ----
     private final ArrayDeque<Long> goQ = new ArrayDeque<>();
-    private final ArrayDeque<long[]> runQ = new ArrayDeque<>();   // {t, 1 run / 0 halt}
     private long goAt = Long.MIN_VALUE;
-    long runEdgeAt = Long.MIN_VALUE, haltEdgeAt = Long.MIN_VALUE;
     long readyPulseAt = Long.MIN_VALUE;                           // Chip collects it after the cycle
     // ---- stats and checks ----
     long dones, readies, gos, runEdges, sends, lastSendAt = -1;
@@ -66,32 +64,37 @@ final class TileControl {
     long doneEarlyEvents, wakeInDone, counterWraps;
     /** The cycle of the last write to each down-counter (its store's cycle), -1 if none: measurements only. */
     final long[] counterWriteAt = { -1, -1, -1, -1, -1, -1, -1, -1 };
+    long resetAt = Long.MIN_VALUE;
+
+    /** The reset (6.1), at t: every error, counter and event 0, the reset mask, the gate, done, command landed and any
+     *  pending GO cleared; the configuration registers (undefined) to 0. */
+    void reset(long t) {
+        resetAt = t;
+        done = false; landed = false; gate = false; events = 0; qAll = false; java.util.Arrays.fill(qOne, false);
+        condAllPrev = true; java.util.Arrays.fill(condOnePrev, true); readyLevel = false; rdDonePrev = false; requestBusyPrev = false;
+        wakeMask = Registers.EVENTS_MASK_RESET; wakeRequired = 0; conditions = 0; errorSince = -1;
+        long[] c = tile.eventCounts(); System.arraycopy(c, 0, evPrev, 0, evPrev.length);
+        goQ.clear(); goAt = Long.MIN_VALUE; consumeT = Long.MIN_VALUE; pendT = Long.MIN_VALUE;
+        routerHdr = routerAddr = dmaConfig = recordBase = rdSetup = 0; setW[0] = setW[1] = setW[2] = 0; simExitAt = -1;
+        tile.dir.resetCounters();
+    }
     long violations; String lastViolation;
 
     TileControl(Tile tile, Config cfg) {
         this.tile = tile; this.cfg = cfg; this.idx = tile.idx;
-        halted = !cfg.coreless;                    // chip reset: HALT (coreless test machines start in RUN)
-        done = halted;
+        // power-on is a reset (6.1): done 0, the reset mask; the core starts in the boot ROM
     }
 
     // ================================================================ lines
     void scheduleGo(long t) { goQ.add(t); }
-    void scheduleRun(long t, boolean run) { runQ.add(new long[] { t, run ? 1 : 0 }); }
+
     /** Apply line changes due at or before t (idempotent; every caller in cycle t sees the same result). */
     private void advance(long t) {
         while (!goQ.isEmpty() && goQ.peek() <= t) goAt = goQ.poll();
-        while (!runQ.isEmpty() && runQ.peek()[0] <= t) {
-            long[] c = runQ.poll();
-            boolean run = c[1] == 1;
-            if (run && halted) { halted = false; runEdgeAt = c[0]; runEdges++; }
-            else if (!run && !halted) { halted = true; haltEdgeAt = c[0]; }
-        }
     }
-    boolean running(long t) { advance(t); return !halted; }
+
     boolean goVisible(long t) { advance(t); return goAt == t; }
-    boolean runEdge(long t) { advance(t); return runEdgeAt == t; }
-    boolean lineChange(long t) { advance(t); return runEdgeAt == t || haltEdgeAt == t; }
-    boolean pendingLines() { return !goQ.isEmpty() || !runQ.isEmpty(); }
+    boolean pendingLines() { return !goQ.isEmpty(); }
 
     // ================================================================ the wake events
     /** The live events as a load sampling at t reads them (4.12): request pending, and the peripherals' bits.
@@ -212,20 +215,9 @@ final class TileControl {
             events |= 1 << Registers.EV_GO;
             tile.sram.newPhase();
         }
-        if (runEdgeAt == t) {                                     // PHASE-2 INTERIM: HALT -> RUN, as v1.1's (6.1)
-            done = false; landed = false; gate = false; events = 0; qAll = false; java.util.Arrays.fill(qOne, false);
-            wakeRequired = 0; wakeMask = Registers.EVENTS_MASK_RESET;
-            tile.slot.setHalted(t, false);
-        }
-        if (haltEdgeAt == t) {                                    // PHASE-2 INTERIM: RUN -> HALT clears the errors, counters, their events and qualifiers
-            conditions = 0; errorSince = -1; tile.haltReset(t);
-            tile.dir.resetCounters();
-            events &= ~COUNTER_EVENTS; qAll = false; java.util.Arrays.fill(qOne, false);
-        }
         int clearBits = 0;                                        // clears that beat a same-cycle set of [7] and [6:0]
         if (pendT == t) clearBits = apply(t, pendIdx, pendVal);
         if (tile.cmem.landedAt == t) { landed = true; lastLandedAt = t; events |= 1 << Registers.EV_COMMAND; }
-        if (halted) done = true;
         conditionEvents(t);
         boolean rd = done && landed;
         if (rd && !readyLevel) { readyPulseAt = t; readies++; }
@@ -240,7 +232,6 @@ final class TileControl {
         if (!rb && requestBusyPrev) events |= 1 << Registers.EV_REQUEST_ROOM;
         requestBusyPrev = rb;
         counterEvents(t, clearBits);
-        if (halted) events &= ~COUNTER_EVENTS;                     // the counters are 0 and their events clear while halted
         if (!cfg.coreless) status = computeStatus(t);              // only a controller can read it (simulator speed)
     }
 
@@ -342,7 +333,6 @@ final class TileControl {
      *  a command crossing the mesh mid-phase may be in the port-B pipe). A run still issuing is not flagged
      *  (its arrivals elsewhere are counted there). */
     private void checkInvariant4(long t) {
-        if (halted) return;
         int[] r = tile.dir.remaining;
         if (!countersZero()) {
             StringBuilder b = new StringBuilder();
@@ -357,7 +347,7 @@ final class TileControl {
     private void conditionEvents(long t) {
         long[] c = tile.eventCounts();
         int before = conditions;
-        boolean entering = haltEdgeAt == t;                       // a condition set as HALT is entered is cleared (the clear wins, 4.13)
+        boolean entering = resetAt == t;                          // an error raised in the reset's cycle is lost (the reset wins, 4.13)
         for (int i = 0; i < Conditions.N; i++) {
             if (c[i] > evPrev[i] && !entering) conditions |= 1 << i;
             evPrev[i] = c[i];

@@ -16,6 +16,12 @@ if [ -d ../src ] && command -v javac >/dev/null 2>&1; then
   mkdir -p $OUT/cls && javac -d $OUT/cls ../src/*.java && java -cp $OUT/cls Registers mesh.h >/dev/null
 fi
 
+# the boot ROM (6.2): its image is committed as bootrom.hex, which meshsim loads
+$CC -T bootrom.ld bootrom.S -o $OUT/bootrom.elf
+$OBJCOPY -O binary $OUT/bootrom.elf $OUT/bootrom.bin
+od -An -v -tx4 -w4 $OUT/bootrom.bin | sed 's/^ *//' > bootrom.hex
+echo "boot ROM: $(wc -l < bootrom.hex) words"
+
 $CC -T loader.ld loader.S -o $OUT/loader.elf
 $OBJCOPY -O binary $OUT/loader.elf $OUT/loader.bin
 LW=$(( $(stat -c %s $OUT/loader.bin) / 4 ))

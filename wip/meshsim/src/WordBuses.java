@@ -14,6 +14,7 @@ abstract class WordBus extends BusBase implements WordSink, WordSource {
 
 /** Registered value; take() is non-destructive. */
 final class WordLatch extends WordBus {
+    @Override void flush() { super.flush(); valid = false; }
     private long a, b, c, pa, pb, pc;
     private boolean valid;
 
@@ -37,6 +38,7 @@ final class WordLatch extends WordBus {
 
 /** Fixed latency L >= 1; put at t visible from t+L; bounded capacity (consumer must take). */
 final class WordDelayLine extends WordBus {
+    @Override void flush() { super.flush(); head = 0; count = 0; }
     final int latency;
     private final long[] va, vb, vc, at;
     private int head, count;
@@ -77,6 +79,7 @@ final class WordDelayLine extends WordBus {
  * cycle recorded). High-water mark kept for the reports.
  */
 final class WordFIFO extends WordBus {
+    @Override void flush() { super.flush(); head = 0; count = 0; overflow = false; overflowCycle = -1; }
     final int capacity;
     private final long[] va, vb, vc;
     private int head, count;
@@ -148,6 +151,7 @@ final class WordFIFO extends WordBus {
  * "not busy" status bit. Neither refusal nor busy is an error.
  */
 final class WordHold extends WordBus {
+    @Override void flush() { super.flush(); occ = false; refusedAt = Long.MIN_VALUE; }
     private long a, b, c, pa, pb, pc;
     private boolean occ;
     private long refusedAt = Long.MIN_VALUE;
@@ -188,6 +192,7 @@ final class WordHold extends WordBus {
  * consumer pulls only when it has room (none in the v3.4 design; kept, tested).
  */
 final class WordBackpressureFIFO extends WordBus {
+    @Override void flush() { super.flush(); head = 0; count = 0; }
     final int capacity;
     private final long[] va, vb, vc;
     private int head, count;
@@ -230,6 +235,7 @@ final class WordBackpressureFIFO extends WordBus {
  * port reserves a landing slot before it issues a core read); a put when canPut is false throws.
  */
 final class WordBackpressureDelayLine extends WordBus {
+    @Override void flush() { super.flush(); head = 0; count = 0; }
     final int latency, capacity;
     private final long[] va, vb, vc, at;
     private int head, count;                // committed entries (in flight or visible)

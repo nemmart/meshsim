@@ -108,4 +108,6 @@ final class WriteEngine implements Component {
     boolean idle(long t) { return count == 0 && toSram.isEmpty(t); }
     void record() { log = new ArrayList<>(); }
     void resetStats() { taken = written = stallCycles = 0; java.util.Arrays.fill(writtenBySize, 0); stageHighWater = count; }
+    /** The reset (6.1): the pointer stage empties. */
+    void reset() { head = 0; count = 0; java.util.Arrays.fill(stHave, false); awaiting.clear(); }
 }

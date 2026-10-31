@@ -172,4 +172,6 @@ final class BigSRAM implements Component {
         for (int a = 0; a < AREAS; a++) queuePeak[a] = qCount[a];
         readStallCycles = writeStallCycles = accesses = 0;
     }
+    /** The reset (6.1): the area queues empty (a queued write is lost; the memory keeps what it holds). */
+    void reset() { java.util.Arrays.fill(qHead, 0); java.util.Arrays.fill(qCount, 0); java.util.Arrays.fill(qWrites, 0); }
 }

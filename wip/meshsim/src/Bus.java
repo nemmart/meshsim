@@ -25,7 +25,11 @@ abstract class BusBase {
     protected boolean pendPut;      // a put happened at lastT and is not yet committed
     protected int takes;            // takes at lastT
 
-    BusBase(String name) { this.name = name; }
+    BusBase(String name) { this.name = name; java.util.List<BusBase> r = REGISTRY.get(); if (r != null) r.add(this); }
+    /** The buses a chip under construction creates register here (Chip sets it), so the reset can empty them all. */
+    static final ThreadLocal<java.util.List<BusBase>> REGISTRY = new ThreadLocal<>();
+    /** The reset (6.1): empty the bus, a pending put included. */
+    void flush() { pendPut = false; takes = 0; }
 
     /** Enter cycle t: commit the previous cycle's put, reset per-cycle counters. */
     protected final void enter(long t) {

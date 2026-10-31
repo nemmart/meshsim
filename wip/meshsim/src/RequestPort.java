@@ -40,4 +40,6 @@ final class RequestPort {
     /** REQUEST_RECEIVE: an empty queue, always: 0, and receive underflow (ERRORS [14]). */
     int receive(long t) { underflows++; return 0; }
     boolean idle() { return fifo.isEmpty(); }
+    /** The reset (6.1): the request FIFO empties. */
+    void reset() { fifo.clear(); beatsSent = 0; setW[0] = setW[1] = setW[2] = 0; freedAt = Long.MIN_VALUE; }
 }

@@ -93,10 +93,9 @@ final class CnC implements Component {
         chip.phases.onGo(t, lastCommandWord);
         for (Tile p : chip.tiles) p.ctl.scheduleGo(t + cfg.goLatency + chip.startSkew[p.idx]);
     }
-    void storeRun(long t, boolean run) {
-        runStores++; lastRunAt = t;
-        for (Tile p : chip.tiles) p.ctl.scheduleRun(t + cfg.runLatency + chip.startSkew[p.idx], run);
-    }
+    /** The reset's effect on C&C 1's model (6.1): the receive FIFO and the error bit; the step queue goes on (the
+     *  harness, the outside world, drives it). */
+    void resetModel(long t) { rxq.clear(); errLine.clear(); errLineSeen = false; errLineLast = false; errorBit = false; errorSetAt = -1; }
 
     // ================================================================ cycle
     @Override public void runCycle(long t) {
@@ -196,12 +195,11 @@ final class CnC implements Component {
         if (cfg.cncGoSettle) steps.add((c, t) -> t >= lastGoAt + cfg.goLatency + 1);
         return this;
     }
-    /** Wait for all READY, clear them, then raise RUN (boot, 6.2). */
-    CnC runWhenReady() {
-        steps.add((c, t) -> { if (!allReady(t)) { readyWaitCycles++; return false; } lastAllReadyAt = t; clearReady(t); storeRun(t, true); return true; });
-        return lineSettles();
-    }
-    CnC halt() { steps.add((c, t) -> { storeRun(t, false); return true; }); return lineSettles(); }
+    /** Boot (6.2): the tiles wait in the boot ROM, done pulsed; their first command raises READY; when every expected
+     *  tile is READY, GO, and the ROM jumps. */
+    CnC runWhenReady() { lastRunAt = -1; return go().call(() -> lastRunAt = lastGoAt); }
+    /** The outside world resets the chip (6.1): a step that takes effect at the end of its cycle. */
+    CnC reset(boolean hard) { steps.add((c, t) -> { chip.reset(hard); runStores++; return true; }); return waitCycles(2); }
     /** After a RUN/HALT store, C&C sends nothing until every tile has seen the line (run_latency + the +1 skew): a packet
      *  in flight across the change breaks invariant 7, and a command landing before HALT -> RUN would be cleared. */
     private CnC lineSettles() { steps.add((c, t) -> t >= lastRunAt + cfg.runLatency + 1); return this; }
@@ -244,8 +242,7 @@ final class CnC implements Component {
         collect(64, 64 * 4 + 1000, reports);           // the receive FIFO is C&C's wake source; one read per cycle
         steps.add((c, t) -> allReady(t) || t >= reportGoAt + watchdog);
         steps.add((Instant) (c, t) -> { reportDoneAt = t; return true; });
-        halt();
-        steps.add((c, t) -> t >= lastRunAt + cfg.runLatency + 2 + Math.max(1, cfg.errorLatency()));   // the cleared line reaches C&C
+        reset(false);                                    // PHASE-4: the reset replaces v1.1's HALT (which cleared the conditions)
         steps.add((c, t) -> { clearError(t); return true; });
         return this;
     }

@@ -21,7 +21,10 @@ final class Chip implements Component {
     final int[] startSkew = new int[64];
     final Endpoint[] ccs = new Endpoint[3];                     // C&C 1-3 at tiles 0-2's fifth ports (4.16)
     final Endpoint cnc, memsub, cc3;
-    final Cnc1Peripheral cc1p;                                   // C&C 1's peripheral 1: READY, GO, the error lines, the watchdog, the UART (8.14)
+    final Cnc1Peripheral cc1p;
+    private final java.util.List<BusBase> buses;                 // every bus the chip has (the reset empties them)
+    private int resetRequest;                                    // 0 none, 1 soft, 2 hard
+    long resets, lastResetAt = -1;                                   // C&C 1's peripheral 1: READY, GO, the error lines, the watchdog, the UART (8.14)
     private final boolean[] errSeen = new boolean[64];                             // C&C 1; C&C 2 (the memory system's unit); C&C 3
     final CnC cc;                                                // C&C's sequencer and register block
     final PhaseLog phases;                                       // per-phase accounting
@@ -40,6 +43,7 @@ final class Chip implements Component {
     private final long[][] seen = new long[64][8];               // per tile: violation counters already reported
 
     Chip(Config cfg) {
+        java.util.List<BusBase> reg = new java.util.ArrayList<>(); BusBase.REGISTRY.set(reg); buses = reg;
         this.cfg = cfg;
         if (cfg.hops == null) throw new IllegalArgumentException("Config.hops must be supplied");
         Random sk = new Random(cfg.skewSeed);
@@ -67,6 +71,7 @@ final class Chip implements Component {
         for (Tile p : tiles) p.req.bus = reqBus;
         cc = new CnC(this, cnc);
         cc1p.goNet = cc::goNet;
+        BusBase.REGISTRY.remove();
         children = new Component[68];
         children[0] = cnc; children[1] = memsub; children[2] = cc3; children[67] = cc;
         for (int i = 0; i < 64; i++) children[3 + i] = tiles[i];
@@ -94,6 +99,7 @@ final class Chip implements Component {
             if (e != errSeen[p.idx]) { errSeen[p.idx] = e; cc1p.errorLine(t, p.idx, e); }   // ERROR_LINES (8.14)
         }
         cc1p.runCycle(t);
+        if (resetRequest != 0) doReset(t);
         cc.errorLine(t, err);                                    // the error lines, OR'd, to C&C's error bit (6.6)
         if (err) for (Tile p : tiles) {                          // invariant 15: logged per tile and condition, not a violation
             int nw = p.ctl.conditions & ~condSeen[p.idx];
@@ -140,10 +146,6 @@ final class Chip implements Component {
             if (p.readPort.violations != s2[i][2]) { s2[i][2] = p.readPort.violations; violation(t, i, p.readPort.lastViolation); }
             long agv = p.ag.sizeViolations + p.ag.modeViolations + p.ag.aug128Violations + p.ag.destViolations + p.ag.alignViolations + p.ag.startsWhileRunning + p.ag.tableWraps;
             if (agv != s2[i][3]) { s2[i][3] = agv; violation(t, i, p.ag.lastViolation); }
-            if (p.ctl.lineChange(t) && !inv7Checked[i]) {
-                String f = packetInFlight(t);
-                if (f != null) violation(t, i, "the RUN/HALT line changed with a packet in flight (invariant 7): " + f);
-            }
             if (p.srq.violations != s2[i][4]) { s2[i][4] = p.srq.violations; violation(t, i, p.srq.lastViolation); }
             if (p.writer.violations != s2[i][5]) { s2[i][5] = p.writer.violations; violation(t, i, p.writer.lastViolation); }
             if (p.readReturn.refusals != 0 && !refusalReported[i]) { refusalReported[i] = true; violation(t, i, "SIMULATOR: a read return was refused by the injection point"); }
@@ -236,6 +238,18 @@ final class Chip implements Component {
     }
 
     void resetStats() { for (Tile p : tiles) p.resetStats(cycle); for (Endpoint e : ccs) e.rx.resetStats(cycle); }
+
+    /** The outside world's reset (6.1), taking effect at the end of the current cycle: hard (everything) or soft (the
+     *  LVDS, AXI and LPDDR side kept: nothing meshsim models). Every unit is reset as at power-on except the memories. */
+    void reset(boolean hard) { resetRequest = Math.max(resetRequest, hard ? 2 : 1); }
+    private void doReset(long t) {
+        for (BusBase b : buses) b.flush();
+        for (Tile p : tiles) p.reset(t);
+        reqBus.reset(); cc1p.reset(t); cc.resetModel(t);
+        java.util.Arrays.fill(errSeen, false);
+        log(t, -1, "reset (" + (resetRequest == 2 ? "hard" : "soft") + "): every unit to the boot ROM");
+        resets++; lastResetAt = t; resetRequest = 0;
+    }
 
     String violationReport() {
         scanOverflows();

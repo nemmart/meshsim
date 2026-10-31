@@ -26,6 +26,8 @@ final class ControllerMemories implements Component {
     final BankedMemory dmem = new BankedMemory("dmem");
     WordSource portB;
     long landedAt = -1;
+    /** The reset (6.1): command landed clears; the memories keep what they hold. */
+    void reset() { landedAt = -1; slot0Unread = false; discardNext = false; }
     long writesData, writesProgram, writesCmd, writesReply;      // port-B writes: data memory, program memory; covering slot 0; into the reply block
     final long[] bySize = new long[3];
     private final boolean[] replyUnread = new boolean[WORDS];

@@ -38,8 +38,15 @@ final class Controller implements Component {
     long mcycle;
     boolean inHandler, parked;                // a trap was taken (terminal); the handler reached its park loop
     long traps, trapAt = -1; int trapCause = -1, trapPc;
-    /** The boot ROM (6.2), shared by every unit: words from 0x02000000. */
-    static int[] bootRom = new int[0];
+    /** The boot ROM (6.2), shared by every unit: words from 0x02000000, from sw/bootrom.hex (sw/build.sh assembles it). */
+    static int[] bootRom = loadBootRom();
+    static int[] loadBootRom() {
+        for (java.nio.file.Path p : new java.nio.file.Path[] { java.nio.file.Path.of("sw", "bootrom.hex"), java.nio.file.Path.of("..", "meshsim", "sw", "bootrom.hex") })
+            if (java.nio.file.Files.exists(p)) try {
+                return java.nio.file.Files.readAllLines(p).stream().filter(l -> !l.isBlank()).mapToInt(l -> (int) Long.parseLong(l.trim(), 16)).toArray();
+            } catch (java.io.IOException e) { throw new RuntimeException(e); }
+        return new int[0];                                               // no ROM: a core fetching there stops loudly
+    }
     static final int WFI = 0x10500073;
     interface DebugHook { boolean onEbreak(Controller c, long t); }
 

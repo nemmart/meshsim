@@ -63,6 +63,6 @@ interface Peripheral extends Component {
     /** Flags and invariant violations go to the unit (meshsim's {@code violate}); set by the slot. */
     interface Host { void violate(long t, String msg); }
     void attach(Host host);
-    /** A halted controller or HALT (PHASE-3 INTERIM until phase 4's reset): hold the peripheral idle; its memories keep. */
-    default void setHalted(long t, boolean halted) {}
+    /** The reset (6.1): idle, its events and ERRORS 0, its queues empty; its memories keep what they hold. */
+    void reset(long t);
 }

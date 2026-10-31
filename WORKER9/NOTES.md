@@ -115,3 +115,13 @@ To do: a mechanical check (dump every opcode's expansion at both commits and dif
   programs, 0 failures. Mutants 497/500 caught. Appendix outputs at 821e1bd (Q3). WORKER7's div harness at 821e1bd:
   identical. REPORT part 2 (in progress) written.
 - Next: Tracer variant (secp256k1 advice incl. Fermat loop and GLV), mapping, checks.
+
+## Turn 6 (2026-11-01)
+
+- ECALL/EBREAK/MRET into the ROM (388/512). CSR: 60 keys, 102 words: fit in size, but the decode index can't select
+  them (CSR number and register pattern): options in REPORT, owner decides.
+- Mutants 500/500 (dense sampling + x0 variants + the spec's equivalences).
+- Template-index key described precisely (README, REPORT).
+- Tracer tables delivered (fe39fda): ROM 404/512; secp256k1 advice as untraced programs; DIVQ/DIVR Fermat loop as
+  segments; template map; all checked against jolt-cpp's advice (0 mismatches); traced words identical.
+- QUESTIONS Q8 (loop vs addition chain), Q9 (untraced LD). Next: part 3 plan.

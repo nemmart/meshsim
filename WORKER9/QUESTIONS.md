@@ -32,3 +32,14 @@ Tracer template's traced words are bit-identical to the replayer's and the templ
 
 **Q7. Unused decode-table entries.** *Proposed:* class 2 (controller, system), so an unknown instruction is a question
 for software (spec 4.19.5).
+
+**Q8. The division inlines' inverse: one loop or an addition chain?** One uniform body (square, multiply, select) x 256
+gives 123,979 untraced rows for DIVQ and 214,957 for DIVR from 1,069 and 1,777 stored words. An addition chain (runs of
+squarings between ~15 multiplies for q) would roughly halve the rows, as several segments with different bodies, which
+`segments.bin` already supports. *Proposed:* keep the single loop (simplest for C&C 3; the division inlines are rare)
+unless the Tracer's time on them matters. **On hold (owner, v1.25 s6)** until WORKER12's inline counts; single loop kept.
+
+**Q9. The Tracer's row ALU for untraced rows.** Untraced rows use the replayer's ALU opcodes plus `DIV`, `DIVU`,
+`DIVUW` (v1.3 s8), `SLT` (a sign test, already a replayer opcode) and an untraced `LD` (WORKER7 Q9: reads guest memory,
+logs nothing). *Proposed:* confirm the untraced `LD`, the one new behaviour. **Answered (owner, v1.25 s6): confirmed, provided it reads
+through the Tracer's D-cache like any load, so it sees the program's own earlier stores.**

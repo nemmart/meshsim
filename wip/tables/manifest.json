@@ -30,6 +30,42 @@
   "replayer/templates.bin": {
    "bytes": 221136,
    "sha256": "465298c21fa706a21ab35a46ea2120454273f6a541b27a5aa5ee701b1a667b1b"
+  },
+  "tracer/check.txt": {
+   "bytes": 2373,
+   "sha256": "b1fb83b5326dc11018c88f32f5c3909aa635c8393687427e58f70c1d20062667"
+  },
+  "tracer/decode_table.bin": {
+   "bytes": 4096,
+   "sha256": "d9142647f6f29a0a582acd33484bab7f79b93ad90e1e27ecd0d568aa640dfa74"
+  },
+  "tracer/listing.txt": {
+   "bytes": 2362,
+   "sha256": "1ce77c33f580ddf222d2695b6d82fc561ba48f6c7494883e00154e6dd00e7b29"
+  },
+  "tracer/rom.bin": {
+   "bytes": 8192,
+   "sha256": "789861a2e4c84a04256d2bfff013cbb7b7fb84892b1ec253d147e52b2dd4d819"
+  },
+  "tracer/segments.bin": {
+   "bytes": 112,
+   "sha256": "06a34358a6ced198f1e55356800754952fa4dbc109bc72bcf276bf009a34d704"
+  },
+  "tracer/template_index.bin": {
+   "bytes": 1200,
+   "sha256": "51d40c6cf4aef5ce3a5bb133b3d561c32e201a580c7e57afc4159c74627d84d1"
+  },
+  "tracer/template_map.txt": {
+   "bytes": 1141,
+   "sha256": "4ce444c6494f75c60bf93a4fc661675751571b2f4d3823fe1ff6060e120c1dba"
+  },
+  "tracer/templates.bin": {
+   "bytes": 302416,
+   "sha256": "cfa1ba23e75c738ab721e1c225c1a17c00e369d76d0d6f77e14bcb3276855ad6"
+  },
+  "tracer/w7/templates.py": {
+   "bytes": 8497,
+   "sha256": "62cde7bff2eb39bcc686217ca585442e5693f1e2d5b4c0f933fd2ed67b94b6bd"
   }
  }
 }

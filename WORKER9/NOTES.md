@@ -75,3 +75,12 @@ To do: a mechanical check (dump every opcode's expansion at both commits and dif
 - Owner: PEXT must be correct for any mask (full speed only for contiguous) - for part 2.
 - Small check, old EVM trace-23-f26e97fcfdbb on the new build: 4,775,361 -> 4,278,784 rows; writes 543,845 (same);
   `--validate` OK. 438,993 of the writes are SD, 374,110 of 715,431 loads are LD.
+
+## Turn 3 (2026-10-31)
+
+- Pushed README (3a71bda) and `expansion-diff/`; `source-provenance.json` (83f83c8); **draft PR #2 opened:
+  https://github.com/Quarky93/jolt-asic-planning/pull/2** (base `tracer-standalone`).
+- REPORT.md (part 1) and QUESTIONS.md (Q1-Q4) pushed. Task 069 to be released by the owner.
+- Prompt now has part 3 (delivery writer; a rebuild). Owner: note `trace_owner.hpp`'s signedness change for the
+  table builder.
+- PLAN-PART2.md: proposed plan, awaiting go-ahead.

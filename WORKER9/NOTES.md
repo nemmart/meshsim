@@ -66,3 +66,12 @@ To do: a mechanical check (dump every opcode's expansion at both commits and dif
   (which include the Virtual narrow ops); JSON adds `num_writes_sd`, `num_loads_ld`.
 - Expectation: write and load *counts* and the (address, value) stream unchanged against PR #1 for the same program
   (each narrow store still writes one merged doubleword); only cycle indices shift.
+
+## Turn 2 (2026-10-31)
+
+- Pushed `tracer-standalone-main` (3 commits on `4f36b3d`: re-copy, `capture_writes`, EVM Zone program).
+- Owner: v1.25 acceptance uses `evm-zone-4e3451c1d8c5` / `trace-29-4599adc50712` and Cyclone as jolt-cpp has it; also
+  run the old EVM program on the new tracer to isolate the expansion change.
+- Owner: PEXT must be correct for any mask (full speed only for contiguous) - for part 2.
+- Small check, old EVM trace-23-f26e97fcfdbb on the new build: 4,775,361 -> 4,278,784 rows; writes 543,845 (same);
+  `--validate` OK. 438,993 of the writes are SD, 374,110 of 715,431 loads are LD.

@@ -27,7 +27,7 @@ It is organized **by hardware unit**. Each unit's section lists everything that 
 | **both** | changed in v1.2, then changed again in v1.25 | applies (take the final state) | applies (from the v1.2 state shown) |
 
 - **From v1.1:** read everything. Implement the **v1.25** column, and ignore the v1.2 state shown in "both" entries, which is there for the other reader.
-- **From v1.2:** read only the entries marked **v1.25** or **both**. Section 1.2 lists them. Almost all are in the replayer (section 2.7).
+- **From v1.2:** read only the entries marked **v1.25** or **both**. Section 1.2 lists them. Almost all are in the replayer (section 2.6).
 
 **Each entry** gives:
 - what v1.1 said or built;
@@ -139,7 +139,7 @@ All removed at step **v1.2** unless marked otherwise.
 | `PTR[64]` as C&C's staging pointer | 4.9, 6.2 | staging by address into region 0x03 |
 | write tokens and mode-3 write streams to C&C | 6.7 | writes by tags *(Deferred, item 119)* |
 | the replayer's occupancy/pending low-water lines and claim rule (items 50, 51) | 4.19.8 | counted credits |
-| `VirtualAlignAddr`, the two alignment assertions; the contiguous-mask narrowing of PEXT; per-program tables; "unused entries are controller class"; the exact-word template key; `VirtualHostIO`'s remap; EBREAK, ECALL and MRET as controller-fed | 4.19 | **step v1.25** (2.7) |
+| `VirtualAlignAddr`, the two alignment assertions; the contiguous-mask narrowing of PEXT; per-program tables; "unused entries are controller class"; the exact-word template key; `VirtualHostIO`'s remap; EBREAK, ECALL and MRET as controller-fed | 4.19 | **step v1.25** (2.6) |
 
 ### 1.4 Entirely new (plan the additions)
 
@@ -167,3 +167,54 @@ All new at step **v1.2** unless marked otherwise.
 | `offset_imm`, `sign_imm`, `imm_signed`; `VirtualLoadB/H/W`, `VirtualStoreB/H/W`; the normalized template key | **step v1.25**: 4.19.3, 4.19.7, 4.19.9, 4.19.12 |
 
 ---
+
+## 2. By hardware unit
+
+Each table lists the unit's changes in v1.25 spec order. The columns are: **v1.1**, what the RTL has; **v1.25**, with its spec section; **kind**; **step**; and **why**. An ID (L1, A1, …) lets later sections refer back.
+
+### 2.1 The link word and the network (spec 3.1–3.3, 4.5–4.8, 4.16)
+
+| ID | v1.1 | v1.25 (section) | kind | step | why |
+|---|---|---|---|---|---|
+| L1 | **169-bit** link word: src 7, dst 7, mode 4, addr 21 (a chunk address), size 2, payload 128; no bit positions fixed | **256 bits** (3.1): payload [127:0], address [159:128] (32-bit, region [31:24] + byte offset [23:0]), size [161:160], **counter [164:162]**, mode [167:165] (3 bits), src [174:168], dst [181:175], reserved [255:182] sent as 0 and ignored. **All 256 bits are stored** in every FIFO and stage *(item 117: trimming to be revisited)* | changed | v1.2 | a fixed width so later field changes don't resize the links again; D2 (O, T) |
+| L2 | — | **link [167:160] = header register [24:17]**: size, counter and mode copied as one 8-bit block from `STREAM_COUNT`, `ROUTER_HDR`, `DMA_HDR` (3.1, 8.1) | new | v1.2 | one header layout; D12 |
+| L3 | modes: 0 invalid, 1 gather request, 2 by source, 3 explicit big-SRAM address, 4 bucket, 5 augmented, 6 CM write, 7 command, 8 reply, 9 peripheral write, 10–15 reserved | **0 write at address** (any reachable region: data/program memory via port B, big SRAM, a peripheral), **1 by source** (was 2), **2 bucket** (was 4), **3 augmented** (was 5), **4 gather request** (was 1), **5 count only**, 6–7 reserved (3.1). There is no invalid code: an all-zero header is a valid uncounted mode-0 write to 0x00000000 | changed | v1.2 | the region says where a write lands and the counter field does the counting, so the mode keeps only what the receiver does differently; D6; count only D43 |
+| L4 | — | **mode 5, count only**: writes nothing; size, payload and address ignored; decrements its counter at the destination like a write; from a stream the source is read and the payload discarded; to the tile itself it takes a read token; with counter 0 it does nothing (3.1, 4.5, 4.8) | new | v1.2 | the fence (a count-only packet to self ends a run) and "done" signals between tiles; D43 |
+| L5 | modes 10–15 and 0: bad packets (dropped, condition) | **modes 6–7 are discarded at the destination with no write, no decrement and no error**, whatever their counter field (3.1, 4.8) | changed | v1.2 | D6, D32 |
+| L6 | counting by mode into four named counters; command and gather request never counted; in HALT nothing counted | **the packet names its counter**: counter field 1–7 = `WRITE_COUNTER_1`–`7`, 0 uncounted; modes 0–3 and 5 counted by the field; a gather request never (its field is passed to its gather values); decrement **K cycles after the director accepts the packet** (3.1, 4.8, 4.12) | changed | v1.2 | counting independent of mode and source; D3, D30, D40 (seven) |
+| L7 | bad packets: mode 0, 10–15; mode 5 at 128; mode 3 misaligned; mode 7 at 64/128; mode 8 at 128; condition "bad mode or size" | **bad packet** (hardware: dropped uncounted, `ERRORS` [1]): a 64/128-bit mode-0 packet not naturally aligned, in any region; mode 0 to region 0x02, 0x07–0xFE, 0xFF or an absent peripheral's region; mode 3 at 128 bits. Modes 1–5 ignore the address, region included. Size 11 and out-of-bounds offsets are undefined, not checked (3.1) | changed | v1.2 | only the cheap checks: alignment and region decode; D26, D32 |
+| L8 | write to the absent peripheral (type 0): a bad peripheral write, **counted** in `DMA_PERIPH_REMAINING` | a bad packet, **uncounted** (3.1, 4.17.1) **[not in CHANGES]** | changed | v1.2 | follows from L7: the region decode drops it at the director; D9, D32 |
+| L9 | mode-1 ordinal: the mode table says [63:32], the fixed-payload paragraph and 4.4 say [51:32] (v1.1 inconsistent) | gather request's ordinal is **[51:32]**, sent at 64 bits (3.1, 4.4) **[not in CHANGES]** | changed | v1.2 | v1.1's two statements reconciled |
+| L10 | padding stages 169 flops per stage per link direction | 256 (3.2) | changed | v1.2 | L1; D2 |
+| L11 | in-order delivery per sender (source → destination), one kind | **per sending unit** in one tile: the address generator, the send port, the GATHER engine, the read port, each sending peripheral's DMA. No order between units: end a run with a **fence** (L4) or put the packet in the run (3.2) | changed | v1.2 | D44 (round 3) |
+| L12 | request bus: 16-entry receive queue **in every tile**, fed only on receivers; root has no queues; credits start at 16 | **receive queues at the root, in the tree**: 128, 256, 128 × 128 bits for C&C 1, 2, 3; credits = depth; tiles have none, and their receive registers read an empty queue (3.3, 4.18) | changed | v1.2 | sized by each target's traffic, not by the tile; D38 |
+| L13 | — | **per-tile limits** of 1, 3 and 1 outstanding requests to C&C 1, 2 and 3, a software rule (meshsim invariant 17); error reports exempt; "outstanding" is a software convention (3.3) | new | v1.2 | so normal traffic never exhausts a target's credits; D38, D44 (W5-23) |
+| L14 | target 3: the Updater/Binder/RW engine at endpoint 73 | C&C 2's peripheral *(Deferred, item 119)* (3.3) | changed | v1.2 | D25, D33 |
+| L15 | read-queue request and injection fields: dst, mode 4, addr 21, size 2, payload (7+4+21+2+128) | dst 7, **mode 3, counter 3, address 32**, size 2, payload 128; the router adds src and the reserved zeros (4.5) | changed | v1.2 | L1 |
+| L16 | 64 tokens *(Proposed, accepted)*; loopback hold *(Proposed)* | 64 tokens; loopback packets hold their token until they leave the loopback FIFO, **required**; also a **broadcast stream's read** keeps its token until its own copy leaves, and a **count-only packet to self** takes a token (4.5) | changed | v1.2 | D42 (S9), D41 (F14), D43 |
+| L17 | the injection point: read returns and the send port; C&C enters through tile 0's fifth port | the same two sources; controllers through tiles 0–2's fifth ports; **a sending peripheral's DMA through a router port of its own** (4.5, 4.17.9) | changed | v1.2 | D10 |
+| L18 | sixth route block on tile 0, for C&C; dst 64 treated as tile 0 | sixth route block on **tiles 0, 1 and 2**, for C&C 1–3; ids 64–66 route as tile id − 64; a packet with dst = 64 + me leaves through the fifth-port output (4.6) | changed | v1.2 | D25 |
+| L19 | FIFO entries 169 bits; loopback FIFO ≥ token count *(Proposed)* | 256 bits; loopback FIFO ≥ 64, **required** (4.7) | changed | v1.2 | D2, D42 |
+| L20 | traffic director switches on **mode** alone | on **mode, and for mode 0 on the region** (4.8): 0x00/0x01 → port B; 0x03 → write engine; 0x04–0x06 → that peripheral's write port; modes 1–3 → write engine; 4 → GATHER queue; 5 → count only; 6–7 → discard; bad → drop + `ERRORS` [1] | changed | v1.2 | D6, D9 |
+| L21 | the director decrements a counter **on acceptance** (RUN only); `DMA_PERIPH_REMAINING` on landing or drop | the director puts the counter id into a **K-stage delay line**; K cycles later that counter decrements; at most one decrement per cycle; **unexpected arrival is judged at the decrement** (4.8) | changed | v1.2 | so "done means landed" for every destination; D3 |
+| L22 | — | **K**: a parameter, default 8. **In hardware K is the implementation's**: at least the slowest write path (controller memory, peripheral, big SRAM up to its area queue, the `PTR`/`HIST` update). meshsim's formula is max(2L + 4, L + 4, `cm_latency`, `rp_latency`), L = `ts_engine_latency`. The real K comes back in the RTL's delta (4.8, 10) **[not in CHANGES: D49]** | new | v1.2 | D3, D32; **D49** (2026-11-01; meshsim's 2L + 3 → 2L + 4, W4-08) |
+| L23 | controller-memory and peripheral writes counted at landing (≈ 2 cycles) | **one K for every destination**: CM and peripheral writes also wait K, about 6 cycles more per counter round trip than v1.1; a separate 2-cycle delay is not adopted (4.8) **[not in CHANGES]** | changed | v1.2 | O, 2026-10-31 |
+| L24 | "command landed" set by a mode-7 write to slot 0 | set when **a write that comes through the director and covers command slot 0 lands in port B** (any size starting at slot 0); the controller's own store to slot 0 doesn't set it (4.8, 4.12) | changed | v1.2 | so READY and the boot ROM follow the write; D36 |
+| L25 | HALT: the director lands everything, counts nothing | no state changes routing or counting (4.8) | removed | v1.2 | no HALT; D23 |
+| L26 | src used by modes 2/5 (`PTR[src]`) and mode 8 (reply block) | src used only by modes 1 and 3 (`PTR[src]`) and routing (4.8) | changed | v1.2 | replies are mode 0; D6 |
+| L27 | `cm_idle`, `mem_idle` kept by the director/write path | gone from the hardware (meshsim diagnostics) (4.8) | removed | v1.2 | K covers both paths; D18 |
+| L28 | fifth port connected at tile 0 to C&C; ten 16 × 169-bit FIFOs; "to C&C" into C&C's receive FIFO | connected at tiles 0–2 to C&C 1–3; ten 16 × 256-bit FIFOs; the controller's router port for the link *(Deferred, item 118)*; the memory system's traffic at tile 1 (4.16) | changed | v1.2 | D2, D25 |
+
+### 2.2 The address map (spec 1, 2, 2.1, 2.2)
+
+| ID | v1.1 | v1.25 (section) | kind | step | why |
+|---|---|---|---|---|---|
+| A1 | 21-bit chunk addresses in packets and engines; controller map: instruction 0x0000–0x1FFF, tables 0x2000–0x3FFF, data 0x4000–0x5FFF, registers 0xFFFFF800– | **one 32-bit map** for packets and the core (2.2): region [31:24], byte offset [23:0]; 0x00 data memory (32 KB), 0x01 program memory (32 KB), 0x02 boot ROM, 0x03 big SRAM, 0x04–0x06 peripherals 1–3, 0x07–0xFE reserved, 0xFF registers, windows and table window. A C pointer is the packet address | changed | v1.2 | D5 |
+| A2 | — | **who reaches what** (2.2): packets reach 0x00, 0x01, 0x03 and a present peripheral's region; the core reaches 0x00, 0x01 (fetch and load; a store is a bus error), 0x02 (fetch, load) and 0xFF. The core never loads or stores big SRAM or a peripheral directly | new | v1.2 | D5, D9 |
+| A3 | engines' big-SRAM addresses 21-bit chunks | **unchanged inside the engines** (`STREAM_SRC`, `PTR`, `SRAM_RD_ADDR_QUEUE`, `DMA_RECORD_BASE_ADDRESS`); the packet address of chunk *c* is `0x03000000 \| c << 2` (1) | — | — | D5 *(item 129: whether `STREAM_SRC` goes to 32 bits, open)* |
+| A4 | no alignment required | **natural alignment**: 64-bit at a multiple of 8 bytes, 128-bit at 16, in every region (1) | new | v1.2 | D26 |
+| A5 | out of range: wrap mod 2²¹; above the device reads 0, writes dropped | **out of bounds is undefined** (no check): the 32 KB memories alias (high offset bits ignored), big SRAM promises nothing; auto-advancing past the end of a memory is a software bug (2.2) | changed | v1.2 | Tony, 2026-10-28; D26 |
+| A6 | — | **data memory's first 16 bytes reserved** (0x00–0x0F): a null store and an all-zero header land harmlessly; overlays start at 0x10 (2.2) | new | v1.2 | D37.4 |
+| A7 | endpoints: 0–63 tiles, 64 C&C, 65 memory system (served at C&C's port), 66–125 reserved, 126 broadcast, 127 none | 64 C&C 1, **65 C&C 2**, **66 C&C 3**, 67–125 reserved, 126 broadcast **to tiles 0–63**, 127 none (2.1) | changed | v1.2 | D25 |
+| A8 | one C&C (separate design) at tile 0's fifth port | **C&C 1–3** at tiles 0–2's fifth ports, each **a tile instance with 2 MB big SRAM**, its engine as peripheral 1 (2) | changed | v1.2 | D25 |
+| A9 | global nets: RUN/HALT, GO, READY (64), one error line per tile ORed at C&C | **GO** from C&C 1's peripheral (`PULSE_GO`) to tiles 0–63 (not C&C 2/3); **READY** 64 lines into `READY_LINES`; **error lines**, one per unit by endpoint id into `ERROR_LINES_0`–`2`, live, `error_latency`; **hard and soft reset** inputs; **toast** and **`LED`** output pins; no RUN/HALT (2) | changed | v1.2 | D23, D24, D28, D34, D35 |

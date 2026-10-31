@@ -1,5 +1,8 @@
 # WORKER8 questions (for the integrator)
 
+**Q1-Q3 answered: DECISIONS-v1.2 section 47 (2026-10-31); recipe 23 and CONVENTIONS updated. The sort follows the
+answers (REPORT.md, "What the recipes didn't cover").**
+
 Each: what the spec or the recipes say, the sort's case, and the proposed answer the sort follows meanwhile.
 
 **Q1. May a program write one table while arrivals still update another?** RECIPES 23 says the tables are free when

@@ -43,8 +43,8 @@ between the two units is needed; every other polled-or-counted dependency is wit
 | `test/Inputs.java` | the image is three files; the interim loader hashed as `image/loader.bin` |
 | `run_tests.sh` | the sort's seven steps back |
 
-Not ported: `sw/ext/split-bisect/splitdrv.c` and `test/SplitRun.java`, already stale at v1.1 (v1.0 names) and not in
-`run_tests.sh` (REQUESTS R3).
+**Stale, left unported (owner, 2026-10-31):** `sw/ext/split-bisect/splitdrv.c` and `test/SplitRun.java`. They were
+already stale at v1.1 (`splitdrv.c` uses v1.0's register names) and aren't in `run_tests.sh`.
 
 ## Results against v1.1 (64 × ≤ 2,000, `run_tests.sh`'s sets, fixed child order)
 
@@ -84,6 +84,13 @@ overlay load: **to explain**), K1.0-K1.2 +193, +193, +432, K2.0-K2.2 +422, +497,
   explicit zero `STREAM_DEST` store), and v1.1's `wait_tables()` poll gone (about −5); +315 predicted, +306 measured.
   The stream loop's 1,855 cycles on v1.2 equal its static count (64 × (25 instructions + 2 taken branches)).
 - **RED +62:** `config_direct_lb` +83 (the same table-store code generation, 16 groups), `tree_reduce` −19.
+- **BT's steps (kv32: DESC +1,297 net, K1.0-K2.1 +190 to +500; k128: K2.2 +926):** consistent with the same
+  table-store code generation in the planner's table writers, which are 2-8 instructions longer on v1.2 (`bt_hop1_m`
+  88 → 93, `bt_hop1_src` 176 → 182, `bt_hop2_d` 52 → 54, `th_hop2` 140 → 146; the PTR or STREAM store indexed from
+  0xFFFF2000, plus *d*'s shift), about 2 cycles per PTR or stream written: each layer's tail configures the next
+  (`bt_hop1_m`/`bt_hop2_d`, 64 PTRs), K2.2's tail runs `bt_hop1_src` for V1.0 (up to 256 streams), DESC's tail runs
+  `bt_first` (64 GROUP words) and K1.0's configure, and DESC's 64 × (L + 1) sends each take the dst shift. **To
+  measure** with `-Dsort.watch` on the 16K runs, both versions (NOTES).
 - **A model difference, not the program's:** in v1.1 a load through the table window (`HIST`, the prefix sums) took
   the register-load latency, 2 cycles; in v1.2 a table-window load takes 1 (`Controller.java`'s header, both
   versions). Every prefix sum (256 `HIST` loads per bucket pass, 4 passes in L1 and in L2) gains from it.
@@ -92,7 +99,12 @@ overlay load: **to explain**), K1.0-K1.2 +193, +193, +432, K2.0-K2.2 +422, +497,
 
 ## What the recipes didn't cover
 
-- Waiting for counters done with the reset mask (`wfi()` until [7]) rather than `wait_all`: v1.1's form, used where only
-  counters are pending, for the cost (QUESTIONS Q3).
-- Rewriting one table (`STREAM`) while arrivals still update another (`PTR`): `bt_phase` (QUESTIONS Q1).
-- Polling a landed word in data memory for completion (BT's token sequence word and DESC's markers) (QUESTIONS Q2).
+All three now answered by DECISIONS-v1.2 47, with recipe 23 and CONVENTIONS updated:
+- Waiting for counters done with the reset mask (`wfi()` until [7]) rather than `wait_all` (Q3): sanctioned when no
+  other counter is armed. Every site in the sort arms one counter, except `bt_phase`'s step-2 case, which arms 1 and 3
+  and wants both (noted in `sort.h`, `bt_run.c`, `split_regs.h`).
+- Rewriting one table (`STREAM`) while arrivals still update another (`PTR`) (Q1): the tables are free per memory;
+  `bt_phase` is fine as written.
+- Polling a landed word in data memory (Q2): valid only when everything it vouches for lands in controller memory.
+  Checked: BT's tokens and sequence words, DESC's descriptors and markers are all mode-0 writes into data memory (`SK`);
+  none goes to big SRAM (noted in `bt_plan.c`).

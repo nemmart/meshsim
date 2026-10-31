@@ -10,3 +10,5 @@ When phase 4's boot ROM replaces it, please say so in NOTES.md; I'll move SortTe
 **R3. `test/SplitRun.java`** drives `sw/ext/split-bisect/splitdrv.c`, which already used v1.0's names at v1.1 and isn't
 in `run_tests.sh`. Proposal: retire both, or I port `splitdrv.c` if you want SplitRun back. Your call (SplitRun is in
 `test/`).
+
+*Status (owner, 2026-10-31):* R1 and R2 passed to WORKER4. R3: leave both unported; noted as stale in REPORT.md.

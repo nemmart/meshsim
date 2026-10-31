@@ -60,6 +60,8 @@ final class ReplayWindow {
         W reportC() { lo |= 1L << 53; return this; }
         W fromLog() { lo |= 1L << 54; return this; }
         W untraced() { lo |= 1L << 55; return this; }
+        W sign() { lo |= 1L << 62; return this; }               // v1.25: sign_imm
+        W offImm() { lo |= 1L << 63; return this; }             // v1.25: offset_imm
         W cnst(long c) { hi = c; return this; }
         int seqRem() { return (int) (lo >>> 32) & 0xFFF; }
     }

@@ -1,7 +1,84 @@
 # WORKER4 report: meshsim to v1.2
 
-*In progress (phases 1-4 done; 5 and 6 to come). The final version lists what was built, every decision of my own,
-the differences from the draft header, the measurements and what the sort and replayer ports need.*
+meshsim on branch `v1.2-meshsim` implements `wip/spec/machine-spec.md` v1.2 (with DECISIONS-v1.2 up to section 49).
+Six phases, each closed with the quick suite and the full extras passing (the last on the Quest runner, task 076).
+This report is for the merge with `v1.2-sort` (WORKER8) and for the v1.25 work (WORKER11's `v1.25-meshsim`).
+
+## What was built, by phase
+
+1. **The link word, the director, the engines** (phase 1): the 256-bit word with a 32-bit address and a 3-bit counter
+   field; modes 0-5; bad packets dropped and counted; seven write counters decremented K cycles after acceptance
+   (a delay line); the stray named at acceptance; STREAM's v1.2 fields; byte-addressed mode 0; the read port's and the
+   write engine's v1.2 rules (natural alignment, no spanning: misaligned reads not performed, misaligned writes dropped
+   and counted); C&C 1-3 on tiles 0-2's fifth ports; 32 KB controller memories.
+2. **The register map** (phase 2): `Registers.java`'s v1.2 table; `MeshHeader.java` generates `sw/mesh.h` 1.2, which
+   agrees with the draft everywhere they overlap; `RegDoc.java` generates `wip/sw/REGISTERS.md` (W4-04); the block, the
+   windows, the table window and their timing; `SIM_EXIT`/`TRACE`; the request tree's receive queues (128, 256, 128);
+   `sw/` and the riscv-tests on the v1.2 map.
+3. **Peripherals** (phase 3): the framework (three per unit, the standard window, counted events, live bits, a DMA);
+   the replayer on it (type 4, credits, its ERRORS and words); C&C 1's peripheral (ERROR/READY lines, `PULSE_GO`, the
+   watchdog and toast pin, LED, the UART); the replayer port end to end (`sw/replay/replay_ctl.c`, StageB synthetic).
+4. **Errors, reset, boot** (phase 4): traps and the trap CSRs, `mcycle`/`mtime`, the hard interrupt, meshsim's loud
+   stops; the boot ROM (`sw/bootrom.S`, image `sw/bootrom.hex`); the reset (every bus emptied, every unit as at
+   power-on except the memories); RUN/HALT, the interim loader and v1.1's REPORT flow removed; CondTest on the new path.
+5. **meshsim-only checks** (phase 5): invariant 15 as a check; 16, 20, 21, 25 added; the coverage table below.
+6. **The recipes as suites, the measurements** (phase 6): all 19 v1.2 recipes built unedited and run (RecipeTest);
+   item S1 measured (S1Bench); K's formula per D49; RECIPES.md section 14 filled.
+
+## Decisions of my own, and the questions
+
+| # | question | answer |
+|---|---|---|
+| W4-01 | the sort's steps in run_tests.sh while the sort is unported | report "PENDING (sort port)" (agreed) |
+| W4-02 | writes into data memory's first 16 bytes | flagged at any time (agreed) |
+| W4-03 | uncounted writes into controller memory | only from C&C 1-3 (agreed) |
+| W4-04 | who owns `wip/sw/REGISTERS.md` | WORKER4; RegDoc generates it |
+| W4-05 | peripheral types | 0 none, 1 Ingress/Egress, 2 Updater/Binder/RW, 3 Tracer, 4 replayer (D46) |
+| W4-06 | words 8-9 of a peripheral without a DMA | read 0, a load unflagged, a store flagged (D48) |
+| W4-07 | `mtime`'s rate | implementation-defined; meshsim counts reference cycles through `time` (D48) |
+| W4-08 | K's formula against meshsim's write path | meshsim's reference becomes max(2L + 4, L + 4, cm_latency, rp_latency) (D49) |
+
+meshsim's own choices, not in the spec: the boot ROM's incidental load of slot 0 isn't held to the command-read check
+(the next command may land first); the boot ROM's WFIs stay out of `wfiLog`; C&C 1's model waits for all 64 READY
+(`READY_EXPECT` all ones, set again after a reset); `Config.checkErrors` turns invariant 15 off only where a test makes
+errors on purpose; S1 flags a write later than K + 4 (the controller's least reaction).
+
+## The header against the draft
+
+`sw/mesh.h` (generated) and `wip/sw/mesh-v1.2-draft.h` agree on every macro and struct offset they share (170 macros,
+81 members; RegDocTest runs `tools/header_diff.py`). The generated header adds `OFF_*` for every register,
+`TABLE_BASE` and `sim_trace()`. `wip/sw/mesh.h` is the generated header.
+
+## Measurements
+
+- **The recipes:** RECIPES.md section 14, from RecipeTest (`results/recipes.log`).
+- **Item S1** (`results/s1bench.log`): big SRAM's write path 2L + 4, PTR and HIST L + 3; K = 8 covers L <= 2 (margin
+  2 at L = 1, 0 at L = 2); at L = 3 and 4, K = 10 and 12 (margin 0). The table-window case: HIST loads come 24-25
+  cycles after the last update in the radix sort.
+- **A read-port search step** costs about 6 cycles more than in v1.1 (35.9 + 37.42 per active search): K = 8 after
+  acceptance against v1.1's landing at `cm_latency` (one K for every destination is deliberate, 4.7).
+- **The sweep's bands** equal phase 2's (`results/sweep-quick.log`).
+
+## What the sort port needs (for the merge with v1.2-sort)
+
+- **R1:** the sort's test files (SortTest, Inputs, SortSummary, VerifySummary) and run_tests.sh's sort steps are
+  WORKER8's: v1.2-sort's versions stand at the merge.
+- **R2 (boot):** no interim loader and no `Registers.LOADER_BASE`: `Mach.boot` broadcasts the image, sends `CMD_JUMP`,
+  then GO when every tile in `READY_EXPECT` is READY; the ROM jumps. `cc1p.expect` selects the tiles; `CnC.reset(hard)`
+  is the reset.
+- **Phase indices:** `cc.phaseLog` and the chip's `phases` start with the boot's GO (entry 0).
+- **Invariant 15:** an ERRORS bit is now a violation unless `Config.checkErrors` is off.
+- **K:** `Config.kMin()` is 2L + 4 at most L; `withTsLatency(L)` raises K to it.
+- **R4:** the regenerated `mesh.h` is committed in both places check_layout.sh compares.
+- **R3:** SplitRun and splitdrv.c stay unported (below).
+
+## What the replayer port needs (v1.25)
+
+- The replayer is type 4 on the peripheral framework; Stage A's driver (`ReplayDriver`) and `replay_ctl.c` consume
+  credits as 4.19.8 says (the expansion's first chunk on an explicitly taken credit); invariant 16's checks (no refill
+  past the credits taken, only the tile itself refills during a pass) apply to any new controller loop.
+- Deliveries for real guest windows come with v1.25 (`DELIVERY=<dir>` runs StageB on them); StageB synthetic is v1.2's
+  check.
 
 ## Known gaps at v1.2's freeze
 

@@ -101,11 +101,11 @@ final class TrafficDirector implements Component {
                 else if (r == LinkWord.R_SRAM) {
                     int c = LinkWord.offset(a) >>> 2;
                     if (c + LinkWord.chunks(size) > cfg.memChunks) violate("mode-0 write at or past the end of big SRAM (chunk 0x" + Integer.toHexString(c) + "): undefined (2.2; invariant 19): " + LinkWord.describe(d, h, hi));
-                    toWriteEngine.put(t, d, h, hi);
+                    toWriteEngine.put(t, d, h, hi); if (acceptQ != null) acceptQ.add(t);
                 }
                 else periph.accept(t, r - LinkWord.R_PERIPH1 + 1, d, h, hi);
             }
-            case LinkWord.M_SRC, LinkWord.M_BUCKET, LinkWord.M_AUG -> toWriteEngine.put(t, d, h, hi);
+            case LinkWord.M_SRC, LinkWord.M_BUCKET, LinkWord.M_AUG -> { toWriteEngine.put(t, d, h, hi); if (acceptQ != null) acceptQ.add(t); }
             case LinkWord.M_GATHER -> toGather.put(t, d, h, hi);
             case LinkWord.M_COUNT -> countOnly++;
             default -> throw new IllegalStateException("unreachable: mode " + mode);
@@ -180,6 +180,9 @@ final class TrafficDirector implements Component {
             }
         } else overlayKinds |= kind;
     }
+
+    /** S1's bookkeeping: the acceptance cycle of every packet handed to the write engine, in order (simulator only). */
+    java.util.ArrayDeque<Long> acceptQ;
 
     /** cm_idle (a diagnostic only in v1.2, 4.8): the port-B pipeline is empty. */
     boolean cmIdle(long t) { return toPortB.inFlight(t) == 0; }

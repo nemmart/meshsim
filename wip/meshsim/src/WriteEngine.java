@@ -37,6 +37,10 @@ final class WriteEngine implements Component {
     // ---- pointer stage ----
     private final int cap;
     private final long[] stD, stH, stC; private final int[] stPtr; private final boolean[] stHave;
+    private long[] stAcc;                                 // S1: each entry's acceptance at the director
+    java.util.ArrayDeque<Long> acceptQ;                   // S1: fed by the director, in the input bus's order
+    java.util.Map<Integer, Long> sramAcc;                 // S1: chunk -> acceptance, until the area stores it
+    java.util.ArrayDeque<Long>[] histAcc, ptrAcc;         // S1: per table index, acceptances awaiting their write-back
     private int head, count;
     private final java.util.ArrayDeque<Integer> awaiting = new java.util.ArrayDeque<>();   // stage entries waiting for their PTR return, in order
     long lastTsReq = Long.MIN_VALUE / 2;
@@ -78,6 +82,7 @@ final class WriteEngine implements Component {
             } else {
                 writtenBySize[Integer.numberOfTrailingZeros(n)]++;
                 toSram.put(t, BigSRAM.writeReq(a, n), lo, hi);
+                if (sramAcc != null && stAcc != null && stAcc[head] >= 0) for (int k = 0; k < n; k++) sramAcc.put(a + k, stAcc[head]);
                 written++;
             }
             stHave[head] = false; head = (head + 1) % cap; count--;
@@ -87,18 +92,21 @@ final class WriteEngine implements Component {
             long d = in.peekA(t), h = in.peekB(t), c = in.peekC(t);
             in.take(t);
             taken++;
+            long acc = acceptQ != null && !acceptQ.isEmpty() ? acceptQ.poll() : -1;
+            if (stAcc == null) stAcc = new long[cap];
             if (log != null) log.add(new long[] { t, d, h, c });
             int mode = LinkWord.mode(h);
             int i = (head + count) % cap;
-            stD[i] = d; stH[i] = h; stC[i] = c; count++;
+            stD[i] = d; stH[i] = h; stC[i] = c; count++; stAcc[i] = acc;
             if (mode == LinkWord.M_WRITE) { stPtr[i] = LinkWord.offset(LinkWord.addr(h)) >>> 2; stHave[i] = true; explicit++; }   // 4.9: at its address, no PTR access
             else {
                 int idx = mode == LinkWord.M_BUCKET ? LinkWord.digit(d, bucketDigit) : LinkWord.src(h);   // modes 1 and 3: src
                 int step = mode == LinkWord.M_AUG ? 2 : LinkWord.chunks(LinkWord.size(h));                  // 4.9: += 1, 2 or 4; mode 3: += 2
                 tsReq.put(t, TableStore.OP_ADD_RET, TableStore.PTR + idx, step);
+                if (ptrAcc != null && acc >= 0) ptrAcc[idx].add(acc);
                 lastTsReq = t;
                 stHave[i] = false; awaiting.add(i);
-                if (histDigit != 0) histReq.put(t, TableStore.OP_ADD_RET, LinkWord.digit(d, histDigit), 1);   // HIST: modes 1-3 (4.9)
+                if (histDigit != 0) { histReq.put(t, TableStore.OP_ADD_RET, LinkWord.digit(d, histDigit), 1); if (histAcc != null && acc >= 0) histAcc[LinkWord.digit(d, histDigit)].add(acc); }   // HIST: modes 1-3 (4.9)
             }
             if (count > stageHighWater) stageHighWater = count;
         }

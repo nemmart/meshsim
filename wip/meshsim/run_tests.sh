@@ -64,6 +64,7 @@ if [ "$MODE" != quick ]; then
   LOG=rdport-full TAIL=1 run "gather 1 at full size (Java; the C parts PENDING (phase 2))" java $JX -cp build ReadPortGatherTest -1 full
   LOG=accounting-full TAIL=1 run "per-phase accounting, full-size all-to-all from C" java $JX -cp build AccountingTest -1 full
   LOG=agbench TAIL=3 run "read-ahead measurements: ag_lookahead, zero-length groups, start to first request (a few minutes)" $J AgBench
+  LOG=s1bench TAIL=8 run "item S1: K's margin over the write path, L = 1-4, and the table-window case (a few minutes)" $J S1Bench
   LOG=sweep-quick TAIL=4 run "parameter sweep, quick (about 1 minute; 'java Sweep full' takes about 25)" $J Sweep quick
   LOG=ctrl-full TAIL=1 run "the all-to-all from C on the four data sets" java $JX -cp build CtrlTest -1 full
   LOG=engine-full TAIL=1 run "full-size all-to-alls (4 data sets) and radix sort (about 1.5 minutes)" java $JX -cp build EngineTest -1 full

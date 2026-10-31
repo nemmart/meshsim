@@ -86,3 +86,18 @@ count core cycles from the reset.
 **Answer (D48):** the rate is implementation-defined; meshsim's choice stands (Tony to say what his core does).
 
 **Status:** answered; as built.
+
+## W4-08: K's formula against meshsim's write path (item S1)
+
+**What.** S1Bench measures every counted write's acceptance -> complete. Big SRAM: 6, 8, 10, 12 cycles at L = 1-4
+(2L + 4); PTR and HIST: L + 3. The formula K >= max(2L + 3, L + 4, cm_latency, rp_latency) (4.8) gives K = 9 at L = 3
+and 11 at L = 4, one short of meshsim's path: the margin is -1 before the controller's reaction. The controller's
+reaction (at least 4 cycles) covers a read after done, but the radix sort's back-to-back bucket passes (rcp_bucket) trip
+invariant 2 at L = 3 and 4 (a chunk the last pass wrote read by the next run before it was stored); K = 2L + 4 clears it.
+At the default L = 1 (and L = 2) K = 8 covers the path with margin 2 (0 at L = 2).
+
+**Proposed.** Either the formula becomes max(2L + 4, ...) (K = 8 still covers L <= 2), or meshsim's write path is one
+cycle longer than the design's and should be trimmed: the integrator to say which. meshsim flags a write complete later
+than K + 4 (invariant 24); results/s1bench.log has the figures.
+
+**Status:** open.

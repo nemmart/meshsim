@@ -366,6 +366,7 @@ final class Controller implements Component {
             int i = off >> 2;
             if (tile.hist.busy) ctl.violate(t, "table window: HIST[" + i + "] accessed while count-on-arrival is using HIST (4.10)");
             if (write) { tile.hist.pipe.ctrlWrite(t, i, v & 0x1FFFF); return 0; }        // port B, figure 12
+            if (tile.chip.cfg.measureS1) tile.chip.s1.histLoad(t - tile.hist.pipe.lastWbT());   // S1's table-window case
             return tile.hist.pipe.ctrlRead(t, i);
         }
         if (Integer.compareUnsigned(a, Registers.STREAM_SRC_BASE) < 0) {

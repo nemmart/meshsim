@@ -79,6 +79,7 @@ final class Config {
     boolean checkDisjoint = true;        // invariant 2's buffer check (a program property: sweeps may turn it off for speed)
     long shuffleSeed = -1;               // >= 0: child order shuffled every cycle
     int maxViolationMessages = 50;
+    boolean measureS1 = true;           // item S1: every counted write's acceptance -> completion against K (invariant 24)
     boolean checkErrors = true;          // invariant 15: a unit's ERRORS bit set is a violation (once per tile and bit, until the reset)
     boolean checkUnexpected = true;      // invariant 9 (a pure network test with no counters set turns it off)
     // ---- Conditions, the done gate, the error line, C&C's receive FIFO ----

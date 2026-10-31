@@ -39,7 +39,7 @@ public final class SyntheticDelivery {
     int inlineWeight = 2; boolean end = true; Path tablesDir = ReplayTables.defaultDir();
     ReplayTables tb;
     /** --w9-layout: as WORKER9's delivery_writer lays a delivery out: OUT/PROGRAM.manifest.json beside OUT/PROGRAM/, file keys
-     *  without the window prefix, no rows_sha256 and no tables/ (the replayer's are assumed). */
+     *  without the window prefix, no rows_sha256, the tables in the program's directory. */
     boolean w9;
 
     public static void main(String[] a) throws Exception {
@@ -343,6 +343,8 @@ public final class SyntheticDelivery {
         f.pc = 0x8000_0000L; f.idx = 1;
         System.arraycopy(f.regs, 0, ref.x, 0, 32); ref.pc = f.pc;
         Path pd = out.resolve(program); Files.createDirectories(pd);
+        if (w9) for (String n : new String[] { "decode_table.bin", "rom.bin", "templates.bin", "template_index.bin" })   // as tasks 079/080: in the program's directory
+            Files.write(pd.resolve(n), Files.readAllBytes(tablesDir.resolve(n)));
         if (!w9) {
             Files.createDirectories(out.resolve("tables"));
             for (String n : new String[] { "decode_table.bin", "rom.bin", "templates.bin", "template_index.bin" })

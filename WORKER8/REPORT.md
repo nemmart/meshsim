@@ -91,7 +91,8 @@ Mean change per step, by path (v1.2 − v1.1, cycles):
   (v1.1's 405-cycle overlay load and 2,349-cycle `zero_planner()`, both gone) and pays ≈ 6 cycles per read-port search
   step on the critical path (K = 8 against v1.1's landing at cm_latency 2: WORKER4's SearchBench, +97 per step band;
   spec 4.7 notes it as deliberate). The skewed sets that take BT need more search steps per round, so the step cost
-  outweighs the constant there.
+  outweighs the constant there. **Partial:** direct's −3,199 exceeds the constant, so something else in the split
+  saves ≈ 450+ there; to measure (the split's functions under `-Dsort.watch`, both versions).
 - **RED** −578 where stage 2 runs (v1.1's 552-cycle overlay load for TH's image), else −108 to +19.
 - **TH (the command)** −617 on BT (v1.1's 597-cycle overlay load for BTPLAN).
 - **BT:** SWEEP +298 (one `ROUTER_ADDR` store per token and per credit, 2 × 127 rounds + the header shifts), DESC

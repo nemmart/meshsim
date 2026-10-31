@@ -261,3 +261,25 @@ So a full 2^29 program is generated and proved in 14-17 minutes on one CPU witho
   program hasn't touched before a window holds 0 in that window's image (its first observed value otherwise); no row
   can observe it. The read log's control-transfer rule is the spec's: a row with `next_from_value` whose new pc differs
   from its pc, which is jolt-cpp's `finish_instruction` test.
+
+## Full-program deliveries on the runner (Quest 079, 080)
+
+Both written with `--keep=all` and every window proved by the writer's functional replay in all three variants, with
+`imm_signed` (word 0 [86]). The runner box's paths are the inputs for WORKER11's kit (a replay-delivery root: a
+`manifest.json` listing the programs, one directory per program with the tables and the window files):
+
+| | EVM Zone `4e3451c1d8c5` trace-29 (079) | Cyclone input/29 (080) |
+|---|---|---|
+| path on the box | `/tmp/w9-deliveries/evm-zone-29/` | `/tmp/w9-deliveries/cyclone-29/` |
+| size | 48,368,983,728 bytes (46 GB) | 46,975,272,816 bytes (44 GB) |
+| writer run time (16-thread box, one thread) | 424 s | 356 s |
+| windows | 8,192, all replayed OK (1,064,585,826 rows over 3 variants) | 8,192, all OK (1,114,579,218 rows) |
+| `<name>.manifest.json` SHA-256 | `7142e894c80a0c9d491f21c852a942885e0abd97cfe6aefd0101d716824e138f` | `f8a0622e144a944c51386b5b36f81101dcdeb16e5a8d950c1e9ca0e3097f8982` |
+
+- **Delivery root for the kit: `/tmp/w9-deliveries`**, `manifest.json` (both programs) SHA-256
+  `d80dac9ae327eab5a5522807696570282fd8cad82fc3cd0f4784a415ab3e5790`.
+- **Selected windows: `/tmp/w9-deliveries-selected`** (same layout, 12 + 13 windows, all proved), packed as
+  **`/tmp/w9-selected-windows.tgz`**, SHA-256 `c62de0229be30864655e68a1d8cc00bffba4c271027c764a22d7f1580e0c1ca1`.
+  These carry `imm_signed`; `/tmp/w9-selected-windows-821e1bd.tgz` (copied by hand earlier) predates it and should
+  not be used.
+- Disk after both: 260 GB free.

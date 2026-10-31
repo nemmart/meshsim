@@ -137,9 +137,21 @@ fixed 8×8 torus.
   Stage B, the range expected of real ones.
 - **Not used:** the older `/tmp/w9-selected-windows-821e1bd.tgz` predates `imm_signed` [86].
 
-## 5. Open
+## 5. The acceptance tasks
 
-- The acceptance tasks themselves, after WORKER9's writer tasks have run.
+WORKER9's tasks 079 and 080 wrote the deliveries to `/tmp/w9-deliveries` (EVM Zone 46 GB, Cyclone 44 GB; 8,192
+windows each, every one proven by the writer's own replay).
+- **The tasks read the per-program manifests,** `PROGRAM.manifest.json`, checked by SHA-256 (`-M`, `-m`). The combined
+  `manifest.json` changed when task 080 added Cyclone, and the per-program files don't.
+
+| task | program | per-program manifest SHA-256 |
+|---|---|---|
+| **083** `083-w11-accept-evm-zone-29` | evm-zone-29 | `7142e894c80a0c9d491f21c852a942885e0abd97cfe6aefd0101d716824e138f` |
+| **084** `084-w11-accept-cyclone-29` | cyclone-29 | `f8a0622e144a944c51386b5b36f81101dcdeb16e5a8d950c1e9ca0e3097f8982` |
+
+- **Numbers** claimed in Quest's `NUMBERS.md` (ed5aa54). **Kit SHA-256:** `9a1acd88…`.
+- **Each task runs:** `run_shard.sh -d /tmp/w9-deliveries -p PROGRAM -M …/PROGRAM.manifest.json -f 0 -n 8192 -j 16 -x 64 -m SHA`.
+- **Not used:** the older `w9-selected-windows-821e1bd.tgz` (it predates `imm_signed`).
 
 ## 6. For the merge: changes outside the replayer
 

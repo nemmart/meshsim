@@ -76,3 +76,4 @@ acceptance kit). Until WORKER10's `v1.25` spec branch exists, the design is DECI
 - Claimed 083, 084 in NUMBERS.md (quest ed5aa54). **Task 083 pushed** (kitA sha 9a1acd88..., evm-zone-29).
   084 (cyclone-29) waits for task 080's cyclone-29.manifest.json SHA-256: then
   `acceptance/make_acceptance_task.sh KIT 084 cyclone-29 <sha>` (rebuild the kit with make_kit.sh first).
+- Task 080 done (cyclone-29.manifest.json f8a0622e...). **Task 084 pushed.** 083 next in the queue.

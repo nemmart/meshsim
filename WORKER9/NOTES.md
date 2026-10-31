@@ -125,3 +125,10 @@ To do: a mechanical check (dump every opcode's expansion at both commits and dif
 - Tracer tables delivered (fe39fda): ROM 404/512; secp256k1 advice as untraced programs; DIVQ/DIVR Fermat loop as
   segments; template map; all checked against jolt-cpp's advice (0 mismatches); traced words identical.
 - QUESTIONS Q8 (loop vs addition chain), Q9 (untraced LD). Next: part 3 plan.
+
+## Turn 7-8 (2026-10-31/11-01): part 3
+
+- delivery_writer (PR #2 121c271, README 61996f8): all windows of both small inputs and both 2^29 programs replay in
+  all three variants (EVM 1,014 s, Cyclone 819 s on 1 CPU). Corruption test hook catches stream, rows and ROM flips.
+- Selected windows written and proved; tarball to the owner (not committed). Quest 070/071 held for the full
+  deliveries (need /tmp/w9-delivery.tgz). Task 069 still held.

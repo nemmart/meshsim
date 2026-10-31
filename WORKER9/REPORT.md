@@ -227,3 +227,37 @@ Untraced words compute every advice value in bank 1 (results in 146-209, scratch
 
 Part 2 is complete; Q8 (loop vs addition chain) is on hold for WORKER12's counts. Part 3 (the delivery writer) is
 under way (PLAN-PART3.md, approved).
+
+---
+
+# Part 3: the delivery writer
+
+`tracer/delivery/delivery_writer.cpp` in PR #2 (README there): a functional model of the Tracer's output from
+jolt-cpp 821e1bd's own trace, writing per window the reference rows, the three state-record variants (raw, LRU, the
+Tracer's pick), the three streams raw and compressed, `end.bin` and a manifest with SHA-256, and **proving every window
+by replaying it from the delivered files alone**: the streams decoded, code words resolved through the universal
+tables exactly as the replayer does, rows executed with jolt-cpp's row semantics on the log-driven path, transfers
+taking their next `instr_idx` from the read log; every record compared with `rows.bin`, every stream consumed exactly,
+the end state equal to the next window's start. A flipped bit in any stream, in `rows.bin` or in a ROM word is caught.
+
+| program | rows | windows | replay (3 variants) | wall (1 CPU) | peak RSS |
+|---|---|---|---|---|---|
+| PR #1's EVM Zone trace-23 | 4,278,784 | 128 | all OK | 13 s | |
+| Cyclone input/22 | 2,705,819 | 64 | all OK | 7 s | |
+| **EVM Zone `4e3451c1d8c5` trace-29** | 354,861,942 | 8,192 | **all OK** (1,064,585,826 rows) | 1,014 s | 1.44 GB |
+| **Cyclone input/29** | 371,526,406 | 8,192 | **all OK** (1,114,579,218 rows) | 819 s | 1.63 GB |
+
+So a full 2^29 program is generated and proved in 14-17 minutes on one CPU without keeping files, inside the runner's
+45-minute limit (v1.25 s7's generate, replay, discard shards).
+
+- **Selected windows** (12 EVM Zone, 13 Cyclone; README lists the categories; EVM Zone has no atomics, Cyclone's
+  densest-atomics window has 104): written and proved, 137 MB, delivered to the owner as
+  `w9-selected-windows-821e1bd.tgz` (SHA-256 `f4b11501...71bd641`), not committed.
+- **Full-program deliveries**: Quest tasks 070 (EVM Zone) and 071 (Cyclone), held, input `w9-delivery.tgz` (SHA-256
+  `4000c1ac...c3da1ce10`, the tracer tree at `121c271` plus the universal replayer tables and a libelf fallback). Each
+  writes every window with `--keep=all` to `/tmp/w9-deliveries/` on the box (about 31 GB) and proves it; results get the
+  log, size and the manifest's SHA-256.
+- **Notes.** The row immediate is jolt-cpp's raw 64-bit `_imm`, pending WORKER10's ruling (v1.25 s7 Q1). A register the
+  program hasn't touched before a window holds 0 in that window's image (its first observed value otherwise); no row
+  can observe it. The read log's control-transfer rule is the spec's: a row with `next_from_value` whose new pc differs
+  from its pc, which is jolt-cpp's `finish_instruction` test.

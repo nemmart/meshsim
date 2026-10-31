@@ -13,9 +13,9 @@ Spec commit at start: `4856c0b` (main). Inputs read: CHANGES-v1.2, CHANGES-v1.25
 | 1 | pass A, v1.2 → v1.25 (mechanical diff) | **done** |
 | 1 | pass B, v1.1 → v1.2, front matter to 13 | **done** |
 | 1 | spec fixes from pass A/B taken by WORKER10 (`0b4ba20`: 4.17.1 types, 4.19.7 renumbering, 8.1 timing, CHANGES-v1.25 errata) | **pulled; the guide uses the fixed text** |
-| 2 | the guide: 0 reading guide, 1 overviews + removed/new, 2.1 link/network, 2.2 address map, 2.3 engines, 2.4 controller, 2.5 peripherals, 2.6 replayer (R1–R14 v1.2, R15–R19 both/log rules, R20–R41 v1.25) | **written**; next: 2.7 control/reset/boot, 2.8 C&C 1–3 |
-| 3 | register tables, sections 9–10 | |
-| 4 | QUESTIONS.md, REPORT.md, final pull, spec commit stamped | |
+| 2 | the guide: 0 reading guide, 1 overviews + removed/new, 2.1 link/network, 2.2 address map, 2.3 engines, 2.4 controller, 2.5 peripherals, 2.6 replayer (R1–R14 v1.2, R15–R19 both/log rules, R20–R41 v1.25) 2.7 control, 2.8 C&C 1–3, 3 tables, 4 parameters/invariants, 5 not in CHANGES | **written** |
+| 3 | register tables, sections 9–10 | **written** (guide 3, 4) |
+| 4 | QUESTIONS.md, REPORT.md, final pull, spec commit stamped | QUESTIONS and REPORT drafted (v1.2 errata section); next: a read-through of the whole guide against the spec, final pull, stamp |
 
 ## Pass A: v1.2 → v1.25 (spec diff)
 
@@ -388,3 +388,6 @@ proposed), 44–47 (replayer map details, proposed).
   word, output row, opcode renumbering → appendix 2.0); 4 parameters and invariants; 5 differences not in CHANGES.
 - 2.6 written (R IDs). R19 (E[15]) sits in the "both" table for locality but is step v1.25; the guide says so.
   Section 3.9 is referenced from R26 for the full opcode list: point it at appendix 2.0 (WORKER10's) rather than copy.
+- Turn 4: pulled `0d63132` (WORKER11 merged, item 138 closed: measurements only, no RTL change). Wrote 2.7, 2.8, 3, 4,
+  5; cited v1.2 errata E1–E6. New findings: 4.12's "1 or 2 cycles" (v1.2 and wip), 4.19 intro type 1 in v1.2 (not in
+  E1), D48 vs the reserved-word rule, item 111 still stale in wip → QUESTIONS Q5–Q8, REPORT "v1.2 errata".

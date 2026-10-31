@@ -270,6 +270,12 @@ public final class CtrlTest {
         h.c.run(60);
         T.check(h.c.violationMessages.stream().anyMatch(v -> v.contains("invariant 5")), "invariant 5: a misaligned mode-0 packet sent");
         T.check(h.c.quiescent() && h.c.tiles[60].cmem.dmem.peek(0x100) == 0, "a hard reset with a packet in flight: it is gone, the mesh empty (6.1)");
+        // an overlay landing after a unit's first command and before its start (6.2): flagged
+        Mach o = new Mach(Mach.cfg(shuffle));
+        o.c.run(40);
+        o.c.cc.command(9, Registers.CMD_JUMP << 24, Registers.PMEM_BASE).waitCycles(60).send(9, LinkWord.M_WRITE, 0x400, 0x5);
+        o.c.run(200);
+        T.check(o.c.violationMessages.stream().anyMatch(v -> v.contains("overlay write landed after")), "an overlay after the first command is flagged (6.2)");
         out("invariants [meas: CtrlTest invariants]: 4 (done before arrivals), 5 (a bad packet sent), a packet in flight at a reset (gone), 8 (reply overwritten unread), 9 (unexpected arrival: its error set), a reserved register-block word (reads 0, flagged) and the table-window check each fire on a bad program");
     }
 

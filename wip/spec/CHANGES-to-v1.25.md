@@ -305,3 +305,65 @@ Each table lists the unit's changes in v1.25 spec order. The columns are: **v1.1
 | T38 | receive side reads the tile's own 16-entry queue | reads its **target's queue in the tree** (C&C 1–3 only); on tiles 0–63 the `GET` words read 0, request pending never rises and every `REQUEST_RECEIVE` load is a receive underflow (4.18) | changed | v1.2 | D38 |
 | T39 | `request_busy` `TILE_STATUS` [11]; FIFO-not-full `WAKE_EVENTS` [12]; `REQUEST_PENDING` [19]; underflow condition 14 | `STATUS` [6]; `EVENTS` [11]; request pending `EVENTS` [12] (live); `ERRORS` [14] (4.18) | renamed | v1.2 | D16, D18, D40 |
 | T40 | HALT keeps the receive queue; requests arrive while credits last | the reset empties every FIFO, the tree and the queues together and restores the credits; after an error the port keeps running (the handler's reports use it) (4.18) | changed | v1.2 | D23 |
+
+### 2.4 The controller and its registers (spec 4.11–4.13, 8.1–8.10, 8.15)
+
+Register offsets, bit by bit, are in section 3. This section covers the behaviour.
+
+**The core and its memories (4.11)**
+
+| ID | v1.1 | v1.25 (section) | kind | step | why |
+|---|---|---|---|---|---|
+| C1 | RV32I + Zmmul + `WFI`; no CSRs, traps, interrupts, `mtvec`, `mepc`, `mret` | RV32I + Zmmul + `WFI` + **the CSR instructions, the machine-mode trap CSRs, `mcycle` and `mtime`**; machine mode only; the same core in C&C 1–3. `mtime`'s rate is implementation-defined (4.11) *(item 121: the full CSR list and reset values, with Tony)* | changed | v1.2 | D1, D20, D41 (F12), D48 (W4-07) |
+| C2 | — | **two core inputs** (4.11): the **hard interrupt** (a level, from `ERRORS` ≠ 0; traps to `mtvec` even in `WFI`; gated by `mstatus.MIE` and `mie`) and the **wakeup** (a level from the wake term; resumes `WFI` without a trap; if high at `WFI`, the core doesn't sleep) | new | v1.2 | T, 2026-10-28; D1 |
+| C3 | illegal instruction (divide, CSR) → condition + **halt**; `ecall`, `ebreak` → halt | divide and CSRs the core lacks → `ERRORS` [10] + trap; **bus error, illegal, `ecall`, `ebreak`, a fetch outside program memory and the boot ROM, a misaligned jump target** all trap to `mtvec`; **every trap is terminal**; `ecall`, `ebreak`, the fetch and the jump set no `ERRORS` bit (4.11, 4.13) | changed | v1.2 | D20 |
+| C4 | 8 KB instruction (0x0000–0x1FFF, fetch only) + 8 KB data (0x4000–0x5FFF); each four word-interleaved 512 × 32 banks | **32 KB data (0x00000000–0x00007FFF) + 32 KB program (0x01000000–0x01007FFF)**; program memory is **fetch and load**, a store is a bus error; banking is the implementer's choice (4.11) | changed | v1.2 | D5, D42 |
+| C5 | port B writes 1, 2 or 4 consecutive words per cycle at any word address | **one 128-bit (or 32/64-bit) write per cycle, naturally aligned** (4.11) | changed | v1.2 | D42 (W5-05) |
+| C6 | memory loads 1 cycle; register and table-window loads **1 or 2 cycles, the implementation's choice** (meshsim 2) | memories and boot ROM **1**; the table window **1**; **the register block and every peripheral window word 2**, fixed on every access and unit; the 32 KB memories meet one-cycle access at 1 GHz (4.11, 5, 8.1, 10) **[not in CHANGES-v1.2: D45]** | changed | v1.2 | D45 (Tony, 2026-10-29); item 134 closed |
+| C7 | sampling rule: `WAKE_EVENTS`, `REQUEST_RECEIVE`, `UART_RX` side effects at *t* + *L* − 1 | the same rule for every word of every window; adds a peripheral's `EVENTS` (subtracts one count per masked set bit) (4.11) | changed | v1.2 | D14 |
+| C8 | stalling stores: the send port, the request FIFO, `UART_TX` on a wired tile | the send port, the request FIFO, the UART's TX word (C&C 1 only) (4.11) | changed | v1.2 | D28 |
+| C9 | bus errors: stores to instruction memory, misaligned, unmapped (0x8A0–0xFFC), sub-word to registers or tables, store to read-only, loads from `PTR`/`STREAM`/`GROUP`; **halt** | `ERRORS` [9] + trap: store to program memory or boot ROM; misaligned; unmapped (regions 0x03–0xFE, the unused parts of 0xFF, **any word of an absent peripheral's window**); sub-word to registers, windows or tables; store to read-only; loads from `PTR`/`STREAM`/`GROUP`. **Reserved words in the block and windows read 0 and ignore stores** (not bus errors). Out-of-bounds offsets in CM are not checked (they alias) (4.11, 8.1) | changed | v1.2 | D5, D9, D27 |
+| C10 | packed 14-bit CM word addresses | byte addresses; port B decodes the region (4.11) | changed | v1.2 | D5 |
+| C11 | send port: `ROUTER_SET_HDR` (W): dst [6:0], mode [10:7], addr [31:11]; addr +1/+2/+4 for modes 3, 6, 9, +1 for mode 7 | **`ROUTER_HDR`** (R/W): **no-increment [0]**, spare [16:1], size [18:17] reserved (reads 0), **counter [21:19]**, mode [24:22], dst [31:25] (0–66, 126); **`ROUTER_ADDR`** (R/W, 32-bit), advancing by 4/8/16 bytes per mode-0 send unless no-increment; modes 1–5 leave it; **no-increment stays set until cleared** (4.11, 8.4) | changed | v1.2 | D7, D12, D37.5 |
+| C12 | resident loader at 0x1F00, where HALT → RUN starts | gone: the **boot ROM** (6.2) | removed | v1.2 | D22 |
+
+**The command and reply blocks, counters and events (4.12)**
+
+| ID | v1.1 | v1.25 (section) | kind | step | why |
+|---|---|---|---|---|---|
+| C13 | command block 0x5FC0–0x5FFF; mode-7 32-bit writes only | **0x00007FC0–0x00007FFF**, a silicon constant (the boot ROM reads it); commands are **mode-0 writes, counter 0** (4.12) | changed | v1.2 | D6, D37 |
+| C14 | command landed posts `WAKE_EVENTS` [10] | posts `EVENTS` [9]; **the event stays pending after a unit's first command** (the reset mask doesn't include it, the helpers don't consume it; the boot ROM relies on it) (4.12) | changed | v1.2 | D37.1, D41 (F13) |
+| C15 | reply block 0x5BC0–0x5FBF; mode 8 lands by source at word 2·src; `DMA_REPLY_REMAINING` | **0x00007BC0–0x00007FBF**; a reply is a **mode-0 write** to `REPLY` + 8·src, counted on any counter; **a default, not a rule**: every request names its own reply address; writing only one's own pair is a software convention (4.12) | changed | v1.2 | D6, D40 |
+| C16 | four down-counters by mode (0x830–0x83C), done = 0 **and** `mem_idle`/`cm_idle` | **seven write counters** `WRITE_COUNTER_1`–`7` (0x860–0x878), 20 bits, decremented at K; done = 0 (4.12, 8.7) | changed | v1.2 | D14, D30, D40 |
+| C17 | additive write: `next = count + N − arrive`, judged against arrivals at acceptance; N > 0 clears counters done [9] and its own done [0]–[3] | the same rule against **that cycle's decrement**; N > 0 clears counters done [7] and its own done (bit *n* − 1) and sets their qualifiers (4.12) | changed | v1.2 | D30 |
+| C18 | a counter returns to 0 by counting down, at chip reset or **on entering HALT** | counting down or **the reset**, which also clears the delay line (4.12) | changed | v1.2 | D23 |
+| C19 | unexpected arrival at acceptance | **at the decrement**, K later; a stray accepted at 0 whose decrement lands after an arm uses up one of the *N* (accepted trade-off; meshsim also reports the stray at acceptance) (4.12) | changed | v1.2 | D3, W5-01 |
+| C20 | `WAKE_EVENTS`: [3:0] counter done (SRAM, CM, REPLY, PERIPH), [7:4] reserved, [8] GO, [9] counters done, [10] command landed, [11] engine run done, [12] request FIFO not full, [18:13] service lines, [19] request pending, [20] sender idle, [21] UART RX not empty, [22] UART TX not full | `EVENTS`: **[6:0] write counter 1–7 done**, [7] counters done, [8] GO, [9] command landed, [10] **DMA run done**, [11] request FIFO not full, [12] request pending (live), **[15:13] peripherals 1–3 (live)**, [31:16] reserved (4.12, 8.10) | changed | v1.2 | D16, D40 |
+| C21 | `WAKE_MASK` resets to [8] \| [9] (and at HALT → RUN) | `EVENTS_MASK` resets to **[8] \| [7]** (4.12) | changed | v1.2 | D40 |
+| C22 | `WAKE_REQUIRED` | `EVENTS_REQUIRED`, **the controller's only** (no copy in a window) (4.12) | renamed | v1.2 | D14 |
+| C23 | the `done` pulse clears counters done and the four done events | clears counters done and the seven done events, **and no other event** (DMA run done is cleared only by `PULSE_DMA` and a consuming load) (4.12) | changed | v1.2 | round 2 (recipe check) |
+| C24 | the `done` gate: only GO wakes `WFI` | the same; **an error during the gate still takes the hard interrupt** (4.12) | changed | v1.2 | D21 |
+| C25 | — | **spurious wakes allowed**: a peripheral's live bit may lag a consuming load; software re-checks after a wake; the hardware aims to make the bit current by the next instruction (4.12) | new | v1.2 | D16 |
+| C26 | a live service line's consumption claims one unit of service (credit, nothing, or a pop) | live events are never consumed by a load of `EVENTS`; a peripheral's events are consumed only by a load of **its own** `EVENTS` (4.12, 4.17.3) | changed | v1.2 | D14, D16 |
+
+**Status, errors and traps (4.13)**
+
+| ID | v1.1 | v1.25 (section) | kind | step | why |
+|---|---|---|---|---|---|
+| C27 | `TILE_STATUS`: live bits, peripheral type, endpoint id, SRAM size | split: **`PARAMS`** (constants: peripherals present [2:0], endpoint id [26:20] (0–66), SRAM size [31:27], 7 on C&C 1–3) and **`STATUS`** (live, diagnostic only: [0] `rd_running`, [1] `rd_done`, [2] GATHER busy, [3] `send_busy`, [4] `done`, [5] command landed, [6] `request_busy`) (4.13, 8.2) | changed | v1.2 | D18 |
+| C28 | `done` resets to 1 (forced to 1 in HALT) | **`done` resets to 0** (8.2) **[not in CHANGES]** | changed | v1.2 | no HALT; D23 |
+| C29 | `TILE_CONDITIONS` [14:0] | **`ERRORS`**, same numbers except: [1] "bad packet **or misaligned access**" (was bad mode or size); [7] read-port **overflow only** (misaligned now [1]); **[11]–[13] peripherals 1–3, live** (the OR of each window's `ERRORS`; were bad peripheral write and the peripheral's conditions 2 and 3) (4.13, 8.3) | changed | v1.2 | D18, D21 |
+| C30 | conditions cleared on entering HALT | **sticky until the reset** ([10:0], [14]); a store to `ERRORS` is a bus error (4.13) | changed | v1.2 | D21, D23 |
+| C31 | a condition raises the tile's error line | `ERRORS` ≠ 0 raises the **hard interrupt** (once enabled) and the **error line** (hardware, `error_latency`, no software) (4.13) | changed | v1.2 | D21, D24 |
+| C32 | — | **terminal traps**: `MIE` cleared on entry and never set again; a trap in the handler restarts it; engines and peripherals carry on unserviced until the reset (4.13) | new | v1.2 | D20 |
+| C33 | — | **the handler's convention** (software, but sized by hardware): 24 reports to C&C 1 in fixed order; reads `EVENTS_PEEK`, never `EVENTS`; checks `PARAMS` [2:0] before a window; parks in a jump to itself; the boot ROM's handler until the image installs its own; **interrupts off until the image's boot part 2 enables them** (4.13) | new | v1.2 | D20, D37.2, D37.3, D44 (W5-24) |
+
+**The register block (8.1, 8.15)** — offsets in section 3.1.
+
+| ID | v1.1 | v1.25 (section) | kind | step | why |
+|---|---|---|---|---|---|
+| C34 | 0x800–0x89C contiguous; 0x8A0– unmapped (bus error) | 0x800–0x880 defined; **0x884–0x9F4 reserved (read 0, stores ignored)**; peripheral windows at 0xA00, 0xC00, 0xE00; **every offset moved** (8.1) | changed | v1.2 | D11, D30, D40 |
+| C35 | `TILE_PULSE` bits: [0] done, [1] start, [2] peripheral run, [3] GO; one store could fire several | **one register per action**: `PULSE_DONE`, `PULSE_DMA` (block), `PULSE_RUN` (window), `PULSE_GO` (C&C 1's peripheral); a store of 1 fires, 0 does nothing, a load reads 0 (8.1, 8.6) | changed | v1.2 | D8 |
+| C36 | `DMA_CONFIG`, `DMA_RECORD_BASE_ADDRESS`, `SRAM_RD_DEST_ADDR` write-only | **R/W** (8.5, 8.7, 8.8) | changed | v1.2 | D11, D13 |
+| C37 | configuration registers undefined at chip reset, kept across HALT → RUN | undefined at the reset; adds `ROUTER_ADDR` and each window's `DMA_HDR`, `DMA_ADDR`; drops `SENDER_ADDR` (8.1) | changed | v1.2 | D23 |
+| C38 | `mesh.h` 1.1, flat registers; trace mark at 0xFFFFFFF0; `CMD_EXIT` and `ebreak` end a test | `mesh.h` 1.2, structs (`TileRegs`, `PeripheralStd`, `<Name>Regs`); **simulator-only exit word 0xFFFFF9F8 and trace word 0xFFFFF9FC**, reserved words on hardware (8.1, 8.15) | new | v1.2 | D29, D32, D36 |

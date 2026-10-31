@@ -44,16 +44,37 @@ WHAT TO DO
 7. **Open PR #2** from your branch, as a draft, with a description summarising 2-5, if the token allows; otherwise push
    the branch and say so.
 
+PART 2: THE EXPANSION TABLES (after PR #2's tracer refresh, steps 1-7)
+v1.25 needs the expansion tables built from the pinned commit, and **the builder that made v1.1's tables isn't in any
+of our repositories**: meshsim's replayer reads its tables from external deliveries. Build one.
+8. **Find what exists:** where v1.1's tables came from (step 6's search covers it), and the formats meshsim reads:
+   `wip/meshsim/REPLAY-INPUT-REQUIREMENTS.md` (`templates.bin`, the index, the decode table, the ROM image) and spec
+   4.19.3-4.19.7 (the expansion word, operand codes, templates, the decode index and table, the ROM, the opcodes).
+9. **Build the table builder** in PR #2, next to the tracer, using jolt-cpp's own expansion code at the pinned commit
+   (link it, as the tracer does, rather than re-reading it). It produces:
+   - **the replayer's tables:** the opcode table, the ROM templates (re-checking the template count and the ROM fill
+     against the 8 KB ROM), the decode table and the controller-fed templates, in exactly the formats meshsim reads;
+   - **the Tracer's tables**, its variant (meshsim `wip/planning/DECISIONS-v1.3.md` sections 7-8): the same format
+     with the untraced advice rows (WORKER7's division templates in meshsim's `wip/tracer/` and its `REPORT.md`) and
+     the C&C 3-fed set. Where the new opcodes need the expansion word's new `shift_offset` field (v1.3 section 9),
+     propose its encoding in QUESTIONS.md and use your proposal.
+10. **Check the builder against jolt-cpp:** for every instruction, the builder's templates expanded with real operands
+    must give exactly jolt-cpp's rows (as WORKER7's harness did for the division family): random operands and the edge
+    cases, every instruction, both variants where they differ.
+11. **Deliver the tables into meshsim** at `wip/tables/` (a new folder: the generated files, a README naming the jolt-cpp
+    commit and how to regenerate), and report the ROM fill and template counts against v1.1's.
+
 RULES
 - One CPU and limited memory: the 2²⁹ runs may be slow, and the VM reserves 4 GiB of guest address space (PR #1's README
   on `vm.overcommit_memory`). If they can't run here, use the Quest runner (in your user preferences; a task carries what
   it needs), or report the limit.
 - Questions go in meshsim's `WORKER9/QUESTIONS.md`, with your proposed answer; carry on.
-- This prompt is the go-ahead to create and push your branch in jolt-asic-planning, open PR #2, and write in meshsim's
-  `WORKER9/`. Change nothing else: not PR #1's branch, not meshsim's other files.
+- This prompt is the go-ahead to create and push your branch in jolt-asic-planning, open PR #2, write in meshsim's
+  `WORKER9/`, and create meshsim's `wip/tables/`. Change nothing else: not PR #1's branch, not meshsim's other files.
 - Keep `WORKER9/NOTES.md` as you go; push at least every turn.
 
 DELIVERABLES
-- PR #2 in jolt-asic-planning (or its branch, pushed).
-- `WORKER9/REPORT.md`: the pinned commit, what changed against PR #1, both runs' numbers against PR #1's, and the run-log
-  findings (step 6).
+- PR #2 in jolt-asic-planning (or its branch, pushed), with the table builder (part 2).
+- meshsim's `wip/tables/`: the generated replayer and Tracer tables and their README (part 2).
+- `WORKER9/REPORT.md`: the pinned commit, what changed against PR #1, both runs' numbers against PR #1's, the run-log
+  findings (step 6), and part 2's results: the checks, the ROM fill and template counts, the `shift_offset` proposal.

@@ -109,6 +109,7 @@ public final class StageB {
         for (int i = 0; i < 16; i++) p.sram.poke(HDR + i, h[i]);
 
         // ---- boot: the loader everywhere; replay_ctl and its boot marker on tile 0 only (the others' loaders ebreak)
+        c.cc1p.expect = 1;                                      // only tile 0 starts (6.2): the others wait in their ROMs
         c.cc.loadWords(0, Registers.PMEM_BASE, im.code);
         if (im.data.length > 0) c.cc.loadWords(0, im.sym.get("_data_start"), im.data);
         c.cc.command(0, Registers.CMD_JUMP << 24, im.sym.get("_start"))
@@ -237,6 +238,7 @@ public final class StageB {
         h[0] = 0x594C5052; h[1] = 1; h[2] = TABLES; h[3] = INDEX; h[4] = ws.size(); h[5] = TEMPLATES; h[6] = RECORD;
         h[7] = CODE; h[8] = w.code.length / 2; h[9] = RLOG; h[10] = w.rlog.length / 2; h[11] = WLOG; h[12] = w.wlog.length / 2; h[13] = 1;
         for (int i = 0; i < 16; i++) p.sram.poke(HDR + i, h[i]);
+        c.cc1p.expect = 1;                                      // only tile 0 starts (6.2): the others wait in their ROMs
         c.cc.loadWords(0, Registers.PMEM_BASE, im.code);
         if (im.data.length > 0) c.cc.loadWords(0, im.sym.get("_data_start"), im.data);
         c.cc.command(0, Registers.CMD_JUMP << 24, im.sym.get("_start")).go();

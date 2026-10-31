@@ -240,10 +240,17 @@ per row** (owner), and windows 33-36 all fall in the same proof.*
 | single Fermat loop, as built | 4.19 M | about 32.0 M | **about 145 ms: over the budget** |
 | addition chain (C4) | 4.19 M | about 16.8 M | **about 84 ms: under, with about 16 % margin** |
 
-- **Q8 is open again:** the single loop breaks the budget on a known workload, and even the addition chain leaves little margin; a
-  block with somewhat more signatures would exceed it. **Options:** (1) the addition chain, no hardware; (2) a **modular-inverse
-  unit**, or a 256-bit modular-arithmetic helper, for the Tracer's untraced rows, turning each inverse into thousands of cycles
-  and making the budget insensitive to the number of signatures (T7).
+- **Q8 and T7: keep the single Fermat loop, with host-supplied advice as the backup** (owner, 2026-11-01). The loop puts EVM
+  Zone's first proof at about 145 ms, over the budget, but the system has a fallback that needs no Tracer hardware:
+  - **The host already knows every advice value**, in order, because it emulates the program itself.
+  - **C&C 3 already generates the inverse's expansion on the fly** (10). Instead of the 124,000-row loop it can send **a short
+    expansion that puts the known results into the right bank-1 registers** (a few untraced rows, the values as constants); the
+    traced rows read them through `advice_reg` exactly as before, so the trace and the replayer are unchanged.
+  - **What it needs, if used:** the host delivers each advice result to C&C 3 through Ingress **before the Tracer reaches the
+    call**, keyed by its position in the run (`instr_idx`), and C&C 3 matches them; the values equal jolt-cpp's, as they will if
+    the host computes them with jolt-cpp.
+  - It is a fallback for any heavy advice, not only the inverse. Used only if a workload's advice threatens the budget.
+  - The addition chain stays candidate C4; an inverse unit in the Tracer is not needed.
 - **The CSR decision holds** (v1.25 section 6): Cyclone runs 8,751 CSR instructions (10 per trap, 875 traps, at most 160 in any
   window), EVM Zone none.
 
@@ -289,5 +296,5 @@ Options recorded for later, each with the evidence that would justify it.
 | T2 | The RV64 initial state: what it contains and where it comes from | 1 | open |
 | T3 | The page table: its size, format and how C&C 3 maintains it | 1 | open |
 | T6 | `VirtualPext`/`VirtualPextSigned` in hardware | 9 | **answered: section 9** (any mask must work; the method is the implementation's) |
-| T7 | The modular inverse within the Tracer's 100 ms budget: the addition chain (no hardware, about 84 ms on EVM Zone's worst proof) or an inverse unit / 256-bit modular-arithmetic helper for untraced rows | 11 | open, with Tony |
+| T7 | The modular inverse within the Tracer's 100 ms budget | 11 | **answered: section 11** (keep the single loop; host-supplied advice as the backup) |
 | T5 | The inlines' advice | 8 | **answered: section 10** (the Tracer computes all advice through expansions; C&C 3 generates long ones by looping) |

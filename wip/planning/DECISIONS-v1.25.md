@@ -88,10 +88,12 @@ Decided (O). From WORKER9's first delivery of the replayer's tables and its Q5-Q
   real-program checks; every opcode is also checked against jolt-cpp with random operands.
 - **Unused decode-table entries are invalid** (revises WORKER9's Q7, class 2): with universal tables they are encodings
   that aren't valid RV64IMAC instructions, which Jolt itself rejects, so they are an error, not a controller-fed template.
-- **The atomics go in the ROM if they fit** (owner): in v1.1 the ROM was nearly full (about 508 of 512), so the longest
-  expansions were controller-fed. The new AMO\*.W bodies are 8-13 rows (from 18-24) and the ROM has room, so every atomic
-  (the .W and .D forms, LR and SC) goes in the ROM if they all fit, the most frequent first if not. Only the inlines and the
-  system instructions (`ECALL` and the like) stay controller-fed.
+- **The goal: every expansion except the inlines and the advice generators fits in the ROM** (owner, 2026-11-01). The
+  controller then feeds only what is inherently special; everything executed routinely, the atomics (.W and .D, LR and SC)
+  and the system instructions (`ECALL` and the like) included, is in the ROM. In v1.1 the ROM was nearly full (about 508 of
+  512), so the longest expansions were controller-fed; the new AMO\*.W bodies are 8-13 rows (from 18-24) and the ROM has
+  room. **If it doesn't fit**, the builder reports how many words short it is and which expansions are largest, and the
+  owner decides between a larger ROM (12 KB, say) and what to feed.
 - **Q5, `sign_imm` at [62]** (WORKER9's proposal, accepted): the expansion word had one spare bit (taken by `offset_imm`),
   so the Tracer's `advice_reg` narrows from 7 bits to 6, [61:56]: a traced row reads its advice only from bank-1 registers
   146-209 (v1.3 section 7). The advice expansions put their results there and use 210-255 for scratch.

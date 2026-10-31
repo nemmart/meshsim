@@ -108,3 +108,25 @@ region, ERRORS; v1.25 rewrote its row content). Need the v1.1 → v1.2 pass on 4
 | 2.1 126 | broadcast | broadcast **to tiles 0–63** | wording | — |
 | 2.1 "72–74 gone" | v1.1's 2.1 table never listed 72–74 (73 appears only in 3.3's target table and open items 82/83) | — | CHANGES wording slightly off; harmless | — |
 | 2.2 address map | — | new: regions 0x00 data 32 KB, 0x01 program 32 KB (store = bus error), 0x02 boot ROM (reset vector 0x02000000), 0x03 big SRAM, 0x04–0x06 peripherals 1–3, 0x07–0xFE reserved, 0xFF registers; packet-reachable vs core-reachable; out of bounds undefined; auto-advance past end a bug; first 16 bytes of data memory reserved, overlays at 0x10 | yes | D5, D9, D22, D26, D27, D37.4 |
+
+### 3 Links (done)
+
+| what | v1.1 | v1.2 (= v1.25) | in CHANGES-v1.2? | why |
+|---|---|---|---|---|
+| link word | 169 bits: src 7, dst 7, mode 4, addr 21 (chunk), size 2, payload 128; **no bit positions given** | 256 bits: payload [127:0], address [159:128], size [161:160], counter [164:162], mode [167:165], src [174:168], dst [181:175], reserved [255:182] sent 0, ignored, **stored in full** | yes | D2, D30 |
+| header-register block | — | link [167:160] = header register [24:17] (size, counter, mode as one 8-bit block) | yes (8.1 common header) | D12 |
+| modes | 4-bit: 0 invalid, 1 gather req, 2 by-src, 3 at explicit addr, 4 bucket, 5 augmented, 6 CM write, 7 command, 8 reply, 9 periph write, 10–15 reserved | 3-bit: 0 write at address (any region), 1 by-src, 2 bucket, 3 augmented, 4 gather req, **5 count only** (round 3), 6–7 reserved, discarded silently, no error, no decrement | yes | D6, D43 |
+| v1.1→v1.2 mode map | 2→1, 4→2, 5→3, 1→4; 3, 6, 7, 8, 9 → mode 0 (by region/address); 0, 10–15 → (none) | | yes (implicit) | D6 |
+| invalid code | mode 0 invalid | none: an all-zero header is a valid uncounted mode-0 write to 0x00000000 (reserved bytes) | yes | D6 |
+| mode-4 ordinal bits | **v1.1 inconsistent:** mode table says ordinal in [63:32], fixed-payload paragraph and 4.4 say [51:32] | [51:32] (sent at 64 bits) | **not in CHANGES**: v1.1 self-contradiction resolved; RTL should use [51:32] | — |
+| counting | per mode into 4 named counters; command/gather never; halted tile counts nothing | packet names counter 1–7 (field), 0 uncounted; modes 0–3, 5 counted by field; gather never (field passed on); decrement K cycles after director accepts; unexpected arrival at the decrement | yes (3.1, 4.12; D40 seven) | D3, D30, D40 |
+| uncounted traffic | — | mode 0 only: commands and boot overlays; big-SRAM always counted; modes 1–3 always counted (meshsim) | yes | D17, W5-15 |
+| fence | — | count-only packet to self on a spare counter ends a run | yes (round 3) | D43 |
+| bad packets | mode 0/10–15; mode 5 @128; mode 3 misaligned; mode 7 @64/128; mode 8 @128; size 11 UB; all set "bad-mode-or-size" | misaligned 64/128 mode 0 any region; mode 0 to 0x02, 0x07–0xFE, 0xFF, absent peripheral; mode 3 @128; modes 1–5 ignore address; size 11 UB; modes 6–7 silent; sets `ERRORS`[1] | yes | D26, D32 |
+| misaligned PTR write | — | passes director; write engine drops it, counted, sets [1] | yes (4.9) | D32 |
+| 3.2 padding | 169 flops/stage | 256 | yes | D2 |
+| 3.2 ordering | per sender (source→destination), one kind | per **sending unit** (address generator, send port, GATHER, read port, each peripheral DMA); none between units; fence or put in run | yes (round 3) | D44 |
+| 3.3 receive queues | 16-entry queue in each target's tile (every tile has one); root has no queues; credits start at 16 | queues **at the root, in the tree**: 128 / 256 / 128 for C&C 1/2/3; credits = depth; tiles have none, receive registers read empty | yes (round 2) | D38 |
+| 3.3 per-tile limits | — | 1 / 3 / 1 outstanding (software convention, meshsim invariant 17); error reports exempt | yes | D38, D44 (W5-23) |
+| 3.3 target 3 | Updater/Binder/RW engine at endpoint 73 | C&C 2's peripheral, *(Deferred)* item 119 | yes | D25, D33 |
+| framing, arbitration, 16-bit links, `reqbus_latency` | | unchanged | — | |

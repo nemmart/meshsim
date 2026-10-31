@@ -212,3 +212,49 @@ were applied to the v1.2 spec but have no CHANGES entry:
 - **D48** W4-06: a peripheral without a DMA reads 0 at words 8–9 and a load isn't flagged (only a store); W4-07: `mtime`'s
   rate implementation-defined.
 - **D49** K: meshsim 2L + 4; hardware K the implementation's.
+
+### 4.11–4.18 (done)
+
+| sec | what | v1.1 | v1.2 (= v1.25) | in CHANGES? | why |
+|---|---|---|---|---|---|
+| 4.11 | core | RV32I + Zmmul + `WFI`; no CSRs, no traps; illegal/ecall/ebreak **halt** | + CSR instructions, machine-mode trap CSRs, `mcycle`, `mtime` (rate impl.-defined, D48); machine mode only; same core in C&C 1–3 | yes (D41 F12) | D1, D20, D41, D48 |
+| 4.11 | inputs | — | hard interrupt (level from `ERRORS` ≠ 0, gated by `MIE`/`mie`, releases `WFI`); wakeup (level, from the wake term) | yes | D1 |
+| 4.11 | traps | — | bus error, illegal, ecall, ebreak, fetch outside program memory/boot ROM, misaligned jump → trap to `mtvec`, terminal; last four set no `ERRORS` bit | yes | D20 |
+| 4.11 | memories | 8 KB instruction (0x0000–0x1FFF, fetch only) + 8 KB data (0x4000–0x5FFF); four word-interleaved 512×32 banks each; resident loader 0x1F00 | 32 KB data (0x00000000) + 32 KB program (0x01000000, fetch **and load**, store = bus error) + boot ROM (0x02000000); banking is the implementer's | yes | D5, D22, D42 |
+| 4.11 | port B | 1/2/4 consecutive words any address (4 banks) | one 128-bit (or 32/64) write per cycle, naturally aligned | yes (D42) | D42 |
+| 4.11 | **load latencies** | memories 1 cycle; register block and table window "1 or 2, the implementation's discretion" (meshsim 2) | memories and boot ROM 1; **table window 1**; register block and every peripheral window word **2**, fixed | **not in CHANGES-v1.2** (D45; item 134 closed) | **D45** |
+| 4.11 | sampling rule | `WAKE_EVENTS`, `REQUEST_RECEIVE`, `UART_RX` side effects | adds: a peripheral's `EVENTS` subtracts one count per masked set bit; holds for every window word | yes (4.17) | D14 |
+| 4.11 | stalling stores | send port, request FIFO, `UART_TX` on a wired tile; `SENDER_SEND` never | send port, request FIFO, UART TX word (C&C 1's peripheral) | yes | D28 |
+| 4.11 | bus errors | stores to instruction memory, misaligned, unmapped, sub-word to registers/table window, store to RO reg, loads from PTR/STREAM/GROUP; **halt** | `ERRORS`[9] and trap; adds store to boot ROM, regions 0x03–0xFE, unused 0xFF, **any word of an absent peripheral's window**; reserved words read 0 and ignore stores; out of bounds in CM not checked (aliases) | yes | D5, D9, D27 |
+| 4.11 | CM addressing | packed 14-bit word addresses (`STREAM_DEST` mode 6, `SRAM_RD_DEST_ADDR`, `ROUTER_SET_HDR`) | byte addresses; packed form gone | yes | D5 |
+| 4.11 | send port header | `ROUTER_SET_HDR` (W): dst [6:0], mode [10:7], addr [31:11] (21-bit) | `ROUTER_ADDR` (R/W, 32-bit) + `ROUTER_HDR` (R/W): no-increment [0], spare [16:1], size [18:17] reserved (reads 0), counter [21:19], mode [24:22], dst [31:25] (0–66, 126) | yes | D7, D12 |
+| 4.11 | auto-increment | +1/+2/+4 words for modes 3/6/9, +1 for mode 7, none else | +4/8/16 bytes for mode 0 unless no-increment; modes 1–5 unchanged; no-increment sticky until cleared | yes (D37.5) | D7, D37 |
+| 4.11 | resident loader | 64 words at 0x1F00, HALT → RUN starts there | gone; boot ROM | yes | D22 |
+| 4.11 | C&C port | ignores mode/addr except mode 3 write stream | gone (controllers are tiles) | yes | D25 |
+| 4.12 | command block | 16 slots at 0x5FC0; mode 7 32-bit only, uncounted | 16 slots at **0x00007FC0** (silicon constant, boot ROM reads it); mode 0, counter 0; command landed on a director write covering slot 0 landing in port B; event stays pending after first command | yes | D6, D36, D37.1 |
+| 4.12 | reply block | 256 words at 0x5BC0; mode 8 lands by source at word 2·src, counted `DMA_REPLY_REMAINING` | 256 words at **0x00007BC0**; mode-0 write to `REPLY` + 8·src, counted on any counter; a **default**, not a rule (every request names its reply address); own-pair a software convention | yes (D40) | D6, D40 |
+| 4.12 | counters | four: SRAM (modes 2–5), CM (6), REPLY (8), PERIPH (9, at landing/drop); done = 0 and `mem_idle`/`cm_idle` | seven `WRITE_COUNTER_1–7`, named by the packet, decremented at K; done = 0 | yes | D14, D30, D40 |
+| 4.12 | arming write | additive, `next = count + N − arrive`; 20-bit; clears counters done [9] and own done | same rule against the decrement; clears [7] and own done [n−1] | yes | D30 |
+| 4.12 | HALT clears | RUN→HALT clears counters, done events, qualifiers | gone; only the reset (which also clears the delay line) | yes | D23 |
+| 4.12 | `EVENTS` layout | [3:0] counter done (SRAM, CM, REPLY, PERIPH), [7:4] reserved, [8] GO, [9] counters done, [10] command landed, [11] engine run done, [12] request FIFO not full, [18:13] service lines, [19] request pending, [20] sender idle, [21] UART RX not empty, [22] UART TX not full, [31:23] reserved | [6:0] counter 1–7 done, [7] counters done, [8] GO, [9] command landed, [10] DMA run done (cleared by `PULSE_DMA`), [11] request FIFO not full, [12] request pending (live), [13]–[15] peripherals 1–3 (live), [31:16] reserved | yes (D40) | D16, D40 |
+| 4.12 | mask reset | [8] \| [9] | [8] \| [7] | yes | D40 |
+| 4.12 | `EVENTS_REQUIRED` | `WAKE_REQUIRED` | renamed; **controller only** (no window copy) | yes | D14 |
+| 4.12 | `done` pulse | clears counters done and the four done events | clears counters done and the seven done events, **no other event** | yes (round 2) | — |
+| 4.12 | done gate | GO only | GO only; **errors still take the hard interrupt** during the gate | implied | D21 |
+| 4.12 | spurious wakes | — | allowed (peripheral live bit may lag a cycle); hardware aims for current by next instruction | yes | D16 |
+| 4.13 | registers | `TILE_STATUS` (live bits, type, endpoint id, SRAM size), `TILE_CONDITIONS` | `PARAMS` (presence [2:0], endpoint [26:20], SRAM size [31:27]), `STATUS` (live), `ERRORS` | yes | D18 |
+| 4.13 | `ERRORS` bits | 0 router ovf, 1 bad mode/size, 2 unexpected, 3 drift, 4 write-engine ovf, 5 table req ovf, 6 GATHER ovf, 7 read-port (overflow **or misaligned**), 8 done early, 9 bus, 10 illegal, 11 bad periph write, 12 periph cond 2, 13 periph cond 3, 14 receive underflow | same numbers; [1] = bad packet **or misaligned access**; [7] overflow only; **[11]–[13] = peripherals 1–3, live** (OR of each window's `ERRORS`) | yes | D18, D21 |
+| 4.13 | clearing | entering HALT clears all | **sticky until the reset**; store to `ERRORS` = bus error | yes | D21, D23 |
+| 4.13 | effect | error line to C&C | hard interrupt (once enabled) + error line (hardware, `error_latency`) | yes | D21, D24 |
+| 4.13 | handler | — | terminal; 24 fixed reports; `EVENTS_PEEK` only; parks; ROM handler until image installs `mtvec`; interrupts off until boot part 2 | yes (D37.2, D37.3) | D20, D37 |
+| 4.14 | commit | per-counter + `mem_idle`/`cm_idle`; `ts_busy` for tables | by K for every destination | yes | D3 |
+| 4.15 | bucket write | mode 4 | mode 2 | yes | D6 |
+| 4.16 | fifth port | tile 0 → C&C; FIFOs 169-bit; "to C&C" into C&C's receive FIFO | tiles 0–2 → C&C 1–3; FIFOs 256-bit; controller's internal router port *(Deferred, item 118)*; memory system at tile 1 | yes | D2, D25 |
+| 4.18 | receive side | 16-entry queue in every tile, fed on receivers only | reads its target's queue in the tree; tiles read empty | yes (D38) | D38 |
+| 4.18 | `request_busy` | `TILE_STATUS`[11] | `STATUS`[6] | yes (8.2) | D18 |
+| 4.18 | request pending | `WAKE_EVENTS`[19] | `EVENTS`[12] | yes | D40 |
+| 4.18 | HALT | keeps receive queue | reset empties FIFOs, tree and queues together | yes | D23 |
+| 4.17 | whole section | one slot; type `TILE_STATUS`[15:12] (4 bits): 0 none, **1 replayer**; `PERIPH_RUN` = `TILE_PULSE`[2]; `periph_running` `TILE_STATUS`[3]; six service lines `WAKE_EVENTS`[18:13] (event / queue condition / item FIFO kinds); `PERIPH_STATUS_0–7` (0x870–0x88C); mode 9 (21-bit word addr) counted `DMA_PERIPH_REMAINING` at landing/drop; conditions [13:11]; HALT holds in reset; sender (`SENDER_SEND` 0x868: dest [6:0], mode [10:7], queue [12:11], **count [28:13] 16 bits**; `SENDER_ADDR` 0x86C 21-bit word addr; `sender_busy` `TILE_STATUS`[4]; sender idle `WAKE_EVENTS`[20]) | up to three per unit; regions 0x04–0x06; windows 0xFFFFFA00/FC00/FE00, 0x200 bytes; ten standard words (PARAMS, STATUS, ERRORS, PULSE_RUN, PULSE_DMA, EVENTS, EVENTS_PEEK, EVENTS_MASK, DMA_HDR, DMA_ADDR); counted events with depth; errors per peripheral; writes via mode 0 counted by field (dropped still counted); DMA (`DMA_HDR` count [11:0] **12 bits**, queue [13:12]) on its own router port; types 0–4 | yes (4.17 rows) | D9, D10, D14, D46 |
+| 4.17 | write to absent peripheral | bad peripheral write [11], **counted** in `DMA_PERIPH_REMAINING` | **bad packet**, `ERRORS`[1], **uncounted** | implied by 3.1 bad-packet table; counting change not stated | D9, D32 |
+| 4.17 | **type values** | 1 = replayer | 4.17.4 table: 0 none, 1 Ingress/Egress, 2 Updater/Binder/RW, 3 Tracer, **4 replayer** (D46) | **not in CHANGES-v1.2**; and **4.17.1 still says "1 the replayer" in v1.2 and v1.25 (spec line 1109)**: contradicts 4.17.4, 4.19, 8.11 → QUESTIONS | D46 |
+| 4.17 | window words 8–9 without DMA | — | 4.17.4 says words 4, 8, 9 "unused (reserved)" = read 0, ignore stores; D48 W4-06: read 0, **load not flagged, only a store** | D48 not in CHANGES; spec wording "meshsim flags the access" for reserved words vs D48 → check | D48 |

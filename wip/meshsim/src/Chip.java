@@ -34,6 +34,25 @@ final class Chip implements Component {
     final RequestBus reqBus;                                     // the request bus (3.3), run first every cycle
     final List<String> log = new ArrayList<>();                  // events worth a line in reports (controller halts)
     private final Component[] children;
+    /**
+     * Tiles not simulated (null: none), for a run that provably never involves them: WORKER11's Stage B option
+     * (-Dstageb.lone), where tile 0 replays from its own big SRAM and the other 63 tiles only wait in their boot ROMs.
+     * A parked tile's components don't run; the caller must check that nothing reaches it (StageB compares the result
+     * with the full chip). Off by default; nothing else uses it.
+     */
+    boolean[] parked;
+    /** For a run with parked tiles: true if nothing ever reached them (each quiescent, no link into or out of it busy). */
+    boolean parkedUntouched() {
+        if (parked == null) return true;
+        long t = cycle;
+        for (int i = 0; i < 64; i++) {
+            if (!parked[i]) continue;
+            if (!tiles[i].quiescent(t)) return false;
+            for (int d = 0; d < 4; d++) if (links[i][d].inFlight(t) > 0) return false;
+        }
+        for (int i = 0; i < 64; i++) for (int d = 0; d < 4; d++) if (links[i][d].inFlight(t) > 0) return false;
+        return true;
+    }
     private final Random shuffle;
     long cycle;
 
@@ -95,7 +114,8 @@ final class Chip implements Component {
             for (int i = children.length - 1; i > 0; i--) { int j = shuffle.nextInt(i + 1); Component x = children[i]; children[i] = children[j]; children[j] = x; }
         }
         reqBus.runCycle(t);                                      // first: a request store at t sees the entry it frees
-        for (Component c : children) c.runCycle(t);
+        if (parked == null) for (Component c : children) c.runCycle(t);
+        else for (Component c : children) if (!(c instanceof Tile p && parked[p.idx])) c.runCycle(t);
         boolean err = false;
         for (Tile p : tiles) {
             if (p.ctl.readyPulseAt == t) { cc.readyPulse(p.idx, t); phases.onReady(p.idx, t); }

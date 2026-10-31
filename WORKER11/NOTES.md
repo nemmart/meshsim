@@ -42,3 +42,13 @@ acceptance kit). Until WORKER10's `v1.25` spec branch exists, the design is DECI
   per JVM. Background jobs die at the end of a tool call here: run long things in the foreground under `timeout`.
 - [ ] REPLAY-INPUT-REQUIREMENTS.md (key, sign bit, VirtualLoad/Store logs, E[15], tables location)
 - [ ] synthetic delivery generator + acceptance kit + speed measurement + estimate
+
+## 2026-11-01 (turn 3)
+- v1.25 spec (branch v1.25 @ fcb09f9) checked with WORKER10's 10-point list: no disagreement (QUESTIONS.md); PEXT
+  non-contiguous masks now a statistic (Replayer.pextNonContiguous).
+- run_shard.sh reads its shard from the delivery kept on the runner box (s7 revised): -d DELIVERY -m MANIFEST_SHA256,
+  every file a replay reads checked (CORRUPT), read-only. Tested: pass, corrupted rlog-lru caught, wrong manifest sha caught.
+- **Stage B on tile 0 alone** (Chip.parked, opt-in; StageB.LONE; ReplayShard stage B; stage F = full chip): profile showed
+  the time spread over all 64 tiles' routers/SRAM/queues. Parking tiles 1-63 gives identical rows, cycles and stalls
+  on every window tried; end-of-run guard Chip.parkedUntouched. ~1.8 s per 65,536-row window warm (36K rows/s) vs
+  7.9-13 s full chip: ~4-7x. run_shard -s ABF checks B and F cycles agree.

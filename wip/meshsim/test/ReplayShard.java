@@ -13,7 +13,7 @@ import java.util.Map;
  * names, rows.bin, end.bin) is checked against the manifest's SHA-256 (a corrupt delivery is reported as CORRUPT, not
  * as a mismatch). The delivery is only read (DECISIONS-v1.25 s7 revised: it stays on the runner box for all shards).
  *
- * <p>Usage: java ReplayShard DELIVERY PROGRAM CSV [--stages A|B|AB] [--variant V] [--first F --count N]
+ * <p>Usage: java ReplayShard DELIVERY PROGRAM CSV [--stages ABF] [--variant V] [--first F --count N]
  * [--stride S --phase K]: windows with index F..F+N-1 (default all), every S-th of them from the K-th
  * <br>V: the state-record variant (default state-pick if the window has one, else state). Appends one CSV line per
  * window and stage: program,window,first_row,stage,verdict,rows,cycles,wall_ms,detail. Exit 0 if every line is OK.
@@ -35,7 +35,7 @@ public final class ReplayShard {
         Path pd = dir.resolve(prog);
         ReplayTables tb = ReplayDelivery.tablesFor(dir, pd);
         List<String> bad = ReplayTables.checkManifest(tb.dir, ReplayTables.defaultDir().resolve("../manifest.json"), "replayer/");
-        StageB.Image im = stages.contains("B") ? new StageB.Image(Path.of(System.getProperty("replay.build", "sw/replay/build"))) : null;
+        StageB.Image im = stages.contains("B") || stages.contains("F") ? new StageB.Image(Path.of(System.getProperty("replay.build", "sw/replay/build"))) : null;
         int n = 0, failed = 0;
         try (PrintWriter out = new PrintWriter(Files.newBufferedWriter(csv, StandardOpenOption.CREATE, StandardOpenOption.APPEND))) {
             if (!bad.isEmpty()) { out.println(prog + ",-,-,tables,FAIL,0,0,0," + q("tables differ from wip/tables/manifest.json: " + bad)); failed++; }
@@ -59,6 +59,8 @@ public final class ReplayShard {
                     }
                     for (char st : stages.toCharArray()) {
                         long t0 = System.nanoTime();
+                        // B: Stage B on tile 0 alone (the 63 idle tiles parked, checked untouched); F: Stage B on the full chip
+                        StageB.LONE = st == 'B';
                         ReplayDelivery.Result r = st == 'A' ? ReplayDelivery.runWindow(tb, pd, we, v) : StageB.runWindow(im, tb, pd, we, v, prog);
                         long ms = (System.nanoTime() - t0) / 1_000_000;
                         if (st == 'A') System.out.println(r.line(prog, v));

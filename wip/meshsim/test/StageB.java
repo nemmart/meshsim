@@ -28,6 +28,13 @@ public final class StageB {
     static final int HDR = 0x00000, TABLES = 0x00040, INDEX = 0x00C40, RECORD = 0x00E40, TEMPLATES = 0x58000,   // v1.25: 1.4 MB for the universal set
             CODE = 0x08000, RLOG = 0x18000, WLOG = 0x38000, LAYOUT_VERSION = 2;
 
+    /**
+     * Simulate tile 0 only (Chip.parked; -Dstageb.lone, or ReplayShard's stage B): in a Stage B replay the other 63 tiles
+     * only wait in their boot ROMs and nothing reaches them, which the run checks at its end (Chip.parkedUntouched).
+     * The same windows give the same rows, cycles and stalls as the full chip (ReplayShard's stage F compares).
+     */
+    static boolean LONE = Boolean.getBoolean("stageb.lone");
+
     public static void main(String[] args) throws Exception {
         if (args[0].equals("synthetic")) { synthetic(); return; }
         Path dir = Path.of(args[0]);
@@ -82,6 +89,7 @@ public final class StageB {
         Replayer[] rp = new Replayer[1];
         k.testPeripheral = tile -> tile == 0 ? (rp[0] = new Replayer(0, rows)) : null;
         Chip c = new Chip(k);
+        if (LONE) { c.parked = new boolean[64]; java.util.Arrays.fill(c.parked, 1, 64, true); }
         Tile p = c.tiles[0];
         Replayer r = rp[0];
         List<long[]> got = new ArrayList<>();
@@ -162,6 +170,7 @@ public final class StageB {
             detail.add("replayer: violations " + r.violations + ", invalid " + r.invalids + ", overruns " + r.overruns + ", bad writes " + r.badWrites);
         if (c.violations > 0) detail.add("meshsim: " + c.violationReport().replace("\n", "; "));
         if (!ok) detail.add("tile 0 did not reach its exit: " + p.core.halt + " pc 0x" + Integer.toHexString(p.core.pc));
+        if (!c.parkedUntouched()) detail.add("tile 0 only (-Dstageb.lone): something reached a parked tile; rerun on the full chip");
         if (status != 1) detail.add("rp_results: status " + status + " conditions 0x" + Integer.toHexString(cond) + " missing 0x" + Integer.toHexString(missing));
         boolean pass = detail.isEmpty();
         long cyc = r.passEndAt - r.passStartAt;
@@ -171,7 +180,7 @@ public final class StageB {
         for (String d : detail) System.out.println("    " + d);
         ReplayDelivery.Result out = new ReplayDelivery.Result();
         out.ok = pass; out.rows = same; out.cycles = cyc; out.index = index; out.detail.addAll(detail);
-        out.summary = String.format("%.3f cycles/row, newexp %d (slow %d), refills %d", (double) cyc / Math.max(1, same), r.newExpansions, slow, refills);
+        out.summary = String.format((LONE ? "tile 0 only, " : "full chip, ") + "%.3f cycles/row, newexp %d (slow %d), refills %d", (double) cyc / Math.max(1, same), r.newExpansions, slow, refills);
         return out;
     }
 

@@ -5,7 +5,9 @@
 #
 #   ./run_shard.sh -d DELIVERY -p PROGRAM -f FIRST -n COUNT [-j JOBS] [-s AB] [-m MANIFEST_SHA256] OUTDIR
 #     -d  the delivery's directory (manifest.json, PROGRAM/window_NNNNN.*, tables/ optional)
-#     -f, -n  window indices FIRST..FIRST+COUNT-1     -j  JVMs in parallel (default nproc)     -s  A, B or AB (default AB)
+#     -f, -n  window indices FIRST..FIRST+COUNT-1     -j  JVMs in parallel (default nproc)
+#     -s  stages (default AB): A the model, B the controller on tile 0 alone (the 63 idle tiles parked), F the same on
+#         the full chip; with B and F both, each window's cycles must agree
 #     -m  the manifest's SHA-256, as WORKER9's writer task reported it: checked before anything is read
 # Every file a window's replay reads is checked against the manifest's SHA-256 first (ReplayShard). Writes
 # OUTDIR/results.csv (one line per window and stage), OUTDIR/jvm-*.log, SUMMARY.txt and VERDICT.txt. Exit 0 only if
@@ -35,13 +37,15 @@ cat "$OUT"/part-*.csv >> "$OUT/results.csv" 2>/dev/null; rm -f "$OUT"/part-*.csv
 python3 - "$OUT" "$P" "$F" "$N" "$S" "$(( $(date +%s) - T0 ))" "$J" <<'PY'
 import csv, sys
 out, prog, f, n, stages, tot, j = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), sys.argv[5], int(sys.argv[6]), int(sys.argv[7])
-seen = {}; bad = []; per = {}
+seen = {}; bad = []; per = {}; cyc = {}
 for r in csv.reader(open(out + "/results.csv")):
     if len(r) < 9: bad.append(("?", "malformed line " + ",".join(r))); continue
     st = r[3].split(":")[0]
     if r[4] != "OK": bad.append((r[1], r[3] + " " + r[4] + " " + r[8][:300])); continue
-    seen.setdefault(st, set()).add(int(r[1]))
+    seen.setdefault(st, set()).add(int(r[1])); cyc[(st, int(r[1]))] = r[6]
     p = per.setdefault(st, [0, 0, 0]); p[0] += int(r[5]); p[1] += int(r[7]); p[2] += 1
+for (st, w), c in list(cyc.items()):
+    if st == "B" and ("F", w) in cyc and cyc[("F", w)] != c: bad.append((str(w), f"stage B (tile 0 alone) {c} cycles, stage F (full chip) {cyc[('F', w)]}"))
 want = set(range(f, f + n)); missing = {st: sorted(want - seen.get(st, set())) for st in stages}
 with open(out + "/SUMMARY.txt", "w") as s:
     s.write(f"program {prog}, windows {f}..{f + n - 1} ({n}), stages {stages}, {j} JVMs, wall {tot} s\n")

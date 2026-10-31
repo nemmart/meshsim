@@ -8,18 +8,14 @@ Spec commit at start: `4856c0b` (main). Inputs read: CHANGES-v1.2, CHANGES-v1.25
 
 ## Status
 
-| pass | sections | state |
+| step | what | state |
 |---|---|---|
-| v1.2 → v1.25 | whole spec (mechanical diff) | **done** |
-| v1.1 → v1.2 | front matter, 1, 2 | next |
-| v1.1 → v1.2 | 3 | |
-| v1.1 → v1.2 | 4.1–4.10 | |
-| v1.1 → v1.2 | 4.11–4.18 | |
-| v1.1 → v1.2 | 4.19, 4.20 | |
-| v1.1 → v1.2 | 5, 6, 7 | |
-| v1.1 → v1.2 | 8 | |
-| v1.1 → v1.2 | 9, 10, 11, 12, 13 | |
-| DECISIONS-v1.2 | as needed for "why" | |
+| 1 | pass A, v1.2 → v1.25 (mechanical diff) | **done** |
+| 1 | pass B, v1.1 → v1.2, front matter to 13 | **done** |
+| 1 | spec fixes from pass A/B taken by WORKER10 (`0b4ba20`: 4.17.1 types, 4.19.7 renumbering, 8.1 timing, CHANGES-v1.25 errata) | **pulled; the guide uses the fixed text** |
+| 2 | the guide: reading guide, overviews, removed/new lists, per-unit sections | in progress |
+| 3 | register tables, sections 9–10 | |
+| 4 | QUESTIONS.md, REPORT.md, final pull, spec commit stamped | |
 
 ## Pass A: v1.2 → v1.25 (spec diff)
 
@@ -338,3 +334,46 @@ replayer's words are unchanged at v1.25: only the expansion word and the output 
 | 8.13 UART | 0x890 TX, 0x894 RX, 0x898 STATUS, 0x89C DIVISOR | words 42 TX (0xAA8), 43 RX, **44 DIVISOR, 45 STATUS** (R/W1C) | yes |
 | 8.14 C&C 1 | — | words 32–34 ERROR_LINES (bit b of word w = endpoint 32w + b; word 2 [0] unused, [1] C&C 2, [2] C&C 3), 35–36 READY_LINES, 37–38 READY_EXPECT, 39 PULSE_GO, 40 WATCHDOG, 41 LED, 42–45 UART, 46–63 reserved, 64–127 host *(Deferred)*; `ERRORS`[0] unit-error live; `EVENTS` [2] all READY live, [3] watchdog (d1), [4] RX not empty live, [5] TX not full live | yes |
 | 8.15 | simulator `CMD_EXIT`, `ebreak`, trace at 0xFFFFFFF0 | exit word 0xFFFFF9F8, trace word 0xFFFFF9FC | yes |
+
+### 9–13 (done)
+
+**9 Invariants** (v1.1 → v1.2, then v1.25 only 16):
+- v1.2 states that **every invariant is a meshsim check**; the hardware checks none as such; each invariant names its
+  hardware counterpart (`ERRORS` bit) where one exists (D27).
+- Restated: 1 (adds tiles 0–2's fifth-port FIFOs, the GATHER queue; hardware [0], [4], [5], [6]); 2 (spanning clause
+  gone); 4 (counters only, no `mem_idle`/`cm_idle`; hardware [8]); 5 (new bad-packet set; hardware [1]); 9 (at the
+  decrement; hardware [2]); 10 (mode 4); 11 (rewritten: command block only from C&C 1–3 uncounted, replies at own
+  pair or the named address, CM writes inside memory and outside the blocks); 14 (C&C 1's command writes); 15 (`ERRORS`
+  of every unit and every peripheral); 16 (peripherals generic + replayer); 17 (requests name counters and reply
+  address; 1/3/1 limits; tag windows; d = 126 from a mesh tile; hardware [14]); 18 (modes 1–3; peripheral ports).
+- **7 withdrawn** (RUN/HALT). **19–26 new:** 19 bounds; 20 alignment (hardware [1]); 21 reserved encodings (modes 6–7,
+  count-only on counter 0, digit 5–7, reserved words/bits); 22 uncounted traffic mode 0 only, and nothing into data
+  memory's first 16 bytes after boot; 23 no silent traps; 24 K covers the write path (2L + 4); 25 boot order; 26 no
+  ignored start.
+- v1.25: 16 only (contiguous-PEXT clause → statistic; offset_imm only on ShiftData; no misaligned memory row; rows equal
+  jolt-cpp `821e1bd`). Zero shift masks stay undefined.
+
+**10 Parameters** (v1.25 vs v1.1): link word 256; STREAM 17-bit count; read-port entry 43 bits; controller memories
+32 KB + 32 KB, port B one 128-bit write/cycle; `reg_load_latency` 2 (block, windows) / 1 (table window); **K 8,
+implementation-defined** (row cites "4.7" for K: should be 4.8, editorial); `error_latency` new; write counters 7 × 20
+bits; boot ROM; watchdog; flush wait ~0.1 ms; request bus queues 128/256/128 at the root, credits = depth, limits 1/3/1;
+events 16 bits used; UART C&C 1 only; command/reply blocks at 0x00007FC0/0x00007BC0; addresses 32-bit; peripherals
+(3 per unit, windows, DMA ≤ 4,095 words); replayer row (v1.25 additions). **Gone:** `run_latency`, C&C receive FIFO,
+packed CM word, per-tile 16-entry receive queue, the sender, per-tile UART. `go_latency` was already in v1.1's table.
+
+**11 Logic budget:** per tile ≈ 0.52–0.61 mm² (v1.1 ≈ 0.38–0.45): +0.065 for the 256-bit word, +0.08–0.09 for the
+memories, − sender, − UART; fifth port 0.04–0.07 (was 0.03–0.05); request bus + root queues ~74 Kbit. **Stale text:**
+v1.25 11's controller row and 12 still say the 32 KB memories' one-cycle access "is with Tony, item 134", but item 134
+is closed (D45: they meet it). Editorial → QUESTIONS.
+
+**12 Physical:** control island ≈ 0.17–0.2 mm² (was ~0.1); receive queues at the root; no per-tile receive queue.
+
+**13 Open items:** v1.2 keeps 1–116 with notes, adds 117–136; v1.25 adds 137–141 and a status table. Items an RTL engineer
+must track: 117 (storing reserved link bits, may be trimmed), 118 (sending peripherals' router ports, deferred), 119
+(file system / RW engine, deferred), 120 (table window address, proposed), 121 (CSR list and reset values, open with
+Tony), 122 (report header, deferred), 123 (replayer event/error bit positions, proposed), 124 (soft-reset keep list,
+open), 126 (requests dropped at root: hardware record?, open), 129 (STREAM_SRC stays 21-bit chunk?, open), 133 (misaligned
+PTR advances: accepted), 139 (CSR in ROM: possible later), 140 (PEXT method, with Tony), 48 (`rp_latency` value,
+proposed), 44–47 (replayer map details, proposed).
+
+**Step 1 complete.**

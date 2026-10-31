@@ -112,3 +112,21 @@ manifest's SHA-256 (in `results/070…/manifest.sha256`). The tasks are made wit
 
 - Task 078's numbers, to finalize section 4.
 - The acceptance tasks themselves, after WORKER9's writer tasks have run.
+
+## 6. For the merge: changes outside the replayer
+
+One change is in WORKER4's area of the simulator (`src/Chip.java`): it is opt-in, off by default, and nothing but Stage B
+uses it.
+- **`Chip.parked`** (`boolean[]`, null by default): tiles whose components `Chip.runCycle` skips. With it null, the
+  loop is v1.2's unchanged.
+- **`Chip.parkedUntouched()`**: true if every parked tile is quiescent and no link is busy. Stage B's check.
+- Used only by `test/StageB.java` (`StageB.LONE`, `-Dstageb.lone`, ReplayShard's stage B), which parks tiles 1-63 and
+  fails the window if `parkedUntouched()` is false. Stage F (the full chip) keeps it null.
+
+Everything else is replayer-side:
+- `src/Replayer.java` and `src/ReplayerAlu.java`;
+- `sw/replay/` (the controller and its layout);
+- the replay tests in `test/` (`Replay*`, `StageB`, `SyntheticDelivery`), with `data/vec-821e1bd.tsv`;
+- `acceptance/`;
+- the two replay documents;
+- `run_tests.sh`'s replayer line.

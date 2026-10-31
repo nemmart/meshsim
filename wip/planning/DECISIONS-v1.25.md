@@ -104,8 +104,31 @@ Decided (O). From WORKER9's first delivery of the replayer's tables and its Q5-Q
 
 ---
 
+## Definition of done (owner, 2026-11-01)
+
+**Both v1.2 and v1.25 end with a full spec and a fully running simulator**, each frozen as its own folder, and a delta
+file for what changed between them.
+
+**v1.2, frozen as `v1.2/`** (the old tables and expansions, jolt-asic-planning `4f36b3d`):
+- the spec, `machine-spec.md` v1.2, and `CHANGES-v1.2.md` (written);
+- meshsim fully running: WORKER4's phases 5-6 (the meshsim-only checks; the recipes as suites), the sort (WORKER8, done,
+  branch `v1.2-sort`) and the replayer (StageB synthetic, section 3);
+- `v1.2-meshsim` and `v1.2-sort` merged into `main`, a full `run_tests.sh` and the full-size sort on the runner, then the
+  freeze.
+
+**v1.25, frozen as `v1.25/`** (jolt-cpp `821e1bd`):
+- the universal replayer and Tracer tables (WORKER9 part 2, `wip/tables/`);
+- the delivery writer (WORKER9 part 3, jolt-asic-planning PR #2);
+- the spec: 4.19 updated (the six new opcodes and the changed ones, `offset_imm`, `sign_imm`, PEXT for any mask, the
+  decode classes, universal tables), with the parameters and open items;
+- meshsim's replayer model updated to match and running the universal tables;
+- acceptance (section 2): every window of EVM Zone and Cyclone at 2²⁹, matched row for row against jolt-cpp, on the runner;
+- the sort re-run unchanged (it doesn't use the replayer);
+- **`CHANGES-v1.25.md`**: the delta from v1.2, section by section, each item citing its decision.
+
 ## Work list
 
 | # | task | from | status |
 |---|---|---|---|
-| W1 | **Bring the replayer and the Tracer's tables up to date with jolt-cpp's latest** (1), and pass the acceptance runs (2) | v1.3 log, section 9 and its former W1 | agreed; starts after v1.2 is frozen |
+| W1 | **Bring the replayer and the Tracer's tables up to date with jolt-cpp's latest** (1), and pass the acceptance runs (2) | v1.3 log, section 9 and its former W1 | the tables (WORKER9 part 2) and the delivery writer (part 3) under way; the spec and meshsim's replayer after v1.2 is frozen |
+| W2 | **`CHANGES-v1.25.md`**: the delta from v1.2 | owner | after the spec |

@@ -1,7 +1,8 @@
 # WORKER9 report: the standalone tracer at current jolt-cpp (jolt-asic-planning PR #2)
 
-Part 1 (steps 1-7) is done, except `--validate` at 2^29, which is queued on the Quest runner (task 069). Parts 2 and 3
-are not started; their plans go to the owner first.
+**All three parts are done.** PR #2 is ready for review. v1.25's acceptance runs (WORKER11, Quest 083 and 084)
+matched every row of both programs against these deliveries, so the deliveries and the writer are verified end to end.
+What is left open is listed at the end.
 
 ## Pinned commit
 
@@ -98,10 +99,17 @@ EVM Zone the same count puts it at 358,589,994 rows at PR #1's expansions, **exa
 metadata**. PR #1's EVM Zone trace-29 now pads to 2^28, not 2^29.
 
 **Validation**: `--validate` (default slice and 100,000) OK on both trace-23 inputs; `trace_elf --dump-trace-txt`'s
-store rows equal `capture_writes` output on both. At 2^29 `--validate` needs ~30 GB: **Quest task 069**
-(`tasks/hold/069-w9-tracer-2p29-validate.sh`, input `w9-tracer.tgz` sha256 `0d46b008...47f8df`, carrying commit
-`502dc8a`'s `tracer/`, PR #1's EVM program and a libelf fallback) runs `make runs` and `--validate` on all three; the
-owner copies the tarball and releases it. Results will be added here.
+store rows equal `capture_writes` output on both. **At 2^29 (Quest 069b, the 62 GB runner): `--validate` OK on all
+three workloads**, and `make runs`' `.bin` byte-identical to the validate run's; counts identical to the sandbox runs:
+
+| run | writes | validation hash | wall | peak RSS | `.bin` SHA-256 |
+|---|---|---|---|---|---|
+| EVM Zone `4e3451c1d8c5` trace-29 | 55,254,496 | `0x5094e2f40c3e2729` | 23 s | 29.2 GB | `a5568ea0...e77586ee` |
+| Cyclone input/29 | 37,036,072 | `0xeecfc9850cd093b4` | 21 s | 30.7 GB | `734368ad...cc` |
+| PR #1's EVM Zone trace-29, new tracer | 31,683,025 | `0x94a703b04e7b5b65` | 15 s | 20.7 GB | `65a3cacf...7eae` |
+
+(Full SHA-256 in Quest `results/069b-w9-tracer-2p29-validate/sha256.txt`. Task 069 itself failed its three attempts on a
+missing tarball before the owner's copy; 069b is its re-run.)
 
 ## The run logs (step 6)
 
@@ -283,3 +291,31 @@ Both written with `--keep=all` and every window proved by the writer's functiona
   These carry `imm_signed`; `/tmp/w9-selected-windows-821e1bd.tgz` (copied by hand earlier) predates it and should
   not be used.
 - Disk after both: 260 GB free.
+
+- **End to end:** v1.25's acceptance runs (WORKER11, Quest 083 and 084) replayed every window of both deliveries in
+  meshsim and matched every row.
+
+---
+
+# Left open
+
+- **T7 (was Q8): the division inlines' inverse.** Single Fermat loop as built (DIVQ 123,979 and DIVR 214,957 untraced
+  rows); an addition chain would roughly halve them, as several segments, which `segments.bin` already supports. On hold
+  for WORKER12's inline counts (DECISIONS-v1.3 s11).
+- **Formats others follow** (written down here and in `wip/tables/README.md`, not edited by me): the normalized
+  template-index key replaces "one entry per distinct word" in `REPLAY-INPUT-REQUIREMENTS.md` section 2 and changes the
+  Stage B controller's lookup; `segments.bin` and index byte 14 for the Tracer; the Tracer's `seq_remaining` rule
+  (traced words only) and `advice_reg` [61:56].
+- **The opcode appendix** (`spec/replayer-opcodes.md`): the 821e1bd harness outputs and the list of differences are in
+  `WORKER9/replayer-opcodes-821e1bd/` for the spec editor.
+- **The Tracer's untraced `LD`** must read through its D-cache (owner's condition): a hardware requirement, outside the
+  functional model, which reads guest memory directly.
+- **PR #1** is still open; PR #2 is stacked on its branch and should be retargeted to `main` if PR #1 merges first.
+- **The deliveries live in `/tmp` on the runner box** (`/tmp/w9-deliveries`, `/tmp/w9-deliveries-selected`,
+  `/tmp/w9-selected-windows.tgz`), so a reboot or clean-up loses them; they can be rebuilt from `w9-delivery.tgz` by
+  re-running 079 and 080 as new task numbers (about 7 minutes each).
+- **A later jolt-cpp**: the tables and deliveries are tied to `821e1bd`. For a new commit: re-copy the tracer (PR #1's
+  rules), rerun `build_tables` and `tracer_tables.py` (their checks run as part of the build), and regenerate the
+  deliveries.
+- A register a program hasn't touched before a window holds 0 in that window's image (no row can observe it); if the
+  real Tracer captures the hardware value instead, the images differ only in such registers.

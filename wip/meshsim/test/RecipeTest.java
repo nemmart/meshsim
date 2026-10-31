@@ -28,7 +28,7 @@ public final class RecipeTest {
         if (shuffle >= 0) System.out.println("shuffled child order, seed " + shuffle);
         snippets();
         cmdloop(); copy(); cmem(); bucket(); aug(); gather(); xchg(); xvec(); a2a(); rdport(); status(); rules(); sync();
-        blocks(); selftest();
+        blocks(); selftest(); boot(); signal(); tables(); replay();
         out("recipe cycles [meas: RecipeTest; tile 0 unless stated]:");
         for (String s : table) out(s);
         System.exit(T.done("RecipeTest" + (shuffle >= 0 ? " (shuffled, seed " + shuffle + ")" : "")));
@@ -611,5 +611,89 @@ public final class RecipeTest {
           out(String.format("  sync: the shortest start path's counter store, from C&C's GO store: cycle +%d..+%d over the 64 tiles [meas: RecipeTest sync]", lo, hi)); }
         meas("sync", "start command: GO -> all READY", goToReady(m, 1));
         goToFirstRequest(m, 1, "sync", "start (a stream run)");
+    }
+
+    // ================================================================ 22 boot part 2: announced staging
+    static void boot() {
+        T.group("boot");
+        Mach m = mach();
+        Mach.Image im = m.boot("rcp_boot");
+        final int P = 16, AT = 0xE0000;                                 // 16 rows into area 7 (6.2's staging area)
+        List<long[]> ps = new ArrayList<>();
+        for (int i = 0; i < P; i++) ps.add(new long[] { LinkWord.BROADCAST, LinkWord.M_WRITE, 0x03000000 | (AT + 4 * i) << 2, 0x5EED0000L | i, LinkWord.SIZE_128, (long) i << 32, LinkWord.counter(0) + 1 });
+        m.c.cc.command(LinkWord.BROADCAST, 0x53 << 24 | P).go().waitCycles(32).send(ps);   // CMD_STAGE; the data no sooner than stage_delay after GO
+        T.check(m.run(() -> idle(m), 40000), "every tile armed, took the staged data and pulsed done");
+        int bad = 0, irq = 0;
+        for (Tile p : m.c.tiles) {
+            for (int i = 0; i < P; i++) if (p.sram.peek64(AT + 4 * i) != (0x5EED0000L | i) || p.sram.peek64(AT + 4 * i + 2) != (long) i << 32) bad++;
+            if (p.core.mtvec == im.sym("trap_handler") && (p.core.mstatus & 8) != 0 && (p.core.mie & 1 << 11) != 0) irq++;
+        }
+        T.eq(0, bad, "the 16 staged rows are in every tile's big SRAM (counted, broadcast)");
+        T.eq(64, irq, "boot part 2 set mtvec to the image's handler and enabled the hard interrupt on every tile");
+        finish(m, "boot", 20000);
+        noViolations(m.c, "boot");
+        meas("boot", "CMD_STAGE with 16 broadcast rows: GO -> all READY", goToReady(m, 0));
+    }
+
+    // ================================================================ 28 a signal between tiles: the ring pipeline
+    static void signal() {
+        T.group("signal");
+        Mach m = mach();
+        Mach.Image im = m.boot("rcp_signal");
+        int vecs = im.sym("vecs"), gots = im.sym("gots");
+        m.c.cc.waitUntil(() -> tilesIdle(m)).call(() -> {                // after crt0 has zeroed .bss
+            for (Tile p : m.c.tiles) for (int st = 0; st < 4; st++) for (int i = 0; i < 8; i++) p.core.pokeLocal(vecs + 4 * (8 * st + i), p.idx << 16 | st << 8 | i); });
+        m.c.cc.command(LinkWord.BROADCAST, 1 << 24).go();
+        finish(m, "signal", 40000);
+        int bad = 0;
+        for (Tile p : m.c.tiles) { int l = (p.idx + 63) & 63; for (int st = 0; st < 4; st++) for (int i = 0; i < 8; i++) if (m.word(p.idx, gots + 4 * (8 * st + i)) != (l << 16 | st << 8 | i)) bad++; }
+        T.eq(0, bad, "four steps of the ring: every tile got its left neighbour's vectors, each send released by a count-only signal");
+        noViolations(m.c, "signal");
+        meas("signal", "a 4-step ring of 8-word vectors, released by signals: GO -> all READY", goToReady(m, 0));
+    }
+
+    // ================================================================ 23 waiting for the tables by events
+    static void tables() {
+        T.group("tables");
+        // the program's `expected` is 0 (never set: gcc folds it), so command 1 is a run that writes nothing here and
+        // a2a_finish waits for DMA run done alone; the run (a 40-record stream to the right-hand tile's... none: count 0
+        // streams would end at once) is set up from Java as 8 streams of 0 records, whose run still reads the tables
+        Mach m = mach();
+        m.boot("rcp_tables");
+        m.c.cc.waitUntil(() -> tilesIdle(m)).call(() -> {
+            for (Tile p : m.c.tiles) {
+                for (int i = 0; i < 8; i++) p.setStream(i, Fields.streamSrc(0), 0, Fields.streamCount(0, Fields.SIZE_64, 1, LinkWord.M_SRC, 0));
+                p.ctl.dmaConfig = Fields.masterConfig(Fields.RUN_STREAMS, 0, 8, 0, 0, 1); p.setMasterConfig(p.ctl.dmaConfig);
+            } });
+        m.c.cc.command(LinkWord.BROADCAST, 1 << 24).go().command(LinkWord.BROADCAST, 2 << 24).go();
+        finish(m, "tables", 40000);
+        int woke = 0;
+        for (Tile p : m.c.tiles) if (p.ag.doneAt > 0 && p.ctl.lastDoneAt > p.ag.doneAt) woke++;
+        T.eq(64, woke, "a2a_finish: done followed the run's end (DMA run done), and tables_free_unknown returned, on every tile");
+        noViolations(m.c, "tables");
+    }
+
+    // ================================================================ 26 the replayer's refill loop
+    static void replay() {
+        T.group("replay");
+        // rcp_replay.c's state[] is never written (gcc folds it to zeros), so the pass it starts has an empty code stream:
+        // the loop's shape runs (the state load into part 0, PULSE_RUN, the credits, the masks, run done) but no rows. The
+        // replayer's real check is StageB synthetic (sw/replay/replay_ctl.c, row for row against Stage A).
+        Mach m = mach();
+        m.c.cfg.checkErrors = false;                                       // the empty code stream's invalid expansion, checked below
+        m.boot("rcp_replay");
+        Tile p = m.c.tiles[0];
+        Replayer r = (Replayer) p.slot.p[1];
+        m.c.cc.waitUntil(() -> tilesIdle(m)).call(() -> m.c.cc1p.expect = 1);
+        m.c.cc.command(0, 1 << 24).go();                                   // tile 0 only
+        T.check(m.run(() -> !m.c.cc.busy() && p.ctl.lastDoneAt > m.c.cc.lastGoAt && p.core.inWfi, 400000), "tile 0 ran recipe 26's pass and came back to wait_for_command()");
+        T.eq(1L, r.passes, "one pass");
+        T.check(!r.isRunning() && r.region0[0] == 0 && r.region0[1] == 0, "it ended; part 0 holds the recipe's (zero) state word");
+        T.eq(0, p.slot.mask[1], "the loop cleared the replayer's EVENTS_MASK at the end");
+        T.eq(Registers.EVENTS_MASK_RESET, p.ctl.wakeMask, "and restored the tile's");
+        T.eq(1 << Replayer.ERR_INVALID, r.errors(m.c.cycle), "the replayer's only error: invalid expansion, a pop past the (empty) code stream, as the zero state makes it");
+        T.check(r.overruns.isEmpty() && r.badWrites.isEmpty(), "no overrun and no bad write: the loop's refills kept to their credits");
+        T.eq(1 << 11, p.ctl.conditions | p.ctl.errorsAt(m.c.cycle) & ~0x7FF, "the tile's ERRORS [11] (peripheral 1), and nothing else");
+        noViolations(m.c, "replay");
     }
 }

@@ -130,3 +130,40 @@ region, ERRORS; v1.25 rewrote its row content). Need the v1.1 → v1.2 pass on 4
 | 3.3 per-tile limits | — | 1 / 3 / 1 outstanding (software convention, meshsim invariant 17); error reports exempt | yes | D38, D44 (W5-23) |
 | 3.3 target 3 | Updater/Binder/RW engine at endpoint 73 | C&C 2's peripheral, *(Deferred)* item 119 | yes | D25, D33 |
 | framing, arbitration, 16-bit links, `reqbus_latency` | | unchanged | — | |
+
+### 4 intro, 4.1–4.5 (done)
+
+| sec | what | v1.1 | v1.2 (= v1.25) | in CHANGES? | why |
+|---|---|---|---|---|---|
+| 4 | unit table | | renamed rows (memories+boot ROM; write counters; errors/traps; fifth port at tiles 0–2; peripherals; replayer type 4; UART in C&C 1) | yes | — |
+| 4.1 | alignment | none; spanning accesses = one request, two area accesses (part 0/part 1 ahead of every client); group runs "should" be row-aligned | natural alignment; no spanning; one request/token/area access | yes | D26 |
+| 4.1 | misaligned access | n/a (mode-3 misaligned = bad packet) | mode 0 → bad packet; write via misaligned PTR → dropped, counted, [1]; misaligned read → not performed, packet sent with payload 0, [1] at issuing tile | yes | D32 |
+| 4.1 | out of range | wrap mod 2²¹; above device end reads 0, writes dropped; no condition | **undefined** (no aliasing promised); no error bit; meshsim errors | yes ("out of range undefined") | D26/integrator |
+| 4.1 | `mem_idle` | status bit covering whole write path; part of reporting done | gone (meshsim diagnostic only); counter done covers write path by K | yes | D18 |
+| 4.1 | phase ordering | by `mem_idle` + counters | by K: a decremented write is in its area queue | yes | D3/D18 |
+| 4.1 | writer | GATHER as mode 2, memory system mode 3 | GATHER as mode 1; explicit-address senders mode 0 to region 0x03 | yes | D6 |
+| 4.2 | start | `TILE_PULSE`[1] | `PULSE_DMA`; also **clears DMA run done `EVENTS`[10]** | yes | D8, D12 |
+| 4.2 | finish | `rd_done` when last entry walked; posts engine run done `WAKE_EVENTS`[11] | `rd_running`↓/`rd_done`↑ **in the same cycle as DMA run done**, once last table read complete (guarantee B) | yes (round 2, D41 F6) | D41 |
+| 4.2 | `STREAM_SRC` | src [20:0], spare [31:21] | src [20:0] aligned to read size; **gap after [23:21]**; spare [31:24] | yes | D4, D12 |
+| 4.2 | `STREAM_DEST` | dest word [20:0] (modes 3/6/9), *d* [27:21], spare [31:28] | **32-bit destination byte address [31:0]**, mode 0 only | yes | D4 |
+| 4.2 | `STREAM_COUNT` | count [17:0] (18 bits), mode [21:18], read size [23:22], gap after [26:24], spare [31:27] | count [16:0] (17 bits, ≤131,071), size [18:17], counter [21:19], mode [24:22], *d* [31:25] | yes | D4, D12, D30 |
+| 4.2 | *d* | 0–63 rel, 64 C&C (mode 3 only), 65–127 invalid | 0–63 rel, 64–66 controllers, **126 broadcast** (hardware ok; convention controllers only; meshsim errors from a mesh tile), 67–125 & 127 invalid | yes (D41 F14) | D41 |
+| 4.2 | element / dest stepping | wraps mod 2²¹; dest word +1/2/4 for modes 3/6/9 | plain addition; mode-0 dest + 4/8/16 bytes; misaligned element not read, payload 0, [1] | yes | D26, D32 |
+| 4.2 | reserved-encoding errors | read size 11, modes 0/7/8/10–15, d 65–127, d 64 non-mode-3, mode 5 @128, mis-aligned mode-3 dest | read size 11, modes 6–7, d 67–127, mode 4 with d≠0, mode 3 @128, misaligned mode-0 dest or source (all meshsim) | yes | D32 |
+| 4.2 | drift | condition | `ERRORS`[3] | yes | D18 |
+| 4.3 | `SRAM_RD_DEST_ADDR` | write-only; dest [13:0] packed CM word (anywhere in CM, program memory included); size [15:14] | **R/W**; dest [16:0] data-memory byte offset (region 0x00 only); size [18:17]; counter [21:19]; [31:22] reserved; reads back the advanced destination | yes | D13 |
+| 4.3 | results | mode-6 to self, counted `DMA_CM_REMAINING` | mode 0 to self, counted by its counter field at K | yes | D6, D13 |
+| 4.3 | misaligned read | dropped; read-port error | performed as payload-0 packet; `ERRORS`[1] (read-port error [7] now only for overflow) | yes | D32 |
+| 4.3 | request queue entry | 37 bits (21+14+2) | 43 bits (21+17+2+3) | **not explicit in CHANGES** (follows from the counter) | D13 |
+| 4.3 | misaligned destination | — | makes a misaligned mode-0 packet → bad packet at director | implied | D32 |
+| 4.4 | gather request | mode 1, never counted | mode 4, never counted; **counter field stored with the ordinal** in the 16-entry queue (entry = 20-bit ordinal + 3-bit counter) and stamped on the gather values (mode 1) | yes | D6, D17 |
+| 4.4 | `DMA_RECORD_BASE_ADDRESS` | any chunk | record-aligned; odd base → each read payload 0, [1] | yes | D32 |
+| 4.4 | GATHER busy | `TILE_STATUS` | `STATUS`[2] | yes (8.2) | D18 |
+| 4.4 | GATHER overflow | condition 6 | `ERRORS`[6] | yes | D18 |
+| 4.5 | read-queue fields | addr: 0 / dest word / CM word | 32-bit address; **+ counter field** | yes | D10, D30 |
+| 4.5 | spanning part 1 | goes ahead of every client | gone | yes | D26 |
+| 4.5 | tokens | 64 *(Proposed, accepted)* | 64, decided; loopback hold **required**; broadcast-stream read keeps its token until its own copy leaves loopback FIFO; count-only to self takes a token | yes (D41 F14, D42 S9, D43) | |
+| 4.5 | out of range read | payload 0 | undefined | yes | |
+| 4.5 | injection sources | read returns, send port; C&C via fifth port | same two; controllers via fifth ports; peripherals' DMAs on own router port | yes | D10 |
+| 4.5 | injection packet width | 7+4+21+2+128 | 7+3+3+32+2+128 (+ reserved zeros) | yes (3.1) | D2 |
+| 4.5 | route to fifth port | dst 64 at tile 0 | dst 64/65/66 at tiles 0/1/2 | yes (4.6/4.7) | D25 |

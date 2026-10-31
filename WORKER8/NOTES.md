@@ -69,3 +69,10 @@ phase-3 tip, whose replayer tests don't compile). Merge `v1.2-meshsim` again onc
   jobs.txt and key hashes, a new HASHES); SortTest reads the interim loader from the image directory when it has one.
   Smoke-tested locally (-n 2000, uniform-kv32: passes). **Quest task 070 pushed** (the 43 P4 runs; kit embedded, sha
   99b56125...). Whole run_tests.sh (all) running in /tmp/rt.log.
+- **State at the end of this turn** (2026-10-31): run_tests.sh (all) running in /tmp/rt.log: every suite so far
+  passes (Bus, Net ×3, Mem ×3, Engine ×2, Ctrl ×2, Riscv, ReadPortGather, Accounting, SearchBench, AgTest, RegDoc,
+  Hooks, PeripheralSlot ×2, RequestBus ×2, Replayer, Stage B), sort-p1 passes (42); sort, sort-shuf and the full
+  extras still to come. Only the sort's logs are committed from it (results/sort*.log); the others are WORKER4's and
+  are restored with `git checkout -- wip/meshsim/results` before every commit. Quest task 070 queued, not yet picked
+  up. Next: the rest of run_tests; the BT -Dsort.watch runs on both versions (16K, kv32 and k128) to confirm the BT
+  steps' explanation; 070's results into REPORT.md.

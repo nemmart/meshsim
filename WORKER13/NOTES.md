@@ -312,3 +312,29 @@ controller-fed set, invalid class, 4.19.9's loop) are "both".
 | 6.6 | controllers | separate C&C design; RUN/HALT and GO registers; receive FIFO; error OR; REPORT | C&C 1–3 tile instances (2 MB big SRAM); chip functions in C&C 1's peripheral; C&C 1 waits `go_latency` + 1 after `PULSE_GO` before a command | yes | D1, D15, D25, D28, D36 |
 | 6.7 | memory system | at C&C's port, src 64; destination kinds; mode 3/6/9 data; mode-8 replies; write tokens + mode-3 streams to C&C | C&C 2's peripheral at dst 65 (tile 1's fifth port); requests name 32-bit destination, data counter, reply counter and reply address; replies mode 0 to the named address; writes by tags into 2–4 KB windows *(Deferred, item 119)*; debug as log files | yes | D23, D25, D33, D40, W5-17 |
 | 7 | memory subsystem | hangs off C&C | C&C 2's peripheral; LPDDR behind AXI survives soft reset | yes | D25, D35 |
+
+### 8 Registers (done)
+
+Full register maps for the guide's tables are taken from v1.1 8.1–8.13 and v1.2 8.1–8.15 (v1.25 = v1.2 here; the
+replayer's words are unchanged at v1.25: only the expansion word and the output row change). Key items:
+
+| what | v1.1 | v1.2 (= v1.25) | in CHANGES? |
+|---|---|---|---|
+| block | 0x800–0x89C, contiguous, unmapped (bus error) from 0x8A0 | 0x800–0x880 defined; **0x884–0x9F4 reserved (read 0, ignore stores)**; 0x9F8 exit word, 0x9FC trace word (meshsim only; reserved in hardware); windows at 0xA00/0xC00/0xE00 | yes |
+| every offset | — | **every offset moved** | yes |
+| v1.1 → v1.2 offset map | 0x800 TILE_STATUS → 0x800 PARAMS + 0x804 STATUS; 0x804 TILE_CONDITIONS → 0x808 ERRORS; 0x808 TILE_PULSE → 0x80C PULSE_DONE, 0x810 PULSE_DMA (+ window PULSE_RUN, C&C 1 PULSE_GO; 0x814 reserved); 0x80C ROUTER_SET_HDR → 0x828 ROUTER_HDR + 0x82C ROUTER_ADDR; 0x810–0x824 ROUTER_SET_W0..SEND_128 → 0x830–0x844; 0x828 DMA_CONFIG (W) → 0x858 (R/W); 0x82C DMA_RECORD_BASE_ADDRESS (W) → 0x85C (R/W); 0x830–0x83C DMA_*_REMAINING → 0x860–0x878 WRITE_COUNTER_1–7; 0x840 SRAM_RD_ADDR_QUEUE → 0x87C; 0x844 SRAM_RD_DEST_ADDR (W) → 0x880 (R/W); 0x848 WAKE_EVENTS → 0x818 EVENTS; 0x84C WAKE_PEEK → 0x81C EVENTS_PEEK; 0x850 WAKE_MASK → 0x820 EVENTS_MASK; 0x854 WAKE_REQUIRED → 0x824 EVENTS_REQUIRED; 0x858–0x864 REQUEST_* → 0x848–0x854; 0x868–0x86C SENDER_* → gone; 0x870–0x88C PERIPH_STATUS_0–7 → gone (window words); 0x890–0x89C UART_* → C&C 1 peripheral words 42–45 (TX, RX, DIVISOR, STATUS: **order changed**, DIVISOR before STATUS) | | yes (by name) |
+| `TILE_STATUS` → `STATUS` bits | [0] rd_running, [1] rd_done, [2] GATHER busy, [3] periph_running, [4] sender_busy, [5] send_busy, [6] ts_busy, [7] mem_idle (reset 1), [8] cm_idle (reset 1), [9] done (reset 1, forced 1 in HALT), [10] command landed, [11] request_busy, [15:12] type, [19:16] spare, [26:20] endpoint, [31:27] size | `STATUS`: [0] rd_running, [1] rd_done, [2] GATHER busy, [3] send_busy, [4] done (**reset 0**), [5] command landed, [6] request_busy; `PARAMS`: [2:0] peripherals present, [26:20] endpoint (0–66), [31:27] size (7 on C&C 1–3) | yes; **`done` reset value 1 → 0** stated in v1.2 8.2 but not in CHANGES |
+| `rd_running` falls | after last entry walked | after last table read completes, same cycle as DMA run done | yes (D41 F6) |
+| `ERRORS` | as v1.1 conditions | [1] widened, [7] narrowed, [11]–[13] live peripheral ORs; sticky to reset | yes |
+| pulses | `TILE_PULSE` bits [0] done, [1] start, [2] PERIPH_RUN, [3] GO (two actions in one store possible; "start and run act before done") | one register per action; a store of 1 fires; two actions in one store no longer possible | yes |
+| `DMA_CONFIG` | write-only, reads 0, at 0x828 | R/W at 0x858; fields unchanged (bucket digit now "mode 2") | yes |
+| counters | 20-bit, 4 | 20-bit, 7 | yes |
+| table window | 0x2000–0x3FFF (0x3600–0x3FFF unmapped bus error) | 0xFFFF2000–0xFFFF35FF; STREAM_* layouts changed (4.2) | yes |
+| `EVENTS_MASK`/`REQUIRED` width | [22:0] | [15:0] | implied |
+| request port | 0x858–0x864 | 0x848–0x854; GET reads 0 on tiles (no queue) | yes |
+| C header | `mesh.h` 1.1, flat registers | structs `TileRegs`, `PeripheralStd`, `ReplayerRegs`; `mesh.h` 1.2 | yes |
+| general rule "a load takes 1 or 2 cycles" | | **v1.2/v1.25 8.1's general rule still says "1 or 2 cycles, fixed per register"**, while 4.11 (after D45) fixes register block and window words at 2 and table window at 1 | stale sentence → QUESTIONS (editorial) |
+| 8.11 replayer window | — | words 0–2, 5–7, 32–34 as in 4.19.9 | yes |
+| 8.13 UART | 0x890 TX, 0x894 RX, 0x898 STATUS, 0x89C DIVISOR | words 42 TX (0xAA8), 43 RX, **44 DIVISOR, 45 STATUS** (R/W1C) | yes |
+| 8.14 C&C 1 | — | words 32–34 ERROR_LINES (bit b of word w = endpoint 32w + b; word 2 [0] unused, [1] C&C 2, [2] C&C 3), 35–36 READY_LINES, 37–38 READY_EXPECT, 39 PULSE_GO, 40 WATCHDOG, 41 LED, 42–45 UART, 46–63 reserved, 64–127 host *(Deferred)*; `ERRORS`[0] unit-error live; `EVENTS` [2] all READY live, [3] watchdog (d1), [4] RX not empty live, [5] TX not full live | yes |
+| 8.15 | simulator `CMD_EXIT`, `ebreak`, trace at 0xFFFFFFF0 | exit word 0xFFFFF9F8, trace word 0xFFFFF9FC | yes |

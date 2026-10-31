@@ -27,5 +27,14 @@ acceptance kit). Until WORKER10's `v1.25` spec branch exists, the design is DECI
       Java side: test/ReplayTables.java (load, key, lookup, manifest check); ReplayWindow/ReplayDriver keyed by key;
       ReplayDelivery.tablesFor (program dir, else delivery tables/, else ../tables/replayer). StageB synthetic 18/18
       (controller-fed 3.513 cycles/row, was 3.452: the key's cost on the fast path).
-- [ ] tests (vec.tsv at 821e1bd, unit tests, StageB synthetic), REPLAY-INPUT-REQUIREMENTS.md
+- [x] test/SyntheticDelivery.java: random RV64IMAC programs (atomics, M with jolt-cpp's advice, every load/store
+      width, branches, jumps, ECALL, HostIO, CSR, inlines) through the universal tables by a functional replay, each
+      checked instruction compared with a plain RV64 interpreter (x1-x31, pc, memory); writes a delivery (tables/,
+      streams raw+LRU, state/state-lru/state-pick, rows, end, manifest). Seeds 2-12 x 4 windows x 65,536: ~10K
+      instructions each, 0 mismatches; a mutation (ShiftDataB ignoring shift_offset) is caught. Lessons: jolt-cpp's
+      self-transfer is sequential (appendix 1.4); keep pc far from 0 (pc 0 is the program end): JALR off x2-x4 only,
+      mtvec read-only.
+- [x] Stage A (ReplayDelivery) on synthetic deliveries: every window OK in all three variants, ~0.3 s per window.
+- [ ] Stage B on a 65,536-row window: >5 min (measuring in the background)
+- [ ] REPLAY-INPUT-REQUIREMENTS.md (key, sign bit, VirtualLoad/Store logs, E[15], tables location)
 - [ ] synthetic delivery generator + acceptance kit + speed measurement + estimate

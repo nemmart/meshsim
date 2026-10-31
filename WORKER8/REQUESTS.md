@@ -12,3 +12,10 @@ in `run_tests.sh`. Proposal: retire both, or I port `splitdrv.c` if you want Spl
 `test/`).
 
 *Status (owner, 2026-10-31):* R1 and R2 passed to WORKER4. R3: leave both unported; noted as stale in REPORT.md.
+
+**R4. The committed `mesh.h` lags `Registers.java` by one comment** (found after merging `v1.2-meshsim` at `2569a40`).
+`0318159` ("the errors' v1.2 names") renamed `ERRORS` [1] in `Registers.java` to "bad packet or misaligned access",
+but the committed `wip/meshsim/sw/mesh.h` and `wip/sw/mesh.h` still say "bad mode or size". `sw/build.sh` regenerates
+the header on every build, so every build leaves `wip/meshsim/sw/mesh.h` modified and `tools/check_layout.sh` fails
+until it is restored (run_tests.sh runs the layout check before the build, so a clean checkout passes). Comment only:
+no code changes. Please commit the regenerated header to both places.

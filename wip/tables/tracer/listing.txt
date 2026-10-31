@@ -1,0 +1,31 @@
+ROM: 404 of 512 words; templates.bin: 18901 words; 2 segmented templates
+ROM DIV: 12 traced + 1 untraced words
+ROM DIVU: 8 traced + 1 untraced words
+ROM REM: 9 traced + 4 untraced words
+ROM REMU: 7 traced + 1 untraced words
+ROM DIVW: 14 traced + 1 untraced words
+ROM DIVUW: 11 traced + 2 untraced words
+ROM REMW: 11 traced + 4 untraced words
+ROM REMUW: 9 traced + 2 untraced words
+fed   8 mul_q: 186 traced words, 237 untraced rows (237 stored words; segments [(237, 1), (186, 1)]), peak bank-1 16
+fed   9 square_q: 167 traced words, 233 untraced rows (233 stored words; segments [(233, 1), (167, 1)]), peak bank-1 15
+fed  10 div_q: 194 traced words, 123979 untraced rows (1069 stored words; segments [(129, 1), (482, 256), (458, 1), (194, 1)]), peak bank-1 19
+fed  11 mul_r: 232 traced words, 414 untraced rows (414 stored words; segments [(414, 1), (232, 1)]), peak bank-1 20
+fed  12 square_r: 213 traced words, 410 untraced rows (410 stored words; segments [(410, 1), (213, 1)]), peak bank-1 20
+fed  13 div_r: 240 traced words, 214957 untraced rows (1777 stored words; segments [(129, 1), (836, 256), (812, 1), (240, 1)]), peak bank-1 24
+fed  14 glv_r: 13 traced words, 940 untraced rows (940 stored words; segments [(940, 1), (13, 1)]), peak bank-1 26
+check DIV: 200 cases, 0 mismatches (0 inputs jolt-cpp rejects, skipped)
+check DIVU: 200 cases, 0 mismatches (0 inputs jolt-cpp rejects, skipped)
+check REM: 200 cases, 0 mismatches (0 inputs jolt-cpp rejects, skipped)
+check REMU: 200 cases, 0 mismatches (0 inputs jolt-cpp rejects, skipped)
+check DIVW: 200 cases, 0 mismatches (0 inputs jolt-cpp rejects, skipped)
+check DIVUW: 200 cases, 0 mismatches (0 inputs jolt-cpp rejects, skipped)
+check REMW: 200 cases, 0 mismatches (0 inputs jolt-cpp rejects, skipped)
+check REMUW: 200 cases, 0 mismatches (0 inputs jolt-cpp rejects, skipped)
+check mul_q: 200 cases, 0 mismatches (0 inputs jolt-cpp rejects, skipped)
+check square_q: 200 cases, 0 mismatches (0 inputs jolt-cpp rejects, skipped)
+check div_q: 10 cases, 0 mismatches (0 inputs jolt-cpp rejects, skipped)
+check mul_r: 200 cases, 0 mismatches (0 inputs jolt-cpp rejects, skipped)
+check square_r: 200 cases, 0 mismatches (0 inputs jolt-cpp rejects, skipped)
+check div_r: 10 cases, 0 mismatches (0 inputs jolt-cpp rejects, skipped)
+check glv_r: 200 cases, 0 mismatches (0 inputs jolt-cpp rejects, skipped)

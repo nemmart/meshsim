@@ -102,6 +102,36 @@ Decided (O). From WORKER9's first delivery of the replayer's tables and its Q5-Q
   to recognise them, and the Tracer's traced words become bit-identical to the replayer's. Revises v1.3 section 10: the
   length C&C 3 sends up front counts traced words only.
 
+## 6. What stays controller-fed (2026-11-01)
+
+Decided (O). From WORKER9's part 2 (its REPORT, "system instructions in the ROM").
+
+- **`ECALL`, `EBREAK` and `MRET` are in the ROM**, bringing it to 388 of 512 words.
+- **The CSR instructions (`CSRRW`, `CSRRS`: 60 templates, 102 words) stay controller-fed**: the one deliberate exception to
+  section 5's goal. They would fit, but jolt-cpp's expansion depends on **which CSR** and on **the register pattern**
+  (rd = x0, rs1 = x0, rd = rs1), which a single decode entry can't see. Putting them in the ROM would need a special decode
+  layout for the SYSTEM group (a loaded CSR-id table and a computed register pattern) or new replayer datapath; CSR
+  instructions are rare in guest code, so the controller feeding them costs almost nothing. **Rare is good** (owner).
+- So **the controller feeds the inlines, the advice generators and the CSR instructions**, and nothing else.
+
+## 7. From meshsim's replayer at v1.25 (2026-11-01)
+
+From WORKER11's questions; the integrator's answers, to review.
+
+- **Q1, signedness in the reference rows: a flag in the row** (revised 2026-11-01, from WORKER10's finding). The row's
+  immediate is already 64 bits; what `sign_imm` determines is how Jolt forms its **128-bit `imm()`** from it, so extending
+  the stored immediate can't carry the information, and the row needs **a spare bit saying it**: *(proposed)* word 0 bit
+  [86], as WORKER11 proposed. WORKER10 fixes the position in the spec; the replayer model and WORKER9's delivery writer
+  follow exactly.
+- **Q2, the write log's last-load entry (E[15]) is updated by every load row**, the new `VirtualLoad*` rows included. The
+  delivery writer's encoder does the same.
+- **Q3:** `offset_imm` is set only on `ShiftData*` rows (jolt-cpp records their immediate as the shift offset); meshsim flags it
+  on any other opcode.
+- **Q4:** a misaligned memory row (LD and SD included) is a violation meshsim flags, since jolt-cpp aborts on one.
+- **The acceptance runs generate and discard their deliveries:** the runner has a 45-minute limit per task and a full program's
+  delivery is about 31 GB, so each task generates its shard of windows with the delivery writer, replays them at once and keeps
+  only the results. WORKER9's part 3 and WORKER11's kit are built to that.
+
 ---
 
 ## Definition of done (owner, 2026-11-01)

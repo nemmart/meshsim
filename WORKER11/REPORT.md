@@ -87,30 +87,48 @@ and about 4-7× faster:
 It's cheap (about 20 lines in `Chip`, opt-in). A smaller topology (`hops.txt`) isn't possible: meshsim's network is the
 fixed 8×8 torus.
 
-## 4. The hours and the shard plan (preliminary: replaced by task 078's measurements)
+## 4. The hours and the shard plan (measured: Quest task 078)
 
-**Windows:** 8,192 per program (2²⁹ rows padded). The real rows are 354.9M (EVM Zone, about 5,415 windows) and 371.5M
-(Cyclone, about 5,669). All 16,384 windows are replayed, padding included.
+**Task 078** (`078-w11-calibrate`, runner `godspeed`, 16 threads, 62 GB, Java 21):
+- 128 synthetic 65,536-row windows, generated in 5 s (653 MB of scratch).
+- Replayed at 1, 4, 8 and 16 JVMs; every window matched in every stage.
 
-**From the sandbox** (1 CPU): about 2.1 s per window for A + B (tile 0 alone).
-- That is 16,384 × 2.1 s ≈ **9.6 JVM-hours for both programs**, or **about 36 minutes on 16 threads** if they scale.
-- On the full chip it would be about 40 JVM-hours, or 2.6 hours on 16 threads.
+| JVMs | windows | Stage A, s/window | Stage B (tile 0 alone), s/window | wall |
+|---|---|---|---|---|
+| 1 | 8 | 0.02 | 0.49 | 4 s |
+| 4 | 32 | 0.03 | 0.62 | 5 s |
+| 8 (with stage F) | 32 | — | 1.16 | — |
+| 16 | 128 | 0.16 | 2.10 | 20 s |
 
-**Plan, per program, after its writer task:**
+- **Stage F (the full chip)** on the 8-JVM run's 32 windows: 14.3 s per window, about 12× slower than Stage B alone.
+  Its cycle counts equal Stage B's window for window, so parking the idle tiles holds on the runner too.
+- **Throughput saturates:** per-JVM time grows with parallelism (memory bandwidth, or hyperthreads sharing cores).
+  Throughput levels off at about **6.4 windows per second (about 23,000 an hour) from 4 JVMs up**. The wall times are
+  whole seconds, so the 4-JVM figure is coarse; the 16-JVM run (128 windows in 20 s) is the one to plan with.
 
-    run_shard.sh -d /tmp/w9-deliveries -p evm-zone-29 -f 0 -n 8192 -j 16 -x 64 -m <manifest sha256> $RES/evm-zone-29
+**The hours:**
+- 8,192 windows per program (2²⁹ rows padded; all replayed, padding included) take **about 21 minutes per program** at
+  16 JVMs, about 43 minutes for both programs.
+- Stage F on every 64th window (128 per program, `-x 64`) adds about 128 × 14 s / 16 ≈ 2 minutes.
+- **One task per program, about 23-25 minutes**, under the runner's 45-minute limit with nearly 2× margin.
+- On the full chip alone it would be about 4 hours per program (8,192 × 14.3 s / 8 JVMs at the 8-JVM rate). This is
+  what parking the idle tiles saves.
 
-The estimate is about 18 minutes for A + B, plus about 1 minute for the 128 full-chip windows. That fits one task under
-the 45-minute limit with more than 2× margin. If task 078 shows the box slower or scaling worse, the shard is split in
-two (`-f 0 -n 4096`, `-f 4096 -n 4096`).
+**The tasks** (DECISIONS-v1.25 s7 revised; WORKER9's tasks 079 and 080 write the deliveries):
+- **Location:** `/tmp/w9-deliveries` on the box, with one combined `manifest.json` for `evm-zone-29` and `cyclone-29`
+  and the universal tables in each program directory.
+- **One task per program:**
 
-**Inputs needed from WORKER9:** each delivery's path (expected `/tmp/w9-deliveries`, from tasks 070/071) and its
-manifest's SHA-256 (in `results/070…/manifest.sha256`). The tasks are made with
-`acceptance/make_task.sh KIT TASK './run_shard.sh …'` once those exist.
+      ./run_shard.sh -d /tmp/w9-deliveries -p evm-zone-29 -f 0 -n 8192 -j 16 -x 64 -m <manifest.json SHA-256> $RES/evm-zone-29
+      ./run_shard.sh -d /tmp/w9-deliveries -p cyclone-29  -f 0 -n 8192 -j 16 -x 64 -m <manifest.json SHA-256> $RES/cyclone-29
+
+- **Fallback:** if real windows turn out much slower than synthetic ones, each program splits into two tasks
+  (`-f 0 -n 4096` and `-f 4096 -n 4096`). This is unlikely: the synthetic windows run at 3.15-3.3 cycles per row in
+  Stage B, the range expected of real ones.
+- **Not used:** the older `/tmp/w9-selected-windows-821e1bd.tgz` predates `imm_signed` [86].
 
 ## 5. Open
 
-- Task 078's numbers, to finalize section 4.
 - The acceptance tasks themselves, after WORKER9's writer tasks have run.
 
 ## 6. For the merge: changes outside the replayer

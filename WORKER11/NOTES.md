@@ -77,3 +77,4 @@ acceptance kit). Until WORKER10's `v1.25` spec branch exists, the design is DECI
   084 (cyclone-29) waits for task 080's cyclone-29.manifest.json SHA-256: then
   `acceptance/make_acceptance_task.sh KIT 084 cyclone-29 <sha>` (rebuild the kit with make_kit.sh first).
 - Task 080 done (cyclone-29.manifest.json f8a0622e...). **Task 084 pushed.** 083 next in the queue.
+- Task 083 PASS (8192/8192 A and B, 128/128 F; 28.7 min). 084 running from ~08:43.

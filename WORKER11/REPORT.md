@@ -153,6 +153,19 @@ windows each, every one proven by the writer's own replay).
 - **Each task runs:** `run_shard.sh -d /tmp/w9-deliveries -p PROGRAM -M …/PROGRAM.manifest.json -f 0 -n 8192 -j 16 -x 64 -m SHA`.
 - **Not used:** the older `w9-selected-windows-821e1bd.tgz` (it predates `imm_signed`).
 
+**Task 083, evm-zone-29: PASS** (godspeed, 08:14-08:42 UTC, 28.7 min wall).
+- **Every window matched:**
+  - Stage A: 8,192 of 8,192 windows (536,870,912 rows), row for row, with the streams consumed exactly and the end
+    states equal.
+  - Stage B (the controller on tile 0 alone): 8,192 of 8,192.
+  - Stage F (the full chip): the 128 windows checked, cycle counts equal to Stage B's.
+- **No CORRUPT file and no violation.**
+- **Stage B speed:** 3.213 cycles per row overall (per window 3.00-3.59, median 3.31); Stage A 3.211.
+- **Per JVM:** A 0.04 s, B 1.42 s (median 1.35 s, max 4.4 s), F 10.5 s per window.
+- **Wall time:** the timed replays add up to about 835 s per JVM over 16 JVMs, but the wall was 1,722 s. The rest is
+  outside the timed replay: reading the window's files (46 GB) and checking their SHA-256, and the JVMs' uneven tails.
+  The estimate (23-25 min) was about 15% short; the task still has 16 minutes of margin under the limit.
+
 ## 6. For the merge: changes outside the replayer
 
 One change is in WORKER4's area of the simulator (`src/Chip.java`): it is opt-in, off by default, and nothing but Stage B

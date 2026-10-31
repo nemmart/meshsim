@@ -40,3 +40,8 @@ See bottom: per-turn log.
 
 ## Turn log
 - T1 (2026-11-01): read inputs, plan approved; branch created; NOTES/QUESTIONS started.
+- T2 (2026-11-01): committed T1's WIP; merged main (V6: CSR controller-fed, V7: Q1-Q4). Owner answered Q4-Q7.
+  Done: 4.19.7-4.19.15, sections 9, 10, 13 (items 137-141), appendix regenerated (ed scripts were in /home/claude/ed,
+  not kept: section 2 rows rebuilt from WORKER9 summary.txt + case ranges in PR #2's trace_owner.cpp, sections 6-9 from
+  WORKER9 outputs), CHANGES-v1.25.md, REPORT.md. Remaining: item 137's re-citation; follow WORKER11's findings and
+  WORKER9's Tracer tables if the replayer's tables change.

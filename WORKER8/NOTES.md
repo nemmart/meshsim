@@ -33,6 +33,7 @@ phase-3 tip, whose replayer tests don't compile). Merge `v1.2-meshsim` again onc
 | branch made at `e7a2106` | none (the sort's steps PENDING (sort port), as on v1.2-meshsim) |
 | step 1 (the program ported) | none in run_tests (the sort's steps still PENDING); the sort builds but has not run |
 | step 3 | none known: layout, build, p1 and sort pass; sort-shuf and the full-mode BT runs not yet run on v1.2 |
+| step 4 | none known: sort-shuf and sort-bt-kv32 pass; sort-bt-k128 running; run_tests.sh not yet run whole |
 
 ## Log
 
@@ -55,3 +56,8 @@ phase-3 tip, whose replayer tests don't compile). Merge `v1.2-meshsim` again onc
   (-Dsort.watch). Explained so far: xchg +80 (ROUTER_HDR's dst moved to [31:25]: one shift per send, + the last
   decrement's K); plan_transfer +306 and config_direct_lb +83 (to confirm in the disassembly: d in STREAM_COUNT).
   Still to run: sort-shuf (in progress), the BT pair, the full suite; then the Quest runner.
+- **Step 4** (2026-10-31): shuffled suite (seed 4) passes, 104, same paths. BT forced kv32 at 16,384 passes on BT:
+  708,595 vs 709,658; DESC and the BT layers slower by a few hundred each, to explain. BT k128 running (/tmp/bt.sh,
+  detached with setsid: plain nohup jobs die with the tool call). Next: the k128 result; itemise every step's
+  difference (disassembly, -Dsort.watch against /tmp/v11); read the Quest repo's PIPELINE.md and send the full-size
+  runs; the full run_tests.sh.

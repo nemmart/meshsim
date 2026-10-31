@@ -61,7 +61,14 @@ Not ported: `sw/ext/split-bisect/splitdrv.c` and `test/SplitRun.java`, already s
 | reverse kv32 | TH (stage 2 ran) | 263,245 | 258,301 | −4,944 |
 | ragged k128 shaped | direct | 241,907 | 237,320 | −4,587 |
 
-P1 (the local sorts alone): L1 −1,708 and L2 −1,200 cycles on all six sets.
+P1 (the local sorts alone): L1 −1,708 and L2 −1,200 cycles on all six sets. **Checks:** 2 fewer per run than v1.1
+(P1 42 vs 54, the sort 104 vs 124, BT 10 vs 12): the staging check and the `PTR[64]` check, both retired with the
+staging area. **Shuffled child order (seed 4):** 104 passed, every set on the same path.
+
+**BT, forced, trace hot 10 / 10 % at 64 × 16,384, 32-bit values:** passes on the BT path; 708,595 vs v1.1's 709,658
+(−1,063). Per step: L1 −1,708, SPLIT −339, XB +385, RED −578 (v1.1's 552 overlay load), XC +87, TH −618 (597), SWEEP
++299 (expected: one `ROUTER_ADDR` store per token and per credit, about 254), DESC +879 (+1,297 net of v1.1's 418
+overlay load: **to explain**), K1.0-K1.2 +193, +193, +432, K2.0-K2.2 +422, +497, +1 (**to explain**), L2 −1,200.
 
 ### Differences explained (so far; per-step table to come)
 

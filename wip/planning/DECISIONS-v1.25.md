@@ -50,6 +50,32 @@ Decided (O).
   builder): a functional model of the Tracer's output, which v1.25's acceptance runs need and which gives v1.3 a head
   start. Deliveries are not committed to any repository.
 
+## 4. The expansion word's new bits, and the tables (2026-11-01)
+
+Decided (O). From WORKER9's part-2 plan (`WORKER9/PLAN-PART2.md`).
+
+- **`offset_imm`** (WORKER9's proposal, spare bit [63]): when set, the row's `shift_offset` is the source instruction's
+  immediate; when clear, 0. That covers every current use (the stores use their immediate; SC.W and the AMOs use 0).
+- **`sign_imm`**, a second spare bit (position proposed by WORKER9 with the encoding): when set, the row's immediate is
+  sign-extended; when clear, zero-extended. **It replaces the replayer's hard-wired list of signed-immediate opcodes**
+  (spec 4.19.12). The table builder sets it from jolt-cpp's own `signed_immediate`, which at `821e1bd` adds `ShiftData*`,
+  `VirtualLoad*` and `VirtualStore*` to the list. A future change to Jolt's list then means rerunning the builder, not
+  changing the hardware (as for PEXT, v1.3 section 9). A bit rather than a new operand code, because the free operand
+  codes (146-255) are the Tracer's untraced registers (v1.3 section 7).
+- **The table builder is an offline tool** (`build_tables`, in jolt-asic-planning PR #2): run once per jolt-cpp version and
+  per program; its outputs (`rom.bin`, `decode_table.bin`, `templates.bin` and its index, the opcode table) are committed
+  to meshsim's `wip/tables/`. At run time a tile's controller copies the ROM and the decode table into the replayer
+  (part 0) and keeps `templates.bin` to feed the rare templates.
+- **Two sets of tables, one format** (v1.3 sections 7, 8, 10): **the replayer's** (traced rows only) and **the Tracer's**,
+  whose traced rows are identical to the replayer's and which add untraced rows for **every advice** (the division family;
+  `VirtualAdvice` in the secp256k1 inlines, the division inlines' modular inverse included). Each unit has its own ROM
+  and fed set: the replayer's ROM is expected at about 389 of 512 words (v1.1 about 508), so the Tracer's 389 plus its 16
+  division-advice words fit too (v1.3 Q11 likely resolved).
+- **The mapping between the two numberings:** the Tracer writes each window's template bitmap in the **replayer's**
+  numbering of controller-fed templates (v1.3 section 6), so the builder emits that mapping alongside the Tracer's tables.
+- **Long data-independent expansions** (the modular inverse) are emitted as **a loop body plus a repeat count**, with any
+  prologue and epilogue, for C&C 3 to generate (v1.3 section 10).
+
 ---
 
 ## Work list

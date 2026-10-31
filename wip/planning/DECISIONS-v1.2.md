@@ -1508,6 +1508,20 @@ Decided (O). Answers W4-05. A peripheral's `PARAMS` [7:0] (10, 18):
 
 Other values are reserved. Spec 4.17.1 updated, and 4.19 renumbered.
 
+## 47. Waiting rules from the sort port (2026-10-31)
+
+Decided (O). Answers WORKER8's Q1-Q3; recipe 23 and `CONVENTIONS.md` updated by the integrator.
+
+- **Q1, the tables are free per memory:** `STREAM` and `GROUP` once DMA run done fires (only the address generator
+  reads them); `PTR` and `HIST` once the arrivals' counter fires (only arriving packets update them). A program may
+  rewrite `STREAM` while arrivals still update `PTR`. Refines 17, which waited for both.
+- **Q2, polling a landed word in data memory** to learn that a sender's earlier packets are in: valid **only when those
+  earlier packets also land in controller memory** (one unit's packets to one destination arrive in order, 44, and
+  port B writes them in that order). Packets to big SRAM take the slower write path, so a marker in data memory can
+  land before them; wait for their counter instead.
+- **Q3, a plain `wfi()` on counters done** under the reset mask (GO | counters done): sanctioned, and cheaper than
+  `wait_all()` (no stores), **when no other counter is armed**, since counters done needs all seven at 0.
+
 ---
 
 ## Big SRAM: to validate

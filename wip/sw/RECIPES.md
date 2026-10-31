@@ -8,7 +8,7 @@
 - **Names** are the draft header's: one struct per block, reached through a pointer (D14): `tile->EVENTS`, `tables->PTR[i]`, `replayer->EVENTS_MASK`, `cc1->PULSE_GO`. WORKER4 generates the real `mesh.h` and reconciles it with the draft. Tile programs follow `sw/CONVENTIONS.md`, and section 15 collects the rules that bite.
 - **Counters:** the packet names one of seven (D3, D40). These recipes use them by convention (CONVENTIONS 5): **1 big SRAM, 2 controller memory (read-port results included), 3 tile-to-tile replies, 4 peripheral writes, 5-7 one per outstanding request** (`CTR_SRAM`, `CTR_CM`, `CTR_REPLY`, `CTR_PERIPH`, `CTR_REQ(k)`). Every send names its counter: the header's macros take it as a required argument, so no send is uncounted by default.
 - **Addresses** are bytes in the 32-bit map (D5). Big SRAM's engine pointers (`PTR`, `STREAM_SRC`, `SRAM_RD_ADDR_QUEUE`, `DMA_RECORD_BASE_ADDRESS`) stay in 32-bit chunks; `SRAM_ADDR(chunk)` is the packet address of a chunk.
-- **Cycles:** every v1.1 measurement is void; section 14 gives meshsim v1.2's (RecipeTest).
+- **Cycles:** every v1.1 measurement is void until meshsim v1.2 measures it again; section 14 marks each figure "to measure".
 - Buffers in the examples sit in different big-SRAM areas, as in v1.1: area *a* starts at chunk *a* · 0x20000.
 
 **What changed from v1.1, in brief.** Modes 0 write at address (commands and replies included), 1 by source, 2 bucket, 3 augmented, 4 gather request, 5 count only (D43). The counter is named by the packet. Every 64- and 128-bit access is naturally aligned, checked in hardware. Waiting is by events, the tables included (`wait_tables()` is gone). Errors trap and the trap is terminal: no HALT and no REPORT. Every unit boots from a ROM. Requests to the controllers are limited per tile, name their own reply address and counter, and wait for their replies (D38, D40). Seven write counters (D40). Ordering holds per sending unit, not per tile (D44).
@@ -613,36 +613,36 @@ m = par.m;
 - **Store the counter first**, then the start.
 - **The lead-in is the same everywhere:** it depends only on the run kind, the tables and *L* = `ts_engine_latency`.
 
-**What the compiler emits.** At `-O2`, GCC 13 compiles the start path above to: the `wfi`, the load of `EVENTS`, the load of slot 0 (its base hoisted out of the loop), a shift and a compare, the load of `m`, and two x0-relative stores. Every register access through `tile->` is a single x0-relative instruction, so W3-27's feared extra base-address instruction doesn't appear here. The same holds for every recipe in `WORKER6/check` (checked in the disassembly: no register-block base is ever loaded). Cycles (meshsim v1.2): GO store → start store 9–10 on every tile, the stream's first request 4 cycles later (section 14).
+**What the compiler emits.** At `-O2`, GCC 13 compiles the start path above to: the `wfi`, the load of `EVENTS`, the load of slot 0 (its base hoisted out of the loop), a shift and a compare, the load of `m`, and two x0-relative stores. Every register access through `tile->` is a single x0-relative instruction, so W3-27's feared extra base-address instruction doesn't appear here. The same holds for every recipe in `WORKER6/check` (checked in the disassembly: no register-block base is ever loaded). Cycles: to measure.
 
 **Walk.** The set-up's own copy (the parameters, 128 bits into `par`, which is `aligned(16)`) arms counter 2 and waits for it and for its run, so the set-up ends with every arrival in and the tables free. `done` then cannot be early. The start path is the one recipe 5 walks.
 
 ## 14. Cycles
 
-**Measured on meshsim v1.2** (RecipeTest, `wip/meshsim/results/recipes.log`; tile 0 unless stated, cycles at 1 GHz). v1.1's measurements (`v1.1/sw/RECIPES.md` section 14) don't carry over: the address map, the counter path (*K* after the director), the header, the alignment rules and the register map have all changed. The lead-ins, which follow from a formula, are marked [derived] and measured the same.
+**Every figure is to measure on meshsim v1.2.** v1.1's measurements (`v1.1/sw/RECIPES.md` section 14) don't carry over: the address map, the counter path (*K* after the director), the header, the alignment rules and the register map have all changed. Only figures that follow from a formula the log keeps are given, marked [derived].
 
 | recipe | what | v1.2 |
 |---|---|---:|
-| cmdloop | a 3-argument and a 7-argument command: GO → all 64 READY | 207; 62 |
-| copy | 100 records: start store → first instruction after the wait | 132 |
-| cmem | 256 words into program memory: start store → wake | 104 |
-| bucket | count copy + 4 bucket passes, 200 records: GO → all READY (no `PTR[64]` restore now) | 13,071 |
-| aug | local form, 64 keys; remote form, start command: GO → all READY | 118; 116 |
-| gather | k = 1 and k = 2, 50–113 values per tile: GO → all READY | 347; 449 |
-| xchg | one-word exchange, 64 words per tile; four words to one tile: GO → all READY | 1,317; 48 |
-| xvec | 6 words to each of 4 neighbours: GO → all READY | 131 |
-| a2a | counts + group maxima; reduction + configure; start: GO → all READY | 2,126; 7,634; 485 |
-| a2a | start (a group run): GO store → start store, every tile | 17–18 |
-| a2a, sync | start store → first request: the lead-in | 4*L* + 3 = 7 (group run), 2*L* + 2 = 4 (stream run) at *L* = 2 [derived: spec 4.2, unchanged by the log; measured 7 and 4] |
-| reduce | 16 words, max over 64 tiles, broadcast back: GO → all READY | inside a2a's reduction + configure above (no separate program in v1.2) |
-| rdport | one read; 7 searches over 300 keys: GO → all READY | 55; 2,919 |
-| sync | start (a stream run): GO store → start store, every tile | 9–10 |
-| write_block, fill, hash | per record | 7.2 (write_block, 256 records); 23.0 and 36.4 marginal (fill, hash; 18.2 per 32-bit word read) |
-| selftest | fill, configure, start (timetable 1,024), hash, signatures to C&C 1: GO → all READY | 23,747; 2,065; 1,127; 37,369; 585 (the signatures over the request bus, answered: 504 from first to last at C&C 1) |
-| boot | reset release → all tiles running their image (overlays streamed at a packet per cycle, D41) | 120 (`rcp_boot`: 62 broadcast packets) |
-| handler | trap → last of 24 reports in C&C 1's receive queue | 263 |
-| replay | refill latency: credit consumed → run started → counter 4 done | not measured: `rcp_replay`'s `state[]` is zero, so its pass is empty; `sw/replay/replay_ctl.c` (Stage B) runs 3.1–5.7 cycles a row on meshsim's synthetic windows |
-| *K* | counter decrement after acceptance | 8 by default; meshsim errors if set below its reference max(2·*L* + 4, *L* + 4, `cm_latency`, `rp_latency`) [D49; the hardware's *K* is implementation-defined] |
+| cmdloop | a 3-argument and a 7-argument command: GO → all 64 READY | to measure |
+| copy | 100 records: start store → first instruction after the wait | to measure |
+| cmem | 256 words into program memory: start store → wake | to measure |
+| bucket | count copy + 4 bucket passes, 200–263 records: GO → all READY (no `PTR[64]` restore now) | to measure |
+| aug | local form, 64 keys; remote form, start command: GO → all READY | to measure |
+| gather | k = 1 and k = 2, 50–113 values per tile: GO → all READY | to measure |
+| xchg | one-word exchange, 64 words per tile; four words to one tile: GO → all READY | to measure |
+| xvec | 6 words to each of 4 neighbours: GO → all READY | to measure |
+| a2a | counts + group maxima; reduction + configure; start: GO → all READY | to measure |
+| a2a | start (a group run): GO store → start store, every tile | to measure |
+| a2a, sync | start store → first request: the lead-in | 4*L* + 3 = 7 (group run), 2*L* + 2 = 4 (stream run) at *L* = 2 [derived: spec 4.2, unchanged by the log] |
+| reduce | 16 words, max over 64 tiles, broadcast back: GO → all READY | to measure |
+| rdport | one read; 7 searches over 300–363 keys: GO → all READY | to measure |
+| sync | start (a stream run): GO store → start store, every tile | to measure (v1.1's 8–9 assumed v1.1's register map and a 2-cycle `WAKE_EVENTS` load) |
+| write_block, fill, hash | per record, marginal | to measure (write_block and fill now send mode 0 by address, with no `PTR` set-up) |
+| selftest | fill, configure, start (timetable 1,024), hash, signatures to C&C 1 | to measure (the signatures now go over the request bus, recipe 21) |
+| boot | reset release → all tiles running their image (overlays streamed at a packet per cycle, D41) | to measure |
+| handler | trap → last of 24 reports in C&C 1's receive queue | to measure |
+| replay | refill latency: credit consumed → run started → counter 4 done | to measure |
+| *K* | counter decrement after acceptance | 8 by default; meshsim errors if set below max(2·*L* + 3, *L* + 4, `cm_latency`, `rp_latency`) [D32, D36] |
 
 ## 15. The rules that bite
 
@@ -1331,6 +1331,16 @@ static void periph_dma(unsigned n, unsigned dst, uint32_t addr, uint32_t words, 
  * with nothing more to push leaves the mask, or its spare credit would keep the tile awake (W3-24). Resident streams
  * only: data staged from LPDDR is fetched into big SRAM first, on another counter (spec 4.19.13). */
 typedef struct { uint32_t chunk, left, port, half, bit; } Feed;   /* the next half in big SRAM (4-chunk aligned), entries left */
+/* key(w) (spec 4.19.9, v1.25): the index's key for a presented word, every bit of w but its register fields. An inline
+ * (custom-0) has rd, rs1 and rs2 cleared; CSRRW/CSRRS has rd and rs1 renamed by first appearance (x0 stays 0, a
+ * non-zero rd becomes 1; rs1 is 0 if x0, 1 if it equals a non-zero rd or if rd is x0, else 2), the CSR kept. */
+static uint32_t template_key(uint32_t w) {
+    uint32_t op = (w | 1) & 0x7F, f3 = (w >> 12) & 7, rd = (w >> 7) & 31, rs1 = (w >> 15) & 31;
+    if (op == 0x0B) return w & ~(31u << 7 | 31u << 15 | 31u << 20);
+    if (op == 0x73 && (f3 == 1 || f3 == 2))
+        return (w & ~(31u << 7 | 31u << 15)) | (rd ? 1u : 0u) << 7 | (!rs1 ? 0u : (!rd || rs1 == rd) ? 1u : 2u) << 15;
+    return w;
+}
 static unsigned refill(Feed *f, unsigned s, uint32_t *pmask, uint32_t *armed) {
     uint32_t n = f->left < f->half ? f->left : f->half;    /* every refill but a stream's last is exactly a half */
     set_stream(s, STREAM_SRC_W(f->chunk, 0), f->port, STREAM_COUNT_W(n, SIZE_128, CTR_PERIPH, MODE_WRITE, 0));
@@ -1352,7 +1362,7 @@ static void replay_pass(Feed *code, Feed *rlog, Feed *wlog, int store_log) {
         uint32_t ev = replayer->EVENTS;             /* consumes: one credit from each set bit under pmask */
         if (ev & PEV_RUN_DONE) break;               /* the pass has ended; no refill is in flight here */
         if (ev & RP_EV_NEWEXP) {                    /* present an expansion: its credits are 2 again */
-            template_lookup(replayer->EXPANSION_OPCODE, replayer->EXPANSION_OFFSET, &exp.chunk, &exp.left);
+            template_lookup(template_key(replayer->EXPANSION_OPCODE), replayer->EXPANSION_OFFSET, &exp.chunk, &exp.left);
             if (exp.left) pmask |= RP_EV_EXP;       /* its first credit is claimed on the next wake */
         }
         unsigned s = 0;
@@ -1377,6 +1387,11 @@ static void replay_pass(Feed *code, Feed *rlog, Feed *wlog, int store_log) {
 - **One wake, every credit.** The load of the replayer's `EVENTS` takes one credit from each set, masked queue bit. The loop pushes a refill for every bit returned, so no credit is consumed without its half being sent (W3-24's leak), and puts them in one stream run of up to four streams.
 - **The squelch** is `wait_all`'s mask: GO, counter 4 and [10], without [13]. Credits returned while the run streams accumulate, and wake the loop as soon as it restores [13].
 - **Idle queues leave the mask:** a stream with nothing left, the write log in a pass without the store log, and the expansion queue between expansions. Their spare credits then don't keep the live bit high, so `WFI` doesn't fall through (D10).
+- **The lookup is by key** (spec 4.19.9, v1.25). The template index is universal, so it can't list every register
+  combination: `template_key` normalizes the presented word first. An inline has its register fields cleared, and
+  CSRRW/CSRRS has rd and rs1 renamed by first appearance. The template still resolves its operands (codes 129–131)
+  against the presented word, which the replayer holds, so the key only finds the template. `template_lookup` is the
+  program's (the test's `recipes_support.c`; `sw/replay/replay_ctl.c` hashes the sorted index).
 - **Resident streams only.** Data staged from LPDDR is fetched into big SRAM on counter 1 and refilled from there (spec 4.19.13); a refill waits on counter 4 alone, so an outstanding fetch doesn't hold it up.
 
 **Walk.**
@@ -1385,7 +1400,7 @@ static void replay_pass(Feed *code, Feed *rlog, Feed *wlog, int store_log) {
 3. The refill's packets cross the director; each lands in its queue within *K* (D10) and decrements counter 4. [3] and [10] are set; the loop restores [13], which is still high (1 credit each), so it wakes at once.
 4. *Wake 2.* The second credits go: two more halves. Both queues are now full, and both credit counters are at 0.
 5. The replayer pops. Each half it consumes returns one credit to that queue: [13] rises, and the next refill follows. A queue never holds more than its two halves, so a credit is never returned to a full counter (meshsim flags that).
-6. *A new expansion.* The replayer presents the instruction in `EXPANSION_OPCODE` (and where to start in `EXPANSION_OFFSET`, D39), posts new expansion (depth 1) and sets the expansion queue's credits to 2. The load consumes the event. The expansion's bit wasn't in the mask, so no credit went with it. The loop looks the instruction up, puts the bit in the mask, and takes the first credit on the next wake, an immediate one. That extra wake per expansion is small, about 13 a window. An accepted cost (D41). **[F11]**
+6. *A new expansion.* The replayer presents the instruction in `EXPANSION_OPCODE` (and where to start in `EXPANSION_OFFSET`, D39), posts new expansion (depth 1) and sets the expansion queue's credits to 2. The load consumes the event. The expansion's bit wasn't in the mask, so no credit went with it. The loop computes the word's key, looks it up, puts the bit in the mask, and takes the first credit on the next wake, an immediate one. That extra wake per expansion is small, about 13 a window. An accepted cost (D41). **[F11]**
 7. *An expansion of e ≤ 128 entries:* one credit, one short refill, `left` = 0, and the bit leaves the mask with its spare credit. The next new expansion resets the credits anyway, so nothing strands (W3-24).
 8. *A stream's last refill* is short and leaves the mask. The replayer's later returns on that bit accumulate unseen, at most to 2.
 9. *Run done* (depth 1) arrives with the pass's end. The loop is at its top, with no refill in flight, because every refill was waited for. So every push has landed before the next `PULSE_RUN` (the software rule of 4.19.8). It clears both masks and returns.

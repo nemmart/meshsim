@@ -565,6 +565,11 @@ The command sequence, from C&C 1: fill (`2`, base seed, n), configure (`3`), sta
 - **One wake, every credit.** The load of the replayer's `EVENTS` takes one credit from each set, masked queue bit. The loop pushes a refill for every bit returned, so no credit is consumed without its half being sent (W3-24's leak), and puts them in one stream run of up to four streams.
 - **The squelch** is `wait_all`'s mask: GO, counter 4 and [10], without [13]. Credits returned while the run streams accumulate, and wake the loop as soon as it restores [13].
 - **Idle queues leave the mask:** a stream with nothing left, the write log in a pass without the store log, and the expansion queue between expansions. Their spare credits then don't keep the live bit high, so `WFI` doesn't fall through (D10).
+- **The lookup is by key** (spec 4.19.9, v1.25). The template index is universal, so it can't list every register
+  combination: `template_key` normalizes the presented word first. An inline has its register fields cleared, and
+  CSRRW/CSRRS has rd and rs1 renamed by first appearance. The template still resolves its operands (codes 129–131)
+  against the presented word, which the replayer holds, so the key only finds the template. `template_lookup` is the
+  program's (the test's `recipes_support.c`; `sw/replay/replay_ctl.c` hashes the sorted index).
 - **Resident streams only.** Data staged from LPDDR is fetched into big SRAM on counter 1 and refilled from there (spec 4.19.13); a refill waits on counter 4 alone, so an outstanding fetch doesn't hold it up.
 
 **Walk.**
@@ -573,7 +578,7 @@ The command sequence, from C&C 1: fill (`2`, base seed, n), configure (`3`), sta
 3. The refill's packets cross the director; each lands in its queue within *K* (D10) and decrements counter 4. [3] and [10] are set; the loop restores [13], which is still high (1 credit each), so it wakes at once.
 4. *Wake 2.* The second credits go: two more halves. Both queues are now full, and both credit counters are at 0.
 5. The replayer pops. Each half it consumes returns one credit to that queue: [13] rises, and the next refill follows. A queue never holds more than its two halves, so a credit is never returned to a full counter (meshsim flags that).
-6. *A new expansion.* The replayer presents the instruction in `EXPANSION_OPCODE` (and where to start in `EXPANSION_OFFSET`, D39), posts new expansion (depth 1) and sets the expansion queue's credits to 2. The load consumes the event. The expansion's bit wasn't in the mask, so no credit went with it. The loop looks the instruction up, puts the bit in the mask, and takes the first credit on the next wake, an immediate one. That extra wake per expansion is small, about 13 a window. An accepted cost (D41). **[F11]**
+6. *A new expansion.* The replayer presents the instruction in `EXPANSION_OPCODE` (and where to start in `EXPANSION_OFFSET`, D39), posts new expansion (depth 1) and sets the expansion queue's credits to 2. The load consumes the event. The expansion's bit wasn't in the mask, so no credit went with it. The loop computes the word's key, looks it up, puts the bit in the mask, and takes the first credit on the next wake, an immediate one. That extra wake per expansion is small, about 13 a window. An accepted cost (D41). **[F11]**
 7. *An expansion of e ≤ 128 entries:* one credit, one short refill, `left` = 0, and the bit leaves the mask with its spare credit. The next new expansion resets the credits anyway, so nothing strands (W3-24).
 8. *A stream's last refill* is short and leaves the mask. The replayer's later returns on that bit accumulate unseen, at most to 2.
 9. *Run done* (depth 1) arrives with the pass's end. The loop is at its top, with no refill in flight, because every refill was waited for. So every push has landed before the next `PULSE_RUN` (the software rule of 4.19.8). It clears both masks and returns.

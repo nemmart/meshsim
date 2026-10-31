@@ -62,3 +62,12 @@ acceptance kit). Until WORKER10's `v1.25` spec branch exists, the design is DECI
   It queues behind WORKER4's 077-meshsim-v12-combined (full run_tests + full-size sort).
 - Quest now has **NUMBERS.md**: claim a number by appending a line, commit "claim NNN", push before writing the task.
   WORKER9's deliveries are tasks 079 (EVM Zone) and 080 (Cyclone), queued after 078.
+
+## turn 5
+- REPORT s4 finalized from task 078 (one task per program, ~23-25 min).
+- main merged in (v1.2 frozen, v1.25 spec on main): conflict in run_tests.sh resolved (main's sort lines + v1.25
+  replayer line). ReplayerTest 1461/0, StageB synthetic 18/18, ReplayShard ABF OK, RecipeTest 2042/0.
+- W4 done: recipe 26 keyed (template_key), recipes_support.c keyed, book regenerated, check_book 46/0.
+- Deliveries (WORKER9): /tmp/w9-deliveries (combined manifest.json, evm-zone-29 + cyclone-29, tables in each program
+  dir) and /tmp/w9-deliveries-selected; imm_signed [86]. Not /tmp/w9-selected-windows-821e1bd.tgz (pre-[86]).
+  Waiting for tasks 079/080 and WORKER9's manifest checksums; then claim two numbers in NUMBERS.md.

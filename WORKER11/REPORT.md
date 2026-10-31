@@ -37,6 +37,16 @@ The appendix's opcode table was also checked by script against the model (number
   finds a collision-free layout for about 40 templates, so the search took millions of cycles. It now uses 512 slots and
   256 tries; a key that loses its slot takes the slow path, as before.
 
+**Recipe 26 (DECISIONS-v1.25, definition of done, W4).** `wip/sw/recipes/rcp_replay.c` now has `template_key(w)`, and
+`replay_loop` passes the presented word's key to `template_lookup`.
+- **Test side:** `wip/meshsim/sw/recipes_support.c`'s `template_lookup` is keyed by key.
+- **The book:** the prose in `RECIPES.tmpl.md` (a "lookup is by key" note and walk step 6); `RECIPES.md` regenerated
+  with `gen_book.py`.
+- **Checks:** `check_book.py` 46 blocks, 0 differ; `build.sh` all compiled; meshsim's `build_recipes.sh` 19 built;
+  `RecipeTest` 2042/0.
+- **The recipe's key against the model's:** compiled natively, `template_key` equals `ReplayTables.key` (the Java
+  model's) on 20,000 words (random, inline, CSR patterns).
+
 ## 2. The acceptance kit (`acceptance/`)
 
 `run_shard.sh` reads a shard of windows from the delivery that WORKER9's writer task leaves on the runner box

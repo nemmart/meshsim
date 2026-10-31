@@ -124,9 +124,17 @@ v1.1 recipe suite with the v1.2 recipes.
   (C&C 1's model sets all 64; after `CnC.reset()` it sets them again); the ROM jumps. To start only some tiles, set
   `chip.cc1p.expect` to their mask (RiscvTest does: tile 0). The reset is `CnC.reset(hard)` (a step) or
   `Chip.reset(hard)`, taking effect at the end of the cycle.
-  Done so far: traps, the trap CSRs, mcycle/mtime, the hard interrupt, meshsim's loud stops; the boot ROM; the reset;
-  RUN/HALT removed; D48 (W4-06, W4-07); the suites on the ROM boot: CtrlTest (faults on traps, the handler's 24
-  reports, the reset), RiscvTest, HooksTest, PeripheralSlotTest, RequestBusTest, AccountingTest (the boot is a phase).
+  Done: traps (bus errors and illegal instructions to mtvec), the trap CSRs, mcycle/mtime (D48), the hard interrupt
+  (ERRORS != 0, MIE and mie.MEIE, WFI included), meshsim's loud stops (ecall, ebreak, a fetch fault, a misaligned jump, a
+  trap in the handler); the boot ROM; the reset (every bus emptied through a registry, every unit as at power-on except
+  the memories); RUN/HALT and the interim loader removed; D48's words 8-9 (W4-06); v1.1's REPORT flow removed (the
+  handlers' reports replace it; CnC.drainReports models C&C 1's draining); meshsim flags an overlay landing after a
+  unit's first command and before its start (6.2). Suites: CtrlTest (faults on traps, the reports, the reset and reboot),
+  CondTest back (cond.c rewritten: errors 0, 1, 2, 3, 7, 8, 9, 10, 14 from C, 4-6 injected, each through the handler's
+  24 reports, the error lines, the toast pin, then a soft reset and reboot), RiscvTest, HooksTest, PeripheralSlotTest,
+  RequestBusTest, AccountingTest (the boot is a phase now), SearchBench, StageB (READY_EXPECT for tile 0 only).
+  Not exercised: the ROM's controller branch (C&C 1-3 are Java models without cores) and C&C 2/3's start-up requests.
+  Test machines now settle in the ROM's WFI before Java drives a tile's registers (the ROM's own stores would race).
 
 ## Phase 1's results (`results/`, committed at the close)
 
@@ -159,3 +167,4 @@ Every other suite logs "PENDING (phase 2 / 3 / 6 / sort port)". Still v1.1's in 
 | phase 2, closed | none: the quick run and the full extras pass; PENDING: phase 3, 4, 6 and the sort port |
 | phase 3 (WIP), the peripheral framework | src/ compiles; the replayer's tests (ReplayDriver, ReplayerUnitTests) and TestPeripheral don't yet (v1.1's lines and claims are gone) |
 | phase 3, closed (`39facff` and the close) | none: the quick run and the full extras pass; PENDING: phase 4 (CondTest), phase 6 (recipes), the sort port |
+| phase 4 (WIP), `2adfe2a` to `83c4142` | src/ compiles; a few suites failed while they moved to the ROM boot (fixed by `f7c694f`) |

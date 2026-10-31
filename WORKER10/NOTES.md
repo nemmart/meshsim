@@ -46,3 +46,4 @@ See bottom: per-turn log.
   WORKER9 outputs), CHANGES-v1.25.md, REPORT.md. Remaining: item 137's re-citation; follow WORKER11's findings and
   WORKER9's Tracer tables if the replayer's tables change.
 - T2: merged main's K change (DECISIONS-v1.2 s49) cleanly; v1.25's text equals v1.2's there, so no CHANGES-v1.25 entry (WORKER10/NEXT.md done).
+- T3 (2026-11-01): on main now (v1.25 branch done). Fixed from WORKER13: 4.17.1 types (D46), the renumbering stated exactly (appendix 2.0, 61 row opcodes), 8.1 load timing (D45); CHANGES-v1.25 lists them (two as v1.2 errata).

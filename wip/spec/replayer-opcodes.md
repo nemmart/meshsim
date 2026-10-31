@@ -2,7 +2,7 @@
 
 *Part of the machine specification, v1.25, linked from `machine-spec.md` 4.19 (4.19.7, item 112). **Derived from jolt-cpp `821e1bd`** as copied into the standalone tracer of `github.com/quarky93/jolt-asic-planning`, branch `tracer-standalone-main` (PR #2), from the harness outputs WORKER9 regenerated there (`WORKER9/replayer-opcodes-821e1bd/`). v1.2's appendix was derived at `4f36b3d` (PR #1). File references are to `tracer/src/tracer/`. **Section 2's source column, section 6's emit sites and every reference marked 821e1bd are at `821e1bd`; the other file:line references were taken at `4f36b3d` and name the same code, whose line numbers may have moved** (`machine-spec.md` item 137).*
 
-**What v1.25 changed here** (`CHANGES-v1.25.md`): the opcodes are renumbered (six inserted before `VirtualSignExtendWord`, three removed); `VirtualLoadB/H/W` and `VirtualStoreB/H/W` are new (section 2 G, section 3); `VirtualAlignAddr`, `VirtualAssertHalfwordAlignment` and `VirtualAssertWordAlignment` are gone; `VirtualShiftData…` reads the base register plus `shift_offset`; `VirtualHostIO` has no operands; `VirtualPext` and `VirtualPextSigned` are required for any mask; the signed-immediate set adds the narrow memory rows and `VirtualShiftData…`; sections 6–9 are regenerated.
+**What v1.25 changed here** (`CHANGES-v1.25.md`): the opcodes are renumbered (six inserted at 110–115, three removed, so codes shift by +6, +4 or +3 by position; 61 row opcodes change, section 2.0); `VirtualLoadB/H/W` and `VirtualStoreB/H/W` are new (section 2 G, section 3); `VirtualAlignAddr`, `VirtualAssertHalfwordAlignment` and `VirtualAssertWordAlignment` are gone; `VirtualShiftData…` reads the base register plus `shift_offset`; `VirtualHostIO` has no operands; `VirtualPext` and `VirtualPextSigned` are required for any mask; the signed-immediate set adds the narrow memory rows and `VirtualShiftData…`; sections 6–9 are regenerated.
 
 **Status** (owner, 2026-10-26, part F):
 - **Sections 1–5 are normative for what each row computes:** its slots, its rd value, its control transfer, its log word and LD's and SD's memory fields. `machine-spec.md` 4.19.7 keeps the classes, the schedules and the pc and `instr_idx` rules, and 4.19.12 the record layout.
@@ -81,6 +81,86 @@ Each row's record is formed around `execute_instruction` (`trace_owner.cpp:880�
 ## 2. The row opcodes
 
 94 opcodes occur in rows at `821e1bd` (NOP among them, in padding); the replayer executes 88 of them (the six DIV/REM advice opcodes are written as `VirtualAdvice`, spec 4.19.7). **Class** and cycles are 4.19.7's; the source agrees with all of them (F9). **Last row** says whether the opcode is always, never or sometimes its expansion's last row, which decides whether `pc_increment` is 0 (section 6 lists, for "sometimes", which source instructions end with it). **Source** is the `execute_instruction` case.
+
+### 2.0 Renumbering from v1.2
+
+The codes are jolt-cpp's `OpCode` enum, which `821e1bd` changed: six opcodes inserted at 110–115, two removed at v1.2's 112–113 and one at v1.2's 154. **So a code's shift depends on where it sits** (`machine-spec.md` 4.19.7):
+
+| v1.2 codes | v1.25 codes | shift | opcodes |
+|---|---|---|---|
+| 0–109 | 0–109 | none | every source and row opcode up to `VirtualHostIO` |
+| — | 110–115 | new | `VirtualLoadB/H/W`, `VirtualStoreB/H/W` |
+| 110–111 | 116–117 | +6 | `VirtualSignExtendWord`, `VirtualZeroExtendWord` |
+| 112–113 | — | removed | `VirtualAssertHalfwordAlignment`, `VirtualAssertWordAlignment` |
+| 114–153 | 118–157 | +4 | `VirtualMULI` … `VirtualWindowMaskH` |
+| 154 | — | removed | `VirtualAlignAddr` |
+| 155–167 | 158–170 | +3 | `VirtualShiftDataB` … `VirtualAdviceRemW` |
+
+**61 row opcodes change** (an ALU decoding v1.2's numbers would misread every one): 52 keep their name under a new code, 3 are removed and 6 are new. The 36 row opcodes from 0 to 109 keep their codes (36 + 52 + 3 = v1.2's 91; 36 + 52 + 6 = v1.25's 94). The three opcodes that never occur move with their ranges (`VirtualMove` 126 → 130, `VirtualAdviceRemU` 161 → 164, `VirtualAdviceRemUW` 165 → 168). Every row opcode whose code changes [derived: the v1.2 and v1.25 appendices' section 2 tables, checked against `tables/opcode_table.txt`]:
+
+| opcode | v1.2 | v1.25 | shift |
+|---|---|---|---|
+| `VirtualLoadB` | — | 110 | new |
+| `VirtualLoadH` | — | 111 | new |
+| `VirtualLoadW` | — | 112 | new |
+| `VirtualStoreB` | — | 113 | new |
+| `VirtualStoreH` | — | 114 | new |
+| `VirtualStoreW` | — | 115 | new |
+| `VirtualSignExtendWord` | 110 | 116 | +6 |
+| `VirtualZeroExtendWord` | 111 | 117 | +6 |
+| `VirtualMULI` | 114 | 118 | +4 |
+| `VirtualMULIW` | 115 | 119 | +4 |
+| `VirtualPow2` | 116 | 120 | +4 |
+| `VirtualShiftRightBitmask` | 117 | 121 | +4 |
+| `VirtualSRL` | 118 | 122 | +4 |
+| `VirtualSRLI` | 119 | 123 | +4 |
+| `VirtualSRAI` | 120 | 124 | +4 |
+| `VirtualPow2W` | 121 | 125 | +4 |
+| `VirtualAdvice` | 122 | 126 | +4 |
+| `VirtualAssertLTE` | 123 | 127 | +4 |
+| `VirtualAssertValidDiv0` | 124 | 128 | +4 |
+| `VirtualAssertValidUnsignedRemainder` | 125 | 129 | +4 |
+| `VirtualNegateIf` | 127 | 131 | +4 |
+| `VirtualMovsign` | 128 | 132 | +4 |
+| `VirtualSRA` | 129 | 133 | +4 |
+| `VirtualAssertMulUNoOverflow` | 130 | 134 | +4 |
+| `VirtualROTRI` | 131 | 135 | +4 |
+| `VirtualROTRIW` | 132 | 136 | +4 |
+| `VirtualXORROT63` | 133 | 137 | +4 |
+| `VirtualXORROT32` | 134 | 138 | +4 |
+| `VirtualXORROT24` | 135 | 139 | +4 |
+| `VirtualXORROT16` | 136 | 140 | +4 |
+| `VirtualXORROTW16` | 137 | 141 | +4 |
+| `VirtualXORROTW12` | 138 | 142 | +4 |
+| `VirtualXORROTW8` | 139 | 143 | +4 |
+| `VirtualXORROTW7` | 140 | 144 | +4 |
+| `VirtualWindowMaskW` | 141 | 145 | +4 |
+| `VirtualPextSigned` | 142 | 146 | +4 |
+| `VirtualXORROTW22` | 143 | 147 | +4 |
+| `VirtualXORROTW19` | 144 | 148 | +4 |
+| `VirtualXORROTW6` | 145 | 149 | +4 |
+| `VirtualShiftRightBitmaskW` | 146 | 150 | +4 |
+| `VirtualSRLW` | 147 | 151 | +4 |
+| `VirtualSRLIW` | 148 | 152 | +4 |
+| `VirtualSRAW` | 149 | 153 | +4 |
+| `VirtualSRAIW` | 150 | 154 | +4 |
+| `VirtualPext` | 151 | 155 | +4 |
+| `VirtualWindowMaskB` | 152 | 156 | +4 |
+| `VirtualWindowMaskH` | 153 | 157 | +4 |
+| `VirtualShiftDataB` | 155 | 158 | +3 |
+| `VirtualShiftDataH` | 156 | 159 | +3 |
+| `VirtualShiftDataW` | 157 | 160 | +3 |
+| `VirtualXORROTL1` | 158 | 161 | +3 |
+| `ANDN` | 159 | 162 | +3 |
+| `VirtualAdviceDivU` | 160 | 163 | +3 |
+| `VirtualAdviceDiv` | 162 | 165 | +3 |
+| `VirtualAdviceRem` | 163 | 166 | +3 |
+| `VirtualAdviceDivUW` | 164 | 167 | +3 |
+| `VirtualAdviceDivW` | 166 | 169 | +3 |
+| `VirtualAdviceRemW` | 167 | 170 | +3 |
+| `VirtualAssertHalfwordAlignment` | 112 | — | removed |
+| `VirtualAssertWordAlignment` | 113 | — | removed |
+| `VirtualAlignAddr` | 154 | — | removed |
 
 ### A. Integer ALU
 

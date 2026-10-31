@@ -214,7 +214,7 @@ void bt_hop1_src(Tile *T, uint32_t first, uint32_t kind)
             r[m]++;
             if (l >= NBANK) continue;
             uint32_t sz = j + 1 < k ? w : T->row[d] - j * w, off = (m - me) & 63;
-            write_stream(T, 64 * l + STREAM_OF[off], src, sz, off, kind, 2u);
+            write_stream(T, 64 * l + STREAM_OF[off], src, sz, off, kind, SK_MODE_SRC);
         }
     }
     for (uint32_t l = 0; l < NBANK && first + l < L1; l++) {

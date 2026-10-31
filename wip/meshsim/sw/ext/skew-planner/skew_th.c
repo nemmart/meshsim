@@ -94,8 +94,8 @@ void th_hop1(Tile *T, uint32_t kind)
         uint32_t d = GROUP_OFF[i], m = (me + d) & 63;
         if (T->t_th.th_cnt[m]) {
             uint32_t src = kind ? A5 + 4 * (uint32_t)T->t_th.th_src[m] : A3 + 2 * (uint32_t)T->t_th.th_src[m];
-            write_stream(T, base + i, src, T->t_th.th_size[m], d, kind, 2u);
-        } else write_stream(T, base + i, 0, 0, d, kind, 2u);
+            write_stream(T, base + i, src, T->t_th.th_size[m], d, kind, SK_MODE_SRC);
+        } else write_stream(T, base + i, 0, 0, d, kind, SK_MODE_SRC);
     }
     for (int g = 0; g < NG; g++) HW_GROUP_R(T, (kind ? 16 : 0) + g, T->r2[g]);
     for (int s = 0; s < NT; s++) {

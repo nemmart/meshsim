@@ -1,18 +1,11 @@
---- sort/split/split.c	2026-10-12 14:54:26.265912526 +0000
-+++ meshsim/sw/ext/split-bisect/split.c	2026-10-12 05:49:23.006447364 +0000
-@@ -67,7 +67,15 @@
- /* owner side: ub at the last probe below, lb at the last probe above, the cuts */
- static uint32_t ubA[64], lessB[64], cq[64];
- 
-+/* The barrier (patch, worker 8, 3 Oct 2026, lead's agreement): by default worker 4's own (done, WFI); a caller may
-+ * supply its own with -DSPLIT_BARRIER=fn, a function of no arguments that pulses done, WFIs and reads the command word
-+ * in command slot 0, as mesh.h's wait_for_command() does (lead, 3 Oct: every wake from a command reads slot 0). */
-+#ifdef SPLIT_BARRIER
-+void SPLIT_BARRIER(void);
-+static void barrier(void) { SPLIT_BARRIER(); }
-+#else
- static void barrier(void) { TILE_PULSE = TILE_PULSE_DONE; wfi(); }
-+#endif
- 
- /* The spec 4.3 search loop over the m searches in s_* (s_lo = plo, s_len = the
-  * bracket's width w: the answer is in [plo, plo + w]).  Lower bounds (upper = 0:
+72a73,80
+> /* The barrier (patch, worker 8, 3 Oct 2026, lead's agreement): by default worker 4's own (done, WFI; v1.2:
+>  * wait_for_command(), which also consumes GO); a caller may supply its own with -DSPLIT_BARRIER=fn, a function of no
+>  * arguments that pulses done, WFIs and reads the command word in command slot 0, as mesh.h's wait_for_command() does
+>  * (lead, 3 Oct: every wake from a command reads slot 0). */
+> #ifdef SPLIT_BARRIER
+> void SPLIT_BARRIER(void);
+> static void barrier(void) { SPLIT_BARRIER(); }
+> #else
+73a82
+> #endif

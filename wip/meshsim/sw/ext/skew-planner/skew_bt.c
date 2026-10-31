@@ -16,9 +16,10 @@
  */
 #include "skew.h"
 
-/* An empty stream (patch: worker 8, M7): count 0 with a valid mode (2) and the kind's read size. A count word of 0 has
- * mode 0, which the machine rejects (spec 4.2; the simulator flags it) even at count 0. */
-#define EMPTY_HI(kind) stream_hi_fixed(2u, (kind))
+/* An empty stream (patch: worker 8, M7; v1.2: WORKER8): count 0 with a valid mode (write by source) and the kind's read
+ * size. v1.1 rejected a count word of 0 (mode 0) even at count 0. v1.2's mode 0 is valid, but write by source is the
+ * mode the phase's other streams use (modes 1 and 3 may share a phase; 2 never shares one with them, RECIPES 5). */
+#define EMPTY_HI(kind) stream_hi_fixed(SK_MODE_SRC, (kind))
 
 static inline uint32_t mulhu(uint32_t a, uint32_t b)
 {
@@ -222,7 +223,7 @@ void bt_hop1_src(Tile *T, uint32_t first, uint32_t kind)
             r[m]++;
             if (l >= NBANK) continue;
             uint32_t sz = j + 1 < k ? w : T->row[d] - j * w, off = (m - me) & 63;
-            write_stream(T, 64 * l + STREAM_OF[off], src, sz, off, kind, 2u);
+            write_stream(T, 64 * l + STREAM_OF[off], src, sz, off, kind, SK_MODE_SRC);
         }
     }
     for (uint32_t l = 0; l < NBANK && first + l < L1; l++) {

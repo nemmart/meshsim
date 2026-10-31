@@ -31,7 +31,14 @@ phase-3 tip, whose replayer tests don't compile). Merge `v1.2-meshsim` again onc
 | push | known-failing |
 |---|---|
 | branch made at `e7a2106` | none (the sort's steps PENDING (sort port), as on v1.2-meshsim) |
+| step 1 (the program ported) | none in run_tests (the sort's steps still PENDING); the sort builds but has not run |
 
 ## Log
 
 - **Step 0** (2026-10-31): branch, toolchain, build checked (src, tests minus PENDING, sw/).
+- **Step 1** (2026-10-31): the sort program, the planner's machine section and the split ported to v1.2 (one image,
+  no overlays, no loader, no staging; counters 1-3 by CONVENTIONS 5; waits by events; replies as mode-0 writes with
+  no-increment). Found: the planner hard-coded mode 2 (v1.1's write by source, v1.2's bucket write) for its hop-1 and
+  empty streams; now SK_MODE_SRC per build. Patches regenerated (split-barrier.patch is now a plain diff against the
+  ported split.c). `sw/ext/sort/build.sh` builds: code 21,856 B, data 240 B, .bss end 0x2a94. Not run yet: SortTest
+  still v1.1 (next).

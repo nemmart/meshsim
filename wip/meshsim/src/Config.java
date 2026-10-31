@@ -22,10 +22,11 @@ final class Config {
     int refCycle = 40;
     int rpLatency = 2;                   // director to a peripheral's write landing (4.17.5: required of every peripheral; Proposed value, item 48)
     int K = Integer.getInteger("meshsim.K", 8);
-    /** K's lower bound (4.8): max(2 L + 3, L + 4, cm_latency, rp_latency). */
-    int kMin() { int L = tsEngineLatency; return Math.max(Math.max(2 * L + 3, L + 4), Math.max(cmLatency, rpLatency)); }
+    /** meshsim's K reference (4.7, D49; W4-08): max(2 L + 4, L + 4, cm_latency, rp_latency), over meshsim's measured
+     *  write path (S1Bench). K in the hardware is implementation-defined: this is meshsim's formula, not a promise. */
+    int kMin() { int L = tsEngineLatency; return Math.max(Math.max(2 * L + 4, L + 4), Math.max(cmLatency, rpLatency)); }
     /** Set ts_engine_latency and raise K to its bound if the default falls below it (tests that sweep L). */
-    Config withTsLatency(int L) { tsEngineLatency = L; K = Math.max(K, kMin()); return this; }   // the write counters' delay line (4.8): at least max(2 L + 3, L + 4, cm_latency, rp_latency)
+    Config withTsLatency(int L) { tsEngineLatency = L; K = Math.max(K, kMin()); return this; }   // the write counters' delay line (4.7): at least kMin()
     // ---- big SRAM (spec 4.1) ----
     int memChunks = 1 << 20;             // 4 MB; any multiple of 256 KB (65,536 chunks) up to 8 MB (2^21); the last area may be partial (4.1)
     int areaQueueDepth = 8;              // per-area request queue (open in the spec; agreed default)

@@ -70,6 +70,35 @@ staging area. **Shuffled child order (seed 4):** 104 passed, every set on the sa
 +299 (expected: one `ROUTER_ADDR` store per token and per credit, about 254), DESC +879 (+1,297 net of v1.1's 418
 overlay load: **to explain**), K1.0-K1.2 +193, +193, +432, K2.0-K2.2 +422, +497, +1 (**to explain**), L2 −1,200.
 
+## Full size: 43 P4 runs at 64 × 65,536 (Quest task 070 against v1.1's task 065)
+
+**All 43 pass** (every check: the global order, every value with its key, counters, invariants; inputs matching the
+kit's HASHES), **every run on v1.1's path**, 1,097 s on the runner (v1.1 1,277 s). Per run and per step:
+`WORKER8/results/070-p4-full/COMPARE-065.md`; the runner's outputs beside it. The kit was built before the
+stepping-pointer change below, so these figures include `plan_transfer`'s +306.
+
+| path | runs | change in TOTAL |
+|---|---:|---|
+| direct | 14 | −0.31 % to −0.72 % (−4.6K to −7.0K cycles) |
+| LB | 6 | −0.31 % to −0.64 % |
+| TH | 2 | −0.19 %, −0.39 % |
+| BT | 21 | −0.11 % to +0.30 %: 32-bit values −1.4K to +2.2K, 128-bit values +0.1K to +5.9K |
+
+Mean change per step, by path (v1.2 − v1.1, cycles):
+- **every path:** L1 −1,706, L2 −1,200 (constant: no overlay loads, no `PTR[64]` restore, 1-cycle `HIST` loads);
+  XB +348 to +358 (`xchg` +80, `plan_transfer` +306 before the fix: measured 7,839 vs v1.1's 7,828 after it).
+- **SPLIT** depends on the data: −3,199 direct, −2,063 LB, −1,990 TH, **+466 BT**. It saves a constant ≈ 2,750
+  (v1.1's 405-cycle overlay load and 2,349-cycle `zero_planner()`, both gone) and pays ≈ 6 cycles per read-port search
+  step on the critical path (K = 8 against v1.1's landing at cm_latency 2: WORKER4's SearchBench, +97 per step band;
+  spec 4.7 notes it as deliberate). The skewed sets that take BT need more search steps per round, so the step cost
+  outweighs the constant there.
+- **RED** −578 where stage 2 runs (v1.1's 552-cycle overlay load for TH's image), else −108 to +19.
+- **TH (the command)** −617 on BT (v1.1's 597-cycle overlay load for BTPLAN).
+- **BT:** SWEEP +298 (one `ROUTER_ADDR` store per token and per credit, 2 × 127 rounds + the header shifts), DESC
+  +873, each layer +190 to +460, the last of each kind ≈ 0 (no next configure in its tail): the table-store cost in
+  the configures (below). 128-bit values have twice the layers, hence their larger total.
+- **TH's layers:** K1.0 +575, V1.0 +580, K2.0 +241 (the same configures in TH's planner functions).
+
 ### Differences explained (so far; per-step table to come)
 
 - **L1 −1,708, L2 −1,200:** no overlay loads (v1.1: 715 in L1's tail, 200 at L2's start) and no `PTR[64]` restores; the

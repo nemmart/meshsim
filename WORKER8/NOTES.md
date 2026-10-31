@@ -115,3 +115,15 @@ phase-3 tip, whose replayer tests don't compile). Merge `v1.2-meshsim` again onc
   | push | known-failing |
   |---|---|
   | step 9 (ready to merge) | none in the sort's steps; WORKER4's suites as their NOTES say for the merged commit |
+- **Step 10, final** (2026-10-31): merged `v1.2-meshsim` at `2569a40` (WORKER4's phase 5: meshsim-only checks for
+  invariants 15 (any `ERRORS` bit set is a violation; `Config.checkErrors`, on in SortTest), 16, 20, 21 (reserved
+  bits on register stores) and 25; phase 6 started) and `main` (decision-log entries, WORKER9's tables; nothing of the
+  sort's). No conflicts. Re-run on the merged branch: P1 42 passed, the ten sets 104, shuffled (seed 4) 104, forced BT
+  kv32 10 and k128 11; **no violation from the new checks, nothing to fix in the sort**, and every cycle count
+  identical to before (BT 708,221 and 929,115, task 071's final-code figures). results/sort*.log are these runs, the
+  BT pair now on the final code too. One finding, not the sort's: the committed mesh.h lags Registers.java by one
+  comment (REQUESTS R4). **Ready: no further merges until the integrator merges this branch with v1.2-meshsim.**
+
+  | push | known-failing |
+  |---|---|
+  | step 10 (final) | none in the sort's steps; a build leaves wip/meshsim/sw/mesh.h modified by one comment (R4) |

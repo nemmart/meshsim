@@ -1,13 +1,20 @@
 # WORKER8 report: the sort on v1.2
 
 Branch `v1.2-sort`, from `v1.2-meshsim` at `e7a2106` (phase 2's last commit; owner's choice). Merged since: `v1.2-meshsim`
-(WORKER4's phases 3 and 4: the boot ROM) and `main` (DECISIONS-v1.2 47 and 48).
+(WORKER4's phases 3, 4 and 5 and the start of 6, to `2569a40`: the boot ROM, and meshsim-only checks for invariants
+15, 16, 20, 21 and 25) and `main` (DECISIONS-v1.2 47 and 48, to its tip of 2026-10-31).
 
 **Status: done.** The sort builds and passes every suite `run_tests.sh` gives it on the v1.2 simulator (P1; the ten
 built-in sets in fixed and shuffled child order; forced BT at 16,384 in both formats), with every set on v1.1's path;
 **all 43 full-size P4 runs pass on the Quest runner (task 070), each on v1.1's path**; every per-step difference from
 v1.1 is measured and explained (task 071), one of them to the function rather than the instruction (SPLIT, below).
 `run_tests.sh`'s other suites pass on this branch too (NOTES.md, step 7 and after).
+
+**After WORKER4's phase-5 checks** (the final merge): P1, the ten sets, the shuffled run and the forced-BT pair pass
+with no violation from the new invariant checks (15: any `ERRORS` bit set; 16; 20: `DMA_RECORD_BASE_ADDRESS` aligned
+to a record; 21: reserved bits on register stores; 25), so nothing in the sort needed fixing, and every cycle count is
+unchanged. The one finding is WORKER4's and cosmetic (REQUESTS R4: the committed `mesh.h` lags `Registers.java` by one
+comment).
 
 ## Ownership (agreed with the owner, 2026-10-31)
 
@@ -85,8 +92,7 @@ area.
 | 32-bit | BT | 709,658 | 708,221 | −1,437 |
 | 128-bit | BT | 927,893 | 929,115 | +1,222 |
 
-(Task 071's v1.2 runs, the final code; `results/sort-bt-*.log` are the same runs before the stepping-pointer change,
-708,595 and 929,425.)
+(The final code: task 071's v1.2 runs and `results/sort-bt-*.log`, the same totals.)
 
 ### Full size: 43 P4 runs at 64 × 65,536 (Quest task 070 against v1.1's task 065)
 

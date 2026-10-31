@@ -1256,8 +1256,8 @@ The **replayer** is a tile unit that regenerates the tile's share of a proof's e
 |---|---|---|---|
 | code queue | 4 KB, 256 × 128 bits | the opcode stream, raw or compressed | 4.19.8 |
 | expansion queue | 4 KB, 256 × 128 bits | expansion words the controller supplies (the inlines and the CSR instructions) | 4.19.8 |
-| read-log queue | 8 KB, 512 × 128 bits | the read log, raw or compressed: LD values, advice, the next `instr_idx` of non-sequential rows | 4.19.8 |
-| write-log queue | 8 KB, 512 × 128 bits | the write log, raw or compressed: SD and AMO pre-values | 4.19.8 |
+| read-log queue | 8 KB, 512 × 128 bits | the read log, raw or compressed: load values, advice, the next `instr_idx` of non-sequential rows | 4.19.8 |
+| write-log queue | 8 KB, 512 × 128 bits | the write log, raw or compressed: store rows' pre-values | 4.19.8 |
 | decompressors | three: code, read log, write log | 16-entry LRU decoding between each stream's queue and the core | 4.19.15 |
 | decode table | 4 KB, 2K × 16 bits | instruction → template | 4.19.5 |
 | ROM | 8 KB, 512 × 128 bits, dual-ported | the templates: one expansion word per row | 4.19.6 |
@@ -1281,8 +1281,8 @@ The tracer engine writes, per tile, **three streams** and a checkpoint (owner, 2
 | stream | granularity | contents | per tile |
 |---|---|---|---|
 | **opcode** | one 32-bit word per native instruction, held while its expansion runs | the RISC-V instruction; a compressed one is stored decompressed with bit 0 cleared as its flag | about 43K words (175 KB) at 1.5 rows per native instruction; 256 KB at most [estimate] |
-| **read log** | one 64-bit word per row that needs one from it, in row order | LD values, advice, and the next `instr_idx` of every row that doesn't continue sequentially | about 0.19–0.20 words per row on average [derived from the densities below] |
-| **write log** | one 64-bit word per row that needs one from it, in row order | SD and AMO pre-values | about 0.09–0.12 words per row on average [derived] |
+| **read log** | one 64-bit word per row that needs one from it, in row order | load values, advice, and the next `instr_idx` of every row that doesn't continue sequentially | about 0.19–0.20 words per row on average [derived from the densities below] |
+| **write log** | one 64-bit word per row that needs one from it, in row order | store rows' pre-values | about 0.09–0.12 words per row on average [derived] |
 
 Together the two logs are 0.28–0.32 words per row on average and up to 0.833 in the densest windows: about 160 KB on average, 437 KB at most [meas: design notes]. A pass that needs only one log fetches only that one.
 
@@ -1341,7 +1341,7 @@ Every row is described by one **128-bit expansion word**, in place of the tracer
 | [55] | `untraced` | used only by a tracer (owner, 2026-10-26): the row is not traced. **An untraced word must never reach a replayer;** one that does is an invalid expansion (4.19.11) |
 | [61:56] | `advice_reg` | used only by a tracer: the bank-1 register a traced advice row reads, as register − 146, so registers 146–209 (DECISIONS-v1.25 section 5; v1.3's section 7 for the banks). A replayer ignores it |
 | [62] | `sign_imm` | the row's immediate is **signed**: Jolt's immediate (`RiscCycle::imm()`, 128 bits, `trace_owner.hpp:63–66`, 821e1bd) is the row's 64-bit immediate sign-extended when set and zero-extended when clear (below). The replayer computes nothing from it; it reports it with the row (4.19.12) |
-| [63] | `offset_imm` | the row's **`shift_offset`** is the source instruction's immediate (code 132's value) when set, and 0 when clear (below). Only `VirtualShiftData…` rows use `shift_offset`; on any other row the bit has no effect |
+| [63] | `offset_imm` | the row's **`shift_offset`** is the source instruction's immediate (code 132's value) when set, and 0 when clear (below). Only `VirtualShiftData…` rows use `shift_offset`, and the table builder sets the bit on no other row; the replayer ignores it elsewhere, and meshsim flags it (invariant 16; DECISIONS-v1.25 section 7, Q3) |
 | [127:64] | `const` | a constant immediate (code 128) |
 
 **`virt`** *(Proposed, item 35)*. Jolt marks a row virtual when its expansion has more than one row **or its opcode differs from the source instruction's** (`isa/virtual.cpp:183`). The second half is not derivable in hardware, since the replayer never sees the source instruction as a row opcode: SLLI becomes one `VirtualMULI` row and is virtual, while ADD stays one ADD row and is not. The template builder therefore sets `virt` on every word whose opcode isn't the source's, and the replayer derives the rest (below).
@@ -1427,7 +1427,7 @@ LR/SC *(pending the upstream check, item 113)*, CSRRW, CSRRS, ECALL, EBREAK, MRE
 
 **Mid-sequence start.** The offset is recomputed from the opcode-stream entry's rd field and the `rd0` of the template's **first word**, ROM[start], not ROM[start + offset].
 
-**Every expansion word, ROM or controller-fed** (owner, 2026-10-26, part G, ruling N3). The rd = x0 handling applies to every expansion the same way: the ROM is a cache of templates (4.19.6), so a word means the same whichever path delivers it. Today's controller-fed expansions (the inlines and system instructions) happen to be exempt, so their offset is 0, but that describes the current templates, not a rule. The controller-fed path follows the same rule with two mechanisms:
+**Every expansion word, ROM or controller-fed** (owner, 2026-10-26, part G, ruling N3). The rd = x0 handling applies to every expansion the same way: the ROM is a cache of templates (4.19.6), so a word means the same whichever path delivers it. Today's controller-fed expansions (the inlines and the CSR instructions) happen to be exempt, so their offset is 0, but that describes the current templates, not a rule. The controller-fed path follows the same rule with two mechanisms:
 - **`rd0` is read from the first word delivered** for an expansion (4.19.3): on a mid-sequence start the controller sends words from the next offset, so it **copies the template's `rd0` into the first word it sends**;
 - **under a NOP policy with rd = x0,** the controller supplies **the single NOP word** (the shared NOP row, 4.19.6) instead of the template. It knows the instruction word (`EXPANSION_OPCODE`) and the template's policy. **That word carries the template's `rd0` (1 or 3) in bits [47:46]**; otherwise the word is ROM word 1's. So the NOP row's virtual flag comes out as on the ROM path: `rd0` is read from the first word delivered (4.19.3), and the NOP word is the only word delivered (owner, 2026-10-26, part I) *(pending the upstream check, item 113)*.
 
@@ -1493,22 +1493,30 @@ An instruction's opcode word leaves the code queue when its expansion's last row
 
 **The register file** is 128 × 64 bits (1 KB), true dual-port, and holds the working copy of all 128 registers. **Register 0 reads 0 and writes to it are dropped**, as the tracer's `save_rd` drops them (`trace_owner.cpp:85–93`). It is not addressable by packets; each start fills it from the image.
 
-**What a row computes is defined in `spec/replayer-opcodes.md`** (owner, 2026-10-26, part F; item 112), which is **normative** for it (its sections 1–5): for each of the 91 row opcodes, its slots, the exact rd formula (widths, extension, wraparound, shift masks), its control transfer, its log word and, for LD and SD, its memory fields, all derived from `execute_instruction` (`trace_owner.cpp:145–669`, tracer commit 4f36b3d) and checked against it with about 240 test vectors. This section keeps the classes, the schedules and the pc and `instr_idx` rules. A row reads each slot's value as `read_reg_vals` does (a register slot reads its register, an immediate slot carries its value, `trace_owner.cpp:78–83`), with four departures from the tracer:
+**What a row computes is defined in `spec/replayer-opcodes.md`** (owner, 2026-10-26, part F; item 112), which is **normative** for it (its sections 1–5): for each of the 94 opcodes that occur in Jolt's rows, its slots, the exact rd formula (widths, extension, wraparound, shift masks), its control transfer, its log word and, for the load and store rows, its memory fields, all derived from `execute_instruction` (`trace_owner.cpp:145`) and checked against it with 252 test vectors; **v1.25 regenerates it at `821e1bd`** from the harness outputs of WORKER9 (DECISIONS-v1.25 section 1). This section keeps the classes, the schedules and the pc and `instr_idx` rules. A row reads each slot's value as `read_reg_vals` does (a register slot reads its register, an immediate slot carries its value, `trace_owner.cpp:78–83`), with three departures from the tracer:
 - **class L rows take the log word** (below) instead of reading memory or computing advice;
 - **assertions are not evaluated:** the `VirtualAssert…` rows write nothing, and the tracer aborts on a failed assertion while tracing (`release_assert`, e.g. `trace_owner.cpp:334–351`), so a traced program never contains one that fails;
-- **`VirtualPext` and `VirtualPextSigned` take only contiguous, non-zero masks** (owner, 2026-10-26, item 43): every mask they receive comes from a `VirtualWindowMask…` row (`expand_load`, `isa/virtual.cpp:237–250`), so the tracer guarantees it. The replayer builds only (rs1 & m) >> tz(m) and its sign-extended form, not the general bit-extract the appendix defines for any mask; **the result for any other mask is undefined**, and meshsim flags one (invariant 16);
 - **control flow** follows the pc rules below, with the next `instr_idx` from the log rather than from a pc-to-index table.
 
-**Row classes and their schedules.** Of the tracer's 168 opcodes, 91 occur in Jolt's rows; 74 occur only as source instructions, which their templates replace, and 3 never occur (`VirtualMove` 126, `VirtualAdviceRemU` 161, `VirtualAdviceRemUW` 165) [derived from `isa/virtual.cpp` and `inlines/`; the enumeration, item 34, confirms it]. Codes are the tracer's (`isa/riscv.inc`):
+**`VirtualPext` and `VirtualPextSigned` are correct for any mask** (DECISIONS-v1.25 section 1, from v1.3's section 9; revises v1.2's narrowing to contiguous masks, item 43). Jolt's prover proves the general bit-extract the appendix defines (jolt-cpp's PEXT lookup table handles any mask), so a future expansion could use a scattered mask, and the replayer must still compute it: `VirtualPext` gathers the bits of rs1 at rs2's 1-bits into rd's low bits, and `VirtualPextSigned` then sign-extends from the last bit placed; a zero mask gives 0. **How is the implementation's choice**, not the spec's: a single-pass extract network, or an iterative unit taking one run of ones per cycle (the mask's lowest run: two trailing-zero counts, a shifter and a mask generator). **Full speed is promised only for contiguous masks**, which is every mask `821e1bd` produces (each comes from a `VirtualWindowMask…` row, `expand_load`, `isa/virtual.cpp:239–247`, 821e1bd); a row with any other mask may take an implementation-defined number of extra cycles beyond its schedule below. **meshsim** times every mask like any other row and reports a non-contiguous one as a statistic, not an error, since meshsim isn't the hardware (owner, 2026-11-01).
+
+**The memory rows** (DECISIONS-v1.25 section 1; WORKER9's diff of `821e1bd` against `4f36b3d`). jolt-cpp now expands the sub-word accesses and the 32-bit atomics around "load the aligned doubleword, then work on the byte lane":
+- **`VirtualLoadB/H/W rd, rs1, imm`** load the doubleword holding the access, like LD: rd = the log word (class L). **`VirtualStoreB/H/W rs1, rs2, imm`** store rs2's doubleword, like SD: the log word is the pre-value and rd is an immediate slot holding the access's immediate. Their address is rs1 + imm with its low bits cleared for the access's width (`memory_address`, `isa/riscv.hpp:241–253`, 821e1bd): the doubleword's address for every access the tracer lets through.
+- **A sub-word load** is three rows: the narrow load into a temporary, `VirtualWindowMask…` of (rs1, imm), and `VirtualPext` or `VirtualPextSigned`. **A sub-word store** is six: the narrow load, the window mask, `ANDN` (clear the lane), `VirtualShiftData…` (the new value moved into the lane), `ADD`, and the narrow store. LR.W, SC.W and the 32-bit AMOs use the same rows on a word lane.
+- **`VirtualShiftDataB/H/W rd, rs1, rs2`**: rs1 is the value and **rs2 the access's base register**, the lane coming from rs2 + `shift_offset` (4.19.3); v1.2's rs2 was the computed address.
+- **A misaligned access is no longer a trace row:** jolt-cpp aborts on one (`checked_memory_address`, `isa/riscv.hpp:257`, 821e1bd), so `VirtualAlignAddr` and the alignment assertions are gone and no trace contains a misaligned memory row, LD and SD included. The replayer doesn't check; meshsim flags one (invariant 16; DECISIONS-v1.25 section 7, Q4), and the row still replays with the address the formula gives.
+- **`VirtualHostIO`** has no operands: it reads no register and writes none.
+
+**Row classes and their schedules.** Of the tracer's 171 opcodes at `821e1bd`, 94 occur in Jolt's rows (NOP among them, in padding); 74 occur only as source instructions, which their templates replace, and 3 never occur (`VirtualMove` 130, `VirtualAdviceRemU` 164, `VirtualAdviceRemUW` 168) [derived: the appendix's harness at `821e1bd`; `tables/opcode_table.txt`]. Codes are the tracer's at `821e1bd` (`isa/riscv.inc`; v1.2's from `VirtualLoadB` on were three lower, opcodes having been inserted and removed):
 
 | class | cycles | opcodes (code) |
 |---|---|---|
-| **L**, log | 3 | LD 54 (rd = the log word), SD 53 (the log word is the memory pre-value; rd is an immediate slot), `VirtualAdvice` 122 (rd = the log word), and the DIV/REM advice opcodes `VirtualAdviceDivU` 160, `VirtualAdviceDiv` 162, `VirtualAdviceRem` 163, `VirtualAdviceDivUW` 164, `VirtualAdviceDivW` 166, `VirtualAdviceRemW` 167, which the templates write as `VirtualAdvice` (below) |
-| **M**, multiply | 5 | MUL 43 and `VirtualMULI` 114 (low 64 bits of the product), MULHU 45 (high 64 bits, unsigned), MULW 65 and `VirtualMULIW` 115 (low 32 bits, sign-extended) (`trace_owner.cpp:213–231`) |
-| **S**, simple | 3 | every other row opcode: NOP 0, ADD 1, ADDI 2, SUB 3, XOR 4, XORI 5, OR 6, ORI 7, AND 8, ANDI 9, SLT 16, SLTI 17, SLTU 18, SLTIU 19, BEQ 28, BNE 29, BLT 30, BGE 31, BLTU 32, BGEU 33, JAL 34, JALR 35, AUIPC 36, LUI 37, FENCE 52, SUBW 62, ADDW 63, ADDIW 64, and the virtual opcodes 107–113, 116–121, 123–125, 127–159 |
+| **L**, log | 3 | the load rows LD 54 and `VirtualLoadB/H/W` 110–112 (rd = the log word); the store rows SD 53 and `VirtualStoreB/H/W` 113–115 (the log word is the memory pre-value; rd is an immediate slot); `VirtualAdvice` 126 (rd = the log word), and the DIV/REM advice opcodes `VirtualAdviceDivU` 163, `VirtualAdviceDiv` 165, `VirtualAdviceRem` 166, `VirtualAdviceDivUW` 167, `VirtualAdviceDivW` 169, `VirtualAdviceRemW` 170, which the templates write as `VirtualAdvice` (below) |
+| **M**, multiply | 5 | MUL 43 and `VirtualMULI` 118 (low 64 bits of the product), MULHU 45 (high 64 bits, unsigned), MULW 65 and `VirtualMULIW` 119 (low 32 bits, sign-extended) |
+| **S**, simple | 3 | every other row opcode: NOP 0, ADD 1, ADDI 2, SUB 3, XOR 4, XORI 5, OR 6, ORI 7, AND 8, ANDI 9, SLT 16, SLTI 17, SLTU 18, SLTIU 19, BEQ 28, BNE 29, BLT 30, BGE 31, BLTU 32, BGEU 33, JAL 34, JALR 35, AUIPC 36, LUI 37, FENCE 52, SUBW 62, ADDW 63, ADDIW 64, and the virtual opcodes 107–109, 116, 117, 120–125, 127–129, 131–162 |
 | source only | — | the shifts SLL–SRAI 10–15 and SLLW–SRAIW 56–61, the sub-word loads and stores 20–27 and LWU 55, ECALL–MRET 38–42, MULH 44, MULHSU 46, DIV–REMU 47–50, UNIMP 51, DIVW–REMUW 66–69, LR/SC and the AMOs 70–91, the inlines 92–106 |
 
-*(Proposed, item 37: the class of every opcode; the notes settle only the principle.)* The class L rows are exactly those whose word has `from_log` set (4.19.3): the flag, not the opcode, decides that a row takes a log word. The replayer **executes 85 opcodes**: the S and M classes, LD, SD and `VirtualAdvice`. A word with any other opcode is an invalid expansion *(Proposed, item 36)*.
+*(Proposed, item 37: the class of every opcode; the notes settle only the principle.)* The class L rows are exactly those whose word has `from_log` set (4.19.3): the flag, not the opcode, decides that a row takes a log word. The replayer **executes 88 opcodes** (v1.2: 85): the S and M classes and the nine executed class L opcodes, the eight memory opcodes and `VirtualAdvice` (`tables/opcode_table.txt` marks them S, M and L). A word with any other opcode is an invalid expansion *(Proposed, item 36)*.
 
 **Advice rows are data** *(Proposed, item 56)*. Jolt reports every advice row as `VirtualAdvice` with rs1, rs2 and the immediate all 0 (`trace_owner.cpp:912–917`), though the tracer's DIV/REM advice rows name real source registers (`isa/virtual.cpp:331`, for example) so that its interpreter can compute them. The replayer takes the value from the log, so the template builder writes those rows as `VirtualAdvice rd, x0, x0` with `from_log` set: the record then comes out exactly as Jolt reports it, with no masking logic. (The inlines' own advice rows are already `VirtualAdvice` with two zero immediates, `isa/virtual.cpp:216–218`, and are recorded the same way.)
 
@@ -1523,11 +1531,11 @@ An instruction's opcode word leaves the code queue when its expansion's last row
 
 The multiplier is four 16 × 64 multipliers in parallel, a full 64 × 64 array, which is cheap in area. There is no divider: Jolt's DIV and REM use advice plus checks, and the advice comes from the log. **Stalls** (an empty code, expansion or log queue, a full output queue) delay a row's start; they never change its schedule.
 
-**The edge cases** (AUIPC's use of the source instruction's pc, JAL and JALR linking pc + `pc_increment`, `VirtualHostIO` writing rd's own value back, `VirtualROTRIW`'s min(32, tz(imm)), the shift masks, MULHU, the advice values) are in `spec/replayer-opcodes.md`. **Extension is per opcode:** several word forms zero-extend rather than sign-extend (`VirtualPow2W`, `VirtualShiftRightBitmaskW`, `VirtualROTRIW` and the `VirtualXORROTW…` forms among them; the appendix's flag F5 lists them), so the appendix's rd formula, not the opcode's name, decides.
+**The edge cases** (AUIPC's use of the source instruction's pc, JAL and JALR linking pc + `pc_increment`, `VirtualHostIO` reading and writing nothing, `VirtualShiftData…`'s lane, `VirtualROTRIW`'s min(32, tz(imm)), the shift masks, MULHU, the advice values) are in `spec/replayer-opcodes.md`. **Extension is per opcode:** several word forms zero-extend rather than sign-extend (`VirtualPow2W`, `VirtualShiftRightBitmaskW`, `VirtualROTRIW` and the `VirtualXORROTW…` forms among them; the appendix's flag F5 lists them), so the appendix's rd formula, not the opcode's name, decides.
 
 **Zero shift masks** (owner, 2026-10-26). The masks reaching `VirtualSRL`, `VirtualSRLI`, `VirtualSRA` and `VirtualSRAI` are **never 0**: each comes from `VirtualShiftRightBitmask` or from the expansion's 2⁶⁴ − 2^shamt, and the tracer guarantees it. The shift is tz(mask), and **the result for a zero mask (tz = 64) is undefined**, as it is in the tracer's C++; meshsim flags one (invariant 16).
 
-**LD's memory fields** (owner, 2026-10-26) *(pending the upstream check, item 113)*. An LD row's record forms its memory value (pre = post) from **the value written to rd**, not from the log word, as the tracer does (`trace_owner.cpp:922–925`). So an LD to x0, which only LR.D with rd = x0 produces (4.19.4), consumes its read-log word but reports a memory value of 0 (4.19.12).
+**A load row's memory fields** (owner, 2026-10-26) *(pending the upstream check, item 113)*. A load row's record (LD or `VirtualLoad…`) forms its memory value (pre = post) from **the value written to rd**, not from the log word, as the tracer does (`trace_owner.cpp:909–912`, 821e1bd). So an LD to x0, which only LR.D with rd = x0 produces (4.19.4), consumes its read-log word but reports a memory value of 0 (4.19.12).
 
 **pc and `instr_idx`.** pc is computed, never stored per row; `instr_idx` increments by 1 on every row that continues sequentially, because the committed bytecode lays each expansion out contiguously in program order (`isa/virtual.cpp:1405–1420`). The **new pc** of a row:
 
@@ -1546,9 +1554,9 @@ Then, as `finish_instruction` does (`trace_owner.cpp:111–126`): **if the new p
 **Hardwired Jolt behaviour** *(Proposed, item 57)*. Three conventions can't be table data, because they depend on values only known while the row runs; the replayer builds them in, and a change in Jolt would change silicon:
 - **the self-jump compare:** a control transfer whose new pc equals its pc is sequential (above) *(pending the upstream check, item 113)*;
 - **register 0** reads 0 and drops writes (`trace_owner.cpp:85–93`);
-- **the row record's memory fields** are formed for LD and SD only, the normalized ISA's only memory opcodes (`trace_owner.hpp:219–235`), an LD's from the value written to rd (so 0 for an LD to x0), and JALR clears bit 0 of its target (`trace_owner.cpp:287`);
+- **the row record's memory fields** are formed for the load and store rows only (jolt-cpp's `is_load` and `is_store`: LD, SD and the six narrow opcodes; `trace_owner.cpp:904–913`, 821e1bd), a load's from the value written to rd (so 0 for an LD to x0), the narrow rows' address with its low bits cleared (4.19.12), and JALR clears bit 0 of its target (`trace_owner.cpp:287`);
 - **a new pc of 0 ends the program** from any row (the pc table above) *(pending the upstream check, item 113)*.
-The ALU's per-opcode arithmetic is hardwired too, by nature: a new Jolt opcode needs new logic. Which rows can transfer control is explicit, not inferred from the row opcode: `next_from_value` is set in the ROM for branches, JAL and JALR, and in the controller's words for the JALR rows of MRET, ECALL and trap returns, and for EBREAK's JAL (4.19.5). No pc-to-index table is needed.
+The ALU's per-opcode arithmetic is hardwired too, by nature: a new Jolt opcode needs new logic. Which rows can transfer control is explicit, not inferred from the row opcode: `next_from_value` is set on branches, JAL and JALR, ECALL's and MRET's JALR rows and EBREAK's JAL, all in the ROM at `821e1bd` (4.19.6), and on any controller-fed row that can transfer control. No pc-to-index table is needed.
 
 **Rate.** About 3.3 cycles per row on average with about 10 % multiply rows (item 37 measures the density), so a 64K-row pass is about 216K cycles plus about 1.3K cycles of controller-fed expansion stalls: about 0.22 ms at 1 GHz with everything local, or about 10 ms for the 46 passes of an Akita proof [estimate].
 
@@ -1623,7 +1631,7 @@ loop:
     ev = rp->EVENTS & rp->EVENTS_MASK                 ; claims: one credit from each set queue bit
     if ev == 0: goto loop                             ; a spurious wake: re-check (4.12)
     if ev.run_done: exit
-    if ev.new_expansion: decode rp->EXPANSION_OPCODE (inlines and system only),
+    if ev.new_expansion: look up key(rp->EXPANSION_OPCODE) (inlines and CSR only),
                          start at rp->EXPANSION_OFFSET; add EXPANSION to rp->EVENTS_MASK
     for each credit taken: queue a refill of min(half, what that stream has left)
     for each stream with nothing left: remove its bit from rp->EVENTS_MASK
@@ -1643,11 +1651,14 @@ The squelch is a mask setting: while the run streams, the replayer's credits acc
 
 **Short runs, not interruption.** The address generator is not interruptible. Instead every run is short: a 1 KB chunk is 64 packets, about 64 cycles, so nothing waits long for the engine, and the controller re-checks the queues after each chunk. Streaming occupies about 11–20 % of a pass [estimate]. Group runs (the sort's all-to-alls) stay exclusive and don't coincide with replay.
 
-**Controller-fed templates and their numbers** (owner, 2026-10-26, part G; item 114). The template builder numbers the program's controller-fed templates **0–127**. The program's **template set** is the template words plus an **index** giving each number's word offset and length. A controller-fed instruction maps to its number by its **exact instruction word**, since what it expands to can depend on its registers (CSRRW and CSRRS take 1–3 rows by register). **A number is a distinct instruction word, and numbers may share template words:** two numbers whose expansions are identical point at the same words, so the 128 limit counts index entries, not template storage. A program may have **at most 128** numbers. A tile that keeps only the templates its window uses keeps every word that any of its numbers references (item 115).
+**Controller-fed templates and their numbers** (owner, 2026-10-26, part G; item 114; **the key, v1.25**: DECISIONS-v1.25 section 5 and `tables/README.md`). The controller-fed set is universal like the rest of the tables (4.19.5): its **template words** (`templates.bin`) and an **index** (`template_index.bin`) of 16-byte entries, each the entry's **key** (bytes 0–3), the template's word offset (4–7) and length in words (8–11), its `rd0` (12) and its decode class (13), with 14–15 spare. **The entries are sorted by key, ascending, and a template's number is its entry's position**, 0–127; numbers may share template words, so the limit of **128** counts index entries, not template storage. A universal set can't list every instruction word, so **the key is the instruction word with its register fields normalized**, and the controller computes **key(*w*)** from the presented word *w* (`EXPANSION_OPCODE`) before the lookup. key(*w*) keeps every bit of *w* except:
+- **an inline** (class 1, *w*[6:0] = 0001011): rd [11:7], rs1 [19:15] and rs2 [24:20] are **cleared**, one entry per inline. Its template resolves any registers through codes 129–131, x0 and aliasing included;
+- **CSRRW or CSRRS** (class 2, *w*[6:0] = 1110011, funct3 1 or 2): rd and rs1 are **renamed by first appearance**: x0 stays 0, a non-zero rd becomes 1, and rs1 becomes 0 if x0, 1 if it equals a non-zero rd or if rd is x0, else 2. The CSR field [31:20] is kept. These five patterns per CSR and instruction are exactly the cases jolt-cpp's expansion distinguishes (rd = x0, rs1 = x0, rd = rs1), which change its row count from 1 to 3 (4.19.6).
+Operand codes 129–131 still resolve against the presented word, not the key. **A word whose key has no entry is an error:** jolt-cpp rejects it (a CSR it doesn't support), so a traced program has none. **At `821e1bd`** the set has **75 numbers**, the 15 inlines and 60 CSR keys (CSRRW and CSRRS for jolt-cpp's six CSRs, mstatus, mtvec, mscratch, mepc, mcause and mtval, five patterns each), in 13,821 words [built: `tables/replayer/listing.txt`]. v1.2 keyed each program's set by the exact instruction word. A tile that keeps only the templates its window uses keeps every word that any of its numbers references (item 115).
 
-**EBREAK's expansion** is one controller-fed word (owner, 2026-10-26): **JAL, rd = temporary 0 (v40), immediate 0, with `imm0_pc0` and `next_from_value` set**, as the tracer emits it (`JAL v40, 0`, `isa/virtual.cpp:1164–1192`). EBREAK is exempt from the rd = x0 remap, so the offset is 0 and temporary 0 is v40. It ends the program, which happens once per proof, so it stays controller-fed rather than taking a ROM word *(pending the upstream check, item 113)*.
+**EBREAK's expansion** is one word (owner, 2026-10-26): **JAL, rd = temporary 0 (v40), immediate 0, with `imm0_pc0` and `next_from_value` set**, as the tracer emits it (`JAL v40, 0`, `isa/virtual.cpp:1164–1192`). EBREAK is exempt from the rd = x0 remap, so the offset is 0 and temporary 0 is v40. It ends the program. **v1.25 puts it in the ROM** with ECALL and MRET (DECISIONS-v1.25 section 6; v1.2 fed it from the controller) *(pending the upstream check, item 113)*.
 
-**Controller-fed expansions** are only the inlines (custom-0) and ECALL, EBREAK, MRET, CSRRW and CSRRS: about 13 per 64K-row window on Cyclone, about 0.4 % of a pass in stalls [meas: design notes]. CSRRW and CSRRS expand to 1–3 rows depending on their registers (`num_cycles`, `isa/virtual.cpp:1324–1345`), which is one reason they stay with the controller. The program's controller-fed template set is resident in big SRAM: for now every tile preloads the whole set (4.19.13; item 115).
+**Controller-fed expansions** are only **the inlines (custom-0) and the CSR instructions, CSRRW and CSRRS** (DECISIONS-v1.25 section 6: "the controller feeds the inlines, the advice generators and the CSR instructions, and nothing else"; the advice generators are the Tracer's, v1.3). The CSR instructions are the one deliberate exception to the ROM goal (4.19.6): their expansion depends on which CSR and on the register pattern, which a single decode entry can't see, and they are rare in guest code. v1.1 measured about 13 controller-fed expansions per 64K-row window on Cyclone, about 0.4 % of a pass in stalls, with ECALL, EBREAK and MRET still among them [meas: design notes; to be re-measured at v1.25, item 138]. The controller-fed set is resident in big SRAM: for now every tile preloads the whole set (4.19.13; item 115).
 
 #### 4.19.10 Its region: the address map, landing and ownership
 
@@ -1703,9 +1714,9 @@ v1.1's HALT row (item 54) is gone with HALT. **A push while stopped** is accepte
 |---|---|---|---|
 | 0 | bad write | a packet to its region was dropped (4.19.10) | P |
 | 1 | queue overrun | a push found its queue full and was dropped (4.19.8) | P |
-| 2 | invalid expansion | a decode-table class 3; an expansion word with a reserved operand code (146–255), `format` 6 or 7, an opcode the replayer doesn't execute (4.19.7), or `untraced` set (4.19.3); a template running past ROM word 511 (4.19.6); or a pop past a stream's length (4.19.15) | P, and H on a corrupted table or ROM |
+| 2 | invalid expansion | a decode-table class 3 (an encoding no instruction Jolt accepts has, 4.19.5); an expansion word with a reserved operand code (146–255), `format` 6 or 7, an opcode the replayer doesn't execute (4.19.7), or `untraced` set (4.19.3); a template running past ROM word 511 (4.19.6); or a pop past a stream's length (4.19.15) | P, and H on a corrupted table or ROM |
 
-(Item 55, accepted as written by the owner on 2026-10-23: the kinds and the opcode check.) **An invalid expansion stops the pass** as if it had ended: `STATUS` [0] falls and run done is posted. Since every error now traps its controller terminally (4.13), this matters only for meshsim's reports. The owner expects it never to happen, since the tracer catches bad expansions. The other two conditions leave the replayer running. The other two errors leave the replayer running.
+(Item 55, accepted as written by the owner on 2026-10-23: the kinds and the opcode check.) **An invalid expansion stops the pass** as if it had ended: `STATUS` [0] falls and run done is posted. Since every error now traps its controller terminally (4.13), this matters only for meshsim's reports. The owner expects it never to happen, since the tracer catches bad expansions. The other two errors leave the replayer running.
 
 #### 4.19.12 The output row
 
@@ -1714,7 +1725,7 @@ v1.1's HALT row (item 54) is gone with HALT. **A push while stopped** is accepte
 | word | bits | field | value |
 |---|---|---|---|
 | 0 | [31:0] | `instr_idx` | the row's bytecode index (0 in padding) |
-| 0 | [39:32] | `opcode` | the row opcode; `VirtualAdvice` (122) for every advice row (4.19.7) |
+| 0 | [39:32] | `opcode` | the row opcode; `VirtualAdvice` (126) for every advice row (4.19.7) |
 | 0 | [47:40] | `rd_reg` | rd's register number, 0 if rd is an immediate slot |
 | 0 | [55:48] | `rs1_reg` | rs1's register number, 0 if an immediate slot |
 | 0 | [63:56] | `rs2_reg` | rs2's register number, 0 if an immediate slot |
@@ -1723,15 +1734,16 @@ v1.1's HALT row (item 54) is gone with HALT. **A push while stopped** is accepte
 | 0 | [81] | `is_virtual` | 4.19.3 |
 | 0 | [82] | `is_first_in_sequence` | 4.19.3 |
 | 0 | [85:83] | `rd_is_imm`, `rs1_is_imm`, `rs2_is_imm` | the slot kinds (4.19.3), as the bytecode commits them |
-| 0 | [127:86] | spare | 0 |
+| 0 | [86] | `imm_signed` | the word's `sign_imm` (4.19.3): Jolt's 128-bit immediate (`imm()`) is word 1's `imm` sign-extended when 1 and zero-extended when 0 (DECISIONS-v1.25 section 7, Q1; v1.25) |
+| 0 | [127:87] | spare | 0 |
 | 1 | [63:0] | `pc` | the source instruction's pc (0 in padding) |
-| 1 | [127:64] | `imm` | the sum of the immediate slots (4.19.3); Jolt's raw `_imm`, which consumers normalize by opcode (`imm()`, `trace_owner.hpp:80–92`) |
+| 1 | [127:64] | `imm` | the row's immediate (4.19.3): the sum of its immediate slots, or a `VirtualShiftData…` row's `shift_offset` sign-extended to 64 bits; 0 for an advice row. Jolt's raw `_imm` (`imm_raw`, `trace_owner.hpp:168–177`, 821e1bd), which a consumer extends to 128 bits by `imm_signed` (v1.2's consumers normalized it by opcode) |
 | 2 | [63:0] | `rs1` | rs1's value before the row; 0 if an immediate slot |
 | 2 | [127:64] | `rs2` | rs2's value before the row; 0 if an immediate slot |
 | 3 | [63:0] | `rd_prev` | rd's value before the row; 0 if an immediate slot |
 | 3 | [127:64] | `rd` | rd's value after the row; 0 if an immediate slot, and 0 for x0 |
-| 4 | [63:0] | `mem_addr` | rs1 + imm for LD and SD, else 0 |
-| 4 | [127:64] | `mem_value` | for LD, **rd's value after the row**: the value loaded, and 0 for an LD to x0 (4.19.7) *(pending the upstream check, item 113)*; for SD, the memory pre-value from the log (0 in a pass without the store log, 4.19.2); else 0 |
+| 4 | [63:0] | `mem_addr` | for a load or store row (LD, SD and the six narrow ones, 4.19.7): *a* = rs1 + imm, and for the narrow rows *a* − (*a* & (8 − *width*)), *width* = 1, 2 or 4 bytes for B, H and W (`memory_address`, `isa/riscv.hpp:241–253`, 821e1bd), which is the doubleword's address for every access the tracer lets through; else 0 |
+| 4 | [127:64] | `mem_value` | for a load row, **rd's value after the row**: the doubleword loaded, and 0 for an LD to x0 (4.19.7) *(pending the upstream check, item 113)*; for a store row, the memory pre-value from the log (0 in a pass without the store log, 4.19.2); else 0 |
 
 A padding row's record is all zeros, as Jolt's padded rows are (4.19.2).
 
@@ -1762,7 +1774,7 @@ The median window's trace is about 335 KB and the densest about 700 KB [meas: de
 
 **Memory per tile:** 4 + 4 + 8 + 8 KB of queues (code, expansion, read log, write log), an 8 KB ROM, a 4 KB decode table, 1 KB of working registers, about 1 KB of image and state, about 2.5 KB of output queue (32 × 80 B) and 384 B of decompressor tables: **about 41 KB** [estimate]. Across 64 tiles that is about 2.6 MB, roughly 7–10 mm² per chip with the logic [estimate], against 48 MB for the 768 KB-per-tile design planned earlier.
 
-**Logic per tile:** the ALU and comparator, the 128 × 64-bit true dual-port register file, two adders (memory address, pc + imm), the operand resolver, the decode index logic, four queue readers and the credit counters, three decompressors (4.19.15): about 0.1–0.15 mm² with its memories [estimate]. Section 11 adds it to the tile's budget; its placement is in section 12.
+**Logic per tile:** the ALU (with `VirtualPext` for any mask, 4.19.7) and comparator, the 128 × 64-bit true dual-port register file, two adders (memory address, pc + imm), the operand resolver, the decode index logic, four queue readers and the credit counters, three decompressors (4.19.15): about 0.1–0.15 mm² with its memories [estimate]. Section 11 adds it to the tile's budget; its placement is in section 12.
 
 #### 4.19.15 Stream decompression
 

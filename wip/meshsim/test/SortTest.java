@@ -51,6 +51,10 @@ final class SortTest {
     static final String[] PATHS = { "direct", "LB", "TH", "BT", "PLAN" };
 
     static Path build = Path.of(System.getProperty("sort.build", "sw/ext/sort/build"));
+    /** The interim loader (PHASE-2 INTERIM): the image directory's loader.bin when it has one (a kit's image/), else
+     *  meshsim's own (sw/build/loader.bin, built by sw/build.sh). */
+    static Path loaderPath() { Path p = build.resolve("loader.bin"); return Files.exists(p) ? p : Mach.SW.resolve("loader.bin"); }
+    static int[] loader() { try { return Image.words(loaderPath()); } catch (IOException e) { throw new RuntimeException("no interim loader (run sw/build.sh): " + e.getMessage()); } }
     static void out(String s) { System.out.println(s); }
 
     /** Run options. */
@@ -130,10 +134,10 @@ final class SortTest {
                 wLo[i] = im.sym(nm); wHi[i] = wLo[i] + im.sizes.getOrDefault(nm, 0);
             }
         }
-        /** Boot (spec 6.2; PHASE-2 INTERIM, as Mach.boot), outside the sort's total: the interim loader (sw/build/loader.bin,
-         *  built by sw/build.sh), program memory, data memory from _data_start, CMD_JUMP to _start, then RUN. */
+        /** Boot (spec 6.2; PHASE-2 INTERIM, as Mach.boot), outside the sort's total: the interim loader (loaderPath()),
+         *  program memory, data memory from _data_start, CMD_JUMP to _start, then RUN. */
         void boot() {
-            cc.loadWords(LinkWord.BROADCAST, Registers.LOADER_BASE, Mach.loader())
+            cc.loadWords(LinkWord.BROADCAST, Registers.LOADER_BASE, loader())
               .loadWords(LinkWord.BROADCAST, Registers.PMEM_BASE, im.code)
               .loadWords(LinkWord.BROADCAST, im.sym("_data_start"), im.data)
               .command(LinkWord.BROADCAST, Registers.CMD_JUMP << 24, im.sym("_start"))

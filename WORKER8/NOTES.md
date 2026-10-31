@@ -61,3 +61,11 @@ phase-3 tip, whose replayer tests don't compile). Merge `v1.2-meshsim` again onc
   detached with setsid: plain nohup jobs die with the tool call). Next: the k128 result; itemise every step's
   difference (disassembly, -Dsort.watch against /tmp/v11); read the Quest repo's PIPELINE.md and send the full-size
   runs; the full run_tests.sh.
+- **Step 5** (2026-10-31): the BT k128 run passes (929,425 vs 927,893); logs committed (results/sort*.log). Merged
+  v1.2-meshsim (WORKER4 phase 3, its quick run passing; test/PENDING: both sides' deletions kept) and main
+  (DECISIONS-v1.2 47; planning docs and WORKER9's notes taken as main has them); rebuilt: the sort cycle-identical.
+  DECISIONS 47 noted in the code. Explained plan_transfer (+306) and the HIST load latency (REPORT). The kit for
+  the runner: WORKER8/runner (run_p4.sh, kit/ with a Java 17 jar, the v1.2 image, the interim loader, v1.1's
+  jobs.txt and key hashes, a new HASHES); SortTest reads the interim loader from the image directory when it has one.
+  Smoke-tested locally (-n 2000, uniform-kv32: passes). **Quest task 070 pushed** (the 43 P4 runs; kit embedded, sha
+  99b56125...). Whole run_tests.sh (all) running in /tmp/rt.log.

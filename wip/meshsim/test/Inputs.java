@@ -50,7 +50,7 @@ final class Inputs {
         Map<String, String> m = new LinkedHashMap<>();
         Path j = jar();
         m.put("meshsim.jar", j == null ? "(classes)" : hash(j));
-        m.put("image/loader.bin", hash(Mach.SW.resolve("loader.bin")));
+        m.put("image/loader.bin", hash(SortTest.loaderPath()));
         for (String f : IMAGE) m.put("image/" + f, hash(build.resolve(f)));
         m.put("hops.txt", hash(Path.of("hops.txt")));
         if (keys != null) {

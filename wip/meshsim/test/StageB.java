@@ -109,12 +109,10 @@ public final class StageB {
         for (int i = 0; i < 16; i++) p.sram.poke(HDR + i, h[i]);
 
         // ---- boot: the loader everywhere; replay_ctl and its boot marker on tile 0 only (the others' loaders ebreak)
-        int[] loader = Image.words(Path.of("sw/build/loader.bin"));
-        c.cc.loadWords(LinkWord.BROADCAST, Registers.LOADER_BASE, loader)
-            .loadWords(0, Registers.PMEM_BASE, im.code);
+        c.cc.loadWords(0, Registers.PMEM_BASE, im.code);
         if (im.data.length > 0) c.cc.loadWords(0, im.sym.get("_data_start"), im.data);
         c.cc.command(0, Registers.CMD_JUMP << 24, im.sym.get("_start"))
-            .waitCycles(200).then((cnc, t) -> { cnc.storeRun(t, true); return true; });
+            .go();                                                   // the ROM jumps at the first GO after the command landed (6.2)
         // -Dstageb.profile: the controller's pc during the replayer's new-expansion stalls, by function
         final boolean prof = System.getProperty("stageb.profile") != null;
         final Map<Integer, Long> pcs = new HashMap<>(); final long[] last = { 0 };
@@ -239,10 +237,9 @@ public final class StageB {
         h[0] = 0x594C5052; h[1] = 1; h[2] = TABLES; h[3] = INDEX; h[4] = ws.size(); h[5] = TEMPLATES; h[6] = RECORD;
         h[7] = CODE; h[8] = w.code.length / 2; h[9] = RLOG; h[10] = w.rlog.length / 2; h[11] = WLOG; h[12] = w.wlog.length / 2; h[13] = 1;
         for (int i = 0; i < 16; i++) p.sram.poke(HDR + i, h[i]);
-        int[] loader = Image.words(Path.of("sw/build/loader.bin"));
-        c.cc.loadWords(LinkWord.BROADCAST, Registers.LOADER_BASE, loader).loadWords(0, Registers.PMEM_BASE, im.code);
+        c.cc.loadWords(0, Registers.PMEM_BASE, im.code);
         if (im.data.length > 0) c.cc.loadWords(0, im.sym.get("_data_start"), im.data);
-        c.cc.command(0, Registers.CMD_JUMP << 24, im.sym.get("_start")).waitCycles(200).then((cnc, t) -> { cnc.storeRun(t, true); return true; });
+        c.cc.command(0, Registers.CMD_JUMP << 24, im.sym.get("_start")).go();
         c.runUntil(() -> p.core.halt != Controller.RUN && p.core.halt != 0, 2_000_000);
         int res = im.sym.get("rp_results"), status = p.core.peekLocal(res);
         List<String> detail = new ArrayList<>();

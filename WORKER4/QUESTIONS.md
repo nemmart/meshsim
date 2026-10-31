@@ -58,3 +58,26 @@ chip lines (C&C 1's peripheral), 2 Updater/Binder/RW, 3 Tracer, 4 the replayer (
 
 **Status:** answered; done (Replayer 4, Cnc1Peripheral 1, mesh.h's PTYPE_*); the draft now says 4 too, so the
 generated header and the draft agree everywhere they overlap.
+
+## W4-06: the handler's reports read reserved window words
+
+**What.** 4.13's fixed report set reads every present peripheral's `DMA_HDR` and `DMA_ADDR` (words 8 and 9, reports
+15-23), but 4.17.4 makes those words reserved on a peripheral without a DMA (the replayer), and meshsim flags every
+access to a reserved word (8.1). So every replayer tile's handler would be flagged twice.
+
+**Proposed.** meshsim doesn't flag a load of words 8 and 9 by a controller in its trap handler (it reads 0, as the
+hardware does). Alternatively 4.13 could report words 8-9 only for a peripheral whose `STATUS`/type says it has a DMA,
+but the report set is fixed by design.
+
+**Status:** proposed; the code follows it (PeripheralSlot.reserved).
+
+## W4-07: `mtime` (4.11)
+
+**What.** 4.11 lists `mcycle` and `mtime` among the core's CSRs; `mtime` is memory-mapped in the privileged spec, and
+neither its CSR number nor its clock is given.
+
+**Proposed.** meshsim reads it through the `time`/`timeh` CSR numbers (0xC01, 0xC81, `rdtime`), counting
+reference-oscillator cycles (core cycles / Config.refCycle, 40 at 1 GHz and 25 MHz). `mcycle`/`mcycleh` (0xB00, 0xB80)
+count core cycles from the reset.
+
+**Status:** proposed; the code follows it (Controller.csrRead).

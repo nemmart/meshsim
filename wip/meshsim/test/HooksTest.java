@@ -33,8 +33,7 @@ public final class HooksTest {
     static Net machine(int periphType) {
         Config k = Config.machine(); k.shuffleSeed = shuffle; k.periphType = periphType;
         Net n = new Net(k);
-        for (Tile p : n.c.tiles) { p.core.pokeLocal(Registers.LOADER_BASE, Controller.WFI); p.core.pokeLocal(Registers.LOADER_BASE + 4, RiscvTest.jal(0, -4)); }
-        n.c.cc.then((cc, t) -> { cc.storeRun(t, true); return true; });
+        // v1.2: every core boots into the boot ROM and waits there (done pulsed, WFI for GO)
         n.c.run(10);
         return n;
     }
@@ -224,13 +223,16 @@ public final class HooksTest {
         T.group("register-load latency");
         Config k = Config.machine(); k.shuffleSeed = shuffle; k.periphType = 0;
         Net n = new Net(k); Tile p = n.c.tiles[3];
-        for (Tile q : n.c.tiles) { q.core.pokeLocal(Registers.LOADER_BASE, Controller.WFI); q.core.pokeLocal(Registers.LOADER_BASE + 4, RiscvTest.jal(0, -4)); }
-        p.core.pokeLocal(Registers.LOADER_BASE, 0x00000013);              // nop
-        p.core.pokeLocal(Registers.LOADER_BASE + 4, lw(10, 0x818));       // lw a0, EVENTS  (issued at R + 1)
-        p.core.pokeLocal(Registers.LOADER_BASE + 8, lw(11, 0x81C));       // lw a1, EVENTS_PEEK
-        p.core.pokeLocal(Registers.LOADER_BASE + 12, 0x00100073);         // ebreak
-        n.c.cc.then((cc, t) -> { cc.storeRun(t, true); return true; });
-        while (p.ctl.runEdges == 0) n.step();                            // cycle R: the run edge; the nop
+        int B = Registers.PMEM_BASE;
+        p.core.pokeLocal(B, 0x00000013);                                 // nop
+        p.core.pokeLocal(B + 4, lw(10, 0x818));                          // lw a0, EVENTS  (issued at R + 1)
+        p.core.pokeLocal(B + 8, lw(11, 0x81C));                          // lw a1, EVENTS_PEEK
+        p.core.pokeLocal(B + 12, 0x0000006F);                            // j . (the end)
+        n.c.cc1p.expect = 1L << 3;                                       // only tile 3 starts (6.2): its command, then GO
+        n.c.cc.command(3, Registers.CMD_JUMP << 24, B).go();
+        while (p.core.pc != B) n.step();                                 // the ROM has jumped: the nop is next
+        n.step();                                                        // cycle R: the nop
+        long s0 = p.core.stallRegLoad;
         long R = n.c.cycle, issue = R + 1, last = issue + L - 1;         // the load's sample point is the end of issue + L - 2
         int c9 = 1 << Registers.EV_COUNTERS_DONE, go = 1 << Registers.EV_GO;
         p.ctl.events |= c9;                                              // pending from the end of R: before the sample point
@@ -240,10 +242,10 @@ public final class HooksTest {
         T.eq(go, p.ctl.events & (c9 | go), "L = " + L + ": its side effect at the end of its last cycle cleared counters done; GO, set in that cycle, survives");
         while (n.c.cycle < last + L) n.step();
         T.eq(go, p.core.x[11] & (c9 | go), "L = " + L + ": the next load (EVENTS_PEEK) sees GO, not counters done");
-        T.eq(2L * (L - 1), p.core.stallRegLoad, "L = " + L + ": each register-block load costs " + L + " cycles");
+        T.eq(2L * (L - 1), p.core.stallRegLoad - s0, "L = " + L + ": each register-block load costs " + L + " cycles");
         T.eq(0L, n.c.violations, "no violations " + n.c.violationReport());
         // the table window: a HIST load takes 1 cycle (4.11)
-        long s0 = p.core.stallRegLoad;
+        s0 = p.core.stallRegLoad;
         T.check(p.core.load(n.c.cycle + 1, Registers.HIST_BASE, 4) != null, "a HIST load");
         T.eq(s0, p.core.stallRegLoad, "a table-window load stalls nothing: 1 cycle");
     }

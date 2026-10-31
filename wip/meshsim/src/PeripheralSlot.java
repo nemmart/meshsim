@@ -78,6 +78,9 @@ final class PeripheralSlot implements Peripheral.Host {
         }
     }
     private int reserved(long t, int n, int w, boolean store) {
+        // W4-06: the handler's fixed reports (4.13) read DMA_HDR and DMA_ADDR of every present peripheral, a DMA or not;
+        // a handler's loads of words 8 and 9 aren't flagged
+        if (!store && (w == 8 || w == 9) && tile.core.inHandler) return 0;
         reservedAccesses++;
         violate(t, (store ? "store to" : "load of") + " peripheral " + n + "'s reserved or undefined window word " + w + ": reads 0, stores ignored (4.17.4)");
         return 0;

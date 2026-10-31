@@ -36,8 +36,7 @@ public final class PeripheralSlotTest {
         Config k = Config.machine(); k.shuffleSeed = shuffle;
         k.testPeripheral = tile -> tile == tp ? (out[0] = new TestPeripheral()) : null;
         Net n = new Net(k);
-        for (Tile p : n.c.tiles) { p.core.pokeLocal(Registers.LOADER_BASE, Controller.WFI); p.core.pokeLocal(Registers.LOADER_BASE + 4, RiscvTest.jal(0, -4)); }
-        n.c.cc.then((cc, t) -> { cc.storeRun(t, true); return true; });
+        // v1.2: every core boots into the boot ROM and waits there (done pulsed, WFI for GO)
         for (int i_ = 0; i_ < 10; i_++) n.step();
         return n;
     }
@@ -171,8 +170,7 @@ public final class PeripheralSlotTest {
         T.group("the replayer's window");
         Config k = Config.machine(); k.shuffleSeed = shuffle;
         Net n = new Net(k); Tile p = n.c.tiles[3];
-        for (Tile q : n.c.tiles) { q.core.pokeLocal(Registers.LOADER_BASE, Controller.WFI); q.core.pokeLocal(Registers.LOADER_BASE + 4, RiscvTest.jal(0, -4)); }
-        n.c.cc.then((cc, t) -> { cc.storeRun(t, true); return true; });
+        // v1.2: every core boots into the boot ROM and waits there (done pulsed, WFI for GO)
         for (int i = 0; i < 10; i++) n.step();
         T.eq(4, (int) load(n, p, w(PARAMS)), "PARAMS: type 4, the replayer (4.17.1, D46)");
         T.eq(0, (int) load(n, p, w(STATUS)), "STATUS: idle");

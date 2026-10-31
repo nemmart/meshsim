@@ -30,8 +30,7 @@ public final class RequestBusTest {
     static Net machine() {
         Config k = Config.machine(); k.shuffleSeed = shuffle;
         Net n = new Net(k);
-        for (Tile p : n.c.tiles) { p.core.pokeLocal(Registers.LOADER_BASE, Controller.WFI); p.core.pokeLocal(Registers.LOADER_BASE + 4, RiscvTest.jal(0, -4)); }
-        n.c.cc.then((cc, t) -> { cc.storeRun(t, true); return true; });
+        // v1.2: every core boots into the boot ROM and waits there (done pulsed, WFI for GO)
         n.c.run(10);
         return n;
     }

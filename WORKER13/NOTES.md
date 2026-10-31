@@ -258,3 +258,57 @@ were applied to the v1.2 spec but have no CHANGES entry:
 | 4.17 | write to absent peripheral | bad peripheral write [11], **counted** in `DMA_PERIPH_REMAINING` | **bad packet**, `ERRORS`[1], **uncounted** | implied by 3.1 bad-packet table; counting change not stated | D9, D32 |
 | 4.17 | **type values** | 1 = replayer | 4.17.4 table: 0 none, 1 Ingress/Egress, 2 Updater/Binder/RW, 3 Tracer, **4 replayer** (D46) | **not in CHANGES-v1.2**; and **4.17.1 still says "1 the replayer" in v1.2 and v1.25 (spec line 1109)**: contradicts 4.17.4, 4.19, 8.11 → QUESTIONS | D46 |
 | 4.17 | window words 8–9 without DMA | — | 4.17.4 says words 4, 8, 9 "unused (reserved)" = read 0, ignore stores; D48 W4-06: read 0, **load not flagged, only a store** | D48 not in CHANGES; spec wording "meshsim flags the access" for reserved words vs D48 → check | D48 |
+
+### 4.19, 4.20 (done)
+
+**Split for the replayer:** v1.1 → v1.2 changed **only its interface** (window, events, credits, region, errors, type);
+4.19.3–4.19.7 and 4.19.12, 4.19.14 are **identical** apart from names (mode 9 → mode 0 to region 0x04;
+`PERIPH_STATUS_1` → `EXPANSION_OPCODE`), and the opcode appendix is identical. **Row content changed only at v1.25.** So
+per entry: interface items are step v1.2; row/table items are step v1.25; the few touched by both (expansion queue's
+controller-fed set, invalid class, 4.19.9's loop) are "both".
+
+| sec | what | v1.1 | v1.2 | v1.25 | step | in CHANGES? |
+|---|---|---|---|---|---|---|
+| 4.19 | type | 1 (`TILE_STATUS`[15:12]) | 4 (`PARAMS`[7:0], D46) | 4 | v1.2 | **v1.2 doc: no** (D46); v1.25 doc calls the leftover "type 1" editorial |
+| 4.19.1 | interfaces | slot: `PERIPH_RUN`, `periph_running`, service lines, `PERIPH_STATUS_0–1`, `DMA_PERIPH_REMAINING`, conditions 11–13 | standard window; mode 0 to region 0x04; any write counter; events → tile `EVENTS`[13]; own `ERRORS` → tile `ERRORS`[11] | same | v1.2 | yes |
+| 4.19.1 | reference | jolt-asic-planning PR #1 `4f36b3d` | same | jolt-cpp `821e1bd` (PR #2) | v1.25 | yes |
+| 4.19.2 | log rows | LD read log, SD write log | same | load rows (LD, `VirtualLoadB/H/W`), store rows (SD, `VirtualStoreB/H/W`) | v1.25 | yes |
+| 4.19.2 | state record | region 0 | "part 0" | same | v1.2 (name) | — |
+| 4.19.2 | includes-store-log [115]=0 | write-log low-water quiet | loop leaves its credit bit out of the mask | + applies to all store rows | both | yes |
+| 4.19.3 | expansion word | [55] untraced, [62:56] advice_reg, [63] spare; opcode 0–167 | same | [61:56] advice_reg (reg − 146), [62] sign_imm, [63] offset_imm; opcode 0–170 | v1.25 | yes |
+| 4.19.4 | NOP word from controller | knows word from `PERIPH_STATUS_1` | `EXPANSION_OPCODE` | same; VirtualHostIO no longer remapped | both | yes |
+| 4.19.5 | decode classes | 0 ROM, 1 ctl inline, 2 ctl system, 3 reserved (invalid); unused entries → controller class (builder rule); per-program tables | same | 2 = CSRRW/CSRRS only; unused → class 3 invalid; universal | v1.25 | yes |
+| 4.19.6 | ROM load | mode 9, broadcast by C&C | mode 0 to region 0x04, broadcast by C&C 1 | same; fill 388/512 | v1.2 (path) + v1.25 (fill) | yes |
+| 4.19.7 | rows | 91 opcodes, 85 executed, PEXT contiguous only | same | 94 in rows, 88 executed, PEXT any mask, narrow memory rows, renumbered | v1.25 | yes |
+| 4.19.8 | refill protocol | low-water **live condition** (capacity − occupancy − pending ≥ half); claim by consuming `WAKE_EVENTS` adds half to pending; new expansion credits 128 words; expansion "still has words" test | **counted credits**, depth 2, half a queue each; `PULSE_RUN` sets 2 per queue; each new expansion sets expansion's to 2; replayer returns one per half queue popped; consuming load of replayer `EVENTS` takes one; loop masks out empty streams | same | v1.2 | yes |
+| 4.19.8 | queue ports | mode 9 windows; 32/64-bit = bad peripheral write | region offsets; 32/64-bit = bad write [0] | same | v1.2 | yes |
+| 4.19.8 | overrun | condition 12 | replayer `ERRORS`[1], still counted | same | v1.2 | yes |
+| 4.19.8 | queue clears | at run, in HALT, when controller halts | at run and at the reset; **not** at a trap | same | v1.2 | yes |
+| 4.19.9 | events | service lines [18:13]: code/read/write/expansion low-water (live), new expansion (sticky), done (sticky) | replayer `EVENTS`: [0] run done (d1), [1] DMA done (never), [2] code credit (d2), [3] read-log credit (d2), [4] write-log credit (d2), [5] expansion credit (d2), [6] new expansion (d1) *(Proposed, item 123)* | same | v1.2 | yes |
+| 4.19.9 | words | `PERIPH_STATUS_0` rows run [15:0], next offset [31:16]; `PERIPH_STATUS_1` opcode | word 32 `ROWS_RUN`, 33 `EXPANSION_OFFSET`, 34 `EXPANSION_OPCODE` (D39) | same | v1.2 | yes |
+| 4.19.9 | loop | waits on `DMA_PERIPH_REMAINING` done [3] | waits on refill counter done **and** DMA run done (`EVENTS_REQUIRED`) | + key(EXPANSION_OPCODE) lookup; inlines + CSR only | both | yes |
+| 4.19.9 | template key | — (v1.1/1.2: exact instruction word, per program, ≤128) | same | normalized key, sorted universal index (75 at 821e1bd) | v1.25 | yes |
+| 4.19.9 | EBREAK | controller-fed | same | ROM (with ECALL, MRET) | v1.25 | yes |
+| 4.19.10 | map | 21-bit **word** addr; addr[20:18] window; state 0x00000, stream 0x00004, image 0x00008–0x00107, decode 0x00400–0x007FF, ROM 0x00800–0x00FFF, code queue 0x40000–0x7FFFF, read-log 0x80000–0x9FFFF, write-log 0xA0000–0xBFFFF, expansion 0xC0000–0xFFFFF | **byte** offsets in region 0x04; offset[22:20] part; state 0x000000, stream 0x000010, image 0x000020–0x00041F, decode 0x001000–0x001FFF, ROM 0x002000–0x003FFF, code 0x100000–0x1FFFFF, read-log 0x200000–0x27FFFF, write-log 0x280000–0x2FFFFF, expansion 0x300000–0x3FFFFF | same | v1.2 | yes ("map in byte offsets, parts at [22:20]") |
+| 4.19.10 | bad write | unmapped, wrong size, **128-bit in window 0 off a multiple of 4**, single-ported memory while running, **queue port in HALT** | unmapped, wrong size, single-ported memory while running (misaligned → bad packet at director; HALT gone) | same | v1.2 | partly (the misaligned case moving to the director is implied) |
+| 4.19.10 | ownership | stopped / running / HALT rows | stopped / running | same | v1.2 | yes |
+| 4.19.11 | errors | tile conditions 11 bad periph write, 12 overrun, 13 invalid expansion | replayer `ERRORS` [0] bad write, [1] overrun, [2] invalid expansion → tile [11] *(Proposed, item 123)* | + class 3 meaning | v1.2 | yes |
+| 4.19.11 | halt | HALT/controller halt stops at once | carries on after a trap until reset | same | v1.2 | yes |
+| 4.19.12 | output row | v1.1 | unchanged | word 0 [86] imm_signed; imm for ShiftData; mem fields for 8 memory opcodes | v1.25 | yes |
+| 4.19.13 | contract | LPDDR fetch mode 3 counted `DMA_SRAM_REMAINING` | mode 0 to 0x03 on its own counter; every refill but last exactly half (new rule) | same | v1.2 | yes |
+| 4.19.15 | stream bound | ~8.6 Mbit | ~4.3 Mbit (W3-24, correction); pop past end → `ERRORS`[2] | same; E[15] by every load row | both | yes |
+| 4.20 | UART | every tile, 0x890–0x89C, unwired no-ops; events [21], [22]; HALT doesn't reset it | only in C&C 1's peripheral (words in 8.14); line errors W1C status, never `ERRORS`; events live in peripheral `EVENTS` | same | v1.2 | yes |
+
+### 5, 6, 7 (done)
+
+| sec | what | v1.1 | v1.2 (= v1.25) | in CHANGES? | why |
+|---|---|---|---|---|---|
+| 5 | rows | counters done [9]; CM path modes 6–8; register loads 1 or 2; RUN/HALT `run_latency` | write counters at K; CM path mode 0 to 0x00/0x01; register 2 / table 1; **GO `go_latency`** (new param); error lines `error_latency`; reset → 0x02000000 | yes (5) except load latencies (D45) | D3, D23, D45 |
+| 6.1 | reset/errors | RUN/HALT net, halt per tile, resident loader | no HALT; error end to end; toast pin (latched until reset); one watchdog (`WATCHDOG`, core cycles, restarted by write or `PULSE_GO`); hard/soft reset inputs (soft keeps LVDS, AXI and beyond, LPDDR ctl/PHY; list *(Open, item 124)*); what reset zeroes / leaves undefined / keeps; no reset hold | yes | D21, D23, D34, D35, D36 |
+| 6.2 | boot | resident loader, HALT loads, `PTR[64]` staging | boot ROM exact (5 steps; tile branch tests the event [9] after GO; C&C branch waits for [9] with mask [9]); C&C 1 booted from outside; C&C 2/3 "started"; overlays uncounted, big SRAM always counted; staging by address in A7; `stage_delay` 32 | yes (D22, D31, D36, D37.1, D44 W5-26) | |
+| 6.3 | done/READY/GO | GO from C&C register; READY into C&C | `PULSE_GO` in C&C 1's peripheral (clears READY 0–63, drives GO, restarts watchdog); READY into `READY_LINES`; "all tiles READY" live event with `READY_EXPECT` | yes | D23, D28 |
+| 6.4 | receive phases | `mem_idle` before done | counters only | yes | D18 |
+| 6.5 | block copy | mode 6, `DMA_CM_REMAINING` | mode 0 to 0x00/0x01 on a counter | yes | D6 |
+| 6.6 | controllers | separate C&C design; RUN/HALT and GO registers; receive FIFO; error OR; REPORT | C&C 1–3 tile instances (2 MB big SRAM); chip functions in C&C 1's peripheral; C&C 1 waits `go_latency` + 1 after `PULSE_GO` before a command | yes | D1, D15, D25, D28, D36 |
+| 6.7 | memory system | at C&C's port, src 64; destination kinds; mode 3/6/9 data; mode-8 replies; write tokens + mode-3 streams to C&C | C&C 2's peripheral at dst 65 (tile 1's fifth port); requests name 32-bit destination, data counter, reply counter and reply address; replies mode 0 to the named address; writes by tags into 2–4 KB windows *(Deferred, item 119)*; debug as log files | yes | D23, D25, D33, D40, W5-17 |
+| 7 | memory subsystem | hangs off C&C | C&C 2's peripheral; LPDDR behind AXI survives soft reset | yes | D25, D35 |

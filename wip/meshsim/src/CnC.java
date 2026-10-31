@@ -41,9 +41,6 @@ final class CnC implements Component {
     final Config cfg;
     private final ArrayDeque<Step> steps = new ArrayDeque<>();
     // READY bits
-    private final long[] arrived = new long[64];       // latest READY arrival time per tile (Long.MIN_VALUE: none)
-    private long clearedAt = Long.MIN_VALUE;           // pulses visible before this cycle are cleared
-    private final List<long[]> pendingReady = new ArrayList<>();   // {arrival time, tile}
     // stats
     long gos, runStores, packetsSent, readyWaitCycles;
     long lastGoAt = -1, lastAllReadyAt = -1, lastRunAt = -1;
@@ -62,7 +59,6 @@ final class CnC implements Component {
 
     CnC(Chip chip, Endpoint ep) {
         this.chip = chip; this.ep = ep; this.cfg = chip.cfg;
-        java.util.Arrays.fill(arrived, Long.MIN_VALUE);
         ep.drainedByCnC = true;
     }
 
@@ -80,15 +76,19 @@ final class CnC implements Component {
     long[] rxPop() { long[] e = rxq.poll(); if (e != null) rxReads++; return e; }
 
     // ================================================================ registers
-    void readyPulse(int tile, long tEdge) { pendingReady.add(new long[] { tEdge + cfg.readyLatency, tile }); }
-    boolean ready(int tile, long t) { return arrived[tile] != Long.MIN_VALUE && arrived[tile] >= clearedAt && arrived[tile] <= t; }
-    boolean allReady(long t) { for (int i = 0; i < 64; i++) if (!ready(i, t)) return false; return true; }
-    long readyBits(long t) { long b = 0; for (int i = 0; i < 64; i++) if (ready(i, t)) b |= 1L << i; return b; }
+    // v1.2 (8.14): the READY bits are C&C 1's peripheral's READY_LINES (Chip.cc1p); the model expects all 64 tiles
+    void readyPulse(int tile, long tEdge) { chip.cc1p.readyPulse(tile, tEdge); }
+    boolean ready(int tile, long t) { return chip.cc1p.ready(tile, t); }
+    boolean allReady(long t) { return chip.cc1p.allReady(t); }
+    long readyBits(long t) { return chip.cc1p.readyBits(t); }
     /** A clear stored at t acts at the end of t: every pulse visible at t is cleared; one arriving during t (visible at
-     *  t + 1) is kept. */
-    void clearReady(long t) { clearedAt = t + 1; }
+     *  t + 1) is kept. (PULSE_GO clears them too; RUN, PHASE-2 INTERIM, needs this alone.) */
+    void clearReady(long t) { chip.cc1p.clearReady(t); }
     int lastCommandWord = -1;                          // the command word most recently queued for slot 0 (phase names)
-    void storeGo(long t) {
+    /** C&C 1's PULSE_GO (8.14): clears READY, drives GO, restarts the watchdog. */
+    void storeGo(long t) { chip.cc1p.write(t, Cnc1Peripheral.PULSE_GO, 1); }
+    /** GO's net, driven by the peripheral's PULSE_GO. */
+    void goNet(long t) {
         gos++; lastGoAt = t;
         chip.phases.onGo(t, lastCommandWord);
         for (Tile p : chip.tiles) p.ctl.scheduleGo(t + cfg.goLatency + chip.startSkew[p.idx]);
@@ -107,10 +107,6 @@ final class CnC implements Component {
             ep.received.add(new long[] { t, d, h, hi });
             if (rxq.size() >= cfg.cncRxDepth) { rxOverflow = true; rxLost++; }
             else { rxq.add(new long[] { d, LinkWord.src(h), t, hi, LinkWord.size(h) }); rxTaken++; rxPeak = Math.max(rxPeak, rxq.size()); }
-        }
-        for (int i = pendingReady.size() - 1; i >= 0; i--) {
-            long[] r = pendingReady.get(i);
-            if (r[0] <= t) { arrived[(int) r[1]] = Math.max(arrived[(int) r[1]] == Long.MIN_VALUE ? r[0] : arrived[(int) r[1]], r[0]); pendingReady.remove(i); }
         }
         if (ep.send.refused(t)) { ep.send.retry(t); return; }
         while (!steps.isEmpty()) {

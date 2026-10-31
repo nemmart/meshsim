@@ -70,7 +70,7 @@ public final class CtrlTest {
             T.eq(0xC0C00000 + i, p.sram.peek(0x106), tl + "mode-1 32-bit packet: one chunk");
             T.eq(0, r[29], tl + "STATUS: the idle machine (no run, done and command landed cleared by RUN)"); T.eq(0, p.ctl.conditions, tl + "no errors");
             T.eq(Registers.EVENTS_MASK_RESET, r[30], tl + "EVENTS_MASK = [8] | [7] after HALT -> RUN"); T.eq(0, r[31], tl + "EVENTS_REQUIRED = 0");
-            T.eq(7, r[32], tl + "EVENTS_PEEK: counters 1-3's done events [2:0] still pending (not in the reset mask, so wfi() didn't consume them); counters done consumed");
+            T.eq(7 | 1 << Registers.EV_COMMAND, r[32], tl + "EVENTS_PEEK: counters 1-3's done events [2:0] still pending (not in the reset mask, so wfi() didn't consume them), and command landed (the boot command's: nothing consumes it, 6.2); counters done consumed");
             T.eq(buf + 32, r[33], tl + "modes 1-5 leave ROUTER_ADDR alone");
             T.eq(1 << Registers.ST_DONE, r[34], tl + "STATUS: done after PULSE_DONE, readable the next cycle");
             T.eq(35, r[35], tl + "every step ran");
@@ -131,7 +131,7 @@ public final class CtrlTest {
             T.eq(7, m.word(i, im, "arg1s", 1), "tile " + i + ": phase 1's argument");
             boolean copy = true; for (int j = 0; j < N; j++) if (p.sram.peek64(0x20000 + 2 * j) != ((long) i << 32 | j)) copy = false;
             T.check(copy, "tile " + i + ": the two-command phase's local copy landed");
-            T.eq(5, p.ctl.gos, "tile " + i + ": five GOs");
+            T.eq(6, p.ctl.gos, "tile " + i + ": six GOs (the boot's and five phases')");
         }
         // the start store lies at the same distance from GO on every tile (identical code from WFI)
         long d0 = startAt[0] - goSeen[3][0]; boolean same = true; long skewOk = 0;

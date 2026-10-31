@@ -74,7 +74,7 @@ final class ControllerMemories implements Component {
 
     /** Port A touched data word w (a load or store by the core): the reply there has been consumed. */
     void loaded(int w) { replyUnread[w] = false; if (w == CMD_DWORD) slot0Unread = false; }
-    private boolean slot0Unread;
+    boolean slot0Unread;
     long unreadCommands;
     boolean discardNext; long discardedCommands;     // a harness may discard a pending command by design (simulator only)
     long overwrittenUnread;                 // invariant 8 as a statistic: reply and result words rewritten before the core read them

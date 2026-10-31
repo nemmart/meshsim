@@ -213,6 +213,9 @@ final class TileControl {
         if (goAt == t) {
             done = false; landed = false; gate = false; gos++;
             events |= 1 << Registers.EV_GO;
+            // the boot ROM takes the boot command at this GO; its own load of slot 0 is incidental (it jumps by slot 1), so
+            // the next command may land before it without the command-read check flagging it (6.2, 6.3)
+            if (LinkWord.region(tile.core.pc) == LinkWord.R_BOOTROM) tile.cmem.slot0Unread = false;
             tile.sram.newPhase();
         }
         int clearBits = 0;                                        // clears that beat a same-cycle set of [7] and [6:0]

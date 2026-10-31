@@ -199,7 +199,12 @@ final class CnC implements Component {
      *  tile is READY, GO, and the ROM jumps. */
     CnC runWhenReady() { lastRunAt = -1; return go().call(() -> lastRunAt = lastGoAt); }
     /** The outside world resets the chip (6.1): a step that takes effect at the end of its cycle. */
-    CnC reset(boolean hard) { steps.add((c, t) -> { chip.reset(hard); runStores++; return true; }); return waitCycles(2); }
+    CnC reset(boolean hard) {
+        steps.add((c, t) -> { chip.reset(hard); runStores++; return true; });
+        waitCycles(2);
+        steps.add((c, t) -> { chip.cc1p.expect = -1L; return true; });   // the model's firmware: READY_EXPECT, all 64 tiles (reset to 0)
+        return this;
+    }
     /** After a RUN/HALT store, C&C sends nothing until every tile has seen the line (run_latency + the +1 skew): a packet
      *  in flight across the change breaks invariant 7, and a command landing before HALT -> RUN would be cleared. */
     private CnC lineSettles() { steps.add((c, t) -> t >= lastRunAt + cfg.runLatency + 1); return this; }

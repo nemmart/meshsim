@@ -60,7 +60,7 @@ final class Controller implements Component {
     final int[] x = new int[32];
     int pc = Registers.BOOTROM_BASE;
     int halt = RUN, haltPc, haltInstr, haltAddr;
-    boolean inWfi;
+    boolean inWfi, wfiInRom;
     boolean enabled = true;                 // false: a coreless test machine (the core never runs)
     private int stall;
     // ---- the send-store retry (ROUTER_SEND_32, _64, _128) ----
@@ -95,7 +95,7 @@ final class Controller implements Component {
         if (interruptPending(t) && stall == 0) { inWfi = false; trap(t, CAUSE_EXTERNAL, 0, pc, pc); return; }   // the hard interrupt, WFI included (4.11)
         if (inWfi) {
             if (!ctl.takeWake(t, false)) { cyclesWfi++; return; }
-            inWfi = false; wokeAt = t; wfiLog.add(new long[] { wfiAt, t, ctl.lastWake });
+            inWfi = false; wokeAt = t; if (!wfiInRom) wfiLog.add(new long[] { wfiAt, t, ctl.lastWake });
         }
         if (stall > 0) { stall--; cyclesStalled++; return; }
         step(t);
@@ -257,7 +257,8 @@ final class Controller implements Component {
                 } else if (ins == WFI) {
                     wfiAt = t;
                     if (inHandler && !interruptPending(t)) parked = true;
-                    if (ctl.takeWake(t, true)) { wokeAt = t; wfiLog.add(new long[] { t, t, ctl.lastWake }); } else inWfi = true;
+                    boolean rom = LinkWord.region(ipc) == LinkWord.R_BOOTROM;            // the boot ROM's WFIs aren't the program's (wfiLog)
+                    if (ctl.takeWake(t, true)) { wokeAt = t; if (!rom) wfiLog.add(new long[] { t, t, ctl.lastWake }); } else { inWfi = true; wfiInRom = rom; }
                 } else if (ins == 0x30200073) {                                                   // mret: legal, but every trap is terminal (4.13)
                     ctl.violate(t, "tile " + tile.idx + ": mret: every trap is terminal, the handler never returns (4.13)");
                     next = mepc; mstatus = (mstatus & ~MSTATUS_MIE) | ((mstatus & MSTATUS_MPIE) != 0 ? MSTATUS_MIE : 0) | MSTATUS_MPIE;

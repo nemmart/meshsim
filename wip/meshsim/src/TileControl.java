@@ -177,8 +177,23 @@ final class TileControl {
             reserved(t, "store to the reserved register-block word 0x" + Integer.toHexString(0x800 + 4 * i));
             return true;
         }
+        int defined = definedBits(r);
+        if ((v & ~defined) != 0) violate(t, r.name + " stored with reserved bits set (0x" + Integer.toHexString(v & ~defined) + "): ignored, read 0 (8.1; invariant 21)");
+        if (r == Registers.DMA_RECORD_BASE_ADDRESS && (v & 1) != 0) violate(t, "DMA_RECORD_BASE_ADDRESS 0x" + Integer.toHexString(v) + " not aligned to a record (two chunks; 8.7; invariant 20)");
+        if (r == Registers.SRAM_RD_DEST_ADDR && Registers.HDR_SIZE.get(v) == LinkWord.SIZE_UNDEF) violate(t, "SRAM_RD_DEST_ADDR with the reserved size 11 (8.8; invariant 21)");
         pendIdx = r.index; pendVal = v; pendT = t;
         return true;
+    }
+    /** A store's defined bits per register (8.1-8.10); the rest are reserved or spare (invariant 21). */
+    static int definedBits(Registers.Reg r) {
+        if (r == Registers.PULSE_DONE || r == Registers.PULSE_DMA) return 1;
+        if (r == Registers.EVENTS_MASK || r == Registers.EVENTS_REQUIRED) return Registers.EVENTS_VALID;
+        if (r == Registers.ROUTER_HDR) return 1 | 0xFFF80000;
+        if (r == Registers.DMA_CONFIG) return (1 << 27) - 1;
+        if (r == Registers.DMA_RECORD_BASE_ADDRESS || r == Registers.SRAM_RD_ADDR_QUEUE) return 0x1FFFFF;
+        if (Registers.isCounter(r)) return TrafficDirector.COUNTER_MASK;
+        if (r == Registers.SRAM_RD_DEST_ADDR) return 0x3FFFFF;
+        return -1;
     }
     private void reserved(long t, String m) { reservedAccesses++; violate(t, m + ": reads 0, stores ignored (8.1)"); }
 

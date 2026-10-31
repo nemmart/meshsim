@@ -1,6 +1,2 @@
 # Test sources run_tests.sh leaves out of the build until the phase that rewrites them (WORKER4, meshsim v1.2).
 # One file per line: the file, then why. Delete a line when its file compiles again.
-SortTest.java      sort port: the sort is ported onto the v1.2 simulator after WORKER4
-Inputs.java        sort port (SortTest's inputs)
-SortSummary.java   sort port
-VerifySummary.java sort port

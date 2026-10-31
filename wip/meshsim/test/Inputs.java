@@ -12,7 +12,7 @@ import java.util.Map;
 /**
  * The inputs of a sort run and their SHA-256 hashes. DEV 100 was two kit versions giving
  * different results: the laptop ran an older tile image than the container. Every SortTest log now carries one line
- *   inputs: meshsim.jar=<sha> image/loader.bin=<sha> ... hops.txt=<sha> keys-65536/<set>.keys=<sha>
+ *   inputs: meshsim.jar=<sha> sw/bootrom.hex=<sha> image/sort.code.bin=<sha> ... hops.txt=<sha> keys-65536/<set>.keys=<sha>
  * naming every file the run reads by its kit-relative name, and the kit ships HASHES (sha256sum format, the same names)
  * as the reference set. SortSummary flags runs whose hashes differ from it; run.sh checks the kit itself at the start.
  *
@@ -21,8 +21,9 @@ import java.util.Map;
  *   java Inputs check [HASHES]          every file in HASHES that exists here must match; exit 1 if one differs
  */
 final class Inputs {
-    /** The tile image's files, in a fixed order (the kit's image/ directory). */
-    static final String[] IMAGE = { "loader.bin", "sort.code.bin", "sort.data.bin", "sort.ovinit.bin", "sort.stage.bin", "sort.sym" };
+    /** The tile image's files, in a fixed order (the kit's image/ directory). v1.2 (WORKER8): one image, no overlays; the
+     *  boot ROM's image is meshsim's (sw/bootrom.hex, read from the working directory by Controller.bootRom). */
+    static final String[] IMAGE = { "sort.code.bin", "sort.data.bin", "sort.sym" };
 
     static String sha256(Path p) throws IOException {
         try (InputStream in = Files.newInputStream(p)) {
@@ -49,6 +50,7 @@ final class Inputs {
         Map<String, String> m = new LinkedHashMap<>();
         Path j = jar();
         m.put("meshsim.jar", j == null ? "(classes)" : hash(j));
+        m.put("sw/bootrom.hex", hash(Path.of("sw", "bootrom.hex")));
         for (String f : IMAGE) m.put("image/" + f, hash(build.resolve(f)));
         m.put("hops.txt", hash(Path.of("hops.txt")));
         if (keys != null) {

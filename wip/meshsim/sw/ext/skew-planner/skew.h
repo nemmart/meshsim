@@ -69,9 +69,9 @@ enum { KIND_K = 0, KIND_V = 1 };          /* keys (64-bit, period 4), values (12
 /* ---- the hardware tables the planner writes (patch: worker 6, 3 Oct 2026, with the lead's agreement) ----
  * The planner only ever WRITES STREAM, the GROUP low words (R) and PTR, through the four HW_* macros below.
  *   -DSKEW_HW_SHADOW  (the host harness and its RV32 cycle-count image): into a shadow HW in the Tile, as before.
- *   otherwise         (the tile, the sort program): straight into the table window (mesh.h, spec 4.10). The shadow
- *                     (3,336 B) would not fit in data memory; the caller must hold the table-access rule (the address
- *                     generator not running, ts_busy = 0) around every planner call that writes tables.
+ *   otherwise         (the tile, the sort program): straight into the table window (mesh.h 1.2, spec 4.10). The
+ *                     caller must hold the table-access rule around every planner call that writes tables: the tile's
+ *                     run and the arrivals that update PTR are done (v1.2: waited for by events, D17).
  * sram_remaining and augment_base stay fields in both builds: the phase code loads them into the registers. */
 #ifdef SKEW_HW_SHADOW
 typedef struct {
@@ -91,12 +91,12 @@ typedef struct {
     uint32_t sram_remaining;
     uint32_t augment_base;
 } HW;
-/* 26n (mesh.h 1.1): STREAM is three arrays. HW_STREAM3 writes a stream's source, destination and count words;
- * HW_STREAM_HI (a count word only) zeroes a stream: count 0 sends nothing. */
+/* mesh.h 1.2 (v1.2 port: WORKER8): STREAM is three arrays. HW_STREAM3 writes a stream's source, destination and count
+ * words; HW_STREAM_HI (a count word only) empties a stream: count 0 sends nothing. */
 #define HW_STREAM3(T, s, src, dest, cnt)  ((void)(T), set_stream((s), (src), (dest), (cnt)))
-#define HW_STREAM_HI(T, s, hi)   ((void)(T), STREAM_COUNT[s] = (hi))
-#define HW_GROUP_R(T, g, R)   ((void)(T), GROUP[2 * (g)] = (R))
-#define HW_PTR(T, i, v)        ((void)(T), PTR[i] = (v))
+#define HW_STREAM_HI(T, s, hi)   ((void)(T), tables->STREAM_COUNT[s] = (hi))
+#define HW_GROUP_R(T, g, R)   ((void)(T), tables->GROUP[g][0] = (R))
+#define HW_PTR(T, i, v)        ((void)(T), tables->PTR[i] = (v))
 #endif
 
 typedef struct {
@@ -190,20 +190,29 @@ static inline void write_stream_hi(Tile *T, uint32_t stream, uint32_t src, uint3
 /* the packet mode of a hop-2 stream (design v1.0 numbering): 4 augmented for the keys of the 128-bit format, else 2 */
 static inline uint32_t hop2_mode(const Tile *T, uint32_t kind) { return 2u + 2u * ((T->nkind - 1u) & ~kind & 1u); }   /* nkind 1 or 2, kind 0 (K) or 1 (V) */
 #else
-/* the tile (mesh.h 1.1, spec 26n): three words per stream. mode is mesh.h's (MODE_SRC or MODE_AUGMENT); kind 0 keys
- * (64-bit), 1 values (128-bit). STREAM_DEST is d alone (the modes here carry no addr). */
+/* the tile (mesh.h 1.2, spec 4.2): three words per stream. mode is mesh.h's (MODE_SRC or MODE_AUGMENT); kind 0 keys
+ * (64-bit), 1 values (128-bit). STREAM_DEST is 0 (modes 1-3 ignore it); d is in STREAM_COUNT; every packet counts on
+ * counter 1 at its receiver (CONVENTIONS 5). */
 static inline void write_stream(Tile *T, uint32_t stream, uint32_t src, uint32_t count, uint32_t d, uint32_t kind, uint32_t mode)
 {
-    HW_STREAM3(T, stream, STREAM_SRC_ADDR(src), STREAM_DEST_D(d), STREAM_COUNT_ENTRY(count, mode, kind ? SIZE_128 : SIZE_64, 0));
+    HW_STREAM3(T, stream, STREAM_SRC_W(src, 0), 0, STREAM_COUNT_W(count, kind ? SIZE_128 : SIZE_64, CTR_SRAM, mode, d));
 }
-/* the count word's mode and read size as one constant (stream_hi_fixed), for loops that hold it */
-static inline uint32_t stream_hi_fixed(uint32_t mode, uint32_t kind) { return STREAM_COUNT_ENTRY(0, mode, kind ? SIZE_128 : SIZE_64, 0); }
+/* the count word's read size, counter and mode as one constant (stream_hi_fixed), for loops that hold it */
+static inline uint32_t stream_hi_fixed(uint32_t mode, uint32_t kind) { return STREAM_COUNT_W(0, kind ? SIZE_128 : SIZE_64, CTR_SRAM, mode, 0); }
 static inline void write_stream_hi(Tile *T, uint32_t stream, uint32_t src, uint32_t count, uint32_t d, uint32_t hi0)
 {
-    HW_STREAM3(T, stream, STREAM_SRC_ADDR(src), STREAM_DEST_D(d), STREAM_COUNT_N(count) | hi0);
+    HW_STREAM3(T, stream, STREAM_SRC_W(src, 0), 0, STREAM_COUNT_W(count, 0, 0, 0, d) | hi0);
 }
 /* the packet mode of a hop-2 stream: the keys of the 128-bit format are augmented (MODE_AUGMENT), else MODE_SRC */
 static inline uint32_t hop2_mode(const Tile *T, uint32_t kind) { return MODE_SRC + (MODE_AUGMENT - MODE_SRC) * ((T->nkind - 1u) & ~kind & 1u); }
+#endif
+/* the write-by-source mode in each build's numbering (v1.2 port, WORKER8): design v1.0's 2 for the host shadow (its
+ * expected results are in that numbering), mesh.h 1.2's MODE_SRC = 1 on the tile, where 2 is now the bucket write.
+ * Hop 1's streams (TH and BT) and the empty streams (EMPTY_HI, skew_bt.c) use it. */
+#ifdef SKEW_HW_SHADOW
+#define SK_MODE_SRC 2u
+#else
+#define SK_MODE_SRC MODE_SRC
 #endif
 uint32_t stage_addr(uint32_t pos, uint32_t kind);        /* staging index -> chunk address */
 extern const uint8_t GROUP_OFF[64];                      /* stream 4g+i -> offset */

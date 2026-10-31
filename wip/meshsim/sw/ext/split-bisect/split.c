@@ -21,7 +21,9 @@
  *       is fixed at 32 (lead, 3 Oct).
  * Then barrier; XA (32-bit replies): owner q sends c[p][q] to tile p.
  * Spec 2026-10-26n: replies land by source in the reply block (REPLY[2 s]), so each exchange's words are read there
- * (or copied out) before the next exchange, which a barrier guarantees; read-port results count in DMA_CM_REMAINING.
+ * (or copied out) before the next exchange, which a barrier guarantees.
+ * v1.2 (WORKER8): a reply is a mode-0 write to REPLY_WORD(me) in the receiver, sent with ROUTER_ADDR set once per
+ * exchange and the no-increment bit, counted on counter 3; read-port results are counted on counter 2.
  */
 #include "split.h"
 #include "split_regs.h"
@@ -68,14 +70,15 @@ static uint32_t got[64];
 /* owner side: ub at the last probe below, lb at the last probe above, the cuts */
 static uint32_t ubA[64], lessB[64], cq[64];
 
-/* The barrier (patch, worker 8, 3 Oct 2026, lead's agreement): by default worker 4's own (done, WFI); a caller may
- * supply its own with -DSPLIT_BARRIER=fn, a function of no arguments that pulses done, WFIs and reads the command word
- * in command slot 0, as mesh.h's wait_for_command() does (lead, 3 Oct: every wake from a command reads slot 0). */
+/* The barrier (patch, worker 8, 3 Oct 2026, lead's agreement): by default worker 4's own (done, WFI; v1.2:
+ * wait_for_command(), which also consumes GO); a caller may supply its own with -DSPLIT_BARRIER=fn, a function of no
+ * arguments that pulses done, WFIs and reads the command word in command slot 0, as mesh.h's wait_for_command() does
+ * (lead, 3 Oct: every wake from a command reads slot 0). */
 #ifdef SPLIT_BARRIER
 void SPLIT_BARRIER(void);
 static void barrier(void) { SPLIT_BARRIER(); }
 #else
-static void barrier(void) { TILE_PULSE = TILE_PULSE_DONE; wfi(); }
+static void barrier(void) { (void)wait_for_command(); }
 #endif
 
 /* The spec 4.3 search loop over the m searches in s_* (s_lo = plo, s_len = the
@@ -99,21 +102,21 @@ static uint8_t s_cnt[34], s_ord[64];
  * search steps; s_base[i] ends as the bound. */
 static uint32_t step_loop(uint32_t kmax, const uint8_t *cnt, uint32_t run, int upper)
 {
-    uint32_t steps = 0, act = 0, gw = SR_RD_DEST32(CM_WORD(got));
+    uint32_t steps = 0, act = 0, gw = SR_RD_DEST32(got);
     TRACE(0x600);
     for (uint32_t k = kmax; k >= 1; k--) {
         uint32_t h = 1u << (k - 1), old = act;
         act += cnt[k];
-        DMA_CM_REMAINING = act;                                  /* a write adds: the count is 0 here */
-        SRAM_RD_DEST_ADDR = gw;
+        tile->WRITE_COUNTER[CTR_CM - 1] = act;                   /* a store adds: the count is 0 here */
+        tile->SRAM_RD_DEST_ADDR = gw;
         uint32_t a = run + ((h - 1) << 1);
         const uint32_t *bp = s_base, *b4 = s_base + (act & ~3u), *be = s_base + act;
         for (; bp != b4; bp += 4) {                              /* issue, unrolled by 4 */
-            SRAM_RD_ADDR_QUEUE = a + (bp[0] << 1); SRAM_RD_ADDR_QUEUE = a + (bp[1] << 1);
-            SRAM_RD_ADDR_QUEUE = a + (bp[2] << 1); SRAM_RD_ADDR_QUEUE = a + (bp[3] << 1);
+            tile->SRAM_RD_ADDR_QUEUE = a + (bp[0] << 1); tile->SRAM_RD_ADDR_QUEUE = a + (bp[1] << 1);
+            tile->SRAM_RD_ADDR_QUEUE = a + (bp[2] << 1); tile->SRAM_RD_ADDR_QUEUE = a + (bp[3] << 1);
         }
-        for (; bp != be; bp++) SRAM_RD_ADDR_QUEUE = a + (bp[0] << 1);
-        wfi();
+        for (; bp != be; bp++) tile->SRAM_RD_ADDR_QUEUE = a + (bp[0] << 1);
+        sr_wait();
         steps += act;
         uint32_t *b = s_base;
         const uint32_t *g = got, *kk = s_k, *g4 = got + (old & ~3u), *go = got + old;
@@ -207,13 +210,13 @@ static uint32_t count_round(const volatile uint32_t *pv, uint32_t run, uint32_t 
         TRACE(0x600);
         uint32_t last = run + ((n_me - 1) << 1);
         if (m) {
-        DMA_CM_REMAINING = m;
-        SRAM_RD_DEST_ADDR = SR_RD_DEST32(CM_WORD(got));
+        tile->WRITE_COUNTER[CTR_CM - 1] = m;
+        tile->SRAM_RD_DEST_ADDR = SR_RD_DEST32(got);
         for (uint32_t i = 0; i < m; i++) {
             uint32_t a = run + (s_base[i] << 1);
-            SRAM_RD_ADDR_QUEUE = a < last ? a : last;
+            tile->SRAM_RD_ADDR_QUEUE = a < last ? a : last;
         }
-        wfi();
+        sr_wait();
         }
         TRACE(0x601);
         steps += m;
@@ -264,16 +267,17 @@ static void tie(const volatile uint32_t *lbv, const volatile uint32_t *ubv, uint
 void split_get_cuts(uint32_t run, uint32_t n_me, uint32_t shaped, uint32_t c[65], uint32_t n[64])
 {
     uint32_t me = ME();
-    while (SRAM_RD_ADDR_QUEUE < 64) ;                           /* spec 4.3: once, before the first step */
+    while (tile->SRAM_RD_ADDR_QUEUE < READ_PORT_DEPTH) ;         /* spec 4.3: once, before the first step */
 
     /* n[]: every tile's run length */
-    DMA_REPLY_REMAINING = 64;
+    tile->WRITE_COUNTER[CTR_REPLY - 1] = 64;
+    tile->ROUTER_ADDR = REPLY_WORD(me);
     for (uint32_t s = 0; s < 64; s++) {
         uint32_t dst = (me + SCHED[s]) & 63;
-        ROUTER_SET_HDR = ROUTER_HDR(dst, SR_MODE_REPLY, 0);
-        ROUTER_SEND_32 = n_me;
+        tile->ROUTER_HDR = SR_HDR(dst);
+        tile->ROUTER_SEND_32 = n_me;
     }
-    wfi();
+    sr_wait();
     for (uint32_t p = 0; p < 64; p++) n[p] = RB[2 * p];
     TRACE(0x100);
     uint32_t N = 0, acc = 0, R = 0, k0 = 0;
@@ -293,7 +297,7 @@ void split_get_cuts(uint32_t run, uint32_t n_me, uint32_t shaped, uint32_t c[65]
     for (uint32_t s = 0; s < 64; s++) {
         uint32_t dst = (me + SCHED[s]) & 63;
         so[s] = (uint8_t)dst;
-        hp[s] = ROUTER_HDR(dst, SR_MODE_REPLY, 0);
+        hp[s] = SR_HDR(dst);
     }
     uint32_t lo = 0, hi = 0xFFFFFFFFu, done = trivial[me], last = 0;
     uint32_t lo_known = 1, hi_known = 1;                         /* ubA / lessB hold lo's lb / hi + 1's lb */
@@ -305,16 +309,17 @@ void split_get_cuts(uint32_t run, uint32_t n_me, uint32_t shaped, uint32_t c[65]
     if (!shaped) {
         uint32_t *mine = got;                                    /* free until round 1 */
         if (n_me) {
-            DMA_CM_REMAINING = 64;
-            SRAM_RD_DEST_ADDR = SR_RD_DEST32(CM_WORD(mine));
+            tile->WRITE_COUNTER[CTR_CM - 1] = 64;
+            tile->SRAM_RD_DEST_ADDR = SR_RD_DEST32(mine);
             uint32_t acc = 0;
-            for (uint32_t q = 0; q < 64; q++, acc += n_me) SRAM_RD_ADDR_QUEUE = run + ((acc >> 6) << 1);
-            wfi();
+            for (uint32_t q = 0; q < 64; q++, acc += n_me) tile->SRAM_RD_ADDR_QUEUE = run + ((acc >> 6) << 1);
+            sr_wait();
         }
         barrier();
-        DMA_REPLY_REMAINING = 64;
-        for (uint32_t s = 0; s < 64; s++) { ROUTER_SET_HDR = hp[s]; ROUTER_SEND_32 = mine[so[s]]; }
-        wfi();
+        tile->WRITE_COUNTER[CTR_REPLY - 1] = 64;
+        tile->ROUTER_ADDR = REPLY_WORD(me);
+        for (uint32_t s = 0; s < 64; s++) { tile->ROUTER_HDR = hp[s]; tile->ROUTER_SEND_32 = mine[so[s]]; }
+        sr_wait();
         if (!done) {
             uint32_t mn = 0xFFFFFFFFu, mx = 0;
             for (uint32_t p = 0; p < 64; p++) {
@@ -348,29 +353,32 @@ void split_get_cuts(uint32_t run, uint32_t n_me, uint32_t shaped, uint32_t c[65]
         barrier(); nb++;
         /* probe exchange */
         if (!done) last = lo + ((hi - lo) >> 1);
-        DMA_REPLY_REMAINING = 64;
+        tile->WRITE_COUNTER[CTR_REPLY - 1] = 64;
+        tile->ROUTER_ADDR = REPLY_WORD(me);
         for (const uint32_t *h = hp, *e = hp + 64; h != e; h += 4) {     /* unrolled by 4 */
-            ROUTER_SET_HDR = h[0]; ROUTER_SEND_32 = last; ROUTER_SET_HDR = h[1]; ROUTER_SEND_32 = last;
-            ROUTER_SET_HDR = h[2]; ROUTER_SEND_32 = last; ROUTER_SET_HDR = h[3]; ROUTER_SEND_32 = last;
+            tile->ROUTER_HDR = h[0]; tile->ROUTER_SEND_32 = last; tile->ROUTER_HDR = h[1]; tile->ROUTER_SEND_32 = last;
+            tile->ROUTER_HDR = h[2]; tile->ROUTER_SEND_32 = last; tile->ROUTER_HDR = h[3]; tile->ROUTER_SEND_32 = last;
         }
-        wfi();
+        sr_wait();
         TRACE(0x200 | r);
         split_steps[r] = count_round(RB, run, n_me, r == 1);
         TRACE(0x300 | r);
         if (!nalist) break;                                      /* every owner has sent its done marker */
         barrier(); nb++;
-        /* counts exchange: one 64-bit reply (lb, ub) per owner, landing at REPLY[2 me], REPLY[2 me + 1] there */
-        DMA_REPLY_REMAINING = 64;
+        /* counts exchange: one 64-bit reply (lb, ub) per owner, landing at REPLY[2 me], REPLY[2 me + 1] there
+         * (REPLY_WORD(me) is 8-byte aligned, D26) */
+        tile->WRITE_COUNTER[CTR_REPLY - 1] = 64;
+        tile->ROUTER_ADDR = REPLY_WORD(me);
         /* to owners whose probe was a done marker: stale, ignored.  Unrolled by 4;
          * hp[s] = the header, so[s] = the owner's word offset */
         for (uint32_t s = 0; s < 64; s += 4) {
             uint32_t o0 = so[s], o1 = so[s + 1], o2 = so[s + 2], o3_ = so[s + 3];
-            ROUTER_SET_HDR = hp[s];     ROUTER_SET_W0 = tlb[o0];  ROUTER_SEND_64 = tub[o0];
-            ROUTER_SET_HDR = hp[s + 1]; ROUTER_SET_W0 = tlb[o1];  ROUTER_SEND_64 = tub[o1];
-            ROUTER_SET_HDR = hp[s + 2]; ROUTER_SET_W0 = tlb[o2];  ROUTER_SEND_64 = tub[o2];
-            ROUTER_SET_HDR = hp[s + 3]; ROUTER_SET_W0 = tlb[o3_]; ROUTER_SEND_64 = tub[o3_];
+            tile->ROUTER_HDR = hp[s];     tile->ROUTER_SET_W0 = tlb[o0];  tile->ROUTER_SEND_64 = tub[o0];
+            tile->ROUTER_HDR = hp[s + 1]; tile->ROUTER_SET_W0 = tlb[o1];  tile->ROUTER_SEND_64 = tub[o1];
+            tile->ROUTER_HDR = hp[s + 2]; tile->ROUTER_SET_W0 = tlb[o2];  tile->ROUTER_SEND_64 = tub[o2];
+            tile->ROUTER_HDR = hp[s + 3]; tile->ROUTER_SET_W0 = tlb[o3_]; tile->ROUTER_SEND_64 = tub[o3_];
         }
-        wfi();
+        sr_wait();
         TRACE(0x400 | r);
         if (done) continue;
         /* owner update: sum lb; sum ub only when it decides something (L < R) */
@@ -410,13 +418,14 @@ void split_get_cuts(uint32_t run, uint32_t n_me, uint32_t shaped, uint32_t c[65]
     while (nb < 2 * SPLIT_ROUNDS) { barrier(); nb++; }           /* the rounds not needed: barriers only */
     barrier();
     /* XA: owner me sends c[p][me] to tile p */
-    DMA_REPLY_REMAINING = 64;
+    tile->WRITE_COUNTER[CTR_REPLY - 1] = 64;
+    tile->ROUTER_ADDR = REPLY_WORD(me);
     for (uint32_t s = 0; s < 64; s++) {
         uint32_t dst = (me + SCHED[s]) & 63;
-        ROUTER_SET_HDR = ROUTER_HDR(dst, SR_MODE_REPLY, 0);
-        ROUTER_SEND_32 = cq[dst];
+        tile->ROUTER_HDR = SR_HDR(dst);
+        tile->ROUTER_SEND_32 = cq[dst];
     }
-    wfi();
+    sr_wait();
     for (uint32_t q = 0; q < 64; q++) c[q] = RB[2 * q];
     c[64] = n_me;
     TRACE(0x500);

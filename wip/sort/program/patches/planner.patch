@@ -1,6 +1,6 @@
---- sort/skew/planner/skew.h	2026-10-27 11:01:58.344198859 +0000
-+++ meshsim/sw/ext/skew-planner/skew.h	2026-10-27 11:01:58.345386546 +0000
-@@ -222,6 +222,7 @@
+--- sort/skew/planner/skew.h
++++ meshsim/sw/ext/skew-planner/skew.h
+@@ -231,6 +231,7 @@
  void bt_force(Tile *T, uint32_t L);                      /* harness: a given L at the z-formula's w */
  void bt_sweep_init(Tile *T);
  void bt_sweep_cell(Tile *T, uint32_t pass, uint32_t t);  /* uses and updates the token u.sw.cmask */
@@ -8,20 +8,21 @@
  void bt_sweep_done(Tile *T);                             /* own L1, the cell order */
  void bt_desc(Tile *T, uint32_t layer);                   /* u.desc_out[m] for one step-1 layer */
  void bt_held_stats(Tile *T);                             /* own L1, R1; at m: L2, R2, staging */
---- sort/skew/planner/skew_bt.c	2026-10-27 11:01:58.344167392 +0000
-+++ meshsim/sw/ext/skew-planner/skew_bt.c	2026-10-27 11:01:58.345351879 +0000
-@@ -16,6 +16,10 @@
+--- sort/skew/planner/skew_bt.c
++++ meshsim/sw/ext/skew-planner/skew_bt.c
+@@ -16,6 +16,11 @@
   */
  #include "skew.h"
  
-+/* An empty stream (patch: worker 8, M7): count 0 with a valid mode (2) and the kind's read size. A count word of 0 has
-+ * mode 0, which the machine rejects (spec 4.2; the simulator flags it) even at count 0. */
-+#define EMPTY_HI(kind) stream_hi_fixed(2u, (kind))
++/* An empty stream (patch: worker 8, M7; v1.2: WORKER8): count 0 with a valid mode (write by source) and the kind's read
++ * size. v1.1 rejected a count word of 0 (mode 0) even at count 0. v1.2's mode 0 is valid, but write by source is the
++ * mode the phase's other streams use (modes 1 and 3 may share a phase; 2 never shares one with them, RECIPES 5). */
++#define EMPTY_HI(kind) stream_hi_fixed(SK_MODE_SRC, (kind))
 +
  static inline uint32_t mulhu(uint32_t a, uint32_t b)
  {
      return (uint32_t)(((uint64_t)a * b) >> 32);
-@@ -121,14 +125,18 @@
+@@ -121,14 +126,18 @@
      T->pcur = 0;
  }
  
@@ -42,7 +43,7 @@
      uint8_t *r = T->r, *pm = T->piece_m + T->pcur;
      uint32_t m0 = (me + d) & 63, sh = m0 & 31, v = 0;
      T->pcur += k;
-@@ -205,7 +213,7 @@
+@@ -205,7 +214,7 @@
      uint32_t base = kind ? A5 : A3, scale = kind ? 4 : 2;
      uint8_t *r = T->r;
      const uint8_t *pm = T->piece_m;
@@ -51,7 +52,7 @@
      for (int m = 0; m < NT; m++) r[m] = 0;
      for (uint32_t c = 0; c < T->ncell; c++) {
          uint32_t d = T->v.order[c], k = T->kc[d] + 1u, src = base + scale * T->rowpos[d];
-@@ -304,7 +312,7 @@
+@@ -304,7 +313,7 @@
       * per held entry (meshsim M12, DEV 125) */
      const uint32_t hi0 = stream_hi_fixed(hop2_mode(T, kind), kind);
      uint16_t *out = T->u.h2.out2;

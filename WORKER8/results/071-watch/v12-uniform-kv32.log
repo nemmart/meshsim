@@ -1,0 +1,26 @@
+inputs: meshsim.jar=a2aebd6cdd4f7747f74d3e49fcad0836875f11830756bfe3293e9d0de9e48221 image/loader.bin=8e4b8898df976fe97f1871cbbf57cd380bfd38180890234014a014ea273552eb image/sort.code.bin=60060d9cf9447de464764d4905f19e16f955abedb17784b7ffe25da912ca9437 image/sort.data.bin=412d9f3fa18dac9d629472b3935d12acd529a0725f39f848ae270d71fc5c31f7 image/sort.sym=b46445aa2230f47f1b296fbccf101f985a03f3da1fbf6d891bf6f8336c654750 hops.txt=a3b90f3c2fbc64f1a93c8c0ff916cfbaf40823aae38c4540811482873741d3da
+sort uniform-kv32 32-bit values [meas: SortTest]: path direct; steps (GO -> next GO): L1 334,383; SPLIT 207,020; XB 7,846; RED 5,005; K 71,504; L2 268,334; 14 empty commands 700
+    TOTAL 894,792 cycles (L1 GO -> L2 all READY; real split), of which C&C turnaround 85; ready_latency 8; direct-path bound 4*sum(R) = 71,416; GATHER queue peak 0 of 16; stack headroom 20540 B
+    address generator: 0 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
+    M14: zero-length groups 0 (summed over tiles), of which with a gap 0 (1 + gap since 10 October); group-run stall cycles 0 (drift)
+    watch in L1 (cycles per tile: mean / max):
+    watch in SPLIT (cycles per tile: mean / max): split_get_cuts 117,252 / 120,808; step_loop 53,541 / 55,050; place 26,243 / 26,346; sort_barrier 9,941 / 17,787;
+    watch in XB (cycles per tile: mean / max):
+    watch in RED (cycles per tile: mean / max):
+    watch in XC (cycles per tile: mean / max):
+    watch in TH (cycles per tile: mean / max):
+    watch in SWEEP (cycles per tile: mean / max):
+    watch in DESC (cycles per tile: mean / max):
+    watch in K (cycles per tile: mean / max):
+    watch in K1.0 (cycles per tile: mean / max):
+    watch in K1.1 (cycles per tile: mean / max):
+    watch in K1.2 (cycles per tile: mean / max):
+    watch in K1.3 (cycles per tile: mean / max):
+    watch in K1.4 (cycles per tile: mean / max):
+    watch in K2.0 (cycles per tile: mean / max):
+    watch in K2.1 (cycles per tile: mean / max):
+    watch in K2.2 (cycles per tile: mean / max):
+    watch in K2.3 (cycles per tile: mean / max):
+    watch in K2.4 (cycles per tile: mean / max):
+    watch in L2 (cycles per tile: mean / max):
+SortTest: 10 passed, 0 failed

@@ -3,8 +3,8 @@
 Branch `v1.2-sort`, from `v1.2-meshsim` at `e7a2106` (phase 2's last commit; owner's choice). Status: the sort builds and
 passes every suite `run_tests.sh` gives it on the v1.2 simulator (P1, the ten built-in sets in fixed and shuffled
 child order, forced BT at 16,384 in both formats), and **all 43 full-size P4 runs on the Quest runner (task 070), each
-on v1.1's path.** Still open: the per-function watches of task 071 (SPLIT's and BT's remaining differences) and
-`run_tests.sh`'s full-mode extras (WORKER4's suites) on this branch (NOTES.md).
+on v1.1's path.** Per-step differences measured and explained (task 071), except `split_get_cuts`' own −1.3K to −1.9K (waiting
+time, located but not itemised). Still open: `run_tests.sh`'s full-mode extras (WORKER4's suites) on this branch.
 
 ## Ownership (agreed with the owner, 2026-10-31)
 
@@ -95,8 +95,13 @@ Mean change per step, by path (v1.2 − v1.1, cycles):
   (v1.1's 405-cycle overlay load and 2,349-cycle `zero_planner()`, both gone) and pays ≈ 6 cycles per read-port search
   step on the critical path (K = 8 against v1.1's landing at cm_latency 2: WORKER4's SearchBench, +97 per step band;
   spec 4.7 notes it as deliberate). The skewed sets that take BT need more search steps per round, so the step cost
-  outweighs the constant there. **Partial:** direct's −3,199 exceeds the constant, so something else in the split
-  saves ≈ 450+ there; to measure (the split's functions under `-Dsort.watch`, both versions).
+  outweighs the constant there. **Measured (Quest task 071, `-Dsort.watch`, both versions, full size; mean cycles per
+  tile):** uniform kv32 SPLIT 211,001 → 207,020 (−3,981) = the constant −2,754 + `split_get_cuts`' own −1,906 +
+  `step_loop` +592 + `sort_barrier` +98 + `place` 0 (sum −3,970); trace100-30 kv32 SPLIT 364,198 → 364,695 (+497) =
+  −2,754 − 1,341 + 3,569 (`step_loop`: many more search steps) + 1,033 (`sort_barrier`). **Not itemised:**
+  `split_get_cuts`' own −1,341 to −1,906. Its register accesses are the same in both builds (7 event loads, the same
+  send and counter stores), so the difference is time spent waiting inside it (its exchanges and its inlined read
+  batches) rather than code; a per-phase pc histogram would locate it.
 - **RED** −578 where stage 2 runs (v1.1's 552-cycle overlay load for TH's image), else −108 to +19.
 - **TH (the command)** −617 on BT (v1.1's 597-cycle overlay load for BTPLAN).
 - **BT:** SWEEP +298 (one `ROUTER_ADDR` store per token and per credit, 2 × 127 rounds + the header shifts), DESC
@@ -118,13 +123,19 @@ Mean change per step, by path (v1.2 − v1.1, cycles):
   explicit zero `STREAM_DEST` store), and v1.1's `wait_tables()` poll gone (about −5); +315 predicted, +306 measured.
   The stream loop's 1,855 cycles on v1.2 equal its static count (64 × (25 instructions + 2 taken branches)).
 - **RED +62:** `config_direct_lb` +83 (the same table-store code generation, 16 groups), `tree_reduce` −19.
-- **BT's steps (kv32: DESC +1,297 net, K1.0-K2.1 +190 to +500; k128: K2.2 +926):** consistent with the same
+- **BT's steps, measured (task 071; only functions whose v1.1 overlay is loaded in the step are comparable):**
+  K1.0, K1.1 (and V1.0, V1.1) +193 = `bt_hop1_m` +190 (64 PTRs) + `bt_phase` +2; K1.2 +432 = `bt_hop2_d` +190 +
+  `bt_hop2_m` +171 + `bt_phase` +68; K2.0 +422 and K2.1 +497 = the same three, +427 and +485; k128's K2.2 +926 =
+  `bt_hop1_src` +750 (V1.0's streams) + `bt_hop1_m` +190; each kind's last layer +1 (no configure in its tail). DESC's
+  +1,297 (net of v1.1's 418-cycle overlay load) isn't directly comparable (v1.1 swaps BTPLAN for BTRUN mid-step), but
+  rebuilds from the measured per-call costs: `bt_hop1_src` +750, `bt_hop1_m` +190, `bt_first`'s 64 GROUP words
+  (≈ +190) and the dst shift on 64 × (L + 1) descriptor sends (+256): ≈ +1,386. Logs: `WORKER8/results/071-watch/`.
+- **BT's steps, the cause:** the same
   table-store code generation in the planner's table writers, which are 2-8 instructions longer on v1.2 (`bt_hop1_m`
   88 → 93, `bt_hop1_src` 176 → 182, `bt_hop2_d` 52 → 54, `th_hop2` 140 → 146; the PTR or STREAM store indexed from
   0xFFFF2000, plus *d*'s shift), about 2 cycles per PTR or stream written: each layer's tail configures the next
   (`bt_hop1_m`/`bt_hop2_d`, 64 PTRs), K2.2's tail runs `bt_hop1_src` for V1.0 (up to 256 streams), DESC's tail runs
-  `bt_first` (64 GROUP words) and K1.0's configure, and DESC's 64 × (L + 1) sends each take the dst shift. **To
-  measure** with `-Dsort.watch` on the 16K runs, both versions (NOTES).
+  `bt_first` (64 GROUP words) and K1.0's configure, and DESC's 64 × (L + 1) sends each take the dst shift.
 - **A model difference, not the program's:** in v1.1 a load through the table window (`HIST`, the prefix sums) took
   the register-load latency, 2 cycles; in v1.2 a table-window load takes 1 (`Controller.java`'s header, both
   versions). Every prefix sum (256 `HIST` loads per bucket pass, 4 passes in L1 and in L2) gains from it.

@@ -80,3 +80,31 @@ in `opcode-map.txt`: removed `VirtualAssertHalfwordAlignment` 112, `VirtualAsser
 
 **For the v1.1 reader:** the whole replayer section is "both" (v1.2 rewrote its interface: peripheral window, credits,
 region, ERRORS; v1.25 rewrote its row content). Need the v1.1 → v1.2 pass on 4.19 to separate them.
+
+## Pass B: v1.1 → v1.2, section by section
+
+### Front matter, 1, 2, 2.1, 2.2 (done)
+
+| what | v1.1 | v1.2 (= v1.25) | in CHANGES-v1.2? | why |
+|---|---|---|---|---|
+| "who checks what" (hardware vs meshsim) | — | stated once in front matter | yes (front matter) | D27 |
+| Packet | 32/64/128-bit payload + header, 169-bit word | same payloads, in one 256-bit link word | yes (3.1) | D2 |
+| Addresses | 21-bit chunk addresses everywhere | 32-bit byte addresses in packets and the core's map; 21-bit chunks only inside engines (`STREAM_SRC`, `PTR`, `SRAM_RD_ADDR_QUEUE`, `DMA_RECORD_BASE_ADDRESS`); packet addr of chunk c = `0x03000000 \| c << 2` | yes | D5, D26 |
+| Alignment | (spanning allowed) | natural alignment for 64/128-bit, every region | yes | D26 |
+| Register name prefixes | `TILE_`, `WAKE_`, `PERIPH_`, `SENDER_`, `UART_` … | `PARAMS`/`STATUS`/`ERRORS`, `PULSE_`, `EVENTS_`, `ROUTER_`, `REQUEST_`, `DMA_`, `WRITE_COUNTER_`, `SRAM_` | yes | D14, D29 |
+| conditions → errors; errors raise hard interrupt | conditions | errors | yes | D29, D21 |
+| "unit" = any of 67 (64 tiles + C&C 1–3) | — | new term | implied | D25 |
+| C&C | one C&C at endpoint 64 on tile 0's fifth port; memory system hangs off C&C | three controllers C&C 1–3, endpoints 64–66, tiles 0–2's fifth ports, each a tile instance **with 2 MB big SRAM**, engine = peripheral 1 | yes (2), but **"2 MB big SRAM" not in CHANGES** | D25 |
+| Tiles' strapping | endpoint id and peripheral type strapped (8.2) | endpoint id and peripherals present strapped (`PARAMS`) | yes (8.2) | D18 |
+| Tiles' request receive queue | every tile has one | tiles have none (receive queues at the root) | yes (Round 2, D38) | D38 |
+| RUN/HALT net | one line, `run_latency` | gone | yes | D23 |
+| GO net | C&C → every tile | C&C 1's peripheral `PULSE_GO` → every mesh tile; C&C 2/3 not wired | yes | D28 |
+| READY | 64 lines into C&C | 64 lines into C&C 1's peripheral (`READY_LINES_0–1`) | yes | D28 |
+| Error line | one per tile, ORed into one sticky bit at C&C | one per unit into C&C 1's peripheral (`ERROR_LINES_0–2` by endpoint id), high while `ERRORS` ≠ 0, latency `error_latency`; bit 64 unused | yes | D24 |
+| Reset inputs | (chip reset) | hard and soft reset inputs; chip never resets itself | yes | D35 |
+| Output pins | — | toast pin, `LED` pin | yes | D34, D28 |
+| 2.1 65 | memory system, served at C&C's port (src 64) | C&C 2 | yes | D25 |
+| 2.1 66 | reserved (66–125) | C&C 3; 67–125 reserved | yes | D25 |
+| 2.1 126 | broadcast | broadcast **to tiles 0–63** | wording | — |
+| 2.1 "72–74 gone" | v1.1's 2.1 table never listed 72–74 (73 appears only in 3.3's target table and open items 82/83) | — | CHANGES wording slightly off; harmless | — |
+| 2.2 address map | — | new: regions 0x00 data 32 KB, 0x01 program 32 KB (store = bus error), 0x02 boot ROM (reset vector 0x02000000), 0x03 big SRAM, 0x04–0x06 peripherals 1–3, 0x07–0xFE reserved, 0xFF registers; packet-reachable vs core-reachable; out of bounds undefined; auto-advance past end a bug; first 16 bytes of data memory reserved, overlays at 0x10 | yes | D5, D9, D22, D26, D27, D37.4 |

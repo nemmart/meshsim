@@ -1522,6 +1522,16 @@ Decided (O). Answers WORKER8's Q1-Q3; recipe 23 and `CONVENTIONS.md` updated by 
 - **Q3, a plain `wfi()` on counters done** under the reset mask (GO | counters done): sanctioned, and cheaper than
   `wait_all()` (no stores), **when no other counter is armed**, since counters done needs all seven at 0.
 
+## 48. From meshsim's phase 4 (2026-10-31)
+
+Integrator's answers to WORKER4's W4-06 and W4-07, to review.
+
+- **W4-06, a peripheral without a DMA:** its words 8 and 9 (`DMA_HDR`, `DMA_ADDR`) **read 0, and a load of them is not
+  flagged; only a store is.** They are standard words that happen to be empty, not undefined ones, so the handler's
+  fixed report set (20, 21) reads them on every peripheral, the replayer included, without special cases.
+- **W4-07, `mtime`'s rate:** implementation-defined. meshsim counts reference-oscillator cycles through the `time` CSR;
+  Tony to say what his core does. Software bounds its waits with `mcycle` (41, F12), so nothing depends on the rate.
+
 ---
 
 ## Big SRAM: to validate

@@ -539,7 +539,7 @@ final class ReplayerUnitTests {
             w.setCode(new int[] { ins, ins, ins }, false);
             ReplayDriver d = runWindow(w, 10);
             long expectRows = c.equals("code past its length") ? 3 : c.equals("read log past its length") || c.equals("past ROM word 511") ? 1 : 0;
-            T.eq(1, d.r.condEvents[Peripheral.COND_3], "condition 13 once");
+            T.eq(1, d.r.condEvents[Replayer.ERR_INVALID], "condition 13 once");
             T.check(d.done, "done posted: the pass stops as if it had ended");
             T.eq(expectRows, d.rows.size(), "rows before it");
             T.check(!d.r.isRunning(), "periph_running fell");
@@ -551,15 +551,17 @@ final class ReplayerUnitTests {
         T.group("write port");
         Replayer r = new Replayer(0);
         long t = 0;
+        // v1.2: byte offsets in region 0x04 (4.19.10); the part is offset [22:20]
         r.accept(t, 3, 0x0, LinkWord.SIZE_128, 0x1234, 0); r.runCycle(t++);
-        r.accept(t, 3, 0x2, LinkWord.SIZE_128, 1, 1); r.runCycle(t++);            // off a multiple of 4
+        r.accept(t, 3, 0x8, LinkWord.SIZE_128, 1, 1); r.runCycle(t++);            // part 0 off a multiple of 16 (the director drops such a packet; the port refuses it too)
         r.accept(t, 3, 0x0, LinkWord.SIZE_64, 1, 0); r.runCycle(t++);             // a 64-bit packet
-        r.accept(t, 3, 0x40000, LinkWord.SIZE_32, 1, 0); r.runCycle(t++);         // a queue takes 128 bits only
-        r.accept(t, 3, 0x200, LinkWord.SIZE_128, 1, 0); r.runCycle(t++);          // unmapped in window 0
-        r.accept(t, 3, 0x100000, LinkWord.SIZE_128, 1, 0); r.runCycle(t++);       // window 4
+        r.accept(t, 3, 0x100000, LinkWord.SIZE_32, 1, 0); r.runCycle(t++);        // a queue takes 128 bits only
+        r.accept(t, 3, 0x800, LinkWord.SIZE_128, 1, 0); r.runCycle(t++);          // unmapped in part 0
+        r.accept(t, 3, 0x400000, LinkWord.SIZE_128, 1, 0); r.runCycle(t++);       // part 4
         for (int k = 0; k < 4; k++) r.runCycle(t++);
         T.eq(0x1234, r.region0[0], "the state word landed");
-        T.eq(5, r.condEvents[Peripheral.COND_BAD_WRITE], "five bad peripheral writes");
+        T.eq(5, r.condEvents[Replayer.ERR_BAD_WRITE], "five bad writes");
+        T.eq(1 << Replayer.ERR_BAD_WRITE, r.errors(t), "ERRORS [0], bad write, sticky");
         T.eq(1, r.landed(2), "landed(t): a packet accepted at t − 2");
         T.eq(0, r.landed(101), "no packet");
         r.region0[0] = 0;
@@ -572,66 +574,61 @@ final class ReplayerUnitTests {
         ReplayWindow w = programWindow(false, false, false, true);
         ReplayDriver d = new ReplayDriver(w); d.r.rowsPerPass = 25; d.load();
         d.r.run(d.t); d.step(); d.step();
-        long bad0 = d.r.condEvents[Peripheral.COND_BAD_WRITE];
+        long bad0 = d.r.condEvents[Replayer.ERR_BAD_WRITE];
         d.r.accept(d.t, 3, 0x0, LinkWord.SIZE_128, 5, 5); d.step();
-        d.r.accept(d.t, 3, 0x400, LinkWord.SIZE_128, 5, 5); d.step();
-        d.r.accept(d.t, 3, 0x800 + 4 * 500, LinkWord.SIZE_128, 7, 7); d.step();
+        d.r.accept(d.t, 3, 0x1000, LinkWord.SIZE_128, 5, 5); d.step();
+        d.r.accept(d.t, 3, 0x2000 + 16 * 500, LinkWord.SIZE_128, 7, 7); d.step();
         for (int k = 0; k < 4; k++) d.step();
-        T.eq(bad0 + 2, d.r.condEvents[Peripheral.COND_BAD_WRITE], "running: the state word and the decode table are bad writes");
+        T.eq(bad0 + 2, d.r.condEvents[Replayer.ERR_BAD_WRITE], "running: the state word and the decode table are bad writes");
         T.eq(7, d.r.romLo[500], "running: the ROM takes writes (its second port)");
         // HALT
         d.r.setHalted(d.t, true); d.step();
         T.check(!d.r.running(d.t), "HALT: periph_running 0");
-        T.eq(0, d.r.lines(d.t), "HALT: the lines are 0");
-        long bad1 = d.r.condEvents[Peripheral.COND_BAD_WRITE];
-        d.r.accept(d.t, 3, 0x40000, LinkWord.SIZE_128, 1, 1); d.step();
+        T.eq(0, d.r.events().value(d.t), "HALT: no event");
+        long bad1 = d.r.condEvents[Replayer.ERR_BAD_WRITE];
+        d.r.accept(d.t, 3, 0x100000, LinkWord.SIZE_128, 1, 1); d.step();
         d.r.accept(d.t, 3, 0x0, LinkWord.SIZE_128, 0xAB, 0); d.step();
         for (int k = 0; k < 4; k++) d.step();
-        T.eq(bad1 + 1, d.r.condEvents[Peripheral.COND_BAD_WRITE], "HALT: a queue push is a bad write");
+        T.eq(bad1 + 1, d.r.condEvents[Replayer.ERR_BAD_WRITE], "HALT: a queue push is a bad write");
         T.eq(0xAB, d.r.region0[0], "HALT: region 0 takes a boot load");
         // overrun
         Replayer r2 = new Replayer(0); long t2 = 0;
-        for (int k = 0; k < 257; k++) { r2.accept(t2, 3, 0x40000, LinkWord.SIZE_128, k, 0); r2.runCycle(t2++); }
+        for (int k = 0; k < 257; k++) { r2.accept(t2, 3, 0x100000, LinkWord.SIZE_128, k, 0); r2.runCycle(t2++); }
         for (int k = 0; k < 4; k++) r2.runCycle(t2++);
-        T.eq(1, r2.condEvents[Peripheral.COND_2], "queue overrun on the 257th push");
+        T.eq(1, r2.condEvents[Replayer.ERR_OVERRUN], "queue overrun on the 257th push");
+        T.eq(1 << Replayer.ERR_OVERRUN, r2.errors(t2), "ERRORS [1], queue overrun");
         T.eq(256, r2.code.occ, "256 entries held");
-        T.eq(0, r2.condEvents[Peripheral.COND_BAD_WRITE], "a push while stopped is accepted (no condition)");
+        T.eq(0, r2.condEvents[Replayer.ERR_BAD_WRITE], "a push while stopped is accepted (no condition)");
     }
 
-    // ================================================================ lines and claims (4.19.8, 4.19.9, 4.17.3)
+    // ================================================================ events and credits (4.19.8, 4.19.9, 4.17.3)
     static void lines() {
-        T.group("service lines");
+        T.group("events and credits");
+        int code = 1 << Replayer.EV_CODE, rlog = 1 << Replayer.EV_RLOG, wlog = 1 << Replayer.EV_WLOG, exp = 1 << Replayer.EV_EXP, done = 1 << Replayer.EV_RUN_DONE;
         ReplayWindow w = programWindow(false, false, false, true);
         Replayer r = new Replayer(0); r.rowsPerPass = 25;
         ReplayDriver d = new ReplayDriver(w, r); d.load();
         long t = d.t;
-        T.check(!r.running(t), "idle: periph_running 0");
-        T.eq(0, r.lines(t), "idle: no line");
-        r.run(t); d.step();
+        T.check(!r.running(t), "idle: STATUS [0] = 0");
+        T.eq(0, r.events().value(t), "idle: no event");
+        r.run(t); d.step(); r.sync(d.t);
         T.check(r.running(t + 1), "running from the end of the run's cycle");
-        T.eq(Replayer.L_CODE | Replayer.L_RLOG | Replayer.L_WLOG, r.lines(d.t), "after the start: the three stream low-water lines (expansion: nothing to ask for)");
-        r.claim(d.t, Replayer.L_CODE); d.step();
-        T.eq(Replayer.L_CODE | Replayer.L_RLOG | Replayer.L_WLOG, r.lines(d.t), "one claim: code still low (256 − 0 − 128 ≥ 128): two refills may be outstanding");
-        r.claim(d.t, Replayer.L_CODE); d.step();
-        T.eq(Replayer.L_RLOG | Replayer.L_WLOG, r.lines(d.t), "two claims: code's line falls");
-        T.eq(256, r.code.pend, "pending 256");
-        int s0 = r.status(d.t, 0);
-        T.eq(s0, r.status(d.t, 0), "PERIPH_STATUS_0 read twice: the same");
-        T.eq(0, r.status(d.t, 5), "an undefined status register reads 0");
-        T.eq(0, r.status(d.t, 1), "PERIPH_STATUS_1: nothing presented yet");
-        ReplayWindow w2 = programWindow(false, false, false, false);
-        Replayer r2 = new Replayer(0); ReplayDriver d2 = new ReplayDriver(w2, r2); d2.load();
-        r2.run(d2.t); d2.step();
-        T.eq(Replayer.L_CODE | Replayer.L_RLOG, r2.lines(d2.t), "without the store log the write log's line stays quiet");
+        T.eq(code | rlog | wlog | exp, r.events().value(d.t), "PULSE_RUN: every queue's credits to 2 (the write log's too: the loop masks it without the store log)");
+        for (int b = Replayer.EV_CODE; b <= Replayer.EV_EXP; b++) T.eq(2, r.events().count(b), "credit bit " + b + ": 2");
+        r.events().consume(code); d.step(); r.sync(d.t);
+        T.eq(code | rlog | wlog | exp, r.events().value(d.t), "one consuming load: code still has a credit");
+        r.events().consume(code); d.step(); r.sync(d.t);
+        T.eq(rlog | wlog | exp, r.events().value(d.t), "two: code's bit falls (two refills may be outstanding)");
+        T.eq(4, r.params(), "PARAMS: type 4 (4.17.1, D46), version 0");
+        T.eq(0, r.status(d.t, 1), "EXPANSION_OPCODE: nothing presented yet");
+        T.eq((int) r.word(d.t, 34), r.status(d.t, 1), "word 34 is EXPANSION_OPCODE");
+        T.check(r.word(d.t, 35) == null, "word 35 undefined");
         ReplayDriver d3 = runWindow(programWindow(false, false, false, true), 25);
-        T.check(d3.done, "the driver saw done");
-        T.eq(0, d3.r.lines(d3.t) & Replayer.L_DONE, "and its claim cleared it");
-        // a sticky line set in the claim's own cycle survives
-        Replayer r4 = new Replayer(0);
-        r4.run(0); r4.runCycle(0); r4.runCycle(1);
-        r4.claim(2, Replayer.L_DONE);           // nothing set: no effect
-        r4.runCycle(2);
-        T.eq(0, r4.lines(3) & Replayer.L_DONE, "no done yet");
+        T.check(d3.done, "the driver saw run done");
+        d3.r.sync(d3.t);
+        T.eq(0, d3.r.events().value(d3.t) & done, "and its consuming load took it");
+        // credits come back: a pass that pops more than half of each log returns credits as it goes
+        T.check(d3.rows.size() == 25, "the pass ran its 25 rows on returned credits");
     }
 
     // ================================================================ timing (4.19.7, 4.19.11)

@@ -93,7 +93,7 @@ final class Controller implements Component {
 
     private void haltWith(long t, int reason, int at, int ins, String why) {
         halt = reason; haltPc = at; haltInstr = ins;
-        tile.slot.setHalted(t, true); tile.sender.haltReset(t);           // a halted controller stops the peripheral and the sender (4.17.7)
+        // v1.2 (4.13, 4.17.8): a stopped controller leaves its peripherals running
         tile.chip.log(t, tile.idx, "controller halted: " + HALT_NAME[reason] + " at pc=0x" + Integer.toHexString(at)
                 + String.format(" instr=0x%08x", ins) + (why != null ? " (" + why + ")" : ""));
     }

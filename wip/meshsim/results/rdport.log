@@ -1,4 +1,4 @@
-PENDING (phase 2 (the C programs and mesh.h move to v1.2)): readPortFromC
+read port from C [meas: ReadPortGatherTest read port from C]: 40 32-bit, 8 64-bit and 4 128-bit reads land at the setup register's destination + the size in bytes per read, counting on their counter; the free count reads 64, then less, then 64 after counters done; a misaligned read lands 0 with ERRORS [1]; a 65th store into a full queue is dropped with the read-port error
 the 16-group all-to-all (uniform, Data(7, 2000), gap 0) with every tile's read port holding 64 queued reads from the start, against 4.3's rule [meas: ReadPortGatherTest read port under an all-to-all]:
   without: 3120 cycles; with: 3120 cycles (+0); late rotations or groups: 0; the longest read-port read waited 5 cycles in the SRAM read queue
   with: 9,527 packets accepted with results outstanding; 0 packets lost to FIFO overflows (eject<loopback); records failing the all-to-all's check: 0
@@ -11,5 +11,5 @@ local gather on every tile: the index stream (mode 1, d = 0, 64-bit) from area 3
   k = 3  N =   4096      16409 cycles   4.006 per value (k + 1 = 4)  GATHER queue peak  7 of 16  address generator stalled 12270 cycles, area queue peak 1
   k = 4  N =   4096      20505 cycles   5.006 per value (k + 1 = 5)  GATHER queue peak  7 of 16  address generator stalled 16360 cycles, area queue peak 1
   k = 8  N =   4096      36889 cycles   9.006 per value (k + 1 = 9)  GATHER queue peak  8 of 16  address generator stalled 32720 cycles, area queue peak 1
-PENDING (phase 2 (the C programs and mesh.h move to v1.2)): gatherFromC
-ReadPortGatherTest: 40 passed, 0 failed
+gather 1 from C (sw/tests/gather.c, one-command phase, 4,096 values, k = 2) [meas: ReadPortGatherTest gather from C]: C&C's GO -> all 64 READY 12,339 cycles (3.012 per value)
+ReadPortGatherTest: 562 passed, 0 failed

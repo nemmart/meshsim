@@ -44,13 +44,15 @@ pending cond-shuf  "shuffled child order (seed 4)" "phase 4"
 LOG=regdoc    TAIL=1 run "REGISTERS.md and mesh.h against their generators, the draft header and the simulator" $J RegDocTest
 LOG=hooks     TAIL=1 run "the register map, the send port, the pulses (from Java)" $J HooksTest -1
 LOG=hooks-shuf TAIL=1 run "shuffled child order (seed 4)"     $J HooksTest 4
-pending periph     "the peripheral framework" "phase 3"
-pending periph-shuf "shuffled child order (seed 4)" "phase 3"
-pending sender     "v1.1's sender (becomes a peripheral's DMA)" "phase 3"
-pending sender-shuf "shuffled child order (seed 4)" "phase 3"
+LOG=periph    TAIL=1 run "the peripheral framework: the standard window, events, region writes, the DMA" $J PeripheralSlotTest -1
+LOG=periph-shuf TAIL=1 run "shuffled child order (seed 4)"   $J PeripheralSlotTest 4
 LOG=reqbus    TAIL=2 run "the request port, the request bus and the receive queues in the tree" $J RequestBusTest -1
 LOG=reqbus-shuf TAIL=1 run "shuffled child order (seed 4)"    $J RequestBusTest 4
-[ -n "$DELIVERY" ] && pending stageb "Stage B (sw/replay) on a tracer delivery's guest windows" "phase 3"
+LOG=replay-build TAIL=1 run "the replay controller (sw/replay/build.sh)" sh sw/replay/build.sh
+LOG=stageb    TAIL=1 run "Stage B: replay_ctl.c on a tile against Stage A, synthetic windows" $J StageB synthetic
+if [ -n "$DELIVERY" ]; then   # Stage B on a tracer delivery's guest windows: DELIVERY=<replay-inputs dir>
+  for g in lrd_x0 scd_x0 nop_hint jalr_self jalr_zero; do LOG=stageb-$g TAIL=1 run "Stage B on the tile: $g" $J StageB $DELIVERY state $g; done
+fi
 LOG=replayer  TAIL=1 run "the replayer model (cp11, its owner's suite): the ALU against vec.tsv, the unit tests" $J ReplayerTest ../tools/replayer-opcodes/vec.tsv
 LOG=sort-p1   TAIL=1 run "the sort's local sorts (L1, L2)"                     $J SortTest -1 p1
 LOG=sort      TAIL=1 run "the sort, every built-in set at 64 x <= 2,000 (several minutes)" $J SortTest -1 sort

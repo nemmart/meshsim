@@ -29,7 +29,7 @@ public final class HooksTest {
 
     /** A specified machine (controllers on, TILE_STATUS computed) whose tiles all sit in a WFI loop at the loader. */
     static Net machine() { return machine(0); }
-    /** periphType 0: an empty slot on every tile (these hooks test the tile's side); 1: the replayer. */
+    /** periphType 0: no peripheral on any tile (these hooks test the tile's side); 4: the replayer. */
     static Net machine(int periphType) {
         Config k = Config.machine(); k.shuffleSeed = shuffle; k.periphType = periphType;
         Net n = new Net(k);
@@ -119,7 +119,7 @@ public final class HooksTest {
         T.check(core.store(n.c.cycle + 1, Registers.PMEM_BASE + 0x100, 0, -1) != null, "a store to program memory is a bus error");
         T.check(core.load(n.c.cycle + 1, Registers.PMEM_BASE + 0x100, 4) != null, "a load from program memory is not");
         // the windows (8.1): peripheral 1 present (the replayer), 2 and 3 absent
-        Tile q = machine(1).c.tiles[2];
+        Tile q = machine(4).c.tiles[2];
         T.check(q.core.load(0, Registers.windowBase(1), 4) != null, "peripheral 1's window: present");
         T.check(q.core.load(0, Registers.windowBase(2), 4) == null && q.core.store(0, Registers.windowBase(3) + 0x1FC, 0, -1) != null, "peripherals 2 and 3's windows: absent, bus errors");
         // the table window: only HIST loads; PTR, STREAM and GROUP are write-only

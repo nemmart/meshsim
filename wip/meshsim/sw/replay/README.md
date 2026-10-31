@@ -1,5 +1,16 @@
 # The Stage B replay controller
 
+**v1.2 (WORKER4, 2026-10-31).** Ported to mesh.h 1.2 and v1.2's replayer: byte addresses (the replayer's region
+0x04, `RP_Q_*`, `RP_STATE`, the decode table at offset 0x1000; data memory by address), copies on counter 2 and
+replayer writes on counter 4, the 4.19.9 loop on counted credits (the replayer's `EVENTS`, its `EVENTS_MASK`, queues
+with nothing left out of the mask, a new expansion's first chunk on an explicitly taken credit), the squelch on
+counter 4's done and DMA run done together, results through the exit word. `replay_regs.h`, `crt0.S` and `replay.ld`
+are gone: it builds with meshsim's `mesh.h`, `crt0.S` and `app.ld`. `java StageB synthetic` runs it on a tile against
+Stage A's synthetic windows (every one matches row for row); `DELIVERY=<replay-inputs dir>` runs the guest windows as
+before. **The text below describes the v1.1 program** and is kept for its history; where it names v1.1's registers
+(service lines, `DMA_PERIPH_REMAINING`, mode 9) read the v1.2 equivalents above.
+
+
 `replay_ctl.c` is one tile's controller program for replayer passes, against spec 4.19 at mesh-sorter-v1.1-26p (26n's 4.19 is unchanged in 26p). **Final for this milestone (cp14):** it runs on meshsim's v1.1 tile (interim 2026-10-27, `test/StageB.java`), and its rows match byte for byte. Measured: EVM Zone 2²⁹ 3.479 and 3.492 cycles per row, Cyclone input/25 3.090. Software tuning is closed. The next step is proposal P1, in REPLAYER-NOTES.
 
 | file | what |

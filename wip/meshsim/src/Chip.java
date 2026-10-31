@@ -20,7 +20,9 @@ final class Chip implements Component {
     final int[][] linkLatency = new int[64][4];
     final int[] startSkew = new int[64];
     final Endpoint[] ccs = new Endpoint[3];                     // C&C 1-3 at tiles 0-2's fifth ports (4.16)
-    final Endpoint cnc, memsub, cc3;                             // C&C 1; C&C 2 (the memory system's unit); C&C 3
+    final Endpoint cnc, memsub, cc3;
+    final Cnc1Peripheral cc1p;                                   // C&C 1's peripheral 1: READY, GO, the error lines, the watchdog, the UART (8.14)
+    private final boolean[] errSeen = new boolean[64];                             // C&C 1; C&C 2 (the memory system's unit); C&C 3
     final CnC cc;                                                // C&C's sequencer and register block
     final PhaseLog phases;                                       // per-phase accounting
     final RequestBus reqBus;                                     // the request bus (3.3), run first every cycle
@@ -56,11 +58,15 @@ final class Chip implements Component {
             ccs[c] = new Endpoint(LinkWord.CC1 + c, cfg.queueDepth);
             tiles[c].router.fromCnc = ccs[c].send; tiles[c].router.toCnc = ccs[c].rx;
         }
+        cc1p = new Cnc1Peripheral(cfg);
+        cc1p.attach((t, m) -> violation(t, -1, "C&C 1's peripheral: " + m));
+        cc1p.expect = -1L;                                       // the model waits for all 64 tiles (READY_EXPECT_0-1)
         cnc = ccs[0]; memsub = ccs[1]; cc3 = ccs[2];
         phases = new PhaseLog(this);
         reqBus = new RequestBus(this);
         for (Tile p : tiles) p.req.bus = reqBus;
         cc = new CnC(this, cnc);
+        cc1p.goNet = cc::goNet;
         children = new Component[68];
         children[0] = cnc; children[1] = memsub; children[2] = cc3; children[67] = cc;
         for (int i = 0; i < 64; i++) children[3 + i] = tiles[i];
@@ -82,7 +88,12 @@ final class Chip implements Component {
         reqBus.runCycle(t);                                      // first: a request store at t sees the entry it frees
         for (Component c : children) c.runCycle(t);
         boolean err = false;
-        for (Tile p : tiles) { if (p.ctl.readyPulseAt == t) { cc.readyPulse(p.idx, t); phases.onReady(p.idx, t); } err |= p.ctl.errorLine(); }
+        for (Tile p : tiles) {
+            if (p.ctl.readyPulseAt == t) { cc.readyPulse(p.idx, t); phases.onReady(p.idx, t); }
+            boolean e = p.ctl.errorLine(); err |= e;
+            if (e != errSeen[p.idx]) { errSeen[p.idx] = e; cc1p.errorLine(t, p.idx, e); }   // ERROR_LINES (8.14)
+        }
+        cc1p.runCycle(t);
         cc.errorLine(t, err);                                    // the error lines, OR'd, to C&C's error bit (6.6)
         if (err) for (Tile p : tiles) {                          // invariant 15: logged per tile and condition, not a violation
             int nw = p.ctl.conditions & ~condSeen[p.idx];

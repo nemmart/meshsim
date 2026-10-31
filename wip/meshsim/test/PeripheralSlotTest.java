@@ -1,18 +1,20 @@
-import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The peripheral slot (spec 4.17) from the tile's side, with a test peripheral (one line of each kind, {@link
- * TestPeripheral}) and with the replayer (type 1, the default on every mesh tile):
- *  - TILE_STATUS's type [15:12] and periph_running [3] (from the end of the run store's cycle);
- *  - claims: a consuming WAKE_EVENTS load claims exactly the lines it returned under WAKE_MASK, at its sample cycle;
- *    WAKE_PEEK and a load with a line's mask bit clear claim nothing; status reads have no side effects; each kind
- *    responds (an event clears, a queue condition gives a unit, an item FIFO pops into its status register);
- *  - mode 9 lands rp_latency after the director and DMA_PERIPH_REMAINING counts it then, from any source; nothing is
- *    counted in HALT (a boot load), and a mode-9 arrival with the counter at 0 is unexpected;
- *  - setHalted on HALT, on HALT -> RUN and on a halted controller, only on a change; runCycle every cycle, HALT included;
- *  - the replayer: type 1, its write port's boot load in HALT, counting on landing, a bad peripheral write (condition 11),
- *    a run while running ignored and flagged.
+ * The peripheral framework (spec 4.17, v1.2) from a unit's side, with a test peripheral ({@link TestPeripheral}) and with
+ * the replayer (type 4, every mesh tile's peripheral 1):
+ *  - presence: PARAMS [2:0]; an absent peripheral's window is a bus error, a packet to its region a bad packet;
+ *  - the standard window (4.17.4): PARAMS, STATUS (run, DMA), ERRORS, PULSE_RUN (a run while running ignored and
+ *    flagged), reserved and undefined words (read 0, stores ignored, flagged), a defined read-only word (a bus error);
+ *  - events (4.17.3): counted with their depths (a credit posted to a full count flagged), live bits, EVENTS_MASK 0 at
+ *    reset, a consuming load takes one count from each set bit under the mask, EVENTS_PEEK takes nothing; the controller's
+ *    EVENTS [13] live while (events & mask) != 0; its ERRORS [11] live while the peripheral's ERRORS != 0;
+ *  - region writes (4.17.5): mode 0 at a byte offset, landing rp_latency after the director, counted at K;
+ *  - the DMA (4.17.9): 128-bit packets, then 64 and 32 for the remainder, DMA_ADDR advancing, STATUS [1], DMA done, a
+ *    count of 0, PULSE_DMA while busy and a missing output queue ignored and flagged;
+ *  - the replayer through its window: type 4, its words 32-34, its credits after PULSE_RUN;
+ *  - C&C 1's peripheral (8.14, 4.20): READY_LINES and READY_EXPECT, all tiles READY, PULSE_GO, ERROR_LINES and the
+ *    unit-error bit, the watchdog and the toast pin, LED, the UART's FIFOs, timing, line errors and events.
  * Usage: java PeripheralSlotTest [shuffle seed | -1]
  */
 public final class PeripheralSlotTest {
@@ -20,14 +22,16 @@ public final class PeripheralSlotTest {
     public static void main(String[] args) {
         if (args.length > 0) shuffle = Long.parseLong(args[0]);
         if (shuffle >= 0) System.out.println("shuffled child order, seed " + shuffle);
-        claims();
+        window();
+        events();
         landing();
-        halt();
+        dma();
         replayer();
+        cc1();
         System.exit(T.done("PeripheralSlotTest" + (shuffle >= 0 ? " (shuffled, seed " + shuffle + ")" : "")));
     }
 
-    /** A machine (tiles in a WFI loop at the loader) whose tile `tp` holds a test peripheral. */
+    /** A machine (tiles in a WFI loop at the loader) whose tile `tp` holds a test peripheral as peripheral 1. */
     static Net machine(int tp, TestPeripheral[] out) {
         Config k = Config.machine(); k.shuffleSeed = shuffle;
         k.testPeripheral = tile -> tile == tp ? (out[0] = new TestPeripheral()) : null;
@@ -39,126 +43,210 @@ public final class PeripheralSlotTest {
     }
     static Integer load(Net n, Tile p, int addr) { Integer v = p.core.load(n.c.cycle + 1, addr, 4); n.step(); return v; }
     static void store(Net n, Tile p, int addr, int v) { String e = p.core.store(n.c.cycle + 1, addr, v, -1); if (e != null) throw new IllegalStateException(e); n.step(); }
-    static final int LINES = Registers.WAKE_PERIPH_LINES, L1 = 1 << 13, L2 = 1 << 14, L3 = 1 << 15, L6 = 1 << 18;
+    static int w(int word) { return Registers.windowBase(1) + 4 * word; }
+    static final int PARAMS = 0, STATUS = 1, ERRORS = 2, PULSE_RUN = 3, PULSE_DMA = 4, EVENTS = 5, EVENTS_PEEK = 6, EVENTS_MASK = 7, DMA_HDR = 8, DMA_ADDR = 9;
 
-    static void claims() {
-        T.group("claims");
+    static void window() {
+        T.group("the standard window");
         TestPeripheral[] tp = new TestPeripheral[1];
         Net n = machine(5, tp); Tile p = n.c.tiles[5]; TestPeripheral x = tp[0];
-        T.eq(15, Registers.ST_PERIPH_TYPE.get(load(n, p, Registers.TILE_STATUS.addr())), "TILE_STATUS [15:12]: the slot's type (15, the test peripheral)");
-        x.post(n.c.cycle); x.units = 2; x.items.add(0x111); x.items.add(0x222);
+        T.eq(1, Registers.PA_PERIPH.get(load(n, p, Registers.PARAMS.addr())), "the unit's PARAMS [2:0]: peripheral 1 present");
+        T.eq(15 | 3 << 8, (int) load(n, p, w(PARAMS)), "the window's PARAMS: type 15, version 3");
+        T.check(p.core.load(n.c.cycle + 1, Registers.windowBase(2), 4) == null, "peripheral 2's window: absent, a bus error");
+        T.eq(0, (int) load(n, p, w(STATUS)), "STATUS: idle");
+        store(n, p, w(PULSE_RUN), 0);
+        T.eq(0, x.runs, "PULSE_RUN 0 does nothing");
+        store(n, p, w(PULSE_RUN), 1);
+        T.eq(1, (int) load(n, p, w(STATUS)) & 1, "STATUS [0]: run in progress from the end of the run store's cycle");
+        long v0 = n.c.violations;
+        store(n, p, w(PULSE_RUN), 1);
+        T.eq(1, x.runs, "a run while running is ignored");
+        T.check(n.c.violations > v0, "and flagged");
+        T.eq(1, (int) load(n, p, w(32)), "word 32: runs started");
+        store(n, p, w(33), 0xABC);
+        T.eq(0xABC, (int) load(n, p, w(33)), "word 33 is read/write");
+        T.check(p.core.store(n.c.cycle + 1, w(34), 1, -1) != null, "a store to the read-only word 34 is a bus error");
+        T.check(p.core.store(n.c.cycle + 1, w(ERRORS), 1, -1) != null, "and to ERRORS");
+        long r0 = p.slot.reservedAccesses;
+        T.eq(0, (int) load(n, p, w(12)), "reserved standard word 12 reads 0");
+        T.eq(0, (int) load(n, p, w(100)), "an undefined word reads 0");
+        store(n, p, w(31), 5);
+        T.eq(r0 + 3, p.slot.reservedAccesses, "each access flagged");
+        T.eq(0, (int) load(n, p, w(PULSE_RUN)), "PULSE_RUN reads 0");
+        for (int i = 0; i < 20; i++) n.step();
+        T.eq(0, (int) load(n, p, w(STATUS)) & 1, "the run ended");
+        T.eq(0, (int) load(n, p, w(ERRORS)), "ERRORS: 0");
+        x.fault(); n.step(); n.step();
+        T.eq(1, (int) load(n, p, w(ERRORS)), "the peripheral's ERRORS [0]");
+        T.eq(1 << 11, p.ctl.errorsAt(n.c.cycle) & 7 << 11, "the unit's ERRORS [11]: live while peripheral 1's ERRORS is non-zero");
+        T.check(p.ctl.errorLine(), "and the error line is up");
+    }
+
+    static void events() {
+        T.group("events");
+        TestPeripheral[] tp = new TestPeripheral[1];
+        Net n = machine(6, tp); Tile p = n.c.tiles[6]; TestPeripheral x = tp[0];
+        int ev13 = 1 << Registers.EV_PERIPH_1;
+        T.eq(0, (int) load(n, p, w(EVENTS_MASK)), "EVENTS_MASK: 0 at reset");
+        x.post(n.c.cycle); x.post(n.c.cycle); x.credit(n.c.cycle); x.credit(n.c.cycle); x.level(true);
         n.step();
-        int peek = load(n, p, Registers.WAKE_PEEK.addr());
-        T.eq(L1 | L2 | L3, peek & LINES, "WAKE_PEEK: lines 1-3 up (an event, a queue condition, an item FIFO)");
-        T.eq(0, x.claimLog.size(), "WAKE_PEEK claims nothing");
-        T.eq(0x111, (int) load(n, p, Registers.PERIPH_STATUS[2].addr()), "PERIPH_STATUS_2 presents the first item");
-        T.eq(0x111, (int) load(n, p, Registers.PERIPH_STATUS[2].addr()), "a status read has no side effect");
-        int v = load(n, p, Registers.WAKE_EVENTS.addr());       // the reset mask ([8] | [9]) covers no line
-        T.eq(L1 | L2 | L3, v & LINES, "WAKE_EVENTS returns every pending event, the lines included");
-        T.eq(0, x.claimLog.size(), "a load with the lines' mask bits clear claims nothing");
-        store(n, p, Registers.WAKE_MASK.addr(), L1 | L2 | L3 | Registers.WAKE_MASK_RESET);
-        long t = n.c.cycle + 1;
-        v = load(n, p, Registers.WAKE_EVENTS.addr());
-        T.eq(L1 | L2 | L3, v & LINES, "a consuming load returns the lines");
-        T.check(x.claimLog.size() == 1 && x.claimLog.get(0)[0] == t && x.claimLog.get(0)[1] == 7, "it claims exactly lines 1-3, at its sample cycle (L = " + n.c.cfg.regLoadLatency + ")");
-        v = load(n, p, Registers.WAKE_PEEK.addr());
-        T.eq(L2 | L3, v & LINES, "after one claim: the event is clear, the queue condition still up (one unit left), the FIFO still holds an item");
-        T.eq(0x222, (int) load(n, p, Registers.PERIPH_STATUS[2].addr()), "the item FIFO popped into PERIPH_STATUS_2");
-        load(n, p, Registers.WAKE_EVENTS.addr());
-        T.eq(0, load(n, p, Registers.WAKE_PEEK.addr()) & LINES, "after a second claim every line is down");
-        T.eq(2, (int) load(n, p, Registers.PERIPH_STATUS[0].addr()), "two claims taken");
-        // PERIPH_RUN: periph_running from the end of the store's cycle; done is line 6 (an event)
-        long ts = n.c.cycle + 1;
-        store(n, p, Registers.TILE_PULSE.addr(), Registers.P_PERIPH_RUN.place(1));
-        T.check(x.runCalls.size() == 1 && x.runCalls.get(0) == ts, "PERIPH_RUN calls run() at the store's cycle");
-        T.eq(1, Registers.ST_PERIPH_RUNNING.get(load(n, p, Registers.TILE_STATUS.addr())), "periph_running reads 1 the next cycle");
-        for (int i_ = 0; i_ < 20; i_++) n.step();
-        T.eq(0, Registers.ST_PERIPH_RUNNING.get(load(n, p, Registers.TILE_STATUS.addr())), "and 0 after the run");
-        T.eq(L6, load(n, p, Registers.WAKE_PEEK.addr()) & LINES, "the run's end on line 6");
-        T.eq(0, p.ctl.conditions, "no conditions");
-        T.eq(0L, n.c.violations, "no violations " + n.c.violationReport());
+        T.eq(0b11100, (int) load(n, p, w(EVENTS_PEEK)), "EVENTS_PEEK: the event, the credit and the live bit");
+        T.eq(1, x.ev.count(2), "an ordinary event has depth 1: posted twice, counted once");
+        T.eq(2, x.ev.count(3), "a credit has depth 2");
+        x.credit(n.c.cycle); n.step();
+        T.eq(1L, x.ev.fullPosts, "a credit posted to a full count is flagged");
+        T.eq(0, load(n, p, Registers.EVENTS_PEEK.addr()) & ev13, "the unit's EVENTS [13]: down while the mask is 0");
+        store(n, p, w(EVENTS_MASK), 0b11100);
+        n.step();
+        T.eq(ev13, load(n, p, Registers.EVENTS_PEEK.addr()) & ev13, "EVENTS [13] up: (events & mask) != 0");
+        T.eq(0b11100, (int) load(n, p, w(EVENTS)), "a load of EVENTS returns every bit");
+        n.step();
+        T.eq(0, x.ev.count(2), "and consumes the event");
+        T.eq(1, x.ev.count(3), "and one credit of two");
+        T.eq(0b11000, (int) load(n, p, w(EVENTS_PEEK)), "the live bit is never consumed");
+        x.level(false); load(n, p, w(EVENTS)); n.step();
+        T.eq(0, (int) load(n, p, w(EVENTS_PEEK)), "the second credit taken");
+        T.eq(0, load(n, p, Registers.EVENTS_PEEK.addr()) & ev13, "EVENTS [13] falls");
+        T.eq(0, p.ctl.conditions, "no unit errors");
     }
 
     static void landing() {
-        T.group("landing and counting");
+        T.group("region writes");
         TestPeripheral[] tp = new TestPeripheral[1];
-        Net n = machine(9, tp); Tile p = n.c.tiles[9]; TestPeripheral x = tp[0];
-        p.dir.log = new ArrayList<>();
-        store(n, p, Registers.DMA_PERIPH_REMAINING.addr(), 3);
-        n.at(3, n.c.cycle + 2, 9, LinkWord.M_PERIPH, 0x100, LinkWord.SIZE_128, 1, 2);     // from another tile
-        n.c.cc.send(9, LinkWord.M_PERIPH, 0x104, LinkWord.SIZE_32, 3, 0);                     // from C&C
-        long[] at = new long[3]; int k = 0; int prev = 3;
-        for (int i = 0; i < 200 && k < 2; i++) { n.step(); int r = p.dir.remaining[TrafficDirector.PERIPH]; if (r < prev) { at[k++] = n.c.cycle; prev = r; } }
-        T.eq(2, x.accepts.size(), "two mode-9 packets handed over, from tile 3 and from C&C");
-        if (x.accepts.size() == 2 && k == 2) {
-            T.eq(x.accepts.get(0)[0] + Peripheral.RP_LATENCY, at[0], "the first counted rp_latency (2) after the director handed it over");
-            T.eq(x.accepts.get(1)[0] + Peripheral.RP_LATENCY, at[1], "the second likewise");
-            T.eq(3L + 64L, x.accepts.get(0)[1] + x.accepts.get(1)[1], "from src 3 and src 64");
-        }
-        // the director's own count: none at acceptance
-        n.at(4, n.c.cycle + 2, 9, LinkWord.M_PERIPH, 0x108, LinkWord.SIZE_64, 5, 0);
-        n.runAll(100); for (int i_ = 0; i_ < 5; i_++) n.step();
-        T.eq(0, p.dir.remaining[TrafficDirector.PERIPH], "three landed, three counted");
-        T.eq(1 << Registers.EV_PERIPH_DONE, load(n, p, Registers.WAKE_PEEK.addr()) & (1 << Registers.EV_PERIPH_DONE), "DMA_PERIPH_REMAINING done ([3]) posted");
-        n.at(4, n.c.cycle + 2, 9, LinkWord.M_PERIPH, 0x10C, LinkWord.SIZE_64, 6, 0);
-        n.runAll(100); for (int i_ = 0; i_ < 5; i_++) n.step();
-        T.check((p.ctl.conditions & 1 << Conditions.UNEXPECTED) != 0, "a fourth with the counter at 0: unexpected arrival");
+        Net n = machine(7, tp); Tile p = n.c.tiles[7]; TestPeripheral x = tp[0];
+        p.dir.remaining[4] = 2; p.dir.log = new java.util.ArrayList<>();
+        n.at(3, n.c.cycle + 2, 7, LinkWord.M_WRITE, 4, 0x04000400, LinkWord.SIZE_128, 1, 2);
+        n.c.cnc.send(n.c.cycle, 7, LinkWord.M_WRITE, 4, 0x04123450, LinkWord.SIZE_64, 3, 0);   // from C&C 1 too: any source
+        n.runAll(300);
+        T.eq(2, x.accepts.size(), "both handed to the peripheral");
+        boolean timed = true; for (int i = 0; i < 2; i++) if (x.accepts.get(i)[0] != p.dir.log.get(i)[0] + Peripheral.RP_LATENCY) timed = false;
+        T.check(timed, "each lands rp_latency after the director accepts it");
+        long[] a = x.accepts.get(0)[1] == 3 ? x.accepts.get(0) : x.accepts.get(1), c = x.accepts.get(0)[1] == 3 ? x.accepts.get(1) : x.accepts.get(0);
+        T.eq(0x400, (int) a[2], "tile 3's at its byte offset in the region, 0x400");
+        T.eq(0x123450, (int) c[2], "C&C 1's at 0x123450");
+        T.eq(64, (int) c[1], "its src 64");
+        T.eq(0, p.dir.remaining[4], "both counted at K");
+        Net m = machine(8, tp); Tile q = m.c.tiles[9];
+        m.at(3, m.c.cycle + 2, 9, LinkWord.M_WRITE, 0, 0x05000000, LinkWord.SIZE_32, 1, 0);
+        m.runAll(300);
+        T.eq(1, q.dir.droppedBad, "a packet for absent peripheral 2's region: a bad packet");
     }
 
-    static void halt() {
-        T.group("HALT and a halted controller");
+    static void dma() {
+        T.group("the DMA");
         TestPeripheral[] tp = new TestPeripheral[1];
-        Net n = machine(12, tp); Tile p = n.c.tiles[12]; TestPeripheral x = tp[0];
-        T.check(x.haltLog.size() == 2 && x.haltLog.get(0)[1] == 1 && x.haltLog.get(1)[1] == 0, "chip reset holds it (HALT), HALT -> RUN releases it: " + x.haltLog.size() + " calls");
-        n.c.cc.halt(); for (int i_ = 0; i_ < 10; i_++) n.step();
-        T.check(x.haltLog.size() == 3 && x.haltLog.get(2)[1] == 1, "entering HALT holds it");
-        // a boot load in HALT lands but isn't counted
-        n.c.cc.send(12, LinkWord.M_PERIPH, 0x200, LinkWord.SIZE_128, 7, 8); for (int i_ = 0; i_ < 40; i_++) n.step();
-        T.eq(1, x.accepts.size(), "a mode-9 packet in HALT reaches the peripheral");
-        T.eq(0, p.ctl.conditions & 1 << Conditions.UNEXPECTED, "and isn't counted (a halted tile counts nothing): no unexpected arrival");
-        long rc0 = n.c.cycle; long[] seen = { 0 }; for (int i_ = 0; i_ < 5; i_++) n.step();
-        n.c.cc.then((cc, t) -> { cc.storeRun(t, true); return true; }); for (int i_ = 0; i_ < 10; i_++) n.step();
-        T.check(x.haltLog.size() == 4 && x.haltLog.get(3)[1] == 0, "HALT -> RUN releases it");
-        // a halted controller stops it at once
-        p.core.pokeLocal(Registers.LOADER_BASE + 4, 0x80002023);    // sw x0, -2048(x0): a store to TILE_STATUS, a bus error
-        p.ctl.scheduleGo(n.c.cycle + 1);                            // wake the WFI (test only)
-        for (int i_ = 0; i_ < 5; i_++) n.step();
-        T.eq(Controller.HALT_BUSERR, p.core.halt, "the core halted on the bus error");
-        T.check(x.haltLog.size() == 5 && x.haltLog.get(4)[1] == 1, "a halted controller (bus error) holds it");
-        n.c.cc.halt(); for (int i_ = 0; i_ < 10; i_++) n.step();
-        T.eq(5, x.haltLog.size(), "entering HALT afterwards changes nothing (calls only on a change)");
+        Net n = machine(10, tp); Tile p = n.c.tiles[10];
+        List<long[]> out = p.slot.dmaOut;
+        int hdr = Registers.DH_COUNT.place(7) | Registers.DH_QUEUE.place(1) | Registers.HDR_DST.place(65) | Registers.HDR_MODE.place(0) | Registers.HDR_CTR.place(5);
+        store(n, p, w(DMA_HDR), hdr); store(n, p, w(DMA_ADDR), 0x400);
+        store(n, p, w(EVENTS_MASK), 2);
+        store(n, p, w(PULSE_DMA), 1);
+        T.eq(2, (int) load(n, p, w(STATUS)) & 2, "STATUS [1]: DMA in progress");
+        long v0 = n.c.violations;
+        store(n, p, w(PULSE_DMA), 1);
+        T.check(n.c.violations > v0 && p.slot.dma[1].ignored == 1, "PULSE_DMA while busy: ignored and flagged");
+        for (int i = 0; i < 20; i++) n.step();
+        T.eq(3, out.size(), "7 words: a 128-bit, a 64-bit and a 32-bit packet");
+        if (out.size() == 3) {
+            long[] a = out.get(0), b = out.get(1), c = out.get(2);
+            T.check(a[5] == LinkWord.SIZE_128 && a[4] == 0x400 && a[6] == ((1L << 24 | 1) << 32 | (1 << 24)) && a[7] == ((1L << 24 | 3) << 32 | (1 << 24 | 2)), "128 bits at 0x400, queue 1's words 0-3, the first in [31:0]");
+            T.check(b[5] == LinkWord.SIZE_64 && b[4] == 0x410, "then 64 bits at 0x410");
+            T.check(c[5] == LinkWord.SIZE_32 && c[4] == 0x418, "then 32 bits at 0x418");
+            T.check(a[1] == 65 && a[2] == 0 && a[3] == 5, "each stamped with dst, mode and counter");
+        }
+        T.eq(0x41C, (int) load(n, p, w(DMA_ADDR)), "DMA_ADDR advanced past the transfer");
+        T.eq(0, (int) load(n, p, w(STATUS)) & 2, "STATUS [1] fell");
+        T.eq(2, (int) load(n, p, w(EVENTS)) & 2, "DMA done, EVENTS [1]");
+        n.step();
+        T.eq(0, (int) load(n, p, w(EVENTS_PEEK)) & 2, "consumed by the load");
+        store(n, p, w(DMA_HDR), Registers.DH_COUNT.place(0)); store(n, p, w(PULSE_DMA), 1);
+        for (int i = 0; i < 4; i++) n.step();
+        T.eq(2, (int) load(n, p, w(EVENTS_PEEK)) & 2, "a count of 0: DMA done still posted");
+        T.eq(3, out.size(), "and nothing sent");
+        store(n, p, w(DMA_HDR), Registers.DH_COUNT.place(4) | Registers.DH_QUEUE.place(3)); store(n, p, w(PULSE_DMA), 1);
+        T.eq(2L, p.slot.dma[1].ignored, "a missing output queue: ignored (flagged)");
     }
 
     static void replayer() {
-        T.group("the replayer in the slot");
+        T.group("the replayer's window");
         Config k = Config.machine(); k.shuffleSeed = shuffle;
-        Chip c = new Chip(k);
-        Tile p = c.tiles[20];
-        T.check(p.slot.p instanceof Replayer, "every mesh tile holds a replayer (type 1) by default");
-        // a boot load in HALT: one decode-table word, from C&C, uncounted
-        c.cc.send(20, LinkWord.M_PERIPH, 0x400, LinkWord.SIZE_128, 0x0004000300020001L, 0x0008000700060005L);
-        c.run(50);
-        Replayer r = (Replayer) p.slot.p;
-        T.check(r.decodeTable[0] == 1 && r.decodeTable[7] == 8, "the decode table took the boot load in HALT");
-        T.eq(0, p.ctl.conditions, "no condition");
-        // RUN; a ROM write from tile 3, counted on landing; a 32-bit write: a bad peripheral write, counted
-        for (Tile q : c.tiles) { q.core.pokeLocal(Registers.LOADER_BASE, Controller.WFI); q.core.pokeLocal(Registers.LOADER_BASE + 4, RiscvTest.jal(0, -4)); }
-        c.cc.then((cc, t) -> { cc.storeRun(t, true); return true; });
-        c.run(10);
-        T.eq(1, Registers.ST_PERIPH_TYPE.get(p.ctl.statusAt(c.cycle + 1)), "TILE_STATUS [15:12] = 1");
-        p.dir.remaining[TrafficDirector.PERIPH] = 2;
-        c.tiles[3].sendHold.put(c.cycle, 0x1111L, LinkWord.hdr(0, 20, LinkWord.M_PERIPH, 0x800, LinkWord.SIZE_128), 0x2222L);
-        c.run(40);
-        T.check(r.romLo[0] == 0x1111L && r.romHi[0] == 0x2222L, "a ROM word from tile 3 landed (mode 9 from any source)");
-        c.tiles[3].sendHold.put(c.cycle, 0x3333L, LinkWord.hdr(0, 20, LinkWord.M_PERIPH, 0x804, LinkWord.SIZE_32), 0);
-        c.run(40);
-        T.eq(0, p.dir.remaining[TrafficDirector.PERIPH], "both counted (landed, and dropped)");
-        T.eq(1 << Conditions.BAD_PERIPH_WRITE, p.ctl.conditions, "the 32-bit write is a bad peripheral write (condition 11), and only it");
-        // PERIPH_RUN twice: the second while running is ignored and flagged by the replayer
-        long v0 = p.ctl.violations;
-        p.core.store(c.cycle + 1, Registers.TILE_PULSE.addr(), Registers.P_PERIPH_RUN.place(1), -1); c.step();
-        T.check(p.slot.running(c.cycle + 1), "periph_running from the end of the run store's cycle");
-        p.core.store(c.cycle + 1, Registers.TILE_PULSE.addr(), Registers.P_PERIPH_RUN.place(1), -1); c.step(); c.run(3);
-        T.check(p.ctl.violations > v0, "a run while running: flagged (" + p.ctl.lastViolation + ")");
+        Net n = new Net(k); Tile p = n.c.tiles[3];
+        for (Tile q : n.c.tiles) { q.core.pokeLocal(Registers.LOADER_BASE, Controller.WFI); q.core.pokeLocal(Registers.LOADER_BASE + 4, RiscvTest.jal(0, -4)); }
+        n.c.cc.then((cc, t) -> { cc.storeRun(t, true); return true; });
+        for (int i = 0; i < 10; i++) n.step();
+        T.eq(4, (int) load(n, p, w(PARAMS)), "PARAMS: type 4, the replayer (4.17.1, D46)");
+        T.eq(0, (int) load(n, p, w(STATUS)), "STATUS: idle");
+        T.eq(0, (int) load(n, p, w(EVENTS_PEEK)), "no event before a pass");
+        store(n, p, w(PULSE_RUN), 1);
+        n.step();
+        T.eq(0b111100, (int) load(n, p, w(EVENTS_PEEK)) & 0b111100, "PULSE_RUN: every queue's credit up");
+        T.eq(0, (int) load(n, p, w(4)), "word 4 (no DMA): reserved, reads 0");
+        T.eq(0, (int) load(n, p, w(32)), "ROWS_RUN");
+    }
+
+    static void cc1() {
+        T.group("C&C 1's peripheral");
+        Config k = Config.machine(); k.shuffleSeed = shuffle; k.refCycle = 1;
+        Net n = new Net(k);
+        Cnc1Peripheral c = n.c.cc1p;
+        long t = n.c.cycle;
+        // READY and GO
+        c.write(t, Cnc1Peripheral.READY_EXPECT, 0b1010); c.write(t, Cnc1Peripheral.READY_EXPECT + 1, 0);
+        c.readyPulse(1, t); c.readyPulse(3, t); n.step(); n.step();
+        T.eq(0b1010, c.read(n.c.cycle, Cnc1Peripheral.READY_LINES), "READY_LINES_0: tiles 1 and 3 (sticky)");
+        T.eq(1 << Cnc1Peripheral.EV_ALL_READY, c.read(n.c.cycle, 6) & 1 << Cnc1Peripheral.EV_ALL_READY, "all tiles READY: (READY & EXPECT) == EXPECT (live)");
+        T.eq(1, c.read(t, 0), "PARAMS: type 1, Ingress/Egress with the UART (4.17.1, D46)");
+        long go0 = n.c.cc.gos;
+        c.write(n.c.cycle, Cnc1Peripheral.PULSE_GO, 1); n.step(); n.step();
+        T.eq(go0 + 1, n.c.cc.gos, "PULSE_GO drives GO");
+        T.eq(0, c.read(n.c.cycle, Cnc1Peripheral.READY_LINES), "and clears READY 0-63");
+        T.eq(0, c.read(n.c.cycle, 6) & 1 << Cnc1Peripheral.EV_ALL_READY, "all tiles READY falls");
+        // the error lines
+        n.c.tiles[33].ctl.conditions = 1 << Conditions.DRIFT;
+        for (int i = 0; i < 5; i++) n.step();
+        T.eq(2, c.read(n.c.cycle, Cnc1Peripheral.ERROR_LINES + 1), "ERROR_LINES_1 bit 1: tile 33's ERRORS non-zero (live)");
+        T.eq(1, c.read(n.c.cycle, 2), "ERRORS [0], the unit-error bit");
+        T.check(c.toast, "the toast pin latches on a C&C 1 error");
+        n.c.tiles[33].ctl.conditions = 0;
+        for (int i = 0; i < 5; i++) n.step();
+        T.eq(0, c.read(n.c.cycle, Cnc1Peripheral.ERROR_LINES + 1), "the line follows its unit");
+        T.check(c.toast, "the toast pin stays latched (until the reset)");
+        // the watchdog
+        Net m = new Net(k); Cnc1Peripheral d = m.c.cc1p;
+        d.write(m.c.cycle, Cnc1Peripheral.WATCHDOG, 20);
+        for (int i = 0; i < 10; i++) m.step();
+        d.write(m.c.cycle, Cnc1Peripheral.PULSE_GO, 1);                    // restarts it from 20
+        for (int i = 0; i < 15; i++) m.step();
+        T.check(!d.toast && d.read(m.c.cycle, Cnc1Peripheral.WATCHDOG) > 0, "PULSE_GO restarted the watchdog");
+        for (int i = 0; i < 10; i++) m.step();
+        T.eq(1 << Cnc1Peripheral.EV_WATCHDOG, d.read(m.c.cycle, 6) & 1 << Cnc1Peripheral.EV_WATCHDOG, "watchdog expired: its event");
+        T.check(d.toast, "and the toast pin");
+        d.write(m.c.cycle, Cnc1Peripheral.LED, 3);
+        T.eq(1, d.read(m.c.cycle, Cnc1Peripheral.LED), "LED [0]");
+        // the UART
+        Net u = new Net(k); Cnc1Peripheral x = u.c.cc1p;
+        T.eq(Cnc1Peripheral.RESET_DIVISOR, x.read(u.c.cycle, Cnc1Peripheral.UART_DIVISOR), "UART_DIVISOR resets to 434 (57,600 baud at 25 MHz)");
+        x.write(u.c.cycle, Cnc1Peripheral.UART_DIVISOR, 3);              // 30 cycles a frame (refCycle 1)
+        int pushed = 0; for (char ch : "hello, world!!!!!".toCharArray()) if (x.write(u.c.cycle, Cnc1Peripheral.UART_TX, ch) == 1) pushed++;
+        T.eq(16, pushed, "UART_TX: a 16-byte FIFO");
+        T.eq(-2, x.write(u.c.cycle, Cnc1Peripheral.UART_TX, '?'), "a store to a full TX FIFO stalls");
+        T.eq(0, u.c.cc1p.events().value(u.c.cycle + 1) & 1 << Cnc1Peripheral.EV_UART_TX, "TX not full: down");
+        long t0 = u.c.cycle;
+        for (int i = 0; i < 16 * 30 + 5; i++) u.step();
+        T.eqo("hello, world!!!!", x.serialOut.toString(), "the bytes went out in order");
+        T.eq(30L, x.serialLog.get(1)[0] - x.serialLog.get(0)[0], "a frame every 10 x divisor reference cycles");
+        x.rxByte(u.c.cycle, 'A', false); x.rxByte(u.c.cycle, 'B', false); x.rxByte(u.c.cycle, 'C', true);
+        u.step();
+        int us = x.read(u.c.cycle, Cnc1Peripheral.UART_STATUS);
+        T.eq(2, us >> 8 & 0x1F, "UART_STATUS: RX occupancy 2"); T.eq(1, us >> 17 & 1, "and the framing error (the bad stop bit dropped)");
+        T.eq(1 << Cnc1Peripheral.EV_UART_RX, x.read(u.c.cycle, 6) & 1 << Cnc1Peripheral.EV_UART_RX, "RX not empty (live)");
+        T.eq('A' | 0x100, x.read(u.c.cycle, Cnc1Peripheral.UART_RX), "UART_RX: the oldest byte, valid");
+        T.eq('B' | 0x100, x.read(u.c.cycle, Cnc1Peripheral.UART_RX), "popped: the next");
+        T.eq(0, x.read(u.c.cycle, Cnc1Peripheral.UART_RX), "empty: valid = 0, nothing popped");
+        x.write(u.c.cycle, Cnc1Peripheral.UART_STATUS, 1 << 17);
+        T.eq(0, x.read(u.c.cycle, Cnc1Peripheral.UART_STATUS) & 1 << 17, "framing error cleared by writing 1");
+        for (int i = 0; i < 20; i++) x.rxByte(u.c.cycle, i, false);
+        T.eq(1 << 16, x.read(u.c.cycle, Cnc1Peripheral.UART_STATUS) & 1 << 16, "a 17th byte: RX overrun (status, not an error)");
+        T.eq(0, x.read(u.c.cycle, 2) & ~1, "line errors never reach ERRORS");
     }
 }

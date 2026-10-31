@@ -46,3 +46,15 @@ outside my scope.
 as the v1.2 document.
 
 **Status:** agreed; done in phase 2.
+
+## W4-05: C&C 1's peripheral's type
+
+**What.** 4.17.1 leaves the engines' types Open (item 82); C&C 1's peripheral's `PARAMS` [7:0] must read something.
+
+**Proposed.** meshsim reads 0 ("nothing to say", 4.17.4) until item 82 assigns it.
+
+**Answer (owner, 2026-10-31; DECISIONS-v1.2 section 46, spec 4.17.1):** 0 none, 1 Ingress/Egress with the UART and the
+chip lines (C&C 1's peripheral), 2 Updater/Binder/RW, 3 Tracer, 4 the replayer (type 1 in v1.1).
+
+**Status:** answered; done (Replayer 4, Cnc1Peripheral 1, mesh.h's PTYPE_*; the draft's PTYPE_REPLAYER 1 is a listed
+difference).

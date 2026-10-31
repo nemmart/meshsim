@@ -1,8 +1,5 @@
 # Test sources run_tests.sh leaves out of the build until the phase that rewrites them (WORKER4, meshsim v1.2).
 # One file per line: the file, then why. Delete a line when its file compiles again.
 CondTest.java      phase 4: the errors, the done gate and the error line with REPORT and HALT recovery (cond.c)
-PeripheralSlotTest.java  phase 3: the peripheral framework replaces v1.1's slot
-SenderTest.java    phase 3: the sender becomes a peripheral's DMA (retired as such)
 RecipeTest.java    phase 6: the v1.1 recipe book; replaced by the v1.2 recipes as suites
 SelfTest.java      phase 6 (RecipeTest's)
-StageB.java        phase 3: Stage B (sw/replay) on the v1.2 replayer and map

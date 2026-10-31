@@ -73,13 +73,42 @@ v1.1 recipe suite with the v1.2 recipes.
 - **Phase 0** (2026-10-30): branch, toolchain, baseline (above); read the prompt, CHANGES-v1.2, spec 1–4.18 and 5–6.5,
   WORKER3-REVIEW-2 section 6. Still to read in full: 4.19, 6.6–6.7, 8, 9, 10, 13, the recipes and the draft header.
 
-- **Phase 2** (2026-10-30, in progress). Plan: Registers.java's v1.2 table and a generator (MeshHeader.java) that
+- **Phase 2** (2026-10-30/31, **closed**). Done: Registers.java's v1.2 table and MeshHeader.java (mesh.h 1.2: every
+  macro and struct offset shared with the draft agrees, tools/header_diff.py; the generated header adds OFF_* for every
+  register, TABLE_BASE and sim_trace()); RegDoc.java generates the v1.2 wip/sw/REGISTERS.md (W4-04) and wip/sw/mesh.h
+  is the generated header; TileControl's v1.2 block; the Controller's v1.2 map and latencies; SIM_EXIT and TRACE
+  (moved here from phase 5 because the suites were rewritten here); the receive queues in the request tree (128, 256,
+  128; credits; controllers' requests at the root); sw/ on the v1.2 map (interim loader, app.ld, crt0 through SIM_EXIT,
+  12 programs); the riscv-tests relinked (riscv-tests 3df703c). Suites back: CtrlTest, HooksTest, RegDocTest,
+  RiscvTest, RequestBusTest, ReadPortGatherTest's C parts, AccountingTest, SearchBench, Sweep. To later phases:
+  CondTest and cond.c (phase 4: REPORT, HALT recovery), PeripheralSlotTest, SenderTest, StageB (phase 3), RecipeTest
+  (phase 6). Found: register decode must go by access (a store to STATUS wasn't a bus error); the table-window check
+  must use rd_running (a child-order-dependent miss). Measured: a read-port search step costs ~6 cycles more than in
+  v1.1 (35.9 + 37.42/active vs 29.8 + 37.43): K = 8 against v1.1's landing at cm_latency 2 (the spec notes this is
+  deliberate, 4.7); the sweep's bands are within 0.1% of v1.1's except the searches (+97 cycles at the default).
+  The original plan: Registers.java's v1.2 table and a generator (MeshHeader.java) that
   emits the draft's struct-based mesh.h; Conditions as ERRORS; TileControl (PARAMS/STATUS/ERRORS, the pulses, EVENTS,
   the done gate, the send port with no-increment, the counters' registers, the read port's setup, DMA_CONFIG readable,
   reserved words, SIM_EXIT and TRACE); the Controller's v1.2 map and load latencies (2 for the block and windows, 1 for
   the table window and memories); the request port and the receive queues in the tree; sw/ (crt0, linker script at the
   v1.2 map, the test programs ending through SIM_EXIT); the C-driven suites back. **Interim until phase 4:** a resident
   loader in program memory and the RUN line still start the programs (the boot ROM and the reset are phase 4).
+
+- **Phase 3** (2026-10-31, in progress): EventCounts (counted events with depths, live bits); Peripheral (v1.2
+  interface: PARAMS, STATUS, ERRORS, PULSE_RUN, counted events, words 32-127, the DMA's source); PeripheralSlot (up to
+  three per unit, the standard window and its access rules, EVENTS_MASK and the consuming load, the controller's live
+  bits EVENTS [15:13] and ERRORS [13:11], the DMA engine with DMA_HDR, DMA_ADDR, PULSE_DMA, STATUS [1], DMA done);
+  the replayer moved onto it (byte offsets; credits depth 2, run done, new expansion; ERRORS [2:0]; words 32-34);
+  Sender retired (its logic is the DMA); the mesh tiles' UART removed (the UART is C&C 1's peripheral, next).
+  Then: C&C 1's peripheral (Cnc1Peripheral: ERROR_LINES, READY_LINES/EXPECT, PULSE_GO as the model's GO path, the
+  watchdog and toast pin, LED, the UART with 16-byte FIFOs, divisor timing at Config.refCycle core cycles per
+  reference cycle, line errors as status); peripheral types per D46 (replayer 4, Ingress/Egress 1; W4-05);
+  PeripheralSlotTest rewritten (window, events, region writes, the DMA, the replayer's window, C&C 1's peripheral);
+  SenderTest retired. The replayer port (scope update 2026-10-31, mine end to end): ReplayDriver and ReplayerUnitTests
+  on v1.2 (ReplayerTest 1,188, the program pass's timing unchanged); sw/replay/replay_ctl.c on mesh.h 1.2 and the credit
+  loop (replay_regs.h, its crt0 and linker script gone); StageB on v1.2, with `StageB synthetic` (Stage A's windows on
+  a tile, 18, each matching row for row) in run_tests; DELIVERY runs as before when a delivery is given. The replayer
+  recipe (wip/sw/recipes/rcp_replay.c) runs in phase 6 with the other recipes.
 
 ## Phase 1's results (`results/`, committed at the close)
 
@@ -108,3 +137,6 @@ Every other suite logs "PENDING (phase 2 / 3 / 6 / sort port)". Still v1.1's in 
 | phase 1, simulator rewritten (`src/` compiles) | **the tests don't compile** (about 230 errors): every suite fails until the Java suites are rewritten |
 | phase 1, closed (`651c15c` and after) | none: the quick run passes; the C-driven suites are PENDING (phase 2), not failing |
 | phase 2, Registers.java rewritten | **src/ doesn't compile** (Registers' callers and the header generator are being rewritten) |
+| phase 2, `0e4ee0c` to `e7a2106` | src/ compiles; the test tree compiles only without the suites still being rewritten (see the log) |
+| phase 2, closed | none: the quick run and the full extras pass; PENDING: phase 3, 4, 6 and the sort port |
+| phase 3 (WIP), the peripheral framework | src/ compiles; the replayer's tests (ReplayDriver, ReplayerUnitTests) and TestPeripheral don't yet (v1.1's lines and claims are gone) |

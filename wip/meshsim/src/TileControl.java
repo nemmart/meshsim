@@ -6,8 +6,8 @@ import java.util.ArrayDeque;
  * EVENTS_PEEK, EVENTS_MASK, EVENTS_REQUIRED) and the done gate, ERRORS, PARAMS and STATUS, the send port (ROUTER_HDR
  * with no-increment, ROUTER_ADDR, the W words), the read port's setup and the simulator-only words (SIM_EXIT, TRACE).
  * PHASE-2 INTERIM until phase 4: the RUN/HALT line still starts and stops the core (v1.1's; the reset replaces it), and
- * entering HALT clears ERRORS. PHASE-2 INTERIM until phase 3: the peripheral windows decode here, minimally (word 0 the
- * peripheral's type, PULSE_RUN to the v1.1 slot, the rest 0), and EVENTS [13] is the slot's service lines.
+ * entering HALT clears ERRORS. The peripheral windows decode in {@link PeripheralSlot} (4.17.4); EVENTS [15:13] and
+ * ERRORS [13:11] are its live bits.
  *
  * Timing (4.11): a store at t updates its register at the end of t, and the owning unit acts from t + 1. A load reaches
  * {@link #read} in the cycle it samples (the controller holds a block or window load for one cycle, latency 2), so a load
@@ -97,7 +97,7 @@ final class TileControl {
     /** The live events as a load sampling at t reads them (4.12): request pending, and the peripherals' bits.
      *  PHASE-2 INTERIM: peripheral 1's bit is the v1.1 slot's service lines (phase 3: its EVENTS & EVENTS_MASK). */
     private int liveEvents(long t) {
-        int v = tile.slot.lines(t) != 0 ? 1 << Registers.EV_PERIPH_1 : 0;
+        int v = tile.slot.liveEvents(t) << Registers.EV_PERIPH_1;
         if (tile.req.pending(t)) v |= 1 << Registers.EV_REQUEST_PENDING;
         return v;
     }
@@ -182,15 +182,8 @@ final class TileControl {
 
     /** PHASE-2 INTERIM (phase 3 builds the peripheral framework): peripheral n's window. Absent: a bus error. Peripheral 1
      *  (the v1.1 slot): PARAMS reads its type; the other words read 0. */
-    private Integer windowRead(long t, int n, int word) {
-        if ((tile.dir.periphPresent >> (n - 1) & 1) == 0) return null;
-        return word == 0 ? tile.slot.type() : 0;
-    }
-    private boolean windowWrite(long t, int n, int word, int v) {
-        if ((tile.dir.periphPresent >> (n - 1) & 1) == 0) return false;
-        if (word == 3 && (v & 1) != 0) tile.slot.run(t);           // PULSE_RUN
-        return true;
-    }
+    private Integer windowRead(long t, int n, int word) { return tile.slot.read(t, n, word); }
+    private boolean windowWrite(long t, int n, int word, int v) { return tile.slot.write(t, n, word, v); }
     /** A counter write of N at t adds N at the end of t: the director judges a same-cycle arrival against count + N. */
     int pendingAdd(int c, long t) {
         return pendT == t && Registers.isCounter(Registers.STORE[pendIdx]) && Registers.counterOf(Registers.STORE[pendIdx]) == c ? pendVal & TrafficDirector.COUNTER_MASK : 0;
@@ -372,7 +365,7 @@ final class TileControl {
         if (before == 0 && conditions != 0) errorSince = t;       // the error line rises (6.6)
     }
     /** The tile's error line (6.6): TILE_CONDITIONS non-zero, as at the end of the last cycle. */
-    boolean errorLine() { return conditions != 0; }
+    boolean errorLine() { return conditions != 0 || tile.slot.liveErrors(tile.chip.cycle) != 0; }
 
     private int computeStatus(long t) {
         AddressGenerator a = tile.ag;
@@ -388,5 +381,5 @@ final class TileControl {
     }
     /** ERRORS as a load sampling at t reads it (4.13): the sticky bits; [13:11] live (PHASE-2 INTERIM: v1.1's sticky bad
      *  peripheral write stays at [11] until phase 3). */
-    int errorsAt(long t) { return conditions; }
+    int errorsAt(long t) { return conditions | tile.slot.liveErrors(t) << 11; }
 }

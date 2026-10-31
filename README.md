@@ -13,7 +13,7 @@ Simulator and software for a parallel compute mesh, part of an ASIC for proving 
 outside this repository. What the RTL work turns up comes back afterwards as a delta, folded into the next version;
 this repository doesn't track the RTL in between.
 
-Frozen folders are never edited. Each one is also tagged (`v1.0`, `v1.1`). When `wip/` reaches a
+Frozen folders are never edited, **except for an `ERRATA.md`** listing known errors and their corrections (`v1.2/ERRATA.md`). Each one is also tagged (`v1.0`, `v1.1`). When `wip/` reaches a
 milestone it is copied to a new frozen folder and tagged.
 
 ## What's in the repo and what isn't

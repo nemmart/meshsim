@@ -1,0 +1,12 @@
+# v1.2 errata
+
+v1.2 is frozen: its files are never edited. This list is the one exception, **known errors in the frozen v1.2 and their
+corrections**, kept because the v1.2 spec is in use. Each entry names where the error is, what is correct, and where the
+correction was made in the working copy (`wip/`, now heading for v1.25). Added as they are found.
+
+| # | where in `v1.2/` | the error | correct | found by, corrected in |
+|---|---|---|---|---|
+| E1 | `spec/machine-spec.md` 4.17.1, "Presence ... **1 the replayer**; the engines' types are assigned with their designs *(Open, item 82)*" | the replayer's peripheral type is given as 1, contradicting 4.17.4, 4.19 and 8.11, which say 4; the engines' types are called open | **0 none, 1 Ingress/Egress (with the UART and the chip-level lines, C&C 1's peripheral), 2 Updater/Binder/RW (C&C 2's), 3 Tracer (C&C 3's), 4 the replayer**; none are open (`DECISIONS-v1.2.md` section 46) | WORKER13; `wip/spec` 4.17.1 (WORKER10, `b7794e9`) |
+| E2 | `spec/machine-spec.md` 8.1, the general rule "**Timing** (4.11): a load takes 1 or 2 cycles, fixed per register" | stale since Tony's latencies | **2 cycles for the register block and the peripheral windows; 1 cycle for the table window and the memories** (data, program, boot ROM), fixed on every access and unit (`DECISIONS-v1.2.md` section 45; 4.11 already says so) | WORKER13; `wip/spec` 8.1 (WORKER10, `b7794e9`) |
+| E3 | `spec/machine-spec.md` item 111's text, "register-block and table-window loads take 1 or 2 cycles, implementation-defined" | the same stale rule, in the open items | as E2 (item 111 is superseded by section 45) | integrator |
+| E4 | `spec/CHANGES-v1.2.md` | stops at the review's round 3 (decisions through section 44); **sections 45-49 have no entry**, though the spec includes them. Three change the hardware | **45:** load latencies fixed (E2). **46:** the peripheral types (E1). **47:** the waiting rules from the sort port (tables free per memory; polling a landed word only when the earlier packets also land in controller memory; a plain `wfi()` on counters done only when no other counter is armed). **48:** a peripheral without a DMA reads its words 8-9 as 0, a load of them not flagged; `mtime`'s rate implementation-defined. **49:** K in hardware is the implementation's; meshsim's formula is K ≥ max(2L + 4, L + 4, `cm_latency`, `rp_latency`) | WORKER13; covered in `wip/spec/CHANGES-to-v1.25.md` (WORKER13) |

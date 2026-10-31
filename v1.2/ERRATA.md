@@ -1,6 +1,6 @@
 # v1.2 errata
 
-v1.2 is frozen: its files are never edited. This list is the one exception, **known errors in the frozen v1.2 and their
+v1.2 is a frozen waypoint: its files aren't edited. This list is the exception, **known errors in the frozen v1.2 and their
 corrections**, kept because the v1.2 spec is in use. Each entry names where the error is, what is correct, and where the
 correction was made in the working copy (`wip/`, now heading for v1.25). Added as they are found.
 
@@ -12,3 +12,6 @@ correction was made in the working copy (`wip/`, now heading for v1.25). Added a
 | E4 | `spec/CHANGES-v1.2.md` | stops at the review's round 3 (decisions through section 44); **sections 45-49 have no entry**, though the spec includes them. Three change the hardware | **45:** load latencies fixed (E2). **46:** the peripheral types (E1). **47:** the waiting rules from the sort port (tables free per memory; polling a landed word only when the earlier packets also land in controller memory; a plain `wfi()` on counters done only when no other counter is armed). **48:** a peripheral without a DMA reads its words 8-9 as 0, a load of them not flagged; `mtime`'s rate implementation-defined. **49:** K in hardware is the implementation's; meshsim's formula is K ≥ max(2L + 4, L + 4, `cm_latency`, `rp_latency`) | WORKER13; covered in `wip/spec/CHANGES-to-v1.25.md` (WORKER13) |
 | E5 | `spec/machine-spec.md` sections 11 and 12 (the controller's memories; the timing note) | the 32 KB memories' one-cycle access at 1 GHz is still called "with Tony, item 134" | **confirmed by Tony; item 134 is closed** (`DECISIONS-v1.2.md` section 45; 4.11 already says so) | WORKER13; `wip/spec` (integrator) |
 | E6 | `spec/machine-spec.md` section 10, the **K** row: "(4.7; W4-08)" | cites 4.7 (output queue sets), not 4.8 (the traffic director, where K is defined) | **4.8** | WORKER13; `wip/spec` (integrator) |
+| E7 | `spec/machine-spec.md` 4.19.10, the replayer's map | **a cleanup, not an error:** the queue ports' ranges are uneven (the two logs share part 2 at 512 KB each), making the decode two-level | one part per queue, each 1 MB: **1 code, 2 read log, 3 write log (0x300000), 4 expansion (0x400000)** | owner; `wip/planning/CLEANUP.md` CL1 |
+| E8 | `spec/machine-spec.md` 4.19.10 and the parameters, "decode table 2K × 16 bits" | **a cleanup:** the organization is unstated, and 2K × 16 reads like a shape needing eight banks | an implementation note: built as 256 × 128, one row per packet | owner; `wip/planning/CLEANUP.md` CL2 |
+

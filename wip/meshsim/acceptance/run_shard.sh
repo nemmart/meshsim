@@ -38,6 +38,7 @@ for ((k = 0; k < J; k++)); do
 done
 wait
 cat "$OUT"/part-*.csv >> "$OUT/results.csv" 2>/dev/null; rm -f "$OUT"/part-*.csv
+gzip -f "$OUT"/jvm-*.log 2>/dev/null                    # a line per window and stage: keep the committed results small
 python3 - "$OUT" "$P" "$F" "$N" "$S" "$(( $(date +%s) - T0 ))" "$J" "$X" <<'PY'
 import csv, sys
 out, prog, f, n, stages, tot, j, x = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), sys.argv[5], int(sys.argv[6]), int(sys.argv[7]), int(sys.argv[8])

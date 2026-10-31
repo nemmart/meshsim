@@ -1494,6 +1494,20 @@ Confirmed by Tony. Answers Q16 (W5-04, W5-21); spec item 134 closed, 4.11 update
   synchronised start's identical code stays identical in time.
 - meshsim models exactly these.
 
+## 46. Peripheral types (2026-10-31)
+
+Decided (O). Answers W4-05. A peripheral's `PARAMS` [7:0] (10, 18):
+
+| type | peripheral |
+|---|---|
+| 0 | none, or nothing to say |
+| 1 | Ingress/Egress, with the UART and the chip-level lines (C&C 1's peripheral, 15, 28) |
+| 2 | the Updater/Binder/RW engine (C&C 2's, 25) |
+| 3 | the Tracer (C&C 3's) |
+| 4 | the replayer (v1.1's spec called it type 1) |
+
+Other values are reserved. Spec 4.17.1 updated, and 4.19 renumbered.
+
 ---
 
 ## Big SRAM: to validate

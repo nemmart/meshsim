@@ -44,10 +44,8 @@ pending cond-shuf  "shuffled child order (seed 4)" "phase 4"
 LOG=regdoc    TAIL=1 run "REGISTERS.md and mesh.h against their generators, the draft header and the simulator" $J RegDocTest
 LOG=hooks     TAIL=1 run "the register map, the send port, the pulses (from Java)" $J HooksTest -1
 LOG=hooks-shuf TAIL=1 run "shuffled child order (seed 4)"     $J HooksTest 4
-pending periph     "the peripheral framework" "phase 3"
-pending periph-shuf "shuffled child order (seed 4)" "phase 3"
-pending sender     "v1.1's sender (becomes a peripheral's DMA)" "phase 3"
-pending sender-shuf "shuffled child order (seed 4)" "phase 3"
+LOG=periph    TAIL=1 run "the peripheral framework: the standard window, events, region writes, the DMA" $J PeripheralSlotTest -1
+LOG=periph-shuf TAIL=1 run "shuffled child order (seed 4)"   $J PeripheralSlotTest 4
 LOG=reqbus    TAIL=2 run "the request port, the request bus and the receive queues in the tree" $J RequestBusTest -1
 LOG=reqbus-shuf TAIL=1 run "shuffled child order (seed 4)"    $J RequestBusTest 4
 [ -n "$DELIVERY" ] && pending stageb "Stage B (sw/replay) on a tracer delivery's guest windows" "phase 3"

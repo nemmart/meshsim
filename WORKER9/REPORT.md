@@ -200,7 +200,30 @@ Stage B controller's lookup (normalize, then search).
 - **Division family**: WORKER7's harness at 821e1bd, only the opcode numbers changed: identical result, 8,040,000 cases,
   0 failures (`WORKER9/tracer-div-821e1bd/`).
 
+## The Tracer's tables (`wip/tables/tracer/`)
+
+Built by `tracer_tables.py` (PR #2) from the replayer's universal tables. Same decode entries and template numbers
+(`template_map.txt`: identity, both units have the same controller-fed set); **every traced word bit-identical to the
+replayer's** (checked over all 2,048 decode entries and 75 templates; only the Tracer-only `advice_reg` differs).
+Untraced words compute every advice value in bank 1 (results in 146-209, scratch above; at most 26 registers live).
+
+- **ROM 404 of 512**: the replayer's 388 plus the division family's 16 untraced words (WORKER7's rows, renumbered).
+- **The seven secp256k1 inlines** (controller-fed): multiply and square by product scanning and WORKER7's reduction
+  (233-414 untraced rows); GLV (940 rows: k mod r, two rounded divisions by r, two signed 128-bit differences,
+  branch-free); the two division inlines: reduce a and b, **Fermat inverse b^(m-2) as one loop body x 256** (square,
+  multiply, select by the exponent's top bit, shift the exponent: the row sequence never depends on the data), then the
+  output and the witness quotient. DIVQ: 123,979 untraced rows from 1,069 stored words; DIVR: 214,957 rows from 1,777.
+- **Segments** (`segments.bin`, index byte 14): a template is its segments in order, each repeated as given.
+- **Check**: every untraced program executed from the words, loops instantiated, against jolt-cpp's own advice
+  (`advice_ref.cpp`: jolt-cpp's expansion executed by `execute_instruction`, the inline advice by `evaluate`):
+  division family 8 x 200 cases with the edge cases, multiply/square 4 x 200, GLV 200, DIVQ and DIVR 10 each:
+  **0 mismatches**.
+- The inverse is larger than WORKER7's addition-chain estimate (53,000-110,000) because the loop body always
+  multiplies; an addition chain (255 squarings, ~15 multiplies for q) would roughly halve DIVQ but needs several
+  segments with different bodies (runs of squarings between multiplies). The segment format already allows it
+  (QUESTIONS Q8).
+
 ## Still to do
 
-The Tracer's variant (division family re-encoded; all seven secp256k1 inlines' advice as untraced rows, the division
-inlines' Fermat inverse as loop body + repeat count, GLV), the replayer-to-Tracer template-number mapping, and its checks.
+Part 2 is complete apart from the owner's decisions (the CSR instructions in the ROM; QUESTIONS Q8, Q9). Part 3 (the
+delivery writer) waits for its plan to be agreed.

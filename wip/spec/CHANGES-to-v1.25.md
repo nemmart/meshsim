@@ -218,3 +218,90 @@ Each table lists the unit's changes in v1.25 spec order. The columns are: **v1.1
 | A7 | endpoints: 0–63 tiles, 64 C&C, 65 memory system (served at C&C's port), 66–125 reserved, 126 broadcast, 127 none | 64 C&C 1, **65 C&C 2**, **66 C&C 3**, 67–125 reserved, 126 broadcast **to tiles 0–63**, 127 none (2.1) | changed | v1.2 | D25 |
 | A8 | one C&C (separate design) at tile 0's fifth port | **C&C 1–3** at tiles 0–2's fifth ports, each **a tile instance with 2 MB big SRAM**, its engine as peripheral 1 (2) | changed | v1.2 | D25 |
 | A9 | global nets: RUN/HALT, GO, READY (64), one error line per tile ORed at C&C | **GO** from C&C 1's peripheral (`PULSE_GO`) to tiles 0–63 (not C&C 2/3); **READY** 64 lines into `READY_LINES`; **error lines**, one per unit by endpoint id into `ERROR_LINES_0`–`2`, live, `error_latency`; **hard and soft reset** inputs; **toast** and **`LED`** output pins; no RUN/HALT (2) | changed | v1.2 | D23, D24, D28, D34, D35 |
+
+### 2.3 The tile's engines (spec 4.1–4.5, 4.9, 4.10, 4.14, 4.15, 4.18)
+
+**Big SRAM (4.1)**
+
+| ID | v1.1 | v1.25 (section) | kind | step | why |
+|---|---|---|---|---|---|
+| T1 | any chunk alignment; a 64/128-bit access crossing a row **spans** two rows: one request and one token, but two area accesses (part 1 ahead of every client); the client's next request waits; group runs "should" be row-aligned | **every 64/128-bit access naturally aligned**; no access straddles a row; every access is one request, one token, one area access (4.1) | changed | v1.2 | D26 |
+| T2 | (n/a) | **misaligned access (hardware):** a mode-0 packet → bad packet; a write through a misaligned `PTR` → dropped by the write engine, **still counted**, `ERRORS` [1]; a misaligned read by the address generator, GATHER engine or read port → **not performed, its packet sent as usual with payload 0** (so the receiver still counts it), `ERRORS` [1] at the issuing tile (4.1) | new | v1.2 | nothing hangs and the error names the tile; D32 |
+| T3 | wrap mod 2²¹; above the device: reads 0, writes dropped; no condition | undefined; no error bit (4.1) | changed | v1.2 | A5 |
+| T4 | `mem_idle` status bit; phase ordering by `mem_idle` + counters | `mem_idle` gone; ordering by K: when a write's counter decrements it has entered its area's queue, so a later read queues behind it (4.1) | removed / changed | v1.2 | D18, D3 |
+| T5 | write-engine input overflow: condition 4 | `ERRORS` [4] (4.1) | renamed | v1.2 | D18 |
+
+**Address generator (4.2)**
+
+| ID | v1.1 | v1.25 (section) | kind | step | why |
+|---|---|---|---|---|---|
+| T6 | start = `TILE_PULSE` [1] | **`PULSE_DMA`** (0x810); also **clears DMA run done, `EVENTS` [10]** (4.2) | changed | v1.2 | D8, D12 |
+| T7 | run ends when the last entry is walked: `rd_running` ↓, `rd_done` ↑, engine run done `WAKE_EVENTS` [11] | `rd_running` ↓ and `rd_done` ↑ **once the run's last table read has completed** (guarantee B), **in the same cycle as DMA run done, `EVENTS` [10]** (4.2, 4.10) | changed | v1.2 | polling `rd_running` means what the event means; D41 (F6) |
+| T8 | `STREAM_SRC`: source [20:0], spare [31:21] | source [20:0] aligned to the read size; **gap after [23:21]** (moved from `STREAM_COUNT`); spare [31:24] (4.2, 8.9) | changed | v1.2 | D4 |
+| T9 | `STREAM_DEST`: destination word [20:0] (modes 3, 6, 9), *d* [27:21] | **destination byte address [31:0], mode 0 only**, aligned to the read size, advancing by 4, 8 or 16 bytes per element (4.2) | changed | v1.2 | D4 |
+| T10 | `STREAM_COUNT`: count [17:0] (18 bits), mode [21:18], read size [23:22], gap after [26:24] | **count [16:0] (17 bits, ≤ 131,071)**, read size [18:17], **counter [21:19]**, mode [24:22], ***d* [31:25]** (the common header layout, relative *d*) (4.2, 8.1) | changed | v1.2 | D4, D12, D30 |
+| T11 | *d*: 0–63 relative, 64 C&C (mode 3 only), 65–127 invalid; never broadcast | *d* 0–63 relative, **64–66 the controllers**, **126 the broadcast** (hardware: no special case; its own copy takes a token), 67–125 and 127 invalid. By convention only the controllers broadcast from streams; meshsim errors on a mesh tile (4.2) | changed | v1.2 | boot overlays at a packet per cycle; D25, D41 (F14) |
+| T12 | element and destination addresses wrap mod 2²¹; destination word +1, +2 or +4 for modes 3, 6, 9 | plain addition, no wrap (past the end is a software bug); a misaligned element is not read, payload 0, `ERRORS` [1] (4.2) | changed | v1.2 | D26, D32 |
+| T13 | packet fields: dst, mode, addr (0 or destination word) | dst (*d* = 64–66 or 126 absolute), **mode and counter** from the entry, address = destination for mode 0, else 0 (4.2) | changed | v1.2 | L1 |
+| T14 | drift: condition 3 | `ERRORS` [3] (4.2) | renamed | v1.2 | D18 |
+
+**Controller read port (4.3)**
+
+| ID | v1.1 | v1.25 (section) | kind | step | why |
+|---|---|---|---|---|---|
+| T15 | `SRAM_RD_DEST_ADDR` **write-only**: destination [13:0] (a packed controller-memory word, any CM, program memory included), size [15:14] | **R/W** (0x880): destination [16:0], **a byte offset in data memory only** (region 0x00); size [18:17]; **counter [21:19]**; [31:22] reserved; a load returns the next destination as advanced, with size and counter (4.3, 8.8) | changed | v1.2 | D13 |
+| T16 | results as mode-6 packets to self, counted in `DMA_CM_REMAINING` | **mode-0 packets to self** at 0x00000000 + destination, counted on the entry's counter at K (4.3) | changed | v1.2 | D6, D13 |
+| T17 | request-queue entry 37 bits (21 + 14 + 2) | **43 bits** (21-bit address, 17-bit destination, 2-bit size, 3-bit counter) (4.3, 10) **[not in CHANGES]** | changed | v1.2 | follows from T15 |
+| T18 | misaligned read: dropped, read-port error [7] | **performed as a payload-0 packet**, `ERRORS` [1]; [7] is now queue overflow only. A misaligned *destination* makes a misaligned mode-0 packet, a bad packet at the director (4.3) | changed | v1.2 | D32 |
+
+**GATHER engine (4.4)**
+
+| ID | v1.1 | v1.25 (section) | kind | step | why |
+|---|---|---|---|---|---|
+| T19 | gather request mode 1; gather values mode 2; queue entry = 20-bit ordinal | request **mode 4**, values **mode 1**; **the request's counter field is stored with the ordinal** (entry = 20-bit ordinal + 3-bit counter) and stamped on its gather values, which are counted at the director (guarantee C) (4.4) | changed | v1.2 | D6, D17 |
+| T20 | `DMA_RECORD_BASE_ADDRESS` any chunk; reads wrap mod 2²¹ | **aligned to a record** (even); an odd base makes each read payload 0 and sets `ERRORS` [1] (4.4) | changed | v1.2 | D32 |
+| T21 | GATHER busy `TILE_STATUS` [2]; overflow condition 6 | `STATUS` [2]; `ERRORS` [6] (4.4) | renamed | v1.2 | D18 |
+
+**SRAM read queue, return path and injection (4.5)** — see also L15–L17.
+
+| ID | v1.1 | v1.25 (section) | kind | step | why |
+|---|---|---|---|---|---|
+| T22 | chunk selection from one or two rows (spanning) | from the one returned row (4.5) | changed | v1.2 | T1 |
+| T23 | out-of-range read returns payload 0 | misaligned read returns payload 0; out of range undefined (4.5) | changed | v1.2 | T2, T3 |
+| T24 | SRAM write queue: modes 2–5 | mode 0 to region 0x03 and modes 1–3 (4.5) | changed | v1.2 | L3 |
+
+**DMA write engine (4.9)**
+
+| ID | v1.1 | v1.25 (section) | kind | step | why |
+|---|---|---|---|---|---|
+| T25 | modes 2 (`PTR[src]`), 4 (`PTR[digit]`), 5 (augmented) and 3 (explicit chunk address, never counted) | **mode 1** (`PTR[src]`), **2** (`PTR[digit]`), **3** (augmented) and **mode 0** at byte offset / 4 (counted by its field) (4.9) | changed | v1.2 | D6 |
+| T26 | `PTR[src]` index 0–64 | 0–66 (controllers' ids) (4.9) | changed | v1.2 | D25 |
+| T27 | `PTR[64]`: C&C's staging pointer, re-set after mode-4 phases | not special (4.9) | removed | v1.2 | staging by address; D17 |
+| T28 | spanning writes split into two area accesses | a `PTR` must be aligned to the size of the writes through it (an augmented one to a record); **a write through a misaligned `PTR` is dropped but counted, sets `ERRORS` [1], and the pointer still advances by the size** (4.9) | changed | v1.2 | D32; the advance: item 133 (accepted 2026-10-29) **[advance not in CHANGES]** |
+| T29 | explicit-address write misaligned: bad packet | alignment checked at the director (L7) (4.9) | changed | v1.2 | D32 |
+| T30 | input FIFO overflow condition 4 | `ERRORS` [4] (4.9) | renamed | v1.2 | D18 |
+
+**Table memories (4.10)**
+
+| ID | v1.1 | v1.25 (section) | kind | step | why |
+|---|---|---|---|---|---|
+| T31 | window 0x2000–0x3FFF (0x3600–0x3FFF unmapped) | **0xFFFF2000–0xFFFF35FF**, same low 16 bits *(Proposed, item 120)*; the rest of region 0xFF outside the block and windows is unmapped (4.10, 8.9) | changed | v1.2 | D11 |
+| T32 | access when `rd_running` = 0 and **`ts_busy`** = 0; `wait_tables()` | **`ts_busy` and `wait_tables()` gone**; software waits by events (a counter's done + DMA run done), may poll `STATUS.rd_running`; guarantees **A** (K covers the `PTR`/`HIST` update), **B** (T7), **C** (T19) (4.10) | removed / changed | v1.2 | D11, D17 |
+| T33 | table-window load 1 or 2 cycles, implementation's choice | **1 cycle** (`HIST`, the only loadable table) (4.11, 8.1) **[not in CHANGES-v1.2: D45]** | changed | v1.2 | D45 (Tony, 2026-10-29) |
+| T34 | table request overflow: condition 5 | `ERRORS` [5] (4.10) | renamed | v1.2 | D18 |
+
+**Commit ordering and digits (4.14, 4.15)**
+
+| ID | v1.1 | v1.25 (section) | kind | step | why |
+|---|---|---|---|---|---|
+| T35 | committed when counters are done with `mem_idle`/`cm_idle`; `ts_busy` for the tables | committed **when the write's counter has decremented** (K): CM written, peripheral landed, big SRAM in its area queue, `PTR`/`HIST` readable (4.14) | changed | v1.2 | D3 |
+| T36 | bucket write is mode 4 (`DMA_CONFIG` [20:18]) | mode 2; same field (4.15) | renamed | v1.2 | D6 |
+
+**Request port (4.18)** — the tree is L12–L14.
+
+| ID | v1.1 | v1.25 (section) | kind | step | why |
+|---|---|---|---|---|---|
+| T37 | offsets 0x858–0x864 | **0x848–0x854** (`REQUEST_SET_W0`–`W2`/`GET_W0`–`W2`, `SEND`/`RECEIVE`) (8.1, 8.10) | changed | v1.2 | D11 |
+| T38 | receive side reads the tile's own 16-entry queue | reads its **target's queue in the tree** (C&C 1–3 only); on tiles 0–63 the `GET` words read 0, request pending never rises and every `REQUEST_RECEIVE` load is a receive underflow (4.18) | changed | v1.2 | D38 |
+| T39 | `request_busy` `TILE_STATUS` [11]; FIFO-not-full `WAKE_EVENTS` [12]; `REQUEST_PENDING` [19]; underflow condition 14 | `STATUS` [6]; `EVENTS` [11]; request pending `EVENTS` [12] (live); `ERRORS` [14] (4.18) | renamed | v1.2 | D16, D18, D40 |
+| T40 | HALT keeps the receive queue; requests arrive while credits last | the reset empties every FIFO, the tree and the queues together and restores the credits; after an error the port keeps running (the handler's reports use it) (4.18) | changed | v1.2 | D23 |

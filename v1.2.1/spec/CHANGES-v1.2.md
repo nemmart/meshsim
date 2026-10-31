@@ -140,3 +140,15 @@ Applied after the first round. Each row names the spec sections it touched.
 | D44 (W5-23) | "outstanding" is a software convention: a request until its reply lands, a read until its data lands; in hardware a request holds its receive-queue slot only until the target pops it | 3.3, 4.12, 6.7, 13 (135 closed) |
 | D44 (W5-24) | the 24-report set is decided as defined; its header's op and sequence fields come with C&C 1's request format | 4.13, 13 (122) |
 | D44 (W5-26) | C&C 1 lands a tile's first command only when that tile should start at the next GO | 6.2 |
+
+## Round 4: decisions 45–49 (2026-10-29 to 2026-11-01)
+
+Added in v1.2.1 (erratum E4); the spec already carried 45, 46 and 49 when v1.2 froze, and v1.2.1 completes them (E1–E3, E5, E6).
+
+| decision | what changed | sections |
+|---|---|---|
+| D45 | **load latencies fixed** (Tony): loads from the register block and every peripheral window take **2 cycles**; from data memory, program memory, the boot ROM and the table window **1**; fixed on every access and tile. Of the table memories only `HIST` is loadable through the table window. The 32 KB memories meet one-cycle access at 1 GHz: item 134 closed, item 111's "1 or 2 cycles" superseded | 4.8, 4.10, 4.11, 8.1, 10, 11, 12, 13 (111, 134) |
+| D46 | **peripheral types** (`PARAMS` [7:0]): 0 none, 1 Ingress/Egress (C&C 1's, with the UART and the chip-level lines), 2 Updater/Binder/RW (C&C 2's), 3 Tracer (C&C 3's), **4 the replayer** (v1.1's type 1); other values reserved | 4.17.1, 4.17.4, 4.19, 8.11, 10, 13 (23) |
+| D47 | **waiting rules from the sort port**, software only: the tables are free per memory (`STREAM` and `GROUP` at DMA run done, `PTR` and `HIST` at the arrivals' counter); polling a landed word in data memory is valid only when the earlier packets also land in controller memory; a plain `wfi()` on counters done only when no other counter is armed | none (`sw/CONVENTIONS.md`, recipe 23) |
+| D48 | a peripheral without a DMA reads its words 8–9 as 0, a load of them not flagged (only a store); `mtime`'s rate implementation-defined. **meshsim implements both; the spec text doesn't state them yet** (WORKER15 Q1) | (4.17.4, 4.11: see Q1) |
+| D49 | **K in hardware is the implementation's:** K need only cover the implementation's slowest write path. meshsim's reference formula becomes K ≥ max(2L + 4, L + 4, `cm_latency`, `rp_latency`) (was 2L + 3; W4-08): 6 at L = 1, so K = 8 covers L ≤ 2. Also: one K for every destination, deliberately (2026-10-31) | 4.8, 9 (24), 10 |

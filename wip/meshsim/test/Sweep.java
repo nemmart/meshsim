@@ -13,6 +13,7 @@ import java.util.function.Consumer;
  * invariant violation. The disjoint-buffer check is off (a program property, independent of these parameters).
  * Usage: {@code java Sweep [quick|full]}; writes results/sweep-<mode>.csv.
  */
+// v1.2: phase 0 is the boot (the boot ROM's GO, 6.2); each workload's phases follow it
 public final class Sweep {
     record Point(String param, String value, Consumer<Config> set) {}
     record Res(long cycles, long violations, int link, int eject, int area, int weIn, String firstViolation) {}
@@ -90,7 +91,7 @@ public final class Sweep {
                 m.c.cc.command(LinkWord.BROADCAST, 1 << 24).go().command(LinkWord.BROADCAST, 2 << 24).go().command(LinkWord.BROADCAST, 3 << 24).go();
                 m.run(m::allStopped, 10_000_000);
                 m.c.phases.close();
-                PhaseLog.Phase p = m.c.phases.phases.size() > 1 ? m.c.phases.phases.get(1) : null;
+                PhaseLog.Phase p = m.c.phases.phases.size() > 2 ? m.c.phases.phases.get(2) : null;
                 Res r = result(m, p);
                 if (a.verify(m.c) != 0) return new Res(r.cycles, r.violations + 1, r.link, r.eject, r.area, r.weIn, "records did not all land");
                 return r;
@@ -114,7 +115,7 @@ public final class Sweep {
                 m.c.cc.command(LinkWord.BROADCAST, 1 << 24 | n).go().command(LinkWord.BROADCAST, 2 << 24).go();
                 m.run(m::allStopped, 10_000_000);
                 m.c.phases.close();
-                return result(m, m.c.phases.phases.isEmpty() ? null : m.c.phases.phases.get(0));
+                return result(m, m.c.phases.phases.size() > 1 ? m.c.phases.phases.get(1) : null);
             }
         };
     }
@@ -137,7 +138,7 @@ public final class Sweep {
                 m.c.cc.command(LinkWord.BROADCAST, 1 << 24 | 1 << 8 | 63).go().command(LinkWord.BROADCAST, 2 << 24).go();
                 m.run(m::allStopped, 10_000_000);
                 m.c.phases.close();
-                return result(m, m.c.phases.phases.isEmpty() ? null : m.c.phases.phases.get(0));
+                return result(m, m.c.phases.phases.size() > 1 ? m.c.phases.phases.get(1) : null);
             }
         };
     }
@@ -152,7 +153,7 @@ public final class Sweep {
                 m.c.cc.command(LinkWord.BROADCAST, 1 << 24 | 1, 1).go().command(LinkWord.BROADCAST, 1 << 24 | 2, 2).go().command(LinkWord.BROADCAST, 4 << 24).go();
                 m.run(m::allStopped, 100_000);
                 m.c.phases.close();
-                return result(m, m.c.phases.phases.size() > 1 ? m.c.phases.phases.get(1) : null);
+                return result(m, m.c.phases.phases.size() > 2 ? m.c.phases.phases.get(2) : null);
             }
         };
     }

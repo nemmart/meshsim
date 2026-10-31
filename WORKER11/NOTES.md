@@ -35,6 +35,10 @@ acceptance kit). Until WORKER10's `v1.25` spec branch exists, the design is DECI
       self-transfer is sequential (appendix 1.4); keep pc far from 0 (pc 0 is the program end): JALR off x2-x4 only,
       mtvec read-only.
 - [x] Stage A (ReplayDelivery) on synthetic deliveries: every window OK in all three variants, ~0.3 s per window.
-- [ ] Stage B on a 65,536-row window: >5 min (measuring in the background)
+- [x] Stage B on 65,536-row windows: OK. The first try hung in start-up: build_fast's multiplier search (128 slots,
+      4,096 tries) never finds a collision-free table for ~40 bitmap templates; now 512 slots (8 KB), 256 tries.
+- Speeds (this sandbox, one JVM, synthetic windows, test/ReplayShard): Stage A 76-388 ms per 65,536-row window
+  (warm ~0.1 s); Stage B 9.7-15 s per window (~5-6.5K rows/s; meshsim simulates the whole 64-tile chip). RSS ~100-140 MB
+  per JVM. Background jobs die at the end of a tool call here: run long things in the foreground under `timeout`.
 - [ ] REPLAY-INPUT-REQUIREMENTS.md (key, sign bit, VirtualLoad/Store logs, E[15], tables location)
 - [ ] synthetic delivery generator + acceptance kit + speed measurement + estimate

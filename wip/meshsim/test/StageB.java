@@ -47,7 +47,7 @@ public final class StageB {
                 int index = ((Number) we.get("index")).intValue();
                 if (!only.isEmpty() && !only.contains(index)) continue;
                 windows++;
-                if (!runWindow(im, ReplayDelivery.tablesFor(dir, pd), pd, we, variant, prog)) failed++;
+                if (!runWindow(im, ReplayDelivery.tablesFor(dir, pd), pd, we, variant, prog).ok) failed++;
             }
         }
         System.out.println("StageB " + prog + " " + variant + ": " + windows + " windows, " + failed + " failed");
@@ -74,7 +74,8 @@ public final class StageB {
         return n;
     }
 
-    static boolean runWindow(Image im, ReplayTables tb, Path pd, Map<String, Object> we, String variant, String prog) throws IOException {
+    /** One delivered window on the tile; prints its line and returns the result (ok, rows, cycles, the details). */
+    static ReplayDelivery.Result runWindow(Image im, ReplayTables tb, Path pd, Map<String, Object> we, String variant, String prog) throws IOException {
         int index = ((Number) we.get("index")).intValue(), rows = ((Number) we.get("rows")).intValue();
         String base = String.format("window_%05d.", index);
         Config k = Config.machine(); k.periphType = 0;
@@ -168,7 +169,10 @@ public final class StageB {
                 prog, index, variant, pass ? "OK  " : "FAIL", same, cyc, (double) cyc / Math.max(1, same), r.newExpansions, newexp, slow, refills,
                 java.util.Arrays.toString(r.stalls)));
         for (String d : detail) System.out.println("    " + d);
-        return pass;
+        ReplayDelivery.Result out = new ReplayDelivery.Result();
+        out.ok = pass; out.rows = same; out.cycles = cyc; out.index = index; out.detail.addAll(detail);
+        out.summary = String.format("%.3f cycles/row, newexp %d (slow %d), refills %d", (double) cyc / Math.max(1, same), r.newExpansions, slow, refills);
+        return out;
     }
 
     // ================================================================ synthetic windows (no tracer delivery needed)

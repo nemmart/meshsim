@@ -46,10 +46,12 @@ static uint8_t  hashtab[256];                                  /* the general lo
 /* The direct-mapped table (fast path), 16 B per slot, slot = (w * dm_mult) >> 25: {word (0 = empty), DMA_CONFIG for the
  * template's preloaded stream, its first chunk's words, the template number}. At start-up the same space holds the
  * state record (67 words) while region 0 is sent. */
-static uint32_t dmtab[128 * 4] __attribute__((aligned(16)));
+#define DM_SLOTS 512            /* v1.25: 512 slots (8 KB), so a window's bitmap templates usually land collision-free */
+#define DM_TRIES 256            /* multipliers tried at most; a key that loses its slot takes the slow path */
+static uint32_t dmtab[DM_SLOTS * 4] __attribute__((aligned(16)));
 #define record dmtab
 static uint32_t dm_mult;
-#define DM_SLOT(w, m)  (((w) * (m)) >> 25)
+#define DM_SLOT(w, m)  (((w) * (m)) >> 23)
 static uint32_t nopword[4] __attribute__((aligned(16)));       /* ROM word 1, the shared NOP row (4.19.6) */
 static uint32_t scratch[4] __attribute__((aligned(16)));
 static uint32_t me, pmask;                                     /* pmask: the replayer's EVENTS_MASK in a pass */
@@ -139,15 +141,17 @@ static inline uint32_t tpl_base(uint32_t k) { return hdr[RL_H_TEMPLATES] + (ix[4
 /* Start-up: one preloaded STREAM entry per template (its first min(128, length) words to the expansion port), and the
  * direct-mapped table over the templates in the window's bitmap. Its slot is a multiplicative hash of the key,
  * (key * m) >> 25, with m searched (odd multipliers from an LCG) until those keys land in distinct slots. If none is
- * found in 4,096 tries, the one with the fewest collisions is kept: a key that loses its slot takes the slow path. */
+ * found in DM_TRIES tries, the one with the fewest collisions is kept: a key that loses its slot takes the slow path.
+ * (v1.2's 128 slots and 4,096 tries took millions of cycles at start-up for a window naming ~40 templates.) */
 static void build_fast(uint32_t nt) {
     for (uint32_t k = 0; k < nt; k++) {
         uint32_t len = ix[4 * k + RL_IX_LENGTH];
         stream(TPL_STREAM0 + k, tpl_base(k), RP_Q_EXP, min32(HALF_EXP, len), CTR_PERIPH);
     }
     uint32_t m = 0x9E3779B1u, best = m, best_coll = ~0u, tries = 0;
-    while (best_coll && tries < 4096) {
-        uint32_t used[4] = { 0, 0, 0, 0 }, coll = 0;
+    while (best_coll && tries < DM_TRIES) {
+        uint32_t used[DM_SLOTS / 32], coll = 0;
+        for (uint32_t i = 0; i < DM_SLOTS / 32; i++) used[i] = 0;
         for (uint32_t k = 0; k < nt; k++) {
             if (!in_bitmap(k)) continue;
             uint32_t slot = DM_SLOT(ix[4 * k + RL_IX_KEY], m);
@@ -159,7 +163,7 @@ static void build_fast(uint32_t nt) {
         m = (m * 1664525u + 1013904223u) | 1u;
     }
     dm_mult = best;
-    for (uint32_t i = 0; i < 128 * 4; i++) dmtab[i] = 0;
+    for (uint32_t i = 0; i < DM_SLOTS * 4; i++) dmtab[i] = 0;
     uint32_t held = 0;
     for (uint32_t k = 0; k < nt; k++) {
         if (!in_bitmap(k)) continue;

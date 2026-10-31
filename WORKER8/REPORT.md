@@ -94,8 +94,13 @@ overlay load: **to explain**), K1.0-K1.2 +193, +193, +432, K2.0-K2.2 +422, +497,
 - **A model difference, not the program's:** in v1.1 a load through the table window (`HIST`, the prefix sums) took
   the register-load latency, 2 cycles; in v1.2 a table-window load takes 1 (`Controller.java`'s header, both
   versions). Every prefix sum (256 `HIST` loads per bucket pass, 4 passes in L1 and in L2) gains from it.
-- **Possible saving, not taken:** stepping a pointer over `tables->PTR`/`STREAM_*` in the sort's loops would recover
-  most of the table-store cost; left as is so the program stays a straight port (to revisit after the comparison).
+- **Recovered (owner's optional item, 2026-10-31):** `plan_transfer`'s PTR and stream loops, and `k_start`'s V PTR
+  loop, now step explicit pointers over the table window, and the stream loop no longer stores `STREAM_DEST` (modes
+  1-5 ignore it, spec 4.2). Before → after, uniform n=2000: kv32 `plan_transfer` 4,133 → 3,759 (v1.1 3,827), XB 8,213 →
+  7,839 (v1.1 7,828), TOTAL 236,037 → 235,663; k128 XB 8,597 → 8,287 (v1.1 8,283), K 3,909 → 3,848, TOTAL 253,353 →
+  252,982. The tables above are before the change; the logs committed after it are after. **Left as a known compiler
+  effect:** the planner's table writers (`bt_hop1_m`, `bt_hop1_src`, `bt_hop2_d`, `th_hop*`, through worker 5's
+  `HW_*` macros) and `config_direct_lb`'s 16-group loop (+83).
 
 ## What the recipes didn't cover
 

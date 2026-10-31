@@ -66,17 +66,24 @@ void plan_transfer(void) {
     /* the tables are free: the last run (L1's) was waited for (rule 6) */
     /* receive side: one run per source, source-major, in BUF_Y (key i of the buffer gets ordinal i: mode 3). V's
      * receive pointers (BUF_VR + 4 * the same prefix) are written in K's tail, after K's arrivals. */
+    /* The table-window loops step explicit pointers: indexing tables->X[i] from the window's base (0xFFFF2000) costs
+     * GCC a lui, a shift and an add per store (v1.1's window at 0x2000 compiled to a stepped pointer; REPORT.md) */
     uint32_t n = 0;
-    for (int p = 0; p < NT; p++) { tables->PTR[p] = BUF_Y + (T->inpos[p] << 1); n += T->col[p]; }
+    volatile uint32_t *ptr = tables->PTR;
+    for (int p = 0; p < NT; p++) { *ptr++ = BUF_Y + (T->inpos[p] << 1); n += T->col[p]; }
     S.n_recv = n;
     /* the direct path's streams: K 0-63 and V 64-127, stream 4g+i carrying offset GROUP_OFF[4g+i]; every packet
-     * counted on counter 1 at its receiver. Sources aligned: keys at even chunks, values at multiples of 4 (D26). */
+     * counted on counter 1 at its receiver. Sources aligned: keys at even chunks, values at multiples of 4 (D26).
+     * STREAM_DEST is not written: modes 1-5 ignore it (spec 4.2). */
     const uint32_t khi = STREAM_COUNT_W(0, SIZE_64, CTR_SRAM, KEY_MODE(k128), 0);   /* the keys' mode: 3 (augmented) with 128-bit values */
+    const uint32_t vhi = STREAM_COUNT_W(0, SIZE_128, CTR_SRAM, MODE_SRC, 0);
+    volatile uint32_t *ksrc = &tables->STREAM_SRC[STR_K], *kcnt = &tables->STREAM_COUNT[STR_K];
+    volatile uint32_t *vsrc = &tables->STREAM_SRC[STR_V], *vcnt = &tables->STREAM_COUNT[STR_V];
     for (int s = 0; s < 64; s++) {
         unsigned off = GROUP_OFF[s], dst = (me + off) & 63;
-        uint32_t c0 = cut[dst], cnt = T->row[dst];
-        set_stream(STR_K + s, STREAM_SRC_W(BUF_X + (c0 << 1), 0), 0, STREAM_COUNT_W(cnt, 0, 0, 0, off) | khi);
-        if (k128) set_stream(STR_V + s, STREAM_SRC_W(BUF_VS + (c0 << 2), 0), 0, STREAM_COUNT_W(cnt, SIZE_128, CTR_SRAM, MODE_SRC, off));
+        uint32_t c0 = cut[dst], dcnt = STREAM_COUNT_W(T->row[dst], 0, 0, 0, off);
+        *ksrc++ = STREAM_SRC_W(BUF_X + (c0 << 1), 0); *kcnt++ = dcnt | khi;
+        if (k128) { *vsrc++ = STREAM_SRC_W(BUF_VS + (c0 << 2), 0); *vcnt++ = dcnt | vhi; }
     }
     red_role(me);
     S.red_in = S.red_children * (RV / 2);
@@ -101,7 +108,8 @@ void k_start(void) {
     /* V configure (walk-through 5.5 step 4): receive PTR in BUF_VR, source-major as K's, 16-byte aligned (one size per
      * pointer: V's PTRs take 128-bit packets only, D26); histogram digit off, mode 1 (K's digit-1 counts in HIST must
      * survive for L2); V's group run (the start command loads it). */
-    for (int p = 0; p < NT; p++) tables->PTR[p] = BUF_VR + (SK.inpos[p] << 2);
+    volatile uint32_t *ptr = tables->PTR;
+    for (int p = 0; p < NT; p++) *ptr++ = BUF_VR + (SK.inpos[p] << 2);
     tile->DMA_CONFIG = DMA_CFG_RUN(RUN_GROUPS, GRP_V, S.groups);
 }
 

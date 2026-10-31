@@ -10,14 +10,15 @@
 #     -s  stages (default AB): A the model, B the controller on tile 0 alone (the 63 idle tiles parked), F the same on
 #         the full chip; with B and F both, each window's cycles must agree
 #     -m  the manifest's SHA-256, as WORKER9's writer task reported it: checked before anything is read
+#     -x  K: also stage F (the full chip) on every window whose index is a multiple of K, its cycles checked against B
 # Every file a window's replay reads is checked against the manifest's SHA-256 first (ReplayShard). Writes
 # OUTDIR/results.csv (one line per window and stage), OUTDIR/jvm-*.log, SUMMARY.txt and VERDICT.txt. Exit 0 only if
 # every window of the range is in the manifest and matched in every stage.
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
-D=; P=; F=; N=; J=$(nproc); S=AB; MS=
-while getopts d:p:f:n:j:s:m: o; do case $o in d) D=$OPTARG;; p) P=$OPTARG;; f) F=$OPTARG;; n) N=$OPTARG;; j) J=$OPTARG;;
-  s) S=$OPTARG;; m) MS=$OPTARG;; *) sed -n '2,14p' "$0"; exit 2;; esac; done
+D=; P=; F=; N=; J=$(nproc); S=AB; MS=; X=0
+while getopts d:p:f:n:j:s:m:x: o; do case $o in d) D=$OPTARG;; p) P=$OPTARG;; f) F=$OPTARG;; n) N=$OPTARG;; j) J=$OPTARG;;
+  s) S=$OPTARG;; m) MS=$OPTARG;; x) X=$OPTARG;; *) sed -n '2,16p' "$0"; exit 2;; esac; done
 shift $((OPTIND - 1)); OUT=${1:-}
 [ -n "$D" ] && [ -n "$P" ] && [ -n "$F" ] && [ -n "$N" ] && [ -n "$OUT" ] || { sed -n '2,14p' "$0"; exit 2; }
 D=$(cd "$D" && pwd) || { echo "no delivery at $D"; exit 2; }
@@ -33,13 +34,13 @@ JAVA="java -Xmx1500m -Dreplay.tables=$HERE/tables/replayer -Dreplay.build=$HERE/
 T0=$(date +%s)
 echo "shard: $P windows $F..$((F + N - 1)) of $D, stages $S, $J JVMs, start $(date -u)"
 for ((k = 0; k < J; k++)); do
-  (cd "$HERE" && $JAVA ReplayShard "$D" "$P" "$OUT/part-$k.csv" --manifest "$MF" --stages "$S" --first "$F" --count "$N" --stride "$J" --phase "$k" > "$OUT/jvm-$k.log" 2>&1) &
+  (cd "$HERE" && $JAVA ReplayShard "$D" "$P" "$OUT/part-$k.csv" --manifest "$MF" --stages "$S" --first "$F" --count "$N" --stride "$J" --phase "$k" --full-every "$X" > "$OUT/jvm-$k.log" 2>&1) &
 done
 wait
 cat "$OUT"/part-*.csv >> "$OUT/results.csv" 2>/dev/null; rm -f "$OUT"/part-*.csv
-python3 - "$OUT" "$P" "$F" "$N" "$S" "$(( $(date +%s) - T0 ))" "$J" <<'PY'
+python3 - "$OUT" "$P" "$F" "$N" "$S" "$(( $(date +%s) - T0 ))" "$J" "$X" <<'PY'
 import csv, sys
-out, prog, f, n, stages, tot, j = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), sys.argv[5], int(sys.argv[6]), int(sys.argv[7])
+out, prog, f, n, stages, tot, j, x = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), sys.argv[5], int(sys.argv[6]), int(sys.argv[7]), int(sys.argv[8])
 seen = {}; bad = []; per = {}; cyc = {}
 for r in csv.reader(open(out + "/results.csv")):
     if len(r) < 9: bad.append(("?", "malformed line " + ",".join(r))); continue
@@ -50,6 +51,8 @@ for r in csv.reader(open(out + "/results.csv")):
 for (st, w), c in list(cyc.items()):
     if st == "B" and ("F", w) in cyc and cyc[("F", w)] != c: bad.append((str(w), f"stage B (tile 0 alone) {c} cycles, stage F (full chip) {cyc[('F', w)]}"))
 want = set(range(f, f + n)); missing = {st: sorted(want - seen.get(st, set())) for st in stages}
+if x > 0 and "F" not in stages:
+    stages += "F"; missing["F"] = sorted({w for w in want if w % x == 0} - seen.get("F", set()))
 with open(out + "/SUMMARY.txt", "w") as s:
     s.write(f"program {prog}, windows {f}..{f + n - 1} ({n}), stages {stages}, {j} JVMs, wall {tot} s\n")
     for st, (rws, ms, k) in sorted(per.items()):
@@ -58,7 +61,8 @@ with open(out + "/SUMMARY.txt", "w") as s:
 ok = not bad and all(not m for m in missing.values())
 with open(out + "/VERDICT.txt", "w") as v:
     for st in stages:
-        v.write(f"{'ok  ' if not missing[st] else 'FAIL'} stage {st}: {n - len(missing[st])} of {n} windows matched" + (f"; first missing {missing[st][:20]}" if missing[st] else "") + "\n")
+        tot_st = n if not (st == "F" and x > 0) else len([w for w in want if w % x == 0])
+        v.write(f"{'ok  ' if not missing[st] else 'FAIL'} stage {st}: {tot_st - len(missing[st])} of {tot_st} windows matched" + (f"; first missing {missing[st][:20]}" if missing[st] else "") + "\n")
     for w, m in bad[:50]: v.write(f"FAIL window {w}: {m}\n")
     v.write(("PASS" if ok else "FAIL") + f": {prog} windows {f}..{f + n - 1}\n")
 sys.exit(0 if ok else 1)

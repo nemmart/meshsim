@@ -21,7 +21,7 @@ import java.util.Map;
 public final class ReplayShard {
     public static void main(String[] a) throws Exception {
         Path dir = Path.of(a[0]); String prog = a[1]; Path csv = Path.of(a[2]);
-        String stages = "AB", variant = null; int stride = 1, phase = 0; long firstW = 0, countW = Long.MAX_VALUE; Path manifest = null;
+        String stages = "AB", variant = null; int stride = 1, phase = 0; long firstW = 0, countW = Long.MAX_VALUE; Path manifest = null; int fullEvery = 0;
         for (int i = 3; i < a.length; i++) switch (a[i]) {
             case "--stages" -> stages = a[++i];
             case "--variant" -> variant = a[++i];
@@ -30,6 +30,7 @@ public final class ReplayShard {
             case "--first" -> firstW = Long.parseLong(a[++i]);
             case "--count" -> countW = Long.parseLong(a[++i]);
             case "--manifest" -> manifest = Path.of(a[++i]);
+            case "--full-every" -> fullEvery = Integer.parseInt(a[++i]);   // also stage F (the full chip) on every K-th window index
             default -> throw new IllegalArgumentException(a[i]);
         }
         // the manifest: given, or DELIVERY/manifest.json, or DELIVERY/PROGRAM.manifest.json (WORKER9's delivery_writer)
@@ -38,7 +39,7 @@ public final class ReplayShard {
         Path pd = dir.resolve(prog);
         ReplayTables tb = ReplayDelivery.tablesFor(dir, pd);
         List<String> bad = ReplayTables.checkManifest(tb.dir, ReplayTables.defaultDir().resolve("../manifest.json"), "replayer/");
-        StageB.Image im = stages.contains("B") || stages.contains("F") ? new StageB.Image(Path.of(System.getProperty("replay.build", "sw/replay/build"))) : null;
+        StageB.Image im = stages.contains("B") || stages.contains("F") || fullEvery > 0 ? new StageB.Image(Path.of(System.getProperty("replay.build", "sw/replay/build"))) : null;
         int n = 0, failed = 0;
         try (PrintWriter out = new PrintWriter(Files.newBufferedWriter(csv, StandardOpenOption.CREATE, StandardOpenOption.APPEND))) {
             if (!bad.isEmpty()) { out.println(prog + ",-,-,tables,FAIL,0,0,0," + q("tables differ from wip/tables/manifest.json: " + bad)); failed++; }
@@ -60,7 +61,8 @@ public final class ReplayShard {
                         out.println(String.join(",", prog, "" + index, "" + firstRow, "-", "CORRUPT", "0", "0", "0", q(corrupt)));
                         failed++; n++; out.flush(); continue;
                     }
-                    for (char st : stages.toCharArray()) {
+                    String these = fullEvery > 0 && index % fullEvery == 0 && !stages.contains("F") ? stages + "F" : stages;
+                    for (char st : these.toCharArray()) {
                         long t0 = System.nanoTime();
                         // B: Stage B on tile 0 alone (the 63 idle tiles parked, checked untouched); F: Stage B on the full chip
                         StageB.LONE = st == 'B';

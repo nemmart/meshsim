@@ -13,6 +13,7 @@ final class ReplayerUnitTests {
         programCompressed();
         storeLogOff();
         midStart();
+        pextAnyMask();
         ldToX0();
         controllerFed();
         controllerFedRd0();
@@ -166,19 +167,20 @@ final class ReplayerUnitTests {
     static final int A0 = 10, A1 = 11, A2 = 12, A5 = 15;
     static final int T_ADD = 2, T_ADDI = 3, T_LB = 4, T_SD = 8, T_BEQ = 9, T_JAL = 10, T_MUL = 11, T_SLLI = 12;
     static final long V1 = 0x112233F5_55667788L, V2 = 0x42L;
+    static final int PADDING = 8;                                // 17 real rows in a 25-row pass (v1.25: LB is 3 rows)
 
     /** The ROM templates the program uses, built as the tracer's would be (4.19.4's LB example included). */
     static void templates(ReplayWindow w) {
         w.fixedRom();
         w.rom(T_ADD, ReplayWindow.W.op(ReplayerAlu.ADD).rd(129).rs1(130).rs2(131).fmt(0).rd0(1).reportC());
         w.rom(T_ADDI, ReplayWindow.W.op(ReplayerAlu.ADDI).rd(129).rs1(130).rs2(132).fmt(1).rd0(3).reportC());
+        // LB at jolt-cpp 821e1bd (wip/tables/replayer/rom.bin words 24-26): VirtualLoadB takes the doubleword from the log
         w.rom(T_LB,
-                ReplayWindow.W.op(ReplayerAlu.ALIGN).rd(138).rs1(130).rs2(132).fmt(1).rd0(2),
-                ReplayWindow.W.op(ReplayerAlu.LD).rd(138).rs1(138).rs2(128).cnst(0).fmt(1).fromLog(),
-                ReplayWindow.W.op(ReplayerAlu.WMASK_B).rd(137).rs1(130).rs2(132).fmt(1),
-                ReplayWindow.W.op(ReplayerAlu.PEXT_S).rd(129).rs1(138).rs2(137).fmt(1).reportC());
-        w.rom(T_SD, ReplayWindow.W.op(ReplayerAlu.SD).rd(132).rs1(130).rs2(131).fmt(2).fromLog().reportC());
-        w.rom(T_BEQ, ReplayWindow.W.op(ReplayerAlu.BEQ).rd(132).rs1(130).rs2(131).fmt(3).nfv().reportC());
+                ReplayWindow.W.op(ReplayerAlu.LOAD_B).rd(137).rs1(130).rs2(132).fmt(1).rd0(2).virt().fromLog().sign(),
+                ReplayWindow.W.op(ReplayerAlu.WMASK_B).rd(138).rs1(130).rs2(132).fmt(1).rd0(2).virt(),
+                ReplayWindow.W.op(ReplayerAlu.PEXT_S).rd(129).rs1(137).rs2(138).fmt(1).rd0(2).virt().reportC());
+        w.rom(T_SD, ReplayWindow.W.op(ReplayerAlu.SD).rd(132).rs1(130).rs2(131).fmt(2).fromLog().reportC().sign());
+        w.rom(T_BEQ, ReplayWindow.W.op(ReplayerAlu.BEQ).rd(132).rs1(130).rs2(131).fmt(3).nfv().reportC().sign());
         w.rom(T_JAL, ReplayWindow.W.op(ReplayerAlu.JAL).rd(129).rs1(132).rs2(128).cnst(0).fmt(5).nfv().imm0pc0().rd0(2).reportC());
         w.rom(T_MUL, ReplayWindow.W.op(ReplayerAlu.MUL).rd(129).rs1(130).rs2(131).fmt(0).rd0(1).reportC());
         w.rom(T_SLLI, ReplayWindow.W.op(ReplayerAlu.MULI).rd(129).rs1(130).rs2(134).fmt(1).rd0(1).virt().reportC());
@@ -211,7 +213,7 @@ final class ReplayerUnitTests {
         }
         w.pc = 0x1000; w.instrIdx = 1; w.storeLog = storeLog;
         w.regs[A5] = 0x55; w.regs[40] = 0x4040;
-        int[] code = Arrays.copyOf(PROG, PROG.length + 6);      // then padding words 0
+        int[] code = Arrays.copyOf(PROG, PROG.length + PADDING);  // then padding words 0
         w.setCode(code, cc);
         List<ReplayWindow.LogEvent> ev = List.of(
                 new ReplayWindow.LogEvent(true, V1, true, false, 0),      // lb a5: LD
@@ -225,30 +227,30 @@ final class ReplayerUnitTests {
 
     /**
      * Expected rows: {instr_idx, opcode, rd_reg, rs1_reg, rs2_reg, seq, flags, pc, imm, rs1, rs2, rd_prev, rd, mem_addr,
-     * mem_value}; flags are written comp·virt·first·rdI·rs1I·rs2I, left to right.
+     * mem_value, sign_imm}; flags are written comp·virt·first·rdI·rs1I·rs2I, left to right. v1.25: re-derived by hand for
+     * 821e1bd's 3-row LB (VirtualLoadB, WindowMaskB, PextSigned) and the renumbered opcodes; sign_imm (record word 0
+     * [86]) is set on the loads, the stores and the branches (jolt-cpp signed_immediate).
      */
     static long[][] expected(boolean storeLog) {
         long M32 = 0xFFL << 32, F5 = 0xFFFF_FFFF_FFFF_FFF5L;
         return new long[][] {
-            { 1, 2, A0, 0, 0, 0, 0b000001, 0x1000, 0x100, 0, 0, 0, 0x100, 0, 0 },
-            { 2, 154, 41, A0, 0, 3, 0b011001, 0x1004, 4, 0x100, 0, 0, 0x100, 0, 0 },
-            { 3, 54, 41, 41, 0, 2, 0b010001, 0x1004, 0, 0x100, 0, 0x100, V1, 0x100, V1 },
-            { 4, 152, 40, A0, 0, 1, 0b010001, 0x1004, 4, 0x100, 0, 0x4040, M32, 0, 0 },
-            { 5, 142, A5, 41, 40, 0, 0b010000, 0x1004, 0, V1, M32, 0x55, F5, 0, 0 },
-            { 6, 154, 42, A0, 0, 3, 0b011001, 0x1008, 4, 0x100, 0, 0, 0x100, 0, 0 },
-            { 7, 54, 42, 42, 0, 2, 0b010001, 0x1008, 0, 0x100, 0, 0x100, V2, 0x100, V2 },
-            { 8, 152, 41, A0, 0, 1, 0b010001, 0x1008, 4, 0x100, 0, V1, M32, 0, 0 },
-            { 9, 142, 40, 42, 41, 0, 0b010000, 0x1008, 0, V2, M32, M32, 0, 0, 0 },
-            { 10, 2, 0, 0, 0, 0, 0b011001, 0x100c, 0, 0, 0, 0, 0, 0, 0 },
-            { 11, 2, 0, 0, 0, 0, 0b000001, 0x1010, 0, 0, 0, 0, 0, 0, 0 },
-            { 12, 53, 0, A0, A5, 0, 0b000100, 0x1014, 8, 0x100, F5, 0, 0, 0x108, storeLog ? V2 : 0 },
-            { 13, 114, A1, A0, 0, 0, 0b011001, 0x1018, 8, 0x100, 0, 0, 0x800, 0, 0 },
-            { 14, 43, A2, A1, A0, 0, 0b000000, 0x101c, 0, 0x800, 0x100, 0, 0x80000, 0, 0 },
-            { 15, 28, 0, A0, A0, 0, 0b000100, 0x1020, 8, 0x100, 0x100, 0, 0, 0, 0 },
-            { 17, 28, 0, A0, A1, 0, 0b000100, 0x1028, 8, 0x100, 0x800, 0, 0, 0, 0 },
-            { 18, 28, 0, A0, A0, 0, 0b000100, 0x102c, 0, 0x100, 0x100, 0, 0, 0, 0 },
-            { 19, 2, A0, A0, 0, 0, 0b100001, 0x1030, 1, 0x100, 0, 0x100, 0x101, 0, 0 },
-            { 20, 34, 40, 0, 0, 0, 0b000011, 0x1032, 0, 0, 0, 0, 0x1036, 0, 0 },
+            { 1, 2, A0, 0, 0, 0, 0b000001, 0x1000, 0x100, 0, 0, 0, 0x100, 0, 0, 0 },
+            { 2, 110, 40, A0, 0, 2, 0b011001, 0x1004, 4, 0x100, 0, 0x4040, V1, 0x100, V1, 1 },
+            { 3, 156, 41, A0, 0, 1, 0b010001, 0x1004, 4, 0x100, 0, 0, M32, 0, 0, 0 },
+            { 4, 146, A5, 40, 41, 0, 0b010000, 0x1004, 0, V1, M32, 0x55, F5, 0, 0, 0 },
+            { 5, 110, 41, A0, 0, 2, 0b011001, 0x1008, 4, 0x100, 0, M32, V2, 0x100, V2, 1 },
+            { 6, 156, 42, A0, 0, 1, 0b010001, 0x1008, 4, 0x100, 0, 0, M32, 0, 0, 0 },
+            { 7, 146, 40, 41, 42, 0, 0b010000, 0x1008, 0, V2, M32, V1, 0, 0, 0, 0 },
+            { 8, 2, 0, 0, 0, 0, 0b011001, 0x100c, 0, 0, 0, 0, 0, 0, 0, 0 },
+            { 9, 2, 0, 0, 0, 0, 0b000001, 0x1010, 0, 0, 0, 0, 0, 0, 0, 0 },
+            { 10, 53, 0, A0, A5, 0, 0b000100, 0x1014, 8, 0x100, F5, 0, 0, 0x108, storeLog ? V2 : 0, 1 },
+            { 11, 118, A1, A0, 0, 0, 0b011001, 0x1018, 8, 0x100, 0, 0, 0x800, 0, 0, 0 },
+            { 12, 43, A2, A1, A0, 0, 0b000000, 0x101c, 0, 0x800, 0x100, 0, 0x80000, 0, 0, 0 },
+            { 13, 28, 0, A0, A0, 0, 0b000100, 0x1020, 8, 0x100, 0x100, 0, 0, 0, 0, 1 },
+            { 17, 28, 0, A0, A1, 0, 0b000100, 0x1028, 8, 0x100, 0x800, 0, 0, 0, 0, 1 },
+            { 18, 28, 0, A0, A0, 0, 0b000100, 0x102c, 0, 0x100, 0x100, 0, 0, 0, 0, 1 },
+            { 19, 2, A0, A0, 0, 0, 0b100001, 0x1030, 1, 0x100, 0, 0x100, 0x101, 0, 0, 0 },
+            { 20, 34, 40, 0, 0, 0, 0b000011, 0x1032, 0, 0, 0, 0, 0x1036, 0, 0, 0 },
         };
     }
 
@@ -258,10 +260,10 @@ final class ReplayerUnitTests {
             long[] g = rows.get(k), e = exp[k];
             long flags = (g[1] >>> 16) & 1 | ((g[1] >>> 17) & 1) << 1 | ((g[1] >>> 18) & 1) << 2 | ((g[1] >>> 19) & 1) << 3 | ((g[1] >>> 20) & 1) << 4 | ((g[1] >>> 21) & 1) << 5;
             long ef = Long.reverse(e[6]) >>> 58;
-            long[] got = { g[0] & 0xFFFFFFFFL, (g[0] >>> 32) & 0xFF, (g[0] >>> 40) & 0xFF, (g[0] >>> 48) & 0xFF, g[0] >>> 56, g[1] & 0xFFFF, flags, g[2], g[3], g[4], g[5], g[6], g[7], g[8], g[9] };
+            long[] got = { g[0] & 0xFFFFFFFFL, (g[0] >>> 32) & 0xFF, (g[0] >>> 40) & 0xFF, (g[0] >>> 48) & 0xFF, g[0] >>> 56, g[1] & 0xFFFF, flags, g[2], g[3], g[4], g[5], g[6], g[7], g[8], g[9], (g[1] >>> Replayer.REC_SIGN_IMM) & 1 };
             long[] want = e.clone(); want[6] = ef;
             T.check(Arrays.equals(got, want), what + ": row " + (k + 1) + "\n   got  " + fmt(got) + "\n   want " + fmt(want));
-            T.eq(0, g[1] >>> 22, what + ": row " + (k + 1) + " spare bits");
+            T.eq(0, g[1] >>> 23, what + ": row " + (k + 1) + " spare bits");
         }
         for (int k = exp.length; k < rows.size(); k++)
             T.check(Arrays.equals(rows.get(k), new long[10]), what + ": padding row " + (k + 1) + " is all zeros");
@@ -279,7 +281,7 @@ final class ReplayerUnitTests {
     static void program() {
         T.group("program, raw streams");
         ReplayDriver d = runWindow(programWindow(false, false, false, true), 25);
-        checkRows("raw", d.rows, expected(true), 6);
+        checkRows("raw", d.rows, expected(true), PADDING);
         T.eq(0, d.r.pc(), "pc 0 after the program end");
         T.eq(0, d.r.instrIdx(), "instr_idx 0 after the program end");
         T.eq(0x1036, d.r.reg(40), "the remapped link is written into v40");
@@ -296,7 +298,7 @@ final class ReplayerUnitTests {
             String n = "code " + (c[0] ? "LRU" : "raw") + ", read " + (c[1] ? "LRU" : "raw") + ", write " + (c[2] ? "LRU" : "raw");
             T.group("program, " + n);
             ReplayDriver d = runWindow(programWindow(c[0], c[1], c[2], true), 25);
-            checkRows(n, d.rows, exp, 6);
+            checkRows(n, d.rows, exp, PADDING);
             T.check(d.r.violations.isEmpty() && d.r.invalids.isEmpty(), n + ": clean " + d.r.violations + d.r.invalids);
             if (c[2]) T.check(d.r.wlog.hits >= 1, n + ": the SD's pre-value came from the last-load entry");
         }
@@ -307,31 +309,48 @@ final class ReplayerUnitTests {
         ReplayWindow w = programWindow(false, false, false, false);
         T.eq(0, w.wlog.length, "the write log is empty");
         ReplayDriver d = runWindow(w, 25);
-        checkRows("no store log", d.rows, expected(false), 6);
+        checkRows("no store log", d.rows, expected(false), PADDING);
         T.eq(0, d.wlogNext, "the write-log queue was never fed (its line stayed quiet)");
     }
 
     // ================================================================ mid-sequence starts (4.19.2, 4.19.4)
+    /** v1.25: PEXT for any mask, timed like any row; a non-contiguous mask is counted, not flagged (4.19.7). */
+    static void pextAnyMask() {
+        T.group("PEXT, a non-contiguous mask");
+        ReplayWindow w = new ReplayWindow(); w.fixedRom();
+        int ins = r(0, A1, A0, 0, A2, OP);                                  // add a2, a0, a1, served by a PEXT_S template
+        w.rom(20, ReplayWindow.W.op(ReplayerAlu.PEXT_S).rd(129).rs1(130).rs2(131).fmt(0).reportC());
+        w.decodeRom(ins, 20);
+        w.pc = 0x1000; w.instrIdx = 1; w.regs[A0] = 0x8000_0000_0000_0001L; w.regs[A1] = 0x8000_0000_0000_0001L;
+        w.setCode(new int[] { ins, ins }, false); w.setLogs(List.of(), false, false);
+        ReplayDriver d = runWindow(w, 2);
+        T.eq(-1L, d.rows.get(0)[7], "two single-bit runs, top bit set: sign-extended from the last bit placed");
+        T.eq(2, d.r.pextNonContiguous, "counted as a statistic");
+        T.check(d.r.violations.isEmpty() && d.r.invalids.isEmpty(), "not flagged: " + d.r.violations + d.r.invalids);
+        long cyc = d.r.passEndAt - d.r.passStartAt;
+        T.check(cyc < 64 + 2 * 3 + 20, "timed like any S row (3 cycles): pass " + cyc);
+    }
+
     static void midStart() {
         T.group("mid-sequence start");
         ReplayWindow w = new ReplayWindow(); templates(w);
         int lbx0 = PROG[2], jal = PROG[12];
         w.decodeRom(lbx0, T_LB); w.decodeRom(jal, T_JAL);
-        w.pc = 0x1008; w.instrIdx = 8; w.nextOffset = 2;
+        w.pc = 0x1008; w.instrIdx = 8; w.nextOffset = 1;
         w.regs[A0] = 0x100; w.regs[42] = 0x77; w.regs[41] = 0x99; w.regs[40] = 0x5;
         w.setCode(new int[] { lbx0, jal, 0, 0 }, false);
         w.setLogs(List.of(new ReplayWindow.LogEvent(true, 0, false, false, 0)), false, false);
         ReplayDriver d = runWindow(w, 5);
         T.eq(5, d.rows.size(), "rows");
         long[] r0 = d.rows.get(0), r1 = d.rows.get(1);
-        T.eq(152, (r0[0] >>> 32) & 0xFF, "the first row is the template's row 2 (WindowMaskB)");
-        T.eq(41, (r0[0] >>> 40) & 0xFF, "temporary 0 resolves to 41: the offset is 1 (remap, from ROM[start])");
+        T.eq(ReplayerAlu.WMASK_B, (r0[0] >>> 32) & 0xFF, "the first row is the template's row 1 (WindowMaskB)");
+        T.eq(42, (r0[0] >>> 40) & 0xFF, "temporary 1 resolves to 42: the offset is 1 (remap, from ROM[start])");
         T.eq(0, (r0[1] >>> 18) & 1, "not is_first: the expansion's first row ran on the previous tile");
         T.eq(1, (r0[1] >>> 17) & 1, "is_virtual");
         T.eq(8, r0[0] & 0xFFFFFFFFL, "instr_idx from the checkpoint");
-        T.eq(142, (r1[0] >>> 32) & 0xFF, "then PextSigned");
+        T.eq(ReplayerAlu.PEXT_S, (r1[0] >>> 32) & 0xFF, "then PextSigned");
         T.eq(40, (r1[0] >>> 40) & 0xFF, "into the remapped rd, v40");
-        T.eq(0x77, r1[4], "reading v42, the image's value");
+        T.eq(0x99, r1[4], "reading v41, the image's value (its VirtualLoadB ran on the previous tile)");
         T.eq(0, d.r.condEvents[0] + d.r.condEvents[1] + d.r.condEvents[2], "no condition");
     }
 
@@ -403,21 +422,20 @@ final class ReplayerUnitTests {
         ReplayWindow w = new ReplayWindow(); templates(w);
         int lbx0 = PROG[2], lba5 = PROG[1], jal = PROG[12];
         w.decodeClass(lbx0, 1); w.decodeClass(lba5, 1); w.decodeRom(jal, T_JAL);
-        ReplayWindow.W[] lb = new ReplayWindow.W[4];
-        for (int k = 0; k < 4; k++) { lb[k] = new ReplayWindow.W(); lb[k].lo = w.romLo[T_LB + k]; lb[k].hi = w.romHi[T_LB + k]; }
+        ReplayWindow.W[] lb = new ReplayWindow.W[3];
+        for (int k = 0; k < 3; k++) { lb[k] = new ReplayWindow.W(); lb[k].lo = w.romLo[T_LB + k]; lb[k].hi = w.romHi[T_LB + k]; }
         w.template(lbx0, lb); w.template(lba5, lb);
         w.pc = 0x1004; w.instrIdx = 2; w.regs[A0] = 0x100; w.regs[40] = 0x4040; w.regs[A5] = 0x55;
         w.setCode(new int[] { lba5, lbx0, jal, 0 }, false);
         w.setLogs(List.of(new ReplayWindow.LogEvent(true, V1, true, false, 0), new ReplayWindow.LogEvent(true, V2, true, false, 0),
                 new ReplayWindow.LogEvent(true, 0, false, false, 0)), false, false);
-        ReplayDriver d = runWindow(w, 10);
+        ReplayDriver d = runWindow(w, 8);
         long[][] all = expected(true);
-        long[][] exp = new long[9][];
-        for (int k = 0; k < 8; k++) exp[k] = all[1 + k].clone();
-        exp[8] = all[18].clone(); exp[8][0] = 10; exp[8][7] = 0x1008 + 4; exp[8][12] = 0x1010;   // jal at 0x100c, instr_idx 10
-        // rows 1-8 as the ROM-served program, then the JAL
-        java.util.List<long[]> got = d.rows.subList(0, Math.min(8, d.rows.size()));
-        checkRows("controller-fed LB and LB x0", new java.util.ArrayList<>(got), java.util.Arrays.copyOf(exp, 8), 0);
+        long[][] exp = new long[6][];
+        for (int k = 0; k < 6; k++) exp[k] = all[1 + k].clone();
+        // rows 1-6 as the ROM-served program (then the JAL)
+        java.util.List<long[]> got = d.rows.subList(0, Math.min(6, d.rows.size()));
+        checkRows("controller-fed LB and LB x0", new java.util.ArrayList<>(got), exp, 0);
         T.check(d.r.violations.isEmpty() && d.r.invalids.isEmpty(), "clean: " + d.r.violations + d.r.invalids);
 
         // A NOP-policy template served by the controller (a DIV moved out of the ROM): div x0 → the shared NOP row
@@ -524,7 +542,7 @@ final class ReplayerUnitTests {
                 case "class 3" -> w.decodeClass(ins, 3);
                 case "reserved operand code" -> word.rs2(146);
                 case "format 6" -> word.fmt(6);
-                case "opcode not executed" -> word.lo = word.lo & ~0xFFL | 160;
+                case "opcode not executed" -> word.lo = word.lo & ~0xFFL | 163;      // VirtualAdviceDivU: written as VirtualAdvice, never executed
                 case "untraced" -> word.untraced();
                 default -> {}
             }

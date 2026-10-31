@@ -8,11 +8,12 @@
  *                           order mode 9 writes them: one run to 0x00400 covers both (0x400 + 4 x 256 = 0x800)
  *   0x00C40    0x003100     template index: 16 B per template number, as the tracer delivers it, <= 128
  *   0x00E40    0x003900     the window's state record: 67 x 128-bit words (word 0 the bitmap, 1-66 region 0)
- *   0x01000    0x004000     controller-fed template words (128-bit each), up to 112 KB
+ *   0x01000    0x004000     free (v1.2's template area; the universal set doesn't fit)
  *   0x08000    0x020000     code stream (128-bit entries), up to 256 KB (65,536 raw words)
  *   0x18000    0x060000     read log, up to 512 KB
  *   0x38000    0x0E0000     write log, up to 512 KB
- *   0x58000    0x160000     free (to 0x7FFFF, the end of 2 MB)
+ *   0x58000    0x160000     controller-fed template words (128-bit each), up to 1.4 MB (to 0x7FFFF, the end of 2 MB):
+ *                           v1.25's universal set is 13,821 words, 221 KB
  *
  * The header gives every region's chunk address and size, so the placements above are defaults, not rules.
  */
@@ -20,7 +21,7 @@
 #define REPLAY_LAYOUT_H
 
 #define RL_MAGIC             0x594C5052u   /* "RPLY" */
-#define RL_VERSION           1u
+#define RL_VERSION           2u      /* v1.25: the index is keyed by the normalized key (RL_IX_KEY) */
 
 /* header word indexes */
 #define RL_H_MAGIC           0
@@ -51,10 +52,11 @@
 #define RL_R_DM_COLLISIONS   8   /* words that share a slot (they take the slow path); 0 normally */
 #define RL_R_LAST_HITS       9   /* REPLAY_LAST_WORD builds: expansions whose word equals the previous one */
 #define RL_R_DM_TRIES        10  /* multipliers tried */
+#define RL_R_FAST_TEMPLATES  11  /* v1.25: templates in the window's bitmap, which the fast path holds */
 
 /* the template index entry (16 B), as the tracer delivers it; the count is the file size / 16 (the loader puts it in
- * the header's RL_H_NTEMPLATES) */
-#define RL_IX_WORD           0   /* the exact instruction word, as PERIPH_STATUS_1 presents it */
+ * the header's RL_H_NTEMPLATES). v1.25: entries sorted by key, ascending; an entry's template number is its position */
+#define RL_IX_KEY            0   /* key(w), the normalized template-index key of the presented word (wip/tables/README.md) */
 #define RL_IX_OFFSET         1   /* in 128-bit words from RL_H_TEMPLATES */
 #define RL_IX_LENGTH         2   /* in words */
 #define RL_IX_META           3   /* byte 12: rd0 (0 none, 1 NOP virtual, 2 remap, 3 NOP not virtual); byte 13: decode class (1, 2) */

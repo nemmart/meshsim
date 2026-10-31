@@ -1,4 +1,11 @@
-/* The replay controller (Stage B): one tile's controller program for replay passes, spec 4.19 (v1.2).
+/* The replay controller (Stage B): one tile's controller program for replay passes, spec 4.19 (v1.25).
+ *
+ * v1.25 (WORKER11): the universal tables (wip/tables/replayer, DECISIONS-v1.25 s5). The template index is keyed by
+ * key(w), the normalized template-index key (tkey below): a presented word is normalized, then looked up. The fast
+ * path's direct-mapped table holds only the templates the window's bitmap (state record word 0) names, so the 75
+ * universal templates don't crowd it; the slow path serves any template. The NOP policy (N3) now depends on the
+ * presented word's rd, which a key doesn't keep: a fast-path entry records the template's policy and the fast path
+ * hands rd = x0 words with a NOP policy to the slow path.
  *
  * Everything starts resident in big SRAM (replay_layout.h). The program:
  *   1. copies the layout header and the template index into data memory (mode-0 address-generator runs to itself, on
@@ -39,13 +46,33 @@ static uint8_t  hashtab[256];                                  /* the general lo
 /* The direct-mapped table (fast path), 16 B per slot, slot = (w * dm_mult) >> 25: {word (0 = empty), DMA_CONFIG for the
  * template's preloaded stream, its first chunk's words, the template number}. At start-up the same space holds the
  * state record (67 words) while region 0 is sent. */
-static uint32_t dmtab[128 * 4] __attribute__((aligned(16)));
+#define DM_SLOTS 512            /* v1.25: 512 slots (8 KB), so a window's bitmap templates usually land collision-free */
+#define DM_TRIES 256            /* multipliers tried at most; a key that loses its slot takes the slow path */
+static uint32_t dmtab[DM_SLOTS * 4] __attribute__((aligned(16)));
 #define record dmtab
 static uint32_t dm_mult;
-#define DM_SLOT(w, m)  (((w) * (m)) >> 25)
+#define DM_SLOT(w, m)  (((w) * (m)) >> 23)
 static uint32_t nopword[4] __attribute__((aligned(16)));       /* ROM word 1, the shared NOP row (4.19.6) */
 static uint32_t scratch[4] __attribute__((aligned(16)));
 static uint32_t me, pmask;                                     /* pmask: the replayer's EVENTS_MASK in a pass */
+static uint32_t bitmap[4];                                     /* the window's template bitmap (state record word 0) */
+
+/* key(w) (wip/tables/README.md): every bit of w except register fields. An inline (custom-0): rd, rs1, rs2 cleared.
+ * CSRRW/CSRRS: rd and rs1 renamed by first appearance (x0 0; a non-zero rd 1; rs1 0 if x0, 1 if equal to a non-zero
+ * rd or if rd is x0, else 2). Any other word is its own key. */
+static inline uint32_t tkey(uint32_t w) {
+    uint32_t op = (w | 1u) & 0x7Fu;
+    if (op == 0x0Bu) return w & ~(31u << 7 | 31u << 15 | 31u << 20);
+    if (op == 0x73u) {
+        uint32_t f3 = (w >> 12) & 7u;
+        if (f3 == 1u || f3 == 2u) {
+            uint32_t rd = (w >> 7) & 31u, rs1 = (w >> 15) & 31u;
+            uint32_t nrd = rd ? 1u : 0u, nrs1 = !rs1 ? 0u : (!rd || rs1 == rd) ? 1u : 2u;
+            return (w & ~(31u << 7 | 31u << 15)) | nrd << 7 | nrs1 << 15;
+        }
+    }
+    return w;
+}
 
 /* the pass's stream positions (128-bit entries sent so far) */
 static uint32_t code_next, rlog_next, wlog_next;
@@ -90,44 +117,44 @@ static inline uint32_t hash8(uint32_t w) { return (w * 2654435761u) >> 24; }
 
 static void build_hash(uint32_t n) {
     for (uint32_t k = 0; k < n; k++) {
-        uint32_t h = hash8(ix[4 * k + RL_IX_WORD]);
+        uint32_t h = hash8(ix[4 * k + RL_IX_KEY]);
         while (hashtab[h]) h = (h + 1) & 255;
         hashtab[h] = (uint8_t)(k + 1);
     }
 }
 
-static int lookup(uint32_t w) {
-    uint32_t h = hash8(w);
+static int lookup(uint32_t key) {
+    uint32_t h = hash8(key);
     while (hashtab[h]) {
         uint32_t k = hashtab[h] - 1u;
-        if (ix[4 * k + RL_IX_WORD] == w) return (int)k;
+        if (ix[4 * k + RL_IX_KEY] == key) return (int)k;
         h = (h + 1) & 255;
     }
     return -1;
 }
 
 static inline int nop_policy(uint32_t k) { uint32_t r = RL_IX_RD0(ix[4 * k + RL_IX_META]); return r == 1 || r == 3; }
-/* A word the fast path can't serve: N3's NOP policy applies (a NOP-policy template and the word's rd field is x0). The
- * index is keyed by the exact word, so this is known at start-up. */
-static inline int needs_nop(uint32_t k) { return nop_policy(k) && ((ix[4 * k + RL_IX_WORD] >> 7) & 31) == 0; }
+static inline int in_bitmap(uint32_t k) { return (bitmap[k >> 5] >> (k & 31)) & 1u; }
+#define DM_NOP (1u << 31)       /* in a fast-path entry's template number: the template has a NOP policy (N3) */
 static inline uint32_t tpl_base(uint32_t k) { return hdr[RL_H_TEMPLATES] + (ix[4 * k + RL_IX_OFFSET] << 2); }
 
 /* Start-up: one preloaded STREAM entry per template (its first min(128, length) words to the expansion port), and the
- * direct-mapped table. Its slot is a multiplicative hash, (w * m) >> 25, with m searched (odd multipliers from an LCG)
- * until the program's words land in distinct slots: a few tries for a few dozen words (EVM Zone 1, Cyclone 8). If none
- * is found in 4,096 tries, the one with the fewest collisions is kept: a word that loses its slot takes the slow path.
- * Words that N3's NOP policy applies to stay out of the table, so the fast path never needs the N3 check. */
+ * direct-mapped table over the templates in the window's bitmap. Its slot is a multiplicative hash of the key,
+ * (key * m) >> 25, with m searched (odd multipliers from an LCG) until those keys land in distinct slots. If none is
+ * found in DM_TRIES tries, the one with the fewest collisions is kept: a key that loses its slot takes the slow path.
+ * (v1.2's 128 slots and 4,096 tries took millions of cycles at start-up for a window naming ~40 templates.) */
 static void build_fast(uint32_t nt) {
     for (uint32_t k = 0; k < nt; k++) {
         uint32_t len = ix[4 * k + RL_IX_LENGTH];
         stream(TPL_STREAM0 + k, tpl_base(k), RP_Q_EXP, min32(HALF_EXP, len), CTR_PERIPH);
     }
     uint32_t m = 0x9E3779B1u, best = m, best_coll = ~0u, tries = 0;
-    while (best_coll && tries < 4096) {
-        uint32_t used[4] = { 0, 0, 0, 0 }, coll = 0;
+    while (best_coll && tries < DM_TRIES) {
+        uint32_t used[DM_SLOTS / 32], coll = 0;
+        for (uint32_t i = 0; i < DM_SLOTS / 32; i++) used[i] = 0;
         for (uint32_t k = 0; k < nt; k++) {
-            if (needs_nop(k)) continue;
-            uint32_t slot = DM_SLOT(ix[4 * k + RL_IX_WORD], m);
+            if (!in_bitmap(k)) continue;
+            uint32_t slot = DM_SLOT(ix[4 * k + RL_IX_KEY], m);
             if (used[slot >> 5] & (1u << (slot & 31))) coll++;
             used[slot >> 5] |= 1u << (slot & 31);
         }
@@ -136,16 +163,19 @@ static void build_fast(uint32_t nt) {
         m = (m * 1664525u + 1013904223u) | 1u;
     }
     dm_mult = best;
-    for (uint32_t i = 0; i < 128 * 4; i++) dmtab[i] = 0;
+    for (uint32_t i = 0; i < DM_SLOTS * 4; i++) dmtab[i] = 0;
+    uint32_t held = 0;
     for (uint32_t k = 0; k < nt; k++) {
-        if (needs_nop(k)) continue;
-        uint32_t w = ix[4 * k + RL_IX_WORD], *e = &dmtab[DM_SLOT(w, best) << 2];
-        if (e[0]) continue;                                           /* a collision: the first word keeps the slot */
-        e[0] = w;
+        if (!in_bitmap(k)) continue;
+        uint32_t key = ix[4 * k + RL_IX_KEY], *e = &dmtab[DM_SLOT(key, best) << 2];
+        held++;
+        if (e[1]) continue;                                           /* a collision: the first key keeps the slot */
+        e[0] = key;
         e[1] = DMA_CFG_RUN(RUN_STREAMS, TPL_STREAM0 + k, 1);
         e[2] = min32(HALF_EXP, ix[4 * k + RL_IX_LENGTH]);
-        e[3] = k;
+        e[3] = k | (nop_policy(k) ? DM_NOP : 0u);
     }
+    rp_results[RL_R_FAST_TEMPLATES] = held;
     rp_results[RL_R_DM_MULT] = best;
     rp_results[RL_R_DM_TRIES] = tries;
     rp_results[RL_R_DM_COLLISIONS] = best_coll;
@@ -180,7 +210,7 @@ static void send_exp_word(const uint32_t *w, uint32_t restore) {
  * going (the caller waits for its arrivals), 1 otherwise. */
 static int new_expansion_slow(uint32_t w, uint32_t restore) {
     uint32_t off = replayer->EXPANSION_OFFSET;
-    int k = lookup(w);
+    int k = lookup(tkey(w));
     rp_results[RL_R_SLOW]++;
     if (k < 0) { rp_results[RL_R_MISSING] = w; return 0; }
     uint32_t len = ix[4 * k + RL_IX_LENGTH], rd0 = RL_IX_RD0(ix[4 * k + RL_IX_META]);
@@ -244,16 +274,16 @@ static int run_pass(void) {
         if (!ev) continue;                                            /* a spurious wake (4.12) */
         if (ev & RP_EV_NEWEXP) {
             /* ---- the fast path: the address generator is idle here (every run is waited for below) */
-            uint32_t w = replayer->EXPANSION_OPCODE;
-            const uint32_t *e = &tab[DM_SLOT(w, mult) << 2];
+            uint32_t w = replayer->EXPANSION_OPCODE, key = tkey(w);
+            const uint32_t *e = &tab[DM_SLOT(key, mult) << 2];
             if (!(ev & RP_EV_EXP)) take_exp_credit();                 /* the first chunk's credit: taken by this load, or now */
             ev &= ~RP_EV_EXP;
-            if (e[0] == w && !first) {
+            if (e[1] && e[0] == key && !first && !((e[3] & DM_NOP) && !((w >> 7) & 31u))) {
                 tile->WRITE_COUNTER[CTR_PERIPH - 1] = e[2];
                 tile->DMA_CONFIG = e[1];
                 start_run();
                 /* ---- the stream is running: everything else is off the critical path */
-                set_active(e[3], e[2]);
+                set_active(e[3] & ~DM_NOP, e[2]);
                 replayer->EVENTS_MASK = pmask;
                 rp_results[RL_R_NEWEXP]++;
                 wait_event(EV_CTR(CTR_PERIPH) | EV_RUN_DONE, loop_mask);
@@ -316,6 +346,7 @@ int main(void) {
 
     /* part 0 through the send port, from byte 16 of the record (word 1 onward): the state word, the stream word, the image */
     copy_to_dm(hdr[RL_H_RECORD], record, 67, base_mask);
+    for (uint32_t i = 0; i < 4; i++) bitmap[i] = record[i];          /* word 0: the template bitmap (dmtab reuses record) */
     store_log = (record[7] >> 19) & 1;                                /* the state word's flag [115]: includes the store log */
     send_to(ROUTER_HDR_W(me, MODE_WRITE, CTR_PERIPH), RP_STATE);
     tile->WRITE_COUNTER[CTR_PERIPH - 1] = 66;

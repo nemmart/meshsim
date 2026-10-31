@@ -12,6 +12,14 @@ import java.util.function.Consumer;
  * expansion (depth 1); its ERRORS [0] bad write, [1] queue overrun, [2] invalid expansion, sticky; its words 32-34
  * (ROWS_RUN, EXPANSION_OFFSET, EXPANSION_OPCODE). v1.1's service lines and claims are gone. Row semantics are {@link ReplayerAlu}'s (spec/replayer-opcodes.md, normative).
  *
+ * <p>v1.25 (WORKER11; jolt-cpp 821e1bd, DECISIONS-v1.25 s1, s4, s5): the renumbered opcode set with VirtualLoadB/H/W and
+ * VirtualStoreB/H/W (class L: a read-log or write-log word each, as LD and SD; the address rounded down to its
+ * doubleword); the expansion word's offset_imm [63] (a ShiftData row's shift_offset is the source immediate) and
+ * sign_imm [62] (carried into the record, word 0 [86], Proposed); PEXT for any mask; the write log's last-load entry
+ * fed by every load row; misaligned memory rows flagged (jolt-cpp aborts on them). The decode table's class 3 is an
+ * invalid instruction (universal tables: encodings that aren't valid RV64IMAC). seq_remaining counts traced words, and a
+ * replayer only ever sees traced words, so the model needs no change for it.
+ *
  * <h3>What is modelled</h3>
  * The mode-9 write port (4.19.10: the map, the sizes, ownership, rp_latency, counting); the four queues as true FIFOs
  * with occupancy, pending and their low-water lines (4.19.8); the three decompressors with the write log's last-load
@@ -38,6 +46,9 @@ final class Replayer implements Peripheral {
     static final int IMAGE_COPY_CYCLES = 64;
     static final int OUTQ_ROWS = 32;
     static final int REC_LONGS = 10;                 // 5 × 128 bits = 80 bytes
+    /** Record word 0 bit [86]: the expansion word's sign_imm, so the consumer needs no list of signed-immediate opcodes
+     *  (v1.25, DECISIONS-v1.25 s4; the bit's place in the record is WORKER11 Q1, Proposed). Bit 22 of the record's long 1. */
+    static final int REC_SIGN_IMM = 22;
 
     // events (4.19.9): bit numbers
     static final int EV_RUN_DONE = 0, EV_CODE = 2, EV_RLOG = 3, EV_WLOG = 4, EV_EXP = 5, EV_NEWEXP = 6;
@@ -97,6 +108,8 @@ final class Replayer implements Peripheral {
     enum Stall { IMAGE, CODE, NEWEXP, EXP, RLOG, WLOG, OUTQ }
     final long[] stalls = new long[Stall.values().length];
     long passCycles, rowsTotal, rowsM, rowsCtrl, newExpansions, passes;
+    /** PEXT rows whose mask isn't one contiguous run (v1.25: computed and timed like any row; a statistic, 4.19.7). */
+    long pextNonContiguous;
     long passStartAt, passEndAt;
 
     Replayer(int me) { this.me = me; }
@@ -441,6 +454,7 @@ final class Replayer implements Peripheral {
         boolean nfv = ((lo >>> 44) & 1) != 0, hold = ((lo >>> 45) & 1) != 0, virt = ((lo >>> 51) & 1) != 0;
         boolean imm0pc0 = ((lo >>> 52) & 1) != 0, reportC = ((lo >>> 53) & 1) != 0, fromLog = ((lo >>> 54) & 1) != 0;
         boolean untraced = ((lo >>> 55) & 1) != 0;
+        boolean signImm = ((lo >>> 62) & 1) != 0, offsetImm = ((lo >>> 63) & 1) != 0;   // v1.25 (DECISIONS-v1.25 s4, s5)
         int format = (int) (lo >>> 48) & 7, rd0w = (int) (lo >>> 46) & 3;
         // checks (4.19.11, condition 13)
         if (untraced) { invalid(T, "an untraced expansion word reached the replayer"); return; }
@@ -465,7 +479,11 @@ final class Replayer implements Peripheral {
         }
         // operands
         int w = in.w;
-        long srcImm = (cRs1 >= 132 && cRs1 <= 136) || (cRs2 >= 132 && cRs2 <= 136) || (cRd >= 132 && cRd <= 136) ? sourceImm(format, w) : 0;
+        long srcImm = (cRs1 >= 132 && cRs1 <= 136) || (cRs2 >= 132 && cRs2 <= 136) || (cRd >= 132 && cRd <= 136) || offsetImm ? sourceImm(format, w) : 0;
+        // shift_offset (v1.25, offset_imm [63]): the source instruction's immediate when set, else 0. Only ShiftData reads it.
+        long so = offsetImm ? srcImm : 0;
+        if (offsetImm && !ReplayerAlu.isShiftData(op))
+            violate(T, "offset_imm set on a " + ReplayerAlu.name(op) + " row (only ShiftData reads shift_offset; WORKER11 Q3)");
         int rRd = reg(cRd, in), rRs1 = reg(cRs1, in), rRs2 = reg(cRs2, in);
         long vRd = rRd >= 0 ? rv(rRd) : immVal(cRd, hi, srcImm);
         long vRs1 = rRs1 >= 0 ? rv(rRs1) : immVal(cRs1, hi, srcImm);
@@ -473,7 +491,7 @@ final class Replayer implements Peripheral {
         long immSum = (rRd < 0 ? vRd : 0) + (rRs1 < 0 ? vRs1 : 0) + (rRs2 < 0 ? vRs2 : 0);
         // log readiness
         Stream logS = null;
-        if (fromLog) logS = op == ReplayerAlu.SD ? (fStore ? wlog : null) : rlog;
+        if (fromLog) logS = ReplayerAlu.isStore(op) ? (fStore ? wlog : null) : rlog;   // SD and VirtualStoreB/H/W: the write log
         if (logS != null) {
             int s = logS.peek();
             if (s == Stream.WAIT) { stall(logS == wlog ? Stall.WLOG : Stall.RLOG); return; }
@@ -490,12 +508,14 @@ final class Replayer implements Peripheral {
         long logWord = 0;
         if (logS != null) {
             logWord = logS.peekValue; logS.commit(); logS.releaseConsumed();
-            if (op == ReplayerAlu.LD) wlog.lastLoad(logWord);              // write-log E[15] (4.19.15)
+            if (ReplayerAlu.isLoad(op)) wlog.lastLoad(logWord);            // write-log E[15] (4.19.15): every load row (WORKER11 Q2)
         }
         boolean last = seqRem == 0 || in.kind == K_PAD || in.kind == K_NOP;
         boolean compressed = (w & 1) == 0;
         int pcInc = !last ? 0 : compressed ? 2 : 4;
-        ReplayerAlu.exec(op, vRs1, vRs2, vRd, pc, pcInc, imm0pc0, logWord, aluOut);
+        ReplayerAlu.exec(op, vRs1, vRs2, vRd, pc, pcInc, imm0pc0, logWord, so, aluOut);
+        if ((op == ReplayerAlu.PEXT || op == ReplayerAlu.PEXT_S) && vRs2 != 0 && ((vRs2 >>> Long.numberOfTrailingZeros(vRs2)) & ((vRs2 >>> Long.numberOfTrailingZeros(vRs2)) + 1)) != 0)
+            pextNonContiguous++;
         if (aluOut.undefined != null) violate(T, "undefined result (invariant 16): " + aluOut.undefined + " in " + ReplayerAlu.name(op));
         Pending p = new Pending();
         p.instr = in; p.lastOfInstr = last;
@@ -524,12 +544,17 @@ final class Replayer implements Peripheral {
             boolean isComp = compressed && reportC;
             r[0] = (instrIdx & 0xFFFFFFFFL) | (long) op << 32 | (long) Math.max(rRd, 0) << 40 | (long) Math.max(rRs1, 0) << 48 | (long) Math.max(rRs2, 0) << 56;
             r[1] = (seqRem & 0xFFFFL) | (isComp ? 1L : 0) << 16 | (isVirtual ? 1L : 0) << 17 | (isFirst ? 1L : 0) << 18
-                    | (rRd < 0 ? 1L : 0) << 19 | (rRs1 < 0 ? 1L : 0) << 20 | (rRs2 < 0 ? 1L : 0) << 21;
-            r[2] = pc; r[3] = immSum;
+                    | (rRd < 0 ? 1L : 0) << 19 | (rRs1 < 0 ? 1L : 0) << 20 | (rRs2 < 0 ? 1L : 0) << 21
+                    | (signImm ? 1L : 0) << REC_SIGN_IMM;
+            // the row's immediate: the immediate slots' sum; for ShiftData its shift_offset (jolt-cpp imm_raw, 821e1bd)
+            r[2] = pc; r[3] = ReplayerAlu.isShiftData(op) ? so : immSum;
             r[4] = rRs1 >= 0 ? vRs1 : 0; r[5] = rRs2 >= 0 ? vRs2 : 0;
             r[6] = rRd >= 0 ? vRd : 0; r[7] = rdAfter;
-            if (op == ReplayerAlu.LD) { r[8] = vRs1 + immSum; r[9] = rdAfter; }
-            else if (op == ReplayerAlu.SD) { r[8] = vRs1 + immSum; r[9] = logS != null ? logWord : 0; }
+            // memory rows: LD, SD and (v1.25) the narrow VirtualLoad/StoreB/H/W, whose address is rounded down to its doubleword
+            if (ReplayerAlu.isLoad(op)) { r[8] = ReplayerAlu.memAddr(op, vRs1, immSum); r[9] = rdAfter; }
+            else if (ReplayerAlu.isStore(op)) { r[8] = ReplayerAlu.memAddr(op, vRs1, immSum); r[9] = logS != null ? logWord : 0; }
+            if ((ReplayerAlu.isLoad(op) || ReplayerAlu.isStore(op)) && ((vRs1 + immSum) & 7 & ~ReplayerAlu.floorMask(op)) != 0)
+                violate(T, "a misaligned " + ReplayerAlu.name(op) + " at 0x" + Long.toHexString(vRs1 + immSum) + " (jolt-cpp aborts the trace; checked_memory_address)");
         }
         p.rec = r;
         in.nextRow++;

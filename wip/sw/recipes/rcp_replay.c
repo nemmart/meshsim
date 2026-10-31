@@ -1,8 +1,8 @@
 /* Recipes 25 and 26: using a peripheral window through its struct, and the replayer's refill loop on counted credits
  * (D10, D14, W3-REVIEW-2 section 5). The replayer is peripheral 1 on a tile that has one. */
 #include "rcp.h"
-/* the program's own template index (spec 4.19.9): an instruction word to its expansion's words in big SRAM */
-extern void template_lookup(uint32_t instr, uint32_t offset, uint32_t *chunk, uint32_t *entries);
+/* the template index (spec 4.19.9; v1.25: universal, keyed by key(w)): a key to its expansion's words in big SRAM */
+extern void template_lookup(uint32_t key, uint32_t offset, uint32_t *chunk, uint32_t *entries);
 
 /* RECIPE periph_window */
 /* A peripheral is reached through its window's struct (D14): its standard words first (D10), then its own. Check the
@@ -49,6 +49,16 @@ static void periph_dma(unsigned n, unsigned dst, uint32_t addr, uint32_t words, 
  * with nothing more to push leaves the mask, or its spare credit would keep the tile awake (W3-24). Resident streams
  * only: data staged from LPDDR is fetched into big SRAM first, on another counter (spec 4.19.13). */
 typedef struct { uint32_t chunk, left, port, half, bit; } Feed;   /* the next half in big SRAM (4-chunk aligned), entries left */
+/* key(w) (spec 4.19.9, v1.25): the index's key for a presented word, every bit of w but its register fields. An inline
+ * (custom-0) has rd, rs1 and rs2 cleared; CSRRW/CSRRS has rd and rs1 renamed by first appearance (x0 stays 0, a
+ * non-zero rd becomes 1; rs1 is 0 if x0, 1 if it equals a non-zero rd or if rd is x0, else 2), the CSR kept. */
+static uint32_t template_key(uint32_t w) {
+    uint32_t op = (w | 1) & 0x7F, f3 = (w >> 12) & 7, rd = (w >> 7) & 31, rs1 = (w >> 15) & 31;
+    if (op == 0x0B) return w & ~(31u << 7 | 31u << 15 | 31u << 20);
+    if (op == 0x73 && (f3 == 1 || f3 == 2))
+        return (w & ~(31u << 7 | 31u << 15)) | (rd ? 1u : 0u) << 7 | (!rs1 ? 0u : (!rd || rs1 == rd) ? 1u : 2u) << 15;
+    return w;
+}
 static unsigned refill(Feed *f, unsigned s, uint32_t *pmask, uint32_t *armed) {
     uint32_t n = f->left < f->half ? f->left : f->half;    /* every refill but a stream's last is exactly a half */
     set_stream(s, STREAM_SRC_W(f->chunk, 0), f->port, STREAM_COUNT_W(n, SIZE_128, CTR_PERIPH, MODE_WRITE, 0));
@@ -70,7 +80,7 @@ static void replay_pass(Feed *code, Feed *rlog, Feed *wlog, int store_log) {
         uint32_t ev = replayer->EVENTS;             /* consumes: one credit from each set bit under pmask */
         if (ev & PEV_RUN_DONE) break;               /* the pass has ended; no refill is in flight here */
         if (ev & RP_EV_NEWEXP) {                    /* present an expansion: its credits are 2 again */
-            template_lookup(replayer->EXPANSION_OPCODE, replayer->EXPANSION_OFFSET, &exp.chunk, &exp.left);
+            template_lookup(template_key(replayer->EXPANSION_OPCODE), replayer->EXPANSION_OFFSET, &exp.chunk, &exp.left);
             if (exp.left) pmask |= RP_EV_EXP;       /* its first credit is claimed on the next wake */
         }
         unsigned s = 0;

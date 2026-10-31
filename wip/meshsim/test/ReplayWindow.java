@@ -24,7 +24,7 @@ final class ReplayWindow {
     final long[] romLo = new long[512], romHi = new long[512];
     // the streams: entry i is {lo[2i], hi[2i + 1]}
     long[] code = new long[0], rlog = new long[0], wlog = new long[0];
-    // controller-fed templates by exact instruction word (the stored opcode-stream word), and each one's rd0 (index byte 12)
+    // controller-fed templates by the normalized template-index key (v1.25, ReplayTables.key), and each one's rd0 (index byte 12)
     final Map<Integer, long[]> templates = new HashMap<>();
     final Map<Integer, Integer> templateRd0 = new HashMap<>();
     /** A delivered state record's words 1-66 (region 0), sent unchanged; null: built from the fields above. */
@@ -32,7 +32,15 @@ final class ReplayWindow {
     // reference rows (10 longs each), if any
     List<long[]> ref;
 
-    ReplayWindow() { Arrays.fill(table, (short) 1); }     // unused entries are controller class (4.19.5's builder rule)
+    ReplayWindow() { Arrays.fill(table, (short) 3); }     // v1.25: unused entries are invalid, class 3 (DECISIONS-v1.25 s5)
+
+    /** Use a delivered set of tables (v1.25: the universal ones): the decode table, the ROM and the controller-fed set. */
+    void useTables(ReplayTables t) {
+        System.arraycopy(t.table, 0, table, 0, 2048);
+        System.arraycopy(t.romLo, 0, romLo, 0, 512); System.arraycopy(t.romHi, 0, romHi, 0, 512);
+        templates.clear(); templateRd0.clear();
+        for (int k = 0; k < t.count(); k++) { templates.put(t.key[k], t.words.get(k)); templateRd0.put(t.key[k], t.rd0[k]); }
+    }
 
     long stateLo() { return pc; }
     long stateHi() {
@@ -60,6 +68,8 @@ final class ReplayWindow {
         W reportC() { lo |= 1L << 53; return this; }
         W fromLog() { lo |= 1L << 54; return this; }
         W untraced() { lo |= 1L << 55; return this; }
+        W sign() { lo |= 1L << 62; return this; }               // v1.25: sign_imm
+        W offImm() { lo |= 1L << 63; return this; }             // v1.25: offset_imm
         W cnst(long c) { hi = c; return this; }
         int seqRem() { return (int) (lo >>> 32) & 0xFFF; }
     }
@@ -76,11 +86,11 @@ final class ReplayWindow {
     /** Map an instruction to a ROM template (class 0) at its exact decode index. */
     void decodeRom(int w, int start) { table[Replayer.decodeIndex(w)] = (short) (start << 2); }
     void decodeClass(int w, int cls) { table[Replayer.decodeIndex(w)] = (short) cls; }
-    /** A controller-fed template for one instruction word (seq_remaining set from its length). */
+    /** A controller-fed template for an instruction word, filed under its key (seq_remaining set from its length). */
     void template(int w, W... words) {
         long[] t = new long[2 * words.length];
         for (int i = 0; i < words.length; i++) { words[i].seq(words.length - 1 - i); t[2 * i] = words[i].lo; t[2 * i + 1] = words[i].hi; }
-        templates.put(w, t);
+        templates.put(ReplayTables.key(w), t);
     }
 
     // ================================================================ the streams (4.19.15)

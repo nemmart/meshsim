@@ -2,6 +2,15 @@
 
 These are the requirements from the replayer session (meshsim's `Replayer`, Stage A harness, and Stage B controller) on the tracer session's output format. Section references are to `spec/machine-spec.md` at mesh-sorter-v1.1-2026-10-26n.
 
+**v1.25 (WORKER11, 2026-11-01).** The reference is jolt-cpp `821e1bd` (jolt-asic-planning PR #2), the writer WORKER9's
+part 3 (`delivery_writer`). What changed from v1.2, each marked **v1.25** below: the tables are **universal**
+(DECISIONS-v1.25 s5, `wip/tables/replayer/`), so they come once per jolt-cpp version rather than per program; the
+template index is keyed by the **normalized key**; unused decode entries are **class 3, invalid**; the narrow memory rows
+`VirtualLoadB/H/W` and `VirtualStoreB/H/W` take log words like LD and SD; the write log's last-load entry follows
+**every load row** (s7, Q2); the reference row carries the row's **signedness** (s7, Q1); `ShiftData*`'s immediate is
+its shift offset. Acceptance runs (s2, s7) don't store deliveries: each runner task has the writer generate its shard
+of windows, replays them at once and keeps only the results (section 8).
+
 The aim: feed the replayer **only its inputs** for each window, and compare every output row, **byte for byte**, with the tracer's reference rows. Raw streams come first, then compressed.
 
 Anything marked **(optional)** speeds up debugging or coverage but isn't needed for a first comparison.
@@ -14,20 +23,25 @@ Anything marked **(optional)** speeds up debugging or coverage but isn't needed 
 - **Units:** sizes are in bytes and lengths in bits, unless a field says otherwise. Every binary file is a whole number of 16-byte words.
 - **Identity:** every file can be identified independently (section 6). The harness checks each file's SHA-256 before it uses it.
 
-## 2. Per program (once per traced program)
+## 2. The tables (v1.25: once per jolt-cpp version, universal)
+
+**v1.25:** one set serves every program (DECISIONS-v1.25 s5): `wip/tables/replayer/` in meshsim, with
+`wip/tables/manifest.json` giving each file's SHA-256. A delivery may carry them in a top-level `tables/` directory or in
+each program's directory (v1.2's place); if it carries neither, the harness uses the repository's copy. The harness checks
+whichever it uses against `wip/tables/manifest.json` and the delivery manifest's `tables_sha256`, when given.
 
 | item | file | size | content |
 |---|---|---|---|
-| decode table | `decode_table.bin` | 4,096 B | 2,048 entries × u16 LE, entry *e* at byte 2*e*. It is exactly what mode 9 writes at 0x00400–0x007FF (4.19.10): the packet at 0x400 + 4·(*e* >> 3) carries entries 8·(*e* >> 3) … + 7, entry *e* in bits [16·(*e* & 7) + 15 : 16·(*e* & 7)]. **Every entry written** (4.19.5's builder rules: unused entries are controller class; entries whose index bits include immediate bits are replicated). |
+| decode table | `decode_table.bin` | 4,096 B | 2,048 entries × u16 LE, entry *e* at byte 2*e*. It is exactly what mode 9 writes at 0x00400–0x007FF (4.19.10): the packet at 0x400 + 4·(*e* >> 3) carries entries 8·(*e* >> 3) … + 7, entry *e* in bits [16·(*e* & 7) + 15 : 16·(*e* & 7)]. **Every entry written** (4.19.5's builder rules: entries whose index bits include immediate bits are replicated). **v1.25: unused entries are class 3, invalid** (encodings that aren't valid RV64IMAC instructions; an instruction decoding to one is an invalid expansion). |
 | ROM | `rom.bin` | 8,192 B | 512 × 128-bit expansion words (4.19.3), word *j* at byte 16*j*: exactly what mode 9 writes at 0x00800 + 4*j*. Words 0 and 1 are the padding row and the shared NOP row (4.19.6). |
 | template words | `templates.bin` | 16 B × total words | the controller-fed template words (4.19.3 format), concatenated. Numbers may share words (item 114). |
-| template index | `template_index.bin` | 16 B × number count (≤ 128) | one 16-byte entry per template number, in number order (format below); **the count is the file size / 16** (no count or valid field) |
+| template index | `template_index.bin` | 16 B × number count (≤ 128) | one 16-byte entry per template number, in number order, **sorted by key, ascending** (format below); **the count is the file size / 16** (no count or valid field). v1.25's universal set: 75 (15 inlines, 60 CSR keys), 13,821 words |
 
 **Template index entry** (as the tracer session delivers it):
 
 | bytes | field |
 |---|---|
-| 0–3 | **instruction word**, u32 LE. It is the key, and must equal what the replayer presents in `PERIPH_STATUS_1`: the stored opcode-stream word, with bit 0 clear for a compressed instruction (4.19.2, 4.19.9). One entry per distinct instruction word. |
+| 0–3 | **the key**, u32 LE. **v1.25:** key(*w*) of the presented word *w* (`PERIPH_STATUS_1`, `EXPANSION_OPCODE`: the stored opcode-stream word, bit 0 clear for a compressed instruction), every bit of *w* except register fields: **an inline** (*w*[6:0] = 0001011) has rd [11:7], rs1 [19:15] and rs2 [24:20] cleared; **CSRRW/CSRRS** (*w*[6:0] = 1110011, funct3 1 or 2) has rd and rs1 renamed by first appearance (x0 stays 0; a non-zero rd becomes 1; rs1 becomes 0 if x0, 1 if equal to a non-zero rd or if rd is x0, else 2); any other word is its own key. The template's operand codes 129–131 still resolve against *w*, not the key (`wip/tables/README.md`). v1.2: the exact word. |
 | 4–7 | **word offset** into `templates.bin`, in 128-bit words, u32 LE |
 | 8–11 | **length** in words, u32 LE. It must equal the first word's `seq_remaining` + 1. |
 | 12 | **`rd0`**: the template's rd = x0 policy, as in its first word's bits [47:46] (0–3). The Stage B controller needs it for ruling N3. |
@@ -35,12 +49,13 @@ Anything marked **(optional)** speeds up debugging or coverage but isn't needed 
 | 14–15 | spare, 0 |
 
 **Requirements on every template word, ROM and controller-fed:**
-- **Format and flags.** As in 4.19.3: `seq_remaining` counting down to 0 on the last word. `imm0_pc0` is set in every JAL word, and `next_from_value` on every row that can transfer control. `from_log` is set exactly on the LD, SD and advice rows; `report_c` is set on last words only.
+- **Format and flags.** As in 4.19.3: `seq_remaining` counting down to 0 on the last word (v1.25: traced words only, which are all a replayer receives). `imm0_pc0` is set in every JAL word, and `next_from_value` on every row that can transfer control. `from_log` is set exactly on the LD, SD, **`VirtualLoadB/H/W`, `VirtualStoreB/H/W`** and advice rows; `report_c` is set on last words only.
+- **v1.25's two bits.** `offset_imm` [63] only on `ShiftData*` words whose shift offset is the source immediate (s7, Q3; meshsim flags it elsewhere); `sign_imm` [62] where jolt-cpp's `signed_immediate` holds for the row's opcode (loads, stores, branches, `ShiftData*`).
 - **The rd = x0 policy.** `rd0` holds the template's policy in its **first word**. Putting it in every word is welcome but not needed: on a mid-sequence start the controller copies it into the first word it sends (4.19.4, ruling N3).
 - **No tracer-only words.** `untraced` is never set in a word a replayer can receive (4.19.3, 4.19.11).
 - **Advice rows** are written as `VirtualAdvice`, with `from_log` set (4.19.7).
 - **A zero immediate beside a constant** uses operand code **145**, immediate 0 (26q, 4.19.3). Code 132 also replays as 0 for an R-format source, so tables built with it still replay the same.
-- **The program's controller-fed set** covers every instruction word the decode table sends to the controller (class 1 or 2) **that occurs in any window**, ECALL, EBREAK and MRET included. A presented instruction with no index entry is a harness error.
+- **The controller-fed set** (v1.25: universal) has a key for every inline jolt-cpp supports and for CSRRW/CSRRS on jolt-cpp's six CSRs in each register pattern. ECALL, EBREAK and MRET are in the ROM. A presented instruction whose key has no entry is an error (a CSR jolt-cpp rejects).
 
 **(Optional) program metadata** in the manifest:
 - **Template-builder version.** The tracer and builder commit, so the template words and the reference rows are known to come from the same build.
@@ -56,7 +71,7 @@ A window is the 65,536 rows one replayer pass runs (4.19.1), or the debug length
 
 | word | bytes | content |
 |---|---|---|
-| 0 | 0–15 | **template bitmap**: bit *i* set if the window uses controller-fed template *i* (item 115). The replayer never sees it. |
+| 0 | 0–15 | **template bitmap**: bit *i* set if the window uses controller-fed template *i* (item 115), in the replayer's numbering (the index position). The replayer never sees it; **v1.25: the Stage B controller builds its fast path from it**, so it must name every template the window's code stream presents, a mid-sequence first instruction included. |
 | 1 | 16–31 | **state word**: pc [63:0]; `instr_idx` [95:64]; next offset [111:96]; flags [112] code compressed, [113] read log compressed, [114] write log compressed, [115] includes store log (the tracer emits 1); [127:116] zero |
 | 2 | 32–47 | **stream word**: exact lengths in bits: code [23:0], read log [55:32], write log [87:64]; the rest zero |
 | 3–66 | 48–1,071 | **register image**: image word *i* holds register 2*i* in bits [63:0] and 2*i* + 1 in [127:64]. All 128 registers; register 0's value is ignored. |
@@ -81,15 +96,15 @@ The controller sends bytes 16–1,071 to region 0 unchanged (4.19.2, 4.19.10). T
 - If the window starts inside an expansion, its first entry is that instruction.
 
 **Log contents, in row order, at most one word per row** (4.19.2):
-- **Read log:** LD values, `VirtualAdvice` values (the DIV/REM advice included, which jolt-cpp computes but doesn't log), and the next `instr_idx` of every row that transfers control.
+- **Read log:** LD and (v1.25) `VirtualLoadB/H/W` values (the whole doubleword at rs1 + imm rounded down to 8), `VirtualAdvice` values (the DIV/REM advice included, which jolt-cpp computes but doesn't log), and the next `instr_idx` of every row that transfers control. A transfer to the row's own pc is not a transfer (jolt-cpp: sequential), so takes no word.
 - **The program-end row's word:** a row whose new pc is 0, with `next_from_value` set, takes one read-log word, **0** (4.19.7; the replayer flags any other value). This applies to JAL with imm 0, and to a JALR or branch to 0 if one ever occurs.
-- **Write log:** SD and AMO pre-values. An SD row takes one write-log word whenever includes-store-log is 1.
+- **Write log:** the pre-values of SD and (v1.25) `VirtualStoreB/H/W` rows (the AMOs' and SC's stores are such rows). A store row takes one write-log word whenever includes-store-log is 1.
 
 **The compressed encoder must follow 4.19.15 exactly**, in particular:
 - Tables reset at each window start.
 - A hit is a flag bit 1 and a 4-bit index. A miss is a flag bit 0, a size bit (0 = 32, 1 = 64) and the value; a 32-bit miss is zero-extended.
 - **Move to front** on every hit and miss.
-- **Write log E[15]:** it is updated by **every** LD row's read-log value, an LD to x0 included (ruling N5). It is coded as **index 15 first** when a value matches it, and the LRU runs over 0–14 only.
+- **Write log E[15]:** it is updated by **every load row's** read-log value (LD and, v1.25, `VirtualLoadB/H/W`; DECISIONS-v1.25 s7, Q2), a load to x0 included (ruling N5). It is coded as **index 15 first** when a value matches it, and the LRU runs over 0–14 only.
 - The write-log encoder therefore runs in row order with the read log, not as a separate pass.
 
 **Delivery, in this order of priority:**
@@ -103,7 +118,10 @@ The controller sends bytes 16–1,071 to region 0 unchanged (4.19.2, 4.19.10). T
 - **What the rows show:** what the replayer must produce from the inputs above. Every row of the window, **padding rows included (all zeros)**.
 - **`instr_idx`** (word 0 [31:0]): the row's bytecode index, 0 in padding.
 - **Word 0 [85:83]:** `rd_is_imm`, `rs1_is_imm` and `rs2_is_imm`, from the bytecode row's slot kinds. They aren't in jolt-cpp's `RiscCycle`, so the converter must take them from the `VirtualInstruction` the row executed.
-- **Spare bits** (word 0 [127:86]) are 0.
+- **v1.25, the row's signedness:** word 0 [86] is the expansion word's `sign_imm` (jolt-cpp's `signed_immediate` of the row's opcode: loads, stores, branches, `ShiftData*`), so a reader needs no list of signed opcodes (DECISIONS-v1.25 s7, Q1: *Proposed* by meshsim; the spec may instead carry the immediate already extended to 64 bits, and then this bit goes; meshsim and the writer follow the spec).
+- **v1.25, `ShiftData*`'s immediate** (word 1 [127:64]) is its shift offset, as jolt-cpp's `imm_raw` records it.
+- **v1.25, the narrow memory rows:** `mem_addr` is rs1 + imm **rounded down to its doubleword** (jolt-cpp `memory_address`); `mem_value` is rd after the row for `VirtualLoad*` (the doubleword) and the pre-value for `VirtualStore*`, as for LD and SD.
+- **Spare bits** (word 0 [127:87]) are 0.
 - **No memory post-value** (4.19.12). `mem_value` is LD's rd after the row (0 for an LD to x0), or SD's pre-value. Rows come from the store-log-on run.
 - **If the rows come as `RiscCycle`,** I'll convert them myself, but then I also need the per-row slot kinds and `instr_idx`. The 4.19.12 layout directly is much preferred.
 
@@ -162,3 +180,18 @@ A delivery is a tarball of one or more program directories and the manifest.
 - run raw first, then compressed, then mixed.
 
 **Stage B.** The same window files are laid out in big SRAM and run by the tile's own controller program in meshsim. They are compared the same way, and the cycles per row, stalls and controller load are measured.
+
+## 8. The acceptance runs (v1.25)
+
+DECISIONS-v1.25 s2 and s7 (revised 2026-11-01): every window of EVM Zone and Cyclone at 2²⁹ rows, replayed and matched
+row for row on the Quest runner. Generating any window means tracing the program from the start, so **one writer task
+per program writes its whole delivery on the runner box and keeps it there** (about 17 minutes, ~31 GB); the acceptance
+kit's shards (`acceptance/`) read windows from it, never write next to it, and keep only their results. What the kit
+needs:
+- **The delivery's path on the box and the SHA-256 of its `manifest.json`**, from the writer task.
+- **Per window in the manifest:** `index`, `first_row`, `rows`, `files` (each file's SHA-256: every file a replay reads
+  is checked before use), `rows_sha256`.
+- **The tables** in the delivery's `tables/` (or the repository's copy assumed); checked against `wip/tables/manifest.json`.
+- **The record variants:** `state` (raw) at least; `state-pick` (the Tracer's choice) when present, which is then the one
+  replayed.
+- **`end.bin`** per window (the end state), or rely on consecutive windows' records.

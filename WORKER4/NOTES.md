@@ -94,7 +94,7 @@ v1.1 recipe suite with the v1.2 recipes.
   v1.2 map, the test programs ending through SIM_EXIT); the C-driven suites back. **Interim until phase 4:** a resident
   loader in program memory and the RUN line still start the programs (the boot ROM and the reset are phase 4).
 
-- **Phase 3** (2026-10-31, in progress): EventCounts (counted events with depths, live bits); Peripheral (v1.2
+- **Phase 3** (2026-10-31, **closed**: the quick run and the full extras pass; the sweep's output identical to phase 2's): EventCounts (counted events with depths, live bits); Peripheral (v1.2
   interface: PARAMS, STATUS, ERRORS, PULSE_RUN, counted events, words 32-127, the DMA's source); PeripheralSlot (up to
   three per unit, the standard window and its access rules, EVENTS_MASK and the consuming load, the controller's live
   bits EVENTS [15:13] and ERRORS [13:11], the DMA engine with DMA_HDR, DMA_ADDR, PULSE_DMA, STATUS [1], DMA done);
@@ -109,6 +109,32 @@ v1.1 recipe suite with the v1.2 recipes.
   loop (replay_regs.h, its crt0 and linker script gone); StageB on v1.2, with `StageB synthetic` (Stage A's windows on
   a tile, 18, each matching row for row) in run_tests; DELIVERY runs as before when a delivery is given. The replayer
   recipe (wip/sw/recipes/rcp_replay.c) runs in phase 6 with the other recipes.
+
+- **WORKER8's requests** (WORKER8/REQUESTS.md on v1.2-sort): R1, the sort's test files (SortTest, Inputs, SortSummary,
+  VerifySummary) and run_tests.sh's sort steps are WORKER8's: I don't edit them here, and when the branches meet,
+  v1.2-sort's versions stand. R2: when phase 4's boot ROM replaces the interim loader, this file says so (below, in the
+  phase 4 entry). R3: SplitRun and splitdrv.c stay unported (owner), stale, listed in REPORT.md.
+
+- **Phase 4** (2026-10-31, in progress). **R2 for WORKER8: the boot ROM has replaced the interim loader** (commit
+  of this entry): `sw/loader.S`, `sw/loader.ld`, `build/loader.bin` and `Registers.LOADER_BASE` are gone, and there is no
+  RUN/HALT line. Every core starts at 0x02000000 in the boot ROM (sw/bootrom.S, its image sw/bootrom.hex, loaded by
+  Controller.bootRom) and waits there with done pulsed. `Mach.boot` now: broadcast the code to program memory
+  (0x01000000) and the data to data memory (from the image's `_data_start`), uncounted mode 0; then the first command
+  (`CMD_JUMP`, slot 1 the entry); then `CnC.runWhenReady()`, which is GO when every tile in `READY_EXPECT` is READY
+  (C&C 1's model sets all 64; after `CnC.reset()` it sets them again); the ROM jumps. To start only some tiles, set
+  `chip.cc1p.expect` to their mask (RiscvTest does: tile 0). The reset is `CnC.reset(hard)` (a step) or
+  `Chip.reset(hard)`, taking effect at the end of the cycle.
+  Done: traps (bus errors and illegal instructions to mtvec), the trap CSRs, mcycle/mtime (D48), the hard interrupt
+  (ERRORS != 0, MIE and mie.MEIE, WFI included), meshsim's loud stops (ecall, ebreak, a fetch fault, a misaligned jump, a
+  trap in the handler); the boot ROM; the reset (every bus emptied through a registry, every unit as at power-on except
+  the memories); RUN/HALT and the interim loader removed; D48's words 8-9 (W4-06); v1.1's REPORT flow removed (the
+  handlers' reports replace it; CnC.drainReports models C&C 1's draining); meshsim flags an overlay landing after a
+  unit's first command and before its start (6.2). Suites: CtrlTest (faults on traps, the reports, the reset and reboot),
+  CondTest back (cond.c rewritten: errors 0, 1, 2, 3, 7, 8, 9, 10, 14 from C, 4-6 injected, each through the handler's
+  24 reports, the error lines, the toast pin, then a soft reset and reboot), RiscvTest, HooksTest, PeripheralSlotTest,
+  RequestBusTest, AccountingTest (the boot is a phase now), SearchBench, StageB (READY_EXPECT for tile 0 only).
+  Not exercised: the ROM's controller branch (C&C 1-3 are Java models without cores) and C&C 2/3's start-up requests.
+  Test machines now settle in the ROM's WFI before Java drives a tile's registers (the ROM's own stores would race).
 
 ## Phase 1's results (`results/`, committed at the close)
 
@@ -140,3 +166,5 @@ Every other suite logs "PENDING (phase 2 / 3 / 6 / sort port)". Still v1.1's in 
 | phase 2, `0e4ee0c` to `e7a2106` | src/ compiles; the test tree compiles only without the suites still being rewritten (see the log) |
 | phase 2, closed | none: the quick run and the full extras pass; PENDING: phase 3, 4, 6 and the sort port |
 | phase 3 (WIP), the peripheral framework | src/ compiles; the replayer's tests (ReplayDriver, ReplayerUnitTests) and TestPeripheral don't yet (v1.1's lines and claims are gone) |
+| phase 3, closed (`39facff` and the close) | none: the quick run and the full extras pass; PENDING: phase 4 (CondTest), phase 6 (recipes), the sort port |
+| phase 4 (WIP), `2adfe2a` to `83c4142` | src/ compiles; a few suites failed while they moved to the ROM boot (fixed by `f7c694f`) |

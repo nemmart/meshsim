@@ -1,9 +1,10 @@
 #!/bin/sh
-# Builds the resident loader and every C program in sw/tests into sw/build (meshsim v4.0).
-#   build/loader.bin                      the loader, at 0x1F00
-#   build/<name>.code.bin, <name>.data.bin   the image: instruction memory from 0x0000, data memory from 0x4000
-# Toolchain: riscv64-unknown-elf-gcc -march=rv32i_zmmul -mabi=ilp32 (no divider: a program that pulls in a software
-# divide fails the build unless ALLOW_SOFTDIV=1). A line "// build: <flags>" in a source replaces the default -Os.
+# Builds the boot ROM and every C program in sw/tests into sw/build (meshsim v1.2).
+#   bootrom.hex                           the boot ROM (6.2), committed: meshsim loads it into every controller
+#   build/<name>.code.bin, <name>.data.bin   the image: program memory from 0x01000000, data memory from 0x00000010
+# Left out: the v1.1 recipes (tests/rcp_*.c; phase 6 builds the v1.2 recipes in wip/sw/recipes/ instead).
+# Toolchain: riscv64-unknown-elf-gcc -march=rv32i_zicsr_zmmul -mabi=ilp32 (no divider: a program that pulls in a
+# software divide fails the build unless ALLOW_SOFTDIV=1). A line "// build: <flags>" in a source replaces the default -Os.
 set -e
 HERE=$(cd $(dirname $0) && pwd); cd $HERE
 OUT=build; mkdir -p $OUT
@@ -16,16 +17,17 @@ if [ -d ../src ] && command -v javac >/dev/null 2>&1; then
   mkdir -p $OUT/cls && javac -d $OUT/cls ../src/*.java && java -cp $OUT/cls Registers mesh.h >/dev/null
 fi
 
-$CC -T loader.ld loader.S -o $OUT/loader.elf
-$OBJCOPY -O binary $OUT/loader.elf $OUT/loader.bin
-LW=$(( $(stat -c %s $OUT/loader.bin) / 4 ))
-[ $LW -le 64 ] || { echo "loader too big: $LW words"; exit 1; }
-echo "loader: $LW words"
+# the boot ROM (6.2): its image is committed as bootrom.hex, which meshsim loads
+$CC -T bootrom.ld bootrom.S -o $OUT/bootrom.elf
+$OBJCOPY -O binary $OUT/bootrom.elf $OUT/bootrom.bin
+od -An -v -tx4 -w4 $OUT/bootrom.bin | sed 's/^ *//' > bootrom.hex
+echo "boot ROM: $(wc -l < bootrom.hex) words"
+
 
 FAILED=""
 for src in tests/*.c; do
   n=$(basename $src .c)
-  case $n in rcp_*) continue;; cond) continue;; esac   # cond.c: phase 4 (errors, REPORT, the reset)
+  case $n in rcp_*) continue;; esac
   OPT=$(sed -n 's|^// build: ||p' $src | head -1); [ -n "$OPT" ] || OPT=-Os
   rm -f $OUT/$n.code.bin $OUT/$n.data.bin
   if ! $CC $OPT -T app.ld crt0.S $src -o $OUT/$n.elf; then FAILED="$FAILED $n"; continue; fi

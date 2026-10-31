@@ -70,7 +70,7 @@ public final class CtrlTest {
             T.eq(0xC0C00000 + i, p.sram.peek(0x106), tl + "mode-1 32-bit packet: one chunk");
             T.eq(0, r[29], tl + "STATUS: the idle machine (no run, done and command landed cleared by RUN)"); T.eq(0, p.ctl.conditions, tl + "no errors");
             T.eq(Registers.EVENTS_MASK_RESET, r[30], tl + "EVENTS_MASK = [8] | [7] after HALT -> RUN"); T.eq(0, r[31], tl + "EVENTS_REQUIRED = 0");
-            T.eq(7, r[32], tl + "EVENTS_PEEK: counters 1-3's done events [2:0] still pending (not in the reset mask, so wfi() didn't consume them); counters done consumed");
+            T.eq(7 | 1 << Registers.EV_COMMAND, r[32], tl + "EVENTS_PEEK: counters 1-3's done events [2:0] still pending (not in the reset mask, so wfi() didn't consume them), and command landed (the boot command's: nothing consumes it, 6.2); counters done consumed");
             T.eq(buf + 32, r[33], tl + "modes 1-5 leave ROUTER_ADDR alone");
             T.eq(1 << Registers.ST_DONE, r[34], tl + "STATUS: done after PULSE_DONE, readable the next cycle");
             T.eq(35, r[35], tl + "every step ran");
@@ -131,7 +131,7 @@ public final class CtrlTest {
             T.eq(7, m.word(i, im, "arg1s", 1), "tile " + i + ": phase 1's argument");
             boolean copy = true; for (int j = 0; j < N; j++) if (p.sram.peek64(0x20000 + 2 * j) != ((long) i << 32 | j)) copy = false;
             T.check(copy, "tile " + i + ": the two-command phase's local copy landed");
-            T.eq(5, p.ctl.gos, "tile " + i + ": five GOs");
+            T.eq(6, p.ctl.gos, "tile " + i + ": six GOs (the boot's and five phases')");
         }
         // the start store lies at the same distance from GO on every tile (identical code from WFI)
         long d0 = startAt[0] - goSeen[3][0]; boolean same = true; long skewOk = 0;
@@ -192,29 +192,44 @@ public final class CtrlTest {
         Mach m = new Mach(Mach.cfg(shuffle));
         Mach.Image im = m.boot("faults");
         m.run(m::allStopped, 5000);
-        int[] reason = { Controller.HALT_BUSERR, Controller.HALT_BUSERR, Controller.HALT_BUSERR, Controller.HALT_ILLEGAL,
-                Controller.HALT_ILLEGAL, Controller.HALT_ECALL, Controller.HALT_BUSERR, Controller.HALT_BUSERR };
+        // v1.2 (4.11, 4.13): a bus error or an illegal instruction sets its ERRORS bit and traps to mtvec, here the boot
+        // ROM's handler (crt0 doesn't set its own), which sends 24 reports to C&C 1 and parks; ecall sets no bit and
+        // meshsim stops loudly. C&C 1's model drains the reports as they come (target 0's queue, 128 deep).
+        int[] cause = { Controller.CAUSE_STORE_FAULT, Controller.CAUSE_STORE_FAULT, Controller.CAUSE_STORE_FAULT, Controller.CAUSE_ILLEGAL,
+                Controller.CAUSE_ILLEGAL, -1, Controller.CAUSE_LOAD_FAULT, Controller.CAUSE_LOAD_FAULT };
+        int[] perTile = new int[64];
+        m.run(() -> { long now = m.c.cycle + 1; while (m.c.reqBus.pending(0, now)) { int w0 = m.c.reqBus.get(0, now, 0); m.c.reqBus.receive(0, now); perTile[w0 & 0x7F]++; }
+                      for (Tile p : m.c.tiles) if (!(p.core.parked || p.core.halt != Controller.RUN)) return false;
+                      for (Tile p : m.c.tiles) if (!p.req.idle()) return false; return m.c.reqBus.idle() && !m.c.reqBus.pending(0, now); }, 200000);
         for (Tile p : m.c.tiles) {
             int k = p.idx & 7;
-            T.eq(reason[k], p.core.halt, "tile " + p.idx + " (fault " + k + "): " + p.core.haltReport());
             int st = p.ctl.conditions;
-            T.eq(reason[k] == Controller.HALT_BUSERR ? 1 : 0, st >> Conditions.BUS_ERROR & 1, "tile " + p.idx + ": bus-error condition");
-            T.eq(reason[k] == Controller.HALT_ILLEGAL ? 1 : 0, st >> Conditions.ILLEGAL & 1, "tile " + p.idx + ": illegal-instruction condition");
+            if (cause[k] < 0) {
+                T.eq(Controller.HALT_ECALL, p.core.halt, "tile " + p.idx + " (ecall): meshsim stopped it loudly");
+                T.eq(0, st, "tile " + p.idx + ": ecall sets no ERRORS bit");
+                continue;
+            }
+            T.eq(cause[k], p.core.trapCause, "tile " + p.idx + " (fault " + k + "): mcause");
+            T.check(p.core.parked, "tile " + p.idx + ": the handler reported and parked");
+            T.eq(cause[k] == Controller.CAUSE_ILLEGAL ? 1 : 0, st >> Conditions.ILLEGAL & 1, "tile " + p.idx + ": ERRORS [10]");
+            T.eq(cause[k] == Controller.CAUSE_ILLEGAL ? 0 : 1, st >> Conditions.BUS_ERROR & 1, "tile " + p.idx + ": ERRORS [9]");
+            T.eq(24, perTile[p.idx], "tile " + p.idx + ": the fixed set of 24 reports reached C&C 1");
         }
-        long logged = m.c.log.stream().filter(l -> l.contains("controller halted")).count();
-        T.eq(64, logged, "every controller halt logged with its cause");
-        T.eq(0, Long.bitCount(m.c.cc.readyBits(m.c.cycle)), "no READY from a crashed tile (C&C's watchdog would catch it)");
-        noViolations(m.c, "faults");
-        // HALT, then RUN with a marker whose slot 2 says "restart": every core restarts at the loader; entering HALT cleared the sticky bits
-        m.c.cc.halt().command(LinkWord.BROADCAST, Registers.CMD_JUMP << 24, im.sym("_start"), 0x600D).runWhenReady();
-        boolean ok = m.run(() -> m.c.cc.runStores == 3 && m.c.cycle > m.c.cc.lastRunAt + 5 && m.allStopped(), 5000);
-        T.check(ok && m.allExited(), "after HALT -> RUN every tile restarted and exited: " + m.haltSummary());
+        T.eq(0, Long.bitCount(m.c.cc.readyBits(m.c.cycle)), "no READY from a trapped tile (the watchdog's case)");
+        T.eq(8L, (long) m.c.violations, "the eight ecalls, flagged (4.13: no ERRORS bit): " + m.c.violationReport());
+        T.check((m.c.cc1p.read(m.c.cycle, 2) & 1) == 1 && m.c.cc1p.toast, "C&C 1's unit-error bit, and the toast pin");
+        m.c.violations = 0; m.c.violationMessages.clear();
+        // the outside world resets the chip; C&C 1 reboots the tiles with a command whose slot 2 says "restart"
+        m.c.cc.reset(false).command(LinkWord.BROADCAST, Registers.CMD_JUMP << 24, im.sym("_start"), 0x600D).runWhenReady();
+        boolean ok = m.run(() -> m.c.resets == 1 && m.c.cycle > m.c.lastResetAt + 5 && m.allStopped(), 20000);
+        T.check(ok && m.allExited(), "after the reset every tile booted again and exited: " + m.haltSummary());
         for (Tile p : m.c.tiles) {
-            T.eq(0x600D0000 + p.idx, m.word(p.idx, im, "ok", 0), "tile " + p.idx + ": restarted at the loader");
-            T.eq(0, m.word(p.idx, im, "st", 0), "tile " + p.idx + ": entering HALT cleared the errors (ERRORS reads 0; PHASE-2 INTERIM)");
+            T.eq(0x600D0000 + p.idx, m.word(p.idx, im, "ok", 0), "tile " + p.idx + ": restarted through the boot ROM");
+            T.eq(0, m.word(p.idx, im, "st", 0), "tile " + p.idx + ": the reset cleared its ERRORS");
         }
+        T.check(!m.c.cc1p.toast, "the reset cleared the toast latch");
         noViolations(m.c, "restart");
-        out("faults [meas: CtrlTest faults] (PHASE-2 INTERIM: a fault halts; phase 4 traps): a store to STATUS, a store to program memory, a sub-word register store, a load from PTR and a misaligned load are bus errors; div and a CSR read are illegal; ecall halts; each cause logged, its error set, no READY; HALT clears the errors and HALT -> RUN restarts every core at the loader");
+        out("faults [meas: CtrlTest faults]: a store to STATUS, a store to program memory, a sub-word register store, a load from PTR and a misaligned load are bus errors (ERRORS [9]), div and rdcycle illegal (ERRORS [10]): each traps to the boot ROM's handler, which sends its 24 reports to C&C 1 and parks; ecall sets no bit, and meshsim stops loudly; no READY; the unit-error bit and the toast pin rise; a soft reset clears every ERRORS and the toast pin, and the tiles boot again through the ROM");
     }
 
     // ================================================================ programming errors the simulator catches (spec 9)
@@ -249,14 +264,19 @@ public final class CtrlTest {
         long ow = 0; for (Tile p : d.c.tiles) ow += p.cmem.overwrittenUnread;
         T.eq(16L, ow, "invariant 8 by default: the 16 overwritten-unread replies (tiles 1, 5, ...) are counted");
         T.check(d.c.violationMessages.stream().noneMatch(v -> v.contains("invariant 8")), "invariant 8 by default: no violation");
-        // invariant 5 (no bad packet is sent: a misaligned mode 0) and invariant 7 (a packet in flight when the line changes)
+        // invariant 5 (no bad packet is sent: a misaligned mode 0); the reset empties a packet in flight (6.1)
         Mach h = new Mach(Mach.cfg(shuffle));
-        h.c.cc.send(5, LinkWord.M_WRITE, 0x104, 0x800).waitCycles(30)
-               .send(9, LinkWord.M_WRITE, Registers.COMMAND_BASE + 12, LinkWord.SIZE_32, 1, 0).then((c, t) -> { c.storeRun(t, true); return true; });
+        h.c.cc.send(5, LinkWord.M_WRITE, 0x104, 0x800).waitCycles(30).send(60, LinkWord.M_WRITE, 0x400, 0x800).reset(true);
         h.c.run(60);
         T.check(h.c.violationMessages.stream().anyMatch(v -> v.contains("invariant 5")), "invariant 5: a misaligned mode-0 packet sent");
-        T.check(h.c.violationMessages.stream().anyMatch(v -> v.contains("invariant 7")), "invariant 7: RUN raised with a packet in flight");
-        out("invariants [meas: CtrlTest invariants]: 4 (done before arrivals), 5 (a bad packet sent), 7 (packet in flight at a line change), 8 (reply overwritten unread), 9 (unexpected arrival: its error set), a reserved register-block word (reads 0, flagged) and the table-window check each fire on a bad program");
+        T.check(h.c.quiescent() && h.c.tiles[60].cmem.dmem.peek(0x100) == 0, "a hard reset with a packet in flight: it is gone, the mesh empty (6.1)");
+        // an overlay landing after a unit's first command and before its start (6.2): flagged
+        Mach o = new Mach(Mach.cfg(shuffle));
+        o.c.run(40);
+        o.c.cc.command(9, Registers.CMD_JUMP << 24, Registers.PMEM_BASE).waitCycles(60).send(9, LinkWord.M_WRITE, 0x400, 0x5);
+        o.c.run(200);
+        T.check(o.c.violationMessages.stream().anyMatch(v -> v.contains("overlay write landed after")), "an overlay after the first command is flagged (6.2)");
+        out("invariants [meas: CtrlTest invariants]: 4 (done before arrivals), 5 (a bad packet sent), a packet in flight at a reset (gone), 8 (reply overwritten unread), 9 (unexpected arrival: its error set), a reserved register-block word (reads 0, flagged) and the table-window check each fire on a bad program");
     }
 
     // ================================================================ mesh.h's field table agrees with the engines' encoders
@@ -372,7 +392,9 @@ public final class CtrlTest {
     static void boot() {
         T.group("boot");
         Mach m = new Mach(Mach.cfg(shuffle));
-        for (Tile p : m.c.tiles) T.check(!p.ctl.running(0) && p.ctl.done, "tile " + p.idx + " halted at reset with done forced to 1");
+        m.c.run(30);
+        for (Tile p : m.c.tiles) T.check(LinkWord.region(p.core.pc) == LinkWord.R_BOOTROM && p.core.inWfi && p.ctl.done, "tile " + p.idx + " waits in the boot ROM after the reset (6.2: done pulsed, WFI for GO)");
+        T.eq(0, Long.bitCount(m.c.cc.readyBits(m.c.cycle)), "no READY before a command lands");
         Mach.Image im = m.boot("hello");
         boolean ok = m.run(m::allStopped, 20000);
         T.check(ok && m.allExited(), "every tile ran hello to its exit: " + m.haltSummary());
@@ -385,9 +407,7 @@ public final class CtrlTest {
             T.eq(7, m.exitValue(i), "tile " + i + ": main's return value through SIM_EXIT");
         }
         noViolations(m.c, "boot");
-        long last = 0; for (Tile p : m.c.tiles) last = Math.max(last, p.core.haltPc >= 0 ? 0 : 0);
-        int words = Mach.loader().length + im.code.length + im.data.length;
-        out(String.format("boot [meas: CtrlTest boot] (PHASE-2 INTERIM: the resident loader): loader %d words + hello %d code + %d data words = %d 128-bit mode-0 packets and 2 command writes from C&C; all 64 READY at cycle %d, RUN raised at %d, every tile at main's exit by %d",
-                Mach.loader().length, im.code.length, im.data.length, (Mach.loader().length + 3) / 4 + (im.code.length + 3) / 4 + (im.data.length + 3) / 4, m.c.cc.lastAllReadyAt, m.runAt, m.c.cycle));
+        out(String.format("boot [meas: CtrlTest boot] (6.2: the boot ROM): hello %d code + %d data words = %d 128-bit mode-0 packets and 2 command writes from C&C 1; all 64 READY at cycle %d, GO at %d, every tile at main's exit by %d",
+                im.code.length, im.data.length, (im.code.length + 3) / 4 + (im.data.length + 3) / 4, m.c.cc.lastAllReadyAt, m.runAt, m.c.cycle));
     }
 }

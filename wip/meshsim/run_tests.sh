@@ -39,8 +39,8 @@ LOG=agtest    TAIL=1 run "address generator read-ahead, figure 12's PTR/HIST por
 LOG=agtest-shuf TAIL=1 run "shuffled child order (seed 4)"   $J AgTest 4
 pending recipes      "the recipe book (v1.1's RecipeTest; replaced by the v1.2 recipes)" "phase 6"
 pending recipes-shuf "shuffled child order (seed 4)" "phase 6"
-pending cond       "errors, the done gate, the error line (cond.c, REPORT, HALT recovery)" "phase 4"
-pending cond-shuf  "shuffled child order (seed 4)" "phase 4"
+LOG=cond      TAIL=2 run "the errors end to end: ERRORS, the handler's reports, the error lines, the toast pin, the reset" $J CondTest -1
+LOG=cond-shuf TAIL=1 run "shuffled child order (seed 4)"      $J CondTest 4
 LOG=regdoc    TAIL=1 run "REGISTERS.md and mesh.h against their generators, the draft header and the simulator" $J RegDocTest
 LOG=hooks     TAIL=1 run "the register map, the send port, the pulses (from Java)" $J HooksTest -1
 LOG=hooks-shuf TAIL=1 run "shuffled child order (seed 4)"     $J HooksTest 4

@@ -38,7 +38,9 @@ public final class SearchBench {
                 long[] d0 = new long[64]; int[] base = new int[64];
                 for (Tile p : m.c.tiles) { d0[p.idx] = p.ctl.dones; base[p.idx] = marks.get(p.idx).size(); }
                 m.c.cc.command(LinkWord.BROADCAST, 1 << 24 | v << 8 | B).go();
-                boolean ok = m.run(() -> { for (Tile p : m.c.tiles) if (p.ctl.dones <= d0[p.idx] || (d0[p.idx] == 0 && p.ctl.dones < 2)) return false; return true; }, 5_000_000);
+                m.run(() -> !m.c.cc.busy(), 5_000_000);                         // the GO has gone out: the run starts
+                for (Tile p : m.c.tiles) d0[p.idx] = p.ctl.dones;                // v1.2: the boot ROM pulses done too; count from the GO
+                boolean ok = m.run(() -> { for (Tile p : m.c.tiles) if (p.ctl.dones <= d0[p.idx]) return false; return true; }, 5_000_000);
                 T.check(ok, "N = " + N + ", " + VARIANT[v] + ", B = " + B + ": every tile finished");
                 for (Tile p : m.c.tiles) {
                     List<Long> mk = marks.get(p.idx);

@@ -1,4 +1,4 @@
-/* Program start-up (meshsim v1.2): entered from the loader's CMD_JUMP with the code in program memory and .rodata/.data
+/* Program start-up (meshsim v1.2): entered from the boot ROM's jump (6.2) with the code in program memory and .rodata/.data
  * in data memory. Sets the stack, zeroes .bss, calls main(); when main returns, its return value goes to the
  * simulator-only exit word (8.15), which ends the test. Real programs loop on wait_for_command(). */
 #include "mesh.h"

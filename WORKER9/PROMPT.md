@@ -64,6 +64,22 @@ of our repositories**: meshsim's replayer reads its tables from external deliver
 11. **Deliver the tables into meshsim** at `wip/tables/` (a new folder: the generated files, a README naming the jolt-cpp
     commit and how to regenerate), and report the ROM fill and template counts against v1.1's.
 
+PART 3: THE DELIVERY WRITER (after part 2; propose its plan first)
+v1.1's replayer was validated against **deliveries**: per program the tables, per window the Tracer's output and
+jolt-cpp's reference rows, in the format of meshsim's `wip/meshsim/REPLAY-INPUT-REQUIREMENTS.md`. A v1.1-era session
+made them with a software stand-in for the hardware Tracer, and neither the tool nor the files were kept. v1.25's
+acceptance (every window of EVM Zone and Cyclone at 2²⁹, replayed and compared row for row) needs them again.
+12. **Build the delivery writer** in PR #2, next to the tracer and the table builder, from jolt-cpp at the pinned commit.
+    It is a **functional model of the Tracer's output** (meshsim's `wip/planning/DECISIONS-v1.3.md` sections 1-8 and spec
+    4.19.2): cut the trace into windows of 2¹⁶ rows; for each, the state record (the template bitmap, the state word,
+    the stream word, the register image), the three streams (code, read log, write log) raw, LRU-compressed and the
+    Tracer's pick (two-pass, the LRU tables reset to zeros per window, the encoder's tie rule), and jolt-cpp's reference
+    rows; per program, part 2's tables. Exactly the files, names and checksums `REPLAY-INPUT-REQUIREMENTS.md` defines.
+13. **Check it** on the small inputs first (PR #1's trace-23 and Cyclone's small input), then produce deliveries for
+    selected windows of both 2²⁹ runs, and say how a full-program delivery (every window) would be produced on the Quest
+    runner. Deliveries run large: don't commit them to any repository; report where they are and their manifests'
+    checksums.
+
 RULES
 - One CPU and limited memory: the 2²⁹ runs may be slow, and the VM reserves 4 GiB of guest address space (PR #1's README
   on `vm.overcommit_memory`). If they can't run here, use the Quest runner (in your user preferences; a task carries what
@@ -76,5 +92,6 @@ RULES
 DELIVERABLES
 - PR #2 in jolt-asic-planning (or its branch, pushed), with the table builder (part 2).
 - meshsim's `wip/tables/`: the generated replayer and Tracer tables and their README (part 2).
+- The delivery writer in PR #2, and deliveries for selected windows of both 2²⁹ runs, with their manifests (part 3).
 - `WORKER9/REPORT.md`: the pinned commit, what changed against PR #1, both runs' numbers against PR #1's, the run-log
   findings (step 6), and part 2's results: the checks, the ROM fill and template counts, the `shift_offset` proposal.

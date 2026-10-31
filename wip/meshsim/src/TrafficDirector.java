@@ -148,6 +148,8 @@ final class TrafficDirector implements Component {
         int r = LinkWord.region(a);
         if (r != LinkWord.R_DMEM && r != LinkWord.R_PMEM) violate("uncounted write to region 0x" + Integer.toHexString(r) + ": big-SRAM data and peripheral writes are always counted (3.1, 6.2; invariant 22): " + LinkWord.describe(d, h, hi));
         else if (!LinkWord.controller(src)) violate("uncounted write into controller memory from unit " + src + ": only commands and boot overlays, from C&C 1-3, are uncounted (3.1; invariant 22): " + LinkWord.describe(d, h, hi));
+        else if (ctl != null && ctl.landed && !(r == LinkWord.R_DMEM && ControllerMemories.inCommand(LinkWord.offset(a))))
+            violate("an overlay write landed after the unit's command and before its start (6.2: the overlays and the first command are of one kind, the command last): " + LinkWord.describe(d, h, hi));
     }
     /** Invariants 11, 19 and 22 for a mode-0 write into controller memory (4.11, 4.12, 2.2). */
     private void checkCmem(long d, long h, long hi, int src, int ctr, int a, int size) {

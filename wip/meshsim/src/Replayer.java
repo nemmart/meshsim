@@ -141,7 +141,13 @@ final class Replayer implements Peripheral {
         landing.add(new Input(t + RP_LATENCY, src, addr, size, 0, lo, hi));
     }
     @Override public void run(long t) { noteInput(t); inputs.add(new Input(t, IN_RUN, 0, 0, 0, 0, 0)); }
-    @Override public void setHalted(long t, boolean h) { noteInput(t); inputs.add(new Input(t, IN_HALT, h ? 1 : 0, 0, 0, 0, 0)); }
+    /** The reset (6.1): idle, events and ERRORS 0, the queues empty; region 0, the tables and the ROM keep. */
+    @Override public void reset(long t) {
+        inputs.clear(); landing.clear(); settled = Long.MIN_VALUE;
+        stopCore(t, false); expDiscard = 0; newExpSetAt = Long.MIN_VALUE; doneSetAt = Long.MIN_VALUE; ev.clearAll();
+        code.clear(); rlog.clear(); wlog.clear(); exp.reset(); java.util.Arrays.fill(condEvents, 0); outQ.clear(); outAt.clear();
+    }
+    void setHalted(long t, boolean h) { noteInput(t); inputs.add(new Input(t, IN_HALT, h ? 1 : 0, 0, 0, 0, 0)); }
 
     int landed(long t) {
         for (int i = 0; i < Math.min(acceptN, 8); i++) if (acceptTimes[(acceptN - 1 - i) & 7] == t - RP_LATENCY) return 1;

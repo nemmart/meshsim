@@ -107,7 +107,6 @@ final class Tile implements Component {
         ctl = new TileControl(this, cfg);
         core = new Controller(this, ctl, cmem);
         core.enabled = !cfg.coreless;
-        if (ctl.halted) slot.setHalted(0, true);           // chip reset: every tile halted, its peripheral held in reset
         dir.ctl = ctl;
         // the SRAM read queue and the injection point share the token pool: one unit, run in that order (4.5)
         Component srqInj = t -> { srq.runCycle(t); inj.runCycle(t); };
@@ -118,8 +117,7 @@ final class Tile implements Component {
         if (shuffle != null) {
             for (int i = children.length - 1; i > 0; i--) { int j = shuffle.nextInt(i + 1); Component x = children[i]; children[i] = children[j]; children[j] = x; }
         }
-        boolean held = !ctl.running(t);               // HALT holds the address generator idle (6.1)
-        for (Component c : children) { if (held && c == ag) continue; c.runCycle(t); }
+        for (Component c : children) c.runCycle(t);
         slot.runCycle(t);
         slot.endCycle(t);
         ctl.endCycle(t);
@@ -170,10 +168,12 @@ final class Tile implements Component {
     void pulse(int bits) { ag.pulse(bits); }
     /** DMA_RECORD_BASE_ADDRESS (v1.0: DMA_RECORD_BASE_ADDRESS and DMA_RECORD_BASE_ADDRESS merged): augment and gather use one base. */
     void setRecordBase(int chunk) { writer.augmentBase = chunk & 0x1FFFFF; gather.base = chunk & 0x1FFFFF; }
-    /** Entering HALT (13a, 6.1): the address generator to IDLE; the GATHER engine's queue and active register, the read
-     *  port's queue and in-flight count, and the return queues clear; the peripheral and the sender are held in reset. Nothing is in flight when RUN/HALT changes
-     *  (invariant 7), so in a correct program this changes nothing. */
-    void haltReset(long t) { ag.haltReset(); gather.haltReset(); readPort.haltReset(); srq.haltReset(); slot.setHalted(t, true); }
+    /** The reset (6.1), at the end of t, with Chip.reset (which empties every bus): the engines idle, every queue empty,
+     *  the core in the boot ROM, the control state as at power-on; the memories, the tables and big SRAM keep. */
+    void reset(long t) {
+        ag.haltReset(); gather.haltReset(); readPort.haltReset(); srq.haltReset(); writer.reset(); router.reset(); sram.reset();
+        ts.resetPipe(); hist.pipe.reset(); slot.reset(t); req.reset(); cmem.reset(); ctl.reset(t); core.reset();
+    }
     void setPtr(int i, int chunk) { ts.poke(TableStore.PTR + i, chunk & 0x1FFFFF); }
     int ptr(int i) { return ts.peek(TableStore.PTR + i); }
     /** STREAM[i] from Java (coreless tests): its three words (Fields.streamSrc, streamDest, streamCount). */

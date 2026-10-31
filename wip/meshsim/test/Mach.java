@@ -40,23 +40,21 @@ final class Mach {
         for (int i = 0; i < b.length; i++) w[i >> 2] |= (b[i] & 0xFF) << (8 * (i & 3));
         return w;
     }
-    static int[] loader() { try { return words(SW.resolve("loader.bin")); } catch (IOException e) { throw new RuntimeException(e); } }
 
     // ---------------------------------------------------------------- boot (6.2)
-    /** C&C's boot (PHASE-2 INTERIM, until phase 4's boot ROM): with every tile halted, broadcast the loader and the image
-     *  by uncounted mode-0 writes, the marker (CMD_JUMP to the image's entry), wait for all 64 READY, raise RUN. */
+    /** C&C 1's boot of the tiles (6.2): every tile waits in the boot ROM (done pulsed); C&C 1 broadcasts the image by
+     *  uncounted 128-bit mode-0 writes (code into program memory, data into data memory), then the first command
+     *  (CMD_JUMP, slot 1 the entry); "command landed" raises READY; at all 64 READY, GO; the ROM jumps. */
     Image boot(String name) {
         Image im = new Image(name);
         bootStart = c.cycle;
-        c.cc.loadWords(LinkWord.BROADCAST, Registers.LOADER_BASE, loader())
-            .loadWords(LinkWord.BROADCAST, Registers.PMEM_BASE, im.code)
+        c.cc.loadWords(LinkWord.BROADCAST, Registers.PMEM_BASE, im.code)
             .loadWords(LinkWord.BROADCAST, im.sym("_data_start"), im.data)
             .command(LinkWord.BROADCAST, Registers.CMD_JUMP << 24, im.sym("_start"))
             .runWhenReady()
             .call(() -> runAt = c.cc.lastRunAt);
         return im;
     }
-
     // ---------------------------------------------------------------- running
     boolean run(BooleanSupplier cond, long max) { return c.runUntil(cond, max); }
     boolean allStopped() { for (Tile p : c.tiles) if (p.core.halt == Controller.RUN) return false; return true; }

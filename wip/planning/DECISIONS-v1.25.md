@@ -35,6 +35,21 @@ Decided (O). **v1.25 matches the jolt-cpp build on our two 2²⁹-row runs:** **
 - The Tracer's rebuilt tables are checked the same way as far as possible without a Tracer: WORKER7's harness style,
   against the pinned jolt-cpp's own expansion and advice code.
 
+## 3. Deliveries (2026-10-31)
+
+Decided (O).
+
+- **A delivery is the Tracer's output, made in software** until the hardware Tracer exists: per program the tables; per
+  window the state record, the three streams (raw, compressed, the Tracer's pick) and jolt-cpp's reference rows
+  (meshsim's `REPLAY-INPUT-REQUIREMENTS.md`). v1.1's deliveries 1-3 (240 windows, 15.7 M rows, all matched) were made by
+  a v1.1-era session's software stand-in; **neither the tool nor the files were kept.**
+- **v1.2 freezes without real-window runs:** v1.1's replayer matched the 240 windows, v1.2 changed its interface rather
+  than its row logic, and WORKER4's StageB synthetic run checks the new interface against Stage A on 18 windows covering
+  every compression and store-log combination, a controller-fed expansion and a mid-sequence start.
+- **v1.25 rebuilds the delivery writer** (WORKER9's part 3, in jolt-asic-planning PR #2, next to the tracer and the table
+  builder): a functional model of the Tracer's output, which v1.25's acceptance runs need and which gives v1.3 a head
+  start. Deliveries are not committed to any repository.
+
 ---
 
 ## Work list

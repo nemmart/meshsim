@@ -36,9 +36,8 @@ public final class PeripheralSlotTest {
         Config k = Config.machine(); k.shuffleSeed = shuffle;
         k.testPeripheral = tile -> tile == tp ? (out[0] = new TestPeripheral()) : null;
         Net n = new Net(k);
-        for (Tile p : n.c.tiles) { p.core.pokeLocal(Registers.LOADER_BASE, Controller.WFI); p.core.pokeLocal(Registers.LOADER_BASE + 4, RiscvTest.jal(0, -4)); }
-        n.c.cc.then((cc, t) -> { cc.storeRun(t, true); return true; });
-        for (int i_ = 0; i_ < 10; i_++) n.step();
+        // v1.2: every core boots into the boot ROM and waits there (done pulsed, WFI for GO)
+        settle(n);
         return n;
     }
     static Integer load(Net n, Tile p, int addr) { Integer v = p.core.load(n.c.cycle + 1, addr, 4); n.step(); return v; }
@@ -171,8 +170,7 @@ public final class PeripheralSlotTest {
         T.group("the replayer's window");
         Config k = Config.machine(); k.shuffleSeed = shuffle;
         Net n = new Net(k); Tile p = n.c.tiles[3];
-        for (Tile q : n.c.tiles) { q.core.pokeLocal(Registers.LOADER_BASE, Controller.WFI); q.core.pokeLocal(Registers.LOADER_BASE + 4, RiscvTest.jal(0, -4)); }
-        n.c.cc.then((cc, t) -> { cc.storeRun(t, true); return true; });
+        // v1.2: every core boots into the boot ROM and waits there (done pulsed, WFI for GO)
         for (int i = 0; i < 10; i++) n.step();
         T.eq(4, (int) load(n, p, w(PARAMS)), "PARAMS: type 4, the replayer (4.17.1, D46)");
         T.eq(0, (int) load(n, p, w(STATUS)), "STATUS: idle");
@@ -248,5 +246,10 @@ public final class PeripheralSlotTest {
         for (int i = 0; i < 20; i++) x.rxByte(u.c.cycle, i, false);
         T.eq(1 << 16, x.read(u.c.cycle, Cnc1Peripheral.UART_STATUS) & 1 << 16, "a 17th byte: RX overrun (status, not an error)");
         T.eq(0, x.read(u.c.cycle, 2) & ~1, "line errors never reach ERRORS");
+    }
+
+    /** Every core has reached the boot ROM's WFI (done pulsed): Java may now drive the registers without racing the ROM. */
+    static void settle(Net n) {
+        for (int i = 0; i < 200; i++) { boolean all = true; for (Tile p : n.c.tiles) if (n.c.cfg.coreless ? false : !p.core.inWfi) all = false; if (all) break; n.step(); }
     }
 }

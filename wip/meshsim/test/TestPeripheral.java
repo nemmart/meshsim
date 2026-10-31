@@ -31,6 +31,7 @@ final class TestPeripheral implements Peripheral {
     void level(boolean on) { ev.live(4, on); }
     void fault() { errors |= 1; }
     @Override public void accept(long t, int src, int offset, int size, long lo, long hi) { accepts.add(new long[] { t + RP_LATENCY, src, offset, size, lo, hi }); }
+    @Override public void reset(long t) { running = false; ev.clearAll(); errors = 0; }
     @Override public void run(long t) {
         runCalls.add(t);
         if (running) { host.violate(t, "test peripheral: a run while running, ignored"); return; }

@@ -78,6 +78,9 @@ final class PeripheralSlot implements Peripheral.Host {
         }
     }
     private int reserved(long t, int n, int w, boolean store) {
+        // W4-06 (D48): a peripheral without a DMA reads 0 at words 8 and 9 (DMA_HDR, DMA_ADDR), and a load of them isn't
+        // flagged, whoever loads them (the handler's fixed reports do); only a store is
+        if (!store && (w == 8 || w == 9)) return 0;
         reservedAccesses++;
         violate(t, (store ? "store to" : "load of") + " peripheral " + n + "'s reserved or undefined window word " + w + ": reads 0, stores ignored (4.17.4)");
         return 0;
@@ -101,7 +104,10 @@ final class PeripheralSlot implements Peripheral.Host {
             if (pendMaskT[n] == t) mask[n] = pendMask[n];
         }
     }
-    void setHalted(long t, boolean h) { for (int n = 1; n <= 3; n++) if (p[n] != null) p[n].setHalted(t, h); }
+    /** The reset (6.1): every peripheral idle, its EVENTS_MASK 0, its DMA idle. */
+    void reset(long t) {
+        for (int n = 1; n <= 3; n++) if (p[n] != null) { p[n].reset(t); mask[n] = 0; dma[n] = new Dma(n); consumeT[n] = -1; pendMaskT[n] = -1; }
+    }
     boolean inFlight(long t) { return false; }
 
     /** The output port every DMA packet leaves by (4.17.9): {t, dst, mode, counter, addr, size, lo, hi}; tests read it, and

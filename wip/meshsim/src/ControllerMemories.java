@@ -26,6 +26,8 @@ final class ControllerMemories implements Component {
     final BankedMemory dmem = new BankedMemory("dmem");
     WordSource portB;
     long landedAt = -1;
+    /** The reset (6.1): command landed clears; the memories keep what they hold. */
+    void reset() { landedAt = -1; slot0Unread = false; discardNext = false; }
     long writesData, writesProgram, writesCmd, writesReply;      // port-B writes: data memory, program memory; covering slot 0; into the reply block
     final long[] bySize = new long[3];
     private final boolean[] replyUnread = new boolean[WORDS];
@@ -72,7 +74,7 @@ final class ControllerMemories implements Component {
 
     /** Port A touched data word w (a load or store by the core): the reply there has been consumed. */
     void loaded(int w) { replyUnread[w] = false; if (w == CMD_DWORD) slot0Unread = false; }
-    private boolean slot0Unread;
+    boolean slot0Unread;
     long unreadCommands;
     boolean discardNext; long discardedCommands;     // a harness may discard a pending command by design (simulator only)
     long overwrittenUnread;                 // invariant 8 as a statistic: reply and result words rewritten before the core read them

@@ -56,6 +56,14 @@ final class Cnc1Peripheral implements Peripheral {
     @Override public EventCounts events() { return ev; }
     @Override public void accept(long t, int src, int offset, int size, long lo, long hi) { violate(t, "a write into C&C 1's peripheral region: its map is Ingress/Egress's, deferred"); }
     @Override public void run(long t) {}
+    /** The reset (6.1): READY, READY_EXPECT, the watchdog (off), LED, the toast latch, the UART's FIFOs and status, the
+     *  divisor to its reset value; the error lines in flight are reset with everything else. */
+    @Override public void reset(long t) {
+        errChanges.clear(); java.util.Arrays.fill(errLine, false); java.util.Arrays.fill(readyAt, Long.MIN_VALUE); clearedAt = Long.MIN_VALUE;
+        expect = 0; wdCount = 0; wdN = 0; toast = false; toastAt = -1; led = 0;
+        tx.clear(); rx.clear(); divisor = txDivisor = rxDivisor = RESET_DIVISOR; txBusyUntil = Long.MIN_VALUE; rxOverrun = false; framing = false;
+        ev.clearAll(); mask = 0;
+    }
     @Override public boolean running(long t) { return false; }
     private void violate(long t, String m) { if (host != null) host.violate(t, m); }
 

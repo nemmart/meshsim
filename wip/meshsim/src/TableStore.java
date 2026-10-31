@@ -62,6 +62,8 @@ final class RmwPipe {
     }
     boolean busy(long t) { return t <= lastTake + latency; }
     boolean empty() { return wbCount == 0; }
+    /** The reset (6.1): pending write-backs are lost. */
+    void reset() { wbCount = 0; java.util.Arrays.fill(wbValid, false); }
 }
 
 /**
@@ -148,6 +150,8 @@ final class TableStore implements Component {
     int peek(int idx) { return host(idx).peek(idx - hostBase(idx)); }
     void poke(int idx, int v) { host(idx).poke(idx - hostBase(idx), v); }
     void resetStats() { tableReads = rmws = 0; }
+    /** The reset (6.1): pending write-backs are lost; the tables keep what they hold. */
+    void resetPipe() { pipe.reset(); busy = false; ptrBusy = false; }
 }
 
 /**

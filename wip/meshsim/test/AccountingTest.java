@@ -14,7 +14,7 @@ public final class AccountingTest {
         T.group("all-to-all phases");
         A2A a = new A2A(7, n);
         Mach m = new Mach(Mach.cfg(shuffle));
-        m.c.phases.namer = w -> switch (w >>> 24) { case 1 -> "configure"; case 2 -> "start (a2a)"; case 3 -> "exit"; default -> "?"; };
+        m.c.phases.namer = w -> switch (w >>> 24) { case 1 -> "configure"; case 2 -> "start (a2a)"; case 3 -> "exit"; case Registers.CMD_JUMP -> "boot"; default -> "?"; };
         for (Tile p : m.c.tiles) {
             int s = p.idx;
             for (int k = 0; k < a.rec[s].length; k++) p.sram.poke64(A2A.SRC + 2 * k, a.rec[s][k]);
@@ -30,15 +30,15 @@ public final class AccountingTest {
         T.eq(0, a.verify(m.c), "every record landed");
         List<PhaseLog.Phase> ph = m.c.phases.phases;
         List<long[]> cl = m.c.cc.phaseLog;
-        T.eq(3, ph.size(), "three phases: configure, start, exit");
+        T.eq(4, ph.size(), "four phases: the boot (the ROM's GO, 6.2), configure, start, exit");
         for (int i = 0; i + 1 < ph.size(); i++) T.eq(cl.get(i + 1)[0] - cl.get(i)[1], ph.get(i).cycles(), "phase " + i + ": GO -> all READY as C&C saw it");
         long sent = 0; for (int s = 0; s < 64; s++) for (int d = 0; d < 64; d++) sent += a.cnt[s][d];
-        T.eq(sent, (long) ph.get(1).n.get("agReq"), "start phase: address-generator requests = records sent");
-        T.eq(sent + 64, (long) ph.get(1).n.get("ejected"), "start phase: ejected packets = records + the exit command (one broadcast packet per tile, sent right after GO)");
-        T.eq(64L, (long) ph.get(0).n.get("ejected"), "configure phase: the start command, one packet per tile");
-        T.eq(sent, (long) ph.get(1).n.get("injected"), "start phase: injected packets = records");
-        T.eq(0, (long) ph.get(1).n.get("agLate"), "start phase: never late");
-        T.check(ph.get(1).peak.get("link") > ph.get(0).peak.get("link"), "peaks restart per phase (start " + ph.get(1).peak.get("link") + " > configure " + ph.get(0).peak.get("link") + ")");
+        T.eq(sent, (long) ph.get(2).n.get("agReq"), "start phase: address-generator requests = records sent");
+        T.eq(sent + 64, (long) ph.get(2).n.get("ejected"), "start phase: ejected packets = records + the exit command (one broadcast packet per tile, sent right after GO)");
+        T.eq(64L, (long) ph.get(1).n.get("ejected"), "configure phase: the start command, one packet per tile");
+        T.eq(sent, (long) ph.get(2).n.get("injected"), "start phase: injected packets = records");
+        T.eq(0, (long) ph.get(2).n.get("agLate"), "start phase: never late");
+        T.check(ph.get(2).peak.get("link") > ph.get(1).peak.get("link"), "peaks restart per phase (start " + ph.get(2).peak.get("link") + " > configure " + ph.get(1).peak.get("link") + ")");
         String rep = m.c.phases.report();
         System.out.println("phase accounting, 16-group all-to-all from C (Data(7, " + n + ")) [meas: AccountingTest]:\n" + rep);
         m.c.phases.csv(Path.of("results/phases-a2a" + (full ? "-full" : "") + ".csv"));

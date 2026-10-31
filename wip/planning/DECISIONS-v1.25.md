@@ -16,8 +16,9 @@ Decided (O). Starts once v1.2 is frozen; ends with v1.25 frozen as `v1.25/`.
 - **The replayer** (spec 4.19, meshsim's model): rebuild the opcode table, the ROM templates and the decode table,
   re-checking the template count and the ROM fill; **add `shift_offset` to the expansion word**; add the new opcodes
   (`VirtualLoadB/H/W`, `VirtualStoreB/H/W`) and the changed ones (`ShiftData*`'s operands, the narrow memory rows'
-  immediate, `VirtualHostIO`, the AMO\*.W bodies, the renumbering; v1.3 section 9 as corrected by WORKER9); PEXT one
-  run of ones per cycle (v1.3 section 9, replacing v1.1's contiguous-mask narrowing); drop `VirtualAlignAddr` and the
+  immediate, `VirtualHostIO`, the AMO\*.W bodies, the renumbering; v1.3 section 9 as corrected by WORKER9); **PEXT correct for any
+  mask** (v1.3 section 9: the spec requires it, the implementation chooses how, full speed promised only for
+  contiguous masks; replacing v1.1's narrowing and invariant 16); drop `VirtualAlignAddr` and the
   alignment assertions; regenerate the replayer's test vectors.
 - **The Tracer's tables: rebuilt too** (owner): its ROM and decode table (v1.3 section 7) and its advice templates (v1.3
   section 8, `wip/tracer/`), against the same pinned commit, though nothing executes them until the Tracer exists.

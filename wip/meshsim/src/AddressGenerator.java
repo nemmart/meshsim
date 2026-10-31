@@ -126,7 +126,7 @@ final class AddressGenerator implements Component {
     @Override public void runCycle(long t) {
         if (pStart) {
             pStart = false;
-            if (running) { startsWhileRunning++; lastViolation = "a start while the address generator is running (its lead-in included): ignored (spec 8.2; V1.0-CHANGES item 8)"; }
+            if (running) { startsWhileRunning++; lastViolation = "a start while the address generator is running (its lead-in included): ignored (8.6; invariant 26)"; }
             else {
                 load(t); begin(t);
                 int size = kind == Fields.RUN_STREAMS ? 256 : 64;

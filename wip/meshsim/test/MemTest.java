@@ -34,7 +34,7 @@ public final class MemTest {
         void write(int addr, int n, long lo, long hi) { wr.put(t, BigSRAM.writeReq(addr, n), lo, hi); }
         void run(int n) { for (int i = 0; i < n; i++) step(); }
     }
-    static Config cfg() { Config c = Config.defaults(); c.shuffleSeed = shuffle; c.checkUnexpected = false; c.skew = false; c.testReadClients = true; return c; }
+    static Config cfg() { Config c = Config.defaults(); c.shuffleSeed = shuffle; c.checkUnexpected = false; c.checkErrors = false; c.skew = false; c.testReadClients = true; return c; }
 
     static void unitDecode() {
         T.group("decode");

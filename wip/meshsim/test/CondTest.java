@@ -31,7 +31,7 @@ public final class CondTest {
         runCase(m, im, 0, new int[] { 8, 10, 1, 17, 9 }, 9, ext, 1 << 0);
         for (int bit : new int[] { 4, 5, 6 }) injected(m, im, bit);
         // meshsim's own flags for the deliberate bugs: each names its invariant (5, 9, 3, 8, 4, 1), nothing else
-        String[] want = { "invariant 5", "invariant 9", "invariant 3", "invariant 8", "invariant 4", "invariant 1" };
+        String[] want = { "invariant 5", "invariant 9", "invariant 3", "invariant 8", "invariant 4", "invariant 1", "invariant 15" };
         boolean named = m.c.violationMessages.stream().allMatch(v -> java.util.Arrays.stream(want).anyMatch(v::contains));
         T.check(named && m.c.violations == m.c.violationMessages.size(), "every violation flags a deliberate bug: " + m.c.violationReport());
         for (String w : want) T.check(m.c.violationMessages.stream().anyMatch(v -> v.contains(w)), "meshsim flagged " + w);

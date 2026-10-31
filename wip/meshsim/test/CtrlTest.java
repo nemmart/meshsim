@@ -35,6 +35,7 @@ public final class CtrlTest {
     static void registers() {
         T.group("registers");
         Mach m = new Mach(Mach.cfg(shuffle));
+        m.c.cfg.maxViolationMessages = 1000;
         Mach.Image im = m.boot("regs");
         boolean ok = m.run(m::allStopped, 40000);
         T.check(ok && m.allExited(), "every tile ran regs to its exit: " + m.haltSummary());
@@ -80,7 +81,8 @@ public final class CtrlTest {
             T.eq(1, Registers.PA_PERIPH.get(par), tl + "PARAMS: peripheral 1 present"); T.eq(i, Registers.PA_ID.get(par), tl + "PARAMS: endpoint id");
             T.eq(15, Registers.PA_SIZE.get(par), tl + "PARAMS: size 16 units of 256 KB - 1 (4 MB)");
         }
-        T.eq(64 * 3L, m.c.violations, "the 192 violations are the three counter wraps on every tile");
+        T.eq(64 * 6L, m.c.violations, "the 384 violations: on every tile the three counter wraps, ROUTER_HDR's and WRITE_COUNTER_2's reserved bits (invariant 21) and the odd DMA_RECORD_BASE_ADDRESS (invariant 20), all on purpose");
+        T.check(m.c.violationMessages.stream().anyMatch(v -> v.contains("ROUTER_HDR stored with reserved bits")) && m.c.violationMessages.stream().anyMatch(v -> v.contains("not aligned to a record")), "the reserved bits and the record alignment are named");
         m.c.violations = 0; m.c.violationMessages.clear();
         noViolations(m.c, "registers");
         out("registers [meas: CtrlTest registers]: the configuration registers read back, write-only ones read 0; counters 20 bits, writes add and wrap (flagged); HIST 17, PTR 21, the STREAM arrays and GROUP 32 bits a word through the window; the send port in modes 0 and 1 to the tile itself at 32, 64 and 128 bits, ROUTER_ADDR + 4/8/16 at mode 0 and fixed under no-increment, W0-W2 cleared per send; counters done after each; the events' registers at reset; STATUS and done readable the next cycle");
@@ -190,6 +192,7 @@ public final class CtrlTest {
     static void faults() {
         T.group("faults");
         Mach m = new Mach(Mach.cfg(shuffle));
+        m.c.cfg.checkErrors = false;                      // the faults are deliberate: their ERRORS bits are checked below
         Mach.Image im = m.boot("faults");
         m.run(m::allStopped, 5000);
         // v1.2 (4.11, 4.13): a bus error or an illegal instruction sets its ERRORS bit and traps to mtvec, here the boot
@@ -236,6 +239,7 @@ public final class CtrlTest {
     static void invariants() {
         T.group("invariants");
         Mach m = new Mach(Mach.cfg(shuffle));
+        m.c.cfg.checkErrors = false;                      // deliberate bugs, flagged by their own invariants
         m.c.cfg.maxViolationMessages = 1000;
         m.c.cfg.strictReplies = true;                    // invariant 8 strict for this test
         Mach.Image im = m.boot("inv");
@@ -276,6 +280,12 @@ public final class CtrlTest {
         o.c.cc.command(9, Registers.CMD_JUMP << 24, Registers.PMEM_BASE).waitCycles(60).send(9, LinkWord.M_WRITE, 0x400, 0x5);
         o.c.run(200);
         T.check(o.c.violationMessages.stream().anyMatch(v -> v.contains("overlay write landed after")), "an overlay after the first command is flagged (6.2)");
+        // invariant 25: unicast overlays, then a broadcast command
+        Mach q = new Mach(Mach.cfg(shuffle));
+        q.c.run(40);
+        q.c.cc.loadWords(9, Registers.PMEM_BASE, new int[] { 1, 2, 3, 4 }).command(LinkWord.BROADCAST, Registers.CMD_JUMP << 24, Registers.PMEM_BASE);
+        q.c.run(300);
+        T.check(q.c.violationMessages.stream().anyMatch(v -> v.contains("invariant 25")), "overlays and a command of different kinds are flagged (6.2, invariant 25)");
         out("invariants [meas: CtrlTest invariants]: 4 (done before arrivals), 5 (a bad packet sent), a packet in flight at a reset (gone), 8 (reply overwritten unread), 9 (unexpected arrival: its error set), a reserved register-block word (reads 0, flagged) and the table-window check each fire on a bad program");
     }
 

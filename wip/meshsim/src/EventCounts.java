@@ -37,6 +37,10 @@ final class EventCounts {
         return v;
     }
     /** A consuming load's effect: one count from each counted bit in bits (they were returned set). */
-    void consume(int bits) { for (int b = 0; b < depth.length; b++) if ((bits >> b & 1) != 0 && depth[b] > 0 && count[b] > 0) count[b]--; }
+    void consume(int bits) {
+        for (int b = 0; b < depth.length; b++) if ((bits >> b & 1) != 0 && depth[b] > 0 && count[b] > 0) { count[b]--; if (onConsume != null) onConsume.accept(b); }
+    }
+    /** Called with each bit a consuming load took a count from (a peripheral's own bookkeeping, meshsim's checks). */
+    java.util.function.IntConsumer onConsume;
     int count(int b) { return count[b]; }
 }

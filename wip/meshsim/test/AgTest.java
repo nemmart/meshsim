@@ -28,7 +28,7 @@ public final class AgTest {
      *  sent to dst 65 is flagged; the lead-in is 4 L + 2 (group) or 2 L + 1 (stream) cycles after the start takes effect. */
     static void rulings() {
         T.group("v1.0 rulings");
-        Chip c = new Chip(cfg()); c.cfg.checkUnexpected = false;
+        Chip c = new Chip(cfg()); c.cfg.checkUnexpected = false; c.cfg.checkErrors = false;
         Tile p = c.tiles[3];
         // count 0
         p.setMasterConfig(Fields.masterConfig(Fields.RUN_STREAMS, 0, 0, 0, 0, 1)); p.pulse(Fields.PULSE_START); c.run(3);

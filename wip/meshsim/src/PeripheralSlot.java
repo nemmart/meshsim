@@ -94,8 +94,13 @@ final class PeripheralSlot implements Peripheral.Host {
     int liveErrors(long t) { int v = 0; for (int n = 1; n <= 3; n++) if (p[n] != null && p[n].errors(t) != 0) v |= 1 << (n - 1); return v; }
 
     void runCycle(long t) {
-        for (int n = 1; n <= 3; n++) if (p[n] != null) { p[n].runCycle(t); dma[n].runCycle(t); }
+        for (int n = 1; n <= 3; n++) if (p[n] != null) {
+            p[n].runCycle(t); dma[n].runCycle(t);
+            EventCounts e = p[n].events();
+            if (e.fullPosts != fullSeen[n]) { fullSeen[n] = e.fullPosts; violate(t, "peripheral " + n + ": " + e.lastFull + " (invariant 16)"); }
+        }
     }
+    private final long[] fullSeen = new long[4];
     /** After every child has run t: the consuming loads and EVENTS_MASK stores of t take effect. */
     void endCycle(long t) {
         for (int n = 1; n <= 3; n++) {

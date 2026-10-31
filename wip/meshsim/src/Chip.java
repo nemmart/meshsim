@@ -101,9 +101,13 @@ final class Chip implements Component {
         cc1p.runCycle(t);
         if (resetRequest != 0) doReset(t);
         cc.errorLine(t, err);                                    // the error lines, OR'd, to C&C's error bit (6.6)
-        if (err) for (Tile p : tiles) {                          // invariant 15: logged per tile and condition, not a violation
-            int nw = p.ctl.conditions & ~condSeen[p.idx];
-            if (nw != 0) { condSeen[p.idx] |= nw; conditionEvents++; if (conditionLog.size() < 200) conditionLog.add("cycle " + t + " tile " + p.idx + ": " + Conditions.names(nw)); }
+        if (err) for (Tile p : tiles) {                          // invariant 15 (v1.2: a check): every ERRORS stays 0
+            int nw = p.ctl.errorsAt(t) & ~condSeen[p.idx];
+            if (nw != 0) {
+                condSeen[p.idx] |= nw; conditionEvents++;
+                if (conditionLog.size() < 200) conditionLog.add("cycle " + t + " tile " + p.idx + ": " + Conditions.names(nw));
+                if (cfg.checkErrors) violation(t, p.idx, "ERRORS [" + Integer.toBinaryString(nw) + "] set: " + Conditions.names(nw) + " (invariant 15)");
+            }
         }
         if (!err) java.util.Arrays.fill(condSeen, 0);
         checkInvariants(t);

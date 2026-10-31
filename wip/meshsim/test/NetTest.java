@@ -305,7 +305,7 @@ public final class NetTest {
     static final int RPL = ControllerMemories.REPLY, CMD = ControllerMemories.COMMAND, RW = ControllerMemories.REPLY_DWORD;
     static void director() {
         T.group("director");
-        Config k = Net.cfg(shuffle); k.checkUnexpected = true; k.periphType = 0;   // no peripheral: mode 0 to region 0x04 is a bad packet
+        Config k = Net.cfg(shuffle); k.checkUnexpected = true; k.periphType = 0;   // invariant 15 stays off: these are deliberate errors   // no peripheral: mode 0 to region 0x04 is a bad packet
         Net n = new Net(k);
         Tile r = n.c.tiles[9];
         r.gatherStub.record(); r.writer.record();

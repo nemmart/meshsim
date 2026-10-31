@@ -183,15 +183,15 @@ A delivery is a tarball of one or more program directories and the manifest.
 
 ## 8. The acceptance runs (v1.25)
 
-DECISIONS-v1.25 s2 and s7: every window of EVM Zone and Cyclone at 2²⁹ rows, replayed and matched row for row on the
-Quest runner, **without storing deliveries** (about 31 GB per program). Each runner task runs the writer for its shard
-of windows into scratch space, replays them in Stage A and Stage B, keeps the per-window results and deletes the
-delivery. What the acceptance kit (`acceptance/`) needs from the writer:
-- **A shard:** a command line that writes windows *first* … *first* + *count* − 1 of a program (and nothing else) as a
-  delivery in this format, into a given directory, with `manifest.json` listing exactly those windows. The kit calls it
-  with a few hundred windows at a time, so a task's scratch space stays a few GB.
-- **The tables** in the delivery's `tables/` (or the repository's copy assumed, checked by SHA-256).
-- **Every window's record variants** the kit replays: `state` (raw) at least; `state-pick` (the Tracer's choice) when
-  present, which is then the one replayed.
-- **`end.bin`** per window, or consecutive windows in the shard (the next record checks the end state).
-- **The manifest's per-window `rows_sha256`**: the kit's first compare.
+DECISIONS-v1.25 s2 and s7 (revised 2026-11-01): every window of EVM Zone and Cyclone at 2²⁹ rows, replayed and matched
+row for row on the Quest runner. Generating any window means tracing the program from the start, so **one writer task
+per program writes its whole delivery on the runner box and keeps it there** (about 17 minutes, ~31 GB); the acceptance
+kit's shards (`acceptance/`) read windows from it, never write next to it, and keep only their results. What the kit
+needs:
+- **The delivery's path on the box and the SHA-256 of its `manifest.json`**, from the writer task.
+- **Per window in the manifest:** `index`, `first_row`, `rows`, `files` (each file's SHA-256: every file a replay reads
+  is checked before use), `rows_sha256`.
+- **The tables** in the delivery's `tables/` (or the repository's copy assumed); checked against `wip/tables/manifest.json`.
+- **The record variants:** `state` (raw) at least; `state-pick` (the Tracer's choice) when present, which is then the one
+  replayed.
+- **`end.bin`** per window (the end state), or rely on consecutive windows' records.

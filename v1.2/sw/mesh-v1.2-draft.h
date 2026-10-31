@@ -279,10 +279,10 @@ _Static_assert(__builtin_offsetof(TableRegs, PTR) == 0x400 && __builtin_offsetof
 #define RP_STATE           (REGION_PERIPH(1) + 0x000000u)   /* state word, 16 bytes */
 #define RP_STREAMS         (REGION_PERIPH(1) + 0x000010u)   /* stream word */
 #define RP_IMAGE           (REGION_PERIPH(1) + 0x000020u)   /* register image, 64 x 16 bytes */
-#define RP_Q_CODE          (REGION_PERIPH(1) + 0x100000u)   /* queue ports: 128-bit packets only */
+#define RP_Q_CODE          (REGION_PERIPH(1) + 0x100000u)   /* queue ports, one 1 MB part each: 128-bit packets only */
 #define RP_Q_RLOG          (REGION_PERIPH(1) + 0x200000u)
-#define RP_Q_WLOG          (REGION_PERIPH(1) + 0x280000u)
-#define RP_Q_EXP           (REGION_PERIPH(1) + 0x300000u)
+#define RP_Q_WLOG          (REGION_PERIPH(1) + 0x300000u)
+#define RP_Q_EXP           (REGION_PERIPH(1) + 0x400000u)
 #define RP_HALF_CODE       128u   /* entries per credit (spec 4.19.8) */
 #define RP_HALF_LOG        256u
 #define RP_HALF_EXP        128u

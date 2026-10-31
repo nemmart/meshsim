@@ -557,7 +557,7 @@ final class ReplayerUnitTests {
         r.accept(t, 3, 0x0, LinkWord.SIZE_64, 1, 0); r.runCycle(t++);             // a 64-bit packet
         r.accept(t, 3, 0x100000, LinkWord.SIZE_32, 1, 0); r.runCycle(t++);        // a queue takes 128 bits only
         r.accept(t, 3, 0x800, LinkWord.SIZE_128, 1, 0); r.runCycle(t++);          // unmapped in part 0
-        r.accept(t, 3, 0x400000, LinkWord.SIZE_128, 1, 0); r.runCycle(t++);       // part 4
+        r.accept(t, 3, 0x500000, LinkWord.SIZE_128, 1, 0); r.runCycle(t++);       // part 5: unmapped (v1.2.1: 1-4 the queues)
         for (int k = 0; k < 4; k++) r.runCycle(t++);
         T.eq(0x1234, r.region0[0], "the state word landed");
         T.eq(5, r.condEvents[Replayer.ERR_BAD_WRITE], "five bad writes");
@@ -591,6 +591,18 @@ final class ReplayerUnitTests {
         for (int k = 0; k < 4; k++) d.step();
         T.eq(bad1 + 1, d.r.condEvents[Replayer.ERR_BAD_WRITE], "HALT: a queue push is a bad write");
         T.eq(0xAB, d.r.region0[0], "HALT: region 0 takes a boot load");
+        // one part per queue (v1.2.1, CL1): offset [22:20] alone names it, anywhere in its 1 MB
+        Replayer r3 = new Replayer(0); long t3 = 0;
+        int[] at = { 0x100000, 0x1FFFF0, 0x200000, 0x280000, 0x2FFFF0, 0x300000, 0x3ABCD0, 0x400000, 0x4FFFF0, 0x5FFFF0, 0x700000 };
+        for (int a : at) { r3.accept(t3, 3, a, LinkWord.SIZE_128, a, 0); r3.runCycle(t3++); }
+        for (int k = 0; k < 4; k++) r3.runCycle(t3++);
+        T.eq(2, r3.code.occ, "part 1 (0x100000-0x1FFFFF): the code queue");
+        T.eq(3, r3.rlog.occ, "part 2 (0x200000-0x2FFFFF): the read-log queue, 0x280000 included");
+        T.eq(2, r3.wlog.occ, "part 3 (0x300000-0x3FFFFF): the write-log queue");
+        T.eq(2, r3.exp.occ, "part 4 (0x400000-0x4FFFFF): the expansion queue");
+        T.eq(2, r3.condEvents[Replayer.ERR_BAD_WRITE], "parts 5 and 7: unmapped, bad writes");
+        T.eq(0x280000L, r3.rlog.lo[(r3.rlog.head + 1) % 512], "0x280000 went to the read log, in order");
+        T.eq(0x400000L, r3.exp.lo[r3.exp.head], "0x400000 went to the expansion queue");
         // overrun
         Replayer r2 = new Replayer(0); long t2 = 0;
         for (int k = 0; k < 257; k++) { r2.accept(t2, 3, 0x100000, LinkWord.SIZE_128, k, 0); r2.runCycle(t2++); }

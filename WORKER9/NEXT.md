@@ -1,6 +1,6 @@
 # Pending for WORKER9's next prompt (integrator, 2026-11-01)
 
-If WORKER9 hasn't yet had the part-2 decisions and the part-3 go-ahead (CSR option (a); Q8 resolved: keep the single Fermat loop (WORKER12's counts: EVM Zone's worst proof is about 15 ms against a 100 ms Tracer budget; the addition chain is candidate C4, DECISIONS-v1.3 section 11);
+If WORKER9 hasn't yet had the part-2 decisions and the part-3 go-ahead (CSR option (a); Q8 open again (DECISIONS-v1.3 section 11, T7): at about 4 cycles per row the single Fermat loop puts EVM Zone's first proof at about 145 ms against a 100 ms Tracer budget; keep the loop as built for now, the owner and Tony are deciding between an addition chain and an inverse unit;
 Q9 confirmed with the untraced LD reading through the D-cache; part 3 approved with the C++ functional replay), send those
 first. Then:
 

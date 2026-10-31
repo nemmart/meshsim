@@ -109,6 +109,10 @@ final class Replayer implements Peripheral {
     @Override public int type() { return 4; }
     @Override public int params() { return 4; }                    // type 4 (4.17.1, D46), version 0
     @Override public EventCounts events() { return ev; }
+    // invariant 16's refill bookkeeping: entries pushed and entries the taken credits allow, per queue
+    private final int[] pushed = new int[4], allowance = new int[4];
+    private static int half(int q) { return q == 0 ? 128 : q == 3 ? 128 : 256; }
+    { ev.onConsume = b -> { int q = b == EV_CODE ? 0 : b == EV_RLOG ? 1 : b == EV_WLOG ? 2 : b == EV_EXP ? 3 : -1; if (q >= 0) allowance[q] += half(q); }; }
     @Override public int errors(long t) { settle(t); int e = 0; for (int k = 0; k < 3; k++) if (condEvents[k] > 0) e |= 1 << k; return e; }
     @Override public Integer word(long t, int w) {
         settle(t);
@@ -217,6 +221,7 @@ final class Replayer implements Peripheral {
         code.reset(fCode, (int) (lLo & 0xFFFFFF)); rlog.reset(fRlog, (int) ((lLo >>> 32) & 0xFFFFFF)); wlog.reset(fWlog, (int) (lHi & 0xFFFFFF));
         exp.reset();
         for (int b = EV_CODE; b <= EV_EXP; b++) ev.set(t, b, 2);   // every queue's credits to 2 (4.19.8)
+        java.util.Arrays.fill(pushed, 0); java.util.Arrays.fill(allowance, 0);
         for (int i = 0; i < 64; i++) { regs[2 * i] = region0[4 + 2 * i]; regs[2 * i + 1] = region0[4 + 2 * i + 1]; }
         regs[0] = 0;
         running = true;
@@ -284,6 +289,10 @@ final class Replayer implements Peripheral {
             if (srcOf[qi] >= 0 && srcOf[qi] != src)
                 violate(t, "two sources feed one queue port in a pass (invariant 18): " + srcOf[qi] + " and " + src);
             srcOf[qi] = src;
+            if (src != me) violate(t, "unit " + src + " wrote the replayer's queue " + qi + " during a pass: only the tile itself refills it (4.19.13; invariant 16)");
+            // invariant 16 (4.19.8): no refill exceeds the credit taken for it: pushes since the start (or, for the expansion
+            // queue, the new expansion) stay within half a queue per credit the controller has taken
+            if (++pushed[qi] > allowance[qi]) violate(t, "queue " + qi + " pushed past the credits taken for it: " + pushed[qi] + " entries, " + allowance[qi] / half(qi) + " credits (4.19.8; invariant 16)");
         }
         boolean ok = qi == 3 ? exp.push(t, lo, hi) : (qi == 0 ? code : qi == 1 ? rlog : wlog).push(t, lo, hi);
         if (!ok) { condEvents[ERR_OVERRUN]++; overruns.add("@" + t + " queue " + qi); }
@@ -704,7 +713,7 @@ final class Replayer implements Peripheral {
 
         void reset() { head = 0; occ = 0; pend = 0; newestValid = false; poppedSince = 0; }
         /** A new expansion is presented: its credits to 2 again (4.19.8), and the newest-word judgement. */
-        void newExpansion() { pend = 0; newestValid = false; poppedSince = 0; ev.set(cycle, EV_EXP, 2); }
+        void newExpansion() { pend = 0; newestValid = false; poppedSince = 0; ev.set(cycle, EV_EXP, 2); pushed[3] = 0; allowance[3] = 0; }
         boolean lowWater() { return CAP - occ - pend >= HALF && newestValid && newestSeq > pend; }
         boolean push(long t, long l, long h) {
             int popsAtT = popCycle == t ? pops : 0;

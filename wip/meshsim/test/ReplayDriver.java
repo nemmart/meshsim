@@ -13,7 +13,7 @@ import java.util.List;
  * Only the replayer's inputs are used; the records come out through its sink.
  */
 final class ReplayDriver {
-    static final int SRC = 7;                              // the tile's own endpoint id (any fixed source)
+    static final int SRC = 0;                              // the tile's own endpoint id (Replayer(0): only the tile itself refills, invariant 16)
     final Replayer r;
     final ReplayWindow w;
     long t;
@@ -88,6 +88,9 @@ final class ReplayDriver {
                         // N3: a mid-sequence start: the first word sent carries the template's rd0
                         expWords = tpl.clone(); expWords[2 * off] = expWords[2 * off] & ~(3L << 46) | (long) rd0 << 46; expNext = 2 * off;
                     } else { expWords = tpl; expNext = 2 * off; }
+                    // the first chunk goes out at once, on an expansion credit: the one this load took, or one taken now (4.19.8)
+                    if ((l & 1 << Replayer.EV_EXP) == 0) r.events().consume(1 << Replayer.EV_EXP);
+                    l &= ~(1 << Replayer.EV_EXP);
                     sendExp();
                 }
                 if ((l & 1 << Replayer.EV_EXP) != 0) sendExp();

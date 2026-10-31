@@ -307,7 +307,7 @@ A request for a reserved target, or a target with no receiver, is dropped at the
 | 4.16 | the fifth router port (every tile; connected at tiles 0–2, to C&C 1–3) |
 | 4.17 | peripherals: up to three per tile, the standard window, the DMA (4.17.1–4.17.9) |
 | 4.18 | the request port (the tile's end of the request bus, 3.3), send and receive |
-| 4.19 | the replayer, peripheral type 1 (4.19.1–4.19.15) |
+| 4.19 | the replayer, peripheral type 4 (4.19.1–4.19.15) |
 | 4.20 | the UART (part of C&C 1's peripheral) |
 
 Where each sits on the die: section 12. Unless stated otherwise, every unit-to-unit transfer inside a tile takes one cycle (*(param)* `intra_tile_latency`, default 1 per stage; exact values affect latency only).
@@ -1135,6 +1135,10 @@ Every peripheral's 0x200-byte window (owner, 2026-10-28) starts with the same wo
 | 10–31 | | | reserved for future standard words |
 | 32–127 | | | peripheral-defined |
 
+**Peripheral types** (`PARAMS` [7:0]; owner, 2026-10-31; W4-05): **0** none, or nothing to say; **1** Ingress/Egress,
+with the UART and the chip-level lines (C&C 1's peripheral, 6.6); **2** the Updater/Binder/RW engine (C&C 2's, 6.7);
+**3** the Tracer (C&C 3's); **4** the replayer (4.19). Other values are reserved.
+
 - **Access rules** (owner, 2026-10-28): **reserved or undefined words**, in a window or the controller's block, **read 0 and ignore stores** (meshsim flags the access); a store to a defined read-only word is a bus error, as in the controller's block (4.11); **any word of an absent peripheral's window is a bus error** (4.17.1). Every word is 32 bits, accessed one word at a time, at the register-load latency fixed for it (4.11).
 - **A peripheral without a DMA** leaves words 4, 8 and 9 unused (reserved) and `STATUS` [1] at 0.
 - **The C header** (owner and integrator, 2026-10-28/29; W3-27; to be confirmed with the generator): each window is declared as a C struct overlaid on its address, a `PeripheralStd` macro listing the ten standard members at the top of each peripheral's struct, and a type per peripheral ending in `Regs` (`ReplayerRegs`). Access is through pointers (`#define peripheral1 ((volatile ReplayerRegs *)0xFFFFFA00)`, used as `peripheral1->EVENTS`), so a whole-block copy, which would consume events, needs an explicit dereference. Every member is `volatile uint32_t`. The register-table generator emits the structs (8.1).
@@ -1225,7 +1229,7 @@ The tile's end of the request bus (3.3). **It has two directions in every tile,*
 
 **What a program must keep to** (arming before sending, at most 1, 3 and 1 requests outstanding to C&C 1, 2 and 3, no reads across a group run) is in 3.3 and the memory system's contract (6.7).
 
-### 4.19 The replayer (peripheral type 1)
+### 4.19 The replayer (peripheral type 4)
 
 *No figures yet; the figure set gains a replayer part (handoff in `CHANGES-v1.1.md`).*
 
@@ -2423,7 +2427,7 @@ The reset empties both FIFOs, clears [17:16] and loads the reset divisor (4.20).
 | requests | 128 bits; the hardware's fields requestor [6:0] and target [9:7], 8 targets; the rest laid out by each target (3.3); a request with an answer names its destination as a 32-bit address and its data and reply counters (6.7) |
 | eject priority | the loopback FIFO is served only in a cycle when every other eject FIFO is empty; the others round-robin (4.7) |
 | peripherals (4.17) | up to three per unit, regions 0x04–0x06, 0x200-byte windows at 0xFFFFFA00, 0xFFFFFC00, 0xFFFFFE00; ten standard words; events counted (depth 1 or 2) or live; `rp_latency` 2 for every peripheral *(Proposed)*, at most K; the DMA: up to 4 output queues, one transfer at a time, count up to 4,095 words |
-| replayer (4.19), peripheral type 1 | peripheral 1 on tiles 0–63; a pass of 65,536 rows; code, expansion, read-log and write-log queues of 256, 256, 512 and 512 × 128 bits (halves 128, 128, 256, 256), two credits of half a queue each; three LRU decompressors of 16 × 64 bits; ROM 512 × 128 bits; decode table 2K × 16 bits; register file 128 × 64 bits; output queue 32 rows of 640 bits; rows of 3 or 5 cycles; start copy 64 cycles; about 41 KB of memory per tile |
+| replayer (4.19), peripheral type 4 | peripheral 1 on tiles 0–63; a pass of 65,536 rows; code, expansion, read-log and write-log queues of 256, 256, 512 and 512 × 128 bits (halves 128, 128, 256, 256), two credits of half a queue each; three LRU decompressors of 16 × 64 bits; ROM 512 × 128 bits; decode table 2K × 16 bits; register file 128 × 64 bits; output queue 32 rows of 640 bits; rows of 3 or 5 cycles; start copy 64 cycles; about 41 KB of memory per tile |
 
 ---
 
@@ -2581,7 +2585,7 @@ Every item still to be settled, every proposal not yet ruled on, and every item 
 
 **v1.1: open, to be settled**
 
-23. **The replayer** (4.19): specified in v1.1's replayer pass, following the design notes and their allocation table. It is now peripheral type 1 in the tile's peripheral slot (4.17, item 86). What remains is in items 33–59: the open ones are the tracer engine's run log (33), the template enumeration (34), the ROM's fit (40), the validation harness (58) and the consumer's interface (59); the rest are proposals.
+23. **The replayer** (4.19): specified in v1.1's replayer pass, following the design notes and their allocation table. It is now peripheral type 4 in the tile's peripheral slot (4.17, item 86). What remains is in items 33–59: the open ones are the tracer engine's run log (33), the template enumeration (34), the ROM's fit (40), the validation harness (58) and the consumer's interface (59); the rest are proposals.
 24. *(v1.2: changed; see the table above.)* **Re-measurement** (all sections): every number labelled *v1.0 measurement; to be re-measured in v1.2*, chiefly the fan-in table (3.2), the read-port tolerances (4.3), the queue peaks and schedule comparison of the all-to-alls (4.2) and the sort's results (section 14), once meshsim models the 169-bit link word.
 25. *(v1.2: closed; see the table above.)* **The `STREAM` count's width** (4.2). `STREAM_COUNT` keeps 18 bits. In the sort and the skew planner every stream lies inside one buffer of at most 65,536 elements: an area of 64-bit records, or two areas of 128-bit values (`sort/program/sw/sort.h`). Every count written (`local.c`, `transfer.c`, `config.c`, the planner's `write_stream`) is at most the keys per tile, 65,536 at 64 × 65,536, and the overlay copies are far smaller. So **17 bits (up to 131,071) would serve the sort, 128-bit streams included, with a factor of two to spare.** But the field is in elements: 17 bits would cap a 128-bit stream at half the big SRAM and a 32- or 64-bit stream lower still, and 18 bits already falls one element short of a whole-memory 128-bit stream (2¹⁸ rows). `STREAM_COUNT` has 5 spare bits, so narrowing it frees nothing needed today. No change proposed.
 

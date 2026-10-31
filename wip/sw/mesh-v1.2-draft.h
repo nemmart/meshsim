@@ -264,7 +264,11 @@ _Static_assert(__builtin_offsetof(TableRegs, PTR) == 0x400 && __builtin_offsetof
 #define PEV_RUN_DONE       (1 << 0)
 #define PEV_DMA_DONE       (1 << 1)
 #define PARAMS_TYPE(p)     ((p) & 0xFFu)
-#define PTYPE_REPLAYER     1u
+#define PTYPE_NONE         0u   /* D46: the peripheral types, PARAMS [7:0] */
+#define PTYPE_INGRESS      1u   /* Ingress/Egress, the UART and the chip lines (C&C 1's) */
+#define PTYPE_RW           2u   /* the Updater/Binder/RW engine (C&C 2's) */
+#define PTYPE_TRACER       3u   /* the Tracer (C&C 3's) */
+#define PTYPE_REPLAYER     4u
 /* the replayer's events (W3-REVIEW-2 section 5; spec 4.19.9): credits have depth 2, the others 1 */
 #define RP_EV_CODE         (1 << 2)
 #define RP_EV_RLOG         (1 << 3)

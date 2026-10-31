@@ -1570,7 +1570,7 @@ All four are dual-ported, so pushes land while the replayer runs. Every refill i
 
 | word or bit | v1.2 | v1.1 |
 |---|---|---|
-| `PARAMS` [7:0] | type 1 | `TILE_STATUS` [15:12] |
+| `PARAMS` [7:0] | type 4 | `TILE_STATUS` [15:12] |
 | `STATUS` [0] | run in progress: the ownership state (4.19.10, 4.19.11) | `periph_running` |
 | `STATUS` [1] | always 0 (no DMA) | — |
 | `ERRORS` | [0] bad write, [1] queue overrun, [2] invalid expansion (4.19.11) | the tile's conditions 11–13 |
@@ -2278,7 +2278,7 @@ Peripheral 2's window is at 0xC00 and peripheral 3's at 0xE00, with the same wor
 
 | word | register | bits | function | reset |
 |---|---|---|---|---|
-| 0 | `PARAMS` | [7:0] = 1 | type 1, the replayer | 1 |
+| 0 | `PARAMS` | [7:0] = 4 | type 4, the replayer | 4 |
 | 1 | `STATUS` | [0] run in progress; [1] 0 | [0] is v1.1's `periph_running` (4.19.11) | 0 |
 | 2 | `ERRORS` | [0] bad write, [1] queue overrun, [2] invalid expansion | 4.19.11 | 0 |
 | 5–7 | `EVENTS`, `EVENTS_PEEK`, `EVENTS_MASK` | [0] run done (depth 1), [2] code credit, [3] read-log credit, [4] write-log credit, [5] expansion credit (depth 2 each), [6] new expansion (depth 1) | 4.19.8, 4.19.9 | 0 |

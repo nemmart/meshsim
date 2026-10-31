@@ -36,11 +36,7 @@ final class RegDocTest {
             Process pr = new ProcessBuilder("python3", "tools/header_diff.py", "sw/mesh.h", draft.toString()).redirectErrorStream(true).start();
             String out = new String(pr.getInputStream().readAllBytes());
             pr.waitFor();
-            // the differences decided after the draft (listed in WORKER4/REPORT.md): PTYPE_REPLAYER is 4 (D46; the draft's 1)
-            String[] known = { "PTYPE_REPLAYER" };
-            long unknown = out.lines().filter(l -> l.contains("DIFFERS") && java.util.Arrays.stream(known).noneMatch(l::contains)).count();
-            check(unknown == 0 && out.contains("differing offsets: 0"), "every macro and struct offset shared with the draft agrees, the decided differences aside:\n" + out);
-            check(out.contains("DIFFERS PTYPE_REPLAYER") && out.contains("generated 0x4"), "PTYPE_REPLAYER is 4 (D46)");
+            check(out.contains("differing: 0") && out.contains("differing offsets: 0"), "every macro and struct offset shared with the draft agrees:\n" + out);
             check(!out.contains("ONLY IN DRAFT") && !out.contains("MEMBER ONLY IN DRAFT"), "the generated header defines everything the draft does");
         } else System.out.println("header_diff skipped (needs python3, gcc and ../sw/mesh-v1.2-draft.h)");
 

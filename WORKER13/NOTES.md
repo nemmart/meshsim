@@ -167,3 +167,48 @@ region, ERRORS; v1.25 rewrote its row content). Need the v1.1 → v1.2 pass on 4
 | 4.5 | injection sources | read returns, send port; C&C via fifth port | same two; controllers via fifth ports; peripherals' DMAs on own router port | yes | D10 |
 | 4.5 | injection packet width | 7+4+21+2+128 | 7+3+3+32+2+128 (+ reserved zeros) | yes (3.1) | D2 |
 | 4.5 | route to fifth port | dst 64 at tile 0 | dst 64/65/66 at tiles 0/1/2 | yes (4.6/4.7) | D25 |
+
+### 4.6–4.10 (done)
+
+| sec | what | v1.1 | v1.2 (= v1.25) | in CHANGES? | why |
+|---|---|---|---|---|---|
+| 4.6 | sixth route block | tile 0, from C&C | tiles 0–2, from C&C 1–3 | yes | D25 |
+| 4.6 | routing ids | dst/src 64 → treated as 0 | 64–66 → id − 64; fifth-port eject when dst = 64 + me at tiles 0–2; broadcast not delivered to controllers | yes | D25 |
+| 4.7 | FIFO entries | 169 bits | 256 bits | yes | D2 |
+| 4.7 | loopback FIFO ≥ tokens | *(Proposed)* | **required** | yes (D42, S9) | D42 |
+| 4.7 | router overflow | condition | `ERRORS`[0] | yes | D18 |
+| 4.8 | director switch | on mode alone (0–15) | on mode, and for mode 0 on region: 0x00/0x01 port B, 0x03 write engine, 0x04–0x06 peripheral; 1–3 write engine; 4 GATHER; 5 count only; 6–7 discard; bad → [1] | yes | D6, D32, D43 |
+| 4.8 | counting point | director decrements on acceptance (RUN only), `DMA_PERIPH_REMAINING` on landing/drop | **K-stage delay line** of counter ids; decrement K after acceptance; ≤1 decrement/cycle; unexpected arrival judged at decrement | yes | D3 |
+| 4.8 | K | — | parameter, default 8; meshsim formula K ≥ max(**2L + 4**, L + 4, `cm_latency`, `rp_latency`) | yes, **but CHANGES has no record of the 2L+3 → 2L+4 revision** (D49, W4-08) | D32, **D49** |
+| 4.8 | **K in hardware is the implementation's** | — | the requirement is only that K covers the implementation's slowest write path; the formula is meshsim's, not a hardware promise; the real K comes back in the RTL's delta | **not in CHANGES-v1.2** (D49, 2026-11-01) | **D49** |
+| 4.8 | **one K for every destination** | v1.1 counted CM/periph writes at landing | CM and peripheral writes also wait K (≈6 cycles more per counter round trip; a separate 2-cycle delay not adopted) | **not in CHANGES-v1.2** (owner 2026-10-31) | owner |
+| 4.8 | command landed | set by mode-7 write to slot 0 | set **when a write covering slot 0 lands in port B** (any size, starting at slot 0), from the director only; the controller's own store doesn't | yes | D36 |
+| 4.8 | HALT behaviour | in HALT lands everything, counts nothing | no HALT; no state changes routing or counting | yes | D23 |
+| 4.8 | src use | router, modes 2/5 PTR, mode 8 reply block | router, modes 1/3 PTR only | yes (implied) | D6 |
+| 4.8 | `cm_idle`, `mem_idle` | kept by director | gone from hardware | yes | D18 |
+| 4.9 | engine inputs | modes 2–5 (+ "9" row in table, a v1.1 typo for mode 3) | mode 0 (region 0x03) and 1–3 | yes | D6 |
+| 4.9 | PTR[i] index | src 0–64 | src 0–66 | implied | D25 |
+| 4.9 | `PTR[64]` | C&C's staging pointer; loader re-sets after mode-4 phases | not special | yes | D17 |
+| 4.9 | misaligned PTR | n/a (spanning allowed, split in engine) | write dropped, still counted, [1]; **the pointer still advances by the size** | partly (advance not in CHANGES) | D32 |
+| 4.9 | explicit-address write | mode 3, chunk addr, misaligned = bad packet, *never counted* | mode 0, byte offset / 4, counted by its field | yes | D6 |
+| 4.9 | input FIFO overflow | condition | `ERRORS`[4] | yes | D18 |
+| 4.10 | window | 0x2000–0x3FFF | 0xFFFF2000–0xFFFF35FF *(Proposed, item 120)*; same low-16-bit offsets | yes | D11 |
+| 4.10 | access timing | one cycle, when `rd_running` = 0 and `ts_busy` = 0 | one access at a time at the register-load latency (**1 cycle for the table window, D45**) | partly | D11, D45 |
+| 4.10 | waiting | `ts_busy`, `wait_tables()` | by events: counter done + DMA run done; `ts_busy` gone; may poll `STATUS.rd_running` | yes | D11 |
+| 4.10 | guarantees A–C | — | A: K covers table update; B: DMA run done after last table read, `rd_running` falls same cycle; C: gather values counted at the director | yes | D17, D41 |
+| 4.10 | table request overflow | condition | `ERRORS`[5] | yes | D18 |
+
+**Major finding: CHANGES-v1.2 stops at Round 3 (D43–D44).** DECISIONS-v1.2 sections **45–49** (2026-10-29 to 2026-11-01)
+were applied to the v1.2 spec but have no CHANGES entry:
+- **D45 load latencies** (Tony): data memory, program memory, boot ROM and the table window load in **1 cycle**; the
+  register block and every peripheral window word in **2 cycles**, fixed (v1.1: "1 or 2, the implementation's choice").
+  Item 134 closed. → check 4.11, 8.1.
+- **D46 peripheral types:** 0 none, 1 Ingress/Egress (C&C 1), 2 Updater/Binder/RW (C&C 2), 3 Tracer (C&C 3), **4 the
+  replayer (v1.1: type 1)**. Hardware-visible (`PARAMS` [7:0]); **an RTL change from v1.1** that CHANGES-v1.2 doesn't
+  list, and CHANGES-v1.25 calls the leftover "type 1" in 4.19's intro "an editorial fix of v1.2" (true for v1.2's text,
+  but for a v1.1 reader the value really changed).
+- **D47** waiting rules (software): tables free per memory; polling a landed word valid only for CM landings; plain
+  `wfi()` on counters done.
+- **D48** W4-06: a peripheral without a DMA reads 0 at words 8–9 and a load isn't flagged (only a store); W4-07: `mtime`'s
+  rate implementation-defined.
+- **D49** K: meshsim 2L + 4; hardware K the implementation's.

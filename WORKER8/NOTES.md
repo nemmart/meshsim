@@ -95,6 +95,15 @@ phase-3 tip, whose replayer tests don't compile). Merge `v1.2-meshsim` again onc
   | agbench (AgBench) | exit 0 (measurement output; nothing to fail) |
   | sweep-quick (Sweep quick) | exit 0 (measurement output) |
   | ctrl-full (CtrlTest -1 full) | 6,793 passed, 0 failed |
-  | engine-full (EngineTest -1 full) | cut off at the turn's end: to the runner |
-  | skewtable (NetTest -1 skewtable 40) | not started: to the runner |
+  | ctrl-full, again on the runner (Quest task 072) | 6,793 passed, 0 failed |
+  | engine-full (EngineTest -1 full), Quest task 072 | 398 passed, 0 failed |
+  | skewtable (NetTest -1 skewtable 40), Quest task 072 | output identical to the branch's results/skewtable.log |
   | sort-bt-kv32, sort-bt-k128 | pass (results/sort-bt-*.log) |
+- **Step 8** (2026-10-31): **every run_tests.sh step now has a result on this branch** (the table above; task 072's logs
+  in WORKER8/results/072-extras; 072 ran the branch as of 375bc23, before the phase-4 merge below). REPORT.md's final
+  pass done. Merged v1.2-meshsim again (WORKER4's phase 4: **the boot ROM replaced the interim loader, R2**) and main
+  (DECISIONS-v1.2 48); test/PENDING keeps both sides' deletions (CondTest, the sort's four); DECISIONS-v1.2 as main.
+  SortTest now boots as Mach.boot (code, data, CMD_JUMP, GO; the ROM jumps); Inputs hashes sw/bootrom.hex; sort.ld's
+  program memory is the full 32 KB. Cycle-identical (uniform kv32 235,663). On the merged branch: P1 42 passed, the
+  sort 104 passed, shuffled running. WORKER4's own suites after their phase 4 are theirs (their NOTES: green from
+  f7c694f).

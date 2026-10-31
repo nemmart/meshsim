@@ -16,9 +16,10 @@ has every file's size and SHA-256.
 | `tracer/` | the Tracer's variant (below) |
 
 **ROM fill: 388 of 512 words**: every RV64IMAC template, **all atomics** (188 words: LR/SC and every AMO, .W and .D),
-and ECALL (7), EBREAK (1), MRET (1). v1.1: ~508 with the atomics partly controller-fed. Controller-fed: the 15 inlines,
-and CSRRW/CSRRS (60 keys, 102 words): they would fit in the 124 free words, but the decode index can't reach them (see
-REPORT, "The CSR instructions"); the owner decides.
+and ECALL (7), EBREAK (1), MRET (1). v1.1: ~508 with the atomics partly controller-fed. **Controller-fed: the 15
+inlines and the CSR instructions** (CSRRW/CSRRS, 60 keys, 102 words), and nothing else (DECISIONS-v1.25 s6): the CSR
+instructions are the one deliberate exception to the ROM goal, because jolt-cpp's expansion depends on which CSR and
+on the register pattern, which a single decode entry can't see; they are rare in guest code.
 
 **Changes to the formats**
 - Expansion word: `offset_imm` [63], `sign_imm` [62], `advice_reg` [61:56] = bank-1 register - 146 (v1.25 s4, s5).
@@ -68,7 +69,8 @@ registers (130, 131) or the replayer's temporaries; `const` as usual. No `virt`,
 **`seq_remaining` counts traced words only** (v1.25 s5, Q6): an untraced word carries the count of the next traced word,
 so a template ends at the traced word with `seq_remaining` 0 and never at an untraced word. A template's first word
 carries `rd0` whatever its kind. A traced advice row (`VirtualAdvice`, `from_log`) reads its value from bank-1 register
-146 + `advice_reg`. Untraced `LD` (WORKER7 Q9) reads guest memory and logs nothing. Untraced rows use the replayer's ALU
+146 + `advice_reg`. Untraced `LD` (WORKER7 Q9; confirmed, v1.25 s6) reads guest memory **through the Tracer's D-cache like any load**, so it sees
+the program's own earlier stores, and logs nothing. Untraced rows use the replayer's ALU
 opcodes plus RV64 M division (`DIV`, `DIVU`, `DIVUW`), and `SLT`.
 
 **Segments** (v1.3 s10): a template is the concatenation of its segments, each emitted `repeat` times by C&C 3. Only

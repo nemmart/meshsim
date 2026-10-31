@@ -146,21 +146,17 @@ Expansion word (DECISIONS-v1.25 s4-s5): `offset_imm` [63], `sign_imm` [62], `adv
 | controller-fed | 75 template numbers: 15 inlines, 60 CSR keys; 13,821 words |
 | opcode table | 171 opcodes at 821e1bd, 88 executed row opcodes |
 
-### The CSR instructions (for the owner)
+### The CSR instructions: controller-fed (owner, DECISIONS-v1.25 s6)
 
-The goal is every expansion except the inlines and the advice generators in the ROM. ECALL, EBREAK and MRET are exact
-words with their own decode entries and are now in the ROM (9 words). **The CSR instructions need 102 words (60
-templates) and 124 words are free, so they fit in size, but the decode index can't select them**: it sees CSRRW and
-CSRRS as one entry each ({10, 0000, funct3}), while jolt-cpp's expansion depends on
-- the **CSR number** (bits [31:20]): each CSR is a different virtual register (mstatus v39, mtvec v34, mscratch v35,
-  mepc v36, mcause v37, mtval v38), named literally in the rows; no operand code maps a CSR number to a register;
-- the **register pattern**: rd = x0, rs1 = x0, rd = rs1 or none, which changes the row count (1-3 rows).
-
-Options: (a) keep them controller-fed (today; 60 keys); (b) give the SYSTEM group its own index layout under
-index[9:8] = 10: {CSRRS?, a 3-bit CSR id from a small table loaded with the decode table (jolt-cpp's six CSRs; others
-invalid), a 3-bit register pattern computed by the decoder} plus the ECALL/EBREAK/MRET selectors, 8 bits in all, and
-the 60 templates in the ROM (102 words, leaving 22 free); (c) a CSR operand code plus pattern-dependent row skipping in
-the replayer: new datapath, not recommended. The owner decides.
+ECALL, EBREAK and MRET are exact words with their own decode entries and are in the ROM (9 words). **The CSR
+instructions (CSRRW, CSRRS: 60 templates, 102 words) stay controller-fed, the one deliberate exception to the goal of
+every expansion except the inlines and the advice generators in the ROM** (owner's option (a)). They would fit in the
+124 free words, but the decode index sees CSRRW and CSRRS as one entry each, while jolt-cpp's expansion depends on the
+CSR number (each CSR is a different virtual register, named literally in the rows) and on the register pattern
+(rd = x0, rs1 = x0, rd = rs1, which changes the row count). The alternatives were a special SYSTEM decode layout with a
+loaded CSR-id table and a computed pattern, or new replayer datapath; CSR instructions are rare, so the controller
+feeding them costs almost nothing. So the controller feeds the inlines, the advice generators and the CSR
+instructions, and nothing else.
 
 ### The template-index key (a format change)
 
@@ -220,10 +216,14 @@ Untraced words compute every advice value in bank 1 (results in 146-209, scratch
   **0 mismatches**.
 - The inverse is larger than WORKER7's addition-chain estimate (53,000-110,000) because the loop body always
   multiplies; an addition chain (255 squarings, ~15 multiplies for q) would roughly halve DIVQ but needs several
-  segments with different bodies (runs of squarings between multiplies). The segment format already allows it
-  (QUESTIONS Q8).
+  segments with different bodies (runs of squarings between multiplies). The segment format already allows it.
+  **On hold** (v1.25 s6): WORKER12 is counting how often each inline runs in both 2^29 workloads; the single loop
+  stays until the owner decides.
+- **The untraced `LD`** (WORKER7 Q9, QUESTIONS Q9): **confirmed, on one condition: it reads through the Tracer's D-cache
+  like any load**, so it sees the program's own earlier stores (an inline's operands may have just been written by the
+  guest). It writes a bank-1 register and logs nothing.
 
 ## Still to do
 
-Part 2 is complete apart from the owner's decisions (the CSR instructions in the ROM; QUESTIONS Q8, Q9). Part 3 (the
-delivery writer) waits for its plan to be agreed.
+Part 2 is complete; Q8 (loop vs addition chain) is on hold for WORKER12's counts. Part 3 (the delivery writer) is
+under way (PLAN-PART3.md, approved).

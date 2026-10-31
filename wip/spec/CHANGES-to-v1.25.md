@@ -392,7 +392,7 @@ v1.1's peripheral slot is replaced by **up to three peripherals per unit, all co
 
 ### 2.6 The replayer (spec 4.19, `spec/replayer-opcodes.md`)
 
-**How this section splits.** v1.1 → v1.2 changed **only the replayer's interface**: its window, events, credits, region map, errors and type. 4.19.3–4.19.7, 4.19.12 and 4.19.14 are identical to v1.1's apart from names, and so is the opcode appendix. v1.2 → v1.25 changed **only its rows and tables**, to match jolt-cpp `821e1bd`. So the interface entries (R1–R14) are step **v1.2**, the row and table entries (R20–R41) are step **v1.25**, and a few (R15–R19) are **both**.
+**How this section splits.** v1.1 → v1.2 changed **only the replayer's interface**: its window, events, credits, region map, errors and type. 4.19.3–4.19.7, 4.19.12 and 4.19.14 are identical to v1.1's apart from names, and so is the opcode appendix. v1.2 → v1.25 changed **only its rows and tables**, to match jolt-cpp `821e1bd`. So the interface entries (R1–R14) are step **v1.2**, the row and table entries (R19–R41) are step **v1.25**, and a few (R15–R18) are **both**.
 
 **Interface (step v1.2: a reader from v1.2 skips R1–R14)**
 
@@ -425,7 +425,7 @@ v1.1's peripheral slot is replaced by **up to three peripherals per unit, all co
 
 R19's behaviour didn't change in v1.2 (only its wording), so it is step **v1.25**. It sits here beside the other log rules.
 
-**Rows and tables (step v1.25: both readers apply R20–R41)**
+**Rows and tables (step v1.25: both readers apply R19–R41)**
 
 | ID | v1.1 and v1.2 | v1.25 (section) | kind | step | why |
 |---|---|---|---|---|---|

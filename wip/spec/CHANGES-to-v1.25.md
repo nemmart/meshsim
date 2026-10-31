@@ -721,3 +721,127 @@ Its region map is R3.
 | 155–167 | 158–170 | +3 |
 
 The complete map, generated from the two appendices, is also in `WORKER13/opcode-map.txt`.
+
+---
+
+## 4. Parameters, invariants and checks (spec 9, 10)
+
+### 4.1 Parameters (10)
+
+| parameter | v1.1 | v1.2 | v1.25 | step |
+|---|---|---|---|---|
+| link word | 169 bits | 256 (74 reserved, stored) | = v1.2 | v1.2 |
+| `STREAM` | count 18 bits | count 17 bits (≤ 131,071); 88 of 96 bits used | = | v1.2 |
+| controller read port | ≥ 64 × 37 bits | ≥ 64 × 43 bits | = | v1.2 |
+| controller memories | 8 KB + 8 KB, four banks each | 32 KB data + 32 KB program; port B one 128-bit write per cycle | = | v1.2 |
+| `reg_load_latency` | 1 or 2 per register (implementation's) | **2** block and windows, **1** table window (E2) | = | v1.2 |
+| **K** | — | 8 (meshsim); **implementation-defined**, ≥ the slowest write path; meshsim max(2L + 4, L + 4, `cm_latency`, `rp_latency`) (E6) | = | v1.2 |
+| `error_latency` | — | fixed, *(Open: physical value; 1 in simulation)* | = | v1.2 |
+| `go_latency` | 1 in simulation, *(Open)* | = (C&C 1 waits `go_latency` + 1 after `PULSE_GO`) | = | — |
+| `run_latency` | as GO | gone | = | v1.2 |
+| C&C receive FIFO | ≥ 64 entries | gone | = | v1.2 |
+| write counters | four, 20 bits | **seven**, 20 bits; counter field 3 bits | = | v1.2 |
+| boot ROM | — | every controller, region 0x02, a few dozen bytes | = | v1.2 |
+| watchdog | (C&C software) | `WATCHDOG` in C&C 1's peripheral, core cycles | = | v1.2 |
+| request bus queues | 16 × 128 bits in every tile; credits 16 | 128 / 256 / 128 at the root for C&C 1 / 2 / 3; credits = depth; limits 1 / 3 / 1 | = | v1.2 |
+| request FIFO | 2 KB per tile | 2 KB per unit | = | — |
+| events | 19 of 32 bits used | 16 of 32 | = | v1.2 |
+| UART | every tile | C&C 1's peripheral only | = | v1.2 |
+| command / reply blocks | 0x5FC0 / 0x5BC0 | 0x00007FC0 / 0x00007BC0 | = | v1.2 |
+| packed CM word | ≤ 14 bits | gone (byte addresses) | = | v1.2 |
+| peripherals | one slot; six lines; eight status registers; sender (≤ 65,535 words) | ≤ 3 per unit; regions 0x04–0x06; windows; DMA (≤ 4,095 words) | = | v1.2 |
+| `rp_latency` | 2 *(Proposed)* | 2 *(Proposed)*, at most K | = | — |
+| loopback FIFO | ≥ 64 *(Proposed)* | ≥ 64 (required) | = | v1.2 |
+| C&C 1–3 big SRAM | — | 2 MB each | = | v1.2 |
+| replayer | type 1; 85 executed opcodes | type 4; = | **reference `821e1bd`; 88 executed opcodes; `offset_imm` [63], `sign_imm` [62]; ROM 388 of 512 used; decode table 306 ROM, 17 controller, 1,725 invalid entries; 75 controller-fed template numbers**; every size unchanged | v1.2 (type), v1.25 (rest) |
+| logic budget per tile | ≈ 0.38–0.45 mm² | ≈ 0.52–0.61 mm² (+0.065 the 256-bit word, +0.08–0.09 the memories, − sender, − UART) (11) | = | v1.2 |
+| control island | ≈ 0.1 mm² | ≈ 0.17–0.2 mm² (12) | = | v1.2 |
+
+### 4.2 Invariants (9)
+
+**v1.2 states that every invariant is a meshsim check.** The hardware checks none of them as such. Where it has an error bit for the same mistake, the invariant names it.
+
+| # | v1.1 | v1.2 | v1.25 | step |
+|---|---|---|---|---|
+| 1 | no FIFO overflow (incl. tile 0's C&C FIFOs) | + tiles 0–2's fifth-port FIFOs and the GATHER queue; hardware [0], [4], [5], [6] | = | v1.2 |
+| 2 | one access per area per cycle; a spanning access counts once | spanning clause gone | = | v1.2 |
+| 4 | counters done with `mem_idle`, `cm_idle` before `done` | write counters at 0 before `done`; hardware [8] | = | v1.2 |
+| 5 | v1.1's bad-packet list | the new bad-packet set; hardware [1] | = | v1.2 |
+| 7 | no packet in flight at a RUN/HALT change | **withdrawn** | = | v1.2 |
+| 9 | no arrival for a counter at 0 | no decrement of a counter at 0; hardware [2] at the decrement | = | v1.2 |
+| 10 | mode 1 only to self | mode 4 only to self | = | v1.2 |
+| 11 | mode 6 inside CM, outside both blocks | command block written only by C&C 1–3 uncounted; replies at the sender's own pair or the named address; every other mode-0 write to 0x00/0x01 inside its memory and outside both blocks | = | v1.2 |
+| 15 | `TILE_CONDITIONS` stays 0 | every unit's and every peripheral's `ERRORS` stays 0 | = | v1.2 |
+| 16 | the slot's and the replayer's (contiguous non-zero PEXT masks; zero shift masks) | the peripherals' (no run while running, no DMA while busy, no credit to a full counter, writes land within `rp_latency` ≤ K) and the replayer's | **PEXT: a non-contiguous mask is correct and only reported; `offset_imm` only on `ShiftData…` rows; no misaligned memory row; rows equal jolt-cpp `821e1bd`'s** (zero shift masks still undefined) | both |
+| 17 | request contract: one reply-producing request per responder; write tokens; *d* = 64 only with mode 3 | requests name counters and reply address; 1/3/1 limits; tag windows; no *d* = 126 stream on a mesh tile; hardware [14] | = | v1.2 |
+| 18 | modes 2, 4, 5 and mode 9 ports | modes 1–3 and peripheral ports | = | v1.2 |
+| 19 | — | **everything stays in bounds** (meshsim only) | = | v1.2 |
+| 20 | — | **pointers and runs stay aligned**; hardware [1] | = | v1.2 |
+| 21 | — | **no reserved encodings**: modes 6–7, count-only on counter 0, digit 5–7, reserved words or bits | = | v1.2 |
+| 22 | — | **uncounted traffic is mode 0 only**; nothing into data memory's first 16 bytes after boot | = | v1.2 |
+| 23 | — | **no silent traps** (`ecall`, `ebreak`, bad fetch, misaligned jump, trap in a handler) | = | v1.2 |
+| 24 | — | **K covers the write path** (meshsim 2L + 4) | = | v1.2 |
+| 25 | — | **boot keeps its order** (one kind; `stage_delay`) | = | v1.2 |
+| 26 | — | **no ignored start** (`PULSE_DMA` while running) | = | v1.2 |
+
+Invariants 3, 6, 8, 12–14 are unchanged apart from names.
+
+### 4.3 What the hardware checks, new or changed
+
+| check | where | step |
+|---|---|---|
+| region decode of every mode-0 packet (0x02, 0x07–0xFE, 0xFF, an absent peripheral → bad packet) | traffic director, `ERRORS` [1] | v1.2 |
+| natural alignment of packets, `PTR` writes and every engine read | director, write engine, read clients, `ERRORS` [1] | v1.2 |
+| unexpected arrival at the K-delayed decrement | write counters, `ERRORS` [2] | v1.2 |
+| bus errors on absent peripheral windows, region 0x03–0xFE, store to program memory or boot ROM | controller bus, `ERRORS` [9] | v1.2 |
+| peripheral errors (replayer: bad write, overrun, invalid expansion, now incl. every unused decode entry) | peripheral `ERRORS` → controller [11]–[13] | v1.2 (class 3 for unused entries: v1.25) |
+| the watchdog and the toast latch | C&C 1's peripheral | v1.2 |
+| removed: mode-7 and mode-8 size checks, mode-0/10–15 invalid modes, the misaligned read-port read as an error that drops | — | v1.2 |
+
+### 4.4 What meshsim checks, new
+
+meshsim checks invariants 19–26 and these:
+- the new clauses of 11, 16 and 17;
+- the reserved-word access flag (except the trace and exit words);
+- `PULSE_RUN` while running, `PULSE_DMA` while busy, and mid-transfer `DMA_HDR` changes;
+- a credit returned to a full counter;
+- a broadcast stream from a mesh tile;
+- every out-of-bounds or past-the-end access;
+- the stray at acceptance, as a diagnostic beside the hardware's decrement-time error;
+- at v1.25: `offset_imm` on a row other than `ShiftData…`; a misaligned memory row; a non-contiguous PEXT mask (reported as a statistic).
+
+---
+
+## 5. What the change documents don't say
+
+`CHANGES-v1.2.md` and `CHANGES-v1.25.md` cover almost everything. This guide also lists the items below, each placed in its unit with its step. Where frozen v1.2's own text was wrong, the `v1.2/ERRATA.md` entry is named.
+
+**Decisions after `CHANGES-v1.2.md`'s last round.** `CHANGES-v1.2.md` stops at decision 44; sections 45–49 are in the v1.2 spec without an entry (erratum **E4**).
+
+| item | step | entry | erratum |
+|---|---|---|---|
+| D45: load latencies fixed: 2 cycles for the block and windows, 1 for the table window and memories | v1.2 | C6, T33, 3.1 | E2, E3, E5 |
+| D46: peripheral types 0–4; **the replayer's `PARAMS` type value is 4 (was 1)** | v1.2 | P2, R1 | E1 |
+| D47: waiting rules (software only: tables free per memory; polling a landed word; plain `wfi()`) | v1.2 | — (software) | E4 |
+| D48: a peripheral without a DMA reads 0 at words 4, 8 and 9, a load not flagged; `mtime`'s rate implementation-defined | v1.2 | P7, C1 | E4 |
+| D49: **K in hardware is the implementation's**; meshsim's formula 2L + 4 | v1.2 | L22 | E4, E6 |
+
+**Changes neither document states.**
+
+| item | step | entry |
+|---|---|---|
+| one K for every destination: CM and peripheral writes also count at K, not at landing (O, 2026-10-31) | v1.2 | L23 |
+| a write to an absent peripheral: counted in v1.1, an uncounted bad packet in v1.2 | v1.2 | L8, P3 |
+| the gather request's ordinal: v1.1 said both [63:32] and [51:32]; [51:32] holds | v1.2 | L9 |
+| the read-port request-queue entry grows from 37 to 43 bits | v1.2 | T17 |
+| a write through a misaligned `PTR` still advances the pointer (item 133) | v1.2 | T28 |
+| `STATUS.done` resets to 0 (v1.1: 1) | v1.2 | C28 |
+| a reserved word of the block reads 0 and ignores stores (v1.1: past 0x8A0, a bus error) | v1.2 | C9, C34 |
+| the UART's `DIVISOR` and `STATUS` swap order (words 44, 45) | v1.2 | P13, 3.7 |
+| the DMA's count is 12 bits (≤ 4,095 words); the sender's was 16 | v1.2 | P11 |
+| C&C 1–3 have 2 MB of big SRAM (`PARAMS` size 7) | v1.2 | A8, X1 |
+| the replayer's bad write: a misaligned 128-bit write in part 0 is now a bad packet at the director, not a replayer error | v1.2 | R4 |
+| `VirtualPext` with a zero mask: undefined at v1.2, **0** at v1.25 | v1.25 | R31 |
+| the template index's 16-byte entry format (key, offset, length, `rd0`, class); software only | v1.25 | R41 |
+
+The opcode renumbering was first misstated in v1.25's text ("three lower"). It was fixed in spec `0b4ba20` and recorded in `CHANGES-v1.25.md` (R26, 3.9).

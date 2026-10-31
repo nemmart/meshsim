@@ -106,3 +106,12 @@ To do: a mechanical check (dump every opcode's expansion at both commits and dif
   advice_reg [61:56]), Q6 (seq_remaining counts traced words), Q7 (unused entries class 2).
 - Next: mutants; regenerate tools/replayer-opcodes (enum/vec) at 821e1bd; the Tracer's variant (division family
   re-run, secp256k1 advice incl. the Fermat inverse as loop + count, the numbering map); REPORT part 2.
+
+## Turn 5 (2026-11-01)
+
+- Owner (v1.25 s5): universal tables; atomics in ROM; unused entries invalid; Q5/Q6 accepted.
+- Universal replayer tables delivered (a70b9e7): ROM 379/512 (atomics 188), 78 fed templates (key normalization:
+  inlines registers cleared, system renamed by first appearance), 1,725 invalid entries; 117,843 random words + both
+  programs, 0 failures. Mutants 497/500 caught. Appendix outputs at 821e1bd (Q3). WORKER7's div harness at 821e1bd:
+  identical. REPORT part 2 (in progress) written.
+- Next: Tracer variant (secp256k1 advice incl. Fermat loop and GLV), mapping, checks.

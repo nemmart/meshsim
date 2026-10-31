@@ -14,10 +14,11 @@ Decided (O). Starts once v1.2 is frozen; ends with v1.25 frozen as `v1.25/`.
 - **Pin a current jolt-cpp `main` commit** (not a moving branch), and diff its expansions against v1.2's reference
   (jolt-asic-planning `4f36b3d`) in full.
 - **The replayer** (spec 4.19, meshsim's model): rebuild the opcode table, the ROM templates and the decode table,
-  re-checking the template count and the ROM fill; **add `shift_offset` to the expansion word**; add the new row
-  operations (`VirtualLoadB/H/W`, `VirtualStoreB/H/W`, `VirtualWindowMaskB/H/W`, `VirtualShiftDataB/H/W`,
-  `VirtualPext`/`VirtualPextSigned` with PEXT one run of ones per cycle, v1.3 section 9); drop `VirtualAlignAddr` and
-  the alignment assertions; regenerate the replayer's test vectors.
+  re-checking the template count and the ROM fill; **add `shift_offset` to the expansion word**; add the new opcodes
+  (`VirtualLoadB/H/W`, `VirtualStoreB/H/W`) and the changed ones (`ShiftData*`'s operands, the narrow memory rows'
+  immediate, `VirtualHostIO`, the AMO\*.W bodies, the renumbering; v1.3 section 9 as corrected by WORKER9); PEXT one
+  run of ones per cycle (v1.3 section 9, replacing v1.1's contiguous-mask narrowing); drop `VirtualAlignAddr` and the
+  alignment assertions; regenerate the replayer's test vectors.
 - **The Tracer's tables: rebuilt too** (owner): its ROM and decode table (v1.3 section 7) and its advice templates (v1.3
   section 8, `wip/tracer/`), against the same pinned commit, though nothing executes them until the Tracer exists.
 - **The spec** (4.19, the expansion word, the opcodes, the parameters) and **CHANGES** for v1.25.

@@ -165,17 +165,21 @@ Decided (O). From WORKER7's F1.
 | AMOADD/AND/XOR/OR.W | 19 | 9 |
 | AMOMIN/MAX(U).W | 24 | 13 |
 
-- **New row operations** the replayer and the Tracer must compute (jolt-cpp `main` at `52fbbab`, `src/tracer/isa/
-  virtual.cpp` and `trace_owner.cpp`):
-  - `VirtualLoadB/H/W`, `VirtualStoreB/H/W`: load or store the doubleword containing the access (address rounded down);
-    memory rows like LD/SD.
-  - `VirtualWindowMaskB/H/W`: the lane's mask from the address's low bits, e.g. `0xFF << 8 × (addr & 7)`.
-  - `VirtualShiftDataB/H/W`: the store value moved into its lane, `(v & 0xFF) << 8 × ((base + offset) & 7)`; needs the
-    store's offset as a new field (`shift_offset`), so the **expansion word must carry it**.
-  - `VirtualPext`, `VirtualPextSigned`: **parallel bit extract** by the mask, optionally sign-extended. Every use in
-    `main` feeds a single contiguous lane (from `WindowMask`), where it is a right shift plus zero- or sign-extension;
-    Jolt defines general PEXT (T6).
-  - **PEXT in hardware** (owner, 2026-10-30; answers T6): **one run of ones per cycle.** Each cycle the unit takes the
+- **What changed in the row operations** *(corrected 2026-10-31 by WORKER9's diff of `821e1bd` against `4f36b3d`; the
+  first version of this list, read at `52fbbab`, wrongly called `VirtualPext`, `WindowMask` and `ShiftData` new: they
+  already existed at `4f36b3d` and are in v1.2's replayer opcode table, spec 4.19.7)*:
+  - **New opcodes, only:** `VirtualLoadB/H/W` and `VirtualStoreB/H/W`, which load or store the doubleword containing
+    the access (address rounded down); memory rows like LD/SD.
+  - **`ShiftData*` changed meaning:** its second operand is now the base register, with the access's offset in a new
+    field, `shift_offset` (signed), so **the expansion word must carry it**.
+  - **Narrow memory rows** now carry the access's immediate, and the address is rounded down to the doubleword.
+  - **A misaligned access** aborts the tracer instead of producing an assertion row; `VirtualAlignAddr` and the
+    alignment assertions are gone.
+  - **`VirtualHostIO`** has no operands any more (still one row, different contents).
+  - **The AMO\*.W bodies** changed beyond their length (e.g. `AMOMAXU/MINU.W` now sign-extend).
+  - **The opcode numbering** shifted: 6 opcodes inserted, 3 removed.
+  - **PEXT in hardware** (owner, 2026-10-30; answers T6; *not new, but this replaces v1.1's narrowing to contiguous
+    masks, spec invariant 16*): **one run of ones per cycle.** Each cycle the unit takes the
     mask's lowest run, *n* ones starting *m* bits up (the mask's low end has the form `x…x 1ⁿ 0ᵐ`), shifts those *n*
     bits of the value down, appends them to the result, clears the run from the mask, and repeats until the mask is
     empty. A contiguous mask, every current use, takes **one cycle**; a scattered mask takes one cycle per run, at most

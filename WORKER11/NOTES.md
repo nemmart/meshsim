@@ -88,3 +88,6 @@ acceptance kit). Until WORKER10's `v1.25` spec branch exists, the design is DECI
   StageB synthetic 18/18, RecipeTest 2042/0, RegDocTest 269/0, ReplayShard ABF OK. run_shard -n all (sparse sets).
 - Task 087 (claimed in NUMBERS.md, quest 12808ca): quick + full + p4/uniform-k128 + selected windows
   (/tmp/w9-selected-windows.tgz c62de022..., extracted to scratch, -n all -x 1). Kit dfbb9b9b...
+- CL4 on branch cl4 (from main ad2bfea): StageB.Watch (starved after NO_ROW_LIMIT, default 50k, -Dstageb.norow;
+  run_shard -g), old-map controller test (sw/replay/replay_ctl_oldmap.c -> build/oldmap), max row gap per window in
+  results. Synthetic max gaps 320-1,080 cycles. Owner merges cl4.

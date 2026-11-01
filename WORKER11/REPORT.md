@@ -242,3 +242,34 @@ Everything else is replayer-side:
 - `p4/uniform-k128`: 1,360,082 cycles, as before;
 - the selected windows, from `/tmp/w9-selected-windows.tgz` (SHA-256 checked, with `imm_signed`): EVM Zone 12 of 12
   and Cyclone 13 of 13 in Stage A, Stage B (tile 0 alone) and Stage F (the full chip).
+
+## 8. Cleanup CL4: Stage B fails a starved window instead of hanging (branch `cl4`, for the integrator to merge)
+
+A controller that writes the wrong queue ports used to run each Stage B window to the overall cycle cap (minutes per
+window on the full chip). WORKER15 found it on v1.2.1 and fixed it there (090fc40); this does the same for v1.25.
+
+**The check:** `test/StageB.java`, both the delivery runner (which the acceptance kit uses) and the synthetic one.
+- **Starved:** a running pass that delivers no row for `NO_ROW_LIMIT` cycles (default 50,000) fails at once. The message
+  gives the pass's start, the last row, the rows so far, the four queue occupancies, bad writes, the controller's pc,
+  and a pointer to the queue ports (4.19.10, CL1).
+- **The two other stops get their own messages:** no pass started, and the cycle cap reached.
+- **Long lists are shortened** in a window's detail (a starved window collects hundreds of violations).
+
+**The regression test:** `sw/replay/replay_ctl_oldmap.c` is `replay_ctl.c` on the queue map before CL1 (write log at
+0x280000, expansion at 0x300000), built by `sw/replay/build.sh` into `build/oldmap/`. StageB synthetic's new case
+"old queue map (CL4)" requires its window to fail as starved; it does, at cycle 50,001 of the pass, in 1.9 s. StageB
+synthetic is now 19 windows, 0 failed.
+
+**The limit against real windows (the owner's question).**
+- **Measured:** every Stage B window now reports its largest row gap ("max row gap" in `results.csv`). On full
+  65,536-row synthetic windows (inline weight 2 and 20, all inlines, CSR, ECALL) it is 320-1,080 cycles. The largest is
+  the first row of a pass and the slow-path template lookups. That is about 46× below 50,000.
+- **Not confirmed:** I can't confirm it for the real deliveries locally: the 083/084 runs didn't record gaps.
+- **So the limit is an option:** `run_shard.sh -g N` (passed as `-Dstageb.norow=N`), default 50,000. The next real run
+  records each window's gap, which confirms it or sets the limit.
+- **Shown from the kit:** at `-g 500`, a window whose first row comes 1,000 cycles after its pass starts fails as
+  starved, at once, as one FAIL line, and the shard carries on. At the default both windows pass.
+
+**Verified locally:** ReplayerTest 1468/0; StageB synthetic 19/0; ReplayShard A, B and F on synthetic deliveries (B
+and F give the same gaps); the rebuilt kit's `run_shard.sh` with and without `-g`. No runner check: the kit's change
+is the Stage B failure path and an option, both exercised here.

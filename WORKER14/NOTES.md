@@ -15,8 +15,8 @@ gets a few hook calls into a new `CcCores` class, beside WORKER11's `Chip.parked
 | 1 | the three controller tiles (ids 64-66, their peripherals' presence and types), the controller router and its link to tiles 0-2; the boot ROM's 64-66 branch runs with the harness landing a command | done (turn 1): CcCoresTest |
 | 2 | `Cnc1Peripheral` in C&C 1's slot (READY/GO, error lines, watchdog, toast, UART); stub engines for C&C 2/3; controllers on the request tree, C&C 1's request port reading target 0; C&C 2/3's error lines | wired in turn 1 (the request path tested); the peripheral's paths are tested with the firmware (phases 3-4) |
 | 3 | firmware (`sw/cc/`): C&C 1 boots C&C 2/3, waits for "started", boots the tiles, then a phase loop on harness commands; C&C 2/3 start-up and "started"; `Mach.bootCores()`; the boot test | done (turn 2): CcCoresTest's boot and phases against the model |
-| 4 | `rcp_cc1.c` run on C&C 1 (RecipeTest's cc1 driver); the error path end to end | |
-| 5 | measurements (boot vs the model's 120 cycles; a phase vs the model); full suites with the switch off on the runner; REPORT.md | |
+| 4 | `rcp_cc1.c` run on C&C 1 (RecipeTest's cc1 driver); the error path end to end | error path done (turn 3); `rcp_cc1.c` and the two-report path wait for s8 |
+| 5 | measurements (boot vs the model's 120 cycles; a phase vs the model); full suites with the switch off on the runner; REPORT.md | done (turn 4) but for task 090's result |
 
 ## Environment
 
@@ -81,3 +81,10 @@ sort 104 (140 s); sort-shuf 104.
   - C&C 1's image is now 3 KB (the error path): the boot measures 854 cycles (C&C 1 running at 232).
   - The dump at divisor 1 takes about 765,000 cycles for 48 reports (400 cycles a byte); at the reset divisor (434) it
     would be about 330 million. CcCoresTest takes about 30 s.
+- Turn 4: phase 5.
+  - `test/CcBench.java` (in the full extras): the boot, 901 cycles with C&C 1 as a core against the model's 120
+    (rcp_boot), broken down in REPORT.md; a phase, 88 cycles GO to GO against the model's 43.
+  - Firmware: `CC_PHASE` repeats ([22:16]); the READY wait checks all-READY before anything else (91 to 88 with the
+    command copied once; 102 before).
+  - Task 090 (Quest, kit d51bfc89 from 5cd78a2, Java 17): quick + full extras with CcBench. Pushed 10:30 UTC.
+  - REPORT.md written; it names the UART_TX stall fix for the merge review.

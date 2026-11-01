@@ -9,7 +9,7 @@
  * request goes out as soon as its entries are in: 4 ts_engine_latency + 2 cycles after the start's store for a group run
  * (the GROUP read, then the STREAM read), 2 ts_engine_latency + 1 for a stream run. That lead-in depends only on the run
  * kind, the tables and the latency, so a synchronised start stays in lockstep; it is not counted as a read-ahead wait.
- * A start while running (lead-in included) is ignored by the hardware and flagged here. One element per request, and
+ * A start while running (lead-in included) is undefined behavior (v1.25, DECISIONS-v1.25 s8e): meshsim stops. One element per request, and
  * every visit takes one cycle whatever its read size (v1.1: a 128-bit element is one packet; v1.0 took two cycles).
  *
  * A run ends when the generator has walked its last entry, trailing count-0 streams and R = 0 groups included; the last
@@ -84,9 +84,13 @@ final class AddressGenerator implements Component {
      *  4.1, and flagged here too); a mode-5 stream on counter 0 (invariant 21); and d = 126 from a mesh tile (only the
      *  controllers broadcast from streams, D41 F14: meshsim errors loudly). */
     long sizeViolations, modeViolations, aug128Violations, destViolations, alignViolations; String lastViolation;
-    private void checkEntry(long e0, long e1) {
+    /** v1.25 (DECISIONS-v1.25 s8c): at a run's first mode-4 stream, the tile checks its gather buffers' 128-bit alignment. */
+    java.util.function.LongConsumer gatherAlign;
+    private boolean gatherChecked;
+    private void checkEntry(long t, long e0, long e1) {
         int m = Fields.sMode(e1), z = Fields.sSize(e1), d = Fields.sD(e1), ctr = Fields.sCounter(e1);
-        if (LinkWord.reservedMode(m)) { modeViolations++; lastViolation = "stream with the reserved mode " + m + " (3.1, 4.2: modes 6-7; invariant 21)"; }
+        if (m == LinkWord.M_GATHER && !gatherChecked) { gatherChecked = true; if (gatherAlign != null) gatherAlign.accept(t); }
+        if (LinkWord.reservedMode(m)) throw new UndefinedBehavior(t, me, "address generator", "a stream in the reserved mode " + m + " (3.1: modes 6-7; DECISIONS-v1.25 s8e)");
         if (z == Fields.SIZE_UNDEF) { sizeViolations++; lastViolation = "stream with read size 11, undefined (3.1, 4.2)"; }
         if (m == LinkWord.M_AUG && z == Fields.SIZE_128) { aug128Violations++; lastViolation = "mode-3 stream with read size 128: its packets are bad packets (3.1, 4.2)"; }
         if (m == LinkWord.M_WRITE && !LinkWord.aligned(Fields.sDest(e0), z)) { alignViolations++; lastViolation = "mode-0 stream whose destination address 0x" + Integer.toHexString(Fields.sDest(e0)) + " is not aligned to its read size: its packets are bad packets (3.1, 4.2; invariant 20)"; }
@@ -126,14 +130,13 @@ final class AddressGenerator implements Component {
     @Override public void runCycle(long t) {
         if (pStart) {
             pStart = false;
-            if (running) { startsWhileRunning++; lastViolation = "a start while the address generator is running (its lead-in included): ignored (8.6; invariant 26)"; }
+            if (running) throw new UndefinedBehavior(t, me, "address generator", "a start while a run is running, its lead-in included (8.6; v1.2 ignored it; DECISIONS-v1.25 s8e)");
             else {
                 load(t); begin(t);
                 int size = kind == Fields.RUN_STREAMS ? 256 : 64;
-                if (runStart + runCount > size) {             // past the table's end: the numbers wrap (spec 8.5); meshsim flags it
-                    tableWraps++;
-                    lastViolation = "a " + (kind == Fields.RUN_STREAMS ? "stream" : "group") + " run past the table's end (start " + runStart + ", count " + runCount + " > " + size + "): the numbers wrap (spec 8.5)";
-                }
+                if (runStart + runCount > size)                // v1.25 (s8e): numbers past the table's end are UB (v1.2: they wrapped)
+                    throw new UndefinedBehavior(t, me, "address generator", "a " + (kind == Fields.RUN_STREAMS ? "stream" : "group") + " run past the table's end (start "
+                            + runStart + ", count " + runCount + " > " + size + "; spec 8.5)");
                 if (runCount == 0) { running = false; leadIn = false; done = true; doneAt = t; finishedIssuing = true; }   // count 0: ends at once, no requests (spec 8.5)
             }
         }
@@ -171,7 +174,7 @@ final class AddressGenerator implements Component {
     }
 
     private void begin(long t) {
-        running = true; startedAt = t; leadIn = true;
+        running = true; startedAt = t; leadIn = true; gatherChecked = false;
         // S_0 is the cycle the run's first group starts (its entries in): the lead-in, not a read-ahead wait
         if (kind == Fields.RUN_GROUPS) { g = 0; r = 0; v = 0; inRot = false; groupS = t; rotSched = groupS; stalledSinceGroup = false; }
         else gapLeft = 0;
@@ -238,7 +241,7 @@ final class AddressGenerator implements Component {
             if (slRun >= runCount) return;
             if (sqBuf == 0) { if (!leadIn) tableWaitCycles++; return; }   // the entry is not back yet (table latency; the lead-in is not counted)
             leadIn = false;
-            long pe0 = popStream(); loadStream(pe0, popE1); cur = true; checkEntry(pe0, popE1);
+            long pe0 = popStream(); loadStream(pe0, popE1); cur = true; checkEntry(t, pe0, popE1);
             boolean last = slRun == runCount - 1;
             if (cCount == 0) {                                    // count 0: exactly its gap-after cycles, this one the first
                 if (cGap == 0 || last) { endStream(); continue; }  // the last entry's gap is not waited (4.2)
@@ -303,7 +306,7 @@ final class AddressGenerator implements Component {
             return;
         }
         long e0 = popStream(), e1 = popE1;
-        checkEntry(e0, e1);                                           // every visit, idle or not
+        checkEntry(t, e0, e1);                                        // every visit, idle or not
         if (r < Fields.sCount(e1)) { loadStream(e0, e1); issueElement(t, r); }
         endVisit();
     }

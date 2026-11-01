@@ -14,7 +14,7 @@ final class Conditions {
             GATHER_OVF = 6, READ_PORT = 7, DONE_EARLY = 8, BUS_ERROR = 9, ILLEGAL = 10, BAD_PERIPH_WRITE = 11, PERIPH_2 = 12,
             PERIPH_3 = 13, RECV_UNDERFLOW = 14, N = 15;
     static final int MASK = (1 << N) - 1;
-    static final String[] NAME = { "router overflow", "bad packet or misaligned access", "unexpected arrival", "drift", "write-engine input overflow",
+    static final String[] NAME = { "router overflow", "bad packet", "unexpected arrival", "drift", "write-engine input overflow",
             "table request overflow", "GATHER queue overflow", "read-port error", "done early", "bus error", "illegal instruction",
             "peripheral 1", "peripheral 2", "peripheral 3", "receive underflow" };
     static final String[] CNAME = { "ROUTER_OVF", "BAD_MODE_OR_SIZE", "UNEXPECTED", "DRIFT", "WE_IN_OVF", "TABLE_OVF",

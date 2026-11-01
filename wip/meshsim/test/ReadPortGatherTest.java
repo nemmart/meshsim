@@ -25,6 +25,7 @@ public final class ReadPortGatherTest {
         disjointPerRun();
         reservedStreams();
         gather();
+        gatherCountingAndAlignment();
         gatherFromC();
         System.exit(T.done("ReadPortGatherTest" + (shuffle >= 0 ? " (shuffled, seed " + shuffle + ")" : "") + (full ? " full" : "")));
     }
@@ -81,22 +82,18 @@ public final class ReadPortGatherTest {
                     tl + "SRAM_RD_DEST_ADDR reads the next destination, advanced by the size in bytes, with the size and counter");
             boolean w64 = true, w128 = true;
             for (int i = 0; i < 16; i++) if (m.word(p.idx, im, "wide", i) != (p.idx << 20 | 0x100 + i)) w64 = false;
-            for (int i = p.idx == 6 ? 4 : 0; i < 16; i++) if (m.word(p.idx, im, "wide", 16 + i) != (p.idx << 20 | 0x200 + i)) w128 = false;   // tile 6 reuses wide[16..19]
+            for (int i = 0; i < 16; i++) if (m.word(p.idx, im, "wide", 16 + i) != (p.idx << 20 | 0x200 + i)) w128 = false;
             T.check(w64, tl + "8 64-bit reads: two words each, at the destination + 8 i bytes");
             T.check(w128, tl + "4 128-bit reads: four words each, at the destination + 16 i bytes");
         }
-        // v1.2 (4.3, D32): a misaligned read is not performed, its result lands with payload 0, ERRORS [1]
-        T.eq(1 << Conditions.BAD_MODE_OR_SIZE, m.word(6, im, "r", 4), "tile 6: a misaligned 128-bit read set ERRORS [1], and only it");
-        T.eq(1L, m.c.tiles[6].srq.misalignedReads, "tile 6: one misaligned read not performed");
-        T.eq(0, m.word(6, im, "r", 7), "tile 6: its result landed as 0 (counted)");
+        // v1.25: a misaligned read is undefined behavior (DECISIONS-v1.25 s8b), tested in MemTest
         Tile t7 = m.c.tiles[7];
         T.eq(1 << Conditions.READ_PORT, m.word(7, im, "r", 4), "tile 7: the 65th store into a full queue set the read-port-error condition, and only it");
         T.eq(1, t7.readPort.overflows, "tile 7: one read dropped");
-        T.check(m.c.violationMessages.size() == 2 && m.c.violationMessages.stream().anyMatch(v -> v.contains("tile 7") && v.contains("invariant 8"))
-                && m.c.violationMessages.stream().anyMatch(v -> v.contains("tile 6") && v.contains("not aligned")), "the overflow (invariant 8) and the misaligned read, and nothing else, reported: " + m.c.violationReport());
+        T.check(m.c.violationMessages.size() == 1 && m.c.violationMessages.stream().anyMatch(v -> v.contains("tile 7") && v.contains("invariant 8")), "the overflow (invariant 8), and nothing else, reported: " + m.c.violationReport());
         int bad = 0; for (int i = 0; i < 64; i++) if (m.word(7, im, "res", i) != (7 << 20 | 0x1000 + i)) bad++;
         T.eq(0, bad, "tile 7: the 64 queued reads all landed");
-        out("read port from C [meas: ReadPortGatherTest read port from C]: 40 32-bit, 8 64-bit and 4 128-bit reads land at the setup register's destination + the size in bytes per read, counting on their counter; the free count reads 64, then less, then 64 after counters done; a misaligned read lands 0 with ERRORS [1]; a 65th store into a full queue is dropped with the read-port error");
+        out("read port from C [meas: ReadPortGatherTest read port from C]: 40 32-bit, 8 64-bit and 4 128-bit reads land at the setup register's destination + the size in bytes per read, counting on their counter; the free count reads 64, then less, then 64 after counters done; a 65th store into a full queue is dropped with the read-port error");
     }
 
     // ================================================================ the read port under an all-to-all (lowest priority)
@@ -155,7 +152,7 @@ public final class ReadPortGatherTest {
         EngineTest.streamRun(p, 0, pk, 0, 0);
         p.pulse(Fields.PULSE_START);
         for (int i = 0; i < delay; i++) c.step();
-        for (int i = 0; i < reads; i++) x.readPort.hostQueue(0x1000 + i, 0xD00 + (i & 0xFF));
+        for (int i = 0; i < reads; i++) x.readPort.hostQueue(0x1000 + i, 0xD00 + 4 * (i & 0x3F));   // v1.25: 32-bit results at word-aligned destinations (misaligned is UB)
         c.runUntil(() -> x.dir.remaining[2] == 0 && x.dir.cmIdle(c.cycle), 100000);
         c.scanOverflows();
         long lb = 0, lk = 0, ovf = 0;
@@ -289,37 +286,30 @@ public final class ReadPortGatherTest {
         T.group("reserved streams");
         Chip c = new Chip(cfg());
         Tile p = c.tiles[3];
-        p.setStream(0, Fields.streamSrc(0x1000), 0, Fields.streamCount(1, Fields.SIZE_32, 1, 6, 1));            // mode 6: reserved
-        p.setStream(1, Fields.streamSrc(0x1000), 0, Fields.streamCount(1, Fields.SIZE_UNDEF, 1, LinkWord.M_SRC, 1));
-        p.setStream(2, Fields.streamSrc(0x1000), 0, Fields.streamCount(0, Fields.SIZE_64, 1, 7, 1));            // mode 7, count 0
-        p.setStream(3, Fields.streamSrc(0x1000), 0, Fields.streamCount(1, Fields.SIZE_128, 1, LinkWord.M_AUG, 1));   // mode 3 at 128
-        p.setStream(4, Fields.streamSrc(0x1000), 0x0200, Fields.streamCount(1, Fields.SIZE_64, 2, LinkWord.M_WRITE, 1));   // mode 0 at 0x200 (fine)
-        EngineTest.streamRun(p, 0, 5, 0, 0);
+        p.setStream(0, Fields.streamSrc(0x1000), 0, Fields.streamCount(1, Fields.SIZE_UNDEF, 1, LinkWord.M_SRC, 1));
+        p.setStream(1, Fields.streamSrc(0x1000), 0, Fields.streamCount(1, Fields.SIZE_128, 1, LinkWord.M_AUG, 1));   // mode 3 at 128
+        p.setStream(2, Fields.streamSrc(0x1000), 0x0200, Fields.streamCount(1, Fields.SIZE_64, 2, LinkWord.M_WRITE, 1));   // mode 0 at 0x200 (fine)
+        EngineTest.streamRun(p, 0, 3, 0, 0);
         c.tiles[4].dir.remaining[1] = 1; c.tiles[4].dir.remaining[2] = 1; c.tiles[4].setPtr(3, 0x40000);
         p.pulse(Fields.PULSE_START);
         c.run(100);
         T.eq(1L, p.ag.sizeViolations, "a stream with read size 11 (undefined): reported");
-        for (int code : new int[] { 6, 7 })
-            T.check(c.violationMessages.stream().anyMatch(v -> v.contains("tile 3") && v.contains("reserved mode " + code)), "STREAM mode " + code + " rejected (4.2)" + (code == 7 ? ", even at count 0" : ""));
-        T.eq(2L, p.ag.modeViolations, "two reserved modes, one report each");
         T.eq(1L, p.ag.aug128Violations, "a mode-3 stream at read size 128: reported (4.2)");
         T.eq(1, c.tiles[4].dir.droppedBad, "the 128-bit mode-3 packet is dropped at its director (a bad packet)");
-        T.eq(1L, c.tiles[4].dir.reservedDiscarded, "the mode-6 packet is discarded silently at its director");
         T.eq(1L, c.tiles[4].dir.undefinedSize, "the size-11 packet: flagged and dropped at the director (meshsim's choice)");
         T.check((c.tiles[4].conditions() & (1 << Conditions.BAD_MODE_OR_SIZE)) != 0, "and the bad packet sets ERRORS [1]");
         T.eq(0, c.tiles[4].dir.remaining[2], "the good mode-0 packet landed and counted");
-        // a group run reports a reserved mode on every visit of the stream, idle or not
-        Chip c2 = new Chip(cfg());
-        Tile q = c2.tiles[3];
-        q.setStream(0, Fields.streamSrc(0x1000), 0, Fields.streamCount(2, Fields.SIZE_64, 1, LinkWord.M_SRC, 1));
-        q.setStream(1, Fields.streamSrc(0x2000), 0, Fields.streamCount(0, Fields.SIZE_64, 1, 7, 2));     // mode 7, idle
-        q.setGroup(0, Fields.groupLo(2), Fields.groupHi(0, 2, 0));
-        c2.tiles[4].dir.remaining[1] = 2; c2.tiles[4].setPtr(3, 0x40000);
-        q.setMasterConfig(Fields.masterConfig(Fields.RUN_GROUPS, 0, 1, 0, 0, 1));
-        q.pulse(Fields.PULSE_START);
-        c2.run(100);
-        T.eq(2L, q.ag.modeViolations, "group run: mode 7 reported on both of its visits (R = 2)");
-        T.eq(2L, c2.tiles[4].writer.taken, "the valid stream's two packets still land");
+        // v1.25 (DECISIONS-v1.25 s8e): the reserved modes 6-7 are undefined behavior: a stream in one stops meshsim at the
+        // address generator, even at count 0 and on an idle group visit (v1.2 flagged it and sent the packet, which its
+        // director discarded)
+        for (int[] e : new int[][] { { 6, 1, Fields.RUN_STREAMS }, { 7, 0, Fields.RUN_STREAMS }, { 7, 0, Fields.RUN_GROUPS } }) {
+            Chip cr = new Chip(cfg()); Tile q = cr.tiles[3];
+            q.setStream(0, Fields.streamSrc(0x1000), 0, Fields.streamCount(e[1], Fields.SIZE_64, 1, e[0], 1));
+            if (e[2] == Fields.RUN_GROUPS) { q.setGroup(0, Fields.groupLo(2), Fields.groupHi(0, 1, 0)); q.setMasterConfig(Fields.masterConfig(Fields.RUN_GROUPS, 0, 1, 0, 0, 1)); }
+            else EngineTest.streamRun(q, 0, 1, 0, 0);
+            q.pulse(Fields.PULSE_START);
+            T.ub(() -> cr.run(100), "a stream in mode " + e[0] + " at count " + e[1] + (e[2] == Fields.RUN_GROUPS ? " in a group run" : ""), "tile 3", "address generator", "reserved mode " + e[0]);
+        }
     }
 
     static long[] gatherRun(int k, int N, StringBuilder sb) {
@@ -336,7 +326,7 @@ public final class ReadPortGatherTest {
             p.setStream(195, Fields.streamSrc(IDX), 0, Fields.streamCount(N, Fields.SIZE_64, 1, LinkWord.M_GATHER, 0));
             p.setPtr(p.idx, OUT);
             p.gather.base = VAL;
-            p.dir.remaining[1] = N * k;
+            p.dir.remaining[1] = N * ppv(k);                   // v1.25 (s8c): one count per value packet
             p.setMasterConfig(Fields.masterConfig(Fields.RUN_STREAMS, 195, 1, 0, 0, k));
         }
         long cyc = runAll(c, 10_000_000);
@@ -348,9 +338,50 @@ public final class ReadPortGatherTest {
         int[] pk = new int[4]; peaks(c, pk);
         long agStall = 0, srqStall = 0, area = 0;
         for (Tile p : c.tiles) { agStall = Math.max(agStall, p.ag.stallCycles); srqStall = Math.max(srqStall, p.srq.stallCycles); for (int a : p.sram.queuePeak) area = Math.max(area, a); }
-        sb.append(String.format("  k = %d  N = %6d  %9d cycles  %6.3f per value (k + 1 = %d)  GATHER queue peak %2d of 16  address generator stalled %d cycles, area queue peak %d%s%n",
-                k, N, cyc, (double) cyc / N, k + 1, pk[3], agStall, area, pk[3] >= 16 ? "  OVERFLOW" : ""));
+        sb.append(String.format("  k = %d  N = %6d  %9d cycles  %6.3f per value (packets per value + 1 = %d)  GATHER queue peak %2d of 16  address generator stalled %d cycles, area queue peak %d%s%n",
+                k, N, cyc, (double) cyc / N, ppv(k) + 1, pk[3], agStall, area, pk[3] >= 16 ? "  OVERFLOW" : ""));
+        long reads = 0, packets128 = 0; for (Tile p : c.tiles) { reads += p.gather.reads; packets128 += p.writer.writtenBySize[2]; }
+        T.eq((long) 64 * N * ppv(k), reads, "k = " + k + ": " + ppv(k) + " read(s) and packet(s) per value");
+        T.eq((k & 1) == 0 ? (long) 64 * N * ppv(k) : 0L, packets128, "k = " + k + ": " + ((k & 1) == 0 ? "128-bit" : "64-bit") + " value packets");
         return new long[] { cyc, pk[3] };
+    }
+
+    /** Value packets per gathered value (v1.25, DECISIONS-v1.25 s8c): k when k is odd, k / 2 128-bit ones when even. */
+    static int ppv(int k) { return (k & 1) == 1 ? k : k / 2; }
+
+    /** v1.25 (s8c): counting and alignment. A counter armed with n x (packets per value) finishes exactly; armed with the
+     *  old n x k (even k) it is left at n x k / 2; a gather buffer off a 128-bit boundary stops meshsim at the run's start. */
+    static void gatherCountingAndAlignment() {
+        T.group("gather: counting and alignment (v1.25)");
+        final int IDX = 0x60000, VAL = 0x20000, OUT = 0xA0000, N = 40;
+        for (int k : new int[] { 1, 2, 3, 4, 8 }) for (boolean old : new boolean[] { false, true }) {
+            if (old && (k & 1) == 1) continue;                     // for odd k the old and new arming agree
+            Chip c = new Chip(cfg()); Tile p = c.tiles[7];
+            for (int i = 0; i < N; i++) p.sram.poke64(IDX + 2 * i, (long) (N - 1 - i) << 32 | i);
+            for (int v = 0; v < N; v++) for (int i = 0; i < k; i++) p.sram.poke64(VAL + 2 * k * v + 2 * i, (long) v << 8 | i);
+            p.setStream(195, Fields.streamSrc(IDX), 0, Fields.streamCount(N, Fields.SIZE_64, 1, LinkWord.M_GATHER, 0));
+            p.setPtr(7, OUT); p.gather.base = VAL;
+            int arm = old ? N * k : N * ppv(k);
+            p.dir.remaining[1] = arm;
+            p.setMasterConfig(Fields.masterConfig(Fields.RUN_STREAMS, 195, 1, 0, 0, k));
+            p.pulse(Fields.PULSE_START);
+            c.run(5000);                                           // 40 values: done in a few hundred cycles
+            if (!old) {
+                boolean ok = true; for (int i = 0; i < N; i++) for (int e = 0; e < k; e++) if (p.sram.peek64(OUT + 2 * k * i + 2 * e) != ((long) (N - 1 - i) << 8 | e)) ok = false;
+                T.check(ok, "k = " + k + ": the values landed in index order");
+                T.eq(0, p.dir.remaining[1], "k = " + k + ": armed with n x " + ppv(k) + " (packets per value), the counter finishes at 0");
+                T.eq(OUT + 2L * k * N, p.ptr(7), "k = " + k + ": PTR[me] advanced by 2k per value (" + ((k & 1) == 0 ? "4 per 128-bit packet" : "2 per 64-bit packet") + ")");
+            } else T.eq(N * k / 2, p.dir.remaining[1], "k = " + k + ": armed with the old n x k, the counter is left at n x k / 2: not done");
+        }
+        for (int[] off : new int[][] { { 2, 0 }, { 0, 2 }, { 0, 1 } }) {
+            Chip c = new Chip(cfg()); Tile p = c.tiles[7];
+            p.setStream(195, Fields.streamSrc(IDX), 0, Fields.streamCount(4, Fields.SIZE_64, 1, LinkWord.M_GATHER, 0));
+            p.setPtr(7, OUT + off[1]); p.gather.base = VAL + off[0];
+            p.dir.remaining[1] = 4; p.setMasterConfig(Fields.masterConfig(Fields.RUN_STREAMS, 195, 1, 0, 0, 1));
+            p.pulse(Fields.PULSE_START);
+            String what = off[0] != 0 ? "DMA_RECORD_BASE_ADDRESS" : "PTR[me]";
+            T.ub(() -> c.run(200), "k = 1, " + what + " off a 128-bit boundary by " + Math.max(off[0], off[1]) + " chunk(s): stops at the run's start", "tile 7", "gather", what);
+        }
     }
 
     static void gather() {

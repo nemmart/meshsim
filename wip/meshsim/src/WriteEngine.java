@@ -16,9 +16,8 @@ import java.util.List;
  * increment for the histogram digit (payload bits [31:0]) in the same cycle, for modes 1-3 only.
  *
  * Alignment (4.1, 4.9, D32): every access is naturally aligned, so no write spans a row (v1.1's spanning write is gone).
- * A write through a PTR not aligned to the write's size (a record for mode 3) is dropped, though still counted (its
- * decrement was scheduled at the director), the pointer still advances, and ERRORS [1] is set ({@link #misalignedWrites},
- * the error's source); meshsim flags it. A write at or past the end of big SRAM is undefined in hardware (4.1): meshsim
+ * A write through a PTR not aligned to the write's size (a record for mode 3) is undefined behavior (v1.25,
+ * DECISIONS-v1.25 s8b): meshsim stops ({@link UndefinedBehavior}). A write at or past the end of big SRAM is undefined in hardware (4.1): meshsim
  * drops it and flags it (invariant 19).
  *
  * The write goes to the SRAM's write holding register with per-chunk enables (4.1). If the SRAM leaves the previous
@@ -46,7 +45,7 @@ final class WriteEngine implements Component {
     long lastTsReq = Long.MIN_VALUE / 2;
     // ---- stats ----
     long taken, written, stallCycles, augmented, explicit;
-    long misalignedWrites, outOfRange;                // monotonic: ERRORS [1]'s source (4.9); out-of-range writes (invariant 19)
+    long outOfRange;                                  // monotonic: out-of-range writes (invariant 19)
     long violations; String lastViolation;
     final long[] writtenBySize = new long[3];   // writes of 32, 64, 128 bits (mode 4's records count as 64)
     int stageHighWater;
@@ -72,11 +71,10 @@ final class WriteEngine implements Component {
             int n, mode = LinkWord.mode(h);
             if (mode == LinkWord.M_AUG) { lo = (lo & 0xFFFFFFFFL) | (long) (((a - augmentBase) & 0x1FFFFF) >>> 1) << 32; hi = 0; n = 2; augmented++; }
             else n = LinkWord.chunks(LinkWord.size(h));
-            if ((a & (n - 1)) != 0) {                               // a misaligned PTR (mode 0 can't be: the director dropped it)
-                misalignedWrites++; violations++;
-                lastViolation = "a write through PTR[" + (mode == LinkWord.M_BUCKET ? "digit" : "src " + LinkWord.src(h)) + "] = chunk 0x" + Integer.toHexString(a)
-                        + ", not aligned to its " + (32 * n) + "-bit write: dropped, still counted, ERRORS [1] (4.9; invariant 20): " + LinkWord.describe(stD[head], h, stC[head]);
-            } else if (a + n > cfg.memChunks) {
+            if ((a & (n - 1)) != 0)                                 // v1.25 s8b: a misaligned PTR is UB (mode 0 can't be: the director stopped)
+                throw new UndefinedBehavior(t, me, "write engine", "a write through PTR[" + (mode == LinkWord.M_BUCKET ? "digit" : "src " + LinkWord.src(h))
+                        + "] = chunk 0x" + Integer.toHexString(a) + ", not aligned to its " + (32 * n) + "-bit write: " + LinkWord.describe(stD[head], h, stC[head]));
+            else if (a + n > cfg.memChunks) {
                 outOfRange++; violations++;
                 lastViolation = "a big-SRAM write at chunk 0x" + Integer.toHexString(a) + ", at or past the end of big SRAM: undefined (4.1; invariant 19): " + LinkWord.describe(stD[head], h, stC[head]);
             } else {

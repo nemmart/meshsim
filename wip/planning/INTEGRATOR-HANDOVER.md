@@ -41,7 +41,6 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
 |---|---|---|---|---|
 | WORKER10 | the v1.25 spec (`wip/spec/`) | idle | **DECISIONS-v1.25 section 8** (the principle at the top, misalignment as UB, the gather unit, the 256-byte ROM; how C&C 1 tells the ROM's dump from the image's) and CLEANUP CL6 (4.2); item 137 stays open | its prompt |
 | WORKER11 | the v1.25 replayer, acceptance kit; CL4 merged (30efc11) | idle | **section 8's meshsim and software**: misalignment as UB, the gather unit, the 256-byte ROM (`bootrom.S`, recipes 22 and 24), `CONVENTIONS.md`, the sort; tests; a Quest run (quick, full, p4/uniform-k128) | its prompt; the spec can follow W10 or lead it |
-| WORKER13 | the change guide `wip/spec/CHANGES-to-v1.25.md` (v1.1 → v1.25 and v1.2 → v1.25 in one) | idle; guide finished at spec `c2de4ae`, REPORT final | **section 8's entries** once W10's spec lands, re-stamp; then close. Q10 (v1.1's two ordinal ranges) is for Tony | W10's spec |
 | WORKER14 | real cores for C&C 1-3 in meshsim, opt-in (`Config.ccCores`), branch `cc-cores` | idle; phases 0-3 done (C&C 1 boots C&C 2/3 and the tiles; 782 cycles first figure) | phase 4 (`rcp_cc1.c` run, the error path) with **the ROM's two-report dump** (section 8 d); phase 5 | its prompt |
 | WORKER16 | T2: is pc, `instr_idx` and registers 0-127 the Tracer's whole starting state (jolt-cpp) | **not started** (prompt only) | all of it | start with "Clone meshsim and follow WORKER16/PROMPT.md" |
 
@@ -52,7 +51,7 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
   Tony's diff: `git diff --no-index v1.2/spec/ v1.2.1/spec/` (also at the top of `v1.2.1/CHANGES-v1.2.1.md`).
 - **v1.25 (in `wip/`):** done: spec (WORKER10), universal tables and delivery writer (WORKER9, closed; jolt-asic-planning PR #2
   ready for review), replayer and acceptance (WORKER11: both programs at 2²⁹ matched row for row, Quest 083/084; `main` verified
-  086, CL1 verified 087; CL4 merged), the change guide (WORKER13, finished at `c2de4ae`). Left: **section 8's package** (W10, W11,
+  086, CL1 verified 087; CL4 merged), the change guide (WORKER13, closed; stamped at spec `d590722`). Left: **section 8's package** (W10, W11,
   W14, W13), then **the freeze**: copy `wip/` to `v1.25/`
   (leaving out v1.3 work: `wip/tracer/`, the v1.3 log), README, close workers; no tag. Definition of done: `DECISIONS-v1.25.md`.
 - **v1.3, the Tracer:** decided so far in `DECISIONS-v1.3.md` sections 1-12 (components, FIFOs, two-pass compression, LRU tables,
@@ -68,7 +67,8 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
 
 - Tony: his full CSR list with reset values (v1.2 Q1, partly answered); what the soft reset keeps; WORKER13's Q10 (v1.1 gave
   the gather ordinal as [63:32] and [51:32]: which did the RTL build; guide L9); the simulation-only assertions (section 8 a);
-  whether the region-decode bad packet passes section 8 a's test.
+  whether the region-decode bad packet passes section 8 a's test (item 142); section 8 e's two: whether the replayer's dropped
+  overrun push is counted for free, and Q12 (reserved words read 0 and ignore stores, kept only if free).
 - Whether the 100 ms Tracer budget is per proof (v1.3 section 11 assumes so).
 - The Tracer's memory research (above).
 

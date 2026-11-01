@@ -30,12 +30,13 @@ static void prefix_to_ptr(uint32_t base) {
 
 /* A gather (4.4, RECIPES 6): the index of n (key, ordinal) records at idx, values of k = 2 records (128 bits) at vals,
  * out to BUF_VS in index order. One mode-4 request per record, never counted; its counter field names counter 1 for
- * the 2n 64-bit value packets. */
+ * the value packets: k even, so one 128-bit packet per value (v1.25, DECISIONS-v1.25 s8c), n in all. vals and BUF_VS
+ * are 128-bit aligned, as every gather buffer must be. */
 __attribute__((noinline)) static void gather(unsigned stream, uint32_t idx, uint32_t vals, uint32_t n) {
     set_stream(stream, STREAM_SRC_W(idx, 0), 0, STREAM_COUNT_W(n, SIZE_64, CTR_SRAM, MODE_GATHER, 0));
     tile->DMA_RECORD_BASE_ADDRESS = vals;
     tables->PTR[tile_index()] = BUF_VS;
-    run_pass(stream, DMA_CFG_KM1(2 - 1), n << 1);
+    run_pass(stream, DMA_CFG_KM1(2 - 1), n);         /* packets per value: k / 2 = 1 */
 }
 
 static void clear_hist(void) {

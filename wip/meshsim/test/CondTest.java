@@ -5,7 +5,7 @@ import java.util.List;
  * The errors end to end (spec 4.13, 6.1; v1.2), provoked from C (sw/tests/cond.c) on a booted machine: each case sets
  * its ERRORS bit on the tiles that act; the image has enabled interrupts, so the hard interrupt (or, for a bus error or
  * an illegal instruction, the synchronous trap) takes the tile to the boot ROM's handler, which sends its fixed set of
- * 24 reports to C&C 1 over the request bus and parks; the tile's error line reaches C&C 1's peripheral (ERROR_LINES,
+ * two reports (v1.25: 24 and 25) to C&C 1 over the request bus and parks; the tile's error line reaches C&C 1's peripheral (ERROR_LINES,
  * the unit-error bit) and the toast pin rises. Then the outside world resets the chip and C&C 1 boots the tiles again
  * (6.1, 6.2): every ERRORS, line and the toast pin clear. Errors 4, 5 and 6, which a program can't provoke in the model
  * (5 and 6 are hardware-fault detectors; v1.2's write path has no half-rate spanning write to overflow the write
@@ -57,13 +57,14 @@ public final class CondTest {
         check(m, p, bit, Controller.CAUSE_EXTERNAL, 1 << bit, reports);
         resetAndBoot(m, im);
     }
-    /** C&C 1's model drains target 0's receive queue (its handler would, 6.1) until tile p has parked and its 24 reports are in. */
+    /** C&C 1's model drains target 0's receive queue (its handler would, 6.1) until tile p has parked and the ROM's two
+     *  reports are in (v1.25: sequence 24 and 25, spec 4.13; the image enables interrupts but keeps mtvec at the ROM). */
     static List<long[]> drainUntilParked(Mach m, Tile p) {
         List<long[]> got = new ArrayList<>();
         m.run(() -> {
             long now = m.c.cycle + 1;
             while (m.c.reqBus.pending(0, now)) { long[] r = m.c.reqBus.peekRequest(0, now); m.c.reqBus.receive(0, now); if ((r[0] & 0x7F) == p.idx) got.add(r); }
-            return p.core.parked && got.size() >= 24;
+            return p.core.parked && got.size() >= 2;
         }, 200000);
         m.c.run(10);
         return got;
@@ -73,10 +74,13 @@ public final class CondTest {
         T.eq(bits, p.ctl.conditions & bits, tl + "its ERRORS bit");
         T.check(p.core.parked && p.core.inHandler, tl + "the handler ran and parked");
         T.eq(cause, p.core.trapCause, tl + "mcause");
-        T.eq(24, reports.size(), tl + "the fixed set of 24 reports reached C&C 1");
-        boolean inOrder = true; for (int i = 0; i < reports.size(); i++) if (((reports.get(i)[0] >>> 21) & 0x7FF) != i) inOrder = false;
-        T.check(inOrder, tl + "reports 0-23, in order");
-        if (reports.size() > 12) T.eq(p.ctl.conditions, (int) reports.get(12)[1], tl + "report 12 carries ERRORS");
+        T.eq(2, reports.size(), tl + "the boot ROM's two reports reached C&C 1");
+        boolean inOrder = true; for (int i = 0; i < reports.size(); i++) if (((reports.get(i)[0] >>> 21) & 0x7FF) != 24 + i) inOrder = false;
+        T.check(inOrder, tl + "reports 24 and 25, in order (spec 4.13)");
+        if (reports.size() == 2) {
+            T.eq(p.ctl.conditions, (int) reports.get(0)[1], tl + "report 24 carries ERRORS");
+            T.eq(cause, (int) reports.get(0)[2], tl + "and mcause");
+        }
         T.eq(1, (m.c.cc1p.read(m.c.cycle, Cnc1Peripheral.ERROR_LINES + p.idx / 32) >>> (p.idx & 31)) & 1, tl + "its error line at C&C 1's ERROR_LINES");
         T.eq(1, m.c.cc1p.read(m.c.cycle, 2) & 1, tl + "C&C 1's unit-error bit");
         T.check(m.c.cc1p.toast, tl + "the toast pin");

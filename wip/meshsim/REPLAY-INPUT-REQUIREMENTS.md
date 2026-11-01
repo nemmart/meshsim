@@ -52,7 +52,8 @@ whichever it uses against `wip/tables/manifest.json` and the delivery manifest's
 - **Format and flags.** As in 4.19.3: `seq_remaining` counting down to 0 on the last word (v1.25: traced words only, which are all a replayer receives). `imm0_pc0` is set in every JAL word, and `next_from_value` on every row that can transfer control. `from_log` is set exactly on the LD, SD, **`VirtualLoadB/H/W`, `VirtualStoreB/H/W`** and advice rows; `report_c` is set on last words only.
 - **v1.25's two bits.** `offset_imm` [63] only on `ShiftData*` words whose shift offset is the source immediate (s7, Q3; meshsim flags it elsewhere); `sign_imm` [62] where jolt-cpp's `signed_immediate` holds for the row's opcode (loads, stores, branches, `ShiftData*`).
 - **The rd = x0 policy.** `rd0` holds the template's policy in its **first word**. Putting it in every word is welcome but not needed: on a mid-sequence start the controller copies it into the first word it sends (4.19.4, ruling N3).
-- **No tracer-only words.** `untraced` is never set in a word a replayer can receive (4.19.3, 4.19.11).
+- **Reserved bits [61:55] are 0** (v1.25, DECISIONS-v1.25 section 9: v1.25's `untraced` [55] and `advice_reg` [61:56] are
+  gone, the Tracer's templates being the replayer's). A word with one set is undefined behavior: meshsim stops.
 - **Advice rows** are written as `VirtualAdvice`, with `from_log` set (4.19.7).
 - **A zero immediate beside a constant** uses operand code **145**, immediate 0 (26q, 4.19.3). Code 132 also replays as 0 for an R-format source, so tables built with it still replay the same.
 - **The controller-fed set** (v1.25: universal) has a key for every inline jolt-cpp supports and for CSRRW/CSRRS on jolt-cpp's six CSRs in each register pattern. ECALL, EBREAK and MRET are in the ROM. A presented instruction whose key has no entry is an error (a CSR jolt-cpp rejects).

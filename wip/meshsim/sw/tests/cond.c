@@ -1,9 +1,9 @@
 /* The errors (spec 4.13, 6.1; v1.2), provoked from C (CondTest). The image enables interrupts at start-up (boot part 2's
  * job, 6.2), leaving mtvec at the boot ROM's handler, so an error raises the hard interrupt and the handler sends its
- * 24 reports to C&C 1 and parks; a bus error or an illegal instruction traps at once. Command type = the case; arguments
+ * two reports (v1.25: sequence 24 and 25, spec 4.13) to C&C 1 and parks; a bus error or an illegal instruction traps at once. Command type = the case; arguments
  * 0, 1 = a 64-bit mask of the tiles that act (the others go back to wait_for_command()).
  *   0 router overflow: the four neighbours of tile 9 each stream 200 records to it at once (its eject FIFOs)
- *   1 bad packet: a 64-bit mode-0 packet to itself at a misaligned address
+ *   1 bad packet: a mode-0 packet to itself for region 0xFF, which a packet can't reach (v1.25: misaligned is UB)
  *   2 unexpected arrival: a count-only packet to itself on counter 3, which is at 0
  *   3 drift: a group run whose stream reads and writes one area (the writes first: the read queue refuses the AG)
  *   7 read-port error: 65 reads queued while a local copy holds the SRAM read queue
@@ -36,8 +36,8 @@ static void act(unsigned c, unsigned me) {
         }
         break;
     case 1:
-        send_to(ROUTER_HDR_W(me, MODE_WRITE, CTR_CM), (uint32_t)&res[1]);   /* 8-byte packet at a 4-byte boundary */
-        send64(1, 2);
+        send_to(ROUTER_HDR_W(me, MODE_WRITE, CTR_CM), 0xFFFFF800u);        /* region 0xFF: a bad packet */
+        send32(1);
         spin(40);
         break;
     case 2:

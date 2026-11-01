@@ -1,7 +1,7 @@
 /* The controller read port (spec 4.3, 8.8; v1.2): the setup register SRAM_RD_DEST_ADDR (a data-memory byte offset, the
  * size, the counter); 40 32-bit results land at destination + 4 i (each carries its own word, so the order they land in
- * doesn't matter), counting on counter 2; 8 64-bit and 4 128-bit reads; the free count; counters done; tile 6 only: a
- * misaligned 128-bit read is not performed, its result lands as 0 and ERRORS [1] is set; tile 7 only: an overflow: with
+ * doesn't matter), counting on counter 2; 8 64-bit and 4 128-bit reads; the free count; counters done (v1.25: a
+ * misaligned read is undefined behavior, tested in MemTest); tile 7 only: an overflow: with
  * a local copy holding the SRAM read queue (the address generator outranks the read port), the 65th store into the full
  * queue is dropped (ERRORS [7]). */
 #include "mesh.h"
@@ -24,15 +24,6 @@ int main(void) {
     uint32_t sum = 0;
     for (unsigned i = 0; i < 40; i++) sum += res[i];             /* read the results before reusing res[] (invariant 8) */
     r[5] = sum;
-    if (me == 6) {                                               /* a 128-bit read at chunk 2: misaligned, not performed (4.3) */
-        wide[16] = 0x5A5A5A5A;
-        tile->WRITE_COUNTER[CTR_CM - 1] = 1;
-        tile->SRAM_RD_DEST_ADDR = RD_DEST((uint32_t)&wide[16], SIZE_128, CTR_CM);
-        tile->SRAM_RD_ADDR_QUEUE = 0x1202;
-        wfi();
-        r[4] = tile->ERRORS;
-        r[7] = wide[16];                                         /* 0: the result's payload */
-    }
     if (me == 7) {
         set_stream(0, STREAM_SRC_W(0x20000, 0), 0, STREAM_COUNT_W(2048, SIZE_64, CTR_SRAM, MODE_SRC, 0));
         tables->PTR[me] = 0x80000;

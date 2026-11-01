@@ -276,17 +276,21 @@ static void aug_start(void) {
 ```c
 /* For each of the n (key, ordinal) records of the index at idx, fetch value[ordinal], k records, from vals (value j is
  * at vals + 2k j), and write the values in index order from out. One mode-4 request per index record goes to the tile
- * itself; its counter field (D6) is the counter the values count on: the GATHER engine sends the k value packets as
- * mode 1 to PTR[me], counted on counter 1. The requests themselves never count: n * k in all. */
+ * itself; its counter field (D6) is the counter the values count on: the GATHER engine sends each value as mode-1
+ * packets to PTR[me], counted on counter 1: k 64-bit packets when k is odd, k / 2 128-bit packets when k is even (v1.25,
+ * DECISIONS-v1.25 s8c). The requests themselves never count: n x (packets per value) in all. vals and out are 128-bit
+ * aligned whatever k is. */
 static void gather(uint32_t idx, uint32_t vals, uint32_t out, uint32_t n, unsigned k) {
     tile->DMA_RECORD_BASE_ADDRESS = vals;
     tables->PTR[tile_index()] = out;
     set_stream(0, STREAM_SRC_W(idx, 0), 0, STREAM_COUNT_W(n, SIZE_64, CTR_SRAM, MODE_GATHER, 0));
-    local_run(DMA_CFG_RUN(RUN_STREAMS, 0, 1) | DMA_CFG_KM1(k - 1), n * k);
+    local_run(DMA_CFG_RUN(RUN_STREAMS, 0, 1) | DMA_CFG_KM1(k - 1), n * ((k & 1) ? k : k / 2));
 }
 ```
 
-- **The stream's counter field is the values' counter.** The mode-4 requests count nothing (D6); each produces k value packets, which count on counter 1 as they pass the director: n · k in all.
+- **The stream's counter field is the values' counter.** The mode-4 requests count nothing (D6); each produces the value's packets, which count on counter 1 as they pass the director: n × (packets per value) in all.
+- **Packets per value** (v1.25, DECISIONS-v1.25 section 8c): k 64-bit packets when k is odd, k/2 128-bit packets when k is even (`PTR[me]` advances by 4 per packet). So the arming isn't n · k for even k: a gather of 128-bit values (k = 2) counts n. The rate is about (packets per value + 1) cycles per value: about 2 at k = 2, from about 3.
+- **The buffers are 128-bit aligned, whatever k is** (the source `DMA_RECORD_BASE_ADDRESS` and the destination `PTR[me]`): misalignment is undefined behavior, and meshsim checks both when a run with mode-4 streams starts.
 - **Three areas:** index, values and output in different areas keep each to one access per cycle.
 
 **Walk.** The requests go to the GATHER engine locally. The values go out as mode-1 packets to the tile itself and loop back through the director, where they are counted like any arrival (guarantee C). A counter takes at most one decrement per cycle, so the count stays exact. The wait returns when the last value is readable and the run's last table read is done.
@@ -979,7 +983,7 @@ The command sequence, from C&C 1: fill (`2`, base seed, n), configure (`3`), sta
 <!-- recipe: bootrom (bootrom.S) -->
 ```asm
 _reset:
-    la   t0, trap_handler               /* 1. mtvec: the ROM's report-and-park handler (recipe 24) */
+    la   t0, trap_handler               /* 1. mtvec: the ROM's two-report handler, below */
     csrw mtvec, t0
     lw   t1, X0REL(OFF_PARAMS)(zero)    /* 2. the endpoint id, PARAMS [26:20] */
     srli t1, t1, 20
@@ -1010,6 +1014,36 @@ jump:                                   /* 5. slot 0, then slot 1 (the first com
     lw   t3, 0(t6)
     lw   t3, 4(t6)
     jr   t3
+```
+
+**The ROM's handler** (v1.25, DECISIONS-v1.25 section 8d, spec 4.13). The ROM is 256 bytes (64 words; this one is 48), so
+its handler sends a two-report dump and parks, in place of the full set: report 24 carries `ERRORS`, `mcause` and `mepc`,
+report 25 carries `mtval`, `STATUS` and `ra`. No `PARAMS`: the request tree stamps the sender's id. The sequence numbers tell
+C&C 1 which set is coming: a unit's first report is 0 for the image's 24 (recipe 24) and 24 for the ROM's two. `ra` is
+kept in x1 until report 25, so the handler builds report 24 in x2-x5.
+
+<!-- recipe: rom_handler (bootrom.S) -->
+```asm
+    .balign 4
+    .globl trap_handler
+trap_handler:                           /* mtvec points here; MIE is now 0 and is never set again (D20) */
+    lw   x2, X0REL(OFF_ERRORS)(zero)    /* report 24: ERRORS, mcause, mepc. x1 (ra) is kept for report 25 */
+    csrr x3, mcause
+    csrr x4, mepc
+    sw   x2, W1(zero)                   /* the main code may have left the port's words half written (D20, W1-04): */
+    sw   x3, W2(zero)                   /* every report writes all four */
+    li   x5, HDR(24)
+    sw   x5, W0(zero)
+    sw   x4, SEND(zero)                 /* stalls only while the request FIFO is full (4.18) */
+    csrr x2, mtval                      /* report 25: mtval, STATUS, ra (x1) */
+    lw   x3, X0REL(OFF_STATUS)(zero)
+    sw   x2, W1(zero)
+    sw   x3, W2(zero)
+    li   x5, HDR(25)
+    sw   x5, W0(zero)
+    sw   x1, SEND(zero)
+park:
+    j    park                           /* terminal: only the reset restarts the controller (D20) */
 ```
 
 **The image's start-up**, where the ROM jumps:
@@ -1116,7 +1150,9 @@ static void cc1_boot(const Boot *fs, const Boot *pager, const Boot *tiles, uint3
 - **The first command after a reset is even** (D36), so C&C 1's per-unit parity starts at 0 after every reset.
 - **[F13]** The ROM depends on "command landed" [9] staying pending: nothing in the reset mask consumes it, so the load that consumes GO still returns it. D41: the spec says so, and **the ROM's tile branch must not consume it**: putting [9] in its mask would break the test. In the image, [9] then stays pending for ever (harmless; every report's `EVENTS_PEEK` shows it).
 - **[F14], [F17]** Streaming from big SRAM sends a packet per cycle, against four stores per packet from the send port (D41). **The first command is in the same run, not sent afterwards from the send port.** C&C 1's DMA run done says only that the run's last table read is done; its last overlay packets may still be in the read-return and injection pipeline, and a packet from the send port, a different injector, isn't ordered with them. D44 settles it: ordering holds per sending unit, and between units there is none. The general pattern for anything that must follow a run's packets from another unit is the fence (recipe 28: a count-only packet ending the run, then send); for the boot the command in the run is simpler.
-- **The ROM's handler never writes data memory** (D31): recipe 24's handler needs none, so the same code serves in the ROM and in the image.
+- **The ROM's handler never writes data memory** (D31), and needs no stack. v1.25: it is not recipe 24's code any more. The
+  ROM holds the two-report handler above, and the image's handler (recipe 24, the full 24 reports) is in program memory, where
+  boot part 2 points `mtvec`. A trap before boot part 2 therefore sends the ROM's two reports.
 
 ## 23. Waiting for the tables by events
 
@@ -1154,7 +1190,7 @@ static void tables_free_unknown(void) {
 
 ## 24. The error handler
 
-**What it does.** On any error (the hard interrupt) or synchronous exception: send the fixed set of reports to C&C 1 over the request bus, then park for ever.
+**What it does.** On any error (the hard interrupt) or synchronous exception: send the fixed set of reports to C&C 1 over the request bus, then park for ever. This is **the image's handler**, in program memory: boot part 2 points `mtvec` at it (recipe 22). Before that a trap goes to the ROM's handler, which sends only reports 24 and 25 (v1.25, DECISIONS-v1.25 section 8d, spec 4.13); C&C 1 tells the two sets apart by a unit's first sequence number, 0 or 24.
 **Relies on:** D20 (traps are terminal; `MIE` cleared on entry and never set again, so no retrap; no `mret`; torn port sequences), D21 and D37.3 (the fixed report set; C&C 1 counts against it), D38 (reports need no reply), D10 (an absent peripheral's window is a bus error), spec 3.3 and 4.18 (128-bit requests, back-pressure).
 
 <!-- recipe: handler (handler.S) -->

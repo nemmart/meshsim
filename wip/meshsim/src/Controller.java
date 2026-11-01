@@ -11,8 +11,10 @@
  * send holding register in the store's cycle; if it is refused the store is retried and the core stalls, one cycle at a
  * time; a REQUEST_SEND store stalls while the request FIFO is full (4.18).
  *
+ * A misaligned load or store is undefined behavior (v1.25, DECISIONS-v1.25 s8b): meshsim stops (UndefinedBehavior); a
+ * misaligned jump target still traps.
  * Bus errors (ERRORS [9], and a trap): a fetch outside program memory; a store to program
- * memory; a misaligned access; an unmapped address (regions 0x02-0xFE, the unused parts of region 0xFF, an absent
+ * memory; an unmapped address (regions 0x02-0xFE, the unused parts of region 0xFF, an absent
  * peripheral's window); a sub-word access to the block, a window or the table window; a store to a read-only register; a
  * load from PTR, STREAM or GROUP. Illegal (ERRORS [10], and a trap): divide opcodes, CSRs the core lacks (it has the
  * machine-mode trap CSRs, mcycle and mtime), anything unimplemented. ecall and ebreak stop the core loudly (a
@@ -44,9 +46,17 @@ final class Controller implements Component {
     static int[] loadBootRom() {
         for (java.nio.file.Path p : new java.nio.file.Path[] { java.nio.file.Path.of("sw", "bootrom.hex"), java.nio.file.Path.of("..", "meshsim", "sw", "bootrom.hex") })
             if (java.nio.file.Files.exists(p)) try {
-                return java.nio.file.Files.readAllLines(p).stream().filter(l -> !l.isBlank()).mapToInt(l -> (int) Long.parseLong(l.trim(), 16)).toArray();
+                int[] w = java.nio.file.Files.readAllLines(p).stream().filter(l -> !l.isBlank()).mapToInt(l -> (int) Long.parseLong(l.trim(), 16)).toArray();
+                checkBootRom(w, p.toString());
+                return w;
             } catch (java.io.IOException e) { throw new RuntimeException(e); }
         return new int[0];                                               // no ROM: a core fetching there stops loudly
+    }
+    /** v1.25 (DECISIONS-v1.25 s8d): the boot ROM is 256 bytes, 64 words; meshsim refuses a larger image. */
+    static final int BOOT_ROM_WORDS = 64;
+    static void checkBootRom(int[] w, String from) {
+        if (w.length > BOOT_ROM_WORDS) throw new IllegalStateException("the boot ROM image " + from + " is " + 4 * w.length
+                + " bytes; the ROM is " + 4 * BOOT_ROM_WORDS + " (spec 6.2, DECISIONS-v1.25 s8d)");
     }
     static final int WFI = 0x10500073;
     interface DebugHook { boolean onEbreak(Controller c, long t); }
@@ -191,7 +201,7 @@ final class Controller implements Component {
                 }
                 int width = 1 << (f3 & 3);
                 if (f3 > 5 || f3 == 3) { illegal(t, ipc, ins); return; }
-                if ((ea & (width - 1)) != 0) { busError(t, ipc, ins, ea, "misaligned load"); return; }
+                if ((ea & (width - 1)) != 0) throw new UndefinedBehavior(t, tile.idx, "controller", "a misaligned " + width + "-byte load from 0x" + Integer.toHexString(ea) + " at pc 0x" + Integer.toHexString(ipc));
                 Integer v = load(t, ea, width);
                 if (v == null) { busError(t, ipc, ins, ea, "load from an unmapped address, an absent peripheral's window, PTR, STREAM or GROUP, or a sub-word load from the registers or the table window"); return; }
                 int sh = (ea & 3) * 8;
@@ -211,7 +221,7 @@ final class Controller implements Component {
                 }
                 if (f3 > 2) { illegal(t, ipc, ins); return; }
                 int width = 1 << f3;
-                if ((ea & (width - 1)) != 0) { busError(t, ipc, ins, ea, "misaligned store"); return; }
+                if ((ea & (width - 1)) != 0) throw new UndefinedBehavior(t, tile.idx, "controller", "a misaligned " + width + "-byte store to 0x" + Integer.toHexString(ea) + " at pc 0x" + Integer.toHexString(ipc));
                 int sh = (ea & 3) * 8;
                 int mask = (f3 == 2 ? -1 : f3 == 1 ? 0xFFFF : 0xFF) << sh;
                 String err = store(t, ea, b << sh, mask);

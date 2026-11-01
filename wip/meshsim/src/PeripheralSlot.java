@@ -139,8 +139,8 @@ final class PeripheralSlot implements Peripheral.Host {
         void start(long t) {
             Peripheral pp = p[n];
             int qq = Registers.DH_QUEUE.get(hdr);
-            if (busy) { ignored++; violate(t, "PULSE_DMA while peripheral " + n + "'s DMA is in progress: ignored (4.17.9)"); return; }
-            if (qq >= pp.outputQueues()) { ignored++; violate(t, "PULSE_DMA naming output queue " + qq + ", which peripheral " + n + " doesn't have: ignored (4.17.9)"); return; }
+            if (busy) throw new UndefinedBehavior(t, tile.idx, "peripheral " + n + "'s DMA", "PULSE_DMA while a transfer is in progress (4.17.9; v1.2 ignored it; DECISIONS-v1.25 s8e)");
+            if (qq >= pp.outputQueues()) throw new UndefinedBehavior(t, tile.idx, "peripheral " + n + "'s DMA", "a transfer naming output queue " + qq + ", which the peripheral doesn't have (4.17.9; v1.2 ignored it; DECISIONS-v1.25 s8e)");
             q = qq; left = Registers.DH_COUNT.get(hdr); have = 0; busy = true; startedAt = t; transfers++;
             if (left > 0) pp.outStart(t, q, left);
         }

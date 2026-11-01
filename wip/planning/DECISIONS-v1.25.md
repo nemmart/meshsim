@@ -52,6 +52,8 @@ Decided (O).
 
 ## 4. The expansion word's new bits, and the tables (2026-11-01)
 
+*(The Tracer-only fields here, `untraced` and `advice_reg`, are reserved by section 9.)*
+
 Decided (O). From WORKER9's part-2 plan (`sessions/WORKER9-PLAN-PART2.md`).
 
 - **`offset_imm`** (WORKER9's proposal, spare bit [63]): when set, the row's `shift_offset` is the source instruction's
@@ -77,6 +79,8 @@ Decided (O). From WORKER9's part-2 plan (`sessions/WORKER9-PLAN-PART2.md`).
   prologue and epilogue, for C&C 3 to generate (v1.3 section 10).
 
 ## 5. Universal tables, and the expansion word's last bits (2026-11-01)
+
+*(The Tracer-only fields here, `untraced` and `advice_reg`, are reserved by section 9.)*
 
 Decided (O). From WORKER9's first delivery of the replayer's tables and its Q5-Q7.
 
@@ -196,6 +200,30 @@ set stays the image's handler's (recipe 24, in program memory). C&C 1's firmware
 its ROM; **how C&C 1 tells it from the image's 24** (for example, distinct sequence numbers) is for WORKER10 to propose in the
 spec and WORKER14 to follow.
 
+**e. More outcomes become UB under a's test** (owner, 2026-11-01, from WORKER10's Q8-Q13; spec `d590722`):
+- the replayer's **bad write** (an unmapped offset, a wrong size, a single-ported memory written during a pass), and generally a
+  write a peripheral refuses (4.17.5); the replayer's `ERRORS` [0] is reserved;
+- **reserved digit values** 5-7 (no longer "treated as 0") and **stream or group numbers past the table's end** (no longer wrap) (8.5);
+- **reserved modes 6-7** (3.1, 4.8);
+- the misuses the hardware "ignored": a start while its engine runs, `PULSE_RUN` during a run, `PULSE_DMA` during a transfer, a
+  transfer naming a missing output queue.
+
+**Stays checked:** the replayer's **queue overrun** (it depends on the controller's credit loop under real timing); the spec no
+longer promises that the dropped push is still counted. **For Tony:** whether that count comes free in the RTL; Q12, whether
+reserved words "read 0, ignore stores" is free (kept only if so). Item 142 (mode 3 at 128 bits, the region decode) stays open.
+
+## 9. The expansion word's tracer-only fields become reserved (2026-11-01)
+
+Decided (O), following DECISIONS-v1.3 section 13 (advice comes from the host in the read log, so the Tracer has no untraced rows).
+Revises section 5's `advice_reg` and spec item 105.
+- `untraced` [55] and `advice_reg` [61:56] are **reserved**: the Tracer's templates become the replayer's, and nothing sets them.
+- The "untraced word reaching a replayer" invalid expansion (4.19.11) goes; a word with a reserved bit set comes from our own
+  table builder, so under 8a it is **UB** (meshsim stops).
+- Section 5's Q6 (`seq_remaining` and the controller-fed length count traced words only): with no untraced words, "traced words"
+  and "every word" are the same; the spec can drop the qualifier.
+- Work: the spec (WORKER10), meshsim and the table builder (WORKER11, after s8 merges); the guide is closed, so the integrator adds
+  its entry.
+
 ---
 
 ## Definition of done (owner, 2026-11-01)
@@ -243,3 +271,4 @@ file for what changed between them.
 | W3 | **The change guide to v1.25, from v1.1 and from v1.2** (`wip/spec/CHANGES-to-v1.25.md`), for the RTL | owner | WORKER13 |
 | W4 | **The replayer recipe** (26) and its `template_lookup` for the normalized key | owner | done (WORKER11, on `v1.25-meshsim`): keyed lookup, the book regenerated, the key cross-checked against the Java model on 20,000 words |
 | W5 | **Section 8's package**: the principle, misalignment as UB, the gather unit, the 256-byte boot ROM | owner and Tony | spec WORKER10; meshsim, software, sort WORKER11; C&C firmware WORKER14; guide WORKER13 |
+| W6 | **Section 9**: the expansion word's tracer-only fields reserved | owner | spec WORKER10; meshsim WORKER11 after s8; guide entry integrator |

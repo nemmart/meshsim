@@ -67,7 +67,7 @@ final class ReplayWindow {
         W imm0pc0() { lo |= 1L << 52; return this; }
         W reportC() { lo |= 1L << 53; return this; }
         W fromLog() { lo |= 1L << 54; return this; }
-        W untraced() { lo |= 1L << 55; return this; }
+        W reserved(int bit) { lo |= 1L << bit; return this; }   // v1.25 s9: [61:55] reserved (untraced, advice_reg gone)
         W sign() { lo |= 1L << 62; return this; }               // v1.25: sign_imm
         W offImm() { lo |= 1L << 63; return this; }             // v1.25: offset_imm
         W cnst(long c) { hi = c; return this; }

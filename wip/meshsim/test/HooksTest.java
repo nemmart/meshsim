@@ -55,7 +55,7 @@ public final class HooksTest {
         store(n, p, Registers.REG_BASE + 0x14, 1);
         T.eq(v0 + 1, p.ctl.violations, "a store to 0x814 (reserved; PULSE_GO moved to C&C 1's peripheral) is flagged");
         T.eq(0, (int) load(n, p, Registers.REG_BASE + 0x14), "and the word reads 0");
-        // PULSE_DMA starts the run and clears EVENTS [10]; a start while running is ignored (flagged)
+        // PULSE_DMA starts the run and clears EVENTS [10]; a start while running is UB (v1.25)
         p.setMasterConfig(Fields.masterConfig(Fields.RUN_STREAMS, 0, 0, 0, 0, 1));
         store(n, p, Registers.PULSE_DMA.addr(), 1);
         n.c.run(10);
@@ -68,13 +68,14 @@ public final class HooksTest {
         store(n, p, Registers.PULSE_DMA.addr(), 1);
         T.eq(0, load(n, p, Registers.EVENTS_PEEK.addr()) & rd, "PULSE_DMA cleared [10]");
         n.c.run(10);
-        long started = p.ag.startedAt; long v1 = n.c.violations;
-        store(n, p, Registers.PULSE_DMA.addr(), 1); n.c.run(2);
-        T.eq(started, p.ag.startedAt, "PULSE_DMA while the run runs: ignored");
-        T.check(n.c.violations > v1, "and flagged");
         n.c.runUntil(() -> p.ag.done && p.dir.remaining[1] == 0, 5000);
-        T.eq(0, p.ctl.conditions, "an ignored pulse sets no error (4.13)");
+        T.eq(0, p.ctl.conditions, "no error");
         T.eq(0, (int) load(n, p, Registers.PULSE_DMA.addr()), "PULSE_DMA reads 0");
+        // v1.25 (DECISIONS-v1.25 s8e): PULSE_DMA while the run runs is undefined behavior (v1.2 ignored it): meshsim stops
+        p.dir.remaining[1] = 400;
+        store(n, p, Registers.PULSE_DMA.addr(), 1); n.c.run(10);
+        store(n, p, Registers.PULSE_DMA.addr(), 1);
+        T.ub(() -> n.c.run(2), "PULSE_DMA while the run runs", "tile " + p.idx, "address generator", "a start while a run is running");
     }
 
     // ================================================================ the map and the bus errors (8.1, 4.11)

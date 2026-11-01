@@ -8,11 +8,12 @@ For the RTL engineer of the mesh. This guide covers two upgrade paths to **v1.25
 It is organized **by hardware unit**. Each unit's section lists everything that changed in that unit since v1.1, and where v1.25 revised a v1.2 change, it gives the final state.
 
 **Sources.**
-- **The authority is `spec/machine-spec.md` v1.25** (with `spec/replayer-opcodes.md`). This guide matches **spec commit `c2de4ae`** (2026-11-01: `wip/spec/machine-spec.md`, `replayer-opcodes.md` and `CHANGES-v1.25.md` as of that commit, with CL1, CL2 and CL5 in). A later spec change to the hardware needs an entry here.
+- **The authority is `spec/machine-spec.md` v1.25** (with `spec/replayer-opcodes.md`). This guide matches **spec commit `d590722`** (2026-11-01: `wip/spec/machine-spec.md`, `replayer-opcodes.md` and `CHANGES-v1.25.md` as of that commit, with CL1, CL2, CL5, CL6 and DECISIONS-v1.25 section 8 in). A later spec change to the hardware needs an entry here.
 - It folds together `CHANGES-v1.2.md` (v1.1 → v1.2) and `CHANGES-v1.25.md` (v1.2 → v1.25).
 - It was checked against all three specs (`v1.1/`, `v1.2/`, `wip/`).
 - It cites `v1.2/ERRATA.md` (**E*n***) where an entry corrects frozen v1.2's text.
 - It folds in the cleanups of `planning/CLEANUP.md` (**CL*n***), each with its step.
+- It folds in section 8's package of `DECISIONS-v1.25.md` (**V8a**–**V8e**): the principle, misalignment as UB, the gather unit, the 256-byte boot ROM, and further outcomes made UB.
 - It adds the differences neither change document lists. These are marked **[not in CHANGES]**, and section 5 collects them.
 - Decisions are cited as **D*n*** (`planning/DECISIONS-v1.2.md` section *n*), **V*n*** (`planning/DECISIONS-v1.25.md` section *n*), **O** (an owner's ruling) and **W*n*-*nn*** (a review finding).
 
@@ -49,15 +50,21 @@ Everything else marked **v1.25** or **both** still applies.
 
 **Names.** Registers are written with their v1.25 names, and their v1.1 names alongside wherever they differ. Bit positions are [*hi*:*lo*]. Addresses are v1.25's 32-bit byte addresses unless marked "v1.1".
 
-**Who checks what** (v1.25 front matter; D27). The hardware checks only what is cheap and catches a bug far from its cause:
-- overflows;
-- unexpected arrival;
-- done early;
-- drift;
-- alignment;
-- the region decode.
+**How the hardware treats software bugs** (v1.25 front matter; **V8a**, replacing v1.2's "Who checks what", D27). All the firmware is ours and runs in meshsim and in full RTL simulation before it runs on hardware, so every rule a program must keep is one of two kinds:
+- **Checked by the hardware** — marked **(hardware)** in this guide. A broken rule raises an `ERRORS` bit. This is only for what simulation can't see: hardware faults, overflows, unexpected arrival, done early, drift, and the queue overrun of the replayer. Since every error is terminal, **what happens to the offending access is unspecified** unless it comes free.
+- **Undefined behaviour (UB)** — marked **(meshsim)**. The hardware does **nothing special**, and the outcome is unspecified. meshsim stops with an error, and the RTL may carry simulation-only assertions, which cost no area *(for Tony to confirm)*.
 
-Every other rule in the spec is a **meshsim** check, which the hardware ignores. v1.1 mixed the two. This guide marks hardware checks **(hardware)**.
+There is no third kind: **never a prescribed outcome for a mistake** (a substitute value, a dropped write still counted).
+
+**For the RTL this is a simplification.** v1.2 built several such outcomes into the hardware, and v1.25 removes them:
+- the alignment checks and the payload-0 read (V8b);
+- "dropped but still counted" writes;
+- the replayer's bad-write error;
+- reserved digits treated as 0, and table numbers that wrap;
+- the silent discard of modes 6–7;
+- "ignored" starts and pulses (V8e).
+
+Each is an entry below, marked **[UB at v1.25]**.
 
 ---
 
@@ -86,17 +93,18 @@ Every other rule in the spec is a **meshsim** check, which the hardware ignores.
    - 3, augmented;
    - 4, gather request;
    - **5, count only**, which writes nothing.
-   Modes 6–7 are discarded silently.
+   Modes 6–7 are reserved, and using them is UB.
 4. **Seven write counters, named by the packet**, decremented **K cycles after the traffic director accepts it** (K a parameter, default 8, set by the implementation). Counting no longer depends on the mode or the source.
-5. **Natural alignment everywhere, checked in hardware.** Spanning accesses are gone. A misaligned packet is dropped, and a misaligned read sends a payload of 0. Both set `ERRORS` [1].
+5. **Natural alignment everywhere; a misaligned access is UB** (V8b). Spanning accesses are gone, and the hardware does nothing special about misalignment, so there is nothing to build for it. Only a misaligned jump target traps. `ERRORS` [1] is "bad packet", the region decode only *(item 142: whether it stays)*.
 6. **The controller block is new**: every offset moved. It starts as every peripheral's window does: `PARAMS`, `STATUS`, `ERRORS`, the pulses (one register per action) and the events (`EVENTS`, `EVENTS_PEEK`, `EVENTS_MASK`, `EVENTS_REQUIRED`). The send port takes a 32-bit `ROUTER_ADDR` and a `ROUTER_HDR` with a no-increment bit.
-7. **The core takes traps.** It has the CSR instructions, the machine-mode trap CSRs, `mcycle` and `mtime`. Every error raises a level hard interrupt, and every trap is terminal: the handler sends 24 fixed reports to C&C 1 and parks.
-8. **There is no HALT state.** Each unit has an **error line** into C&C 1. Any error latches the chip's **toast pin**, and the outside world applies a **hard or soft reset**. Every unit then starts in its **boot ROM** at 0x02000000.
+7. **The core takes traps.** It has the CSR instructions, the machine-mode trap CSRs, `mcycle` and `mtime`. Every error raises a level hard interrupt, and every trap is terminal. The image's handler sends 24 fixed reports to C&C 1 and parks; the boot ROM's handler sends a two-report dump (sequence numbers 24 and 25).
+8. **There is no HALT state.** Each unit has an **error line** into C&C 1. Any error latches the chip's **toast pin**, and the outside world applies a **hard or soft reset**. Every unit then starts in its **256-byte boot ROM** at 0x02000000.
 9. **Controller memories are 32 KB data + 32 KB program.** Program memory is loadable but not storable. The command block sits at 0x00007FC0 and the reply block at 0x00007BC0. Port B takes one 128-bit write per cycle.
 10. **Peripherals:** up to three per unit. Each has a region (0x04–0x06), a 0x200-byte standard window, counted (depth 1 or 2) or live events, its own `ERRORS`, and optionally a DMA on a router port of its own. The replayer is peripheral 1, **type 4** (was 1). Its queue low-water lines are now **counted credits**.
 11. **Three controllers, C&C 1–3, at endpoints 64–66**, on tiles 0–2's fifth ports. Each is a tile instance with 2 MB of big SRAM, and its engine is its peripheral. Every chip-level register (READY, GO, error lines, watchdog, LED, UART) is in **C&C 1's peripheral**.
 12. **The request bus** keeps its tree, but the receive queues are at the root (128/256/128 entries for C&C 1/2/3). Tiles have no receive queue, and every request names its own reply address and its counters.
-13. **The replayer matches jolt-cpp `821e1bd`** (v1.25's step):
+13. **The GATHER engine copies 128 bits at a time when *k* is even** (V8c, v1.25). It sends *k*/2 128-bit packets per value, and the counter counts packets per value.
+14. **The replayer matches jolt-cpp `821e1bd`** (v1.25's step):
     - six new memory row opcodes;
     - opcodes renumbered (61 change);
     - `offset_imm` and `sign_imm` in the expansion word;
@@ -106,7 +114,7 @@ Every other rule in the spec is a **meshsim** check, which the hardware ignores.
 
 ### 1.2 From v1.2: what v1.25 changed
 
-Only the replayer (spec 4.19) and what follows from it: the front matter, invariant 16, the replayer's parameter row and section 13. Everything else is v1.2's. The **v1.25** and **both** entries, in brief:
+The replayer (spec 4.19) and what follows from it, **and section 8's package** (V8a–V8e), which reaches across the tile. Outside these, everything is v1.2's. The **v1.25** and **both** entries, in brief:
 - **The reference is jolt-cpp `821e1bd`** (4.19.1).
 - **The row opcodes are renumbered:** v1.2's 0–109 are unchanged, 110–111 move by +6, 114–153 by +4 and 155–167 by +3. 61 row opcodes change, and the ALU decodes the new numbers (4.19.7; appendix 2.0).
 - **Six new opcodes,** `VirtualLoadB/H/W` (110–112) and `VirtualStoreB/H/W` (113–115). These are class L memory rows: load rows take the read log, store rows the write log. Their address is rounded to the doubleword.
@@ -120,6 +128,20 @@ Only the replayer (spec 4.19) and what follows from it: the front matter, invari
 - **Write-log E[15] is updated by every load row** (4.19.15).
 - **The replayer's queue ports get one 1 MB part each** (CL1, 4.19.10): the write-log port moves from 0x280000 to **0x300000** (part 3), and the expansion port from 0x300000 to **0x400000** (part 4). Offset bits [22:20] alone now pick the destination; parts 5–7 are unmapped.
 - **The decode table** gets an implementation note (CL2): it is built naturally as 256 × 128. This is a note, not a requirement.
+- **The principle** (V8a): every rule is either checked by the hardware or UB, never a prescribed outcome for a mistake (section 0).
+- **Misalignment is UB** (V8b, a simplification). The checks are gone at the director (L7), at the write engine's `PTR` (T28), on every engine read with its payload 0 (T2, T12, T18), on the controller's loads and stores (C9) and on the replayer's part-0 writes (R4). A misaligned jump target still traps.
+- **The GATHER engine** (V8c, T19): when *k* is even it does *k*/2 128-bit reads and packets per value, with `PTR[me]` advancing by 4. Its buffers are 128-bit aligned, and counters arm *n* × packets per value.
+- **The boot ROM is 256 bytes** (V8d, K7). Its handler sends a two-report dump, reports 24 and 25, in place of the image's 24; the first report's sequence number tells C&C 1 which set is coming (C33).
+- **More UB** (V8e):
+  - the replayer's bad write, with `ERRORS` [0] reserved (R4);
+  - a write a peripheral refuses (P8);
+  - reserved digits 5–7 (T44);
+  - stream or group numbers past the table's end (T45);
+  - modes 6–7 (L5);
+  - a start or pulse while busy, and a transfer naming a missing output queue (C39).
+
+  **The replayer's queue overrun stays checked**, but the spec no longer promises the dropped push is counted (R10).
+- **A controller's relative *d*** counts from its tile (CL6, T46). This is a clarification with no behaviour change.
 - **The tables are universal.** Decode class 2 means CSRRW/CSRRS only, and an unused entry is class 3 (invalid). The ROM holds 388 of 512 words, with ECALL, EBREAK and MRET now in the ROM. Controller-fed templates are found by a normalized key (software).
 
 ### 1.3 Removed outright (plan the deletions)
@@ -150,6 +172,7 @@ All removed at step **v1.2** unless marked otherwise.
 | `PTR[64]` as C&C's staging pointer | 4.9, 6.2 | staging by address into region 0x03 |
 | write tokens and mode-3 write streams to C&C | 6.7 | writes by tags *(Deferred, item 119)* |
 | the replayer's occupancy/pending low-water lines and claim rule (items 50, 51) | 4.19.8 | counted credits |
+| **step v1.25 (V8b, V8e):** v1.2's hardware outcomes for mistakes. These are the alignment checks (bad packet, dropped-but-counted `PTR` write, payload-0 read, misaligned bus error, the replayer's misaligned part-0 write); the "dropped, still counted, error" rule for a write a peripheral refuses; the replayer's bad-write error (`ERRORS` [0], now reserved); digits 5–7 treated as 0; table numbers wrapping; the silent discard of modes 6–7; ignored starts and pulses; and the overrun's "still counted" | v1.2 3.1, 4.1–4.3, 4.9, 4.11, 4.17, 4.19, 8.5 | UB (the hardware does nothing special) |
 | `VirtualAlignAddr`, the two alignment assertions; the contiguous-mask narrowing of PEXT; per-program tables; "unused entries are controller class"; the exact-word template key; `VirtualHostIO`'s remap; EBREAK, ECALL and MRET as controller-fed | 4.19 | **step v1.25** (2.6) |
 
 ### 1.4 Entirely new (plan the additions)
@@ -175,6 +198,9 @@ All new at step **v1.2** unless marked otherwise.
 | receive queues at the root of the request tree; per-tile request limits | 3.3 |
 | broadcast streams (*d* = 126) | 4.2 |
 | the simulator-only exit and trace words | 8.15 |
+| the principle: checked by the hardware or UB (**step v1.25**) | front matter |
+| the GATHER engine's 128-bit path for even *k* (**step v1.25**) | 4.4 |
+| the boot ROM's two-report dump, sequence numbers 24 and 25 (**step v1.25**) | 4.13, 6.2 |
 | `offset_imm`, `sign_imm`, `imm_signed`; `VirtualLoadB/H/W`, `VirtualStoreB/H/W`; the normalized template key | **step v1.25**: 4.19.3, 4.19.7, 4.19.9, 4.19.12 |
 
 ---
@@ -191,9 +217,9 @@ Each table lists the unit's changes in v1.25 spec order. The columns are: **v1.1
 | L2 | — | **link [167:160] = header register [24:17]**: size, counter and mode copied as one 8-bit block from `STREAM_COUNT`, `ROUTER_HDR`, `DMA_HDR` (3.1, 8.1) | new | v1.2 | one header layout; D12 |
 | L3 | modes: 0 invalid, 1 gather request, 2 by source, 3 explicit big-SRAM address, 4 bucket, 5 augmented, 6 CM write, 7 command, 8 reply, 9 peripheral write, 10–15 reserved | **0 write at address** (any reachable region: data/program memory via port B, big SRAM, a peripheral), **1 by source** (was 2), **2 bucket** (was 4), **3 augmented** (was 5), **4 gather request** (was 1), **5 count only**, 6–7 reserved (3.1). There is no invalid code: an all-zero header is a valid uncounted mode-0 write to 0x00000000 | changed | v1.2 | the region says where a write lands and the counter field does the counting, so the mode keeps only what the receiver does differently; D6; count only D43 |
 | L4 | — | **mode 5, count only**: writes nothing; size, payload and address ignored; decrements its counter at the destination like a write; from a stream the source is read and the payload discarded; to the tile itself it takes a read token; with counter 0 it does nothing (3.1, 4.5, 4.8) | new | v1.2 | the fence (a count-only packet to self ends a run) and "done" signals between tiles; D43 |
-| L5 | modes 10–15 and 0: bad packets (dropped, condition) | **modes 6–7 are discarded at the destination with no write, no decrement and no error**, whatever their counter field (3.1, 4.8) | changed | v1.2 | D6, D32 |
+| L5 | modes 10–15 and 0: bad packets (dropped, condition) | **modes 6–7 are UB** **[UB at v1.25]**: the hardware does nothing special (3.1, 4.8, invariant 21). *v1.2:* discarded at the destination with no write, no decrement and no error | changed | both | v1.2: D6, D32; v1.25: V8e (Q11) |
 | L6 | counting by mode into four named counters; command and gather request never counted; in HALT nothing counted | **the packet names its counter**: counter field 1–7 = `WRITE_COUNTER_1`–`7`, 0 uncounted; modes 0–3 and 5 counted by the field; a gather request never (its field is passed to its gather values); decrement **K cycles after the director accepts the packet** (3.1, 4.8, 4.12) | changed | v1.2 | counting independent of mode and source; D3, D30, D40 (seven) |
-| L7 | bad packets: mode 0, 10–15; mode 5 at 128; mode 3 misaligned; mode 7 at 64/128; mode 8 at 128; condition "bad mode or size" | **bad packet** (hardware: dropped uncounted, `ERRORS` [1]): a 64/128-bit mode-0 packet not naturally aligned, in any region; mode 0 to region 0x02, 0x07–0xFE, 0xFF or an absent peripheral's region; mode 3 at 128 bits. Modes 1–5 ignore the address, region included. Size 11 and out-of-bounds offsets are undefined, not checked (3.1) | changed | v1.2 | only the cheap checks: alignment and region decode; D26, D32 |
+| L7 | bad packets: mode 0, 10–15; mode 5 at 128; mode 3 misaligned; mode 7 at 64/128; mode 8 at 128; condition "bad mode or size" | **bad packet** (hardware: dropped, `ERRORS` [1] "bad packet"): a mode-0 packet to region 0x02, 0x07–0xFE, 0xFF or an absent peripheral's region; mode 3 at 128 bits *(item 142: whether this check stays under V8a, open for the owner and Tony)*. **A packet misaligned to its size is UB** **[UB at v1.25]**. Modes 1–5 ignore the address, region included. Size 11 and out-of-bounds offsets are UB (3.1). *v1.2:* also a bad packet when a 64/128-bit mode-0 packet was misaligned, in any region | changed | both | v1.2: D26, D32; v1.25: V8b |
 | L8 | write to the absent peripheral (type 0): a bad peripheral write, **counted** in `DMA_PERIPH_REMAINING` | a bad packet, **uncounted** (3.1, 4.17.1) **[not in CHANGES]** | changed | v1.2 | follows from L7: the region decode drops it at the director; D9, D32 |
 | L9 | mode-1 ordinal: the mode table says [63:32], the fixed-payload paragraph and 4.4 say [51:32] (v1.1 inconsistent) | gather request's ordinal is **[51:32]**, sent at 64 bits (3.1, 4.4) **[not in CHANGES]** | changed | v1.2 | v1.1's two statements reconciled |
 | L10 | padding stages 169 flops per stage per link direction | 256 (3.2) | changed | v1.2 | L1; D2 |
@@ -237,7 +263,7 @@ Each table lists the unit's changes in v1.25 spec order. The columns are: **v1.1
 | ID | v1.1 | v1.25 (section) | kind | step | why |
 |---|---|---|---|---|---|
 | T1 | any chunk alignment; a 64/128-bit access crossing a row **spans** two rows: one request and one token, but two area accesses (part 1 ahead of every client); the client's next request waits; group runs "should" be row-aligned | **every 64/128-bit access naturally aligned**; no access straddles a row; every access is one request, one token, one area access (4.1) | changed | v1.2 | D26 |
-| T2 | (n/a) | **misaligned access (hardware):** a mode-0 packet → bad packet; a write through a misaligned `PTR` → dropped by the write engine, **still counted**, `ERRORS` [1]; a misaligned read by the address generator, GATHER engine or read port → **not performed, its packet sent as usual with payload 0** (so the receiver still counts it), `ERRORS` [1] at the issuing tile (4.1) | new | v1.2 | nothing hangs and the error names the tile; D32 |
+| T2 | (n/a) | **a misaligned access is UB** **[UB at v1.25]**: a misaligned packet, a write through a misaligned `PTR`, and a misaligned read by the address generator, the GATHER engine or the read port. The hardware does nothing special, and meshsim stops (4.1). **A simplification: no alignment checks to build.** *v1.2:* hardware checks: a misaligned packet was a bad packet; a misaligned-`PTR` write was dropped, still counted, with [1]; a misaligned read was not performed, its packet sent with payload 0, with [1] at the issuing tile | new | both | v1.2: D32; v1.25: V8b |
 | T3 | wrap mod 2²¹; above the device: reads 0, writes dropped; no condition | undefined; no error bit (4.1) | changed | v1.2 | A5 |
 | T4 | `mem_idle` status bit; phase ordering by `mem_idle` + counters | `mem_idle` gone; ordering by K: when a write's counter decrements it has entered its area's queue, so a later read queues behind it (4.1) | removed / changed | v1.2 | D18, D3 |
 | T5 | write-engine input overflow: condition 4 | `ERRORS` [4] (4.1) | renamed | v1.2 | D18 |
@@ -252,7 +278,7 @@ Each table lists the unit's changes in v1.25 spec order. The columns are: **v1.1
 | T9 | `STREAM_DEST`: destination word [20:0] (modes 3, 6, 9), *d* [27:21] | **destination byte address [31:0], mode 0 only**, aligned to the read size, advancing by 4, 8 or 16 bytes per element (4.2) | changed | v1.2 | D4 |
 | T10 | `STREAM_COUNT`: count [17:0] (18 bits), mode [21:18], read size [23:22], gap after [26:24] | **count [16:0] (17 bits, ≤ 131,071)**, read size [18:17], **counter [21:19]**, mode [24:22], ***d* [31:25]** (the common header layout, relative *d*) (4.2, 8.1) | changed | v1.2 | D4, D12, D30 |
 | T11 | *d*: 0–63 relative, 64 C&C (mode 3 only), 65–127 invalid; never broadcast | *d* 0–63 relative, **64–66 the controllers**, **126 the broadcast** (hardware: no special case; its own copy takes a token), 67–125 and 127 invalid. By convention only the controllers broadcast from streams; meshsim errors on a mesh tile (4.2) | changed | v1.2 | boot overlays at a packet per cycle; D25, D41 (F14) |
-| T12 | element and destination addresses wrap mod 2²¹; destination word +1, +2 or +4 for modes 3, 6, 9 | plain addition, no wrap (past the end is a software bug); a misaligned element is not read, payload 0, `ERRORS` [1] (4.2) | changed | v1.2 | D26, D32 |
+| T12 | element and destination addresses wrap mod 2²¹; destination word +1, +2 or +4 for modes 3, 6, 9 | plain addition, no wrap (past the end is a software bug); **a misaligned source or destination is UB** (4.2). *v1.2:* a misaligned element was not read, payload 0, `ERRORS` [1] | changed | both | v1.2: D26, D32; v1.25: V8b |
 | T13 | packet fields: dst, mode, addr (0 or destination word) | dst (*d* = 64–66 or 126 absolute), **mode and counter** from the entry, address = destination for mode 0, else 0 (4.2) | changed | v1.2 | L1 |
 | T14 | drift: condition 3 | `ERRORS` [3] (4.2) | renamed | v1.2 | D18 |
 
@@ -263,14 +289,14 @@ Each table lists the unit's changes in v1.25 spec order. The columns are: **v1.1
 | T15 | `SRAM_RD_DEST_ADDR` **write-only**: destination [13:0] (a packed controller-memory word, any CM, program memory included), size [15:14] | **R/W** (0x880): destination [16:0], **a byte offset in data memory only** (region 0x00); size [18:17]; **counter [21:19]**; [31:22] reserved; a load returns the next destination as advanced, with size and counter (4.3, 8.8) | changed | v1.2 | D13 |
 | T16 | results as mode-6 packets to self, counted in `DMA_CM_REMAINING` | **mode-0 packets to self** at 0x00000000 + destination, counted on the entry's counter at K (4.3) | changed | v1.2 | D6, D13 |
 | T17 | request-queue entry 37 bits (21 + 14 + 2) | **43 bits** (21-bit address, 17-bit destination, 2-bit size, 3-bit counter) (4.3, 10) **[not in CHANGES]** | changed | v1.2 | follows from T15 |
-| T18 | misaligned read: dropped, read-port error [7] | **performed as a payload-0 packet**, `ERRORS` [1]; [7] is now queue overflow only. A misaligned *destination* makes a misaligned mode-0 packet, a bad packet at the director (4.3) | changed | v1.2 | D32 |
+| T18 | misaligned read: dropped, read-port error [7] | **a misaligned read, destination or return is UB** (4.3, 4.5, 8.8); [7] is queue overflow only. *v1.2:* a misaligned read was performed as a payload-0 packet with `ERRORS` [1]; a misaligned destination was a bad packet at the director | changed | both | v1.2: D32; v1.25: V8b |
 
 **GATHER engine (4.4)**
 
 | ID | v1.1 | v1.25 (section) | kind | step | why |
 |---|---|---|---|---|---|
-| T19 | gather request mode 1; gather values mode 2; queue entry = 20-bit ordinal | request **mode 4**, values **mode 1**; **the request's counter field is stored with the ordinal** (entry = 20-bit ordinal + 3-bit counter) and stamped on its gather values, which are counted at the director (guarantee C) (4.4) | changed | v1.2 | D6, D17 |
-| T20 | `DMA_RECORD_BASE_ADDRESS` any chunk; reads wrap mod 2²¹ | **aligned to a record** (even); an odd base makes each read payload 0 and sets `ERRORS` [1] (4.4) | changed | v1.2 | D32 |
+| T19 | gather request mode 1; values mode 2; queue entry = 20-bit ordinal; *k* 64-bit reads and packets per value | request **mode 4**, values **mode 1**; **the request's counter field is stored with the ordinal** (entry = 20-bit ordinal + 3-bit counter) and stamped on its gather value packets. **Copies by *k*** (`DMA_CONFIG` [26:24], no new field) (4.4): ***k* odd**, *k* 64-bit reads at base + 2*k*·ordinal + 2*i*, *k* 64-bit packets; ***k* even**, ***k*/2 128-bit reads at base + 2*k*·ordinal + 4*i*, sent as *k*/2 128-bit mode-1 packets**, `PTR[me]` advancing by 4 per packet (2 per 64-bit one). **One decrement per gather value packet**, so a gather of *n* values arms *n* × packets per value (*k* odd: *k*; even: *k*/2). This is not purely additive for even *k*. The rate is about (packets per value + 1) cycles per value, about 2 at *k* = 2 (was 3). *v1.2:* the counter field and modes as above, but always *k* 64-bit reads and packets | changed | both | v1.2: D6, D17; v1.25: **V8c** (closes item 16) |
+| T20 | `DMA_RECORD_BASE_ADDRESS` any chunk; reads wrap mod 2²¹ | in a gather run, **128-bit aligned (a multiple of 4 chunks), whatever *k* is**, and so is the destination `PTR[me]`; misalignment is UB (4.4, 8.7). *v1.2:* record-aligned (even), an odd base made each read payload 0 and set [1] | changed | both | v1.2: D32; v1.25: V8b, V8c |
 | T21 | GATHER busy `TILE_STATUS` [2]; overflow condition 6 | `STATUS` [2]; `ERRORS` [6] (4.4) | renamed | v1.2 | D18 |
 
 **SRAM read queue, return path and injection (4.5)** — see also L15–L17.
@@ -278,7 +304,7 @@ Each table lists the unit's changes in v1.25 spec order. The columns are: **v1.1
 | ID | v1.1 | v1.25 (section) | kind | step | why |
 |---|---|---|---|---|---|
 | T22 | chunk selection from one or two rows (spanning) | from the one returned row (4.5) | changed | v1.2 | T1 |
-| T23 | out-of-range read returns payload 0 | misaligned read returns payload 0; out of range undefined (4.5) | changed | v1.2 | T2, T3 |
+| T23 | out-of-range read returns payload 0 | out of range and misaligned reads are UB (4.5). *v1.2:* a misaligned read returned payload 0 | changed | both | T2, T3; V8b |
 | T24 | SRAM write queue: modes 2–5 | mode 0 to region 0x03 and modes 1–3 (4.5) | changed | v1.2 | L3 |
 
 **DMA write engine (4.9)**
@@ -288,8 +314,8 @@ Each table lists the unit's changes in v1.25 spec order. The columns are: **v1.1
 | T25 | modes 2 (`PTR[src]`), 4 (`PTR[digit]`), 5 (augmented) and 3 (explicit chunk address, never counted) | **mode 1** (`PTR[src]`), **2** (`PTR[digit]`), **3** (augmented) and **mode 0** at byte offset / 4 (counted by its field) (4.9) | changed | v1.2 | D6 |
 | T26 | `PTR[src]` index 0–64 | 0–66 (controllers' ids) (4.9) | changed | v1.2 | D25 |
 | T27 | `PTR[64]`: C&C's staging pointer, re-set after mode-4 phases | not special (4.9) | removed | v1.2 | staging by address; D17 |
-| T28 | spanning writes split into two area accesses | a `PTR` must be aligned to the size of the writes through it (an augmented one to a record); **a write through a misaligned `PTR` is dropped but counted, sets `ERRORS` [1], and the pointer still advances by the size** (4.9) | changed | v1.2 | D32; the advance: item 133 (accepted 2026-10-29) **[advance not in CHANGES]** |
-| T29 | explicit-address write misaligned: bad packet | alignment checked at the director (L7) (4.9) | changed | v1.2 | D32 |
+| T28 | spanning writes split into two area accesses | a `PTR` must be aligned to the size of the writes through it (an augmented one to a record); **a write through a misaligned `PTR` is UB** (4.9). *v1.2:* dropped but counted, `ERRORS` [1], and the pointer still advanced by the size (item 133) | changed | both | v1.2: D32; v1.25: V8b |
+| T29 | explicit-address write misaligned: bad packet | a misaligned mode 0 is UB; a value's packets are *k* 64-bit or *k*/2 128-bit (4.9). *v1.2:* alignment checked at the director (bad packet) | changed | both | v1.2: D32; v1.25: V8b, V8c |
 | T30 | input FIFO overflow condition 4 | `ERRORS` [4] (4.9) | renamed | v1.2 | D18 |
 
 **Table memories (4.10)**
@@ -316,6 +342,9 @@ Each table lists the unit's changes in v1.25 spec order. The columns are: **v1.1
 | T38 | receive side reads the tile's own 16-entry queue | reads its **target's queue in the tree** (C&C 1–3 only); on tiles 0–63 the `GET` words read 0, request pending never rises and every `REQUEST_RECEIVE` load is a receive underflow (4.18) | changed | v1.2 | D38 |
 | T39 | `request_busy` `TILE_STATUS` [11]; FIFO-not-full `WAKE_EVENTS` [12]; `REQUEST_PENDING` [19]; underflow condition 14 | `STATUS` [6]; `EVENTS` [11]; request pending `EVENTS` [12] (live); `ERRORS` [14] (4.18) | renamed | v1.2 | D16, D18, D40 |
 | T40 | HALT keeps the receive queue; requests arrive while credits last | the reset empties every FIFO, the tree and the queues together and restores the credits; after an error the port keeps running (the handler's reports use it) (4.18) | changed | v1.2 | D23 |
+| T44 | `DMA_CONFIG` bucket and histogram digits 5–7: reserved, **treated as 0** (meshsim flags) | **UB** **[UB at v1.25]** (8.5) | changed | v1.25 | V8e (Q9) |
+| T45 | stream or group numbers past the table's end **wrap within the table** (meshsim flags) | **UB** **[UB at v1.25]**; the wrap is no longer promised (8.5) | changed | v1.25 | V8e (Q10) |
+| T46 | (v1.1 *d* = 64 only from a mode-3 stream to C&C; relative *d* on C&C undefined) | **a controller's relative *d*** counts from its tile *c*: on C&C *n* (endpoint 64 + *c*, *c* = *n* − 1), *d* = 0 is tile *c*, not itself; a controller copying into its own memories names itself absolutely, *d* = 64 + *c* (4.2). A clarification: meshsim always did this. **No behaviour change**, but the RTL's relative-*d* adder on a controller must use its tile id | clarified | v1.25 | **CL6** (W14-05) |
 
 ### 2.4 The controller and its registers (spec 4.11–4.13, 8.1–8.10, 8.15)
 
@@ -333,7 +362,7 @@ Register offsets, bit by bit, are in section 3. This section covers the behaviou
 | C6 | memory loads 1 cycle; register and table-window loads **1 or 2 cycles, the implementation's choice** (meshsim 2) | memories and boot ROM **1**; the table window **1**; **the register block and every peripheral window word 2**, fixed on every access and unit; the 32 KB memories meet one-cycle access at 1 GHz (4.11, 5, 8.1, 10) **[not in CHANGES-v1.2: D45; v1.2 errata E2, E3, E5, E10]** | changed | v1.2 | D45 (Tony, 2026-10-29); item 134 closed |
 | C7 | sampling rule: `WAKE_EVENTS`, `REQUEST_RECEIVE`, `UART_RX` side effects at *t* + *L* − 1 | the same rule for every word of every window; adds a peripheral's `EVENTS` (subtracts one count per masked set bit) (4.11) | changed | v1.2 | D14 |
 | C8 | stalling stores: the send port, the request FIFO, `UART_TX` on a wired tile | the send port, the request FIFO, the UART's TX word (C&C 1 only) (4.11) | changed | v1.2 | D28 |
-| C9 | bus errors: stores to instruction memory, misaligned, unmapped (0x8A0–0xFFC), sub-word to registers or tables, store to read-only, loads from `PTR`/`STREAM`/`GROUP`; **halt** | `ERRORS` [9] + trap: store to program memory or boot ROM; misaligned; unmapped (regions 0x03–0xFE, the unused parts of 0xFF, **any word of an absent peripheral's window**); sub-word to registers, windows or tables; store to read-only; loads from `PTR`/`STREAM`/`GROUP`. **Reserved words in the block and windows read 0 and ignore stores** (not bus errors). Out-of-bounds offsets in CM are not checked (they alias) (4.11, 8.1) | changed | v1.2 | D5, D9, D27 |
+| C9 | bus errors: stores to instruction memory, misaligned, unmapped (0x8A0–0xFFC), sub-word to registers or tables, store to read-only, loads from `PTR`/`STREAM`/`GROUP`; **halt** | `ERRORS` [9] + trap: store to program memory or boot ROM; unmapped (regions 0x03–0xFE, the unused parts of 0xFF, **any word of an absent peripheral's window**); sub-word to registers, windows or tables; store to read-only; loads from `PTR`/`STREAM`/`GROUP`. **A misaligned load or store is UB** **[UB at v1.25]**; **a misaligned jump target still traps**. Reserved words in the block and windows read 0 and ignore stores (not bus errors) *(Q12: kept only if free, for Tony)*. Out-of-bounds offsets in CM are not checked (they alias) (4.11, 8.1). *v1.2:* the same, but a misaligned access was a bus error | changed | both | v1.2: D5, D9, D27; v1.25: V8b |
 | C10 | packed 14-bit CM word addresses | byte addresses; port B decodes the region (4.11) | changed | v1.2 | D5 |
 | C11 | send port: `ROUTER_SET_HDR` (W): dst [6:0], mode [10:7], addr [31:11]; addr +1/+2/+4 for modes 3, 6, 9, +1 for mode 7 | **`ROUTER_HDR`** (R/W): **no-increment [0]**, spare [16:1], size [18:17] reserved (reads 0), **counter [21:19]**, mode [24:22], dst [31:25] (0–66, 126); **`ROUTER_ADDR`** (R/W, 32-bit), advancing by 4/8/16 bytes per mode-0 send unless no-increment; modes 1–5 leave it; **no-increment stays set until cleared** (4.11, 8.4) | changed | v1.2 | D7, D12, D37.5 |
 | C12 | resident loader at 0x1F00, where HALT → RUN starts | gone: the **boot ROM** (6.2) | removed | v1.2 | D22 |
@@ -363,11 +392,11 @@ Register offsets, bit by bit, are in section 3. This section covers the behaviou
 |---|---|---|---|---|---|
 | C27 | `TILE_STATUS`: live bits, peripheral type, endpoint id, SRAM size | split: **`PARAMS`** (constants: peripherals present [2:0], endpoint id [26:20] (0–66), SRAM size [31:27], 7 on C&C 1–3) and **`STATUS`** (live, diagnostic only: [0] `rd_running`, [1] `rd_done`, [2] GATHER busy, [3] `send_busy`, [4] `done`, [5] command landed, [6] `request_busy`) (4.13, 8.2) | changed | v1.2 | D18 |
 | C28 | `done` resets to 1 (forced to 1 in HALT) | **`done` resets to 0** (8.2) **[not in CHANGES]** | changed | v1.2 | no HALT; D23 |
-| C29 | `TILE_CONDITIONS` [14:0] | **`ERRORS`**, same numbers except: [1] "bad packet **or misaligned access**" (was bad mode or size); [7] read-port **overflow only** (misaligned now [1]); **[11]–[13] peripherals 1–3, live** (the OR of each window's `ERRORS`; were bad peripheral write and the peripheral's conditions 2 and 3) (4.13, 8.3) | changed | v1.2 | D18, D21 |
+| C29 | `TILE_CONDITIONS` [14:0] | **`ERRORS`**, same numbers except: [1] **"bad packet"**, the region decode only (was bad mode or size; *v1.2:* "or misaligned access", removed by V8b); [7] read-port **overflow only** (misaligned: [1] at v1.2, UB at v1.25); **[11]–[13] peripherals 1–3, live** (the OR of each window's `ERRORS`; were bad peripheral write and the peripheral's conditions 2 and 3) (4.13, 8.3) | changed | both | v1.2: D18, D21; v1.25: V8b |
 | C30 | conditions cleared on entering HALT | **sticky until the reset** ([10:0], [14]); a store to `ERRORS` is a bus error (4.13) | changed | v1.2 | D21, D23 |
 | C31 | a condition raises the tile's error line | `ERRORS` ≠ 0 raises the **hard interrupt** (once enabled) and the **error line** (hardware, `error_latency`, no software) (4.13) | changed | v1.2 | D21, D24 |
 | C32 | — | **terminal traps**: `MIE` cleared on entry and never set again; a trap in the handler restarts it; engines and peripherals carry on unserviced until the reset (4.13) | new | v1.2 | D20 |
-| C33 | — | **the handler's convention** (software, but sized by hardware): 24 reports to C&C 1 in fixed order; reads `EVENTS_PEEK`, never `EVENTS`; checks `PARAMS` [2:0] before a window; parks in a jump to itself; the boot ROM's handler until the image installs its own; **interrupts off until the image's boot part 2 enables them** (4.13) | new | v1.2 | D20, D37.2, D37.3, D44 (W5-24) |
+| C33 | — | **two handlers' conventions** (software, but sized by hardware) (4.13): **the image's handler** sends 24 reports to C&C 1 in fixed order, sequence numbers **0–23**; **the boot ROM's handler** sends a **two-report dump**, sequence numbers **24** (`ERRORS`, `mcause`, `mepc`) and **25** (`mtval`, `STATUS`, `ra`), no `PARAMS` (the request tree stamps the sender's id). The first report's sequence number tells C&C 1 which set is coming. A unit sends one set only. Both read `EVENTS_PEEK`, never `EVENTS`, and park in a jump to itself. Interrupts are off until the image's boot part 2 enables them. *v1.2:* one handler convention, 24 reports, the ROM's handler the same | new | both | v1.2: D20, D37.2, D37.3, D44 (W5-24); v1.25: **V8d** (item 122) |
 
 **The register block (8.1, 8.15)** — offsets in section 3.1.
 
@@ -378,6 +407,7 @@ Register offsets, bit by bit, are in section 3. This section covers the behaviou
 | C36 | `DMA_CONFIG`, `DMA_RECORD_BASE_ADDRESS`, `SRAM_RD_DEST_ADDR` write-only | **R/W** (8.5, 8.7, 8.8) | changed | v1.2 | D11, D13 |
 | C37 | configuration registers undefined at chip reset, kept across HALT → RUN | undefined at the reset; adds `ROUTER_ADDR` and each window's `DMA_HDR`, `DMA_ADDR`; drops `SENDER_ADDR` (8.1) | changed | v1.2 | D23 |
 | C38 | `mesh.h` 1.1, flat registers; trace mark at 0xFFFFFFF0; `CMD_EXIT` and `ebreak` end a test | `mesh.h` 1.2, structs (`TileRegs`, `PeripheralStd`, `<Name>Regs`); **simulator-only exit word 0xFFFFF9F8 and trace word 0xFFFFF9FC**, reserved words on hardware (8.1, 8.15) | new | v1.2 | D29, D32, D36 |
+| C39 | a start while its engine runs, `PERIPH_RUN` while running, `SENDER_SEND` while busy, a send with no output: **ignored**, no condition | **UB** **[UB at v1.25]** (4.2, 4.13, 4.17.2, 4.17.9, 8.6): a `PULSE_DMA` while the address generator runs, `PULSE_RUN` during a peripheral's run, a window's `PULSE_DMA` during its transfer, and a transfer naming an output queue the peripheral lacks. *v1.2:* ignored by the hardware | changed | v1.25 | V8e (Q13) |
 
 ### 2.5 Peripherals (spec 4.17, 4.20)
 
@@ -392,33 +422,33 @@ v1.1's peripheral slot is replaced by **up to three peripherals per unit, all co
 | P5 | six service lines in `WAKE_EVENTS` [18:13]: sticky events, live queue conditions or item FIFOs; consuming a line claims a unit of service | the peripheral's own **`EVENTS` (word 5), `EVENTS_PEEK` (6), `EVENTS_MASK` (7, 0 at reset)**; **every bit backed by a small counter** with a stated **depth** (1 ordinary, 2 for double-buffered credits), or **live**; a consuming load subtracts one count per masked set bit; standard bits [0] run done, [1] DMA done; the controller's `EVENTS` [12 + *n*] is live while `EVENTS & EVENTS_MASK` ≠ 0; no item-FIFO kind *(Deferred, item 119)* (4.17.3) | changed | v1.2 | D14, D16 |
 | P6 | `PERIPH_STATUS_0`–`7` (0x870–0x88C), read-only, peripheral-defined | **the standard window** (0x200 bytes): words 0 `PARAMS`, 1 `STATUS` ([0] run, [1] DMA), 2 `ERRORS`, 3 `PULSE_RUN`, 4 `PULSE_DMA`, 5 `EVENTS`, 6 `EVENTS_PEEK`, 7 `EVENTS_MASK`, 8 `DMA_HDR`, 9 `DMA_ADDR`; 10–31 reserved; 32–127 peripheral-defined (4.17.4, 8.11) | changed | v1.2 | D10 |
 | P7 | — | access rules: reserved/undefined words read 0 and ignore stores (meshsim flags the access); a store to a read-only word is a bus error; every word 32-bit, one at a time, **2-cycle loads** (4.17.4, 4.11). **A peripheral without a DMA has words 8 and 9 (`DMA_HDR`, `DMA_ADDR`) that read 0, a load not flagged and a store flagged**, so the handler's fixed report set can read them on every window; word 4 (`PULSE_DMA`) stays reserved. For the RTL nothing differs from a reserved word: return 0, ignore the store (4.17.4) | new | v1.2 | D10, D45, **D48** (W4-06), stated in the spec at v1.25 (**CL5**; v1.2 erratum E9; **[D48 not in CHANGES-v1.2]**) |
-| P8 | mode 9 at a 21-bit word address; counted in `DMA_PERIPH_REMAINING` on landing or drop; nothing counted in HALT | **mode-0 writes to the peripheral's region** at a byte offset, naturally aligned; counted by the packet's counter field at K; **a write the peripheral drops is still counted** and sets its own error; every peripheral lands writes within `rp_latency` = 2 *(Proposed, item 48)* and at most K (4.17.5) | changed | v1.2 | D6, D10 |
+| P8 | mode 9 at a 21-bit word address; counted in `DMA_PERIPH_REMAINING` on landing or drop; nothing counted in HALT | **mode-0 writes to the peripheral's region** at a byte offset, naturally aligned; counted by the packet's counter field at K; every peripheral lands writes within `rp_latency` = 2 *(Proposed, item 48)* and at most K. **A write the peripheral's map, sizes or ownership state refuses is UB** **[UB at v1.25]**; a drop the peripheral defines and checks keeps its error, but whether it is counted is no longer promised (4.17.5, 4.17.6). *v1.2:* a refused write was dropped, still counted, and set the peripheral's error | changed | both | v1.2: D6, D10; v1.25: V8e (Q8) |
 | P9 | conditions [13:11]: bad peripheral write (generic), peripheral conditions 2 and 3 | **the peripheral's own `ERRORS`** (word 2), sticky until the reset (C&C 1's unit-error bit excepted: live); the controller's `ERRORS` [11]–[13] are live ORs; errors interrupt, events wake (4.17.6) | changed | v1.2 | D10, D21 |
 | P10 | HALT holds the peripheral and the sender in reset; a halted controller stops them | **resets with its unit at the reset, and is stopped by nothing else**: a controller's trap leaves it running, unserviced (4.17.8) | changed | v1.2 | D20, D23 |
-| P11 | the sender (`SENDER_SEND` 0x868: dest [6:0], mode [10:7], queue [12:11], **count [28:13], 16 bits**; `SENDER_ADDR` 0x86C, 21-bit word, +1/+2/+4); `sender_busy` `TILE_STATUS` [4]; sender idle `WAKE_EVENTS` [20]; output through "the sender's output port" | **the peripheral's DMA** (4.17.9): **`DMA_HDR`** (R/W): **count [11:0] (12 bits, ≤ 4,095 words)**, output queue [13:12], spare [16:14], size [18:17] reserved, counter [21:19], mode [24:22], dst [31:25]; **`DMA_ADDR`** (R/W, 32-bit, advancing by 16/8/4 bytes); **`PULSE_DMA`** starts it; `STATUS` [1] DMA in progress; **DMA done `EVENTS` [1]** (depth 1). Packet split as before (⌊*n*/4⌋ × 128, then 64, 32 or 64 + 32). `PULSE_DMA` while busy is ignored; count 0 still posts DMA done; mid-transfer header changes undefined | changed | v1.2 | D10 |
+| P11 | the sender (`SENDER_SEND` 0x868: dest [6:0], mode [10:7], queue [12:11], **count [28:13], 16 bits**; `SENDER_ADDR` 0x86C, 21-bit word, +1/+2/+4); `sender_busy` `TILE_STATUS` [4]; sender idle `WAKE_EVENTS` [20]; output through "the sender's output port" | **the peripheral's DMA** (4.17.9): **`DMA_HDR`** (R/W): **count [11:0] (12 bits, ≤ 4,095 words)**, output queue [13:12], spare [16:14], size [18:17] reserved, counter [21:19], mode [24:22], dst [31:25]; **`DMA_ADDR`** (R/W, 32-bit, advancing by 16/8/4 bytes); **`PULSE_DMA`** starts it; `STATUS` [1] DMA in progress; **DMA done `EVENTS` [1]** (depth 1). Packet split as before (⌊*n*/4⌋ × 128, then 64, 32 or 64 + 32). count 0 still posts DMA done; mid-transfer header changes undefined; **`PULSE_DMA` while busy, or a transfer naming a missing output queue, is UB at v1.25** (v1.2: ignored; C39) | changed | v1.2 | D10 |
 | P12 | the sender's output port (unattached on tiles) | **a router port of its own**, paired with a link the unit doesn't otherwise use; its packets to its own unit reach the ejector through the router and take no read token. Only C&C 1–3's engines send *(Deferred, item 118: the port's src, routing inside the controllers' routers, flow control)* (4.17.9) | changed | v1.2 | D10 |
 | P13 | UART on every tile at 0x890–0x89C; unwired tiles' registers are no-ops; events [21], [22]; line errors sticky in `UART_STATUS` (W1C); keeps running in HALT | **only in C&C 1's peripheral**, words 42 `UART_TX`, 43 `UART_RX`, **44 `UART_DIVISOR`, 45 `UART_STATUS`** (order changed); line errors are status (W1C), **never `ERRORS`** (so line noise can't raise the toast pin); RX not empty and TX not full are **live** bits in the peripheral's `EVENTS` ([4], [5]); reset empties the FIFOs and loads the reset divisor (4.20, 8.13, 8.14) | changed | v1.2 | D9, D21, D28 |
 | P14 | meshsim prints every tile's `UART_TX` | debug output from other units goes to log files through the file system *(Deferred, item 119)* (4.20, 6.7) | changed | v1.2 | D23 (Q12) |
 
 ### 2.6 The replayer (spec 4.19, `spec/replayer-opcodes.md`)
 
-**How this section splits.** v1.1 → v1.2 changed **only the replayer's interface**: its window, events, credits, region map, errors and type. 4.19.3–4.19.7, 4.19.12 and 4.19.14 are identical to v1.1's apart from names, and so is the opcode appendix. v1.2 → v1.25 changed **only its rows and tables**, to match jolt-cpp `821e1bd`. So the interface entries (R1–R14) are step **v1.2**, the row and table entries (R19–R42) are step **v1.25**, and a few are **both**: R15–R18, and R3, the region map, which CL1 changed again at v1.25.
+**How this section splits.** v1.1 → v1.2 changed **only the replayer's interface**: its window, events, credits, region map, errors and type. 4.19.3–4.19.7, 4.19.12 and 4.19.14 are identical to v1.1's apart from names, and so is the opcode appendix. v1.2 → v1.25 changed **only its rows and tables**, to match jolt-cpp `821e1bd`. So the interface entries (R1–R14) are step **v1.2**, the row and table entries (R19–R42) are step **v1.25**, and a few are **both**. Those are R15–R18; R3, the region map, which CL1 changed again; and R4, R10 and R11, the errors, which V8e changed again.
 
-**Interface (step v1.2: a reader from v1.2 skips R1–R14, except R3)**
+**Interface (step v1.2: a reader from v1.2 skips R1–R14, except R3, R4, R10 and R11)**
 
 | ID | v1.1 | v1.25 (section) | kind | step | why |
 |---|---|---|---|---|---|
 | R1 | peripheral type 1 in the slot | **peripheral 1, type 4** (`PARAMS` [7:0] = 4) on tiles 0–63 (4.19, 8.11) | changed | v1.2 | D46 (P2) |
 | R2 | run = `TILE_PULSE` [2] `PERIPH_RUN`; running = `TILE_STATUS` [3] | `PULSE_RUN` (window word 3); `STATUS` [0]; `STATUS` [1] always 0 (no DMA) (4.19.11) | changed | v1.2 | D10 |
 | R3 | written by **mode 9** at a 21-bit **word** address; addr[20:18] selects a window | written by **mode-0 packets to region 0x04** at a **byte offset**; **offset[22:20] alone names a part** (4.19.10): 0 the memories, **1 code queue, 2 read-log queue, 3 write-log queue, 4 expansion queue**, 5–7 unmapped. Map, in bytes (v1.1 word address in brackets): state word 0x000000 [0x00000]; stream word 0x000010 [0x00004]; register image 0x000020–0x00041F, image word *i* at 0x20 + 16*i* [0x00008 + 4*i*]; decode table 0x001000–0x001FFF, entry *e* at 0x1000 + 16·(*e* >> 3) [0x400 + 4·(*e* >> 3)]; ROM 0x002000–0x003FFF, word *j* at 0x2000 + 16*j* [0x800 + 4*j*]; code queue 0x100000–0x1FFFFF [0x40000–0x7FFFF]; read-log 0x200000–0x2FFFFF [0x80000–0x9FFFF]; **write-log 0x300000–0x3FFFFF** [0xA0000–0xBFFFF]; **expansion 0x400000–0x4FFFFF** [0xC0000–0xFFFFF] *(Proposed, items 44–46)*. *v1.2:* the same, except the two logs shared part 2 (read log 0x200000–0x27FFFF, write log 0x280000–0x2FFFFF, told apart by bit 19) and the expansion queue was part 3 (0x300000–0x3FFFFF), part 4 unmapped | changed | both | v1.2: D6, D9, D10; v1.25: **CL1** (O, 2026-11-01; v1.2 erratum E7; also in v1.2.1) |
-| R4 | a bad peripheral write: unmapped word, wrong size, a 128-bit write in window 0 off a multiple of 4, a single-ported memory written while running, a queue port written **in HALT** | **a bad write**, the replayer's `ERRORS` [0], **still counted**: unmapped offset, wrong size, a single-ported memory written while running *(Proposed, item 47)*. A misaligned write is now a bad packet at the director (L7); the HALT case is gone (4.19.10) | changed | v1.2 | D10, D32 |
+| R4 | a bad peripheral write: unmapped word, wrong size, a 128-bit write in window 0 off a multiple of 4, a single-ported memory written while running, a queue port written **in HALT** | **UB** **[UB at v1.25]**: an unmapped offset, a wrong size, a single-ported memory written during a pass, a misaligned part-0 write; **the replayer's `ERRORS` [0] is reserved** (4.19.10, 4.19.11, 8.11). *v1.2:* "a bad write", `ERRORS` [0], still counted (*Proposed, item 47*); a misaligned write a bad packet at the director | changed | both | v1.2: D10, D32; v1.25: V8b, V8e (Q8) |
 | R5 | ownership: stopped / running / HALT (item 54) | stopped / running by `STATUS` [0]; boot loads find the replayer stopped (4.19.10) | changed | v1.2 | W1-30, D23 |
 | R6 | counted in `DMA_PERIPH_REMAINING` on landing or drop; boot loads uncounted because in HALT | counted by the packet's counter field at K, landed or dropped; boot loads are uncounted mode-0 writes (4.19.10) | changed | v1.2 | D6 |
 | R7 | **low-water lines** (live): capacity − occupancy − pending ≥ half (and, for the expansion queue, words still undelivered); a claim (consuming `WAKE_EVENTS`) adds half to pending; a new expansion credits 128 words | **counted credits, depth 2, each half a queue** (4.19.8): `PULSE_RUN` sets every queue's credits to 2; **each new expansion sets the expansion queue's to 2**; the replayer **returns one credit per half queue popped**; a consuming load of the replayer's `EVENTS` takes one from each masked set queue bit; a credit permits up to half a queue, possibly split. No pending/occupancy test, no gating (the loop masks out streams with nothing left) | changed | v1.2 | D10, W3-24 |
 | R8 | events: `WAKE_EVENTS` [13] code, [14] read-log, [15] write-log, [16] expansion low-water (live); [17] new expansion, [18] done (sticky) | the replayer's own `EVENTS`: **[0] run done (d1), [1] DMA done (never), [2] code credit, [3] read-log credit, [4] write-log credit, [5] expansion credit (d2 each), [6] new expansion (d1)**; the tile sees them as `EVENTS` [13] *(Proposed, item 123: the bit positions)* (4.19.9, 8.11) | changed | v1.2 | D10, D14 |
 | R9 | `PERIPH_STATUS_0`: rows run [15:0], next offset [31:16]; `PERIPH_STATUS_1`: the awaiting instruction | **word 32 `ROWS_RUN`** [15:0], **33 `EXPANSION_OFFSET`** [15:0], **34 `EXPANSION_OPCODE`** [31:0]; one field per word; a store is a bus error (4.19.9, 8.11) | changed | v1.2 | D39 |
-| R10 | queue overrun: tile condition 12 | the replayer's `ERRORS` [1]; the push still counted (4.19.8) | changed | v1.2 | D10 |
-| R11 | invalid expansion: tile condition 13 | the replayer's `ERRORS` [2]; any of [0]–[2] sets the tile's `ERRORS` [11] and traps the controller *(Proposed, item 123)* (4.19.11) | changed | v1.2 | D10, D21 |
+| R10 | queue overrun: tile condition 12 | the replayer's `ERRORS` [1] **(hardware, kept: it depends on the credit loop under real timing)**; **whether the dropped push is counted is no longer promised** *(for Tony: free if counting stays at the director)* (4.19.8). *v1.2:* [1], the push still counted | changed | both | v1.2: D10; v1.25: V8e (Q8) |
+| R11 | invalid expansion: tile condition 13 | the replayer's `ERRORS` [2]; [1] or [2] sets the tile's `ERRORS` [11] and traps the controller; **[0] reserved** *(Proposed, item 123)* (4.19.11). *v1.2:* [0] bad write as well | changed | both | v1.2: D10, D21; v1.25: V8e |
 | R12 | the queues clear at a run, in HALT and when the controller halts | at a run (credits set to 2) and at the reset; a controller trap leaves the replayer running, unserviced, until the reset (4.19.8, 4.19.11) | changed | v1.2 | D20, D23 |
 | R13 | a halt (C&C's HALT or the controller halting) stops the replayer at once | removed (4.19.11) | removed | v1.2 | D23 |
 | R14 | stream-length bound ≈ 8.6 Mbit (two log words a row) | ≈ 4.3 Mbit (one log value a row); the field stays 24 bits; a pop past the end is `ERRORS` [2] (4.19.15) | changed | v1.2 | integrator, 2026-10-29 (correction) |
@@ -475,7 +505,7 @@ Unchanged in all three versions: the queues' sizes; the ROM (512 × 128) and dec
 | K4 | — | **the keep-alive watchdog**, `WATCHDOG` in C&C 1's peripheral: 0 (reset) off; writing *N* > 0 starts it; a write or `PULSE_GO` restarts it from the last *N*; reaching 0 posts the watchdog event (depth 1) and latches the toast pin; **counts core cycles**; the only watchdog (6.1) | new | v1.2 | D34, D36 |
 | K5 | chip reset (power-on) | **two inputs, the chip never resets itself**: **hard** (everything, the AXI side included; LPDDR contents lost; power-on) and **soft** (everything except the LVDS bus, the AXI bus and beyond, the LPDDR controller and PHY, so LPDDR keeps the flushed logs) *(item 124: the exact keep list, with Tony)* (6.1) | new | v1.2 | D35 |
 | K6 | reset values: the down-counters, conditions, qualifier, gate, sticky wake events, `WAKE_REQUIRED`, read-port queue and request FIFO 0; `WAKE_MASK` [8] \| [9]; `done` 1 | **what the reset does** (6.1): every unit as at power-on except the memories. The core starts at **0x02000000** with `MIE` = 0. **Empty, credits returned:** router FIFOs and stages, return queues, area queues, write-engine FIFO and pointer stage, **the K delay line**, the send holding register, the read-port queue, the GATHER queue, request FIFOs, **the request tree and receive queues**; all read tokens free. **Zero:** every `ERRORS` (block and windows), write counters, done events and qualifiers, `done`, the gate, command landed, pending GO, sticky events, `EVENTS_REQUIRED`, `rd_running`, `rd_done`, round-robin pointers; `EVENTS_MASK` = [8] \| [7]; peripherals idle, their events 0 and `EVENTS_MASK` 0; in C&C 1's peripheral the READY bits, `READY_EXPECT`, `WATCHDOG`, `LED` and the toast latch. **Undefined:** configuration registers. **Kept:** controller memories, tables, big SRAM, peripherals' memories. **No reset hold** for the error lines (6.1) | changed | v1.2 | D21, D35, D36 |
-| K7 | the resident loader at 0x1F00, loaded by C&C while halted | **the boot ROM** in every controller, region 0x02, reset vector 0x02000000, **exactly** (6.2): (1) set `mtvec` to the ROM's report-and-park handler; interrupts stay off; (2) branch on `PARAMS`' endpoint id; (3) **tiles:** `PULSE_DONE`; loop `WFI` + load `EVENTS` until GO is seen; **if that load's value has command landed (`EVENTS` [9]) go to 5, else repeat 3**; (4) **C&C 1–3:** `EVENTS_MASK` = [9]; loop `WFI` + load `EVENTS` until [9]; restore `EVENTS_MASK` to [8] \| [7]; (5) load slot 0, then the jump address in slot 1, and jump. The ROM never writes data memory. *A few dozen bytes per controller* | new | v1.2 | D22, D31, D37.1, D37.2, D41 (F13) |
+| K7 | the resident loader at 0x1F00, loaded by C&C while halted | **the boot ROM** in every controller, region 0x02, reset vector 0x02000000, **256 bytes (64 words)** (6.2). Its path is exact: (1) set `mtvec` to the ROM's handler; interrupts stay off; (2) branch on `PARAMS`' endpoint id; (3) **tiles:** `PULSE_DONE`; loop `WFI` + load `EVENTS` until GO is seen; **if that load's value has command landed (`EVENTS` [9]) go to 5, else repeat 3**; (4) **C&C 1–3:** `EVENTS_MASK` = [9]; loop `WFI` + load `EVENTS` until [9]; restore `EVENTS_MASK` to [8] \| [7]; (5) load slot 0, then the jump address in slot 1, and jump. The path is 30 words; with **the two-report handler (C33)** it is about 49, and **the rest is free**. The ROM never writes data memory. *v1.2:* the same path, "a few dozen bytes" (meshsim's about 728), and its handler sent the full 24 reports | new | both | v1.2: D22, D31, D37.1, D37.2, D41 (F13); v1.25: **V8d** |
 | K8 | boot: C&C loads halted tiles (modes 6, 7), stages big SRAM with mode 2 through `PTR[64]`, then RUN | **the boot sequence** (6.2): reset → every controller waits in its ROM → **C&C 1 booted from outside** (overlays and first command from the host or harness) → C&C 2 and C&C 3: overlays uncounted, then the first command; each sends C&C 1 a "started" request → tiles: overlays uncounted, then the first command; READY; GO; the ROM jumps → **boot part 2** loads big SRAM by announced, **counted** staging (no sooner than `stage_delay` after GO) and enables interrupts. Overlays and the first command are of one kind; boot order is the order of the first commands | changed | v1.2 | D22, D31, D44 (W5-26) |
 | K9 | staging by source through `PTR[64]`, uncounted while halted | **by address** (mode 0 to region 0x03), in area A7 below its top 128 KB, 128-bit packets, **always counted** (6.2) | changed | v1.2 | D17, W5-15 |
 | K10 | `done` set by `TILE_PULSE` [0], forced to 1 in HALT; READY into C&C | `PULSE_DONE`; cleared by GO and the reset; READY is a one-cycle pulse on the rising edge of `done` & command landed, into C&C 1's `READY_LINES` (sticky); **tiles 0–63 only** (6.3) | changed | v1.2 | D23, D28 |
@@ -575,7 +605,7 @@ Every offset moved at **v1.2**, so every image is rebuilt against `mesh.h` 1.2. 
 | bit | v1.1 | v1.2 | v1.25 | kind |
 |---|---|---|---|---|
 | 0 | router overflow | = | router overflow (link, eject, fifth-port FIFOs) | P |
-| 1 | bad mode or size | = | **bad packet or misaligned access** (L7, T2) | P |
+| 1 | bad mode or size | bad packet **or misaligned access** | **"bad packet"**: the region decode and mode 3 at 128 bits only; misalignment is UB (L7, T2) *(item 142)* | P |
 | 2 | unexpected arrival (at acceptance) | = | unexpected arrival (**at the decrement**) | P |
 | 3 | drift | = | drift | P |
 | 4 | write-engine input overflow | = | = | P |
@@ -583,7 +613,7 @@ Every offset moved at **v1.2**, so every image is rebuilt against `mesh.h` 1.2. 
 | 6 | GATHER queue overflow | = | = | H |
 | 7 | read-port error (overflow or misaligned) | = | read-port **overflow only** | P |
 | 8 | done early | = | = | P |
-| 9 | bus error | = | bus error (now traps; wider set, C9) | P (H) |
+| 9 | bus error | bus error, misaligned accesses included (traps) | bus error (traps; misaligned load/store now UB, C9) | P (H) |
 | 10 | illegal instruction | = | illegal instruction (traps) | P (H) |
 | 11 | bad peripheral write | = | **peripheral 1, live** (its `ERRORS` ≠ 0) | per peripheral |
 | 12 | peripheral condition 2 (replayer: queue overrun) | = | **peripheral 2, live** | per peripheral |
@@ -633,8 +663,8 @@ All four share [31:17] = dst/*d* [31:25], mode [24:22], counter [21:19], size [1
 | `SRAM_RD_ADDR_QUEUE` | store: chunk [20:0] (1, 2 or 4 words); load: free entries | = | store: chunk [20:0] (32, 64 or 128 bits); load: free entries |
 | a window's `DMA_HDR` (v1.1 `SENDER_SEND`) | dest [6:0]; mode [10:7]; queue [12:11]; count [28:13]; spare [31:29] | = | count [11:0]; queue [13:12]; spare [16:14]; size [18:17] reserved; counter [21:19]; mode [24:22]; dst [31:25] |
 | a window's `DMA_ADDR` (v1.1 `SENDER_ADDR`) | word address [20:0] | = | [31:0] byte address |
-| `DMA_CONFIG` | kind [0]; start [8:1]; count [17:9]; bucket digit [20:18]; histogram digit [23:21]; *k* − 1 [26:24] (W) | = | same fields, **R/W** |
-| `DMA_RECORD_BASE_ADDRESS` | chunk [20:0] (W) | = | chunk [20:0], record-aligned (R/W) |
+| `DMA_CONFIG` | kind [0]; start [8:1]; count [17:9]; bucket digit [20:18]; histogram digit [23:21]; *k* − 1 [26:24] (W) | same fields, **R/W**; digits 5–7 treated as 0; numbers past the table wrap | same fields, R/W; **digits 5–7 and numbers past the table UB** (T44, T45); ***k* also chooses the gather copy**: odd 64-bit, even 128-bit (T19) |
+| `DMA_RECORD_BASE_ADDRESS` | chunk [20:0] (W) | chunk [20:0], record-aligned (R/W) | chunk [20:0], **128-bit aligned in a gather** (R/W) (T20) |
 | write counters | count [19:0] | = | count [19:0] |
 
 ### 3.6 A peripheral's standard window (4.17.4, 8.11)
@@ -685,7 +715,7 @@ All of it is **new at v1.2**. Base 0xFFFFFA00.
 |---|---|---|---|
 | `PARAMS` [7:0] | type 1 in `TILE_STATUS` [15:12] | **4** | 4 |
 | `STATUS` [0] | `periph_running` | run in progress | = v1.2 |
-| `ERRORS` | tile [11] bad write, [12] overrun, [13] invalid expansion | [0] bad write, [1] overrun, [2] invalid expansion | = v1.2 |
+| `ERRORS` | tile [11] bad write, [12] overrun, [13] invalid expansion | [0] bad write, [1] overrun, [2] invalid expansion | **[0] reserved** (bad write UB), [1] overrun, [2] invalid expansion |
 | `EVENTS` | service lines [18:13] | [0] run done, [2]–[5] code, read-log, write-log, expansion credits (depth 2), [6] new expansion | = v1.2 |
 | 32 `ROWS_RUN` | `PERIPH_STATUS_0` [15:0] | [15:0] | = v1.2 |
 | 33 `EXPANSION_OFFSET` | `PERIPH_STATUS_0` [31:16] | [15:0] | = v1.2 |
@@ -763,7 +793,7 @@ The complete map, generated from the two appendices, is also in `WORKER13/opcode
 | `run_latency` | as GO | gone | = | v1.2 |
 | C&C receive FIFO | ≥ 64 entries | gone | = | v1.2 |
 | write counters | four, 20 bits | **seven**, 20 bits; counter field 3 bits | = | v1.2 |
-| boot ROM | — | every controller, region 0x02, a few dozen bytes | = | v1.2 |
+| boot ROM | — | every controller, region 0x02, a few dozen bytes | **256 bytes (64 words)**: path 30, two-report handler, about 49 used | both |
 | watchdog | (C&C software) | `WATCHDOG` in C&C 1's peripheral, core cycles | = | v1.2 |
 | request bus queues | 16 × 128 bits in every tile; credits 16 | 128 / 256 / 128 at the root for C&C 1 / 2 / 3; credits = depth; limits 1 / 3 / 1 | = | v1.2 |
 | request FIFO | 2 KB per tile | 2 KB per unit | = | — |
@@ -775,6 +805,7 @@ The complete map, generated from the two appendices, is also in `WORKER13/opcode
 | `rp_latency` | 2 *(Proposed)* | 2 *(Proposed)*, at most K | = | — |
 | loopback FIFO | ≥ 64 *(Proposed)* | ≥ 64 (required) | = | v1.2 |
 | C&C 1–3 big SRAM | — | 2 MB each | = | v1.2 |
+| GATHER copy | *k* 64-bit reads and packets per value | = v1.1 | *k* odd: as before; **even: *k*/2 128-bit**; about (packets per value + 1) cycles per value | v1.25 |
 | replayer | type 1; 85 executed opcodes | type 4; = | **reference `821e1bd`; 88 executed opcodes; `offset_imm` [63], `sign_imm` [62]; ROM 388 of 512 used; decode table 306 ROM, 17 controller, 1,725 invalid entries, built as 256 × 128 (CL2); 75 controller-fed template numbers; one 1 MB part per queue (CL1)**; every size unchanged | v1.2 (type), v1.25 (rest) |
 | logic budget per tile | ≈ 0.38–0.45 mm² | ≈ 0.52–0.61 mm² (+0.065 the 256-bit word, +0.08–0.09 the memories, − sender, − UART) (11) | = | v1.2 |
 | control island | ≈ 0.1 mm² | ≈ 0.17–0.2 mm² (12) | = | v1.2 |
@@ -788,23 +819,23 @@ The complete map, generated from the two appendices, is also in `WORKER13/opcode
 | 1 | no FIFO overflow (incl. tile 0's C&C FIFOs) | + tiles 0–2's fifth-port FIFOs and the GATHER queue; hardware [0], [4], [5], [6] | = | v1.2 |
 | 2 | one access per area per cycle; a spanning access counts once | spanning clause gone | = | v1.2 |
 | 4 | counters done with `mem_idle`, `cm_idle` before `done` | write counters at 0 before `done`; hardware [8] | = | v1.2 |
-| 5 | v1.1's bad-packet list | the new bad-packet set; hardware [1] | = | v1.2 |
+| 5 | v1.1's bad-packet list | the new bad-packet set, misalignment included; hardware [1] | the region decode and mode 3 at 128 bits (hardware [1], item 142); **a misaligned packet is UB** | both |
 | 7 | no packet in flight at a RUN/HALT change | **withdrawn** | = | v1.2 |
 | 9 | no arrival for a counter at 0 | no decrement of a counter at 0; hardware [2] at the decrement | = | v1.2 |
 | 10 | mode 1 only to self | mode 4 only to self | = | v1.2 |
 | 11 | mode 6 inside CM, outside both blocks | command block written only by C&C 1–3 uncounted; replies at the sender's own pair or the named address; every other mode-0 write to 0x00/0x01 inside its memory and outside both blocks | = | v1.2 |
 | 15 | `TILE_CONDITIONS` stays 0 | every unit's and every peripheral's `ERRORS` stays 0 | = | v1.2 |
-| 16 | the slot's and the replayer's (contiguous non-zero PEXT masks; zero shift masks) | the peripherals' (no run while running, no DMA while busy, no credit to a full counter, writes land within `rp_latency` ≤ K) and the replayer's | **PEXT: a non-contiguous mask is correct and only reported; `offset_imm` only on `ShiftData…` rows; no misaligned memory row; rows equal jolt-cpp `821e1bd`'s** (zero shift masks still undefined) | both |
+| 16 | the slot's and the replayer's (contiguous non-zero PEXT masks; zero shift masks) | the peripherals' (no run while running, no DMA while busy, no credit to a full counter, writes land within `rp_latency` ≤ K) and the replayer's | **PEXT: a non-contiguous mask is correct and only reported; `offset_imm` only on `ShiftData…` rows; no misaligned memory row; rows equal jolt-cpp `821e1bd`'s** (zero shift masks still undefined); **no bad write to the replayer (UB)** | both |
 | 17 | request contract: one reply-producing request per responder; write tokens; *d* = 64 only with mode 3 | requests name counters and reply address; 1/3/1 limits; tag windows; no *d* = 126 stream on a mesh tile; hardware [14] | = | v1.2 |
 | 18 | modes 2, 4, 5 and mode 9 ports | modes 1–3 and peripheral ports | = | v1.2 |
 | 19 | — | **everything stays in bounds** (meshsim only) | = | v1.2 |
-| 20 | — | **pointers and runs stay aligned**; hardware [1] | = | v1.2 |
-| 21 | — | **no reserved encodings**: modes 6–7, count-only on counter 0, digit 5–7, reserved words or bits | = | v1.2 |
+| 20 | — | **pointers and runs stay aligned**; hardware [1] | the same rule, **no hardware check (UB)**; gather buffers 128-bit aligned | both |
+| 21 | — | **no reserved encodings**: modes 6–7, count-only on counter 0, digit 5–7, reserved words or bits | the same; modes 6–7 and digits 5–7 now UB rather than discarded or treated as 0 | both |
 | 22 | — | **uncounted traffic is mode 0 only**; nothing into data memory's first 16 bytes after boot | = | v1.2 |
 | 23 | — | **no silent traps** (`ecall`, `ebreak`, bad fetch, misaligned jump, trap in a handler) | = | v1.2 |
 | 24 | — | **K covers the write path** (meshsim 2L + 4) | = | v1.2 |
 | 25 | — | **boot keeps its order** (one kind; `stage_delay`) | = | v1.2 |
-| 26 | — | **no ignored start** (`PULSE_DMA` while running) | = | v1.2 |
+| 26 | — | **no ignored start** (`PULSE_DMA` while running) | the same rule; the start is UB, not ignored (C39) | both |
 
 Invariants 3, 6, 8, 12–14 are unchanged apart from names.
 
@@ -813,12 +844,13 @@ Invariants 3, 6, 8, 12–14 are unchanged apart from names.
 | check | where | step |
 |---|---|---|
 | region decode of every mode-0 packet (0x02, 0x07–0xFE, 0xFF, an absent peripheral → bad packet) | traffic director, `ERRORS` [1] | v1.2 |
-| natural alignment of packets, `PTR` writes and every engine read | director, write engine, read clients, `ERRORS` [1] | v1.2 |
+| ~~natural alignment of packets, `PTR` writes and every engine read~~: **added at v1.2, removed at v1.25 (UB)** | (none) | both |
 | unexpected arrival at the K-delayed decrement | write counters, `ERRORS` [2] | v1.2 |
-| bus errors on absent peripheral windows, region 0x03–0xFE, store to program memory or boot ROM | controller bus, `ERRORS` [9] | v1.2 |
-| peripheral errors (replayer: bad write, overrun, invalid expansion, now incl. every unused decode entry) | peripheral `ERRORS` → controller [11]–[13] | v1.2 (class 3 for unused entries: v1.25) |
+| bus errors on absent peripheral windows, region 0x03–0xFE, store to program memory or boot ROM; **not** a misaligned load or store (UB at v1.25); a misaligned jump target traps | controller bus, `ERRORS` [9] | v1.2 (misaligned: both) |
+| peripheral errors (replayer: overrun, invalid expansion, incl. every unused decode entry; **the bad write is UB at v1.25**) | peripheral `ERRORS` → controller [11]–[13] | v1.2 (class 3, bad write: v1.25) |
 | the watchdog and the toast latch | C&C 1's peripheral | v1.2 |
 | removed: mode-7 and mode-8 size checks, mode-0/10–15 invalid modes, the misaligned read-port read as an error that drops | — | v1.2 |
+| removed at v1.25 (V8a's test): every alignment check; the replayer's bad write ([0] reserved); modes 6–7's discard; digit 5–7 as 0; table wrap; the ignored starts. **Kept:** overflows, unexpected arrival, done early, drift, the region decode *(item 142)*, bus errors, illegal instruction, the replayer's overrun and invalid expansion | — | v1.25 |
 
 ### 4.4 What meshsim checks, new
 
@@ -831,6 +863,7 @@ meshsim checks invariants 19–26 and these:
 - every out-of-bounds or past-the-end access;
 - the stray at acceptance, as a diagnostic beside the hardware's decrement-time error;
 - at v1.25: `offset_imm` on a row other than `ShiftData…`; a misaligned memory row; a non-contiguous PEXT mask (reported as a statistic).
+- **at v1.25, everything made UB by V8b and V8e:** every misaligned access, a write a peripheral refuses (the replayer's bad write), modes 6–7, digits 5–7, table numbers past the end, a start or pulse while busy, a missing output queue. meshsim stops on each with an error naming the access. The RTL may carry simulation-only assertions for the same rules *(for Tony)*.
 
 ---
 
@@ -856,15 +889,26 @@ meshsim checks invariants 19–26 and these:
 | a write to an absent peripheral: counted in v1.1, an uncounted bad packet in v1.2 | v1.2 | L8, P3 |
 | the gather request's ordinal: v1.1 said both [63:32] and [51:32]; [51:32] holds | v1.2 | L9 |
 | the read-port request-queue entry grows from 37 to 43 bits | v1.2 | T17 |
-| a write through a misaligned `PTR` still advances the pointer (item 133) | v1.2 | T28 |
+| a write through a misaligned `PTR` still advances the pointer (item 133); **moot at v1.25 (UB)** | v1.2 | T28 |
 | `STATUS.done` resets to 0 (v1.1: 1) | v1.2 | C28 |
 | a reserved word of the block reads 0 and ignores stores (v1.1: past 0x8A0, a bus error) | v1.2 | C9, C34 |
 | the UART's `DIVISOR` and `STATUS` swap order (words 44, 45) | v1.2 | P13, 3.7 |
 | the DMA's count is 12 bits (≤ 4,095 words); the sender's was 16 | v1.2 | P11 |
 | C&C 1–3 have 2 MB of big SRAM (`PARAMS` size 7) | v1.2 | A8, X1 |
-| the replayer's bad write: a misaligned 128-bit write in part 0 is now a bad packet at the director, not a replayer error | v1.2 | R4 |
+| the replayer's bad write: a misaligned 128-bit write in part 0 became a bad packet at the director at v1.2, not a replayer error (both are UB at v1.25) | v1.2 | R4 |
 | `VirtualPext` with a zero mask: undefined at v1.2, **0** at v1.25 | v1.25 | R31 |
 | the template index's 16-byte entry format (key, offset, length, `rd0`, class); software only | v1.25 | R41 |
+
+**Section 8's package (`DECISIONS-v1.25.md` section 8), step v1.25.** These are in `CHANGES-v1.25.md`, listed here because they revise v1.2 entries a v1.1 reader would otherwise take as final.
+
+| item | what it changes for the RTL | entries |
+|---|---|---|
+| V8a, the principle | nothing by itself; the test behind V8b and V8e | section 0 |
+| V8b, misalignment is UB | **removes** the alignment checks at the director, the write engine and every read client, the payload-0 read, and the misaligned bus error; a misaligned jump still traps | L7, T2, T12, T18, T20, T28, T29, C9, R4, 3.3, 4.3 |
+| V8c, the gather unit | **adds** the even-*k* 128-bit read and packet path; packets per value drive the counter | T19, T20, 3.5, 4.1 |
+| V8d, the boot ROM | **256 bytes**; the ROM's handler sends a two-report dump, sequence numbers 24 and 25 | K7, C33, 4.1 |
+| V8e, more UB | **removes** the replayer's bad-write error (`ERRORS` [0] reserved), "dropped, still counted" for refused peripheral writes, digit 5–7 as 0, table wrap, modes 6–7's discard, and the ignored starts and pulses; **keeps** the overrun check, without the counted promise | L5, P8, R4, R10, R11, T44, T45, C39, 3.3, 3.8, 4.3 |
+| open | item 142, whether the region-decode bad packet stays; Q12, whether reserved words reading 0 is free (kept only if so); whether the overrun's push is counted | L7, C9, R10 |
 
 **The cleanups (`planning/CLEANUP.md`).**
 
@@ -875,7 +919,8 @@ meshsim checks invariants 19–26 and these:
 | CL3 | the recipe book's measured figures moved into its template | no (process) | — | — |
 | CL4 | a per-window time limit in StageB | no (test harness) | — | — |
 | CL5 | D48 stated in the spec (words 8–9, `mtime`) | no RTL change (a reserved word already reads 0) | v1.2 (the decision), stated at v1.25 | P7, C1; E9 |
+| CL6 | a controller's relative *d* counts from its tile; copying into its own memories uses 64 + *c* | a clarification, no behaviour change (the controller's *d* adder uses its tile id) | v1.25 | T46 |
 
-All three spec cleanups are also in `v1.2.1/`.
+CL1, CL2 and CL5 are also in `v1.2.1/`; CL6 is v1.25's.
 
 The opcode renumbering was first misstated in v1.25's text ("three lower"). It was fixed in spec `0b4ba20` and recorded in `CHANGES-v1.25.md` (R26, 3.9).

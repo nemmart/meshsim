@@ -23,8 +23,9 @@ public final class AgTest {
         System.exit(T.done("AgTest" + (shuffle >= 0 ? " (shuffled, seed " + shuffle + ")" : "")));
     }
 
-    /** v1.0 spec rulings: a count-0 run ends at once with no requests; a run past its table's end wraps and is
-     *  flagged; digit selectors 5-7 are treated as 0 and flagged; a start while running is ignored and flagged; a packet
+    /** v1.0 spec rulings: a count-0 run ends at once with no requests; v1.25 (DECISIONS-v1.25 s8e): a run past its table's
+     *  end, digit selectors 5-7 and a start while running are undefined behavior, meshsim stops (v1.2 wrapped, treated as 0
+     *  and ignored them); a packet
      *  sent to dst 65 is flagged; the lead-in is 4 L + 2 (group) or 2 L + 1 (stream) cycles after the start takes effect. */
     static void rulings() {
         T.group("v1.0 rulings");
@@ -36,31 +37,30 @@ public final class AgTest {
         p.setMasterConfig(Fields.masterConfig(Fields.RUN_GROUPS, 0, 0, 0, 0, 1)); p.pulse(Fields.PULSE_START); c.run(3);
         T.check(p.ag.done && !p.ag.running && p.ag.requests == 0, "a group run of count 0 ends at once, with no requests");
         T.eq(0, c.violations, "count 0 is not flagged");
-        // past the table's end: wraps, flagged
-        p.setPtr(3, 0x40000);
-        p.setStream(255, Fields.streamSrc(0x100), 0, Fields.streamCount(1, Fields.SIZE_64, 1, LinkWord.M_SRC, 0));
-        p.setStream(0, Fields.streamSrc(0x200), 0, Fields.streamCount(1, Fields.SIZE_64, 1, LinkWord.M_SRC, 0));
-        p.sram.poke64(0x100, 0x1111); p.sram.poke64(0x200, 0x2222);
-        p.dir.remaining[1] = 2; c.newPhase();
-        p.setMasterConfig(Fields.masterConfig(Fields.RUN_STREAMS, 255, 2, 0, 0, 1)); p.pulse(Fields.PULSE_START);
-        c.runUntil(() -> p.ag.done && p.dir.remaining[1] == 0 && p.memIdle(c.cycle), 2000);
-        T.eq(0x1111L, p.sram.peek64(0x40000), "a stream run 255 + 2: stream 255 first ...");
-        T.eq(0x2222L, p.sram.peek64(0x40002), "... then stream 0 (the numbers wrap)");
-        T.check(c.violationMessages.stream().anyMatch(v -> v.contains("past the table's end")), "and meshsim flags it");
+        // past the table's end: UB (v1.25, s8e), for streams and for groups
+        for (int[] run : new int[][] { { Fields.RUN_STREAMS, 255, 2 }, { Fields.RUN_GROUPS, 63, 2 } }) {
+            Chip cw = new Chip(cfg()); Tile pw = cw.tiles[3];
+            pw.setMasterConfig(Fields.masterConfig(run[0], run[1], run[2], 0, 0, 1)); pw.pulse(Fields.PULSE_START);
+            T.ub(() -> cw.run(20), "a " + (run[0] == Fields.RUN_STREAMS ? "stream" : "group") + " run " + run[1] + " + " + run[2] + ": past the table's end", "tile 3", "address generator", "past the table's end");
+        }
+        // digit selectors 5-7: UB at the store (v1.25, s8e)
+        for (int[] dg : new int[][] { { 5, 0 }, { 0, 7 }, { 6, 6 } })
+            T.ub(() -> p.setMasterConfig(Fields.masterConfig(Fields.RUN_STREAMS, 0, 1, dg[0], dg[1], 1)), "digit selectors " + dg[0] + ", " + dg[1], "tile 3", "reserved digit selector");
+        p.setMasterConfig(Fields.masterConfig(Fields.RUN_STREAMS, 0, 1, 4, 1, 1));
+        T.check(p.writer.bucketDigit == 4 && p.writer.histDigit == 1, "digit selectors 1-4 are taken");
+        // a start while running: UB (v1.25, s8e), the lead-in included
+        {
+            Chip cs = new Chip(cfg()); Tile ps = cs.tiles[3];
+            ps.setStream(10, Fields.streamSrc(0x100), 0, Fields.streamCount(200, Fields.SIZE_64, 1, LinkWord.M_SRC, 0));
+            ps.setPtr(3, 0x60000); ps.dir.remaining[1] = 200;
+            ps.setMasterConfig(Fields.masterConfig(Fields.RUN_STREAMS, 10, 1, 0, 0, 1)); ps.pulse(Fields.PULSE_START); cs.run(2);
+            ps.pulse(Fields.PULSE_START);
+            T.ub(() -> cs.run(2), "a start in the lead-in", "tile 3", "address generator", "a start while a run is running");
+        }
         long v0 = c.violations;
-        // digit selectors 5-7
-        p.setMasterConfig(Fields.masterConfig(Fields.RUN_STREAMS, 0, 1, 5, 7, 1)); c.run(2);
-        T.check(p.writer.bucketDigit == 0 && p.writer.histDigit == 0, "digit selectors 5 and 7 are treated as 0");
-        T.check(c.violations > v0 && c.violationMessages.stream().anyMatch(v -> v.contains("reserved digit selector")), "and meshsim flags them");
-        // a start while running
-        v0 = c.violations;
         p.setStream(10, Fields.streamSrc(0x100), 0, Fields.streamCount(200, Fields.SIZE_64, 1, LinkWord.M_SRC, 0));
         p.setPtr(3, 0x60000); p.dir.remaining[1] = 200; c.newPhase();
         p.setMasterConfig(Fields.masterConfig(Fields.RUN_STREAMS, 10, 1, 0, 0, 1)); p.pulse(Fields.PULSE_START); c.run(2);
-        long started = p.ag.startedAt;
-        p.pulse(Fields.PULSE_START); c.run(2);
-        T.eq(started, p.ag.startedAt, "a start while running is ignored (the lead-in included)");
-        T.check(c.violations > v0 && c.violationMessages.stream().anyMatch(v -> v.contains("a start while the address generator is running")), "and meshsim flags it");
         c.runUntil(() -> p.ag.done && p.dir.remaining[1] == 0 && p.memIdle(c.cycle), 5000);
         // rd_running is visible to a load right after the start store (wait_tables() after start_run() waits for the run)
         p.setStream(11, Fields.streamSrc(0x100), 0, Fields.streamCount(50, Fields.SIZE_64, 1, LinkWord.M_SRC, 0));
@@ -150,7 +150,7 @@ public final class AgTest {
             EngineTest.noViolations(n.c, what);
         }
         // the stream-entry checks (4.2; meshsim only, the elements still issue as written)
-        String[][] bad = { { "read size 11", "11" }, { "mode 6", "reserved mode" }, { "d = 70", "d = 70" }, { "d = 126 on a mesh tile", "d = 126" },
+        String[][] bad = { { "read size 11", "11" }, { "mode 6 (v1.25: UB, below)", "reserved mode" }, { "d = 70", "d = 70" }, { "d = 126 on a mesh tile", "d = 126" },
             { "mode 4 with d = 5", "mode-4 stream" }, { "mode 3 at 128", "mode-3 stream" }, { "a misaligned destination", "destination address" },
             { "a misaligned source", "source chunk" }, { "count-only on counter 0", "counter 0" } };
         int[][] e = { { 0x800, 0, 1, Fields.SIZE_UNDEF, 1, LinkWord.M_SRC, 1 }, { 0x800, 0, 1, Fields.SIZE_32, 1, 6, 1 }, { 0x800, 0, 1, Fields.SIZE_32, 1, LinkWord.M_SRC, 70 },
@@ -162,9 +162,14 @@ public final class AgTest {
             int[] x = e[b];
             p.setStream(0, Fields.streamSrc(x[0]), x[1], Fields.streamCount(x[2], x[3], x[4], x[5], x[6]));
             p.setMasterConfig(Fields.masterConfig(Fields.RUN_STREAMS, 0, 1, 0, 0, 1));
-            p.pulse(Fields.PULSE_START); n.c.run(100);
+            p.pulse(Fields.PULSE_START);
+            // v1.25 (DECISIONS-v1.25 s8b): a misaligned destination or source makes misaligned packets or reads, UB: the run stops
+            if (b == 1) T.ub(() -> n.c.run(100), "a stream in the reserved mode 6 stops meshsim (v1.25, s8e)", "address generator", "reserved mode 6");
+            else if (b == 6) T.ub(() -> n.c.run(100), "a stream with a misaligned destination: its packets stop meshsim", "traffic director", "0x404");
+            else if (b == 7) T.ub(() -> n.c.run(100), "a stream with a misaligned source: its reads stop meshsim", "address generator", "chunk 0x801");
+            else n.c.run(100);
             final String key = bad[b][1];
-            T.check(n.c.violationMessages.stream().anyMatch(v -> v.contains(key) && v.contains("stream")), "a stream with " + bad[b][0] + " is flagged: " + n.c.violationReport());
+            if (b != 1) T.check(n.c.violationMessages.stream().anyMatch(v -> v.contains(key) && v.contains("stream")), "a stream with " + bad[b][0] + " is flagged: " + n.c.violationReport());
         }
     }
 
@@ -223,15 +228,14 @@ public final class AgTest {
         T.check(ok, "landed contiguously at PTR[me], each at its size (16 chunks)");
         T.eq(0x40000 + 16, p.ptr(5), "PTR[me] advanced by 4 + 2 + 1 + 1, twice");
         EngineTest.noViolations(n.c, "mixed sizes in a group, kept aligned: no report (item 27)");
-        // v1.1's mix, 64, 32, 128: the 128-bit writes land through a misaligned PTR, dropped and flagged (invariant 20)
+        // v1.1's mix, 64, 32, 128: the 128-bit write comes through a misaligned PTR: UB, meshsim stops (v1.25 s8b)
         Net m = new Net(cfg()); Tile q = m.c.tiles[5];
         int[] size2 = { Fields.SIZE_64, Fields.SIZE_32, Fields.SIZE_128 };
         for (int s = 0; s < 3; s++) q.setStream(60 + s, Fields.streamSrc(src[s]), 0, Fields.streamCount(2, size2[s], 1, LinkWord.M_SRC, 0));
         q.setGroup(1, Fields.groupLo(2), Fields.groupHi(60, 3, 0));
         q.setPtr(5, 0x40000); q.dir.remaining[1] = 6;
         q.setMasterConfig(Fields.masterConfig(Fields.RUN_GROUPS, 1, 1, 0, 0, 1));
-        EngineTest.runLocal(m, 5);
-        T.check(q.writer.misalignedWrites > 0 && m.c.violations > 0, "a mix that misaligns its PTR is dropped and flagged (" + q.writer.misalignedWrites + " writes)");
+        T.ub(() -> EngineTest.runLocal(m, 5), "a mix that misaligns its PTR stops meshsim", "write engine", "not aligned to its 128-bit write");
     }
 
     // ================================================================ figure 12: PTR and HIST ports

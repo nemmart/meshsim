@@ -610,7 +610,8 @@ final class ReplayerUnitTests {
             ReplayDriver d = new ReplayDriver(w); d.r.rowsPerPass = 25; d.load();
             d.r.run(d.t); d.step(); d.step();
             T.check(d.r.running(d.t), "a pass runs");
-            T.ub(() -> d.r.run(d.t), "PULSE_RUN while a pass runs", "replayer", "PULSE_RUN while a pass runs");
+            d.r.run(d.t);
+            T.ub(() -> { for (int k = 0; k < 3; k++) d.step(); }, "PULSE_RUN while a pass runs", "replayer", "PULSE_RUN while a pass runs");
         }
         // one part per queue (v1.25, CL1): offset [22:20] alone names it, anywhere in its 1 MB
         Replayer r3 = new Replayer(0); long t3 = 0;

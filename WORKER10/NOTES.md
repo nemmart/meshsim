@@ -48,3 +48,4 @@ See bottom: per-turn log.
 - T2: merged main's K change (DECISIONS-v1.2 s49) cleanly; v1.25's text equals v1.2's there, so no CHANGES-v1.25 entry (WORKER10/NEXT.md done).
 - T3 (2026-11-01): on main now (v1.25 branch done). Fixed from WORKER13: 4.17.1 types (D46), the renumbering stated exactly (appendix 2.0, 61 row opcodes), 8.1 load timing (D45); CHANGES-v1.25 lists them (two as v1.2 errata).
 - T4 (2026-11-01): item 138 closed from Quest 083/084 (all windows' Stage B lines in jvm-*.log.gz; M rows = (cycles - 3 rows - stalls)/2, exact, padding residual 0). Log densities not counted by the runs: kept 4f36b3d's + derived note. Item 37 closed. 137 left open (not quick).
+- T5 (2026-11-01): Quest 085 (claimed in NUMBERS.md, DONE): log densities from the deliveries' rows + state records, all 16,384 windows exact; 4.19.2, item 138, CHANGES-v1.25 updated.

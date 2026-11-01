@@ -1156,7 +1156,7 @@ trace and run the file system:
 
 | item | call |
 |---|---|
-| **K** (W2-25; *revised by 49: 2·L + 4 in meshsim, K implementation-defined in hardware*) | With spanning gone the big-SRAM write path is fixed, so K is a formula: **K = max(2·L + 3, L + 4, `cm_latency`, `rp_latency`)**, L = `ts_engine_latency`; K = 8 covers L ≤ 2. Write combining stays out unless it fits under K. S1's measurement becomes a check of the formula |
+| **K** (W2-25) | With spanning gone the big-SRAM write path is fixed, so K is a formula: **K = max(2·L + 3, L + 4, `cm_latency`, `rp_latency`)**, L = `ts_engine_latency`; K = 8 covers L ≤ 2. Write combining stays out unless it fits under K. S1's measurement becomes a check of the formula |
 | **The table window after done** (W2-26) | Guaranteed by K (17 A): meshsim checks that no table-window access after done precedes a pending `PTR`/`HIST` update. No interlock hardware |
 | **Big-SRAM images** (W2-27) | Settled by 31: big-SRAM data arrives counted, after the first command |
 | **Misaligned engine accesses** (W2-32, W3-30) | The access is dropped, **still counted** (so nothing hangs), and sets `ERRORS` [1]; the read port's misaligned read sets [1] too, not [7]. meshsim flags it |
@@ -1486,64 +1486,12 @@ Decided (O).
 Confirmed by Tony. Answers Q16 (W5-04, W5-21); spec item 134 closed, 4.11 updated by the integrator.
 
 - **The 32 KB controller memories meet one-cycle access at 1 GHz.**
-- **Loads take 1 cycle** from data memory, program memory, the boot ROM and the **table window**. Of the table
-  memories only `HIST` is loadable by the controller (spec 4.10: `PTR`, `STREAM_*` and `GROUP` are write-only on its
-  side; corrected 2026-10-31).
+- **Loads take 1 cycle** from data memory, program memory, the boot ROM and the **table window** (`HIST`, `PTR`,
+  `STREAM_*`, `GROUP`).
 - **Loads take 2 cycles** from the **register block**, every peripheral window word included. This fixes v1.1's
   "1 or 2 at the implementation's discretion"; it stays fixed per register and the same on every tile, so a
   synchronised start's identical code stays identical in time.
 - meshsim models exactly these.
-
-## 46. Peripheral types (2026-10-31)
-
-Decided (O). Answers W4-05. A peripheral's `PARAMS` [7:0] (10, 18):
-
-| type | peripheral |
-|---|---|
-| 0 | none, or nothing to say |
-| 1 | Ingress/Egress, with the UART and the chip-level lines (C&C 1's peripheral, 15, 28) |
-| 2 | the Updater/Binder/RW engine (C&C 2's, 25) |
-| 3 | the Tracer (C&C 3's) |
-| 4 | the replayer (v1.1's spec called it type 1) |
-
-Other values are reserved. Spec 4.17.1 updated, and 4.19 renumbered.
-
-## 47. Waiting rules from the sort port (2026-10-31)
-
-Decided (O). Answers WORKER8's Q1-Q3; recipe 23 and `CONVENTIONS.md` updated by the integrator.
-
-- **Q1, the tables are free per memory:** `STREAM` and `GROUP` once DMA run done fires (only the address generator
-  reads them); `PTR` and `HIST` once the arrivals' counter fires (only arriving packets update them). A program may
-  rewrite `STREAM` while arrivals still update `PTR`. Refines 17, which waited for both.
-- **Q2, polling a landed word in data memory** to learn that a sender's earlier packets are in: valid **only when those
-  earlier packets also land in controller memory** (one unit's packets to one destination arrive in order, 44, and
-  port B writes them in that order). Packets to big SRAM take the slower write path, so a marker in data memory can
-  land before them; wait for their counter instead.
-- **Q3, a plain `wfi()` on counters done** under the reset mask (GO | counters done): sanctioned, and cheaper than
-  `wait_all()` (no stores), **when no other counter is armed**, since counters done needs all seven at 0.
-
-## 48. From meshsim's phase 4 (2026-10-31)
-
-Integrator's answers to WORKER4's W4-06 and W4-07, to review.
-
-- **W4-06, a peripheral without a DMA:** its words 8 and 9 (`DMA_HDR`, `DMA_ADDR`) **read 0, and a load of them is not
-  flagged; only a store is.** They are standard words that happen to be empty, not undefined ones, so the handler's
-  fixed report set (20, 21) reads them on every peripheral, the replayer included, without special cases.
-- **W4-07, `mtime`'s rate:** implementation-defined. meshsim counts reference-oscillator cycles through the `time` CSR;
-  Tony to say what his core does. Software bounds its waits with `mcycle` (41, F12), so nothing depends on the rate.
-
-## 49. K is the implementation's; meshsim's formula is 2L + 4 (2026-11-01)
-
-Decided (O). Answers WORKER4's W4-08, from its S1 measurement (S1Bench).
-
-- **meshsim's big-SRAM write path measures 2L + 4 cycles**, one more than 32's formula of 2L + 3 (L = `ts_engine_latency`,
-  the one-way delay between an engine and the table memories, set by placement: default 1, swept 1-4). At L = 3 and 4 the
-  formula left K a cycle short, and the radix sort's back-to-back bucket passes read chunks before they were stored.
-- **meshsim's formula becomes K ≥ max(2L + 4, L + 4, `cm_latency`, `rp_latency`)**: 6 at L = 1, so meshsim's default K = 8
-  still covers L ≤ 2; at L = 3 meshsim needs K = 10, at L = 4 K = 12.
-- **K in hardware is the implementation's** (owner): the requirement is only that K covers the implementation's slowest write
-  path. The formula is meshsim's reference, not a hardware promise; the real K comes from the RTL's measured paths, as part of
-  its delta. Spec 4.7, the summary table, the parameters and invariant 24 updated (in `wip/`).
 
 ---
 

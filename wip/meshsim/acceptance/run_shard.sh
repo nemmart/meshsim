@@ -6,7 +6,8 @@
 #   ./run_shard.sh -d DELIVERY -p PROGRAM -f FIRST -n COUNT [-j JOBS] [-s AB] [-m MANIFEST_SHA256] OUTDIR
 #     -d  the delivery's directory: PROGRAM/window_NNNNN.*, and the manifest as manifest.json or PROGRAM.manifest.json
 #         (WORKER9's delivery_writer: /tmp/w9-deliveries with PROGRAM.manifest.json beside PROGRAM/); tables/ optional
-#     -f, -n  window indices FIRST..FIRST+COUNT-1     -j  JVMs in parallel (default nproc)
+#     -f, -n  window indices FIRST..FIRST+COUNT-1, or -n all: every window the manifest lists for PROGRAM (a sparse
+#             set, e.g. /tmp/w9-deliveries-selected)     -j  JVMs in parallel (default nproc)
 #     -s  stages (default AB): A the model, B the controller on tile 0 alone (the 63 idle tiles parked), F the same on
 #         the full chip; with B and F both, each window's cycles must agree
 #     -m  the manifest's SHA-256, as WORKER9's writer task reported it: checked before anything is read
@@ -21,7 +22,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 D=; P=; F=; N=; J=$(nproc); S=AB; MS=; X=0; MF=
 while getopts d:p:f:n:j:s:m:x:M: o; do case $o in d) D=$OPTARG;; p) P=$OPTARG;; f) F=$OPTARG;; n) N=$OPTARG;; j) J=$OPTARG;;
   s) S=$OPTARG;; m) MS=$OPTARG;; x) X=$OPTARG;; M) MF=$OPTARG;; *) sed -n '2,18p' "$0"; exit 2;; esac; done
-shift $((OPTIND - 1)); OUT=${1:-}
+shift $((OPTIND - 1)); OUT=${1:-}; [ "$N" = all ] && F=${F:-0}
 [ -n "$D" ] && [ -n "$P" ] && [ -n "$F" ] && [ -n "$N" ] && [ -n "$OUT" ] || { sed -n '2,14p' "$0"; exit 2; }
 D=$(cd "$D" && pwd) || { echo "no delivery at $D"; exit 2; }
 [ -n "$MF" ] || { MF="$D/manifest.json"; [ -f "$MF" ] || MF="$D/$P.manifest.json"; }
@@ -33,17 +34,23 @@ if [ -n "$MS" ]; then
 fi
 mkdir -p "$OUT"; OUT=$(cd "$OUT" && pwd); : > "$OUT/results.csv"
 JAVA="java -Xmx1500m -Dreplay.tables=$HERE/tables/replayer -Dreplay.build=$HERE/replay -cp $HERE/meshsim.jar"
+if [ "$N" = all ]; then F=0; N=all; RANGE=""; else RANGE="--first $F --count $N"; fi
 T0=$(date +%s)
-echo "shard: $P windows $F..$((F + N - 1)) of $D, stages $S, $J JVMs, start $(date -u)"
+echo "shard: $P windows ${RANGE:-all} of $D, stages $S, $J JVMs, start $(date -u)"
 for ((k = 0; k < J; k++)); do
-  (cd "$HERE" && $JAVA ReplayShard "$D" "$P" "$OUT/part-$k.csv" --manifest "$MF" --stages "$S" --first "$F" --count "$N" --stride "$J" --phase "$k" --full-every "$X" > "$OUT/jvm-$k.log" 2>&1) &
+  (cd "$HERE" && $JAVA ReplayShard "$D" "$P" "$OUT/part-$k.csv" --manifest "$MF" --stages "$S" $RANGE --stride "$J" --phase "$k" --full-every "$X" > "$OUT/jvm-$k.log" 2>&1) &
 done
 wait
 cat "$OUT"/part-*.csv >> "$OUT/results.csv" 2>/dev/null; rm -f "$OUT"/part-*.csv
 gzip -f "$OUT"/jvm-*.log 2>/dev/null                    # a line per window and stage: keep the committed results small
-python3 - "$OUT" "$P" "$F" "$N" "$S" "$(( $(date +%s) - T0 ))" "$J" "$X" <<'PY'
-import csv, sys
-out, prog, f, n, stages, tot, j, x = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), sys.argv[5], int(sys.argv[6]), int(sys.argv[7]), int(sys.argv[8])
+python3 - "$OUT" "$P" "$F" "$N" "$S" "$(( $(date +%s) - T0 ))" "$J" "$X" "$MF" <<'PY'
+import csv, sys, json
+out, prog, f, nn, stages, tot, j, x, mf = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4], sys.argv[5], int(sys.argv[6]), int(sys.argv[7]), int(sys.argv[8]), sys.argv[9]
+if nn == "all":       # every window the manifest lists for the program
+    want = {int(w["index"]) for p in json.load(open(mf))["programs"] if p["name"] == prog for w in p["window_entries"] if "files" in w}
+    n = len(want); f = min(want) if want else 0
+else:
+    n = int(nn); want = set(range(f, f + n))
 seen = {}; bad = []; per = {}; cyc = {}
 for r in csv.reader(open(out + "/results.csv")):
     if len(r) < 9: bad.append(("?", "malformed line " + ",".join(r))); continue
@@ -53,11 +60,11 @@ for r in csv.reader(open(out + "/results.csv")):
     p = per.setdefault(st, [0, 0, 0]); p[0] += int(r[5]); p[1] += int(r[7]); p[2] += 1
 for (st, w), c in list(cyc.items()):
     if st == "B" and ("F", w) in cyc and cyc[("F", w)] != c: bad.append((str(w), f"stage B (tile 0 alone) {c} cycles, stage F (full chip) {cyc[('F', w)]}"))
-want = set(range(f, f + n)); missing = {st: sorted(want - seen.get(st, set())) for st in stages}
+missing = {st: sorted(want - seen.get(st, set())) for st in stages}
 if x > 0 and "F" not in stages:
     stages += "F"; missing["F"] = sorted({w for w in want if w % x == 0} - seen.get("F", set()))
 with open(out + "/SUMMARY.txt", "w") as s:
-    s.write(f"program {prog}, windows {f}..{f + n - 1} ({n}), stages {stages}, {j} JVMs, wall {tot} s\n")
+    s.write(f"program {prog}, windows {f}..{f + n - 1} ({n}{'' if nn != 'all' else ', all the manifest lists'}), stages {stages}, {j} JVMs, wall {tot} s\n")
     for st, (rws, ms, k) in sorted(per.items()):
         s.write(f"stage {st}: {k} windows OK, {rws} rows, {ms / 1000:.1f} JVM-s, {rws / max(ms, 1) * 1000:.0f} rows per JVM-second, {ms / max(k, 1) / 1000:.2f} s per window\n")
     if tot: s.write(f"throughput: {sum(len(seen.get(st, ())) for st in stages) / max(len(stages), 1) / tot * 3600:.0f} windows per hour (all stages)\n")
@@ -67,7 +74,8 @@ with open(out + "/VERDICT.txt", "w") as v:
         tot_st = n if not (st == "F" and x > 0) else len([w for w in want if w % x == 0])
         v.write(f"{'ok  ' if not missing[st] else 'FAIL'} stage {st}: {tot_st - len(missing[st])} of {tot_st} windows matched" + (f"; first missing {missing[st][:20]}" if missing[st] else "") + "\n")
     for w, m in bad[:50]: v.write(f"FAIL window {w}: {m}\n")
-    v.write(("PASS" if ok else "FAIL") + f": {prog} windows {f}..{f + n - 1}\n")
+    v.write(("PASS" if ok and n > 0 else "FAIL") + f": {prog} windows " + (f"{f}..{f + n - 1}" if nn != "all" else f"(all {n} listed)") + "\n")
+    ok = ok and n > 0
 sys.exit(0 if ok else 1)
 PY
 RC=$?

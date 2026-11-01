@@ -78,3 +78,13 @@ acceptance kit). Until WORKER10's `v1.25` spec branch exists, the design is DECI
   `acceptance/make_acceptance_task.sh KIT 084 cyclone-29 <sha>` (rebuild the kit with make_kit.sh first).
 - Task 080 done (cyclone-29.manifest.json f8a0622e...). **Task 084 pushed.** 083 next in the queue.
 - Task 083 PASS (8192/8192 A and B, 128/128 F; 28.7 min). 084 running from ~08:43.
+- 084 PASS. Merged into main (7f83553). Freeze check task 086 pushed (quest 366695a, kit sha d99064ec...).
+- Task 086 PASS: quick 34/34, full 10/10, p4/uniform-k128 1,360,082 cycles (= 077). Last check before the freeze.
+
+## CL1 (2026-11-01)
+- CL1 on main (ba79bc2, merged with main's spec update as ba7a97c): queue ports 1 code 0x100000, 2 rlog 0x200000,
+  3 wlog 0x300000, 4 exp 0x400000; model, MeshHeader + both mesh.h + draft, ReplayDriver, unit tests (after
+  WORKER15 bba8ed7); replay_ctl/recipe 26 via the header; book regenerated (check_book 46/0). Local: ReplayerTest 1468/0,
+  StageB synthetic 18/18, RecipeTest 2042/0, RegDocTest 269/0, ReplayShard ABF OK. run_shard -n all (sparse sets).
+- Task 087 (claimed in NUMBERS.md, quest 12808ca): quick + full + p4/uniform-k128 + selected windows
+  (/tmp/w9-selected-windows.tgz c62de022..., extracted to scratch, -n all -x 1). Kit dfbb9b9b...

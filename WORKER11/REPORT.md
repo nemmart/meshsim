@@ -166,6 +166,35 @@ windows each, every one proven by the writer's own replay).
   outside the timed replay: reading the window's files (46 GB) and checking their SHA-256, and the JVMs' uneven tails.
   The estimate (23-25 min) was about 15% short; the task still has 16 minutes of margin under the limit.
 
+**Task 084, cyclone-29: PASS** (godspeed, 08:43-09:11 UTC, 28.1 min wall).
+- **Every window matched:**
+  - Stage A: 8,192 of 8,192 windows (536,870,912 rows), row for row, with the streams consumed exactly and the end
+    states equal.
+  - Stage B (tile 0 alone): 8,192 of 8,192.
+  - Stage F (the full chip): the 128 windows checked, cycle counts equal to Stage B's.
+- **No CORRUPT file and no violation.**
+- **Per JVM:** A 0.04 s, B 1.40 s, F 10.3 s per window.
+
+**DECISIONS-v1.25 s2 is met for both programs:** every window of EVM Zone and Cyclone at 2²⁹ rows, replayed by meshsim's
+replayer and its controller, matches jolt-cpp `821e1bd`'s trace row for row. `v1.25-meshsim` was merged into main
+(7f83553).
+
+**The freeze check, Quest task 086** (`086-w11-main-v125-verify`, claimed in NUMBERS.md). It runs main as merged (0d63132):
+- run_tests.sh's quick suite (`tools/run_quick.sh`, 8 at a time), the sort's steps included;
+- the full-mode extras with the sort's BT pair (`tools/run_full.sh`, 4 at a time);
+- the full-size sort `p4/uniform-k128` at 64 × 65,536.
+
+The sort runner is WORKER8's kit from task 077, with `meshsim.jar` rebuilt from main. The sort image, the boot ROM and
+`hops.txt` are byte-identical to 077's, and `HASHES` is updated for the jar. Smoke-tested locally before submission.
+
+**Task 086: PASS** (godspeed, about 14 min).
+- **The quick suite:** 34 of 34 steps, 0 failed. Every suite and its shuffled runs, RecipeTest 2042, ReplayerTest 1461,
+  StageB synthetic 18/18, and the sort's P1 42, sort 104 and sort-shuf 104.
+- **The full-mode extras:** 10 of 10, the sort's BT pair at 64 × 16,384 included.
+- **The full-size sort `p4/uniform-k128`:** every check passed, **1,360,082 cycles**, the same as task 077's. So the
+  sort is unchanged on v1.25.
+- **That is the last check before v1.25's freeze.**
+
 ## 6. For the merge: changes outside the replayer
 
 One change is in WORKER4's area of the simulator (`src/Chip.java`): it is opt-in, off by default, and nothing but Stage B
@@ -183,3 +212,33 @@ Everything else is replayer-side:
 - `acceptance/`;
 - the two replay documents;
 - `run_tests.sh`'s replayer line.
+
+## 7. Cleanup CL1: one 1 MB part per replayer queue port (2026-11-01)
+
+**The change (main ba79bc2, merged as ba7a97c):** offset [22:20] alone names the destination, as spec 4.19.10 now says
+(WORKER10). The parts:
+
+| part | offset | destination |
+|---|---|---|
+| 0 | — | the memories (unchanged) |
+| 1 | 0x100000 | code queue |
+| 2 | 0x200000 | read-log queue |
+| 3 | 0x300000 (was 0x280000) | write-log queue |
+| 4 | 0x400000 (was 0x300000) | expansion queue |
+| 5-7 | — | unmapped |
+
+**Changed:**
+- the model's write port;
+- `MeshHeader.java`, both `mesh.h` copies and the draft header;
+- `ReplayDriver`;
+- the unit tests, with WORKER15's test of every part, after bba8ed7;
+- `replay_ctl.c` and recipe 26, rebuilt through the header, and the book regenerated (`check_book.py` 46/0).
+
+**Unchanged:** the sort image. The deliveries hold no addresses.
+
+**Quest task 087: PASS** (main at ba7a97c):
+- the quick suite 34 of 34, ReplayerTest now 1468;
+- the full extras 10 of 10;
+- `p4/uniform-k128`: 1,360,082 cycles, as before;
+- the selected windows, from `/tmp/w9-selected-windows.tgz` (SHA-256 checked, with `imm_signed`): EVM Zone 12 of 12
+  and Cyclone 13 of 13 in Stage A, Stage B (tile 0 alone) and Stage F (the full chip).

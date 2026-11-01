@@ -254,6 +254,43 @@ per row** (owner), and windows 33-36 all fall in the same proof.*
 - **The CSR decision holds** (v1.25 section 6): Cyclone runs 8,751 CSR instructions (10 per trap, 875 traps, at most 160 in any
   window), EVM Zone none.
 
+## 12. The Tracer's region: parts 0 and 1 (2026-11-01)
+
+Decided (O). The Tracer is C&C 3's peripheral; everything C&C 3 or the memory system gives it arrives as 128-bit packet writes into
+its region, with **offset bits [22:20] picking the part**, as in the replayer's (spec 4.19.10, CL1).
+
+- **Part 0, 0x000000-0x003FFF, is the replayer's layout, unchanged:** the state word (pc, `instr_idx`, next offset; the four flags
+  ignored), the stream word (ignored), the register image (registers 0-127, bank 0, at 0x20 + 16*i*), the decode table at 0x1000
+  and the ROM at 0x2000 (the Tracer's own contents, same format and builder, section 7). The same loader code serves both units.
+  Bank 1 (untraced scratch) needs no initial state. The next offset is normally 0: the Tracer starts at an instruction boundary.
+  - **To verify (T2):** that pc, `instr_idx` and registers 0-127 are the Tracer's **entire** starting state. jolt-cpp maps each
+    CSR onto a virtual register (bank 0), and Cyclone takes 875 traps, so the CSRs are live state; check nothing else (the LR/SC
+    reservation, anything jolt-cpp's tracer keeps outside its registers) is needed. Owner: believed so.
+- **The page table covers Jolt's full 4 GiB guest range, assuming most pages are empty** (owner, 2026-11-01; replaces the first
+  proposal, a flat 32,768-entry table over 512 MiB). Future programs are unknown, so the hardware takes the general case; storage
+  scales with the pages that exist, not the range, and LPDDR bounds that anyway. **So a two-level table** *(proposed sizes)*:
+  - **the directory:** 1,024 entries of 32 bits (4 KB), each for a 4 MiB region (256 pages of 16 KB): "empty", or a leaf in the pool;
+  - **the leaf pool:** leaves of 256 entries (1 KB), one per non-empty region; e.g. 128 leaves (128 KB, the first proposal's storage)
+    map up to 512 MiB of populated regions **anywhere** in 4 GiB; 4 MiB regions rather than 16 MiB waste less leaf space when a
+    program scatters small areas;
+  - **in the map:** the directory in part 1, the leaf pool in part 2, written while the Tracer is stopped between proofs;
+  - **a translation is two lookups** (the directory small enough to be flops).
+  - **Open (T3):** what an unmapped page means (zeros, with a page fault to C&C 3 on the first write, the Tracer waiting; or a table
+    that already includes every page the proof touches), and the entry's format.
+- *(Withdrawn: T8, measuring whether 512 MiB suffices; superseded by the 4 GiB decision.)*
+- **Findings from upstream Jolt** (a16z/jolt `main` at `17a9459`, read 2026-11-01; `common/src/jolt_device.rs`, `constants.rs`):
+  addresses are 64-bit, with **no 4 GiB limit in Jolt** (jolt-cpp's 4 GiB is its emulator's own reservation). The used space is
+  **one contiguous range**: the I/O region (trusted and untrusted advice, inputs, outputs, termination and panic words) **below
+  `RAM_START_ADDRESS` (0x8000_0000)**, then the program, a stack canary, the stack and the heap (configurable, default 32 MiB)
+  **above it**. Every address is remapped to a cell index `(address − lowest_address) / 8`, `lowest_address` being the bottom of
+  the advice area; below it is an error; K bounds the number of cells. The range moves with configuration (a Jolt test with 512
+  MiB of advice puts `lowest_address` at 0x4000_0000). **Programs use both ends of the range and leave the middle empty** (owner).
+  So: a directory indexed from a **base register set to `lowest_address`** suits it. Not yet checked against jolt-cpp's layout.
+- **Next research area for v1.3** (owner, 2026-11-01): **the Tracer's memory: the page table and how it maps Jolt's layout** (its
+  two levels and sizes, the base, what an unmapped page means, the entry format, how C&C 3 builds and loads it per proof, the
+  throwaway layer, how jolt-cpp's layout compares with upstream's). "Needs to be dug into a lot more"; section 12's sizes are
+  proposals only.
+
 ---
 
 ## v1.3 work list
@@ -293,8 +330,9 @@ Options recorded for later, each with the evidence that would justify it.
 |---|---|---|---|
 | T1 | What the 8 KB and 4 KB expansion memories hold | 1 | **answered: section 7** (same format and builder as the replayer's ROM and decode table; different contents) |
 | T4 | The Tracer's template coverage | 7 | **answered: section 7** (a list in the ROM; the rest fed by C&C 3, replayer-style) |
-| T2 | The RV64 initial state: what it contains and where it comes from | 1 | open |
-| T3 | The page table: its size, format and how C&C 3 maintains it | 1 | open |
+| T2 | The RV64 initial state: what it contains and where it comes from | 1 | **mostly answered: section 12** (part 0 as the replayer's); to verify it's complete |
+| T3 | The page table: its entry format and semantics, and how C&C 3 maintains it | 1 | open (its size and place: section 12) |
+| T8 | ~~Does 512 MiB cover both workloads?~~ | 12 | **withdrawn**: the table covers 4 GiB, sparse (section 12) |
 | T6 | `VirtualPext`/`VirtualPextSigned` in hardware | 9 | **answered: section 9** (any mask must work; the method is the implementation's) |
 | T7 | The modular inverse within the Tracer's 100 ms budget | 11 | **answered: section 11** (keep the single loop; host-supplied advice as the backup) |
 | T5 | The inlines' advice | 8 | **answered: section 10** (the Tracer computes all advice through expansions; C&C 3 generates long ones by looping) |

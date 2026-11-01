@@ -307,7 +307,7 @@ A request for a reserved target, or a target with no receiver, is dropped at the
 | 4.16 | the fifth router port (every tile; connected at tiles 0–2, to C&C 1–3) |
 | 4.17 | peripherals: up to three per tile, the standard window, the DMA (4.17.1–4.17.9) |
 | 4.18 | the request port (the tile's end of the request bus, 3.3), send and receive |
-| 4.19 | the replayer, peripheral type 4 (4.19.1–4.19.15) |
+| 4.19 | the replayer, peripheral type 1 (4.19.1–4.19.15) |
 | 4.20 | the UART (part of C&C 1's peripheral) |
 
 Where each sits on the die: section 12. Unless stated otherwise, every unit-to-unit transfer inside a tile takes one cycle (*(param)* `intra_tile_latency`, default 1 per stage; exact values affect latency only).
@@ -705,14 +705,10 @@ One unit straight after the eject selector, and **the only path into the tile**.
 **K** (integrator, 2026-10-29; owner, 2026-10-29) is a parameter, **default 8**, large enough that by the time a packet's counter decrements, **its write is in place**:
 - **controller memory:** port B lands a write `cm_latency` = 2 cycles after the director [built];
 - **a peripheral** lands it within `rp_latency` = 2 cycles (4.17.8);
-- **big SRAM:** a write only has to have **entered its area's request queue**, which is served in arrival order, so a read issued after the counter reaches 0 queues behind it and cannot overtake it (4.1). With spanning gone (4.1) the write path is fixed, and its loaded worst case in meshsim's model is **2·L + 4** (W4-08) cycles, L = `ts_engine_latency` [derived];
-- **the tables:** a `PTR` or `HIST` update is complete **L + 4** cycles after acceptance [derived] (guarantee A, 4.10); of the two, only `HIST` is loadable through the table window.
+- **big SRAM:** a write only has to have **entered its area's request queue**, which is served in arrival order, so a read issued after the counter reaches 0 queues behind it and cannot overtake it (4.1). With spanning gone (4.1) the write path is fixed, and its loaded worst case is **2·L + 3** cycles, L = `ts_engine_latency` [derived];
+- **the tables:** a `PTR` or `HIST` update is readable through the table window **L + 4** cycles after acceptance [derived] (guarantee A, 4.10).
 
-So in **meshsim's model**, **K ≥ max(2·L + 4, L + 4, `cm_latency`, `rp_latency`)**: 6 at the default L = 1, and K = 8 (meshsim's default) covers L ≤ 2. *(Revised 2026-11-01, W4-08: meshsim's big-SRAM write path measures 2·L + 4, one cycle more than the earlier count of 2·L + 3; at L = 3 and 4 the earlier formula left K a cycle short and the radix sort's back-to-back bucket passes read stale chunks.)* meshsim errors if K is set below its formula, and S1Bench measures the margin.
-
-**K in hardware is the implementation's** (owner, 2026-11-01): the requirement is only that K covers the implementation's slowest write path (the four destinations above). The formula is meshsim's reference, not a hardware promise; the hardware sets its own K from its measured paths, and that comes back as part of the RTL's delta.
-
-**One K for every destination, deliberately** (owner, 2026-10-31). Writes to controller memory and peripherals land in 2 cycles, but their counters also decrement at K = 8, so a round trip through a counter costs about 6 cycles more than v1.1, which counted those writes at landing. Measured (meshsim, a read-port search step): 35.9 + 37.42 per active search, against v1.1's 29.8 + 37.43. **The extra is per step, shared by every search active in it, not per query**: about a hundred cycles per split, a few hundred per sort. A separate 2-cycle delay for controller memory and peripherals would win it back but is **not adopted**; it would be reconsidered only if the cost became per query (the v1.3 log's candidate C1).
+So **K ≥ max(2·L + 3, L + 4, `cm_latency`, `rp_latency`)**: 5 at the default L = 1, and K = 8 covers L ≤ 2. meshsim errors if K is set below the formula, and its measurement of the margin (item S1, 13) becomes a check of the formula. Write combining (item 3) stays out unless it fits under K.
 
 **Command landed** (owner, 2026-10-28). The director decodes command slot 0 from the address: **a write that comes in through the director and covers command slot 0 sets "command landed" when it lands in port B**, not when the director accepts it, so the event (and READY, and the boot ROM's jump, 6.2) follows the write. Any such write sets it, a 64- or 128-bit write starting at slot 0 included (it also writes slots 1–3, harmlessly). The controller's own store to slot 0 doesn't (4.12).
 
@@ -1137,10 +1133,6 @@ Every peripheral's 0x200-byte window (owner, 2026-10-28) starts with the same wo
 | 10–31 | | | reserved for future standard words |
 | 32–127 | | | peripheral-defined |
 
-**Peripheral types** (`PARAMS` [7:0]; owner, 2026-10-31; W4-05): **0** none, or nothing to say; **1** Ingress/Egress,
-with the UART and the chip-level lines (C&C 1's peripheral, 6.6); **2** the Updater/Binder/RW engine (C&C 2's, 6.7);
-**3** the Tracer (C&C 3's); **4** the replayer (4.19). Other values are reserved.
-
 - **Access rules** (owner, 2026-10-28): **reserved or undefined words**, in a window or the controller's block, **read 0 and ignore stores** (meshsim flags the access); a store to a defined read-only word is a bus error, as in the controller's block (4.11); **any word of an absent peripheral's window is a bus error** (4.17.1). Every word is 32 bits, accessed one word at a time, at the register-load latency fixed for it (4.11).
 - **A peripheral without a DMA** leaves words 4, 8 and 9 unused (reserved) and `STATUS` [1] at 0.
 - **The C header** (owner and integrator, 2026-10-28/29; W3-27; to be confirmed with the generator): each window is declared as a C struct overlaid on its address, a `PeripheralStd` macro listing the ten standard members at the top of each peripheral's struct, and a type per peripheral ending in `Regs` (`ReplayerRegs`). Access is through pointers (`#define peripheral1 ((volatile ReplayerRegs *)0xFFFFFA00)`, used as `peripheral1->EVENTS`), so a whole-block copy, which would consume events, needs an explicit dereference. Every member is `volatile uint32_t`. The register-table generator emits the structs (8.1).
@@ -1231,7 +1223,7 @@ The tile's end of the request bus (3.3). **It has two directions in every tile,*
 
 **What a program must keep to** (arming before sending, at most 1, 3 and 1 requests outstanding to C&C 1, 2 and 3, no reads across a group run) is in 3.3 and the memory system's contract (6.7).
 
-### 4.19 The replayer (peripheral type 4)
+### 4.19 The replayer (peripheral type 1)
 
 *No figures yet; the figure set gains a replayer part (handoff in `CHANGES-v1.1.md`).*
 
@@ -1572,7 +1564,7 @@ All four are dual-ported, so pushes land while the replayer runs. Every refill i
 
 | word or bit | v1.2 | v1.1 |
 |---|---|---|
-| `PARAMS` [7:0] | type 4 | `TILE_STATUS` [15:12] |
+| `PARAMS` [7:0] | type 1 | `TILE_STATUS` [15:12] |
 | `STATUS` [0] | run in progress: the ownership state (4.19.10, 4.19.11) | `periph_running` |
 | `STATUS` [1] | always 0 (no DMA) | — |
 | `ERRORS` | [0] bad write, [1] queue overrun, [2] invalid expansion (4.19.11) | the tile's conditions 11–13 |
@@ -1811,10 +1803,10 @@ Network: injection at cycle t → route decision (1) → output FIFO (≥ 1) →
 | path | timing |
 |---|---|
 | big SRAM | one access per area per cycle, in arrival order; a read's latency is its queueing plus the array's read latency, both *(Open)* for the hardware (4.1) |
-| write counters | a counted packet decrements its counter K cycles after the traffic director accepts it, K a parameter, default 8, implementation-defined, in meshsim at least max(2·L + 4, L + 4, `cm_latency`, `rp_latency`) (4.8); its write is then readable, and counters done (`EVENTS` [7]) or the counter's own done event is set (4.12, 4.14) |
+| write counters | a counted packet decrements its counter K cycles after the traffic director accepts it, K a parameter, default 8, at least max(2·L + 3, L + 4, `cm_latency`, `rp_latency`) (4.8); its write is then readable, and counters done (`EVENTS` [7]) or the counter's own done event is set (4.12, 4.14) |
 | table memories | engine requests and returns cross `ts_engine_latency` each way; controller window one cycle (4.10) |
 | controller-memory path | mode-0 writes to regions 0x00 and 0x01 reach port B `cm_latency` = 2 cycles after the director [built] |
-| controller | one instruction per cycle; loads and stores to data memory in one cycle, load-use 0; **loads from the register block and the peripheral windows 2 cycles, from the table window (`HIST`) 1 cycle** (T, 4.11); stores to them single-cycle and posted; taken branch +1; multiply 3; stalls only on an occupied send holding register, a full request FIFO, a full UART TX FIFO (C&C 1), or in `WFI` (4.11, 4.18, 4.20) |
+| controller | one instruction per cycle; loads and stores to data memory in one cycle, load-use 0; **loads from the registers and the table window 1 or 2 cycles**, fixed per register by the implementation (meshsim's reference 2; 4.11); stores to them single-cycle and posted; taken branch +1; multiply 3; stalls only on an occupied send holding register, a full request FIFO, a full UART TX FIFO (C&C 1), or in `WFI` (4.11, 4.18, 4.20) |
 | registers | a store at *t* takes effect at the end of *t*, seen by the owning unit at *t* + 1 and by any later load; a load issued at *t* with latency *L* returns the state at the end of *t* + *L* − 2 (its sample point) and takes any side effect at the end of *t* + *L* − 1 (4.11); status computed at *t* is visible to a load whose sample point is *t* or later |
 | address generator | a run's first request is offered 4·`ts_engine_latency` + 3 cycles after the start store for a group run (S_0), 2·`ts_engine_latency` + 2 for a stream run; one cycle less counted from the cycle the start takes effect (4.2) |
 | GO | a `PULSE_GO` store in C&C 1's peripheral reaches every tile `go_latency` cycles later; a pulse at t sets `EVENTS` [8] at the end of t, wakes every core in `WFI` at t+1, ends the `done` gate and clears `done` and "command landed"; engines start at the start store (`PULSE_DMA`) that follows (6.3) |
@@ -2280,7 +2272,7 @@ Peripheral 2's window is at 0xC00 and peripheral 3's at 0xE00, with the same wor
 
 | word | register | bits | function | reset |
 |---|---|---|---|---|
-| 0 | `PARAMS` | [7:0] = 4 | type 4, the replayer | 4 |
+| 0 | `PARAMS` | [7:0] = 1 | type 1, the replayer | 1 |
 | 1 | `STATUS` | [0] run in progress; [1] 0 | [0] is v1.1's `periph_running` (4.19.11) | 0 |
 | 2 | `ERRORS` | [0] bad write, [1] queue overrun, [2] invalid expansion | 4.19.11 | 0 |
 | 5–7 | `EVENTS`, `EVENTS_PEEK`, `EVENTS_MASK` | [0] run done (depth 1), [2] code credit, [3] read-log credit, [4] write-log credit, [5] expansion credit (depth 2 each), [6] new expansion (depth 1) | 4.19.8, 4.19.9 | 0 |
@@ -2372,7 +2364,7 @@ The reset empties both FIFOs, clears [17:16] and loads the reset divisor (4.20).
 21. **No reserved encodings:** no packet in mode 6–7 (discarded silently in hardware), and no count-only packet with counter 0 (it does nothing); no `DMA_CONFIG` digit 5–7; no access to a reserved word of the controller block or a window other than the trace and exit words (8.15), and no 1 in a reserved bit.
 22. **Uncounted traffic is mode 0 only:** modes 1–3 are always counted; a running program sends no uncounted writes except commands; boot overlays go only into controller memory, and big-SRAM data is always counted (3.1, 6.2). And **no write lands in data memory's first 16 bytes after boot** (2.2), which catches a C null-pointer store and an all-zero header alike.
 23. **No silent traps** (4.13): no `ecall`, `ebreak`, fetch outside program memory and the boot ROM, misaligned jump target, or trap inside a handler. meshsim stops loudly on each; on hardware such a trap parks the unit without raising its error line, and only C&C 1's watchdog notices (6.1).
-24. **K covers the write path** (4.8, 4.10): K is set at or above the implementation's slowest write path (meshsim: max(2·L + 4, L + 4, `cm_latency`, `rp_latency`)), and no read issued after a counter's done overtakes a write that counter counted, a table-window access after done against a pending `PTR` or `HIST` update included. meshsim measures the margin across workloads (item S1, 13).
+24. **K covers the write path** (4.8, 4.10): K is set at or above max(2·L + 3, L + 4, `cm_latency`, `rp_latency`), and no read issued after a counter's done overtakes a write that counter counted, a table-window access after done against a pending `PTR` or `HIST` update included. meshsim measures the margin across workloads (item S1, 13).
 25. **Boot keeps its order** (6.2): a unit's overlays and first command are all broadcast or all unicast, and no overlay write lands after the unit's "command landed" and before its start. Announced staging sends nothing sooner than `stage_delay` after the GO store (a packet that beats its counter breaks invariant 9).
 26. **No ignored start:** no `PULSE_DMA` while the address generator is running (4.2).
 
@@ -2409,16 +2401,16 @@ The reset empties both FIFOs, clears [17:16] and loads the reset divisor (4.20).
 | controller memories | **32 KB data + 32 KB program**; port B one 128-bit write per cycle, built as the implementer likes; program memory fetch-and-load only (4.11) |
 | `cm_latency` (director to port B) | 2 [built] |
 | `stage_delay` | 32 cycles *(Proposed)*: the minimum time from C&C 1's GO store to its first packet of announced staging, about 3× the receiving start path's arming time (6.2) |
-| `reg_load_latency` | **2** for the register block and the peripheral windows, **1** for the table window (`HIST`), fixed on every access and unit (T, 4.11) |
+| `reg_load_latency` | 1 or 2 per register, implementation-defined and fixed (the same on every access and unit); covers the register block, the peripheral windows and the table window; meshsim's reference setting 2 (4.11) |
 | `ready_latency` | 1 in simulation (the GO net's); the physical lines cross the die, more than 1 (8 used for estimates); the physical value is *(Open)* |
 | `go_latency` | 1 in simulation; the GO net crosses the die like the READY lines, so physically more than 1 *(Open)*; C&C 1 waits `go_latency` + 1 cycles after each `PULSE_GO` before sending (6.6) |
-| **K** | **8** (meshsim's default); a parameter, **implementation-defined**: at least the implementation's slowest write path. meshsim's model: max(2·`ts_engine_latency` + 4, `ts_engine_latency` + 4, `cm_latency`, `rp_latency`), 6 at the default `ts_engine_latency`; K = 8 covers `ts_engine_latency` ≤ 2 (4.7; W4-08) |
+| **K** | **8** (default); a parameter, at least max(2·`ts_engine_latency` + 3, `ts_engine_latency` + 4, `cm_latency`, `rp_latency`), 5 at the default `ts_engine_latency`; K = 8 covers `ts_engine_latency` ≤ 2; meshsim errors below the formula (4.8) |
 | `error_latency` | the fixed latency of a unit's error line into C&C 1's peripheral *(Open: the physical value; 1 in simulation, Proposed)* (4.13, 6.1) |
 | write counters | seven, `WRITE_COUNTER_1`–`7`, 20 bits each; counter field 3 bits, 0 uncounted, 1–7 the counters (3.1, 4.12) |
 | boot ROM | in every controller, region 0x02, reset vector 0x02000000; a few dozen bytes (6.2) |
 | keep-alive watchdog | `WATCHDOG` in C&C 1's peripheral, off at reset (6.1) |
 | flush wait before a soft reset | about 0.1 ms (about 100,000 cycles at 1 GHz), the outside world's (6.1) |
-| load-use penalty (data memory, program memory, boot ROM) | 0 each (the design target; section 12); registers and windows 2 cycles, the table window 1 (`reg_load_latency`) |
+| load-use penalty (data memory, program memory, boot ROM) | 0 each (the design target; section 12); registers, windows and the table window at `reg_load_latency` |
 | taken-branch penalty, multiply latency | 1, 3 |
 | request bus | a 16-bit, 8-ary tree: 8 row nodes and a root (with an input per sending controller), a 16-byte buffer per node input, one 16-bit beat per cycle per hop, 8 beats per request; the receive queues in the tree, at the root: 128, 256 and 128 × 128 bits for C&C 1, 2 and 3, one credit counter per target set to its depth; at most 1, 3 and 1 requests outstanding per tile; `reqbus_latency` ≈ 15–20 cycles [estimate], 17 unloaded [meas: meshsim] (3.3) |
 | request FIFO | 2 KB per unit, 128 × 128 bits (4.18) |
@@ -2429,7 +2421,7 @@ The reset empties both FIFOs, clears [17:16] and loads the reset divisor (4.20).
 | requests | 128 bits; the hardware's fields requestor [6:0] and target [9:7], 8 targets; the rest laid out by each target (3.3); a request with an answer names its destination as a 32-bit address and its data and reply counters (6.7) |
 | eject priority | the loopback FIFO is served only in a cycle when every other eject FIFO is empty; the others round-robin (4.7) |
 | peripherals (4.17) | up to three per unit, regions 0x04–0x06, 0x200-byte windows at 0xFFFFFA00, 0xFFFFFC00, 0xFFFFFE00; ten standard words; events counted (depth 1 or 2) or live; `rp_latency` 2 for every peripheral *(Proposed)*, at most K; the DMA: up to 4 output queues, one transfer at a time, count up to 4,095 words |
-| replayer (4.19), peripheral type 4 | peripheral 1 on tiles 0–63; a pass of 65,536 rows; code, expansion, read-log and write-log queues of 256, 256, 512 and 512 × 128 bits (halves 128, 128, 256, 256), two credits of half a queue each; three LRU decompressors of 16 × 64 bits; ROM 512 × 128 bits; decode table 2K × 16 bits; register file 128 × 64 bits; output queue 32 rows of 640 bits; rows of 3 or 5 cycles; start copy 64 cycles; about 41 KB of memory per tile |
+| replayer (4.19), peripheral type 1 | peripheral 1 on tiles 0–63; a pass of 65,536 rows; code, expansion, read-log and write-log queues of 256, 256, 512 and 512 × 128 bits (halves 128, 128, 256, 256), two credits of half a queue each; three LRU decompressors of 16 × 64 bits; ROM 512 × 128 bits; decode table 2K × 16 bits; register file 128 × 64 bits; output queue 32 rows of 640 bits; rows of 3 or 5 cycles; start copy 64 cycles; about 41 KB of memory per tile |
 
 ---
 
@@ -2587,7 +2579,7 @@ Every item still to be settled, every proposal not yet ruled on, and every item 
 
 **v1.1: open, to be settled**
 
-23. **The replayer** (4.19): specified in v1.1's replayer pass, following the design notes and their allocation table. It is now peripheral type 4 in the tile's peripheral slot (4.17, item 86). What remains is in items 33–59: the open ones are the tracer engine's run log (33), the template enumeration (34), the ROM's fit (40), the validation harness (58) and the consumer's interface (59); the rest are proposals.
+23. **The replayer** (4.19): specified in v1.1's replayer pass, following the design notes and their allocation table. It is now peripheral type 1 in the tile's peripheral slot (4.17, item 86). What remains is in items 33–59: the open ones are the tracer engine's run log (33), the template enumeration (34), the ROM's fit (40), the validation harness (58) and the consumer's interface (59); the rest are proposals.
 24. *(v1.2: changed; see the table above.)* **Re-measurement** (all sections): every number labelled *v1.0 measurement; to be re-measured in v1.2*, chiefly the fan-in table (3.2), the read-port tolerances (4.3), the queue peaks and schedule comparison of the all-to-alls (4.2) and the sort's results (section 14), once meshsim models the 169-bit link word.
 25. *(v1.2: closed; see the table above.)* **The `STREAM` count's width** (4.2). `STREAM_COUNT` keeps 18 bits. In the sort and the skew planner every stream lies inside one buffer of at most 65,536 elements: an area of 64-bit records, or two areas of 128-bit values (`sort/program/sw/sort.h`). Every count written (`local.c`, `transfer.c`, `config.c`, the planner's `write_stream`) is at most the keys per tile, 65,536 at 64 × 65,536, and the overlay copies are far smaller. So **17 bits (up to 131,071) would serve the sort, 128-bit streams included, with a factor of two to spare.** But the field is in elements: 17 bits would cap a 128-bit stream at half the big SRAM and a 32- or 64-bit stream lower still, and 18 bits already falls one element short of a whole-memory 128-bit stream (2¹⁸ rows). `STREAM_COUNT` has 5 spare bits, so narrowing it frees nothing needed today. No change proposed.
 

@@ -138,6 +138,64 @@ From WORKER11's questions; the integrator's answers, to review.
   their manifests' SHA-256 in `sessions/WORKER9-REPORT.md`), and the selected windows in `/tmp/w9-deliveries-selected/`. **`/tmp`
   isn't permanent:** to rebuild, re-run Quest 079 and 080 under new numbers (about 7 minutes each; the steps are in WORKER9's report).
 
+## 8. What the hardware checks; the gather unit; the boot ROM (2026-11-01)
+
+Decided (O, with T). One package for v1.25: the spec (WORKER10), meshsim and the software (WORKER11), the C&C firmware
+(WORKER14, branch `cc-cores`), the change guide (WORKER13).
+
+**a. The principle**, replacing the spec's "Who checks what" (owner, 2026-10-28) at the top of `machine-spec.md`, as agreed:
+
+> **How the hardware treats software bugs** (owner, 2026-11-01). We write all the firmware ourselves, and it runs in simulation
+> before it runs on hardware: in **meshsim** and in **full RTL simulation**. So catching software bugs is the simulators' job, and
+> the hardware spends area on a check only when simulation can't do that job. Every rule a program must keep is one of two kinds:
+> - **Checked by the hardware:** a broken rule raises an `ERRORS` bit. This is reserved for what simulation can't see: hardware
+>   faults, and mistakes that depend on data or timing only real runs produce (overflows, unexpected arrival, done early, drift).
+>   The spec names the error raised. Since every error is terminal (4.13), what happens to the offending access itself is left
+>   unspecified unless it comes for free.
+> - **Undefined behavior (UB):** the hardware does nothing special, and the outcome is unspecified. meshsim stops with an error
+>   naming the access, and the RTL may carry simulation-only assertions for the same rule, which cost no area.
+>
+> **There is no third kind:** never a prescribed outcome for a mistake (a substitute value, a dropped write still counted) that
+> costs hardware and helps no one find the bug. **The test for a new check:** would simulation catch this on our firmware? If so,
+> it's UB.
+
+The simulation-only assertions are the integrator's addition, for Tony to confirm. Rules elsewhere in the spec that prescribe
+an outcome for a mistake are candidates to revisit under this test; b is the first.
+
+**b. Misalignment is UB** (supersedes the alignment checks of 2026-10-28/29 and DECISIONS-v1.2's answer to W2-38, "a misaligned
+read goes out with payload 0"). meshsim stops loudly on each; the hardware does nothing special:
+- a packet misaligned to its size, at the director (was a bad packet: dropped uncounted, `ERRORS` [1]);
+- a write through a misaligned `PTR` (was dropped, still counted, [1]);
+- a misaligned read by the address generator, the GATHER engine or the read port (was not performed, payload 0, [1]);
+- the controller's misaligned loads and stores (was a bus error, `ERRORS` [9], and a trap);
+- the replayer's misaligned window-0 writes (item 47).
+
+**Stays:** the region-decode bad packet ([1] becomes "bad packet"; whether it passes a's test is open, for O and T); the
+controller's other bus errors; **a misaligned jump target still traps**. Size 11 was already UB.
+
+**c. The gather unit: 128-bit copies when *k* is even** (closes spec item 16). No new field: *k* (`DMA_CONFIG` [26:24], the
+value size in 64-bit records, 1-8) chooses.
+- ***k* odd:** *k* 64-bit reads and 64-bit mode-1 packets per value, exactly as today.
+- ***k* even:** *k*/2 128-bit reads, at `DMA_RECORD_BASE_ADDRESS` + 2*k*·ordinal + 4*i* (*i* = 0 ... *k*/2 - 1), each sent as one
+  128-bit mode-1 packet; `PTR[me]` advances by 4 per packet.
+- **Gather buffers are 128-bit aligned, whatever *k* is:** the source (`DMA_RECORD_BASE_ADDRESS`) and the destination
+  (`PTR[me]`). Misalignment is UB (b). **Software convention** (`sw/CONVENTIONS.md`): allocations are 128-bit aligned in general.
+- **Counting:** one decrement per gather value packet, so a gather of *n* values arms its counter with *n* x (packets per value):
+  *k* when *k* is odd, *k*/2 when even. Not purely additive for even *k* (the arming changes); accepted (O). The rate becomes about
+  (packets per value + 1) cycles per value: about 2 at *k* = 2, from about 3.
+- **The sort** (128-bit values, *k* = 2) arms its gather counters accordingly; p4/uniform-k128 re-measured against 1,360,082 cycles
+  (two gathers of 64K values: about 130K cycles saved [estimate]).
+
+**d. The boot ROM is 256 bytes** (64 words; was "a few dozen bytes", about 728 in meshsim). The boot path (6.2, steps 1-5) is
+unchanged, 30 words. **The ROM's handler sends a two-report dump and parks**, in place of the full 24 reports:
+- report 0: `ERRORS`, `mcause`, `mepc`;
+- report 1: `mtval`, `STATUS`, `ra` (x1).
+
+No `PARAMS`: the request tree stamps the sender's id. About 49 words in all; **the rest is left free** (O). The full 24-report
+set stays the image's handler's (recipe 24, in program memory). C&C 1's firmware must take a two-report dump from a unit still in
+its ROM; **how C&C 1 tells it from the image's 24** (for example, distinct sequence numbers) is for WORKER10 to propose in the
+spec and WORKER14 to follow.
+
 ---
 
 ## Definition of done (owner, 2026-11-01)
@@ -169,6 +227,9 @@ file for what changed between them.
   8,192 windows (536,870,912 rows) matched in Stage A (the model) and Stage B (the controller on one tile), every stream consumed
   exactly, every end state matched, no corrupt files, no violations; the full chip agreed with Stage B cycle for cycle on every
   64th window. Stage B ran at 3.21 cycles per row on EVM Zone (3.00-3.59 per window).
+- **Section 8's package** (the principle, misalignment as UB, the gather unit, the 256-byte ROM): the spec (WORKER10), meshsim,
+  the boot ROM, recipes 22 and 24, `CONVENTIONS.md` and the sort (WORKER11), C&C 1's firmware (WORKER14), the guide (WORKER13);
+  verified on the runner (quick and full suites, p4/uniform-k128).
 - **`CHANGES-v1.25.md`**, the delta from v1.2 (done), and **a change guide from v1.1 to v1.25** for the RTL, which is upgraded from
   v1.1 straight to v1.25 (the v1.2 waypoint stays frozen as `v1.2/`, useful in its own right): `CHANGES-v1.2.md` and
   `CHANGES-v1.25.md` folded together by spec section, so each unit's changes are in one place (integrator, once the spec is final).
@@ -181,3 +242,4 @@ file for what changed between them.
 | W2 | **`CHANGES-v1.25.md`**: the delta from v1.2 | owner | done (WORKER10) |
 | W3 | **The change guide to v1.25, from v1.1 and from v1.2** (`wip/spec/CHANGES-to-v1.25.md`), for the RTL | owner | WORKER13 |
 | W4 | **The replayer recipe** (26) and its `template_lookup` for the normalized key | owner | done (WORKER11, on `v1.25-meshsim`): keyed lookup, the book regenerated, the key cross-checked against the Java model on 20,000 words |
+| W5 | **Section 8's package**: the principle, misalignment as UB, the gather unit, the 256-byte boot ROM | owner and Tony | spec WORKER10; meshsim, software, sort WORKER11; C&C firmware WORKER14; guide WORKER13 |

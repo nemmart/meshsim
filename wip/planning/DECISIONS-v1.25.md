@@ -208,6 +208,18 @@ spec and WORKER14 to follow.
 longer promises that the dropped push is still counted. **For Tony:** whether that count comes free in the RTL; Q12, whether
 reserved words "read 0, ignore stores" is free (kept only if so). Item 142 (mode 3 at 128 bits, the region decode) stays open.
 
+## 9. The expansion word's tracer-only fields become reserved (2026-11-01)
+
+Decided (O), following DECISIONS-v1.3 section 13 (advice comes from the host in the read log, so the Tracer has no untraced rows).
+Revises section 5's `advice_reg` and spec item 105.
+- `untraced` [55] and `advice_reg` [61:56] are **reserved**: the Tracer's templates become the replayer's, and nothing sets them.
+- The "untraced word reaching a replayer" invalid expansion (4.19.11) goes; a word with a reserved bit set comes from our own
+  table builder, so under 8a it is **UB** (meshsim stops).
+- Section 5's Q6 (`seq_remaining` and the controller-fed length count traced words only): with no untraced words, "traced words"
+  and "every word" are the same; the spec can drop the qualifier.
+- Work: the spec (WORKER10), meshsim and the table builder (WORKER11, after s8 merges); the guide is closed, so the integrator adds
+  its entry.
+
 ---
 
 ## Definition of done (owner, 2026-11-01)
@@ -255,3 +267,4 @@ file for what changed between them.
 | W3 | **The change guide to v1.25, from v1.1 and from v1.2** (`wip/spec/CHANGES-to-v1.25.md`), for the RTL | owner | WORKER13 |
 | W4 | **The replayer recipe** (26) and its `template_lookup` for the normalized key | owner | done (WORKER11, on `v1.25-meshsim`): keyed lookup, the book regenerated, the key cross-checked against the Java model on 20,000 words |
 | W5 | **Section 8's package**: the principle, misalignment as UB, the gather unit, the 256-byte boot ROM | owner and Tony | spec WORKER10; meshsim, software, sort WORKER11; C&C firmware WORKER14; guide WORKER13 |
+| W6 | **Section 9**: the expansion word's tracer-only fields reserved | owner | spec WORKER10; meshsim WORKER11 after s8; guide entry integrator |

@@ -319,3 +319,56 @@ is the Stage B failure path and an option, both exercised here.
 - **089:** the full extras 10/10, and `p4/uniform-k128` at **1,229,008 cycles, 131,074 fewer than 1,360,082** (the
   even-k gathers).
 - **091**, after 8e: the quick suite 34/34 and the full extras 10/10. The whole quick suite also passed locally first.
+
+## 10. DECISIONS-v1.25 section 9: the tracer-only fields reserved (branch `s9`, for the integrator to merge)
+
+**meshsim:**
+- The expansion word's [61:55] (v1.25's `untraced` [55] and `advice_reg` [61:56]) are reserved. The replayer's
+  "untraced word" invalid expansion is gone. A word with one of those bits set is an `UndefinedBehavior` stop naming the
+  word and whether it came from the ROM or a controller-fed template.
+- `seq_remaining` and the controller-fed length simply count words.
+- **HALT removed:** the halt input (`setHalted`, `doHalt`), the "PULSE_RUN in HALT" flag and the queue-port-in-HALT bad
+  write. Nothing called `setHalted` any more.
+- **Tests:** `ReplayWindow.W.untraced()` became `reserved(bit)`. The "untraced" invalid case became six UB cases: bits
+  55, 56 and 61, each in the ROM and in a controller-fed template. `SyntheticDelivery` rejects any of the bits.
+- **No replay result can change:** none of the universal tables' 512 ROM words or 13,821 template words has a bit in
+  [61:55] set.
+- **Verified locally:**
+  - ReplayerTest 1474/0, StageB synthetic 19/0;
+  - RecipeTest 2047/0 and shuffled, PeripheralSlotTest 92/0 and shuffled, RegDocTest 269/0;
+  - a synthetic delivery through stages A, B and F.
+- **Docs:** `REPLAY-INPUT-REQUIREMENTS.md` (reserved bits are 0) and `REPLAYER-NOTES.md`.
+
+**The tables:**
+- `wip/tables/tracer/` is removed, with its nine `manifest.json` entries; the manifest's remaining hashes check.
+- `wip/tables/README.md` points both units at `replayer/`, and its field list marks [61:55] reserved.
+
+**The table builder:** jolt-asic-planning branch **`w11-section9`** (be4cdac, from PR #2's `tracer-standalone-main` at
+6c3aae0; not merged).
+- `build_tables.cpp` drops `untraced` and `advice_reg` from its expansion-word struct. It encodes [61:55] as 0 and refuses
+  to decode a word with them set.
+- The tables it builds are bit-identical, because both fields were always 0 in the replayer's.
+- It passes a syntax check with g++ against the tracer's headers and dependencies; I didn't rebuild the tables, since
+  that needs the built tracer.
+- `tracer_tables.py` and `advice_ref.cpp` are marked retired.
+
+**What still refers to the Tracer tables or the two fields** (for routing; I changed none of these):
+- **The spec** (`wip/spec/machine-spec.md`), for W10:
+  - line 30, the v1.25 summary: "the Tracer's `advice_reg` narrows to [61:56]";
+  - 4.19.3's field table: [55] `untraced` and [61:56] `advice_reg` (lines 1357-1358);
+  - 4.19.11's condition 13 (line 1737), which lists the untraced word among the invalid expansions;
+  - line 1817 says "every traced load row": the qualifier can go;
+  - item 105 (line 2770), the tracer fields' decision;
+  - item 141 (line 2841), "the Tracer's tables at 821e1bd".
+- **The change guide** (`wip/spec/CHANGES-to-v1.25.md`), for the integrator, since the guide is closed: line 124 and
+  rows R22 (line 474) and lines 744-746, on `advice_reg` and `untraced`.
+- **DECISIONS-v1.3:** section 7, the Tracer's expansion tables (line 101, built on untraced rows and `advice_reg`), and
+  section 12, the Tracer's region (line 263). The file mentions the fields or the Tracer tables 32 times in all.
+- **DECISIONS-v1.25:** sections 4 and 5 still describe `advice_reg`; section 9 supersedes them.
+- **Older working material, not for change:**
+  - `wip/tracer/` (WORKER7's division templates with untraced rows: `templates.py`, `gen.py`, `inline_rows.py`, the
+    harness, `out/`, `results/`);
+  - the session archives under `wip/planning/sessions/`: WORKER7's and WORKER9's reports, `WORKER9-tracer-div-821e1bd/`,
+    and WORKER12's report and data;
+  - `wip/deliverables/part-d.diff`;
+  - WORKER10's session files.

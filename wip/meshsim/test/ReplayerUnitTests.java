@@ -531,7 +531,7 @@ final class ReplayerUnitTests {
 
     // ================================================================ invalid expansions (4.19.11, condition 13)
     static void invalid() {
-        String[] cases = { "class 3", "reserved operand code", "format 6", "opcode not executed", "untraced", "past ROM word 511", "code past its length", "read log past its length" };
+        String[] cases = { "class 3", "reserved operand code", "format 6", "opcode not executed", "past ROM word 511", "code past its length", "read log past its length" };
         for (String c : cases) {
             T.group("invalid expansion: " + c);
             ReplayWindow w = new ReplayWindow(); w.fixedRom();
@@ -543,7 +543,6 @@ final class ReplayerUnitTests {
                 case "reserved operand code" -> word.rs2(146);
                 case "format 6" -> word.fmt(6);
                 case "opcode not executed" -> word.lo = word.lo & ~0xFFL | 163;      // VirtualAdviceDivU: written as VirtualAdvice, never executed
-                case "untraced" -> word.untraced();
                 default -> {}
             }
             if (c.equals("past ROM word 511")) {
@@ -561,6 +560,19 @@ final class ReplayerUnitTests {
             T.check(d.done, "done posted: the pass stops as if it had ended");
             T.eq(expectRows, d.rows.size(), "rows before it");
             T.check(!d.r.isRunning(), "periph_running fell");
+        }
+        // v1.25 (DECISIONS-v1.25 s9): a word with a reserved bit [61:55] set (v1.25's untraced and advice_reg) is undefined
+        // behavior, not an invalid expansion: meshsim stops. In the ROM and in a controller-fed template.
+        for (int bit : new int[] { 55, 56, 61 }) for (boolean fed : new boolean[] { false, true }) {
+            T.group("reserved bit " + bit + (fed ? ", controller-fed" : ", ROM"));
+            ReplayWindow w = new ReplayWindow(); w.fixedRom();
+            ReplayWindow.W word = ReplayWindow.W.op(ReplayerAlu.ADDI).rd(129).rs1(130).rs2(132).fmt(1).reportC().reserved(bit);
+            int ins = fed ? r(0, 2, 1, 0, 3, CUSTOM0) : i(5, 0, 0, A0, OP_IMM);
+            if (fed) { w.decodeClass(ins, 1); w.template(ins, word); }
+            else { w.rom(20, word); w.decodeRom(ins, 20); }
+            w.setLogs(List.of(), false, false);
+            w.setCode(new int[] { ins, ins }, false);
+            T.ub(() -> runWindow(w, 10), "a word with bit " + bit + " set", "replayer", "reserved bits [61:55]", fed ? "controller-fed" : "ROM");
         }
     }
 

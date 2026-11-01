@@ -138,7 +138,7 @@ public final class SyntheticDelivery {
             int seq = (int) (lo >>> 32) & 0xFFF, format = (int) (lo >>> 48) & 7;
             boolean nfv = ((lo >>> 44) & 1) != 0, hold = ((lo >>> 45) & 1) != 0, virt = ((lo >>> 51) & 1) != 0, imm0pc0 = ((lo >>> 52) & 1) != 0;
             boolean reportC = ((lo >>> 53) & 1) != 0, fromLog = ((lo >>> 54) & 1) != 0, signImm = ((lo >>> 62) & 1) != 0, offImm = ((lo >>> 63) & 1) != 0;
-            if (!ReplayerAlu.executes(op) || ((lo >>> 55) & 1) != 0) throw new IllegalStateException("bad word in 0x" + Integer.toHexString(w));
+            if (!ReplayerAlu.executes(op) || ((lo >>> 55) & 0x7F) != 0) throw new IllegalStateException("bad word in 0x" + Integer.toHexString(w));
             long si = Replayer.sourceImm(format, w), so = offImm ? si : 0;
             int rRd = reg(cRd), rRs1 = reg(cRs1), rRs2 = reg(cRs2);
             long vRd = rRd >= 0 ? rv(rRd) : imm(cRd, hi, si), vRs1 = rRs1 >= 0 ? rv(rRs1) : imm(cRs1, hi, si), vRs2 = rRs2 >= 0 ? rv(rRs2) : imm(cRs2, hi, si);

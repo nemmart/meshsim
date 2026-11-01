@@ -258,3 +258,15 @@ the memories (unchanged), **1 code queue (0x100000), 2 read-log queue (0x200000)
 and both `mesh.h` copies and the draft header (`RP_Q_WLOG`, `RP_Q_EXP`), `ReplayDriver`'s port addresses, the unit
 tests (WORKER15's v1.2.1 test of every part, bba8ed7), and, through the header, `replay_ctl.c` and recipe 26. The
 deliveries hold no addresses.
+
+## v1.25 section 9 (WORKER11, 2026-11-01): the tracer-only fields reserved; HALT removed
+
+DECISIONS-v1.25 section 9 (following DECISIONS-v1.3 section 13: advice comes from the host in the read log, so the
+Tracer has no untraced rows and its templates are the replayer's). The expansion word's `untraced` [55] and `advice_reg`
+[61:56] are **reserved**. The replayer no longer has the "untraced word" invalid expansion; a word with any of [61:55] set
+comes from our own table builder, so it is undefined behavior and meshsim stops, naming the word and whether it came from
+the ROM or a controller-fed template. `seq_remaining` and the controller-fed length simply count words. The universal
+tables have none of these bits set (512 ROM and 13,821 template words checked), so no replay result changes.
+
+HALT is gone from the spec, and with it the replayer's halt input (`setHalted`), its "PULSE_RUN in HALT" flag and its
+queue-port-in-HALT bad write.

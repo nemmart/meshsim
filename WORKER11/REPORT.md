@@ -212,3 +212,33 @@ Everything else is replayer-side:
 - `acceptance/`;
 - the two replay documents;
 - `run_tests.sh`'s replayer line.
+
+## 7. Cleanup CL1: one 1 MB part per replayer queue port (2026-11-01)
+
+**The change (main ba79bc2, merged as ba7a97c):** offset [22:20] alone names the destination, as spec 4.19.10 now says
+(WORKER10). The parts:
+
+| part | offset | destination |
+|---|---|---|
+| 0 | — | the memories (unchanged) |
+| 1 | 0x100000 | code queue |
+| 2 | 0x200000 | read-log queue |
+| 3 | 0x300000 (was 0x280000) | write-log queue |
+| 4 | 0x400000 (was 0x300000) | expansion queue |
+| 5-7 | — | unmapped |
+
+**Changed:**
+- the model's write port;
+- `MeshHeader.java`, both `mesh.h` copies and the draft header;
+- `ReplayDriver`;
+- the unit tests, with WORKER15's test of every part, after bba8ed7;
+- `replay_ctl.c` and recipe 26, rebuilt through the header, and the book regenerated (`check_book.py` 46/0).
+
+**Unchanged:** the sort image. The deliveries hold no addresses.
+
+**Quest task 087: PASS** (main at ba7a97c):
+- the quick suite 34 of 34, ReplayerTest now 1468;
+- the full extras 10 of 10;
+- `p4/uniform-k128`: 1,360,082 cycles, as before;
+- the selected windows, from `/tmp/w9-selected-windows.tgz` (SHA-256 checked, with `imm_signed`): EVM Zone 12 of 12
+  and Cyclone 13 of 13 in Stage A, Stage B (tile 0 alone) and Stage F (the full chip).

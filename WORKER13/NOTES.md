@@ -15,7 +15,7 @@ Spec commit at start: `4856c0b` (main). Inputs read: CHANGES-v1.2, CHANGES-v1.25
 | 1 | spec fixes from pass A/B taken by WORKER10 (`0b4ba20`: 4.17.1 types, 4.19.7 renumbering, 8.1 timing, CHANGES-v1.25 errata) | **pulled; the guide uses the fixed text** |
 | 2 | the guide: 0 reading guide, 1 overviews + removed/new, 2.1 link/network, 2.2 address map, 2.3 engines, 2.4 controller, 2.5 peripherals, 2.6 replayer (R1–R14 v1.2, R15–R19 both/log rules, R20–R41 v1.25) 2.7 control, 2.8 C&C 1–3, 3 tables, 4 parameters/invariants, 5 not in CHANGES | **written** |
 | 3 | register tables, sections 9–10 | **written** (guide 3, 4) |
-| 4 | QUESTIONS.md, REPORT.md, final pull, spec commit stamped | QUESTIONS and REPORT drafted (v1.2 errata section); next: a read-through of the whole guide against the spec, final pull, stamp |
+| 4 | QUESTIONS.md, REPORT.md, final pull, spec commit stamped | **done**: CL1–CL5 folded in, read-through, stamped `c2de4ae`, REPORT final |
 
 ## Pass A: v1.2 → v1.25 (spec diff)
 
@@ -391,3 +391,4 @@ proposed), 44–47 (replayer map details, proposed).
 - Turn 4: pulled `0d63132` (WORKER11 merged, item 138 closed: measurements only, no RTL change). Wrote 2.7, 2.8, 3, 4,
   5; cited v1.2 errata E1–E6. New findings: 4.12's "1 or 2 cycles" (v1.2 and wip), 4.19 intro type 1 in v1.2 (not in
   E1), D48 vs the reserved-word rule, item 111 still stale in wip → QUESTIONS Q5–Q8, REPORT "v1.2 errata".
+- Turn 5: pulled (CL1, CL2, CL5, E9–E11, item 111 fixed). Folded CL1–CL5 into the guide (R3 → both, R42, P7, C1, 3.8 region table, section 5), the v1.2.1 reader, read-through against `c2de4ae`, stamped, REPORT finished. **Done.**

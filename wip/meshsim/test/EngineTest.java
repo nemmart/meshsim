@@ -99,25 +99,19 @@ public final class EngineTest {
         T.eq(hist0 + 40, (long) r.hist.peek(0x5A), "count-on-arrival counts both modes");
         T.eq(0, r.dir.remaining[1], "SRAM_REMAINING counts both modes");
         noViolations(n.c, "write engine");
-        // v1.2 (4.9, D32): a write through a PTR not aligned to its size is dropped, still counted, the pointer still
-        // advances, and ERRORS [1] is set; meshsim flags it (invariant 20). No write ever spans a row.
-        r.setPtr(9, 0x50003); r.setMasterConfig(0); r.dir.remaining[1] = 4; long w0 = r.sram.writes[2]; long v0 = n.c.violations;
-        r.sram.poke(0x50003, 0); r.sram.poke(0x50004, 0);
-        for (int j = 0; j < 2; j++) n.at(9, n.c.cycle + 2 + j, 10, LinkWord.M_SRC, 0, 0x1111111100000000L * (j + 1) + j);
-        n.runAll(1000);
-        T.eq(0, r.dir.remaining[1] - 2, "both counted (two of four)");
-        T.eq(0x50007, r.ptr(9), "PTR[9] still advanced by 2 per write");
-        T.eq(0, r.sram.writes[2] - w0, "neither written");
-        T.eq(0, r.sram.peek(0x50003) | r.sram.peek(0x50004), "nothing landed");
-        T.eq(2L, r.writer.misalignedWrites, "two misaligned writes");
-        T.check((r.conditions() & (1 << Conditions.BAD_MODE_OR_SIZE)) != 0, "ERRORS [1] set");
-        T.eq(2L, n.c.violations - v0, "flagged twice (invariant 20)");
-        // a 32-bit write through the same (odd) PTR is aligned: it lands
+        // v1.25 (DECISIONS-v1.25 s8b): a write through a PTR not aligned to its size is undefined behavior: meshsim
+        // stops, naming it. First a 32-bit write through an odd PTR, which is aligned: it lands
+        r.setPtr(9, 0x50007); r.setMasterConfig(0); r.dir.remaining[1] = 2; long v0 = n.c.violations;
         for (int j = 0; j < 2; j++) n.at(9, n.c.cycle + 2 + j, 10, LinkWord.M_SRC, 1, 0, LinkWord.SIZE_32, 0x7700 + j, 0);
         n.runAll(1000);
         T.eq(0x7700, r.sram.peek(0x50007), "a 32-bit write at an odd chunk lands"); T.eq(0x7701, r.sram.peek(0x50008), "and the next");
-        T.eq(0, r.dir.remaining[1], "all four counted");
-        T.eq(2L, n.c.violations - v0, "no more violations");
+        T.eq(0, r.dir.remaining[1], "both counted");
+        T.eq(0L, n.c.violations - v0, "no violation");
+        // then a 64-bit write through the (now odd) PTR: UB, meshsim stops
+        T.eq(0x50009, r.ptr(9), "PTR[9] odd");
+        r.dir.remaining[1] = 1;
+        n.at(9, n.c.cycle + 2, 10, LinkWord.M_SRC, 0, 0x1111111100000000L);
+        T.ub(() -> n.runAll(1000), "a 64-bit write through an odd PTR stops meshsim", "write engine", "PTR[src 9]", "chunk 0x50009", "64-bit");
 
         // the pointer stage against ts_engine_latency
         StringBuilder sb = new StringBuilder("write engine pointer stage, 200 packets at one a cycle [meas: EngineTest write engine]:");
@@ -209,13 +203,13 @@ public final class EngineTest {
         Net n = new Net(cfg(false)); Tile p = n.c.tiles[30];
         for (int i = 0; i < 64; i++) p.sram.poke64(2 * i, i);
         int[] counts = { 3, 0, 2, 0, 1 }, gaps = { 2, 3, 0, 1, 0 }; int src = 0;
-        for (int s = 0; s < 5; s++) { p.setStream(254 + s & 255, Fields.streamSrc(2 * src, gaps[s]), 0, Fields.streamCount(counts[s], Fields.SIZE_64, 1, LinkWord.M_SRC, 0)); src += counts[s]; }
-        p.setPtr(30, 0x20000); p.dir.remaining[1] = 6; streamRun(p, 254, 5, 0, 0);
+        for (int s = 0; s < 5; s++) { p.setStream(250 + s, Fields.streamSrc(2 * src, gaps[s]), 0, Fields.streamCount(counts[s], Fields.SIZE_64, 1, LinkWord.M_SRC, 0)); src += counts[s]; }
+        p.setPtr(30, 0x20000); p.dir.remaining[1] = 6; streamRun(p, 250, 5, 0, 0);       // v1.25: a run past the table's end is UB (AgTest)
         runLocal(n, 30);
         List<long[]> l = n.log(30);
         T.eq(6, l.size(), "six packets");
         long[] rel = new long[l.size()]; for (int i = 0; i < l.size(); i++) rel[i] = l.get(i)[0] - l.get(0)[0];
-        T.eqo("[0, 1, 2, 8, 9, 11]", Arrays.toString(rel), "issue cycles: 3 elements + gap 2, count 0 with gap 3, 2 elements, count 0 with gap 1, 1 element (streams 254, 255, 0, 1, 2)");
+        T.eqo("[0, 1, 2, 8, 9, 11]", Arrays.toString(rel), "issue cycles: 3 elements + gap 2, count 0 with gap 3, 2 elements, count 0 with gap 1, 1 element (streams 250-254)");
         for (int j = 0; j < 6; j++) T.eq(j, p.sram.peek64(0x20000 + 2 * j), "data " + j);
         // relative destinations: d = 5 from tile 30 reaches tile 35; d = 40 reaches tile 6
         p.setStream(10, Fields.streamSrc(0), 0, Fields.streamCount(2, Fields.SIZE_64, 1, LinkWord.M_SRC, 5));
@@ -226,8 +220,7 @@ public final class EngineTest {
         runLocal(n, 30);
         n.c.runUntil(() -> phaseDone(n.c, n.c.tiles[35]) && phaseDone(n.c, n.c.tiles[6]), 1000);
         T.eq(1, n.c.tiles[35].sram.peek64(0x30002), "d = 5 lands at tile 35"); T.eq(3, n.c.tiles[6].sram.peek64(0x30002), "d = 40 lands at tile 6 (30 + 40 mod 64)");
-        T.eq(1L, (long) n.c.violations, "the run past STREAM's end (254 + 5) wraps, and meshsim flags it once (spec 8.5)");
-        T.check(n.c.violationMessages.stream().allMatch(v -> v.contains("past the table's end")), "and nothing else: " + n.c.violationReport());
+        T.eq(0L, (long) n.c.violations, "no violation: " + n.c.violationReport());
         out("stream runs: a count-0 stream takes exactly its gap-after cycles and a stream its elements plus its gap (issue offsets 0, 1, 2, 8, 9, 11 for counts 3, 0, 2, 0, 1 and gaps 2, 3, 0, 1, 0, streams 254 to 2: the numbers wrap, flagged); relative destinations wrap mod 64 [meas: EngineTest stream runs]");
     }
 

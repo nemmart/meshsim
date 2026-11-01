@@ -101,7 +101,7 @@ final class LinkWord {
         int m = mode(h), s = size(h), a = addr(h);
         if (m == M_AUG && s == SIZE_128) return "mode 3 at 128 bits";
         if (m != M_WRITE) return null;
-        if (!aligned(a, s)) return "address 0x" + Integer.toHexString(a) + " not aligned to its size (" + SIZE_NAME[s] + " bits)";
+        // v1.25 (DECISIONS-v1.25 s8b): a misaligned mode-0 packet is UB, which the director stops on before asking here
         return badPacket(m, s, a, periphPresent) ? "region 0x" + Integer.toHexString(region(a)) + " not reachable by a packet" : null;
     }
 

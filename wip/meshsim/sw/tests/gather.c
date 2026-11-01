@@ -13,7 +13,7 @@ int main(void) {
         tables->PTR[me] = 0xA0000;
         set_stream(195, STREAM_SRC_W(0x60000, 0), 0, STREAM_COUNT_W(n, SIZE_64, CTR_SRAM, MODE_GATHER, 0));
         tile->DMA_CONFIG = DMA_CFG_RUN(RUN_STREAMS, 195, 1) | DMA_CFG_KM1(2 - 1);
-        tile->WRITE_COUNTER[CTR_SRAM - 1] = 2 * n;
+        tile->WRITE_COUNTER[CTR_SRAM - 1] = n;             /* k = 2: one 128-bit packet per value (v1.25, s8c) */
         start_run();
         wfi();
     }

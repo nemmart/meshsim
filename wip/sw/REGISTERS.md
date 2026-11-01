@@ -27,7 +27,8 @@ An address is an 8-bit region [31:24] and a 24-bit byte offset [23:0] (2.2). A C
 | the rest of region 0xFF | unmapped | bus error | no |
 
 **Access rules** (4.11, 8.1):
-- **Bus errors** (`ERRORS` [9]): a store to program memory or the boot ROM; a misaligned access; an unmapped address,
+- **Misaligned loads and stores are undefined behavior** (v1.25): the hardware does nothing special; meshsim stops.
+- **Bus errors** (`ERRORS` [9]): a store to program memory or the boot ROM; an unmapped address,
   an absent peripheral's window included; a sub-word access to the block, a window or the table window; a store to a
   read-only register; a load from `PTR`, the `STREAM` arrays or `GROUP`.
 - **Write-only registers read 0.** The request port's four words are the exception: a load reads the receive side.
@@ -52,7 +53,7 @@ offset below is the address's low 12 bits). In C: `tile->NAME` (`TileRegs`, `mes
 | `0x804` | `STATUS` | R | 0 (the idle machine) | the live bits | diagnostic: rd_running, rd_done, GATHER busy, send_busy, done, command landed, request_busy |
 | `0x808` | `ERRORS` | R | 0 | the errors | sticky until the reset; [13:11] live (the peripherals') |
 | `0x80C` | `PULSE_DONE` | W | - | 0 | store 1: the done pulse (wait_for_command()) |
-| `0x810` | `PULSE_DMA` | W | - | 0 | store 1: start the run in DMA_CONFIG; clears EVENTS [10]; ignored while a run runs |
+| `0x810` | `PULSE_DMA` | W | - | 0 | store 1: start the run in DMA_CONFIG; clears EVENTS [10]; a start while a run runs is undefined behavior (meshsim stops) |
 | `0x814` | reserved (was `PULSE_GO`, now C&C 1's peripheral) | | | 0 | |
 | `0x818` | `EVENTS` | R | 0 (sticky events) | every pending event; consumes the sticky ones under EVENTS_MASK | the events |
 | `0x81C` | `EVENTS_PEEK` | R | - | what EVENTS would return; consumes nothing | the same, for looking |
@@ -74,7 +75,7 @@ offset below is the address's low 12 bits). In C: `tile->NAME` (`TileRegs`, `mes
 | `0x84C (load)` | `REQUEST_GET_W1` | R | - | its [63:32]; 0 when empty | receive side |
 | `0x850 (load)` | `REQUEST_GET_W2` | R | - | its [95:64]; 0 when empty | receive side |
 | `0x854 (load)` | `REQUEST_RECEIVE` | R | - | its [127:96], and pops it; empty: 0 and receive underflow (ERRORS [14]) | receive side |
-| `0x858` | `DMA_CONFIG` | R/W | undefined (meshsim 0) | what was stored | the run, the bucket and histogram digits, k |
+| `0x858` | `DMA_CONFIG` | R/W | undefined (meshsim 0) | what was stored | the run, the bucket and histogram digits (5-7 are undefined behavior), k; stream or group numbers past the table's end are undefined behavior |
 | `0x85C` | `DMA_RECORD_BASE_ADDRESS` | R/W | undefined (meshsim 0) | chunk address [20:0] | the run's record buffer |
 | `0x860` | `WRITE_COUNTER_1` | R/W | 0 | the count [19:0] | write counter 1: a store adds N, N > 0 arms it |
 | `0x864` | `WRITE_COUNTER_2` | R/W | 0 | the count [19:0] | write counter 2: a store adds N, N > 0 arms it |
@@ -116,7 +117,7 @@ Any non-zero bit raises the unit's hard interrupt and its error line (4.13). In 
 | bit | `mesh.h` | error |
 |---|---|---|
 | 0 | `ERR_ROUTER_OVF` | router overflow: a link, eject or fifth-port FIFO overflowed |
-| 1 | `ERR_BAD_PACKET` | bad packet or misaligned access: a bad packet dropped, a write through a misaligned `PTR` dropped (still counted), or a misaligned read not performed (payload 0) |
+| 1 | `ERR_BAD_PACKET` | bad packet: a packet to a region it can't reach, or mode 3 at 128 bits, dropped uncounted (v1.25: misalignment is undefined behavior; meshsim stops) |
 | 2 | `ERR_UNEXPECTED` | unexpected arrival: a decrement found its counter at 0 |
 | 3 | `ERR_DRIFT` | drift: in a group run the SRAM read queue refused the address generator |
 | 4 | `ERR_WE_IN_OVF` | write-engine input overflow |
@@ -199,7 +200,7 @@ counter at 0 means everything it counted is in place.
 A store to `SRAM_RD_ADDR_QUEUE` queues a read of 32, 64 or 128 bits at a chunk address aligned to the size, with
 `SRAM_RD_DEST_ADDR`'s destination (a data-memory byte offset [16:0]), size [18:17] and counter [21:19]; the
 destination then advances by the size in bytes. Each result lands as a mode-0 packet to the tile itself, counted on
-that counter. A misaligned read isn't performed (its result lands as 0, `ERRORS` [1]); a store with no free entry is
+that counter. A misaligned read is undefined behavior (v1.25; meshsim stops); a store with no free entry is
 dropped (`ERRORS` [7]). `RD_DEST(byte_off, size, ctr)` builds the setup word.
 
 ### 2.8 The request port
@@ -227,8 +228,8 @@ In C: `peripheral(n)->NAME` (`PeripheralStd`), `replayer->NAME`, `cc1->NAME`.
 | 0 | `PARAMS` | R | [7:0] type, [15:8] version |
 | 1 | `STATUS` | R | [0] run in progress, [1] DMA in progress |
 | 2 | `ERRORS` | R | sticky until the reset |
-| 3 | `PULSE_RUN` | W | store 1: start a run; ignored while one runs |
-| 4 | `PULSE_DMA` | W | store 1: start the DMA set up in DMA_HDR and DMA_ADDR |
+| 3 | `PULSE_RUN` | W | store 1: start a run; a start while one runs is undefined behavior (meshsim stops) |
+| 4 | `PULSE_DMA` | W | store 1: start the DMA set up in DMA_HDR and DMA_ADDR; during a transfer, or naming a missing output queue, undefined behavior (meshsim stops) |
 | 5 | `EVENTS` | R | a load returns the events and consumes one count from each set bit in EVENTS_MASK |
 | 6 | `EVENTS_PEEK` | R | what a load of EVENTS would return |
 | 7 | `EVENTS_MASK` | R/W | the events that count: wake the unit's EVENTS bit, are consumed; 0 at reset |
@@ -271,7 +272,7 @@ size are 0. Every access is naturally aligned to its size.
 | 3 | `MODE_AUGMENT` | a 64-bit record at `PTR[src]`: the payload's low word and the ordinal (32 or 64 bits only) | by its counter field |
 | 4 | `MODE_GATHER` | a gather request, to the tile itself only; its counter field passes to the values | never |
 | 5 | `MODE_COUNT` | nothing written | by its counter field |
-| 6-7 | | reserved: discarded (meshsim flags them) | no |
+| 6-7 | | reserved: undefined behavior (meshsim stops) | no |
 
 **Bad packets** are dropped, uncounted, and set `ERRORS` [1]: a mode-0 packet not aligned to its size or for a region
 a packet can't reach (the boot ROM, 0x07-0xFF, an absent peripheral's), and a 128-bit mode 3. Counter field 0 is

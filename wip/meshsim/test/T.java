@@ -21,6 +21,14 @@ final class T {
         try { r.run(); failed++; System.out.println("FAIL [" + current + "] " + what + ": no exception"); }
         catch (IllegalStateException e) { passed++; }
     }
+    /** v1.25 (DECISIONS-v1.25 s8b): r must stop with UndefinedBehavior whose message names all of {@code names}. */
+    static UndefinedBehavior ub(Runnable r, String what, String... names) {
+        try { r.run(); failed++; System.out.println("FAIL [" + current + "] " + what + ": ran on, no undefined-behavior stop"); return null; }
+        catch (UndefinedBehavior e) {
+            for (String n : names) if (!e.getMessage().contains(n)) { failed++; System.out.println("FAIL [" + current + "] " + what + ": the stop doesn't name '" + n + "': " + e.getMessage()); return e; }
+            passed++; return e;
+        }
+    }
     static int done(String suite) {
         System.out.println(suite + ": " + passed + " passed, " + failed + " failed");
         return failed == 0 ? 0 : 1;

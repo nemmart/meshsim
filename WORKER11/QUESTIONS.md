@@ -48,3 +48,14 @@ narrow rows). **Answered (s7): agreed.**
 
 Vectors: the appendix's are WORKER9's `vec.tsv`, which the model passes (`data/vec-821e1bd.tsv`: 225 match, 4 C++-UB
 shift masks flagged, 23 not applicable).
+
+## Section 8 (DECISIONS-v1.25), 2026-11-01
+
+**Q5. `Controller.stopLoudly` onto `UndefinedBehavior`?** The owner asked for one mechanism if it's small. It isn't: the
+traps that set no `ERRORS` bit (ecall, ebreak, a fetch fault, a misaligned jump, a trap in the handler) halt that one
+core and record a violation, and the rest of the chip runs on. Tests rely on it: CtrlTest's faults run has eight tiles
+stop on `ecall` while the other 56 trap and send their reports, and counts the eight violations. An exception would end
+the whole run at the first `ecall`. *Proposed:* keep both. `UndefinedBehavior` is for an access the hardware leaves
+undefined (the run can't go on meaningfully); `stopLoudly` is for a defined trap that parks one unit with no error
+line. Moving them onto one mechanism would mean an exception that some harnesses catch and resume, which is more
+machinery than it saves. **Open** (owner).

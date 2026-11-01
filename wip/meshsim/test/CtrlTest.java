@@ -21,6 +21,8 @@ public final class CtrlTest {
         commands();
         wfi();
         faults();
+        misaligned();
+        romSize();
         invariants();
         blockCopy();
         allToAll();
@@ -189,6 +191,24 @@ public final class CtrlTest {
     static long sum(Mach m, boolean dummy) { long s = 0; if (dummy) return 0; for (Tile p : m.c.tiles) s += p.ctl.spuriousEdges; return s; }
 
     // ================================================================ controller faults and HALT -> RUN (4.11, 4.13, 6.1)
+    /** v1.25 (DECISIONS-v1.25 s8b): the controller's misaligned loads and stores are undefined behavior: meshsim stops. */
+    /** v1.25 (DECISIONS-v1.25 s8d): the boot ROM is 256 bytes; meshsim refuses a larger image. */
+    static void romSize() {
+        T.group("the 256-byte boot ROM");
+        T.check(Controller.bootRom.length > 0 && Controller.bootRom.length <= Controller.BOOT_ROM_WORDS, "the ROM image fits: " + Controller.bootRom.length + " words of 64");
+        Controller.checkBootRom(new int[64], "64 words");
+        T.check(true, "64 words are accepted");
+        T.throwsISE(() -> Controller.checkBootRom(new int[65], "a 65-word image"), "a 65-word (260-byte) image is refused");
+    }
+
+    static void misaligned() {
+        T.group("misaligned loads and stores (UB)");
+        Mach a = new Mach(Mach.cfg(shuffle)); a.boot("misalign_ld");
+        T.ub(() -> a.run(a::allStopped, 5000), "a misaligned load", "tile 9", "controller", "misaligned 4-byte load");
+        Mach b = new Mach(Mach.cfg(shuffle)); b.boot("misalign_st");
+        T.ub(() -> b.run(b::allStopped, 5000), "a misaligned store", "tile 12", "controller", "misaligned 2-byte store");
+    }
+
     static void faults() {
         T.group("faults");
         Mach m = new Mach(Mach.cfg(shuffle));
@@ -196,12 +216,14 @@ public final class CtrlTest {
         Mach.Image im = m.boot("faults");
         m.run(m::allStopped, 5000);
         // v1.2 (4.11, 4.13): a bus error or an illegal instruction sets its ERRORS bit and traps to mtvec, here the boot
-        // ROM's handler (crt0 doesn't set its own), which sends 24 reports to C&C 1 and parks; ecall sets no bit and
+        // ROM's handler (crt0 doesn't set its own), which sends two reports to C&C 1 and parks (v1.25: 24 is the image's
+        // handler's set, recipe 24); ecall sets no bit and
         // meshsim stops loudly. C&C 1's model drains the reports as they come (target 0's queue, 128 deep).
         int[] cause = { Controller.CAUSE_STORE_FAULT, Controller.CAUSE_STORE_FAULT, Controller.CAUSE_STORE_FAULT, Controller.CAUSE_ILLEGAL,
                 Controller.CAUSE_ILLEGAL, -1, Controller.CAUSE_LOAD_FAULT, Controller.CAUSE_LOAD_FAULT };
-        int[] perTile = new int[64];
-        m.run(() -> { long now = m.c.cycle + 1; while (m.c.reqBus.pending(0, now)) { int w0 = m.c.reqBus.get(0, now, 0); m.c.reqBus.receive(0, now); perTile[w0 & 0x7F]++; }
+        int[] perTile = new int[64], seqs = new int[64];
+        m.run(() -> { long now = m.c.cycle + 1; while (m.c.reqBus.pending(0, now)) { int w0 = m.c.reqBus.get(0, now, 0); m.c.reqBus.receive(0, now);
+                          int u = w0 & 0x7F; if (perTile[u] < 2) seqs[u] |= ((w0 >>> 21) & 0xFF) << (8 * perTile[u]); perTile[u]++; }
                       for (Tile p : m.c.tiles) if (!(p.core.parked || p.core.halt != Controller.RUN)) return false;
                       for (Tile p : m.c.tiles) if (!p.req.idle()) return false; return m.c.reqBus.idle() && !m.c.reqBus.pending(0, now); }, 200000);
         for (Tile p : m.c.tiles) {
@@ -216,7 +238,8 @@ public final class CtrlTest {
             T.check(p.core.parked, "tile " + p.idx + ": the handler reported and parked");
             T.eq(cause[k] == Controller.CAUSE_ILLEGAL ? 1 : 0, st >> Conditions.ILLEGAL & 1, "tile " + p.idx + ": ERRORS [10]");
             T.eq(cause[k] == Controller.CAUSE_ILLEGAL ? 0 : 1, st >> Conditions.BUS_ERROR & 1, "tile " + p.idx + ": ERRORS [9]");
-            T.eq(24, perTile[p.idx], "tile " + p.idx + ": the fixed set of 24 reports reached C&C 1");
+            T.eq(2, perTile[p.idx], "tile " + p.idx + ": the boot ROM's two reports reached C&C 1 (v1.25, DECISIONS-v1.25 s8d)");
+            T.eq(24 | 25 << 8, seqs[p.idx], "tile " + p.idx + ": sequence 24, then 25 (spec 4.13: a first report of 24 means the ROM's two)");
         }
         T.eq(0, Long.bitCount(m.c.cc.readyBits(m.c.cycle)), "no READY from a trapped tile (the watchdog's case)");
         T.eq(8L, (long) m.c.violations, "the eight ecalls, flagged (4.13: no ERRORS bit): " + m.c.violationReport());
@@ -232,7 +255,7 @@ public final class CtrlTest {
         }
         T.check(!m.c.cc1p.toast, "the reset cleared the toast latch");
         noViolations(m.c, "restart");
-        out("faults [meas: CtrlTest faults]: a store to STATUS, a store to program memory, a sub-word register store, a load from PTR and a misaligned load are bus errors (ERRORS [9]), div and rdcycle illegal (ERRORS [10]): each traps to the boot ROM's handler, which sends its 24 reports to C&C 1 and parks; ecall sets no bit, and meshsim stops loudly; no READY; the unit-error bit and the toast pin rise; a soft reset clears every ERRORS and the toast pin, and the tiles boot again through the ROM");
+        out("faults [meas: CtrlTest faults]: a store to STATUS, a store to program memory, a sub-word register store, a load from PTR and a load from an unmapped region are bus errors (ERRORS [9]), div and rdcycle illegal (ERRORS [10]): each traps to the boot ROM's handler, which sends its two reports (sequence 24 and 25) to C&C 1 and parks; ecall sets no bit, and meshsim stops loudly; no READY; the unit-error bit and the toast pin rise; a soft reset clears every ERRORS and the toast pin, and the tiles boot again through the ROM");
     }
 
     // ================================================================ programming errors the simulator catches (spec 9)
@@ -268,11 +291,14 @@ public final class CtrlTest {
         long ow = 0; for (Tile p : d.c.tiles) ow += p.cmem.overwrittenUnread;
         T.eq(16L, ow, "invariant 8 by default: the 16 overwritten-unread replies (tiles 1, 5, ...) are counted");
         T.check(d.c.violationMessages.stream().noneMatch(v -> v.contains("invariant 8")), "invariant 8 by default: no violation");
-        // invariant 5 (no bad packet is sent: a misaligned mode 0); the reset empties a packet in flight (6.1)
+        // v1.25 (DECISIONS-v1.25 s8b): a misaligned mode-0 packet is undefined behavior: meshsim stops at its director
+        Mach u = new Mach(Mach.cfg(shuffle));
+        u.c.cc.send(5, LinkWord.M_WRITE, 0x104, 0x800);
+        T.ub(() -> u.c.run(60), "a misaligned mode-0 packet from C&C 1", "tile 5", "traffic director");
+        // the reset empties a packet in flight (6.1)
         Mach h = new Mach(Mach.cfg(shuffle));
-        h.c.cc.send(5, LinkWord.M_WRITE, 0x104, 0x800).waitCycles(30).send(60, LinkWord.M_WRITE, 0x400, 0x800).reset(true);
+        h.c.cc.waitCycles(30).send(60, LinkWord.M_WRITE, 0x400, 0x800).reset(true);
         h.c.run(60);
-        T.check(h.c.violationMessages.stream().anyMatch(v -> v.contains("invariant 5")), "invariant 5: a misaligned mode-0 packet sent");
         T.check(h.c.quiescent() && h.c.tiles[60].cmem.dmem.peek(0x100) == 0, "a hard reset with a packet in flight: it is gone, the mesh empty (6.1)");
         // an overlay landing after a unit's first command and before its start (6.2): flagged
         Mach o = new Mach(Mach.cfg(shuffle));

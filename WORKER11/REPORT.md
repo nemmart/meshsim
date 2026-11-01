@@ -273,3 +273,49 @@ synthetic is now 19 windows, 0 failed.
 **Verified locally:** ReplayerTest 1468/0; StageB synthetic 19/0; ReplayShard A, B and F on synthetic deliveries (B
 and F give the same gaps); the rebuilt kit's `run_shard.sh` with and without `-g`. No runner check: the kit's change
 is the Stage B failure path and an option, both exercised here.
+
+## 9. DECISIONS-v1.25 section 8 in meshsim and the software (branch `s8`, for the integrator to merge)
+
+**Undefined behavior stops the run.** A new `UndefinedBehavior` error names the cycle, the tile, the unit and the access.
+- **8b, misalignment:**
+  - the director: a mode-0 packet misaligned to its size;
+  - the write engine: a write through a misaligned `PTR`;
+  - the SRAM read queue: a misaligned read by the address generator, the GATHER engine or the read port;
+  - the controller: a misaligned load or store (a misaligned jump still traps);
+  - the replayer: a part-0 write off a 128-bit boundary.
+  - `ERRORS` [1] is now "bad packet" only.
+- **8e, the replayer's bad write:** an unmapped offset, a wrong size, or a single-ported memory written during a pass.
+  `ERRORS` [0] is now reserved.
+- **8e, reserved encodings:** digit selectors 5-7, reserved modes 6-7 (streams and packets), and stream or group runs
+  past the table's end.
+- **8e, the misuses the hardware used to ignore:** a start while the address generator runs, `PULSE_RUN` during a pass,
+  `PULSE_DMA` during a transfer, and a transfer naming a missing output queue.
+- **Still checked:** the replayer's queue overrun.
+- **Two latent test bugs** the stops found:
+  - ReadPortGatherTest's tolerance runs wrote 32-bit results one byte apart;
+  - CondTest's "bad packet" was in fact misaligned; it is now a write to region 0xFF.
+
+**8c, the gather unit.**
+- **Even k:** k/2 reads and packets of 128 bits, `PTR[me]` += 4. Odd k is unchanged.
+- **Alignment:** `PTR[me]` and `DMA_RECORD_BASE_ADDRESS` are checked 128-bit aligned when a run with mode-4 streams
+  starts.
+- **Tests:** k = 1, 2, 3, 4 and 8, covering reads, packet sizes, order, `PTR`, a counter armed with n × packets per
+  value, the old n × k arming left short, and the alignment stops.
+- **Rate:** k = 2 gathers at 2.0 cycles per value, from about 3.
+- **Arming:** the sort (both copies), recipe 6 and the `gather.c` test arm by packets per value.
+- **`CONVENTIONS.md`:** allocations are 128-bit aligned, and misalignment is UB.
+
+**8d, the 256-byte ROM.**
+- **The handler:** two reports, sequence 24 (`ERRORS`, `mcause`, `mepc`) and 25 (`mtval`, `STATUS`, `ra`), per spec
+  4.13. The ROM is 48 words.
+- **The limit:** the linker region and meshsim's loader refuse an image over 256 bytes, and a test covers it.
+- **Recipes:** 22 holds the ROM's own handler, and 24 is the image's 24-report handler. The book is regenerated
+  (47 blocks, 0 differ).
+- **Tests:** CtrlTest and CondTest expect the two reports and check their sequence numbers.
+
+**Not merged into one mechanism:** `Controller.stopLoudly` stays separate from `UndefinedBehavior` (QUESTIONS Q5, open).
+
+**Verification (Quest):**
+- **089:** the full extras 10/10, and `p4/uniform-k128` at **1,229,008 cycles, 131,074 fewer than 1,360,082** (the
+  even-k gathers).
+- **091**, after 8e: the quick suite 34/34 and the full extras 10/10. The whole quick suite also passed locally first.

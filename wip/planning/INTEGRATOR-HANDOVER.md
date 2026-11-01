@@ -68,7 +68,8 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
 
 - Tony: his full CSR list with reset values (v1.2 Q1, partly answered); what the soft reset keeps; WORKER13's Q10 (v1.1 gave
   the gather ordinal as [63:32] and [51:32]: which did the RTL build; guide L9); the simulation-only assertions (section 8 a);
-  whether the region-decode bad packet passes section 8 a's test.
+  whether the region-decode bad packet passes section 8 a's test (item 142); section 8 e's two: whether the replayer's dropped
+  overrun push is counted for free, and Q12 (reserved words read 0 and ignore stores, kept only if free).
 - Whether the 100 ms Tracer budget is per proof (v1.3 section 11 assumes so).
 - The Tracer's memory research (above).
 

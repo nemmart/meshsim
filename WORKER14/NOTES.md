@@ -91,3 +91,20 @@ sort 104 (140 s); sort-shuf 104.
   - Task 090: DONE at 10:44 UTC. Quick: 36 steps, all passing, baseline counts. Full extras: 11 steps, all passing.
     The full extras' logs and the quick sort, recipes and ctrl logs are identical to task 087's (main ba7a97c) apart
     from timing lines.
+- Turn 5: merged main (668d0a8 s8, 7570153 s9, 9133397). No conflicts; my changes in Controller, PeripheralSlot,
+  SRAMReadQueue and Tile merged cleanly. All builds reproduce the committed files (the new 256-byte ROM included).
+  - The two-report path (8d): `sw/cc/cc_bad.c`, a tile image whose tile 12 takes a bus error before any handler of its
+    own. Tested (CcCoresTest, now 77 checks):
+    - the ROM sends reports 24 and 25, stamped 12;
+    - C&C 1 counts a set of two, complete, with no flags;
+    - report 24 carries ERRORS [9] and mcause 5;
+    - the UART line reads 12, 2 of 2.
+    C&C 1's UART divisor moved into its boot descriptor (`Mach.uartDivisor`), since C&C 1 traps before it would read
+    a command.
+  - rcp_cc1.c on C&C 1: RecipeTest's `cc1()` driver, with `sw/cc/cc_rcp.c` as the units' image (C&C 2, C&C 3 and the
+    tiles in one, within the 64 + 16 packets rcp_cc1.c streams; build_cc.sh checks). `Mach.hostBoot`, `stageCc1`.
+    - Works: the boot of C&C 2 and C&C 3, both "started", the tiles, boot part 2's 256 rows in every tile's big SRAM,
+      and recipe fence's second CMD_JUMP to C&C 3.
+    - Fails: the phase loop deadlocks (W14-06, a one-line fix proposed and tried, asked).
+    - W14-07: meshsim's overlay check fixed for a running controller.
+  - Regression subset after the merge (15 steps): all pass.

@@ -20,6 +20,7 @@ final class CcCoresTest {
         romBranch();
         bootTiles();
         errorPath();
+        romDump();
         watchdog();
         System.exit(T.done("CcCoresTest" + (shuffle >= 0 ? " (shuffled, seed " + shuffle + ")" : "")));
     }
@@ -182,6 +183,34 @@ final class CcCoresTest {
         T.eq(1 + 2 + 48, out.chars().filter(ch -> ch == '\n').count(), "the dump's lines: the summary, two units, 48 reports");
         System.out.printf("  error path: errors at %d; C&C 1 trapped at +%d; drain done at +%d (mcycle); dump done at +%d%n",
                 t0, cc1.core.trapAt - t0, (m.toastInfo(9) & 0xFFFFFFFFL) - t0, (m.toastInfo(10) & 0xFFFFFFFFL) - t0);
+        T.eq(0, m.c.violations, "violations");
+        if (m.c.violations != 0) System.out.print(m.c.violationReport());
+    }
+
+    static void romDump() {
+        T.group("the error path: a unit still under the ROM's handler, its two-report dump (DECISIONS-v1.25 8d)");
+        Config k = Mach.coresCfg(shuffle); k.checkErrors = false;
+        Mach m = new Mach(k);
+        m.uartDivisor = 1;                                               // C&C 1 traps right after the boot: no command first
+        m.bootCores("cc_bad");                                           // tile 12: a bus error right after GO
+        T.check(m.run(() -> m.toastInfo(10) != 0, 400_000), "C&C 1 trapped, drained and dumped");
+        Tile t12 = m.c.tiles[12];
+        T.eq(Controller.CAUSE_LOAD_FAULT, t12.core.trapCause, "tile 12 trapped on its load (a bus error)");
+        T.check((t12.core.mtvec & 0xFF000000) == Registers.BOOTROM_BASE, "tile 12's mtvec: still the ROM's handler");
+        T.eq(Controller.CAUSE_EXTERNAL, m.toastInfo(0), "C&C 1's mcause: the hard interrupt");
+        T.eq(1L << 12, m.toastInfo(2) & 0xFFFFFFFFL, "ERROR_LINES_0: tile 12");
+        T.eq(2, m.toastInfo(5), "two reports drained");
+        T.eq(1, m.toastInfo(6), "one unit began a set");
+        T.eq(1, m.toastInfo(7), "its set complete: two reports, told by sequence 24");
+        T.eq(0, m.toastInfo(8), "no flags (24 and 25, once each)");
+        int r = 0x1000, w0a = m.c.cores.unit(0).core.peekLocal(r), w0b = m.c.cores.unit(0).core.peekLocal(r + 16);
+        T.eq(24, (w0a >>> 21) & 0x7FF, "the first report's sequence number: 24");
+        T.eq(25, (w0b >>> 21) & 0x7FF, "the second's: 25");
+        T.eq(12, w0a & 0x7F, "stamped by the request tree with tile 12's id");
+        T.check((m.c.cores.unit(0).core.peekLocal(r + 4) & (1 << 9)) != 0, "report 24's first word: ERRORS, with [9] (bus error)");
+        T.eq(Controller.CAUSE_LOAD_FAULT, m.c.cores.unit(0).core.peekLocal(r + 8), "report 24's second word: mcause");
+        String out = m.c.cc1p.serialOut.toString();
+        T.check(out.contains("0000000c 00000002 00000002 \n"), "the UART dump: tile 12, 2 of 2");
         T.eq(0, m.c.violations, "violations");
         if (m.c.violations != 0) System.out.print(m.c.violationReport());
     }

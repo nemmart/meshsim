@@ -36,9 +36,9 @@
 #define CC_UART   0x55   /* 'U' */
 
 typedef struct { uint32_t pmem, pmem_packets, dmem, dmem_packets, cmd, entry; } Image;   /* chunk addresses in C&C 1's big SRAM */
-typedef struct { uint32_t magic; Image unit[3]; uint32_t go_latency; } BootDesc;           /* unit: C&C 2, C&C 3, the tiles */
+typedef struct { uint32_t magic; Image unit[3]; uint32_t go_latency, uart_divisor; } BootDesc;   /* unit: C&C 2, C&C 3, the tiles; divisor 0: the reset's */
 /* in .data: the harness fills it in the image before landing it (W14-03) */
-volatile BootDesc boot_desc __attribute__((section(".data"))) = { 0xB007DE5Cu, { { 0 } }, 1 };
+volatile BootDesc boot_desc __attribute__((section(".data"))) = { 0xB007DE5Cu, { { 0 } }, 1, 0 };
 volatile uint32_t mbox[8] __attribute__((section(".data"))) = { 0 };
 static uint32_t parity[2] __attribute__((section(".data"))) = { 0, 0 };   /* bit t: tile t's next command's parity (in .data: no .bss to zero) */
 
@@ -113,6 +113,7 @@ static void run_streams(unsigned n) {
     wait_all(EV_RUN_DONE);                          /* the tables are free for the next run */
 }
 static void boot(void) {
+    if (boot_desc.uart_divisor) cc1->UART_DIVISOR = boot_desc.uart_divisor;   /* the host's baud rate (W14-03) */
     put_commands();
     unit_streams(0, DST_CC2, &boot_desc.unit[0]);   /* C&C 2 and C&C 3 in one run: each unit's packets in order */
     unit_streams(1, DST_CC3, &boot_desc.unit[1]);

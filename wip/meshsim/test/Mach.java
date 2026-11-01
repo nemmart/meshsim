@@ -62,6 +62,8 @@ final class Mach {
     /** Chunk addresses in C&C 1's big SRAM where the harness stages the images C&C 1 sends (W14-03). */
     static final int STAGE_CHUNK = 0x10000;
     Image cc1, cc23;
+    /** C&C 1's UART divisor, set by its firmware at the start of the boot (0: the reset's, 434); tests that read a dump use 1. */
+    int uartDivisor;
     /** The outside world's boot (6.2, W14-02, W14-03): the images C&C 1 sends into its big SRAM (back door: staged by the
      *  host before the boot), its boot descriptor into its image's data, then C&C 1's image and first command through
      *  the host port. C&C 1's firmware boots C&C 2 and C&C 3, waits for their "started", then boots the tiles with
@@ -77,7 +79,7 @@ final class Mach {
             for (int i = 0; i < 4 * pk; i++) s.poke(ch + i, i < w.length ? w[i] : 0);
             at[0] += 4 * Math.max(pk, 1); return new int[] { ch, pk };
         };
-        int[] desc = new int[1 + 3 * 6 + 1];
+        int[] desc = new int[1 + 3 * 6 + 2];
         desc[0] = 0xB007DE5C;
         int[] cp = stage.apply(cc23.code), cd = stage.apply(cc23.data), tp = stage.apply(t.code), td = stage.apply(t.data);
         for (int u = 0; u < 3; u++) {
@@ -86,13 +88,24 @@ final class Mach {
             int[] e = { p[0], p[1], d[0], d[1], cmd, im.sym("_start") };
             System.arraycopy(e, 0, desc, 1 + 6 * u, 6);
         }
-        desc[19] = cfg.goLatency;
+        desc[19] = cfg.goLatency; desc[20] = uartDivisor;
         int[] data = cc1.data.clone(), base = { (cc1.sym("boot_desc") - cc1.sym("_data_start")) / 4 };
         System.arraycopy(desc, 0, data, base[0], desc.length);
-        c.cores.hostLoad(0, Registers.PMEM_BASE, cc1.code);
-        c.cores.hostLoad(0, cc1.sym("_data_start"), data);
-        c.cores.hostCommand(0, Registers.CMD_JUMP << 24, cc1.sym("_start"));
+        hostBoot(cc1, data);
         return t;
+    }
+    /** The outside world starts C&C 1 (6.2 step 3, W14-02): image im's program and data (`data`, its data image as
+     *  landed) and its first command, CMD_JUMP to _start, through the host port. */
+    void hostBoot(Image im, int[] data) {
+        c.cores.hostLoad(0, Registers.PMEM_BASE, im.code);
+        if (data.length > 0) c.cores.hostLoad(0, im.sym("_data_start"), data);
+        c.cores.hostCommand(0, Registers.CMD_JUMP << 24, im.sym("_start"));
+    }
+    /** Words into C&C 1's big SRAM from chunk `at`, zero-padded to `rows` 128-bit rows (back door, W14-03). */
+    void stageCc1(int at, int[] w, int rows) {
+        if (w.length > 4 * rows) throw new IllegalArgumentException(w.length + " words in " + rows + " rows");
+        BigSRAM s = c.cores.unit(0).sram;
+        for (int i = 0; i < 4 * rows; i++) s.poke(at + i, i < w.length ? w[i] : 0);
     }
     /** C&C 1's mailbox word i (sw/cc/cc1.c: [0] commands done, [1] last all-READY, [2] last GO, [3] boot state, [4]-[5]
      *  the "started" requestors, [6] results answered, [7] other requests). */

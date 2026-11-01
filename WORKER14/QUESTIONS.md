@@ -65,4 +65,40 @@ and a controller's own block copy (6.5's d = 0) must use its absolute id.
 **Proposed.** Keep meshsim's reading (relative to tile *c*: C&C 1's d = 0 is tile 0); a controller copies into its own
 memories with d = 64 + *c*. The firmware does so (6.5's sequence with that d). 4.2 could say it.
 
-**Status:** proposed; the code follows it (no change: the existing rule).
+**Status:** accepted (integrator): relative to tile *c*, own memories by absolute id; 4.2 says so (CL6).
+
+## W14-06: rcp_cc1.c's main deadlocks after the boot (recipe 27's phase contract)
+
+**What.** Recipe 27's `phase()` assumes "the next command was sent right after the last GO": it waits for all READY
+first, and READY needs both `done` and a landed command (6.3; the spec's READY line). But `cc1_boot` (recipe 22) ends
+with `go(0)` for CMD_STAGE and the data stream, sending no next command, and `main` then enters
+`for (;;) phase(1, ...)`. Run on C&C 1 as a core (RecipeTest's cc1 driver), every tile finishes CMD_STAGE and waits in
+`wait_for_command()` with no command landed. No tile raises READY, and C&C 1 sleeps in `wait_all_ready()` forever.
+`go(0)` turned the watchdog off, so nothing fires either. GOs stop at 2, the boot's and CMD_STAGE's.
+
+**Proposed.** One line in `main` (outside every RECIPE region, so RECIPES.md's text is unchanged): send the first
+phase's command before the loop.
+
+```c
+    boot_unit_fenced(DST_CC3, &b, 0x01000000);
+    command(DST_BROADCAST, 1, 0, 0, 0);             /* the first phase's command: phase() sends each next one after GO */
+    for (;;) phase(1, 0, 0, 0, 1000000);
+```
+
+Tried locally and reverted: RecipeTest passes, 2,056 checks, with eight phases after the boot. The alternative is to end
+`cc1_boot` with the command (a RECIPE region, so the book's text changes).
+
+**Status:** asked; rcp_cc1.c unchanged until answered (RecipeTest's cc1 driver fails its phase check meanwhile).
+
+## W14-07: meshsim's "overlay after the command" check on a running controller (6.2)
+
+**What.** `TrafficDirector.checkUncounted` flags an uncounted overlay write that lands while the unit's "command
+landed" is set: "after the unit's command and before its start". On a tile, GO clears "command landed". A controller has
+no GO: it starts when its command lands (the ROM's jump, 6.2 step 4), and nothing clears the status afterwards. So
+recipe fence's second boot of a running C&C 3 (`boot_unit_fenced`, run by rcp_cc1.c's main) was flagged on every
+overlay packet, 80 violations.
+
+**Proposed.** On a controller the check holds only until its image runs (`core.firstImageAt` set since the reset).
+Done, marked W14-07 in `TrafficDirector`. It changes nothing for tiles.
+
+**Status:** proposed; the code follows it.

@@ -571,14 +571,17 @@ final class ReplayerUnitTests {
         long t = 0;
         // v1.2: byte offsets in region 0x04 (4.19.10); the part is offset [22:20]
         r.accept(t, 3, 0x0, LinkWord.SIZE_128, 0x1234, 0); r.runCycle(t++);
-        r.accept(t, 3, 0x8, LinkWord.SIZE_128, 1, 1); r.runCycle(t++);            // part 0 off a multiple of 16 (the director drops such a packet; the port refuses it too)
         r.accept(t, 3, 0x0, LinkWord.SIZE_64, 1, 0); r.runCycle(t++);             // a 64-bit packet
         r.accept(t, 3, 0x100000, LinkWord.SIZE_32, 1, 0); r.runCycle(t++);        // a queue takes 128 bits only
         r.accept(t, 3, 0x800, LinkWord.SIZE_128, 1, 0); r.runCycle(t++);          // unmapped in part 0
         r.accept(t, 3, 0x500000, LinkWord.SIZE_128, 1, 0); r.runCycle(t++);       // part 5: unmapped (v1.25 CL1: 1-4 the queues)
         for (int k = 0; k < 4; k++) r.runCycle(t++);
         T.eq(0x1234, r.region0[0], "the state word landed");
-        T.eq(5, r.condEvents[Replayer.ERR_BAD_WRITE], "five bad writes");
+        T.eq(4, r.condEvents[Replayer.ERR_BAD_WRITE], "four bad writes");
+        // v1.25 (DECISIONS-v1.25 s8b): a part-0 write off a 128-bit boundary is undefined behavior: meshsim stops
+        Replayer ru = new Replayer(0);
+        ru.accept(0, 3, 0x8, LinkWord.SIZE_128, 1, 1);
+        T.ub(() -> { for (long u = 0; u < 8; u++) ru.runCycle(u); }, "a part-0 write off a 128-bit boundary", "replayer", "part 0", "item 47");
         T.eq(1 << Replayer.ERR_BAD_WRITE, r.errors(t), "ERRORS [0], bad write, sticky");
         T.eq(1, r.landed(2), "landed(t): a packet accepted at t − 2");
         T.eq(0, r.landed(101), "no packet");

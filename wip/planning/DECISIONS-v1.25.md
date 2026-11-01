@@ -52,6 +52,8 @@ Decided (O).
 
 ## 4. The expansion word's new bits, and the tables (2026-11-01)
 
+*(The Tracer-only fields here, `untraced` and `advice_reg`, are reserved by section 9.)*
+
 Decided (O). From WORKER9's part-2 plan (`sessions/WORKER9-PLAN-PART2.md`).
 
 - **`offset_imm`** (WORKER9's proposal, spare bit [63]): when set, the row's `shift_offset` is the source instruction's
@@ -77,6 +79,8 @@ Decided (O). From WORKER9's part-2 plan (`sessions/WORKER9-PLAN-PART2.md`).
   prologue and epilogue, for C&C 3 to generate (v1.3 section 10).
 
 ## 5. Universal tables, and the expansion word's last bits (2026-11-01)
+
+*(The Tracer-only fields here, `untraced` and `advice_reg`, are reserved by section 9.)*
 
 Decided (O). From WORKER9's first delivery of the replayer's tables and its Q5-Q7.
 

@@ -262,6 +262,8 @@ per row** (owner), and windows 33-36 all fall in the same proof.*
 
 ## 12. The Tracer's region: parts 0 and 1 (2026-11-01)
 
+*(Section 13: no untraced rows, so bank 1 holds no untraced scratch; the starting state is unchanged.)*
+
 Decided (O). The Tracer is C&C 3's peripheral; everything C&C 3 or the memory system gives it arrives as 128-bit packet writes into
 its region, with **offset bits [22:20] picking the part**, as in the replayer's (spec 4.19.10, CL1).
 

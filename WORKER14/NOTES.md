@@ -114,3 +114,9 @@ sort 104 (140 s); sort-shuf 104.
   - Task 092 (Quest; kit 0f961b22 from ba34cbf at Java 17): the quick suite and p4/uniform-k128 against 1,229,008.
     The sortrunner is 089's with the jar rebuilt from cc-cores; the sort image, ROM and hops.txt hash as 089's.
     Smoke-tested: run_p4 at n = 2,000 gives 242,445 cycles, as 089's smoke did. Pushed 11:52 UTC.
+- Turn 6:
+  - W14-06 applied as approved: one line and a comment in rcp_cc1.c's `main`; RecipeTest passes 2,056, plain and
+    shuffled, with a new table row for rcp_cc1's phase (435 cycles; recipe 27's per-tile parity loop).
+  - W14-07 accepted.
+  - Task 092 (quick suite + p4/uniform-k128) passed: 36 of 36 steps; p4 1,229,008 cycles, as on main.
+  - Ready to merge.

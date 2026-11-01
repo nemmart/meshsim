@@ -192,11 +192,25 @@ engines are stubs too.
 
 ## Runner verification
 
+**Task 092, for the merge: DONE** (branch at ba34cbf, main 9133397 merged; runner `godspeed`, 16 threads,
+11:53-11:59 UTC):
+- **Quick suite:** 36 steps, nonzero exits 0, logs with FAIL 0. CcCoresTest passed 77 of 77 and RecipeTest 2,056 of
+  2,056, plain and shuffled.
+- **p4/uniform-k128:** **1,229,008 cycles**, equal to main's. The sort's inputs were byte-identical to task 089's, with
+  only the jar rebuilt from this branch.
+- **Comparison with task 091** (s8e, the last full run before main's s9 merge): the logs are identical apart from timing
+  lines and three changes:
+  - RecipeTest has my cc1 driver: 9 more checks and one table row;
+  - ReplayerTest has 1,474 checks against 1,472, from s9 on main, not this branch;
+  - StageB differs only in a wall-clock time.
+
+**Task 090 (earlier, turn 4)** ran the quick suite and the full extras on the branch at 5cd78a2, before s8:
+
 Task 090 (Quest, claimed in NUMBERS.md): the quick suite (8 at a time) and the full extras with CcBench (4 at a time),
 from a kit built at Java 17 from 5cd78a2. The kit was smoke-tested locally on bus, regdoc, replayer, reqbus, riscv,
 stageb, cccores, hooks, periph, cond and CcBench.
 
-**Result: DONE** (runner `godspeed`, 16 threads, 10:31-10:44 UTC):
+Result: DONE (10:31-10:44 UTC):
 - **Quick suite:** 36 steps, nonzero exits 0, logs with FAIL 0. The counts equal the baseline; ReplayerTest has 1,468
   checks with main's b060637, 1,461 before. CcCoresTest passed 61 of 61, plain and shuffled.
 - **Full extras:** 11 steps, nonzero exits 0. CcBench gave the numbers above.

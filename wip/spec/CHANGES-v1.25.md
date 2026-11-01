@@ -7,7 +7,7 @@ section of `planning/DECISIONS-v1.25.md`, **D*n*** for a section of `planning/DE
 missed its own decision), or **O** for an owner's ruling given to this update (2026-11-01). Where a later
 decision revised an earlier one, the citation names the later.
 
-**Scope.** Only the replayer (4.19) and what follows from it change: the front matter, sections 9, 10 and 13, and the
+**Scope.** The replayer (4.19) and what follows from it change, and so does everything **section 8's package** touches (DECISIONS-v1.25 section 8, below; cited **V8a**–**V8d**): the front matter, sections 9, 10 and 13, and the
 opcode appendix `spec/replayer-opcodes.md`. The sort and the rest of the machine are v1.2's, and so is every section
 not listed below.
 
@@ -56,6 +56,33 @@ per jolt-cpp version, with every expansion but the inlines and the CSR instructi
 | 10 | the replayer's row: the reference, the universal tables' fill, 88 executed opcodes, the new expansion-word bits | V1, V5, V6 |
 | 4.19.1, 4.19.2, 4.19.7, 4.19.9 (measurements) | **item 138 closed:** the row rate, stalls, multiply density and controller-fed expansions are now v1.25's, measured on the acceptance runs (Quest 083, 084): 3.32 and 3.16 cycles per row on EVM Zone's and Cyclone's real windows (3.21 and 3.11 over all windows), multiply rows 15.7 % and 7.1 %, controller-fed expansions 0.12 and 6.6 per window; the log densities are v1.25's too, counted from the same deliveries by Quest 085 with no replay and checked against every window's state record: 0.348 words per real row on EVM Zone and 0.306 on Cyclone (load / store / advice / non-sequential in 4.19.2), at most 0.833 in a window, 7.7 and 7.1 MB of raw log per 64-window pass | O |
 | 13 | a status table for items 33, 34, 36, 40, 43, 56, 58, 112, 113, 114; new items 137 (citations at `821e1bd`), 138 (v1.25's measurements; closed by the acceptance runs, item 37 with it), 139 (what the controller feeds), 140 (PEXT for any mask: the method), 141 (the Tracer's tables, deferred) | V1–V7, O |
+
+## Section 8's package: what the hardware checks, misalignment, the gather unit, the boot ROM
+
+DECISIONS-v1.25 section 8 (owner, with Tony, 2026-11-01). Rules elsewhere that still prescribe an outcome for a mistake are
+listed as candidates under 8a's test (WORKER10's `QUESTIONS.md`, Q8–Q14), not changed.
+
+| section | what changed | decisions |
+|---|---|---|
+| top | **"How the hardware treats software bugs"** replaces v1.2's "Who checks what": every rule is checked by the hardware (an `ERRORS` bit, for what simulation can't see) or UB (the hardware does nothing special; meshsim stops; the RTL may carry simulation-only assertions), with no third kind; "(hardware)" and "(meshsim)" mark the two; v1.25's summary lists section 8's package | V8a, O |
+| 1 | alignment: a misaligned access is UB; only a misaligned jump target traps | V8b |
+| 3.1 | a packet misaligned to its size is **UB**, no longer a bad packet; a write through a misaligned `PTR` is UB; the bad packet is the region decode (and mode 3 at 128 bits), whose place under 8a is open (item 142); the mode-4 row: *k* 64-bit packets per value when *k* is odd, *k*/2 128-bit ones when even | V8b, V8c |
+| 4.1 | v1.2's hardware alignment checks (bad packet; dropped but counted write; read not performed with payload 0) replaced by **UB** | V8b |
+| 4.2 | **a controller's relative *d*** counts from its tile *c*, so a controller copying into its own memories names itself absolutely, 64 + *c* (CL6, W14-05; no behaviour change); a misaligned source or destination is UB, no payload-0 read | CL6, V8b |
+| 4.3, 4.5, 8.8 | the read port's misaligned read or destination, and a misaligned return, are UB | V8b |
+| 4.4 | **the gather unit: 128-bit copies when *k* is even**: *k* odd, *k* 64-bit reads and packets per value as before; *k* even, *k*/2 128-bit reads at base + 2*k*·ordinal + 4*i*, sent as 128-bit mode-1 packets, `PTR[me]` advancing by 4; **gather buffers 128-bit aligned** (source and destination) whatever *k*, misalignment UB; **one decrement per gather value packet**, so a gather of *n* values arms *n* × (packets per value); rate ≈ (packets per value + 1) cycles per value, about 2 at *k* = 2 (was 3), to be re-measured on the sort | V8c |
+| 4.9 | a write through a misaligned `PTR` is UB (v1.2: dropped, still counted, [1], pointer advanced); a misaligned mode 0 is UB; a value's packets are *k* 64-bit or *k*/2 128-bit | V8b, V8c |
+| 4.11 | a misaligned load or store is no longer a bus error (UB); **a misaligned jump target still traps**; the send port's misaligned address is UB | V8b |
+| 4.13 | `ERRORS` [1] renamed **"bad packet"**; "what earns an error" follows; **the image's handler keeps the 24 reports, the boot ROM's handler sends a two-report dump**: report 24 (`ERRORS`, `mcause`, `mepc`) and report 25 (`mtval`, `STATUS`, `ra`), no `PARAMS`; **a unit's first report tells C&C 1 which set is coming** (sequence number 0: the image's 24; 24: the ROM's 2) | V8b, V8d, O |
+| 3.3, 6.1 | the report sets: 24 from an image's handler, 2 from a unit still in its ROM | V8d |
+| 4.17.9 | the DMA's misaligned packets are UB | V8b |
+| 4.19.10 | a misaligned window-0 write is UB, no longer a bad packet | V8b |
+| 6.2 | **the boot ROM is 256 bytes** (64 words; was "a few dozen bytes", about 728 in meshsim): the boot path 30 words, unchanged, and the two-report handler about 49 in all; the rest left free | V8d |
+| 8.3 | [1] "bad packet" | V8b |
+| 8.5, 8.7 | *k* also chooses the copy (odd: 64-bit; even: 128-bit); `DMA_RECORD_BASE_ADDRESS` in a gather 128-bit aligned | V8c |
+| 9 (5, 20) | invariant 5: a misaligned packet is UB, no longer a bad packet; invariant 20: gather buffers 128-bit aligned, and no hardware check (UB) | V8b, V8c |
+| 10 | the boot ROM's 256 bytes; *k*'s copy size | V8c, V8d |
+| 13 | **item 16 closed** (128-bit gather reads); 17 changed; 47 changed (a misaligned window-0 write is UB); 122 changed (the ROM's sequence numbers 24 and 25); **new item 142** (the region-decode check under 8a, open for the owner and Tony) | V8b–V8d |
 
 ## The opcode appendix (`spec/replayer-opcodes.md`)
 

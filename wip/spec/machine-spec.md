@@ -288,7 +288,7 @@ A request for a reserved target, or a target with no receiver, is dropped at the
 
 - **"Outstanding" is a software convention, not a hardware state** (owner, 2026-10-29): a request is outstanding until its reply has landed, and **a read, which has no reply, until its data has landed** (its data counter done); a tile issues its next request to a target only after that. Every request names its reply's counter and address (6.7). In hardware a request holds a slot in its target's receive queue only from delivery until the target pops it, well before any answer, and the tile can't see the pop; so the convention is deliberately conservative, and it implies the bound. 64 tiles at those limits fill 64, 192 and 64 entries, and **the controllers' own requests to each other fit in the 64 entries left at each target.**
 - **The limits are a software rule** (meshsim checks it, invariant 17); the hardware only counts credits.
-- **Error reports are the exception** (accepted): a failed unit's handler sends its fixed set of 24 reports (4.13) with no replies and no limit. In a mass failure they can fill C&C 1's queue and stall rows behind it, but the chip is going down and C&C 1 drains them one by one (6.1).
+- **Error reports are the exception** (accepted): a failed unit's handler sends its fixed set of reports (4.13: 24 from an image's handler, 2 from the boot ROM's) with no replies and no limit. In a mass failure they can fill C&C 1's queue and stall rows behind it, but the chip is going down and C&C 1 drains them one by one (6.1).
 - **Units that aren't targets need no receive queue;** their receive registers read an empty queue (4.18).
 
 **Back-pressure end to end.** When a target has no credit (its receive queue is full, or will be with the requests already forwarded) the root skips the inputs whose next request is for it; a row node whose request the root skips stalls behind it, a tile's port stops draining its request FIFO, and a send store to a full FIFO stalls that tile's controller (4.18). Nothing is dropped anywhere on the bus. Under the per-tile limits this happens only in a mass failure.
@@ -1030,7 +1030,7 @@ Bits 15–31 are reserved and read 0. The bits are grouped by unit: the network 
 - **Traps that set no `ERRORS` bit are software bugs, caught by meshsim** (owner, 2026-10-29): `ecall`, `ebreak`, the fetch, the misaligned jump and a trap inside the handler. **meshsim stops loudly on each.** The hardware adds nothing for them: such a trap parks the unit without raising its error line, and on hardware only C&C 1's watchdog notices (6.1). Accepted.
 
 **The handler** (owner, 2026-10-28 and 2026-10-29; conventions for every unit's handler):
-- **The report set is fixed and exact** (owner, 2026-10-29): every handler sends the same **24 reports**, in the same order, whatever the unit's peripherals, so the count is a constant of the protocol and nothing in the reports needs to carry it; C&C 1 counts each unit's reports against it (6.1). Each report is one 128-bit request to C&C 1 (target 0, 3.3): word 0 the header (the requestor and target, the report op and the report's sequence number, 0–23; no reply is asked for), words 1–3 three data words:
+- **The report set is fixed and exact** (owner, 2026-10-29): every image's handler (recipe 24, in program memory) sends the same **24 reports**, in the same order, whatever the unit's peripherals, so the count is a constant of the protocol and nothing in the reports needs to carry it; C&C 1 counts each unit's reports against it (6.1). The boot ROM's handler sends a shorter, equally fixed set (below). Each report is one 128-bit request to C&C 1 (target 0, 3.3): word 0 the header (the requestor and target, the report op and the report's sequence number, 0–23; no reply is asked for), words 1–3 three data words:
 
 | reports | data words |
 |---|---|
@@ -1048,9 +1048,16 @@ Bits 15–31 are reserved and read 0. The bits are grouped by unit: the network 
 - **It checks `PARAMS` [2:0] before reading a peripheral's window:** reading an absent peripheral's window is a bus error, which would trap inside the handler.
 - **It reads seven of each window's ten standard words:** **`EVENTS_PEEK`, never `EVENTS`,** at both levels, since a load of `EVENTS` consumes events and would destroy the state it is reporting; and **not the write-only pulses** (`PULSE_RUN`, `PULSE_DMA`), which read 0.
 - **It assumes no interface is clean:** a register sequence the main code left half done (the send port's `W` words, the request port's `SET`/`GET` words) is never completed, since nothing resumes, so the handler writes every word of each request it sends.
-- **Reports are exempt from the per-tile request limits** (3.3): they ask for no reply, and a failed unit sends all 24 at once.
+- **Reports are exempt from the per-tile request limits** (3.3): they ask for no reply, and a failed unit sends all of them at once.
 - **It parks** in a plain jump to itself. A `WFI` loop would also work only if `mie`'s enable is cleared first, since a pending enabled interrupt may release `WFI` with `MIE` = 0; the plain loop doesn't depend on that.
-- Until a loaded image installs its own, `mtvec` points at the **boot ROM's report-and-park handler**, which follows the same conventions and never writes data memory (6.2).
+- Until a loaded image installs its own, `mtvec` points at the **boot ROM's report-and-park handler** (6.2), which **sends a two-report dump and parks** (DECISIONS-v1.25 section 8d):
+
+  | report (sequence number) | data words |
+  |---|---|
+  | 24 | `ERRORS`, `mcause`, `mepc` |
+  | 25 | `mtval`, `STATUS`, `ra` (x1) |
+
+  No `PARAMS`: the request tree stamps the sender's id. The full set stays the image's handler's. Otherwise it keeps the conventions above (one 128-bit request per report, the same report op, every word of each request written, a plain jump to itself), and it never writes data memory. **A unit's first report tells C&C 1 which set is coming** (owner, 2026-11-01): sequence number 0 starts an image's 24 (0–23), 24 the ROM's two (24 and 25), so the sequence number alone names each report's layout. A unit sends only one of the sets: the ROM's handler is unreachable once an image has installed its own, and both park.
 - **Interrupts are off until the image enables them** (owner, 2026-10-29): the reset leaves `MIE` = 0, the boot ROM leaves it so, and the image's boot part 2 enables them (6.2). Until then an error raises the unit's error line and the toast pin (6.1) but takes no trap; a synchronous exception still traps to the ROM's handler.
 
 ### 4.14 Commit ordering
@@ -1881,7 +1888,7 @@ C&C 1 sequences the phases. It writes commands into the tiles' command blocks, c
 1. **An error sets a bit in a unit's `ERRORS`** (for example unexpected arrival), which raises its hard interrupt. Its handler sends its reports to C&C 1 over the request bus and parks forever (4.13). Its engines and peripherals carry on, unserviced, until the reset.
 2. **Its error line** sets its bit in C&C 1's peripheral's `ERROR_LINES_0`–`2`, by endpoint id, `error_latency` cycles later (2). The lines are **live**, following each unit's `ERRORS`.
 3. **The unit-error bit,** C&C 1's peripheral's `ERRORS` [0] = OR(`ERROR_LINES`), live, sets C&C 1's `ERRORS` [11] (4.17.6), and C&C 1 takes its hard interrupt. C&C 1's own errors interrupt it directly. **Every error is terminal for the chip:** nothing on chip recovers.
-4. **C&C 1's handler,** best effort, with nothing waiting for it: it **immediately tells the file system to start flushing its logs to LPDDR** (C&C 2; the units' log files, 6.7), **drains the units' reports** from its request port (the fixed report set, 4.13), and **sends the dump out: down LVDS when an FPGA is in the loop, over the UART otherwise**. It never returns to the interrupted code. It bounds its waits by cycle count (`mcycle`, `mtime`, 4.11). *(Its details are C&C 1's firmware's.)*
+4. **C&C 1's handler,** best effort, with nothing waiting for it: it **immediately tells the file system to start flushing its logs to LPDDR** (C&C 2; the units' log files, 6.7), **drains the units' reports** from its request port (the fixed report sets, 4.13: 24 from an image's handler, 2 from a unit still in its ROM, told apart by the first report's sequence number), and **sends the dump out: down LVDS when an FPGA is in the loop, over the UART otherwise**. It never returns to the interrupted code. It bounds its waits by cycle count (`mcycle`, `mtime`, 4.11). *(Its details are C&C 1's firmware's.)*
 5. **The toast pin** rises (below), and **the outside world resets the chip** (below).
 
 **The "I'm toast" pin** (owner and Tony, 2026-10-29). Ingress/Egress raises it **as soon as C&C 1's `ERRORS` is non-zero** (the unit-error bit included) **or its keep-alive watchdog reaches 0**, and it stays **latched until the reset**. Since nothing recovers, every error is terminal, and the one pin covers them all, unit errors included. The software pin, **`LED`** (8.14), stays: C&C 1 can blink codes on it while it is healthy.
@@ -1914,7 +1921,7 @@ C&C 1 sequences the phases. It writes commands into the tiles' command blocks, c
 - **The ROM never writes data memory** (no stack, no variables), which the overlays are writing while it runs; it reads only the command block, after the command has landed. The first command has parity 0, so the jump address is in slot 1 (6.3).
 - **A tile's ROM is a minimal `wait_for_command()` that jumps only if a command has landed.** Its `done` pulse and the landing command raise READY like any phase's (6.3), and the image starts after GO. GO reaches every tile, so with units started one at a time (below) a tile still waiting in the ROM sees GOs meant for others; without the test it would jump into empty memory. C&C 2 and C&C 3 stay out of READY/GO and jump when their command lands.
 - **Enabling interrupts is the image's job** (owner, 2026-10-29; a software convention): **boot part 2**, the first command, which receives the big-SRAM size and loads it (step 6 below), sets `mtvec` to the image's handler and enables `mie.MEIE` and `mstatus.MIE`.
-- **Cost:** a few dozen bytes of ROM per controller, and its region in the map.
+- **Size: 256 bytes** (64 words) per controller (DECISIONS-v1.25 section 8d); v1.2 said "a few dozen bytes", and meshsim's was about 728. The boot path (steps 1–5) takes 30 words, unchanged, and the handler's two-report dump (4.13) brings it to about 49; **the rest is left free** (owner). It costs its region in the map too.
 
 **The boot sequence** (owner, 2026-10-29):
 1. **The reset is asserted** (6.1): everything is zeroed as at power-on except the memories.
@@ -2454,7 +2461,7 @@ The reset empties both FIFOs, clears [17:16] and loads the reset divisor (4.20).
 | **K** | **8** (meshsim's default); a parameter, **implementation-defined**: at least the implementation's slowest write path. meshsim's model: max(2·`ts_engine_latency` + 4, `ts_engine_latency` + 4, `cm_latency`, `rp_latency`), 6 at the default `ts_engine_latency`; K = 8 covers `ts_engine_latency` ≤ 2 (4.8; W4-08) |
 | `error_latency` | the fixed latency of a unit's error line into C&C 1's peripheral *(Open: the physical value; 1 in simulation, Proposed)* (4.13, 6.1) |
 | write counters | seven, `WRITE_COUNTER_1`–`7`, 20 bits each; counter field 3 bits, 0 uncounted, 1–7 the counters (3.1, 4.12) |
-| boot ROM | in every controller, region 0x02, reset vector 0x02000000; a few dozen bytes (6.2) |
+| boot ROM | in every controller, region 0x02, reset vector 0x02000000; **256 bytes** (64 words; about 49 used: the boot path and a two-report dump handler) (6.2, 4.13) |
 | keep-alive watchdog | `WATCHDOG` in C&C 1's peripheral, off at reset (6.1) |
 | flush wait before a soft reset | about 0.1 ms (about 100,000 cycles at 1 GHz), the outside world's (6.1) |
 | load-use penalty (data memory, program memory, boot ROM) | 0 each (the design target; section 12); registers and windows 2 cycles, the table window 1 (`reg_load_latency`) |
@@ -2535,9 +2542,12 @@ Every item still to be settled, every proposal not yet ruled on, and every item 
 
 | item | v1.25 | how |
 |---|---|---|
+| 16 | closed | the gather copies 128 bits at a time when *k* is even (4.4; DECISIONS-v1.25 section 8c) |
+| 17 | changed | with 16 done, a gather at *k* = 2 is about 2 cycles per value already, so a direct path's gain shrinks to write combining's (4.4) |
 | 33 | changed | the run log's load and store rows include the six narrow ones, and the write log's last-load entry is updated by every load row (4.19.2, 4.19.15; DECISIONS-v1.25 section 7) |
 | 34 | closed | the table builder derives every template from jolt-cpp's own `expand_virt_seq` and checks it field by field against jolt-cpp's rows, on random words and on every instruction of both workloads (4.19.5, 4.19.6; `tables/README.md`) |
 | 36 | changed | the replayer executes 88 opcodes at `821e1bd` (4.19.7) |
+| 37 | closed | the multiply density is measured: 15.7 % of EVM Zone's rows, 7.1 % of Cyclone's (4.19.7, item 138) |
 | 40 | closed | the universal ROM fills 388 of 512 words (4.19.6) |
 | 43 | superseded | `VirtualPext` and `VirtualPextSigned` are correct for any mask, at full speed for contiguous ones (4.19.7; DECISIONS-v1.25 section 1); item 140 |
 | 47 | changed | a misaligned window-0 write is UB (meshsim), no longer a bad packet: the replayer's bad writes are an unmapped part or word, a wrong size and a write to a busy single-ported memory (4.1, 4.19.10; DECISIONS-v1.25 section 8b) |
@@ -2545,8 +2555,8 @@ Every item still to be settled, every proposal not yet ruled on, and every item 
 | 58 | changed | the validation harness is v1.25's acceptance: every window of both workloads at 2²⁹, replayed on meshsim and matched row for row against jolt-cpp `821e1bd` on the Quest runner, with WORKER9's delivery writer making the inputs (DECISIONS-v1.25 sections 2, 3 and 7) |
 | 112 | changed | the appendix is regenerated at `821e1bd` (`spec/replayer-opcodes.md`) |
 | 113 | changed | jolt-cpp's gold-standard version is `821e1bd` (4.19.1); upstream Jolt at 735355e stays the ground truth |
-| 37 | closed | the multiply density is measured: 15.7 % of EVM Zone's rows, 7.1 % of Cyclone's (4.19.7, item 138) |
 | 114 | changed | the set is universal; numbers are positions in an index sorted by a normalized key, not exact instruction words (4.19.9); 75 at `821e1bd` |
+| 122 | changed | the boot ROM's two-report dump uses sequence numbers 24 and 25 under the same report op; a unit's first report tells C&C 1 which set is coming (4.13; DECISIONS-v1.25 section 8d) |
 
 **v1.2: the status of items 1–116** (every item not listed is unchanged):
 
@@ -2630,7 +2640,7 @@ Every item still to be settled, every proposal not yet ruled on, and every item 
 
 14. *(v1.2: closed; see the table above.)* **C&C's wake sources:** all READY bits set, a packet on the receive path, and a watchdog timer (6.6).
 15. *(v1.2: open; see the table above.)* **A status bit with READY,** so C&C can learn per-owner completion without its receive path.
-16. **128-bit gather-value reads** (4.4): read a gather value as one row when it is row-aligned. In v1.0 this would have halved the reads but not the injection cost; in v1.1 a 128-bit value is one packet, so it would halve both, bringing a gather at *k* = 2 from ≈ 3 to ≈ 2 cycles per value [estimate].
+16. **128-bit gather-value reads** (4.4): read a gather value as one row when it is row-aligned. In v1.0 this would have halved the reads but not the injection cost; in v1.1 a 128-bit value is one packet, so it would halve both, bringing a gather at *k* = 2 from ≈ 3 to ≈ 2 cycles per value [estimate]. *(v1.25, closed, owner, 2026-11-01:)* done for even *k*: *k*/2 128-bit reads and packets per value, about 2 cycles per value at *k* = 2, with no new field (4.4; DECISIONS-v1.25 section 8c).
 
 **Possible later additions**
 
@@ -2805,7 +2815,7 @@ Every item still to be settled, every proposal not yet ruled on, and every item 
 119. **The file system and the RW engine** *(Deferred: with their design)* (3.3, 6.1, 6.7, section 7): tag-window fan-in (one writer or paced); whether tag-window writes, which are writes from running units, are counted (W2-29); the window protocol (how a unit learns its window, the length the engine counts to, the writer's acknowledgement) and the read direction (W2-30); the request layout, which names the destination and the data and reply counters (6.7); whether target 3 stays a request target of its own (3.3); a peripheral event kind for a queue of items, for returning closed tags and for the host interface (W3-25, 4.17.3); the flush on failure and mounting existing state after a soft reset (6.1); the memory system's internals (item 60).
 120. **The table window's address** *(Proposed)* (4.10, 8.9): 0xFFFF2000–0xFFFF35FF, keeping v1.1's low 16 bits.
 121. **The core's CSRs** *(Open, with Tony; the log's Q1, partly answered)* (4.11, 6.1): the trap CSRs, `mcycle` and `mtime` are implemented (2026-10-29); the rest of the list, which defines which CSR instructions are legal, and their reset values, `mtvec`'s in particular, are still to come. Which `mie` bit boot part 2 sets (6.2) follows from it.
-122. **The handler's report header** *(Deferred: with C&C 1's request format)* (4.13): the set itself is decided, 24 reports in a fixed order (owner, 2026-10-29); the header's op and sequence-number fields are settled with C&C 1's request format (the draft header: op [17:10], sequence number [31:21]).
+122. **The handler's report header** *(Deferred: with C&C 1's request format)* (4.13): the set itself is decided, 24 reports in a fixed order (owner, 2026-10-29); the header's op and sequence-number fields are settled with C&C 1's request format (the draft header: op [17:10], sequence number [31:21]). *(v1.25, decided, owner, 2026-11-01:)* the boot ROM's two-report dump uses **sequence numbers 24 and 25** under the same report op, and a unit's first report tells C&C 1 which set is coming (0: the image's 24; 24: the ROM's 2) (4.13; DECISIONS-v1.25 section 8d). The op and the field positions are still deferred.
 123. **The replayer's window** (4.19.9, 4.19.11, 8.11): *the status words are decided* (owner, 2026-10-29): 32 `ROWS_RUN`, 33 `EXPANSION_OFFSET`, 34 `EXPANSION_OPCODE`. *(Proposed:)* the bits, `ERRORS` [0] bad write, [1] queue overrun, [2] invalid expansion; `EVENTS` [0] run done, [2]–[5] the code, read-log, write-log and expansion credits, [6] new expansion (WORKER3's proposal, W3-27).
 124. **The soft reset's keep list** *(Open, with Tony)* (6.1): the LVDS bus, the AXI bus and what lies beyond it, the LPDDR controller and PHY; exactly which blocks stay out of a soft reset.
 125. **Signed counters** *(Possible later addition)* (4.12, 6.2): an arrival before arming would just take the counter negative, so the order of GO, arming and the first data would stop mattering; strays would then be caught as done early.
@@ -2829,6 +2839,7 @@ Every item still to be settled, every proposal not yet ruled on, and every item 
 139. **What the controller feeds** (4.19.6, 4.19.9): decided (owner, 2026-11-01; DECISIONS-v1.25 section 6): the inlines and the CSR instructions, and nothing else; the CSR instructions are the one deliberate exception to the ROM goal. *(Possible later addition:)* a SYSTEM-group decode layout with a small CSR-id table loaded with the decode table and a register pattern computed by the decoder would put their 60 templates (102 words) in the ROM's 124 free words (WORKER9's option b), should CSR traffic ever matter.
 140. **PEXT for any mask** (4.19.7): decided (owner, 2026-10-31; DECISIONS-v1.25 section 1): correct for any mask, full speed promised only for contiguous ones; meshsim times every mask like any other row and reports non-contiguous ones as a statistic (owner, 2026-11-01). *(Open, with Tony:)* the method (a single-pass network or an iterative unit, one run of ones per cycle) and so the cycles a non-contiguous mask takes.
 141. **The Tracer's tables at `821e1bd`** *(Deferred: with the Tracer, v1.3)* (4.19.3): v1.25 specifies only the Tracer's fields of the expansion word (`untraced` [55], `advice_reg` [61:56]); the Tracer's ROM, decode table and advice templates, built by WORKER9 into `tables/tracer/`, and the mapping from its template numbers to the replayer's, are v1.3's to specify.
+142. **The region-decode check** *(Open, for the owner and Tony)* (3.1, 4.13, invariant 5): with misalignment UB (DECISIONS-v1.25 section 8b), `ERRORS` [1] is "bad packet": a mode-0 packet to a region it can't reach, or a 128-bit mode 3. Whether that check passes the test of "How the hardware treats software bugs" (top: would simulation catch this on our firmware?) is open; if not, it becomes UB and [1] goes.
 
 The logic budget (section 11) is unreviewed; v1.2 rescaled it for the 256-bit link word and the 32 KB controller memories (item 127).
 

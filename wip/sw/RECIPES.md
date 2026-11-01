@@ -619,30 +619,30 @@ m = par.m;
 
 ## 14. Cycles
 
-**Every figure is to measure on meshsim v1.2.** v1.1's measurements (`v1.1/sw/RECIPES.md` section 14) don't carry over: the address map, the counter path (*K* after the director), the header, the alignment rules and the register map have all changed. Only figures that follow from a formula the log keeps are given, marked [derived].
+**Measured on meshsim v1.2** (RecipeTest, `wip/meshsim/results/recipes.log`; tile 0 unless stated, cycles at 1 GHz). v1.1's measurements (`v1.1/sw/RECIPES.md` section 14) don't carry over: the address map, the counter path (*K* after the director), the header, the alignment rules and the register map have all changed. The lead-ins, which follow from a formula, are marked [derived] and measured the same.
 
 | recipe | what | v1.2 |
 |---|---|---:|
-| cmdloop | a 3-argument and a 7-argument command: GO → all 64 READY | to measure |
-| copy | 100 records: start store → first instruction after the wait | to measure |
-| cmem | 256 words into program memory: start store → wake | to measure |
-| bucket | count copy + 4 bucket passes, 200–263 records: GO → all READY (no `PTR[64]` restore now) | to measure |
-| aug | local form, 64 keys; remote form, start command: GO → all READY | to measure |
-| gather | k = 1 and k = 2, 50–113 values per tile: GO → all READY | to measure |
-| xchg | one-word exchange, 64 words per tile; four words to one tile: GO → all READY | to measure |
-| xvec | 6 words to each of 4 neighbours: GO → all READY | to measure |
-| a2a | counts + group maxima; reduction + configure; start: GO → all READY | to measure |
-| a2a | start (a group run): GO store → start store, every tile | to measure |
-| a2a, sync | start store → first request: the lead-in | 4*L* + 3 = 7 (group run), 2*L* + 2 = 4 (stream run) at *L* = 2 [derived: spec 4.2, unchanged by the log] |
-| reduce | 16 words, max over 64 tiles, broadcast back: GO → all READY | to measure |
-| rdport | one read; 7 searches over 300–363 keys: GO → all READY | to measure |
-| sync | start (a stream run): GO store → start store, every tile | to measure (v1.1's 8–9 assumed v1.1's register map and a 2-cycle `WAKE_EVENTS` load) |
-| write_block, fill, hash | per record, marginal | to measure (write_block and fill now send mode 0 by address, with no `PTR` set-up) |
-| selftest | fill, configure, start (timetable 1,024), hash, signatures to C&C 1 | to measure (the signatures now go over the request bus, recipe 21) |
-| boot | reset release → all tiles running their image (overlays streamed at a packet per cycle, D41) | to measure |
-| handler | trap → last of 24 reports in C&C 1's receive queue | to measure |
-| replay | refill latency: credit consumed → run started → counter 4 done | to measure |
-| *K* | counter decrement after acceptance | 8 by default; meshsim errors if set below max(2·*L* + 3, *L* + 4, `cm_latency`, `rp_latency`) [D32, D36] |
+| cmdloop | a 3-argument and a 7-argument command: GO → all 64 READY | 207; 62 |
+| copy | 100 records: start store → first instruction after the wait | 132 |
+| cmem | 256 words into program memory: start store → wake | 104 |
+| bucket | count copy + 4 bucket passes, 200 records: GO → all READY (no `PTR[64]` restore now) | 13,071 |
+| aug | local form, 64 keys; remote form, start command: GO → all READY | 118; 116 |
+| gather | k = 1 and k = 2, 50–113 values per tile: GO → all READY | 347; 449 |
+| xchg | one-word exchange, 64 words per tile; four words to one tile: GO → all READY | 1,317; 48 |
+| xvec | 6 words to each of 4 neighbours: GO → all READY | 131 |
+| a2a | counts + group maxima; reduction + configure; start: GO → all READY | 2,126; 7,634; 485 |
+| a2a | start (a group run): GO store → start store, every tile | 17–18 |
+| a2a, sync | start store → first request: the lead-in | 4*L* + 3 = 7 (group run), 2*L* + 2 = 4 (stream run) at *L* = 2 [derived: spec 4.2, unchanged by the log; measured 7 and 4] |
+| reduce | 16 words, max over 64 tiles, broadcast back: GO → all READY | inside a2a's reduction + configure above (no separate program in v1.2) |
+| rdport | one read; 7 searches over 300 keys: GO → all READY | 55; 2,919 |
+| sync | start (a stream run): GO store → start store, every tile | 9–10 |
+| write_block, fill, hash | per record | 7.2 (write_block, 256 records); 23.0 and 36.4 marginal (fill, hash; 18.2 per 32-bit word read) |
+| selftest | fill, configure, start (timetable 1,024), hash, signatures to C&C 1: GO → all READY | 23,747; 2,065; 1,127; 37,369; 585 (the signatures over the request bus, answered: 504 from first to last at C&C 1) |
+| boot | reset release → all tiles running their image (overlays streamed at a packet per cycle, D41) | 120 (`rcp_boot`: 62 broadcast packets) |
+| handler | trap → last of 24 reports in C&C 1's receive queue | 263 |
+| replay | refill latency: credit consumed → run started → counter 4 done | not measured: `rcp_replay`'s `state[]` is zero, so its pass is empty; `sw/replay/replay_ctl.c` (Stage B) runs 3.1–5.7 cycles a row on meshsim's synthetic windows |
+| *K* | counter decrement after acceptance | 8 by default; meshsim errors if set below its reference max(2·*L* + 4, *L* + 4, `cm_latency`, `rp_latency`) [D49; the hardware's *K* is implementation-defined] |
 
 ## 15. The rules that bite
 

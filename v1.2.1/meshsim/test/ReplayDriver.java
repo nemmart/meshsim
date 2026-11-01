@@ -76,7 +76,7 @@ final class ReplayDriver {
                 r.events().consume(l);
                 if ((l & 1 << Replayer.EV_CODE) != 0) codeNext = refill(w.code, codeNext, 0x40000, 128);
                 if ((l & 1 << Replayer.EV_RLOG) != 0) rlogNext = refill(w.rlog, rlogNext, 0x80000, 256);
-                if ((l & 1 << Replayer.EV_WLOG) != 0) wlogNext = refill(w.wlog, wlogNext, 0xA0000, 256);
+                if ((l & 1 << Replayer.EV_WLOG) != 0) wlogNext = refill(w.wlog, wlogNext, 0xC0000, 256);
                 if ((l & 1 << Replayer.EV_NEWEXP) != 0) {
                     long[] tpl = w.templates.get(st1);
                     if (tpl == null) { missingTemplates++; log.add("@" + t + " no template for 0x" + Integer.toHexString(st1)); tpl = new long[0]; }
@@ -111,6 +111,6 @@ final class ReplayDriver {
     private void sendExp() {
         if (expWords == null) return;
         int n = Math.min(128, (expWords.length - expNext) / 2);
-        for (int i = 0; i < n; i++, expNext += 2) portExp.add(new long[] { 0xC0000, expWords[expNext], expWords[expNext + 1] });
+        for (int i = 0; i < n; i++, expNext += 2) portExp.add(new long[] { 0x100000, expWords[expNext], expWords[expNext + 1] });
     }
 }

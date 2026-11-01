@@ -84,7 +84,8 @@ public final class StageB {
         Tile p = c.tiles[0];
         Replayer r = rp[0];
         List<long[]> got = new ArrayList<>();
-        r.rowListener = got::add;
+        final long[] lastRow = { -1 }; final boolean[] stuck = { false };
+        r.rowListener = row -> { got.add(row); lastRow[0] = c.cycle; };
 
         // ---- the loader: the window into tile 0's big SRAM (replay_layout.h)
         byte[] table = Files.readAllBytes(pd.resolve("decode_table.bin")), rom = Files.readAllBytes(pd.resolve("rom.bin"));
@@ -119,7 +120,8 @@ public final class StageB {
         final Map<Integer, Long> pcs = new HashMap<>(); final long[] last = { 0 };
         boolean ok = c.runUntil(() -> {
             if (prof) { long s2 = r.stalls[2]; if (s2 != last[0]) { pcs.merge(p.core.inWfi ? -1 : p.core.pc, 1L, Long::sum); last[0] = s2; } }
-            return p.core.halt != Controller.RUN && p.core.halt != 0 || c.cycle > 40L * rows + 2_000_000;
+            return p.core.halt != Controller.RUN && p.core.halt != 0 || c.cycle > 40L * rows + 2_000_000
+                || (stuck[0] = starved(r, c.cycle, lastRow[0]));
         }, 60L * rows + 3_000_000);
         if (prof) {
             Map<String, Long> byFn = new java.util.TreeMap<>();
@@ -160,15 +162,30 @@ public final class StageB {
         if (!r.violations.isEmpty() || !r.invalids.isEmpty() || !r.overruns.isEmpty() || !r.badWrites.isEmpty())
             detail.add("replayer: violations " + r.violations + ", invalid " + r.invalids + ", overruns " + r.overruns + ", bad writes " + r.badWrites);
         if (c.violations > 0) detail.add("meshsim: " + c.violationReport().replace("\n", "; "));
-        if (!ok) detail.add("tile 0 did not reach its exit: " + p.core.halt + " pc 0x" + Integer.toHexString(p.core.pc));
+        if (stuck[0]) detail.add(starvedReport(r, lastRow[0], got.size()));
+        else if (!ok) detail.add("tile 0 did not reach its exit: " + p.core.halt + " pc 0x" + Integer.toHexString(p.core.pc));
         if (status != 1) detail.add("rp_results: status " + status + " conditions 0x" + Integer.toHexString(cond) + " missing 0x" + Integer.toHexString(missing));
         boolean pass = detail.isEmpty();
-        long cyc = r.passEndAt - r.passStartAt;
+        long cyc = (r.passEndAt >= r.passStartAt ? r.passEndAt : c.cycle) - r.passStartAt;   // a starved pass: to now
         System.out.println(String.format("%-12s window %5d  %-10s %s  %6d rows  pass %8d cycles  %.3f cycles/row  newexp %d (served %d, slow path %d), refills %d, stalls %s  [meas: StageB]",
                 prog, index, variant, pass ? "OK  " : "FAIL", same, cyc, (double) cyc / Math.max(1, same), r.newExpansions, newexp, slow, refills,
                 java.util.Arrays.toString(r.stalls)));
         for (String d : detail) System.out.println("    " + d);
         return pass;
+    }
+
+    /** CL4: a running pass that delivers no row for this many cycles has starved (a controller feeding the wrong queue
+     *  port, say), and the window fails at once instead of running to the overall cycle cap. The slowest legitimate gap is a
+     *  controller-fed expansion or a refill, a few hundred cycles. */
+    static final long NO_ROW_LIMIT = 50_000;
+    static boolean starved(Replayer r, long now, long lastRow) {
+        return r.isRunning() && now - Math.max(r.passStartAt, lastRow) > NO_ROW_LIMIT;
+    }
+    static String starvedReport(Replayer r, long lastRow, int rows) {
+        return "starved: no row for " + NO_ROW_LIMIT + " cycles while a pass ran (pass started at cycle " + r.passStartAt
+            + ", last row at " + (lastRow < 0 ? "none" : Long.toString(lastRow)) + ", " + rows + " rows so far): is the controller"
+            + " feeding the right queue ports (4.19.10)? queue occupancy: code " + r.code.occ + ", read log " + r.rlog.occ
+            + ", write log " + r.wlog.occ + ", expansion " + r.exp.occ;
     }
 
     // ================================================================ synthetic windows (no tracer delivery needed)
@@ -211,7 +228,8 @@ public final class StageB {
         Tile p = c.tiles[0];
         Replayer r = rp[0];
         List<long[]> got = new ArrayList<>();
-        r.rowListener = got::add;
+        final long[] lastRow = { -1 }; final boolean[] stuck = { false };
+        r.rowListener = row -> { got.add(row); lastRow[0] = c.cycle; };
         // the tables: the decode table (256 x 128 bits, entry e at word e >> 3, bits 16 (e & 7)), then the ROM (512 words)
         long[] tab = new long[2 * (256 + 512)];
         for (int e = 0; e < 2048; e++) tab[2 * (e >> 3) + ((e & 7) >> 2)] |= (w.table[e] & 0xFFFFL) << (16 * (e & 3));
@@ -242,10 +260,11 @@ public final class StageB {
         c.cc.loadWords(0, Registers.PMEM_BASE, im.code);
         if (im.data.length > 0) c.cc.loadWords(0, im.sym.get("_data_start"), im.data);
         c.cc.command(0, Registers.CMD_JUMP << 24, im.sym.get("_start")).go();
-        c.runUntil(() -> p.core.halt != Controller.RUN && p.core.halt != 0, 2_000_000);
+        c.runUntil(() -> p.core.halt != Controller.RUN && p.core.halt != 0 || (stuck[0] = starved(r, c.cycle, lastRow[0])), 2_000_000);
         int res = im.sym.get("rp_results"), status = p.core.peekLocal(res);
         List<String> detail = new ArrayList<>();
-        if (p.core.halt != Controller.HALT_EXIT) detail.add("tile 0 did not reach its exit: " + p.core.haltReport());
+        if (stuck[0]) detail.add(starvedReport(r, lastRow[0], got.size()));
+        else if (p.core.halt != Controller.HALT_EXIT) detail.add("tile 0 did not reach its exit: " + p.core.haltReport());
         if (status != 1) detail.add("rp_results status " + status + " missing 0x" + Integer.toHexString(p.core.peekLocal(res + 20)));
         if (got.size() != ref.size()) detail.add("rows: tile " + got.size() + ", Stage A " + ref.size());
         for (int i = 0; i < Math.min(got.size(), ref.size()); i++) if (!java.util.Arrays.equals(got.get(i), ref.get(i))) { detail.add("first mismatching row " + i); break; }
@@ -253,7 +272,7 @@ public final class StageB {
             detail.add("replayer: violations " + r.violations + ", overruns " + r.overruns + ", bad writes " + r.badWrites + ", invalid " + r.invalids);
         if (c.violations > 0) detail.add("meshsim: " + c.violationReport().replace("\n", "; "));
         boolean pass = detail.isEmpty();
-        long cyc = r.passEndAt - r.passStartAt;
+        long cyc = (r.passEndAt >= r.passStartAt ? r.passEndAt : c.cycle) - r.passStartAt;   // a starved pass: to now
         System.out.println(String.format("synthetic %-30s %s %5d rows  pass %7d cycles  %.3f cycles/row (Stage A %.3f)  newexp %d, refills %d  [meas: StageB synthetic]",
                 name, pass ? "OK  " : "FAIL", got.size(), cyc, (double) cyc / Math.max(1, got.size()),
                 (double) (d.r.passEndAt - d.r.passStartAt) / Math.max(1, ref.size()), r.newExpansions, p.core.peekLocal(res + 16)));

@@ -136,9 +136,10 @@ final class Replayer implements Peripheral {
     }
 
     /** A mode-0 write into region 0x04 at its byte offset (4.19.10): offset / 4 is v1.1's word address, which the
-     *  write port below decodes (offset [22:20] the part). Offsets from 0x400000 are unmapped. */
+     *  write port below decodes (offset [22:20] the part, so word address [20:18]; v1.2.1: one part per queue, 1-4;
+     *  parts 5-7, and any offset from 0x800000, unmapped). */
     @Override public void accept(long t, int src, int offset, int size, long lo, long hi) {
-        int addr = offset >= 0x400000 ? 0x100000 | offset >>> 2 : offset >>> 2;   // past part 3: an unmapped word address
+        int addr = offset >>> 2;
         noteInput(t);
         if (acceptN > 0 && acceptTimes[(acceptN - 1) & 7] == t) throw new IllegalStateException("replayer " + me + ": two mode-9 packets in cycle " + t);
         acceptTimes[acceptN++ & 7] = t;
@@ -250,12 +251,13 @@ final class Replayer implements Peripheral {
     // ================================================================ the write port (4.19.10)
     private final int[] srcOf = { -1, -1, -1, -1 };
 
-    /** Which queue a packet's address names, or null (window 0 or unmapped). */
+    /** Which queue a packet's address names, or null (part 0 or unmapped): one part per queue (v1.2.1, CL1). */
     private Object queueOf(int addr) {
-        int w = (addr >>> 18) & 7;
+        int w = addr >>> 18;
         if (w == 1) return code;
-        if (w == 2) return (addr & 0x20000) == 0 ? rlog : wlog;
-        if (w == 3) return exp;
+        if (w == 2) return rlog;
+        if (w == 3) return wlog;
+        if (w == 4) return exp;
         return null;
     }
 
@@ -264,9 +266,8 @@ final class Replayer implements Peripheral {
 
     /** A mode-9 packet lands (or is dropped) at the end of cycle t. */
     private void land(long t, int src, int addr, int size, long lo, long hi) {
-        addr &= 0x1FFFFF;
-        int w = addr >>> 18;
-        if (w >= 4) { bad(t, "unmapped address 0x" + Integer.toHexString(addr)); return; }
+        int w = addr >>> 18;                                         // the part, offset [22:20] (and [23] above it)
+        if (w >= 5) { bad(t, "unmapped address 0x" + Integer.toHexString(addr)); return; }
         if (size != LinkWord.SIZE_128) { bad(t, "size " + (32 << size) + " at 0x" + Integer.toHexString(addr) + ": only 128-bit packets"); return; }
         if (w == 0) {
             if ((addr & 3) != 0) { bad(t, "128-bit write in window 0 off a multiple of 4: 0x" + Integer.toHexString(addr)); return; }
@@ -284,7 +285,7 @@ final class Replayer implements Peripheral {
             return;
         }
         if (halted) { bad(t, "queue port written in HALT"); return; }
-        int qi = w == 1 ? 0 : w == 3 ? 3 : (addr & 0x20000) == 0 ? 1 : 2;
+        int qi = w - 1;                                              // parts 1-4: code, read log, write log, expansion
         if (running) {
             if (srcOf[qi] >= 0 && srcOf[qi] != src)
                 violate(t, "two sources feed one queue port in a pass (invariant 18): " + srcOf[qi] + " and " + src);

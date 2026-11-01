@@ -1,8 +1,19 @@
 # v1.2 errata
 
-v1.2 is a frozen waypoint: its files aren't edited. This list is the exception, **known errors in the frozen v1.2 and their
-corrections**, kept because the v1.2 spec is in use. Each entry names where the error is, what is correct, and where the
-correction was made in the working copy (`wip/`, now heading for v1.25). Added as they are found.
+Known errors and cleanups in **pure v1.2** (this folder; git tag `v1.2-tony`), with their corrections, all applied in
+**`../v1.2.1/`**. The RTL engineer's copy is this one, so this list is the answer to "what's changed since my copy"; the full diff
+is `v1.2.1/CHANGES-v1.2.1.md`.
+
+## Fixed while the v1.2 simulator was built (before the v1.2.1 errata)
+
+| # | the change | affects the RTL | commit |
+|---|---|---|---|
+| F1 | Load latencies fixed everywhere: 2 cycles for the register block and the peripheral windows, 1 for the table window and the memories; only `HIST` is loadable through the table window (DECISIONS-v1.2 section 45) | yes | `7f714c8` |
+| F2 | One K for every destination, deliberately (the read-port search note in 4.8) | no (note) | `191ca33` |
+| F3 | Peripheral types: 0 none, 1 Ingress/Egress, 2 Updater/Binder/RW, 3 Tracer, 4 the replayer (section 46), except 4.17.1 (E1) | yes | `1beb971`, `76c02f6` |
+| F4 | K: meshsim's formula 2L + 4; K in hardware implementation-defined (section 49) | yes | `5fb4e44` |
+
+## Errata
 
 | # | where in `v1.2/` | the error | correct | found by, corrected in |
 |---|---|---|---|---|

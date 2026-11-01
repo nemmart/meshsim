@@ -51,3 +51,4 @@ See bottom: per-turn log.
 - T5 (2026-11-01): Quest 085 (claimed in NUMBERS.md, DONE): log densities from the deliveries' rows + state records, all 16,384 windows exact; 4.19.2, item 138, CHANGES-v1.25 updated.
 - T6 (2026-11-01): DECISIONS-v1.25 s8 package in the spec (8a principle + marker line, 8b misalignment UB incl. 1, 4.5, 4.17.9, 4.19.10, 8.3, 8.8; 8c gather; 8d ROM 256 B, two-report dump, seq 24/25 approved; CL6); items 16 closed, 17/47/122 changed, 142 new; QUESTIONS Q8-Q14 (8a candidates); CHANGES section 8 block.
 - T7 (2026-11-01): Q8 (bad write UB, overrun checked, no 'still counted'), Q9-Q11, Q13 into v1.25; CHANGES rows; Q12 + overrun count to Tony.
+- T8 (2026-11-01): DECISIONS-v1.25 s9 in the spec (untraced/advice_reg reserved, UB; 4.19.11; 4.19.15 'traced'; items 105/141) + measured figures (gather 2.0 c/v, p4 1,229,008, ROM 48 words); CHANGES block.

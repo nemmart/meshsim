@@ -7,7 +7,7 @@ section of `planning/DECISIONS-v1.25.md`, **D*n*** for a section of `planning/DE
 missed its own decision), or **O** for an owner's ruling given to this update (2026-11-01). Where a later
 decision revised an earlier one, the citation names the later.
 
-**Scope.** The replayer (4.19) and what follows from it change, and so does everything **section 8's package** touches (DECISIONS-v1.25 section 8, below; cited **V8a**–**V8d**): the front matter, sections 9, 10 and 13, and the
+**Scope.** The replayer (4.19) and what follows from it change, and so does everything **section 8's package** touches (DECISIONS-v1.25 section 8, below; cited **V8a**–**V8d**, and section 9 as **V9**): the front matter, sections 9, 10 and 13, and the
 opcode appendix `spec/replayer-opcodes.md`. The sort and the rest of the machine are v1.2's, and so is every section
 not listed below.
 
@@ -88,6 +88,19 @@ listed as candidates under 8a's test (WORKER10's `QUESTIONS.md`, Q8–Q14), not 
 | 4.19.8, 4.19.10, 4.19.11, 8.11, 9 (16) | **Q8:** **the replayer's bad write is UB** (an unmapped offset, a wrong size, a single-ported memory written during a pass), and `ERRORS` [0] is reserved; **the queue overrun stays checked** ([1]), since it depends on the credit loop under real timing, but **its "still counted" is dropped**: whether the dropped push is counted is for Tony (free if counting stays at the director) | O (Q8) |
 | 8.5 | **Q9:** digit values 5–7 are **UB**, no longer "treated as 0"; **Q10:** stream and group numbers past the table's end are **UB**, the wrap no longer promised | O (Q9, Q10) |
 | 13 | **item 16 closed** (128-bit gather reads); 17 changed; 47 changed (a misaligned window-0 write is UB); 122 changed (the ROM's sequence numbers 24 and 25); **new item 142** (the region-decode check under 8a, open for the owner and Tony) | V8b–V8d |
+
+## Section 9: the expansion word's tracer-only fields reserved; the measured figures
+
+| section | what changed | decisions |
+|---|---|---|
+| top (summary) | the tracer-only fields are reserved | V9 |
+| 4.19.3 | **`untraced` [55] and `advice_reg` [61:56] are reserved** (0): with advice from the host in the read log, the Tracer has no untraced rows and its templates become the replayer's; **a word with a reserved bit set is UB** (meshsim stops), since it can only come from our own table builder; operand codes 146–255 stay an invalid expansion, no longer described as the Tracer's bank-1 registers | V9, O |
+| 4.19.11 | the invalid expansion no longer lists "`untraced` set" | V9 |
+| 4.19.15 | E[15] is updated by "every load row", no longer "every traced load row"; the untraced-rows clause goes | V9 |
+| 13 | item 105 revised (both fields reserved); item 141 revised (v1.25 specifies no Tracer fields; the rest of the Tracer stays v1.3's); a status row for 105 | V9 |
+| 4.4 | **measured:** *k* = 2 gathers at **2.0 cycles per value** (v1.2: about 3), replacing the estimate | WORKER11, Quest 089 |
+| 14 | **measured:** the full-size sort `p4/uniform-k128` at **1,229,008 cycles** (v1.2: 1,360,082), 131,074 fewer, all from the even-*k* gathers; item 17's gather cost noted (about 262K, derived) | WORKER11, Quest 089 |
+| 6.2, 10 | the boot ROM's measured size in meshsim: **48 words** of 64 (was "about 49") | WORKER11 |
 
 ## The opcode appendix (`spec/replayer-opcodes.md`)
 

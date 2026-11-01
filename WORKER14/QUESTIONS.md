@@ -88,7 +88,9 @@ phase's command before the loop.
 Tried locally and reverted: RecipeTest passes, 2,056 checks, with eight phases after the boot. The alternative is to end
 `cc1_boot` with the command (a RECIPE region, so the book's text changes).
 
-**Status:** asked; rcp_cc1.c unchanged until answered (RecipeTest's cc1 driver fails its phase check meanwhile).
+**Status:** approved (integrator): the first phase's command is the application's choice, not the boot's, so it
+belongs in `main`; the book stays as it is. Applied, with a comment that recipe 27's `phase()` expects a command to be
+outstanding before it waits. RecipeTest passes, 2,056 checks.
 
 ## W14-07: meshsim's "overlay after the command" check on a running controller (6.2)
 
@@ -101,4 +103,4 @@ overlay packet, 80 violations.
 **Proposed.** On a controller the check holds only until its image runs (`core.firstImageAt` set since the reset).
 Done, marked W14-07 in `TrafficDirector`. It changes nothing for tiles.
 
-**Status:** proposed; the code follows it.
+**Status:** accepted (integrator); listed in REPORT.md's shared simulator changes.

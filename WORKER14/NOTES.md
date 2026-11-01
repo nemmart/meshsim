@@ -108,3 +108,9 @@ sort 104 (140 s); sort-shuf 104.
     - Fails: the phase loop deadlocks (W14-06, a one-line fix proposed and tried, asked).
     - W14-07: meshsim's overlay check fixed for a running controller.
   - Regression subset after the merge (15 steps): all pass.
+- Turn 6: W14-06 approved and applied: `rcp_cc1.c`'s `main` sends the first phase's command, with a comment. W14-07
+  accepted. RecipeTest passes, 2,056 checks, plain and shuffled. Its new table row: rcp_cc1's phase is 435 cycles GO
+  to GO, about 380 of them recipe 27's 64-pass parity loop.
+  - Task 092 (Quest; kit 0f961b22 from ba34cbf at Java 17): the quick suite and p4/uniform-k128 against 1,229,008.
+    The sortrunner is 089's with the jar rebuilt from cc-cores; the sort image, ROM and hops.txt hash as 089's.
+    Smoke-tested: run_p4 at n = 2,000 gives 242,445 cycles, as 089's smoke did. Pushed 11:52 UTC.

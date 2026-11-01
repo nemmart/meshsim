@@ -1,6 +1,6 @@
 /* The boot ROM (spec 6.2, 4.13; v1.2), exactly as specified: one ROM for every unit at 0x02000000, the reset vector,
- * branching on PARAMS' endpoint id; then the ROM's two-report handler (v1.25, DECISIONS-v1.25 s8d: report 0 ERRORS,
- * mcause, mepc; report 1 mtval, STATUS, ra; no stack, no data memory), and park. 256 bytes at most (64 words: meshsim
+ * branching on PARAMS' endpoint id; then the ROM's two-report handler (v1.25, DECISIONS-v1.25 s8d, spec 4.13: report 24
+ * ERRORS, mcause, mepc; report 25 mtval, STATUS, ra; no stack, no data memory), and park. 256 bytes at most (64 words: meshsim
  * refuses a larger image). The code is the recipes' (wip/sw/recipes/bootrom.S, recipe 22), assembled against meshsim's
  * generated mesh.h. sw/build.sh assembles it into sw/bootrom.hex (one 32-bit word per line,
  * from 0x02000000), which meshsim loads into every controller's ROM (Controller.bootRom). */
@@ -10,7 +10,8 @@
 #define W2   X0REL(OFF_REQUEST_SET_W2)
 #define SEND X0REL(OFF_REQUEST_SEND)
 #define HDR(seq) ((1 << 10) | ((seq) << 21))      /* REQ_CC1(REQ_OP_REPORT, 0, seq): target 0, op 1, no reply; placeholder
-                                                     (the ROM's two reports keep seq 0 and 1 until C&C 1's rule is set) */
+                                                     header. Spec 4.13: the ROM's two reports are sequence 24 and 25, so
+                                                     C&C 1 tells the set from a unit's first report (0: 24 reports; 24: two) */
     .section .bootrom, "ax"
     .globl _reset
 _reset:
@@ -49,19 +50,19 @@ jump:                                   /* 5. slot 0, then slot 1 (the first com
     .balign 4
     .globl trap_handler
 trap_handler:                           /* mtvec points here; MIE is now 0 and is never set again (D20) */
-    lw   x2, X0REL(OFF_ERRORS)(zero)    /* report 0: ERRORS, mcause, mepc. x1 (ra) is kept for report 1 */
+    lw   x2, X0REL(OFF_ERRORS)(zero)    /* report 24: ERRORS, mcause, mepc. x1 (ra) is kept for report 25 */
     csrr x3, mcause
     csrr x4, mepc
     sw   x2, W1(zero)                   /* the main code may have left the port's words half written (D20, W1-04): */
     sw   x3, W2(zero)                   /* every report writes all four */
-    li   x5, HDR(0)
+    li   x5, HDR(24)
     sw   x5, W0(zero)
     sw   x4, SEND(zero)                 /* stalls only while the request FIFO is full (4.18) */
-    csrr x2, mtval                      /* report 1: mtval, STATUS, ra (x1) */
+    csrr x2, mtval                      /* report 25: mtval, STATUS, ra (x1) */
     lw   x3, X0REL(OFF_STATUS)(zero)
     sw   x2, W1(zero)
     sw   x3, W2(zero)
-    li   x5, HDR(1)
+    li   x5, HDR(25)
     sw   x5, W0(zero)
     sw   x1, SEND(zero)
 park:

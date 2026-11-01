@@ -455,6 +455,14 @@ The command sequence, from C&C 1: fill (`2`, base seed, n), configure (`3`), sta
 
 @@bootrom bootrom.S@@
 
+**The ROM's handler** (v1.25, DECISIONS-v1.25 section 8d, spec 4.13). The ROM is 256 bytes (64 words; this one is 48), so
+its handler sends a two-report dump and parks, in place of the full set: report 24 carries `ERRORS`, `mcause` and `mepc`,
+report 25 carries `mtval`, `STATUS` and `ra`. No `PARAMS`: the request tree stamps the sender's id. The sequence numbers tell
+C&C 1 which set is coming: a unit's first report is 0 for the image's 24 (recipe 24) and 24 for the ROM's two. `ra` is
+kept in x1 until report 25, so the handler builds report 24 in x2-x5.
+
+@@rom_handler bootrom.S@@
+
 **The image's start-up**, where the ROM jumps:
 
 @@crt0 crt0.S@@
@@ -484,7 +492,9 @@ The command sequence, from C&C 1: fill (`2`, base seed, n), configure (`3`), sta
 - **The first command after a reset is even** (D36), so C&C 1's per-unit parity starts at 0 after every reset.
 - **[F13]** The ROM depends on "command landed" [9] staying pending: nothing in the reset mask consumes it, so the load that consumes GO still returns it. D41: the spec says so, and **the ROM's tile branch must not consume it**: putting [9] in its mask would break the test. In the image, [9] then stays pending for ever (harmless; every report's `EVENTS_PEEK` shows it).
 - **[F14], [F17]** Streaming from big SRAM sends a packet per cycle, against four stores per packet from the send port (D41). **The first command is in the same run, not sent afterwards from the send port.** C&C 1's DMA run done says only that the run's last table read is done; its last overlay packets may still be in the read-return and injection pipeline, and a packet from the send port, a different injector, isn't ordered with them. D44 settles it: ordering holds per sending unit, and between units there is none. The general pattern for anything that must follow a run's packets from another unit is the fence (recipe 28: a count-only packet ending the run, then send); for the boot the command in the run is simpler.
-- **The ROM's handler never writes data memory** (D31): recipe 24's handler needs none, so the same code serves in the ROM and in the image.
+- **The ROM's handler never writes data memory** (D31), and needs no stack. v1.25: it is not recipe 24's code any more. The
+  ROM holds the two-report handler above, and the image's handler (recipe 24, the full 24 reports) is in program memory, where
+  boot part 2 points `mtvec`. A trap before boot part 2 therefore sends the ROM's two reports.
 
 ## 23. Waiting for the tables by events
 
@@ -507,7 +517,7 @@ The command sequence, from C&C 1: fill (`2`, base seed, n), configure (`3`), sta
 
 ## 24. The error handler
 
-**What it does.** On any error (the hard interrupt) or synchronous exception: send the fixed set of reports to C&C 1 over the request bus, then park for ever.
+**What it does.** On any error (the hard interrupt) or synchronous exception: send the fixed set of reports to C&C 1 over the request bus, then park for ever. This is **the image's handler**, in program memory: boot part 2 points `mtvec` at it (recipe 22). Before that a trap goes to the ROM's handler, which sends only reports 24 and 25 (v1.25, DECISIONS-v1.25 section 8d, spec 4.13); C&C 1 tells the two sets apart by a unit's first sequence number, 0 or 24.
 **Relies on:** D20 (traps are terminal; `MIE` cleared on entry and never set again, so no retrap; no `mret`; torn port sequences), D21 and D37.3 (the fixed report set; C&C 1 counts against it), D38 (reports need no reply), D10 (an absent peripheral's window is a bus error), spec 3.3 and 4.18 (128-bit requests, back-pressure).
 
 @@handler handler.S@@

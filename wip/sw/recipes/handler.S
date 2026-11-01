@@ -1,5 +1,6 @@
 /* Recipe 24: the error handler (D20, D21, D41). Report the fixed set to C&C 1 over the request bus, then park.
- * It never writes data memory and needs no stack, so the boot ROM can hold the same code (D22, D36). Every value is
+ * It never writes data memory and needs no stack. It is the image's handler, in program memory (boot part 2 points
+ * mtvec here); v1.25's 256-byte ROM has its own two-report handler (recipe 22, reports 24 and 25). Every value is
  * sent before the register that held it is reused: x1-x3 are free once their own report has gone. Reports are
  * the exception to D38's one-outstanding rule: they get no reply, and the handler sends all 24 at once. */
 #include "../mesh-v1.2-draft.h"

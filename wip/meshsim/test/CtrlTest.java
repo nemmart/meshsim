@@ -22,6 +22,7 @@ public final class CtrlTest {
         wfi();
         faults();
         misaligned();
+        romSize();
         invariants();
         blockCopy();
         allToAll();
@@ -191,6 +192,15 @@ public final class CtrlTest {
 
     // ================================================================ controller faults and HALT -> RUN (4.11, 4.13, 6.1)
     /** v1.25 (DECISIONS-v1.25 s8b): the controller's misaligned loads and stores are undefined behavior: meshsim stops. */
+    /** v1.25 (DECISIONS-v1.25 s8d): the boot ROM is 256 bytes; meshsim refuses a larger image. */
+    static void romSize() {
+        T.group("the 256-byte boot ROM");
+        T.check(Controller.bootRom.length > 0 && Controller.bootRom.length <= Controller.BOOT_ROM_WORDS, "the ROM image fits: " + Controller.bootRom.length + " words of 64");
+        Controller.checkBootRom(new int[64], "64 words");
+        T.check(true, "64 words are accepted");
+        T.throwsISE(() -> Controller.checkBootRom(new int[65], "a 65-word image"), "a 65-word (260-byte) image is refused");
+    }
+
     static void misaligned() {
         T.group("misaligned loads and stores (UB)");
         Mach a = new Mach(Mach.cfg(shuffle)); a.boot("misalign_ld");
@@ -211,8 +221,9 @@ public final class CtrlTest {
         // meshsim stops loudly. C&C 1's model drains the reports as they come (target 0's queue, 128 deep).
         int[] cause = { Controller.CAUSE_STORE_FAULT, Controller.CAUSE_STORE_FAULT, Controller.CAUSE_STORE_FAULT, Controller.CAUSE_ILLEGAL,
                 Controller.CAUSE_ILLEGAL, -1, Controller.CAUSE_LOAD_FAULT, Controller.CAUSE_LOAD_FAULT };
-        int[] perTile = new int[64];
-        m.run(() -> { long now = m.c.cycle + 1; while (m.c.reqBus.pending(0, now)) { int w0 = m.c.reqBus.get(0, now, 0); m.c.reqBus.receive(0, now); perTile[w0 & 0x7F]++; }
+        int[] perTile = new int[64], seqs = new int[64];
+        m.run(() -> { long now = m.c.cycle + 1; while (m.c.reqBus.pending(0, now)) { int w0 = m.c.reqBus.get(0, now, 0); m.c.reqBus.receive(0, now);
+                          int u = w0 & 0x7F; if (perTile[u] < 2) seqs[u] |= ((w0 >>> 21) & 0xFF) << (8 * perTile[u]); perTile[u]++; }
                       for (Tile p : m.c.tiles) if (!(p.core.parked || p.core.halt != Controller.RUN)) return false;
                       for (Tile p : m.c.tiles) if (!p.req.idle()) return false; return m.c.reqBus.idle() && !m.c.reqBus.pending(0, now); }, 200000);
         for (Tile p : m.c.tiles) {
@@ -228,6 +239,7 @@ public final class CtrlTest {
             T.eq(cause[k] == Controller.CAUSE_ILLEGAL ? 1 : 0, st >> Conditions.ILLEGAL & 1, "tile " + p.idx + ": ERRORS [10]");
             T.eq(cause[k] == Controller.CAUSE_ILLEGAL ? 0 : 1, st >> Conditions.BUS_ERROR & 1, "tile " + p.idx + ": ERRORS [9]");
             T.eq(2, perTile[p.idx], "tile " + p.idx + ": the boot ROM's two reports reached C&C 1 (v1.25, DECISIONS-v1.25 s8d)");
+            T.eq(24 | 25 << 8, seqs[p.idx], "tile " + p.idx + ": sequence 24, then 25 (spec 4.13: a first report of 24 means the ROM's two)");
         }
         T.eq(0, Long.bitCount(m.c.cc.readyBits(m.c.cycle)), "no READY from a trapped tile (the watchdog's case)");
         T.eq(8L, (long) m.c.violations, "the eight ecalls, flagged (4.13: no ERRORS bit): " + m.c.violationReport());
@@ -243,7 +255,7 @@ public final class CtrlTest {
         }
         T.check(!m.c.cc1p.toast, "the reset cleared the toast latch");
         noViolations(m.c, "restart");
-        out("faults [meas: CtrlTest faults]: a store to STATUS, a store to program memory, a sub-word register store, a load from PTR and a load from an unmapped region are bus errors (ERRORS [9]), div and rdcycle illegal (ERRORS [10]): each traps to the boot ROM's handler, which sends its two reports to C&C 1 and parks; ecall sets no bit, and meshsim stops loudly; no READY; the unit-error bit and the toast pin rise; a soft reset clears every ERRORS and the toast pin, and the tiles boot again through the ROM");
+        out("faults [meas: CtrlTest faults]: a store to STATUS, a store to program memory, a sub-word register store, a load from PTR and a load from an unmapped region are bus errors (ERRORS [9]), div and rdcycle illegal (ERRORS [10]): each traps to the boot ROM's handler, which sends its two reports (sequence 24 and 25) to C&C 1 and parks; ecall sets no bit, and meshsim stops loudly; no READY; the unit-error bit and the toast pin rise; a soft reset clears every ERRORS and the toast pin, and the tiles boot again through the ROM");
     }
 
     // ================================================================ programming errors the simulator catches (spec 9)

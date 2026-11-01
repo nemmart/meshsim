@@ -12,3 +12,9 @@ riscv64-unknown-elf-objcopy -O binary --only-section=.data build/replay_ctl.elf 
 riscv64-unknown-elf-nm build/replay_ctl.elf > build/replay_ctl.sym
 END=$(sed -n 's/^\([0-9a-f]*\) . _end$/\1/p' build/replay_ctl.sym)
 echo "replay_ctl: code $(stat -c %s build/replay_ctl.code.bin) B, data $(stat -c %s build/replay_ctl.data.bin) B, data+bss end 0x$END (stack below 0x7BC0)"
+# test only (CL4): the same controller on the queue map before CL1, into build/oldmap/ (StageB synthetic expects it to fail)
+mkdir -p build/oldmap
+$CC -T ../app.ld ../crt0.S replay_ctl_oldmap.c -o build/oldmap/replay_ctl.elf
+riscv64-unknown-elf-objcopy -O binary --only-section=.text build/oldmap/replay_ctl.elf build/oldmap/replay_ctl.code.bin
+riscv64-unknown-elf-objcopy -O binary --only-section=.data build/oldmap/replay_ctl.elf build/oldmap/replay_ctl.data.bin
+riscv64-unknown-elf-nm build/oldmap/replay_ctl.elf > build/oldmap/replay_ctl.sym

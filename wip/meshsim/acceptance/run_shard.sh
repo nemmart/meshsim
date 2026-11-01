@@ -14,14 +14,16 @@
 #     -M  the manifest file (default DELIVERY/manifest.json, else DELIVERY/PROGRAM.manifest.json). The per-program one is
 #         stable while a later writer task rewrites the combined manifest.json
 #     -x  K: also stage F (the full chip) on every window whose index is a multiple of K, its cycles checked against B
+#     -g  N: Stage B fails a window, as starved, when a running pass delivers no row for N cycles (default 50000; CL4).
+#         The largest normal gap measured is ~1,100 cycles (synthetic windows); each window's is in results.csv
 # Every file a window's replay reads is checked against the manifest's SHA-256 first (ReplayShard). Writes
 # OUTDIR/results.csv (one line per window and stage), OUTDIR/jvm-*.log, SUMMARY.txt and VERDICT.txt. Exit 0 only if
 # every window of the range is in the manifest and matched in every stage.
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
-D=; P=; F=; N=; J=$(nproc); S=AB; MS=; X=0; MF=
-while getopts d:p:f:n:j:s:m:x:M: o; do case $o in d) D=$OPTARG;; p) P=$OPTARG;; f) F=$OPTARG;; n) N=$OPTARG;; j) J=$OPTARG;;
-  s) S=$OPTARG;; m) MS=$OPTARG;; x) X=$OPTARG;; M) MF=$OPTARG;; *) sed -n '2,18p' "$0"; exit 2;; esac; done
+D=; P=; F=; N=; J=$(nproc); S=AB; MS=; X=0; MF=; G=50000
+while getopts d:p:f:n:j:s:m:x:M:g: o; do case $o in d) D=$OPTARG;; p) P=$OPTARG;; f) F=$OPTARG;; n) N=$OPTARG;; j) J=$OPTARG;;
+  s) S=$OPTARG;; m) MS=$OPTARG;; x) X=$OPTARG;; M) MF=$OPTARG;; g) G=$OPTARG;; *) sed -n '2,20p' "$0"; exit 2;; esac; done
 shift $((OPTIND - 1)); OUT=${1:-}; [ "$N" = all ] && F=${F:-0}
 [ -n "$D" ] && [ -n "$P" ] && [ -n "$F" ] && [ -n "$N" ] && [ -n "$OUT" ] || { sed -n '2,14p' "$0"; exit 2; }
 D=$(cd "$D" && pwd) || { echo "no delivery at $D"; exit 2; }
@@ -33,10 +35,10 @@ if [ -n "$MS" ]; then
   [ "$GOT" = "$MS" ] || { echo "manifest.json sha256 $GOT, expected $MS"; exit 2; }
 fi
 mkdir -p "$OUT"; OUT=$(cd "$OUT" && pwd); : > "$OUT/results.csv"
-JAVA="java -Xmx1500m -Dreplay.tables=$HERE/tables/replayer -Dreplay.build=$HERE/replay -cp $HERE/meshsim.jar"
+JAVA="java -Xmx1500m -Dstageb.norow=$G -Dreplay.tables=$HERE/tables/replayer -Dreplay.build=$HERE/replay -cp $HERE/meshsim.jar"
 if [ "$N" = all ]; then F=0; N=all; RANGE=""; else RANGE="--first $F --count $N"; fi
 T0=$(date +%s)
-echo "shard: $P windows ${RANGE:-all} of $D, stages $S, $J JVMs, start $(date -u)"
+echo "shard: $P windows ${RANGE:-all} of $D, stages $S, $J JVMs, no-row limit $G cycles, start $(date -u)"
 for ((k = 0; k < J; k++)); do
   (cd "$HERE" && $JAVA ReplayShard "$D" "$P" "$OUT/part-$k.csv" --manifest "$MF" --stages "$S" $RANGE --stride "$J" --phase "$k" --full-every "$X" > "$OUT/jvm-$k.log" 2>&1) &
 done

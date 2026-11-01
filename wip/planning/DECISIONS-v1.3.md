@@ -100,7 +100,7 @@ produces:
 
 ## 7. The Tracer's expansion tables (2026-10-29)
 
-Agreed (O). Answers T1.
+Agreed (O). Answers T1. *(Section 13 removes the untraced advice rows and their bank-1 registers; the rest stands.)*
 
 - **The 8 KB and 4 KB memories are a ROM of expansion templates and a decode table**, the replayer's sizes and
   **format** (spec 4.19.3-4.19.6), built by the same table builder. The Tracer expands each instruction into rows
@@ -128,6 +128,8 @@ Agreed (O). Answers T1.
     C&C 3 responds; rare, as for the replayer (about 13 per window, around 0.4 % of a pass, spec 4.19.5).
 
 ## 8. A divider for advice (2026-10-29)
+
+*(Superseded by section 13: advice comes from the host, so the Tracer needs no divider.)*
 
 Decided (O, T).
 
@@ -197,6 +199,8 @@ Decided (O). From WORKER7's F1.
 
 ## 10. The Tracer computes all its advice; C&C 3 generates long expansions (2026-11-01)
 
+*(Superseded by section 13 for advice: the host supplies it, and C&C 3 generates no inverses. Q10 stays moot.)*
+
 Decided (O). Answers T5; makes Q10 moot.
 
 - **The Tracer computes every advice value itself, through expansions** (untraced rows, 7-8). **C&C 3 never computes
@@ -223,6 +227,8 @@ Decided (O). Answers T5; makes Q10 moot.
   any prologue and epilogue), not as its full word sequence.
 
 ## 11. The Tracer's time budget, and what the workloads cost it (2026-11-01)
+
+*(Section 13 removes the untraced rows this budget counts; its host-supplied backup for T7 is now the plan.)*
 
 From WORKER12's counts (`WORKER12/REPORT.md`; both workloads at 2²⁹, traced totals matching WORKER9's). *Corrected the same
 day: the first version assumed one row per cycle and counted only window 34's untraced rows; the Tracer runs at **about 4 cycles
@@ -291,6 +297,36 @@ its region, with **offset bits [22:20] picking the part**, as in the replayer's 
   throwaway layer, how jolt-cpp's layout compares with upstream's). "Needs to be dug into a lot more"; section 12's sizes are
   proposals only.
 
+## 13. Advice comes from the host, in the read log (2026-11-01)
+
+Decided (O). Supersedes section 7's untraced advice rows and their bank-1 registers, section 8, and section 10's first and
+third bullets; answers T7 the way section 11 kept as the backup; makes C4 moot.
+
+- **The host supplies every advice value.** For each slice the host sends the Tracer an **input read log** of that slice's
+  advice words in row order. An advice row (`VirtualAdvice`, or the division family's advice) **pops the next read-log word into
+  `rd`, in the Tracer exactly as in the replayer** (spec 4.19.7); the Tracer copies each word into the read log it writes for the
+  replayers.
+- **Slices: 128 advice streams for a 2²⁹ run, one per 2²² (4M) rows**, aligned with the replayer windows. Rows are Jolt's,
+  virtual rows included. A sequence that crosses a boundary puts its pending words at the head of the next stream.
+- **The host builds them with jolt-cpp's JIT engine**, extended to emit the streams as it runs: the quotient or remainder for the
+  division family, `evaluate(operation, a, b)`'s 8 words for the secp256k1 inlines. The JIT already runs to each slice's start
+  (`execute_upto_cycle`, `trace_owner.cpp`), handing over to the interpreter inside virtual sequences, where `prepare_advice`
+  runs today. Work item W2.
+- **No untraced rows.** Every untraced row existed to compute advice (WORKER12 at 2²⁹: 32.0M on EVM Zone, nearly all from 254
+  `SECP256K1_DIVQ` Fermat inverses at about 124K rows each, up to 11.07M in one window; 97K on Cyclone). Gone with them: their use
+  of bank 1, `advice_reg`, section 8's divider, and C&C 3's generated inverses. **The Tracer's templates become the replayer's.**
+- **The starting state stays T2's:** pc, `instr_idx`, next offset and registers 0-127. jolt-cpp's secp advice buffer
+  (`secp_advice`, `next_secp_word`, `trace_owner.cpp:49-50`) is the one piece of state WORKER16 found outside them, live mid-sequence;
+  under this section it becomes the head of the next slice's stream.
+- **Size** [estimate, from WORKER12's counts at up to 8 words per secp inline]: about 5.4K words (about 43 KB) for EVM Zone's whole
+  2²⁹ run; about 97K words for Cyclone's (about 6 KB per slice on average).
+- **New for the Tracer:** a read-log input queue with its credits, fed by its controller.
+- **Open:**
+  - (a) **v1.25:** the expansion word's tracer-only fields, `untraced` [55] and `advice_reg` [61:56], and the "untraced word reaching
+    a replayer" error (4.19.11): make them reserved before the freeze, so the RTL never builds them. Raised with WORKER10 and
+    WORKER11.
+  - (b) Whether bank 1 has any use left.
+
 ---
 
 ## v1.3 work list
@@ -300,6 +336,7 @@ Work agreed for v1.3, each with the decisions it carries out. Studies (below) ar
 | # | task | from | status |
 |---|---|---|---|
 | W1 | ~~Bring the replayer and the Tracer up to date with jolt-cpp's latest~~ | 9 | **moved to v1.25** (owner, 2026-10-31): `DECISIONS-v1.25.md` |
+| W2 | **jolt-cpp's JIT emits the advice streams**: 128 per 2²⁹ run, one per 2²² rows, words in row order, a crossing sequence's pending words at the head of the next | 13 | to do (WORKER16 after T2, on its branch, suggested) |
 
 ---
 
@@ -311,7 +348,7 @@ Options recorded for later, each with the evidence that would justify it.
 |---|---|---|---|
 | C1 | **Rejected** (owner, 2026-10-31; stated in spec 4.7): not worth fixing at a cost per step; it would be if the cost were per query. **A delay per destination:** decrement a counter **2 cycles** after acceptance for writes to controller memory and peripherals (their landing time is fixed, `cm_latency`, `rp_latency`), and K = 8 only for big SRAM | WORKER4's measurement: a read-port search step costs about **6 cycles more** than in v1.1 (35.9 + 37.42 per active search against 29.8 + 37.43), because v1.2 decrements at K = 8 where v1.1 counted controller-memory writes at landing. The extra is in the **fixed** term: about 6 cycles **per search step**, shared by all the searches active in it, not per probe (the per-search slope is unchanged). So roughly 6 × the steps per split, about a hundred cycles per split and a few hundred per sort: **negligible today**. Streaming work doesn't notice | two delay taps; a counter may then take two decrements in one cycle (one from each tap), a small adder change. Adopt if the sort's measurements show the split slowing |
 | C2 | **Signed counters** (v1.2 section 36): an arrival before arming just goes negative, so the order of arming and arrival stops mattering, and strays are caught as done early | removes the GO-to-arming window | a signed counter; the immediate stray report becomes meshsim's only |
-| C4 | **An addition chain for the modular inverse** (11): libsecp256k1's for DIVQ, a hand-built one for DIVR | halves the inverse's untraced rows: EVM Zone's first proof about 145 ms → about 84 ms against a 100 ms budget | the segment format already supports it (WORKER9); see T7 |
+| C4 | **Moot (section 13).** **An addition chain for the modular inverse** (11): libsecp256k1's for DIVQ, a hand-built one for DIVR | halves the inverse's untraced rows: EVM Zone's first proof about 145 ms → about 84 ms against a 100 ms budget | the segment format already supports it (WORKER9); see T7 |
 | C3 | **Trim the 256-bit word's storage** to the bits in use, with the links staying 256 wide (v1.2 section 2) | power: constant-zero flops are still clocked | revisit when the design has settled |
 
 ---
@@ -334,5 +371,5 @@ Options recorded for later, each with the evidence that would justify it.
 | T3 | The page table: its entry format and semantics, and how C&C 3 maintains it | 1 | open (its size and place: section 12) |
 | T8 | ~~Does 512 MiB cover both workloads?~~ | 12 | **withdrawn**: the table covers 4 GiB, sparse (section 12) |
 | T6 | `VirtualPext`/`VirtualPextSigned` in hardware | 9 | **answered: section 9** (any mask must work; the method is the implementation's) |
-| T7 | The modular inverse within the Tracer's 100 ms budget | 11 | **answered: section 11** (keep the single loop; host-supplied advice as the backup) |
-| T5 | The inlines' advice | 8 | **answered: section 10** (the Tracer computes all advice through expansions; C&C 3 generates long ones by looping) |
+| T7 | The modular inverse within the Tracer's 100 ms budget | 11 | **answered: section 13** (host-supplied advice; no inverse on the Tracer) |
+| T5 | The inlines' advice | 8 | **answered: section 13** (the host supplies all advice in the read log; was section 10) |

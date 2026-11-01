@@ -16,7 +16,7 @@ gets a few hook calls into a new `CcCores` class, beside WORKER11's `Chip.parked
 | 2 | `Cnc1Peripheral` in C&C 1's slot (READY/GO, error lines, watchdog, toast, UART); stub engines for C&C 2/3; controllers on the request tree, C&C 1's request port reading target 0; C&C 2/3's error lines | wired in turn 1 (the request path tested); the peripheral's paths are tested with the firmware (phases 3-4) |
 | 3 | firmware (`sw/cc/`): C&C 1 boots C&C 2/3, waits for "started", boots the tiles, then a phase loop on harness commands; C&C 2/3 start-up and "started"; `Mach.bootCores()`; the boot test | done (turn 2): CcCoresTest's boot and phases against the model |
 | 4 | `rcp_cc1.c` run on C&C 1 (RecipeTest's cc1 driver); the error path end to end | error path done (turn 3); `rcp_cc1.c` and the two-report path wait for s8 |
-| 5 | measurements (boot vs the model's 120 cycles; a phase vs the model); full suites with the switch off on the runner; REPORT.md | done (turn 4) but for task 090's result |
+| 5 | measurements (boot vs the model's 120 cycles; a phase vs the model); full suites with the switch off on the runner; REPORT.md | done (turn 4): task 090 DONE |
 
 ## Environment
 
@@ -88,3 +88,6 @@ sort 104 (140 s); sort-shuf 104.
     command copied once; 102 before).
   - Task 090 (Quest, kit d51bfc89 from 5cd78a2, Java 17): quick + full extras with CcBench. Pushed 10:30 UTC.
   - REPORT.md written; it names the UART_TX stall fix for the merge review.
+  - Task 090: DONE at 10:44 UTC. Quick: 36 steps, all passing, baseline counts. Full extras: 11 steps, all passing.
+    The full extras' logs and the quick sort, recipes and ctrl logs are identical to task 087's (main ba7a97c) apart
+    from timing lines.

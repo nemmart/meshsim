@@ -141,8 +141,8 @@ command copied out of the command block once).
   served by C&C 1 before it boots the tiles, as 6.2 step 4 says.
 - **`rcp_cc1.c` is built but never executed:** still pending. It waits for s8, which rewrites recipes 22 and 24.
 
-With the switch off, nothing changes: the Java model stays the default, and every suite runs as before (task 090 checks
-the whole set; see below).
+With the switch off, nothing changes: the Java model stays the default, and every suite runs as before, cycle for cycle
+(task 090, below).
 
 ## Pending (after s8 merges)
 
@@ -170,7 +170,15 @@ engines are stubs too.
 
 Task 090 (Quest, claimed in NUMBERS.md): the quick suite (8 at a time) and the full extras with CcBench (4 at a time),
 from a kit built at Java 17 from 5cd78a2. The kit was smoke-tested locally on bus, regdoc, replayer, reqbus, riscv,
-stageb, cccores, hooks, periph, cond and CcBench. Result: *pending at the time of writing* (see NOTES.md).
+stageb, cccores, hooks, periph, cond and CcBench.
+
+**Result: DONE** (runner `godspeed`, 16 threads, 10:31-10:44 UTC):
+- **Quick suite:** 36 steps, nonzero exits 0, logs with FAIL 0. The counts equal the baseline; ReplayerTest has 1,468
+  checks with main's b060637, 1,461 before. CcCoresTest passed 61 of 61, plain and shuffled.
+- **Full extras:** 11 steps, nonzero exits 0. CcBench gave the numbers above.
+- **Comparison with task 087** (main ba7a97c, before this branch): agbench, s1bench, skewtable, sweep-quick, ctrl-full,
+  accounting-full, engine-full, rdport-full, both 16K BT sorts, and the quick sort, recipes and ctrl logs are identical
+  line for line, timing lines aside. So the switch-off path is unchanged cycle for cycle.
 
 The full-size sort (p4/uniform-k128) was not rerun here; the sort steps of the quick and full suites are. It could ride
 on s8's verification (task 089) once this branch is merged.

@@ -50,3 +50,4 @@ See bottom: per-turn log.
 - T4 (2026-11-01): item 138 closed from Quest 083/084 (all windows' Stage B lines in jvm-*.log.gz; M rows = (cycles - 3 rows - stalls)/2, exact, padding residual 0). Log densities not counted by the runs: kept 4f36b3d's + derived note. Item 37 closed. 137 left open (not quick).
 - T5 (2026-11-01): Quest 085 (claimed in NUMBERS.md, DONE): log densities from the deliveries' rows + state records, all 16,384 windows exact; 4.19.2, item 138, CHANGES-v1.25 updated.
 - T6 (2026-11-01): DECISIONS-v1.25 s8 package in the spec (8a principle + marker line, 8b misalignment UB incl. 1, 4.5, 4.17.9, 4.19.10, 8.3, 8.8; 8c gather; 8d ROM 256 B, two-report dump, seq 24/25 approved; CL6); items 16 closed, 17/47/122 changed, 142 new; QUESTIONS Q8-Q14 (8a candidates); CHANGES section 8 block.
+- T7 (2026-11-01): Q8 (bad write UB, overrun checked, no 'still counted'), Q9-Q11, Q13 into v1.25; CHANGES rows; Q12 + overrun count to Tony.

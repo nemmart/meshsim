@@ -82,6 +82,11 @@ listed as candidates under 8a's test (WORKER10's `QUESTIONS.md`, Q8–Q14), not 
 | 8.5, 8.7 | *k* also chooses the copy (odd: 64-bit; even: 128-bit); `DMA_RECORD_BASE_ADDRESS` in a gather 128-bit aligned | V8c |
 | 9 (5, 20) | invariant 5: a misaligned packet is UB, no longer a bad packet; invariant 20: gather buffers 128-bit aligned, and no hardware check (UB) | V8b, V8c |
 | 10 | the boot ROM's 256 bytes; *k*'s copy size | V8c, V8d |
+| 3.1, 4.8, 9 (21) | **Q11:** reserved modes 6–7 are **UB**; v1.2 promised a discard with no error and no decrement | O (Q11) |
+| 4.2, 4.13, 4.17.2, 4.17.9, 8.6 | **Q13:** a start while its engine runs, `PULSE_RUN` while a run is in progress, `PULSE_DMA` while a transfer is, and a transfer naming an output queue the peripheral lacks are **UB**; v1.2's hardware ignored them | O (Q13) |
+| 4.17.5, 4.17.6 | **Q8:** a write a peripheral's map, sizes or ownership state refuses is **UB**, no longer "dropped, still counted" with an error; a drop the peripheral defines and checks (the replayer's queue overrun) keeps its error, and whether it is still counted is no longer promised | O (Q8) |
+| 4.19.8, 4.19.10, 4.19.11, 8.11, 9 (16) | **Q8:** **the replayer's bad write is UB** (an unmapped offset, a wrong size, a single-ported memory written during a pass), and `ERRORS` [0] is reserved; **the queue overrun stays checked** ([1]), since it depends on the credit loop under real timing, but **its "still counted" is dropped**: whether the dropped push is counted is for Tony (free if counting stays at the director) | O (Q8) |
+| 8.5 | **Q9:** digit values 5–7 are **UB**, no longer "treated as 0"; **Q10:** stream and group numbers past the table's end are **UB**, the wrap no longer promised | O (Q9, Q10) |
 | 13 | **item 16 closed** (128-bit gather reads); 17 changed; 47 changed (a misaligned window-0 write is UB); 122 changed (the ROM's sequence numbers 24 and 25); **new item 142** (the region-decode check under 8a, open for the owner and Tony) | V8b–V8d |
 
 ## The opcode appendix (`spec/replayer-opcodes.md`)

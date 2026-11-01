@@ -61,3 +61,8 @@ Tony. These are listed for completeness.
 
 Not candidates, because 8a allows what comes for free: an overflow drops the arriving item (4.13), and an offset past the
 end of data or program memory aliases (2.2, 4.11).
+
+**Answered (owner, 2026-11-01), into v1.25 at once:** Q8: the bad write becomes UB (`ERRORS` [0] reserved); the queue
+overrun stays checked, and its "still counted" is dropped from the spec. Q9, Q10, Q11 and Q13: UB. **For Tony:** Q12 (reserved
+words "read 0, ignore stores": keep if free in the RTL) and whether the overrun's dropped push is still counted (free if
+counting stays at the director). Q14 stays as spec item 142.

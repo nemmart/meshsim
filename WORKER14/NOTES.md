@@ -59,3 +59,25 @@ sort 104 (140 s); sort-shuf 104.
     started by 499). The first version took 1,376: crt0 zeroing a 64-word parity array and a 64-pass parity loop
     (now a bitmask in .data), three put_command round trips (now one counter wait), and C&C 2 and C&C 3 booted in
     two runs (now one). Phase 5 measures it properly, with `rcp_boot` against the model's 120.
+- Turn 3: merged main (8224b97: DECISIONS-v1.25 section 8). Phase 4, the error path, to 8d (W10 updates 6.2 and 4.13;
+  W11 rewrites bootrom.S and recipes 22/24 on branch s8; I change neither):
+  - `cc1.c`: after the boot, mtvec at its own handler (`cc1_trap`) and the hard interrupt on. `cc1_toast` drains the
+    reports into data memory (0x1000-0x4FFF, 1,024 reports; `build_cc.sh` fails if data and .bss pass 0x1000), counting
+    each unit's against its set, told by its first report's sequence number: 0, the image's 24 (0-23); 24, the ROM's
+    two (24-25). It ends when every set begun is complete and SETTLE (1,000) cycles pass quietly, or after DRAIN_QUIET
+    (50,000) with nothing; then `toast_info` and the UART dump (summary, one line per unit: id, set size, received;
+    then the reports), then parks. The watchdog's expiry, while C&C 1 waits for READY or for its own command, takes the
+    same path with mcause 0. New harness commands: CC_WATCHDOG, CC_UART (the divisor).
+  - `cc23.c`: installs recipe 24's handler and enables the hard interrupt after "started", so C&C 2's and C&C 3's
+    errors send their 24 reports.
+  - Tested (CcCoresTest, 61 checks): tile 9 and C&C 2 fail at once (rcp_boot's CMD_STAGE installs every tile's
+    handler); C&C 1 traps 3 cycles later, drains 48 reports, both sets complete with no flags, ERROR_LINES_0 bit 9 and
+    ERROR_LINES_2 [1], the toast pin, the UART dump's lines. The watchdog: no READY after a phase, toast with mcause 0.
+    The two-report path waits for s8 (the ROM still sends 24). Misalignment is UB (8b): not an error path.
+  - meshsim fix: a store to C&C 1's UART_TX while the TX FIFO is full now stalls the core (8.14), through a new
+    `Peripheral.storeStalls` (default false) and a check in `Controller`'s store path beside REQUEST_SEND's. The Java
+    model never stored through a core, so the slot treated the stall code as an undefined word. Regression subset (ctrl,
+    riscv, recipes, cond, regdoc, hooks, periph, reqbus) unchanged.
+  - C&C 1's image is now 3 KB (the error path): the boot measures 854 cycles (C&C 1 running at 232).
+  - The dump at divisor 1 takes about 765,000 cycles for 48 reports (400 cycles a byte); at the reset divisor (434) it
+    would be about 330 million. CcCoresTest takes about 30 s.

@@ -58,7 +58,7 @@ final class Mach {
     // ---------------------------------------------------------------- boot with C&C 1-3 as cores (WORKER14, Config.ccCores)
     static Config coresCfg(long shuffle) { Config k = cfg(shuffle); k.ccCores = true; return k; }
     /** C&C 1's commands from the harness (sw/cc/cc1.c, W14-04). */
-    static final int CC_PHASE = 0x50, CC_GO = 0x47, CC_EXPECT = 0x45, CC_EXIT = 0x58;
+    static final int CC_PHASE = 0x50, CC_GO = 0x47, CC_EXPECT = 0x45, CC_EXIT = 0x58, CC_WATCHDOG = 0x57, CC_UART = 0x55;
     /** Chunk addresses in C&C 1's big SRAM where the harness stages the images C&C 1 sends (W14-03). */
     static final int STAGE_CHUNK = 0x10000;
     Image cc1, cc23;
@@ -97,6 +97,8 @@ final class Mach {
     /** C&C 1's mailbox word i (sw/cc/cc1.c: [0] commands done, [1] last all-READY, [2] last GO, [3] boot state, [4]-[5]
      *  the "started" requestors, [6] results answered, [7] other requests). */
     int mbox(int i) { return c.cores.unit(0).core.peekLocal(cc1.sym("mbox") + 4 * i); }
+    /** C&C 1's error-path summary word i (sw/cc/cc1.c's toast_info). */
+    int toastInfo(int i) { return c.cores.unit(0).core.peekLocal(cc1.sym("toast_info") + 4 * i); }
     /** A command for C&C 1 (W14-04), landed in its command block through the host port. */
     void cc1Command(int type, int arg, int... args) { c.cores.hostCommand(0, type << 24 | arg, args); }
     /** A phase through C&C 1: the tile command word and up to 6 arguments to every tile, then all READY, then GO. */

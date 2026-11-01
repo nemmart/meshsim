@@ -19,6 +19,8 @@ final class CcCoresTest {
         switchOff();
         romBranch();
         bootTiles();
+        errorPath();
+        watchdog();
         System.exit(T.done("CcCoresTest" + (shuffle >= 0 ? " (shuffled, seed " + shuffle + ")" : "")));
     }
 
@@ -139,5 +141,61 @@ final class CcCoresTest {
         T.eq(0, m.c.violations, "violations");
         if (m.c.violations != 0) System.out.print(m.c.violationReport());
         T.eq(0, j.c.violations, "the model: violations");
+    }
+
+    /** Boot with rcp_boot (recipe 22: CMD_STAGE installs recipe 24's handler and enables the hard interrupt on every tile)
+     *  and run its CMD_STAGE with `packets` (0: nothing staged), the UART at divisor 1. */
+    static Mach bootHandlers(int packets) {
+        Mach m = new Mach(Mach.coresCfg(shuffle));
+        m.bootCores("rcp_boot");
+        T.check(m.run(m::coresBooted, 20000), "booted");
+        T.check(cc1Step(m, () -> m.cc1Command(Mach.CC_UART, 1), 5000), "UART_DIVISOR = 1 (a fast dump)");
+        return m;
+    }
+
+    static void errorPath() {
+        T.group("the error path: a tile's and C&C 2's 24 reports (DECISIONS-v1.25 8d)");
+        Mach m = bootHandlers(0);
+        Mach.Image boot = new Mach.Image("rcp_boot");
+        T.check(cc1Step(m, () -> m.phase(Registers.CMD_STAGE << 24), 20000), "CMD_STAGE: every tile's handler installed");
+        T.check(m.run(() -> m.allInWfi(), 5000), "the tiles back in wait_for_command()");
+        int irq = 0; for (Tile p : m.c.tiles) if (p.core.mtvec == boot.sym("trap_handler") && (p.core.mstatus & 8) != 0) irq++;
+        T.eq(64, irq, "every tile: the image's handler, interrupts on");
+        Tile cc1 = m.c.cores.unit(0), cc2 = m.c.cores.unit(1);
+        T.check((cc1.core.mstatus & 8) != 0 && cc1.core.mtvec == m.cc1.sym("cc1_trap"), "C&C 1: its own handler, interrupts on");
+        T.check((cc2.core.mstatus & 8) != 0 && cc2.core.mtvec == m.cc23.sym("trap_handler"), "C&C 2: recipe 24's handler, interrupts on");
+        m.c.cfg.checkErrors = false;
+        long t0 = m.c.cycle;
+        m.c.tiles[9].ctl.conditions |= 1 << Conditions.DRIFT;            // two units fail at once
+        cc2.ctl.conditions |= 1 << Conditions.DRIFT;
+        T.check(m.run(() -> m.toastInfo(10) != 0, 3_000_000), "C&C 1 trapped, drained the reports and finished its dump");
+        T.check(m.c.cc1p.toast, "the toast pin is latched");
+        T.eq(Controller.CAUSE_EXTERNAL, m.toastInfo(0), "C&C 1's mcause: the hard interrupt (its ERRORS [11], the unit-error bit)");
+        T.eq(1L << 9, m.toastInfo(2) & 0xFFFFFFFFL, "ERROR_LINES_0: tile 9");
+        T.eq(1 << 1, m.toastInfo(4), "ERROR_LINES_2 [1]: C&C 2");
+        T.eq(48, m.toastInfo(5), "48 reports drained");
+        T.eq(2, m.toastInfo(6), "two units began a set");
+        T.eq(2, m.toastInfo(7), "both sets complete: 24 reports each, told by sequence 0");
+        T.eq(0, m.toastInfo(8), "no flags (every sequence number in its set, once)");
+        String out = m.c.cc1p.serialOut.toString();
+        T.check(out.contains("00000009 00000018 00000018 \n") && out.contains("00000041 00000018 00000018 \n"), "the UART dump: tile 9 and C&C 2 (65), 24 of 24 each");
+        T.eq(1 + 2 + 48, out.chars().filter(ch -> ch == '\n').count(), "the dump's lines: the summary, two units, 48 reports");
+        System.out.printf("  error path: errors at %d; C&C 1 trapped at +%d; drain done at +%d (mcycle); dump done at +%d%n",
+                t0, cc1.core.trapAt - t0, (m.toastInfo(9) & 0xFFFFFFFFL) - t0, (m.toastInfo(10) & 0xFFFFFFFFL) - t0);
+        T.eq(0, m.c.violations, "violations");
+        if (m.c.violations != 0) System.out.print(m.c.violationReport());
+    }
+
+    static void watchdog() {
+        T.group("the error path: the watchdog");
+        Mach m = bootHandlers(0);
+        T.check(cc1Step(m, () -> m.cc1Command(Mach.CC_WATCHDOG, 300), 5000), "WATCHDOG = 300");
+        m.phase(Registers.CMD_STAGE << 24 | 5);                          // 5 packets announced, none sent: no tile READY again
+        T.check(m.run(() -> m.toastInfo(10) != 0, 400_000), "the watchdog expired; C&C 1 dumped what it had");
+        T.check(m.c.cc1p.toast, "the toast pin is latched");
+        T.eq(0, m.toastInfo(0), "mcause 0: the watchdog, not a trap");
+        T.eq(0, m.toastInfo(5), "no reports");
+        T.eq(0, m.c.violations, "violations");
+        if (m.c.violations != 0) System.out.print(m.c.violationReport());
     }
 }

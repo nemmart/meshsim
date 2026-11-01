@@ -11,5 +11,7 @@ for n in cc1 cc23; do
   riscv64-unknown-elf-objcopy -O binary --only-section=.text $OUT/$n.elf $OUT/$n.code.bin
   riscv64-unknown-elf-objcopy -O binary --only-section=.data $OUT/$n.elf $OUT/$n.data.bin
   riscv64-unknown-elf-nm $OUT/$n.elf > $OUT/$n.sym
+  end=$(awk '$3 == "_end" { print $1 }' $OUT/$n.sym)
+  [ $((0x$end)) -le $((0x1000)) ] || { echo "$n: data and .bss end at 0x$end, above 0x1000 (cc1's report buffer)"; exit 1; }
   echo "$n: code $(stat -c %s $OUT/$n.code.bin) B, data $(stat -c %s $OUT/$n.data.bin) B"
 done

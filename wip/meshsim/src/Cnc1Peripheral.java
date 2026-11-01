@@ -109,6 +109,8 @@ final class Cnc1Peripheral implements Peripheral {
             default: return null;
         }
     }
+    /** UART_TX's store stalls while the TX FIFO is full (8.14): the controller retries it (WORKER14: C&C 1 as a core). */
+    @Override public boolean storeStalls(long t, int w) { return w == UART_TX && tx.size() >= FIFO; }
     /** 1 written, 0 read-only (bus error), -1 undefined, -2 a UART_TX store that must stall (the TX FIFO is full). */
     @Override public int writeWord(long t, int w, int v) {
         switch (w) {

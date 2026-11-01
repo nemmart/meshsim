@@ -206,6 +206,9 @@ final class Controller implements Component {
                 if (f3 == 2 && Registers.inRegs(ea) && Registers.storeAt(ea) == Registers.REQUEST_SEND && !tile.req.canPush(t)) {
                     instructions--; stallRequest++; cyclesStalled++; return;                       // 4.18: a full request FIFO stalls the store
                 }
+                if (f3 == 2 && Registers.inWindows(ea) && tile.slot.storeStalls(t, Registers.windowOf(ea), (ea & 0x1FF) >>> 2)) {
+                    instructions--; cyclesStalled++; return;                                       // 8.14: UART_TX while the TX FIFO is full
+                }
                 if (f3 > 2) { illegal(t, ipc, ins); return; }
                 int width = 1 << f3;
                 if ((ea & (width - 1)) != 0) { busError(t, ipc, ins, ea, "misaligned store"); return; }

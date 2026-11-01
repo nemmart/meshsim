@@ -59,6 +59,8 @@ final class PeripheralSlot implements Peripheral.Host {
                 return v != null ? v : reserved(t, n, w, false);
         }
     }
+    /** A store to peripheral n's window word w must stall at t (its own words, 32-127, only). */
+    boolean storeStalls(long t, int n, int w) { return n >= 1 && n <= 3 && p[n] != null && w >= Registers.STD_RESERVED_END && p[n].storeStalls(t, w); }
     /** false: a bus error (absent, or a store to a defined read-only word). */
     boolean write(long t, int n, int w, int v) {
         Peripheral q = p[n];

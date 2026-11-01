@@ -100,3 +100,8 @@ acceptance kit). Until WORKER10's `v1.25` spec branch exists, the design is DECI
   Cond 153, RegDoc 269, Recipe 2,047, SortTest p1 42; p4 n=2000 242,445 cycles (was 246,447).
 - UB found two latent test bugs: ReadPortGatherTest tolerance destinations 1 byte apart; CondTest case 1 (now region 0xFF).
 - Quest 089 pushed (claim c76e736; kit 02209700...). Q5 (stopLoudly) open. Waiting: W10's further UB list (owner signals).
+- 8e on s8 (owner's signal; main d590722 merged): UB stops for the replayer's bad write (ERRORS [0] reserved), PULSE_RUN
+  during a pass, PULSE_DMA during a transfer, a missing output queue, digit selectors 5-7, runs past the table's end,
+  reserved modes 6-7 (streams and packets), a start while the AG runs. Queue overrun stays checked. Tests reworked
+  (Replayer, Ag, Engine, Net, ReadPortGather, PeripheralSlot, Hooks). Whole quick suite passed locally (in chunks).
+- Quest 090 was WORKER14's; claimed 091 (quest 8c48e99): quick + full extras, kit 6e432423...

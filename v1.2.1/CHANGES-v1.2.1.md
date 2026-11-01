@@ -7,13 +7,14 @@ themselves, as an answer to "what's wrong in my copy", are in `v1.2/ERRATA.md`.
 
 ## The diff
 
-The paths differ between the two tags (`v1.2_wip/spec/` in `v1.2-tony`, `v1.2.1/spec/` in `v1.2.1`):
+Both versions are folders on `main` (`v1.2/spec/` is byte-identical to Tony's copy, tag `v1.2-tony`'s `v1.2_wip/spec/`).
+From a checkout of `main`:
 
-    git diff v1.2-tony:v1.2_wip/spec/machine-spec.md v1.2.1:v1.2.1/spec/machine-spec.md
-    git diff v1.2-tony:v1.2_wip/spec/CHANGES-v1.2.md v1.2.1:v1.2.1/spec/CHANGES-v1.2.md
-    git diff v1.2-tony:v1.2_wip/spec/ v1.2.1:v1.2.1/spec/        # the whole spec folder: only those two files change
+    git diff --no-index v1.2/spec/machine-spec.md v1.2.1/spec/machine-spec.md
+    git diff --no-index v1.2/spec/CHANGES-v1.2.md v1.2.1/spec/CHANGES-v1.2.md
+    git diff --no-index v1.2/spec/ v1.2.1/spec/        # the whole spec folder: only those two files change
 
-Before the integrator tags `v1.2.1`, use `origin/v1.2.1` in its place. `replayer-opcodes.md` and `schedule.md` are unchanged.
+`replayer-opcodes.md` and `schedule.md` are unchanged.
 
 ## Spec changes, by section
 

@@ -19,3 +19,8 @@ The reviews of the decisions themselves are in `../reviews/`.
 | WORKER12 | counted what EVM Zone and Cyclone execute at 2²⁹: inlines, untraced rows, CSR instructions, per window (v1.3 log section 11) | `WORKER12-REPORT.md`, `WORKER12-data/`, `WORKER12-report_tables.py`; its counting tool is on jolt-asic-planning's `worker12-counts` branch |
 | WORKER9 | v1.25's tables and deliveries: the standalone tracer refreshed to jolt-cpp `821e1bd` (jolt-asic-planning PR #2), the universal replayer and Tracer tables (`wip/tables/`), the delivery writer, both 2²⁹ programs delivered and proved (Quest 079, 080), `--validate` at 2²⁹ (069b) | `WORKER9-REPORT.md` (with how to rebuild the deliveries and redo all of it for a later jolt-cpp), `-QUESTIONS.md`, `-PLAN-PART2.md`, `-PLAN-PART3.md`, `WORKER9-expansion-diff/`, `WORKER9-tracer-div-821e1bd/`; its opcode-harness outputs moved to `wip/tools/replayer-opcodes/out-821e1bd/` |
 
+## Added at v1.2.1's freeze (2026-11-01)
+
+| session | what it did | kept here |
+|---|---|---|
+| WORKER15 | v1.2.1: v1.2 with errata E1-E11 and cleanups CL1-CL5 applied, meshsim and the software in line; `v1.2.1/CHANGES-v1.2.1.md`, the changelog from Tony's copy; verified on the runner (Quest 088: quick 34/34, full 10/10, p4/uniform-k128 1,360,082 cycles) | `WORKER15-REPORT.md`, `WORKER15-QUESTIONS.md` (Q1-Q3, which became E9, CL3 and CL4). Its report's diff commands use a `v1.2.1` tag that was never made; `CHANGES-v1.2.1.md` has the folder diffs |

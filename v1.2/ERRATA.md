@@ -15,7 +15,7 @@ is `v1.2.1/CHANGES-v1.2.1.md`.
 
 ## Errata
 
-**E1–E11 are fixed in v1.2.1** (`v1.2.1/`, branch `v1.2.1`); each row names its commit. F1–F4 are in v1.2.1 too. The changelog from Tony's copy, every change with whether it affects the RTL, is `v1.2.1/CHANGES-v1.2.1.md`.
+**E1–E11 are fixed in v1.2.1** (`v1.2.1/` on `main`); each row names its commit. F1–F4 are in v1.2.1 too. The changelog from Tony's copy, every change with whether it affects the RTL, is `v1.2.1/CHANGES-v1.2.1.md`.
 
 | # | where in `v1.2/` | the error | correct | found by, corrected in |
 |---|---|---|---|---|

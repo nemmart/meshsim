@@ -32,6 +32,11 @@ THE TWO QUESTIONS
    - **the lowest and highest addresses actually touched**, loads and stores, and how the touched 16 KB pages are distributed
      across the range (count them, and show where they cluster);
    - whether everything falls inside 512 MiB from the base, and if not, by how much and where.
+   - **the key question: does Jolt guarantee the range?** Jolt's memory-checking argument translates each address into a cell index
+     that must be below K (an offset from the base divided by 8, with the input, output, advice and other I/O areas mapped into the
+     same index space). Confirm from jolt-cpp's code (the address remapping and where K bounds it, file and line) whether **every
+     address a provable trace can touch lies in one contiguous range of K × 8 bytes**. If so, the page table's size depends only on
+     the largest K the system supports, not on the program. Say exactly how the I/O areas fit, and whether anything can fall outside.
 
 HOW
 - **Read jolt-cpp for the definitions, and measure on the real runs for the numbers**: instrument PR #2's tracer (or extend WORKER12's

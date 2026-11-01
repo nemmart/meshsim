@@ -84,8 +84,12 @@ final class AddressGenerator implements Component {
      *  4.1, and flagged here too); a mode-5 stream on counter 0 (invariant 21); and d = 126 from a mesh tile (only the
      *  controllers broadcast from streams, D41 F14: meshsim errors loudly). */
     long sizeViolations, modeViolations, aug128Violations, destViolations, alignViolations; String lastViolation;
-    private void checkEntry(long e0, long e1) {
+    /** v1.25 (DECISIONS-v1.25 s8c): at a run's first mode-4 stream, the tile checks its gather buffers' 128-bit alignment. */
+    java.util.function.LongConsumer gatherAlign;
+    private boolean gatherChecked;
+    private void checkEntry(long t, long e0, long e1) {
         int m = Fields.sMode(e1), z = Fields.sSize(e1), d = Fields.sD(e1), ctr = Fields.sCounter(e1);
+        if (m == LinkWord.M_GATHER && !gatherChecked) { gatherChecked = true; if (gatherAlign != null) gatherAlign.accept(t); }
         if (LinkWord.reservedMode(m)) { modeViolations++; lastViolation = "stream with the reserved mode " + m + " (3.1, 4.2: modes 6-7; invariant 21)"; }
         if (z == Fields.SIZE_UNDEF) { sizeViolations++; lastViolation = "stream with read size 11, undefined (3.1, 4.2)"; }
         if (m == LinkWord.M_AUG && z == Fields.SIZE_128) { aug128Violations++; lastViolation = "mode-3 stream with read size 128: its packets are bad packets (3.1, 4.2)"; }
@@ -171,7 +175,7 @@ final class AddressGenerator implements Component {
     }
 
     private void begin(long t) {
-        running = true; startedAt = t; leadIn = true;
+        running = true; startedAt = t; leadIn = true; gatherChecked = false;
         // S_0 is the cycle the run's first group starts (its entries in): the lead-in, not a read-ahead wait
         if (kind == Fields.RUN_GROUPS) { g = 0; r = 0; v = 0; inRot = false; groupS = t; rotSched = groupS; stalledSinceGroup = false; }
         else gapLeft = 0;
@@ -238,7 +242,7 @@ final class AddressGenerator implements Component {
             if (slRun >= runCount) return;
             if (sqBuf == 0) { if (!leadIn) tableWaitCycles++; return; }   // the entry is not back yet (table latency; the lead-in is not counted)
             leadIn = false;
-            long pe0 = popStream(); loadStream(pe0, popE1); cur = true; checkEntry(pe0, popE1);
+            long pe0 = popStream(); loadStream(pe0, popE1); cur = true; checkEntry(t, pe0, popE1);
             boolean last = slRun == runCount - 1;
             if (cCount == 0) {                                    // count 0: exactly its gap-after cycles, this one the first
                 if (cGap == 0 || last) { endStream(); continue; }  // the last entry's gap is not waited (4.2)
@@ -303,7 +307,7 @@ final class AddressGenerator implements Component {
             return;
         }
         long e0 = popStream(), e1 = popE1;
-        checkEntry(e0, e1);                                           // every visit, idle or not
+        checkEntry(t, e0, e1);                                        // every visit, idle or not
         if (r < Fields.sCount(e1)) { loadStream(e0, e1); issueElement(t, r); }
         endVisit();
     }

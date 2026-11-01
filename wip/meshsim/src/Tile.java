@@ -89,6 +89,7 @@ final class Tile implements Component {
         for (int c = 0; c < 3; c++) { srqClient[c] = new WordFIFO(p + "srq.client" + c, 64); srq.client[c] = srqClient[c]; }
         if (!cfg.testReadClients) srq.client[SRAMReadQueue.AG] = agOut;
         gather = new GatherEngine(idx); gather.srq = srq; gather.queue = gatherIn;
+        ag.gatherAlign = this::checkGatherAlignment;
         gatherOut = new WordHold(p + "gather.out"); gather.out = gatherOut;
         if (cfg.realResponder && !cfg.testReadClients) srq.client[SRAMReadQueue.GATHER] = gatherOut;
         readPort = new ReadPort(idx, cfg);
@@ -167,6 +168,15 @@ final class Tile implements Component {
     /** TILE_PULSE's start from Java (coreless tests), acting from the next cycle. */
     void pulse(int bits) { ag.pulse(bits); }
     /** DMA_RECORD_BASE_ADDRESS (v1.0: DMA_RECORD_BASE_ADDRESS and DMA_RECORD_BASE_ADDRESS merged): augment and gather use one base. */
+    /** v1.25 (DECISIONS-v1.25 s8c): gather buffers are 128-bit aligned whatever k is, the source (DMA_RECORD_BASE_ADDRESS)
+     *  and the destination (PTR[me]); checked when a run with mode-4 streams starts. Misalignment is UB (s8b). */
+    void checkGatherAlignment(long t) {
+        int p = ptr(idx), b = gather.base;
+        if ((p & 3) != 0 || (b & 3) != 0)
+            throw new UndefinedBehavior(t, idx, "gather (a run with mode-4 streams starts)", "gather buffers not 128-bit aligned: "
+                    + ((b & 3) != 0 ? "DMA_RECORD_BASE_ADDRESS = chunk 0x" + Integer.toHexString(b) : "") + ((b & 3) != 0 && (p & 3) != 0 ? ", " : "")
+                    + ((p & 3) != 0 ? "PTR[me] = chunk 0x" + Integer.toHexString(p) : ""));
+    }
     void setRecordBase(int chunk) { writer.augmentBase = chunk & 0x1FFFFF; gather.base = chunk & 0x1FFFFF; }
     /** The reset (6.1), at the end of t, with Chip.reset (which empties every bus): the engines idle, every queue empty,
      *  the core in the boot ROM, the control state as at power-on; the memories, the tables and big SRAM keep. */

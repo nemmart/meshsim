@@ -178,7 +178,7 @@ _Static_assert(__builtin_offsetof(TableRegs, PTR) == 0x400 && __builtin_offsetof
 
 /* ---- ERRORS (D18): sticky until the reset; any bit raises the hard interrupt and the error line ---- */
 #define ERR_ROUTER_OVF     (1 << 0)
-#define ERR_BAD_PACKET     (1 << 1)    /* bad packet or misaligned access (D26) */
+#define ERR_BAD_PACKET     (1 << 1)    /* bad packet (v1.25: misalignment is undefined behavior) */
 #define ERR_UNEXPECTED     (1 << 2)
 #define ERR_DRIFT          (1 << 3)
 #define ERR_WE_IN_OVF      (1 << 4)

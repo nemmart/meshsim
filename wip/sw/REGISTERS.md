@@ -27,7 +27,8 @@ An address is an 8-bit region [31:24] and a 24-bit byte offset [23:0] (2.2). A C
 | the rest of region 0xFF | unmapped | bus error | no |
 
 **Access rules** (4.11, 8.1):
-- **Bus errors** (`ERRORS` [9]): a store to program memory or the boot ROM; a misaligned access; an unmapped address,
+- **Misaligned loads and stores are undefined behavior** (v1.25): the hardware does nothing special; meshsim stops.
+- **Bus errors** (`ERRORS` [9]): a store to program memory or the boot ROM; an unmapped address,
   an absent peripheral's window included; a sub-word access to the block, a window or the table window; a store to a
   read-only register; a load from `PTR`, the `STREAM` arrays or `GROUP`.
 - **Write-only registers read 0.** The request port's four words are the exception: a load reads the receive side.
@@ -116,7 +117,7 @@ Any non-zero bit raises the unit's hard interrupt and its error line (4.13). In 
 | bit | `mesh.h` | error |
 |---|---|---|
 | 0 | `ERR_ROUTER_OVF` | router overflow: a link, eject or fifth-port FIFO overflowed |
-| 1 | `ERR_BAD_PACKET` | bad packet or misaligned access: a bad packet dropped, a write through a misaligned `PTR` dropped (still counted), or a misaligned read not performed (payload 0) |
+| 1 | `ERR_BAD_PACKET` | bad packet: a packet to a region it can't reach, or mode 3 at 128 bits, dropped uncounted (v1.25: misalignment is undefined behavior; meshsim stops) |
 | 2 | `ERR_UNEXPECTED` | unexpected arrival: a decrement found its counter at 0 |
 | 3 | `ERR_DRIFT` | drift: in a group run the SRAM read queue refused the address generator |
 | 4 | `ERR_WE_IN_OVF` | write-engine input overflow |
@@ -199,7 +200,7 @@ counter at 0 means everything it counted is in place.
 A store to `SRAM_RD_ADDR_QUEUE` queues a read of 32, 64 or 128 bits at a chunk address aligned to the size, with
 `SRAM_RD_DEST_ADDR`'s destination (a data-memory byte offset [16:0]), size [18:17] and counter [21:19]; the
 destination then advances by the size in bytes. Each result lands as a mode-0 packet to the tile itself, counted on
-that counter. A misaligned read isn't performed (its result lands as 0, `ERRORS` [1]); a store with no free entry is
+that counter. A misaligned read is undefined behavior (v1.25; meshsim stops); a store with no free entry is
 dropped (`ERRORS` [7]). `RD_DEST(byte_off, size, ctr)` builds the setup word.
 
 ### 2.8 The request port

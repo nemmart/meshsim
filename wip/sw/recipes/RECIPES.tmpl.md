@@ -147,7 +147,9 @@ static inline uint32_t wait_all(uint32_t ev) {
 
 @@gather rcp_gather.c@@
 
-- **The stream's counter field is the values' counter.** The mode-4 requests count nothing (D6); each produces k value packets, which count on counter 1 as they pass the director: n · k in all.
+- **The stream's counter field is the values' counter.** The mode-4 requests count nothing (D6); each produces the value's packets, which count on counter 1 as they pass the director: n × (packets per value) in all.
+- **Packets per value** (v1.25, DECISIONS-v1.25 section 8c): k 64-bit packets when k is odd, k/2 128-bit packets when k is even (`PTR[me]` advances by 4 per packet). So the arming isn't n · k for even k: a gather of 128-bit values (k = 2) counts n. The rate is about (packets per value + 1) cycles per value: about 2 at k = 2, from about 3.
+- **The buffers are 128-bit aligned, whatever k is** (the source `DMA_RECORD_BASE_ADDRESS` and the destination `PTR[me]`): misalignment is undefined behavior, and meshsim checks both when a run with mode-4 streams starts.
 - **Three areas:** index, values and output in different areas keep each to one access per cycle.
 
 **Walk.** The requests go to the GATHER engine locally. The values go out as mode-1 packets to the tile itself and loop back through the director, where they are counted like any arrival (guarantee C). A counter takes at most one decrement per cycle, so the count stays exact. The wait returns when the last value is readable and the run's last table read is done.

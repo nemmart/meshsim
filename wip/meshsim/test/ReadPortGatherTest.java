@@ -25,6 +25,7 @@ public final class ReadPortGatherTest {
         disjointPerRun();
         reservedStreams();
         gather();
+        gatherCountingAndAlignment();
         gatherFromC();
         System.exit(T.done("ReadPortGatherTest" + (shuffle >= 0 ? " (shuffled, seed " + shuffle + ")" : "") + (full ? " full" : "")));
     }
@@ -332,7 +333,7 @@ public final class ReadPortGatherTest {
             p.setStream(195, Fields.streamSrc(IDX), 0, Fields.streamCount(N, Fields.SIZE_64, 1, LinkWord.M_GATHER, 0));
             p.setPtr(p.idx, OUT);
             p.gather.base = VAL;
-            p.dir.remaining[1] = N * k;
+            p.dir.remaining[1] = N * ppv(k);                   // v1.25 (s8c): one count per value packet
             p.setMasterConfig(Fields.masterConfig(Fields.RUN_STREAMS, 195, 1, 0, 0, k));
         }
         long cyc = runAll(c, 10_000_000);
@@ -344,9 +345,50 @@ public final class ReadPortGatherTest {
         int[] pk = new int[4]; peaks(c, pk);
         long agStall = 0, srqStall = 0, area = 0;
         for (Tile p : c.tiles) { agStall = Math.max(agStall, p.ag.stallCycles); srqStall = Math.max(srqStall, p.srq.stallCycles); for (int a : p.sram.queuePeak) area = Math.max(area, a); }
-        sb.append(String.format("  k = %d  N = %6d  %9d cycles  %6.3f per value (k + 1 = %d)  GATHER queue peak %2d of 16  address generator stalled %d cycles, area queue peak %d%s%n",
-                k, N, cyc, (double) cyc / N, k + 1, pk[3], agStall, area, pk[3] >= 16 ? "  OVERFLOW" : ""));
+        sb.append(String.format("  k = %d  N = %6d  %9d cycles  %6.3f per value (packets per value + 1 = %d)  GATHER queue peak %2d of 16  address generator stalled %d cycles, area queue peak %d%s%n",
+                k, N, cyc, (double) cyc / N, ppv(k) + 1, pk[3], agStall, area, pk[3] >= 16 ? "  OVERFLOW" : ""));
+        long reads = 0, packets128 = 0; for (Tile p : c.tiles) { reads += p.gather.reads; packets128 += p.writer.writtenBySize[2]; }
+        T.eq((long) 64 * N * ppv(k), reads, "k = " + k + ": " + ppv(k) + " read(s) and packet(s) per value");
+        T.eq((k & 1) == 0 ? (long) 64 * N * ppv(k) : 0L, packets128, "k = " + k + ": " + ((k & 1) == 0 ? "128-bit" : "64-bit") + " value packets");
         return new long[] { cyc, pk[3] };
+    }
+
+    /** Value packets per gathered value (v1.25, DECISIONS-v1.25 s8c): k when k is odd, k / 2 128-bit ones when even. */
+    static int ppv(int k) { return (k & 1) == 1 ? k : k / 2; }
+
+    /** v1.25 (s8c): counting and alignment. A counter armed with n x (packets per value) finishes exactly; armed with the
+     *  old n x k (even k) it is left at n x k / 2; a gather buffer off a 128-bit boundary stops meshsim at the run's start. */
+    static void gatherCountingAndAlignment() {
+        T.group("gather: counting and alignment (v1.25)");
+        final int IDX = 0x60000, VAL = 0x20000, OUT = 0xA0000, N = 40;
+        for (int k : new int[] { 1, 2, 3, 4, 8 }) for (boolean old : new boolean[] { false, true }) {
+            if (old && (k & 1) == 1) continue;                     // for odd k the old and new arming agree
+            Chip c = new Chip(cfg()); Tile p = c.tiles[7];
+            for (int i = 0; i < N; i++) p.sram.poke64(IDX + 2 * i, (long) (N - 1 - i) << 32 | i);
+            for (int v = 0; v < N; v++) for (int i = 0; i < k; i++) p.sram.poke64(VAL + 2 * k * v + 2 * i, (long) v << 8 | i);
+            p.setStream(195, Fields.streamSrc(IDX), 0, Fields.streamCount(N, Fields.SIZE_64, 1, LinkWord.M_GATHER, 0));
+            p.setPtr(7, OUT); p.gather.base = VAL;
+            int arm = old ? N * k : N * ppv(k);
+            p.dir.remaining[1] = arm;
+            p.setMasterConfig(Fields.masterConfig(Fields.RUN_STREAMS, 195, 1, 0, 0, k));
+            p.pulse(Fields.PULSE_START);
+            c.run(5000);                                           // 40 values: done in a few hundred cycles
+            if (!old) {
+                boolean ok = true; for (int i = 0; i < N; i++) for (int e = 0; e < k; e++) if (p.sram.peek64(OUT + 2 * k * i + 2 * e) != ((long) (N - 1 - i) << 8 | e)) ok = false;
+                T.check(ok, "k = " + k + ": the values landed in index order");
+                T.eq(0, p.dir.remaining[1], "k = " + k + ": armed with n x " + ppv(k) + " (packets per value), the counter finishes at 0");
+                T.eq(OUT + 2L * k * N, p.ptr(7), "k = " + k + ": PTR[me] advanced by 2k per value (" + ((k & 1) == 0 ? "4 per 128-bit packet" : "2 per 64-bit packet") + ")");
+            } else T.eq(N * k / 2, p.dir.remaining[1], "k = " + k + ": armed with the old n x k, the counter is left at n x k / 2: not done");
+        }
+        for (int[] off : new int[][] { { 2, 0 }, { 0, 2 }, { 0, 1 } }) {
+            Chip c = new Chip(cfg()); Tile p = c.tiles[7];
+            p.setStream(195, Fields.streamSrc(IDX), 0, Fields.streamCount(4, Fields.SIZE_64, 1, LinkWord.M_GATHER, 0));
+            p.setPtr(7, OUT + off[1]); p.gather.base = VAL + off[0];
+            p.dir.remaining[1] = 4; p.setMasterConfig(Fields.masterConfig(Fields.RUN_STREAMS, 195, 1, 0, 0, 1));
+            p.pulse(Fields.PULSE_START);
+            String what = off[0] != 0 ? "DMA_RECORD_BASE_ADDRESS" : "PTR[me]";
+            T.ub(() -> c.run(200), "k = 1, " + what + " off a 128-bit boundary by " + Math.max(off[0], off[1]) + " chunk(s): stops at the run's start", "tile 7", "gather", what);
+        }
     }
 
     static void gather() {

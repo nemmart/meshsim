@@ -392,3 +392,4 @@ proposed), 44–47 (replayer map details, proposed).
   5; cited v1.2 errata E1–E6. New findings: 4.12's "1 or 2 cycles" (v1.2 and wip), 4.19 intro type 1 in v1.2 (not in
   E1), D48 vs the reserved-word rule, item 111 still stale in wip → QUESTIONS Q5–Q8, REPORT "v1.2 errata".
 - Turn 5: pulled (CL1, CL2, CL5, E9–E11, item 111 fixed). Folded CL1–CL5 into the guide (R3 → both, R42, P7, C1, 3.8 region table, section 5), the v1.2.1 reader, read-through against `c2de4ae`, stamped, REPORT finished. **Done.**
+- Turn 6: DECISIONS-v1.25 section 8 (8a–8e) and CL6 folded in; 200 entry IDs, tables checked; re-stamped `d590722`. **Done; ready to close.**

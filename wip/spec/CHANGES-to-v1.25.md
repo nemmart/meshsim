@@ -8,7 +8,7 @@ For the RTL engineer of the mesh. This guide covers two upgrade paths to **v1.25
 It is organized **by hardware unit**. Each unit's section lists everything that changed in that unit since v1.1, and where v1.25 revised a v1.2 change, it gives the final state.
 
 **Sources.**
-- **The authority is `spec/machine-spec.md` v1.25** (with `spec/replayer-opcodes.md`). This guide matches **spec commit `0b4ba20`** *(to be re-stamped when the guide is finished)*.
+- **The authority is `spec/machine-spec.md` v1.25** (with `spec/replayer-opcodes.md`). This guide matches **spec commit `c2de4ae`** (2026-11-01: `wip/spec/machine-spec.md`, `replayer-opcodes.md` and `CHANGES-v1.25.md` as of that commit, with CL1, CL2 and CL5 in). A later spec change to the hardware needs an entry here.
 - It folds together `CHANGES-v1.2.md` (v1.1 → v1.2) and `CHANGES-v1.25.md` (v1.2 → v1.25).
 - It was checked against all three specs (`v1.1/`, `v1.2/`, `wip/`).
 - It cites `v1.2/ERRATA.md` (**E*n***) where an entry corrects frozen v1.2's text.

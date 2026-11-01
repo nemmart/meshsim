@@ -22,3 +22,17 @@ too (header_diff.py stays strict); one runner task (quick + full extras + full-s
 - [ ] local: build, replayer tests, StageB synthetic, quick suite
 - [ ] runner task (claim in Quest NUMBERS.md), kit smoke-tested locally, explicit `exit` before the kit
 - [ ] CHANGES-v1.2.1.md, ERRATA (E1-E8 fixed in v1.2.1), REPORT
+
+## 2026-11-01: the folders moved (main bd74b81)
+- `v1.2/` is now Tony's copy (tag v1.2-tony) and only its ERRATA.md may change; **my work is in `v1.2.1/`**. Branch rebuilt by
+  the integrator (de5c835, f1ed3c5 on v1.2.1/), reset to origin/v1.2.1, main merged (135da30).
+- Q1-Q3 became CL5, CL3, CL4 (wip/planning/CLEANUP.md); E9 = CL5.
+- [x] CL3: 23 template lines (section 14 and the two "Cycles" lines) restored from the committed book; gen_book now
+      reproduces RECIPES.md byte-identically; check_book 46/0.
+- [x] CL5 (E9): 4.17.4 (words 8-9 read 0 without a DMA, a load not flagged, a store flagged; word 4 stays reserved, as
+      meshsim's PeripheralSlot.reserved does) and 4.11 (`mtime`'s rate implementation-defined); CHANGES-v1.2 D48 row.
+- [x] CL4: StageB fails a window once a running pass has delivered no row for 50,000 cycles (both paths), with the
+      queues' occupancy. Normal run 18/0; old-map controller: 10 of 18 windows FAIL "starved" in 25 s (was a hang).
+- [ ] the kit (086's layout: v1.2.1/meshsim built --release 17 with images; sortrunner with a rebuilt jar and HASHES),
+      smoke test, claim a number after a fresh pull (087 is WORKER11's), push the task
+- [ ] CHANGES-v1.2.1.md (F1-F4, E1-E9, CL1-CL5, sim/sw); v1.2/ERRATA.md E1-E9 fixed in v1.2.1; REPORT

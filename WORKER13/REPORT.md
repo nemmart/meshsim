@@ -4,7 +4,7 @@
 
 - **`wip/spec/CHANGES-to-v1.25.md`**: one change guide for the RTL engineer, covering two paths to v1.25, from v1.1
   (what the RTL implements) and from v1.2 (the frozen waypoint). It also has a note for a reader on `v1.2.1`.
-  - **Matches spec commit `c2de4ae`.**
+  - **Matches spec commit `d590722`** (re-stamped after section 8's package and CL6).
   - Organized by hardware unit, in v1.25 spec order: link word and network (L), address map (A), the tile's engines (T),
     the controller and registers (C), peripherals (P), the replayer (R), control/reset/boot (K), C&C 1–3 (X).
   - Every entry gives v1.1, v1.25 with its spec section, kind, **step** (v1.2 / v1.25 / both) and why (decision cited).
@@ -66,7 +66,7 @@ The final read-through found no further error in v1.2.
 
 ## Read-through
 
-I checked these sections of the guide against the spec at `c2de4ae`:
+I checked these sections of the guide against the spec at `c2de4ae`. After that I added section 8's package against `d590722`:
 - the register block offsets (8.1);
 - `PARAMS` and `STATUS` (8.2) and `ERRORS` (8.3);
 - `ROUTER_HDR` and `ROUTER_ADDR` (8.4);
@@ -78,6 +78,29 @@ I checked these sections of the guide against the spec at `c2de4ae`:
 
 All of them match. The v1.2 → v1.25 entries come from a complete mechanical diff (pass A). The v1.1 → v1.2 entries come
 from a section-by-section diff of every section (pass B).
+
+## Section 8's package (last turn)
+
+The guide carries `DECISIONS-v1.25.md` section 8 and CLEANUP CL6. Each entry's step is **both** where it revises a v1.2
+change, and **v1.25** where it is new:
+
+- **V8a, the principle.** Section 0's "who checks what" is replaced: every rule is either a hardware check or UB, with
+  no third kind. Entries made UB are tagged **[UB at v1.25]**.
+- **V8b, misalignment is UB.** This simplifies the RTL: the alignment checks, the payload-0 read and the misaligned
+  bus error go. A misaligned jump target still traps, and `ERRORS` [1] becomes "bad packet".
+  - Entries: L7, T2, T12, T18, T20, T23, T28, T29, C9, C29, R4; tables 3.3, 4.2 and 4.3.
+- **V8c, the gather unit.** The even-*k* 128-bit path; one decrement per gather value packet, so a counter arms with
+  *n* × packets per value.
+  - Entries: T19, T20; tables 3.5 and 4.1.
+- **V8d, the boot ROM.** 256 bytes, and its handler sends a two-report dump with sequence numbers 24 and 25.
+  - Entries: K7, C33; table 4.1.
+- **V8e, more UB.** The replayer's bad write (`ERRORS` [0] reserved), refused peripheral writes, digits 5–7, table
+  wrap, modes 6–7, and the ignored misuses. The overrun stays checked without the "still counted" promise.
+  - Entries: R4, R10, R11, P8, P11, T44, T45, C39, L5; tables 3.3, 3.8, 4.2–4.4.
+- **CL6.** A controller's relative *d* counts from its tile (T46).
+
+Section 5 has a table for the package. It also lists what is still open for the owner and Tony: item 142 (whether the
+region decode stays), Q12 (whether reserved words reading 0 is free) and the overrun's count.
 
 ## Left open (not blocking)
 

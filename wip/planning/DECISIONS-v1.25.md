@@ -196,6 +196,18 @@ set stays the image's handler's (recipe 24, in program memory). C&C 1's firmware
 its ROM; **how C&C 1 tells it from the image's 24** (for example, distinct sequence numbers) is for WORKER10 to propose in the
 spec and WORKER14 to follow.
 
+**e. More outcomes become UB under a's test** (owner, 2026-11-01, from WORKER10's Q8-Q13; spec `d590722`):
+- the replayer's **bad write** (an unmapped offset, a wrong size, a single-ported memory written during a pass), and generally a
+  write a peripheral refuses (4.17.5); the replayer's `ERRORS` [0] is reserved;
+- **reserved digit values** 5-7 (no longer "treated as 0") and **stream or group numbers past the table's end** (no longer wrap) (8.5);
+- **reserved modes 6-7** (3.1, 4.8);
+- the misuses the hardware "ignored": a start while its engine runs, `PULSE_RUN` during a run, `PULSE_DMA` during a transfer, a
+  transfer naming a missing output queue.
+
+**Stays checked:** the replayer's **queue overrun** (it depends on the controller's credit loop under real timing); the spec no
+longer promises that the dropped push is still counted. **For Tony:** whether that count comes free in the RTL; Q12, whether
+reserved words "read 0, ignore stores" is free (kept only if so). Item 142 (mode 3 at 128 bits, the region decode) stays open.
+
 ---
 
 ## Definition of done (owner, 2026-11-01)

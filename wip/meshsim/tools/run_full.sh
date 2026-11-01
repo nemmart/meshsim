@@ -10,6 +10,7 @@ sweep-quick|Sweep quick
 agbench|AgBench
 skewtable|NetTest -1 skewtable 40
 s1bench|S1Bench
+ccbench|CcBench
 sort-bt-kv32|SortTest -1 run label=bt16k-kv32 keys=build/keys-16384/trace10-10.keys fmt=kv32 ready=8 force=bt
 sort-bt-k128|SortTest -1 run label=bt16k-k128 keys=build/keys-16384/trace10-10.keys fmt=k128 ready=8 force=bt
 S

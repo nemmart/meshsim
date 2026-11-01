@@ -12,8 +12,9 @@
  *     go_latency + 1 cycles before anything else is sent (6.6).
  * Then the loop: C&C 1 waits for "command landed" (EVENTS [9], as the ROM's controller branch), serving requests
  * meanwhile, and runs the command:
- *  CC_PHASE (arg [2:0] n, [3] unicast, [10:4] its tile): the tile command word in slot +0 and n <= 6 arguments
- *            after it; C&C 1 sends the command, waits for all READY, GO (the Java model's command().go());
+ *  CC_PHASE (arg [2:0] n, [3] unicast, [10:4] its tile, [22:16] repeats, 0 meaning 1): the tile command word in slot
+ *            +0 and n <= 6 arguments after it; C&C 1 sends the command, waits for all READY, GO (the Java model's
+ *            command().go()), as many times as asked, back to back (the phase measurement);
  *  CC_GO:    wait for all READY, GO (the model's go() alone);
  *  CC_EXPECT: READY_EXPECT_0-1 = slots +0, +1;
  *  CC_EXIT:  SIM_EXIT with the argument;
@@ -63,11 +64,11 @@ void cc1_toast(uint32_t mcause, uint32_t mepc) __attribute__((noreturn));
 static void wait_all_ready(void) {
     cc1->EVENTS_MASK = CC1_EV_ALL_READY | CC1_EV_WATCHDOG;
     tile->EVENTS_MASK = EV_PERIPH(1) | EV_REQ_PENDING;
-    for (;;) {
-        drain_requests();
+    for (;;) {                                      /* the hot path first: all READY ends the wait at once */
         uint32_t pev = cc1->EVENTS_PEEK;
-        if (pev & CC1_EV_WATCHDOG) cc1_toast(0, 0);   /* the toast pin is latched (6.1); dump what there is */
         if (pev & CC1_EV_ALL_READY) break;          /* live: re-checked after every wake */
+        if (pev & CC1_EV_WATCHDOG) cc1_toast(0, 0); /* the toast pin is latched (6.1); dump what there is */
+        if (tile->EVENTS_PEEK & EV_REQ_PENDING) { drain_requests(); continue; }
         __asm__ volatile ("wfi" ::: "memory");
     }
     mbox[1] = mcycle();
@@ -81,7 +82,7 @@ static void go(void) {
 }
 /* A command to every tile (dst DST_BROADCAST) or one: the arguments into the block its parity names, then the word
  * into slot 0, last; every packet of it of one kind (3.2). */
-static void command(unsigned dst, uint32_t word, const volatile uint32_t *args, unsigned n) {
+static void command(unsigned dst, uint32_t word, const uint32_t *args, unsigned n) {
     unsigned u = dst == DST_BROADCAST ? 0 : dst, par = parity[u >> 5] >> (u & 31) & 1;   /* a broadcast: every tile at tile 0's */
     send_to(ROUTER_HDR_W(dst, MODE_WRITE, CTR_NONE), COMMAND_BASE + 4 * (par ? ARGS_ODD : ARGS_EVEN));
     for (unsigned i = 0; i < n; i++) send32(args[i]);
@@ -226,10 +227,15 @@ int main(void) {
         uint32_t arg = CMD_ARG(w);
         switch (CMD_TYPE(w)) {
         case CC_PHASE: {
-            unsigned n = arg & 7, dst = arg & 8 ? (arg >> 4) & 63 : DST_BROADCAST;
-            command(dst, a[0], a + 1, n > 6 ? 6 : n);
-            wait_all_ready();
-            go();
+            unsigned n = arg & 7, dst = arg & 8 ? (arg >> 4) & 63 : DST_BROADCAST, reps = (arg >> 16) & 0x7F;
+            uint32_t cw[7];                         /* the tile command, copied out of C&C 1's own command block once */
+            if (n > 6) n = 6;
+            for (unsigned i = 0; i <= n; i++) cw[i] = a[i];
+            do {
+                command(dst, cw[0], cw + 1, n);
+                wait_all_ready();
+                go();
+            } while (reps-- > 1);
             break;
         }
         case CC_GO: wait_all_ready(); go(); break;

@@ -715,9 +715,11 @@ public final class RecipeTest {
         Tile cc3 = k.unit(2);
         T.check(m.run(() -> cc3.core.peekLocal(ControllerMemories.COMMAND) == (Registers.CMD_JUMP << 24 | 1 << 23), 200_000), "recipe fence: C&C 3's second command, CMD_JUMP (odd)");
         T.eq(0x01000000, cc3.core.peekLocal(ControllerMemories.COMMAND + 4 * Registers.ARGS_ODD), "its entry in the odd block");
-        long g0 = m.c.cc1p.gos;
-        boolean phases = m.run(() -> m.c.cc1p.gos >= g0 + 8, 200_000);
+        long g0 = m.c.cc1p.gos, g = g0; long[] at = new long[8]; int ng = 0;
+        while (ng < 8 && m.c.cycle < 400_000) { m.c.step(); while (m.c.cc1p.gos > g && ng < 8) { g++; at[ng++] = m.c.cycle; } }
+        boolean phases = ng == 8;
         T.check(phases, "eight phases after the boot (C&C 1's phase loop)");
+        if (phases) meas("rcp_cc1", "a phase on C&C 1 as a core (command type 1, nothing to do): GO to GO", at[7] - at[6]);
         if (!phases) System.out.printf("  stopped: C&C 1 pc %08x%s, GOs %d, READY bits %016x, tiles' commands %d%n", m.c.cores.unit(0).core.pc,
                 m.c.cores.unit(0).core.inWfi ? " (WFI)" : "", m.c.cc1p.gos, m.c.cc1p.readyBits(m.c.cycle), m.c.tiles[0].core.peekLocal(u.sym("commands")));
         T.eq(0, m.c.violations, "violations");

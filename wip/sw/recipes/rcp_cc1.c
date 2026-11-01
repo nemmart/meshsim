@@ -179,5 +179,9 @@ int main(void) {
     put_command(b.cmd, 0x01000000);
     cc1_boot(&b, &b, &b, 0x20000, 256, 0x30000);
     boot_unit_fenced(DST_CC3, &b, 0x01000000);
+    /* Recipe 27's phase() expects a command to be outstanding before it waits: READY needs a landed command as well as
+     * done (6.3), and phase() sends each next command only after its GO. The boot sends none after CMD_STAGE, so the
+     * application sends its first phase's command here (W14-06). */
+    command(DST_BROADCAST, 1, 0, 0, 0);
     for (;;) phase(1, 0, 0, 0, 1000000);
 }

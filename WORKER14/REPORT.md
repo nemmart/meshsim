@@ -21,6 +21,14 @@ core that stores to C&C 1's `UART_TX`.
     (`instructions--; cyclesStalled++; return`, retried next cycle).
   The regression steps it touches (ctrl, riscv, recipes, cond, regdoc, hooks, periph, reqbus) gave the baseline's counts;
   task 090 runs the full set.
+- **`TrafficDirector`'s "overlay after the command" check (W14-07, accepted):** a controller starts when its command
+  lands (the ROM's jump), not at a GO, and nothing clears its "command landed". So on a controller the check now holds
+  only until its image runs (`core.firstImageAt` set since the reset). Recipe fence's second boot of a running C&C 3
+  was flagged on every overlay packet before (80 violations). Unchanged for tiles.
+- **`wip/sw/recipes/rcp_cc1.c`'s `main` (W14-06, approved):** one line outside every RECIPE region (RECIPES.md
+  unchanged), with a comment. Recipe 27's `phase()` expects a command to be outstanding before it waits, and the boot
+  sends none after CMD_STAGE, so `main` sends the first phase's command before its loop. Without it, C&C 1 waited
+  forever after the boot.
 - `Router`: a controller's routing when `me >= 64` (W14-01), and a null link input skipped in `runCycle`.
 - `SRAMReadQueue.loops`: a controller's broadcast takes no loopback token (it never reaches itself).
 - `Tile`: a second constructor taking peripheral 1 (the old one calls it).
@@ -34,7 +42,9 @@ core that stores to C&C 1's `UART_TX`.
   extras; `tools/run_full.sh` lists `ccbench`.
 
 New: `src/CcCores.java`, `test/CcCoresTest.java`, `test/CcBench.java`, `sw/cc/cc1.c`, `sw/cc/cc23.c`,
-`sw/build_cc.sh`; `test/Mach.java` gained `bootCores`, `phase`, `cc1Command`, `mbox`, `toastInfo`.
+`sw/cc/cc_rcp.c` (the units' image for rcp_cc1.c), `sw/cc/cc_bad.c` (a tile failing under the ROM's handler),
+`sw/build_cc.sh`; `test/Mach.java` gained `bootCores`, `hostBoot`, `stageCc1`, `uartDivisor`, `phase`, `cc1Command`,
+`mbox`, `toastInfo`; `test/RecipeTest.java` gained the `cc1()` driver.
 
 ## What was built
 
@@ -74,7 +84,7 @@ as before and `CnC.java` drives it.
 - `cc23.c`, C&C 2 and C&C 3 (one image, the id from `PARAMS`): it sends "started", installs recipe 24's handler and
   enables its hard interrupt, then pops and counts its requests.
 
-**Tests** (`CcCoresTest`, 61 checks, plain and shuffled, about 30 s each):
+**Tests** (`CcCoresTest`, 77 checks, plain and shuffled, about 30 s each; RecipeTest's `cc1()`, below):
 - the switch off;
 - the boot ROM's 64-66 branch on all three controllers;
 - C&C 1 writing a tile through tile 0's fifth port;
@@ -82,7 +92,21 @@ as before and `CnC.java` drives it.
 - the full boot with the firmware, then three phases of the `cmd` program giving every tile the Java model's sums;
 - the error path: tile 9 and C&C 2 fail at once. C&C 1 traps 4 cycles later and drains 48 reports, both sets complete
   with no flags. `ERROR_LINES_0` bit 9, `ERROR_LINES_2` [1], the toast pin and the UART dump are all checked.
+- the two-report path (DECISIONS-v1.25 8d). Tile 12 runs `cc_bad` and takes a bus error before installing a handler
+  of its own. The 256-byte ROM's handler sends reports 24 and 25, stamped 12, and C&C 1 counts a set of two, complete,
+  with no flags. Report 24 carries `ERRORS` [9] and mcause 5, and the UART line reads 12, 2 of 2.
 - the watchdog.
+
+**`rcp_cc1.c` run on C&C 1** (RecipeTest's `cc1()` driver, plain and shuffled; RecipeTest now has 2,056 checks). The
+harness stages `cc_rcp` (one image for C&C 2, C&C 3 and the tiles) and 256 rows of data at rcp_cc1.c's chunks, then lands
+`rcp_cc1` through the host port. Checked:
+- recipe 22's boot of C&C 2 and C&C 3, their two "started" requests, and the tiles;
+- boot part 2's 256 rows in every tile's big SRAM;
+- recipe fence's second CMD_JUMP to the running C&C 3 (odd, its entry in the odd block);
+- eight phases of recipe 27; no violations.
+Its phase measures 435 cycles GO to GO, against `cc1.c`'s 88. Recipe 27's `command()` flips 64 per-tile parity entries
+in a loop after every broadcast (about 380 cycles), the same waste removed from `cc1.c`. This is a finding about the
+recipe's text, not changed here.
 
 ## Measurements (CcBench, at 5cd78a2; Config.machine())
 
@@ -139,17 +163,17 @@ command copied out of the command block once).
   landing the first command through the host port (C&C 1) or C&C 1's stream (C&C 2/3).
 - **C&C 2/3's "started" requests weren't modelled:** they are sent by C&C 2/3's start-up through the request tree and
   served by C&C 1 before it boots the tiles, as 6.2 step 4 says.
-- **`rcp_cc1.c` is built but never executed:** still pending. It waits for s8, which rewrites recipes 22 and 24.
+- **`rcp_cc1.c` is built but never executed:** it runs now, on C&C 1, in RecipeTest (above). Running it found W14-06
+  (main's phase loop deadlocked) and W14-07 (meshsim's overlay check on a running controller).
 
 With the switch off, nothing changes: the Java model stays the default, and every suite runs as before, cycle for cycle
 (task 090, below).
 
-## Pending (after s8 merges)
+## Pending
 
-- `rcp_cc1.c` run as C&C 1 in RecipeTest (its cc1 driver from "built" to "run"), against s8's recipes 22 and 24.
-- The two-report path: a unit failing while still in its ROM. C&C 1's code for it is written (first sequence 24, set of
-  two, 24-25) but untested, since the ROM on `main` still sends 24.
-- Misalignment is UB (8b), so it isn't an error path to test.
+Nothing in the plan. Misalignment is UB (DECISIONS-v1.25 8b), so it isn't an error path to test. Possible follow-ups:
+- a tighter `cc1.c` phase loop (about 15-20 cycles);
+- recipe 27's per-tile parity loop (a book change).
 
 ## What v1.3's C&C 3 firmware can build on
 

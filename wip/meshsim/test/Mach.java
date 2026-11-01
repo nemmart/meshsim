@@ -55,6 +55,70 @@ final class Mach {
             .call(() -> runAt = c.cc.lastRunAt);
         return im;
     }
+    // ---------------------------------------------------------------- boot with C&C 1-3 as cores (WORKER14, Config.ccCores)
+    static Config coresCfg(long shuffle) { Config k = cfg(shuffle); k.ccCores = true; return k; }
+    /** C&C 1's commands from the harness (sw/cc/cc1.c, W14-04). */
+    static final int CC_PHASE = 0x50, CC_GO = 0x47, CC_EXPECT = 0x45, CC_EXIT = 0x58, CC_WATCHDOG = 0x57, CC_UART = 0x55;
+    /** Chunk addresses in C&C 1's big SRAM where the harness stages the images C&C 1 sends (W14-03). */
+    static final int STAGE_CHUNK = 0x10000;
+    Image cc1, cc23;
+    /** C&C 1's UART divisor, set by its firmware at the start of the boot (0: the reset's, 434); tests that read a dump use 1. */
+    int uartDivisor;
+    /** The outside world's boot (6.2, W14-02, W14-03): the images C&C 1 sends into its big SRAM (back door: staged by the
+     *  host before the boot), its boot descriptor into its image's data, then C&C 1's image and first command through
+     *  the host port. C&C 1's firmware boots C&C 2 and C&C 3, waits for their "started", then boots the tiles with
+     *  `tile` (READY, GO). Returns the tile image. */
+    Image bootCores(String tile) {
+        if (c.cores == null) throw new IllegalStateException("bootCores needs Config.ccCores");
+        Image t = new Image(tile); cc1 = new Image("cc1"); cc23 = new Image("cc23");
+        bootStart = c.cycle;
+        BigSRAM s = c.cores.unit(0).sram;
+        int[] at = { STAGE_CHUNK };
+        java.util.function.Function<int[], int[]> stage = w -> {           // {chunk, packets}: 128-bit rows, zero-padded
+            int ch = at[0], pk = (w.length + 3) / 4;
+            for (int i = 0; i < 4 * pk; i++) s.poke(ch + i, i < w.length ? w[i] : 0);
+            at[0] += 4 * Math.max(pk, 1); return new int[] { ch, pk };
+        };
+        int[] desc = new int[1 + 3 * 6 + 2];
+        desc[0] = 0xB007DE5C;
+        int[] cp = stage.apply(cc23.code), cd = stage.apply(cc23.data), tp = stage.apply(t.code), td = stage.apply(t.data);
+        for (int u = 0; u < 3; u++) {
+            Image im = u < 2 ? cc23 : t; int[] p = u < 2 ? cp : tp, d = u < 2 ? cd : td;
+            int cmd = at[0]; at[0] += 4;
+            int[] e = { p[0], p[1], d[0], d[1], cmd, im.sym("_start") };
+            System.arraycopy(e, 0, desc, 1 + 6 * u, 6);
+        }
+        desc[19] = cfg.goLatency; desc[20] = uartDivisor;
+        int[] data = cc1.data.clone(), base = { (cc1.sym("boot_desc") - cc1.sym("_data_start")) / 4 };
+        System.arraycopy(desc, 0, data, base[0], desc.length);
+        hostBoot(cc1, data);
+        return t;
+    }
+    /** The outside world starts C&C 1 (6.2 step 3, W14-02): image im's program and data (`data`, its data image as
+     *  landed) and its first command, CMD_JUMP to _start, through the host port. */
+    void hostBoot(Image im, int[] data) {
+        c.cores.hostLoad(0, Registers.PMEM_BASE, im.code);
+        if (data.length > 0) c.cores.hostLoad(0, im.sym("_data_start"), data);
+        c.cores.hostCommand(0, Registers.CMD_JUMP << 24, im.sym("_start"));
+    }
+    /** Words into C&C 1's big SRAM from chunk `at`, zero-padded to `rows` 128-bit rows (back door, W14-03). */
+    void stageCc1(int at, int[] w, int rows) {
+        if (w.length > 4 * rows) throw new IllegalArgumentException(w.length + " words in " + rows + " rows");
+        BigSRAM s = c.cores.unit(0).sram;
+        for (int i = 0; i < 4 * rows; i++) s.poke(at + i, i < w.length ? w[i] : 0);
+    }
+    /** C&C 1's mailbox word i (sw/cc/cc1.c: [0] commands done, [1] last all-READY, [2] last GO, [3] boot state, [4]-[5]
+     *  the "started" requestors, [6] results answered, [7] other requests). */
+    int mbox(int i) { return c.cores.unit(0).core.peekLocal(cc1.sym("mbox") + 4 * i); }
+    /** C&C 1's error-path summary word i (sw/cc/cc1.c's toast_info). */
+    int toastInfo(int i) { return c.cores.unit(0).core.peekLocal(cc1.sym("toast_info") + 4 * i); }
+    /** A command for C&C 1 (W14-04), landed in its command block through the host port. */
+    void cc1Command(int type, int arg, int... args) { c.cores.hostCommand(0, type << 24 | arg, args); }
+    /** A phase through C&C 1: the tile command word and up to 6 arguments to every tile, then all READY, then GO. */
+    void phase(int word, int... args) { int[] a = new int[args.length + 1]; a[0] = word; System.arraycopy(args, 0, a, 1, args.length); cc1Command(CC_PHASE, args.length, a); }
+    /** The tiles are running their image (C&C 1's boot GO has gone). */
+    boolean coresBooted() { return cc1 != null && mbox(3) == 2; }
+
     // ---------------------------------------------------------------- running
     boolean run(BooleanSupplier cond, long max) { return c.runUntil(cond, max); }
     boolean allStopped() { for (Tile p : c.tiles) if (p.core.halt == Controller.RUN) return false; return true; }

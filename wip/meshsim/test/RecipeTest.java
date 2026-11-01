@@ -28,7 +28,7 @@ public final class RecipeTest {
         if (shuffle >= 0) System.out.println("shuffled child order, seed " + shuffle);
         snippets();
         cmdloop(); copy(); cmem(); bucket(); aug(); gather(); xchg(); xvec(); a2a(); rdport(); status(); rules(); sync();
-        blocks(); selftest(); boot(); signal(); tables(); replay();
+        blocks(); selftest(); boot(); signal(); tables(); replay(); cc1();
         out("recipe cycles [meas: RecipeTest; tile 0 unless stated]:");
         for (String s : table) out(s);
         System.exit(T.done("RecipeTest" + (shuffle >= 0 ? " (shuffled, seed " + shuffle + ")" : "")));
@@ -687,6 +687,45 @@ public final class RecipeTest {
     }
 
     // ================================================================ 26 the replayer's refill loop
+    /** Recipes 22 and 27, C&C 1's side (rcp_cc1.c's main), run on C&C 1 as a core (Config.ccCores; WORKER14). The harness
+     *  plays the host: it stages the units' image (sw/cc/cc_rcp.c: C&C 2, C&C 3 and the tiles in one) at rcp_cc1.c's
+     *  chunks 0x10000 (64 rows) and 0x11000 (16), and 256 rows of data at 0x20000, then lands rcp_cc1 and its CMD_JUMP
+     *  through the host port. rcp_cc1.c's main puts the units' command at 0x12000, boots C&C 2 and C&C 3, waits for
+     *  their "started", boots the tiles, runs boot part 2 (CMD_STAGE, the data broadcast to every tile's big SRAM at
+     *  chunk 0x30000), boots C&C 3 again by recipe fence, then runs phases. */
+    static void cc1() {
+        T.group("rcp_cc1.c on C&C 1 as a core: recipes 22 and 27, C&C 1's side");
+        Mach m = new Mach(Mach.coresCfg(shuffle));
+        Mach.Image u = new Mach.Image("cc_rcp"), c1 = new Mach.Image("rcp_cc1");
+        m.stageCc1(0x10000, u.code, 64);
+        m.stageCc1(0x11000, u.data, 16);
+        int[] data = new int[256 * 4];
+        for (int i = 0; i < data.length; i++) data[i] = 0x5EED0000 ^ i * 0x9E3779B1;
+        m.stageCc1(0x20000, data, 256);
+        m.hostBoot(c1, c1.data);
+        CcCores k = m.c.cores;
+        java.util.function.LongSupplier running = () -> { long r = 0; for (Tile p : m.c.tiles) { if (p.core.firstImageAt < 0) return -1; r = Math.max(r, p.core.firstImageAt); } return r; };
+        T.check(m.run(() -> running.getAsLong() >= 0, 200_000), "every tile runs the image (C&C 1 booted C&C 2, C&C 3 and the tiles)");
+        T.check(k.unit(1).core.firstImageAt > 0 && k.unit(2).core.firstImageAt > 0, "C&C 2 and C&C 3 run the image");
+        T.eq(2L, m.c.reqBus.received[0], "C&C 1 popped two requests: both \"started\"");
+        T.check(m.run(() -> { for (Tile p : m.c.tiles) if (p.core.peekLocal(u.sym("commands")) < 1) return false; return true; }, 200_000), "every tile ran CMD_STAGE");
+        int bad = 0;
+        for (Tile p : m.c.tiles) for (int i = 0; i < data.length; i++) if (p.sram.peek(0x30000 + i) != data[i]) { bad++; break; }
+        T.eq(0, bad, "boot part 2: the 256 rows in every tile's big SRAM at chunk 0x30000");
+        Tile cc3 = k.unit(2);
+        T.check(m.run(() -> cc3.core.peekLocal(ControllerMemories.COMMAND) == (Registers.CMD_JUMP << 24 | 1 << 23), 200_000), "recipe fence: C&C 3's second command, CMD_JUMP (odd)");
+        T.eq(0x01000000, cc3.core.peekLocal(ControllerMemories.COMMAND + 4 * Registers.ARGS_ODD), "its entry in the odd block");
+        long g0 = m.c.cc1p.gos, g = g0; long[] at = new long[8]; int ng = 0;
+        while (ng < 8 && m.c.cycle < 400_000) { m.c.step(); while (m.c.cc1p.gos > g && ng < 8) { g++; at[ng++] = m.c.cycle; } }
+        boolean phases = ng == 8;
+        T.check(phases, "eight phases after the boot (C&C 1's phase loop)");
+        if (phases) meas("rcp_cc1", "a phase on C&C 1 as a core (command type 1, nothing to do): GO to GO", at[7] - at[6]);
+        if (!phases) System.out.printf("  stopped: C&C 1 pc %08x%s, GOs %d, READY bits %016x, tiles' commands %d%n", m.c.cores.unit(0).core.pc,
+                m.c.cores.unit(0).core.inWfi ? " (WFI)" : "", m.c.cc1p.gos, m.c.cc1p.readyBits(m.c.cycle), m.c.tiles[0].core.peekLocal(u.sym("commands")));
+        T.eq(0, m.c.violations, "violations");
+        if (m.c.violations != 0) System.out.print(m.c.violationReport());
+    }
+
     static void replay() {
         T.group("replay");
         // rcp_replay.c's state[] is never written (gcc folds it to zeros), so the pass it starts has an empty code stream:

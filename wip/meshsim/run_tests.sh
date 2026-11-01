@@ -37,6 +37,7 @@ LOG=searchbench TAIL=3 run "search steps through the read port (microbenchmark, 
 LOG=rdport-shuf TAIL=1 run "shuffled child order (seed 4)" $J ReadPortGatherTest 4
 LOG=agtest    TAIL=1 run "address generator read-ahead, figure 12's PTR/HIST ports" $J AgTest -1
 LOG=agtest-shuf TAIL=1 run "shuffled child order (seed 4)"   $J AgTest 4
+LOG=cc-build  TAIL=2 run "building the controllers' firmware (sw/build_cc.sh: sw/cc/cc1.c, cc23.c; WORKER14)" sh sw/build_cc.sh
 LOG=recipes-build TAIL=1 run "building the v1.2 recipes (sw/build_recipes.sh: wip/sw/recipes/, unedited)" sh sw/build_recipes.sh
 LOG=recipes   TAIL=2 run "the v1.2 recipes as suites, and the book's code blocks against their sources" $J RecipeTest -1
 LOG=recipes-shuf TAIL=1 run "shuffled child order (seed 4)"    $J RecipeTest 4
@@ -49,6 +50,8 @@ LOG=periph    TAIL=1 run "the peripheral framework: the standard window, events,
 LOG=periph-shuf TAIL=1 run "shuffled child order (seed 4)"   $J PeripheralSlotTest 4
 LOG=reqbus    TAIL=2 run "the request port, the request bus and the receive queues in the tree" $J RequestBusTest -1
 LOG=reqbus-shuf TAIL=1 run "shuffled child order (seed 4)"    $J RequestBusTest 4
+LOG=cccores   TAIL=1 run "C&C 1-3 as cores (Config.ccCores, WORKER14): the boot ROM's controller branch, the link, the request tree" $J CcCoresTest -1
+LOG=cccores-shuf TAIL=1 run "shuffled child order (seed 4)"   $J CcCoresTest 4
 LOG=replay-build TAIL=1 run "the replay controller (sw/replay/build.sh)" sh sw/replay/build.sh
 LOG=stageb    TAIL=1 run "Stage B: replay_ctl.c on a tile against Stage A, synthetic windows" $J StageB synthetic
 if [ -n "$DELIVERY" ]; then   # Stage B on a tracer delivery's guest windows: DELIVERY=<replay-inputs dir>
@@ -66,6 +69,7 @@ if [ "$MODE" != quick ]; then
   LOG=accounting-full TAIL=1 run "per-phase accounting, full-size all-to-all from C" java $JX -cp build AccountingTest -1 full
   LOG=agbench TAIL=3 run "read-ahead measurements: ag_lookahead, zero-length groups, start to first request (a few minutes)" $J AgBench
   LOG=s1bench TAIL=8 run "item S1: K's margin over the write path, L = 1-4, and the table-window case (a few minutes)" $J S1Bench
+  LOG=ccbench TAIL=16 run "C&C 1-3 as cores (WORKER14): the boot and a phase against the Java model" $J CcBench
   LOG=sweep-quick TAIL=4 run "parameter sweep, quick (about 1 minute; 'java Sweep full' takes about 25)" $J Sweep quick
   LOG=ctrl-full TAIL=1 run "the all-to-all from C on the four data sets" java $JX -cp build CtrlTest -1 full
   LOG=engine-full TAIL=1 run "full-size all-to-alls (4 data sets) and radix sort (about 1.5 minutes)" java $JX -cp build EngineTest -1 full

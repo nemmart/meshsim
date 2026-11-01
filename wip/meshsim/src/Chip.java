@@ -22,6 +22,8 @@ final class Chip implements Component {
     final Endpoint[] ccs = new Endpoint[3];                     // C&C 1-3 at tiles 0-2's fifth ports (4.16)
     final Endpoint cnc, memsub, cc3;
     final Cnc1Peripheral cc1p;
+    /** C&C 1-3 as cores (Config.ccCores, WORKER14); null: the Java model ({@link #cc}) drives the chip. */
+    final CcCores cores;
     /** Item S1's measurement (Config.measureS1; spec 4.8, invariant 24). */
     final S1 s1 = new S1();
     private long s1LateSeen;
@@ -94,8 +96,10 @@ final class Chip implements Component {
         cc = new CnC(this, cnc);
         cc1p.goNet = cc::goNet;
         if (cfg.measureS1) for (Tile p : tiles) p.s1Attach(s1);
+        cores = cfg.ccCores ? new CcCores(this) : null;          // WORKER14: built before the registry closes (the reset flushes its buses)
         BusBase.REGISTRY.remove();
-        children = new Component[68];
+        children = new Component[cores != null ? 69 : 68];
+        if (cores != null) children[68] = cores;
         children[0] = cnc; children[1] = memsub; children[2] = cc3; children[67] = cc;
         for (int i = 0; i < 64; i++) children[3 + i] = tiles[i];
         shuffle = cfg.shuffleSeed >= 0 ? new Random(cfg.shuffleSeed) : null;
@@ -122,7 +126,7 @@ final class Chip implements Component {
             boolean e = p.ctl.errorLine(); err |= e;
             if (e != errSeen[p.idx]) { errSeen[p.idx] = e; cc1p.errorLine(t, p.idx, e); }   // ERROR_LINES (8.14)
         }
-        cc1p.runCycle(t);
+        if (cores != null) cores.endCycle(t); else cc1p.runCycle(t);   // with cores, C&C 1's slot runs its peripheral
         if (s1.late != s1LateSeen) { s1LateSeen = s1.late; violation(t, -1, s1.lastLate); }
         if (resetRequest != 0) doReset(t);
         cc.errorLine(t, err);                                    // the error lines, OR'd, to C&C's error bit (6.6)
@@ -179,6 +183,7 @@ final class Chip implements Component {
             if (p.writer.violations != s2[i][5]) { s2[i][5] = p.writer.violations; violation(t, i, p.writer.lastViolation); }
             if (p.readReturn.refusals != 0 && !refusalReported[i]) { refusalReported[i] = true; violation(t, i, "SIMULATOR: a read return was refused by the injection point"); }
         }
+        if (cores != null) cores.check(t);
         if (reqBus.violations != seenReqBus) { seenReqBus = reqBus.violations; violation(t, -1, reqBus.lastViolation); }
         if (cc.rxLost != seenRxLost) { seenRxLost = cc.rxLost; violation(t, -1, "C&C's receive FIFO was full: a packet for C&C was lost (6.6)"); }
         long ev = 0; String el = null; for (Endpoint e : ccs) { ev += e.violations; if (e.lastViolation != null) el = e.lastViolation; }
@@ -211,13 +216,14 @@ final class Chip implements Component {
         for (int i = 0; i < 64; i++)
             for (WordFIFO f : tiles[i].hardwareFifos) if (f.overflow && reportedOverflows.add(f.name)) violation(f.overflowCycle, i, "FIFO overflow " + f.name + " (invariant 1)");
         for (WordFIFO f : new WordFIFO[] { cnc.rx, memsub.rx, cc3.rx }) if (f.overflow && reportedOverflows.add(f.name)) violation(f.overflowCycle, -1, "FIFO overflow " + f.name + " (invariant 1)");
+        if (cores != null) cores.scanOverflows(reportedOverflows);
     }
 
     boolean quiescent() {
         long t = cycle;
         for (int i = 0; i < 64; i++) { if (!tiles[i].quiescent(t)) return false; for (int d = 0; d < 4; d++) if (links[i][d].inFlight(t) > 0) return false; }
         for (Endpoint e : ccs) if (!e.send.isEmpty(t) || !e.rx.isEmpty(t)) return false;
-        return true;
+        return cores == null || cores.quiescent(t);
     }
 
     /** Back door (tests): copy words into every tile's controller memory (instruction or data) at a byte address. */
@@ -275,6 +281,7 @@ final class Chip implements Component {
         for (BusBase b : buses) b.flush();
         for (Tile p : tiles) p.reset(t);
         reqBus.reset(); cc1p.reset(t); cc.resetModel(t);
+        if (cores != null) cores.reset(t);
         java.util.Arrays.fill(errSeen, false);
         log(t, -1, "reset (" + (resetRequest == 2 ? "hard" : "soft") + "): every unit to the boot ROM");
         resets++; lastResetAt = t; resetRequest = 0;

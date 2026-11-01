@@ -48,6 +48,9 @@ interface Peripheral extends Component {
     default Integer word(long t, int w) { return null; }
     /** A store to window word w, 32-127, at t: 1 written, 0 read-only (a bus error), -1 undefined (ignored, flagged). */
     default int writeWord(long t, int w, int v) { return word(t, w) == null ? -1 : 0; }
+    /** A store to window word w (32-127) at t must stall (WORKER14: C&C 1's UART_TX while its FIFO is full, 8.14); the
+     *  controller retries it each cycle, as a REQUEST_SEND into a full request FIFO (4.18). */
+    default boolean storeStalls(long t, int w) { return false; }
 
     // ---------------------------------------------------------------- output (4.17.9): the DMA's source
     /** The number of output queues (0-4); 0 for a peripheral without a DMA, such as the replayer. */

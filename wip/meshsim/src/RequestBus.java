@@ -45,6 +45,8 @@ final class RequestBus implements Component {
     final Buf[][] rowIn = new Buf[8][8]; final Buf[] rootIn = new Buf[ROOT_INPUTS];
     private final int[] rowCur = new int[8], rowRr = new int[8]; private int rootCur = -1, rootRr = ROOT_INPUTS - 1; private boolean rootDropping;
     final int[] credits = new int[8];
+    /** C&C 1-3 as cores (Config.ccCores): their tiles, whose request ports feed the root's controller inputs; null: the Java model. */
+    Tile[] ccTiles;
     /** The receive queues, per target: {w0, w1, w2, w3, deliveredT, storeT}; readable from the cycle after delivery. */
     @SuppressWarnings("unchecked") final ArrayDeque<long[]>[] queue = new ArrayDeque[TARGETS];
     long underflows; final long[] received = new long[TARGETS];
@@ -103,6 +105,18 @@ final class RequestBus implements Component {
             Buf b = rowIn[p.idx >> 3][p.idx & 7];
             if (b.occ >= bufBeats) continue;
             if (port.beatsSent == 0) b.reqs.add(new Req(new long[] { h[0], h[1], h[2], h[3] }, h[4], p.idx));
+            b.occ++; b.arrivals.add(t + lat);
+            if (++port.beatsSent == BEATS) { port.fifo.poll(); port.beatsSent = 0; port.freedAt = t; }
+        }
+        // the controllers' request ports (Config.ccCores, CcCores): each FIFO head into its root input, one beat a cycle,
+        // the root stamping the requestor 64 + cc (as controllerSend does for the Java model)
+        if (ccTiles != null) for (int cc = 0; cc < ccTiles.length; cc++) {
+            RequestPort port = ccTiles[cc].req;
+            long[] h = port.fifo.peek();
+            if (h == null || h[4] >= t) continue;
+            Buf b = rootIn[8 + cc];
+            if (b.occ >= bufBeats) continue;
+            if (port.beatsSent == 0) b.reqs.add(new Req(new long[] { (h[0] & ~0x7FL) | (64 + cc), h[1], h[2], h[3] }, h[4], 64 + cc));
             b.occ++; b.arrivals.add(t + lat);
             if (++port.beatsSent == BEATS) { port.fifo.poll(); port.beatsSent = 0; port.freedAt = t; }
         }

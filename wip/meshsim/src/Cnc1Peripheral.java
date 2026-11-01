@@ -86,6 +86,9 @@ final class Cnc1Peripheral implements Peripheral {
         rx.add(b & 0xFF);
     }
     boolean errorLineOf(int id) { return errLine[id]; }
+    /** C&C 1's own ERRORS as a level (Config.ccCores, WORKER14): non-zero latches the toast pin (6.1); C&C 1's hard
+     *  interrupt is its core's. The Java model has no ERRORS of its own. */
+    void unitErrors(long t, boolean high) { if (high && !toast) { toast = true; toastAt = t; } }
 
     // ---------------------------------------------------------------- the window (C&C 1's own accesses, as a core's would be)
     @Override public int errors(long t) { for (boolean b : errLine) if (b) return 1; return 0; }
@@ -106,6 +109,8 @@ final class Cnc1Peripheral implements Peripheral {
             default: return null;
         }
     }
+    /** UART_TX's store stalls while the TX FIFO is full (8.14): the controller retries it (WORKER14: C&C 1 as a core). */
+    @Override public boolean storeStalls(long t, int w) { return w == UART_TX && tx.size() >= FIFO; }
     /** 1 written, 0 read-only (bus error), -1 undefined, -2 a UART_TX store that must stall (the TX FIFO is full). */
     @Override public int writeWord(long t, int w, int v) {
         switch (w) {

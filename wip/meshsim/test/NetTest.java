@@ -324,7 +324,6 @@ public final class NetTest {
         n.at(5, t++, 9, LinkWord.M_WRITE, 3, RPL + 8 * 5, LinkWord.SIZE_32, 0xABCD0006L, 0);   // a 32-bit reply from src 5 at its pair
         n.at(6, t, 9, LinkWord.M_WRITE, 3, RPL + 8 * 6, LinkWord.SIZE_64, 0x1234567800C0FFEEL, 0);   // a 64-bit reply from src 6
         n.at(5, t++, 9, LinkWord.M_COUNT, 4, 0, LinkWord.SIZE_32, 0, 0);       // count only: nothing written, counter 4
-        n.at(5, t++, 9, 6, 1, 0, LinkWord.SIZE_32, 0xFFFFL, 0);                 // mode 6: discarded, no count, no error
         // bad packets: dropped, uncounted, ERRORS [1]
         n.at(5, t++, 9, LinkWord.M_WRITE, 2, 0x02000000, LinkWord.SIZE_32, 0xD2L, 0);   // the boot ROM
         n.at(5, t++, 9, LinkWord.M_WRITE, 2, 0xFFFFF800, LinkWord.SIZE_32, 0xD3L, 0);   // region 0xFF
@@ -352,12 +351,12 @@ public final class NetTest {
         T.check(m.landedAt >= 0, "a write covering slot 0 sets command landed"); T.eq(0x0000C0DE, m.dmem.peek(ControllerMemories.CMD_DWORD), "slot 0 word");
         long[] pm = d.perMode;
         T.eq(1, pm[LinkWord.M_SRC], "accepted mode 1 once"); T.eq(1, pm[LinkWord.M_BUCKET], "mode 2 once"); T.eq(2, pm[LinkWord.M_AUG], "mode 3 twice (one bad)");
-        T.eq(1, pm[LinkWord.M_GATHER], "mode 4 once"); T.eq(1, pm[LinkWord.M_COUNT], "mode 5 once"); T.eq(1, pm[6], "mode 6 once"); T.eq(11, pm[LinkWord.M_WRITE], "mode 0: 6 good, 3 bad, 2 commands (v1.25: the misaligned two are UB, directorMisaligned)");
+        T.eq(1, pm[LinkWord.M_GATHER], "mode 4 once"); T.eq(1, pm[LinkWord.M_COUNT], "mode 5 once"); T.eq(11, pm[LinkWord.M_WRITE], "mode 0: 6 good, 3 bad, 2 commands (v1.25: the misaligned two are UB, directorMisaligned)");
         for (int c = 1; c <= 4; c++) T.eq(0, d.remaining[c], "WRITE_COUNTER_" + c + " counted down to 0");
-        T.eq(1L, d.countOnly, "the count-only packet wrote nothing and counted"); T.eq(1L, d.reservedDiscarded, "mode 6 discarded");
+        T.eq(1L, d.countOnly, "the count-only packet wrote nothing and counted"); 
         T.eq(0, r.conditions() & (1 << Conditions.UNEXPECTED), "no unexpected arrival (mode 4 and mode 6 aren't counted; bad packets aren't)");
-        // violations: 6 bad packets at the director, 5 of them also at the sender (an absent peripheral is the receiver's to judge), mode 6 at both
-        T.eq(9, n.c.violations, "9 violations: bad packets (invariant 5, twice each) and mode 6 (invariant 21): " + n.c.violationReport());
+        // violations: the bad packets at the director and at the sender (an absent peripheral is the receiver's to judge); v1.25: no mode 6 (UB, below)
+        T.eq(7, n.c.violations, "7 violations: the four bad packets (invariant 5), three also at the sender: " + n.c.violationReport());
         // the delay line (4.8): a packet accepted at t decrements its counter at t + K
         d.remaining[1] = 1;
         long acc0 = d.accepted;
@@ -455,6 +454,12 @@ public final class NetTest {
         Net b = new Net(k);
         b.at(5, 20, 9, LinkWord.M_WRITE, 1, LinkWord.sramAddr(0x102), LinkWord.SIZE_128, 0xD6L, 0);
         T.ub(() -> b.runAll(300), "a 128-bit write to big SRAM at chunk 2 of a row", "tile 9", "traffic director", "128 bits");
+        // v1.25 (DECISIONS-v1.25 s8e): a packet in a reserved mode (6-7) is UB (v1.2: discarded silently)
+        for (int mode : new int[] { 6, 7 }) {
+            Net r = new Net(k);
+            r.at(5, 20, 9, mode, 1, 0, LinkWord.SIZE_32, 0xFFFFL, 0);
+            T.ub(() -> r.runAll(300), "a packet in mode " + mode, "tile 9", "traffic director", "reserved mode " + mode);
+        }
     }
 
     // ------------------------------------------------------------------ the injection point

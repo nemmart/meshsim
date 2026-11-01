@@ -141,9 +141,6 @@ public final class PeripheralSlotTest {
         store(n, p, w(EVENTS_MASK), 2);
         store(n, p, w(PULSE_DMA), 1);
         T.eq(2, (int) load(n, p, w(STATUS)) & 2, "STATUS [1]: DMA in progress");
-        long v0 = n.c.violations;
-        store(n, p, w(PULSE_DMA), 1);
-        T.check(n.c.violations > v0 && p.slot.dma[1].ignored == 1, "PULSE_DMA while busy: ignored and flagged");
         for (int i = 0; i < 20; i++) n.step();
         T.eq(3, out.size(), "7 words: a 128-bit, a 64-bit and a 32-bit packet");
         if (out.size() == 3) {
@@ -162,8 +159,20 @@ public final class PeripheralSlotTest {
         for (int i = 0; i < 4; i++) n.step();
         T.eq(2, (int) load(n, p, w(EVENTS_PEEK)) & 2, "a count of 0: DMA done still posted");
         T.eq(3, out.size(), "and nothing sent");
-        store(n, p, w(DMA_HDR), Registers.DH_COUNT.place(4) | Registers.DH_QUEUE.place(3)); store(n, p, w(PULSE_DMA), 1);
-        T.eq(2L, p.slot.dma[1].ignored, "a missing output queue: ignored (flagged)");
+        // v1.25 (DECISIONS-v1.25 s8e): PULSE_DMA during a transfer, and a transfer naming a missing output queue, are
+        // undefined behavior: meshsim stops (v1.2 ignored both)
+        {
+            TestPeripheral[] tq = new TestPeripheral[1];
+            Net m = machine(10, tq); Tile q = m.c.tiles[10];
+            store(m, q, w(DMA_HDR), hdr); store(m, q, w(DMA_ADDR), 0x400); store(m, q, w(PULSE_DMA), 1);
+            T.ub(() -> store(m, q, w(PULSE_DMA), 1), "PULSE_DMA while a transfer is in progress", "tile 10", "DMA", "in progress");
+        }
+        {
+            TestPeripheral[] tq = new TestPeripheral[1];
+            Net m = machine(10, tq); Tile q = m.c.tiles[10];
+            store(m, q, w(DMA_HDR), Registers.DH_COUNT.place(4) | Registers.DH_QUEUE.place(3));
+            T.ub(() -> store(m, q, w(PULSE_DMA), 1), "a transfer naming output queue 3", "tile 10", "DMA", "output queue 3");
+        }
     }
 
     static void replayer() {

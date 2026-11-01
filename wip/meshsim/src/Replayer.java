@@ -225,7 +225,7 @@ final class Replayer implements Peripheral {
     // ================================================================ run, halt (end of their cycle)
     private void doRun(long t) {
         if (halted) { violate(t, "PERIPH_RUN in HALT: ignored"); return; }
-        if (running) { violate(t, "PERIPH_RUN while periph_running: ignored (4.17.2, 4.13)"); return; }
+        if (running) throw new UndefinedBehavior(t, me, "replayer", "PULSE_RUN while a pass runs (4.17.2; v1.2 ignored it; DECISIONS-v1.25 s8e)");
         for (Input p : landing) if (p.t() >= t && queueOf(p.a()) != null)
             violate(t, "a pass started with a queue push still in flight (4.19.8's software rule; invariant 16): packet landing at " + p.t());
         // the pass: empty the queues and the decompressors' tables, latch the state word and the stream word
@@ -274,7 +274,9 @@ final class Replayer implements Peripheral {
         return null;
     }
 
-    private void bad(long t, String why) { condEvents[ERR_BAD_WRITE]++; badWrites.add("@" + t + " " + why); }
+    /** v1.25 (DECISIONS-v1.25 s8e): a bad write (an unmapped offset, a wrong size, a single-ported memory written during a
+     *  pass) is undefined behavior: meshsim stops. v1.2 dropped it, counted it and set ERRORS [0], now reserved. */
+    private void bad(long t, String why) { throw new UndefinedBehavior(t, me, "replayer", "a bad write: " + why); }
     final List<String> badWrites = new ArrayList<>();
 
     /** A mode-9 packet lands (or is dropped) at the end of cycle t. */

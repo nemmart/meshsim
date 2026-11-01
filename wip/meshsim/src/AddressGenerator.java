@@ -9,7 +9,7 @@
  * request goes out as soon as its entries are in: 4 ts_engine_latency + 2 cycles after the start's store for a group run
  * (the GROUP read, then the STREAM read), 2 ts_engine_latency + 1 for a stream run. That lead-in depends only on the run
  * kind, the tables and the latency, so a synchronised start stays in lockstep; it is not counted as a read-ahead wait.
- * A start while running (lead-in included) is ignored by the hardware and flagged here. One element per request, and
+ * A start while running (lead-in included) is undefined behavior (v1.25, DECISIONS-v1.25 s8e): meshsim stops. One element per request, and
  * every visit takes one cycle whatever its read size (v1.1: a 128-bit element is one packet; v1.0 took two cycles).
  *
  * A run ends when the generator has walked its last entry, trailing count-0 streams and R = 0 groups included; the last
@@ -90,7 +90,7 @@ final class AddressGenerator implements Component {
     private void checkEntry(long t, long e0, long e1) {
         int m = Fields.sMode(e1), z = Fields.sSize(e1), d = Fields.sD(e1), ctr = Fields.sCounter(e1);
         if (m == LinkWord.M_GATHER && !gatherChecked) { gatherChecked = true; if (gatherAlign != null) gatherAlign.accept(t); }
-        if (LinkWord.reservedMode(m)) { modeViolations++; lastViolation = "stream with the reserved mode " + m + " (3.1, 4.2: modes 6-7; invariant 21)"; }
+        if (LinkWord.reservedMode(m)) throw new UndefinedBehavior(t, me, "address generator", "a stream in the reserved mode " + m + " (3.1: modes 6-7; DECISIONS-v1.25 s8e)");
         if (z == Fields.SIZE_UNDEF) { sizeViolations++; lastViolation = "stream with read size 11, undefined (3.1, 4.2)"; }
         if (m == LinkWord.M_AUG && z == Fields.SIZE_128) { aug128Violations++; lastViolation = "mode-3 stream with read size 128: its packets are bad packets (3.1, 4.2)"; }
         if (m == LinkWord.M_WRITE && !LinkWord.aligned(Fields.sDest(e0), z)) { alignViolations++; lastViolation = "mode-0 stream whose destination address 0x" + Integer.toHexString(Fields.sDest(e0)) + " is not aligned to its read size: its packets are bad packets (3.1, 4.2; invariant 20)"; }
@@ -130,14 +130,13 @@ final class AddressGenerator implements Component {
     @Override public void runCycle(long t) {
         if (pStart) {
             pStart = false;
-            if (running) { startsWhileRunning++; lastViolation = "a start while the address generator is running (its lead-in included): ignored (8.6; invariant 26)"; }
+            if (running) throw new UndefinedBehavior(t, me, "address generator", "a start while a run is running, its lead-in included (8.6; v1.2 ignored it; DECISIONS-v1.25 s8e)");
             else {
                 load(t); begin(t);
                 int size = kind == Fields.RUN_STREAMS ? 256 : 64;
-                if (runStart + runCount > size) {             // past the table's end: the numbers wrap (spec 8.5); meshsim flags it
-                    tableWraps++;
-                    lastViolation = "a " + (kind == Fields.RUN_STREAMS ? "stream" : "group") + " run past the table's end (start " + runStart + ", count " + runCount + " > " + size + "): the numbers wrap (spec 8.5)";
-                }
+                if (runStart + runCount > size)                // v1.25 (s8e): numbers past the table's end are UB (v1.2: they wrapped)
+                    throw new UndefinedBehavior(t, me, "address generator", "a " + (kind == Fields.RUN_STREAMS ? "stream" : "group") + " run past the table's end (start "
+                            + runStart + ", count " + runCount + " > " + size + "; spec 8.5)");
                 if (runCount == 0) { running = false; leadIn = false; done = true; doneAt = t; finishedIssuing = true; }   // count 0: ends at once, no requests (spec 8.5)
             }
         }

@@ -158,10 +158,8 @@ final class Tile implements Component {
     void setMasterConfig(int v) {
         masterConfig = v; ag.config(v);
         int bd = Fields.mcBucketDigit(v), hd = Fields.mcHistDigit(v);
-        if (bd > 4 || hd > 4) {                       // selectors 5-7 are reserved, treated as 0 (spec 4.15); meshsim flags them
-            reservedDigits++;
-            ctl.violate(-1, "DMA_CONFIG with a reserved digit selector (bucket " + bd + ", hist " + hd + "; 5-7 are reserved and treated as 0: spec 4.15)");
-        }
+        if (bd > 4 || hd > 4)                         // v1.25 (s8e): selectors 5-7 are UB (v1.2: treated as 0)
+            throw new UndefinedBehavior(chip != null ? chip.cycle : -1, idx, "DMA_CONFIG", "a reserved digit selector (bucket " + bd + ", hist " + hd + "; 5-7 are reserved: spec 4.15)");
         writer.bucketDigit = bd > 4 ? 0 : bd; writer.histDigit = hd > 4 ? 0 : hd;
         gather.k = Fields.mcK(v);
     }

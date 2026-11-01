@@ -94,7 +94,8 @@ final class TrafficDirector implements Component {
             violate("packet with size 11 (undefined, 3.1; invariant 5) arrived and was dropped: " + LinkWord.describe(d, h, hi));
             return;
         }
-        if (LinkWord.reservedMode(mode)) { reservedDiscarded++; violate("packet in the reserved mode " + mode + " discarded (3.1, invariant 21): " + LinkWord.describe(d, h, hi)); return; }
+        if (LinkWord.reservedMode(mode))                                     // v1.25 (s8e): UB (v1.2: discarded silently)
+            throw new UndefinedBehavior(t, me, "traffic director", "a packet in the reserved mode " + mode + " (3.1: modes 6-7): " + LinkWord.describe(d, h, hi));
         if (mode == LinkWord.M_COUNT && ctr == 0) violate("count-only packet on counter 0: it does nothing (3.1, invariant 21): " + LinkWord.describe(d, h, hi));
         if (ctr == 0 && mode != LinkWord.M_GATHER && mode != LinkWord.M_COUNT) checkUncounted(d, h, hi, mode, src, a);
         if (ctr == 0 && mode == LinkWord.M_WRITE && LinkWord.controller(src) && (LinkWord.region(a) == LinkWord.R_DMEM || LinkWord.region(a) == LinkWord.R_PMEM)) bootKinds(d, h, hi, a);

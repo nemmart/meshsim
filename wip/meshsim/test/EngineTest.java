@@ -203,13 +203,13 @@ public final class EngineTest {
         Net n = new Net(cfg(false)); Tile p = n.c.tiles[30];
         for (int i = 0; i < 64; i++) p.sram.poke64(2 * i, i);
         int[] counts = { 3, 0, 2, 0, 1 }, gaps = { 2, 3, 0, 1, 0 }; int src = 0;
-        for (int s = 0; s < 5; s++) { p.setStream(254 + s & 255, Fields.streamSrc(2 * src, gaps[s]), 0, Fields.streamCount(counts[s], Fields.SIZE_64, 1, LinkWord.M_SRC, 0)); src += counts[s]; }
-        p.setPtr(30, 0x20000); p.dir.remaining[1] = 6; streamRun(p, 254, 5, 0, 0);
+        for (int s = 0; s < 5; s++) { p.setStream(250 + s, Fields.streamSrc(2 * src, gaps[s]), 0, Fields.streamCount(counts[s], Fields.SIZE_64, 1, LinkWord.M_SRC, 0)); src += counts[s]; }
+        p.setPtr(30, 0x20000); p.dir.remaining[1] = 6; streamRun(p, 250, 5, 0, 0);       // v1.25: a run past the table's end is UB (AgTest)
         runLocal(n, 30);
         List<long[]> l = n.log(30);
         T.eq(6, l.size(), "six packets");
         long[] rel = new long[l.size()]; for (int i = 0; i < l.size(); i++) rel[i] = l.get(i)[0] - l.get(0)[0];
-        T.eqo("[0, 1, 2, 8, 9, 11]", Arrays.toString(rel), "issue cycles: 3 elements + gap 2, count 0 with gap 3, 2 elements, count 0 with gap 1, 1 element (streams 254, 255, 0, 1, 2)");
+        T.eqo("[0, 1, 2, 8, 9, 11]", Arrays.toString(rel), "issue cycles: 3 elements + gap 2, count 0 with gap 3, 2 elements, count 0 with gap 1, 1 element (streams 250-254)");
         for (int j = 0; j < 6; j++) T.eq(j, p.sram.peek64(0x20000 + 2 * j), "data " + j);
         // relative destinations: d = 5 from tile 30 reaches tile 35; d = 40 reaches tile 6
         p.setStream(10, Fields.streamSrc(0), 0, Fields.streamCount(2, Fields.SIZE_64, 1, LinkWord.M_SRC, 5));
@@ -220,8 +220,7 @@ public final class EngineTest {
         runLocal(n, 30);
         n.c.runUntil(() -> phaseDone(n.c, n.c.tiles[35]) && phaseDone(n.c, n.c.tiles[6]), 1000);
         T.eq(1, n.c.tiles[35].sram.peek64(0x30002), "d = 5 lands at tile 35"); T.eq(3, n.c.tiles[6].sram.peek64(0x30002), "d = 40 lands at tile 6 (30 + 40 mod 64)");
-        T.eq(1L, (long) n.c.violations, "the run past STREAM's end (254 + 5) wraps, and meshsim flags it once (spec 8.5)");
-        T.check(n.c.violationMessages.stream().allMatch(v -> v.contains("past the table's end")), "and nothing else: " + n.c.violationReport());
+        T.eq(0L, (long) n.c.violations, "no violation: " + n.c.violationReport());
         out("stream runs: a count-0 stream takes exactly its gap-after cycles and a stream its elements plus its gap (issue offsets 0, 1, 2, 8, 9, 11 for counts 3, 0, 2, 0, 1 and gaps 2, 3, 0, 1, 0, streams 254 to 2: the numbers wrap, flagged); relative destinations wrap mod 64 [meas: EngineTest stream runs]");
     }
 

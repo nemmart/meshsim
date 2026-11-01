@@ -24,7 +24,7 @@ final class RegDoc {
         row(Registers.STATUS, "0 (the idle machine)", "the live bits", "diagnostic: rd_running, rd_done, GATHER busy, send_busy, done, command landed, request_busy");
         row(Registers.ERRORS, "0", "the errors", "sticky until the reset; [13:11] live (the peripherals')");
         row(Registers.PULSE_DONE, "-", "0", "store 1: the done pulse (wait_for_command())");
-        row(Registers.PULSE_DMA, "-", "0", "store 1: start the run in DMA_CONFIG; clears EVENTS [10]; ignored while a run runs");
+        row(Registers.PULSE_DMA, "-", "0", "store 1: start the run in DMA_CONFIG; clears EVENTS [10]; a start while a run runs is undefined behavior (meshsim stops)");
         row(Registers.EVENTS, "0 (sticky events)", "every pending event; consumes the sticky ones under EVENTS_MASK", "the events");
         row(Registers.EVENTS_PEEK, "-", "what EVENTS would return; consumes nothing", "the same, for looking");
         row(Registers.EVENTS_MASK, "[8] | [7] = 0x180", "the mask", "the events that wake WFI on their own and that a load of EVENTS consumes");
@@ -45,7 +45,7 @@ final class RegDoc {
         row(Registers.REQUEST_GET_W1, "-", "its [63:32]; 0 when empty", "receive side");
         row(Registers.REQUEST_GET_W2, "-", "its [95:64]; 0 when empty", "receive side");
         row(Registers.REQUEST_RECEIVE, "-", "its [127:96], and pops it; empty: 0 and receive underflow (ERRORS [14])", "receive side");
-        row(Registers.DMA_CONFIG, "undefined (meshsim 0)", "what was stored", "the run, the bucket and histogram digits, k");
+        row(Registers.DMA_CONFIG, "undefined (meshsim 0)", "what was stored", "the run, the bucket and histogram digits (5-7 are undefined behavior), k; stream or group numbers past the table's end are undefined behavior");
         row(Registers.DMA_RECORD_BASE_ADDRESS, "undefined (meshsim 0)", "chunk address [20:0]", "the run's record buffer");
         for (int n = 1; n <= 7; n++) row(Registers.WRITE_COUNTER[n], "0", "the count [19:0]", "write counter " + n + ": a store adds N, N > 0 arms it");
         row(Registers.SRAM_RD_ADDR_QUEUE, "empty", "free entries (at least 64 when empty)", "store: queue a read at a chunk address [20:0], aligned to the size");
@@ -239,8 +239,8 @@ In C: `peripheral(n)->NAME` (`PeripheralStd`), `replayer->NAME`, `cc1->NAME`.
 | word | name | access | function |
 |---|---|---|---|
 """);
-        String[] sd = { "[7:0] type, [15:8] version", "[0] run in progress, [1] DMA in progress", "sticky until the reset", "store 1: start a run; ignored while one runs",
-                "store 1: start the DMA set up in DMA_HDR and DMA_ADDR", "a load returns the events and consumes one count from each set bit in EVENTS_MASK",
+        String[] sd = { "[7:0] type, [15:8] version", "[0] run in progress, [1] DMA in progress", "sticky until the reset", "store 1: start a run; a start while one runs is undefined behavior (meshsim stops)",
+                "store 1: start the DMA set up in DMA_HDR and DMA_ADDR; during a transfer, or naming a missing output queue, undefined behavior (meshsim stops)", "a load returns the events and consumes one count from each set bit in EVENTS_MASK",
                 "what a load of EVENTS would return", "the events that count: wake the unit's EVENTS bit, are consumed; 0 at reset",
                 "the DMA: count [11:0], queue [13:12], counter, mode, dst", "the DMA's 32-bit destination, advancing per packet" };
         for (int i = 0; i < Registers.STD_WORDS; i++) b.append(String.format("| %d | `%s` | %s | %s |%n", i, Registers.STD_WORD[i], acc(Registers.STD_ACCESS[i]), sd[i]));
@@ -288,7 +288,7 @@ size are 0. Every access is naturally aligned to its size.
 | 3 | `MODE_AUGMENT` | a 64-bit record at `PTR[src]`: the payload's low word and the ordinal (32 or 64 bits only) | by its counter field |
 | 4 | `MODE_GATHER` | a gather request, to the tile itself only; its counter field passes to the values | never |
 | 5 | `MODE_COUNT` | nothing written | by its counter field |
-| 6-7 | | reserved: discarded (meshsim flags them) | no |
+| 6-7 | | reserved: undefined behavior (meshsim stops) | no |
 
 **Bad packets** are dropped, uncounted, and set `ERRORS` [1]: a mode-0 packet not aligned to its size or for a region
 a packet can't reach (the boot ROM, 0x07-0xFF, an absent peripheral's), and a 128-bit mode 3. Counter field 0 is

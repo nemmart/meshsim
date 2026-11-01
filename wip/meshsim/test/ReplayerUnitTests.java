@@ -571,18 +571,19 @@ final class ReplayerUnitTests {
         long t = 0;
         // v1.2: byte offsets in region 0x04 (4.19.10); the part is offset [22:20]
         r.accept(t, 3, 0x0, LinkWord.SIZE_128, 0x1234, 0); r.runCycle(t++);
-        r.accept(t, 3, 0x0, LinkWord.SIZE_64, 1, 0); r.runCycle(t++);             // a 64-bit packet
-        r.accept(t, 3, 0x100000, LinkWord.SIZE_32, 1, 0); r.runCycle(t++);        // a queue takes 128 bits only
-        r.accept(t, 3, 0x800, LinkWord.SIZE_128, 1, 0); r.runCycle(t++);          // unmapped in part 0
-        r.accept(t, 3, 0x500000, LinkWord.SIZE_128, 1, 0); r.runCycle(t++);       // part 5: unmapped (v1.25 CL1: 1-4 the queues)
         for (int k = 0; k < 4; k++) r.runCycle(t++);
         T.eq(0x1234, r.region0[0], "the state word landed");
-        T.eq(4, r.condEvents[Replayer.ERR_BAD_WRITE], "four bad writes");
-        // v1.25 (DECISIONS-v1.25 s8b): a part-0 write off a 128-bit boundary is undefined behavior: meshsim stops
-        Replayer ru = new Replayer(0);
-        ru.accept(0, 3, 0x8, LinkWord.SIZE_128, 1, 1);
-        T.ub(() -> { for (long u = 0; u < 8; u++) ru.runCycle(u); }, "a part-0 write off a 128-bit boundary", "replayer", "part 0", "item 47");
-        T.eq(1 << Replayer.ERR_BAD_WRITE, r.errors(t), "ERRORS [0], bad write, sticky");
+        // v1.25 (DECISIONS-v1.25 s8e): a bad write is undefined behavior, meshsim stops (v1.2 dropped it, counted it and
+        // set ERRORS [0], now reserved); and (s8b) a part-0 write off a 128-bit boundary is UB too
+        Object[][] badw = { { 0x0, LinkWord.SIZE_64, "a 64-bit packet", "size 64" }, { 0x100000, LinkWord.SIZE_32, "a queue takes 128 bits only", "size 32" },
+                { 0x800, LinkWord.SIZE_128, "unmapped in part 0", "unmapped" }, { 0x500000, LinkWord.SIZE_128, "part 5 (v1.25 CL1: 1-4 the queues)", "unmapped" },
+                { 0x700000, LinkWord.SIZE_128, "part 7", "unmapped" }, { 0x8, LinkWord.SIZE_128, "part 0 off a 128-bit boundary", "item 47" } };
+        for (Object[] bw : badw) {
+            Replayer rb = new Replayer(0);
+            rb.accept(0, 3, (int) bw[0], (int) bw[1], 1, 1);
+            T.ub(() -> { for (long u = 0; u < 8; u++) rb.runCycle(u); }, "a bad write: " + bw[2], "replayer", (String) bw[3]);
+        }
+        T.eq(0, r.errors(t), "ERRORS [0] is reserved: never set");
         T.eq(1, r.landed(2), "landed(t): a packet accepted at t − 2");
         T.eq(0, r.landed(101), "no packet");
         r.region0[0] = 0;
@@ -591,37 +592,35 @@ final class ReplayerUnitTests {
         T.eq(0, r.region0[0], "not landed at t + 1");
         r.runCycle(t++); r.runCycle(t++);
         T.eq(0x99, r.region0[0], "landed by t + 3 (at the end of t + 2)");
-        // ownership: running → region 0 and the table are bad writes, the ROM isn't
-        ReplayWindow w = programWindow(false, false, false, true);
-        ReplayDriver d = new ReplayDriver(w); d.r.rowsPerPass = 25; d.load();
-        d.r.run(d.t); d.step(); d.step();
-        long bad0 = d.r.condEvents[Replayer.ERR_BAD_WRITE];
-        d.r.accept(d.t, 3, 0x0, LinkWord.SIZE_128, 5, 5); d.step();
-        d.r.accept(d.t, 3, 0x1000, LinkWord.SIZE_128, 5, 5); d.step();
-        d.r.accept(d.t, 3, 0x2000 + 16 * 500, LinkWord.SIZE_128, 7, 7); d.step();
-        for (int k = 0; k < 4; k++) d.step();
-        T.eq(bad0 + 2, d.r.condEvents[Replayer.ERR_BAD_WRITE], "running: the state word and the decode table are bad writes");
-        T.eq(7, d.r.romLo[500], "running: the ROM takes writes (its second port)");
-        // HALT
-        d.r.setHalted(d.t, true); d.step();
-        T.check(!d.r.running(d.t), "HALT: periph_running 0");
-        T.eq(0, d.r.events().value(d.t), "HALT: no event");
-        long bad1 = d.r.condEvents[Replayer.ERR_BAD_WRITE];
-        d.r.accept(d.t, 3, 0x100000, LinkWord.SIZE_128, 1, 1); d.step();
-        d.r.accept(d.t, 3, 0x0, LinkWord.SIZE_128, 0xAB, 0); d.step();
-        for (int k = 0; k < 4; k++) d.step();
-        T.eq(bad1 + 1, d.r.condEvents[Replayer.ERR_BAD_WRITE], "HALT: a queue push is a bad write");
-        T.eq(0xAB, d.r.region0[0], "HALT: region 0 takes a boot load");
+        // ownership: running → region 0 and the table are single-ported, so a write during a pass is a bad write, UB
+        // (v1.25, s8e); the ROM isn't (its second port)
+        for (int at : new int[] { 0x0, 0x1000 }) {
+            ReplayWindow w = programWindow(false, false, false, true);
+            ReplayDriver d = new ReplayDriver(w); d.r.rowsPerPass = 25; d.load();
+            d.r.run(d.t); d.step(); d.step();
+            d.r.accept(d.t, 3, 0x2000 + 16 * 500, LinkWord.SIZE_128, 7, 7); d.step();
+            for (int k = 0; k < 4; k++) d.step();
+            T.eq(7, d.r.romLo[500], "running: the ROM takes writes (its second port)");
+            d.r.accept(d.t, 3, at, LinkWord.SIZE_128, 5, 5);
+            T.ub(() -> { for (int k = 0; k < 6; k++) d.step(); }, "running: " + (at == 0 ? "the state word" : "the decode table") + " written during a pass", "replayer", "while a pass runs");
+        }
+        // v1.25 (DECISIONS-v1.25 s8e): PULSE_RUN while a pass runs is undefined behavior (v1.2 ignored it)
+        {
+            ReplayWindow w = programWindow(false, false, false, true);
+            ReplayDriver d = new ReplayDriver(w); d.r.rowsPerPass = 25; d.load();
+            d.r.run(d.t); d.step(); d.step();
+            T.check(d.r.running(d.t), "a pass runs");
+            T.ub(() -> d.r.run(d.t), "PULSE_RUN while a pass runs", "replayer", "PULSE_RUN while a pass runs");
+        }
         // one part per queue (v1.25, CL1): offset [22:20] alone names it, anywhere in its 1 MB
         Replayer r3 = new Replayer(0); long t3 = 0;
         int[] at = { 0x100000, 0x1FFFF0, 0x200000, 0x280000, 0x2FFFF0, 0x300000, 0x3ABCD0, 0x400000, 0x4FFFF0, 0x5FFFF0, 0x700000 };
-        for (int a : at) { r3.accept(t3, 3, a, LinkWord.SIZE_128, a, 0); r3.runCycle(t3++); }
+        for (int a : at) if (a < 0x500000) { r3.accept(t3, 3, a, LinkWord.SIZE_128, a, 0); r3.runCycle(t3++); }
         for (int k = 0; k < 4; k++) r3.runCycle(t3++);
         T.eq(2, r3.code.occ, "part 1 (0x100000-0x1FFFFF): the code queue");
         T.eq(3, r3.rlog.occ, "part 2 (0x200000-0x2FFFFF): the read-log queue, 0x280000 included");
         T.eq(2, r3.wlog.occ, "part 3 (0x300000-0x3FFFFF): the write-log queue");
         T.eq(2, r3.exp.occ, "part 4 (0x400000-0x4FFFFF): the expansion queue");
-        T.eq(2, r3.condEvents[Replayer.ERR_BAD_WRITE], "parts 5 and 7: unmapped, bad writes");
         T.eq(0x280000L, r3.rlog.lo[(r3.rlog.head + 1) % 512], "0x280000 went to the read log, in order");
         T.eq(0x400000L, r3.exp.lo[r3.exp.head], "0x400000 went to the expansion queue");
         // overrun
@@ -631,7 +630,7 @@ final class ReplayerUnitTests {
         T.eq(1, r2.condEvents[Replayer.ERR_OVERRUN], "queue overrun on the 257th push");
         T.eq(1 << Replayer.ERR_OVERRUN, r2.errors(t2), "ERRORS [1], queue overrun");
         T.eq(256, r2.code.occ, "256 entries held");
-        T.eq(0, r2.condEvents[Replayer.ERR_BAD_WRITE], "a push while stopped is accepted (no condition)");
+        T.eq(1 << Replayer.ERR_OVERRUN, r2.errors(t2), "a push while stopped is accepted: only the overrun is set");
     }
 
     // ================================================================ events and credits (4.19.8, 4.19.9, 4.17.3)

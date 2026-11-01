@@ -53,7 +53,7 @@ offset below is the address's low 12 bits). In C: `tile->NAME` (`TileRegs`, `mes
 | `0x804` | `STATUS` | R | 0 (the idle machine) | the live bits | diagnostic: rd_running, rd_done, GATHER busy, send_busy, done, command landed, request_busy |
 | `0x808` | `ERRORS` | R | 0 | the errors | sticky until the reset; [13:11] live (the peripherals') |
 | `0x80C` | `PULSE_DONE` | W | - | 0 | store 1: the done pulse (wait_for_command()) |
-| `0x810` | `PULSE_DMA` | W | - | 0 | store 1: start the run in DMA_CONFIG; clears EVENTS [10]; ignored while a run runs |
+| `0x810` | `PULSE_DMA` | W | - | 0 | store 1: start the run in DMA_CONFIG; clears EVENTS [10]; a start while a run runs is undefined behavior (meshsim stops) |
 | `0x814` | reserved (was `PULSE_GO`, now C&C 1's peripheral) | | | 0 | |
 | `0x818` | `EVENTS` | R | 0 (sticky events) | every pending event; consumes the sticky ones under EVENTS_MASK | the events |
 | `0x81C` | `EVENTS_PEEK` | R | - | what EVENTS would return; consumes nothing | the same, for looking |
@@ -75,7 +75,7 @@ offset below is the address's low 12 bits). In C: `tile->NAME` (`TileRegs`, `mes
 | `0x84C (load)` | `REQUEST_GET_W1` | R | - | its [63:32]; 0 when empty | receive side |
 | `0x850 (load)` | `REQUEST_GET_W2` | R | - | its [95:64]; 0 when empty | receive side |
 | `0x854 (load)` | `REQUEST_RECEIVE` | R | - | its [127:96], and pops it; empty: 0 and receive underflow (ERRORS [14]) | receive side |
-| `0x858` | `DMA_CONFIG` | R/W | undefined (meshsim 0) | what was stored | the run, the bucket and histogram digits, k |
+| `0x858` | `DMA_CONFIG` | R/W | undefined (meshsim 0) | what was stored | the run, the bucket and histogram digits (5-7 are undefined behavior), k; stream or group numbers past the table's end are undefined behavior |
 | `0x85C` | `DMA_RECORD_BASE_ADDRESS` | R/W | undefined (meshsim 0) | chunk address [20:0] | the run's record buffer |
 | `0x860` | `WRITE_COUNTER_1` | R/W | 0 | the count [19:0] | write counter 1: a store adds N, N > 0 arms it |
 | `0x864` | `WRITE_COUNTER_2` | R/W | 0 | the count [19:0] | write counter 2: a store adds N, N > 0 arms it |
@@ -228,8 +228,8 @@ In C: `peripheral(n)->NAME` (`PeripheralStd`), `replayer->NAME`, `cc1->NAME`.
 | 0 | `PARAMS` | R | [7:0] type, [15:8] version |
 | 1 | `STATUS` | R | [0] run in progress, [1] DMA in progress |
 | 2 | `ERRORS` | R | sticky until the reset |
-| 3 | `PULSE_RUN` | W | store 1: start a run; ignored while one runs |
-| 4 | `PULSE_DMA` | W | store 1: start the DMA set up in DMA_HDR and DMA_ADDR |
+| 3 | `PULSE_RUN` | W | store 1: start a run; a start while one runs is undefined behavior (meshsim stops) |
+| 4 | `PULSE_DMA` | W | store 1: start the DMA set up in DMA_HDR and DMA_ADDR; during a transfer, or naming a missing output queue, undefined behavior (meshsim stops) |
 | 5 | `EVENTS` | R | a load returns the events and consumes one count from each set bit in EVENTS_MASK |
 | 6 | `EVENTS_PEEK` | R | what a load of EVENTS would return |
 | 7 | `EVENTS_MASK` | R/W | the events that count: wake the unit's EVENTS bit, are consumed; 0 at reset |
@@ -272,7 +272,7 @@ size are 0. Every access is naturally aligned to its size.
 | 3 | `MODE_AUGMENT` | a 64-bit record at `PTR[src]`: the payload's low word and the ordinal (32 or 64 bits only) | by its counter field |
 | 4 | `MODE_GATHER` | a gather request, to the tile itself only; its counter field passes to the values | never |
 | 5 | `MODE_COUNT` | nothing written | by its counter field |
-| 6-7 | | reserved: discarded (meshsim flags them) | no |
+| 6-7 | | reserved: undefined behavior (meshsim stops) | no |
 
 **Bad packets** are dropped, uncounted, and set `ERRORS` [1]: a mode-0 packet not aligned to its size or for a region
 a packet can't reach (the boot ROM, 0x07-0xFF, an absent peripheral's), and a 128-bit mode 3. Counter field 0 is

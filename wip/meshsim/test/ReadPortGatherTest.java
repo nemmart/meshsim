@@ -286,37 +286,30 @@ public final class ReadPortGatherTest {
         T.group("reserved streams");
         Chip c = new Chip(cfg());
         Tile p = c.tiles[3];
-        p.setStream(0, Fields.streamSrc(0x1000), 0, Fields.streamCount(1, Fields.SIZE_32, 1, 6, 1));            // mode 6: reserved
-        p.setStream(1, Fields.streamSrc(0x1000), 0, Fields.streamCount(1, Fields.SIZE_UNDEF, 1, LinkWord.M_SRC, 1));
-        p.setStream(2, Fields.streamSrc(0x1000), 0, Fields.streamCount(0, Fields.SIZE_64, 1, 7, 1));            // mode 7, count 0
-        p.setStream(3, Fields.streamSrc(0x1000), 0, Fields.streamCount(1, Fields.SIZE_128, 1, LinkWord.M_AUG, 1));   // mode 3 at 128
-        p.setStream(4, Fields.streamSrc(0x1000), 0x0200, Fields.streamCount(1, Fields.SIZE_64, 2, LinkWord.M_WRITE, 1));   // mode 0 at 0x200 (fine)
-        EngineTest.streamRun(p, 0, 5, 0, 0);
+        p.setStream(0, Fields.streamSrc(0x1000), 0, Fields.streamCount(1, Fields.SIZE_UNDEF, 1, LinkWord.M_SRC, 1));
+        p.setStream(1, Fields.streamSrc(0x1000), 0, Fields.streamCount(1, Fields.SIZE_128, 1, LinkWord.M_AUG, 1));   // mode 3 at 128
+        p.setStream(2, Fields.streamSrc(0x1000), 0x0200, Fields.streamCount(1, Fields.SIZE_64, 2, LinkWord.M_WRITE, 1));   // mode 0 at 0x200 (fine)
+        EngineTest.streamRun(p, 0, 3, 0, 0);
         c.tiles[4].dir.remaining[1] = 1; c.tiles[4].dir.remaining[2] = 1; c.tiles[4].setPtr(3, 0x40000);
         p.pulse(Fields.PULSE_START);
         c.run(100);
         T.eq(1L, p.ag.sizeViolations, "a stream with read size 11 (undefined): reported");
-        for (int code : new int[] { 6, 7 })
-            T.check(c.violationMessages.stream().anyMatch(v -> v.contains("tile 3") && v.contains("reserved mode " + code)), "STREAM mode " + code + " rejected (4.2)" + (code == 7 ? ", even at count 0" : ""));
-        T.eq(2L, p.ag.modeViolations, "two reserved modes, one report each");
         T.eq(1L, p.ag.aug128Violations, "a mode-3 stream at read size 128: reported (4.2)");
         T.eq(1, c.tiles[4].dir.droppedBad, "the 128-bit mode-3 packet is dropped at its director (a bad packet)");
-        T.eq(1L, c.tiles[4].dir.reservedDiscarded, "the mode-6 packet is discarded silently at its director");
         T.eq(1L, c.tiles[4].dir.undefinedSize, "the size-11 packet: flagged and dropped at the director (meshsim's choice)");
         T.check((c.tiles[4].conditions() & (1 << Conditions.BAD_MODE_OR_SIZE)) != 0, "and the bad packet sets ERRORS [1]");
         T.eq(0, c.tiles[4].dir.remaining[2], "the good mode-0 packet landed and counted");
-        // a group run reports a reserved mode on every visit of the stream, idle or not
-        Chip c2 = new Chip(cfg());
-        Tile q = c2.tiles[3];
-        q.setStream(0, Fields.streamSrc(0x1000), 0, Fields.streamCount(2, Fields.SIZE_64, 1, LinkWord.M_SRC, 1));
-        q.setStream(1, Fields.streamSrc(0x2000), 0, Fields.streamCount(0, Fields.SIZE_64, 1, 7, 2));     // mode 7, idle
-        q.setGroup(0, Fields.groupLo(2), Fields.groupHi(0, 2, 0));
-        c2.tiles[4].dir.remaining[1] = 2; c2.tiles[4].setPtr(3, 0x40000);
-        q.setMasterConfig(Fields.masterConfig(Fields.RUN_GROUPS, 0, 1, 0, 0, 1));
-        q.pulse(Fields.PULSE_START);
-        c2.run(100);
-        T.eq(2L, q.ag.modeViolations, "group run: mode 7 reported on both of its visits (R = 2)");
-        T.eq(2L, c2.tiles[4].writer.taken, "the valid stream's two packets still land");
+        // v1.25 (DECISIONS-v1.25 s8e): the reserved modes 6-7 are undefined behavior: a stream in one stops meshsim at the
+        // address generator, even at count 0 and on an idle group visit (v1.2 flagged it and sent the packet, which its
+        // director discarded)
+        for (int[] e : new int[][] { { 6, 1, Fields.RUN_STREAMS }, { 7, 0, Fields.RUN_STREAMS }, { 7, 0, Fields.RUN_GROUPS } }) {
+            Chip cr = new Chip(cfg()); Tile q = cr.tiles[3];
+            q.setStream(0, Fields.streamSrc(0x1000), 0, Fields.streamCount(e[1], Fields.SIZE_64, 1, e[0], 1));
+            if (e[2] == Fields.RUN_GROUPS) { q.setGroup(0, Fields.groupLo(2), Fields.groupHi(0, 1, 0)); q.setMasterConfig(Fields.masterConfig(Fields.RUN_GROUPS, 0, 1, 0, 0, 1)); }
+            else EngineTest.streamRun(q, 0, 1, 0, 0);
+            q.pulse(Fields.PULSE_START);
+            T.ub(() -> cr.run(100), "a stream in mode " + e[0] + " at count " + e[1] + (e[2] == Fields.RUN_GROUPS ? " in a group run" : ""), "tile 3", "address generator", "reserved mode " + e[0]);
+        }
     }
 
     static long[] gatherRun(int k, int N, StringBuilder sb) {

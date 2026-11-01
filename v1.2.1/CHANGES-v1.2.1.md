@@ -2,7 +2,7 @@
 
 **Tony's copy** is the v1.2 spec as he took it: tag `v1.2-tony`, folder `v1.2_wip/` (also kept as `v1.2/` on `main`).
 **v1.2.1** is this folder: the same spec with the fixes made while the v1.2 simulator was built (F1–F4), the errata found
-since (E1–E9) and two cleanups that change the spec (CL1, CL2), with meshsim and the software kept in line. The errata
+since (E1–E11) and two cleanups that change the spec (CL1, CL2), with meshsim and the software kept in line. The errata
 themselves, as an answer to "what's wrong in my copy", are in `v1.2/ERRATA.md`.
 
 ## The diff
@@ -27,14 +27,16 @@ specified elsewhere in Tony's copy is unchanged; *no*, a reference or the change
 | 4.8 the traffic director, K | no (note) | F2 | one K for every destination, deliberately; the read-port search cost measured |
 | 4.8 the traffic director, the tables | yes | F1 (D45) | of the table memories only `HIST` is loadable through the table window |
 | 4.11 the controller, CSRs | note only | E9 (D48, CL5) | `mtime`'s rate is implementation-defined; software bounds its waits with `mcycle` |
+| 4.12 the events, the wait helpers | note only | E10 (D45) | the helpers' load of `EVENTS` costs 2 cycles, as every register-block load (was "1 or 2") |
 | 4.17.1 the peripherals and their types | yes | E1 (D46) | the types listed: 0 none, 1 Ingress/Egress, 2 Updater/Binder/RW, 3 Tracer, **4 the replayer**; none open |
 | 4.17.4 the standard window | yes | F3 (D46) | the peripheral-type paragraph (`PARAMS` [7:0]) |
 | 4.17.4 the standard window | note only | E9 (D48, CL5) | a peripheral without a DMA reads words 8–9 (`DMA_HDR`, `DMA_ADDR`) as 0, a load not flagged, a store flagged; word 4 stays reserved. In hardware these read 0 like any reserved word: the change is meshsim's flag |
-| 4.19 the replayer | yes | F3 | heading: peripheral type 4 |
+| 4.19 the replayer | yes | F3; E1 | heading: peripheral type 4 (F3); the intro's "peripheral 1, type 1" → type 4 (E1) |
 | 4.19.1 overview, the memories | note only | E8 (CL2) | decode table "built as 256 × 128" |
 | 4.19.9 the words, v1.2 against v1.1 | yes | F3 (`76c02f6`) | `PARAMS` [7:0] = type 4 |
 | 4.19.10 the replayer's map | **yes** | E7 (CL1) | **one 1 MB part per queue: 1 code (0x100000), 2 read log (0x200000), 3 write log (0x300000, was 0x280000), 4 expansion (0x400000, was 0x300000), 5–7 unmapped**; offset bits [22:20] alone name the destination (no bit-19 split) |
 | 4.19.10 the replayer's map | note only | E8 (CL2) | implementation note: the decode table built as 256 × 128 bits, one row per packet, a lookup selecting 16 bits by *e* & 7 |
+| 4.19.11 the replayer's errors | no (editorial) | E11 | a duplicated sentence ("the other two ... leave the replayer running") deleted |
 | 5 timing summary, write counters | yes | F4 | K implementation-defined; meshsim's formula 2L + 4 |
 | 5 timing summary, controller | yes | F1 (D45) | loads from the register block and the peripheral windows 2 cycles, from the table window 1 (was "1 or 2, fixed per register") |
 | 8.1 general rules, timing | note only | E2 (D45) | the general rule restated as 4.11 and F1 have it (2 cycles block and windows, 1 table window and memories) |
@@ -63,5 +65,6 @@ specified elsewhere in Tony's copy is unchanged; *no*, a reference or the change
 
 ## Verification
 
-Quest task 088 (branch `v1.2.1` at `090fc40`): run_tests.sh's quick suite, its full extras with the sort's BT pair, and the
-full-size sort p4/uniform-k128 at 64 × 65,536. Results in `WORKER15/REPORT.md`.
+Quest task 088 (branch `v1.2.1` at `090fc40`) **passed**: run_tests.sh's quick suite 34/34, its full extras 10/10 (with
+the sort's BT pair), and the full-size sort p4/uniform-k128 at 64 × 65,536 (1,360,082 cycles, as task 086). E1's intro, E10
+and E11 came after it and change spec text only. Details in `WORKER15/REPORT.md`.

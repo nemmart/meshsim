@@ -6,12 +6,12 @@ with the diff commands at the top (`git diff v1.2-tony:v1.2_wip/spec/machine-spe
 
 ## What changed
 
-**The spec** (`v1.2.1/spec/machine-spec.md`, 25 hunks in 15 sections against `v1.2-tony`):
+**The spec** (`v1.2.1/spec/machine-spec.md` against `v1.2-tony`; every hunk is in the changelog by section):
 - **F1–F4**, already in the folder when v1.2.1 began: the load latencies, one K for every destination, the peripheral types,
   K's formula and K implementation-defined.
-- **E1–E3, E5, E6** were ported from WORKER10's wip fixes, taking only `machine-spec.md`'s v1.2 hunks, never v1.25's
-  replayer changes. They cover 4.17.1's types, 8.1's load rule, item 111 superseded, item 134's notes in sections 11 and 12,
-  and the K row's 4.8.
+- **E1–E3, E5, E6, E10, E11** were ported from WORKER10's wip fixes, taking only `machine-spec.md`'s v1.2 hunks, never v1.25's
+  replayer changes. They cover 4.17.1's types and 4.19's intro (type 4), 8.1's load rule and 4.12's `EVENTS` load (2 cycles),
+  item 111 superseded, item 134's notes in sections 11 and 12, the K row's 4.8, and 4.19.11's duplicated sentence.
 - **E7 (CL1)**: the replayer's map in 4.19.10 is one 1 MB part per queue (1 code, 2 read log, 3 write log at 0x300000,
   4 expansion at 0x400000), with a paragraph stating the old layout.
 - **E8 (CL2)**: the decode table's 256 × 128 note, in 4.19.10, 4.19.1 and the parameters.
@@ -27,7 +27,7 @@ with the diff commands at the top (`git diff v1.2-tony:v1.2_wip/spec/machine-spe
 - StageB now fails a starved window in seconds instead of hanging.
 - Section 14's measured figures are in the recipe template, so the book regenerates byte for byte.
 
-**`v1.2/ERRATA.md`:** E1–E9 are marked fixed in v1.2.1, each with its commit, and there is an empty "Found after v1.2.1" section.
+**`v1.2/ERRATA.md`:** E1–E11 are marked fixed in v1.2.1, each with its commit, and there is an empty "Found after v1.2.1" section.
 
 ## Verification
 
@@ -49,7 +49,20 @@ CL4 it hung.
 changes; the sort image, boot ROM and hops.txt are byte-identical to 077/086's. The kit was smoke-tested from a fresh
 unpack: 7 quick steps passed, and the sort at n = 2,000 ran in 246,447 cycles.
 
-**Result:** *(pending)*
+**Result: passed** (run on the runner, 16 threads, 14 minutes):
+- the quick suite, 34 of 34 steps (ReplayerTest 1195/0, StageB synthetic 18/0, RecipeTest 2042/0, RegDocTest 269/0 among
+  them);
+- the full extras, 10 of 10;
+- p4/uniform-k128 at 64 × 65,536, sorted and checked in 1,360,082 cycles, identical to task 086's (the sort doesn't touch
+  the replayer, and its inputs are byte-identical).
+
+E1's intro fix, E10 and E11 came after 088 and change spec text only. No code has changed since `090fc40`.
+
+## Ready to merge
+
+Yes: `v1.2.1` is ready to merge. It is merged with main up to `c2de4ae`, with no conflicts left. The integrator's steps
+after the merge are tagging `v1.2.1` (the changelog's diff commands name the tag) and pointing Tony at
+`v1.2/ERRATA.md` and `v1.2.1/CHANGES-v1.2.1.md`.
 
 ## Left over
 

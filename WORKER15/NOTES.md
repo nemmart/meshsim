@@ -40,4 +40,8 @@ too (header_diff.py stays strict); one runner task (quick + full extras + full-s
 - [x] Quest 088 claimed (NUMBERS 146be82) and pushed (39ab0e9): tasks/088-w15-v121-verify.sh, branch at 090fc40
 - [x] v1.2.1/CHANGES-v1.2.1.md (25 spec hunks by section, RTL yes/note/no, F/E/CL source; sim/sw table)
 - [x] v1.2/ERRATA.md: E1-E9 marked fixed in v1.2.1 with commits; "Found after v1.2.1" section
-- [ ] 088's result -> REPORT.md
+- [x] 088 passed (quick 34/34, full 10/10, p4/uniform-k128 1,360,082 cycles = 086) -> REPORT
+## 2026-11-01 (later): WORKER13's errata from main c2de4ae
+- merged main (ERRATA conflict: took main's, re-applied the marks); E1 also 4.19's intro ("peripheral 1, type 4"), E10 4.12's
+  EVENTS load 2 cycles, E11 4.19.11's duplicated sentence: 69570b6, wording from wip. ERRATA E1-E11 marked; changelog rows
+  for 4.12, 4.19, 4.19.11. NEXT.md (the same request) removed. **Done: ready to merge.**

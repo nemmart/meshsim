@@ -8,12 +8,12 @@ For the RTL engineer of the mesh. This guide covers two upgrade paths to **v1.25
 It is organized **by hardware unit**. Each unit's section lists everything that changed in that unit since v1.1, and where v1.25 revised a v1.2 change, it gives the final state.
 
 **Sources.**
-- **The authority is `spec/machine-spec.md` v1.25** (with `spec/replayer-opcodes.md`). This guide matches **spec commit `d590722`** (2026-11-01: `wip/spec/machine-spec.md`, `replayer-opcodes.md` and `CHANGES-v1.25.md` as of that commit, with CL1, CL2, CL5, CL6 and DECISIONS-v1.25 section 8 in). A later spec change to the hardware needs an entry here.
+- **The authority is `spec/machine-spec.md` v1.25** (with `spec/replayer-opcodes.md`). This guide matches **spec commit `b7c90fb`** (2026-11-01: `wip/spec/machine-spec.md`, `replayer-opcodes.md` and `CHANGES-v1.25.md` as of that commit, with CL1, CL2, CL5, CL6 and DECISIONS-v1.25 sections 8 and 9 in). A later spec change to the hardware needs an entry here.
 - It folds together `CHANGES-v1.2.md` (v1.1 → v1.2) and `CHANGES-v1.25.md` (v1.2 → v1.25).
 - It was checked against all three specs (`v1.1/`, `v1.2/`, `wip/`).
 - It cites `v1.2/ERRATA.md` (**E*n***) where an entry corrects frozen v1.2's text.
 - It folds in the cleanups of `planning/CLEANUP.md` (**CL*n***), each with its step.
-- It folds in section 8's package of `DECISIONS-v1.25.md` (**V8a**–**V8e**): the principle, misalignment as UB, the gather unit, the 256-byte boot ROM, and further outcomes made UB.
+- It folds in section 8's package of `DECISIONS-v1.25.md` (**V8a**–**V8e**): the principle, misalignment as UB, the gather unit, the 256-byte boot ROM, and further outcomes made UB; and section 9 (**V9**): the expansion word's tracer-only fields reserved.
 - It adds the differences neither change document lists. These are marked **[not in CHANGES]**, and section 5 collects them.
 - Decisions are cited as **D*n*** (`planning/DECISIONS-v1.2.md` section *n*), **V*n*** (`planning/DECISIONS-v1.25.md` section *n*), **O** (an owner's ruling) and **W*n*-*nn*** (a review finding).
 
@@ -121,7 +121,7 @@ The replayer (spec 4.19) and what follows from it, **and section 8's package** (
 - **Three opcodes removed:** `VirtualAlignAddr`, `VirtualAssertHalfwordAlignment` and `VirtualAssertWordAlignment`.
 - **`VirtualShiftData…` changes:** rs2 is now the base register, the lane comes from rs2 + `shift_offset`, and the row's immediate is `shift_offset`.
 - **`VirtualHostIO` has no operands** and is never remapped.
-- **The expansion word gains bits:** `offset_imm` [63] and `sign_imm` [62]. `advice_reg` narrows to [61:56], stored as register − 146.
+- **The expansion word gains bits:** `offset_imm` [63] and `sign_imm` [62]. **The tracer-only fields `untraced` [55] and `advice_reg` are reserved, [61:55] = 0** (V9): advice now comes from the host in the read log (DECISIONS-v1.3 section 13), so no tracer word needs them. A word with any of them set is UB.
 - **The output row** gains `imm_signed` (word 0 [86]). `mem_addr` and `mem_value` are formed for all eight memory opcodes.
 - **`VirtualPext` / `VirtualPextSigned`** are correct for **any** mask, and a zero mask gives 0. Full speed is promised for contiguous masks only.
 - **The replayer executes 88 opcodes** (was 85).
@@ -471,10 +471,10 @@ R19's behaviour didn't change in v1.2 (only its wording), so it is step **v1.25*
 |---|---|---|---|---|---|
 | R20 | reference: jolt-asic-planning PR #1, `4f36b3d` | **jolt-cpp `821e1bd`** (PR #2, `tracer-standalone-main`); workloads EVM Zone `evm-zone-4e3451c1d8c5` and Cyclone, both 2²⁹ rows (4.19.1) | changed | v1.25 | V1, V2 |
 | R21 | expansion word [63] spare | **[63] `offset_imm`**: when set, a `VirtualShiftData…` row's `shift_offset` is the source instruction's immediate (code 132's value), else 0; set on no other row; the replayer ignores it elsewhere (4.19.3) | new | v1.25 | V4, V7 (Q3) |
-| R22 | [62:56] `advice_reg` (Tracer only) | **[62] `sign_imm`**: the row's immediate is signed (Jolt's 128-bit `imm()` is the 64-bit immediate sign- or zero-extended); the replayer computes nothing from it and reports it in the row. **[61:56] `advice_reg`**, now register − 146 (bank-1 registers 146–209) (4.19.3) | changed | v1.25 | V4, V5 (Q5) |
+| R22 | [62:56] `advice_reg` (Tracer only); [55] `untraced` (Tracer only) | **[62] `sign_imm`**: the row's immediate is signed (Jolt's 128-bit `imm()` is the 64-bit immediate sign- or zero-extended); the replayer computes nothing from it and reports it in the row. **[61:55] reserved, 0**: `untraced` and `advice_reg` are gone; a word with any of them set is UB (meshsim stops); an untraced word is no longer an invalid expansion (4.19.3, 4.19.11) | changed | v1.25 | V4, V5 (Q5), V9 |
 | R23 | `opcode` [7:0] 0–167 | **0–170** (171 opcodes) (4.19.3) | changed | v1.25 | V1 |
 | R24 | the row's immediate = the sum of its immediate slots | the same, **except a `VirtualShiftData…` row, whose immediate is its `shift_offset`** (4.19.3) | changed | v1.25 | V1, V4 |
-| R25 | operand codes 146–255 reserved (invalid expansion) | still an invalid expansion in a replayer (the Tracer uses them for bank-1 registers) (4.19.3) | — | — | wording only |
+| R25 | operand codes 146–255 reserved (invalid expansion) | still an invalid expansion (4.19.3); v1.25 no longer gives them a Tracer use (V9) | — | — | wording only |
 | R26 | **row opcode codes** (v1.1 = v1.2) | **renumbered** (4.19.7; appendix section 2.0): 0–109 unchanged; v1.2's 110–111 → +6; **112–113 removed**; 114–153 → +4; **154 removed**; 155–167 → +3; **110–115 new**. **61 row opcodes change** (52 renumbered, 3 removed, 6 new). The ALU decodes these numbers: **every hard-wired opcode compare above 109 must be redone**. Full list in section 3.9 | changed | v1.25 | V1 (fixed in spec `0b4ba20`) |
 | R27 | — | **`VirtualLoadB/H/W` (110–112)**: class L load rows, rd = the read-log word (the whole doubleword). **`VirtualStoreB/H/W` (113–115)**: class L store rows, the write-log word is the pre-value, rd is an immediate slot holding the access's immediate. Address = rs1 + imm with its low bits cleared for the width: *a* − (*a* & (8 − *width*)) (4.19.7, 4.19.12) | new | v1.25 | V1 |
 | R28 | `VirtualAlignAddr` (154), `VirtualAssertHalfwordAlignment` (112), `VirtualAssertWordAlignment` (113) | removed: jolt-cpp aborts on a misaligned access, so no trace has a misaligned memory row; the replayer doesn't check (meshsim flags one) (4.19.7) | removed | v1.25 | V1, V7 (Q4) |
@@ -741,8 +741,9 @@ The decode table is built naturally as 256 × 128 (R42, CL2).
 | [7:0] `opcode` | 0–167 | = v1.1 | **0–170, renumbered** (3.9) |
 | [15:8], [23:16], [31:24] `rd`, `rs1`, `rs2` operand codes | | = | = (146–255 invalid in a replayer) |
 | [43:32] `seq_remaining` | | = | = |
-| [44] `next_from_value`, [45] `hold`, [47:46] `rd0`, [50:48] `format`, [51] `virt`, [52] `imm0_pc0`, [53] `report_c`, [54] `from_log`, [55] `untraced` | | = | = |
-| [62:56] | `advice_reg` (tracer only) | = | **[61:56] `advice_reg`** (register − 146) |
+| [44] `next_from_value`, [45] `hold`, [47:46] `rd0`, [50:48] `format`, [51] `virt`, [52] `imm0_pc0`, [53] `report_c`, [54] `from_log` | | = | = |
+| [55] | `untraced` (tracer only) | = | **reserved, 0** (V9; set is UB) |
+| [62:56] | `advice_reg` (tracer only) | = | **[61:56] reserved, 0** (V9; set is UB) |
 | [62] | (part of `advice_reg`) | = | **`sign_imm`** |
 | [63] | spare | = | **`offset_imm`** |
 
@@ -793,7 +794,7 @@ The complete map, generated from the two appendices, is also in `WORKER13/opcode
 | `run_latency` | as GO | gone | = | v1.2 |
 | C&C receive FIFO | ≥ 64 entries | gone | = | v1.2 |
 | write counters | four, 20 bits | **seven**, 20 bits; counter field 3 bits | = | v1.2 |
-| boot ROM | — | every controller, region 0x02, a few dozen bytes | **256 bytes (64 words)**: path 30, two-report handler, about 49 used | both |
+| boot ROM | — | every controller, region 0x02, a few dozen bytes | **256 bytes (64 words)**: path 30, two-report handler, 48 used | both |
 | watchdog | (C&C software) | `WATCHDOG` in C&C 1's peripheral, core cycles | = | v1.2 |
 | request bus queues | 16 × 128 bits in every tile; credits 16 | 128 / 256 / 128 at the root for C&C 1 / 2 / 3; credits = depth; limits 1 / 3 / 1 | = | v1.2 |
 | request FIFO | 2 KB per tile | 2 KB per unit | = | — |
@@ -899,7 +900,7 @@ meshsim checks invariants 19–26 and these:
 | `VirtualPext` with a zero mask: undefined at v1.2, **0** at v1.25 | v1.25 | R31 |
 | the template index's 16-byte entry format (key, offset, length, `rd0`, class); software only | v1.25 | R41 |
 
-**Section 8's package (`DECISIONS-v1.25.md` section 8), step v1.25.** These are in `CHANGES-v1.25.md`, listed here because they revise v1.2 entries a v1.1 reader would otherwise take as final.
+**Section 8's package and section 9 (`DECISIONS-v1.25.md`), step v1.25.** These are in `CHANGES-v1.25.md`, listed here because they revise v1.2 entries a v1.1 reader would otherwise take as final.
 
 | item | what it changes for the RTL | entries |
 |---|---|---|
@@ -908,6 +909,7 @@ meshsim checks invariants 19–26 and these:
 | V8c, the gather unit | **adds** the even-*k* 128-bit read and packet path; packets per value drive the counter | T19, T20, 3.5, 4.1 |
 | V8d, the boot ROM | **256 bytes**; the ROM's handler sends a two-report dump, sequence numbers 24 and 25 | K7, C33, 4.1 |
 | V8e, more UB | **removes** the replayer's bad-write error (`ERRORS` [0] reserved), "dropped, still counted" for refused peripheral writes, digit 5–7 as 0, table wrap, modes 6–7's discard, and the ignored starts and pulses; **keeps** the overrun check, without the counted promise | L5, P8, R4, R10, R11, T44, T45, C39, 3.3, 3.8, 4.3 |
+| V9, the tracer-only fields | **removes** `untraced` [55] and `advice_reg` [61:56] (reserved, 0; set is UB) and the "untraced word" invalid expansion; the RTL builds neither | R22, R25, 1.2, 3.8 |
 | open | item 142, whether the region-decode bad packet stays; Q12, whether reserved words reading 0 is free (kept only if so); whether the overrun's push is counted | L7, C9, R10 |
 
 **The cleanups (`planning/CLEANUP.md`).**

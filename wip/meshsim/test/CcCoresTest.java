@@ -7,7 +7,9 @@ import java.util.List;
  *  - the boot ROM's branch for 64-66 (6.2 step 4): each controller waits in its ROM; the harness lands a program and its
  *    first command through the host port (W14-02); the ROM jumps; the program reads PARAMS' id and exits with it;
  *  - the link (W14-01): C&C 1's send port writes into a tile's data memory through tile 0's fifth port;
- *  - the request tree: C&C 2's request reaches target 0 stamped with requestor 65; C&C 1's request port reads it.
+ *  - the request tree: C&C 2's request reaches target 0 stamped with requestor 65; C&C 1's request port reads it;
+ *  - the controllers' boot (6.2) with the firmware (sw/cc/): C&C 1 boots C&C 2 and C&C 3, takes their "started"
+ *    requests, boots the tiles with READY/GO, then runs phases on the harness's commands; against the Java model.
  */
 final class CcCoresTest {
     static long shuffle = -1;
@@ -16,6 +18,7 @@ final class CcCoresTest {
         if (a.length > 0) shuffle = Long.parseLong(a[0]);
         switchOff();
         romBranch();
+        bootTiles();
         System.exit(T.done("CcCoresTest" + (shuffle >= 0 ? " (shuffled, seed " + shuffle + ")" : "")));
     }
 
@@ -96,5 +99,45 @@ final class CcCoresTest {
         T.check(c.tiles[0].core.inWfi && (c.tiles[0].core.pc & 0xFF000000) == Registers.BOOTROM_BASE, "tile 0 still in its ROM");
         T.eq(0, c.violations, "violations");
         if (c.violations != 0) System.out.print(c.violationReport());
+    }
+
+    /** Run the harness's next C&C 1 command and wait until C&C 1 has completed it (its mailbox), so the next command
+     *  never lands before C&C 1 has read this one. */
+    static boolean cc1Step(Mach m, Runnable cmd, long max) {
+        int k = m.mbox(0); cmd.run();
+        return m.run(() -> m.mbox(0) > k, max);
+    }
+
+    static void bootTiles() {
+        T.group("the controllers' boot and phases (sw/cc)");
+        // the Java model: the same tile program and phases
+        Mach j = new Mach(Mach.cfg(shuffle));
+        j.boot("cmd");
+        j.c.cc.command(LinkWord.BROADCAST, 1 << 24 | 5, 7).go().command(LinkWord.BROADCAST, 1 << 24 | 10, 1).go().command(LinkWord.BROADCAST, 4 << 24).go();
+        T.check(j.run(j::allExited, 20000), "the model: every tile ran the three phases and exited");
+        long modelRunning = 0; for (Tile p : j.c.tiles) modelRunning = Math.max(modelRunning, p.core.firstImageAt);
+        // the cores
+        Mach m = new Mach(Mach.coresCfg(shuffle));
+        m.bootCores("cmd");
+        CcCores k = m.c.cores;
+        T.check(m.run(m::coresBooted, 20000), "C&C 1 booted C&C 2, C&C 3 and the tiles: " + m.haltSummary());
+        T.eq(65, m.mbox(4), "the first \"started\" request came from C&C 2");
+        T.eq(66, m.mbox(5), "the second from C&C 3");
+        for (int cc = 1; cc < 3; cc++) T.check(k.unit(cc).core.firstImageAt > 0 && k.unit(cc).core.peekLocal(m.cc23.sym("mbox")) != 0, "C&C " + (cc + 1) + " runs its image and sent \"started\"");
+        long running = 0; for (Tile p : m.c.tiles) running = Math.max(running, p.core.firstImageAt);
+        T.check(m.run(() -> { for (Tile p : m.c.tiles) if (p.core.firstImageAt < 0) return false; return true; }, 2000), "every tile runs its image");
+        running = 0; for (Tile p : m.c.tiles) running = Math.max(running, p.core.firstImageAt);
+        System.out.printf("  boot, reset release -> all 64 tiles running 'cmd': cores %d cycles (C&C 1 running at %d, C&C 2/3 started by %d), the Java model %d%n",
+                running, k.unit(0).core.firstImageAt, Math.max(k.unit(1).core.firstImageAt, k.unit(2).core.firstImageAt), modelRunning);
+        T.check(cc1Step(m, () -> m.phase(1 << 24 | 5, 7), 20000), "phase 1 through C&C 1");
+        T.check(cc1Step(m, () -> m.phase(1 << 24 | 10, 1), 20000), "phase 2 through C&C 1");
+        T.check(cc1Step(m, () -> m.phase(4 << 24), 20000), "phase 3 (exit) through C&C 1");
+        T.check(m.run(m::allExited, 20000), "every tile ran the three phases and exited: " + m.haltSummary());
+        int bad = 0; for (int i = 0; i < 64; i++) if (m.exitValue(i) != 23 || m.exitValue(i) != j.exitValue(i)) bad++;
+        T.eq(0, bad, "every tile's sum (5 + 7 + 10 + 1) as under the Java model");
+        T.eq(4, m.c.cc1p.gos, "four GOs: the boot's and three phases'");
+        T.eq(0, m.c.violations, "violations");
+        if (m.c.violations != 0) System.out.print(m.c.violationReport());
+        T.eq(0, j.c.violations, "the model: violations");
     }
 }

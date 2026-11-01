@@ -37,6 +37,7 @@ LOG=searchbench TAIL=3 run "search steps through the read port (microbenchmark, 
 LOG=rdport-shuf TAIL=1 run "shuffled child order (seed 4)" $J ReadPortGatherTest 4
 LOG=agtest    TAIL=1 run "address generator read-ahead, figure 12's PTR/HIST ports" $J AgTest -1
 LOG=agtest-shuf TAIL=1 run "shuffled child order (seed 4)"   $J AgTest 4
+LOG=cc-build  TAIL=2 run "building the controllers' firmware (sw/build_cc.sh: sw/cc/cc1.c, cc23.c; WORKER14)" sh sw/build_cc.sh
 LOG=recipes-build TAIL=1 run "building the v1.2 recipes (sw/build_recipes.sh: wip/sw/recipes/, unedited)" sh sw/build_recipes.sh
 LOG=recipes   TAIL=2 run "the v1.2 recipes as suites, and the book's code blocks against their sources" $J RecipeTest -1
 LOG=recipes-shuf TAIL=1 run "shuffled child order (seed 4)"    $J RecipeTest 4

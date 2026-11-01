@@ -14,7 +14,7 @@ gets a few hook calls into a new `CcCores` class, beside WORKER11's `Chip.parked
 | 0 | branch, toolchain, the quick-suite baseline, these notes, QUESTIONS.md | done |
 | 1 | the three controller tiles (ids 64-66, their peripherals' presence and types), the controller router and its link to tiles 0-2; the boot ROM's 64-66 branch runs with the harness landing a command | done (turn 1): CcCoresTest |
 | 2 | `Cnc1Peripheral` in C&C 1's slot (READY/GO, error lines, watchdog, toast, UART); stub engines for C&C 2/3; controllers on the request tree, C&C 1's request port reading target 0; C&C 2/3's error lines | wired in turn 1 (the request path tested); the peripheral's paths are tested with the firmware (phases 3-4) |
-| 3 | firmware (`sw/cc/`): C&C 1 boots C&C 2/3, waits for "started", boots the tiles, then a phase loop on harness commands; C&C 2/3 start-up and "started"; `Mach.bootCores()`; the boot test | |
+| 3 | firmware (`sw/cc/`): C&C 1 boots C&C 2/3, waits for "started", boots the tiles, then a phase loop on harness commands; C&C 2/3 start-up and "started"; `Mach.bootCores()`; the boot test | done (turn 2): CcCoresTest's boot and phases against the model |
 | 4 | `rcp_cc1.c` run on C&C 1 (RecipeTest's cc1 driver); the error path end to end | |
 | 5 | measurements (boot vs the model's 120 cycles; a phase vs the model); full suites with the switch off on the runner; REPORT.md | |
 
@@ -46,3 +46,16 @@ sort 104 (140 s); sort-shuf 104.
     1's own ERRORS latch the toast pin); `Chip` (seven hook lines, beside `parked`).
   - With the switch off: 15 quick steps rerun after the change (bus, net, mem, engine, ctrl, riscv, accounting, agtest,
     recipes, cond, regdoc, hooks, periph, reqbus, replayer), counts equal to the baseline. The rest at phase 5.
+- Turn 2: merged main (b060637: CL1's queue map, D48; no conflict, nothing in my files). Phase 3.
+  - `sw/cc/cc1.c` (C&C 1: the boot, recipe 22's way; then CC_PHASE / CC_GO / CC_EXPECT / CC_EXIT from the harness,
+    a mailbox), `sw/cc/cc23.c` (C&C 2 and 3: "started", then a stub request loop), `sw/build_cc.sh` (the recipes'
+    crt0.S and handler.S, recipes.ld, the generated mesh.h; in run_tests.sh before the recipes' build).
+  - `Mach.bootCores(tile)`: stages C&C 2/3's and the tile image in C&C 1's big SRAM (back door, W14-03), fills C&C 1's
+    `boot_desc` in its data image, lands C&C 1's image and CMD_JUMP through the host port; `phase()`, `cc1Command()`,
+    `mbox()`.
+  - CcCoresTest's boot: 34 checks, plain and shuffled; the `cmd` program's three phases give every tile the model's sum.
+  - First boot measurement (`cmd`, 64 tiles): 782 cycles from reset release to all 64 running with C&C 1 as a core,
+    against the model's 83 (C&C 1 itself running at 157: the host lands its 2 KB image at a packet a cycle; C&C 2/3
+    started by 499). The first version took 1,376: crt0 zeroing a 64-word parity array and a 64-pass parity loop
+    (now a bitmask in .data), three put_command round trips (now one counter wait), and C&C 2 and C&C 3 booted in
+    two runs (now one). Phase 5 measures it properly, with `rcp_boot` against the model's 120.

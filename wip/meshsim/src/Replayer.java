@@ -17,8 +17,12 @@ import java.util.function.Consumer;
  * doubleword); the expansion word's offset_imm [63] (a ShiftData row's shift_offset is the source immediate) and
  * sign_imm [62] (carried into the record, word 0 [86], Proposed); PEXT for any mask; the write log's last-load entry
  * fed by every load row; misaligned memory rows flagged (jolt-cpp aborts on them). The decode table's class 3 is an
- * invalid instruction (universal tables: encodings that aren't valid RV64IMAC). seq_remaining counts traced words, and a
- * replayer only ever sees traced words, so the model needs no change for it.
+ * invalid instruction (universal tables: encodings that aren't valid RV64IMAC). seq_remaining and the controller-fed
+ * length count words.
+ *
+ * <p>v1.25 section 9 (DECISIONS-v1.25 s9): the expansion word's [61:55] (v1.25's untraced [55] and advice_reg [61:56])
+ * are reserved; a word with one set is undefined behavior (meshsim stops). HALT is gone from the spec, and with it the
+ * replayer's halt input (setHalted), its "PULSE_RUN in HALT" flag and its queue-port-in-HALT bad write.
  *
  * <h3>What is modelled</h3>
  * The mode-9 write port (4.19.10: the map, the sizes, ownership, rp_latency, counting); the four queues as true FIFOs
@@ -26,7 +30,7 @@ import java.util.function.Consumer;
  * entry (4.19.15); the decode index, the decode table and the ROM (4.19.5, 4.19.6); the rd = x0 policy and the
  * temporary offset (4.19.4); the register file, the fixed 3- and 5-cycle row schedules (4.19.7); pc and instr_idx;
  * the 80-byte record (4.19.12) into a 32-row output queue drained by a sink (one row per cycle by default); the six
- * service lines and two status registers (4.19.9); run, done, halt and conditions 11-13 (4.19.11).
+ * service lines and two status registers (4.19.9); run, done and conditions 11-13 (4.19.11).
  *
  * <h3>Model choices the spec leaves open</h3> (each is listed in REPLAYER-NOTES.md)
  * <ul>
@@ -80,7 +84,7 @@ final class Replayer implements Peripheral {
     final ExpQueue exp = new ExpQueue();
 
     // ================================================================ core state
-    private boolean running, halted;
+    private boolean running;
     private long[] regs = new long[128];
     private long pc; private int instrIdx;
     private boolean fCode, fRlog, fWlog, fStore;       // latched per run: compressed flags, includes store log
@@ -134,7 +138,7 @@ final class Replayer implements Peripheral {
 
     // ================================================================ inputs, deferred to the end of their cycle
     private record Input(long t, int kind, int a, int b, int c, long lo, long hi) {}
-    private static final int IN_CLAIM = 1, IN_RUN = 2, IN_HALT = 3;
+    private static final int IN_CLAIM = 1, IN_RUN = 2;
     private final ArrayDeque<Input> inputs = new ArrayDeque<>();
     private final ArrayDeque<Input> landing = new ArrayDeque<>();      // accepted packets; kind = src, a = addr, b = size
     private final long[] acceptTimes = new long[8];
@@ -165,7 +169,6 @@ final class Replayer implements Peripheral {
         stopCore(t, false); expDiscard = 0; newExpSetAt = Long.MIN_VALUE; doneSetAt = Long.MIN_VALUE; ev.clearAll();
         code.clear(); rlog.clear(); wlog.clear(); exp.reset(); java.util.Arrays.fill(condEvents, 0); outQ.clear(); outAt.clear();
     }
-    void setHalted(long t, boolean h) { noteInput(t); inputs.add(new Input(t, IN_HALT, h ? 1 : 0, 0, 0, 0, 0)); }
 
     int landed(long t) {
         for (int i = 0; i < Math.min(acceptN, 8); i++) if (acceptTimes[(acceptN - 1 - i) & 7] == t - RP_LATENCY) return 1;
@@ -191,7 +194,7 @@ final class Replayer implements Peripheral {
 
     /**
      * Bring the state to the start of cycle T: apply every input and landing of earlier cycles (end-of-cycle effects,
-     * in the order landings, claims, runs, halts within one cycle), then take the snapshot that reads at T return.
+     * in the order landings, claims, runs within one cycle), then take the snapshot that reads at T return.
      */
     private void settle(long T) {
         if (T <= settled) return;
@@ -204,7 +207,6 @@ final class Replayer implements Peripheral {
             Input in = inputs.poll();
             switch (in.kind()) {
                 case IN_RUN -> doRun(in.t());
-                case IN_HALT -> doHalt(in.t(), in.a() != 0);
                 default -> throw new IllegalStateException();
             }
         }
@@ -222,9 +224,8 @@ final class Replayer implements Peripheral {
     }
     private int stoppedOffset;                         // the next offset when the pass ended (a window ending mid-expansion)
 
-    // ================================================================ run, halt (end of their cycle)
+    // ================================================================ run (end of its cycle); v1.25: HALT is gone from the spec
     private void doRun(long t) {
-        if (halted) { violate(t, "PERIPH_RUN in HALT: ignored"); return; }
         if (running) throw new UndefinedBehavior(t, me, "replayer", "PULSE_RUN while a pass runs (4.17.2; v1.2 ignored it; DECISIONS-v1.25 s8e)");
         for (Input p : landing) if (p.t() >= t && queueOf(p.a()) != null)
             violate(t, "a pass started with a queue push still in flight (4.19.8's software rule; invariant 16): packet landing at " + p.t());
@@ -246,15 +247,8 @@ final class Replayer implements Peripheral {
         passStartAt = t; passes++;
     }
 
-    private void doHalt(long t, boolean h) {
-        if (h == halted) return;
-        halted = h;
-        if (h) { stopCore(t, false); expDiscard = 0; }
-        newExpSetAt = Long.MIN_VALUE; doneSetAt = Long.MIN_VALUE; ev.clearAll();
-        code.clear(); rlog.clear(); wlog.clear(); exp.reset();
-    }
 
-    /** The pass ends: periph_running falls; done is posted unless a halt stopped it (4.19.11, 4.17.7). */
+    /** The pass ends: periph_running falls; done is posted (4.19.11, 4.17.7). */
     private void stopCore(long t, boolean postDone) {
         if (running) { passEndAt = t; stoppedOffset = nextOffset(); }   // PERIPH_STATUS_0 keeps the next offset after the pass
         running = false; inflight = null; cur = null; nxt = null;
@@ -299,7 +293,6 @@ final class Replayer implements Peripheral {
             } else bad(t, "unmapped address 0x" + Integer.toHexString(addr));
             return;
         }
-        if (halted) { bad(t, "queue port written in HALT"); return; }
         int qi = w - 1;                                              // parts 1-4: code, read log, write log, expansion
         if (running) {
             if (srcOf[qi] >= 0 && srcOf[qi] != src)
@@ -456,11 +449,14 @@ final class Replayer implements Peripheral {
         int seqRem = (int) (lo >>> 32) & 0xFFF;
         boolean nfv = ((lo >>> 44) & 1) != 0, hold = ((lo >>> 45) & 1) != 0, virt = ((lo >>> 51) & 1) != 0;
         boolean imm0pc0 = ((lo >>> 52) & 1) != 0, reportC = ((lo >>> 53) & 1) != 0, fromLog = ((lo >>> 54) & 1) != 0;
-        boolean untraced = ((lo >>> 55) & 1) != 0;
         boolean signImm = ((lo >>> 62) & 1) != 0, offsetImm = ((lo >>> 63) & 1) != 0;   // v1.25 (DECISIONS-v1.25 s4, s5)
         int format = (int) (lo >>> 48) & 7, rd0w = (int) (lo >>> 46) & 3;
         // checks (4.19.11, condition 13)
-        if (untraced) { invalid(T, "an untraced expansion word reached the replayer"); return; }
+        // v1.25 (DECISIONS-v1.25 s9): [61:55] are reserved (untraced and advice_reg are gone: the Tracer's templates are the
+        // replayer's). A word with one set comes from our own table builder, so it is undefined behavior: meshsim stops.
+        if (((lo >>> 55) & 0x7F) != 0)
+            throw new UndefinedBehavior(T, me, "replayer", String.format("an expansion word with reserved bits [61:55] = 0x%x (%s): lo 0x%016x",
+                    (lo >>> 55) & 0x7F, in.kind == K_CTRL ? "controller-fed" : "ROM", lo));
         if (!ReplayerAlu.executes(op)) { invalid(T, "opcode " + op + " (" + ReplayerAlu.name(op) + ") is not executed by the replayer"); return; }
         if (cRd >= 146 || cRs1 >= 146 || cRs2 >= 146) { invalid(T, "a reserved operand code (146-255)"); return; }
         if (format >= 6) { invalid(T, "format " + format); return; }

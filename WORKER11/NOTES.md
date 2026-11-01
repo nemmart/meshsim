@@ -105,3 +105,5 @@ acceptance kit). Until WORKER10's `v1.25` spec branch exists, the design is DECI
   reserved modes 6-7 (streams and packets), a start while the AG runs. Queue overrun stays checked. Tests reworked
   (Replayer, Ag, Engine, Net, ReadPortGather, PeripheralSlot, Hooks). Whole quick suite passed locally (in chunks).
 - Quest 090 was WORKER14's; claimed 091 (quest 8c48e99): quick + full extras, kit 6e432423...
+- Section 9 on branch s9 (from main 668d0a8): reserved [61:55] UB; HALT plumbing removed; wip/tables/tracer removed;
+  builder on jolt-asic-planning branch w11-section9 (be4cdac). REPORT section 10 lists remaining references.

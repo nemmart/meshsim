@@ -326,18 +326,16 @@ public final class NetTest {
         n.at(5, t++, 9, LinkWord.M_COUNT, 4, 0, LinkWord.SIZE_32, 0, 0);       // count only: nothing written, counter 4
         n.at(5, t++, 9, 6, 1, 0, LinkWord.SIZE_32, 0xFFFFL, 0);                 // mode 6: discarded, no count, no error
         // bad packets: dropped, uncounted, ERRORS [1]
-        n.at(5, t++, 9, LinkWord.M_WRITE, 2, 0x00000404, LinkWord.SIZE_64, 0xD1L, 0);   // misaligned
         n.at(5, t++, 9, LinkWord.M_WRITE, 2, 0x02000000, LinkWord.SIZE_32, 0xD2L, 0);   // the boot ROM
         n.at(5, t++, 9, LinkWord.M_WRITE, 2, 0xFFFFF800, LinkWord.SIZE_32, 0xD3L, 0);   // region 0xFF
         n.at(5, t++, 9, LinkWord.M_WRITE, 2, 0x04000000, LinkWord.SIZE_32, 0xD4L, 0);   // peripheral 1, absent on this tile
         n.at(5, t++, 9, LinkWord.M_AUG, 1, 0, LinkWord.SIZE_128, 0xD5L, 0);             // mode 3 at 128 bits
-        n.at(5, t++, 9, LinkWord.M_WRITE, 1, LinkWord.sramAddr(0x102), LinkWord.SIZE_128, 0xD6L, 0);   // big SRAM, 128 bits at chunk 2 of a row
         // a command from C&C 1: an argument (slot 3), then slot 0; uncounted mode 0
         n.cncSends.add(new long[] { T0, 9, LinkWord.M_WRITE, CMD + 12, 0xCAFE0003L, LinkWord.SIZE_32, 0, 0 });
         n.cncSends.add(new long[] { T0 + 1, 9, LinkWord.M_WRITE, CMD, 0x0000C0DEL, LinkWord.SIZE_32, 0, 0 });
         T.check(n.runAll(300), "drained");
-        T.eq(6, d.droppedBad, "six bad packets dropped: misaligned, boot ROM, region 0xFF, absent peripheral, mode 3 at 128, misaligned big SRAM");
-        T.check((r.conditions() & (1 << Conditions.BAD_MODE_OR_SIZE)) != 0, "ERRORS [1], bad packet or misaligned access (v1.1's bit " + Conditions.BAD_MODE_OR_SIZE + ")");
+        T.eq(4, d.droppedBad, "four bad packets dropped: boot ROM, region 0xFF, absent peripheral, mode 3 at 128 (v1.25: misalignment is UB, below)");
+        T.check((r.conditions() & (1 << Conditions.BAD_MODE_OR_SIZE)) != 0, "ERRORS [1], bad packet (v1.1's bit " + Conditions.BAD_MODE_OR_SIZE + ")");
         T.eq(1, r.gatherStub.log.size(), "mode 4 -> GATHER queue");
         T.eq(4, r.writer.log.size(), "modes 1, 0 (big SRAM), 2 and 3 -> write engine");
         if (r.writer.log.size() == 4) { T.eq(LinkWord.M_SRC, LinkWord.mode(r.writer.log.get(0)[2]), "mode 1 first"); T.eq(LinkWord.M_WRITE, LinkWord.mode(r.writer.log.get(1)[2]), "mode 0 second");
@@ -354,12 +352,12 @@ public final class NetTest {
         T.check(m.landedAt >= 0, "a write covering slot 0 sets command landed"); T.eq(0x0000C0DE, m.dmem.peek(ControllerMemories.CMD_DWORD), "slot 0 word");
         long[] pm = d.perMode;
         T.eq(1, pm[LinkWord.M_SRC], "accepted mode 1 once"); T.eq(1, pm[LinkWord.M_BUCKET], "mode 2 once"); T.eq(2, pm[LinkWord.M_AUG], "mode 3 twice (one bad)");
-        T.eq(1, pm[LinkWord.M_GATHER], "mode 4 once"); T.eq(1, pm[LinkWord.M_COUNT], "mode 5 once"); T.eq(1, pm[6], "mode 6 once"); T.eq(13, pm[LinkWord.M_WRITE], "mode 0: 6 good, 5 bad, 2 commands");
+        T.eq(1, pm[LinkWord.M_GATHER], "mode 4 once"); T.eq(1, pm[LinkWord.M_COUNT], "mode 5 once"); T.eq(1, pm[6], "mode 6 once"); T.eq(11, pm[LinkWord.M_WRITE], "mode 0: 6 good, 3 bad, 2 commands (v1.25: the misaligned two are UB, directorMisaligned)");
         for (int c = 1; c <= 4; c++) T.eq(0, d.remaining[c], "WRITE_COUNTER_" + c + " counted down to 0");
         T.eq(1L, d.countOnly, "the count-only packet wrote nothing and counted"); T.eq(1L, d.reservedDiscarded, "mode 6 discarded");
         T.eq(0, r.conditions() & (1 << Conditions.UNEXPECTED), "no unexpected arrival (mode 4 and mode 6 aren't counted; bad packets aren't)");
         // violations: 6 bad packets at the director, 5 of them also at the sender (an absent peripheral is the receiver's to judge), mode 6 at both
-        T.eq(13, n.c.violations, "13 violations: bad packets (invariant 5) and mode 6 (invariant 21): " + n.c.violationReport());
+        T.eq(9, n.c.violations, "9 violations: bad packets (invariant 5, twice each) and mode 6 (invariant 21): " + n.c.violationReport());
         // the delay line (4.8): a packet accepted at t decrements its counter at t + K
         d.remaining[1] = 1;
         long acc0 = d.accepted;
@@ -445,6 +443,18 @@ public final class NetTest {
         out("director: each mode and region to its unit (bad packets dropped with ERRORS [1]); counters by the counter field, decremented K = " + k.K
                 + " cycles after acceptance; unexpected arrival at the decrement, the stray named at acceptance; a reply accepted at t is written at port B at t + " + (written - accept)
                 + " (cm_latency " + k.cmLatency + ") [meas: NetTest director]");
+    }
+
+    /** v1.25 (DECISIONS-v1.25 s8b): a mode-0 packet misaligned to its size is undefined behavior: the director stops meshsim. */
+    static void directorMisaligned() {
+        T.group("director: misaligned mode 0 is UB");
+        Config k = Net.cfg(shuffle); k.periphType = 0;
+        Net a = new Net(k);
+        a.at(5, 20, 9, LinkWord.M_WRITE, 2, 0x00000404, LinkWord.SIZE_64, 0xD1L, 0);
+        T.ub(() -> a.runAll(300), "a 64-bit write to data memory at 0x404", "tile 9", "traffic director", "0x404", "64 bits");
+        Net b = new Net(k);
+        b.at(5, 20, 9, LinkWord.M_WRITE, 1, LinkWord.sramAddr(0x102), LinkWord.SIZE_128, 0xD6L, 0);
+        T.ub(() -> b.runAll(300), "a 128-bit write to big SRAM at chunk 2 of a row", "tile 9", "traffic director", "128 bits");
     }
 
     // ------------------------------------------------------------------ the injection point

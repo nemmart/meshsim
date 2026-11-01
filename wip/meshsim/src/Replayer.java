@@ -283,7 +283,7 @@ final class Replayer implements Peripheral {
         if (w >= 5) { bad(t, "unmapped address 0x" + Integer.toHexString(addr)); return; }
         if (size != LinkWord.SIZE_128) { bad(t, "size " + (32 << size) + " at 0x" + Integer.toHexString(addr) + ": only 128-bit packets"); return; }
         if (w == 0) {
-            if ((addr & 3) != 0) { bad(t, "128-bit write in window 0 off a multiple of 4: 0x" + Integer.toHexString(addr)); return; }
+            if ((addr & 3) != 0) throw new UndefinedBehavior(t, me, "replayer", "a 128-bit write to part 0 off a 128-bit boundary: word address 0x" + Integer.toHexString(addr) + " (item 47)");
             int wd = addr >>> 2;                                     // 128-bit word index in window 0
             if (wd < 66) {
                 if (running) { bad(t, "region 0 written while a pass runs"); return; }

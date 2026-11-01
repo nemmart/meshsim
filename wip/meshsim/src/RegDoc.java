@@ -92,7 +92,8 @@ An address is an 8-bit region [31:24] and a 24-bit byte offset [23:0] (2.2). A C
         b.append("""
 
 **Access rules** (4.11, 8.1):
-- **Bus errors** (`ERRORS` [9]): a store to program memory or the boot ROM; a misaligned access; an unmapped address,
+- **Misaligned loads and stores are undefined behavior** (v1.25): the hardware does nothing special; meshsim stops.
+- **Bus errors** (`ERRORS` [9]): a store to program memory or the boot ROM; an unmapped address,
   an absent peripheral's window included; a sub-word access to the block, a window or the table window; a store to a
   read-only register; a load from `PTR`, the `STREAM` arrays or `GROUP`.
 - **Write-only registers read 0.** The request port's four words are the exception: a load reads the receive side.
@@ -139,7 +140,7 @@ Any non-zero bit raises the unit's hard interrupt and its error line (4.13). In 
 """);
         String[] en = { "ERR_ROUTER_OVF", "ERR_BAD_PACKET", "ERR_UNEXPECTED", "ERR_DRIFT", "ERR_WE_IN_OVF", "ERR_TABLE_OVF", "ERR_GATHER_OVF",
                 "ERR_READ_PORT", "ERR_DONE_EARLY", "ERR_BUS", "ERR_ILLEGAL", "ERR_PERIPH(1)", "ERR_PERIPH(2)", "ERR_PERIPH(3)", "ERR_RECV_UNDERFLOW" };
-        String[] ed = { "router overflow: a link, eject or fifth-port FIFO overflowed", "bad packet or misaligned access: a bad packet dropped, a write through a misaligned `PTR` dropped (still counted), or a misaligned read not performed (payload 0)",
+        String[] ed = { "router overflow: a link, eject or fifth-port FIFO overflowed", "bad packet: a packet to a region it can't reach, or mode 3 at 128 bits, dropped uncounted (v1.25: misalignment is undefined behavior; meshsim stops)",
                 "unexpected arrival: a decrement found its counter at 0", "drift: in a group run the SRAM read queue refused the address generator",
                 "write-engine input overflow", "table request overflow (a hardware fault)", "GATHER queue overflow (a hardware fault)",
                 "read-port error: a `SRAM_RD_ADDR_QUEUE` store with no free entry (the read is dropped)", "done early: `done` with a write counter non-zero",
@@ -212,7 +213,7 @@ counter at 0 means everything it counted is in place.
 A store to `SRAM_RD_ADDR_QUEUE` queues a read of 32, 64 or 128 bits at a chunk address aligned to the size, with
 `SRAM_RD_DEST_ADDR`'s destination (a data-memory byte offset [16:0]), size [18:17] and counter [21:19]; the
 destination then advances by the size in bytes. Each result lands as a mode-0 packet to the tile itself, counted on
-that counter. A misaligned read isn't performed (its result lands as 0, `ERRORS` [1]); a store with no free entry is
+that counter. A misaligned read is undefined behavior (v1.25; meshsim stops); a store with no free entry is
 dropped (`ERRORS` [7]). `RD_DEST(byte_off, size, ctr)` builds the setup word.
 
 ### 2.8 The request port

@@ -81,22 +81,18 @@ public final class ReadPortGatherTest {
                     tl + "SRAM_RD_DEST_ADDR reads the next destination, advanced by the size in bytes, with the size and counter");
             boolean w64 = true, w128 = true;
             for (int i = 0; i < 16; i++) if (m.word(p.idx, im, "wide", i) != (p.idx << 20 | 0x100 + i)) w64 = false;
-            for (int i = p.idx == 6 ? 4 : 0; i < 16; i++) if (m.word(p.idx, im, "wide", 16 + i) != (p.idx << 20 | 0x200 + i)) w128 = false;   // tile 6 reuses wide[16..19]
+            for (int i = 0; i < 16; i++) if (m.word(p.idx, im, "wide", 16 + i) != (p.idx << 20 | 0x200 + i)) w128 = false;
             T.check(w64, tl + "8 64-bit reads: two words each, at the destination + 8 i bytes");
             T.check(w128, tl + "4 128-bit reads: four words each, at the destination + 16 i bytes");
         }
-        // v1.2 (4.3, D32): a misaligned read is not performed, its result lands with payload 0, ERRORS [1]
-        T.eq(1 << Conditions.BAD_MODE_OR_SIZE, m.word(6, im, "r", 4), "tile 6: a misaligned 128-bit read set ERRORS [1], and only it");
-        T.eq(1L, m.c.tiles[6].srq.misalignedReads, "tile 6: one misaligned read not performed");
-        T.eq(0, m.word(6, im, "r", 7), "tile 6: its result landed as 0 (counted)");
+        // v1.25: a misaligned read is undefined behavior (DECISIONS-v1.25 s8b), tested in MemTest
         Tile t7 = m.c.tiles[7];
         T.eq(1 << Conditions.READ_PORT, m.word(7, im, "r", 4), "tile 7: the 65th store into a full queue set the read-port-error condition, and only it");
         T.eq(1, t7.readPort.overflows, "tile 7: one read dropped");
-        T.check(m.c.violationMessages.size() == 2 && m.c.violationMessages.stream().anyMatch(v -> v.contains("tile 7") && v.contains("invariant 8"))
-                && m.c.violationMessages.stream().anyMatch(v -> v.contains("tile 6") && v.contains("not aligned")), "the overflow (invariant 8) and the misaligned read, and nothing else, reported: " + m.c.violationReport());
+        T.check(m.c.violationMessages.size() == 1 && m.c.violationMessages.stream().anyMatch(v -> v.contains("tile 7") && v.contains("invariant 8")), "the overflow (invariant 8), and nothing else, reported: " + m.c.violationReport());
         int bad = 0; for (int i = 0; i < 64; i++) if (m.word(7, im, "res", i) != (7 << 20 | 0x1000 + i)) bad++;
         T.eq(0, bad, "tile 7: the 64 queued reads all landed");
-        out("read port from C [meas: ReadPortGatherTest read port from C]: 40 32-bit, 8 64-bit and 4 128-bit reads land at the setup register's destination + the size in bytes per read, counting on their counter; the free count reads 64, then less, then 64 after counters done; a misaligned read lands 0 with ERRORS [1]; a 65th store into a full queue is dropped with the read-port error");
+        out("read port from C [meas: ReadPortGatherTest read port from C]: 40 32-bit, 8 64-bit and 4 128-bit reads land at the setup register's destination + the size in bytes per read, counting on their counter; the free count reads 64, then less, then 64 after counters done; a 65th store into a full queue is dropped with the read-port error");
     }
 
     // ================================================================ the read port under an all-to-all (lowest priority)
@@ -155,7 +151,7 @@ public final class ReadPortGatherTest {
         EngineTest.streamRun(p, 0, pk, 0, 0);
         p.pulse(Fields.PULSE_START);
         for (int i = 0; i < delay; i++) c.step();
-        for (int i = 0; i < reads; i++) x.readPort.hostQueue(0x1000 + i, 0xD00 + (i & 0xFF));
+        for (int i = 0; i < reads; i++) x.readPort.hostQueue(0x1000 + i, 0xD00 + 4 * (i & 0x3F));   // v1.25: 32-bit results at word-aligned destinations (misaligned is UB)
         c.runUntil(() -> x.dir.remaining[2] == 0 && x.dir.cmIdle(c.cycle), 100000);
         c.scanOverflows();
         long lb = 0, lk = 0, ovf = 0;

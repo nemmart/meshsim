@@ -99,25 +99,19 @@ public final class EngineTest {
         T.eq(hist0 + 40, (long) r.hist.peek(0x5A), "count-on-arrival counts both modes");
         T.eq(0, r.dir.remaining[1], "SRAM_REMAINING counts both modes");
         noViolations(n.c, "write engine");
-        // v1.2 (4.9, D32): a write through a PTR not aligned to its size is dropped, still counted, the pointer still
-        // advances, and ERRORS [1] is set; meshsim flags it (invariant 20). No write ever spans a row.
-        r.setPtr(9, 0x50003); r.setMasterConfig(0); r.dir.remaining[1] = 4; long w0 = r.sram.writes[2]; long v0 = n.c.violations;
-        r.sram.poke(0x50003, 0); r.sram.poke(0x50004, 0);
-        for (int j = 0; j < 2; j++) n.at(9, n.c.cycle + 2 + j, 10, LinkWord.M_SRC, 0, 0x1111111100000000L * (j + 1) + j);
-        n.runAll(1000);
-        T.eq(0, r.dir.remaining[1] - 2, "both counted (two of four)");
-        T.eq(0x50007, r.ptr(9), "PTR[9] still advanced by 2 per write");
-        T.eq(0, r.sram.writes[2] - w0, "neither written");
-        T.eq(0, r.sram.peek(0x50003) | r.sram.peek(0x50004), "nothing landed");
-        T.eq(2L, r.writer.misalignedWrites, "two misaligned writes");
-        T.check((r.conditions() & (1 << Conditions.BAD_MODE_OR_SIZE)) != 0, "ERRORS [1] set");
-        T.eq(2L, n.c.violations - v0, "flagged twice (invariant 20)");
-        // a 32-bit write through the same (odd) PTR is aligned: it lands
+        // v1.25 (DECISIONS-v1.25 s8b): a write through a PTR not aligned to its size is undefined behavior: meshsim
+        // stops, naming it. First a 32-bit write through an odd PTR, which is aligned: it lands
+        r.setPtr(9, 0x50007); r.setMasterConfig(0); r.dir.remaining[1] = 2; long v0 = n.c.violations;
         for (int j = 0; j < 2; j++) n.at(9, n.c.cycle + 2 + j, 10, LinkWord.M_SRC, 1, 0, LinkWord.SIZE_32, 0x7700 + j, 0);
         n.runAll(1000);
         T.eq(0x7700, r.sram.peek(0x50007), "a 32-bit write at an odd chunk lands"); T.eq(0x7701, r.sram.peek(0x50008), "and the next");
-        T.eq(0, r.dir.remaining[1], "all four counted");
-        T.eq(2L, n.c.violations - v0, "no more violations");
+        T.eq(0, r.dir.remaining[1], "both counted");
+        T.eq(0L, n.c.violations - v0, "no violation");
+        // then a 64-bit write through the (now odd) PTR: UB, meshsim stops
+        T.eq(0x50009, r.ptr(9), "PTR[9] odd");
+        r.dir.remaining[1] = 1;
+        n.at(9, n.c.cycle + 2, 10, LinkWord.M_SRC, 0, 0x1111111100000000L);
+        T.ub(() -> n.runAll(1000), "a 64-bit write through an odd PTR stops meshsim", "write engine", "PTR[src 9]", "chunk 0x50009", "64-bit");
 
         // the pointer stage against ts_engine_latency
         StringBuilder sb = new StringBuilder("write engine pointer stage, 200 packets at one a cycle [meas: EngineTest write engine]:");

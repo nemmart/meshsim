@@ -245,21 +245,18 @@ public final class MemTest {
         T.eq(0x400, LinkWord.addr(l.get(2)[2]), "mode 0 128-bit: one packet at its address");
         T.eq(pat64(30, 0x1010), n.c.tiles[31].cmem.dmem.peek64(0x100), "mode 0 landed, words 0, 1"); T.eq(pat64(30, 0x1012), n.c.tiles[31].cmem.dmem.peek64(0x102), "and words 2, 3");
         T.eq(1, p.srq.issued[SRAMReadQueue.READPORT], "one read-port read"); T.eq(0, p.sram.reads[0] - 4, "four SRAM accesses");
-        // v1.2 (4.1, D26): no access spans a row. A misaligned read is not performed: its packet still goes out, payload 0,
-        // ERRORS [1] set at the reading tile, and meshsim flags it (invariant 20)
-        Net m = net(); Tile q = m.c.tiles[40]; fill(q, 0x2000, 16);
-        // (the receiver's PTR[40] steps 4, 4, 2, so its writes stay aligned)
-        m.rd(40, SRAMReadQueue.AG, 2, 0x2002, Fields.SIZE_128, LinkWord.M_SRC, 1, 41, 0); m.rd(40, SRAMReadQueue.AG, 2, 0x2004, Fields.SIZE_128, LinkWord.M_SRC, 1, 41, 0);
-        m.rd(40, SRAMReadQueue.AG, 2, 0x2007, Fields.SIZE_64, LinkWord.M_SRC, 1, 41, 0);
-        m.runAll(500);
-        T.eq(3, m.log(41).size(), "three packets: the misaligned reads' packets still go out");
-        T.eq(0L, m.log(41).get(0)[1], "misaligned 128 bits: payload 0"); T.eq(0L, m.log(41).get(0)[3], "both halves");
-        T.eq(pat64(40, 0x2004), m.log(41).get(1)[1], "the aligned read between them, in order");
-        T.eq(0L, m.log(41).get(2)[1], "misaligned 64 bits: payload 0");
-        T.eq(1, q.sram.reads[0], "one SRAM access: the misaligned reads made none");
-        T.eq(2L, q.srq.misalignedReads, "two misaligned reads");
-        T.check((q.conditions() & (1 << Conditions.BAD_MODE_OR_SIZE)) != 0, "ERRORS [1] at the reading tile");
-        T.eq(2, m.c.violations, "flagged twice (invariant 20): " + m.c.violationReport());
+        // v1.25 (DECISIONS-v1.25 s8b): no access spans a row, and a misaligned read is undefined behavior: meshsim stops,
+        // naming the reading client and the chunk. Each reader of the SRAM read queue: the address generator, the read
+        // port and the GATHER engine.
+        int[] client = { SRAMReadQueue.AG, SRAMReadQueue.READPORT, SRAMReadQueue.GATHER };
+        int[] chunk = { 0x2002, 0x2006, 0x2007 }, size = { Fields.SIZE_128, Fields.SIZE_128, Fields.SIZE_64 };
+        for (int c = 0; c < 3; c++) {
+            Net m = net(); Tile q = m.c.tiles[40]; fill(q, 0x2000, 16);
+            m.rd(40, client[c], 2, chunk[c], size[c], LinkWord.M_SRC, 1, 41, 0);
+            final Net mm = m;
+            T.ub(() -> mm.runAll(500), SRAMReadQueue.CLIENT[client[c]] + ": a misaligned read stops meshsim", "tile 40", SRAMReadQueue.CLIENT[client[c]],
+                    "chunk 0x" + Integer.toHexString(chunk[c]));
+        }
     }
 
     static void returnOrder() {

@@ -1,8 +1,9 @@
 /**
  * The traffic director (spec 4.8, v1.2): one unit straight after the eject selector and the only path into the tile. It
  * takes at most one packet per cycle and switches on its mode, and for mode 0 on its address's region (2.2):
- *   a bad packet (3.1: mode 0 misaligned or to a region it can't reach, mode 3 at 128 bits) -> dropped, uncounted,
+ *   a bad packet (3.1: mode 0 to a region it can't reach, mode 3 at 128 bits) -> dropped, uncounted,
  *     ERRORS [1] ({@link #badTotal}, the error's source);
+ *   a mode-0 packet misaligned to its size -> undefined behavior (v1.25, DECISIONS-v1.25 s8b): meshsim stops;
  *   mode 0, region 0x00 or 0x01 -> port B, through the cm_latency pipe;
  *   mode 0, region 0x03 -> the write engine, at its address;
  *   mode 0, region 0x04-0x06 -> that peripheral's write port (rp_latency, 4.17.5);
@@ -14,7 +15,7 @@
  *
  * Counting (3.1, 4.8, 4.12; D3, D14, D40): for a packet it accepts in modes 0-3 or 5 with a counter field of 1-7, the
  * director puts the counter's id into a K-stage delay line, and K cycles later that write counter is decremented. A
- * write the receiver drops after acceptance (a misaligned PTR, a peripheral's refusal) is still counted. Unexpected
+ * write the receiver drops after acceptance (a peripheral's refusal) is still counted. Unexpected
  * arrival is judged at the decrement (4.12, the accepted trade-off): a decrement of a counter at 0 leaves it at 0 and
  * sets ERRORS [2] ({@link #unexpectedTotal}); a counter write in the same cycle is judged first (count + N == 0). meshsim
  * also reports the stray at its acceptance, naming it ({@link #strays}: the counter, less the decrements already in the
@@ -83,6 +84,9 @@ final class TrafficDirector implements Component {
             readPortOverlaps++;
             if (cfg.checkReadPortOverlap) violate("packet arrived with " + readPort.outstanding() + " read-port result(s) outstanding (spec 4.3's rule, invariant 14; read-port overlap): " + LinkWord.describe(d, h, hi));
         }
+        if (LinkWord.mode(h) == LinkWord.M_WRITE && size != LinkWord.SIZE_UNDEF && !LinkWord.aligned(LinkWord.addr(h), size))   // v1.25 s8b: UB
+            throw new UndefinedBehavior(t, me, "traffic director", "a mode-0 packet whose address 0x" + Integer.toHexString(LinkWord.addr(h))
+                    + " is not aligned to its size (" + LinkWord.SIZE_NAME[size] + " bits): " + LinkWord.describe(d, h, hi));
         String bad = LinkWord.whyBad(h, periphPresent);
         if (bad != null) { droppedBad++; badTotal++; violate("bad packet dropped, uncounted, ERRORS [1] (" + bad + "; 3.1, invariant 5): " + LinkWord.describe(d, h, hi)); return; }
         if (size == LinkWord.SIZE_UNDEF) {                                   // undefined (3.1): meshsim's choice, flagged, dropped, no error

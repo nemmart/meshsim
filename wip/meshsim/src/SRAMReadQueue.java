@@ -9,9 +9,9 @@
  * (no memory access, payload 0). Every return is stamped with its width as the packet's size and with its counter field.
  * A read-port return carries the simulator-only {@link LinkWord#TAG_READPORT}.
  *
- * Natural alignment (4.1, D26, D32): a read whose source chunk isn't aligned to its size is not performed: it becomes a
- * zero-width entry (no area access, payload 0), its packet still goes out as usual in its client's order, and the tile's
- * ERRORS [1] is set ({@link #misalignedReads}, the error's source); meshsim flags it. No access ever spans a row. A read
+ * Natural alignment (4.1, D26, D32): a read whose source chunk isn't aligned to its size is undefined behavior (v1.25,
+ * DECISIONS-v1.25 s8b): meshsim stops ({@link UndefinedBehavior}), naming the client and the address. No access ever
+ * spans a row. A read
  * at or past the end of big SRAM is undefined in hardware (4.1): meshsim reads 0 and flags it (invariant 19).
  *
  * Tokens (4.5): one pool of `readTokens` (64), shared by the three clients. Every read the queue takes holds one. A token
@@ -57,7 +57,6 @@ final class SRAMReadQueue implements Component {
     final long[] issued = new long[3];
     private final int[] inFlightBy = new int[3];
     final long[] firstIssueT = { -1, -1, -1 }, lastIssueT = { -1, -1, -1 };
-    long misalignedReads;                             // monotonic: reads not performed for misalignment (ERRORS [1], 4.1)
     long outOfRange;                                  // reads at or past the end of big SRAM: undefined, flagged, payload 0 (invariant 19)
     long violations; String lastViolation;
     long stallCycles, windowFullCycles, packets, sendTokenWaits;
@@ -156,12 +155,10 @@ final class SRAMReadQueue implements Component {
         issued[c]++; inFlightBy[c]++;
         if (firstIssueT[c] < 0) firstIssueT[c] = t; lastIssueT[c] = t;
         int width = aWidth(a), n = chunksOf(width), addr = aAddr(a);
-        if (n != 0 && !LinkWord.chunkAligned(addr, width)) {            // not performed: payload 0, ERRORS [1] (4.1)
-            misalignedReads++; violations++;
-            lastViolation = CLIENT[c] + " read of chunk 0x" + Integer.toHexString(addr) + " not aligned to its size (" + LinkWord.SIZE_NAME[width]
-                    + " bits): not performed, its packet sent with payload 0, ERRORS [1] (4.1; invariant 20)";
-            n = 0;
-        } else if (n != 0 && addr + n > cfg.memChunks) {                // undefined in hardware (4.1); meshsim reads 0
+        if (n != 0 && !LinkWord.chunkAligned(addr, width))              // v1.25 s8b: UB
+            throw new UndefinedBehavior(t, me, CLIENT[c], "a read of chunk 0x" + Integer.toHexString(addr) + ", not aligned to its size ("
+                    + LinkWord.SIZE_NAME[width] + " bits)");
+        else if (n != 0 && addr + n > cfg.memChunks) {                // undefined in hardware (4.1); meshsim reads 0
             outOfRange++; violations++;
             lastViolation = CLIENT[c] + " read of chunk 0x" + Integer.toHexString(addr) + " at or past the end of big SRAM (0x" + Integer.toHexString(cfg.memChunks)
                     + " chunks): undefined (4.1; invariant 19)";

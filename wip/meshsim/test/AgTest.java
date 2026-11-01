@@ -162,7 +162,11 @@ public final class AgTest {
             int[] x = e[b];
             p.setStream(0, Fields.streamSrc(x[0]), x[1], Fields.streamCount(x[2], x[3], x[4], x[5], x[6]));
             p.setMasterConfig(Fields.masterConfig(Fields.RUN_STREAMS, 0, 1, 0, 0, 1));
-            p.pulse(Fields.PULSE_START); n.c.run(100);
+            p.pulse(Fields.PULSE_START);
+            // v1.25 (DECISIONS-v1.25 s8b): a misaligned destination or source makes misaligned packets or reads, UB: the run stops
+            if (b == 6) T.ub(() -> n.c.run(100), "a stream with a misaligned destination: its packets stop meshsim", "traffic director", "0x404");
+            else if (b == 7) T.ub(() -> n.c.run(100), "a stream with a misaligned source: its reads stop meshsim", "address generator", "chunk 0x801");
+            else n.c.run(100);
             final String key = bad[b][1];
             T.check(n.c.violationMessages.stream().anyMatch(v -> v.contains(key) && v.contains("stream")), "a stream with " + bad[b][0] + " is flagged: " + n.c.violationReport());
         }
@@ -223,15 +227,14 @@ public final class AgTest {
         T.check(ok, "landed contiguously at PTR[me], each at its size (16 chunks)");
         T.eq(0x40000 + 16, p.ptr(5), "PTR[me] advanced by 4 + 2 + 1 + 1, twice");
         EngineTest.noViolations(n.c, "mixed sizes in a group, kept aligned: no report (item 27)");
-        // v1.1's mix, 64, 32, 128: the 128-bit writes land through a misaligned PTR, dropped and flagged (invariant 20)
+        // v1.1's mix, 64, 32, 128: the 128-bit write comes through a misaligned PTR: UB, meshsim stops (v1.25 s8b)
         Net m = new Net(cfg()); Tile q = m.c.tiles[5];
         int[] size2 = { Fields.SIZE_64, Fields.SIZE_32, Fields.SIZE_128 };
         for (int s = 0; s < 3; s++) q.setStream(60 + s, Fields.streamSrc(src[s]), 0, Fields.streamCount(2, size2[s], 1, LinkWord.M_SRC, 0));
         q.setGroup(1, Fields.groupLo(2), Fields.groupHi(60, 3, 0));
         q.setPtr(5, 0x40000); q.dir.remaining[1] = 6;
         q.setMasterConfig(Fields.masterConfig(Fields.RUN_GROUPS, 1, 1, 0, 0, 1));
-        EngineTest.runLocal(m, 5);
-        T.check(q.writer.misalignedWrites > 0 && m.c.violations > 0, "a mix that misaligns its PTR is dropped and flagged (" + q.writer.misalignedWrites + " writes)");
+        T.ub(() -> EngineTest.runLocal(m, 5), "a mix that misaligns its PTR stops meshsim", "write engine", "not aligned to its 128-bit write");
     }
 
     // ================================================================ figure 12: PTR and HIST ports

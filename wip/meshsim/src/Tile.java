@@ -137,7 +137,7 @@ final class Tile implements Component {
         c[Conditions.BUS_ERROR] = core.busErrors;
         c[Conditions.ILLEGAL] = core.illegals;
         c[Conditions.GATHER_OVF] = gatherIn.overflowCount;
-        c[Conditions.BAD_MODE_OR_SIZE] = dir.badTotal + srq.misalignedReads + writer.misalignedWrites;   // ERRORS [1] (4.13)
+        c[Conditions.BAD_MODE_OR_SIZE] = dir.badTotal;                    // ERRORS [1] (4.13): bad packets (v1.25: misalignment is UB)
         c[Conditions.DONE_EARLY] = ctl.doneEarlyEvents;
         // ERRORS [13:11] are live (the peripherals' ERRORS != 0), not counted events: TileControl.errorsAt
         c[Conditions.RECV_UNDERFLOW] = req.underflows;

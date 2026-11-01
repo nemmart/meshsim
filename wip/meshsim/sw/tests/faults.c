@@ -14,7 +14,8 @@ int main(void) {
     case 4: __asm__ volatile (".word 0xc0002573"); break;               /* rdcycle a0: PHASE-2 INTERIM, no CSRs yet */
     case 5: __asm__ volatile ("ecall"); break;
     case 6: ok = tables->PTR[3]; break;                                 /* a load from PTR: bus error */
-    default: __asm__ volatile ("lw a0, 2(%0)" :: "r"(REGION_DMEM + 0x100) : "a0"); break;   /* misaligned load */
+    default: ok = *(volatile uint32_t *)0x30000000; break;             /* a load from an unmapped region (v1.25: a misaligned
+                                                                           load is UB, tested by misalign_ld.c) */
     }
     return 1;
 }

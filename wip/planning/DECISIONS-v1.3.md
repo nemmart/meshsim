@@ -254,6 +254,27 @@ per row** (owner), and windows 33-36 all fall in the same proof.*
 - **The CSR decision holds** (v1.25 section 6): Cyclone runs 8,751 CSR instructions (10 per trap, 875 traps, at most 160 in any
   window), EVM Zone none.
 
+## 12. The Tracer's region: parts 0 and 1 (2026-11-01)
+
+Decided (O). The Tracer is C&C 3's peripheral; everything C&C 3 or the memory system gives it arrives as 128-bit packet writes into
+its region, with **offset bits [22:20] picking the part**, as in the replayer's (spec 4.19.10, CL1).
+
+- **Part 0, 0x000000-0x003FFF, is the replayer's layout, unchanged:** the state word (pc, `instr_idx`, next offset; the four flags
+  ignored), the stream word (ignored), the register image (registers 0-127, bank 0, at 0x20 + 16*i*), the decode table at 0x1000
+  and the ROM at 0x2000 (the Tracer's own contents, same format and builder, section 7). The same loader code serves both units.
+  Bank 1 (untraced scratch) needs no initial state. The next offset is normally 0: the Tracer starts at an instruction boundary.
+  - **To verify (T2):** that pc, `instr_idx` and registers 0-127 are the Tracer's **entire** starting state. jolt-cpp maps each
+    CSR onto a virtual register (bank 0), and Cyclone takes 875 traps, so the CSRs are live state; check nothing else (the LR/SC
+    reservation, anything jolt-cpp's tracer keeps outside its registers) is needed. Owner: believed so.
+- **Part 1, 0x100000-0x11FFFF, is the page table:** **32,768 entries of 32 bits, one per 16 KB page, mapping 512 MiB** of guest
+  address space; 128 KB, **8,192 128-bit words**, entry *n* in the word at 0x100000 + 16 × (*n* >> 2), bits [32 × (*n* & 3) + 31 :
+  32 × (*n* & 3)]. A memory, not a queue: reloaded at each proof boundary (5) while the Tracer is stopped between proofs (8,192
+  packets, about 8 µs, against a proof's tens of milliseconds), so one table, not a double-buffered pair *(proposed)*.
+  - **To verify (T8):** that 512 MiB covers both workloads. Jolt places RAM at a fixed base (0x80000000) and the tracer's VM reserves
+    4 GiB, so the table presumably maps an offset from the base; check each workload's highest address (stack and heap) against it.
+  - **The entry's format** (a physical page number, a valid bit, perhaps a mark for the throwaway layer's pages) is open, with the
+    page table's semantics (T3).
+
 ---
 
 ## v1.3 work list
@@ -293,8 +314,9 @@ Options recorded for later, each with the evidence that would justify it.
 |---|---|---|---|
 | T1 | What the 8 KB and 4 KB expansion memories hold | 1 | **answered: section 7** (same format and builder as the replayer's ROM and decode table; different contents) |
 | T4 | The Tracer's template coverage | 7 | **answered: section 7** (a list in the ROM; the rest fed by C&C 3, replayer-style) |
-| T2 | The RV64 initial state: what it contains and where it comes from | 1 | open |
-| T3 | The page table: its size, format and how C&C 3 maintains it | 1 | open |
+| T2 | The RV64 initial state: what it contains and where it comes from | 1 | **mostly answered: section 12** (part 0 as the replayer's); to verify it's complete |
+| T3 | The page table: its entry format and semantics, and how C&C 3 maintains it | 1 | open (its size and place: section 12) |
+| T8 | Does 512 MiB of mapped guest space (32,768 × 16 KB pages) cover both workloads' highest addresses? | 12 | to verify |
 | T6 | `VirtualPext`/`VirtualPextSigned` in hardware | 9 | **answered: section 9** (any mask must work; the method is the implementation's) |
 | T7 | The modular inverse within the Tracer's 100 ms budget | 11 | **answered: section 11** (keep the single loop; host-supplied advice as the backup) |
 | T5 | The inlines' advice | 8 | **answered: section 10** (the Tracer computes all advice through expansions; C&C 3 generates long ones by looping) |

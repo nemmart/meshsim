@@ -33,6 +33,11 @@ too (header_diff.py stays strict); one runner task (quick + full extras + full-s
       meshsim's PeripheralSlot.reserved does) and 4.11 (`mtime`'s rate implementation-defined); CHANGES-v1.2 D48 row.
 - [x] CL4: StageB fails a window once a running pass has delivered no row for 50,000 cycles (both paths), with the
       queues' occupancy. Normal run 18/0; old-map controller: 10 of 18 windows FAIL "starved" in 25 s (was a hang).
-- [ ] the kit (086's layout: v1.2.1/meshsim built --release 17 with images; sortrunner with a rebuilt jar and HASHES),
-      smoke test, claim a number after a fresh pull (087 is WORKER11's), push the task
-- [ ] CHANGES-v1.2.1.md (F1-F4, E1-E9, CL1-CL5, sim/sw); v1.2/ERRATA.md E1-E9 fixed in v1.2.1; REPORT
+- [x] the kit: v1.2.1/{meshsim (built --release 17, every image), sw, tools/replayer-opcodes/vec.tsv} + 086's sortrunner
+      with a new jar (`jar cf` of build/) and HASHES (only the jar line changes: sort image, boot ROM, hops byte-identical
+      to 077/086). kit.tgz 2.6 MB, sha256 5758d7d3... Smoke from a fresh unpack: run_quick bus/regdoc/replayer/reqbus/
+      riscv/stageb 7/7 (39 s); run_p4 -n 2000 uniform-k128 ok (246,447 cycles, 23 s)
+- [x] Quest 088 claimed (NUMBERS 146be82) and pushed (39ab0e9): tasks/088-w15-v121-verify.sh, branch at 090fc40
+- [x] v1.2.1/CHANGES-v1.2.1.md (25 spec hunks by section, RTL yes/note/no, F/E/CL source; sim/sw table)
+- [x] v1.2/ERRATA.md: E1-E9 marked fixed in v1.2.1 with commits; "Found after v1.2.1" section
+- [ ] 088's result -> REPORT.md

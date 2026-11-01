@@ -12,6 +12,7 @@ It is organized **by hardware unit**. Each unit's section lists everything that 
 - It folds together `CHANGES-v1.2.md` (v1.1 → v1.2) and `CHANGES-v1.25.md` (v1.2 → v1.25).
 - It was checked against all three specs (`v1.1/`, `v1.2/`, `wip/`).
 - It cites `v1.2/ERRATA.md` (**E*n***) where an entry corrects frozen v1.2's text.
+- It folds in the cleanups of `planning/CLEANUP.md` (**CL*n***), each with its step.
 - It adds the differences neither change document lists. These are marked **[not in CHANGES]**, and section 5 collects them.
 - Decisions are cited as **D*n*** (`planning/DECISIONS-v1.2.md` section *n*), **V*n*** (`planning/DECISIONS-v1.25.md` section *n*), **O** (an owner's ruling) and **W*n*-*nn*** (a review finding).
 
@@ -38,6 +39,13 @@ It is organized **by hardware unit**. Each unit's section lists everything that 
 - **why**, citing the decision.
 
 For a **both** entry, the v1.25 column gives the final state first, then "*v1.2:* …", the state the v1.2 reader starts from.
+
+**A reader on `v1.2.1`.** `v1.2.1/` is v1.2 with every erratum and cleanup applied: E1–E11, CL1, CL2 and CL5. Read as a v1.2 reader, but skip what v1.2.1 already has:
+- R3's queue map (CL1);
+- R42, the decode-table note (CL2);
+- the statement of D48 (CL5: P7, C1).
+
+Everything else marked **v1.25** or **both** still applies.
 
 **Names.** Registers are written with their v1.25 names, and their v1.1 names alongside wherever they differ. Bit positions are [*hi*:*lo*]. Addresses are v1.25's 32-bit byte addresses unless marked "v1.1".
 
@@ -110,6 +118,8 @@ Only the replayer (spec 4.19) and what follows from it: the front matter, invari
 - **`VirtualPext` / `VirtualPextSigned`** are correct for **any** mask, and a zero mask gives 0. Full speed is promised for contiguous masks only.
 - **The replayer executes 88 opcodes** (was 85).
 - **Write-log E[15] is updated by every load row** (4.19.15).
+- **The replayer's queue ports get one 1 MB part each** (CL1, 4.19.10): the write-log port moves from 0x280000 to **0x300000** (part 3), and the expansion port from 0x300000 to **0x400000** (part 4). Offset bits [22:20] alone now pick the destination; parts 5–7 are unmapped.
+- **The decode table** gets an implementation note (CL2): it is built naturally as 256 × 128. This is a note, not a requirement.
 - **The tables are universal.** Decode class 2 means CSRRW/CSRRS only, and an unused entry is class 3 (invalid). The ROM holds 388 of 512 words, with ECALL, EBREAK and MRET now in the ROM. Controller-fed templates are found by a normalized key (software).
 
 ### 1.3 Removed outright (plan the deletions)
@@ -315,12 +325,12 @@ Register offsets, bit by bit, are in section 3. This section covers the behaviou
 
 | ID | v1.1 | v1.25 (section) | kind | step | why |
 |---|---|---|---|---|---|
-| C1 | RV32I + Zmmul + `WFI`; no CSRs, traps, interrupts, `mtvec`, `mepc`, `mret` | RV32I + Zmmul + `WFI` + **the CSR instructions, the machine-mode trap CSRs, `mcycle` and `mtime`**; machine mode only; the same core in C&C 1–3. `mtime`'s rate is implementation-defined (4.11) *(item 121: the full CSR list and reset values, with Tony)* | changed | v1.2 | D1, D20, D41 (F12), D48 (W4-07) |
+| C1 | RV32I + Zmmul + `WFI`; no CSRs, traps, interrupts, `mtvec`, `mepc`, `mret` | RV32I + Zmmul + `WFI` + **the CSR instructions, the machine-mode trap CSRs, `mcycle` and `mtime`**; machine mode only; the same core in C&C 1–3. `mtime`'s rate is implementation-defined, stated at v1.25 (CL5, E9) (4.11) *(item 121: the full CSR list and reset values, with Tony)* | changed | v1.2 | D1, D20, D41 (F12), D48 (W4-07) |
 | C2 | — | **two core inputs** (4.11): the **hard interrupt** (a level, from `ERRORS` ≠ 0; traps to `mtvec` even in `WFI`; gated by `mstatus.MIE` and `mie`) and the **wakeup** (a level from the wake term; resumes `WFI` without a trap; if high at `WFI`, the core doesn't sleep) | new | v1.2 | T, 2026-10-28; D1 |
 | C3 | illegal instruction (divide, CSR) → condition + **halt**; `ecall`, `ebreak` → halt | divide and CSRs the core lacks → `ERRORS` [10] + trap; **bus error, illegal, `ecall`, `ebreak`, a fetch outside program memory and the boot ROM, a misaligned jump target** all trap to `mtvec`; **every trap is terminal**; `ecall`, `ebreak`, the fetch and the jump set no `ERRORS` bit (4.11, 4.13) | changed | v1.2 | D20 |
 | C4 | 8 KB instruction (0x0000–0x1FFF, fetch only) + 8 KB data (0x4000–0x5FFF); each four word-interleaved 512 × 32 banks | **32 KB data (0x00000000–0x00007FFF) + 32 KB program (0x01000000–0x01007FFF)**; program memory is **fetch and load**, a store is a bus error; banking is the implementer's choice (4.11) | changed | v1.2 | D5, D42 |
 | C5 | port B writes 1, 2 or 4 consecutive words per cycle at any word address | **one 128-bit (or 32/64-bit) write per cycle, naturally aligned** (4.11) | changed | v1.2 | D42 (W5-05) |
-| C6 | memory loads 1 cycle; register and table-window loads **1 or 2 cycles, the implementation's choice** (meshsim 2) | memories and boot ROM **1**; the table window **1**; **the register block and every peripheral window word 2**, fixed on every access and unit; the 32 KB memories meet one-cycle access at 1 GHz (4.11, 5, 8.1, 10) **[not in CHANGES-v1.2: D45; v1.2 errata E2–E5]** | changed | v1.2 | D45 (Tony, 2026-10-29); item 134 closed |
+| C6 | memory loads 1 cycle; register and table-window loads **1 or 2 cycles, the implementation's choice** (meshsim 2) | memories and boot ROM **1**; the table window **1**; **the register block and every peripheral window word 2**, fixed on every access and unit; the 32 KB memories meet one-cycle access at 1 GHz (4.11, 5, 8.1, 10) **[not in CHANGES-v1.2: D45; v1.2 errata E2, E3, E5, E10]** | changed | v1.2 | D45 (Tony, 2026-10-29); item 134 closed |
 | C7 | sampling rule: `WAKE_EVENTS`, `REQUEST_RECEIVE`, `UART_RX` side effects at *t* + *L* − 1 | the same rule for every word of every window; adds a peripheral's `EVENTS` (subtracts one count per masked set bit) (4.11) | changed | v1.2 | D14 |
 | C8 | stalling stores: the send port, the request FIFO, `UART_TX` on a wired tile | the send port, the request FIFO, the UART's TX word (C&C 1 only) (4.11) | changed | v1.2 | D28 |
 | C9 | bus errors: stores to instruction memory, misaligned, unmapped (0x8A0–0xFFC), sub-word to registers or tables, store to read-only, loads from `PTR`/`STREAM`/`GROUP`; **halt** | `ERRORS` [9] + trap: store to program memory or boot ROM; misaligned; unmapped (regions 0x03–0xFE, the unused parts of 0xFF, **any word of an absent peripheral's window**); sub-word to registers, windows or tables; store to read-only; loads from `PTR`/`STREAM`/`GROUP`. **Reserved words in the block and windows read 0 and ignore stores** (not bus errors). Out-of-bounds offsets in CM are not checked (they alias) (4.11, 8.1) | changed | v1.2 | D5, D9, D27 |
@@ -381,7 +391,7 @@ v1.1's peripheral slot is replaced by **up to three peripherals per unit, all co
 | P4 | `PERIPH_RUN` = `TILE_PULSE` [2]; `periph_running` `TILE_STATUS` [3] | **`PULSE_RUN`** (window word 3); **`STATUS` [0] run in progress** (the ownership state); the end posts **run done, `EVENTS` [0]** (depth 1) (4.17.2) | changed | v1.2 | D10 |
 | P5 | six service lines in `WAKE_EVENTS` [18:13]: sticky events, live queue conditions or item FIFOs; consuming a line claims a unit of service | the peripheral's own **`EVENTS` (word 5), `EVENTS_PEEK` (6), `EVENTS_MASK` (7, 0 at reset)**; **every bit backed by a small counter** with a stated **depth** (1 ordinary, 2 for double-buffered credits), or **live**; a consuming load subtracts one count per masked set bit; standard bits [0] run done, [1] DMA done; the controller's `EVENTS` [12 + *n*] is live while `EVENTS & EVENTS_MASK` ≠ 0; no item-FIFO kind *(Deferred, item 119)* (4.17.3) | changed | v1.2 | D14, D16 |
 | P6 | `PERIPH_STATUS_0`–`7` (0x870–0x88C), read-only, peripheral-defined | **the standard window** (0x200 bytes): words 0 `PARAMS`, 1 `STATUS` ([0] run, [1] DMA), 2 `ERRORS`, 3 `PULSE_RUN`, 4 `PULSE_DMA`, 5 `EVENTS`, 6 `EVENTS_PEEK`, 7 `EVENTS_MASK`, 8 `DMA_HDR`, 9 `DMA_ADDR`; 10–31 reserved; 32–127 peripheral-defined (4.17.4, 8.11) | changed | v1.2 | D10 |
-| P7 | — | access rules: reserved/undefined words read 0 and ignore stores; a store to a read-only word is a bus error; every word 32-bit, one at a time, **2-cycle loads** (4.17.4, 4.11). **A peripheral without a DMA reads 0 at words 4, 8 and 9**; a load there is not flagged, only a store (D48, W4-06) **[D48 not in CHANGES; v1.2 erratum E4]** | new | v1.2 | D10, D45, D48 |
+| P7 | — | access rules: reserved/undefined words read 0 and ignore stores (meshsim flags the access); a store to a read-only word is a bus error; every word 32-bit, one at a time, **2-cycle loads** (4.17.4, 4.11). **A peripheral without a DMA has words 8 and 9 (`DMA_HDR`, `DMA_ADDR`) that read 0, a load not flagged and a store flagged**, so the handler's fixed report set can read them on every window; word 4 (`PULSE_DMA`) stays reserved. For the RTL nothing differs from a reserved word: return 0, ignore the store (4.17.4) | new | v1.2 | D10, D45, **D48** (W4-06), stated in the spec at v1.25 (**CL5**; v1.2 erratum E9; **[D48 not in CHANGES-v1.2]**) |
 | P8 | mode 9 at a 21-bit word address; counted in `DMA_PERIPH_REMAINING` on landing or drop; nothing counted in HALT | **mode-0 writes to the peripheral's region** at a byte offset, naturally aligned; counted by the packet's counter field at K; **a write the peripheral drops is still counted** and sets its own error; every peripheral lands writes within `rp_latency` = 2 *(Proposed, item 48)* and at most K (4.17.5) | changed | v1.2 | D6, D10 |
 | P9 | conditions [13:11]: bad peripheral write (generic), peripheral conditions 2 and 3 | **the peripheral's own `ERRORS`** (word 2), sticky until the reset (C&C 1's unit-error bit excepted: live); the controller's `ERRORS` [11]–[13] are live ORs; errors interrupt, events wake (4.17.6) | changed | v1.2 | D10, D21 |
 | P10 | HALT holds the peripheral and the sender in reset; a halted controller stops them | **resets with its unit at the reset, and is stopped by nothing else**: a controller's trap leaves it running, unserviced (4.17.8) | changed | v1.2 | D20, D23 |
@@ -392,15 +402,15 @@ v1.1's peripheral slot is replaced by **up to three peripherals per unit, all co
 
 ### 2.6 The replayer (spec 4.19, `spec/replayer-opcodes.md`)
 
-**How this section splits.** v1.1 → v1.2 changed **only the replayer's interface**: its window, events, credits, region map, errors and type. 4.19.3–4.19.7, 4.19.12 and 4.19.14 are identical to v1.1's apart from names, and so is the opcode appendix. v1.2 → v1.25 changed **only its rows and tables**, to match jolt-cpp `821e1bd`. So the interface entries (R1–R14) are step **v1.2**, the row and table entries (R19–R41) are step **v1.25**, and a few (R15–R18) are **both**.
+**How this section splits.** v1.1 → v1.2 changed **only the replayer's interface**: its window, events, credits, region map, errors and type. 4.19.3–4.19.7, 4.19.12 and 4.19.14 are identical to v1.1's apart from names, and so is the opcode appendix. v1.2 → v1.25 changed **only its rows and tables**, to match jolt-cpp `821e1bd`. So the interface entries (R1–R14) are step **v1.2**, the row and table entries (R19–R42) are step **v1.25**, and a few are **both**: R15–R18, and R3, the region map, which CL1 changed again at v1.25.
 
-**Interface (step v1.2: a reader from v1.2 skips R1–R14)**
+**Interface (step v1.2: a reader from v1.2 skips R1–R14, except R3)**
 
 | ID | v1.1 | v1.25 (section) | kind | step | why |
 |---|---|---|---|---|---|
 | R1 | peripheral type 1 in the slot | **peripheral 1, type 4** (`PARAMS` [7:0] = 4) on tiles 0–63 (4.19, 8.11) | changed | v1.2 | D46 (P2) |
 | R2 | run = `TILE_PULSE` [2] `PERIPH_RUN`; running = `TILE_STATUS` [3] | `PULSE_RUN` (window word 3); `STATUS` [0]; `STATUS` [1] always 0 (no DMA) (4.19.11) | changed | v1.2 | D10 |
-| R3 | written by **mode 9** at a 21-bit **word** address; addr[20:18] selects a window | written by **mode-0 packets to region 0x04** at a **byte offset**; **offset[22:20] selects a part** (4.19.10). Map, in bytes (v1.1 word address in brackets): state word 0x000000 [0x00000]; stream word 0x000010 [0x00004]; register image 0x000020–0x00041F, image word *i* at 0x20 + 16*i* [0x00008 + 4*i*]; decode table 0x001000–0x001FFF, entry *e* at 0x1000 + 16·(*e* >> 3) [0x400 + 4·(*e* >> 3)]; ROM 0x002000–0x003FFF, word *j* at 0x2000 + 16*j* [0x800 + 4*j*]; code queue 0x100000–0x1FFFFF [0x40000–0x7FFFF]; read-log 0x200000–0x2FFFFF [0x80000–0x9FFFF]; write-log 0x300000–0x3FFFFF [0xA0000–0xBFFFF]; expansion 0x400000–0x4FFFFF [0xC0000–0xFFFFF]; one 1 MB part per queue, so offset[22:20] alone names it (v1.2.1 and v1.25, CL1) *(Proposed, items 44–46)* | changed | v1.2 | D6, D9, D10 |
+| R3 | written by **mode 9** at a 21-bit **word** address; addr[20:18] selects a window | written by **mode-0 packets to region 0x04** at a **byte offset**; **offset[22:20] alone names a part** (4.19.10): 0 the memories, **1 code queue, 2 read-log queue, 3 write-log queue, 4 expansion queue**, 5–7 unmapped. Map, in bytes (v1.1 word address in brackets): state word 0x000000 [0x00000]; stream word 0x000010 [0x00004]; register image 0x000020–0x00041F, image word *i* at 0x20 + 16*i* [0x00008 + 4*i*]; decode table 0x001000–0x001FFF, entry *e* at 0x1000 + 16·(*e* >> 3) [0x400 + 4·(*e* >> 3)]; ROM 0x002000–0x003FFF, word *j* at 0x2000 + 16*j* [0x800 + 4*j*]; code queue 0x100000–0x1FFFFF [0x40000–0x7FFFF]; read-log 0x200000–0x2FFFFF [0x80000–0x9FFFF]; **write-log 0x300000–0x3FFFFF** [0xA0000–0xBFFFF]; **expansion 0x400000–0x4FFFFF** [0xC0000–0xFFFFF] *(Proposed, items 44–46)*. *v1.2:* the same, except the two logs shared part 2 (read log 0x200000–0x27FFFF, write log 0x280000–0x2FFFFF, told apart by bit 19) and the expansion queue was part 3 (0x300000–0x3FFFFF), part 4 unmapped | changed | both | v1.2: D6, D9, D10; v1.25: **CL1** (O, 2026-11-01; v1.2 erratum E7; also in v1.2.1) |
 | R4 | a bad peripheral write: unmapped word, wrong size, a 128-bit write in window 0 off a multiple of 4, a single-ported memory written while running, a queue port written **in HALT** | **a bad write**, the replayer's `ERRORS` [0], **still counted**: unmapped offset, wrong size, a single-ported memory written while running *(Proposed, item 47)*. A misaligned write is now a bad packet at the director (L7); the HALT case is gone (4.19.10) | changed | v1.2 | D10, D32 |
 | R5 | ownership: stopped / running / HALT (item 54) | stopped / running by `STATUS` [0]; boot loads find the replayer stopped (4.19.10) | changed | v1.2 | W1-30, D23 |
 | R6 | counted in `DMA_PERIPH_REMAINING` on landing or drop; boot loads uncounted because in HALT | counted by the packet's counter field at K, landed or dropped; boot loads are uncounted mode-0 writes (4.19.10) | changed | v1.2 | D6 |
@@ -425,7 +435,7 @@ v1.1's peripheral slot is replaced by **up to three peripherals per unit, all co
 
 R19's behaviour didn't change in v1.2 (only its wording), so it is step **v1.25**. It sits here beside the other log rules.
 
-**Rows and tables (step v1.25: both readers apply R19–R41)**
+**Rows and tables (step v1.25: both readers apply R19–R42)**
 
 | ID | v1.1 and v1.2 | v1.25 (section) | kind | step | why |
 |---|---|---|---|---|---|
@@ -451,6 +461,7 @@ R19's behaviour didn't change in v1.2 (only its wording), so it is step **v1.25*
 | R39 | decode class 2 = controller (system: ECALL, EBREAK, MRET, CSRRW, CSRRS); class 3 reserved; **unused entries are class 1/2 (controller)**; SYSTEM funct3 = 0 others → sel 11 (controller) | class 2 = **CSRRW, CSRRS only**; **class 3 = invalid**, and **every unused entry is class 3** (an invalid expansion, `ERRORS` [2]; no new error bit); SYSTEM sel 11 is invalid (4.19.5, 4.19.11) | changed | v1.25 | V5, O |
 | R40 | per-program tables; ROM ≈ 508 of 512, atomics partly controller-fed | **universal tables**, one set per jolt-cpp version (`tables/`): 306 ROM, 17 controller and 1,725 invalid decode entries; **ROM 388 of 512 words**, with every atomic, ECALL, EBREAK and MRET in it (4.19.5, 4.19.6). Hardware sizes are unchanged | changed | v1.25 | V5, V6 |
 | R41 | controller-fed templates keyed by exact instruction word, ≤ 128 per program | keyed by a **normalized key** (inlines: register fields cleared; CSRRW/CSRRS: rd/rs1 renamed by first appearance), the index sorted by key, a number its position; 75 numbers at `821e1bd`; a key with no entry is an error. **Software only** (`replay_ctl.c`), no hardware change (4.19.9) | changed | v1.25 | V5 |
+| R42 | decode table 2K × 16 bits; organization unstated | **an implementation note** (4.19.10, 10): logically 2,048 × 16, naturally **built as 256 × 128, one row per 128-bit packet** (entry *e* in row *e* >> 3, bits [16·(*e* & 7) + 15 : 16·(*e* & 7)]), so a write is one row in one cycle within `rp_latency`, and a lookup selects 16 bits by *e* & 7. A 16-bit-wide build would need eight banks. Any organization that takes a packet per cycle is allowed | new (note) | v1.25 | **CL2** (O; v1.2 erratum E8; also in v1.2.1) |
 
 Unchanged in all three versions: the queues' sizes; the ROM (512 × 128) and decode table (2K × 16); the register file (128 × 64, true dual port); the output queue (32 × 640 bits); row timing (3 or 5 cycles); the 64-cycle start copy; the decompressors; the state and stream words' layouts; the run log's format.
 
@@ -680,7 +691,18 @@ All of it is **new at v1.2**. Base 0xFFFFFA00.
 | 33 `EXPANSION_OFFSET` | `PERIPH_STATUS_0` [31:16] | [15:0] | = v1.2 |
 | 34 `EXPANSION_OPCODE` | `PERIPH_STATUS_1` | [31:0] | = v1.2 |
 
-Its region map is R3.
+**Its region (0x04), by part (offset [22:20]).**
+
+| part | v1.1 (word address) | v1.2 | v1.25 |
+|---|---|---|---|
+| 0 | 0x00000–0x00FFF: state, stream, image, decode table, ROM | 0x000000–0x003FFF, byte offsets (R3) | = v1.2 |
+| 1 | 0x40000–0x7FFFF code queue | 0x100000–0x1FFFFF code queue | = v1.2 |
+| 2 | 0x80000–0x9FFFF read log; 0xA0000–0xBFFFF write log | 0x200000–0x27FFFF read log; **0x280000–0x2FFFFF write log** | 0x200000–0x2FFFFF **read log only** |
+| 3 | 0xC0000–0xFFFFF expansion | 0x300000–0x3FFFFF **expansion** | 0x300000–0x3FFFFF **write log** (CL1) |
+| 4 | — | unmapped | 0x400000–0x4FFFFF **expansion** (CL1) |
+| 5–7 | — | unmapped | unmapped |
+
+The decode table is built naturally as 256 × 128 (R42, CL2).
 
 **The expansion word (128 bits; only [63:0] defined).**
 
@@ -753,7 +775,7 @@ The complete map, generated from the two appendices, is also in `WORKER13/opcode
 | `rp_latency` | 2 *(Proposed)* | 2 *(Proposed)*, at most K | = | — |
 | loopback FIFO | ≥ 64 *(Proposed)* | ≥ 64 (required) | = | v1.2 |
 | C&C 1–3 big SRAM | — | 2 MB each | = | v1.2 |
-| replayer | type 1; 85 executed opcodes | type 4; = | **reference `821e1bd`; 88 executed opcodes; `offset_imm` [63], `sign_imm` [62]; ROM 388 of 512 used; decode table 306 ROM, 17 controller, 1,725 invalid entries; 75 controller-fed template numbers**; every size unchanged | v1.2 (type), v1.25 (rest) |
+| replayer | type 1; 85 executed opcodes | type 4; = | **reference `821e1bd`; 88 executed opcodes; `offset_imm` [63], `sign_imm` [62]; ROM 388 of 512 used; decode table 306 ROM, 17 controller, 1,725 invalid entries, built as 256 × 128 (CL2); 75 controller-fed template numbers; one 1 MB part per queue (CL1)**; every size unchanged | v1.2 (type), v1.25 (rest) |
 | logic budget per tile | ≈ 0.38–0.45 mm² | ≈ 0.52–0.61 mm² (+0.065 the 256-bit word, +0.08–0.09 the memories, − sender, − UART) (11) | = | v1.2 |
 | control island | ≈ 0.1 mm² | ≈ 0.17–0.2 mm² (12) | = | v1.2 |
 
@@ -823,7 +845,7 @@ meshsim checks invariants 19–26 and these:
 | D45: load latencies fixed: 2 cycles for the block and windows, 1 for the table window and memories | v1.2 | C6, T33, 3.1 | E2, E3, E5 |
 | D46: peripheral types 0–4; **the replayer's `PARAMS` type value is 4 (was 1)** | v1.2 | P2, R1 | E1 |
 | D47: waiting rules (software only: tables free per memory; polling a landed word; plain `wfi()`) | v1.2 | — (software) | E4 |
-| D48: a peripheral without a DMA reads 0 at words 4, 8 and 9, a load not flagged; `mtime`'s rate implementation-defined | v1.2 | P7, C1 | E4 |
+| D48: a peripheral without a DMA reads 0 at words 8 and 9, a load not flagged, a store flagged; `mtime`'s rate implementation-defined (now stated in the spec: CL5) | v1.2 | P7, C1 | E4, E9 |
 | D49: **K in hardware is the implementation's**; meshsim's formula 2L + 4 | v1.2 | L22 | E4, E6 |
 
 **Changes neither document states.**
@@ -843,5 +865,17 @@ meshsim checks invariants 19–26 and these:
 | the replayer's bad write: a misaligned 128-bit write in part 0 is now a bad packet at the director, not a replayer error | v1.2 | R4 |
 | `VirtualPext` with a zero mask: undefined at v1.2, **0** at v1.25 | v1.25 | R31 |
 | the template index's 16-byte entry format (key, offset, length, `rd0`, class); software only | v1.25 | R41 |
+
+**The cleanups (`planning/CLEANUP.md`).**
+
+| # | what | hardware? | step | entry |
+|---|---|---|---|---|
+| CL1 | the replayer's queue ports: one 1 MB part each; write log 0x280000 → 0x300000, expansion 0x300000 → 0x400000 | **yes**: the region decode | v1.25 (R3 is **both** for a v1.1 reader) | R3, 3.8; E7 |
+| CL2 | the decode table's organization: an implementation note, 256 × 128 | a note, not a requirement | v1.25 | R42; E8 |
+| CL3 | the recipe book's measured figures moved into its template | no (process) | — | — |
+| CL4 | a per-window time limit in StageB | no (test harness) | — | — |
+| CL5 | D48 stated in the spec (words 8–9, `mtime`) | no RTL change (a reserved word already reads 0) | v1.2 (the decision), stated at v1.25 | P7, C1; E9 |
+
+All three spec cleanups are also in `v1.2.1/`.
 
 The opcode renumbering was first misstated in v1.25's text ("three lower"). It was fixed in spec `0b4ba20` and recorded in `CHANGES-v1.25.md` (R26, 3.9).

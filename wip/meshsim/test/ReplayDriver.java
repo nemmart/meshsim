@@ -76,7 +76,7 @@ final class ReplayDriver {
                 r.events().consume(l);
                 if ((l & 1 << Replayer.EV_CODE) != 0) codeNext = refill(w.code, codeNext, 0x40000, 128);
                 if ((l & 1 << Replayer.EV_RLOG) != 0) rlogNext = refill(w.rlog, rlogNext, 0x80000, 256);
-                if ((l & 1 << Replayer.EV_WLOG) != 0) wlogNext = refill(w.wlog, wlogNext, 0xA0000, 256);
+                if ((l & 1 << Replayer.EV_WLOG) != 0) wlogNext = refill(w.wlog, wlogNext, 0xC0000, 256);
                 if ((l & 1 << Replayer.EV_NEWEXP) != 0) {
                     int key = ReplayTables.key(st1);                // v1.25: the index is keyed by key(w)
                     long[] tpl = w.templates.get(key);
@@ -112,6 +112,6 @@ final class ReplayDriver {
     private void sendExp() {
         if (expWords == null) return;
         int n = Math.min(128, (expWords.length - expNext) / 2);
-        for (int i = 0; i < n; i++, expNext += 2) portExp.add(new long[] { 0xC0000, expWords[expNext], expWords[expNext + 1] });
+        for (int i = 0; i < n; i++, expNext += 2) portExp.add(new long[] { 0x100000, expWords[expNext], expWords[expNext + 1] });
     }
 }

@@ -249,3 +249,12 @@ from DECISIONS-v1.25 (s1, s4-s7) and WORKER9's work:
 - **`SyntheticDelivery`** (test/): a delivery in the v1.25 format from the universal tables and a random RV64IMAC
   program, cross-checked against an RV64 interpreter. For the acceptance kit's tests and speed figures; its rows are
   this model's semantics, not jolt-cpp's.
+
+## v1.25 cleanup CL1 (WORKER11, 2026-11-01): one 1 MB part per queue port
+
+The replayer's write port decodes offset [22:20] alone (`wip/planning/CLEANUP.md` CL1; spec 4.19.10, WORKER10): part 0
+the memories (unchanged), **1 code queue (0x100000), 2 read-log queue (0x200000), 3 write-log queue (0x300000, was
+0x280000), 4 expansion queue (0x400000, was 0x300000)**, 5-7 unmapped (bad writes). Changed with it: `MeshHeader.java`
+and both `mesh.h` copies and the draft header (`RP_Q_WLOG`, `RP_Q_EXP`), `ReplayDriver`'s port addresses, the unit
+tests (WORKER15's v1.2.1 test of every part, bba8ed7), and, through the header, `replay_ctl.c` and recipe 26. The
+deliveries hold no addresses.

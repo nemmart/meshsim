@@ -266,14 +266,18 @@ its region, with **offset bits [22:20] picking the part**, as in the replayer's 
   - **To verify (T2):** that pc, `instr_idx` and registers 0-127 are the Tracer's **entire** starting state. jolt-cpp maps each
     CSR onto a virtual register (bank 0), and Cyclone takes 875 traps, so the CSRs are live state; check nothing else (the LR/SC
     reservation, anything jolt-cpp's tracer keeps outside its registers) is needed. Owner: believed so.
-- **Part 1, 0x100000-0x11FFFF, is the page table:** **32,768 entries of 32 bits, one per 16 KB page, mapping 512 MiB** of guest
-  address space; 128 KB, **8,192 128-bit words**, entry *n* in the word at 0x100000 + 16 × (*n* >> 2), bits [32 × (*n* & 3) + 31 :
-  32 × (*n* & 3)]. A memory, not a queue: reloaded at each proof boundary (5) while the Tracer is stopped between proofs (8,192
-  packets, about 8 µs, against a proof's tens of milliseconds), so one table, not a double-buffered pair *(proposed)*.
-  - **To verify (T8):** that 512 MiB covers both workloads. Jolt places RAM at a fixed base (0x80000000) and the tracer's VM reserves
-    4 GiB, so the table presumably maps an offset from the base; check each workload's highest address (stack and heap) against it.
-  - **The entry's format** (a physical page number, a valid bit, perhaps a mark for the throwaway layer's pages) is open, with the
-    page table's semantics (T3).
+- **The page table covers Jolt's full 4 GiB guest range, assuming most pages are empty** (owner, 2026-11-01; replaces the first
+  proposal, a flat 32,768-entry table over 512 MiB). Future programs are unknown, so the hardware takes the general case; storage
+  scales with the pages that exist, not the range, and LPDDR bounds that anyway. **So a two-level table** *(proposed sizes)*:
+  - **the directory:** 1,024 entries of 32 bits (4 KB), each for a 4 MiB region (256 pages of 16 KB): "empty", or a leaf in the pool;
+  - **the leaf pool:** leaves of 256 entries (1 KB), one per non-empty region; e.g. 128 leaves (128 KB, the first proposal's storage)
+    map up to 512 MiB of populated regions **anywhere** in 4 GiB; 4 MiB regions rather than 16 MiB waste less leaf space when a
+    program scatters small areas;
+  - **in the map:** the directory in part 1, the leaf pool in part 2, written while the Tracer is stopped between proofs;
+  - **a translation is two lookups** (the directory small enough to be flops).
+  - **Open (T3):** what an unmapped page means (zeros, with a page fault to C&C 3 on the first write, the Tracer waiting; or a table
+    that already includes every page the proof touches), and the entry's format.
+- *(Withdrawn: T8, measuring whether 512 MiB suffices; superseded by the 4 GiB decision.)*
 
 ---
 
@@ -316,7 +320,7 @@ Options recorded for later, each with the evidence that would justify it.
 | T4 | The Tracer's template coverage | 7 | **answered: section 7** (a list in the ROM; the rest fed by C&C 3, replayer-style) |
 | T2 | The RV64 initial state: what it contains and where it comes from | 1 | **mostly answered: section 12** (part 0 as the replayer's); to verify it's complete |
 | T3 | The page table: its entry format and semantics, and how C&C 3 maintains it | 1 | open (its size and place: section 12) |
-| T8 | Does 512 MiB of mapped guest space (32,768 × 16 KB pages) cover both workloads' highest addresses? | 12 | to verify |
+| T8 | ~~Does 512 MiB cover both workloads?~~ | 12 | **withdrawn**: the table covers 4 GiB, sparse (section 12) |
 | T6 | `VirtualPext`/`VirtualPextSigned` in hardware | 9 | **answered: section 9** (any mask must work; the method is the implementation's) |
 | T7 | The modular inverse within the Tracer's 100 ms budget | 11 | **answered: section 11** (keep the single loop; host-supplied advice as the backup) |
 | T5 | The inlines' advice | 8 | **answered: section 10** (the Tracer computes all advice through expansions; C&C 3 generates long ones by looping) |

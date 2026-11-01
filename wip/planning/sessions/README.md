@@ -24,3 +24,4 @@ The reviews of the decisions themselves are in `../reviews/`.
 | session | what it did | kept here |
 |---|---|---|
 | WORKER15 | v1.2.1: v1.2 with errata E1-E11 and cleanups CL1-CL5 applied, meshsim and the software in line; `v1.2.1/CHANGES-v1.2.1.md`, the changelog from Tony's copy; verified on the runner (Quest 088: quick 34/34, full 10/10, p4/uniform-k128 1,360,082 cycles) | `WORKER15-REPORT.md`, `WORKER15-QUESTIONS.md` (Q1-Q3, which became E9, CL3 and CL4). Its report's diff commands use a `v1.2.1` tag that was never made; `CHANGES-v1.2.1.md` has the folder diffs |
+| WORKER13 | the change guide `wip/spec/CHANGES-to-v1.25.md` (v1.1 -> v1.25 and v1.2 -> v1.25 in one; 200 entry IDs), stamped at spec `d590722`, with DECISIONS-v1.25 section 8 and CL1-CL6; found v1.2 errata E1 (extended), E9, E10, E11 | `WORKER13-REPORT.md`, `WORKER13-QUESTIONS.md` (Q1-Q10; Q10, v1.1's two ordinal ranges, is for Tony), `WORKER13-opcode-map.txt` |

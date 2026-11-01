@@ -1676,10 +1676,12 @@ The rules for writes into a peripheral (4.17.5) apply: mode 0 to region 0x04, fr
 | 0x001000–0x001FFF | 0 | decode table: entry *e* in the packet at 0x1000 + 16·(*e* >> 3), bits [16·(*e* & 7) + 15 : 16·(*e* & 7)] | 4 KB | 128 | single |
 | 0x002000–0x003FFF | 0 | ROM: word *j* at 0x2000 + 16*j* | 8 KB | 128 | dual |
 | 0x100000–0x1FFFFF | 1 | code queue port | 4 KB queue | 128 | dual |
-| 0x200000–0x27FFFF | 2 | read-log queue port | 8 KB queue | 128 | dual |
-| 0x280000–0x2FFFFF | 2 | write-log queue port | 8 KB queue | 128 | dual |
-| 0x300000–0x3FFFFF | 3 | expansion queue port | 4 KB queue | 128 | dual |
-| everything else | 0, 4–7 | unmapped | — | — | — |
+| 0x200000–0x2FFFFF | 2 | read-log queue port | 8 KB queue | 128 | dual |
+| 0x300000–0x3FFFFF | 3 | write-log queue port | 8 KB queue | 128 | dual |
+| 0x400000–0x4FFFFF | 4 | expansion queue port | 4 KB queue | 128 | dual |
+| everything else | 0, 5–7 | unmapped | — | — | — |
+
+**One part per queue** (owner, 2026-11-01; v1.25, CL1, as v1.2.1): every queue port is a whole 1 MB part, so **offset bits [22:20] alone name the destination**: 0 the memories, 1–4 the code, read-log, write-log and expansion queues, 5–7 unmapped. A queue port is in effect one address; its range only lets an advancing stream keep hitting it, and its size means nothing. (Before, the two logs shared part 2, 512 KB each, at 0x200000 and 0x280000, and the expansion queue was part 3 at 0x300000, making the decode two-level: bits [22:20], then bit 19 for the logs.)
 
 *(Proposed, items 44–46: the parts, the offsets in part 0 and the sizes each part takes.)* In 128-bit words (offset / 16) the state word is 0, the stream word 1, the register image 2–65 (owner, 2026-10-26: state first), the decode table 256–511 and the ROM 512–1023. Every part takes 128-bit packets only, so every write is 16-byte aligned; a misaligned one is a bad packet at the director (3.1).
 
@@ -2459,7 +2461,7 @@ The reset empties both FIFOs, clears [17:16] and loads the reset divisor (4.20).
 | requests | 128 bits; the hardware's fields requestor [6:0] and target [9:7], 8 targets; the rest laid out by each target (3.3); a request with an answer names its destination as a 32-bit address and its data and reply counters (6.7) |
 | eject priority | the loopback FIFO is served only in a cycle when every other eject FIFO is empty; the others round-robin (4.7) |
 | peripherals (4.17) | up to three per unit, regions 0x04–0x06, 0x200-byte windows at 0xFFFFFA00, 0xFFFFFC00, 0xFFFFFE00; ten standard words; events counted (depth 1 or 2) or live; `rp_latency` 2 for every peripheral *(Proposed)*, at most K; the DMA: up to 4 output queues, one transfer at a time, count up to 4,095 words |
-| replayer (4.19), peripheral type 4 | peripheral 1 on tiles 0–63; reference jolt-cpp `821e1bd`; universal tables (ROM 388 of 512 words used, decode table 306 ROM, 17 controller and 1,725 invalid entries, 75 controller-fed template numbers); 88 executed row opcodes; expansion word `offset_imm` [63], `sign_imm` [62]; a pass of 65,536 rows; code, expansion, read-log and write-log queues of 256, 256, 512 and 512 × 128 bits (halves 128, 128, 256, 256), two credits of half a queue each; three LRU decompressors of 16 × 64 bits; ROM 512 × 128 bits; decode table 2K × 16 bits; register file 128 × 64 bits; output queue 32 rows of 640 bits; rows of 3 or 5 cycles; start copy 64 cycles; about 41 KB of memory per tile |
+| replayer (4.19), peripheral type 4 | peripheral 1 on tiles 0–63; reference jolt-cpp `821e1bd`; universal tables (ROM 388 of 512 words used, decode table 306 ROM, 17 controller and 1,725 invalid entries, 75 controller-fed template numbers); 88 executed row opcodes; expansion word `offset_imm` [63], `sign_imm` [62]; a pass of 65,536 rows; code, expansion, read-log and write-log queues of 256, 256, 512 and 512 × 128 bits (halves 128, 128, 256, 256), two credits of half a queue each; three LRU decompressors of 16 × 64 bits; ROM 512 × 128 bits; decode table 2K × 16 bits, built as 256 × 128 (4.19.10); register file 128 × 64 bits; output queue 32 rows of 640 bits; rows of 3 or 5 cycles; start copy 64 cycles; about 41 KB of memory per tile |
 
 ---
 

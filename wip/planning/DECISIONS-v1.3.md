@@ -278,6 +278,18 @@ its region, with **offset bits [22:20] picking the part**, as in the replayer's 
   - **Open (T3):** what an unmapped page means (zeros, with a page fault to C&C 3 on the first write, the Tracer waiting; or a table
     that already includes every page the proof touches), and the entry's format.
 - *(Withdrawn: T8, measuring whether 512 MiB suffices; superseded by the 4 GiB decision.)*
+- **Findings from upstream Jolt** (a16z/jolt `main` at `17a9459`, read 2026-11-01; `common/src/jolt_device.rs`, `constants.rs`):
+  addresses are 64-bit, with **no 4 GiB limit in Jolt** (jolt-cpp's 4 GiB is its emulator's own reservation). The used space is
+  **one contiguous range**: the I/O region (trusted and untrusted advice, inputs, outputs, termination and panic words) **below
+  `RAM_START_ADDRESS` (0x8000_0000)**, then the program, a stack canary, the stack and the heap (configurable, default 32 MiB)
+  **above it**. Every address is remapped to a cell index `(address − lowest_address) / 8`, `lowest_address` being the bottom of
+  the advice area; below it is an error; K bounds the number of cells. The range moves with configuration (a Jolt test with 512
+  MiB of advice puts `lowest_address` at 0x4000_0000). **Programs use both ends of the range and leave the middle empty** (owner).
+  So: a directory indexed from a **base register set to `lowest_address`** suits it. Not yet checked against jolt-cpp's layout.
+- **Next research area for v1.3** (owner, 2026-11-01): **the Tracer's memory: the page table and how it maps Jolt's layout** (its
+  two levels and sizes, the base, what an unmapped page means, the entry format, how C&C 3 builds and loads it per proof, the
+  throwaway layer, how jolt-cpp's layout compares with upstream's). "Needs to be dug into a lot more"; section 12's sizes are
+  proposals only.
 
 ---
 

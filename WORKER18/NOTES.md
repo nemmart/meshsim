@@ -6,8 +6,10 @@ Citations are jolt-cpp at `821e1bd` (`src/tracer/...` unless noted) unless marke
 
 - jolt-asic-planning branch **`worker18-rows`** (from `tracer-standalone-main` `8d546e3`): `tracer/rows/row_dump.cpp`,
   `build.sh` (as WORKER16's `state/build.sh`). Built locally: 1 CPU, 3 GB, `vm.overcommit_memory=1`.
-- `wip/gold/`: not started yet (stage 1 order: loader, layout, decoder, non-inline expansions, executor, record, hash,
-  compare; then inlines).
+- `wip/gold/`: stage 1 Tracer model. **Matches jolt-cpp row for row on EVM Zone trace-23 and Cyclone input/22
+  (every record), and on both workloads at 2^29 (every 2^16-row window hash and the run hash)** (2026-11-02).
+  Inlines written: the seven secp256k1 operations, BLAKE2b, BLAKE3, BLAKE3_KEYED64 (all pass InlineEmitTest);
+  still to write: Keccak (2), SHA-256 (2), BIGINT256_MUL (none used by the two workloads).
 
 ## The row record (agreed with the owner, 2026-11-02)
 
@@ -149,3 +151,19 @@ Opcode census: evm23 uses 57 opcodes, among them the secp256k1 inlines (`Virtual
 no secp, 30 `VirtualHostIO` rows, and a division family (256 `VirtualAdvice` rows, all division advice).
 
 Sandbox note: `vm.overcommit_memory` resets to 0 between sessions; set it to 1 before running jolt-cpp.
+
+## Stage 1 results (2026-11-02, gold `12631db`; reference row_dump `df1b231`, jolt-cpp 821e1bd)
+
+| run | rows | check | result | gold run time | jolt-cpp row_dump |
+|---|---|---|---|---|---|
+| EVM Zone trace-23 | 5,833,069 | every record (80 B) + 90 windows + run hash | **match** | 1.0 s (5.9 M rows/s, hashing) | |
+| Cyclone input/22 | 2,705,819 | every record + 42 windows + run hash | **match** | 0.5 s (5 M rows/s) | |
+| EVM Zone `trace-29-4599adc50712` | 354,861,942 (padded 2^29) | 5,415 window hashes + run hash `bcea2e34bc23ccec`; 3,674 secp advice words all used | **match** | 21.2 s, **16.7 M rows/s** | 29 s |
+| Cyclone `input/29/input-15961266` | 371,526,406 (padded 2^29) | 5,670 window hashes + run hash `0a6e6fe67d902fb9` | **match** | 22.5 s, **16.5 M rows/s** | 27 s |
+
+Speed: one CPU, Java 21, default heap; short runs include JIT warm-up (5-6 M rows/s); warm, about 16.5 M rows/s.
+Loading and expanding the program takes 0.7 s. Comparing every record from a file costs about 30% more than hashing.
+The 2^29 runs fit this 3 GB sandbox (memory is sparse 16 KB pages), so no runner was needed.
+
+Advice in stage 1: the division family computes its own (as jolt-cpp's interpreter does); secp256k1 words come from
+row_dump's `advice.bin` (stage 2 computes them).

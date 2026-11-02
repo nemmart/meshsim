@@ -496,6 +496,27 @@ a really easy format to work with, from multiple languages" (O).
   zero-extended); true LRU, move to front. **The table is all zeros at the start of each frame 5**, so each decodes on its own;
   the leading word count tells the decoder where the codes end (the last byte may hold spare bits).
 
+## 17. A Java emulator of Jolt's tracer, to become our gold (2026-11-01)
+
+Decided (O).
+
+- **A standalone Java program** in `wip/gold/` that reads the guest's ELF (parsed by hand: no ELF library), sets up Jolt's memory,
+  and runs the emulation, producing Jolt's trace rows and, at the gold stage, section 16's segment file.
+- **Self-contained and clear** (owner): its own folder and build, no imports from meshsim's classes (the replayer model, the
+  universal tables), no native code, no use of the C++ tools. Each part is written to be read: the ELF loader; the memory layout;
+  an RV64 interpreter; **Jolt's expansions written out per instruction family as plain code** (following jolt-cpp's
+  `isa/virtual.cpp`, not the 128-bit expansion words); the CSRs, traps, LR/SC and ECALL; the inlines; the advice (secp256k1 in
+  `BigInteger`).
+- **Validation is central** (owner). jolt-cpp is checked against as **data, not code**: its rows (per-window hashes, as WORKER16
+  and WORKER17 do), WORKER16's segment files, WORKER17's layout and page tables.
+- **Stage 1, a Tracer model:** the loader, the layout, the interpreter and the expansions, with advice taken from the data
+  (jolt-cpp's rows, or frame 3); rows identical to jolt-cpp's on the small inputs, then on both workloads at 2²⁹.
+- **Stage 2, gold:** it computes everything itself (the advice, the processor state at each cut, the dirty runs, the page counts)
+  and writes the segment file. **It earns gold** by writing files byte-identical to WORKER16's tool (W3) on both workloads at 2²⁹
+  and on the hard-cut tests; the C++ tool then becomes the cross-check.
+- Upstream Jolt's trace stays the spec's ground truth (item 113); ST1 (jolt-cpp against upstream) is what would let the gold model
+  stand for both.
+
 ---
 
 ## v1.3 work list
@@ -507,6 +528,7 @@ Work agreed for v1.3, each with the decisions it carries out. Studies (below) ar
 | W1 | ~~Bring the replayer and the Tracer up to date with jolt-cpp's latest~~ | 9 | **moved to v1.25** (owner, 2026-10-31): `DECISIONS-v1.25.md` |
 | W2 | **jolt-cpp's JIT emits the advice streams**: 128 per 2²⁹ run, one per 2²² rows, words in row order (`shape(op).advice_words` per secp op), a crossing sequence's pending words at the head of the next; and **how jolt-cpp handles registers 40-47** at a chunk's start (13 (c)) | 13 | WORKER16 |
 | W3 | **The segment file tool**: runs the trace on the host and writes section 16's file (page counts, then per segment the processor state, advice log and updates, raw or LRU-coded); slow first | 16 | WORKER16 |
+| W4 | **The Java emulator** (`wip/gold/`): self-contained; stage 1 a Tracer model matching jolt-cpp's rows, stage 2 gold, writing section 16's file | 17 | WORKER18 |
 
 ---
 

@@ -41,6 +41,7 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
 |---|---|---|---|---|
 | WORKER16 | T2 done (`WORKER16/REPORT.md`: answered, DECISIONS-v1.3 section 12); now **W2**: the JIT's advice streams, and how jolt-cpp handles registers 40-47 at a chunk's start | starting W2 | plan first | its W2 prompt |
 | WORKER17 | Jolt's memory, from the tracing side (layout, accesses per row, what the workloads touch) and the checking side (the RAM, register and bytecode sumchecks), connected | starting | plan first | start with "Clone meshsim and follow WORKER17/PROMPT.md" |
+| WORKER18 | a self-contained Java emulator of Jolt's tracer (`wip/gold/`), to become our gold (DECISIONS-v1.3 section 17, W4) | starting | plan first | start with "Clone meshsim and follow WORKER18/PROMPT.md" |
 
 ## What's left, by milestone
 

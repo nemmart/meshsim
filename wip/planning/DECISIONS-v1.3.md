@@ -567,7 +567,8 @@ program.
     occur only in trap handlers (Cyclone: 875 traps per 2²⁹ run).
   - **A 16-entry LRU in front of the controller** (owner): the exact 32-bit instruction word sent and the length it expanded to,
     so a repeated word (the same CSR instruction in every trap) doesn't ask again.
-- **The controller interface** (owner): **two registers and two wake events**, as the replayer's controller-fed path (spec 4.19.9,
+- **The controller interface** (owner): **two registers and two wake events**, one escape hatch mirroring the other: anything the
+  tables don't cover goes to the controller, for its length as for its expansion, so the same software path serves both, as the replayer's controller-fed path (spec 4.19.9,
   `EXPANSION_OPCODE` and its "new expansion" event):
   - **`EXPANSION_OPCODE`**: the instruction whose expansion the controller must supply, when executing one whose decode class is
     controller (inlines and CSRs, as in the replayer); its event, **new expansion**;

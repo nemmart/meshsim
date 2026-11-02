@@ -373,7 +373,7 @@ Decided (O); also a reasonable size for the chip (O).
 - **The hardware's sumcheck engines** handle the RAM `ra` virtualization at every degree from the smallest *d* + 1 to 9. The other
   RAM sumchecks' degrees don't depend on K; they gain address rounds, up to 32.
 - **Open:**
-  - (a) Whether each slice's proof uses its own K (from the cells it touches) or one K for the whole run.
+  - (a) ~~per slice or whole run~~ **decided: one K for the whole run** (owner, 2026-11-01).
   - (b) Whether to keep 4-bit chunks at 2³² (degree 9, smaller commitments) or switch to 8-bit chunks for large K (degree 5, each
     chunk polynomial 16 times larger: 256 x T against 16 x T).
   - (c) Moving the jolt-cpp pin past 821e1bd for this.
@@ -428,8 +428,9 @@ Decided (O), from the planning discussion of 2026-10-19 recorded in jolt-asic-pl
   what an ASIC receives.
 - **Open:**
   - (b) the processor-state chunk's format, and the stream's framing (chunk type, segment tag, length);
-  - (c) the LRU's details: FIFO against true LRU replacement, and how 6-bit hit codes pack into the byte stream (bit-packed, or
-    byte-aligned tokens);
+  - (c) ~~FIFO against true LRU~~ **decided: true LRU** (owner): at 32 entries it is a move-to-front list, the same on both
+    sides (a hit sends the entry's rank and moves it to the front; a miss sends the value and pushes it at the front, dropping
+    the last). Still open: how 6-bit hit codes pack into the byte stream (bit-packed, or byte-aligned tokens).
   - (d) the physical topology (the chain, route 2'), which doesn't change the stream;
   - (e) the read-only part of each image: loads weren't traced in PR #1 (WORKER17's question 3 measures them).
 

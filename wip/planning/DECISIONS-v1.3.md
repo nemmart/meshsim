@@ -307,8 +307,7 @@ its region, with **offset bits [22:20] picking the part**, as in the replayer's 
   - **The stream is a walk:** the 2,048 top-level entries (8 KB), then each present leaf (4 KB) in top-level order. The Tracer,
     which keeps the table locally (the directory in part 1, the leaf pool in part 2, written while it is stopped between proofs),
     **rewrites each top-level entry to the pool slot its leaf landed in** as it loads, so a translation stays two on-chip lookups.
-  - **Open (T3), besides the pool size:** what an absent page means (zeros, or a fault like a read-only store), and how the
-    Tracer waits while C&C 3 handles a fault.
+  - **Open (T3):** the leaf pool's size. (An absent page reads as zero, and a store to a read-only page is UB: section 15.)
 - *(Withdrawn: T8, measuring whether 512 MiB suffices; superseded by the 4 GiB decision.)*
 - **Findings from upstream Jolt** (a16z/jolt `main` at `17a9459`, read 2026-11-01; `common/src/jolt_device.rs`, `constants.rs`):
   addresses are 64-bit, with **no 4 GiB limit in Jolt** (jolt-cpp's 4 GiB is its emulator's own reservation). The used space is

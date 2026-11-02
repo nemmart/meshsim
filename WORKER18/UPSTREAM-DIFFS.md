@@ -73,8 +73,9 @@ does with faulty or unusual guests.
   handle (`trace_owner.cpp:654-655`, `unreachable`); the release build was observed to abort with "guest program
   executed UNIMP instruction" (`:648`), i.e. undefined behaviour.
 - **upstream** fetches and decodes at run time from memory (`tracer/src/emulator/cpu.rs:660-678`), so it executes
-  whatever the bytes decode to there. In `jump_into_gap` it decoded the halfword 0x0002 (C.SLLI x0, a HINT) as
-  `ADDI x0, x0, 0` (`crates/jolt-riscv/src/uncompress.rs`, test `uncompresses_c_slli_x0` at `:613`) and ran on; such a row
+  whatever the bytes decode to there. In `jump_into_gap` it decoded the halfword 0x0002 (C.SLLI x0, a HINT), which
+  upstream uncompresses to a real `SLLI x0, x0, shamt` (`crates/jolt-riscv/src/uncompress.rs`, test
+  `uncompresses_c_slli_x0` at `:612-614`), traced after the rd = x0 rewrite as `ADDI x0, x0, 0`, and ran on; such a row
   isn't in the expanded bytecode, which upstream's prover rejects (`tracer/src/trace_row.rs:13-40`, MissingBytecodePc).
   jolt-cpp's decoder treats C.SLLI with rd = x0 as invalid (`isa/decoder.cpp`, uncompress case 2/0).
 - Gold aborts ("jump to 0x8000000a, where no instruction starts").

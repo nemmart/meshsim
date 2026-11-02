@@ -285,9 +285,10 @@ its region, with **offset bits [22:20] picking the part**, as in the replayer's 
   - **a leaf:** 1,024 pages, covering 16 MiB (10 bits); 4 KB at 32-bit entries; one per non-empty 16 MiB region, in a **leaf pool**;
   - **the directory:** 2,048 entries, one per 16 MiB region (11 bits): "empty" or a leaf's index in the pool, so an index and a
     valid bit (9 bits each with a pool of 256 leaves: about 18 Kbit, small enough for SRAM or flops);
-  - **why 16 MiB leaves suit:** the two workloads are fully dense in just two areas, probably the heap and the stack (owner), so a
-    workload maps with about 4-6 leaves (16-24 KB) [estimate: Cyclone's heap, up to about 29 MiB, 2-3 leaves; the stack 1; the
-    program and I/O region 1-2]. WORKER17's question 3 (pages touched, by region) is to confirm it.
+  - **why 16 MiB leaves suit:** the two workloads are dense in just two areas (owner). **Measured** (WORKER17, 2²⁹): EVM Zone
+    touches 69 pages in **3 leaves** (program data, stack and heap all in the 0x8000_0000 region); Cyclone 693 pages in **4 leaves**
+    (the 2.9 MB untrusted advice, 178 read-only pages; and one run of stack plus heap, 0x8432_4000-0x84AE_4000, 7.75 MiB, the heap
+    starting at the stack's top). Cyclone's heap use is 7.7 MiB (an earlier 29 MiB here was `ram_K`'s bound, not use).
   - **the pool's size: open**, until WORKER17's counts; 256 leaves (1 MiB) would map up to 4 GiB of populated regions;
   - **Entries are 32 bits; bits 30:0 address the file system** (LPDDR) **in 128 B units** (owner, 2026-11-01; 2³¹ x 128 B =
     256 GiB), the format in LPDDR and in the stream. The memory system reads 4 KB (the most efficient), 2 KB, or 128 B (poor).
@@ -371,10 +372,23 @@ Decided (O); also a reasonable size for the chip (O).
 - **The RAM one-hot chunks follow K:** *d* = ⌈log K / 8⌉ (`onehot_params.cpp:11-12, 48`), and the RAM `ra` virtualization's degree
   is *d* + 1 (upstream `relations/ram/ra_virtualization.rs:60-62`). **At K = 2³², *d* = 4 and the degree is 5**; our workloads
   (2²³, 2²⁴) have *d* = 3, degree 4. jolt-cpp's whole-run proofs use the same (WORKER17).
-- **The pin is no limit at 8-bit chunks:** 821e1bd accepts 2-6 chunks (`MAX_D` = 6), log K up to 48. Its log K ≤ 24 applies only to
-  4-bit chunks (proofs under 2²⁵ rows), which we don't make. *(Earlier text here assumed 4M-row proofs: 4-bit chunks, d up to 8,
-  degree up to 9. Superseded.)* The GPU output check's `uint32_t ram_k` (`ram/gpu/output_check.cu:89`) still caps K below 2³² as
-  written.
+- **jolt-cpp's K limits** (WORKER17): the `ra` virtualization accepts 2-6 chunks at the pin (`MAX_D` = 6), 2-8 at HEAD, so at
+  8-bit chunks it is no limit. But **the GPU read-write checking refuses K above 2²⁴ at the pin, whatever the chunk width**
+  (`RW_MAX_ADDRESS_SPACE = 1u << 24`, `ram/gpu/rw_sparse.hpp:33`, checked at `rw_sparse.tpp:93-97`), **2³⁰ at HEAD**; and the GPU
+  output check holds `ram_k` in a `uint32_t` (`ram/gpu/output_check.cu:89`). Both workloads fit, Cyclone exactly at 2²⁴. *(Earlier
+  text here assumed 4M-row proofs, and then said the pin was no limit at 8-bit chunks; both superseded.)*
+- **What jolt-cpp sizes densely by K** (WORKER17, at the pin; upstream not yet read):
+
+| sumcheck | dense in K | sized by T or by region |
+|---|---|---|
+| read-write checking | CPU: arrays and loops over K; GPU: about 7 K field elements | the accesses, sparse over T |
+| raf evaluation | 2 K field elements | |
+| output check | K / cards field elements per card, plus initial and final RAM snapshots of K x 8 bytes on every card | |
+| `ra` virtualization, Val check, Hamming booleanity | | T |
+| program image, untrusted advice | | their own words |
+
+  At K = 2³² a snapshot is 32 GiB and a K-sized array of field elements 128 GiB, so **jolt-cpp as written can't reach 2³²**.
+  Against that, our workloads touch 69 and 693 pages (1.1 and 11 MB). Open (d).
 - **The hardware's sumcheck engines** handle the RAM `ra` virtualization at degrees 3 to 5 (*d* = 2 to 4). The other RAM
   sumchecks' degrees don't depend on K; they gain address rounds, up to 32.
 - **Open:**
@@ -385,8 +399,9 @@ Decided (O); also a reasonable size for the chip (O).
     **v1.3 moves to a deliberate new pin**, HEAD (88dca85) or later, after two checks: `src/tracer/isa` unchanged (true at
     88dca85: 13 commits, the tracer's only change is image loading and reset, #1544), and row hashes per window identical on both
     2²⁹ workloads. PR #2's tracer copy (7 files) is re-synced between WORKER16's tasks, not during one.
-  - (d) Whether any RAM step in jolt-cpp is dense in K (WORKER17, question 5). The GPU output check holds `ram_k` in a `uint32_t`
-    (`ram/gpu/output_check.cu:89`), which caps K below 2³² there as written.
+  - (d) **The K-dense steps** (above): our hardware computes them over the touched pages instead (an absent page is zero, so
+    untouched cells contribute nothing or a closed form), or K is capped where dense structures fit. Upstream's Val_init and
+    K-dense parts are WORKER17's next reading.
 
 ## 15. What the host sends per segment: images and transport (2026-11-01)
 
@@ -444,7 +459,10 @@ Decided (O), from the planning discussion of 2026-10-19 recorded in jolt-asic-pl
     zero-extended. Here the bits run least significant first within each byte of the byte stream. When the table resets (each
     segment's updates, or each chunk) is open with (b)'s framing.
   - (d) the physical topology (the chain, route 2'), which doesn't change the stream;
-  - (e) the read-only part of each image: loads weren't traced in PR #1 (WORKER17's question 3 measures them).
+  - (e) ~~the read-only pages~~ **measured** (WORKER17, 2²⁹): EVM Zone 11 read-only and 58 written pages; Cyclone 194 and 499.
+    Per segment, written pages min / median / max: 10 / 10 / 39 and 3 / 19 / 266; read-only: 6 / 8 / 12 and 8 / 69 / 180. All of
+    Cyclone's untrusted advice is read (178 pages); EVM Zone reads all 64 KiB of its trusted advice. Only 85 and 89 of the 128
+    segments have rows; the rest are padding.
 
 ## 16. The segment file: framing (2026-11-01)
 

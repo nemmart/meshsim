@@ -50,8 +50,8 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
   Quest 083/084 (every window at 2²⁹); DECISIONS-v1.25 sections 8-9 merged (`s8`, `s9`) and `cc-cores` (C&C 1-3 as real cores,
   opt-in); freeze check Quest 093 (p4 1,229,008 cycles; 25 selected real windows in stages A, B, F) and 094 (quick 36/36, full
   11/11). WORKER10, 11, 13, 14 closed (`sessions/`). After the freeze: recipe 27's `command()` parity loop (about 380 of a phase's
-  435 cycles; DECISIONS-v1.25, after the freeze); WORKER11's builder change on jolt-asic-planning `w11-section9` (be4cdac),
-  unmerged, for the owner to merge into PR #2.
+  435 cycles; DECISIONS-v1.25, after the freeze); WORKER11's builder change (section 9) is merged into PR #2's branch
+  `tracer-standalone-main` (8d546e3).
 - **v1.3, the Tracer:** decided so far in `DECISIONS-v1.3.md` sections 1-13 (**13: advice comes from the host in the read log,
   128 streams per 2²⁹ run built by jolt-cpp's JIT; no untraced rows; supersedes 7's untraced rows, 8, 10**; components, FIFOs, two-pass compression, LRU tables,
   boundaries, output, expansion tables, divider for advice, jolt-cpp move (became v1.25), C&C 3 generating long expansions, the

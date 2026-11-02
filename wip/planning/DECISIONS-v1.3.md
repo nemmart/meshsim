@@ -234,7 +234,8 @@ From WORKER12's counts (`WORKER12/REPORT.md`; both workloads at 2²⁹, traced t
 day: the first version assumed one row per cycle and counted only window 34's untraced rows; the Tracer runs at **about 4 cycles
 per row** (owner), and windows 33-36 all fall in the same proof.*
 
-- **The Tracer's time budget: under 100 ms** (owner), taken here **per proof** of 4M traced rows *(to confirm)*.
+- **The Tracer's time budget: under 100 ms** (owner) **per proof**, in which each Tracer traces its own 4M-row segment (a
+  proof is the whole run over 128 ASICs: section 14).
 - **What the workloads cost**, at about 4 cycles per row and 1 GHz:
   - **Cyclone:** 96,687 untraced rows against 371.5 M traced (0.026 %), all from the division family; at most 129 in any window.
     No secp256k1 inlines. A proof is about 17 ms.
@@ -357,7 +358,7 @@ third bullets; answers T7 the way section 11 kept as the backup; makes C4 moot.
     state; jolt-cpp's JIT doesn't track them (WORKER16). jolt-cpp's tracer and GPU compressed-trace expander do handle them
     (owner): find how, and what that means for slice starting states built on the host (W2).
 
-## 14. RAM K: up to 2³², sized per proof (2026-11-01)
+## 14. RAM K: up to 2³², one K per run (2026-11-01)
 
 Decided (O); also a reasonable size for the chip (O).
 
@@ -365,20 +366,21 @@ Decided (O); also a reasonable size for the chip (O).
   the highest touched cell, as jolt-cpp chooses it (`node_context.cpp:318-371`, `trace_owner.cpp:1134-1140` at the pin; a
   program-image floor, 2²³ for both workloads). Measured (WORKER17, 2²⁹): EVM Zone 2²³, Cyclone 2²⁴. K follows the run, not the
   layout, so it can change between inputs of the same program.
-- **The RAM one-hot chunks follow K:** *d* = ⌈log K / chunk bits⌉ (`onehot_params.cpp:11-12, 48`). At our 4M-row proofs
-  jolt-cpp's chunks are 4 bits (log T < 25, `config.hpp:121-127`), so *d* runs up to **8** and the RAM `ra` virtualization's
-  degree, *d* + 1, up to **9** (upstream `relations/ram/ra_virtualization.rs:60-62`). That is jolt-cpp HEAD's limit (88dca85:
-  `MAX_D` = 8, `ram/gpu/ra_virtual.hpp:28-29`; the Rust slot 2-8 chunks). **Our pin, 821e1bd, stops at *d* = 6 (log K ≤ 24)**, and
-  Cyclone is already at 2²⁴, so supporting 2³² means following HEAD's change.
-- **The hardware's sumcheck engines** handle the RAM `ra` virtualization at every degree from the smallest *d* + 1 to 9. The other
-  RAM sumchecks' degrees don't depend on K; they gain address rounds, up to 32.
+- **A proof is the whole run** (owner, 2026-11-01: a 4M segment is never its own proof): T = 2²⁹ for our workloads, spread over the
+  128 ASICs, one segment each. So **jolt-cpp's chunks are 8 bits** (log T ≥ 25, `config.hpp:121-127`; we match jolt-cpp, open (b)).
+- **The RAM one-hot chunks follow K:** *d* = ⌈log K / 8⌉ (`onehot_params.cpp:11-12, 48`), and the RAM `ra` virtualization's degree
+  is *d* + 1 (upstream `relations/ram/ra_virtualization.rs:60-62`). **At K = 2³², *d* = 4 and the degree is 5**; our workloads
+  (2²³, 2²⁴) have *d* = 3, degree 4. jolt-cpp's whole-run proofs use the same (WORKER17).
+- **The pin is no limit at 8-bit chunks:** 821e1bd accepts 2-6 chunks (`MAX_D` = 6), log K up to 48. Its log K ≤ 24 applies only to
+  4-bit chunks (proofs under 2²⁵ rows), which we don't make. *(Earlier text here assumed 4M-row proofs: 4-bit chunks, d up to 8,
+  degree up to 9. Superseded.)* The GPU output check's `uint32_t ram_k` (`ram/gpu/output_check.cu:89`) still caps K below 2³² as
+  written.
+- **The hardware's sumcheck engines** handle the RAM `ra` virtualization at degrees 3 to 5 (*d* = 2 to 4). The other RAM
+  sumchecks' degrees don't depend on K; they gain address rounds, up to 32.
 - **Open:**
   - (a) ~~per slice or whole run~~ **decided: one K for the whole run** (owner, 2026-11-01).
-  - (b) ~~the chunk width~~ **decided: match jolt-cpp** (owner, 2026-11-01): the chunk width is part of the proof's
-    shape, which the verifier shares, so it isn't ours to choose. jolt-cpp takes 4 bits when log T < 25, else 8
-    (`config.hpp:121-127`). **Still open: which T.** If a proof covers the whole 2²⁹ run across 128 ASICs (PR #1's model, and
-    one K per run), log T = 29: **8-bit chunks, *d* ≤ 4 at 2³², degree ≤ 5**, and the 4-bit figures above (*d* up to 8, degree
-    9) apply only to 4M-row proofs.
+  - (b) ~~the chunk width~~ **decided: match jolt-cpp** (owner, 2026-11-01): it is part of the proof's shape, which the
+    verifier shares. With a proof being the whole run, that is 8 bits (above).
   - (c) ~~Moving the jolt-cpp pin~~ **decided** (owner, 2026-11-01): **v1.25 stays at 821e1bd** (frozen, accepted there);
     **v1.3 moves to a deliberate new pin**, HEAD (88dca85) or later, after two checks: `src/tracer/isa` unchanged (true at
     88dca85: 13 commits, the tracer's only change is image loading and reset, #1544), and row hashes per window identical on both

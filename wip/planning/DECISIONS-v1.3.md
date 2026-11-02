@@ -376,7 +376,10 @@ Decided (O); also a reasonable size for the chip (O).
   - (a) ~~per slice or whole run~~ **decided: one K for the whole run** (owner, 2026-11-01).
   - (b) Whether to keep 4-bit chunks at 2³² (degree 9, smaller commitments) or switch to 8-bit chunks for large K (degree 5, each
     chunk polynomial 16 times larger: 256 x T against 16 x T).
-  - (c) Moving the jolt-cpp pin past 821e1bd for this.
+  - (c) ~~Moving the jolt-cpp pin~~ **decided** (owner, 2026-11-01): **v1.25 stays at 821e1bd** (frozen, accepted there);
+    **v1.3 moves to a deliberate new pin**, HEAD (88dca85) or later, after two checks: `src/tracer/isa` unchanged (true at
+    88dca85: 13 commits, the tracer's only change is image loading and reset, #1544), and row hashes per window identical on both
+    2²⁹ workloads. PR #2's tracer copy (7 files) is re-synced between WORKER16's tasks, not during one.
   - (d) Whether any RAM step in jolt-cpp is dense in K (WORKER17, question 5). The GPU output check holds `ram_k` in a `uint32_t`
     (`ram/gpu/output_check.cu:89`), which caps K below 2³² there as written.
 

@@ -43,3 +43,22 @@ jolt-cpp's own interpreter runs unchanged):
 3. Pass B: the same run, `fork()` at each chosen point; the child rebuilds an interpreter from pc, instr_idx,
    regs 0-127 and RAM only, runs R rows, and its rows are compared row by row with the parent's. Control variants
    (zeroing 32-39, or 40-47) to show the check detects missing state.
+
+**Tool built and first results** (`state_probe`, jolt-asic-planning `worker16-state` at `b277125`, `tracer/state/`;
+local 1 CPU, 3 GB, `vm.overcommit_memory=1`, which resets between tool calls here, so every run sets it):
+- Pass A rows = jolt-cpp's rows on every window: Cyclone input/22 42/42, EVM Zone trace-23 90/90.
+- Restart (k = 16 + first 4 per category, R = 65,536 rows): **T2 matched at every point tested except mid-secp256k1
+  sequences with advice pending** (EVM Zone trace-23: 0/20 mid-sequence with advice pending, 0/20 at an advice row, 1/20
+  just after one; all match with `secp_advice` + `next_secp_word` added). Cyclone input/22 has no secp inline.
+- Controls: zeroing 32-39 fails at traps, MRET, CSRs, between LR and SC; zeroing 40-47 fails almost everywhere (the next
+  write's `rd_prev`); zeroing 48-127 fails only mid-inline. 48-127 were zero at every instruction start (0 exceptions).
+- Counts: Cyclone input/22 51 ECALL, 51 MRET, 205 CSRRW, 306 CSRRS, 125 LR.W / SC.W, 1 AMO, 30 VirtualHostIO;
+  EVM Zone trace-23 668 secp sequences, 3,710 `VirtualAdvice` rows, 3 division advice rows.
+
+## 2026-11-01, session 2
+
+**Context** (owner): DECISIONS-v1.3 section 13: the host supplies all advice in the read log, 128 streams per 2^29 run
+(one per 2^22 rows), built by jolt-cpp's JIT; the secp buffer becomes "pending words at the head of the next slice's
+stream". To measure on the 2^29 runs: (1) secp sequences: count, rows inside, longest; (2) 2^22 slice boundaries inside a
+secp sequence with advice pending, and the pending words each carries; (3) advice words per slice (min, mean, max).
+Report only. W2 (the JIT emitting the streams) may come next.

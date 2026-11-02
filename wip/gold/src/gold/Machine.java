@@ -220,7 +220,6 @@ public final class Machine {
         check(rs2Val(v) == 0 || Long.compareUnsigned(rs1Val(v), rs2Val(v)) < 0, v, "VirtualAssertValidUnsignedRemainder");
         break;
       case UNIMP: throw new EmulationError("guest executed UNIMP at " + v);
-      case Inlines.NOT_WRITTEN: throw new EmulationError("inline not written yet, at " + v);
       default: throw new EmulationError("unimplemented instruction " + v);
     }
 

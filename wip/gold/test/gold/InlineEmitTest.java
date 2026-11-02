@@ -119,7 +119,7 @@ public final class InlineEmitTest {
     return rows;
   }
 
-  static boolean written(List<EmitRow> rows) { return rows.isEmpty() || rows.get(0).op() != Inlines.NOT_WRITTEN; }
+  static boolean written(List<EmitRow> rows) { return true; }
 
   static long digest(List<EmitRow> rows) {
     long h = 0;

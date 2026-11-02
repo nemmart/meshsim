@@ -17,7 +17,7 @@ does with faulty or unusual guests.
 | D1 | program image from segments (jolt-cpp) or sections (upstream) | yes, if they differ |
 | D2 | upstream enforces the stack canary; jolt-cpp doesn't | no (overflowing guests only) |
 | D3 | LegacyRawEcall host I/O exists only in jolt-cpp | yes, for legacy guests |
-| D4 | UNIMP in the code: jolt-cpp skips it (and its pc drifts); upstream rejects the ELF | only guests with such words |
+| D4 | UNIMP in the code: jolt-cpp skips it (and its pc drifts); upstream rejects the ELF | **ruled** (owner, 2026-11-02) |
 | D5 | executing where no instruction was decoded statically | no (faulty guests only) |
 | D6 | misaligned access: both abort, by different checks | no |
 | D7 | EBREAK: upstream stalls (ends); jolt-cpp's interpreter ends the run, its JIT aborts | yes, if a guest reaches EBREAK |
@@ -56,7 +56,37 @@ does with faulty or unusual guests.
 - Test guest `legacy_raw_ecall` (a0 = 0, ECALL, no trap handler): jolt-cpp (and gold) 4 rows, the ECALL row
   `VirtualHostIO`; upstream traps to mtvec = 0 and panics decoding address 0 (`tracer/src/emulator/cpu.rs:1466`).
 
-## D4. UNIMP in the code
+## D4. UNIMP in the code (ruled)
+
+**Ruling** (owner, 2026-11-02, DECISIONS-v1.3 section 17): the gold loader loads only instructions we can prove. In
+strict mode (the default), any instruction in the ELF's load stream that Jolt can't prove (CSRRC and the immediate CSR
+forms, a CSR outside the six, FENCE.I, WFI, SRET and other privileged instructions, an undecodable word) throws at
+load, as upstream rejects it at decode. The exception is the standard UNIMP encodings (c.unimp 0x0000, unimp
+0xC0001073), which compilers emit after code that can't return and as padding: they load as an unreachable marker,
+like upstream's UNIMPL, and throw only if executed. In ACT4's permissive mode the unprovable instructions also throw
+only when executed.
+
+**Gold** (`wip/gold` `fb5f579`, `Bytecode.LoadMode`): implemented so the bytecode keeps jolt-cpp's structure (a removed
+UNIMP still occupies no row, an undecodable instruction one row), so instruction indices and the segment files don't
+change: all four segment files stay byte-identical. A removed UNIMP's address is kept; reaching it (by a jump or by
+falling through) throws, as does executing a row flagged unprovable. 13 guests cover it (`wip/gold/test/guests/`,
+`unprovable_*`, `unimp_*`, `c_unimp_*`), checked strict and permissive by `check_guests.sh`. Both workloads and all
+seven jolt-cpp examples load in strict mode, with unchanged rows.
+
+What the three do with those guests:
+
+| guest | jolt-cpp | upstream 17a9459 | gold (ruled) |
+|---|---|---|---|
+| CSRRC, CSRRWI, CSRRSI, CSRRCI, WFI, FENCE.I | loads; steps over it, pc drifting | rejects at decode ("unsupported system instruction", "invalid MISC-MEM funct3") | rejects at load |
+| CSR outside the six (mhartid), SRET, SFENCE.VMA, undecodable word | its JIT refuses the ELF (`transcode.cpp:2546`) | rejects ("UnsupportedCsr(3860)", "unsupported system instruction", "unknown RV64 opcode") | rejects at load |
+| unimp 0xC0001073 after the end, never reached | its JIT refuses the ELF (0xC00 isn't one of its CSRs: undecodable) | **rejects** at expansion ("UnsupportedCsr(3072)") | loads; runs normally |
+| unimp 0xC0001073 executed | refuses the ELF | rejects | throws when executed |
+| c.unimp 0x0000 executed (falling in, or a jump to it) | steps over it, pc drifting; a jump to it aborts | skips it at decode (`elf.rs:126-134`), panics at run time decoding it (`cpu.rs:1466`) | throws when executed |
+
+So under the ruling gold departs from upstream on one point: 0xC0001073 loads (as the ruling's standard UNIMP), where
+upstream 17a9459 rejects the ELF.
+
+### The difference as found
 
 - **jolt-cpp** decodes some words as UNIMP (MISC-MEM funct3 != 0 such as FENCE.I, SYSTEM funct3 3/5/6/7, WFI, a
   compressed 0x0000) and **removes them from the bytecode** (`isa/virtual.cpp:1357`). Execution then steps over them

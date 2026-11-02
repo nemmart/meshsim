@@ -1,0 +1,30 @@
+Using CPython 3.12.3 interpreter at: /usr/bin/python3.12
+Creating virtual environment at: .venv
+   Building act @ file:///tmp/w18-095/act4/framework
+   Building covergroupgen @ file:///tmp/w18-095/act4/generators/coverage
+   Building testgen @ file:///tmp/w18-095/act4/generators/testgen
+      Built testgen @ file:///tmp/w18-095/act4/generators/testgen
+      Built covergroupgen @ file:///tmp/w18-095/act4/generators/coverage
+      Built act @ file:///tmp/w18-095/act4/framework
+Downloading pydantic-core (2.0MiB)
+Downloading pygments (1.2MiB)
+Downloading virtualenv (5.6MiB)
+Downloading ruff (10.7MiB)
+Downloading pyright (6.1MiB)
+ Downloaded pygments
+ Downloaded pydantic-core
+ Downloaded virtualenv
+ Downloaded pyright
+ Downloaded ruff
+Installed 30 packages in 53ms
+Generating covergroups... ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00
+Generating tests... ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:02
+[0m[2K[1Gℹ info    Merged architecture files written to /home/questrunner/.local/share/udb/0.1.9/gen/spec/_
+[0m[2K[1Gℹ info    Resolved architecture files written to /home/questrunner/.local/share/udb/0.1.9/gen/resolved_spec/_
+ℹ info    Constructing ConfiguredArchiture for jolt-rv64imac
+[0m[2K[1Gℹ info    Compiling global IDL     
+[0m[2K[1GConfig jolt-rv64imac is valid
+ℹ info    Constructing ConfiguredArchiture for jolt-rv64imac
+Generating extension list for jolt-rv64imac
+  Building... ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 665/665 100% elapsed: 0:00:02
+Build complete: 665 succeeded

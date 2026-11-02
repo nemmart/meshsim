@@ -61,4 +61,58 @@ final class InlineAsm {
   void li(int rd, long imm) { e.emitU(ADDI, rd, imm); }
   void assertEq(int a, int b) { e.emitB(VirtualAssertEQ, 0, a, b); }
   void assertLte(int a, int b) { e.emitB(VirtualAssertLTE, 0, a, b); }
+
+  // ---- values: a register or a known constant, folded where both operands are constants (inline.rs:290-400) ----
+
+  /** An operand: a register, or an immediate the builder knows at expansion time. */
+  record Value(boolean isImm, long v) {
+    static Value reg(int r) { return new Value(false, r); }
+    static Value imm(long x) { return new Value(true, x); }
+    int reg() { return (int) v; }
+  }
+
+  interface Fold { long apply(long x, long y); }
+
+  /** bin: reg op reg (R form), reg op imm (I form; an immediate first operand is swapped), imm op imm folded. */
+  Value bin(int regOp, int immOp, Value a, Value b, int rd, Fold fold) {
+    if (!a.isImm() && !b.isImm()) { r(regOp, rd, a.reg(), b.reg()); return Value.reg(rd); }
+    if (!a.isImm()) { i(immOp, rd, a.reg(), b.v()); return Value.reg(rd); }
+    if (!b.isImm()) return bin(regOp, immOp, b, a, rd, fold);
+    return Value.imm(fold.apply(a.v(), b.v()));
+  }
+
+  Value add(Value a, Value b, int rd) { return bin(ADD, ADDI, a, b, rd, (x, y) -> x + y); }
+  Value xor(Value a, Value b, int rd) { return bin(XOR, XORI, a, b, rd, (x, y) -> x ^ y); }
+  Value and(Value a, Value b, int rd) { return bin(AND, ANDI, a, b, rd, (x, y) -> x & y); }
+
+  /** 32-bit rotate right: VirtualROTRIW with a mask of the shift (a shift of 0 or 32 is an XOR with 0). */
+  Value rotri32(Value a, int shamt, int rd) {
+    if (shamt == 0 || shamt == 32) return xor(a, Value.imm(0), rd);
+    if (a.isImm()) return Value.imm(Integer.rotateRight((int) a.v(), shamt) & 0xffffffffL);
+    long mask = ((1L << (32 - shamt)) - 1) << shamt;
+    i(VirtualROTRIW, rd, a.reg(), mask);
+    return Value.reg(rd);
+  }
+
+  /** 32-bit logical right shift: the source SRLIW, which expands to VirtualSRLIW with its bitmask. */
+  Value srli32(Value a, int shamt, int rd) {
+    if (shamt == 0) return xor(a, Value.imm(0), rd);
+    if (a.isImm()) return Value.imm(((int) a.v() >>> shamt) & 0xffffffffL);
+    i(VirtualSRLIW, rd, a.reg(), (1L << 32) - (1L << (shamt & 0x1f)));
+    return Value.reg(rd);
+  }
+
+  /** 64-bit rotate right by a mask's trailing zeros: VirtualROTRI. */
+  Value rotri(Value a, long mask, int rd) {
+    if (a.isImm()) return Value.imm(Long.rotateRight(a.v(), Long.numberOfTrailingZeros(mask)));
+    i(VirtualROTRI, rd, a.reg(), mask);
+    return Value.reg(rd);
+  }
+
+  /** 64-bit rotate right by an amount (inline.rs:393-406); 0 or 64 is an XOR with 0. */
+  Value rotr64(Value a, int amount, int rd) {
+    if (amount == 0 || amount == 64) return xor(a, Value.imm(0), rd);
+    if (a.isImm()) return Value.imm(Long.rotateRight(a.v(), amount));
+    return rotri(a, Bits.maskTrailingZeros(amount), rd);
+  }
 }

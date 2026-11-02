@@ -96,8 +96,8 @@ That is 1.1% of EVM Zone's rows and 8.2% of Cyclone's.
 - **So the JIT itself would have to keep 40-47 current.**
 
 **What helpers would cost.**
-- **The four frequent families** (narrow loads and stores, rd = x0 jumps, register shifts) are 99.5% of the writing instructions on Cyclone and 99.997% on EVM Zone
-  instructions, and their final values are values the JIT already computes or has at hand:
+- **The four frequent families** (narrow loads and stores, rd = x0 jumps, register shifts) are 99.5% of the writing instructions on Cyclone and 99.997% on EVM Zone,
+  and their final values are values the JIT already computes or has at hand:
   - the aligned word and the address-derived mask or shift;
   - the link value, a constant per instruction;
   - a power of two of rs2.

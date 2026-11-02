@@ -550,21 +550,23 @@ program.
     decode entry holds a class and a template start, no length). Built by the table builder from the templates: at v1.25 the
     longest ROM template is 21 rows (306 ROM-class entries: 231 of one row), so 5 bits per entry would do (2,048 x 5 bits,
     1.25 KB); the CSR entries (class 2) are open (a).
-  - **An inline** (custom-0, *w*[6:0] = `0001011`) takes its length from **a separate table of 16-bit lengths** (owner), since
-    inlines run to 3,121 rows. **An inline's length depends only on which inline it is, not its registers** (`num_cycles(OpCode)`,
-    `isa/virtual.cpp:1210-1276`: KECCAK256 3,087, KECCAK256_ABSORB_PERMUTE 3,121, SHA256 1,900 and 1,864, BLAKE2 1,067, BLAKE3 648
-    and 646, BIGINT256_MUL 141, the secp256k1 operations by shape), and the decode index already gives each inline its own entry,
-    {funct7[4:0], funct3}. So the table is **indexed by those bits, the registers ignored**: at most 256 entries, about 15 used
-    (replacing the 128-entry array keyed on whole words).
+  - **The same technique as expansion, in both places** (owner): **expand 16 bits to 32, look up the table, fall back to the
+    controller.** Inlines are handled exactly as during expansion, where they are controller-fed (decode class 1, like the CSRs'
+    class 2): **an inline's length also comes from the controller**, cached by the 16-entry LRU below. So **the length table's
+    "ask the controller" entries are exactly the decode table's controller classes** (inlines and CSRs), and there is no separate
+    inline length table. (Inline lengths depend only on the inline, `num_cycles(OpCode)`, `isa/virtual.cpp:1210-1276`, 141 to
+    3,121 rows; the controller knows them.)
   - **rd = x0** (`should_nop_for_rd0`, `isa/virtual.cpp:108-112, 270-274`): an instruction with an rd register, not one that
     handles rd = x0 itself, and with no side effects beyond rd, **becomes a single NOP row** (a DIV to x0 is 1 row, not 12):
     **one more bit per length-table entry**, "1 row if rd = x0", plus a 5-bit zero test. (A side-effecting instruction with
     rd = x0 is remapped to a temporary instead, `:276-282`, and keeps its length.)
   - **Anything else goes to C&C 3's controller** (owner): a length-table entry of **0 means "ask the controller"**, which the
-    controller sets, so which instructions take the slow path is software's choice. **The CSR instructions go there** (their
+    controller sets, so which instructions take the slow path is software's choice. **The inlines and the CSR instructions go
+    there** (their
     length depends on rd and rs1: CSRRW 1 if rd = x0, 3 if rd = rs1, else 2; CSRRS 1 if rs1 = x0 or rd = x0, 3 if rd = rs1, else
-    2; `isa/virtual.cpp:1287-1302`), so the hardware has no CSR logic and no associative table. A few hundred cycles each; CSRs
-    occur only in trap handlers (Cyclone: 875 traps per 2²⁹ run).
+    2; `isa/virtual.cpp:1287-1302`), so the hardware has no CSR or inline logic and no associative table. A few hundred cycles
+    each, and only on an `instr_idx` miss whose block has one before the target: CSRs occur only in trap handlers (Cyclone: 875
+    traps per 2²⁹ run); repeated inline words hit the LRU.
   - **A 16-entry LRU in front of the controller** (owner): the exact 32-bit instruction word sent and the length it expanded to,
     so a repeated word (the same CSR instruction in every trap) doesn't ask again.
 - **The controller interface** (owner): **two registers and two wake events**, one escape hatch mirroring the other: anything the

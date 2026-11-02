@@ -69,3 +69,33 @@ every window (5,415 and 5,670); counts equal WORKER9's and WORKER12's. T2: Cyclo
 failure mid-secp with advice pending; T2 + buffer 673/673. Section 13: no 2^22 boundary falls inside a secp sequence
 on either run; words per slice EVM Zone 1 / 44.5 / 3,676 (total 3,782), Cyclone 0 / 1,086 / 3,094 (total 96,687).
 secp words per operation are `shape().advice_words` (4, 6 or 8), not always 8. Written up in `REPORT.md`.
+
+## 2026-11-01, session 3: W2
+
+**Asked** (owner, via the user): W2 in two parts on my own branch of jolt-asic-planning. (1) First, report how jolt-cpp
+gets registers 40-47 right at a chunk's start, before building. (2) Then the advice streams: 128 per 2^29 run, one per 2^22
+rows, words in row order (`shape(op).advice_words` per secp op, 1 per division-family instruction), a crossing
+sequence's pending words at the head of the next stream; check each stream against the words the rows consume.
+Plan first.
+
+**(1) Registers 40-47** (read; jolt-cpp `821e1bd`, `trace_owner.cpp` identical in jolt-cpp and PR #2):
+- Values come from the CPU compressed-trace generator's interpreter executing the expansions. Each thread starts from a JIT
+  checkpoint that carries only registers 0-39 (`trace_owner.cpp:1039-1046`; `num_jit_tracked_regs`, `isa/virtual.hpp:47`),
+  so 40-47 start at 0 in every thread.
+- Per thread, `VregInfo` (`trace_owner.cpp:662-676`) records each register's first write (`:802-808`) and its values at the
+  thread's end (`:848`). After all threads join, a sequential pass (`:1093-1135`) carries the values forward: every
+  header before a thread's first write to a register (all of them if it never writes it) gets the previous threads' last
+  value. Correct because 40-47 are never read before written within an instruction (WORKER16: 0 carried reads at 2^29)
+  and each thread runs to exactly the row where the next starts.
+- The compressed trace carries them as full 64-bit values in `CompressedChunkHeader::regs[0..47]`, one header per 512-row
+  chunk (`trace_owner.hpp:393-399`). 48-127 are not carried: zero at a chunk's start, and a chunk that would start
+  mid-sequence with a non-zero 48+ is rewound to the sequence's start (`skip_cycles`, `:700-732`).
+- Both expanders only consume the header: CPU `expand_compressed_chunk` (`:857-863`), GPU `expand_kernel`
+  (jolt-cpp `src/tracer/gpu/expand_trace.cu:453-460`, not in PR #2), 0-47 from the header, 48-127 zeroed. Snapshots replay
+  from the headers too (`:1336-1366`). The "handling" is the CPU post-pass.
+- A host-built slice start from the JIT has pc and registers 0-39 only. It needs 40-47 at the slice's first row: the last
+  value written before it, possibly many slices back (Cyclone: registers 43-47 carried into a write only 2-4 times in the
+  whole run). In jolt-cpp that value comes only from interpretation, as the patch chain or a replay from an earlier header.
+  Mid-sequence starts also need 48-127 (or a rewind) and the pending advice.
+- Division family: one advice row per instruction, on the source rs1/rs2: DIV→`VirtualAdviceDiv`, REM→`Rem`, DIVU and
+  REMU→`DivU`, DIVW→`DivW`, REMW→`RemW`, DIVUW and REMUW→`DivUW` (`isa/virtual.cpp:285-436`).

@@ -412,15 +412,20 @@ Decided (O), from the planning discussion of 2026-10-19 recorded in jolt-asic-pl
   word at most one 64-bit value) keeps the decoder at the link's pace with only the 8 KB input queue (planning notes: no ring in
   LPDDR). Measured, R-dirty with an LRU of 512: about 2.6 MB per proof for EVM Zone and 12.5 MB for Cyclone, against about 25.8 MB
   raw for Cyclone; a raw mode per segment covers incompressible data.
-- **The transport:** LVDS in, an 8 KB byte queue with flow control, credit-based flow to the Updater, which must never stall since
-  the stream is a broadcast (planning notes). PR #1 proposed daisy-chaining the 8 ASICs of a card from its FPGA; that and its
-  reconciliation with route 2' (2026-10-04) are open.
+  **A small LRU: 32 entries** (owner): a hit names its entry in 5 bits, 6 with the hit flag. PR #1 measured 512 entries (49-83%
+  hits); 32 entries hit less, which the links' slack absorbs; to measure.
+- **The transport is one byte stream, identical for every ASIC** (owner). So the per-segment chunks (processor state, advice log)
+  travel in the same stream as the broadcast updates, and **each ASIC picks out its own segment's chunks**: the framing tags each
+  chunk with its segment. Below the byte stream: LVDS in, an 8 KB byte queue with flow control, credit-based flow to the Updater,
+  which must never stall (planning notes). How the stream reaches each ASIC (PR #1's chain per card, route 2') doesn't change
+  what an ASIC receives.
 - **Open:**
   - (a) whether a segment may start inside a sequence (its state then carries the next offset, registers 48-127 and pending advice
     words) or is cut at an instruction boundary and padded with no-op rows;
-  - (b) the processor-state chunk's format, and the framing of the three chunks;
-  - (c) the LRU's details: its size, FIFO against true LRU replacement (unmeasured), the mode tag per segment;
-  - (d) the transport topology (the chain, route 2');
+  - (b) the processor-state chunk's format, and the stream's framing (chunk type, segment tag, length);
+  - (c) the LRU's details: FIFO against true LRU replacement, and how 6-bit hit codes pack into the byte stream (bit-packed, or
+    byte-aligned tokens);
+  - (d) the physical topology (the chain, route 2'), which doesn't change the stream;
   - (e) the read-only part of each image: loads weren't traced in PR #1 (WORKER17's question 3 measures them).
 
 ---

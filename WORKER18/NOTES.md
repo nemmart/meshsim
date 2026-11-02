@@ -1,0 +1,135 @@
+# WORKER18 notes: the Java emulator of Jolt's tracer (W4, DECISIONS-v1.3 section 17)
+
+Citations are jolt-cpp at `821e1bd` (`src/tracer/...` unless noted) unless marked otherwise.
+
+## Status
+
+- jolt-asic-planning branch **`worker18-rows`** (from `tracer-standalone-main` `8d546e3`): `tracer/rows/row_dump.cpp`,
+  `build.sh` (as WORKER16's `state/build.sh`). Built locally: 1 CPU, 3 GB, `vm.overcommit_memory=1`.
+- `wip/gold/`: not started yet (stage 1 order: loader, layout, decoder, non-inline expansions, executor, record, hash,
+  compare; then inlines).
+
+## The row record (agreed with the owner, 2026-11-02)
+
+jolt-cpp's full CPU row, `RiscCycle` (`trace_owner.hpp:19-68`), as a fixed record of ten little-endian u64 words (not the
+struct's memory, whose padding bytes can't be reproduced outside C++):
+
+| word | contents |
+|---|---|
+| 0 | pc |
+| 1 | opcode \| rd_reg << 8 \| rs1_reg << 16 \| rs2_reg << 24 \| (u16) inline_sequence_remaining << 32 \| is_compressed << 48 \| virt_flags << 56 (bit 0 is_virtual, bit 1 first in sequence) |
+| 2 | `_imm` (i64) |
+| 3-6 | rd, rs1, rs2, rd_prev (values) |
+| 7-9 | mem_access_addr, mem_pre_value, mem_post_value |
+
+Opcode numbers are jolt-cpp's enum order (`isa/riscv.inc`, NOP = 0). Covers the SoA columns (`trace_columns.inc`).
+Stage 3 will map upstream's Cycle rows into the same record.
+
+**Hash:** WORKER16's `mix` (jolt-asic-planning `worker16-state`, `tracer/state/state_probe.cpp:42`) over the record's words:
+row hash = fold `mix` over w0..w9 from `0x243f6a8885a308d3`; window hash = fold `mix` over row hashes from 0 (windows of
+2^16 rows); run hash = fold `mix` over window hashes from 0. Only the run's rows are hashed; padding rows (all zero) are
+a count: the next power of two above rows + 1, at least 256 (`trace_owner.hpp:437-450`).
+
+## row_dump
+
+`row_dump <program dir> <input dir> <out> [--window=W] [--rows] [--max-rows=N]` runs jolt-cpp's pipeline unchanged
+(`gen_compressed_trace`, `expand_trace` per window) and writes `<out>.hashes.csv`, `<out>.advice.bin` (u64 per row whose
+**bytecode** opcode is `VirtualAdvice`, i.e. the secp buffer words, found by `get_pc(pc, inline_sequence_remaining)`),
+`<out>.json` (rows, padded rows, run hash, ram_K, layout, host I/O encoding), and with `--rows` `<out>.rows.bin`.
+
+## jolt-cpp's rules (for the emulator; each to be cited in the report)
+
+### Loading and layout
+- ELF: little-endian, `EM_RISCV`, `ET_EXEC`; entry nonzero, < 4 GiB, 2-aligned; PT_LOAD segments only, `p_align` must be
+  4096, nonzero `p_memsz >= p_filesz`; exactly one executable segment, which is the code range; program range = min/max
+  of the loaded segments, and must start at `0x8000_0000` (`loader.cpp:25-190`, `:197-205`).
+- Memory config from program.json: `heap_size` **or** `memory_size` is the heap (`utils/elf_helper.cpp:99`); optional
+  `host_io_encoding` (`:43-63`).
+- Layout (`loader.cpp:228-300`): sizes aligned up to 8; advice sizes power of two or 0; io region = advice + input +
+  output + 16 bytes, rounded up to a power of two **in words**; the larger advice region first at `program_start - io_bytes`
+  (trusted first on a tie); input after the higher advice end; output; panic; termination; io_end. Stack from
+  `program_end + 128` (canary), size `stack_size`; heap after the stack.
+- Inputs copied unparsed into input, trusted and untrusted advice (`compressed_trace_gen.cpp`, `execute_fast`); missing or
+  empty files are empty (`elf_helper.cpp`, `read_optional_input_file`).
+- Initial state: all registers 0, pc = entry (`vm.cpp:56-63`).
+
+### Host I/O encoding (`host_io_encoding.cpp`)
+- Auto-detect: scan the code; if every instruction decodes, there is at least one raw ECALL, no `VirtualHostIO`, and no
+  CSRRW/CSRRS/MRET, the encoding is LegacyRawEcall, else Standard. The scan stops at the first undecodable instruction
+  (decode_failed means Standard).
+- LegacyRawEcall turns ECALL into `VirtualHostIO` (all operands immediate 0) in the bytecode; RAM keeps the raw word.
+
+### Decoding (`isa/decoder.cpp`)
+- 16-bit units; compressed if the low two bits aren't `11`; compressed words are expanded to 32-bit encodings
+  (`uncompress_instruction`, `:646-1167`), which return `0xffffffff` (invalid) or 0 (UNIMP) for reserved forms.
+- Operand convention: `op_a, op_b, op_c` with immediate flags. R: rd, rs1, rs2. I: rd, rs1, imm. Shift-immediate: rd, rs1,
+  shamt (6 bits). S and B: imm, rs1, rs2 (`imm_a`). LUI/AUIPC: rd, imm (bits 31:12 kept in place), 0. JAL: rd, imm, 0.
+  CSRRW/CSRRS: rd, rs1, csr (only the six M-mode CSRs decode, `:598-644`). ECALL, EBREAK, MRET, FENCE, UNIMP: all
+  immediate 0. Funct3 011/101/110/111 SYSTEM and non-zero MISC_MEM funct3 are UNIMP. LR ignores the rs2 field; aq/rl are
+  ignored.
+- Custom opcodes: 0x0B the inlines by funct7/funct3 (`:1210-1250`); 0x5B: rev8w (funct3 0, funct7 5, immediate 0),
+  `VirtualAssertEQ` (funct3 1, B format), `VirtualHostIO` (funct3 2, rd 0) (`:1251-1268`).
+- An invalid instruction (opcode 255) is still expanded in release builds (asserts off): one bytecode row, never run.
+
+### Bytecode (`isa/virtual.cpp`)
+- Entry 0 is a NOP; each source instruction's expansion follows; UNIMP is **removed** (no rows, its bytes skipped)
+  (`:1357-1363`). `risc_pc_to_instr_idx` per 2 bytes (`virtual.hpp:159-171`). The last row of an expansion carries
+  `pc_increment` = 2 or 4; others 0. Every row of an expansion carries the source pc.
+- Row flags (`:174-189`): virtual iff the expansion has more than one row **or** the opcode changed;
+  first-in-sequence iff virtual and row 0; `virt_seq_remaining` = length - 1 - index.
+- Immediates are sign-extended to 64 bits ((i32) op then u64).
+- **rd = x0** (`:15-128`, `:270-283`): unless the opcode handles rd = x0 itself (ECALL, MRET, EBREAK, CSRs, LR/SC, all
+  inlines), an instruction with rd = x0 becomes one `ADDI x0, x0, 0` if it has no side effects beyond rd, else rd is
+  remapped to the first temporary (register 40). Side-effecting: JAL, JALR, loads, LR/SC, AMOs, CSRs, `VirtualHostIO`,
+  inlines.
+- Temporaries are allocated from 40 upward per expansion, freed in stack order (`:148-158`).
+- Per family: division (`:285-447`), MULH/MULHSU (`:220-232`, `:448-473`), narrow loads and stores (`:239-262`,
+  `:474-527`), shifts (`:528-611`: SRAI/SRLI become a bitmask immediate; SLLI becomes `VirtualMULI` by 2^shamt; SLLIW
+  `VirtualMULIW`; SRL/SRA/SLL/SLLW/SRLW/SRAW two rows), LR/SC (`:612-712`), AMOs (`:713-987`), FENCE and `VirtualHostIO`
+  (`:1063-1067`), ECALL (`:1068-1085`, 7 rows to mtvec), CSRRW/CSRRS (`:1086-1127`, 1-3 rows by rd/rs1), MRET
+  (`:1128-1133`, JALR through mepc), EBREAK (`:1134-1164`, `JAL vN, 0`), JAL/JALR with rd = 0 get a temporary rd
+  (`:1165-1184`), default: one row with the source operands (`:1185-1187`).
+- Lengths: `num_cycles` (`:1210-1306`); secp inlines from `inlines/secp256k1_shapes.hpp`.
+- secp inlines put `advice_source` (operation, rs1, rs2 if two-input) on their first row (`:1194-1201`).
+
+### Execution (`trace_owner.cpp`)
+- Operands: a field marked immediate supplies its value, else the register's (`:78-83`). Writes to x0 are dropped
+  (`:85-93`).
+- **Next pc** (`finish_instruction`, `:111-126`): if the new pc is 0, halt; if it differs from the current pc, jump
+  (instr_idx = the target's first row); **if it equals the current pc** (no jump, or a jump to itself) the pc advances by
+  `pc_increment` and instr_idx by 1.
+- **JAL with immediate 0 halts** (new pc 0) (`:277-283`); JALR targets `(rs1 + imm) & ~1`. The run ends when pc = 0.
+- Branches compare and add the immediate to the current pc (`:247-276`).
+- `VirtualAdviceRemU` returns the **quotient**, as `VirtualAdviceDivU` (REMU's expansion uses DivU anyway); `VirtualAdviceRem`
+  returns |quotient|; `VirtualAdviceRemW` |quotient| (32-bit); `VirtualAdviceRemUW` the 32-bit quotient. Division by zero:
+  all ones (Div, DivU), `UINT32_MAX` zero-extended (DivUW), -1 (DivW), 0 (the Rem ones). Overflow cases per `:536-618`.
+- Shifts by bitmask use `trailing_zeros` of the mask (`:355-379`); `VirtualROTRIW` caps at 32; `VirtualShiftRightBitmaskW`
+  = 2^32 - 2^shift.
+- Narrow memory: the word address is floored (`isa/riscv.hpp:215-270`); a misaligned word address aborts.
+- Window masks and shift-data (`:448-485`): masks by `(ea >> 2) & 1`, `ea & 7`, `ea & 6`; shift-data adds the row's
+  `shift_offset` to the base register.
+- Asserts (`VirtualAssert*`, `:620-639`) abort on failure; UNIMP aborts (`:648-652`).
+- secp advice: `prepare_advice` at a sequence's first row (`:52-66`, called at `:787-791`) evaluates the operation on the
+  32-byte inputs at rs1 (and rs2) and resets the buffer; each `VirtualAdvice` row pops the next word.
+- **Inline registers 48-127 are never zeroed on the row path** (`expand_compressed_chunk` doesn't call
+  `normalize_inline_vregs`; zeroing happens only at chunk headers and snapshots, `:128-139`). Rows stay consistent because
+  every inline zeroes its own registers at its end (e.g. `inlines/secp256k1_mulq.inc` tail). So plain sequential
+  execution matches.
+
+### Rows (`expand_compressed_chunk`, `trace_owner.cpp:855-915`)
+- pc, opcode, flags, `inline_sequence_remaining` from the bytecode row; `is_compressed` = `pc_increment == 2`.
+- `_imm` = sum of the immediate fields (`trace_owner.hpp:168-177`), or `shift_offset` for shift-data, 0 for advice rows.
+- reg numbers 0 where the field is immediate; rs1, rs2, rd_prev read before execution, rd after (0 where immediate).
+- **Every division-family advice row is relabelled `VirtualAdvice`**, rs1/rs2 numbers and values and `_imm` zeroed.
+- Stores: address from rs1 + imm (floored), pre = the word before, post = rs2's value. Loads: address, pre = post = rd.
+- Padding rows are all zero (NOP = 0).
+
+### Syscalls and the JIT
+- `jolt_syscall_dispatch` (`syscalls.cpp:43-80`): advice-write, cycle-track, print: no architectural effect.
+- The JIT runs threads to their start; the rows come from the interpreter (`trace_owner.cpp:783-845`).
+
+## Inlines
+
+The `.inc` files are generated straight-line emit code (`secp256k1_shapes.hpp`: "Generated by examples/inlines
+--dump-inlines"). The emulator writes them as readable loops; **a test that runs on every build** checks each generated
+sequence row for row against the `.inc` emit lists, parsed as data (owner, 2026-11-02).

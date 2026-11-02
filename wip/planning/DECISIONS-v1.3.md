@@ -382,6 +382,48 @@ Decided (O); also a reasonable size for the chip (O).
   - (d) Whether any RAM step in jolt-cpp is dense in K (WORKER17, question 5). The GPU output check holds `ram_k` in a `uint32_t`
     (`ram/gpu/output_check.cu:89`), which caps K below 2³² there as written.
 
+## 15. What the host sends per segment: images and transport (2026-11-01)
+
+Decided (O), from the planning discussion of 2026-10-19 recorded in jolt-asic-planning PR #1 (branch `tracer-standalone`,
+`docs/write-stream-experiments.md`, with measurements on both workloads) and meshsim's planning notes of 2026-10-27. A proof is
+128 **segments** of 4M (2²²) rows, one per ASIC.
+
+- **Each segment comes from the host with three chunks** (owner):
+  1. **the processor state** at the segment's start: pc, `instr_idx`, registers 0-47 (the JIT's state, section 13 (c)); if a
+     segment may start inside a sequence, also the next offset and registers 48-127 (open (a));
+  2. **the advice log**, the segment's read-log input (section 13);
+  3. **the memory updates list**, the segment's delta: each word written during the segment with its last value (the dirty set,
+     "R-dirty" in PR #1; the host reads the values from guest memory at the segment's end, so stores are never logged).
+- **Who needs what.** A segment's ASIC needs its own processor state and advice log. Memory is shared: the start image of segment
+  *k* is the initial image plus the updates of segments 0 to *k* - 1, and the final image is the initial image plus all of them.
+  So the updates are **broadcast to every ASIC as one stream sorted by address**, each address carrying its (segment, value)
+  writes in segment order; the host merges the 128 lists (PR #1 section 1).
+- **Three images per ASIC:** the initial image (cached, permanent), its segment's start image, and the final image, built in one
+  sequential pass of the stream next to the initial image (no merge tree; the planning notes' Updater, unit 73).
+- **Two copies of memory at the segment's start** (owner): the proof needs the start image intact, and the Tracer runs on its own
+  copy and changes it. With the page table (section 12) the second copy costs only the written pages:
+  - pages the segment only reads are **shared**, marked read-only;
+  - pages the segment writes are **duplicated before the Tracer starts**, the Tracer's table pointing at the private copy. The
+    host's JIT knows exactly which pages those are (PR #1 measured 182 and 499 pages written in a whole 2²⁹ run, EVM Zone and Cyclone).
+  - So **the Tracer never copies on write** (owner): a store to a read-only page means the table is wrong, which is UB (8a: the
+    tables come from our software). The Tracer's copy is the planning notes' "throwaway layer".
+- **An absent page reads as zero** (PR #1 section 4). Answers T3's question for absent pages.
+- **The encoding: an LRU coder with bounded expansion, not LZ4** (owner): an LZ4 match can expand into a long copy while consuming
+  almost no input, so output outruns input and data must queue as it flows in from the host. A bounded-expansion code (each code
+  word at most one 64-bit value) keeps the decoder at the link's pace with only the 8 KB input queue (planning notes: no ring in
+  LPDDR). Measured, R-dirty with an LRU of 512: about 2.6 MB per proof for EVM Zone and 12.5 MB for Cyclone, against about 25.8 MB
+  raw for Cyclone; a raw mode per segment covers incompressible data.
+- **The transport:** LVDS in, an 8 KB byte queue with flow control, credit-based flow to the Updater, which must never stall since
+  the stream is a broadcast (planning notes). PR #1 proposed daisy-chaining the 8 ASICs of a card from its FPGA; that and its
+  reconciliation with route 2' (2026-10-04) are open.
+- **Open:**
+  - (a) whether a segment may start inside a sequence (its state then carries the next offset, registers 48-127 and pending advice
+    words) or is cut at an instruction boundary and padded with no-op rows;
+  - (b) the processor-state chunk's format, and the framing of the three chunks;
+  - (c) the LRU's details: its size, FIFO against true LRU replacement (unmeasured), the mode tag per segment;
+  - (d) the transport topology (the chain, route 2');
+  - (e) the read-only part of each image: loads weren't traced in PR #1 (WORKER17's question 3 measures them).
+
 ---
 
 ## v1.3 work list

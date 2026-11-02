@@ -525,6 +525,12 @@ Decided (O).
 - **Stage 2, gold:** it computes everything itself (the advice, the processor state at each cut, the dirty runs, the page counts)
   and writes the segment file. **It earns gold** by writing files byte-identical to WORKER16's tool (W3) on both workloads at 2²⁹
   and on the hard-cut tests; the C++ tool then becomes the cross-check.
+  **Stage 2 done: gold earned** (WORKER18, 2026-11-01; `WORKER18/REPORT.md`): the emulator writes section 16's file
+  **byte-identical** to WORKER16's tool (ca30b5e) on both workloads at 2²⁹ (13.5 and 15.5 s) and on both hard-cut files, with the
+  secp256k1 advice computed in `BigInteger`; `wip/gold/check.sh` reruns all four. Seven of jolt-cpp's example guests also match
+  on every record (MULH and MULHSU, the division family, SRA and SRAW, LR.D and SC.D, every AMO, all seven secp operations,
+  SHA-256 and the other inlines). Never executed yet: EBREAK, FENCE, KECCAK256 without absorb, `VirtualAssertEQ`,
+  LegacyRawEcall mode, the abort paths. **The Java emulator is now our gold;** WORKER16's tool is the cross-check.
 - **Stage 3, validation against upstream Jolt** (owner, 2026-11-01; recorded now, added to WORKER18's work at a stopping point):
   upstream's own Rust tracer, pinned (17a9459, the commit section 12 read; HEAD has since been restructured into `crates/`),
   produces rows on the same ELFs and inputs, as data. Its `Cycle` rows need a mapping to jolt-cpp's format first. Where jolt-cpp
@@ -604,7 +610,7 @@ Work agreed for v1.3, each with the decisions it carries out. Studies (below) ar
 | W1 | ~~Bring the replayer and the Tracer up to date with jolt-cpp's latest~~ | 9 | **moved to v1.25** (owner, 2026-10-31): `DECISIONS-v1.25.md` |
 | W2 | **jolt-cpp's JIT emits the advice streams**: 128 per 2²⁹ run, one per 2²² rows, words in row order (`shape(op).advice_words` per secp op), a crossing sequence's pending words at the head of the next; and **how jolt-cpp handles registers 40-47** at a chunk's start (13 (c)) | 13 | **deferred** (owner, 2026-11-01): the fast JIT version isn't needed any time soon with the Java emulator (W4); the slow tool (W3) produces the advice logs and the full state, registers 40-47 included. The scoping is in `WORKER16/W3-REPORT.md` for later |
 | W3 | **The segment file tool**: runs the trace on the host and writes section 16's file (page counts, then per segment the processor state, advice log and updates, raw or LRU-coded); slow first | 16 | **done** (WORKER16, jolt-asic-planning `worker16-w3` ca30b5e; `WORKER16/W3-REPORT.md`): both workloads at 2²⁹ and hard-cut tests pass every check; whole file 1.75 MB (EVM Zone), 10.33 MB (Cyclone) |
-| W4 | **The Java emulator** (`wip/gold/`): self-contained; stage 1 a Tracer model matching jolt-cpp's rows, stage 2 gold, writing section 16's file | 17 | WORKER18: **stage 1 done**; stage 2 next |
+| W4 | **The Java emulator** (`wip/gold/`): self-contained; stage 1 a Tracer model matching jolt-cpp's rows, stage 2 gold, writing section 16's file | 17 | WORKER18: **stages 1 and 2 done, gold earned**; stage 3 next |
 
 ---
 

@@ -1,0 +1,22 @@
+{
+  "num_cycles": 354861942,
+  "padded_cycles": 536870912,
+  "num_writes": 55254496,
+  "num_loads": 64229138,
+  "num_writes_sd": 54411302,
+  "num_loads_ld": 61455842,
+  "ram_K": 8388608,
+  "lowest_address": 2113929216,
+  "record_format": "u64 cycle, u64 addr, u64 value (little-endian); word index = (addr - lowest_address) / 8",
+  "layout": {
+    "untrusted_advice": [2113929216, 2130706432],
+    "trusted_advice": [2130706432, 2130771968],
+    "input": [2130771968, 2130772080],
+    "output": [2130772080, 2130772080],
+    "panic": 2130772080,
+    "termination": 2130772088,
+    "program": [2147483648, 2149494056],
+    "stack": [2149494184, 2157882792],
+    "heap": [2157882792, 2224991656]
+  }
+}

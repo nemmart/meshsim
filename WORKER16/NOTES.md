@@ -106,3 +106,16 @@ pass, not built): branch `worker16-w2` at `38722ce`. Streams equal jolt-cpp's ro
 Cyclone run; default outputs unchanged. Registers 40-47: 8 families, 25 opcodes write them (4.03M / 30.32M instructions);
 the interpreter tail misses 51 / 455 (boundary, register) pairs (up to 284.5M rows back), so the JIT would need helpers;
 cheap; proposed as `start_regs_40_47` in the manifest. See `W2-REPORT.md`.
+
+## 2026-11-01, session 4: W3
+
+**Asked** (owner, via the user): the segment file tool (sections 13, 15, 16): frame 1, then per segment frames 2, 3, 4/5;
+slow first version; checks against jolt-cpp's reference rows (restart, advice, updates and images), both workloads at 2^29
+plus small inputs with small segments; frame sizes raw against LRU; then scope the fast version's registers 40-47.
+**Go-ahead** with padding as pc 0, `instr_idx` 0, offset 0, final registers, empty advice, frame 4 with no words (spec 4.19.2's
+end-of-trace rule); plus: compare frame 1 with WORKER17's per-segment written-page CSVs.
+
+**Done** on `worker16-w3` at `ca30b5e`: writer, checker, Python reader. 2^29: every check passes on both workloads (all
+rows restarted from frame 2 alone); frame 1 equals WORKER17's `pages_written` on all 128 segments of both; small runs
+with hard cuts (19 mid-secp starts with pending advice on EVM Zone trace-23) pass; negative tests caught. Updates: LRU-32
+0.611 / 0.533 of raw; files 1.75 / 10.33 MB. The scoping of 40-47 (14 families with formulas) is in `W3-REPORT.md`.

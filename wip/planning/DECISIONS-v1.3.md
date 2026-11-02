@@ -491,7 +491,7 @@ a really easy format to work with, from multiple languages" (O).
 | 3 | advice log | the segment's advice words, u64 each, in row order (section 13) |
 | 4 | updates, raw | the segment's update words, u64 each |
 | 5 | updates, LRU-compressed | a u32 count of the 64-bit words encoded, then the codes (below) |
-| 6 | `instr_idx` table | a u64 start address (128 B aligned), then one u32 per 128 B block of code from there (section 18) |
+| 6 | `instr_idx` table | a u64 start address (64 B aligned), then two u32 per 64 B block of code from there, the base and the mask (section 18); part of the program's load, with the initial image |
 
 - **Order:** frame 1 once, first; then the program's frame 6s (one per contiguous range of code; static per program, so an ASIC
   that already holds them, with the initial image, may skip them); then for each segment in order, frames 2, 3, and one of 4 or
@@ -537,26 +537,33 @@ instruction at address *a* has `instr_idx` = 1 + the expansion lengths of every 
 program.
 
 - **A small cache: about 64 entries, pc to `instr_idx`, LRU** (owner), consulted first on a control transfer.
-- **On a miss: one 32-bit value per 128 B of code** (owner), built by the host from the ELF and kept with the initial image (1/32
-  of the text: 1 MB of code, 32 KB). **Bit 31: where the block's first instruction starts**, 0 at the block's boundary, 1 at +2
-  bytes (after a 4-byte instruction straddling from the block before; instructions are 2-byte aligned and at most 4 bytes, so
-  there's no third case). **Bits 30:0: that instruction's `instr_idx`.** (Bit 31 as the flag, like a page entry's read-only bit,
-  section 12: integrator's proposal.)
-- **The walk:** the Tracer loads the target's 128 B entry **through the main-memory cache** (section 12's file-system cache), starts
-  at the block's first instruction, and **decodes forward to the target**, adding each instruction's expansion length; a decode
-  gives the instruction's own length (2 or 4 bytes) and, from the tables below, its expansion length. At most 63 instructions per
-  128 B block.
-- **Expansion lengths:**
-  - **instructions with expansions: a local 2,048-entry table** (owner). This matches the replayer's decode table, 2K entries with
-    an 11-bit index formed from the instruction word (spec 4.19.5: 306 ROM templates, 17 controller-fed, 1,725 invalid at v1.25);
-  - **inlines: a table of 128 x (32-bit opcode, expansion length)** (owner), matched on the full instruction word;
-  - every other instruction is one row.
+- **On a miss: two 32-bit words per 64 B of code** (owner, 2026-11-01; replaces one word per 128 B with a walk, which took about
+  30 cycles; and a word per 2-byte parcel, which wastes memory): 8 bytes per 64 B, **an eighth of the code's size** (1 MB of code,
+  128 KB), built by the host from the ELF, kept with the initial image, read **through the main-memory cache** (section 12):
+  - **the base:** bits 30:0, the `instr_idx` of the block's first instruction; bit 31, where it starts: 0 at the block's boundary,
+    1 at +2 bytes (after a 4-byte instruction straddling in; instructions are 2-byte aligned and at most 4 bytes);
+  - **the mask:** one bit per 2-byte parcel, **set at the start of each instruction whose expansion is longer than one row** (the
+    ones that need a length lookup).
+- **The circuit, no walk:**
+  - **every instruction start** in the block comes from the code itself: a parcel's bits [1:0] give its instruction's length
+    (`11`: 32 bits, else 16; RV64IMAC has no longer encodings), so from the first start a parallel prefix over the 32 parcels
+    (5 levels) marks them all;
+  - the target's **`instr_idx` = base + (starts before the target) + the sum over marked starts before the target of (expansion
+    length - 1)**: a popcount of the start bits below the target, plus a lookup per marked instruction;
+  - **expansion lengths from the 2,048-entry table, dual-ported: two lookups per cycle** (owner). Its index is the replayer's
+    11-bit decode index (spec 4.19.5): wiring plus a 7-bit compare on *w*[6:0], the inlines (custom-0) having their own entries,
+    so the same table covers them. A compressed instruction runs as its 32-bit equivalent (C.LW and C.SW become expanded LW and
+    SW), so it needs its index too: decompressed, or from a small table on its identifying bits. A 64 B block holds at most 16
+    32-bit instructions, so **at most 8 cycles of lookups, typically one or two**.
+  - The table is small (2,048 x about 12 bits, 3 KB), so more ports or copies are cheap if needed.
 - **Open:**
-  - (a) whether an expansion's length is a function of the 11-bit index alone, or of more of the instruction word (operands: `rd` =
-    x0 remaps registers but may not change the length; WORKER16 and WORKER18 to confirm from `isa/virtual.cpp`);
+  - (a) whether an expansion's length is a function of the 11-bit index alone, or of more of the instruction word: the CSR
+    instructions are the likely exception (controller-supplied, perhaps varying with the CSR address, bits [31:20]); `rd` = x0
+    remaps registers but may not change the length (WORKER18 to confirm from `isa/virtual.cpp`). The 128-entry inline table is
+    needed only if lengths depend on bits outside the index;
   - (b) that jolt-cpp's bytecode is decoded sequentially from each text section's start, so the table and the walk follow the same
     boundaries (data or padding in text); which sections count; the start index (WORKER18, from the loader);
-  - (c) whether the Tracer also predecodes whole lines with their `instr_idx` (an I-cache), or only walks on a cache miss.
+  - (c) building the table on the host (deferred, owner: assume it's there).
 
 ---
 

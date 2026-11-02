@@ -620,6 +620,13 @@ over 4 KB units, up to order 2, gives exactly these, each naturally aligned to i
 - **`<program>.map`: the code map** (section 18): **a list of 1,024 pointers**, one 4 KB page: **one pointer.** Each entry points to
   a 4 KB map page, or is `0xFFFFFFFF` for none; a map page holds 512 (base, mask) pairs, section 18's two u32 per 64 B of code, so
   it covers 32 KB of code and the list 32 MB.
+- **Fragmentation, by lifetime rather than compaction** (owner, 2026-11-01): **long-lived files** (each program's initial image,
+  `.pages` and `.map`) are allocated from one end of memory and **per-proof data** (private copies of written pages, the pages
+  updates add to images, temporary tables) from the other. Per-proof chunks all die together at the proof's end (the planning
+  notes' per-proof bitmaps free them in one merge), so that end coalesces back into large chunks every proof and never mixes
+  with long-lived ones. **Compaction stays a background fallback for the long-lived end**, if programs come and go a lot: moving a
+  page with one pointer to it is a copy, one entry rewritten and a cache invalidation; a shared page (several pointers) would
+  need a reverse map or a scan.
 - **No load step:** the Tracer reads the tables in place, through the 512 KB file-system cache. This replaces section 12's local
   copy (the directory in part 1, the leaf pool in part 2, rewritten to pool slots as streamed).
 - **Open:**

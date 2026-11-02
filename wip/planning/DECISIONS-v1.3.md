@@ -514,8 +514,11 @@ Decided (O).
 - **Stage 2, gold:** it computes everything itself (the advice, the processor state at each cut, the dirty runs, the page counts)
   and writes the segment file. **It earns gold** by writing files byte-identical to WORKER16's tool (W3) on both workloads at 2²⁹
   and on the hard-cut tests; the C++ tool then becomes the cross-check.
-- Upstream Jolt's trace stays the spec's ground truth (item 113); ST1 (jolt-cpp against upstream) is what would let the gold model
-  stand for both.
+- **Stage 3, validation against upstream Jolt** (owner, 2026-11-01; recorded now, added to WORKER18's work at a stopping point):
+  upstream's own Rust tracer, pinned (17a9459, the commit section 12 read; HEAD has since been restructured into `crates/`),
+  produces rows on the same ELFs and inputs, as data. Its `Cycle` rows need a mapping to jolt-cpp's format first. Where jolt-cpp
+  and upstream differ, each difference is recorded and the owner decides which the gold follows (by default upstream: the spec's
+  ground truth is upstream Jolt's trace, item 113). This is ST1's work, done through the emulator.
 
 ---
 

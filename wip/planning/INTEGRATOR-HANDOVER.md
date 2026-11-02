@@ -60,7 +60,7 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
   (section 12): the page table as a two-level, sparse structure over 4 GiB, a base register at Jolt's `lowest_address`, what an
   unmapped page means, the entry format, how C&C 3 builds it per proof; upstream Jolt's layout findings are recorded there
   (contiguous range; I/O and advice below 0x8000_0000, program, stack and heap above; both ends used, middle empty). Open: T2 answered (WORKER16);
-  (WORKER16), T3; work item W2 (the JIT's advice streams); section 13's open (b), whether bank 1 has any use left. Candidates C2
+  T3; work item W2 (WORKER16: the JIT's advice streams, registers 40-47); section 13's open (b), (c), whether bank 1 has any use left. Candidates C2
   (signed counters), C3 (trim the 256-bit word) in the v1.3 log (C4 moot); ST1 (compare
   jolt-cpp and Rust Jolt traces) as a study.
 

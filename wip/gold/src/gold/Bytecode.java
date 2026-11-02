@@ -26,6 +26,19 @@ public final class Bytecode {
 
   public int size() { return instrs.length; }
 
+  /** One instruction's expansion at pc, as the whole program (for running a single inline). */
+  public static Bytecode ofInstruction(long pc, Instruction in, int size) {
+    List<VInstr> seq = Expander.expand(in);
+    for (VInstr v : seq) { v.riscPc = pc; v.srcOpcode = in.opcode; }
+    seq.get(seq.size() - 1).pcIncrement = size;
+    VInstr[] instrs = new VInstr[seq.size() + 1];
+    instrs[0] = new VInstr();
+    for (int i = 0; i < seq.size(); i++) instrs[i + 1] = seq.get(i);
+    int[] pcToIndex = new int[size / 2 + 1];
+    pcToIndex[1] = 1;
+    return new Bytecode(pc, pc + size, instrs, pcToIndex);
+  }
+
   public static Bytecode build(long codeStart, byte[] code, HostIo.Encoding encoding) {
     List<VInstr> out = new ArrayList<>();
     out.add(new VInstr());                    // index 0: NOP (all zero)

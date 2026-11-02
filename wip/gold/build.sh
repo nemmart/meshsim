@@ -1,6 +1,7 @@
 #!/bin/sh
 # Builds gold with plain javac into build/ (Java 21) and runs the tests.
-#   ./build.sh                    build, then the inline emit test against test/inline-emit-digests.txt
+#   ./build.sh                    build, then the inline emit test against test/inline-emit-digests.txt and the
+#                                 inline vector test (upstream's inline test vectors, test/inline-vectors.jsonl.gz)
 #   JOLT_CPP=<jolt-cpp checkout> ./build.sh
 #                                 the same, but row for row against <jolt-cpp>/src/tracer/inlines/*.inc
 set -e
@@ -14,3 +15,4 @@ if [ -n "$JOLT_CPP" ]; then
 else
   java -cp build gold.InlineEmitTest
 fi
+java -cp build gold.InlineVectorTest test/inline-vectors.jsonl.gz

@@ -32,10 +32,15 @@ public final class Machine {
   public final long[] row = new long[Row.WORDS];
 
   public Machine(Program p, SecpAdvice secp) {
-    this.memory = p.memory;
-    this.code = p.bytecode;
+    this(p.memory, p.bytecode, p.layout.entryPoint, secp);   // registers start at 0 (vm.cpp:56-63)
+  }
+
+  /** A machine over given memory and bytecode, starting at pc (the inline vector test runs a bare sequence). */
+  public Machine(Memory memory, Bytecode code, long pc, SecpAdvice secp) {
+    this.memory = memory;
+    this.code = code;
     this.secp = secp;
-    this.pc = p.layout.entryPoint;            // registers start at 0 (vm.cpp:56-63)
+    this.pc = pc;
     this.index = code.indexOf(pc);
   }
 

@@ -68,6 +68,27 @@ All 15 inlines' sequences equal jolt-cpp's `.inc` emit lists row for row under t
 The hard cuts (WORKER16's) fall mid-secp with advice pending, mid-inline with registers 48-127 live, between LR and SC,
 inside ECALL and MRET, at other mid-sequence rows, random rows, and at and past the end (padding segments).
 
+### Stage 3: upstream Jolt
+
+Upstream's own Rust tracer (a16z/jolt `17a9459`, through `upstream_rows` on jolt-asic-planning `worker18-upstream`,
+its `Cycle` rows mapped into the same record; NOTES.md, "Stage 3") **gives the same rows as jolt-cpp and gold on every
+run**: EVM Zone trace-23 and Cyclone input/22 (every record), the seven example guests (every record), and both
+workloads at 2^29 (every window and the run hash). All 15 inline sequences are identical between upstream `17a9459`
+and jolt-cpp's `.inc` files (from `f8fc214`). ST1 is answered (DECISIONS-v1.3 section 17).
+
+The differences are outside the rows: ten, each cited on both sides, in `WORKER18/UPSTREAM-DIFFS.md` (D1 program image
+from segments or sections; D2 the stack canary; D3 LegacyRawEcall; D4 UNIMP skipped with a drifting pc, or the ELF
+rejected; D5 executing where no instruction was decoded; D6 misaligned access checks; D7 EBREAK; D8 the bytecode
+count; D9 the stack bounds' names; D10 padding, to confirm). None is resolved; gold stays jolt-cpp-exact until the
+owner rules.
+
+### Test guests
+
+Eleven hand-assembled ELFs (`wip/gold/test/guests/`, generator committed) reach the paths no workload or example did:
+EBREAK, FENCE, KECCAK256 without absorb, the custom `VirtualAssertEQ` (passing and failing), LegacyRawEcall, misaligned
+accesses, UNIMP, a jump into an instruction's middle, a stack-canary store. Where jolt-cpp and upstream both complete,
+the three agree on every row; the rest are D2-D6 above. `check_guests.sh` pins gold's result for each.
+
 ### Beyond the two workloads
 
 Seven of jolt-cpp's example guests (`tracer-tests`, `inlines`, `merkle-tree`, `fibonacci`, `sha2-chain-profile-15`,
@@ -106,10 +127,11 @@ non-obvious ones, which a hardware Tracer must also follow:
 2. **The new pin (88dca85)**: WORKER16 is moving PR #2's tracer to it with files expected unchanged. When that lands,
    rerun `check.sh` and `compare` on the four runs; gold's rules were read at `821e1bd` and I haven't diffed HEAD's
    `src/tracer` (DECISIONS 14 (c) says `isa/` is unchanged at 88dca85).
-3. **Untested paths**: EBREAK (jolt-cpp's JIT aborts on it; the bytecode has `JAL vN, 0`), FENCE, KECCAK256 without
-   absorb at run time, the custom `VirtualAssertEQ` opcode, LegacyRawEcall mode, and the abort paths. A small guest
-   using them, run through `row_dump`, would close these.
+3. ~~Untested paths~~ **closed by the test guests** (stage 3), except jolt-cpp's JIT path for EBREAK (D7) and aborts
+   inside inlines.
 4. **Where gold and jolt-cpp could differ by design**: gold throws where jolt-cpp aborts, and also on a few conditions
    jolt-cpp only asserts in debug builds (a jump to a pc where no expansion starts, an address outside the 4 GiB RAM).
    Neither happens on any validated run.
-5. **Stage 3** (upstream Jolt's Cycle rows mapped into the same record, ST1) is not started.
+5. ~~Stage 3~~ **done**: upstream's rows equal jolt-cpp's; the differences outside the rows (UPSTREAM-DIFFS.md D1-D10)
+   await the owner's rulings, one by one.
+6. **W5**: upstream's own tests (the ACT4 architectural tests, the inline tests) through gold: next.

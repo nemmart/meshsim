@@ -288,15 +288,22 @@ its region, with **offset bits [22:20] picking the part**, as in the replayer's 
     workload maps with about 4-6 leaves (16-24 KB) [estimate: Cyclone's heap, up to about 29 MiB, 2-3 leaves; the stack 1; the
     program and I/O region 1-2]. WORKER17's question 3 (pages touched, by region) is to confirm it.
   - **the pool's size: open**, until WORKER17's counts; 256 leaves (1 MiB) would map up to 4 GiB of populated regions;
-  - **Entries are 32 bits, addresses in 4 KB units** (owner, 2026-11-01), the format in LPDDR and in the stream:
-    - **top-level entry:** bits 30:0, the leaf's address (a leaf is exactly 4 KB: 1,024 entries of 32 bits); bit 31 reserved, 0;
-    - **leaf entry:** bits 30:0, the 16 KB page's address, 16 KB aligned (bits 1:0 are 0); **bit 31, read-only**. Only leaf entries
-      carry it, for **copy-on-write** (owner): a store to a read-only page **faults to C&C 3**, which copies the page, points the
-      entry at the copy, clears the bit, and the Tracer retries the store. (The guest is the user's program, not our firmware, so
-      section 8a's UB doesn't apply: a legitimate store must succeed.)
-    - **no entry: `0xFFFFFFFF`** (owner), at both levels; it can't be a valid entry (a top level has bit 31 clear, a leaf's bits
-      1:0 are 0), and it leaves address 0 usable. A table must therefore be filled with `0xFFFFFFFF`, not zeroed: a zeroed entry
-      is a valid pointer to address 0.
+  - **Entries are 32 bits; bits 30:0 address the file system** (LPDDR) **in 128 B units** (owner, 2026-11-01; 2³¹ x 128 B =
+    256 GiB), the format in LPDDR and in the stream. The memory system reads 4 KB (the most efficient), 2 KB, or 128 B (poor).
+    **Leaves and pages are 4 KB aligned** (owner): the low 5 bits of a valid entry are 0, so every leaf or page fetch is whole
+    4 KB reads (a leaf is one: 1,024 entries of 32 bits; a 16 KB page four).
+    - **top-level entry:** bits 30:0, the leaf's address; bit 31 reserved, 0;
+    - **leaf entry:** bits 30:0, the 16 KB page's address; **bit 31, read-only**. Only leaf entries carry it, for
+      **copy-on-write** (owner): a store to a read-only page **faults to C&C 3**, which copies the page, points the entry at the
+      copy, clears the bit, and the Tracer retries the store. (The guest is the user's program, not our firmware, so section 8a's
+      UB doesn't apply: a legitimate store must succeed.)
+    - **no entry: `0xFFFFFFFF`** (owner), at both levels; no valid entry has its low bits set, and address 0 stays usable. A table
+      must therefore be filled with `0xFFFFFFFF`, not zeroed: a zeroed entry is a valid pointer to address 0.
+  - **A 512 KB cache of the file system** (owner): **4,096 lines of 128 B**, caching file-system (LPDDR) addresses, **after**
+    translation, not the guest's address space. A line is one 128 B unit (16 of the guest's 8-byte cells); **a miss fills 128 B**
+    (owner). A copied page has a new address, so copy-on-write can't alias in the cache, and pages shared between proofs are cached
+    once. **Open:** its associativity; its write policy (write-back, and whether copy-on-write copies through the cache or flushes
+    the source page's dirty lines first).
   - **The stream is a walk:** the 2,048 top-level entries (8 KB), then each present leaf (4 KB) in top-level order. The Tracer,
     which keeps the table locally (the directory in part 1, the leaf pool in part 2, written while it is stopped between proofs),
     **rewrites each top-level entry to the pool slot its leaf landed in** as it loads, so a translation stays two on-chip lookups.

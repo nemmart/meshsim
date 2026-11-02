@@ -24,6 +24,7 @@ does with faulty or unusual guests.
 | D8 | bytecode count: jolt-cpp counts the leading NOP | convention only |
 | D9 | the layout's stack bounds are named differently | convention only |
 | D10 | padding: jolt-cpp pads to the power of two above rows + 1 | to confirm on upstream's prover |
+| D11 | upstream has inlines and row kinds jolt-cpp lacks (grumpkin, p256, NTT; four kinds) | yes, guests using them |
 
 ## D1. The program image: segments or sections
 
@@ -116,3 +117,14 @@ does with faulty or unusual guests.
 - **upstream**: its prover's test support checks `(len + 1).next_power_of_two()`
   (`crates/jolt-prover/tests/support/mod.rs:112`), while `crates/jolt-prover/src/profile.rs:728` uses
   `len.next_power_of_two()`. To confirm in the prover proper before calling it the same.
+
+## D11. Inlines and row kinds only upstream has
+
+- **upstream** at 17a9459 registers three inline families jolt-cpp doesn't decode: grumpkin (custom-0 funct7 0x06,
+  `jolt-inlines/grumpkin/src/lib.rs`), p256 (funct7 0x07, `jolt-inlines/p256/src/lib.rs`) and NTT (funct7 8,
+  `jolt-inlines/ntt/src/lib.rs`); and four final row kinds with no jolt-cpp opcode: `VirtualAdviceLoad`,
+  `VirtualPow2I`, `VirtualPow2IW`, `VirtualShiftRightBitmaskI` (`crates/jolt-riscv/src/kind.rs`, e.g. `:346`).
+- **jolt-cpp** decodes custom-0 (0x0B) only for funct7 0-5 (`isa/decoder.cpp:1210-1250`); others are invalid
+  instructions.
+- No ELF tested uses them (upstream_rows maps the four kinds to 0xFE and reports none). Gold follows jolt-cpp. Their
+  upstream tests (`jolt-inlines/{grumpkin,p256,ntt}/src/tests.rs`) are out of W5's scope (owner, 2026-11-02).

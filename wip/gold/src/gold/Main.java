@@ -19,20 +19,22 @@ import java.util.Map;
  *       Runs the guest and checks every row against row_dump's output for the same run: the record of every row where
  *       &lt;ref&gt;.rows.bin exists (stopping at the first difference, with context), else the hash of every 2^16-row
  *       window against &lt;ref&gt;.hashes.csv; and the layout, the bytecode size and the row counts against &lt;ref&gt;.json.
- *       Stage 1: secp256k1 advice from &lt;ref&gt;.advice.bin.
+ *       Stage 1: secp256k1 advice from &lt;ref&gt;.advice.bin; with --computed-advice, computed (stage 2).
  * </pre>
  */
 public final class Main {
   public static void main(String[] args) throws Exception {
     if (args.length >= 4 && args[0].equals("compare")) {
       long maxRows = Long.MAX_VALUE;
+      boolean computed = false;
       for (int i = 4; i < args.length; i++) {
         if (args[i].startsWith("--max-rows=")) maxRows = Long.parseLong(args[i].substring(11));
+        else if (args[i].equals("--computed-advice")) computed = true;
         else throw new IllegalArgumentException("unknown option " + args[i]);
       }
-      System.exit(compare(Path.of(args[1]), Path.of(args[2]), args[3], maxRows) ? 0 : 1);
+      System.exit(compare(Path.of(args[1]), Path.of(args[2]), args[3], maxRows, computed) ? 0 : 1);
     }
-    System.err.println("usage: gold compare <program dir> <input dir> <ref prefix> [--max-rows=N]");
+    System.err.println("usage: gold compare <program dir> <input dir> <ref prefix> [--max-rows=N] [--computed-advice]");
     System.exit(2);
   }
 
@@ -41,7 +43,7 @@ public final class Main {
     return Layout.nextPowerOfTwo(rows + 1);
   }
 
-  static boolean compare(Path programDir, Path inputDir, String ref, long maxRows) throws IOException {
+  static boolean compare(Path programDir, Path inputDir, String ref, long maxRows, boolean computed) throws IOException {
     long t0 = System.nanoTime();
     Map<?, ?> refJson = (Map<?, ?>) Json.parse(Files.readString(Path.of(ref + ".json")));
     Program p = new Program(programDir, inputDir);
@@ -75,8 +77,9 @@ public final class Main {
     LongBuffer refWindow = null;
 
     AdviceFile advice = new AdviceFile(Path.of(ref + ".advice.bin"));
+    SecpCompute secp = computed ? new SecpCompute() : null;
     long tRun = System.nanoTime();
-    Machine m = new Machine(p, advice);
+    Machine m = new Machine(p, computed ? secp : advice);
     long[][] recent = new long[8][Row.WORDS];
     long windowHash = 0, runHash = 0;
     int windowsChecked = 0, windowMismatches = 0;
@@ -134,9 +137,15 @@ public final class Main {
         windowsChecked, windowMismatches);
     if (complete) {
       long refRun = Long.parseUnsignedLong((String) refJson.get("run_hash"), 16);
-      System.out.printf("run hash %016x (jolt-cpp %016x); secp advice words left unused: %d%n", runHash, refRun,
-          advice.remainingWords());
-      ok &= rows == refRows && runHash == refRun && advice.remainingWords() == 0;
+      if (computed) {
+        System.out.printf("run hash %016x (jolt-cpp %016x); secp advice computed for %d operations%n", runHash, refRun,
+            secp.operations());
+        ok &= rows == refRows && runHash == refRun;
+      } else {
+        System.out.printf("run hash %016x (jolt-cpp %016x); secp advice words left unused: %d%n", runHash, refRun,
+            advice.remainingWords());
+        ok &= rows == refRows && runHash == refRun && advice.remainingWords() == 0;
+      }
     }
     System.out.printf("%s in %.1f s%n", ok ? "MATCH" : "MISMATCH", (System.nanoTime() - t0) / 1e9);
     return ok;

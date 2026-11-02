@@ -22,6 +22,9 @@ import java.util.Map;
  *       window against &lt;ref&gt;.hashes.csv; and the layout, the bytecode size and the row counts against &lt;ref&gt;.json.
  *       Stage 1: secp256k1 advice from &lt;ref&gt;.advice.bin; with --computed-advice, computed (stage 2).
  *
+ *   run &lt;program dir&gt; &lt;input dir&gt;
+ *       Runs the guest with nothing to compare against: the row count and run hash, or where it aborts.
+ *
  *   segments &lt;program dir&gt; &lt;input dir&gt; &lt;out file&gt; [--cuts=0,a,...|--cuts-file=F] [--segment-rows=N]
  *            [--segments=N] [--compare=&lt;reference file&gt;]
  *       Stage 2: runs the guest, computing everything, and writes section 16's segment file (SegmentWriter), with
@@ -42,6 +45,9 @@ public final class Main {
       }
       System.exit(compare(Path.of(args[1]), Path.of(args[2]), args[3], maxRows, computed) ? 0 : 1);
     }
+    if (args.length >= 3 && args[0].equals("run")) {
+      System.exit(run(Path.of(args[1]), Path.of(args[2])) ? 0 : 1);
+    }
     if (args.length >= 4 && args[0].equals("segments")) {
       System.exit(segments(args) ? 0 : 1);
     }
@@ -49,6 +55,26 @@ public final class Main {
         + " [--segment-rows=4194304] [--segments=128] [--compare=<reference file>]");
     System.err.println("usage: gold compare <program dir> <input dir> <ref prefix> [--max-rows=N] [--computed-advice]");
     System.exit(2);
+  }
+
+  /** run: no reference; computes everything and prints the row count and run hash, or where the run aborts. */
+  static boolean run(Path programDir, Path inputDir) throws IOException {
+    Program p = new Program(programDir, inputDir);
+    Machine m = new Machine(p, new SecpCompute());
+    long windowHash = 0, runHash = 0;
+    try {
+      while (!m.halted()) {
+        m.step();
+        windowHash = Row.mix(windowHash, Row.hash(m.row));
+        if (m.cycle % (1 << 16) == 0) { runHash = Row.mix(runHash, windowHash); windowHash = 0; }
+      }
+    } catch (EmulationError e) {
+      System.out.printf("ABORT at row %d: %s%n", m.cycle, e.getMessage());
+      return false;
+    }
+    if (m.cycle % (1 << 16) != 0) runHash = Row.mix(runHash, windowHash);
+    System.out.printf("%d rows, run hash %016x, host I/O %s%n", m.cycle, runHash, p.hostIo);
+    return true;
   }
 
   static boolean segments(String[] args) throws Exception {

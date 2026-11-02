@@ -337,6 +337,29 @@ third bullets; answers T7 the way section 11 kept as the backup; makes C4 moot.
     state; jolt-cpp's JIT doesn't track them (WORKER16). jolt-cpp's tracer and GPU compressed-trace expander do handle them
     (owner): find how, and what that means for slice starting states built on the host (W2).
 
+## 14. RAM K: up to 2³², sized per proof (2026-11-01)
+
+Decided (O); also a reasonable size for the chip (O).
+
+- **RAM K ranges up to 2³² cells** (32 GiB of guest range). Smaller runs keep the smaller sizes: K is the next power of two above
+  the highest touched cell, as jolt-cpp chooses it (`node_context.cpp:318-371`, `trace_owner.cpp:1134-1140` at the pin; a
+  program-image floor, 2²³ for both workloads). Measured (WORKER17, 2²⁹): EVM Zone 2²³, Cyclone 2²⁴. K follows the run, not the
+  layout, so it can change between inputs of the same program.
+- **The RAM one-hot chunks follow K:** *d* = ⌈log K / chunk bits⌉ (`onehot_params.cpp:11-12, 48`). At our 4M-row proofs
+  jolt-cpp's chunks are 4 bits (log T < 25, `config.hpp:121-127`), so *d* runs up to **8** and the RAM `ra` virtualization's
+  degree, *d* + 1, up to **9** (upstream `relations/ram/ra_virtualization.rs:60-62`). That is jolt-cpp HEAD's limit (88dca85:
+  `MAX_D` = 8, `ram/gpu/ra_virtual.hpp:28-29`; the Rust slot 2-8 chunks). **Our pin, 821e1bd, stops at *d* = 6 (log K ≤ 24)**, and
+  Cyclone is already at 2²⁴, so supporting 2³² means following HEAD's change.
+- **The hardware's sumcheck engines** handle the RAM `ra` virtualization at every degree from the smallest *d* + 1 to 9. The other
+  RAM sumchecks' degrees don't depend on K; they gain address rounds, up to 32.
+- **Open:**
+  - (a) Whether each slice's proof uses its own K (from the cells it touches) or one K for the whole run.
+  - (b) Whether to keep 4-bit chunks at 2³² (degree 9, smaller commitments) or switch to 8-bit chunks for large K (degree 5, each
+    chunk polynomial 16 times larger: 256 x T against 16 x T).
+  - (c) Moving the jolt-cpp pin past 821e1bd for this.
+  - (d) Whether any RAM step in jolt-cpp is dense in K (WORKER17, question 5). The GPU output check holds `ram_k` in a `uint32_t`
+    (`ram/gpu/output_check.cu:89`), which caps K below 2³² there as written.
+
 ---
 
 ## v1.3 work list

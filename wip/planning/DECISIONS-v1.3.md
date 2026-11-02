@@ -491,8 +491,11 @@ a really easy format to work with, from multiple languages" (O).
 | 3 | advice log | the segment's advice words, u64 each, in row order (section 13) |
 | 4 | updates, raw | the segment's update words, u64 each |
 | 5 | updates, LRU-compressed | a u32 count of the 64-bit words encoded, then the codes (below) |
+| 6 | `instr_idx` table | a u64 start address (128 B aligned), then one u32 per 128 B block of code from there (section 18) |
 
-- **Order:** frame 1 once, first; then for each segment in order, frames 2, 3, and one of 4 or 5 (the host's choice per segment).
+- **Order:** frame 1 once, first; then the program's frame 6s (one per contiguous range of code; static per program, so an ASIC
+  that already holds them, with the initial image, may skip them); then for each segment in order, frames 2, 3, and one of 4 or
+  5 (the host's choice per segment).
 - **The update words:** the segment's dirty runs in address order (PR #1's "R-dirty"): each run is **a header word** (the start
   cell in the low 32 bits, the word count in the high 32) **followed by that many values**, each the word's last value in the
   segment. Headers and values form one sequence of 64-bit words, so frames 4 and 5 carry exactly the same words.

@@ -607,6 +607,24 @@ program.
     boundaries (data or padding in text); which sections count; the start index (WORKER18, from the loader);
   - (c) building the table on the host (deferred, owner: assume it's there).
 
+## 19. Launching a program: two files, three pointers (2026-11-01)
+
+Decided (O). A program is **two files** in the file system (C&C 2), each represented by where its tables are in memory, in 4 KB
+pages; **the Tracer is launched with 3 x 32-bit values**, addresses in 128 B units like every entry (section 12):
+
+- **`<program>.pages`: the page table's top level** (section 12): 2,048 entries x 4 bytes = **8 KB, two 4 KB pages**, which needn't
+  be adjacent: **two pointers.** The leaves are reached through its entries, as before.
+- **`<program>.map`: the code map** (section 18): **a list of 1,024 pointers**, one 4 KB page: **one pointer.** Each entry points to
+  a 4 KB map page, or is `0xFFFFFFFF` for none; a map page holds 512 (base, mask) pairs, section 18's two u32 per 64 B of code, so
+  it covers 32 KB of code and the list 32 MB.
+- **No load step:** the Tracer reads the tables in place, through the 512 KB file-system cache. This replaces section 12's local
+  copy (the directory in part 1, the leaf pool in part 2, rewritten to pool slots as streamed).
+- **Open:**
+  - (a) where the code map starts: fixed (Jolt's program starts at `RAM_START_ADDRESS`, 0x8000_0000) or a fourth launch value;
+  - (b) a small TLB (page number to leaf entry), so that a memory access doesn't usually cost two table reads through the cache
+    before its data (integrator's suggestion);
+  - (c) the leaf pool's size (section 12) no longer applies as a local store; the leaves are just file pages.
+
 ---
 
 ## v1.3 work list

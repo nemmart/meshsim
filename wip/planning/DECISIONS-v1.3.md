@@ -536,6 +536,14 @@ Decided (O).
   produces rows on the same ELFs and inputs, as data. Its `Cycle` rows need a mapping to jolt-cpp's format first. Where jolt-cpp
   and upstream differ, each difference is recorded and the owner decides which the gold follows (by default upstream: the spec's
   ground truth is upstream Jolt's trace, item 113). This is ST1's work, done through the emulator.
+  **Stage 3's result** (WORKER18, 2026-11-01): **upstream at 17a9459 produces the same rows as jolt-cpp** on every run (both small
+  inputs and seven example guests record by record; both workloads at 2²⁹ by every window and the run hash), and **gold matches
+  upstream everywhere jolt-cpp does**. The inlines are unchanged since f8fc214 (all 15 upstream dumps byte-identical to
+  jolt-cpp's). Mapping: upstream's kinds are jolt-cpp's opcodes (NoOp is NOP); four upstream-only virtual kinds never occur. The
+  differences are at the edges, recorded in `WORKER18/UPSTREAM-DIFFS.md` for the owner's rulings: the program image (PT_LOAD
+  segments against sections), upstream's stack-canary check, jolt-cpp's LegacyRawEcall mode, UNIMP (dropped from jolt-cpp's
+  bytecode, rejected upstream), a jump into the middle of an instruction, the misaligned-access checks, the bytecode count's
+  convention, and the padding rule (to confirm). Eleven hand-assembled guests cover the paths no workload reached.
 
 ## 18. The Tracer's pc to `instr_idx` map (2026-11-01)
 
@@ -631,7 +639,7 @@ Options recorded for later, each with the evidence that would justify it.
 
 | # | study | why |
 |---|---|---|
-| ST1 | **Compare the two Jolt tracers' traces:** jolt-cpp (https://github.com/snarkify/jolt-cpp, ours) and the Rust Jolt tracer (https://github.com/a16z/jolt). They are written differently and may work slightly differently but are believed to produce the same traces. Run the same guest programs through both and find every place the traces mismatch (rows, `instr_idx`, advice, memory values, padding) | A mismatch is either a bug in one tracer or a difference our hardware must pick a side on. The spec's ground truth is upstream Jolt (spec 4.19, item 113), and our replayer and Tracer are validated against jolt-cpp |
+| ST1 | **Compare the two Jolt tracers' traces:** jolt-cpp (https://github.com/snarkify/jolt-cpp, ours) and the Rust Jolt tracer (https://github.com/a16z/jolt). They are written differently and may work slightly differently but are believed to produce the same traces. Run the same guest programs through both and find every place the traces mismatch (rows, `instr_idx`, advice, memory values, padding) | **answered by section 17's stage 3** (WORKER18): the same rows on every run; edge differences in `WORKER18/UPSTREAM-DIFFS.md`, for the owner |
 
 ---
 

@@ -38,7 +38,7 @@ public final class Bytecode {
       offset += d.size();
       if (in.opcode == Op.UNIMP) continue;   // removed, as Rust does (virtual.cpp:1357-1363)
       List<VInstr> seq = Expander.expand(in);
-      for (VInstr v : seq) v.riscPc = pc;
+      for (VInstr v : seq) { v.riscPc = pc; v.srcOpcode = in.opcode; }
       seq.get(seq.size() - 1).pcIncrement = d.size();
       pcToIndex[(int) ((pc - codeStart) >>> 1) + 1] = out.size();
       out.addAll(seq);

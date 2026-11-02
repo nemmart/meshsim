@@ -37,6 +37,7 @@ public final class Main {
       for (int i = 4; i < args.length; i++) {
         if (args[i].startsWith("--max-rows=")) maxRows = Long.parseLong(args[i].substring(11));
         else if (args[i].equals("--computed-advice")) computed = true;
+        else if (args[i].equals("--coverage")) coverage = true;
         else throw new IllegalArgumentException("unknown option " + args[i]);
       }
       System.exit(compare(Path.of(args[1]), Path.of(args[2]), args[3], maxRows, computed) ? 0 : 1);
@@ -97,10 +98,23 @@ public final class Main {
     return b.toString();
   }
 
+  /** Which source instruction kinds (rd = x0 forms counted apart) and row opcodes the run executed. */
+  static void printCoverage(Machine m) {
+    StringBuilder src = new StringBuilder(), rows = new StringBuilder();
+    for (int op = 0; op < Op.NUM_OPCODES; op++) {
+      if (m.sourceCount[op] > 0) src.append(' ').append(Op.name(op)).append(':').append(m.sourceCount[op]);
+      if (m.opCount[op] > 0) rows.append(' ').append(Op.name(op));
+    }
+    System.out.println("COVERAGE source instructions executed:" + src);
+    System.out.println("COVERAGE row opcodes executed:" + rows);
+  }
+
   static long paddedRows(long rows) {             // trace_owner.hpp:437-450
     if (rows < 256) return 256;
     return Layout.nextPowerOfTwo(rows + 1);
   }
+
+  static boolean coverage;
 
   static boolean compare(Path programDir, Path inputDir, String ref, long maxRows, boolean computed) throws IOException {
     long t0 = System.nanoTime();
@@ -185,6 +199,7 @@ public final class Main {
       return false;
     }
 
+    if (coverage) printCoverage(m);
     long rows = m.cycle;
     boolean complete = m.halted();
     double runSeconds = (System.nanoTime() - tRun) / 1e9;

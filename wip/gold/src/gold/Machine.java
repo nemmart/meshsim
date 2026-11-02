@@ -25,6 +25,9 @@ public final class Machine {
   private final SecpAdvice secp;
   private int prevSeqRemaining;
 
+  /** Executions per source opcode (counted at each expansion's first row) and per row opcode. */
+  public final long[] sourceCount = new long[Op.NUM_OPCODES], opCount = new long[Op.NUM_OPCODES];
+
   /** The last row executed, as the ten words of the record (see Row). */
   public final long[] row = new long[Row.WORDS];
 
@@ -57,6 +60,10 @@ public final class Machine {
     VInstr v = code.instrs[index];
     if (prevSeqRemaining == 0 && v.seqRemaining != 0 && v.adviceOp != Secp.Operation.NONE) secp.prepare(this, v);
     prevSeqRemaining = v.seqRemaining;
+    if (!v.isVirtual || v.isFirstInSequence) {
+      sourceCount[v.srcOpcode]++;
+    }
+    opCount[v.opcode]++;
 
     // the row, before execution (trace_owner.cpp:874-886)
     final int op = v.opcode;

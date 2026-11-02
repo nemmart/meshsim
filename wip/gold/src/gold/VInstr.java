@@ -8,6 +8,8 @@ package gold;
 public final class VInstr {
   /** The source RISC-V instruction's address (every row of an expansion carries it). */
   public long riscPc;
+  /** The source RISC-V instruction's opcode (after the host I/O encoding), for coverage reports. */
+  public int srcOpcode;
   public int opcode;
   public long rd, rs1, rs2;
   public boolean rdImm, rs1Imm, rs2Imm;

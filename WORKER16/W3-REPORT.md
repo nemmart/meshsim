@@ -140,7 +140,10 @@ mod 2⁶⁴.
 | trap path (`:1068-1084`, `:1128-1132`) | ECALL, MRET | 40 | the JALR's link: pc + pc_increment |
 
 **What this means for the fast version.**
-- **Families.** 14 families, about 45 opcodes. The workloads exercise 25 opcodes in 8 of them (W2's table).
+- **Families.** 14 families, 53 opcodes. The workloads exercise 25 opcodes in 8 of them (W2's table).
+- **How far the formulas are verified.** They are read from the source. The register sets agree with what W2 measured
+  for the 25 exercised opcodes; the values themselves would be checked when the emitters are built, by this tool's
+  restart check.
 - **Inputs.** Every value comes from things the JIT already has: operands, the effective address, the aligned memory word
   (before or after the store), the advice word (division: the quotient the JIT computes natively), registers 32-33, and pc.
 - **What to emit inline.** The four frequent families are about 99.5% of the writing instructions: narrow loads and

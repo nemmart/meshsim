@@ -18,6 +18,12 @@ final class Inlines {
       Secp256k1Inline.expand(e, op, rd, rs1, rs2);
       return;
     }
+    switch (op) {
+      case Op.BLAKE2_INLINE: Blake2Inline.expand(e, rd, rs1, rs2); return;
+      case Op.BLAKE3_INLINE: Blake3Inline.expand(e, false, rd, rs1, rs2); return;
+      case Op.BLAKE3_KEYED64_INLINE: Blake3Inline.expand(e, true, rd, rs1, rs2); return;
+      default: break;
+    }
     int n = Expander.numCycles(op);
     for (int i = 0; i < n; i++) e.emit(NOT_WRITTEN, 0, 0, 0, true, true, true);
   }

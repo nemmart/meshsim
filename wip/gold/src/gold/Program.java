@@ -15,9 +15,11 @@ public final class Program {
   public final Memory memory = new Memory();
   public final Bytecode bytecode;
   public final HostIo.Encoding hostIo;
+  public final java.util.Map<String, Long> symbols;
 
   public Program(Path programDir, Path inputDir) throws IOException {
     Elf elf = new Elf(programDir.resolve("program.elf"));
+    symbols = elf.symbols;
     if (elf.machine != Elf.EM_RISCV || elf.type != Elf.ET_EXEC) throw new IOException("not a RISC-V executable");
     if (elf.entry == 0 || elf.entry >= Memory.SIZE || (elf.entry & 1) != 0) throw new IOException("bad entry point");
 

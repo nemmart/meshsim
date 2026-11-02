@@ -22,8 +22,9 @@ import java.util.Map;
  *       window against &lt;ref&gt;.hashes.csv; and the layout, the bytecode size and the row counts against &lt;ref&gt;.json.
  *       Stage 1: secp256k1 advice from &lt;ref&gt;.advice.bin; with --computed-advice, computed (stage 2).
  *
- *   run &lt;program dir&gt; &lt;input dir&gt;
- *       Runs the guest with nothing to compare against: the row count and run hash, or where it aborts.
+ *   run &lt;program dir&gt; &lt;input dir&gt; [--tohost]
+ *       Runs the guest with nothing to compare against: the row count and run hash, or where it aborts; with
+ *       --tohost, also an ACT4 test's verdict from its tohost word.
  *
  *   segments &lt;program dir&gt; &lt;input dir&gt; &lt;out file&gt; [--cuts=0,a,...|--cuts-file=F] [--segment-rows=N]
  *            [--segments=N] [--compare=&lt;reference file&gt;]
@@ -46,7 +47,8 @@ public final class Main {
       System.exit(compare(Path.of(args[1]), Path.of(args[2]), args[3], maxRows, computed) ? 0 : 1);
     }
     if (args.length >= 3 && args[0].equals("run")) {
-      System.exit(run(Path.of(args[1]), Path.of(args[2])) ? 0 : 1);
+      boolean tohost = args.length > 3 && args[3].equals("--tohost");
+      System.exit(run(Path.of(args[1]), Path.of(args[2]), tohost) ? 0 : 1);
     }
     if (args.length >= 4 && args[0].equals("segments")) {
       System.exit(segments(args) ? 0 : 1);
@@ -58,7 +60,7 @@ public final class Main {
   }
 
   /** run: no reference; computes everything and prints the row count and run hash, or where the run aborts. */
-  static boolean run(Path programDir, Path inputDir) throws IOException {
+  static boolean run(Path programDir, Path inputDir, boolean tohost) throws IOException {
     Program p = new Program(programDir, inputDir);
     Machine m = new Machine(p, new SecpCompute());
     long windowHash = 0, runHash = 0;
@@ -73,8 +75,14 @@ public final class Main {
       return false;
     }
     if (m.cycle % (1 << 16) != 0) runHash = Row.mix(runHash, windowHash);
-    System.out.printf("%d rows, run hash %016x, host I/O %s%n", m.cycle, runHash, p.hostIo);
-    return true;
+    System.out.printf("%d rows, run hash %016x, host I/O %s", m.cycle, runHash, p.hostIo);
+    if (!tohost) { System.out.println(); return true; }
+    // ACT4's verdict (tests/arch-tests/jolt/rvmodel_macros.h): tohost = 1 passes, (gp << 1) | 1 fails test case gp
+    Long addr = p.symbols.get("tohost");
+    if (addr == null) { System.out.println(", no tohost symbol"); return false; }
+    long v = p.memory.load(addr);
+    System.out.printf(", tohost %#x: %s%n", v, v == 1 ? "PASS" : v == 0 ? "NO VERDICT" : "FAIL (case " + (v >>> 1) + ")");
+    return v == 1;
   }
 
   static boolean segments(String[] args) throws Exception {

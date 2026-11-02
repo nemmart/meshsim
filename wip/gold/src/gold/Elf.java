@@ -25,6 +25,8 @@ public final class Elf {
   public final int machine, type;
   public final long entry;
   public final List<Segment> segments = new ArrayList<>();
+  /** Symbols from the .symtab section(s), by name (absent when the ELF has no section headers). */
+  public final java.util.Map<String, Long> symbols = new java.util.HashMap<>();
 
   public Elf(Path path) throws IOException {
     bytes = Files.readAllBytes(path);
@@ -42,6 +44,26 @@ public final class Elf {
       int o = (int) (phoff + (long) i * phentsize);
       segments.add(new Segment(b.getInt(o) & 0xffffffffL, b.getInt(o + 4) & 0xffffffffL, b.getLong(o + 8),
           b.getLong(o + 16), b.getLong(o + 32), b.getLong(o + 40), b.getLong(o + 48)));
+    }
+    // section headers: SHT_SYMTAB (2) entries name their string table through sh_link (ELF64 Elf64_Shdr, Elf64_Sym)
+    long shoff = b.getLong(40);
+    int shentsize = b.getShort(58) & 0xffff, shnum = b.getShort(60) & 0xffff;
+    if (shoff != 0 && shentsize == 64 && shoff + (long) shnum * 64 <= bytes.length) {
+      for (int i = 0; i < shnum; i++) {
+        int sh = (int) (shoff + 64L * i);
+        if (b.getInt(sh + 4) != 2) continue;
+        long off = b.getLong(sh + 24), size = b.getLong(sh + 32), entsize = b.getLong(sh + 56);
+        int link = b.getInt(sh + 40);
+        long strOff = b.getLong((int) (shoff + 64L * link) + 24);
+        for (long e = 0; entsize == 24 && e + 24 <= size; e += 24) {
+          int at = (int) (off + e);
+          int name = b.getInt(at);
+          if (name == 0) continue;
+          int start = (int) (strOff + name), end = start;
+          while (end < bytes.length && bytes[end] != 0) end++;
+          symbols.putIfAbsent(new String(bytes, start, end - start, java.nio.charset.StandardCharsets.US_ASCII), b.getLong(at + 8));
+        }
+      }
     }
   }
 }

@@ -229,3 +229,22 @@ Reference files (regenerated locally from `ca30b5e`, SHA-256 equal to WORKER16's
   15.5 s, the hard-cut tests 2.8 s and 1.6 s, including program loading).
 - WORKER16's tool needed nothing changed to build here: the tracer sources at `ca30b5e` equal `tracer-standalone-main`'s;
   only an include path (`json-src/single_include`) was added on the command line.
+
+### Wider validation: jolt-cpp's example guests (2026-11-02)
+
+The two workloads leave paths unexercised (`compare --coverage`). jolt-cpp's `examples/` (at `821e1bd`) has more
+guests; `row_dump` ran on seven (summaries in `WORKER18/data/examples/`; `sha2-chain-advice` fails to load in jolt-cpp
+itself), and gold, with **computed** secp advice, matches **every record** of all seven:
+
+| guest | rows | what it adds |
+|---|---|---|
+| `tracer-tests` (input.bin) | 17,161 | MULH, MULHSU, DIV, REM, DIVW/DIVUW/REMW/REMUW, SRA, SRAW, LR.D/SC.D, every AMO, CSRs, ECALL/MRET |
+| `inlines` (input.bin) | 21,622 | every inline but KECCAK256 and SHA256_INLINE, all seven secp ops (SQUARE_R included), rev8w |
+| `merkle-tree` | 25,269 | SHA256_INLINE, SHA256_INIT_INLINE |
+| `fibonacci` | 36,786 | `VirtualHostIO` |
+| `sha2-chain-profile-15`, `sha3-chain-profile`, `btreemap-profile` (no input) | 18,201; 656; 442 | |
+
+Across all eleven runs, **never executed**: source EBREAK, FENCE, KECCAK256 (its builder is the absorb form's minus
+the absorb, which runs), the custom `VirtualAssertEQ`, UNIMP (removed from bytecode); row opcodes `VirtualMove`,
+`VirtualAdviceRemU`, `VirtualAdviceRemUW` (no expansion emits them). Also untested: the LegacyRawEcall host I/O mode
+(every guest here is Standard) and abort paths (failed asserts, misaligned access).

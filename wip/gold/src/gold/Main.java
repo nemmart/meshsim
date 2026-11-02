@@ -129,12 +129,12 @@ public final class Main {
       Long theirs = Json.u64(refLayout, Layout.FIELD_NAMES[i]);
       if (theirs == null) continue;                  // a field the reference doesn't report (upstream's layout)
       if (theirs != mine[i]) {
-        System.out.printf("LAYOUT %s: %#x, jolt-cpp %#x%n", Layout.FIELD_NAMES[i], mine[i], theirs);
+        System.out.printf("LAYOUT %s: %#x, reference %#x%n", Layout.FIELD_NAMES[i], mine[i], theirs);
         ok = false;
       }
     }
     long refInstrs = Json.u64(refJson, "bytecode_instrs");
-    System.out.printf("layout %s; bytecode %d rows (jolt-cpp %d); host I/O %s (jolt-cpp %s)%n", ok ? "matches" : "DIFFERS",
+    System.out.printf("layout %s; bytecode %d rows (reference %d); host I/O %s (reference %s)%n", ok ? "matches" : "DIFFERS",
         p.bytecode.size(), refInstrs, p.hostIo, refJson.get("host_io_encoding"));
     if (refInstrs != p.bytecode.size()) ok = false;
 
@@ -187,7 +187,7 @@ public final class Main {
           if (w < refHashes.size()) {
             windowsChecked++;
             if (refHashes.get(w) != windowHash) {
-              if (windowMismatches++ < 5) System.out.printf("WINDOW %d hash %016x, jolt-cpp %016x%n", w, windowHash, refHashes.get(w));
+              if (windowMismatches++ < 5) System.out.printf("WINDOW %d hash %016x, reference %016x%n", w, windowHash, refHashes.get(w));
               ok = false;
             }
           }
@@ -206,18 +206,18 @@ public final class Main {
     double runSeconds = (System.nanoTime() - tRun) / 1e9;
     System.out.printf("load and expand %.2f s; run %.2f s, %.1f M rows/s%s%n", (tRun - t0) / 1e9, runSeconds,
         rows / runSeconds / 1e6, rowsChannel != null ? " (comparing every record)" : " (hashing only)");
-    System.out.printf("rows %d (jolt-cpp %d), padded %d (jolt-cpp %d)%s%n", rows, refRows, paddedRows(rows),
+    System.out.printf("rows %d (reference %d), padded %d (reference %d)%s%n", rows, refRows, paddedRows(rows),
         Json.u64(refJson, "padded_rows"), complete ? "" : ", stopped at --max-rows");
     System.out.printf("rows compared one by one: %d; windows hashed and compared: %d, %d differ%n", rowsCompared,
         windowsChecked, windowMismatches);
     if (complete) {
       long refRun = Long.parseUnsignedLong((String) refJson.get("run_hash"), 16);
       if (computed) {
-        System.out.printf("run hash %016x (jolt-cpp %016x); secp advice computed for %d operations%n", runHash, refRun,
+        System.out.printf("run hash %016x (reference %016x); secp advice computed for %d operations%n", runHash, refRun,
             secp.operations());
         ok &= rows == refRows && runHash == refRun;
       } else {
-        System.out.printf("run hash %016x (jolt-cpp %016x); secp advice words left unused: %d%n", runHash, refRun,
+        System.out.printf("run hash %016x (reference %016x); secp advice words left unused: %d%n", runHash, refRun,
             advice.remainingWords());
         ok &= rows == refRows && runHash == refRun && advice.remainingWords() == 0;
       }
@@ -232,7 +232,7 @@ public final class Main {
       System.out.printf("  %d  %s%n", k, Row.describe(recent[(int) (k % recent.length)]));
     }
     long[] mine = recent[(int) (n % recent.length)];
-    System.out.printf("  mine      %s%n  jolt-cpp  %s%n", Row.describe(mine), Row.describe(theirs));
+    System.out.printf("  mine       %s%n  reference  %s%n", Row.describe(mine), Row.describe(theirs));
     for (int i = 0; i < Row.WORDS; i++) {
       if (mine[i] != theirs[i]) System.out.printf("  word %d (%s): %#x vs %#x%n", i, Row.NAMES[i], mine[i], theirs[i]);
     }

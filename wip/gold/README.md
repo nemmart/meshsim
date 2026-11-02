@@ -4,8 +4,9 @@ A standalone emulator of the Jolt zkVM's tracer (DECISIONS-v1.3 section 17, work
 up Jolt's memory, runs the program and produces **Jolt's trace rows exactly as jolt-cpp's tracer does** (jolt-cpp
 `821e1bd`). Self-contained: plain Java 21, no dependencies, no native code, nothing imported from the rest of meshsim.
 
-Status: **stage 1** (a Tracer model), validated below. Stage 2 (computing all advice, writing section 16's segment
-file) is next.
+Status: **gold** (stage 2): it computes everything itself, the secp256k1 advice included, and writes section 16's
+segment file **byte-identical to WORKER16's segment_writer** (jolt-asic-planning `worker16-w3` at `ca30b5e`) on both
+workloads at 2^29 and on the hard-cut tests.
 
 ## Build and run
 
@@ -13,8 +14,15 @@ file) is next.
 ./build.sh                      # javac into build/, then the inline emit test (against test/inline-emit-digests.txt)
 JOLT_CPP=<jolt-cpp> ./build.sh  # the same, but row for row against <jolt-cpp>/src/tracer/inlines/*.inc
 
-java -cp build gold.Main compare <program dir> <input dir> <ref prefix> [--max-rows=N]
+java -cp build gold.Main segments <program dir> <input dir> <out file> [--cuts=0,a,...|--cuts-file=F]
+     [--segment-rows=4194304] [--segments=128] [--compare=<reference file>]
+java -cp build gold.Main compare <program dir> <input dir> <ref prefix> [--max-rows=N] [--computed-advice]
+./check.sh <jolt-asic-planning tracer dir> <reference .seg dir>     # stage 2's acceptance, the four files below
 ```
+
+`segments` writes section 16's file (frame 1, then per segment frames 2, 3 and 4 or 5; no frame 6 yet) with
+`<out>.cuts` and `<out>.json`; with `--compare` it checks it byte for byte and names the first differing frame. The
+format and every encoder choice it shares with WORKER16's tool are in `WORKER18/NOTES.md` ("Stage 2").
 
 `<program dir>` holds `program.elf` and `program.json`; `<input dir>` holds `input.bin` and, if present,
 `trusted_advice.bin` and `untrusted_advice.bin` (as jolt-cpp's tools take them). `<ref prefix>` is the output of
@@ -31,6 +39,15 @@ secp256k1 advice comes from `<ref>.advice.bin`; the division family computes its
 | Cyclone `input/22/input-default` | 2,705,819 | every record | match |
 | EVM Zone `trace-29-4599adc50712` | 354,861,942 | every window hash, run hash | match |
 | Cyclone `input/29/input-15961266` | 371,526,406 | every window hash, run hash | match |
+
+Segment files (stage 2), byte for byte against segment_writer `ca30b5e`:
+
+| file | rows | segments | bytes | SHA-256 | time |
+|---|---|---|---|---|---|
+| EVM Zone trace-29 | 354,861,942 | 128 | 1,747,828 | `208520ec…8aa17d18` | 13.5 s |
+| Cyclone input/29 | 371,526,406 | 128 | 10,334,580 | `f45f71b6…8aa64070` | 15.5 s |
+| EVM Zone trace-23, 93 hard cuts | 5,833,069 | 93 | 326,576 | `b33f9fc4…5b35c566` | 2.8 s |
+| Cyclone input/22, 111 hard cuts | 2,705,819 | 111 | 339,884 | `a3858f5e…8cac81ec` | 1.6 s |
 
 All 15 inlines match jolt-cpp's emit lists row for row (InlineEmitTest). Speed: about 16.5 M rows/s warm on one CPU
 (a 2^29 run in 22 s); memory is sparse 16 KB pages, so a 2^29 run fits in a few hundred MB.
@@ -51,7 +68,9 @@ over the ten words, folded per 2^16-row window, the windows folded into a run ha
 | `Expander.java`, `Bytecode.java`, `VInstr.java` | Jolt's expansions per instruction family (virtual.cpp), the expanded program |
 | `Machine.java`, `Bits.java`, `Isa.java`, `Op.java` | the interpreter, building each row |
 | `InlineAsm.java` and `*Inline.java` | the inlines as readable loops: secp256k1 (7), BLAKE2b, BLAKE3 (2), Keccak (2), SHA-256 (2), BIGINT256_MUL |
-| `Row.java`, `AdviceFile.java`, `Main.java` | the record and hash, stage 1's advice, the compare driver |
+| `Row.java`, `AdviceFile.java`, `Main.java` | the record and hash, stage 1's advice, the drivers |
+| `SecpCompute.java` | the secp256k1 advice in BigInteger (jolt-cpp's evaluate) |
+| `SegmentWriter.java`, `FrameDiff.java`, `check.sh` | section 16's segment file; locating a difference; the acceptance run |
 | `test/gold/InlineEmitTest.java` | each inline vs jolt-cpp's `.inc` emit list, as data |
 
 Every rule cites jolt-cpp (file:line at `821e1bd`) or, for the inlines, upstream Jolt's builder (`f8fc214`, the

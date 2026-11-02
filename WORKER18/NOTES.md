@@ -9,7 +9,9 @@ Citations are jolt-cpp at `821e1bd` (`src/tracer/...` unless noted) unless marke
 - `wip/gold/`: stage 1 Tracer model. **Matches jolt-cpp row for row on EVM Zone trace-23 and Cyclone input/22
   (every record), and on both workloads at 2^29 (every 2^16-row window hash and the run hash)** (2026-11-02).
   **All 15 inlines written and passing InlineEmitTest** (secp256k1 x7, BLAKE2b, BLAKE3 x2, Keccak x2, SHA-256 x2,
-  BIGINT256_MUL). Stage 1 is complete; stage 2 next.
+  BIGINT256_MUL). Stage 1 is complete.
+- **Stage 2 (gold), 2026-11-02:** secp256k1 advice computed (SecpCompute); `segments` writes section 16's file
+  **byte-identical to segment_writer `ca30b5e`** on both workloads at 2^29 and both hard-cut tests (`check.sh`).
 
 ## The row record (agreed with the owner, 2026-11-02)
 
@@ -217,3 +219,13 @@ Reference files (regenerated locally from `ca30b5e`, SHA-256 equal to WORKER16's
 | `cyclone-29` | 371,526,406 | 128 | 10,334,580 | `f45f71b6...8aa64070` |
 | `evm-zone-23-hardcuts` (cuts: `WORKER16/data/w3/*.cuts`) | 5,833,069 | 93 | 326,576 | `b33f9fc4...5b35c566` |
 | `cyclone-22-hardcuts` | 2,705,819 | 111 | 339,884 | `a3858f5e...8cac81ec` |
+
+### Stage 2 results (2026-11-02, gold `98561df`)
+
+- **Computed secp256k1 advice** (`SecpCompute`, jolt-cpp `inlines/secp256k1.cpp`'s evaluate in BigInteger): rows
+  identical with it on EVM Zone trace-23 (every record; 668 operations of six kinds) and at 2^29 (every window and the
+  run hash; 662 operations).
+- **Segment files**, byte for byte: all four reference files above are identical (EVM Zone 2^29 13.5 s, Cyclone 2^29
+  15.5 s, the hard-cut tests 2.8 s and 1.6 s, including program loading).
+- WORKER16's tool needed nothing changed to build here: the tracer sources at `ca30b5e` equal `tracer-standalone-main`'s;
+  only an include path (`json-src/single_include`) was added on the command line.

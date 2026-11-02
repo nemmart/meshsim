@@ -75,6 +75,7 @@ public final class Main {
     LongBuffer refWindow = null;
 
     AdviceFile advice = new AdviceFile(Path.of(ref + ".advice.bin"));
+    long tRun = System.nanoTime();
     Machine m = new Machine(p, advice);
     long[][] recent = new long[8][Row.WORDS];
     long windowHash = 0, runHash = 0;
@@ -124,6 +125,9 @@ public final class Main {
 
     long rows = m.cycle;
     boolean complete = m.halted();
+    double runSeconds = (System.nanoTime() - tRun) / 1e9;
+    System.out.printf("load and expand %.2f s; run %.2f s, %.1f M rows/s%s%n", (tRun - t0) / 1e9, runSeconds,
+        rows / runSeconds / 1e6, rowsChannel != null ? " (comparing every record)" : " (hashing only)");
     System.out.printf("rows %d (jolt-cpp %d), padded %d (jolt-cpp %d)%s%n", rows, refRows, paddedRows(rows),
         Json.u64(refJson, "padded_rows"), complete ? "" : ", stopped at --max-rows");
     System.out.printf("rows compared one by one: %d; windows hashed and compared: %d, %d differ%n", rowsCompared,

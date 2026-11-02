@@ -550,22 +550,29 @@ program.
     decode entry holds a class and a template start, no length). Built by the table builder from the templates: at v1.25 the
     longest ROM template is 21 rows (306 ROM-class entries: 231 of one row), so 5 bits per entry would do (2,048 x 5 bits,
     1.25 KB); the CSR entries (class 2) are open (a).
-  - **An inline** (custom-0, *w*[6:0] = `0001011`) **is looked up in a separate associative array of 128 entries: a 32-bit opcode
-    and a 16-bit expansion length** (owner).
+  - **An inline** (custom-0, *w*[6:0] = `0001011`) takes its length from **a separate table of 16-bit lengths** (owner), since
+    inlines run to 3,121 rows. **An inline's length depends only on which inline it is, not its registers** (`num_cycles(OpCode)`,
+    `isa/virtual.cpp:1210-1276`: KECCAK256 3,087, KECCAK256_ABSORB_PERMUTE 3,121, SHA256 1,900 and 1,864, BLAKE2 1,067, BLAKE3 648
+    and 646, BIGINT256_MUL 141, the secp256k1 operations by shape), and the decode index already gives each inline its own entry,
+    {funct7[4:0], funct3}. So the table is **indexed by those bits, the registers ignored**: at most 256 entries, about 15 used, no
+    associative match needed (replacing the 128-entry array keyed on whole words).
+  - **The registers matter in two cases, both small logic:**
+    - **rd = x0** (`should_nop_for_rd0`, `isa/virtual.cpp:108-112, 270-274`): an instruction with an rd register, not one that
+      handles rd = x0 itself, and with no side effects beyond rd, **becomes a single NOP row** (a DIV to x0 is 1 row, not 12).
+      **One more bit per length-table entry**, "1 row if rd = x0", plus a 5-bit zero test. (A side-effecting instruction with
+      rd = x0 is remapped to a temporary instead, `:276-282`, and keeps its length.)
+    - **CSRRW and CSRRS** (open (a)): by rd and rs1.
   - At most 31 instruction starts lie before a target in a 64 B block: **at most 16 cycles of lookups**, about 8 on average.
 - **Open:**
   - (a) whether an expansion's length is a function of the 11-bit index alone. **The CSR instructions: answered.** jolt-cpp
     supports only CSRRW and CSRRS, on six CSRs (mstatus 0x300, mtvec 0x305, mscratch 0x340, mepc 0x341, mcause 0x342, mtval
     0x343; `isa/riscv.hpp:73-78`), so 2 x 6 x 32 rd x 32 rs1 = 12,288 distinct words. **The length doesn't depend on the CSR,
     only on rd and rs1** (`isa/virtual.cpp:1287-1302`): CSRRW, 1 if rd = x0, 3 if rd = rs1, else 2; CSRRS, 1 if rs1 = x0 or
-    rd = x0, 3 if rd = rs1, else 2. So the engine computes it with two 5-bit compares and a zero test, no table. Still to
-    confirm for the rest: that the generic rd = x0 remap (WORKER16) never changes a length (WORKER18, from `isa/virtual.cpp`);
+    rd = x0, 3 if rd = rs1, else 2. So the engine computes it with two 5-bit compares and a zero test, no table. The rest
+    of the register dependence is the rd = x0 rule above; WORKER18 to confirm nothing else depends on operands;
   - (b) that jolt-cpp's bytecode is decoded sequentially from each text section's start, so the table and the walk follow the same
     boundaries (data or padding in text); which sections count; the start index (WORKER18, from the loader);
-  - (c) **the inline array's key:** an inline's word carries its registers (rd, rs1, rs2), so either the match ignores them
-    (opcode, funct3, funct7), and 128 entries cover every inline jolt-cpp supports, or it matches whole words and holds the
-    distinct inline words of the program;
-  - (d) building the table on the host (deferred, owner: assume it's there).
+  - (c) building the table on the host (deferred, owner: assume it's there).
 
 ---
 

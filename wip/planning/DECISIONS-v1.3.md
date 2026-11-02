@@ -388,8 +388,11 @@ Decided (O), from the planning discussion of 2026-10-19 recorded in jolt-asic-pl
 128 **segments** of 4M (2²²) rows, one per ASIC.
 
 - **Each segment comes from the host with three chunks** (owner):
-  1. **the processor state** at the segment's start: pc, `instr_idx`, registers 0-47 (the JIT's state, section 13 (c)); if a
-     segment may start inside a sequence, also the next offset and registers 48-127 (open (a));
+  1. **the processor state** at the segment's start: pc, `instr_idx`, the next offset, and registers 0-127. **A segment can start
+     inside a sequence, just like a replayer window** (owner): the next offset is then nonzero, registers 48-127 hold the
+     sequence's live scratch, and the sequence's pending advice words head the advice log (section 13). The host takes this
+     state from its interpreter, which steps the last rows to the exact cut (the JIT stops at the instruction boundary before);
+     at an instruction boundary registers 48-127 are 0;
   2. **the advice log**, the segment's read-log input (section 13);
   3. **the memory updates list**, the segment's delta: each word written during the segment with its last value (the dirty set,
      "R-dirty" in PR #1; the host reads the values from guest memory at the segment's end, so stores are never logged).
@@ -420,8 +423,6 @@ Decided (O), from the planning discussion of 2026-10-19 recorded in jolt-asic-pl
   which must never stall (planning notes). How the stream reaches each ASIC (PR #1's chain per card, route 2') doesn't change
   what an ASIC receives.
 - **Open:**
-  - (a) whether a segment may start inside a sequence (its state then carries the next offset, registers 48-127 and pending advice
-    words) or is cut at an instruction boundary and padded with no-op rows;
   - (b) the processor-state chunk's format, and the stream's framing (chunk type, segment tag, length);
   - (c) the LRU's details: FIFO against true LRU replacement, and how 6-bit hit codes pack into the byte stream (bit-packed, or
     byte-aligned tokens);

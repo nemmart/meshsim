@@ -3,7 +3,7 @@
 one's verdict and whether their rows agree; upstream's own jolt-emu verdicts come from Quest task 095.
 
     run_act4.py <elfs dir> <jolt-emu-results.txt> <skip.txt> <out.tsv>
-        [--gold=<gold build dir>] [--row-dump=<path>] [--upstream-rows=<path>]
+        [--gold=<gold build dir>] [--row-dump=<path>] [--upstream-rows=<path>] [--strict=1]
 
 <elfs dir> is the unpacked act4-elfs.tar.xz (task 095). Each test runs with program.json beside this script (jolt-emu's
 defaults, common/src/constants.rs at 17a9459). A verdict is the test's tohost word after the run
@@ -76,7 +76,7 @@ def run(cmd, timeout=600):
 
 def first_error(text):
     for line in text.splitlines():
-        if "ERROR" in line or "panicked" in line or "ABORT" in line or "Exception" in line:
+        if any(k in line for k in ("ERROR", "panicked", "ABORT", "Exception", "REJECTED", "build_jolt_program")):
             return line.strip()[:160]
     return text.strip().splitlines()[-1][:160] if text.strip() else ""
 
@@ -88,6 +88,7 @@ def main():
     gold = opts.get("gold", os.path.join(HERE, "..", "..", "build"))
     row_dump = opts.get("row-dump", "row_dump")
     upstream = opts.get("upstream-rows", "upstream_rows")
+    strict = "strict" in opts            # gold's load mode: permissive (ACT4's, the owner's D4 ruling) unless --strict=1
     emu = dict(line.split() for line in open(emu_results) if line.strip())
     skipped = {l.strip() for l in open(skip_file) if l.strip() and not l.startswith("#")}
     elfs = sorted(os.path.join(r, f) for r, _, fs in os.walk(elfs_dir) for f in fs
@@ -100,7 +101,7 @@ def main():
         shutil.copy(elf, os.path.join(d, "program.elf"))
         shutil.copy(os.path.join(HERE, "program.json"), d)
         th = tohost_address(elf)
-        rc, text = run(["java", "-cp", gold, "gold.Main", "run", d, empty, "--tohost"])
+        rc, text = run(["java", "-cp", gold, "gold.Main", "run", d, empty, "--tohost"] + ([] if strict else ["--permissive"]))
         g_hash = text.split("run hash ")[1].split(",")[0] if "run hash " in text else "-"
         g = describe(int(text.split("tohost ")[1].split(":")[0], 16)) if "tohost 0x" in text else "ABORT"
         g_note = "" if "run hash" in text else first_error(text)

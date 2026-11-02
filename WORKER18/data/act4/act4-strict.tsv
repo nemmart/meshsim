@@ -1,0 +1,134 @@
+test	upstream_skip	jolt_emu_exit	gold	jolt_cpp	upstream_trace	rows	rows_agree	note
+I-add-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 9591 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000282; undecodable 0x9610 at 0x80000
+I-addi-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 8133 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000f68b at 0x80000234; undecodable 0x8000 at 0x8
+I-addiw-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 8217 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x8000 at 0x80000
+I-addw-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 10555 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8001304b at 0x80000234; undecodable 0x8000 at 0x
+I-and-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 9349 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000282; undecodable 0x9610 at 0x80000
+I-andi-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 7832 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000f68b at 0x80000234; undecodable 0x8000 at 0x8
+I-auipc-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 965 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x8000 at 0x800002
+I-beq-00	run	0	ABORT	ABORT	ABORT	-	no	Exception in thread "main" java.io.IOException: multiple executable segments
+I-bge-00	run	0	ABORT	ABORT	ABORT	-	no	Exception in thread "main" java.io.IOException: multiple executable segments
+I-bgeu-00	run	0	ABORT	ABORT	ABORT	-	no	Exception in thread "main" java.io.IOException: multiple executable segments
+I-blt-00	run	0	ABORT	ABORT	ABORT	-	no	Exception in thread "main" java.io.IOException: multiple executable segments
+I-bltu-00	run	0	ABORT	ABORT	ABORT	-	no	Exception in thread "main" java.io.IOException: multiple executable segments
+I-bne-00	run	0	ABORT	ABORT	ABORT	-	no	Exception in thread "main" java.io.IOException: multiple executable segments
+I-fence-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 175 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x0002 at 0x80000c
+I-jal-00	run	0	ABORT	ABORT	ABORT	-	no	Exception in thread "main" java.io.IOException: segment 0x80004000: alignment must be 4096
+I-jalr-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 2423 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x800069db at 0x80000234; undecodable 0x8000 at 0x8
+I-lb-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 2021 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x800044c7 at 0x80000234; undecodable 0x8000 at 0x8
+I-lbu-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 1745 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x8000 at 0x80000
+I-ld-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 1841 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000276; undecodable 0x25c8 at 0x80000
+I-lh-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 1945 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000276; undecodable 0x27e8 at 0x80000
+I-lhu-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 1696 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x8000 at 0x80000
+I-lui-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 884 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x8000 at 0x800002
+I-lw-00	run	0	ABORT	ABORT	ABORT	-	no	Exception in thread "main" java.io.IOException: multiple executable segments
+I-lwu-00	run	0	ABORT	ABORT	ABORT	-	no	Exception in thread "main" java.io.IOException: multiple executable segments
+I-nop-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 153 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x0002 at 0x80000c
+I-or-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 9835 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x80012c47 at 0x80000234; undecodable 0x8000 at 0x8
+I-ori-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 8202 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x8000 at 0x80000
+I-sb-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 1607 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x80004387 at 0x80000234; undecodable 0x8000 at 0x8
+I-sd-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 1639 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x80003fa7 at 0x80000234; undecodable 0x8000 at 0x8
+I-sh-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 1503 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x8000028e; undecodable 0x2a48 at 0x80000
+I-sll-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 9633 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000282; undecodable 0x9610 at 0x80000
+I-slli-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 5618 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000b2ab at 0x80000234; undecodable 0x8000 at 0x8
+I-slliw-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 4184 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x8000 at 0x80000
+I-sllw-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 10801 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8001304b at 0x80000234; undecodable 0x8000 at 0x
+I-slt-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 9229 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000282; undecodable 0x9610 at 0x80000
+I-slti-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 7779 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000f68b at 0x80000234; undecodable 0x8000 at 0x8
+I-sltiu-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 7416 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x8000 at 0x80000
+I-sltu-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 9532 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8001304b at 0x80000234; undecodable 0x8000 at 0x8
+I-sra-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 9825 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000282; undecodable 0x9610 at 0x80000
+I-srai-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 5712 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000b2ab at 0x80000234; undecodable 0x8000 at 0x8
+I-sraiw-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 4209 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x8000 at 0x80000
+I-sraw-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 10922 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8001304b at 0x80000234; undecodable 0x8000 at 0x
+I-srl-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 9507 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000282; undecodable 0x9610 at 0x80000
+I-srli-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 5532 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000b2ab at 0x80000234; undecodable 0x8000 at 0x8
+I-srliw-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 3962 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x8000 at 0x80000
+I-srlw-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 10329 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8001304b at 0x80000234; undecodable 0x8000 at 0x
+I-sub-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 9809 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000282; undecodable 0x9610 at 0x80000
+I-subw-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 10768 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8001304b at 0x80000234; undecodable 0x8000 at 0x
+I-sw-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 1527 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x80004127 at 0x80000234; undecodable 0x8000 at 0x8
+I-xor-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 9499 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000282; undecodable 0x9610 at 0x80000
+I-xori-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 8236 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000f68b at 0x80000234; undecodable 0x8000 at 0x8
+M-div-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 9344 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000282; undecodable 0x9610 at 0x80000
+M-divu-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 9427 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8001304b at 0x80000234; undecodable 0x8000 at 0x8
+M-divuw-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 10137 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000282; undecodable 0x9610 at 0x8000
+M-divw-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 10354 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8001304b at 0x80000234; undecodable 0x8000 at 0x
+M-mul-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 9477 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000282; undecodable 0x9610 at 0x80000
+M-mulh-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 9847 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8001304b at 0x80000234; undecodable 0x8000 at 0x8
+M-mulhsu-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 9782 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8001344f at 0x80000234; undecodable 0x8000 at 0x8
+M-mulhu-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 9409 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000282; undecodable 0x9610 at 0x80000
+M-mulw-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 10405 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8001304b at 0x80000234; undecodable 0x8000 at 0x
+M-rem-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 9365 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000282; undecodable 0x9610 at 0x80000
+M-remu-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 9588 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8001304b at 0x80000234; undecodable 0x8000 at 0x8
+M-remuw-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 10087 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000282; undecodable 0x9610 at 0x8000
+M-remw-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 10219 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8001304b at 0x80000234; undecodable 0x8000 at 0x
+Zaamo-amoadd.d-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 4891 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000deeb at 0x80000234; undecodable 0x8000 at 0x8
+Zaamo-amoadd.w-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 5408 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000e07b at 0x80000234; undecodable 0x8000 at 0x8
+Zaamo-amoand.d-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 4855 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000deeb at 0x80000234; undecodable 0x8000 at 0x8
+Zaamo-amoand.w-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 5389 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000e07b at 0x80000234; undecodable 0x8000 at 0x8
+Zaamo-amomax.d-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 4934 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000deeb at 0x80000234; undecodable 0x8000 at 0x8
+Zaamo-amomax.w-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 5345 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000e07b at 0x80000234; undecodable 0x8000 at 0x8
+Zaamo-amomaxu.d-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 4588 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x8000 at 0x80000
+Zaamo-amomaxu.w-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 5152 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x8000 at 0x80000
+Zaamo-amomin.d-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 4962 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000deeb at 0x80000234; undecodable 0x8000 at 0x8
+Zaamo-amomin.w-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 5457 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000e07b at 0x80000234; undecodable 0x8000 at 0x8
+Zaamo-amominu.d-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 4558 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x8000 at 0x80000
+Zaamo-amominu.w-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 4979 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x8000 at 0x80000
+Zaamo-amoor.d-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 4588 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x8000 at 0x80000
+Zaamo-amoor.w-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 5071 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x8000 at 0x80000
+Zaamo-amoswap.d-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 4862 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x8000 at 0x80000
+Zaamo-amoswap.w-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 5296 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x8000 at 0x80000
+Zaamo-amoxor.d-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 4921 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000deeb at 0x80000234; undecodable 0x8000 at 0x8
+Zaamo-amoxor.w-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 5422 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000e07b at 0x80000234; undecodable 0x8000 at 0x8
+Zalrsc-lr.d-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 1573 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x8000 at 0x80000
+Zalrsc-lr.w-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 1749 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x8000 at 0x80000
+Zalrsc-sc.d-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 5389 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x800002ba; undecodable 0x8000 at 0x80000
+Zalrsc-sc.w-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 5272 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x800002ba; undecodable 0x8000 at 0x80000
+Zca-c.add-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 8477 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x8000 at 0x80000
+Zca-c.addi-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 5281 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000a053 at 0x80000234; undecodable 0x8000 at 0x8
+Zca-c.addi16sp-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 1082 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x80002d8b at 0x80000234; undecodable 0x8000 at 0x8
+Zca-c.addi4spn-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 4145 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x80008aeb at 0x80000234; undecodable 0x8000 at 0x8
+Zca-c.addiw-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 5175 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x8000 at 0x80000
+Zca-c.addw-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 7442 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x8000027c; undecodable 0x8000 at 0x80000
+Zca-c.and-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 6638 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x8000 at 0x80000
+Zca-c.andi-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 4552 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x80009053 at 0x80000234; undecodable 0x8000 at 0x8
+Zca-c.beqz-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 506 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000280; undecodable 0x8000 at 0x800002
+Zca-c.bnez-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 533 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000280; undecodable 0x8000 at 0x800002
+Zca-c.j-00	run	0	ABORT	ABORT	ABORT	-	no	Exception in thread "main" java.io.IOException: multiple executable segments
+Zca-c.jalr-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 810 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x80002ad3 at 0x80000234; undecodable 0x8000 at 0x80
+Zca-c.jr-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 635 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; UNIMP 0x8000268f at 0x80000234; undecodable 0x8000 at 0x800002b4
+Zca-c.ld-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 1009 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x800026bf at 0x80000234; undecodable 0x8000 at 0x8
+Zca-c.ldsp-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 1528 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000276; undecodable 0x2008 at 0x80000
+Zca-c.li-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 1568 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x80003c5f at 0x80000234; undecodable 0x8000 at 0x8
+Zca-c.lui-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 1526 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x8000 at 0x80000
+Zca-c.lw-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 1010 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000267f at 0x80000234; undecodable 0x8000 at 0x8
+Zca-c.lwsp-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 1601 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x800038e3 at 0x80000234; undecodable 0x8000 at 0x8
+Zca-c.mv-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 2176 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x800051df at 0x80000234; undecodable 0x8000 at 0x8
+Zca-c.nop-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 687 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x0002 at 0x80000d
+Zca-c.or-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 7147 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; UNIMP 0x8000cd0f at 0x80000234; undecodable 0x8000 at 0x8000027
+Zca-c.sd-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 1074 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000286; undecodable 0x8000 at 0x80000
+Zca-c.sdsp-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 1772 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x800042b3 at 0x80000234; undecodable 0x8000 at 0x8
+Zca-c.slli-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 6775 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000ccb3 at 0x80000234; undecodable 0x8000 at 0x8
+Zca-c.srai-00	run	0	ABORT	ABORT	ABORT	-	no	Exception in thread "main" java.io.IOException: multiple executable segments
+Zca-c.srli-00	run	0	ABORT	ABORT	ABORT	-	no	Exception in thread "main" java.io.IOException: multiple executable segments
+Zca-c.sub-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 6882 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x8000 at 0x80000
+Zca-c.subw-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 7369 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x8000027c; undecodable 0x8000 at 0x80000
+Zca-c.sw-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 1152 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000286; undecodable 0x8000 at 0x80000
+Zca-c.swsp-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 1751 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000280; undecodable 0x2590 at 0x80000
+Zca-c.xor-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 6769 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x8000 at 0x80000
+Zicntr-csrrc-00	skip	101	ABORT	ABORT	ABORT	-	no	REJECTED at load: 213 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; UNIMP 0xc0003773 at 0x80000260; UNIMP 0xc0003973 at 0x8000027c; 
+Zicntr-csrrs-00	skip	101	ABORT	ABORT	ABORT	-	no	REJECTED at load: 215 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0xc00027f3 at 0x80000260; undecodable 0xc0002df3 at 
+Zicsr-csrrc-00	skip	101	ABORT	ABORT	ABORT	-	no	REJECTED at load: 2396 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; UNIMP 0x34003d73 at 0x8000027
+Zicsr-csrrci-00	skip	101	ABORT	ABORT	ABORT	-	no	REJECTED at load: 1234 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; UNIMP 0x34077073 at 0x8000026c; undecodable 0x8000 at 0x8000027
+Zicsr-csrrs-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 2343 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x8000 at 0x80000
+Zicsr-csrrsi-00	skip	101	ABORT	ABORT	ABORT	-	no	REJECTED at load: 1245 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; UNIMP 0x340a6073 at 0x8000026c; undecodable 0x8000 at 0x8000027
+Zicsr-csrrw-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 2353 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0x8000 at 0x80000
+Zicsr-csrrwi-00	skip	101	ABORT	ABORT	ABORT	-	no	REJECTED at load: 1218 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; UNIMP 0x34065073 at 0x8000026c; undecodable 0x8000 at 0x8000027
+Zihpm-csrrc-00	skip	101	ABORT	ABORT	ABORT	-	no	REJECTED at load: 811 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; UNIMP 0xc0303973 at 0x80000260
+Zihpm-csrrs-00	skip	101	ABORT	ABORT	ABORT	-	no	REJECTED at load: 829 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000236; undecodable 0xc0302673 at 0x80
+Zmmul-mul-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 9502 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000282; undecodable 0x9610 at 0x80000
+Zmmul-mulh-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 9865 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x80013853 at 0x80000234; undecodable 0x8000 at 0x8
+Zmmul-mulhsu-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 9802 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x80013c57 at 0x80000234; undecodable 0x8000 at 0x8
+Zmmul-mulhu-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 9431 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x8000 at 0x80000282; undecodable 0x9610 at 0x80000
+Zmmul-mulw-00	run	0	ABORT	ABORT	ABORT	-	no	REJECTED at load: 10423 instruction(s) Jolt can't prove, first: undecodable 0x8000 at 0x8000022e; undecodable 0x80013853 at 0x80000234; undecodable 0x8000 at 0x

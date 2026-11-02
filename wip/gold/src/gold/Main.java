@@ -126,7 +126,8 @@ public final class Main {
     Map<?, ?> refLayout = (Map<?, ?>) refJson.get("layout");
     long[] mine = p.layout.fields();
     for (int i = 0; i < mine.length; i++) {
-      long theirs = Json.u64(refLayout, Layout.FIELD_NAMES[i]);
+      Long theirs = Json.u64(refLayout, Layout.FIELD_NAMES[i]);
+      if (theirs == null) continue;                  // a field the reference doesn't report (upstream's layout)
       if (theirs != mine[i]) {
         System.out.printf("LAYOUT %s: %#x, jolt-cpp %#x%n", Layout.FIELD_NAMES[i], mine[i], theirs);
         ok = false;

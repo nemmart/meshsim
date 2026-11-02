@@ -351,7 +351,8 @@ third bullets; answers T7 the way section 11 kept as the backup; makes C4 moot.
 - **New for the Tracer:** a read-log input queue with its credits, fed by its controller.
 - **Open:**
   - (a) ~~v1.25: the expansion word's tracer-only fields~~ **done:** reserved in v1.25 (DECISIONS-v1.25 section 9, spec `b7c90fb`).
-  - (b) Whether bank 1 has any use left.
+  - (b) ~~Whether bank 1 has any use left~~ **decided: probably not** (owner, 2026-11-01): with no untraced rows and a
+    128-register processor state (section 15), **the Tracer is a 128-register machine**; bank 1 (registers 128-255) goes.
   - (c) **Registers 40-47 at a slice's start.** They set the next write's `rd_prev` and come from trace history, not RISC-V
     state; jolt-cpp's JIT doesn't track them (WORKER16). jolt-cpp's tracer and GPU compressed-trace expander do handle them
     (owner): find how, and what that means for slice starting states built on the host (W2).

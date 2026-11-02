@@ -554,9 +554,12 @@ program.
     and a 16-bit expansion length** (owner).
   - At most 31 instruction starts lie before a target in a 64 B block: **at most 16 cycles of lookups**, about 8 on average.
 - **Open:**
-  - (a) whether an expansion's length is a function of the 11-bit index alone, or of more of the instruction word: the CSR
-    instructions are the likely exception (controller-supplied, perhaps varying with the CSR address, bits [31:20]); `rd` = x0
-    remaps registers but may not change the length (WORKER18 to confirm from `isa/virtual.cpp`).;
+  - (a) whether an expansion's length is a function of the 11-bit index alone. **The CSR instructions: answered.** jolt-cpp
+    supports only CSRRW and CSRRS, on six CSRs (mstatus 0x300, mtvec 0x305, mscratch 0x340, mepc 0x341, mcause 0x342, mtval
+    0x343; `isa/riscv.hpp:73-78`), so 2 x 6 x 32 rd x 32 rs1 = 12,288 distinct words. **The length doesn't depend on the CSR,
+    only on rd and rs1** (`isa/virtual.cpp:1287-1302`): CSRRW, 1 if rd = x0, 3 if rd = rs1, else 2; CSRRS, 1 if rs1 = x0 or
+    rd = x0, 3 if rd = rs1, else 2. So the engine computes it with two 5-bit compares and a zero test, no table. Still to
+    confirm for the rest: that the generic rd = x0 remap (WORKER16) never changes a length (WORKER18, from `isa/virtual.cpp`);
   - (b) that jolt-cpp's bytecode is decoded sequentially from each text section's start, so the table and the walk follow the same
     boundaries (data or padding in text); which sections count; the start index (WORKER18, from the loader);
   - (c) **the inline array's key:** an inline's word carries its registers (rd, rs1, rs2), so either the match ignores them

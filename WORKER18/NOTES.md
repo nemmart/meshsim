@@ -317,3 +317,35 @@ gold's results (`expected.txt`).
 
 "Same" means the run hash is equal. Still unexercised: jolt-cpp's JIT path for EBREAK (`row_dump` on short guests
 uses the interpreter only), and abort paths inside inlines.
+
+## W5: upstream's own tests through gold (2026-11-02)
+
+Both exist at the pin 17a9459: `tests/arch-tests/` (ACT4 config, `skip.txt`, riscv-arch-test submodule at
+`a7c9930`) and the inline tests (`jolt-inlines/*/src/tests.rs`, and `spec.rs` InlineSpec cases).
+
+### (a) ACT4 architectural tests
+
+- **Toolchain**, as upstream's `scripts/bootstrap`: xpack riscv-none-elf-gcc v15.2.0-1, Sail `2026-04-20-40d25df`,
+  mise (Ruby 3.4.9, uv 0.11.6 per ACT4's `.mise.toml`), the `udb` gem bundle. GCC and Sail work in this sandbox, but
+  ACT4's generator needs gems from rubygems.org, which the sandbox can't reach: the generation runs on the Quest
+  runner, **task 095** (upstream's `tests/arch-tests/` embedded; ELFs into `results/095-w18-act4-build/`, with
+  upstream's own `jolt-emu` verdicts for every ELF, skipped ones included).
+- **Verdicts**: each test stores to `tohost` (`tests/arch-tests/jolt/rvmodel_macros.h:36-52`): 1 passes, `(gp << 1) | 1`
+  fails case gp; then `j 1b` (JAL immediate 0: jolt-cpp ends, upstream stalls). Gold reads `tohost` from memory
+  (`run --tohost`; `Elf.symbols` now reads `.symtab`); for jolt-cpp and upstream_rows it is the last store to tohost
+  in their rows. `wip/gold/test/act4/run_act4.py` runs every ELF through the three and tabulates verdicts and row
+  agreement; `program.json` beside it is jolt-emu's defaults (`common/src/constants.rs:23-31`).
+- Smoke check, upstream's deliberate failure (`tests/arch-tests/smoke/fail.S`, built here with GCC 15): gold, jolt-cpp
+  and upstream_rows all 5 rows, the same run hash, verdict FAIL.
+
+### (b) Inline tests
+
+- Instead of copying the generators, the vectors are **captured from upstream's own tests**: a patch to
+  `tracer/src/utils/inline_test_harness.rs` (with `JOLT_INLINE_VECTORS` set, `execute_inline` appends each call's
+  operand registers and memory span before and after as JSON lines) and `cargo test` of the six inline crates with one
+  test thread: **task 096**. Every test, hand-written and InlineSpec, edge and random, is covered exactly, and every
+  "post" was asserted by the test against its independent reference; a "pre" without a "post" is an expected panic.
+- `wip/gold/test/gold/InlineVectorTest.java` (in `build.sh`) runs each call on gold: the "pre" memory and registers,
+  gold's expansion, a Machine with SecpCompute advice; the span must equal "post", and an expected panic must abort.
+  Checked on handmade BIGINT256_MUL vectors (one right, one deliberately wrong).
+- Out of scope: grumpkin, p256, NTT (UPSTREAM-DIFFS D11).

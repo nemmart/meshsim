@@ -25,11 +25,11 @@ configuration, or bookkeeping that never reaches a row.
 | `instr_idx` | `trace_owner.cpp:34` | no | always | the state word (has it); with the next offset it locates a mid-sequence start |
 | x1-x31 | `regs[1..31]`, `trace_owner.cpp:26` | yes | always | - |
 | LR/SC reservations | regs 32 (`reservation_w`), 33 (`reservation_d`), `isa/virtual.hpp:34-35`; set and cleared in `isa/virtual.cpp:610-700` (JIT: `transcode.cpp:2192-2251`); SC.W also spills its success flag into reg 32 mid-sequence | yes | Cyclone: 27,230 LR.W/SC.W pairs, at most 2 rows apart, reg 32 read across an instruction 27,230 times; EVM Zone: none | - |
-| CSRs mtvec, mscratch, mepc, mcause, mtval, mstatus | regs 34-39, `isa/virtual.hpp:36-41`, `csr_to_vreg` `:56-66`; written by ECALL's expansion `isa/virtual.cpp:1069-1084`, read by MRET `:1127-1131` and CSRRW/CSRRS `:1085-1126` | yes | Cyclone: 875 traps; values read across instructions: mtvec 875, mscratch 2,625, mepc 1,750, mcause 875, mtval 875 (always 0), mstatus 875; EVM Zone: none | - |
+| CSRs mtvec, mscratch, mepc, mcause, mtval, mstatus | regs 34-39, `isa/virtual.hpp:36-41`, `csr_to_vreg` `:56-66`; written by ECALL's expansion `isa/virtual.cpp:1068-1084`, read by MRET `:1128-1132` and CSRRW/CSRRS `:1086-1127` | yes | Cyclone: 875 traps; values read across instructions: mtvec 875, mscratch 2,625, mepc 1,750, mcause 875, mtval 875 (always 0), mstatus 875; EVM Zone: none | - |
 | allocatable temporaries | regs 40-47, `isa/virtual.hpp:44-53` (allocator `isa/virtual.cpp:140-157`) | yes | **never read** across an instruction (0 on both runs), but **their value is the next write's `rd_prev`**: non-zero `rd_prev` carried over: EVM Zone reg 40 3.58M, reg 41 2.25M; Cyclone reg 40 24.4M, reg 41 22.9M, reg 42 27,233, regs 43-47 2 each | - (see note 1) |
 | inline temporaries | regs 48-127 (`isa/virtual.hpp:25-29`) | yes | **zero at every instruction start** on both runs (0 exceptions); highest written: 64 (EVM Zone), 87 (Cyclone); live only mid-sequence | - |
 | **secp256k1 advice buffer** | `secp_advice[8]`, `next_secp_word`, `trace_owner.cpp:49-50`; filled by `prepare_advice` `:52-65` at a sequence's first row from RAM through two registers (`advice_source`, `isa/virtual.hpp:80-84`); consumed in order by `VirtualAdvice`, `:527-531` | **no** | EVM Zone: 662 sequences, 6,221 rows mid-sequence with words pending; Cyclone: none | mid-sequence only: the unconsumed words (section 13: head of the next slice's stream) |
-| inline-register high-water mark | `dirty_inline_vregs_end`, `trace_owner.cpp:31` | no | bookkeeping for `normalize_inline_vregs` (`:125-137`) | nothing: derivable (the check set it to 128) |
+| inline-register high-water mark | `dirty_inline_vregs_end`, `trace_owner.cpp:31` | no | bookkeeping for `normalize_inline_vregs` (`:128`) | nothing: derivable (the check set it to 128) |
 | "previous row's sequence count" | `prev_virt_seq_remaining`, `trace_owner.cpp:697` (decides when `prepare_advice` runs) | no | - | nothing: derivable from `instr_idx` (inside a sequence and not its first row) |
 | row and cycle counters | `cycle`, `trace_owner.cpp:41`; JIT `instr_count`, `vm.hpp:35` | no | positions only | nothing (the Tracer's own row count) |
 | replay log position | `mem_log`, `mem_log_idx`, `trace_owner.cpp:46-47`; JIT `mem_log_idx`, `vm.hpp:76` | no | not used by the RAM-driven path | nothing |
@@ -46,7 +46,7 @@ emulator's registers therefore has to take 40-47 from the trace's history. Zeroi
 
 **Note 2, jolt-cpp's own restart record.** `CompressedChunkHeader` (`trace_owner.hpp:393-399`) holds registers 0-47, pc,
 `instr_idx`, `skip_cycles` and `mem_log_start`. A chunk that would start mid-sequence with a non-zero register 48+ is rewound to the
-sequence's start (`trace_owner.cpp:704-731`). Its replay path takes advice from the log (`execute_instruction<false>`,
+sequence's start (`trace_owner.cpp:700-732`). Its replay path takes advice from the log (`execute_instruction<false>`,
 `:527-533`), so the buffer never appears there. The JIT can only resume at an instruction boundary (`:1229-1240`).
 
 ## Method
@@ -89,7 +89,8 @@ sequence's start (`trace_owner.cpp:704-731`). Its replay path takes advice from 
 
   All identical.
 - **The controls show the check sees missing state:**
-  - without 32-39: fails at every trap, MRET, CSR, LR-to-SC and SC point of Cyclone (573/1,096 match overall);
+  - without 32-39: on Cyclone, 0/52 match before, inside or after an ECALL, between LR and SC, inside SC, after a CSR
+    instruction or before MRET; 18/52 after MRET; 1/52 before a CSR instruction (573/1,096 overall);
   - without 40-47: fails almost everywhere (36/1,096 and 94/673 match);
   - without 48-127: fails only mid-inline (1,043/1,096 and 465/673 match).
 
@@ -103,7 +104,7 @@ sequence's start (`trace_owner.cpp:704-731`). Its replay path takes advice from 
 **All 158 EVM Zone failures are mid-secp with advice pending:**
 - mid-sequence with words pending: 52/52 failed;
 - at a `VirtualAdvice` row: 52/52 failed;
-- just after one: 48/52 failed (the 4 that matched had nothing left to read);
+- just after one: 48/52 failed (4 matched; not examined further);
 - elsewhere mid-inline: 6/52 failed, all inside secp sequences.
 
 With zero advice, the sequence's own `VirtualAssertEQ` aborts the run (`trace_owner.cpp:620-624`). Every other category,

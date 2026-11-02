@@ -14,6 +14,10 @@ final class Inlines {
   static final int NOT_WRITTEN = -2;
 
   static void expand(Expander e, int op, int rd, int rs1, int rs2) {
+    if (Secp.forOpcode(op) != Secp.Operation.NONE) {
+      Secp256k1Inline.expand(e, op, rd, rs1, rs2);
+      return;
+    }
     int n = Expander.numCycles(op);
     for (int i = 0; i < n; i++) e.emit(NOT_WRITTEN, 0, 0, 0, true, true, true);
   }

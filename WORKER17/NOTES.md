@@ -10,6 +10,11 @@ Working notes, kept current; the report is `REPORT.md` (not yet written). Measur
 - Done: the compressed trace and both expanders, for memory; the layout (Q1) in both codebases with both workloads' values,
   measured; how ram_K is chosen and its value (owner's request, 2026-11-02); the RAM ra-virtualization limits, checked at the
   pin. Next: the rest of the question 5 table, then the per-row rules (Q2), then the probe.
+- **2026-11-02 (later): DECISIONS-v1.3 sections 12, 14, 15.** A proof is the whole run (T = 2²⁹, log T = 29, **8-bit chunks**);
+  K up to 2³², one per run; question 3 measures 16 KB pages and 16 MiB regions. Done this turn: the probe (`mem_probe`) and
+  its measurements at 2²⁹ (below, "Q3"); the K-dense parts of jolt-cpp's RAM sumchecks at the pin (below, "Q5: what is dense
+  in K"), which found a **2²⁴ limit at the pin in GPU read-write checking, independent of chunk width**. Upstream's K-dense
+  parts are not yet read.
 - **Owner's correction (2026-11-02), checked at the pin:** jolt-cpp commits 4-bit chunks when log T < 25, so a 4M-row proof
   has d = ceil(log K / 4). The owner cited HEAD `88dca85`; at the pin `821e1bd` the limit is **lower** (below).
 
@@ -186,15 +191,112 @@ which leaves the floor at 2²³ for both.
 | so log K at log T < 25 | **≤ 24** | ≤ 32 |
 | GPU output check's `ram_k` | `uint32_t` (`zkvm/ram/gpu/output_check.cu:89`), so K < 2³² | same |
 
-At the Tracer's 4M-row proofs (log T = 22, 4-bit chunks): **EVM Zone, K = 2²³: d = 6, degree 7; Cyclone, K = 2²⁴: d = 6,
-degree 7.** Cyclone sits exactly at the pin's limit; a run reaching 2²⁵ cells (a few MiB more of stack or heap use above
-`0x8600_0000`) needs d = 7, which the pin refuses and HEAD accepts. jolt-cpp's own whole-run proofs at 2²⁹ use 8-bit chunks:
-d = 3 for both. The layout's whole range (2²⁶ for Cyclone) would need d = 7 at 4-bit chunks.
+**A proof is the whole run (DECISIONS-v1.3 section 14): log T = 29, 8-bit chunks.**
+
+| K | d = ceil(log K / 8) | ra virtualization degree |
+|---|---|---|
+| EVM Zone, 2²³ | 3 | 4 |
+| Cyclone, 2²⁴ | 3 | 4 |
+| the K limit, 2³² | 4 | 5 |
+
+The chunk-count limits above (`MAX_D` 6, slot 2-6) allow log K up to 48 at 8-bit chunks, so they are no limit for us. *The
+log K ≤ 24 figure in the table applies only to 4-bit chunks (proofs under 2²⁵ rows), which we don't make; the 4M-row figures
+I gave before (d = 6, degree 7) assumed 4M-row proofs and are superseded.* **But see "Q5: what is dense in K": the pin's GPU
+read-write checking refuses K above 2²⁴ for another reason.**
 
 **Binding order.** jolt-cpp's Rust config says RAM and register read-write checking bind **address first**
 (`ram_rw_phase1_num_rounds: 0`, `phase2 = log K`; the comment cites `zkvm/ram/cpu/read_write_checking.hpp`,
 `zkvm/ram/gpu/rw_checking.cu`, `zkvm/registers/gpu/read_write_checking.cu`; `src/backend/cpp/src/config.rs:161-175`). To
 confirm in the kernels and against upstream's default.
+
+## Q5: what is dense in K (jolt-cpp at the pin; upstream to do)
+
+"Dense in K" = an array, loop or allocation over all K cells. Container sizes are elements of 32-byte field elements unless
+said. Paths under `src/jolt-core/zkvm/ram/`.
+
+| sumcheck | CPU (`cpu/`) | CUDA (`gpu/`) |
+|---|---|---|
+| read-write checking | sparse matrix over the T accesses (`read_write_matrix.tpp:54-57`, `max_nnz`) **plus dense K**: `val_aux` 2 × K (`:64`), a loop over all K (`:182`), `col_seen(K)` and loops over K in two places (`:788-796`, `:895-900`); `inc` over T (`read_write_checking.hpp:163`); after the address rounds, 3 × T (`:451`) | sparse over T (`rw_sparse.tpp:112-153`) **plus dense K**: `val_final` K (`:129`), `col_prefix` K + 1 (`:148`), a fold blob of about 5.25 K field elements (`:280-320`), an init kernel looping over K (`rw_sparse_init_kernels.cu:241`). **Refuses K > `RW_MAX_ADDRESS_SPACE` = 2²⁴** (`rw_sparse.hpp:33`, checked `rw_sparse.tpp:93-97`). **HEAD: 2³⁰** (`rw_sparse.hpp:35`). After the address rounds: 3 × T/2 (`rw_checking.cu:831-843`) |
+| raf evaluation | dense K: a container of K (`raf_evaluation.hpp:101-111`), ra(k) accumulated over the trace then summed over k | dense K: 2 × K (`raf_evaluation.cu:264, 312`) |
+| output check | dense K: `NUM_POLYS` × K (`output_check.hpp:88-89`), sharded over cards in the sumcheck but allocated whole; a loop to K (`:238`) | per card, `NUM_POLYS` × K / cards (`output_check.cu:139-141`), **plus the initial and final RAM snapshots, each K × 8 bytes, on every card** (`:149, 189-197`; again `:810-813`); `ram_k` is a `uint32_t` (`:89`) |
+| val check | over T: 3 × T (`val_check.hpp:63`; `val_check.cu:582, 728`), `lt` table over T | over T |
+| ra virtualization | over T: d × T/8 (`ra_virtual.hpp:154`), d eq tables of 2^chunk | over T (`ra_virtual.cu:302`), d tables of 2^chunk (`:167`) |
+| Hamming booleanity | over T (`hamming_booleanity.hpp:126`) | over T (`hamming_booleanity.cu:172, 220`) |
+| program-image init (stage 4) | | over the image's words, at word index `remapped(program_start)`, checked to lie within K (`stage4_program_image_init.cu:168-185`) |
+| untrusted-advice openings (stage 4) | | over the advice words, checked to lie within K (`stage4_untrusted_advice_openings.cu:162-172`) |
+
+So, at the pin: **GPU read-write checking caps K at 2²⁴** (both workloads fit; Cyclone exactly), **independent of the chunk
+width**; HEAD raises it to 2³⁰. Above that, three sumchecks hold arrays of K: read-write checking (about 7 K field elements on
+the GPU), raf evaluation (2 K) and the output check (K/cards field elements per card plus **two K × 8-byte snapshots per
+card**). At K = 2³² those are 32 GiB per snapshot and 128 GiB per K-sized field array. The ra virtualization, val check and
+Hamming booleanity are sized by T. The initial RAM's evaluation (Val_init) is done by the Rust side
+(`sumcheck/slots/ram_val_check.rs` uses `jolt_verifier::stages::stage4::ram_val_check`): not yet read, nor upstream's kernels
+(first hits: `jolt-kernels/src/optimized/ram_read_write.rs:489` loops `0..ram_k`; `ram_trace.rs:426` allocates `vec![0; ram_k]`).
+
+## Q3: measured, 2²⁹ (`mem_probe`)
+
+`mem_probe` (jolt-asic-planning `worker17-memory` `62ddcd1`, `tracer/src/mem_probe.cpp`) runs PR #2's tracer unchanged
+(compressed trace, CPU expansion in 2²² slices) and replays RAM: a shadow of the initial image (the tracer VM's loaded RAM,
+then input and advice bytes copied as the tracer copies them) updated by every store. **Every load's value and every store's
+pre-value matched the shadow on both runs (0 mismatches), no access was below `lowest_address`, and no other row touched
+memory.** So the initial image plus the stores explain every value read. Units: a page is 16 KB (2¹¹ cells), a 16 MiB region
+is 2¹⁰ pages, both counted from `lowest_address` (`0x7E00_0000`, 16 MiB aligned). A page belongs to the layout region of its
+first byte (so EVM Zone's termination word shares the input's page). 19 s and 17 s per run. Data:
+`data/mem_probe-{evm-zone,cyclone}-29.json` and `.segments.csv`.
+
+**Whole run**
+
+| | EVM Zone | Cyclone |
+|---|---|---|
+| cells touched | 54,328 | 1,380,356 |
+| read only / written | 10,703 / 43,625 | 365,296 / 1,015,060 |
+| **pages touched** | **69** | **693** |
+| **read-only / written pages** | **11 / 58** | **194 / 499** |
+| 16 MiB regions with a touched page (leaves) | **3** | **4** |
+| initial image, nonzero cells | 251,369 | 737,988 |
+| cells whose final value differs from the initial | 17,589 | 685,948 |
+
+Cross-checks with PR #1 (`docs/write-stream-experiments.md` on `tracer-standalone`): Cyclone's 499 written pages, 1,015,060
+written cells, 737,988 nonzero initial cells and 685,948 changed cells all equal PR #1's. **EVM Zone differs because PR #1
+measured another input** (`trace-29-e23d2a1c5937`, 275 M rows, 182 written pages); ours is `trace-29-4599adc50712` (355 M rows).
+
+**By layout region** (pages; loads / stores are row counts)
+
+| region | EVM Zone: pages (RO/W) | loads / stores | Cyclone: pages (RO/W) | loads / stores |
+|---|---|---|---|---|
+| untrusted advice | 1 (1/0); 1,105 cells | 8,220 / 0 | **178 (178/0)**; 362,755 cells, the whole 2.9 MB input | 2,902,036 / 0 |
+| trusted advice | 4 (4/0); all 8,192 cells, 16 nonzero | 65,536 / 0 | none | |
+| input (+ output, flags on its page) | 1 (0/1) | 108 / 0 (+1 / 1 flags) | 1 (0/1) | 1,042 / 0; output 722 / 722 |
+| program (`.text` to `.bss`) | 7 (6/1) | 371,460 / 2,096 | 18 (16/2) | 3,530,786 / 47,799 |
+| stack | 4 (0/4) | 63.5 M / 55.1 M | 2 (0/2) | 31.0 M / 24.6 M |
+| heap | 52 (0/52) | 304,192 / 138,509 | 494 (0/494) | 22.9 M / 12.4 M |
+
+**16 MiB regions (leaves) and the touched address ranges**
+
+- EVM Zone, 3 leaves: `0x7E00_0000` (1 page: the untrusted advice's start); `0x7F00_0000` (5: trusted advice, input, flags);
+  `0x8000_0000` (63: program data at `0x801D_0000`-`0x801E_C000`, stack `0x809D_C000`-`0x809E_C000`, heap from `0x809F_0000`
+  to `0x80B2_0000`). The heap is not one dense run: past `0x80AA_0000` it touches every other page (28 runs in all).
+- Cyclone, 4 leaves: `0x7E00_0000` (178: advice, dense, `0x7E00_0000`-`0x7E2C_8000`); `0x7F00_0000` (1: input, output, flags);
+  `0x8000_0000` (18: program data); `0x8400_0000` (496: **stack and heap as one dense run, `0x8432_4000`-`0x84AE_4000`**,
+  7.75 MiB). 8 runs in all.
+- So the two dense areas the owner expected are, for Cyclone, the heap-plus-stack run (they adjoin: the heap starts at the stack's
+  top) and the advice; for EVM Zone, everything above `0x8000_0000` sits in one leaf. The heap used is far below the earlier
+  estimate (Cyclone 7.7 MiB of 256, not about 29 MiB: that was ram_K's bound, not use).
+
+**Per 2²² segment** (85 of 128 segments have rows for EVM Zone, 89 for Cyclone; the rest are padding with no accesses)
+
+| per segment, segments with rows | EVM Zone: min / median / max (sum) | Cyclone: min / median / max (sum) |
+|---|---|---|
+| pages touched | 18 / 18 / 47 (1,590) | 15 / 94 / 400 (6,921) |
+| **pages written (the head-of-proof counts)** | **10 / 10 / 39 (908)** | **3 / 19 / 266 (2,225)** |
+| pages read only in the segment | 6 / 8 / 12 (682) | 8 / 69 / 180 (4,696) |
+| pages first touched in the run | 0 / 0 / 32 (69) | 0 / 0 / 263 (693) |
+| leaves touched | 1 / 1 / 3 | 2 / 2 / 4 |
+| cells whose first access in the segment is a load (read from the start image) | 460 / 999 / 19,225 | 5,816 / 10,012 / 369,663 |
+
+The 128 written-page counts are in the CSVs' `pages_written` column. EVM Zone: 17, 39, then 10 in every segment, 32 in the last.
+Cyclone: 69, 14, 15, 15, 15, 134, ..., peaks of 189 and 266, a run of 3s, then 10-46. **Read-only pages are new data (loads
+weren't traced in PR #1):** whole run 11 (EVM Zone) and 194 (Cyclone, 178 of them the advice); per segment up to 12 and 180.
 
 ## Build and runs (local)
 
@@ -209,3 +311,5 @@ confirm in the kernels and against upstream's default.
   `6c3aae0`, no changes under `tracer/src` since), upstream (`17a9459`). Read the compressed trace and both expanders.
 - 2026-11-02: layout in both codebases; built PR #2's tracer, ran `capture_writes` on both 2²⁹ inputs (layout, ram_K);
   ram_K's selection; the owner's ra-virtualization limits checked at the pin (MAX_D 6 and slot 2-6 there; 8 at HEAD).
+- 2026-11-02 (later): pulled DECISIONS-v1.3 12/14/15. Wrote and ran `mem_probe` (both 2²⁹ runs, replay check clean); read the
+  K-dense parts of jolt-cpp's RAM sumchecks at the pin (GPU RW checking: K ≤ 2²⁴ at the pin, 2³⁰ at HEAD).

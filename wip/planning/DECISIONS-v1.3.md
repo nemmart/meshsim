@@ -554,17 +554,30 @@ program.
     inlines run to 3,121 rows. **An inline's length depends only on which inline it is, not its registers** (`num_cycles(OpCode)`,
     `isa/virtual.cpp:1210-1276`: KECCAK256 3,087, KECCAK256_ABSORB_PERMUTE 3,121, SHA256 1,900 and 1,864, BLAKE2 1,067, BLAKE3 648
     and 646, BIGINT256_MUL 141, the secp256k1 operations by shape), and the decode index already gives each inline its own entry,
-    {funct7[4:0], funct3}. So the table is **indexed by those bits, the registers ignored**: at most 256 entries, about 15 used, no
-    associative match needed (replacing the 128-entry array keyed on whole words).
-  - **The registers matter in two cases, both small logic:**
-    - **rd = x0** (`should_nop_for_rd0`, `isa/virtual.cpp:108-112, 270-274`): an instruction with an rd register, not one that
-      handles rd = x0 itself, and with no side effects beyond rd, **becomes a single NOP row** (a DIV to x0 is 1 row, not 12).
-      **One more bit per length-table entry**, "1 row if rd = x0", plus a 5-bit zero test. (A side-effecting instruction with
-      rd = x0 is remapped to a temporary instead, `:276-282`, and keeps its length.)
-    - **CSRRW and CSRRS** (open (a)): by rd and rs1.
+    {funct7[4:0], funct3}. So the table is **indexed by those bits, the registers ignored**: at most 256 entries, about 15 used
+    (replacing the 128-entry array keyed on whole words).
+  - **rd = x0** (`should_nop_for_rd0`, `isa/virtual.cpp:108-112, 270-274`): an instruction with an rd register, not one that
+    handles rd = x0 itself, and with no side effects beyond rd, **becomes a single NOP row** (a DIV to x0 is 1 row, not 12):
+    **one more bit per length-table entry**, "1 row if rd = x0", plus a 5-bit zero test. (A side-effecting instruction with
+    rd = x0 is remapped to a temporary instead, `:276-282`, and keeps its length.)
+  - **Anything else goes to C&C 3's controller** (owner): a length-table entry of **0 means "ask the controller"**, which the
+    controller sets, so which instructions take the slow path is software's choice. **The CSR instructions go there** (their
+    length depends on rd and rs1: CSRRW 1 if rd = x0, 3 if rd = rs1, else 2; CSRRS 1 if rs1 = x0 or rd = x0, 3 if rd = rs1, else
+    2; `isa/virtual.cpp:1287-1302`), so the hardware has no CSR logic and no associative table. A few hundred cycles each; CSRs
+    occur only in trap handlers (Cyclone: 875 traps per 2²⁹ run).
+  - **A 16-entry LRU in front of the controller** (owner): the exact 32-bit instruction word sent and the length it expanded to,
+    so a repeated word (the same CSR instruction in every trap) doesn't ask again.
+- **The controller interface** (owner): **two registers and two wake events**, as the replayer's controller-fed path (spec 4.19.9,
+  `EXPANSION_OPCODE` and its "new expansion" event):
+  - **`EXPANSION_OPCODE`**: the instruction whose expansion the controller must supply, when executing one whose decode class is
+    controller (inlines and CSRs, as in the replayer); its event, **new expansion**;
+  - **`LENGTH_OPCODE`**: the instruction whose expansion length the `instr_idx` engine needs; its event, **new length**. The
+    controller writes the length back and the engine resumes. (How the answer is written back, a register and a pulse, is to
+    define with the Tracer's peripheral window.)
   - At most 31 instruction starts lie before a target in a 64 B block: **at most 16 cycles of lookups**, about 8 on average.
 - **Open:**
-  - (a) whether an expansion's length is a function of the 11-bit index alone. **The CSR instructions: answered.** jolt-cpp
+  - (a) whether an expansion's length is a function of the 11-bit index alone. **The CSR instructions: answered, and routed to
+    the controller (above).** jolt-cpp
     supports only CSRRW and CSRRS, on six CSRs (mstatus 0x300, mtvec 0x305, mscratch 0x340, mepc 0x341, mcause 0x342, mtval
     0x343; `isa/riscv.hpp:73-78`), so 2 x 6 x 32 rd x 32 rs1 = 12,288 distinct words. **The length doesn't depend on the CSR,
     only on rd and rs1** (`isa/virtual.cpp:1287-1302`): CSRRW, 1 if rd = x0, 3 if rd = rs1, else 2; CSRRS, 1 if rs1 = x0 or

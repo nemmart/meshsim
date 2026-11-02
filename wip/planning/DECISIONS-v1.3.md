@@ -276,15 +276,20 @@ its region, with **offset bits [22:20] picking the part**, as in the replayer's 
     mid-secp points carry jolt-cpp's advice buffer (`trace_owner.cpp:49-50`; section 13 covers it). The CSRs and the LR/SC
     reservation are live, in registers 32-39. **Registers 40-47** are never read across an instruction but set the next write's
     `rd_prev`, and jolt-cpp's JIT doesn't track them (section 13, open (c)); registers 48-127 were 0 at every instruction start.
-- **The page table covers Jolt's full 4 GiB guest range, assuming most pages are empty** (owner, 2026-11-01; replaces the first
-  proposal, a flat 32,768-entry table over 512 MiB). Future programs are unknown, so the hardware takes the general case; storage
-  scales with the pages that exist, not the range, and LPDDR bounds that anyway. **So a two-level table** *(proposed sizes)*:
-  - **the directory:** 1,024 entries of 32 bits (4 KB), each for a 4 MiB region (256 pages of 16 KB): "empty", or a leaf in the pool;
-  - **the leaf pool:** leaves of 256 entries (1 KB), one per non-empty region; e.g. 128 leaves (128 KB, the first proposal's storage)
-    map up to 512 MiB of populated regions **anywhere** in 4 GiB; 4 MiB regions rather than 16 MiB waste less leaf space when a
-    program scatters small areas;
+- **The page table covers the full RAM K of section 14, 2³² cells (32 GiB), assuming most pages are empty** (owner, 2026-11-01;
+  replaces the 4 GiB table of 1,024 directory entries x 256-page leaves, which replaced a flat 32,768-entry table over 512 MiB).
+  Future programs are unknown, so the hardware takes the general case; storage scales with the pages that exist, not the range.
+  **A two-level table, 11 + 10 + 11 bits of the 32-bit cell index** (owner):
+  - **a page:** 16 KB, 2¹¹ cells of 8 bytes (11 bits);
+  - **a leaf:** 1,024 pages, covering 16 MiB (10 bits); 4 KB at 32-bit entries; one per non-empty 16 MiB region, in a **leaf pool**;
+  - **the directory:** 2,048 entries, one per 16 MiB region (11 bits): "empty" or a leaf's index in the pool, so an index and a
+    valid bit (9 bits each with a pool of 256 leaves: about 18 Kbit, small enough for SRAM or flops);
+  - **why 16 MiB leaves suit:** the two workloads are fully dense in just two areas, probably the heap and the stack (owner), so a
+    workload maps with about 4-6 leaves (16-24 KB) [estimate: Cyclone's heap, up to about 29 MiB, 2-3 leaves; the stack 1; the
+    program and I/O region 1-2]. WORKER17's question 3 (pages touched, by region) is to confirm it.
+  - **the pool's size: open**, until WORKER17's counts; 256 leaves (1 MiB) would map up to 4 GiB of populated regions;
   - **in the map:** the directory in part 1, the leaf pool in part 2, written while the Tracer is stopped between proofs;
-  - **a translation is two lookups** (the directory small enough to be flops).
+  - **a translation is two lookups.**
   - **Open (T3):** what an unmapped page means (zeros, with a page fault to C&C 3 on the first write, the Tracer waiting; or a table
     that already includes every page the proof touches), and the entry's format.
 - *(Withdrawn: T8, measuring whether 512 MiB suffices; superseded by the 4 GiB decision.)*

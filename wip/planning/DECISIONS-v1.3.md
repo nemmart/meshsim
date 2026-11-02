@@ -288,10 +288,20 @@ its region, with **offset bits [22:20] picking the part**, as in the replayer's 
     workload maps with about 4-6 leaves (16-24 KB) [estimate: Cyclone's heap, up to about 29 MiB, 2-3 leaves; the stack 1; the
     program and I/O region 1-2]. WORKER17's question 3 (pages touched, by region) is to confirm it.
   - **the pool's size: open**, until WORKER17's counts; 256 leaves (1 MiB) would map up to 4 GiB of populated regions;
-  - **in the map:** the directory in part 1, the leaf pool in part 2, written while the Tracer is stopped between proofs;
-  - **a translation is two lookups.**
-  - **Open (T3):** what an unmapped page means (zeros, with a page fault to C&C 3 on the first write, the Tracer waiting; or a table
-    that already includes every page the proof touches), and the entry's format.
+  - **Entries are 32 bits, addresses in 4 KB units** (owner, 2026-11-01), the format in LPDDR and in the stream:
+    - **top-level entry:** bits 30:0, the leaf's address (a leaf is exactly 4 KB: 1,024 entries of 32 bits); bit 31 reserved, 0;
+    - **leaf entry:** bits 30:0, the 16 KB page's address, 16 KB aligned (bits 1:0 are 0); **bit 31, read-only**. Only leaf entries
+      carry it, for **copy-on-write** (owner): a store to a read-only page **faults to C&C 3**, which copies the page, points the
+      entry at the copy, clears the bit, and the Tracer retries the store. (The guest is the user's program, not our firmware, so
+      section 8a's UB doesn't apply: a legitimate store must succeed.)
+    - **no entry: `0xFFFFFFFF`** (owner), at both levels; it can't be a valid entry (a top level has bit 31 clear, a leaf's bits
+      1:0 are 0), and it leaves address 0 usable. A table must therefore be filled with `0xFFFFFFFF`, not zeroed: a zeroed entry
+      is a valid pointer to address 0.
+  - **The stream is a walk:** the 2,048 top-level entries (8 KB), then each present leaf (4 KB) in top-level order. The Tracer,
+    which keeps the table locally (the directory in part 1, the leaf pool in part 2, written while it is stopped between proofs),
+    **rewrites each top-level entry to the pool slot its leaf landed in** as it loads, so a translation stays two on-chip lookups.
+  - **Open (T3), besides the pool size:** what an absent page means (zeros, or a fault like a read-only store), and how the
+    Tracer waits while C&C 3 handles a fault.
 - *(Withdrawn: T8, measuring whether 512 MiB suffices; superseded by the 4 GiB decision.)*
 - **Findings from upstream Jolt** (a16z/jolt `main` at `17a9459`, read 2026-11-01; `common/src/jolt_device.rs`, `constants.rs`):
   addresses are 64-bit, with **no 4 GiB limit in Jolt** (jolt-cpp's 4 GiB is its emulator's own reservation). The used space is

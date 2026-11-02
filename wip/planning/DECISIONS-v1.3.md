@@ -410,10 +410,11 @@ Decided (O), from the planning discussion of 2026-10-19 recorded in jolt-asic-pl
   bitmaps (PR #1 section 4).
 - **Who needs what.** A segment's ASIC needs its own processor state and advice log. Memory is shared: the start image of segment
   *k* is the initial image plus the updates of segments 0 to *k* - 1, and the final image is the initial image plus all of them.
-  So the updates are **broadcast to every ASIC as one stream sorted by address**, each address carrying its (segment, value)
-  writes in segment order; the host merges the 128 lists (PR #1 section 1).
-- **Three images per ASIC:** the initial image (cached, permanent), its segment's start image, and the final image, built in one
-  sequential pass of the stream next to the initial image (no merge tree; the planning notes' Updater, unit 73).
+  So every ASIC receives **every segment's updates list, applied in segment order** (section 16; owner, 2026-11-01, replacing
+  PR #1's single stream sorted by address and merged across segments: per-segment lists are simpler on both sides and are what
+  one pass over a run produces).
+- **Three images per ASIC:** the initial image (cached, permanent), its segment's start image, and the final image, built by
+  applying the segments' lists in order (the planning notes' Updater, unit 73).
 - **Two copies of memory at the segment's start** (owner): the proof needs the start image intact, and the Tracer runs on its own
   copy and changes it. With the page table (section 12) the second copy costs only the written pages:
   - pages the segment only reads are **shared**, marked read-only;
@@ -435,7 +436,7 @@ Decided (O), from the planning discussion of 2026-10-19 recorded in jolt-asic-pl
   which must never stall (planning notes). How the stream reaches each ASIC (PR #1's chain per card, route 2') doesn't change
   what an ASIC receives.
 - **Open:**
-  - (b) the processor-state chunk's format, and the stream's framing (chunk type, segment tag, length);
+  - (b) ~~the framing~~ **decided: section 16.** (The segment tag isn't needed: frames come in segment order.)
   - (c) ~~FIFO against true LRU~~ **decided: true LRU** (owner): at 32 entries it is a move-to-front list, the same on both
     sides (a hit sends the entry's rank and moves it to the front; a miss sends the value and pushes it at the front, dropping
     the last). **Packing: copy the replayer's stream coding** (owner; spec 4.19.15): bit-packed, least significant bit first;
@@ -444,6 +445,38 @@ Decided (O), from the planning discussion of 2026-10-19 recorded in jolt-asic-pl
     segment's updates, or each chunk) is open with (b)'s framing.
   - (d) the physical topology (the chain, route 2'), which doesn't change the stream;
   - (e) the read-only part of each image: loads weren't traced in PR #1 (WORKER17's question 3 measures them).
+
+## 16. The segment file: framing (2026-11-01)
+
+Decided (O). **A tool on the host runs the trace and writes the file** (a slow one first is fine), which later runs load instead of
+tracing again (W3). It is also the byte stream every ASIC receives (section 15). "We might opt for something else later, but it's
+a really easy format to work with, from multiple languages" (O).
+
+- **Framing, as jolt-cpp's RPC messages** (`src/jolt-infra/rpc/message.{h,cpp}`: a response is [count][code][data], `header_limbs`
+  = 2): every frame is
+  - **u32 length, in 32-bit words, the header included** (so 2 + the data words, at least 2), least significant byte first;
+  - **u32 type**;
+  - **the data, zero-padded to a whole number of 32-bit words.** Every multi-byte value is least significant byte first.
+  - jolt-cpp rejects a zero length and caps a message at 2²⁶ words (256 MiB); a segment's raw updates are at most about 34 MB
+    (one new word per cycle), so the cap is comfortable.
+- **Frame types:**
+
+| type | frame | data |
+|---|---|---|
+| 1 | page counts | 128 x u32: the pages each segment writes (section 15) |
+| 2 | processor state | pc, `instr_idx`, the next offset, registers 0-127: 131 x u64, 1,048 bytes |
+| 3 | advice log | the segment's advice words, u64 each, in row order (section 13) |
+| 4 | updates, raw | the segment's update words, u64 each |
+| 5 | updates, LRU-compressed | a u32 count of the 64-bit words encoded, then the codes (below) |
+
+- **Order:** frame 1 once, first; then for each segment in order, frames 2, 3, and one of 4 or 5 (the host's choice per segment).
+- **The update words:** the segment's dirty runs in address order (PR #1's "R-dirty"): each run is **a header word** (the start
+  cell in the low 32 bits, the word count in the high 32) **followed by that many values**, each the word's last value in the
+  segment. Headers and values form one sequence of 64-bit words, so frames 4 and 5 carry exactly the same words.
+- **Frame 5's codes:** the replayer's coding (spec 4.19.15) with a 32-entry table: bit-packed, least significant bit first within
+  each byte; **hit:** flag 1, a 5-bit index; **miss:** flag 0, a size bit (0 = 32, 1 = 64), the value (a 32-bit miss
+  zero-extended); true LRU, move to front. **The table is all zeros at the start of each frame 5**, so each decodes on its own;
+  the leading word count tells the decoder where the codes end (the last byte may hold spare bits).
 
 ---
 
@@ -455,6 +488,7 @@ Work agreed for v1.3, each with the decisions it carries out. Studies (below) ar
 |---|---|---|---|
 | W1 | ~~Bring the replayer and the Tracer up to date with jolt-cpp's latest~~ | 9 | **moved to v1.25** (owner, 2026-10-31): `DECISIONS-v1.25.md` |
 | W2 | **jolt-cpp's JIT emits the advice streams**: 128 per 2²⁹ run, one per 2²² rows, words in row order (`shape(op).advice_words` per secp op), a crossing sequence's pending words at the head of the next; and **how jolt-cpp handles registers 40-47** at a chunk's start (13 (c)) | 13 | WORKER16 |
+| W3 | **The segment file tool**: runs the trace on the host and writes section 16's file (page counts, then per segment the processor state, advice log and updates, raw or LRU-coded); slow first | 16 | WORKER16 |
 
 ---
 

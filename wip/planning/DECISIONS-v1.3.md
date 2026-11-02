@@ -531,6 +531,16 @@ Decided (O).
   on every record (MULH and MULHSU, the division family, SRA and SRAW, LR.D and SC.D, every AMO, all seven secp operations,
   SHA-256 and the other inlines). Never executed yet: EBREAK, FENCE, KECCAK256 without absorb, `VirtualAssertEQ`,
   LegacyRawEcall mode, the abort paths. **The Java emulator is now our gold;** WORKER16's tool is the cross-check.
+- **The gold loader loads only instructions we can prove** (owner, 2026-11-01; a ruling on `WORKER18/UPSTREAM-DIFFS.md` D4):
+  - **an instruction Jolt can't prove** in the ELF's load stream (CSRRC and the immediate CSR forms, a CSR outside the six,
+    FENCE.I, WFI, SRET and other privileged instructions) **throws an exception at load**, as upstream rejects it at decode
+    (`instruction/mod.rs:1230-1323`). jolt-cpp instead decodes these as UNIMP and drops them from the bytecode, shifting later pcs
+    (`isa/decoder.cpp:597-640, 1200-1207`; D4); gold follows upstream here, by design;
+  - **the exception: the standard UNIMP encodings** (`c.unimp` 0x0000, `unimp` 0xC0001073), which compilers place after code
+    that can't return and as padding: **loaded as an unreachable marker** (upstream's `UNIMPL`), **throwing only if executed**;
+  - everything else loads and runs as now. For every valid program (both workloads included) nothing changes, so the
+    byte-identical acceptance holds. This is strict mode; ACT4's permissive mode decodes at run time and throws on the same
+    instructions when executed.
 - **Stage 3, validation against upstream Jolt** (owner, 2026-11-01; recorded now, added to WORKER18's work at a stopping point):
   upstream's own Rust tracer, pinned (17a9459, the commit section 12 read; HEAD has since been restructured into `crates/`),
   produces rows on the same ELFs and inputs, as data. Its `Cycle` rows need a mapping to jolt-cpp's format first. Where jolt-cpp

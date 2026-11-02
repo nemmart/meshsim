@@ -525,6 +525,36 @@ Decided (O).
   and upstream differ, each difference is recorded and the owner decides which the gold follows (by default upstream: the spec's
   ground truth is upstream Jolt's trace, item 113). This is ST1's work, done through the emulator.
 
+## 18. The Tracer's pc to `instr_idx` map (2026-11-01)
+
+Decided (O). The replayer takes the next `instr_idx` of a control transfer from the read log (spec 4.19.7); the Tracer writes
+those words, so it needs pc to `instr_idx` for every jump target. `instr_idx` is a **static prefix sum**: the committed bytecode
+lays each instruction's expansion out contiguously in address order from index 1 (0 is the padding NOP), so the first row of the
+instruction at address *a* has `instr_idx` = 1 + the expansion lengths of every instruction below *a*. It depends only on the
+program.
+
+- **A small cache: about 64 entries, pc to `instr_idx`, LRU** (owner), consulted first on a control transfer.
+- **On a miss: one 32-bit value per 128 B of code** (owner), built by the host from the ELF and kept with the initial image (1/32
+  of the text: 1 MB of code, 32 KB). **Bit 31: where the block's first instruction starts**, 0 at the block's boundary, 1 at +2
+  bytes (after a 4-byte instruction straddling from the block before; instructions are 2-byte aligned and at most 4 bytes, so
+  there's no third case). **Bits 30:0: that instruction's `instr_idx`.** (Bit 31 as the flag, like a page entry's read-only bit,
+  section 12: integrator's proposal.)
+- **The walk:** the Tracer loads the target's 128 B entry **through the main-memory cache** (section 12's file-system cache), starts
+  at the block's first instruction, and **decodes forward to the target**, adding each instruction's expansion length; a decode
+  gives the instruction's own length (2 or 4 bytes) and, from the tables below, its expansion length. At most 63 instructions per
+  128 B block.
+- **Expansion lengths:**
+  - **instructions with expansions: a local 2,048-entry table** (owner). This matches the replayer's decode table, 2K entries with
+    an 11-bit index formed from the instruction word (spec 4.19.5: 306 ROM templates, 17 controller-fed, 1,725 invalid at v1.25);
+  - **inlines: a table of 128 x (32-bit opcode, expansion length)** (owner), matched on the full instruction word;
+  - every other instruction is one row.
+- **Open:**
+  - (a) whether an expansion's length is a function of the 11-bit index alone, or of more of the instruction word (operands: `rd` =
+    x0 remaps registers but may not change the length; WORKER16 and WORKER18 to confirm from `isa/virtual.cpp`);
+  - (b) that jolt-cpp's bytecode is decoded sequentially from each text section's start, so the table and the walk follow the same
+    boundaries (data or padding in text); which sections count; the start index (WORKER18, from the loader);
+  - (c) whether the Tracer also predecodes whole lines with their `instr_idx` (an I-cache), or only walks on a cache miss.
+
 ---
 
 ## v1.3 work list

@@ -39,7 +39,7 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
 
 | worker | doing | state | what's left | waiting for it |
 |---|---|---|---|---|
-| WORKER16 | T2: is pc, `instr_idx` and registers 0-127 the Tracer's whole starting state (jolt-cpp); branch `worker16-state` of jolt-asic-planning | working: tool and small-input findings done (T2 holds at instruction boundaries; jolt-cpp's secp advice buffer is the one state outside, mid-sequence, which DECISIONS-v1.3 section 13 now handles); 2²⁹ runs next | the 2²⁹ runs, REPORT; then W2 (the JIT's advice streams) suggested | its last message |
+| WORKER16 | T2 done (`WORKER16/REPORT.md`: answered, DECISIONS-v1.3 section 12); now **W2**: the JIT's advice streams, and how jolt-cpp handles registers 40-47 at a chunk's start | starting W2 | plan first | its W2 prompt |
 | WORKER17 | Jolt's memory, from the tracing side (layout, accesses per row, what the workloads touch) and the checking side (the RAM, register and bytecode sumchecks), connected | starting | plan first | start with "Clone meshsim and follow WORKER17/PROMPT.md" |
 
 ## What's left, by milestone

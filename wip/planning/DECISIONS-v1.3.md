@@ -271,9 +271,11 @@ its region, with **offset bits [22:20] picking the part**, as in the replayer's 
   ignored), the stream word (ignored), the register image (registers 0-127, bank 0, at 0x20 + 16*i*), the decode table at 0x1000
   and the ROM at 0x2000 (the Tracer's own contents, same format and builder, section 7). The same loader code serves both units.
   Bank 1 (untraced scratch) needs no initial state. The next offset is normally 0: the Tracer starts at an instruction boundary.
-  - **To verify (T2):** that pc, `instr_idx` and registers 0-127 are the Tracer's **entire** starting state. jolt-cpp maps each
-    CSR onto a virtual register (bank 0), and Cyclone takes 875 traps, so the CSRs are live state; check nothing else (the LR/SC
-    reservation, anything jolt-cpp's tracer keeps outside its registers) is needed. Owner: believed so.
+  - **T2, answered (WORKER16, 2026-11-01; `WORKER16/REPORT.md`):** at instruction boundaries, pc, `instr_idx`, registers 0-127
+    and RAM are the **whole** state: restarts matched at 1,096 of 1,096 points on Cyclone and 673 of 673 on EVM Zone at 2²⁹, once
+    mid-secp points carry jolt-cpp's advice buffer (`trace_owner.cpp:49-50`; section 13 covers it). The CSRs and the LR/SC
+    reservation are live, in registers 32-39. **Registers 40-47** are never read across an instruction but set the next write's
+    `rd_prev`, and jolt-cpp's JIT doesn't track them (section 13, open (c)); registers 48-127 were 0 at every instruction start.
 - **The page table covers Jolt's full 4 GiB guest range, assuming most pages are empty** (owner, 2026-11-01; replaces the first
   proposal, a flat 32,768-entry table over 512 MiB). Future programs are unknown, so the hardware takes the general case; storage
   scales with the pages that exist, not the range, and LPDDR bounds that anyway. **So a two-level table** *(proposed sizes)*:
@@ -320,14 +322,20 @@ third bullets; answers T7 the way section 11 kept as the backup; makes C4 moot.
 - **The starting state stays T2's:** pc, `instr_idx`, next offset and registers 0-127. jolt-cpp's secp advice buffer
   (`secp_advice`, `next_secp_word`, `trace_owner.cpp:49-50`) is the one piece of state WORKER16 found outside them, live mid-sequence;
   under this section it becomes the head of the next slice's stream.
-- **Size** [estimate, from WORKER12's counts at up to 8 words per secp inline]: about 5.4K words (about 43 KB) for EVM Zone's whole
-  2²⁹ run; about 97K words for Cyclone's (about 6 KB per slice on average).
+- **Size, measured (WORKER16, 2²⁹):** EVM Zone 3,782 advice words in all (per slice: min 1, mean 44.5, max 3,676; its secp work
+  all in slice 0); Cyclone 96,687 (min 0, mean 1,086, max 3,094). No 2²² boundary fell inside a secp sequence on either run.
+- **Words per operation:** a secp inline takes `shape(op).advice_words` (`inlines/secp256k1_shapes.hpp:10-16`), not always 8:
+  4 for MULQ, SQUAREQ and MULR, 6 for GLVR, 8 for DIVQ and DIVR; the division family takes 1. The streams must carry exactly
+  what the rows consume, or they fall out of step (W2).
 - **New for the Tracer:** a read-log input queue with its credits, fed by its controller.
 - **Open:**
   - (a) **v1.25:** the expansion word's tracer-only fields, `untraced` [55] and `advice_reg` [61:56], and the "untraced word reaching
     a replayer" error (4.19.11): make them reserved before the freeze, so the RTL never builds them. Raised with WORKER10 and
     WORKER11.
   - (b) Whether bank 1 has any use left.
+  - (c) **Registers 40-47 at a slice's start.** They set the next write's `rd_prev` and come from trace history, not RISC-V
+    state; jolt-cpp's JIT doesn't track them (WORKER16). jolt-cpp's tracer and GPU compressed-trace expander do handle them
+    (owner): find how, and what that means for slice starting states built on the host (W2).
 
 ---
 
@@ -338,7 +346,7 @@ Work agreed for v1.3, each with the decisions it carries out. Studies (below) ar
 | # | task | from | status |
 |---|---|---|---|
 | W1 | ~~Bring the replayer and the Tracer up to date with jolt-cpp's latest~~ | 9 | **moved to v1.25** (owner, 2026-10-31): `DECISIONS-v1.25.md` |
-| W2 | **jolt-cpp's JIT emits the advice streams**: 128 per 2²⁹ run, one per 2²² rows, words in row order, a crossing sequence's pending words at the head of the next | 13 | to do (WORKER16 after T2, on its branch, suggested) |
+| W2 | **jolt-cpp's JIT emits the advice streams**: 128 per 2²⁹ run, one per 2²² rows, words in row order (`shape(op).advice_words` per secp op), a crossing sequence's pending words at the head of the next; and **how jolt-cpp handles registers 40-47** at a chunk's start (13 (c)) | 13 | WORKER16 |
 
 ---
 

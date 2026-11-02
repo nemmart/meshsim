@@ -248,3 +248,72 @@ Across all eleven runs, **never executed**: source EBREAK, FENCE, KECCAK256 (its
 the absorb, which runs), the custom `VirtualAssertEQ`, UNIMP (removed from bytecode); row opcodes `VirtualMove`,
 `VirtualAdviceRemU`, `VirtualAdviceRemUW` (no expansion emits them). Also untested: the LegacyRawEcall host I/O mode
 (every guest here is Standard) and abort paths (failed asserts, misaligned access).
+
+## Stage 3: upstream Jolt (a16z/jolt `17a9459`), 2026-11-02
+
+### The tool
+
+jolt-asic-planning branch **`worker18-upstream`**, `tracer/upstream_rows/`: a Cargo crate depending on a16z/jolt by git
+rev `17a9459082ec62fe8b50d61cc1f38cc060bd20f8` (tracer, common, jolt-program, jolt-riscv and the six inline crates,
+referenced with `use ... as _` so their `inventory` registrations link). Rust 1.95 from conda-forge, unpacked by hand
+(rustup's host isn't reachable); a release build takes 4 minutes here. It writes `row_dump`'s file set from
+`tracer::trace_lazy`, so gold's `compare` reads it unchanged. Program config as jolt-host's: program.json's mem_conf,
+`heap_size` or `memory_size`, and `program_size = program_end - 0x8000_0000` from `build_jolt_program`
+(`crates/jolt-host/src/program.rs`, `memory_config_with_program_size`), profile `RV64IMAC_JOLT_ALL_INLINES`.
+`--dump-inlines=<dir>` writes upstream's inline sequences in jolt-cpp's `.inc` form; `--list-kinds` the kind mapping.
+
+### The mapping: upstream's Cycle into the record
+
+From the cycle's instruction row (`crates/jolt-riscv/src/row.rs:76-83`: kind, address, operands, virtual_sequence_remaining,
+is_first_in_sequence, is_compressed) and its register reads, rd write and RAM access (`tracer/src/instruction/mod.rs`,
+`rs1_read`, `rs2_read`, `rd_write`, `ram_access`):
+
+| word | from |
+|---|---|
+| 0 pc | the row's address |
+| 1 opcode | the kind's `name()` mapped to jolt-cpp's opcode of the same name, except `NoOp` -> NOP; 0xFE for a kind with none (`VirtualAdviceLoad`, `VirtualPow2I`, `VirtualPow2IW`, `VirtualShiftRightBitmaskI`; none appears in any run) |
+| 1 rd/rs1/rs2_reg | the operands' registers, 0 where None |
+| 1 inline_sequence_remaining, is_virtual | `virtual_sequence_remaining`: Some(n) is n and virtual; None is 0 and not virtual |
+| 1 first in sequence, is_compressed | the row's flags |
+| 2 imm | the operands' imm (i128) truncated to i64 |
+| 3 rd, 6 rd_prev | the rd write's post and pre values; 0 without one |
+| 4 rs1, 5 rs2 | the values read; 0 without a read |
+| 7-9 memory | Read(address, value): pre = post = value; Write(address, pre, post); NoOp: 0 |
+
+Upstream's final kinds are jolt-cpp's row opcodes by name, so no translation table beyond NoOp was needed.
+
+### Results
+
+| run | rows | checked | upstream = jolt-cpp = gold |
+|---|---|---|---|
+| EVM Zone trace-23 | 5,833,069 | every record | yes (run hash `c6055e2211414a5a`) |
+| Cyclone input/22 | 2,705,819 | every record | yes (`a3898b8a64eb2d62`) |
+| seven jolt-cpp example guests | 442 to 36,786 | every record | yes |
+| EVM Zone trace-29 | 354,861,942 | 5,415 windows, run hash | yes (`bcea2e34bc23ccec`; upstream 82 s) |
+| Cyclone input/29 | 371,526,406 | 5,670 windows, run hash | yes (`0a6e6fe67d902fb9`; upstream 88 s) |
+
+All 15 inline sequences dumped from upstream `17a9459` are byte-identical to jolt-cpp's `.inc` files (from `f8fc214`),
+and InlineEmitTest passes against them. The differences found are all outside the rows: `UPSTREAM-DIFFS.md` (D1-D10).
+
+### Test guests (`wip/gold/test/guests/`)
+
+`make_guests.py` writes eleven hand-assembled ELFs with both a PT_LOAD segment (jolt-cpp) and a `.text` section
+(upstream), each ending `jal x0, 0`; addresses are formed with auipc (lui sign-extends on RV64). `check_guests.sh` pins
+gold's results (`expected.txt`).
+
+| guest | jolt-cpp | upstream | gold |
+|---|---|---|---|
+| `ebreak` | 2 rows | same rows | same |
+| `fence` (FENCE, FENCE.TSO) | 5 rows | same | same |
+| `keccak256` (no absorb) | 3,091 rows | same | same |
+| `assert_eq_pass` (custom VirtualAssertEQ) | 4 rows | same | same |
+| `assert_eq_fail` | abort (`trace_owner.cpp:622`) | panic (assert) | abort |
+| `legacy_raw_ecall` | 4 rows, LegacyRawEcall (ECALL as VirtualHostIO) | panic: traps to mtvec 0 (D3) | as jolt-cpp |
+| `misaligned_ld` | abort (`riscv.hpp:265`) | panic (`mmu.rs:323`) | abort |
+| `misaligned_lw` | abort (`riscv.hpp:265`) | panic (`floor_access.rs:69`) | abort |
+| `unimp_fence_i` | 3 rows, pc behind by 4 after the removed UNIMP (D4) | refuses the ELF | as jolt-cpp |
+| `jump_into_gap` | abort ("executed UNIMP", undefined behaviour, D5) | 6 rows (decodes the gap) | abort |
+| `stack_canary_store` | 6 rows | panic: stack canary (D2) | as jolt-cpp |
+
+"Same" means the run hash is equal. Still unexercised: jolt-cpp's JIT path for EBREAK (`row_dump` on short guests
+uses the interpreter only), and abort paths inside inlines.

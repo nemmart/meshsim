@@ -546,7 +546,10 @@ program.
 - **The circuit** (owner): **take every set bit below the target, decode that instruction (expanding 16 bits to 32), and look up
   its expansion length**; the target's `instr_idx` = base + the sum of those lengths.
   - **The 2,048-entry length table, dual-ported: two lookups per cycle**, indexed by the replayer's 11-bit decode index (spec
-    4.19.5: wiring plus a 7-bit compare on *w*[6:0]). Small (2,048 x about 12 bits, 3 KB).
+    4.19.5: wiring plus a 7-bit compare on *w*[6:0]). **A separate table, not the Tracer's decode table** (owner: cleaner; the
+    decode entry holds a class and a template start, no length). Built by the table builder from the templates: at v1.25 the
+    longest ROM template is 21 rows (306 ROM-class entries: 231 of one row), so 5 bits per entry would do (2,048 x 5 bits,
+    1.25 KB); the CSR entries (class 2) are open (a).
   - **An inline** (custom-0, *w*[6:0] = `0001011`) **is looked up in a separate associative array of 128 entries: a 32-bit opcode
     and a 16-bit expansion length** (owner).
   - At most 31 instruction starts lie before a target in a 64 B block: **at most 16 cycles of lookups**, about 8 on average.

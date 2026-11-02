@@ -8,7 +8,8 @@ Simulator and software for a parallel compute mesh, part of an ASIC for proving 
 | `v1.1/` | frozen | adds the RV64 trace replayer |
 | `v1.2/` | frozen (pure) | **v1.2 exactly as the RTL engineer took it** (tag `v1.2-tony`): the spec, recipes, draft header and decisions; no simulator (none existed for it). `ERRATA.md` lists everything since |
 | `v1.2.1/` | frozen (point release, 2026-11-01) | v1.2 with every erratum and cleanup applied, **plus the simulator and software in line, verified**: what was frozen as tag `v1.2` (the spec, meshsim with every suite, the sort at full size), updated. Known gaps: the boot ROM's branch for C&C 1-3 and C&C 2/3's "started" requests are not exercised (the controllers are Java models; WORKER14 is adding real cores in `wip/`), the replayer is checked on synthetic windows, `rcp_cc1.c` is built but not run |
-| `wip/` | in progress | work toward **v1.25** (the replayer and its tables at jolt-cpp `821e1bd`), then v1.3 (the Tracer); started from v1.2 |
+| `v1.25/` | frozen (2026-11-01) | **the RTL's next target** (from v1.1 directly): the replayer and its universal tables at jolt-cpp `821e1bd`, **accepted on every window of EVM Zone and Cyclone at 2²⁹, row for row** (Quest 083, 084); what the hardware checks and what is UB (the spec's opening principle), the 128-bit gather for even *k* (the full-size sort 1,229,008 cycles, from 1,360,082), the 256-byte boot ROM, C&C 1-3 as real cores in meshsim (opt-in). Freeze check: Quest 093, 094. `spec/CHANGES-v1.25.md` is the delta from v1.2; **`spec/CHANGES-to-v1.25.md` is the RTL's guide from v1.1 or v1.2**. Decisions: `planning/DECISIONS-v1.25.md` |
+| `wip/` | in progress | work toward **v1.3** (the Tracer); started from v1.25 |
 
 **How versions are used:** each frozen version (spec plus meshsim) is the reference the RTL is upgraded against,
 outside this repository. What the RTL work turns up comes back afterwards as a delta, folded into the next version;

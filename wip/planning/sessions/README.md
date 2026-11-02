@@ -25,3 +25,11 @@ The reviews of the decisions themselves are in `../reviews/`.
 |---|---|---|
 | WORKER15 | v1.2.1: v1.2 with errata E1-E11 and cleanups CL1-CL5 applied, meshsim and the software in line; `v1.2.1/CHANGES-v1.2.1.md`, the changelog from Tony's copy; verified on the runner (Quest 088: quick 34/34, full 10/10, p4/uniform-k128 1,360,082 cycles) | `WORKER15-REPORT.md`, `WORKER15-QUESTIONS.md` (Q1-Q3, which became E9, CL3 and CL4). Its report's diff commands use a `v1.2.1` tag that was never made; `CHANGES-v1.2.1.md` has the folder diffs |
 | WORKER13 | the change guide `wip/spec/CHANGES-to-v1.25.md` (v1.1 -> v1.25 and v1.2 -> v1.25 in one; 200 entry IDs), stamped at spec `d590722`, with DECISIONS-v1.25 section 8 and CL1-CL6; found v1.2 errata E1 (extended), E9, E10, E11 | `WORKER13-REPORT.md`, `WORKER13-QUESTIONS.md` (Q1-Q10; Q10, v1.1's two ordinal ranges, is for Tony), `WORKER13-opcode-map.txt` |
+
+## Added at v1.25's freeze (2026-11-01)
+
+| session | what it did | kept here |
+|---|---|---|
+| WORKER10 | the v1.25 spec (`machine-spec.md`, `replayer-opcodes.md`) and `CHANGES-v1.25.md`, through DECISIONS-v1.25 sections 1-9 (with section 8's principle, the UB conversions, the gather unit, the 256-byte ROM, and section 9's reserved fields) and the measured figures | `WORKER10-REPORT.md`, `WORKER10-QUESTIONS.md` (Q1-Q14; Q12 and the overrun's count are for Tony; Q14 is item 142) |
+| WORKER11 | meshsim's replayer at v1.25 and the acceptance kit (both programs at 2²⁹ matched row for row, Quest 083/084); CL1, CL4; section 8 (`s8`: UB stops, the even-*k* gather unit, the 256-byte ROM; Quest 089, 091) and section 9 (`s9`); the freeze check (Quest 093, 094) | `WORKER11-REPORT.md`, `WORKER11-QUESTIONS.md` (Q5: `stopLoudly` stays separate from UB). Its table-builder change is on jolt-asic-planning branch `w11-section9`, unmerged |
+| WORKER14 | C&C 1-3 as real cores in meshsim, opt-in (`Config.ccCores`): firmware, `Mach.bootCores`, C&C 1's error path for both report sets, CcBench (boot 901 cycles, phase 88, against the Java model's 120 and 43); Quest 090, 092 | `WORKER14-REPORT.md` (its first section lists the shared simulator changes; the "Pending" items were finished, see "Runner verification", task 092), `WORKER14-QUESTIONS.md` (W14-01 to W14-07) |

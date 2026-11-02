@@ -1,0 +1,284 @@
+# Decisions toward v1.25
+
+**v1.25 is an intermediate milestone between v1.2 and v1.3** (owner, 2026-10-31): **a working clone of current
+jolt-cpp.** It is v1.2 with the replayer and the Tracer's tables brought up to jolt-cpp's current expansions, so v1.3
+(the Tracer) starts from a machine that matches today's Jolt. Same style as the other logs: one entry per decision,
+later entries may revise earlier ones. The analysis behind it is the v1.3 log's section 9.
+
+---
+
+## 1. Scope (2026-10-31)
+
+Decided (O). Starts once v1.2 is frozen; ends with v1.25 frozen as `v1.25/`.
+
+- **Pin a current jolt-cpp `main` commit** (not a moving branch), and diff its expansions against v1.2's reference
+  (jolt-asic-planning `4f36b3d`) in full.
+- **The replayer** (spec 4.19, meshsim's model): rebuild the opcode table, the ROM templates and the decode table,
+  re-checking the template count and the ROM fill; **add `shift_offset` to the expansion word**; add the new opcodes
+  (`VirtualLoadB/H/W`, `VirtualStoreB/H/W`) and the changed ones (`ShiftData*`'s operands, the narrow memory rows'
+  immediate, `VirtualHostIO`, the AMO\*.W bodies, the renumbering; v1.3 section 9 as corrected by WORKER9); **PEXT correct for any
+  mask** (v1.3 section 9: the spec requires it, the implementation chooses how, full speed promised only for
+  contiguous masks; replacing v1.1's narrowing and invariant 16); drop `VirtualAlignAddr` and the
+  alignment assertions; regenerate the replayer's test vectors.
+- **The Tracer's tables: rebuilt too** (owner): its ROM and decode table (v1.3 section 7) and its advice templates (v1.3
+  section 8, `wip/tracer/`), against the same pinned commit, though nothing executes them until the Tracer exists.
+- **The spec** (4.19, the expansion word, the opcodes, the parameters) and **CHANGES** for v1.25.
+
+## 2. Acceptance (2026-10-31)
+
+Decided (O). **v1.25 matches the jolt-cpp build on our two 2²⁹-row runs:** **EVM Zone** (trace-29) and **Cyclone**
+(input/29), the two workloads v1.1's replayer was measured on (planning notes, item 113's guests).
+
+- **Every window of both**, replayed on meshsim's replayer from run logs made at the pinned jolt-cpp commit, compared
+  **row for row** (by row hash) against that jolt-cpp build's trace. This is v1.1's planning to-do 7 ("full-program
+  replay on the runner") and spec item 58's validation harness, at the new reference. Run on the Quest runner.
+- The Tracer's rebuilt tables are checked the same way as far as possible without a Tracer: WORKER7's harness style,
+  against the pinned jolt-cpp's own expansion and advice code.
+
+## 3. Deliveries (2026-10-31)
+
+Decided (O).
+
+- **A delivery is the Tracer's output, made in software** until the hardware Tracer exists: per program the tables; per
+  window the state record, the three streams (raw, compressed, the Tracer's pick) and jolt-cpp's reference rows
+  (meshsim's `REPLAY-INPUT-REQUIREMENTS.md`). v1.1's deliveries 1-3 (240 windows, 15.7 M rows, all matched) were made by
+  a v1.1-era session's software stand-in; **neither the tool nor the files were kept.**
+- **v1.2 freezes without real-window runs:** v1.1's replayer matched the 240 windows, v1.2 changed its interface rather
+  than its row logic, and WORKER4's StageB synthetic run checks the new interface against Stage A on 18 windows covering
+  every compression and store-log combination, a controller-fed expansion and a mid-sequence start.
+- **v1.25 rebuilds the delivery writer** (WORKER9's part 3, in jolt-asic-planning PR #2, next to the tracer and the table
+  builder): a functional model of the Tracer's output, which v1.25's acceptance runs need and which gives v1.3 a head
+  start. Deliveries are not committed to any repository.
+
+## 4. The expansion word's new bits, and the tables (2026-11-01)
+
+*(The Tracer-only fields here, `untraced` and `advice_reg`, are reserved by section 9.)*
+
+Decided (O). From WORKER9's part-2 plan (`sessions/WORKER9-PLAN-PART2.md`).
+
+- **`offset_imm`** (WORKER9's proposal, spare bit [63]): when set, the row's `shift_offset` is the source instruction's
+  immediate; when clear, 0. That covers every current use (the stores use their immediate; SC.W and the AMOs use 0).
+- **`sign_imm`**, a second spare bit (position proposed by WORKER9 with the encoding): when set, the row's immediate is
+  sign-extended; when clear, zero-extended. **It replaces the replayer's hard-wired list of signed-immediate opcodes**
+  (spec 4.19.12). The table builder sets it from jolt-cpp's own `signed_immediate`, which at `821e1bd` adds `ShiftData*`,
+  `VirtualLoad*` and `VirtualStore*` to the list. A future change to Jolt's list then means rerunning the builder, not
+  changing the hardware (as for PEXT, v1.3 section 9). A bit rather than a new operand code, because the free operand
+  codes (146-255) are the Tracer's untraced registers (v1.3 section 7).
+- **The table builder is an offline tool** (`build_tables`, in jolt-asic-planning PR #2): run once per jolt-cpp version and
+  per program; its outputs (`rom.bin`, `decode_table.bin`, `templates.bin` and its index, the opcode table) are committed
+  to meshsim's `wip/tables/`. At run time a tile's controller copies the ROM and the decode table into the replayer
+  (part 0) and keeps `templates.bin` to feed the rare templates.
+- **Two sets of tables, one format** (v1.3 sections 7, 8, 10): **the replayer's** (traced rows only) and **the Tracer's**,
+  whose traced rows are identical to the replayer's and which add untraced rows for **every advice** (the division family;
+  `VirtualAdvice` in the secp256k1 inlines, the division inlines' modular inverse included). Each unit has its own ROM
+  and fed set: the replayer's ROM is expected at about 389 of 512 words (v1.1 about 508), so the Tracer's 389 plus its 16
+  division-advice words fit too (v1.3 Q11 likely resolved).
+- **The mapping between the two numberings:** the Tracer writes each window's template bitmap in the **replayer's**
+  numbering of controller-fed templates (v1.3 section 6), so the builder emits that mapping alongside the Tracer's tables.
+- **Long data-independent expansions** (the modular inverse) are emitted as **a loop body plus a repeat count**, with any
+  prologue and epilogue, for C&C 3 to generate (v1.3 section 10).
+
+## 5. Universal tables, and the expansion word's last bits (2026-11-01)
+
+*(The Tracer-only fields here, `untraced` and `advice_reg`, are reserved by section 9.)*
+
+Decided (O). From WORKER9's first delivery of the replayer's tables and its Q5-Q7.
+
+- **The tables are universal, not per program** (owner): one ROM and one decode table covering **every RV64IMAC
+  instruction**, and the controller-fed set covering **every inline jolt-cpp supports**, built once per jolt-cpp version
+  and good for any guest program. Trimming the tables to what one program uses was rejected: a new guest would need the
+  builder rerun before it could run. (WORKER9's first delivery was per program: EVM Zone 109 ROM words and 35 fed
+  templates, Cyclone 186 and 23; every ROM-able template together fits in 379 of 512.) EVM Zone and Cyclone remain the
+  real-program checks; every opcode is also checked against jolt-cpp with random operands.
+- **Unused decode-table entries are invalid** (revises WORKER9's Q7, class 2): with universal tables they are encodings
+  that aren't valid RV64IMAC instructions, which Jolt itself rejects, so they are an error, not a controller-fed template.
+- **The goal: every expansion except the inlines and the advice generators fits in the ROM** (owner, 2026-11-01). The
+  controller then feeds only what is inherently special; everything executed routinely, the atomics (.W and .D, LR and SC)
+  and the system instructions (`ECALL` and the like) included, is in the ROM. In v1.1 the ROM was nearly full (about 508 of
+  512), so the longest expansions were controller-fed; the new AMO\*.W bodies are 8-13 rows (from 18-24) and the ROM has
+  room. **If it doesn't fit**, the builder reports how many words short it is and which expansions are largest, and the
+  owner decides between a larger ROM (12 KB, say) and what to feed.
+- **Q5, `sign_imm` at [62]** (WORKER9's proposal, accepted): the expansion word had one spare bit (taken by `offset_imm`),
+  so the Tracer's `advice_reg` narrows from 7 bits to 6, [61:56]: a traced row reads its advice only from bank-1 registers
+  146-209 (v1.3 section 7). The advice expansions put their results there and use 210-255 for scratch.
+- **Q6, `seq_remaining` counts traced words only** (WORKER9's proposal, accepted; reverses WORKER7's Q4): it is 12 bits,
+  too narrow for the modular inverse's 53,000-110,000 untraced words. Untraced words are marked, so the Tracer needs no count
+  to recognise them, and the Tracer's traced words become bit-identical to the replayer's. Revises v1.3 section 10: the
+  length C&C 3 sends up front counts traced words only.
+
+## 6. What stays controller-fed (2026-11-01)
+
+Decided (O). From WORKER9's part 2 (its REPORT, "system instructions in the ROM").
+
+- **`ECALL`, `EBREAK` and `MRET` are in the ROM**, bringing it to 388 of 512 words.
+- **The CSR instructions (`CSRRW`, `CSRRS`: 60 templates, 102 words) stay controller-fed**: the one deliberate exception to
+  section 5's goal. They would fit, but jolt-cpp's expansion depends on **which CSR** and on **the register pattern**
+  (rd = x0, rs1 = x0, rd = rs1), which a single decode entry can't see. Putting them in the ROM would need a special decode
+  layout for the SYSTEM group (a loaded CSR-id table and a computed register pattern) or new replayer datapath; CSR
+  instructions are rare in guest code, so the controller feeding them costs almost nothing. **Rare is good** (owner).
+- So **the controller feeds the inlines, the advice generators and the CSR instructions**, and nothing else.
+
+## 7. From meshsim's replayer at v1.25 (2026-11-01)
+
+From WORKER11's questions; the integrator's answers, to review.
+
+- **Q1, signedness in the reference rows: a flag in the row** (revised 2026-11-01, from WORKER10's finding). The row's
+  immediate is already 64 bits; what `sign_imm` determines is how Jolt forms its **128-bit `imm()`** from it, so extending
+  the stored immediate can't carry the information, and the row needs **a spare bit saying it**: **word 0 bit [86], `imm_signed`**,
+  equal to the expansion word's `sign_imm` (confirmed by WORKER10 in the v1.25 spec: word 0 [127:86] was spare and the 80-byte
+  row has no other spare bits). The replayer model and WORKER9's delivery writer follow exactly.
+- **Q2, the write log's last-load entry (E[15]) is updated by every load row**, the new `VirtualLoad*` rows included. The
+  delivery writer's encoder does the same.
+- **Q3:** `offset_imm` is set only on `ShiftData*` rows (jolt-cpp records their immediate as the shift offset); meshsim flags it
+  on any other opcode.
+- **Q4:** a misaligned memory row (LD and SD included) is a violation meshsim flags, since jolt-cpp aborts on one.
+- **The acceptance runs' deliveries** *(revised 2026-11-01, from WORKER9's part 3)*: generating any window needs the whole
+  program traced from the start, but **the delivery writer produces and proves a whole 2²⁹ program in about 17 minutes on one
+  CPU** (EVM Zone: all 8,192 windows, all three variants, 1,064,585,826 rows, peak 1.44 GB), inside the runner's 45-minute
+  limit. So **one writer task per program produces its delivery on the runner box and keeps it there** for the acceptance runs,
+  whose shards read their windows from it; it is discarded afterwards (about 31 GB per program; disk space on the box to check).
+  Nothing is committed.
+- **Where the deliveries are** (2026-11-01): `/tmp/w9-deliveries/` on the runner box (`evm-zone-29/`, 46 GB; `cyclone-29/`, 44 GB;
+  their manifests' SHA-256 in `sessions/WORKER9-REPORT.md`), and the selected windows in `/tmp/w9-deliveries-selected/`. **`/tmp`
+  isn't permanent:** to rebuild, re-run Quest 079 and 080 under new numbers (about 7 minutes each; the steps are in WORKER9's report).
+
+## 8. What the hardware checks; the gather unit; the boot ROM (2026-11-01)
+
+Decided (O, with T). One package for v1.25: the spec (WORKER10), meshsim and the software (WORKER11), the C&C firmware
+(WORKER14, branch `cc-cores`), the change guide (WORKER13).
+
+**a. The principle**, replacing the spec's "Who checks what" (owner, 2026-10-28) at the top of `machine-spec.md`, as agreed:
+
+> **How the hardware treats software bugs** (owner, 2026-11-01). We write all the firmware ourselves, and it runs in simulation
+> before it runs on hardware: in **meshsim** and in **full RTL simulation**. So catching software bugs is the simulators' job, and
+> the hardware spends area on a check only when simulation can't do that job. Every rule a program must keep is one of two kinds:
+> - **Checked by the hardware:** a broken rule raises an `ERRORS` bit. This is reserved for what simulation can't see: hardware
+>   faults, and mistakes that depend on data or timing only real runs produce (overflows, unexpected arrival, done early, drift).
+>   The spec names the error raised. Since every error is terminal (4.13), what happens to the offending access itself is left
+>   unspecified unless it comes for free.
+> - **Undefined behavior (UB):** the hardware does nothing special, and the outcome is unspecified. meshsim stops with an error
+>   naming the access, and the RTL may carry simulation-only assertions for the same rule, which cost no area.
+>
+> **There is no third kind:** never a prescribed outcome for a mistake (a substitute value, a dropped write still counted) that
+> costs hardware and helps no one find the bug. **The test for a new check:** would simulation catch this on our firmware? If so,
+> it's UB.
+
+The simulation-only assertions are the integrator's addition, for Tony to confirm. Rules elsewhere in the spec that prescribe
+an outcome for a mistake are candidates to revisit under this test; b is the first.
+
+**b. Misalignment is UB** (supersedes the alignment checks of 2026-10-28/29 and DECISIONS-v1.2's answer to W2-38, "a misaligned
+read goes out with payload 0"). meshsim stops loudly on each; the hardware does nothing special:
+- a packet misaligned to its size, at the director (was a bad packet: dropped uncounted, `ERRORS` [1]);
+- a write through a misaligned `PTR` (was dropped, still counted, [1]);
+- a misaligned read by the address generator, the GATHER engine or the read port (was not performed, payload 0, [1]);
+- the controller's misaligned loads and stores (was a bus error, `ERRORS` [9], and a trap);
+- the replayer's misaligned window-0 writes (item 47).
+
+**Stays:** the region-decode bad packet ([1] becomes "bad packet"; whether it passes a's test is open, for O and T); the
+controller's other bus errors; **a misaligned jump target still traps**. Size 11 was already UB.
+
+**c. The gather unit: 128-bit copies when *k* is even** (closes spec item 16). No new field: *k* (`DMA_CONFIG` [26:24], the
+value size in 64-bit records, 1-8) chooses.
+- ***k* odd:** *k* 64-bit reads and 64-bit mode-1 packets per value, exactly as today.
+- ***k* even:** *k*/2 128-bit reads, at `DMA_RECORD_BASE_ADDRESS` + 2*k*·ordinal + 4*i* (*i* = 0 ... *k*/2 - 1), each sent as one
+  128-bit mode-1 packet; `PTR[me]` advances by 4 per packet.
+- **Gather buffers are 128-bit aligned, whatever *k* is:** the source (`DMA_RECORD_BASE_ADDRESS`) and the destination
+  (`PTR[me]`). Misalignment is UB (b). **Software convention** (`sw/CONVENTIONS.md`): allocations are 128-bit aligned in general.
+- **Counting:** one decrement per gather value packet, so a gather of *n* values arms its counter with *n* x (packets per value):
+  *k* when *k* is odd, *k*/2 when even. Not purely additive for even *k* (the arming changes); accepted (O). The rate becomes about
+  (packets per value + 1) cycles per value: about 2 at *k* = 2, from about 3.
+- **The sort** (128-bit values, *k* = 2) arms its gather counters accordingly; p4/uniform-k128 re-measured against 1,360,082 cycles
+  (two gathers of 64K values: about 130K cycles saved [estimate]).
+
+**d. The boot ROM is 256 bytes** (64 words; was "a few dozen bytes", about 728 in meshsim). The boot path (6.2, steps 1-5) is
+unchanged, 30 words. **The ROM's handler sends a two-report dump and parks**, in place of the full 24 reports:
+- report 0: `ERRORS`, `mcause`, `mepc`;
+- report 1: `mtval`, `STATUS`, `ra` (x1).
+
+No `PARAMS`: the request tree stamps the sender's id. About 49 words in all; **the rest is left free** (O). The full 24-report
+set stays the image's handler's (recipe 24, in program memory). C&C 1's firmware must take a two-report dump from a unit still in
+its ROM; **how C&C 1 tells it from the image's 24** (for example, distinct sequence numbers) is for WORKER10 to propose in the
+spec and WORKER14 to follow.
+
+**e. More outcomes become UB under a's test** (owner, 2026-11-01, from WORKER10's Q8-Q13; spec `d590722`):
+- the replayer's **bad write** (an unmapped offset, a wrong size, a single-ported memory written during a pass), and generally a
+  write a peripheral refuses (4.17.5); the replayer's `ERRORS` [0] is reserved;
+- **reserved digit values** 5-7 (no longer "treated as 0") and **stream or group numbers past the table's end** (no longer wrap) (8.5);
+- **reserved modes 6-7** (3.1, 4.8);
+- the misuses the hardware "ignored": a start while its engine runs, `PULSE_RUN` during a run, `PULSE_DMA` during a transfer, a
+  transfer naming a missing output queue.
+
+**Stays checked:** the replayer's **queue overrun** (it depends on the controller's credit loop under real timing); the spec no
+longer promises that the dropped push is still counted. **For Tony:** whether that count comes free in the RTL; Q12, whether
+reserved words "read 0, ignore stores" is free (kept only if so). Item 142 (mode 3 at 128 bits, the region decode) stays open.
+
+## 9. The expansion word's tracer-only fields become reserved (2026-11-01)
+
+Decided (O), following DECISIONS-v1.3 section 13 (advice comes from the host in the read log, so the Tracer has no untraced rows).
+Revises section 5's `advice_reg` and spec item 105.
+- `untraced` [55] and `advice_reg` [61:56] are **reserved**: the Tracer's templates become the replayer's, and nothing sets them.
+- The "untraced word reaching a replayer" invalid expansion (4.19.11) goes; a word with a reserved bit set comes from our own
+  table builder, so under 8a it is **UB** (meshsim stops).
+- Section 5's Q6 (`seq_remaining` and the controller-fed length count traced words only): with no untraced words, "traced words"
+  and "every word" are the same; the spec can drop the qualifier.
+- Work: the spec (WORKER10), meshsim and the table builder (WORKER11, after s8 merges); the guide is closed, so the integrator adds
+  its entry.
+
+---
+
+## Definition of done (owner, 2026-11-01)
+
+**Both v1.2 and v1.25 end with a full spec and a fully running simulator**, each frozen as its own folder, and a delta
+file for what changed between them.
+
+**v1.2, frozen as `v1.2/`** (the old tables and expansions, jolt-asic-planning `4f36b3d`):
+- the spec, `machine-spec.md` v1.2, and `CHANGES-v1.2.md` (written);
+- meshsim fully running: WORKER4's phases 5-6 (the meshsim-only checks; the recipes as suites), the sort (WORKER8, done,
+  branch `v1.2-sort`) and the replayer (StageB synthetic, section 3);
+- `v1.2-meshsim` and `v1.2-sort` merged into `main`, a full `run_tests.sh` and the full-size sort on the runner, then the
+  freeze.
+
+**v1.25, frozen as `v1.25/`** (jolt-cpp `821e1bd`): **the spec, the simulator and the software** (owner, 2026-11-01).
+- **The spec:** 4.19 updated (the six new opcodes and the changed ones, `offset_imm`, `sign_imm`, PEXT for any mask, the decode
+  classes, universal tables, the normalized template-index key), the parameters, invariants and open items. *Done (WORKER10;
+  on `main`).*
+- **The tables:** the universal replayer tables (WORKER9 part 2, `wip/tables/`). *Done.* (The Tracer's tables were removed by
+  section 9: its templates are the replayer's.)
+- **The simulator:** meshsim's replayer model updated to match and running the universal tables (WORKER11, `v1.25-meshsim`).
+- **The software:**
+  - the replayer's controller software, `replay_ctl.c`: the normalized lookup and the universal tables (WORKER11);
+  - the recipes: the replayer recipe (26) and its test-side `template_lookup` for the normalized key; the rest of the book is
+    unchanged (WORKER11's scope, since it owns the replayer's software);
+  - the sort: unchanged, re-run on v1.25 to confirm;
+  - the table builder and the delivery writer (WORKER9, jolt-asic-planning PR #2).
+- **Acceptance** (section 2): every window of EVM Zone and Cyclone at 2²⁹, matched row for row against jolt-cpp, on the runner
+  (WORKER9's deliveries, Quest 079-080; WORKER11's kit). ***Passed* (2026-11-01, Quest 083 and 084):** for each program all
+  8,192 windows (536,870,912 rows) matched in Stage A (the model) and Stage B (the controller on one tile), every stream consumed
+  exactly, every end state matched, no corrupt files, no violations; the full chip agreed with Stage B cycle for cycle on every
+  64th window. Stage B ran at 3.21 cycles per row on EVM Zone (3.00-3.59 per window).
+- **Section 8's package** (the principle, misalignment as UB, the gather unit, the 256-byte ROM): the spec (WORKER10), meshsim,
+  the boot ROM, recipes 22 and 24, `CONVENTIONS.md` and the sort (WORKER11), C&C 1's firmware (WORKER14), the guide (WORKER13);
+  verified on the runner (quick and full suites, p4/uniform-k128).
+- **`CHANGES-v1.25.md`**, the delta from v1.2 (done), and **a change guide from v1.1 to v1.25** for the RTL, which is upgraded from
+  v1.1 straight to v1.25 (the v1.2 waypoint stays frozen as `v1.2/`, useful in its own right): `CHANGES-v1.2.md` and
+  `CHANGES-v1.25.md` folded together by spec section, so each unit's changes are in one place (integrator, once the spec is final).
+
+
+**Freeze check** (WORKER11, `main` 922b835, after `s8`, `s9` and `cc-cores` were merged): **passed.** Quest 093: p4/uniform-k128
+1,229,008 cycles (v1.2: 1,360,082; the even-*k* gathers), and the selected real windows (`w9-selected-windows.tgz`), 12 of 12
+EVM Zone and 13 of 13 Cyclone, matched in stages A, B and F. Quest 094: the quick suite 36 of 36 and the full extras 11 of 11
+(093's suite steps had failed only for a kit missing `sw/build_cc.sh`'s images). **Frozen as `v1.25/`, 2026-11-01.**
+
+**After the freeze (candidates):** recipe 27's `command()` flips 64 per-tile parity entries after every broadcast, about 380 of
+the 435 cycles a phase takes under `rcp_cc1.c` (WORKER14's own C&C 1 firmware: 88); a change to the book.
+
+## Work list
+
+| # | task | from | status |
+|---|---|---|---|
+| W1 | **Bring the replayer and the Tracer's tables up to date with jolt-cpp's latest** (1), and pass the acceptance runs (2) | v1.3 log, section 9 and its former W1 | **done:** the tables and the delivery writer (WORKER9), the spec (WORKER10), the replayer and the kit (WORKER11), merged into `main`; acceptance passed (Quest 083, 084) |
+| W2 | **`CHANGES-v1.25.md`**: the delta from v1.2 | owner | done (WORKER10) |
+| W3 | **The change guide to v1.25, from v1.1 and from v1.2** (`wip/spec/CHANGES-to-v1.25.md`), for the RTL | owner | done (WORKER13, closed; the integrator added section 9 and re-stamped at spec `b7c90fb`) |
+| W4 | **The replayer recipe** (26) and its `template_lookup` for the normalized key | owner | done (WORKER11, on `v1.25-meshsim`): keyed lookup, the book regenerated, the key cross-checked against the Java model on 20,000 words |
+| W5 | **Section 8's package**: the principle, misalignment as UB, the gather unit, the 256-byte boot ROM | owner and Tony | done: spec WORKER10; meshsim, software, sort WORKER11 (`s8`, Quest 089, 091); C&C firmware WORKER14 (`cc-cores`, Quest 090, 092); guide WORKER13 |
+| W6 | **Section 9**: the expansion word's tracer-only fields reserved | owner | done: spec WORKER10 (`b7c90fb`); meshsim WORKER11 (`s9`); guide integrator |

@@ -1,4 +1,4 @@
-# Integrator handover (2026-11-01, 00:50 UTC)
+# Integrator handover (2026-11-01, after the v1.25 freeze)
 
 For a new integration session taking over from the previous one. **Read this first**, then the top-level `README.md`, then the
 decision logs as needed (`wip/planning/DECISIONS-v1.2.md`, `-v1.25.md`, `-v1.3.md`). Everything below was checked against the
@@ -39,28 +39,28 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
 
 | worker | doing | state | what's left | waiting for it |
 |---|---|---|---|---|
-| WORKER10 | the v1.25 spec (`wip/spec/`) | idle | **DECISIONS-v1.25 section 8** (the principle at the top, misalignment as UB, the gather unit, the 256-byte ROM; how C&C 1 tells the ROM's dump from the image's) and CLEANUP CL6 (4.2); item 137 stays open | its prompt |
-| WORKER11 | the v1.25 replayer, acceptance kit; CL4 merged (30efc11) | idle | **section 8's meshsim and software**: misalignment as UB, the gather unit, the 256-byte ROM (`bootrom.S`, recipes 22 and 24), `CONVENTIONS.md`, the sort; tests; a Quest run (quick, full, p4/uniform-k128) | its prompt; the spec can follow W10 or lead it |
-| WORKER14 | real cores for C&C 1-3 in meshsim, opt-in (`Config.ccCores`), branch `cc-cores` | idle; phases 0-3 done (C&C 1 boots C&C 2/3 and the tiles; 782 cycles first figure) | phase 4 (`rcp_cc1.c` run, the error path) with **the ROM's two-report dump** (section 8 d); phase 5 | its prompt |
-| WORKER16 | T2: is pc, `instr_idx` and registers 0-127 the Tracer's whole starting state (jolt-cpp) | **not started** (prompt only) | all of it | start with "Clone meshsim and follow WORKER16/PROMPT.md" |
+| WORKER16 | T2: is pc, `instr_idx` and registers 0-127 the Tracer's whole starting state (jolt-cpp); branch `worker16-state` of jolt-asic-planning | working: tool and small-input findings done (T2 holds at instruction boundaries; jolt-cpp's secp advice buffer is the one state outside, mid-sequence, which DECISIONS-v1.3 section 13 now handles); 2²⁹ runs next | the 2²⁹ runs, REPORT; then W2 (the JIT's advice streams) suggested | its last message |
 
 ## What's left, by milestone
 
 - **v1.2.1: frozen** (2026-11-01). Branch `v1.2.1` merged into `main` and deleted; WORKER15 closed (`sessions/`). Pure `v1.2/`
   checked: `spec/`, `sw/`, `planning/` byte-identical to `v1.2-tony`'s `v1.2_wip/`; only `ERRATA.md` and `README.md` differ (by design).
   Tony's diff: `git diff --no-index v1.2/spec/ v1.2.1/spec/` (also at the top of `v1.2.1/CHANGES-v1.2.1.md`).
-- **v1.25 (in `wip/`):** done: spec (WORKER10), universal tables and delivery writer (WORKER9, closed; jolt-asic-planning PR #2
-  ready for review), replayer and acceptance (WORKER11: both programs at 2²⁹ matched row for row, Quest 083/084; `main` verified
-  086, CL1 verified 087; CL4 merged), the change guide (WORKER13, closed; stamped at spec `d590722`). Left: **section 8's package** (W10, W11,
-  W14, W13), then **the freeze**: copy `wip/` to `v1.25/`
-  (leaving out v1.3 work: `wip/tracer/`, the v1.3 log), README, close workers; no tag. Definition of done: `DECISIONS-v1.25.md`.
-- **v1.3, the Tracer:** decided so far in `DECISIONS-v1.3.md` sections 1-12 (components, FIFOs, two-pass compression, LRU tables,
+- **v1.25: frozen** (2026-11-01) as `v1.25/`: `wip/` copied without `tracer/`, `planning/DECISIONS-v1.3.md` and this handover. Acceptance
+  Quest 083/084 (every window at 2²⁹); DECISIONS-v1.25 sections 8-9 merged (`s8`, `s9`) and `cc-cores` (C&C 1-3 as real cores,
+  opt-in); freeze check Quest 093 (p4 1,229,008 cycles; 25 selected real windows in stages A, B, F) and 094 (quick 36/36, full
+  11/11). WORKER10, 11, 13, 14 closed (`sessions/`). After the freeze: recipe 27's `command()` parity loop (about 380 of a phase's
+  435 cycles; DECISIONS-v1.25, after the freeze); WORKER11's builder change on jolt-asic-planning `w11-section9` (be4cdac),
+  unmerged, for the owner to merge into PR #2.
+- **v1.3, the Tracer:** decided so far in `DECISIONS-v1.3.md` sections 1-13 (**13: advice comes from the host in the read log,
+  128 streams per 2²⁹ run built by jolt-cpp's JIT; no untraced rows; supersedes 7's untraced rows, 8, 10**; components, FIFOs, two-pass compression, LRU tables,
   boundaries, output, expansion tables, divider for advice, jolt-cpp move (became v1.25), C&C 3 generating long expansions, the
-  100 ms budget with host-supplied advice as backup, the region's parts 0 and 1). **Next research area (owner): the Tracer's memory**
+  100 ms budget, the region's parts 0 and 1). **Next research area (owner): the Tracer's memory**
   (section 12): the page table as a two-level, sparse structure over 4 GiB, a base register at Jolt's `lowest_address`, what an
   unmapped page means, the entry format, how C&C 3 builds it per proof; upstream Jolt's layout findings are recorded there
   (contiguous range; I/O and advice below 0x8000_0000, program, stack and heap above; both ends used, middle empty). Open: T2
-  (WORKER16), T3. Candidates C2 (signed counters), C3 (trim the 256-bit word), C4 (addition chain) in the v1.3 log; ST1 (compare
+  (WORKER16), T3; work item W2 (the JIT's advice streams); section 13's open (b), whether bank 1 has any use left. Candidates C2
+  (signed counters), C3 (trim the 256-bit word) in the v1.3 log (C4 moot); ST1 (compare
   jolt-cpp and Rust Jolt traces) as a study.
 
 ## Open items for the owner and Tony
@@ -76,4 +76,4 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
 
 - Repositories: meshsim (this), jolt-asic-planning (`tracer-standalone`, PR #1; `tracer-standalone-main`, PR #2; `worker12-counts`),
   jolt-cpp (snarkify, our tracer), a16z/jolt (upstream, public), Quest (the runner). Tokens are in the owner's preferences.
-- Closed workers' reports: `wip/planning/sessions/` (WORKER4-9, WORKER12) and `wip/planning/reviews/` (WORKER1-3).
+- Closed workers' reports: `wip/planning/sessions/` (WORKER4-15) and `wip/planning/reviews/` (WORKER1-3).

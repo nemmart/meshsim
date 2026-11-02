@@ -1,0 +1,2 @@
+jalr_self    window     0  state      OK     65536 rows  pass   196887 cycles  3.004 cycles/row  newexp 0 (served 0), refills 128, stalls [64, 103, 0, 0, 112, 0, 0]  [meas: StageB]
+StageB jalr_self state: 1 windows, 0 failed

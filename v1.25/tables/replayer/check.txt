@@ -1,0 +1,129 @@
+program /home/claude/jap/tracer/evm-zone-4e3451c1d8c5: 616231 instructions checked, 0 failures; 10 controller-fed keys used
+program /home/claude/jap/tracer/cyclone: 545760 instructions checked, 0 failures; 14 controller-fed keys used
+CSR templates: 60 keys, 102 words, 60 distinct (102 words)
+mutants: 500, caught 500, not caught 0
+  const          caught 31, not caught 0
+  format         caught 7, not caught 0
+  from_log       caught 17, not caught 0
+  hold           caught 51, not caught 0
+  imm0_pc0       caught 12, not caught 0
+  nfv            caught 13, not caught 0
+  opcode         caught 70, not caught 0
+  rd code        caught 55, not caught 0
+  rd0            caught 13, not caught 0
+  report_c       caught 7, not caught 0
+  rs1 code       caught 49, not caught 0
+  rs2 code       caught 53, not caught 0
+  seq_remaining  caught 63, not caught 0
+  sign_imm       caught 58, not caught 0
+  virt           caught 1, not caught 0
+ROM 388 of 512 words (atomics 188); 75 controller-fed templates, 13821 words; 88 row opcodes
+random checks: 117676 words over 108 source opcodes, 0 failures total
+  checked ADD                        204
+  checked ADDI                       1600
+  checked SUB                        207
+  checked XOR                        207
+  checked XORI                       1600
+  checked OR                         211
+  checked ORI                        1600
+  checked AND                        203
+  checked ANDI                       1600
+  checked SLL                        182
+  checked SLLI                       1600
+  checked SRL                        217
+  checked SRLI                       383
+  checked SRA                        199
+  checked SRAI                       403
+  checked SLT                        191
+  checked SLTI                       1600
+  checked SLTU                       194
+  checked SLTIU                      1600
+  checked LB                         1600
+  checked LH                         1600
+  checked LW                         1600
+  checked LBU                        1600
+  checked LHU                        1600
+  checked SB                         1600
+  checked SH                         1600
+  checked SW                         1600
+  checked BEQ                        1600
+  checked BNE                        1600
+  checked BLT                        1600
+  checked BGE                        1600
+  checked BLTU                       1600
+  checked BGEU                       1600
+  checked JAL                        12800
+  checked JALR                       12800
+  checked AUIPC                      12800
+  checked LUI                        12800
+  checked ECALL                      400
+  checked EBREAK                     400
+  checked CSRRW                      1
+  checked CSRRS                      1
+  checked MRET                       400
+  checked MUL                        182
+  checked MULH                       210
+  checked MULHU                      193
+  checked MULHSU                     204
+  checked DIV                        192
+  checked DIVU                       215
+  checked REM                        205
+  checked REMU                       226
+  checked FENCE                      1600
+  checked SD                         1600
+  checked LD                         1600
+  checked LWU                        1600
+  checked SLLW                       202
+  checked SLLIW                      1600
+  checked SRLW                       208
+  checked SRLIW                      380
+  checked SRAW                       183
+  checked SRAIW                      402
+  checked SUBW                       210
+  checked ADDW                       212
+  checked ADDIW                      1600
+  checked MULW                       208
+  checked DIVW                       196
+  checked DIVUW                      229
+  checked REMW                       195
+  checked REMUW                      211
+  checked LR_W                       400
+  checked LR_D                       400
+  checked SC_W                       400
+  checked SC_D                       400
+  checked AMOSWAP_W                  400
+  checked AMOSWAP_D                  400
+  checked AMOADD_W                   400
+  checked AMOADD_D                   400
+  checked AMOXOR_W                   400
+  checked AMOXOR_D                   400
+  checked AMOAND_W                   400
+  checked AMOAND_D                   400
+  checked AMOOR_W                    400
+  checked AMOOR_D                    400
+  checked AMOMIN_W                   400
+  checked AMOMIN_D                   400
+  checked AMOMAX_W                   400
+  checked AMOMAX_D                   400
+  checked AMOMINU_W                  400
+  checked AMOMINU_D                  400
+  checked AMOMAXU_W                  400
+  checked AMOMAXU_D                  400
+  checked KECCAK256                  283
+  checked KECCAK256_ABSORB_PERMUTE   271
+  checked SHA256_INLINE              276
+  checked SHA256_INIT_INLINE         268
+  checked BLAKE2_INLINE              299
+  checked BLAKE3_INLINE              272
+  checked BLAKE3_KEYED64_INLINE      270
+  checked BIGINT256_MUL_INLINE       278
+  checked SECP256K1_MULQ_INLINE      288
+  checked SECP256K1_SQUAREQ_INLINE   289
+  checked SECP256K1_DIVQ_INLINE      277
+  checked SECP256K1_MULR_INLINE      285
+  checked SECP256K1_SQUARER_INLINE   263
+  checked SECP256K1_DIVR_INLINE      265
+  checked SECP256K1_GLVR_ADV_INLINE  294
+  checked VirtualRev8W               5
+  checked VirtualAssertEQ            1600
+  checked VirtualHostIO              227

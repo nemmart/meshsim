@@ -1,0 +1,210 @@
+{
+ "name": "evm-29",
+ "traced_rows": 354861942,
+ "executions": 346500613,
+ "untraced_rows": 32016730,
+ "untraced_share_of_all": 0.08275651339084415,
+ "untraced_per_traced": 0.09022305919748362,
+ "windows": 5415,
+ "full_windows": 5414,
+ "windows_with_untraced": 107,
+ "untraced_per_window": {
+  "mean": 5912.6001846722065,
+  "p50": 0,
+  "p90": 0,
+  "p99": 1,
+  "p999": 1,
+  "max": 11066935
+ },
+ "top_windows": [
+  {
+   "window": 34,
+   "first_row": 2228224,
+   "untraced_rows": 11066935,
+   "divq": 89,
+   "divr": 0,
+   "inline_execs": 229
+  },
+  {
+   "window": 35,
+   "first_row": 2293760,
+   "untraced_rows": 10818511,
+   "divq": 87,
+   "divr": 0,
+   "inline_execs": 225
+  },
+  {
+   "window": 33,
+   "first_row": 2162688,
+   "untraced_rows": 5406380,
+   "divq": 40,
+   "divr": 2,
+   "inline_execs": 112
+  },
+  {
+   "window": 36,
+   "first_row": 2359296,
+   "untraced_rows": 4724796,
+   "divq": 38,
+   "divr": 0,
+   "inline_execs": 96
+  },
+  {
+   "window": 74,
+   "first_row": 4849664,
+   "untraced_rows": 6,
+   "divq": 0,
+   "divr": 0,
+   "inline_execs": 0
+  },
+  {
+   "window": 42,
+   "first_row": 2752512,
+   "untraced_rows": 1,
+   "divq": 0,
+   "divr": 0,
+   "inline_execs": 0
+  },
+  {
+   "window": 48,
+   "first_row": 3145728,
+   "untraced_rows": 1,
+   "divq": 0,
+   "divr": 0,
+   "inline_execs": 0
+  },
+  {
+   "window": 127,
+   "first_row": 8323072,
+   "untraced_rows": 1,
+   "divq": 0,
+   "divr": 0,
+   "inline_execs": 0
+  },
+  {
+   "window": 181,
+   "first_row": 11862016,
+   "untraced_rows": 1,
+   "divq": 0,
+   "divr": 0,
+   "inline_execs": 0
+  },
+  {
+   "window": 234,
+   "first_row": 15335424,
+   "untraced_rows": 1,
+   "divq": 0,
+   "divr": 0,
+   "inline_execs": 0
+  }
+ ],
+ "top_untraced_by_opcode": [
+  {
+   "opcode": "SECP256K1_DIVQ_INLINE",
+   "executions": 254,
+   "untraced_rows": 31490666,
+   "share": 0.9835690902849854
+  },
+  {
+   "opcode": "SECP256K1_DIVR_INLINE",
+   "executions": 2,
+   "untraced_rows": 429914,
+   "share": 0.013427792282347386
+  },
+  {
+   "opcode": "SECP256K1_SQUAREQ_INLINE",
+   "executions": 265,
+   "untraced_rows": 61745,
+   "share": 0.0019285229940721616
+  },
+  {
+   "opcode": "SECP256K1_MULQ_INLINE",
+   "executions": 139,
+   "untraced_rows": 32943,
+   "share": 0.0010289308121097939
+  },
+  {
+   "opcode": "SECP256K1_GLVR_ADV_INLINE",
+   "executions": 1,
+   "untraced_rows": 940,
+   "share": 2.9359650407771188e-05
+  },
+  {
+   "opcode": "SECP256K1_MULR_INLINE",
+   "executions": 1,
+   "untraced_rows": 414,
+   "share": 1.2930739647677949e-05
+  },
+  {
+   "opcode": "DIVU",
+   "executions": 108,
+   "untraced_rows": 108,
+   "share": 3.37323642982903e-06
+  }
+ ],
+ "top_untraced_by_template": [
+  {
+   "label": "SECP256K1_DIVQ_INLINE",
+   "key": 167780363,
+   "executions": 254,
+   "untraced_per_exec": 123979,
+   "untraced_rows": 31490666
+  },
+  {
+   "label": "SECP256K1_DIVR_INLINE",
+   "key": 167796747,
+   "executions": 2,
+   "untraced_per_exec": 214957,
+   "untraced_rows": 429914
+  },
+  {
+   "label": "SECP256K1_SQUAREQ_INLINE",
+   "key": 167776267,
+   "executions": 265,
+   "untraced_per_exec": 233,
+   "untraced_rows": 61745
+  },
+  {
+   "label": "SECP256K1_MULQ_INLINE",
+   "key": 167772171,
+   "executions": 139,
+   "untraced_per_exec": 237,
+   "untraced_rows": 32943
+  },
+  {
+   "label": "SECP256K1_GLVR_ADV_INLINE",
+   "key": 167800843,
+   "executions": 1,
+   "untraced_per_exec": 940,
+   "untraced_rows": 940
+  },
+  {
+   "label": "SECP256K1_MULR_INLINE",
+   "key": 167788555,
+   "executions": 1,
+   "untraced_per_exec": 414,
+   "untraced_rows": 414
+  },
+  {
+   "label": "DIVU",
+   "key": 405,
+   "executions": 108,
+   "untraced_per_exec": 1,
+   "untraced_rows": 108
+  }
+ ],
+ "controller_fed": {
+  "inline_execs": 662,
+  "csr_execs": 0,
+  "inline_traced_rows": 120110,
+  "csr_traced_rows": 0,
+  "max_inline_per_window": 229,
+  "max_csr_per_window": 0,
+  "windows_with_csr": 0
+ },
+ "divq_execs": 254,
+ "divr_execs": 2,
+ "templates_in_program": 214,
+ "templates_executed": 183,
+ "checks": "count_exec: rows = num_cycles, every row on a program pc, every execution contiguous at jolt-cpp length; tables: traced words = jolt-cpp rows and source opcode names agree for every template of the program; window sums = run totals"
+}

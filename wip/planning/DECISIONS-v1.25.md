@@ -242,7 +242,8 @@ file for what changed between them.
 - **The spec:** 4.19 updated (the six new opcodes and the changed ones, `offset_imm`, `sign_imm`, PEXT for any mask, the decode
   classes, universal tables, the normalized template-index key), the parameters, invariants and open items. *Done (WORKER10;
   on `main`).*
-- **The tables:** the universal replayer and Tracer tables (WORKER9 part 2, `wip/tables/`). *Done.*
+- **The tables:** the universal replayer tables (WORKER9 part 2, `wip/tables/`). *Done.* (The Tracer's tables were removed by
+  section 9: its templates are the replayer's.)
 - **The simulator:** meshsim's replayer model updated to match and running the universal tables (WORKER11, `v1.25-meshsim`).
 - **The software:**
   - the replayer's controller software, `replay_ctl.c`: the normalized lookup and the universal tables (WORKER11);
@@ -262,13 +263,22 @@ file for what changed between them.
   v1.1 straight to v1.25 (the v1.2 waypoint stays frozen as `v1.2/`, useful in its own right): `CHANGES-v1.2.md` and
   `CHANGES-v1.25.md` folded together by spec section, so each unit's changes are in one place (integrator, once the spec is final).
 
+
+**Freeze check** (WORKER11, `main` 922b835, after `s8`, `s9` and `cc-cores` were merged): **passed.** Quest 093: p4/uniform-k128
+1,229,008 cycles (v1.2: 1,360,082; the even-*k* gathers), and the selected real windows (`w9-selected-windows.tgz`), 12 of 12
+EVM Zone and 13 of 13 Cyclone, matched in stages A, B and F. Quest 094: the quick suite 36 of 36 and the full extras 11 of 11
+(093's suite steps had failed only for a kit missing `sw/build_cc.sh`'s images). **Frozen as `v1.25/`, 2026-11-01.**
+
+**After the freeze (candidates):** recipe 27's `command()` flips 64 per-tile parity entries after every broadcast, about 380 of
+the 435 cycles a phase takes under `rcp_cc1.c` (WORKER14's own C&C 1 firmware: 88); a change to the book.
+
 ## Work list
 
 | # | task | from | status |
 |---|---|---|---|
 | W1 | **Bring the replayer and the Tracer's tables up to date with jolt-cpp's latest** (1), and pass the acceptance runs (2) | v1.3 log, section 9 and its former W1 | **done:** the tables and the delivery writer (WORKER9), the spec (WORKER10), the replayer and the kit (WORKER11), merged into `main`; acceptance passed (Quest 083, 084) |
 | W2 | **`CHANGES-v1.25.md`**: the delta from v1.2 | owner | done (WORKER10) |
-| W3 | **The change guide to v1.25, from v1.1 and from v1.2** (`wip/spec/CHANGES-to-v1.25.md`), for the RTL | owner | WORKER13 |
+| W3 | **The change guide to v1.25, from v1.1 and from v1.2** (`wip/spec/CHANGES-to-v1.25.md`), for the RTL | owner | done (WORKER13, closed; the integrator added section 9 and re-stamped at spec `b7c90fb`) |
 | W4 | **The replayer recipe** (26) and its `template_lookup` for the normalized key | owner | done (WORKER11, on `v1.25-meshsim`): keyed lookup, the book regenerated, the key cross-checked against the Java model on 20,000 words |
-| W5 | **Section 8's package**: the principle, misalignment as UB, the gather unit, the 256-byte boot ROM | owner and Tony | spec WORKER10; meshsim, software, sort WORKER11; C&C firmware WORKER14; guide WORKER13 |
-| W6 | **Section 9**: the expansion word's tracer-only fields reserved | owner | spec WORKER10; meshsim WORKER11 after s8; guide entry integrator |
+| W5 | **Section 8's package**: the principle, misalignment as UB, the gather unit, the 256-byte boot ROM | owner and Tony | done: spec WORKER10; meshsim, software, sort WORKER11 (`s8`, Quest 089, 091); C&C firmware WORKER14 (`cc-cores`, Quest 090, 092); guide WORKER13 |
+| W6 | **Section 9**: the expansion word's tracer-only fields reserved | owner | done: spec WORKER10 (`b7c90fb`); meshsim WORKER11 (`s9`); guide integrator |

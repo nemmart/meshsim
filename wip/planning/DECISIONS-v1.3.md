@@ -394,6 +394,11 @@ Decided (O), from the planning discussion of 2026-10-19 recorded in jolt-asic-pl
   2. **the advice log**, the segment's read-log input (section 13);
   3. **the memory updates list**, the segment's delta: each word written during the segment with its last value (the dirty set,
      "R-dirty" in PR #1; the host reads the values from guest memory at the segment's end, so stores are never logged).
+- **A proof's stream starts with 128 x 32 bits: the number of pages each segment writes** (owner), before any chunk. Every ASIC
+  reads all 128 counts, so C&C 3 can reserve exactly the pages the proof needs before any data arrives: its own segment's
+  private copies (below) and the pages the updates add to the start and final images. That is the planning notes' "the host
+  computes each ASIC's exact page count, so memory never runs out mid-proof". The host's JIT has the counts from its page
+  bitmaps (PR #1 section 4).
 - **Who needs what.** A segment's ASIC needs its own processor state and advice log. Memory is shared: the start image of segment
   *k* is the initial image plus the updates of segments 0 to *k* - 1, and the final image is the initial image plus all of them.
   So the updates are **broadcast to every ASIC as one stream sorted by address**, each address carrying its (segment, value)

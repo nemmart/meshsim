@@ -374,8 +374,11 @@ Decided (O); also a reasonable size for the chip (O).
   RAM sumchecks' degrees don't depend on K; they gain address rounds, up to 32.
 - **Open:**
   - (a) ~~per slice or whole run~~ **decided: one K for the whole run** (owner, 2026-11-01).
-  - (b) Whether to keep 4-bit chunks at 2³² (degree 9, smaller commitments) or switch to 8-bit chunks for large K (degree 5, each
-    chunk polynomial 16 times larger: 256 x T against 16 x T).
+  - (b) ~~the chunk width~~ **decided: match jolt-cpp** (owner, 2026-11-01): the chunk width is part of the proof's
+    shape, which the verifier shares, so it isn't ours to choose. jolt-cpp takes 4 bits when log T < 25, else 8
+    (`config.hpp:121-127`). **Still open: which T.** If a proof covers the whole 2²⁹ run across 128 ASICs (PR #1's model, and
+    one K per run), log T = 29: **8-bit chunks, *d* ≤ 4 at 2³², degree ≤ 5**, and the 4-bit figures above (*d* up to 8, degree
+    9) apply only to 4M-row proofs.
   - (c) ~~Moving the jolt-cpp pin~~ **decided** (owner, 2026-11-01): **v1.25 stays at 821e1bd** (frozen, accepted there);
     **v1.3 moves to a deliberate new pin**, HEAD (88dca85) or later, after two checks: `src/tracer/isa` unchanged (true at
     88dca85: 13 commits, the tracer's only change is image loading and reset, #1544), and row hashes per window identical on both
@@ -433,7 +436,10 @@ Decided (O), from the planning discussion of 2026-10-19 recorded in jolt-asic-pl
   - (b) the processor-state chunk's format, and the stream's framing (chunk type, segment tag, length);
   - (c) ~~FIFO against true LRU~~ **decided: true LRU** (owner): at 32 entries it is a move-to-front list, the same on both
     sides (a hit sends the entry's rank and moves it to the front; a miss sends the value and pushes it at the front, dropping
-    the last). Still open: how 6-bit hit codes pack into the byte stream (bit-packed, or byte-aligned tokens).
+    the last). **Packing: copy the replayer's stream coding** (owner; spec 4.19.15): bit-packed, least significant bit first;
+    **hit:** flag 1, then a 5-bit index (6 bits); **miss:** flag 0, a size bit (0 = 32, 1 = 64), then the value, a 32-bit miss
+    zero-extended. Here the bits run least significant first within each byte of the byte stream. When the table resets (each
+    segment's updates, or each chunk) is open with (b)'s framing.
   - (d) the physical topology (the chain, route 2'), which doesn't change the stream;
   - (e) the read-only part of each image: loads weren't traced in PR #1 (WORKER17's question 3 measures them).
 

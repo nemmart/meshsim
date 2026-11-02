@@ -537,33 +537,29 @@ instruction at address *a* has `instr_idx` = 1 + the expansion lengths of every 
 program.
 
 - **A small cache: about 64 entries, pc to `instr_idx`, LRU** (owner), consulted first on a control transfer.
-- **On a miss: two 32-bit words per 64 B of code** (owner, 2026-11-01; replaces one word per 128 B with a walk, which took about
-  30 cycles; and a word per 2-byte parcel, which wastes memory): 8 bytes per 64 B, **an eighth of the code's size** (1 MB of code,
+- **On a miss: two 32-bit words per 64 B of code** (owner, 2026-11-01; replaces one word per 128 B with a decode walk, about 30
+  cycles, and a word per 2-byte parcel, which wastes memory): 8 bytes per 64 B, **an eighth of the code's size** (1 MB of code,
   128 KB), built by the host from the ELF, kept with the initial image, read **through the main-memory cache** (section 12):
-  - **the base:** bits 30:0, the `instr_idx` of the block's first instruction; bit 31, where it starts: 0 at the block's boundary,
-    1 at +2 bytes (after a 4-byte instruction straddling in; instructions are 2-byte aligned and at most 4 bytes);
-  - **the mask:** one bit per 2-byte parcel, **set at the start of each instruction whose expansion is longer than one row** (the
-    ones that need a length lookup).
-- **The circuit, no walk:**
-  - **every instruction start** in the block comes from the code itself: a parcel's bits [1:0] give its instruction's length
-    (`11`: 32 bits, else 16; RV64IMAC has no longer encodings), so from the first start a parallel prefix over the 32 parcels
-    (5 levels) marks them all;
-  - the target's **`instr_idx` = base + (starts before the target) + the sum over marked starts before the target of (expansion
-    length - 1)**: a popcount of the start bits below the target, plus a lookup per marked instruction;
-  - **expansion lengths from the 2,048-entry table, dual-ported: two lookups per cycle** (owner). Its index is the replayer's
-    11-bit decode index (spec 4.19.5): wiring plus a 7-bit compare on *w*[6:0], the inlines (custom-0) having their own entries,
-    so the same table covers them. A compressed instruction runs as its 32-bit equivalent (C.LW and C.SW become expanded LW and
-    SW), so it needs its index too: decompressed, or from a small table on its identifying bits. A 64 B block holds at most 16
-    32-bit instructions, so **at most 8 cycles of lookups, typically one or two**.
-  - The table is small (2,048 x about 12 bits, 3 KB), so more ports or copies are cheap if needed.
+  - **the base:** the `instr_idx` of the block's first instruction start;
+  - **the mask:** one bit per 2-byte parcel, **set at every instruction start** (so no start-finding logic is needed, and a block
+    that begins mid-instruction simply has no bit at parcel 0).
+- **The circuit** (owner): **take every set bit below the target, decode that instruction (expanding 16 bits to 32), and look up
+  its expansion length**; the target's `instr_idx` = base + the sum of those lengths.
+  - **The 2,048-entry length table, dual-ported: two lookups per cycle**, indexed by the replayer's 11-bit decode index (spec
+    4.19.5: wiring plus a 7-bit compare on *w*[6:0]). Small (2,048 x about 12 bits, 3 KB).
+  - **An inline** (custom-0, *w*[6:0] = `0001011`) **is looked up in a separate associative array of 128 entries: a 32-bit opcode
+    and a 16-bit expansion length** (owner).
+  - At most 31 instruction starts lie before a target in a 64 B block: **at most 16 cycles of lookups**, about 8 on average.
 - **Open:**
   - (a) whether an expansion's length is a function of the 11-bit index alone, or of more of the instruction word: the CSR
     instructions are the likely exception (controller-supplied, perhaps varying with the CSR address, bits [31:20]); `rd` = x0
-    remaps registers but may not change the length (WORKER18 to confirm from `isa/virtual.cpp`). The 128-entry inline table is
-    needed only if lengths depend on bits outside the index;
+    remaps registers but may not change the length (WORKER18 to confirm from `isa/virtual.cpp`).;
   - (b) that jolt-cpp's bytecode is decoded sequentially from each text section's start, so the table and the walk follow the same
     boundaries (data or padding in text); which sections count; the start index (WORKER18, from the loader);
-  - (c) building the table on the host (deferred, owner: assume it's there).
+  - (c) **the inline array's key:** an inline's word carries its registers (rd, rs1, rs2), so either the match ignores them
+    (opcode, funct3, funct7), and 128 entries cover every inline jolt-cpp supports, or it matches whole words and holds the
+    distinct inline words of the program;
+  - (d) building the table on the host (deferred, owner: assume it's there).
 
 ---
 

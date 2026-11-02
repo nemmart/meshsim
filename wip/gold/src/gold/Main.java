@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -20,6 +21,12 @@ import java.util.Map;
  *       &lt;ref&gt;.rows.bin exists (stopping at the first difference, with context), else the hash of every 2^16-row
  *       window against &lt;ref&gt;.hashes.csv; and the layout, the bytecode size and the row counts against &lt;ref&gt;.json.
  *       Stage 1: secp256k1 advice from &lt;ref&gt;.advice.bin; with --computed-advice, computed (stage 2).
+ *
+ *   segments &lt;program dir&gt; &lt;input dir&gt; &lt;out file&gt; [--cuts=0,a,...|--cuts-file=F] [--segment-rows=N]
+ *            [--segments=N] [--compare=&lt;reference file&gt;]
+ *       Stage 2: runs the guest, computing everything, and writes section 16's segment file (SegmentWriter), with
+ *       &lt;out&gt;.cuts and &lt;out&gt;.json beside it. With --compare, checks it byte for byte against a reference file
+ *       (WORKER16's segment_writer) and reports the first difference by frame.
  * </pre>
  */
 public final class Main {
@@ -34,8 +41,60 @@ public final class Main {
       }
       System.exit(compare(Path.of(args[1]), Path.of(args[2]), args[3], maxRows, computed) ? 0 : 1);
     }
+    if (args.length >= 4 && args[0].equals("segments")) {
+      System.exit(segments(args) ? 0 : 1);
+    }
+    System.err.println("usage: gold segments <program dir> <input dir> <out file> [--cuts=0,a,b,...|--cuts-file=F]"
+        + " [--segment-rows=4194304] [--segments=128] [--compare=<reference file>]");
     System.err.println("usage: gold compare <program dir> <input dir> <ref prefix> [--max-rows=N] [--computed-advice]");
     System.exit(2);
+  }
+
+  static boolean segments(String[] args) throws Exception {
+    long segmentRows = 1L << 22;
+    int count = 128;
+    long[] cuts = null;
+    String compareWith = null;
+    for (int i = 4; i < args.length; i++) {
+      String a = args[i];
+      if (a.startsWith("--segment-rows=")) segmentRows = Long.parseLong(a.substring(15));
+      else if (a.startsWith("--segments=")) count = Integer.parseInt(a.substring(11));
+      else if (a.startsWith("--cuts=")) cuts = Arrays.stream(a.substring(7).split(",")).mapToLong(Long::parseLong).toArray();
+      else if (a.startsWith("--cuts-file=")) {
+        cuts = Files.readAllLines(Path.of(a.substring(12))).stream().filter(l -> !l.isBlank()).mapToLong(Long::parseLong).toArray();
+      } else if (a.startsWith("--compare=")) compareWith = a.substring(10);
+      else throw new IllegalArgumentException("unknown option " + a);
+    }
+    if (cuts == null) cuts = SegmentWriter.defaultCuts(segmentRows, count);
+    long t0 = System.nanoTime();
+    Program p = new Program(Path.of(args[1]), Path.of(args[2]));
+    SegmentWriter w = new SegmentWriter(p, cuts);
+    byte[] file = w.write();
+    double seconds = (System.nanoTime() - t0) / 1e9;
+    Path out = Path.of(args[3]);
+    Files.write(out, file);
+    StringBuilder cutsText = new StringBuilder();
+    for (long c : cuts) cutsText.append(c).append('\n');
+    Files.writeString(Path.of(args[3] + ".cuts"), cutsText);
+    String sha = sha256(file);
+    Files.writeString(Path.of(args[3] + ".json"), String.format(
+        "{%n  \"program\": \"%s\",%n  \"input\": \"%s\",%n  \"rows\": %d,%n  \"segments\": %d,%n  \"file_bytes\": %d,%n"
+            + "  \"file_sha256\": \"%s\",%n  \"advice_words\": %d,%n  \"update_words\": %d%n}%n",
+        args[1], args[2], w.totalRows, cuts.length, file.length, sha, w.adviceWords, w.updateWords));
+    System.out.printf("%d rows, %d segments, file %d bytes, SHA-256 %s; %d advice words, %d update words; %.1f s%n",
+        w.totalRows, cuts.length, file.length, sha, w.adviceWords, w.updateWords, seconds);
+    if (compareWith == null) return true;
+    byte[] ref = Files.readAllBytes(Path.of(compareWith));
+    String where = FrameDiff.firstDifference(file, ref);
+    System.out.println(where == null ? "IDENTICAL to " + compareWith + " (SHA-256 " + sha256(ref) + ")" : "DIFFERS: " + where);
+    return where == null;
+  }
+
+  static String sha256(byte[] data) throws Exception {
+    byte[] d = java.security.MessageDigest.getInstance("SHA-256").digest(data);
+    StringBuilder b = new StringBuilder();
+    for (byte x : d) b.append(String.format("%02x", x));
+    return b.toString();
   }
 
   static long paddedRows(long rows) {             // trace_owner.hpp:437-450

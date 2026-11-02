@@ -350,9 +350,7 @@ third bullets; answers T7 the way section 11 kept as the backup; makes C4 moot.
   what the rows consume, or they fall out of step (W2).
 - **New for the Tracer:** a read-log input queue with its credits, fed by its controller.
 - **Open:**
-  - (a) **v1.25:** the expansion word's tracer-only fields, `untraced` [55] and `advice_reg` [61:56], and the "untraced word reaching
-    a replayer" error (4.19.11): make them reserved before the freeze, so the RTL never builds them. Raised with WORKER10 and
-    WORKER11.
+  - (a) ~~v1.25: the expansion word's tracer-only fields~~ **done:** reserved in v1.25 (DECISIONS-v1.25 section 9, spec `b7c90fb`).
   - (b) Whether bank 1 has any use left.
   - (c) **Registers 40-47 at a slice's start.** They set the next write's `rd_prev` and come from trace history, not RISC-V
     state; jolt-cpp's JIT doesn't track them (WORKER16). jolt-cpp's tracer and GPU compressed-trace expander do handle them

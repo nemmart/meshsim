@@ -86,7 +86,7 @@ non-obvious ones, which a hardware Tracer must also follow:
 - **rd = x0**: a side-effect-free instruction becomes `ADDI x0, x0, 0`; one with side effects gets rd remapped to
   register 40; ECALL, MRET, EBREAK, the CSRs, LR/SC and all inlines keep x0 (`virtual.cpp:15-128`, `:270-283`).
 - **Every division-family advice row is traced as `VirtualAdvice`**, its rs1/rs2 numbers, values and imm zeroed
-  (`trace_owner.cpp:888-895`); `VirtualAdviceRemU` would return the quotient (no expansion emits it).
+  (`trace_owner.cpp:899-904`); `VirtualAdviceRemU` would return the quotient (no expansion emits it).
 - **Registers 48-127 are never zeroed on the row path**; rows stay right because every inline's last rows zero its
   registers (`ADDI r, x0, 0`, in register order) (`trace_owner.cpp:128-139`, `allocator.rs`).
 - **Narrow accesses** work on the containing aligned word (floored address; misaligned word address aborts)

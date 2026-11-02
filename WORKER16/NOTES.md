@@ -62,3 +62,10 @@ local 1 CPU, 3 GB, `vm.overcommit_memory=1`, which resets between tool calls her
 stream". To measure on the 2^29 runs: (1) secp sequences: count, rows inside, longest; (2) 2^22 slice boundaries inside a
 secp sequence with advice pending, and the pending words each carries; (3) advice words per slice (min, mean, max).
 Report only. W2 (the JIT emitting the streams) may come next.
+
+**2^29 runs done locally** (no Quest number needed; detached with `setsid`, since a plain background job dies with the
+tool call): EVM Zone 3 min, Cyclone 4 min, peak about 1.6 GB per process. Tool at `ae1c262`. Rows equal jolt-cpp's on
+every window (5,415 and 5,670); counts equal WORKER9's and WORKER12's. T2: Cyclone 1,096/1,096; EVM Zone 515/673, every
+failure mid-secp with advice pending; T2 + buffer 673/673. Section 13: no 2^22 boundary falls inside a secp sequence
+on either run; words per slice EVM Zone 1 / 44.5 / 3,676 (total 3,782), Cyclone 0 / 1,086 / 3,094 (total 96,687).
+secp words per operation are `shape().advice_words` (4, 6 or 8), not always 8. Written up in `REPORT.md`.

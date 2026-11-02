@@ -99,3 +99,10 @@ Plan first.
   Mid-sequence starts also need 48-127 (or a rewind) and the pending advice.
 - Division family: one advice row per instruction, on the source rs1/rs2: DIV→`VirtualAdviceDiv`, REM→`Rem`, DIVU and
   REMU→`DivU`, DIVW→`DivW`, REMW→`RemW`, DIVUW and REMUW→`DivUW` (`isa/virtual.cpp:285-436`).
+
+**(2) Built and checked** (go-ahead, owner via the user, with the output format; plus: scope registers 40-47 from the same
+pass, not built): branch `worker16-w2` at `38722ce`. Streams equal jolt-cpp's rows' advice words on every slice of both
+2^29 runs (128/128 each), a 6,314-slice stress over EVM Zone's secp region (68 heads, up to 8 words) and an 8,192-slice
+Cyclone run; default outputs unchanged. Registers 40-47: 8 families, 25 opcodes write them (4.03M / 30.32M instructions);
+the interpreter tail misses 51 / 455 (boundary, register) pairs (up to 284.5M rows back), so the JIT would need helpers;
+cheap; proposed as `start_regs_40_47` in the manifest. See `W2-REPORT.md`.

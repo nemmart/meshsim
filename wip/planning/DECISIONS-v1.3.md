@@ -519,6 +519,9 @@ Decided (O).
   and WORKER17 do), WORKER16's segment files, WORKER17's layout and page tables.
 - **Stage 1, a Tracer model:** the loader, the layout, the interpreter and the expansions, with advice taken from the data
   (jolt-cpp's rows, or frame 3); rows identical to jolt-cpp's on the small inputs, then on both workloads at 2²⁹.
+  **Stage 1 done** (WORKER18, 2026-11-01): rows identical to jolt-cpp's on both small inputs (every record) and both workloads
+  at 2²⁹ (every window hash; EVM Zone's 3,674 advice words all consumed); all 15 inlines match jolt-cpp's emit lists row for
+  row, checked on every build. About 16.5 M rows/s on one CPU: a 2²⁹ run in about 22 s (jolt-cpp's `row_dump`: 27-29 s).
 - **Stage 2, gold:** it computes everything itself (the advice, the processor state at each cut, the dirty runs, the page counts)
   and writes the segment file. **It earns gold** by writing files byte-identical to WORKER16's tool (W3) on both workloads at 2²⁹
   and on the hard-cut tests; the C++ tool then becomes the cross-check.
@@ -601,7 +604,7 @@ Work agreed for v1.3, each with the decisions it carries out. Studies (below) ar
 | W1 | ~~Bring the replayer and the Tracer up to date with jolt-cpp's latest~~ | 9 | **moved to v1.25** (owner, 2026-10-31): `DECISIONS-v1.25.md` |
 | W2 | **jolt-cpp's JIT emits the advice streams**: 128 per 2²⁹ run, one per 2²² rows, words in row order (`shape(op).advice_words` per secp op), a crossing sequence's pending words at the head of the next; and **how jolt-cpp handles registers 40-47** at a chunk's start (13 (c)) | 13 | **deferred** (owner, 2026-11-01): the fast JIT version isn't needed any time soon with the Java emulator (W4); the slow tool (W3) produces the advice logs and the full state, registers 40-47 included. The scoping is in `WORKER16/W3-REPORT.md` for later |
 | W3 | **The segment file tool**: runs the trace on the host and writes section 16's file (page counts, then per segment the processor state, advice log and updates, raw or LRU-coded); slow first | 16 | **done** (WORKER16, jolt-asic-planning `worker16-w3` ca30b5e; `WORKER16/W3-REPORT.md`): both workloads at 2²⁹ and hard-cut tests pass every check; whole file 1.75 MB (EVM Zone), 10.33 MB (Cyclone) |
-| W4 | **The Java emulator** (`wip/gold/`): self-contained; stage 1 a Tracer model matching jolt-cpp's rows, stage 2 gold, writing section 16's file | 17 | WORKER18 |
+| W4 | **The Java emulator** (`wip/gold/`): self-contained; stage 1 a Tracer model matching jolt-cpp's rows, stage 2 gold, writing section 16's file | 17 | WORKER18: **stage 1 done**; stage 2 next |
 
 ---
 

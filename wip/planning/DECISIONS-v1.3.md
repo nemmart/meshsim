@@ -610,10 +610,13 @@ program.
 ## 19. Launching a program: two files, three pointers (2026-11-01)
 
 Decided (O). A program is **two files** in the file system (C&C 2), each represented by where its tables are in memory, in 4 KB
-pages; **the Tracer is launched with 3 x 32-bit values**, addresses in 128 B units like every entry (section 12):
+pages; **the Tracer is launched with two 32-bit pointers** (one per file), addresses in 128 B units like every entry (section 12).
+**The memory system guarantees contiguous chunks of 4 KB, 8 KB and 16 KB** (owner), so each table is a single chunk and needs a
+single pointer: 4 KB for a leaf, the map list and a map page; 8 KB for the top level; 16 KB for a data page. A buddy allocator
+over 4 KB units, up to order 2, gives exactly these, each naturally aligned to its size (integrator's suggestion).
 
-- **`<program>.pages`: the page table's top level** (section 12): 2,048 entries x 4 bytes = **8 KB, two 4 KB pages**, which needn't
-  be adjacent: **two pointers.** The leaves are reached through its entries, as before.
+- **`<program>.pages`: the page table's top level** (section 12): 2,048 entries x 4 bytes = **one 8 KB chunk: one pointer.** The
+  leaves are reached through its entries, as before.
 - **`<program>.map`: the code map** (section 18): **a list of 1,024 pointers**, one 4 KB page: **one pointer.** Each entry points to
   a 4 KB map page, or is `0xFFFFFFFF` for none; a map page holds 512 (base, mask) pairs, section 18's two u32 per 64 B of code, so
   it covers 32 KB of code and the list 32 MB.

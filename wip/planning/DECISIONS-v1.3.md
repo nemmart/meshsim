@@ -431,8 +431,8 @@ Decided (O), from the planning discussion of 2026-10-19 recorded in jolt-asic-pl
   **A small LRU: 32 entries** (owner): a hit names its entry in 5 bits, 6 with the hit flag. PR #1 measured 512 entries (49-83%
   hits); 32 entries hit less, which the links' slack absorbs; to measure.
 - **The transport is one byte stream, identical for every ASIC** (owner). So the per-segment chunks (processor state, advice log)
-  travel in the same stream as the broadcast updates, and **each ASIC picks out its own segment's chunks**: the framing tags each
-  chunk with its segment. Below the byte stream: LVDS in, an 8 KB byte queue with flow control, credit-based flow to the Updater,
+  travel in the same stream as the broadcast updates, and **each ASIC picks out its own segment's chunks**, by their position:
+  frames come in segment order (section 16). Below the byte stream: LVDS in, an 8 KB byte queue with flow control, credit-based flow to the Updater,
   which must never stall (planning notes). How the stream reaches each ASIC (PR #1's chain per card, route 2') doesn't change
   what an ASIC receives.
 - **Open:**

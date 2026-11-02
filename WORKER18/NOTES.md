@@ -177,3 +177,43 @@ The 2^29 runs fit this 3 GB sandbox (memory is sparse 16 KB pages), so no runner
 
 Advice in stage 1: the division family computes its own (as jolt-cpp's interpreter does); secp256k1 words come from
 row_dump's `advice.bin` (stage 2 computes them).
+
+## Stage 2: the segment file, as WORKER16's segment_writer writes it (jolt-asic-planning `worker16-w3` at `ca30b5e`)
+
+Section 16's format **plus every choice the encoder makes**, read from `tracer/segments/segment_writer.cpp` and
+`segment_common.hpp` at `ca30b5e`. Byte-identical files need all of them (owner, 2026-11-02). Frame 6 (an `instr_idx`
+table) is left out: the tool doesn't write it and where it belongs is open (owner, 2026-11-02).
+
+- **Cuts:** by default `k * 2^22` for k = 0..127 (`--segment-rows`, `--segments`); `--cuts=` gives an explicit
+  increasing list starting at 0 (the hard-cut tests), and then the file has one page count per cut. Segment k runs
+  rows [cut k, cut k+1), the last one until the program ends.
+- **Frame order:** frame 1 once; then per segment frames 2, 3, then 4 or 5. Frame header: u32 length in 32-bit words
+  including the 2 header words, u32 type; data zero-padded to a whole word (`put_frame`, `segment_common.hpp:125-133`).
+- **Frame 1:** per segment a u32: the number of distinct 16 KB pages among its dirty cells (cell >> 11).
+- **Frame 2:** 131 u64 taken before the cut row runs: pc; `instr_idx` (the row's bytecode index); the next offset =
+  `instr_idx` - the first index of pc's expansion; then registers 0-127 (register 0's word is 0; 48-127 as they are,
+  live mid-sequence). **A segment past the end of the run** (padding): pc 0, `instr_idx` 0, offset 0, and the
+  registers **as the run left them** (writer `:131-137`).
+- **Frame 3:** the advice words of the segment's advice rows, in row order: a secp row's word, a division row's
+  result (`segment_common.hpp:91-103`). Words of a sequence that crosses a cut fall in the next segment.
+- **Dirty cells:** every cell a store row writes during the segment (even with an unchanged value), cell =
+  (word address - lowest_address) / 8, lowest_address = min(trusted, untrusted advice start).
+- **Update words:** the dirty cells sorted, split into maximal runs of consecutive cells; per run a header word
+  `start cell | count << 32` and the cells' values **at the segment's end** (read from memory then).
+- **Frame 5's data:** u32 count of update words, then the codes, bit-packed least significant bit first in each byte;
+  a 32-entry table, all zero at the start of each frame. Per word: if it equals an entry, **the lowest matching index**:
+  bit 1, then the index in 5 bits; the entry moves to the front. Otherwise bit 0, then a size bit (1 if the word has
+  any of bits 63:32 set, else 0), then 64 or 32 bits of the value; the word is pushed at the front and the last entry
+  drops. The last byte's spare bits are 0 (`lru_encode`, writer `:27-52`).
+- **Raw or LRU per segment** (writer `:166-171`): LRU size = frame 5's data rounded up to 4 bytes; raw size =
+  8 x the word count. **Frame 5 iff the list is non-empty and the LRU size is strictly smaller**; on a tie, raw; an
+  empty list is always frame 4 (with no data).
+
+Reference files (regenerated locally from `ca30b5e`, SHA-256 equal to WORKER16's committed `WORKER16/data/w3/*.writer.json`):
+
+| file | rows | segments | bytes | SHA-256 |
+|---|---|---|---|---|
+| `evm-zone-29` | 354,861,942 | 128 | 1,747,828 | `208520ec...8aa17d18` |
+| `cyclone-29` | 371,526,406 | 128 | 10,334,580 | `f45f71b6...8aa64070` |
+| `evm-zone-23-hardcuts` (cuts: `WORKER16/data/w3/*.cuts`) | 5,833,069 | 93 | 326,576 | `b33f9fc4...5b35c566` |
+| `cyclone-22-hardcuts` | 2,705,819 | 111 | 339,884 | `a3858f5e...8cac81ec` |

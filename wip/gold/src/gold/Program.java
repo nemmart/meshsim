@@ -18,6 +18,10 @@ public final class Program {
   public final java.util.Map<String, Long> symbols;
 
   public Program(Path programDir, Path inputDir) throws IOException {
+    this(programDir, inputDir, Bytecode.LoadMode.STRICT);
+  }
+
+  public Program(Path programDir, Path inputDir, Bytecode.LoadMode mode) throws IOException {
     Elf elf = new Elf(programDir.resolve("program.elf"));
     symbols = elf.symbols;
     if (elf.machine != Elf.EM_RISCV || elf.type != Elf.ET_EXEC) throw new IOException("not a RISC-V executable");
@@ -65,7 +69,7 @@ public final class Program {
       };
     }
     hostIo = HostIo.resolve(code, requested);
-    bytecode = Bytecode.build(layout.codeStart, code, hostIo);
+    bytecode = Bytecode.build(layout.codeStart, code, hostIo, mode);
   }
 
   private void copyInput(Path file, long start, long end) throws IOException {

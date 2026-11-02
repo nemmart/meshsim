@@ -22,9 +22,10 @@ import java.util.Map;
  *       window against &lt;ref&gt;.hashes.csv; and the layout, the bytecode size and the row counts against &lt;ref&gt;.json.
  *       Stage 1: secp256k1 advice from &lt;ref&gt;.advice.bin; with --computed-advice, computed (stage 2).
  *
- *   run &lt;program dir&gt; &lt;input dir&gt; [--tohost]
+ *   run &lt;program dir&gt; &lt;input dir&gt; [--tohost] [--permissive]
  *       Runs the guest with nothing to compare against: the row count and run hash, or where it aborts; with
- *       --tohost, also an ACT4 test's verdict from its tohost word.
+ *       --tohost, also an ACT4 test's verdict from its tohost word. Loading is strict (an instruction Jolt can't
+ *       prove is rejected) unless --permissive (ACT4), where it throws only when executed (owner's D4 ruling).
  *
  *   segments &lt;program dir&gt; &lt;input dir&gt; &lt;out file&gt; [--cuts=0,a,...|--cuts-file=F] [--segment-rows=N]
  *            [--segments=N] [--compare=&lt;reference file&gt;]
@@ -47,8 +48,9 @@ public final class Main {
       System.exit(compare(Path.of(args[1]), Path.of(args[2]), args[3], maxRows, computed) ? 0 : 1);
     }
     if (args.length >= 3 && args[0].equals("run")) {
-      boolean tohost = args.length > 3 && args[3].equals("--tohost");
-      System.exit(run(Path.of(args[1]), Path.of(args[2]), tohost) ? 0 : 1);
+      java.util.List<String> opts = java.util.Arrays.asList(args).subList(3, args.length);
+      System.exit(run(Path.of(args[1]), Path.of(args[2]), opts.contains("--tohost"),
+          opts.contains("--permissive") ? Bytecode.LoadMode.PERMISSIVE : Bytecode.LoadMode.STRICT) ? 0 : 1);
     }
     if (args.length >= 4 && args[0].equals("segments")) {
       System.exit(segments(args) ? 0 : 1);
@@ -60,8 +62,14 @@ public final class Main {
   }
 
   /** run: no reference; computes everything and prints the row count and run hash, or where the run aborts. */
-  static boolean run(Path programDir, Path inputDir, boolean tohost) throws IOException {
-    Program p = new Program(programDir, inputDir);
+  static boolean run(Path programDir, Path inputDir, boolean tohost, Bytecode.LoadMode mode) throws IOException {
+    Program p;
+    try {
+      p = new Program(programDir, inputDir, mode);
+    } catch (Bytecode.UnprovableInstruction e) {
+      System.out.println("REJECTED at load: " + e.getMessage());
+      return false;
+    }
     Machine m = new Machine(p, new SecpCompute());
     long windowHash = 0, runHash = 0;
     try {

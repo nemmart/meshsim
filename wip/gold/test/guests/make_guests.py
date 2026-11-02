@@ -71,6 +71,34 @@ GUESTS = {
     "stack_canary_store": None,    # filled below: needs the code size
 }
 
+def csr(funct3, rd, rs1_or_uimm, csr_addr): return csr_addr << 20 | rs1_or_uimm << 15 | funct3 << 12 | rd << 7 | 0x73
+MSTATUS, MHARTID = 0x300, 0xF14
+UNIMP32 = 0xC0001073         # unimp (csrrw x0, cycle, x0): a standard UNIMP encoding
+C_UNIMP_PAIR = 0x00000000    # two c.unimp (0x0000) halfwords: the other standard UNIMP encoding
+
+# The owner's ruling on UPSTREAM-DIFFS D4 (DECISIONS-v1.3 section 17): strict loading rejects any instruction Jolt
+# can't prove; the standard UNIMP encodings load as unreachable markers and throw only if executed; permissive mode
+# (ACT4) throws on the unprovable ones when executed.
+UNPROVABLE = {
+    "unprovable_csrrc": csr(3, A0, A1, MSTATUS),
+    "unprovable_csrrwi": csr(5, A0, 5, MSTATUS),
+    "unprovable_csrrsi": csr(6, A0, 5, MSTATUS),
+    "unprovable_csrrci": csr(7, A0, 5, MSTATUS),
+    "unprovable_csr_mhartid": csr(2, A0, 0, MHARTID),     # csrr a0, mhartid: a CSR outside the six
+    "unprovable_wfi": 0x10500073,
+    "unprovable_sret": 0x10200073,
+    "unprovable_sfence_vma": 0x12000073,
+    "unprovable_undecodable": 0x0000007F,                 # opcode 0x7F: no instruction
+}
+for name, word in UNPROVABLE.items():
+    GUESTS[name] = [addi(A0, 0, 1), word, addi(A0, A0, 1), JAL_SELF]
+# standard UNIMP encodings after the program's end, never reached: load and run normally
+GUESTS["unimp_unreached"] = [addi(A0, 0, 1), JAL_SELF, UNIMP32, C_UNIMP_PAIR]
+# executed: falling into each encoding, and jumping to c.unimp
+GUESTS["unimp32_executed"] = [addi(A0, 0, 1), UNIMP32, JAL_SELF]
+GUESTS["c_unimp_executed"] = [addi(A0, 0, 1), C_UNIMP_PAIR, JAL_SELF]
+GUESTS["c_unimp_jump"] = [auipc(T0, 0), addi(T0, T0, 16), jalr(0, T0, 0), JAL_SELF, C_UNIMP_PAIR, JAL_SELF]
+
 def canary_guest():
     end = RAM_START + 4 * 6           # six instructions: program_end is 8-aligned
     return la(T0, end) + [addi(A0, 0, 9), sd(T0, A0, 0), addi(0, 0, 0), JAL_SELF]   # [program_end] = 9

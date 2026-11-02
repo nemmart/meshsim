@@ -63,6 +63,7 @@ public final class Machine {
   /** Executes one row and fills {@link #row}. */
   public void step() {
     VInstr v = code.instrs[index];
+    if (v.unprovable != null) throw new EmulationError("executed an instruction Jolt can't prove: " + v.unprovable);
     if (prevSeqRemaining == 0 && v.seqRemaining != 0 && v.adviceOp != Secp.Operation.NONE) secp.prepare(this, v);
     prevSeqRemaining = v.seqRemaining;
     if (!v.isVirtual || v.isFirstInSequence) {
@@ -261,11 +262,14 @@ public final class Machine {
       index = 0;
     } else if (newPc != pc) {
       pc = newPc;
+      if (code.removedAt(pc) != null) throw new EmulationError("executed an instruction Jolt can't prove: " + code.removedAt(pc));
       index = code.indexOf(newPc);
       if (index == 0) throw new EmulationError(String.format("jump to %#x, where no instruction starts", newPc));
     } else {
       pc += v.pcIncrement;
       index++;
+      // jolt-cpp steps over a removed UNIMP with its pc behind (UPSTREAM-DIFFS D4); by the owner's ruling, reaching it throws
+      if (code.removedAt(pc) != null) throw new EmulationError("executed an instruction Jolt can't prove: " + code.removedAt(pc));
     }
   }
 }

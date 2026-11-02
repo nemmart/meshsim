@@ -25,6 +25,9 @@ public final class VInstr {
   /** secp256k1 inlines, first row only: the operation and its input registers (virtual.cpp:1194-1201). */
   public Secp.Operation adviceOp = Secp.Operation.NONE;
   public int adviceRs1, adviceRs2;
+  /** Not provable: executing this row throws (an unprovable instruction loaded in permissive mode, or the standard
+   *  UNIMP 0xC0001073 in either mode; owner's D4 ruling, DECISIONS-v1.3 section 17). */
+  public String unprovable;
 
   /** The row's immediate: the sum of the immediate fields, the shift offset for shift-data, 0 for advice
    *  (trace_owner.hpp:168-177). */

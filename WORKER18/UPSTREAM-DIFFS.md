@@ -25,6 +25,7 @@ does with faulty or unusual guests.
 | D9 | the layout's stack bounds are named differently | convention only |
 | D10 | padding: jolt-cpp pads to the power of two above rows + 1 | to confirm on upstream's prover |
 | D11 | upstream has inlines and row kinds jolt-cpp lacks (grumpkin, p256, NTT; four kinds) | yes, guests using them |
+| D12 | C.SLLI with rd = x0 (a HINT): jolt-cpp rejects it as invalid, upstream runs it as a NOP | yes, if a compiler emits it |
 
 ## D1. The program image: segments or sections
 
@@ -158,3 +159,37 @@ upstream 17a9459 rejects the ELF.
   instructions.
 - No ELF tested uses them (upstream_rows maps the four kinds to 0xFE and reports none). Gold follows jolt-cpp. Their
   upstream tests (`jolt-inlines/{grumpkin,p256,ntt}/src/tests.rs`) are out of W5's scope (owner, 2026-11-02).
+
+## D12. C.SLLI with rd = x0, a HINT
+
+- The RISC-V C extension reserves C.SLLI with rd = x0 as a HINT (a valid encoding that must execute as a no-op).
+- **jolt-cpp** expands C.SLLI only for r != 0; r = 0 falls through to "reserved instruction?" and returns invalid
+  (`isa/decoder.cpp:1022-1031`), unlike the other compressed HINTs it turns into NOPs (C.LI, C.MV, C.ADD with rd = 0,
+  `:808-820`, `:1088`, `:1110`). Gold follows it; under the D4 ruling an invalid instruction can't be proven, so strict
+  loading rejects it and the ACT4 runner throws on it.
+- **upstream** uncompresses it to `SLLI x0, x0, shamt` (`crates/jolt-riscv/src/uncompress.rs:612-614`), which the
+  rd = x0 rewrite turns into `ADDI x0, x0, 0`.
+- Found by ACT4 `Zca-c.slli-00` (it executes C.SLLI x0 at 0x80003910): jolt-emu passes, gold's ACT4 runner aborts.
+
+## Upstream findings that aren't jolt-cpp-versus-upstream differences
+
+### U1. jolt-emu reports some failing ACT4 tests as passes
+
+- ACT4's failure exit writes `(gp << 1) | 1` to tohost (`tests/arch-tests/jolt/rvmodel_macros.h:47-52`), with gp
+  unmasked. `run_test` treats a tohost write as an exit only when the HTIF device byte (bits 63:56) is 0
+  (`tracer/src/emulator/mod.rs:126-148`); otherwise it keeps running, reaches the `j 1b` stall and reports "exited
+  successfully (code 0)" (`:117-120`). So any failing test whose gp has a bit above bit 54 set passes in upstream's CI.
+- Seen in `Zalrsc-sc.d-00`: its check 241 fails (jolt-emu takes the BEQ-not-taken path to `failedtest_x5_x4` at
+  0x8000b6b0, its `-d` trace shows it), gp = 0x9cadd5ae9e2ac9c5, tohost = 0x395bab5d3c55938b (device 0x39), and
+  jolt-emu exits 0. Gold's ACT4 runner reads tohost directly and reports FAIL.
+
+### U2. Upstream's ACT4 configuration contradicts its LR/SC rule
+
+- The failing check is "cp_custom_sc_lrsc; bin: prev_lr_lr.w": `lr.w zero, (t4)` then `sc.d t6, s2, (t4)` at the same
+  address. Sail, configured by upstream's `tests/arch-tests/jolt/jolt-rv64imac.yaml` with
+  `LRSC_FAIL_ON_NON_EXACT_LRSC: false`, lets the SC.D succeed (the expected signature is rd = 0).
+- Upstream's tracer fails it: an SC.D needs a doubleword reservation and LR.W makes a word one
+  (`tracer/src/emulator/cpu.rs:535-547`, asserted by its own test `reservation_covers_follows_the_lr_sc_width_rules`,
+  `:1677-1695`). jolt-cpp's SC.D expansion does the same (`isa/virtual.cpp`, SC_D: success iff the doubleword
+  reservation equals the address; LR.W clears it). Gold follows jolt-cpp: rd = 1, the check fails.
+- So jolt-cpp, upstream's tracer and gold agree; the ACT4 configuration (or the semantics) is what disagrees, and U1 hides it.

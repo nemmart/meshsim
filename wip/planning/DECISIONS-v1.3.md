@@ -879,7 +879,7 @@ Decided (O). **Everything the Tracer needs to start a segment, and nothing else:
 | pc, `instr_idx`, the expansion offset, registers 0-127 | frame 2 (section 16), the processor state at the segment's first row |
 | **the guest's memory file:** its root's address (31 bits) and its depth (0 to 3) | C&C 3: the Tracer's copy (section 22) |
 | **the jump-target map file:** its root's address and its depth | C&C 3: the proof's map (section 22) |
-| **the advice stream's size:** the segment's advice words (owner, 2026-11-01) | frame 3's length |
+| **the advice stream's size:** its bits and its values, the segment's advice words (owner, 2026-11-01) | frame 3's length |
 
 **Loading it invalidates the Tracer's local caches**, the 16 KB instruction and data caches and the pc to `instr_idx` LRU,
 **without flushing dirty lines** (owner): the previous segment's copy of memory is throwaway (section 21), so its dirty data is
@@ -917,6 +917,12 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
   beyond a stream's length is an underflow error at once, and a stream not fully consumed at the window's end is an error too.
   A starved window becomes a named error, not a hang caught by C&C 1's watchdog. A change to the replayer at v1.3 (v1.25 is
   frozen); the expansion queue, fed per expansion, ends by `seq_remaining` and is left as is.
+- **A stream's size is two numbers** (owner, 2026-11-01), since some streams are LRU-coded: **the bits in** (the stream as sent,
+  raw or coded) and **the values out** (the 32- or 64-bit values it decodes to). Both are checked: the decoder reading past the
+  bits in, or a consumer popping past the values out, is an underflow error at once; and at the end both must be used up exactly
+  (a coded stream whose bits are all read but which decodes to fewer or more values is corrupt). For the Tracer's advice, raw
+  64-bit words, the bits are 64 times the values. **For the replayer this changes its state record** at v1.3: the stream word
+  carries bit lengths today, so the value counts need room (more fields, or another word; open).
 - **Four queue-length registers** (owner, 2026-11-01), **in 128-bit words**, for the output the controller sends on: **state,
   code, read log, write log.** The state queue is always **67 words** per window (section 6: the template bitmap, the state
   word, the stream word and the 64-word register image), the other three vary with the window.

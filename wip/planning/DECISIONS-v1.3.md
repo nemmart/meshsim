@@ -696,6 +696,9 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
   doing the work, so there is **one walker in the chip**; software walks a tree only to change it (fill, copy, free, grow), writing
   the index entry through the cache so the walker sees it, and invalidating any translation of the old entry. (This replaces the
   file system bypassing the cache entirely.)
+  **So the file system has fast `read_page` and `write_page` primitives anywhere in it** (owner): (slot, offset) through the
+  translator to a page, then one direct 4 KB transfer, whatever the file's size or depth. A `write_page` to a hole in a sparse file
+  fills the hole first; in a dense file it overwrites within the length, or appends at the end.
 - **File-system calls** (owner) for what hardware never does, served by C&C 2: **fill a hole** (allocate a page at an offset,
   growing the tree or adding index pages as needed), used for example by the Updater building the memory image for the next
   trace; and, by the same token, **copy a page** (replacing a shared page with a private copy, the Updater's streaming

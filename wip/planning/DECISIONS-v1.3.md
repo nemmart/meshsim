@@ -539,8 +539,12 @@ Decided (O).
   - **the exception: the standard UNIMP encodings** (`c.unimp` 0x0000, `unimp` 0xC0001073), which compilers place after code
     that can't return and as padding: **loaded as an unreachable marker** (upstream's `UNIMPL`), **throwing only if executed**;
   - everything else loads and runs as now. For every valid program (both workloads included) nothing changes, so the
-    byte-identical acceptance holds. This is strict mode; ACT4's permissive mode decodes at run time and throws on the same
-    instructions when executed.
+      byte-identical acceptance holds.
+  - **Gold has one loading mode** (owner, 2026-11-01): no permissive mode. ACT4 is run by **rebuilding its ELFs under a target of
+    our own** (its linker script putting code and data in separate segments, one executable `PT_LOAD`; the ACT4 sources
+    unmodified, as upstream requires), so each test that then loads strictly is a provable program; a test whose data is
+    inherently inside its code is reported as such. Only if some can't be relinked, an ACT4-only runner in `test/` decodes at run
+    time like `jolt-emu`, executing through gold's ordinary machine; gold's loader stays single-mode.
 - **Stage 3, validation against upstream Jolt** (owner, 2026-11-01; recorded now, added to WORKER18's work at a stopping point):
   upstream's own Rust tracer, pinned (17a9459, the commit section 12 read; HEAD has since been restructured into `crates/`),
   produces rows on the same ELFs and inputs, as data. Its `Cycle` rows need a mapping to jolt-cpp's format first. Where jolt-cpp

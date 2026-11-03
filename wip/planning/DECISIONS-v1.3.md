@@ -664,12 +664,34 @@ Decided (O). A program is **two files** in the file system (C&C 2), each represe
 
 Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's single pool of 4 KB pages; addresses in 128 B units.
 
-- **A file is one of two things** (owner):
-  - **a single data page**, for a file of at most 4 KB;
-  - **a chain of index pages:** each holds **1,023 data-page pointers and a next pointer** to the next index page, so one index page
-    covers 1,023 x 4 KB, just under 4 MB. The last index page's next pointer, and its unused slots, are `0xFFFFFFFF`.
-- **Appending** fills the next slot, linking a new index page when one is full; **reading in order** costs one index page per
-  4 MB; **random access** walks the chain (a reader that jumps around can keep the chain's pointers).
+- **A file is a tree whose depth follows its length** (owner, 2026-11-01; replaces a chain of index pages, each 1,023 pointers
+  plus a next pointer): index pages of **1,024 pointers**, no next pointer:
+
+| depth | structure | maximum size |
+|---|---|---|
+| 0 | the data page itself | 4 KB |
+| 1 | an index page of 1,024 data pages | 4 MB |
+| 2 | an index page of 1,024 index pages | 4 GB |
+| 3 | three levels | 4 TB |
+
+  - **Growing** past a depth allocates one index page whose entry 0 points to the old root, which becomes the new root: the old
+    tree moves down a level untouched (one page, one pointer, the directory entry's location updated).
+  - **The depth follows from the length**, so it needs no field. **Random access** is one read per level, at most three.
+  - **Holes:** an entry of `0xFFFFFFFF` means no page there, so a sparse file costs only the pages it has.
+  - **The page table is such a file** (integrator's observation, owner's direction): a depth-3 file's root entries each cover
+    4 GB, a middle table of 1,024 leaf tables of 1,024 data pages, section 12's 9 + 10 + 10 bits. So **`.pages` is a sparse depth-3
+    file whose contents are the guest's memory**, using the root's first 8 entries (32 GiB); a guest address is a file offset.
+- **The memory system reads files directly** (owner): **file slots**, a small table of open files (root address and depth), which
+  the file system fills; **a request is (slot, offset, size)**, translated through a TLB tagged by slot, a miss walking the file's
+  tree (at most three index reads) through the shared cache, then the line read from the cache. **One translator for everything:**
+  the Tracer's guest memory is a slot (its `.pages` file; the 8 launch registers are that slot's root entries, its two TLBs the
+  slot-tagged TLB), and so is any table or log read by offset. **A hole reads as zero; writing to one is UB:** only software
+  allocates. Bulk page transfers (the Updater, the file system's own moves) still bypass the cache, and writing a page directly
+  still invalidates its lines.
+- **File-system calls** (owner) for what hardware never does, served by C&C 2: **fill a hole** (allocate a page at an offset,
+  growing the tree or adding index pages as needed), used for example by the Updater building the memory image for the next
+  trace; and, by the same token, **copy a page** (replacing a shared page with a private copy, the Updater's streaming
+  copy-on-write) and **free a page** (making a hole). Each invalidates any translation of that page cached for the file's slot.
 - **A directory holds each file's name and length** (owner), with its first pointer (the data page, or the first index page). The
   length also says which form a file has (at most 4 KB: a single page).
 - **A directory entry is a fixed 128 bytes** (owner), exactly one 128 B unit, so it can be addressed and read on its own, and a 4 KB
@@ -704,7 +726,7 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
   buffer, freed once the entry is found. **An open file is a 64-byte record plus a 4 KB page buffer** in the file system's memory:
   - **the record** (proposed layout, integrator, to confirm): the **file descriptor number** (u32, owner; naturally the record's
     index in the table), **the directory entry's address** (u32: an entry is one 128 B unit, so one address names it), location
-    (u32), type (u32), length (u64), current position (u64), current index page (u32), flags (the buffer's page and whether it is
+    (u32, the tree's root), type (u32), length (u64), current position (u64), the current position's index page (u32), flags (the buffer's page and whether it is
     dirty), the rest reserved. Updating the file (its length after an append) writes back to its entry through the address.
   - **the buffer: 4 KB of an open file cached in memory** (owner): the data page at the current position, so reads and writes
     within a page touch no memory, and an append fills the page before it is written out.
@@ -723,7 +745,7 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
   location and the memory's size; the rest reserved, 0.
 - **Open:**
   - (a) the superblock's exact contents; the type values above;
-  - (b) whether `.pages`, the page table's tree, is stored as a file's pages
+  - (b) ~~whether `.pages` is a file~~ decided: a sparse depth-3 file (above). Formerly: whether `.pages`, the page table's tree, is stored as a file's pages
     or is a structure outside the file system, reached only by the Tracer's pointers.
 
 ## 21. The Tracer's local caches (2026-11-01)

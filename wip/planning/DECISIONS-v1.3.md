@@ -311,7 +311,7 @@ its region, with **offset bits [22:20] picking the part**, as in the replayer's 
       both for LPDDR bandwidth.
     - **Line accesses only** (owner): word accesses happen only in the Tracer's local caches (section 21); every client of the
       shared cache reads or writes whole 128 B lines (a client changing part of a line holds the line).
-    - **Organization** (integrator's proposal, to confirm by measurement): **8-way set-associative, 512 sets**: an address is
+    - **Organization: 8-way set-associative, 512 sets** (owner, 2026-11-01): an address is
       already in 128 B units, so its low 9 bits pick the set and the other 22 bits are the tag; replacement LRU within a set.
     - **Banking:** 8 banks of 64 KB, interleaved on the line address's low bits (a page's 32 lines spread over all of them);
       each bank serves one 1,024-bit line per cycle; arbitration per bank, the file system ahead of the Tracer.

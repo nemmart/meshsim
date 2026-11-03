@@ -997,6 +997,13 @@ Decided (O).
   once, and **each tile trims it to what its own window uses** (its record's template bitmap, word 0). (So a tile has the
   templates it needs once the segment's set has been broadcast.) **The broadcast happens when the proving stages start**
   (owner, 2026-11-01), once the segment is traced, so every tile has its templates before its replayer runs.
+- **The template bitmap tracks the inlines only** (owner, 2026-11-01). Of the 75 controller-fed templates, **15 are the inlines**
+  (13,719 words, nearly all of the 216 KB) and **60 are CSR variants**: 2 instructions x 6 CSRs x 5 register patterns (rd = x0,
+  rs1 = x0, rd = rs1, or neither, as jolt-cpp's expansion distinguishes; `tables/README.md`), only **102 words** in all. So **all
+  60 CSR templates are always broadcast** (about 1.6 KB), and the bitmap's job is just to keep the big inline templates off tiles
+  that don't need them: the Tracer sets an inline's bit when it starts one in a window and reports the bitmap at done; C&C 3 puts
+  it in the record's word 0 (its 128-bit layout kept) and ORs it into the segment's set for the broadcast. The template number
+  comes back from C&C 3 with its answer to the expand flag, since it looks the template up anyway (integrator's proposal).
 - **An instruction can straddle two lines, and two pages** (owner, 2026-11-01: a fact of life): a 4-byte instruction starting in
   a line's last 2 bytes (a jump can land there) takes its second half from the next line, which can be in the next page. The fetch
   asks for both lines, each its own instruction-cache lookup and, on a miss, its own (root, depth, line) request, translated

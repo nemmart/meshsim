@@ -475,8 +475,8 @@ Decided (O), from the planning discussion of 2026-10-19 recorded in jolt-asic-pl
   - pages the segment only reads are **shared**, marked read-only;
   - pages the segment writes are **duplicated before the Tracer starts**, the Tracer's table pointing at the private copy. The
     host's JIT knows exactly which pages those are (PR #1 measured 182 and 499 pages written in a whole 2²⁹ run, EVM Zone and Cyclone).
-  - So **the Tracer never copies on write** (owner): a store to a read-only page means the table is wrong, which is UB (8a: the
-    tables come from our software). The Tracer's copy is the planning notes' "throwaway layer".
+  - So **the Tracer never copies on write** (owner): a store to a page its copy doesn't own, or to a hole, means a table is wrong
+    or corrupted, a checked error (section 25).
 - **An absent page reads as zero** (PR #1 section 4). Answers T3's question for absent pages.
 - **The encoding: an LRU coder with bounded expansion, not LZ4** (owner): an LZ4 match can expand into a long copy while consuming
   almost no input, so output outruns input and data must queue as it flows in from the host. A bounded-expansion code (each code
@@ -705,7 +705,7 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
   and any client can read any file. It translates through a TLB tagged by (root, page), a miss walking the tree (at most three
   index reads) through the shared cache, then reads the line from the cache. **One translator for everything:** the Tracer's
   guest memory is just a file (its `.pages`), and so is any table or log read by offset. **A hole reads as zero; writing to one
-  is UB:** only software allocates. Bulk page transfers (the Updater, the file system's own moves) still bypass the cache, and
+  is a checked error** (section 25), only software allocating. Bulk page transfers (the Updater, the file system's own moves) still bypass the cache, and
   writing a page directly still invalidates its lines. A request's line number is up to 35 bits (a depth-3 file of 4 TB); with the
   root and depth, about 68 bits.
 - **How the file system reaches a file** (owner, 2026-11-01): **index pages through the shared cache**, a line at a time, both
@@ -986,6 +986,17 @@ Decided (O).
   4.19.2's end of trace: the last real row jumps to pc 0 and sets `instr_idx` to 0), every further row is an all-zero NOP, up to
   the segment's 2²² rows, so every window has its rows and a segment past the program's end (frame 2 at pc 0) is traced like any
   other.
+- **What the Tracer checks** (owner, 2026-11-01): **errors, in its `ERRORS`, raising its error line**, for what plausibly comes
+  from corruption somewhere (a host table or a page damaged on the way, a hardware fault), where hanging or running on would hide
+  it:
+  - **a jump target not in the map** (the probe finds neither the pc nor a free slot within its bound);
+  - **a write to a hole** in the guest's memory (an index entry of `0xFFFFFFFF`), reported by the memory system's walker to the
+    requester;
+  - **an access to a page that doesn't exist**, beyond the file's length;
+  - **advice underflow** (a pop past the read queue's size, section 24);
+  - and in software, **leftover advice** at the segment's end (C&C 3, section 24).
+  **UB** stays for our firmware's own mistakes with the Tracer (a row count or state write out of order). A read of a hole still
+  reads as zero (section 15).
 - **ECALL and host I/O need nothing special: their effects happen when the host runs the code** (owner, 2026-11-01). **ECALL**
   is a trap into the guest's own handler, 7 ordinary rows (`isa/virtual.cpp:1068-1085`, mirroring upstream's `ecall.rs`): it
   writes `mepc`, `mcause` = 11, `mtval` = 0 and `mstatus` (virtual registers 32-39) and jumps through `mtvec`; the handler is guest

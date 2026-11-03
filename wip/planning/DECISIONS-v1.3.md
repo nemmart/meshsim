@@ -639,6 +639,24 @@ Decided (O). A program is **two files** in the file system (C&C 2), each represe
   - (b) a small TLB (section 12);
   - (c) whether a log lives only for its proof or can outlive it (a re-run).
 
+## 20. The file system (2026-11-01)
+
+Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's single pool of 4 KB pages; addresses in 128 B units.
+
+- **A file is one of two things** (owner):
+  - **a single data page**, for a file of at most 4 KB;
+  - **a chain of index pages:** each holds **1,023 data-page pointers and a next pointer** to the next index page, so one index page
+    covers 1,023 x 4 KB, just under 4 MB. The last index page's next pointer, and its unused slots, are `0xFFFFFFFF`.
+- **Appending** fills the next slot, linking a new index page when one is full; **reading in order** costs one index page per
+  4 MB; **random access** walks the chain (a reader that jumps around can keep the chain's pointers).
+- **A directory holds each file's name and length** (owner), with its first pointer (the data page, or the first index page). The
+  length also says which form a file has (at most 4 KB: a single page).
+- **Open:**
+  - (a) the directory's format (entry layout, name length, how the directory itself is stored, presumably as a file);
+  - (b) whether `.map` and `.pages` (section 19) are ordinary files in this format (`.map` then a chain of 1,023 pointers plus
+    next, rather than 1,024 pointers; `.pages`'s tables stored as a file's pages), or structures outside the file system, reached
+    only by the Tracer's pointers.
+
 ---
 
 ## v1.3 work list

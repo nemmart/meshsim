@@ -602,8 +602,22 @@ start comes in frame 2. **Only jumps need the map.**
   per 128 B of code with a decode walk of about 30 cycles. The length and CSR findings stay true of jolt-cpp (`isa/virtual.cpp`:
   `num_cycles` 1210-1276, `should_nop_for_rd0` 108-112, CSRRW and CSRRS 1287-1302).
 - **Open:**
-  - (a) the LRU's size, from gold replaying both workloads' jump streams (64 entries hit loops; calls and returns from many sites
-    miss more; a larger LRU is still cheap);
+  - (a) the LRU's size. **Measured** (integrator, 2026-11-01, gold replaying both workloads at 2²⁹; each segment's caches start
+    cold, a segment running on its own ASIC; multiplicative hash with the golden-ratio constant, 2^k lines at most half full):
+
+| | EVM Zone | Cyclone |
+|---|---|---|
+| instruction starts (table keys) | 616,231 | 545,760 |
+| table | 2¹⁷ lines, 16 MB, load 0.29 | 2¹⁷ lines, 16 MB, load 0.26 |
+| fullest line (of 16) | 9: every key in its home line | 8: every key in its home line |
+| jumps | 4.06 M (1.1% of rows) | 15.9 M (4.3% of rows) |
+| LRU misses, 64 / 256 / 1,024 entries | 3.8% / 3.1% / 2.0% | 19.0% / 7.4% / 2.3% |
+| worst segment, LRU 64: misses, of which a line's first touch | 8,665, 3,048 | 87,261, 2,467 |
+
+    **So a lookup is always one line read**, and the cost is small: the worst segment (Cyclone, LRU 64) is about 2,500 cold line
+    reads from LPDDR at about 150 cycles and 85,000 warm ones at about 6, roughly 0.9 M cycles, under 1% of the Tracer's 100 ms
+    budget per segment at an assumed 1 GHz [estimate]. Cold lines (one per distinct target, about 2,500-3,000 per segment) dominate
+    and don't depend on the LRU's size; a 256-entry LRU halves Cyclone's warm misses.
   - (b) the hash function and the table's exact layout (software, free to change);
   - (c) building the table on the host (from the bytecode's instruction starts).
 

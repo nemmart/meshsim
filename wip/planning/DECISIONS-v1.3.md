@@ -753,6 +753,10 @@ the 1,024-bit fill bus stays short; the controllers' line accesses travel furthe
     memory-system address and its read-only bit), so a miss in the local caches doesn't walk the three levels each time; a 4 KB
     page is 32 lines, so a missing line's neighbours share its translation. Its size: proposed 64 entries, fully associative
     like the other small caches, to confirm by measurement (d).
+    **And a second one, a level up** (owner): the top level's 8 middle-table addresses are always in registers (section 19), so the
+    walk reads a middle entry (a 4 MB region to its leaf table's address) and then a leaf entry. A cache of **middle entries** means
+    a TLB miss usually costs one table read, the leaf entry, through the shared cache. Each entry covers 4 MB and the workloads
+    touch a few clustered regions, so it needs few entries; 16 to 64, to confirm by measurement.
   - (c) whether an instruction line also brings its code map words (a 128 B line is two 64 B blocks, so two (base, mask) pairs of
     section 18), so a jump's target `instr_idx` is computed from the line itself;
   - (d) sizes to confirm by measurement: the gold emulator can replay both 2²⁹ workloads' address streams through these caches

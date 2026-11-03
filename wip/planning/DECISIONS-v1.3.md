@@ -287,8 +287,8 @@ its region, with **offset bits [22:20] picking the part**, as in the replayer's 
     above it, up to section 14's 2³² cells.
   - **One chunk size everywhere** (data pages, index pages, files, logs), so the memory system has a single 4 KB pool and
     nothing fragments.
-  - **Translation belongs to the memory system** (section 20's file slots): the Tracer asks for (slot 0, offset); the memory
-    system's slot-tagged TLB and tree walker do the rest, through the shared cache, at most one index read per level.
+  - **Translation belongs to the memory system** (section 20): the Tracer asks for (root, depth, line) of `.pages`; the memory
+    system's TLB and tree walker do the rest, through the shared cache, at most one index read per level.
   - **Measured clustering** (WORKER17, 2²⁹, in 16 KB pages): EVM Zone 69 pages in 3 16 MiB regions; Cyclone 693 pages in 4
     (the 2.9 MB untrusted advice, and one 7.75 MiB run of stack plus heap). At 4 KB both still fit a handful of leaf tables.
   - **Entries are 32 bits; bits 30:0 address the file system** (LPDDR) **in 128 B units** (owner; 2³¹ x 128 B = 256 GiB), the
@@ -646,12 +646,12 @@ start comes in frame 2. **Only jumps need the map.**
 
 ## 19. Launching a program (2026-11-01)
 
-Decided (O). **A file is its root's 32-bit address and its length** (section 20), so launching is opening files into the memory
-system's slots:
+Decided (O). **A file is its root's 32-bit address and its length** (section 20), so launching is handing the Tracer two files'
+roots and depths:
 
-- **`<program>.pages`, the guest's memory** (section 12), **is opened into slot 0**; the Tracer then just starts, asking for
-  (slot 0, offset). (This replaces 8 middle-table addresses loaded into Tracer registers.)
-- **The static jump-target table** (section 18), a program file, is opened into a slot of its own; the proof's supplement (frame 6)
+- **`<program>.pages`, the guest's memory** (section 12): the Tracer is given **its root and depth**, and then just starts, asking
+  for (root, depth, line). (This replaces 8 middle-table addresses loaded into Tracer registers, and then a slot.)
+- **The jump-target table** (section 18): the Tracer is given the proof's map's root and depth too; the proof's supplement (frame 6)
   goes into private copies of the pages it lands in.
 - **No load step:** everything is read in place, through the shared 512 KB cache.
 - **Fragmentation: none.** With one 4 KB chunk size, any free page fits any request, so the memory system needs no buddy
@@ -686,21 +686,22 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
     0x8000_0000) and a high part (program, stack, heap), both inside a 32-bit window from `lowest_address`, so for K up to 2²⁹ cells
     the offset is 32 bits and **`.pages` is a depth-2 file (4 GB)**; both workloads are (EVM Zone 2²³ cells, 64 MiB; Cyclone 2²⁴,
     128 MiB). Only K above 2²⁹ cells, up to section 14's 2³², needs depth 3.
-- **The memory system reads files directly** (owner): **file slots**, a small table of open files (root address and depth), which
-  the file system fills; **a request is (slot, offset, size)**, translated through a TLB tagged by slot, a miss walking the file's
-  tree (at most three index reads) through the shared cache, then the line read from the cache. **One translator for everything:**
-  the Tracer's guest memory is a slot (its `.pages` file; the 8 launch registers are that slot's root entries, its two TLBs the
-  slot-tagged TLB), and so is any table or log read by offset. **A hole reads as zero; writing to one is UB:** only software
-  allocates. Bulk page transfers (the Updater, the file system's own moves) still bypass the cache, and writing a page directly
-  still invalidates its lines.
+- **The memory system reads files directly** (owner): **a request names the file itself: its root's address (31 bits), its
+  depth (0 to 3) and a line** (owner, 2026-11-01; replacing a table of file slots), so the memory system holds no per-file state
+  and any client can read any file. It translates through a TLB tagged by (root, page), a miss walking the tree (at most three
+  index reads) through the shared cache, then reads the line from the cache. **One translator for everything:** the Tracer's
+  guest memory is just a file (its `.pages`), and so is any table or log read by offset. **A hole reads as zero; writing to one
+  is UB:** only software allocates. Bulk page transfers (the Updater, the file system's own moves) still bypass the cache, and
+  writing a page directly still invalidates its lines. A request's line number is up to 35 bits (a depth-3 file of 4 TB); with the
+  root and depth, about 68 bits.
 - **How the file system reaches a file** (owner, 2026-11-01): **index pages through the shared cache**, a line at a time, both
   reading and updating entries; **data pages directly**, as whole 4 KB pages into its buffers. **It finds a page through the
-  memory system's translator**: it opens the file into a slot and asks which page (slot, offset) is, the hardware walker and TLB
+  memory system's translator**: it asks which page (root, depth, offset) is, the hardware walker and TLB
   doing the work, so there is **one walker in the chip**; software walks a tree only to change it (fill, copy, free, grow), writing
   the index entry through the cache so the walker sees it, and invalidating any translation of the old entry. (This replaces the
   file system bypassing the cache entirely.)
-  **So the file system has fast `read_page` and `write_page` primitives anywhere in it** (owner): (slot, offset) through the
-  translator to a page, then one direct 4 KB transfer, whatever the file's size or depth. A `write_page` to a hole in a sparse file
+  **So the file system has fast `read_page` and `write_page` primitives anywhere in it** (owner): (root, depth, offset) through
+  the translator to a page, then one direct 4 KB transfer, whatever the file's size or depth. A `write_page` to a hole in a sparse file
   fills the hole first; in a dense file it overwrites within the length, or appends at the end.
 - **Copy-on-write files** (owner, 2026-11-01):
   - **`freeze(path)`** sets the file's **read-only flag** in its directory entry: O(1), no walk (the flag, not the entries,
@@ -731,7 +732,7 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
 - **File-system calls** (owner) for what hardware never does, served by C&C 2: **fill a hole** (allocate a page at an offset,
   growing the tree or adding index pages as needed), used for example by the Updater building the memory image for the next
   trace; and, by the same token, **copy a page** (replacing a shared page with a private copy, the Updater's streaming
-  copy-on-write) and **free a page** (making a hole). Each invalidates any translation of that page cached for the file's slot.
+  copy-on-write) and **free a page** (making a hole). Each invalidates any translation of that page cached for the file.
 - **A directory holds each file's name and length** (owner), with its first pointer (the data page, or the first index page). The
   length also says which form a file has (at most 4 KB: a single page).
 - **A directory entry is a fixed 128 bytes** (owner), exactly one 128 B unit, so it can be addressed and read on its own, and a 4 KB
@@ -798,23 +799,23 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
 
 ## 21. The Tracer's local caches (2026-11-01)
 
-Decided (O). In front of section 12's shared 512 KB cache, which acts as an L2 for the Tracer; a local miss is a (slot 0,
-offset) request to the memory system, which translates it (section 20). **The 512 KB cache sits close to the memory** (owner,
+Decided (O). In front of section 12's shared 512 KB cache, which acts as an L2 for the Tracer; a local miss is a (root, depth,
+line) request to the memory system, which translates it (section 20). **The 512 KB cache sits close to the memory** (owner,
 2026-11-01): with the translator, its TLB and walker, and the file system's index accesses all going through it, it is the
 memory system's centre, not the Tracer's. The Tracer's local 16 KB caches absorb the longer trip over the 1,024-bit fill bus.
 (This reverses an earlier placement next to the Tracer, made while the file system bypassed the cache.)
 
 - **16 KB of data and 16 KB of instructions, local to the Tracer: 128 lines of 128 B each** (owner).
-- **Each line is tagged by its line in the file, (slot, line), only** (2026-11-01; replacing two tags, guest address and
+- **Each line is tagged by its line in the guest's memory file only** (2026-11-01; replacing two tags, guest address and
   memory-system address). With translation in the memory system the Tracer has **no TLB**, and no use for a memory-system tag: a
-  dirty victim is written back as (slot 0, line), translated again by the memory system (usually a TLB hit there), and nothing
+  dirty victim is written back by its line (with the file's root and depth), translated again by the memory system (usually a TLB hit there), and nothing
   else writes the Tracer's pages during a segment, so nothing needs to invalidate a line by its memory address; the caches are
   invalidated at the segment's boundary.
 - **Access to them is single-cycle** (owner).
 - **The Tracer's whole interface to the memory system: reads and writes of one 128 B line of a file** (owner, 2026-11-01), as
-  (slot, line), each request knowing exactly which line it wants. There are exactly three reasons (owner): **a program miss** and
-  **a data miss** (slot 0, the guest's memory, where code and data both live; a data miss may also write back its dirty victim),
-  and **a mapping miss** (a pc to `instr_idx` LRU miss: one line of the jump-target table, in its own slot, the line chosen by the
+  (root, depth, line), each request knowing exactly which line it wants. There are exactly three reasons (owner): **a program miss** and
+  **a data miss** (the guest's memory file, where code and data both live; a data miss may also write back its dirty victim),
+  and **a mapping miss** (a pc to `instr_idx` LRU miss: one line of the jump-target table, its own file, the line chosen by the
   hash). Translation is the memory system's; the Tracer's streams (advice in, logs out) move as whole pages and never use the
   cache.
 - **A miss fills from the shared cache over a 128 B (1,024-bit) bus** (owner): a line per transfer.
@@ -827,7 +828,7 @@ memory system's centre, not the Tracer's. The Tracer's local 16 KB caches absorb
   - (a) ~~the associativity~~ **decided: fully associative** (owner): 128 lines each, one Tracer, so the comparators' power is
     acceptable;
   - (b) ~~a small page TLB~~ **decided: TLBs, now the memory system's** (owner, 2026-11-01): on a local miss the Tracer sends
-    (slot 0, offset), and the memory system's slot-tagged TLB (a page to its bottom index entry: the page's address and its
+    (root, depth, line), and the memory system's TLB, tagged by (root, page), (a page to its bottom index entry: the page's address and its
     owned bit; proposed 64 entries, fully associative) and a cache of upper index entries (each covering 4 MB; 16 to 64) mean a
     miss usually costs one index read, through the shared cache; a 4 KB page is 32 lines, so a missing line's neighbours share its
     translation. (Restated from the Tracer's own two TLBs under 8 top registers; sizes to confirm by measurement, (d).)
@@ -854,7 +855,7 @@ only the pages its changes touch; a source outlives its copies.
 | the program image | the ELF's memory, then frozen | permanent |
 | **the cycle-0 image** | `cow_open` of the program image, the proof's inputs and advice written in, then **frozen** (owner: one more step) | one proof |
 | **the start image** of segment *k* | `cow_open` of the cycle-0 image, segments 0 to *k* - 1's updates written (the Updater), then frozen; kept intact for the prover's RAM checking | one proof |
-| **the Tracer's copy** | `cow_open` of the start image, the pages the segment writes pre-copied (frame 1's counts), opened into slot 0 | one segment, thrown away |
+| **the Tracer's copy** | `cow_open` of the start image, the pages the segment writes pre-copied (frame 1's counts), given to the Tracer | one segment, thrown away |
 | **the final image** | `cow_open` of the start image, segments *k* to 127's updates written, then frozen | one proof |
 
 The "two copies at the segment's start" (section 15) are the frozen start image and the Tracer's copy of it. **Cleanup:** all of
@@ -864,7 +865,7 @@ the program's map, permanent, stay.
 **When the updates are applied** (owner, 2026-11-01): **the whole stream, all 128 segments, is received and applied before tracing
 starts**, the images being **built as the data arrives** (owner), never buffered first: the ASIC running segment *k* writes segments 0 to *k* - 1's updates into its start image (then
 freezes it and `cow_open`s the final image) and segments *k* to 127's into its final image (then freezes it), keeping its own
-segment's frames 2 and 3. When the stream ends, every ASIC opens its Tracer's copy into slot 0 and **all 128 Tracers start
+segment's frames 2 and 3. When the stream ends, every ASIC hands its Tracer its copy's root and depth and **all 128 Tracers start
 together.** (So the stream's transfer time is part of a proof's latency, unless the next proof's stream arrives during the
 current proof.)
 

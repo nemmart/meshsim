@@ -997,6 +997,10 @@ Decided (O).
   once, and **each tile trims it to what its own window uses** (its record's template bitmap, word 0). (So a tile has the
   templates it needs once the segment's set has been broadcast.) **The broadcast happens when the proving stages start**
   (owner, 2026-11-01), once the segment is traced, so every tile has its templates before its replayer runs.
+- **An instruction can straddle two lines, and two pages** (owner, 2026-11-01: a fact of life): a 4-byte instruction starting in
+  a line's last 2 bytes (a jump can land there) takes its second half from the next line, which can be in the next page. The fetch
+  asks for both lines, each its own instruction-cache lookup and, on a miss, its own (root, depth, line) request, translated
+  independently by the memory system; a second half in a page that doesn't exist is the checked error below.
 - **What the Tracer checks** (owner, 2026-11-01): **errors, in its `ERRORS`, raising its error line**, for what plausibly comes
   from corruption somewhere (a host table or a page damaged on the way, a hardware fault), where hanging or running on would hide
   it:

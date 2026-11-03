@@ -872,11 +872,12 @@ current proof.)
 
 ## 23. The Tracer's startup state (2026-11-01)
 
-Decided (O). **The Tracer's state takes the replayer's state record** (spec 4.19.2; section 6), so one record layout runs from
-the host through the Tracer to the replayers (owner, 2026-11-01):
+Decided (O). **The Tracer's state takes the replayer's state record** (spec 4.19.2; section 6), all 67 words, so **one record
+format** runs from the host through the Tracer to the replayers (owner, 2026-11-01), the Tracer's one extra word after it:
 
 | word | contents | for the Tracer |
 |---|---|---|
+| 0 | the template bitmap, 128 bits: which controller-fed templates the window uses | **all cleared** (owner) |
 | 1 | the state word: pc, `instr_idx`, the next offset, the compression flags | the processor state at the segment's first row (frame 2); **no stream compressed** |
 | 2 | the stream word: each stream's size, bits in and values out (section 24) | **the read queue: the segment's advice; the code and write queues zero length** |
 | 3-66 | the register image: 64 words, two registers each | registers 0-127 |

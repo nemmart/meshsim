@@ -288,7 +288,7 @@ its region, with **offset bits [22:20] picking the part**, as in the replayer's 
   - **One chunk size everywhere** (data pages, tables, the code map, logs), so the memory system has a single 4 KB pool and
     nothing fragments.
   - **A translation is three lookups** (middle, leaf, data), through the file-system cache; a small TLB (page number to entry)
-    keeps most accesses from paying them (integrator's suggestion, open).
+    keeps most accesses from paying them (decided, section 21).
   - **Measured clustering** (WORKER17, 2²⁹, in 16 KB pages): EVM Zone 69 pages in 3 16 MiB regions; Cyclone 693 pages in 4
     (the 2.9 MB untrusted advice, and one 7.75 MiB run of stack plus heap). At 4 KB both still fit a handful of leaf tables.
   - **Entries are 32 bits; bits 30:0 address the file system** (LPDDR) **in 128 B units** (owner; 2³¹ x 128 B = 256 GiB), the
@@ -731,7 +731,9 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
 
 ## 21. The Tracer's local caches (2026-11-01)
 
-Decided (O). In front of section 12's shared 512 KB cache, which acts as an L2 for the Tracer:
+Decided (O). In front of section 12's shared 512 KB cache, which acts as an L2 for the Tracer. **The 512 KB cache sits physically
+close to the Tracer** (owner, 2026-11-01): with the file system and the Updater bypassing it, the Tracer is its main client, so
+the 1,024-bit fill bus stays short; the controllers' line accesses travel further.
 
 - **16 KB of data and 16 KB of instructions, local to the Tracer: 128 lines of 128 B each** (owner).
 - **Each line carries two tags: its Tracer (guest) address and its memory-system address** (owner). A hit on the guest tag needs
@@ -747,8 +749,10 @@ Decided (O). In front of section 12's shared 512 KB cache, which acts as an L2 f
 - **Open:**
   - (a) ~~the associativity~~ **decided: fully associative** (owner): 128 lines each, one Tracer, so the comparators' power is
     acceptable;
-  - (b) a small page TLB for misses (a 4 KB page is 32 lines, so a missing line's neighbours share its translation), so a miss
-    doesn't walk the three levels each time;
+  - (b) ~~a small page TLB~~ **decided: a TLB** (owner, 2026-11-01): guest page number to the leaf entry (the page's
+    memory-system address and its read-only bit), so a miss in the local caches doesn't walk the three levels each time; a 4 KB
+    page is 32 lines, so a missing line's neighbours share its translation. Its size: proposed 64 entries, fully associative
+    like the other small caches, to confirm by measurement (d).
   - (c) whether an instruction line also brings its code map words (a 128 B line is two 64 B blocks, so two (base, mask) pairs of
     section 18), so a jump's target `instr_idx` is computed from the line itself;
   - (d) sizes to confirm by measurement: the gold emulator can replay both 2²⁹ workloads' address streams through these caches

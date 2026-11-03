@@ -805,9 +805,11 @@ memory system's centre, not the Tracer's. The Tracer's local 16 KB caches absorb
 (This reverses an earlier placement next to the Tracer, made while the file system bypassed the cache.)
 
 - **16 KB of data and 16 KB of instructions, local to the Tracer: 128 lines of 128 B each** (owner).
-- **Each line carries two tags: its Tracer (guest) address and its memory-system address** (owner). A hit on the guest tag needs
-  no translation, so resident lines act as their own TLB; the memory-system tag gives the line's place for write-back and for
-  invalidation by others.
+- **Each line is tagged by its line in the file, (slot, line), only** (2026-11-01; replacing two tags, guest address and
+  memory-system address). With translation in the memory system the Tracer has **no TLB**, and no use for a memory-system tag: a
+  dirty victim is written back as (slot 0, line), translated again by the memory system (usually a TLB hit there), and nothing
+  else writes the Tracer's pages during a segment, so nothing needs to invalidate a line by its memory address; the caches are
+  invalidated at the segment's boundary.
 - **Access to them is single-cycle** (owner).
 - **The Tracer's whole interface to the memory system: reads and writes of one 128 B line of a file** (owner, 2026-11-01), as
   (slot, line), each request knowing exactly which line it wants. There are exactly three reasons (owner): **a program miss** and

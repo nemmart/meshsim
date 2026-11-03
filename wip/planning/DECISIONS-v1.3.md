@@ -677,7 +677,14 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
 | 6 | segment file (section 16) |
 
 - **Open:**
-  - (a) where the root directory is found (a fixed address, or a register C&C 2 holds); the values above;
+- **A superblock at address 0** (owner), **cached by the file system** (C&C 2), which reads it at boot: it identifies the file
+  system and says where the root directory is. Address 0 is otherwise an ordinary address (`0xFFFFFFFF` is "none"), but a zeroed
+  pointer is a valid pointer to it, so the superblock's magic catches a stray write or a foreign memory at the next check.
+  Proposed contents (integrator, to confirm), least significant byte first, in the first 128 B of page 0 (the rest of the page
+  reserved): a magic (8 bytes), a version (u32), the root directory's location (u32, 128 B units), later the free-page map's
+  location and the memory's size; the rest reserved, 0.
+- **Open:**
+  - (a) the superblock's exact contents; the type values above;
   - (b) whether `.map` and `.pages` (section 19) are ordinary files in this format (`.map` then a chain of 1,023 pointers plus
     next, rather than 1,024 pointers; `.pages`'s tables stored as a file's pages), or structures outside the file system, reached
     only by the Tracer's pointers.

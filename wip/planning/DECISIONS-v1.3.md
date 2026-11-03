@@ -323,8 +323,8 @@ its region, with **offset bits [22:20] picking the part**, as in the replayer's 
       so bulk writes never snoop.
     - **Open:** the ways, the banks and the outstanding misses, from gold replaying both workloads' address streams (section 21
       (d)).
-    - **The file system bypasses it** (owner): it reads and writes whole 4 KB pages directly, like the Updater (section 20's
-      buffers). So the shared cache serves the Tracer and the controllers' line accesses. One coherence rule covers every page
+    - **The file system moves data pages directly** (owner), whole 4 KB pages like the Updater (section 20's buffers), and
+      reads and updates **index pages through it** (section 20). So the shared cache serves the Tracer and the controllers' line accesses. One coherence rule covers every page
       client: **writing a page directly invalidates its 32 lines in the cache**, and **a page read directly has no dirty lines
       there**, by ownership (the only pages dirtied through the cache are the Tracer's private copies, which no page client
       reads during a segment).
@@ -690,6 +690,12 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
   slot-tagged TLB), and so is any table or log read by offset. **A hole reads as zero; writing to one is UB:** only software
   allocates. Bulk page transfers (the Updater, the file system's own moves) still bypass the cache, and writing a page directly
   still invalidates its lines.
+- **How the file system reaches a file** (owner, 2026-11-01): **index pages through the shared cache**, a line at a time, both
+  reading and updating entries; **data pages directly**, as whole 4 KB pages into its buffers. **It finds a page through the
+  memory system's translator**: it opens the file into a slot and asks which page (slot, offset) is, the hardware walker and TLB
+  doing the work, so there is **one walker in the chip**; software walks a tree only to change it (fill, copy, free, grow), writing
+  the index entry through the cache so the walker sees it, and invalidating any translation of the old entry. (This replaces the
+  file system bypassing the cache entirely.)
 - **File-system calls** (owner) for what hardware never does, served by C&C 2: **fill a hole** (allocate a page at an offset,
   growing the tree or adding index pages as needed), used for example by the Updater building the memory image for the next
   trace; and, by the same token, **copy a page** (replacing a shared page with a private copy, the Updater's streaming

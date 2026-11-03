@@ -708,6 +708,14 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
 | 112-127 | reserved, 0 (the 32 bytes of important information are bytes 96-127) |
 
 - **Open:**
+- **Sparse and dense files** (owner, 2026-11-01), the same tree, different rules:
+  - **dense:** no holes; it grows only by **appending** (pages allocated in order) and is read anywhere within its length. Logs,
+    segment files, directories, the static jump-target table. A hole in a dense file means it is corrupt.
+  - **sparse:** holes allowed and read as zero; it can **grow** (its length set beyond its pages, without allocating) and take
+    **writes of arbitrary pages** (filling a hole at any offset), copies and frees of single pages. The guest's memory (`.pages`)
+    and the images the Updater builds.
+  - The file-system calls follow: append for both; fill a hole, copy a page and free a page for sparse files only.
+  - Proposed (integrator, to confirm): a flag in the type word (bit 31 set for sparse), so any kind can be either.
 - **The type is the kind of file** (owner), **0 marking a free entry**, and **a directory is a type** (owner): a directory is a file
   of 128-byte entries, single-page or chained like any file, so directories nest. Proposed values (integrator, to confirm):
 

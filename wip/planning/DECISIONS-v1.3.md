@@ -966,6 +966,9 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
   **A mismatch sets one of the peripheral's condition bits** (owner): its `ERRORS`, raising its error line (4.13). Proposed
   (integrator): one bit per stream (on the replayer code, read log, write log; on the Tracer advice), so the error names the
   stream.
+  **The replayer's new `ERRORS` bits at v1.3** (owner, 2026-11-01), after v1.25's [0] reserved, [1] queue overrun, [2] invalid
+  expansion: **[3] code-stream underflow, [4] read-log underflow, [5] write-log underflow, [6] done with input left over** (one
+  bit; the controller reads the queue occupancies to see which stream).
 - **The window's record is assembled by C&C 3, not the Tracer** (owner, 2026-11-01). **At each done, the Tracer presents its
   current state** (the state word and the registers: the end of the window just traced) **and the window's totals** (the stream
   word, the compression flags, the template bitmap). C&C 3 builds window *n*'s 68-word record from the state it remembered at the

@@ -285,7 +285,7 @@ its region, with **offset bits [22:20] picking the part**, as in the replayer's 
   - **a leaf table:** 1,024 entries in a 4 KB page, covering 4 MiB (10 bits);
   - **a middle table:** 1,024 entries in a 4 KB page, covering 4 GiB (10 bits);
   - **the top: 8 middle tables** (3 bits), **their 8 addresses loaded into Tracer registers at launch** (section 19).
-  - **One chunk size everywhere** (data pages, tables, the code map, logs), so the memory system has a single 4 KB pool and
+  - **One chunk size everywhere** (data pages, tables, files, logs), so the memory system has a single 4 KB pool and
     nothing fragments.
   - **A translation is three lookups** (middle, leaf, data), through the file-system cache; a small TLB (page number to entry)
     keeps most accesses from paying them (decided, section 21).
@@ -510,11 +510,9 @@ a really easy format to work with, from multiple languages" (O).
 | 3 | advice log | the segment's advice words, u64 each, in row order (section 13) |
 | 4 | updates, raw | the segment's update words, u64 each |
 | 5 | updates, LRU-compressed | a u32 count of the 64-bit words encoded, then the codes (below) |
-| 6 | `instr_idx` table | a u64 start address (64 B aligned), then two u32 per 64 B block of code from there, the base and the mask (section 18); part of the program's load, with the initial image |
+| 6 | ~~`instr_idx` table~~ (superseded: section 18's hash table is a program file) | a u64 start address (64 B aligned), then two u32 per 64 B block of code from there, the base and the mask (section 18); part of the program's load, with the initial image |
 
-- **Order:** frame 1 once, first; then the program's frame 6s (one per contiguous range of code; static per program, so an ASIC
-  that already holds them, with the initial image, may skip them); then for each segment in order, frames 2, 3, and one of 4 or
-  5 (the host's choice per segment).
+- **Order:** frame 1 once, first; then for each segment in order, frames 2, 3, and one of 4 or 5 (the host's choice per segment).
 - **The update words:** the segment's dirty runs in address order (PR #1's "R-dirty"): each run is **a header word** (the start
   cell in the low 32 bits, the word count in the high 32) **followed by that many values**, each the word's last value in the
   segment. Headers and values form one sequence of 64-bit words, so frames 4 and 5 carry exactly the same words.
@@ -581,89 +579,52 @@ Decided (O).
 ## 18. The Tracer's pc to `instr_idx` map (2026-11-01)
 
 Decided (O). The replayer takes the next `instr_idx` of a control transfer from the read log (spec 4.19.7); the Tracer writes
-those words, so it needs pc to `instr_idx` for every jump target. `instr_idx` is a **static prefix sum**: the committed bytecode
-lays each instruction's expansion out contiguously in address order from index 1 (0 is the padding NOP), so the first row of the
-instruction at address *a* has `instr_idx` = 1 + the expansion lengths of every instruction below *a*. It depends only on the
-program.
+those words, so it needs pc to `instr_idx` for every jump target. `instr_idx` is the row's index in the committed bytecode: it
+advances by 1 on every row (each virtual row is its own bytecode entry), so a target's value is its instruction's **base**, the
+index of its expansion's first row (1 + the expansion lengths of every instruction below it); a row inside an expansion is the
+base plus its offset. Sequential flow needs no lookup (the Tracer knows each expansion's length as it runs it), and a segment's
+start comes in frame 2. **Only jumps need the map.**
 
-- **A small cache: about 64 entries, pc to `instr_idx`, LRU** (owner), consulted first on a control transfer.
-- **On a miss: two 32-bit words per 64 B of code** (owner, 2026-11-01; replaces one word per 128 B with a decode walk, about 30
-  cycles, and a word per 2-byte parcel, which wastes memory): 8 bytes per 64 B, **an eighth of the code's size** (1 MB of code,
-  128 KB), built by the host from the ELF, kept with the initial image, read **through the main-memory cache** (section 12):
-  - **the base:** the `instr_idx` of the block's first instruction start;
-  - **the mask:** one bit per 2-byte parcel, **set at every instruction start** (so no start-finding logic is needed, and a block
-    that begins mid-instruction simply has no bit at parcel 0).
-- **The circuit** (owner): **take every set bit below the target, decode that instruction (expanding 16 bits to 32), and look up
-  its expansion length**; the target's `instr_idx` = base + the sum of those lengths.
-  - **The 2,048-entry length table, dual-ported: two lookups per cycle**, indexed by the replayer's 11-bit decode index (spec
-    4.19.5: wiring plus a 7-bit compare on *w*[6:0]). **A separate table, not the Tracer's decode table** (owner: cleaner; the
-    decode entry holds a class and a template start, no length). Built by the table builder from the templates: at v1.25 the
-    longest ROM template is 21 rows (306 ROM-class entries: 231 of one row), so 5 bits per entry would do (2,048 x 5 bits,
-    1.25 KB); the CSR entries (class 2) are open (a).
-  - **The same technique as expansion, in both places** (owner): **expand 16 bits to 32, look up the table, fall back to the
-    controller.** Inlines are handled exactly as during expansion, where they are controller-fed (decode class 1, like the CSRs'
-    class 2): **an inline's length also comes from the controller**, cached by the 16-entry LRU below. So **the length table's
-    "ask the controller" entries are exactly the decode table's controller classes** (inlines and CSRs), and there is no separate
-    inline length table. (Inline lengths depend only on the inline, `num_cycles(OpCode)`, `isa/virtual.cpp:1210-1276`, 141 to
-    3,121 rows; the controller knows them.)
-  - **rd = x0** (`should_nop_for_rd0`, `isa/virtual.cpp:108-112, 270-274`): an instruction with an rd register, not one that
-    handles rd = x0 itself, and with no side effects beyond rd, **becomes a single NOP row** (a DIV to x0 is 1 row, not 12):
-    **one more bit per length-table entry**, "1 row if rd = x0", plus a 5-bit zero test. (A side-effecting instruction with
-    rd = x0 is remapped to a temporary instead, `:276-282`, and keeps its length.)
-  - **Anything else goes to C&C 3's controller** (owner): a length-table entry of **0 means "ask the controller"**, which the
-    controller sets, so which instructions take the slow path is software's choice. **The inlines and the CSR instructions go
-    there** (their
-    length depends on rd and rs1: CSRRW 1 if rd = x0, 3 if rd = rs1, else 2; CSRRS 1 if rs1 = x0 or rd = x0, 3 if rd = rs1, else
-    2; `isa/virtual.cpp:1287-1302`), so the hardware has no CSR or inline logic and no associative table. A few hundred cycles
-    each, and only on an `instr_idx` miss whose block has one before the target: CSRs occur only in trap handlers (Cyclone: 875
-    traps per 2²⁹ run); repeated inline words hit the LRU.
-  - **A 16-entry LRU in front of the controller** (owner): the exact 32-bit instruction word sent and the length it expanded to,
-    so a repeated word (the same CSR instruction in every trap) doesn't ask again.
-- **The controller interface** (owner): **two registers and two wake events**, one escape hatch mirroring the other: anything the
-  tables don't cover goes to the controller, for its length as for its expansion, so the same software path serves both, as the replayer's controller-fed path (spec 4.19.9,
-  `EXPANSION_OPCODE` and its "new expansion" event):
-  - **`EXPANSION_OPCODE`**: the instruction whose expansion the controller must supply, when executing one whose decode class is
-    controller (inlines and CSRs, as in the replayer); its event, **new expansion**;
-  - **`LENGTH_OPCODE`**: the instruction whose expansion length the `instr_idx` engine needs; its event, **new length**. The
-    controller writes the length back and the engine resumes. (How the answer is written back, a register and a pulse, is to
-    define with the Tracer's peripheral window.)
-  - At most 31 instruction starts lie before a target in a 64 B block: **at most 16 cycles of lookups**, about 8 on average.
+- **A 64-entry pc to `instr_idx` LRU in the Tracer** (owner): a hit costs nothing.
+- **On a miss, the controller looks it up** (owner, 2026-11-01), through the same escape hatch as `EXPANSION_OPCODE`: the Tracer
+  posts the target pc in a register (`TARGET_PC`) and raises a wake event; C&C 3's controller hashes the pc, probes the table,
+  writes the base `instr_idx` back, and the Tracer resumes, the entry going into the LRU. **No hashing, probing or length hardware
+  in the Tracer.**
+- **The table: a hash table of target pc to base `instr_idx`, generated by the host** (owner) from jolt-cpp's bytecode, **per
+  program: every instruction start** (static, built once with the ELF), **kept in LPDDR as a file** and read by the controller
+  (owner: a large table is fine there). Probing runs over **consecutive cells** (owner). Proposed (integrator): an entry is 8 bytes
+  (the pc as an offset into the code, u32; the base, u32), 16 to a 128 B line, so a probe within a line is one read; the host,
+  building offline, can choose the hash seed and size so every key sits in its home line. A missing key means the table is wrong
+  (UB).
+- **What it replaces** (all superseded, recorded here for the history): a code map of one (base, mask) pair per 64 B of code,
+  walked by decoding forward and summing expansion lengths from a 2,048-entry length table (with an rd = x0 bit, the CSR rules by
+  rd and rs1, and inlines and CSRs sent to the controller through `LENGTH_OPCODE` with a 16-entry LRU); and before that, one word
+  per 128 B of code with a decode walk of about 30 cycles. The length and CSR findings stay true of jolt-cpp (`isa/virtual.cpp`:
+  `num_cycles` 1210-1276, `should_nop_for_rd0` 108-112, CSRRW and CSRRS 1287-1302).
 - **Open:**
-  - (a) whether an expansion's length is a function of the 11-bit index alone. **The CSR instructions: answered, and routed to
-    the controller (above).** jolt-cpp
-    supports only CSRRW and CSRRS, on six CSRs (mstatus 0x300, mtvec 0x305, mscratch 0x340, mepc 0x341, mcause 0x342, mtval
-    0x343; `isa/riscv.hpp:73-78`), so 2 x 6 x 32 rd x 32 rs1 = 12,288 distinct words. **The length doesn't depend on the CSR,
-    only on rd and rs1** (`isa/virtual.cpp:1287-1302`): CSRRW, 1 if rd = x0, 3 if rd = rs1, else 2; CSRRS, 1 if rs1 = x0 or
-    rd = x0, 3 if rd = rs1, else 2. So the engine computes it with two 5-bit compares and a zero test, no table. The rest
-    of the register dependence is the rd = x0 rule above; WORKER18 to confirm nothing else depends on operands;
-  - (b) that jolt-cpp's bytecode is decoded sequentially from each text section's start, so the table and the walk follow the same
-    boundaries (data or padding in text); which sections count; the start index (WORKER18, from the loader);
-  - (c) building the table on the host (deferred, owner: assume it's there).
+  - (a) the LRU's size, from gold replaying both workloads' jump streams (64 entries hit loops; calls and returns from many sites
+    miss more; a larger LRU is still cheap);
+  - (b) the hash function and the table's exact layout (software, free to change);
+  - (c) building the table on the host (from the bytecode's instruction starts).
 
-## 19. Launching a program: two files, nine addresses (2026-11-01)
+## 19. Launching a program (2026-11-01)
 
 Decided (O). A program is **two files** in the file system (C&C 2), each represented by where its tables are in memory, all in
 **4 KB pages** (section 12: one chunk size everywhere). Addresses are in 128 B units, like every entry.
 
 - **`<program>.pages`: the page table** (section 12): **8 middle tables**, 4 KB each, reached through them its leaf tables and
   data pages.
-- **`<program>.map`: the code map** (section 18), **an ordinary file in section 20's format** (owner, 2026-11-01): its data pages
-  are the map pages, each holding 512 (base, mask) pairs (two u32 per 64 B of code, so the map is an eighth of the code's size)
-  and covering 32 KB of code; its chain is the list. **Each index page holds 1,023 map-page pointers and a next pointer**, so the
-  first covers just under 32 MB of code, likely every program, and an engine miss reads its pair in one load from it. **A
-  larger program follows the next pointer**, one more dependent load per 32 MB beyond the first, hidden after the first touch by a
-  small cache of list entries in the engine. **No limit on code size is baked in** (owner: 32 MB is probably enough, but not as a
-  fixed limit). (This replaces a fixed list of 1,024 pointers.)
-- **At launch the Tracer loads 9 addresses into its registers** (owner): **the 8 middle tables' and the code map's first index
-  page.**
+- **`<program>.idx`: the pc to `instr_idx` hash table** (section 18), an ordinary file, read by the controller. (It replaces
+  `.map`, a code map of (base, mask) pairs once launched through a Tracer register.)
+- **At launch the Tracer loads the 8 middle tables' addresses into its registers** (owner). The hash table is the controller's
+  to find (it holds the program's files).
 - **No load step:** the Tracer reads the tables in place, through the 512 KB file-system cache. (This replaces section 12's
   earlier local copy and pool.)
 - **Fragmentation: none.** With one 4 KB chunk size, any free page fits any request, so the memory system needs no buddy
   allocator and no compaction (this replaces a 4, 8 and 16 KB scheme with lifetime-separated allocation). A growing file, such
-  as a log, takes the next free page wherever it is and records it in a pointer list like `.map`; a log is read sequentially, so
+  as a log, takes the next free page wherever it is and records it in its file's index chain (section 20); a log is read sequentially, so
   scattering costs nothing (each page is one efficient 4 KB read).
 - **Open:**
-  - (a) where the code map starts: fixed (Jolt's program starts at `RAM_START_ADDRESS`, 0x8000_0000) or a further launch value;
   - (b) a small TLB (section 12);
   - (c) whether a log lives only for its proof or can outlive it (a re-run).
 
@@ -700,7 +661,7 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
 | 1 | directory |
 | 2 | data (any other file) |
 | 3 | page table (`.pages`, section 19) |
-| 4 | code map (`.map`, section 19) |
+| 4 | pc to `instr_idx` hash table (`.idx`, section 18) |
 | 5 | log |
 | 6 | segment file (section 16) |
 
@@ -730,7 +691,7 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
   location and the memory's size; the rest reserved, 0.
 - **Open:**
   - (a) the superblock's exact contents; the type values above;
-  - (b) `.map` is an ordinary file (section 19). Still open: whether `.pages`, the page table's tree, is stored as a file's pages
+  - (b) `.idx` is an ordinary file (section 18). Still open: whether `.pages`, the page table's tree, is stored as a file's pages
     or is a structure outside the file system, reached only by the Tracer's pointers.
 
 ## 21. The Tracer's local caches (2026-11-01)
@@ -761,8 +722,7 @@ the 1,024-bit fill bus stays short; the controllers' line accesses travel furthe
     walk reads a middle entry (a 4 MB region to its leaf table's address) and then a leaf entry. A cache of **middle entries** means
     a TLB miss usually costs one table read, the leaf entry, through the shared cache. Each entry covers 4 MB and the workloads
     touch a few clustered regions, so it needs few entries; 16 to 64, to confirm by measurement.
-  - (c) whether an instruction line also brings its code map words (a 128 B line is two 64 B blocks, so two (base, mask) pairs of
-    section 18), so a jump's target `instr_idx` is computed from the line itself;
+  - (c) ~~an instruction line bringing its code map words~~ moot: the code map is gone (section 18).
   - (d) sizes to confirm by measurement: the gold emulator can replay both 2²⁹ workloads' address streams through these caches
     and the shared one and report hit rates (WORKER18, after ACT4).
 

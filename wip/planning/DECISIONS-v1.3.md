@@ -879,6 +879,7 @@ Decided (O). **Everything the Tracer needs to start a segment, and nothing else:
 | pc, `instr_idx`, the expansion offset, registers 0-127 | frame 2 (section 16), the processor state at the segment's first row |
 | **the guest's memory file:** its root's address (31 bits) and its depth (0 to 3) | C&C 3: the Tracer's copy (section 22) |
 | **the jump-target map file:** its root's address and its depth | C&C 3: the proof's map (section 22) |
+| **the advice stream's size:** the segment's advice words (owner, 2026-11-01) | frame 3's length |
 
 **Loading it invalidates the Tracer's local caches**, the 16 KB instruction and data caches and the pc to `instr_idx` LRU,
 **without flushing dirty lines** (owner): the previous segment's copy of memory is throwaway (section 21), so its dirty data is
@@ -904,15 +905,16 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
     (owner: it mirrors the replayer's typical queue sizes; was 2 KB): 512 advice words. Advice is consumed slowly (the division family takes one word per expansion of about 12 rows,
     a secp operation at most 8 in up to 240), so a full queue lasts thousands of rows, far longer than the controller takes to
     refill it; proposed (integrator): raise the flag when half is free.
-- **The advice stream's end** (integrator's proposal, owner's correction, 2026-11-01): **the advice log is per segment**, all
-  4M rows, not per run of 65,536, so its words run across the runs. **The controller pulses "last advice"** when it has sent the
-  segment's final word (it knows the count, frame 3's length); **a pop from the empty advice queue after "last advice" sets an
-  `ERRORS` bit (advice underflow)** at once, instead of the Tracer waiting forever for the watchdog. **Leftover advice** is
-  checked by the controller at the segment's end, reading the advice queue's occupancy after the 64th done (it must be 0). Under
-  section 8a this earns a check: the advice comes from this proof's run, so a disagreement between the host's advice and the trace
-  depends on the input data, where simulation of our firmware may not reach.
-- *(Candidate for v1.3's replayer, integrator's proposal: the same end-of-stream mark on its code, expansion and log queues, so a
-  starved window is a named error rather than a hang caught by C&C 1's watchdog.)*
+- **The advice stream's end** (owner, 2026-11-01): **the advice log is per segment**, all 4M rows, not per run of 65,536, and
+  **its size is part of the startup state** (section 23), so the Tracer knows it from the start. It counts the words it pops:
+  **a pop beyond the size sets an `ERRORS` bit (advice underflow)** at once, instead of the Tracer waiting forever for the
+  watchdog; and **leftover advice** is checked by the controller at the segment's end, reading the count of words not yet
+  consumed after the 64th done (it must be 0). (This replaces a "last advice" pulse from the controller.) Under section 8a it
+  earns a check: the advice comes from this proof's run, so a disagreement between the host's advice and the trace depends on the
+  input data, where simulation of our firmware may not reach.
+- *(Candidate for v1.3's replayer, integrator's proposal: the same check on its code and log queues, which needs no new data,
+  since its state record's stream word already gives each stream's exact length; a starved window would then be a named error
+  rather than a hang caught by C&C 1's watchdog.)*
 - **Four queue-length registers** (owner, 2026-11-01), **in 128-bit words**, for the output the controller sends on: **state,
   code, read log, write log.** The state queue is always **67 words** per window (section 6: the template bitmap, the state
   word, the stream word and the 64-word register image), the other three vary with the window.

@@ -310,8 +310,8 @@ its region, with **offset bits [22:20] picking the part**, as in the replayer's 
     - **Priority: the file system above the Tracer** (owner); the Updater, which must never stall (the broadcast stream), above
       both for LPDDR bandwidth.
     - **Open:** its ports or banking (the Tracer is the heaviest client: every load and store row plus its table lookups); its
-      associativity; its write policy (write-back, and whether a fully dirty aligned 4 KB run is written back as one page read
-      size); whether C&C 2 keeps its 128 4 KB buffers (section 20) or folds them into this cache.
+      associativity; its write policy (write-back, and whether a fully dirty aligned 4 KB run is written back as one page
+      write); whether C&C 2 keeps its 128 4 KB buffers (section 20) or folds them into this cache.
   - *(A page-table stream format, a walk of the 2,048 top-level entries and their leaves, was proposed here and is superseded:
     the tables live as files and are read in place, section 19.)*
 - **Findings from upstream Jolt** (a16z/jolt `main` at `17a9459`, read 2026-11-01; `common/src/jolt_device.rs`, `constants.rs`):

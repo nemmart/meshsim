@@ -869,6 +869,20 @@ segment's frames 2 and 3. When the stream ends, every ASIC hands its Tracer its 
 together.** (So the stream's transfer time is part of a proof's latency, unless the next proof's stream arrives during the
 current proof.)
 
+## 23. The Tracer's startup state (2026-11-01)
+
+Decided (O). **Everything the Tracer needs to start a segment, and nothing else:**
+
+| part | from |
+|---|---|
+| pc, `instr_idx`, the expansion offset, registers 0-127 | frame 2 (section 16), the processor state at the segment's first row |
+| **the guest's memory file:** its root's address (31 bits) and its depth (0 to 3) | C&C 3: the Tracer's copy (section 22) |
+| **the jump-target map file:** its root's address and its depth | C&C 3: the proof's map (section 22) |
+
+**Loading it invalidates the Tracer's local caches**, the 16 KB instruction and data caches and the pc to `instr_idx` LRU,
+**without flushing dirty lines** (owner): the previous segment's copy of memory is throwaway (section 21), so its dirty data is
+simply dropped. The advice log (frame 3) is fed separately, through its input queue (section 13).
+
 ---
 
 ## v1.3 work list

@@ -919,6 +919,9 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
 - **Its DMA** (spec 4.17.9, v1.1's "sender") sends the Tracer's output: a transfer names one of **up to four output queues**
   (`DMA_HDR` [13:12]), so the Tracer's four are numbered to match the replayer's parts (owner, 2026-11-01): **queue 0, the state
   record; 1, the code log; 2, the read log; 3, the write log**, so output queue *n* feeds a replayer's part *n*.
+- **The output queues are padded to whole 128-bit words** (owner, 2026-11-01): a stream, raw or compressed, ends mid-word, so
+  at the window's end the packer **commits its last partial 128-bit word to the queue**, the rest of it padding (anything, below).
+  The queue-length registers count that word, so a length in 128-bit words is always exact for sending.
 - **Sends move 128-bit values** (owner, 2026-11-01): **the DMA's count is in 128-bit words**, every packet 128 bits (a v1.3
   change to spec 4.17.9, which counts 32-bit words up to 4,095 and ends with 64- and 32-bit remainder packets). C&C 3 reads a
   queue's length (in 128-bit words, rounded up; the padding after a stream's last bit can be anything, even in a compressed

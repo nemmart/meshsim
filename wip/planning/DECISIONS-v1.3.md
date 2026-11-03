@@ -269,10 +269,22 @@ per row** (owner), and windows 33-36 all fall in the same proof.*
 Decided (O). The Tracer is C&C 3's peripheral; everything C&C 3 or the memory system gives it arrives as 128-bit packet writes into
 its region, with **offset bits [22:20] picking the part**, as in the replayer's (spec 4.19.10, CL1).
 
-- **Part 0, 0x000000-0x003FFF, is the replayer's layout, unchanged:** the state word (pc, `instr_idx`, next offset; the four flags
-  ignored), the stream word (ignored), the register image (registers 0-127, bank 0, at 0x20 + 16*i*), the decode table at 0x1000
-  and the ROM at 0x2000 (the Tracer's own contents, same format and builder, section 7). The same loader code serves both units.
-  Bank 1 (untraced scratch) needs no initial state. The next offset is normally 0: the Tracer starts at an instruction boundary.
+- **The Tracer's region is the replayer's map** (owner, 2026-11-01, restated): the same parts, offsets and loader code.
+
+| part | the replayer (spec 4.19.10) | the Tracer |
+|---|---|---|
+| 0 | the state record, the decode table at 0x1000, the ROM at 0x2000 | the same: its state is the replayer's 68-word record (section 23), its templates the replayer's universal tables (section 13) |
+| 1 | the code queue port, 4 KB | unused (zero length) |
+| 2 | the read-log queue port, **4 KB at v1.3** (8 KB at v1.25) | **the read queue: the segment's advice** (section 24), 4 KB |
+| 3 | the write-log queue port, **4 KB at v1.3** (8 KB at v1.25) | unused (zero length) |
+| 4 | the expansion queue port, 4 KB | the same: controller-fed expansions |
+
+  **Every queue is 4 KB at v1.3** (owner): the replayer's read-log and write-log queues shrink from 8 KB. Enough by the measured
+  densities (spec 4.19.15, Quest 085): the logs average 0.31-0.35 words per real row together (read 0.19-0.21), at most about 0.83
+  in Cyclone's densest windows; a half-queue refill (the credit, 4.19.8) is 256 words, about 1,500 cycles of the densest window at
+  3 cycles a row, against a refill of a few hundred [estimate]. To confirm by meshsim's Stage B on both workloads (the stall
+  counts). (This replaces a part-0 text that ignored the stream word, gave bank 1 no initial state and started at an instruction
+  boundary; all three are superseded.)
   - **T2, answered (WORKER16, 2026-11-01; `WORKER16/REPORT.md`):** at instruction boundaries, pc, `instr_idx`, registers 0-127
     and RAM are the **whole** state: restarts matched at 1,096 of 1,096 points on Cyclone and 673 of 673 on EVM Zone at 2²⁹, once
     mid-secp points carry jolt-cpp's advice buffer (`trace_owner.cpp:49-50`; section 13 covers it). The CSRs and the LR/SC

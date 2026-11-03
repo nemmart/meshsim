@@ -21,7 +21,7 @@ public final class Machine {
   public int index;
   public long cycle;
   public final Memory memory;
-  public final Bytecode code;
+  public final Code code;
   private final SecpAdvice secp;
   private int prevSeqRemaining;
 
@@ -35,8 +35,8 @@ public final class Machine {
     this(p.memory, p.bytecode, p.layout.entryPoint, secp);   // registers start at 0 (vm.cpp:56-63)
   }
 
-  /** A machine over given memory and bytecode, starting at pc (the inline vector test runs a bare sequence). */
-  public Machine(Memory memory, Bytecode code, long pc, SecpAdvice secp) {
+  /** A machine over given memory and code, starting at pc (the inline vector test, the ACT4 runner). */
+  public Machine(Memory memory, Code code, long pc, SecpAdvice secp) {
     this.memory = memory;
     this.code = code;
     this.secp = secp;
@@ -62,7 +62,7 @@ public final class Machine {
 
   /** Executes one row and fills {@link #row}. */
   public void step() {
-    VInstr v = code.instrs[index];
+    VInstr v = code.at(index);
     if (v.unprovable != null) throw new EmulationError("executed an instruction Jolt can't prove: " + v.unprovable);
     if (prevSeqRemaining == 0 && v.seqRemaining != 0 && v.adviceOp != Secp.Operation.NONE) secp.prepare(this, v);
     prevSeqRemaining = v.seqRemaining;

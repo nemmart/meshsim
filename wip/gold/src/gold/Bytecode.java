@@ -8,7 +8,7 @@ import java.util.List;
  * index 0, then every source instruction's expansion in address order, UNIMP removed. A table maps each 2-byte code
  * offset to the index of the expansion starting there (isa/virtual.hpp:159-171).
  */
-public final class Bytecode {
+public final class Bytecode implements Code {
   public final long codeStart, codeEnd;
   public final VInstr[] instrs;
   private final int[] pcToIndex;
@@ -21,15 +21,9 @@ public final class Bytecode {
     this.removed = removed;
   }
 
-  /** Why the instruction at pc was removed (it can't be proven), or null. */
-  public String removedAt(long pc) { return removed.get(pc); }
+  @Override public String removedAt(long pc) { return removed.get(pc); }
 
-  /**
-   * Load modes (the owner's ruling on UPSTREAM-DIFFS D4, DECISIONS-v1.3 section 17). Strict: any instruction in the
-   * load stream that Jolt can't prove throws at load, except the standard UNIMP encodings, which load as unreachable
-   * markers. Permissive (ACT4): every unprovable instruction loads as such a marker. A marker throws when executed.
-   */
-  public enum LoadMode { STRICT, PERMISSIVE }
+  @Override public VInstr at(int index) { return instrs[index]; }
 
   /** The standard UNIMP encodings compilers emit: c.unimp (0x0000) and unimp (0xC0001073, csrrw x0, cycle, x0). */
   static boolean standardUnimp(int word, int size) {
@@ -43,7 +37,7 @@ public final class Bytecode {
   }
 
   /** The first row of the expansion of the instruction at pc (0 where none starts). */
-  public int indexOf(long pc) {
+  @Override public int indexOf(long pc) {
     long off = pc - codeStart;
     if (off < 0 || pc >= codeEnd || (off & 1) != 0) throw new EmulationError(String.format("pc %#x outside the code", pc));
     return pcToIndex[(int) (off >>> 1) + 1];
@@ -64,15 +58,14 @@ public final class Bytecode {
     return new Bytecode(pc, pc + size, instrs, pcToIndex, new java.util.HashMap<>());
   }
 
-  public static Bytecode build(long codeStart, byte[] code, HostIo.Encoding encoding) {
-    return build(codeStart, code, encoding, LoadMode.STRICT);
-  }
-
   /**
-   * The bytecode keeps jolt-cpp's structure exactly in both modes (UNIMP removed, an undecodable instruction one row),
-   * so instruction indices, and the segment files' instr_idx, don't depend on the mode.
+   * Gold loads only instructions it can prove (the owner's ruling on UPSTREAM-DIFFS D4, DECISIONS-v1.3 section 17;
+   * one loading mode, strict): any instruction in the load stream that Jolt can't prove throws at load, except the
+   * standard UNIMP encodings, which load as unreachable markers that throw if executed. The bytecode keeps jolt-cpp's
+   * structure (UNIMP removed, an undecodable instruction one row), so instruction indices, and the segment files'
+   * instr_idx, are jolt-cpp's.
    */
-  public static Bytecode build(long codeStart, byte[] code, HostIo.Encoding encoding, LoadMode mode) {
+  public static Bytecode build(long codeStart, byte[] code, HostIo.Encoding encoding) {
     List<VInstr> out = new ArrayList<>();
     out.add(new VInstr());                    // index 0: NOP (all zero)
     int[] pcToIndex = new int[code.length / 2 + 1];
@@ -89,7 +82,7 @@ public final class Bytecode {
       if (in.opcode == Op.UNIMP || !in.isValid()) {
         why = String.format("%s %#0" + (d.size() == 2 ? 6 : 10) + "x at %#x", in.isValid() ? "UNIMP" : "undecodable",
             word, pc);
-        if (mode == LoadMode.STRICT && !standardUnimp(word, d.size())) rejected.add(why);
+        if (!standardUnimp(word, d.size())) rejected.add(why);
       }
       if (in.opcode == Op.UNIMP) {           // removed, as Rust does (virtual.cpp:1357-1363); reaching it throws
         removed.put(pc, why);

@@ -1,48 +1,24 @@
 assert_eq_fail: ABORT at row 2: VirtualAssertEQ failed at VirtualAssertEQ 0 x10 x11 pc=0x80000008 rem=0
-assert_eq_fail --permissive: ABORT at row 2: VirtualAssertEQ failed at VirtualAssertEQ 0 x10 x11 pc=0x80000008 rem=0
 assert_eq_pass: 4 rows, run hash 27584524c48d30dc, host I/O STANDARD
-assert_eq_pass --permissive: 4 rows, run hash 27584524c48d30dc, host I/O STANDARD
 c_unimp_executed: ABORT at row 1: executed an instruction Jolt can't prove: UNIMP 0x0000 at 0x80000004
-c_unimp_executed --permissive: ABORT at row 1: executed an instruction Jolt can't prove: UNIMP 0x0000 at 0x80000004
 c_unimp_jump: ABORT at row 3: executed an instruction Jolt can't prove: UNIMP 0x0000 at 0x80000010
-c_unimp_jump --permissive: ABORT at row 3: executed an instruction Jolt can't prove: UNIMP 0x0000 at 0x80000010
 ebreak: 2 rows, run hash fa4608b9a8ed4479, host I/O STANDARD
-ebreak --permissive: 2 rows, run hash fa4608b9a8ed4479, host I/O STANDARD
 fence: 5 rows, run hash ed27bc7a48e5952a, host I/O STANDARD
-fence --permissive: 5 rows, run hash ed27bc7a48e5952a, host I/O STANDARD
 jump_into_gap: ABORT at row 3: jump to 0x8000000a, where no instruction starts
-jump_into_gap --permissive: ABORT at row 3: jump to 0x8000000a, where no instruction starts
 keccak256: 3091 rows, run hash dc3bac76540e2d86, host I/O STANDARD
-keccak256 --permissive: 3091 rows, run hash dc3bac76540e2d86, host I/O STANDARD
 legacy_raw_ecall: 4 rows, run hash eb7a8a7ed005cba3, host I/O LEGACY_RAW_ECALL
-legacy_raw_ecall --permissive: 4 rows, run hash eb7a8a7ed005cba3, host I/O LEGACY_RAW_ECALL
 misaligned_ld: ABORT at row 2: misaligned memory access: ea=0x80080001 word_address=0x80080001 op=LD
-misaligned_ld --permissive: ABORT at row 2: misaligned memory access: ea=0x80080001 word_address=0x80080001 op=LD
 misaligned_lw: ABORT at row 2: misaligned memory access: ea=0x80080002 word_address=0x80080002 op=VirtualLoadW
-misaligned_lw --permissive: ABORT at row 2: misaligned memory access: ea=0x80080002 word_address=0x80080002 op=VirtualLoadW
 stack_canary_store: 6 rows, run hash cc8a36e0fd9c5eea, host I/O STANDARD
-stack_canary_store --permissive: 6 rows, run hash cc8a36e0fd9c5eea, host I/O STANDARD
 unimp32_executed: ABORT at row 1: executed an instruction Jolt can't prove: undecodable 0xc0001073 at 0x80000004
-unimp32_executed --permissive: ABORT at row 1: executed an instruction Jolt can't prove: undecodable 0xc0001073 at 0x80000004
 unimp_fence_i: REJECTED at load: 1 instruction(s) Jolt can't prove, first: UNIMP 0x0000100f at 0x80000004
-unimp_fence_i --permissive: ABORT at row 1: executed an instruction Jolt can't prove: UNIMP 0x0000100f at 0x80000004
 unimp_unreached: 2 rows, run hash b257df52692c4745, host I/O STANDARD
-unimp_unreached --permissive: 2 rows, run hash b257df52692c4745, host I/O STANDARD
 unprovable_csr_mhartid: REJECTED at load: 1 instruction(s) Jolt can't prove, first: undecodable 0xf1402573 at 0x80000004
-unprovable_csr_mhartid --permissive: ABORT at row 1: executed an instruction Jolt can't prove: undecodable 0xf1402573 at 0x80000004
 unprovable_csrrc: REJECTED at load: 1 instruction(s) Jolt can't prove, first: UNIMP 0x3005b573 at 0x80000004
-unprovable_csrrc --permissive: ABORT at row 1: executed an instruction Jolt can't prove: UNIMP 0x3005b573 at 0x80000004
 unprovable_csrrci: REJECTED at load: 1 instruction(s) Jolt can't prove, first: UNIMP 0x3002f573 at 0x80000004
-unprovable_csrrci --permissive: ABORT at row 1: executed an instruction Jolt can't prove: UNIMP 0x3002f573 at 0x80000004
 unprovable_csrrsi: REJECTED at load: 1 instruction(s) Jolt can't prove, first: UNIMP 0x3002e573 at 0x80000004
-unprovable_csrrsi --permissive: ABORT at row 1: executed an instruction Jolt can't prove: UNIMP 0x3002e573 at 0x80000004
 unprovable_csrrwi: REJECTED at load: 1 instruction(s) Jolt can't prove, first: UNIMP 0x3002d573 at 0x80000004
-unprovable_csrrwi --permissive: ABORT at row 1: executed an instruction Jolt can't prove: UNIMP 0x3002d573 at 0x80000004
 unprovable_sfence_vma: REJECTED at load: 1 instruction(s) Jolt can't prove, first: undecodable 0x12000073 at 0x80000004
-unprovable_sfence_vma --permissive: ABORT at row 1: executed an instruction Jolt can't prove: undecodable 0x12000073 at 0x80000004
 unprovable_sret: REJECTED at load: 1 instruction(s) Jolt can't prove, first: undecodable 0x10200073 at 0x80000004
-unprovable_sret --permissive: ABORT at row 1: executed an instruction Jolt can't prove: undecodable 0x10200073 at 0x80000004
 unprovable_undecodable: REJECTED at load: 1 instruction(s) Jolt can't prove, first: undecodable 0x0000007f at 0x80000004
-unprovable_undecodable --permissive: ABORT at row 1: executed an instruction Jolt can't prove: undecodable 0x0000007f at 0x80000004
 unprovable_wfi: REJECTED at load: 1 instruction(s) Jolt can't prove, first: UNIMP 0x10500073 at 0x80000004
-unprovable_wfi --permissive: ABORT at row 1: executed an instruction Jolt can't prove: UNIMP 0x10500073 at 0x80000004

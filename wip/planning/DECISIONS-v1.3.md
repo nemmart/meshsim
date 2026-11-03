@@ -277,40 +277,35 @@ its region, with **offset bits [22:20] picking the part**, as in the replayer's 
     mid-secp points carry jolt-cpp's advice buffer (`trace_owner.cpp:49-50`; section 13 covers it). The CSRs and the LR/SC
     reservation are live, in registers 32-39. **Registers 40-47** are never read across an instruction but set the next write's
     `rd_prev`, and jolt-cpp's JIT doesn't track them (section 13, open (c)); registers 48-127 were 0 at every instruction start.
-- **The page table covers the full RAM K of section 14, 2³² cells (32 GiB), assuming most pages are empty** (owner, 2026-11-01;
-  replaces the 4 GiB table of 1,024 directory entries x 256-page leaves, which replaced a flat 32,768-entry table over 512 MiB).
-  Future programs are unknown, so the hardware takes the general case; storage scales with the pages that exist, not the range.
-  **A two-level table, 11 + 10 + 11 bits of the 32-bit cell index** (owner):
-  - **a page:** 16 KB, 2¹¹ cells of 8 bytes (11 bits);
-  - **a leaf:** 1,024 pages, covering 16 MiB (10 bits); 4 KB at 32-bit entries; one per non-empty 16 MiB region, in a **leaf pool**;
-  - **the directory:** 2,048 entries, one per 16 MiB region (11 bits): "empty" or a leaf's index in the pool, so an index and a
-    valid bit (9 bits each with a pool of 256 leaves: about 18 Kbit, small enough for SRAM or flops);
-  - **why 16 MiB leaves suit:** the two workloads are dense in just two areas (owner). **Measured** (WORKER17, 2²⁹): EVM Zone
-    touches 69 pages in **3 leaves** (program data, stack and heap all in the 0x8000_0000 region); Cyclone 693 pages in **4 leaves**
-    (the 2.9 MB untrusted advice, 178 read-only pages; and one run of stack plus heap, 0x8432_4000-0x84AE_4000, 7.75 MiB, the heap
-    starting at the stack's top). Cyclone's heap use is 7.7 MiB (an earlier 29 MiB here was `ram_K`'s bound, not use).
-  - **the pool's size: open**, until WORKER17's counts; 256 leaves (1 MiB) would map up to 4 GiB of populated regions;
-  - **Entries are 32 bits; bits 30:0 address the file system** (LPDDR) **in 128 B units** (owner, 2026-11-01; 2³¹ x 128 B =
-    256 GiB), the format in LPDDR and in the stream. The memory system reads 4 KB (the most efficient), 2 KB, or 128 B (poor).
-    **Leaves and pages are 4 KB aligned** (owner): the low 5 bits of a valid entry are 0, so every leaf or page fetch is whole
-    4 KB reads (a leaf is one: 1,024 entries of 32 bits; a 16 KB page four).
-    - **top-level entry:** bits 30:0, the leaf's address; bit 31 reserved, 0;
-    - **leaf entry:** bits 30:0, the 16 KB page's address; **bit 31, read-only**. Only leaf entries carry it, for
-      **copy-on-write** (owner): a store to a read-only page **faults to C&C 3**, which copies the page, points the entry at the
-      copy, clears the bit, and the Tracer retries the store. (The guest is the user's program, not our firmware, so section 8a's
-      UB doesn't apply: a legitimate store must succeed.)
-    - **no entry: `0xFFFFFFFF`** (owner), at both levels; no valid entry has its low bits set, and address 0 stays usable. A table
-      must therefore be filled with `0xFFFFFFFF`, not zeroed: a zeroed entry is a valid pointer to address 0.
+- **The page table covers the full RAM K of section 14, 2³² cells (32 GiB), assuming most pages are empty**, with **4 KB pages
+  throughout** (owner, 2026-11-01; replaces a two-level table of 16 KB pages, 11 + 10 + 11 bits, which replaced a 4 GiB table and
+  a flat 512 MiB one). Future programs are unknown, so the hardware takes the general case; storage scales with the pages that
+  exist, not the range. **Three levels, 9 + 10 + 10 + 3 bits of the 32-bit cell index:**
+  - **a data page:** 4 KB, 512 cells of 8 bytes (9 bits);
+  - **a leaf table:** 1,024 entries in a 4 KB page, covering 4 MiB (10 bits);
+  - **a middle table:** 1,024 entries in a 4 KB page, covering 4 GiB (10 bits);
+  - **the top: 8 middle tables** (3 bits), **their 8 addresses loaded into Tracer registers at launch** (section 19).
+  - **One chunk size everywhere** (data pages, tables, the code map, logs), so the memory system has a single 4 KB pool and
+    nothing fragments.
+  - **A translation is three lookups** (middle, leaf, data), through the file-system cache; a small TLB (page number to entry)
+    keeps most accesses from paying them (integrator's suggestion, open).
+  - **Measured clustering** (WORKER17, 2²⁹, in 16 KB pages): EVM Zone 69 pages in 3 16 MiB regions; Cyclone 693 pages in 4
+    (the 2.9 MB untrusted advice, and one 7.75 MiB run of stack plus heap). At 4 KB both still fit a handful of leaf tables.
+  - **Entries are 32 bits; bits 30:0 address the file system** (LPDDR) **in 128 B units** (owner; 2³¹ x 128 B = 256 GiB), the
+    format in LPDDR. The memory system reads 4 KB (the most efficient), 2 KB, or 128 B (poor). **Every table and page is 4 KB
+    aligned:** the low 5 bits of a valid entry are 0, and each fetch is one 4 KB read.
+    - **a middle or leaf entry pointing to a table:** bits 30:0, the table's address; bit 31 reserved, 0;
+    - **a leaf entry pointing to a data page:** bits 30:0, the page's address; **bit 31, read-only**, for sharing a page between
+      the proof's image and the Tracer's copy (section 15; the Tracer never copies on write);
+    - **no entry: `0xFFFFFFFF`** (owner), at every level; no valid entry has its low bits set, and address 0 stays usable. A table
+      must be filled with `0xFFFFFFFF`, not zeroed: a zeroed entry is a valid pointer to address 0.
   - **A 512 KB cache of the file system** (owner): **4,096 lines of 128 B**, caching file-system (LPDDR) addresses, **after**
     translation, not the guest's address space. A line is one 128 B unit (16 of the guest's 8-byte cells); **a miss fills 128 B**
     (owner). A copied page has a new address, so copy-on-write can't alias in the cache, and pages shared between proofs are cached
     once. **Open:** its associativity; its write policy (write-back, and whether copy-on-write copies through the cache or flushes
     the source page's dirty lines first).
-  - **The stream is a walk:** the 2,048 top-level entries (8 KB), then each present leaf (4 KB) in top-level order. The Tracer,
-    which keeps the table locally (the directory in part 1, the leaf pool in part 2, written while it is stopped between proofs),
-    **rewrites each top-level entry to the pool slot its leaf landed in** as it loads, so a translation stays two on-chip lookups.
-  - **Open (T3):** the leaf pool's size. (An absent page reads as zero, and a store to a read-only page is UB: section 15.)
-- *(Withdrawn: T8, measuring whether 512 MiB suffices; superseded by the 4 GiB decision.)*
+  - *(A page-table stream format, a walk of the 2,048 top-level entries and their leaves, was proposed here and is superseded:
+    the tables live as files and are read in place, section 19.)*
 - **Findings from upstream Jolt** (a16z/jolt `main` at `17a9459`, read 2026-11-01; `common/src/jolt_device.rs`, `constants.rs`):
   addresses are 64-bit, with **no 4 GiB limit in Jolt** (jolt-cpp's 4 GiB is its emulator's own reservation). The used space is
   **one contiguous range**: the I/O region (trusted and untrusted advice, inputs, outputs, termination and panic words) **below
@@ -423,7 +418,7 @@ Decided (O), from the planning discussion of 2026-10-19 recorded in jolt-asic-pl
   2. **the advice log**, the segment's read-log input (section 13);
   3. **the memory updates list**, the segment's delta: each word written during the segment with its last value (the dirty set,
      "R-dirty" in PR #1; the host reads the values from guest memory at the segment's end, so stores are never logged).
-- **A proof's stream starts with 128 x 32 bits: the number of pages each segment writes** (owner), before any chunk. Every ASIC
+- **A proof's stream starts with 128 x 32 bits: the number of 4 KB pages each segment writes** (owner), before any chunk. Every ASIC
   reads all 128 counts, so C&C 3 can reserve exactly the pages the proof needs before any data arrives: its own segment's
   private copies (below) and the pages the updates add to the start and final images. That is the planning notes' "the host
   computes each ASIC's exact page count, so memory never runs out mid-proof". The host's JIT has the counts from its page
@@ -486,7 +481,7 @@ a really easy format to work with, from multiple languages" (O).
 
 | type | frame | data |
 |---|---|---|
-| 1 | page counts | 128 x u32: the pages each segment writes (section 15) |
+| 1 | page counts | 128 x u32: the 4 KB pages each segment writes (section 15; was 16 KB pages, changed with section 12) |
 | 2 | processor state | pc, `instr_idx`, the next offset, registers 0-127: 131 x u64, 1,048 bytes |
 | 3 | advice log | the segment's advice words, u64 each, in row order (section 13) |
 | 4 | updates, raw | the segment's update words, u64 each |
@@ -621,33 +616,27 @@ program.
     boundaries (data or padding in text); which sections count; the start index (WORKER18, from the loader);
   - (c) building the table on the host (deferred, owner: assume it's there).
 
-## 19. Launching a program: two files, three pointers (2026-11-01)
+## 19. Launching a program: two files, nine addresses (2026-11-01)
 
-Decided (O). A program is **two files** in the file system (C&C 2), each represented by where its tables are in memory, in 4 KB
-pages; **the Tracer is launched with two 32-bit pointers** (one per file), addresses in 128 B units like every entry (section 12).
-**The memory system guarantees contiguous chunks of 4 KB, 8 KB and 16 KB** (owner), so each table is a single chunk and needs a
-single pointer: 4 KB for a leaf, the map list and a map page; 8 KB for the top level; 16 KB for a data page. A buddy allocator
-over 4 KB units, up to order 2, gives exactly these, each naturally aligned to its size (integrator's suggestion).
+Decided (O). A program is **two files** in the file system (C&C 2), each represented by where its tables are in memory, all in
+**4 KB pages** (section 12: one chunk size everywhere). Addresses are in 128 B units, like every entry.
 
-- **`<program>.pages`: the page table's top level** (section 12): 2,048 entries x 4 bytes = **one 8 KB chunk: one pointer.** The
-  leaves are reached through its entries, as before.
-- **`<program>.map`: the code map** (section 18): **a list of 1,024 pointers**, one 4 KB page: **one pointer.** Each entry points to
-  a 4 KB map page, or is `0xFFFFFFFF` for none; a map page holds 512 (base, mask) pairs, section 18's two u32 per 64 B of code, so
-  it covers 32 KB of code and the list 32 MB.
-- **Fragmentation, by lifetime rather than compaction** (owner, 2026-11-01): **long-lived files** (each program's initial image,
-  `.pages` and `.map`) are allocated from one end of memory and **per-proof data** (private copies of written pages, the pages
-  updates add to images, temporary tables) from the other. Per-proof chunks all die together at the proof's end (the planning
-  notes' per-proof bitmaps free them in one merge), so that end coalesces back into large chunks every proof and never mixes
-  with long-lived ones. **Compaction stays a background fallback for the long-lived end**, if programs come and go a lot: moving a
-  page with one pointer to it is a copy, one entry rewritten and a cache invalidation; a shared page (several pointers) would
-  need a reverse map or a scan.
-- **No load step:** the Tracer reads the tables in place, through the 512 KB file-system cache. This replaces section 12's local
-  copy (the directory in part 1, the leaf pool in part 2, rewritten to pool slots as streamed).
+- **`<program>.pages`: the page table** (section 12): **8 middle tables**, 4 KB each, reached through them its leaf tables and
+  data pages.
+- **`<program>.map`: the code map** (section 18): **a list of 1,024 pointers**, one 4 KB page. Each entry points to a 4 KB map
+  page, or is `0xFFFFFFFF` for none; a map page holds 512 (base, mask) pairs, section 18's two u32 per 64 B of code, so it covers
+  32 KB of code and the list 32 MB.
+- **At launch the Tracer loads 9 addresses into its registers** (owner): **the 8 middle tables' and the code map's.**
+- **No load step:** the Tracer reads the tables in place, through the 512 KB file-system cache. (This replaces section 12's
+  earlier local copy and pool.)
+- **Fragmentation: none.** With one 4 KB chunk size, any free page fits any request, so the memory system needs no buddy
+  allocator and no compaction (this replaces a 4, 8 and 16 KB scheme with lifetime-separated allocation). A growing file, such
+  as a log, takes the next free page wherever it is and records it in a pointer list like `.map`; a log is read sequentially, so
+  scattering costs nothing (each page is one efficient 4 KB read).
 - **Open:**
-  - (a) where the code map starts: fixed (Jolt's program starts at `RAM_START_ADDRESS`, 0x8000_0000) or a fourth launch value;
-  - (b) a small TLB (page number to leaf entry), so that a memory access doesn't usually cost two table reads through the cache
-    before its data (integrator's suggestion);
-  - (c) the leaf pool's size (section 12) no longer applies as a local store; the leaves are just file pages.
+  - (a) where the code map starts: fixed (Jolt's program starts at `RAM_START_ADDRESS`, 0x8000_0000) or a further launch value;
+  - (b) a small TLB (section 12);
+  - (c) whether a log lives only for its proof or can outlive it (a re-run).
 
 ---
 

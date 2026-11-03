@@ -309,9 +309,20 @@ its region, with **offset bits [22:20] picking the part**, as in the replayer's 
       pages or half pages directly, invalidating any cached lines they overwrite, so they don't push others' working sets out.
     - **Priority: the file system above the Tracer** (owner); the Updater, which must never stall (the broadcast stream), above
       both for LPDDR bandwidth.
-    - **Open:** its ports or banking (the Tracer is the heaviest client: every load and store row plus its table lookups); its
-      associativity; its write policy (write-back, and whether a fully dirty aligned 4 KB run is written back as one page
-      write); whether C&C 2 keeps its 128 4 KB buffers (section 20) or folds them into this cache.
+    - **Line accesses only** (owner): word accesses happen only in the Tracer's local caches (section 21); every client of the
+      shared cache reads or writes whole 128 B lines (a client changing part of a line holds the line).
+    - **Organization** (integrator's proposal, to confirm by measurement): **8-way set-associative, 512 sets**: an address is
+      already in 128 B units, so its low 9 bits pick the set and the other 22 bits are the tag; replacement LRU within a set.
+    - **Banking:** 8 banks of 64 KB, interleaved on the line address's low bits (a page's 32 lines spread over all of them);
+      each bank serves one 1,024-bit line per cycle; arbitration per bank, the file system ahead of the Tracer.
+    - **Misses: non-blocking**, about 8 to 16 outstanding (so a Tracer miss to LPDDR doesn't hold up a file-system hit); a miss
+      fills 128 B.
+    - **Write-back, write-allocate;** optionally, when all 32 lines of a page are dirty, they go back as one page write.
+    - **Coherence with bulk streams through allocation:** streams write freshly allocated pages, and **a page has no lines in
+      the cache when it is allocated**: freeing a page invalidates its 32 lines (one tag lookup in each of the 32 sets it spans),
+      so bulk writes never snoop.
+    - **Open:** the ways, the banks and the outstanding misses, from gold replaying both workloads' address streams (section 21
+      (d)); whether C&C 2 keeps its 128 4 KB buffers (section 20) or folds them into this cache.
   - *(A page-table stream format, a walk of the 2,048 top-level entries and their leaves, was proposed here and is superseded:
     the tables live as files and are read in place, section 19.)*
 - **Findings from upstream Jolt** (a16z/jolt `main` at `17a9459`, read 2026-11-01; `common/src/jolt_device.rs`, `constants.rs`):
@@ -727,7 +738,8 @@ Decided (O). In front of section 12's shared 512 KB cache, which acts as an L2 f
   at a segment's end can be discarded, the Tracer's copy being throwaway (the next images come from the updates). Aliasing is
   harmless: two guest addresses can share a memory-system page only if it is read-only.
 - **Open:**
-  - (a) the associativity (128 lines fully associative, or a few ways), within a single cycle;
+  - (a) ~~the associativity~~ **decided: fully associative** (owner): 128 lines each, one Tracer, so the comparators' power is
+    acceptable;
   - (b) a small page TLB for misses (a 4 KB page is 32 lines, so a missing line's neighbours share its translation), so a miss
     doesn't walk the three levels each time;
   - (c) whether an instruction line also brings its code map words (a 128 B line is two 64 B blocks, so two (base, mask) pairs of

@@ -872,18 +872,24 @@ current proof.)
 
 ## 23. The Tracer's startup state (2026-11-01)
 
-Decided (O). **Everything the Tracer needs to start a segment, and nothing else:**
+Decided (O). **The Tracer's state takes the replayer's state record** (spec 4.19.2; section 6), so one record layout runs from
+the host through the Tracer to the replayers (owner, 2026-11-01):
 
-| part | from |
-|---|---|
-| pc, `instr_idx`, the expansion offset, registers 0-127 | frame 2 (section 16), the processor state at the segment's first row |
-| **the guest's memory file:** its root's address (31 bits) and its depth (0 to 3) | C&C 3: the Tracer's copy (section 22) |
-| **the jump-target map file:** its root's address and its depth | C&C 3: the proof's map (section 22) |
-| **the advice stream's size:** its bits and its values, the segment's advice words (owner, 2026-11-01) | frame 3's length |
+| word | contents | for the Tracer |
+|---|---|---|
+| 1 | the state word: pc, `instr_idx`, the next offset, the compression flags | the processor state at the segment's first row (frame 2); **no stream compressed** |
+| 2 | the stream word: each stream's size, bits in and values out (section 24) | **the read queue: the segment's advice; the code and write queues zero length** |
+| 3-66 | the register image: 64 words, two registers each | registers 0-127 |
+| + one word | the Tracer's extras: **the guest's memory file** (root address, depth) and **the jump-target map file** (root, depth) | from C&C 3 (section 22): the Tracer's copy, the proof's map |
 
-**Loading it invalidates the Tracer's local caches**, the 16 KB instruction and data caches and the pc to `instr_idx` LRU,
-**without flushing dirty lines** (owner): the previous segment's copy of memory is throwaway (section 21), so its dirty data is
-simply dropped. The advice log (frame 3) is fed separately, through its input queue (section 13).
+- **The advice queue is the Tracer's read queue** (owner): the same name and role as the replayer's read log, from which both
+  units pop advice (section 13). It is 4 KB (section 24) and **never compressed**, so the Tracer has **no LRU decoder** on its
+  input; the code and write queues are simply zero length.
+- **Frame 2** (section 16) takes the same layout, so the host's processor state, the Tracer's startup state, its per-window output
+  and the replayer's state are one record (replacing frame 2's flat 131 u64; WORKER16's tool and gold follow when they next
+  change).
+- **Loading it invalidates the Tracer's local caches**, the 16 KB instruction and data caches and the jump LRU, **without
+  flushing dirty lines** (owner): the previous segment's copy of memory is throwaway (section 21).
 
 ## 24. The Tracer's peripheral window (2026-11-01)
 
@@ -901,12 +907,12 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
     controller-fed path, spec 4.19.9);
   - **done:** the rows the row-count register asked for are traced;
   - **code log**, **read log** and **write log:** each stream has something ready (sections 2 and 6);
-  - **advice:** the advice input queue (section 13) has room, so send more of the segment's advice (owner). **The queue is 4 KB**
+  - **advice:** the read queue (section 23: the advice input) has room, so send more of the segment's advice (owner). **The queue is 4 KB**
     (owner: it mirrors the replayer's typical queue sizes; was 2 KB): 512 advice words. Advice is consumed slowly (the division family takes one word per expansion of about 12 rows,
     a secp operation at most 8 in up to 240), so a full queue lasts thousands of rows, far longer than the controller takes to
     refill it; proposed (integrator): raise the flag when half is free.
-- **The advice stream's end** (owner, 2026-11-01): **the advice log is per segment**, all 4M rows, not per run of 65,536, and
-  **its size is part of the startup state** (section 23), so the Tracer knows it from the start. It counts the words it pops:
+- **The read queue's end** (owner, 2026-11-01): **the advice log is per segment**, all 4M rows, not per run of 65,536, and
+  **its size is part of the startup state** (section 23's stream word), so the Tracer knows it from the start. It counts the words it pops:
   **a pop beyond the size sets an `ERRORS` bit (advice underflow)** at once, instead of the Tracer waiting forever for the
   watchdog; and **leftover advice** is checked by the controller at the segment's end, reading the count of words not yet
   consumed after the 64th done (it must be 0). (This replaces a "last advice" pulse from the controller.) Under section 8a it

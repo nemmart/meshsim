@@ -615,8 +615,10 @@ start comes in frame 2. **Only jumps need the map.**
 | worst segment, LRU 64: misses, of which a line's first touch | 8,665, 3,048 | 87,261, 2,467 |
 
     **So a lookup is always one line read**, and the cost is small: the worst segment (Cyclone, LRU 64) is about 2,500 cold line
-    reads from LPDDR at about 150 cycles and 85,000 warm ones at about 6, roughly 0.9 M cycles, under 1% of the Tracer's 100 ms
-    budget per segment at an assumed 1 GHz [estimate]. Cold lines (one per distinct target, about 2,500-3,000 per segment) dominate
+    reads from LPDDR at **80 cycles** (owner: an idle LPDDR4X miss, about 50 ns at the DRAM plus the controller, at 1 GHz) and
+    85,000 warm ones at about 6, roughly 0.7 M cycles, under 1% of the Tracer's 100 ms budget per segment [estimate]. The warm
+    ones assume the segment's hash lines stay in the 512 KB cache: they are 316 KB (Cyclone) and 390 KB (EVM Zone), so they compete
+    with the Tracer's data and code; a bigger LRU, or hashing by 32 B code block (pc >> 5), would shrink that. Cold lines (one per distinct target, about 2,500-3,000 per segment) dominate
     and don't depend on the LRU's size; a 256-entry LRU halves Cyclone's warm misses.
   - (b) the hash function and the table's exact layout (software, free to change);
   - (c) building the table on the host (from the bytecode's instruction starts).

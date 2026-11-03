@@ -292,8 +292,9 @@ its region, with **offset bits [22:20] picking the part**, as in the replayer's 
   - **Measured clustering** (WORKER17, 2²⁹, in 16 KB pages): EVM Zone 69 pages in 3 16 MiB regions; Cyclone 693 pages in 4
     (the 2.9 MB untrusted advice, and one 7.75 MiB run of stack plus heap). At 4 KB both still fit a handful of leaf tables.
   - **Entries are 32 bits; bits 30:0 address the file system** (LPDDR) **in 128 B units** (owner; 2³¹ x 128 B = 256 GiB), the
-    format in LPDDR. The memory system reads 4 KB (the most efficient), 2 KB, or 128 B (poor). **Every table and page is 4 KB
-    aligned:** the low 5 bits of a valid entry are 0, and each fetch is one 4 KB read.
+    format in LPDDR: **an address names a 128 B unit**, and **the memory system reads a page (4 KB, the most efficient), a half
+    page (2 KB), or 128 B (poor)** (owner). Tables and data pages are whole 4 KB pages, so a page-table entry's low 5 bits are 0 and
+    fetching a table or a data page is one page read; other pointers (a half page, a 128 B unit) use the finer addressing.
     - **a middle or leaf entry pointing to a table:** bits 30:0, the table's address; bit 31 reserved, 0;
     - **a leaf entry pointing to a data page:** bits 30:0, the page's address; **bit 31, read-only**, for sharing a page between
       the proof's image and the Tracer's copy (section 15; the Tracer never copies on write);

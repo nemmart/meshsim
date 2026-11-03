@@ -845,7 +845,7 @@ The "two copies at the segment's start" (section 15) are the frozen start image 
 the leaves back: the Tracer's copy and the final image before the start image, the start image before the cycle-0 image.
 
 **When the updates are applied** (owner, 2026-11-01): **the whole stream, all 128 segments, is received and applied before tracing
-starts.** As the stream arrives, the ASIC running segment *k* writes segments 0 to *k* - 1's updates into its start image (then
+starts**, the images being **built as the data arrives** (owner), never buffered first: the ASIC running segment *k* writes segments 0 to *k* - 1's updates into its start image (then
 freezes it and `cow_open`s the final image) and segments *k* to 127's into its final image (then freezes it), keeping its own
 segment's frames 2 and 3. When the stream ends, every ASIC opens its Tracer's copy into slot 0 and **all 128 Tracers start
 together.** (So the stream's transfer time is part of a proof's latency, unless the next proof's stream arrives during the

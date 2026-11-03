@@ -923,6 +923,9 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
   (a coded stream whose bits are all read but which decodes to fewer or more values is corrupt). For the Tracer's advice, raw
   64-bit words, the bits are 64 times the values. **For the replayer this changes its state record** at v1.3: the stream word
   carries bit lengths today, so the value counts need room (more fields, or another word; open).
+  **A mismatch sets one of the peripheral's condition bits** (owner): its `ERRORS`, raising its error line (4.13). Proposed
+  (integrator): one bit per stream (on the replayer code, read log, write log; on the Tracer advice), so the error names the
+  stream.
 - **Four queue-length registers** (owner, 2026-11-01), **in 128-bit words**, for the output the controller sends on: **state,
   code, read log, write log.** The state queue is always **67 words** per window (section 6: the template bitmap, the state
   word, the stream word and the 64-word register image), the other three vary with the window.

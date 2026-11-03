@@ -711,6 +711,30 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
     next, rather than 1,024 pointers; `.pages`'s tables stored as a file's pages), or structures outside the file system, reached
     only by the Tracer's pointers.
 
+## 21. The Tracer's local caches (2026-11-01)
+
+Decided (O). In front of section 12's shared 512 KB cache, which acts as an L2 for the Tracer:
+
+- **16 KB of data and 16 KB of instructions, local to the Tracer: 128 lines of 128 B each** (owner).
+- **Each line carries two tags: its Tracer (guest) address and its memory-system address** (owner). A hit on the guest tag needs
+  no translation, so resident lines act as their own TLB; the memory-system tag gives the line's place for write-back and for
+  invalidation by others.
+- **Access to them is single-cycle** (owner).
+- **A miss fills from the shared cache over a 128 B (1,024-bit) bus** (owner): a line per transfer.
+- **Coherence is nearly free for the Tracer** (integrator's note): during a segment nothing else writes what it sees (its written
+  pages are private copies, its shared pages read-only, its tables unchanged), so the local caches need no protocol. Dirty data
+  lines are written back to the shared cache on eviction, and both caches are invalidated at a segment's boundary; dirty lines left
+  at a segment's end can be discarded, the Tracer's copy being throwaway (the next images come from the updates). Aliasing is
+  harmless: two guest addresses can share a memory-system page only if it is read-only.
+- **Open:**
+  - (a) the associativity (128 lines fully associative, or a few ways), within a single cycle;
+  - (b) a small page TLB for misses (a 4 KB page is 32 lines, so a missing line's neighbours share its translation), so a miss
+    doesn't walk the three levels each time;
+  - (c) whether an instruction line also brings its code map words (a 128 B line is two 64 B blocks, so two (base, mask) pairs of
+    section 18), so a jump's target `instr_idx` is computed from the line itself;
+  - (d) sizes to confirm by measurement: the gold emulator can replay both 2²⁹ workloads' address streams through these caches
+    and the shared one and report hit rates (WORKER18, after ACT4).
+
 ---
 
 ## v1.3 work list

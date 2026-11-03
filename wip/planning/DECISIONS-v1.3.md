@@ -295,9 +295,9 @@ its region, with **offset bits [22:20] picking the part**, as in the replayer's 
     format in LPDDR: **an address names a 128 B unit**, and **the memory system reads a page (4 KB, the most efficient), a half
     page (2 KB), or 128 B (poor)** (owner). Tables and data pages are whole 4 KB pages, so a page-table entry's low 5 bits are 0 and
     fetching a table or a data page is one page read; other pointers (a half page, a 128 B unit) use the finer addressing.
-    - **an index entry pointing to an index page:** bits 30:0, the page's address; bit 31 reserved, 0;
-    - **a bottom index entry pointing to a data page:** bits 30:0, the page's address; **bit 31, read-only**, for sharing a page between
-      the proof's image and the Tracer's copy (section 15; the Tracer never copies on write);
+    - **every entry, at every level:** bits 30:0, the page's address (an index page or a data page); **bit 31, the write bit**
+      (owner, 2026-11-01): 1 means this file owns the page and may change it; 0 means it is shared, read-only, and must be
+      copied before any change (section 20's `cow_open`). (Replaces bit 31 as a read-only bit on bottom entries only.)
     - **no entry: `0xFFFFFFFF`** (owner), at every level; no valid entry has its low bits set, and address 0 stays usable. A table
       must be filled with `0xFFFFFFFF`, not zeroed: a zeroed entry is a valid pointer to address 0.
   - **A 512 KB cache of the file system, shared by the whole chip** (owner, 2026-11-01): **4,096 lines of 128 B**, caching
@@ -699,6 +699,20 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
   **So the file system has fast `read_page` and `write_page` primitives anywhere in it** (owner): (slot, offset) through the
   translator to a page, then one direct 4 KB transfer, whatever the file's size or depth. A `write_page` to a hole in a sparse file
   fills the hole first; in a dense file it overwrites within the length, or appends at the end.
+- **`cow_open(source_path, dest_path)`** (owner, 2026-11-01): makes a new file at the destination **sharing everything with the
+  source but its root page**, which is copied. **The source must be in read-only mode, with all its write bits 0** (section 12's
+  bit 31), so the copied root's entries are all 0, shared. Then:
+  - **a write** to the destination walks down copying as it goes (path copying): at each level an entry with write bit 0 has its
+    page copied into a new page (whose own entries keep their 0s), and the entry points to the copy with its write bit set to 1;
+    at the bottom the data page is copied the same way. Only the paths to written pages diverge.
+  - **the write bits record ownership:** deleting the destination frees exactly the pages reached through entries with write bit
+    1, its own copies; the rest belong to the source. **A source must outlive its copies** (proposed, integrator: a count of COW
+    copies in its directory entry's reserved bytes, a delete allowed only at 0); a read-only source can have many.
+  - **Uses:** the two copies at a segment's start (section 15) are a `cow_open` of the start image, C&C 3 pre-copying the pages
+    the segment writes (frame 1's counts) before the Tracer starts, so the Tracer still never copies on write; and the Updater's
+    streaming copy-on-write, building the next image as a `cow_open` of the previous one followed by `write_page`s.
+  - Open: how a file is put in read-only mode (a call that clears its tree's write bits, or files created read-only, such as a
+    finished image).
 - **File-system calls** (owner) for what hardware never does, served by C&C 2: **fill a hole** (allocate a page at an offset,
   growing the tree or adding index pages as needed), used for example by the Updater building the memory image for the next
   trace; and, by the same token, **copy a page** (replacing a shared page with a private copy, the Updater's streaming
@@ -797,7 +811,7 @@ memory system's centre, not the Tracer's. The Tracer's local 16 KB caches absorb
     acceptable;
   - (b) ~~a small page TLB~~ **decided: TLBs, now the memory system's** (owner, 2026-11-01): on a local miss the Tracer sends
     (slot 0, offset), and the memory system's slot-tagged TLB (a page to its bottom index entry: the page's address and its
-    read-only bit; proposed 64 entries, fully associative) and a cache of upper index entries (each covering 4 MB; 16 to 64) mean a
+    write bit; proposed 64 entries, fully associative) and a cache of upper index entries (each covering 4 MB; 16 to 64) mean a
     miss usually costs one index read, through the shared cache; a 4 KB page is 32 lines, so a missing line's neighbours share its
     translation. (Restated from the Tracer's own two TLBs under 8 top registers; sizes to confirm by measurement, (d).)
   - (c) ~~an instruction line bringing its code map words~~ moot: the code map is gone (section 18).

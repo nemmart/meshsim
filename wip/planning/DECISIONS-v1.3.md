@@ -770,9 +770,10 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
 ## 21. The Tracer's local caches (2026-11-01)
 
 Decided (O). In front of section 12's shared 512 KB cache, which acts as an L2 for the Tracer; a local miss is a (slot 0,
-offset) request to the memory system, which translates it (section 20). **The 512 KB cache sits physically
-close to the Tracer** (owner, 2026-11-01): with the file system and the Updater bypassing it, the Tracer is its main client, so
-the 1,024-bit fill bus stays short; the controllers' line accesses travel further.
+offset) request to the memory system, which translates it (section 20). **The 512 KB cache sits close to the memory** (owner,
+2026-11-01): with the translator, its TLB and walker, and the file system's index accesses all going through it, it is the
+memory system's centre, not the Tracer's. The Tracer's local 16 KB caches absorb the longer trip over the 1,024-bit fill bus.
+(This reverses an earlier placement next to the Tracer, made while the file system bypassed the cache.)
 
 - **16 KB of data and 16 KB of instructions, local to the Tracer: 128 lines of 128 B each** (owner).
 - **Each line carries two tags: its Tracer (guest) address and its memory-system address** (owner). A hit on the guest tag needs

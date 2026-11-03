@@ -894,9 +894,9 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
   - **expand:** an instruction needs its expansion from the controller (`EXPANSION_OPCODE` holds its word, as in the replayer's
     controller-fed path, spec 4.19.9);
   - **segment done:** the segment's 2²² rows are traced;
-  - **code log**, **read log** and **write log:** each stream has something ready (sections 2 and 6).
-- **Open:** the register offsets; whether the advice input queue (section 13) needs a wake flag of its own (room for more advice)
-  or is fed by credits alone; statistics registers.
+  - **code log**, **read log** and **write log:** each stream has something ready (sections 2 and 6);
+  - **advice:** the advice input queue (section 13) has room, so send more of the segment's advice (owner).
+- **Open:** the register offsets; the advice queue's size and the threshold at which it asks for more; statistics registers.
 
 ---
 

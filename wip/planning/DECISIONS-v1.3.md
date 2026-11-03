@@ -975,6 +975,18 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
   the state word, the stream word, the 64-word register image and the files word), the other three vary with the window.
 - **Open:** the register offsets; the advice flag's threshold (proposed: half free); statistics registers.
 
+## 25. The Tracer's core, and the program's end (2026-11-01)
+
+Decided (O).
+
+- **The Tracer is a different beast from the replayer** (owner): its own core, not the replayer's with a memory path added. What
+  the two share is formats and tables, not the design: the 68-word state record (section 23), the region map (section 12), the
+  universal tables and templates (section 13), the controller-fed expansion path, and the read queue.
+- **After the program ends, the Tracer produces padding rows until its 4M rows are exhausted** (owner): once pc reaches 0 (spec
+  4.19.2's end of trace: the last real row jumps to pc 0 and sets `instr_idx` to 0), every further row is an all-zero NOP, up to
+  the segment's 2²² rows, so every window has its rows and a segment past the program's end (frame 2 at pc 0) is traced like any
+  other.
+
 ---
 
 ## v1.3 work list

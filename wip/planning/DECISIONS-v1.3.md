@@ -300,11 +300,18 @@ its region, with **offset bits [22:20] picking the part**, as in the replayer's 
       the proof's image and the Tracer's copy (section 15; the Tracer never copies on write);
     - **no entry: `0xFFFFFFFF`** (owner), at every level; no valid entry has its low bits set, and address 0 stays usable. A table
       must be filled with `0xFFFFFFFF`, not zeroed: a zeroed entry is a valid pointer to address 0.
-  - **A 512 KB cache of the file system** (owner): **4,096 lines of 128 B**, caching file-system (LPDDR) addresses, **after**
-    translation, not the guest's address space. A line is one 128 B unit (16 of the guest's 8-byte cells); **a miss fills 128 B**
-    (owner). A copied page has a new address, so copy-on-write can't alias in the cache, and pages shared between proofs are cached
-    once. **Open:** its associativity; its write policy (write-back, and whether copy-on-write copies through the cache or flushes
-    the source page's dirty lines first).
+  - **A 512 KB cache of the file system, shared by the whole chip** (owner, 2026-11-01): **4,096 lines of 128 B**, caching
+    file-system (LPDDR) addresses, **after** translation, not any unit's address space; **a miss fills 128 B** (owner). One cache
+    in front of LPDDR keeps every unit coherent (the Tracer's tables and pages, C&C 2's directories and files, the Updater's
+    images, the cores): nothing sees stale data, and no private caches need invalidating. A copied page has a new address, so
+    copies can't alias, and pages shared between proofs are cached once.
+    - **Bulk streams bypass it** (integrator's proposal, with the sharing): the Updater's image building and the logs move whole
+      pages or half pages directly, invalidating any cached lines they overwrite, so they don't push others' working sets out.
+    - **Priority: the file system above the Tracer** (owner); the Updater, which must never stall (the broadcast stream), above
+      both for LPDDR bandwidth.
+    - **Open:** its ports or banking (the Tracer is the heaviest client: every load and store row plus its table lookups); its
+      associativity; its write policy (write-back, and whether a fully dirty aligned 4 KB run is written back as one page read
+      size); whether C&C 2 keeps its 128 4 KB buffers (section 20) or folds them into this cache.
   - *(A page-table stream format, a walk of the 2,048 top-level entries and their leaves, was proposed here and is superseded:
     the tables live as files and are read in place, section 19.)*
 - **Findings from upstream Jolt** (a16z/jolt `main` at `17a9459`, read 2026-11-01; `common/src/jolt_device.rs`, `constants.rs`):

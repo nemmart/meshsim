@@ -681,6 +681,10 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
   - **The page table is such a file** (integrator's observation, owner's direction): a depth-3 file's root entries each cover
     4 GB, a middle table of 1,024 leaf tables of 1,024 data pages, section 12's 9 + 10 + 10 bits. So **`.pages` is a sparse depth-3
     file whose contents are the guest's memory**, using the root's first 8 entries (32 GiB); a guest address is a file offset.
+    **Its depth follows the run's K like any file's** (owner): Jolt's used range is a low part (I/O and advice, just below
+    0x8000_0000) and a high part (program, stack, heap), both inside a 32-bit window from `lowest_address`, so for K up to 2²⁹ cells
+    the offset is 32 bits and **`.pages` is a depth-2 file (4 GB)**; both workloads are (EVM Zone 2²³ cells, 64 MiB; Cyclone 2²⁴,
+    128 MiB). Only K above 2²⁹ cells, up to section 14's 2³², needs depth 3.
 - **The memory system reads files directly** (owner): **file slots**, a small table of open files (root address and depth), which
   the file system fills; **a request is (slot, offset, size)**, translated through a TLB tagged by slot, a miss walking the file's
   tree (at most three index reads) through the shared cache, then the line read from the cache. **One translator for everything:**

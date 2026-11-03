@@ -888,12 +888,17 @@ simply dropped. The advice log (frame 3) is fed separately, through its input qu
 
 Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17):
 
-- **Starting:** C&C 3 **writes the startup state** (section 23) into the window, then **pulses start**.
+- **Starting:** C&C 3 **writes the startup state** (section 23) into the window, then **pulses start** (loading it and
+  invalidating the local caches).
+- **Running** (owner, 2026-11-01): C&C 3 sets **a row-count register**, typically **65,536** (one window, 2¹⁶ rows), and
+  **pulses go**; it then feeds the Tracer expansions and advice as their flags ask, and the Tracer **raises done** after that
+  many rows, stopping exactly there, even inside an expansion. Its state carries on, so the next go continues the run: a segment
+  is 64 such runs, each ending on a window boundary, where its logs are drained.
 - **A sender**, as on the other peripherals, for the Tracer's output.
 - **Wake flags** (events), each waking the controller:
   - **expand:** an instruction needs its expansion from the controller (`EXPANSION_OPCODE` holds its word, as in the replayer's
     controller-fed path, spec 4.19.9);
-  - **segment done:** the segment's 2²² rows are traced;
+  - **done:** the rows the row-count register asked for are traced;
   - **code log**, **read log** and **write log:** each stream has something ready (sections 2 and 6);
   - **advice:** the advice input queue (section 13) has room, so send more of the segment's advice (owner). **The queue is 4 KB**
     (owner: it mirrors the replayer's typical queue sizes; was 2 KB): 512 advice words. Advice is consumed slowly (the division family takes one word per expansion of about 12 rows,

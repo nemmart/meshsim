@@ -984,14 +984,14 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
 - **Four queue-length registers** (owner, 2026-11-01), **in 128-bit words**, for the output the controller sends on: **state,
   code, read log, write log.** The state queue is always **68 words** per window (section 23's record: the template bitmap,
   the state word, the stream word, the 64-word register image and the files word), the other three vary with the window.
-- **Its registers mirror the replayer's** (spec 4.19.9; owner, 2026-11-01), the rest living in its region and state record:
+- **Its registers follow the replayer's** (spec 4.19.9; owner, 2026-11-01), the rest living in its region and state record:
 
 | word | register | |
 |---|---|---|
-| 32 | `ROWS_RUN` (R) | rows of this run completed (as the replayer's) |
-| 33 | `EXPANSION_OFFSET` (R) | the row within the current expansion where the next row starts (as the replayer's) |
-| 34 | `EXPANSION_OPCODE` (R) | the instruction awaiting a controller-fed expansion (as the replayer's) |
-| 35 | **`RUN_CYCLES`** (W) | **the rows the next run traces**, typically 65,536 (owner: the one new register) |
+| 32 | **`RUN_CYCLES`** (R/W) | **the rows the next run traces**, typically 65,536 (owner: the one new register, first, readable and writable) |
+| 33 | `ROWS_RUN` (R) | rows of this run completed (as the replayer's word 32) |
+| 34 | `EXPANSION_OFFSET` (R) | the row within the current expansion where the next row starts (as the replayer's word 33) |
+| 35 | `EXPANSION_OPCODE` (R) | the instruction awaiting a controller-fed expansion (as the replayer's word 34) |
 
   plus the usual `PARAMS`, `STATUS`, `ERRORS`, `EVENTS` and pulses (start, go), the DMA's words, and the four queue lengths
   (above). Proposed (integrator, to confirm): the queue lengths at words 36-39 (state, code, read log, write log), and the

@@ -986,6 +986,13 @@ Decided (O).
   4.19.2's end of trace: the last real row jumps to pc 0 and sets `instr_idx` to 0), every further row is an all-zero NOP, up to
   the segment's 2²² rows, so every window has its rows and a segment past the program's end (frame 2 at pc 0) is traced like any
   other.
+- **ECALL and host I/O need nothing special: their effects happen when the host runs the code** (owner, 2026-11-01). **ECALL**
+  is a trap into the guest's own handler, 7 ordinary rows (`isa/virtual.cpp:1068-1085`, mirroring upstream's `ecall.rs`): it
+  writes `mepc`, `mcause` = 11, `mtval` = 0 and `mstatus` (virtual registers 32-39) and jumps through `mtvec`; the handler is guest
+  code returning by MRET (Cyclone's 875 traps). **`VirtualHostIO`** is one row with no effect (`trace_owner.cpp:294-297`): its
+  side effects, such as printing, happened in the host's run and don't affect the proof. Older programs' raw host-I/O ECALLs are
+  rewritten as `VirtualHostIO` when the code is loaded on the host (jolt-cpp's LegacyRawEcall mode; UPSTREAM-DIFFS D3, not yet
+  ruled). **So the Tracer has no host channel.**
 
 ---
 

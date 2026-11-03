@@ -780,6 +780,12 @@ memory system's centre, not the Tracer's. The Tracer's local 16 KB caches absorb
   no translation, so resident lines act as their own TLB; the memory-system tag gives the line's place for write-back and for
   invalidation by others.
 - **Access to them is single-cycle** (owner).
+- **The Tracer's whole interface to the memory system: reads and writes of one 128 B line of a file** (owner, 2026-11-01), as
+  (slot, line), each request knowing exactly which line it wants. There are exactly three reasons (owner): **a program miss** and
+  **a data miss** (slot 0, the guest's memory, where code and data both live; a data miss may also write back its dirty victim),
+  and **a mapping miss** (a pc to `instr_idx` LRU miss: one line of the jump-target table, in its own slot, the line chosen by the
+  hash). Translation is the memory system's; the Tracer's streams (advice in, logs out) move as whole pages and never use the
+  cache.
 - **A miss fills from the shared cache over a 128 B (1,024-bit) bus** (owner): a line per transfer.
 - **Coherence is nearly free for the Tracer** (integrator's note): during a segment nothing else writes what it sees (its written
   pages are private copies, its shared pages read-only, its tables unchanged), so the local caches need no protocol. Dirty data

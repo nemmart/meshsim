@@ -963,9 +963,11 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
   64 windows of a segment nothing is loaded; C&C 3 only reads the state and the queue lengths at each done, drains the output
   queues, and pulses go. **The read queue persists across the windows**, since the segment's advice runs across them (its size
   in the state counts down over the whole segment).
-- **The rule: read the state out before writing a new one** (owner): at a proof's start C&C 3 has read the last state and
-  drained the output queues, so a load always finds them empty; the load then starts the read queue afresh for the new
-  segment's advice. Breaking the rule is our firmware's mistake, so under section 8a it is UB (meshsim stops).
+- **Setting the state flushes the queues**, on the Tracer and on the replayer alike (owner, 2026-11-01): a state write empties
+  every input and output queue, so the new state starts clean, the read queue afresh for the new segment's advice. **So C&C 3
+  reads the state out and drains the output queues before writing a new one** (owner): what isn't read out first is simply lost.
+  (For the replayer this moves the clearing to the state write; at v1.25 a run's start, `PULSE_RUN`, empties the queues, spec
+  4.19.8.)
 - **Four queue-length registers** (owner, 2026-11-01), **in 128-bit words**, for the output the controller sends on: **state,
   code, read log, write log.** The state queue is always **68 words** per window (section 23's record: the template bitmap,
   the state word, the stream word, the 64-word register image and the files word), the other three vary with the window.

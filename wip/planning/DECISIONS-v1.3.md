@@ -55,6 +55,11 @@ Decided (O).
 - **Set 1 sizes window *n* + 1 while set 2 compresses window *n*** (2).
 - **Set 2 reproduces set 1 exactly:** both start each window from the same table state and apply the same
   rules, so set 2's output is exactly the size set 1 counted.
+- **Two sets of three, kept, each stream's compression switchable on and off** (owner, 2026-11-01): a per-stream enable bit; off
+  sends the stream raw, on lets the window's measurement pick the smaller. The second set stays because a stream's length must
+  be known at done (the state record goes first, and the replayer takes its sizes from it, section 24) while the FIFOs hold raw
+  words; compressing on entry instead would need separate read- and write-log FIFOs, each a whole window at compression's worst
+  case, about 0.5 MB more.
 
 ## 4. The LRU tables (2026-10-29)
 

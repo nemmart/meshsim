@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""ACT4 (W5a): every architectural-test ELF through gold, jolt-cpp (row_dump) and upstream (upstream_rows), with each
+"""ACT4 (W5a): every architectural-test ELF through gold's ACT4 runner (Act4Runner.java: test equipment decoding at run
+time, executing through gold's Machine and expansions), jolt-cpp (row_dump) and upstream (upstream_rows), with each
 one's verdict and whether their rows agree; upstream's own jolt-emu verdicts come from Quest task 095.
 
     run_act4.py <elfs dir> <jolt-emu-results.txt> <skip.txt> <out.tsv>
-        [--gold=<gold build dir>] [--row-dump=<path>] [--upstream-rows=<path>] [--strict=1]
+        [--gold=<gold build dir>] [--row-dump=<path>] [--upstream-rows=<path>]
 
 <elfs dir> is the unpacked act4-elfs.tar.xz (task 095). Each test runs with program.json beside this script (jolt-emu's
 defaults, common/src/constants.rs at 17a9459). A verdict is the test's tohost word after the run
-(tests/arch-tests/jolt/rvmodel_macros.h): 1 PASS; (gp << 1) | 1 FAIL in case gp; 0 none. Gold reads it from memory
-(run --tohost); for jolt-cpp and upstream it is the last store to tohost in their rows (WORKER18's record: opcode in
+(tests/arch-tests/jolt/rvmodel_macros.h): 1 PASS; (gp << 1) | 1 FAIL in case gp; 0 none. The runner reads it from
+memory; for jolt-cpp and upstream it is the last store to tohost in their rows (WORKER18's record: opcode in
 word 1 bits 7:0, address word 7, value written word 9).
 """
 import json
@@ -88,7 +89,6 @@ def main():
     gold = opts.get("gold", os.path.join(HERE, "..", "..", "build"))
     row_dump = opts.get("row-dump", "row_dump")
     upstream = opts.get("upstream-rows", "upstream_rows")
-    strict = "strict" in opts            # gold's load mode: permissive (ACT4's, the owner's D4 ruling) unless --strict=1
     emu = dict(line.split() for line in open(emu_results) if line.strip())
     skipped = {l.strip() for l in open(skip_file) if l.strip() and not l.startswith("#")}
     elfs = sorted(os.path.join(r, f) for r, _, fs in os.walk(elfs_dir) for f in fs
@@ -101,7 +101,9 @@ def main():
         shutil.copy(elf, os.path.join(d, "program.elf"))
         shutil.copy(os.path.join(HERE, "program.json"), d)
         th = tohost_address(elf)
-        rc, text = run(["java", "-cp", gold, "gold.Main", "run", d, empty, "--tohost"] + ([] if strict else ["--permissive"]))
+        # gold's side: the ACT4 runner (test equipment: run-time decoding, gold's Machine and expansions); gold's own
+        # strict loader rejects every ACT4 ELF (data inside .text, RVTEST_SIGUPD)
+        rc, text = run(["java", "-cp", gold, "act4.Act4Runner", elf])
         g_hash = text.split("run hash ")[1].split(",")[0] if "run hash " in text else "-"
         g = describe(int(text.split("tohost ")[1].split(":")[0], 16)) if "tohost 0x" in text else "ABORT"
         g_note = "" if "run hash" in text else first_error(text)

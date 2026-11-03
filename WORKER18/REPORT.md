@@ -89,6 +89,18 @@ EBREAK, FENCE, KECCAK256 without absorb, the custom `VirtualAssertEQ` (passing a
 accesses, UNIMP, a jump into an instruction's middle, a stack-canary store. Where jolt-cpp and upstream both complete,
 the three agree on every row; the rest are D2-D6 above. `check_guests.sh` pins gold's result for each.
 
+### W5: upstream's own tests
+
+- **Loading**: one mode, strict (owner's D4 ruling and its revision): anything Jolt can't prove is rejected at load,
+  standard UNIMPs load as markers that throw if executed. Both workloads and all examples load; segment files unchanged.
+- **ACT4** (133 RV64IMAC ELFs built as upstream does, task 095): every one has data inside its code (ACT4's own check
+  macro), so none can be strictly loaded or relinked into a provable program; jolt-cpp and upstream's static decoder
+  reject them too. Through an ACT4-only runner (test equipment: run-time decoding, gold's machine and expansions),
+  **123 of upstream's 125 passes pass**; `Zalrsc-sc.d-00` fails in gold and, it turns out, in upstream's own emulator,
+  whose HTIF check masks it (UPSTREAM-DIFFS U1, U2); `Zca-c.slli-00` hits a HINT jolt-cpp can't decode (D12). The 8
+  skipped CSR tests stop at the first CSR instruction Jolt can't prove.
+- **Inline tests** (task 096b): all 5,677 `execute_inline` calls of upstream's 57 inline tests agree with gold.
+
 ### Beyond the two workloads
 
 Seven of jolt-cpp's example guests (`tracer-tests`, `inlines`, `merkle-tree`, `fibonacci`, `sha2-chain-profile-15`,
@@ -134,4 +146,5 @@ non-obvious ones, which a hardware Tracer must also follow:
    Neither happens on any validated run.
 5. ~~Stage 3~~ **done**: upstream's rows equal jolt-cpp's; the differences outside the rows (UPSTREAM-DIFFS.md D1-D10)
    await the owner's rulings, one by one.
-6. **W5**: upstream's own tests (the ACT4 architectural tests, the inline tests) through gold: next.
+6. **W5 done** (below). Open from it: D12 (C.SLLI x0) and U1/U2 (jolt-emu masks a failing SC.D test; upstream's ACT4
+   config contradicts its LR/SC rule) await rulings.

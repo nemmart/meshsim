@@ -332,9 +332,9 @@ Both exist at the pin 17a9459: `tests/arch-tests/` (ACT4 config, `skip.txt`, ris
   upstream's own `jolt-emu` verdicts for every ELF, skipped ones included).
 - **Verdicts**: each test stores to `tohost` (`tests/arch-tests/jolt/rvmodel_macros.h:36-52`): 1 passes, `(gp << 1) | 1`
   fails case gp; then `j 1b` (JAL immediate 0: jolt-cpp ends, upstream stalls). Gold reads `tohost` from memory
-  (`run --tohost`; `Elf.symbols` now reads `.symtab`); for jolt-cpp and upstream_rows it is the last store to tohost
-  in their rows. `wip/gold/test/act4/run_act4.py` runs every ELF through the three and tabulates verdicts and row
-  agreement; `program.json` beside it is jolt-emu's defaults (`common/src/constants.rs:23-31`).
+  (`Elf.symbols` reads `.symtab`); for jolt-cpp and upstream_rows it is the last store to tohost in their rows.
+  `wip/gold/test/act4/run_act4.py` runs every ELF through the three and tabulates verdicts and row agreement;
+  `program.json` beside it is jolt-emu's defaults (`common/src/constants.rs:23-31`).
 - Smoke check, upstream's deliberate failure (`tests/arch-tests/smoke/fail.S`, built here with GCC 15): gold, jolt-cpp
   and upstream_rows all 5 rows, the same run hash, verdict FAIL.
 
@@ -349,3 +349,38 @@ Both exist at the pin 17a9459: `tests/arch-tests/` (ACT4 config, `skip.txt`, ris
   gold's expansion, a Machine with SecpCompute advice; the span must equal "post", and an expected panic must abort.
   Checked on handmade BIGINT256_MUL vectors (one right, one deliberately wrong).
 - Out of scope: grumpkin, p256, NTT (UPSTREAM-DIFFS D11).
+
+### W5 results (2026-11-03)
+
+**Gold has one loading mode, strict** (owner, DECISIONS-v1.3 section 17): the D4 ruling's permissive mode is gone
+(`7d1066d`); `Machine` runs a `Code` (Bytecode implements it). Segment files, guests and workloads unchanged.
+
+**ACT4 can't be made provable by relinking**: all 133 ELFs carry data inside their code, emitted by the test body
+itself: every self-check is `RVTEST_SIGUPD` (riscv-arch-test `tests/env/signature.h:21-31`), a `jal` to the failure
+handler followed by two `RVTEST_WORD_PTR` words (the tested instruction's address and its description string) that
+the handler reads through the link register. With the ACT4 sources unmodified, no linker script can separate them, so
+step (1) of the owner's plan yields no strictly loadable ELF and step (2) applies: **`test/act4/Act4Runner.java`**,
+test equipment (not part of gold): it loads every PT_LOAD segment, decodes at run time from memory like jolt-emu, and
+executes through gold's Decoder, Expander and Machine (`RuntimeCode`: each instruction reached is expanded and appended;
+an unprovable instruction or a standard UNIMP becomes a row that throws if executed). `--trace-failure` prints the first
+failed check (its tested instruction, its description string, expected value and registers).
+
+| ACT4 (133 ELFs, `WORKER18/data/act4/act4-runner.tsv`) | count |
+|---|---|
+| jolt-emu (upstream CI) pass | 125 |
+| ... of those, gold's runner PASS | 123 |
+| ... gold's runner FAIL: `Zalrsc-sc.d-00` check 241 (LR.W then SC.D), a real failure jolt-emu masks (UPSTREAM-DIFFS U1, U2) | 1 |
+| ... gold's runner aborts: `Zca-c.slli-00`, C.SLLI x0 (a HINT jolt-cpp treats as invalid, D12) | 1 |
+| skip.txt (8 CSR tests, reported apart): jolt-emu exits 101; gold's runner throws at the first unprovable CSR instruction (CSRRC on mscratch 0x340, the immediate forms, `cycle`/`hpmcounter3` 0xC00/0xC03 reads) | 8 |
+| jolt-cpp (its JIT, `transcode.cpp:2546`) and upstream's static decoder (`build_jolt_program`: "unknown RV64 opcode") | reject all 133 at load |
+
+Strict gold also rejects all 133 at load, and names the same first unprovable word as jolt-cpp's JIT (0x8000022e in
+`I-add-00`, the first RVTEST_SIGUPD descriptor). The smoke ELF (`smoke/fail.S`) gives identical rows in all three.
+
+**Inline tests (task 096b)**: 096 ran no tests (the crates' tests need `--features host`, as upstream CI passes per
+crate, `.github/workflows/rust.yml:955-960`); 096b: 57 tests passed, 2 ignored, 5,677 `execute_inline` calls captured.
+**All 5,677 agree with gold** (`test/inline-vectors.jsonl.gz`, `InlineVectorTest`, run by `build.sh`): SHA256 103,
+SHA256_INIT 103, KECCAK256 2,003, KECCAK256_ABSORB_PERMUTE 2,102, BLAKE2 13, BLAKE3 1,003, BLAKE3_KEYED64 206,
+BIGINT256_MUL 120, secp256k1 MULQ/SQUAREQ/DIVQ/MULR/SQUARER/DIVR 4 each (advice from gold's SecpCompute). Not covered
+by upstream's harness calls: GLVR (no test calls it through `execute_inline`), and no expected-panic call was captured
+(upstream's panicking tests fail before the inline runs).

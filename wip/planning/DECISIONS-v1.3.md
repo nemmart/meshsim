@@ -935,16 +935,15 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
 - **The read queue's end** (owner, 2026-11-01): **the advice log is per segment**, all 4M rows, not per run of 65,536, and
   **its size is part of the startup state** (section 23's stream word), so the Tracer knows it from the start. It counts the words it pops:
   **a pop beyond the size sets an `ERRORS` bit (advice underflow)** at once, instead of the Tracer waiting forever for the
-  watchdog; and **reaching done without exhausting the input queues is an error** (owner, 2026-11-01), a condition bit, on
-  every peripheral. For the Tracer the read queue runs across a segment's 64 runs, so the check applies at **the segment's last
-  done**: C&C 3 marks the last run when it pulses go (proposed, integrator: a "last run" bit beside the row count), and a done
-  ending a last run with advice left sets the bit. (This replaces a software check of the leftover count, and before that a
-  "last advice" pulse.) Under section 8a it
+  watchdog. **Leftover advice is checked in software:** the Tracer raises done every 65,536 rows with the read queue meant to
+  carry on (owner), so a done with advice left is normal; C&C 3 reads the count of words not yet consumed after the segment's
+  64th done (it must be 0). (This replaces a "last advice" pulse.) Under section 8a it
   earns a check: the advice comes from this proof's run, so a disagreement between the host's advice and the trace depends on the
   input data, where simulation of our firmware may not reach.
 - **The same in v1.3's replayer** (owner, 2026-11-01): **it takes its input sizes when its state is set**, the state record's
   stream word giving each stream's exact length (code, read log, write log), and checks its pops against them the same way: one
-  beyond a stream's length is an underflow error at once, and a stream not fully consumed at the window's end is an error too.
+  beyond a stream's length is an underflow error at once, and **reaching done without exhausting its input queues is an error**
+  (owner): a replayer's window consumes all its input, so its done does mark the end.
   A starved window becomes a named error, not a hang caught by C&C 1's watchdog. A change to the replayer at v1.3 (v1.25 is
   frozen); the expansion queue, fed per expansion, ends by `seq_remaining` and is left as is.
 - **A stream's size is two numbers** (owner, 2026-11-01), since some streams are LRU-coded: **the bits in** (the stream as sent,

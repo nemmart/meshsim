@@ -711,8 +711,9 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
   - **Uses:** the two copies at a segment's start (section 15) are a `cow_open` of the start image, C&C 3 pre-copying the pages
     the segment writes (frame 1's counts) before the Tracer starts, so the Tracer still never copies on write; and the Updater's
     streaming copy-on-write, building the next image as a `cow_open` of the previous one followed by `write_page`s.
-  - Open: how a file is put in read-only mode (a call that clears its tree's write bits, or files created read-only, such as a
-    finished image).
+  - **`freeze(path)`** puts a file in read-only mode (owner, 2026-11-01, agreeing to it as the way to snapshot): it walks the
+    tree setting every write bit to 0, in place, copying nothing. A writable file that must go on being written is frozen and
+    then `cow_open`ed. (Clearing the bits only in a copy would leave the source free to overwrite shared pages in place.)
 - **File-system calls** (owner) for what hardware never does, served by C&C 2: **fill a hole** (allocate a page at an offset,
   growing the tree or adding index pages as needed), used for example by the Updater building the memory image for the next
   trace; and, by the same token, **copy a page** (replacing a shared page with a private copy, the Updater's streaming
@@ -817,6 +818,31 @@ memory system's centre, not the Tracer's. The Tracer's local 16 KB caches absorb
   - (c) ~~an instruction line bringing its code map words~~ moot: the code map is gone (section 18).
   - (d) sizes to confirm by measurement: the gold emulator can replay both 2²⁹ workloads' address streams through these caches,
     the TLBs and the shared one and report hit rates (WORKER18, after ACT4).
+
+## 22. The images and maps as copy-on-write files (2026-11-01)
+
+Decided (O), with section 20's `freeze` and `cow_open`. Each file shares every unchanged page with the one it came from and costs
+only the pages its changes touch; a source outlives its copies.
+
+**The jump-target map** (section 18):
+
+| file | made by | lifetime |
+|---|---|---|
+| `<program>.map`, the original hash table | built by the host from the ELF, then frozen | permanent |
+| the proof's map | `cow_open` of it, then frame 6's supplement inserted (path-copying only the pages it lands in) | one proof |
+
+**The memory images**, on the ASIC running segment *k*:
+
+| file | made by | lifetime |
+|---|---|---|
+| the program image | the ELF's memory, then frozen | permanent |
+| **the cycle-0 image** | `cow_open` of the program image, the proof's inputs and advice written in, then **frozen** (owner: one more step) | one proof |
+| **the start image** of segment *k* | `cow_open` of the cycle-0 image, segments 0 to *k* - 1's updates written (the Updater), then frozen; kept intact for the prover's RAM checking | one proof |
+| **the Tracer's copy** | `cow_open` of the start image, the pages the segment writes pre-copied (frame 1's counts), opened into slot 0 | one segment, thrown away |
+| **the final image** | `cow_open` of the start image, segments *k* to 127's updates written, then frozen | one proof |
+
+The "two copies at the segment's start" (section 15) are the frozen start image and the Tracer's copy of it. Deletion runs from
+the leaves back: the Tracer's copy and the final image before the start image, the start image before the cycle-0 image.
 
 ---
 

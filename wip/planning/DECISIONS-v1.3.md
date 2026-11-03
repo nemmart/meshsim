@@ -935,8 +935,11 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
 - **The read queue's end** (owner, 2026-11-01): **the advice log is per segment**, all 4M rows, not per run of 65,536, and
   **its size is part of the startup state** (section 23's stream word), so the Tracer knows it from the start. It counts the words it pops:
   **a pop beyond the size sets an `ERRORS` bit (advice underflow)** at once, instead of the Tracer waiting forever for the
-  watchdog; and **leftover advice** is checked by the controller at the segment's end, reading the count of words not yet
-  consumed after the 64th done (it must be 0). (This replaces a "last advice" pulse from the controller.) Under section 8a it
+  watchdog; and **reaching done without exhausting the input queues is an error** (owner, 2026-11-01), a condition bit, on
+  every peripheral. For the Tracer the read queue runs across a segment's 64 runs, so the check applies at **the segment's last
+  done**: C&C 3 marks the last run when it pulses go (proposed, integrator: a "last run" bit beside the row count), and a done
+  ending a last run with advice left sets the bit. (This replaces a software check of the leftover count, and before that a
+  "last advice" pulse.) Under section 8a it
   earns a check: the advice comes from this proof's run, so a disagreement between the host's advice and the trace depends on the
   input data, where simulation of our firmware may not reach.
 - **The same in v1.3's replayer** (owner, 2026-11-01): **it takes its input sizes when its state is set**, the state record's

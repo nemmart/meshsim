@@ -21,7 +21,11 @@ each shard's run log, the streams the tiles' replayers consume (spec 4.19). Arou
 
 Decided (O).
 
-- **Two FIFOs, each 72 × 1,024 = 73,728 entries**: one window of 2¹⁶ rows plus an eighth of headroom.
+- **Two FIFOs, each exactly 65,536 entries: one window of 2¹⁶ rows** (owner, 2026-11-01; was 72 x 1,024 = 73,728, an eighth
+  of headroom for pipelined windows): **the Tracer stops at done until its queues are emptied**, so nothing fills while
+  anything drains. The drain is at most about 768 KB per window (the code FIFO's 256 KB and the log FIFO's 520 KB, full), so
+  about 0.05-0.1 ms at one 128-bit packet a cycle and 1 GHz [estimate], against about 1.6 ms of budget per window (100 ms per
+  segment of 64 windows): a few percent at worst, less at the measured densities.
   - **The code FIFO, 32 bits wide:** one opcode word per native instruction, at most one per row.
   - **The log FIFO, 65 bits wide:** a 64-bit read-log or write-log word, and **a tag bit** saying which. One
     FIFO with the tag, rather than a separate 1-bit FIFO kept in lockstep. The words stay in row order, which
@@ -31,9 +35,7 @@ Decided (O).
   log words always fit. **This bound sizes the FIFO, so it must hold**: a row producing two log words would
   overflow the FIFO mid-window, and since a window can't drain before it ends, the Tracer would deadlock.
   *To validate:* the tracer model and the delivered run logs confirm no window exceeds 65,536 log words.
-- **Windows are pipelined:** window *n* drains while window *n* + 1 fills behind it. The drain is expected to
-  be much faster than the fill; the eighth is margin against a slow one. If the FIFO ever fills, back-pressure
-  stalls the RV64.
+- *(Windows were to be pipelined, window n draining while n + 1 filled; superseded: drain, then go, above.)*
 - *(Spec slip, passed to the v1.2 spec:* v1.1's 4.19.15 bounds a stream's length by "64K rows × at most two log
   words × 66 bits", about 8.6 Mbit, which contradicts its own one-value-per-row rule. The bound is
   64K × 66 bits, about 4.3 Mbit, within the 24-bit length field.)

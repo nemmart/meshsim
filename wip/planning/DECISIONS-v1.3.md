@@ -679,6 +679,11 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
 - **Open:**
 - **At most 10 directory levels** (owner), so a full path fits **1,024 bytes of the file system's memory**: 10 names of at most
   95 bytes, plus 10 separators, is at most 960 bytes.
+- **An open file is a 1,024-byte record** in the file system's memory (owner): **the full path in bytes 0-959** (zero-padded),
+  and in **the remaining 64 bytes** the information the file system keeps while working on the file: its location, its length,
+  and what it has cached (for a chain, the current index page and position, so reading on needn't walk the chain again).
+  Proposed layout of those 64 bytes (integrator, to confirm): length (u64), location (u32), type (u32), current position (u64),
+  current index page (u32), the rest reserved.
 - **A superblock at address 0** (owner), **cached by the file system** (C&C 2), which reads it at boot: it identifies the file
   system and says where the root directory is. Address 0 is otherwise an ordinary address (`0xFFFFFFFF` is "none"), but a zeroed
   pointer is a valid pointer to it, so the superblock's magic catches a stray write or a foreign memory at the next check.

@@ -651,8 +651,20 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
   4 MB; **random access** walks the chain (a reader that jumps around can keep the chain's pointers).
 - **A directory holds each file's name and length** (owner), with its first pointer (the data page, or the first index page). The
   length also says which form a file has (at most 4 KB: a single page).
+- **A directory entry is a fixed 128 bytes** (owner), exactly one 128 B unit, so it can be addressed and read on its own, and a 4 KB
+  directory page holds 32 entries. Least significant byte first:
+
+| bytes | field |
+|---|---|
+| 0-95 | **the name**, up to 96 bytes, zero-padded |
+| 96-103 | **the file's length** in bytes, u64 |
+| 104-107 | **its location**, u32: the data page, or the first index page (128 B units) |
+| 108-111 | **its type**, u32 |
+| 112-127 | reserved, 0 (the 32 bytes of important information are bytes 96-127) |
+
 - **Open:**
-  - (a) the directory's format (entry layout, name length, how the directory itself is stored, presumably as a file);
+  - (a) the type's values (which kinds of file: a page table, a code map, a log, a segment file, ...; and whether 0 marks a free
+    entry); how the directory itself is stored (presumably as a file of entries) and found;
   - (b) whether `.map` and `.pages` (section 19) are ordinary files in this format (`.map` then a chain of 1,023 pointers plus
     next, rather than 1,024 pointers; `.pages`'s tables stored as a file's pages), or structures outside the file system, reached
     only by the Tracer's pointers.

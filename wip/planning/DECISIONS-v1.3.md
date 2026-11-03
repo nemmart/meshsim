@@ -6,16 +6,19 @@ written, the v1.2 spec). **v1.3's focus is the Tracer** (owner, 2026-10-29).
 
 ---
 
-## 1. The Tracer: components (2026-10-29)
+## 1. The Tracer: components (2026-10-29; restated 2026-11-01)
 
-The Tracer is C&C 3's peripheral (v1.2, 25): the RV64 row machine that executes the guest program and writes
-each shard's run log, the streams the tiles' replayers consume (spec 4.19). Around its RV64 core (O):
+The Tracer is C&C 3's peripheral (v1.2, 25): the RV64 row machine that executes the guest program and writes each window's run
+log, the streams the tiles' replayers consume (spec 4.19). It is its own core (section 25), and around it (O):
 
-1. **The RV64 initial state** the core starts a window from.
-2. **The page table**, held locally.
-3. **Two local expansion memories, 8 KB and 4 KB.**
-4. **The LRU compressors: two sets of three**, one compressor per stream (code, read log, write log) in each set.
-5. **The big FIFOs** (2).
+1. **Its startup state:** the replayer's 68-word state record (section 23), naming the guest's memory and map files.
+2. **The memory interface:** 16 KB instruction and data caches; every miss a 128 B line of a file, (root, depth, line), translated
+   by the memory system (sections 20, 21). (Replaces a page table held locally.)
+3. **The jump LRU** (64 entries, pc to `instr_idx`) and the jump-target map file behind it (section 18).
+4. **The read queue** (4 KB, the segment's advice) and the **expansion queue** (4 KB, controller-fed expansions), in the
+   replayer's region map (section 12). (Replaces two local expansion memories, 8 KB and 4 KB.)
+5. **The LRU compressors: two sets of three**, one compressor per stream (code, read log, write log) in each set (sections 3-4).
+6. **The big FIFOs** (2), one window each (section 2), and **the output queues** 0-3 the DMA sends (section 24).
 
 ## 2. The big FIFOs (2026-10-29)
 
@@ -64,23 +67,21 @@ Decided (O). The Tracer's encoders match the replayer's decoders (spec 4.19.15, 
   first (4.19.15's existing rule). The decoder doesn't depend on the choice; it makes the encoding
   deterministic, which set 2 reproducing set 1 requires.
 
-## 5. Window and proof boundaries (2026-10-29)
+## 5. Window and proof boundaries (2026-10-29; restated 2026-11-01)
 
 Decided (O).
 
-- **Between windows** (every 2¹⁶ rows): **nothing is flushed.** The caches and the page table carry straight on;
-  a window boundary is only a cut point in the run log.
-- **Between proofs** (every 4M cycles, i.e. 64 windows, one per tile): the next proof runs over a different memory
-  image, so the Tracer
-  - **invalidates its D-cache, discarding dirty lines** (no write-back), and its I-cache;
-  - **loads the next proof's page table** from the pager (C&C 3).
-- **Why discarding is safe:** the Tracer writes to a **throwaway layer** (planning notes section 5); the next
-  proof's image is built separately, by the Updater from the update stream. Within a proof, a dirty line that is
-  evicted is still written to the throwaway layer's pages in LPDDR, since the program may read it back later in
-  the same proof; at the proof boundary everything the Tracer wrote is garbage, and the pager frees those pages
-  with the proof's bitmap.
-- *(Inferred, to confirm:)* the RV64's architectural state carries across a proof boundary; only the view of
-  memory changes.
+- **Between windows** (every 2¹⁶ rows, each a run ending in done, section 24): **nothing is flushed or loaded.** The caches,
+  the jump LRU and the read queue carry straight on; C&C 3 drains the window's output and pulses go. A window boundary is only a
+  cut point in the run log.
+- **Between proofs** (each ASIC traces one segment of 64 windows per proof): **a new state is written** (section 23), which
+  invalidates the local caches and the jump LRU **without flushing dirty lines**, and flushes the queues; it names the next
+  proof's memory file (the Tracer's copy of its start image) and map.
+- **Why discarding is safe:** the Tracer writes into its own copy of memory (section 22), throwaway; the next proof's images are
+  built separately, by the Updater from the update stream. Within a proof, an evicted dirty line is still written back to the
+  copy's pages, since the program may read it again; at the proof's end the copy is freed with the proof's arena (section 20).
+- **The processor's state doesn't carry across a proof boundary:** each proof starts from its own frame 2 (sections 15, 23).
+  (Replaces an inference that it did.)
 
 ## 6. The Tracer's output per window (2026-10-29)
 

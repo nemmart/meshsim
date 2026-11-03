@@ -679,11 +679,14 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
 - **Open:**
 - **At most 10 directory levels** (owner), so a full path fits **1,024 bytes of the file system's memory**: 10 names of at most
   95 bytes, plus 10 separators, is at most 960 bytes.
-- **An open file is a 1,024-byte record** in the file system's memory (owner): **the full path in bytes 0-959** (zero-padded),
-  and in **the remaining 64 bytes** the information the file system keeps while working on the file: its location, its length,
-  and what it has cached (for a chain, the current index page and position, so reading on needn't walk the chain again).
-  Proposed layout of those 64 bytes (integrator, to confirm): length (u64), location (u32), type (u32), **file descriptor number**
-  (u32, owner), current position (u64), current index page (u32), the rest reserved.
+- **The path isn't kept once a file is open** (owner): opening walks the path through the directories in a temporary 1,024-byte
+  buffer, freed once the entry is found. **An open file is a 64-byte record plus a 4 KB page buffer** in the file system's memory:
+  - **the record** (proposed layout, integrator, to confirm): the **file descriptor number** (u32, owner; naturally the record's
+    index in the table), **the directory entry's address** (u32: an entry is one 128 B unit, so one address names it), location
+    (u32), type (u32), length (u64), current position (u64), current index page (u32), flags (the buffer's page and whether it is
+    dirty), the rest reserved. Updating the file (its length after an append) writes back to its entry through the address.
+  - **the buffer: 4 KB of each open file cached in memory** (owner): the data page at the current position, so reads and writes
+    within a page touch no memory, and an append fills the page before it is written out (on moving to another page, or on close).
 - **A superblock at address 0** (owner), **cached by the file system** (C&C 2), which reads it at boot: it identifies the file
   system and says where the root directory is. Address 0 is otherwise an ordinary address (`0xFFFFFFFF` is "none"), but a zeroed
   pointer is a valid pointer to it, so the superblock's magic catches a stray write or a foreign memory at the next check.
@@ -691,7 +694,7 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
   reserved): a magic (8 bytes), a version (u32), the root directory's location (u32, 128 B units), later the free-page map's
   location and the memory's size; the rest reserved, 0.
 - **Open:**
-  - (a) the superblock's exact contents; the type values above;
+  - (a) the superblock's exact contents; the type values above; how many files may be open at once (the table's size);
   - (b) whether `.map` and `.pages` (section 19) are ordinary files in this format (`.map` then a chain of 1,023 pointers plus
     next, rather than 1,024 pointers; `.pages`'s tables stored as a file's pages), or structures outside the file system, reached
     only by the Tracer's pointers.

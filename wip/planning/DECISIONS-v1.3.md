@@ -656,7 +656,7 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
 
 | bytes | field |
 |---|---|
-| 0-95 | **the name**, up to 96 bytes, zero-padded |
+| 0-95 | **the name**, at most 95 bytes, zero-padded, so always followed by at least one zero byte (owner) |
 | 96-103 | **the file's length** in bytes, u64 |
 | 104-107 | **its location**, u32: the data page, or the first index page (128 B units) |
 | 108-111 | **its type**, u32 |
@@ -678,7 +678,7 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
 
 - **Open:**
 - **At most 10 directory levels** (owner), so a full path fits **1,024 bytes of the file system's memory**: 10 names of at most
-  96 bytes, plus 10 separators, is at most 970 bytes.
+  95 bytes, plus 10 separators, is at most 960 bytes.
 - **A superblock at address 0** (owner), **cached by the file system** (C&C 2), which reads it at boot: it identifies the file
   system and says where the root directory is. Address 0 is otherwise an ordinary address (`0xFFFFFFFF` is "none"), but a zeroed
   pointer is a valid pointer to it, so the superblock's magic catches a stray write or a foreign memory at the next check.

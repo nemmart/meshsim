@@ -322,7 +322,12 @@ its region, with **offset bits [22:20] picking the part**, as in the replayer's 
       the cache when it is allocated**: freeing a page invalidates its 32 lines (one tag lookup in each of the 32 sets it spans),
       so bulk writes never snoop.
     - **Open:** the ways, the banks and the outstanding misses, from gold replaying both workloads' address streams (section 21
-      (d)); whether C&C 2 keeps its 128 4 KB buffers (section 20) or folds them into this cache.
+      (d)).
+    - **The file system bypasses it** (owner): it reads and writes whole 4 KB pages directly, like the Updater (section 20's
+      buffers). So the shared cache serves the Tracer and the controllers' line accesses. One coherence rule covers every page
+      client: **writing a page directly invalidates its 32 lines in the cache**, and **a page read directly has no dirty lines
+      there**, by ownership (the only pages dirtied through the cache are the Tracer's private copies, which no page client
+      reads during a segment).
   - *(A page-table stream format, a walk of the 2,048 top-level entries and their leaves, was proposed here and is superseded:
     the tables live as files and are read in place, section 19.)*
 - **Findings from upstream Jolt** (a16z/jolt `main` at `17a9459`, read 2026-11-01; `common/src/jolt_device.rs`, `constants.rs`):
@@ -708,8 +713,10 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
   - **The buffers are a pool managed by LRU** (owner): a file that needs a buffer takes a free one, or **flushes the least recently
     used** (writing it back if dirty) and takes that. So the number of open files (64-byte records) and the number of buffers are
     separate choices; a file whose buffer was taken simply reloads its page when next used.
-  - **Sizes: 512 open files and 128 buffers** (owner): the records take 32 KB (512 x 64 bytes) and the buffers 512 KB (128 x 4 KB),
-    so about 544 KB of the file system's memory.
+  - **Sizes: 512 open files; 128 buffers for files being read and written; 32 more buffers just for directory pages** (owner),
+    each pool managed by LRU: the records take 32 KB (512 x 64 bytes), the file buffers 512 KB, the directory buffers 128 KB, so
+    about 672 KB of the file system's memory. **The file system reads and writes whole 4 KB pages directly**, bypassing the shared
+    cache (section 12), so these buffers are its only cache.
 - **A superblock at address 0** (owner), **cached by the file system** (C&C 2), which reads it at boot: it identifies the file
   system and says where the root directory is. Address 0 is otherwise an ordinary address (`0xFFFFFFFF` is "none"), but a zeroed
   pointer is a valid pointer to it, so the superblock's magic catches a stray write or a foreign memory at the next check.

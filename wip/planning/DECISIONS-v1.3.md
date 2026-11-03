@@ -647,10 +647,15 @@ Decided (O). A program is **two files** in the file system (C&C 2), each represe
 
 - **`<program>.pages`: the page table** (section 12): **8 middle tables**, 4 KB each, reached through them its leaf tables and
   data pages.
-- **`<program>.map`: the code map** (section 18): **a list of 1,024 pointers**, one 4 KB page. Each entry points to a 4 KB map
-  page, or is `0xFFFFFFFF` for none; a map page holds 512 (base, mask) pairs, section 18's two u32 per 64 B of code, so it covers
-  32 KB of code and the list 32 MB.
-- **At launch the Tracer loads 9 addresses into its registers** (owner): **the 8 middle tables' and the code map's.**
+- **`<program>.map`: the code map** (section 18), **an ordinary file in section 20's format** (owner, 2026-11-01): its data pages
+  are the map pages, each holding 512 (base, mask) pairs (two u32 per 64 B of code, so the map is an eighth of the code's size)
+  and covering 32 KB of code; its chain is the list. **Each index page holds 1,023 map-page pointers and a next pointer**, so the
+  first covers just under 32 MB of code, likely every program, and an engine miss reads its pair in one load from it. **A
+  larger program follows the next pointer**, one more dependent load per 32 MB beyond the first, hidden after the first touch by a
+  small cache of list entries in the engine. **No limit on code size is baked in** (owner: 32 MB is probably enough, but not as a
+  fixed limit). (This replaces a fixed list of 1,024 pointers.)
+- **At launch the Tracer loads 9 addresses into its registers** (owner): **the 8 middle tables' and the code map's first index
+  page.**
 - **No load step:** the Tracer reads the tables in place, through the 512 KB file-system cache. (This replaces section 12's
   earlier local copy and pool.)
 - **Fragmentation: none.** With one 4 KB chunk size, any free page fits any request, so the memory system needs no buddy
@@ -725,9 +730,8 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
   location and the memory's size; the rest reserved, 0.
 - **Open:**
   - (a) the superblock's exact contents; the type values above;
-  - (b) whether `.map` and `.pages` (section 19) are ordinary files in this format (`.map` then a chain of 1,023 pointers plus
-    next, rather than 1,024 pointers; `.pages`'s tables stored as a file's pages), or structures outside the file system, reached
-    only by the Tracer's pointers.
+  - (b) `.map` is an ordinary file (section 19). Still open: whether `.pages`, the page table's tree, is stored as a file's pages
+    or is a structure outside the file system, reached only by the Tracer's pointers.
 
 ## 21. The Tracer's local caches (2026-11-01)
 

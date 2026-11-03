@@ -995,8 +995,9 @@ Decided (O).
   tables (15 inlines, 60 CSR keys; 13,821 words, `templates.bin`, 216 KB, `tables/replayer/`), since the Tracer can meet any of
   them; it answers the Tracer's expand flag from there. **It broadcasts the set used in the segment's 4M rows to all the tiles**,
   once, and **each tile trims it to what its own window uses** (its record's template bitmap, word 0). (So a tile has the
-  templates it needs once the segment's set has been broadcast; whether that happens at the segment's end or grows window by
-  window is open.)
+  templates it needs once the segment's set has been broadcast.) **The broadcast happens around the start of the next proof**
+  (owner, 2026-11-01): a segment's replay runs after its whole segment is traced, so replaying one proof overlaps tracing the
+  next (integrator's reading).
 - **What the Tracer checks** (owner, 2026-11-01): **errors, in its `ERRORS`, raising its error line**, for what plausibly comes
   from corruption somewhere (a host table or a page damaged on the way, a hardware fault), where hanging or running on would hide
   it:

@@ -623,7 +623,8 @@ start comes in frame 2. **Only jumps need the map.**
   per 128 B of code with a decode walk of about 30 cycles. The length and CSR findings stay true of jolt-cpp (`isa/virtual.cpp`:
   `num_cycles` 1210-1276, `should_nop_for_rd0` 108-112, CSRRW and CSRRS 1287-1302).
 - **Open:**
-  - (a) the LRU's size. **Measured** (integrator, 2026-11-01, gold replaying both workloads at 2²⁹; each segment's caches start
+  - (a) ~~the LRU's size~~ **decided: 64 entries** (owner, 2026-11-01), on the measurement below: even Cyclone's worst segment
+    costs under 1% of the budget at 64, so a bigger LRU buys little. **Measured** (integrator, 2026-11-01, gold replaying both workloads at 2²⁹; each segment's caches start
     cold, a segment running on its own ASIC; multiplicative hash with the golden-ratio constant, 2^k lines at most half full):
 
 | | EVM Zone | Cyclone |

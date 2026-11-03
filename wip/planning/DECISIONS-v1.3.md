@@ -941,9 +941,13 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
   window's start plus those totals, then remembers the Tracer's new state as window *n* + 1's start; window 0's start is the state
   it loaded. So the Tracer keeps no snapshot of past state (saving about 1 KB of registers), and **the end-of-segment check is
   software:** after the 64th done the Tracer's state is the segment's end, which C&C 3 compares with the next segment's frame 2.
-- **The rule: read the state out before writing a new one** (owner): C&C 3 reads the Tracer's state and drains its output queues
-  before it loads a new state, so a load always finds the queues empty. Breaking the rule is our firmware's mistake, so under
-  section 8a it is UB (meshsim stops).
+- **A new state is written only at the start of a proof** (owner, 2026-11-01): one segment per ASIC per proof, so between the
+  64 windows of a segment nothing is loaded; C&C 3 only reads the state and the queue lengths at each done, drains the output
+  queues, and pulses go. **The read queue persists across the windows**, since the segment's advice runs across them (its size
+  in the state counts down over the whole segment).
+- **The rule: read the state out before writing a new one** (owner): at a proof's start C&C 3 has read the last state and
+  drained the output queues, so a load always finds them empty; the load then starts the read queue afresh for the new
+  segment's advice. Breaking the rule is our firmware's mistake, so under section 8a it is UB (meshsim stops).
 - **Four queue-length registers** (owner, 2026-11-01), **in 128-bit words**, for the output the controller sends on: **state,
   code, read log, write log.** The state queue is always **68 words** per window (section 23's record: the template bitmap,
   the state word, the stream word, the 64-word register image and the files word), the other three vary with the window.

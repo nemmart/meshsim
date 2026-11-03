@@ -895,8 +895,8 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
     controller-fed path, spec 4.19.9);
   - **segment done:** the segment's 2²² rows are traced;
   - **code log**, **read log** and **write log:** each stream has something ready (sections 2 and 6);
-  - **advice:** the advice input queue (section 13) has room, so send more of the segment's advice (owner). **The queue is 2 KB**
-    (owner): 256 advice words. Advice is consumed slowly (the division family takes one word per expansion of about 12 rows,
+  - **advice:** the advice input queue (section 13) has room, so send more of the segment's advice (owner). **The queue is 4 KB**
+    (owner: it mirrors the replayer's typical queue sizes; was 2 KB): 512 advice words. Advice is consumed slowly (the division family takes one word per expansion of about 12 rows,
     a secp operation at most 8 in up to 240), so a full queue lasts thousands of rows, far longer than the controller takes to
     refill it; proposed (integrator): raise the flag when half is free.
 - **Open:** the register offsets; the advice flag's threshold (proposed: half free); statistics registers.

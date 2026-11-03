@@ -277,26 +277,26 @@ its region, with **offset bits [22:20] picking the part**, as in the replayer's 
     mid-secp points carry jolt-cpp's advice buffer (`trace_owner.cpp:49-50`; section 13 covers it). The CSRs and the LR/SC
     reservation are live, in registers 32-39. **Registers 40-47** are never read across an instruction but set the next write's
     `rd_prev`, and jolt-cpp's JIT doesn't track them (section 13, open (c)); registers 48-127 were 0 at every instruction start.
-- **The page table covers the full RAM K of section 14, 2³² cells (32 GiB), assuming most pages are empty**, with **4 KB pages
-  throughout** (owner, 2026-11-01; replaces a two-level table of 16 KB pages, 11 + 10 + 11 bits, which replaced a 4 GiB table and
-  a flat 512 MiB one). Future programs are unknown, so the hardware takes the general case; storage scales with the pages that
-  exist, not the range. **Three levels, 9 + 10 + 10 + 3 bits of the 32-bit cell index:**
-  - **a data page:** 4 KB, 512 cells of 8 bytes (9 bits);
-  - **a leaf table:** 1,024 entries in a 4 KB page, covering 4 MiB (10 bits);
-  - **a middle table:** 1,024 entries in a 4 KB page, covering 4 GiB (10 bits);
-  - **the top: 8 middle tables** (3 bits), **their 8 addresses loaded into Tracer registers at launch** (section 19).
-  - **One chunk size everywhere** (data pages, tables, files, logs), so the memory system has a single 4 KB pool and
+- **The page table is the guest's memory as a file** (owner, 2026-11-01; restated with section 20): **`.pages` is a sparse file**
+  whose byte offset is the guest address minus `lowest_address`, and **its tree is the page table**, in 4 KB pages throughout
+  (replacing a fixed three-level table with 8 top registers, before that 16 KB pages, 11 + 10 + 11 bits, a 4 GiB table and a flat
+  512 MiB one). Future programs are unknown, so the hardware takes the general case; storage scales with the pages that exist.
+  - **a data page:** 4 KB, 512 cells of 8 bytes;
+  - **index pages of 1,024 entries** above it, each level covering 1,024 times the one below (4 MB, 4 GB, 4 TB);
+  - **the depth follows the file's length** (section 20): **2 for K up to 2²⁹ cells** (a 4 GB, 32-bit offset; both workloads), 3
+    above it, up to section 14's 2³² cells.
+  - **One chunk size everywhere** (data pages, index pages, files, logs), so the memory system has a single 4 KB pool and
     nothing fragments.
-  - **A translation is three lookups** (middle, leaf, data), through the file-system cache; a small TLB (page number to entry)
-    keeps most accesses from paying them (decided, section 21).
+  - **Translation belongs to the memory system** (section 20's file slots): the Tracer asks for (slot 0, offset); the memory
+    system's slot-tagged TLB and tree walker do the rest, through the shared cache, at most one index read per level.
   - **Measured clustering** (WORKER17, 2²⁹, in 16 KB pages): EVM Zone 69 pages in 3 16 MiB regions; Cyclone 693 pages in 4
     (the 2.9 MB untrusted advice, and one 7.75 MiB run of stack plus heap). At 4 KB both still fit a handful of leaf tables.
   - **Entries are 32 bits; bits 30:0 address the file system** (LPDDR) **in 128 B units** (owner; 2³¹ x 128 B = 256 GiB), the
     format in LPDDR: **an address names a 128 B unit**, and **the memory system reads a page (4 KB, the most efficient), a half
     page (2 KB), or 128 B (poor)** (owner). Tables and data pages are whole 4 KB pages, so a page-table entry's low 5 bits are 0 and
     fetching a table or a data page is one page read; other pointers (a half page, a 128 B unit) use the finer addressing.
-    - **a middle or leaf entry pointing to a table:** bits 30:0, the table's address; bit 31 reserved, 0;
-    - **a leaf entry pointing to a data page:** bits 30:0, the page's address; **bit 31, read-only**, for sharing a page between
+    - **an index entry pointing to an index page:** bits 30:0, the page's address; bit 31 reserved, 0;
+    - **a bottom index entry pointing to a data page:** bits 30:0, the page's address; **bit 31, read-only**, for sharing a page between
       the proof's image and the Tracer's copy (section 15; the Tracer never copies on write);
     - **no entry: `0xFFFFFFFF`** (owner), at every level; no valid entry has its low bits set, and address 0 stays usable. A table
       must be filled with `0xFFFFFFFF`, not zeroed: a zeroed entry is a valid pointer to address 0.
@@ -643,21 +643,19 @@ start comes in frame 2. **Only jumps need the map.**
 
 ## 19. Launching a program (2026-11-01)
 
-Decided (O). A program is **two files** in the file system (C&C 2), each represented by where its tables are in memory, all in
-**4 KB pages** (section 12: one chunk size everywhere). Addresses are in 128 B units, like every entry.
+Decided (O). **A file is its root's 32-bit address and its length** (section 20), so launching is opening files into the memory
+system's slots:
 
-- **`<program>.pages`: the page table** (section 12): **8 middle tables**, 4 KB each, reached through them its leaf tables and
-  data pages.
-- *(The pc to `instr_idx` hash table is no longer a program file: it is per proof, frame 6 of section 16.)*
-- **At launch the Tracer loads the 8 middle tables' addresses into its registers** (owner).
-- **No load step:** the Tracer reads the tables in place, through the 512 KB file-system cache. (This replaces section 12's
-  earlier local copy and pool.)
+- **`<program>.pages`, the guest's memory** (section 12), **is opened into slot 0**; the Tracer then just starts, asking for
+  (slot 0, offset). (This replaces 8 middle-table addresses loaded into Tracer registers.)
+- **The static jump-target table** (section 18), a program file, is opened into a slot of its own; the proof's supplement (frame 6)
+  goes into private copies of the pages it lands in.
+- **No load step:** everything is read in place, through the shared 512 KB cache.
 - **Fragmentation: none.** With one 4 KB chunk size, any free page fits any request, so the memory system needs no buddy
   allocator and no compaction (this replaces a 4, 8 and 16 KB scheme with lifetime-separated allocation). A growing file, such
-  as a log, takes the next free page wherever it is and records it in its file's index chain (section 20); a log is read sequentially, so
-  scattering costs nothing (each page is one efficient 4 KB read).
+  as a log, takes the next free page wherever it is (section 20's tree); a log is read sequentially, so scattering costs nothing
+  (each page is one efficient 4 KB read).
 - **Open:**
-  - (b) a small TLB (section 12);
   - (c) whether a log lives only for its proof or can outlive it (a re-run).
 
 ## 20. The file system (2026-11-01)
@@ -679,7 +677,7 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
   - **The depth follows from the length**, so it needs no field. **Random access** is one read per level, at most three.
   - **Holes:** an entry of `0xFFFFFFFF` means no page there, so a sparse file costs only the pages it has.
   - **The page table is such a file** (integrator's observation, owner's direction): a depth-3 file's root entries each cover
-    4 GB, a middle table of 1,024 leaf tables of 1,024 data pages, section 12's 9 + 10 + 10 bits. So **`.pages` is a sparse depth-3
+    4 GB, a middle table of 1,024 leaf tables of 1,024 data pages, the layout section 12 had as 9 + 10 + 10 bits. So **`.pages` is a sparse depth-3
     file whose contents are the guest's memory**, using the root's first 8 entries (32 GiB); a guest address is a file offset.
     **Its depth follows the run's K like any file's** (owner): Jolt's used range is a low part (I/O and advice, just below
     0x8000_0000) and a high part (program, stack, heap), both inside a 32-bit window from `lowest_address`, so for K up to 2²⁹ cells
@@ -754,7 +752,8 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
 
 ## 21. The Tracer's local caches (2026-11-01)
 
-Decided (O). In front of section 12's shared 512 KB cache, which acts as an L2 for the Tracer. **The 512 KB cache sits physically
+Decided (O). In front of section 12's shared 512 KB cache, which acts as an L2 for the Tracer; a local miss is a (slot 0,
+offset) request to the memory system, which translates it (section 20). **The 512 KB cache sits physically
 close to the Tracer** (owner, 2026-11-01): with the file system and the Updater bypassing it, the Tracer is its main client, so
 the 1,024-bit fill bus stays short; the controllers' line accesses travel further.
 
@@ -772,17 +771,14 @@ the 1,024-bit fill bus stays short; the controllers' line accesses travel furthe
 - **Open:**
   - (a) ~~the associativity~~ **decided: fully associative** (owner): 128 lines each, one Tracer, so the comparators' power is
     acceptable;
-  - (b) ~~a small page TLB~~ **decided: a TLB** (owner, 2026-11-01): guest page number to the leaf entry (the page's
-    memory-system address and its read-only bit), so a miss in the local caches doesn't walk the three levels each time; a 4 KB
-    page is 32 lines, so a missing line's neighbours share its translation. Its size: proposed 64 entries, fully associative
-    like the other small caches, to confirm by measurement (d).
-    **And a second one, a level up** (owner): the top level's 8 middle-table addresses are always in registers (section 19), so the
-    walk reads a middle entry (a 4 MB region to its leaf table's address) and then a leaf entry. A cache of **middle entries** means
-    a TLB miss usually costs one table read, the leaf entry, through the shared cache. Each entry covers 4 MB and the workloads
-    touch a few clustered regions, so it needs few entries; 16 to 64, to confirm by measurement.
+  - (b) ~~a small page TLB~~ **decided: TLBs, now the memory system's** (owner, 2026-11-01): on a local miss the Tracer sends
+    (slot 0, offset), and the memory system's slot-tagged TLB (a page to its bottom index entry: the page's address and its
+    read-only bit; proposed 64 entries, fully associative) and a cache of upper index entries (each covering 4 MB; 16 to 64) mean a
+    miss usually costs one index read, through the shared cache; a 4 KB page is 32 lines, so a missing line's neighbours share its
+    translation. (Restated from the Tracer's own two TLBs under 8 top registers; sizes to confirm by measurement, (d).)
   - (c) ~~an instruction line bringing its code map words~~ moot: the code map is gone (section 18).
-  - (d) sizes to confirm by measurement: the gold emulator can replay both 2²⁹ workloads' address streams through these caches
-    and the shared one and report hit rates (WORKER18, after ACT4).
+  - (d) sizes to confirm by measurement: the gold emulator can replay both 2²⁹ workloads' address streams through these caches,
+    the TLBs and the shared one and report hit rates (WORKER18, after ACT4).
 
 ---
 

@@ -444,8 +444,8 @@ Decided (O), from the planning discussion of 2026-10-19 recorded in jolt-asic-pl
   2. **the advice log**, the segment's read-log input (section 13);
   3. **the memory updates list**, the segment's delta: each word written during the segment with its last value (the dirty set,
      "R-dirty" in PR #1; the host reads the values from guest memory at the segment's end, so stores are never logged).
-- **A proof's stream starts with the page counts: per segment, the 4 KB pages it writes and the distinct 4 MB and 4 GB regions
-  those writes touch** (owner; frame 1, section 16), before any chunk. Every ASIC
+- **A proof's stream starts with the page counts** (owner; frame 1, section 16), before any chunk: **a per-segment table** (the
+  4 KB pages each segment writes) and **a per-ASIC table** (each ASIC's exact page needs). Every ASIC
   reads all 128 counts, so C&C 3 can reserve exactly the pages the proof needs before any data arrives: its own segment's
   private copies (below) and the pages the updates add to the start and final images. That is the planning notes' "the host
   computes each ASIC's exact page count, so memory never runs out mid-proof". The host's JIT has the counts from its page
@@ -508,7 +508,7 @@ a really easy format to work with, from multiple languages" (O).
 
 | type | frame | data |
 |---|---|---|
-| 1 | page counts | 128 x 3 u32, per segment: the 4 KB data pages it writes, the distinct 4 MB regions those writes touch, and the distinct 4 GB regions (section 20's arenas; was 128 x u32, data pages only) |
+| 1 | page counts | **a per-segment table**, 128 x u32: the 4 KB data pages each segment writes; then **a per-ASIC table**, 128 x 3 u32: for the ASIC running segment *k*, the exact pages, data and index together, of its start image (the union of segments 0 to *k* - 1's writes, with their paths), its final image (the union of *k* to 127's) and its Tracer's copy (segment *k*'s own) (section 20's arenas) |
 | 2 | processor state | pc, `instr_idx`, the next offset, registers 0-127: 131 x u64, 1,048 bytes |
 | 3 | advice log | the segment's advice words, u64 each, in row order (section 13) |
 | 4 | updates, raw | the segment's update words, u64 each |
@@ -719,10 +719,14 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
     per-proof bitmap**, and cleanup is one bitmap merge (the planning notes' per-proof bitmaps), no tree walks. **Frame 1's 128
     page counts size the pool** before any data arrives: the updates the start and final images take (every segment's written
     pages), the Tracer's private copies (the ASIC's own segment's), the cycle-0 image's input and advice pages, and **the index
-    pages the copies add along their paths, from exact counts the host sends** (owner, 2026-11-01): writes can be scattered, so a
-    bound from the trees alone fails (each write into a fresh 4 MB region needs a new index page; the worst case is one index page
-    per level per written page). So frame 1 also gives, per segment, the distinct 4 MB regions and 4 GB regions its writes touch;
-    an image's need is at most the sum over the segments it takes (the union never exceeds the sum). Only the permanent files (the program image, the program's map) live outside it.
+    pages the copies add along their paths, from exact totals the host sends** (owner, 2026-11-01). Neither the trees nor
+    per-segment counts give them: writes can be scattered (each write into a fresh 4 MB region needs a new index page), and counts
+    don't add (a page written in two segments is one private page in an image that takes both, and an owned path is copied only
+    once), so an image's need is the size of the **union** of the writes it takes, which differs on every ASIC. So frame 1 carries
+    **a per-ASIC table**: for the ASIC running segment *k*, the exact pages (data and index) of its start image, its final image
+    and its Tracer's copy; the arena is that row's sum plus the cycle-0 image's input and advice pages. **The host computes them**
+    from each segment's set of written pages: prefix unions for the start images, suffix unions for the final images, each
+    union's index pages being its distinct 4 MB and 4 GB regions. Frame 1 also keeps **the per-segment table** of pages written. Only the permanent files (the program image, the program's map) live outside it.
   - **Uses:** section 22.
 - **File-system calls** (owner) for what hardware never does, served by C&C 2: **fill a hole** (allocate a page at an offset,
   growing the tree or adding index pages as needed), used for example by the Updater building the memory image for the next

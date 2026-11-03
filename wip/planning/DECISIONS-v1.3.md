@@ -921,8 +921,8 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
   record; 1, the code log; 2, the read log; 3, the write log**, so output queue *n* feeds a replayer's part *n*.
 - **Sends move 128-bit values** (owner, 2026-11-01): **the DMA's count is in 128-bit words**, every packet 128 bits (a v1.3
   change to spec 4.17.9, which counts 32-bit words up to 4,095 and ends with 64- and 32-bit remainder packets). C&C 3 reads a
-  queue's length (in 128-bit words, rounded up: a stream's last word is zero-padded, the exact bit length being in the stream
-  word) and sends that many with the DMA, in transfers sized to the replayer's credits (half a 4 KB queue, 128 words).
+  queue's length (in 128-bit words, rounded up; the padding after a stream's last bit can be anything, even in a compressed
+  stream (owner), since the stream word gives the exact bit length and value count and the decoder stops there) and sends that many with the DMA, in transfers sized to the replayer's credits (half a 4 KB queue, 128 words).
 - **Wake flags** (events), each waking the controller:
   - **expand:** an instruction needs its expansion from the controller (`EXPANSION_OPCODE` holds its word, as in the replayer's
     controller-fed path, spec 4.19.9);

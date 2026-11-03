@@ -904,6 +904,9 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
     (owner: it mirrors the replayer's typical queue sizes; was 2 KB): 512 advice words. Advice is consumed slowly (the division family takes one word per expansion of about 12 rows,
     a secp operation at most 8 in up to 240), so a full queue lasts thousands of rows, far longer than the controller takes to
     refill it; proposed (integrator): raise the flag when half is free.
+- **Four queue-length registers** (owner, 2026-11-01), **in 128-bit words**, for the output the controller sends on: **state,
+  code, read log, write log.** The state queue is always **67 words** per window (section 6: the template bitmap, the state
+  word, the stream word and the 64-word register image), the other three vary with the window.
 - **Open:** the register offsets; the advice flag's threshold (proposed: half free); statistics registers.
 
 ---

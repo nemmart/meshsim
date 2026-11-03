@@ -663,8 +663,21 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
 | 112-127 | reserved, 0 (the 32 bytes of important information are bytes 96-127) |
 
 - **Open:**
-  - (a) the type's values (which kinds of file: a page table, a code map, a log, a segment file, ...; and whether 0 marks a free
-    entry); how the directory itself is stored (presumably as a file of entries) and found;
+- **The type is the kind of file** (owner), **0 marking a free entry**, and **a directory is a type** (owner): a directory is a file
+  of 128-byte entries, single-page or chained like any file, so directories nest. Proposed values (integrator, to confirm):
+
+| type | kind |
+|---|---|
+| 0 | free entry |
+| 1 | directory |
+| 2 | data (any other file) |
+| 3 | page table (`.pages`, section 19) |
+| 4 | code map (`.map`, section 19) |
+| 5 | log |
+| 6 | segment file (section 16) |
+
+- **Open:**
+  - (a) where the root directory is found (a fixed address, or a register C&C 2 holds); the values above;
   - (b) whether `.map` and `.pages` (section 19) are ordinary files in this format (`.map` then a chain of 1,023 pointers plus
     next, rather than 1,024 pointers; `.pages`'s tables stored as a file's pages), or structures outside the file system, reached
     only by the Tracer's pointers.

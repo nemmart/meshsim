@@ -935,6 +935,15 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
   **A mismatch sets one of the peripheral's condition bits** (owner): its `ERRORS`, raising its error line (4.13). Proposed
   (integrator): one bit per stream (on the replayer code, read log, write log; on the Tracer advice), so the error names the
   stream.
+- **The window's record is assembled by C&C 3, not the Tracer** (owner, 2026-11-01). **At each done, the Tracer presents its
+  current state** (the state word and the registers: the end of the window just traced) **and the window's totals** (the stream
+  word, the compression flags, the template bitmap). C&C 3 builds window *n*'s 68-word record from the state it remembered at the
+  window's start plus those totals, then remembers the Tracer's new state as window *n* + 1's start; window 0's start is the state
+  it loaded. So the Tracer keeps no snapshot of past state (saving about 1 KB of registers), and **the end-of-segment check is
+  software:** after the 64th done the Tracer's state is the segment's end, which C&C 3 compares with the next segment's frame 2.
+- **The rule: read the state out before writing a new one** (owner): C&C 3 reads the Tracer's state and drains its output queues
+  before it loads a new state, so a load always finds the queues empty. Breaking the rule is our firmware's mistake, so under
+  section 8a it is UB (meshsim stops).
 - **Four queue-length registers** (owner, 2026-11-01), **in 128-bit words**, for the output the controller sends on: **state,
   code, read log, write log.** The state queue is always **68 words** per window (section 23's record: the template bitmap,
   the state word, the stream word, the 64-word register image and the files word), the other three vary with the window.

@@ -991,6 +991,12 @@ Decided (O).
   4.19.2's end of trace: the last real row jumps to pc 0 and sets `instr_idx` to 0), every further row is an all-zero NOP, up to
   the segment's 2²² rows, so every window has its rows and a segment past the program's end (frame 2 at pc 0) is traced like any
   other.
+- **C&C 3's memory is the home of every controller-fed expansion** (owner, 2026-11-01): the 75 templates of the universal
+  tables (15 inlines, 60 CSR keys; 13,821 words, `templates.bin`, 216 KB, `tables/replayer/`), since the Tracer can meet any of
+  them; it answers the Tracer's expand flag from there. **It broadcasts the set used in the segment's 4M rows to all the tiles**,
+  once, and **each tile trims it to what its own window uses** (its record's template bitmap, word 0). (So a tile has the
+  templates it needs once the segment's set has been broadcast; whether that happens at the segment's end or grows window by
+  window is open.)
 - **What the Tracer checks** (owner, 2026-11-01): **errors, in its `ERRORS`, raising its error line**, for what plausibly comes
   from corruption somewhere (a host table or a page damaged on the way, a hardware fault), where hanging or running on would hide
   it:

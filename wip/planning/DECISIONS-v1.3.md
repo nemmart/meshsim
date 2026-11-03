@@ -884,6 +884,20 @@ Decided (O). **Everything the Tracer needs to start a segment, and nothing else:
 **without flushing dirty lines** (owner): the previous segment's copy of memory is throwaway (section 21), so its dirty data is
 simply dropped. The advice log (frame 3) is fed separately, through its input queue (section 13).
 
+## 24. The Tracer's peripheral window (2026-11-01)
+
+Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17):
+
+- **Starting:** C&C 3 **writes the startup state** (section 23) into the window, then **pulses start**.
+- **A sender**, as on the other peripherals, for the Tracer's output.
+- **Wake flags** (events), each waking the controller:
+  - **expand:** an instruction needs its expansion from the controller (`EXPANSION_OPCODE` holds its word, as in the replayer's
+    controller-fed path, spec 4.19.9);
+  - **segment done:** the segment's 2²² rows are traced;
+  - **code log**, **read log** and **write log:** each stream has something ready (sections 2 and 6).
+- **Open:** the register offsets; whether the advice input queue (section 13) needs a wake flag of its own (room for more advice)
+  or is fed by credits alone; statistics registers.
+
 ---
 
 ## v1.3 work list

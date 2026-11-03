@@ -912,9 +912,11 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
   consumed after the 64th done (it must be 0). (This replaces a "last advice" pulse from the controller.) Under section 8a it
   earns a check: the advice comes from this proof's run, so a disagreement between the host's advice and the trace depends on the
   input data, where simulation of our firmware may not reach.
-- *(Candidate for v1.3's replayer, integrator's proposal: the same check on its code and log queues, which needs no new data,
-  since its state record's stream word already gives each stream's exact length; a starved window would then be a named error
-  rather than a hang caught by C&C 1's watchdog.)*
+- **The same in v1.3's replayer** (owner, 2026-11-01): **it takes its input sizes when its state is set**, the state record's
+  stream word giving each stream's exact length (code, read log, write log), and checks its pops against them the same way: one
+  beyond a stream's length is an underflow error at once, and a stream not fully consumed at the window's end is an error too.
+  A starved window becomes a named error, not a hang caught by C&C 1's watchdog. A change to the replayer at v1.3 (v1.25 is
+  frozen); the expansion queue, fed per expansion, ends by `seq_remaining` and is left as is.
 - **Four queue-length registers** (owner, 2026-11-01), **in 128-bit words**, for the output the controller sends on: **state,
   code, read log, write log.** The state queue is always **67 words** per window (section 6: the template bitmap, the state
   word, the stream word and the 64-word register image), the other three vary with the window.

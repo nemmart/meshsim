@@ -52,11 +52,12 @@ public final class ConvertDelivery {
         Map<String, Object> m = ReplayDelivery.Json.object(Files.readString(mf));
         Path sp = src.resolve(prog), dp = dst.resolve(prog);
         Files.createDirectories(dp);
-        // every source file: a link, unless it is a record (converted below)
+        // every source file: a link, unless it is a record (converted below); the records grouped by window, from one listing
+        Map<Integer, List<String>> recs = new java.util.HashMap<>();
         try (var ls = Files.list(sp)) {
             for (Path f : (Iterable<Path>) ls::iterator) {
                 String n = f.getFileName().toString();
-                if (isRecord(n)) continue;
+                if (isRecord(n)) { recs.computeIfAbsent(Integer.parseInt(n.substring(7, n.indexOf('.'))), k -> new ArrayList<>()).add(n); continue; }
                 Path to = dp.resolve(n);
                 Files.deleteIfExists(to);
                 Files.createSymbolicLink(to, f.toAbsolutePath());
@@ -71,7 +72,7 @@ public final class ConvertDelivery {
                 if (!we.containsKey("files")) continue;
                 st.windows++;
                 int index = ((Number) we.get("index")).intValue();
-                try { convertWindow(sp, dp, index, (Map<String, Object>) we.get("files"), st); }
+                try { convertWindow(sp, dp, index, recs.getOrDefault(index, List.of()), (Map<String, Object>) we.get("files"), st); }
                 catch (RuntimeException e) { st.errors.add("window " + index + ": " + e.getMessage()); }
             }
         }
@@ -85,7 +86,7 @@ public final class ConvertDelivery {
     static boolean isRecord(String n) { return n.matches("window_\\d+\\.(state[-a-z]*|end)\\.bin"); }
 
     /** One window: the raw record gives the value counts; every record variant and end.bin are rewritten. */
-    static void convertWindow(Path sp, Path dp, int index, Map<String, Object> files, Stats st) throws Exception {
+    static void convertWindow(Path sp, Path dp, int index, List<String> names, Map<String, Object> files, Stats st) throws Exception {
         String base = String.format("window_%05d.", index);
         ByteBuffer raw = read(sp.resolve(base + "state.bin"));
         long[] rl = lengths(raw);
@@ -94,9 +95,10 @@ public final class ConvertDelivery {
         int[] vals = { (int) (rl[0] / 32), (int) (rl[1] / 64), (int) (rl[2] / 64) };
         for (int k = 0; k < 3; k++) st.vals[k] += vals[k];
         String[] sn = { "code", "rlog", "wlog" };
-        try (var ls = Files.list(sp)) {
-            for (Path f : (Iterable<Path>) ls.filter(x -> x.getFileName().toString().startsWith(base) && isRecord(x.getFileName().toString()))::iterator) {
-                String n = f.getFileName().toString();
+        if (!names.contains(base + "state.bin")) throw new IllegalStateException("no " + base + "state.bin");
+        {
+            for (String n : names) {
+                Path f = sp.resolve(n);
                 ByteBuffer r = read(f);
                 boolean end = n.endsWith(".end.bin");
                 long[] len = lengths(r);

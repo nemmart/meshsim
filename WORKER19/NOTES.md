@@ -1,5 +1,20 @@
 # WORKER19 notes: what WORKER20 needs early (v1.26)
 
+> **WORKER20, 2026-11-04 — what changed since the first version of this file** (DECISIONS-v1.26 items 9–12; spec `cbdcd90`):
+> 1. **The state word's write resets the pass:** it flushes the four input queues (not the output queue), **sets the credits to
+>    2, clears the six size counters and resets the decompressors** (the LRU tables and write-log E[15]). **`PULSE_RUN` only
+>    starts running:** it sets `STATUS` [0], clears rows run and runs; nothing else (item 10).
+> 2. **Part 0 is the working state** (item 12): the image *is* the register file, and the state word's pc, `instr_idx` and offset
+>    are the live ones. No copy at a run's start, no latched flags or sizes: the checks read the stream word and the state word's
+>    flags from part 0. Running changes part 0 in place, so after a pass it holds the window's end state.
+> 3. **So the controller reloads the record's words 0–65 before every pass** (replacing the per-pass resend of word 0 alone):
+>    66 packets from the tile's copy in big SRAM, about 66 cycles, state word first, with that pass's flags.
+> 4. **Preloading is allowed** (item 11): pushes after the state write are kept, whether before or after `PULSE_RUN`. The rule
+>    "queues empty at `PULSE_RUN`" is gone from invariant 16. A push before the state write is flushed (meshsim still flags one in
+>    flight at the state write).
+> 5. **A part-0 write while running is flagged, words 66–67 included** (items 9, 11).
+> 6. My earlier choices are confirmed (item 9): words 66–67 written only while stopped; a whole extra padding word sets [6].
+
 The spec text follows these; where `wip/spec/machine-spec.md` and this file differ, the spec wins once it is pushed.
 Decisions: `wip/planning/DECISIONS-v1.26.md` (cited **D26-*n***, its section 1 item *n*); owner rulings on WORKER19's plan
 (2026-11-01) cited **O**.
@@ -17,8 +32,10 @@ Decisions: `wip/planning/DECISIONS-v1.26.md` (cited **D26-*n***, its section 1 i
 | 67 | 0x430 | template bitmap (was word 0 at v1.25) | **ignored**; the tile's controller reads it from the record in big SRAM |
 
 The replayer needs only words 0–65 (v1.25's part-0 image, now in record order), so **a controller sends the record from byte
-0**, 66 words (or 68; writes to 0x420–0x43F are accepted and ignored). Like the rest of part 0, words 66–67 are written only while
-the replayer is stopped. In converted deliveries word 66 is 0.
+0**, 66 words (or 68; writes to 0x420–0x43F are accepted and ignored), **before every pass** (section 4). Like the rest of part 0,
+words 66–67 are written only while the replayer is stopped (a write while running is flagged). In converted deliveries word 66 is
+0. **Part 0 is the working state** (D26-12): words 0–65 are the live pc, `instr_idx`, offset and register file, changed in place
+by a pass.
 
 ## 2. The stream word (word 1, offset 0x010) — proposed layout
 
@@ -55,7 +72,8 @@ compressed (16,384 raw).
 - **Leftover, at done** ([6]; O, ruling 5): at the pass's 65,536th row, some stream has not had exactly its words popped from its
   queue and exactly its values decoded. Set as the pass ends (run done is posted as usual). One bit; the controller reads the queue
   occupancies to see which stream. **The write log is excluded from [5] and [6] when the state word's [115] is 0.**
-  - So a stream with an extra whole padding word is an error ([6]); the producer pads only within the last word.
+  - So a stream with an extra whole padding word is an error ([6]); the producer pads only within the last word (confirmed, D26-9).
+- **The size counters are cleared by the state write** (D26-10), and the sizes are read from part 0's stream word, not latched (D26-12).
 - The expansion queue has no sizes and no check (it ends by `seq_remaining`, V3-24).
 
 ## 3. The state word (word 0, offset 0x000)
@@ -67,25 +85,24 @@ the stream word; written 0, ignored, not reused so a stale v1.25 word can't be m
 
 - The Tracer's records carry [115] = 1 and [116] = 1; **converted v1.25 deliveries must set [116] = 1** (and move [114:112] into
   the stream word, then clear them).
-- **Only the flags change per pass** (D26-8): the controller resends word 0 with its flags and nothing else; the record's other
-  words, the write log's sizes included, stay as produced.
+- **Only the flags change per pass** (D26-8): the controller reloads words 0–65 with the pass's flags in word 0; the record's
+  other words, the write log's sizes included, stay as produced.
 
-## 4. Queues, the flush and the run (D26-3, D26-4; O, rulings 1–3)
+## 4. Queues, the state write and the run (D26-3, D26-4, D26-10, D26-11, D26-12; O, ruling 1)
 
 - **Every queue is 4 KB, 256 entries, half 128** (code, read log, write log, expansion). Please report Stage B stall counts on
   both workloads at 2²⁹ (per-window averages of the read-log and write-log waits, as `WORKER11/REPORT.md` section 5 did); I'll put
-  them in 4.19.2/4.19.8 when you have them (the 4 KB size itself is decided).
-- **The flush:** a write to the state word (part 0 offset 0x000) empties the four input queues (contents and occupancy). Not the
-  32-row output queue. Nothing else flushes.
-- **`PULSE_RUN`** no longer empties anything: it sets every queue's credits to 2, resets the decompressors' tables, latches the
-  state word's two flags and the stream word's sizes and compression flags, copies the image, clears the rows-run count and the
-  pop counters.
-- **The queues must be empty at `PULSE_RUN`** (invariant 16; meshsim flags). No preloading. Item 76 becomes "a push lands only
-  after the state write".
-- **Software writes the state word before every pass**, even re-running the same window (O, ruling 3): a pass that ends inside a
-  controller-fed expansion can leave expansion words queued, and the flush clears them. About seven stores.
-- **Software rule, moved:** before the state write (was: before a start), every queue push has landed. meshsim flags a push in
-  flight at the state write, and a queue not empty at `PULSE_RUN` (a push between the two is preloading).
+  them in 4.19.2/4.19.8 when you have them (the 4 KB size itself is decided; spec item 143).
+- **The state write** (a write to part 0 offset 0x000) **resets the pass**: it empties the four input queues (contents and
+  occupancy; not the 32-row output queue), sets every queue's credits to 2, clears each stream's two size counters and resets the
+  decompressors' tables. Nothing else does any of these but the reset.
+- **`PULSE_RUN`** sets `STATUS` [0], clears the rows-run count and runs from part 0 as it is. It copies nothing, empties nothing
+  and touches no credits, counters or tables. The first row starts at once.
+- **Before every pass the controller reloads the record's words 0–65**, even re-running the same window: part 0 holds the last
+  pass's end state, and the state write clears leftover expansion words from a pass that ended inside an expansion.
+- **Preloading is allowed:** after the state write the controller may take credits and push before `PULSE_RUN`, or pulse first.
+- **Software rule:** before the state write, every queue push has landed. meshsim flags a push in flight at the state write, and
+  any part-0 write while a pass runs (words 66–67 included).
 
 ## 5. `ERRORS`
 

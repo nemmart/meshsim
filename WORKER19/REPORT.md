@@ -36,7 +36,16 @@ spec only (WORKER20 does meshsim and the software in parallel). Done, with one i
    follows from "every stream's words and values used exactly" (ruling 5) with the decoder releasing the entry its last value
    ends in.
 4. **The underflow is defined as two cases:** a value requested past the value count, or an entry needed past the word count.
-5. **`PULSE_RUN` also clears the six size counters**, so re-runs of a window check afresh.
+5. ~~**`PULSE_RUN` also clears the six size counters**~~: superseded by DECISIONS-v1.26 item 10 (the state write clears them).
+
+## Revision, 2026-11-04 (DECISIONS-v1.26 items 9–12)
+
+Choices 1–4 confirmed (item 9). **The state write resets the pass** (flush, credits, size counters, decompressors) and
+**`PULSE_RUN` only runs** (item 10); **preloading is allowed** (item 11); **part 0 is the working state**, with no copy at a run's
+start and no latches, so the record's words 0–65 are reloaded before every pass (item 12). Applied to the spec (`cbdcd90`:
+front matter, 4.19.1, 4.19.2, 4.19.7–4.19.11, 4.19.13–4.19.15, sections 5, 9, 10, 11 and 13's status table, items 41, 52, 76 and
+108), `CHANGES-v1.26.md`, the guide and `NOTES.md` (a dated note to WORKER20 at its top). 4.19.14 is now about 32 KB per tile:
+the separate 1 KB image is gone.
 
 ## Findings
 

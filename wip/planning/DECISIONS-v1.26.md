@@ -47,7 +47,7 @@ software, and nothing else: no Tracer, no new memory system, no file system. The
 10. **Setting the state resets everything; `PULSE_RUN` only starts running** (owner, 2026-11-01), the same on the Tracer and
    the replayer: **the write to word 0, the state word, flushes the input queues, latches the sizes, clears the size counters,
    sets the credits and resets the decompressors**; `PULSE_RUN` starts a pass on the replayer, the next `RUN_CYCLES` rows on the
-   Tracer, and does nothing else. The replayer writes the state word before every pass (ruling 3), so each pass starts fresh;
+   Tracer, and does nothing else. The replayer writes its state before every pass (item 12), so each pass starts fresh;
    the Tracer writes its state once per segment, so its counters and credits run across the 64 runs. (Replaces `PULSE_RUN`
    setting the credits, resetting the decompressors, latching the sizes and clearing the counters, as first specified.)
 
@@ -55,6 +55,15 @@ software, and nothing else: no Tracer, no new memory system, no file system. The
    then pulse `PULSE_RUN`, or pulse first and push after; either works, since the state write has already flushed the queues and
    set the credits, and it is all our software. (Drops "the queues must be empty at `PULSE_RUN`", invariant 16 as first written.)
    **Writes to words 66-67 while a pass runs are flagged**, like any part-0 write while running (item 9), not silently ignored.
+
+12. **Part 0's state is the working state** (owner, 2026-11-01; **no hidden memories**: a hidden copy of state is complexity, so
+   what the controller writes is what the unit runs on): no separate set of registers, no copy at a run's start. Writing
+   the record's words 0-65 writes the live register file, pc, `instr_idx` and the offset directly; running changes them in place;
+   the word-0 write still does item 10's resets. So **the replayer reloads the whole record, words 0-65, before every pass**, from
+   the tile's copy (part 0 then holds the window's end state after a pass), and **the Tracer loads once per segment**, its 64 runs
+   carrying on from wherever the last stopped. The cost is unchanged: loading 66 words takes about 66 cycles wherever they come
+   from, as v1.25's internal copy took 64. (Replaces part 0 as a stored copy, copied into the working state at `PULSE_RUN`, and
+   a per-pass resend of word 0 alone.) The checks read the sizes and flags from part 0, which can't be written while running.
 
 **Out of scope** (they belong to the Tracer or to v1.3): the peripheral DMA in 128-bit words (spec 4.17.9), the broadcast of
 controller-fed templates, everything about files, slots and caches.

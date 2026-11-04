@@ -2,8 +2,10 @@
  *
  * v1.26 (WORKER20; DECISIONS-v1.26): the 68-word state record in its new order ([0] state word, [1] stream word, [2-65]
  * the image, [66] files, [67] the template bitmap): part 0 gets words 0-65 only, from offset 0x000, and the bitmap is
- * read from word 67. Writing the state word flushes the replayer's queues (item 4), so the program resends it before
- * every pass after the first (PULSE_RUN no longer empties them). The read-log and write-log queues are 4 KB (V3-12):
+ * read from word 67. Writing the state word resets the pass (items 4, 10: the queues flushed, credits 2, counters and
+ * decoders reset) and part 0 is the replayer's working state (item 12: a pass leaves its end state there), so the program
+ * reloads words 0-65 from the record in big SRAM before every pass, one address-generator run of 66 words, state word
+ * first (load_part0); PULSE_RUN only starts. The read-log and write-log queues are 4 KB (V3-12):
  * every credit is 128 entries (HALF_LOG; -DHALF_LOG=256 builds the 8 KB control). The use-store-log flag stays at the
  * state word's [115].
  *
@@ -65,7 +67,6 @@ static uint32_t nopword[4] __attribute__((aligned(16)));       /* ROM word 1, th
 static uint32_t scratch[4] __attribute__((aligned(16)));
 static uint32_t me, pmask;                                     /* pmask: the replayer's EVENTS_MASK in a pass */
 static uint32_t bitmap[4];                                     /* the window's template bitmap (v1.26: state record word 67) */
-static uint32_t statew[4] __attribute__((aligned(16)));        /* the state word (record word 0), resent before each later pass */
 
 /* key(w) (wip/tables/README.md): every bit of w except register fields. An inline (custom-0): rd, rs1, rs2 cleared.
  * CSRRW/CSRRS: rd and rs1 renamed by first appearance (x0 0; a non-zero rd 1; rs1 0 if x0, 1 if equal to a non-zero
@@ -263,6 +264,17 @@ static void refill(uint32_t *next, uint32_t base, uint32_t entries, uint32_t hal
     if (*next >= entries) pmask &= ~bit;
 }
 
+/* v1.26 (DECISIONS-v1.26 items 10, 12): the record's words 0-65 into part 0 from offset 0x000, state word first, one
+ * mode-0 address-generator run of 66 words from big SRAM, landed (counter 4) before the pass starts. Words 66-67 (files,
+ * the bitmap) aren't sent. */
+static void load_part0(uint32_t restore) {
+    wait_rd_idle();
+    stream(0, hdr[RL_H_RECORD], RP_STATE, RL_PART0_WORDS, CTR_PERIPH);
+    tile->WRITE_COUNTER[CTR_PERIPH - 1] = RL_PART0_WORDS;
+    start_runs(0, 1);
+    wait_event(EV_CTR(CTR_PERIPH) | EV_RUN_DONE, restore);
+}
+
 /* One pass (4.19.9's controller loop on counted credits, with the new-expansion fast path). Returns 0 on a missing
  * template. */
 static uint32_t store_log;
@@ -354,16 +366,10 @@ int main(void) {
     start_runs(0, 1);
     wait_event(EV_CTR(CTR_PERIPH) | EV_RUN_DONE, base_mask);
 
-    /* part 0 through the send port (v1.26): record words 0-65, the state word first (its write flushes the queues), the
-     * stream word, the image; words 66-67 (files, bitmap) aren't sent */
+    /* the record into data memory for its bitmap (word 67) and the store-log flag; part 0 is loaded before each pass */
     copy_to_dm(hdr[RL_H_RECORD], record, RL_RECORD_WORDS, base_mask);
     for (uint32_t i = 0; i < 4; i++) bitmap[i] = record[4 * RL_RECORD_BITMAP + i];   /* word 67 (dmtab reuses record) */
-    for (uint32_t i = 0; i < 4; i++) statew[i] = record[i];
     store_log = (record[3] >> 19) & 1;                                /* the state word's flag [115]: use the store log */
-    send_to(ROUTER_HDR_W(me, MODE_WRITE, CTR_PERIPH), RP_STATE);
-    tile->WRITE_COUNTER[CTR_PERIPH - 1] = RL_PART0_WORDS;
-    for (uint32_t i = 0; i < RL_PART0_WORDS; i++) sendw(&record[4 * i]);
-    wait_event(EV_CTR(CTR_PERIPH), base_mask);
 
     /* the fast path's tables (dmtab reuses the record's space) */
     wait_rd_idle();
@@ -371,12 +377,7 @@ int main(void) {
 
     rp_results[RL_R_STATUS] = 1;
     for (uint32_t p = 0; p < hdr[RL_H_PASSES]; p++) {
-        if (p) {                                                      /* v1.26: the state word again, flushing the queues */
-            send_to(ROUTER_HDR_W(me, MODE_WRITE, CTR_PERIPH), RP_STATE);
-            tile->WRITE_COUNTER[CTR_PERIPH - 1] = 1;
-            sendw(statew);
-            wait_event(EV_CTR(CTR_PERIPH), base_mask);
-        }
+        load_part0(base_mask);                                        /* v1.26 (item 12): words 0-65 before every pass */
         if (!run_pass()) { rp_results[RL_R_STATUS] = 2; break; }
         rp_results[RL_R_PASSES] = p + 1;
         if (tile->ERRORS) { rp_results[RL_R_STATUS] = 3; break; }

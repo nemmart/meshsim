@@ -29,7 +29,9 @@ import java.util.function.Consumer;
  * 0-65 and ignores writes to 66 and 67. The stream word gives each stream's size as its 128-bit words (padding
  * included) and its values out, and its compression flag ({@link #parseStreamWord}, a provisional layout until
  * WORKER19's spec text lands). The state word keeps two per-pass flags: [115] use the store log and [116] output
- * rd_prev (Proposed). The read-log and write-log queues are 4 KB ({@link #LOG_QUEUE_ENTRIES}). The write to word 0
+ * rd_prev. Part 0 is the working state (item 12): the image is the register file and the state word's pc, instr_idx and
+ * offset are the live ones, changed in place by a pass (no copy at PULSE_RUN), so after a pass part 0 holds its end state
+ * and the controller reloads words 0-65 before every pass. The read-log and write-log queues are 4 KB ({@link #LOG_QUEUE_ENTRIES}). The write to word 0
  * flushes every queue (contents, decoders, credits to 2), in place of PULSE_RUN. Padding is never decoded. The pops are
  * checked against the sizes: ERRORS [3] code-stream, [4] read-log, [5] write-log underflow (a decode past the stream's
  * words, or a pop past its values; the pass stops), and [6] done with input left over.
@@ -57,7 +59,8 @@ import java.util.function.Consumer;
  */
 final class Replayer implements Peripheral {
     static final int ROWS_PER_PASS = 65536;
-    static final int IMAGE_COPY_CYCLES = 64;
+    /** v1.26 (DECISIONS-v1.26 item 12): no copy at a run's start, part 0 is the working state; v1.25 copied the image in 64. */
+    static final int IMAGE_COPY_CYCLES = 0;
     static final int OUTQ_ROWS = 32;
     static final int REC_LONGS = 10;                 // 5 × 128 bits = 80 bytes
     /** Record word 0 bit [86]: the expansion word's sign_imm, so the consumer needs no list of signed-immediate opcodes
@@ -145,7 +148,7 @@ final class Replayer implements Peripheral {
 
     // ================================================================ core state
     private boolean running;
-    private long[] regs = new long[128];
+    // v1.26 (item 12): the register file is part 0's image (region0[4 + r]); pc, instr_idx and the offset are the state word's
     private long pc; private int instrIdx;
     private boolean fStore, fRdPrev;                   // latched per run: use the store log, output rd_prev (v1.26)
     private boolean stateWritten;                      // word 0 written (the flush) since the last pass started
@@ -293,13 +296,12 @@ final class Replayer implements Peripheral {
         if (!stateWritten && passes > 0)
             violate(t, "a pass started without a write to the state word since the last pass: its queues weren't flushed (DECISIONS-v1.26 item 4)");
         stateWritten = false;
-        // v1.26 (item 10): PULSE_RUN only starts the pass: working pc, instr_idx and offset from the state word, the image into
-        // the working file, the rows-run count cleared. The flags, the sizes, the counters, the credits and the decoders
-        // were set by the state word's write (flush); the queues hold what landed since (item 11: preloading allowed).
+        // v1.26 (items 10, 12): PULSE_RUN only starts the pass: STATUS [0], rows run cleared, and it runs from part 0 as it is
+        // (the image is the register file; the state word's pc, instr_idx and offset are the live ones), the first row at
+        // once. The flags, the sizes, the counters, the credits and the decoders were set by the state word's write; the
+        // queues hold what landed since (item 11: preloading allowed).
         long sLo = region0[0], sHi = region0[1];
         pc = sLo; instrIdx = (int) sHi; startOffset = (int) (sHi >>> 32) & 0xFFFF;
-        for (int i = 0; i < 64; i++) { regs[2 * i] = region0[4 + 2 * i]; regs[2 * i + 1] = region0[4 + 2 * i + 1]; }
-        regs[0] = 0;
         running = true;
         copyDoneAt = t + 1 + IMAGE_COPY_CYCLES;
         rowsStarted = 0; rowsDone = 0; cur = null; nxt = null; firstInstr = true; inflight = null; busyUntil = Long.MIN_VALUE;
@@ -334,7 +336,10 @@ final class Replayer implements Peripheral {
 
     /** The pass ends: periph_running falls; done is posted (4.19.11, 4.17.7). */
     private void stopCore(long t, boolean postDone) {
-        if (running) { passEndAt = t; stoppedOffset = nextOffset(); }   // PERIPH_STATUS_0 keeps the next offset after the pass
+        if (running) {
+            passEndAt = t; stoppedOffset = nextOffset();             // PERIPH_STATUS_0 keeps the next offset after the pass
+            region0[1] = region0[1] & ~(0xFFFFL << 32) | (long) (stoppedOffset & 0xFFFF) << 32;   // item 12: part 0 holds the end state
+        }
         running = false; inflight = null; cur = null; nxt = null;
         if (postDone) { doneSetAt = t; ev.post(t, EV_RUN_DONE); }
     }
@@ -668,7 +673,7 @@ final class Replayer implements Peripheral {
         return v;
     }
 
-    private long rv(int r) { return r == 0 ? 0 : regs[r]; }
+    private long rv(int r) { return r == 0 ? 0 : region0[4 + r]; }
 
     /** A register operand code's register, or −1 for an immediate code (4.19.3, 4.19.4). */
     private static int reg(int c, Instr in) {
@@ -697,8 +702,9 @@ final class Replayer implements Peripheral {
     // ---------------------------------------------------------------- finishing a row
     private void finishRow(long T) {
         Pending p = inflight; inflight = null;
-        if (p.rdReg > 0) regs[p.rdReg] = p.rdVal;
+        if (p.rdReg > 0) region0[4 + p.rdReg] = p.rdVal;        // item 12: the image is the register file, written in place
         pc = p.newPc; instrIdx = p.newIdx;
+        region0[0] = pc; region0[1] = region0[1] & ~0xFFFFFFFFL | (instrIdx & 0xFFFFFFFFL);   // and the state word's pc, instr_idx
         outQ.add(p.rec); outAt.add(T + 1);
         if (p.lastOfInstr) code.releaseTo(p.instr.codeEnd);
         rowsDone++;
@@ -736,7 +742,7 @@ final class Replayer implements Peripheral {
     private void stall(Stall s) { stalls[s.ordinal()]++; }
 
     // ---------------------------------------------------------------- state for tests and the harness
-    long reg(int r) { return regs[r]; }
+    long reg(int r) { return r == 0 ? 0 : region0[4 + r]; }
     long pc() { return pc; }
     int instrIdx() { return instrIdx; }
     int rowsDone() { return rowsDone; }

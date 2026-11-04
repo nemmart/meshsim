@@ -282,6 +282,11 @@ DECISIONS-v1.26 items 1-11 and WORKER19/NOTES.md, in `src/Replayer.java`:
   the sizes, clears the pop counters, sets every credit to 2 and resets the decompressors. `PULSE_RUN` only starts the pass
   (working pc, instr_idx and offset, the image copy, rows run 0). Preloading is allowed (item 11): pushes landing after the
   state write are kept.
+- **Part 0 is the working state** (item 12): the image is the register file and the state word's pc, `instr_idx` and offset
+  are the live ones, written in place as rows finish; there is no copy at `PULSE_RUN` (v1.25's 64-cycle image copy and its
+  IMAGE stall are gone; the first row starts at once). After a pass part 0 holds the window's end state, so the
+  controller reloads words 0-65 before every pass (`replay_ctl.c`'s `load_part0`, one 66-word run from the record in
+  big SRAM; `ReplayDriver.resendState`).
 - **Queues:** 256 entries each (4 KB), half 128. `-Dreplayer.logq=512` (`LOG_QUEUE_ENTRIES`) gives v1.25's 8 KB logs, with
   the controller built `-DHALF_LOG=256` (`sw/replay/build/log8k`), for the stall comparison only.
 - **Sizes checked:** a pop past a stream's values (END) or a decode needing a bit past its words (OVER) is an underflow,
@@ -293,7 +298,8 @@ Model choices (WORKER20, for WORKER19's text):
 - **The sizes are latched at the state word's write and again at the stream word's.** State-first loading writes word 1
   after word 0, so a latch at word 0 alone would take the previous window's sizes. Part 0 is written only while stopped,
   so this equals reading the stream word at the pass's start.
-- **A pass started without a write to word 0 since the previous pass** is flagged (a violation): its queues weren't flushed.
+- **A pass started without a write to word 0 since the previous pass** is flagged (a violation): its queues weren't flushed,
+  and (item 12) it would start from the previous pass's end state.
 - Pushes accepted before the state write land before it (one landing path, fixed latency), so meshsim can't see a push "in
   flight at the state write" from inside the replayer; the software rule (every push of the previous pass landed before
   the state write) is kept by the controllers, which wait for their refill counters.

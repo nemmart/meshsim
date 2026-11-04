@@ -1311,16 +1311,16 @@ park:
 static int replayer_present(void) {
     return (PARAMS_PERIPH_PRESENT(tile->PARAMS) & 1) && PARAMS_TYPE(replayer->PARAMS) == PTYPE_REPLAYER;
 }
-/* Load the state and stream words (two 128-bit words, st[0..7]) into region 0x04 while the replayer is stopped
- * (STATUS [0] = 0: its part 0 is written only then, spec 4.19.10): mode-0 writes to the tile's own peripheral region, 16-byte
- * aligned, counted on counter 4 like any write (they land within K, D10). v1.26: the state word goes first, and its
- * write flushes every queue and sets every credit to 2 (DECISIONS-v1.26 item 4), so it is written before every pass. */
-static void replayer_load_state(const uint32_t *st) {
+/* Load the window's record, words 0-65 (the state word, the stream word, the 64-word image; rec[0..263]), into region 0x04
+ * while the replayer is stopped (STATUS [0] = 0: its part 0 is written only then, spec 4.19.10): mode-0 writes to the tile's
+ * own peripheral region, 16-byte aligned, counted on counter 4 like any write (they land within K, D10). v1.26: the state
+ * word goes first and its write resets the pass (the queues flushed, every credit 2; DECISIONS-v1.26 items 4, 10); part 0 is
+ * the working state, which a pass leaves at its end state (item 12), so the whole record is loaded before every pass. */
+static void replayer_load_state(const uint32_t *rec) {
     while (replayer->STATUS & PST_RUN) ;           /* only between passes; the loop below ends a pass by its event */
-    tile->WRITE_COUNTER[CTR_PERIPH - 1] = 2;
+    tile->WRITE_COUNTER[CTR_PERIPH - 1] = 66;
     send_to(ROUTER_HDR_W(tile_index(), MODE_WRITE, CTR_PERIPH), RP_STATE);
-    send128(st[3], st[2], st[1], st[0]);
-    send128(st[7], st[6], st[5], st[4]);
+    for (unsigned i = 0; i < 66; i++) send128(rec[4 * i + 3], rec[4 * i + 2], rec[4 * i + 1], rec[4 * i]);
     wait_all(EV_CTR(CTR_PERIPH));
 }
 /* A peripheral with a DMA (not the replayer): send words 32-bit words from it to dst at addr, counted there on ctr.
@@ -1343,7 +1343,7 @@ static void periph_dma(unsigned n, unsigned dst, uint32_t addr, uint32_t words, 
 ```
 
 - **The standard words come first, in every window** (D10): `PARAMS`, `STATUS`, `ERRORS`, `PULSE_RUN`, `PULSE_DMA`, `EVENTS`, `EVENTS_PEEK`, `EVENTS_MASK`, `DMA_HDR`, `DMA_ADDR`, then the peripheral's own from word 32. The replayer's are `ROWS_RUN`, `EXPANSION_OFFSET` and `EXPANSION_OPCODE`, one field per word (D39); C&C 1's are the error, READY and watchdog words (recipe 27).
-- **A peripheral is written by packets to its region** (0x04–0x06) like any memory: mode 0, counted as the program chooses (counter 4 here). The replayer's state and stream words are two 16-byte-aligned 128-bit writes, the state word first: at v1.26 its write flushes the replayer's queues, so a pass starts clean.
+- **A peripheral is written by packets to its region** (0x04–0x06) like any memory: mode 0, counted as the program chooses (counter 4 here). At v1.26 the replayer's part 0 is its working state (DECISIONS-v1.26 item 12), so the window's record, words 0–65, is loaded before every pass: 66 16-byte-aligned 128-bit writes, the state word first, whose write resets the pass (the queues flushed, every credit 2). A pass leaves its end state in part 0.
 - **The replayer has no DMA**: words 4, 8 and 9 are unused, and its `EVENTS` [1] never sets.
 - **`periph_dma`** narrows the window's mask to DMA done around its consuming load, because a load of `EVENTS` takes one count from every set, masked bit (rule 8). That is three extra accesses. **[F9]**
 
@@ -1433,7 +1433,7 @@ static void replay_pass(Feed *code, Feed *rlog, Feed *wlog, int store_log) {
 - **Resident streams only.** Data staged from LPDDR is fetched into big SRAM on counter 1 and refilled from there (spec 4.19.13); a refill waits on counter 4 alone, so an outstanding fetch doesn't hold it up.
 
 **Walk.**
-1. The state word's write (`replayer_load_state`, before the pass) empties the queues and sets every credit counter to 2 (v1.26; at v1.25 `PULSE_RUN` did). `PULSE_RUN` starts the pass. The masked bits (code, read log, maybe write log) are set, so the tile's [13] rises.
+1. The record's load (`replayer_load_state`, before every pass) writes part 0; its first write, the state word's, empties the queues and sets every credit counter to 2 (v1.26; at v1.25 `PULSE_RUN` did). `PULSE_RUN` only starts the pass, from part 0 as it is. The masked bits (code, read log, maybe write log) are set, so the tile's [13] rises.
 2. *Wake 1.* The load takes one credit each from code and read log (1 left each). The loop builds two streams of a half each, arms counter 4 for their total, starts, and sleeps in the squelch.
 3. The refill's packets cross the director; each lands in its queue within *K* (D10) and decrements counter 4. [3] and [10] are set; the loop restores [13], which is still high (1 credit each), so it wakes at once.
 4. *Wake 2.* The second credits go: two more halves. Both queues are now full, and both credit counters are at 0.

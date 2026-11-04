@@ -44,13 +44,7 @@ final class ReplayDriver {
 
     /** Region 0, the decode table and the ROM, by mode 9, with the replayer stopped. */
     void load() {
-        if (w.region0 != null) {                       // a delivered record: words 0-65 unchanged (v1.26: 66-67 not sent)
-            for (int i = 0; i < Replayer.PART0_WORDS; i++) port.add(new long[] { 4 * i, w.region0[2 * i], w.region0[2 * i + 1] });
-        } else {
-            port.add(new long[] { 0x0, w.stateLo(), w.stateHi() });
-            port.add(new long[] { 0x4, w.streamLo(), w.streamHi() });
-            for (int i = 0; i < 64; i++) port.add(new long[] { 0x8 + 4 * i, w.regs[2 * i], w.regs[2 * i + 1] });
-        }
+        addPart0();
         for (int p = 0; p < 256; p++) {
             long lo = 0, hi = 0;
             for (int k = 0; k < 4; k++) lo |= (w.table[8 * p + k] & 0xFFFFL) << (16 * k);
@@ -62,12 +56,21 @@ final class ReplayDriver {
         for (int i = 0; i < Peripheral.RP_LATENCY + 1; i++) step();
     }
 
-    /** v1.26: the state word again (it flushes the queues, DECISIONS-v1.26 item 4), landed; before every pass but the first. */
+    /** v1.26: the record's words 0-65 again, state word first (its write resets the pass, item 10), landed: part 0 is the
+     *  working state (item 12), so it holds the last pass's end state; before every pass but the first. */
     void resendState() {
-        long lo = w.region0 != null ? w.region0[0] : w.stateLo(), hi = w.region0 != null ? w.region0[1] : w.stateHi();
-        port.add(new long[] { 0x0, lo, hi });
+        addPart0();
         while (!port.isEmpty()) step();
         for (int i = 0; i < Peripheral.RP_LATENCY + 1; i++) step();
+    }
+    private void addPart0() {
+        if (w.region0 != null) {                       // a delivered record: words 0-65 unchanged (v1.26: 66-67 not sent)
+            for (int i = 0; i < Replayer.PART0_WORDS; i++) port.add(new long[] { 4 * i, w.region0[2 * i], w.region0[2 * i + 1] });
+        } else {
+            port.add(new long[] { 0x0, w.stateLo(), w.stateHi() });
+            port.add(new long[] { 0x4, w.streamLo(), w.streamHi() });
+            for (int i = 0; i < 64; i++) port.add(new long[] { 0x8 + 4 * i, w.regs[2 * i], w.regs[2 * i + 1] });
+        }
     }
     int passesRun;
 

@@ -482,7 +482,7 @@ final class ReplayerUnitTests {
         T.check(zero, "every record is all zeros");
         T.check(d.done && d.r.violations.isEmpty() && d.r.invalids.isEmpty(), "done, clean");
         long cyc = d.r.passEndAt - d.r.passStartAt;
-        T.check(cyc >= 3L * 65536 + 64 && cyc < 3L * 65536 + 64 + 200, "about 3 cycles per row plus the image copy: " + cyc);
+        T.check(cyc >= 3L * 65536 && cyc < 3L * 65536 + 200, "about 3 cycles per row (v1.26 item 12: no image copy): " + cyc);
 
         T.group("all-padding window, compressed code");
         w.setCode(new int[Replayer.ROWS_PER_PASS], true);
@@ -689,7 +689,7 @@ final class ReplayerUnitTests {
         System.out.println("  program pass: " + cyc + " cycles from the run to the last row: rows " + rowsCycles + ", stalls "
                 + Arrays.toString(d.r.stalls) + " " + Arrays.toString(Replayer.Stall.values()));
         T.eq(rowsCycles + stalls, cyc, "cycles = row schedules (3, or 5 for class M) + stall cycles (the image copy among them)");
-        T.eq(64, d.r.stalls[Replayer.Stall.IMAGE.ordinal()], "the image copy takes 64 cycles");
+        T.eq(0, d.r.stalls[Replayer.Stall.IMAGE.ordinal()], "v1.26 (item 12): no image copy, the first row starts at once");
         T.eq(2, d.r.rowsM, "two class-M rows");
         T.eq(25, d.r.status(d.t, 0) & 0xFFFF, "PERIPH_STATUS_0 [15:0]: rows run");
     }
@@ -704,6 +704,26 @@ final class ReplayerUnitTests {
         rdPrevFlag();
         recordWords();
         queueSizes();
+        workingState();
+    }
+
+    /** Item 12: part 0 is the working state: after a pass it holds the end state; the reload of words 0-65 restarts it. */
+    static void workingState() {
+        T.group("v1.26: part 0 is the working state");
+        ReplayWindow w = programWindow(false, false, false, true);
+        Replayer r = new Replayer(0); r.rowsPerPass = 25;
+        ReplayDriver d = new ReplayDriver(w, r); d.load();
+        T.eq(0x1000L, r.region0[0], "before the pass: the state word's pc");
+        List<long[]> first = new ArrayList<>(d.pass(200_000));
+        T.eq(r.pc(), r.region0[0], "after: the state word holds the end pc (" + r.pc() + ")");
+        T.eq(r.instrIdx() & 0xFFFFFFFFL, r.region0[1] & 0xFFFFFFFFL, "and the end instr_idx");
+        T.eq(0x101L, r.region0[4 + A0], "the image holds the registers as the pass left them (a0 = 0x101)");
+        T.eq(0x1036L, r.region0[4 + 40], "v40 too");
+        T.check(((r.region0[1] >>> (Replayer.SW_STORE_LOG - 64)) & 1) == 1, "the flags are untouched");
+        List<long[]> again = new ArrayList<>(d.pass(200_000));                 // the driver reloads words 0-65 first
+        T.check(again.size() == first.size() && java.util.stream.IntStream.range(0, first.size()).allMatch(k -> Arrays.equals(first.get(k), again.get(k))),
+                "after reloading words 0-65, the same pass again");
+        T.check(r.clean(), "clean: " + r.errorReport());
     }
 
     /** Item 2: the stream word carries words, values and the compression flag for each stream (parseStreamWord's layout). */

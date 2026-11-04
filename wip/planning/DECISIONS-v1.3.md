@@ -65,7 +65,7 @@ Decided (O).
 
 Decided (O). The Tracer's encoders match the replayer's decoders (spec 4.19.15, item 104) exactly.
 
-- **Reset to all zeros at every window start**, as the replayer's decoder resets. Seeding the table with
+- **Reset to all zeros at every window start (on the Tracer, by `PULSE_RUN`: section 24)**, as the replayer's decoder resets. Seeding the table with
   distinct values was considered and dropped: it saves at most a few hits in a 65,536-row window.
 - **The encoder's tie rule:** a value matching several entries (duplicates are legal, 4.19.15) is coded as the
   **lowest matching index**; in the write log, a match with the last-load entry E[15] is coded as index 15

@@ -10,6 +10,9 @@ software, and nothing else: no Tracer, no new memory system, no file system. The
    [2-65] the register image, [66] the files word** (the memory file's and the map file's roots and depths, carried and ignored),
    **[67] the template bitmap** (moved from word 0 to last). The whole record lands in part 0 at consecutive offsets from 0x000,
    the first three where v1.25 has them; one record format for the host, the Tracer and the replayer.
+   **With the files word and the bitmap last, the replayer needs only words 0-65** (owner, 2026-11-01), exactly v1.25's part-0
+   image: it ignores writes to words 66-67, and a controller may simply not send them (the tile's controller reads the bitmap from
+   the record itself, to trim its templates). So in converted deliveries the files word's content doesn't matter (zero).
 2. **A stream's size is two numbers: its 128-bit words and its values** (V3-24; owner, 2026-11-01: bits aren't useful to anyone):
    **the words** as sent, padding included (what the controller sends and the queue holds), and **the values out** (the 32- or
    64-bit values it decodes to, which is where a decoder stops, so padding never matters). The stream word (word 1; v1.25: three

@@ -948,6 +948,12 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
     (owner: it mirrors the replayer's typical queue sizes; was 2 KB): 512 advice words. Advice is consumed slowly (the division family takes one word per expansion of about 12 rows,
     a secp operation at most 8 in up to 240), so a full queue lasts thousands of rows, far longer than the controller takes to
     refill it; proposed (integrator): raise the flag when half is free.
+- **On the Tracer, `PULSE_RUN` also starts a window, so it resets the output compressors** (owner, 2026-11-01): each window's
+  streams must decode on their own (a replayer resets its decompressors with each window's state), and on the Tracer a run is a
+  window, so `PULSE_RUN` resets both compressor sets' LRU tables to zero (section 4's "every window start"), along with the
+  window's other output state: the template bitmap, the packers and the output queues' lengths (integrator, the same reasoning).
+  Everything that carries across the segment (the processor state, the read queue and its counter, the caches, the jump LRU)
+  is left alone.
 - **Setting the state resets everything; `PULSE_RUN` only starts running** (owner, 2026-11-01; DECISIONS-v1.26 item 10), the same
   rule as the replayer's: the state write flushes the queues, latches the sizes, clears the size counters and sets the credits;
   the Tracer's go is `PULSE_RUN`, which runs the next `RUN_CYCLES` rows and nothing else, so the read queue's counter runs across

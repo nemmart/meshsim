@@ -85,7 +85,7 @@ if [ \$skip = 0 ]; then
   write "\$D" all delivery.log || RC=5
   [ \$RC = 0 ] && sha256sum "\$D/\$P.manifest.json" | cut -d' ' -f1 > "\$D/\$P.COMPLETE"
 fi
-write "\$S" "\$SEL" selected.log || RC=6
+[ \$RC = 0 ] && { write "\$S" "\$SEL" selected.log || RC=6; }
 # the selected windows, packed as 079/080 did (top directory w9-deliveries-selected), atomically
 if [ \$RC = 0 ]; then
   tar -czf "\$DATA/w9-selected-windows.tgz.tmp" -C "\$DATA" --exclude '.staging-*' w9-deliveries-selected && mv "\$DATA/w9-selected-windows.tgz.tmp" "\$DATA/w9-selected-windows.tgz" || RC=7
@@ -93,7 +93,8 @@ fi
 du -sb "\$D/\$P" 2>/dev/null | tee "\$RES/size.txt"; du -sh "\$D/\$P" 2>/dev/null | tee -a "\$RES/size.txt"
 (cd "\$DATA" && sha256sum w9-deliveries/\$P.manifest.json w9-deliveries/manifest.json w9-deliveries-selected/\$P.manifest.json w9-selected-windows.tgz 2>/dev/null) | tee "\$RES/manifest.sha256"
 NEW=\$(sha256sum "\$D/\$P.manifest.json" 2>/dev/null | cut -d' ' -f1)
-if [ "\$NEW" = "\$OLD" ]; then echo "\$P.manifest.json equals WORKER9's ($OLD): the delivery is reproduced exactly" | tee -a "\$RES/summary.txt"
+if [ -z "\$NEW" ]; then echo "no \$P.manifest.json at \$D" | tee -a "\$RES/summary.txt"
+elif [ "\$NEW" = "\$OLD" ]; then echo "\$P.manifest.json equals WORKER9's ($OLD): the delivery is reproduced exactly" | tee -a "\$RES/summary.txt"
 else echo "\$P.manifest.json \$NEW differs from WORKER9's \$OLD" | tee -a "\$RES/summary.txt"; fi
 df -h "\$DATA" | tail -1
 cd "\$REPO"; rm -rf "\$W"

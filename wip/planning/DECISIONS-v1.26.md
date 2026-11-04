@@ -13,8 +13,9 @@ software, and nothing else: no Tracer, no new memory system, no file system. The
 2. **A stream's size is two numbers: its 128-bit words and its values** (V3-24; owner, 2026-11-01: bits aren't useful to anyone):
    **the words** as sent, padding included (what the controller sends and the queue holds), and **the values out** (the 32- or
    64-bit values it decodes to, which is where a decoder stops, so padding never matters). The stream word (word 1; v1.25: three
-   bit lengths, code [23:0], read log [55:32], write log [87:64]) carries both for all three streams; its layout is to propose
-   (a stream is at most about 33,800 words and 65,536 values, so 16 and 17 bits, 99 bits for the three).
+   bit lengths, code [23:0], read log [55:32], write log [87:64]) carries both for all three streams, **and each stream's
+   compression flag** (owner, 2026-11-01), moved from the state word's [112]-[114], since it describes the stream: 16 + 17 + 1
+   bits per stream, 102 bits for the three; its layout is to propose (a stream is at most about 33,800 words and 65,536 values).
 3. **The read-log and write-log queues shrink from 8 KB to 4 KB** (V3-12), so every queue is 4 KB. Justified by the measured
    densities (spec 4.19.15); **confirm by meshsim's Stage B stall counts on both workloads.**
 4. **Writing the state flushes every queue** (V3-24), in place of `PULSE_RUN` emptying them (spec 4.19.8). **The state stays a

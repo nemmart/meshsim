@@ -10,10 +10,11 @@ software, and nothing else: no Tracer, no new memory system, no file system. The
    [2-65] the register image, [66] the files word** (the memory file's and the map file's roots and depths, carried and ignored),
    **[67] the template bitmap** (moved from word 0 to last). The whole record lands in part 0 at consecutive offsets from 0x000,
    the first three where v1.25 has them; one record format for the host, the Tracer and the replayer.
-2. **A stream's size is two numbers** (V3-24): **bits in** (as sent, raw or compressed) and **values out** (the 32- or 64-bit
-   values it decodes to). The stream word (word 1 of the part-0 image; spec 4.19.2: code [23:0], read log [55:32], write log
-   [87:64], the rest spare) must carry both for all three streams; its layout is to propose (a stream is at most about 4.3M bits
-   and 65,536 values, so 3 x (23 + 17) bits fit in 128 if repacked).
+2. **A stream's size is two numbers: its 128-bit words and its values** (V3-24; owner, 2026-11-01: bits aren't useful to anyone):
+   **the words** as sent, padding included (what the controller sends and the queue holds), and **the values out** (the 32- or
+   64-bit values it decodes to, which is where a decoder stops, so padding never matters). The stream word (word 1; v1.25: three
+   bit lengths, code [23:0], read log [55:32], write log [87:64]) carries both for all three streams; its layout is to propose
+   (a stream is at most about 33,800 words and 65,536 values, so 16 and 17 bits, 99 bits for the three).
 3. **The read-log and write-log queues shrink from 8 KB to 4 KB** (V3-12), so every queue is 4 KB. Justified by the measured
    densities (spec 4.19.15); **confirm by meshsim's Stage B stall counts on both workloads.**
 4. **Writing the state flushes every queue** (V3-24), in place of `PULSE_RUN` emptying them (spec 4.19.8). **The state stays a
@@ -23,7 +24,7 @@ software, and nothing else: no Tracer, no new memory system, no file system. The
    first, and a per-pass flag change resends only it, so every pass starts with clean queues.
 5. **A stream's padding can be anything**, compressed or not (V3-24): streams arrive as whole 128-bit words and the decoder stops
    at the exact length.
-6. **The replayer checks its pops against the sizes it was given** (V3-24): reading past a stream's bits, or popping past its
+6. **The replayer checks its pops against the sizes it was given** (V3-24): reading past a stream's words, or popping past its
    values, is an underflow error at once; reaching done with input left over is an error.
 7. **New `ERRORS` bits** (V3-24), after v1.25's [0] reserved, [1] queue overrun, [2] invalid expansion: **[3] code-stream
    underflow, [4] read-log underflow, [5] write-log underflow, [6] done with input left over.**

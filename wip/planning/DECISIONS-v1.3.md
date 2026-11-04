@@ -962,9 +962,10 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
   (owner): a replayer's window consumes all its input, so its done does mark the end.
   A starved window becomes a named error, not a hang caught by C&C 1's watchdog. A change to the replayer at v1.3 (v1.25 is
   frozen); the expansion queue, fed per expansion, ends by `seq_remaining` and is left as is.
-- **A stream's size is two numbers** (owner, 2026-11-01), since some streams are LRU-coded: **the bits in** (the stream as sent,
-  raw or coded) and **the values out** (the 32- or 64-bit values it decodes to). Both are checked: the decoder reading past the
-  bits in, or a consumer popping past the values out, is an underflow error at once; and at the end both must be used up exactly
+- **A stream's size is two numbers** (owner, 2026-11-01), since some streams are LRU-coded: **its 128-bit words** (the stream as
+  sent, raw or coded, padding included; bits replaced, as useful to no one) and **the values out** (the 32- or 64-bit values it
+  decodes to, where a decoder stops). Both are checked: the decoder reading past the
+  words, or a consumer popping past the values out, is an underflow error at once; and at the end both must be used up exactly
   (a coded stream whose bits are all read but which decodes to fewer or more values is corrupt). For the Tracer's advice, raw
   64-bit words, the bits are 64 times the values. **For the replayer this changes its state record** at v1.3: the stream word
   carries bit lengths today, so the value counts need room (more fields, or another word; open).

@@ -1,0 +1,145 @@
+{
+ "name": "cyclone-22",
+ "traced_rows": 2705819,
+ "executions": 1911900,
+ "untraced_rows": 256,
+ "untraced_share_of_all": 9.460196040390603e-05,
+ "untraced_per_traced": 9.461091078154157e-05,
+ "windows": 42,
+ "full_windows": 41,
+ "windows_with_untraced": 20,
+ "untraced_per_window": {
+  "mean": 6.095238095238095,
+  "p50": 0,
+  "p90": 7,
+  "p99": 73,
+  "p999": 73,
+  "max": 73
+ },
+ "top_windows": [
+  {
+   "window": 29,
+   "first_row": 1900544,
+   "untraced_rows": 73,
+   "divq": 0,
+   "divr": 0,
+   "inline_execs": 0
+  },
+  {
+   "window": 30,
+   "first_row": 1966080,
+   "untraced_rows": 59,
+   "divq": 0,
+   "divr": 0,
+   "inline_execs": 0
+  },
+  {
+   "window": 28,
+   "first_row": 1835008,
+   "untraced_rows": 47,
+   "divq": 0,
+   "divr": 0,
+   "inline_execs": 0
+  },
+  {
+   "window": 31,
+   "first_row": 2031616,
+   "untraced_rows": 36,
+   "divq": 0,
+   "divr": 0,
+   "inline_execs": 0
+  },
+  {
+   "window": 13,
+   "first_row": 851968,
+   "untraced_rows": 7,
+   "divq": 0,
+   "divr": 0,
+   "inline_execs": 2
+  },
+  {
+   "window": 26,
+   "first_row": 1703936,
+   "untraced_rows": 6,
+   "divq": 0,
+   "divr": 0,
+   "inline_execs": 0
+  },
+  {
+   "window": 27,
+   "first_row": 1769472,
+   "untraced_rows": 6,
+   "divq": 0,
+   "divr": 0,
+   "inline_execs": 0
+  },
+  {
+   "window": 24,
+   "first_row": 1572864,
+   "untraced_rows": 4,
+   "divq": 0,
+   "divr": 0,
+   "inline_execs": 0
+  },
+  {
+   "window": 25,
+   "first_row": 1638400,
+   "untraced_rows": 4,
+   "divq": 0,
+   "divr": 0,
+   "inline_execs": 0
+  },
+  {
+   "window": 11,
+   "first_row": 720896,
+   "untraced_rows": 3,
+   "divq": 0,
+   "divr": 0,
+   "inline_execs": 10
+  }
+ ],
+ "top_untraced_by_opcode": [
+  {
+   "opcode": "REMU",
+   "executions": 218,
+   "untraced_rows": 218,
+   "share": 0.8515625
+  },
+  {
+   "opcode": "DIVU",
+   "executions": 38,
+   "untraced_rows": 38,
+   "share": 0.1484375
+  }
+ ],
+ "top_untraced_by_template": [
+  {
+   "label": "REMU",
+   "key": 413,
+   "executions": 218,
+   "untraced_per_exec": 1,
+   "untraced_rows": 218
+  },
+  {
+   "label": "DIVU",
+   "key": 405,
+   "executions": 38,
+   "untraced_per_exec": 1,
+   "untraced_rows": 38
+  }
+ ],
+ "controller_fed": {
+  "inline_execs": 349,
+  "csr_execs": 511,
+  "inline_traced_rows": 250301,
+  "csr_traced_rows": 613,
+  "max_inline_per_window": 42,
+  "max_csr_per_window": 120,
+  "windows_with_csr": 14
+ },
+ "divq_execs": 0,
+ "divr_execs": 0,
+ "templates_in_program": 227,
+ "templates_executed": 203,
+ "checks": "count_exec: rows = num_cycles, every row on a program pc, every execution contiguous at jolt-cpp length; tables: traced words = jolt-cpp rows and source opcode names agree for every template of the program; window sums = run totals"
+}

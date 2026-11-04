@@ -42,8 +42,6 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
 | WORKER16 | T2 done (`WORKER16/REPORT.md`: answered, DECISIONS-v1.3 section 12); now **W2**: the JIT's advice streams, and how jolt-cpp handles registers 40-47 at a chunk's start | starting W2 | plan first | its W2 prompt |
 | WORKER17 | Jolt's memory, from the tracing side (layout, accesses per row, what the workloads touch) and the checking side (the RAM, register and bytecode sumchecks), connected | starting | plan first | start with "Clone meshsim and follow WORKER17/PROMPT.md" |
 | WORKER18 | a self-contained Java emulator of Jolt's tracer (`wip/gold/`), to become our gold (DECISIONS-v1.3 section 17, W4) | starting | plan first | start with "Clone meshsim and follow WORKER18/PROMPT.md" |
-| WORKER19 | the v1.26 spec: v1.25 plus the replayer's v1.3 changes (`DECISIONS-v1.26.md`) | starting | plan first | "Clone meshsim and follow WORKER19/PROMPT.md" |
-| WORKER20 | meshsim and the software at v1.26, the deliveries' conversion and the acceptance runs | starting | plan first | "Clone meshsim and follow WORKER20/PROMPT.md" |
 
 ## What's left, by milestone
 
@@ -68,8 +66,13 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
   control loop of start, RUN_CYCLES (typically 65,536), go, done, with six wake flags (24); errors it checks (25); padding rows
   after the program's end (25). Gold, the Java emulator (17), matches jolt-cpp and upstream row for row. **Next: a spec chapter
   for the Tracer** (proposed outline in the session: overview, region and record, control, execution, memory, output, boundaries,
-  errors, the replayer's v1.3 changes), with the 512 KB cache a black box. **v1.26** (`DECISIONS-v1.26.md`): v1.25 plus the
-  replayer's v1.3 changes, WORKER19 (spec) and WORKER20 (meshsim, software, acceptance), started 2026-11-01.
+  errors, the replayer's v1.3 changes), with the 512 KB cache a black box. **v1.26: frozen** (2026-11-04) as `v1.26/`: v1.25 plus
+  the replayer's v1.3 changes, accepted on every window at 2²⁹ (Quest 098-102b); WORKER19 and WORKER20 closed. The runner's
+  2²⁹ deliveries now live in `~questrunner/data` (Quest 103, 104; PIPELINE.md); the runner is started by hand (no autostart).
+  **Next, proposed: two projects:** the Tracer's bring-up in meshsim (its model, a black-box memory system, C&C 3's firmware
+  sending each window to its tile, the segment replayed on the full chip, checked against WORKER9's deliveries and jolt-cpp's
+  rows, compression on and off), and the file system on C&C 2 with a shell on C&C 1 over the UART (free-space management in
+  C&C 3, black-boxed; mkfs and fsck as host tools).
   Open in v1.3: register offsets beyond words 32-35; sizes to confirm by gold (caches, TLB); UPSTREAM-DIFFS D1, D3, D5 follow
   upstream (the verifier is upstream's, jolt-cpp's submodule at 7189216; not yet recorded as ruled), D2 and D12 deferred; demo
   guests where upstream works and jolt-cpp doesn't (D1 with `.rodata` in the executable segment; C.SLLI x0), proposed for WORKER18.

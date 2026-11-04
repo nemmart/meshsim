@@ -1,0 +1,1101 @@
+== 1 ADD
+   rd=R rs1=R rs2=R | src=ADD | LAST  x1
+   rd=R rs1=R rs2=R | src=AMOADD_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOADD_D | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOADD_W (rd=x0) | notlast  x2
+   rd=R rs1=R rs2=R | src=AMOADD_W | notlast  x2
+   rd=R rs1=R rs2=R | src=AMOAND_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOAND_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAXU_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAXU_D | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAXU_W (rd=x0) | notlast  x2
+   rd=R rs1=R rs2=R | src=AMOMAXU_W | notlast  x2
+   rd=R rs1=R rs2=R | src=AMOMAX_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAX_D | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAX_W (rd=x0) | notlast  x2
+   rd=R rs1=R rs2=R | src=AMOMAX_W | notlast  x2
+   rd=R rs1=R rs2=R | src=AMOMINU_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMINU_D | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMINU_W (rd=x0) | notlast  x2
+   rd=R rs1=R rs2=R | src=AMOMINU_W | notlast  x2
+   rd=R rs1=R rs2=R | src=AMOMIN_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMIN_D | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMIN_W (rd=x0) | notlast  x2
+   rd=R rs1=R rs2=R | src=AMOMIN_W | notlast  x2
+   rd=R rs1=R rs2=R | src=AMOOR_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOOR_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOSWAP_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOSWAP_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOXOR_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOXOR_W | notlast  x1
+   rd=R rs1=R rs2=R | src=BIGINT256_MUL_INLINE (rd=x0) | notlast  x53
+   rd=R rs1=R rs2=R | src=BIGINT256_MUL_INLINE | notlast  x53
+   rd=R rs1=R rs2=R | src=BLAKE2_INLINE (rd=x0) | notlast  x576
+   rd=R rs1=R rs2=R | src=BLAKE2_INLINE | notlast  x576
+   rd=R rs1=R rs2=R | src=BLAKE3_INLINE (rd=x0) | notlast  x336
+   rd=R rs1=R rs2=R | src=BLAKE3_INLINE | notlast  x336
+   rd=R rs1=R rs2=R | src=BLAKE3_KEYED64_INLINE (rd=x0) | notlast  x336
+   rd=R rs1=R rs2=R | src=BLAKE3_KEYED64_INLINE | notlast  x336
+   rd=R rs1=R rs2=R | src=MULH | LAST  x1
+   rd=R rs1=R rs2=R | src=MULH | notlast  x1
+   rd=R rs1=R rs2=R | src=MULHSU | LAST  x1
+   rd=R rs1=R rs2=R | src=MULHSU | notlast  x2
+   rd=R rs1=R rs2=R | src=SB | notlast  x1
+   rd=R rs1=R rs2=R | src=SC_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=SC_D | notlast  x1
+   rd=R rs1=R rs2=R | src=SC_W (rd=x0) | notlast  x2
+   rd=R rs1=R rs2=R | src=SC_W | notlast  x2
+   rd=R rs1=R rs2=R | src=SECP256K1_DIVQ_INLINE (rd=x0) | notlast  x70
+   rd=R rs1=R rs2=R | src=SECP256K1_DIVQ_INLINE | notlast  x70
+   rd=R rs1=R rs2=R | src=SECP256K1_DIVR_INLINE (rd=x0) | notlast  x94
+   rd=R rs1=R rs2=R | src=SECP256K1_DIVR_INLINE | notlast  x94
+   rd=R rs1=R rs2=R | src=SECP256K1_MULQ_INLINE (rd=x0) | notlast  x70
+   rd=R rs1=R rs2=R | src=SECP256K1_MULQ_INLINE | notlast  x70
+   rd=R rs1=R rs2=R | src=SECP256K1_MULR_INLINE (rd=x0) | notlast  x94
+   rd=R rs1=R rs2=R | src=SECP256K1_MULR_INLINE | notlast  x94
+   rd=R rs1=R rs2=R | src=SECP256K1_SQUAREQ_INLINE (rd=x0) | notlast  x70
+   rd=R rs1=R rs2=R | src=SECP256K1_SQUAREQ_INLINE | notlast  x70
+   rd=R rs1=R rs2=R | src=SECP256K1_SQUARER_INLINE (rd=x0) | notlast  x94
+   rd=R rs1=R rs2=R | src=SECP256K1_SQUARER_INLINE | notlast  x94
+   rd=R rs1=R rs2=R | src=SH | notlast  x1
+   rd=R rs1=R rs2=R | src=SHA256_INIT_INLINE (rd=x0) | notlast  x516
+   rd=R rs1=R rs2=R | src=SHA256_INIT_INLINE | notlast  x516
+   rd=R rs1=R rs2=R | src=SHA256_INLINE (rd=x0) | notlast  x536
+   rd=R rs1=R rs2=R | src=SHA256_INLINE | notlast  x536
+   rd=R rs1=R rs2=R | src=SW | notlast  x1
+== 2 ADDI
+   rd=R rs1=R rs2=I | src=ADDI | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOADD_D (rd=x0) | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOADD_D | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOADD_W (rd=x0) | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOADD_W | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOAND_D (rd=x0) | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOAND_D | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOAND_W (rd=x0) | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOAND_W | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOMAXU_D (rd=x0) | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOMAXU_D | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOMAXU_W (rd=x0) | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOMAXU_W | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOMAX_D (rd=x0) | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOMAX_D | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOMAX_W (rd=x0) | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOMAX_W | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOMINU_D (rd=x0) | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOMINU_D | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOMINU_W (rd=x0) | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOMINU_W | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOMIN_D (rd=x0) | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOMIN_D | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOMIN_W (rd=x0) | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOMIN_W | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOOR_D (rd=x0) | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOOR_D | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOOR_W (rd=x0) | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOOR_W | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOSWAP_D (rd=x0) | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOSWAP_D | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOSWAP_W (rd=x0) | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOSWAP_W | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOXOR_D (rd=x0) | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOXOR_D | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOXOR_W (rd=x0) | LAST  x1
+   rd=R rs1=R rs2=I | src=AMOXOR_W | LAST  x1
+   rd=R rs1=R rs2=I | src=CSRRS | notlast  x1
+   rd=R rs1=R rs2=I | src=CSRRW (rd=x0) | LAST  x1
+   rd=R rs1=R rs2=I | src=CSRRW | LAST  x1
+   rd=R rs1=R rs2=I | src=CSRRW | notlast  x1
+   rd=R rs1=R rs2=I | src=DIV | LAST  x1
+   rd=R rs1=R rs2=I | src=DIVU | LAST  x1
+   rd=R rs1=R rs2=I | src=DIVUW | LAST  x1
+   rd=R rs1=R rs2=I | src=ECALL | notlast  x1
+   rd=R rs1=R rs2=I | src=LR_D (rd=x0) | notlast  x2
+   rd=R rs1=R rs2=I | src=LR_D | notlast  x2
+   rd=R rs1=R rs2=I | src=LR_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=LR_W | notlast  x1
+   rd=R rs1=R rs2=I | src=REMU | LAST  x1
+   rd=R rs1=R rs2=I | src=SC_W (rd=x0) | notlast  x2
+   rd=R rs1=R rs2=I | src=SC_W | notlast  x2
+   rd=R rs1=R rs2=I | src=SHA256_INIT_INLINE (rd=x0) | notlast  x77
+   rd=R rs1=R rs2=I | src=SHA256_INIT_INLINE | notlast  x77
+   rd=R rs1=R rs2=I | src=SHA256_INLINE (rd=x0) | notlast  x64
+   rd=R rs1=R rs2=I | src=SHA256_INLINE | notlast  x64
+   rd=R rs1=R(x0) rs2=I | src=BIGINT256_MUL_INLINE (rd=x0) | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=BIGINT256_MUL_INLINE (rd=x0) | notlast  x10
+   rd=R rs1=R(x0) rs2=I | src=BIGINT256_MUL_INLINE | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=BIGINT256_MUL_INLINE | notlast  x10
+   rd=R rs1=R(x0) rs2=I | src=BLAKE2_INLINE (rd=x0) | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=BLAKE2_INLINE (rd=x0) | notlast  x39
+   rd=R rs1=R(x0) rs2=I | src=BLAKE2_INLINE | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=BLAKE2_INLINE | notlast  x39
+   rd=R rs1=R(x0) rs2=I | src=BLAKE3_INLINE (rd=x0) | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=BLAKE3_INLINE (rd=x0) | notlast  x31
+   rd=R rs1=R(x0) rs2=I | src=BLAKE3_INLINE | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=BLAKE3_INLINE | notlast  x31
+   rd=R rs1=R(x0) rs2=I | src=BLAKE3_KEYED64_INLINE (rd=x0) | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=BLAKE3_KEYED64_INLINE (rd=x0) | notlast  x31
+   rd=R rs1=R(x0) rs2=I | src=BLAKE3_KEYED64_INLINE | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=BLAKE3_KEYED64_INLINE | notlast  x31
+   rd=R rs1=R(x0) rs2=I | src=ECALL | notlast  x3
+   rd=R rs1=R(x0) rs2=I | src=KECCAK256 (rd=x0) | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=KECCAK256 (rd=x0) | notlast  x36
+   rd=R rs1=R(x0) rs2=I | src=KECCAK256 | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=KECCAK256 | notlast  x36
+   rd=R rs1=R(x0) rs2=I | src=KECCAK256_ABSORB_PERMUTE (rd=x0) | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=KECCAK256_ABSORB_PERMUTE (rd=x0) | notlast  x36
+   rd=R rs1=R(x0) rs2=I | src=KECCAK256_ABSORB_PERMUTE | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=KECCAK256_ABSORB_PERMUTE | notlast  x36
+   rd=R rs1=R(x0) rs2=I | src=LR_W (rd=x0) | notlast  x1
+   rd=R rs1=R(x0) rs2=I | src=LR_W | notlast  x1
+   rd=R rs1=R(x0) rs2=I | src=SC_D (rd=x0) | notlast  x2
+   rd=R rs1=R(x0) rs2=I | src=SC_D | notlast  x2
+   rd=R rs1=R(x0) rs2=I | src=SC_W (rd=x0) | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=SC_W (rd=x0) | notlast  x1
+   rd=R rs1=R(x0) rs2=I | src=SC_W | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=SC_W | notlast  x1
+   rd=R rs1=R(x0) rs2=I | src=SECP256K1_DIVQ_INLINE (rd=x0) | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=SECP256K1_DIVQ_INLINE (rd=x0) | notlast  x15
+   rd=R rs1=R(x0) rs2=I | src=SECP256K1_DIVQ_INLINE | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=SECP256K1_DIVQ_INLINE | notlast  x15
+   rd=R rs1=R(x0) rs2=I | src=SECP256K1_DIVR_INLINE (rd=x0) | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=SECP256K1_DIVR_INLINE (rd=x0) | notlast  x16
+   rd=R rs1=R(x0) rs2=I | src=SECP256K1_DIVR_INLINE | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=SECP256K1_DIVR_INLINE | notlast  x16
+   rd=R rs1=R(x0) rs2=I | src=SECP256K1_GLVR_ADV_INLINE (rd=x0) | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=SECP256K1_GLVR_ADV_INLINE | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=SECP256K1_MULQ_INLINE (rd=x0) | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=SECP256K1_MULQ_INLINE (rd=x0) | notlast  x15
+   rd=R rs1=R(x0) rs2=I | src=SECP256K1_MULQ_INLINE | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=SECP256K1_MULQ_INLINE | notlast  x15
+   rd=R rs1=R(x0) rs2=I | src=SECP256K1_MULR_INLINE (rd=x0) | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=SECP256K1_MULR_INLINE (rd=x0) | notlast  x16
+   rd=R rs1=R(x0) rs2=I | src=SECP256K1_MULR_INLINE | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=SECP256K1_MULR_INLINE | notlast  x16
+   rd=R rs1=R(x0) rs2=I | src=SECP256K1_SQUAREQ_INLINE (rd=x0) | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=SECP256K1_SQUAREQ_INLINE (rd=x0) | notlast  x12
+   rd=R rs1=R(x0) rs2=I | src=SECP256K1_SQUAREQ_INLINE | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=SECP256K1_SQUAREQ_INLINE | notlast  x12
+   rd=R rs1=R(x0) rs2=I | src=SECP256K1_SQUARER_INLINE (rd=x0) | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=SECP256K1_SQUARER_INLINE (rd=x0) | notlast  x13
+   rd=R rs1=R(x0) rs2=I | src=SECP256K1_SQUARER_INLINE | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=SECP256K1_SQUARER_INLINE | notlast  x13
+   rd=R rs1=R(x0) rs2=I | src=SHA256_INIT_INLINE (rd=x0) | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=SHA256_INIT_INLINE (rd=x0) | notlast  x27
+   rd=R rs1=R(x0) rs2=I | src=SHA256_INIT_INLINE | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=SHA256_INIT_INLINE | notlast  x27
+   rd=R rs1=R(x0) rs2=I | src=SHA256_INLINE (rd=x0) | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=SHA256_INLINE (rd=x0) | notlast  x35
+   rd=R rs1=R(x0) rs2=I | src=SHA256_INLINE | LAST  x1
+   rd=R rs1=R(x0) rs2=I | src=SHA256_INLINE | notlast  x35
+   rd=R(x0) rs1=R(x0) rs2=I | src=ADD (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=ADDI (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=ADDIW (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=ADDW (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=AND (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=ANDI (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=AUIPC (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=DIV (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=DIVU (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=DIVUW (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=DIVW (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=LUI (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=MUL (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=MULH (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=MULHSU (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=MULHU (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=MULW (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=OR (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=ORI (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=REM (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=REMU (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=REMUW (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=REMW (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=SLL (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=SLLI (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=SLLIW (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=SLLW (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=SLT (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=SLTI (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=SLTIU (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=SLTU (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=SRA (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=SRAI (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=SRAIW (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=SRAW (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=SRL (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=SRLI (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=SRLIW (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=SRLW (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=SUB (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=SUBW (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=VirtualRev8W (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=XOR (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R(x0) rs2=I | src=XORI (rd=x0) | LAST  x1
+== 3 SUB
+   rd=R rs1=R rs2=R | src=AMOMAXU_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAXU_D | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAXU_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAXU_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAX_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAX_D | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAX_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAX_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMINU_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMINU_D | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMINU_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMINU_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMIN_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMIN_D | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMIN_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMIN_W | notlast  x1
+   rd=R rs1=R rs2=R | src=DIV | notlast  x1
+   rd=R rs1=R rs2=R | src=DIVU | notlast  x1
+   rd=R rs1=R rs2=R | src=DIVUW | notlast  x1
+   rd=R rs1=R rs2=R | src=DIVW | notlast  x1
+   rd=R rs1=R rs2=R | src=REM | notlast  x1
+   rd=R rs1=R rs2=R | src=REMU | notlast  x1
+   rd=R rs1=R rs2=R | src=REMUW | notlast  x1
+   rd=R rs1=R rs2=R | src=REMW | notlast  x1
+   rd=R rs1=R rs2=R | src=SC_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=SC_D | notlast  x1
+   rd=R rs1=R rs2=R | src=SC_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=SC_W | notlast  x1
+   rd=R rs1=R rs2=R | src=SUB | LAST  x1
+   rd=R rs1=R(x0) rs2=R | src=BLAKE2_INLINE (rd=x0) | notlast  x1
+   rd=R rs1=R(x0) rs2=R | src=BLAKE2_INLINE | notlast  x1
+== 4 XOR
+   rd=R rs1=R rs2=R | src=AMOXOR_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOXOR_D | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOXOR_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOXOR_W | notlast  x1
+   rd=R rs1=R rs2=R | src=BLAKE2_INLINE (rd=x0) | notlast  x16
+   rd=R rs1=R rs2=R | src=BLAKE2_INLINE | notlast  x16
+   rd=R rs1=R rs2=R | src=BLAKE3_INLINE (rd=x0) | notlast  x8
+   rd=R rs1=R rs2=R | src=BLAKE3_INLINE | notlast  x8
+   rd=R rs1=R rs2=R | src=BLAKE3_KEYED64_INLINE (rd=x0) | notlast  x8
+   rd=R rs1=R rs2=R | src=BLAKE3_KEYED64_INLINE | notlast  x8
+   rd=R rs1=R rs2=R | src=DIV | notlast  x1
+   rd=R rs1=R rs2=R | src=DIVW | notlast  x1
+   rd=R rs1=R rs2=R | src=KECCAK256 (rd=x0) | notlast  x1680
+   rd=R rs1=R rs2=R | src=KECCAK256 | notlast  x1680
+   rd=R rs1=R rs2=R | src=KECCAK256_ABSORB_PERMUTE (rd=x0) | notlast  x1697
+   rd=R rs1=R rs2=R | src=KECCAK256_ABSORB_PERMUTE | notlast  x1697
+   rd=R rs1=R rs2=R | src=MULHSU | notlast  x3
+   rd=R rs1=R rs2=R | src=SC_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=SC_D | notlast  x1
+   rd=R rs1=R rs2=R | src=SC_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=SC_W | notlast  x1
+   rd=R rs1=R rs2=R | src=SHA256_INIT_INLINE (rd=x0) | notlast  x282
+   rd=R rs1=R rs2=R | src=SHA256_INIT_INLINE | notlast  x282
+   rd=R rs1=R rs2=R | src=SHA256_INLINE (rd=x0) | notlast  x288
+   rd=R rs1=R rs2=R | src=SHA256_INLINE | notlast  x288
+   rd=R rs1=R rs2=R | src=XOR | LAST  x1
+== 5 XORI
+   rd=R rs1=R rs2=I | src=BLAKE2_INLINE (rd=x0) | notlast  x10
+   rd=R rs1=R rs2=I | src=BLAKE2_INLINE | notlast  x10
+   rd=R rs1=R rs2=I | src=KECCAK256 (rd=x0) | notlast  x24
+   rd=R rs1=R rs2=I | src=KECCAK256 | notlast  x24
+   rd=R rs1=R rs2=I | src=KECCAK256_ABSORB_PERMUTE (rd=x0) | notlast  x24
+   rd=R rs1=R rs2=I | src=KECCAK256_ABSORB_PERMUTE | notlast  x24
+   rd=R rs1=R rs2=I | src=SC_D | LAST  x1
+   rd=R rs1=R rs2=I | src=SC_W | notlast  x1
+   rd=R rs1=R rs2=I | src=SHA256_INIT_INLINE (rd=x0) | notlast  x4
+   rd=R rs1=R rs2=I | src=SHA256_INIT_INLINE | notlast  x4
+   rd=R rs1=R rs2=I | src=XORI | LAST  x1
+   rd=R(x0) rs1=R rs2=I | src=SC_D (rd=x0) | LAST  x1
+   rd=R(x0) rs1=R rs2=I | src=SC_W (rd=x0) | notlast  x1
+== 6 OR
+   rd=R rs1=R rs2=R | src=AMOOR_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOOR_D | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOOR_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOOR_W | notlast  x1
+   rd=R rs1=R rs2=R | src=BLAKE3_INLINE (rd=x0) | notlast  x4
+   rd=R rs1=R rs2=R | src=BLAKE3_INLINE | notlast  x4
+   rd=R rs1=R rs2=R | src=BLAKE3_KEYED64_INLINE (rd=x0) | notlast  x4
+   rd=R rs1=R rs2=R | src=BLAKE3_KEYED64_INLINE | notlast  x4
+   rd=R rs1=R rs2=R | src=CSRRS (rd=x0) | LAST  x1
+   rd=R rs1=R rs2=R | src=CSRRS | LAST  x1
+   rd=R rs1=R rs2=R | src=OR | LAST  x1
+   rd=R rs1=R rs2=R | src=SHA256_INIT_INLINE (rd=x0) | notlast  x4
+   rd=R rs1=R rs2=R | src=SHA256_INIT_INLINE | notlast  x4
+   rd=R rs1=R rs2=R | src=SHA256_INLINE (rd=x0) | notlast  x4
+   rd=R rs1=R rs2=R | src=SHA256_INLINE | notlast  x4
+== 7 ORI
+   rd=R rs1=R rs2=I | src=ORI | LAST  x1
+== 8 AND
+   rd=R rs1=R rs2=R | src=AMOAND_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOAND_D | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOAND_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOAND_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AND | LAST  x1
+   rd=R rs1=R rs2=R | src=SHA256_INIT_INLINE (rd=x0) | notlast  x185
+   rd=R rs1=R rs2=R | src=SHA256_INIT_INLINE | notlast  x185
+   rd=R rs1=R rs2=R | src=SHA256_INLINE (rd=x0) | notlast  x192
+   rd=R rs1=R rs2=R | src=SHA256_INLINE | notlast  x192
+== 9 ANDI
+   rd=R rs1=R rs2=I | src=ANDI | LAST  x1
+   rd=R rs1=R rs2=I | src=MULHSU | notlast  x1
+   rd=R rs1=R rs2=I | src=SHA256_INIT_INLINE (rd=x0) | notlast  x5
+   rd=R rs1=R rs2=I | src=SHA256_INIT_INLINE | notlast  x5
+== 16 SLT
+   rd=R rs1=R rs2=R | src=AMOMAX_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAX_D | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAX_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAX_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMIN_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMIN_D | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMIN_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMIN_W | notlast  x1
+   rd=R rs1=R rs2=R | src=SLT | LAST  x1
+== 17 SLTI
+   rd=R rs1=R rs2=I | src=SLTI | LAST  x1
+== 18 SLTU
+   rd=R rs1=R rs2=R | src=AMOMAXU_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAXU_D | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAXU_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAXU_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMINU_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMINU_D | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMINU_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMINU_W | notlast  x1
+   rd=R rs1=R rs2=R | src=BIGINT256_MUL_INLINE (rd=x0) | notlast  x29
+   rd=R rs1=R rs2=R | src=BIGINT256_MUL_INLINE | notlast  x29
+   rd=R rs1=R rs2=R | src=MULHSU | notlast  x1
+   rd=R rs1=R rs2=R | src=SECP256K1_DIVQ_INLINE (rd=x0) | notlast  x38
+   rd=R rs1=R rs2=R | src=SECP256K1_DIVQ_INLINE | notlast  x38
+   rd=R rs1=R rs2=R | src=SECP256K1_DIVR_INLINE (rd=x0) | notlast  x50
+   rd=R rs1=R rs2=R | src=SECP256K1_DIVR_INLINE | notlast  x50
+   rd=R rs1=R rs2=R | src=SECP256K1_MULQ_INLINE (rd=x0) | notlast  x38
+   rd=R rs1=R rs2=R | src=SECP256K1_MULQ_INLINE | notlast  x38
+   rd=R rs1=R rs2=R | src=SECP256K1_MULR_INLINE (rd=x0) | notlast  x50
+   rd=R rs1=R rs2=R | src=SECP256K1_MULR_INLINE | notlast  x50
+   rd=R rs1=R rs2=R | src=SECP256K1_SQUAREQ_INLINE (rd=x0) | notlast  x38
+   rd=R rs1=R rs2=R | src=SECP256K1_SQUAREQ_INLINE | notlast  x38
+   rd=R rs1=R rs2=R | src=SECP256K1_SQUARER_INLINE (rd=x0) | notlast  x50
+   rd=R rs1=R rs2=R | src=SECP256K1_SQUARER_INLINE | notlast  x50
+   rd=R rs1=R rs2=R | src=SLTU | LAST  x1
+== 19 SLTIU
+   rd=R rs1=R rs2=I | src=SC_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=SC_D | notlast  x1
+   rd=R rs1=R rs2=I | src=SC_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=SC_W | notlast  x1
+   rd=R rs1=R rs2=I | src=SLTIU | LAST  x1
+== 28 BEQ
+   rd=I rs1=R rs2=R | src=BEQ | LAST  x1
+== 29 BNE
+   rd=I rs1=R rs2=R | src=BNE | LAST  x1
+== 30 BLT
+   rd=I rs1=R rs2=R | src=BLT | LAST  x1
+== 31 BGE
+   rd=I rs1=R rs2=R | src=BGE | LAST  x1
+== 32 BLTU
+   rd=I rs1=R rs2=R | src=BLTU | LAST  x1
+== 33 BGEU
+   rd=I rs1=R rs2=R | src=BGEU | LAST  x1
+== 34 JAL
+   rd=R rs1=I rs2=I | src=EBREAK | LAST  x1
+   rd=R rs1=I rs2=I | src=JAL (imm=0) | LAST  x1
+   rd=R rs1=I rs2=I | src=JAL (rd=x0) | LAST  x1
+   rd=R rs1=I rs2=I | src=JAL | LAST  x1
+== 35 JALR
+   rd=R rs1=R rs2=I | src=ECALL | LAST  x1
+   rd=R rs1=R rs2=I | src=JALR (rd=x0) | LAST  x1
+   rd=R rs1=R rs2=I | src=JALR | LAST  x1
+   rd=R rs1=R rs2=I | src=MRET | LAST  x1
+== 36 AUIPC
+   rd=R rs1=I rs2=I | src=AUIPC | LAST  x1
+   rd=R rs1=I rs2=I | src=ECALL | notlast  x1
+== 37 LUI
+   rd=R rs1=I rs2=I | src=BLAKE2_INLINE (rd=x0) | notlast  x6
+   rd=R rs1=I rs2=I | src=BLAKE2_INLINE | notlast  x6
+   rd=R rs1=I rs2=I | src=BLAKE3_INLINE (rd=x0) | notlast  x4
+   rd=R rs1=I rs2=I | src=BLAKE3_INLINE | notlast  x4
+   rd=R rs1=I rs2=I | src=BLAKE3_KEYED64_INLINE (rd=x0) | notlast  x6
+   rd=R rs1=I rs2=I | src=BLAKE3_KEYED64_INLINE | notlast  x6
+   rd=R rs1=I rs2=I | src=LR_D (rd=x0) | notlast  x1
+   rd=R rs1=I rs2=I | src=LR_D | notlast  x1
+   rd=R rs1=I rs2=I | src=LR_W (rd=x0) | notlast  x1
+   rd=R rs1=I rs2=I | src=LR_W | notlast  x1
+   rd=R rs1=I rs2=I | src=LUI | LAST  x1
+   rd=R rs1=I rs2=I | src=SC_D (rd=x0) | notlast  x1
+   rd=R rs1=I rs2=I | src=SC_D | notlast  x1
+   rd=R rs1=I rs2=I | src=SC_W (rd=x0) | notlast  x1
+   rd=R rs1=I rs2=I | src=SC_W | notlast  x1
+   rd=R rs1=I rs2=I | src=SECP256K1_DIVQ_INLINE (rd=x0) | notlast  x1
+   rd=R rs1=I rs2=I | src=SECP256K1_DIVQ_INLINE | notlast  x1
+   rd=R rs1=I rs2=I | src=SECP256K1_DIVR_INLINE (rd=x0) | notlast  x2
+   rd=R rs1=I rs2=I | src=SECP256K1_DIVR_INLINE | notlast  x2
+   rd=R rs1=I rs2=I | src=SECP256K1_MULQ_INLINE (rd=x0) | notlast  x1
+   rd=R rs1=I rs2=I | src=SECP256K1_MULQ_INLINE | notlast  x1
+   rd=R rs1=I rs2=I | src=SECP256K1_MULR_INLINE (rd=x0) | notlast  x2
+   rd=R rs1=I rs2=I | src=SECP256K1_MULR_INLINE | notlast  x2
+   rd=R rs1=I rs2=I | src=SECP256K1_SQUAREQ_INLINE (rd=x0) | notlast  x1
+   rd=R rs1=I rs2=I | src=SECP256K1_SQUAREQ_INLINE | notlast  x1
+   rd=R rs1=I rs2=I | src=SECP256K1_SQUARER_INLINE (rd=x0) | notlast  x2
+   rd=R rs1=I rs2=I | src=SECP256K1_SQUARER_INLINE | notlast  x2
+== 43 MUL
+   rd=R rs1=R rs2=R | src=AMOMAXU_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAXU_D | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAXU_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAXU_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAX_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAX_D | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAX_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAX_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMINU_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMINU_D | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMINU_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMINU_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMIN_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMIN_D | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMIN_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMIN_W | notlast  x1
+   rd=R rs1=R rs2=R | src=BIGINT256_MUL_INLINE (rd=x0) | notlast  x16
+   rd=R rs1=R rs2=R | src=BIGINT256_MUL_INLINE | notlast  x16
+   rd=R rs1=R rs2=R | src=DIV | notlast  x1
+   rd=R rs1=R rs2=R | src=DIVU | notlast  x1
+   rd=R rs1=R rs2=R | src=DIVUW | notlast  x1
+   rd=R rs1=R rs2=R | src=DIVW | notlast  x1
+   rd=R rs1=R rs2=R | src=MUL | LAST  x1
+   rd=R rs1=R rs2=R | src=MULH | notlast  x2
+   rd=R rs1=R rs2=R | src=MULHSU | notlast  x1
+   rd=R rs1=R rs2=R | src=REM | notlast  x1
+   rd=R rs1=R rs2=R | src=REMU | notlast  x1
+   rd=R rs1=R rs2=R | src=REMUW | notlast  x1
+   rd=R rs1=R rs2=R | src=REMW | notlast  x1
+   rd=R rs1=R rs2=R | src=SC_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=SC_D | notlast  x1
+   rd=R rs1=R rs2=R | src=SC_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=SC_W | notlast  x1
+   rd=R rs1=R rs2=R | src=SECP256K1_DIVQ_INLINE (rd=x0) | notlast  x20
+   rd=R rs1=R rs2=R | src=SECP256K1_DIVQ_INLINE | notlast  x20
+   rd=R rs1=R rs2=R | src=SECP256K1_DIVR_INLINE (rd=x0) | notlast  x24
+   rd=R rs1=R rs2=R | src=SECP256K1_DIVR_INLINE | notlast  x24
+   rd=R rs1=R rs2=R | src=SECP256K1_MULQ_INLINE (rd=x0) | notlast  x20
+   rd=R rs1=R rs2=R | src=SECP256K1_MULQ_INLINE | notlast  x20
+   rd=R rs1=R rs2=R | src=SECP256K1_MULR_INLINE (rd=x0) | notlast  x24
+   rd=R rs1=R rs2=R | src=SECP256K1_MULR_INLINE | notlast  x24
+   rd=R rs1=R rs2=R | src=SECP256K1_SQUAREQ_INLINE (rd=x0) | notlast  x14
+   rd=R rs1=R rs2=R | src=SECP256K1_SQUAREQ_INLINE | notlast  x14
+   rd=R rs1=R rs2=R | src=SECP256K1_SQUARER_INLINE (rd=x0) | notlast  x18
+   rd=R rs1=R rs2=R | src=SECP256K1_SQUARER_INLINE | notlast  x18
+   rd=R rs1=R rs2=R | src=SLL | LAST  x1
+== 45 MULHU
+   rd=R rs1=R rs2=R | src=BIGINT256_MUL_INLINE (rd=x0) | notlast  x16
+   rd=R rs1=R rs2=R | src=BIGINT256_MUL_INLINE | notlast  x16
+   rd=R rs1=R rs2=R | src=MULH | notlast  x1
+   rd=R rs1=R rs2=R | src=MULHSU | notlast  x1
+   rd=R rs1=R rs2=R | src=MULHU | LAST  x1
+   rd=R rs1=R rs2=R | src=SECP256K1_DIVQ_INLINE (rd=x0) | notlast  x20
+   rd=R rs1=R rs2=R | src=SECP256K1_DIVQ_INLINE | notlast  x20
+   rd=R rs1=R rs2=R | src=SECP256K1_DIVR_INLINE (rd=x0) | notlast  x24
+   rd=R rs1=R rs2=R | src=SECP256K1_DIVR_INLINE | notlast  x24
+   rd=R rs1=R rs2=R | src=SECP256K1_MULQ_INLINE (rd=x0) | notlast  x20
+   rd=R rs1=R rs2=R | src=SECP256K1_MULQ_INLINE | notlast  x20
+   rd=R rs1=R rs2=R | src=SECP256K1_MULR_INLINE (rd=x0) | notlast  x24
+   rd=R rs1=R rs2=R | src=SECP256K1_MULR_INLINE | notlast  x24
+   rd=R rs1=R rs2=R | src=SECP256K1_SQUAREQ_INLINE (rd=x0) | notlast  x14
+   rd=R rs1=R rs2=R | src=SECP256K1_SQUAREQ_INLINE | notlast  x14
+   rd=R rs1=R rs2=R | src=SECP256K1_SQUARER_INLINE (rd=x0) | notlast  x18
+   rd=R rs1=R rs2=R | src=SECP256K1_SQUARER_INLINE | notlast  x18
+== 52 FENCE
+   rd=I rs1=I rs2=I | src=FENCE | LAST  x1
+== 53 SD
+   rd=I rs1=R rs2=R | src=AMOADD_D (rd=x0) | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOADD_D | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOAND_D (rd=x0) | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOAND_D | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOMAXU_D (rd=x0) | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOMAXU_D | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOMAX_D (rd=x0) | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOMAX_D | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOMINU_D (rd=x0) | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOMINU_D | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOMIN_D (rd=x0) | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOMIN_D | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOOR_D (rd=x0) | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOOR_D | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOSWAP_D (rd=x0) | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOSWAP_D | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOXOR_D (rd=x0) | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOXOR_D | notlast  x1
+   rd=I rs1=R rs2=R | src=BIGINT256_MUL_INLINE | notlast  x8
+   rd=I rs1=R rs2=R | src=BLAKE2_INLINE (rd=x0) | notlast  x8
+   rd=I rs1=R rs2=R | src=BLAKE2_INLINE | notlast  x8
+   rd=I rs1=R rs2=R | src=BLAKE3_INLINE (rd=x0) | notlast  x4
+   rd=I rs1=R rs2=R | src=BLAKE3_INLINE | notlast  x4
+   rd=I rs1=R rs2=R | src=BLAKE3_KEYED64_INLINE | notlast  x4
+   rd=I rs1=R rs2=R | src=KECCAK256 (rd=x0) | notlast  x25
+   rd=I rs1=R rs2=R | src=KECCAK256 | notlast  x25
+   rd=I rs1=R rs2=R | src=KECCAK256_ABSORB_PERMUTE (rd=x0) | notlast  x25
+   rd=I rs1=R rs2=R | src=KECCAK256_ABSORB_PERMUTE | notlast  x25
+   rd=I rs1=R rs2=R | src=SC_D (rd=x0) | notlast  x1
+   rd=I rs1=R rs2=R | src=SC_D | notlast  x1
+   rd=I rs1=R rs2=R | src=SD | LAST  x1
+   rd=I rs1=R rs2=R | src=SECP256K1_DIVQ_INLINE | notlast  x4
+   rd=I rs1=R rs2=R | src=SECP256K1_DIVR_INLINE | notlast  x4
+   rd=I rs1=R rs2=R | src=SECP256K1_GLVR_ADV_INLINE | notlast  x6
+   rd=I rs1=R rs2=R | src=SECP256K1_MULQ_INLINE | notlast  x4
+   rd=I rs1=R rs2=R | src=SECP256K1_MULR_INLINE | notlast  x4
+   rd=I rs1=R rs2=R | src=SECP256K1_SQUAREQ_INLINE | notlast  x4
+   rd=I rs1=R rs2=R | src=SECP256K1_SQUARER_INLINE | notlast  x4
+   rd=I rs1=R rs2=R | src=SHA256_INIT_INLINE (rd=x0) | notlast  x4
+   rd=I rs1=R rs2=R | src=SHA256_INIT_INLINE | notlast  x4
+   rd=I rs1=R rs2=R | src=SHA256_INLINE (rd=x0) | notlast  x4
+   rd=I rs1=R rs2=R | src=SHA256_INLINE | notlast  x4
+   rd=I rs1=R(x0) rs2=R | src=BIGINT256_MUL_INLINE (rd=x0) | notlast  x8
+   rd=I rs1=R(x0) rs2=R | src=BLAKE3_KEYED64_INLINE (rd=x0) | notlast  x4
+   rd=I rs1=R(x0) rs2=R | src=SECP256K1_DIVQ_INLINE (rd=x0) | notlast  x4
+   rd=I rs1=R(x0) rs2=R | src=SECP256K1_DIVR_INLINE (rd=x0) | notlast  x4
+   rd=I rs1=R(x0) rs2=R | src=SECP256K1_GLVR_ADV_INLINE (rd=x0) | notlast  x6
+   rd=I rs1=R(x0) rs2=R | src=SECP256K1_MULQ_INLINE (rd=x0) | notlast  x4
+   rd=I rs1=R(x0) rs2=R | src=SECP256K1_MULR_INLINE (rd=x0) | notlast  x4
+   rd=I rs1=R(x0) rs2=R | src=SECP256K1_SQUAREQ_INLINE (rd=x0) | notlast  x4
+   rd=I rs1=R(x0) rs2=R | src=SECP256K1_SQUARER_INLINE (rd=x0) | notlast  x4
+== 54 LD
+   rd=R rs1=R rs2=I | src=AMOADD_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOADD_D | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOAND_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOAND_D | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMAXU_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMAXU_D | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMAX_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMAX_D | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMINU_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMINU_D | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMIN_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMIN_D | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOOR_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOOR_D | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOSWAP_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOSWAP_D | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOXOR_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOXOR_D | notlast  x1
+   rd=R rs1=R rs2=I | src=BIGINT256_MUL_INLINE (rd=x0) | notlast  x8
+   rd=R rs1=R rs2=I | src=BIGINT256_MUL_INLINE | notlast  x8
+   rd=R rs1=R rs2=I | src=BLAKE2_INLINE (rd=x0) | notlast  x26
+   rd=R rs1=R rs2=I | src=BLAKE2_INLINE | notlast  x26
+   rd=R rs1=R rs2=I | src=BLAKE3_INLINE (rd=x0) | notlast  x14
+   rd=R rs1=R rs2=I | src=BLAKE3_INLINE | notlast  x14
+   rd=R rs1=R rs2=I | src=BLAKE3_KEYED64_INLINE (rd=x0) | notlast  x8
+   rd=R rs1=R rs2=I | src=BLAKE3_KEYED64_INLINE | notlast  x12
+   rd=R rs1=R rs2=I | src=KECCAK256 (rd=x0) | notlast  x25
+   rd=R rs1=R rs2=I | src=KECCAK256 | notlast  x25
+   rd=R rs1=R rs2=I | src=KECCAK256_ABSORB_PERMUTE (rd=x0) | notlast  x42
+   rd=R rs1=R rs2=I | src=KECCAK256_ABSORB_PERMUTE | notlast  x42
+   rd=R rs1=R rs2=I | src=LD (rd=x0) | LAST  x1
+   rd=R rs1=R rs2=I | src=LD | LAST  x1
+   rd=R rs1=R rs2=I | src=LR_D | LAST  x1
+   rd=R rs1=R rs2=I | src=SC_D (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=SC_D | notlast  x1
+   rd=R rs1=R rs2=I | src=SECP256K1_DIVQ_INLINE (rd=x0) | notlast  x8
+   rd=R rs1=R rs2=I | src=SECP256K1_DIVQ_INLINE | notlast  x8
+   rd=R rs1=R rs2=I | src=SECP256K1_DIVR_INLINE (rd=x0) | notlast  x8
+   rd=R rs1=R rs2=I | src=SECP256K1_DIVR_INLINE | notlast  x8
+   rd=R rs1=R rs2=I | src=SECP256K1_MULQ_INLINE (rd=x0) | notlast  x8
+   rd=R rs1=R rs2=I | src=SECP256K1_MULQ_INLINE | notlast  x8
+   rd=R rs1=R rs2=I | src=SECP256K1_MULR_INLINE (rd=x0) | notlast  x8
+   rd=R rs1=R rs2=I | src=SECP256K1_MULR_INLINE | notlast  x8
+   rd=R rs1=R rs2=I | src=SECP256K1_SQUAREQ_INLINE (rd=x0) | notlast  x4
+   rd=R rs1=R rs2=I | src=SECP256K1_SQUAREQ_INLINE | notlast  x4
+   rd=R rs1=R rs2=I | src=SECP256K1_SQUARER_INLINE (rd=x0) | notlast  x4
+   rd=R rs1=R rs2=I | src=SECP256K1_SQUARER_INLINE | notlast  x4
+   rd=R rs1=R rs2=I | src=SHA256_INIT_INLINE (rd=x0) | notlast  x8
+   rd=R rs1=R rs2=I | src=SHA256_INIT_INLINE | notlast  x8
+   rd=R rs1=R rs2=I | src=SHA256_INLINE (rd=x0) | notlast  x12
+   rd=R rs1=R rs2=I | src=SHA256_INLINE | notlast  x12
+   rd=R rs1=R(x0) rs2=I | src=BLAKE3_KEYED64_INLINE (rd=x0) | notlast  x4
+   rd=R(x0) rs1=R rs2=I | src=LR_D (rd=x0) | LAST  x1
+== 62 SUBW
+   rd=R rs1=R rs2=R | src=SUBW | LAST  x1
+== 63 ADDW
+   rd=R rs1=R rs2=R | src=ADDW | LAST  x1
+== 64 ADDIW
+   rd=R rs1=R rs2=I | src=ADDIW | LAST  x1
+== 65 MULW
+   rd=R rs1=R rs2=R | src=MULW | LAST  x1
+   rd=R rs1=R rs2=R | src=SLLW | LAST  x1
+== 107 VirtualRev8W
+   rd=R rs1=R rs2=I | src=SHA256_INIT_INLINE (rd=x0) | notlast  x8
+   rd=R rs1=R rs2=I | src=SHA256_INIT_INLINE | notlast  x8
+   rd=R rs1=R rs2=I | src=SHA256_INLINE (rd=x0) | notlast  x8
+   rd=R rs1=R rs2=I | src=SHA256_INLINE | notlast  x8
+   rd=R rs1=R rs2=I | src=VirtualRev8W | LAST  x1
+== 108 VirtualAssertEQ
+   rd=I rs1=R rs2=R | src=SECP256K1_DIVQ_INLINE (rd=x0) | notlast  x8
+   rd=I rs1=R rs2=R | src=SECP256K1_DIVQ_INLINE | notlast  x8
+   rd=I rs1=R rs2=R | src=SECP256K1_DIVR_INLINE (rd=x0) | notlast  x8
+   rd=I rs1=R rs2=R | src=SECP256K1_DIVR_INLINE | notlast  x8
+   rd=I rs1=R rs2=R | src=SECP256K1_MULQ_INLINE (rd=x0) | notlast  x4
+   rd=I rs1=R rs2=R | src=SECP256K1_MULQ_INLINE | notlast  x4
+   rd=I rs1=R rs2=R | src=SECP256K1_MULR_INLINE (rd=x0) | notlast  x4
+   rd=I rs1=R rs2=R | src=SECP256K1_MULR_INLINE | notlast  x4
+   rd=I rs1=R rs2=R | src=SECP256K1_SQUAREQ_INLINE (rd=x0) | notlast  x4
+   rd=I rs1=R rs2=R | src=SECP256K1_SQUAREQ_INLINE | notlast  x4
+   rd=I rs1=R rs2=R | src=SECP256K1_SQUARER_INLINE (rd=x0) | notlast  x4
+   rd=I rs1=R rs2=R | src=SECP256K1_SQUARER_INLINE | notlast  x4
+   rd=I rs1=R rs2=R | src=VirtualAssertEQ | LAST  x1
+== 109 VirtualHostIO
+   rd=I rs1=I rs2=I | src=VirtualHostIO (rd=x0) | LAST  x1
+   rd=I rs1=I rs2=I | src=VirtualHostIO | LAST  x1
+== 110 VirtualLoadB
+   rd=R rs1=R rs2=I | src=LB (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=LB | notlast  x1
+   rd=R rs1=R rs2=I | src=LBU (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=LBU | notlast  x1
+   rd=R rs1=R rs2=I | src=SB | notlast  x1
+== 111 VirtualLoadH
+   rd=R rs1=R rs2=I | src=LH (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=LH | notlast  x1
+   rd=R rs1=R rs2=I | src=LHU (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=LHU | notlast  x1
+   rd=R rs1=R rs2=I | src=SH | notlast  x1
+== 112 VirtualLoadW
+   rd=R rs1=R rs2=I | src=AMOADD_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOADD_W | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOAND_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOAND_W | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMAXU_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMAXU_W | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMAX_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMAX_W | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMINU_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMINU_W | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMIN_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMIN_W | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOOR_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOOR_W | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOSWAP_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOSWAP_W | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOXOR_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOXOR_W | notlast  x1
+   rd=R rs1=R rs2=I | src=LR_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=LR_W | notlast  x1
+   rd=R rs1=R rs2=I | src=LW (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=LW | notlast  x1
+   rd=R rs1=R rs2=I | src=LWU (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=LWU | notlast  x1
+   rd=R rs1=R rs2=I | src=SC_W (rd=x0) | notlast  x2
+   rd=R rs1=R rs2=I | src=SC_W | notlast  x2
+   rd=R rs1=R rs2=I | src=SW | notlast  x1
+== 113 VirtualStoreB
+   rd=I rs1=R rs2=R | src=SB | LAST  x1
+== 114 VirtualStoreH
+   rd=I rs1=R rs2=R | src=SH | LAST  x1
+== 115 VirtualStoreW
+   rd=I rs1=R rs2=R | src=AMOADD_W (rd=x0) | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOADD_W | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOAND_W (rd=x0) | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOAND_W | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOMAXU_W (rd=x0) | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOMAXU_W | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOMAX_W (rd=x0) | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOMAX_W | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOMINU_W (rd=x0) | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOMINU_W | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOMIN_W (rd=x0) | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOMIN_W | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOOR_W (rd=x0) | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOOR_W | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOSWAP_W (rd=x0) | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOSWAP_W | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOXOR_W (rd=x0) | notlast  x1
+   rd=I rs1=R rs2=R | src=AMOXOR_W | notlast  x1
+   rd=I rs1=R rs2=R | src=SC_W (rd=x0) | notlast  x1
+   rd=I rs1=R rs2=R | src=SC_W | notlast  x1
+   rd=I rs1=R rs2=R | src=SW | LAST  x1
+== 116 VirtualSignExtendWord
+   rd=R rs1=R rs2=I | src=AMOMAXU_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMAXU_W | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMAX_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMAX_W | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMINU_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMINU_W | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMIN_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMIN_W | notlast  x1
+   rd=R rs1=R rs2=I | src=DIVUW | notlast  x1
+   rd=R rs1=R rs2=I | src=DIVW | LAST  x1
+   rd=R rs1=R rs2=I | src=DIVW | notlast  x2
+   rd=R rs1=R rs2=I | src=REMUW | LAST  x1
+   rd=R rs1=R rs2=I | src=REMW | notlast  x2
+== 117 VirtualZeroExtendWord
+   rd=R rs1=R rs2=I | src=BLAKE3_INLINE (rd=x0) | notlast  x4
+   rd=R rs1=R rs2=I | src=BLAKE3_INLINE | notlast  x4
+   rd=R rs1=R rs2=I | src=BLAKE3_KEYED64_INLINE (rd=x0) | notlast  x4
+   rd=R rs1=R rs2=I | src=BLAKE3_KEYED64_INLINE | notlast  x4
+   rd=R rs1=R rs2=I | src=DIVUW | notlast  x2
+   rd=R rs1=R rs2=I | src=REMUW | notlast  x2
+   rd=R rs1=R rs2=I | src=SHA256_INIT_INLINE (rd=x0) | notlast  x4
+   rd=R rs1=R rs2=I | src=SHA256_INIT_INLINE | notlast  x4
+   rd=R rs1=R rs2=I | src=SHA256_INLINE (rd=x0) | notlast  x4
+   rd=R rs1=R rs2=I | src=SHA256_INLINE | notlast  x4
+== 118 VirtualMULI
+   rd=R rs1=R rs2=I | src=BLAKE3_INLINE (rd=x0) | notlast  x4
+   rd=R rs1=R rs2=I | src=BLAKE3_INLINE | notlast  x4
+   rd=R rs1=R rs2=I | src=BLAKE3_KEYED64_INLINE (rd=x0) | notlast  x4
+   rd=R rs1=R rs2=I | src=BLAKE3_KEYED64_INLINE | notlast  x4
+   rd=R rs1=R rs2=I | src=ECALL | notlast  x1
+   rd=R rs1=R rs2=I | src=SHA256_INIT_INLINE (rd=x0) | notlast  x4
+   rd=R rs1=R rs2=I | src=SHA256_INIT_INLINE | notlast  x4
+   rd=R rs1=R rs2=I | src=SHA256_INLINE (rd=x0) | notlast  x4
+   rd=R rs1=R rs2=I | src=SHA256_INLINE | notlast  x4
+   rd=R rs1=R rs2=I | src=SLLI (sh=0) | LAST  x1
+   rd=R rs1=R rs2=I | src=SLLI (sh=31) | LAST  x1
+   rd=R rs1=R rs2=I | src=SLLI (sh=32) | LAST  x1
+   rd=R rs1=R rs2=I | src=SLLI (sh=63) | LAST  x1
+   rd=R rs1=R rs2=I | src=SLLI | LAST  x1
+== 119 VirtualMULIW
+   rd=R rs1=R rs2=I | src=SLLIW (sh=0) | LAST  x1
+   rd=R rs1=R rs2=I | src=SLLIW (sh=31) | LAST  x1
+   rd=R rs1=R rs2=I | src=SLLIW (sh=32) | LAST  x1
+   rd=R rs1=R rs2=I | src=SLLIW (sh=63) | LAST  x1
+   rd=R rs1=R rs2=I | src=SLLIW | LAST  x1
+== 120 VirtualPow2
+   rd=R rs1=R rs2=I | src=SLL | notlast  x1
+== 121 VirtualShiftRightBitmask
+   rd=R rs1=R rs2=I | src=SRA | notlast  x1
+   rd=R rs1=R rs2=I | src=SRL | notlast  x1
+== 122 VirtualSRL
+   rd=R rs1=R rs2=R | src=SRL | LAST  x1
+== 123 VirtualSRLI
+   rd=R rs1=R rs2=I | src=BLAKE3_INLINE (rd=x0) | notlast  x14
+   rd=R rs1=R rs2=I | src=BLAKE3_INLINE | notlast  x14
+   rd=R rs1=R rs2=I | src=BLAKE3_KEYED64_INLINE (rd=x0) | notlast  x12
+   rd=R rs1=R rs2=I | src=BLAKE3_KEYED64_INLINE | notlast  x12
+   rd=R rs1=R rs2=I | src=SHA256_INIT_INLINE (rd=x0) | notlast  x8
+   rd=R rs1=R rs2=I | src=SHA256_INIT_INLINE | notlast  x8
+   rd=R rs1=R rs2=I | src=SHA256_INLINE (rd=x0) | notlast  x12
+   rd=R rs1=R rs2=I | src=SHA256_INLINE | notlast  x12
+   rd=R rs1=R rs2=I | src=SRLI (sh=0) | LAST  x1
+   rd=R rs1=R rs2=I | src=SRLI (sh=31) | LAST  x1
+   rd=R rs1=R rs2=I | src=SRLI (sh=32) | LAST  x1
+   rd=R rs1=R rs2=I | src=SRLI (sh=63) | LAST  x1
+   rd=R rs1=R rs2=I | src=SRLI | LAST  x1
+== 124 VirtualSRAI
+   rd=R rs1=R rs2=I | src=SRAI (sh=0) | LAST  x1
+   rd=R rs1=R rs2=I | src=SRAI (sh=31) | LAST  x1
+   rd=R rs1=R rs2=I | src=SRAI (sh=32) | LAST  x1
+   rd=R rs1=R rs2=I | src=SRAI (sh=63) | LAST  x1
+   rd=R rs1=R rs2=I | src=SRAI | LAST  x1
+== 125 VirtualPow2W
+   rd=R rs1=R rs2=I | src=SLLW | notlast  x1
+== 126 VirtualAdvice
+   rd=R rs1=I rs2=I | src=SECP256K1_DIVQ_INLINE (rd=x0) | notlast  x8
+   rd=R rs1=I rs2=I | src=SECP256K1_DIVQ_INLINE | notlast  x8
+   rd=R rs1=I rs2=I | src=SECP256K1_DIVR_INLINE (rd=x0) | notlast  x8
+   rd=R rs1=I rs2=I | src=SECP256K1_DIVR_INLINE | notlast  x8
+   rd=R rs1=I rs2=I | src=SECP256K1_GLVR_ADV_INLINE (rd=x0) | notlast  x6
+   rd=R rs1=I rs2=I | src=SECP256K1_GLVR_ADV_INLINE | notlast  x6
+   rd=R rs1=I rs2=I | src=SECP256K1_MULQ_INLINE (rd=x0) | notlast  x4
+   rd=R rs1=I rs2=I | src=SECP256K1_MULQ_INLINE | notlast  x4
+   rd=R rs1=I rs2=I | src=SECP256K1_MULR_INLINE (rd=x0) | notlast  x4
+   rd=R rs1=I rs2=I | src=SECP256K1_MULR_INLINE | notlast  x4
+   rd=R rs1=I rs2=I | src=SECP256K1_SQUAREQ_INLINE (rd=x0) | notlast  x4
+   rd=R rs1=I rs2=I | src=SECP256K1_SQUAREQ_INLINE | notlast  x4
+   rd=R rs1=I rs2=I | src=SECP256K1_SQUARER_INLINE (rd=x0) | notlast  x4
+   rd=R rs1=I rs2=I | src=SECP256K1_SQUARER_INLINE | notlast  x4
+== 127 VirtualAssertLTE
+   rd=I rs1=R rs2=R | src=DIV | notlast  x1
+   rd=I rs1=R rs2=R | src=DIVU | notlast  x1
+   rd=I rs1=R rs2=R | src=DIVUW | notlast  x1
+   rd=I rs1=R rs2=R | src=DIVW | notlast  x1
+   rd=I rs1=R rs2=R | src=LR_D (rd=x0) | notlast  x1
+   rd=I rs1=R rs2=R | src=LR_D | notlast  x1
+   rd=I rs1=R rs2=R | src=LR_W (rd=x0) | notlast  x1
+   rd=I rs1=R rs2=R | src=LR_W | notlast  x1
+   rd=I rs1=R rs2=R | src=REM | notlast  x1
+   rd=I rs1=R rs2=R | src=REMU | notlast  x1
+   rd=I rs1=R rs2=R | src=REMUW | notlast  x1
+   rd=I rs1=R rs2=R | src=REMW | notlast  x1
+   rd=I rs1=R rs2=R | src=SC_D (rd=x0) | notlast  x1
+   rd=I rs1=R rs2=R | src=SC_D | notlast  x1
+   rd=I rs1=R rs2=R | src=SC_W (rd=x0) | notlast  x1
+   rd=I rs1=R rs2=R | src=SC_W | notlast  x1
+   rd=I rs1=R rs2=R | src=SECP256K1_DIVQ_INLINE (rd=x0) | notlast  x1
+   rd=I rs1=R rs2=R | src=SECP256K1_DIVQ_INLINE | notlast  x1
+   rd=I rs1=R rs2=R | src=SECP256K1_DIVR_INLINE (rd=x0) | notlast  x1
+   rd=I rs1=R rs2=R | src=SECP256K1_DIVR_INLINE | notlast  x1
+   rd=I rs1=R rs2=R | src=SECP256K1_MULQ_INLINE (rd=x0) | notlast  x1
+   rd=I rs1=R rs2=R | src=SECP256K1_MULQ_INLINE | notlast  x1
+   rd=I rs1=R rs2=R | src=SECP256K1_MULR_INLINE (rd=x0) | notlast  x1
+   rd=I rs1=R rs2=R | src=SECP256K1_MULR_INLINE | notlast  x1
+   rd=I rs1=R rs2=R | src=SECP256K1_SQUAREQ_INLINE (rd=x0) | notlast  x1
+   rd=I rs1=R rs2=R | src=SECP256K1_SQUAREQ_INLINE | notlast  x1
+   rd=I rs1=R rs2=R | src=SECP256K1_SQUARER_INLINE (rd=x0) | notlast  x1
+   rd=I rs1=R rs2=R | src=SECP256K1_SQUARER_INLINE | notlast  x1
+== 128 VirtualAssertValidDiv0
+   rd=I rs1=R rs2=R | src=DIV | notlast  x1
+   rd=I rs1=R rs2=R | src=DIVU | notlast  x1
+   rd=I rs1=R rs2=R | src=DIVUW | notlast  x1
+   rd=I rs1=R rs2=R | src=DIVW | notlast  x1
+== 129 VirtualAssertValidUnsignedRemainder
+   rd=I rs1=R rs2=R | src=DIV | notlast  x1
+   rd=I rs1=R rs2=R | src=DIVU | notlast  x1
+   rd=I rs1=R rs2=R | src=DIVUW | notlast  x1
+   rd=I rs1=R rs2=R | src=DIVW | notlast  x1
+   rd=I rs1=R rs2=R | src=REM | notlast  x1
+   rd=I rs1=R rs2=R | src=REMU | notlast  x1
+   rd=I rs1=R rs2=R | src=REMUW | notlast  x1
+   rd=I rs1=R rs2=R | src=REMW | notlast  x1
+== 131 VirtualNegateIf
+   rd=R rs1=R rs2=R | src=DIV | notlast  x3
+   rd=R rs1=R rs2=R | src=DIVW | notlast  x3
+   rd=R rs1=R rs2=R | src=REM | LAST  x1
+   rd=R rs1=R rs2=R | src=REM | notlast  x2
+   rd=R rs1=R rs2=R | src=REMW | LAST  x1
+   rd=R rs1=R rs2=R | src=REMW | notlast  x2
+== 132 VirtualMovsign
+   rd=R rs1=R rs2=I | src=MULH | notlast  x2
+   rd=R rs1=R rs2=I | src=MULHSU | notlast  x1
+== 133 VirtualSRA
+   rd=R rs1=R rs2=R | src=SRA | LAST  x1
+== 134 VirtualAssertMulUNoOverflow
+   rd=I rs1=R rs2=R | src=DIV | notlast  x1
+   rd=I rs1=R rs2=R | src=DIVU | notlast  x1
+   rd=I rs1=R rs2=R | src=DIVUW | notlast  x1
+   rd=I rs1=R rs2=R | src=DIVW | notlast  x1
+   rd=I rs1=R rs2=R | src=REM | notlast  x1
+   rd=I rs1=R rs2=R | src=REMU | notlast  x1
+   rd=I rs1=R rs2=R | src=REMUW | notlast  x1
+   rd=I rs1=R rs2=R | src=REMW | notlast  x1
+== 135 VirtualROTRI
+   rd=R rs1=R rs2=I | src=KECCAK256 (rd=x0) | notlast  x576
+   rd=R rs1=R rs2=I | src=KECCAK256 | notlast  x576
+   rd=R rs1=R rs2=I | src=KECCAK256_ABSORB_PERMUTE (rd=x0) | notlast  x576
+   rd=R rs1=R rs2=I | src=KECCAK256_ABSORB_PERMUTE | notlast  x576
+== 136 VirtualROTRIW
+   rd=R rs1=R rs2=I | src=SHA256_INIT_INLINE (rd=x0) | notlast  x222
+   rd=R rs1=R rs2=I | src=SHA256_INIT_INLINE | notlast  x222
+   rd=R rs1=R rs2=I | src=SHA256_INLINE (rd=x0) | notlast  x224
+   rd=R rs1=R rs2=I | src=SHA256_INLINE | notlast  x224
+== 137 VirtualXORROT63
+   rd=R rs1=R rs2=R | src=BLAKE2_INLINE (rd=x0) | notlast  x96
+   rd=R rs1=R rs2=R | src=BLAKE2_INLINE | notlast  x96
+== 138 VirtualXORROT32
+   rd=R rs1=R rs2=R | src=BLAKE2_INLINE (rd=x0) | notlast  x96
+   rd=R rs1=R rs2=R | src=BLAKE2_INLINE | notlast  x96
+== 139 VirtualXORROT24
+   rd=R rs1=R rs2=R | src=BLAKE2_INLINE (rd=x0) | notlast  x96
+   rd=R rs1=R rs2=R | src=BLAKE2_INLINE | notlast  x96
+== 140 VirtualXORROT16
+   rd=R rs1=R rs2=R | src=BLAKE2_INLINE (rd=x0) | notlast  x96
+   rd=R rs1=R rs2=R | src=BLAKE2_INLINE | notlast  x96
+== 141 VirtualXORROTW16
+   rd=R rs1=R rs2=R | src=BLAKE3_INLINE (rd=x0) | notlast  x56
+   rd=R rs1=R rs2=R | src=BLAKE3_INLINE | notlast  x56
+   rd=R rs1=R rs2=R | src=BLAKE3_KEYED64_INLINE (rd=x0) | notlast  x56
+   rd=R rs1=R rs2=R | src=BLAKE3_KEYED64_INLINE | notlast  x56
+== 142 VirtualXORROTW12
+   rd=R rs1=R rs2=R | src=BLAKE3_INLINE (rd=x0) | notlast  x56
+   rd=R rs1=R rs2=R | src=BLAKE3_INLINE | notlast  x56
+   rd=R rs1=R rs2=R | src=BLAKE3_KEYED64_INLINE (rd=x0) | notlast  x56
+   rd=R rs1=R rs2=R | src=BLAKE3_KEYED64_INLINE | notlast  x56
+   rd=R rs1=R rs2=R | src=SHA256_INIT_INLINE (rd=x0) | notlast  x63
+   rd=R rs1=R rs2=R | src=SHA256_INIT_INLINE | notlast  x63
+   rd=R rs1=R rs2=R | src=SHA256_INLINE (rd=x0) | notlast  x64
+   rd=R rs1=R rs2=R | src=SHA256_INLINE | notlast  x64
+== 143 VirtualXORROTW8
+   rd=R rs1=R rs2=R | src=BLAKE3_INLINE (rd=x0) | notlast  x56
+   rd=R rs1=R rs2=R | src=BLAKE3_INLINE | notlast  x56
+   rd=R rs1=R rs2=R | src=BLAKE3_KEYED64_INLINE (rd=x0) | notlast  x56
+   rd=R rs1=R rs2=R | src=BLAKE3_KEYED64_INLINE | notlast  x56
+== 144 VirtualXORROTW7
+   rd=R rs1=R rs2=R | src=BLAKE3_INLINE (rd=x0) | notlast  x56
+   rd=R rs1=R rs2=R | src=BLAKE3_INLINE | notlast  x56
+   rd=R rs1=R rs2=R | src=BLAKE3_KEYED64_INLINE (rd=x0) | notlast  x56
+   rd=R rs1=R rs2=R | src=BLAKE3_KEYED64_INLINE | notlast  x56
+   rd=R rs1=R rs2=R | src=SHA256_INIT_INLINE (rd=x0) | notlast  x48
+   rd=R rs1=R rs2=R | src=SHA256_INIT_INLINE | notlast  x48
+   rd=R rs1=R rs2=R | src=SHA256_INLINE (rd=x0) | notlast  x48
+   rd=R rs1=R rs2=R | src=SHA256_INLINE | notlast  x48
+== 145 VirtualWindowMaskW
+   rd=R rs1=R rs2=I | src=AMOADD_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOADD_W | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOAND_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOAND_W | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMAXU_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMAXU_W | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMAX_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMAX_W | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMINU_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMINU_W | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMIN_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOMIN_W | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOOR_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOOR_W | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOSWAP_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOSWAP_W | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOXOR_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=AMOXOR_W | notlast  x1
+   rd=R rs1=R rs2=I | src=LR_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=LR_W | notlast  x1
+   rd=R rs1=R rs2=I | src=LW (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=LW | notlast  x1
+   rd=R rs1=R rs2=I | src=LWU (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=LWU | notlast  x1
+   rd=R rs1=R rs2=I | src=SC_W (rd=x0) | notlast  x2
+   rd=R rs1=R rs2=I | src=SC_W | notlast  x2
+   rd=R rs1=R rs2=I | src=SW | notlast  x1
+== 146 VirtualPextSigned
+   rd=R rs1=R rs2=R | src=AMOADD_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOADD_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOAND_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOAND_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAXU_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAXU_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAX_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAX_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMINU_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMINU_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMIN_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMIN_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOOR_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOOR_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOSWAP_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOSWAP_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOXOR_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOXOR_W | notlast  x1
+   rd=R rs1=R rs2=R | src=LB (rd=x0) | LAST  x1
+   rd=R rs1=R rs2=R | src=LB | LAST  x1
+   rd=R rs1=R rs2=R | src=LH (rd=x0) | LAST  x1
+   rd=R rs1=R rs2=R | src=LH | LAST  x1
+   rd=R rs1=R rs2=R | src=LR_W | LAST  x1
+   rd=R rs1=R rs2=R | src=LW (rd=x0) | LAST  x1
+   rd=R rs1=R rs2=R | src=LW | LAST  x1
+   rd=R rs1=R rs2=R | src=SC_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=SC_W | notlast  x1
+   rd=R(x0) rs1=R rs2=R | src=LR_W (rd=x0) | LAST  x1
+== 147 VirtualXORROTW22
+   rd=R rs1=R rs2=R | src=SHA256_INIT_INLINE (rd=x0) | notlast  x63
+   rd=R rs1=R rs2=R | src=SHA256_INIT_INLINE | notlast  x63
+   rd=R rs1=R rs2=R | src=SHA256_INLINE (rd=x0) | notlast  x64
+   rd=R rs1=R rs2=R | src=SHA256_INLINE | notlast  x64
+== 148 VirtualXORROTW19
+   rd=R rs1=R rs2=R | src=SHA256_INIT_INLINE (rd=x0) | notlast  x111
+   rd=R rs1=R rs2=R | src=SHA256_INIT_INLINE | notlast  x111
+   rd=R rs1=R rs2=R | src=SHA256_INLINE (rd=x0) | notlast  x112
+   rd=R rs1=R rs2=R | src=SHA256_INLINE | notlast  x112
+== 149 VirtualXORROTW6
+   rd=R rs1=R rs2=R | src=SHA256_INIT_INLINE (rd=x0) | notlast  x63
+   rd=R rs1=R rs2=R | src=SHA256_INIT_INLINE | notlast  x63
+   rd=R rs1=R rs2=R | src=SHA256_INLINE (rd=x0) | notlast  x64
+   rd=R rs1=R rs2=R | src=SHA256_INLINE | notlast  x64
+== 150 VirtualShiftRightBitmaskW
+   rd=R rs1=R rs2=I | src=SRAW | notlast  x1
+   rd=R rs1=R rs2=I | src=SRLW | notlast  x1
+== 151 VirtualSRLW
+   rd=R rs1=R rs2=R | src=SRLW | LAST  x1
+== 152 VirtualSRLIW
+   rd=R rs1=R rs2=I | src=SHA256_INIT_INLINE (rd=x0) | notlast  x96
+   rd=R rs1=R rs2=I | src=SHA256_INIT_INLINE | notlast  x96
+   rd=R rs1=R rs2=I | src=SHA256_INLINE (rd=x0) | notlast  x96
+   rd=R rs1=R rs2=I | src=SHA256_INLINE | notlast  x96
+   rd=R rs1=R rs2=I | src=SRLIW (sh=0) | LAST  x1
+   rd=R rs1=R rs2=I | src=SRLIW (sh=31) | LAST  x1
+   rd=R rs1=R rs2=I | src=SRLIW (sh=32) | LAST  x1
+   rd=R rs1=R rs2=I | src=SRLIW (sh=63) | LAST  x1
+   rd=R rs1=R rs2=I | src=SRLIW | LAST  x1
+== 153 VirtualSRAW
+   rd=R rs1=R rs2=R | src=SRAW | LAST  x1
+== 154 VirtualSRAIW
+   rd=R rs1=R rs2=I | src=SRAIW (sh=0) | LAST  x1
+   rd=R rs1=R rs2=I | src=SRAIW (sh=31) | LAST  x1
+   rd=R rs1=R rs2=I | src=SRAIW (sh=32) | LAST  x1
+   rd=R rs1=R rs2=I | src=SRAIW (sh=63) | LAST  x1
+   rd=R rs1=R rs2=I | src=SRAIW | LAST  x1
+== 155 VirtualPext
+   rd=R rs1=R rs2=R | src=LBU (rd=x0) | LAST  x1
+   rd=R rs1=R rs2=R | src=LBU | LAST  x1
+   rd=R rs1=R rs2=R | src=LHU (rd=x0) | LAST  x1
+   rd=R rs1=R rs2=R | src=LHU | LAST  x1
+   rd=R rs1=R rs2=R | src=LWU (rd=x0) | LAST  x1
+   rd=R rs1=R rs2=R | src=LWU | LAST  x1
+== 156 VirtualWindowMaskB
+   rd=R rs1=R rs2=I | src=LB (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=LB | notlast  x1
+   rd=R rs1=R rs2=I | src=LBU (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=LBU | notlast  x1
+   rd=R rs1=R rs2=I | src=SB | notlast  x1
+== 157 VirtualWindowMaskH
+   rd=R rs1=R rs2=I | src=LH (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=LH | notlast  x1
+   rd=R rs1=R rs2=I | src=LHU (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=I | src=LHU | notlast  x1
+   rd=R rs1=R rs2=I | src=SH | notlast  x1
+== 158 VirtualShiftDataB
+   rd=R rs1=R rs2=R | src=SB | notlast  x1
+== 159 VirtualShiftDataH
+   rd=R rs1=R rs2=R | src=SH | notlast  x1
+== 160 VirtualShiftDataW
+   rd=R rs1=R rs2=R | src=AMOADD_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOADD_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOAND_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOAND_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAXU_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAXU_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAX_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAX_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMINU_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMINU_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMIN_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMIN_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOOR_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOOR_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOSWAP_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOSWAP_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOXOR_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOXOR_W | notlast  x1
+   rd=R rs1=R rs2=R | src=SC_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=SC_W | notlast  x1
+   rd=R rs1=R rs2=R | src=SW | notlast  x1
+== 161 VirtualXORROTL1
+   rd=R rs1=R rs2=R | src=KECCAK256 (rd=x0) | notlast  x120
+   rd=R rs1=R rs2=R | src=KECCAK256 | notlast  x120
+   rd=R rs1=R rs2=R | src=KECCAK256_ABSORB_PERMUTE (rd=x0) | notlast  x120
+   rd=R rs1=R rs2=R | src=KECCAK256_ABSORB_PERMUTE | notlast  x120
+== 162 ANDN
+   rd=R rs1=R rs2=R | src=AMOADD_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOADD_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOAND_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOAND_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAXU_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAXU_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAX_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMAX_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMINU_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMINU_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMIN_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOMIN_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOOR_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOOR_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOSWAP_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOSWAP_W | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOXOR_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=AMOXOR_W | notlast  x1
+   rd=R rs1=R rs2=R | src=KECCAK256 (rd=x0) | notlast  x600
+   rd=R rs1=R rs2=R | src=KECCAK256 | notlast  x600
+   rd=R rs1=R rs2=R | src=KECCAK256_ABSORB_PERMUTE (rd=x0) | notlast  x600
+   rd=R rs1=R rs2=R | src=KECCAK256_ABSORB_PERMUTE | notlast  x600
+   rd=R rs1=R rs2=R | src=SB | notlast  x1
+   rd=R rs1=R rs2=R | src=SC_W (rd=x0) | notlast  x1
+   rd=R rs1=R rs2=R | src=SC_W | notlast  x1
+   rd=R rs1=R rs2=R | src=SH | notlast  x1
+   rd=R rs1=R rs2=R | src=SHA256_INIT_INLINE (rd=x0) | notlast  x61
+   rd=R rs1=R rs2=R | src=SHA256_INIT_INLINE | notlast  x61
+   rd=R rs1=R rs2=R | src=SHA256_INLINE (rd=x0) | notlast  x64
+   rd=R rs1=R rs2=R | src=SHA256_INLINE | notlast  x64
+   rd=R rs1=R rs2=R | src=SW | notlast  x1
+== 163 VirtualAdviceDivU
+   rd=R rs1=R rs2=R | src=DIVU | notlast  x1
+   rd=R rs1=R rs2=R | src=REMU | notlast  x1
+== 165 VirtualAdviceDiv
+   rd=R rs1=R rs2=R | src=DIV | notlast  x1
+== 166 VirtualAdviceRem
+   rd=R rs1=R rs2=R | src=REM | notlast  x1
+== 167 VirtualAdviceDivUW
+   rd=R rs1=R rs2=R | src=DIVUW | notlast  x1
+   rd=R rs1=R rs2=R | src=REMUW | notlast  x1
+== 169 VirtualAdviceDivW
+   rd=R rs1=R rs2=R | src=DIVW | notlast  x1
+== 170 VirtualAdviceRemW
+   rd=R rs1=R rs2=R | src=REMW | notlast  x1

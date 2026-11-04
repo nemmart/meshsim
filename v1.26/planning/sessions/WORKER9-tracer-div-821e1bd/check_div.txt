@@ -1,0 +1,21 @@
+# Edge cases: Jolt's advice (jolt-cpp, compiled) against plain RV64 M
+# advice	plain RV64 M counterpart	cases	differ	classes that differ (count)	first difference
+VirtualAdviceDivU	DIVU	625	0	none	-
+VirtualAdviceDiv	DIV	625	0	none	-
+VirtualAdviceRem	|DIV| (NegateIf)	625	25	divide by zero (25)	a=0x0000000000000000 b=0x0000000000000000: Jolt 0x0000000000000000, RV64 M 0x0000000000000001
+VirtualAdviceDivUW	DIVUW	625	124	divide by zero (100), upper half (extension) (24)	a=0x0000000000000000 b=0x0000000000000000: Jolt 0x00000000ffffffff, RV64 M 0xffffffffffffffff
+VirtualAdviceDivW	DIVW	625	15	overflow (15)	a=0x0000000080000000 b=0xffffffffffffffff: Jolt 0x0000000080000000, RV64 M 0xffffffff80000000
+VirtualAdviceRemW	|DIVW| (NegateIf)	625	100	divide by zero (100)	a=0x0000000000000000 b=0x0000000000000000: Jolt 0x0000000000000000, RV64 M 0x0000000000000001
+
+# Templates: Tracer words (out/div_templates.inc) against jolt-cpp
+# template	cases	C1 advice	C2 rows	C3 values+asserts	C4 RV64 M	(of C3: assertion failures)
+DIVU	1005000	0	0	0	0	0
+REMU	1005000	0	0	0	0	0
+DIV	1005000	0	0	0	0	0
+REM	1005000	0	0	0	0	0
+DIVUW	1005000	0	0	0	0	0
+REMUW	1005000	0	0	0	0	0
+DIVW	1005000	0	0	0	0	0
+REMW	1005000	0	0	0	0	0
+
+# 8040000 cases, 0 failures

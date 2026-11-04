@@ -1,0 +1,33 @@
+inputs: meshsim.jar=df19d050fcff82b8de31b04f89efd4fde6cf7161f65f3e08bf094d09e12b04c8 image/loader.bin=7a98846a920bc60c8d530d9901b6b46a38c4ef1e02b8e5888f09ca27e885848c image/sort.code.bin=55e6dd09d4e588e5091d418643fde42ad37a8341f3b9662357737c7342fb8d4b image/sort.data.bin=88a4d480891db5d0162772002f62e18890fdb74c0e67d0b51c3cedd9a1c73552 image/sort.ovinit.bin=89164ab7f7379239b3af0518bd9dace1fb32423555144791596a48eb393ce44b image/sort.stage.bin=f605670fbc9abe345ab7957989a98e302160b6fa5be3935b6cddb4c8daf36924 image/sort.sym=3e292ddff08ac03e2274b58c6c734b60b1e853217542f66b53fc281997a3a634 hops.txt=a3b90f3c2fbc64f1a93c8c0ff916cfbaf40823aae38c4540811482873741d3da keys-16384/trace10-10.keys=112436cd5dd7cabef0618c39dda6901c92a77ffdee4ded22fc0897e2c2aed193
+sort bt16k-kv32 32-bit values [meas: SortTest]: path BT (stage 2 ran); steps (GO -> next GO): L1 90,331 (overlay load 715); SPLIT 316,111 (overlay load 405); XB 7,835; RED 5,230 (overlay load 552); XC 1,219; TH 18,403 (overlay load 597); SWEEP 55,117; DESC 33,577 (overlay load 418); K1.0 17,912; K1.1 17,292; K1.2 12,620; K2.0 25,509; K2.1 22,507; K2.2 12,767; L2 72,926 (overlay load 200); 5 empty commands 302
+    TOTAL 709,658 cycles (L1 GO -> L2 all READY; real split), of which C&C turnaround 85; ready_latency 8; direct-path bound 4*sum(R) = 467,436; GATHER queue peak 0 of 16; stack headroom 244 B
+    peaks in K1.0: link 5, eject 4, write-engine input 1, area 1
+    peaks in K1.1: link 4, eject 3, write-engine input 1, area 1
+    peaks in K1.2: link 2, eject 2, write-engine input 1, area 1
+    peaks in K2.0: link 5, eject 5, write-engine input 1, area 1
+    peaks in K2.1: link 4, eject 3, write-engine input 1, area 1
+    peaks in K2.2: link 1, eject 1, write-engine input 1, area 1
+    address generator: 0 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
+    M14: zero-length groups 0 (summed over tiles), of which with a gap 0 (1 + gap since 10 October); group-run stall cycles 0 (drift)
+    watch in cmd 53 (cycles per tile: mean / max):
+    watch in L1 (cycles per tile: mean / max): bt_first 6,986 / 6,986; bt_phase 82,591 / 82,591; bt_sweep 89,567 / 89,567;
+    watch in SPLIT (cycles per tile: mean / max): bt_first 6,099 / 7,737; bt_phase 53,629 / 63,084; bt_hop1_src 39,360 / 41,630; bt_hop1_m 3,275 / 3,275; bt_hop2_m 12,473 / 12,534; bt_hop2_d 40,675 / 40,713; bt_descs 39,558 / 41,144; bt_desc 36,951 / 36,987; bt_sweep 60,973 / 70,669;
+    watch in XB (cycles per tile: mean / max): bt_phase 3,806 / 3,811; bt_hop1_src 553 / 568; bt_hop1_m 196 / 196; bt_hop2_m 2,057 / 2,057; bt_descs 539 / 552; bt_sweep 3,819 / 3,824;
+    watch in RED (cycles per tile: mean / max): bt_first 138 / 138; bt_hop2_m 433 / 433; bt_sweep 128 / 128; tree_reduce 4,051 / 4,068;
+    watch in XC (cycles per tile: mean / max):
+    watch in TH (cycles per tile: mean / max): bt_phase 78 / 78; bt_hop1_src 9,165 / 9,523; bt_hop1_m 35 / 35; bt_descs 8,923 / 9,283; bt_desc 145 / 145; bt_sweep 344 / 349; tree_reduce 4,354 / 4,993;
+    watch in SWEEP (cycles per tile: mean / max): bt_first 21,573 / 23,277; bt_phase 9,595 / 9,597; bt_hop1_src 1,776 / 1,776; bt_hop1_m 3,564 / 3,579; bt_hop2_m 13,229 / 14,744; bt_hop2_d 1,479 / 1,503; bt_sweep 11,410 / 11,412; tree_reduce 1,597 / 3,120;
+    watch in DESC (cycles per tile: mean / max): bt_first 447 / 447; bt_hop1_src 11,918 / 12,493; bt_hop1_m 1,547 / 2,828; bt_descs 12,201 / 12,530; bt_desc 10,045 / 11,114; bt_sweep 456 / 456; tree_reduce 3,622 / 3,905;
+    watch in K (cycles per tile: mean / max):
+    watch in K1.0 (cycles per tile: mean / max): bt_phase 16,546 / 16,550; bt_hop1_m 1,057 / 1,101; bt_descs 27 / 27; bt_sweep 16,546 / 16,550;
+    watch in K1.1 (cycles per tile: mean / max): bt_phase 16,521 / 16,549; bt_hop1_m 694 / 703; bt_descs 27 / 27; bt_sweep 16,521 / 16,549;
+    watch in K1.2 (cycles per tile: mean / max): bt_phase 4,161 / 4,245; bt_hop2_m 6,386 / 6,421; bt_hop2_d 1,689 / 1,690; bt_sweep 4,161 / 4,245;
+    watch in K1.3 (cycles per tile: mean / max): bt_phase 27 / 27; bt_sweep 27 / 27;
+    watch in K1.4 (cycles per tile: mean / max): bt_phase 27 / 27; bt_sweep 27 / 27;
+    watch in K2.0 (cycles per tile: mean / max): bt_phase 18,339 / 18,596; bt_hop2_m 5,323 / 5,566; bt_hop2_d 1,334 / 1,600; bt_sweep 18,339 / 18,596;
+    watch in K2.1 (cycles per tile: mean / max): bt_phase 18,187 / 18,251; bt_hop2_m 3,511 / 3,572; bt_hop2_d 728 / 743; bt_sweep 18,187 / 18,251;
+    watch in K2.2 (cycles per tile: mean / max): bt_phase 12,729 / 12,730; bt_sweep 12,729 / 12,730;
+    watch in K2.3 (cycles per tile: mean / max): bt_phase 25 / 25; bt_sweep 25 / 25;
+    watch in K2.4 (cycles per tile: mean / max): bt_phase 25 / 25; bt_sweep 25 / 25;
+    watch in L2 (cycles per tile: mean / max): bt_first 6,986 / 6,986; bt_phase 65,662 / 65,662; bt_hop1_src 43 / 43; bt_descs 20 / 20; bt_sweep 72,661 / 72,661;
+SortTest: 12 passed, 0 failed

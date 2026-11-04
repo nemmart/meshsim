@@ -1,0 +1,2 @@
+# Test sources run_tests.sh leaves out of the build until the phase that rewrites them (WORKER4, meshsim v1.2).
+# One file per line: the file, then why. Delete a line when its file compiles again.

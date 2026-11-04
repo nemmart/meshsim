@@ -1,0 +1,208 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="1134" viewBox="0 0 1300 1134" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif">
+<defs><marker id="m1D9E75" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1D9E75"/></marker><marker id="m3B6EA5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#3B6EA5"/></marker><marker id="m444441" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#444441"/></marker></defs>
+<rect width="1300" height="1134" fill="white"/>
+<text x="24.0" y="34.0" font-size="18" text-anchor="start" font-weight="bold" fill="#444441">Figure 7.1. The big SRAM: 8 areas, one access per area per cycle, no coherence</text>
+<text x="24.0" y="56.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#6b6a64">v1.0 (spec/machine-spec.md §4.1, §4.5) — 8 areas, each one 128-bit row access a cycle</text>
+<text x="44.0" y="90.0" font-size="13.5" text-anchor="start" font-weight="bold" fill="#444441">A. A 20-bit chunk address (1 chunk = 32 bits; 1,048,576 chunks = 4 MB)</text>
+<rect x="44.0" y="120.0" width="46.0" height="34.0" rx="0" fill="#FAEEDA" stroke="#888780" stroke-width="1"/>
+<text x="67.0" y="114.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">19</text>
+<rect x="90.0" y="120.0" width="46.0" height="34.0" rx="0" fill="#FAEEDA" stroke="#888780" stroke-width="1"/>
+<text x="113.0" y="114.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">18</text>
+<rect x="136.0" y="120.0" width="46.0" height="34.0" rx="0" fill="#FAEEDA" stroke="#888780" stroke-width="1"/>
+<text x="159.0" y="114.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">17</text>
+<rect x="44.0" y="120.0" width="138.0" height="34.0" rx="0" fill="none" stroke="#444441" stroke-width="1.6"/>
+<text x="113.0" y="142.0" font-size="12.5" text-anchor="middle" font-weight="bold" fill="#444441">area</text>
+<path d="M 46 162 L 46 168 L 180 168 L 180 162" fill="none" stroke="#B4B2A9" stroke-width="1"/>
+<rect x="182.0" y="120.0" width="46.0" height="34.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="205.0" y="114.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">16</text>
+<rect x="228.0" y="120.0" width="46.0" height="34.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="251.0" y="114.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">15</text>
+<rect x="274.0" y="120.0" width="46.0" height="34.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="297.0" y="114.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">14</text>
+<rect x="320.0" y="120.0" width="46.0" height="34.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="343.0" y="114.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">13</text>
+<rect x="366.0" y="120.0" width="46.0" height="34.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="389.0" y="114.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">12</text>
+<rect x="412.0" y="120.0" width="46.0" height="34.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="435.0" y="114.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">11</text>
+<rect x="458.0" y="120.0" width="46.0" height="34.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="481.0" y="114.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">10</text>
+<rect x="504.0" y="120.0" width="46.0" height="34.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="527.0" y="114.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">9</text>
+<rect x="550.0" y="120.0" width="46.0" height="34.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="573.0" y="114.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">8</text>
+<rect x="596.0" y="120.0" width="46.0" height="34.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="619.0" y="114.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">7</text>
+<rect x="642.0" y="120.0" width="46.0" height="34.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="665.0" y="114.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">6</text>
+<rect x="688.0" y="120.0" width="46.0" height="34.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="711.0" y="114.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">5</text>
+<rect x="734.0" y="120.0" width="46.0" height="34.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="757.0" y="114.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">4</text>
+<rect x="780.0" y="120.0" width="46.0" height="34.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="803.0" y="114.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">3</text>
+<rect x="826.0" y="120.0" width="46.0" height="34.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="849.0" y="114.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">2</text>
+<rect x="182.0" y="120.0" width="690.0" height="34.0" rx="0" fill="none" stroke="#444441" stroke-width="1.6"/>
+<text x="527.0" y="142.0" font-size="12.5" text-anchor="middle" font-weight="bold" fill="#444441">row within the area</text>
+<path d="M 184 162 L 184 168 L 870 168 L 870 162" fill="none" stroke="#B4B2A9" stroke-width="1"/>
+<rect x="872.0" y="120.0" width="46.0" height="34.0" rx="0" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="895.0" y="114.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">1</text>
+<rect x="918.0" y="120.0" width="46.0" height="34.0" rx="0" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="941.0" y="114.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64">0</text>
+<rect x="872.0" y="120.0" width="92.0" height="34.0" rx="0" fill="none" stroke="#444441" stroke-width="1.6"/>
+<text x="918.0" y="142.0" font-size="12.5" text-anchor="middle" font-weight="bold" fill="#444441">chunk</text>
+<path d="M 874 162 L 874 168 L 962 168 L 962 162" fill="none" stroke="#B4B2A9" stroke-width="1"/>
+<text x="44.0" y="190.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">area, bits 19–17: which of the 8 areas; area a holds the 128-bit rows a·32K to (a + 1)·32K − 1</text>
+<text x="44.0" y="206.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">row, bits 16–2: one of the 32,768 rows of 128 bits in that area</text>
+<text x="44.0" y="222.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">chunk, bits 1–0: one of the 4 chunks in the row</text>
+<text x="44.0" y="238.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">example: chunk address 0x20006 → area 1, row 1, chunk 2</text>
+<text x="988.0" y="124.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">The areas are contiguous blocks,</text>
+<text x="988.0" y="139.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">not interleaved: a sequential</text>
+<text x="988.0" y="154.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">stream stays in one area at</text>
+<text x="988.0" y="169.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">4 chunks per access.</text>
+<text x="988.0" y="184.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441"></text>
+<text x="988.0" y="199.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">Addresses are 20 bits and wrap:</text>
+<text x="988.0" y="214.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">the top of area 7 wraps to the</text>
+<text x="988.0" y="229.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">bottom of area 0.</text>
+<text x="44.0" y="300.0" font-size="13.5" text-anchor="start" font-weight="bold" fill="#444441">B. The eight areas and what one row holds</text>
+<rect x="44.0" y="320.0" width="200.0" height="34.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="54.0" y="342.0" font-size="12.5" text-anchor="start" font-weight="bold" fill="#444441">area 0</text>
+<text x="236.0" y="342.0" font-size="11" text-anchor="end" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">0x00000–0x1FFFF</text>
+<rect x="44.0" y="354.0" width="200.0" height="34.0" rx="0" fill="#E9E7E0" stroke="#888780" stroke-width="1"/>
+<text x="54.0" y="376.0" font-size="12.5" text-anchor="start" font-weight="bold" fill="#444441">area 1</text>
+<text x="236.0" y="376.0" font-size="11" text-anchor="end" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">0x20000–0x3FFFF</text>
+<rect x="44.0" y="388.0" width="200.0" height="34.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="54.0" y="410.0" font-size="12.5" text-anchor="start" font-weight="bold" fill="#444441">area 2</text>
+<text x="236.0" y="410.0" font-size="11" text-anchor="end" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">0x40000–0x5FFFF</text>
+<rect x="44.0" y="422.0" width="200.0" height="34.0" rx="0" fill="#E9E7E0" stroke="#888780" stroke-width="1"/>
+<text x="54.0" y="444.0" font-size="12.5" text-anchor="start" font-weight="bold" fill="#444441">area 3</text>
+<text x="236.0" y="444.0" font-size="11" text-anchor="end" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">0x60000–0x7FFFF</text>
+<rect x="44.0" y="456.0" width="200.0" height="34.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="54.0" y="478.0" font-size="12.5" text-anchor="start" font-weight="bold" fill="#444441">area 4</text>
+<text x="236.0" y="478.0" font-size="11" text-anchor="end" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">0x80000–0x9FFFF</text>
+<rect x="44.0" y="490.0" width="200.0" height="34.0" rx="0" fill="#E9E7E0" stroke="#888780" stroke-width="1"/>
+<text x="54.0" y="512.0" font-size="12.5" text-anchor="start" font-weight="bold" fill="#444441">area 5</text>
+<text x="236.0" y="512.0" font-size="11" text-anchor="end" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">0xA0000–0xBFFFF</text>
+<rect x="44.0" y="524.0" width="200.0" height="34.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="54.0" y="546.0" font-size="12.5" text-anchor="start" font-weight="bold" fill="#444441">area 6</text>
+<text x="236.0" y="546.0" font-size="11" text-anchor="end" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">0xC0000–0xDFFFF</text>
+<rect x="44.0" y="558.0" width="200.0" height="34.0" rx="0" fill="#E9E7E0" stroke="#888780" stroke-width="1"/>
+<text x="54.0" y="580.0" font-size="12.5" text-anchor="start" font-weight="bold" fill="#444441">area 7</text>
+<text x="236.0" y="580.0" font-size="11" text-anchor="end" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">0xE0000–0xFFFFF</text>
+<text x="44.0" y="612.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">each 128 bits × 32,768 rows = 512 KB;</text>
+<text x="44.0" y="628.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">chunk ranges shown (4 MB device)</text>
+<text x="300.0" y="334.0" font-size="12" text-anchor="start" font-weight="bold" fill="#444441">one row = 128 bits = 4 chunks</text>
+<rect x="300.0" y="344.0" width="84.0" height="34.0" rx="0" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="342.0" y="366.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441">chunk 0</text>
+<rect x="384.0" y="344.0" width="84.0" height="34.0" rx="0" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="426.0" y="366.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441">chunk 1</text>
+<rect x="468.0" y="344.0" width="84.0" height="34.0" rx="0" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="510.0" y="366.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441">chunk 2</text>
+<rect x="552.0" y="344.0" width="84.0" height="34.0" rx="0" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="594.0" y="366.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441">chunk 3</text>
+<path d="M 302 384 L 302 391 L 466 391 L 466 384" fill="none" stroke="#444441" stroke-width="1.2"/>
+<text x="384.0" y="406.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441">a record (64 bits)</text>
+<path d="M 470 384 L 470 391 L 634 391 L 634 384" fill="none" stroke="#444441" stroke-width="1.2"/>
+<text x="552.0" y="406.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441">a record (64 bits)</text>
+<path d="M 302 414 L 302 421 L 634 421 L 634 414" fill="none" stroke="#444441" stroke-width="1.2"/>
+<text x="468.0" y="436.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#444441">a 128-bit value, or 4 keys</text>
+<text x="300.0" y="472.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">• An area does one 128-bit read or write per cycle.</text>
+<text x="300.0" y="488.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">• A 64-bit write fills half a row:</text>
+<text x="300.0" y="504.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">   per-chunk write enables make it one access, no read-modify-write.</text>
+<text x="300.0" y="520.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">• Write combining (two 64-bit writes to one row in one access).</text>
+<text x="300.0" y="536.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">• No alignment: an access may start at any chunk. One that</text>
+<text x="300.0" y="552.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">   crosses a row boundary costs two accesses (figure 7.2).</text>
+<rect x="652.2" y="509.0" width="31.8" height="15" rx="7.5" fill="white" stroke="#B5651D" stroke-width="1"/>
+<text x="668.1" y="520.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#B5651D" font-style="italic">open</text>
+<text x="300.0" y="590.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64">A smaller device (defined, not expected): 1 to 7 whole</text>
+<text x="300.0" y="604.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64">areas; any chunk at or above the end reads 0 and drops</text>
+<text x="300.0" y="618.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64">writes, with no condition.</text>
+<text x="740.0" y="300.0" font-size="13.5" text-anchor="start" font-weight="bold" fill="#444441">C. Who reaches an area, and in what order</text>
+<rect x="740.0" y="326.0" width="236.0" height="28.0" rx="4" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1"/>
+<text x="750.0" y="345.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">1  GATHER engine: gather values</text>
+<rect x="740.0" y="360.0" width="236.0" height="28.0" rx="4" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1"/>
+<text x="750.0" y="379.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">2  address generator: its visits</text>
+<rect x="740.0" y="394.0" width="236.0" height="28.0" rx="4" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1"/>
+<text x="750.0" y="413.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">3  controller read port (§4.3)</text>
+<polyline points="976.0,340.0 992.0,340.0" fill="none" stroke="#1D9E75" stroke-width="1.4" stroke-linejoin="round"/>
+<polyline points="976.0,374.0 992.0,374.0" fill="none" stroke="#1D9E75" stroke-width="1.4" stroke-linejoin="round"/>
+<polyline points="976.0,408.0 992.0,408.0" fill="none" stroke="#1D9E75" stroke-width="1.4" stroke-linejoin="round"/>
+<polyline points="992.0,340.0 992.0,408.0" fill="none" stroke="#1D9E75" stroke-width="1.4" stroke-linejoin="round"/>
+<polyline points="992.0,374.0 1004.0,374.0" fill="none" stroke="#1D9E75" stroke-width="1.4" stroke-linejoin="round" marker-end="url(#m1D9E75)"/>
+<rect x="1006.0" y="354.0" width="120.0" height="40.0" rx="4" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1.4"/>
+<text x="1066.0" y="371.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">SRAM read queue</text>
+<text x="1066.0" y="386.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">priority 1 &gt; 2 &gt; 3</text>
+<rect x="1006.0" y="432.0" width="120.0" height="40.0" rx="4" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1.4"/>
+<text x="1066.0" y="449.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">SRAM write queue</text>
+<text x="1066.0" y="464.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">write engine only</text>
+<text x="740.0" y="456.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#3B6EA5">modes 2–4 (incl. gather values)</text>
+<polyline points="946.0,452.0 1004.0,452.0" fill="none" stroke="#3B6EA5" stroke-width="1.8" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<polyline points="1126.0,374.0 1154.0,410.0" fill="none" stroke="#1D9E75" stroke-width="2" stroke-linejoin="round" marker-end="url(#m1D9E75)"/>
+<polyline points="1126.0,452.0 1154.0,426.0" fill="none" stroke="#3B6EA5" stroke-width="2" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<rect x="1156.0" y="404.0" width="13.0" height="30.0" rx="1" fill="white" stroke="#B5651D" stroke-width="1" stroke-dasharray="2 3"/>
+<rect x="1171.0" y="404.0" width="13.0" height="30.0" rx="1" fill="white" stroke="#B5651D" stroke-width="1" stroke-dasharray="2 3"/>
+<rect x="1186.0" y="404.0" width="13.0" height="30.0" rx="1" fill="white" stroke="#B5651D" stroke-width="1" stroke-dasharray="2 3"/>
+<rect x="1201.0" y="404.0" width="13.0" height="30.0" rx="1" fill="white" stroke="#B5651D" stroke-width="1" stroke-dasharray="2 3"/>
+<text x="1185.0" y="394.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#B5651D">queue</text>
+<polyline points="1216.0,419.0 1228.0,419.0" fill="none" stroke="#444441" stroke-width="1.4" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<rect x="1230.0" y="390.0" width="66.0" height="58.0" rx="4" fill="#F1EFE8" stroke="#444441" stroke-width="1.4"/>
+<text x="1263.0" y="412.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">area a</text>
+<text x="1263.0" y="428.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">1 access</text>
+<text x="1263.0" y="440.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">per cycle</text>
+<polyline points="1263.0,448.0 1263.0,488.0" fill="none" stroke="#1D9E75" stroke-width="2" stroke-linejoin="round" marker-end="url(#m1D9E75)"/>
+<text x="1276.0" y="504.0" font-size="11" text-anchor="end" font-weight="normal" fill="#1D9E75">every read return → injection point</text>
+<text x="740.0" y="522.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">• The read clients merge into one SRAM read queue at a fixed priority; the</text>
+<text x="740.0" y="538.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">   address generator advances only when the queue takes its request.</text>
+<text x="740.0" y="554.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">• Every request queues at the area it addresses. The area serves its</text>
+<text x="740.0" y="570.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">   queue in arrival order; on a same-cycle tie, writes go first, since</text>
+<text x="740.0" y="586.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">   writes can't wait and reads can.</text>
+<text x="740.0" y="602.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">• The two queues meet only at the areas; the controller reads only through the read port.</text>
+<text x="740.0" y="618.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">• A read takes 4 cycles unloaded [meas: meshsim], longer when it</text>
+<text x="740.0" y="634.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">   waits in its area's queue. Returns leave in request order (§4.5).</text>
+<text x="740.0" y="650.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">• The traffic director never stalls: overloading one area overflows the</text>
+<text x="740.0" y="666.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">   write engine's 4-entry input FIFO: condition 2.</text>
+<text x="740.0" y="696.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#B5651D">Open (§4.1, §13 items 1–4):</text>
+<text x="740.0" y="712.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#B5651D">the queue depth for the hardware (a parameter: 8 in meshsim);</text>
+<text x="740.0" y="728.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#B5651D">the array's read latency; queueing against the address</text>
+<text x="740.0" y="744.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#B5651D">generator's timetable. What a full area does: figure 7.2.</text>
+<text x="44.0" y="790.0" font-size="13.5" text-anchor="start" font-weight="bold" fill="#444441">D. The disjoint-buffer rule: within one engine run, no buffer is both read and written</text>
+<rect x="44.0" y="822.0" width="440.0" height="120.0" rx="8" fill="white" stroke="#B4B2A9" stroke-width="1"/>
+<text x="58.0" y="844.0" font-size="12" text-anchor="start" font-weight="bold" fill="#444441">run n: a local-sort pass</text>
+<rect x="64.0" y="868.0" width="150.0" height="50.0" rx="4" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1.4"/>
+<text x="139.0" y="889.0" font-size="12.5" text-anchor="middle" font-weight="bold" fill="#444441">buffer A</text>
+<text x="139.0" y="906.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#1D9E75">area 2 — read</text>
+<rect x="314.0" y="868.0" width="150.0" height="50.0" rx="4" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1.4" stroke-dasharray="9 3"/>
+<text x="389.0" y="889.0" font-size="12.5" text-anchor="middle" font-weight="bold" fill="#444441">buffer B</text>
+<text x="389.0" y="906.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#3B6EA5">area 3 — written</text>
+<polyline points="216.0,893.0 312.0,893.0" fill="none" stroke="#444441" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="264.0" y="886.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">reorder</text>
+<rect x="514.0" y="822.0" width="440.0" height="120.0" rx="8" fill="white" stroke="#B4B2A9" stroke-width="1"/>
+<text x="528.0" y="844.0" font-size="12" text-anchor="start" font-weight="bold" fill="#444441">run n + 1: the next pass, maybe in the same phase</text>
+<rect x="534.0" y="868.0" width="150.0" height="50.0" rx="4" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1.4"/>
+<text x="609.0" y="889.0" font-size="12.5" text-anchor="middle" font-weight="bold" fill="#444441">buffer B</text>
+<text x="609.0" y="906.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#1D9E75">area 3 — read</text>
+<rect x="784.0" y="868.0" width="150.0" height="50.0" rx="4" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1.4" stroke-dasharray="9 3"/>
+<text x="859.0" y="889.0" font-size="12.5" text-anchor="middle" font-weight="bold" fill="#444441">buffer A</text>
+<text x="859.0" y="906.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#3B6EA5">area 2 — written</text>
+<polyline points="686.0,893.0 782.0,893.0" fill="none" stroke="#444441" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="734.0" y="886.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">reorder</text>
+<polyline points="492.0,818.0 492.0,948.0" fill="none" stroke="#D85A30" stroke-width="2.4" stroke-linejoin="round" stroke-dasharray="4 3"/>
+<text x="492.0" y="964.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#D85A30">between runs: the next starts only when DMA_SRAM_REMAINING = 0</text>
+<text x="492.0" y="978.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#D85A30">and mem_idle (the writes are in the array); at a phase</text>
+<text x="492.0" y="992.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#D85A30">boundary the tile reports done only then, and reads after GO</text>
+<rect x="994.0" y="822.0" width="262.0" height="120.0" rx="8" fill="white" stroke="#C0392B" stroke-width="1.2" stroke-dasharray="5 3"/>
+<text x="1008.0" y="844.0" font-size="12" text-anchor="start" font-weight="bold" fill="#C0392B">not allowed</text>
+<rect x="1050.0" y="868.0" width="150.0" height="50.0" rx="4" fill="#F1EFE8" stroke="#C0392B" stroke-width="1.2"/>
+<text x="1125.0" y="889.0" font-size="12.5" text-anchor="middle" font-weight="bold" fill="#444441">buffer C</text>
+<text x="1125.0" y="906.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#C0392B">read and written</text>
+<text x="994.0" y="964.0" font-size="11" text-anchor="start" font-weight="normal" fill="#C0392B">no ordering between a run's reads</text>
+<text x="994.0" y="978.0" font-size="11" text-anchor="start" font-weight="normal" fill="#C0392B">and writes: the result is undefined</text>
+<text x="44.0" y="1018.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">Already follows the rule: the local sort's passes (ping-pong between two buffers); the gathers (index and values in, output out);</text>
+<text x="44.0" y="1034.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">the all-to-alls (send buffer out, receive buffer in); the split's searches through the read port (they read sorted keys that nothing writes during the split).</text>
+<text x="44.0" y="1050.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">Throughput comes from placement: buffers that one run uses together sit in different areas, so up to 8 accesses happen per cycle in total.</text>
+<line x1="24" y1="1074" x2="1276" y2="1074" stroke="#B4B2A9" stroke-width="0.8"/>
+<text x="24.0" y="1096.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">Each of the 8 contiguous areas serves one 128-bit access per cycle from its own queue, in arrival order. There is no coherence: correctness</text>
+<text x="24.0" y="1112.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">comes from never reading and writing one buffer in one engine run; ordering between runs comes from waiting for the writes (DMA_SRAM_REMAINING and mem_idle).</text>
+<text x="24.0" y="1128.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">Source: spec/machine-spec.md v1.0, §1, §4.1, §4.5, §4.13, §4.14, §13.</text>
+</svg>

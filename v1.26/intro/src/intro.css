@@ -1,0 +1,30 @@
+/* Print style for Intro.pdf (WeasyPrint). */
+@page {
+  size: A4;
+  margin: 16mm 14mm 18mm 14mm;
+  @bottom-center { content: counter(page); font: 8.5pt "Liberation Sans", Helvetica, Arial, sans-serif; color: #6b6a64; }
+}
+@page :first { @bottom-center { content: none; } }
+html { font: 10pt/1.42 "Liberation Sans", Helvetica, Arial, sans-serif; color: #2c2c2a; }
+body { margin: 0; }
+header#title-block-header { margin: 0 0 6mm 0; }
+h1.title { font-size: 22pt; margin: 0 0 1mm 0; color: #2c2c2a; }
+p.subtitle { font-size: 12pt; color: #6b6a64; margin: 0; }
+h1 { font-size: 15pt; margin: 8mm 0 2.5mm 0; color: #2c2c2a; break-after: avoid; border-bottom: 0.6pt solid #B4B2A9; padding-bottom: 1mm; }
+h2 { font-size: 12pt; margin: 5mm 0 1.5mm 0; break-after: avoid; }
+h3 { font-size: 10.5pt; margin: 4mm 0 1mm 0; break-after: avoid; }
+p { margin: 0 0 2.2mm 0; orphans: 3; widows: 3; }
+ul, ol { margin: 0 0 2.5mm 0; padding-left: 6mm; }
+li { margin: 0 0 1mm 0; }
+code { font-family: "Liberation Mono", "Courier New", monospace; font-size: 8.8pt; }
+blockquote { margin: 1mm 0 2.5mm 6mm; padding: 0; color: #2c2c2a; font-style: italic; }
+figure { margin: 3mm 0 4mm 0; break-inside: avoid; text-align: center; }
+figure img { width: 100%; }
+figcaption { display: none; }     /* each figure carries its own title and caption */
+table { border-collapse: collapse; margin: 2mm auto 3.5mm auto; font-size: 8.4pt; break-inside: avoid; }
+th, td { padding: 1mm 2mm; border-bottom: 0.4pt solid #D3D1C7; vertical-align: top; }
+td { white-space: nowrap; }
+th { border-bottom: 0.8pt solid #888780; text-align: left; background: #F1EFE8; }
+div.note { background: #F1EFE8; border-left: 2.5pt solid #888780; padding: 2.5mm 4mm; margin: 0 0 5mm 0; font-size: 9.5pt; }
+div.note p:last-child, div.provisional p:last-child { margin-bottom: 0; }
+div.provisional { background: #FAEEDA; border-left: 2.5pt solid #B5651D; padding: 2.5mm 4mm; margin: 0 0 4mm 0; font-size: 9.5pt; }

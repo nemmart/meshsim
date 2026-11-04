@@ -1,0 +1,155 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="940" height="500" viewBox="0 0 940 500" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif">
+<defs></defs>
+<rect width="940" height="500" fill="white"/>
+<text x="24.0" y="34.0" font-size="18" text-anchor="start" font-weight="bold" fill="#444441">Figure 3. Augmenting: each record is stamped with the position it lands at</text>
+<text x="24.0" y="56.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#6b6a64">Tile T1 in the keys all-to-all. Packets from different senders interleave; each lands at PTR[src], and the write engine</text>
+<text x="24.0" y="74.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#6b6a64">replaces its high word by the ordinal, (landing address − DMA_RECORD_BASE_ADDRESS) / 2.</text>
+<text x="150.0" y="112.0" font-size="13.5" text-anchor="middle" font-weight="bold" fill="#444441">Packets arriving, in order</text>
+<text x="150.0" y="129.0" font-size="12" text-anchor="middle" font-weight="normal" fill="#6b6a64">mode 4; payload = the sender's record</text>
+<text x="40.0" y="168.0" font-size="12" text-anchor="end" font-weight="normal" fill="#6b6a64">1.</text>
+<rect x="48.0" y="150.0" width="108.0" height="26.0" rx="3" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1.1"/>
+<text x="56.0" y="167.5" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">from T0</text>
+<rect x="166.0" y="150.0" width="62.0" height="26.0" rx="3" fill="#F1EFE8" stroke="#888780" stroke-width="1.1"/>
+<text x="192.0" y="167.7" font-size="13" text-anchor="end" font-weight="normal" fill="#444441">33</text>
+<text x="195.0" y="167.7" font-size="12" text-anchor="start" font-weight="normal" fill="#B4B2A9">|</text>
+<text x="202.0" y="167.7" font-size="12" text-anchor="start" font-weight="normal" fill="#6b6a64">4</text>
+<text x="238.0" y="167.5" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">arrival count 0</text>
+<text x="40.0" y="204.0" font-size="12" text-anchor="end" font-weight="normal" fill="#6b6a64">2.</text>
+<rect x="48.0" y="186.0" width="108.0" height="26.0" rx="3" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1.1"/>
+<text x="56.0" y="203.5" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">from T2</text>
+<rect x="166.0" y="186.0" width="62.0" height="26.0" rx="3" fill="#F1EFE8" stroke="#888780" stroke-width="1.1"/>
+<text x="192.0" y="203.7" font-size="13" text-anchor="end" font-weight="normal" fill="#444441">39</text>
+<text x="195.0" y="203.7" font-size="12" text-anchor="start" font-weight="normal" fill="#B4B2A9">|</text>
+<text x="202.0" y="203.7" font-size="12" text-anchor="start" font-weight="normal" fill="#6b6a64">0</text>
+<text x="238.0" y="203.5" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">arrival count 1</text>
+<text x="40.0" y="240.0" font-size="12" text-anchor="end" font-weight="normal" fill="#6b6a64">3.</text>
+<rect x="48.0" y="222.0" width="108.0" height="26.0" rx="3" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1.1"/>
+<text x="56.0" y="239.5" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">from T3</text>
+<rect x="166.0" y="222.0" width="62.0" height="26.0" rx="3" fill="#F1EFE8" stroke="#888780" stroke-width="1.1"/>
+<text x="192.0" y="239.7" font-size="13" text-anchor="end" font-weight="normal" fill="#444441">31</text>
+<text x="195.0" y="239.7" font-size="12" text-anchor="start" font-weight="normal" fill="#B4B2A9">|</text>
+<text x="202.0" y="239.7" font-size="12" text-anchor="start" font-weight="normal" fill="#6b6a64">1</text>
+<text x="238.0" y="239.5" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">arrival count 2</text>
+<text x="40.0" y="276.0" font-size="12" text-anchor="end" font-weight="normal" fill="#6b6a64">4.</text>
+<rect x="48.0" y="258.0" width="108.0" height="26.0" rx="3" fill="#FAECE7" stroke="#D85A30" stroke-width="1.1"/>
+<text x="56.0" y="275.5" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">from T1</text>
+<rect x="166.0" y="258.0" width="62.0" height="26.0" rx="3" fill="#F1EFE8" stroke="#888780" stroke-width="1.1"/>
+<text x="192.0" y="275.7" font-size="13" text-anchor="end" font-weight="normal" fill="#444441">27</text>
+<text x="195.0" y="275.7" font-size="12" text-anchor="start" font-weight="normal" fill="#B4B2A9">|</text>
+<text x="202.0" y="275.7" font-size="12" text-anchor="start" font-weight="normal" fill="#6b6a64">4</text>
+<text x="238.0" y="275.5" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">arrival count 3</text>
+<text x="40.0" y="312.0" font-size="12" text-anchor="end" font-weight="normal" fill="#6b6a64">5.</text>
+<rect x="48.0" y="294.0" width="108.0" height="26.0" rx="3" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1.1"/>
+<text x="56.0" y="311.5" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">from T0</text>
+<rect x="166.0" y="294.0" width="62.0" height="26.0" rx="3" fill="#F1EFE8" stroke="#888780" stroke-width="1.1"/>
+<text x="192.0" y="311.7" font-size="13" text-anchor="end" font-weight="normal" fill="#444441">42</text>
+<text x="195.0" y="311.7" font-size="12" text-anchor="start" font-weight="normal" fill="#B4B2A9">|</text>
+<text x="202.0" y="311.7" font-size="12" text-anchor="start" font-weight="normal" fill="#6b6a64">3</text>
+<text x="238.0" y="311.5" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">arrival count 4</text>
+<text x="40.0" y="348.0" font-size="12" text-anchor="end" font-weight="normal" fill="#6b6a64">6.</text>
+<rect x="48.0" y="330.0" width="108.0" height="26.0" rx="3" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1.1"/>
+<text x="56.0" y="347.5" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">from T2</text>
+<rect x="166.0" y="330.0" width="62.0" height="26.0" rx="3" fill="#F1EFE8" stroke="#888780" stroke-width="1.1"/>
+<text x="192.0" y="347.7" font-size="13" text-anchor="end" font-weight="normal" fill="#444441">42</text>
+<text x="195.0" y="347.7" font-size="12" text-anchor="start" font-weight="normal" fill="#B4B2A9">|</text>
+<text x="202.0" y="347.7" font-size="12" text-anchor="start" font-weight="normal" fill="#6b6a64">2</text>
+<text x="238.0" y="347.5" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">arrival count 5</text>
+<text x="40.0" y="384.0" font-size="12" text-anchor="end" font-weight="normal" fill="#6b6a64">7.</text>
+<rect x="48.0" y="366.0" width="108.0" height="26.0" rx="3" fill="#FAECE7" stroke="#D85A30" stroke-width="1.1"/>
+<text x="56.0" y="383.5" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">from T1</text>
+<rect x="166.0" y="366.0" width="62.0" height="26.0" rx="3" fill="#F1EFE8" stroke="#888780" stroke-width="1.1"/>
+<text x="192.0" y="383.7" font-size="13" text-anchor="end" font-weight="normal" fill="#444441">42</text>
+<text x="195.0" y="383.7" font-size="12" text-anchor="start" font-weight="normal" fill="#B4B2A9">|</text>
+<text x="202.0" y="383.7" font-size="12" text-anchor="start" font-weight="normal" fill="#6b6a64">1</text>
+<text x="238.0" y="383.5" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">arrival count 6</text>
+<text x="40.0" y="420.0" font-size="12" text-anchor="end" font-weight="normal" fill="#6b6a64">8.</text>
+<rect x="48.0" y="402.0" width="108.0" height="26.0" rx="3" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1.1"/>
+<text x="56.0" y="419.5" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">from T0</text>
+<rect x="166.0" y="402.0" width="62.0" height="26.0" rx="3" fill="#F1EFE8" stroke="#888780" stroke-width="1.1"/>
+<text x="192.0" y="419.7" font-size="13" text-anchor="end" font-weight="normal" fill="#444441">42</text>
+<text x="195.0" y="419.7" font-size="12" text-anchor="start" font-weight="normal" fill="#B4B2A9">|</text>
+<text x="202.0" y="419.7" font-size="12" text-anchor="start" font-weight="normal" fill="#6b6a64">7</text>
+<text x="238.0" y="419.5" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">arrival count 7</text>
+<text x="732.0" y="112.0" font-size="13.5" text-anchor="middle" font-weight="bold" fill="#444441">T1's receive buffer</text>
+<text x="732.0" y="129.0" font-size="12" text-anchor="middle" font-weight="normal" fill="#6b6a64">base B; PTR as set before the run</text>
+<rect x="690.0" y="150.0" width="64.0" height="26.0" rx="3" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1.1"/>
+<text x="716.9" y="167.7" font-size="13" text-anchor="end" font-weight="bold" fill="#444441">33</text>
+<text x="719.9" y="167.7" font-size="12" text-anchor="start" font-weight="normal" fill="#B4B2A9">|</text>
+<text x="726.9" y="167.7" font-size="12" text-anchor="start" font-weight="normal" fill="#6b6a64">0</text>
+<text x="680.0" y="167.5" font-size="12" text-anchor="end" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">B + 0</text>
+<rect x="690.0" y="186.0" width="64.0" height="26.0" rx="3" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1.1"/>
+<text x="716.9" y="203.7" font-size="13" text-anchor="end" font-weight="bold" fill="#444441">42</text>
+<text x="719.9" y="203.7" font-size="12" text-anchor="start" font-weight="normal" fill="#B4B2A9">|</text>
+<text x="726.9" y="203.7" font-size="12" text-anchor="start" font-weight="normal" fill="#6b6a64">1</text>
+<text x="680.0" y="203.5" font-size="12" text-anchor="end" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">B + 2</text>
+<rect x="690.0" y="222.0" width="64.0" height="26.0" rx="3" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1.1"/>
+<text x="716.9" y="239.7" font-size="13" text-anchor="end" font-weight="bold" fill="#444441">42</text>
+<text x="719.9" y="239.7" font-size="12" text-anchor="start" font-weight="normal" fill="#B4B2A9">|</text>
+<text x="726.9" y="239.7" font-size="12" text-anchor="start" font-weight="normal" fill="#6b6a64">2</text>
+<text x="680.0" y="239.5" font-size="12" text-anchor="end" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">B + 4</text>
+<rect x="690.0" y="258.0" width="64.0" height="26.0" rx="3" fill="#FAECE7" stroke="#D85A30" stroke-width="1.1"/>
+<text x="716.9" y="275.7" font-size="13" text-anchor="end" font-weight="bold" fill="#444441">27</text>
+<text x="719.9" y="275.7" font-size="12" text-anchor="start" font-weight="normal" fill="#B4B2A9">|</text>
+<text x="726.9" y="275.7" font-size="12" text-anchor="start" font-weight="normal" fill="#6b6a64">3</text>
+<text x="680.0" y="275.5" font-size="12" text-anchor="end" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">B + 6</text>
+<rect x="690.0" y="294.0" width="64.0" height="26.0" rx="3" fill="#FAECE7" stroke="#D85A30" stroke-width="1.1"/>
+<text x="716.9" y="311.7" font-size="13" text-anchor="end" font-weight="bold" fill="#444441">42</text>
+<text x="719.9" y="311.7" font-size="12" text-anchor="start" font-weight="normal" fill="#B4B2A9">|</text>
+<text x="726.9" y="311.7" font-size="12" text-anchor="start" font-weight="normal" fill="#6b6a64">4</text>
+<text x="680.0" y="311.5" font-size="12" text-anchor="end" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">B + 8</text>
+<rect x="690.0" y="330.0" width="64.0" height="26.0" rx="3" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1.1"/>
+<text x="716.9" y="347.7" font-size="13" text-anchor="end" font-weight="bold" fill="#444441">39</text>
+<text x="719.9" y="347.7" font-size="12" text-anchor="start" font-weight="normal" fill="#B4B2A9">|</text>
+<text x="726.9" y="347.7" font-size="12" text-anchor="start" font-weight="normal" fill="#6b6a64">5</text>
+<text x="680.0" y="347.5" font-size="12" text-anchor="end" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">B + 10</text>
+<rect x="690.0" y="366.0" width="64.0" height="26.0" rx="3" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1.1"/>
+<text x="716.9" y="383.7" font-size="13" text-anchor="end" font-weight="bold" fill="#444441">42</text>
+<text x="719.9" y="383.7" font-size="12" text-anchor="start" font-weight="normal" fill="#B4B2A9">|</text>
+<text x="726.9" y="383.7" font-size="12" text-anchor="start" font-weight="normal" fill="#6b6a64">6</text>
+<text x="680.0" y="383.5" font-size="12" text-anchor="end" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">B + 12</text>
+<rect x="690.0" y="402.0" width="64.0" height="26.0" rx="3" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1.1"/>
+<text x="716.9" y="419.7" font-size="13" text-anchor="end" font-weight="bold" fill="#444441">31</text>
+<text x="719.9" y="419.7" font-size="12" text-anchor="start" font-weight="normal" fill="#B4B2A9">|</text>
+<text x="726.9" y="419.7" font-size="12" text-anchor="start" font-weight="normal" fill="#6b6a64">7</text>
+<text x="680.0" y="419.5" font-size="12" text-anchor="end" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">B + 14</text>
+<polyline points="762.0,152.0 768.0,152.0 768.0,246.0 762.0,246.0" fill="none" stroke="#3B6EA5" stroke-width="1.6" stroke-linejoin="round"/>
+<text x="774.0" y="167.0" font-size="12" text-anchor="start" font-weight="normal" fill="#3B6EA5">PTR[0] = B + 0</text>
+<polyline points="762.0,260.0 768.0,260.0 768.0,318.0 762.0,318.0" fill="none" stroke="#D85A30" stroke-width="1.6" stroke-linejoin="round"/>
+<text x="774.0" y="275.0" font-size="12" text-anchor="start" font-weight="normal" fill="#D85A30">PTR[1] = B + 6</text>
+<polyline points="762.0,332.0 768.0,332.0 768.0,390.0 762.0,390.0" fill="none" stroke="#1D9E75" stroke-width="1.6" stroke-linejoin="round"/>
+<text x="774.0" y="347.0" font-size="12" text-anchor="start" font-weight="normal" fill="#1D9E75">PTR[2] = B + 10</text>
+<polyline points="762.0,404.0 768.0,404.0 768.0,426.0 762.0,426.0" fill="none" stroke="#7F77DD" stroke-width="1.6" stroke-linejoin="round"/>
+<text x="774.0" y="419.0" font-size="12" text-anchor="start" font-weight="normal" fill="#7F77DD">PTR[3] = B + 14</text>
+<rect x="370.0" y="212.0" width="190.0" height="132.0" rx="6" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1"/>
+<text x="465.0" y="248.6" font-size="13" text-anchor="middle" font-weight="bold" fill="#444441">write engine, mode 4</text>
+<text x="465.0" y="266.1" font-size="12.5" text-anchor="middle" font-weight="normal" fill="#444441">target = PTR[src]</text>
+<text x="465.0" y="282.6" font-size="12.5" text-anchor="middle" font-weight="normal" fill="#444441">PTR[src] += 2</text>
+<text x="465.0" y="299.1" font-size="12.5" text-anchor="middle" font-weight="normal" fill="#444441">high word = (target − B) / 2</text>
+<text x="465.0" y="315.6" font-size="12.5" text-anchor="middle" font-weight="normal" fill="#444441">low word (the key) unchanged</text>
+<polyline points="330.0,163.0 366.0,246.5" fill="none" stroke="#3B6EA5" stroke-width="1.1" stroke-linejoin="round"/>
+<polygon points="624.0,163.0 622.7,171.0 616.8,166.8" fill="#3B6EA5"/>
+<polyline points="564.0,246.5 619.8,168.9" fill="none" stroke="#3B6EA5" stroke-width="1.1" stroke-linejoin="round"/>
+<polyline points="330.0,199.0 366.0,255.5" fill="none" stroke="#1D9E75" stroke-width="1.1" stroke-linejoin="round"/>
+<polygon points="624.0,343.0 616.2,341.0 620.8,335.5" fill="#1D9E75"/>
+<polyline points="564.0,291.5 618.5,338.3" fill="none" stroke="#1D9E75" stroke-width="1.1" stroke-linejoin="round"/>
+<polyline points="330.0,235.0 366.0,264.5" fill="none" stroke="#7F77DD" stroke-width="1.1" stroke-linejoin="round"/>
+<polygon points="624.0,415.0 617.3,410.5 623.5,406.9" fill="#7F77DD"/>
+<polyline points="564.0,309.5 620.4,408.7" fill="none" stroke="#7F77DD" stroke-width="1.1" stroke-linejoin="round"/>
+<polyline points="330.0,271.0 366.0,273.5" fill="none" stroke="#D85A30" stroke-width="1.1" stroke-linejoin="round"/>
+<polygon points="624.0,271.0 616.9,274.9 616.6,267.7" fill="#D85A30"/>
+<polyline points="564.0,273.5 616.7,271.3" fill="none" stroke="#D85A30" stroke-width="1.1" stroke-linejoin="round"/>
+<polyline points="330.0,307.0 366.0,282.5" fill="none" stroke="#3B6EA5" stroke-width="1.1" stroke-linejoin="round"/>
+<polygon points="624.0,199.0 621.2,206.6 616.3,201.4" fill="#3B6EA5"/>
+<polyline points="564.0,255.5 618.7,204.0" fill="none" stroke="#3B6EA5" stroke-width="1.1" stroke-linejoin="round"/>
+<polyline points="330.0,343.0 366.0,291.5" fill="none" stroke="#1D9E75" stroke-width="1.1" stroke-linejoin="round"/>
+<polygon points="624.0,379.0 616.7,375.4 622.4,371.1" fill="#1D9E75"/>
+<polyline points="564.0,300.5 619.6,373.2" fill="none" stroke="#1D9E75" stroke-width="1.1" stroke-linejoin="round"/>
+<polyline points="330.0,379.0 366.0,300.5" fill="none" stroke="#D85A30" stroke-width="1.1" stroke-linejoin="round"/>
+<polygon points="624.0,307.0 615.9,307.6 618.6,300.9" fill="#D85A30"/>
+<polyline points="564.0,282.5 617.3,304.3" fill="none" stroke="#D85A30" stroke-width="1.1" stroke-linejoin="round"/>
+<polyline points="330.0,415.0 366.0,309.5" fill="none" stroke="#3B6EA5" stroke-width="1.1" stroke-linejoin="round"/>
+<polygon points="624.0,235.0 619.1,241.4 615.9,235.0" fill="#3B6EA5"/>
+<polyline points="564.0,264.5 617.5,238.2" fill="none" stroke="#3B6EA5" stroke-width="1.1" stroke-linejoin="round"/>
+<text x="24.0" y="454.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">The ordinal counts positions in the buffer, not arrivals: the 39 from T2 arrives second but lands at position 5, the start</text>
+<text x="24.0" y="470.5" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">of T2's run. Each sender's run is contiguous, so key i and a value that lands at position i of a matching buffer belong together.</text>
+</svg>

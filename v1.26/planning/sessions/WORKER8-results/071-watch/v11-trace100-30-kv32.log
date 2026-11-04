@@ -1,0 +1,33 @@
+inputs: meshsim.jar=df19d050fcff82b8de31b04f89efd4fde6cf7161f65f3e08bf094d09e12b04c8 image/loader.bin=7a98846a920bc60c8d530d9901b6b46a38c4ef1e02b8e5888f09ca27e885848c image/sort.code.bin=55e6dd09d4e588e5091d418643fde42ad37a8341f3b9662357737c7342fb8d4b image/sort.data.bin=88a4d480891db5d0162772002f62e18890fdb74c0e67d0b51c3cedd9a1c73552 image/sort.ovinit.bin=89164ab7f7379239b3af0518bd9dace1fb32423555144791596a48eb393ce44b image/sort.stage.bin=f605670fbc9abe345ab7957989a98e302160b6fa5be3935b6cddb4c8daf36924 image/sort.sym=3e292ddff08ac03e2274b58c6c734b60b1e853217542f66b53fc281997a3a634 hops.txt=a3b90f3c2fbc64f1a93c8c0ff916cfbaf40823aae38c4540811482873741d3da keys-65536/trace100-30.keys=937e92a2f8080a27cfa87ccd45a61b66ec71c224f9ea5859f6ce4cc6f7fbf24c
+sort trace100-30-kv32 32-bit values [meas: SortTest]: path BT (stage 2 ran); steps (GO -> next GO): L1 336,091 (overlay load 715); SPLIT 364,198 (overlay load 405); XB 7,835; RED 5,230 (overlay load 552); XC 1,219; TH 18,436 (overlay load 597); SWEEP 68,323; DESC 39,422 (overlay load 418); K1.0 34,928; K1.1 34,377; K1.2 43,955; K2.0 43,953; K2.1 42,061; K2.2 32,959; L2 269,534 (overlay load 200); 5 empty commands 302
+    TOTAL 1,342,823 cycles (L1 GO -> L2 all READY; real split), of which C&C turnaround 85; ready_latency 8; direct-path bound 4*sum(R) = 706,280; GATHER queue peak 0 of 16; stack headroom 244 B
+    peaks in K1.0: link 5, eject 5, write-engine input 1, area 1
+    peaks in K1.1: link 5, eject 4, write-engine input 1, area 1
+    peaks in K1.2: link 3, eject 3, write-engine input 1, area 1
+    peaks in K2.0: link 5, eject 5, write-engine input 1, area 1
+    peaks in K2.1: link 5, eject 5, write-engine input 1, area 1
+    peaks in K2.2: link 3, eject 4, write-engine input 1, area 1
+    address generator: 0 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
+    M14: zero-length groups 0 (summed over tiles), of which with a gap 0 (1 + gap since 10 October); group-run stall cycles 0 (drift)
+    watch in cmd 53 (cycles per tile: mean / max):
+    watch in L1 (cycles per tile: mean / max): step_loop 335,337 / 335,337;
+    watch in SPLIT (cycles per tile: mean / max): split_get_cuts 191,865 / 195,689; step_loop 101,825 / 111,974; place 37,520 / 38,811; sort_barrier 30,181 / 41,383;
+    watch in XB (cycles per tile: mean / max): split_get_cuts 2,253 / 2,253; step_loop 3,821 / 3,826; place 537 / 547;
+    watch in RED (cycles per tile: mean / max): split_get_cuts 433 / 433; step_loop 138 / 138;
+    watch in XC (cycles per tile: mean / max):
+    watch in TH (cycles per tile: mean / max): split_get_cuts 2,694 / 2,732; step_loop 602 / 607; place 6,335 / 6,684;
+    watch in SWEEP (cycles per tile: mean / max): split_get_cuts 25,234 / 25,991; step_loop 40,997 / 42,717;
+    watch in DESC (cycles per tile: mean / max): split_get_cuts 26,580 / 27,287; step_loop 477 / 477; place 7,254 / 7,338;
+    watch in K (cycles per tile: mean / max):
+    watch in K1.0 (cycles per tile: mean / max): split_get_cuts 1,611 / 1,638; step_loop 32,933 / 32,935;
+    watch in K1.1 (cycles per tile: mean / max): split_get_cuts 1,137 / 1,239; step_loop 32,929 / 32,934;
+    watch in K1.2 (cycles per tile: mean / max): split_get_cuts 8,953 / 9,016; step_loop 34,601 / 34,675;
+    watch in K1.3 (cycles per tile: mean / max): step_loop 27 / 27;
+    watch in K1.4 (cycles per tile: mean / max): step_loop 27 / 27;
+    watch in K2.0 (cycles per tile: mean / max): split_get_cuts 8,953 / 9,016; step_loop 34,603 / 34,673;
+    watch in K2.1 (cycles per tile: mean / max): split_get_cuts 6,861 / 7,214; step_loop 34,783 / 35,073;
+    watch in K2.2 (cycles per tile: mean / max): step_loop 32,906 / 32,923;
+    watch in K2.3 (cycles per tile: mean / max): step_loop 25 / 25;
+    watch in K2.4 (cycles per tile: mean / max): step_loop 25 / 25;
+    watch in L2 (cycles per tile: mean / max): step_loop 269,283 / 269,283; place 16 / 16;
+SortTest: 11 passed, 0 failed

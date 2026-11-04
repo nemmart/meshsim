@@ -989,6 +989,9 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
   64 windows of a segment nothing is loaded; C&C 3 only reads the state and the queue lengths at each done, drains the output
   queues, and pulses go. **The read queue persists across the windows**, since the segment's advice runs across them (its size
   in the state counts down over the whole segment).
+- **Part 0's state is the working state** (owner, 2026-11-01; DECISIONS-v1.26 item 12): writing words 0-65 writes the live
+  registers, pc, `instr_idx` and offset; there is no copy at a run's start. So the Tracer's 64 runs carry on from wherever the
+  last stopped, and its state at done is read straight from the working state into output queue 0.
 - **The state is a memory on both units** (owner, 2026-11-01): address-mapped in part 0, as the replayer's at v1.25, not a queue;
   the whole 68-word record, in section 23's order, at consecutive offsets from 0x000, so the Tracer's DMA sends its output
   queue 0 as it is. **The write to word 0, the state word at 0x000, is the flushing write.**

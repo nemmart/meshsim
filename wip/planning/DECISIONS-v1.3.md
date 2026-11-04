@@ -899,8 +899,8 @@ files, which **the replayers carry too and ignore** (owner):
 
 | word | part 0 offset | contents | for the Tracer |
 |---|---|---|---|
-| 0 | 0x000 | the state word: pc, `instr_idx`, the next offset, the compression flags | the processor state at the segment's first row (frame 2); **no stream compressed** |
-| 1 | 0x010 | the stream word: each stream's size, bits in and values out (section 24) | **the read queue: the segment's advice; the code and write queues zero length** |
+| 0 | 0x000 | the state word: pc, `instr_idx`, the next offset, and the per-pass flags (use the store log, output rd_prev; DECISIONS-v1.26 item 8) | the processor state at the segment's first row (frame 2); **the flags are carried and ignored** (the Tracer always records stores' pre-values and rd_prev) |
+| 1 | 0x010 | the stream word: each stream's 128-bit words, values out and compression flag (DECISIONS-v1.26 item 2) | **the read queue: the segment's advice, uncompressed; the code and write queues zero length** |
 | 2-65 | 0x020 | the register image: 64 words, two registers each | registers 0-127 |
 | 66 | 0x420 | the files: **the guest's memory file** (root address, depth) and **the jump-target map file** (root, depth) | from C&C 3 (section 22): the Tracer's copy, the proof's map (a replayer ignores it) |
 | 67 | 0x430 | the template bitmap, 128 bits: which controller-fed inlines the window uses (section 25) | **all cleared** (owner) |

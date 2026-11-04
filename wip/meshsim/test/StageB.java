@@ -184,8 +184,17 @@ public final class StageB {
         for (String d : detail) System.out.println("    " + d);
         ReplayDelivery.Result out = new ReplayDelivery.Result();
         out.ok = pass; out.rows = same; out.cycles = cyc; out.index = index; out.detail.addAll(detail);
-        out.summary = String.format((LONE ? "tile 0 only, " : "full chip, ") + "max row gap " + wt.maxGap + ", %.3f cycles/row, newexp %d (slow %d), refills %d", (double) cyc / Math.max(1, same), r.newExpansions, slow, refills);
+        out.summary = String.format((LONE ? "tile 0 only, " : "full chip, ") + "max row gap " + wt.maxGap + ", %.3f cycles/row, newexp %d (slow %d), refills %d, waits %s",
+                (double) cyc / Math.max(1, same), r.newExpansions, slow, refills, waits(r));
         return out;
+    }
+
+    /** The pass's stall cycles by kind, for results.csv: "image/code/newexp/exp/rlog/wlog/outq a/b/c/d/e/f/g" (run_shard.sh
+     *  averages the read-log and write-log waits per window, the v1.26 queue-size check, V3-12). */
+    static String waits(Replayer r) {
+        StringBuilder b = new StringBuilder("image/code/newexp/exp/rlog/wlog/outq ");
+        for (int i = 0; i < r.stalls.length; i++) b.append(i > 0 ? "/" : "").append(r.stalls[i]);
+        return b.append(" logq ").append(r.rlog.cap).toString();
     }
 
     // ================================================================ CL4: a window that stops making rows fails at once

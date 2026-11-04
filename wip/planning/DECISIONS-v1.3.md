@@ -687,6 +687,9 @@ roots and depths:
 
 Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's single pool of 4 KB pages; addresses in 128 B units.
 
+- **Free-space management lives in C&C 3** (owner, 2026-11-01), the page manager of the planning notes (the page pool, the
+  per-proof bitmaps and arenas): the file system on C&C 2 asks it for pages and returns them. **Its design is black-boxed for
+  now** behind that interface (allocate a page, free a page, the arena operations).
 - **A file is a tree whose depth follows its length** (owner, 2026-11-01; replaces a chain of index pages, each 1,023 pointers
   plus a next pointer): index pages of **1,024 pointers**, no next pointer:
 

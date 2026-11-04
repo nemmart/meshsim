@@ -289,8 +289,8 @@ its region, with **offset bits [22:20] picking the part**, as in the replayer's 
 
   **Every queue is 4 KB at v1.3** (owner): the replayer's read-log and write-log queues shrink from 8 KB. Enough by the measured
   densities (spec 4.19.15, Quest 085): the logs average 0.31-0.35 words per real row together (read 0.19-0.21), at most about 0.83
-  in Cyclone's densest windows; a half-queue refill (the credit, 4.19.8) is 256 words, about 1,500 cycles of the densest window at
-  3 cycles a row, against a refill of a few hundred [estimate]. To confirm by meshsim's Stage B on both workloads (the stall
+  in Cyclone's densest windows; a half-queue refill (the credit, 4.19.8) lasts about 900 cycles at the measured worst density (WORKER19's
+  correction of an earlier 1,500), against a refill of a few hundred [estimate]. To confirm by meshsim's Stage B on both workloads (the stall
   counts). (This replaces a part-0 text that ignored the stream word, gave bank 1 no initial state and started at an instruction
   boundary; all three are superseded.)
   - **T2, answered (WORKER16, 2026-11-01; `WORKER16/REPORT.md`):** at instruction boundaries, pc, `instr_idx`, registers 0-127
@@ -948,6 +948,10 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
     (owner: it mirrors the replayer's typical queue sizes; was 2 KB): 512 advice words. Advice is consumed slowly (the division family takes one word per expansion of about 12 rows,
     a secp operation at most 8 in up to 240), so a full queue lasts thousands of rows, far longer than the controller takes to
     refill it; proposed (integrator): raise the flag when half is free.
+- **Setting the state resets everything; `PULSE_RUN` only starts running** (owner, 2026-11-01; DECISIONS-v1.26 item 10), the same
+  rule as the replayer's: the state write flushes the queues, latches the sizes, clears the size counters and sets the credits;
+  the Tracer's go is `PULSE_RUN`, which runs the next `RUN_CYCLES` rows and nothing else, so the read queue's counter runs across
+  the segment's 64 runs.
 - **The read queue's end** (owner, 2026-11-01): **the advice log is per segment**, all 4M rows, not per run of 65,536, and
   **its size is part of the startup state** (section 23's stream word), so the Tracer knows it from the start. It counts the words it pops:
   **a pop beyond the size sets an `ERRORS` bit (advice underflow)** at once, instead of the Tracer waiting forever for the

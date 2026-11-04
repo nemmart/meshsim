@@ -41,6 +41,21 @@ software, and nothing else: no Tracer, no new memory system, no file system. The
    changes** (owner): the record's other words, the stream word's write-log sizes included, stay exactly as the Tracer produced
    them; nothing is zeroed or edited for a pass. Bit positions to propose.
 
+9. **WORKER19's choices within the rulings, confirmed** (owner, 2026-11-01): words 66-67 are written only while the replayer is
+   stopped, like the rest of part 0; a stream's word count must be the fewest 128-bit words that hold its values, so a whole
+   extra word of padding sets [6].
+10. **Setting the state resets everything; `PULSE_RUN` only starts running** (owner, 2026-11-01), the same on the Tracer and
+   the replayer: **the write to word 0, the state word, flushes the input queues, latches the sizes, clears the size counters,
+   sets the credits and resets the decompressors**; `PULSE_RUN` starts a pass on the replayer, the next `RUN_CYCLES` rows on the
+   Tracer, and does nothing else. The replayer writes the state word before every pass (ruling 3), so each pass starts fresh;
+   the Tracer writes its state once per segment, so its counters and credits run across the 64 runs. (Replaces `PULSE_RUN`
+   setting the credits, resetting the decompressors, latching the sizes and clearing the counters, as first specified.)
+
+11. **Preloading is allowed** (owner, 2026-11-01): after the state write, software may push the first chunks into the queues and
+   then pulse `PULSE_RUN`, or pulse first and push after; either works, since the state write has already flushed the queues and
+   set the credits, and it is all our software. (Drops "the queues must be empty at `PULSE_RUN`", invariant 16 as first written.)
+   **Writes to words 66-67 while a pass runs are flagged**, like any part-0 write while running (item 9), not silently ignored.
+
 **Out of scope** (they belong to the Tracer or to v1.3): the peripheral DMA in 128-bit words (spec 4.17.9), the broadcast of
 controller-fed templates, everything about files, slots and caches.
 

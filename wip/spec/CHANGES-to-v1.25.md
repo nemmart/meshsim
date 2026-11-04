@@ -1,5 +1,7 @@
 # The change guide to v1.25, from v1.1 and from v1.2
 
+**Going on to v1.26** (the replayer's v1.3 changes, nothing else): `CHANGES-v1.25-to-v1.26.md`, after this guide.
+
 For the RTL engineer of the mesh. This guide covers two upgrade paths to **v1.25**:
 
 - from **v1.1**, which the RTL implements today, straight to v1.25;

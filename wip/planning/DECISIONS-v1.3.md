@@ -948,6 +948,9 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
     (owner: it mirrors the replayer's typical queue sizes; was 2 KB): 512 advice words. Advice is consumed slowly (the division family takes one word per expansion of about 12 rows,
     a secp operation at most 8 in up to 240), so a full queue lasts thousands of rows, far longer than the controller takes to
     refill it; proposed (integrator): raise the flag when half is free.
+- **The size counters clear when the sizes are latched**, the same rule as the replayer's (DECISIONS-v1.26 item 9): on the Tracer
+  the sizes are latched when the state is loaded (start), so the read queue's counter runs across the segment's 64 runs and go
+  doesn't clear it.
 - **The read queue's end** (owner, 2026-11-01): **the advice log is per segment**, all 4M rows, not per run of 65,536, and
   **its size is part of the startup state** (section 23's stream word), so the Tracer knows it from the start. It counts the words it pops:
   **a pop beyond the size sets an `ERRORS` bit (advice underflow)** at once, instead of the Tracer waiting forever for the

@@ -7,7 +7,7 @@
  *   0x00040    0x000100     tables: the decode table (256 x 128-bit words) then the ROM (512 words), 12 KB, in the
  *                           order mode 9 writes them: one run to 0x00400 covers both (0x400 + 4 x 256 = 0x800)
  *   0x00C40    0x003100     template index: 16 B per template number, as the tracer delivers it, <= 128
- *   0x00E40    0x003900     the window's state record: 67 x 128-bit words (word 0 the bitmap, 1-66 region 0)
+ *   0x00E40    0x003900     the window's state record: 68 x 128-bit words (v1.26: words 0-65 part 0, 66 files, 67 the bitmap)
  *   0x01000    0x004000     free (v1.2's template area; the universal set doesn't fit)
  *   0x08000    0x020000     code stream (128-bit entries), up to 256 KB (65,536 raw words)
  *   0x18000    0x060000     read log, up to 512 KB
@@ -21,7 +21,10 @@
 #define REPLAY_LAYOUT_H
 
 #define RL_MAGIC             0x594C5052u   /* "RPLY" */
-#define RL_VERSION           2u      /* v1.25: the index is keyed by the normalized key (RL_IX_KEY) */
+#define RL_VERSION           3u      /* v1.26: the 68-word record in its new order; v1.25 (2): the index keyed by RL_IX_KEY */
+#define RL_RECORD_WORDS      68      /* v1.26: the state record, in 128-bit words */
+#define RL_PART0_WORDS       66      /* words 0-65 go to the replayer's part 0 */
+#define RL_RECORD_BITMAP     67      /* the template bitmap's word */
 
 /* header word indexes */
 #define RL_H_MAGIC           0
@@ -30,7 +33,7 @@
 #define RL_H_INDEX           3   /* chunk of the template index */
 #define RL_H_NTEMPLATES      4   /* index entries, 0-128 */
 #define RL_H_TEMPLATES       5   /* chunk of template word 0 */
-#define RL_H_RECORD          6   /* chunk of the state record (67 x 128-bit) */
+#define RL_H_RECORD          6   /* chunk of the state record (68 x 128-bit) */
 #define RL_H_CODE            7   /* chunk of the code stream */
 #define RL_H_CODE_N          8   /* its 128-bit entries */
 #define RL_H_RLOG            9

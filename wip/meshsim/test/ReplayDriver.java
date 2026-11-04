@@ -44,8 +44,8 @@ final class ReplayDriver {
 
     /** Region 0, the decode table and the ROM, by mode 9, with the replayer stopped. */
     void load() {
-        if (w.region0 != null) {                       // a delivered record: bytes 16-1,071 unchanged
-            for (int i = 0; i < 66; i++) port.add(new long[] { 4 * i, w.region0[2 * i], w.region0[2 * i + 1] });
+        if (w.region0 != null) {                       // a delivered record: words 0-65 unchanged (v1.26: 66-67 not sent)
+            for (int i = 0; i < Replayer.PART0_WORDS; i++) port.add(new long[] { 4 * i, w.region0[2 * i], w.region0[2 * i + 1] });
         } else {
             port.add(new long[] { 0x0, w.stateLo(), w.stateHi() });
             port.add(new long[] { 0x4, w.streamLo(), w.streamHi() });
@@ -62,9 +62,23 @@ final class ReplayDriver {
         for (int i = 0; i < Peripheral.RP_LATENCY + 1; i++) step();
     }
 
-    /** One pass. Returns the rows; stops at done or after {@code maxCycles}. */
+    /** v1.26: the state word again (it flushes the queues, DECISIONS-v1.26 item 4), landed; before every pass but the first. */
+    void resendState() {
+        long lo = w.region0 != null ? w.region0[0] : w.stateLo(), hi = w.region0 != null ? w.region0[1] : w.stateHi();
+        port.add(new long[] { 0x0, lo, hi });
+        while (!port.isEmpty()) step();
+        for (int i = 0; i < Peripheral.RP_LATENCY + 1; i++) step();
+    }
+    int passesRun;
+
+    /** One pass. Returns the rows; stops at done or after {@code maxCycles}. A pass after the first resends the state word. */
     List<long[]> pass(long maxCycles) {
-        rows.clear(); done = false; codeNext = rlogNext = wlogNext = 0; expWords = null;
+        if (passesRun++ > 0) resendState();
+        return passFrom(maxCycles, 0);
+    }
+    /** A pass whose code stream's first {@code codeSent} entries were pushed before it (v1.26: kept after the flush). */
+    List<long[]> passFrom(long maxCycles, int codeSent) {
+        rows.clear(); done = false; codeNext = codeSent; rlogNext = wlogNext = 0; expWords = null;
         r.run(t); runAt = t;
         step();
         long end = t + maxCycles;
@@ -75,8 +89,8 @@ final class ReplayDriver {
                 int st0 = r.status(t, 0), st1 = r.status(t, 1);
                 r.events().consume(l);
                 if ((l & 1 << Replayer.EV_CODE) != 0) codeNext = refill(w.code, codeNext, 0x40000, 128);
-                if ((l & 1 << Replayer.EV_RLOG) != 0) rlogNext = refill(w.rlog, rlogNext, 0x80000, 256);
-                if ((l & 1 << Replayer.EV_WLOG) != 0) wlogNext = refill(w.wlog, wlogNext, 0xC0000, 256);
+                if ((l & 1 << Replayer.EV_RLOG) != 0) rlogNext = refill(w.rlog, rlogNext, 0x80000, r.rlog.half);
+                if ((l & 1 << Replayer.EV_WLOG) != 0) wlogNext = refill(w.wlog, wlogNext, 0xC0000, r.wlog.half);
                 if ((l & 1 << Replayer.EV_NEWEXP) != 0) {
                     int key = ReplayTables.key(st1);                // v1.25: the index is keyed by key(w)
                     long[] tpl = w.templates.get(key);

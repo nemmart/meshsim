@@ -24,6 +24,16 @@ import java.util.function.Consumer;
  * are reserved; a word with one set is undefined behavior (meshsim stops). HALT is gone from the spec, and with it the
  * replayer's halt input (setHalted), its "PULSE_RUN in HALT" flag and its queue-port-in-HALT bad write.
  *
+ * <p>v1.26 (WORKER20; DECISIONS-v1.26, V3-12/23/24): the state record is 68 words in a new order ([0] state word, [1]
+ * stream word, [2-65] the register image, [66] the files word, [67] the template bitmap); the replayer holds words
+ * 0-65 and ignores writes to 66 and 67. The stream word gives each stream's size as its 128-bit words (padding
+ * included) and its values out, and its compression flag ({@link #parseStreamWord}, a provisional layout until
+ * WORKER19's spec text lands). The state word keeps two per-pass flags: [115] use the store log and [116] output
+ * rd_prev (Proposed). The read-log and write-log queues are 4 KB ({@link #LOG_QUEUE_ENTRIES}). The write to word 0
+ * flushes every queue (contents, decoders, credits to 2), in place of PULSE_RUN. Padding is never decoded. The pops are
+ * checked against the sizes: ERRORS [3] code-stream, [4] read-log, [5] write-log underflow (a decode past the stream's
+ * words, or a pop past its values; the pass stops), and [6] done with input left over.
+ *
  * <h3>What is modelled</h3>
  * The mode-9 write port (4.19.10: the map, the sizes, ownership, rp_latency, counting); the four queues as true FIFOs
  * with occupancy, pending and their low-water lines (4.19.8); the three decompressors with the write log's last-load
@@ -54,11 +64,62 @@ final class Replayer implements Peripheral {
      *  (v1.25, DECISIONS-v1.25 s4; the bit's place in the record is WORKER11 Q1, Proposed). Bit 22 of the record's long 1. */
     static final int REC_SIGN_IMM = 22;
 
+    // ================================================================ v1.26: the state record (DECISIONS-v1.26 items 1, 2, 8)
+    /** The record's 128-bit words: [0] state, [1] stream, [2-65] the register image, [66] files, [67] template bitmap. */
+    static final int REC_WORDS = 68, PART0_WORDS = 66, REC_FILES = 66, REC_BITMAP = 67;
+    /** The state word's per-pass flags (bit numbers in the 128-bit word): [115] use the store log (as at v1.25), [116]
+     *  output rd_prev (v1.26, new; the position is Proposed, WORKER20). [112]-[114], v1.25's compression flags, are spare. */
+    static final int SW_STORE_LOG = 115, SW_RD_PREV = 116;
+    /** One stream's size and form, as the stream word gives it: its 128-bit words as sent (padding included), its
+     *  values out (32-bit code words, 64-bit log words) and whether it is LRU-compressed. */
+    record StreamSize(int words, int values, boolean compressed) {
+        StreamSize { if (words < 0 || words > 0xFFFF || values < 0 || values > 0x1FFFF) throw new IllegalArgumentException("stream size " + words + " words, " + values + " values"); }
+    }
+    /** The stream word's layout, provisional (WORKER20) until WORKER19's spec text lands: stream s (0 code, 1 read log, 2
+     *  write log) at base b = 40 s: words [b+15:b], values [b+32:b+16], compressed [b+33], [b+39:b+34] spare; [127:120]
+     *  spare. Only this function and {@link #streamWord} know it. */
+    static final int SW_STREAM_STRIDE = 40;
+    static StreamSize[] parseStreamWord(long lo, long hi) {
+        StreamSize[] r = new StreamSize[3];
+        for (int s = 0; s < 3; s++) {
+            int b = SW_STREAM_STRIDE * s;
+            r[s] = new StreamSize((int) bits128(lo, hi, b, 16), (int) bits128(lo, hi, b + 16, 17), bits128(lo, hi, b + 33, 1) != 0);
+        }
+        return r;
+    }
+    /** The stream word for three sizes: {lo, hi} (the inverse of {@link #parseStreamWord}). */
+    static long[] streamWord(StreamSize code, StreamSize rlog, StreamSize wlog) {
+        long[] w = new long[2];
+        StreamSize[] ss = { code, rlog, wlog };
+        for (int s = 0; s < 3; s++) {
+            int b = SW_STREAM_STRIDE * s;
+            put128(w, b, 16, ss[s].words()); put128(w, b + 16, 17, ss[s].values()); put128(w, b + 33, 1, ss[s].compressed() ? 1 : 0);
+        }
+        return w;
+    }
+    /** n ≤ 64 bits of a 128-bit word {lo, hi} from bit pos. */
+    static long bits128(long lo, long hi, int pos, int n) {
+        long v = 0;
+        for (int k = 0; k < n; k++) { int b = pos + k; long bit = b < 64 ? lo >>> b : hi >>> (b - 64); v |= (bit & 1) << k; }
+        return v;
+    }
+    static void put128(long[] w, int pos, int n, long v) {
+        for (int k = 0; k < n; k++) { int b = pos + k; long bit = (v >>> k) & 1; if (b < 64) w[0] = w[0] & ~(1L << b) | bit << b; else w[1] = w[1] & ~(1L << (b - 64)) | bit << (b - 64); }
+    }
+    /** The state word's hi long for instr_idx, the next offset and the two per-pass flags. */
+    static long stateHi(int instrIdx, int nextOffset, boolean storeLog, boolean rdPrev) {
+        return (instrIdx & 0xFFFFFFFFL) | (long) (nextOffset & 0xFFFF) << 32 | (storeLog ? 1L : 0) << (SW_STORE_LOG - 64) | (rdPrev ? 1L : 0) << (SW_RD_PREV - 64);
+    }
+    /** The read-log and write-log queues' entries: 256 (4 KB) at v1.26 (V3-12), 512 at v1.25. -Dreplayer.logq=512 gives
+     *  v1.25's 8 KB for a control run; set before the replayer is made. */
+    static int LOG_QUEUE_ENTRIES = Integer.getInteger("replayer.logq", 256);
+
     // events (4.19.9): bit numbers
     static final int EV_RUN_DONE = 0, EV_CODE = 2, EV_RLOG = 3, EV_WLOG = 4, EV_EXP = 5, EV_NEWEXP = 6;
     final EventCounts ev = new EventCounts(new int[] { 1, 0, 2, 2, 2, 2, 1 }, new boolean[] { false, false, true, true, true, true, false });
-    /** ERRORS (4.19.11): [0] bad write, [1] queue overrun, [2] invalid expansion; sticky until the reset. */
-    static final int ERR_BAD_WRITE = 0, ERR_OVERRUN = 1, ERR_INVALID = 2;
+    /** ERRORS (4.19.11): [0] reserved (v1.2's bad write), [1] queue overrun, [2] invalid expansion; v1.26: [3] code-stream,
+     *  [4] read-log and [5] write-log underflow, [6] done with input left over; sticky until the reset. */
+    static final int ERR_BAD_WRITE = 0, ERR_OVERRUN = 1, ERR_INVALID = 2, ERR_CODE_UNDER = 3, ERR_RLOG_UNDER = 4, ERR_WLOG_UNDER = 5, ERR_LEFTOVER = 6, N_ERR = 7;
 
     final int me;
     /**
@@ -72,14 +133,14 @@ final class Replayer implements Peripheral {
     final List<String> violations = new ArrayList<>();
 
     // ================================================================ memories (mode 9, 4.19.10)
-    final long[] region0 = new long[66 * 2];           // state word, stream word, the 64-word register image: lo, hi
+    final long[] region0 = new long[PART0_WORDS * 2];  // state word, stream word, the 64-word register image: lo, hi (record words 66-67 are ignored)
     final short[] decodeTable = new short[2048];
     final long[] romLo = new long[512], romHi = new long[512];
 
     // ================================================================ queues (4.19.8)
     final Stream code = new Stream("code", 256, 32, false);
-    final Stream rlog = new Stream("read log", 512, 64, false);
-    final Stream wlog = new Stream("write log", 512, 64, true);
+    final Stream rlog = new Stream("read log", LOG_QUEUE_ENTRIES, 64, false);
+    final Stream wlog = new Stream("write log", LOG_QUEUE_ENTRIES, 64, true);
     { code.credit = EV_CODE; rlog.credit = EV_RLOG; wlog.credit = EV_WLOG; }
     final ExpQueue exp = new ExpQueue();
 
@@ -87,7 +148,8 @@ final class Replayer implements Peripheral {
     private boolean running;
     private long[] regs = new long[128];
     private long pc; private int instrIdx;
-    private boolean fCode, fRlog, fWlog, fStore;       // latched per run: compressed flags, includes store log
+    private boolean fStore, fRdPrev;                   // latched per run: use the store log, output rd_prev (v1.26)
+    private boolean stateWritten;                      // word 0 written (the flush) since the last pass started
     private int startOffset;                           // the state word's next offset, latched
     private long copyDoneAt;                           // first cycle a row may start
     private int rowsStarted, rowsDone;
@@ -128,9 +190,9 @@ final class Replayer implements Peripheral {
     @Override public EventCounts events() { return ev; }
     // invariant 16's refill bookkeeping: entries pushed and entries the taken credits allow, per queue
     private final int[] pushed = new int[4], allowance = new int[4];
-    private static int half(int q) { return q == 0 ? 128 : q == 3 ? 128 : 256; }
+    private int half(int q) { return q == 0 ? code.half : q == 1 ? rlog.half : q == 2 ? wlog.half : ExpQueue.HALF; }
     { ev.onConsume = b -> { int q = b == EV_CODE ? 0 : b == EV_RLOG ? 1 : b == EV_WLOG ? 2 : b == EV_EXP ? 3 : -1; if (q >= 0) allowance[q] += half(q); }; }
-    @Override public int errors(long t) { settle(t); int e = 0; for (int k = 0; k < 3; k++) if (condEvents[k] > 0) e |= 1 << k; return e; }
+    @Override public int errors(long t) { settle(t); int e = 0; for (int k = 0; k < N_ERR; k++) if (condEvents[k] > 0) e |= 1 << k; return e; }
     @Override public Integer word(long t, int w) {
         settle(t);
         return switch (w) { case 32 -> sStatus0 & 0xFFFF; case 33 -> sStatus0 >>> 16; case 34 -> sStatus1; default -> null; };
@@ -186,7 +248,7 @@ final class Replayer implements Peripheral {
     int status(long t, int i) { settle(t); return i == 0 ? sStatus0 : i == 1 ? sStatus1 : 0; }
 
     // ================================================================ conditions
-    final long[] condEvents = new long[3];
+    final long[] condEvents = new long[N_ERR];
     long conditionEvents(int k) { return condEvents[k]; }
 
     // ================================================================ no output (4.17.9)
@@ -227,16 +289,17 @@ final class Replayer implements Peripheral {
     // ================================================================ run (end of its cycle); v1.25: HALT is gone from the spec
     private void doRun(long t) {
         if (running) throw new UndefinedBehavior(t, me, "replayer", "PULSE_RUN while a pass runs (4.17.2; v1.2 ignored it; DECISIONS-v1.25 s8e)");
-        for (Input p : landing) if (p.t() >= t && queueOf(p.a()) != null)
-            violate(t, "a pass started with a queue push still in flight (4.19.8's software rule; invariant 16): packet landing at " + p.t());
-        // the pass: empty the queues and the decompressors' tables, latch the state word and the stream word
+        // v1.26 (DECISIONS-v1.26 item 4): the queues were flushed by the state word's write, not here; a pass with no
+        // write to word 0 since the last one would start on whatever the last pass left (meshsim flags it)
+        if (!stateWritten && passes > 0)
+            violate(t, "a pass started without a write to the state word since the last pass: its queues weren't flushed (DECISIONS-v1.26 item 4)");
+        stateWritten = false;
+        // the pass: latch the state word's flags and the stream word's sizes (the queues and decoders are as the flush left them)
         long sLo = region0[0], sHi = region0[1], lLo = region0[2], lHi = region0[3];
         pc = sLo; instrIdx = (int) sHi; startOffset = (int) (sHi >>> 32) & 0xFFFF;
-        fCode = ((sHi >>> 48) & 1) != 0; fRlog = ((sHi >>> 49) & 1) != 0; fWlog = ((sHi >>> 50) & 1) != 0; fStore = ((sHi >>> 51) & 1) != 0;
-        code.reset(fCode, (int) (lLo & 0xFFFFFF)); rlog.reset(fRlog, (int) ((lLo >>> 32) & 0xFFFFFF)); wlog.reset(fWlog, (int) (lHi & 0xFFFFFF));
-        exp.reset();
-        for (int b = EV_CODE; b <= EV_EXP; b++) ev.set(t, b, 2);   // every queue's credits to 2 (4.19.8)
-        java.util.Arrays.fill(pushed, 0); java.util.Arrays.fill(allowance, 0);
+        fStore = ((sHi >>> (SW_STORE_LOG - 64)) & 1) != 0; fRdPrev = ((sHi >>> (SW_RD_PREV - 64)) & 1) != 0;
+        StreamSize[] sz = parseStreamWord(lLo, lHi);
+        code.latch(sz[0]); rlog.latch(sz[1]); wlog.latch(sz[2]);
         for (int i = 0; i < 64; i++) { regs[2 * i] = region0[4 + 2 * i]; regs[2 * i + 1] = region0[4 + 2 * i + 1]; }
         regs[0] = 0;
         running = true;
@@ -247,6 +310,17 @@ final class Replayer implements Peripheral {
         passStartAt = t; passes++;
     }
 
+
+    /** The write to the state word (word 0) lands: every queue is flushed (DECISIONS-v1.26 item 4, in place of PULSE_RUN):
+     *  contents and occupancy, the decompressors' tables and positions, and every queue's credits set to 2 (4.19.8). Pushes
+     *  that land after it are kept for the next pass. */
+    private void flush(long t) {
+        code.flush(); rlog.flush(); wlog.flush(); exp.reset();
+        for (int b = EV_CODE; b <= EV_EXP; b++) ev.set(t, b, 2);
+        java.util.Arrays.fill(pushed, 0); java.util.Arrays.fill(allowance, 0);
+        stateWritten = true; flushes++;
+    }
+    long flushes;
 
     /** The pass ends: periph_running falls; done is posted (4.19.11, 4.17.7). */
     private void stopCore(long t, boolean postDone) {
@@ -281,9 +355,12 @@ final class Replayer implements Peripheral {
         if (w == 0) {
             if ((addr & 3) != 0) throw new UndefinedBehavior(t, me, "replayer", "a 128-bit write to part 0 off a 128-bit boundary: word address 0x" + Integer.toHexString(addr) + " (item 47)");
             int wd = addr >>> 2;                                     // 128-bit word index in window 0
-            if (wd < 66) {
+            if (wd < PART0_WORDS) {
                 if (running) { bad(t, "region 0 written while a pass runs"); return; }
                 region0[2 * wd] = lo; region0[2 * wd + 1] = hi;
+                if (wd == 0) flush(t);                               // v1.26: the state word's write flushes the queues
+            } else if (wd == REC_FILES || wd == REC_BITMAP) {
+                ignoredWrites++;                                     // v1.26: the files word and the bitmap, carried and ignored
             } else if (addr >= 0x400 && addr < 0x800) {
                 if (running) { bad(t, "decode table written while a pass runs"); return; }
                 int e0 = (wd - 0x100) * 8;
@@ -307,6 +384,7 @@ final class Replayer implements Peripheral {
         if (!ok) { condEvents[ERR_OVERRUN]++; overruns.add("@" + t + " queue " + qi); }
     }
     final List<String> overruns = new ArrayList<>();
+    long ignoredWrites;
 
     // ================================================================ the cycle
     @Override public void runCycle(long T) {
@@ -355,7 +433,8 @@ final class Replayer implements Peripheral {
         if (cur != null && lastStartAt == T) return;                  // decode the cycle after the last row starts
         int st = code.peek();
         if (st == Stream.WAIT) return;
-        if (st == Stream.END) { codeEnded = true; return; }            // an error only when a row needs it (startRow)
+        if (st == Stream.END) { codeEnded = true; return; }            // its values used up: an error only when a row needs one (startRow)
+        if (st == Stream.OVER) { underflow(T, code, "the code stream's next value runs past its " + code.words + " words"); return; }
         int w = (int) code.peekValue;
         code.commit();
         Instr in = new Instr();
@@ -423,7 +502,7 @@ final class Replayer implements Peripheral {
     private void startRow(long T) {
         Instr in = cur;
         if (in == null || in.lastStarted) {
-            if (nxt == null && codeEnded) { invalid(T, "a pop past the code stream's length"); return; }
+            if (nxt == null && codeEnded) { underflow(T, code, "an instruction past the code stream's " + code.valuesOut + " values"); return; }
             if (nxt == null || nxt.decodedAt >= T) { stall(Stall.CODE); return; }
             cur = in = nxt; nxt = null;
         }
@@ -494,11 +573,16 @@ final class Replayer implements Peripheral {
         if (logS != null) {
             int s = logS.peek();
             if (s == Stream.WAIT) { stall(logS == wlog ? Stall.WLOG : Stall.RLOG); return; }
-            if (s == Stream.END) { invalid(T, "a pop past the " + logS.name + "'s length"); return; }
+            if (s == Stream.END) { underflow(T, logS, "a pop past the " + logS.name + "'s " + logS.valuesOut + " values"); return; }
+            if (s == Stream.OVER) { underflow(T, logS, "the " + logS.name + "'s next value runs past its " + logS.words + " words"); return; }
         }
         if (nfv) {
             if (logS == rlog) violate(T, "a row with both from_log and next_from_value (two read-log words)");
-            else if (rlog.peek() == Stream.WAIT) { stall(Stall.RLOG); return; }   // a word, or the log's end
+            else {
+                int s = rlog.peek();                                     // a word, or the log's end (its values used up)
+                if (s == Stream.WAIT) { stall(Stall.RLOG); return; }
+                if (s == Stream.OVER) { underflow(T, rlog, "the read log's next value runs past its " + rlog.words + " words"); return; }
+            }
         }
         if (outQ.size() >= OUTQ_ROWS) { stall(Stall.OUTQ); return; }
 
@@ -548,7 +632,7 @@ final class Replayer implements Peripheral {
             // the row's immediate: the immediate slots' sum; for ShiftData its shift_offset (jolt-cpp imm_raw, 821e1bd)
             r[2] = pc; r[3] = ReplayerAlu.isShiftData(op) ? so : immSum;
             r[4] = rRs1 >= 0 ? vRs1 : 0; r[5] = rRs2 >= 0 ? vRs2 : 0;
-            r[6] = rRd >= 0 ? vRd : 0; r[7] = rdAfter;
+            r[6] = rRd >= 0 && fRdPrev ? vRd : 0; r[7] = rdAfter;       // v1.26: rd_prev only when the pass outputs it
             // memory rows: LD, SD and (v1.25) the narrow VirtualLoad/StoreB/H/W, whose address is rounded down to its doubleword
             if (ReplayerAlu.isLoad(op)) { r[8] = ReplayerAlu.memAddr(op, vRs1, immSum); r[9] = rdAfter; }
             else if (ReplayerAlu.isStore(op)) { r[8] = ReplayerAlu.memAddr(op, vRs1, immSum); r[9] = logS != null ? logWord : 0; }
@@ -567,7 +651,7 @@ final class Replayer implements Peripheral {
 
     private long popTransfer(long T) {
         int s = rlog.peek();
-        if (s != Stream.AVAIL) { invalid(T, "a pop past the read log's length (a control transfer's next instr_idx)"); return 0; }
+        if (s != Stream.AVAIL) { underflow(T, rlog, "a pop past the read log's " + (s == Stream.END ? rlog.valuesOut + " values" : rlog.words + " words") + " (a control transfer's next instr_idx)"); return 0; }
         long v = rlog.peekValue; rlog.commit(); rlog.releaseConsumed();
         return v;
     }
@@ -606,8 +690,29 @@ final class Replayer implements Peripheral {
         outQ.add(p.rec); outAt.add(T + 1);
         if (p.lastOfInstr) code.releaseTo(p.instr.codeEnd);
         rowsDone++;
-        if (rowsDone == rowsPerPass) stopCore(T, true);
+        if (rowsDone == rowsPerPass) { checkLeftover(T); stopCore(T, true); }
     }
+
+    /** v1.26 (DECISIONS-v1.26 items 6, 7): done with input left over, ERRORS [6]: a stream (the write log only when the pass
+     *  uses the store log) with values not popped, words not reached, or more entries pushed than its words. One bit; the
+     *  detail names the stream. The expansion queue, ended by seq_remaining, isn't checked. */
+    private void checkLeftover(long T) {
+        StringBuilder b = new StringBuilder();
+        for (Stream s : fStore ? new Stream[] { code, rlog, wlog } : new Stream[] { code, rlog }) { String l = s.leftover(); if (l != null) b.append(b.length() > 0 ? "; " : "").append(l); }
+        if (b.length() > 0) { condEvents[ERR_LEFTOVER]++; leftovers.add("@" + T + " " + b); }
+    }
+    final List<String> leftovers = new ArrayList<>();
+
+    /** An underflow (ERRORS [3]-[5], the stream's bit): set at once, and the pass stops as for an invalid expansion. */
+    private void underflow(long T, Stream s, String why) {
+        condEvents[s == code ? ERR_CODE_UNDER : s == rlog ? ERR_RLOG_UNDER : ERR_WLOG_UNDER]++;
+        underflows.add("@" + T + " " + why);
+        stopCore(T, true);
+    }
+    final List<String> underflows = new ArrayList<>();
+    /** Every error list, for the harnesses' "clean" checks. */
+    boolean clean() { return violations.isEmpty() && invalids.isEmpty() && overruns.isEmpty() && badWrites.isEmpty() && underflows.isEmpty() && leftovers.isEmpty(); }
+    String errorReport() { return "violations " + violations + ", invalid " + invalids + ", overruns " + overruns + ", underflows " + underflows + ", leftover " + leftovers; }
 
     private void invalid(long T, String why) {
         condEvents[ERR_INVALID]++;
@@ -625,18 +730,25 @@ final class Replayer implements Peripheral {
     int rowsDone() { return rowsDone; }
     int nextOffsetNow() { return nextOffset(); }
     boolean isRunning() { return running; }
+    boolean storeLogLatched() { return fStore; }
     int outQueueRows() { return outQ.size(); }
 
     // ================================================================ a code or log queue and its decompressor (4.19.15)
     final class Stream {
-        static final int AVAIL = 0, WAIT = 1, END = 2;
+        /** peek(): AVAIL a value decoded; WAIT its bits haven't landed; END its values are used up (a pop now is an
+         *  underflow); OVER (v1.26) the value's bits run past the stream's words (an underflow at once). */
+        static final int AVAIL = 0, WAIT = 1, END = 2, OVER = 3;
         final String name; final int cap, half, valueBits; final boolean isWrite;
         final long[] lo, hi;
         int head, occ, pend, poppedSince;
         int credit = -1;      // its credit bit (4.19.8)
         long base;            // stream bit position of the head entry's bit 0
         long consumed;        // stream bit position of the next unread bit
-        long len;             // the exact length in bits (latched at the run)
+        int words, valuesOut; // v1.26: the size, latched at the run: 128-bit words (padding included) and values out
+        long limit;           // words x 128: no value's bit may lie past it
+        int taken;            // values popped this pass
+        long endBits = -1;    // the bit position after the last value, once it is popped (0 for an empty stream)
+        int landedEntries;    // entries pushed since the flush
         boolean comp;
         final long[] E = new long[16];
         long cycle; int pops; long popCycle = Long.MIN_VALUE;
@@ -648,8 +760,21 @@ final class Replayer implements Peripheral {
             this.name = name; this.cap = cap; this.half = cap / 2; this.valueBits = valueBits; this.isWrite = isWrite;
             lo = new long[cap]; hi = new long[cap];
         }
-        void clear() { head = 0; occ = 0; pend = 0; base = 0; consumed = 0; poppedSince = 0; }
-        void reset(boolean compressed, int lenBits) { clear(); comp = compressed; len = lenBits; java.util.Arrays.fill(E, 0); }
+        void clear() { head = 0; occ = 0; pend = 0; base = 0; consumed = 0; poppedSince = 0; landedEntries = 0; taken = 0; endBits = -1; }
+        /** v1.26: the state word's write: the queue and its decoder emptied (its table too). */
+        void flush() { clear(); java.util.Arrays.fill(E, 0); }
+        /** v1.26: a pass's start: the stream word's size and form for this stream. */
+        void latch(StreamSize s) { words = s.words(); valuesOut = s.values(); comp = s.compressed(); limit = 128L * words; taken = 0; endBits = valuesOut == 0 ? 0 : -1; }
+        /** For tests: flush and latch in one. */
+        void reset(boolean compressed, int words, int values) { flush(); latch(new StreamSize(words, values, compressed)); }
+        /** Input left over at done, or null: values not popped, words beyond the last value's, or entries pushed past its words. */
+        String leftover() {
+            if (taken < valuesOut) return name + ": " + (valuesOut - taken) + " of " + valuesOut + " values not popped";
+            long used = (endBits + 127) >>> 7;
+            if (used < words) return name + ": " + (words - used) + " of " + words + " words after its last value";
+            if (landedEntries > words) return name + ": " + (landedEntries - words) + " entries pushed past its " + words + " words";
+            return null;
+        }
 
         boolean lowWater() { return cap - occ - pend >= half; }
 
@@ -659,6 +784,7 @@ final class Replayer implements Peripheral {
             if (occ + popsAtT >= cap) return false;
             int i = (head + occ) % cap; lo[i] = l; hi[i] = h; occ++;
             if (pend > 0) pend--;
+            landedEntries++;
             return true;
         }
 
@@ -676,10 +802,12 @@ final class Replayer implements Peripheral {
             }
             return v;
         }
-        private int need(long n) { if (consumed + n > len) return END; if (consumed + n > landedBits()) return WAIT; return AVAIL; }
+        private int need(long n) { if (consumed + n > limit) return OVER; if (consumed + n > landedBits()) return WAIT; return AVAIL; }
 
-        /** Decode the next value without taking it: AVAIL (peekValue set), WAIT (not landed yet) or END (past the length). */
+        /** Decode the next value without taking it: AVAIL (peekValue set), WAIT (not landed yet), END (its values used up)
+         *  or OVER (its bits past the words). The decoder stops at the values out, so padding is never read (v1.26). */
         int peek() {
+            if (taken >= valuesOut) return END;
             if (!comp) {
                 int s = need(valueBits); if (s != AVAIL) return s;
                 peekValue = bits(consumed, valueBits); peekBits = valueBits; peekHit = -1; return AVAIL;
@@ -698,6 +826,7 @@ final class Replayer implements Peripheral {
         /** Take the value peek() decoded: advance, and update the table (true LRU, move to front; 4.19.15). */
         void commit() {
             consumed += peekBits; values++;
+            if (++taken == valuesOut) endBits = consumed;
             if (!comp) return;
             int lruTop = isWrite ? 14 : 15;
             if (peekHit >= 0) {
@@ -718,7 +847,7 @@ final class Replayer implements Peripheral {
         /** Release the entries wholly consumed, and the one the stream ends inside once it has ended (logs). */
         void releaseConsumed() { releaseTo(consumed); }
         void releaseTo(long pos) {
-            while (occ > 0 && (base + 128 <= pos || (pos >= len && base < len))) {
+            while (occ > 0 && (base + 128 <= pos || (endBits >= 0 && pos >= endBits && base < endBits))) {
                 head = (head + 1) % cap; occ--; base += 128;
                 if (popCycle != cycle) { popCycle = cycle; pops = 0; }
                 pops++;

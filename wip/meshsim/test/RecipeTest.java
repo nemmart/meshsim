@@ -732,7 +732,7 @@ public final class RecipeTest {
         // the loop's shape runs (the state load into part 0, PULSE_RUN, the credits, the masks, run done) but no rows. The
         // replayer's real check is StageB synthetic (sw/replay/replay_ctl.c, row for row against Stage A).
         Mach m = mach();
-        m.c.cfg.checkErrors = false;                                       // the empty code stream's invalid expansion, checked below
+        m.c.cfg.checkErrors = false;                                       // the empty code stream's underflow, checked below
         m.boot("rcp_replay");
         Tile p = m.c.tiles[0];
         Replayer r = (Replayer) p.slot.p[1];
@@ -743,7 +743,7 @@ public final class RecipeTest {
         T.check(!r.isRunning() && r.region0[0] == 0 && r.region0[1] == 0, "it ended; part 0 holds the recipe's (zero) state word");
         T.eq(0, p.slot.mask[1], "the loop cleared the replayer's EVENTS_MASK at the end");
         T.eq(Registers.EVENTS_MASK_RESET, p.ctl.wakeMask, "and restored the tile's");
-        T.eq(1 << Replayer.ERR_INVALID, r.errors(m.c.cycle), "the replayer's only error: invalid expansion, a pop past the (empty) code stream, as the zero state makes it");
+        T.eq(1 << Replayer.ERR_CODE_UNDER, r.errors(m.c.cycle), "the replayer's only error: code-stream underflow (v1.26 ERRORS [3]), an instruction past the (empty) code stream, as the zero state makes it");
         T.check(r.overruns.isEmpty() && r.badWrites.isEmpty(), "no overrun and no bad write: the loop's refills kept to their credits");
         T.eq(1 << 11, p.ctl.conditions | p.ctl.errorsAt(m.c.cycle) & ~0x7FF, "the tile's ERRORS [11] (peripheral 1), and nothing else");
         noViolations(m.c, "replay");

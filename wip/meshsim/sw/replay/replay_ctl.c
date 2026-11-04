@@ -1,4 +1,11 @@
-/* The replay controller (Stage B): one tile's controller program for replay passes, spec 4.19 (v1.25).
+/* The replay controller (Stage B): one tile's controller program for replay passes, spec 4.19 (v1.26).
+ *
+ * v1.26 (WORKER20; DECISIONS-v1.26): the 68-word state record in its new order ([0] state word, [1] stream word, [2-65]
+ * the image, [66] files, [67] the template bitmap): part 0 gets words 0-65 only, from offset 0x000, and the bitmap is
+ * read from word 67. Writing the state word flushes the replayer's queues (item 4), so the program resends it before
+ * every pass after the first (PULSE_RUN no longer empties them). The read-log and write-log queues are 4 KB (V3-12):
+ * every credit is 128 entries (HALF_LOG; -DHALF_LOG=256 builds the 8 KB control). The use-store-log flag stays at the
+ * state word's [115].
  *
  * v1.25 (WORKER11): the universal tables (wip/tables/replayer, DECISIONS-v1.25 s5). The template index is keyed by
  * key(w), the normalized template-index key (tkey below): a presented word is normalized, then looked up. The fast
@@ -33,9 +40,11 @@
 
 #define RP_DECODE_TABLE (REGION_PERIPH(1) + 0x1000u)   /* the decode table, then the ROM: 768 x 16 bytes (4.19.10) */
 #define RP_EV_QUEUES    (RP_EV_CODE | RP_EV_RLOG | RP_EV_WLOG | RP_EV_EXP)
-#define HALF_CODE   128
-#define HALF_LOG    256
-#define HALF_EXP    128
+#define HALF_CODE   RP_HALF_CODE
+#ifndef HALF_LOG
+#define HALF_LOG    RP_HALF_LOG  /* v1.26: 128 (4 KB queues); the 8 KB control build defines 256 */
+#endif
+#define HALF_EXP    RP_HALF_EXP
 #define TPL_STREAM0 4            /* STREAM entries 0-3: refills; 4 + k: template k's first chunk, preloaded at start-up */
 
 uint32_t rp_results[16];
@@ -45,7 +54,7 @@ static uint32_t ix[128 * 4] __attribute__((aligned(16)));      /* the template i
 static uint8_t  hashtab[256];                                  /* the general lookup (slow path): number + 1, 0 = empty */
 /* The direct-mapped table (fast path), 16 B per slot, slot = (w * dm_mult) >> 25: {word (0 = empty), DMA_CONFIG for the
  * template's preloaded stream, its first chunk's words, the template number}. At start-up the same space holds the
- * state record (67 words) while region 0 is sent. */
+ * state record (68 words) while region 0 is sent. */
 #define DM_SLOTS 512            /* v1.25: 512 slots (8 KB), so a window's bitmap templates usually land collision-free */
 #define DM_TRIES 256            /* multipliers tried at most; a key that loses its slot takes the slow path */
 static uint32_t dmtab[DM_SLOTS * 4] __attribute__((aligned(16)));
@@ -55,7 +64,8 @@ static uint32_t dm_mult;
 static uint32_t nopword[4] __attribute__((aligned(16)));       /* ROM word 1, the shared NOP row (4.19.6) */
 static uint32_t scratch[4] __attribute__((aligned(16)));
 static uint32_t me, pmask;                                     /* pmask: the replayer's EVENTS_MASK in a pass */
-static uint32_t bitmap[4];                                     /* the window's template bitmap (state record word 0) */
+static uint32_t bitmap[4];                                     /* the window's template bitmap (v1.26: state record word 67) */
+static uint32_t statew[4] __attribute__((aligned(16)));        /* the state word (record word 0), resent before each later pass */
 
 /* key(w) (wip/tables/README.md): every bit of w except register fields. An inline (custom-0): rd, rs1, rs2 cleared.
  * CSRRW/CSRRS: rd and rs1 renamed by first appearance (x0 0; a non-zero rd 1; rs1 0 if x0, 1 if equal to a non-zero
@@ -267,7 +277,7 @@ static int run_pass(void) {
           | (store_log && hdr[RL_H_WLOG_N] ? RP_EV_WLOG : 0);         /* no write log without the store log */
     replayer->EVENTS_MASK = pmask;
     tile->EVENTS_MASK = loop_mask;                                    /* only the replayer can come */
-    replayer->PULSE_RUN = 1;                                          /* a pass: empties the queues, two credits each */
+    replayer->PULSE_RUN = 1;                                          /* a pass (v1.26: the state word's write flushed the queues) */
     for (;;) {
         __asm__ volatile ("wfi" ::: "memory");
         uint32_t ev = replayer->EVENTS & pmask;                       /* consumes: one credit from each set queue bit */
@@ -344,13 +354,15 @@ int main(void) {
     start_runs(0, 1);
     wait_event(EV_CTR(CTR_PERIPH) | EV_RUN_DONE, base_mask);
 
-    /* part 0 through the send port, from byte 16 of the record (word 1 onward): the state word, the stream word, the image */
-    copy_to_dm(hdr[RL_H_RECORD], record, 67, base_mask);
-    for (uint32_t i = 0; i < 4; i++) bitmap[i] = record[i];          /* word 0: the template bitmap (dmtab reuses record) */
-    store_log = (record[7] >> 19) & 1;                                /* the state word's flag [115]: includes the store log */
+    /* part 0 through the send port (v1.26): record words 0-65, the state word first (its write flushes the queues), the
+     * stream word, the image; words 66-67 (files, bitmap) aren't sent */
+    copy_to_dm(hdr[RL_H_RECORD], record, RL_RECORD_WORDS, base_mask);
+    for (uint32_t i = 0; i < 4; i++) bitmap[i] = record[4 * RL_RECORD_BITMAP + i];   /* word 67 (dmtab reuses record) */
+    for (uint32_t i = 0; i < 4; i++) statew[i] = record[i];
+    store_log = (record[3] >> 19) & 1;                                /* the state word's flag [115]: use the store log */
     send_to(ROUTER_HDR_W(me, MODE_WRITE, CTR_PERIPH), RP_STATE);
-    tile->WRITE_COUNTER[CTR_PERIPH - 1] = 66;
-    for (uint32_t i = 1; i < 67; i++) sendw(&record[4 * i]);
+    tile->WRITE_COUNTER[CTR_PERIPH - 1] = RL_PART0_WORDS;
+    for (uint32_t i = 0; i < RL_PART0_WORDS; i++) sendw(&record[4 * i]);
     wait_event(EV_CTR(CTR_PERIPH), base_mask);
 
     /* the fast path's tables (dmtab reuses the record's space) */
@@ -359,6 +371,12 @@ int main(void) {
 
     rp_results[RL_R_STATUS] = 1;
     for (uint32_t p = 0; p < hdr[RL_H_PASSES]; p++) {
+        if (p) {                                                      /* v1.26: the state word again, flushing the queues */
+            send_to(ROUTER_HDR_W(me, MODE_WRITE, CTR_PERIPH), RP_STATE);
+            tile->WRITE_COUNTER[CTR_PERIPH - 1] = 1;
+            sendw(statew);
+            wait_event(EV_CTR(CTR_PERIPH), base_mask);
+        }
         if (!run_pass()) { rp_results[RL_R_STATUS] = 2; break; }
         rp_results[RL_R_PASSES] = p + 1;
         if (tile->ERRORS) { rp_results[RL_R_STATUS] = 3; break; }

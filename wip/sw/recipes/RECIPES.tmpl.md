@@ -556,7 +556,7 @@ kept in x1 until report 25, so the handler builds report 24 in x2-x5.
 @@periph_window rcp_replay.c@@
 
 - **The standard words come first, in every window** (D10): `PARAMS`, `STATUS`, `ERRORS`, `PULSE_RUN`, `PULSE_DMA`, `EVENTS`, `EVENTS_PEEK`, `EVENTS_MASK`, `DMA_HDR`, `DMA_ADDR`, then the peripheral's own from word 32. The replayer's are `ROWS_RUN`, `EXPANSION_OFFSET` and `EXPANSION_OPCODE`, one field per word (D39); C&C 1's are the error, READY and watchdog words (recipe 27).
-- **A peripheral is written by packets to its region** (0x04–0x06) like any memory: mode 0, counted as the program chooses (counter 4 here). The replayer's state and stream words are two 16-byte-aligned 128-bit writes.
+- **A peripheral is written by packets to its region** (0x04–0x06) like any memory: mode 0, counted as the program chooses (counter 4 here). The replayer's state and stream words are two 16-byte-aligned 128-bit writes, the state word first: at v1.26 its write flushes the replayer's queues, so a pass starts clean.
 - **The replayer has no DMA**: words 4, 8 and 9 are unused, and its `EVENTS` [1] never sets.
 - **`periph_dma`** narrows the window's mask to DMA done around its consuming load, because a load of `EVENTS` takes one count from every set, masked bit (rule 8). That is three extra accesses. **[F9]**
 
@@ -570,7 +570,7 @@ kept in x1 until report 25, so the handler builds report 24 in x2-x5.
 ## 26. The replayer's refill loop: counted credits
 
 **What it does.** Runs one replay pass: starts it, keeps the code, read-log, write-log and expansion queues fed from big SRAM on the replayer's credits, supplies each controller-fed expansion, and stops when the pass ends.
-**Relies on:** D10 (counted events; credits depth 2; set to 2 at `PULSE_RUN` and the expansion queue's at each new expansion; every refill but a stream's last exactly half; idle queues leave the mask; spurious wakes), D16 ([13] live), D17 (refills are address-generator runs), spec 4.19.8–4.19.10 (the queues, their halves, region 0x04), D39 (the status words).
+**Relies on:** D10 (counted events; credits depth 2; set to 2 by the state word's write (v1.26, DECISIONS-v1.26 item 4) and the expansion queue's at each new expansion; every refill but a stream's last exactly half; idle queues leave the mask; spurious wakes), D16 ([13] live), D17 (refills are address-generator runs), spec 4.19.8–4.19.10 (the queues, their halves, region 0x04), D39 (the status words).
 
 @@replay_loop rcp_replay.c@@
 
@@ -585,7 +585,7 @@ kept in x1 until report 25, so the handler builds report 24 in x2-x5.
 - **Resident streams only.** Data staged from LPDDR is fetched into big SRAM on counter 1 and refilled from there (spec 4.19.13); a refill waits on counter 4 alone, so an outstanding fetch doesn't hold it up.
 
 **Walk.**
-1. `PULSE_RUN` empties the queues and sets every credit counter to 2. The masked bits (code, read log, maybe write log) are set, so the tile's [13] rises.
+1. The state word's write (`replayer_load_state`, before the pass) empties the queues and sets every credit counter to 2 (v1.26; at v1.25 `PULSE_RUN` did). `PULSE_RUN` starts the pass. The masked bits (code, read log, maybe write log) are set, so the tile's [13] rises.
 2. *Wake 1.* The load takes one credit each from code and read log (1 left each). The loop builds two streams of a half each, arms counter 4 for their total, starts, and sleeps in the squelch.
 3. The refill's packets cross the director; each lands in its queue within *K* (D10) and decrements counter 4. [3] and [10] are set; the loop restores [13], which is still high (1 credit each), so it wakes at once.
 4. *Wake 2.* The second credits go: two more halves. Both queues are now full, and both credit counters are at 0.
@@ -593,7 +593,7 @@ kept in x1 until report 25, so the handler builds report 24 in x2-x5.
 6. *A new expansion.* The replayer presents the instruction in `EXPANSION_OPCODE` (and where to start in `EXPANSION_OFFSET`, D39), posts new expansion (depth 1) and sets the expansion queue's credits to 2. The load consumes the event. The expansion's bit wasn't in the mask, so no credit went with it. The loop computes the word's key, looks it up, puts the bit in the mask, and takes the first credit on the next wake, an immediate one. That extra wake per expansion is small, about 13 a window. An accepted cost (D41). **[F11]**
 7. *An expansion of e ≤ 128 entries:* one credit, one short refill, `left` = 0, and the bit leaves the mask with its spare credit. The next new expansion resets the credits anyway, so nothing strands (W3-24).
 8. *A stream's last refill* is short and leaves the mask. The replayer's later returns on that bit accumulate unseen, at most to 2.
-9. *Run done* (depth 1) arrives with the pass's end. The loop is at its top, with no refill in flight, because every refill was waited for. So every push has landed before the next `PULSE_RUN` (the software rule of 4.19.8). It clears both masks and returns.
+9. *Run done* (depth 1) arrives with the pass's end. The loop is at its top, with no refill in flight, because every refill was waited for. So every push has landed before the next state-word write flushes the queues (the software rule of 4.19.8). It clears both masks and returns.
 
 ## 27. C&C 1's side of a phase
 

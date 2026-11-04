@@ -91,10 +91,12 @@ public final class ReplayShard {
         java.util.List<String> names = new java.util.ArrayList<>(List.of(base + v + ".bin", base + "rows.bin"));
         if (Files.exists(pd.resolve(base + "end.bin"))) names.add(base + "end.bin");
         byte[] rec = Files.readAllBytes(pd.resolve(base + v + ".bin"));
-        long sHi = ReplayTables.le(rec).getLong(24);
-        names.add(base + (((sHi >>> 48) & 1) != 0 ? "code-lru" : "code") + ".bin");
-        names.add(base + (((sHi >>> 49) & 1) != 0 ? "rlog-lru" : "rlog") + ".bin");
-        names.add(base + (((sHi >>> 50) & 1) != 0 ? "wlog-lru" : "wlog") + ".bin");
+        java.nio.ByteBuffer rb = ReplayTables.le(rec);
+        if (rec.length != 16 * Replayer.REC_WORDS) return base + v + ".bin: " + rec.length + " bytes, not a v1.26 record (" + 16 * Replayer.REC_WORDS + "); convert the delivery (ConvertDelivery)";
+        Replayer.StreamSize[] sz = Replayer.parseStreamWord(rb.getLong(16), rb.getLong(24));   // v1.26: the flags are in the stream word
+        names.add(base + ReplayDelivery.streamFile("code", sz[0].compressed()));
+        names.add(base + ReplayDelivery.streamFile("rlog", sz[1].compressed()));
+        names.add(base + ReplayDelivery.streamFile("wlog", sz[2].compressed()));
         StringBuilder bad = new StringBuilder();
         for (String f : names) {
             Object e = files.get(f);

@@ -26,7 +26,7 @@ import java.util.Map;
  */
 public final class StageB {
     static final int HDR = 0x00000, TABLES = 0x00040, INDEX = 0x00C40, RECORD = 0x00E40, TEMPLATES = 0x58000,   // v1.25: 1.4 MB for the universal set
-            CODE = 0x08000, RLOG = 0x18000, WLOG = 0x38000, LAYOUT_VERSION = 2;
+            CODE = 0x08000, RLOG = 0x18000, WLOG = 0x38000, LAYOUT_VERSION = 3;   // v1.26: the 68-word record
 
     /**
      * Simulate tile 0 only (Chip.parked; -Dstageb.lone, or ReplayShard's stage B): in a Stage B replay the other 63 tiles
@@ -107,11 +107,12 @@ public final class StageB {
         byte[] rec = Files.readAllBytes(pd.resolve(base + variant + ".bin"));
         put(p, RECORD, rec);
         ByteBuffer rb = ReplayDelivery.le(rec);
-        long sHi = rb.getLong(16 + 8), lLo = rb.getLong(16 + 16), lHi = rb.getLong(16 + 24);
-        boolean cc = ((sHi >>> 48) & 1) != 0, rc = ((sHi >>> 49) & 1) != 0, wc = ((sHi >>> 50) & 1) != 0;
-        byte[] code = Files.readAllBytes(pd.resolve(base + (cc ? "code-lru" : "code") + ".bin"));
-        byte[] rlog = Files.readAllBytes(pd.resolve(base + (rc ? "rlog-lru" : "rlog") + ".bin"));
-        byte[] wlog = Files.readAllBytes(pd.resolve(base + (wc ? "wlog-lru" : "wlog") + ".bin"));
+        ReplayDelivery.checkRecord(rb, base + variant + ".bin");
+        Replayer.StreamSize[] sz = Replayer.parseStreamWord(rb.getLong(16), rb.getLong(24));   // v1.26: word 1
+        boolean cc = sz[0].compressed(), rc = sz[1].compressed(), wc = sz[2].compressed();
+        byte[] code = Files.readAllBytes(pd.resolve(base + ReplayDelivery.streamFile("code", cc)));
+        byte[] rlog = Files.readAllBytes(pd.resolve(base + ReplayDelivery.streamFile("rlog", rc)));
+        byte[] wlog = Files.readAllBytes(pd.resolve(base + ReplayDelivery.streamFile("wlog", wc)));
         put(p, CODE, code); put(p, RLOG, rlog); put(p, WLOG, wlog);
         int[] h = new int[16];
         h[0] = 0x594C5052; h[1] = LAYOUT_VERSION; h[2] = TABLES; h[3] = INDEX; h[4] = ixb.length / 16; h[5] = TEMPLATES; h[6] = RECORD;
@@ -157,18 +158,19 @@ public final class StageB {
             for (int f = 0; f < 10; f++) if (g[f] != ref.getLong(80 * i + 8 * f)) { eq = false; break; }
             if (!eq) { detail.add("first mismatching row " + i); break; }
         }
-        long codeLen = lLo & 0xFFFFFF, rlogLen = (lLo >>> 32) & 0xFFFFFF, wlogLen = lHi & 0xFFFFFF;
-        if (r.code.consumed != codeLen || r.rlog.consumed != rlogLen || r.wlog.consumed != wlogLen)
-            detail.add("streams not consumed exactly: code " + r.code.consumed + "/" + codeLen + ", read log " + r.rlog.consumed + "/" + rlogLen + ", write log " + r.wlog.consumed + "/" + wlogLen);
+        String sc = ReplayDelivery.consumedExactly(r, sz, code.length / 16, rlog.length / 16, wlog.length / 16);
+        if (sc != null) detail.add(sc);
         Path endp = pd.resolve(base + "end.bin");
         if (Files.exists(endp)) {
             ByteBuffer end = ReplayDelivery.le(Files.readAllBytes(endp));
-            long epc = end.getLong(16), eHi = end.getLong(24);
+            ReplayDelivery.checkRecord(end, base + "end.bin");
+            long epc = end.getLong(0), eHi = end.getLong(8);
             if (r.pc() != epc || (r.instrIdx() & 0xFFFFFFFFL) != (eHi & 0xFFFFFFFFL)) detail.add("end state differs");
-            for (int i = 1; i < 128; i++) if (r.reg(i) != end.getLong(48 + 8 * i)) { detail.add("end state: register " + i); break; }
+            for (int i = 1; i < 128; i++) if (r.reg(i) != end.getLong(32 + 8 * i)) { detail.add("end state: register " + i); break; }
         }
-        if (!r.violations.isEmpty() || !r.invalids.isEmpty() || !r.overruns.isEmpty() || !r.badWrites.isEmpty())
-            detail.add("replayer: violations " + head(r.violations) + ", invalid " + head(r.invalids) + ", overruns " + head(r.overruns) + ", bad writes " + head(r.badWrites));
+        if (!r.clean())
+            detail.add("replayer: violations " + head(r.violations) + ", invalid " + head(r.invalids) + ", overruns " + head(r.overruns) + ", bad writes " + head(r.badWrites)
+                    + ", underflows " + head(r.underflows) + ", leftover " + head(r.leftovers));
         if (c.violations > 0) detail.add("meshsim: " + cut(c.violationReport().replace("\n", "; ")));
         if (wt.stuck) detail.add(wt.report(got.size(), p));
         else if (!ok || p.core.halt == Controller.RUN) detail.add(wt.stopReport(c.cycle, 40L * rows + 2_000_000, got.size(), p));
@@ -182,8 +184,17 @@ public final class StageB {
         for (String d : detail) System.out.println("    " + d);
         ReplayDelivery.Result out = new ReplayDelivery.Result();
         out.ok = pass; out.rows = same; out.cycles = cyc; out.index = index; out.detail.addAll(detail);
-        out.summary = String.format((LONE ? "tile 0 only, " : "full chip, ") + "max row gap " + wt.maxGap + ", %.3f cycles/row, newexp %d (slow %d), refills %d", (double) cyc / Math.max(1, same), r.newExpansions, slow, refills);
+        out.summary = String.format((LONE ? "tile 0 only, " : "full chip, ") + "max row gap " + wt.maxGap + ", %.3f cycles/row, newexp %d (slow %d), refills %d, waits %s",
+                (double) cyc / Math.max(1, same), r.newExpansions, slow, refills, waits(r));
         return out;
+    }
+
+    /** The pass's stall cycles by kind, for results.csv: "image/code/newexp/exp/rlog/wlog/outq a/b/c/d/e/f/g" (run_shard.sh
+     *  averages the read-log and write-log waits per window, the v1.26 queue-size check, V3-12). */
+    static String waits(Replayer r) {
+        StringBuilder b = new StringBuilder("image/code/newexp/exp/rlog/wlog/outq ");
+        for (int i = 0; i < r.stalls.length; i++) b.append(i > 0 ? "/" : "").append(r.stalls[i]);
+        return b.append(" logq ").append(r.rlog.cap).toString();
     }
 
     // ================================================================ CL4: a window that stops making rows fails at once
@@ -300,12 +311,10 @@ public final class StageB {
         }
         long[] tpl = new long[2 * off]; int at = 0; for (long[] t : tw) { System.arraycopy(t, 0, tpl, at, t.length); at += t.length; }
         put(p, INDEX, bytes(ix)); put(p, TEMPLATES, bytes(tpl));
-        // the record: word 0 the template bitmap (unused), then the state word, the stream word and the 64-word image
-        long[] rec = new long[2 * 67];
-        for (int q = 0; q < ws.size(); q++) rec[q >>> 6] |= 1L << (q & 63);       // word 0: the bitmap, every template
-        rec[2] = w.stateLo(); rec[3] = w.stateHi(); rec[4] = w.streamLo(); rec[5] = w.streamHi();
-        for (int i = 0; i < 128; i++) rec[6 + i] = w.regs[i];
-        put(p, RECORD, bytes(rec));
+        // the record (v1.26): the state word, the stream word, the 64-word image, the files word, the bitmap (every template)
+        long[] bm = new long[2];
+        for (int q = 0; q < ws.size(); q++) bm[q >>> 6] |= 1L << (q & 63);
+        put(p, RECORD, bytes(w.record(bm)));
         put(p, CODE, bytes(w.code)); put(p, RLOG, bytes(w.rlog)); put(p, WLOG, bytes(w.wlog));
         int[] h = new int[16];
         h[0] = 0x594C5052; h[1] = LAYOUT_VERSION; h[2] = TABLES; h[3] = INDEX; h[4] = ws.size(); h[5] = TEMPLATES; h[6] = RECORD;
@@ -323,8 +332,9 @@ public final class StageB {
         if (status != 1) detail.add("rp_results status " + status + " missing 0x" + Integer.toHexString(p.core.peekLocal(res + 20)));
         if (got.size() != ref.size()) detail.add("rows: tile " + got.size() + ", Stage A " + ref.size());
         for (int i = 0; i < Math.min(got.size(), ref.size()); i++) if (!java.util.Arrays.equals(got.get(i), ref.get(i))) { detail.add("first mismatching row " + i); break; }
-        if (!r.violations.isEmpty() || !r.overruns.isEmpty() || !r.badWrites.isEmpty() || !r.invalids.isEmpty())
-            detail.add("replayer: violations " + head(r.violations) + ", overruns " + head(r.overruns) + ", bad writes " + head(r.badWrites) + ", invalid " + head(r.invalids));
+        if (!r.clean())
+            detail.add("replayer: violations " + head(r.violations) + ", overruns " + head(r.overruns) + ", bad writes " + head(r.badWrites) + ", invalid " + head(r.invalids)
+                    + ", underflows " + head(r.underflows) + ", leftover " + head(r.leftovers));
         if (c.violations > 0) detail.add("meshsim: " + cut(c.violationReport().replace("\n", "; ")));
         boolean pass = detail.isEmpty();
         long cyc = (r.passEndAt >= r.passStartAt ? r.passEndAt : c.cycle) - r.passStartAt;   // a starved pass: to now

@@ -84,14 +84,14 @@ public final class ReplayDelivery {
         ReplayWindow w = new ReplayWindow();
         w.rows = rows;
         w.useTables(prog);
-        w.region0 = new long[132];
-        for (int i = 0; i < 132; i++) w.region0[i] = rec.getLong(16 + 8 * i);
-        long sHi = w.region0[1], lLo = w.region0[2], lHi = w.region0[3];
-        boolean cc = ((sHi >>> 48) & 1) != 0, rc = ((sHi >>> 49) & 1) != 0, wc = ((sHi >>> 50) & 1) != 0;
-        w.code = words(pd.resolve(base + (cc ? "code-lru" : "code") + ".bin"));
-        w.rlog = words(pd.resolve(base + (rc ? "rlog-lru" : "rlog") + ".bin"));
-        w.wlog = words(pd.resolve(base + (wc ? "wlog-lru" : "wlog") + ".bin"));
-        long codeLen = lLo & 0xFFFFFF, rlogLen = (lLo >>> 32) & 0xFFFFFF, wlogLen = lHi & 0xFFFFFF;
+        checkRecord(rec, base + variant + ".bin");
+        w.region0 = new long[2 * Replayer.PART0_WORDS];                 // v1.26: words 0-65 (part 0); 66-67 aren't sent
+        for (int i = 0; i < w.region0.length; i++) w.region0[i] = rec.getLong(8 * i);
+        Replayer.StreamSize[] sz = Replayer.parseStreamWord(w.region0[2], w.region0[3]);
+        boolean cc = sz[0].compressed(), rc = sz[1].compressed(), wc = sz[2].compressed();
+        w.code = words(pd.resolve(base + streamFile("code", cc)));
+        w.rlog = words(pd.resolve(base + streamFile("rlog", rc)));
+        w.wlog = words(pd.resolve(base + streamFile("wlog", wc)));
         res.summary = "streams " + (cc ? "C" : "r") + (rc ? "C" : "r") + (wc ? "C" : "r");
 
         ReplayDriver d = new ReplayDriver(w);
@@ -130,31 +130,52 @@ public final class ReplayDelivery {
         }
         // ---- the streams consumed exactly, the end state, the replayer clean
         if (res.ok) {
-            if (d.r.code.consumed != codeLen || d.r.rlog.consumed != rlogLen || d.r.wlog.consumed != wlogLen) {
-                res.ok = false;
-                res.detail.add("streams not consumed exactly: code " + d.r.code.consumed + "/" + codeLen + ", read log " + d.r.rlog.consumed + "/" + rlogLen + ", write log " + d.r.wlog.consumed + "/" + wlogLen + " bits");
-            }
+            String sc = consumedExactly(d.r, sz, w.code.length / 2, w.rlog.length / 2, w.wlog.length / 2);
+            if (sc != null) { res.ok = false; res.detail.add(sc); }
             Path endp = pd.resolve(base + "end.bin");
             if (Files.exists(endp)) {
                 ByteBuffer end = le(Files.readAllBytes(endp));
-                long epc = end.getLong(16), eHi = end.getLong(24);
+                checkRecord(end, base + "end.bin");
+                long epc = end.getLong(0), eHi = end.getLong(8);
                 if (d.r.pc() != epc || (d.r.instrIdx() & 0xFFFFFFFFL) != (eHi & 0xFFFFFFFFL) || d.r.nextOffsetNow() != ((eHi >>> 32) & 0xFFFF)) {
                     res.ok = false;
                     res.detail.add(String.format("end state: model pc 0x%x idx %d offset %d; end.bin pc 0x%x idx %d offset %d", d.r.pc(), d.r.instrIdx(),
                             d.r.nextOffsetNow(), epc, eHi & 0xFFFFFFFFL, (eHi >>> 32) & 0xFFFF));
                 }
                 for (int i = 1; i < 128; i++) {
-                    long ev = end.getLong(48 + 8 * i);
+                    long ev = end.getLong(32 + 8 * i);
                     if (d.r.reg(i) != ev) { res.ok = false; res.detail.add(String.format("end state: register %d model 0x%x, end.bin 0x%x", i, d.r.reg(i), ev)); break; }
                 }
             }
-            if (!d.r.violations.isEmpty() || !d.r.invalids.isEmpty() || !d.r.overruns.isEmpty() || !d.r.badWrites.isEmpty() || d.missingTemplates > 0) {
+            if (!d.r.clean() || d.missingTemplates > 0) {
                 res.ok = false;
-                res.detail.add("replayer: violations " + d.r.violations + ", invalid " + d.r.invalids + ", overruns " + d.r.overruns + ", bad writes " + d.r.badWrites + ", missing templates " + d.log);
+                res.detail.add("replayer: " + d.r.errorReport() + ", missing templates " + d.log);
             }
         }
         res.summary += "  newexp " + d.r.newExpansions + ", stalls " + java.util.Arrays.toString(d.r.stalls);
         return res;
+    }
+
+    /** v1.26: a state record is 68 words (1,088 bytes); a v1.25 record (67 words) must be converted first (ConvertDelivery). */
+    static void checkRecord(ByteBuffer rec, String name) {
+        if (rec.capacity() != 16 * Replayer.REC_WORDS)
+            throw new IllegalStateException(name + ": " + rec.capacity() + " bytes, not a v1.26 state record (" + 16 * Replayer.REC_WORDS + "): convert a v1.25 delivery with ConvertDelivery");
+    }
+    /** The stream file a stream word's flag names: raw, or its LRU form. */
+    static String streamFile(String s, boolean compressed) { return s + (compressed ? "-lru" : "") + ".bin"; }
+    /** v1.26: every stream's values popped and its words reached exactly (the write log only with the store log), the files'
+     *  entries equal to the stream word's words, and no underflow or leftover; null if so. */
+    static String consumedExactly(Replayer r, Replayer.StreamSize[] sz, int codeEntries, int rlogEntries, int wlogEntries) {
+        StringBuilder b = new StringBuilder();
+        int[] files = { codeEntries, rlogEntries, wlogEntries };
+        Replayer.Stream[] st = { r.code, r.rlog, r.wlog };
+        for (int k = 0; k < 3; k++) {
+            if (files[k] != sz[k].words()) b.append(st[k].name).append(": the file has ").append(files[k]).append(" entries, the stream word ").append(sz[k].words()).append(" words; ");
+            if (k == 2 && !r.storeLogLatched()) continue;
+            if (st[k].taken != sz[k].values()) b.append(st[k].name).append(": ").append(st[k].taken).append(" of ").append(sz[k].values()).append(" values; ");
+            if (((st[k].endBits + 127) >>> 7) != sz[k].words()) b.append(st[k].name).append(": ended in word ").append((st[k].endBits + 127) >>> 7).append(" of ").append(sz[k].words()).append("; ");
+        }
+        return b.length() == 0 ? null : "streams not consumed exactly: " + b;
     }
 
     static long[] fields(long[] g) {

@@ -24,6 +24,7 @@ final class ReplayerUnitTests {
         writePort();
         lines();
         timing();
+        v126();
     }
 
     // ================================================================ RISC-V encoders (independent of the decoder)
@@ -104,7 +105,7 @@ final class ReplayerUnitTests {
             boolean rc = trial % 2 == 0, wc = trial % 3 != 0;
             ReplayWindow w = new ReplayWindow(); w.setLogs(ev, rc, wc);
             Replayer rp = new Replayer(0);
-            rp.rlog.reset(rc, (int) w.rlogLen); rp.wlog.reset(wc, (int) w.wlogLen);
+            rp.rlog.reset(rc, w.rlog.length / 2, w.rlogVals); rp.wlog.reset(wc, w.wlog.length / 2, w.wlogVals);
             int rn = 0, wn = 0; long t = 0; boolean ok = true; int hits15 = 0;
             for (ReplayWindow.LogEvent e : ev) {
                 if (e.hasRead()) {
@@ -131,7 +132,7 @@ final class ReplayerUnitTests {
         ReplayWindow.putValue(bits, -1, 1); ReplayWindow.putValue(bits, -1, 2); ReplayWindow.putValue(bits, -1, 3);
         ReplayWindow.putValue(bits, 2, 0); ReplayWindow.putValue(bits, 1, 0); ReplayWindow.putValue(bits, -1, 0x1_0000_0000L);
         long[] ent = bits.entries();
-        Replayer rp = new Replayer(0); rp.rlog.reset(true, (int) bits.n);
+        Replayer rp = new Replayer(0); rp.rlog.reset(true, ent.length / 2, 6);
         for (int k = 0; k < ent.length / 2; k++) rp.rlog.push(k, ent[2 * k], ent[2 * k + 1]);
         long[] expect = { 1, 2, 3, 1, 3, 0x1_0000_0000L };
         for (long e : expect) { T.check(rp.rlog.peek() == Replayer.Stream.AVAIL, "MTF: available"); T.eq(e, rp.rlog.peekValue, "MTF value"); rp.rlog.commit(); }
@@ -141,7 +142,7 @@ final class ReplayerUnitTests {
         ReplayWindow.Bits wb = new ReplayWindow.Bits();
         for (int k = 1; k <= 15; k++) ReplayWindow.putValue(wb, -1, k);          // E[0..14] = 15..1
         ReplayWindow.putValue(wb, 15, 0); ReplayWindow.putValue(wb, -1, 99);
-        long[] we = wb.entries(); rw.wlog.reset(true, (int) wb.n);
+        long[] we = wb.entries(); rw.wlog.reset(true, we.length / 2, 17);
         for (int k = 0; k < we.length / 2; k++) rw.wlog.push(k, we[2 * k], we[2 * k + 1]);
         for (int k = 0; k < 15; k++) { rw.wlog.peek(); rw.wlog.commit(); }
         rw.wlog.lastLoad(0xBEEF);
@@ -154,7 +155,7 @@ final class ReplayerUnitTests {
         // a 32-bit miss is zero-extended; a value straddling two entries waits for the second
         ReplayWindow.Bits b2 = new ReplayWindow.Bits(); b2.put(0, 100); ReplayWindow.putValue(b2, -1, 0xFFFF_FFFFL);
         long[] e2 = b2.entries();
-        Replayer r2 = new Replayer(0); r2.rlog.reset(true, (int) b2.n);
+        Replayer r2 = new Replayer(0); r2.rlog.reset(true, e2.length / 2, 2);
         r2.rlog.push(0, e2[0], e2[1]);
         r2.rlog.consumed = 100;
         T.eq(Replayer.Stream.WAIT, r2.rlog.peek(), "a value straddling entries waits for the second entry");
@@ -286,8 +287,8 @@ final class ReplayerUnitTests {
         T.eq(0, d.r.instrIdx(), "instr_idx 0 after the program end");
         T.eq(0x1036, d.r.reg(40), "the remapped link is written into v40");
         T.eq(0x101, d.r.reg(A0), "a0");
-        T.eq(0, d.r.condEvents[0] + d.r.condEvents[1] + d.r.condEvents[2], "no condition");
-        T.check(d.r.violations.isEmpty(), "no violation: " + d.r.violations);
+        T.eq(0, d.r.errors(d.t), "no condition (v1.26: ERRORS [0]-[6])");
+        T.check(d.r.clean(), "clean: " + d.r.errorReport());
         T.check(d.done, "done was posted");
     }
 
@@ -299,7 +300,7 @@ final class ReplayerUnitTests {
             T.group("program, " + n);
             ReplayDriver d = runWindow(programWindow(c[0], c[1], c[2], true), 25);
             checkRows(n, d.rows, exp, PADDING);
-            T.check(d.r.violations.isEmpty() && d.r.invalids.isEmpty(), n + ": clean " + d.r.violations + d.r.invalids);
+            T.check(d.r.clean(), n + ": clean " + d.r.errorReport());
             if (c[2]) T.check(d.r.wlog.hits >= 1, n + ": the SD's pre-value came from the last-load entry");
         }
     }
@@ -311,6 +312,7 @@ final class ReplayerUnitTests {
         ReplayDriver d = runWindow(w, 25);
         checkRows("no store log", d.rows, expected(false), PADDING);
         T.eq(0, d.wlogNext, "the write-log queue was never fed (its line stayed quiet)");
+        T.check(d.r.clean(), "clean: " + d.r.errorReport());
     }
 
     // ================================================================ mid-sequence starts (4.19.2, 4.19.4)
@@ -480,7 +482,7 @@ final class ReplayerUnitTests {
         T.check(zero, "every record is all zeros");
         T.check(d.done && d.r.violations.isEmpty() && d.r.invalids.isEmpty(), "done, clean");
         long cyc = d.r.passEndAt - d.r.passStartAt;
-        T.check(cyc >= 3L * 65536 + 64 && cyc < 3L * 65536 + 64 + 200, "about 3 cycles per row plus the image copy: " + cyc);
+        T.check(cyc >= 3L * 65536 && cyc < 3L * 65536 + 200, "about 3 cycles per row (v1.26 item 12: no image copy): " + cyc);
 
         T.group("all-padding window, compressed code");
         w.setCode(new int[Replayer.ROWS_PER_PASS], true);
@@ -531,7 +533,8 @@ final class ReplayerUnitTests {
 
     // ================================================================ invalid expansions (4.19.11, condition 13)
     static void invalid() {
-        String[] cases = { "class 3", "reserved operand code", "format 6", "opcode not executed", "past ROM word 511", "code past its length", "read log past its length" };
+        // v1.26: a pop past a stream's length is an underflow (ERRORS [3]-[5], v126() below), no longer an invalid expansion
+        String[] cases = { "class 3", "reserved operand code", "format 6", "opcode not executed", "past ROM word 511" };
         for (String c : cases) {
             T.group("invalid expansion: " + c);
             ReplayWindow w = new ReplayWindow(); w.fixedRom();
@@ -634,7 +637,7 @@ final class ReplayerUnitTests {
         T.eq(3, r3.rlog.occ, "part 2 (0x200000-0x2FFFFF): the read-log queue, 0x280000 included");
         T.eq(2, r3.wlog.occ, "part 3 (0x300000-0x3FFFFF): the write-log queue");
         T.eq(2, r3.exp.occ, "part 4 (0x400000-0x4FFFFF): the expansion queue");
-        T.eq(0x280000L, r3.rlog.lo[(r3.rlog.head + 1) % 512], "0x280000 went to the read log, in order");
+        T.eq(0x280000L, r3.rlog.lo[(r3.rlog.head + 1) % r3.rlog.cap], "0x280000 went to the read log, in order");
         T.eq(0x400000L, r3.exp.lo[r3.exp.head], "0x400000 went to the expansion queue");
         // overrun
         Replayer r2 = new Replayer(0); long t2 = 0;
@@ -655,10 +658,10 @@ final class ReplayerUnitTests {
         ReplayDriver d = new ReplayDriver(w, r); d.load();
         long t = d.t;
         T.check(!r.running(t), "idle: STATUS [0] = 0");
-        T.eq(0, r.events().value(t), "idle: no event");
+        T.eq(code | rlog | wlog | exp, r.events().value(t), "idle, after the load: the state word's write set every queue's credits to 2 (v1.26; the write log's too: the loop masks it without the store log)");
         r.run(t); d.step(); r.sync(d.t);
         T.check(r.running(t + 1), "running from the end of the run's cycle");
-        T.eq(code | rlog | wlog | exp, r.events().value(d.t), "PULSE_RUN: every queue's credits to 2 (the write log's too: the loop masks it without the store log)");
+        T.eq(code | rlog | wlog | exp, r.events().value(d.t), "PULSE_RUN leaves them (v1.26)");
         for (int b = Replayer.EV_CODE; b <= Replayer.EV_EXP; b++) T.eq(2, r.events().count(b), "credit bit " + b + ": 2");
         r.events().consume(code); d.step(); r.sync(d.t);
         T.eq(code | rlog | wlog | exp, r.events().value(d.t), "one consuming load: code still has a credit");
@@ -686,8 +689,311 @@ final class ReplayerUnitTests {
         System.out.println("  program pass: " + cyc + " cycles from the run to the last row: rows " + rowsCycles + ", stalls "
                 + Arrays.toString(d.r.stalls) + " " + Arrays.toString(Replayer.Stall.values()));
         T.eq(rowsCycles + stalls, cyc, "cycles = row schedules (3, or 5 for class M) + stall cycles (the image copy among them)");
-        T.eq(64, d.r.stalls[Replayer.Stall.IMAGE.ordinal()], "the image copy takes 64 cycles");
+        T.eq(0, d.r.stalls[Replayer.Stall.IMAGE.ordinal()], "v1.26 (item 12): no image copy, the first row starts at once");
         T.eq(2, d.r.rowsM, "two class-M rows");
         T.eq(25, d.r.status(d.t, 0) & 0xFFFF, "PERIPH_STATUS_0 [15:0]: rows run");
+    }
+
+    // ================================================================ v1.26 (DECISIONS-v1.26)
+    static void v126() {
+        streamWordLayout();
+        underflows();
+        leftovers();
+        paddingAnything();
+        flushes();
+        rdPrevFlag();
+        recordWords();
+        queueSizes();
+        workingState();
+    }
+
+    /** Item 12: part 0 is the working state: after a pass it holds the end state; the reload of words 0-65 restarts it. */
+    static void workingState() {
+        T.group("v1.26: part 0 is the working state");
+        ReplayWindow w = programWindow(false, false, false, true);
+        Replayer r = new Replayer(0); r.rowsPerPass = 25;
+        ReplayDriver d = new ReplayDriver(w, r); d.load();
+        T.eq(0x1000L, r.region0[0], "before the pass: the state word's pc");
+        List<long[]> first = new ArrayList<>(d.pass(200_000));
+        T.eq(r.pc(), r.region0[0], "after: the state word holds the end pc (" + r.pc() + ")");
+        T.eq(r.instrIdx() & 0xFFFFFFFFL, r.region0[1] & 0xFFFFFFFFL, "and the end instr_idx");
+        T.eq(0x101L, r.region0[4 + A0], "the image holds the registers as the pass left them (a0 = 0x101)");
+        T.eq(0x1036L, r.region0[4 + 40], "v40 too");
+        T.check(((r.region0[1] >>> (Replayer.SW_STORE_LOG - 64)) & 1) == 1, "the flags are untouched");
+        List<long[]> again = new ArrayList<>(d.pass(200_000));                 // the driver reloads words 0-65 first
+        T.check(again.size() == first.size() && java.util.stream.IntStream.range(0, first.size()).allMatch(k -> Arrays.equals(first.get(k), again.get(k))),
+                "after reloading words 0-65, the same pass again");
+        T.check(r.clean(), "clean: " + r.errorReport());
+    }
+
+    /** Item 2: the stream word carries words, values and the compression flag for each stream (parseStreamWord's layout). */
+    static void streamWordLayout() {
+        T.group("v1.26: the stream word");
+        Random g = new Random(26);
+        boolean ok = true;
+        for (int k = 0; k < 2000; k++) {
+            Replayer.StreamSize[] a = new Replayer.StreamSize[3];
+            for (int s = 0; s < 3; s++) a[s] = new Replayer.StreamSize(g.nextInt(0x10000), g.nextInt(0x20000), g.nextBoolean());
+            long[] w = Replayer.streamWord(a[0], a[1], a[2]);
+            Replayer.StreamSize[] b = Replayer.parseStreamWord(w[0], w[1]);
+            ok &= Arrays.equals(a, b) && (w[0] >>> 51) == 0 && (w[1] >>> 51) == 0;
+        }
+        T.check(ok, "2,000 random sizes round-trip, [63:51] and [127:115] spare");
+        long[] one = Replayer.streamWord(new Replayer.StreamSize(0x1111, 0x10001, true), new Replayer.StreamSize(0x2222, 0x10002, false), new Replayer.StreamSize(0x3333, 0x10003, true));
+        T.eq(0x0005_3333_2222_1111L, one[0], "WORKER19's layout: words [15:0], [31:16], [47:32]; flags [48]-[50]");
+        T.eq(0x10001L | 0x10002L << 17 | 0x10003L << 34, one[1], "values out [80:64], [97:81], [114:98]");
+        long[] mx = Replayer.streamWord(new Replayer.StreamSize(33_800, 65_536, true), new Replayer.StreamSize(0xFFFF, 0x1FFFF, true), new Replayer.StreamSize(0, 0, false));
+        Replayer.StreamSize[] m = Replayer.parseStreamWord(mx[0], mx[1]);
+        T.check(m[0].words() == 33_800 && m[0].values() == 65_536 && m[0].compressed() && m[1].words() == 0xFFFF && m[1].values() == 0x1FFFF && !m[2].compressed(),
+                "the largest sizes fit (a stream at most about 33,800 words and 65,536 values): " + Arrays.toString(m));
+        T.eq(1L << 51, Replayer.stateHi(0, 0, true, false), "the state word: use the store log at [115]");
+        T.eq(1L << 52, Replayer.stateHi(0, 0, false, true), "the state word: output rd_prev at [116] (Proposed)");
+        boolean thrown = false;
+        try { new Replayer.StreamSize(0x10000, 0, false); } catch (IllegalArgumentException e) { thrown = true; }
+        T.check(thrown, "a size past its field is refused");
+    }
+
+    /** Items 6, 7: a pop past a stream's values, or a decode past its words, is an underflow at once: [3], [4], [5]. */
+    static void underflows() {
+        String[] cases = { "code past its values", "code past its words", "read log past its values", "read log past its words",
+                "write log past its values", "write log past its words", "a transfer past the read log", "write log off: no [5]" };
+        for (String c : cases) {
+            T.group("v1.26 underflow: " + c);
+            ReplayWindow w = new ReplayWindow(); w.fixedRom();
+            int ins = i(5, 0, 0, A0, OP_IMM);
+            int nIns = 3, rows = 3;
+            int expectBit = -1; long expectRows = 0;
+            if (c.startsWith("code")) {
+                w.rom(20, ReplayWindow.W.op(ReplayerAlu.ADDI).rd(129).rs1(130).rs2(132).fmt(1).reportC());
+                w.setLogs(List.of(), false, false);
+                if (c.endsWith("values")) { expectRows = 3; rows = 4; }                     // a fourth row needs a fourth instruction
+                else { nIns = 5; rows = 5; w.wordsAdj[0] = -1; expectRows = 3; }             // the fifth value's bits are in word 2: at its decode, the fourth row in flight
+                expectBit = Replayer.ERR_CODE_UNDER;
+            } else if (c.startsWith("read log") || c.startsWith("a transfer")) {
+                if (c.startsWith("a transfer")) {
+                    ins = j(8, 0, JAL);                                             // jal x0, 8: a transfer takes the next instr_idx from the read log
+                    w.rom(20, ReplayWindow.W.op(ReplayerAlu.JAL).rd(129).rs1(132).rs2(128).cnst(0).fmt(5).nfv().imm0pc0().rd0(2).reportC());
+                    w.setLogs(List.of(new ReplayWindow.LogEvent(true, 2, false, false, 0)), false, false);
+                    expectRows = 1;
+                } else {
+                    w.rom(20, ReplayWindow.W.op(ReplayerAlu.ADVICE).rd(129).rs1(128).rs2(128).cnst(0).fromLog().reportC());
+                    List<ReplayWindow.LogEvent> ev = new ArrayList<>();
+                    for (int k = 0; k < (c.endsWith("values") ? 1 : 3); k++) ev.add(new ReplayWindow.LogEvent(true, 9 + k, false, false, 0));
+                    w.setLogs(ev, false, false);
+                    if (c.endsWith("words")) { w.wordsAdj[1] = -1; expectRows = 2; } else expectRows = 1;   // the third value is in word 2
+                }
+                expectBit = Replayer.ERR_RLOG_UNDER;
+            } else {
+                ins = s(8, A1, A0, 3, STORE);                                       // sd: a write-log pop
+                w.rom(20, ReplayWindow.W.op(ReplayerAlu.SD).rd(132).rs1(130).rs2(131).fmt(2).fromLog().reportC().sign());
+                List<ReplayWindow.LogEvent> ev = new ArrayList<>();
+                int n = c.endsWith("values") ? 1 : c.endsWith("words") ? 3 : 0;
+                for (int k = 0; k < n; k++) ev.add(new ReplayWindow.LogEvent(false, 0, false, true, 7 + k));
+                w.setLogs(ev, false, false);
+                if (c.endsWith("words")) { w.wordsAdj[2] = -1; expectRows = 2; } else expectRows = c.endsWith("values") ? 1 : 3;
+                w.storeLog = !c.startsWith("write log off");
+                if (w.storeLog) expectBit = Replayer.ERR_WLOG_UNDER;
+                w.regs[A0] = 0x2000;
+            }
+            w.decodeRom(ins, 20);
+            w.pc = 0x1000; w.instrIdx = 1;
+            int[] code = new int[nIns]; Arrays.fill(code, ins);
+            w.setCode(code, false);
+            ReplayDriver d = runWindow(w, rows);
+            if (expectBit < 0) {
+                T.eq(0, d.r.errors(d.t), "no error: the write log's sizes are ignored without the store log");
+                T.eq(3L, d.rows.size(), "all three rows");
+                T.check(d.r.clean(), "clean: " + d.r.errorReport());
+                continue;
+            }
+            T.eq(1 << expectBit, d.r.errors(d.t), "ERRORS [" + expectBit + "] alone");
+            T.eq(1, d.r.condEvents[expectBit], "once");
+            T.check(d.done && !d.r.isRunning(), "the pass stopped, done posted");
+            T.eq(expectRows, d.rows.size(), "rows before it");
+            T.check(d.r.underflows.size() == 1 && d.r.invalids.isEmpty() && d.r.leftovers.isEmpty(), "named as an underflow: " + d.r.underflows);
+        }
+    }
+
+    /** Items 6, 7: done with input left over, [6], one bit for any stream; not for the write log without the store log. */
+    static void leftovers() {
+        String[] cases = { "a code value left", "a read-log value left", "a write-log value left", "a code word after its last value",
+                "a read-log word after its last value", "an entry pushed past the words", "write log off, values left: no [6]", "exact: no [6]" };
+        for (String c : cases) {
+            T.group("v1.26 leftover: " + c);
+            ReplayWindow w = programWindow(false, false, false, !c.startsWith("write log off"));
+            int rows = 25;
+            switch (c) {
+                case "a code value left" -> { int[] code = Arrays.copyOf(PROG, PROG.length + PADDING + 1); w.setCode(code, false); }
+                case "a read-log value left", "a write-log value left" -> {
+                    List<ReplayWindow.LogEvent> ev = new ArrayList<>(List.of(
+                            new ReplayWindow.LogEvent(true, V1, true, false, 0), new ReplayWindow.LogEvent(true, V2, true, false, 0),
+                            new ReplayWindow.LogEvent(false, 0, false, true, V2), new ReplayWindow.LogEvent(true, 17, false, false, 0),
+                            new ReplayWindow.LogEvent(true, 0, false, false, 0)));
+                    ev.add(c.startsWith("a read") ? new ReplayWindow.LogEvent(true, 5, false, false, 0) : new ReplayWindow.LogEvent(false, 0, false, true, 5));
+                    w.setLogs(ev, false, false);
+                }
+                case "a code word after its last value" -> { w.code = Arrays.copyOf(w.code, w.code.length + 2); }
+                case "a read-log word after its last value" -> { w.rlog = Arrays.copyOf(w.rlog, w.rlog.length + 2); }
+                case "an entry pushed past the words" -> { w.rlog = Arrays.copyOf(w.rlog, w.rlog.length + 2); w.wordsAdj[1] = -1; }
+                case "write log off, values left: no [6]" -> {
+                    w.setLogs(List.of(new ReplayWindow.LogEvent(true, V1, true, false, 0), new ReplayWindow.LogEvent(true, V2, true, false, 0),
+                            new ReplayWindow.LogEvent(false, 0, false, true, V2), new ReplayWindow.LogEvent(true, 17, false, false, 0),
+                            new ReplayWindow.LogEvent(true, 0, false, false, 0)), false, false);   // a write-log value the pass never pops
+                }
+                default -> {}
+            }
+            ReplayDriver d = runWindow(w, rows);
+            T.eq(25L, d.rows.size(), "the pass ran its rows");
+            boolean none = c.endsWith("no [6]");
+            T.eq(none ? 0 : 1 << Replayer.ERR_LEFTOVER, d.r.errors(d.t), none ? "no error" : "ERRORS [6] alone, at done");
+            T.check(d.done, "done posted");
+            if (!none) T.check(d.r.leftovers.size() == 1, "named: " + d.r.leftovers);
+        }
+        // the expansion queue isn't checked (it ends by seq_remaining): a window ending mid-expansion is clean
+        T.group("v1.26 leftover: a window ending inside a controller-fed expansion");
+        int inline = r(0, 2, 1, 0, 3, CUSTOM0), len = 20;
+        ReplayWindow w = new ReplayWindow(); w.fixedRom(); w.decodeClass(inline, 1);
+        ReplayWindow.W[] words = new ReplayWindow.W[len];
+        for (int k = 0; k < len; k++) words[k] = ReplayWindow.W.op(ReplayerAlu.ADDI).rd(137).rs1(0).rs2(128).cnst(k + 1).fmt(0);
+        words[len - 1].reportC();
+        w.template(inline, words);
+        w.pc = 0x2000; w.instrIdx = 100;
+        w.setCode(new int[] { inline }, false); w.setLogs(List.of(), false, false);
+        ReplayDriver d = runWindow(w, 10);
+        T.eq(10L, d.rows.size(), "10 of its 20 rows");
+        T.eq(0, d.r.errors(d.t), "no [6]: the code stream's one value was popped; the expansion queue isn't counted");
+    }
+
+    /** Item 5: a stream's padding can be anything, compressed or not: the decoder stops at its values. */
+    static void paddingAnything() {
+        T.group("v1.26: padding is anything");
+        long[][] exp = expected(true);
+        int n = 0;
+        for (int v = 0; v < 8; v++) {
+            boolean cc = (v & 1) != 0, rc = (v & 2) != 0, wc = (v & 4) != 0;
+            ReplayWindow p = programWindow(cc, rc, wc, true);
+            // the same streams with random padding bits (and the zero-padded ones differ from them)
+            p.padSeed = 0x26 + v; p.setCode(Arrays.copyOf(PROG, PROG.length + PADDING), cc);
+            ReplayWindow z = programWindow(cc, rc, wc, true);
+            boolean differs = !Arrays.equals(z.code, p.code) || !Arrays.equals(z.rlog, p.rlog);
+            p.setLogs(List.of(new ReplayWindow.LogEvent(true, V1, true, false, 0), new ReplayWindow.LogEvent(true, V2, true, false, 0),
+                    new ReplayWindow.LogEvent(false, 0, false, true, V2), new ReplayWindow.LogEvent(true, 17, false, false, 0),
+                    new ReplayWindow.LogEvent(true, 0, false, false, 0)), rc, wc);
+            differs |= !Arrays.equals(z.code, p.code) || !Arrays.equals(z.rlog, p.rlog) || !Arrays.equals(z.wlog, p.wlog);
+            String name = "code " + (cc ? "LRU" : "raw") + ", read " + (rc ? "LRU" : "raw") + ", write " + (wc ? "LRU" : "raw");
+            T.check(differs, name + ": the padding bits are not zero");
+            ReplayDriver d = runWindow(p, 25);
+            checkRows(name + ", random padding", d.rows, exp, PADDING);
+            T.check(d.r.clean() && d.r.errors(d.t) == 0, name + ": clean " + d.r.errorReport());
+            n++;
+        }
+        T.eq(8, n, "every compression combination");
+    }
+
+    /** Item 4: the write to word 0 flushes every queue; PULSE_RUN no longer does. */
+    static void flushes() {
+        T.group("v1.26: the state word's write flushes the queues");
+        ReplayWindow w = programWindow(false, false, false, true);
+        Replayer r = new Replayer(0); r.rowsPerPass = 25;
+        ReplayDriver d = new ReplayDriver(w, r); d.load();
+        long f0 = r.flushes;
+        // junk in every queue while stopped, then the state word: all of it goes
+        for (int a : new int[] { 0x40000, 0x80000, 0xC0000, 0x100000 }) d.port.add(new long[] { a, 0xBAD, 0xBAD });
+        d.port.add(new long[] { 0x8, 1, 2 });                         // a register-image write: not a flush
+        while (!d.port.isEmpty()) d.step();
+        for (int k = 0; k < 4; k++) d.step();
+        T.check(r.code.occ == 1 && r.rlog.occ == 1 && r.wlog.occ == 1 && r.exp.occ == 1, "pushed while stopped: held (one entry each)");
+        T.eq(f0, r.flushes, "an image write doesn't flush");
+        r.events().consume(1 << Replayer.EV_CODE);
+        d.port.add(new long[] { 0x4, w.streamLo(), w.streamHi() });   // the stream word: not a flush
+        while (!d.port.isEmpty()) d.step();
+        for (int k = 0; k < 4; k++) d.step();
+        T.eq(1, r.code.occ, "the stream word's write doesn't flush");
+        d.resendState();
+        T.eq(f0 + 1, r.flushes, "the state word's write flushes");
+        T.check(r.code.valuesOut == w.codeVals && r.rlog.words == w.rlog.length / 2 && r.rlog.taken == 0, "and latches the sizes, the counters cleared (item 10)");
+        T.check(r.code.occ == 0 && r.rlog.occ == 0 && r.wlog.occ == 0 && r.exp.occ == 0, "every queue empty, the expansion queue too");
+        for (int b = Replayer.EV_CODE; b <= Replayer.EV_EXP; b++) T.eq(2, r.events().count(b), "credit bit " + b + " set to 2 (the code credit taken above is back)");
+        // pushes after the flush and before PULSE_RUN are kept: two halves of code preloaded, the pass is unchanged
+        int pre = Math.min(w.code.length / 2, 2 * r.code.half);
+        for (int k = 0; k < pre; k++) d.port.add(new long[] { 0x40000, w.code[2 * k], w.code[2 * k + 1] });
+        while (!d.port.isEmpty()) d.step();
+        for (int k = 0; k < 4; k++) d.step();
+        T.eq(pre, r.code.occ, "pushed after the flush, before the run: kept");
+        r.events().consume(1 << Replayer.EV_CODE); r.events().consume(1 << Replayer.EV_CODE);   // the credits those pushes used
+        d.passesRun = 1; d.codeNext = pre;                             // the driver: no resend, the code already sent
+        List<long[]> rows = new ArrayList<>(d.passFrom(200_000, pre));
+        checkRows("preloaded code", rows, expected(true), PADDING);
+        T.eq(0, r.code.occ, "and the pass used it");
+        T.check(r.clean(), "clean: " + r.errorReport());
+        // a second pass: the driver resends the state word; the same rows, clean
+        List<long[]> again = new ArrayList<>(d.pass(200_000));
+        T.check(again.size() == rows.size() && java.util.stream.IntStream.range(0, rows.size()).allMatch(k -> Arrays.equals(rows.get(k), again.get(k))), "a second pass after the state word: the same rows");
+        T.check(r.clean(), "clean: " + r.errorReport());
+        T.eq(f0 + 2, r.flushes, "one flush per pass");
+        // a pass without the state word's write since the last: flagged, and its queues weren't flushed
+        T.group("v1.26: a pass without the flush");
+        Replayer r2 = new Replayer(0); r2.rowsPerPass = 25;
+        ReplayDriver d2 = new ReplayDriver(programWindow(false, false, false, true), r2); d2.load(); d2.pass(200_000);
+        T.check(r2.clean(), "the first pass is clean");
+        d2.port.add(new long[] { 0x40000, 0xBAD, 0xBAD });
+        while (!d2.port.isEmpty()) d2.step();
+        for (int k = 0; k < 4; k++) d2.step();
+        r2.run(d2.t); d2.step(); d2.step();
+        T.eq(1, r2.code.occ, "PULSE_RUN doesn't empty the queues (v1.26)");
+        T.check(r2.violations.stream().anyMatch(v -> v.contains("without a write to the state word")), "meshsim flags a pass without the flush: " + r2.violations);
+    }
+
+    /** Item 8: the output-rd_prev flag: 0 makes every row's rd_prev (word 3 [63:0]) 0; the rest is unchanged. */
+    static void rdPrevFlag() {
+        T.group("v1.26: output rd_prev");
+        ReplayWindow w = programWindow(false, false, false, true); w.rdPrev = false;
+        ReplayDriver d = runWindow(w, 25);
+        long[][] e = expected(true);
+        for (long[] row : e) row[11] = 0;
+        checkRows("rd_prev off", d.rows, e, PADDING);
+        T.check(d.r.clean(), "clean: " + d.r.errorReport());
+        ReplayDriver d1 = runWindow(programWindow(false, false, false, true), 25);
+        int n = 0; for (long[] row : d1.rows) if (row[6] != 0) n++;
+        T.check(n > 0, "with it on, rows carry rd_prev (" + n + " non-zero)");
+    }
+
+    /** Item 1: the record's words 66 (files) and 67 (the bitmap) are ignored by the replayer. */
+    static void recordWords() {
+        T.group("v1.26: record words 66 and 67");
+        Replayer r = new Replayer(0); long t = 0;
+        long[] before = r.region0.clone();
+        r.accept(t, 3, 16 * 66, LinkWord.SIZE_128, 0x66, 0x66); r.runCycle(t++);
+        r.accept(t, 3, 16 * 67, LinkWord.SIZE_128, 0x67, 0x67); r.runCycle(t++);
+        for (int k = 0; k < 4; k++) r.runCycle(t++);
+        T.eq(2L, r.ignoredWrites, "both accepted and ignored while stopped");
+        T.check(Arrays.equals(before, r.region0), "part 0's words 0-65 unchanged");
+        T.eq(0, r.errors(t), "no error");
+        for (int wd : new int[] { 66, 67 }) {                          // item 11: flagged while running, like any part-0 write
+            ReplayDriver d = new ReplayDriver(programWindow(false, false, false, true)); d.r.rowsPerPass = 25; d.load();
+            d.r.run(d.t); d.step(); d.step();
+            d.r.accept(d.t, 3, 16 * wd, LinkWord.SIZE_128, 1, 1);
+            T.ub(() -> { for (int k = 0; k < 6; k++) d.step(); }, "running: record word " + wd + " written during a pass", "replayer", "while a pass runs");
+        }
+        ReplayWindow w = programWindow(false, false, false, true);
+        long[] rec = w.record(new long[] { 5, 0 });
+        T.eq(2 * 68, rec.length, "a record is 68 words");
+        T.eq(w.stateLo(), rec[0], "word 0: the state word"); T.eq(w.streamLo(), rec[2], "word 1: the stream word");
+        T.eq(w.regs[A5], rec[4 + A5], "words 2-65: the image"); T.eq(5L, rec[2 * 67], "word 67: the bitmap");
+    }
+
+    /** V3-12: every queue 4 KB; -Dreplayer.logq=512 (LOG_QUEUE_ENTRIES) gives v1.25's 8 KB logs for a control run. */
+    static void queueSizes() {
+        T.group("v1.26: the queues are 4 KB");
+        Replayer r = new Replayer(0);
+        T.check(r.code.cap == 256 && r.rlog.cap == 256 && r.wlog.cap == 256 && Replayer.ExpQueue.CAP == 256, "256 x 128-bit entries each");
+        T.check(r.rlog.half == 128 && r.wlog.half == 128, "a credit is 128 entries");
+        int keep = Replayer.LOG_QUEUE_ENTRIES;
+        Replayer.LOG_QUEUE_ENTRIES = 512;
+        Replayer r8 = new Replayer(0);
+        Replayer.LOG_QUEUE_ENTRIES = keep;
+        T.check(r8.rlog.cap == 512 && r8.wlog.half == 256 && r8.code.cap == 256, "the 8 KB control: logs 512 entries, the code queue unchanged");
+        ReplayDriver d = new ReplayDriver(programWindow(true, true, true, true), r8); r8.rowsPerPass = 25; d.load(); d.pass(200_000);
+        T.check(r8.clean() && d.rows.size() == 25, "a pass on the 8 KB control replayer: clean " + r8.errorReport());
     }
 }

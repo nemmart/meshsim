@@ -304,7 +304,7 @@ _Static_assert(__builtin_offsetof(TableRegs, PTR) == 0x400 && __builtin_offsetof
 #define RP_Q_WLOG          (REGION_PERIPH(1) + 0x300000u)
 #define RP_Q_EXP           (REGION_PERIPH(1) + 0x400000u)
 #define RP_HALF_CODE       128u   /* entries per credit (4.19.8) */
-#define RP_HALF_LOG        256u
+#define RP_HALF_LOG        128u   /* v1.26: 4 KB log queues (v1.25: 256, 8 KB) */
 #define RP_HALF_EXP        128u
 
 /* C&C 1's peripheral events (8.14) */

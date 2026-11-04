@@ -68,7 +68,21 @@ A window is the 65,536 rows one replayer pass runs (4.19.1), or the debug length
 
 ### 3.1 The state record
 
-`window_NNNNN.state.bin`, **1,072 bytes**, 67 × 128-bit words (4.19.2):
+**v1.26** (DECISIONS-v1.26 items 1, 2, 8; WORKER19/NOTES.md): `window_NNNNN.state.bin`, **1,088 bytes**, 68 × 128-bit words. A
+v1.25 delivery (67 words, below) is converted by `ConvertDelivery` (the records rewritten, the streams unchanged).
+
+| word | bytes | content |
+|---|---|---|
+| 0 | 0–15 | **state word**: pc [63:0]; `instr_idx` [95:64]; next offset [111:96]; [114:112] reserved (0); [115] use the store log; [116] output `rd_prev` (the tracer emits both 1); [127:117] zero. Its write flushes the queues and latches the sizes (items 4, 10). |
+| 1 | 16–31 | **stream word**: words [15:0], [31:16], [47:32] (code, read log, write log; 128-bit words as delivered, the fewest that hold the values); compressed [48], [49], [50]; values out [80:64], [97:81], [114:98]; the rest zero |
+| 2–65 | 32–1,055 | **register image**, as v1.25's words 3–66 |
+| 66 | 1,056–1,071 | **files word** (the Tracer's, v1.3): 0 in converted deliveries; the replayer ignores it |
+| 67 | 1,072–1,087 | **template bitmap**, as v1.25's word 0; the Stage B controller builds its fast path from it |
+
+The controller sends words 0–65 (bytes 0–1,055) to part 0 from offset 0x000. Padding after a stream's last value can be
+anything (item 5). The flags and sizes must describe **the stream files delivered with this record**.
+
+**v1.25** (for reference): 1,072 bytes, 67 words:
 
 | word | bytes | content |
 |---|---|---|
@@ -76,8 +90,6 @@ A window is the 65,536 rows one replayer pass runs (4.19.1), or the debug length
 | 1 | 16–31 | **state word**: pc [63:0]; `instr_idx` [95:64]; next offset [111:96]; flags [112] code compressed, [113] read log compressed, [114] write log compressed, [115] includes store log (the tracer emits 1); [127:116] zero |
 | 2 | 32–47 | **stream word**: exact lengths in bits: code [23:0], read log [55:32], write log [87:64]; the rest zero |
 | 3–66 | 48–1,071 | **register image**: image word *i* holds register 2*i* in bits [63:0] and 2*i* + 1 in [127:64]. All 128 registers; register 0's value is ignored. |
-
-The controller sends bytes 16–1,071 to region 0 unchanged (4.19.2, 4.19.10). The flags and lengths must describe **the stream files delivered with this record**.
 
 ### 3.2 The three streams
 

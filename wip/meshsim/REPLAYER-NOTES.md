@@ -270,3 +270,41 @@ tables have none of these bits set (512 ROM and 13,821 template words checked), 
 
 HALT is gone from the spec, and with it the replayer's halt input (`setHalted`), its "PULSE_RUN in HALT" flag and its
 queue-port-in-HALT bad write.
+
+## v1.26 (WORKER20, 2026-11-04): the replayer's v1.3 changes
+
+DECISIONS-v1.26 items 1-11 and WORKER19/NOTES.md, in `src/Replayer.java`:
+- **The record** is 68 words: [0] state word, [1] stream word, [2-65] the image, [66] files, [67] the template bitmap.
+  Part 0 holds words 0-65; writes to 66-67 are accepted and ignored while stopped, and UB (meshsim stops) while a pass runs.
+- **The stream word** (`parseStreamWord`, `streamWord`): WORKER19's layout, words [15:0]/[31:16]/[47:32], flags [48]-[50],
+  values out [80:64]/[97:81]/[114:98]. **The state word**: [115] use the store log, [116] output rd_prev (0: rd_prev 0).
+- **Setting the state resets everything** (item 10): the write to word 0 flushes the four input queues, latches the flags and
+  the sizes, clears the pop counters, sets every credit to 2 and resets the decompressors. `PULSE_RUN` only starts the pass
+  (working pc, instr_idx and offset, the image copy, rows run 0). Preloading is allowed (item 11): pushes landing after the
+  state write are kept.
+- **Part 0 is the working state** (item 12): the image is the register file and the state word's pc, `instr_idx` and offset
+  are the live ones, written in place as rows finish; there is no copy at `PULSE_RUN` (v1.25's 64-cycle image copy and its
+  IMAGE stall are gone; the first row starts at once). After a pass part 0 holds the window's end state, so the
+  controller reloads words 0-65 before every pass (`replay_ctl.c`'s `load_part0`, one 66-word run from the record in
+  big SRAM; `ReplayDriver.resendState`).
+- **Queues:** 256 entries each (4 KB), half 128. `-Dreplayer.logq=512` (`LOG_QUEUE_ENTRIES`) gives v1.25's 8 KB logs, with
+  the controller built `-DHALF_LOG=256` (`sw/replay/build/log8k`), for the stall comparison only.
+- **Sizes checked:** a pop past a stream's values (END) or a decode needing a bit past its words (OVER) is an underflow,
+  ERRORS [3] code, [4] read log, [5] write log, and stops the pass as an invalid expansion does. At the 65,536th row,
+  [6] is set if a stream (the write log only with [115]) has values not popped, a whole word after its last value, or more
+  entries pushed than its words. The expansion queue isn't checked. [2] no longer covers a pop past a stream's end.
+
+Model choices (WORKER20, for WORKER19's text):
+- **The sizes are latched at the state word's write and again at the stream word's.** State-first loading writes word 1
+  after word 0, so a latch at word 0 alone would take the previous window's sizes. Part 0 is written only while stopped,
+  so this equals reading the stream word at the pass's start.
+- **A pass started without a write to word 0 since the previous pass** is flagged (a violation): its queues weren't flushed,
+  and (item 12) it would start from the previous pass's end state.
+- Pushes accepted before the state write land before it (one landing path, fixed latency), so meshsim can't see a push "in
+  flight at the state write" from inside the replayer; the software rule (every push of the previous pass landed before
+  the state write) is kept by the controllers, which wait for their refill counters.
+
+The harnesses: `ReplayWindow.record()`, `ReplayDriver` (resends the state word before every pass after the first;
+`passFrom` for preloaded code), `ReplayDelivery`/`StageB` (68-word records, `consumedExactly`), `ConvertDelivery` (v1.25
+deliveries to v1.26), `SyntheticDelivery` (v1.26 records, random padding).
+

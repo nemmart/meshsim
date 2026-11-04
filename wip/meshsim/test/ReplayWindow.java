@@ -17,7 +17,13 @@ final class ReplayWindow {
     // the checkpoint
     long pc; int instrIdx, nextOffset;
     boolean codeComp, rlogComp, wlogComp, storeLog = true;
-    long codeLen, rlogLen, wlogLen;               // exact lengths in bits
+    /** v1.26: the state word's output-rd_prev flag ([116], Proposed): 0, the rows' rd_prev is 0. */
+    boolean rdPrev = true;
+    long codeLen, rlogLen, wlogLen;               // exact lengths in bits (the encoders'; v1.26's stream word doesn't carry them)
+    int codeVals, rlogVals, wlogVals;             // v1.26: values out (32-bit code words, 64-bit log words)
+    /** v1.26: the padding after each stream's last bit is anything (DECISIONS-v1.26 item 5): 0 pads with zero bits, any
+     *  other value fills it with bits from that seed (set before setCode and setLogs). */
+    long padSeed;
     final long[] regs = new long[128];
     // the tables
     final short[] table = new short[2048];
@@ -27,7 +33,7 @@ final class ReplayWindow {
     // controller-fed templates by the normalized template-index key (v1.25, ReplayTables.key), and each one's rd0 (index byte 12)
     final Map<Integer, long[]> templates = new HashMap<>();
     final Map<Integer, Integer> templateRd0 = new HashMap<>();
-    /** A delivered state record's words 1-66 (region 0), sent unchanged; null: built from the fields above. */
+    /** A delivered state record's words 0-65 (v1.26: part 0, from offset 0x000), sent unchanged; null: built from the fields above. */
     long[] region0;
     // reference rows (10 longs each), if any
     List<long[]> ref;
@@ -43,12 +49,27 @@ final class ReplayWindow {
     }
 
     long stateLo() { return pc; }
-    long stateHi() {
-        return (instrIdx & 0xFFFFFFFFL) | (long) (nextOffset & 0xFFFF) << 32
-                | (codeComp ? 1L : 0) << 48 | (rlogComp ? 1L : 0) << 49 | (wlogComp ? 1L : 0) << 50 | (storeLog ? 1L : 0) << 51;
+    long stateHi() { return Replayer.stateHi(instrIdx, nextOffset, storeLog, rdPrev); }
+    /** v1.26: the stream word, each stream's words, values out and compression flag (Replayer.streamWord's layout). */
+    long[] streamWord() {
+        return Replayer.streamWord(new Replayer.StreamSize(code.length / 2 + wordsAdj[0], codeVals + valuesAdj[0], codeComp),
+                new Replayer.StreamSize(rlog.length / 2 + wordsAdj[1], rlogVals + valuesAdj[1], rlogComp),
+                new Replayer.StreamSize(wlog.length / 2 + wordsAdj[2], wlogVals + valuesAdj[2], wlogComp));
     }
-    long streamLo() { return (codeLen & 0xFFFFFF) | (rlogLen & 0xFFFFFF) << 32; }
-    long streamHi() { return wlogLen & 0xFFFFFF; }
+    /** Tests only: the stream word's words and values, per stream (code, read log, write log), off the streams' own. */
+    final int[] wordsAdj = new int[3], valuesAdj = new int[3];
+    long streamLo() { return streamWord()[0]; }
+    long streamHi() { return streamWord()[1]; }
+    /** v1.26: the 68-word state record (lo, hi per word): [0] state, [1] stream, [2-65] the image, [66] files (0), [67] bitmap. */
+    long[] record(long[] bitmap) { return record(stateLo(), stateHi(), streamWord(), regs, new long[2], bitmap); }
+    static long[] record(long sLo, long sHi, long[] stream, long[] regs, long[] files, long[] bitmap) {
+        long[] r = new long[2 * Replayer.REC_WORDS];
+        r[0] = sLo; r[1] = sHi; r[2] = stream[0]; r[3] = stream[1];
+        System.arraycopy(regs, 0, r, 4, 128); r[4] = 0;              // register 0 is ignored; delivered as 0
+        r[2 * Replayer.REC_FILES] = files[0]; r[2 * Replayer.REC_FILES + 1] = files[1];
+        r[2 * Replayer.REC_BITMAP] = bitmap[0]; r[2 * Replayer.REC_BITMAP + 1] = bitmap[1];
+        return r;
+    }
 
     // ================================================================ expansion words (4.19.3)
     /** A 128-bit expansion word: {lo, hi}. */
@@ -107,10 +128,16 @@ final class ReplayWindow {
             n += bits;
         }
         /** Padded with zero bits to a whole 128-bit entry: lo, hi per entry. */
-        long[] entries() {
+        long[] entries() { return entries(0); }
+        /** Padded to a whole entry with bits from {@code seed} (0: zero bits), v1.26: padding is anything. */
+        long[] entries(long seed) {
             int e = (int) ((n + 127) >>> 7);
             long[] r = new long[2 * e];
             for (int i = 0; i < 2 * e && i < words.size(); i++) r[i] = words.get(i);
+            if (seed != 0 && (n & 127) != 0) {
+                java.util.Random g = new java.util.Random(seed ^ n);
+                for (long pos = n; pos < 128L * e; pos++) if (g.nextBoolean()) r[(int) (pos >>> 6)] |= 1L << (pos & 63);
+            }
             return r;
         }
     }
@@ -137,7 +164,7 @@ final class ReplayWindow {
     void setCode(int[] words, boolean compressed) {
         Bits b = new Bits(); Lru l = new Lru(false);
         for (int w : words) { long v = w & 0xFFFFFFFFL; if (compressed) putValue(b, l.code(v), v); else b.put(v, 32); }
-        code = b.entries(); codeLen = b.n; codeComp = compressed;
+        code = b.entries(padSeed); codeLen = b.n; codeComp = compressed; codeVals = words.length;
     }
 
     /** One row's log traffic, in row order: a read-log value (an LD's if {@code load}) and/or a write-log value. */
@@ -146,14 +173,17 @@ final class ReplayWindow {
     /** The two logs from the row-ordered log events: E[15] of the write log follows every LD's read value. */
     void setLogs(List<LogEvent> ev, boolean rComp, boolean wComp) {
         Bits rb = new Bits(), wb = new Bits(); Lru rl = new Lru(false), wl = new Lru(true);
+        rlogVals = 0; wlogVals = 0;
         for (LogEvent e : ev) {
+            if (e.hasRead()) rlogVals++;
+            if (e.hasWrite()) wlogVals++;
             if (e.hasRead()) {
                 if (rComp) putValue(rb, rl.code(e.read()), e.read()); else rb.put(e.read(), 64);
                 if (e.load()) wl.E[15] = e.read();
             }
             if (e.hasWrite()) { if (wComp) putValue(wb, wl.code(e.write()), e.write()); else wb.put(e.write(), 64); }
         }
-        rlog = rb.entries(); rlogLen = rb.n; rlogComp = rComp;
-        wlog = wb.entries(); wlogLen = wb.n; wlogComp = wComp;
+        rlog = rb.entries(padSeed); rlogLen = rb.n; rlogComp = rComp;
+        wlog = wb.entries(padSeed + 1); wlogLen = wb.n; wlogComp = wComp;
     }
 }

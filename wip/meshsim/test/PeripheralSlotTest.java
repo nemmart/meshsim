@@ -184,9 +184,14 @@ public final class PeripheralSlotTest {
         T.eq(4, (int) load(n, p, w(PARAMS)), "PARAMS: type 4, the replayer (4.17.1, D46)");
         T.eq(0, (int) load(n, p, w(STATUS)), "STATUS: idle");
         T.eq(0, (int) load(n, p, w(EVENTS_PEEK)), "no event before a pass");
+        // v1.26 (DECISIONS-v1.26 items 4, 10): the state word's write sets every queue's credits; PULSE_RUN only starts
+        p.dir.remaining[4] = 1;
+        n.c.cnc.send(n.c.cycle, 3, LinkWord.M_WRITE, 4, 0x04000000, LinkWord.SIZE_128, 0, 0);   // the state word (zero)
+        n.runAll(300);
+        T.eq(0b111100, (int) load(n, p, w(EVENTS_PEEK)) & 0b111100, "the state word's write: every queue's credit up");
         store(n, p, w(PULSE_RUN), 1);
         n.step();
-        T.eq(0b111100, (int) load(n, p, w(EVENTS_PEEK)) & 0b111100, "PULSE_RUN: every queue's credit up");
+        T.eq(0b111100, (int) load(n, p, w(EVENTS_PEEK)) & 0b111100, "PULSE_RUN leaves them");
         T.eq(0, (int) load(n, p, w(4)), "word 4 (no DMA): reserved, reads 0");
         T.eq(0, (int) load(n, p, w(32)), "ROWS_RUN");
     }

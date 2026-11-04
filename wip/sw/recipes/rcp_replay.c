@@ -11,15 +11,16 @@ extern void template_lookup(uint32_t key, uint32_t offset, uint32_t *chunk, uint
 static int replayer_present(void) {
     return (PARAMS_PERIPH_PRESENT(tile->PARAMS) & 1) && PARAMS_TYPE(replayer->PARAMS) == PTYPE_REPLAYER;
 }
-/* Load the state and stream words (two 128-bit words, st[0..7]) into region 0x04 while the replayer is stopped
- * (STATUS [0] = 0: its part 0 is written only then, spec 4.19.10): mode-0 writes to the tile's own peripheral region, 16-byte
- * aligned, counted on counter 4 like any write (they land within K, D10). */
-static void replayer_load_state(const uint32_t *st) {
+/* Load the window's record, words 0-65 (the state word, the stream word, the 64-word image; rec[0..263]), into region 0x04
+ * while the replayer is stopped (STATUS [0] = 0: its part 0 is written only then, spec 4.19.10): mode-0 writes to the tile's
+ * own peripheral region, 16-byte aligned, counted on counter 4 like any write (they land within K, D10). v1.26: the state
+ * word goes first and its write resets the pass (the queues flushed, every credit 2; DECISIONS-v1.26 items 4, 10); part 0 is
+ * the working state, which a pass leaves at its end state (item 12), so the whole record is loaded before every pass. */
+static void replayer_load_state(const uint32_t *rec) {
     while (replayer->STATUS & PST_RUN) ;           /* only between passes; the loop below ends a pass by its event */
-    tile->WRITE_COUNTER[CTR_PERIPH - 1] = 2;
+    tile->WRITE_COUNTER[CTR_PERIPH - 1] = 66;
     send_to(ROUTER_HDR_W(tile_index(), MODE_WRITE, CTR_PERIPH), RP_STATE);
-    send128(st[3], st[2], st[1], st[0]);
-    send128(st[7], st[6], st[5], st[4]);
+    for (unsigned i = 0; i < 66; i++) send128(rec[4 * i + 3], rec[4 * i + 2], rec[4 * i + 1], rec[4 * i]);
     wait_all(EV_CTR(CTR_PERIPH));
 }
 /* A peripheral with a DMA (not the replayer): send words 32-bit words from it to dst at addr, counted there on ctr.
@@ -43,7 +44,8 @@ static void periph_dma(unsigned n, unsigned dst, uint32_t addr, uint32_t words, 
 
 /* RECIPE replay_loop */
 /* One pass of the replayer (spec 4.19.9 on D10's counted credits). Each queue's credit bit holds up to 2 credits, set
- * to 2 at PULSE_RUN (the expansion queue's again at each new expansion); a credit is permission to push half a queue.
+ * to 2 by the state word's write (v1.26; the expansion queue's again at each new expansion); a credit is permission to
+ * push half a queue, 128 entries for every queue at v1.26 (4 KB each).
  * One load of the window's EVENTS consumes one credit from every set bit in its mask, so the loop pushes for every bit
  * the load returns, in one refill run of up to four streams, and waits for that run before it looks again. A queue
  * with nothing more to push leaves the mask, or its spare credit would keep the tile awake (W3-24). Resident streams
@@ -74,7 +76,7 @@ static void replay_pass(Feed *code, Feed *rlog, Feed *wlog, int store_log) {
                    | (store_log && wlog->left ? RP_EV_WLOG : 0);   /* no write log without the store log */
     replayer->EVENTS_MASK = pmask;                  /* the expansion's bit joins at the first new expansion */
     tile->EVENTS_MASK = EV_GO | EV_PERIPH(1);       /* GO can't come mid-pass; the tile's [13] is live */
-    replayer->PULSE_RUN = 1;                        /* empties the queues; every credit counter to 2 */
+    replayer->PULSE_RUN = 1;                        /* the pass: the state word's write already flushed the queues */
     for (;;) {
         __asm__ volatile ("wfi" ::: "memory");
         uint32_t ev = replayer->EVENTS;             /* consumes: one credit from each set bit under pmask */
@@ -102,7 +104,7 @@ static void replay_pass(Feed *code, Feed *rlog, Feed *wlog, int store_log) {
 }
 /* END */
 
-static uint32_t state[8];
+static uint32_t state[66 * 4];                      /* the record's words 0-65 (zero here: an empty pass) */
 int main(void) {
     Feed code = { 0x10000, 300, RP_Q_CODE, RP_HALF_CODE, RP_EV_CODE };
     Feed rlog = { 0x20000, 900, RP_Q_RLOG, RP_HALF_LOG, RP_EV_RLOG };

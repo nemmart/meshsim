@@ -58,8 +58,31 @@ the separate 1 KB image is gone.
 - No file in `wip/sw/`, `wip/tables/` or `wip/kit/` restates the record's old order or sizes in the strings I searched for (byte
   16, 67 words, includes store log, [114:112], 8 KB); WORKER20 may still find code that does.
 
+## Item 143, closed (2026-11-04)
+
+WORKER20's Stage B counts on every window of both workloads at 2²⁹ (`WORKER20/NOTES.md`; Quest 098–101), cycles per window:
+
+| | EVM Zone, 4 KB | 8 KB control | Cyclone, 4 KB | 8 KB control |
+|---|---|---|---|---|
+| read-log wait | 39.2 | 39.2 | 43.5 | 43.5 |
+| write-log wait | 100.0 | 176.2 | 84.5 | 153.6 |
+| share of a pass | 0.066 % | 0.102 % | 0.063 % | 0.097 % |
+
+Stated in 4.19.2 (beside v1.25's figures, with the control named as the comparison for the queue size) and 4.19.8 (the table
+and the start-up explanation: the waits are all at a pass's start, and after it a 128-entry refill always lands in time);
+item 143 closed; `CHANGES-v1.26.md` and the guide updated. These are the full runs, not the smoke run. The finding above on
+DECISIONS-v1.3's 1,500-cycle figure is moot: after the start, no window waits.
+
+## WORKER20's choices where the spec left room (`WORKER20/NOTES.md` section 2)
+
+| WORKER20's choice | the spec | done |
+|---|---|---|
+| the stream word's sizes latched at the state word's write and again at the stream word's | agrees: the checks read part 0, which can't change while running, so latching as the words land is the same; the guide (S3) now says an implementation may do this | guide |
+| a pass started with no state write since the previous pass is flagged | agrees with invariant 16 (reload before every pass); 4.19.11 now says meshsim flags it. **A gap, not a disagreement:** meshsim checks the word-0 write, not that words 1–65 were reloaded; a pass from a stale image would still be caught by the Stage B comparison | spec 4.19.11 |
+| a push in flight at the state write can't be seen inside the replayer | **the spec disagreed:** 4.19.13 said meshsim flags a state write with a push in flight. Corrected: the rule is software's (invariant 16), kept by waiting on the refill counters; the replayer can't see it and meshsim doesn't check it. For pushes from another unit over the mesh the rule still matters, and nothing checks it | spec 4.19.13, my NOTES |
+| an underflow stops the pass; [6] evaluated as the 65,536th row finishes | agrees (4.19.11, 4.19.15) | — |
+| the stream word's layout and [116] | agree (4.19.2) | — |
+
 ## Open
 
-- **Item 143:** Stage B's stall counts with the 4 KB queues, on both workloads at 2²⁹, from WORKER20's acceptance runs. When
-  they arrive they go into 4.19.2 (the logs' cost), 4.19.8 (the size's justification) and item 143 closes. Asked in
-  `NOTES.md` section 4.
+Nothing.

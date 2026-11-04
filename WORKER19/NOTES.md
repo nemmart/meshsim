@@ -10,8 +10,8 @@
 > 3. **So the controller reloads the record's words 0–65 before every pass** (replacing the per-pass resend of word 0 alone):
 >    66 packets from the tile's copy in big SRAM, about 66 cycles, state word first, with that pass's flags.
 > 4. **Preloading is allowed** (item 11): pushes after the state write are kept, whether before or after `PULSE_RUN`. The rule
->    "queues empty at `PULSE_RUN`" is gone from invariant 16. A push before the state write is flushed (meshsim still flags one in
->    flight at the state write).
+>    "queues empty at `PULSE_RUN`" is gone from invariant 16. A push before the state write is flushed (the rule that every push has landed before
+>    it is software's; see section 4).
 > 5. **A part-0 write while running is flagged, words 66–67 included** (items 9, 11).
 > 6. My earlier choices are confirmed (item 9): words 66–67 written only while stopped; a whole extra padding word sets [6].
 
@@ -101,8 +101,9 @@ the stream word; written 0, ignored, not reused so a stale v1.25 word can't be m
 - **Before every pass the controller reloads the record's words 0–65**, even re-running the same window: part 0 holds the last
   pass's end state, and the state write clears leftover expansion words from a pass that ended inside an expansion.
 - **Preloading is allowed:** after the state write the controller may take credits and push before `PULSE_RUN`, or pulse first.
-- **Software rule:** before the state write, every queue push has landed. meshsim flags a push in flight at the state write, and
-  any part-0 write while a pass runs (words 66–67 included).
+- **Software rule:** before the state write, every queue push has landed, kept by the refill counters (the replayer can't see a
+  push in flight; meshsim doesn't check it, WORKER20/NOTES.md). meshsim flags any part-0 write while a pass runs (words 66–67
+  included) and a pass started with no state write since the previous one.
 
 ## 5. `ERRORS`
 

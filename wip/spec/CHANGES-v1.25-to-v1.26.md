@@ -40,7 +40,7 @@ Nothing else in the map moves: the decode table, the ROM and the four queue port
 |---|---|---|---|
 | S1 | state word [112]–[114]: each stream LRU-compressed; [115] includes store log; [127:116] spare | **[114:112] reserved** (ignored), **[115] use the store log** (same function, renamed), **[116] output `rd_prev`**; [127:117] spare | D26-2, D26-8 |
 | S2 | stream word: code length [23:0], read-log length [55:32], write-log length [87:64], in bits | **words** [15:0], [31:16], [47:32]; **compressed** [48], [49], [50]; **values out** [80:64], [97:81], [114:98] (code, read log, write log); [63:51] and [127:115] spare | D26-2 |
-| S3 | a run latches four flags and three 24-bit lengths | **nothing is latched**: the checks, the decoders and the output row read the two flags (state word [116:115]) and, per stream, **the 16-bit word count, the 17-bit value count and the compression flag** (stream word) straight from part 0, which can't be written while running | D26-2, D26-8, D26-12 |
+| S3 | a run latches four flags and three 24-bit lengths | **nothing is latched**: the checks, the decoders and the output row read the two flags (state word [116:115]) and, per stream, **the 16-bit word count, the 17-bit value count and the compression flag** (stream word) straight from part 0, which can't be written while running. An implementation may latch them as the words land, at the state word's write and again at the stream word's (meshsim does), which is the same thing | D26-2, D26-8, D26-12 |
 
 ### 2.3 The queues and the flush (4.19.8)
 
@@ -110,4 +110,13 @@ the new error bits are a few hundred flops.
 
 meshsim's replayer model follows the spec at v1.26 (WORKER20), with tests for the flush, each new error bit and output
 `rd_prev`; v1.26's acceptance is every window of EVM Zone and Cyclone at 2²⁹ matched in stages A, B and F with the 4 KB queues,
-as v1.25's was (D26 section 2). Stage B's stall counts with the 4 KB queues are spec item 143.
+as v1.25's was (D26 section 2): **passed** (Quest 098, 099). Stage B's log waits (spec item 143, closed), in cycles per window:
+
+| | EVM Zone, 4 KB | 8 KB control | Cyclone, 4 KB | 8 KB control |
+|---|---|---|---|---|
+| read-log wait | 39.2 | 39.2 | 43.5 | 43.5 |
+| write-log wait | 100.0 | 176.2 | 84.5 | 153.6 |
+| share of a pass | 0.066 % | 0.102 % | 0.063 % | 0.097 % |
+
+The 4 KB queues wait less: the waits are all at a pass's start, and after it a 128-entry refill always lands in time
+(4.19.8).

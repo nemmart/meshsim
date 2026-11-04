@@ -79,9 +79,16 @@ controller-fed templates, everything about files, slots and caches.
   (Quest 083, 084), with the 4 KB queues; the stall counts reported.
 - The quick and full suites pass; the full-size sort is unchanged (p4/uniform-k128: 1,229,008 cycles).
 
+**Done: frozen as `v1.26/`, 2026-11-04.** The spec, `CHANGES-v1.26.md` and the RTL guide (WORKER19); meshsim, the firmware, the
+kit and the converted deliveries (WORKER20, merged at 5b03600). **Every window of both workloads at 2²⁹ matched with the 4 KB
+queues**: Quest 098 (EVM Zone) and 099 (Cyclone), stages A and B on 8,192 of 8,192 windows each, F on 128 of 128; the 8 KB
+controls 100 and 101 on 8,192 each. The log waits are only at a pass's start, 0.066 % and 0.063 % of a pass at 4 KB (0.102 % and
+0.097 % at 8 KB; item 143). Suites 36 of 36 and 11 of 11, the full-size sort 1,229,008 cycles (102b). The deliveries were
+regenerated into the runner's persistent data and match WORKER9's (103, 104).
+
 ## Work list
 
 | # | work | worker |
 |---|---|---|
-| V1 | the spec and the change notes | WORKER19 |
-| V2 | meshsim, the firmware, the kit, the deliveries' conversion, the acceptance runs | WORKER20 |
+| V1 | the spec and the change notes | WORKER19, done |
+| V2 | meshsim, the firmware, the kit, the deliveries' conversion, the acceptance runs | WORKER20, done |

@@ -56,19 +56,38 @@ Model choices for WORKER19's text (in `REPLAYER-NOTES.md`, "v1.26"):
 
 ## 4. The real deliveries and the acceptance (Quest)
 
-Conversion (item 3 of the work): **converted, not regenerated**. A stream's values out don't depend on its compression, so
-each window's raw record gives them (code bits / 32, log bits / 64); its words are its bit length rounded up to 128.
-Every task converts WORKER9's `/tmp/w9-deliveries` (manifests checked against 079's and 080's SHA-256) into its own
-scratch in seconds, so no task depends on another's leftovers.
+Conversion (item 3 of the work): **converted, not regenerated** to v1.26. A stream's values out don't depend on its
+compression, so each window's raw record gives them (code bits / 32, log bits / 64); its words are its bit length rounded
+up to 128. Every acceptance task converts the v1.25 delivery into its own scratch in seconds, so no task depends on
+another's scratch.
+
+**The runner's reboot (2026-11-04)** wiped `/tmp`: WORKER9's deliveries, the selected-windows tarball and the hand-copied
+writer input `w9-delivery.tgz`. So:
+- **Tasks 103, 104** regenerate the v1.25 deliveries with WORKER9's `delivery_writer`, unchanged (jolt-asic-planning
+  `tracer-standalone-main` at 8d546e3, whose tracer/src and tracer/delivery equal 5ba7f0c's, i.e. 079/080's 121c271 plus
+  their imm_signed patch), into **persistent data**: `~/data` if the unit lets tasks write there, else the git-ignored
+  `~/queue/data` (inside `ReadWritePaths` under the documented `ProtectHome=read-only`). The task records which, the unit's
+  settings and every SHA-256, and says whether the per-program manifests equal WORKER9's (they should: same writer, same
+  inputs). Inputs embedded (6 MB: the tracer tree with only the two programs' inputs, the universal tables, a libelf
+  fallback from Ubuntu 24.04 debs). Built and linked locally (the fallback path); the writer itself needs more memory than
+  this container has, so its run is the runner's.
+- **Reboot-safe:** each delivery and the selected windows are written into a staging directory and moved into place only
+  when the writer and its replay proof pass, with `<program>.COMPLETE` (the manifest's SHA-256); a re-run removes stale
+  staging, and skips a delivery already complete. The acceptance tasks check `COMPLETE` and the SHA-256 before reading,
+  convert into `/tmp` scratch that they `rm -rf` first, and write only `results/`: an interrupted one re-runs from the start.
+- The data-directory lines are one include (`WORKER20/tasks/data_dir.inc`), the same in every task; generators:
+  `WORKER20/tasks/make_regen_task.sh`, `make_accept_tasks.sh`. Quest's PIPELINE.md has a "Persistent data" section.
 
 | task | what | result |
 |---|---|---|
-| 097 | smoke: windows 0-63 of both, A and B, F every 16th; B at 8 KB | pending |
-| 098 | evm-zone-29: all 8,192 in A and B, F every 64th, 4 KB | pending |
-| 099 | cyclone-29: the same | pending |
-| 100 | evm-zone-29: all 8,192 in B at 8 KB (the control) | pending |
-| 101 | cyclone-29: the same | pending |
-| 102 | run_tests quick + full extras, p4/uniform-k128 (expected 1,229,008) | pending |
+| 097 | smoke: windows 0-63 of both, A and B, F every 16th; B at 8 KB | attempt 1 failed (no deliveries after the reboot); in `tasks/hold/`, reading `$DATA`, released after 103/104 |
+| 098 | evm-zone-29: all 8,192 in A and B, F every 64th, 4 KB | generated, not pushed (after 103/104 and 097) |
+| 099 | cyclone-29: the same | as 098 |
+| 100 | evm-zone-29: all 8,192 in B at 8 KB (the control) | as 098 |
+| 101 | cyclone-29: the same | as 098 |
+| 102 | run_tests quick + full extras, p4/uniform-k128 | attempt 1: **p4/uniform-k128 1,229,008 cycles (unchanged)**; failed in PeripheralSlotTest (not yet at v1.26: credits are set by the state write now) and AccountingTest/Sweep (the kit lacked `meshsim/results/`); both fixed, attempt 2 queued |
+| 103 | regenerate evm-zone-29 into persistent data | queued |
+| 104 | regenerate cyclone-29 into persistent data | queued |
 
 ## 5. Stall counts, 4 KB against 8 KB
 

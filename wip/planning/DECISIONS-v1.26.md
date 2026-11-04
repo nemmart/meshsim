@@ -30,6 +30,13 @@ software, and nothing else: no Tracer, no new memory system, no file system. The
 7. **New `ERRORS` bits** (V3-24), after v1.25's [0] reserved, [1] queue overrun, [2] invalid expansion: **[3] code-stream
    underflow, [4] read-log underflow, [5] write-log underflow, [6] done with input left over.**
 
+8. **The state word keeps the per-pass flags, now two** (owner, 2026-11-01), the stream's compression flags having moved to the
+   stream word: **use the store log** ([115], as at v1.25: 0 means the pass doesn't use stores' pre-values, the write log is never
+   fed, and the write log's sizes are ignored, neither underflow [5] nor leftover [6]) and **output rd_prev** (new: 0 means the
+   pass doesn't need rd's value before the row, so the output row's `rd_prev` field, word 3 [63:0] of 4.19.12's row, is 0). Both
+   are a consumer's choice per pass, so they stay in word 0, whose write also flushes the queues for the new pass. Bit positions
+   to propose.
+
 **Out of scope** (they belong to the Tracer or to v1.3): the peripheral DMA in 128-bit words (spec 4.17.9), the broadcast of
 controller-fed templates, everything about files, slots and caches.
 

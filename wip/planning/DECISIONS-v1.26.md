@@ -51,6 +51,11 @@ software, and nothing else: no Tracer, no new memory system, no file system. The
    the Tracer writes its state once per segment, so its counters and credits run across the 64 runs. (Replaces `PULSE_RUN`
    setting the credits, resetting the decompressors, latching the sizes and clearing the counters, as first specified.)
 
+11. **Preloading is allowed** (owner, 2026-11-01): after the state write, software may push the first chunks into the queues and
+   then pulse `PULSE_RUN`, or pulse first and push after; either works, since the state write has already flushed the queues and
+   set the credits, and it is all our software. (Drops "the queues must be empty at `PULSE_RUN`", invariant 16 as first written.)
+   **Writes to words 66-67 while a pass runs are flagged**, like any part-0 write while running (item 9), not silently ignored.
+
 **Out of scope** (they belong to the Tracer or to v1.3): the peripheral DMA in 128-bit words (spec 4.17.9), the broadcast of
 controller-fed templates, everything about files, slots and caches.
 

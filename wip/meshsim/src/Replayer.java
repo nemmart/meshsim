@@ -75,16 +75,16 @@ final class Replayer implements Peripheral {
     record StreamSize(int words, int values, boolean compressed) {
         StreamSize { if (words < 0 || words > 0xFFFF || values < 0 || values > 0x1FFFF) throw new IllegalArgumentException("stream size " + words + " words, " + values + " values"); }
     }
-    /** The stream word's layout, provisional (WORKER20) until WORKER19's spec text lands: stream s (0 code, 1 read log, 2
-     *  write log) at base b = 40 s: words [b+15:b], values [b+32:b+16], compressed [b+33], [b+39:b+34] spare; [127:120]
-     *  spare. Only this function and {@link #streamWord} know it. */
-    static final int SW_STREAM_STRIDE = 40;
+    /** The stream word's layout (WORKER19's, DECISIONS-v1.26 item 9; WORKER19/NOTES.md section 2), stream s = 0 code, 1 read
+     *  log, 2 write log: words [16s+15:16s] ([15:0], [31:16], [47:32]); compressed [48+s]; [63:51] spare; values out
+     *  [64+17s+16:64+17s] ([80:64], [97:81], [114:98]); [127:115] spare. Only this function and {@link #streamWord} know it. */
+    static int swWords(int s) { return 16 * s; }
+    static int swFlag(int s) { return 48 + s; }
+    static int swValues(int s) { return 64 + 17 * s; }
     static StreamSize[] parseStreamWord(long lo, long hi) {
         StreamSize[] r = new StreamSize[3];
-        for (int s = 0; s < 3; s++) {
-            int b = SW_STREAM_STRIDE * s;
-            r[s] = new StreamSize((int) bits128(lo, hi, b, 16), (int) bits128(lo, hi, b + 16, 17), bits128(lo, hi, b + 33, 1) != 0);
-        }
+        for (int s = 0; s < 3; s++)
+            r[s] = new StreamSize((int) bits128(lo, hi, swWords(s), 16), (int) bits128(lo, hi, swValues(s), 17), bits128(lo, hi, swFlag(s), 1) != 0);
         return r;
     }
     /** The stream word for three sizes: {lo, hi} (the inverse of {@link #parseStreamWord}). */
@@ -92,8 +92,7 @@ final class Replayer implements Peripheral {
         long[] w = new long[2];
         StreamSize[] ss = { code, rlog, wlog };
         for (int s = 0; s < 3; s++) {
-            int b = SW_STREAM_STRIDE * s;
-            put128(w, b, 16, ss[s].words()); put128(w, b + 16, 17, ss[s].values()); put128(w, b + 33, 1, ss[s].compressed() ? 1 : 0);
+            put128(w, swWords(s), 16, ss[s].words()); put128(w, swValues(s), 17, ss[s].values()); put128(w, swFlag(s), 1, ss[s].compressed() ? 1 : 0);
         }
         return w;
     }
@@ -294,12 +293,11 @@ final class Replayer implements Peripheral {
         if (!stateWritten && passes > 0)
             violate(t, "a pass started without a write to the state word since the last pass: its queues weren't flushed (DECISIONS-v1.26 item 4)");
         stateWritten = false;
-        // the pass: latch the state word's flags and the stream word's sizes (the queues and decoders are as the flush left them)
-        long sLo = region0[0], sHi = region0[1], lLo = region0[2], lHi = region0[3];
+        // v1.26 (item 10): PULSE_RUN only starts the pass: working pc, instr_idx and offset from the state word, the image into
+        // the working file, the rows-run count cleared. The flags, the sizes, the counters, the credits and the decoders
+        // were set by the state word's write (flush); the queues hold what landed since (item 11: preloading allowed).
+        long sLo = region0[0], sHi = region0[1];
         pc = sLo; instrIdx = (int) sHi; startOffset = (int) (sHi >>> 32) & 0xFFFF;
-        fStore = ((sHi >>> (SW_STORE_LOG - 64)) & 1) != 0; fRdPrev = ((sHi >>> (SW_RD_PREV - 64)) & 1) != 0;
-        StreamSize[] sz = parseStreamWord(lLo, lHi);
-        code.latch(sz[0]); rlog.latch(sz[1]); wlog.latch(sz[2]);
         for (int i = 0; i < 64; i++) { regs[2 * i] = region0[4 + 2 * i]; regs[2 * i + 1] = region0[4 + 2 * i + 1]; }
         regs[0] = 0;
         running = true;
@@ -311,14 +309,26 @@ final class Replayer implements Peripheral {
     }
 
 
-    /** The write to the state word (word 0) lands: every queue is flushed (DECISIONS-v1.26 item 4, in place of PULSE_RUN):
-     *  contents and occupancy, the decompressors' tables and positions, and every queue's credits set to 2 (4.19.8). Pushes
-     *  that land after it are kept for the next pass. */
+    /** The write to the state word (word 0) lands: setting the state resets everything (DECISIONS-v1.26 items 4, 10, in
+     *  place of PULSE_RUN): the input queues flushed (contents and occupancy; not the output queue), the state word's flags
+     *  and the stream word's sizes latched, the size (pop) counters cleared, every queue's credits set to 2 (4.19.8) and the
+     *  decompressors reset. Pushes that land after it are kept (item 11: preloading). */
     private void flush(long t) {
         code.flush(); rlog.flush(); wlog.flush(); exp.reset();
+        long sHi = region0[1];
+        fStore = ((sHi >>> (SW_STORE_LOG - 64)) & 1) != 0; fRdPrev = ((sHi >>> (SW_RD_PREV - 64)) & 1) != 0;
+        latchSizes();
         for (int b = EV_CODE; b <= EV_EXP; b++) ev.set(t, b, 2);
         java.util.Arrays.fill(pushed, 0); java.util.Arrays.fill(allowance, 0);
         stateWritten = true; flushes++;
+    }
+    /** The stream word's sizes and flags into the three decoders (their counters cleared). At the state word's write (item
+     *  10), and again at a write to the stream word itself: state-first loading writes word 1 after word 0, so latching only
+     *  at word 0 would take the previous window's sizes. Part 0 is written only while stopped, so this is the same as reading
+     *  the stream word at the pass's start (model choice, WORKER20; for WORKER19's text). */
+    private void latchSizes() {
+        StreamSize[] sz = parseStreamWord(region0[2], region0[3]);
+        code.latch(sz[0]); rlog.latch(sz[1]); wlog.latch(sz[2]);
     }
     long flushes;
 
@@ -358,8 +368,10 @@ final class Replayer implements Peripheral {
             if (wd < PART0_WORDS) {
                 if (running) { bad(t, "region 0 written while a pass runs"); return; }
                 region0[2 * wd] = lo; region0[2 * wd + 1] = hi;
-                if (wd == 0) flush(t);                               // v1.26: the state word's write flushes the queues
+                if (wd == 0) flush(t);                               // v1.26: the state word's write resets everything (item 10)
+                else if (wd == 1) latchSizes();                      // the stream word, landing after word 0 (latchSizes)
             } else if (wd == REC_FILES || wd == REC_BITMAP) {
+                if (running) { bad(t, "record word " + wd + " written while a pass runs (part 0; DECISIONS-v1.26 items 9, 11)"); return; }
                 ignoredWrites++;                                     // v1.26: the files word and the bitmap, carried and ignored
             } else if (addr >= 0x400 && addr < 0x800) {
                 if (running) { bad(t, "decode table written while a pass runs"); return; }

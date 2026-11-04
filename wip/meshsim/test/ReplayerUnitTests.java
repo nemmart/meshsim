@@ -716,9 +716,12 @@ final class ReplayerUnitTests {
             for (int s = 0; s < 3; s++) a[s] = new Replayer.StreamSize(g.nextInt(0x10000), g.nextInt(0x20000), g.nextBoolean());
             long[] w = Replayer.streamWord(a[0], a[1], a[2]);
             Replayer.StreamSize[] b = Replayer.parseStreamWord(w[0], w[1]);
-            ok &= Arrays.equals(a, b) && (w[1] >>> 56) == 0;
+            ok &= Arrays.equals(a, b) && (w[0] >>> 51) == 0 && (w[1] >>> 51) == 0;
         }
-        T.check(ok, "2,000 random sizes round-trip, [127:120] spare");
+        T.check(ok, "2,000 random sizes round-trip, [63:51] and [127:115] spare");
+        long[] one = Replayer.streamWord(new Replayer.StreamSize(0x1111, 0x10001, true), new Replayer.StreamSize(0x2222, 0x10002, false), new Replayer.StreamSize(0x3333, 0x10003, true));
+        T.eq(0x0005_3333_2222_1111L, one[0], "WORKER19's layout: words [15:0], [31:16], [47:32]; flags [48]-[50]");
+        T.eq(0x10001L | 0x10002L << 17 | 0x10003L << 34, one[1], "values out [80:64], [97:81], [114:98]");
         long[] mx = Replayer.streamWord(new Replayer.StreamSize(33_800, 65_536, true), new Replayer.StreamSize(0xFFFF, 0x1FFFF, true), new Replayer.StreamSize(0, 0, false));
         Replayer.StreamSize[] m = Replayer.parseStreamWord(mx[0], mx[1]);
         T.check(m[0].words() == 33_800 && m[0].values() == 65_536 && m[0].compressed() && m[1].words() == 0xFFFF && m[1].values() == 0x1FFFF && !m[2].compressed(),
@@ -888,6 +891,7 @@ final class ReplayerUnitTests {
         T.eq(1, r.code.occ, "the stream word's write doesn't flush");
         d.resendState();
         T.eq(f0 + 1, r.flushes, "the state word's write flushes");
+        T.check(r.code.valuesOut == w.codeVals && r.rlog.words == w.rlog.length / 2 && r.rlog.taken == 0, "and latches the sizes, the counters cleared (item 10)");
         T.check(r.code.occ == 0 && r.rlog.occ == 0 && r.wlog.occ == 0 && r.exp.occ == 0, "every queue empty, the expansion queue too");
         for (int b = Replayer.EV_CODE; b <= Replayer.EV_EXP; b++) T.eq(2, r.events().count(b), "credit bit " + b + " set to 2 (the code credit taken above is back)");
         // pushes after the flush and before PULSE_RUN are kept: two halves of code preloaded, the pass is unchanged
@@ -942,9 +946,15 @@ final class ReplayerUnitTests {
         r.accept(t, 3, 16 * 66, LinkWord.SIZE_128, 0x66, 0x66); r.runCycle(t++);
         r.accept(t, 3, 16 * 67, LinkWord.SIZE_128, 0x67, 0x67); r.runCycle(t++);
         for (int k = 0; k < 4; k++) r.runCycle(t++);
-        T.eq(2L, r.ignoredWrites, "both accepted and ignored, not UB");
+        T.eq(2L, r.ignoredWrites, "both accepted and ignored while stopped");
         T.check(Arrays.equals(before, r.region0), "part 0's words 0-65 unchanged");
         T.eq(0, r.errors(t), "no error");
+        for (int wd : new int[] { 66, 67 }) {                          // item 11: flagged while running, like any part-0 write
+            ReplayDriver d = new ReplayDriver(programWindow(false, false, false, true)); d.r.rowsPerPass = 25; d.load();
+            d.r.run(d.t); d.step(); d.step();
+            d.r.accept(d.t, 3, 16 * wd, LinkWord.SIZE_128, 1, 1);
+            T.ub(() -> { for (int k = 0; k < 6; k++) d.step(); }, "running: record word " + wd + " written during a pass", "replayer", "while a pass runs");
+        }
         ReplayWindow w = programWindow(false, false, false, true);
         long[] rec = w.record(new long[] { 5, 0 });
         T.eq(2 * 68, rec.length, "a record is 68 words");

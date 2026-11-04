@@ -420,6 +420,7 @@ public final class SyntheticDelivery {
         List<ReplayWindow.LogEvent> ev = new ArrayList<>();
         for (Log l : logs) ev.add(new ReplayWindow.LogEvent(l.hasRead(), l.read(), l.load(), l.hasWrite(), l.write()));
         ReplayWindow raw = new ReplayWindow(), lru = new ReplayWindow();
+        raw.padSeed = lru.padSeed = 0x2600_0000L + win;                // v1.26: padding is anything (DECISIONS-v1.26 item 5)
         raw.setCode(cw, false); raw.setLogs(ev, false, false);
         lru.setCode(cw, true); lru.setLogs(ev, true, true);
         put(pd, base + "code.bin", raw.code, files); put(pd, base + "code-lru.bin", lru.code, files);
@@ -427,10 +428,13 @@ public final class SyntheticDelivery {
         put(pd, base + "wlog.bin", raw.wlog, files); put(pd, base + "wlog-lru.bin", lru.wlog, files);
         long[] bm = new long[2]; for (int t : used) bm[t >>> 6] |= 1L << (t & 63);
         boolean pc_ = lru.codeLen < raw.codeLen, pr = lru.rlogLen < raw.rlogLen, pw = lru.wlogLen < raw.wlogLen;
-        put(pd, base + "state.bin", record(bm, pc, idx, off, false, false, false, raw.codeLen, raw.rlogLen, raw.wlogLen, regs), files);
-        put(pd, base + "state-lru.bin", record(bm, pc, idx, off, true, true, true, lru.codeLen, lru.rlogLen, lru.wlogLen, regs), files);
-        put(pd, base + "state-pick.bin", record(bm, pc, idx, off, pc_, pr, pw, pc_ ? lru.codeLen : raw.codeLen, pr ? lru.rlogLen : raw.rlogLen, pw ? lru.wlogLen : raw.wlogLen, regs), files);
-        put(pd, base + "end.bin", record(new long[2], f.pc, f.idx, f.active ? f.nextRow : 0, false, false, false, 0, 0, 0, f.regs), files);
+        Replayer.StreamSize rc0 = size(raw.code, raw.codeVals, false), rr0 = size(raw.rlog, raw.rlogVals, false), rw0 = size(raw.wlog, raw.wlogVals, false);
+        Replayer.StreamSize rc1 = size(lru.code, lru.codeVals, true), rr1 = size(lru.rlog, lru.rlogVals, true), rw1 = size(lru.wlog, lru.wlogVals, true);
+        put(pd, base + "state.bin", record(bm, pc, idx, off, rc0, rr0, rw0, regs), files);
+        put(pd, base + "state-lru.bin", record(bm, pc, idx, off, rc1, rr1, rw1, regs), files);
+        put(pd, base + "state-pick.bin", record(bm, pc, idx, off, pc_ ? rc1 : rc0, pr ? rr1 : rr0, pw ? rw1 : rw0, regs), files);
+        Replayer.StreamSize z = new Replayer.StreamSize(0, 0, false);
+        put(pd, base + "end.bin", record(new long[2], f.pc, f.idx, f.active ? f.nextRow : 0, z, z, z, f.regs), files);
         long[] rr = new long[10 * rowsOut.size()]; for (int i = 0; i < rowsOut.size(); i++) System.arraycopy(rowsOut.get(i), 0, rr, 10 * i, 10);
         byte[] rb = bytes(rr); Files.write(pd.resolve(base + "rows.bin"), rb);
         files.put(base + "rows.bin", Map.of("bytes", (long) rb.length, "sha256", ReplayTables.sha256(rb)));
@@ -443,13 +447,10 @@ public final class SyntheticDelivery {
         e.put("next_offset", (long) off);
         return e;
     }
-    static long[] record(long[] bm, long pc, int idx, int off, boolean cc, boolean rc, boolean wc, long cl, long rl, long wl, long[] regs) {
-        long[] r = new long[2 * 67];
-        r[0] = bm[0]; r[1] = bm[1]; r[2] = pc;
-        r[3] = (idx & 0xFFFFFFFFL) | (long) (off & 0xFFFF) << 32 | (cc ? 1L : 0) << 48 | (rc ? 1L : 0) << 49 | (wc ? 1L : 0) << 50 | 1L << 51;
-        r[4] = (cl & 0xFFFFFF) | (rl & 0xFFFFFF) << 32; r[5] = wl & 0xFFFFFF;
-        System.arraycopy(regs, 0, r, 6, 128); r[6] = 0;
-        return r;
+    static Replayer.StreamSize size(long[] entries, int values, boolean comp) { return new Replayer.StreamSize(entries.length / 2, values, comp); }
+    /** v1.26: the 68-word record (DECISIONS-v1.26 items 1, 2, 8): use the store log and output rd_prev set, files word 0. */
+    static long[] record(long[] bm, long pc, int idx, int off, Replayer.StreamSize c, Replayer.StreamSize r, Replayer.StreamSize w, long[] regs) {
+        return ReplayWindow.record(pc, Replayer.stateHi(idx, off, true, true), Replayer.streamWord(c, r, w), regs, new long[2], bm);
     }
     void put(Path pd, String name, long[] v, Map<String, Object> files) throws Exception {
         byte[] b = bytes(v); Files.write(pd.resolve(name), b);
@@ -459,7 +460,7 @@ public final class SyntheticDelivery {
 
     void writeManifest(List<Map<String, Object>> entries) throws IOException {
         StringBuilder s = new StringBuilder();
-        s.append("{\n \"format\": \"replay-inputs/v1.25 (synthetic: SyntheticDelivery, not jolt-cpp)\",\n");
+        s.append("{\n \"format\": \"replay-inputs/v1.26 (synthetic: SyntheticDelivery, not jolt-cpp)\",\n");
         s.append(" \"generator\": {\"seed\": ").append(seed).append(", \"rows\": ").append(rows).append(", \"first\": ").append(first).append("},\n");
         s.append(" \"tables\": \"tables\",\n \"programs\": [{\"name\": \"").append(program).append("\", \"window_rows\": ").append(rows).append(", \"window_entries\": [\n");
         for (int i = 0; i < entries.size(); i++) s.append("  ").append(json(entries.get(i))).append(i + 1 < entries.size() ? ",\n" : "\n");

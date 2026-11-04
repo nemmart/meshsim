@@ -1,8 +1,9 @@
-# Machine specification — 64-tile mesh processor, v1.25
+# Machine specification — 64-tile mesh processor, v1.26
 
 This document specifies the hardware of the 64-tile mesh sorter: the tiles, the network that joins them, the control that sequences them, and the registers a tile program uses. It is written for an engineer who will build the machine.
 
 **Companion material** (paths in the package):
+- `spec/CHANGES-v1.26.md`: what changed from v1.25, section by section, each item citing `planning/DECISIONS-v1.26.md`; `spec/CHANGES-v1.25-to-v1.26.md` is the RTL's guide for the step.
 - `spec/CHANGES-v1.25.md`: what changed from v1.2, section by section, each item citing its decision; `planning/DECISIONS-v1.25.md` is the decisions log behind it.
 - `spec/CHANGES-v1.2.md`: what changed from v1.1, section by section, each item citing its decision. A section removed in v1.2 keeps its number here as a one-line stub pointing there.
 - `planning/DECISIONS-v1.2.md`: the decisions log behind v1.2, kept as the history. Where a log and this document differ, this document is the authority.
@@ -23,6 +24,13 @@ This document specifies the hardware of the 64-tile mesh sorter: the tiles, the 
 **There is no third kind:** never a prescribed outcome for a mistake (a substitute value, a dropped write still counted) that costs hardware and helps no one find the bug. **The test for a new check:** would simulation catch this on our firmware? If so, it's UB.
 
 In the rules below, **"(hardware)"** marks a checked rule and **"(meshsim)"** marks UB; section 9 lists the invariants meshsim checks. (DECISIONS-v1.25 section 8a, replacing v1.2's "Who checks what" of 2026-10-28; the simulation-only assertions are for Tony to confirm.)
+
+**v1.26 in brief** (in full, with the decisions behind each item: `CHANGES-v1.26.md`). v1.26 is v1.25 with **exactly the replayer changes decided for v1.3** (`planning/DECISIONS-v1.26.md`), and nothing else:
+- **The state record is 68 words, in a new order** (4.19.2): the state word, the stream word, the register image, then the files word and the template bitmap, which the replayer ignores; it loads from byte 0.
+- **The stream word gives each stream's size as its 128-bit words and its values out, and its compression flag** (4.19.2); bit lengths are gone, and a stream's padding can be anything (4.19.15). The state word keeps two per-pass flags, use the store log and the new **output `rd_prev`**.
+- **Every queue is 4 KB** (4.19.8): the read-log and write-log queues shrink from 8 KB.
+- **Writing the state word flushes the input queues** (4.19.8, 4.19.10), in place of `PULSE_RUN` emptying them; software writes it before every pass.
+- **The replayer checks its pops against the sizes** (4.19.11, 4.19.15): new `ERRORS` [3]–[5], a stream's underflow, and [6], done with input left over.
 
 **v1.25 in brief** (a milestone between v1.2 and v1.3; in full, with the decisions behind each item: `CHANGES-v1.25.md`). v1.25 is v1.2 with the replayer and its tables brought up to **jolt-cpp `821e1bd`**, so the hardware matches today's Jolt, plus **section 8's package** of DECISIONS-v1.25 (last below). Elsewhere the machine is v1.2's:
 - **The reference** is jolt-cpp `821e1bd`, checked on EVM Zone `evm-zone-4e3451c1d8c5` and Cyclone (4.19.1).
@@ -1264,7 +1272,7 @@ The **replayer** is a tile unit that regenerates the tile's share of a proof's e
 
 #### 4.19.1 Overview
 
-**What a pass is.** A run of the replayer (`PULSE_RUN`, 4.19.11) loads the tile's checkpoint and runs exactly **65,536 rows**, then stops; that is one **pass**. The replayer runs many passes per proof, once for every sumcheck stage that needs the trace (46 per Akita proof in the repo's kernel scratchpad plan [estimate]), and every pass starts from the same checkpoint, because replay never writes it.
+**What a pass is.** A run of the replayer (`PULSE_RUN`, 4.19.11) loads the tile's checkpoint and runs exactly **65,536 rows**, then stops; that is one **pass**. The replayer runs many passes per proof, once for every sumcheck stage that needs the trace (46 per Akita proof in the repo's kernel scratchpad plan [estimate]), and every pass starts from the same checkpoint, because replay never writes it. Before each pass the controller rewrites the state word, which carries the pass's flags and flushes the queues (4.19.8; v1.26).
 
 **The parts.**
 
@@ -1272,17 +1280,17 @@ The **replayer** is a tile unit that regenerates the tile's share of a proof's e
 |---|---|---|---|
 | code queue | 4 KB, 256 × 128 bits | the opcode stream, raw or compressed | 4.19.8 |
 | expansion queue | 4 KB, 256 × 128 bits | expansion words the controller supplies (the inlines and the CSR instructions) | 4.19.8 |
-| read-log queue | 8 KB, 512 × 128 bits | the read log, raw or compressed: load values, advice, the next `instr_idx` of non-sequential rows | 4.19.8 |
-| write-log queue | 8 KB, 512 × 128 bits | the write log, raw or compressed: store rows' pre-values | 4.19.8 |
+| read-log queue | 4 KB, 256 × 128 bits | the read log, raw or compressed: load values, advice, the next `instr_idx` of non-sequential rows | 4.19.8 |
+| write-log queue | 4 KB, 256 × 128 bits | the write log, raw or compressed: store rows' pre-values | 4.19.8 |
 | decompressors | three: code, read log, write log | 16-entry LRU decoding between each stream's queue and the core | 4.19.15 |
 | decode table | 4 KB, 2K × 16 bits, built as 256 × 128 (4.19.10) | instruction → template | 4.19.5 |
 | ROM | 8 KB, 512 × 128 bits, dual-ported | the templates: one expansion word per row | 4.19.6 |
-| state word, stream word, register image | 16 B + 16 B + 1 KB | the checkpoint, in that order | 4.19.2 |
+| state word, stream word, register image | 16 B + 16 B + 1 KB | the checkpoint, in that order: words 0–65 of the 68-word state record | 4.19.2 |
 | working register file | 1 KB, 128 × 64 bits, true dual-port | the registers a pass reads and writes | 4.19.7 |
 | ALU, comparator, two adders | — | row results, branch outcomes, memory address, pc + imm | 4.19.7 |
 | output queue | 32 rows of 80 B | rows waiting for the consumer | 4.19.12 |
 
-**Its interfaces** are the standard peripheral window's (4.17; its words, 4.19.9 and 8.11). Every replayer memory and queue is written by **mode-0 packets to its region, 0x04** (4.19.10). The controller starts a pass with `PULSE_RUN`, follows it with `STATUS` [0], reads `ROWS_RUN`, `EXPANSION_OFFSET` and `EXPANSION_OPCODE` (words 32–34), counts its refills on a write counter of its choice, and is woken by the replayer's events, run done, four queues' credits and new expansion, through the tile's live bit `EVENTS` [13] (4.19.9). Its errors, bad write, queue overrun and invalid expansion, are in its own `ERRORS`, which reaches the tile's `ERRORS` [11] and traps the controller (4.19.11). It has no DMA: its rows go to their consumer inside the tile (4.19.12). It keeps v1.1's behaviour, except that **its queues' low-water lines are now counted credits** (4.19.8) and its errors are terminal.
+**Its interfaces** are the standard peripheral window's (4.17; its words, 4.19.9 and 8.11). Every replayer memory and queue is written by **mode-0 packets to its region, 0x04** (4.19.10). The controller starts a pass with `PULSE_RUN`, follows it with `STATUS` [0], reads `ROWS_RUN`, `EXPANSION_OFFSET` and `EXPANSION_OPCODE` (words 32–34), counts its refills on a write counter of its choice, and is woken by the replayer's events, run done, four queues' credits and new expansion, through the tile's live bit `EVENTS` [13] (4.19.9). Its errors, queue overrun, invalid expansion, each stream's underflow and done with input left over (v1.26), are in its own `ERRORS`, which reaches the tile's `ERRORS` [11] and traps the controller (4.19.11). It has no DMA: its rows go to their consumer inside the tile (4.19.12). It keeps v1.1's behaviour, except that **its queues' low-water lines are now counted credits** (4.19.8) and its errors are terminal.
 
 **Rate.** A row takes a fixed 3 cycles, or 5 for a multiply (4.19.7), plus stalls. **Measured at v1.25** [meas: v1.25's acceptance runs, Quest 083 and 084: meshsim's Stage B on every window of both workloads at 2²⁹, `WORKER11/REPORT.md` section 5]: on the windows holding real rows, **3.32 cycles per row on EVM Zone** (per window 3.00–3.59, median 3.32) and **3.16 on Cyclone** (3.00–3.50, median 3.10); over all 8,192 windows, the padding ones included (3.00), 3.21 and 3.11. A pass is so about 218K cycles on average and at most 235K, **about 0.22 ms at 1 GHz with everything local, 0.24 ms at worst**. Stalls are 0.24 % of a pass on EVM Zone and 0.62 % on Cyclone, most of it the fixed image and code loads (190 cycles a pass), the write log's waits and, on Cyclone, controller-fed expansions (4.19.9). The consuming kernels likely need 3–6 cycles per row anyway [estimate].
 
@@ -1319,17 +1327,44 @@ The first three are the rows whose expansion word has `from_log` set (4.19.3).
 **A requirement on our tracer engine.** The run log differs from jolt-cpp's memory log on purpose. jolt-cpp logs only its load and store rows and `VirtualAdvice` (`trace_owner.cpp:822–855`, 4f36b3d; at `821e1bd` the load and store rows include the six narrow ones): it computes the DIV/REM advice in its interpreter (`trace_owner.cpp:545–630`) and looks a jump's next index up in a pc-to-index table (`finish_instruction`, `trace_owner.cpp:111–126`). The replayer has no divider and no such table, so **the tracer engine must write the DIV/REM advice and the next `instr_idx` of every control transfer into the run log**, in row order with the other log words (item 33). The validation harness (item 58) proves the format, the tracer engine's extra words and the replayer together.
 
 **The checkpoint.** Per tile, loaded by mode-0 writes into the replayer's part 0 (4.19.10), **state first** (owner, 2026-10-26), so a sequential load writes the state, then the streams' descriptor, then the registers:
-- the **state word** (128-bit word 0): pc [63:0], `instr_idx` [95:64], next offset [111:96] (the rows of the first instruction's expansion that the previous tile already ran), and the **per-run flags** (owner, 2026-10-26): [112] code stream LRU-compressed, [113] read log LRU-compressed, [114] write log LRU-compressed, [115] **includes store log**; spare [127:116];
-- the **stream word** (word 1): the three streams' exact lengths in bits (4.19.15): code [23:0], read log [55:32], write log [87:64]; the rest spare;
+- the **state word** (128-bit word 0): pc [63:0], `instr_idx` [95:64], next offset [111:96] (the rows of the first instruction's expansion that the previous tile already ran); [114:112] reserved (v1.25's compression flags, which moved to the stream word; written 0 and ignored, not reused); the **per-pass flags** (DECISIONS-v1.26 item 8): [115] **use the store log** (v1.25's "includes store log") and [116] **output `rd_prev`** (v1.26); spare [127:117]. **Writing it flushes the four input queues** (4.19.8);
+- the **stream word** (word 1; DECISIONS-v1.26 item 2): each stream's size as two numbers, **its words** (the 128-bit entries it occupies as sent, padding included) and **its values out** (the 32- or 64-bit values it decodes to, where the decoder stops), and **its compression flag** (moved from the state word at v1.26). Word counts and flags sit on 16-bit and bit boundaries in the low half, the value counts in the high half:
+
+| bits | field | bits | field |
+|---|---|---|---|
+| [15:0] | code: words | [80:64] | code: values out |
+| [31:16] | read log: words | [97:81] | read log: values out |
+| [47:32] | write log: words | [114:98] | write log: values out |
+| [48] | code: LRU-compressed | [127:115] | spare (0) |
+| [49] | read log: LRU-compressed | | |
+| [50] | write log: LRU-compressed | | |
+| [63:51] | spare (0) | | |
+
+A stream is at most 65,536 values (one per instruction or per row) and 33,792 words (65,536 compressed 64-bit misses of 66 bits; raw, 32,768 for a log and 16,384 for code), so 16 and 17 bits suffice. **Words** is the fewest 128-bit entries holding the stream: ⌈values / 4⌉ for raw code, ⌈values / 2⌉ for a raw log. v1.25's stream word gave three exact bit lengths instead (code [23:0], read log [55:32], write log [87:64]).
+
 - the **register image** (words 2–65): all 128 registers, as 64 words of 128 bits, each a pair, the low register in the low half: image word *i* (128-bit word 2 + *i*) holds register 2*i* in bits [63:0] and 2*i* + 1 in [127:64], so registers 0 and 1 are in the first and 126 and 127 in the last.
 
-**The tracer's state record** (owner, 2026-10-26, part G) is one record per window, 67 × 128-bit words (1,072 bytes): **word 0 is the window's template bitmap** (bit *i* set if the window uses controller-fed template *i*, 4.19.5), and **words 1–66 are the part-0 image** exactly as above (state word, stream word, register image). The replayer never sees word 0: a controller sends the record **from byte 16 onward**, so the rest still streams straight into part 0, which itself is unchanged. A future tracer peripheral's state queue emits records in this same form.
+**The state record** (owner, 2026-10-26, part G; **68 words in a new order at v1.26**, DECISIONS-v1.26 item 1) is one record per window, 68 × 128-bit words (1,088 bytes), one format for the host, the Tracer and the replayer, landing in part 0 at consecutive offsets from 0x000 (4.19.10):
 
-**Includes store log** (state word [115], owner, 2026-10-26). When 1, store rows pop the write log as above. **When 0, the pass doesn't use stores' pre-values:** store rows pop nothing and output a pre-value of 0, the write-log queue is never fed, and the controller loop leaves its credit bit out of the mask for the whole pass (4.19.8). Write-log entry 15 may keep updating on load rows (4.19.15); it is never read. A store row's pre-value never feeds a register, so register state is unaffected. The tracer emits [115] = 1; a controller clears it for a pass whose consumer doesn't need pre-values, and so never fetches the write log.
+| word | offset | contents | the replayer |
+|---|---|---|---|
+| 0 | 0x000 | the state word (above) | used; its write flushes the queues |
+| 1 | 0x010 | the stream word (above) | used |
+| 2–65 | 0x020–0x41F | the register image (above) | used |
+| 66 | 0x420 | **the files word:** the guest's memory file and the jump-target map file, each a root and a depth; its layout is the Tracer's (v1.3) | ignored |
+| 67 | 0x430 | **the template bitmap:** bit *i* set if the window uses controller-fed template *i* (4.19.5) | ignored |
+
+**The replayer needs only words 0–65**, v1.25's part-0 image: writes to words 66 and 67 are accepted and ignored, and a controller may simply not send them. **The record loads from byte 0**, so it streams straight into part 0. The tile's controller reads the bitmap from the record itself (in big SRAM, 4.19.13) to trim its templates. v1.25's record was 67 words, the bitmap first, and was sent from byte 16 onward.
+
+**Use the store log** (state word [115], owner, 2026-10-26; v1.25's "includes store log"). When 1, store rows pop the write log as above. **When 0, the pass doesn't use stores' pre-values:** store rows pop nothing and output a pre-value of 0, the write-log queue is never fed, **the write log's sizes in the stream word are ignored** (neither underflow, `ERRORS` [5], nor leftover, [6], 4.19.11; DECISIONS-v1.26 item 8), and the controller loop leaves its credit bit out of the mask for the whole pass (4.19.8). Write-log entry 15 may keep updating on load rows (4.19.15); it is never read. A store row's pre-value never feeds a register, so register state is unaffected. The tracer emits [115] = 1; a controller clears it for a pass whose consumer doesn't need pre-values, and so never fetches the write log.
+
+**Output `rd_prev`** (state word [116]; DECISIONS-v1.26 item 8, new at v1.26). When 1, each output row's `rd_prev` field (row word 3 [63:0], 4.19.12) is rd's value before the row, as at v1.25. **When 0, the field is 0 in every row** of the pass, for a consumer that doesn't need it; the register file, every other field and the logs are unaffected. The tracer emits [116] = 1.
+
+**Only the flags change per pass** (DECISIONS-v1.26 item 8): a controller resends the state word with its pass's two flags before every pass (4.19.8), and **the record's other words are never edited**: the stream word, the write log's sizes included, stays exactly as the tracer produced it.
 
 Sending all 128 registers avoids special-casing a mid-sequence start, at 1 KB per tile. **A tile that starts inside an expansion** has that instruction as its first opcode-stream entry, and the next offset says where in the expansion to begin. jolt-cpp's chunked replay instead rewinds to the start of the expansion when inline scratch registers are live (`trace_owner.cpp:722–739`); the full image makes that unnecessary. **Register 0** of the image is ignored: the working file's register 0 always reads 0 *(Proposed, item 41)*.
 
-**Re-runs.** A run copies the state word into working copies of pc, `instr_idx` and the offset, **latches the state word's four flags and the stream word's three lengths** (owner, 2026-10-26), and copies the image into the working register file (64 cycles, two registers per cycle). Replay never writes region 0, so every pass of the same window starts identically.
+**Re-runs.** A run copies the state word into working copies of pc, `instr_idx` and the offset, **latches the state word's two flags and the stream word's sizes and compression flags** (owner, 2026-10-26; v1.26), and copies the image into the working register file (64 cycles, two registers per cycle). Replay never writes region 0, so every pass of the same window starts identically.
 
 **Inline scratch.** Registers 48–127 hold an expansion's scratch values and are 0 between expansions (`isa/virtual.hpp:25–27`). Inline templates end with explicit `ADDI vN, x0, 0` rows that zero each scratch register they used (for example the end of `inlines/blake3.inc`), so the replayer needs no state for them. jolt-cpp also zeroes them defensively at chunk starts (`normalize_inline_vregs`, `trace_owner.cpp:128`); with the full register image the replayer doesn't need to.
 
@@ -1584,15 +1619,15 @@ Four queues feed the replayer. They are **true FIFOs**: producers push at the ta
 |---|---|---|---|---|
 | code | 4 KB | 256 × 128-bit entries of the code stream | 128 | local (resident or staged, 4.19.13) |
 | expansion | 4 KB | 256 × 128-bit expansion words | 128 | always local |
-| read log | 8 KB | 512 × 128-bit entries of the read log | 256 | local (resident or staged) |
-| write log | 8 KB | 512 × 128-bit entries of the write log | 256 | local (resident or staged) |
+| read log | 4 KB | 256 × 128-bit entries of the read log | 128 | local (resident or staged) |
+| write log | 4 KB | 256 × 128-bit entries of the write log | 128 | local (resident or staged) |
 
-All four are dual-ported, so pushes land while the replayer runs. Every refill is local (4.19.13), and a half covers the local refill latency (a few hundred cycles) with room to spare. The two logs are 8 KB each *(Proposed, owner, 2026-10-26; item 103: the tracer to measure the read/write split)*.
+All four are dual-ported, so pushes land while the replayer runs. Every refill is local (4.19.13), and a half covers the local refill latency (a few hundred cycles) with room to spare. **Every queue is 4 KB** (DECISIONS-v1.26 item 3, from DECISIONS-v1.3 section 12; v1.25's two logs were 8 KB each): by the measured densities (4.19.2), the logs average 0.31–0.35 words per real row together and at most about 0.83 in Cyclone's densest windows, so a log's half-queue refill, 128 entries or 256 words, lasts at least about 300 rows even if one log carried both densities, some 900 cycles at 3 cycles a row, against a local refill of a few hundred [derived]. *(Stage B's stall counts with the 4 KB queues, on both workloads at 2²⁹: to be added from WORKER20's acceptance runs.)*
 
-**The ports.** In the replayer's region a range of offsets names a queue (4.19.10): the packet is appended at the tail and the rest of its address is ignored, so the address generator's per-packet stepping stays inside the port. **Every queue port takes 128-bit packets only,** one entry each (owner, 2026-10-26); a 32- or 64-bit packet is a bad write (4.19.11). Each stream is padded to a whole entry, and its exact bit length marks its end (4.19.15).
+**The ports.** In the replayer's region a range of offsets names a queue (4.19.10): the packet is appended at the tail and the rest of its address is ignored, so the address generator's per-packet stepping stays inside the port. **Every queue port takes 128-bit packets only,** one entry each (owner, 2026-10-26); a 32- or 64-bit packet is a bad write (4.19.11). Each stream is padded to a whole entry, and its value count marks its end (4.19.15).
 
 **Credits** (owner, 2026-10-28 and 2026-10-29; W3-24). Each queue's **credit** is one of the replayer's counted events (4.17.3), **depth 2**, and **each credit is half a queue**: "half a buffer is free, send half a buffer".
-- **Initialised at the start:** **`PULSE_RUN` sets every queue's credits to 2**, and **each new expansion sets the expansion queue's to 2 again** (as v1.1 reset the expansion queue's pending count at each expansion).
+- **Initialised at the start:** **`PULSE_RUN` sets every queue's credits to 2** (the queues being empty then, below), and **each new expansion sets the expansion queue's to 2 again** (as v1.1 reset the expansion queue's pending count at each expansion).
 - **Returned by the replayer:** each time it has **popped half a queue's worth of entries** since the last return, it adds one credit to that queue.
 - **Taken by the controller:** a consuming load of the replayer's `EVENTS` takes one credit from each queue bit that is set and masked (4.17.3); the program then refills every queue whose credit it took. **A credit is permission to send up to half a queue** (owner, 2026-10-28), not one transfer: the program may split the refill into smaller moves (a 2 KB credit as two 1 KB moves), as long as their total stays within the credit.
 - **So the controller can never send more than there is room for,** up to two refills can be outstanding, which keeps a draining queue fed, and the tile's live bit for the replayer stays high while any masked credit remains, so `WFI` can't miss a refill. A queue that empties simply stalls the replayer until data lands.
@@ -1602,7 +1637,10 @@ All four are dual-ported, so pushes land while the replayer runs. Every refill i
 
 **Overrun.** A push into a full queue (occupancy at capacity before the cycle's pop, as for every FIFO, 4.13) is dropped and sets **queue overrun** in the replayer's `ERRORS` (4.19.11): **checked**, since it depends on the credit loop under real timing (owner, 2026-11-01). Whether the dropped push is still counted is not promised (4.19.10). With credits it means the program sent more than it was credited.
 
-**The start clears the queues** (owner, 2026-10-23). A run (a pass's start) empties all four queues, their contents and occupancy, and sets their credits to 2. There is **no preloading and no end-of-pass reset**: done leaves the queues as they are, and whatever is in them, or lands in them while the replayer is stopped, is discarded by the next start (4.19.10). The reset (6.1) also empties them. **Software rule:** before a start, every queue push has landed, whatever its source: the refill counter's done for the controller's refill runs, and the counters of any other pushes it counts (4.19.13). Over-pushed or late data from one pass can then never leak into the next. After the start every queue holds two credits, and the controller fills them, a few hundred cycles per pass.
+**Writing the state word flushes the queues** (DECISIONS-v1.26 item 4, from DECISIONS-v1.3 section 24; in place of v1.25's start clearing them). **The write to the state word, part 0 offset 0x000** (4.19.10), empties all four input queues, their contents and occupancy, as it lands; the output queue (4.19.12) is not touched, and its rows drain to the consumer. Nothing else empties them but the reset (6.1). The state stays a memory, address-mapped in part 0 as at v1.25, not a queue (DECISIONS-v1.26 item 4). Sequential loading writes the state word first (4.19.10), and a per-pass flag change resends only it, so every pass starts with clean queues:
+- **The controller writes the state word before every pass** (owner, 2026-11-01), even re-running the same window. A pass that ends inside a controller-fed expansion can leave expansion words queued (the expansion queue has no sizes, 4.19.11), and the flush clears them; the code and log queues are empty after any pass that ends without an error (4.19.11, `ERRORS` [6]).
+- **The queues are empty at `PULSE_RUN`** (meshsim; invariant 16): there is **no preloading**, and a push lands only after the run has started. `PULSE_RUN` empties nothing (v1.26); it sets every queue's credits to 2 and resets the decompressors (4.19.11).
+- **Software rule:** before the state write, every queue push has landed, whatever its source: the refill counter's done for the controller's refill runs, and the counters of any other pushes it counts (4.19.13). Over-pushed or late data from one pass can then never leak into the next. After the start every queue holds two credits, and the controller fills them, a few hundred cycles per pass.
 
 #### 4.19.9 The events, the words and the controller loop
 
@@ -1613,7 +1651,7 @@ All four are dual-ported, so pushes land while the replayer runs. Every refill i
 | `PARAMS` [7:0] | type 4 | `TILE_STATUS` [15:12] |
 | `STATUS` [0] | run in progress: the ownership state (4.19.10, 4.19.11) | `periph_running` |
 | `STATUS` [1] | always 0 (no DMA) | — |
-| `ERRORS` | [0] reserved (v1.2: bad write, now UB), [1] queue overrun, [2] invalid expansion (4.19.11) | the tile's conditions 11–13 |
+| `ERRORS` | [0] reserved (v1.2: bad write, now UB), [1] queue overrun, [2] invalid expansion, [3] code-stream underflow, [4] read-log underflow, [5] write-log underflow, [6] done with input left over (v1.26) (4.19.11) | the tile's conditions 11–13 |
 | `PULSE_RUN` | a pass (4.19.11) | `TILE_PULSE` [2], `PERIPH_RUN` |
 | words 4, 8, 9 | reserved (no DMA) | the sender, unattached |
 | word 32, `ROWS_RUN` (R) | rows of this pass completed, modulo 2¹⁶ | `PERIPH_STATUS_0` [15:0] |
@@ -1639,9 +1677,10 @@ A load of the replayer's `EVENTS` returns every bit and consumes one count from 
 **The controller loop** (W3-24, W3-27). Every `WFI` has exactly the sources its mask allows. `rp` is the replayer's window (`peripheral1`), `QUEUES` its credit bits that have something left to send, `REFILL` the done event of the write counter the loop uses for its refills (say counter 4, `EVENTS` [3]), and `PERIPH1` the tile's `EVENTS` [13]; GO, [8], stays in the tile's mask throughout (4.12) but can't arrive mid-pass, and `EVENTS_REQUIRED` is 0.
 
 ```
+    write the state word (its pass's flags)          ; flushes the queues (4.19.8), every pass
     rp->EVENTS_MASK   = RUN_DONE | NEW_EXP | QUEUES   ; the write log only with the store log
     tile->EVENTS_MASK = GO | PERIPH1                  ; only the replayer can come
-    rp->PULSE_RUN     = 1                             ; a pass: empties the queues, two credits each
+    rp->PULSE_RUN     = 1                             ; a pass: two credits each
 loop:
     WFI                                               ; the replayer's live bit
     ev = rp->EVENTS & rp->EVENTS_MASK                 ; claims: one credit from each set queue bit
@@ -1649,7 +1688,7 @@ loop:
     if ev.run_done: exit
     if ev.new_expansion: look up key(rp->EXPANSION_OPCODE) (inlines and CSR only),
                          start at rp->EXPANSION_OFFSET; add EXPANSION to rp->EVENTS_MASK
-    for each credit taken: queue a refill of min(half, what that stream has left)
+    for each credit taken: queue a refill of min(half, what that stream has left)  ; its words, from the stream word
     for each stream with nothing left: remove its bit from rp->EVENTS_MASK
     tile->WRITE_COUNTER_4 = packets; write STREAM entries; start the run
     tile->EVENTS_MASK = GO | REFILL | RUN_DONE        ; squelch: only the refill's counter and its run can wake it
@@ -1663,7 +1702,9 @@ The squelch is a mask setting: while the run streams, the replayer's credits acc
 
 **Data from LPDDR** (4.19.13) never goes straight into a queue (owner, 2026-10-26): the overflow is fetched into big SRAM and refilled locally like resident data, so every refill is a local run and the loop is the same for all of them.
 
-**Between passes.** The loop exits only at the top, after its last refill run has landed (its counter's done consumed), so every queue push has landed when the next start empties the queues (4.19.8).
+**What a stream has left** is counted in 128-bit words, from the stream's word count in the stream word (4.19.2): every refill but the last is a half, 128 entries, and the last is what remains (v1.26; v1.25 rounded the bit length up). The write log's count is used only with the store log.
+
+**Between passes.** The loop exits only at the top, after its last refill run has landed (its counter's done consumed), so every queue push has landed when the next pass's state write flushes the queues (4.19.8).
 
 **Short runs, not interruption.** The address generator is not interruptible. Instead every run is short: a 1 KB chunk is 64 packets, about 64 cycles, so nothing waits long for the engine, and the controller re-checks the queues after each chunk. Streaming occupies about 11–20 % of a pass [estimate]. Group runs (the sort's all-to-alls) stay exclusive and don't coincide with replay.
 
@@ -1684,22 +1725,23 @@ The rules for writes into a peripheral (4.17.5) apply: mode 0 to region 0x04, fr
 
 | offset (bytes) | offset[22:20] | part | size | sizes taken | ports |
 |---|---|---|---|---|---|
-| 0x000000–0x00000F | 0 | **state word:** pc [63:0], `instr_idx` [95:64], next offset [111:96]; flags [112] code compressed, [113] read log compressed, [114] write log compressed, [115] includes store log; [127:116] spare | 16 B | 128 | single |
-| 0x000010–0x00001F | 0 | **stream word** (owner, 2026-10-26): code length [23:0], read-log length [55:32], write-log length [87:64], exact, in bits (4.19.15); the rest spare | 16 B | 128 | single |
+| 0x000000–0x00000F | 0 | **state word:** pc [63:0], `instr_idx` [95:64], next offset [111:96]; [114:112] reserved; flags [115] use the store log, [116] output `rd_prev`; [127:117] spare (4.19.2). **Its write flushes the input queues** (4.19.8) | 16 B | 128 | single |
+| 0x000010–0x00001F | 0 | **stream word** (v1.26): per stream its words, values out and compression flag; words [15:0], [31:16], [47:32], flags [48], [49], [50], values out [80:64], [97:81], [114:98], for code, read log and write log (4.19.2) | 16 B | 128 | single |
 | 0x000020–0x00041F | 0 | **register image:** 64 × 128-bit words, image word *i* (registers 2*i* low, 2*i* + 1 high) at 0x20 + 16*i* | 1 KB | 128 | single |
+| 0x000420–0x00043F | 0 | **the record's words 66 and 67** (the files word and the template bitmap, 4.19.2): **accepted and ignored** (v1.26) | 32 B | 128 | — |
 | 0x001000–0x001FFF | 0 | decode table: entry *e* in the packet at 0x1000 + 16·(*e* >> 3), bits [16·(*e* & 7) + 15 : 16·(*e* & 7)] | 4 KB | 128 | single |
 | 0x002000–0x003FFF | 0 | ROM: word *j* at 0x2000 + 16*j* | 8 KB | 128 | dual |
 | 0x100000–0x1FFFFF | 1 | code queue port | 4 KB queue | 128 | dual |
-| 0x200000–0x2FFFFF | 2 | read-log queue port | 8 KB queue | 128 | dual |
-| 0x300000–0x3FFFFF | 3 | write-log queue port | 8 KB queue | 128 | dual |
+| 0x200000–0x2FFFFF | 2 | read-log queue port | 4 KB queue | 128 | dual |
+| 0x300000–0x3FFFFF | 3 | write-log queue port | 4 KB queue | 128 | dual |
 | 0x400000–0x4FFFFF | 4 | expansion queue port | 4 KB queue | 128 | dual |
 | everything else | 0, 5–7 | unmapped | — | — | — |
 
 **One part per queue** (owner, 2026-11-01; v1.25, CL1, as v1.2.1): every queue port is a whole 1 MB part, so **offset bits [22:20] alone name the destination**: 0 the memories, 1–4 the code, read-log, write-log and expansion queues, 5–7 unmapped. A queue port is in effect one address; its range only lets an advancing stream keep hitting it, and its size means nothing. (Before, the two logs shared part 2, 512 KB each, at 0x200000 and 0x280000, and the expansion queue was part 3 at 0x300000, making the decode two-level: bits [22:20], then bit 19 for the logs.)
 
-*(Proposed, items 44–46: the parts, the offsets in part 0 and the sizes each part takes.)* In 128-bit words (offset / 16) the state word is 0, the stream word 1, the register image 2–65 (owner, 2026-10-26: state first), the decode table 256–511 and the ROM 512–1023. Every part takes 128-bit packets only, so every write is 16-byte aligned; a misaligned one is UB (4.1; DECISIONS-v1.25 section 8b; v1.2: a bad packet at the director).
+*(Proposed, items 44–46: the parts, the offsets in part 0 and the sizes each part takes.)* In 128-bit words (offset / 16) the state word is 0, the stream word 1, the register image 2–65 (owner, 2026-10-26: state first), the record's ignored words 66–67, the decode table 256–511 and the ROM 512–1023. **Part 0's words 0–67 are the state record's words 0–67** (4.19.2), so a record lands at consecutive offsets from 0x000. Every part takes 128-bit packets only, so every write is 16-byte aligned; a misaligned one is UB (4.1; DECISIONS-v1.25 section 8b; v1.2: a bad packet at the director).
 
-**How a controller loads and edits part 0** (owner, 2026-10-26, recommended practice; worked example in `REGISTERS.md`). The controller keeps its window's checkpoint in data memory: the state and stream words (32 bytes), and the register image too if it loads it this way (1,056 bytes in all). With the replayer stopped (`STATUS` [0] = 0): `ROUTER_HDR` once (dst = its own id, mode 0, a counter *n*) and `ROUTER_ADDR` = 0x04000000; a write of the number of 128-bit words to `WRITE_COUNTER_n`; per word `ROUTER_SET_W0`–`W2` then `ROUTER_SEND_128`, the address advancing by 16 each send (4.11); then wait on counter *n*'s done and pulse `PULSE_RUN`. A full checkpoint is 66 words, about 264 stores; a per-pass change such as flipping [115] resends only the state word, about seven stores. Part 0 persists across passes, so the image isn't resent. A controller may instead stream the checkpoint from big SRAM with the address generator, starting at the record's byte 16 (its word 1), since word 0 is the template bitmap (4.19.2). The working register file (1 KB, true dual-port) isn't addressable; each start fills it from the image.
+**How a controller loads and edits part 0** (owner, 2026-10-26, recommended practice; worked example in `REGISTERS.md`). The controller keeps its window's checkpoint in data memory: the state and stream words (32 bytes), and the register image too if it loads it this way (1,056 bytes in all). With the replayer stopped (`STATUS` [0] = 0): `ROUTER_HDR` once (dst = its own id, mode 0, a counter *n*) and `ROUTER_ADDR` = 0x04000000; a write of the number of 128-bit words to `WRITE_COUNTER_n`; per word `ROUTER_SET_W0`–`W2` then `ROUTER_SEND_128`, the address advancing by 16 each send (4.11); then wait on counter *n*'s done and pulse `PULSE_RUN`. A full checkpoint is 66 words, about 264 stores. **Before every pass the controller resends the state word** with that pass's flags, about seven stores, which flushes the queues (4.19.8); nothing else in the record is edited (4.19.2). Part 0 persists across passes, so the image isn't resent. A controller may instead stream the checkpoint from big SRAM with the address generator, **starting at the record's byte 0** (v1.26; v1.25 started at byte 16, past its leading bitmap), 66 words, or all 68, since words 66 and 67 are accepted and ignored (4.19.2). The working register file (1 KB, true dual-port) isn't addressable; each start fills it from the image.
 
 **A bad write is UB** (meshsim) (owner, 2026-11-01, under the principle at the top): a packet that addresses an unmapped offset, has a size its part doesn't take, or writes a single-ported memory while a pass runs is a static software mistake, which simulation catches. The hardware does nothing special, and meshsim stops naming the write. v1.2 dropped it, still counted, and set the replayer's `ERRORS` [0], now reserved (4.19.11).
 
@@ -1711,20 +1753,20 @@ The rules for writes into a peripheral (4.17.5) apply: mode 0 to region 0x04, fr
 
 **Ownership** follows `STATUS` [0] (W1-30: "idle" in place of HALT):
 
-| state | state word, stream word, image, decode table | ROM | queue ports |
+| state | state word, stream word, image, the record's words 66–67, decode table | ROM | queue ports |
 |---|---|---|---|
-| **stopped** (`STATUS` [0] = 0) | written | written | pushed, and discarded by the next run |
+| **stopped** (`STATUS` [0] = 0) | written (the state word's write flushes the queues) | written | pushed, and flushed by the next state write; none lands between the state write and `PULSE_RUN` (no preloading, 4.19.8) |
 | **running** (`STATUS` [0] = 1) | not written: UB (meshsim) | written (second port) | pushed |
 
-v1.1's HALT row (item 54) is gone with HALT. **A push while stopped** is accepted like any other, with no error, and simply lands in the queue; there is no preloading, so the next start discards it (4.19.8) *(Proposed, accepted, item 76)*. This is what happens to a late push from the previous pass, which the software rule of 4.19.8 keeps from crossing a start. Boot loads (6.2) find every replayer stopped, since the reset leaves it idle.
+v1.1's HALT row (item 54) is gone with HALT. **A push while stopped** is accepted like any other, with no error, and simply lands in the queue, where the next state write flushes it (4.19.8) *(Proposed, accepted, item 76; v1.26: a push lands only after the state write)*. This is what happens to a late push from the previous pass, which the software rule of 4.19.8 keeps from crossing the state write. **There is no preloading:** the queues must be empty at `PULSE_RUN` (meshsim; invariant 16), so a pass's pushes land after its state write and after its start. Boot loads (6.2) find every replayer stopped, since the reset leaves it idle.
 
 #### 4.19.11 Run, done and the errors
 
-**`PULSE_RUN`: a pass** (4.17.2). Sets `STATUS` [0], giving the replayer its single-ported memories until it finishes; **empties all four queues** (contents and occupancy) and sets every queue's credits to 2 (4.19.8) and resets the decompressors' tables (4.19.15); copies the state word into working pc, `instr_idx` and offset, latches the state word's four flags and the stream word's three lengths, and copies the register image into the working file (64 cycles); clears the rows-run count. Replay never writes region 0, so every pass of the same window starts identically. The first row starts when the copy is done. **Run only, no resume,** as for every engine: a run while the replayer runs is ignored (meshsim flags it, 4.13).
+**`PULSE_RUN`: a pass** (4.17.2). Sets `STATUS` [0], giving the replayer its single-ported memories until it finishes; sets every queue's credits to 2 (4.19.8) and resets the decompressors' tables (4.19.15); copies the state word into working pc, `instr_idx` and offset, latches the state word's two flags and the stream word's sizes and compression flags, and copies the register image into the working file (64 cycles); clears the rows-run count and each stream's counts of words and values taken. **It empties nothing** (v1.26; DECISIONS-v1.26 item 4): the state word's write has flushed the queues, and they must be empty at the run (meshsim; invariant 16; 4.19.8). Replay never writes region 0, so every pass of the same window starts identically. The first row starts when the copy is done. **Run only, no resume,** as for every engine: a run while the replayer runs is ignored (meshsim flags it, 4.13).
 
 **`STATUS` [0], run in progress.** 1 from the end of the run store's cycle until the pass's last row has been pushed into the output queue; it reads 0 while the replayer is idle. v1.1's `replay_wait` is gone (owner, 2026-10-26): the new-expansion event says the replayer is waiting.
 
-**Done.** The pass ends after its **65,536th row**: `STATUS` [0] falls and **run done** (`EVENTS` [0]) is posted. The queues are not reset: anything left in them stays until the next start empties them (4.19.8). Rows still in the output queue drain to the consumer.
+**Done.** The pass ends after its **65,536th row**: `STATUS` [0] falls and **run done** (`EVENTS` [0]) is posted. **At done the replayer checks its input** (`ERRORS` [6], below): the code and log queues are empty after a pass without an error, every stream's words and values used exactly. The queues are not reset: anything left in them (expansion words of an expansion the pass ended inside) stays until the next state write flushes them (4.19.8). Rows still in the output queue drain to the consumer.
 
 **After a trap** of its controller (4.13) the replayer carries on, unserviced: it stalls when a queue runs dry, until **the reset** (6.1), which empties its queues and resets its state; its memories keep their contents (6.2).
 
@@ -1734,9 +1776,13 @@ v1.1's HALT row (item 54) is gone with HALT. **A push while stopped** is accepte
 |---|---|---|---|
 | 0 | reserved | v1.2's bad write, now UB (4.19.10): never set | — |
 | 1 | queue overrun | a push found its queue full and was dropped (4.19.8) | P |
-| 2 | invalid expansion | a decode-table class 3 (an encoding no instruction Jolt accepts has, 4.19.5); an expansion word with a reserved operand code (146–255), `format` 6 or 7, or an opcode the replayer doesn't execute (4.19.7); a template running past ROM word 511 (4.19.6); or a pop past a stream's length (4.19.15) | P, and H on a corrupted table or ROM |
+| 2 | invalid expansion | a decode-table class 3 (an encoding no instruction Jolt accepts has, 4.19.5); an expansion word with a reserved operand code (146–255), `format` 6 or 7, or an opcode the replayer doesn't execute (4.19.7); a template running past ROM word 511 (4.19.6) | P, and H on a corrupted table or ROM |
+| 3 | code-stream underflow | the core pops a code value past the stream's values out, or its decoder needs an entry past the stream's words (4.19.15) | P, and H on a corrupted stream |
+| 4 | read-log underflow | the same for the read log | P, and H |
+| 5 | write-log underflow | the same for the write log; never with the store log off (state word [115] = 0, 4.19.2) | P, and H |
+| 6 | done with input left over | at the pass's end (its 65,536th row), some stream has not had **exactly** its words taken from its queue and its values decoded: the write log only with the store log (4.19.15). One bit: the controller reads the queue occupancies to see which stream | P, and H |
 
-(Item 55, accepted as written by the owner on 2026-10-23: the kinds and the opcode check.) **An invalid expansion stops the pass** as if it had ended: `STATUS` [0] falls and run done is posted. Since every error now traps its controller terminally (4.13), this matters only for meshsim's reports. The owner expects it never to happen, since the tracer catches bad expansions. The other two errors leave the replayer running.
+(Item 55, accepted as written by the owner on 2026-10-23: the kinds and the opcode check.) **An invalid expansion or an underflow stops the pass** as if it had ended: `STATUS` [0] falls and run done is posted (the underflows, v1.26: DECISIONS-v1.26 items 6 and 7, owner, 2026-11-01; they take over v1.25's "a pop past a stream's length", which was an invalid expansion). Since every error now traps its controller terminally (4.13), this matters only for meshsim's reports. The owner expects an invalid expansion never to happen, since the tracer catches bad expansions. **Why the sizes are checked in hardware:** a record and its streams that disagree, or a refill that sent the wrong words, depend on the run's data, which simulation of our firmware may not reach (the principle at the top); a starved pass becomes a named error at once, not a hang caught by C&C 1's watchdog (DECISIONS-v1.3 section 24). Queue overrun leaves the replayer running, and [6] is set as the pass ends normally.
 
 #### 4.19.12 The output row
 
@@ -1760,7 +1806,7 @@ v1.1's HALT row (item 54) is gone with HALT. **A push while stopped** is accepte
 | 1 | [127:64] | `imm` | the row's immediate (4.19.3): the sum of its immediate slots, or a `VirtualShiftData…` row's `shift_offset` sign-extended to 64 bits; 0 for an advice row. Jolt's raw `_imm` (`imm_raw`, `trace_owner.hpp:168–177`, 821e1bd), which a consumer extends to 128 bits by `imm_signed` (v1.2's consumers normalized it by opcode) |
 | 2 | [63:0] | `rs1` | rs1's value before the row; 0 if an immediate slot |
 | 2 | [127:64] | `rs2` | rs2's value before the row; 0 if an immediate slot |
-| 3 | [63:0] | `rd_prev` | rd's value before the row; 0 if an immediate slot |
+| 3 | [63:0] | `rd_prev` | rd's value before the row; 0 if an immediate slot; **0 in every row of a pass with output `rd_prev` off** (state word [116], 4.19.2; v1.26) |
 | 3 | [127:64] | `rd` | rd's value after the row; 0 if an immediate slot, and 0 for x0 |
 | 4 | [63:0] | `mem_addr` | for a load or store row (LD, SD and the six narrow ones, 4.19.7): *a* = rs1 + imm, and for the narrow rows *a* − (*a* & (8 − *width*)), *width* = 1, 2 or 4 bytes for B, H and W (`memory_address`, `isa/riscv.hpp:241–253`, 821e1bd), which is the doubleword's address for every access the tracer lets through; else 0 |
 | 4 | [127:64] | `mem_value` | for a load row, **rd's value after the row**: the doubleword loaded, and 0 for an LD to x0 (4.19.7) *(pending the upstream check, item 113)*; for a store row, the memory pre-value from the log (0 in a pass without the store log, 4.19.2); else 0 |
@@ -1784,23 +1830,23 @@ The median window's trace is about 335 KB and the densest about 700 KB [meas: de
 - **Stream to a queue port from its window's base** (4.19.10), in 128-bit packets, with runs of at most a half; a refill is min(half, entries remaining) (4.19.8). Local refills may have two outstanding.
 - **No LPDDR read targets a queue** (part C): fetches go into the staging buffer, and the loop refills from there.
 - **No other tile writes the replayer's region during a pass,** and a queue port takes one source at a time (invariant 18): the region may be written from any source (4.17.5), but the controller loop counts only its own refills (4.19.9).
-- **Load the checkpoint, the decode table and the ROM while the replayer is stopped** (4.19.10). There is no preloading of the queues: the start empties them (4.19.8).
-- **Before a start, every queue push has landed** (owner, 2026-10-23): the refill counter's done for the controller's refill runs (4.19.9). meshsim flags a start with a push still in flight (invariant 16).
+- **Load the checkpoint, the decode table and the ROM while the replayer is stopped** (4.19.10), and **write the state word before every pass** (4.19.8). There is no preloading of the queues: the state write flushes them, and they are empty at the start.
+- **Before the state write, every queue push has landed** (owner, 2026-10-23; v1.26: was before a start): the refill counter's done for the controller's refill runs (4.19.9). meshsim flags a state write with a push still in flight, and a start with a queue not empty (invariant 16).
 - **Every refill except a stream's last is exactly half a queue,** and a credit's refill never exceeds half (4.19.8).
 
 **Code is not in big SRAM.** Each tile controller has its own program and data memories, and stage overlays are broadcast by C&C 1 at stage boundaries into a parked controller (6.5), so the earlier plan's 256 KiB code reservation in big SRAM is reclaimed for data.
 
 #### 4.19.14 Cost
 
-**Memory per tile:** 4 + 4 + 8 + 8 KB of queues (code, expansion, read log, write log), an 8 KB ROM, a 4 KB decode table, 1 KB of working registers, about 1 KB of image and state, about 2.5 KB of output queue (32 × 80 B) and 384 B of decompressor tables: **about 41 KB** [estimate]. Across 64 tiles that is about 2.6 MB, roughly 7–10 mm² per chip with the logic [estimate], against 48 MB for the 768 KB-per-tile design planned earlier.
+**Memory per tile** (v1.26): 4 + 4 + 4 + 4 KB of queues (code, expansion, read log, write log; v1.25's logs were 8 KB each), an 8 KB ROM, a 4 KB decode table, 1 KB of working registers, 1,056 B of image and state (the record's words 0–65; words 66–67 aren't stored), about 2.5 KB of output queue (32 × 80 B) and 384 B of decompressor tables: **about 33 KB** [estimate] (v1.25: about 41 KB). Across 64 tiles that is about 2.1 MB (v1.25: 2.6 MB), roughly 6–8 mm² per chip with the logic [estimate, v1.25's 7–10 mm² scaled by the memory], against 48 MB for the 768 KB-per-tile design planned earlier.
 
-**Logic per tile:** the ALU (with `VirtualPext` for any mask, 4.19.7) and comparator, the 128 × 64-bit true dual-port register file, two adders (memory address, pc + imm), the operand resolver, the decode index logic, four queue readers and the credit counters, three decompressors (4.19.15): about 0.1–0.15 mm² with its memories [estimate]. Section 11 adds it to the tile's budget; its placement is in section 12.
+**Logic per tile:** the ALU (with `VirtualPext` for any mask, 4.19.7) and comparator, the 128 × 64-bit true dual-port register file, two adders (memory address, pc + imm), the operand resolver, the decode index logic, four queue readers and the credit counters, three decompressors with their size counters (4.19.15): about 0.09–0.14 mm² with its memories [estimate; v1.25's 0.1–0.15 with 8 KB more of queues]. Section 11 adds it to the tile's budget; its placement is in section 12.
 
 #### 4.19.15 Stream decompression
 
-*(Owner, 2026-10-26, part D.)* Each of the three streams (code, read log, write log, 4.19.2) arrives **raw or compressed**, chosen per window and per stream by the tracer and recorded in the checkpoint: the compressed flags in the **state word** [114:112], the exact lengths in the **stream word** (4.19.2, 4.19.10). A **decompressor** per stream sits between its queue and the replayer core: the queue holds the stream as delivered, in 128-bit entries, and the credits count those entries (4.19.8).
+*(Owner, 2026-10-26, part D.)* Each of the three streams (code, read log, write log, 4.19.2) arrives **raw or compressed**, chosen per window and per stream by the tracer and recorded in the checkpoint's **stream word**, each stream's compression flag beside its sizes (4.19.2, 4.19.10; v1.26: v1.25 kept the flags in the state word [114:112]). A **decompressor** per stream sits between its queue and the replayer core: the queue holds the stream as delivered, in 128-bit entries, and the credits count those entries (4.19.8).
 
-**Bit order.** A stream is read **least significant bit first within each 128-bit entry,** entries in queue order; every field and value is read least significant bit first. An entry leaves its queue when its last bit has been consumed, or when the stream ends inside it.
+**Bit order.** A stream is read **least significant bit first within each 128-bit entry,** entries in queue order; every field and value is read least significant bit first. An entry leaves its queue when its last bit has been consumed, or when the stream's last value ends inside it.
 
 **Raw streams.** Code: 32-bit opcode words, four per entry. Logs: 64-bit words, two per entry. Low word first in both.
 
@@ -1825,9 +1871,14 @@ The median window's trace is about 335 KB and the densest about 700 KB [meas: de
 
 The table update happens as each value is produced; the core takes one code value per instruction and at most one log value per row, so each unpacker produces at most one value per row.
 
-**The stream's end.** The stream word gives each stream's **exact length in bits** (24 bits, so up to 2²⁴ − 1, against a bound of about 4.3 Mbit per stream per window [derived: 64K rows × at most one log value per row × 66 bits; integrator, 2026-10-29, correcting v1.1's two words]). The tracer pads each stream with zero bits to a whole 128-bit entry; the decompressor ignores the bits after the length. **A pop past a stream's length is an invalid expansion** (the replayer's `ERRORS` [2]): the pass stops (4.19.11).
+**The stream's end and its checks** (v1.26; DECISIONS-v1.26 items 2, 5 and 6). The stream word gives each stream's size as two numbers (4.19.2): **its words**, the 128-bit entries it occupies as sent (16 bits; at most 33,792 [derived: 65,536 values × at most 66 bits ÷ 128]), and **its values out**, the 32- or 64-bit values it decodes to (17 bits; at most 65,536). **The decoder stops at the value count:** the bits after a stream's last value, to the end of its last word, are padding and **can be anything**, compressed or not; the tracer need not zero them (v1.25: zero bits, ended by an exact bit length, which v1.26 drops). The replayer counts, per stream, the entries it has taken from the queue and the values it has decoded, against the latched sizes:
+- **Underflow, at once:** a consumer popping a value past the stream's values out, or the decoder needing an entry past the stream's words, sets that stream's underflow bit, `ERRORS` [3] code, [4] read log or [5] write log, and stops the pass (4.19.11).
+- **Leftover, at done:** when the pass ends, each stream must have had **exactly** its words taken and its values decoded; otherwise `ERRORS` [6] (4.19.11). A stream holding a whole extra padding word is so an error: the tracer pads only within the last word, so **words** is the fewest entries that hold the coded values (⌈values / 4⌉ raw code, ⌈values / 2⌉ a raw log). A coded stream whose words are all read but which decodes to fewer or more values is corrupt, and is caught by one rule or the other.
+- **The write log is excluded from both** when the pass doesn't use the store log (state word [115] = 0, 4.19.2): its sizes stay in the stream word as the tracer produced them, and are ignored.
+- **The expansion queue has no sizes and no check:** fed per expansion, it ends by `seq_remaining` (DECISIONS-v1.3 section 24).
+- An empty queue with words still to come is not an error: the replayer stalls until data lands (4.19.8).
 
-**Cost:** three 16 × 64-bit tables (about 384 B of registers; the write log's E[15] is its last-load register, with a mux from the read-log path), three bit unpackers and three length counters (4.19.14).
+**Cost:** three 16 × 64-bit tables (about 384 B of registers; the write log's E[15] is its last-load register, with a mux from the read-log path), three bit unpackers and three pairs of size counters, words and values (4.19.14).
 
 ### 4.20 UART
 
@@ -2328,7 +2379,7 @@ Peripheral 2's window is at 0xC00 and peripheral 3's at 0xE00, with the same wor
 |---|---|---|---|---|
 | 0 | `PARAMS` | [7:0] = 4 | type 4, the replayer | 4 |
 | 1 | `STATUS` | [0] run in progress; [1] 0 | [0] is v1.1's `periph_running` (4.19.11) | 0 |
-| 2 | `ERRORS` | [0] reserved (v1.2: bad write), [1] queue overrun, [2] invalid expansion | 4.19.11 | 0 |
+| 2 | `ERRORS` | [0] reserved (v1.2: bad write), [1] queue overrun, [2] invalid expansion, [3] code-stream underflow, [4] read-log underflow, [5] write-log underflow, [6] done with input left over (v1.26) | 4.19.11 | 0 |
 | 5–7 | `EVENTS`, `EVENTS_PEEK`, `EVENTS_MASK` | [0] run done (depth 1), [2] code credit, [3] read-log credit, [4] write-log credit, [5] expansion credit (depth 2 each), [6] new expansion (depth 1) | 4.19.8, 4.19.9 | 0 |
 | 4, 8, 9 | — | | reserved: the replayer has no DMA | — |
 | 32 | `ROWS_RUN` (R) | [15:0]; [31:16] 0 | rows of this pass completed, modulo 2¹⁶, so 0 again after a full pass; rows left = 65,536 − rows run while `STATUS` [0] is 1. v1.1's `PERIPH_STATUS_0` [15:0] | 0 |
@@ -2403,7 +2454,7 @@ The reset empties both FIFOs, clears [17:16] and loads the reset divisor (4.20).
 15. **No errors:** every unit's `ERRORS` and every peripheral's stay 0 (4.13, 4.17.6). A program error the hardware can see shows up here, on the unit's error line and on the toast pin (6.1).
 16. **The peripherals' and the replayer's invariants** (4.17, 4.19):
     - every peripheral's: no `PULSE_RUN` while a run is in progress; no `PULSE_DMA` while its DMA is busy, no transfer naming an output queue it doesn't have, and no change to `DMA_HDR` or `DMA_ADDR` mid-transfer; no credit returned to a full counter; every write into its region landing within `rp_latency` of the director, and at most K (4.17.5, 4.17.8). Its region may be written from any source (4.17.5);
-    - the replayer's: no bad write (UB, meshsim only, 4.19.10); no queue overrun and no invalid expansion (hardware: its `ERRORS`, 4.19.11); no other tile writes its region during a pass (4.19.13); every refill except a stream's last is exactly half a queue, and no refill exceeds the credit taken for it (4.19.8); no LPDDR read targets a replayer queue (its overflow goes through big SRAM, 4.19.13); every opcode word and log word a pass is given is consumed in order, and a pass consumes exactly its tile's log; every queue push, whatever its source, has landed before a run (4.19.8); no zero mask reaches `VirtualSRL`, `VirtualSRLI`, `VirtualSRA` or `VirtualSRAI` (4.19.7; the result is undefined, owner, 2026-10-26); `offset_imm` is set only on `VirtualShiftData…` rows (4.19.3); no memory row is misaligned (4.19.7; jolt-cpp aborts on one); a non-contiguous mask reaching `VirtualPext` or `VirtualPextSigned` is correct and only **reported**, as a statistic (4.19.7); and the replayer's rows equal those of jolt-cpp `821e1bd` (the gold standard for now; upstream Jolt at 735355e where a difference has been confirmed by running both; the validation harness, item 58; the vectors of `spec/replayer-opcodes.md` section 9; item 113).
+    - the replayer's: no bad write (UB, meshsim only, 4.19.10); no queue overrun, no invalid expansion, no stream underflow and no input left over at done (hardware: its `ERRORS` [1]–[6], 4.19.11); no other tile writes its region during a pass (4.19.13); every refill except a stream's last is exactly half a queue, and no refill exceeds the credit taken for it (4.19.8); no LPDDR read targets a replayer queue (its overflow goes through big SRAM, 4.19.13); every opcode word and log word a pass is given is consumed in order, and a pass consumes exactly its tile's log; every queue push, whatever its source, has landed before the state write, and every queue is empty at a run (no preloading; v1.26, 4.19.8); no zero mask reaches `VirtualSRL`, `VirtualSRLI`, `VirtualSRA` or `VirtualSRAI` (4.19.7; the result is undefined, owner, 2026-10-26); `offset_imm` is set only on `VirtualShiftData…` rows (4.19.3); no memory row is misaligned (4.19.7; jolt-cpp aborts on one); a non-contiguous mask reaching `VirtualPext` or `VirtualPextSigned` is correct and only **reported**, as a statistic (4.19.7); and the replayer's rows equal those of jolt-cpp `821e1bd` (the gold standard for now; upstream Jolt at 735355e where a difference has been confirmed by running both; the validation harness, item 58; the vectors of `spec/replayer-opcodes.md` section 9; item 113).
 17. **The request contract is kept** (3.3, 6.7):
     - a request names its data's and its reply's counters and its reply's address, and its data and reply arrive only when the requesting unit has armed those counters (4.12);
     - a tile has at most 1, 3 and 1 requests outstanding to C&C 1, 2 and 3; error reports are exempt (3.3);
@@ -2475,7 +2526,7 @@ The reset empties both FIFOs, clears [17:16] and loads the reset divisor (4.20).
 | requests | 128 bits; the hardware's fields requestor [6:0] and target [9:7], 8 targets; the rest laid out by each target (3.3); a request with an answer names its destination as a 32-bit address and its data and reply counters (6.7) |
 | eject priority | the loopback FIFO is served only in a cycle when every other eject FIFO is empty; the others round-robin (4.7) |
 | peripherals (4.17) | up to three per unit, regions 0x04–0x06, 0x200-byte windows at 0xFFFFFA00, 0xFFFFFC00, 0xFFFFFE00; ten standard words; events counted (depth 1 or 2) or live; `rp_latency` 2 for every peripheral *(Proposed)*, at most K; the DMA: up to 4 output queues, one transfer at a time, count up to 4,095 words |
-| replayer (4.19), peripheral type 4 | peripheral 1 on tiles 0–63; reference jolt-cpp `821e1bd`; universal tables (ROM 388 of 512 words used, decode table 306 ROM, 17 controller and 1,725 invalid entries, 75 controller-fed template numbers); 88 executed row opcodes; expansion word `offset_imm` [63], `sign_imm` [62]; a pass of 65,536 rows; code, expansion, read-log and write-log queues of 256, 256, 512 and 512 × 128 bits (halves 128, 128, 256, 256), two credits of half a queue each; three LRU decompressors of 16 × 64 bits; ROM 512 × 128 bits; decode table 2K × 16 bits, built as 256 × 128 (4.19.10); register file 128 × 64 bits; output queue 32 rows of 640 bits; rows of 3 or 5 cycles; start copy 64 cycles; about 41 KB of memory per tile |
+| replayer (4.19), peripheral type 4 | peripheral 1 on tiles 0–63; reference jolt-cpp `821e1bd`; universal tables (ROM 388 of 512 words used, decode table 306 ROM, 17 controller and 1,725 invalid entries, 75 controller-fed template numbers); 88 executed row opcodes; expansion word `offset_imm` [63], `sign_imm` [62]; a pass of 65,536 rows; code, expansion, read-log and write-log queues of 256 × 128 bits each (halves of 128; v1.26, the logs were 512), two credits of half a queue each, flushed by the state word's write; a 68-word state record, of which part 0 keeps words 0–65; per stream, 16-bit word and 17-bit value counts; three LRU decompressors of 16 × 64 bits; ROM 512 × 128 bits; decode table 2K × 16 bits, built as 256 × 128 (4.19.10); register file 128 × 64 bits; output queue 32 rows of 640 bits; rows of 3 or 5 cycles; start copy 64 cycles; about 33 KB of memory per tile |
 
 ---
 
@@ -2498,7 +2549,7 @@ The SRAM is ~75 % of the die; the remaining ~25 % is about 1.5 mm² per tile for
 | the UART (4.20): in C&C 1's peripheral only, no longer in every tile | | — |
 | the peripherals' interface: the three windows' decode and the controller's live event and error bits; a DMA only where a peripheral sends (C&C 1–3) | | ~0.003 mm² |
 | `done`, "command landed", READY, the `done` gate and the counters' qualifiers, the error line, flags (RUN/HALT gone) | | 0.005 mm² |
-| replayer (4.19.14), peripheral 1 on tiles 0–63: ALU and comparator, 128 × 64-bit true dual-port register file, two adders, operand resolver, decode index, four queue readers and credit counters, three decompressors; with its 41 KB of memories (queues, ROM, decode table, image, output queue) | ~330 Kbit of SRAM | ~0.11–0.16 mm² |
+| replayer (4.19.14), peripheral 1 on tiles 0–63: ALU and comparator, 128 × 64-bit true dual-port register file, two adders, operand resolver, decode index, four queue readers and credit counters, three decompressors and their size counters; with its 33 KB of memories (queues, ROM, decode table, image, output queue; v1.26, 41 KB at v1.25) | ~265 Kbit of SRAM | ~0.09–0.14 mm² |
 | **total per tile** | | **≈ 0.52–0.61 mm²** with the replayer and the fifth port, about 35–40 % of the per-tile logic budget [estimate]: v1.1's ≈ 0.38–0.45, plus ≈ 0.065 for the 256-bit word (the FIFOs, the fifth port's and the loopback's extra entries; owner and Tony, 2026-10-28, revised with WORKER2's review) and ≈ 0.08–0.09 for the larger controller memories, less the sender and the UART. Still inside 1.5 mm² |
 | fifth router port (4.16), in every tile: a sixth route block, ten 16 × 256-bit FIFOs + wider selectors; connected only at tiles 0–2 | ~41 Kbit of flops | 0.04–0.07 mm² |
 | C&C 1–3 (6.6) | tile instances with 2 MB of big SRAM, each a tile's logic plus its engine; the engines are not estimated here | — |
@@ -2537,6 +2588,18 @@ All the tile's small memories and its registers cluster around the controller. T
 ## 13. Open items
 
 Every item still to be settled, every proposal not yet ruled on, and every item deferred to a later design, with the section it affects. Possible later additions are improvements considered and not part of the design. **v1.2's items start at 117** (at the end). Items 1–116 are kept as v1.1 wrote them, and v1.2's own items as their first round wrote them, as the record; each that v1.2 closes, supersedes or changes carries a *(v1.2: …)* note, and the table below gathers them. Items 1–22 are v1.0's numbering; v1.1's new items start at 23, the request bus's at 60, the wake-event and read-order pass's at 76, the request-port and peripheral-slot pass's at 82, the modes-and-counting pass's at 90, part D's at 102, part E's at 109, part F's at 112, part G's at 113 (extended by part H), and part M's at 116.
+
+**v1.26: the status of earlier items** (DECISIONS-v1.26; v1.26's own item is 143, at the end; every item not listed is unchanged since v1.25):
+
+| item | v1.26 | how |
+|---|---|---|
+| 52 | changed | the state word's write flushes the queues, not the start; the queues are empty at the start, with no preloading (4.19.8; DECISIONS-v1.26 item 4) |
+| 76 | changed | a push lands only after the state write, which flushes anything that landed before it; none between the state write and the run (4.19.8, 4.19.10) |
+| 103 | changed | the read-log and write-log queues are 4 KB, 256 entries, like the others (4.19.8; DECISIONS-v1.26 item 3); item 143 |
+| 104 | changed | a stream ends at its value count, its padding can be anything, and its sizes are checked: underflow at once, leftover at done (4.19.15; DECISIONS-v1.26 items 2, 5, 6) |
+| 108 | changed | the state record is 68 words, state word first and the files word and template bitmap last, loaded from byte 0 (words 66–67 ignored); the stream word carries each stream's words, values out and compression flag; the state word's flags are use the store log [115] and output `rd_prev` [116] (4.19.2, 4.19.10; DECISIONS-v1.26 items 1, 2, 8) |
+| 115 | changed | the template bitmap is the record's word 67, no longer word 0 (4.19.2) |
+| 123 | changed | `ERRORS` gains [3]–[5], each stream's underflow, and [6], done with input left over; [2] no longer covers a pop past a stream's end (4.19.11; DECISIONS-v1.26 item 7) |
 
 **v1.25: the status of earlier items** (v1.25's own items start at 137, at the end; every item not listed is unchanged since v1.2):
 
@@ -2841,6 +2904,7 @@ Every item still to be settled, every proposal not yet ruled on, and every item 
 140. **PEXT for any mask** (4.19.7): decided (owner, 2026-10-31; DECISIONS-v1.25 section 1): correct for any mask, full speed promised only for contiguous ones; meshsim times every mask like any other row and reports non-contiguous ones as a statistic (owner, 2026-11-01). *(Open, with Tony:)* the method (a single-pass network or an iterative unit, one run of ones per cycle) and so the cycles a non-contiguous mask takes.
 141. **The Tracer's tables at `821e1bd`** *(v1.25, revised, owner, 2026-11-01; DECISIONS-v1.25 section 9:)* the expansion word's Tracer-only fields are reserved and the Tracer's templates become the replayer's, so v1.25 specifies no Tracer fields at all. *(Deferred: with the Tracer, v1.3)* the rest of the Tracer's design. (v1.25 as first written specified `untraced` [55] and `advice_reg` [61:56] and deferred the Tracer's own tables.)
 142. **The region-decode check** *(Open, for the owner and Tony)* (3.1, 4.13, invariant 5): with misalignment UB (DECISIONS-v1.25 section 8b), `ERRORS` [1] is "bad packet": a mode-0 packet to a region it can't reach, or a 128-bit mode 3. Whether that check passes the test of "How the hardware treats software bugs" (top: would simulation catch this on our firmware?) is open; if not, it becomes UB and [1] goes.
+143. **The 4 KB log queues, measured** *(Open, v1.26)* (4.19.2, 4.19.8): the size is decided (DECISIONS-v1.26 item 3); meshsim's Stage B stall counts with it, on every window of both workloads at 2²⁹ (the read-log and write-log waits per window, as v1.25's acceptance reported them), are to be added from WORKER20's acceptance runs.
 
 The logic budget (section 11) is unreviewed; v1.2 rescaled it for the 256-bit link word and the 32 KB controller memories (item 127).
 

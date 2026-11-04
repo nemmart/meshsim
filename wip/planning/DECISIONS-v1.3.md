@@ -65,7 +65,7 @@ Decided (O).
 
 Decided (O). The Tracer's encoders match the replayer's decoders (spec 4.19.15, item 104) exactly.
 
-- **Reset to all zeros at every window start**, as the replayer's decoder resets. Seeding the table with
+- **Reset to all zeros at every window start (on the Tracer, by `PULSE_RUN`: section 24)**, as the replayer's decoder resets. Seeding the table with
   distinct values was considered and dropped: it saves at most a few hits in a 65,536-row window.
 - **The encoder's tie rule:** a value matching several entries (duplicates are legal, 4.19.15) is coded as the
   **lowest matching index**; in the write log, a match with the last-load entry E[15] is coded as index 15
@@ -687,6 +687,9 @@ roots and depths:
 
 Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's single pool of 4 KB pages; addresses in 128 B units.
 
+- **Free-space management lives in C&C 3** (owner, 2026-11-01), the page manager of the planning notes (the page pool, the
+  per-proof bitmaps and arenas): the file system on C&C 2 asks it for pages and returns them. **Its design is black-boxed for
+  now** behind that interface (allocate a page, free a page, the arena operations).
 - **A file is a tree whose depth follows its length** (owner, 2026-11-01; replaces a chain of index pages, each 1,023 pointers
   plus a next pointer): index pages of **1,024 pointers**, no next pointer:
 
@@ -948,6 +951,12 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
     (owner: it mirrors the replayer's typical queue sizes; was 2 KB): 512 advice words. Advice is consumed slowly (the division family takes one word per expansion of about 12 rows,
     a secp operation at most 8 in up to 240), so a full queue lasts thousands of rows, far longer than the controller takes to
     refill it; proposed (integrator): raise the flag when half is free.
+- **On the Tracer, `PULSE_RUN` also starts a window, so it resets the output compressors** (owner, 2026-11-01): each window's
+  streams must decode on their own (a replayer resets its decompressors with each window's state), and on the Tracer a run is a
+  window, so `PULSE_RUN` resets both compressor sets' LRU tables to zero (section 4's "every window start"), along with the
+  window's other output state: the template bitmap, the packers and the output queues' lengths (integrator, the same reasoning).
+  Everything that carries across the segment (the processor state, the read queue and its counter, the caches, the jump LRU)
+  is left alone.
 - **Setting the state resets everything; `PULSE_RUN` only starts running** (owner, 2026-11-01; DECISIONS-v1.26 item 10), the same
   rule as the replayer's: the state write flushes the queues, latches the sizes, clears the size counters and sets the credits;
   the Tracer's go is `PULSE_RUN`, which runs the next `RUN_CYCLES` rows and nothing else, so the read queue's counter runs across

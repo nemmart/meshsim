@@ -8,7 +8,7 @@ BASE=$(realpath "$1"); OUTF=$(realpath -m "$2")
 R=$(cd "$(dirname "$0")/.." && pwd); K=$(mktemp -d); trap 'rm -rf "$K"' EXIT
 mkdir -p "$K/wip"
 for d in meshsim sort sw tables; do rsync -a --exclude results --exclude build --exclude '.git' "$R/wip/$d" "$K/wip/"; done
-M="$K/wip/meshsim"
+M="$K/wip/meshsim"; mkdir -p "$M/results"   # the suites write their CSVs there (AccountingTest, Sweep)
 (cd "$M" && sh sw/build.sh >/dev/null && sh sw/build_cc.sh >/dev/null && sh sw/build_recipes.sh >/dev/null && sh sw/ext/sort/build.sh >/dev/null && sh sw/replay/build.sh >/dev/null)
 mkdir -p "$M/build"; javac --release 17 -nowarn -d "$M/build" "$M"/src/*.java
 grep -v '^#' "$M/test/PENDING" | awk 'NF{print "test/"$1}' > "$K/pend"

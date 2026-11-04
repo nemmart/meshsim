@@ -56,17 +56,23 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
   11/11). WORKER10, 11, 13, 14 closed (`sessions/`). After the freeze: recipe 27's `command()` parity loop (about 380 of a phase's
   435 cycles; DECISIONS-v1.25, after the freeze); WORKER11's builder change (section 9) is merged into PR #2's branch
   `tracer-standalone-main` (8d546e3).
-- **v1.3, the Tracer:** decided so far in `DECISIONS-v1.3.md` sections 1-13 (**13: advice comes from the host in the read log,
-  128 streams per 2²⁹ run built by jolt-cpp's JIT; no untraced rows; supersedes 7's untraced rows, 8, 10**; components, FIFOs, two-pass compression, LRU tables,
-  boundaries, output, expansion tables, divider for advice, jolt-cpp move (became v1.25), C&C 3 generating long expansions, the
-  100 ms budget, the region's parts 0 and 1). **Next research area (owner): the Tracer's memory**
-  (section 12): the page table as a two-level, sparse structure over 4 GiB, a base register at Jolt's `lowest_address`, what an
-  unmapped page means, the entry format, how C&C 3 builds it per proof; upstream Jolt's layout findings are recorded there
-  (contiguous range; I/O and advice below 0x8000_0000, program, stack and heap above; both ends used, middle empty). Open: T2 answered (WORKER16);
-  T3; work item W2 (WORKER16: the JIT's advice streams, registers 40-47); section 13's open (b), (c), whether bank 1 has any use left. Candidates C2
-  (signed counters), C3 (trim the 256-bit word) in the v1.3 log (C4 moot); ST1 (compare
-  jolt-cpp and Rust Jolt traces) as a study.
-
+- **v1.3, the Tracer:** **decided in `DECISIONS-v1.3.md` sections 1-25** (2026-11-01; read them, they are the record). In
+  short: the Tracer is its own core (25), C&C 3's peripheral, sharing with the replayer the region map (12), the 68-word state
+  record (23), the universal tables and templates (13) and the controller-fed expansion path; advice comes from the host as the
+  Tracer's read queue (13, 23, 24), no untraced rows, 128 registers; the host sends per proof a stream of frames (15, 16: page
+  counts per segment and per ASIC, the jump-target supplement, then per segment processor state, advice, updates; one byte
+  stream, identical for every ASIC); memory is files (19, 20, 22: 4 KB pages, trees growing by depth, sparse and dense,
+  copy-on-write with owned bits and freeze, per-proof arenas sized by frame 1, the guest's memory as the `.pages` file); the
+  memory system translates (root, depth, line) requests through a shared 512 KB, 8-way, 128 B-line cache near the memory (12,
+  21); the Tracer has 16 KB instruction and data caches, a 64-entry jump LRU over a host-built jump-target hash table (18), and a
+  control loop of start, RUN_CYCLES (typically 65,536), go, done, with six wake flags (24); errors it checks (25); padding rows
+  after the program's end (25). Gold, the Java emulator (17), matches jolt-cpp and upstream row for row. **Next: a spec chapter
+  for the Tracer** (proposed outline in the session: overview, region and record, control, execution, memory, output, boundaries,
+  errors, the replayer's v1.3 changes), with the 512 KB cache a black box. **v1.26** (`DECISIONS-v1.26.md`): v1.25 plus the
+  replayer's v1.3 changes, WORKER19 (spec) and WORKER20 (meshsim, software, acceptance), started 2026-11-01.
+  Open in v1.3: register offsets beyond words 32-35; sizes to confirm by gold (caches, TLB); UPSTREAM-DIFFS D1, D3, D5 follow
+  upstream (the verifier is upstream's, jolt-cpp's submodule at 7189216; not yet recorded as ruled), D2 and D12 deferred; demo
+  guests where upstream works and jolt-cpp doesn't (D1 with `.rodata` in the executable segment; C.SLLI x0), proposed for WORKER18.
 ## Open items for the owner and Tony
 
 - Tony: his full CSR list with reset values (v1.2 Q1, partly answered); what the soft reset keeps; WORKER13's Q10 (v1.1 gave

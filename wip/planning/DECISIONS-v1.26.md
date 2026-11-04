@@ -56,7 +56,8 @@ software, and nothing else: no Tracer, no new memory system, no file system. The
    set the credits, and it is all our software. (Drops "the queues must be empty at `PULSE_RUN`", invariant 16 as first written.)
    **Writes to words 66-67 while a pass runs are flagged**, like any part-0 write while running (item 9), not silently ignored.
 
-12. **Part 0's state is the working state** (owner, 2026-11-01): no separate set of registers, no copy at a run's start. Writing
+12. **Part 0's state is the working state** (owner, 2026-11-01; **no hidden memories**: a hidden copy of state is complexity, so
+   what the controller writes is what the unit runs on): no separate set of registers, no copy at a run's start. Writing
    the record's words 0-65 writes the live register file, pc, `instr_idx` and the offset directly; running changes them in place;
    the word-0 write still does item 10's resets. So **the replayer reloads the whole record, words 0-65, before every pass**, from
    the tile's copy (part 0 then holds the window's end state after a pass), and **the Tracer loads once per segment**, its 64 runs

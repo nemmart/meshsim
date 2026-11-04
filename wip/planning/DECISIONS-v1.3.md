@@ -93,8 +93,8 @@ Decided (O).
 Agreed (O). The Tracer's output is defined from the replayer's side (spec 4.19); per window of 2¹⁶ rows it
 produces:
 
-- **The state record**, 67 × 128-bit words (1,072 bytes; spec 4.19.2) *(68 at v1.3, with a files word the replayers ignore:
-  section 23)*:
+- **The state record**, 67 × 128-bit words (1,072 bytes; spec 4.19.2) *(at v1.3, 68 words in a new order: the state word
+  first, the bitmap last, with a files word the replayers ignore; section 23)*:
 
 | word | contents | goes to |
 |---|---|---|
@@ -897,13 +897,18 @@ Decided (O). **The Tracer's state takes the replayer's state record** (spec 4.19
 words**, runs from the host through the Tracer to the replayers (owner, 2026-11-01): the replayer's 67 and one more for the
 files, which **the replayers carry too and ignore** (owner):
 
-| word | contents | for the Tracer |
-|---|---|---|
-| 0 | the template bitmap, 128 bits: which controller-fed templates the window uses | **all cleared** (owner) |
-| 1 | the state word: pc, `instr_idx`, the next offset, the compression flags | the processor state at the segment's first row (frame 2); **no stream compressed** |
-| 2 | the stream word: each stream's size, bits in and values out (section 24) | **the read queue: the segment's advice; the code and write queues zero length** |
-| 3-66 | the register image: 64 words, two registers each | registers 0-127 |
-| 67 | the files: **the guest's memory file** (root address, depth) and **the jump-target map file** (root, depth) | from C&C 3 (section 22): the Tracer's copy, the proof's map (a replayer ignores it) |
+| word | part 0 offset | contents | for the Tracer |
+|---|---|---|---|
+| 0 | 0x000 | the state word: pc, `instr_idx`, the next offset, the compression flags | the processor state at the segment's first row (frame 2); **no stream compressed** |
+| 1 | 0x010 | the stream word: each stream's size, bits in and values out (section 24) | **the read queue: the segment's advice; the code and write queues zero length** |
+| 2-65 | 0x020 | the register image: 64 words, two registers each | registers 0-127 |
+| 66 | 0x420 | the files: **the guest's memory file** (root address, depth) and **the jump-target map file** (root, depth) | from C&C 3 (section 22): the Tracer's copy, the proof's map (a replayer ignores it) |
+| 67 | 0x430 | the template bitmap, 128 bits: which controller-fed inlines the window uses (section 25) | **all cleared** (owner) |
+
+**The order** (owner, 2026-11-01): **pc, `instr_idx`, the offset and the flags first, the bitmap last**, so the layout is uniform
+everywhere: the record's words land in part 0 at consecutive offsets, the first three exactly where v1.25 has them, and **the
+write to word 0, the state word, flushes the queues** (section 24). (Replaces the bitmap as word 0, which v1.25's 67-word
+record had and part 0 didn't hold.)
 
 - **The advice queue is the Tracer's read queue** (owner): the same name and role as the replayer's read log, from which both
   units pop advice (section 13). It is 4 KB (section 24) and **never compressed**, so the Tracer has **no LRU decoder** on its
@@ -980,8 +985,8 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
   queues, and pulses go. **The read queue persists across the windows**, since the segment's advice runs across them (its size
   in the state counts down over the whole segment).
 - **The state is a memory on both units** (owner, 2026-11-01): address-mapped in part 0, as the replayer's at v1.25, not a queue;
-  the Tracer's DMA sends its output queue 0 to consecutive offsets from 0x000. **The write to the state word (offset 0x000)
-  is the flushing write.**
+  the whole 68-word record, in section 23's order, at consecutive offsets from 0x000, so the Tracer's DMA sends its output
+  queue 0 as it is. **The write to word 0, the state word at 0x000, is the flushing write.**
 - **Setting the state flushes the queues**, on the Tracer and on the replayer alike (owner, 2026-11-01): a state write empties
   every input and output queue, so the new state starts clean, the read queue afresh for the new segment's advice. **So C&C 3
   reads the state out and drains the output queues before writing a new one** (owner): what isn't read out first is simply lost.

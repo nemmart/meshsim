@@ -6,9 +6,10 @@ software, and nothing else: no Tracer, no new memory system, no file system. The
 
 ## 1. The changes (owner, 2026-11-01)
 
-1. **The state record grows to 68 words** (V3-23): the replayer's 67, plus **word 67, the files word** (the memory file's and the
-   map file's roots and depths), which the replayer carries and ignores. One record format for the host, the Tracer and the
-   replayer.
+1. **The state record grows to 68 words, in a new order** (V3-23; owner, 2026-11-01): **[0] the state word, [1] the stream word,
+   [2-65] the register image, [66] the files word** (the memory file's and the map file's roots and depths, carried and ignored),
+   **[67] the template bitmap** (moved from word 0 to last). The whole record lands in part 0 at consecutive offsets from 0x000,
+   the first three where v1.25 has them; one record format for the host, the Tracer and the replayer.
 2. **A stream's size is two numbers** (V3-24): **bits in** (as sent, raw or compressed) and **values out** (the 32- or 64-bit
    values it decodes to). The stream word (word 1 of the part-0 image; spec 4.19.2: code [23:0], read log [55:32], write log
    [87:64], the rest spare) must carry both for all three streams; its layout is to propose (a stream is at most about 4.3M bits
@@ -18,7 +19,7 @@ software, and nothing else: no Tracer, no new memory system, no file system. The
 4. **Writing the state flushes every queue** (V3-24), in place of `PULSE_RUN` emptying them (spec 4.19.8). **The state stays a
    memory**, address-mapped in part 0 as at v1.25, not a queue (owner, 2026-11-01: the same on the Tracer and the replayer; the
    hardware is simplest, one-word updates and readback stay, and the DMA writes consecutive offsets anyway), and **the flushing
-   write is the write to the state word, part 0 offset 0x000** (WORKER20's proposal, owner): state-first loading writes it
+   write is the write to word 0, the state word, at part 0 offset 0x000** (WORKER20's proposal, owner): state-first loading writes it
    first, and a per-pass flag change resends only it, so every pass starts with clean queues.
 5. **A stream's padding can be anything**, compressed or not (V3-24): streams arrive as whole 128-bit words and the decoder stops
    at the exact length.

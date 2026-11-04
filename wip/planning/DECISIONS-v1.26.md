@@ -43,9 +43,13 @@ software, and nothing else: no Tracer, no new memory system, no file system. The
 
 9. **WORKER19's choices within the rulings, confirmed** (owner, 2026-11-01): words 66-67 are written only while the replayer is
    stopped, like the rest of part 0; a stream's word count must be the fewest 128-bit words that hold its values, so a whole
-   extra word of padding sets [6]; and **the size counters clear when the sizes are latched**, which on the replayer is
-   `PULSE_RUN`, a pass's start. **The same rule holds on the Tracer** (owner: it must): there the sizes are latched when the state
-   is loaded (start), so its read queue's counter runs across the segment's 64 runs and is not cleared at go.
+   extra word of padding sets [6].
+10. **Setting the state resets everything; `PULSE_RUN` only starts running** (owner, 2026-11-01), the same on the Tracer and
+   the replayer: **the write to word 0, the state word, flushes the input queues, latches the sizes, clears the size counters,
+   sets the credits and resets the decompressors**; `PULSE_RUN` starts a pass on the replayer, the next `RUN_CYCLES` rows on the
+   Tracer, and does nothing else. The replayer writes the state word before every pass (ruling 3), so each pass starts fresh;
+   the Tracer writes its state once per segment, so its counters and credits run across the 64 runs. (Replaces `PULSE_RUN`
+   setting the credits, resetting the decompressors, latching the sizes and clearing the counters, as first specified.)
 
 **Out of scope** (they belong to the Tracer or to v1.3): the peripheral DMA in 128-bit words (spec 4.17.9), the broadcast of
 controller-fed templates, everything about files, slots and caches.

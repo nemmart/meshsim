@@ -15,7 +15,11 @@ software, and nothing else: no Tracer, no new memory system, no file system. The
    and 65,536 values, so 3 x (23 + 17) bits fit in 128 if repacked).
 3. **The read-log and write-log queues shrink from 8 KB to 4 KB** (V3-12), so every queue is 4 KB. Justified by the measured
    densities (spec 4.19.15); **confirm by meshsim's Stage B stall counts on both workloads.**
-4. **Writing the state flushes every queue** (V3-24), in place of `PULSE_RUN` emptying them (spec 4.19.8).
+4. **Writing the state flushes every queue** (V3-24), in place of `PULSE_RUN` emptying them (spec 4.19.8). **The state stays a
+   memory**, address-mapped in part 0 as at v1.25, not a queue (owner, 2026-11-01: the same on the Tracer and the replayer; the
+   hardware is simplest, one-word updates and readback stay, and the DMA writes consecutive offsets anyway), and **the flushing
+   write is the write to the state word, part 0 offset 0x000** (WORKER20's proposal, owner): state-first loading writes it
+   first, and a per-pass flag change resends only it, so every pass starts with clean queues.
 5. **A stream's padding can be anything**, compressed or not (V3-24): streams arrive as whole 128-bit words and the decoder stops
    at the exact length.
 6. **The replayer checks its pops against the sizes it was given** (V3-24): reading past a stream's bits, or popping past its

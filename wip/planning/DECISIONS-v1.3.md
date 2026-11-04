@@ -289,8 +289,8 @@ its region, with **offset bits [22:20] picking the part**, as in the replayer's 
 
   **Every queue is 4 KB at v1.3** (owner): the replayer's read-log and write-log queues shrink from 8 KB. Enough by the measured
   densities (spec 4.19.15, Quest 085): the logs average 0.31-0.35 words per real row together (read 0.19-0.21), at most about 0.83
-  in Cyclone's densest windows; a half-queue refill (the credit, 4.19.8) is 256 words, about 1,500 cycles of the densest window at
-  3 cycles a row, against a refill of a few hundred [estimate]. To confirm by meshsim's Stage B on both workloads (the stall
+  in Cyclone's densest windows; a half-queue refill (the credit, 4.19.8) lasts about 900 cycles at the measured worst density (WORKER19's
+  correction of an earlier 1,500), against a refill of a few hundred [estimate]. To confirm by meshsim's Stage B on both workloads (the stall
   counts). (This replaces a part-0 text that ignored the stream word, gave bank 1 no initial state and started at an instruction
   boundary; all three are superseded.)
   - **T2, answered (WORKER16, 2026-11-01; `WORKER16/REPORT.md`):** at instruction boundaries, pc, `instr_idx`, registers 0-127

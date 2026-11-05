@@ -1057,7 +1057,9 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
   **window *n* + 1's start**, and words 1 and 67 (the stream word and the template bitmap) are **run *n*'s totals**. C&C 3
   reassembles by where it sends each piece: the state words to tile *n* + 1, as its record's start (window 0's start is the
   state loaded at the segment's start), and run *n*'s totals and its three streams to tile *n*. No copy, no snapshot, and C&C 3
-  need not hold the state itself. (Whether the pieces land in the tile's memory or straight in its replayer: open.)
+  need not hold the state itself. **Where they land will evolve** (owner, 2026-11-04): **first, the DMA writes them directly into the
+  compute tiles' memory** (so no replayer credits pace the drain, and C&C 3 can interleave the queues' transfers freely); **later,
+  they will probably land in C&C 3's memory and go to LPDDR by file calls, for a later replay.**
 - **A new state is written only at the start of a proof** (owner, 2026-11-01): one segment per ASIC per proof, so between the
   64 windows of a segment nothing is loaded; C&C 3 only reads the state and the queue lengths at each done, drains the output
   queues, and pulses go. **The read queue persists across the windows**, since the segment's advice runs across them (its size

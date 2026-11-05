@@ -12,12 +12,16 @@ whole table (its lines and its three constants). Not the run's targets alone: th
 the hash constants travel with the table in frame 6 (your open question): not frame 7, not a program sidecar. Keep the
 static-only and run-only counts as measurements.
 
-**Scope addition: each segment's start image** (your PROMPT.md, item 3b): gold's cycle-0 image (the ELF's sections and the
-inputs) plus segments 0 to k−1's updates (frames 4 or 5), applied in order; owned = the pages segment k itself writes (its own
-update list), every other page shared and not owned; **checked against gold's memory at segment k's first row**, every segment
-of both workloads at 2²⁹; plus word 66's values (log₂ K, `lowest_address`), standing in for frame 7 until gold writes it.
-Hand over per segment a list of pages (4 KB content and owned flag) with word 66's values; WORKER22's `FileStore` lays them out
-as section 20 trees. WORKER22 will propose the formats for the map and the images: agree them with it.
+**Scope addition: the initial image and the pages each segment writes** (owner, 2026-11-05; DECISIONS-v1.3, B1's acceptance;
+this replaces your PROMPT.md item 3b's 128 start images): WORKER22 runs the segments in order on one memory, so you build
+- **the initial image**: gold's cycle-0 image (the ELF's sections and the inputs), as a page list (4 KB content per page), plus
+  word 66's values (log₂ K, `lowest_address`), standing in for frame 7 until gold writes it;
+- **per segment, the list of pages it writes** (from its update list, frames 4 or 5): the harness creates them, if absent, and
+  marks them owned at the segment's start, every other page not owned;
+- **a check:** applying segments 0 to k−1's updates to the initial image gives gold's memory at segment k's first row, for
+  every segment of both workloads at 2²⁹ (so the updates WORKER22 checks against are right).
+WORKER22's format is in `WORKER22/NOTES.md` (per run, the map's lines plus a JSON with k, p1, p3 and word 66's values; pages as
+offset, owned flag and 4 KB content, absent pages holes): use it, or agree changes with WORKER22.
 
 **Where outputs live:** the small guests' tables and images on your branch under `wip/jumpmap/out/`, as test fixtures; **the
 2²⁹ tables and start images in the runner's persistent data** (`~questrunner/data`), where WORKER22's tasks read the

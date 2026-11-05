@@ -22,7 +22,7 @@ THE WORK
    target), and its insertion by the lookup's own rule, checking no inserted key lands more than two lines from home. Section
    18 leaves open who inserts (C&C 3 at proof start, or the host sending patched lines): propose, and for bring-up produce
    the merged table.
-3b. **Each segment's start image** (owner, 2026-11-05, moved here from WORKER22): gold's cycle-0 image (the ELF's sections and
+3b. *(Superseded 2026-11-05: the initial image and per-segment page lists instead, see NEXT.md.)* **Each segment's start image** (owner, 2026-11-05, moved here from WORKER22): gold's cycle-0 image (the ELF's sections and
    the inputs) plus segments 0 to k−1's updates (frames 4 or 5) applied in order; **owned** = the pages segment k itself
    writes (its own update list), every other page shared and not owned. **Check each against gold's memory at segment k's first
    row.** Also word 66's values (log₂ K, `lowest_address`) and the hash constants, standing in for frame 7 until gold writes it.

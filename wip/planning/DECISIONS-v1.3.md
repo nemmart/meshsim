@@ -1305,6 +1305,18 @@ Work agreed for v1.3, each with the decisions it carries out. Studies (below) ar
 | W5 | **Upstream's tests through the gold emulator** (owner, 2026-11-01): (a) the **ACT4 architectural tests** (RISC-V International's `riscv-arch-test`, `tests/arch-tests/` upstream): self-checking ELFs for every RV64IMAC instruction, unprivileged, expected signatures baked in at build time by the Sail reference model; upstream skips the CSR tests its tracer doesn't fully support (`tests/arch-tests/skip.txt`). Building them needs riscv-none-elf-gcc 15+ and Sail, once; the ELFs then run as data through gold, jolt-cpp and upstream. (b) **The inline tests** (`jolt-inlines/*/src/tests.rs`): each inline's sequence run on the emulator against an independent library (arkworks for secp256k1, and so on); port their vectors to gold. Check both exist at the pin 17a9459 (seen at HEAD c670357) | 17 | **done** (WORKER18, e9f0444): ACT4 through a test-equipment runner (every ACT4 ELF has data inside its code), 123 of jolt-emu's 125 passes; the inline vectors 5,677 of 5,677 |
 | SP1 | **The Tracer's spec chapter**: overview, region and record, control, execution, memory, output, boundaries, errors, the replayer's v1.3 changes; the 512 KB cache a black box | 1-25 | to start (WORKER21), in parallel with B1 |
 | B1 | **The Tracer's bring-up in meshsim**: its model, a black-box memory system, C&C 3's firmware sending each window to its tile, the segment replayed on the full chip, checked against WORKER9's deliveries and jolt-cpp's rows, compression on and off | 1-25 | to start (WORKER22) |
+
+**B1's acceptance at 2²⁹: one memory, carried through the segments** (owner, 2026-11-05). Instead of 128 separately built start
+images: **one initial image** (the cycle-0 image, every index level in place), and the segments run **in order on that same
+memory**, each starting where the previous left it. **At each segment's start**, the harness creates (as zero pages, if absent)
+the pages **that segment writes**, from a per-segment list, and marks them owned; every other page is not owned, so a stray store
+still sets [8] (section 15's ownership, exercised without 128 images). **The caches are cold at each segment's start**: the
+word-0 write invalidates the Tracer's, and the model flushes the shared cache at the boundary (each segment runs on its own
+ASIC). Checks at each boundary: the Tracer's state against the next segment's frame 2, and the pages it wrote against the
+segment's update list (frames 4 or 5), which verifies the updates for free. The fast model (T1) carries memory through the
+segments in between, so the full chip (T2) runs only the chosen ones. **WORKER26 builds the initial image, the map, and the
+per-segment lists of pages written**, not 128 images.
+
 | F1 | **The file system on C&C 2, with a shell on C&C 1 over the UART**: C&C 3's page manager black-boxed; mkfs and fsck as host tools | 20, 22 | to start (WORKER23) |
 
 ---

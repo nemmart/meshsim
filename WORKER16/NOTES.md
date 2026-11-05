@@ -119,3 +119,14 @@ end-of-trace rule); plus: compare frame 1 with WORKER17's per-segment written-pa
 rows restarted from frame 2 alone); frame 1 equals WORKER17's `pages_written` on all 128 segments of both; small runs
 with hard cuts (19 mid-secp starts with pending advice on EVM Zone trace-23) pass; negative tests caught. Updates: LRU-32
 0.611 / 0.533 of raw; files 1.75 / 10.33 MB. The scoping of 40-47 (14 families with formulas) is in `W3-REPORT.md`.
+
+## 2026-11-05, session 5: the jolt-cpp 88dca85 pin
+
+**Asked** (owner, via the user): move PR #2's tracer to jolt-cpp 88dca85 (section 14 (c)) on my own branch from
+`tracer-standalone-main`; check `src/tracer/isa` unchanged, row hashes per window identical at 2^29, segment files
+byte-identical; push for the user to merge. **Go-ahead** with: don't rebase `worker16-w3` (Gold's acceptance cites `ca30b5e`); put the
+ported segment tools on a new branch from the pin branch; push both before comparing; if anything differs, stop and report.
+
+**Done:** `worker16-pin-88dca85` (`a9b8d24`), `worker16-w3-88dca85` (`f2ae129`). One file beyond the 8 changed:
+`utils/chrome_tracer.hpp`, newly included. Window hashes, segment files (four) and `capture_writes` outputs all identical
+between the pins; `segment_check` and the Python reader pass on the new files. `PIN-REPORT.md`.

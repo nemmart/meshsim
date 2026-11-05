@@ -1191,7 +1191,11 @@ Decided (O).
   from corruption somewhere (a host table or a page damaged on the way, a hardware fault), where hanging or running on would hide
   it:
   - **a jump target not in the map** (the probe finds neither the pc nor a free slot within its bound);
-  - **a write to a hole** in the guest's memory (an index entry of `0xFFFFFFFF`), reported by the memory system's walker to the
+  - **a store where the copy can't write** (owner, 2026-11-05, WORKER21's Q6; *provisional*): **a hole or a page the copy
+    doesn't own** (section 15), one `ERRORS` bit, [8], since a line is writable only when its fill succeeded; the fill status
+    can still tell them apart. **To revisit with the memory system's design:** which statuses and page flags it reports is still a
+    black box, so this follows WORKER21's proposed fill responses (ok, hole, not owned, beyond the length) until then.
+    Formerly: **a write to a hole** in the guest's memory (an index entry of `0xFFFFFFFF`), reported by the memory system's walker to the
     requester;
   - **an access to a page that doesn't exist**, beyond the file's length;
   - **a guest access outside the provable range** (owner, 2026-11-04; WORKER17): **a dedicated comparator** in the Tracer's

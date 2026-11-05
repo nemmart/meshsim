@@ -126,3 +126,24 @@ Every window of both workloads and every boundary pass, in all three runs. The c
 
 The drain is the code scan's one entry a cycle: about 65K cycles per window (a padding window has 65,536 code values), so
 about 4 M per segment, near 4.21.6's estimate of 0.05 ms per window.
+
+## T2 on the full chip (milestone 4)
+
+- **Local runs** (meshsim v1.3-tracer b64d9d3, with Q15's handshake, every delivery counted): EVM Zone trace-23 segment 0
+  (2 windows, raw) and segment 1 (3 windows, with segment 0 carried by T1); Cyclone input/22 segment 0 (8 windows,
+  LRU-coded). All are OK: every tile's delivered record and streams equal WORKER9's delivery, and its replayed rows equal
+  jolt-cpp's.
+- **Quest 110e (PASS; the kit before the handshake, with Q15's interim exemption):** segment 0 of both workloads at 2²⁹,
+  all 64 windows, raw and LRU-coded, on the full chip. C&C 3 runs `tracer_ctl.c` with the Tracer, its DMA (src 74)
+  delivering each window into its tile, and every tile replays with `replay_ctl`. All 4,194,304 rows of each run match.
+
+| segment 0 | EVM Zone raw / LRU | Cyclone raw / LRU |
+|---|---|---|
+| C&C 3, start to exit | 20.98 / 20.96 M cycles (21.0 ms at 1 GHz) | 20.89 / 20.72 M cycles |
+| the Tracer's rows; the drain | 17.85 M; 3.11 / 3.09 M | 17.89 M; 2.98 / 2.81 M |
+| DMA transfers, packets | 11,552, 1.44 M / 5,102, 0.61 M | 12,722, 1.59 M / 2,792, 0.31 M |
+| the tiles' replay, the longest | 236K / 235K cycles | 212K / 211K cycles |
+| wall per segment (one JVM, four in parallel on 16 threads) | 1,228 / 1,185 s | 1,218 / 1,180 s |
+
+At about 20 minutes per segment and JVM, the 2²⁹ subset is about 1 segment in 16 plus the heaviest, one task per workload,
+eight JVMs each (Quest 110f, 110g).

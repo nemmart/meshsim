@@ -14,3 +14,7 @@ After the rulings, the 7189216 re-check and the demo guests:
    (`(address − lowest_address) < 8·K`, unsigned, on the full 64-bit address); and a jolt-cpp bug report against its prover, which silently drops such an access
    (`jolt-utils/ram.hpp:16-30`; GPU RW checking drops cells >= K) and produces a proof that fails verification; the same report notes the JIT's unchecked guest memory (each VM's 4 GiB mapped with no guard pages or bounds checks, so an out-of-layout access silently reads zeroed RAM, then past 4 GiB corrupts the VM's state and the next VM's RAM; `sessions/WORKER17-REPORT.md`)
    (`sessions/WORKER17-REPORT.md`). Plan first.
+4. **v1.3's host-side formats, from the Tracer's spec** (4.21; DECISIONS-v1.3 sections 16, 18): the jump map's key is
+   *o* = pc − `lowest_address` (u32), so frame 6's pc offsets and the static table use it; frame 7, the proof parameters
+   (log₂ K, `lowest_address`, a16z's `MemoryLayout`), sent first, layout yours to propose with WORKER16; frame 2 takes
+   v1.26.1's record (stream word with advice, flags out of word 0). Coordinate with WORKER16's segment tools.

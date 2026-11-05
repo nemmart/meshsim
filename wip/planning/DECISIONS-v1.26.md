@@ -124,3 +124,8 @@ layouts. Four changes, on both units:
 change notes; meshsim's replayer model, `mesh.h`, the register reference, `replay_ctl.c` and the recipes, the tests, the
 acceptance kit and `ReplayDriver`; everything that writes a record or a stream word: gold (`wip/gold/`), WORKER16's segment
 tools, and the converted deliveries in the runner's data. SP1 writes the Tracer's chapter on these layouts.
+
+**The release** (owner, 2026-11-04): made as **`v1.26.1/`**, the point-release rule (as `v1.2.1/`). Tony has not started on
+v1.26 and is waiting for it. **Once `v1.26.1/` is frozen, `v1.26/` is deleted** (owner): git keeps it, so the README's version
+table names v1.26 as superseded, with the last commit holding the folder, and the references to `v1.26/` (README, this file,
+the handover) point there or to `v1.26.1/`.

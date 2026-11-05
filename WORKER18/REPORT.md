@@ -56,7 +56,7 @@ All 15 inlines' sequences equal jolt-cpp's `.inc` emit lists row for row under t
 - **Computed secp256k1 advice**: rows identical on EVM Zone trace-23 (every record; 668 operations, six kinds) and at
   2^29 (every window, run hash; 662 operations), and on `inlines` below (all seven kinds, SQUARE_R included).
 - **Segment files, byte for byte** against segment_writer `ca30b5e` (regenerated locally; SHA-256 equal to WORKER16's
-  committed `WORKER16/data/w3/*.writer.json`):
+  committed `wip/planning/sessions/WORKER16-data/w3/*.writer.json`):
 
 | file | rows | segments | bytes | SHA-256 | gold time |
 |---|---|---|---|---|---|
@@ -107,7 +107,9 @@ the three agree on every row; the rest are D2-D6 above. `check_guests.sh` pins g
   its `max_ram_k` bound; stores into code; the end and misalignment rules. Guests for each.
 - **The v1.3 segment file**: frames 7, 1 (4 KB pages), 6 (the proof's jump table, built with `HashTable`, now in gold)
   and 2 (the 68-word record); validated against jumpmap (frame 6 byte-identical), a16z's layout (frame 7) and the v1.2
-  file (frames 2-5). WORKER16's tool is to write the same bytes.
+  file (frames 2-5). **Accepted**: byte-identical to WORKER16's v1.3 files at 2²⁹ (EVM Zone `3cd32881…`, Cyclone
+  `e932baaf…`); WORKER16's tools are merged into `tracer-standalone-main` (`ccfb772`). jumpmap now takes K from gold's
+  `ProofParams`, so it agrees with a16z on every fixture.
 - **Found**: D14, a16z remaps LR/SC's rd = x0 (jolt-cpp doesn't), so LR x0 is provable under a16z: the LR x0 ruling's
   premise holds only for jolt-cpp.
 

@@ -211,13 +211,13 @@ table) is left out: the tool doesn't write it and where it belongs is open (owne
   8 x the word count. **Frame 5 iff the list is non-empty and the LRU size is strictly smaller**; on a tie, raw; an
   empty list is always frame 4 (with no data).
 
-Reference files (regenerated locally from `ca30b5e`, SHA-256 equal to WORKER16's committed `WORKER16/data/w3/*.writer.json`):
+Reference files (regenerated locally from `ca30b5e`, SHA-256 equal to WORKER16's committed `wip/planning/sessions/WORKER16-data/w3/*.writer.json`):
 
 | file | rows | segments | bytes | SHA-256 |
 |---|---|---|---|---|
 | `evm-zone-29` | 354,861,942 | 128 | 1,747,828 | `208520ec...8aa17d18` |
 | `cyclone-29` | 371,526,406 | 128 | 10,334,580 | `f45f71b6...8aa64070` |
-| `evm-zone-23-hardcuts` (cuts: `WORKER16/data/w3/*.cuts`) | 5,833,069 | 93 | 326,576 | `b33f9fc4...5b35c566` |
+| `evm-zone-23-hardcuts` (cuts: `wip/planning/sessions/WORKER16-data/w3/*.cuts`) | 5,833,069 | 93 | 326,576 | `b33f9fc4...5b35c566` |
 | `cyclone-22-hardcuts` | 2,705,819 | 111 | 339,884 | `a3858f5e...8cac81ec` |
 
 ### Stage 2 results (2026-11-02, gold `98561df`)
@@ -457,3 +457,16 @@ of 2²² rows), **republished 2026-11-05 with word 66's new field and D13's ruli
 
 **HashTable and StaticTargets** moved from `wip/jumpmap` into gold (`11eac42`); jumpmap uses gold's, and its fixtures
 are unchanged (its `fixtures.sh` asks gold for `--format=v1.2`, which its `SegmentFile` reads).
+
+### v1.3 accepted (owner, 2026-11-05)
+- **gold's v1.3 files are byte-identical to WORKER16's at 2²⁹** (EVM Zone `3cd32881…`, Cyclone `e932baaf…`), so the v1.3
+  formats are accepted. WORKER16's segment tools are merged into jolt-asic-planning `tracer-standalone-main` (`ccfb772`)
+  and its session is closed: its reports and data are now `wip/planning/sessions/WORKER16-*` (references here repointed;
+  `check.sh` reads the hard-cut lists from `wip/planning/sessions/WORKER16-data/w3/`). My one-line port of its
+  `segment_writer` on `worker18-rows-88dca85` is superseded by the merged tools.
+- **jumpmap's K** now comes from gold's `ProofParams` (a16z's prover rule), replacing its own jolt-cpp-style formula
+  (image words from `program_end`, +1 on the highest access), which WORKER16 found differing from a16z's on tiny
+  fixtures (`WORKER16-V13-REPORT.md`, finding 1). Fixtures regenerated: `log2_k` 3 → 4 on `assert_eq_pass`, `ebreak`,
+  `fence`, `rd0_add`, `stack_canary_store` (the five WORKER16 compared) and on `d12_c_slli_x0`, `d1_rodata_in_text` (which
+  jolt-cpp can't load, so WORKER16 had no value); every fixture with an a16z value in `jumpmap-fixtures.json` now equals
+  it; `jumps`, `keccak256`, `unimp_unreached`, `d1_decodable_gap` unchanged; frame 6 and the other outputs unchanged.

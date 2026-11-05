@@ -36,6 +36,7 @@ does with faulty or unusual guests.
 | D11 | upstream has inlines and row kinds jolt-cpp lacks (grumpkin, p256, NTT; four kinds) | yes, guests using them |
 | D12 | C.SLLI with rd = x0 (a HINT): jolt-cpp rejects it as invalid, upstream runs it as a NOP | **ruled: follow a16z** |
 | D13 | an rd = x0 rewrite row (ADDI x0, x0, 0) is flagged virtual in jolt-cpp, not in a16z | yes (any non-ADDI rd = x0) |
+| D14 | LR/SC with rd = x0: a16z remaps rd to a temporary, jolt-cpp keeps x0 | yes (any LR.D/LR.W/SC.D/SC.W x0) |
 
 ## D1. The program image: segments or sections (ruled: follow a16z)
 
@@ -261,3 +262,23 @@ loads the guest and gives gold's rows; workloads and examples unchanged.
   that row. Since a16z's bytecode is what proofs are checked against, any guest with such an instruction would fail
   verification under jolt-cpp; none of the workloads or examples has one (their rows match a16z's). Found with D12's
   guest. Not ruled; gold follows jolt-cpp.
+
+## D14. LR/SC with rd = x0 (found 2026-11-05; questions the LR x0 ruling's premise)
+
+- **a16z** (7189216) exempts only ECALL, MRET, EBREAK, CSRRW and CSRRS from the rd = x0 rewrite
+  (`crates/jolt-program/src/expand/operands.rs:51-60`, `handles_rd_zero_internally`); for everything else with side
+  effects it allocates a temporary as rd (`crates/jolt-program/src/expand/mod.rs:133-170`). So `LR.D x0, (t0)` becomes
+  `LD x40, 0(t0)` (its own temporary moving to x41), and the load row reads the word into x40: **provable**, whatever
+  the word.
+- **jolt-cpp** (88dca85) also exempts LR/SC and every inline (`isa/virtual.cpp:57-80`, citing a16z PR #1439, which
+  a16z's code no longer follows), so its LR.D x0 expands to `LD x0` (unprovable if the word is nonzero: R1CS's
+  RamRead = RdWrite) and its LR.W x0 to a Pext writing x0.
+- Guests (`wip/gold/test/guests/`): `lr_d_x0_nonzero` (jolt-cpp `8babe424cdbbaac3`, a16z `3154d2c98b204fec`; row 8
+  `LD x0` against `LD x40` loading 7), `lr_w_x0_nonzero`, `lr_d_x0_zero` (a16z `043e0488d016645f`, jolt-cpp
+  `e8844ebbdb3a48c0`): the rows differ for every LR x0, zero or not, so jolt-cpp's proofs of such programs fail
+  verification against a16z's preprocessing. SC.D/SC.W x0 are exempt in jolt-cpp too and presumably differ the same way
+  (not yet measured). The inlines' exemption is invisible in rows (they use registers 48 and up; their rows match).
+- **Bearing on the LR x0 ruling** (DECISIONS-v1.3 section 17): WORKER17's premise, that LR.D x0 / LR.W x0 keep x0 in
+  both codebases, holds for jolt-cpp only. Following a16z (as for D1, D3, D12), LR/SC x0 would be remapped and the
+  nonzero-word rejection wouldn't be needed. **Not ruled**; gold implements the ruling as given (rejects a nonzero word,
+  `ca952d6`) and keeps jolt-cpp's rows here.

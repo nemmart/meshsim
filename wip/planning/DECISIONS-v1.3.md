@@ -580,6 +580,9 @@ Decided (O).
     (`isa/decoder.cpp:597-640, 1200-1207`; D4); gold follows upstream here, by design;
   - **the exception: the standard UNIMP encodings** (`c.unimp` 0x0000, `unimp` 0xC0001073), which compilers place after code
     that can't return and as padding: **loaded as an unreachable marker** (upstream's `UNIMPL`), **throwing only if executed**;
+    *narrowed (owner, 2026-11-04, by section 17's rulings): **only `c.unimp` (0x0000) is the marker**, which a16z also skips;
+    `unimp` 0xC0001073 is **rejected at load**, as a16z's preprocessing rejects the ELF (UPSTREAM-DIFFS D4; a16z's rejection of the
+    standard `unimp` is written up as U3);*
   - everything else loads and runs as now. For every valid program (both workloads included) nothing changes, so the
       byte-identical acceptance holds.
   - **Gold has one loading mode** (owner, 2026-11-01): no permissive mode. ACT4 is run by **rebuilding its ELFs under a target of
@@ -618,8 +621,11 @@ Decided (O).
     host tracer's reference, rejects it the same way.
   - **D12, C.SLLI with rd = x0 (a RISC-V HINT): follow a16z**, decoded as `SLLI x0, x0, n`, a no-op; jolt-cpp's decoder wrongly
     rejects it. **A jolt-cpp fix and a bug report**, with a guest as reproducer.
-  - **D2 and the rest: deferred.** U1 and U2 (a16z's ACT4 configuration and `jolt-emu`'s exit check) are a16z's bugs, written up
-    for the owner to decide whether to report.
+  - **D4, narrowed:** `unimp` 0xC0001073 is rejected at load, as a16z does; `c.unimp` stays the only unreachable marker (above).
+  - **The program's end is detected by `JAL x0, 0`**, with 4.19.2's end-of-trace encoding unchanged; a JALR or branch to 0 is the
+    D5 error (section 25).
+  - **D2 and the rest: deferred.** U1 and U2 (a16z's ACT4 configuration and `jolt-emu`'s exit check) and U3 (a16z rejecting the
+    standard `unimp`, 0xC0001073) are a16z's bugs, written up for the owner to decide whether to report.
 
 ## 18. The Tracer's pc to `instr_idx` map (2026-11-01)
 

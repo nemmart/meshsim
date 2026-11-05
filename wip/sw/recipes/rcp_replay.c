@@ -15,7 +15,8 @@ static int replayer_present(void) {
  * while the replayer is stopped (STATUS [0] = 0: its part 0 is written only then, spec 4.19.10): mode-0 writes to the tile's
  * own peripheral region, 16-byte aligned, counted on counter 4 like any write (they land within K, D10). v1.26: the state
  * word goes first and its write resets the pass (the queues flushed, every credit 2; DECISIONS-v1.26 items 4, 10); part 0 is
- * the working state, which a pass leaves at its end state (item 12), so the whole record is loaded before every pass. */
+ * the working state, which a pass leaves at its end state (item 12), so the whole record is loaded before every pass,
+ * verbatim (v1.26.1: the pass's row count and flags are RUN_CONFIG's, below; nothing in the record changes per pass). */
 static void replayer_load_state(const uint32_t *rec) {
     while (replayer->STATUS & PST_RUN) ;           /* only between passes; the loop below ends a pass by its event */
     tile->WRITE_COUNTER[CTR_PERIPH - 1] = 66;
@@ -50,6 +51,13 @@ static void periph_dma(unsigned n, unsigned dst, uint32_t addr, uint32_t words, 
  * the load returns, in one refill run of up to four streams, and waits for that run before it looks again. A queue
  * with nothing more to push leaves the mask, or its spare credit would keep the tile awake (W3-24). Resident streams
  * only: data staged from LPDDR is fetched into big SRAM first, on another counter (spec 4.19.13). */
+/* What the passes run (v1.26.1, DECISIONS-v1.26 item 13): RUN_CONFIG, window word 32: the rows [23:0] (65,536 for a
+ * window; a short trace's record is sized to its pass, or the pass ends on ERRORS [6]) and the flags, use the store log
+ * [24] and output rd_prev [25]. Written while stopped; it is sticky (0 after the reset), so passes alike need one write. */
+static void replayer_config(uint32_t rows, uint32_t flags) {
+    while (replayer->STATUS & PST_RUN) ;           /* a write while a pass runs is UB */
+    replayer->RUN_CONFIG = RP_RC_ROWS(rows) | flags;
+}
 typedef struct { uint32_t chunk, left, port, half, bit; } Feed;   /* the next half in big SRAM (4-chunk aligned), entries left */
 /* key(w) (spec 4.19.9, v1.25): the index's key for a presented word, every bit of w but its register fields. An inline
  * (custom-0) has rd, rs1 and rs2 cleared; CSRRW/CSRRS has rd and rs1 renamed by first appearance (x0 stays 0, a
@@ -70,7 +78,7 @@ static unsigned refill(Feed *f, unsigned s, uint32_t *pmask, uint32_t *armed) {
     if (f->left == 0) *pmask &= ~f->bit;            /* nothing behind its credits now: out of the mask */
     return s + 1;
 }
-static void replay_pass(Feed *code, Feed *rlog, Feed *wlog, int store_log) {
+static void replay_pass(Feed *code, Feed *rlog, Feed *wlog, int store_log) {   /* store_log: as in RUN_CONFIG [24] */
     Feed exp = { 0, 0, RP_Q_EXP, RP_HALF_EXP, RP_EV_EXP };
     uint32_t pmask = PEV_RUN_DONE | RP_EV_NEWEXP | (code->left ? RP_EV_CODE : 0) | (rlog->left ? RP_EV_RLOG : 0)
                    | (store_log && wlog->left ? RP_EV_WLOG : 0);   /* no write log without the store log */
@@ -109,6 +117,7 @@ int main(void) {
     Feed code = { 0x10000, 300, RP_Q_CODE, RP_HALF_CODE, RP_EV_CODE };
     Feed rlog = { 0x20000, 900, RP_Q_RLOG, RP_HALF_LOG, RP_EV_RLOG };
     Feed wlog = { 0x30000, 0, RP_Q_WLOG, RP_HALF_LOG, RP_EV_WLOG };
+    if (replayer_present()) replayer_config(65536, 0);   /* full passes without the store log, once */
     for (;;) {
         uint32_t w = wait_for_command();
         if (CMD_TYPE(w) == 1 && replayer_present()) { replayer_load_state(state); replay_pass(&code, &rlog, &wlog, 0); }

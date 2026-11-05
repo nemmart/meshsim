@@ -6,8 +6,12 @@
  * decoders reset) and part 0 is the replayer's working state (item 12: a pass leaves its end state there), so the program
  * reloads words 0-65 from the record in big SRAM before every pass, one address-generator run of 66 words, state word
  * first (load_part0); PULSE_RUN only starts. The read-log and write-log queues are 4 KB (V3-12):
- * every credit is 128 entries (HALF_LOG; -DHALF_LOG=256 builds the 8 KB control). The use-store-log flag stays at the
- * state word's [115].
+ * every credit is 128 entries (HALF_LOG; -DHALF_LOG=256 builds the 8 KB control).
+ *
+ * v1.26.1 (WORKER25; DECISIONS-v1.26 items 13-16): the passes' row count and flags are RUN_CONFIG's (window word 32),
+ * taken from the layout header's RL_H_RUN_CONFIG and written once before the first pass, since RUN_CONFIG is sticky; the
+ * use-store-log flag is its [24]. The record's words 0-65 are loaded verbatim before every pass (the state word has no
+ * flags). EXPANSION_OFFSET and EXPANSION_OPCODE are words 34 and 35 (mesh.h's struct).
  *
  * v1.25 (WORKER11): the universal tables (wip/tables/replayer, DECISIONS-v1.25 s5). The template index is keyed by
  * key(w), the normalized template-index key (tkey below): a presented word is normalized, then looked up. The fast
@@ -369,13 +373,14 @@ int main(void) {
     /* the record into data memory for its bitmap (word 67) and the store-log flag; part 0 is loaded before each pass */
     copy_to_dm(hdr[RL_H_RECORD], record, RL_RECORD_WORDS, base_mask);
     for (uint32_t i = 0; i < 4; i++) bitmap[i] = record[4 * RL_RECORD_BITMAP + i];   /* word 67 (dmtab reuses record) */
-    store_log = (record[3] >> 19) & 1;                                /* the state word's flag [115]: use the store log */
+    store_log = (hdr[RL_H_RUN_CONFIG] & RP_RC_STORE_LOG) != 0;      /* v1.26.1: RUN_CONFIG [24], not the record */
 
     /* the fast path's tables (dmtab reuses the record's space) */
     wait_rd_idle();
     build_fast(nt);
 
     rp_results[RL_R_STATUS] = 1;
+    replayer->RUN_CONFIG = hdr[RL_H_RUN_CONFIG];                      /* v1.26.1: the rows and flags; sticky, so once */
     for (uint32_t p = 0; p < hdr[RL_H_PASSES]; p++) {
         load_part0(base_mask);                                        /* v1.26 (item 12): words 0-65 before every pass */
         if (!run_pass()) { rp_results[RL_R_STATUS] = 2; break; }

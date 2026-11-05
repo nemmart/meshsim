@@ -27,10 +27,19 @@ final class ReplayDriver {
     long missingTemplates;
     List<String> log = new ArrayList<>();
 
-    ReplayDriver(ReplayWindow w) { this(w, new Replayer(0, w.rows)); }
+    ReplayDriver(ReplayWindow w) { this(w, new Replayer(0)); }
     ReplayDriver(ReplayWindow w, Replayer r) {
         this.w = w; this.r = r;
         r.rowListener = rows::add;
+    }
+    /** v1.26.1: the pass's RUN_CONFIG; null takes the window's (its rows and flags). Written before PULSE_RUN only when it
+     *  differs from the value last written (RUN_CONFIG is sticky, 0 at the reset). */
+    Integer runConfig;
+    private int lastConfig;                                // the value the replayer holds (0 after the reset)
+    long configStores;
+    void writeConfig() {
+        int c = runConfig != null ? runConfig : w.runConfig();
+        if (c != lastConfig) { if (r.writeWord(t, Replayer.W_RUN_CONFIG, c) != 1) throw new IllegalStateException("RUN_CONFIG refused"); lastConfig = c; configStores++; step(); }
     }
 
     void step() {
@@ -82,6 +91,7 @@ final class ReplayDriver {
     /** A pass whose code stream's first {@code codeSent} entries were pushed before it (v1.26: kept after the flush). */
     List<long[]> passFrom(long maxCycles, int codeSent) {
         rows.clear(); done = false; codeNext = codeSent; rlogNext = wlogNext = 0; expWords = null;
+        writeConfig();
         r.run(t); runAt = t;
         step();
         long end = t + maxCycles;
@@ -89,7 +99,7 @@ final class ReplayDriver {
             r.sync(t);
             int l = r.events().value(t);
             if (l != 0) {
-                int st0 = r.status(t, 0), st1 = r.status(t, 1);
+                int st1 = r.word(t, Replayer.W_EXP_OPCODE);          // v1.26.1: words 34-35 (were 33-34)
                 r.events().consume(l);
                 if ((l & 1 << Replayer.EV_CODE) != 0) codeNext = refill(w.code, codeNext, 0x40000, 128);
                 if ((l & 1 << Replayer.EV_RLOG) != 0) rlogNext = refill(w.rlog, rlogNext, 0x80000, r.rlog.half);
@@ -98,7 +108,7 @@ final class ReplayDriver {
                     int key = ReplayTables.key(st1);                // v1.25: the index is keyed by key(w)
                     long[] tpl = w.templates.get(key);
                     if (tpl == null) { missingTemplates++; log.add("@" + t + " no template for 0x" + Integer.toHexString(st1) + " (key 0x" + Integer.toHexString(key) + ")"); tpl = new long[0]; }
-                    int off = st0 >>> 16, rd0 = w.templateRd0.getOrDefault(key, (int) (tpl.length > 0 ? (tpl[0] >>> 46) & 3 : 0));
+                    int off = r.word(t, Replayer.W_EXP_OFFSET), rd0 = w.templateRd0.getOrDefault(key, (int) (tpl.length > 0 ? (tpl[0] >>> 46) & 3 : 0));
                     if (((st1 >>> 7) & 31) == 0 && (rd0 == 1 || rd0 == 3)) {
                         // N3: a NOP policy with rd = x0: the single NOP word (ROM word 1) carrying the template's rd0
                         expWords = new long[] { w.romLo[1] & ~(3L << 46) | (long) rd0 << 46, w.romHi[1] }; expNext = 0;

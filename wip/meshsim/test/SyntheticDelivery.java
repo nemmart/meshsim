@@ -448,10 +448,13 @@ public final class SyntheticDelivery {
         return e;
     }
     static Replayer.StreamSize size(long[] entries, int values, boolean comp) { return new Replayer.StreamSize(entries.length / 2, values, comp); }
-    /** v1.26: the 68-word record (DECISIONS-v1.26 items 1, 2, 8): use the store log and output rd_prev set, files word 0. */
+    /** v1.26.1: the 68-word record (DECISIONS-v1.26 items 1, 2, 15, 16): no flags in the state word (the passes' are
+     *  RUN_CONFIG's), files word 0, and the stream word's advice field filled with a value from the window's pc and
+     *  instr_idx (0 to 2^22 - 1), which a replayer must ignore. */
     static long[] record(long[] bm, long pc, int idx, int off, Replayer.StreamSize c, Replayer.StreamSize r, Replayer.StreamSize w, long[] regs) {
-        return ReplayWindow.record(pc, Replayer.stateHi(idx, off, true, true), Replayer.streamWord(c, r, w), regs, new long[2], bm);
+        return ReplayWindow.record(pc, Replayer.stateHi(idx, off), Replayer.streamWord(c, r, w, adviceOf(pc, idx)), regs, new long[2], bm);
     }
+    static int adviceOf(long pc, int idx) { long h = (pc ^ (long) idx << 17) * 0x9E3779B97F4A7C15L; return (int) (h >>> 42); }
     void put(Path pd, String name, long[] v, Map<String, Object> files) throws Exception {
         byte[] b = bytes(v); Files.write(pd.resolve(name), b);
         files.put(name, Map.of("bytes", (long) b.length, "sha256", ReplayTables.sha256(b)));

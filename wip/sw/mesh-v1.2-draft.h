@@ -63,10 +63,11 @@ typedef struct { PERIPHERAL_STD_MEMBERS; uint32_t _defined[96]; } PeripheralStd;
 /* the replayer, peripheral type 1: words 32-34 one field each (D39); v1.1's PERIPH_STATUS_0-1 */
 typedef struct {
     PERIPHERAL_STD_MEMBERS;
-    MESH_RO ROWS_RUN;         /* 32: rows of this pass completed, modulo 2^16 (D39) */
-    MESH_RO EXPANSION_OFFSET; /* 33: the row within the current expansion where the next row starts */
-    MESH_RO EXPANSION_OPCODE; /* 34: the instruction awaiting a controller-fed expansion */
-    uint32_t _defined[93];
+    MESH_RW RUN_CONFIG;       /* 32: [23:0] rows to run, [24] use the store log, [25] output rd_prev; sticky (v1.26.1) */
+    MESH_RO ROWS_RUN;         /* 33: rows of this pass completed, 24 bits (D39; v1.26.1) */
+    MESH_RO EXPANSION_OFFSET; /* 34: the row within the current expansion where the next row starts */
+    MESH_RO EXPANSION_OPCODE; /* 35: the instruction awaiting a controller-fed expansion */
+    uint32_t _defined[92];
 } ReplayerRegs;
 
 /* C&C 1's peripheral, Ingress/Egress and the UART (D28, D36): words 32-45 in D28's order (D42) */
@@ -130,7 +131,7 @@ _Static_assert(sizeof(TileRegs) == 0x200, "block size");
 _Static_assert(__builtin_offsetof(TileRegs, EVENTS) == 0x18 && __builtin_offsetof(TileRegs, ROUTER_HDR) == 0x28 &&
                __builtin_offsetof(TileRegs, REQUEST_SEND) == 0x54 && __builtin_offsetof(TileRegs, WRITE_COUNTER) == 0x60 &&
                __builtin_offsetof(TileRegs, SRAM_RD_DEST_ADDR) == 0x80 && __builtin_offsetof(TileRegs, TRACE) == 0x1FC, "D11 offsets");
-_Static_assert(__builtin_offsetof(PeripheralStd, DMA_ADDR) == 36 && __builtin_offsetof(ReplayerRegs, EXPANSION_OPCODE) == 136 &&
+_Static_assert(__builtin_offsetof(PeripheralStd, DMA_ADDR) == 36 && __builtin_offsetof(ReplayerRegs, EXPANSION_OPCODE) == 140 &&
                __builtin_offsetof(Cnc1Regs, ERROR_LINES) == 128, "D10 offsets");
 _Static_assert(__builtin_offsetof(TableRegs, PTR) == 0x400 && __builtin_offsetof(TableRegs, GROUP) == 0x1400 &&
                sizeof(TableRegs) == 0x1600, "table window");
@@ -286,6 +287,9 @@ _Static_assert(__builtin_offsetof(TableRegs, PTR) == 0x400 && __builtin_offsetof
 #define RP_HALF_CODE       128u   /* entries per credit (spec 4.19.8) */
 #define RP_HALF_LOG        128u   /* v1.26: 4 KB log queues (v1.25: 256) */
 #define RP_HALF_EXP        128u
+#define RP_RC_ROWS(n)      ((uint32_t)(n) & 0xFFFFFFu)   /* RUN_CONFIG [23:0]: the rows a pass runs (v1.26.1) */
+#define RP_RC_STORE_LOG    (1u << 24)                    /* RUN_CONFIG [24]: use the store log */
+#define RP_RC_RD_PREV      (1u << 25)                    /* RUN_CONFIG [25]: output rd_prev */
 
 /* C&C 1's peripheral events (D28, D42) */
 #define CC1_EV_ALL_READY   (1 << 2)    /* live: (READY & EXPECT) == EXPECT and EXPECT != 0 */

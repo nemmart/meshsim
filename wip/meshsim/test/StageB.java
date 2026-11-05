@@ -26,7 +26,7 @@ import java.util.Map;
  */
 public final class StageB {
     static final int HDR = 0x00000, TABLES = 0x00040, INDEX = 0x00C40, RECORD = 0x00E40, TEMPLATES = 0x58000,   // v1.25: 1.4 MB for the universal set
-            CODE = 0x08000, RLOG = 0x18000, WLOG = 0x38000, LAYOUT_VERSION = 3;   // v1.26: the 68-word record
+            CODE = 0x08000, RLOG = 0x18000, WLOG = 0x38000, LAYOUT_VERSION = 4;   // v1.26.1: RUN_CONFIG in header word 14 (v1.26, 3: the 68-word record)
 
     /**
      * Simulate tile 0 only (Chip.parked; -Dstageb.lone, or ReplayShard's stage B): in a Stage B replay the other 63 tiles
@@ -87,7 +87,7 @@ public final class StageB {
         String base = String.format("window_%05d.", index);
         Config k = Config.machine(); k.periphType = 0;
         Replayer[] rp = new Replayer[1];
-        k.testPeripheral = tile -> tile == 0 ? (rp[0] = new Replayer(0, rows)) : null;
+        k.testPeripheral = tile -> tile == 0 ? (rp[0] = new Replayer(0)) : null;
         Chip c = new Chip(k);
         if (LONE) { c.parked = new boolean[64]; java.util.Arrays.fill(c.parked, 1, 64, true); }
         Tile p = c.tiles[0];
@@ -117,6 +117,7 @@ public final class StageB {
         int[] h = new int[16];
         h[0] = 0x594C5052; h[1] = LAYOUT_VERSION; h[2] = TABLES; h[3] = INDEX; h[4] = ixb.length / 16; h[5] = TEMPLATES; h[6] = RECORD;
         h[7] = CODE; h[8] = code.length / 16; h[9] = RLOG; h[10] = rlog.length / 16; h[11] = WLOG; h[12] = wlog.length / 16; h[13] = 1;
+        h[14] = Replayer.runConfig(rows, true, true);           // v1.26.1: the pass's RUN_CONFIG (the references have pre-values and rd_prev)
         for (int i = 0; i < 16; i++) p.sram.poke(HDR + i, h[i]);
 
         // ---- boot: the loader everywhere; replay_ctl and its boot marker on tile 0 only (the others' loaders ebreak)
@@ -285,10 +286,10 @@ public final class StageB {
 
     /** One synthetic window: Stage A's rows (ReplayDriver), then the tile's (replay_ctl.c) from the same window. */
     static boolean runSynthetic(Image im, ReplayWindow w, String name) throws IOException {
-        ReplayDriver d = new ReplayDriver(w, new Replayer(0, w.rows)); d.load(); List<long[]> ref = d.pass(400_000);
+        ReplayDriver d = new ReplayDriver(w, new Replayer(0)); d.load(); List<long[]> ref = d.pass(400_000);
         Config k = Config.machine(); k.periphType = 0;
         Replayer[] rp = new Replayer[1];
-        k.testPeripheral = tile -> tile == 0 ? (rp[0] = new Replayer(0, w.rows)) : null;
+        k.testPeripheral = tile -> tile == 0 ? (rp[0] = new Replayer(0)) : null;
         Chip c = new Chip(k);
         Tile p = c.tiles[0];
         Replayer r = rp[0];
@@ -319,6 +320,7 @@ public final class StageB {
         int[] h = new int[16];
         h[0] = 0x594C5052; h[1] = LAYOUT_VERSION; h[2] = TABLES; h[3] = INDEX; h[4] = ws.size(); h[5] = TEMPLATES; h[6] = RECORD;
         h[7] = CODE; h[8] = w.code.length / 2; h[9] = RLOG; h[10] = w.rlog.length / 2; h[11] = WLOG; h[12] = w.wlog.length / 2; h[13] = 1;
+        h[14] = w.runConfig();                                  // v1.26.1: the window's rows and flags
         for (int i = 0; i < 16; i++) p.sram.poke(HDR + i, h[i]);
         c.cc1p.expect = 1;                                      // only tile 0 starts (6.2): the others wait in their ROMs
         c.cc.loadWords(0, Registers.PMEM_BASE, im.code);

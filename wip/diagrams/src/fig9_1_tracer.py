@@ -138,16 +138,16 @@ f.text(RX + RW / 2, 572, "the register window: RUN_CYCLES, pulses, events, ERROR
 
 # ================= bottom: the output side (figure 9.2 draws it) ================================================
 BY = 662
-OQ = (600, BY, 240, 62)
+OQ = (580, BY, 240, 62)
 f.box(*OQ, "output LRUs and queues", ["see figure 9.2 for details"], fill=BLUE_L, stroke=BLUE, size=11, tsize=13)
-f.line([(636, CO[1] + CO[3]), (636, BY - 2)], BLUE, SW, end=True, dash=DASH["write"])
-f.line([(800, CO[1] + CO[3]), (800, BY - 2)], BLUE, SW, end=True, dash=DASH["write"])
-f.text(630, 634, "code stream (32)", 10, "end", fill=BLUE)
-f.text(806, 634, "log stream (64 + tag)", 10, "start", fill=BLUE)
+f.line([(616, CO[1] + CO[3]), (616, BY - 2)], BLUE, SW, end=True, dash=DASH["write"])
+f.line([(780, CO[1] + CO[3]), (780, BY - 2)], BLUE, SW, end=True, dash=DASH["write"])
+f.text(610, 634, "code stream (32)", 10, "end", fill=BLUE)
+f.text(786, 634, "log stream (64 + tag)", 10, "start", fill=BLUE)
 # the state record, read in place by the DMA as output queue 0
-f.line([(704, 560), (704, BY - 2)], PURPLE, SW, end=True)
-f.text(710, 626, "the state record", 10, "start", fill=PURPLE)
-f.text(710, 639, "(queue 0)", 9.5, "start", fill=PURPLE)
+f.line([(684, 560), (684, BY - 2)], PURPLE, SW, end=True)
+f.text(690, 626, "the state record", 10, "start", fill=PURPLE)
+f.text(690, 639, "(queue 0)", 9.5, "start", fill=PURPLE)
 DM = (1196, BY, 76, 62)
 f.box(*DM, "DMA", ["C&C 3's", "transfers"], fill="white", stroke=INK, size=10, tsize=12.5)
 f.line([(OQ[0] + OQ[2], BY + 31), (DM[0] - 2, BY + 31)], BLUE, SW, end=True, dash=DASH["write"])

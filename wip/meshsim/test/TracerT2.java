@@ -41,6 +41,7 @@ public final class TracerT2 {
                 case "--windows" -> windows = Integer.parseInt(a[++i]);
                 case "--compress" -> compress = true;
                 case "--csv" -> csv = Path.of(a[++i]);
+                case "--quiet" -> {}
                 default -> throw new IllegalArgumentException(a[i]);
             }
         }

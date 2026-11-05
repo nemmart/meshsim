@@ -61,4 +61,4 @@ failed assertion checked; Q9 the pin pending; Q10 stores into code caught by the
 - **Figures (WORKER24):** 9.3's advice field is at the stream word's [124:102] (v1.26.1), not the v1.26 spares, and word
   66's positions are now fixed (4.21.2); 9.1's open items 11–17 are answered by 4.21 (fill bus, probe bound, the shared
   subtractor, the compression enables, the bits, words 36–43, output queues); figure 9.2 doesn't exist yet.
-- **The pin:** item 154 closes when WORKER16's row-hash check passes; then 4.19's "pending" goes.
+- **The pin:** item 154 closed (owner, 2026-11-05): WORKER16's check passed (fa59d9a); 4.19 states `88dca85` as the pin, checked.

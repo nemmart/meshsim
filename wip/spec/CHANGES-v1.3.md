@@ -25,7 +25,7 @@ were reserved). The Tracer is new (4.21). Every sending peripheral's DMA changes
 3. **The template broadcast** (V3-25): C&C 3 broadcasts the segment's used set when proving starts; each tile keeps the 60
    CSR templates and the inlines its bitmap names (4.19.9, 4.19.13).
 4. **The ground truth** (V3-17): a16z's Jolt at `7189216` decides; gold is the Java emulator; jolt-cpp `88dca85` is the pin,
-   pending its row-hash check (4.19).
+   checked: rows, segment files and `capture_writes` identical to `821e1bd` on both workloads (WORKER16, fa59d9a; 4.19).
 
 ## Section by section
 
@@ -34,8 +34,8 @@ were reserved). The Tracer is new (4.21). Every sending peripheral's DMA changes
 | front matter | title v1.3; `CHANGES-v1.3.md` in the companion list; the figure set to 9.3; "v1.3 in brief" | V3 1–25 |
 | 4.17.4 | `DMA_HDR`'s count in 128-bit words; words 32–35: `RUN_CONFIG` [28:26] the Tracer's compression enables, [31:29] reserved; the Tracer's words in 4.21.3 and 8.16 | V3-24; O |
 | 4.17.9 | **the DMA counts 128-bit words**, up to 4,095; every packet 128 bits, `DMA_ADDR` advancing by 16, no remainder packets; the DMA sends only for a started transfer, the peripheral's section saying how its queues fill and ask to be drained; a transfer asking for more than its queue will hold is UB | V3-24 |
-| 4.19 (ground truth) | rewritten to section 17: **a16z's Jolt at `7189216` decides** (the verifier's source, jolt-cpp's submodule); **gold is the Java emulator** (`wip/gold/`); **jolt-cpp `88dca85` is the pin, pending its row-hash check** (its `isa/` unchanged since `821e1bd`); jolt-cpp checked as data; the item-113 tags stay until gold settles each. Replaces `LayerZero-Research/jolt` `735355e` and jolt-cpp as gold standard | V3-14 (c), V3-17; O (Q9) |
-| 4.19.1 | the reference: v1.3's pin `88dca85`, pending; `821e1bd`'s tables and citations stand | V3-14 (c) |
+| 4.19 (ground truth) | rewritten to section 17: **a16z's Jolt at `7189216` decides** (the verifier's source, jolt-cpp's submodule); **gold is the Java emulator** (`wip/gold/`); **jolt-cpp `88dca85` is the pin, checked** (its `isa/` unchanged since `821e1bd`; every window's rows, the segment files and `capture_writes` identical on both workloads, WORKER16 at fa59d9a); jolt-cpp checked as data; the item-113 tags stay until gold settles each. Replaces `LayerZero-Research/jolt` `735355e` and jolt-cpp as gold standard | V3-14 (c), V3-17; O (Q9) |
+| 4.19.1 | the reference: v1.3's pin `88dca85`, checked; `821e1bd`'s tables and citations stand | V3-14 (c) |
 | 4.19.2 | the tracer engine is the Tracer (4.21); the files word's layout (memory root and depth, map root and depth, log₂ K, `lowest_address` / 4 KB); the end of trace from v1.3 is any JAL with immediate 0, whatever rd | V3-23, V3-25; O (Q5) |
 | 4.19.7 | the pc table: from v1.3 no trace holds a JALR or branch to pc 0 (the Tracer's `ERRORS` [7]); the rule stays | V3-25 |
 | 4.19.9 | `RUN_CONFIG` [28:26] ignored by the replayer; the Tracer's word 32 runs at most 65,536 rows and enables compression; **the controller-fed set is broadcast** by C&C 3 when proving starts, all 60 CSR templates and the segment's inlines, each tile keeping the CSR templates and its bitmap's inlines (replacing every tile preloading the whole set) | V3-24, V3-25; O |
@@ -58,7 +58,7 @@ were reserved). The Tracer is new (4.21). Every sending peripheral's DMA changes
 | 8.11 | `DMA_HDR`'s count in 128-bit words; the replayer's `RUN_CONFIG` [28:26] ignored | V3-24; O |
 | **8.16** (new) | **the Tracer's window**, every word and bit | V3-24; O |
 | 9 | invariant 16: the replayer's rows against gold and a16z; **the Tracer's invariants** | V3-17, V3-24, V3-25 |
-| 10 | the peripherals' DMA in 128-bit words; the replayer's reference (tables at `821e1bd`, pin `88dca85` pending); **the Tracer's row** | V3-14, V3-24; O |
+| 10 | the peripherals' DMA in 128-bit words; the replayer's reference (tables at `821e1bd`, pin `88dca85`, checked); **the Tracer's row** | V3-14, V3-24; O |
 | 13 | the status of items 33, 57, 113, 115, 118, 119, 137 and 141; **new items 144–157** | V3; O |
 | `replayer-opcodes.md` | the ground-truth line brought to section 17 | V3-17 |
 
@@ -76,7 +76,7 @@ were reserved). The Tracer is new (4.21). Every sending peripheral's DMA changes
 | 151 | the encoder's miss width | Proposed |
 | 152 | what a Tracer error does | Proposed |
 | 153 | the timing parameters, to measure in B1 | decided for meshsim (O) |
-| 154 | the pin `88dca85`'s row-hash check | Open (WORKER16) |
+| 154 | the pin `88dca85`'s checks | closed: passed (WORKER16, fa59d9a) |
 | 155 | frame 7, the proof parameters | decided (O); its layout is the segment file's |
 | 156 | the Tracer's ROM single-ported | Proposed |
 | 157 | statistics registers | Open |

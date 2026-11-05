@@ -1,0 +1,128 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="845" viewBox="0 0 1300 845" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif">
+<defs><marker id="m1D9E75" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1D9E75"/></marker><marker id="m444441" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#444441"/></marker><marker id="m7F77DD" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7F77DD"/></marker><marker id="mC0392B" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#C0392B"/></marker><marker id="mD85A30" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#D85A30"/></marker></defs>
+<rect width="1300" height="845" fill="white"/>
+<text x="24.0" y="34.0" font-size="18" text-anchor="start" font-weight="bold" fill="#444441">Figure 3.3. The controller read port: the read port's queue, the in-flight count and the free count</text>
+<text x="24.0" y="56.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#6b6a64">v1.0 (spec/machine-spec.md §4.3, §4.13) — the controller reads big SRAM without stalling</text>
+<rect x="16.0" y="76.0" width="1268.0" height="420.0" rx="10" fill="white" stroke="#B4B2A9" stroke-width="1"/>
+<text x="30.0" y="100.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">A. Datapath (§4.3, §4.3)</text>
+<text x="30.0" y="144.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#D85A30">st_rdq: a store to SRAM_RD_ADDR_QUEUE, wdata[19:0] = the chunk</text>
+<text x="30.0" y="162.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#D85A30">st_rdd: a store to SRAM_RD_DEST_ADDR, wdata[11:0]</text>
+<rect x="60.0" y="196.0" width="190.0" height="58.0" rx="6" fill="#FAEEDA" stroke="#444441" stroke-width="1.5"/>
+<text x="155.0" y="221.2" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#444441">SRAM_RD_DEST_ADDR</text>
+<text x="155.0" y="236.8" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">12 bits: a packed data-memory word</text>
+<polyline points="70,254 76,246 82,254" fill="none" stroke="#444441" stroke-width="1.2"/>
+<text x="155.0" y="270.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64">+1 on every st_rdq, a dropped read included;</text>
+<text x="155.0" y="284.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64">wraps in 12 bits; a store to it loads it</text>
+<rect x="330.0" y="176.0" width="200.0" height="120.0" rx="6" fill="#F1EFE8" stroke="#444441" stroke-width="1.5"/>
+<text x="430.0" y="218.4" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#444441">the read port's queue</text>
+<text x="430.0" y="233.9" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">64 × 32 bits:</text>
+<text x="430.0" y="247.8" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">{chunk 20, dest 12}</text>
+<text x="430.0" y="261.6" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">FIFO; pop on taken_3</text>
+<polyline points="250.0,225.0 329.0,225.0" fill="none" stroke="#444441" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="256.0" y="218.0" font-size="10" text-anchor="start" font-weight="normal" fill="#6b6a64">dest</text>
+<polyline points="300.0,176.0 300.0,206.0 329.0,206.0" fill="none" stroke="#444441" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="294.0" y="188.0" font-size="10" text-anchor="end" font-weight="normal" fill="#6b6a64">chunk</text>
+<path d="M330,329.0 L349.0,329.0 A17.0,17.0 0 0 1 349.0,363.0 L330,363.0 Z" fill="white" stroke="#444441" stroke-width="1.4"/>
+<text x="344.0" y="325.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64">overflow</text>
+<text x="250.0" y="342.0" font-size="10" text-anchor="end" font-weight="normal" fill="#D85A30">st_rdq</text>
+<text x="250.0" y="356.0" font-size="10" text-anchor="end" font-weight="normal" fill="#444441">free = 0</text>
+<polyline points="254.0,339.0 329.0,339.0" fill="none" stroke="#D85A30" stroke-width="1.3" stroke-linejoin="round" stroke-dasharray="4 3"/>
+<polyline points="254.0,353.0 329.0,353.0" fill="none" stroke="#444441" stroke-width="1.3" stroke-linejoin="round"/>
+<polyline points="366.0,346.0 420.0,346.0" fill="none" stroke="#C0392B" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#mC0392B)"/>
+<text x="426.0" y="350.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#C0392B">set[3]: read-port overflow; the read is dropped</text>
+<text x="30.0" y="386.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">push = st_rdq &amp; free &gt; 0: the entry is {wdata[19:0], SRAM_RD_DEST_ADDR}. SRAM_RD_DEST_ADDR += 1 on every st_rdq, ungated: a dropped read advances it too (§4.3).</text>
+<polyline points="530.0,236.0 599.0,236.0" fill="none" stroke="#7F77DD" stroke-width="2" stroke-linejoin="round" marker-end="url(#m7F77DD)"/>
+<text x="536.0" y="228.0" font-size="10" text-anchor="start" font-weight="normal" fill="#7F77DD">head</text>
+<rect x="600.0" y="176.0" width="300.0" height="120.0" rx="6" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1.4"/>
+<text x="750.0" y="212.8" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#444441">client 3 request (figure 7.2)</text>
+<text x="750.0" y="228.3" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">valid_3 = queue not empty</text>
+<text x="750.0" y="241.5" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">chunk = head.chunk; width 32</text>
+<text x="750.0" y="254.7" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">mode 7, dst = me, dest addr = head.dest</text>
+<text x="750.0" y="267.9" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">token rp = 1; lowest priority</text>
+<polyline points="750.0,296.0 750.0,336.0" fill="none" stroke="#D85A30" stroke-width="1.4" stroke-linejoin="round" stroke-dasharray="4 3"/>
+<text x="756.0" y="328.0" font-size="10" text-anchor="start" font-weight="normal" fill="#D85A30">taken_3: pop; in-flight + 1</text>
+<rect x="960.0" y="176.0" width="290.0" height="120.0" rx="6" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1.5"/>
+<text x="1105.0" y="211.4" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#444441">in-flight counter, 7 bits</text>
+<text x="1105.0" y="227.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">+1 on taken_3, −1 on rp_inj (figure 7.3)</text>
+<text x="1105.0" y="240.8" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">both in one cycle: unchanged</text>
+<text x="1105.0" y="254.7" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441"></text>
+<text x="1105.0" y="268.5" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">free = 64 − (queue count + in flight)</text>
+<polyline points="970,296 976,288 982,296" fill="none" stroke="#1D9E75" stroke-width="1.2"/>
+<polyline points="1105.0,296.0 1105.0,376.0" fill="none" stroke="#1D9E75" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m1D9E75)"/>
+<text x="1105.0" y="394.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#1D9E75">a load of SRAM_RD_ADDR_QUEUE returns free (0–64)</text>
+<text x="600.0" y="426.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">An entry stays counted until its result is injected (§4.3): 64 free means every return has left;</text>
+<text x="600.0" y="441.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">only DMA_REPLY_REMAINING = 0 says every result has landed in data memory (§4.3).</text>
+<text x="600.0" y="456.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">In HALT the queue and the in-flight count are held at 0 (§4.3).</text>
+<text x="30.0" y="516.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">B. Interface</text>
+<rect x="30.0" y="528.0" width="200.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="542.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">signal</text>
+<rect x="230.0" y="528.0" width="100.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="236.0" y="542.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">width</text>
+<rect x="330.0" y="528.0" width="290.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="542.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">from → to</text>
+<rect x="620.0" y="528.0" width="650.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="626.0" y="542.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">meaning</text>
+<rect x="30.0" y="549.0" width="200.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="563.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">st_rdq, st_rdd, wdata</text>
+<rect x="230.0" y="549.0" width="100.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="236.0" y="563.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1, 1, 32</text>
+<rect x="330.0" y="549.0" width="290.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="563.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">register decode (fig 3.2) → here</text>
+<rect x="620.0" y="549.0" width="650.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="626.0" y="563.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">stores to SRAM_RD_ADDR_QUEUE and SRAM_RD_DEST_ADDR</text>
+<rect x="30.0" y="570.0" width="200.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="584.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">free</text>
+<rect x="230.0" y="570.0" width="100.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="236.0" y="584.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">7</text>
+<rect x="330.0" y="570.0" width="290.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="584.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">here → register reads</text>
+<rect x="620.0" y="570.0" width="650.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="626.0" y="584.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">a load of SRAM_RD_ADDR_QUEUE: free entries</text>
+<rect x="30.0" y="591.0" width="200.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="605.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">valid_3, request</text>
+<rect x="230.0" y="591.0" width="100.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="236.0" y="605.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1, —</text>
+<rect x="330.0" y="591.0" width="290.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="605.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">here → SRAM read queue (fig 7.2)</text>
+<rect x="620.0" y="591.0" width="650.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="626.0" y="605.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">the head: chunk, width 32, mode 7, dst me, dest addr</text>
+<rect x="30.0" y="612.0" width="200.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="626.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">taken_3</text>
+<rect x="230.0" y="612.0" width="100.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="236.0" y="626.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1</text>
+<rect x="330.0" y="612.0" width="290.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="626.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">SRAM read queue → here</text>
+<rect x="620.0" y="612.0" width="650.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="626.0" y="626.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">pop the head; in flight + 1</text>
+<rect x="30.0" y="633.0" width="200.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="647.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">rp_inj</text>
+<rect x="230.0" y="633.0" width="100.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="236.0" y="647.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1</text>
+<rect x="330.0" y="633.0" width="290.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="647.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">token FIFO (fig 7.3) → here</text>
+<rect x="620.0" y="633.0" width="650.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="626.0" y="647.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">a read-port result was injected: in flight − 1</text>
+<rect x="30.0" y="654.0" width="200.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="668.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">set[3]</text>
+<rect x="230.0" y="654.0" width="100.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="236.0" y="668.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1</text>
+<rect x="330.0" y="654.0" width="290.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="668.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">here → TILE_CONDITIONS (fig 2.4)</text>
+<rect x="620.0" y="654.0" width="650.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="626.0" y="668.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">a store with no free entry: the read is dropped</text>
+<text x="30.0" y="701.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">• The result is a mode-7 packet to the tile itself: addr[11:0] = dest, addr[19:12] = 0, payload[31:0] = the chunk, [63:32] = 0 (§4.3). It loops back through the router and lands through port B, counted by</text>
+<text x="42.0" y="716.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">DMA_REPLY_REMAINING (figure 5.1).</text>
+<polyline points="30.0,749.0 70.0,749.0" fill="none" stroke="#7F77DD" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#m7F77DD)"/>
+<text x="78.0" y="753.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">the controller's reads</text>
+<polyline points="230.8,749.0 270.8,749.0" fill="none" stroke="#1D9E75" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#m1D9E75)"/>
+<text x="278.8" y="753.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">counts</text>
+<polyline points="342.2,749.0 382.2,749.0" fill="none" stroke="#D85A30" stroke-width="1.8" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<text x="390.2" y="753.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">control</text>
+<polyline points="459.3,749.0 499.3,749.0" fill="none" stroke="#C0392B" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#mC0392B)"/>
+<text x="507.3" y="753.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">condition</text>
+<line x1="24" y1="769" x2="1276" y2="769" stroke="#B4B2A9" stroke-width="0.8"/>
+<text x="24.0" y="791.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">A store to SRAM_RD_ADDR_QUEUE queues a 32-bit read with the current SRAM_RD_DEST_ADDR, which then advances. The queue drains into the SRAM</text>
+<text x="24.0" y="807.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">read queue at the lowest priority. An entry counts against the 64 until its result has been injected, so the free count a program reads</text>
+<text x="24.0" y="823.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">never overstates the room; a store with nothing free is dropped and sets condition 3.</text>
+<text x="24.0" y="839.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">Source: spec/machine-spec.md v1.0.</text>
+</svg>

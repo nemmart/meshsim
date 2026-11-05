@@ -1,0 +1,16 @@
+fan-in with 0/+1 start skew [meas: NetTest skewtable 40]: receiver tile 27; every sender bursts W packets from cycle 2 + its skew;
+safe W = no FIFO overflow anywhere, for every sender set (nearest, farthest, 3 random) and every skew pattern (seeds 1..40)
+  senders  safe W     nearest    farthest   random     total        W with no skew (nearest)
+  63       0          0          0          0          0            0
+  48       1          1          1          1          48           1
+  32       1          1          1          1          32           1
+  24       2          2          2          2          48           2
+  16       2          2          3          3          32           3
+  12       3          5          5          3          36           5
+  8        5          5          7          5          40           5
+  6        7          10         8          7          42           10
+  4        15         20         15         15         60           20
+  3        15         23         15         16         45           23
+  2        30         30         30         30         60           30
+  1        >= 64      64         64         64         -            64
+NetTest skewtable: 0 passed, 0 failed

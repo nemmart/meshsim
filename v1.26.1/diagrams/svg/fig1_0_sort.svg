@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="984" viewBox="0 0 1300 984" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif">
+<defs><marker id="m444441" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#444441"/></marker></defs>
+<rect width="1300" height="984" fill="white"/>
+<text x="24.0" y="34.0" font-size="18" text-anchor="start" font-weight="bold" fill="#444441">Figure 1.0. The sort these units serve: six steps (32-bit key, value of k records)</text>
+<text x="24.0" y="56.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#6b6a64">v1.0 (spec/machine-spec.md §14) — context, not hardware specification</text>
+<rect x="30.0" y="96.0" width="400.0" height="356.0" rx="8" fill="white" stroke="#7F77DD" stroke-width="1.4"/>
+<path d="M 30 104 Q 30 96 38 96 L 422 96 Q 430 96 430 104 L 430 140 L 30 140 Z" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1.4"/>
+<rect x="42.0" y="106.0" width="26.0" height="26.0" rx="13" fill="white" stroke="#7F77DD" stroke-width="1.4"/>
+<text x="55.0" y="124.0" font-size="14" text-anchor="middle" font-weight="bold" fill="#7F77DD">1</text>
+<text x="78.0" y="124.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">Local sort of (key, index)</text>
+<text x="418.0" y="124.0" font-size="11" text-anchor="end" font-weight="normal" fill="#7F77DD" font-style="italic">local</text>
+<text x="44.0" y="162.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">Augmenting pass:</text>
+<text x="44.0" y="180.5" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">raw 32-bit keys stream to the tile itself: a mode-4 stream</text>
+<text x="54.0" y="196.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">run, d = 0, read size 32, one key per packet and per cycle.</text>
+<text x="44.0" y="214.5" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">PTR[me] = DMA_RECORD_BASE_ADDRESS = a new buffer: each key</text>
+<text x="54.0" y="230.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">lands as (key, j), j = 0, 1, 2, … in bits 63–32.</text>
+<text x="44.0" y="248.5" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">Bucket passes:</text>
+<text x="44.0" y="267.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">mode-3 stream runs to the tile itself; DMA_CONFIG's bucket</text>
+<text x="54.0" y="282.5" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">digit picks the byte; count-on-arrival can count the next</text>
+<text x="54.0" y="298.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">digit in the same pass.</text>
+<text x="44.0" y="316.5" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">Passes ping-pong between two buffers (the disjoint-buffer</text>
+<text x="54.0" y="332.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">rule).</text>
+<text x="44.0" y="350.5" font-size="11.5" text-anchor="start" font-weight="normal" fill="#B5651D">Set aside: an arrival-order augmenting form of mode 3 saves</text>
+<text x="54.0" y="366.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#B5651D">nothing on its own, since the augmenting pass also counts</text>
+<text x="54.0" y="381.5" font-size="11.5" text-anchor="start" font-weight="normal" fill="#B5651D">digit 1 for the first bucket pass.</text>
+<rect x="44.0" y="429.0" width="149.6" height="15" rx="7.5" fill="white" stroke="#B5651D" stroke-width="1"/>
+<text x="118.8" y="440.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#B5651D" font-style="italic">open: §4.9, §13 item 19</text>
+<rect x="450.0" y="96.0" width="400.0" height="356.0" rx="8" fill="white" stroke="#7F77DD" stroke-width="1.4"/>
+<path d="M 450 104 Q 450 96 458 96 L 842 96 Q 850 96 850 104 L 850 140 L 450 140 Z" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1.4"/>
+<rect x="462.0" y="106.0" width="26.0" height="26.0" rx="13" fill="white" stroke="#7F77DD" stroke-width="1.4"/>
+<text x="475.0" y="124.0" font-size="14" text-anchor="middle" font-weight="bold" fill="#7F77DD">2</text>
+<text x="498.0" y="124.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">Local gather into key order</text>
+<text x="838.0" y="124.0" font-size="11" text-anchor="end" font-weight="normal" fill="#7F77DD" font-style="italic">local</text>
+<text x="464.0" y="162.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">Reorders the values by the sorted index stream: figure 7.4.</text>
+<text x="464.0" y="180.5" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">A mode-1 stream run to the tile itself (d = 0, read size 64)</text>
+<text x="474.0" y="196.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">streams the sorted (key, ordinal) words; the GATHER engine</text>
+<text x="474.0" y="211.5" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">reads k records per ordinal at DMA_RECORD_BASE_ADDRESS +</text>
+<text x="474.0" y="227.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">2k·ordinal.</text>
+<text x="464.0" y="245.5" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">The gather values (mode 2, dst me) land in key order at</text>
+<text x="474.0" y="261.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">PTR[me].</text>
+<text x="464.0" y="279.5" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">DMA_SRAM_REMAINING = n·k; the local wake ends the phase.</text>
+<text x="464.0" y="298.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">≈ k + 1 cycles per value: ≈ 196K per 64K values at k = 2</text>
+<text x="474.0" y="313.5" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">[estimate].</text>
+<rect x="870.0" y="96.0" width="400.0" height="356.0" rx="8" fill="white" stroke="#D85A30" stroke-width="1.4"/>
+<path d="M 870 104 Q 870 96 878 96 L 1262 96 Q 1270 96 1270 104 L 1270 140 L 870 140 Z" fill="#FAECE7" stroke="#D85A30" stroke-width="1.4"/>
+<rect x="882.0" y="106.0" width="26.0" height="26.0" rx="13" fill="white" stroke="#D85A30" stroke-width="1.4"/>
+<text x="895.0" y="124.0" font-size="14" text-anchor="middle" font-weight="bold" fill="#D85A30">3</text>
+<text x="918.0" y="124.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">Split</text>
+<text x="1258.0" y="124.0" font-size="11" text-anchor="end" font-weight="normal" fill="#D85A30" font-style="italic">mesh</text>
+<text x="884.0" y="162.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">A bisection on key values finds, on every tile, each owner's</text>
+<text x="894.0" y="177.5" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">range of records.</text>
+<text x="884.0" y="196.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">Exchanges:</text>
+<text x="884.0" y="214.5" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">owners exchange probe keys (mode-7 words) and counts (mode-5</text>
+<text x="894.0" y="230.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">(lb, ub) pairs) from the send port.</text>
+<text x="884.0" y="248.5" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">Searches:</text>
+<text x="884.0" y="267.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">each tile counts by binary searches of its own sorted run</text>
+<text x="894.0" y="282.5" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">through the controller read port (§4.3): a step queues one</text>
+<text x="894.0" y="298.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">read per active search, sets DMA_REPLY_REMAINING, and WFIs;</text>
+<text x="894.0" y="313.5" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">converged searches drop out.</text>
+<text x="884.0" y="332.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">≈ 203K cycles on uniform, 246K mean over the 24 non-trivial</text>
+<text x="894.0" y="347.5" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">sets, 367K worst; exact on all 25 [measured on a 64-tile RV32</text>
+<text x="894.0" y="363.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">ISS].</text>
+<rect x="30.0" y="580.0" width="400.0" height="236.0" rx="8" fill="white" stroke="#D85A30" stroke-width="1.4"/>
+<path d="M 30 588 Q 30 580 38 580 L 422 580 Q 430 580 430 588 L 430 624 L 30 624 Z" fill="#FAECE7" stroke="#D85A30" stroke-width="1.4"/>
+<rect x="42.0" y="590.0" width="26.0" height="26.0" rx="13" fill="white" stroke="#D85A30" stroke-width="1.4"/>
+<text x="55.0" y="608.0" font-size="14" text-anchor="middle" font-weight="bold" fill="#D85A30">4</text>
+<text x="78.0" y="608.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">Two all-to-alls: keys mode 4, values mode 2</text>
+<text x="418.0" y="608.0" font-size="11" text-anchor="end" font-weight="normal" fill="#D85A30" font-style="italic">mesh</text>
+<text x="44.0" y="646.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">Group runs on the 16-group schedule: groups of 4, T = 4 (T =</text>
+<text x="54.0" y="661.5" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">8 for 128-bit values), gap 0. Two-command phases, so every</text>
+<text x="54.0" y="677.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">tile starts on the same cycle.</text>
+<text x="44.0" y="695.5" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">keys: mode 4 (augmented), count-on-arrival on at the</text>
+<text x="54.0" y="711.0" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">receiver;</text>
+<text x="44.0" y="729.5" font-size="11.5" text-anchor="start" font-weight="bold" fill="#444441">values: mode 2, count-on-arrival off.</text>
+<text x="44.0" y="748.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">Each sender's run lands contiguously at PTR[src], which the</text>
+<text x="54.0" y="763.5" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">receiver sets from its counts (prefix sums): senders need no</text>
+<text x="54.0" y="779.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">destination addresses.</text>
+<text x="44.0" y="797.5" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">Key i and value i correspond: both arrive in the same sender</text>
+<text x="54.0" y="813.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">order, and the ordinal is a buffer position.</text>
+<rect x="450.0" y="580.0" width="400.0" height="236.0" rx="8" fill="white" stroke="#7F77DD" stroke-width="1.4"/>
+<path d="M 450 588 Q 450 580 458 580 L 842 580 Q 850 580 850 588 L 850 624 L 450 624 Z" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1.4"/>
+<rect x="462.0" y="590.0" width="26.0" height="26.0" rx="13" fill="white" stroke="#7F77DD" stroke-width="1.4"/>
+<text x="475.0" y="608.0" font-size="14" text-anchor="middle" font-weight="bold" fill="#7F77DD">5</text>
+<text x="498.0" y="608.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">Local sort at the owner</text>
+<text x="838.0" y="608.0" font-size="11" text-anchor="end" font-weight="normal" fill="#7F77DD" font-style="italic">local</text>
+<text x="464.0" y="646.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">A local sort of the received (key, i) words: mode-3 bucket</text>
+<text x="474.0" y="661.5" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">passes to the tile itself (§4.2).</text>
+<text x="464.0" y="680.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">Its first digit is already counted: count-on-arrival ran</text>
+<text x="474.0" y="695.5" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">during the keys all-to-all, saving that sort's first COUNT</text>
+<text x="474.0" y="711.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">pass, ≈ 64K cycles per sort [estimate].</text>
+<rect x="870.0" y="580.0" width="400.0" height="236.0" rx="8" fill="white" stroke="#7F77DD" stroke-width="1.4"/>
+<path d="M 870 588 Q 870 580 878 580 L 1262 580 Q 1270 580 1270 588 L 1270 624 L 870 624 Z" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1.4"/>
+<rect x="882.0" y="590.0" width="26.0" height="26.0" rx="13" fill="white" stroke="#7F77DD" stroke-width="1.4"/>
+<text x="895.0" y="608.0" font-size="14" text-anchor="middle" font-weight="bold" fill="#7F77DD">6</text>
+<text x="918.0" y="608.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">Local gather into final order</text>
+<text x="1258.0" y="608.0" font-size="11" text-anchor="end" font-weight="normal" fill="#7F77DD" font-style="italic">local</text>
+<text x="884.0" y="646.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">The same operation as step 2, on the received values and the</text>
+<text x="894.0" y="661.5" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">owner's sorted index.</text>
+<text x="884.0" y="680.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">The output is one sequential run at PTR[me].</text>
+<polyline points="432.0,274.0 448.0,274.0" fill="none" stroke="#444441" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<polyline points="852.0,274.0 868.0,274.0" fill="none" stroke="#444441" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<polyline points="432.0,698.0 448.0,698.0" fill="none" stroke="#444441" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<polyline points="852.0,698.0 868.0,698.0" fill="none" stroke="#444441" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<polyline points="1070.0,454.0 1070.0,480.0 230.0,480.0 230.0,578.0" fill="none" stroke="#444441" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="650.0" y="506.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">global totals (the R fields' group maxima, any global sum): the mesh reduction</text>
+<text x="650.0" y="522.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">rows collect to column 0, column 0 to tile 0, tile 0 broadcasts: ≈ 8 controller turnarounds instead of 63;</text>
+<text x="650.0" y="538.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">one-word totals move as mode-7 replies (DMA_REPLY_REMAINING = 2 at a collector, 1 mid-chain);</text>
+<text x="650.0" y="554.0" font-size="11.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">vectors, such as the 16 group maxima, as eight 64-bit mode-5 packets counted by DMA_CM_REMAINING</text>
+<text x="30.0" y="850.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">The values cross the network once, and each value is read twice locally, by the two gathers.</text>
+<text x="30.0" y="867.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">32-bit values: key and value fit in one 64-bit record, so steps 2 and 6 disappear.</text>
+<text x="30.0" y="884.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">The phase-by-phase plan with cycles is sort/sort-walkthrough.md: ≈ 1.37M cycles at k = 2, uniform, before its optimisations.</text>
+<rect x="1080.0" y="836.0" width="190.0" height="20.0" rx="6" fill="white" stroke="white" stroke-width="0"/>
+<rect x="910.0" y="837.0" width="22.0" height="14.0" rx="3" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1.2"/>
+<text x="940.0" y="848.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">local: inside one tile, one-command phases</text>
+<rect x="910.0" y="857.0" width="22.0" height="14.0" rx="3" fill="#FAECE7" stroke="#D85A30" stroke-width="1.2"/>
+<text x="940.0" y="868.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">mesh: tiles exchange packets</text>
+<line x1="24" y1="924" x2="1276" y2="924" stroke="#B4B2A9" stroke-width="0.8"/>
+<text x="24.0" y="946.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">Steps 1, 2, 5 and 6 run inside each tile as loopback streams; steps 3 and 4 use the mesh. The gather (figure 7.4) serves steps 2 and 6, augmenting and</text>
+<text x="24.0" y="962.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">count-on-arrival (figure 1.3's write engine) serve steps 1, 4 and 5, and the controller read port serves step 3.</text>
+<text x="24.0" y="978.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">Source: spec/machine-spec.md v1.0, §14, with §4.2–§4.4, §4.9.</text>
+</svg>

@@ -1,0 +1,68 @@
+# Binding the split into the sort program
+
+The split is design v1's bisection (Sorter v1.0), ported to the controller read port (spec 4.3). It replaces the oracle with no change to the post-XA state.
+
+## The call
+
+```c
+#include "split.h"
+void split_get_cuts(uint32_t run_chunk, uint32_t n_me, uint32_t shaped,
+                    uint32_t c[65], uint32_t n[64]);
+```
+
+| argument | meaning |
+|---|---|
+| `run_chunk` | big-SRAM chunk address of this tile's sorted run (sort 1's output): `n_me` 64-bit (key, index) records, key in the low word, so record i's key is chunk `run_chunk + 2i` |
+| `n_me` | the run's length |
+| `shaped` | 0 for the sort (R_q = ⌊q·N/64⌋, balanced); 1 only for the two shaped test sets (R_q = n_0 + … + n_{q−1}) |
+| `c[65]` | out: the post-XA state. c[q] is the number of this tile's records whose global rank in (key, tile, position) order is below R_q. c[0] = 0, c[64] = `n_me`. |
+| `n[64]` | out: every tile's run length |
+
+**Address rule.** Since spec 2026-10-26n the words for `c` and `n` arrive as replies, which land by source in the reply block; the split copies them out into `c` and `n` after each exchange. Any address works.
+
+## Where it runs and what it uses
+
+**Entry and exit.** Call it at the start of a command, right after GO, on every tile, with nothing outstanding: every counter at 0 and the read-port queue empty. It returns after XA's last word has landed; the caller then signals `done` as usual.
+
+**It owns its barriers.** Internally it pulses done (`TILE_PULSE`) and executes `WFI` **66 times** (65 with `shaped` = 1). C&C must answer each with GO, exactly as for a run of 66 one-line commands. The sequence, which is the same on every tile:
+- the n exchange (no barrier before it; it runs in the calling command);
+- a barrier, then the seed exchange (32-bit replies; not with `shaped`), after one read-port batch of 64 reads;
+- 32 rounds, each with:
+  - a barrier, then the probe exchange (32-bit replies), then counting through the read port;
+  - a barrier, then the counts exchange (one 64-bit reply, (lb, ub), per owner), then the owner update;
+- a barrier, then XA (32-bit replies).
+
+It contains no data-dependent barrier, and its round count is fixed at 32.
+- **Early exit inside the fixed sequence.** Once every owner's done marker has been seen (the same round on every tile), a tile skips the remaining exchanges and searches. It still takes each remaining barrier (≈ 30 cycles), so C&C answers the same 66 barriers either way.
+
+**Registers** (mesh.h 1.1's addresses, `split_regs.h`): `TILE_STATUS` (the endpoint id, [26:20]), `TILE_PULSE`, `DMA_CM_REMAINING`, `DMA_REPLY_REMAINING`, `ROUTER_SET_HDR`, `ROUTER_SET_W0`, `ROUTER_SEND_32`, `ROUTER_SEND_64`, `WAKE_EVENTS` (its `wfi()` loads it to consume counters done), the read port's `SRAM_RD_ADDR_QUEUE` (0xFFFFF840) and `SRAM_RD_DEST_ADDR` (0xFFFFF844, the setup register: 32-bit reads), and the reply block (0x5BC0).
+- `split_regs.h` keeps the split buildable on its host ISS; RegDocTest checks its addresses against mesh.h.
+- The function leaves the counters at 0 and the read-port queue empty.
+
+**Traffic it relies on:** every exchange is 64 sends in the 16-group schedule order, one per destination, so each is a permutation started at GO.
+- Replies (mode 8) land by source in the reply block: 32-bit for n, seeds, probes and XA's cuts; 64-bit for the counts. Each exchange's words are read (or copied out) before the barrier that precedes the next exchange.
+- Nothing is written into the command block or into data memory by other tiles.
+
+**Read-port use** follows spec 4.3:
+- one initial wait for 64 free entries;
+- then per step, `DMA_CM_REMAINING` = number of reads (a write adds; the count is 0 there), `SRAM_RD_DEST_ADDR` (the setup register), the reads, then `wfi()`;
+- never between a `WFI` and a start store.
+
+## Memory
+
+| item | bytes |
+|---|---|
+| the split's own data (`.bss`) | 5,588 |
+| the caller's `c[65]` and `n[64]` | 516 |
+| stack, deepest | 192 (split_get_cuts 144 + step_loop 48) |
+| code | 5,004 (gcc -O2, RV32I + Zmmul; no divide) |
+
+The split's data is free again once it returns: nothing in it is needed after XA. If the sort's image is tight, the split can be an overlay.
+
+## Files
+
+- `split.h`, `split.c`, `split_regs.h`: the split.
+- The sort links a patched copy (`../program/patches/split-barrier.patch`, applied in `meshsim/sw/ext/split-bisect/`): the barrier is the sort's `wait_for_command()`.
+- **Its test:** meshsim's `SplitRun` on the 25 sets of `SplitSets` (`meshsim/test/`), through `meshsim/sw/ext/split-bisect/splitdrv.c`; the sort's own runs exercise it on every data set.
+
+`SPLIT_TRACE` adds trace marks for a host simulator; leave it undefined in the sort.

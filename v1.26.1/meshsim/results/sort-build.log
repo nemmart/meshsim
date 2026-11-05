@@ -1,0 +1,2 @@
+/usr/lib/gcc/riscv64-unknown-elf/13.2.0/../../../riscv64-unknown-elf/bin/ld: warning: orphan section `.rela.text.init' from `/tmp/ccylC3ol.o' being placed in section `.rela.dyn'
+sort image (v1.2): code 21856 B of 0x7F00 (below the interim loader); .rodata+.data 240 B; .bss end 0x2a94; 20780 B to the stack top (0x7BC0)

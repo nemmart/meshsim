@@ -1,0 +1,16 @@
+inputs: meshsim.jar=a2aebd6cdd4f7747f74d3e49fcad0836875f11830756bfe3293e9d0de9e48221 image/loader.bin=8e4b8898df976fe97f1871cbbf57cd380bfd38180890234014a014ea273552eb image/sort.code.bin=79bb6d2677bb3297574d3978d64fca9660dea2bd37f69bd4df39e66a1318c69c image/sort.data.bin=412d9f3fa18dac9d629472b3935d12acd529a0725f39f848ae270d71fc5c31f7 image/sort.sym=c76545340ae08a6f64bb4d19cb2a1d160eab3263541204feae44e3cf55141dcf hops.txt=a3b90f3c2fbc64f1a93c8c0ff916cfbaf40823aae38c4540811482873741d3da keys-65536/trace100-60.keys=e42f31b41d92849ba262842405405c448fdb227dbdd1bc073f392bb82c3b256c
+sort p4/trace100-60-k128 128-bit values [meas: SortTest]: path BT (stage 2 ran); steps (GO -> next GO): L1 531,067; SPLIT 380,898; XB 8,604; RED 4,951; XC 1,306; TH 17,163; SWEEP 93,813; DESC 52,471; K1.0 24,055; K1.1 24,259; K1.2 23,632; K1.3 34,776; K2.0 34,777; K2.1 34,777; K2.2 32,846; K2.3 36,192; V1.0 24,273; V1.1 24,579; V1.2 23,792; V1.3 34,931; V2.0 34,995; V2.1 35,057; V2.2 32,999; V2.3 22,076; L2 465,016; 6 empty commands 344
+    TOTAL 2,033,649 cycles (L1 GO -> L2 all READY; real split), of which C&C turnaround 96; ready_latency 8; direct-path bound 4*sum(R) = 644,052, V 8*sum(R) = 1,288,104; GATHER queue peak 5 of 16; stack headroom 20540 B
+...
+    peaks in K2.3: link 3, eject 3, write-engine input 1, area 1
+    peaks in V1.0: link 5, eject 5, write-engine input 1, area 1
+    peaks in V1.1: link 5, eject 4, write-engine input 1, area 1
+    peaks in V1.2: link 5, eject 5, write-engine input 1, area 1
+    peaks in V1.3: link 3, eject 2, write-engine input 1, area 1
+    peaks in V2.0: link 6, eject 4, write-engine input 1, area 1
+    peaks in V2.1: link 5, eject 5, write-engine input 1, area 1
+    peaks in V2.2: link 5, eject 4, write-engine input 1, area 1
+    peaks in V2.3: link 3, eject 3, write-engine input 1, area 1
+    address generator: 8387840 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
+    M14: zero-length groups 0 (summed over tiles), of which with a gap 0 (1 + gap since 10 October); group-run stall cycles 0 (drift)
+SortTest: 10 passed, 0 failed

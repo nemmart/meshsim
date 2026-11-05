@@ -130,8 +130,6 @@ start goes out before the tiles have booted. The spec gives no arming protocol.
 off by default, used only by `TracerT2`): the Tracer's DMA, src 74, and C&C 3's own Q3/Q4 packets into tiles' big SRAM.
 Nothing else is exempt, and the rows check is unaffected.
 
-## Open
-
 **Q14. 4.21.3: a segment's start while C&C 3 was feeding an expansion** (found at 2²⁹, Quest 110, Cyclone segment 16,
 which starts inside an inline).
 - A run can end inside a controller-fed expansion, with C&C 3 still holding its template's next words.
@@ -143,6 +141,10 @@ which starts inside an inline).
 
 The spec's controller loop (4.21.3) doesn't say what C&C 3 does with an expansion in progress when it loads a record.
 
-*Proposed:* **on loading a segment's record, C&C 3 drops any expansion it was feeding** (its template, position and pending
+**Answered (owner, 2026-11-05): the rule.** **On loading a segment's record, C&C 3 drops any expansion it was feeding** (its template, position and pending
 chunks), since the word-0 write resets the credits and the Tracer presents the expansion again. The firmware loop in 4.21.3
 gains that line. meshsim's ideal controller follows it (37fb37e), and so will `tracer_ctl.c`.
+
+## Open
+
+(none)

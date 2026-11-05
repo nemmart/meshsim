@@ -705,6 +705,9 @@ start comes in frame 2. **Only jumps need the map.**
   about 6K entries, so perhaps k = 10, and a segment's targets would share lines (roughly 120 KB instead of 275 KB), with
   correctness kept by merging each run's own targets. Useful as **a lower bound** on the map's cost against today's table. (The
   other lever, a hash keeping nearby pcs in one line, likewise only if B1's timing shows the map pushing data out.)
+  **Targets that aren't instruction starts** (174 EVM Zone, 108 Cyclone, dropped from the table; WORKER26): all **c.unimp
+  traps** (0x0000, D4's unreachable marker, not in the bytecode), reached only by failed checks' branches and after calls that
+  never return; none taken in any run, so a jump there is the map error, as it should be.
   *The design it replaces (2026-11-01), for the record:*
 - **The table: one hash table of target pc to base `instr_idx`, static per program, with a per-proof supplement inserted into
   it** (owner, 2026-11-01; robust to programs whose runs jump to many targets, where a per-proof table could swell to megabytes

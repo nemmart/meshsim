@@ -1087,6 +1087,9 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
   **The replayer's new `ERRORS` bits at v1.3** (owner, 2026-11-01), after v1.25's [0] reserved, [1] queue overrun, [2] invalid
   expansion: **[3] code-stream underflow, [4] read-log underflow, [5] write-log underflow, [6] done with input left over** (one
   bit; the controller reads the queue occupancies to see which stream).
+- **A Tracer run is at most 65,536 rows** (owner, 2026-11-05; WORKER21): its FIFOs hold one window, so a `RUN_CONFIG` row
+  count above 65,536 is UB on the Tracer; a longer trace is done in chunks. (The 24-bit count serves the replayer and reads a
+  run's progress exactly.)
 - **The drain: service requests with credits, and done last** (owner, 2026-11-05; WORKER21's Q2 and Q8). One scan of the log
   FIFO feeds output queues 2 and 3 in row order; with small queues and a DMA sending one queue per transfer, that deadlocks (the
   DMA waiting on one queue while the scan waits on the other). So:
@@ -1213,9 +1216,14 @@ Decided (O).
   - **a failed `VirtualAssert…` row** (owner, 2026-11-05, WORKER21's Q7): the expansions' assertions (alignment, the division
     and remainder checks, no-overflow), **a checked error**: such a run is unprovable (R1CS checks the same condition), the row
     computes the comparison anyway, and it catches the host and the Tracer disagreeing (a wrong quotient from the host's
-    advice) before a proof is wasted, as leftover advice earned its check. **No separate misalignment check:** the templates
-    put an alignment assertion before every sub-word and doubleword access, so non-aligned loads and stores are never seen; a
-    separate bit only if SP1 finds an access path with no assertion before it.
+    advice) before a proof is wasted, as leftover advice earned its check. *(Assumed: the templates assert alignment before every access.)*
+  - **any misaligned access** (owner, 2026-11-05; WORKER21 found that at 821e1bd no template asserts alignment: LD and SD are
+    one-word templates, and both tracers abort on a misaligned access, UPSTREAM-DIFFS D6): **`ERRORS` [12], and the Tracer
+    stops.** The check is **natural alignment for the access size, on the native instruction** (address mod 8 for doubleword
+    accesses, 4 for word, 2 for halfword; bytes never; AMOs and LR/SC by their width), not the row's address, since sub-word
+    accesses expand into rows on the aligned doubleword and would always pass. Such a program can't be traced or proven, so the
+    host's run has already aborted on it: [12] catches the host and the Tracer disagreeing. A few address bits, selected by the
+    opcode's size.
   - **a guest access outside the provable range** (owner, 2026-11-04; WORKER17): **a dedicated comparator** in the Tracer's
     load and store path, `(address − lowest_address) < 8·K`, one subtract and one unsigned compare **on the full 64-bit
     address** (an address below the start wraps and fails the same compare), alongside the local cache lookup, so it costs no

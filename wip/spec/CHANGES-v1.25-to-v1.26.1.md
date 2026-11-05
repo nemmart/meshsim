@@ -129,8 +129,9 @@ A store to words 33–35 is a bus error, as to v1.25's 32–34. **The same four 
 ## 4. Verification
 
 **v1.26.1** (WORKER25): meshsim, the controller and the kit follow `RUN_CONFIG`, words 32–35 and the new stream word, with
-tests for each change; the acceptance is rerun on every window of both workloads (Quest 106, 107; results in
-`CHANGES-v1.26.1.md`). The figures below are v1.26's, whose timing v1.26.1 doesn't change.
+tests for each change; the acceptance on every window of both workloads, stages A, B and F, **passed** (Quest 106,
+107), **identical to v1.26's cycle for cycle** on every window, stalls included (`CHANGES-v1.26.1.md`). So the figures
+below, v1.26's, hold for v1.26.1 unchanged.
 
 meshsim's replayer model follows the spec at v1.26 (WORKER20), with tests for the flush, each new error bit and output
 `rd_prev`; v1.26's acceptance is every window of EVM Zone and Cyclone at 2²⁹ matched in stages A, B and F with the 4 KB queues,

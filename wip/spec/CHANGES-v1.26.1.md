@@ -67,4 +67,22 @@ guide, renamed and extended).
 meshsim, the controller (`replay_ctl.c`, layout version 4), recipe 26, the kit and the synthetic deliveries follow v1.26.1
 (WORKER25, branch `v1.26.1`). The acceptance is v1.26's rerun: every window of EVM Zone and Cyclone at 2²⁹, converted from the
 v1.25 deliveries in each task's scratch, in stages A and B, and every 64th in F (Quest 106, 107), with the suites and the
-full-size sort (108). Results: `WORKER25/REPORT.md`.
+full-size sort (108):
+**passed** (2026-11-05). Every window matched in every stage, and **every window's rows, cycles, stalls and refills are
+identical to v1.26's** (Quest 098, 099), cycle for cycle: `RUN_CONFIG` is written before `PULSE_RUN`, so a pass's timing
+doesn't change.
+
+| | EVM Zone (106) | Cyclone (107) |
+|---|---|---|
+| stage A | 8,192 of 8,192 | 8,192 of 8,192 |
+| stage B | 8,192 of 8,192 | 8,192 of 8,192 |
+| stage F (every 64th) | 128 of 128 | 128 of 128 |
+| identical to 098/099 (rows, cycles, stalls, refills) | 16,512 of 16,512 lines | 16,512 of 16,512 lines |
+| Stage B read-log / write-log wait, cycles per window | 39.2 / 100.0 | 43.5 / 84.5 |
+
+The suites (108): run_tests' quick suite, 36 steps, and its full-mode extras, 11 steps, all passed; the full-size sort
+p4/uniform-k128 at **1,229,008 cycles**, unchanged. The smoke (105) passed first, on windows 0–63 of both.
+
+`RUN_CONFIG` [28:26] (the Tracer's compression enables, added after 105–108 ran) is 0 in every acceptance pass;
+the controller binary is byte-identical, and meshsim's test runs every value of the field with the same rows and
+cycles. Details: `WORKER25/REPORT.md`.

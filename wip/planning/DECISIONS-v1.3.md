@@ -960,7 +960,7 @@ files, which **the replayers carry too and ignore** (owner):
 | word | part 0 offset | contents | for the Tracer |
 |---|---|---|---|
 | 0 | 0x000 | the state word: pc, `instr_idx`, the next offset, and the per-pass flags (use the store log, output rd_prev; DECISIONS-v1.26 item 8) | the processor state at the segment's first row (frame 2); **the flags are carried and ignored** (the Tracer always records stores' pre-values and rd_prev) |
-| 1 | 0x010 | the stream word: each stream's 128-bit words, values out and compression flag (DECISIONS-v1.26 item 2) | **the read queue: the segment's advice, uncompressed; the code and write queues zero length** |
+| 1 | 0x010 | the stream word: each stream's 128-bit words, values out and compression flag (DECISIONS-v1.26 item 2); **at v1.3 four streams: code, read log, write log, and advice** (owner, 2026-11-04) | **the advice field: the segment's advice size at load, counting down live** as advice is popped; the three output fields written at each done with run *n*'s totals (section 24) |
 | 2-65 | 0x020 | the register image: 64 words, two registers each | registers 0-127 |
 | 66 | 0x420 | the files and the proof's memory bounds: **the guest's memory file** (root address, depth), **the jump-target map file** (root, depth), and (owner, 2026-11-04) **log₂ K** (6 bits) and **`lowest_address` in 4 KB units** (52 bits; page-aligned, being 0x8000_0000 − 2ⁿ), 124 of 128 bits; bit positions for SP1 | from C&C 3 (section 22): the Tracer's copy, the proof's map, and the proof's K and layout; the bounds set the `.pages` offset (section 12) and the range comparator (section 25) (a replayer ignores it) |
 | 67 | 0x430 | the template bitmap, 128 bits: which controller-fed inlines the window uses (section 25) | **all cleared** (owner) |
@@ -970,6 +970,15 @@ everywhere: the record's words land in part 0 at consecutive offsets, the first 
 write to word 0, the state word, flushes the queues** (section 24). (Replaces the bitmap as word 0, which v1.25's 67-word
 record had and part 0 didn't hold.)
 
+- **The stream word carries four streams: code, read log, write log, and advice** (owner, 2026-11-04). The three output fields
+  are the window's streams, written by the Tracer at each done (run *n*'s totals, section 24), so output queue 0 is part 0
+  read in place; **the advice field** is the Tracer's input: the segment's advice size at load, and, as part of the working
+  state (DECISIONS-v1.26 item 12), **the live count remaining**, counting down as advice is popped. So nothing is overwritten:
+  at done the Tracer writes only the three output fields (and the bitmap, word 67), and the end-of-segment leftover check
+  reads the advice field in place. **The replayer ignores the advice field.** Advice is never compressed and all 64-bit, so its
+  field is a value count only (the words are half of it, rounded up): at most 2²² per segment, 23 bits. The v1.26 stream word
+  leaves [63:51] and [127:115] spare (26 bits in two pieces), so the field fits split, or the word is rearranged, which changes
+  the replayer's v1.26 layout: **SP1's call.**
 - **The advice queue is the Tracer's read queue** (owner): the same name and role as the replayer's read log, from which both
   units pop advice (section 13). It is 4 KB (section 24) and **never compressed**, so the Tracer has **no LRU decoder** on its
   input; the code and write queues are simply zero length.
@@ -1035,7 +1044,7 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
   **a pop beyond the size sets an `ERRORS` bit (advice underflow)** at once, instead of the Tracer waiting forever for the
   watchdog. **Leftover advice is checked in software:** the Tracer raises done every 65,536 rows with the read queue meant to
   carry on (owner), so a done with advice left is normal; C&C 3 reads the count of words not yet consumed after the segment's
-  64th done (it must be 0). (This replaces a "last advice" pulse.) Under section 8a it
+  64th done (it must be 0), in place: the stream word's advice field (section 23). (This replaces a "last advice" pulse.) Under section 8a it
   earns a check: the advice comes from this proof's run, so a disagreement between the host's advice and the trace depends on the
   input data, where simulation of our firmware may not reach.
 - **The same in v1.3's replayer** (owner, 2026-11-01): **it takes its input sizes when its state is set**, the state record's

@@ -949,7 +949,9 @@ memory system's centre, not the Tracer's. The Tracer's local 16 KB caches absorb
     cache waits until the buffer is empty**, so the buffer is never searched (a dirty line that has left the cache but not yet
     reached LPDDR can't be read stale). The model reports early evictions, write-backs and read waits per segment; if the waits
     matter (Cyclone's heaviest segment writes about 1 MB, twice the cache), a 4-entry address compare in the buffer is the
-    cheap fix.
+    cheap fix. **A Tracer write-back that misses the shared cache allocates without an LPDDR read** (owner, 2026-11-05;
+    WORKER22's Q13): the Tracer always writes a whole 128 B line, so the line is taken into a free or clean way and marked dirty,
+    and comes back to the Tracer from there on its next access; it reaches LPDDR only when evicted dirty.
   - (c) ~~an instruction line bringing its code map words~~ moot: the code map is gone (section 18).
   - (d) sizes to confirm by measurement: the gold emulator can replay both 2²⁹ workloads' address streams through these caches
     and the shared one, the walk's index reads included, and report hit rates (WORKER18, after ACT4).

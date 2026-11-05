@@ -9,8 +9,9 @@ repository at the time of writing; trust the repository over this file if they d
 meshsim is the cycle-level simulator, spec and software of a 64-tile mesh in an ASIC for proving the Jolt zkVM (owner: Niall;
 RTL: Tony, working in his own sessions). Milestones are folders: `v1.0/`, `v1.1/` (frozen), **`v1.2/` (pure: the spec exactly as
 Tony took it, tag `v1.2-tony`, plus `ERRATA.md`)**, **`v1.2.1/` (v1.2 with every erratum and cleanup applied, simulator in line;
-frozen 2026-11-01)**, **`v1.25/`** (the replayer and its tables at jolt-cpp `821e1bd`, frozen 2026-11-01), **`v1.26/`** (v1.25 plus
-the replayer's v1.3 changes, frozen 2026-11-04), and **`wip/`** (v1.3 work). Then **v1.3: the Tracer**
+frozen 2026-11-01)**, **`v1.25/`** (the replayer and its tables at jolt-cpp `821e1bd`, frozen 2026-11-01), **`v1.26.1/`** (v1.25 plus
+the replayer's v1.3 changes and the two units' shared layouts, frozen 2026-11-05: **the RTL's target**, Tony starting from
+v1.25 by `spec/CHANGES-v1.25-to-v1.26.1.md`; v1.26 itself superseded and deleted, in git at 63ea8de), and **`wip/`** (v1.3 work). Then **v1.3: the Tracer**
 (design in progress, `DECISIONS-v1.3.md`). Tony's RTL goes from v1.1 straight to v1.25; his sessions are reviewing the v1.2 spec
 now and diff it against v1.2.1 (`git diff --no-index v1.2/spec/ v1.2.1/spec/` on `main`). **Versions are folders on `main`,
 not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Frozen" is loose: v1.2 is a waypoint, corrected by point releases.
@@ -44,7 +45,6 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
 | WORKER16 | T2, W2, W3 done; **the pin move to jolt-cpp 88dca85 done** (`WORKER16/PIN-REPORT.md`: rows, segment files and `capture_writes` identical; merged into `tracer-standalone-main` at fa59d9a); the ported segment tools on `worker16-w3-88dca85` (f2ae129), `worker16-w3` kept at ca30b5e | - | - | next: the segment tools to v1.26.1's layouts, once WORKER25's release is merged |
 | WORKER18 | the Java emulator `wip/gold/` (DECISIONS-v1.3 section 17): gold earned, stage 3 done, **W5 done** (e9f0444: ACT4 through test-equipment `Act4Runner`, 123 of 125; inline vectors 5,677 of 5,677; strict loading only) | **sent 2026-11-04: the rulings** (D1, D3, D12 follow a16z, with jolt-cpp fixes and bug reports on its own branches; D5 rejected by the host tracer), the demo guests, the U1-U3 write-ups; **plan approved 2026-11-04** (7189216 checked: the files are identical; the end detected by `JAL x0, 0`; 0xC0001073 rejected at load; fix branches `worker18-fix-d1-sections`, `-d3-no-legacy-ecall`, `-d12-c-slli`; bug reports in `WORKER18/bug-reports/`) | its report | parked in `WORKER18/NEXT.md`: `check.sh` at 88dca85, then section 21(d) |
 | WORKER24 | a block diagram of the Tracer (`WORKER24/PROMPT.md`, owner, 2026-11-04): review sections 1-25, then `fig9_1_tracer` in `wip/diagrams/` in the v1.0 figure style | **started 2026-11-04** | its review and plan (a sketch welcome) | - |
-| WORKER25 | **v1.26.1**, the point release (DECISIONS-v1.26 section 3, items 13-16: `RUN_CONFIG`, words 32-35 shared, the flags out of word 0, the stream word with advice): spec, change notes, the RTL guide from v1.25, meshsim, firmware, deliveries, acceptance | **started 2026-11-04**; Tony waiting on it | its plan | freeze as `v1.26.1/`, then delete `v1.26/` (owner); follow-ups to WORKER18 (gold) and WORKER16 (segment tools) |
 | WORKER21 | **SP1, the Tracer's spec chapter** (4.21 and the rest of v1.3 in the spec; `WORKER21/PROMPT.md`) | **started 2026-11-05**, on branch `v1.3-spec` from `v1.26.1` | its plan | merge after `v1.26.1`; then B1 (WORKER22), which starts after the chapter (owner) |
 
 ## What's left, by milestone
@@ -70,7 +70,8 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
   control loop of start, RUN_CYCLES (typically 65,536), go, done, with six wake flags (24); errors it checks (25); padding rows
   after the program's end (25). Gold, the Java emulator (17), matches jolt-cpp and upstream row for row. **Next: a spec chapter
   for the Tracer** (proposed outline in the session: overview, region and record, control, execution, memory, output, boundaries,
-  errors, the replayer's v1.3 changes), with the 512 KB cache a black box. **v1.26: frozen** (2026-11-04) as `v1.26/`: v1.25 plus
+  errors, the replayer's v1.3 changes), with the 512 KB cache a black box. **v1.26: frozen** (2026-11-04), then superseded by **v1.26.1** (2026-11-05, DECISIONS-v1.26 section 3, WORKER25, Quest
+  105-108) and deleted: v1.25 plus
   the replayer's v1.3 changes, accepted on every window at 2²⁹ (Quest 098-102b); WORKER19 and WORKER20 closed. The runner's
   2²⁹ deliveries now live in `~questrunner/data` (Quest 103, 104; PIPELINE.md); the runner is started by hand (no autostart).
   **Next: SP1, B1 and F1** (v1.3 work list): the Tracer's bring-up in meshsim (its model, a black-box memory system, C&C 3's firmware
@@ -102,4 +103,4 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
 
 - Repositories: meshsim (this), jolt-asic-planning (`tracer-standalone`, PR #1; `tracer-standalone-main`, PR #2; `worker12-counts`),
   jolt-cpp (snarkify, our tracer), a16z/jolt (upstream, public), Quest (the runner). Tokens are in the owner's preferences.
-- Closed workers' reports: `wip/planning/sessions/` (WORKER4-15, 17, 19, 20) and `wip/planning/reviews/` (WORKER1-3).
+- Closed workers' reports: `wip/planning/sessions/` (WORKER4-15, 17, 19, 20, 25) and `wip/planning/reviews/` (WORKER1-3).

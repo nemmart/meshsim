@@ -80,7 +80,7 @@ controller-fed templates, everything about files, slots and caches.
   (Quest 083, 084), with the 4 KB queues; the stall counts reported.
 - The quick and full suites pass; the full-size sort is unchanged (p4/uniform-k128: 1,229,008 cycles).
 
-**Done: frozen as `v1.26/`, 2026-11-04.** The spec, `CHANGES-v1.26.md` and the RTL guide (WORKER19); meshsim, the firmware, the
+**Done: frozen as `v1.26/`, 2026-11-04** (superseded by `v1.26.1/` and deleted; in git at 63ea8de). The spec, `CHANGES-v1.26.md` and the RTL guide (WORKER19); meshsim, the firmware, the
 kit and the converted deliveries (WORKER20, merged at 5b03600). **Every window of both workloads at 2²⁹ matched with the 4 KB
 queues**: Quest 098 (EVM Zone) and 099 (Cyclone), stages A and B on 8,192 of 8,192 windows each, F on 128 of 128; the 8 KB
 controls 100 and 101 on 8,192 each. The log waits are only at a pass's start, 0.066 % and 0.063 % of a pass at 4 KB (0.102 % and
@@ -169,4 +169,4 @@ from v1.25 straight to v1.26.1 (`CHANGES-v1.25-to-v1.26.1.md`); meshsim, `mesh.h
 (layout 4) and recipe 26, the kit and the converted deliveries. **Every window of both workloads at 2²⁹ identical to v1.26,
 cycle for cycle** (Quest 106, 107 against 098, 099: verdicts, rows, cycles, stalls and refills on 16,512 of 16,512 lines per
 workload); the smoke run 105; the suites 36 of 36 and 11 of 11 and the full-size sort at 1,229,008 cycles (108).
-ReplayerTest 2182/0. **`v1.26/` deleted** after the freeze (owner); it is kept in git history.
+ReplayerTest 2182/0. **`v1.26/` deleted** after the freeze (owner); it is in git at 63ea8de.

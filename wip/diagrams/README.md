@@ -73,12 +73,12 @@ Thirty-one figures in nine parts, numbered part.figure (1.0–9.3), for explaini
 |---|---|---|---|
 | 8.1 | `fig8_1_params.svg` | Parameters: every depth, width and latency, with its default | Every depth, width and latency the figures use, with its default. Open: the area queue depth, the array's read latency and the physical ready_latency are still to be fixed for the hardware; the token FIFO's 64 entries must absorb the area queueing a phase's placement allows (§4.2). |
 
-**Part 9. The Tracer** *(v1.3; drawn from `../planning/DECISIONS-v1.3.md`, not yet from the spec: its chapter, 4.21, is WORKER21's)*
+**Part 9. The Tracer** *(v1.3; drawn from spec 4.21 and 4.19.2 at v1.26.1, and `../planning/DECISIONS-v1.3.md`)*
 
 | # | file | figure | caption |
 |---|---|---|---|
 | 9.1 | `fig9_1_tracer.svg` | The Tracer: the RV64 core, its memory interface, and its peripheral side toward C&C 3 | The Tracer runs the guest on its own RV64 core. Its instruction cache, data cache and jump LRU are its only local stores; each miss is one 128 B line of a file, (root, depth, line), on the fill bus to the memory system. One bus from C&C 3 fills the advice and expansion queues, loads the expansion tables once at startup, and writes the state into the core; the window runs it. At each done the DMA drains the output queues (figure 9.2): the state, read in place, and the three streams. Writing word 0 resets everything. |
-| 9.3 | `fig9_3_record.svg` | The state record: 68 words of 128 bits, one format for the host, the Tracer and the replayer | The state record is one format from the host through the Tracer to the replayers: 68 words of 128 bits at byte offsets 0x000–0x43F, loaded state word first, whose write resets the unit. It is the Tracer's working state, so at each done it is read out in place: purple fields are window n+1's start, blue fields run n's totals. Word 66's fields and the advice field are proposed: their bit positions are SP1's to place. |
+| 9.3 | `fig9_3_record.svg` | The state record: 68 words of 128 bits, one format for the host, the Tracer and the replayer | The state record is one format from the host through the Tracer to the replayers: 68 words of 128 bits at byte offsets 0x000–0x43F, loaded state word first, whose write resets the unit. It is the Tracer's working state, so at the end of each run it is read out in place: purple fields are window n+1's start, blue fields run n's totals, and the advice field is the live count of the segment's advice. |
 
 Figures 4.1 and 4.2 draw the router at block level: one route block per input, one FIFO per feeder on each output (§4.7, §4.17); figure 4.3 is its RTL. Figure 1.3 hangs each table and configuration register over the engine it drives. Figure 3.1 draws one box per memory, the controller's access (r, w or r/w) on each bus tap, the unit on each memory's other side, and two zones: must be close (what the controller reads) and can be far (what it only writes).
 
@@ -116,4 +116,4 @@ Run `src/build.sh`: every `src/figP_N_*.py` writes its SVG into `svg/` (one figu
 - **The address generator:** gapless one-word exchanges and their link-queue peaks (§13 item 7; figure 6.1).
 - **The memory subsystem's link to C&C** (§13 item 9; figure 1.2). It hangs off C&C, with no mesh address (§7).
 - **The physical ready_latency** (§13 item 8; figure 8.1).
-- **The Tracer** (figure 9.1): the fill bus's arbitration, blocking, write buffer and error response; the jump table's dedicated SRAM and the probe's bound; the output queues' depths and the drain's interleaving; the core's inner split; register and bit numbers. Listed by number in `../../WORKER24/NOTES.md`.
+- **The Tracer** (figure 9.1): the range check's upper bound (item 149) and the fill bus's read status (provisional, item 148); the core's inner split is the figure's. Listed in `../../WORKER24/NOTES.md`.

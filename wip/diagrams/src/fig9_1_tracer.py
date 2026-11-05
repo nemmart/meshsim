@@ -38,37 +38,37 @@ f.box(*CC, "C&C 3 (RV32), the Tracer's controller, and its router",
 # ================= left: the fill bus and the three local stores ======================================
 TX = 60                      # the fill bus trunk (reads and fills)
 WX = 76                      # the data cache's write-backs
-f.line([(TX, 560), (TX, MS[1] + MS[3] + 2)], GREEN, SW + 0.6, end=True, start=True)
-f.line([(WX, 372), (WX, MS[1] + MS[3] + 2)], BLUE, SW, end=True, dash=DASH["write"])
+f.line([(TX, 566), (TX, MS[1] + MS[3] + 2)], GREEN, SW + 0.6, end=True, start=True)
+f.line([(WX, 282), (WX, MS[1] + MS[3] + 2)], BLUE, SW, end=True, dash=DASH["write"])
 f.text(90, 168, "the fill bus: one 128 B line (1,024 bits) per transfer,", 11, "start", fill=GREEN)
 f.text(90, 182, "a (root, depth, line) request: a program, data or mapping miss", 11, "start", fill=GREEN)
 
 LX, LW = 100, 190
-IC = (LX, 198, LW, 96)
-DC = (LX, 322, LW, 106)
+DC = (LX, 198, LW, 106)
+IC = (LX, 362, LW, 88)
 f.box(*IC, "instruction L1", ["16 KB: 128 lines of 128 B", "fully associative, single-cycle",
                               "tagged by its line in .pages", "read only"],
       fill=GREEN_L, stroke=GREEN, size=10.5, tsize=12.5)
 f.box(*DC, "data L1", ["16 KB: 128 lines of 128 B", "fully associative, single-cycle",
                        "write-back: a dirty victim by", "its line; dirty lines at a", "segment's end are discarded"],
       fill=GREEN_L, stroke=GREEN, size=10.5, tsize=12.5)
-PR = (LX, 458, 86, 102)
-JL = (LX + 98, 458, LW - 98, 102)
+PR = (LX, 464, 86, 102)
+JL = (LX + 98, 464, LW - 98, 102)
 f.box(*PR, "hash probe", ["a multiply,", "a shift, one", "line read, 16", "comparators"],
       fill=GREEN_L, stroke=GREEN, size=10, tsize=11.5)
 f.box(*JL, "jump LRU", ["64 entries,", "pc → base", "instr_idx;", "a hit is free"],
       fill=GREEN_L, stroke=GREEN, size=10, tsize=11.5)
-f.line([(JL[0], 509), (PR[0] + PR[2] + 2, 509)], GREEN, 1.6, end=True)
+f.line([(JL[0], 515), (PR[0] + PR[2] + 2, 515)], GREEN, 1.6, end=True)
 # section 18's dedicated SRAM: open
-SR = (LX, 578, LW, 44)
+SR = (LX, 580, LW, 44)
 f.rect(*SR, "white", OPEN_C, 1.4, dash=OPEN, rx=5)
 f.text(SR[0] + 10, SR[1] + 18, "the table in a dedicated 128 KB", 10.5, "start", fill=OPEN_C)
 f.text(SR[0] + 10, SR[1] + 33, "SRAM (§18's proposal)", 10.5, "start", fill=OPEN_C)
 f.tag(SR[0] + LW - 4, SR[1] + 34, "open", anchor="end")
 # taps into the trunk
-for y in (246, 375, 509):
+for y in (251, 406, 515):
     f.line([(LX, y), (TX + 2, y)], GREEN, SW, end=True, start=True)
-f.line([(LX, 404), (WX + 2, 404)], BLUE, SW, end=False, dash=DASH["write"])
+f.line([(LX, 282), (WX + 2, 282)], BLUE, SW, end=False, dash=DASH["write"])
 # the fill bus: arbitration etc. open
 f.tag(TX - 18, 644, "open: arbitration, blocking, write buffer, error response", anchor="start")
 
@@ -93,21 +93,21 @@ f.rect(IX - 6, 226, IW + 12, 240, "none", OPEN_C, 1.2, dash=OPEN, rx=6)
 f.tag(IX + IW, 220, "open: the split", anchor="end")
 
 # buses to the left (Harvard)
-f.line([(CO[0], 246), (IC[0] + IC[2] + 2, 246)], GREEN, SW, end=True, start=True)
-f.text(370, 239, "instruction bus", 10.5, "middle", fill=GREEN)
-f.text(370, 262, "fetch address / word", 9.5, "middle", fill=MUTED)
-f.line([(CO[0], 375), (DC[0] + DC[2] + 2, 375)], GREEN, SW, end=True, start=True)
-f.text(370, 368, "data bus", 10.5, "middle", fill=GREEN)
-f.line([(CO[0], 509), (JL[0] + JL[2] + 2, 509)], GREEN, SW, end=True, start=True)
-f.text(370, 502, "pc → instr_idx", 10.5, "middle", fill=GREEN)
-f.text(370, 525, "jump targets only (§18)", 9.5, "middle", fill=MUTED)
+f.line([(CO[0], 251), (DC[0] + DC[2] + 2, 251)], GREEN, SW, end=True, start=True)
+f.text(370, 244, "data bus", 10.5, "middle", fill=GREEN)
+f.line([(CO[0], 406), (IC[0] + IC[2] + 2, 406)], GREEN, SW, end=True, start=True)
+f.text(370, 399, "instruction bus", 10.5, "middle", fill=GREEN)
+f.text(370, 422, "fetch address / word", 9.5, "middle", fill=MUTED)
+f.line([(CO[0], 515), (JL[0] + JL[2] + 2, 515)], GREEN, SW, end=True, start=True)
+f.text(370, 508, "pc → instr_idx", 10.5, "middle", fill=GREEN)
+f.text(370, 531, "jump targets only (§18)", 9.5, "middle", fill=MUTED)
 # the range comparator, beside the data cache's lookup
-RC = (304, 392, 132, 78)
+RC = (304, 266, 132, 74)
 f.box(*RC, "range comparator", [("(a − low) < 8·K", {"mono": True}), "64-bit, no cycle (§25)", "low, K: word 66"],
       fill="white", stroke=INK, size=10, tsize=11.5)
-dot(370, 375, GREEN)
-f.line([(370, 375), (370, RC[1] - 2)], GREEN, 1.4, end=True)
-f.text(RC[0] + RC[2] / 2, RC[1] + RC[3] + 14, "fail → ERRORS", 10, "middle", fill=RED)
+dot(370, 251, GREEN)
+f.line([(370, 251), (370, RC[1] - 2)], GREEN, 1.4, end=True)
+f.text(RC[0] + RC[2] / 2, RC[1] + RC[3] + 13, "fail → ERRORS", 10, "middle", fill=RED)
 
 # ================= right: the bus from C&C 3, the queues and the expansion tables; the window; the DMA ===========
 BT = 1196          # the bus from C&C 3 (128-bit region writes)

@@ -1,9 +1,9 @@
 # WORKER17 report: RAM in jolt-cpp and upstream Jolt, and what our two workloads do with it
 
 Measured and read; no design. Working notes, with every file:line, are `NOTES.md`; data in `data/`. Pins: jolt-cpp `821e1bd`
-(v1.25's pin; its `third-party/jolt` is a16z `f8fc214`); the verifier at a16z `7189216` (jolt-cpp HEAD `88dca85`'s submodule),
-which on the checking side equals `17a9459` (DECISIONS-v1.3 section 12's read). Where jolt-cpp HEAD differs materially, it is
-said. Tools: jolt-asic-planning `worker17-memory` (`mem_probe`, on PR #2's tracer, unchanged). All runs local, 1 CPU, 2²⁹.
+(v1.25's pin; its `third-party/jolt` is a16z `f8fc214`); the verifier at a16z `7189216` (jolt-cpp `88dca85`'s submodule, v1.3's
+new pin), which on the checking side equals `17a9459` (DECISIONS-v1.3 section 12's read); `f8fc214` differs from it only in the
+transcript and in #2190's range check on loaded words. Where jolt-cpp `88dca85` differs materially, it is said. Tools: jolt-asic-planning `worker17-memory` (`mem_probe`, on PR #2's tracer, unchanged). All runs local, 1 CPU, 2²⁹.
 
 ## Answers in brief
 
@@ -100,7 +100,7 @@ read-raf d + 1. At log T = 29, 8-bit chunks: **K = 2²³ or 2²⁴: d = 3, degre
 | sumcheck | jolt-cpp at the pin: dense in K | upstream prover at `7189216`: dense in K |
 |---|---|---|
 | read-write checking | CPU `val_aux` 2 K and loops over K; GPU `val_final`, `col_prefix`, a fold blob (about 7 K field elements); **GPU refuses K > 2²⁴** (HEAD: 2³⁰) | `val_final`, `val_init` (K); log K ≤ 32 |
-| val check | GPU: no (≤ 4 eq tables of ≤ 8 bits); CPU: eq over log K (unconfirmed) | eq table over K |
+| val check | no: GPU ≤ 4 eq tables of ≤ 8 bits; CPU evaluates eq(r_address, cell) per access from tau (`cpu/val_check.hpp:242-244`) | eq table over K |
 | output check | K/cards per card, **plus initial and final RAM snapshots, K × 8 B each, per card**; `uint32_t ram_k` | `val_io`, `io_mask`, `val_final` (K) |
 | raf evaluation | K (CPU), 2 K (GPU) | `ra_folded`, `unmap` (K) |
 | ra claim reduction | not read | eq over K |
@@ -110,16 +110,43 @@ read-raf d + 1. At log T = 29, 8-bit chunks: **K = 2²³ or 2²⁴: d = 3, degre
 At K = 2³² a K-sized field array is 128 GiB and a snapshot 32 GiB. The program-image and advice contributions are sized by
 their words.
 
-**Binding order.** jolt-cpp configures RAM and register read-write checking address first (`config.rs:161-175`); upstream's
-prover defaults to cycle first (`jolt-prover/src/config.rs:179-185`); the verifier follows the proof's config.
+**Binding order.** jolt-cpp binds RAM and register read-write checking **address first**, configured (`config.rs:161-175`) and
+confirmed in the kernels (RAM CPU `read_write_checking.hpp:131, 444`; RAM GPU `rw_checking.cu:68, 785-788`; registers GPU
+`read_write_checking.cu:59`, CPU `:159-174, 442`); upstream's prover defaults to cycle first (`jolt-prover/src/config.rs:179-185`);
+the verifier follows the proof's config.
 
-## Q6, Q7: what is proved, and what isn't (partial)
+## Q6: what each relation proves (upstream `7189216`)
 
-From the relation definitions (to be completed file by file): read-write checking ties each row's read and write values to a
-per-cell value table through the one-hot `ra`; the val check ties that table to Val_init plus the increments of earlier
-rows; the output check makes the final table equal the public outputs over the I/O mask; raf evaluation ties `ra` to the
-row's address; Hamming booleanity and the ra virtualization make `ra` one-hot (or empty for rows without access) and split it
-into d committed chunks. Not yet read: the precise unchecked cases (a load to x0, accesses in the I/O padding, the canary).
+| relation | proves | degree |
+|---|---|---|
+| R1CS (Spartan) | load/store: RamAddress = rs1 + imm − (narrow floor); other rows: RamAddress = 0; load: RamRead = RamWrite = RdWrite; store: RamWrite = rs2 (`composed/r1cs/rv64.rs:248-275`) | |
+| raf evaluation | the RamAddress claim = Σ_k ra(k)·(8k + lowest) | 2 |
+| read-write checking | each row's read and write values = Σ_k ra(k)·val(k) (write side + inc) | 3 |
+| output check | Val_final = Val_io on `[input_start, 0x8000_0000)` | 3 |
+| val check | val(k, t) = Val_init(k) + Σ_{j<t} inc(j)·wa(k, j) | 3 |
+| ra claim reduction | raf's, RW's and val's `ra` openings are one | 2 |
+| ra virtualization | ra = Π of the d committed chunks | d + 1 |
+| Hamming booleanity | each row has 0 or 1 accesses | 3 |
+| registers RW / val evaluation | the same for registers 0-127 | 3 / 2 |
+| bytecode read-raf | each row's instruction and pc are its `instr_idx`'s bytecode entry | d + 1 |
+
+Together: every load/store row touches exactly the cell `(rs1 + imm − lowest)/8` < K, reads the cell's current value, and
+writes rs2 (store) or the same value (load); other rows touch nothing; cells start at Val_init and change only by stores.
+
+## Q7: what isn't checked, and the edge cases
+
+- **Final values outside `[input_start, 0x8000_0000)`** (program, stack, heap, advice) are unconstrained; the I/O range must end
+  as the public I/O (input, output, panic, termination = 1) with its padding 0.
+- **No region permissions:** stores to the program image, the advice or the canary are provable; any cell in `[0, K)` is RAM,
+  including the I/O padding. Alignment comes from raf's `8k + lowest` and the narrow sequences' assertions.
+- **Initial values** are the public segments plus the advice blocks, zero elsewhere.
+- **A load to x0** (spec item 113): R1CS forces RamRead = RdWrite on every load, so jolt-cpp taking the word from the `rd` lane
+  (`rw_sparse_init_kernels.cu:188-190`, `val_check_kernels.cu:96-98`) loses nothing. Loads with rd = x0 get a temporary rd
+  (`isa/virtual.cpp:15-118, 276-281`, mirroring upstream); only `LR.D x0`/`LR.W x0` keep x0, and then the word must be 0 or the
+  run can't be proven, in either codebase. **Measured: none** on either workload.
+- **Below `lowest_address`:** jolt-cpp's prover silently treats it as no access (`jolt-utils/ram.hpp:16-30`; GPU also drops
+  cells ≥ K, `rw_sparse_init_kernels.cu:93`), upstream's rejects it; it is unprovable either way (R1CS's RamAddress against
+  raf's Σ ra·(8k + lowest) = 0). The tracer doesn't check it. **Measured: none.** Unchanged at `88dca85`.
 
 ## Q8: the interface the prover reads
 
@@ -129,6 +156,8 @@ into d committed chunks. Not yet read: the precise unchecked cases (a load to x0
 - **The GPU expander** rebuilds, per row: `mem_waddr_p1` = absolute address >> 3, plus 1 (the prover subtracts
   `lowest_address`), and puts the load word in `rd`, a store's pre-value in **both `rd` and `rd_prev`**, its post-value in
   `rs2`. No separate memory columns.
+- A store's pre-value is the `rd` lane, its post-value `rs2`; a load's word is the `rd` lane, which R1CS makes equal to
+  RdWriteValue anyway (Q7).
 - **What the checking needs per row:** the cell index (for `ra` and raf), the read value and the write value (or the increment,
   post − pre); and per cell, Val_init (from the images) and Val_final (a dense table in both provers). All four per-row facts
   are in jolt-cpp's row and in spec 4.19.12's row (`mem_addr`, `mem_value`, `rs2`); the spec carries a store's pre-value in
@@ -136,8 +165,7 @@ into d committed chunks. Not yet read: the precise unchecked cases (a load to x0
 
 ## Open
 
-- Confirm address-first binding in jolt-cpp's kernels; whether jolt-cpp's CPU val check materializes 2^log K.
-- A load to x0 (spec item 113): jolt-cpp's `rd` lane is then 0; how the prover gets the loaded word for such rows.
-- A below-`lowest_address` access in jolt-cpp's prover (`ra_virtual.hpp:60-64` treats it as no access); upstream rejects it.
-- Q6/Q7 file by file; registers' and bytecode's reading side beyond the degrees.
-- WORKER16's thread: a rewound chunk's header holds the boundary's registers, not the sequence start's.
+- Registers' and bytecode's reading side beyond the table above (owner: reading side only).
+- WORKER16's thread: a rewound chunk's header holds the boundary's registers, not the sequence start's (`trace_owner.cpp:705`).
+- For v1.3's pin (`88dca85`): RW checking's K limit 2³⁰ and the 31-bit packed column (`rw_sparse.hpp:35`,
+  `rw_sparse_init_kernels.cu`); the ra virtualization's `MAX_D` 8; the output check's `uint32_t ram_k`.

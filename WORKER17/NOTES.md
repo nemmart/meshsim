@@ -235,7 +235,7 @@ Hamming booleanity are sized by T. The initial RAM's evaluation (Val_init) is do
 
 ## The verifier's commit: a16z `7189216` (owner, 2026-11-03)
 
-- **`7189216` is jolt-cpp HEAD's `third-party/jolt`** (`88dca85`). **The pin `821e1bd` carries `f8fc214`** (2026-10-28), 20
+- **`7189216` is jolt-cpp `88dca85`'s `third-party/jolt`, v1.3's new pin** (owner). **`821e1bd` carries `f8fc214`** (2026-10-28), 20
   commits earlier. Read at `7189216` as asked; differences from the pin's submodule and from `17a9459` noted.
 - `f8fc214..7189216`: in RAM paths, the verifier's stage-4 val check (`ram_val_check.rs`) loses its gamma domain separator
   (transcript only; #2110/#2108 rework the transcript), and **#2190 "range-check direct RAM loads"** (`4e55c9a5f`) adds a range
@@ -305,6 +305,69 @@ Every RAM row is one of `LD`, `SD`, `VirtualLoadB/H/W`, `VirtualStoreB/H/W`, and
   `rd_prev`/`rd` 0 (immediate slot); jolt-cpp's SoA packs the pre-value into the `rd` and `rd_prev` lanes
   (`expand_trace.cu:490-497`). Same information, different place. *(Open, spec item 113: a load to x0. The compressed trace
   logs the word; the SoA's `rd` lane is then 0. Whether the prover gets the loaded word some other way for such rows: to check.)*
+
+## Open items closed (2026-11-04)
+
+Read at jolt-cpp `821e1bd`; HEAD `88dca85` checked file by file where named. Upstream at `7189216`.
+
+**1. A load to x0 (spec item 113).** jolt-cpp's prover takes a load's word **from the `rd` lane**: GPU RW checking's entries
+(`ram/gpu/rw_sparse_init_kernels.cu:188-190`), the increments (`rw_sparse_kernels.cu:220-235`, stores only), the val check
+(`val_check_kernels.cu:96-98`), via `RiscCycleSOA::mem_pre_value`/`mem_post_value` (`trace_owner.hpp:206-218`). That is
+sound by construction: **R1CS requires RamReadValue = RdWriteValue on every load row, with no rd ≠ 0 condition** (upstream
+`jolt-claims/src/protocols/composed/r1cs/rv64.rs:269-271`; also RamReadValue = RamWriteValue, `:265-267`). So the two can't
+differ in a valid proof, and the row has nothing more to give. When can rd be x0? jolt-cpp mirrors upstream's rewrite
+(`isa/virtual.cpp:15-118, 262-281`): an rd = x0 instruction with no side effect becomes a NOP; one with side effects (all
+loads, AMOs, JAL/JALR, CSRs, inlines) **gets a temporary virtual rd**; only LR.W/LR.D, SC and the inlines handle x0
+themselves (upstream PR #1439). **So a load row to x0 comes only from `LR.D x0` (`LD x0`) or `LR.W x0` (`VirtualLoadW x0`)**,
+where RdWriteValue is 0 and the proof then needs the word to be 0: an `LR x0` of a nonzero word can't be proven, in either
+codebase. Measured: **0 load rows to x0** on both 2²⁹ runs (`mem_probe`, `loads_to_x0`). Spec 4.19.12's `mem_value` = rd after
+the row (0 for an LD to x0) is what the prover uses.
+
+**2. Binding order and the CPU val check.** Address first, confirmed in the kernels: RAM CPU starts `PHASE_ADDRESS`
+(`ram/cpu/read_write_checking.hpp:55-56, 131`) and moves to the cycle phase after the last address round (`:299-307,
+444-445`); RAM GPU starts `PHASE_ADDRESS` (`ram/gpu/rw_checking.cu:68, 111`) and switches at `:785`, asserting the address
+dimension is bound to 1 (`:787-788`); registers GPU `PHASE_ADDRESS` (`registers/gpu/read_write_checking.cu:59`), registers CPU
+`Phase::ADDRESS` then `CYCLE` (`registers/cpu/read_write_checking.hpp:159-174, 442`). The **CPU val check is not dense in K**:
+`eq_poly` holds only tau (`jolt-infra/sumcheck/eq_poly.h:27-44`), and each access's `eq(r_address, cell)` is evaluated
+directly (`ram/cpu/val_check.hpp:242-244`), with a `uint32_t` row (log K ≤ 32).
+
+**3. An access below `lowest_address` in jolt-cpp.** The tracer doesn't check it (its VM maps guest addresses from 0; the
+only uses of `lowest` are ram_K and the snapshots, `trace_owner.cpp:1135-1140, 1195`). The prover **treats it as no access**:
+`new_remap_address` returns false for address 0 or below `lowest` (`jolt-core/jolt-utils/ram.hpp:16-30`), used by the CPU RW
+matrix, raf, val check and ra virtualization (`read_write_matrix.tpp:122, 145`; `raf_evaluation.hpp:194`; `val_check.hpp:243`;
+`ra_virtual.hpp:207`); the GPU drops it the same way, and also a cell ≥ K (`rw_sparse_init_kernels.cu:93`). Upstream's prover
+rejects it (`remap_word_address` errors; `ram_trace.rs:377-385` rejects cells ≥ K). Either way it is **unprovable**: R1CS
+binds RamAddress = rs1 + imm (less the narrow floor) on load/store rows (`rv64.rs:248-255`) and raf evaluation equates it to
+Σ_k ra(k)·(8k + lowest), which is 0 for a row without access. So jolt-cpp would make an invalid proof where upstream stops.
+Measured: none on either run. HEAD: unchanged (`rw_sparse_init_kernels.cu` at `88dca85` only moves the write flag from bit 24
+to bit 31, columns to 31 bits).
+
+**4. Q6/Q7, relation by relation** (upstream `jolt-claims/src/protocols/jolt/relations/`, `7189216`; doc comments at the top
+of each relation, and the R1CS rows above):
+
+| relation | proves | degree |
+|---|---|---|
+| R1CS (Spartan) | load/store: RamAddress = rs1 + imm − (narrow floor); neither: RamAddress = 0; load: RamRead = RamWrite = RdWrite; store: RamWrite = rs2 | |
+| raf evaluation (stage 2) | Spartan's RamAddress claim = Σ_k ra(k)·(8k + lowest) | 2 |
+| read-write checking (stage 2) | Spartan's read and write values (folded by γ) = Σ_k ra(k)·val(k) (+ inc on the write side), at each row | 3 |
+| output check (stage 2) | Σ_k eq(r, k)·io_mask(k)·(Val_final(k) − Val_io(k)) = 0, io_mask = `[input_start, 0x8000_0000)` | 3 |
+| val check (stage 4) | val(k, t) = Val_init(k) + Σ_{j<t} inc(j)·wa(k, j) | 3 |
+| ra claim reduction (stage 5) | the three `ra` openings (raf, RW, val) are one | 2 |
+| ra virtualization (stage 6) | ra = Π of the d committed chunks | d + 1 |
+| Hamming booleanity | each row's Hamming weight (accesses) is 0 or 1 | 3 |
+| registers RW checking / val evaluation | the same for registers 0-127 (`RdWriteValue`, `Rs1Value`, `Rs2Value`; val = Σ rd_inc·rd_wa·Lt) | 3 / 2 |
+| bytecode read-raf | each row's instruction fields and pc are the bytecode entry at its `instr_idx` | d + 1 |
+
+Q7, **what memory checking doesn't constrain**:
+- **final values outside `[input_start, 0x8000_0000)`**: program, stack, heap and both advice regions end the run with any
+  values; only the I/O range (input, output, panic, termination, and the padding up to `0x8000_0000`, which must end 0) is
+  checked;
+- **region permissions**: stores into the program image, the advice or the canary are allowed (the canary has no check in the
+  proof); there is no layout check except K's range: a cell is any of `[0, K)`, so the I/O padding and gaps are ordinary RAM;
+- **alignment**: raf forces the address to `8k + lowest`; narrow accesses are aligned by their sequences' assertions, not by
+  memory checking;
+- **initial values outside the public segments and advice**: Val_init is zero there (the public part plus advice blocks), so a
+  run can't start with other data.
 
 ## Q3: measured, 2²⁹ (`mem_probe`)
 
@@ -388,3 +451,5 @@ weren't traced in PR #1):** whole run 11 (EVM Zone) and 194 (Cyclone, 178 of the
   K-dense parts of jolt-cpp's RAM sumchecks at the pin (GPU RW checking: K ≤ 2²⁴ at the pin, 2³⁰ at HEAD).
 - 2026-11-03: read a16z `7189216` (HEAD's submodule; the pin's is `f8fc214`): Val_init and the output check's publics are
   sparse; the verifier bounds K by the layout; upstream's prover is dense in K in five sumchecks. Q2 per-row rules. REPORT.md.
+- 2026-11-04: closed the four open items (load to x0; address-first in kernels, CPU val check not dense; below-lowest;
+  Q6/Q7). `mem_probe` counts load rows to x0 (0 on both). REPORT.md finished.

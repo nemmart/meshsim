@@ -1,9 +1,10 @@
 # The simulation's inputs, rebuilt from the pinned sources (WORKER27)
 
 Everything meshsim's acceptance reads, for **EVM Zone** and **Cyclone**, at the small sizes (EVM Zone `trace-23`, Cyclone
-`input/22`; minutes) and at **2²⁹** (hours on one CPU, about 20 minutes on the runner), built by one command per
+`input/22`; minutes) and at **2²⁹** (hours on one CPU; 9 and 8 minutes on the runner's 16 threads, Quest 111 and 112), built by one command per
 workload and size, with every output's checksum in `manifest/`. At 2²⁹ the build is **identical to the files the
-acceptance runs used** (the runner's persistent data, Quest 103–107 and 109; checked by Quest 111 and 112).
+acceptance runs used** (the runner's persistent data, Quest 103–107 and 109): **Quest 111 and 112 rebuilt both workloads
+from these pins and found every file identical** (`compare_runner.sh`; the results in Quest `results/111-…`, `112-…`).
 
 ```sh
 ./deps.sh                                   # what's missing, and the apt line for it

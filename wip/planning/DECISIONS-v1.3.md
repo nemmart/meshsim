@@ -976,9 +976,12 @@ record had and part 0 didn't hold.)
   state (DECISIONS-v1.26 item 12), **the live count remaining**, counting down as advice is popped. So nothing is overwritten:
   at done the Tracer writes only the three output fields (and the bitmap, word 67), and the end-of-segment leftover check
   reads the advice field in place. **The replayer ignores the advice field.** Advice is never compressed and all 64-bit, so its
-  field is a value count only (the words are half of it, rounded up): at most 2²² per segment, 23 bits. The v1.26 stream word
-  leaves [63:51] and [127:115] spare (26 bits in two pieces), so the field fits split, or the word is rearranged, which changes
-  the replayer's v1.26 layout: **SP1's call.**
+  field is a value count only (the words are half of it, rounded up): at most 2²² per segment, 23 bits. **The stream word is
+  rearranged, contiguous** (owner, 2026-11-04; not split across v1.26's two spare gaps), **in v1.26.1**, so SP1 and Tony both
+  start from the final layout: word counts [15:0] code, [31:16] read log, [47:32] write log; values out [64:48] code, [81:65]
+  read log, [98:82] write log; compression flags [99] code, [100] read log, [101] write log; **advice values [124:102]** (23 bits,
+  0 to 2²² inclusive; its word count is ceil(values / 2), and it needs no flag); [127:125] spare. Replayers ignore the advice
+  field; their advice still comes in the read log.
 - **The advice queue is the Tracer's read queue** (owner): the same name and role as the replayer's read log, from which both
   units pop advice (section 13). It is 4 KB (section 24) and **never compressed**, so the Tracer has **no LRU decoder** on its
   input; the code and write queues are simply zero length.

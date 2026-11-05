@@ -93,7 +93,8 @@ UNPROVABLE = {
 for name, word in UNPROVABLE.items():
     GUESTS[name] = [addi(A0, 0, 1), word, addi(A0, A0, 1), JAL_SELF]
 # standard UNIMP encodings after the program's end, never reached: load and run normally
-GUESTS["unimp_unreached"] = [addi(A0, 0, 1), JAL_SELF, UNIMP32, C_UNIMP_PAIR]
+GUESTS["unimp_unreached"] = [addi(A0, 0, 1), JAL_SELF, C_UNIMP_PAIR]     # c.unimp after the end: loads
+GUESTS["unimp32_unreached"] = [addi(A0, 0, 1), JAL_SELF, UNIMP32]        # 0xC0001073 anywhere: rejected (D4)
 # executed: falling into each encoding, and jumping to c.unimp
 GUESTS["unimp32_executed"] = [addi(A0, 0, 1), UNIMP32, JAL_SELF]
 GUESTS["c_unimp_executed"] = [addi(A0, 0, 1), C_UNIMP_PAIR, JAL_SELF]
@@ -135,6 +136,64 @@ def elf(code_words):
     out += null + sh_text + sh_str
     return bytes(out)
 
+# ---- multi-section guests: several sections back to back inside ONE executable PT_LOAD (the owner's D1 ruling:
+# a16z's image and code are by sections; jolt-cpp decodes the whole executable segment) ----
+def words(ws): return b"".join(struct.pack("<I", w) for w in ws)
+
+def elf_sections(pieces):
+    """pieces: (name, bytes, text?) laid out from 0x8000_0000, each 4-aligned; one PT_LOAD R|X covers them all."""
+    names = b"\0" + b"".join(n.encode() + b"\0" for n, _, _ in pieces) + b".shstrtab\0"
+    layout, addr = [], RAM_START
+    for n, data, text in pieces:
+        layout.append((n, addr, data, text))
+        addr += (len(data) + 3) & ~3
+    image = b"".join(d + bytes(((len(d) + 3) & ~3) - len(d)) for _, d, _ in pieces)
+    text_off = 0x1000
+    shstr_off = text_off + len(image)
+    shoff = (shstr_off + len(names) + 7) & ~7
+    nsec = len(pieces) + 2
+    ehdr = struct.pack("<4sBBBBB7xHHIQQQIHHHHHH", b"\x7fELF", 2, 1, 1, 0, 0, 2, 243, 1, RAM_START, 64, shoff, 0, 64,
+                       56, 1, 64, nsec, nsec - 1)
+    phdr = struct.pack("<IIQQQQQQ", 1, 5, text_off, RAM_START, RAM_START, len(image), len(image), 0x1000)
+    shdrs = bytes(64)
+    name_at = 1
+    for n, a, d, text in layout:
+        shdrs += struct.pack("<IIQQQQIIQQ", name_at, 1, 6 if text else 2, a, text_off + (a - RAM_START), len(d), 0, 0, 4, 0)
+        name_at += len(n) + 1
+    shdrs += struct.pack("<IIQQQQIIQQ", name_at, 3, 0, 0, shstr_off, len(names), 0, 0, 1, 0)
+    out = bytearray(ehdr + phdr)
+    out += bytes(text_off - len(out))
+    out += image + names
+    out += bytes(shoff - len(out))
+    out += shdrs
+    return bytes(out)
+
+def d1_rodata_in_text():
+    # .text reads a doubleword from .rodata (placed right after it); .rodata isn't decodable (all ones)
+    code = la(A0, RAM_START + 16) + [ld(A1, A0, 0), JAL_SELF]
+    return [(".text", words(code), True), (".rodata", bytes([0xff] * 8), False)]
+
+def d1_decodable_gap():
+    # .text, a jump over .rodata (four decodable words: nop), then .text.b; jolt-cpp decodes the four words as code,
+    # a16z doesn't, so every bytecode index after them differs by four
+    gap = words([0x00000013] * 4)
+    part1 = [addi(A0, 0, 1), 0]                                   # then jal x0, +(4 + 16)
+    part1[1] = (((4 + 16) >> 1) & 0x3ff) << 21 | 0x6f              # jal x0, 20 (small positive offset)
+    part2 = [addi(A0, A0, 1), addi(A0, A0, 1), addi(A0, A0, 1), JAL_SELF]
+    return [(".text", words(part1), True), (".rodata", gap, False), (".text.b", words(part2), True)]
+
+def d12_c_slli_x0():
+    # c.slli x0, 1 (0x0006, a HINT) and c.nop (0x0001) between two ADDIs
+    code = struct.pack("<I", addi(A0, 0, 1)) + struct.pack("<HH", 0x0006, 0x0001) + words([addi(A0, A0, 1), JAL_SELF])
+    return [(".text", code, True)]
+
+# rd = x0 on a side-effect-free instruction: jolt-cpp rewrites it to ADDI x0, x0, 0 flagged virtual (the opcode
+# changed, virtual.cpp:174-189); a16z's rewrite isn't flagged (found with d12_c_slli_x0)
+GUESTS["rd0_add"] = [addi(A0, 0, 1), r_type(0x33, 0, 0, A0, A0, 0), addi(A0, A0, 1), JAL_SELF]
+
+SECTION_GUESTS = {"d1_rodata_in_text": d1_rodata_in_text(), "d1_decodable_gap": d1_decodable_gap(),
+                  "d12_c_slli_x0": d12_c_slli_x0()}
+
 def main():
     out = sys.argv[1] if len(sys.argv) > 1 else os.path.dirname(os.path.abspath(__file__))
     for name, code in GUESTS.items():
@@ -146,6 +205,15 @@ def main():
             json.dump(PROGRAM_JSON, f, indent=2)
             f.write("\n")
         print(f"{name}: {len(code)} instructions")
+    for name, pieces in SECTION_GUESTS.items():
+        d = os.path.join(out, name)
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "program.elf"), "wb") as f:
+            f.write(elf_sections(pieces))
+        with open(os.path.join(d, "program.json"), "w") as f:
+            json.dump(PROGRAM_JSON, f, indent=2)
+            f.write("\n")
+        print(f"{name}: sections " + ", ".join(f"{n} ({len(b)} bytes{', text' if t else ''})" for n, b, t in pieces))
 
 if __name__ == "__main__":
     main()

@@ -10,7 +10,8 @@ no-op. The riscv-arch-test case `Zca-c.slli-00` executes it (a16z's jolt-emu pas
 **Reproducer**: meshsim `wip/gold/test/guests/d12_c_slli_x0` (`li a0, 1; .half 0x0006; .half 0x0001; addi a0, a0, 1;
 j .`): jolt-cpp "failed to decode risc instruction at 0x80000004"; a16z traces 5 rows.
 
-**Expected / fix**: `WORKER18/fixes/jolt-cpp-d12-c-slli-x0.patch` (branch `worker18-fix-d12-c-slli`): return
+**Expected / fix**: jolt-asic-planning branch `worker18-fix-d12-c-slli` (`2964c0a`, from `fa59d9a`;
+`WORKER18/fixes/jolt-cpp-d12-c-slli-x0.patch`): return
 `slli x0, x0, shamt`. With it jolt-cpp traces the reproducer (5 rows); workloads and examples unchanged. Its rewritten
 row still differs from a16z's in the virtual flags, a separate difference (D13: jolt-cpp flags every non-ADDI rd = x0
 rewrite virtual, a16z doesn't; reproducer `rd0_add`).

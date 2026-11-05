@@ -49,8 +49,9 @@ gold give the same 4 rows; `d1_decodable_gap` (`.text`, a jump over a `.rodata` 
 executable PT_LOAD): all three give the same rows, but a16z's bytecode puts `.text.b` (0x80000018) at index 3 of 7 and
 jolt-cpp's at 7 of 11, since jolt-cpp decodes the four words as code; a proof using jolt-cpp's indices would fail
 verification against a16z's preprocessing without any error before it. (`row_dump --index-of`, `upstream_rows
---index-of`.) **jolt-cpp fix**: to come (`worker18-fix-d1-sections`), covering the initial memory, `program_end` and
-the code ranges.
+--index-of`.) **jolt-cpp fix**: jolt-asic-planning `worker18-fix-d1-sections` (`7b91e8a`, from `fa59d9a`): the image,
+initial memory, `program_end` and code by sections; both reproducers then match a16z (`d1_decodable_gap`: index 3 of
+7); workloads (small and 2^29) and examples unchanged.
 
 ### The difference as found
 
@@ -80,8 +81,7 @@ the code ranges.
 program relying on legacy raw-ECALL host I/O fails as it would in a16z (a clearer error is the host tracer's job, as in
 D5). **Gold** (`65289d9`): the host I/O detection is gone (`HostIo` removed); ECALL always expands to the trap. Guest
 `legacy_raw_ecall` now traps to mtvec = 0 and stops with "jump target 0x0 is not in the bytecode map" (the end is only a
-JAL with immediate 0, DECISIONS-v1.3 section 25). **jolt-cpp fix** (`WORKER18/fixes/jolt-cpp-d3-no-legacy-ecall.patch`,
-against 88dca85): `resolve_host_io_encoding` always resolves to Standard and an explicit legacy request aborts; tested
+JAL with immediate 0, DECISIONS-v1.3 section 25). **jolt-cpp fix** (jolt-asic-planning `worker18-fix-d3-no-legacy-ecall`, `443e09e`, from `fa59d9a`): `resolve_host_io_encoding` always resolves to Standard and an explicit legacy request aborts; tested
 on PR #2's standalone tracer: the workloads (trace-23, input/22 and both at 2^29) and the examples keep their run hashes;
 `legacy_raw_ecall` is no longer rewritten (it traps and, through jolt-cpp's pc-0 sentinel, ends quietly after 8 rows,
 where a16z and gold fail: the sentinel itself is DECISIONS section 25's subject).
@@ -214,8 +214,7 @@ map" (gold `65289d9`; the same error for a JALR or branch to 0, DECISIONS sectio
 **Ruling** (owner, 2026-11-03): gold decodes c.slli x0 exactly as a16z (`SLLI x0, x0, n`, a no-op). **Gold**
 (`65289d9`): `Zca-c.slli-00` now passes in Act4Runner. Guest `d12_c_slli_x0` (`.half 0x0006`): gold and a16z agree
 except in one field of the rewritten row, the virtual flags, which is D13, a separate jolt-cpp-versus-a16z difference
-(gold follows jolt-cpp there until ruled). **jolt-cpp fix** (`WORKER18/fixes/jolt-cpp-d12-c-slli-x0.patch`, against
-88dca85; `isa/decoder.cpp` is the same at 821e1bd): C.SLLI with rd = x0 returns `slli x0, x0, shamt`; with it jolt-cpp
+(gold follows jolt-cpp there until ruled). **jolt-cpp fix** (jolt-asic-planning `worker18-fix-d12-c-slli`, `2964c0a`, from `fa59d9a`): C.SLLI with rd = x0 returns `slli x0, x0, shamt`; with it jolt-cpp
 loads the guest and gives gold's rows; workloads and examples unchanged.
 
 ### The difference as found

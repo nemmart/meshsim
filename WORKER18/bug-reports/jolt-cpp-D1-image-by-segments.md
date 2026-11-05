@@ -24,4 +24,11 @@ The same split affects the initial memory (jolt-cpp copies segment file bytes, a
 `worker18-upstream`) print each side's index.
 
 **Expected**: the image, initial memory, `program_end` and code ranges as a16z's `decode_elf`.
-**Fix**: branch `worker18-fix-d1-sections` (in preparation).
+**Fix**: jolt-asic-planning branch `worker18-fix-d1-sections` (`7b91e8a`, from `tracer-standalone-main` `fa59d9a`,
+jolt-cpp 88dca85; `WORKER18/fixes/jolt-cpp-d1-sections.patch`): `_load_elf` builds the image by sections (each section
+at or above 0x8000_0000 into RAM, `program_end` the highest section end, the initialized extents from section data,
+the merged Text ranges recorded in `ProgramImage::text_ranges`); the JIT, `from_riscv_code` and the host I/O scan
+decode a code image in which bytes outside the Text ranges are zero, so they get no bytecode entry (as in a16z) while
+guest RAM keeps their contents. Results: `d1_rodata_in_text` loads, rows equal a16z's; `d1_decodable_gap` puts
+`.text.b` at index 3 of 7, a16z's; EVM Zone and Cyclone (small inputs and 2^29) and seven example guests keep their run
+hashes, layout and bytecode size.

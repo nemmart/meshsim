@@ -117,7 +117,7 @@ The jump table is most of the growth on EVM Zone.
      16-byte image. jumpmap's is (program_end − program_start + 7) / 8, which gives 2. With the +1 in image_end, a tiny
      program crosses a power of two.
    - **A second difference:** jumpmap adds 1 to the highest access and a16z doesn't. Neither workload is near a boundary
-     (touched = 5,651,595 and 13,977,089 words, against K = 2²³ = 8,388,608 and 2²⁴ = 16,777,216).
+     (touched = 5,651,595 and 14,009,857 words, against K = 2²³ = 8,388,608 and 2²⁴ = 16,777,216).
    - **jolt-cpp's rule** agrees with a16z's on every case here, though its image words come from program_end, including
      NOBITS (EVM Zone: 251,303 against a16z's 251,211).
    - jumpmap's formula moves into gold, so WORKER18 fixes it there; I follow a16z.

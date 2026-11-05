@@ -1057,6 +1057,10 @@ Decided (O).
   4.19.2's end of trace: the last real row jumps to pc 0 and sets `instr_idx` to 0), every further row is an all-zero NOP, up to
   the segment's 2²² rows, so every window has its rows and a segment past the program's end (frame 2 at pc 0) is traced like any
   other.
+  **The end is detected by `JAL x0, 0`** (owner, 2026-11-04, following a16z's stall; section 17): gold, and later the Tracer,
+  recognise the program's end by that instruction and then emit 4.19.2's encoding unchanged (the last real row's next pc 0 and
+  `instr_idx` 0, then the padding rows). **Only the detection changes:** a JALR or branch to address 0 is not an end but the
+  "jump target not in the map" error, as a16z fails there (replacing "any jump to pc 0 ends the run", jolt-cpp's sentinel).
 - **C&C 3's memory is the home of every controller-fed expansion** (owner, 2026-11-01): the 75 templates of the universal
   tables (15 inlines, 60 CSR keys; 13,821 words, `templates.bin`, 216 KB, `tables/replayer/`), since the Tracer can meet any of
   them; it answers the Tracer's expand flag from there. **It broadcasts the set used in the segment's 4M rows to all the tiles**,

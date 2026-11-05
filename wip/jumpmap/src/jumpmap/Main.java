@@ -30,7 +30,8 @@ import java.util.TreeMap;
 /**
  * The host side of the Tracer's bring-up (WORKER26): one jump-target table per proof (DECISIONS-v1.3 section 18, as
  * revised 332a518: the static analysis plus the run's own targets, merged on the host, sent whole in frame 6 with its
- * constants), each segment's start image, word 66's values, the acceptance and the measurements.
+ * constants), the initial image and each segment's pages written (B1's acceptance on one memory, DECISIONS-v1.3), word
+ * 66's values, the acceptance and the measurements.
  *
  * <pre>
  *   java -cp gold/build:jumpmap/build jumpmap.Main &lt;program dir&gt; &lt;input dir&gt; &lt;segment file&gt; &lt;out dir&gt;
@@ -38,8 +39,9 @@ import java.util.TreeMap;
  * </pre>
  *
  * The segment file is gold's (`gold.Main segments`) for the same program, input and cuts. Writes into &lt;out dir&gt;:
- * proof.json, frame6.bin, map.lines, seg/NNN.pages and seg/NNN.json (with --images=write), segments.csv,
- * run_only.csv, report.json. Exits 1 if any check fails.
+ * proof.json, frame6.bin, map.lines, initial.pages and seg/NNN.{pages,json} (with --images=write, the default),
+ * segments.csv, run_only.csv, report.json (README.md). --images=check checks the memory without writing the image files;
+ * none skips it. Exits 1 if any check fails.
  */
 public final class Main {
   public static void main(String[] args) throws Exception {

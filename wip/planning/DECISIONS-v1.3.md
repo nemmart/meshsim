@@ -569,7 +569,7 @@ a really easy format to work with, from multiple languages" (O).
 | 3 | advice log | the segment's advice words, u64 each, in row order (section 13) |
 | 4 | updates, raw | the segment's update words, u64 each |
 | 5 | updates, LRU-compressed | a u32 count of the 64-bit words encoded, then the codes (below) |
-| 6 | jump-target supplement | section 18: the run's jump targets the program's static table lacks, as (key u32, base `instr_idx` u32) pairs, the key *o* = pc − `lowest_address` (spec item 146) | a u32 count, then the pairs; part of the program's load, with the initial image (*replaces* the old code map's start address and (base, mask) pairs per 64 B block, section 18) |
+| 6 | jump-target supplement | section 18: the run's jump targets the program's static table lacks, as (key u32, base `instr_idx` u32) pairs, the key *o* = pc − `lowest_address` (spec item 146) | the pairs (exact encoding the host tools', WORKER18 and WORKER16); part of the program's load, with the initial image (*replaces* the old code map's start address and (base, mask) pairs per 64 B block, section 18) |
 
 - **Frame 7, the proof parameters** (owner, 2026-11-05, on WORKER21's proposal; spec item 155): log₂ K, `lowest_address` and
   a16z's `MemoryLayout` fields, all computed on the host as a16z does; **sent once, first, before frame 1.** C&C 3 fills word

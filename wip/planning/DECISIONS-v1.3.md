@@ -941,6 +941,15 @@ memory system's centre, not the Tracer's. The Tracer's local 16 KB caches absorb
     TLB; but one 128 B index line covers 32 pages (128 KB), so a segment's whole index stays hot in a handful of lines, and behind
     the 16 KB local caches misses are rare (at 1 per 100 rows the walk adds about 0.12 cycles per row, against the target of
     4). B1 reports the walk's share; a TLB comes back only if the numbers ask for one.
+  - **The shared cache's write-back policy** (owner, 2026-11-05; WORKER22's Q12; the model's, the memory system being a black
+    box): **the next victim in every set is kept free or clean.** When a set's least-recently-used line is dirty, it is evicted at
+    once, in the background, into the write buffer (its way left empty); a clean LRU line stays, hittable, and is dropped at no
+    cost when a fill needs its way. So **a fill never waits for a write-back**, and the cache keeps all 8 ways while its LRU lines
+    are clean. **The write buffer:** 4 lines, draining to LPDDR at one line per 80 cycles (parameters). **A read that misses the
+    cache waits until the buffer is empty**, so the buffer is never searched (a dirty line that has left the cache but not yet
+    reached LPDDR can't be read stale). The model reports early evictions, write-backs and read waits per segment; if the waits
+    matter (Cyclone's heaviest segment writes about 1 MB, twice the cache), a 4-entry address compare in the buffer is the
+    cheap fix.
   - (c) ~~an instruction line bringing its code map words~~ moot: the code map is gone (section 18).
   - (d) sizes to confirm by measurement: the gold emulator can replay both 2²⁹ workloads' address streams through these caches
     and the shared one, the walk's index reads included, and report hit rates (WORKER18, after ACT4).

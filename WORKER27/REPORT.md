@@ -1,5 +1,8 @@
 # WORKER27 report: the input pipeline
 
+**Status (2026-11-05): done.** Every input of both workloads at both sizes rebuilt from the pins; at 2²⁹ identical to
+the runner's copies (Quest 111, 112).
+
 **One documented pipeline that rebuilds every input of meshsim's acceptance from pinned sources on a fresh machine:**
 `wip/inputs/` on branch **`inputs-pipeline`** (README there, written for Tony). Findings, and the note for WORKER22:
 `WORKER27/NOTES.md`.
@@ -28,9 +31,14 @@ accept generators now point at them.
 |---|---|---|---|---|
 | evm-zone-23 | local, 1 CPU | 3 min (once) | 22 s, 0.7 GB | first build recorded; a second build and a kit build (libelf fallback) equal it |
 | cyclone-22 | local | | 15 s, 0.35 GB | the same |
-| evm-zone-29 | Quest 111 | | | *pending* |
-| cyclone-29 | Quest 112 | | | *pending* |
+| **evm-zone-29** | **Quest 111** | 1 min | 561 s, 46 GB | **PASS: identical to the runner's copies.** Deliveries' manifest `7142e894…` = 103's (90,112 files checked), selected `7d878903…`, the tables; v1.26.1 `5bffa524…` = 105's (106's in the other key order), 90,112 files; 263 of 109's files byte for byte, `proof.json` and `segments.seg.json` equal but for paths. Deleted after |
+| **cyclone-29** | **Quest 112** | 1 min | 495 s | **PASS, the same:** `f8a0622e…` = 104's, selected `bb95a88f…`, v1.26.1 `2d5e368e…` = 107's (105's in the other order), 263 of 109's files. Deleted after |
 | gold at 2²⁹, both workloads | local | | 30 s each | v1.2 files equal 109's (`208520ec…`, `f45f71b6…`); v1.3 files equal WORKER18's (`3cd32881…`, `e932baaf…`) |
+
+**So the pin holds:** jolt-asic-planning fa59d9a (jolt-cpp 88dca85) gives exactly the files the acceptance used, which
+were written at 8d546e3 (821e1bd); the fallback wasn't needed. The 2²⁹ manifests in `wip/inputs/manifest/` are 111's and
+112's, with the four tables added (`record.sh` overflowed its argument list on the 57k-file directory; fixed after the
+tasks, the tables' checksums taken from v1.26.1's, which `compare_runner.sh` had found equal to the runner's).
 
 ## 3. The changes outside wip/inputs
 

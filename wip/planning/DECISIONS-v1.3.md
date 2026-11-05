@@ -1163,7 +1163,10 @@ Decided (O).
   4.19.2's end of trace: the last real row jumps to pc 0 and sets `instr_idx` to 0), every further row is an all-zero NOP, up to
   the segment's 2²² rows, so every window has its rows and a segment past the program's end (frame 2 at pc 0) is traced like any
   other.
-  **The end is detected by `JAL x0, 0`** (owner, 2026-11-04, following a16z's stall; section 17): gold, and later the Tracer,
+  **The end is detected by any JAL with immediate 0, whatever its rd** (owner, 2026-11-05, WORKER21's Q5, refining 11-04's
+  `JAL x0, 0`): the templates mark every such JAL word (jolt-cpp's `imm0_pc0`), and a16z treats each as the pc stalling. So
+  `JAL x0, 0`, `C.J 0` (decompressed to it), **EBREAK** (its expansion holds `JAL v40, 0`, so EBREAK ends the program), and
+  `JAL ra, 0` (which writes `ra` and ends) all end it; the host rejects none of them. Otherwise as 11-04: gold, and later the Tracer,
   recognise the program's end by that instruction and then emit 4.19.2's encoding unchanged (the last real row's next pc 0 and
   `instr_idx` 0, then the padding rows). **Only the detection changes:** a JALR or branch to address 0 is not an end but the
   "jump target not in the map" error, as a16z fails there (replacing "any jump to pc 0 ends the run", jolt-cpp's sentinel).

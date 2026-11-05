@@ -760,6 +760,24 @@ final class ReplayerUnitTests {
             T.ub(() -> { for (int k = 0; k < 3; k++) d.step(); }, "a RUN_CONFIG write while a pass runs", "replayer", "RUN_CONFIG write while a pass runs");
         }
 
+        T.group("v1.26.1: RUN_CONFIG [28:26], the Tracer's compression enables, ignored");
+        {
+            ReplayDriver base = runWindow(programWindow(true, true, true, true), 25);
+            for (int comp = 1; comp < 8; comp++) {
+                ReplayWindow w = programWindow(true, true, true, true);
+                ReplayDriver d = new ReplayDriver(w); w.rows = 25;
+                d.runConfig = w.runConfig() | comp << 26 | (comp == 7 ? 7 << 29 : 0);
+                d.load(); d.pass(200_000);
+                boolean same = d.rows.size() == base.rows.size() && java.util.stream.IntStream.range(0, d.rows.size()).allMatch(k -> Arrays.equals(d.rows.get(k), base.rows.get(k)));
+                T.check(same && d.r.clean() && d.r.errors(d.t) == 0 && d.r.passEndAt - d.r.passStartAt == base.r.passEndAt - base.r.passStartAt,
+                        "[28:26] = " + comp + (comp == 7 ? " and [31:29] = 7" : "") + ": the same rows and cycles, no error, nothing flagged " + d.r.errorReport());
+                T.eq(w.runConfig() | comp << 26, (int) d.r.word(d.t, Replayer.W_RUN_CONFIG), "  reads back with [28:26]" + (comp == 7 ? ", [31:29] read 0" : ""));
+            }
+            ReplayWindow raw = programWindow(false, false, false, true);
+            ReplayDriver dr = new ReplayDriver(raw); raw.rows = 25; dr.runConfig = raw.runConfig() | Replayer.RC_TRACER_COMP; dr.load(); dr.pass(200_000);
+            T.check(dr.r.clean() && dr.rows.size() == 25, "raw streams with every enable set: still decoded raw (the stream word decides) " + dr.r.errorReport());
+        }
+
         T.group("v1.26.1: the flags from RUN_CONFIG, not the record");
         {
             // the record's [115] and [116] set, RUN_CONFIG's flags off: the rows are the flags-off rows (reserved, ignored)

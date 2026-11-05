@@ -6,7 +6,9 @@ section 3, items 13-17 (cited D26-*n*).
 ## The layouts
 
 **`RUN_CONFIG`, window word 32 (offset 0xA80 in peripheral 1's window), R/W, both units** (D26-13): [23:0] rows to run,
-[24] use the store log, [25] output `rd_prev`, [31:26] reserved. **Resets to 0, and is sticky:** it holds the last value written across passes, untouched by `PULSE_RUN`, the
+[24] use the store log, [25] output `rd_prev`, **[28:26] the Tracer's per-stream compression enables** (code, read log,
+write log; v1.3; owner, 2026-11-05), held and read back but **ignored by the replayer, not flagged**, [31:29] reserved
+(read 0, stores ignored: WORKER25's choice, with holding [28:26], so one register block serves both units). **Resets to 0, and is sticky:** it holds the last value written across passes, untouched by `PULSE_RUN`, the
 state write and done (owner, 2026-11-05). Written while
 stopped, used by the next `PULSE_RUN`; a write while running is UB (meshsim flags it). The Tracer ignores [24] and [25].
 

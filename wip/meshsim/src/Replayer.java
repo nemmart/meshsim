@@ -81,6 +81,9 @@ final class Replayer implements Peripheral {
      *  store log, [25] output rd_prev, [31:26] reserved. 0 at the reset and sticky (owner, 2026-11-05). The state word's
      *  [116:112] are reserved: written 0 and ignored, not checked (owner, 2026-11-05); v1.26 had the flags at [115], [116]. */
     static final int RC_ROWS = 0xFFFFFF, RC_STORE_LOG = 1 << 24, RC_RD_PREV = 1 << 25;
+    /** [28:26]: the Tracer's per-stream compression enables (code, read log, write log; v1.3; owner, 2026-11-05): held and
+     *  read back, ignored by the replayer (never flagged). [31:29] reserved: read 0, stores ignored (WORKER25). */
+    static final int RC_TRACER_COMP = 7 << 26, RC_DEFINED = 0x1FFFFFFF;
     /** Window words (4.19.9, 8.11; v1.26.1, item 14: the same on the Tracer). */
     static final int W_RUN_CONFIG = 32, W_ROWS_RUN = 33, W_EXP_OFFSET = 34, W_EXP_OPCODE = 35;
     static int runConfig(int rows, boolean storeLog, boolean rdPrev) {
@@ -295,7 +298,7 @@ final class Replayer implements Peripheral {
                 case IN_RUN -> doRun(in.t());
                 case IN_CONFIG -> {
                     if (running) throw new UndefinedBehavior(in.t(), me, "replayer", "a RUN_CONFIG write while a pass runs (4.19.9; DECISIONS-v1.26 item 13)");
-                    runConfig = in.a(); configWrites++;
+                    runConfig = in.a() & RC_DEFINED; configWrites++;   // [28:26] held for the Tracer's sake, never read
                 }
                 default -> throw new IllegalStateException();
             }

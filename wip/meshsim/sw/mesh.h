@@ -64,7 +64,7 @@ typedef struct { PERIPHERAL_STD_MEMBERS; uint32_t _defined[96]; } PeripheralStd;
 /* the replayer, peripheral type 4: words 32-35 one field each, the same as the Tracer's (v1.26.1) */
 typedef struct {
     PERIPHERAL_STD_MEMBERS;
-    MESH_RW RUN_CONFIG;       /* 32: [23:0] rows to run, [24] use the store log, [25] output rd_prev; sticky, 0 at reset */
+    MESH_RW RUN_CONFIG;       /* 32: [23:0] rows, [24] store log, [25] rd_prev, [28:26] Tracer's (ignored); sticky, 0 at reset */
     MESH_RO ROWS_RUN;         /* 33: rows of this pass completed, 24 bits */
     MESH_RO EXPANSION_OFFSET; /* 34: the row within the current expansion where the next row starts */
     MESH_RO EXPANSION_OPCODE; /* 35: the instruction awaiting a controller-fed expansion */

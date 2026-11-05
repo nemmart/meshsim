@@ -16,7 +16,8 @@ guide, renamed and extended).
 ## The changes in brief
 
 1. **`RUN_CONFIG`, window word 32, R/W, on both units** (D26-13): [23:0] the rows to run, [24] use the store log, [25]
-   output `rd_prev`, [31:26] reserved. The replayer runs exactly that many rows and raises done, so a pass can be shorter
+   output `rd_prev`, [28:26] the Tracer's per-stream compression enables (held, ignored by the replayer; O), [31:29]
+   reserved. The replayer runs exactly that many rows and raises done, so a pass can be shorter
    than a window (a short trace, its record sized to it); it was always 65,536. The Tracer runs the count, as `RUN_CYCLES`
    did, and ignores the flags. Written while stopped, used by the next `PULSE_RUN`; a write while running is UB.
    **0 at reset and sticky** (O): it holds the last value written across passes. **A count of 0 runs nothing** (O): `STATUS`
@@ -39,16 +40,16 @@ guide, renamed and extended).
 | title, companion material | v1.26.1; `CHANGES-v1.26.1.md` and the guide `CHANGES-v1.25-to-v1.26.1.md` listed | D26 s3 |
 | front matter | "v1.26.1 in brief" added before v1.26's; v1.26's notes the flags' move | D26-13 to D26-17 |
 | 4.17.2 run | the replayer's run is a pass of the rows `RUN_CONFIG` names | D26-13 |
-| 4.17.4 the standard window | **words 32–35 of the running peripherals**: the same four on the replayer and the Tracer; `RUN_CONFIG`'s rules (while stopped, sticky, 0 at reset) | D26-13, D26-14; O |
+| 4.17.4 the standard window | **words 32–35 of the running peripherals**: the same four on the replayer and the Tracer; `RUN_CONFIG`'s rules (while stopped, sticky, 0 at reset); its bits, each unit's and the other's ignored ([28:26] the Tracer's compression enables) | D26-13, D26-14; O |
 | 4.19.1 overview | a pass runs `RUN_CONFIG` [23:0] rows, typically 65,536; the interfaces list `RUN_CONFIG` and words 33–35 | D26-13, D26-14 |
 | 4.19.2 the run log and the checkpoint | **the state word:** [116:115] reserved (written 0, ignored, not checked); it describes only where the program is. **The stream word:** the new contiguous table, with the advice field and which fields the replayer uses; v1.26's layout noted. **The record's table:** word 1's advice field ignored. **"What the record is"**, item 17's statement and table. **Use the store log** and **output `rd_prev`** are `RUN_CONFIG` [24] and [25], chosen per pass by the controller. **"Nothing in the record changes per pass"** replaces "only the flags change per pass"; the working state's paragraph: the checks read the sizes from part 0 and the flags from `RUN_CONFIG` | D26-15, D26-16, D26-17; O |
-| 4.19.9 the events, the words and the loop | the window table: words 32–35; a new **`RUN_CONFIG`** paragraph (the row count, short passes and [6], the count of 0, the flags, written while stopped, sticky, 0 at reset, the Tracer's use); `ROWS_RUN` in 24 bits, rows left = the count − rows run; the state word has no flags; the loop writes `RUN_CONFIG` once and loads words 0–65 verbatim | D26-13, D26-14, D26-15; O |
+| 4.19.9 the events, the words and the loop | the window table: words 32–35; a new **`RUN_CONFIG`** paragraph (the row count, short passes and [6], the count of 0, the flags, [28:26] the Tracer's compression enables (held, ignored), written while stopped, sticky, 0 at reset, the Tracer's use); `ROWS_RUN` in 24 bits, rows left = the count − rows run; the state word has no flags; the loop writes `RUN_CONFIG` once and loads words 0–65 verbatim | D26-13, D26-14, D26-15; O |
 | 4.19.10 the region | the map's state-word row ([116:112] reserved) and stream-word row (the new bits); the load from big SRAM is verbatim; `RUN_CONFIG` follows the ownership rule (a store while running UB) | D26-13, D26-15, D26-16 |
 | 4.19.11 run, done and the errors | `PULSE_RUN` takes the row count and flags from `RUN_CONFIG`; with a count of 0 there is no row; done after `RUN_CONFIG` [23:0] rows, even inside an expansion; [5] and [6] cite `RUN_CONFIG` [24]; [6] whatever the row count, 0 included | D26-13, D26-15; O |
 | 4.19.12 the output row | `rd_prev` is 0 with `RUN_CONFIG` [25] = 0 | D26-15 |
 | 4.19.15 stream decompression | the write log's exemption cites `RUN_CONFIG` [24] | D26-15 |
 | 5 timing summary | a pass is typically 65,536 rows (`RUN_CONFIG`) | D26-13 |
-| 8.11 the replayer's window | words 32 `RUN_CONFIG` (R/W, reset 0), 33 `ROWS_RUN` (24 bits), 34 `EXPANSION_OFFSET`, 35 `EXPANSION_OPCODE`; the Tracer shares them; item 53's modulo count superseded | D26-13, D26-14 |
+| 8.11 the replayer's window | words 32 `RUN_CONFIG` (R/W, reset 0; [28:26] the Tracer's, ignored), 33 `ROWS_RUN` (24 bits), 34 `EXPANSION_OFFSET`, 35 `EXPANSION_OPCODE`; the Tracer shares them; item 53's modulo count superseded | D26-13, D26-14 |
 | 9 invariant 16 | no `RUN_CONFIG` write while a pass runs (UB, meshsim) | D26-13 |
 | 10 parameter summary | the replayer's row: a pass of `RUN_CONFIG` [23:0] rows; words 32–35 shared; the advice field ignored | D26-13, D26-14, D26-16 |
 | 13 open items | a **v1.26.1 status table**: 53 superseded, 108 and 123 changed; no new item (the count of 0, proposed in D26-13, is ruled: O) | D26 s3; O |

@@ -247,7 +247,7 @@ In C: `peripheral(n)->NAME` (`PeripheralStd`), `replayer->NAME`, `cc1->NAME`.
         b.append("""
 
 The replayer (type 4, every mesh tile's peripheral 1): `RUN_CONFIG` (32, R/W: [23:0] rows to run, [24] use the store log,
-[25] output `rd_prev`; sticky, 0 at reset), `ROWS_RUN` (33, 24 bits), `EXPANSION_OFFSET` (34), `EXPANSION_OPCODE` (35),
+[25] output `rd_prev`, [28:26] the Tracer's compression enables, ignored; sticky, 0 at reset), `ROWS_RUN` (33, 24 bits), `EXPANSION_OFFSET` (34), `EXPANSION_OPCODE` (35),
 the same four as the Tracer's (v1.26.1). C&C 1's peripheral (type 1, Ingress/Egress): `ERROR_LINES[3]` (32-34), `READY_LINES[2]` (35-36), `READY_EXPECT[2]` (37-38), `PULSE_GO`
 (39), `WATCHDOG` (40), `LED` (41), and the UART: `UART_TX` (42), `UART_RX` (43), `UART_DIVISOR` (44), `UART_STATUS`
 (45). Spec 4.17, 4.19, 8.11-8.14 give their meanings.

@@ -22,7 +22,7 @@ recorded in `WORKER19/NOTES.md` and `WORKER25/NOTES.md`). A later spec change to
 | 6 | per-stream counters of words taken and values decoded, cleared by the state write, checked against the sizes in part 0 | decompressors | 4.19.15 |
 | 7 | `ERRORS` [3]–[6]; [2] loses "a pop past a stream's length" | error logic | 4.19.11 |
 | 8 | **part 0's state is the working state**: the image is the register file, the state word's pc, `instr_idx` and offset are the live ones; no copy at a run's start, no latches | register file, state registers, run logic | 4.19.2, 4.19.7, 4.19.11 |
-| 9 | **`RUN_CONFIG`, a new R/W window word 32**: [23:0] the rows a pass runs (was: always 65,536), [24] use the store log, [25] output `rd_prev` (new); sticky, 0 at reset; a count of 0 runs nothing and posts run done | the window, run logic, output row | 4.19.9, 4.19.11, 8.11 |
+| 9 | **`RUN_CONFIG`, a new R/W window word 32**: [23:0] the rows a pass runs (was: always 65,536), [24] use the store log, [25] output `rd_prev` (new), [28:26] the Tracer's compression enables (held, no effect); sticky, 0 at reset; a count of 0 runs nothing and posts run done | the window, run logic, output row | 4.19.9, 4.19.11, 8.11 |
 | 10 | **the window's words 32–35** become `RUN_CONFIG`, `ROWS_RUN`, `EXPANSION_OFFSET`, `EXPANSION_OPCODE` (the three status words move up one); **`ROWS_RUN` widens to 24 bits** | the window's read mux, rows-run counter | 4.17.4, 8.11 |
 
 ## 2. By block
@@ -98,13 +98,13 @@ occupancies to see which stream.
 The two log queues shrink by 4 KB each, and the separate 1 KB register image goes (the register file is the image): **about 32 KB
 of replayer memory per tile** (was 41 KB), about 2.0 MB per chip (was 2.6 MB). The working pc, `instr_idx` and offset are the
 state word's own fields, so their separate copies go too. The size counters (six, 99 bits in all per tile), the pass reset and
-the new error bits are a few hundred flops; `RUN_CONFIG` adds 26 flops and `ROWS_RUN` 8 bits.
+the new error bits are a few hundred flops; `RUN_CONFIG` adds 29 flops and `ROWS_RUN` 8 bits.
 
 ### 2.9 The window's words (4.17.4, 4.19.9, 8.11)
 
 | ID | v1.25 | v1.26.1 | why |
 |---|---|---|---|
-| W1 | word 32 `ROWS_RUN` (R) | **word 32 `RUN_CONFIG` (R/W)**: [23:0] rows to run (0 to 16,777,215), [24] use the store log, [25] output `rd_prev`, [31:26] reserved (read 0). **0 at reset; sticky**: only a store changes it (not `PULSE_RUN`, the state write or done). Read by the run logic (U1–U3), the write-log decoder and checks (D4, 2.6) and the output row (O1). A store while running is UB (meshsim; an assertion if you like) | D26-13; O |
+| W1 | word 32 `ROWS_RUN` (R) | **word 32 `RUN_CONFIG` (R/W)**: [23:0] rows to run (0 to 16,777,215), [24] use the store log, [25] output `rd_prev`, **[28:26] the Tracer's per-stream compression enables: store and read them back, wire them to nothing** (no check, no error for a set bit; O), [31:29] reserved (read 0, stores ignored). **0 at reset; sticky**: only a store changes it (not `PULSE_RUN`, the state write or done). Read by the run logic (U1–U3), the write-log decoder and checks (D4, 2.6) and the output row (O1). A store while running is UB (meshsim; an assertion if you like) | D26-13; O |
 | W2 | word 32 `ROWS_RUN`, [15:0], modulo 2¹⁶ | **word 33 `ROWS_RUN`, [23:0]**, [31:24] 0: rows of this pass completed, cleared by `PULSE_RUN`, so it reads the row count after a pass. A diagnostic; no firmware reads it | D26-14 |
 | W3 | word 33 `EXPANSION_OFFSET` | **word 34**, unchanged otherwise | D26-14 |
 | W4 | word 34 `EXPANSION_OPCODE` | **word 35**, unchanged otherwise | D26-14 |

@@ -108,6 +108,24 @@ public final class TracerTest {
         long cycles = g.tr.rowsEndAt - g.tr.runStartAt;
         T.eq(1 + 4L * rows + 240 + 92 + 82 - 1, cycles, "the run: 4 cycles a row, plus the stalls");
 
+        T.group("the same loop with an unaligned lowest_address (word 66's I/O size, 66f399e)");
+        TracerRig u = new TracerRig(); u.lowest = 0x7FFFFFE0L;
+        {
+            Map<Long, long[]> pages = new HashMap<>();
+            TracerRig.poke(pages, CODE - u.lowest, p.bytes());
+            TracerRig.poke(pages, DATA - u.lowest, new byte[48]);
+            Set<Long> owned = new HashSet<>(); owned.add((DATA - u.lowest) / 4096 * 4096); owned.add((DATA + 40 - u.lowest) / 4096 * 4096);
+            u.buildImage(pages, owned); u.buildMap(targets); u.loadTables();
+        }
+        u.loadRecord(CODE, (int) base[0], 0, r, new long[0]);
+        T.eq(0x20, (u.tr.rec[2 * 66 + 1] >>> 8) & 0x7FFFFFFFL, "word 66 [102:72]: the I/O region's size, 0x20 bytes");
+        T.eq(0x7FFFFFE0L, u.tr.lowest(), "lowest_address = 0x8000_0000 - [102:72], exact");
+        Tracer.WindowOut ou = u.window(rows, 100000);
+        T.check(ou != null && !u.tr.stopped(), "no error: " + u.tr.errorLog);
+        T.eq(0, u.reg(1), "x1 counted down");
+        T.check(java.util.Arrays.equals(TracerRig.streamValues(o.rlog, sz[1].values(), 64), TracerRig.streamValues(ou.rlog, ou.sizes[1].values(), 64)), "the same read log");
+        T.check(java.util.Arrays.equals(TracerRig.streamValues(o.wlog, sz[2].values(), 64), TracerRig.streamValues(ou.wlog, ou.sizes[2].values(), 64)), "the same write log");
+
         T.group("the same loop, compressed streams");
         TracerRig g2 = rig(p, targets, null);
         g2.loadRecord(CODE, (int) base[0], 0, r, new long[0]);

@@ -91,19 +91,21 @@ final class Tracer implements Peripheral {
     // the stream word's advice field [124:102]: rec[3] bits [60:38]
     int adviceLeft() { return (int) ((rec[3] >>> 38) & 0x7FFFFF); }
     private void setAdviceLeft(int n) { rec[3] = rec[3] & ~(0x7FFFFFL << 38) | (long) (n & 0x7FFFFF) << 38; }
-    // the files word (4.21.2): memory root [30:0], depth [32:31], map root [63:33], depth [65:64], log2 K [71:66], lowest/4K [123:72]
+    // the files word (4.21.2, 66f399e): memory root [30:0], depth [32:31], map root [63:33], depth [65:64], log2 K [71:66],
+    // the I/O region's size [102:72] (0x8000_0000 - lowest_address, exact in bytes), [127:103] spare
     int memRoot() { return (int) (rec[2 * REC_FILES] & 0x7FFFFFFF); }
     int memDepth() { return (int) (rec[2 * REC_FILES] >>> 31) & 3; }
     int mapRoot() { return (int) (rec[2 * REC_FILES] >>> 33) & 0x7FFFFFFF; }
     int mapDepth() { return (int) (rec[2 * REC_FILES + 1] & 3); }
     int log2K() { return (int) (rec[2 * REC_FILES + 1] >>> 2) & 63; }
-    long lowest() { return (rec[2 * REC_FILES + 1] >>> 8) << 12; }   // [123:72] = hi [59:8], shifted left by 12
+    long lowest() { return 0x80000000L - ((rec[2 * REC_FILES + 1] >>> 8) & 0x7FFFFFFFL); }   // [102:72] = hi [38:8]
     /** The files word for (memory root, depth, map root, depth, log2 K, lowest_address): a tool's helper. */
     static long[] filesWord(int memRoot, int memDepth, int mapRoot, int mapDepth, int log2K, long lowest) {
-        if ((lowest & 0xFFF) != 0) throw new IllegalArgumentException("lowest_address not page-aligned");
+        long io = 0x80000000L - lowest;
+        if (io < 0 || io >= 1L << 31) throw new IllegalArgumentException(String.format("lowest_address 0x%x: the I/O region must be under 2 GiB below 0x8000_0000", lowest));
         long lo = (memRoot & 0x7FFFFFFFL) | (long) (memDepth & 3) << 31 | (mapRoot & 0x7FFFFFFFL) << 33;
-        long hi = (mapDepth & 3) | (long) (log2K & 63) << 2 | (lowest >>> 12) << 8;
-        return new long[] { lo, hi & 0x0FFFFFFFFFFFFFFFL };
+        long hi = (mapDepth & 3) | (long) (log2K & 63) << 2 | io << 8;
+        return new long[] { lo, hi };
     }
 
     // ================================================================ registers (4.21.3)

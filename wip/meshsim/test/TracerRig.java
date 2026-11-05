@@ -165,6 +165,10 @@ final class TracerRig {
     /** The segment's record, word 0 first: the state, the advice count, the registers, the files word, the bitmap 0. */
     void loadRecord(long pc, int instrIdx, int offset, long[] regs, long[] adviceVals) {
         advice = adviceVals; adviceNext = 0;
+        // a new segment: the last segment's expansion is abandoned (the word-0 write empties the queue and sets the
+        // credits to 2); answering those credits with the old template's next chunk, before this segment's first new
+        // expansion, would put stale words ahead of the new ones (found at 2^29, Cyclone segment 16, Quest 110)
+        expWords = null; expNext = 0;
         port.add(new long[] { 0x000, pc, instrIdx & 0xFFFFFFFFL | (long) (offset & 0xFFFF) << 32 });
         port.add(new long[] { 0x010, 0, (long) adviceVals.length << 38 });
         for (int k = 0; k < 64; k++) port.add(new long[] { 0x020 + 16 * k, regs[2 * k], regs[2 * k + 1] });

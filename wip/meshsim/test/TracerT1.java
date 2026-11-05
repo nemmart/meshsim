@@ -37,7 +37,7 @@ public final class TracerT1 {
     public static void main(String[] a) throws Exception {
         Path dl = Path.of(a[0]); String name = a[1];
         Path w26 = null, prog = null, input = null, segFile = null, csv = null; int log2K = 0; long lowest = 0;
-        int s0 = 0, s1 = 127, maxWin = Integer.MAX_VALUE; boolean compress = false, stageA = true, mapSeparate = false, quiet = false;
+        int s0 = 0, s1 = 127, maxWin = Integer.MAX_VALUE; boolean compress = false, stageA = true, mapSeparate = false, quiet = false, diag = false;
         for (int i = 2; i < a.length; i++) {
             switch (a[i]) {
                 case "--w26" -> w26 = Path.of(a[++i]);
@@ -49,6 +49,7 @@ public final class TracerT1 {
                 case "--csv" -> csv = Path.of(a[++i]);
                 case "--max-windows" -> maxWin = Integer.parseInt(a[++i]);
                 case "--quiet" -> quiet = true;
+                case "--diag" -> diag = true;
                 default -> throw new IllegalArgumentException(a[i]);
             }
         }
@@ -140,8 +141,12 @@ public final class TracerT1 {
         Map<String, Object> man = ReplayDelivery.Json.object(Files.readString(dl.resolve(name + ".manifest.json")));
         List<Object> wins = ReplayDelivery.Json.list(ReplayDelivery.Json.object(ReplayDelivery.Json.list(man.get("programs")).get(0)).get("window_entries"));
         Path pd = dl.resolve(name);
+        Map<Integer, Map<String, Object>> byIndex = new java.util.HashMap<>();
+        for (Object x : wins) { Map<String, Object> we = ReplayDelivery.Json.object(x); if (we.containsKey("files")) byIndex.put(((Number) we.get("index")).intValue(), we); }
+        int lastDelivered = wins.isEmpty() ? -1 : ((Number) ReplayDelivery.Json.object(wins.get(wins.size() - 1)).get("index")).intValue();
         ReplayTables tables = g.tables;
 
+        java.util.HashMap<Long, Long> shadow = new java.util.HashMap<>();
         int rc = 65536 | (compress ? Tracer.RC_COMP_CODE | Tracer.RC_COMP_RLOG | Tracer.RC_COMP_WLOG : 0);
         int windowsChecked = 0, failed = 0, windowsSkipped = 0; long rowsChecked = 0;
         for (int s = s0; s <= s1 && s < segs.size(); s++) {
@@ -150,6 +155,10 @@ public final class TracerT1 {
             if (w26Written != null && !new TreeSet<>(w26Written.get(s)).equals(written))
                 throw new IllegalStateException("segment " + s + ": seg/NNN.pages differs from the update list's pages");
             int created = g.fs.setOwnership(img, written);
+            if (System.getProperty("diag.addr") != null) for (String x : System.getProperty("diag.addr").split(",")) {
+                long ad = Long.decode(x), cell = (ad - lowest) / 8;
+                System.out.printf("diag segment %d start: 0x%x = 0x%x (shadow %s)%n", s, ad, g.fs.load64(img, ad - lowest), shadow.containsKey(cell) ? String.format("0x%x", shadow.get(cell)) : "-");
+            }
             g.ms.cold(); if (mapMs != null) mapMs.cold();
             long r0 = g.tr.rows, p0 = g.tr.rowsPad, im0 = g.tr.iMiss, dm0 = g.tr.dMiss, wb0 = g.tr.writebacks, lh0 = g.tr.lruHits, lm0 = g.tr.lruMisses, pr0 = g.tr.probeReads;
             long[] regs = new long[128]; System.arraycopy(sg.state, 3, regs, 0, 128);
@@ -165,8 +174,8 @@ public final class TracerT1 {
                 }
                 segCycles += g.tr.rowsEndAt - g.tr.runStartAt;
                 List<String> bad = new ArrayList<>();
-                if (wi < wins.size() && windowsChecked < maxWin) {
-                    Map<String, Object> we = ReplayDelivery.Json.object(wins.get(wi));
+                if (byIndex.containsKey(wi) && windowsChecked < maxWin) {
+                    Map<String, Object> we = byIndex.get(wi);
                     String base = String.format("window_%05d.", wi);
                     // the start state against state.bin (a v1.25 record: bitmap, state, stream, registers)
                     ByteBuffer st = le(Files.readAllBytes(pd.resolve(base + "state.bin")));
@@ -175,12 +184,17 @@ public final class TracerT1 {
                     List<Object> braw = ReplayDelivery.Json.list(we.get("bits_raw"));
                     int[] vals = { (int) (((Number) braw.get(0)).longValue() / 32), (int) (((Number) braw.get(1)).longValue() / 64), (int) (((Number) braw.get(2)).longValue() / 64) };
                     for (int k = 0; k < 3; k++) if (o.sizes[k].values() != vals[k]) bad.add("stream " + k + ": " + o.sizes[k].values() + " values, delivery " + vals[k]);
-                    if (!compress && bad.isEmpty()) {
+                    if (!compress) {
                         String[] f = { "code.bin", "rlog.bin", "wlog.bin" }; long[][] mine = { o.code, o.rlog, o.wlog }; int[] bits = { 32, 64, 64 };
                         for (int k = 0; k < 3; k++) {
                             long[] ref = TracerRig.streamValues(ReplayDelivery.words(pd.resolve(base + f[k])), vals[k], bits[k]);
-                            long[] my = TracerRig.streamValues(mine[k], vals[k], bits[k]);
-                            for (int v = 0; v < vals[k]; v++) if (ref[v] != my[v]) { bad.add(String.format("%s value %d: Tracer 0x%x, delivery 0x%x", f[k], v, my[v], ref[v])); break; }
+                            int nv = Math.min(vals[k], o.sizes[k].values());
+                            long[] my = TracerRig.streamValues(mine[k], nv, bits[k]);
+                            for (int v = 0; v < nv; v++) if (ref[v] != my[v]) {
+                                StringBuilder ctx = new StringBuilder();
+                                for (int q = Math.max(0, v - 3); q < Math.min(nv, v + 3); q++) ctx.append(String.format(" [%d] 0x%x/0x%x", q, my[q], ref[q]));
+                                bad.add(String.format("%s first difference at value %d (Tracer/delivery):%s", f[k], v, ctx)); break;
+                            }
                         }
                     }
                     if (compress) {
@@ -196,7 +210,7 @@ public final class TracerT1 {
                     }
                     long inl = 0; for (Object x : ReplayDelivery.Json.list(we.get("templates"))) { int n = ((Number) x).intValue(); if (n < 64 && tables.cls[n] == 1) inl |= 1L << n; }
                     if (o.record[2 * Tracer.REC_BITMAP] != inl || o.record[2 * Tracer.REC_BITMAP + 1] != 0) bad.add(String.format("bitmap: Tracer 0x%x, delivery's inlines 0x%x", o.record[2 * Tracer.REC_BITMAP], inl));
-                    if (stageA && bad.isEmpty()) {
+                    if (stageA && (bad.isEmpty() || diag)) {
                         String r = stageA(tables, start, o, pd.resolve(base + "rows.bin"));
                         if (r != null) bad.add("Stage A: " + r);
                     }
@@ -205,11 +219,11 @@ public final class TracerT1 {
                             g.tr.rowsEndAt - g.tr.runStartAt, (g.tr.rowsEndAt - g.tr.runStartAt) / 65536.0, java.util.Arrays.toString(o.sizes));
                     for (String b : bad) System.out.println("    " + b);
                     if (!bad.isEmpty()) failed++;
-                } else if (wi < wins.size()) {
+                } else if (wi <= lastDelivered) {
                     windowsSkipped++;
                 } else if (o.sizes[0].values() != 65536 || o.sizes[1].values() != 0 || o.sizes[2].values() != 0 || o.record[0] != 0) {
                     // past the delivery: must be padding
-                    if (wi >= wins.size()) { System.out.printf("%s window %d: past the delivery but not padding: %s%n", name, wi, java.util.Arrays.toString(o.sizes)); failed++; }
+                    if (wi > lastDelivered) { System.out.printf("%s window %d: past the delivery but not padding: %s%n", name, wi, java.util.Arrays.toString(o.sizes)); failed++; }
                 }
                 start = o.record.clone();
             }
@@ -221,6 +235,11 @@ public final class TracerT1 {
                 if (g.tr.rec[0] != nx[0] || (int) g.tr.rec[1] != (int) nx[1] || ((g.tr.rec[1] >>> 32) & 0xFFFF) != nx[2]) bad.add(String.format("end state: pc 0x%x idx %d off %d, frame 2 0x%x %d %d", g.tr.rec[0], (int) g.tr.rec[1], (g.tr.rec[1] >>> 32) & 0xFFFF, nx[0], nx[1], nx[2]));
                 for (int r = 1; r < 128 && bad.isEmpty(); r++) if (g.tr.rec[4 + r] != nx[3 + r]) bad.add(String.format("end register %d: 0x%x, frame 2 0x%x", r, g.tr.rec[4 + r], nx[3 + r]));
             }
+            // every cell updated so far (segments 0 to s) against the cumulative updates: catches a stray write elsewhere
+            for (long[] u : sg.updates) shadow.put(u[0], u[1]);
+            int strays = 0;
+            for (var e : shadow.entrySet()) { long v = g.fs.load64(img, 8 * e.getKey()); if (v != e.getValue()) { if (strays++ < 3) bad.add(String.format("cumulative: cell 0x%x is 0x%x, the updates say 0x%x", lowest + 8 * e.getKey(), v, e.getValue())); } }
+            if (strays > 0) bad.add(strays + " cells differ from the cumulative updates");
             long cells = 0;
             for (long[] u : sg.updates) { long v = g.fs.load64(img, 8 * u[0]); cells++; if (v != u[1]) { bad.add(String.format("memory cell 0x%x: 0x%x, the update list 0x%x", lowest + 8 * u[0], v, u[1])); break; } }
             System.out.printf("%s segment %d: %s  %d cycles (%.3f/row, %.2f ms at 1 GHz)  pages written %d (%d created)  dirty lines %d  cells checked %d  stalls %s%n  %s%n",
@@ -243,7 +262,7 @@ public final class TracerT1 {
         }
         if (out != null) out.close();
         System.out.printf("%s: %d windows checked (%d rows), %d failed, %.1f s%n", name, windowsChecked, rowsChecked, failed, (System.nanoTime() - t0) / 1e9);
-        if (windowsChecked + windowsSkipped < Math.min(wins.size(), 64 * (s1 - s0 + 1)) && maxWin == Integer.MAX_VALUE) { System.out.println("not every delivered window was checked"); failed++; }
+        if (byIndex.size() == lastDelivered + 1 && windowsChecked + windowsSkipped < Math.min(byIndex.size(), 64 * (s1 - s0 + 1)) && maxWin == Integer.MAX_VALUE) { System.out.println("not every delivered window was checked"); failed++; }
         System.exit(failed == 0 ? 0 : 1);
     }
 

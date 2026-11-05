@@ -44,6 +44,7 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
 |---|---|---|---|---|
 | WORKER16 | T2, W2, W3 done; **the pin move to jolt-cpp 88dca85 done** (`WORKER16/PIN-REPORT.md`: rows, segment files and `capture_writes` identical; merged into `tracer-standalone-main` at fa59d9a); the ported segment tools on `worker16-w3-88dca85` (f2ae129), `worker16-w3` kept at ca30b5e | - | - | next: the segment tools to v1.26.1's layouts, once WORKER25's release is merged |
 | WORKER18 | the Java emulator `wip/gold/` (DECISIONS-v1.3 section 17): gold earned, stage 3 done, **W5 done** (e9f0444: ACT4 through test-equipment `Act4Runner`, 123 of 125; inline vectors 5,677 of 5,677; strict loading only) | **sent 2026-11-04: the rulings** (D1, D3, D12 follow a16z, with jolt-cpp fixes and bug reports on its own branches; D5 rejected by the host tracer), the demo guests, the U1-U3 write-ups; **plan approved 2026-11-04** (7189216 checked: the files are identical; the end detected by `JAL x0, 0`; 0xC0001073 rejected at load; fix branches `worker18-fix-d1-sections`, `-d3-no-legacy-ecall`, `-d12-c-slli`; bug reports in `WORKER18/bug-reports/`) | its report | parked in `WORKER18/NEXT.md`: `check.sh` at 88dca85, then section 21(d) |
+| WORKER22 | **B1, the Tracer's bring-up in meshsim**, built from 4.21, and 4.21's review (`SPEC-QUESTIONS.md`) | **started 2026-11-05**, branch `v1.3-tracer` | its plan | merge; then F1 (WORKER23) |
 | WORKER24 | a block diagram of the Tracer (`WORKER24/PROMPT.md`, owner, 2026-11-04): review sections 1-25, then `fig9_1_tracer` in `wip/diagrams/` in the v1.0 figure style | **started 2026-11-04** | its review and plan (a sketch welcome) | - |
 
 ## What's left, by milestone
@@ -87,7 +88,7 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
   earlier version of this file called D12 "D5 (C.SLLI x0's uncompression)": a mislabel.)
 - **New work, prompts to write** (owner, 2026-11-04; work items renamed so they can't be confused with worker numbers):
   **SP1**, the Tracer's spec chapter (WORKER21), in parallel with **B1**, the Tracer's bring-up in meshsim (WORKER22), the way
-  WORKER19 and WORKER20 worked for v1.26; **F1**, the file system on C&C 2 with a shell on C&C 1 (WORKER23). In the v1.3 work list. **SP1 done** (WORKER21; 4.21 merged into `main` 2026-11-05); B1 starts after SP1's chapter (owner, 2026-11-05); its draft to update and commit then.
+  WORKER19 and WORKER20 worked for v1.26; **F1**, the file system on C&C 2 with a shell on C&C 1 (WORKER23). In the v1.3 work list. **SP1 done** (WORKER21; 4.21 merged into `main` 2026-11-05); B1 started 2026-11-05 (WORKER22).
 
 ## Open items for the owner and Tony
 

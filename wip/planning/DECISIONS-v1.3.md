@@ -693,6 +693,12 @@ start comes in frame 2. **Only jumps need the map.**
   the pc as an offset into the code (u32) and the base (u32). The host chooses *k* and *p*₁ so every key sits in its home line
   (measured on both workloads with every instruction start at load 0.26-0.29: the fullest line held 9 of 16, so a smaller table of
   actual targets has even more room).
+- **The hash's constants are configurable: two Tracer registers** (owner, 2026-11-04): **`HASH_MUL`** = *p*₁ (32 bits; the key
+  is the pc's 32-bit offset into the code) and **`HASH_STEP`**: [23:0] *p*₃, a **24-bit prime** (odd, so the probe visits every
+  line mod 2*ᵏ*), and [28:24] *k*, the table's log₂ lines; [31:29] reserved. The host chooses them per program (above); C&C 3
+  writes them once per proof, and they are sticky like `RUN_CONFIG`. They are context by section 24's resume test, but word 66
+  has no room (4 bits spare), so registers are the pragmatic home, and the replayer's record is untouched. (A header line in the
+  map file was the alternative: it costs the Tracer a read at load.) Word numbers: SP1's.
 - **Where the Tracer keeps it: open** (integrator's proposal: a dedicated SRAM next to the Tracer, 128 KB, so a lookup is a few
   cycles and never touches the shared cache or LPDDR; the 64-entry LRU then becomes optional).
 - **What it replaces** (all superseded, recorded here for the history): a code map of one (base, mask) pair per 64 B of code,
@@ -1041,7 +1047,8 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
   caches only fill during execution, which begins at `PULSE_RUN`. **On the Tracer, word 0 is written only at a segment's start:**
   a rewrite mid-segment would flush the read queue and the caches and lose the segment's progress, and word 0 holds no
   per-pass flags from v1.26.1 (they are in `RUN_CONFIG`, which the Tracer ignores), so **a mid-segment rewrite is UB** (section 8a). Everything else is a register write: the state
-  through part 0, and `RUN_CONFIG`.
+  through part 0, `RUN_CONFIG`, and the hash's two constants, `HASH_MUL` and `HASH_STEP` (section 18; written once per proof,
+  sticky).
 - **The read queue's end** (owner, 2026-11-01): **the advice log is per segment**, all 4M rows, not per run of 65,536, and
   **its size is part of the startup state** (section 23's stream word), so the Tracer knows it from the start. It counts the words it pops:
   **a pop beyond the size sets an `ERRORS` bit (advice underflow)** at once, instead of the Tracer waiting forever for the

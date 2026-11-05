@@ -1,5 +1,8 @@
 package jumpmap;
 
+import gold.HashTable;
+import gold.StaticTargets;
+
 import gold.Elf;
 import gold.Layout;
 import gold.Machine;

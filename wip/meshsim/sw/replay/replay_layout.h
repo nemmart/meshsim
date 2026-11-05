@@ -42,10 +42,21 @@
 #define RL_H_WLOG_N          12
 #define RL_H_PASSES          13  /* passes to run, each from the same checkpoint */
 #define RL_H_RUN_CONFIG      14  /* v1.26.1: the passes' RUN_CONFIG, written once (it is sticky): rows [23:0], [24] use the store log, [25] output rd_prev */
-#define RL_H_WAIT            15  /* v1.3 (version 5): non-zero, wait for a command before reading the record (its window is
-                                    delivered by C&C 3's Tracer, B1); a stream's entries word RL_N_FROM_RECORD takes the record's
-                                    stream word (4.19.2: its 128-bit words) */
+#define RL_H_WAIT            15  /* v1.3 (version 5): RL_WAIT_HANDSHAKE, the window is delivered by C&C 3's Tracer (B1): Q15's
+                                    handshake below before reading the record; a stream's entries word RL_N_FROM_RECORD takes the
+                                    record's stream word (4.19.2: its 128-bit words) */
 #define RL_N_FROM_RECORD     0xFFFFFFFFu
+/* Q15 (owner, 2026-11-05; DECISIONS-v1.3 section 24, 058a926): every delivery into a tile's big SRAM is counted, armed
+ * before it arrives. At boot the tile arms its state counter (66 words, sent at window n - 1) and its totals counter (2
+ * words, at window n) and sends C&C 3 a count-only "booted"; C&C 3 sends tile n its totals first; the tile reads the
+ * stream sizes from word 1, arms its stream counter and sends a count-only "armed"; only then come the streams. */
+#define RL_WAIT_HANDSHAKE    2u
+#define RL_CTR_STATE         1u   /* the tile's counters for the window's delivery */
+#define RL_CTR_TOTALS        5u
+#define RL_CTR_STREAMS       6u
+#define TL_CTR_BOOTED        5u   /* C&C 3's: a "booted" from every tile used */
+#define TL_CTR_ARMED         6u   /* C&C 3's: the window's tile is armed for its streams */
+#define TL_ENDPOINT          66u  /* C&C 3 */
 #define RL_H_WORDS           16
 
 /* results: the program writes them to data memory, uint32_t rp_results[16] (the harness finds it in the .sym file) */

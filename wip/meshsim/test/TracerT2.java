@@ -19,8 +19,9 @@ import java.util.TreeSet;
  * <li>The harness stands in for C&C 1 and C&C 2 where they are out of scope: it lands C&C 3's tracer_layout.h (the
  *     tables, the templates, the segment's record from frame 2 with frame 3's count, word 66, the advice, the expected end
  *     state) and every tile's replay region (the tables, the templates and the header: C&C 3's template broadcast is out
- *     of scope) before the boot; C&C 1's firmware boots C&C 2 (cc23), C&C 3 (tracer_ctl) and the tiles (replay_ctl, which
- *     waits for a command); when C&C 3 exits, the harness has C&C 1 send the tiles one command and they replay.</li>
+ *     of scope) before the boot; C&C 1's firmware boots C&C 2 (cc23), C&C 3 (tracer_ctl) and the tiles (replay_ctl);
+ *     every delivery into a tile is counted by Q15's handshake (058a926), and each tile replays as soon as its window has
+ *     landed, while C&C 3 traces the later ones.</li>
  * <li>Per tile: the delivered record's start state against the delivery's state.bin, its streams (raw: value for value),
  *     then the replayed rows against rows.bin and every stream consumed exactly.</li>
  * </ul>
@@ -100,7 +101,7 @@ public final class TracerT2 {
 
     static Result chip(TracerRig g, TracerT1.W26 in, TracerT1.Seg sg, TracerT1.Seg next, long[] regs, int s, int windows, int rc, Path pd, Map<String, Object> man) throws Exception {
         Result res = new Result();
-        Config k = Mach.coresCfg(-1); k.cc3Tracer = true; k.tracerDeliveriesUncounted = true;   // Q15's interim
+        Config k = Mach.coresCfg(-1); k.cc3Tracer = true;          // Q15 (058a926): every delivery counted, by the handshake
         Mach m = new Mach(k);
         Tracer tr = m.c.cores.tracer;
         MemorySystem ms = new MemorySystem(g.fs); ms.mapRootForStats = g.map.root();
@@ -142,7 +143,7 @@ public final class TracerT2 {
             int[] th = new int[16];
             th[0] = 0x594C5052; th[1] = 5; th[2] = StageB.TABLES; th[3] = StageB.INDEX; th[4] = tb.indexBytes.length / 16; th[5] = StageB.TEMPLATES; th[6] = StageB.RECORD;
             th[7] = StageB.CODE; th[8] = -1; th[9] = StageB.RLOG; th[10] = -1; th[11] = StageB.WLOG; th[12] = -1; th[13] = t < windows ? 1 : 0;
-            th[14] = Replayer.runConfig(65536, true, true); th[15] = 1;
+            th[14] = Replayer.runConfig(65536, true, true); th[15] = t < windows ? 2 : 0;   // RL_WAIT_HANDSHAKE (Q15)
             for (int i = 0; i < 16; i++) p.sram.poke(StageB.HDR + i, th[i]);
             List<long[]> l = new ArrayList<>(); rows.add(l);
             ((Replayer) p.slot.p[1]).rowListener = l::add;
@@ -153,8 +154,10 @@ public final class TracerT2 {
         m.bootCores(tile, cc3);
         Tile u3 = m.c.cores.unit(2);
         long cap = (long) windows * 65536 * 12 + 5_000_000;
-        m.run(() -> u3.core.halt != Controller.RUN && u3.core.firstImageAt > 0 || tr.stopped(), cap);
-        long cc3End = m.c.cycle;
+        // the tiles replay as their windows land (Q15's counters), while C&C 3 traces the later ones
+        m.run(() -> { if (tr.stopped()) return true; if (u3.core.halt == Controller.RUN || u3.core.firstImageAt <= 0) return false;
+                      for (int t = 0; t < 64; t++) if (m.c.tiles[t].core.halt == Controller.RUN) return false; return true; }, cap);
+        long cc3End = u3.core.halt == Controller.HALT_EXIT ? u3.ctl.simExitAt : m.c.cycle;
         int R = cc3.sym("tr_results");
         int status = u3.core.peekLocal(R), wins = u3.core.peekLocal(R + 4), transfers = u3.core.peekLocal(R + 16), terr = u3.core.peekLocal(R + 24),
             left = u3.core.peekLocal(R + 28), diff = u3.core.peekLocal(R + 32);
@@ -187,10 +190,6 @@ public final class TracerT2 {
             }
         }
         if (!res.ok()) return res;
-        long cmdAt = m.c.cycle;
-        m.run(m::coresBooted, 1_000_000);
-        m.phase(1 << 24);
-        m.run(() -> { for (int t = 0; t < 64; t++) if (m.c.tiles[t].core.halt == Controller.RUN) return false; return true; }, 4_000_000);
         for (int t = 0; t < windows; t++) {
             int wi = 64 * s + t;
             Tile p = m.c.tiles[t]; Replayer rp = (Replayer) p.slot.p[1];

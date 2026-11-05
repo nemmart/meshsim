@@ -35,7 +35,6 @@ final class TrafficDirector implements Component {
 
     final int me;
     final Config cfg;
-    long uncountedTracer;                          // B1's interim exemption (Q15): C&C 3's deliveries let through uncounted
     final int K;
     WordSource in;                                   // eject selector -> director
     WordSink toGather, toWriteEngine;                // input FIFOs (overflow-checked)
@@ -154,9 +153,6 @@ final class TrafficDirector implements Component {
     private void checkUncounted(long d, long h, long hi, int mode, int src, int a) {
         if (mode != LinkWord.M_WRITE) { violate("uncounted mode-" + mode + " packet: modes 1-3 are always counted (3.1, invariant 22): " + LinkWord.describe(d, h, hi)); return; }
         int r = LinkWord.region(a);
-        // B1's interim (WORKER22, SPEC-QUESTIONS Q15, open): how C&C 3's deliveries into a tile's big SRAM are counted is
-        // undecided, so T2 exempts exactly those (the Tracer's DMA, src 74, and C&C 3's own packets) under a flag, off by default
-        if (cfg.tracerDeliveriesUncounted && r == LinkWord.R_SRAM && (src == LinkWord.DMA1 + 2 || src == LinkWord.CC3)) { uncountedTracer++; return; }
         if (r != LinkWord.R_DMEM && r != LinkWord.R_PMEM) violate("uncounted write to region 0x" + Integer.toHexString(r) + ": big-SRAM data and peripheral writes are always counted (3.1, 6.2; invariant 22): " + LinkWord.describe(d, h, hi));
         else if (!LinkWord.controller(src)) violate("uncounted write into controller memory from unit " + src + ": only commands and boot overlays, from C&C 1-3, are uncounted (3.1; invariant 22): " + LinkWord.describe(d, h, hi));
         // W14-07: a controller starts when its command lands (the ROM's jump, 6.2 step 4), not at a GO, and nothing clears

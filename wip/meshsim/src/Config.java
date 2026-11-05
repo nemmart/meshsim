@@ -56,10 +56,7 @@ final class Config {
     /** WORKER22 (B1): C&C 3's peripheral is the Tracer (spec 4.21; needs ccCores), its DMA wired into C&C 3's router
      *  (item 118); the harness sets the Tracer's memory system. Off: the type-3 stub. */
     boolean cc3Tracer = false;
-    int ccDmaDepth = 4;
-    /** B1's interim (WORKER22, SPEC-QUESTIONS Q15, open): C&C 3's deliveries into tiles' big SRAM (the Tracer's DMA, src
-     *  74, and C&C 3's own packets) are let through uncounted, which invariant 22 otherwise flags. Off by default. */
-    boolean tracerDeliveriesUncounted = false;                  // the DMA port's FIFO into the controller's router (item 118's flow control, modelled simply)
+    int ccDmaDepth = 4;                  // the DMA port's FIFO into the controller's router (item 118's flow control, modelled simply)
     int ccLinkLatency = 1;               // WORKER14 (W14-01): a controller's link to its tile's fifth port, cycles each way
     // ---- the request bus (spec 3.3, 4.18) ----
     int requestFifoDepth = 128;          // the request FIFO: 128 x 128 bits (4.18)

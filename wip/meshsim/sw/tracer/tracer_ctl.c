@@ -11,10 +11,13 @@
  *      an inline (item 145: before the first word), then the template from EXPANSION_OFFSET on the expansion credits (the
  *      N3 rules: a NOP policy with rd = x0 sends the single NOP word carrying rd0; a mid-sequence start's first word
  *      carries rd0). The advice credit: the next half queue of advice. The service requests, one DMA transfer at a time:
- *      output queue 0 in four transfers, word 0 and words 2-66 to tile n + 1's record, word 1 and word 67 to tile n's;
- *      at the last window all 68 words to C&C 3's own memory (dst 66, Q11) and then words 1 and 67 forwarded to the last
- *      tile (Q4); queues 1-3 by their credits, 128 words a chunk and exactly the remainder last (words 37-39), each into
- *      tile n's stream area. Run done: the next window;
+ *      output queue 0 in four transfers in its order, word 0 and words 2-66 to tile n + 1's record, word 1 and word 67 to
+ *      tile n's (its totals, before any of its streams); at the last window all 68 words to C&C 3's own memory (dst 66, Q11) and then words 1 and 67 forwarded to
+ *      the last tile (Q4); queues 1-3 by their credits, 128 words a chunk and exactly the remainder last (words 37-39),
+ *      each into tile n's stream area, once tile n has said "armed" (Q15). Run done: the next window;
+ * Q15 (owner, 2026-11-05): every delivery into a tile is counted: the state on the tile's RL_CTR_STATE (armed at its boot
+ * for 66), the totals on RL_CTR_TOTALS (2), the streams on RL_CTR_STREAMS, which the tile arms from the totals' word 1
+ * before its count-only "armed"; C&C 3 waits for every tile's "booted" before the first delivery (Q3).
  *   5. checks the advice left (the last record's word 1 [124:102]) is 0 and the end state (words 0, 2-65) equals the
  *      expected one (the next segment's frame 2, if given), and returns its status (crt0: the simulator's exit word).
  * Q14: an expansion being fed when a segment's record is loaded is dropped (one segment per run here: nothing is pending).
@@ -154,9 +157,11 @@ static void dma(uint32_t q, uint32_t n, uint32_t dst, uint32_t addr, uint32_t ct
 
 int main(void) {
     me = tile_index();
-    request_send(me, 0, 0, REQ_CC1(REQ_OP_STARTED, 0, 0));            /* as cc23.c: C&C 1 waits for it (6.2) */
     const uint32_t base_mask = EV_RESET_MASK;
     copy_to_dm(0, hdr, TL_H_WORDS / 4, base_mask);
+    /* Q15: a "booted" from every tile used, armed before C&C 1 boots them (it does once C&C 2 and C&C 3 have started) */
+    tile->WRITE_COUNTER[TL_CTR_BOOTED - 1] = hdr[TL_H_WINDOWS];
+    request_send(me, 0, 0, REQ_CC1(REQ_OP_STARTED, 0, 0));            /* as cc23.c: C&C 1 waits for it (6.2) */
     if (hdr[TL_H_MAGIC] != TL_MAGIC || hdr[TL_H_VERSION] != TL_VERSION) { tr_results[TL_R_STATUS] = 4; return 4; }
     uint32_t nt = min32(hdr[TL_H_NTEMPLATES], 128);
     if (nt) copy_to_dm(hdr[TL_H_INDEX], ix, nt, base_mask);
@@ -171,12 +176,14 @@ int main(void) {
     run_self(hdr[TL_H_RECORD], TR_STATE, 68, CTR_PERIPH, base_mask);
     adv_entries = (hdr[TL_H_ADVICE_N] + 1) >> 1; adv_next = 0;
 
-    /* 3. Q3: window 0's start (words 0 and 2-66) to the first tile, from C&C 3's own copy of the record */
+    /* 3. Q3: window 0's start (words 0 and 2-66) to the first tile, from C&C 3's own copy of the record, once every tile
+     *    used has booted and armed for its record (Q15) */
     copy_to_dm(hdr[TL_H_RECORD], rec, 68, base_mask);
     uint32_t first = hdr[TL_H_FIRST_TILE], trec = hdr[TL_H_T_RECORD];
-    send_to(ROUTER_HDR_W(first, MODE_WRITE, CTR_NONE), sram_addr(trec));
+    wait_event(EV_CTR(TL_CTR_BOOTED), base_mask);
+    send_to(ROUTER_HDR_W(first, MODE_WRITE, RL_CTR_STATE), sram_addr(trec));
     sendw(&rec[0]);
-    send_to(ROUTER_HDR_W(first, MODE_WRITE, CTR_NONE), sram_addr(trec + 8));
+    send_to(ROUTER_HDR_W(first, MODE_WRITE, RL_CTR_STATE), sram_addr(trec + 8));
     for (uint32_t i = 2; i <= 66; i++) sendw(&rec[4 * i]);
 
     /* 4. the windows */
@@ -185,16 +192,19 @@ int main(void) {
     tr_results[TL_R_STATUS] = 1;
     uint32_t windows = hdr[TL_H_WINDOWS], status = 1;
     for (uint32_t n = 0; n < windows && status == 1; n++) {
-        uint32_t tn = first + n, last = n + 1 == windows, q0 = 0, sent[4] = { 0, 0, 0, 0 };
+        uint32_t tn = first + n, last = n + 1 == windows, q0 = 0, sent[4] = { 0, 0, 0, 0 }, armed = 0, fwd = 0;
         dma_busy = 0;
         tmask = PEV_RUN_DONE | PEV_DMA_DONE | TR_EV_NEWEXP | svc | (exp_left ? TR_EV_EXP : 0) | (adv_next < adv_entries ? TR_EV_ADVICE : 0);
         tracer->EVENTS_MASK = tmask;
         tile->EVENTS_MASK = loop_mask;
         tracer->PULSE_RUN = 1;
         for (;;) {
+            /* the tile's sticky counter events wake us only while we wait on them (Q15's "armed", the last record's landing) */
+            uint32_t need = (q0 >= 1 && !armed ? EV_CTR(TL_CTR_ARMED) : 0u) | (last && q0 == 4 && !fwd ? EV_CTR(CTR_SRAM) : 0u);
+            tile->EVENTS_MASK = loop_mask | need;
             __asm__ volatile ("wfi" ::: "memory");
             uint32_t ev = tracer->EVENTS & tmask;                     /* consumes the counted bits; the service bits are live */
-            if (!ev) continue;
+            if (!ev && !(tile->EVENTS_PEEK & need)) continue;
             if (ev & TR_EV_NEWEXP) {
                 if (!new_expansion(ev, loop_mask)) { status = 2; break; }
                 ev &= ~TR_EV_EXP;
@@ -202,26 +212,39 @@ int main(void) {
             if ((ev & TR_EV_EXP) && exp_left) exp_chunk(loop_mask);
             if (ev & TR_EV_ADVICE) advice_chunk(loop_mask);
             if (ev & PEV_DMA_DONE) dma_busy = 0;
+            /* the last window's queue 0 has landed in C&C 3's memory: forward its totals to the last tile (Q4), counted */
+            if (last && q0 == 4 && !fwd && !dma_busy && (tile->EVENTS_PEEK & EV_CTR(CTR_SRAM))) {
+                copy_to_dm(hdr[TL_H_OWN_RECORD], rec, 68, loop_mask);
+                send_to(ROUTER_HDR_W(tn, MODE_WRITE, RL_CTR_TOTALS), sram_addr(trec + 4));
+                sendw(&rec[4 * 1]);
+                send_to(ROUTER_HDR_W(tn, MODE_WRITE, RL_CTR_TOTALS), sram_addr(trec + 4 * 67));
+                sendw(&rec[4 * 67]);
+                fwd = 1;
+            }
+            if (!armed && (tile->EVENTS_PEEK & EV_CTR(TL_CTR_ARMED))) armed = 1;   /* Q15: tile n armed for its streams */
             if (!dma_busy) {
                 if ((ev & TR_EV_SVC_STATE) && q0 < 4) {
+                    if (q0 == 0) tile->WRITE_COUNTER[TL_CTR_ARMED - 1] = 1;   /* before tile n can see its totals */
                     if (last) {                                       /* Q4, Q11: all 68 words to C&C 3 itself */
                         tile->WRITE_COUNTER[CTR_SRAM - 1] = 68;
                         dma(0, 68, me, sram_addr(hdr[TL_H_OWN_RECORD]), CTR_SRAM);
                         q0 = 4;
                     } else {
+                        /* queue 0 is read in order (its pointer, 4.21.6): word 0 to tile n + 1, word 1 to tile n, words
+                         * 2-66 to n + 1, word 67 to n; the totals (words 1 and 67) reach tile n before any of its streams (Q15) */
                         static const uint8_t cnt[4] = { 1, 1, 65, 1 }, word[4] = { 0, 1, 2, 67 };
-                        uint32_t to = (q0 == 0 || q0 == 2) ? tn + 1 : tn;         /* the state to n + 1, the totals to n */
-                        dma(0, cnt[q0], to, sram_addr(trec + 4u * word[q0]), CTR_NONE);
+                        uint32_t to = (q0 == 0 || q0 == 2) ? tn + 1 : tn, ctr = (q0 == 0 || q0 == 2) ? RL_CTR_STATE : RL_CTR_TOTALS;
+                        dma(0, cnt[q0], to, sram_addr(trec + 4u * word[q0]), ctr);
                         q0++;
                     }
-                } else {
+                } else if (armed) {
                     for (uint32_t q = 1; q <= 3; q++) {
                         if (!(ev & (TR_EV_SVC_STATE << q))) continue;
                         uint32_t len = q == 1 ? tracer->CODE_LENGTH : q == 2 ? tracer->READ_LOG_LENGTH : tracer->WRITE_LOG_LENGTH;
                         uint32_t c = min32(TR_HALF, len - sent[q]);
                         if (!c) continue;
                         uint32_t base = hdr[TL_H_T_CODE + q - 1];
-                        dma(q, c, tn, sram_addr(base + (sent[q] << 2)), CTR_NONE);
+                        dma(q, c, tn, sram_addr(base + (sent[q] << 2)), RL_CTR_STREAMS);
                         sent[q] += c;
                         break;
                     }
@@ -241,13 +264,6 @@ int main(void) {
 
     /* 5. the end: the last record landed in C&C 3's memory; words 1 and 67 to the last tile (Q4); the checks */
     if (status == 1) {
-        wait_event(EV_CTR(CTR_SRAM), base_mask);
-        copy_to_dm(hdr[TL_H_OWN_RECORD], rec, 68, base_mask);
-        uint32_t tl = first + windows - 1;
-        send_to(ROUTER_HDR_W(tl, MODE_WRITE, CTR_NONE), sram_addr(trec + 4));
-        sendw(&rec[4 * 1]);
-        send_to(ROUTER_HDR_W(tl, MODE_WRITE, CTR_NONE), sram_addr(trec + 4 * 67));
-        sendw(&rec[4 * 67]);
         uint32_t left = (rec[7] >> 6) & 0x7FFFFFu;                    /* word 1 [124:102]: the advice field */
         tr_results[TL_R_ADVICE_LEFT] = left;
         if (left) status = 5;

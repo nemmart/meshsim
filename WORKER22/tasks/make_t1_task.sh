@@ -9,7 +9,10 @@ grep -v '^#' $WIP/meshsim/test/PENDING | awk 'NF{print "'$WIP'/meshsim/test/"$1}
 javac --release 21 -nowarn -d $K/t1/classes $WIP/meshsim/src/*.java 2>&1 | grep -v '^Note:' || true
 javac --release 21 -nowarn -d $K/t1/classes -cp $K/t1/classes:$K/t1/gold $(ls $WIP/meshsim/test/*.java | grep -v -x -F -f $K/pending.txt) 2>&1 | grep -v '^Note:' || true
 cp -r $WIP/tables/replayer $K/t1/tables/
-cp $(dirname "$0")/t1_summary.py $K/t1/
+cp $(dirname "$0")/t1_summary.py $(dirname "$0")/t1_ifetch.py $K/t1/
+RUNS=${RUNS:-"raw|--no-stage-a
+lru|--compress
+sep|--no-stage-a --map-cache-separate"}; SUMMARY=${SUMMARY:-t1_summary.py}
 (cd $WIP && echo "meshsim $(git rev-parse --short HEAD) ($(git rev-parse --abbrev-ref HEAD)), gold $(git log -1 --format=%h -- gold), built $(date -u +%F)") > $K/t1/VERSION
 (cd $K/t1 && find . -type f ! -name HASHES | sort | xargs sha256sum > HASHES)
 tar -czf $K/kit.tgz -C $K t1
@@ -26,6 +29,7 @@ cat <<EOF
 #   lru  the streams LRU-coded (sizes and picks against the delivery's encoder), then Stage A: the replayer model on the
 #        Tracer's own record and streams against rows.bin (jolt-cpp's rows), every stream consumed exactly;
 #   sep  the control: the map's probes on a shared cache of their own (the map lines' effect on the data), raw checks.
+# THIS TASK'S RUNS (name|TracerT1 options), overriding the list above where they differ: $(echo "$RUNS" | tr '\n' ';'); summary $SUMMARY.
 # Writes only results/$NAME/: per run a log and a per-segment CSV, and SUMMARY.txt (the core's cycles per row against 4,
 # the all-in cycles per segment against 100 ms, stalls, hit rates by line class, the walk's share, the map's effect).
 # Reboot-safe: scratch in /tmp, removed first; inputs only read, checked against their COMPLETE markers. Expected ~25 min.
@@ -57,14 +61,17 @@ J="java -Xmx\${T1_HEAP:-5g} -Dreplay.tables=\$W/t1/tables/replayer -cp \$W/t1/cl
 PIDS=""
 for PS in \$PROGS; do
   IFS=: read P S9 S26 <<< "\$PS"
-  \$J "\$D9" "\$P" --w26 "\$D26/\$P" --quiet --no-stage-a --csv "\$RES/\$P-raw.csv" \$X > "\$RES/\$P-raw.log" 2>&1 & PIDS="\$PIDS \$!:\$P-raw"
-  \$J "\$D9" "\$P" --w26 "\$D26/\$P" --quiet --compress --csv "\$RES/\$P-lru.csv" \$X > "\$RES/\$P-lru.log" 2>&1 & PIDS="\$PIDS \$!:\$P-lru"
-  \$J "\$D9" "\$P" --w26 "\$D26/\$P" --quiet --no-stage-a --map-cache-separate --csv "\$RES/\$P-sep.csv" \$X > "\$RES/\$P-sep.log" 2>&1 & PIDS="\$PIDS \$!:\$P-sep"
+  while IFS='|' read RN RA; do
+    [ -n "\$RN" ] || continue
+    \$J "\$D9" "\$P" --w26 "\$D26/\$P" --quiet \$RA --csv "\$RES/\$P-\$RN.csv" \$X > "\$RES/\$P-\$RN.log" 2>&1 & PIDS="\$PIDS \$!:\$P-\$RN"
+  done <<'RUNS_END'
+$RUNS
+RUNS_END
 done
 RC=0
 for X in \$PIDS; do wait \${X%%:*}; R=\$?; echo "\${X#*:}: exit \$R, \$(tail -1 "\$RES/\${X#*:}.log")"; [ \$R = 0 ] || RC=1; done
 grep -h "FAIL\|STOPPED\|Exception" "\$RES"/*.log | head -20
-python3 "\$W/t1/t1_summary.py" "\$RES" \$(for PS in \$PROGS; do echo \${PS%%:*}; done)
+python3 "\$W/t1/$SUMMARY" "\$RES" \$(for PS in \$PROGS; do echo \${PS%%:*}; done)
 echo "verdict: \$([ \$RC = 0 ] && echo PASS || echo FAIL); exit \$RC at \$(date -u)"
 rm -rf "\$W"
 exit \$RC

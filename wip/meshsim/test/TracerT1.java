@@ -37,7 +37,7 @@ public final class TracerT1 {
     public static void main(String[] a) throws Exception {
         Path dl = Path.of(a[0]); String name = a[1];
         Path w26 = null, prog = null, input = null, segFile = null, csv = null; int log2K = 0; long lowest = 0;
-        int s0 = 0, s1 = 127, maxWin = Integer.MAX_VALUE; boolean compress = false, stageA = true, mapSeparate = false, quiet = false, diag = false;
+        int s0 = 0, s1 = 127, maxWin = Integer.MAX_VALUE; boolean compress = false, stageA = true, mapSeparate = false, quiet = false, diag = false; int icLines = Tracer.CACHE_LINES;
         for (int i = 2; i < a.length; i++) {
             switch (a[i]) {
                 case "--w26" -> w26 = Path.of(a[++i]);
@@ -50,6 +50,7 @@ public final class TracerT1 {
                 case "--max-windows" -> maxWin = Integer.parseInt(a[++i]);
                 case "--quiet" -> quiet = true;
                 case "--diag" -> diag = true;
+                case "--icache-lines" -> icLines = Integer.parseInt(a[++i]);
                 default -> throw new IllegalArgumentException(a[i]);
             }
         }
@@ -130,11 +131,13 @@ public final class TracerT1 {
         g.ms.mapRootForStats = g.map.root();
         MemorySystem mapMs = null;
         if (mapSeparate) { mapMs = new MemorySystem(g.fs); mapMs.mapRootForStats = g.map.root(); g.tr.mapMem = mapMs; }
+        g.tr.icacheLines = icLines;
         g.loadTables();
         java.io.PrintWriter out = csv != null ? new java.io.PrintWriter(Files.newBufferedWriter(csv)) : null;
         if (out != null) out.println("segment,rows,padding_rows,cycles,cycles_real_rows,cycles_per_real_row,ifetch,dmiss,bus,probe,advice,newexp,exp,"
                 + "imiss,dmiss_lines,writebacks,lru_hits,lru_misses,probe_reads,mem_index_acc,mem_index_hit,mem_data_acc,mem_data_hit,map_index_acc,map_index_hit,"
-                + "map_data_acc,map_data_hit,walk_cycles,data_cycles,lpddr_reads,early_evictions,read_waits,read_wait_cycles,map_sep_lpddr_reads,ok");
+                + "map_data_acc,map_data_hit,walk_cycles,data_cycles,lpddr_reads,early_evictions,read_waits,read_wait_cycles,map_sep_lpddr_reads,"
+                + "i_cold_first,i_cold_second,i_cap_first,i_cap_second,i_cyc_cold_first,i_cyc_cold_second,i_cyc_cap_first,i_cyc_cap_second,i_miss_lpddr,straddles,instrs,ok");
         // ---- the segment file
         List<Seg> segs = readSegments(segFile, lowest);
         // ---- the delivery
@@ -160,6 +163,7 @@ public final class TracerT1 {
                 System.out.printf("diag segment %d start: 0x%x = 0x%x (shadow %s)%n", s, ad, g.fs.load64(img, ad - lowest), shadow.containsKey(cell) ? String.format("0x%x", shadow.get(cell)) : "-");
             }
             g.ms.cold(); if (mapMs != null) mapMs.cold();
+            long[] ib0 = g.tr.iMissBy.clone(), ic0 = g.tr.iCycBy.clone(); long il0 = g.tr.iMissLpddr, st0 = g.tr.straddles, in0 = g.tr.instrs;
             long r0 = g.tr.rows, p0 = g.tr.rowsPad, im0 = g.tr.iMiss, dm0 = g.tr.dMiss, wb0 = g.tr.writebacks, lh0 = g.tr.lruHits, lm0 = g.tr.lruMisses, pr0 = g.tr.probeReads;
             long[] regs = new long[128]; System.arraycopy(sg.state, 3, regs, 0, 128);
             long segStart = g.t, cycStart = 0;
@@ -250,12 +254,16 @@ public final class TracerT1 {
             long rowsS = g.tr.rows - r0, padS = g.tr.rowsPad - p0, realCyc = segCycles - 4 * padS;
             if (out != null) {
                 MemorySystem m = g.ms; long[] st = g.tr.stalls;
-                out.printf("%d,%d,%d,%d,%d,%.4f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%s%n", s, rowsS, padS, segCycles, realCyc,
+                StringBuilder ib = new StringBuilder();
+                for (int q = 0; q < 4; q++) ib.append(g.tr.iMissBy[q] - ib0[q]).append(',');
+                for (int q = 0; q < 4; q++) ib.append(g.tr.iCycBy[q] - ic0[q]).append(',');
+                ib.append(g.tr.iMissLpddr - il0).append(',').append(g.tr.straddles - st0).append(',').append(g.tr.instrs - in0).append(',');
+                out.printf("%d,%d,%d,%d,%d,%.4f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%s%s%n", s, rowsS, padS, segCycles, realCyc,
                         rowsS > padS ? (double) realCyc / (rowsS - padS) : 0.0, st[0], st[1], st[2], st[3], st[4], st[5], st[6],
                         g.tr.iMiss - im0, g.tr.dMiss - dm0, g.tr.writebacks - wb0, g.tr.lruHits - lh0, g.tr.lruMisses - lm0, g.tr.probeReads - pr0,
                         m.acc[0], m.hits[0], m.acc[1], m.hits[1], (mapMs != null ? mapMs : m).acc[2], (mapMs != null ? mapMs : m).hits[2],
                         (mapMs != null ? mapMs : m).acc[3], (mapMs != null ? mapMs : m).hits[3], m.walkCycles, m.dataCycles, m.lpddrReads, m.earlyEvictions,
-                        m.readWaits, m.readWaitCycles, mapMs != null ? mapMs.lpddrReads : -1, bad.isEmpty() ? "OK" : "FAIL");
+                        m.readWaits, m.readWaitCycles, mapMs != null ? mapMs.lpddrReads : -1, ib, bad.isEmpty() ? "OK" : "FAIL");
                 out.flush();
             }
             java.util.Arrays.fill(g.tr.stalls, 0);

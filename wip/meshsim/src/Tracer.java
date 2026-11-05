@@ -119,6 +119,8 @@ final class Tracer implements Peripheral {
 
     // ================================================================ the caches (4.21.5)
     static final int CACHE_LINES = 128;
+    /** The instruction cache's lines: 4.21.5's 128; a parameter for B1's capacity sweep only. */
+    int icacheLines = CACHE_LINES;
     static final class Line { final long[] d = new long[16]; boolean dirty, writable; }
     private final LinkedHashMap<Long, Line> icache = new LinkedHashMap<>(256, 0.75f, true);
     private final LinkedHashMap<Long, Line> dcache = new LinkedHashMap<>(256, 0.75f, true);
@@ -161,6 +163,12 @@ final class Tracer implements Peripheral {
     final long[] stalls = new long[Stall.values().length];
     long rows, rowsM, rowsPad, instrs, runCycles, runs;
     long iAccess, iMiss, dAccess, dMiss, writebacks, lruHits, lruMisses, probeReads;
+    /** The instruction-fetch stalls broken down (B1's report): each instruction-cache miss is cold (the line's first fetch
+     *  since the word-0 write) or capacity (fetched before, since evicted), and a first half or a straddling second half
+     *  (a 32-bit instruction's second half in the next line); with its stall cycles, and whether its fill reached LPDDR. */
+    final long[] iMissBy = new long[4], iCycBy = new long[4];      // [cold first, cold second, capacity first, capacity second]
+    long iMissLpddr, straddles;
+    private final java.util.HashSet<Long> iSeen = new java.util.HashSet<>();
     long runStartAt, rowsEndAt, drainedAt;
 
     // ================================================================ the errors (4.21.8)
@@ -301,7 +309,7 @@ final class Tracer implements Peripheral {
         rqHead = rqOcc = rqHalf = rqPopped = 0; eqHead = eqOcc = eqPopped = 0; expDiscard = 0;
         codeN = logN = 0; lengthCode = lengthRlog = lengthWlog = 0; rowsEnded = false; drained = false;
         ev.set(t, EV_ADVICE, 2); ev.set(t, EV_EXP, 2);
-        icache.clear(); dcache.clear(); jumpLru.clear(); wbLine = -1;
+        icache.clear(); dcache.clear(); jumpLru.clear(); wbLine = -1; iSeen.clear();
         latch = -1; bitmap[0] = bitmap[1] = 0; cur = null;
         if (onStateWrite != null) onStateWrite.run();
         stateWrites++;
@@ -523,11 +531,13 @@ final class Tracer implements Peripheral {
         long o = pc() - lowest();
         long t = T;
         long[] h = new long[1];
-        t = fetch16(t, o, h); if (stopped) return t;
+        t = fetch16(t, o, h, false); if (stopped) return t;
         int h0 = (int) h[0];
         int word;
         if ((h0 & 3) == 3) {
-            t = fetch16(t, o + 2, h); if (stopped) return t;
+            boolean straddle = ((o + 2) >>> 7) != (o >>> 7);
+            if (straddle) straddles++;
+            t = fetch16(t, o + 2, h, straddle); if (stopped) return t;
             word = h0 | (int) h[0] << 16;
         } else {
             word = Rvc.codeWord(h0);
@@ -540,18 +550,21 @@ final class Tracer implements Peripheral {
         return t;
     }
     /** 16 bits at .pages offset o through the instruction cache; returns when they are present. */
-    private long fetch16(long t, long o, long[] out) {
+    private long fetch16(long t, long o, long[] out, boolean second) {
         long line = o >>> 7;
         iAccess++;
         Line l = icache.get(line);
         if (l == null) {
             iMiss++;
+            int cls = (iSeen.add(line) ? 0 : 2) + (second ? 1 : 0);
+            long lp = mem.lpddrReads;
             long t0 = Math.max(t, mem.freeAt());
             mem.read(t0, memRoot(), memDepth(), line, resp);
+            iMissBy[cls]++; iCycBy[cls] += resp.readyAt - t; if (mem.lpddrReads != lp) iMissLpddr++;
             if (resp.status == FileStore.ST_BEYOND) { error(t, 1 << ERR_PAGE, String.format("an instruction fetch at offset 0x%x, beyond the file's capacity", o)); return t; }
             l = new Line(); System.arraycopy(resp.data, 0, l.d, 0, 16);
             icache.put(line, l);
-            if (icache.size() > CACHE_LINES) { var it = icache.entrySet().iterator(); it.next(); it.remove(); }
+            if (icache.size() > icacheLines) { var it = icache.entrySet().iterator(); it.next(); it.remove(); }
             t = resp.readyAt;
         }
         int b = (int) (o & 127);

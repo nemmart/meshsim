@@ -45,3 +45,17 @@ So words at 16*s*, values at 48 + 17*s*, the flag at 99 + *s*. The values-out fi
 The replay layout's header gains **`RL_H_RUN_CONFIG` (word 14)**, written to `RUN_CONFIG` once, before the
 first pass (it is sticky); layout version 4.
 The record's words 0-65 are loaded verbatim every pass.
+
+## The acceptance's flags: like for like with 098/099 (owner's check, 2026-11-05)
+
+098/099 ran v1.26 records converted by v1.26's `ConvertDelivery`, which **kept [115] use the store log (1, as the tracer
+emits it) and set [116] output `rd_prev`**: both flags on. v1.26.1's `ConvertDelivery` requires [115] = 1 and clears both, and
+every stage passes the same two flags through `RUN_CONFIG` instead:
+
+| stage | where RUN_CONFIG comes from | value |
+|---|---|---|
+| A (`ReplayDelivery`, `ReplayDriver`) | the window: `w.rows` from the manifest, `storeLog` and `rdPrev` true | rows \| [24] \| [25] |
+| B and F (`StageB.runWindow`, `replay_ctl.c`) | layout header word 14, `Replayer.runConfig(rows, true, true)`, written once before the pass | rows \| [24] \| [25] |
+
+So 106/107 run **store log on, output `rd_prev` on, 65,536 rows**, as 098/099 did, and their rows, end states and stall
+counts compare like for like.

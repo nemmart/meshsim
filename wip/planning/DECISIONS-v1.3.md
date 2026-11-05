@@ -569,7 +569,7 @@ a really easy format to work with, from multiple languages" (O).
 | 3 | advice log | the segment's advice words, u64 each, in row order (section 13) |
 | 4 | updates, raw | the segment's update words, u64 each |
 | 5 | updates, LRU-compressed | a u32 count of the 64-bit words encoded, then the codes (below) |
-| 6 | jump-target supplement | section 18: the run's jump targets the program's static table lacks, as (pc offset u32, base `instr_idx` u32) pairs | a u64 start address (64 B aligned), then two u32 per 64 B block of code from there, the base and the mask (section 18); part of the program's load, with the initial image |
+| 6 | jump-target supplement | section 18: the run's jump targets the program's static table lacks, as (key u32, base `instr_idx` u32) pairs, the key *o* = pc − `lowest_address` (spec item 146) | a u32 count, then the pairs; part of the program's load, with the initial image (*replaces* the old code map's start address and (base, mask) pairs per 64 B block, section 18) |
 
 - **Frame 7, the proof parameters** (owner, 2026-11-05, on WORKER21's proposal; spec item 155): log₂ K, `lowest_address` and
   a16z's `MemoryLayout` fields, all computed on the host as a16z does; **sent once, first, before frame 1.** C&C 3 fills word
@@ -1103,6 +1103,11 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
 - **A Tracer run is at most 65,536 rows** (owner, 2026-11-05; WORKER21): its FIFOs hold one window, so a `RUN_CONFIG` row
   count above 65,536 is UB on the Tracer; a longer trace is done in chunks. (The 24-bit count serves the replayer and reads a
   run's progress exactly.)
+- **The DMA's packets: src 74, through C&C 3's down port** (owner, 2026-11-05; spec item 118, which was deferred): a sending
+  peripheral's DMA packets carry **src = its controller's id + 8** (72-74 for C&C 1-3's engines, as v1.1's engine endpoints
+  were numbered), enter the controller's router as an extra input, and **leave through its down port**, the link to its tile
+  (tile 2 for C&C 3), arriving like any neighbour's. 72-74 are **sources only**: packets for 67-125 stay errors, nothing replies
+  to them, and a DMA's general writes need none.
 - **The drain: service requests with credits, and done last** (owner, 2026-11-05; WORKER21's Q2 and Q8). One scan of the log
   FIFO feeds output queues 2 and 3 in row order; with small queues and a DMA sending one queue per transfer, that deadlocks (the
   DMA waiting on one queue while the scan waits on the other). So:

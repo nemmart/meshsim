@@ -27,61 +27,113 @@ import java.util.TreeSet;
  * segment's end: the dirty lines written back (meshsim only), the state against the next segment's frame 2, and every
  * cell of the segment's update list against the memory.
  *
- * <p>Usage: java -cp build:gold TracerT1 PROGRAM_DIR INPUT_DIR SEGMENT_FILE DELIVERY_DIR NAME LOG2K LOWEST
- *     [--segments a-b] [--compress] [--no-stage-a] [--max-windows N]
+ * <p>Usage: java -cp build:gold TracerT1 DELIVERY_DIR NAME (--w26 DIR | --gold PROGRAM INPUT SEGFILE LOG2K LOWEST)
+ *     [--segments a-b] [--compress] [--no-stage-a] [--map-cache-separate] [--csv FILE] [--max-windows N]
+ * <p>With --w26, WORKER26's outputs (NOTES.md: proof.json, initial.pages, frame6.bin and map.lines, seg/NNN.pages,
+ * segments.seg) are the inputs, and timing is meaningful; --map-cache-separate gives the map's probes a shared cache of
+ * their own, to measure the map lines' effect on the data.
  */
 public final class TracerT1 {
     public static void main(String[] a) throws Exception {
-        Path prog = Path.of(a[0]), input = Path.of(a[1]), segFile = Path.of(a[2]), dl = Path.of(a[3]);
-        String name = a[4]; int log2K = Integer.parseInt(a[5]); long lowest = Long.decode(a[6]);
-        int s0 = 0, s1 = 127, maxWin = Integer.MAX_VALUE; boolean compress = false, stageA = true;
-        for (int i = 7; i < a.length; i++) {
+        Path dl = Path.of(a[0]); String name = a[1];
+        Path w26 = null, prog = null, input = null, segFile = null, csv = null; int log2K = 0; long lowest = 0;
+        int s0 = 0, s1 = 127, maxWin = Integer.MAX_VALUE; boolean compress = false, stageA = true, mapSeparate = false, quiet = false;
+        for (int i = 2; i < a.length; i++) {
             switch (a[i]) {
+                case "--w26" -> w26 = Path.of(a[++i]);
+                case "--gold" -> { prog = Path.of(a[++i]); input = Path.of(a[++i]); segFile = Path.of(a[++i]); log2K = Integer.parseInt(a[++i]); lowest = Long.decode(a[++i]); }
                 case "--segments" -> { String[] r = a[++i].split("-"); s0 = Integer.parseInt(r[0]); s1 = Integer.parseInt(r[r.length - 1]); }
                 case "--compress" -> compress = true;
                 case "--no-stage-a" -> stageA = false;
+                case "--map-cache-separate" -> mapSeparate = true;
+                case "--csv" -> csv = Path.of(a[++i]);
                 case "--max-windows" -> maxWin = Integer.parseInt(a[++i]);
+                case "--quiet" -> quiet = true;
                 default -> throw new IllegalArgumentException(a[i]);
             }
         }
         long t0 = System.nanoTime();
-        // ---- gold: the cycle-0 image and the bytecode
-        Object program = Class.forName("gold.Program").getConstructor(Path.class, Path.class).newInstance(prog, input);
-        Object memory = program.getClass().getField("memory").get(program);
-        java.lang.reflect.Field pf = memory.getClass().getDeclaredField("pages"); pf.setAccessible(true);
-        long[][] gpages = (long[][]) pf.get(memory);
-        Object layout = program.getClass().getField("layout").get(program);
-        long goldLowest = (long) layout.getClass().getMethod("lowestAddress").invoke(layout);
-        if (goldLowest != lowest) throw new IllegalStateException(String.format("lowest_address: gold 0x%x, given 0x%x", goldLowest, lowest));
-        Object bc = program.getClass().getField("bytecode").get(program);
-        long codeStart = bc.getClass().getField("codeStart").getLong(bc), codeEnd = bc.getClass().getField("codeEnd").getLong(bc);
-        java.lang.reflect.Method indexOf = bc.getClass().getMethod("indexOf", long.class);
-
         TracerRig g = new TracerRig();
-        g.lowest = lowest; g.log2K = log2K;
-        // the image: gold's 16 KB pages as 4 KB pages, all-zero ones as holes
-        FileStore.File img = g.fs.create(2);
-        int imgPages = 0;
-        for (int p = 0; p < gpages.length; p++) {
-            if (gpages[p] == null) continue;
-            for (int q = 0; q < 4; q++) {
-                long addr = ((long) p << 14) + 4096L * q;
-                if (addr < lowest) continue;
-                long[] pg = new long[512]; boolean any = false;
-                for (int k = 0; k < 512; k++) { pg[k] = gpages[p][512 * q + k]; any |= pg[k] != 0; }
-                if (any) { g.fs.putPage(img, (addr - lowest) / 4096, pg); imgPages++; }
+        FileStore.File img;
+        List<List<Long>> w26Written = null;
+        if (w26 != null) {
+            // ---- WORKER26's inputs (NOTES.md): proof.json, initial.pages, frame6.bin, seg/NNN.pages, segments.seg
+            Map<String, Object> pj = ReplayDelivery.Json.object(Files.readString(w26.resolve("proof.json")));
+            log2K = ((Number) pj.get("log2_k")).intValue(); lowest = Long.decode((String) pj.get("lowest_address"));
+            segFile = w26.resolve("segments.seg");
+            g.lowest = lowest; g.log2K = log2K;
+            img = g.fs.create(2);
+            ByteBuffer ip = le(Files.readAllBytes(w26.resolve("initial.pages")));
+            int n = 0;
+            while (ip.remaining() > 0) {
+                long off = ip.getLong(); int flags = ip.getInt(); ip.getInt();
+                if (flags != 0) throw new IllegalStateException("initial.pages: flags " + flags);
+                long[] pg = new long[512]; for (int k = 0; k < 512; k++) pg[k] = ip.getLong();
+                g.fs.putPage(img, off / 4096, pg); n++;
             }
+            ByteBuffer f6 = le(Files.readAllBytes(w26.resolve("frame6.bin")));
+            int len = f6.getInt(), type = f6.getInt(), k = f6.getInt(), p1 = f6.getInt(), p3 = f6.getInt();
+            if (type != 6 || len != 5 + 32 * (1 << k)) throw new IllegalStateException("frame6.bin: type " + type + " length " + len);
+            byte[] lines = new byte[128 << k]; f6.get(lines);
+            if (!java.util.Arrays.equals(lines, Files.readAllBytes(w26.resolve("map.lines")))) throw new IllegalStateException("map.lines differs from frame 6's lines");
+            if (k != ((Number) pj.get("hash_k")).intValue() || p1 != Long.decode((String) pj.get("hash_p1")).intValue() || p3 != ((Number) pj.get("hash_p3")).intValue())
+                throw new IllegalStateException("frame 6's constants differ from proof.json's");
+            g.mapK = k; g.mapMul = p1; g.mapStep = p3;
+            g.map = g.fs.create(FileStore.depthFor((long) lines.length));
+            ByteBuffer lb = le(lines);
+            for (int pgN = 0; pgN < Math.max(1, lines.length / 4096); pgN++) {
+                long[] pg = new long[512];
+                for (int q = 0; q < 512 && 8 * (512 * pgN + q) < lines.length; q++) pg[q] = lb.getLong(8 * (512 * pgN + q));
+                g.fs.putPage(g.map, g.map.depth() == 0 ? 0 : pgN, pg);
+            }
+            w26Written = new ArrayList<>();
+            int segs = ((Number) pj.get("segments")).intValue();
+            for (int sgi = 0; sgi < segs; sgi++) {
+                ByteBuffer wb = le(Files.readAllBytes(w26.resolve(String.format("seg/%03d.pages", sgi))));
+                List<Long> l = new ArrayList<>(); while (wb.remaining() > 0) l.add(wb.getLong() / 4096); w26Written.add(l);
+            }
+            System.out.printf("%s: WORKER26's inputs: image %d pages, map 2^%d lines (p1 0x%x, p3 %d), log2 K %d, lowest 0x%x%n", name, n, k, p1, p3, log2K, lowest);
+        } else {
+            // ---- bring-up inputs: gold's cycle-0 image and an every-start map (no timing from these)
+            Object program = Class.forName("gold.Program").getConstructor(Path.class, Path.class).newInstance(prog, input);
+            Object memory = program.getClass().getField("memory").get(program);
+            java.lang.reflect.Field pf = memory.getClass().getDeclaredField("pages"); pf.setAccessible(true);
+            long[][] gpages = (long[][]) pf.get(memory);
+            Object layout = program.getClass().getField("layout").get(program);
+            long goldLowest = (long) layout.getClass().getMethod("lowestAddress").invoke(layout);
+            if (goldLowest != lowest) throw new IllegalStateException(String.format("lowest_address: gold 0x%x, given 0x%x", goldLowest, lowest));
+            Object bc = program.getClass().getField("bytecode").get(program);
+            long codeStart = bc.getClass().getField("codeStart").getLong(bc), codeEnd = bc.getClass().getField("codeEnd").getLong(bc);
+            java.lang.reflect.Method indexOf = bc.getClass().getMethod("indexOf", long.class);
+            g.lowest = lowest; g.log2K = log2K;
+            img = g.fs.create(2);
+            int imgPages = 0;
+            for (int p = 0; p < gpages.length; p++) {
+                if (gpages[p] == null) continue;
+                for (int q = 0; q < 4; q++) {
+                    long addr = ((long) p << 14) + 4096L * q;
+                    if (addr < lowest) continue;
+                    long[] pg = new long[512]; boolean any = false;
+                    for (int k = 0; k < 512; k++) { pg[k] = gpages[p][512 * q + k]; any |= pg[k] != 0; }
+                    if (any) { g.fs.putPage(img, (addr - lowest) / 4096, pg); imgPages++; }
+                }
+            }
+            Map<Long, Long> targets = new java.util.HashMap<>();
+            for (long pc = codeStart; pc < codeEnd; pc += 2) { int ix = (int) indexOf.invoke(bc, pc); if (ix != 0) targets.put(pc, (long) ix); }
+            g.mapK = Math.max(5, 64 - Long.numberOfLeadingZeros(Math.max(1, targets.size() / 8 - 1)));
+            g.mapMul = 0x9E3779B1; g.mapStep = 1000003;
+            while (true) { try { g.buildMap(targets); break; } catch (IllegalStateException e) { g.mapK++; } }
+            System.out.printf("%s: bring-up inputs: image %d pages, map %d targets (every start) in 2^%d lines%n", name, imgPages, targets.size(), g.mapK);
         }
         g.image = img; g.copy = img;
-        // the map: every instruction start (bring-up only)
-        Map<Long, Long> targets = new java.util.HashMap<>();
-        for (long pc = codeStart; pc < codeEnd; pc += 2) { int ix = (int) indexOf.invoke(bc, pc); if (ix != 0) targets.put(pc, (long) ix); }
-        g.mapK = Math.max(5, 64 - Long.numberOfLeadingZeros(Math.max(1, targets.size() / 8 - 1)));
-        g.mapMul = 0x9E3779B1; g.mapStep = 1000003;
-        while (true) { try { g.buildMap(targets); break; } catch (IllegalStateException e) { g.mapK++; } }
+        g.ms.mapRootForStats = g.map.root();
+        MemorySystem mapMs = null;
+        if (mapSeparate) { mapMs = new MemorySystem(g.fs); mapMs.mapRootForStats = g.map.root(); g.tr.mapMem = mapMs; }
         g.loadTables();
-        System.out.printf("%s: image %d pages, map %d targets in 2^%d lines, %.1f s%n", name, imgPages, targets.size(), g.mapK, (System.nanoTime() - t0) / 1e9);
-
+        java.io.PrintWriter out = csv != null ? new java.io.PrintWriter(Files.newBufferedWriter(csv)) : null;
+        if (out != null) out.println("segment,rows,padding_rows,cycles,cycles_real_rows,cycles_per_real_row,ifetch,dmiss,bus,probe,advice,newexp,exp,"
+                + "imiss,dmiss_lines,writebacks,lru_hits,lru_misses,probe_reads,mem_index_acc,mem_index_hit,mem_data_acc,mem_data_hit,map_index_acc,map_index_hit,"
+                + "map_data_acc,map_data_hit,walk_cycles,data_cycles,lpddr_reads,early_evictions,read_waits,read_wait_cycles,map_sep_lpddr_reads,ok");
         // ---- the segment file
         List<Seg> segs = readSegments(segFile, lowest);
         // ---- the delivery
@@ -91,12 +143,15 @@ public final class TracerT1 {
         ReplayTables tables = g.tables;
 
         int rc = 65536 | (compress ? Tracer.RC_COMP_CODE | Tracer.RC_COMP_RLOG | Tracer.RC_COMP_WLOG : 0);
-        int windowsChecked = 0, failed = 0; long rowsChecked = 0;
+        int windowsChecked = 0, failed = 0, windowsSkipped = 0; long rowsChecked = 0;
         for (int s = s0; s <= s1 && s < segs.size(); s++) {
             Seg sg = segs.get(s);
             TreeSet<Long> written = new TreeSet<>(); for (long[] u : sg.updates) written.add(u[0] / 512);
+            if (w26Written != null && !new TreeSet<>(w26Written.get(s)).equals(written))
+                throw new IllegalStateException("segment " + s + ": seg/NNN.pages differs from the update list's pages");
             int created = g.fs.setOwnership(img, written);
-            g.ms.cold();
+            g.ms.cold(); if (mapMs != null) mapMs.cold();
+            long r0 = g.tr.rows, p0 = g.tr.rowsPad, im0 = g.tr.iMiss, dm0 = g.tr.dMiss, wb0 = g.tr.writebacks, lh0 = g.tr.lruHits, lm0 = g.tr.lruMisses, pr0 = g.tr.probeReads;
             long[] regs = new long[128]; System.arraycopy(sg.state, 3, regs, 0, 128);
             long segStart = g.t, cycStart = 0;
             g.loadRecord(sg.state[0], (int) sg.state[1], (int) sg.state[2], regs, sg.advice);
@@ -146,10 +201,12 @@ public final class TracerT1 {
                         if (r != null) bad.add("Stage A: " + r);
                     }
                     windowsChecked++; rowsChecked += 65536;
-                    System.out.printf("%s window %5d: %s  rows %d  cycles %d  %.3f/row  sizes %s%n", name, wi, bad.isEmpty() ? "OK  " : "FAIL", 65536,
+                    if (!quiet || !bad.isEmpty()) System.out.printf("%s window %5d: %s  rows %d  cycles %d  %.3f/row  sizes %s%n", name, wi, bad.isEmpty() ? "OK  " : "FAIL", 65536,
                             g.tr.rowsEndAt - g.tr.runStartAt, (g.tr.rowsEndAt - g.tr.runStartAt) / 65536.0, java.util.Arrays.toString(o.sizes));
                     for (String b : bad) System.out.println("    " + b);
                     if (!bad.isEmpty()) failed++;
+                } else if (wi < wins.size()) {
+                    windowsSkipped++;
                 } else if (o.sizes[0].values() != 65536 || o.sizes[1].values() != 0 || o.sizes[2].values() != 0 || o.record[0] != 0) {
                     // past the delivery: must be padding
                     if (wi >= wins.size()) { System.out.printf("%s window %d: past the delivery but not padding: %s%n", name, wi, java.util.Arrays.toString(o.sizes)); failed++; }
@@ -171,9 +228,22 @@ public final class TracerT1 {
                     java.util.Arrays.toString(g.tr.stalls), g.ms.summary());
             for (String b : bad) System.out.println("    " + b);
             if (!bad.isEmpty()) failed++;
+            long rowsS = g.tr.rows - r0, padS = g.tr.rowsPad - p0, realCyc = segCycles - 4 * padS;
+            if (out != null) {
+                MemorySystem m = g.ms; long[] st = g.tr.stalls;
+                out.printf("%d,%d,%d,%d,%d,%.4f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%s%n", s, rowsS, padS, segCycles, realCyc,
+                        rowsS > padS ? (double) realCyc / (rowsS - padS) : 0.0, st[0], st[1], st[2], st[3], st[4], st[5], st[6],
+                        g.tr.iMiss - im0, g.tr.dMiss - dm0, g.tr.writebacks - wb0, g.tr.lruHits - lh0, g.tr.lruMisses - lm0, g.tr.probeReads - pr0,
+                        m.acc[0], m.hits[0], m.acc[1], m.hits[1], (mapMs != null ? mapMs : m).acc[2], (mapMs != null ? mapMs : m).hits[2],
+                        (mapMs != null ? mapMs : m).acc[3], (mapMs != null ? mapMs : m).hits[3], m.walkCycles, m.dataCycles, m.lpddrReads, m.earlyEvictions,
+                        m.readWaits, m.readWaitCycles, mapMs != null ? mapMs.lpddrReads : -1, bad.isEmpty() ? "OK" : "FAIL");
+                out.flush();
+            }
             java.util.Arrays.fill(g.tr.stalls, 0);
         }
+        if (out != null) out.close();
         System.out.printf("%s: %d windows checked (%d rows), %d failed, %.1f s%n", name, windowsChecked, rowsChecked, failed, (System.nanoTime() - t0) / 1e9);
+        if (windowsChecked + windowsSkipped < Math.min(wins.size(), 64 * (s1 - s0 + 1)) && maxWin == Integer.MAX_VALUE) { System.out.println("not every delivered window was checked"); failed++; }
         System.exit(failed == 0 ? 0 : 1);
     }
 

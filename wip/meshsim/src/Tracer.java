@@ -60,6 +60,8 @@ final class Tracer implements Peripheral {
     final int me;
     /** The fill bus's other side (4.21.5): set by the unit or the harness before the first run. */
     MemorySystem mem;
+    /** The map probe's memory system: {@link #mem} unless a harness separates them (the map's effect on the data, B1). */
+    MemorySystem mapMem;
     /** Called when the word-0 write lands (a segment's start): the harness makes the memory system cold (owner, 2026-11-05). */
     Runnable onStateWrite;
     private Host host;
@@ -593,9 +595,10 @@ final class Tracer implements Peripheral {
         int key = (int) o, k = hashLines;
         long h = k == 0 ? 0 : ((key & 0xFFFFFFFFL) * (hashMul & 0xFFFFFFFFL) & 0xFFFFFFFFL) >>> (32 - k);
         long t = T;
+        MemorySystem mm = mapMem != null ? mapMem : mem;
         for (int n = 0; n < probeLines; n++) {
-            long t0 = Math.max(t, mem.freeAt());
-            mem.read(t0, mapRoot(), mapDepth(), h, resp);
+            long t0 = Math.max(t, Math.max(mem.freeAt(), mm.freeAt()));
+            mm.read(t0, mapRoot(), mapDepth(), h, resp);
             probeReads++;
             t = resp.readyAt + probeCompare;
             if (resp.status == FileStore.ST_HOLE || resp.status == FileStore.ST_BEYOND) {

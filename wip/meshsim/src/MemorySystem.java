@@ -45,6 +45,11 @@ final class MemorySystem {
     long indexAccesses, indexHits, dataAccesses, dataHits, lpddrReads;
     long walkCycles, dataCycles;                         // cycles spent on index lines and on data lines
     long earlyEvictions, readWaits, readWaitCycles, writeAllocates;
+    /** Per class of line (statistics only): 0 the memory file's index lines, 1 its data lines, 2 the map's index lines,
+     *  3 the map's data lines; the map is the file whose root is {@link #mapRootForStats}. */
+    final long[] acc = new long[4], hits = new long[4], cycles = new long[4];
+    int mapRootForStats = -1;
+    static final String[] CLASSES = { "mem index", "mem data", "map index", "map data" };
 
     MemorySystem(FileStore store) { this.store = store; cold(); }
 
@@ -56,6 +61,7 @@ final class MemorySystem {
         indexAccesses = indexHits = dataAccesses = dataHits = lpddrReads = 0;
         walkCycles = dataCycles = 0;
         earlyEvictions = readWaits = readWaitCycles = writeAllocates = 0;
+        java.util.Arrays.fill(acc, 0); java.util.Arrays.fill(hits, 0); java.util.Arrays.fill(cycles, 0);
     }
 
     /** The bus is free at t (one request outstanding). */
@@ -75,10 +81,11 @@ final class MemorySystem {
         reads++;
         store.walk(root, depth, line, walk);
         long now = t;
+        int cls0 = root == mapRootForStats ? 2 : 0;
         for (int k = 0; k < walk.nLines; k++) {
             boolean idx = k < walk.indexLines;
             long s = now;
-            now = access(now, walk.lines[k], false, idx);
+            now = access(now, walk.lines[k], false, idx, cls0 + (idx ? 0 : 1));
             if (idx) walkCycles += now - s; else dataCycles += now - s;
         }
         if (walk.status == FileStore.ST_BEYOND) { beyond++; now = t + 1; }
@@ -97,10 +104,11 @@ final class MemorySystem {
         if (walk.status != FileStore.ST_OK)
             throw new IllegalStateException("a write-back of a line that isn't writable (status " + walk.status + "): only writable lines are dirty (4.21.5)");
         long now = t;
+        int cls0 = root == mapRootForStats ? 2 : 0;
         for (int k = 0; k < walk.nLines; k++) {
             boolean idx = k < walk.indexLines;
             long s = now;
-            now = access(now, walk.lines[k], !idx, idx);
+            now = access(now, walk.lines[k], !idx, idx, cls0 + (idx ? 0 : 1));
             if (idx) walkCycles += now - s; else dataCycles += now - s;
         }
         store.writeLine(walk.dataLine, data);
@@ -110,13 +118,15 @@ final class MemorySystem {
 
     // ---------------------------------------------------------------- the shared cache
     /** One access of LPDDR line a at t; returns the cycle it completes. write: a whole-line write (Q13). */
-    private long access(long t, int a, boolean write, boolean index) {
+    private long access(long t, int a, boolean write, boolean index, int cls) {
+        long t0 = t; acc[cls]++;
         int set = a & (SETS - 1), base = set * WAYS, way = -1;
         if (index) indexAccesses++; else dataAccesses++;
         for (int w = 0; w < WAYS; w++) if (tag[base + w] == a) { way = w; break; }
         long done;
         if (way >= 0) {
             if (index) indexHits++; else dataHits++;
+            hits[cls]++;
             done = t + hit;
         } else {
             way = victim(base);
@@ -131,6 +141,7 @@ final class MemorySystem {
         stamp[base + way] = ++clock;
         if (write) dirty[base + way] = true;
         keepVictimClean(base, done);
+        cycles[cls] += done - t0;
         return done;
     }
 

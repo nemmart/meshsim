@@ -609,8 +609,9 @@ Decided (O).
     `PT_LOAD` segment, so an ordinary layout with `.rodata` in that segment fails at load, and decodable data between code shifts
     its `instr_idx`, making its proofs fail verification silently. **A jolt-cpp fix and a bug report**, with demo guests.
   - **D3, raw ECALLs: follow a16z, no rewriting.** jolt-cpp's LegacyRawEcall mode rewrites the code, so the bytecode it proves
-    differs from a16z's. A raw ECALL traps through `mtvec`; programs relying on legacy raw-ECALL host I/O can't be proven and
-    are **rejected, not rewritten**, by gold too (section 25). **A jolt-cpp fix and a bug report.**
+    differs from a16z's. **Gold executes a raw ECALL as a16z does, trapping through `mtvec`, with no special detection**; a
+    program relying on legacy raw-ECALL host I/O then fails as it would in a16z, and giving it a clearer error is the host
+    tracer's job, as for D5 (section 25). **A jolt-cpp fix and a bug report.**
   - **D5, executing where the static decode found no instruction start** (a jump into the middle of an instruction): **the host
     tracer rejects it.** The host runs the program before the proof and its JIT already maps pcs to bytecode entries, so such a
     run never reaches the chip; if one did, the Tracer's "jump target not in the map" check (section 25) catches it. Gold, the
@@ -1089,8 +1090,9 @@ Decided (O).
   writes `mepc`, `mcause` = 11, `mtval` = 0 and `mstatus` (virtual registers 32-39) and jumps through `mtvec`; the handler is guest
   code returning by MRET (Cyclone's 875 traps). **`VirtualHostIO`** is one row with no effect (`trace_owner.cpp:294-297`): its
   side effects, such as printing, happened in the host's run and don't affect the proof. **A raw ECALL traps, as in a16z's Jolt;
-  legacy raw-ECALL host I/O isn't supported** (owner, 2026-11-04; UPSTREAM-DIFFS D3, section 17): such programs are rejected, not
-  rewritten as `VirtualHostIO` (replacing jolt-cpp's LegacyRawEcall mode, which changes the bytecode a16z's verifier checks).
+  legacy raw-ECALL host I/O isn't supported** (owner, 2026-11-04; UPSTREAM-DIFFS D3, section 17): nothing detects or rewrites
+  it (replacing jolt-cpp's LegacyRawEcall mode, which changes the bytecode a16z's verifier checks), so such a program fails as it
+  would in a16z; a clearer error is the host tracer's job.
   **So the Tracer has no host channel.**
 
 ---

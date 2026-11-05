@@ -1,6 +1,6 @@
 # WORKER26 report: the Tracer's host-side inputs (the jump-target map, the memory images, word 66)
 
-**Status (2026-11-05): done.** The tool is `wip/jumpmap/` on `v1.3-jumpmap` (README there). Both workloads at 2²⁹ pass
+**Status (2026-11-05): done; merged into main at 5e1f97c.** The tool is `wip/jumpmap/` on `v1.3-jumpmap` (README there). Both workloads at 2²⁹ pass
 every check, and their outputs are in the runner's persistent data (Quest 109, DONE). The format is agreed in `NOTES.md`.
 The fixtures are in `wip/jumpmap/out/`.
 
@@ -54,7 +54,7 @@ Both log₂ K values match WORKER17's.
 - **The data scan** adds 945 entries to EVM Zone and 2,896 to Cyclone, and catches 104 and 382 of the run's targets.
 - **EVM Zone's 2 remaining targets** are function pointers that the program loads with AUIPC+LD from writable memory set at
   run time. No static scan sees them; the run supplies them.
-- Branch or JAL targets that aren't instruction starts (174 and 108) are dropped and counted. I haven't looked into them.
+- Branch or JAL targets that aren't instruction starts (174 and 108) are dropped and counted; section 2a classifies them.
 
 **Run-only targets, per proof, across inputs.**
 - EVM Zone: 2 at every input from 2²³ to 2²⁹ (7 inputs).
@@ -85,6 +85,45 @@ is a software change only, not proposed.
 
 **The initial images:** EVM Zone 496 pages (2.0 MB), Cyclone 1,519 pages (6.2 MB).
 
+## 2a. The dropped targets: all are traps (`c.unimp`)
+
+Every static target that isn't an instruction start lands on a **`c.unimp` (halfword 0x0000)**. That is the trap LLVM emits
+for `unreachable`: after a call that never returns, and as the target of a failed check's branch. Gold, like a16z, removes
+it from the bytecode, and reaching it aborts the run. So the 2²⁹ runs never jump to any of them, and an entry in the table
+would be dead.
+
+The other candidate causes don't occur in either program: data decoded as branches inside a text section, jumps into the
+middle of an instruction, and targets outside the text. Each program's text is one Text section decoded with no desync, and
+every dropped target is a halfword where a decoded instruction starts. **No tool change.**
+
+Counts per reference, the source checked against the 2²⁹ run:
+
+| | EVM Zone | Cyclone |
+|---|---|---|
+| branch or JAL to a `c.unimp`, source never executed | 162 | 94 |
+| branch to a `c.unimp`, source executed (never taken) | 12 | 14 |
+| **direct, total** (the report's `bad_direct`) | **174** | **108** |
+| return address that is a `c.unimp` (a call that never returns), source never executed | 25 | 20 |
+
+These are the report's `bad_return`, in the same class.
+
+Examples (target in brackets):
+
+- **A failed check's branch over the function's end.**
+  - EVM Zone `0x800b79b6: blt a1, x0, +36` [`0x800b79da`], where `0x800b79d6` is `bge a1, x0, −28` and the next function's
+    prologue (`addi sp, sp, −368`) follows the `c.unimp`.
+  - EVM Zone `0x80001420: bltu s0, s10, +1852` [`0x80001b5c`], just after the function's `ret`.
+  - Cyclone `0x80163b1a: bgeu a1, s4, +262` [`0x80163c20`], after a `jr a5`.
+- **A trap after a call that never returns.**
+  - EVM Zone `0x8013ee80: blt a0, x0, +192` [`0x8013ef40`] and `0x80183eb2: blt a1, x0, +3360` [`0x80184bd2`]: each target
+    follows a `jalr ra` (a panic call).
+  - Cyclone `0x80063186: blt a1, x0, +328` [`0x800632ce`] and `0x80063052` to the same trap, after `jalr ra, a3`.
+- **Return addresses after a call that never returns.**
+  - EVM Zone `0x80014e24`, `0x800cb7a0`, `0x8015f712` (`jalr ra, ra, …`, each followed by `c.unimp`).
+  - Cyclone `0x800632cc` and `0x800c2ee6` (`c.jalr`).
+
+The classifier was a throwaway read of gold's decoder and a 2²⁹ run, not committed.
+
 ## 3. The 2²⁹ outputs (Quest 109; `/home/questrunner/data/w26-jumpmap/`)
 
 Each run's directory holds `proof.json`, `map.lines`, `frame6.bin`, `initial.pages`, `seg/NNN.{pages,json}`,
@@ -110,4 +149,4 @@ run, the local smoke test and the runner:
 - **WORKER18 (gold writing frame 6):** frame 6's data is u32 k, u32 p1, u32 p3, then the lines. jumpmap's `HashTable` is
   the rule: placement in ascending key order, the constant choice, and the probe. Gold could call it or copy it. The table
   needs the whole run's targets, so gold writes frame 6 after the run, though it goes before the segments in the file.
-- **Not done:** the 2³⁰ inputs; the unexplained non-start branch targets.
+- **Not done:** the 2³⁰ inputs (EVM Zone's four, Cyclone's one), which only add input variety to section 2's per-input table.

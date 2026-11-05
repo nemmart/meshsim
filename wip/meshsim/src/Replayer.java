@@ -474,7 +474,7 @@ final class Replayer implements Peripheral {
         long decodedAt;
         long codeEnd;               // the code stream bit position after its value (entries up to it leave at completion)
     }
-    static final int K_PAD = 0, K_ROM = 1, K_NOP = 2, K_CTRL = 3, K_BAD = 4;
+    static final int K_PAD = RowCore.K_PAD, K_ROM = RowCore.K_ROM, K_NOP = RowCore.K_NOP, K_CTRL = RowCore.K_CTRL, K_BAD = RowCore.K_BAD;
 
     private void frontEnd(long T) {
         if (nxt != null || (cur != null && !cur.lastStarted)) return;
@@ -492,51 +492,22 @@ final class Replayer implements Peripheral {
         firstInstr = false;
         if ((w & 3) == 0) { in.kind = K_PAD; }
         else {
-            int e = decodeTable[decodeIndex(w)] & 0xFFFF, cls = e & 3;
-            int rdField = (w >>> 7) & 31;
-            if (cls == 3) in.kind = K_BAD;                              // an error when its row would start (a row in flight completes)
-            else if (cls == 0) {
-                in.start = (e >>> 2) & 0x1FF;
-                in.rd0 = (int) ((romLo[in.start] >>> 46) & 3);
-                if (rdField == 0 && (in.rd0 == 1 || in.rd0 == 3)) { in.kind = K_NOP; in.nextRow = in.firstRow = 0; }
-                else { in.kind = K_ROM; in.offset = rdField == 0 && in.rd0 == 2 ? 1 : 0; }
-            } else {
-                in.kind = K_CTRL;
-                presented = w; newExpSetAt = T; exp.newExpansion(); ev.post(T, EV_NEWEXP); newExpansions++;
-            }
+            RowCore.decode(w, decodeTable, romLo, dec);                 // 4.19.4, 4.19.5 (RowCore, shared with the Tracer)
+            in.kind = dec.kind; in.start = dec.start; in.rd0 = dec.rd0; in.offset = dec.offset;
+            // K_BAD: an error when its row would start (a row in flight completes)
+            if (in.kind == K_NOP) { in.nextRow = in.firstRow = 0; }
+            else if (in.kind == K_CTRL) { in.rd0 = 0; presented = w; newExpSetAt = T; exp.newExpansion(); ev.post(T, EV_NEWEXP); newExpansions++; }
         }
         nxt = in;
     }
+    private final RowCore.Decoded dec = new RowCore.Decoded();
     private long lastStartAt = Long.MIN_VALUE;
     private boolean codeEnded;
     private int expDiscard;                            // words of a NOP-substituted controller-fed expansion still to drop
 
-    /** The decode table's 11-bit index (4.19.5); bit 0 of w (the compressed flag) plays no part. */
-    static int decodeIndex(int w) {
-        w |= 1;
-        int op = w & 0x7F, f3 = (w >>> 12) & 7;
-        if (op == 0x2F) return 1 << 10 | ((w >>> 12) & 1) << 5 | (w >>> 27) & 31;                        // AMO
-        if (op == 0x0B) return 1 << 10 | 1 << 8 | ((w >>> 25) & 31) << 3 | f3;                          // custom-0
-        if (op == 0x73) {                                                                                // SYSTEM
-            int sel = f3 != 0 ? f3 : w == 0x00000073 ? 8 : w == 0x00100073 ? 9 : w == 0x30200073 ? 10 : 11;
-            return 1 <<10 | 2 << 8 | sel;
-        }
-        return ((w >>> 2) & 31) << 5 | f3 << 2 | ((w >>> 30) & 1) << 1 | (w >>> 25) & 1;
-    }
-
-    /** The source instruction's immediate by format (4.19.3, code 132): 0 R, 1 I, 2 S, 3 B, 4 U, 5 J. */
-    static long sourceImm(int format, int w) {
-        w |= 1;
-        return switch (format) {
-            case 0 -> 0;
-            case 1 -> (long) (w >> 20);
-            case 2 -> (long) ((w >> 25) << 5 | (w >>> 7) & 31);
-            case 3 -> (long) ((w >> 31) << 12 | ((w >>> 7) & 1) << 11 | ((w >>> 25) & 63) << 5 | ((w >>> 8) & 15) << 1);
-            case 4 -> (long) (w & 0xFFFFF000);
-            case 5 -> (long) ((w >> 31) << 20 | ((w >>> 12) & 0xFF) << 12 | ((w >>> 20) & 1) << 11 | ((w >>> 21) & 0x3FF) << 1);
-            default -> throw new IllegalArgumentException("format " + format);
-        };
-    }
+    /** The decode table's index and the source immediate: {@link RowCore}'s (kept here for the tests and tools). */
+    static int decodeIndex(int w) { return RowCore.decodeIndex(w); }
+    static long sourceImm(int format, int w) { return RowCore.sourceImm(format, w); }
 
     // ---------------------------------------------------------------- starting a row
     /** A row in flight: what its last cycle commits. */
@@ -573,21 +544,19 @@ final class Replayer implements Peripheral {
                 lo = exp.headLo(); hi = exp.headHi();
             }
         }
-        int op = (int) (lo & 0xFF), cRd = (int) (lo >>> 8) & 0xFF, cRs1 = (int) (lo >>> 16) & 0xFF, cRs2 = (int) (lo >>> 24) & 0xFF;
-        int seqRem = (int) (lo >>> 32) & 0xFFF;
-        boolean nfv = ((lo >>> 44) & 1) != 0, hold = ((lo >>> 45) & 1) != 0, virt = ((lo >>> 51) & 1) != 0;
-        boolean imm0pc0 = ((lo >>> 52) & 1) != 0, reportC = ((lo >>> 53) & 1) != 0, fromLog = ((lo >>> 54) & 1) != 0;
-        boolean signImm = ((lo >>> 62) & 1) != 0, offsetImm = ((lo >>> 63) & 1) != 0;   // v1.25 (DECISIONS-v1.25 s4, s5)
-        int format = (int) (lo >>> 48) & 7, rd0w = (int) (lo >>> 46) & 3;
+        int op = RowCore.op(lo), cRd = RowCore.cRd(lo), cRs1 = RowCore.cRs1(lo), cRs2 = RowCore.cRs2(lo);
+        int seqRem = RowCore.seqRemaining(lo);
+        boolean nfv = RowCore.nextFromValue(lo), hold = RowCore.hold(lo), virt = RowCore.virt(lo);
+        boolean imm0pc0 = RowCore.imm0pc0(lo), reportC = RowCore.reportC(lo), fromLog = RowCore.fromLog(lo);
+        boolean signImm = RowCore.signImm(lo), offsetImm = RowCore.offsetImm(lo);   // v1.25 (DECISIONS-v1.25 s4, s5)
+        int format = RowCore.format(lo), rd0w = RowCore.rd0(lo);
         // checks (4.19.11, condition 13)
         // v1.25 (DECISIONS-v1.25 s9): [61:55] are reserved (untraced and advice_reg are gone: the Tracer's templates are the
         // replayer's). A word with one set comes from our own table builder, so it is undefined behavior: meshsim stops.
-        if (((lo >>> 55) & 0x7F) != 0)
+        if (RowCore.reserved(lo) != 0)
             throw new UndefinedBehavior(T, me, "replayer", String.format("an expansion word with reserved bits [61:55] = 0x%x (%s): lo 0x%016x",
-                    (lo >>> 55) & 0x7F, in.kind == K_CTRL ? "controller-fed" : "ROM", lo));
-        if (!ReplayerAlu.executes(op)) { invalid(T, "opcode " + op + " (" + ReplayerAlu.name(op) + ") is not executed by the replayer"); return; }
-        if (cRd >= 146 || cRs1 >= 146 || cRs2 >= 146) { invalid(T, "a reserved operand code (146-255)"); return; }
-        if (format >= 6) { invalid(T, "format " + format); return; }
+                    RowCore.reserved(lo), in.kind == K_CTRL ? "controller-fed" : "ROM", lo));
+        { String why = RowCore.invalidWord(lo); if (why != null) { invalid(T, why); return; } }
         // N3 (owner, 2026-10-27): the rd = x0 policy applies to every word, ROM or controller-fed. For a controller-fed
         // expansion it is read from the first word delivered: word 0, or the word at the pass's next offset (N3a).
         if (in.kind == K_CTRL && !in.ctrlFirstSeen) {
@@ -606,15 +575,15 @@ final class Replayer implements Peripheral {
         }
         // operands
         int w = in.w;
-        long srcImm = (cRs1 >= 132 && cRs1 <= 136) || (cRs2 >= 132 && cRs2 <= 136) || (cRd >= 132 && cRd <= 136) || offsetImm ? sourceImm(format, w) : 0;
+        long srcImm = RowCore.needsSourceImm(lo) ? RowCore.sourceImm(format, w) : 0;
         // shift_offset (v1.25, offset_imm [63]): the source instruction's immediate when set, else 0. Only ShiftData reads it.
         long so = offsetImm ? srcImm : 0;
         if (offsetImm && !ReplayerAlu.isShiftData(op))
             violate(T, "offset_imm set on a " + ReplayerAlu.name(op) + " row (only ShiftData reads shift_offset; WORKER11 Q3)");
         int rRd = reg(cRd, in), rRs1 = reg(cRs1, in), rRs2 = reg(cRs2, in);
-        long vRd = rRd >= 0 ? rv(rRd) : immVal(cRd, hi, srcImm);
-        long vRs1 = rRs1 >= 0 ? rv(rRs1) : immVal(cRs1, hi, srcImm);
-        long vRs2 = rRs2 >= 0 ? rv(rRs2) : immVal(cRs2, hi, srcImm);
+        long vRd = rRd >= 0 ? rv(rRd) : RowCore.immVal(cRd, hi, srcImm);
+        long vRs1 = rRs1 >= 0 ? rv(rRs1) : RowCore.immVal(cRs1, hi, srcImm);
+        long vRs2 = rRs2 >= 0 ? rv(rRs2) : RowCore.immVal(cRs2, hi, srcImm);
         long immSum = (rRd < 0 ? vRd : 0) + (rRs1 < 0 ? vRs1 : 0) + (rRs2 < 0 ? vRs2 : 0);
         // log readiness
         Stream logS = null;
@@ -707,29 +676,8 @@ final class Replayer implements Peripheral {
 
     private long rv(int r) { return r == 0 ? 0 : region0[4 + r]; }
 
-    /** A register operand code's register, or −1 for an immediate code (4.19.3, 4.19.4). */
-    private static int reg(int c, Instr in) {
-        if (c < 128) return c;
-        if (c == 129) return in.offset == 1 ? 40 : (in.w >>> 7) & 31;
-        if (c == 130) return (in.w >>> 15) & 31;
-        if (c == 131) return (in.w >>> 20) & 31;
-        if (c >= 137 && c <= 144) return 40 + (c - 137) + in.offset;
-        return -1;
-    }
-
-    /** An immediate operand code's value (4.19.3). */
-    private static long immVal(int c, long cnst, long imm) {
-        return switch (c) {
-            case 128 -> cnst;
-            case 145 -> 0;                                 // immediate 0 (26q): a zero slot beside a non-zero constant
-            case 132 -> imm;
-            case 133 -> -(1L << (imm & 63));
-            case 134 -> 1L << (imm & 63);
-            case 135 -> 1L << (imm & 31);
-            case 136 -> (1L << 32) - (1L << (imm & 31));
-            default -> throw new IllegalStateException("operand code " + c);
-        };
-    }
+    /** A register operand code's register, or −1 for an immediate code (RowCore, 4.19.3, 4.19.4). */
+    private static int reg(int c, Instr in) { return RowCore.reg(c, in.w, in.offset); }
 
     // ---------------------------------------------------------------- finishing a row
     private void finishRow(long T) {

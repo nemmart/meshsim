@@ -136,9 +136,8 @@ non-obvious ones, which a hardware Tracer must also follow:
 
 1. **Frame 6** (the `instr_idx` table) is left out, as the owner decided, until it is settled whether it belongs in the
    per-proof file or a program file; WORKER16's tool doesn't write it yet.
-2. **The new pin (88dca85)**: WORKER16 is moving PR #2's tracer to it with files expected unchanged. When that lands,
-   rerun `check.sh` and `compare` on the four runs; gold's rules were read at `821e1bd` and I haven't diffed HEAD's
-   `src/tracer` (DECISIONS 14 (c) says `isa/` is unchanged at 88dca85).
+2. ~~The new pin~~ **done** (2026-11-05): references regenerated at jolt-cpp 88dca85 equal 821e1bd's, and gold is
+   byte-identical to them (all four segment files; every record of both small inputs; every window at 2^29).
 3. ~~Untested paths~~ **closed by the test guests** (stage 3), except jolt-cpp's JIT path for EBREAK (D7) and aborts
    inside inlines.
 4. **Where gold and jolt-cpp could differ by design**: gold throws where jolt-cpp aborts, and also on a few conditions

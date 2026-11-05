@@ -384,3 +384,19 @@ SHA256_INIT 103, KECCAK256 2,003, KECCAK256_ABSORB_PERMUTE 2,102, BLAKE2 13, BLA
 BIGINT256_MUL 120, secp256k1 MULQ/SQUAREQ/DIVQ/MULR/SQUARER/DIVR 4 each (advice from gold's SecpCompute). Not covered
 by upstream's harness calls: GLVR (no test calls it through `execute_inline`), and no expected-panic call was captured
 (upstream's panicking tests fail before the inline runs).
+
+## Rulings round (2026-11-03) and the 88dca85 re-check (2026-11-05)
+
+- **Gold** follows the owner's rulings (UPSTREAM-DIFFS D1, D3, D4 follow-up, D5, D12; DECISIONS-v1.3 sections 17, 25):
+  image and code by sections (`c65bb37`); no host I/O detection, ECALL always traps (`65289d9`); 0xC0001073 rejected
+  at load, c.unimp the only marker; only a JAL with immediate 0 ends the run, a jump to 0 or into no instruction is
+  "jump target not in the bytecode map"; C.SLLI x0 is `SLLI x0, x0, n`. Segment files byte-identical after each.
+- **jolt-cpp fixes**, jolt-asic-planning branches from `tracer-standalone-main` `fa59d9a` (jolt-cpp 88dca85), each
+  tested on its reproducer and on EVM Zone and Cyclone (small inputs; D1 also both at 2^29 and seven examples):
+  `worker18-fix-d1-sections` (`7b91e8a`), `worker18-fix-d3-no-legacy-ecall` (`443e09e`), `worker18-fix-d12-c-slli`
+  (`2964c0a`). Bug-report drafts: `WORKER18/bug-reports/` (jolt-cpp D1, D3, D12; a16z U1, U2, U3).
+- **NEXT.md item 1, check.sh at 88dca85: done.** `row_dump` and WORKER16's `segment_writer` ported to 88dca85 (one
+  line each; jolt-asic-planning `worker18-rows-88dca85` `f039fa1`); references regenerated at the new pin
+  (`WORKER18/data/88dca85/`): run hashes of evm23, cyc22, evm29, cyc29 and the four segment files' SHA-256 all equal
+  821e1bd's. Gold against them: **all four segment files byte-identical**; EVM Zone trace-23 and Cyclone input/22
+  identical on every record; both workloads at 2^29 identical on every window (5,415 and 5,670) and the run hash.

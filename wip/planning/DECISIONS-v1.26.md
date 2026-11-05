@@ -93,6 +93,7 @@ regenerated into the runner's persistent data and match WORKER9's (103, 104).
 |---|---|---|
 | V1 | the spec and the change notes | WORKER19, done |
 | V2 | meshsim, the firmware, the kit, the deliveries' conversion, the acceptance runs | WORKER20, done |
+| V3 | v1.26.1, the point release (section 3): the spec, the change notes, the RTL guide, meshsim, the firmware, the kit, the acceptance | WORKER25, done |
 
 ## 3. v1.26.1: the point release (owner, 2026-11-04)
 

@@ -152,3 +152,12 @@ roots and depths 0. Acceptance: byte identity with WORKER18's gold files.
   - jolt-cpp's run K: the tracer's next_pow2(max remapped access + 1) (`trace_owner.cpp:1134-1140`), raised by the prover to
     next_pow2((program_start − lowest) / 8 + image words + 1) (`node_context.cpp:319-369`; its image words = align_right(end + 2, 8) / 8
     − start / 8 + 1, not jumpmap's (end − start + 7) / 8; to compare on both workloads).
+- **Frame 6's port, what it needs** (read: `wip/jumpmap/src/jumpmap/{HashTable,StaticTargets}.java`):
+  - `HashTable` is self-contained (`choose`: k from `minLines` (n ≤ 8·2^k), p3 = first prime ≥ 0x9E3779, p1 = GOLDEN or 31
+    splitmix64 candidates from 0x243F6A8885A308D3, `(int) z | 1`; insert in the given key order).
+  - `StaticTargets` uses gold's internals: `Decoder.decodeNext` (its a/b/c operand conventions per opcode), `Bytecode.indexOf`
+    / `removedAt` (removed c.unimp), the ELF's sections (text, nobits, addr ≥ 0x8000_0000), and `allStarts` sorted unsigned.
+    The port maps these to jolt-cpp's decoder (`op_a/b/c`), `VirtualBytecode::get_instr_idx` and libelf. Still to read:
+    jolt-cpp's conventions for removed UNIMPs and operands, and `Main.java`'s run-target rule ("a transfer to its own pc
+    is sequential") and the key order handed to `choose`.
+- **State at the end of this session:** `worker16-v13` pushed at `f2ae129` (no code yet).

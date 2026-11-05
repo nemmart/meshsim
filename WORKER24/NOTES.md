@@ -101,3 +101,25 @@ Drawn as proposed in the plan, with the three questions still open for the owner
 Narrow fields are widened to 82 px (not to scale), which `common.bitbar()` can't do, so `fig9_3_record.py` has its own row
 helper; `common.py` is unchanged for 9.3. Fill colours give each field's meaning at done *n*: window *n* + 1's start, run *n*'s
 totals, live, or spare.
+
+## The final layouts (spec 4.21 and 4.19.2 at v1.26.1, to a6bd6c9)
+
+Spec 4.21 answers the review's open items, and 9.1 and 9.3 are brought to it:
+- **11, the fill bus:** in order and blocking, one read outstanding, a one-entry write-back buffer, and a read's status
+  (ok, hole, not owned, beyond the length), **provisional** (item 148) (4.21.5). **No TLB anywhere** (DECISIONS-v1.3 §21 (b)):
+  the memory system translates by its one tree walker through the shared cache.
+- **12, the probe's bound:** at most `tr_probe_lines` = 3 lines, the home line and two steps (4.21.4).
+- **13, the subtractor:** the range comparator's subtract gives the `.pages` offset (4.21.5); instruction fetch has no range check.
+- **14, the compression enables:** `RUN_CONFIG` [28:26] (4.21.3).
+- **15, the bits:** `EVENTS` [0]–[10] and `ERRORS` [1]–[12] (4.21.3, 4.21.8).
+- **16, the proposed registers:** words 36–43 (`STATE_LENGTH`…`EXPANSION_TEMPLATE`), the template number by `EXPANSION_TEMPLATE`,
+  the advice credit at half a queue (4.21.3, 4.21.4).
+- **17, the output queues:** 4 KB each, a credit per 2 KB chunk and one for a last part, live service flags [7]–[10];
+  queue 0 read in place through a read pointer, in four transfers; done last (4.21.6).
+- **18, the layouts:** the stream word at v1.26.1 (words [47:0], values out [98:48], flags [101:99], advice [124:102],
+  spare [127:125]), word 0's [116:115] reserved (the per-pass flags moved to `RUN_CONFIG`), word 66 as 4.21.2 fixes it.
+  9.3 draws them as final, nothing proposed.
+- **9, the jump table:** a file, as SP1 proposed (4.21.4); section 18's dedicated SRAM is no longer drawn.
+
+**Still open:** 20, the core's inner split (the figure's), and 21, the range check's upper bound (item 149); with the
+provisional read status (item 148), they are 9.1's lower-left box. 9.2, the output path, is next (spec 4.21.6).

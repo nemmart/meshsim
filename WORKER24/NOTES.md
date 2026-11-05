@@ -64,9 +64,10 @@ decided; **open** items are drawn with the open dash (`DASH["open"]`, orange-bro
     word at done): their widths and where set 2's output joins them are implied, not stated.
 18. **The stream word's layout** (16 + 17 + 1 bits per stream, v1.26 item 2) and **word 66's bit positions** (roots,
     depths, log2 K, `lowest_address`): "to propose" / "for SP1".
-19. **The "template ROM"** is loaded through part 0 (0x2000), so it is a RAM in hardware; whether C&C 3 loads it once
-    at boot or per proof is unsaid. Same for the decode table (0x1000). Their sizes are taken from section 7 (8 KB and
-    4 KB) as the replayer's.
+19. ~~When the expansion tables load~~ **answered** (owner, 2026-11-04): the expansion lookup table (the decode table,
+    4 KB, 2K × 16 bits, 0x1000) and the expansion lines (the template ROM, 8 KB, 0x2000) are loaded **once, at startup**,
+    over the same bus from C&C 3 that fills the queues; drawn with a new dotted dash, `DASH["startup"]`, added to
+    `common.py` for it.
 20. **The core's internals** are not designed yet (section 25: "its own core"). The figure's split into fetch and
     decode, the expansion sequencer, the row executor and the working state is the figure's, for orientation, and is
     marked so. The "about 4 cycles per row" is section 11's [estimate].
@@ -80,4 +81,8 @@ decided; **open** items are drawn with the open dash (`DASH["open"]`, orange-bro
   full in 9.2 (the output path); 9.3 is the 68-word state record as a memory block.
 - PNGs are ignored by the repository (`.gitignore`: `wip/**/png/`), so the PNG is rendered and checked locally but not
   committed, like the other figures'.
-- Helpers: only `common.py`'s; nothing added to it. The memory system is drawn as a literal black box.
+- Helpers: `common.py`'s, plus one dash style, `DASH["startup"]` ("1.5 3"): loaded once at startup, drawn in its
+  path's colour (purple here), distinct from the orange-brown "open" dots. The memory system is drawn as a literal black box.
+- **9.1 simplified** (owner, 2026-11-04): the right side is just the four boxes (advice queue, expansion queue, expansion
+  lookup table, expansion lines) on one bus from C&C 3 that carries on into the core, plus one control line for the
+  window; the output side is one small "output LRUs and queues" box pointing to 9.2.

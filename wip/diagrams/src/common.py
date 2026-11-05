@@ -17,7 +17,8 @@ PURPLE, PURPLE_L = "#7F77DD", "#EEEDFE"    # controller and its memories
 SAND = "#FAEEDA"
 OPEN_C = "#B5651D"                          # 'open' marker colour
 
-DASH = {"read": None, "write": "9 3", "ctrl": "4 3", "proposed": "6 4", "open": "2 3"}
+DASH = {"read": None, "write": "9 3", "ctrl": "4 3", "proposed": "6 4", "open": "2 3",
+        "startup": "1.5 3"}   # startup: loaded once at startup (figure 9.1), drawn in its path's colour
 
 
 def esc(s):

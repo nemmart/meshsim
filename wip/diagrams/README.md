@@ -77,7 +77,7 @@ Thirty figures in nine parts, numbered part.figure (1.0–9.1), for explaining t
 
 | # | file | figure | caption |
 |---|---|---|---|
-| 9.1 | `fig9_1_tracer.svg` | The Tracer: the RV64 core, its memory interface, and its peripheral side toward C&C 3 | The Tracer runs the guest on its own RV64 core. Its instruction cache, data cache and jump LRU are its only local stores; each miss is one 128 B line of a file, (root, depth, line), on the fill bus to the memory system. C&C 3 writes its state, tables and input queues into the region and runs it through the window; at each done the DMA drains the output queues: queue 0 is part 0 read in place (window n+1's start and run n's totals), queues 1–3 the streams (figure 9.2). Writing word 0 resets everything. |
+| 9.1 | `fig9_1_tracer.svg` | The Tracer: the RV64 core, its memory interface, and its peripheral side toward C&C 3 | The Tracer runs the guest on its own RV64 core. Its instruction cache, data cache and jump LRU are its only local stores; each miss is one 128 B line of a file, (root, depth, line), on the fill bus to the memory system. One bus from C&C 3 fills the advice and expansion queues, loads the expansion tables once at startup, and writes the state into the core; the window runs it. At each done the DMA drains the output queues (figure 9.2): the state, read in place, and the three streams. Writing word 0 resets everything. |
 
 Figures 4.1 and 4.2 draw the router at block level: one route block per input, one FIFO per feeder on each output (§4.7, §4.17); figure 4.3 is its RTL. Figure 1.3 hangs each table and configuration register over the engine it drives. Figure 3.1 draws one box per memory, the controller's access (r, w or r/w) on each bus tap, the unit on each memory's other side, and two zones: must be close (what the controller reads) and can be far (what it only writes).
 
@@ -90,7 +90,8 @@ Figures 6.3 and 6.4 show the address generator's read-ahead and visit (§4.2, ve
   - blue long-dash: the SRAM write queue;
   - purple: the controller's paths (port A, port B, the send port), with purple dotted for engine-to-table-store traffic;
   - orange short-dash: the global nets (RUN/HALT, GO, READY) and control;
-  - red: conditions and the error line.
+  - red: conditions and the error line;
+  - dotted, in its path's colour: loaded once at startup (figure 9.1's expansion tables).
 
   Every line is also labelled, so the figures read in greyscale.
 - **Status:** an unmarked item is decided.

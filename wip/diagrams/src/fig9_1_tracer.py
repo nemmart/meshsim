@@ -3,7 +3,7 @@
 # Drawn from DECISIONS-v1.3 sections 1-25 (to 7374646); the review and the open points are in WORKER24/NOTES.md.
 from common import *
 
-W, H = 1300, 1012
+W, H = 1300, 976
 f = Fig(W, H, "Figure 9.1. The Tracer: the RV64 core, its memory interface, and its peripheral side toward C&C 3",
         "v1.3 (planning/DECISIONS-v1.3.md §1–25; DECISIONS-v1.26 items 2, 10, 12; spec §4.17) — block level; "
         "the core's inner split is for orientation only")
@@ -31,7 +31,7 @@ f.text(MS[0] + 16, MS[1] + 60, "the shared 512 KB cache (4,096 lines of 128 B, 8
 
 CC = (830, 78, 442, 74)
 f.box(*CC, "C&C 3 (RV32), the Tracer's controller, and its router",
-      ["the traffic director: mode-0 writes into the region (0x04)",
+      ["the bus: mode-0 writes into the region (0x04), via the director",
        "the register window: 32-bit loads and stores (0xFFFFFA00)"],
       fill=PURPLE_L, stroke=PURPLE, size=11, tsize=12.5)
 
@@ -109,83 +109,44 @@ dot(370, 375, GREEN)
 f.line([(370, 375), (370, RC[1] - 2)], GREEN, 1.4, end=True)
 f.text(RC[0] + RC[2] / 2, RC[1] + RC[3] + 14, "fail → ERRORS", 10, "middle", fill=RED)
 
-# ================= right: the region (inbound), the window (control), the DMA (outbound) =============
-RX, RW = 830, 350
-RT = 1200          # region trunk
-WT = 1222          # window trunk
+# ================= right: the bus from C&C 3, the queues and the expansion tables; the window; the DMA ===========
+BT = 1196          # the bus from C&C 3 (128-bit region writes)
+WT = 1228          # the window (control)
 OT = 1256          # DMA outbound
-P0 = (RX, 172, RW, 140)
-f.box(*P0, "part 0: the record, the decode table, the template ROM",
-      ["0x000  the 68-word record (§23), the working state:",
-       "   [0] state word (writing it resets, flushes, invalidates)",
-       "   [1] stream word: code, read log, write log, advice",
-       "   [2–65] registers 0–127",
-       "   [66] files and bounds (roots, depths, log2 K, low)",
-       "   [67] template bitmap",
-       "0x1000 decode table (4 KB)   0x2000 template ROM (8 KB)"],
-      fill=PURPLE_L, stroke=PURPLE, size=10.5, tsize=12, align="start", valign="top", pad=10)
-P2 = (RX, 318, RW, 54)
-f.box(*P2, "part 2: the read queue (advice, §13)", ["4 KB, 512 words, raw; fed by C&C 3; each pop counts", "down word 1’s advice field, live across the segment"],
-      fill=PURPLE_L, stroke=PURPLE, size=10.5, tsize=12, align="start")
-P4 = (RX, 384, RW, 54)
-f.box(*P4, "part 4: the expansion queue (§7)", ["4 KB: controller-fed expansions, answering the expand", "flag (EXPANSION_OPCODE); template number: proposed"],
-      fill=PURPLE_L, stroke=PURPLE, size=10.5, tsize=12, align="start")
-WN = (RX, 452, RW, 148)
-f.box(*WN, "the register window (§24, spec §4.17.4)",
-      ["PARAMS, STATUS, ERRORS, EVENTS (_PEEK, _MASK)",
-       "PULSE_RUN (the next RUN_CYCLES rows), PULSE_DMA",
-       "DMA_HDR (a count of 128-bit words), DMA_ADDR",
-       "32 RUN_CYCLES  33 ROWS_RUN  34 EXPANSION_OFFSET",
-       "35 EXPANSION_OPCODE  36–39 queue lengths (proposed)",
-       "events: expand, done, advice, DMA done (numbers open)",
-       ("ERRORS: jump not in map, write to a hole, past the", {"fill": RED}),
-       ("file, out of range, advice underflow (numbers open)", {"fill": RED})],
-      fill=SAND, stroke=ORANGE, size=10.5, tsize=12, align="start", valign="top", pad=9)
+RX, RW = 850, 300
+boxes = [("advice queue", "4 KB (§13, §24)", 196, "advice pops", False),
+         ("expansion queue", "4 KB: controller-fed expansions (§7)", 266, "controller-fed words", False),
+         ("expansion lookup table", "4 KB: 2K × 16 bits (spec §4.19.5)", 336, "template index", True),
+         ("expansion lines", "8 KB: the template ROM (spec §4.19.6)", 406, "template words", True)]
+for title, sub, y, lab, startup in boxes:
+    f.rect(RX, y, RW, 50, PURPLE_L, PURPLE, 1.4, rx=6)
+    f.text(RX + RW / 2, y + 21, title, 12.5, "middle", "bold")
+    f.text(RX + RW / 2, y + 38, sub, 10.5, "middle", fill=MUTED)
+    cy = y + 25
+    dot(BT, cy, PURPLE)
+    f.line([(BT, cy), (RX + RW + 2, cy)], PURPLE, SW if not startup else 1.8, end=True,
+           dash=DASH["startup"] if startup else None)
+    f.line([(RX, cy), (CO[0] + CO[2] + 2, cy)], PURPLE, 1.6, end=True)
+# the bus: from C&C 3, past the four, into the core (part 0: the state, the working state)
+f.line([(BT, CC[1] + CC[3]), (BT, 520), (CO[0] + CO[2] + 2, 520)], PURPLE, SW + 0.6, end=True)
+f.text(RX + RW / 2, 500, "the bus from C&C 3: 128-bit writes into the region (§12)", 10.5, "middle", fill=PURPLE)
+f.text(RX + RW / 2, 514, "into the core: the state record, part 0 (§23)", 10.5, "middle", fill=PURPLE)
+f.text(RX + RW / 2, 476, "dotted: the expansion tables, loaded once at startup", 10, "middle", fill=PURPLE, italic=True)
+# the window: one control path into the core
+f.line([(WT, CC[1] + CC[3]), (WT, 582), (CO[0] + CO[2] + 2, 582)], ORANGE, SW, end=True, start=True, dash=DASH["ctrl"])
+f.text(RX + RW / 2, 572, "the register window: RUN_CYCLES, pulses, events, ERRORS (§24)", 10.5, "middle", fill=ORANGE)
 
-f.line([(RT, CC[1] + CC[3]), (RT, 411)], PURPLE, SW + 0.6, end=False)
-for y in (243, 345, 411):
-    dot(RT, y, PURPLE)
-    f.line([(RT, y), (RX + RW + 2, y)], PURPLE, SW, end=True)
-f.text(RT - 4, 165, "the region: 128-bit writes, [22:20] picks the part", 10.5, "end", fill=PURPLE)
-f.line([(WT, CC[1] + CC[3]), (WT, 526), (RX + RW + 2, 526)], ORANGE, SW, end=True, start=True, dash=DASH["ctrl"])
-rot_text(WT + 12, 330, "the window: a control path", 10.5, fill=ORANGE)
-
-# right side -> core
-f.line([(RX, 214), (806, 214), (806, 330), (IX + IW + 2, 330)], INK, 1.6, end=True)
-f.text(807, 208, "tables", 9.5, "start", fill=MUTED)
-f.line([(RX, 290), (818, 290), (818, 514), (IX + IW + 2, 514)], PURPLE, SW, end=True, start=True)
-f.line([(RX, 345), (798, 345), (798, 420), (IX + IW + 2, 420)], PURPLE, 1.6, end=True)
-f.text(800, 438, "advice", 9.5, "start", fill=PURPLE)
-f.line([(RX, 411), (810, 411), (810, 356), (IX + IW + 2, 356)], PURPLE, 1.6, end=True)
-f.line([(RX, 580), (CO[0] + CO[2] + 2, 580)], ORANGE, SW, end=True, start=True, dash=DASH["ctrl"])
-
-# ================= bottom: the output side, collapsed (figure 9.2 draws it) ===============================
-BY, BH = 662, 112
-OQ = (450, BY, 726, BH)
-f.rect(*OQ, BLUE_L, BLUE, 1.4, rx=6)
-f.text(OQ[0] + 14, BY + 22, "output queues 0–3: the output path (figure 9.2)", 13, "start", "bold")
-f.text(OQ[0] + 14, BY + 40, "set 1 sizes each stream as it is traced into the code and log FIFOs (one window each); at done each stream drains", 10.5, "start")
-f.text(OQ[0] + 14, BY + 54, "raw or through set 2 (the smaller, if enabled), packed into 128-bit words; then go (§2, §3, §24)", 10.5, "start")
-chips = [("0: the state = part 0, read in place", 466, 262, PURPLE), ("1: code log", 740, 132, BLUE),
-         ("2: read log", 884, 132, BLUE), ("3: write log", 1028, 132, BLUE)]
-for name, x, w, c in chips:
-    f.rect(x, BY + 70, w, 30, PURPLE_L if c == PURPLE else "white", c, 1.3, rx=4)
-    f.text(x + w / 2, BY + 90, name, 11, "middle", "bold")
-f.tag(OQ[0] + OQ[2], BY + BH + 34, "open: queue depths, the drain's interleaving", anchor="end")
-f.text(OQ[0], BY + BH + 16, "at done n: words 0, 2–66 → tile n+1 (its start); word 1's three output fields, word 67 and the streams → tile n",
-       10, "start", fill=PURPLE)
-DM = (1198, BY, 74, BH)
-f.box(*DM, "DMA", ["one queue", "per transfer;", "C&C 3's", "choice (§24)"], fill="white", stroke=INK, size=10, tsize=12.5)
-f.line([(OQ[0] + OQ[2], BY + 85), (DM[0] - 2, BY + 85)], BLUE, SW, end=True, dash=DASH["write"])
-
-# core -> the output path: the two streams
+# ================= bottom: the output side (figure 9.2 draws it) ================================================
+BY = 662
+OQ = (600, BY, 240, 62)
+f.box(*OQ, "output LRUs and queues", ["see figure 9.2 for details"], fill=BLUE_L, stroke=BLUE, size=11, tsize=13)
 f.line([(666, CO[1] + CO[3]), (666, BY - 2)], BLUE, SW, end=True, dash=DASH["write"])
 f.line([(771, CO[1] + CO[3]), (771, BY - 2)], BLUE, SW, end=True, dash=DASH["write"])
-f.text(660, 626, "code word (32)", 10, "end", fill=BLUE)
-f.text(660, 640, "one per instruction", 9.5, "end", fill=MUTED)
-f.text(777, 626, "log word (64 + read/write tag)", 10, "start", fill=BLUE)
-f.text(777, 640, "at most one per row (§2)", 9.5, "start", fill=MUTED)
-# DMA out, up to its own router input
+f.text(660, 634, "code stream (32)", 10, "end", fill=BLUE)
+f.text(777, 634, "log stream (64 + tag)", 10, "start", fill=BLUE)
+DM = (1196, BY, 76, 62)
+f.box(*DM, "DMA", ["C&C 3's", "transfers"], fill="white", stroke=INK, size=10, tsize=12.5)
+f.line([(OQ[0] + OQ[2], BY + 31), (DM[0] - 2, BY + 31)], BLUE, SW, end=True, dash=DASH["write"])
 f.line([(OT, DM[1]), (OT, CC[1] + CC[3] + 2)], BLUE, SW + 0.4, end=True, dash=DASH["write"])
 rot_text(OT + 12, 400, "DMA packets into a router input of its own → the tiles' memory (first implementation, §24)", 10.5, fill=BLUE)
 
@@ -198,20 +159,21 @@ f.lines(OB[0] + 12, OB[1] + 38, [
     "12 the probe's line bound   13 the fetch path's offset subtract",
     "14 the per-stream compression enables   15 bit numbers",
     "17 queue depths, the drain's interleaving   18 bit positions",
-    "19 when the ROM and decode table load   21 the range's top",
+    "21 the range check's top",
 ], 10.5, fill=INK, lh=15)
 
 # ================= legend ===========================================================================
-LY = 864
+LY = 828
 f.line([(40, LY), (76, LY)], GREEN, SW, end=True); f.text(84, LY + 4, "read: line fills", 11.5, "start", fill=MUTED)
 f.line([(200, LY), (236, LY)], BLUE, SW, end=True, dash=DASH["write"]); f.text(244, LY + 4, "write: write-backs, streams, DMA packets", 11.5, "start", fill=MUTED)
-f.line([(500, LY), (536, LY)], PURPLE, SW, end=True); f.text(544, LY + 4, "the region and part 0: C&C 3's data path in", 11.5, "start", fill=MUTED)
-f.line([(820, LY), (856, LY)], ORANGE, SW, end=True, dash=DASH["ctrl"]); f.text(864, LY + 4, "control: the window, pulses, events", 11.5, "start", fill=MUTED)
+f.line([(500, LY), (536, LY)], PURPLE, SW, end=True); f.text(544, LY + 4, "the bus from C&C 3", 11.5, "start", fill=MUTED)
+f.line([(670, LY), (706, LY)], PURPLE, 1.8, end=True, dash=DASH["startup"]); f.text(714, LY + 4, "loaded once at startup", 11.5, "start", fill=MUTED)
+f.line([(880, LY), (916, LY)], ORANGE, SW, end=True, dash=DASH["ctrl"]); f.text(924, LY + 4, "control: the window", 11.5, "start", fill=MUTED)
 f.text(1100, LY + 4, "red: errors", 11.5, "start", fill=RED)
 f.legend_status(40, LY + 28)
 
 f.caption(["The Tracer runs the guest on its own RV64 core. Its instruction cache, data cache and jump LRU are its only local stores; each miss is one 128 B line of a file, (root, depth, line),",
-           "on the fill bus to the memory system. C&C 3 writes its state, tables and input queues into the region and runs it through the window; at each done the DMA drains the output",
-           "queues: queue 0 is part 0 read in place (window n+1's start and run n's totals), queues 1–3 the streams (figure 9.2). Writing word 0 resets everything."],
+           "on the fill bus to the memory system. One bus from C&C 3 fills the advice and expansion queues, loads the expansion tables once at startup, and writes the state into the core;",
+           "the window runs it. At each done the DMA drains the output queues (figure 9.2): the state, read in place, and the three streams. Writing word 0 resets everything."],
           y=H - 66, source="Source: planning/DECISIONS-v1.3.md (to 7374646) §1–7, 12, 13, 18–25; DECISIONS-v1.26.md items 1, 2, 10, 12; spec/machine-spec.md §4.17, §4.19. Review: WORKER24/NOTES.md.")
 f.save("fig9_1_tracer.svg")

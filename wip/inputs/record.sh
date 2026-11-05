@@ -13,9 +13,9 @@ F=$HERE/manifest/$RUN.sha256
 for c in w9-deliveries v1261 gold w26-jumpmap; do [ -f "$c/$RUN.COMPLETE" ] || { echo "record: $OUT/$c/$RUN isn't complete"; exit 2; }; done
 {
   echo "# $RUN: the input pipeline's outputs (meshsim wip/inputs), paths relative to OUT. Source of these checksums: $NOTE."
-  echo "# jolt-asic-planning $JAP_COMMIT; meshsim $(git -C "$HERE" rev-parse --short HEAD 2>/dev/null || echo "${MESHSIM_COMMIT:-?}"); gold $(sed -n 's/.*"gold_commit": "\([^"]*\)".*/\1/p' w26-jumpmap/$RUN/proof.json)$( [ -f gold-v1.3/$RUN.COMPLETE ] && echo ", gold v1.3 ${GOLD_V13_SRC:0:7}"); recorded $(date -u +%F)"
+  echo "# jolt-asic-planning $JAP_COMMIT; meshsim ${MESHSIM_COMMIT:-$(git -C "$HERE" rev-parse --short HEAD 2>/dev/null)}; gold $(sed -n 's/.*"gold_commit": "\([^"]*\)".*/\1/p' w26-jumpmap/$RUN/proof.json)$( [ -f gold-v1.3/$RUN.COMPLETE ] && echo ", gold v1.3 ${GOLD_V13_SRC:0:7}"); recorded $(date -u +%F)"
   sha256sum "w9-deliveries/$RUN.manifest.json"
-  (cd w9-deliveries/$RUN && sha256sum *.bin | grep -v 'window_' | sed "s#  #  w9-deliveries/$RUN/#")
+  for t in decode_table rom template_index templates; do sha256sum "w9-deliveries/$RUN/$t.bin"; done   # the tables beside the windows
   [ -z "$SEL" ] || sha256sum "w9-deliveries-selected/$RUN.manifest.json"
   sha256sum "v1261/$RUN.manifest.json"
   sha256sum gold/$RUN/segments.seg gold/$RUN/segments.seg.cuts gold/$RUN/segments.seg.json

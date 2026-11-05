@@ -24,7 +24,7 @@ for f in "$DATA/w9-deliveries/$RUN"/*.bin; do
 done
 read -r canon other < <($PY canon-converted "$OUT/v1261/$RUN.manifest.json")
 hit=""; for r in $(ref v1261); do [ "$r" = "$canon" ] || [ "$r" = "$other" ] && hit="$hit $(grep "$r" "$HERE/manifest/runner-refs.txt" | awk '{print $4}')"; done
-[ -n "$hit" ] && ok "v1261/$RUN.manifest.json $canon (canonical); in a key order equal to task$hit's" || no "v1261/$RUN.manifest.json $canon / $other: neither order equals $(ref v1261 | tr '\n' ' ')"
+[ -n "$hit" ] && ok "v1261/$RUN.manifest.json $canon (canonical), equal to the logged manifests of task$hit (one in each key order)" || no "v1261/$RUN.manifest.json $canon / $other: neither order equals $(ref v1261 | tr '\n' ' ')"
 $PY verify-delivery "$OUT/v1261" "$RUN" | sed 's/^/      /' || no "v1261: converted files against their manifest"
 M=$DATA/w26-jumpmap/$RUN/manifest.sha256; N=$OUT/w26-jumpmap/$RUN
 [ -f "$M" ] || no "no $M"

@@ -400,3 +400,58 @@ by upstream's harness calls: GLVR (no test calls it through `execute_inline`), a
   (`WORKER18/data/88dca85/`): run hashes of evm23, cyc22, evm29, cyc29 and the four segment files' SHA-256 all equal
   821e1bd's. Gold against them: **all four segment files byte-identical**; EVM Zone trace-23 and Cyclone input/22
   identical on every record; both workloads at 2^29 identical on every window (5,415 and 5,670) and the run hash.
+
+## v1.3 round (2026-11-05): WORKER17's findings, the host's rules, the v1.3 file
+
+### WORKER17's findings and the host's v1.3 rules (gold `ca952d6`)
+- **LR.D x0 / LR.W x0 loading a nonzero word**: rejected (the LD row's word; for LR.W the VirtualPextSigned row's
+  value written to x0; owner 2026-11-05). But see UPSTREAM-DIFFS **D14**: a16z remaps LR/SC's rd = x0 to a temporary,
+  so under a16z these are provable and jolt-cpp's rows differ for every LR x0. Awaiting a ruling.
+- **The provable range** (`ProofParams`): K by a16z's prover rule (`crates/jolt-prover/src/config.rs:53-99`:
+  next_pow2(max(remap(highest address touched), remap(min image address) + image words + 1)), the image's extent as
+  `RAMPreprocessing` (`preprocess/ram.rs:39-60`)); every access checked as the Tracer's comparator,
+  `(address − lowest_address) < 8·K` unsigned on 64 bits, and K ≤ `compute_max_ram_k` (`ram.rs:118-130`, the verifier's
+  bound). K equals jolt-cpp's `ram_K` on both workloads (2²³ EVM Zone, 2²⁴ Cyclone). (a16z's rule takes next_pow2 of the
+  highest touched index itself, so a touched index exactly a power of two would sit at K, outside the range; the check
+  would flag it; not seen.)
+- **The end, jumps to 0, misalignment**: unchanged rules, now with guests `end_jal_ra_0`, `end_c_j_0`,
+  `misaligned_inline`; the misalignment error names a16z's floor rule.
+- **Stores into code**: rejected; `run` checks every store against the merged Text ranges, `segments` scans each
+  segment's write list (its dirty cells) once.
+- Guests: `range_below_lowest`, `range_above_top`, `lr_d_x0_nonzero`, `lr_w_x0_nonzero`, `lr_d_x0_zero`,
+  `end_jal_ra_0`, `end_c_j_0`, `misaligned_inline`, `store_into_code`. Bug report:
+  `bug-reports/jolt-cpp-prover-out-of-range-access.md`.
+
+### The v1.3 segment file (gold `d0f93d6`; the default; `--format=v1.2` keeps the old one)
+Every multi-byte value little-endian; frames as section 16 (u32 length in words with the header, u32 type, data
+zero-padded). **Order: frame 7, frame 1, frame 6, then per segment frames 2, 3, and 4 or 5.**
+- **Frame 7** (owner's layout, 7ab240d): u32 version 1, u32 n (22), then n u64: log₂ K, `lowest_address`, then a16z's
+  `MemoryLayout` in declaration order (`common/src/jolt_device.rs:302-325`: program_size, max_trusted_advice_size,
+  trusted_advice_start, trusted_advice_end, max_untrusted_advice_size, untrusted_advice_start, untrusted_advice_end,
+  max_input_size, max_output_size, input_start, input_end, output_start, output_end, stack_size, stack_end (a16z's:
+  the program's end, the stack's low end), heap_size, heap_end, panic, termination, io_end). Sizes are the 8-aligned
+  ones a16z stores (max_input_size 108 → 112). Fields are only ever added at the end.
+- **Frame 1**: per segment a u32, its distinct **4 KB** pages written (dirty cell >> 9). The per-ASIC table waits for F1.
+- **Frame 6**: u32 k, u32 p1, u32 p3, then the 2^k lines (128 B: 16 × (key u32, base u32), free = all ones), from
+  `gold.JumpTable`: the static targets (`StaticTargets`) with their bytecode bases, then the run's targets (every taken
+  branch, JAL other than the end, JALR, a transfer to its own pc excluded; gold's next `instr_idx`), keys o = pc −
+  `lowest_address`, sorted unsigned, placed by `HashTable.choose` (k the smallest at most half full; p1 0x9E3779B1 if
+  every key lands in its home line, else the best of 31 alternatives; p3 the first prime at or above 0x9E3779).
+- **Frame 2**: v1.26.1's 68-word record, 128-bit words (spec 4.21.2): word 0 pc [63:0], `instr_idx` [95:64], next
+  offset [111:96]; word 1 only the advice field [124:102] = the segment's advice values (frame 3's count); words 2-65
+  registers 2i, 2i + 1; word 66 log₂ K at [71:66] and `lowest_address` >> 12 at [123:72] (roots, depths 0 for C&C 3);
+  word 67 0. A segment past the end: pc, `instr_idx`, offset 0, the final registers (as v1.2).
+- **Frames 3, 4, 5**: unchanged from v1.2, with every encoder choice above ("Stage 2").
+- Stores into code are rejected before anything is written, and so is a run the range check rejects.
+
+**Validated** (`test/v13/read_v13.py`): on EVM Zone trace-23 and Cyclone input/22 (128 segments of 2²⁰ rows), frame 6
+is byte-identical to jumpmap's `frame6.bin` (jumpmap's own acceptance: 373,731 and 116,957 jumps, 0 map errors), frame
+7's log₂ K and `lowest_address` equal jumpmap's `proof.json` and its MemoryLayout a16z's (upstream_rows' dump), frame 1
+equals jumpmap's per-segment `pages_written`, frames 2-5 equal the v1.2 file's; at 2²⁹ both workloads' frames 2-5 equal
+the v1.2 references and frame 7 a16z's layout. **For WORKER16's byte identity**, the v1.3 files at 2²⁹ (128 segments
+of 2²² rows): `WORKER18/data/v13/segment-files-v1.3.sha256` (EVM Zone 2,801,736 B `e9145e04…`, Cyclone 11,388,488 B
+`fb1f4b6f…`). Note: a tiny guest's `lowest_address` isn't page-aligned (0x7fffffe0, its I/O region is small), so word
+66's `lowest_address` / 4 KB truncates there; the workloads' (0x7e000000) are aligned.
+
+**HashTable and StaticTargets** moved from `wip/jumpmap` into gold (`11eac42`); jumpmap uses gold's, and its fixtures
+are unchanged (its `fixtures.sh` asks gold for `--format=v1.2`, which its `SegmentFile` reads).

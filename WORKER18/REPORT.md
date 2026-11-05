@@ -101,6 +101,16 @@ the three agree on every row; the rest are D2-D6 above. `check_guests.sh` pins g
   skipped CSR tests stop at the first CSR instruction Jolt can't prove.
 - **Inline tests** (task 096b): all 5,677 `execute_inline` calls of upstream's 57 inline tests agree with gold.
 
+### v1.3 (2026-11-05)
+
+- **The host's checks**: LR.D x0 / LR.W x0 loading a nonzero word; the provable range with K by a16z's prover rule and
+  its `max_ram_k` bound; stores into code; the end and misalignment rules. Guests for each.
+- **The v1.3 segment file**: frames 7, 1 (4 KB pages), 6 (the proof's jump table, built with `HashTable`, now in gold)
+  and 2 (the 68-word record); validated against jumpmap (frame 6 byte-identical), a16z's layout (frame 7) and the v1.2
+  file (frames 2-5). WORKER16's tool is to write the same bytes.
+- **Found**: D14, a16z remaps LR/SC's rd = x0 (jolt-cpp doesn't), so LR x0 is provable under a16z: the LR x0 ruling's
+  premise holds only for jolt-cpp.
+
 ### Beyond the two workloads
 
 Seven of jolt-cpp's example guests (`tracer-tests`, `inlines`, `merkle-tree`, `fibonacci`, `sha2-chain-profile-15`,

@@ -26,6 +26,8 @@ import java.util.TreeSet;
  *     then the replayed rows against rows.bin and every stream consumed exactly.</li>
  * </ul>
  * Usage: java -cp build TracerT2 DELIVERY_DIR NAME --w26 DIR --segments a,b,... [--windows N] [--compress] [--csv FILE]
+ * (a segment "Nc" is an LRU-coded run of segment N; every run gets a thread of its own, on a snapshot of the one memory
+ * as T1 carries it forward, once, through the segments in ascending order)
  */
 public final class TracerT2 {
     // C&C 3's layout (tracer_layout.h)
@@ -35,10 +37,17 @@ public final class TracerT2 {
     public static void main(String[] a) throws Exception {
         Path dl = Path.of(a[0]); String name = a[1];
         Path w26 = null, csv = null; TreeSet<Integer> chosen = new TreeSet<>(); int windows = 64; boolean compress = false;
+        java.util.TreeMap<Integer, List<Boolean>> runs = new java.util.TreeMap<>();      // segment -> its runs (true: LRU-coded)
         for (int i = 2; i < a.length; i++) {
             switch (a[i]) {
                 case "--w26" -> w26 = Path.of(a[++i]);
-                case "--segments" -> { for (String x : a[++i].split(",")) chosen.add(Integer.parseInt(x)); }
+                case "--segments" -> {
+                    // "37" a raw run of segment 37, "37c" an LRU-coded one; every run in its own thread, the memory carried once
+                    for (String x : a[++i].split(",")) {
+                        boolean c = x.endsWith("c"); int sg = Integer.parseInt(c ? x.substring(0, x.length() - 1) : x);
+                        chosen.add(sg); runs.computeIfAbsent(sg, z -> new ArrayList<>()).add(c);
+                    }
+                }
                 case "--windows" -> windows = Integer.parseInt(a[++i]);
                 case "--compress" -> compress = true;
                 case "--csv" -> csv = Path.of(a[++i]);
@@ -57,34 +66,51 @@ public final class TracerT2 {
         Path pd = dl.resolve(name);
         java.io.PrintWriter out = csv != null ? new java.io.PrintWriter(Files.newBufferedWriter(csv)) : null;
         if (out != null) out.println("segment,windows,cc3_cycles,trace_rows_cycles,drain_cycles,transfers,dma_packets,replay_cycles_max,rows_checked,wall_s,ok");
-        int rc = (compress ? Tracer.RC_COMP_CODE | Tracer.RC_COMP_RLOG | Tracer.RC_COMP_WLOG : 0);
-        int failed = 0;
-        for (int s = 0; s <= chosen.last(); s++) {
+        final java.io.PrintWriter fout = out;
+        int last = chosen.last();
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(Math.max(1, runs.values().stream().mapToInt(List::size).sum()));
+        List<java.util.concurrent.Future<String>> futs = new ArrayList<>();
+        int[] failed = { 0 };
+        for (int s = 0; s <= last; s++) {
+            final int seg = s;
             TracerT1.Seg sg = segs.get(s);
             TreeSet<Long> written = new TreeSet<>(); for (long[] u : sg.updates) written.add(u[0] / 512);
             g.fs.setOwnership(in.img, written);
             long[] regs = new long[128]; System.arraycopy(sg.state, 3, regs, 0, 128);
-            if (!chosen.contains(s)) {
-                // ---- carried by T1's path (the model and the ideal controller)
-                g.ms.cold();
-                g.loadRecord(sg.state[0], (int) sg.state[1], (int) sg.state[2], regs, sg.advice);
-                for (int j = 0; j < 64; j++) { Tracer.WindowOut o = g.window(65536 | rc, 40L * 65536 + 2_000_000); if (o == null || g.tr.stopped()) throw new IllegalStateException("T1 carry: segment " + s + " stopped: " + g.tr.errorLog); }
-                g.tr.writeBackDirtyUntimed();
-                continue;
+            for (boolean c : runs.getOrDefault(s, List.of())) {
+                // ---- the full chip on a snapshot of the one memory, in a thread of its own
+                FileStore snap = g.fs.copy();
+                final int rcv = c || compress ? Tracer.RC_COMP_CODE | Tracer.RC_COMP_RLOG | Tracer.RC_COMP_WLOG : 0;
+                final TracerT1.Seg nx = s + 1 < segs.size() ? segs.get(s + 1) : null;
+                final int win = windows;
+                futs.add(pool.submit(() -> {
+                    long w0 = System.nanoTime();
+                    Result r = chip(g, snap, in, sg, nx, regs, seg, win, rcv, pd, man);
+                    double wall = (System.nanoTime() - w0) / 1e9;
+                    StringBuilder b = new StringBuilder(String.format("%s segment %d%s (T2, %d windows): %s  C&C 3 %d cycles (trace rows %d, drain %d), %d transfers, %d DMA packets; replay max %d cycles; %d rows checked; %.0f s",
+                            name, seg, rcv != 0 ? " LRU" : "", win, r.ok() ? "OK" : "FAIL", r.cc3Cycles, r.rowCycles, r.drainCycles, r.transfers, r.packets, r.replayMax, r.rows, wall));
+                    for (String d : r.detail) b.append("\n    ").append(d);
+                    synchronized (failed) {
+                        System.out.println(b); System.out.flush();
+                        if (fout != null) { fout.printf("%d%s,%d,%d,%d,%d,%d,%d,%d,%d,%.1f,%s%n", seg, rcv != 0 ? "c" : "", win, r.cc3Cycles, r.rowCycles, r.drainCycles, r.transfers, r.packets, r.replayMax, r.rows, wall, r.ok() ? "OK" : "FAIL"); fout.flush(); }
+                        if (!r.ok()) failed[0]++;
+                    }
+                    return null;
+                }));
             }
-            long w0 = System.nanoTime();
-            Result r = chip(g, in, sg, s + 1 < segs.size() ? segs.get(s + 1) : null, regs, s, windows, rc, pd, man);
-            double wall = (System.nanoTime() - w0) / 1e9;
-            System.out.printf("%s segment %d (T2, %d windows): %s  C&C 3 %d cycles (trace rows %d, drain %d), %d transfers, %d DMA packets; replay max %d cycles; %d rows checked; %.0f s%n",
-                    name, s, windows, r.ok() ? "OK" : "FAIL", r.cc3Cycles, r.rowCycles, r.drainCycles, r.transfers, r.packets, r.replayMax, r.rows, wall);
-            for (String d : r.detail) System.out.println("    " + d);
-            if (out != null) { out.printf("%d,%d,%d,%d,%d,%d,%d,%d,%d,%.1f,%s%n", s, windows, r.cc3Cycles, r.rowCycles, r.drainCycles, r.transfers, r.packets, r.replayMax, r.rows, wall, r.ok() ? "OK" : "FAIL"); out.flush(); }
-            if (!r.ok()) failed++;
-            if (windows < 64) break;                                   // a partial segment can't carry the memory on
+            if (s == last) break;
+            // ---- carried on by T1's path (the model and the ideal controller), once for every run
+            g.ms.cold();
+            g.loadRecord(sg.state[0], (int) sg.state[1], (int) sg.state[2], regs, sg.advice);
+            for (int j = 0; j < 64; j++) { Tracer.WindowOut o = g.window(65536, 40L * 65536 + 2_000_000); if (o == null || g.tr.stopped()) throw new IllegalStateException("T1 carry: segment " + s + " stopped: " + g.tr.errorLog); }
+            g.tr.writeBackDirtyUntimed();
         }
+        for (var f : futs) { try { f.get(); } catch (java.util.concurrent.ExecutionException e) { e.getCause().printStackTrace(); synchronized (failed) { failed[0]++; } } }
+        pool.shutdown();
         if (out != null) out.close();
-        System.out.printf("%s: T2 on %d segment(s), %d failed, %.0f s%n", name, chosen.size(), failed, (System.nanoTime() - t0) / 1e9);
-        System.exit(failed == 0 ? 0 : 1);
+        int nruns = runs.values().stream().mapToInt(List::size).sum();
+        System.out.printf("%s: T2 on %d run(s), %d failed, %.0f s%n", name, nruns, failed[0], (System.nanoTime() - t0) / 1e9);
+        System.exit(failed[0] == 0 ? 0 : 1);
     }
 
     static final class Result {
@@ -99,12 +125,12 @@ public final class TracerT2 {
     }
     static long[] getWords(BigSRAM s, int chunk, int n128) { long[] w = new long[2 * n128]; for (int i = 0; i < 2 * n128; i++) w[i] = (s.peek(chunk + 2 * i) & 0xFFFFFFFFL) | (long) s.peek(chunk + 2 * i + 1) << 32; return w; }
 
-    static Result chip(TracerRig g, TracerT1.W26 in, TracerT1.Seg sg, TracerT1.Seg next, long[] regs, int s, int windows, int rc, Path pd, Map<String, Object> man) throws Exception {
+    static Result chip(TracerRig g, FileStore fs, TracerT1.W26 in, TracerT1.Seg sg, TracerT1.Seg next, long[] regs, int s, int windows, int rc, Path pd, Map<String, Object> man) throws Exception {
         Result res = new Result();
         Config k = Mach.coresCfg(-1); k.cc3Tracer = true;          // Q15 (058a926): every delivery counted, by the handshake
         Mach m = new Mach(k);
         Tracer tr = m.c.cores.tracer;
-        MemorySystem ms = new MemorySystem(g.fs); ms.mapRootForStats = g.map.root();
+        MemorySystem ms = new MemorySystem(fs); ms.mapRootForStats = g.map.root();
         tr.mem = ms; tr.onStateWrite = ms::cold;
         ReplayTables tb = g.tables;
         byte[] tables = new byte[tb.decodeBytes.length + tb.romBytes.length];

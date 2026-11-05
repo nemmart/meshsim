@@ -28,6 +28,15 @@ final class FileStore {
 
     int pagesAllocated() { return pages.size(); }
 
+    /** A deep copy (meshsim's harnesses: T2 snapshots the one memory at a segment's start and traces it on the full chip
+     *  while T1 carries the original on); every address is kept, so a File of this store names the same file in the copy. */
+    FileStore copy() {
+        FileStore c = new FileStore(PAGE_UNITS);
+        for (var e : pages.entrySet()) c.pages.put(e.getKey(), e.getValue().clone());
+        c.nextFree = nextFree;
+        return c;
+    }
+
     // ---------------------------------------------------------------- pages
     private int alloc(boolean index) {
         int a = nextFree; nextFree += PAGE_UNITS;

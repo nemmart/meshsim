@@ -27,6 +27,13 @@ public final class Elf {
   public final List<Segment> segments = new ArrayList<>();
   /** Symbols from the .symtab section(s), by name (absent when the ELF has no section headers). */
   public final java.util.Map<String, Long> symbols = new java.util.HashMap<>();
+  /** Section headers (sh_type, sh_flags, sh_addr, sh_offset, sh_size). */
+  public record Section(long type, long flags, long addr, long offset, long size) {
+    public boolean nobits() { return type == 8; }                              // SHT_NOBITS
+    /** The object crate's SectionKind::Text for ELF: SHT_PROGBITS with SHF_EXECINSTR. */
+    public boolean text() { return type == 1 && (flags & 4) != 0; }
+  }
+  public final List<Section> sections = new ArrayList<>();
 
   public Elf(Path path) throws IOException {
     bytes = Files.readAllBytes(path);
@@ -49,6 +56,11 @@ public final class Elf {
     long shoff = b.getLong(40);
     int shentsize = b.getShort(58) & 0xffff, shnum = b.getShort(60) & 0xffff;
     if (shoff != 0 && shentsize == 64 && shoff + (long) shnum * 64 <= bytes.length) {
+      for (int i = 0; i < shnum; i++) {
+        int sh = (int) (shoff + 64L * i);
+        sections.add(new Section(b.getInt(sh + 4) & 0xffffffffL, b.getLong(sh + 8), b.getLong(sh + 16), b.getLong(sh + 24),
+            b.getLong(sh + 32)));
+      }
       for (int i = 0; i < shnum; i++) {
         int sh = (int) (shoff + 64L * i);
         if (b.getInt(sh + 4) != 2) continue;

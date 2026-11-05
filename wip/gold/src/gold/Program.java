@@ -3,6 +3,8 @@ package gold;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -22,23 +24,33 @@ public final class Program {
     if (elf.machine != Elf.EM_RISCV || elf.type != Elf.ET_EXEC) throw new IOException("not a RISC-V executable");
     if (elf.entry == 0 || elf.entry >= Memory.SIZE || (elf.entry & 1) != 0) throw new IOException("bad entry point");
 
-    // segments (loader.cpp:120-170): one executable segment, which is the code
-    long codeStart = -1, codeSize = 0, minAddr = Long.MAX_VALUE, maxAddr = 0;
-    for (Elf.Segment s : elf.segments) {
-      if (s.type() != Elf.PT_LOAD) continue;
-      if (s.align() != 4096) throw new IOException(String.format("segment %#x: alignment must be 4096", s.vaddr()));
-      if (s.memSize() == 0 || s.memSize() < s.fileSize()) throw new IOException(String.format("segment %#x: bad size", s.vaddr()));
-      if (s.vaddr() < 0 || s.vaddr() + s.memSize() > Memory.SIZE) throw new IOException("segment outside RAM");
-      memory.write(s.vaddr(), elf.bytes, (int) s.offset(), (int) s.fileSize());   // the rest stays zero
-      if (s.executable()) {
-        if (codeSize != 0) throw new IOException("multiple executable segments");
-        codeStart = s.vaddr();
-        codeSize = s.memSize();
+    // The image by sections, as a16z's decode_elf (jolt-program image/elf.rs:40-93; owner's D1 ruling): every section at
+    // or above 0x8000_0000 is copied into memory (SHT_NOBITS has no data) and extends program_end; the code is the
+    // Text sections, overlapping ranges merged, decoded in address order. Program headers aren't used.
+    long programEnd = Layout.RAM_START;
+    List<long[]> textRanges = new ArrayList<>();
+    for (Elf.Section s : elf.sections) {
+      if (s.addr() < Layout.RAM_START) continue;
+      long end = s.addr() + s.size();
+      if (end > Memory.SIZE || end < s.addr()) throw new IOException(String.format("section %#x outside RAM", s.addr()));
+      programEnd = Math.max(programEnd, end);
+      if (!s.nobits()) {
+        if (s.offset() + s.size() > elf.bytes.length) throw new IOException(String.format("section %#x data is not readable", s.addr()));
+        memory.write(s.addr(), elf.bytes, (int) s.offset(), (int) s.size());
       }
-      minAddr = Math.min(minAddr, s.vaddr());
-      maxAddr = Math.max(maxAddr, s.vaddr() + s.memSize());
+      if (s.text()) textRanges.add(new long[] {s.addr(), end});
     }
-    if (codeSize == 0) throw new IOException("no executable segment");
+    textRanges.sort((x, y) -> Long.compare(x[0], y[0]));
+    List<long[]> merged = new ArrayList<>();                                     // merge_ranges (elf.rs:96-109)
+    for (long[] r : textRanges) {
+      if (!merged.isEmpty() && r[0] <= merged.get(merged.size() - 1)[1]) {
+        merged.get(merged.size() - 1)[1] = Math.max(merged.get(merged.size() - 1)[1], r[1]);
+      } else {
+        merged.add(r.clone());
+      }
+    }
+    if (merged.isEmpty()) throw new IOException("no Text section");
+    long codeStart = merged.get(0)[0], codeEnd = merged.get(merged.size() - 1)[1];
 
     Map<?, ?> meta = (Map<?, ?>) Json.parse(Files.readString(programDir.resolve("program.json")));
     Map<?, ?> mc = (Map<?, ?>) meta.get("mem_conf");
@@ -47,15 +59,16 @@ public final class Program {
     Layout.Config config = new Layout.Config(Json.u64(mc, "max_untrusted_advice_size"),
         Json.u64(mc, "max_trusted_advice_size"), Json.u64(mc, "max_input_size"), Json.u64(mc, "max_output_size"),
         Json.u64(mc, "stack_size"), heap);
-    layout = Layout.compute(config, minAddr, maxAddr, codeStart, codeStart + codeSize, elf.entry);
+    layout = Layout.compute(config, Layout.RAM_START, programEnd, codeStart, codeEnd, elf.entry);
 
     // inputs, copied unparsed (an absent file is empty)
     copyInput(inputDir.resolve("input.bin"), layout.inputStart, layout.inputEnd);
     copyInput(inputDir.resolve("trusted_advice.bin"), layout.trustedAdviceStart, layout.trustedAdviceEnd);
     copyInput(inputDir.resolve("untrusted_advice.bin"), layout.untrustedAdviceStart, layout.untrustedAdviceEnd);
 
-    byte[] code = memory.read(layout.codeStart, (int) codeSize);
-    bytecode = Bytecode.build(layout.codeStart, code);   // no host I/O rewriting (owner's D3 ruling)
+    List<Bytecode.Range> ranges = new ArrayList<>();
+    for (long[] r : merged) ranges.add(new Bytecode.Range(r[0], memory.read(r[0], (int) (r[1] - r[0]))));
+    bytecode = Bytecode.build(ranges);   // no host I/O rewriting (owner's D3 ruling)
   }
 
   private void copyInput(Path file, long start, long end) throws IOException {

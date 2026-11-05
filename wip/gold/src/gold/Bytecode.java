@@ -69,17 +69,35 @@ public final class Bytecode implements Code {
    * structure (UNIMP removed, an undecodable instruction one row), so instruction indices, and the segment files'
    * instr_idx, are jolt-cpp's.
    */
+  /** A merged range of Text sections and its bytes. */
+  public record Range(long start, byte[] bytes) {}
+
+  /** One contiguous code range (tests and the single-range callers). */
   public static Bytecode build(long codeStart, byte[] code) {
+    return build(List.of(new Range(codeStart, code)));
+  }
+
+  /** The Text ranges decoded in address order (a16z's decode_text_section, elf.rs:112-148); gaps are unmapped. */
+  public static Bytecode build(List<Range> ranges) {
     List<VInstr> out = new ArrayList<>();
     out.add(new VInstr());                    // index 0: NOP (all zero)
-    int[] pcToIndex = new int[code.length / 2 + 1];
+    long codeStart = ranges.get(0).start();
+    Range last = ranges.get(ranges.size() - 1);
+    long codeEnd = last.start() + last.bytes().length;
+    int[] pcToIndex = new int[(int) ((codeEnd - codeStart) / 2) + 1];
     java.util.Map<Long, String> removed = new java.util.HashMap<>();
     List<String> rejected = new ArrayList<>();
+    for (Range range : ranges) {
+    byte[] code = range.bytes();
     int offset = 0;
     while (offset < code.length) {
+      if (offset + 2 > code.length) throw new UnprovableInstruction("truncated instruction halfword at " + Long.toHexString(range.start() + offset));
+      if ((code[offset] & 3) == 3 && offset + 4 > code.length) {
+        throw new UnprovableInstruction("truncated RV64 instruction word at " + Long.toHexString(range.start() + offset));
+      }
       Decoder.Decoded d = Decoder.decodeNext(code, offset);
       Instruction in = d.instr();      // ECALL is always the trap through mtvec, as a16z (owner's D3 ruling)
-      long pc = codeStart + offset;
+      long pc = range.start() + offset;
       int word = wordAt(code, offset, d.size());
       offset += d.size();
       String why = null;
@@ -98,11 +116,12 @@ public final class Bytecode implements Code {
       pcToIndex[(int) ((pc - codeStart) >>> 1) + 1] = out.size();
       out.addAll(seq);
     }
+    }
     if (!rejected.isEmpty()) {
       throw new UnprovableInstruction(rejected.size() + " instruction(s) Jolt can't prove, first: "
           + String.join("; ", rejected.subList(0, Math.min(5, rejected.size()))));
     }
-    return new Bytecode(codeStart, codeStart + code.length, out.toArray(new VInstr[0]), pcToIndex, removed);
+    return new Bytecode(codeStart, codeEnd, out.toArray(new VInstr[0]), pcToIndex, removed);
   }
 
   static int wordAt(byte[] code, int offset, int size) {

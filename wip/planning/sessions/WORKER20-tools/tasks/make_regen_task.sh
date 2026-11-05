@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # make_regen_task.sh NNN PROGRAM PROG_DIR INPUT_DIR SELECTED_WINDOWS V125_MANIFEST_SHA TRACER_TGZ > NNN-w20-regen-PROGRAM.sh
 # WORKER20: a Quest task that regenerates one 2^29 replay delivery with WORKER9's delivery_writer into persistent data.
+# Superseded (WORKER27, 2026-11-05): this task's body is wip/inputs/build.sh's deliveries step (the same writer
+# invocation, staging, markers, root manifest and selected windows); new tasks come from wip/inputs/quest/make_task.sh,
+# which builds every input and compares it with the runner's copies. Kept as the record of tasks 103/104.
 set -eu
 N=$1; P=$2; PD=$3; IN=$4; SEL=$5; OLD=$6; TGZ=$7
 HERE=$(cd "$(dirname "$0")" && pwd)

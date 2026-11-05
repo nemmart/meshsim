@@ -259,6 +259,9 @@ per row** (owner), and windows 33-36 all fall in the same proof.*
   Zone, 4.48 on Cyclone**, the worst segment 23.8 ms before the drain. **Fine as it is** (owner, 2026-11-05: ample spare
   capacity), so the **16 KB caches stay**, though a 32 KB instruction cache would take EVM Zone to 4.37 (its fetch stalls are
   capacity misses).
+  **With the output path** (Quest 110d, milestone 2): every window and boundary still matches, the cycles per row unchanged, and
+  the drain about 4 M cycles per segment; **all in, rows plus drain: EVM Zone 23.6 ms median, 23.7 ms worst; Cyclone 21.2 ms
+  median, 27.2 ms worst** (segment 10), against 100 ms.
 - **What the workloads cost**, at about 4 cycles per row and 1 GHz:
   - **Cyclone:** 96,687 untraced rows against 371.5 M traced (0.026 %), all from the division family; at most 129 in any window.
     No secp256k1 inlines. A proof is about 17 ms.

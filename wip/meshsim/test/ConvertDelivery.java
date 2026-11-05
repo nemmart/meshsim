@@ -77,8 +77,12 @@ public final class ConvertDelivery {
                 catch (RuntimeException e) { st.errors.add("window " + index + ": " + e.getMessage()); }
             }
         }
-        m.put("converted", Map.of("by", "ConvertDelivery (meshsim WORKER20), v1.25 -> v1.26 records (DECISIONS-v1.26)",
-                "from_manifest_sha256", ReplayTables.sha256(Files.readAllBytes(mf))));
+        // a fixed key order ("by", then "from_manifest_sha256"): v1.26.1's Map.of iterated in an order that changes from one
+        // JVM run to the next, so the same conversion gave two manifest SHA-256s (WORKER27; v1.26.1/ERRATA.md)
+        Map<String, Object> conv = new LinkedHashMap<>();
+        conv.put("by", "ConvertDelivery (meshsim WORKER20), v1.25 -> v1.26 records (DECISIONS-v1.26)");
+        conv.put("from_manifest_sha256", ReplayTables.sha256(Files.readAllBytes(mf)));
+        m.put("converted", conv);
         st.manifest = dst.resolve(prog + ".manifest.json");
         Files.writeString(st.manifest, json(m, "") + "\n");
         return st;

@@ -1,4 +1,4 @@
-# Worker 26: the jump-target map (section 18), for the Tracer's bring-up
+# Worker 26: the host side of the Tracer's bring-up: the jump-target map (section 18) and the start images
 
 You are building the host tool that makes the Tracer's jump-target map: the hash table from a jump's target pc to its base
 instr_idx, which the Tracer probes on a jump that misses its 64-entry LRU. Its design is DECISIONS-v1.3 section 18 and spec
@@ -22,7 +22,12 @@ THE WORK
    target), and its insertion by the lookup's own rule, checking no inserted key lands more than two lines from home. Section
    18 leaves open who inserts (C&C 3 at proof start, or the host sending patched lines): propose, and for bring-up produce
    the merged table.
-4. **Outputs WORKER22 can load:** the table as a file image of 128 B lines, the three constants, and frame 6, in a format you
+3b. **Each segment's start image** (owner, 2026-11-05, moved here from WORKER22): gold's cycle-0 image (the ELF's sections and
+   the inputs) plus segments 0 to k−1's updates (frames 4 or 5) applied in order; **owned** = the pages segment k itself
+   writes (its own update list), every other page shared and not owned. **Check each against gold's memory at segment k's first
+   row.** Also word 66's values (log₂ K, `lowest_address`) and the hash constants, standing in for frame 7 until gold writes it.
+4. **Outputs WORKER22 can load:** the table as a file image of 128 B lines, the three constants, frame 6, and per segment the
+   start image as a list of pages (each its 4 KB content and its owned flag) with word 66's values, in a format you
    agree with WORKER22 (and WORKER18, for gold writing frame 6).
 5. **Measurements, both workloads at 2²⁹:** static entries and table size; distinct targets per segment; supplement sizes per
    proof; the fullest line and the longest probe; and the cache footprint, the distinct table lines each segment's jumps

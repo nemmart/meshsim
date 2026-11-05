@@ -319,7 +319,7 @@ its region, with **offset bits [22:20] picking the part**, as in the replayer's 
   - **One chunk size everywhere** (data pages, index pages, files, logs), so the memory system has a single 4 KB pool and
     nothing fragments.
   - **Translation belongs to the memory system** (section 20): the Tracer asks for (root, depth, line) of `.pages`; the memory
-    system's TLB and tree walker do the rest, through the shared cache, at most one index read per level.
+    system's tree walker does the rest, through the shared cache (no TLB, section 21 (b)), at most one index read per level.
   - **Measured clustering** (WORKER17, 2²⁹, in 16 KB pages): EVM Zone 69 pages in 3 16 MiB regions; Cyclone 693 pages in 4
     (the 2.9 MB untrusted advice, and one 7.75 MiB run of stack plus heap). At 4 KB both still fit a handful of leaf tables.
   - **Entries are 32 bits; bits 30:0 address the file system** (LPDDR) **in 128 B units** (owner; 2³¹ x 128 B = 256 GiB), the
@@ -795,16 +795,16 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
     128 MiB). Only K above 2²⁹ cells, up to section 14's 2³², needs depth 3.
 - **The memory system reads files directly** (owner): **a request names the file itself: its root's address (31 bits), its
   depth (0 to 3) and a line** (owner, 2026-11-01; replacing a table of file slots), so the memory system holds no per-file state
-  and any client can read any file. It translates through a TLB tagged by (root, page), a miss walking the tree (at most three
-  index reads) through the shared cache, then reads the line from the cache. **One translator for everything:** the Tracer's
+  and any client can read any file. It translates by walking the tree (at most three
+  index reads) through the shared cache (no TLB, section 21 (b), 2026-11-05), then reads the line from the cache. **One translator for everything:** the Tracer's
   guest memory is just a file (its `.pages`), and so is any table or log read by offset. **A hole reads as zero; writing to one
   is a checked error** (section 25), only software allocating. Bulk page transfers (the Updater, the file system's own moves) still bypass the cache, and
   writing a page directly still invalidates its lines. A request's line number is up to 35 bits (a depth-3 file of 4 TB); with the
   root and depth, about 68 bits.
 - **How the file system reaches a file** (owner, 2026-11-01): **index pages through the shared cache**, a line at a time, both
   reading and updating entries; **data pages directly**, as whole 4 KB pages into its buffers. **It finds a page through the
-  memory system's translator**: it asks which page (root, depth, offset) is, the hardware walker and TLB
-  doing the work, so there is **one walker in the chip**; software walks a tree only to change it (fill, copy, free, grow), writing
+  memory system's translator**: it asks which page (root, depth, offset) is, the hardware walker
+  doing the work (no TLB, section 21 (b)), so there is **one walker in the chip**; software walks a tree only to change it (fill, copy, free, grow), writing
   the index entry through the cache so the walker sees it, and invalidating any translation of the old entry. (This replaces the
   file system bypassing the cache entirely.)
   **So the file system has fast `read_page` and `write_page` primitives anywhere in it** (owner): (root, depth, offset) through
@@ -908,14 +908,14 @@ Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's 
 
 Decided (O). In front of section 12's shared 512 KB cache, which acts as an L2 for the Tracer; a local miss is a (root, depth,
 line) request to the memory system, which translates it (section 20). **The 512 KB cache sits close to the memory** (owner,
-2026-11-01): with the translator, its TLB and walker, and the file system's index accesses all going through it, it is the
+2026-11-01): with the translator and its walker, and the file system's index accesses all going through it, it is the
 memory system's centre, not the Tracer's. The Tracer's local 16 KB caches absorb the longer trip over the 1,024-bit fill bus.
 (This reverses an earlier placement next to the Tracer, made while the file system bypassed the cache.)
 
 - **16 KB of data and 16 KB of instructions, local to the Tracer: 128 lines of 128 B each** (owner).
 - **Each line is tagged by its line in the guest's memory file only** (2026-11-01; replacing two tags, guest address and
-  memory-system address). With translation in the memory system the Tracer has **no TLB**, and no use for a memory-system tag: a
-  dirty victim is written back by its line (with the file's root and depth), translated again by the memory system (usually a TLB hit there), and nothing
+  memory-system address). With translation in the memory system the Tracer has **no TLB** (and neither has the memory system, (b)), and no use for a memory-system tag: a
+  dirty victim is written back by its line (with the file's root and depth), translated again by the memory system (the walk usually hitting index lines in the shared cache), and nothing
   else writes the Tracer's pages during a segment, so nothing needs to invalidate a line by its memory address; the caches are
   invalidated at the segment's boundary.
 - **Access to them is single-cycle** (owner).
@@ -934,14 +934,16 @@ memory system's centre, not the Tracer's. The Tracer's local 16 KB caches absorb
 - **Open:**
   - (a) ~~the associativity~~ **decided: fully associative** (owner): 128 lines each, one Tracer, so the comparators' power is
     acceptable;
-  - (b) ~~a small page TLB~~ **decided: TLBs, now the memory system's** (owner, 2026-11-01): on a local miss the Tracer sends
-    (root, depth, line), and the memory system's TLB, tagged by (root, page), (a page to its bottom index entry: the page's address and its
-    owned bit; proposed 64 entries, fully associative) and a cache of upper index entries (each covering 4 MB; 16 to 64) mean a
-    miss usually costs one index read, through the shared cache; a 4 KB page is 32 lines, so a missing line's neighbours share its
-    translation. (Restated from the Tracer's own two TLBs under 8 top registers; sizes to confirm by measurement, (d).)
+  - (b) ~~a small page TLB~~, ~~TLBs, now the memory system's~~ **no TLB anywhere** (owner, 2026-11-05, replacing 2026-11-01's
+    TLB tagged by (root, page) and its cache of upper index entries): **translation is the walk, through the shared cache**,
+    since an index entry is nothing special, just more lines in it (it's all files). A local miss in a depth-2 file costs about
+    three shared-cache accesses (the upper index, the leaf index, the data line), some 18 cycles on hits against about 7 with a
+    TLB; but one 128 B index line covers 32 pages (128 KB), so a segment's whole index stays hot in a handful of lines, and behind
+    the 16 KB local caches misses are rare (at 1 per 100 rows the walk adds about 0.12 cycles per row, against the target of
+    4). B1 reports the walk's share; a TLB comes back only if the numbers ask for one.
   - (c) ~~an instruction line bringing its code map words~~ moot: the code map is gone (section 18).
-  - (d) sizes to confirm by measurement: the gold emulator can replay both 2²⁹ workloads' address streams through these caches,
-    the TLBs and the shared one and report hit rates (WORKER18, after ACT4).
+  - (d) sizes to confirm by measurement: the gold emulator can replay both 2²⁹ workloads' address streams through these caches
+    and the shared one, the walk's index reads included, and report hit rates (WORKER18, after ACT4).
 
 ## 22. The images and maps as copy-on-write files (2026-11-01)
 

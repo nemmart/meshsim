@@ -1,0 +1,40 @@
+{
+  "name": "d1_decodable_gap",
+  "rows": 6,
+  "jumps": 1,
+  "self_jumps": 0,
+  "instructions": 6,
+  "bytecode_rows": 7,
+  "static": {"entries": 1, "direct": 1, "return": 0, "data": 0, "auipc_call": 0, "auipc_addr": 0, "direct_only": 1, "return_only": 0, "data_only": 0, "auipc_call_only": 0, "auipc_addr_only": 0, "direct_refs": 1, "return_refs": 0, "auipc_call_refs": 0, "auipc_addr_refs": 0, "data_words_scanned": 2, "data_in_code_not_start": 0, "bad_direct": 0, "bad_return": 0, "bad_auipc_call": 0, "after_ecall": 0, "after_ecall_only": 0, "ecall_refs": 0, "bad_after_ecall": 0},
+  "run": {"distinct_targets": 1, "run_only": 0},
+  "cumulative": [
+    {"kinds": "direct", "static_entries": 1, "run_targets_covered": 1, "run_targets_missed": 0, "jumps_missed": 0},
+    {"kinds": "+return", "static_entries": 1, "run_targets_covered": 1, "run_targets_missed": 0, "jumps_missed": 0},
+    {"kinds": "+auipc_call", "static_entries": 1, "run_targets_covered": 1, "run_targets_missed": 0, "jumps_missed": 0},
+    {"kinds": "+auipc_addr", "static_entries": 1, "run_targets_covered": 1, "run_targets_missed": 0, "jumps_missed": 0},
+    {"kinds": "+data", "static_entries": 1, "run_targets_covered": 1, "run_targets_missed": 0, "jumps_missed": 0},
+    {"kinds": "+after_ecall", "static_entries": 1, "run_targets_covered": 1, "run_targets_missed": 0, "jumps_missed": 0}
+  ],
+  "table": {"entries": 1, "k": 0, "lines": 1, "bytes": 128, "load": 0.0625, "fullest_line": 1, "placed_0_1_2": [1, 0, 0], "p1": "0x9e3779b1", "p3": 10368899},
+  "table_static_only": {"entries": 1, "k": 0, "lines": 1, "bytes": 128, "load": 0.0625, "fullest_line": 1, "placed_0_1_2": [1, 0, 0], "p1": "0x9e3779b1", "p3": 10368899},
+  "table_run_only": {"entries": 1, "k": 0, "lines": 1, "bytes": 128, "load": 0.0625, "fullest_line": 1, "placed_0_1_2": [1, 0, 0], "p1": "0x9e3779b1", "p3": 10368899},
+  "table_all_starts": {"entries": 6, "k": 0, "lines": 1, "bytes": 128, "load": 0.3750, "fullest_line": 6, "placed_0_1_2": [6, 0, 0], "p1": "0x9e3779b1", "p3": 10368899},
+  "acceptance": {"jumps": 1, "map_errors": 0, "wrong_bases": 0, "lines_read": [1, 0, 0], "longest_probe": 1},
+  "lru64_misses": 1,
+  "per_segment": {
+    "rows": {"segments_with_rows": 1, "min": 6, "median": 6, "mean": 6.0, "max": 6},
+    "jumps": {"segments_with_rows": 1, "min": 1, "median": 1, "mean": 1.0, "max": 1},
+    "distinct_targets": {"segments_with_rows": 1, "min": 1, "median": 1, "mean": 1.0, "max": 1},
+    "run_only_targets": {"segments_with_rows": 1, "min": 0, "median": 0, "mean": 0.0, "max": 0},
+    "lru64_misses": {"segments_with_rows": 1, "min": 1, "median": 1, "mean": 1.0, "max": 1},
+    "lines_all": {"segments_with_rows": 1, "min": 1, "median": 1, "mean": 1.0, "max": 1},
+    "lines_misses": {"segments_with_rows": 1, "min": 1, "median": 1, "mean": 1.0, "max": 1},
+    "allstarts_lines_all": {"segments_with_rows": 1, "min": 1, "median": 1, "mean": 1.0, "max": 1},
+    "allstarts_lines_misses": {"segments_with_rows": 1, "min": 1, "median": 1, "mean": 1.0, "max": 1},
+    "image_pages": {"segments_with_rows": 1, "min": 1, "median": 1, "mean": 1.0, "max": 1},
+    "pages_written": {"segments_with_rows": 1, "min": 0, "median": 0, "mean": 0.0, "max": 0}
+  },
+  "word66": {"log2_k": 4, "log2_k_run": 0, "log2_k_image_floor": 4, "max_address": "0x0", "image_words": 5, "lowest_address": "0x7fffffe0"},
+  "images": "write",
+  "ok": true
+}

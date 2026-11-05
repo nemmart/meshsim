@@ -26,3 +26,33 @@ One directory per run (a program and its input, e.g. `evm-zone-29/`):
 - `HASH_MUL`, `HASH_STEP` and `HASH_LINES` take *p*₁, *p*₃ and *k*.
 - The record comes from gold's segment file: frame 2, converted from its flat 131 × u64 to words 0 and 2–65, and frame 3's
   count as the advice field.
+
+## T1 on small runs (2026-11-05, local, v1.3-tracer at the commit after 1ccf487)
+
+The references were built locally from jolt-asic-planning `tracer-standalone-main` (fa59d9a, jolt-cpp 88dca85):
+- the tracer, with `capture_writes` (giving `ram_K` and `lowest_address`, which stand in for frame 7);
+- WORKER9's `delivery_writer` with meshsim's universal tables, `--windows=all --keep=all`; every window self-proved;
+- gold's segment files (`gold.Main segments`, frames 1-5).
+
+The bring-up inputs were gold's cycle-0 image and an every-instruction-start map. **No timing is taken from these runs**
+(owner: not until WORKER26's map is in).
+
+| run | rows | windows | raw streams | compressed | boundaries |
+|---|---|---|---|---|---|
+| Cyclone, empty input (input/22 dir) | 20,033 | 1 | OK | (not run) | segment 0 → 1 OK |
+| Cyclone input/22/input-default | 2,705,819 | 64 of 64 | OK | OK | segment 0 → 1 OK; 77,564 updated cells |
+| EVM Zone trace-23 | 5,833,069 | 128 of 128 | OK | OK | segments 0 → 1 → 2 OK, segment 1 on segment 0's carried memory |
+
+"OK" means, for every window:
+- the start state equals WORKER9's `state.bin`;
+- each raw stream's values equal WORKER9's;
+- with compression on, each stream's coded words and pick equal those of WORKER9's encoder;
+- the template bitmap equals the manifest's inline templates;
+- Stage A, the replayer model fed the Tracer's own record and streams, gives every row of `rows.bin` (jolt-cpp's) and
+  consumes each stream exactly.
+
+At each segment boundary, the state equals the next segment's frame 2, and every cell of the update list equals the
+memory.
+
+Command (from `wip/meshsim`, gold built into G):
+`java -cp build:G TracerT1 PROGRAM INPUT SEGFILE DELIVERY NAME LOG2K LOWEST [--segments a-b] [--compress]`

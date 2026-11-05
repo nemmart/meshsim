@@ -698,6 +698,16 @@ start comes in frame 2. **Only jumps need the map.**
   stored at run time) the run's targets supply. Tables: k = 13 (1 MB), load 0.32-0.38, every key in its home line, 0 map errors
   over every jump. **Frame 6's data: u32 k, u32 p1, u32 p3, then the 2ᵏ lines** (WORKER26's format, with WORKER22's file layout
   for bring-up).
+  **The footprint is one line per distinct target** (WORKER26 at 2²⁹): the hash scatters a segment's targets, so its ~2,500
+  land almost one to a line (worst segment 323 KB EVM Zone, 270 KB Cyclone), only 12-15% under a table of every instruction
+  start; k = 13 is already the smallest the half-full rule allows. **Future option, not decided** (owner, 2026-11-05): **a base
+  table from about 100 runs' targets** (profile-guided), plus each proof's own run's targets, instead of the static analysis:
+  about 6K entries, so perhaps k = 10, and a segment's targets would share lines (roughly 120 KB instead of 275 KB), with
+  correctness kept by merging each run's own targets. Useful as **a lower bound** on the map's cost against today's table. (The
+  other lever, a hash keeping nearby pcs in one line, likewise only if B1's timing shows the map pushing data out.)
+  **Targets that aren't instruction starts** (174 EVM Zone, 108 Cyclone, dropped from the table; WORKER26): all **c.unimp
+  traps** (0x0000, D4's unreachable marker, not in the bytecode), reached only by failed checks' branches and after calls that
+  never return; none taken in any run, so a jump there is the map error, as it should be.
   *The design it replaces (2026-11-01), for the record:*
 - **The table: one hash table of target pc to base `instr_idx`, static per program, with a per-proof supplement inserted into
   it** (owner, 2026-11-01; robust to programs whose runs jump to many targets, where a per-proof table could swell to megabytes

@@ -36,6 +36,13 @@ import java.util.function.Consumer;
  * checked against the sizes: ERRORS [3] code-stream, [4] read-log, [5] write-log underflow (a decode past the stream's
  * words, or a pop past its values; the pass stops), and [6] done with input left over.
  *
+ * <p>v1.26.1 (WORKER25; DECISIONS-v1.26 items 13-17): RUN_CONFIG at window word 32 ([23:0] the rows a pass runs, [24] use
+ * the store log, [25] output rd_prev; 0 at the reset, sticky, a write while running UB); words 33-35 ROWS_RUN (24 bits),
+ * EXPANSION_OFFSET, EXPANSION_OPCODE, the same as the Tracer's. A pass runs RUN_CONFIG's rows, so it can be shorter (or
+ * longer) than a window; a count of 0 runs nothing and is done the next cycle, with the leftover check. The state word's
+ * [116:112] are reserved and ignored, so the record is loaded verbatim. The stream word is rearranged with the Tracer's
+ * advice field, which the replayer ignores.
+ *
  * <h3>What is modelled</h3>
  * The mode-9 write port (4.19.10: the map, the sizes, ownership, rp_latency, counting); the four queues as true FIFOs
  * with occupancy, pending and their low-water lines (4.19.8); the three decompressors with the write log's last-load
@@ -70,20 +77,34 @@ final class Replayer implements Peripheral {
     // ================================================================ v1.26: the state record (DECISIONS-v1.26 items 1, 2, 8)
     /** The record's 128-bit words: [0] state, [1] stream, [2-65] the register image, [66] files, [67] template bitmap. */
     static final int REC_WORDS = 68, PART0_WORDS = 66, REC_FILES = 66, REC_BITMAP = 67;
-    /** The state word's per-pass flags (bit numbers in the 128-bit word): [115] use the store log (as at v1.25), [116]
-     *  output rd_prev (v1.26, new; the position is Proposed, WORKER20). [112]-[114], v1.25's compression flags, are spare. */
-    static final int SW_STORE_LOG = 115, SW_RD_PREV = 116;
+    /** v1.26.1 (DECISIONS-v1.26 items 13-15): RUN_CONFIG, window word 32 (R/W): [23:0] the rows a pass runs, [24] use the
+     *  store log, [25] output rd_prev, [31:26] reserved. 0 at the reset and sticky (owner, 2026-11-05). The state word's
+     *  [116:112] are reserved: written 0 and ignored, not checked (owner, 2026-11-05); v1.26 had the flags at [115], [116]. */
+    static final int RC_ROWS = 0xFFFFFF, RC_STORE_LOG = 1 << 24, RC_RD_PREV = 1 << 25;
+    /** [28:26]: the Tracer's per-stream compression enables (code, read log, write log; v1.3; owner, 2026-11-05): held and
+     *  read back, ignored by the replayer (never flagged). [31:29] reserved: read 0, stores ignored (WORKER25). */
+    static final int RC_TRACER_COMP = 7 << 26, RC_DEFINED = 0x1FFFFFFF;
+    /** Window words (4.19.9, 8.11; v1.26.1, item 14: the same on the Tracer). */
+    static final int W_RUN_CONFIG = 32, W_ROWS_RUN = 33, W_EXP_OFFSET = 34, W_EXP_OPCODE = 35;
+    static int runConfig(int rows, boolean storeLog, boolean rdPrev) {
+        if (rows < 0 || rows > RC_ROWS) throw new IllegalArgumentException("rows " + rows + ": 0 to 16,777,215");
+        return rows | (storeLog ? RC_STORE_LOG : 0) | (rdPrev ? RC_RD_PREV : 0);
+    }
     /** One stream's size and form, as the stream word gives it: its 128-bit words as sent (padding included), its
      *  values out (32-bit code words, 64-bit log words) and whether it is LRU-compressed. */
     record StreamSize(int words, int values, boolean compressed) {
         StreamSize { if (words < 0 || words > 0xFFFF || values < 0 || values > 0x1FFFF) throw new IllegalArgumentException("stream size " + words + " words, " + values + " values"); }
     }
-    /** The stream word's layout (WORKER19's, DECISIONS-v1.26 item 9; WORKER19/NOTES.md section 2), stream s = 0 code, 1 read
-     *  log, 2 write log: words [16s+15:16s] ([15:0], [31:16], [47:32]); compressed [48+s]; [63:51] spare; values out
-     *  [64+17s+16:64+17s] ([80:64], [97:81], [114:98]); [127:115] spare. Only this function and {@link #streamWord} know it. */
+    /** The stream word's layout (v1.26.1, DECISIONS-v1.26 item 16), stream s = 0 code, 1 read log, 2 write log: words
+     *  [16s+15:16s] ([15:0], [31:16], [47:32]); values out [48+17s+16:48+17s] ([64:48], [81:65], [98:82]); compressed
+     *  [99+s]; the advice values [124:102] (the Tracer's: a replayer ignores them); [127:125] spare. Only these functions
+     *  know it. (v1.26: compressed [50:48], values out [80:64], [97:81], [114:98].) */
     static int swWords(int s) { return 16 * s; }
-    static int swFlag(int s) { return 48 + s; }
-    static int swValues(int s) { return 64 + 17 * s; }
+    static int swFlag(int s) { return 99 + s; }
+    static int swValues(int s) { return 48 + 17 * s; }
+    static final int SW_ADVICE = 102, SW_ADVICE_BITS = 23;
+    /** The advice field (the Tracer's; tests and the converters only: the replayer never reads it). */
+    static int streamWordAdvice(long lo, long hi) { return (int) bits128(lo, hi, SW_ADVICE, SW_ADVICE_BITS); }
     static StreamSize[] parseStreamWord(long lo, long hi) {
         StreamSize[] r = new StreamSize[3];
         for (int s = 0; s < 3; s++)
@@ -91,8 +112,12 @@ final class Replayer implements Peripheral {
         return r;
     }
     /** The stream word for three sizes: {lo, hi} (the inverse of {@link #parseStreamWord}). */
-    static long[] streamWord(StreamSize code, StreamSize rlog, StreamSize wlog) {
+    static long[] streamWord(StreamSize code, StreamSize rlog, StreamSize wlog) { return streamWord(code, rlog, wlog, 0); }
+    /** The same with the advice field (0 to 2^22), which replayers ignore. */
+    static long[] streamWord(StreamSize code, StreamSize rlog, StreamSize wlog, int adviceValues) {
+        if (adviceValues < 0 || adviceValues > 1 << 22) throw new IllegalArgumentException("advice values " + adviceValues + ": 0 to 2^22");
         long[] w = new long[2];
+        put128(w, SW_ADVICE, SW_ADVICE_BITS, adviceValues);
         StreamSize[] ss = { code, rlog, wlog };
         for (int s = 0; s < 3; s++) {
             put128(w, swWords(s), 16, ss[s].words()); put128(w, swValues(s), 17, ss[s].values()); put128(w, swFlag(s), 1, ss[s].compressed() ? 1 : 0);
@@ -108,9 +133,9 @@ final class Replayer implements Peripheral {
     static void put128(long[] w, int pos, int n, long v) {
         for (int k = 0; k < n; k++) { int b = pos + k; long bit = (v >>> k) & 1; if (b < 64) w[0] = w[0] & ~(1L << b) | bit << b; else w[1] = w[1] & ~(1L << (b - 64)) | bit << (b - 64); }
     }
-    /** The state word's hi long for instr_idx, the next offset and the two per-pass flags. */
-    static long stateHi(int instrIdx, int nextOffset, boolean storeLog, boolean rdPrev) {
-        return (instrIdx & 0xFFFFFFFFL) | (long) (nextOffset & 0xFFFF) << 32 | (storeLog ? 1L : 0) << (SW_STORE_LOG - 64) | (rdPrev ? 1L : 0) << (SW_RD_PREV - 64);
+    /** The state word's hi long for instr_idx and the next offset ([127:112] 0: v1.26.1 has no flags here). */
+    static long stateHi(int instrIdx, int nextOffset) {
+        return (instrIdx & 0xFFFFFFFFL) | (long) (nextOffset & 0xFFFF) << 32;
     }
     /** The read-log and write-log queues' entries: 256 (4 KB) at v1.26 (V3-12), 512 at v1.25. -Dreplayer.logq=512 gives
      *  v1.25's 8 KB for a control run; set before the replayer is made. */
@@ -124,11 +149,11 @@ final class Replayer implements Peripheral {
     static final int ERR_BAD_WRITE = 0, ERR_OVERRUN = 1, ERR_INVALID = 2, ERR_CODE_UNDER = 3, ERR_RLOG_UNDER = 4, ERR_WLOG_UNDER = 5, ERR_LEFTOVER = 6, N_ERR = 7;
 
     final int me;
-    /**
-     * Rows per pass: 65,536, as the hardware runs (4.19.1). A testing parameter only: a debug window (the tracer's
-     * manifest gives its length as window_rows, e.g. 2^8) or a unit test runs a shorter pass. Set before a run; 1 to 65,536.
-     */
-    int rowsPerPass = ROWS_PER_PASS;
+    /** RUN_CONFIG (window word 32; v1.26.1): written by a store while stopped, read by PULSE_RUN; 0 at the reset, sticky. */
+    private int runConfig;
+    /** The pass's rows, RUN_CONFIG [23:0] taken at PULSE_RUN (it can't change while running). v1.26: a fixed 65,536, with a
+     *  testing parameter for debug windows, which RUN_CONFIG replaces. */
+    private int rowsPerPass;
     private Host host;
     @Override public void attach(Host h) { host = h; }
     private void violate(long t, String m) { violations.add("t" + me + " @" + t + ": " + m); if (host != null) host.violate(t, m); }
@@ -150,7 +175,7 @@ final class Replayer implements Peripheral {
     private boolean running;
     // v1.26 (item 12): the register file is part 0's image (region0[4 + r]); pc, instr_idx and the offset are the state word's
     private long pc; private int instrIdx;
-    private boolean fStore, fRdPrev;                   // latched per run: use the store log, output rd_prev (v1.26)
+    private boolean fStore, fRdPrev;                   // RUN_CONFIG [24], [25] at PULSE_RUN: use the store log, output rd_prev (v1.26.1)
     private boolean stateWritten;                      // word 0 written (the flush) since the last pass started
     private int startOffset;                           // the state word's next offset, latched
     private long copyDoneAt;                           // first cycle a row may start
@@ -181,12 +206,6 @@ final class Replayer implements Peripheral {
     long passStartAt, passEndAt;
 
     Replayer(int me) { this.me = me; }
-    /** A replayer whose passes are {@code rowsPerPass} rows long (testing; the hardware's is 65,536). */
-    Replayer(int me, int rowsPerPass) {
-        this(me);
-        if (rowsPerPass < 1 || rowsPerPass > ROWS_PER_PASS) throw new IllegalArgumentException("rows per pass " + rowsPerPass + ": 1 to 65,536");
-        this.rowsPerPass = rowsPerPass;
-    }
     @Override public int type() { return 4; }
     @Override public int params() { return 4; }                    // type 4 (4.17.1, D46), version 0
     @Override public EventCounts events() { return ev; }
@@ -197,12 +216,17 @@ final class Replayer implements Peripheral {
     @Override public int errors(long t) { settle(t); int e = 0; for (int k = 0; k < N_ERR; k++) if (condEvents[k] > 0) e |= 1 << k; return e; }
     @Override public Integer word(long t, int w) {
         settle(t);
-        return switch (w) { case 32 -> sStatus0 & 0xFFFF; case 33 -> sStatus0 >>> 16; case 34 -> sStatus1; default -> null; };
+        return switch (w) { case W_RUN_CONFIG -> sRunConfig; case W_ROWS_RUN -> sRows & RC_ROWS; case W_EXP_OFFSET -> sStatus0 >>> 16; case W_EXP_OPCODE -> sStatus1; default -> null; };
+    }
+    /** A store to word 32, RUN_CONFIG (taking effect at the end of t, like every input); words 33-35 are read-only. */
+    @Override public int writeWord(long t, int w, int v) {
+        if (w == W_RUN_CONFIG) { noteInput(t); inputs.add(new Input(t, IN_CONFIG, v, 0, 0, 0, 0)); return 1; }
+        return word(t, w) == null ? -1 : 0;
     }
 
     // ================================================================ inputs, deferred to the end of their cycle
     private record Input(long t, int kind, int a, int b, int c, long lo, long hi) {}
-    private static final int IN_CLAIM = 1, IN_RUN = 2;
+    private static final int IN_CLAIM = 1, IN_RUN = 2, IN_CONFIG = 3;
     private final ArrayDeque<Input> inputs = new ArrayDeque<>();
     private final ArrayDeque<Input> landing = new ArrayDeque<>();      // accepted packets; kind = src, a = addr, b = size
     private final long[] acceptTimes = new long[8];
@@ -232,6 +256,7 @@ final class Replayer implements Peripheral {
         inputs.clear(); landing.clear(); settled = Long.MIN_VALUE;
         stopCore(t, false); expDiscard = 0; newExpSetAt = Long.MIN_VALUE; doneSetAt = Long.MIN_VALUE; ev.clearAll();
         code.clear(); rlog.clear(); wlog.clear(); exp.reset(); java.util.Arrays.fill(condEvents, 0); outQ.clear(); outAt.clear();
+        runConfig = 0;                                                  // v1.26.1: RUN_CONFIG is 0 after the reset
     }
 
     int landed(long t) {
@@ -241,7 +266,7 @@ final class Replayer implements Peripheral {
 
     // ================================================================ level reads: the snapshot at the end of t − 1
     private boolean sRunning;
-    private int sLines, sStatus0, sStatus1;
+    private int sLines, sStatus0, sStatus1, sRows, sRunConfig;
 
     @Override public boolean running(long t) { settle(t); return sRunning; }
     /** Bring the model to the start of t (the slot calls it before reading the events). */
@@ -271,6 +296,10 @@ final class Replayer implements Peripheral {
             Input in = inputs.poll();
             switch (in.kind()) {
                 case IN_RUN -> doRun(in.t());
+                case IN_CONFIG -> {
+                    if (running) throw new UndefinedBehavior(in.t(), me, "replayer", "a RUN_CONFIG write while a pass runs (4.19.9; DECISIONS-v1.26 item 13)");
+                    runConfig = in.a() & RC_DEFINED; configWrites++;   // [28:26] held for the Tracer's sake, never read
+                }
                 default -> throw new IllegalStateException();
             }
         }
@@ -278,7 +307,9 @@ final class Replayer implements Peripheral {
         sRunning = running;
         sStatus0 = (rowsDone & 0xFFFF) | (nextOffset() & 0xFFFF) << 16;
         sStatus1 = presented;
+        sRows = rowsDone; sRunConfig = runConfig;
     }
+    long configWrites;
 
     private int nextOffset() {
         if (cur != null && !cur.lastStarted) return cur.nextRow;
@@ -302,6 +333,8 @@ final class Replayer implements Peripheral {
         // queues hold what landed since (item 11: preloading allowed).
         long sLo = region0[0], sHi = region0[1];
         pc = sLo; instrIdx = (int) sHi; startOffset = (int) (sHi >>> 32) & 0xFFFF;
+        // v1.26.1 (items 13, 15): the row count and the flags are RUN_CONFIG's, which can't change while the pass runs
+        rowsPerPass = runConfig & RC_ROWS; fStore = (runConfig & RC_STORE_LOG) != 0; fRdPrev = (runConfig & RC_RD_PREV) != 0;
         running = true;
         copyDoneAt = t + 1 + IMAGE_COPY_CYCLES;
         rowsStarted = 0; rowsDone = 0; cur = null; nxt = null; firstInstr = true; inflight = null; busyUntil = Long.MIN_VALUE;
@@ -312,13 +345,11 @@ final class Replayer implements Peripheral {
 
 
     /** The write to the state word (word 0) lands: setting the state resets everything (DECISIONS-v1.26 items 4, 10, in
-     *  place of PULSE_RUN): the input queues flushed (contents and occupancy; not the output queue), the state word's flags
-     *  and the stream word's sizes latched, the size (pop) counters cleared, every queue's credits set to 2 (4.19.8) and the
+     *  place of PULSE_RUN): the input queues flushed (contents and occupancy; not the output queue), the stream word's
+     *  sizes latched (v1.26.1: the state word has no flags), the size (pop) counters cleared, every queue's credits set to 2 (4.19.8) and the
      *  decompressors reset. Pushes that land after it are kept (item 11: preloading). */
     private void flush(long t) {
         code.flush(); rlog.flush(); wlog.flush(); exp.reset();
-        long sHi = region0[1];
-        fStore = ((sHi >>> (SW_STORE_LOG - 64)) & 1) != 0; fRdPrev = ((sHi >>> (SW_RD_PREV - 64)) & 1) != 0;
         latchSizes();
         for (int b = EV_CODE; b <= EV_EXP; b++) ev.set(t, b, 2);
         java.util.Arrays.fill(pushed, 0); java.util.Arrays.fill(allowance, 0);
@@ -410,6 +441,7 @@ final class Replayer implements Peripheral {
         code.cycle = rlog.cycle = wlog.cycle = exp.cycle = T;
         if (!running) return;
         passCycles++;
+        if (rowsPerPass == 0) { checkLeftover(T); stopCore(T, true); return; }   // v1.26.1: a count of 0, done the next cycle (O)
         if (inflight != null && T == busyUntil) finishRow(T);
         if (!running) return;
         if (expDiscard > 0 && exp.occ > 0) { exp.pop(); expDiscard--; }     // one dropped word per cycle (N3)
@@ -749,6 +781,8 @@ final class Replayer implements Peripheral {
     int nextOffsetNow() { return nextOffset(); }
     boolean isRunning() { return running; }
     boolean storeLogLatched() { return fStore; }
+    int runConfigNow() { return runConfig; }
+    int rowsPerPassNow() { return rowsPerPass; }
     int outQueueRows() { return outQ.size(); }
 
     // ================================================================ a code or log queue and its decompressor (4.19.15)

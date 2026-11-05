@@ -25,6 +25,7 @@ final class ReplayerUnitTests {
         lines();
         timing();
         v126();
+        v1261();
     }
 
     // ================================================================ RISC-V encoders (independent of the decoder)
@@ -273,7 +274,7 @@ final class ReplayerUnitTests {
 
     static ReplayDriver runWindow(ReplayWindow w, int rows) {
         ReplayDriver d = new ReplayDriver(w);
-        d.r.rowsPerPass = rows;
+        w.rows = rows;                                 // v1.26.1: the pass's RUN_CONFIG [23:0]
         d.load();
         d.pass(200_000);
         return d;
@@ -503,10 +504,11 @@ final class ReplayerUnitTests {
         T.eq(256, d.rows.size(), "a 256-row pass");
         T.check(d.done && !d.r.isRunning(), "done after 256 rows");
         T.eq(256, d.r.status(d.t, 0) & 0xFFFF, "PERIPH_STATUS_0 counts the rows run");
-        T.eq(Replayer.ROWS_PER_PASS, new Replayer(0).rowsPerPass, "the default stays 65,536");
+        T.eq(256, (int) d.r.word(d.t, Replayer.W_ROWS_RUN), "ROWS_RUN (word 33, v1.26.1) reads the row count after the pass");
+        T.eq(0, new Replayer(0).runConfigNow(), "RUN_CONFIG is 0 after the reset (v1.26.1)");
         boolean threw = false;
-        try { new Replayer(0, 65537); } catch (IllegalArgumentException e) { threw = true; }
-        T.check(threw, "a length past 65,536 is refused");
+        try { Replayer.runConfig(1 << 24, false, false); } catch (IllegalArgumentException e) { threw = true; }
+        T.check(threw, "a row count past 24 bits is refused");
     }
 
     // ================================================================ code 145, immediate 0 (26q, 4.19.3)
@@ -611,8 +613,8 @@ final class ReplayerUnitTests {
         // (v1.25, s8e); the ROM isn't (its second port)
         for (int at : new int[] { 0x0, 0x1000 }) {
             ReplayWindow w = programWindow(false, false, false, true);
-            ReplayDriver d = new ReplayDriver(w); d.r.rowsPerPass = 25; d.load();
-            d.r.run(d.t); d.step(); d.step();
+            ReplayDriver d = new ReplayDriver(w); d.w.rows = 25; d.load();
+            d.writeConfig(); d.r.run(d.t); d.step(); d.step();   // v1.26.1: RUN_CONFIG first (0 at the reset runs nothing)
             d.r.accept(d.t, 3, 0x2000 + 16 * 500, LinkWord.SIZE_128, 7, 7); d.step();
             for (int k = 0; k < 4; k++) d.step();
             T.eq(7, d.r.romLo[500], "running: the ROM takes writes (its second port)");
@@ -622,8 +624,8 @@ final class ReplayerUnitTests {
         // v1.25 (DECISIONS-v1.25 s8e): PULSE_RUN while a pass runs is undefined behavior (v1.2 ignored it)
         {
             ReplayWindow w = programWindow(false, false, false, true);
-            ReplayDriver d = new ReplayDriver(w); d.r.rowsPerPass = 25; d.load();
-            d.r.run(d.t); d.step(); d.step();
+            ReplayDriver d = new ReplayDriver(w); d.w.rows = 25; d.load();
+            d.writeConfig(); d.r.run(d.t); d.step(); d.step();   // v1.26.1: RUN_CONFIG first (0 at the reset runs nothing)
             T.check(d.r.running(d.t), "a pass runs");
             d.r.run(d.t);
             T.ub(() -> { for (int k = 0; k < 3; k++) d.step(); }, "PULSE_RUN while a pass runs", "replayer", "PULSE_RUN while a pass runs");
@@ -654,8 +656,9 @@ final class ReplayerUnitTests {
         T.group("events and credits");
         int code = 1 << Replayer.EV_CODE, rlog = 1 << Replayer.EV_RLOG, wlog = 1 << Replayer.EV_WLOG, exp = 1 << Replayer.EV_EXP, done = 1 << Replayer.EV_RUN_DONE;
         ReplayWindow w = programWindow(false, false, false, true);
-        Replayer r = new Replayer(0); r.rowsPerPass = 25;
+        Replayer r = new Replayer(0); w.rows = 25;
         ReplayDriver d = new ReplayDriver(w, r); d.load();
+        d.writeConfig();                                // v1.26.1: RUN_CONFIG first
         long t = d.t;
         T.check(!r.running(t), "idle: STATUS [0] = 0");
         T.eq(code | rlog | wlog | exp, r.events().value(t), "idle, after the load: the state word's write set every queue's credits to 2 (v1.26; the write log's too: the loop masks it without the store log)");
@@ -669,8 +672,11 @@ final class ReplayerUnitTests {
         T.eq(rlog | wlog | exp, r.events().value(d.t), "two: code's bit falls (two refills may be outstanding)");
         T.eq(4, r.params(), "PARAMS: type 4 (4.17.1, D46), version 0");
         T.eq(0, r.status(d.t, 1), "EXPANSION_OPCODE: nothing presented yet");
-        T.eq((int) r.word(d.t, 34), r.status(d.t, 1), "word 34 is EXPANSION_OPCODE");
-        T.check(r.word(d.t, 35) == null, "word 35 undefined");
+        T.eq((int) r.word(d.t, 35), r.status(d.t, 1), "word 35 is EXPANSION_OPCODE (v1.26.1; was 34)");
+        T.eq(r.status(d.t, 0) >>> 16, (int) r.word(d.t, 34), "word 34 is EXPANSION_OFFSET (was 33)");
+        T.eq(25 | Replayer.RC_STORE_LOG | Replayer.RC_RD_PREV, (int) r.word(d.t, 32), "word 32 reads RUN_CONFIG back");
+        T.check(r.word(d.t, 36) == null, "word 36 undefined");
+        T.eq(0, r.writeWord(d.t, 33, 1), "a store to ROWS_RUN (33) is a bus error"); T.eq(0, r.writeWord(d.t, 35, 1), "and to 35");
         ReplayDriver d3 = runWindow(programWindow(false, false, false, true), 25);
         T.check(d3.done, "the driver saw run done");
         d3.r.sync(d3.t);
@@ -707,11 +713,141 @@ final class ReplayerUnitTests {
         workingState();
     }
 
+    // ================================================================ v1.26.1 (DECISIONS-v1.26 items 13-16; WORKER25/NOTES.md)
+    static void v1261() {
+        T.group("v1.26.1: RUN_CONFIG's row count");
+        // a short pass of a window sized to it: clean (the 25-row program window, as everywhere above)
+        ReplayDriver ok = runWindow(programWindow(false, false, false, true), 25);
+        T.check(ok.rows.size() == 25 && ok.r.clean(), "a 25-row pass of a 25-row record: clean, " + ok.rows.size() + " rows");
+        // a pass shorter than its record: done after its rows, and [6] (the owner: unconditional)
+        ReplayDriver sh = runWindow(programWindow(false, false, false, true), 10);
+        T.eq(10, sh.rows.size(), "a 10-row pass of the 25-row record runs exactly 10 rows");
+        T.check(sh.done && !sh.r.isRunning(), "and raises done");
+        T.eq(1 << Replayer.ERR_LEFTOVER, sh.r.errors(sh.t), "with input left over, ERRORS [6] only");
+        T.eq(10, (int) sh.r.word(sh.t, Replayer.W_ROWS_RUN), "ROWS_RUN reads 10");
+
+        T.group("v1.26.1: a row count of 0");
+        for (boolean empty : new boolean[] { true, false }) {
+            ReplayWindow w = empty ? new ReplayWindow() : programWindow(false, false, false, true);
+            if (empty) { w.fixedRom(); w.setCode(new int[0], false); w.setLogs(List.of(), false, false); }
+            w.rows = 0;
+            ReplayDriver d = new ReplayDriver(w); d.load(); d.writeConfig();
+            long t0 = d.t;
+            d.r.run(t0); d.step();
+            T.check(d.r.running(t0 + 1), (empty ? "empty" : "full") + " record: STATUS [0] rises at the end of the run store's cycle");
+            d.step();
+            T.check(!d.r.running(t0 + 2), "and falls the next");
+            d.r.sync(d.t);
+            T.check((d.r.events().value(d.t) & 1 << Replayer.EV_RUN_DONE) != 0, "run done is posted");
+            T.eq(0, d.r.rowsDone(), "no row");
+            T.eq(empty ? 0 : 1 << Replayer.ERR_LEFTOVER, d.r.errors(d.t), empty ? "nothing to consume: no error" : "streams not consumed: [6], as at any done");
+        }
+
+        T.group("v1.26.1: RUN_CONFIG, sticky and checked");
+        {
+            ReplayDriver d = new ReplayDriver(programWindow(false, false, false, true)); d.w.rows = 25; d.load();
+            d.pass(200_000); d.pass(200_000);
+            T.eq(1L, d.configStores, "two passes, one RUN_CONFIG store: it is sticky");
+            T.check(d.r.clean() && d.rows.size() == 25, "the second pass ran its 25 rows on the first write: " + d.r.errorReport());
+            T.eq(d.w.runConfig(), (int) d.r.word(d.t, Replayer.W_RUN_CONFIG), "reads back");
+            d.r.reset(d.t); d.step();
+            T.eq(0, (int) d.r.word(d.t, Replayer.W_RUN_CONFIG), "0 after the reset");
+        }
+        {
+            ReplayDriver d = new ReplayDriver(programWindow(false, false, false, true)); d.w.rows = 25; d.load();
+            d.writeConfig(); d.r.run(d.t); d.step(); d.step();
+            d.r.writeWord(d.t, Replayer.W_RUN_CONFIG, 7);
+            T.ub(() -> { for (int k = 0; k < 3; k++) d.step(); }, "a RUN_CONFIG write while a pass runs", "replayer", "RUN_CONFIG write while a pass runs");
+        }
+
+        T.group("v1.26.1: RUN_CONFIG [28:26], the Tracer's compression enables, ignored");
+        {
+            ReplayDriver base = runWindow(programWindow(true, true, true, true), 25);
+            for (int comp = 1; comp < 8; comp++) {
+                ReplayWindow w = programWindow(true, true, true, true);
+                ReplayDriver d = new ReplayDriver(w); w.rows = 25;
+                d.runConfig = w.runConfig() | comp << 26 | (comp == 7 ? 7 << 29 : 0);
+                d.load(); d.pass(200_000);
+                boolean same = d.rows.size() == base.rows.size() && java.util.stream.IntStream.range(0, d.rows.size()).allMatch(k -> Arrays.equals(d.rows.get(k), base.rows.get(k)));
+                T.check(same && d.r.clean() && d.r.errors(d.t) == 0 && d.r.passEndAt - d.r.passStartAt == base.r.passEndAt - base.r.passStartAt,
+                        "[28:26] = " + comp + (comp == 7 ? " and [31:29] = 7" : "") + ": the same rows and cycles, no error, nothing flagged " + d.r.errorReport());
+                T.eq(w.runConfig() | comp << 26, (int) d.r.word(d.t, Replayer.W_RUN_CONFIG), "  reads back with [28:26]" + (comp == 7 ? ", [31:29] read 0" : ""));
+            }
+            ReplayWindow raw = programWindow(false, false, false, true);
+            ReplayDriver dr = new ReplayDriver(raw); raw.rows = 25; dr.runConfig = raw.runConfig() | Replayer.RC_TRACER_COMP; dr.load(); dr.pass(200_000);
+            T.check(dr.r.clean() && dr.rows.size() == 25, "raw streams with every enable set: still decoded raw (the stream word decides) " + dr.r.errorReport());
+        }
+
+        T.group("v1.26.1: the flags from RUN_CONFIG, not the record");
+        {
+            // the record's [115] and [116] set, RUN_CONFIG's flags off: the rows are the flags-off rows (reserved, ignored)
+            ReplayWindow w = programWindow(false, false, false, true); w.storeLog = false; w.rdPrev = false;
+            long[] rec = w.record(new long[2]); rec[1] |= 3L << 51;
+            w.region0 = rec;
+            ReplayDriver d = runWindow(w, 25);
+            long[][] e = expected(false);
+            for (long[] row : e) row[11] = 0;
+            checkRows("record [115], [116] = 1, RUN_CONFIG [24], [25] = 0", d.rows, e, PADDING);
+            T.check(d.r.clean(), "clean, the write log's sizes ignored (no [5], no [6]): " + d.r.errorReport());
+            T.check(!d.r.storeLogLatched(), "the pass used no store log");
+            // and the reverse: the record's bits 0, RUN_CONFIG's flags on: the usual rows
+            ReplayDriver on = runWindow(programWindow(false, false, false, true), 25);
+            checkRows("record [116:115] = 0, RUN_CONFIG [24], [25] = 1", on.rows, expected(true), PADDING);
+        }
+
+        T.group("v1.26.1: the advice field is ignored");
+        {
+            ReplayWindow w0 = programWindow(true, true, true, true), w1 = programWindow(true, true, true, true);
+            w1.adviceValues = 1 << 22;
+            ReplayDriver a = runWindow(w0, 25), b = runWindow(w1, 25);
+            T.check(a.rows.size() == b.rows.size() && java.util.stream.IntStream.range(0, a.rows.size()).allMatch(k -> Arrays.equals(a.rows.get(k), b.rows.get(k))),
+                    "advice 0 and 2^22: the same rows");
+            T.check(b.r.clean(), "clean with advice 2^22: " + b.r.errorReport());
+            T.eq((long) (1 << 22), (b.r.region0[3] >>> 38) & 0x7FFFFF, "the field stays in part 0 as written");
+        }
+
+        T.group("v1.26.1: ConvertDelivery, a v1.25 record to v1.26.1");
+        {
+            java.nio.ByteBuffer v = java.nio.ByteBuffer.allocate(16 * 67).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+            v.putLong(0, 0xB1L); v.putLong(8, 0xB2L);                               // word 0: the bitmap
+            v.putLong(16, 0x8000_1000L);                                           // word 1: pc
+            v.putLong(24, 0x1234L | 7L << 32 | 5L << 48 | 1L << 51);               // instr_idx, offset 7, flags 101, [115]
+            v.putLong(32, 100L * 32 | (long) (40 * 64) << 32); v.putLong(40, 6L * 64);   // word 2: bit lengths (raw)
+            for (int i = 0; i < 128; i++) v.putLong(48 + 8 * i, 0x1000L + i);
+            Replayer.StreamSize[] sz = { new Replayer.StreamSize(30, 100, true), new Replayer.StreamSize(20, 40, false), new Replayer.StreamSize(3, 6, true) };
+            java.nio.ByteBuffer o2 = java.nio.ByteBuffer.wrap(ConvertDelivery.convertRecord(v, sz)).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+            T.eq(16 * 68, o2.capacity(), "68 words");
+            T.eq(0x8000_1000L, o2.getLong(0), "word 0: pc");
+            T.eq(0x1234L | 7L << 32, o2.getLong(8), "instr_idx and offset kept; [127:112] 0 (no flags, v1.26.1)");
+            Replayer.StreamSize[] got = Replayer.parseStreamWord(o2.getLong(16), o2.getLong(24));
+            T.check(Arrays.equals(sz, got), "word 1: the sizes in v1.26.1's layout: " + Arrays.toString(got));
+            T.eq(0, Replayer.streamWordAdvice(o2.getLong(16), o2.getLong(24)), "the advice field 0");
+            T.eq(0x1001L, o2.getLong(32 + 8), "the image: register 1 at word 2's high half");
+            T.eq(0L, o2.getLong(16 * 66) | o2.getLong(16 * 66 + 8), "word 66, files: 0");
+            T.eq(0xB1L, o2.getLong(16 * 67), "word 67: the bitmap"); T.eq(0xB2L, o2.getLong(16 * 67 + 8), "(its high half)");
+            v.putLong(24, 0x1234L);
+            boolean thrown = false;
+            try { ConvertDelivery.convertRecord(v, sz); } catch (IllegalStateException e) { thrown = true; }
+            T.check(thrown, "a v1.25 record with [115] = 0 is refused (the tracer emits 1)");
+        }
+
+        T.group("v1.26.1: ROWS_RUN past 2^16");
+        {
+            int n = 70_000;
+            ReplayWindow w = new ReplayWindow(); w.fixedRom();
+            w.setCode(new int[n], false); w.setLogs(List.of(), false, false); w.rows = n;
+            ReplayDriver d = new ReplayDriver(w); d.load(); d.pass(600_000);
+            T.eq(n, d.rows.size(), "a 70,000-row pass: RUN_CONFIG past a window");
+            T.eq(n, (int) d.r.word(d.t, Replayer.W_ROWS_RUN), "ROWS_RUN after it: 70,000 (24 bits; v1.26's modulo 2^16 would read 4,464)");
+            T.check(d.r.clean(), "a 70,000-row pass of 70,000 padding words: clean " + d.r.errorReport());
+        }
+    }
+
     /** Item 12: part 0 is the working state: after a pass it holds the end state; the reload of words 0-65 restarts it. */
     static void workingState() {
         T.group("v1.26: part 0 is the working state");
         ReplayWindow w = programWindow(false, false, false, true);
-        Replayer r = new Replayer(0); r.rowsPerPass = 25;
+        Replayer r = new Replayer(0); w.rows = 25;
         ReplayDriver d = new ReplayDriver(w, r); d.load();
         T.eq(0x1000L, r.region0[0], "before the pass: the state word's pc");
         List<long[]> first = new ArrayList<>(d.pass(200_000));
@@ -719,7 +855,8 @@ final class ReplayerUnitTests {
         T.eq(r.instrIdx() & 0xFFFFFFFFL, r.region0[1] & 0xFFFFFFFFL, "and the end instr_idx");
         T.eq(0x101L, r.region0[4 + A0], "the image holds the registers as the pass left them (a0 = 0x101)");
         T.eq(0x1036L, r.region0[4 + 40], "v40 too");
-        T.check(((r.region0[1] >>> (Replayer.SW_STORE_LOG - 64)) & 1) == 1, "the flags are untouched");
+        T.eq(0L, r.region0[1] >>> 48, "the state word's [127:112] stay 0 (v1.26.1: no flags there)");
+        T.eq(w.runConfig(), r.runConfigNow(), "RUN_CONFIG is untouched by the pass (sticky)");
         List<long[]> again = new ArrayList<>(d.pass(200_000));                 // the driver reloads words 0-65 first
         T.check(again.size() == first.size() && java.util.stream.IntStream.range(0, first.size()).allMatch(k -> Arrays.equals(first.get(k), again.get(k))),
                 "after reloading words 0-65, the same pass again");
@@ -736,18 +873,26 @@ final class ReplayerUnitTests {
             for (int s = 0; s < 3; s++) a[s] = new Replayer.StreamSize(g.nextInt(0x10000), g.nextInt(0x20000), g.nextBoolean());
             long[] w = Replayer.streamWord(a[0], a[1], a[2]);
             Replayer.StreamSize[] b = Replayer.parseStreamWord(w[0], w[1]);
-            ok &= Arrays.equals(a, b) && (w[0] >>> 51) == 0 && (w[1] >>> 51) == 0;
+            int adv = g.nextInt((1 << 22) + 1);
+            long[] wa = Replayer.streamWord(a[0], a[1], a[2], adv);
+            ok &= Arrays.equals(a, b) && (w[1] >>> 38) == 0 && Arrays.equals(a, Replayer.parseStreamWord(wa[0], wa[1]))
+                    && Replayer.streamWordAdvice(wa[0], wa[1]) == adv && (wa[1] >>> 61) == 0;
         }
-        T.check(ok, "2,000 random sizes round-trip, [63:51] and [127:115] spare");
+        T.check(ok, "2,000 random sizes and advice counts round-trip; the advice field doesn't touch the sizes; [127:125] spare");
         long[] one = Replayer.streamWord(new Replayer.StreamSize(0x1111, 0x10001, true), new Replayer.StreamSize(0x2222, 0x10002, false), new Replayer.StreamSize(0x3333, 0x10003, true));
-        T.eq(0x0005_3333_2222_1111L, one[0], "WORKER19's layout: words [15:0], [31:16], [47:32]; flags [48]-[50]");
-        T.eq(0x10001L | 0x10002L << 17 | 0x10003L << 34, one[1], "values out [80:64], [97:81], [114:98]");
+        T.eq(0x0001_3333_2222_1111L, one[0], "v1.26.1's layout: words [15:0], [31:16], [47:32]; code's values out from [48]");
+        T.eq(0x1L | 0x10002L << 1 | 0x10003L << 18 | 1L << 35 | 1L << 37, one[1], "values out [64:48], [81:65], [98:82]; flags [99], [100], [101]");
+        long[] adv = Replayer.streamWord(new Replayer.StreamSize(0, 0, false), new Replayer.StreamSize(0, 0, false), new Replayer.StreamSize(0, 0, false), 1 << 22);
+        T.eq(0L, adv[0], "advice alone: the low half empty"); T.eq((long) (1 << 22) << 38, adv[1], "advice values [124:102], 2^22 inclusive");
+        boolean advThrown = false;
+        try { Replayer.streamWord(new Replayer.StreamSize(0, 0, false), new Replayer.StreamSize(0, 0, false), new Replayer.StreamSize(0, 0, false), (1 << 22) + 1); } catch (IllegalArgumentException e) { advThrown = true; }
+        T.check(advThrown, "advice past 2^22 is refused");
         long[] mx = Replayer.streamWord(new Replayer.StreamSize(33_800, 65_536, true), new Replayer.StreamSize(0xFFFF, 0x1FFFF, true), new Replayer.StreamSize(0, 0, false));
         Replayer.StreamSize[] m = Replayer.parseStreamWord(mx[0], mx[1]);
         T.check(m[0].words() == 33_800 && m[0].values() == 65_536 && m[0].compressed() && m[1].words() == 0xFFFF && m[1].values() == 0x1FFFF && !m[2].compressed(),
                 "the largest sizes fit (a stream at most about 33,800 words and 65,536 values): " + Arrays.toString(m));
-        T.eq(1L << 51, Replayer.stateHi(0, 0, true, false), "the state word: use the store log at [115]");
-        T.eq(1L << 52, Replayer.stateHi(0, 0, false, true), "the state word: output rd_prev at [116] (Proposed)");
+        T.eq(0L, Replayer.stateHi(0xFFFFFFFF, 0xFFFF) >>> 48, "the state word: [127:112] 0, no flags (v1.26.1)");
+        T.eq(Replayer.RC_STORE_LOG | Replayer.RC_RD_PREV | 65536, Replayer.runConfig(65536, true, true), "RUN_CONFIG: rows [23:0], use the store log [24], output rd_prev [25]");
         boolean thrown = false;
         try { new Replayer.StreamSize(0x10000, 0, false); } catch (IllegalArgumentException e) { thrown = true; }
         T.check(thrown, "a size past its field is refused");
@@ -894,7 +1039,7 @@ final class ReplayerUnitTests {
     static void flushes() {
         T.group("v1.26: the state word's write flushes the queues");
         ReplayWindow w = programWindow(false, false, false, true);
-        Replayer r = new Replayer(0); r.rowsPerPass = 25;
+        Replayer r = new Replayer(0); w.rows = 25;
         ReplayDriver d = new ReplayDriver(w, r); d.load();
         long f0 = r.flushes;
         // junk in every queue while stopped, then the state word: all of it goes
@@ -933,8 +1078,8 @@ final class ReplayerUnitTests {
         T.eq(f0 + 2, r.flushes, "one flush per pass");
         // a pass without the state word's write since the last: flagged, and its queues weren't flushed
         T.group("v1.26: a pass without the flush");
-        Replayer r2 = new Replayer(0); r2.rowsPerPass = 25;
-        ReplayDriver d2 = new ReplayDriver(programWindow(false, false, false, true), r2); d2.load(); d2.pass(200_000);
+        Replayer r2 = new Replayer(0);
+        ReplayDriver d2 = new ReplayDriver(programWindow(false, false, false, true), r2); d2.w.rows = 25; d2.load(); d2.pass(200_000);
         T.check(r2.clean(), "the first pass is clean");
         d2.port.add(new long[] { 0x40000, 0xBAD, 0xBAD });
         while (!d2.port.isEmpty()) d2.step();
@@ -970,8 +1115,8 @@ final class ReplayerUnitTests {
         T.check(Arrays.equals(before, r.region0), "part 0's words 0-65 unchanged");
         T.eq(0, r.errors(t), "no error");
         for (int wd : new int[] { 66, 67 }) {                          // item 11: flagged while running, like any part-0 write
-            ReplayDriver d = new ReplayDriver(programWindow(false, false, false, true)); d.r.rowsPerPass = 25; d.load();
-            d.r.run(d.t); d.step(); d.step();
+            ReplayDriver d = new ReplayDriver(programWindow(false, false, false, true)); d.w.rows = 25; d.load();
+            d.writeConfig(); d.r.run(d.t); d.step(); d.step();   // v1.26.1: RUN_CONFIG first (0 at the reset runs nothing)
             d.r.accept(d.t, 3, 16 * wd, LinkWord.SIZE_128, 1, 1);
             T.ub(() -> { for (int k = 0; k < 6; k++) d.step(); }, "running: record word " + wd + " written during a pass", "replayer", "while a pass runs");
         }
@@ -993,7 +1138,7 @@ final class ReplayerUnitTests {
         Replayer r8 = new Replayer(0);
         Replayer.LOG_QUEUE_ENTRIES = keep;
         T.check(r8.rlog.cap == 512 && r8.wlog.half == 256 && r8.code.cap == 256, "the 8 KB control: logs 512 entries, the code queue unchanged");
-        ReplayDriver d = new ReplayDriver(programWindow(true, true, true, true), r8); r8.rowsPerPass = 25; d.load(); d.pass(200_000);
+        ReplayDriver d = new ReplayDriver(programWindow(true, true, true, true), r8); d.w.rows = 25; d.load(); d.pass(200_000);
         T.check(r8.clean() && d.rows.size() == 25, "a pass on the 8 KB control replayer: clean " + r8.errorReport());
     }
 }

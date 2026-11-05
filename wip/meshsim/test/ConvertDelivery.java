@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Converts a v1.25 replay delivery (67-word state records) to v1.26 (DECISIONS-v1.26 items 1, 2, 8; WORKER19/NOTES.md),
+ * Converts a v1.25 replay delivery (67-word state records) to v1.26.1 (DECISIONS-v1.26 items 1, 2, 15, 16; WORKER25/NOTES.md),
  * without touching the streams. The source is only read; the converted delivery is written beside it:
  * DST/PROGRAM/ holds the converted records (every window_NNNNN.state*.bin and end.bin) and symbolic links to every other
  * source file (the streams, rows.bin, diag.bin, the tables), and DST/PROGRAM.manifest.json is the source manifest with
@@ -16,10 +16,11 @@ import java.util.Map;
  *
  * <p>Per record: v1.25's word 0 (the template bitmap) moves to word 67; words 1-66 (state word, stream word, image)
  * become words 0-65; word 66 (files) is 0. The state word's [114:112] (the compression flags) move into the stream
- * word and are cleared; [115] (the store log) is kept; [116] (output rd_prev) is set. The stream word's bit lengths
+ * word and are cleared; [115] (the store log) must be 1, as the tracer emits it, and is cleared with [116]: v1.26.1's
+ * state word has no flags (a pass's are RUN_CONFIG's), so the record is loaded verbatim. The stream word's bit lengths
  * become each stream's 128-bit words (ceil(bits / 128), checked against the stream file the flags name) and its values
  * out, taken from the window's raw record (state.bin): code bits / 32, log bits / 64, which a compressed form of the same
- * stream shares. end.bin (an end state, no streams) gets a zero stream word.
+ * stream shares, in v1.26.1's layout (the advice field 0). end.bin (an end state, no streams) gets a zero stream word.
  *
  * <p>Usage: java ConvertDelivery SRC DST PROGRAM [--manifest M]  (M: default SRC/PROGRAM.manifest.json, else
  * SRC/manifest.json). Prints a summary and the new manifest's SHA-256.
@@ -147,12 +148,12 @@ public final class ConvertDelivery {
     /** v1.25's state word [114:112], the compression flags (code, read log, write log). */
     static int flags(ByteBuffer r) { return (int) ((r.getLong(24) >>> 48) & 7); }
 
-    /** v1.25 record -> v1.26 record. */
+    /** v1.25 record -> v1.26.1 record. */
     static byte[] convertRecord(ByteBuffer r, Replayer.StreamSize[] sz) {
         long sHi = r.getLong(24);
         if ((sHi >>> 52) != 0) throw new IllegalStateException("state word [127:116] not 0: 0x" + Long.toHexString(sHi >>> 52));
-        boolean store = ((sHi >>> 51) & 1) != 0;
-        long hi = Replayer.stateHi((int) sHi, (int) (sHi >>> 32) & 0xFFFF, store, true);
+        if (((sHi >>> 51) & 1) == 0) throw new IllegalStateException("state word [115] (includes store log) is 0: the tracer emits 1");
+        long hi = Replayer.stateHi((int) sHi, (int) (sHi >>> 32) & 0xFFFF);   // v1.26.1: [116:112] reserved, 0
         long[] regs = new long[128];
         for (int i = 0; i < 128; i++) regs[i] = r.getLong(48 + 8 * i);
         long[] rec = ReplayWindow.record(r.getLong(16), hi, Replayer.streamWord(sz[0], sz[1], sz[2]), regs, new long[2], new long[] { r.getLong(0), r.getLong(8) });

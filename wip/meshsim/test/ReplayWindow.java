@@ -12,13 +12,16 @@ import java.util.Map;
  */
 final class ReplayWindow {
     String name = "window";
-    /** The window's length in rows: 65,536, or the manifest's debug `window_rows` (REPLAY-INPUT-REQUIREMENTS 4). */
+    /** The window's length in rows: 65,536, or the manifest's debug `window_rows` (REPLAY-INPUT-REQUIREMENTS 4). With
+     *  storeLog and rdPrev, the pass's RUN_CONFIG (v1.26.1: not the record's). */
     int rows = Replayer.ROWS_PER_PASS;
     // the checkpoint
     long pc; int instrIdx, nextOffset;
-    boolean codeComp, rlogComp, wlogComp, storeLog = true;
-    /** v1.26: the state word's output-rd_prev flag ([116], Proposed): 0, the rows' rd_prev is 0. */
-    boolean rdPrev = true;
+    boolean codeComp, rlogComp, wlogComp;
+    /** v1.26.1: the pass's flags, RUN_CONFIG [24] use the store log and [25] output rd_prev (v1.26: the state word's). */
+    boolean storeLog = true, rdPrev = true;
+    /** v1.26.1: the stream word's advice field (the Tracer's; a replayer ignores it). */
+    int adviceValues;
     long codeLen, rlogLen, wlogLen;               // exact lengths in bits (the encoders'; v1.26's stream word doesn't carry them)
     int codeVals, rlogVals, wlogVals;             // v1.26: values out (32-bit code words, 64-bit log words)
     /** v1.26: the padding after each stream's last bit is anything (DECISIONS-v1.26 item 5): 0 pads with zero bits, any
@@ -49,12 +52,14 @@ final class ReplayWindow {
     }
 
     long stateLo() { return pc; }
-    long stateHi() { return Replayer.stateHi(instrIdx, nextOffset, storeLog, rdPrev); }
+    long stateHi() { return Replayer.stateHi(instrIdx, nextOffset); }
+    /** v1.26.1: the pass's RUN_CONFIG: the window's rows and the two flags. */
+    int runConfig() { return Replayer.runConfig(rows, storeLog, rdPrev); }
     /** v1.26: the stream word, each stream's words, values out and compression flag (Replayer.streamWord's layout). */
     long[] streamWord() {
         return Replayer.streamWord(new Replayer.StreamSize(code.length / 2 + wordsAdj[0], codeVals + valuesAdj[0], codeComp),
                 new Replayer.StreamSize(rlog.length / 2 + wordsAdj[1], rlogVals + valuesAdj[1], rlogComp),
-                new Replayer.StreamSize(wlog.length / 2 + wordsAdj[2], wlogVals + valuesAdj[2], wlogComp));
+                new Replayer.StreamSize(wlog.length / 2 + wordsAdj[2], wlogVals + valuesAdj[2], wlogComp), adviceValues);
     }
     /** Tests only: the stream word's words and values, per stream (code, read log, write log), off the streams' own. */
     final int[] wordsAdj = new int[3], valuesAdj = new int[3];

@@ -1,4 +1,4 @@
-# Integrator handover (2026-11-01, after the v1.25 freeze)
+# Integrator handover (2026-11-04, after the v1.26 freeze)
 
 For a new integration session taking over from the previous one. **Read this first**, then the top-level `README.md`, then the
 decision logs as needed (`wip/planning/DECISIONS-v1.2.md`, `-v1.25.md`, `-v1.3.md`). Everything below was checked against the
@@ -9,7 +9,8 @@ repository at the time of writing; trust the repository over this file if they d
 meshsim is the cycle-level simulator, spec and software of a 64-tile mesh in an ASIC for proving the Jolt zkVM (owner: Niall;
 RTL: Tony, working in his own sessions). Milestones are folders: `v1.0/`, `v1.1/` (frozen), **`v1.2/` (pure: the spec exactly as
 Tony took it, tag `v1.2-tony`, plus `ERRATA.md`)**, **`v1.2.1/` (v1.2 with every erratum and cleanup applied, simulator in line;
-frozen 2026-11-01)**, and **`wip/` (v1.25: v1.2 plus the replayer and its tables at jolt-cpp `821e1bd`)**. Then **v1.3: the Tracer**
+frozen 2026-11-01)**, **`v1.25/`** (the replayer and its tables at jolt-cpp `821e1bd`, frozen 2026-11-01), **`v1.26/`** (v1.25 plus
+the replayer's v1.3 changes, frozen 2026-11-04), and **`wip/`** (v1.3 work). Then **v1.3: the Tracer**
 (design in progress, `DECISIONS-v1.3.md`). Tony's RTL goes from v1.1 straight to v1.25; his sessions are reviewing the v1.2 spec
 now and diff it against v1.2.1 (`git diff --no-index v1.2/spec/ v1.2.1/spec/` on `main`). **Versions are folders on `main`,
 not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Frozen" is loose: v1.2 is a waypoint, corrected by point releases.
@@ -39,9 +40,9 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
 
 | worker | doing | state | what's left | waiting for it |
 |---|---|---|---|---|
-| WORKER16 | T2 done (`WORKER16/REPORT.md`: answered, DECISIONS-v1.3 section 12); now **W2**: the JIT's advice streams, and how jolt-cpp handles registers 40-47 at a chunk's start | starting W2 | plan first | its W2 prompt |
-| WORKER17 | Jolt's memory, from the tracing side (layout, accesses per row, what the workloads touch) and the checking side (the RAM, register and bytecode sumchecks), connected | starting | plan first | start with "Clone meshsim and follow WORKER17/PROMPT.md" |
-| WORKER18 | a self-contained Java emulator of Jolt's tracer (`wip/gold/`), to become our gold (DECISIONS-v1.3 section 17, W4) | starting | plan first | start with "Clone meshsim and follow WORKER18/PROMPT.md" |
+| WORKER16 | T2 and W3 done (`WORKER16/REPORT.md`, `W3-REPORT.md`: the segment-file tool, byte-identical checks); W2 (the fast JIT) deferred by the owner | **last sent: move PR #2's tracer to jolt-cpp 88dca85** on its own branch (isa unchanged; row hashes and segment files must stay identical); no reply seen since | that reply; then merge its branch into `tracer-standalone-main` | ask the owner for its last message |
+| WORKER17 | Jolt's memory, tracing and checking sides (`WORKER17/NOTES.md`): question 5's dense-in-K table and question 3's page measurements done (they fed DECISIONS-v1.3 sections 12, 14, 15) | **last known: reading upstream's K-dense parts and Val_init**, then the per-row rules and question 8 | its report | ask the owner for its last message |
+| WORKER18 | the Java emulator `wip/gold/` (DECISIONS-v1.3 section 17): **gold earned** (stage 2), stage 3 done (upstream gives the same rows; `WORKER18/UPSTREAM-DIFFS.md` D1-D12), D4 ruled (load only provable instructions; UNIMP as a marker) | **last sent: W5** (ACT4 and the inline vectors); then gold keeps **one loading mode**: rebuild ACT4 under our own target (code and data in separate segments), a test-harness runner only if needed | its W5 report | ask the owner for its last message |
 
 ## What's left, by milestone
 
@@ -76,6 +77,20 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
   Open in v1.3: register offsets beyond words 32-35; sizes to confirm by gold (caches, TLB); UPSTREAM-DIFFS D1, D3, D5 follow
   upstream (the verifier is upstream's, jolt-cpp's submodule at 7189216; not yet recorded as ruled), D2 and D12 deferred; demo
   guests where upstream works and jolt-cpp doesn't (D1 with `.rodata` in the executable segment; C.SLLI x0), proposed for WORKER18.
+## Pending, not yet sent or recorded (2026-11-04)
+
+- **UPSTREAM-DIFFS rulings:** the verifier is **upstream's** (jolt-cpp proves `jolt_verifier::JoltProof` with upstream's
+  `jolt_program` preprocessing, from its submodule `third-party/jolt` at **7189216**), so **D1 (program image by sections), D3
+  (no raw-ECALL rewriting) and D5 (C.SLLI x0's uncompression) must follow upstream**; D2 and D12 are deferred policy. Discussed
+  with the owner, not yet written into `WORKER18/UPSTREAM-DIFFS.md`. The verifier's pin (7189216) differs from WORKER18's upstream
+  pin (17a9459).
+- **Demo guests where upstream works and jolt-cpp doesn't**, proposed, not sent: (a) D1, `.rodata` in the same executable `PT_LOAD`
+  as `.text` (upstream decodes only text sections and works; jolt-cpp decodes the segment and fails at load; a quieter variant
+  puts decodable words between code, shifting jolt-cpp's `instr_idx`); (b) D12/D5, `c.slli x0, 1` as `.half 0x0006` (a RISC-V
+  HINT). WORKER18 has the guest generator and all three tools.
+- **Two new projects, proposed to the owner, prompts not yet written:** W21, the Tracer's bring-up in meshsim; W22, the file
+  system on C&C 2 with a shell on C&C 1 (UART), the page manager in C&C 3 black-boxed (see the v1.3 bullet above).
+
 ## Open items for the owner and Tony
 
 - Tony: his full CSR list with reset values (v1.2 Q1, partly answered); what the soft reset keeps; WORKER13's Q10 (v1.1 gave

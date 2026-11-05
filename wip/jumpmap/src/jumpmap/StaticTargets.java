@@ -24,6 +24,7 @@ import java.util.Map;
  *   <li><b>auipc call</b>: an AUIPC rX followed at once by a JALR through rX (the far `call` and `tail`): pc + hi + lo;</li>
  *   <li><b>auipc address</b>: an AUIPC rX followed at once by an ADDI from rX (`la` of a code address, a function
  *       pointer made in code) that is an instruction start;</li>
+ *   <li><b>after ECALL</b>: the instruction after each ECALL (the trap handler's MRET returns there);</li>
  *   <li><b>data</b>: every 8-byte-aligned u64 in a non-executable section at or above 0x8000_0000 with data that equals
  *       an instruction start.</li>
  * </ul>
@@ -31,9 +32,9 @@ import java.util.Map;
  * decoded exactly as gold's Program does (the Text sections, overlapping ranges merged, in address order; D1).
  */
 public final class StaticTargets {
-  public static final int DIRECT = 1, RETURN = 2, DATA = 4, RUN = 8, AUIPC_CALL = 16, AUIPC_ADDR = 32;
+  public static final int DIRECT = 1, RETURN = 2, DATA = 4, RUN = 8, AUIPC_CALL = 16, AUIPC_ADDR = 32, AFTER_ECALL = 64;
   /** The kinds the static table is built from. */
-  public static final int STATIC = DIRECT | RETURN | DATA | AUIPC_CALL | AUIPC_ADDR;
+  public static final int STATIC = DIRECT | RETURN | DATA | AUIPC_CALL | AUIPC_ADDR | AFTER_ECALL;
 
   public final Program program;
   public final Bytecode bc;
@@ -43,7 +44,7 @@ public final class StaticTargets {
   /** Every instruction start's key, ascending. */
   public final int[] allStarts;
   public long directRefs, returnRefs, dataWords, dataInCodeNotStart, badDirect, badReturn;
-  public long auipcCallRefs, auipcAddrRefs, badAuipcCall;
+  public long auipcCallRefs, auipcAddrRefs, badAuipcCall, ecallRefs, badAfterEcall;
   public long instructions;
 
   public StaticTargets(Program program, Elf elf) {
@@ -103,6 +104,10 @@ public final class StaticTargets {
               if (!add(pc + in.b, DIRECT)) badDirect++;
               if (in.a == 1 || in.a == 5) { returnRefs++; if (!add(pc + d.size(), RETURN)) badReturn++; }
             }
+            break;
+          case Op.ECALL:
+            ecallRefs++;
+            if (!add(pc + d.size(), AFTER_ECALL)) badAfterEcall++;
             break;
           case Op.JALR:
             if (in.a == 1 || in.a == 5) { returnRefs++; if (!add(pc + d.size(), RETURN)) badReturn++; }

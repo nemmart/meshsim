@@ -104,6 +104,14 @@ public final class Main {
       cover(img, in.resolve("untrusted_advice.bin"), L.untrustedAdviceStart);
       log.printf("cycle-0 image: %d pages of 4 KB%n", img.size());
     }
+    String initialSha = null;
+    if (doImages) {
+      try (OutputStream os = writeImages
+          ? new BufferedOutputStream(Files.newOutputStream(out.resolve("initial.pages")), 1 << 20) : null) {
+        initialSha = img.write(Set.of(), os);
+      }
+    }
+    int initialPages = img.size();
     Path segDir = out.resolve("seg");
     if (writeImages) Files.createDirectories(segDir);
 
@@ -125,22 +133,22 @@ public final class Main {
       } else if (sg.state[0] != 0 || sg.state[1] != 0) {
         fail("segment " + k + ": past the end, but frame 2's pc is not 0");
       }
+      String bad = null;
       if (doImages) {
-        String bad = img.check(p.memory);
-        if (bad != null) fail("segment " + k + "'s start image: " + bad);
-        Set<Integer> owned = Image.written(sg.updates);
-        try (OutputStream os = writeImages
-            ? new BufferedOutputStream(Files.newOutputStream(segDir.resolve(String.format("%03d.pages", k))), 1 << 20)
-            : null) {
-          imgSha[k] = img.write(owned, os);
-        }
-        imgPages[k] = img.size();
-        imgOwned[k] = owned.size();
-        if (writeImages) {
-          Files.writeString(segDir.resolve(String.format("%03d.json", k)), String.format(Locale.ROOT,
-              "{\"segment\": %d, \"first_row\": %d, \"pages\": %d, \"owned_pages\": %d, \"sha256\": \"%s\", \"gold_check\": \"%s\"}%n",
-              k, first, imgPages[k], imgOwned[k], imgSha[k], bad == null ? "ok" : "FAILED: " + bad));
-        }
+        bad = img.check(p.memory);
+        if (bad != null) fail("segment " + k + ": the initial image with segments 0-" + (k - 1) + "'s updates: " + bad);
+      }
+      long[] written = Image.sortedOffsets(Image.written(sg.updates));
+      imgOwned[k] = written.length;
+      imgPages[k] = img.size();
+      byte[] wb = new byte[8 * written.length];
+      for (int i = 0; i < written.length; i++) Image.putLong(wb, 8 * i, written[i]);
+      imgSha[k] = sha256(wb);
+      if (writeImages) {
+        Files.write(segDir.resolve(String.format("%03d.pages", k)), wb);
+        Files.writeString(segDir.resolve(String.format("%03d.json", k)), String.format(Locale.ROOT,
+            "{\"segment\": %d, \"first_row\": %d, \"pages_written\": %d, \"sha256\": \"%s\", \"gold_check\": \"%s\"}%n",
+            k, first, written.length, imgSha[k], !doImages ? "not run" : bad == null ? "ok" : "FAILED: " + bad));
       }
       segJump[k] = jKey.size();
       long end = first + segRows;
@@ -167,6 +175,10 @@ public final class Main {
       img.apply(sg.updates);
     }
     segJump[nseg] = jKey.size();
+    if (doImages) {
+      String bad = img.check(p.memory);
+      if (bad != null) fail("after the last segment: " + bad);
+    }
     if (!m.halted()) fail("the run did not end within the segment file's " + nseg + " segments");
     long runRows = m.cycle;
     double runSecs = (System.nanoTime() - t0) / 1e9;
@@ -224,7 +236,7 @@ public final class Main {
     // ---- per segment: distinct targets, the 64-entry LRU, the cache footprint ----
     PrintWriter csv = new PrintWriter(Files.newBufferedWriter(out.resolve("segments.csv")));
     csv.println("segment,rows,jumps,distinct_targets,run_only_targets,lru64_misses,lines_all,lines_misses,"
-        + "allstarts_lines_all,allstarts_lines_misses,image_pages,owned_pages,image_sha256");
+        + "allstarts_lines_all,allstarts_lines_misses,image_pages,pages_written,written_sha256");
     BitSet bm = new BitSet(table.lines), bmMiss = new BitSet(table.lines);
     BitSet ba = new BitSet(tAll.lines), baMiss = new BitSet(tAll.lines);
     int[] lr = new int[3];
@@ -282,8 +294,8 @@ public final class Main {
 
     // ---- what each kind of analysis adds, cumulatively: static entries, run targets and jumps covered ----
     int[] order = {StaticTargets.DIRECT, StaticTargets.RETURN, StaticTargets.AUIPC_CALL, StaticTargets.AUIPC_ADDR,
-        StaticTargets.DATA};
-    String[] orderNames = {"direct", "+return", "+auipc_call", "+auipc_addr", "+data"};
+        StaticTargets.DATA, StaticTargets.AFTER_ECALL};
+    String[] orderNames = {"direct", "+return", "+auipc_call", "+auipc_addr", "+data", "+after_ecall"};
     StringBuilder cum = new StringBuilder("  \"cumulative\": [");
     int mask = 0;
     for (int c = 0; c < order.length; c++) {
@@ -303,15 +315,16 @@ public final class Main {
     String elfSha = sha256(Files.readAllBytes(prog.resolve("program.elf")));
     String segSha = sha256(Files.readAllBytes(segFile));
     StringBuilder segs = new StringBuilder();
-    if (doImages) for (int k = 0; k < nseg; k++) segs.append(k == 0 ? "" : ", ").append('"').append(imgSha[k]).append('"');
+    for (int k = 0; k < nseg; k++) segs.append(k == 0 ? "" : ", ").append('"').append(imgSha[k]).append('"');
     Files.writeString(out.resolve("proof.json"), String.format(Locale.ROOT, "{%n"
         + "  \"name\": \"%s\",%n  \"log2_k\": %d,%n  \"lowest_address\": \"%#x\",%n"
         + "  \"hash_k\": %d,%n  \"hash_p1\": \"%#010x\",%n  \"hash_p3\": %d,%n  \"map_entries\": %d,%n"
         + "  \"program_elf_sha256\": \"%s\",%n  \"input\": \"%s\",%n  \"gold_commit\": \"%s\",%n"
         + "  \"segment_file_sha256\": \"%s\",%n  \"segment_rows\": %d,%n  \"segments\": %d,%n"
-        + "  \"sha256\": {\"map.lines\": \"%s\", \"frame6.bin\": \"%s\"},%n  \"seg_pages_sha256\": [%s]%n}%n",
+        + "  \"sha256\": {\"map.lines\": \"%s\", \"frame6.bin\": \"%s\", \"initial.pages\": \"%s\"},%n"
+        + "  \"initial_pages\": %d,%n  \"seg_written_sha256\": [%s]%n}%n",
         name, log2K, lowest, table.k, table.p1, table.p3, table.entries, elfSha, in.toString(), goldCommit, segSha, segRows,
-        nseg, sha256(lines), sha256(f6), segs));
+        nseg, sha256(lines), sha256(f6), initialSha, initialPages, segs));
 
     long[] col = new long[nseg];
     StringBuilder rep = new StringBuilder();
@@ -322,13 +335,15 @@ public final class Main {
         + " \"auipc_call\": %d, \"auipc_addr\": %d, \"direct_only\": %d, \"return_only\": %d, \"data_only\": %d,"
         + " \"auipc_call_only\": %d, \"auipc_addr_only\": %d, \"direct_refs\": %d, \"return_refs\": %d,"
         + " \"auipc_call_refs\": %d, \"auipc_addr_refs\": %d, \"data_words_scanned\": %d, \"data_in_code_not_start\": %d,"
-        + " \"bad_direct\": %d, \"bad_return\": %d, \"bad_auipc_call\": %d},%n",
+        + " \"bad_direct\": %d, \"bad_return\": %d, \"bad_auipc_call\": %d, \"after_ecall\": %d, \"after_ecall_only\": %d,"
+        + " \"ecall_refs\": %d, \"bad_after_ecall\": %d},%n",
         st.kinds.size(), st.count(StaticTargets.DIRECT), st.count(StaticTargets.RETURN), st.count(StaticTargets.DATA),
         st.count(StaticTargets.AUIPC_CALL), st.count(StaticTargets.AUIPC_ADDR),
         st.onlyKind(StaticTargets.DIRECT), st.onlyKind(StaticTargets.RETURN), st.onlyKind(StaticTargets.DATA),
         st.onlyKind(StaticTargets.AUIPC_CALL), st.onlyKind(StaticTargets.AUIPC_ADDR), st.directRefs,
         st.returnRefs, st.auipcCallRefs, st.auipcAddrRefs, st.dataWords, st.dataInCodeNotStart, st.badDirect, st.badReturn,
-        st.badAuipcCall));
+        st.badAuipcCall, st.count(StaticTargets.AFTER_ECALL), st.onlyKind(StaticTargets.AFTER_ECALL), st.ecallRefs,
+        st.badAfterEcall));
     rep.append(String.format(Locale.ROOT, "  \"run\": {\"distinct_targets\": %d, \"run_only\": %d},%n",
         runTargets.size(), runOnly.size()));
     rep.append(cum);
@@ -339,7 +354,7 @@ public final class Main {
         probeHist[2], probeHist[3], longest));
     rep.append(String.format(Locale.ROOT, "  \"lru64_misses\": %d,%n", sumMiss));
     String[] names = {"rows", "jumps", "distinct_targets", "run_only_targets", "lru64_misses", "lines_all", "lines_misses",
-        "allstarts_lines_all", "allstarts_lines_misses", "image_pages", "owned_pages"};
+        "allstarts_lines_all", "allstarts_lines_misses", "image_pages", "pages_written"};
     rep.append("  \"per_segment\": {");
     for (int c = 0; c < names.length; c++) {
       int active = 0;

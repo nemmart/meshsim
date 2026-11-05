@@ -98,6 +98,15 @@ public final class Image {
     return s;
   }
 
+  /** Page numbers as .pages offsets, ascending. */
+  public static long[] sortedOffsets(Set<Integer> pages) {
+    long[] o = new long[pages.size()];
+    int i = 0;
+    for (int n : pages) o[i++] = (n & 0xffffffffL) << PAGE_SHIFT;
+    Arrays.sort(o);
+    return o;
+  }
+
   /** null if this image equals gold's memory word for word (every page; an unlisted page must be all zero there). */
   public String check(Memory m) {
     long[][] gp = goldPages(m);
@@ -132,7 +141,6 @@ public final class Image {
 
   /** The page list (WORKER22's format): per page u64 offset, u32 flags (bit 0 owned), u32 0, 4096 bytes; ascending. */
   public String write(Set<Integer> owned, OutputStream out) throws IOException {
-    for (int n : owned) page(n);
     MessageDigest md;
     try { md = MessageDigest.getInstance("SHA-256"); } catch (Exception e) { throw new IllegalStateException(e); }
     byte[] rec = new byte[16 + 8 * PAGE_WORDS];

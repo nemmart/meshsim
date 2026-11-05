@@ -2,8 +2,9 @@
 
 The host tool behind the Tracer's bring-up (B1): **one jump-target table per proof** (DECISIONS-v1.3 section 18; spec
 4.21.4), **frame 6**, the **initial image** and **each segment's pages written** (B1's acceptance on one memory), and
-**word 66's values** (log₂ K, `lowest_address`) standing in for frame 7. Plain Java 21 on gold's classes (`../gold`,
-unchanged); no dependencies.
+**word 66's values** (log₂ K, `lowest_address`) standing in for frame 7. Plain Java 21 on gold's classes (`../gold`);
+no dependencies. `HashTable` and `StaticTargets` now live in gold, which builds frame 6 itself (owner, DECISIONS-v1.3
+section 16, 7ab240d); this tool uses gold's.
 
 ```sh
 ./build.sh                                              # builds gold if needed, then build/

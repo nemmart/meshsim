@@ -2,9 +2,18 @@
 
 jolt-cpp at `821e1bd` (`src/tracer/...` unless noted) against upstream a16z/jolt at `17a9459`. Found by running both on
 the same ELFs and inputs (jolt-asic-planning `worker18-rows` `row_dump` and `worker18-upstream` `upstream_rows`) and
-by WORKER18's hand-assembled guests (`wip/gold/test/guests/`). **None is resolved here**: the owner decides case by
-case which the gold follows (by default upstream, the spec's ground truth, item 113). Gold stays jolt-cpp-exact until
-then, so its byte-identical acceptance holds.
+by WORKER18's hand-assembled guests (`wip/gold/test/guests/`). The owner rules case by case which the gold follows.
+**Why a16z's side matters** (owner, 2026-11-03, DECISIONS-v1.3 section 17, `c111f7c`): jolt-cpp has no verifier of
+its own; it proves `jolt_verifier::JoltProof` against a16z's `jolt_program` preprocessing from its submodule
+`third-party/jolt` at `7189216`, so a16z's bytecode is what every proof is checked against, and where jolt-cpp builds a
+different bytecode or image its proofs fail verification.
+
+**Pins**: `7189216` is an ancestor of `17a9459` (17 commits). Every a16z file D1, D3 and D12 rest on has the same git
+blob at both: `crates/jolt-program/src/image/{elf,decode,mod}.rs`, `crates/jolt-riscv/src/uncompress.rs`,
+`tracer/src/instruction/ecall.rs`, `tracer/src/emulator/{cpu,mod}.rs`, `crates/jolt-program/src/preprocess/bytecode.rs`,
+`crates/jolt-program/src/expand/mod.rs`, `common/src/jolt_device.rs`.
+
+**Status** (2026-11-03): D1, D3, D4, D5, D12 ruled (below); D2, D6-D11 and D13 deferred.
 
 **The rows themselves agree everywhere tested**: EVM Zone trace-23 and Cyclone input/22 (every record), seven jolt-cpp
 example guests (every record), both workloads at 2^29 (every 2^16-row window and the run hash), and the hand-assembled
@@ -14,20 +23,36 @@ does with faulty or unusual guests.
 
 | # | difference | affects valid guests? |
 |---|---|---|
-| D1 | program image from segments (jolt-cpp) or sections (upstream) | yes, if they differ |
+| D1 | program image from segments (jolt-cpp) or sections (upstream) | **ruled: follow a16z** |
 | D2 | upstream enforces the stack canary; jolt-cpp doesn't | no (overflowing guests only) |
-| D3 | LegacyRawEcall host I/O exists only in jolt-cpp | yes, for legacy guests |
+| D3 | LegacyRawEcall host I/O exists only in jolt-cpp | **ruled: follow a16z** |
 | D4 | UNIMP in the code: jolt-cpp skips it (and its pc drifts); upstream rejects the ELF | **ruled** (owner, 2026-11-02) |
-| D5 | executing where no instruction was decoded statically | no (faulty guests only) |
+| D5 | executing where no instruction was decoded statically | **ruled: the host tracer rejects it** |
 | D6 | misaligned access: both abort, by different checks | no |
 | D7 | EBREAK: upstream stalls (ends); jolt-cpp's interpreter ends the run, its JIT aborts | yes, if a guest reaches EBREAK |
 | D8 | bytecode count: jolt-cpp counts the leading NOP | convention only |
 | D9 | the layout's stack bounds are named differently | convention only |
 | D10 | padding: jolt-cpp pads to the power of two above rows + 1 | to confirm on upstream's prover |
 | D11 | upstream has inlines and row kinds jolt-cpp lacks (grumpkin, p256, NTT; four kinds) | yes, guests using them |
-| D12 | C.SLLI with rd = x0 (a HINT): jolt-cpp rejects it as invalid, upstream runs it as a NOP | yes, if a compiler emits it |
+| D12 | C.SLLI with rd = x0 (a HINT): jolt-cpp rejects it as invalid, upstream runs it as a NOP | **ruled: follow a16z** |
+| D13 | an rd = x0 rewrite row (ADDI x0, x0, 0) is flagged virtual in jolt-cpp, not in a16z | yes (any non-ADDI rd = x0) |
 
-## D1. The program image: segments or sections
+## D1. The program image: segments or sections (ruled: follow a16z)
+
+**Ruling** (owner, 2026-11-03): follow a16z, the image and the code by sections. **Gold** (`c65bb37`): every section
+at or above 0x8000_0000 goes into memory, `program_end` is the highest section end, the code is the merged Text
+sections decoded in address order (gaps unmapped); program headers aren't used. All four segment files stay
+byte-identical; both workloads' layout and bytecode equal jolt-cpp's and their rows a16z's, as do all seven examples.
+**Reproducers** (`wip/gold/test/guests/`): `d1_rodata_in_text` (`.rodata` of all-ones bytes right after `.text`, in
+one executable PT_LOAD): jolt-cpp's JIT fails at load ("failed to decode risc instruction at 0x80000010"), a16z and
+gold give the same 4 rows; `d1_decodable_gap` (`.text`, a jump over a `.rodata` of four `nop` words, `.text.b`, in one
+executable PT_LOAD): all three give the same rows, but a16z's bytecode puts `.text.b` (0x80000018) at index 3 of 7 and
+jolt-cpp's at 7 of 11, since jolt-cpp decodes the four words as code; a proof using jolt-cpp's indices would fail
+verification against a16z's preprocessing without any error before it. (`row_dump --index-of`, `upstream_rows
+--index-of`.) **jolt-cpp fix**: to come (`worker18-fix-d1-sections`), covering the initial memory, `program_end` and
+the code ranges.
+
+### The difference as found
 
 - **jolt-cpp** loads the ELF's PT_LOAD **segments** into RAM, and the code is the one executable segment
   (`loader.cpp:143` skips non-PT_LOAD, `:153` takes the PF_X segment as the code; `program_start`/`program_end` are the
@@ -49,7 +74,19 @@ does with faulty or unusual guests.
 - **jolt-cpp** places the stack 128 bytes after the program (`loader.cpp:201`, `:278`) but checks nothing.
 - Test guest `stack_canary_store`: jolt-cpp (and gold) 6 rows; upstream panics.
 
-## D3. LegacyRawEcall host I/O
+## D3. LegacyRawEcall host I/O (ruled: follow a16z)
+
+**Ruling** (owner, 2026-11-03): no rewriting; a raw ECALL traps through mtvec as in a16z, with no special detection; a
+program relying on legacy raw-ECALL host I/O fails as it would in a16z (a clearer error is the host tracer's job, as in
+D5). **Gold** (`65289d9`): the host I/O detection is gone (`HostIo` removed); ECALL always expands to the trap. Guest
+`legacy_raw_ecall` now traps to mtvec = 0 and stops with "jump target 0x0 is not in the bytecode map" (the end is only a
+JAL with immediate 0, DECISIONS-v1.3 section 25). **jolt-cpp fix** (`WORKER18/fixes/jolt-cpp-d3-no-legacy-ecall.patch`,
+against 88dca85): `resolve_host_io_encoding` always resolves to Standard and an explicit legacy request aborts; tested
+on PR #2's standalone tracer: the workloads (trace-23, input/22 and both at 2^29) and the examples keep their run hashes;
+`legacy_raw_ecall` is no longer rewritten (it traps and, through jolt-cpp's pc-0 sentinel, ends quietly after 8 rows,
+where a16z and gold fail: the sentinel itself is DECISIONS section 25's subject).
+
+### The difference as found
 
 - **jolt-cpp** auto-detects guests that use a raw ECALL for host calls (no VirtualHostIO, no CSRRW/CSRRS/MRET) and
   traces every ECALL as `VirtualHostIO` (`host_io_encoding.cpp:47-57`, `:79`); program.json can force either mode.
@@ -58,6 +95,11 @@ does with faulty or unusual guests.
   `VirtualHostIO`; upstream traps to mtvec = 0 and panics decoding address 0 (`tracer/src/emulator/cpu.rs:1466`).
 
 ## D4. UNIMP in the code (ruled)
+
+**Follow-up** (owner, 2026-11-03): 0xC0001073 (the standard 32-bit unimp, `csrrw x0, cycle, x0`) is rejected at load,
+as a16z rejects it (`UnsupportedCsr(3072)`); c.unimp stays the only unreachable marker. Gold `65289d9`; guests
+`unimp32_unreached` and `unimp32_executed` are rejected at load, `unimp_unreached` (c.unimp only) loads and runs. See
+U3 for the a16z side.
 
 **Ruling** (owner, 2026-11-02, DECISIONS-v1.3 section 17): the gold loader loads only instructions we can prove. In
 strict mode (the default), any instruction in the ELF's load stream that Jolt can't prove (CSRRC and the immediate CSR
@@ -98,7 +140,14 @@ upstream 17a9459 rejects the ELF.
 - Test guest `unimp_fence_i` (ADDI; FENCE.I; ADDI; JAL): jolt-cpp (and gold) 3 rows with pcs 0x...00, 0x...04 (the
   ADDI at 0x...08), 0x...08 (the JAL at 0x...0c, linking 0x...0c); upstream refuses to load it.
 
-## D5. Executing where no instruction was decoded statically
+## D5. Executing where no instruction was decoded statically (ruled)
+
+**Ruling** (owner, 2026-11-03): rejecting it is the host tracer's job (its JIT maps pcs to bytecode entries), so such a
+run never reaches the chip; if one did, the Tracer's "jump target not in the map" check catches it. Gold, as the host
+tracer's reference, rejects it the same way: `jump_into_gap` stops with "jump target 0x8000000a is not in the bytecode
+map" (gold `65289d9`; the same error for a JALR or branch to 0, DECISIONS section 25).
+
+### The difference as found
 
 - **jolt-cpp** maps a jump target to its bytecode index through a table of instruction starts
   (`isa/virtual.hpp:159-164`); a target inside an instruction maps to index 0 (the NOP), which its interpreter doesn't
@@ -160,7 +209,16 @@ upstream 17a9459 rejects the ELF.
 - No ELF tested uses them (upstream_rows maps the four kinds to 0xFE and reports none). Gold follows jolt-cpp. Their
   upstream tests (`jolt-inlines/{grumpkin,p256,ntt}/src/tests.rs`) are out of W5's scope (owner, 2026-11-02).
 
-## D12. C.SLLI with rd = x0, a HINT
+## D12. C.SLLI with rd = x0, a HINT (ruled: follow a16z)
+
+**Ruling** (owner, 2026-11-03): gold decodes c.slli x0 exactly as a16z (`SLLI x0, x0, n`, a no-op). **Gold**
+(`65289d9`): `Zca-c.slli-00` now passes in Act4Runner. Guest `d12_c_slli_x0` (`.half 0x0006`): gold and a16z agree
+except in one field of the rewritten row, the virtual flags, which is D13, a separate jolt-cpp-versus-a16z difference
+(gold follows jolt-cpp there until ruled). **jolt-cpp fix** (`WORKER18/fixes/jolt-cpp-d12-c-slli-x0.patch`, against
+88dca85; `isa/decoder.cpp` is the same at 821e1bd): C.SLLI with rd = x0 returns `slli x0, x0, shamt`; with it jolt-cpp
+loads the guest and gives gold's rows; workloads and examples unchanged.
+
+### The difference as found
 
 - The RISC-V C extension reserves C.SLLI with rd = x0 as a HINT (a valid encoding that must execute as a no-op).
 - **jolt-cpp** expands C.SLLI only for r != 0; r = 0 falls through to "reserved instruction?" and returns invalid
@@ -193,3 +251,14 @@ upstream 17a9459 rejects the ELF.
   `:1677-1695`). jolt-cpp's SC.D expansion does the same (`isa/virtual.cpp`, SC_D: success iff the doubleword
   reservation equals the address; LR.W clears it). Gold follows jolt-cpp: rd = 1, the check fails.
 - So jolt-cpp, upstream's tracer and gold agree; the ACT4 configuration (or the semantics) is what disagrees, and U1 hides it.
+
+## D13. The rd = x0 rewrite row's virtual flags (deferred)
+
+- **jolt-cpp** rewrites a side-effect-free instruction with rd = x0 to one `ADDI x0, x0, 0` row, and marks a row
+  virtual whenever its opcode differs from the source's (`isa/virtual.cpp:174-189`, `:270-274`), so the rewrite of
+  anything but ADDI is virtual and first-in-sequence (record word 1 = `0x0300000000000002`).
+- **a16z** emits the rewrite with no virtual sequence (`virtual_sequence_remaining` None; word 1 = `0x2`).
+- Guest `rd0_add` (`add x0, a0, a0`): jolt-cpp (and gold) `914cba73ca81d34f`, a16z `77c53666d3e73b90`, differing only in
+  that row. Since a16z's bytecode is what proofs are checked against, any guest with such an instruction would fail
+  verification under jolt-cpp; none of the workloads or examples has one (their rows match a16z's). Found with D12's
+  guest. Not ruled; gold follows jolt-cpp.

@@ -1,0 +1,53 @@
+From ada92257ced1b7de1001399eb6b73133eff29937 Mon Sep 17 00:00:00 2001
+From: WORKER18 <worker18@meshsim.local>
+Date: Thu, 5 Nov 2026 02:35:16 +0000
+Subject: [PATCH] host I/O: no legacy raw-ECALL detection or rewriting; every
+ ECALL traps through mtvec, as a16z Jolt (a legacy request is an error)
+
+---
+ src/tracer/host_io_encoding.cpp | 20 ++++++++++----------
+ 1 file changed, 10 insertions(+), 10 deletions(-)
+
+diff --git a/src/tracer/host_io_encoding.cpp b/src/tracer/host_io_encoding.cpp
+index 34458ee4f..24724625d 100644
+--- a/src/tracer/host_io_encoding.cpp
++++ b/src/tracer/host_io_encoding.cpp
+@@ -1,7 +1,10 @@
+ #include "tracer/host_io_encoding.hpp"
+ 
++#include <cstdlib>
+ #include <cstring>
+ 
++#include "utils/log.hpp"
++
+ using namespace tracer;
+ 
+ namespace {
+@@ -46,17 +49,14 @@ HostIoEncodingScan tracer::scan_host_io_encoding(std::span<const u8> code) {
+ 
+ HostIoEncoding tracer::resolve_host_io_encoding(
+     const HostIoEncodingScan& scan, HostIoEncoding requested) {
+-  if (requested != HostIoEncoding::AutoDetect) {
+-    return requested;
+-  }
+-
+-  if (!scan.decode_failed &&
+-      scan.raw_ecall_count > 0 &&
+-      !scan.has_virtual_host_io &&
+-      !scan.has_trap_runtime) {
+-    return HostIoEncoding::LegacyRawEcall;
++  // a16z Jolt has no raw-ECALL host I/O: every ECALL traps through mtvec, and a16z's bytecode is what proofs are
++  // verified against. So nothing is detected and no ECALL is rewritten to VirtualHostIO; a program relying on legacy
++  // raw-ECALL host I/O fails as it would under a16z. Asking for the legacy mode explicitly is a configuration error.
++  (void)scan;
++  if (requested == HostIoEncoding::LegacyRawEcall) {
++    utils::log::error("host_io_encoding legacy-raw-ecall is not supported: a16z Jolt traps every ECALL through mtvec");
++    std::abort();
+   }
+-
+   return HostIoEncoding::Standard;
+ }
+ 
+-- 
+2.43.0
+

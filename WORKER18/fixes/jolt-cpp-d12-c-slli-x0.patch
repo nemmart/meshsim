@@ -1,0 +1,33 @@
+From a3a646dd3dc81d5b81e5fb6a13e5a315769e96f6 Mon Sep 17 00:00:00 2001
+From: WORKER18 <worker18@meshsim.local>
+Date: Thu, 5 Nov 2026 02:34:53 +0000
+Subject: [PATCH] decoder: C.SLLI with rd = x0 is a HINT, decoded as slli x0,
+ x0, shamt as a16z Jolt does (was: invalid)
+
+---
+ src/tracer/isa/decoder.cpp | 9 ++++-----
+ 1 file changed, 4 insertions(+), 5 deletions(-)
+
+diff --git a/src/tracer/isa/decoder.cpp b/src/tracer/isa/decoder.cpp
+index 537a72ed9..2bcdf1990 100644
+--- a/src/tracer/isa/decoder.cpp
++++ b/src/tracer/isa/decoder.cpp
+@@ -1024,11 +1024,10 @@ u32 uncompress_instruction(u32 halfword, i32 xlen) {
+           auto r = (halfword >> 7) & 0x1f;
+           auto shamt = ((halfword >> 7) & 0x20) |  // imm[5] <= [12]
+                        ((halfword >> 2) & 0x1f);   // imm[case 4:0] <= [case 6:2]
+-          if (r != 0) {
+-            return (shamt << 20) | (r << 15) | (1 << 12) | (r << 7) | 0x13;
+-          }
+-          // r == 0 is reserved instruction?
+-          break;
++          // r == 0 is a HINT (RISC-V C extension): a16z Jolt uncompresses it to `slli x0, x0, shamt`, a no-op
++          // (crates/jolt-riscv/src/uncompress.rs, uncompresses_c_slli_x0), and its bytecode is what proofs are
++          // verified against, so it must decode here too rather than as an invalid instruction.
++          return (shamt << 20) | (r << 15) | (1 << 12) | (r << 7) | 0x13;
+         }
+         case 1: {
+           // C.FLDSP
+-- 
+2.43.0
+

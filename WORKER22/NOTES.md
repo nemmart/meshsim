@@ -56,3 +56,53 @@ memory.
 
 Command (from `wip/meshsim`, gold built into G):
 `java -cp build:G TracerT1 PROGRAM INPUT SEGFILE DELIVERY NAME LOG2K LOWEST [--segments a-b] [--compress]`
+
+## T1 at 2²⁹ (Quest 110b, 110c; meshsim v1.3-tracer 37fb37e and aeab52e)
+
+**110b: PASS.**
+- Every window of both workloads (8,192 each) and every segment boundary (128 each) pass, in all three runs: raw streams value
+  for value; LRU-coded, with Stage A on the Tracer's own streams against jolt-cpp's rows; and the separate-map control.
+- The inputs are WORKER26's map and initial image (Quest 109), on one memory carried through the segments.
+- 110 failed on Cyclone from segment 16. The cause was a bug in the ideal controller, which fed stale expansion words at a
+  segment's start (SPEC-QUESTIONS Q14), not in the Tracer.
+
+| | EVM Zone | Cyclone |
+|---|---|---|
+| real rows | 354,861,942 | 371,526,406 |
+| **core cycles per real row** (target 4) | **4.650** | **4.480** |
+| rows alone (no stalls; class M rows take 6) | 4.313 | 4.141 |
+| stalls per real row: instruction fetch / data miss / map probe | 0.306 / 0.008 / 0.022 | 0.072 / 0.120 / 0.146 |
+| per segment with real rows: min / median / max | 4.23 / 4.66 / 4.71 | 4.07 / 4.52 / 5.68 (segment 10, data misses) |
+| all-in per segment, rows only (the drain comes with milestone 2): median / max at 1 GHz, against 100 ms | 19.5 / 19.7 ms | 18.4 / 23.8 ms |
+| shared cache hits: `.pages` index / data; map index / data | 99.99 / 98.15%; 99.56 / 50.40% | 99.94 / 77.79%; 99.98 / 95.05% |
+| the walk: share of the memory system's cycles; of the real rows' cycles | 58.9%; 4.27% (0.198 per row) | 35.9%; 2.72% (0.122 per row) |
+| write buffer: early evictions, read waits (cycles) | 1,502, 556 (25,850) | 154,343, 28,107 (1,336,090) |
+| jumps: LRU hits, misses (one map line each) | 3,902,035, 153,132 | 12,994,216, 3,044,851 |
+| the map's effect on the data (its own cache in the control): data hits; cycles | 98.15% → 98.16%; +0.006% | 77.79% → 80.93%; +0.61% |
+
+**110c: PASS.** The instruction-fetch stalls broken down, at 4.21.5's 128 lines (16 KB). Each miss is classed as follows:
+- **cold**: the line's first fetch since the segment's word-0 write;
+- **capacity**: the line was fetched before in the segment and evicted since;
+- **straddling second half**: a 32-bit instruction's second half, in the next line.
+
+| | EVM Zone | Cyclone |
+|---|---|---|
+| instruction-fetch stalls per real row | 0.306 | 0.072 |
+| cold, first half | 52,200 misses, 0.014 per row (4.5%) | 52,599, 0.013 (18.6%) |
+| cold, straddling second half | 25,717, 0.007 (2.2%) | 15,408, 0.004 (5.4%) |
+| **capacity, first half** | **3,560,965, 0.181 (59.0%)** | 774,127, 0.045 (62.6%) |
+| **capacity, straddling second half** | **2,070,709, 0.105 (34.3%)** | 148,658, 0.010 (13.5%) |
+| cycles per miss: cold, capacity | 93, 18 (cold lines from LPDDR; capacity ones from the shared cache) | 94, 22 |
+| straddling instructions | 0.53% of instructions | 0.29% |
+| core cycles per real row at 256 lines (32 KB) | **4.368** (fetch stalls 0.024) | 4.463 (0.055) |
+| at 1,024 lines (128 KB) | 4.364 (0.021) | 4.434 (0.031) |
+
+**Reading:**
+- **EVM Zone's fetch stalls are capacity misses** (93%): its code's working set is larger than 16 KB. At 32 KB they almost
+  vanish, and the core comes to 4.37 cycles per row. What remains above 4 is the multiply rows' 6 cycles (rows alone 4.31).
+- The straddling second halves are a third of EVM Zone's capacity misses, but they aren't an extra cost of straddling as
+  such. In sequential code the next line is the one the next instruction fetches anyway, so a straddle moves that miss
+  earlier.
+- Cyclone's stalls are mostly data misses and map probes (0.12 and 0.15 per row), with its slowest segments (10, 14)
+  dominated by data misses.
+- The map's lines cost Cyclone 0.6% (data hits 77.8% against 80.9% when the map has its own cache), and EVM Zone nothing.

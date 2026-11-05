@@ -120,6 +120,26 @@ layouts. Four changes, on both units:
     values, so its word count is ceil(values / 2), and no flag); [127:125] spare. **Replayers ignore the advice field**; their
     advice still comes in the read log. On the Tracer it is the segment's advice at load, counting down live.
 
+17. **The record is the superset of both units' state, plus the window's descriptor** (owner, 2026-11-04): one 68-word format,
+    each unit using what it needs and ignoring the rest, so gold, the host, the segment files and the DMA write one layout. **The
+    test for state is resuming:** what a unit needs to continue execution elsewhere (as RISC-V's `satp` is saved with a hart's
+    context though running never changes it). The row count and the two flags fail it, so they are in `RUN_CONFIG` (item 13); the
+    files word passes, being the Tracer's context.
+
+    | words | Tracer | replayer | what it is |
+    |---|---|---|---|
+    | 0, 2-65 | the program's state | the program's state | state |
+    | 1, the advice field | the live input count | ignored | state (the Tracer's) |
+    | 1, the three stream fields | outputs, written at done | inputs, the pass's size checks | the window's descriptor |
+    | 66, the files word | its context: the files, K, `lowest_address` | ignored | state (the Tracer's) |
+    | 67, the template bitmap | an output, written at done | ignored (the tile's controller trims by it) | the window's descriptor |
+
+    **The window's descriptor is in the record for pragmatism, not principle:** word 1's stream fields and word 67 describe one
+    window rather than state (reset at each `PULSE_RUN`, produced at done, delivered to tile *n* while the state goes to tile
+    *n* + 1, DECISIONS-v1.3 section 24). They travel with the window because the DMA delivers them with it for free; the
+    alternative for the bitmap is four read-only status registers, which C&C 3 would read at every done and then deliver to the
+    tile itself, a second path. The stream fields have the stronger case, since the replayer's checks read them.
+
 **To carry, in the same release:** the spec (4.17, 4.19.2, 4.19.8-4.19.10, 8.11, section 13), `CHANGES-v1.26.1.md` and Tony's
 change notes; meshsim's replayer model, `mesh.h`, the register reference, `replay_ctl.c` and the recipes, the tests, the
 acceptance kit and `ReplayDriver`; everything that writes a record or a stream word: gold (`wip/gold/`), WORKER16's segment

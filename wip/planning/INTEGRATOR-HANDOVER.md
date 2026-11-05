@@ -29,8 +29,9 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
   command line; never write a token into a file.
 - **Quest runner** (tokens and `PIPELINE.md` in the owner's preferences): claim task numbers in the Quest repository's `NUMBERS.md`
   before writing a task; smoke-test kits locally; an explicit `exit` before any embedded kit; private repositories can't be fetched
-  by the runner, so tarballs are copied to `/tmp` on the box **by the owner** (check they're world-readable). Last numbers used:
-  086 (WORKER11), 087 (WORKER11), 088 (WORKER15, passed).
+  by the runner, so tarballs are copied to `/tmp` on the box **by the owner** (check they're world-readable). Since 088, numbers up to
+  104 have been used (095/096b for W5, 098-102b for v1.26's acceptance, 103/104 for the deliveries); always take the next free
+  number from `NUMBERS.md`, never from this file.
 - **Review finds go to `wip/planning/CLEANUP.md`** (works but could be cleaner) and, where pure v1.2 has them, to `v1.2/ERRATA.md`
   (with an RTL-impact column). Each is fixed in both `v1.2.1/` and `wip/`.
 - **Big data** lives on the runner box, not in git: the v1.25 deliveries in `/tmp/w9-deliveries/` (46 and 44 GB; `/tmp` is not
@@ -40,9 +41,9 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
 
 | worker | doing | state | what's left | waiting for it |
 |---|---|---|---|---|
-| WORKER16 | T2 and W3 done (`WORKER16/REPORT.md`, `W3-REPORT.md`: the segment-file tool, byte-identical checks); W2 (the fast JIT) deferred by the owner | **last sent: move PR #2's tracer to jolt-cpp 88dca85** on its own branch (isa unchanged; row hashes and segment files must stay identical); no reply seen since | that reply; then merge its branch into `tracer-standalone-main` | ask the owner for its last message |
-| WORKER17 | Jolt's memory, tracing and checking sides (`WORKER17/NOTES.md`): question 5's dense-in-K table and question 3's page measurements done (they fed DECISIONS-v1.3 sections 12, 14, 15) | **last known: reading upstream's K-dense parts and Val_init**, then the per-row rules and question 8 | its report | ask the owner for its last message |
-| WORKER18 | the Java emulator `wip/gold/` (DECISIONS-v1.3 section 17): **gold earned** (stage 2), stage 3 done (upstream gives the same rows; `WORKER18/UPSTREAM-DIFFS.md` D1-D12), D4 ruled (load only provable instructions; UNIMP as a marker) | **last sent: W5** (ACT4 and the inline vectors); then gold keeps **one loading mode**: rebuild ACT4 under our own target (code and data in separate segments), a test-harness runner only if needed | its W5 report | ask the owner for its last message |
+| WORKER16 | T2, W2 (advice streams) and W3 done (`WORKER16/REPORT.md`, `W2-REPORT.md`, `W3-REPORT.md`); the fast JIT deferred | **moving PR #2's tracer to jolt-cpp 88dca85**: plan approved 2026-11-04, branch `worker16-pin-88dca85` (one jolt-cpp commit, 15cd6c7; `gen.layouts[0]` to `gen.program_image.layout`; window hashes, segment files and `capture_writes` output to match); the ported segment tools on a new branch, `worker16-w3` left at ca30b5e | its report | merge `worker16-pin-88dca85` into `tracer-standalone-main` |
+| WORKER17 | Jolt's memory, tracing and checking sides (`WORKER17/NOTES.md`): Q1, ram_K, Q3's page measurements and jolt-cpp's K-dense parts done (DECISIONS-v1.3 sections 12, 14, 15) | **sent 2026-11-04: go ahead** with a16z's K-dense parts and Val_init, read at the verifier's pin 7189216; then Q2, the rest of Q5, Q8 | `REPORT.md` | - |
+| WORKER18 | the Java emulator `wip/gold/` (DECISIONS-v1.3 section 17): gold earned, stage 3 done, **W5 done** (e9f0444: ACT4 through test-equipment `Act4Runner`, 123 of 125; inline vectors 5,677 of 5,677; strict loading only) | **sent 2026-11-04: the rulings** (D1, D3, D12 follow a16z, with jolt-cpp fixes and bug reports on its own branches; D5 rejected by the host tracer), the re-check at 7189216, the demo guests, the U1/U2 write-ups; plan first | its plan | parked in `WORKER18/NEXT.md`: `check.sh` at 88dca85, then section 21(d) |
 
 ## What's left, by milestone
 
@@ -70,26 +71,21 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
   errors, the replayer's v1.3 changes), with the 512 KB cache a black box. **v1.26: frozen** (2026-11-04) as `v1.26/`: v1.25 plus
   the replayer's v1.3 changes, accepted on every window at 2²⁹ (Quest 098-102b); WORKER19 and WORKER20 closed. The runner's
   2²⁹ deliveries now live in `~questrunner/data` (Quest 103, 104; PIPELINE.md); the runner is started by hand (no autostart).
-  **Next, proposed: two projects:** the Tracer's bring-up in meshsim (its model, a black-box memory system, C&C 3's firmware
+  **Next: SP1, B1 and F1** (v1.3 work list): the Tracer's bring-up in meshsim (its model, a black-box memory system, C&C 3's firmware
   sending each window to its tile, the segment replayed on the full chip, checked against WORKER9's deliveries and jolt-cpp's
   rows, compression on and off), and the file system on C&C 2 with a shell on C&C 1 over the UART (free-space management in
   C&C 3, black-boxed; mkfs and fsck as host tools).
-  Open in v1.3: register offsets beyond words 32-35; sizes to confirm by gold (caches, TLB); UPSTREAM-DIFFS D1, D3, D5 follow
-  upstream (the verifier is upstream's, jolt-cpp's submodule at 7189216; not yet recorded as ruled), D2 and D12 deferred; demo
-  guests where upstream works and jolt-cpp doesn't (D1 with `.rodata` in the executable segment; C.SLLI x0), proposed for WORKER18.
-## Pending, not yet sent or recorded (2026-11-04)
+  Open in v1.3: register offsets beyond words 32-35; sizes to confirm by gold (caches, TLB); UPSTREAM-DIFFS ruled (section 17:
+  D1, D3, D12 follow a16z, the verifier's source, with jolt-cpp fixes; D5 rejected by the host tracer; D2 and the rest deferred);
+  WORKER18 is re-checking them at 7189216 and writing the demo guests.
+## Pending (2026-11-04)
 
-- **UPSTREAM-DIFFS rulings:** the verifier is **upstream's** (jolt-cpp proves `jolt_verifier::JoltProof` with upstream's
-  `jolt_program` preprocessing, from its submodule `third-party/jolt` at **7189216**), so **D1 (program image by sections), D3
-  (no raw-ECALL rewriting) and D5 (C.SLLI x0's uncompression) must follow upstream**; D2 and D12 are deferred policy. Discussed
-  with the owner, not yet written into `WORKER18/UPSTREAM-DIFFS.md`. The verifier's pin (7189216) differs from WORKER18's upstream
-  pin (17a9459).
-- **Demo guests where upstream works and jolt-cpp doesn't**, proposed, not sent: (a) D1, `.rodata` in the same executable `PT_LOAD`
-  as `.text` (upstream decodes only text sections and works; jolt-cpp decodes the segment and fails at load; a quieter variant
-  puts decodable words between code, shifting jolt-cpp's `instr_idx`); (b) D12/D5, `c.slli x0, 1` as `.half 0x0006` (a RISC-V
-  HINT). WORKER18 has the guest generator and all three tools.
-- **Two new projects, proposed to the owner, prompts not yet written:** W21, the Tracer's bring-up in meshsim; W22, the file
-  system on C&C 2 with a shell on C&C 1 (UART), the page manager in C&C 3 black-boxed (see the v1.3 bullet above).
+- **UPSTREAM-DIFFS rulings: recorded** in DECISIONS-v1.3 section 17 (D1, D3, D5, D12; D2 and the rest deferred) and section 25
+  (raw ECALLs trap; legacy raw-ECALL host I/O unsupported); sent to WORKER18, which records them in `UPSTREAM-DIFFS.md`. (An
+  earlier version of this file called D12 "D5 (C.SLLI x0's uncompression)": a mislabel.)
+- **New work, prompts to write** (owner, 2026-11-04; work items renamed so they can't be confused with worker numbers):
+  **SP1**, the Tracer's spec chapter (WORKER21), in parallel with **B1**, the Tracer's bring-up in meshsim (WORKER22), the way
+  WORKER19 and WORKER20 worked for v1.26; **F1**, the file system on C&C 2 with a shell on C&C 1 (WORKER23). In the v1.3 work list.
 
 ## Open items for the owner and Tony
 

@@ -600,6 +600,25 @@ Decided (O).
   segments against sections), upstream's stack-canary check, jolt-cpp's LegacyRawEcall mode, UNIMP (dropped from jolt-cpp's
   bytecode, rejected upstream), a jump into the middle of an instruction, the misaligned-access checks, the bytecode count's
   convention, and the padding rule (to confirm). Eleven hand-assembled guests cover the paths no workload reached.
+- **Rulings on `WORKER18/UPSTREAM-DIFFS.md`** (owner, 2026-11-04). **"Upstream" is a16z's Jolt, and it decides:** jolt-cpp has no
+  verifier of its own; it proves `jolt_verifier::JoltProof` against a16z's `jolt_program` preprocessing, from its submodule
+  `third-party/jolt` at **7189216** (the verifier's pin), so a16z's bytecode is what every proof is checked against. Where jolt-cpp
+  builds a different bytecode or image, its proofs fail verification, so following a16z is forced, not a preference. The findings
+  were made at 17a9459; D1, D3 and D12 are to be re-checked at 7189216 (or the files shown unchanged).
+  - **D1, the program image: follow a16z** (by sections: the code is the text sections). jolt-cpp decodes the whole executable
+    `PT_LOAD` segment, so an ordinary layout with `.rodata` in that segment fails at load, and decodable data between code shifts
+    its `instr_idx`, making its proofs fail verification silently. **A jolt-cpp fix and a bug report**, with demo guests.
+  - **D3, raw ECALLs: follow a16z, no rewriting.** jolt-cpp's LegacyRawEcall mode rewrites the code, so the bytecode it proves
+    differs from a16z's. A raw ECALL traps through `mtvec`; programs relying on legacy raw-ECALL host I/O can't be proven and
+    are **rejected, not rewritten**, by gold too (section 25). **A jolt-cpp fix and a bug report.**
+  - **D5, executing where the static decode found no instruction start** (a jump into the middle of an instruction): **the host
+    tracer rejects it.** The host runs the program before the proof and its JIT already maps pcs to bytecode entries, so such a
+    run never reaches the chip; if one did, the Tracer's "jump target not in the map" check (section 25) catches it. Gold, the
+    host tracer's reference, rejects it the same way.
+  - **D12, C.SLLI with rd = x0 (a RISC-V HINT): follow a16z**, decoded as `SLLI x0, x0, n`, a no-op; jolt-cpp's decoder wrongly
+    rejects it. **A jolt-cpp fix and a bug report**, with a guest as reproducer.
+  - **D2 and the rest: deferred.** U1 and U2 (a16z's ACT4 configuration and `jolt-emu`'s exit check) are a16z's bugs, written up
+    for the owner to decide whether to report.
 
 ## 18. The Tracer's pc to `instr_idx` map (2026-11-01)
 
@@ -1069,9 +1088,10 @@ Decided (O).
   is a trap into the guest's own handler, 7 ordinary rows (`isa/virtual.cpp:1068-1085`, mirroring upstream's `ecall.rs`): it
   writes `mepc`, `mcause` = 11, `mtval` = 0 and `mstatus` (virtual registers 32-39) and jumps through `mtvec`; the handler is guest
   code returning by MRET (Cyclone's 875 traps). **`VirtualHostIO`** is one row with no effect (`trace_owner.cpp:294-297`): its
-  side effects, such as printing, happened in the host's run and don't affect the proof. Older programs' raw host-I/O ECALLs are
-  rewritten as `VirtualHostIO` when the code is loaded on the host (jolt-cpp's LegacyRawEcall mode; UPSTREAM-DIFFS D3, not yet
-  ruled). **So the Tracer has no host channel.**
+  side effects, such as printing, happened in the host's run and don't affect the proof. **A raw ECALL traps, as in a16z's Jolt;
+  legacy raw-ECALL host I/O isn't supported** (owner, 2026-11-04; UPSTREAM-DIFFS D3, section 17): such programs are rejected, not
+  rewritten as `VirtualHostIO` (replacing jolt-cpp's LegacyRawEcall mode, which changes the bytecode a16z's verifier checks).
+  **So the Tracer has no host channel.**
 
 ---
 
@@ -1084,8 +1104,11 @@ Work agreed for v1.3, each with the decisions it carries out. Studies (below) ar
 | W1 | ~~Bring the replayer and the Tracer up to date with jolt-cpp's latest~~ | 9 | **moved to v1.25** (owner, 2026-10-31): `DECISIONS-v1.25.md` |
 | W2 | **jolt-cpp's JIT emits the advice streams**: 128 per 2²⁹ run, one per 2²² rows, words in row order (`shape(op).advice_words` per secp op), a crossing sequence's pending words at the head of the next; and **how jolt-cpp handles registers 40-47** at a chunk's start (13 (c)) | 13 | **deferred** (owner, 2026-11-01): the fast JIT version isn't needed any time soon with the Java emulator (W4); the slow tool (W3) produces the advice logs and the full state, registers 40-47 included. The scoping is in `WORKER16/W3-REPORT.md` for later |
 | W3 | **The segment file tool**: runs the trace on the host and writes section 16's file (page counts, then per segment the processor state, advice log and updates, raw or LRU-coded); slow first | 16 | **done** (WORKER16, jolt-asic-planning `worker16-w3` ca30b5e; `WORKER16/W3-REPORT.md`): both workloads at 2²⁹ and hard-cut tests pass every check; whole file 1.75 MB (EVM Zone), 10.33 MB (Cyclone) |
-| W4 | **The Java emulator** (`wip/gold/`): self-contained; stage 1 a Tracer model matching jolt-cpp's rows, stage 2 gold, writing section 16's file | 17 | WORKER18: **stages 1 and 2 done, gold earned**; stage 3 next |
-| W5 | **Upstream's tests through the gold emulator** (owner, 2026-11-01): (a) the **ACT4 architectural tests** (RISC-V International's `riscv-arch-test`, `tests/arch-tests/` upstream): self-checking ELFs for every RV64IMAC instruction, unprivileged, expected signatures baked in at build time by the Sail reference model; upstream skips the CSR tests its tracer doesn't fully support (`tests/arch-tests/skip.txt`). Building them needs riscv-none-elf-gcc 15+ and Sail, once; the ELFs then run as data through gold, jolt-cpp and upstream. (b) **The inline tests** (`jolt-inlines/*/src/tests.rs`): each inline's sequence run on the emulator against an independent library (arkworks for secp256k1, and so on); port their vectors to gold. Check both exist at the pin 17a9459 (seen at HEAD c670357) | 17 | to do (WORKER18, after stage 3's write-up) |
+| W4 | **The Java emulator** (`wip/gold/`): self-contained; stage 1 a Tracer model matching jolt-cpp's rows, stage 2 gold, writing section 16's file | 17 | WORKER18: **stages 1-3 done, gold earned**; rulings on the differences in section 17 |
+| W5 | **Upstream's tests through the gold emulator** (owner, 2026-11-01): (a) the **ACT4 architectural tests** (RISC-V International's `riscv-arch-test`, `tests/arch-tests/` upstream): self-checking ELFs for every RV64IMAC instruction, unprivileged, expected signatures baked in at build time by the Sail reference model; upstream skips the CSR tests its tracer doesn't fully support (`tests/arch-tests/skip.txt`). Building them needs riscv-none-elf-gcc 15+ and Sail, once; the ELFs then run as data through gold, jolt-cpp and upstream. (b) **The inline tests** (`jolt-inlines/*/src/tests.rs`): each inline's sequence run on the emulator against an independent library (arkworks for secp256k1, and so on); port their vectors to gold. Check both exist at the pin 17a9459 (seen at HEAD c670357) | 17 | **done** (WORKER18, e9f0444): ACT4 through a test-equipment runner (every ACT4 ELF has data inside its code), 123 of jolt-emu's 125 passes; the inline vectors 5,677 of 5,677 |
+| SP1 | **The Tracer's spec chapter**: overview, region and record, control, execution, memory, output, boundaries, errors, the replayer's v1.3 changes; the 512 KB cache a black box | 1-25 | to start (WORKER21), in parallel with B1 |
+| B1 | **The Tracer's bring-up in meshsim**: its model, a black-box memory system, C&C 3's firmware sending each window to its tile, the segment replayed on the full chip, checked against WORKER9's deliveries and jolt-cpp's rows, compression on and off | 1-25 | to start (WORKER22) |
+| F1 | **The file system on C&C 2, with a shell on C&C 1 over the UART**: C&C 3's page manager black-boxed; mkfs and fsck as host tools | 20, 22 | to start (WORKER23) |
 
 ---
 

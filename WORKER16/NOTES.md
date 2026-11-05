@@ -161,3 +161,10 @@ roots and depths 0. Acceptance: byte identity with WORKER18's gold files.
     jolt-cpp's conventions for removed UNIMPs and operands, and `Main.java`'s run-target rule ("a transfer to its own pc
     is sequential") and the key order handed to `choose`.
 - **State at the end of this session:** `worker16-v13` pushed at `f2ae129` (no code yet).
+- **Owner's corrections** (session 6, second turn): K follows **a16z** (its verifier checks every proof; section 17), by its prover
+  rule `crates/jolt-prover/src/config.rs:53-99`, within compute_min/max_ram_k; jolt-cpp's rule and jumpmap's formula beside it,
+  differences reported. Ground truth a16z `7189216` (not LayerZero 735355e).
+- **Done** at `7991321`: writer, checker, reader to v1.3; 2^29 both pass every check; frame 6 byte-identical to jumpmap's
+  at 2^29, on the small inputs and 7 fixtures; frame 1 = jumpmap's `pages_written`; content = gold's v1.2 files. Findings:
+  K differs from jumpmap's formula on 6 fixtures (image word count); D1 base on `d1_decodable_gap`; 3 fixtures jolt-cpp
+  can't load. `V13-REPORT.md`.

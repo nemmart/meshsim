@@ -40,3 +40,9 @@ The reviews of the decisions themselves are in `../reviews/`.
 |---|---|---|
 | WORKER19 | the v1.26 spec: DECISIONS-v1.26 items 1-12 into 4.19 and the places restating it, `CHANGES-v1.26.md`, the RTL guide `CHANGES-v1.25-to-v1.26.md`; item 143 closed with WORKER20's stall counts | `WORKER19-REPORT.md`, `WORKER19-NOTES.md` (the record, stream-word and state-word layouts, the rulings) |
 | WORKER20 | meshsim, the firmware, the kit and the deliveries at v1.26: the replayer model (part 0 as the working state), `replay_ctl.c` and recipe 26, `ConvertDelivery`, the deliveries regenerated into persistent data (Quest 103, 104: identical to WORKER9's); acceptance on every window of both workloads at 2²⁹ with 4 KB queues (Quest 098, 099), the 8 KB controls (100, 101), suites and sort (102b) | `WORKER20-REPORT.md`, `WORKER20-NOTES.md` (the item 143 counts, the model's choices), `WORKER20-tools/` (task generators, `stalls.py`, `pair.py`, the suite kit) |
+
+## Added during v1.3 (2026-11-04)
+
+| session | what it did | kept here |
+|---|---|---|
+| WORKER17 | Jolt's memory from the tracing and checking sides (jolt-cpp 821e1bd, checked at 88dca85; a16z 7189216 and 17a9459): the layout, ram_K, the per-row rules, the workloads' pages at 2²⁹ (`mem_probe`, jolt-asic-planning `worker17-memory` a916ee8), the RAM sumchecks sized by K or T, what is and isn't proved, the trace-to-prover mapping; the 88dca85 limits (jolt-cpp's real K ceiling 2³⁰), the rewound chunk headers (no wrong row), the JIT's unchecked guest memory. Fed DECISIONS-v1.3 sections 12, 14, 15, 17, 23, 25 | `WORKER17-REPORT.md`, `WORKER17-NOTES.md`, `WORKER17-data/` (the probe's JSON and per-segment CSVs) |

@@ -405,6 +405,11 @@ third bullets; answers T7 the way section 11 kept as the backup; makes C4 moot.
     note `rd` = x0 remaps `rd` to 40 and shifts the temporaries up by one. Plan: the four frequent families inline (about 99.5%),
     a generic helper for the rest; the formulas are verified only once built, by the W3 checker's restarts.
     **Deferred** with W2 (owner): needed in the long run, not soon.
+    **Rewound chunks** (WORKER17, 2026-11-04): a rewound chunk's header holds the boundary's registers, not the sequence start's
+    (`trace_owner.cpp:705`); both workloads hit it (230 chunks on EVM Zone, 48,081 on Cyclone), and no expanded row is wrong (every
+    row's rs1, rs2 and `rd_prev` equal the last value written, over all rows). It holds only because jolt-cpp's expansions don't
+    read a register 0-47 that the sequence changed before the boundary; nothing enforces it. The GPU expander, same headers and
+    replay, wasn't run.
 
 ## 14. RAM K: up to 2³², one K per run (2026-11-01)
 
@@ -436,7 +441,7 @@ Decided (O); also a reasonable size for the chip (O).
 
   At K = 2³² a snapshot is 32 GiB and a K-sized array of field elements 128 GiB, so **jolt-cpp as written can't reach 2³²**.
   Against that, our workloads touch 69 and 693 pages (1.1 and 11 MB). Open (d).
-- **Upstream's side, and the verifier** (WORKER17, 2026-11-04, a16z at 7189216; `WORKER17/REPORT.md` 8a0f058). Between f8fc214
+- **Upstream's side, and the verifier** (WORKER17, 2026-11-04, a16z at 7189216; `sessions/WORKER17-REPORT.md` 8a0f058). Between f8fc214
   (jolt-cpp 821e1bd's submodule), 7189216 (88dca85's) and 17a9459 nothing changes what RAM checking proves (a transcript change,
   and #2190's range check of direct RAM loads; then only prover kernels).
   - **The verifier is never dense in K:** Val_init's public part is evaluated as sparse word segments over the inputs and the
@@ -463,8 +468,12 @@ Decided (O); also a reasonable size for the chip (O).
     2²⁹ workloads. PR #2's tracer copy (7 files) is re-synced between WORKER16's tasks, not during one.
   - (d) **The K-dense steps** (above): our hardware computes them over the touched pages instead (an absent page is zero, so
     untouched cells contribute nothing or a closed form), or K is capped where dense structures fit. Read (above): the verifier
-    needs nothing dense, and the binding order is ours to choose. 88dca85's limits (RW checking 2³⁰ and its 31-bit packed column,
-    `MAX_D` 8, the output check's `uint32_t ram_k`) are being confirmed (WORKER17).
+    needs nothing dense, and the binding order is ours to choose. **88dca85's limits, confirmed** (WORKER17): GPU read-write
+    checking K ≤ 2³⁰ (`rw_sparse.hpp:35`; its packed column 31 bits, the write flag in bit 31, `:33-34`), `MAX_D` 8
+    (`ra_virtual.hpp:29`, 2-8 accepted), the output check's `uint32_t ram_k` (`output_check.cu:89`), and **`SumcheckContext::ram_k`
+    a `uint32_t` at both commits** (`sumcheck_context.hpp:36`), so every C++ sumcheck sees K as 32 bits and 2³² would truncate to 0;
+    `mem_waddr_p1` is 32-bit and holds the absolute address. **So jolt-cpp's real ceiling at 88dca85 is K = 2³⁰**, against this
+    section's 2³² for the hardware.
 
 ## 15. What the host sends per segment: images and transport (2026-11-01)
 

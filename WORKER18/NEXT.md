@@ -12,5 +12,5 @@ After the rulings, the 7189216 re-check and the demo guests:
 3. **Two of WORKER17's findings** (DECISIONS-v1.3 sections 17, 25): gold rejects `LR.D x0` / `LR.W x0` loading a nonzero
    word; gold flags a guest access below `lowest_address` or above the layout's top as the Tracer's comparator will
    (`(address − lowest_address) < 8·K`, unsigned, on the full 64-bit address); and a jolt-cpp bug report against its prover, which silently drops such an access
-   (`jolt-utils/ram.hpp:16-30`; GPU RW checking drops cells >= K) and produces a proof that fails verification
-   (`WORKER17/REPORT.md`). Plan first.
+   (`jolt-utils/ram.hpp:16-30`; GPU RW checking drops cells >= K) and produces a proof that fails verification; the same report notes the JIT's unchecked guest memory (each VM's 4 GiB mapped with no guard pages or bounds checks, so an out-of-layout access silently reads zeroed RAM, then past 4 GiB corrupts the VM's state and the next VM's RAM; `sessions/WORKER17-REPORT.md`)
+   (`sessions/WORKER17-REPORT.md`). Plan first.

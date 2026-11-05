@@ -143,6 +143,16 @@ layouts. Four changes, on both units:
     alternative for the bitmap is four read-only status registers, which C&C 3 would read at every done and then deliver to the
     tile itself, a second path. The stream fields have the stronger case, since the replayer's checks read them.
 
+18. **`RUN_CONFIG` [28:26] are the Tracer's per-stream compression enables** (owner, 2026-11-05, from the Tracer's chapter,
+    DECISIONS-v1.3 section 24): code, read log, write log; [31:29] reserved. **The replayer ignores them** (never flags them) and
+    holds them like the other bits, reading them back, so one register block serves both units; [31:29] read 0 (WORKER25's
+    choice, accepted).
+19. **The release's rulings** (owner, 2026-11-04/05, on WORKER25's plan): `RUN_CONFIG` is sticky, 0 only after a reset, so
+    firmware writes it once before its passes; a row count of 0 posts done at once ([6] if the record has input); [6] stays
+    unconditional (short passes are for short traces); reserved [115]/[116] are written 0 and ignored, not checked; the
+    deliveries are converted in scratch per task (v1.25 to v1.26.1 directly, refusing [115] = 0); the 8 KB controls are
+    skipped (the queue sizes don't change).
+
 **To carry, in the same release:** the spec (4.17, 4.19.2, 4.19.8-4.19.10, 8.11, section 13), `CHANGES-v1.26.1.md` and Tony's
 change notes; meshsim's replayer model, `mesh.h`, the register reference, `replay_ctl.c` and the recipes, the tests, the
 acceptance kit and `ReplayDriver`; everything that writes a record or a stream word: gold (`wip/gold/`), WORKER16's segment
@@ -152,3 +162,10 @@ tools, and the converted deliveries in the runner's data. SP1 writes the Tracer'
 v1.26 and is waiting for it. **Once `v1.26.1/` is frozen, `v1.26/` is deleted** (owner): git keeps it, so the README's version
 table names v1.26 as superseded, with the last commit holding the folder, and the references to `v1.26/` (README, this file,
 the handover) point there or to `v1.26.1/`.
+
+**Done: frozen as `v1.26.1/`, 2026-11-05** (WORKER25, merged at f9e20f6). The spec, `CHANGES-v1.26.1.md` and the RTL guide
+from v1.25 straight to v1.26.1 (`CHANGES-v1.25-to-v1.26.1.md`); meshsim, `mesh.h`, the register reference, `replay_ctl.c`
+(layout 4) and recipe 26, the kit and the converted deliveries. **Every window of both workloads at 2²⁹ identical to v1.26,
+cycle for cycle** (Quest 106, 107 against 098, 099: verdicts, rows, cycles, stalls and refills on 16,512 of 16,512 lines per
+workload); the smoke run 105; the suites 36 of 36 and 11 of 11 and the full-size sort at 1,229,008 cycles (108).
+ReplayerTest 2182/0. **`v1.26/` deleted** after the freeze (owner); it is kept in git history.

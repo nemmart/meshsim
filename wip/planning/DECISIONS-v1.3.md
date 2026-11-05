@@ -976,15 +976,16 @@ record had and part 0 didn't hold.)
 - **Frame 2** (section 16) takes the same layout, so the host's processor state, the Tracer's startup state, its per-window output
   and the replayer's state are one record (replacing frame 2's flat 131 u64; WORKER16's tool and gold follow when they next
   change).
-- **Loading it invalidates the Tracer's local caches**, the 16 KB instruction and data caches and the jump LRU, **without
-  flushing dirty lines** (owner): the previous segment's copy of memory is throwaway (section 21).
+- **Loading it (the write to word 0, section 24) invalidates the Tracer's local caches**, the 16 KB instruction and data caches
+  and the jump LRU, **without flushing dirty lines** (owner): the previous segment's copy of memory is throwaway (section 21).
 
 ## 24. The Tracer's peripheral window (2026-11-01)
 
 Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17):
 
-- **Starting:** C&C 3 **writes the startup state** (section 23) into the window, then **pulses start** (loading it and
-  invalidating the local caches).
+- **Starting:** C&C 3 **writes the startup state** (section 23) into part 0, then pulses run (below). **There is no start pulse**
+  (owner, 2026-11-04): the write to word 0 does all its work (below). *(Was: a start pulse loading the state and invalidating
+  the local caches.)*
 - **Running** (owner, 2026-11-01): C&C 3 sets **a row-count register**, typically **65,536** (one window, 2¹⁶ rows), and
   **pulses go**; it then feeds the Tracer expansions and advice as their flags ask, and the Tracer **raises done** after that
   many rows, stopping exactly there, even inside an expansion. Its state carries on, so the next go continues the run: a segment
@@ -1020,6 +1021,14 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
   rule as the replayer's: the state write flushes the queues, latches the sizes, clears the size counters and sets the credits;
   the Tracer's go is `PULSE_RUN`, which runs the next `RUN_CYCLES` rows and nothing else, so the read queue's counter runs across
   the segment's 64 runs.
+- **The Tracer has exactly two pulses, as every peripheral** (owner, 2026-11-04): **`PULSE_RUN`** (4.17.2) runs the next
+  `RUN_CYCLES` rows; **`PULSE_DMA`** (4.17.9) starts a DMA transfer from one of the four output queues. **The write to word 0**
+  flushes the queues, latches the sizes, clears the counters, sets the credits, and **also invalidates the instruction and data
+  caches and the jump LRU** (without flushing dirty lines, section 23). That is safe although words 1-67 follow, because the
+  caches only fill during execution, which begins at `PULSE_RUN`. **On the Tracer, word 0 is written only at a segment's start:**
+  a rewrite mid-segment would flush the read queue and the caches and lose the segment's progress, and the Tracer ignores word
+  0's per-pass flags anyway, so **a mid-segment rewrite is UB** (section 8a). Everything else is a register write: the state
+  through part 0, and `RUN_CYCLES`.
 - **The read queue's end** (owner, 2026-11-01): **the advice log is per segment**, all 4M rows, not per run of 65,536, and
   **its size is part of the startup state** (section 23's stream word), so the Tracer knows it from the start. It counts the words it pops:
   **a pop beyond the size sets an `ERRORS` bit (advice underflow)** at once, instead of the Tracer waiting forever for the
@@ -1090,7 +1099,7 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
 | 34 | `EXPANSION_OFFSET` (R) | the row within the current expansion where the next row starts (as the replayer's word 33) |
 | 35 | `EXPANSION_OPCODE` (R) | the instruction awaiting a controller-fed expansion (as the replayer's word 34) |
 
-  plus the usual `PARAMS`, `STATUS`, `ERRORS`, `EVENTS` and pulses (start, go), the DMA's words, and the four queue lengths
+  plus the usual `PARAMS`, `STATUS`, `ERRORS`, `EVENTS`, the two pulses (`PULSE_RUN`, `PULSE_DMA`), the DMA's words, and the four queue lengths
   (above). Proposed (integrator, to confirm): the queue lengths at words 36-39 (state, code, read log, write log), and the
   template number returned with an expansion in the expansion queue's first word or a register beside `EXPANSION_OPCODE`.
 - **Open:** the advice flag's threshold (proposed: half free); statistics registers.

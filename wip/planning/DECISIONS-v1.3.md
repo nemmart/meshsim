@@ -686,6 +686,11 @@ Decided (O).
     every `LR x0`**, zero or not: WORKER17's premise held only for jolt-cpp. Gold follows a16z and drops the rejection; **a
     jolt-cpp fix and a bug report**, like D1, D3, D12; whether its inline exemption changes any rows, to check. Neither workload
     has an `LR x0`.
+  - **D13, follow a16z** (owner, 2026-11-05; WORKER18): the no-op row an rd = x0 instruction is rewritten to (`ADDI x0, x0, 0`)
+    is flagged virtual in jolt-cpp but not in a16z, so jolt-cpp's row differs and its proofs of such programs fail
+    verification. Gold follows a16z; **a jolt-cpp fix and a bug report**, like D1, D3, D12, D14.
+  - **What to report** is one list, ordered by impact, at the top of `WORKER18/UPSTREAM-DIFFS.md` (12 entries for jolt-cpp, 3 for
+    a16z), each with its evidence, reproducer, bug report (`WORKER18/bug-reports/`) and fix branch.
   - **D2 and the rest: deferred.** U1 and U2 (a16z's ACT4 configuration and `jolt-emu`'s exit check) and U3 (a16z rejecting the
     standard `unimp`, 0xC0001073) are a16z's bugs, written up for the owner to decide whether to report.
 

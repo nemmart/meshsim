@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run_shard.sh -- the acceptance kit (meshsim WORKER11; v1.26, WORKER20: 68-word records, 4 KB queues): one shard of a program's windows, read from the program's
+# run_shard.sh -- the acceptance kit (meshsim WORKER11; v1.26, WORKER20: 68-word records, 4 KB queues; v1.26.1, WORKER25: RUN_CONFIG, the new stream word): one shard of a program's windows, read from the program's
 # delivery where WORKER9's writer task left it on the runner box (DECISIONS-v1.25 s7, revised 2026-11-01), replayed in
 # Stage A and Stage B by JOBS JVMs. The delivery is only read: results go to OUTDIR. Java 17+; nothing else.
 #

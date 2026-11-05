@@ -10,7 +10,7 @@ KIT=$1; NAME=$2; CMD=$3; SETUP=${4:-}
 SHA=$(sha256sum "$KIT" | cut -d' ' -f1)
 cat <<HDR
 #!/bin/bash
-# Task $NAME -- meshsim acceptance kit (WORKER11; v1.26: WORKER20, branch v1.26-meshsim). The kit (meshsim.jar, Java 17 bytecode;
+# Task $NAME -- meshsim acceptance kit (WORKER11; v1.26: WORKER20; v1.26.1: WORKER25, branch v1.26.1). The kit (meshsim.jar, Java 17 bytecode;
 # the prebuilt replay controller; the universal replayer tables; run_shard.sh, calibrate.sh) is embedded below as a base64
 # tgz, SHA-256 checked. Runs: $CMD
 # Commits only results (CSV, summaries, logs); deliveries are generated into scratch and deleted (DECISIONS-v1.25 s7).

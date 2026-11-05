@@ -439,8 +439,10 @@ zero-padded). **Order: frame 7, frame 1, frame 6, then per segment frames 2, 3, 
   every key lands in its home line, else the best of 31 alternatives; p3 the first prime at or above 0x9E3779).
 - **Frame 2**: v1.26.1's 68-word record, 128-bit words (spec 4.21.2): word 0 pc [63:0], `instr_idx` [95:64], next
   offset [111:96]; word 1 only the advice field [124:102] = the segment's advice values (frame 3's count); words 2-65
-  registers 2i, 2i + 1; word 66 log₂ K at [71:66] and `lowest_address` >> 12 at [123:72] (roots, depths 0 for C&C 3);
-  word 67 0. A segment past the end: pc, `instr_idx`, offset 0, the final registers (as v1.2).
+  registers 2i, 2i + 1; word 66 log₂ K at [71:66] and **the I/O region's size, 0x8000_0000 − `lowest_address`, exact in
+  bytes at [102:72]** ([127:103] spare; owner, spec 4.21.2, 66f399e, replacing `lowest_address` / 4 KB at [123:72]),
+  roots and depths 0 for C&C 3; word 67 0. **A layout whose I/O region is 2 GiB or more is rejected** before anything
+  is written. A segment past the end: pc, `instr_idx`, offset 0, the final registers (as v1.2).
 - **Frames 3, 4, 5**: unchanged from v1.2, with every encoder choice above ("Stage 2").
 - Stores into code are rejected before anything is written, and so is a run the range check rejects.
 
@@ -449,9 +451,9 @@ is byte-identical to jumpmap's `frame6.bin` (jumpmap's own acceptance: 373,731 a
 7's log₂ K and `lowest_address` equal jumpmap's `proof.json` and its MemoryLayout a16z's (upstream_rows' dump), frame 1
 equals jumpmap's per-segment `pages_written`, frames 2-5 equal the v1.2 file's; at 2²⁹ both workloads' frames 2-5 equal
 the v1.2 references and frame 7 a16z's layout. **For WORKER16's byte identity**, the v1.3 files at 2²⁹ (128 segments
-of 2²² rows): `WORKER18/data/v13/segment-files-v1.3.sha256` (EVM Zone 2,801,736 B `e9145e04…`, Cyclone 11,388,488 B
-`fb1f4b6f…`). Note: a tiny guest's `lowest_address` isn't page-aligned (0x7fffffe0, its I/O region is small), so word
-66's `lowest_address` / 4 KB truncates there; the workloads' (0x7e000000) are aligned.
+of 2²² rows), **republished 2026-11-05 with word 66's new field and D13's ruling** (gold `d4d22fa` and the word 66 commit):
+`WORKER18/data/v13/segment-files-v1.3.sha256`: EVM Zone 2,801,736 B `3cd32881…2a824d72`, Cyclone 11,388,488 B
+`e932baaf…0640eb38`. (The earlier `e9145e04…`/`fb1f4b6f…` are superseded; D13 doesn't change them, word 66 does.)
 
 **HashTable and StaticTargets** moved from `wip/jumpmap` into gold (`11eac42`); jumpmap uses gold's, and its fixtures
 are unchanged (its `fixtures.sh` asks gold for `--format=v1.2`, which its `SegmentFile` reads).

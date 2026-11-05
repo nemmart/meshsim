@@ -691,6 +691,13 @@ start comes in frame 2. **Only jumps need the map.**
   table's lines and its three constants). **No supplement inserted on chip**, so no inserter, no private page copies and no
   open question of who inserts. Not a table of the run's targets alone: that would be far smaller (about 6K and 4K entries) and
   give unfounded confidence in the cache footprint. Cost: about 1 MB per proof in the stream, against 2.6-12.5 MB of updates.
+  **Measured** (WORKER26, small inputs; at 2²⁹ to follow): the static analysis needs more kinds than direct and return targets.
+  Far calls written as AUIPC+JALR (EVM Zone: 263 of 5,526 run targets missed without them) and AUIPC+ADDI code addresses are
+  added, then the data scan, then **the instruction after each ECALL** (MRET returns there: Cyclone's 6 misses); section 18's
+  "6,183 of 6,189" probably counted the AUIPC pairs as direct. What no static scan can see (EVM Zone's 2 function pointers
+  stored at run time) the run's targets supply. Tables: k = 13 (1 MB), load 0.32-0.38, every key in its home line, 0 map errors
+  over every jump. **Frame 6's data: u32 k, u32 p1, u32 p3, then the 2ᵏ lines** (WORKER26's format, with WORKER22's file layout
+  for bring-up).
   *The design it replaces (2026-11-01), for the record:*
 - **The table: one hash table of target pc to base `instr_idx`, static per program, with a per-proof supplement inserted into
   it** (owner, 2026-11-01; robust to programs whose runs jump to many targets, where a per-proof table could swell to megabytes

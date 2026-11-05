@@ -1195,12 +1195,16 @@ Decided (O).
     doesn't own** (section 15), one `ERRORS` bit, [8], since a line is writable only when its fill succeeded; the fill status
     can still tell them apart. **To revisit with the memory system's design:** which statuses and page flags it reports is still a
     black box, so this follows WORKER21's proposed fill responses (ok, hole, not owned, beyond the length) until then.
-    **Stores into code are caught here** (owner, 2026-11-05, WORKER21's Q10): Jolt executes its fixed bytecode, but the
-    Tracer fetches through memory, so a store into the text would make its trace silently differ from a16z's. **The host marks
-    every page holding text not writable** when it builds the memory file (it knows the text sections, D1), so such a store
-    sets [8] at the store. **No check on the host's load/store path** (the JIT): the hardware does it. A page shared by text and
-    read-only data becomes read-only too, so a program storing into its own code or its read-only data is rejected where a16z,
-    with no region permissions, would prove it: a deliberate divergence.
+    **Stores into code** (owner, 2026-11-05, WORKER21's Q10): Jolt executes its fixed bytecode, but the Tracer fetches through
+    memory, so a store into the text would make its trace silently differ from a16z's. **"Code" is the text sections** (the
+    ELF's `SHF_EXECINSTR` sections, overlaps merged: exactly what a16z decodes into bytecode, D1, and what the jump map covers);
+    an ELF with no section headers can't be proven and is rejected at load. **The host scans its write list** (the pages, or
+    cells, each segment writes, which it already has, section 15) against the text ranges once per segment, before anything is
+    sent, and rejects the program if any write falls in code: a check over the list, **not on the JIT's load/store path**.
+    **The Tracer's backstop is free:** a segment's copy owns only its written pages (section 15), so once the scan passes it never
+    owns a text page, and a store into code lands on a page not owned and sets [8]. Nothing new reaches the Tracer: no read-only
+    flag from the memory system, no comparator. (Replaces the host marking text pages not writable.) A program storing into its
+    own code is rejected where a16z, with no region permissions, would prove it: a deliberate divergence.
     Formerly: **a write to a hole** in the guest's memory (an index entry of `0xFFFFFFFF`), reported by the memory system's walker to the
     requester;
   - **an access to a page that doesn't exist**, beyond the file's length;

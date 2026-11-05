@@ -168,3 +168,7 @@ roots and depths 0. Acceptance: byte identity with WORKER18's gold files.
   at 2^29, on the small inputs and 7 fixtures; frame 1 = jumpmap's `pages_written`; content = gold's v1.2 files. Findings:
   K differs from jumpmap's formula on 6 fixtures (image word count); D1 base on `d1_decodable_gap`; 3 fixtures jolt-cpp
   can't load. `V13-REPORT.md`.
+- **Word 66 change** (owner; spec 4.21.2, 66f399e): [102:72] = 0x8000_0000 − `lowest_address` in bytes, [127:103] spare.
+  Done at `b2bac91` (writer, checker, reader). The v1.3 files before it equal WORKER18's published SHA-256s. After it, they
+  equal a locally patched gold (one line, `SegmentWriter.java:242`; gold not yet republished): EVM Zone `3cd32881…`,
+  Cyclone `e932baaf…`. Findings 1 → WORKER18; 2 and 3 expected (D1, D12).

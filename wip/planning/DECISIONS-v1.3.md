@@ -33,6 +33,11 @@ Decided (O).
   - **The log FIFO, 65 bits wide:** a 64-bit read-log or write-log word, and **a tag bit** saying which. One
     FIFO with the tag, rather than a separate 1-bit FIFO kept in lockstep. The words stay in row order, which
     is what the write log's last-load entry (E[15], spec 4.19.15) needs when the logs are compressed.
+    **Widened to 66 bits, a 2-bit tag** (owner, 2026-11-05; WORKER21's Q1): load, other read log, or write log. Set 2 compresses
+    from the FIFO after done, when the rows are gone, and must update E[15] on exactly the load rows the replayer will; a
+    read-log word may also be advice or a jump's next `instr_idx`, and whether a branch pops depends on registers set 2 lacks,
+    so the kind can't be recovered from the code stream. Cost: 8 KB more SRAM. **The tags never leave the Tracer:** set 2 uses
+    them to route the words to queues 2 and 3 and to update E[15], and the streams carry the 64-bit words only.
 - **At most one log word per row** (spec 4.19.15: "the core takes one code value per instruction and at most
   one log value per row": an LD row pops the read log, an SD row the write log, no row both). So a window's
   log words always fit. **This bound sizes the FIFO, so it must hold**: a row producing two log words would

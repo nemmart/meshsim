@@ -12,7 +12,7 @@ RUN=$1; DATA=$2; run_info "$RUN" || exit 2
 OUT=${OUT:-$HOME/meshsim-inputs}; PY="python3 $HERE/lib/inputs.py"
 ref() { awk -v r="$RUN" -v w="$1" '$1==r && $2==w {print $3}' "$HERE/manifest/runner-refs.txt"; }
 bad=0; ok() { echo "ok    $*"; }; no() { echo "FAIL  $*"; bad=1; }
-for k in delivery:w9-deliveries selected:w9-deliveries-selected; do
+for k in delivery:w9-deliveries $( [ -n "$SEL" ] && echo selected:w9-deliveries-selected ); do
   w=${k%%:*} d=${k#*:}
   new=$(sha256sum "$OUT/$d/$RUN.manifest.json" 2>/dev/null | cut -d' ' -f1); old=$(sha256sum "$DATA/$d/$RUN.manifest.json" 2>/dev/null | cut -d' ' -f1)
   [ -n "$new" ] && [ "$new" = "$(ref $w)" ] && [ "$new" = "$old" ] && ok "$d/$RUN.manifest.json $new (= 10x's, = the runner's)" || no "$d/$RUN.manifest.json new $new, runner $old, recorded $(ref $w)"

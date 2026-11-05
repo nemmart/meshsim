@@ -111,7 +111,8 @@ public final class Bytecode implements Code {
         continue;
       }
       List<VInstr> seq = Expander.expand(in);
-      for (VInstr v : seq) { v.riscPc = pc; v.srcOpcode = in.opcode; v.unprovable = why; }
+      boolean lrToX0 = (in.opcode == Op.LR_D || in.opcode == Op.LR_W) && !in.immA && in.a == 0;
+      for (VInstr v : seq) { v.riscPc = pc; v.srcOpcode = in.opcode; v.unprovable = why; v.lrToX0 = lrToX0; }
       seq.get(seq.size() - 1).pcIncrement = d.size();
       pcToIndex[(int) ((pc - codeStart) >>> 1) + 1] = out.size();
       out.addAll(seq);

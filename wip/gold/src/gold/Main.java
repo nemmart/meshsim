@@ -70,6 +70,7 @@ public final class Main {
       return false;
     }
     Machine m = new Machine(p, new SecpCompute());
+    m.checkStoresAgainst(p.textRanges);
     long windowHash = 0, runHash = 0;
     try {
       while (!m.halted()) {
@@ -82,7 +83,22 @@ public final class Main {
       return false;
     }
     if (m.cycle % (1 << 16) != 0) runHash = Row.mix(runHash, windowHash);
-    System.out.printf("%d rows, run hash %016x", m.cycle, runHash);
+    // the host's checks after the run (DECISIONS-v1.3 section 25): stores into code; the provable range and K
+    if (m.codeStoreRow >= 0) {
+      System.out.printf("REJECTED: the store at row %d to %#x falls in the code (a Text section)%n", m.codeStoreRow,
+          m.codeStoreAddress);
+      return false;
+    }
+    ProofParams pp;
+    try {
+      pp = new ProofParams(p, m);
+      pp.check(m);
+    } catch (ProofParams.Unprovable e) {
+      System.out.println("REJECTED: " + e.getMessage());
+      return false;
+    }
+    System.out.printf("%d rows, run hash %016x, log2 K %d, lowest_address %#x", m.cycle, runHash, pp.log2K,
+        pp.lowestAddress);
     if (!tohost) { System.out.println(); return true; }
     // ACT4's verdict (tests/arch-tests/jolt/rvmodel_macros.h): tohost = 1 passes, (gp << 1) | 1 fails test case gp
     Long addr = p.symbols.get("tohost");

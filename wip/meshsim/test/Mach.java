@@ -21,12 +21,14 @@ final class Mach {
     // ---------------------------------------------------------------- images
     static final class Image {
         final String name; final int[] code, data; final Map<String, Integer> sym = new HashMap<>();
-        Image(String name) {
+        Image(String name) { this(SW, name); }
+        /** An image from any build directory (B1: sw/replay/build's replay_ctl, sw/tracer/build's tracer_ctl). */
+        Image(Path dir, String name) {
             this.name = name;
             try {
-                code = words(SW.resolve(name + ".code.bin"));
-                data = words(SW.resolve(name + ".data.bin"));
-                for (String l : Files.readAllLines(SW.resolve(name + ".sym"))) {
+                code = words(dir.resolve(name + ".code.bin"));
+                data = words(dir.resolve(name + ".data.bin"));
+                for (String l : Files.readAllLines(dir.resolve(name + ".sym"))) {
                     String[] f = l.trim().split("\\s+");
                     if (f.length == 3) sym.put(f[2], (int) Long.parseLong(f[0], 16));
                 }
@@ -68,9 +70,12 @@ final class Mach {
      *  host before the boot), its boot descriptor into its image's data, then C&C 1's image and first command through
      *  the host port. C&C 1's firmware boots C&C 2 and C&C 3, waits for their "started", then boots the tiles with
      *  `tile` (READY, GO). Returns the tile image. */
-    Image bootCores(String tile) {
+    Image bootCores(String tile) { return bootCores(new Image(tile), null); }
+    /** The same boot with C&C 3 given its own image (B1: tracer_ctl; null: cc23 as for C&C 2); it must send C&C 1 its
+     *  "started" request as cc23.c does. */
+    Image bootCores(Image t, Image cc3) {
         if (c.cores == null) throw new IllegalStateException("bootCores needs Config.ccCores");
-        Image t = new Image(tile); cc1 = new Image("cc1"); cc23 = new Image("cc23");
+        cc1 = new Image("cc1"); cc23 = new Image("cc23");
         bootStart = c.cycle;
         BigSRAM s = c.cores.unit(0).sram;
         int[] at = { STAGE_CHUNK };
@@ -82,8 +87,10 @@ final class Mach {
         int[] desc = new int[1 + 3 * 6 + 2];
         desc[0] = 0xB007DE5C;
         int[] cp = stage.apply(cc23.code), cd = stage.apply(cc23.data), tp = stage.apply(t.code), td = stage.apply(t.data);
+        int[] c3p = cc3 != null ? stage.apply(cc3.code) : cp, c3d = cc3 != null ? stage.apply(cc3.data) : cd;
         for (int u = 0; u < 3; u++) {
-            Image im = u < 2 ? cc23 : t; int[] p = u < 2 ? cp : tp, d = u < 2 ? cd : td;
+            Image im = u == 0 ? cc23 : u == 1 ? (cc3 != null ? cc3 : cc23) : t;
+            int[] p = u == 0 ? cp : u == 1 ? c3p : tp, d = u == 0 ? cd : u == 1 ? c3d : td;
             int cmd = at[0]; at[0] += 4;
             int[] e = { p[0], p[1], d[0], d[1], cmd, im.sym("_start") };
             System.arraycopy(e, 0, desc, 1 + 6 * u, 6);

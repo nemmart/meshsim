@@ -353,7 +353,9 @@ int main(void) {
     me = tile_index();
     const uint32_t base_mask = EV_RESET_MASK;
     copy_to_dm(0, hdr, RL_H_WORDS / 4, base_mask);
-    if (hdr[RL_H_MAGIC] != RL_MAGIC || hdr[RL_H_VERSION] != RL_VERSION) { rp_results[RL_R_STATUS] = 4; return 4; }
+    if (hdr[RL_H_MAGIC] != RL_MAGIC || hdr[RL_H_VERSION] < 4u || hdr[RL_H_VERSION] > RL_VERSION) { rp_results[RL_R_STATUS] = 4; return 4; }
+    /* v1.3 (version 5, B1): the window is delivered by C&C 3's Tracer; start when C&C 1's command says it is all in */
+    if (hdr[RL_H_VERSION] >= 5u && hdr[RL_H_WAIT]) (void)wait_for_command();
 
     uint32_t nt = hdr[RL_H_NTEMPLATES];
     if (nt > 128) nt = 128;
@@ -373,6 +375,10 @@ int main(void) {
     /* the record into data memory for its bitmap (word 67) and the store-log flag; part 0 is loaded before each pass */
     copy_to_dm(hdr[RL_H_RECORD], record, RL_RECORD_WORDS, base_mask);
     for (uint32_t i = 0; i < 4; i++) bitmap[i] = record[4 * RL_RECORD_BITMAP + i];   /* word 67 (dmtab reuses record) */
+    /* version 5: the stream sizes from the record's stream word (word 1: code [15:0], read log [31:16], write log [47:32]) */
+    if (hdr[RL_H_CODE_N] == RL_N_FROM_RECORD) hdr[RL_H_CODE_N] = record[4] & 0xFFFFu;
+    if (hdr[RL_H_RLOG_N] == RL_N_FROM_RECORD) hdr[RL_H_RLOG_N] = record[4] >> 16;
+    if (hdr[RL_H_WLOG_N] == RL_N_FROM_RECORD) hdr[RL_H_WLOG_N] = record[5] & 0xFFFFu;
     store_log = (hdr[RL_H_RUN_CONFIG] & RP_RC_STORE_LOG) != 0;      /* v1.26.1: RUN_CONFIG [24], not the record */
 
     /* the fast path's tables (dmtab reuses the record's space) */

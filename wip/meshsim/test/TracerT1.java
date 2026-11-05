@@ -59,42 +59,8 @@ public final class TracerT1 {
         FileStore.File img;
         List<List<Long>> w26Written = null;
         if (w26 != null) {
-            // ---- WORKER26's inputs (NOTES.md): proof.json, initial.pages, frame6.bin, seg/NNN.pages, segments.seg
-            Map<String, Object> pj = ReplayDelivery.Json.object(Files.readString(w26.resolve("proof.json")));
-            log2K = ((Number) pj.get("log2_k")).intValue(); lowest = Long.decode((String) pj.get("lowest_address"));
-            segFile = w26.resolve("segments.seg");
-            g.lowest = lowest; g.log2K = log2K;
-            img = g.fs.create(2);
-            ByteBuffer ip = le(Files.readAllBytes(w26.resolve("initial.pages")));
-            int n = 0;
-            while (ip.remaining() > 0) {
-                long off = ip.getLong(); int flags = ip.getInt(); ip.getInt();
-                if (flags != 0) throw new IllegalStateException("initial.pages: flags " + flags);
-                long[] pg = new long[512]; for (int k = 0; k < 512; k++) pg[k] = ip.getLong();
-                g.fs.putPage(img, off / 4096, pg); n++;
-            }
-            ByteBuffer f6 = le(Files.readAllBytes(w26.resolve("frame6.bin")));
-            int len = f6.getInt(), type = f6.getInt(), k = f6.getInt(), p1 = f6.getInt(), p3 = f6.getInt();
-            if (type != 6 || len != 5 + 32 * (1 << k)) throw new IllegalStateException("frame6.bin: type " + type + " length " + len);
-            byte[] lines = new byte[128 << k]; f6.get(lines);
-            if (!java.util.Arrays.equals(lines, Files.readAllBytes(w26.resolve("map.lines")))) throw new IllegalStateException("map.lines differs from frame 6's lines");
-            if (k != ((Number) pj.get("hash_k")).intValue() || p1 != Long.decode((String) pj.get("hash_p1")).intValue() || p3 != ((Number) pj.get("hash_p3")).intValue())
-                throw new IllegalStateException("frame 6's constants differ from proof.json's");
-            g.mapK = k; g.mapMul = p1; g.mapStep = p3;
-            g.map = g.fs.create(FileStore.depthFor((long) lines.length));
-            ByteBuffer lb = le(lines);
-            for (int pgN = 0; pgN < Math.max(1, lines.length / 4096); pgN++) {
-                long[] pg = new long[512];
-                for (int q = 0; q < 512 && 8 * (512 * pgN + q) < lines.length; q++) pg[q] = lb.getLong(8 * (512 * pgN + q));
-                g.fs.putPage(g.map, g.map.depth() == 0 ? 0 : pgN, pg);
-            }
-            w26Written = new ArrayList<>();
-            int segs = ((Number) pj.get("segments")).intValue();
-            for (int sgi = 0; sgi < segs; sgi++) {
-                ByteBuffer wb = le(Files.readAllBytes(w26.resolve(String.format("seg/%03d.pages", sgi))));
-                List<Long> l = new ArrayList<>(); while (wb.remaining() > 0) l.add(wb.getLong() / 4096); w26Written.add(l);
-            }
-            System.out.printf("%s: WORKER26's inputs: image %d pages, map 2^%d lines (p1 0x%x, p3 %d), log2 K %d, lowest 0x%x%n", name, n, k, p1, p3, log2K, lowest);
+            W26 in = loadW26(w26, g, name);
+            img = in.img; log2K = in.log2K; lowest = in.lowest; segFile = w26.resolve("segments.seg"); w26Written = in.written;
         } else {
             // ---- bring-up inputs: gold's cycle-0 image and an every-start map (no timing from these)
             Object program = Class.forName("gold.Program").getConstructor(Path.class, Path.class).newInstance(prog, input);
@@ -275,6 +241,51 @@ public final class TracerT1 {
         System.out.printf("%s: %d windows checked (%d rows), %d failed, %.1f s%n", name, windowsChecked, rowsChecked, failed, (System.nanoTime() - t0) / 1e9);
         if (byIndex.size() == lastDelivered + 1 && windowsChecked + windowsSkipped < Math.min(byIndex.size(), 64 * (s1 - s0 + 1)) && maxWin == Integer.MAX_VALUE) { System.out.println("not every delivered window was checked"); failed++; }
         System.exit(failed == 0 ? 0 : 1);
+    }
+
+    /** WORKER26's inputs (NOTES.md): proof.json, initial.pages, frame6.bin and map.lines, seg/NNN.pages; into g's FileStore. */
+    static final class W26 { FileStore.File img; int log2K; long lowest; List<List<Long>> written; }
+    static W26 loadW26(Path w26, TracerRig g, String name) throws Exception {
+        W26 r = new W26();
+        FileStore.File img; int log2K; long lowest; List<List<Long>> w26Written; Path segFile;
+            // ---- WORKER26's inputs (NOTES.md): proof.json, initial.pages, frame6.bin, seg/NNN.pages, segments.seg
+            Map<String, Object> pj = ReplayDelivery.Json.object(Files.readString(w26.resolve("proof.json")));
+            log2K = ((Number) pj.get("log2_k")).intValue(); lowest = Long.decode((String) pj.get("lowest_address"));
+            segFile = w26.resolve("segments.seg");
+            g.lowest = lowest; g.log2K = log2K;
+            img = g.fs.create(2);
+            ByteBuffer ip = le(Files.readAllBytes(w26.resolve("initial.pages")));
+            int n = 0;
+            while (ip.remaining() > 0) {
+                long off = ip.getLong(); int flags = ip.getInt(); ip.getInt();
+                if (flags != 0) throw new IllegalStateException("initial.pages: flags " + flags);
+                long[] pg = new long[512]; for (int k = 0; k < 512; k++) pg[k] = ip.getLong();
+                g.fs.putPage(img, off / 4096, pg); n++;
+            }
+            ByteBuffer f6 = le(Files.readAllBytes(w26.resolve("frame6.bin")));
+            int len = f6.getInt(), type = f6.getInt(), k = f6.getInt(), p1 = f6.getInt(), p3 = f6.getInt();
+            if (type != 6 || len != 5 + 32 * (1 << k)) throw new IllegalStateException("frame6.bin: type " + type + " length " + len);
+            byte[] lines = new byte[128 << k]; f6.get(lines);
+            if (!java.util.Arrays.equals(lines, Files.readAllBytes(w26.resolve("map.lines")))) throw new IllegalStateException("map.lines differs from frame 6's lines");
+            if (k != ((Number) pj.get("hash_k")).intValue() || p1 != Long.decode((String) pj.get("hash_p1")).intValue() || p3 != ((Number) pj.get("hash_p3")).intValue())
+                throw new IllegalStateException("frame 6's constants differ from proof.json's");
+            g.mapK = k; g.mapMul = p1; g.mapStep = p3;
+            g.map = g.fs.create(FileStore.depthFor((long) lines.length));
+            ByteBuffer lb = le(lines);
+            for (int pgN = 0; pgN < Math.max(1, lines.length / 4096); pgN++) {
+                long[] pg = new long[512];
+                for (int q = 0; q < 512 && 8 * (512 * pgN + q) < lines.length; q++) pg[q] = lb.getLong(8 * (512 * pgN + q));
+                g.fs.putPage(g.map, g.map.depth() == 0 ? 0 : pgN, pg);
+            }
+            w26Written = new ArrayList<>();
+            int segs = ((Number) pj.get("segments")).intValue();
+            for (int sgi = 0; sgi < segs; sgi++) {
+                ByteBuffer wb = le(Files.readAllBytes(w26.resolve(String.format("seg/%03d.pages", sgi))));
+                List<Long> l = new ArrayList<>(); while (wb.remaining() > 0) l.add(wb.getLong() / 4096); w26Written.add(l);
+            }
+            System.out.printf("%s: WORKER26's inputs: image %d pages, map 2^%d lines (p1 0x%x, p3 %d), log2 K %d, lowest 0x%x%n", name, n, k, p1, p3, log2K, lowest);
+        r.img = img; r.log2K = log2K; r.lowest = lowest; r.written = w26Written;
+        return r;
     }
 
     /** Stage A on the Tracer's output: the start state with the window's stream word, its three streams; rows against rows.bin. */

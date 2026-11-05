@@ -21,7 +21,7 @@
 #define REPLAY_LAYOUT_H
 
 #define RL_MAGIC             0x594C5052u   /* "RPLY" */
-#define RL_VERSION           4u      /* v1.26.1: RL_H_RUN_CONFIG; v1.26 (3): the 68-word record in its new order; v1.25 (2): the index keyed by RL_IX_KEY */
+#define RL_VERSION           5u      /* v1.3 (B1, WORKER22): RL_H_WAIT and stream sizes from the record (5); v1.26.1: RL_H_RUN_CONFIG (4); v1.26 (3): the 68-word record in its new order; v1.25 (2): the index keyed by RL_IX_KEY */
 #define RL_RECORD_WORDS      68      /* v1.26: the state record, in 128-bit words */
 #define RL_PART0_WORDS       66      /* words 0-65 go to the replayer's part 0 */
 #define RL_RECORD_BITMAP     67      /* the template bitmap's word */
@@ -42,6 +42,10 @@
 #define RL_H_WLOG_N          12
 #define RL_H_PASSES          13  /* passes to run, each from the same checkpoint */
 #define RL_H_RUN_CONFIG      14  /* v1.26.1: the passes' RUN_CONFIG, written once (it is sticky): rows [23:0], [24] use the store log, [25] output rd_prev */
+#define RL_H_WAIT            15  /* v1.3 (version 5): non-zero, wait for a command before reading the record (its window is
+                                    delivered by C&C 3's Tracer, B1); a stream's entries word RL_N_FROM_RECORD takes the record's
+                                    stream word (4.19.2: its 128-bit words) */
+#define RL_N_FROM_RECORD     0xFFFFFFFFu
 #define RL_H_WORDS           16
 
 /* results: the program writes them to data memory, uint32_t rp_results[16] (the harness finds it in the .sym file) */

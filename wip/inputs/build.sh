@@ -43,7 +43,7 @@ mark() { sha256sum "$2" | cut -d' ' -f1 > "$1.COMPLETE"; }
 step_tools() {
   [ -d "$JAP/.git" ] || [ -n "${JAP_DIR:-}" ] || OUT=$OUT "$HERE/fetch.sh" "$JAP" || die "fetch"
   [ -f "$T/delivery/delivery_writer.cpp" ] || die "no tracer at $T"
-  local have; have=$(git -C "$JAP" rev-parse HEAD 2>/dev/null || cat "$JAP/COMMIT" 2>/dev/null)
+  local have; have=$(cat "$JAP/COMMIT" 2>/dev/null || git -C "$JAP" rev-parse HEAD 2>/dev/null)   # COMMIT: a kit's git archive
   [ "$have" = "$JAP_COMMIT" ] || die "jolt-asic-planning at '$have', the pin is $JAP_COMMIT"
   if [ -n "${FORCE:-}" ] || [ "$(cat "$OUT/build/tracer.stamp" 2>/dev/null)" != "$JAP_COMMIT" ]; then
     say "tracer: cmake (FetchContent: fmt, nlohmann_json, xbyak) and build, $JOBS jobs"
@@ -59,15 +59,7 @@ step_tools() {
     local M; M=$(git -C "$MESHSIM" rev-parse HEAD)
     if [ -n "${FORCE:-}" ] || [ "$(cat "$CLASSES.stamp" 2>/dev/null)" != "$M" ]; then
       say "classes: gold, jumpmap (wip/), ConvertDelivery ($MESHSIM_REL), javac --release 21"
-      rm -rf "$CLASSES"; mkdir -p "$CLASSES"/{gold,jumpmap,meshsim}
-      javac --release 21 -nowarn -d "$CLASSES/gold" $(find "$MESHSIM/wip/gold/src" -name '*.java') || die "javac gold"
-      javac --release 21 -nowarn -d "$CLASSES/jumpmap" -cp "$CLASSES/gold" $(find "$MESHSIM/wip/jumpmap/src" -name '*.java') || die "javac jumpmap"
-      # as v1.26.1's acceptance/make_kit.sh compiles it (meshsim's src/, then the replay harnesses)
-      local S=$MESHSIM/$MESHSIM_REL
-      javac --release 21 -nowarn -d "$CLASSES/meshsim" "$S"/src/*.java 2>&1 | grep -v '^Note:'
-      javac --release 21 -nowarn -d "$CLASSES/meshsim" -cp "$CLASSES/meshsim" "$S"/test/T.java "$S"/test/Replay*.java \
-        "$S"/test/StageB.java "$S"/test/SyntheticDelivery.java "$S"/test/ConvertDelivery.java 2>&1 | grep -v '^Note:'
-      [ -f "$CLASSES/meshsim/ConvertDelivery.class" ] || die "javac ConvertDelivery"
+      bash "$HERE/lib/classes.sh" "$MESHSIM" "$CLASSES" || die "javac"
       echo "$M" > "$CLASSES.stamp"
     fi
   fi
@@ -156,7 +148,7 @@ step_jumpmap() {
   say "jumpmap: $J/$RUN/manifest.sha256 $(cat "$J/$RUN.COMPLETE")"
 }
 
-say "build: $STEPS into $OUT (jolt-asic-planning ${JAP_COMMIT:0:7}, meshsim $(git -C "$MESHSIM" rev-parse --short HEAD 2>/dev/null || cat "$MESHSIM/VERSION" 2>/dev/null))"
+say "build: $STEPS into $OUT (jolt-asic-planning ${JAP_COMMIT:0:7}, meshsim ${MESHSIM_COMMIT:-$(git -C "$MESHSIM" rev-parse --short HEAD 2>/dev/null)})"
 for s in $STEPS; do
   case $s in tools|deliveries|convert|gold|jumpmap) "step_$s" ;; *) die "unknown step $s" ;; esac
 done

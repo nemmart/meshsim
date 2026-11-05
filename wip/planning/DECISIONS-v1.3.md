@@ -1025,13 +1025,13 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
   queue's length (in 128-bit words, rounded up; the padding after a stream's last bit can be anything, even in a compressed
   stream (owner), since the stream word gives the exact bit length and value count and the decoder stops there) and sends that many with the DMA, in transfers of C&C 3's choosing: in the first implementation they go directly into the tiles' memory, so no replayer
   credits pace them (owner, 2026-11-04, below; replacing transfers sized to the replayer's credits, half a 4 KB queue, 128 words).
-- **Wake flags** (events), each waking the controller (now four: expand, done, advice, and the DMA's completion, 4.17.9):
+- **Wake flags** (events), each waking the controller (revised 2026-11-05: expand, advice, **the four queue-service flags**, done, and the DMA's completion, 4.17.9):
   - **expand:** an instruction needs its expansion from the controller (`EXPANSION_OPCODE` holds its word, as in the replayer's
     controller-fed path, spec 4.19.9);
-  - **done:** the rows the row-count register asked for are traced;
-  - ~~**code log**, **read log** and **write log:** each stream has something ready~~ **dropped** (owner, 2026-11-04): nothing goes
-    out before done, and at done every stream's length is known (the queue-length registers), so C&C 3 drains by those lengths,
-    the DMA waiting on its source queue as set 2 fills it; done and the DMA's own completion are all the pacing it needs;
+  - **done:** the rows the row-count register asked for are traced **and the window's output is fully drained** (revised
+    2026-11-05, the drain below; the state queue's service flag marks the rows' end);
+  - ~~**code log**, **read log** and **write log:** each stream has something ready~~ dropped 2026-11-04, and **replaced by
+    the queue-service flags** (owner, 2026-11-05, below);
   - **advice:** the read queue (section 23: the advice input) has room, so send more of the segment's advice (owner). **The queue is 4 KB**
     (owner: it mirrors the replayer's typical queue sizes; was 2 KB): 512 advice words. Advice is consumed slowly (the division family takes one word per expansion of about 12 rows,
     a secp operation at most 8 in up to 240), so a full queue lasts thousands of rows, far longer than the controller takes to
@@ -1082,6 +1082,20 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
   **The replayer's new `ERRORS` bits at v1.3** (owner, 2026-11-01), after v1.25's [0] reserved, [1] queue overrun, [2] invalid
   expansion: **[3] code-stream underflow, [4] read-log underflow, [5] write-log underflow, [6] done with input left over** (one
   bit; the controller reads the queue occupancies to see which stream).
+- **The drain: service requests with credits, and done last** (owner, 2026-11-05; WORKER21's Q2 and Q8). One scan of the log
+  FIFO feeds output queues 2 and 3 in row order; with small queues and a DMA sending one queue per transfer, that deadlocks (the
+  DMA waiting on one queue while the scan waits on the other). So:
+  - **output queues 1-3 (code, read log, write log) are 4 KB each**, and each counts **credits**: one per 2 KB chunk present
+    (so 0-2), plus one for the last part of a finished stream. **Its service flag is up while it holds a credit**; each DMA
+    transfer of a chunk takes one. A request only goes up for data already in the queue, so a transfer never waits on the scan,
+    and a full queue stalls the scan only while its own request is up: **no deadlock, one scan, the DMA unchanged.** A window
+    heavy in one log and empty in the other just raises that queue's flag repeatedly;
+  - **the order:** when the run's rows finish, the Tracer posts **state queue needs service** (queue 0; the sizes are then fixed
+    and readable, so it also serves as "traced"); then the stream queues' service flags as set 2 fills them; and **done only
+    once every queue is empty and the last transfer has finished.** So C&C 3 is purely reactive (it sends what each request
+    asks for, by the queue-length registers), and **done means ready for the next `PULSE_RUN`**: no rule against pulsing before
+    the drain ends is needed (Q8 dissolved).
+  - Cost: about 12 KB of queues, four flags.
 - **The window's record is assembled by C&C 3, not the Tracer** (owner, 2026-11-01). **At each done, the Tracer presents its
   current state** (the state word and the registers: the end of the window just traced) **and the window's totals** (the stream
   word, the compression flags, the template bitmap). C&C 3 builds window *n*'s 68-word record from the state it remembered at the

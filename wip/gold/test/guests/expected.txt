@@ -2,7 +2,7 @@ assert_eq_fail: ABORT at row 2: VirtualAssertEQ failed at VirtualAssertEQ 0 x10 
 assert_eq_pass: 4 rows, run hash 27584524c48d30dc, log2 K 4, lowest_address 0x7fffffe0
 c_unimp_executed: ABORT at row 1: executed an instruction Jolt can't prove: UNIMP 0x0000 at 0x80000004
 c_unimp_jump: ABORT at row 3: executed an instruction Jolt can't prove: UNIMP 0x0000 at 0x80000010
-d12_c_slli_x0: 5 rows, run hash cf9c609037ad523f, log2 K 4, lowest_address 0x7fffffe0
+d12_c_slli_x0: 5 rows, run hash d571a0f62e10b264, log2 K 4, lowest_address 0x7fffffe0
 d1_decodable_gap: 6 rows, run hash 25bc70a8d7d77c35, log2 K 4, lowest_address 0x7fffffe0
 d1_rodata_in_text: 4 rows, run hash 993017a79f84caeb, log2 K 4, lowest_address 0x7fffffe0
 ebreak: 2 rows, run hash fa4608b9a8ed4479, log2 K 4, lowest_address 0x7fffffe0
@@ -22,7 +22,7 @@ misaligned_ld: ABORT at row 2: misaligned memory access: LD's floor address ea -
 misaligned_lw: ABORT at row 2: misaligned memory access: VirtualLoadW's floor address ea - (ea & 4) = 0x80080002 (ea 0x80080002) isn't a multiple of 8 (a16z floor_access.rs:66-75; DECISIONS-v1.3 section 25)
 range_above_top: REJECTED: K 2^20 exceeds a16z's max_ram_k 2^19 (heap_end 0x80200090): the access at row 2 to 0x80400000 is above the layout's top
 range_below_lowest: REJECTED: access at row 2 to 0x70000000 is outside (address - lowest_address) < 8K: below lowest_address 0x7fffffe0 (a16z's prover: RAM address precedes the memory layout)
-rd0_add: 4 rows, run hash 914cba73ca81d34f, log2 K 4, lowest_address 0x7fffffe0
+rd0_add: 4 rows, run hash 77c53666d3e73b90, log2 K 4, lowest_address 0x7fffffe0
 sc_d_x0: 22 rows, run hash 5dfeac5526190706, log2 K 17, lowest_address 0x7fffffe0
 sc_w_x0: 35 rows, run hash d24d582c6d37cc8b, log2 K 17, lowest_address 0x7fffffe0
 stack_canary_store: 6 rows, run hash cc8a36e0fd9c5eea, log2 K 4, lowest_address 0x7fffffe0

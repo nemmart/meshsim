@@ -223,6 +223,10 @@ public final class Expander {
     Instruction in = src;
     if (shouldNopForRd0(in)) {           // virtual.cpp:270-274: one ADDI x0, x0, 0
       emit(ADDI, 0, 0, 0, false, false, true);
+      // not a virtual sequence, as a16z's noop_for (crates/jolt-program/src/expand/mod.rs:144-145; owner's D13 ruling,
+      // DECISIONS-v1.3 section 17, 91ddc92); jolt-cpp flags it virtual and first when the opcode changed
+      rows.get(0).isVirtual = false;
+      rows.get(0).isFirstInSequence = false;
       return;
     }
     boolean remapped = false;

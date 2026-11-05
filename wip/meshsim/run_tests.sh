@@ -58,6 +58,7 @@ if [ -n "$DELIVERY" ]; then   # Stage B on a tracer delivery's guest windows: DE
   for g in lrd_x0 scd_x0 nop_hint jalr_self jalr_zero; do LOG=stageb-$g TAIL=1 run "Stage B on the tile: $g" $J StageB $DELIVERY state $g; done
 fi
 LOG=replayer  TAIL=1 run "the replayer model (v1.25): the opcode table, the ALU against vec.tsv at 821e1bd, the unit tests" $J ReplayerTest data/vec-821e1bd.tsv ../tables/opcode_table.txt
+LOG=memsys    TAIL=1 run "the Tracer's memory system (v1.3, B1): FileStore's trees and statuses, the shared cache's timing" $J MemorySystemTest
 LOG=sort-p1   TAIL=1 run "the sort's local sorts (L1, L2)"                     $J SortTest -1 p1
 LOG=sort      TAIL=1 run "the sort, every built-in set at 64 x <= 2,000 (several minutes)" $J SortTest -1 sort
 LOG=sort-shuf TAIL=1 run "shuffled child order (seed 4)"                      $J SortTest 4 sort

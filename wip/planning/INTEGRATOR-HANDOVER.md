@@ -45,7 +45,7 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
 | WORKER18 | the Java emulator `wip/gold/` (DECISIONS-v1.3 section 17): gold earned, stage 3 done, **W5 done** (e9f0444: ACT4 through test-equipment `Act4Runner`, 123 of 125; inline vectors 5,677 of 5,677; strict loading only) | **sent 2026-11-04: the rulings** (D1, D3, D12 follow a16z, with jolt-cpp fixes and bug reports on its own branches; D5 rejected by the host tracer), the demo guests, the U1-U3 write-ups; **plan approved 2026-11-04** (7189216 checked: the files are identical; the end detected by `JAL x0, 0`; 0xC0001073 rejected at load; fix branches `worker18-fix-d1-sections`, `-d3-no-legacy-ecall`, `-d12-c-slli`; bug reports in `WORKER18/bug-reports/`) | its report | parked in `WORKER18/NEXT.md`: `check.sh` at 88dca85, then section 21(d) |
 | WORKER24 | a block diagram of the Tracer (`WORKER24/PROMPT.md`, owner, 2026-11-04): review sections 1-25, then `fig9_1_tracer` in `wip/diagrams/` in the v1.0 figure style | **started 2026-11-04** | its review and plan (a sketch welcome) | - |
 | WORKER25 | **v1.26.1**, the point release (DECISIONS-v1.26 section 3, items 13-16: `RUN_CONFIG`, words 32-35 shared, the flags out of word 0, the stream word with advice): spec, change notes, the RTL guide from v1.25, meshsim, firmware, deliveries, acceptance | **started 2026-11-04**; Tony waiting on it | its plan | freeze as `v1.26.1/`, then delete `v1.26/` (owner); follow-ups to WORKER18 (gold) and WORKER16 (segment tools) |
-| WORKER21 | **SP1, the Tracer's spec chapter** (4.21 and the rest of v1.3 in the spec; `WORKER21/PROMPT.md`) | **started 2026-11-05**, on branch `v1.3-spec` from `v1.26.1` | its plan | merge after `v1.26.1`; B1 (WORKER22) to start alongside |
+| WORKER21 | **SP1, the Tracer's spec chapter** (4.21 and the rest of v1.3 in the spec; `WORKER21/PROMPT.md`) | **started 2026-11-05**, on branch `v1.3-spec` from `v1.26.1` | its plan | merge after `v1.26.1`; then B1 (WORKER22), which starts after the chapter (owner) |
 
 ## What's left, by milestone
 
@@ -87,7 +87,7 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
   earlier version of this file called D12 "D5 (C.SLLI x0's uncompression)": a mislabel.)
 - **New work, prompts to write** (owner, 2026-11-04; work items renamed so they can't be confused with worker numbers):
   **SP1**, the Tracer's spec chapter (WORKER21), in parallel with **B1**, the Tracer's bring-up in meshsim (WORKER22), the way
-  WORKER19 and WORKER20 worked for v1.26; **F1**, the file system on C&C 2 with a shell on C&C 1 (WORKER23). In the v1.3 work list. SP1's prompt committed and started 2026-11-05 (WORKER21); B1's draft still to commit.
+  WORKER19 and WORKER20 worked for v1.26; **F1**, the file system on C&C 2 with a shell on C&C 1 (WORKER23). In the v1.3 work list. SP1's prompt committed and started 2026-11-05 (WORKER21); B1 starts after SP1's chapter (owner, 2026-11-05); its draft to update and commit then.
 
 ## Open items for the owner and Tony
 

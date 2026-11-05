@@ -57,8 +57,8 @@ side take them from one source (frame 1, a new frame, or the program file).
 
 RULES
 - **Propose a plan first, with the outline and the proposals above, and wait for the owner's go-ahead.**
-- Spec only. WORKER22 builds the Tracer in meshsim in parallel and follows your text: put anything it needs early (layouts,
-  register numbers, error bits) in `WORKER21/NOTES.md`, and read its notes for what the model finds.
+- Spec only. The Tracer's model in meshsim (B1, WORKER22) starts after your chapter (owner, 2026-11-05) and follows your text,
+  so write it to be built from: every layout, register number, error bit and timing parameter stated.
 - Where the decisions leave something unsaid, propose it (marked *(Proposed)*, gathered in section 13) rather than invent it
   silently; where they conflict, ask.
 - Keep the last tool calls of every turn for committing and pushing, and end each turn with a clean `git status`.

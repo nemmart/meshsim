@@ -12,7 +12,7 @@ CUTS=../../WORKER16/data/w3
 mkdir -p "$O"
 E=evm-zone-4e3451c1d8c5
 fail=0
-run() { java -Xmx2g -cp build gold.Main segments "$@" || fail=1; }
+run() { java -Xmx2g -cp build gold.Main segments "$@" --format=v1.2 || fail=1; }
 run $T/$E $T/$E/inputs/trace-23-812ded164e49 $O/evm-zone-23-hardcuts.seg --cuts-file=$CUTS/evm-zone-23-hardcuts.cuts --compare=$R/evm-zone-23-hardcuts.seg
 run $T/cyclone $T/cyclone/input/22/input-default $O/cyclone-22-hardcuts.seg --cuts-file=$CUTS/cyclone-22-hardcuts.cuts --compare=$R/cyclone-22-hardcuts.seg
 run $T/$E $T/$E/inputs/trace-29-4599adc50712 $O/evm-zone-29.seg --compare=$R/evm-zone-29.seg

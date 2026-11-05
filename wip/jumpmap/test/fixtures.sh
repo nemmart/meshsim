@@ -16,7 +16,7 @@ rm -rf out; mkdir -p out
 for gname in $GUESTS jumps; do
   if [ $gname = jumps ]; then d=$W/jumps; else d=../gold/test/guests/$gname; fi
   R=8; [ $gname = keccak256 ] && R=1024                     # keccak256: 3,091 rows
-  java -cp $CP gold.Main segments "$d" "$W/empty" "$W/$gname.seg" --segment-rows=$R --segments=4 > /dev/null
+  java -cp $CP gold.Main segments "$d" "$W/empty" "$W/$gname.seg" --segment-rows=$R --segments=4 --format=v1.2 > /dev/null
   java -cp $CP jumpmap.Main "$d" "$W/empty" "$W/$gname.seg" "out/$gname" --segment-rows=$R --name=$gname --gold-commit=fixture \
     > "out/$gname.log" 2>&1 || { cat "out/$gname.log"; echo "$gname: FAILED"; exit 1; }
   sed -i 's/; [0-9.]* s$//' "out/$gname.log"

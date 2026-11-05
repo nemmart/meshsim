@@ -113,6 +113,7 @@ public final class Main {
     int count = 128;
     long[] cuts = null;
     String compareWith = null;
+    SegmentWriter.Format format = SegmentWriter.Format.V1_3;
     for (int i = 4; i < args.length; i++) {
       String a = args[i];
       if (a.startsWith("--segment-rows=")) segmentRows = Long.parseLong(a.substring(15));
@@ -121,13 +122,21 @@ public final class Main {
       else if (a.startsWith("--cuts-file=")) {
         cuts = Files.readAllLines(Path.of(a.substring(12))).stream().filter(l -> !l.isBlank()).mapToLong(Long::parseLong).toArray();
       } else if (a.startsWith("--compare=")) compareWith = a.substring(10);
+      else if (a.equals("--format=v1.2")) format = SegmentWriter.Format.V1_2;
+      else if (a.equals("--format=v1.3")) format = SegmentWriter.Format.V1_3;
       else throw new IllegalArgumentException("unknown option " + a);
     }
     if (cuts == null) cuts = SegmentWriter.defaultCuts(segmentRows, count);
     long t0 = System.nanoTime();
     Program p = new Program(Path.of(args[1]), Path.of(args[2]));
-    SegmentWriter w = new SegmentWriter(p, cuts);
-    byte[] file = w.write();
+    SegmentWriter w = new SegmentWriter(p, cuts, format);
+    byte[] file;
+    try {
+      file = w.write();
+    } catch (SegmentWriter.Rejected e) {
+      System.out.println("REJECTED: " + e.getMessage());
+      return false;
+    }
     double seconds = (System.nanoTime() - t0) / 1e9;
     Path out = Path.of(args[3]);
     Files.write(out, file);

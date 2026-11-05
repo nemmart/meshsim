@@ -17,6 +17,7 @@ public final class Program {
   public final Memory memory = new Memory();
   public final Bytecode bytecode;
   public final java.util.Map<String, Long> symbols;
+  public final Elf elf;
   /** The lowest and highest initialized byte addresses of the image (a16z's memory_init), 0 if none. */
   public long imageMin, imageMax;
   /** The merged Text ranges (D1): what is code, for the stores-into-code check (DECISIONS-v1.3 section 25). */
@@ -25,6 +26,7 @@ public final class Program {
   public Program(Path programDir, Path inputDir) throws IOException {
     Elf elf = new Elf(programDir.resolve("program.elf"));
     symbols = elf.symbols;
+    this.elf = elf;
     if (elf.machine != Elf.EM_RISCV || elf.type != Elf.ET_EXEC) throw new IOException("not a RISC-V executable");
     if (elf.entry == 0 || elf.entry >= Memory.SIZE || (elf.entry & 1) != 0) throw new IOException("bad entry point");
 

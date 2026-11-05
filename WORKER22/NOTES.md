@@ -106,3 +106,23 @@ Command (from `wip/meshsim`, gold built into G):
 - Cyclone's stalls are mostly data misses and map probes (0.12 and 0.15 per row), with its slowest segments (10, 14)
   dominated by data misses.
 - The map's lines cost Cyclone 0.6% (data hits 77.8% against 80.9% when the map has its own cache), and EVM Zone nothing.
+
+## Milestone 2 at 2²⁹ (Quest 110d; meshsim v1.3-tracer 271e4dc): PASS
+
+T1 again, with the real output path in place of the stand-in drain (4.21.6):
+- set 2, the packers, output queues 1–3 with their credits and live service flags, and queue 0 read in place;
+- done last, and the DMA in 128-bit words (4.17.9);
+- an ideal controller serving the service requests: queue 0 in its four transfers, then the streams' credits, one packet a
+  cycle.
+
+Every window of both workloads and every boundary pass, in all three runs. The core's cycles per row equal 110b's (4.6497,
+4.4800), so the drain doesn't disturb the rows.
+
+| | EVM Zone | Cyclone |
+|---|---|---|
+| the drain per segment (ideal controller): median / max | 4.12 M / 4.20 M cycles | 3.15 M / 4.20 M cycles |
+| **all-in per segment, rows and drain: median / max at 1 GHz**, against 100 ms | **23.6 / 23.7 ms** | **21.2 / 27.2 ms** (segment 10) |
+| scan stalls (a queue full) | 0 | 0 |
+
+The drain is the code scan's one entry a cycle: about 65K cycles per window (a padding window has 65,536 code values), so
+about 4 M per segment, near 4.21.6's estimate of 0.05 ms per window.

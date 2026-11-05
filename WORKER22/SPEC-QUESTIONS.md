@@ -67,18 +67,32 @@ request) becomes:
 - dirty evictions through a write buffer, off the requester's path unless it is full;
 - one request outstanding, and cold at each segment's start.
 
+**Q11. 4.21.3 and item 118: the 64th state service's transfers to C&C 3's own memory.** The DMA's packets "leave through the
+down port", but these four transfers are addressed to C&C 3 itself.
+*Proposed:* a packet whose dst is the controller itself is ejected there.
+**Answered (owner, 2026-11-05; DECISIONS-v1.3 section 21, 8561c7c): routing by dst, with no special case.** Each transfer names
+its destination: `DMA_HDR`'s dst 66, with `DMA_ADDR` in C&C 3's memory. A packet whose dst is its router's own unit is ejected
+there like any arrival; every other packet leaves through the down port.
+
+**Q12. The shared cache's write-back policy and its write buffer.**
+*Proposed:* a 4-line buffer draining at one line per 80 cycles, a requester waiting only to evict into a full buffer.
+**Answered (owner, 2026-11-05; DECISIONS-v1.3 section 21 (b), c190a09):**
+- **The next victim in every set is kept free or clean.** When a set's LRU line is dirty, it is evicted at once, in the
+  background, into the write buffer, leaving its way empty.
+- A clean LRU line stays, and can still be hit. It is dropped at no cost when a fill needs its way.
+- So a fill never waits for a write-back.
+- The write buffer holds 4 lines and drains to LPDDR at one line per 80 cycles (parameters).
+- **A read that misses the cache waits until the write buffer is empty**, so the buffer is never searched.
+- Reported per segment: early evictions, write-backs and read waits. If the waits matter, a 4-entry address compare in the
+  buffer is the cheap fix.
+
+**Q13. A Tracer write-back that misses the shared cache.**
+**Answered: yes, it allocates without an LPDDR read** (8561c7c). The Tracer writes whole lines, so the line is taken into a
+free or clean way, marked dirty, and comes back from there on its next access.
+
+**`CC_LINK_OUT` as the down port** (owner, 2026-11-05): fine. meshsim's controller link stays on the controller router's
+`Router.CC_LINK_OUT` (W14-01), which is the spec's down port.
+
 ## Open
 
-**Q11. 4.21.3 and item 118: the 64th state service's transfers to C&C 3's own memory.** The DMA's packets "leave through the
-down port", but these four transfers are addressed to C&C 3 itself. 4.17.9 also says a DMA packet to its own unit reaches
-the ejector through the router like any arrival.
-*Proposed (as modelled):* a DMA packet whose dst is the controller itself is ejected in the controller's own router and never
-goes down to tile 2 and back. Every other dst goes down.
-
-**Q12. The shared cache's write buffer (the ruling above).** Its depth and drain rate aren't given.
-*Proposed (as modelled, parameters):* 4 lines, drained to LPDDR at one line per 80 cycles while no read is waiting on LPDDR.
-A requester waits only when it must evict into a full buffer.
-
-**Q13. The shared cache: a Tracer write-back that misses.** The Tracer always writes a whole 128 B line.
-*Proposed (as modelled):* such a write allocates the line without a fill from LPDDR. The walk that translates it is the same
-as a read's, so its index lines are ordinary accesses.
+(none)

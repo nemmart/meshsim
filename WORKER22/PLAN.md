@@ -10,8 +10,8 @@ are in `SPEC-QUESTIONS.md`.
 - `PeripheralSlot`'s DMA is v1.26.1's: counts in 32-bit words, with remainder packets. It is not wired to any router, and
   only `TestPeripheral` uses it.
 - Today's Stage F is one tile replaying on the full chip. The Tracer needs 64 tiles, each fed its window by C&C 3's DMA.
-- Gold writes frames 1–5. It writes no frame 6 or frame 7, and frame 2 is still the flat 131 × u64. The setup tools adapt
-  until gold and WORKER16's tools move to v1.3's formats, and say so where they do.
+- Gold writes frames 1–5. It writes no frame 6 or frame 7, and frame 2 is still the flat 131 × u64. WORKER26 stands in for
+  frames 6 and 7 (section 3). I convert frame 2 until gold and WORKER16's tools move to v1.3's formats, and say so.
 
 ## Rulings (owner, 2026-11-05)
 
@@ -27,7 +27,8 @@ are in `SPEC-QUESTIONS.md`.
     another name.
   - The DMA input is one more feeder of the controller's router with a FIFO of its own. The DMA puts at most one packet a
     cycle, and only while that FIFO has room, so it is back-pressured by the FIFO and nothing else.
-  - A DMA packet whose dst is C&C 3 itself (the 64th state service) is ejected in C&C 3's own router (SPEC-QUESTIONS Q11).
+  - Routing is by dst (Q11): a packet whose dst is C&C 3 itself (the 64th state service) is ejected there like any
+    arrival.
 - **D.** The jump map is **WORKER26's section-18 map**: the static table, the hash constants and frame 6's supplement,
   merged for bring-up. I agree its format with WORKER26 (below). An every-instruction-start table is used only for the
   first functional tests, and **no timing is measured until WORKER26's table is in**.
@@ -117,35 +118,31 @@ are in `SPEC-QUESTIONS.md`.
     write-allocate;
   - it holds data and index lines alike;
   - a hit takes 6 cycles and a miss fills from LPDDR in 80;
-  - dirty evictions go to a write buffer and cost the requester nothing unless the buffer is full;
   - one request outstanding;
+  - the write-back policy (Q12): the next victim in every set is kept free or clean. A dirty LRU line is evicted at once,
+    in the background, into a 4-line write buffer, which drains to LPDDR at one line per 80 cycles (parameters). A clean LRU
+    line stays hittable and is dropped at no cost when a fill needs its way. A read that misses the cache waits until the
+    buffer is empty;
   - cold at each segment's start (the word-0 write).
-- **A Tracer write-back** walks like a read. It then writes the whole line into the shared cache, with no fill from LPDDR,
-  since the line is complete. A write-back puts its line in the cache like any access (Q8).
-- **Model choices,** to state in the report:
-  - the write buffer's depth is a parameter, default 4 lines;
-  - an LPDDR write drains it at one line per 80 cycles.
-- **Reported:** hit rates for data lines and index lines, and the walk's share of cycles. Only the Tracer's traffic is
-  modelled, so the hit rates are optimistic.
+- **A Tracer write-back** walks like a read. A hit writes the line in place, dirty. A miss allocates without an LPDDR read
+  (Q13), taking a free or clean way.
+- **Reported per segment:** hit rates for data lines and index lines, the walk's share of cycles, early evictions,
+  write-backs and read waits on the write buffer. Only the Tracer's traffic is modelled, so the hit rates are optimistic.
 
-## 3. Host-side setup tools (Java, using gold's classes; in the `v1.3-tracer` branch)
+## 3. Host-side inputs (owner, 2026-11-05: built by WORKER26; WORKER22 loads them)
 
-- **`TracerSetup`** takes a program directory, an input directory, a segment file and a segment *k*, and writes the files
-  below. Records are in the v1.3 layout; images are dumps of `FileStore`.
-  - **The memory image:** the cycle-0 image from gold's loader, plus frames 4 and 5 of segments 0..*k*−1, applied in order.
-    The resulting `.pages` tree is the Tracer's copy: pages that segment *k* writes (from its own update list) are
-    privately owned along their paths, and every other page is shared and not owned, as after `cow_open` (§22).
-  - **Word 66:** the roots and depths, log₂ K and `lowest_address`. Frame 7 doesn't exist yet, so these are computed as a16z
-    does, from gold's layout.
-  - **The record:** words 0 and 2–65 from frame 2 (adapted from the flat format), the advice field from frame 3's count, and
-    the advice values.
-  - **The map:** loaded from WORKER26's output, or, for the first functional tests only, an every-instruction-start table.
-- **The interface with WORKER26, to agree with it:**
-  - the map as a raw file of 128 B lines (16 entries of key u32, base u32, little-endian; a free entry is 0xFFFFFFFF), its
-    line count 2*ᵏ*;
-  - a small JSON with *k*, *p*₁, *p*₃ and the source's hashes;
-  - frame 6 in section 16's framing;
-  - `TracerSetup` places the map as a dense file in `FileStore`.
+- **WORKER26 builds:**
+  - each segment's start image (the cycle-0 image plus the earlier segments' updates, with the pages the segment writes
+    owned), checked against gold's memory at the segment's first row;
+  - word 66's values and the hash constants;
+  - the map's lines and frame 6.
+- **The format proposed to WORKER26** is in `NOTES.md`.
+- **WORKER22's side (`TracerInputs`):**
+  - loads those outputs into `FileStore`, which lays them out as §20 trees: the `.pages` file at depth 2, its shared pages
+    reached through entries with owned = 0 and its owned pages through all-owned paths, and the map as a dense file;
+  - builds word 66 and the record, converting frame 2's flat 131 × u64 from gold's segment file, with frame 3's advice.
+- **Until WORKER26's outputs land,** only the minimal images the first functional tests need: hand-built programs, and a
+  small guest's image from gold's loader with an every-start map. No timing is taken from them.
 
 ## 4. The firmware and the tiles
 
@@ -161,7 +158,7 @@ are in `SPEC-QUESTIONS.md`.
   - it answers the advice credit and the expansion credit, and serves queue 0 in four transfers and queues 1–3 by their
     credits, sized from words 37–39, waiting for DMA done between transfers;
   - it sends window 0's start to tile 0 from its own copy of the record (Q3);
-  - at n = 63 it sends all 68 words to its own memory and forwards words 1 and 67 to tile 63 (Q4);
+  - at n = 63 it sends all 68 words to its own memory (dst 66) and forwards words 1 and 67 to tile 63 (Q4, Q11);
   - it checks the leftover advice and the end state at the end.
 - **Tile side:**
   - `replay_ctl.c` takes its stream sizes from the record's stream word (layout version 5);
@@ -199,6 +196,6 @@ are in `SPEC-QUESTIONS.md`.
 1. The shared helpers (replayer unchanged, checked), the Tracer's core and `MemorySystem`, with the ideal controller; the
    directed tests; small guests against gold.
 2. The output path and the 128-bit DMA.
-3. The setup tools and T1, small, then at 2²⁹.
+3. Loading WORKER26's inputs and T1, small, then at 2²⁹.
 4. The DMA port, the firmware, the tile side and T2, small, then the subset.
 5. The suites and the sort; `REPORT.md`.

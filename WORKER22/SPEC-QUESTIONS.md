@@ -93,23 +93,6 @@ free or clean way, marked dirty, and comes back from there on its next access.
 **`CC_LINK_OUT` as the down port** (owner, 2026-11-05): fine. meshsim's controller link stays on the controller router's
 `Router.CC_LINK_OUT` (W14-01), which is the spec's down port.
 
-## Open
-
-**Q14. 4.21.3: a segment's start while C&C 3 was feeding an expansion** (found at 2²⁹, Quest 110, Cyclone segment 16,
-which starts inside an inline).
-- A run can end inside a controller-fed expansion, with C&C 3 still holding its template's next words.
-- The next segment's word-0 write empties the expansion queue and sets the expansion credit to 2 (4.21.3). The Tracer then
-  presents the expansion again, with `EXPANSION_OFFSET` at the new segment's next offset (4.21.4).
-- If C&C 3 answers those fresh credits with the old template's next chunk before the new expansion is presented, stale words
-  enter the queue ahead of the new ones, and the Tracer executes them as the expansion's rows. That is wrong execution with
-  no error bit, or a queue overrun ([1]) when the stale chunk and the new expansion's two exceed 256 entries.
-
-The spec's controller loop (4.21.3) doesn't say what C&C 3 does with an expansion in progress when it loads a record.
-
-*Proposed:* **on loading a segment's record, C&C 3 drops any expansion it was feeding** (its template, position and pending
-chunks), since the word-0 write resets the credits and the Tracer presents the expansion again. The firmware loop in 4.21.3
-gains that line. meshsim's ideal controller follows it (37fb37e), and so will `tracer_ctl.c`.
-
 **Q15. 4.21.6 and 3.1: how C&C 3's deliveries into a tile's big SRAM are counted** (found building T2).
 
 The rules involved:
@@ -133,7 +116,35 @@ start goes out before the tiles have booted. The spec gives no arming protocol.
 - **(c) Land in C&C 3's memory and pull.** The later design of 4.21.6 sends to C&C 3's memory or LPDDR, and the tile
   fetches by its own requests, counted on its own counter. That needs no new protocol, but takes a second pass of the data.
 
-*Interim (meshsim only, until ruled):* T2 lets exactly these deliveries through uncounted (`Config.tracerDeliveriesUncounted`,
+**Answered (owner, 2026-11-05; DECISIONS-v1.3 section 24, 058a926): option (a), refined, as an intermediate step.**
+- The record's pieces are fixed (66 words of state to tile *n* + 1, 2 words of totals to tile *n*), so each tile arms for
+  them at boot.
+- For the streams, a handshake: C&C 3 sends tile *n* its totals first; the tile reads the stream sizes from word 1, arms
+  its counter for the streams and replies "armed"; only then does C&C 3 send the streams. That is one round trip per
+  window, negligible against the drain, with the scans waiting on full queues meanwhile.
+- The later design lands the windows in C&C 3's memory and LPDDR files instead; candidate C2 (signed counters) would remove
+  the handshake.
+- The interim exemption below is removed once the handshake works.
+
+*The interim, until then (meshsim only):* T2 lets exactly these deliveries through uncounted (`Config.tracerDeliveriesUncounted`,
 off by default, used only by `TracerT2`): the Tracer's DMA, src 74, and C&C 3's own Q3/Q4 packets into tiles' big SRAM.
 Nothing else is exempt, and the rows check is unaffected.
 
+**Q14. 4.21.3: a segment's start while C&C 3 was feeding an expansion** (found at 2²⁹, Quest 110, Cyclone segment 16,
+which starts inside an inline).
+- A run can end inside a controller-fed expansion, with C&C 3 still holding its template's next words.
+- The next segment's word-0 write empties the expansion queue and sets the expansion credit to 2 (4.21.3). The Tracer then
+  presents the expansion again, with `EXPANSION_OFFSET` at the new segment's next offset (4.21.4).
+- If C&C 3 answers those fresh credits with the old template's next chunk before the new expansion is presented, stale words
+  enter the queue ahead of the new ones, and the Tracer executes them as the expansion's rows. That is wrong execution with
+  no error bit, or a queue overrun ([1]) when the stale chunk and the new expansion's two exceed 256 entries.
+
+The spec's controller loop (4.21.3) doesn't say what C&C 3 does with an expansion in progress when it loads a record.
+
+**Answered (owner, 2026-11-05): the rule.** **On loading a segment's record, C&C 3 drops any expansion it was feeding** (its template, position and pending
+chunks), since the word-0 write resets the credits and the Tracer presents the expansion again. The firmware loop in 4.21.3
+gains that line. meshsim's ideal controller follows it (37fb37e), and so will `tracer_ctl.c`.
+
+## Open
+
+(none)

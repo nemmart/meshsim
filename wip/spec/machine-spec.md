@@ -1,15 +1,16 @@
-# Machine specification — 64-tile mesh processor, v1.26.1
+# Machine specification — 64-tile mesh processor, v1.3
 
 This document specifies the hardware of the 64-tile mesh sorter: the tiles, the network that joins them, the control that sequences them, and the registers a tile program uses. It is written for an engineer who will build the machine.
 
 **Companion material** (paths in the package):
+- `spec/CHANGES-v1.3.md`: what changed from v1.26.1, section by section, each item citing `planning/DECISIONS-v1.3.md`.
 - `spec/CHANGES-v1.26.1.md`: what changed from v1.26, section by section, each item citing `planning/DECISIONS-v1.26.md` section 3; **`spec/CHANGES-v1.25-to-v1.26.1.md` is the RTL's guide from v1.25 straight to v1.26.1**.
 - `spec/CHANGES-v1.26.md`: what changed from v1.25 to v1.26, section by section, each item citing `planning/DECISIONS-v1.26.md`.
 - `spec/CHANGES-v1.25.md`: what changed from v1.2, section by section, each item citing its decision; `planning/DECISIONS-v1.25.md` is the decisions log behind it.
 - `spec/CHANGES-v1.2.md`: what changed from v1.1, section by section, each item citing its decision. A section removed in v1.2 keeps its number here as a one-line stub pointing there.
 - `planning/DECISIONS-v1.2.md`: the decisions log behind v1.2, kept as the history. Where a log and this document differ, this document is the authority.
 - `tables/`: the replayer's expansion tables (4.19.5, 4.19.6), universal, built from jolt-cpp `821e1bd` by the table builder, with the opcode table and a manifest.
-- `diagrams/`: the figure set, numbered part.figure (1.0–8.1); `diagrams/README.md` is the index. Each section below names the figures that draw it. **The figures are still at v1.1** (the 169-bit link word, modes 0–15, the peripheral slot, RUN/HALT) and are to be redrawn.
+- `diagrams/`: the figure set, numbered part.figure (1.0–9.3; part 9 is the Tracer, v1.3); `diagrams/README.md` is the index. Each section below names the figures that draw it. **The figures are still at v1.1** (the 169-bit link word, modes 0–15, the peripheral slot, RUN/HALT) and are to be redrawn.
 - `spec/schedule.md`: the 16-group all-to-all schedule (4.2) and the routing ties it fixes (4.6).
 - `sw/mesh.h` and `sw/REGISTERS.md`: the tile-program interface and the programmer's register reference, generated from the register tables of section 8. Both must match section 8; **they are still at v1.1** until regenerated.
 - `sw/CONVENTIONS.md`, `sw/RECIPES.md`: the software conventions and the recipe book (being rewritten for v1.2).
@@ -25,6 +26,13 @@ This document specifies the hardware of the 64-tile mesh sorter: the tiles, the 
 **There is no third kind:** never a prescribed outcome for a mistake (a substitute value, a dropped write still counted) that costs hardware and helps no one find the bug. **The test for a new check:** would simulation catch this on our firmware? If so, it's UB.
 
 In the rules below, **"(hardware)"** marks a checked rule and **"(meshsim)"** marks UB; section 9 lists the invariants meshsim checks. (DECISIONS-v1.25 section 8a, replacing v1.2's "Who checks what" of 2026-10-28; the simulation-only assertions are for Tony to confirm.)
+
+**v1.3 in brief** (in full, with the decisions behind each item: `CHANGES-v1.3.md`). **v1.3's focus is the Tracer**, C&C 3's peripheral (`planning/DECISIONS-v1.3.md` sections 1–25):
+- **4.21, the Tracer** (peripheral type 3): the RV64 row machine that executes the guest and writes each window's run log for the replayers. It shares the replayer's record, region map, tables and controller-fed path, and runs a segment of 2²² rows as 64 runs of a window each. Its region and record (word 66: the files, log₂ K, `lowest_address`), control (two pulses, the word-0 write resetting everything, `RUN_CONFIG` with the compression enables [28:26], words 36–43), execution (the templates, advice from the host, the jump LRU and hash probe, the end at any JAL with immediate 0), memory (16 KB caches, the (root, depth, line) fill bus, the range comparator), output (two FIFOs, two-pass compression, output queues drained by service requests with credits, done last), boundaries, errors and timing.
+- **The peripheral DMA counts 128-bit words** (4.17.9): every packet 128 bits, no remainders.
+- **The controller-fed templates are broadcast** by C&C 3 when proving starts, and each tile trims them by its record's bitmap (4.19.9, 4.19.13).
+- **The ground truth is a16z's Jolt** (`7189216`, the verifier's source), **gold the Java emulator**, and jolt-cpp `88dca85` the pin, pending its row-hash check (4.19).
+- The Tracer's side of the memory system (6.7, 7), its window (8.16), invariants (9), parameters (5, 10) and items 144–157 (13).
 
 **v1.26.1 in brief** (a point release; in full: `CHANGES-v1.26.1.md`). v1.26.1 is v1.26 with **exactly the four changes of `planning/DECISIONS-v1.26.md` section 3**, made with the Tracer's design so that both units start from the final layouts, and nothing else:
 - **`RUN_CONFIG`, window word 32** (4.19.9, 8.11): the rows a pass runs ([23:0], so a pass can be shorter or longer than a window) and the two per-pass flags, use the store log [24] and output `rd_prev` [25]; sticky, 0 at reset. The same word on the Tracer, which ignores the flags.

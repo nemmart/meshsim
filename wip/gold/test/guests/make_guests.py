@@ -193,6 +193,7 @@ GUESTS["rd0_add"] = [addi(A0, 0, 1), r_type(0x33, 0, 0, A0, A0, 0), addi(A0, A0,
 
 # WORKER17's findings and the host's v1.3 rules (DECISIONS-v1.3 sections 17, 25)
 def lr(f3, rd, rs1): return (0b00010 << 27) | (rs1 << 15) | (f3 << 12) | (rd << 7) | 0x2f     # lr.w (f3 2), lr.d (f3 3)
+def sc(f3, rd, rs1, rs2): return (0b00011 << 27) | (rs2 << 20) | (rs1 << 15) | (f3 << 12) | (rd << 7) | 0x2f
 def jal_imm0(rd): return (rd << 7) | 0x6f                                                     # jal rd, 0
 SEVEN = [addi(A1, 0, 7)]
 GUESTS["range_below_lowest"] = la(T0, 0x7000_0000) + [ld(A0, T0, 0), JAL_SELF]           # below lowest_address
@@ -200,6 +201,9 @@ GUESTS["range_above_top"] = la(T0, 0x8040_0000) + [ld(A0, T0, 0), JAL_SELF]     
 GUESTS["lr_d_x0_nonzero"] = la(T0, STACK_DATA) + SEVEN + [sd(T0, A1, 0), lr(3, 0, T0), JAL_SELF]
 GUESTS["lr_w_x0_nonzero"] = la(T0, STACK_DATA) + SEVEN + [sd(T0, A1, 0), lr(2, 0, T0), JAL_SELF]
 GUESTS["lr_d_x0_zero"] = la(T0, STACK_DATA) + [lr(3, 0, T0), JAL_SELF]                   # a zero word: provable
+# D14 (owner: follow a16z): LR/SC with rd = x0 are remapped to a temporary, as a16z
+GUESTS["sc_d_x0"] = la(T0, STACK_DATA) + SEVEN + [lr(3, A2, T0), sc(3, 0, T0, A1), ld(A0, T0, 0), JAL_SELF]
+GUESTS["sc_w_x0"] = la(T0, STACK_DATA) + SEVEN + [lr(2, A2, T0), sc(2, 0, T0, A1), lw(A0, T0, 0), JAL_SELF]
 GUESTS["end_jal_ra_0"] = [addi(A0, 0, 1), jal_imm0(1)]                                    # jal ra, 0: writes ra, ends
 GUESTS["misaligned_inline"] = la(A0, STACK_DATA + 4) + [inline(1, 0, 0, A0, 0), JAL_SELF] # KECCAK256's first LD at +4
 GUESTS["store_into_code"] = la(T0, RAM_START) + [addi(A0, 0, 0x13), sd(T0, A0, 0), JAL_SELF]   # sd into .text

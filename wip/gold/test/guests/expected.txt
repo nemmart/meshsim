@@ -12,15 +12,17 @@ fence: 5 rows, run hash ed27bc7a48e5952a, log2 K 4, lowest_address 0x7fffffe0
 jump_into_gap: ABORT at row 3: jump target 0x8000000a is not in the bytecode map
 keccak256: 3091 rows, run hash dc3bac76540e2d86, log2 K 17, lowest_address 0x7fffffe0
 legacy_raw_ecall: ABORT at row 8: jump target 0x0 is not in the bytecode map
-lr_d_x0_nonzero: ABORT at row 8: LR.D x0 at 0x80000010 loads a nonzero word (0x7): can't be proven
-lr_d_x0_zero: 8 rows, run hash e8844ebbdb3a48c0, log2 K 17, lowest_address 0x7fffffe0
-lr_w_x0_nonzero: ABORT at row 10: LR.W x0 at 0x80000010 loads a nonzero word (0x7): can't be proven
+lr_d_x0_nonzero: 10 rows, run hash 3154d2c98b204fec, log2 K 17, lowest_address 0x7fffffe0
+lr_d_x0_zero: 8 rows, run hash 043e0488d016645f, log2 K 17, lowest_address 0x7fffffe0
+lr_w_x0_nonzero: 12 rows, run hash 6341862cef23632d, log2 K 17, lowest_address 0x7fffffe0
 misaligned_inline: ABORT at row 2: misaligned memory access: LD's floor address ea - (ea & 0) = 0x80080004 (ea 0x80080004) isn't a multiple of 8 (a16z floor_access.rs:66-75; DECISIONS-v1.3 section 25)
 misaligned_ld: ABORT at row 2: misaligned memory access: LD's floor address ea - (ea & 0) = 0x80080001 (ea 0x80080001) isn't a multiple of 8 (a16z floor_access.rs:66-75; DECISIONS-v1.3 section 25)
 misaligned_lw: ABORT at row 2: misaligned memory access: VirtualLoadW's floor address ea - (ea & 4) = 0x80080002 (ea 0x80080002) isn't a multiple of 8 (a16z floor_access.rs:66-75; DECISIONS-v1.3 section 25)
 range_above_top: REJECTED: K 2^20 exceeds a16z's max_ram_k 2^19 (heap_end 0x80200090): the access at row 2 to 0x80400000 is above the layout's top
 range_below_lowest: REJECTED: access at row 2 to 0x70000000 is outside (address - lowest_address) < 8K: below lowest_address 0x7fffffe0 (a16z's prover: RAM address precedes the memory layout)
 rd0_add: 4 rows, run hash 914cba73ca81d34f, log2 K 4, lowest_address 0x7fffffe0
+sc_d_x0: 22 rows, run hash 5dfeac5526190706, log2 K 17, lowest_address 0x7fffffe0
+sc_w_x0: 35 rows, run hash d24d582c6d37cc8b, log2 K 17, lowest_address 0x7fffffe0
 stack_canary_store: 6 rows, run hash cc8a36e0fd9c5eea, log2 K 4, lowest_address 0x7fffffe0
 store_into_code: REJECTED: the store at row 3 to 0x80000000 falls in the code (a Text section)
 unimp32_executed: REJECTED at load: 1 instruction(s) Jolt can't prove, first: undecodable 0xc0001073 at 0x80000004

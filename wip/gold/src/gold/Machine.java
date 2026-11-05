@@ -247,15 +247,6 @@ public final class Machine {
 
     // the row, after execution (:888-905)
     long rdAfter = v.rdImm ? 0 : regs[(int) v.rd];
-    if (v.lrToX0 && v.rd == 0 && !v.rdImm) {
-      // LR.D x0 / LR.W x0 loading a nonzero word can't be proven (R1CS: RamRead = RdWrite on the load; for LR.W the
-      // VirtualPextSigned row writes the lane to x0): the host tracer and gold reject it (section 17; WORKER17)
-      long value = op == LD ? memory.load(row[7]) : op == VirtualPextSigned ? Bits.pextSigned(row[4], row[5]) : 0;
-      if (value != 0) {
-        throw new EmulationError(String.format("%s x0 at %#x loads a nonzero word (%#x): can't be proven",
-            v.srcOpcode == LR_D ? "LR.D" : "LR.W", pc, value));
-      }
-    }
     if (Isa.isLoad(op) || Isa.isStore(op)) {
       long a = row[7];
       if (minAddress == 0 || Long.compareUnsigned(a, minAddress) < 0) { minAddress = a; minAddressRow = cycle; }

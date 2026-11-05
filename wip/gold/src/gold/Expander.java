@@ -83,8 +83,11 @@ public final class Expander {
 
   /** Instructions whose expansion deals with rd = x0 itself (upstream PR #1439 excludes LR/SC and the inlines). */
   static boolean rd0HandledInternally(int op) {
+    // LR/SC aren't exempt: their rd = x0 is remapped to a temporary, as a16z (crates/jolt-program/src/expand/
+    // operands.rs:51-60, which exempts only ECALL, MRET, EBREAK, CSRRW, CSRRS); owner's D14 ruling, DECISIONS-v1.3
+    // section 17 (236a55a). jolt-cpp exempts them (isa/virtual.cpp:57-80). The inlines stay exempt, as jolt-cpp.
     switch (op) {
-      case ECALL: case MRET: case EBREAK: case CSRRW: case CSRRS: case LR_W: case LR_D: case SC_W: case SC_D:
+      case ECALL: case MRET: case EBREAK: case CSRRW: case CSRRS:
         return true;
       default:
         return isInline(op);

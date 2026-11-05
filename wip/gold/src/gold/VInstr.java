@@ -28,8 +28,6 @@ public final class VInstr {
   /** Not provable: executing this row throws (the standard UNIMP 0xC0001073, loaded as an unreachable marker; owner's
    *  D4 ruling, DECISIONS-v1.3 section 17; or an unprovable instruction the ACT4 runner decoded at run time). */
   public String unprovable;
-  /** An LR.D x0 or LR.W x0 expansion: the word it loads must be 0 (DECISIONS-v1.3 section 17; WORKER17). */
-  public boolean lrToX0;
 
   /** The row's immediate: the sum of the immediate fields, the shift offset for shift-data, 0 for advice
    *  (trace_owner.hpp:168-177). */

@@ -233,6 +233,79 @@ Hamming booleanity are sized by T. The initial RAM's evaluation (Val_init) is do
 (`sumcheck/slots/ram_val_check.rs` uses `jolt_verifier::stages::stage4::ram_val_check`): not yet read, nor upstream's kernels
 (first hits: `jolt-kernels/src/optimized/ram_read_write.rs:489` loops `0..ram_k`; `ram_trace.rs:426` allocates `vec![0; ram_k]`).
 
+## The verifier's commit: a16z `7189216` (owner, 2026-11-03)
+
+- **`7189216` is jolt-cpp HEAD's `third-party/jolt`** (`88dca85`). **The pin `821e1bd` carries `f8fc214`** (2026-10-28), 20
+  commits earlier. Read at `7189216` as asked; differences from the pin's submodule and from `17a9459` noted.
+- `f8fc214..7189216`: in RAM paths, the verifier's stage-4 val check (`ram_val_check.rs`) loses its gamma domain separator
+  (transcript only; #2110/#2108 rework the transcript), and **#2190 "range-check direct RAM loads"** (`4e55c9a5f`) adds a range
+  check on loaded doublewords where `VirtualPext[Signed]`/`ANDN` read them. No change to what RAM checking proves.
+- `7189216..17a9459`: in RAM, register and bytecode paths only prover kernels change (`jolt-kernels/src/optimized/*`, incl.
+  `ram_ra_virtualization.rs` +27); **no relation, geometry or verifier change**. So everything in these notes read at `17a9459`
+  on the checking side holds at `7189216`.
+
+## Val_init (initial RAM evaluation) and the verifier's K checks, at `7189216`
+
+- **Val_init(r_address)** = a public part plus committed contributions (`jolt-verifier/src/stages/stage4/ram_val_check.rs:286-332,
+  370-461`; `verify.rs:140-150`). The **public part** is `public_initial_ram_evaluation` (`verify.rs:244-269`): the input bytes
+  and, in full program mode, the program image, as word segments, evaluated by `sparse_segments_mle_msb`: **sized by the
+  segments' words, not by K**. Each segment must lie in `[0, ram_K)` (`:271-297`). In committed program mode the image is a
+  staged opening (`ProgramImageInitContribution`), and advice (trusted, untrusted) is a committed polynomial placed with
+  `block_selector_mle_msb` (`ram_val_check.rs:482-530`). So the verifier never touches all K.
+- The output check's publics (`stage2/ram_output_check.rs:50-80`): `range_mask_mle_msb` over the I/O mask and
+  `sparse_segments_mle_msb` over the public I/O words: also not K.
+- **The verifier bounds K** (`verifier.rs:473-494`, again `:982-1003`): a power of two, ≥ `compute_min_ram_k` and **≤
+  `compute_max_ram_k`**, next_pow2 of the whole layout (`heap_end − lowest`)/8. So a run's K can't exceed its layout's range:
+  K = 2³² needs a layout of more than 2³¹ cells (16 GiB above `lowest`). For our layouts the maximum is 2²⁴ (EVM Zone) and
+  2²⁶ (Cyclone).
+- **Binding order:** upstream's own prover binds **cycle first** (`jolt-prover/src/config.rs:179-185`: phase 1 = log T, phase 2
+  = log K, RAM and registers); jolt-cpp binds address first (phase 1 = 0); the verifier takes either from the proof's config
+  (`verifier.rs:1711` builds an address-first config). The kernels' "address first" in jolt-cpp is still to confirm by reading
+  them.
+
+## Q5: what is dense in K, upstream's prover at `7189216`
+
+`jolt-kernels/src/optimized/`:
+
+| sumcheck | dense in K | sized by T |
+|---|---|---|
+| read-write checking (`ram_read_write.rs`) | `val_final` oracle table of K and `val_init` reconstructed to K (`:422-431`); refuses log T or log K > 32, "packs indices as u32" (`:408-413`) | addresses, increments |
+| output check (`ram_output_check.rs:68-95`) | `val_io` (K, zero-filled, `unsafe_allocate_zero_vec`), `io_mask` (K), `val_final` (K), split eq over log K | |
+| raf evaluation (`ram_raf_evaluation.rs:45-55`) | `ra_folded` (`ram_trace.rs:426`, `vec![0; ram_k]`) and `unmap` (K) | the fold over T |
+| val check (`ram_val_check.rs:72-85`) | `eq_table(r_address)` = `EqPolynomial::evals` over log K (`support.rs:488`): **K entries** | addresses, increments |
+| ra claim reduction (`ram_ra_claim_reduction.rs:76-100`) | `eq_address` over log K, `fold_addresses` (K) | |
+| ra virtualization, Hamming booleanity | 2^chunk tables | T |
+
+Versus jolt-cpp at the pin: jolt-cpp's **GPU val check** uses at most 4 chunk tables of at most 8 bits for eq(r_address)
+(`gpu/val_check.cu:65-75`), so it is not dense in K (and caps log K at 32); its CPU val check builds `eq_poly` over log K
+variables (`cpu/val_check.hpp:108-111`; whether it materializes 2^log K not yet checked).
+
+## Q2: the per-row rules (jolt-cpp at the pin; `isa/virtual.cpp`)
+
+Every RAM row is one of `LD`, `SD`, `VirtualLoadB/H/W`, `VirtualStoreB/H/W`, and reads or writes **one aligned doubleword**
+(the cell). Expansions with RAM rows, and their RAM accesses:
+
+| source | RAM rows | notes |
+|---|---|---|
+| LD / SD | 1 | |
+| LB/LBU/LH/LHU/LW/LWU | 1 (`VirtualLoadX`) of 3 rows | `expand_load` `:238-246` |
+| SB/SH/SW | 2 (`VirtualLoadX`, `VirtualStoreX`, same cell) of 6 rows | `expand_narrow_store` `:248-261` |
+| LR.D / LR.W | 1 (`LD` / `VirtualLoadW` via `expand_load`), sets the reservation vreg | `:~630-643` |
+| SC.D | `VirtualAssertLTE(0x8000_0000, rs1)`, then `LD` and `SD` **always** (on failure it stores the old value back) | `:645-668` |
+| SC.W | the assertion, a narrow load, then a narrow store (load + store): 3 RAM rows, the store always | `:670-711` |
+| AMOSWAP.D / AMOADD.D (and the other .D AMOs) | `LD`, `SD` | `:713-745` |
+| AMO*.W | `VirtualLoadW`, `VirtualStoreW` (one read, one write) | `:721-735, 746-` |
+| secp inlines | loads and stores inside the inline sequences; the JIT counts their mem_log words (`syscalls.cpp:236`) | |
+
+- A row records: the address (rs1 + imm, floored for narrow ops, `isa/riscv.hpp:241-253`), the pre-value (load: the word
+  read; store: the word before) and the post-value (load: the same; store: rs2's value). Exactly what `RiscCycle` holds
+  (`trace_owner.hpp:19-69`) and what the compressed trace reconstructs (above).
+- Misaligned narrow accesses keep their low bits and are rejected (`isa/riscv.hpp:215-268`); `SC` asserts a RAM address.
+- **The spec's output row differs on stores** (spec 4.19.12, word 4): it puts a store's pre-value in `mem_value` and leaves
+  `rd_prev`/`rd` 0 (immediate slot); jolt-cpp's SoA packs the pre-value into the `rd` and `rd_prev` lanes
+  (`expand_trace.cu:490-497`). Same information, different place. *(Open, spec item 113: a load to x0. The compressed trace
+  logs the word; the SoA's `rd` lane is then 0. Whether the prover gets the loaded word some other way for such rows: to check.)*
+
 ## Q3: measured, 2²⁹ (`mem_probe`)
 
 `mem_probe` (jolt-asic-planning `worker17-memory` `62ddcd1`, `tracer/src/mem_probe.cpp`) runs PR #2's tracer unchanged
@@ -313,3 +386,5 @@ weren't traced in PR #1):** whole run 11 (EVM Zone) and 194 (Cyclone, 178 of the
   ram_K's selection; the owner's ra-virtualization limits checked at the pin (MAX_D 6 and slot 2-6 there; 8 at HEAD).
 - 2026-11-02 (later): pulled DECISIONS-v1.3 12/14/15. Wrote and ran `mem_probe` (both 2²⁹ runs, replay check clean); read the
   K-dense parts of jolt-cpp's RAM sumchecks at the pin (GPU RW checking: K ≤ 2²⁴ at the pin, 2³⁰ at HEAD).
+- 2026-11-03: read a16z `7189216` (HEAD's submodule; the pin's is `f8fc214`): Val_init and the output check's publics are
+  sparse; the verifier bounds K by the layout; upstream's prover is dense in K in five sumchecks. Q2 per-row rules. REPORT.md.

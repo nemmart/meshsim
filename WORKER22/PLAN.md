@@ -157,6 +157,7 @@ are in `SPEC-QUESTIONS.md`.
   - it answers the advice credit and the expansion credit, and serves queue 0 in four transfers and queues 1–3 by their
     credits, sized from words 37–39, waiting for DMA done between transfers;
   - it sends window 0's start to tile 0 from its own copy of the record (Q3);
+  - on loading a segment's record it drops any expansion it was feeding (Q14);
   - at n = 63 it sends all 68 words to its own memory (dst 66) and forwards words 1 and 67 to tile 63 (Q4, Q11);
   - it checks the leftover advice and the end state at the end.
 - **Tile side:**

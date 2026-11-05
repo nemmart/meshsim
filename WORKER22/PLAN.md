@@ -131,18 +131,17 @@ are in `SPEC-QUESTIONS.md`.
 
 ## 3. Host-side inputs (owner, 2026-11-05: built by WORKER26; WORKER22 loads them)
 
-- **WORKER26 builds:**
-  - each segment's start image (the cycle-0 image plus the earlier segments' updates, with the pages the segment writes
-    owned), checked against gold's memory at the segment's first row;
-  - word 66's values and the hash constants;
-  - the map's lines and frame 6.
-- **The format proposed to WORKER26** is in `NOTES.md`.
+- **WORKER26 builds** (DECISIONS-v1.3, after the work list, 9cf1b52):
+  - one **initial image**, the cycle-0 image, with every index level in place;
+  - the jump map (the static table with frame 6's supplement merged) and its constants;
+  - **per segment, the list of pages it writes**;
+  - word 66's values, standing in for frame 7.
+- **The format agreed with WORKER26** is in `NOTES.md`.
 - **WORKER22's side (`TracerInputs`):**
-  - loads those outputs into `FileStore`, which lays them out as §20 trees: the `.pages` file at depth 2, its shared pages
-    reached through entries with owned = 0 and its owned pages through all-owned paths, and the map as a dense file;
+  - loads the image into `FileStore` as one depth-2 `.pages` tree, and the map as a dense file;
   - builds word 66 and the record, converting frame 2's flat 131 × u64 from gold's segment file, with frame 3's advice.
 - **Until WORKER26's outputs land,** only the minimal images the first functional tests need: hand-built programs, and a
-  small guest's image from gold's loader with an every-start map. No timing is taken from them.
+  small guest's cycle-0 image from gold's loader with an every-start map. No timing is taken from them.
 
 ## 4. The firmware and the tiles
 
@@ -174,18 +173,32 @@ are in `SPEC-QUESTIONS.md`.
   - window cuts inside ROM and controller-fed expansions, a zero-row run (no code value, Q7), the end rows, padding;
   - the caches, the write-back buffer, straddling fetches, the probe's outcomes, every fill status;
   - the RVC decompressor against gold's on all 2¹⁶ encodings.
+- **One memory, carried through the segments** (owner, 2026-11-05; DECISIONS-v1.3, 9cf1b52), for T1 and T2 alike:
+  - the segments run **in order on the one initial image**, each starting where the previous one left it;
+  - **at each segment's start** the harness creates the pages that segment writes (as zero pages, if absent) and marks their
+    paths owned; every other entry is not owned, so a stray store still sets [8];
+  - **caches cold at each segment's start**: the word-0 write invalidates the Tracer's, and the harness flushes the shared
+    cache (`MemorySystem.cold`);
+  - **at each segment's end** the harness writes the Tracer's dirty lines back into the memory (meshsim only: the hardware
+    drops them, and the next proof's images come from the updates). It then checks the Tracer's state against the next
+    segment's frame 2, and the pages the segment wrote against its update list (frames 4 or 5), which also verifies the
+    updates;
+  - T1 carries the memory through the segments T2 doesn't run.
 - **T1, the model:**
   - the Tracer, `MemorySystem` and an ideal Java controller;
   - per window, the record and streams are checked against WORKER9's delivery: raw streams exactly, coded ones by their
     decoded values; each window is then replayed by Stage A against `rows.bin`;
   - compression on and off;
-  - small inputs first (trace-23 and input/22, with WORKER9's writer for the reference), then every segment of both
-    workloads at 2²⁹, on the runner.
+  - small inputs first (Cyclone input/22 and EVM Zone trace-23, WORKER9's `delivery_writer` built locally for the
+    reference), then every segment of both workloads at 2²⁹, on the runner.
 - **T2, the full chip:**
   - C&C 3's firmware, the DMA into 64 tiles, `replay_ctl.c` on every tile, rows against `rows.bin`;
   - what the DMA delivers must equal T1's output;
   - small inputs first, then the 2²⁹ subset under ruling E.
 - **The suites:** the quick and full suites, and the full-size sort at 1,229,008 cycles.
+- **The write-back take-back case** (4.21.5): the model issues a victim's write-back as soon as its fill completes, so a
+  miss on a line waiting in the buffer can't arise and the hardware case isn't exercised. The report says so (owner,
+  2026-11-05). A directed test checks that an evicted dirty line comes back with its data.
 - **Reported:** the core's cycles per row against 4; the all-in cycles per segment against 100 M; stalls by cause; the
   walk's share; the drain time. All of it is taken with WORKER26's map only.
 - **Quest:** task numbers are claimed in NUMBERS.md first, kits are smoke-tested locally, there is an explicit exit before

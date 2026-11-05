@@ -40,6 +40,7 @@ software, and nothing else: no Tracer, no new memory system, no file system. The
    are a consumer's choice per pass, so they stay in word 0, whose write also flushes the queues for the new pass. **Only the flag
    changes** (owner): the record's other words, the stream word's write-log sizes included, stay exactly as the Tracer produced
    them; nothing is zeroed or edited for a pass. Bit positions to propose.
+   *Superseded in v1.26.1 (item 15): the two flags move to `RUN_CONFIG`, and [115], [116] become reserved.*
 
 9. **WORKER19's choices within the rulings, confirmed** (owner, 2026-11-01): words 66-67 are written only while the replayer is
    stopped, like the rest of part 0; a stream's word count must be the fewest 128-bit words that hold its values, so a whole
@@ -92,3 +93,34 @@ regenerated into the runner's persistent data and match WORKER9's (103, 104).
 |---|---|---|
 | V1 | the spec and the change notes | WORKER19, done |
 | V2 | meshsim, the firmware, the kit, the deliveries' conversion, the acceptance runs | WORKER20, done |
+
+## 3. v1.26.1: the point release (owner, 2026-11-04)
+
+Made with the Tracer's design (DECISIONS-v1.3 sections 23-24) so that SP1 (the Tracer's chapter) and Tony start from the final
+layouts. Four changes, on both units:
+
+13. **`RUN_CONFIG`, one 32-bit register at word 32 on both units** (the replayer and the Tracer; on the Tracer it replaces
+    `RUN_CYCLES`): **[23:0] rows to run** (up to 16,777,215, so a whole 2²² segment fits; a replayer pass is typically 65,536);
+    **[24] use the store log**; **[25] output rd_prev**; [31:26] reserved. **Both units honour the row count:** the replayer runs
+    exactly that many rows and then raises done, so a pass can be shorter than a window (useful for debugging), instead of a
+    fixed 65,536; the Tracer runs exactly that many, as `RUN_CYCLES` did, and **ignores the two flags**. **The rule:** written
+    while stopped, used by the next `PULSE_RUN`; a write while running is UB, like a part-0 write. *(Proposed, to confirm:)* a row
+    count of 0 runs nothing and raises done at once.
+14. **Words 32-35 are the same on both units:** 32 `RUN_CONFIG` (R/W), 33 `ROWS_RUN` (R), 34 `EXPANSION_OFFSET` (R),
+    35 `EXPANSION_OPCODE` (R); so **the replayer's three status words move up one** (from 32-34). **`ROWS_RUN` widens to 24 bits**
+    on both units ([23:0]; [31:24] 0), the rows of this run completed, so a long run's progress reads exactly (it counted modulo
+    2¹⁶). It is a diagnostic (rows left = the row count − rows run while `STATUS` [0] is 1); no firmware reads it, and it stays.
+15. **The state word's [115] and [116] become reserved** (superseding item 8): **the record describes only where the program
+    is**, so every replayer pass loads the stored words 0-65 verbatim, with nothing edited per pass (item 12 unchanged). **The
+    done-with-input-left check [6] and the write-log exemption follow `RUN_CONFIG` [24]**: with the store log off, the write
+    log's sizes are ignored, with neither [5] nor [6].
+16. **The stream word is rearranged, contiguous, and carries a fourth stream, advice** (DECISIONS-v1.3 section 23): word counts
+    [15:0] code, [31:16] read log, [47:32] write log; values out [64:48] code, [81:65] read log, [98:82] write log; compression
+    flags [99] code, [100] read log, [101] write log; **advice values [124:102]** (23 bits, 0 to 2²² inclusive; uncompressed 64-bit
+    values, so its word count is ceil(values / 2), and no flag); [127:125] spare. **Replayers ignore the advice field**; their
+    advice still comes in the read log. On the Tracer it is the segment's advice at load, counting down live.
+
+**To carry, in the same release:** the spec (4.17, 4.19.2, 4.19.8-4.19.10, 8.11, section 13), `CHANGES-v1.26.1.md` and Tony's
+change notes; meshsim's replayer model, `mesh.h`, the register reference, `replay_ctl.c` and the recipes, the tests, the
+acceptance kit and `ReplayDriver`; everything that writes a record or a stream word: gold (`wip/gold/`), WORKER16's segment
+tools, and the converted deliveries in the runner's data. SP1 writes the Tracer's chapter on these layouts.

@@ -959,7 +959,7 @@ files, which **the replayers carry too and ignore** (owner):
 
 | word | part 0 offset | contents | for the Tracer |
 |---|---|---|---|
-| 0 | 0x000 | the state word: pc, `instr_idx`, the next offset, and the per-pass flags (use the store log, output rd_prev; DECISIONS-v1.26 item 8) | the processor state at the segment's first row (frame 2); **the flags are carried and ignored** (the Tracer always records stores' pre-values and rd_prev) |
+| 0 | 0x000 | the state word: pc, `instr_idx`, the next offset; **from v1.26.1 no per-pass flags** ([115], [116] reserved; the flags are in `RUN_CONFIG`, DECISIONS-v1.26 items 13, 15) | the processor state at the segment's first row (frame 2) |
 | 1 | 0x010 | the stream word: each stream's 128-bit words, values out and compression flag (DECISIONS-v1.26 item 2); **at v1.3 four streams: code, read log, write log, and advice** (owner, 2026-11-04) | **the advice field: the segment's advice size at load, counting down live** as advice is popped; the three output fields written at each done with run *n*'s totals (section 24) |
 | 2-65 | 0x020 | the register image: 64 words, two registers each | registers 0-127 |
 | 66 | 0x420 | the files and the proof's memory bounds: **the guest's memory file** (root address, depth), **the jump-target map file** (root, depth), and (owner, 2026-11-04) **log₂ K** (6 bits) and **`lowest_address` in 4 KB units** (52 bits; page-aligned, being 0x8000_0000 − 2ⁿ), 124 of 128 bits; bit positions for SP1 | from C&C 3 (section 22): the Tracer's copy, the proof's map, and the proof's K and layout; the bounds set the `.pages` offset (section 12) and the range comparator (section 25) (a replayer ignores it) |
@@ -1032,16 +1032,16 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
   is left alone.
 - **Setting the state resets everything; `PULSE_RUN` only starts running** (owner, 2026-11-01; DECISIONS-v1.26 item 10), the same
   rule as the replayer's: the state write flushes the queues, latches the sizes, clears the size counters and sets the credits;
-  the Tracer's go is `PULSE_RUN`, which runs the next `RUN_CYCLES` rows and nothing else, so the read queue's counter runs across
+  the Tracer's go is `PULSE_RUN`, which runs the next `RUN_CONFIG` [23:0] rows and nothing else, so the read queue's counter runs across
   the segment's 64 runs.
 - **The Tracer has exactly two pulses, as every peripheral** (owner, 2026-11-04): **`PULSE_RUN`** (4.17.2) runs the next
-  `RUN_CYCLES` rows; **`PULSE_DMA`** (4.17.9) starts a DMA transfer from one of the four output queues. **The write to word 0**
+  `RUN_CONFIG` [23:0] rows; **`PULSE_DMA`** (4.17.9) starts a DMA transfer from one of the four output queues. **The write to word 0**
   flushes the queues, latches the sizes, clears the counters, sets the credits, and **also invalidates the instruction and data
   caches and the jump LRU** (without flushing dirty lines, section 23). That is safe although words 1-67 follow, because the
   caches only fill during execution, which begins at `PULSE_RUN`. **On the Tracer, word 0 is written only at a segment's start:**
-  a rewrite mid-segment would flush the read queue and the caches and lose the segment's progress, and the Tracer ignores word
-  0's per-pass flags anyway, so **a mid-segment rewrite is UB** (section 8a). Everything else is a register write: the state
-  through part 0, and `RUN_CYCLES`.
+  a rewrite mid-segment would flush the read queue and the caches and lose the segment's progress, and word 0 holds no
+  per-pass flags from v1.26.1 (they are in `RUN_CONFIG`, which the Tracer ignores), so **a mid-segment rewrite is UB** (section 8a). Everything else is a register write: the state
+  through part 0, and `RUN_CONFIG`.
 - **The read queue's end** (owner, 2026-11-01): **the advice log is per segment**, all 4M rows, not per run of 65,536, and
   **its size is part of the startup state** (section 23's stream word), so the Tracer knows it from the start. It counts the words it pops:
   **a pop beyond the size sets an `ERRORS` bit (advice underflow)** at once, instead of the Tracer waiting forever for the
@@ -1107,10 +1107,10 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
 
 | word | register | |
 |---|---|---|
-| 32 | **`RUN_CYCLES`** (R/W) | **the rows the next run traces**, typically 65,536 (owner: the one new register, first, readable and writable) |
-| 33 | `ROWS_RUN` (R) | rows of this run completed (as the replayer's word 32) |
-| 34 | `EXPANSION_OFFSET` (R) | the row within the current expansion where the next row starts (as the replayer's word 33) |
-| 35 | `EXPANSION_OPCODE` (R) | the instruction awaiting a controller-fed expansion (as the replayer's word 34) |
+| 32 | **`RUN_CONFIG`** (R/W) | **[23:0] the rows the next run traces**, typically 65,536; [24], [25] the replayer's per-pass flags, ignored here (DECISIONS-v1.26 item 13, v1.26.1; replacing `RUN_CYCLES`) |
+| 33 | `ROWS_RUN` (R) | rows of this run completed, 24 bits (the same word on both units from v1.26.1, item 14) |
+| 34 | `EXPANSION_OFFSET` (R) | the row within the current expansion where the next row starts (the same word on both units) |
+| 35 | `EXPANSION_OPCODE` (R) | the instruction awaiting a controller-fed expansion (the same word on both units) |
 
   plus the usual `PARAMS`, `STATUS`, `ERRORS`, `EVENTS`, the two pulses (`PULSE_RUN`, `PULSE_DMA`), the DMA's words, and the four queue lengths
   (above). Proposed (integrator, to confirm): the queue lengths at words 36-39 (state, code, read log, write log), and the

@@ -255,6 +255,10 @@ per row** (owner), and windows 33-36 all fall in the same proof.*
   (not a native RISC-V instruction, about 1.5 rows on average): the core's design point, as 4.21.9 states. Against the budget's
   ceiling of about 24 cycles per row at 1 GHz (10⁸ cycles for a 2²²-row segment), that leaves a wide margin for cache misses,
   map probes and the drain; B1 reports the core's cycles per row and the all-in figure per segment.
+- **Measured** (WORKER22, Quest 110b, both workloads at 2²⁹, every window and boundary matching): **4.65 cycles per row on EVM
+  Zone, 4.48 on Cyclone**, the worst segment 23.8 ms before the drain. **Fine as it is** (owner, 2026-11-05: ample spare
+  capacity), so the **16 KB caches stay**, though a 32 KB instruction cache would take EVM Zone to 4.37 (its fetch stalls are
+  capacity misses).
 - **What the workloads cost**, at about 4 cycles per row and 1 GHz:
   - **Cyclone:** 96,687 untraced rows against 371.5 M traced (0.026 %), all from the division family; at most 129 in any window.
     No secp256k1 inlines. A proof is about 17 ms.
@@ -675,9 +679,13 @@ Decided (O).
   - **D4, narrowed:** `unimp` 0xC0001073 is rejected at load, as a16z does; `c.unimp` stays the only unreachable marker (above).
   - **The program's end is detected by `JAL x0, 0`**, with 4.19.2's end-of-trace encoding unchanged; a JALR or branch to 0 is the
     D5 error (section 25).
-  - **`LR.D x0` or `LR.W x0` loading a nonzero word** (owner, 2026-11-04; WORKER17): unprovable in both codebases (R1CS forces
-    RamReadValue = RdWriteValue on every load row, and rd = x0's is 0); **the host tracer and gold reject it**, the check emitted
-    only for those instructions (known at translation), so it costs nothing elsewhere; no Tracer hardware. Neither workload has one.
+  - ~~`LR.D x0` or `LR.W x0` loading a nonzero word: rejected by the host and gold~~ **D14, follow a16z** (owner, 2026-11-05;
+    WORKER18): a16z remaps an LR or SC with rd = x0 to a temporary, as for other instructions (its exemptions are only ECALL,
+    MRET, EBREAK, CSRRW, CSRRS: `expand/operands.rs:51-60`), so such a load is **provable** and its rows are a16z's. jolt-cpp also
+    exempts LR/SC and the inlines (citing an a16z PR its code no longer follows), so **jolt-cpp's rows differ from a16z's for
+    every `LR x0`**, zero or not: WORKER17's premise held only for jolt-cpp. Gold follows a16z and drops the rejection; **a
+    jolt-cpp fix and a bug report**, like D1, D3, D12; whether its inline exemption changes any rows, to check. Neither workload
+    has an `LR x0`.
   - **D2 and the rest: deferred.** U1 and U2 (a16z's ACT4 configuration and `jolt-emu`'s exit check) and U3 (a16z rejecting the
     standard `unimp`, 0xC0001073) are a16z's bugs, written up for the owner to decide whether to report.
 

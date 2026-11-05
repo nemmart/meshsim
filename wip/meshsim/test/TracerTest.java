@@ -26,6 +26,7 @@ public final class TracerTest {
     public static void main(String[] args) throws Exception {
         loop();
         cut();
+        writeBack();
         compressed();
         division();
         controllerFed();
@@ -158,6 +159,33 @@ public final class TracerTest {
         T.eq(0, g.reg(1), "the same end state as one run");
         T.eq(0, g.tr.rec[0], "at the end");
         T.eq(1, g.tr.iMiss, "the caches carry across runs: one instruction miss in all four");
+    }
+
+    /** 130 stores 128 bytes apart (130 lines through a 128-line cache), then loads of the first lines: the dirty victims
+     *  were written back and come back with their data. (The hardware's take-back from the one-entry buffer, a miss on the
+     *  line waiting in it, isn't exercised: this model issues each write-back as its fill completes.) */
+    static void writeBack() throws Exception {
+        T.group("dirty victims written back and read again");
+        TracerRig.Prog p = new TracerRig.Prog(CODE).w(TracerRig.addi(1, 0, 130), TracerRig.sd(1, 2, 0), TracerRig.addi(2, 2, 128),
+                TracerRig.addi(1, 1, -1), TracerRig.bne(1, 0, -12), TracerRig.ld(4, 3, 0), TracerRig.ld(5, 3, 128), TracerRig.END);
+        long[] base = new TracerRig().bases(p);
+        TracerRig g = new TracerRig();
+        java.util.Map<Long, long[]> pages = new HashMap<>();
+        TracerRig.poke(pages, CODE - g.lowest, p.bytes());
+        Set<Long> owned = new HashSet<>();
+        for (int k = 0; k < 5; k++) { long o = DATA - g.lowest + 4096L * k; pages.put(o, new long[512]); owned.add(o); }
+        g.buildImage(pages, owned);
+        g.buildMap(Map.of(p.pcOf(1), base[1]));
+        g.loadTables();
+        long[] r = regs(); r[2] = DATA; r[3] = DATA;
+        g.loadRecord(CODE, (int) base[0], 0, r, new long[0]);
+        Tracer.WindowOut o = g.window(1 + 130 * 4 + 3, 400000);
+        T.check(o != null && !g.tr.stopped(), "no error: " + g.tr.errorLog);
+        T.eq(130, g.reg(4), "the first line's value, after its eviction");
+        T.eq(129, g.reg(5), "the second line's");
+        T.check(g.tr.writebacks >= 2, "dirty victims were written back (" + g.tr.writebacks + ")");
+        T.eq(128, g.tr.cacheLines(true), "the data cache holds 128 lines");
+        T.check(g.tr.stalls[Tracer.Stall.BUS.ordinal()] > 0, "a fill waited for a write-back on the bus");
     }
 
     static void compressed() throws Exception {

@@ -120,6 +120,45 @@ final class FileStore {
         }
     }
 
+    /**
+     * The one-memory acceptance (owner, 2026-11-05; DECISIONS-v1.3 after the work list): at a segment's start, every
+     * entry of f's tree has its owned bit cleared, then each page in `written` (page numbers) is created as a zero page if
+     * absent, with any index pages its path needs, and every entry on its path is marked owned. So the segment's written
+     * pages read ok, and every other page "not owned" (a stray store still sets ERRORS [8]). Returns the pages created.
+     */
+    int setOwnership(File f, java.util.Collection<Long> written) {
+        if (f.depth == 0) throw new IllegalArgumentException("depth 0");
+        clearOwned(f.root, f.depth);
+        int created = 0;
+        for (long pg : written) {
+            int a = f.root;
+            for (int lv = 0; lv < f.depth; lv++) {
+                long[] ix = page(a);
+                int i = digit(pg, lv, f.depth), e = entryOf(ix, i);
+                if (e == NONE) { e = alloc(lv < f.depth - 1); if (lv == f.depth - 1) created++; }
+                e |= OWNED; setEntry(ix, i, e);
+                a = addr(e);
+            }
+        }
+        return created;
+    }
+    private void clearOwned(int a, int levels) {
+        long[] ix = page(a);
+        for (int i = 0; i < 1024; i++) {
+            int e = entryOf(ix, i);
+            if (e == NONE) continue;
+            setEntry(ix, i, e & ~OWNED);
+            if (levels > 1) clearOwned(addr(e), levels - 1);
+        }
+    }
+    /** Every data page of f, by page number (for tools and checks). */
+    void forEachPage(File f, java.util.function.BiConsumer<Long, long[]> fn) { forEach(f.root, f.depth, 0, fn); }
+    private void forEach(int a, int levels, long prefix, java.util.function.BiConsumer<Long, long[]> fn) {
+        if (levels == 0) { fn.accept(prefix, page(a)); return; }
+        long[] ix = page(a);
+        for (int i = 0; i < 1024; i++) { int e = entryOf(ix, i); if (e != NONE) forEach(addr(e), levels - 1, prefix << 10 | i, fn); }
+    }
+
     // ---------------------------------------------------------------- the walk (the translator's, spec 7, 4.21.5)
     /** One walk of (root, depth, line): the LPDDR lines it reads (index lines, then the data line), its status, the line. */
     static final class Walk {

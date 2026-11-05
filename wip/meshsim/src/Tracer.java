@@ -676,6 +676,17 @@ final class Tracer implements Peripheral {
     }
     private static long[] flat(List<long[]> l) { long[] a = new long[2 * l.size()]; for (int i = 0; i < l.size(); i++) { a[2 * i] = l.get(i)[0]; a[2 * i + 1] = l.get(i)[1]; } return a; }
 
+    /** meshsim only, for the one-memory acceptance (owner, 2026-11-05): at a segment's end the harness writes the data
+     *  cache's dirty lines back into the memory, untimed, so the next segment starts where this one left it (the hardware
+     *  drops them at the word-0 write; the next proof's images come from the updates). Returns the lines written. */
+    int writeBackDirtyUntimed() {
+        int n = 0; FileStore.Walk w = new FileStore.Walk();
+        for (var e : dcache.entrySet()) if (e.getValue().dirty) {
+            mem.store.walk(memRoot(), memDepth(), e.getKey(), w);
+            mem.store.writeLine(w.dataLine, e.getValue().d); e.getValue().dirty = false; n++;
+        }
+        return n;
+    }
     boolean rowsEnded(long t) { settle(t); return rowsEnded; }
     boolean stopped() { return stopped; }
     int cacheLines(boolean data) { return (data ? dcache : icache).size(); }

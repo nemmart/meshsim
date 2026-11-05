@@ -86,7 +86,7 @@ f.box(IX, 300, IW, 74, "expansion sequencer", ["the decode table → the templat
 f.box(IX, 384, IW, 74, "row executor", ["Jolt's rows: ALU, PEXT (any mask, §9), memory", "rows; an advice row pops the read queue",
                                         "about 4 cycles per row [estimate] (§11)"],
       fill="white", stroke=EDGE, size=10.5, tsize=12)
-f.box(IX, 468, IW, 92, "the working state = part 0", ["words 0 and 2–65 (v1.26 item 12): pc, instr_idx,", "the next offset, registers 0–127 × 64 bits;",
+f.box(IX, 468, IW, 92, "the working state: the state record", ["words 0 and 2–65 (v1.26 item 12): pc, instr_idx,", "the next offset, registers 0–127 × 64 bits;",
                                                      "written through the region, read out by the DMA"],
       fill=PURPLE_L, stroke=PURPLE, size=10.5, tsize=12)
 f.rect(IX - 6, 226, IW + 12, 240, "none", OPEN_C, 1.2, dash=OPEN, rx=6)
@@ -127,10 +127,10 @@ for title, sub, y, lab, startup in boxes:
     f.line([(BT, cy), (RX + RW + 2, cy)], PURPLE, SW if not startup else 1.8, end=True,
            dash=DASH["startup"] if startup else None)
     f.line([(RX, cy), (CO[0] + CO[2] + 2, cy)], PURPLE, 1.6, end=True)
-# the bus: from C&C 3, past the four, into the core (part 0: the state, the working state)
+# the bus: from C&C 3, past the four, into the core (the state record, the working state)
 f.line([(BT, CC[1] + CC[3]), (BT, 520), (CO[0] + CO[2] + 2, 520)], PURPLE, SW + 0.6, end=True)
 f.text(RX + RW / 2, 500, "the bus from C&C 3: 128-bit writes into the region (§12)", 10.5, "middle", fill=PURPLE)
-f.text(RX + RW / 2, 514, "into the core: the state record, part 0 (§23)", 10.5, "middle", fill=PURPLE)
+f.text(RX + RW / 2, 514, "into the core: the state record (§23)", 10.5, "middle", fill=PURPLE)
 f.text(RX + RW / 2, 476, "dotted: the expansion tables, loaded once at startup", 10, "middle", fill=PURPLE, italic=True)
 # the window: one control path into the core
 f.line([(WT, CC[1] + CC[3]), (WT, 582), (CO[0] + CO[2] + 2, 582)], ORANGE, SW, end=True, start=True, dash=DASH["ctrl"])
@@ -140,10 +140,14 @@ f.text(RX + RW / 2, 572, "the register window: RUN_CYCLES, pulses, events, ERROR
 BY = 662
 OQ = (600, BY, 240, 62)
 f.box(*OQ, "output LRUs and queues", ["see figure 9.2 for details"], fill=BLUE_L, stroke=BLUE, size=11, tsize=13)
-f.line([(666, CO[1] + CO[3]), (666, BY - 2)], BLUE, SW, end=True, dash=DASH["write"])
-f.line([(771, CO[1] + CO[3]), (771, BY - 2)], BLUE, SW, end=True, dash=DASH["write"])
-f.text(660, 634, "code stream (32)", 10, "end", fill=BLUE)
-f.text(777, 634, "log stream (64 + tag)", 10, "start", fill=BLUE)
+f.line([(636, CO[1] + CO[3]), (636, BY - 2)], BLUE, SW, end=True, dash=DASH["write"])
+f.line([(800, CO[1] + CO[3]), (800, BY - 2)], BLUE, SW, end=True, dash=DASH["write"])
+f.text(630, 634, "code stream (32)", 10, "end", fill=BLUE)
+f.text(806, 634, "log stream (64 + tag)", 10, "start", fill=BLUE)
+# the state record, read in place by the DMA as output queue 0
+f.line([(704, 560), (704, BY - 2)], PURPLE, SW, end=True)
+f.text(710, 626, "the state record", 10, "start", fill=PURPLE)
+f.text(710, 639, "(queue 0)", 9.5, "start", fill=PURPLE)
 DM = (1196, BY, 76, 62)
 f.box(*DM, "DMA", ["C&C 3's", "transfers"], fill="white", stroke=INK, size=10, tsize=12.5)
 f.line([(OQ[0] + OQ[2], BY + 31), (DM[0] - 2, BY + 31)], BLUE, SW, end=True, dash=DASH["write"])

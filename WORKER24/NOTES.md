@@ -85,4 +85,7 @@ decided; **open** items are drawn with the open dash (`DASH["open"]`, orange-bro
   path's colour (purple here), distinct from the orange-brown "open" dots. The memory system is drawn as a literal black box.
 - **9.1 simplified** (owner, 2026-11-04): the right side is just the four boxes (advice queue, expansion queue, expansion
   lookup table, expansion lines) on one bus from C&C 3 that carries on into the core, plus one control line for the
-  window; the output side is one small "output LRUs and queues" box pointing to 9.2.
+  window; the output side is one small "output LRUs and queues" box pointing to 9.2, fed by the two streams and by a
+  purple line from the working state (the state record, read in place by the DMA as output queue 0).
+- **No "part 0" in the figures** (owner, 2026-11-04): it names a range of the region's address space, not a physical
+  part, so the figures say "the state record"; these notes keep "part 0" where they tie back to the spec.

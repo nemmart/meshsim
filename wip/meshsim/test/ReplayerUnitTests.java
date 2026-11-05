@@ -788,6 +788,31 @@ final class ReplayerUnitTests {
             T.eq((long) (1 << 22), (b.r.region0[3] >>> 38) & 0x7FFFFF, "the field stays in part 0 as written");
         }
 
+        T.group("v1.26.1: ConvertDelivery, a v1.25 record to v1.26.1");
+        {
+            java.nio.ByteBuffer v = java.nio.ByteBuffer.allocate(16 * 67).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+            v.putLong(0, 0xB1L); v.putLong(8, 0xB2L);                               // word 0: the bitmap
+            v.putLong(16, 0x8000_1000L);                                           // word 1: pc
+            v.putLong(24, 0x1234L | 7L << 32 | 5L << 48 | 1L << 51);               // instr_idx, offset 7, flags 101, [115]
+            v.putLong(32, 100L * 32 | (long) (40 * 64) << 32); v.putLong(40, 6L * 64);   // word 2: bit lengths (raw)
+            for (int i = 0; i < 128; i++) v.putLong(48 + 8 * i, 0x1000L + i);
+            Replayer.StreamSize[] sz = { new Replayer.StreamSize(30, 100, true), new Replayer.StreamSize(20, 40, false), new Replayer.StreamSize(3, 6, true) };
+            java.nio.ByteBuffer o2 = java.nio.ByteBuffer.wrap(ConvertDelivery.convertRecord(v, sz)).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+            T.eq(16 * 68, o2.capacity(), "68 words");
+            T.eq(0x8000_1000L, o2.getLong(0), "word 0: pc");
+            T.eq(0x1234L | 7L << 32, o2.getLong(8), "instr_idx and offset kept; [127:112] 0 (no flags, v1.26.1)");
+            Replayer.StreamSize[] got = Replayer.parseStreamWord(o2.getLong(16), o2.getLong(24));
+            T.check(Arrays.equals(sz, got), "word 1: the sizes in v1.26.1's layout: " + Arrays.toString(got));
+            T.eq(0, Replayer.streamWordAdvice(o2.getLong(16), o2.getLong(24)), "the advice field 0");
+            T.eq(0x1001L, o2.getLong(32 + 8), "the image: register 1 at word 2's high half");
+            T.eq(0L, o2.getLong(16 * 66) | o2.getLong(16 * 66 + 8), "word 66, files: 0");
+            T.eq(0xB1L, o2.getLong(16 * 67), "word 67: the bitmap"); T.eq(0xB2L, o2.getLong(16 * 67 + 8), "(its high half)");
+            v.putLong(24, 0x1234L);
+            boolean thrown = false;
+            try { ConvertDelivery.convertRecord(v, sz); } catch (IllegalStateException e) { thrown = true; }
+            T.check(thrown, "a v1.25 record with [115] = 0 is refused (the tracer emits 1)");
+        }
+
         T.group("v1.26.1: ROWS_RUN past 2^16");
         {
             int n = 70_000;

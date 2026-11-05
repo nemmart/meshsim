@@ -2,6 +2,7 @@
   "rows": 371526406, "padded_rows": 536870912, "segment_rows": 4194304, "segments": 128,
   "ram_K": 16777216, "lowest_address": 2113929216, "page_bytes": 16384, "leaf_bytes": 16777216,
   "replay_mismatches": 0, "below_lowest": 0, "other_mem_rows": 0,
+  "rewound_chunks": 48081, "max_skip_cycles": 1066, "rows_in_rewound_chunks": 24617472, "register_continuity_mismatches": 0, "of_which_in_rewound_chunks": 0,
   "loads_to_x0": 0, "loads_to_x0_nonzero_word": 0,
   "total": {"cells": 1380356, "cells_read_only": 365296, "cells_written": 1015060, "cells_first_access_load": 365639, "pages": 693, "pages_read_only": 194, "pages_written": 499, "initial_nonzero_cells": 737988, "final_changed_cells": 685948},
   "by_region": {

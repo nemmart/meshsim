@@ -9,7 +9,7 @@ Working notes, kept current; the report is `REPORT.md` (not yet written). Measur
   (reading the same expander for registers 40-47); (2) measurements are RAM-only; registers get the reading side only.
 - Done: the compressed trace and both expanders, for memory; the layout (Q1) in both codebases with both workloads' values,
   measured; how ram_K is chosen and its value (owner's request, 2026-11-02); the RAM ra-virtualization limits, checked at the
-  pin. Next: the rest of the question 5 table, then the per-row rules (Q2), then the probe.
+  pin. *(Later turns did the rest; the session is closed, see the log.)*
 - **2026-11-02 (later): DECISIONS-v1.3 sections 12, 14, 15.** A proof is the whole run (T = 2²⁹, log T = 29, **8-bit chunks**);
   K up to 2³², one per run; question 3 measures 16 KB pages and 16 MiB regions. Done this turn: the probe (`mem_probe`) and
   its measurements at 2²⁹ (below, "Q3"); the K-dense parts of jolt-cpp's RAM sumchecks at the pin (below, "Q5: what is dense
@@ -369,6 +369,58 @@ Q7, **what memory checking doesn't constrain**:
 - **initial values outside the public segments and advice**: Val_init is zero there (the public part plus advice blocks), so a
   run can't start with other data.
 
+## Last items (2026-11-04, read and report only)
+
+**1. The `88dca85` limits, confirmed or corrected** (read at `88dca85`):
+- GPU RW checking: **confirmed**, `RW_MAX_ADDRESS_SPACE = 1u << 30` (`ram/gpu/rw_sparse.hpp:35`), enforced at `rw_sparse.tpp:93-99`
+  ("imposed by the read/write column encoding"). The column word: **confirmed**, write flag in bit 31 (`RW_IS_WRITE_FLAG`,
+  `:33`), column in bits 0-30 (`RW_COLUMN_MASK`, `:34`; comment `:30-32`), `RW_MAX_LEVELS = 31` (`:36`). (At `821e1bd`: flag
+  bit 24, 24-bit column, limit 2²⁴.)
+- `MAX_D = 8`: **confirmed** (`ram/gpu/ra_virtual.hpp:29`); the Rust slot accepts 2-8 chunks (`ram_ra_virtualization.rs:42`).
+- The output check's `uint32_t ram_k`: **confirmed** (`ram/gpu/output_check.cu:89`), and **wider than listed: the prover's
+  `SumcheckContext::ram_k` is itself a `uint32_t`** (`prover/sumcheck_context.hpp:36`, at both commits), filled by
+  `.ram_k = (u32)get_ram_k()` (`prover/card_context.cu:356`; `get_ram_k` is u64, `card_context.hpp:323`). So every C++
+  sumcheck sees K as 32 bits: K = 2³² would truncate to 0. Also `mem_waddr_p1` is a `u32` of the **absolute** address >> 3,
+  plus 1 (`trace_columns.inc:76`): addresses must stay below about 2³⁵, so with `lowest_address` = `0x7E00_0000` the cells
+  reach about 2³² − 2²⁸, not 2³².
+- So at `88dca85` jolt-cpp's K ceiling is **2³⁰** (RW checking), below the 32-bit context's 2³¹.
+
+**2. The rewound chunk header** (`trace_owner.cpp:700-733`). The header's registers 0-47 are the boundary's (`:705`), copied
+before `instr_idx`/`mem_log_start` are rewound to the sequence start and `skip_cycles` set (`:723-727`); both expanders replay
+the skipped rows from those registers (GPU `expand_trace.cu:448-464`; CPU `trace_owner.cpp:855-880`). A row would come out
+wrong only if a skipped row read a register 0-47 that the sequence had changed before the boundary (or re-applied a
+read-modify-write to one). **Measured** (`mem_probe`, CPU expander, every chunk expanded from its own header): rewound chunks
+**230 on EVM Zone** (max `skip_cycles` 186; 117,760 rows) and **48,081 on Cyclone** (max 1,066; 24.6 M rows). A register
+continuity check over all 355 M and 372 M rows (each row's rs1, rs2 and rd_prev equal the last value written to that register)
+found **0 mismatches**, none in rewound chunks; the RAM replay check also stays at 0. So both workloads hit the rewind often
+and no expanded row is wrong. Nothing in the code enforces it, though: it holds because the expansions don't read a stateful
+register (0-47) after writing it within the skipped part. The GPU expander uses the same headers and replay; it was not run.
+
+**3. The JIT's guest memory** (read at `821e1bd`; `88dca85` noted):
+- **Reservation:** one `mmap(PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS)` of `max_memory_used_for_jit × (nthreads + 1)` =
+  (4 GiB + 500 MiB) × 33, about 148 GiB of address space (`utils/bump_ptr.hpp:24-36`; `compressed_trace_gen.cpp:46`;
+  `utils/mem.hpp:26, 33`; `nthreads = 32`, `num_jits = 33`, `compressed_trace_gen.hpp:101-103`). Allocations are carved from
+  it and `mprotect`ed `PROT_READ | PROT_WRITE` (`bump_ptr.hpp:51-71`); the untouched tail stays `PROT_NONE`.
+- **Per VM** (`vm.cpp:13-30`): one allocation of 4 GiB (`max_riscv_ram_size = 1 << 32`) plus `sizeof(RiscV)`; guest RAM is the
+  first 4 GiB, **guest address = offset from the base, no remap**, and the VM's `RiscV` state struct sits immediately after it
+  (`:23-27`, "reachable from the code cache using relative addresses"). The 33 VMs follow each other with **no guard pages**
+  between them. `reset` re-maps the RAM zeroed with `MAP_FIXED` (`vm.cpp:33-41`); at `88dca85` it also maps the ELF image pages
+  from a file descriptor (`MAP_PRIVATE | MAP_FIXED`) and checks the image lies in the VM (`vm.cpp`, `reset(const ProgramImage&)`).
+- **The JIT's load/store** (`transcode.cpp:881-935`, `compute_ram_start` `:100-103`): host pointer = `vm_ptr − ram_size` (the
+  RAM base) **+ the 64-bit guest address**, with no mask and no bounds check. The interpreter does the same,
+  `state.ram[address]` (`trace_owner.cpp:301-321`), checking only alignment (`checked_memory_address`, `isa/riscv.hpp:257-268`,
+  `release_assert`); `is_correct_ram_addr` is only in `assert`s (`vm.hpp:85-112`), compiled out in release builds. No signal
+  handler is installed (no `sigaction`/`SIGSEGV` in `tracer/`, `utils/`, `prover/`).
+- **So today:**
+  - **below `lowest_address`** (`0x0`-`0x7DFF_FFFF`): silent access to mapped, zero-filled guest RAM; loads return 0 or what
+    was stored there, stores succeed. Not a fault. (The prover then treats the row as no access, above.)
+  - **above the layout's top, below 4 GiB** (e.g. past `heap_end`): the same, silent, mapped RAM.
+  - **4 GiB up to 4 GiB + `sizeof(RiscV)`**: **the VM's own state struct**: a store corrupts the VM (registers, state) silently.
+  - **beyond that:** the next VM's RAM (silent corruption of another thread's guest memory), and past the last VM's the code
+    caches or the reservation's `PROT_NONE` tail: **SIGSEGV, and with no handler the process dies**. Very large addresses wrap
+    (64-bit add) to wherever `base + address` lands, usually unmapped: SIGSEGV.
+  - Measured on our two runs: no access below `lowest_address` and none above `heap_end` (`mem_probe`).
+
 ## Q3: measured, 2²⁹ (`mem_probe`)
 
 `mem_probe` (jolt-asic-planning `worker17-memory` `62ddcd1`, `tracer/src/mem_probe.cpp`) runs PR #2's tracer unchanged
@@ -453,3 +505,6 @@ weren't traced in PR #1):** whole run 11 (EVM Zone) and 194 (Cyclone, 178 of the
   sparse; the verifier bounds K by the layout; upstream's prover is dense in K in five sumchecks. Q2 per-row rules. REPORT.md.
 - 2026-11-04: closed the four open items (load to x0; address-first in kernels, CPU val check not dense; below-lowest;
   Q6/Q7). `mem_probe` counts load rows to x0 (0 on both). REPORT.md finished.
+- 2026-11-04 (last): the `88dca85` limits (all confirmed; `SumcheckContext::ram_k` is 32-bit too); the rewound header
+  (230 and 48,081 rewound chunks, register continuity clean over every row); the JIT's memory map (4 GiB per VM, unchecked
+  64-bit offsets, no guards). Session closed.

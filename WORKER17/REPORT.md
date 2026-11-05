@@ -163,9 +163,42 @@ writes rs2 (store) or the same value (load); other rows touch nothing; cells sta
   are in jolt-cpp's row and in spec 4.19.12's row (`mem_addr`, `mem_value`, `rs2`); the spec carries a store's pre-value in
   `mem_value` where jolt-cpp uses the `rd` lanes. **Not in the row:** Val_init and Val_final, which come from the images.
 
+## jolt-cpp `88dca85` (v1.3's pin): the K limits
+
+| limit | `821e1bd` | `88dca85` |
+|---|---|---|
+| GPU RW checking, `RW_MAX_ADDRESS_SPACE` | 2²⁴ (24-bit column, write flag bit 24) | **2³⁰** (31-bit column, flag bit 31; `rw_sparse.hpp:33-36`) |
+| GPU ra virtualization `MAX_D` / Rust slot | 6 / 2-6 | **8 / 2-8** (`ra_virtual.hpp:29`; slot `:42`) |
+| output check `ram_k` | `uint32_t` | `uint32_t` (`output_check.cu:89`) |
+| **`SumcheckContext::ram_k`** (every C++ sumcheck) | `uint32_t` | `uint32_t` (`sumcheck_context.hpp:36`), filled with `(u32)get_ram_k()` (`card_context.cu:356`) |
+| `mem_waddr_p1` | u32 of absolute address >> 3, + 1 | same: addresses below about 2³⁵ |
+
+So jolt-cpp at `88dca85` proves K up to **2³⁰**; K = 2³² would truncate to 0 in the context and its top cells would not fit
+`mem_waddr_p1`.
+
+## The rewound chunk header (`trace_owner.cpp:705`)
+
+A chunk boundary inside a sequence with non-zero scratch registers is rewound to the sequence start, but its header keeps the
+**boundary's** registers 0-47; the expanders replay the skipped rows from them. A row would be wrong only if a skipped row
+read a stateful register the sequence changed before the boundary. **Both workloads hit the rewind: 230 chunks on EVM Zone
+(up to 186 skipped rows), 48,081 on Cyclone (up to 1,066).** A register-continuity check over every expanded row (CPU
+expander) found **no wrong row**, inside rewound chunks or out; nothing in the code guarantees it, it holds because the
+expansions don't read a stateful register after writing it within a sequence's skipped part. The GPU expander uses the same
+headers and replay; not run.
+
+## The JIT's guest memory, and out-of-layout accesses
+
+- One `PROT_NONE` reservation of (4 GiB + 500 MiB) × 33 (`bump_ptr.hpp:24-36`, `compressed_trace_gen.cpp:46`, `mem.hpp:26, 33`);
+  each of the 33 VMs gets **4 GiB of read-write guest RAM, guest address = offset from its base**, with its `RiscV` state
+  struct directly after it and **no guard pages** between VMs (`vm.cpp:13-30`).
+- Loads and stores, JIT and interpreter, add the 64-bit guest address to the base **with no mask or bounds check**
+  (`transcode.cpp:100-103, 881-935`; `trace_owner.cpp:301-321`); only alignment is checked (`isa/riscv.hpp:257-268`); the range
+  checks are `assert`s, off in release (`vm.hpp:85-112`); no `SIGSEGV` handler.
+- So: **below `lowest_address` or above the layout's top, under 4 GiB: silent access to mapped, zeroed RAM**, no fault. From 4 GiB:
+  the VM's own state struct, then the next VM's RAM (silent corruption); past the last VM, `PROT_NONE`: SIGSEGV, killing the
+  process. Neither workload accesses outside `[lowest_address, heap_end)`.
+
 ## Open
 
 - Registers' and bytecode's reading side beyond the table above (owner: reading side only).
-- WORKER16's thread: a rewound chunk's header holds the boundary's registers, not the sequence start's (`trace_owner.cpp:705`).
-- For v1.3's pin (`88dca85`): RW checking's K limit 2³⁰ and the 31-bit packed column (`rw_sparse.hpp:35`,
-  `rw_sparse_init_kernels.cu`); the ra virtualization's `MAX_D` 8; the output check's `uint32_t ram_k`.
+- The GPU expander on rewound chunks (same algorithm as the CPU one checked here; not run).

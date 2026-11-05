@@ -104,8 +104,11 @@ layouts. Four changes, on both units:
     **[24] use the store log**; **[25] output rd_prev**; [31:26] reserved. **Both units honour the row count:** the replayer runs
     exactly that many rows and then raises done, so a pass can be shorter than a window (useful for debugging), instead of a
     fixed 65,536; the Tracer runs exactly that many, as `RUN_CYCLES` did, and **ignores the two flags**. **The rule:** written
-    while stopped, used by the next `PULSE_RUN`; a write while running is UB, like a part-0 write. *(Proposed, to confirm:)* a row
-    count of 0 runs nothing and raises done at once.
+    while stopped, used by the next `PULSE_RUN`; a write while running is UB, like a part-0 write. **A row count of 0** runs nothing and
+    raises done at once (owner, 2026-11-04: `STATUS` [0] rises and falls and run done is posted, as a DMA with count 0, 4.17.9).
+    **`RUN_CONFIG` is sticky:** an ordinary R/W register, untouched by `PULSE_RUN`, the state write and done, 0 only after a reset;
+    firmware writes it once before its passes. **[6] stays unconditional** (owner): a short pass is for a short trace, a record
+    sized to it.
 14. **Words 32-35 are the same on both units:** 32 `RUN_CONFIG` (R/W), 33 `ROWS_RUN` (R), 34 `EXPANSION_OFFSET` (R),
     35 `EXPANSION_OPCODE` (R); so **the replayer's three status words move up one** (from 32-34). **`ROWS_RUN` widens to 24 bits**
     on both units ([23:0]; [31:24] 0), the rows of this run completed, so a long run's progress reads exactly (it counted modulo

@@ -1229,11 +1229,13 @@ Decided (O).
     advice) before a proof is wasted, as leftover advice earned its check. *(Assumed: the templates assert alignment before every access.)*
   - **any misaligned access** (owner, 2026-11-05; WORKER21 found that at 821e1bd no template asserts alignment: LD and SD are
     one-word templates, and both tracers abort on a misaligned access, UPSTREAM-DIFFS D6): **`ERRORS` [12], and the Tracer
-    stops.** The check is **natural alignment for the access size, on the native instruction** (address mod 8 for doubleword
-    accesses, 4 for word, 2 for halfword; bytes never; AMOs and LR/SC by their width), not the row's address, since sub-word
-    accesses expand into rows on the aligned doubleword and would always pass. Such a program can't be traced or proven, so the
-    host's run has already aborted on it: [12] catches the host and the Tracer disagreeing. A few address bits, selected by the
-    opcode's size.
+    stops.** **The check is a16z's own rule, on every memory row** (owner, 2026-11-05, on WORKER21's
+    finding, item 150): **the row's floor address, ea − (ea & m), must be a multiple of 8**, with m = 0, 4, 6, 7 for doubleword,
+    word, halfword and byte rows (a16z 7189216 `tracer/src/instruction/floor_access.rs:66-75`; jolt-cpp's
+    `checked_memory_address`). For a native access that is exactly natural alignment for its size; it also covers **the inline
+    templates' own LD and SD rows** (at rs1 or rs2 plus multiples of 8), which no native instruction covers, with no special
+    case and no first-row exception for a segment starting mid-expansion. Such a program can't be traced or proven, so the
+    host's run has already aborted on it: [12] catches the host and the Tracer disagreeing. A few address bits per row.
   - **a guest access outside the provable range** (owner, 2026-11-04; WORKER17): **a dedicated comparator** in the Tracer's
     load and store path, `(address − lowest_address) < 8·K`, one subtract and one unsigned compare **on the full 64-bit
     address** (an address below the start wraps and fails the same compare), alongside the local cache lookup, so it costs no

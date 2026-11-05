@@ -36,7 +36,15 @@ final class Router implements Component {
         { LOOPBACK, FROM_LEFT, FROM_RIGHT, FROM_UP, FROM_DOWN } };
     /** The feeders of each output: every tile's router has the fifth port (4.16, one tile design); it is connected only
      *  where something is attached (tiles 0-2's, to C&C 1-3), and an unconnected port never receives and is never chosen. */
-    static int[][] feeders(int me) { return FEEDERS_TILE0; }
+    static int[][] feeders(int me) { return me >= 64 ? FEEDERS_CC : FEEDERS_TILE0; }
+    /** A controller's router (Config.ccCores): the tile's set, plus the DMA's input (CC_DMA_IN) feeding the link output
+     *  (item 118: a sending peripheral's packets enter the controller's router as an extra input and leave through its
+     *  down port, the link). The extra FIFO never holds anything without a DMA, so nothing else's order changes. */
+    private static final int[][] FEEDERS_CC = {
+        { LOOPBACK, FROM_LEFT, FROM_CNC, FROM_UP }, { LOOPBACK, FROM_RIGHT, FROM_CNC },
+        { LOOPBACK, FROM_LEFT, FROM_RIGHT, FROM_UP, FROM_CNC }, { LOOPBACK, FROM_LEFT, FROM_RIGHT, FROM_DOWN, FROM_CNC },
+        { LOOPBACK, FROM_LEFT, FROM_RIGHT, FROM_UP, FROM_DOWN, FROM_CNC },
+        { LOOPBACK, FROM_LEFT, FROM_RIGHT, FROM_UP, FROM_DOWN } };
 
     final int me;
     final Hops hops;
@@ -90,6 +98,9 @@ final class Router implements Component {
      *  for the controller itself is ejected and any other (broadcasts included) goes out on the link; from any other
      *  input, every packet is ejected (the eject selector flags one that isn't for this controller). */
     static final int CC_LINK_IN = FROM_LEFT, CC_LINK_OUT = TO_RIGHT, CC_HOST_IN = FROM_RIGHT;
+    /** The sending peripheral's DMA (item 118, owner, 2026-11-05; WORKER22): an extra input, routed by dst like the
+     *  loopback: a packet for the controller itself is ejected (Q11), any other leaves on the link, the down port. */
+    static final int CC_DMA_IN = FROM_UP;
     private int ccRoute(int port, int dst) { return port != LOOPBACK ? EJ : dst == me ? EJ : RIGHT; }
     /** Feeder slot of an input port at an output, -1 if none. */
     int slotOfPort(int o, int port) { return slotOf[o][port]; }
@@ -160,7 +171,8 @@ final class Router implements Component {
     private void route(long t, int port, long d, long a, long c) {
         routed++;
         int src = LinkWord.src(a), dst = LinkWord.dst(a);
-        int mask = cc && port != LOOPBACK ? EJ : dst == LinkWord.BROADCAST ? bcTable[port * 128 + src] : uniTable[src * 128 + dst];
+        int mask = cc ? (port == LOOPBACK || port == CC_DMA_IN ? ccRoute(LOOPBACK, dst) : EJ)
+                : dst == LinkWord.BROADCAST ? bcTable[port * 128 + src] : uniTable[src * 128 + dst];
         if ((mask & RIGHT) != 0) push(t, TO_RIGHT, port, d, a, c);
         if ((mask & LEFT) != 0) push(t, TO_LEFT, port, d, a, c);
         if ((mask & DOWN) != 0) push(t, TO_DOWN, port, d, a, c);

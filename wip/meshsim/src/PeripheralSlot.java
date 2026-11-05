@@ -155,8 +155,9 @@ final class PeripheralSlot implements Peripheral.Host {
             int size = LinkWord.SIZE_128;
             long lo = buf[0], hi = buf[1];
             int dst = Registers.HDR_DST.get(hdr), mode = Registers.HDR_MODE.get(hdr), ctr = Registers.HDR_CTR.get(hdr);
+            int src = LinkWord.controller(tile.idx) ? tile.idx + 8 : 0;     // item 118: the controller's id + 8 (the Tracer's 74)
             dmaOut.add(new long[] { t, dst, mode, ctr, addr & 0xFFFFFFFFL, size, lo, hi });
-            if (dmaPort != null) dmaPort.put(t, lo, LinkWord.hdr(0, dst, mode, ctr, addr, size), hi);
+            if (dmaPort != null) dmaPort.put(t, lo, LinkWord.hdr(src, dst, mode, ctr, addr, size), hi);
             packets++;
             addr += 16; left--;
             if (left == 0) finish(t);

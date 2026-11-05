@@ -30,7 +30,11 @@ final class LinkWord {
     static final int CNC = CC1;                                      // v1.1's name for endpoint 64
     static boolean controller(int id) { return id >= CC1 && id <= CC3; }
     /** The tile a controller is attached to (4.16): C&C n at tile n - 1; a tile is itself. */
-    static int tileOf(int id) { return controller(id) ? id - CC1 : id; }
+    static int tileOf(int id) { return controller(id) ? id - CC1 : dmaSource(id) ? id - DMA1 : id; }
+    /** A sending peripheral's DMA packets carry src = its controller's id + 8 (item 118, owner, 2026-11-05; 4.16, 4.17.9):
+     *  72-74 for C&C 1-3's engines, the Tracer's 74. Sources only, never endpoints; routed from the controller's tile. */
+    static final int DMA1 = CC1 + 8;
+    static boolean dmaSource(int id) { return id >= DMA1 && id <= DMA1 + 2; }
 
     static final int M_WRITE = 0, M_SRC = 1, M_BUCKET = 2, M_AUG = 3, M_GATHER = 4, M_COUNT = 5, M_RSVD6 = 6, M_RSVD7 = 7;
     static final int N_MODES = 8, MODE_MASK = 7;

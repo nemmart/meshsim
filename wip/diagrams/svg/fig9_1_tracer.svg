@@ -93,18 +93,19 @@
 <circle cx="370.0" cy="375.0" r="3.2" fill="#1D9E75"/>
 <polyline points="370.0,375.0 370.0,390.0" fill="none" stroke="#1D9E75" stroke-width="1.4" stroke-linejoin="round" marker-end="url(#m1D9E75)"/>
 <text x="370.0" y="484.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#C0392B">fail → ERRORS</text>
-<rect x="830.0" y="180.0" width="350.0" height="126.0" rx="6" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1"/>
-<text x="840.0" y="199.6" font-size="12" text-anchor="start" font-weight="bold" fill="#444441">part 0: the record, the decode table, the template ROM</text>
-<text x="840.0" y="215.8" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0x000  the 68-word record (§23), the working state:</text>
-<text x="840.0" y="229.7" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">   [0] state word (writing it resets, flushes, invalidates)</text>
-<text x="840.0" y="243.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">   [1] stream word   [2–65] registers 0–127</text>
-<text x="840.0" y="257.4" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">   [66] files and bounds (roots, depths, log2 K, low)</text>
-<text x="840.0" y="271.2" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">   [67] template bitmap</text>
-<text x="840.0" y="285.1" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0x1000 decode table (4 KB)   0x2000 template ROM (8 KB)</text>
+<rect x="830.0" y="172.0" width="350.0" height="140.0" rx="6" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1"/>
+<text x="840.0" y="191.6" font-size="12" text-anchor="start" font-weight="bold" fill="#444441">part 0: the record, the decode table, the template ROM</text>
+<text x="840.0" y="207.8" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0x000  the 68-word record (§23), the working state:</text>
+<text x="840.0" y="221.7" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">   [0] state word (writing it resets, flushes, invalidates)</text>
+<text x="840.0" y="235.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">   [1] stream word: code, read log, write log, advice</text>
+<text x="840.0" y="249.4" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">   [2–65] registers 0–127</text>
+<text x="840.0" y="263.2" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">   [66] files and bounds (roots, depths, log2 K, low)</text>
+<text x="840.0" y="277.1" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">   [67] template bitmap</text>
+<text x="840.0" y="291.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0x1000 decode table (4 KB)   0x2000 template ROM (8 KB)</text>
 <rect x="830.0" y="318.0" width="350.0" height="54.0" rx="6" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1"/>
 <text x="840.0" y="334.4" font-size="12" text-anchor="start" font-weight="bold" fill="#444441">part 2: the read queue (advice, §13)</text>
-<text x="840.0" y="350.6" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">4 KB, 512 words, raw; fed by C&amp;C 3; its pops counted</text>
-<text x="840.0" y="364.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">against the size latched by the word-0 write</text>
+<text x="840.0" y="350.6" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">4 KB, 512 words, raw; fed by C&amp;C 3; each pop counts</text>
+<text x="840.0" y="364.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">down word 1’s advice field, live across the segment</text>
 <rect x="830.0" y="384.0" width="350.0" height="54.0" rx="6" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1"/>
 <text x="840.0" y="400.4" font-size="12" text-anchor="start" font-weight="bold" fill="#444441">part 4: the expansion queue (§7)</text>
 <text x="840.0" y="416.6" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">4 KB: controller-fed expansions, answering the expand</text>
@@ -126,7 +127,7 @@
 <polyline points="1200.0,345.0 1182.0,345.0" fill="none" stroke="#7F77DD" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m7F77DD)"/>
 <circle cx="1200.0" cy="411.0" r="3.2" fill="#7F77DD"/>
 <polyline points="1200.0,411.0 1182.0,411.0" fill="none" stroke="#7F77DD" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m7F77DD)"/>
-<text x="1196.0" y="170.0" font-size="10.5" text-anchor="end" font-weight="normal" fill="#7F77DD">the region: 128-bit writes, [22:20] picks the part</text>
+<text x="1196.0" y="165.0" font-size="10.5" text-anchor="end" font-weight="normal" fill="#7F77DD">the region: 128-bit writes, [22:20] picks the part</text>
 <polyline points="1222.0,152.0 1222.0,526.0 1182.0,526.0" fill="none" stroke="#D85A30" stroke-width="2.2" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)" marker-start="url(#mD85A30)"/>
 <text transform="rotate(-90 1234.0 330.0)" x="1234.0" y="330.0" font-size="10.5" text-anchor="middle" fill="#D85A30">the window: a control path</text>
 <polyline points="830.0,214.0 806.0,214.0 806.0,330.0 776.0,330.0" fill="none" stroke="#444441" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m444441)"/>
@@ -136,93 +137,42 @@
 <text x="800.0" y="438.0" font-size="9.5" text-anchor="start" font-weight="normal" fill="#7F77DD">advice</text>
 <polyline points="830.0,411.0 810.0,411.0 810.0,356.0 776.0,356.0" fill="none" stroke="#7F77DD" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m7F77DD)"/>
 <polyline points="830.0,580.0 792.0,580.0" fill="none" stroke="#D85A30" stroke-width="2.2" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)" marker-start="url(#mD85A30)"/>
-<rect x="450.0" y="662.0" width="150.0" height="128.0" rx="6" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1"/>
-<text x="525.0" y="694.6" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">set 1: sizing (§3)</text>
-<text x="525.0" y="710.9" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">three LRU compressors</text>
-<text x="525.0" y="724.7" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">(code, read log, write</text>
-<text x="525.0" y="738.6" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">log) count each stream's</text>
-<text x="525.0" y="752.4" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">compressed size as it is</text>
-<text x="525.0" y="766.3" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">traced; output discarded</text>
-<rect x="620.0" y="662.0" width="92.0" height="128.0" rx="6" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1"/>
-<text x="666.0" y="694.6" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">code FIFO</text>
-<text x="666.0" y="710.9" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">65,536</text>
-<text x="666.0" y="724.7" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">× 32 bits</text>
-<text x="666.0" y="738.6" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">(256 KB):</text>
-<text x="666.0" y="752.4" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">one word per</text>
-<text x="666.0" y="766.3" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">instruction</text>
-<rect x="722.0" y="662.0" width="98.0" height="128.0" rx="6" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1"/>
-<text x="771.0" y="694.6" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">log FIFO</text>
-<text x="771.0" y="710.9" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">65,536</text>
-<text x="771.0" y="724.7" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">× 65 bits</text>
-<text x="771.0" y="738.6" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">(520 KB): a</text>
-<text x="771.0" y="752.4" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">word + read/</text>
-<text x="771.0" y="766.3" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">write tag</text>
-<rect x="836.0" y="662.0" width="136.0" height="128.0" rx="6" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1"/>
-<text x="904.0" y="694.6" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">raw or set 2 (§3)</text>
-<text x="904.0" y="710.9" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">per window, per stream:</text>
-<text x="904.0" y="724.7" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">set 2 compresses on</text>
-<text x="904.0" y="738.6" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">the way out if smaller</text>
-<text x="904.0" y="752.4" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">and enabled; it</text>
-<text x="904.0" y="766.3" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">reproduces set 1</text>
-<rect x="986.0" y="662.0" width="82.0" height="128.0" rx="6" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1"/>
-<text x="1027.0" y="694.6" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">packers</text>
-<text x="1027.0" y="710.9" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">into 128-bit</text>
-<text x="1027.0" y="724.7" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">words; the</text>
-<text x="1027.0" y="738.6" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">last partial</text>
-<text x="1027.0" y="752.4" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">word at done</text>
-<text x="1027.0" y="766.3" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">(§24)</text>
-<rect x="1082.0" y="636.0" width="104.0" height="32.0" rx="4" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1.3"/>
-<text x="1090.0" y="656.0" font-size="11" text-anchor="start" font-weight="bold" fill="#444441">0: the state</text>
-<rect x="1082.0" y="674.0" width="104.0" height="32.0" rx="4" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1.3"/>
-<text x="1090.0" y="694.0" font-size="11" text-anchor="start" font-weight="bold" fill="#444441">1: code log</text>
-<rect x="1082.0" y="712.0" width="104.0" height="32.0" rx="4" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1.3"/>
-<text x="1090.0" y="732.0" font-size="11" text-anchor="start" font-weight="bold" fill="#444441">2: read log</text>
-<rect x="1082.0" y="750.0" width="104.0" height="32.0" rx="4" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1.3"/>
-<text x="1090.0" y="770.0" font-size="11" text-anchor="start" font-weight="bold" fill="#444441">3: write log</text>
-<text x="1134.0" y="628.0" font-size="11" text-anchor="middle" font-weight="bold" fill="#444441">output queues 0–3</text>
-<rect x="1078.0" y="670.0" width="112.0" height="116.0" rx="5" fill="none" stroke="#B5651D" stroke-width="1.2" stroke-dasharray="2 3"/>
-<rect x="1093.3" y="795.0" width="81.4" height="15" rx="7.5" fill="white" stroke="#B5651D" stroke-width="1"/>
-<text x="1134.0" y="806.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#B5651D" font-style="italic">open: depths</text>
-<rect x="1198.0" y="636.0" width="74.0" height="154.0" rx="6" fill="white" stroke="#444441" stroke-width="1"/>
-<text x="1235.0" y="683.4" font-size="12.5" text-anchor="middle" font-weight="bold" fill="#444441">DMA</text>
-<text x="1235.0" y="700.3" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">one queue</text>
-<text x="1235.0" y="713.5" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">per transfer;</text>
-<text x="1235.0" y="726.7" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">reads the</text>
-<text x="1235.0" y="739.9" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">state and</text>
-<text x="1235.0" y="753.1" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">the queues</text>
+<rect x="450.0" y="662.0" width="726.0" height="112.0" rx="6" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1.4"/>
+<text x="464.0" y="684.0" font-size="13" text-anchor="start" font-weight="bold" fill="#444441">output queues 0–3: the output path (figure 9.2)</text>
+<text x="464.0" y="702.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">set 1 sizes each stream as it is traced into the code and log FIFOs (one window each); at done each stream drains</text>
+<text x="464.0" y="716.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">raw or through set 2 (the smaller, if enabled), packed into 128-bit words; then go (§2, §3, §24)</text>
+<rect x="466.0" y="732.0" width="262.0" height="30.0" rx="4" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1.3"/>
+<text x="597.0" y="752.0" font-size="11" text-anchor="middle" font-weight="bold" fill="#444441">0: the state = part 0, read in place</text>
+<rect x="740.0" y="732.0" width="132.0" height="30.0" rx="4" fill="white" stroke="#3B6EA5" stroke-width="1.3"/>
+<text x="806.0" y="752.0" font-size="11" text-anchor="middle" font-weight="bold" fill="#444441">1: code log</text>
+<rect x="884.0" y="732.0" width="132.0" height="30.0" rx="4" fill="white" stroke="#3B6EA5" stroke-width="1.3"/>
+<text x="950.0" y="752.0" font-size="11" text-anchor="middle" font-weight="bold" fill="#444441">2: read log</text>
+<rect x="1028.0" y="732.0" width="132.0" height="30.0" rx="4" fill="white" stroke="#3B6EA5" stroke-width="1.3"/>
+<text x="1094.0" y="752.0" font-size="11" text-anchor="middle" font-weight="bold" fill="#444441">3: write log</text>
+<rect x="896.2" y="797.0" width="279.8" height="15" rx="7.5" fill="white" stroke="#B5651D" stroke-width="1"/>
+<text x="1036.1" y="808.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#B5651D" font-style="italic">open: queue depths, the drain's interleaving</text>
+<text x="450.0" y="790.0" font-size="10" text-anchor="start" font-weight="normal" fill="#7F77DD">at done n: words 0, 2–66 → tile n+1 (its start); word 1's three output fields, word 67 and the streams → tile n</text>
+<rect x="1198.0" y="662.0" width="74.0" height="112.0" rx="6" fill="white" stroke="#444441" stroke-width="1"/>
+<text x="1235.0" y="695.0" font-size="12.5" text-anchor="middle" font-weight="bold" fill="#444441">DMA</text>
+<text x="1235.0" y="711.9" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">one queue</text>
+<text x="1235.0" y="725.1" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">per transfer;</text>
+<text x="1235.0" y="738.3" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">C&amp;C 3's</text>
+<text x="1235.0" y="751.5" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">choice (§24)</text>
+<polyline points="1176.0,747.0 1196.0,747.0" fill="none" stroke="#3B6EA5" stroke-width="2.2" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
 <polyline points="666.0,600.0 666.0,660.0" fill="none" stroke="#3B6EA5" stroke-width="2.2" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
 <polyline points="771.0,600.0 771.0,660.0" fill="none" stroke="#3B6EA5" stroke-width="2.2" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
-<text x="660.0" y="618.0" font-size="10" text-anchor="end" font-weight="normal" fill="#3B6EA5">code word (32)</text>
-<text x="777.0" y="618.0" font-size="10" text-anchor="start" font-weight="normal" fill="#3B6EA5">log word (64 + tag)</text>
-<text x="777.0" y="632.0" font-size="9.5" text-anchor="start" font-weight="normal" fill="#6b6a64">≤ 1 per row (§2)</text>
-<circle cx="666.0" cy="640.0" r="3.2" fill="#3B6EA5"/>
-<circle cx="771.0" cy="650.0" r="3.2" fill="#3B6EA5"/>
-<polyline points="666.0,640.0 500.0,640.0 500.0,660.0" fill="none" stroke="#3B6EA5" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
-<polyline points="771.0,650.0 550.0,650.0 550.0,660.0" fill="none" stroke="#3B6EA5" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
-<polyline points="666.0,790.0 666.0,802.0 866.0,802.0 866.0,792.0" fill="none" stroke="#3B6EA5" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
-<polyline points="820.0,726.0 834.0,726.0" fill="none" stroke="#3B6EA5" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
-<polyline points="972.0,690.0 984.0,690.0" fill="none" stroke="#3B6EA5" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
-<polyline points="1068.0,690.0 1080.0,690.0" fill="none" stroke="#3B6EA5" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
-<polyline points="972.0,728.0 984.0,728.0" fill="none" stroke="#3B6EA5" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
-<polyline points="1068.0,728.0 1080.0,728.0" fill="none" stroke="#3B6EA5" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
-<polyline points="972.0,766.0 984.0,766.0" fill="none" stroke="#3B6EA5" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
-<polyline points="1068.0,766.0 1080.0,766.0" fill="none" stroke="#3B6EA5" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
-<polyline points="1186.0,652.0 1196.0,652.0" fill="none" stroke="#3B6EA5" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
-<polyline points="1186.0,690.0 1196.0,690.0" fill="none" stroke="#3B6EA5" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
-<polyline points="1186.0,728.0 1196.0,728.0" fill="none" stroke="#3B6EA5" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
-<polyline points="1186.0,766.0 1196.0,766.0" fill="none" stroke="#3B6EA5" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
-<polyline points="525.0,790.0 525.0,816.0 936.0,816.0 936.0,792.0" fill="none" stroke="#D85A30" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
-<text x="533.0" y="830.0" font-size="10" text-anchor="start" font-weight="normal" fill="#D85A30">sizes at done: the raw-or-set-2 choice, and run n's totals into part 0 word 1 (with the bitmap, word 67)</text>
-<text x="1074.0" y="641.0" font-size="9.5" text-anchor="end" font-weight="normal" fill="#7F77DD">queue 0 is part 0, read in place at done n:</text>
-<text x="1074.0" y="654.0" font-size="9.5" text-anchor="end" font-weight="normal" fill="#7F77DD">words 0, 2–66 → tile n+1; words 1, 67 → tile n</text>
-<polyline points="1256.0,636.0 1256.0,154.0" fill="none" stroke="#3B6EA5" stroke-width="2.6" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<text x="660.0" y="626.0" font-size="10" text-anchor="end" font-weight="normal" fill="#3B6EA5">code word (32)</text>
+<text x="660.0" y="640.0" font-size="9.5" text-anchor="end" font-weight="normal" fill="#6b6a64">one per instruction</text>
+<text x="777.0" y="626.0" font-size="10" text-anchor="start" font-weight="normal" fill="#3B6EA5">log word (64 + read/write tag)</text>
+<text x="777.0" y="640.0" font-size="9.5" text-anchor="start" font-weight="normal" fill="#6b6a64">at most one per row (§2)</text>
+<polyline points="1256.0,662.0 1256.0,154.0" fill="none" stroke="#3B6EA5" stroke-width="2.6" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
 <text transform="rotate(-90 1268.0 400.0)" x="1268.0" y="400.0" font-size="10.5" text-anchor="middle" fill="#3B6EA5">DMA packets into a router input of its own → the tiles' memory (first implementation, §24)</text>
 <rect x="40.0" y="668.0" width="392.0" height="128.0" rx="6" fill="white" stroke="#B5651D" stroke-width="1.3" stroke-dasharray="2 3"/>
 <text x="52.0" y="688.0" font-size="12" text-anchor="start" font-weight="bold" fill="#B5651D">Also open (WORKER24/NOTES.md, by number)</text>
 <text x="52.0" y="706.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">11 the fill bus: arbitration, blocking, write buffer, errors back</text>
 <text x="52.0" y="721.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">12 the probe's line bound   13 the fetch path's offset subtract</text>
 <text x="52.0" y="736.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">14 the per-stream compression enables   15 bit numbers</text>
-<text x="52.0" y="751.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">17 queue depths, the drain's interleaving   18 word layouts</text>
+<text x="52.0" y="751.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">17 queue depths, the drain's interleaving   18 bit positions</text>
 <text x="52.0" y="766.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">19 when the ROM and decode table load   21 the range's top</text>
 <polyline points="40.0,864.0 76.0,864.0" fill="none" stroke="#1D9E75" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m1D9E75)"/>
 <text x="84.0" y="868.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">read: line fills</text>
@@ -239,7 +189,7 @@
 <text x="382.0" y="893.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">open: still to be settled</text>
 <line x1="24" y1="924" x2="1276" y2="924" stroke="#B4B2A9" stroke-width="0.8"/>
 <text x="24.0" y="946.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">The Tracer runs the guest on its own RV64 core. Its instruction cache, data cache and jump LRU are its only local stores; each miss is one 128 B line of a file, (root, depth, line),</text>
-<text x="24.0" y="962.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">on the fill bus to the memory system. C&amp;C 3 writes its state, tables and input queues into the region, runs it through the window, and at each done drains output queue 0</text>
-<text x="24.0" y="978.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">(part 0: window n+1's start and run n's totals) and the three streams, sized by set 1 and sent raw or through set 2, by the DMA. Writing word 0 resets everything.</text>
-<text x="24.0" y="994.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">Source: planning/DECISIONS-v1.3.md (to 352df7d) §1–7, 12, 13, 18–25; DECISIONS-v1.26.md items 1, 2, 10, 12; spec/machine-spec.md §4.17, §4.19. Review: WORKER24/NOTES.md.</text>
+<text x="24.0" y="962.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">on the fill bus to the memory system. C&amp;C 3 writes its state, tables and input queues into the region and runs it through the window; at each done the DMA drains the output</text>
+<text x="24.0" y="978.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">queues: queue 0 is part 0 read in place (window n+1's start and run n's totals), queues 1–3 the streams (figure 9.2). Writing word 0 resets everything.</text>
+<text x="24.0" y="994.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">Source: planning/DECISIONS-v1.3.md (to 7374646) §1–7, 12, 13, 18–25; DECISIONS-v1.26.md items 1, 2, 10, 12; spec/machine-spec.md §4.17, §4.19. Review: WORKER24/NOTES.md.</text>
 </svg>

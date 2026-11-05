@@ -18,17 +18,17 @@ decided; **open** items are drawn with the open dash (`DASH["open"]`, orange-bro
    state). Answer: everything is read out at done and nothing writes a state between runs. At done *n*, output queue
    0's words 0 and 2-66 are window *n* + 1's start and words 1 and 67 are run *n*'s totals; C&C 3 sends the state to
    tile *n* + 1, and run *n*'s totals and streams to tile *n* (section 24, 14713f3).
-3. **Where the output totals live** (word 1 was the advice size, word 67 cleared at load). Answered with 2: at done,
-   words 1 and 67 hold run *n*'s totals. **Drawn as:** set 1's totals (the stream word) and the template bitmap written
-   into part 0 words 1 and 67 at done. This relies on the advice size having been latched by the word-0 write (v1.26
-   item 10: "latches the sizes"), so overwriting word 1 loses nothing. *To confirm:* that reading, and whether word
-   1's advice fields read back as the totals or as the remaining count.
+3. **Where the output totals live** (word 1 was the advice size, word 67 cleared at load). Answered with 2 and by the
+   owner's ruling (section 23, 7374646): **the stream word carries four streams**, code, read log, write log and advice.
+   The advice field is the segment's advice size at load and the live count remaining, counting down as advice is popped;
+   at done the Tracer writes only the three output fields and word 67, so nothing is overwritten and **output queue 0 is
+   part 0 read in place**. The replayer ignores the advice field. Its bits (23, a value count only) are SP1's to place:
+   split across the v1.26 spares [63:51] and [127:115], or a rearranged word.
 4. **A possible deadlock in the log drain** (one log FIFO feeding output queues 2 and 3 in row order, the DMA sending
    one queue at a time). Answer: in the first implementation the DMA writes directly into the tiles' memory, so no
    replayer credits pace it and C&C 3 interleaves the queues' transfers (ba91410); later, C&C 3's memory and LPDDR
    files. **Still open:** the output queues' depths, and the interleaving rule that keeps the drain moving (drawn open).
-   *Stale text:* section 24's DMA bullet still says transfers are "sized to the replayer's credits (half a 4 KB queue,
-   128 words)", which the answer replaces for the first implementation.
+   Section 24's DMA bullet, which still said transfers were sized to the replayer's credits, is fixed (df077e4).
 5. **The stream-ready wake flags.** Answer: dropped (481fe13). The flags are **expand, done, advice and DMA done**;
    C&C 3 drains by the queue lengths at done and the DMA waits on its queue.
 6. **Section 3's pipelining was stale.** Answer: drawn as section 2, drain then go (marked superseded in 14713f3).
@@ -76,6 +76,8 @@ decided; **open** items are drawn with the open dash (`DASH["open"]`, orange-bro
 ## Figure notes
 
 - Figure 9.1 is new **Part 9** of the set; the README gets the part and its row.
+- **The split** (owner, 2026-11-04): 9.1 too busy, so its output side collapses into one "output queues" box, drawn in
+  full in 9.2 (the output path); 9.3 is the 68-word state record as a memory block.
 - PNGs are ignored by the repository (`.gitignore`: `wip/**/png/`), so the PNG is rendered and checked locally but not
   committed, like the other figures'.
 - Helpers: only `common.py`'s; nothing added to it. The memory system is drawn as a literal black box.

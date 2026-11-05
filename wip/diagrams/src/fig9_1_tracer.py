@@ -1,6 +1,6 @@
 # Figure 9.1: the Tracer at block level: the RV64 core, its three local stores and the fill bus to the memory system on the
 # left; the region, the register window and the output side toward C&C 3 on the right and along the bottom.
-# Drawn from DECISIONS-v1.3 sections 1-25 (to 352df7d); the review and the open points are in WORKER24/NOTES.md.
+# Drawn from DECISIONS-v1.3 sections 1-25 (to 7374646); the review and the open points are in WORKER24/NOTES.md.
 from common import *
 
 W, H = 1300, 1012
@@ -114,17 +114,18 @@ RX, RW = 830, 350
 RT = 1200          # region trunk
 WT = 1222          # window trunk
 OT = 1256          # DMA outbound
-P0 = (RX, 180, RW, 126)
+P0 = (RX, 172, RW, 140)
 f.box(*P0, "part 0: the record, the decode table, the template ROM",
       ["0x000  the 68-word record (§23), the working state:",
        "   [0] state word (writing it resets, flushes, invalidates)",
-       "   [1] stream word   [2–65] registers 0–127",
+       "   [1] stream word: code, read log, write log, advice",
+       "   [2–65] registers 0–127",
        "   [66] files and bounds (roots, depths, log2 K, low)",
        "   [67] template bitmap",
        "0x1000 decode table (4 KB)   0x2000 template ROM (8 KB)"],
       fill=PURPLE_L, stroke=PURPLE, size=10.5, tsize=12, align="start", valign="top", pad=10)
 P2 = (RX, 318, RW, 54)
-f.box(*P2, "part 2: the read queue (advice, §13)", ["4 KB, 512 words, raw; fed by C&C 3; its pops counted", "against the size latched by the word-0 write"],
+f.box(*P2, "part 2: the read queue (advice, §13)", ["4 KB, 512 words, raw; fed by C&C 3; each pop counts", "down word 1’s advice field, live across the segment"],
       fill=PURPLE_L, stroke=PURPLE, size=10.5, tsize=12, align="start")
 P4 = (RX, 384, RW, 54)
 f.box(*P4, "part 4: the expansion queue (§7)", ["4 KB: controller-fed expansions, answering the expand", "flag (EXPANSION_OPCODE); template number: proposed"],
@@ -145,7 +146,7 @@ f.line([(RT, CC[1] + CC[3]), (RT, 411)], PURPLE, SW + 0.6, end=False)
 for y in (243, 345, 411):
     dot(RT, y, PURPLE)
     f.line([(RT, y), (RX + RW + 2, y)], PURPLE, SW, end=True)
-f.text(RT - 4, 170, "the region: 128-bit writes, [22:20] picks the part", 10.5, "end", fill=PURPLE)
+f.text(RT - 4, 165, "the region: 128-bit writes, [22:20] picks the part", 10.5, "end", fill=PURPLE)
 f.line([(WT, CC[1] + CC[3]), (WT, 526), (RX + RW + 2, 526)], ORANGE, SW, end=True, start=True, dash=DASH["ctrl"])
 rot_text(WT + 12, 330, "the window: a control path", 10.5, fill=ORANGE)
 
@@ -158,60 +159,32 @@ f.text(800, 438, "advice", 9.5, "start", fill=PURPLE)
 f.line([(RX, 411), (810, 411), (810, 356), (IX + IW + 2, 356)], PURPLE, 1.6, end=True)
 f.line([(RX, 580), (CO[0] + CO[2] + 2, 580)], ORANGE, SW, end=True, start=True, dash=DASH["ctrl"])
 
-# ================= bottom: the output side ================================================================
-BY, BH = 662, 128
-S1 = (450, BY, 150, BH)
-f.box(*S1, "set 1: sizing (§3)", ["three LRU compressors", "(code, read log, write", "log) count each stream's",
-                                  "compressed size as it is", "traced; output discarded"],
-      fill=BLUE_L, stroke=BLUE, size=10.5, tsize=12)
-CF = (620, BY, 92, BH)
-LF = (722, BY, 98, BH)
-f.box(*CF, "code FIFO", ["65,536", "× 32 bits", "(256 KB):", "one word per", "instruction"], fill=BLUE_L, stroke=BLUE, size=10.5, tsize=12)
-f.box(*LF, "log FIFO", ["65,536", "× 65 bits", "(520 KB): a", "word + read/", "write tag"], fill=BLUE_L, stroke=BLUE, size=10.5, tsize=12)
-S2 = (836, BY, 136, BH)
-f.box(*S2, "raw or set 2 (§3)", ["per window, per stream:", "set 2 compresses on", "the way out if smaller", "and enabled; it", "reproduces set 1"],
-      fill=BLUE_L, stroke=BLUE, size=10.5, tsize=12)
-PK = (986, BY, 82, BH)
-f.box(*PK, "packers", ["into 128-bit", "words; the", "last partial", "word at done", "(§24)"], fill=BLUE_L, stroke=BLUE, size=10.5, tsize=12)
-QX, QW = 1082, 104
-qs = [("0: the state", PURPLE), ("1: code log", BLUE), ("2: read log", BLUE), ("3: write log", BLUE)]
-QY = [BY - 26, BY + 12, BY + 50, BY + 88]
-for (name, c), y in zip(qs, QY):
-    f.rect(QX, y, QW, 32, PURPLE_L if c == PURPLE else BLUE_L, c, 1.3, rx=4)
-    f.text(QX + 8, y + 20, name, 11, "start", "bold")
-f.text(QX + QW / 2, BY - 34, "output queues 0–3", 11, "middle", "bold")
-f.rect(QX - 4, BY + 8, QW + 8, 116, "none", OPEN_C, 1.2, dash=OPEN, rx=5)
-f.tag(QX + QW / 2, BY + BH + 16, "open: depths", anchor="middle")
-DM = (1198, BY - 26, 74, 154)
-f.box(*DM, "DMA", ["one queue", "per transfer;", "reads the", "state and", "the queues"], fill="white", stroke=INK, size=10, tsize=12.5)
+# ================= bottom: the output side, collapsed (figure 9.2 draws it) ===============================
+BY, BH = 662, 112
+OQ = (450, BY, 726, BH)
+f.rect(*OQ, BLUE_L, BLUE, 1.4, rx=6)
+f.text(OQ[0] + 14, BY + 22, "output queues 0–3: the output path (figure 9.2)", 13, "start", "bold")
+f.text(OQ[0] + 14, BY + 40, "set 1 sizes each stream as it is traced into the code and log FIFOs (one window each); at done each stream drains", 10.5, "start")
+f.text(OQ[0] + 14, BY + 54, "raw or through set 2 (the smaller, if enabled), packed into 128-bit words; then go (§2, §3, §24)", 10.5, "start")
+chips = [("0: the state = part 0, read in place", 466, 262, PURPLE), ("1: code log", 740, 132, BLUE),
+         ("2: read log", 884, 132, BLUE), ("3: write log", 1028, 132, BLUE)]
+for name, x, w, c in chips:
+    f.rect(x, BY + 70, w, 30, PURPLE_L if c == PURPLE else "white", c, 1.3, rx=4)
+    f.text(x + w / 2, BY + 90, name, 11, "middle", "bold")
+f.tag(OQ[0] + OQ[2], BY + BH + 34, "open: queue depths, the drain's interleaving", anchor="end")
+f.text(OQ[0], BY + BH + 16, "at done n: words 0, 2–66 → tile n+1 (its start); word 1's three output fields, word 67 and the streams → tile n",
+       10, "start", fill=PURPLE)
+DM = (1198, BY, 74, BH)
+f.box(*DM, "DMA", ["one queue", "per transfer;", "C&C 3's", "choice (§24)"], fill="white", stroke=INK, size=10, tsize=12.5)
+f.line([(OQ[0] + OQ[2], BY + 85), (DM[0] - 2, BY + 85)], BLUE, SW, end=True, dash=DASH["write"])
 
-# core -> FIFOs, with set 1 alongside the entry
+# core -> the output path: the two streams
 f.line([(666, CO[1] + CO[3]), (666, BY - 2)], BLUE, SW, end=True, dash=DASH["write"])
 f.line([(771, CO[1] + CO[3]), (771, BY - 2)], BLUE, SW, end=True, dash=DASH["write"])
-f.text(660, 618, "code word (32)", 10, "end", fill=BLUE)
-f.text(777, 618, "log word (64 + tag)", 10, "start", fill=BLUE)
-f.text(777, 632, "≤ 1 per row (§2)", 9.5, "start", fill=MUTED)
-dot(666, 640, BLUE)
-dot(771, 650, BLUE)
-f.line([(666, 640), (500, 640), (500, BY - 2)], BLUE, 1.5, end=True, dash=DASH["write"])
-f.line([(771, 650), (550, 650), (550, BY - 2)], BLUE, 1.5, end=True, dash=DASH["write"])
-# FIFOs -> set 2 -> packers -> queues 1-3 -> DMA
-f.line([(CF[0] + CF[2] / 2, BY + BH), (CF[0] + CF[2] / 2, BY + BH + 12), (S2[0] + 30, BY + BH + 12), (S2[0] + 30, BY + BH + 2)],
-       BLUE, 1.6, end=True, dash=DASH["write"])
-f.line([(LF[0] + LF[2], BY + 64), (S2[0] - 2, BY + 64)], BLUE, 1.6, end=True, dash=DASH["write"])
-for i, y in enumerate((BY + 28, BY + 66, BY + 104)):
-    f.line([(S2[0] + S2[2], y), (PK[0] - 2, y)], BLUE, 1.5, end=True, dash=DASH["write"])
-    f.line([(PK[0] + PK[2], y), (QX - 2, QY[i + 1] + 16)], BLUE, 1.5, end=True, dash=DASH["write"])
-for y in QY:
-    f.line([(QX + QW, y + 16), (DM[0] - 2, y + 16)], BLUE, 1.5, end=True, dash=DASH["write"])
-# set 1's sizes: the choice, and the totals into part 0 at done
-f.line([(S1[0] + S1[2] / 2, BY + BH), (S1[0] + S1[2] / 2, BY + BH + 26), (S2[0] + 100, BY + BH + 26),
-        (S2[0] + 100, BY + BH + 2)], ORANGE, 1.6, end=True, dash=DASH["ctrl"])
-f.text(S1[0] + S1[2] / 2 + 8, BY + BH + 40, "sizes at done: the raw-or-set-2 choice, and run n's totals into part 0 word 1 (with the bitmap, word 67)",
-       10, "start", fill=ORANGE)
-# queue 0 is part 0, read in place
-f.text(QX - 8, BY - 21, "queue 0 is part 0, read in place at done n:", 9.5, "end", fill=PURPLE)
-f.text(QX - 8, BY - 8, "words 0, 2–66 → tile n+1; words 1, 67 → tile n", 9.5, "end", fill=PURPLE)
+f.text(660, 626, "code word (32)", 10, "end", fill=BLUE)
+f.text(660, 640, "one per instruction", 9.5, "end", fill=MUTED)
+f.text(777, 626, "log word (64 + read/write tag)", 10, "start", fill=BLUE)
+f.text(777, 640, "at most one per row (§2)", 9.5, "start", fill=MUTED)
 # DMA out, up to its own router input
 f.line([(OT, DM[1]), (OT, CC[1] + CC[3] + 2)], BLUE, SW + 0.4, end=True, dash=DASH["write"])
 rot_text(OT + 12, 400, "DMA packets into a router input of its own → the tiles' memory (first implementation, §24)", 10.5, fill=BLUE)
@@ -224,7 +197,7 @@ f.lines(OB[0] + 12, OB[1] + 38, [
     "11 the fill bus: arbitration, blocking, write buffer, errors back",
     "12 the probe's line bound   13 the fetch path's offset subtract",
     "14 the per-stream compression enables   15 bit numbers",
-    "17 queue depths, the drain's interleaving   18 word layouts",
+    "17 queue depths, the drain's interleaving   18 bit positions",
     "19 when the ROM and decode table load   21 the range's top",
 ], 10.5, fill=INK, lh=15)
 
@@ -238,7 +211,7 @@ f.text(1100, LY + 4, "red: errors", 11.5, "start", fill=RED)
 f.legend_status(40, LY + 28)
 
 f.caption(["The Tracer runs the guest on its own RV64 core. Its instruction cache, data cache and jump LRU are its only local stores; each miss is one 128 B line of a file, (root, depth, line),",
-           "on the fill bus to the memory system. C&C 3 writes its state, tables and input queues into the region, runs it through the window, and at each done drains output queue 0",
-           "(part 0: window n+1's start and run n's totals) and the three streams, sized by set 1 and sent raw or through set 2, by the DMA. Writing word 0 resets everything."],
-          y=H - 66, source="Source: planning/DECISIONS-v1.3.md (to 352df7d) §1–7, 12, 13, 18–25; DECISIONS-v1.26.md items 1, 2, 10, 12; spec/machine-spec.md §4.17, §4.19. Review: WORKER24/NOTES.md.")
+           "on the fill bus to the memory system. C&C 3 writes its state, tables and input queues into the region and runs it through the window; at each done the DMA drains the output",
+           "queues: queue 0 is part 0 read in place (window n+1's start and run n's totals), queues 1–3 the streams (figure 9.2). Writing word 0 resets everything."],
+          y=H - 66, source="Source: planning/DECISIONS-v1.3.md (to 7374646) §1–7, 12, 13, 18–25; DECISIONS-v1.26.md items 1, 2, 10, 12; spec/machine-spec.md §4.17, §4.19. Review: WORKER24/NOTES.md.")
 f.save("fig9_1_tracer.svg")

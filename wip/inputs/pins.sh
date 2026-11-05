@@ -12,6 +12,14 @@ TABLES_REL=v1.26.1/tables/replayer
 # ConvertDelivery and the acceptance kit: v1.26.1's meshsim (frozen), the RTL's target.
 MESHSIM_REL=v1.26.1/meshsim
 
+# gold and jumpmap, pinned by meshsim commit (wip/ moves on; these are built from git archive, not the working tree):
+#   GOLD_SRC      gold 7ef9039 and jumpmap 4788e0e: the v1.2 segment file and jumpmap's outputs exactly as task 109 made
+#                 them (the runner's copies)
+#   GOLD_V13_SRC  gold eeb64b5 (WORKER18's v1.3 accepted, byte-identical to WORKER16's at 2^29): the v1.3 segment file
+#                 (frames 7, 1, 6, then per segment the 68-word frame 2, 3, 4/5), built with GOLD_FORMAT=v1.3
+GOLD_SRC=d97ecdebfe8a8fc5f7f53ac5cc9d517454f9dfb9
+GOLD_V13_SRC=eeb64b5c10efc50965f255d208fa5d6715a42dfe
+
 # run_info RUN: sets PD (program dir), IN (input dir), both relative to the tracer directory of jolt-asic-planning, and
 # SEL (the selected windows, 2^29 only, as 103/104). The paths are kept relative because delivery_writer, gold and
 # jumpmap write them into their manifests (program_dir, input_dir; program, input): relative, a build's files are the

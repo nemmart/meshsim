@@ -8,6 +8,8 @@ cyclone-29     delivery   f8a0622e144a944c51386b5b36f81101dcdeb16e5a8d950c1e9ca0
 cyclone-29     selected   bb95a88f2c3aea5b9f8c564c84444ebde3b477b0e7f4b2698e4b78e0700eb63d  104: w9-deliveries-selected/cyclone-29.manifest.json
 cyclone-29     v1261      2d5e368e5721dcc0b07997a76a1834b98b998ad1d49bfed9a27ee42ede333bd5  107: ConvertDelivery's manifest (scratch, logged)
 cyclone-29     v1261      599e00c89dcab4800d0d6d3b03d12f39c8facf7a4bfa9a27ec439591d9ffea04  105: the same conversion, the other key order
+evm-zone-29    gold-v13   3cd328812c85fb94bbd654b651bf1fa8cf6179eb98b9dd54726acb192a824d72  WORKER18/data/v13: gold's v1.3 file, = WORKER16's (not on the runner)
+cyclone-29     gold-v13   e932baafcbbfa6c98bba967a88f5e84fa8b5ff4a32fdb9345940a6902640eb38  WORKER18/data/v13: the same
 # gold's segment file and jumpmap's outputs: every line of 109's w26-jumpmap/RUN/manifest.sha256 (in Quest
 # results/109-w26-jumpmap-29/RUN-manifest.sha256 and on the runner), but report.json (run times); proof.json and
 # segments.seg.json compared as JSON without their path fields (input; program, input), which 109 wrote as its kit's paths.

@@ -7,8 +7,9 @@
 #                    runner's persistent data: w9-deliveries/, w9-deliveries-selected/, v1261/, gold/, w26-jumpmap/
 #   JAP_DIR=DIR      a jolt-asic-planning checkout at the pin (default: OUT/src/jolt-asic-planning, fetched by fetch.sh)
 #   CLASSES=DIR      prebuilt classes (gold/, jumpmap/, meshsim/), for a machine without javac (a Quest task's kit)
-#   GOLD_COMMIT=H    recorded in proof.json (default: the last commit of wip/gold in this checkout)
-#   GOLD_FORMAT=v1.2 the segment file's format (v1.3: WORKER18's frames 6 and 7, once they land in gold)
+#   GOLD_COMMIT=H    recorded in proof.json (default: gold's last commit at GOLD_SRC, pins.sh)
+#   GOLD_FORMAT=...  the segment files to write: v1.2 (default: what jumpmap, T1 and the runner's data use), v1.3 (also
+#                    gold-v1.3/RUN/: WORKER18's v1.3 file, frames 7, 1 and 6 added), or "v1.2 v1.3"
 #   LIBELF_PREFIX=D  a libelf installed under D/usr (no libelf-dev on the machine)
 #   JOBS=N           compile jobs (default nproc);  JAVA_HEAP=4g
 # Every step writes into a staging directory beside its target and moves it into place only when complete and checked,
@@ -26,7 +27,7 @@ TB=$OUT/build/tracer; DW=$OUT/build/delivery_writer
 PREBUILT=${CLASSES:+1}; CLASSES=${CLASSES:-$OUT/build/classes}
 TAB=$MESHSIM/$TABLES_REL
 GOLD_FORMAT=${GOLD_FORMAT:-v1.2}
-GOLD_COMMIT=${GOLD_COMMIT:-$(git -C "$MESHSIM" log -1 --format=%h -- wip/gold 2>/dev/null)}
+GOLD_COMMIT=${GOLD_COMMIT:-$(git -C "$MESHSIM" log -1 --format=%h "$GOLD_SRC" -- wip/gold 2>/dev/null)}
 JOBS=${JOBS:-$(nproc)}; HEAP=${JAVA_HEAP:-4g}
 PY="python3 $HERE/lib/inputs.py"
 if [ -n "${LIBELF_PREFIX:-}" ]; then
@@ -56,9 +57,9 @@ step_tools() {
   fi
   say "delivery_writer $DW (jolt-asic-planning ${JAP_COMMIT:0:7})"
   if [ -z "$PREBUILT" ]; then
-    local M; M=$(git -C "$MESHSIM" rev-parse HEAD)
+    local M; M=$(git -C "$MESHSIM" rev-parse HEAD):$GOLD_SRC:$GOLD_V13_SRC
     if [ -n "${FORCE:-}" ] || [ "$(cat "$CLASSES.stamp" 2>/dev/null)" != "$M" ]; then
-      say "classes: gold, jumpmap (wip/), ConvertDelivery ($MESHSIM_REL), javac --release 21"
+      say "classes: gold and jumpmap (meshsim ${GOLD_SRC:0:7}), gold v1.3 (${GOLD_V13_SRC:0:7}), ConvertDelivery ($MESHSIM_REL), javac --release 21"
       bash "$HERE/lib/classes.sh" "$MESHSIM" "$CLASSES" || die "javac"
       echo "$M" > "$CLASSES.stamp"
     fi
@@ -110,22 +111,28 @@ step_convert() {
   say "v1.26.1: $V/$RUN.manifest.json $(cat "$V/$RUN.COMPLETE") (canonical key order)"
 }
 
-# ---- gold: section 16's segment file (gold.Main segments; v1.2 frames 1-5) ----
-step_gold() {
-  local G=$OUT/gold ST=$OUT/gold/.staging-$RUN
-  case $GOLD_FORMAT in
-    v1.2) ;;
-    v1.3) die "GOLD_FORMAT=v1.3: gold doesn't write frames 6 and 7 yet (WORKER18); add its command here when it does" ;;
-    *) die "GOLD_FORMAT $GOLD_FORMAT (v1.2 or v1.3)" ;;
-  esac
-  if complete "$G/$RUN" "$G/$RUN/segments.seg"; then say "gold: complete already"; else
+# ---- gold: section 16's segment file (gold.Main segments): v1.2 (frames 1-5) and, with GOLD_FORMAT=v1.3, the v1.3 file ----
+gold_one() {  # gold_one FORMAT DIR CLASSES
+  local G=$OUT/$2 ST=$OUT/$2/.staging-$RUN
+  mkdir -p "$G"
+  if complete "$G/$RUN" "$G/$RUN/segments.seg"; then say "gold $1: complete already"; else
+    [ -f "$3/gold/Main.class" ] || die "no $3 (gold $1's classes)"
     rm -rf "$ST"; mkdir -p "$ST"
-    ( cd "$T" && java -Xmx"$HEAP" -cp "$CLASSES/gold" gold.Main segments "$PD" "$IN" "$ST/segments.seg" ) > "$OUT/logs/$RUN-gold.log" 2>&1 || { tail -5 "$OUT/logs/$RUN-gold.log"; die "gold"; }
-    tail -1 "$OUT/logs/$RUN-gold.log"
+    ( cd "$T" && java -Xmx"$HEAP" -cp "$3" gold.Main segments "$PD" "$IN" "$ST/segments.seg" ) > "$OUT/logs/$RUN-$2.log" 2>&1 || { tail -5 "$OUT/logs/$RUN-$2.log"; die "gold $1"; }
+    tail -1 "$OUT/logs/$RUN-$2.log"
     rm -f "$G/$RUN.COMPLETE"; rm -rf "${G:?}/$RUN"; mv "$ST" "$G/$RUN" || die "moving into place"
     mark "$G/$RUN" "$G/$RUN/segments.seg"
   fi
-  say "gold ($GOLD_FORMAT): $G/$RUN/segments.seg $(cat "$G/$RUN.COMPLETE")"
+  say "gold $1: $G/$RUN/segments.seg $(cat "$G/$RUN.COMPLETE")"
+}
+step_gold() {
+  for f in $GOLD_FORMAT; do
+    case $f in
+      v1.2) gold_one v1.2 gold "$CLASSES/gold" ;;          # gold 7ef9039 writes v1.2 (it has no --format)
+      v1.3) gold_one v1.3 gold-v1.3 "$CLASSES/gold-v13" ;;  # gold eeb64b5's default is v1.3
+      *) die "GOLD_FORMAT $f (v1.2, v1.3)" ;;
+    esac
+  done
 }
 
 # ---- jumpmap: the jump table (frame6.bin, map.lines), initial.pages, seg/NNN.pages, proof.json (as task 109) ----

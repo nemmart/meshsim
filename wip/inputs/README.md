@@ -33,7 +33,8 @@ Sizes: EVM Zone trace-23 about 700 MB, Cyclone input/22 about 350 MB; at 2²⁹ 
 | jolt-asic-planning (`tracer-standalone-main`) | `fa59d9a` (jolt-cpp `88dca85`): the guests and inputs, the tracer, `delivery_writer` |
 | the universal replayer tables | `v1.26.1/tables/replayer/` (equal to `wip/tables/replayer/`, and to what 103/104 used) |
 | `ConvertDelivery` and the acceptance kit | `v1.26.1/meshsim/` |
-| gold, jumpmap | `wip/gold/` (`7ef9039`), `wip/jumpmap/` |
+| gold, jumpmap (v1.2 file, the Tracer's inputs) | meshsim `d97ecde`: gold `7ef9039`, jumpmap `4788e0e` (task 109's), built from `git archive`, not the working tree |
+| gold, the v1.3 file | meshsim `eeb64b5`: WORKER18's accepted v1.3 gold |
 
 The runner's deliveries were written at `8d546e3` (jolt-cpp `821e1bd`); WORKER16 found the two tracers' output identical,
 and Quest 111/112 check it file by file. (`JAP_COMMIT=8d546e3… ./build.sh …` builds at the old pin, should it ever be needed;
@@ -68,7 +69,10 @@ WORKER9's writer emits them; `RUN.manifest.json` beside it, `manifest.json` the 
 
 **`gold/RUN/`: gold's segment file.** `segments.seg` (DECISIONS-v1.3 section 16: frame 1, then per segment frames 2, 3
 and 4 or 5; byte-identical to WORKER16's `segment_writer`), `.cuts` (the segments' first rows), `.json` (counts).
-v1.2 today: frames 6 and 7 come with WORKER18's formats (`GOLD_FORMAT=v1.3` is the hook in `build.sh`).
+This is the v1.2 file, which jumpmap, T1 and the runner's data use. **`gold-v1.3/RUN/`** (`GOLD_FORMAT="v1.2 v1.3"`):
+WORKER18's v1.3 file (frame 7 the proof parameters, frame 1 the per-segment pages, frame 6 the jump table, then per
+segment frame 2 as the 68-word record, frames 3 and 4 or 5; DECISIONS-v1.3 section 16, `WORKER18/NOTES.md`). At 2²⁹ it
+equals WORKER18's and WORKER16's (`3cd32881…`, `e932baaf…`; built here in 30 s on one CPU).
 
 **`w26-jumpmap/RUN/`: the Tracer's host-side inputs** (WORKER26, `wip/jumpmap/README.md`):
 

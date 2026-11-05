@@ -1,0 +1,53 @@
+From cdde868b050b3c6c5cb12e271ba34ae6cd8ba071 Mon Sep 17 00:00:00 2001
+From: WORKER18 <worker18@meshsim.local>
+Date: Thu, 5 Nov 2026 13:28:06 +0000
+Subject: [PATCH] D14 (meshsim UPSTREAM-DIFFS, owner's ruling): LR/SC with rd =
+ x0 are no longer exempt from the rd = x0 remap, as a16z 7189216
+ (handles_rd_zero_internally: ECALL, MRET, EBREAK, CSRRW, CSRRS). Reproducers
+ (meshsim wip/gold/test/guests): lr_d_x0_nonzero, lr_w_x0_nonzero,
+ lr_d_x0_zero, sc_d_x0, sc_w_x0 now give a16z's rows (were different on all
+ five). EVM Zone trace-23, Cyclone input/22 and tracer-tests unchanged. The
+ inlines stay exempt (their rows match a16z's unless rd = x0 is the output
+ address, which no provable program does)
+
+---
+ tracer/src/tracer/isa/virtual.cpp | 16 ++++++++--------
+ 1 file changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/tracer/src/tracer/isa/virtual.cpp b/tracer/src/tracer/isa/virtual.cpp
+index 55b7ff7..180df7c 100644
+--- a/tracer/src/tracer/isa/virtual.cpp
++++ b/tracer/src/tracer/isa/virtual.cpp
+@@ -65,10 +65,14 @@ bool rd0_is_handled_internally(isa::OpCode op) {
+     // and all INLINE opcodes from the generic rd=x0 trace rewrite, so their
+     // per-opcode expansions run unmodified instead of being remapped to a
+     // throwaway virtual register. We mirror that exclusion here for parity:
+-    //   - LR/SC: jolt-cpp tracks reservation state in the dedicated stateful
+-    //     virtual registers vr_reservation_w / vr_reservation_d (not on the
+-    //     source rd). Letting rd fall through as x0 is a no-op for the loaded
+-    //     value / success bit but keeps reservation bookkeeping intact.
++    //   - LR/SC are NOT exempt (any more): a16z's current expansion
++    //     (7189216, crates/jolt-program/src/expand/operands.rs:51-60,
++    //     handles_rd_zero_internally: ECALL, MRET, EBREAK, CSRRW, CSRRS only)
++    //     remaps their rd = x0 to a temporary like any other side-effecting
++    //     instruction, and a16z's bytecode is what proofs are verified against.
++    //     Keeping x0 gave different rows (LD x0 instead of LD x40, temporaries
++    //     shifted) for every LR/SC x0, and made LR x0 of a nonzero word
++    //     unprovable where a16z proves it. (meshsim UPSTREAM-DIFFS D14.)
+     //   - INLINE opcodes (KECCAK, SHA-256, BLAKE2/3, BIGINT256_MUL): rd is
+     //     the *output buffer base address* (e.g. SD rd, vN, +offset in
+     //     bigint_multiply.inc:195-202). Pre-fix, the remap silently redirected
+@@ -76,10 +80,6 @@ bool rd0_is_handled_internally(isa::OpCode op) {
+     //     write goes to [x0+offset] = the first 64 bytes of guest RAM. Both
+     //     are guest bugs (caller passed rd=x0 to an INLINE), but post-fix is
+     //     the same guest bug as upstream rather than a divergent one.
+-    case isa::LR_W:
+-    case isa::LR_D:
+-    case isa::SC_W:
+-    case isa::SC_D:
+     case isa::KECCAK256:
+     case isa::KECCAK256_ABSORB_PERMUTE:
+     case isa::SHA256_INLINE:
+-- 
+2.43.0
+

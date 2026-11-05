@@ -1,0 +1,355 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="1216" viewBox="0 0 1300 1216" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif">
+<defs></defs>
+<rect width="1300" height="1216" fill="white"/>
+<text x="24.0" y="34.0" font-size="18" text-anchor="start" font-weight="bold" fill="#444441">Figure 9.3. The state record: 68 words of 128 bits, one format for the host, the Tracer and the replayer</text>
+<text x="24.0" y="56.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#6b6a64">v1.3 (DECISIONS-v1.3 §23, §24; DECISIONS-v1.26 items 1, 2, 8, 12; spec §4.19.2) — byte offsets 0x000–0x43F of the region; narrow fields widened, not to scale</text>
+<text x="60.0" y="98.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64">offset</text>
+<text x="150.0" y="98.0" font-size="11" text-anchor="end" font-weight="normal" fill="#6b6a64">word</text>
+<text x="172.0" y="98.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">127</text>
+<text x="1172.0" y="98.0" font-size="10.5" text-anchor="end" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">0</text>
+<text x="672.0" y="98.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">bits</text>
+<rect x="172.0" y="108.0" width="67.4" height="56.0" rx="0" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="205.7" y="133.8" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#6b6a64">spare</text>
+<text x="205.7" y="147.2" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">[127:117]</text>
+<rect x="239.4" y="108.0" width="82.0" height="56.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="1"/>
+<text x="280.4" y="127.5" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">output</text>
+<text x="280.4" y="140.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">rd_prev</text>
+<text x="280.4" y="153.5" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">[116]</text>
+<rect x="321.4" y="108.0" width="82.0" height="56.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="1"/>
+<text x="362.4" y="127.5" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">use store</text>
+<text x="362.4" y="140.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">log</text>
+<text x="362.4" y="153.5" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">[115]</text>
+<rect x="403.4" y="108.0" width="82.0" height="56.0" rx="0" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="444.4" y="133.8" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#6b6a64">reserved</text>
+<text x="444.4" y="147.2" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">[114:112]</text>
+<rect x="485.4" y="108.0" width="98.1" height="56.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="1"/>
+<text x="534.5" y="133.8" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">next offset</text>
+<text x="534.5" y="147.2" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">[111:96]</text>
+<rect x="583.5" y="108.0" width="196.2" height="56.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="1"/>
+<text x="681.6" y="133.8" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">instr_idx</text>
+<text x="681.6" y="147.2" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">[95:64]</text>
+<rect x="779.7" y="108.0" width="392.3" height="56.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="1"/>
+<text x="975.8" y="133.8" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">pc</text>
+<text x="975.8" y="147.2" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">[63:0]</text>
+<text x="60.0" y="140.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">0x000</text>
+<text x="150.0" y="140.0" font-size="12" text-anchor="end" font-weight="bold" fill="#444441">0</text>
+<text x="1182.0" y="132.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">the state word:</text>
+<text x="1182.0" y="146.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">writing it resets</text>
+<rect x="172.0" y="164.0" width="78.4" height="56.0" rx="0" fill="white" stroke="#7F77DD" stroke-width="1.3" stroke-dasharray="6 4"/>
+<text x="211.2" y="183.5" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#6b6a64">spare</text>
+<text x="211.2" y="196.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#6b6a64">(advice?)</text>
+<text x="211.2" y="209.5" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">[127:115]</text>
+<rect x="250.4" y="164.0" width="102.5" height="56.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="1"/>
+<text x="301.7" y="183.5" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">write log</text>
+<text x="301.7" y="196.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">values out</text>
+<text x="301.7" y="209.5" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">[114:98]</text>
+<rect x="353.0" y="164.0" width="102.5" height="56.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="1"/>
+<text x="404.2" y="183.5" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">read log</text>
+<text x="404.2" y="196.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">values out</text>
+<text x="404.2" y="209.5" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">[97:81]</text>
+<rect x="455.5" y="164.0" width="102.5" height="56.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="1"/>
+<text x="506.8" y="183.5" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">code</text>
+<text x="506.8" y="196.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">values out</text>
+<text x="506.8" y="209.5" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">[80:64]</text>
+<rect x="558.0" y="164.0" width="78.4" height="56.0" rx="0" fill="white" stroke="#7F77DD" stroke-width="1.3" stroke-dasharray="6 4"/>
+<text x="597.3" y="183.5" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#6b6a64">spare</text>
+<text x="597.3" y="196.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#6b6a64">(advice?)</text>
+<text x="597.3" y="209.5" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">[63:51]</text>
+<rect x="636.5" y="164.0" width="82.0" height="56.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="1"/>
+<text x="677.5" y="183.5" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">write log</text>
+<text x="677.5" y="196.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">compressed</text>
+<text x="677.5" y="209.5" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">[50]</text>
+<rect x="718.5" y="164.0" width="82.0" height="56.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="1"/>
+<text x="759.5" y="183.5" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">read log</text>
+<text x="759.5" y="196.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">compressed</text>
+<text x="759.5" y="209.5" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">[49]</text>
+<rect x="800.5" y="164.0" width="82.0" height="56.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="1"/>
+<text x="841.5" y="183.5" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">code</text>
+<text x="841.5" y="196.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">compressed</text>
+<text x="841.5" y="209.5" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">[48]</text>
+<rect x="882.5" y="164.0" width="96.5" height="56.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="1"/>
+<text x="930.7" y="183.5" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">write log</text>
+<text x="930.7" y="196.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">words</text>
+<text x="930.7" y="209.5" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">[47:32]</text>
+<rect x="979.0" y="164.0" width="96.5" height="56.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="1"/>
+<text x="1027.2" y="183.5" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">read log</text>
+<text x="1027.2" y="196.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">words</text>
+<text x="1027.2" y="209.5" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">[31:16]</text>
+<rect x="1075.5" y="164.0" width="96.5" height="56.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="1"/>
+<text x="1123.7" y="183.5" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">code</text>
+<text x="1123.7" y="196.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">words</text>
+<text x="1123.7" y="209.5" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">[15:0]</text>
+<text x="60.0" y="196.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">0x010</text>
+<text x="150.0" y="196.0" font-size="12" text-anchor="end" font-weight="bold" fill="#444441">1</text>
+<rect x="1180.0" y="166.0" width="112.0" height="52.0" rx="4" fill="#FAEEDA" stroke="#7F77DD" stroke-width="1.3" stroke-dasharray="6 4"/>
+<text x="1236.0" y="181.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">advice: values</text>
+<text x="1236.0" y="194.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">left, 23 bits,</text>
+<text x="1236.0" y="207.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64">live; bits: SP1</text>
+<rect x="172.0" y="220.0" width="500.0" height="56.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="1"/>
+<text x="422.0" y="245.8" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">register 1</text>
+<text x="422.0" y="259.2" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">[127:64]</text>
+<rect x="672.0" y="220.0" width="500.0" height="56.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="1"/>
+<text x="922.0" y="245.8" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">register 0</text>
+<text x="922.0" y="259.2" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">[63:0]</text>
+<text x="60.0" y="252.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">0x020</text>
+<text x="150.0" y="252.0" font-size="12" text-anchor="end" font-weight="bold" fill="#444441">2</text>
+<rect x="172.0" y="276.0" width="500.0" height="56.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="1"/>
+<text x="422.0" y="301.8" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">register 3</text>
+<text x="422.0" y="315.2" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">[127:64]</text>
+<rect x="672.0" y="276.0" width="500.0" height="56.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="1"/>
+<text x="922.0" y="301.8" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">register 2</text>
+<text x="922.0" y="315.2" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">[63:0]</text>
+<text x="60.0" y="308.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">0x030</text>
+<text x="150.0" y="308.0" font-size="12" text-anchor="end" font-weight="bold" fill="#444441">3</text>
+<rect x="172.0" y="332.0" width="1000.0" height="44.0" rx="0" fill="white" stroke="white" stroke-width="0"/>
+<polyline points="172.0,332.0 172.0,376.0" fill="none" stroke="#888780" stroke-width="1" stroke-linejoin="round" stroke-dasharray="3 3"/>
+<polyline points="1172.0,332.0 1172.0,376.0" fill="none" stroke="#888780" stroke-width="1" stroke-linejoin="round" stroke-dasharray="3 3"/>
+<path d="M164,341 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0" fill="none" stroke="#888780" stroke-width="1.3"/>
+<path d="M164,367 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0 q6,5 12,0 q6,-5 12,0" fill="none" stroke="#888780" stroke-width="1.3"/>
+<text x="672.0" y="358.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#6b6a64" font-style="italic">words 4–64 (0x040–0x40F): registers 4–125, two to a word, not shown</text>
+<rect x="172.0" y="376.0" width="500.0" height="56.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="1"/>
+<text x="422.0" y="401.8" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">register 127</text>
+<text x="422.0" y="415.2" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">[127:64]</text>
+<rect x="672.0" y="376.0" width="500.0" height="56.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="1"/>
+<text x="922.0" y="401.8" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">register 126</text>
+<text x="922.0" y="415.2" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">[63:0]</text>
+<text x="60.0" y="408.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">0x410</text>
+<text x="150.0" y="408.0" font-size="12" text-anchor="end" font-weight="bold" fill="#444441">65</text>
+<rect x="172.0" y="432.0" width="82.0" height="56.0" rx="0" fill="white" stroke="#7F77DD" stroke-width="1.3" stroke-dasharray="6 4"/>
+<text x="213.0" y="457.8" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#6b6a64">spare</text>
+<text x="213.0" y="471.2" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64">4 bits</text>
+<rect x="254.0" y="432.0" width="306.5" height="56.0" rx="0" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1.3" stroke-dasharray="6 4"/>
+<text x="407.3" y="457.8" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">lowest_address / 4 KB</text>
+<text x="407.3" y="471.2" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64">52 bits</text>
+<rect x="560.5" y="432.0" width="82.0" height="56.0" rx="0" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1.3" stroke-dasharray="6 4"/>
+<text x="601.5" y="457.8" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">log2 K</text>
+<text x="601.5" y="471.2" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64">6 bits</text>
+<rect x="642.5" y="432.0" width="82.0" height="56.0" rx="0" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1.3" stroke-dasharray="6 4"/>
+<text x="683.5" y="451.5" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">map</text>
+<text x="683.5" y="464.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">depth</text>
+<text x="683.5" y="477.5" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64">2 bits</text>
+<rect x="724.5" y="432.0" width="182.7" height="56.0" rx="0" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1.3" stroke-dasharray="6 4"/>
+<text x="815.9" y="457.8" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">map file root</text>
+<text x="815.9" y="471.2" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64">31 bits</text>
+<rect x="907.3" y="432.0" width="82.0" height="56.0" rx="0" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1.3" stroke-dasharray="6 4"/>
+<text x="948.3" y="451.5" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">memory</text>
+<text x="948.3" y="464.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">depth</text>
+<text x="948.3" y="477.5" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64">2 bits</text>
+<rect x="989.3" y="432.0" width="182.7" height="56.0" rx="0" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1.3" stroke-dasharray="6 4"/>
+<text x="1080.6" y="457.8" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">memory file root</text>
+<text x="1080.6" y="471.2" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64">31 bits</text>
+<text x="60.0" y="464.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">0x420</text>
+<text x="150.0" y="464.0" font-size="12" text-anchor="end" font-weight="bold" fill="#444441">66</text>
+<text x="1182.0" y="456.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">the files word:</text>
+<text x="1182.0" y="470.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">bits: SP1</text>
+<rect x="172.0" y="488.0" width="1000.0" height="56.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="1"/>
+<text x="672.0" y="513.8" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">template bitmap: bit i set if the window used controller-fed inline template i</text>
+<text x="672.0" y="527.2" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">[127:0]</text>
+<text x="60.0" y="520.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">0x430</text>
+<text x="150.0" y="520.0" font-size="12" text-anchor="end" font-weight="bold" fill="#444441">67</text>
+<text x="1182.0" y="520.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">the end: 0x440</text>
+<text x="1182.0" y="364.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441"></text>
+<rect x="172.0" y="108.0" width="1000.0" height="436.0" rx="0" fill="none" stroke="#444441" stroke-width="1.6"/>
+<rect x="40.0" y="562.0" width="30.0" height="18.0" rx="3" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1.2"/>
+<text x="78.0" y="576.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">at done n: window n+1's start (to tile n+1)</text>
+<rect x="358.9" y="562.0" width="30.0" height="18.0" rx="3" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1.2"/>
+<text x="396.9" y="576.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">at done n: run n's totals (to tile n)</text>
+<rect x="640.0" y="562.0" width="30.0" height="18.0" rx="3" fill="#FAEEDA" stroke="#D85A30" stroke-width="1.2"/>
+<text x="678.0" y="576.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">live across the segment</text>
+<rect x="832.9" y="562.0" width="30.0" height="18.0" rx="3" fill="white" stroke="#888780" stroke-width="1.2"/>
+<text x="870.9" y="576.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">spare or reserved: 0</text>
+<rect x="40.0" y="590.0" width="34.0" height="18.0" rx="4" fill="white" stroke="#7F77DD" stroke-width="1.2" stroke-dasharray="6 4"/>
+<text x="82.0" y="603.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">proposed: suggested, not yet ruled on</text>
+<rect x="340.0" y="590.0" width="34.0" height="18.0" rx="4" fill="white" stroke="#B5651D" stroke-width="1.4" stroke-dasharray="2 3"/>
+<text x="382.0" y="603.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">open: still to be settled</text>
+<text x="40.0" y="640.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">The fields</text>
+<rect x="40.0" y="650.0" width="222.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="46.0" y="664.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">word, field</text>
+<rect x="262.0" y="650.0" width="428.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="268.0" y="664.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">holds</text>
+<rect x="690.0" y="650.0" width="212.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="696.0" y="664.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">written by</text>
+<rect x="902.0" y="650.0" width="210.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="908.0" y="664.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">read by</text>
+<rect x="1112.0" y="650.0" width="148.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="1118.0" y="664.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">sources</text>
+<rect x="40.0" y="671.0" width="222.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="46.0" y="685.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">0  pc [63:0]</text>
+<rect x="262.0" y="671.0" width="428.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="268.0" y="685.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">the pc at the window's first row; live while the Tracer runs</text>
+<rect x="690.0" y="671.0" width="212.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="696.0" y="685.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">host (frame 2), C&amp;C 3; the Tracer</text>
+<rect x="902.0" y="671.0" width="210.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="908.0" y="685.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">the Tracer; the replayer</text>
+<rect x="1112.0" y="671.0" width="148.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="1118.0" y="685.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">4.19.2, §23</text>
+<rect x="40.0" y="692.0" width="222.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="46.0" y="706.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">0  instr_idx [95:64]</text>
+<rect x="262.0" y="692.0" width="428.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="268.0" y="706.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">that row's index in the committed bytecode; live</text>
+<rect x="690.0" y="692.0" width="212.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="696.0" y="706.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">host (frame 2), C&amp;C 3; the Tracer</text>
+<rect x="902.0" y="692.0" width="210.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="908.0" y="706.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">the Tracer; the replayer</text>
+<rect x="1112.0" y="692.0" width="148.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="1118.0" y="706.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">4.19.2, §18, §23</text>
+<rect x="40.0" y="713.0" width="222.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="46.0" y="727.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">0  next offset [111:96]</text>
+<rect x="262.0" y="713.0" width="428.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="268.0" y="727.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">the rows of the first instruction's expansion already run</text>
+<rect x="690.0" y="713.0" width="212.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="696.0" y="727.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">host (frame 2), C&amp;C 3; the Tracer</text>
+<rect x="902.0" y="713.0" width="210.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="908.0" y="727.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">the Tracer; the replayer</text>
+<rect x="1112.0" y="713.0" width="148.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="1118.0" y="727.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">4.19.2, §23</text>
+<rect x="40.0" y="734.0" width="222.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="46.0" y="748.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">0  reserved [114:112]</text>
+<rect x="262.0" y="734.0" width="428.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="268.0" y="748.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">v1.25's compression flags: written 0 and ignored, never reused</text>
+<rect x="690.0" y="734.0" width="212.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="696.0" y="748.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">—</text>
+<rect x="902.0" y="734.0" width="210.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="908.0" y="748.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">—</text>
+<rect x="1112.0" y="734.0" width="148.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1118.0" y="748.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">4.19.2</text>
+<rect x="40.0" y="755.0" width="222.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="46.0" y="769.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">0  use store log [115]</text>
+<rect x="262.0" y="755.0" width="428.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="268.0" y="769.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">per pass: store rows pop the write log (the Tracer ignores it)</text>
+<rect x="690.0" y="755.0" width="212.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="696.0" y="769.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">the tile's controller, per pass</text>
+<rect x="902.0" y="755.0" width="210.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="908.0" y="769.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">the replayer</text>
+<rect x="1112.0" y="755.0" width="148.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="1118.0" y="769.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">v1.26 item 8</text>
+<rect x="40.0" y="776.0" width="222.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="46.0" y="790.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">0  output rd_prev [116]</text>
+<rect x="262.0" y="776.0" width="428.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="268.0" y="790.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">per pass: output rows carry rd's value before the row</text>
+<rect x="690.0" y="776.0" width="212.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="696.0" y="790.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">the tile's controller, per pass</text>
+<rect x="902.0" y="776.0" width="210.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="908.0" y="790.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">the replayer</text>
+<rect x="1112.0" y="776.0" width="148.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="1118.0" y="790.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">v1.26 item 8</text>
+<rect x="40.0" y="797.0" width="222.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="46.0" y="811.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">0  spare [127:117]</text>
+<rect x="262.0" y="797.0" width="428.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="268.0" y="811.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">0</text>
+<rect x="690.0" y="797.0" width="212.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="696.0" y="811.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">—</text>
+<rect x="902.0" y="797.0" width="210.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="908.0" y="811.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">—</text>
+<rect x="1112.0" y="797.0" width="148.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1118.0" y="811.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">4.19.2</text>
+<rect x="40.0" y="818.0" width="222.0" height="21.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="0.8"/>
+<text x="46.0" y="832.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">1  words [15:0] [31:16] [47:32]</text>
+<rect x="262.0" y="818.0" width="428.0" height="21.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="0.8"/>
+<text x="268.0" y="832.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">code, read log, write log: 128-bit words as sent, padding included</text>
+<rect x="690.0" y="818.0" width="212.0" height="21.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="0.8"/>
+<text x="696.0" y="832.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">the Tracer, at done n</text>
+<rect x="902.0" y="818.0" width="210.0" height="21.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="0.8"/>
+<text x="908.0" y="832.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">C&amp;C 3; the replayer</text>
+<rect x="1112.0" y="818.0" width="148.0" height="21.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="0.8"/>
+<text x="1118.0" y="832.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">4.19.2, §24</text>
+<rect x="40.0" y="839.0" width="222.0" height="21.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="0.8"/>
+<text x="46.0" y="853.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">1  compressed [50:48]</text>
+<rect x="262.0" y="839.0" width="428.0" height="21.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="0.8"/>
+<text x="268.0" y="853.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">each stream raw (0) or through set 2 (1): set 1's choice</text>
+<rect x="690.0" y="839.0" width="212.0" height="21.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="0.8"/>
+<text x="696.0" y="853.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">the Tracer, at done n</text>
+<rect x="902.0" y="839.0" width="210.0" height="21.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="0.8"/>
+<text x="908.0" y="853.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">the replayer</text>
+<rect x="1112.0" y="839.0" width="148.0" height="21.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="0.8"/>
+<text x="1118.0" y="853.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">§3, v1.26 item 2</text>
+<rect x="40.0" y="860.0" width="222.0" height="21.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="0.8"/>
+<text x="46.0" y="874.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">1  values out [80:64] [97:81] [114:98]</text>
+<rect x="262.0" y="860.0" width="428.0" height="21.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="0.8"/>
+<text x="268.0" y="874.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">code, read log, write log: the values each stream decodes to</text>
+<rect x="690.0" y="860.0" width="212.0" height="21.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="0.8"/>
+<text x="696.0" y="874.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">the Tracer, at done n</text>
+<rect x="902.0" y="860.0" width="210.0" height="21.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="0.8"/>
+<text x="908.0" y="874.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">the replayer</text>
+<rect x="1112.0" y="860.0" width="148.0" height="21.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="0.8"/>
+<text x="1118.0" y="874.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">4.19.2, §24</text>
+<rect x="40.0" y="881.0" width="222.0" height="21.0" rx="0" fill="#FAEEDA" stroke="#888780" stroke-width="0.8"/>
+<text x="46.0" y="895.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">1  advice (23 bits; SP1 places)</text>
+<rect x="262.0" y="881.0" width="428.0" height="21.0" rx="0" fill="#FAEEDA" stroke="#888780" stroke-width="0.8"/>
+<text x="268.0" y="895.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">advice words left: the segment's size at load, counting down live</text>
+<rect x="690.0" y="881.0" width="212.0" height="21.0" rx="0" fill="#FAEEDA" stroke="#888780" stroke-width="0.8"/>
+<text x="696.0" y="895.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">host, C&amp;C 3; the Tracer's pops</text>
+<rect x="902.0" y="881.0" width="210.0" height="21.0" rx="0" fill="#FAEEDA" stroke="#888780" stroke-width="0.8"/>
+<text x="908.0" y="895.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">the Tracer; C&amp;C 3 at the end</text>
+<rect x="1112.0" y="881.0" width="148.0" height="21.0" rx="0" fill="#FAEEDA" stroke="#888780" stroke-width="0.8"/>
+<text x="1118.0" y="895.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">§13, §23, §24</text>
+<rect x="40.0" y="902.0" width="222.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="46.0" y="916.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">1  spare [63:51] [127:115]</text>
+<rect x="262.0" y="902.0" width="428.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="268.0" y="916.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">0; the advice field's candidate home (SP1's call)</text>
+<rect x="690.0" y="902.0" width="212.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="696.0" y="916.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">—</text>
+<rect x="902.0" y="902.0" width="210.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="908.0" y="916.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">—</text>
+<rect x="1112.0" y="902.0" width="148.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="1118.0" y="916.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">4.19.2, §23</text>
+<rect x="40.0" y="923.0" width="222.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="46.0" y="937.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">2–65  registers 0–127</text>
+<rect x="262.0" y="923.0" width="428.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="268.0" y="937.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">word 2 + i: register 2i in [63:0], 2i + 1 in [127:64]; the live register file</text>
+<rect x="690.0" y="923.0" width="212.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="696.0" y="937.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">host (frame 2), C&amp;C 3; the Tracer</text>
+<rect x="902.0" y="923.0" width="210.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="908.0" y="937.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">the Tracer; the replayer</text>
+<rect x="1112.0" y="923.0" width="148.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="1118.0" y="937.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">4.19.2, v1.26 item 12</text>
+<rect x="40.0" y="944.0" width="222.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="46.0" y="958.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">66  memory file (31, 2)</text>
+<rect x="262.0" y="944.0" width="428.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="268.0" y="958.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">root and depth of the Tracer's copy of the start image (.pages)</text>
+<rect x="690.0" y="944.0" width="212.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="696.0" y="958.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">C&amp;C 3, at load</text>
+<rect x="902.0" y="944.0" width="210.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="908.0" y="958.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">the Tracer</text>
+<rect x="1112.0" y="944.0" width="148.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="1118.0" y="958.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">§19, §22, §23</text>
+<rect x="40.0" y="965.0" width="222.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="46.0" y="979.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">66  map file (31, 2)</text>
+<rect x="262.0" y="965.0" width="428.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="268.0" y="979.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">root and depth of the proof's jump-target map</text>
+<rect x="690.0" y="965.0" width="212.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="696.0" y="979.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">C&amp;C 3, at load</text>
+<rect x="902.0" y="965.0" width="210.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="908.0" y="979.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">the Tracer</text>
+<rect x="1112.0" y="965.0" width="148.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="1118.0" y="979.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">§18, §22, §23</text>
+<rect x="40.0" y="986.0" width="222.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="46.0" y="1000.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">66  log2 K (6), lowest_address (52)</text>
+<rect x="262.0" y="986.0" width="428.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="268.0" y="1000.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">the proof's K and layout, in 4 KB units: the range check, the .pages offset</text>
+<rect x="690.0" y="986.0" width="212.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="696.0" y="1000.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">C&amp;C 3, at load</text>
+<rect x="902.0" y="986.0" width="210.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="908.0" y="1000.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">the Tracer</text>
+<rect x="1112.0" y="986.0" width="148.0" height="21.0" rx="0" fill="#EEEDFE" stroke="#888780" stroke-width="0.8"/>
+<text x="1118.0" y="1000.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">§14, §23, §25</text>
+<rect x="40.0" y="1007.0" width="222.0" height="21.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="0.8"/>
+<text x="46.0" y="1021.5" font-size="10" text-anchor="start" font-weight="bold" fill="#444441">67  template bitmap [127:0]</text>
+<rect x="262.0" y="1007.0" width="428.0" height="21.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="0.8"/>
+<text x="268.0" y="1021.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">bit i: the window used controller-fed inline template i</text>
+<rect x="690.0" y="1007.0" width="212.0" height="21.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="0.8"/>
+<text x="696.0" y="1021.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">cleared at load; the Tracer</text>
+<rect x="902.0" y="1007.0" width="210.0" height="21.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="0.8"/>
+<text x="908.0" y="1021.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">C&amp;C 3; the tile's controller</text>
+<rect x="1112.0" y="1007.0" width="148.0" height="21.0" rx="0" fill="#E3ECF6" stroke="#888780" stroke-width="0.8"/>
+<text x="1118.0" y="1021.5" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">4.19.5, §25</text>
+<text x="40.0" y="1050.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">At done n the record is read out in place, as output queue 0: words 0 and 2–66 are window n+1's start, sent to tile n+1; word 1's three output fields and word 67</text>
+<text x="40.0" y="1066.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">are run n's totals, sent to tile n with its three streams. Nothing writes a state between runs. Word 1's advice field counts down live across the segment's 64 runs:</text>
+<text x="40.0" y="1082.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">a pop past 0 is the advice-underflow error, and C&amp;C 3 checks it reads 0 after the 64th done. The replayer ignores words 66 and 67 and word 1's advice field.</text>
+<text x="40.0" y="1098.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#444441">Frame 2 of the segment file takes the same layout (§23).</text>
+<line x1="24" y1="1128" x2="1276" y2="1128" stroke="#B4B2A9" stroke-width="0.8"/>
+<text x="24.0" y="1150.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">The state record is one format from the host through the Tracer to the replayers: 68 words of 128 bits at byte offsets 0x000–0x43F, loaded state word first,</text>
+<text x="24.0" y="1166.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">whose write resets the unit. It is the Tracer's working state, so at each done it is read out in place: purple fields are window n+1's start, blue fields run n's totals.</text>
+<text x="24.0" y="1182.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">Word 66's fields and the advice field are proposed: their bit positions are SP1's to place.</text>
+<text x="24.0" y="1198.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">Source: planning/DECISIONS-v1.3.md (to 7374646) §3, §13, §23, §24; DECISIONS-v1.26.md items 1, 2, 8, 12; spec/machine-spec.md §4.19.2, §4.19.5. Review: WORKER24/NOTES.md.</text>
+</svg>

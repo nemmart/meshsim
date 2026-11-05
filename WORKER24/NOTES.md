@@ -89,3 +89,15 @@ decided; **open** items are drawn with the open dash (`DASH["open"]`, orange-bro
   purple line from the working state (the state record, read in place by the DMA as output queue 0).
 - **No "part 0" in the figures** (owner, 2026-11-04): it names a range of the region's address space, not a physical
   part, so the figures say "the state record"; these notes keep "part 0" where they tie back to the spec.
+
+## Figure 9.3, the state record (first version)
+
+Drawn as proposed in the plan, with the three questions still open for the owner:
+- **the advice field** (23 bits, a value count, live): a separate proposed box beside word 1, and word 1's two v1.26 spares,
+  [63:51] and [127:115], marked as its candidate homes (proposed dash), since SP1 places it;
+- **word 66**: the six fields in the owner's order from bit 0 (memory root 31, depth 2, map root 31, depth 2, log2 K 6,
+  lowest_address / 4 KB 52, 4 spare), widths only, all proposed;
+- **word 0**: reserved [114:112] (v1.25's compression flags) and spare [127:117] drawn as separate fields.
+Narrow fields are widened to 82 px (not to scale), which `common.bitbar()` can't do, so `fig9_3_record.py` has its own row
+helper; `common.py` is unchanged for 9.3. Fill colours give each field's meaning at done *n*: window *n* + 1's start, run *n*'s
+totals, live, or spare.

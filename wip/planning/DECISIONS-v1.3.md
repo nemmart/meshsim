@@ -1195,6 +1195,12 @@ Decided (O).
     doesn't own** (section 15), one `ERRORS` bit, [8], since a line is writable only when its fill succeeded; the fill status
     can still tell them apart. **To revisit with the memory system's design:** which statuses and page flags it reports is still a
     black box, so this follows WORKER21's proposed fill responses (ok, hole, not owned, beyond the length) until then.
+    **Stores into code are caught here** (owner, 2026-11-05, WORKER21's Q10): Jolt executes its fixed bytecode, but the
+    Tracer fetches through memory, so a store into the text would make its trace silently differ from a16z's. **The host marks
+    every page holding text not writable** when it builds the memory file (it knows the text sections, D1), so such a store
+    sets [8] at the store. **No check on the host's load/store path** (the JIT): the hardware does it. A page shared by text and
+    read-only data becomes read-only too, so a program storing into its own code or its read-only data is rejected where a16z,
+    with no region permissions, would prove it: a deliberate divergence.
     Formerly: **a write to a hole** in the guest's memory (an index entry of `0xFFFFFFFF`), reported by the memory system's walker to the
     requester;
   - **an access to a page that doesn't exist**, beyond the file's length;

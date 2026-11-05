@@ -78,3 +78,10 @@ failed assertion checked; Q9 the pin pending; Q10 stores into code caught by the
   those rows, in a controller-fed expansion, for a multiple of 8, with the same bit.
 - **A run longer than 65,536 rows is UB**, a longer trace run in chunks; **every other proposal accepted**, and the
   section-13 items marked so.
+
+## Item 150, ruled (owner, 2026-11-05; DECISIONS-v1.3 section 25, 1454b60)
+
+[12] is **a16z's own rule on every memory row**: the floor address ea − (ea & *m*), *m* = 0, 4, 6, 7 for doubleword,
+word, halfword and byte rows, must be a multiple of 8 (`floor_access.rs:66–75`, jolt-cpp's `checked_memory_address`). One
+rule for native and inline rows, no first-row exception. 4.21.5 keeps the native-instruction argument as the reason it
+equals natural alignment; 4.21.8 and item 150 follow. This supersedes the two sections above on misalignment.

@@ -2024,7 +2024,7 @@ A write to an unused or unmapped offset is UB (meshsim), as on the replayer (4.1
 | 1, stream word: code, read-log, write-log fields ([101:0]) | written 0 by C&C 3; ignored | — | **run *n*'s totals** (4.21.6): words, values out and compression flag per stream |
 | 1, stream word: advice field ([124:102]) | **the segment's advice values** (frame 3's count, 0 to 2²²) | **counts down by one per advice value popped** | the advice still unconsumed (state, part of window *n* + 1's start) |
 | 2–65, register image | frame 2's registers 0–127 | live (register 0 reads 0, 4.19.7) | **window *n* + 1's start** |
-| 66, files word | the Tracer's copy of memory, the proof's map, log₂ K, `lowest_address` | constant | unchanged (window *n* + 1's, which a replayer ignores) |
+| 66, files word | the Tracer's copy of memory and the proof's map (§22), log₂ K and `lowest_address` (from frame 7, the proof parameters: owner, 2026-11-05, item 155) | constant | unchanged (window *n* + 1's, which a replayer ignores) |
 | 67, template bitmap | ignored | built as the run goes (4.21.4) | **run *n*'s totals**: the inlines the window used |
 
 So at the end of run *n* the 68 words are mixed (§24): **words 0 and 2–66 are window *n* + 1's start, and words 1 and 67 run *n*'s totals** (the advice field apart, which is state). C&C 3 sends each piece where it belongs (4.21.6). Nothing writes a state between runs; window 0's start is the state C&C 3 loaded.
@@ -2088,7 +2088,7 @@ The replayer ignores [28:26], as the Tracer ignores [25:24]. As on the replayer:
 | 42 | `HASH_LINES` | R/W | [4:0] *k*; [31:5] reserved | the map has 2*ᵏ* lines of 128 B |
 | 43 | `EXPANSION_TEMPLATE` | W | [6:0] template number, [31] valid; [30:7] reserved | the template C&C 3 is feeding (4.21.4); a load reads 0 |
 
-Words 37–39 are **0 from `PULSE_RUN` until the run's rows end**, then **fixed and exact** until the next `PULSE_RUN` (the stream word's word counts, 4.21.6). Words 40–42, **the hash's constants**, are context, not state (§18: word 66 has no room), so they are registers: **written once per proof** while the Tracer is stopped (a write while running is UB), sticky, untouched by the word-0 write, 0 after the reset. Words 44–127 are reserved.
+Words 37–39 are **0 from `PULSE_RUN` until the run's rows end**, then **fixed and exact** until the next `PULSE_RUN` (the stream word's word counts, 4.21.6). Words 40–42, **the hash's constants**, are context, not state (§18: word 66 has no room), so they are registers: **written once per proof** while the Tracer is stopped (a write while running is UB), sticky, untouched by the word-0 write, 0 after the reset. Words 44–127 are reserved *(Open, item 157: statistics registers, if bring-up wants them)*.
 
 **Its events** (4.17.3) *(Proposed: the bit positions, item 144; the flag set is §24's, owner, 2026-11-05)*. The positions shared with the replayer are kept, so the advice credit sits where the replayer's read-log credit does:
 

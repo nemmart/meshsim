@@ -25,9 +25,13 @@ public final class Bytecode implements Code {
 
   @Override public VInstr at(int index) { return instrs[index]; }
 
-  /** The standard UNIMP encodings compilers emit: c.unimp (0x0000) and unimp (0xC0001073, csrrw x0, cycle, x0). */
+  /**
+   * The one UNIMP encoding loaded as an unreachable marker: c.unimp (0x0000), which a16z skips at decode
+   * (jolt-program image/elf.rs:126-134). The 32-bit unimp (0xC0001073, csrrw x0, cycle, x0) is rejected at load, as
+   * a16z rejects it (UnsupportedCsr; owner's D4 follow-up, 2026-11-03).
+   */
   static boolean standardUnimp(int word, int size) {
-    return (size == 2 && (word & 0xffff) == 0) || (size == 4 && word == 0xC0001073);
+    return size == 2 && (word & 0xffff) == 0;
   }
 
   /** Thrown at load in strict mode. */
@@ -39,7 +43,7 @@ public final class Bytecode implements Code {
   /** The first row of the expansion of the instruction at pc (0 where none starts). */
   @Override public int indexOf(long pc) {
     long off = pc - codeStart;
-    if (off < 0 || pc >= codeEnd || (off & 1) != 0) throw new EmulationError(String.format("pc %#x outside the code", pc));
+    if (off < 0 || pc >= codeEnd || (off & 1) != 0) throw new EmulationError(String.format("jump target %#x is not in the bytecode map", pc));
     return pcToIndex[(int) (off >>> 1) + 1];
   }
 
@@ -60,12 +64,12 @@ public final class Bytecode implements Code {
 
   /**
    * Gold loads only instructions it can prove (the owner's ruling on UPSTREAM-DIFFS D4, DECISIONS-v1.3 section 17;
-   * one loading mode, strict): any instruction in the load stream that Jolt can't prove throws at load, except the
-   * standard UNIMP encodings, which load as unreachable markers that throw if executed. The bytecode keeps jolt-cpp's
+   * one loading mode, strict): any instruction in the load stream that Jolt can't prove throws at load, except
+   * c.unimp, which loads as an unreachable marker that throws if executed. The bytecode keeps jolt-cpp's
    * structure (UNIMP removed, an undecodable instruction one row), so instruction indices, and the segment files'
    * instr_idx, are jolt-cpp's.
    */
-  public static Bytecode build(long codeStart, byte[] code, HostIo.Encoding encoding) {
+  public static Bytecode build(long codeStart, byte[] code) {
     List<VInstr> out = new ArrayList<>();
     out.add(new VInstr());                    // index 0: NOP (all zero)
     int[] pcToIndex = new int[code.length / 2 + 1];
@@ -74,7 +78,7 @@ public final class Bytecode implements Code {
     int offset = 0;
     while (offset < code.length) {
       Decoder.Decoded d = Decoder.decodeNext(code, offset);
-      Instruction in = HostIo.apply(d.instr(), encoding);
+      Instruction in = d.instr();      // ECALL is always the trap through mtvec, as a16z (owner's D3 ruling)
       long pc = codeStart + offset;
       int word = wordAt(code, offset, d.size());
       offset += d.size();

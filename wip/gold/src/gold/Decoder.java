@@ -363,9 +363,9 @@ public final class Decoder {
         }
       case 2:
         switch (f3) {
-          case 0: { // C.SLLI
+          case 0: { // C.SLLI; with rd = x0 a HINT: SLLI x0, x0, shamt, as a16z (owner's D12 ruling; jolt-cpp: invalid)
             int r = (h >>> 7) & 0x1f, sh = ((h >>> 7) & 0x20) | ((h >>> 2) & 0x1f);
-            return r != 0 ? (sh << 20) | (r << 15) | (1 << 12) | (r << 7) | 0x13 : 0xffffffff;
+            return (sh << 20) | (r << 15) | (1 << 12) | (r << 7) | 0x13;
           }
           case 1: { // C.FLDSP
             int rd = (h >>> 7) & 0x1f, offset = ((h >>> 7) & 0x20) | ((h >>> 2) & 0x18) | ((h << 4) & 0x1c0);

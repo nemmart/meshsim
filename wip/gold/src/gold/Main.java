@@ -82,7 +82,7 @@ public final class Main {
       return false;
     }
     if (m.cycle % (1 << 16) != 0) runHash = Row.mix(runHash, windowHash);
-    System.out.printf("%d rows, run hash %016x, host I/O %s", m.cycle, runHash, p.hostIo);
+    System.out.printf("%d rows, run hash %016x", m.cycle, runHash);
     if (!tohost) { System.out.println(); return true; }
     // ACT4's verdict (tests/arch-tests/jolt/rvmodel_macros.h): tohost = 1 passes, (gp << 1) | 1 fails test case gp
     Long addr = p.symbols.get("tohost");
@@ -175,8 +175,8 @@ public final class Main {
       }
     }
     long refInstrs = Json.u64(refJson, "bytecode_instrs");
-    System.out.printf("layout %s; bytecode %d rows (reference %d); host I/O %s (reference %s)%n", ok ? "matches" : "DIFFERS",
-        p.bytecode.size(), refInstrs, p.hostIo, refJson.get("host_io_encoding"));
+    System.out.printf("layout %s; bytecode %d rows (reference %d)%n", ok ? "matches" : "DIFFERS", p.bytecode.size(),
+        refInstrs);
     if (refInstrs != p.bytecode.size()) ok = false;
 
     // reference rows and window hashes

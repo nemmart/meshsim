@@ -14,7 +14,6 @@ public final class Program {
   public final Layout layout;
   public final Memory memory = new Memory();
   public final Bytecode bytecode;
-  public final HostIo.Encoding hostIo;
   public final java.util.Map<String, Long> symbols;
 
   public Program(Path programDir, Path inputDir) throws IOException {
@@ -56,16 +55,7 @@ public final class Program {
     copyInput(inputDir.resolve("untrusted_advice.bin"), layout.untrustedAdviceStart, layout.untrustedAdviceEnd);
 
     byte[] code = memory.read(layout.codeStart, (int) codeSize);
-    HostIo.Encoding requested = HostIo.Encoding.AUTO;
-    if (meta.get("host_io_encoding") instanceof String e) {
-      requested = switch (e) {
-        case "standard" -> HostIo.Encoding.STANDARD;
-        case "legacy_raw_ecall", "legacy-raw-ecall", "legacy" -> HostIo.Encoding.LEGACY_RAW_ECALL;
-        default -> HostIo.Encoding.AUTO;
-      };
-    }
-    hostIo = HostIo.resolve(code, requested);
-    bytecode = Bytecode.build(layout.codeStart, code, hostIo);
+    bytecode = Bytecode.build(layout.codeStart, code);   // no host I/O rewriting (owner's D3 ruling)
   }
 
   private void copyInput(Path file, long start, long end) throws IOException {

@@ -254,9 +254,14 @@ public final class Machine {
     finish(v, newPc);
   }
 
-  /** finish_instruction (:111-126): a new pc equal to the current one advances, as if there were no jump. */
+  /**
+   * finish_instruction (:111-126): a new pc equal to the current one advances, as if there were no jump. The run ends
+   * only at a JAL with immediate 0 (`jal x0, 0`, a16z's pc stall; spec 4.19.2's end-of-trace encoding follows); a JALR
+   * or branch to address 0 is a jump target not in the map, as a16z fails (owner, DECISIONS-v1.3 section 25).
+   */
   private void finish(VInstr v, long newPc) {
     cycle++;
+    if (newPc == 0 && v.opcode != JAL) throw new EmulationError(String.format("jump target %#x is not in the bytecode map", newPc));
     if (newPc == 0) {
       pc = 0;
       index = 0;
@@ -264,7 +269,7 @@ public final class Machine {
       pc = newPc;
       if (code.removedAt(pc) != null) throw new EmulationError("executed an instruction Jolt can't prove: " + code.removedAt(pc));
       index = code.indexOf(newPc);
-      if (index == 0) throw new EmulationError(String.format("jump to %#x, where no instruction starts", newPc));
+      if (index == 0) throw new EmulationError(String.format("jump target %#x is not in the bytecode map", newPc));
     } else {
       pc += v.pcIncrement;
       index++;

@@ -52,7 +52,8 @@ Decided (O).
 - **At the window's end**, each stream's compressed size is compared with its raw size.
 - **Set 2 compresses on the way out:** a stream drains through set 2 if compressed is smaller, raw otherwise.
   The choice is per window and per stream, recorded in the run log's per-run flags (spec 4.19.15, item 108).
-- **Set 1 sizes window *n* + 1 while set 2 compresses window *n*** (2).
+- *(Set 1 was to size window n + 1 while set 2 compressed window n; superseded by section 2's drain, then go: set 1 sizes each
+  window as it is traced, set 2 compresses it on the way out after done, before the next go.)*
 - **Set 2 reproduces set 1 exactly:** both start each window from the same table state and apply the same
   rules, so set 2's output is exactly the size set 1 counted.
 - **Two sets of three, kept, each stream's compression switchable on and off** (owner, 2026-11-01): a per-stream enable bit; off
@@ -1050,16 +1051,24 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
   window's start plus those totals, then remembers the Tracer's new state as window *n* + 1's start; window 0's start is the state
   it loaded. So the Tracer keeps no snapshot of past state (saving about 1 KB of registers), and **the end-of-segment check is
   software:** after the 64th done the Tracer's state is the segment's end, which C&C 3 compares with the next segment's frame 2.
+  **Clarified** (owner, 2026-11-04): **everything is read out at done, and nothing writes a state between runs**; C&C 3 only
+  pulses run. At the end of run *n* the working state is window *n*'s end, which is **window *n* + 1's start**, and window *n*'s
+  own start no longer exists anywhere. So at done *n* output queue 0's 68 words are mixed: words 0 and 2-66 (the state) are
+  **window *n* + 1's start**, and words 1 and 67 (the stream word and the template bitmap) are **run *n*'s totals**. C&C 3
+  reassembles by where it sends each piece: the state words to tile *n* + 1, as its record's start (window 0's start is the
+  state loaded at the segment's start), and run *n*'s totals and its three streams to tile *n*. No copy, no snapshot, and C&C 3
+  need not hold the state itself. (Whether the pieces land in the tile's memory or straight in its replayer: open.)
 - **A new state is written only at the start of a proof** (owner, 2026-11-01): one segment per ASIC per proof, so between the
   64 windows of a segment nothing is loaded; C&C 3 only reads the state and the queue lengths at each done, drains the output
   queues, and pulses go. **The read queue persists across the windows**, since the segment's advice runs across them (its size
   in the state counts down over the whole segment).
 - **Part 0's state is the working state** (owner, 2026-11-01; DECISIONS-v1.26 item 12): writing words 0-65 writes the live
   registers, pc, `instr_idx` and offset; there is no copy at a run's start. So the Tracer's 64 runs carry on from wherever the
-  last stopped, and its state at done is read straight from the working state into output queue 0.
+  last stopped, and its state at done is read straight from the working state into output queue 0 (window *n* + 1's start,
+  above).
 - **The state is a memory on both units** (owner, 2026-11-01): address-mapped in part 0, as the replayer's at v1.25, not a queue;
-  the whole 68-word record, in section 23's order, at consecutive offsets from 0x000, so the Tracer's DMA sends its output
-  queue 0 as it is. **The write to word 0, the state word at 0x000, is the flushing write.**
+  the whole 68-word record, in section 23's order, at consecutive offsets from 0x000, so the Tracer's DMA sends output queue 0's
+  words as they are, in the two pieces above. **The write to word 0, the state word at 0x000, is the flushing write.**
 - **Setting the state flushes the queues**, on the Tracer and on the replayer alike (owner, 2026-11-01): a state write empties
   every input and output queue, so the new state starts clean, the read queue afresh for the new segment's advice. **So C&C 3
   reads the state out and drains the output queues before writing a new one** (owner): what isn't read out first is simply lost.
@@ -1126,8 +1135,8 @@ Decided (O).
     address** (an address below the start wraps and fails the same compare), alongside the local cache lookup, so it costs no
     cycle; a failure sets its own `ERRORS` bit. **Not the memory system's length check:** `.pages` is larger than the provable
     range (a 4 GB file against Cyclone's 2²⁴ cells, so an access past K but inside the file reads a hole as zero), and a request
-    reaching the memory system is already a (root, depth, line). The Tracer needs `lowest_address` and K in its state (the files
-    word, 66, or two registers: SP1 places them); the upper bound is the cell index below K, to confirm against a16z's prover
+    reaching the memory system is already a (root, depth, line). The Tracer takes `lowest_address` and K from word 66 (section
+    23); the upper bound is the cell index below K, to confirm against a16z's prover
     (or the layout's top). Instruction fetch needs none: a pc outside the code misses the jump map. Such a run can't be proven in
     either codebase (R1CS ties the address to rs1 + imm); a16z's prover rejects it, jolt-cpp's silently drops the access and
     produces a proof that fails verification. **The host tracer isn't required to check** (a per-access check would slow its JIT;

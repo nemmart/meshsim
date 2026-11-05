@@ -191,8 +191,33 @@ def d12_c_slli_x0():
 # changed, virtual.cpp:174-189); a16z's rewrite isn't flagged (found with d12_c_slli_x0)
 GUESTS["rd0_add"] = [addi(A0, 0, 1), r_type(0x33, 0, 0, A0, A0, 0), addi(A0, A0, 1), JAL_SELF]
 
+# WORKER17's findings and the host's v1.3 rules (DECISIONS-v1.3 sections 17, 25)
+def lr(f3, rd, rs1): return (0b00010 << 27) | (rs1 << 15) | (f3 << 12) | (rd << 7) | 0x2f     # lr.w (f3 2), lr.d (f3 3)
+def sc(f3, rd, rs1, rs2): return (0b00011 << 27) | (rs2 << 20) | (rs1 << 15) | (f3 << 12) | (rd << 7) | 0x2f
+def jal_imm0(rd): return (rd << 7) | 0x6f                                                     # jal rd, 0
+SEVEN = [addi(A1, 0, 7)]
+GUESTS["range_below_lowest"] = la(T0, 0x7000_0000) + [ld(A0, T0, 0), JAL_SELF]           # below lowest_address
+GUESTS["range_above_top"] = la(T0, 0x8040_0000) + [ld(A0, T0, 0), JAL_SELF]              # past heap_end: K > max_ram_k
+GUESTS["lr_d_x0_nonzero"] = la(T0, STACK_DATA) + SEVEN + [sd(T0, A1, 0), lr(3, 0, T0), JAL_SELF]
+GUESTS["lr_w_x0_nonzero"] = la(T0, STACK_DATA) + SEVEN + [sd(T0, A1, 0), lr(2, 0, T0), JAL_SELF]
+GUESTS["lr_d_x0_zero"] = la(T0, STACK_DATA) + [lr(3, 0, T0), JAL_SELF]                   # a zero word: provable
+# D14 (owner: follow a16z): LR/SC with rd = x0 are remapped to a temporary, as a16z
+GUESTS["sc_d_x0"] = la(T0, STACK_DATA) + SEVEN + [lr(3, A2, T0), sc(3, 0, T0, A1), ld(A0, T0, 0), JAL_SELF]
+GUESTS["sc_w_x0"] = la(T0, STACK_DATA) + SEVEN + [lr(2, A2, T0), sc(2, 0, T0, A1), lw(A0, T0, 0), JAL_SELF]
+# jolt-cpp also exempts the inlines from the rd = x0 remap; a16z doesn't. Invisible where the inline never reads rd
+# (SHA-256: state at rs1, block at rs2); visible where rd is the output address (BIGINT256_MUL stores the product at rd)
+GUESTS["inline_sha256_rd0"] = la(A0, STACK_DATA) + la(A1, STACK_DATA + 64) + [inline(0, 0, 0, A0, A1), JAL_SELF]
+GUESTS["inline_bigint_rd0"] = la(A0, STACK_DATA) + la(A1, STACK_DATA + 32) + [inline(4, 0, 0, A0, A1), JAL_SELF]
+GUESTS["end_jal_ra_0"] = [addi(A0, 0, 1), jal_imm0(1)]                                    # jal ra, 0: writes ra, ends
+GUESTS["misaligned_inline"] = la(A0, STACK_DATA + 4) + [inline(1, 0, 0, A0, 0), JAL_SELF] # KECCAK256's first LD at +4
+GUESTS["store_into_code"] = la(T0, RAM_START) + [addi(A0, 0, 0x13), sd(T0, A0, 0), JAL_SELF]   # sd into .text
+
+def c_j_0():
+    # c.j 0 (0xa001, decompressed to jal x0, 0) ends the run; c.nop (0x0001) keeps the section 4-aligned
+    return [(".text", struct.pack("<I", addi(A0, 0, 1)) + struct.pack("<HH", 0xa001, 0x0001), True)]
+
 SECTION_GUESTS = {"d1_rodata_in_text": d1_rodata_in_text(), "d1_decodable_gap": d1_decodable_gap(),
-                  "d12_c_slli_x0": d12_c_slli_x0()}
+                  "d12_c_slli_x0": d12_c_slli_x0(), "end_c_j_0": c_j_0()}
 
 def main():
     out = sys.argv[1] if len(sys.argv) > 1 else os.path.dirname(os.path.abspath(__file__))

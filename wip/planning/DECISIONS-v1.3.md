@@ -255,6 +255,10 @@ per row** (owner), and windows 33-36 all fall in the same proof.*
   (not a native RISC-V instruction, about 1.5 rows on average): the core's design point, as 4.21.9 states. Against the budget's
   ceiling of about 24 cycles per row at 1 GHz (10⁸ cycles for a 2²²-row segment), that leaves a wide margin for cache misses,
   map probes and the drain; B1 reports the core's cycles per row and the all-in figure per segment.
+- **Measured** (WORKER22, Quest 110b, both workloads at 2²⁹, every window and boundary matching): **4.65 cycles per row on EVM
+  Zone, 4.48 on Cyclone**, the worst segment 23.8 ms before the drain. **Fine as it is** (owner, 2026-11-05: ample spare
+  capacity), so the **16 KB caches stay**, though a 32 KB instruction cache would take EVM Zone to 4.37 (its fetch stalls are
+  capacity misses).
 - **What the workloads cost**, at about 4 cycles per row and 1 GHz:
   - **Cyclone:** 96,687 untraced rows against 371.5 M traced (0.026 %), all from the division family; at most 129 in any window.
     No secp256k1 inlines. A proof is about 17 ms.
@@ -675,9 +679,18 @@ Decided (O).
   - **D4, narrowed:** `unimp` 0xC0001073 is rejected at load, as a16z does; `c.unimp` stays the only unreachable marker (above).
   - **The program's end is detected by `JAL x0, 0`**, with 4.19.2's end-of-trace encoding unchanged; a JALR or branch to 0 is the
     D5 error (section 25).
-  - **`LR.D x0` or `LR.W x0` loading a nonzero word** (owner, 2026-11-04; WORKER17): unprovable in both codebases (R1CS forces
-    RamReadValue = RdWriteValue on every load row, and rd = x0's is 0); **the host tracer and gold reject it**, the check emitted
-    only for those instructions (known at translation), so it costs nothing elsewhere; no Tracer hardware. Neither workload has one.
+  - ~~`LR.D x0` or `LR.W x0` loading a nonzero word: rejected by the host and gold~~ **D14, follow a16z** (owner, 2026-11-05;
+    WORKER18): a16z remaps an LR or SC with rd = x0 to a temporary, as for other instructions (its exemptions are only ECALL,
+    MRET, EBREAK, CSRRW, CSRRS: `expand/operands.rs:51-60`), so such a load is **provable** and its rows are a16z's. jolt-cpp also
+    exempts LR/SC and the inlines (citing an a16z PR its code no longer follows), so **jolt-cpp's rows differ from a16z's for
+    every `LR x0`**, zero or not: WORKER17's premise held only for jolt-cpp. Gold follows a16z and drops the rejection; **a
+    jolt-cpp fix and a bug report**, like D1, D3, D12; whether its inline exemption changes any rows, to check. Neither workload
+    has an `LR x0`.
+  - **D13, follow a16z** (owner, 2026-11-05; WORKER18): the no-op row an rd = x0 instruction is rewritten to (`ADDI x0, x0, 0`)
+    is flagged virtual in jolt-cpp but not in a16z, so jolt-cpp's row differs and its proofs of such programs fail
+    verification. Gold follows a16z; **a jolt-cpp fix and a bug report**, like D1, D3, D12, D14.
+  - **What to report** is one list, ordered by impact, at the top of `WORKER18/UPSTREAM-DIFFS.md` (12 entries for jolt-cpp, 3 for
+    a16z), each with its evidence, reproducer, bug report (`WORKER18/bug-reports/`) and fix branch.
   - **D2 and the rest: deferred.** U1 and U2 (a16z's ACT4 configuration and `jolt-emu`'s exit check) and U3 (a16z rejecting the
     standard `unimp`, 0xC0001073) are a16z's bugs, written up for the owner to decide whether to report.
 
@@ -1032,7 +1045,7 @@ files, which **the replayers carry too and ignore** (owner):
 | 0 | 0x000 | the state word: pc, `instr_idx`, the next offset; **from v1.26.1 no per-pass flags** ([115], [116] reserved; the flags are in `RUN_CONFIG`, DECISIONS-v1.26 items 13, 15) | the processor state at the segment's first row (frame 2) |
 | 1 | 0x010 | the stream word: each stream's 128-bit words, values out and compression flag (DECISIONS-v1.26 item 2); **at v1.3 four streams: code, read log, write log, and advice** (owner, 2026-11-04) | **the advice field: the segment's advice size at load, counting down live** as advice is popped; the three output fields written at each done with run *n*'s totals (section 24) |
 | 2-65 | 0x020 | the register image: 64 words, two registers each | registers 0-127 |
-| 66 | 0x420 | the files and the proof's memory bounds: **the guest's memory file** (root address, depth), **the jump-target map file** (root, depth), and (owner, 2026-11-04) **log₂ K** (6 bits) and **`lowest_address` in 4 KB units** (52 bits; page-aligned, being 0x8000_0000 − 2ⁿ), 124 of 128 bits; bit positions for SP1 | from C&C 3 (section 22): the Tracer's copy, the proof's map, and the proof's K and layout; the bounds set the `.pages` offset (section 12) and the range comparator (section 25) (a replayer ignores it) |
+| 66 | 0x420 | the files and the proof's memory bounds: **the guest's memory file** (root address, depth), **the jump-target map file** (root, depth), and (owner, 2026-11-04) **log₂ K** (6 bits) and ~~`lowest_address` in 4 KB units (52 bits; page-aligned, being 0x8000_0000 − 2ⁿ)~~ **the I/O region's size, 0x8000_0000 − `lowest_address`, in bytes, exact** (31 bits, [102:72]; owner, 2026-11-05, on WORKER18's finding that small guests' `lowest_address` isn't page-aligned, e.g. 0x7fffffe0; the host rejects an I/O region of 2 GiB or more), 103 of 128 bits | from C&C 3 (section 22): the Tracer's copy, the proof's map, and the proof's K and layout; the bounds set the `.pages` offset (section 12) and the range comparator (section 25) (a replayer ignores it) |
 | 67 | 0x430 | the template bitmap, 128 bits: which controller-fed inlines the window uses (section 25) | **all cleared** (owner) |
 
 **The order** (owner, 2026-11-01): **pc, `instr_idx`, the offset and the flags first, the bitmap last**, so the layout is uniform

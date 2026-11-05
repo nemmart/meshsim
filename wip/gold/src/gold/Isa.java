@@ -61,8 +61,9 @@ public final class Isa {
     long ea = base + offset;
     long addr = ea - (ea & floorMask(op));
     if ((addr & 7) != 0) {
-      throw new EmulationError(String.format("misaligned memory access: ea=%#x word_address=%#x op=%s", ea, addr,
-          Op.name(op)));
+      throw new EmulationError(String.format("misaligned memory access: %s's floor address ea - (ea & %d) = %#x (ea %#x) "
+          + "isn't a multiple of 8 (a16z floor_access.rs:66-75; DECISIONS-v1.3 section 25)", Op.name(op), floorMask(op),
+          addr, ea));
     }
     return addr;
   }

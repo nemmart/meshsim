@@ -130,3 +130,41 @@ ported segment tools on a new branch from the pin branch; push both before compa
 **Done:** `worker16-pin-88dca85` (`a9b8d24`), `worker16-w3-88dca85` (`f2ae129`). One file beyond the 8 changed:
 `utils/chrome_tracer.hpp`, newly included. Window hashes, segment files (four) and `capture_writes` outputs all identical
 between the pins; `segment_check` and the Python reader pass on the new files. `PIN-REPORT.md`.
+
+## 2026-11-05, session 6: the segment tools to v1.3's formats (`worker16-v13`)
+
+**Asked** (owner, via the user; DECISIONS-v1.3 section 16 at 7ab240d): on `worker16-v13` (from `worker16-w3-88dca85`), frame 2 =
+v1.26.1's 68-word record (DECISIONS-v1.26 items 13-17); frame 6 = the whole per-proof jump table (u32 k, p1, p3, the 2^k
+lines; WORKER26's `HashTable`, with its `StaticTargets`); frame 7 = u32 version 1, u32 n, n u64: log2 K, `lowest_address`,
+then a16z's `MemoryLayout` in declaration order (`common/src/jolt_device.rs:302-325`), values checked against jolt-cpp's;
+frame 1 = the per-segment table in 4 KB pages (the per-ASIC table waits for F1); word 66 = log2 K and `lowest_address`,
+roots and depths 0. Acceptance: byte identity with WORKER18's gold files.
+
+**Sources found:**
+- `common/src/jolt_device.rs:302-325` matches **a16z/jolt `7189216`**, jolt-cpp 88dca85's `third-party/jolt` submodule.
+  `MemoryLayout`'s 20 fields: program_size, max_trusted_advice_size, trusted_advice_start/end, max_untrusted_advice_size,
+  untrusted_advice_start/end, max_input_size, max_output_size, input_start/end, output_start/end, stack_size, stack_end,
+  heap_size, heap_end, panic, termination, io_end. They are identical at `bd9aef4` (struct at line 302) and LayerZero `735355e`
+  (line 277). Values: `MemoryLayout::try_new` (`jolt_device.rs:377-534`).
+- **K:**
+  - a16z `crates/jolt-program/src/preprocess/ram.rs:96-131` (`compute_min_ram_k`: next_pow2(max(image end word, io end word));
+    `compute_max_ram_k`: next_pow2((heap_end − lowest) / 8)).
+  - jolt-cpp's run K: the tracer's next_pow2(max remapped access + 1) (`trace_owner.cpp:1134-1140`), raised by the prover to
+    next_pow2((program_start − lowest) / 8 + image words + 1) (`node_context.cpp:319-369`; its image words = align_right(end + 2, 8) / 8
+    − start / 8 + 1, not jumpmap's (end − start + 7) / 8; to compare on both workloads).
+- **Frame 6's port, what it needs** (read: `wip/jumpmap/src/jumpmap/{HashTable,StaticTargets}.java`):
+  - `HashTable` is self-contained (`choose`: k from `minLines` (n ≤ 8·2^k), p3 = first prime ≥ 0x9E3779, p1 = GOLDEN or 31
+    splitmix64 candidates from 0x243F6A8885A308D3, `(int) z | 1`; insert in the given key order).
+  - `StaticTargets` uses gold's internals: `Decoder.decodeNext` (its a/b/c operand conventions per opcode), `Bytecode.indexOf`
+    / `removedAt` (removed c.unimp), the ELF's sections (text, nobits, addr ≥ 0x8000_0000), and `allStarts` sorted unsigned.
+    The port maps these to jolt-cpp's decoder (`op_a/b/c`), `VirtualBytecode::get_instr_idx` and libelf. Still to read:
+    jolt-cpp's conventions for removed UNIMPs and operands, and `Main.java`'s run-target rule ("a transfer to its own pc
+    is sequential") and the key order handed to `choose`.
+- **State at the end of this session:** `worker16-v13` pushed at `f2ae129` (no code yet).
+- **Owner's corrections** (session 6, second turn): K follows **a16z** (its verifier checks every proof; section 17), by its prover
+  rule `crates/jolt-prover/src/config.rs:53-99`, within compute_min/max_ram_k; jolt-cpp's rule and jumpmap's formula beside it,
+  differences reported. Ground truth a16z `7189216` (not LayerZero 735355e).
+- **Done** at `7991321`: writer, checker, reader to v1.3; 2^29 both pass every check; frame 6 byte-identical to jumpmap's
+  at 2^29, on the small inputs and 7 fixtures; frame 1 = jumpmap's `pages_written`; content = gold's v1.2 files. Findings:
+  K differs from jumpmap's formula on 6 fixtures (image word count); D1 base on `d1_decodable_gap`; 3 fixtures jolt-cpp
+  can't load. `V13-REPORT.md`.

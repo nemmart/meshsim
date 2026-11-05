@@ -17,10 +17,16 @@ public final class Program {
   public final Memory memory = new Memory();
   public final Bytecode bytecode;
   public final java.util.Map<String, Long> symbols;
+  public final Elf elf;
+  /** The lowest and highest initialized byte addresses of the image (a16z's memory_init), 0 if none. */
+  public long imageMin, imageMax;
+  /** The merged Text ranges (D1): what is code, for the stores-into-code check (DECISIONS-v1.3 section 25). */
+  public final List<long[]> textRanges = new ArrayList<>();
 
   public Program(Path programDir, Path inputDir) throws IOException {
     Elf elf = new Elf(programDir.resolve("program.elf"));
     symbols = elf.symbols;
+    this.elf = elf;
     if (elf.machine != Elf.EM_RISCV || elf.type != Elf.ET_EXEC) throw new IOException("not a RISC-V executable");
     if (elf.entry == 0 || elf.entry >= Memory.SIZE || (elf.entry & 1) != 0) throw new IOException("bad entry point");
 
@@ -28,7 +34,7 @@ public final class Program {
     // or above 0x8000_0000 is copied into memory (SHT_NOBITS has no data) and extends program_end; the code is the
     // Text sections, overlapping ranges merged, decoded in address order. Program headers aren't used.
     long programEnd = Layout.RAM_START;
-    List<long[]> textRanges = new ArrayList<>();
+    List<long[]> textSections = new ArrayList<>();
     for (Elf.Section s : elf.sections) {
       if (s.addr() < Layout.RAM_START) continue;
       long end = s.addr() + s.size();
@@ -37,12 +43,16 @@ public final class Program {
       if (!s.nobits()) {
         if (s.offset() + s.size() > elf.bytes.length) throw new IOException(String.format("section %#x data is not readable", s.addr()));
         memory.write(s.addr(), elf.bytes, (int) s.offset(), (int) s.size());
+        if (s.size() > 0) {
+          if (imageMin == 0 || s.addr() < imageMin) imageMin = s.addr();
+          imageMax = Math.max(imageMax, end - 1);
+        }
       }
-      if (s.text()) textRanges.add(new long[] {s.addr(), end});
+      if (s.text()) textSections.add(new long[] {s.addr(), end});
     }
-    textRanges.sort((x, y) -> Long.compare(x[0], y[0]));
+    textSections.sort((x, y) -> Long.compare(x[0], y[0]));
     List<long[]> merged = new ArrayList<>();                                     // merge_ranges (elf.rs:96-109)
-    for (long[] r : textRanges) {
+    for (long[] r : textSections) {
       if (!merged.isEmpty() && r[0] <= merged.get(merged.size() - 1)[1]) {
         merged.get(merged.size() - 1)[1] = Math.max(merged.get(merged.size() - 1)[1], r[1]);
       } else {
@@ -50,6 +60,7 @@ public final class Program {
       }
     }
     if (merged.isEmpty()) throw new IOException("no Text section");
+    this.textRanges.addAll(merged);
     long codeStart = merged.get(0)[0], codeEnd = merged.get(merged.size() - 1)[1];
 
     Map<?, ?> meta = (Map<?, ?>) Json.parse(Files.readString(programDir.resolve("program.json")));

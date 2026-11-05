@@ -25,6 +25,15 @@ public final class Machine {
   private final SecpAdvice secp;
   private int prevSeqRemaining;
 
+  /** The lowest and highest word address any memory row touched (0: none yet), and their rows (for ProofParams). */
+  public long minAddress, maxAddress, minAddressRow, maxAddressRow;
+  /** The first store into a Text range (its row and address; -1 if none): stores into code are rejected (section 25). */
+  public long codeStoreRow = -1, codeStoreAddress;
+  private java.util.List<long[]> textRanges = java.util.List.of();
+
+  /** The Text ranges stores are checked against (Program.textRanges); empty: no check. */
+  public void checkStoresAgainst(java.util.List<long[]> ranges) { textRanges = ranges; }
+
   /** Executions per source opcode (counted at each expansion's first row) and per row opcode. */
   public final long[] sourceCount = new long[Op.NUM_OPCODES], opCount = new long[Op.NUM_OPCODES];
 
@@ -238,6 +247,20 @@ public final class Machine {
 
     // the row, after execution (:888-905)
     long rdAfter = v.rdImm ? 0 : regs[(int) v.rd];
+    if (Isa.isLoad(op) || Isa.isStore(op)) {
+      long a = row[7];
+      if (minAddress == 0 || Long.compareUnsigned(a, minAddress) < 0) { minAddress = a; minAddressRow = cycle; }
+      if (Long.compareUnsigned(a, maxAddress) > 0) { maxAddress = a; maxAddressRow = cycle; }
+      if (Isa.isStore(op) && codeStoreRow < 0) {
+        for (long[] r : textRanges) {
+          if (Long.compareUnsigned(a + 8, r[0]) > 0 && Long.compareUnsigned(a, r[1]) < 0) {
+            codeStoreRow = cycle;
+            codeStoreAddress = a;
+            break;
+          }
+        }
+      }
+    }
     row[3] = rdAfter;
     if (Isa.isVirtualAdvice(op)) {        // every advice row is traced as VirtualAdvice, without its operands
       rowOp = VirtualAdvice;

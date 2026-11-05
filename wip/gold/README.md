@@ -20,7 +20,9 @@ java -cp build gold.Main compare <program dir> <input dir> <ref prefix> [--max-r
 ./check.sh <jolt-asic-planning tracer dir> <reference .seg dir>     # stage 2's acceptance, the four files below
 ```
 
-`segments` writes section 16's file (frame 1, then per segment frames 2, 3 and 4 or 5; no frame 6 yet) with
+`segments` writes section 16's file, by default **v1.3** (frame 7 the proof parameters, frame 1 the per-segment 4 KB
+pages, frame 6 the proof's jump-target table, then per segment frame 2 as the 68-word record, frames 3 and 4 or 5;
+`WORKER18/NOTES.md`, "The v1.3 segment file"), or with `--format=v1.2` the earlier file (no frames 6 and 7), with
 `<out>.cuts` and `<out>.json`; with `--compare` it checks it byte for byte and names the first differing frame. The
 format and every encoder choice it shares with WORKER16's tool are in `WORKER18/NOTES.md` ("Stage 2").
 

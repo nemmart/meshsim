@@ -70,6 +70,7 @@ public final class Main {
       return false;
     }
     Machine m = new Machine(p, new SecpCompute());
+    m.checkStoresAgainst(p.textRanges);
     long windowHash = 0, runHash = 0;
     try {
       while (!m.halted()) {
@@ -82,7 +83,22 @@ public final class Main {
       return false;
     }
     if (m.cycle % (1 << 16) != 0) runHash = Row.mix(runHash, windowHash);
-    System.out.printf("%d rows, run hash %016x", m.cycle, runHash);
+    // the host's checks after the run (DECISIONS-v1.3 section 25): stores into code; the provable range and K
+    if (m.codeStoreRow >= 0) {
+      System.out.printf("REJECTED: the store at row %d to %#x falls in the code (a Text section)%n", m.codeStoreRow,
+          m.codeStoreAddress);
+      return false;
+    }
+    ProofParams pp;
+    try {
+      pp = new ProofParams(p, m);
+      pp.check(m);
+    } catch (ProofParams.Unprovable e) {
+      System.out.println("REJECTED: " + e.getMessage());
+      return false;
+    }
+    System.out.printf("%d rows, run hash %016x, log2 K %d, lowest_address %#x", m.cycle, runHash, pp.log2K,
+        pp.lowestAddress);
     if (!tohost) { System.out.println(); return true; }
     // ACT4's verdict (tests/arch-tests/jolt/rvmodel_macros.h): tohost = 1 passes, (gp << 1) | 1 fails test case gp
     Long addr = p.symbols.get("tohost");
@@ -97,6 +113,7 @@ public final class Main {
     int count = 128;
     long[] cuts = null;
     String compareWith = null;
+    SegmentWriter.Format format = SegmentWriter.Format.V1_3;
     for (int i = 4; i < args.length; i++) {
       String a = args[i];
       if (a.startsWith("--segment-rows=")) segmentRows = Long.parseLong(a.substring(15));
@@ -105,13 +122,21 @@ public final class Main {
       else if (a.startsWith("--cuts-file=")) {
         cuts = Files.readAllLines(Path.of(a.substring(12))).stream().filter(l -> !l.isBlank()).mapToLong(Long::parseLong).toArray();
       } else if (a.startsWith("--compare=")) compareWith = a.substring(10);
+      else if (a.equals("--format=v1.2")) format = SegmentWriter.Format.V1_2;
+      else if (a.equals("--format=v1.3")) format = SegmentWriter.Format.V1_3;
       else throw new IllegalArgumentException("unknown option " + a);
     }
     if (cuts == null) cuts = SegmentWriter.defaultCuts(segmentRows, count);
     long t0 = System.nanoTime();
     Program p = new Program(Path.of(args[1]), Path.of(args[2]));
-    SegmentWriter w = new SegmentWriter(p, cuts);
-    byte[] file = w.write();
+    SegmentWriter w = new SegmentWriter(p, cuts, format);
+    byte[] file;
+    try {
+      file = w.write();
+    } catch (SegmentWriter.Rejected e) {
+      System.out.println("REJECTED: " + e.getMessage());
+      return false;
+    }
     double seconds = (System.nanoTime() - t0) / 1e9;
     Path out = Path.of(args[3]);
     Files.write(out, file);

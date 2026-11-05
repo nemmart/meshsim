@@ -1,4 +1,7 @@
-package jumpmap;
+package gold;
+
+// Moved from wip/jumpmap (WORKER26) into gold, which builds frame 6 with it (owner, DECISIONS-v1.3 section 16,
+// 7ab240d); jumpmap now uses gold's.
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;

@@ -251,6 +251,10 @@ per row** (owner), and windows 33-36 all fall in the same proof.*
 
 - **The Tracer's time budget: under 100 ms** (owner) **per proof**, in which each Tracer traces its own 4M-row segment (a
   proof is the whole run over 128 ASICs: section 14).
+- **The target: 4 cycles per traced instruction** (owner, 2026-11-05), a traced instruction being one row of Jolt's trace
+  (not a native RISC-V instruction, about 1.5 rows on average): the core's design point, as 4.21.9 states. Against the budget's
+  ceiling of about 24 cycles per row at 1 GHz (10⁸ cycles for a 2²²-row segment), that leaves a wide margin for cache misses,
+  map probes and the drain; B1 reports the core's cycles per row and the all-in figure per segment.
 - **What the workloads cost**, at about 4 cycles per row and 1 GHz:
   - **Cyclone:** 96,687 untraced rows against 371.5 M traced (0.026 %), all from the division family; at most 129 in any window.
     No secp256k1 inlines. A proof is about 17 ms.

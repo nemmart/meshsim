@@ -62,3 +62,19 @@ failed assertion checked; Q9 the pin pending; Q10 stores into code caught by the
   66's positions are now fixed (4.21.2); 9.1's open items 11–17 are answered by 4.21 (fill bus, probe bound, the shared
   subtractor, the compression enables, the bits, words 36–43, output queues); figure 9.2 doesn't exist yet.
 - **The pin:** item 154 closed (owner, 2026-11-05): WORKER16's check passed (fa59d9a); 4.19 states `88dca85` as the pin, checked.
+
+## Rulings on the report (owner, 2026-11-05; DECISIONS-v1.3 up to 7fab0ad)
+
+- **Misalignment, [12]:** kept, and it stops the Tracer, but checked **on the native instruction**, natural alignment for
+  its access size (8, 4, 2, never for bytes; LR, SC and the AMOs by their width). **Confirmed against the sources:** a16z
+  at 7189216 tests each memory row's floor address ea − (ea & *m*), *m* = 0/4/6/7, for a multiple of 8
+  (`tracer/src/instruction/floor_access.rs:66–75`; LD and SD in `tracer/src/emulator/mmu.rs:323, 431`), and gold's port of
+  jolt-cpp's `checked_memory_address` does the same (`wip/gold/src/gold/Isa.java:60–68`). That is ea mod 8, 4, 2 and
+  nothing, so, every memory row of these templates taking the instruction's rs1, immediate and width, the native check
+  fails on exactly the instructions the tracers abort on. (My first row check, on the floor address, was equivalent; only a
+  check on the doubleword address ea & ~7 would miss sub-word accesses. The native one is clearer.)
+- **One gap, proposed (item 150):** the **inline templates' own LD and SD rows** (gold's `Sha256Inline.java:53, 59` and
+  the other inlines) aren't native loads or stores, and both tracers abort on a misaligned one. 4.21.5 proposes checking
+  those rows, in a controller-fed expansion, for a multiple of 8, with the same bit.
+- **A run longer than 65,536 rows is UB**, a longer trace run in chunks; **every other proposal accepted**, and the
+  section-13 items marked so.

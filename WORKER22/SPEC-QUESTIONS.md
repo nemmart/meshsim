@@ -109,3 +109,31 @@ The spec's controller loop (4.21.3) doesn't say what C&C 3 does with an expansio
 *Proposed:* **on loading a segment's record, C&C 3 drops any expansion it was feeding** (its template, position and pending
 chunks), since the word-0 write resets the credits and the Tracer presents the expansion again. The firmware loop in 4.21.3
 gains that line. meshsim's ideal controller follows it (37fb37e), and so will `tracer_ctl.c`.
+
+**Q15. 4.21.6 and 3.1: how C&C 3's deliveries into a tile's big SRAM are counted** (found building T2).
+
+The rules involved:
+- Big-SRAM writes are always counted (3.1, 6.2; invariant 22).
+- A decrement of an unarmed counter is an unexpected arrival ([2], 4.12), so a receiver arms its counter, with the exact
+  count, before the packets arrive.
+- 4.21.6 sends tile *n*'s window straight into its memory: the state words (66 packets, from run *n* − 1, or from C&C 3's own
+  copy for tile 0, Q3), the totals (words 1 and 67, from run *n*), and its three streams.
+
+But a tile can't know its streams' sizes until C&C 3 has traced its window (words 37–39 at the rows' end), and window 0's
+start goes out before the tiles have booted. The spec gives no arming protocol.
+
+*Options:*
+- **(a) Tell the tile, then wait for its "armed".** When run *n*'s rows end, C&C 3 sends tile *n* an uncounted command
+  carrying its packet count (2 + the three streams' words), and waits for the tile's "armed" (a request, or a count-only
+  packet back) before the first transfer to it. The start state's 66 packets (to tile *n* + 1) are known in advance, so the
+  tile arms for them at its start, and C&C 3 sends them only once the tiles are up. It costs one round trip per window,
+  during the drain.
+- **(b) A margin.** The tile arms *M* at its start; C&C 3 tells it each transfer's size and finishes with count-only
+  packets for the rest of *M*. This needs no round trip but costs packets.
+- **(c) Land in C&C 3's memory and pull.** The later design of 4.21.6 sends to C&C 3's memory or LPDDR, and the tile
+  fetches by its own requests, counted on its own counter. That needs no new protocol, but takes a second pass of the data.
+
+*Interim (meshsim only, until ruled):* T2 lets exactly these deliveries through uncounted (`Config.tracerDeliveriesUncounted`,
+off by default, used only by `TracerT2`): the Tracer's DMA, src 74, and C&C 3's own Q3/Q4 packets into tiles' big SRAM.
+Nothing else is exempt, and the rows check is unaffected.
+

@@ -44,7 +44,6 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
 |---|---|---|---|---|
 | WORKER18 | the Java emulator `wip/gold/` (DECISIONS-v1.3 section 17): gold earned, stage 3 done, **W5 done** (e9f0444: ACT4 through test-equipment `Act4Runner`, 123 of 125; inline vectors 5,677 of 5,677; strict loading only) | **sent 2026-11-04: the rulings** (D1, D3, D12 follow a16z, with jolt-cpp fixes and bug reports on its own branches; D5 rejected by the host tracer), the demo guests, the U1-U3 write-ups; **plan approved 2026-11-04** (7189216 checked: the files are identical; the end detected by `JAL x0, 0`; 0xC0001073 rejected at load; fix branches `worker18-fix-d1-sections`, `-d3-no-legacy-ecall`, `-d12-c-slli`; bug reports in `WORKER18/bug-reports/`) | its report | parked in `WORKER18/NEXT.md`: `check.sh` at 88dca85, then section 21(d) |
 | WORKER22 | **B1, the Tracer's bring-up in meshsim**, built from 4.21, and 4.21's review (`SPEC-QUESTIONS.md`); the host-side inputs moved to WORKER26 (`NEXT.md`) | **started 2026-11-05**, branch `v1.3-tracer` | milestone 2 | **before merging: one full regression** (owner, 2026-11-05: the quick and full suites, the full-size sort at 1,229,008, the 64-window Stage B smoke, since `RowCore` touched the replayer); then F1 (WORKER23) |
-| WORKER27 | **the input pipeline** for Tony and the acceptance: every simulation input rebuilt from pinned sources on a fresh machine, checksums matched to the runner's copies, v1.26.1's replayer inputs first (`WORKER27/PROMPT.md`) | **started 2026-11-05**, branch `inputs-pipeline` | its plan | merge; the v1.3 formats' hook once WORKER18/16 land |
 | WORKER24 | a block diagram of the Tracer (`WORKER24/PROMPT.md`, owner, 2026-11-04): review sections 1-25, then `fig9_1_tracer` in `wip/diagrams/` in the v1.0 figure style | **started 2026-11-04** | its review and plan (a sketch welcome) | - |
 
 ## What's left, by milestone
@@ -81,7 +80,13 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
   Open in v1.3: register offsets beyond words 32-35; sizes to confirm by gold (caches, TLB); UPSTREAM-DIFFS ruled (section 17:
   D1, D3, D12 follow a16z, the verifier's source, with jolt-cpp fixes; D5 rejected by the host tracer; D2 and the rest deferred);
   WORKER18 is re-checking them at 7189216 and writing the demo guests.
-## Pending (2026-11-04)
+## Pending (2026-11-05)
+
+- **To ask the owner:** a `v1.26.1/ERRATA.md` line on ConvertDelivery's manifest key order (it varies between runs, the contents
+  don't; fixed in `wip`, and `wip/inputs` writes it in a fixed order); and whether F1 stays in v1.3 or moves to v1.4.
+- **The input pipeline** for Tony is `wip/inputs/` (WORKER27, merged): every simulation input rebuilt from pinned sources,
+  checked against the runner's copies.
+
 
 - **UPSTREAM-DIFFS rulings: recorded** in DECISIONS-v1.3 section 17 (D1, D3, D5, D12; D2 and the rest deferred) and section 25
   (raw ECALLs trap; legacy raw-ECALL host I/O unsupported); sent to WORKER18, which records them in `UPSTREAM-DIFFS.md`. (An
@@ -103,4 +108,4 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
 
 - Repositories: meshsim (this), jolt-asic-planning (`tracer-standalone`, PR #1; `tracer-standalone-main`, PR #2; `worker12-counts`),
   jolt-cpp (snarkify, our tracer), a16z/jolt (upstream, public), Quest (the runner). Tokens are in the owner's preferences.
-- Closed workers' reports: `wip/planning/sessions/` (WORKER4-17, 19-21, 25, 26) and `wip/planning/reviews/` (WORKER1-3).
+- Closed workers' reports: `wip/planning/sessions/` (WORKER4-17, 19-21, 25-27) and `wip/planning/reviews/` (WORKER1-3).

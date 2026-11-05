@@ -123,3 +123,14 @@ Spec 4.21 answers the review's open items, and 9.1 and 9.3 are brought to it:
 
 **Still open:** 20, the core's inner split (the figure's), and 21, the range check's upper bound (item 149); with the
 provisional read status (item 148), they are 9.1's lower-left box. 9.2, the output path, is next (spec 4.21.6).
+
+## Figure 9.2, the output path; 9.3's word 66 at 66f399e
+
+- **9.2** (spec 4.21.6), an architecture diagram, no timing strip (owner): the core's two streams into the code FIFO and
+  the log FIFO (66 bits, a 2-bit tag) with set 1 beside their entries; the choice at the rows' end (`RUN_CONFIG` [28:26],
+  raw on a tie) into set 2's muxes and the record's totals (word 1's output fields, words 37–39); the two scans, the tag
+  demux, set 2's encoders, the packers; output queues 1–3 at 4 KB with their credits (one per 2 KB chunk, one for a
+  last part) and live service flags `EVENTS` [8]–[10]; output queue 0, the record read in place, four transfers, [7];
+  the DMA and its router input. The drain's order is left to spec 4.21.6, as the caption says.
+- **9.3, word 66** (66f399e): [102:72] is the I/O region's size, 0x8000_0000 − `lowest_address`, exact in bytes,
+  replacing `lowest_address` / 4 KB at [123:72]; [127:103] spare.

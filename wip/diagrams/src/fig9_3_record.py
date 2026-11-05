@@ -5,7 +5,7 @@
 from common import *
 from rtl import R
 
-W, H = 1300, 1188
+W, H = 1300, 1209
 f = Fig(W, H, "Figure 9.3. The state record: 68 words of 128 bits, one format for the host, the Tracer and the replayer",
         "v1.3 (spec §4.19.2 at v1.26.1, §4.21.2) — "
         "byte offsets 0x000–0x43F of the region; narrow fields widened, not to scale")
@@ -101,8 +101,8 @@ y += G
 row(y, [(["register 127"], "[127:64]", 64, START, None),
         (["register 126"], "[63:0]", 64, START, None)], 65, "0x410")
 y += RH
-row(y, [(["spare"], "[127:124]", 4, NONE, None),
-        (["lowest_address / 4 KB"], "[123:72]", 52, START, None),
+row(y, [(["spare"], "[127:103]", 25, NONE, None),
+        (["I/O region's size, in bytes"], "[102:72]", 31, START, None),
         (["log2 K"], "[71:66]", 6, START, None),
         (["map", "depth"], "[65:64]", 2, START, None),
         (["map file root"], "[63:33]", 31, START, None),
@@ -147,11 +147,12 @@ rows = [
     ["2–65  registers 0–127", "word 2 + i: register 2i in [63:0], 2i + 1 in [127:64]; the live register file", same_w, same_r, "4.19.2, 4.21.2"],
     ["66  memory root, depth", "[30:0], [32:31]: the Tracer's copy of the guest's memory (.pages)", "C&C 3, at load (§22)", "the Tracer", "4.21.2, 4.21.5"],
     ["66  map root, depth", "[63:33], [65:64]: the proof's jump-target map file", "C&C 3, at load (§22)", "the Tracer", "4.21.2, 4.21.4"],
-    ["66  log2 K, lowest_address", "[71:66], [123:72] in 4 KB units: the range check, the .pages offset", "C&C 3, at load (frame 7)", "the Tracer", "4.21.2, 4.21.5"],
-    ["66  spare [127:124]", "0", "—", "—", "4.21.2"],
+    ["66  log2 K [71:66]", "the proof's RAM size in 8-byte cells: K for the range check", "C&C 3, at load (frame 7)", "the Tracer", "4.21.2, 4.21.5"],
+    ["66  I/O region's size [102:72]", "0x8000_0000 − lowest_address, exact in bytes: the .pages offset, the range check, the keys", "C&C 3, at load (frame 7)", "the Tracer", "4.21.2, 4.21.5"],
+    ["66  spare [127:103]", "0", "—", "—", "4.21.2"],
     ["67  template bitmap [127:0]", "bit i: the run used controller-fed inline template i (inlines only)", "the Tracer (EXPANSION_TEMPLATE)", "C&C 3; the tile's controller", "4.21.4, 4.19.13"],
 ]
-fills = {i: (TOTAL if 7 <= i <= 9 or i == 17 else (LIVE if i == 10 else (NONE if i in (4, 5, 6, 11, 16) else START))) for i in range(1, len(rows))}
+fills = {i: (TOTAL if 7 <= i <= 9 or i == 18 else (LIVE if i == 10 else (NONE if i in (4, 5, 6, 11, 17) else START))) for i in range(1, len(rows))}
 r.table(40, TY, [40, 262, 690, 902, 1112, 1260], rows, rh=21, size=10, fills=fills)
 
 NY = TY + 21 * len(rows) + 22
@@ -165,5 +166,5 @@ f.lines(40, NY, [
 f.caption(["The state record is one format from the host through the Tracer to the replayers: 68 words of 128 bits at byte offsets 0x000–0x43F, loaded state word first,",
            "whose write resets the unit. It is the Tracer's working state, so at the end of each run it is read out in place: purple fields are window n+1's start,",
            "blue fields run n's totals, and the advice field is the live count of the segment's advice."],
-          y=H - 66, source="Source: spec/machine-spec.md §4.19.2 (v1.26.1), §4.21.2, §4.21.6; DECISIONS-v1.26.md items 2, 15–17; DECISIONS-v1.3.md §23, §24. Review: WORKER24/NOTES.md.")
+          y=H - 66, source="Source: spec/machine-spec.md §4.19.2 (v1.26.1), §4.21.2 (to 66f399e), §4.21.6; DECISIONS-v1.26.md items 2, 15–17; DECISIONS-v1.3.md §23, §24. Review: WORKER24/NOTES.md.")
 f.save("fig9_3_record.svg")

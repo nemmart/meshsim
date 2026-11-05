@@ -136,7 +136,21 @@ final class TracerRig {
     }
 
     // ================================================================ the controller
+    // ---- an ideal DMA (milestone 2): one transfer at a time, one 128-bit packet a cycle, as 4.17.9's
+    int dmaQ = -1, dmaLeft; final long[] dmaW = new long[2];
+    final java.util.List<long[]>[] got = newLists();
+    @SuppressWarnings("unchecked") static java.util.List<long[]>[] newLists() { java.util.List<long[]>[] l = new java.util.List[4]; for (int q = 0; q < 4; q++) l[q] = new ArrayList<>(); return l; }
+    long dmaPackets;
+    /** The service order for the stream queues (default round-robin from queue 1); stateLast serves queue 0 after them;
+     *  q0One sends queue 0 as one 68-word transfer; hold delays every service request by that many cycles (a slow C&C 3). */
+    int[] order; boolean stateLast, q0One; int hold;
+    void dmaStart(int q, int n) { tr.outStart(t, q, n); dmaQ = q; dmaLeft = n; }
+
     void step() {
+        if (dmaQ >= 0 && dmaLeft > 0 && tr.outReady(t, dmaQ)) {
+            tr.outTake(t, dmaQ, dmaW); got[dmaQ].add(new long[] { dmaW[0], dmaW[1] }); dmaLeft--; dmaPackets++;
+            if (dmaLeft == 0) dmaQ = -1;
+        }
         if (!port.isEmpty() || !portExp.isEmpty()) {
             long[] p = !portExp.isEmpty() ? portExp.poll() : port.poll();
             tr.accept(t, SRC, (int) p[0], LinkWord.SIZE_128, p[1], p[2]);
@@ -200,11 +214,27 @@ final class TracerRig {
         tr.run(t); step();
         int mask = 1 << Tracer.EV_RUN_DONE | 1 << Tracer.EV_ADVICE | 1 << Tracer.EV_EXP | 1 << Tracer.EV_NEWEXP;
         Tracer.WindowOut out = null;
+        for (int q = 0; q < 4; q++) got[q].clear();
+        int q0step = 0; int[] sent = new int[4]; int rr = 1;
+        final int[] q0sizes = { 1, 1, 65, 1 };                // word 0 to tile n+1, word 1 to tile n, words 2-66 to n+1, 67 to n
         long end = t + maxCycles;
         while (t < end) {
             tr.sync(t);
             int v = tr.events().value(t);
-            if ((v & 1 << Tracer.EV_SVC_STATE) != 0 && out == null) out = tr.idealDrain(t);
+            // the service requests (4.21.6): queue 0 in its four transfers first, then the streams' credits, round-robin
+            if (dmaQ < 0 && (hold == 0 || t % hold == 0)) {
+                boolean streams = (v & 0b111 << (Tracer.EV_SVC_STATE + 1)) != 0;
+                if ((v & 1 << Tracer.EV_SVC_STATE) != 0 && q0step < 4 && !(stateLast && streams)) {
+                    if (q0One) { dmaStart(0, 68); q0step = 4; } else dmaStart(0, q0sizes[q0step++]);
+                }
+                else for (int k = 0; k < 3; k++) {
+                    int q = order != null ? order[k] : 1 + (rr + k - 1) % 3;
+                    if ((v & 1 << (Tracer.EV_SVC_STATE + q)) == 0) continue;
+                    int len = tr.word(t, Tracer.W_CODE_LENGTH + q - 1);
+                    dmaStart(q, Math.min(128, len - sent[q])); sent[q] += Math.min(128, len - sent[q]); rr = q % 3 + 1;
+                    break;
+                }
+            }
             int c = v & mask;
             if (c != 0) {
                 tr.events().consume(c);
@@ -225,13 +255,23 @@ final class TracerRig {
                 }
                 if ((c & 1 << Tracer.EV_EXP) != 0) sendExp();
                 if ((c & 1 << Tracer.EV_ADVICE) != 0) sendAdvice();
-                if ((c & 1 << Tracer.EV_RUN_DONE) != 0) { step(); return out; }
+                if ((c & 1 << Tracer.EV_RUN_DONE) != 0) { step(); return collect(); }
             }
             if (tr.stopped()) { for (int k = 0; k < 3; k++) step(); return out; }
             step();
         }
         return out;
     }
+
+    /** The window's output as the DMA delivered it: queue 0's 68 words, the three streams. */
+    Tracer.WindowOut collect() {
+        Tracer.WindowOut o = new Tracer.WindowOut();
+        o.record = flat(got[0]); o.code = flat(got[1]); o.rlog = flat(got[2]); o.wlog = flat(got[3]);
+        if (o.record.length != 2 * Tracer.REC_WORDS) throw new IllegalStateException("queue 0 delivered " + o.record.length / 2 + " words");
+        o.sizes = Replayer.parseStreamWord(o.record[2], o.record[3]);
+        return o;
+    }
+    static long[] flat(java.util.List<long[]> l) { long[] a = new long[2 * l.size()]; for (int i = 0; i < l.size(); i++) { a[2 * i] = l.get(i)[0]; a[2 * i + 1] = l.get(i)[1]; } return a; }
 
     // ================================================================ reading the output
     long reg(int r) { return tr.rec[4 + r]; }

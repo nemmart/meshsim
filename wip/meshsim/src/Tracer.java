@@ -17,9 +17,9 @@ import java.util.Map;
  * latch and bitmap (4.21.4); the jump LRU and the map probe; memory: the two 128-line caches, the one-entry write-back
  * buffer, the fill bus to a {@link MemorySystem}, the range comparator and the misalignment rule (4.21.5); the code FIFO
  * and the 66-bit log FIFO, set 1's sizing and the stream word's fields (4.21.6); every ERRORS bit with item 152's stopping
- * rule (4.21.8); 4.21.9's timing. <b>Not yet</b> (milestone 2): set 2, the packers, output queues 0-3, their credits and
- * service flags, the drain and the DMA; in their place {@link #idealDrain} hands a window's output to a Java harness and
- * posts run done, so test harnesses can run whole segments now.
+ * rule (4.21.8); 4.21.9's timing; and (milestone 2) the output path of 4.21.6: set 2, the packers, output queues 0-3
+ * with their credits and live service flags, queue 0 read in place by a pointer, the drain, done last, and the DMA's
+ * side (outStart, outReady, outTake; 128-bit words, 4.17.9).
  *
  * <h3>Model choices (for the report and SPEC-QUESTIONS)</h3>
  * <ul>
@@ -246,7 +246,8 @@ final class Tracer implements Peripheral {
         sExpOffset = expansionOffset; sExpOpcode = presented;
         sCodeL = lengthCode; sRlogL = lengthRlog; sWlogL = lengthWlog;
         sMul = hashMul; sStep = hashStep; sLines = hashLines;
-        ev.live(EV_SVC_STATE, rowsEnded && !drained && !stopped);
+        ev.live(EV_SVC_STATE, rowsEnded && !stopped && q0ptr < REC_WORDS);
+        for (int q = 1; q <= 3; q++) ev.live(EV_SVC_STATE + q, rowsEnded && !stopped && oq[q].flag());
     }
 
     private void storeWord(long t, int w, int v) {
@@ -310,6 +311,7 @@ final class Tracer implements Peripheral {
             violate(t, "a word-0 write with advice still unconsumed (" + adviceLeft() + " values): a mid-segment rewrite is UB (4.21.3)");
         rqHead = rqOcc = rqHalf = rqPopped = 0; eqHead = eqOcc = eqPopped = 0; expDiscard = 0;
         codeN = logN = 0; lengthCode = lengthRlog = lengthWlog = 0; rowsEnded = false; drained = false;
+        q0ptr = REC_WORDS; for (int q = 1; q <= 3; q++) oq[q].reset();
         ev.set(t, EV_ADVICE, 2); ev.set(t, EV_EXP, 2);
         icache.clear(); dcache.clear(); jumpLru.clear(); wbLine = -1; iSeen.clear();
         latch = -1; bitmap[0] = bitmap[1] = 0; cur = null;
@@ -324,7 +326,8 @@ final class Tracer implements Peripheral {
         int n = runConfig & RC_ROWS;
         if (n > MAX_ROWS) throw ub(t, "RUN_CONFIG [23:0] = " + n + " rows: more than 65,536 is UB on the Tracer (4.21.3)");
         if (codeN != 0 || logN != 0) throw new IllegalStateException("PULSE_RUN with the last window's FIFOs not drained");
-        running = true; rowsEnded = false; drained = false;
+        running = true; rowsEnded = false; drained = false; done = false; q0ptr = REC_WORDS; xferLeft = 0;
+        for (int q = 1; q <= 3; q++) oq[q].reset();
         rowsTarget = n; rowsDone = 0; startAt = t + 1; runId++; runs++; runStartAt = t;
         set1Code.reset(); set1Rlog.reset(); set1Wlog.reset(); rlogValues = wlogValues = 0;
         lengthCode = lengthRlog = lengthWlog = 0;
@@ -336,7 +339,8 @@ final class Tracer implements Peripheral {
     @Override public void runCycle(long T) {
         settle(T);
         if (expDiscard > 0 && eqOcc > 0) { eqPop(T); expDiscard--; }      // a NOP-substituted expansion's words, dropped one a cycle (N3)
-        if (!running || stopped || rowsEnded) return;
+        if (!running || stopped) return;
+        if (rowsEnded) { drainCycle(T); return; }
         runCycles++;
         if (T < startAt) return;
         if (busyUntil >= T) {
@@ -650,6 +654,7 @@ final class Tracer implements Peripheral {
         rec[2] = s[0]; rec[3] = s[1];
         rec[2 * REC_BITMAP] = bitmap[0]; rec[2 * REC_BITMAP + 1] = bitmap[1];
         lengthCode = sc.words(); lengthRlog = sr.words(); lengthWlog = sw.words();
+        startDrain(T);
     }
     /** 4.21.6's choice: LRU-coded when enabled and fewer 128-bit words than raw, raw on a tie. */
     static Replayer.StreamSize choose(int values, int rawWords, long codedBits, boolean enabled) {
@@ -658,41 +663,130 @@ final class Tracer implements Peripheral {
         return new Replayer.StreamSize(c ? coded : rawWords, values, c);
     }
 
-    // ================================================================ milestone 1's stand-in for the output path
-    /** A window's output: the record as output queue 0 reads it (68 words, lo/hi), and the three streams as sent (128-bit words). */
-    static final class WindowOut {
-        long[] record; long[] code, rlog, wlog; Replayer.StreamSize[] sizes;
-    }
-    /**
-     * Milestone 1 only (replaced by output queues 0-3, their service flags and the DMA in milestone 2): once the rows have
-     * ended, set 2 compresses the FIFOs into the three streams by the choice made at the rows' end, the window's output is
-     * returned, the FIFOs are emptied, and run done is posted (STATUS [0] falls) at t.
-     */
-    WindowOut idealDrain(long t) {
-        settle(t);
-        if (!rowsEnded || drained) throw new IllegalStateException("idealDrain: the rows haven't ended, or already drained");
-        WindowOut out = new WindowOut();
-        out.record = rec.clone();
-        out.sizes = Replayer.parseStreamWord(rec[2], rec[3]);
-        LruCoder c2 = new LruCoder(false), r2 = new LruCoder(false), w2 = new LruCoder(true);
-        List<long[]> cw = new ArrayList<>(), rw = new ArrayList<>(), ww = new ArrayList<>();
-        LruCoder.Bits cb = new LruCoder.Bits((a, b) -> cw.add(new long[] { a, b })), rb = new LruCoder.Bits((a, b) -> rw.add(new long[] { a, b })),
-                wb = new LruCoder.Bits((a, b) -> ww.add(new long[] { a, b }));
-        for (int i = 0; i < codeN; i++) { if (out.sizes[0].compressed()) c2.encode(codeFifo[i] & 0xFFFFFFFFL, cb); else cb.put(codeFifo[i] & 0xFFFFFFFFL, 32); }
-        for (int i = 0; i < logN; i++) {
-            long v = logFifo[i];
-            if (logTag[i] == TAG_WRITE) { if (out.sizes[2].compressed()) w2.encode(v, wb); else wb.put(v, 64); }
-            else { if (out.sizes[1].compressed()) r2.encode(v, rb); else rb.put(v, 64); if (logTag[i] == TAG_LOAD) w2.lastLoad(v); }
+    /** A window's output (for harnesses): the record as output queue 0 delivers it (68 words, lo/hi), and the three streams. */
+    static final class WindowOut { long[] record; long[] code, rlog, wlog; Replayer.StreamSize[] sizes; }
+
+    // ================================================================ the output path (4.21.6; milestone 2)
+    /** Output queues 1-3: 4 KB each, 256 entries of 128 bits; credits per 2 KB chunk (128 entries) and for a stream's last
+     *  part (4.21.6). Entries pushed at t are readable from t + 1; the scan's room is judged before the cycle's pops. */
+    final class OutQueue {
+        final long[] lo = new long[QCAP], hi = new long[QCAP]; final long[] at = new long[QCAP];
+        int head, occ; long pushed, read;
+        final long[] bound = new long[1 << 10]; int granted;            // each credit's last entry (cumulative)
+        boolean ended; long lastPopT = Long.MIN_VALUE; int popsAt; long popsCycle = Long.MIN_VALUE;
+        long stallCycles, maxOcc;
+        void reset() { head = occ = 0; pushed = read = 0; granted = 0; ended = false; lastPopT = Long.MIN_VALUE; popsCycle = Long.MIN_VALUE; }
+        boolean room(long t) { return occ + (popsCycle == t ? popsAt : 0) < QCAP; }
+        void push(long t, long l, long h) {
+            int k = (head + occ) % QCAP; lo[k] = l; hi[k] = h; at[k] = t; occ++; pushed++; maxOcc = Math.max(maxOcc, occ);
+            if (pushed % QHALF == 0) bound[granted++] = pushed;
         }
-        cb.finish(); rb.finish(); wb.finish();
-        if (cb.words != out.sizes[0].words() || rb.words != out.sizes[1].words() || wb.words != out.sizes[2].words())
-            throw new IllegalStateException("set 2's words differ from set 1's: " + cb.words + "/" + rb.words + "/" + wb.words + " against " + java.util.Arrays.toString(out.sizes));
-        out.code = flat(cw); out.rlog = flat(rw); out.wlog = flat(ww);
-        codeN = logN = 0; drained = true; running = false; drainedAt = t;
-        ev.post(t, EV_RUN_DONE);
-        return out;
+        void end() { ended = true; if (pushed % QHALF != 0) bound[granted++] = pushed; }
+        int taken() { int n = 0; while (n < granted && bound[n] <= read) n++; return n; }
+        boolean flag() { return granted > taken(); }
+        /** The entries the credits granted so far cover beyond what was read: the most a transfer may ask (4.21.6). */
+        long covered() { return granted == 0 ? 0 : bound[granted - 1] - read; }
+        boolean ready(long t) { return occ > 0 && at[head] < t; }
+        void take(long t, long[] w) {
+            w[0] = lo[head]; w[1] = hi[head]; head = (head + 1) % QCAP; occ--; read++;
+            if (popsCycle != t) { popsCycle = t; popsAt = 0; } popsAt++; lastPopT = t;
+        }
     }
-    private static long[] flat(List<long[]> l) { long[] a = new long[2 * l.size()]; for (int i = 0; i < l.size(); i++) { a[2 * i] = l.get(i)[0]; a[2 * i + 1] = l.get(i)[1]; } return a; }
+    final OutQueue[] oq = { null, new OutQueue(), new OutQueue(), new OutQueue() };
+    private int q0ptr = REC_WORDS;                    // output queue 0's read pointer: 68 = nothing to read
+    private long q0LastT = Long.MIN_VALUE, scanStart;
+    private boolean scansDone, done;
+    private int codeScan, logScan;
+    private final LruCoder set2Code = new LruCoder(false), set2Rlog = new LruCoder(false), set2Wlog = new LruCoder(true);
+    private LruCoder.Bits pkCode, pkRlog, pkWlog;
+    private boolean comp0, comp1, comp2, codeEnded, logEnded;
+    private long xferQueue = -1, xferLeft;
+    long drainCycles, scanStalls;
+
+    private void startDrain(long T) {
+        q0ptr = 0; scanStart = T + 2;                 // [7] in the cycle after the last row, the scans in the cycle after that
+        Replayer.StreamSize[] sz = Replayer.parseStreamWord(rec[2], rec[3]);
+        comp0 = sz[0].compressed(); comp1 = sz[1].compressed(); comp2 = sz[2].compressed();
+        set2Code.reset(); set2Rlog.reset(); set2Wlog.reset();
+        for (int q = 1; q <= 3; q++) oq[q].reset();
+        pkCode = new LruCoder.Bits((a, b) -> oq[1].push(pushT, a, b));
+        pkRlog = new LruCoder.Bits((a, b) -> oq[2].push(pushT, a, b));
+        pkWlog = new LruCoder.Bits((a, b) -> oq[3].push(pushT, a, b));
+        codeScan = logScan = 0; codeEnded = logEnded = scansDone = done = false;
+    }
+    private long pushT;
+
+    /** One cycle of the drain: each scan moves one FIFO entry into its encoder and packer while its queue has room. */
+    private void drainCycle(long T) {
+        pushT = T;
+        if (!scansDone && T >= scanStart) {
+            // the code scan
+            if (!codeEnded) {
+                if (codeScan < codeN) {
+                    long v = codeFifo[codeScan] & 0xFFFFFFFFL;
+                    int bits = comp0 ? set2Code.peekBits(v) : 32;
+                    if (pkCode.fill + bits >= 128 && !oq[1].room(T)) { oq[1].stallCycles++; scanStalls++; }
+                    else { if (comp0) set2Code.encode(v, pkCode); else pkCode.put(v, 32); codeScan++; }
+                } else if (pkCode.fill == 0 || oq[1].room(T)) { pkCode.finish(); oq[1].end(); codeEnded = true; }
+            }
+            // the log scan: tags 0 and 1 to the read log, 2 to the write log; every load passes set 2's write-log table
+            if (!logEnded) {
+                if (logScan < logN) {
+                    long v = logFifo[logScan]; int tag = logTag[logScan];
+                    boolean w = tag == TAG_WRITE;
+                    LruCoder c = w ? set2Wlog : set2Rlog; LruCoder.Bits pk = w ? pkWlog : pkRlog; boolean cmp = w ? comp2 : comp1;
+                    OutQueue q = oq[w ? 3 : 2];
+                    int bits = cmp ? c.peekBits(v) : 64;
+                    if (pk.fill + bits >= 128 && !q.room(T)) { q.stallCycles++; scanStalls++; }
+                    else {
+                        if (cmp) c.encode(v, pk); else pk.put(v, 64);
+                        if (tag == TAG_LOAD) set2Wlog.lastLoad(v);
+                        logScan++;
+                    }
+                } else {
+                    boolean r2 = pkRlog.fill == 0 || oq[2].room(T), r3 = pkWlog.fill == 0 || oq[3].room(T);
+                    if (r2 && r3) { pkRlog.finish(); pkWlog.finish(); oq[2].end(); oq[3].end(); logEnded = true; }
+                }
+            }
+            if (codeEnded && logEnded) {
+                scansDone = true;
+                Replayer.StreamSize[] sz = Replayer.parseStreamWord(rec[2], rec[3]);
+                if (pkCode.words != sz[0].words() || pkRlog.words != sz[1].words() || pkWlog.words != sz[2].words())
+                    throw new IllegalStateException("set 2's words differ from set 1's: " + pkCode.words + "/" + pkRlog.words + "/" + pkWlog.words + " against " + java.util.Arrays.toString(sz));
+                codeN = logN = 0;
+            }
+        }
+        // done comes last (4.21.6): the rows, both scans, every queue empty and the last transfer finished, all as of
+        // the end of T - 1 (so the cycle the DMA took the last word doesn't matter)
+        if (scansDone && q0ptr == REC_WORDS && q0LastT < T && xferLeft == 0) {
+            boolean empty = true;
+            for (int q = 1; q <= 3; q++) empty &= oq[q].occ == 0 && oq[q].lastPopT < T;
+            if (empty) { done = true; running = false; drainedAt = T; drainCycles += T - rowsEndAt; ev.post(T, EV_RUN_DONE); }
+        }
+    }
+
+    // ---- the DMA's side (4.17.9): four output queues; queue 0 is part 0 read in place
+    @Override public int outputQueues() { return 4; }
+    @Override public void outStart(long t, int q, int words) {
+        if (xferLeft > 0) throw new IllegalStateException("Tracer: a transfer started with one in progress");
+        if (q == 0) {
+            if (q0ptr + words > REC_WORDS) throw ub(t, "a transfer from output queue 0 reading past word 67 (" + words + " words from word " + q0ptr + ", 4.21.6)");
+        } else if (words > oq[q].covered()) {
+            throw ub(t, "a transfer of " + words + " words from output queue " + q + ", more than its credits cover (" + oq[q].covered() + "; 4.21.6)");
+        }
+        xferQueue = q; xferLeft = words;
+    }
+    @Override public boolean outReady(long t, int q) {
+        if (q != xferQueue || xferLeft == 0) return false;
+        if (q == 0) return rowsEnded && q0ptr < REC_WORDS && rowsEndAt < t;
+        return oq[q].ready(t);
+    }
+    @Override public void outTake(long t, int q, long[] w) {
+        if (!outReady(t, q)) throw new IllegalStateException("Tracer: outTake with nothing ready");
+        if (q == 0) { w[0] = rec[2 * q0ptr]; w[1] = rec[2 * q0ptr + 1]; q0ptr++; q0LastT = t; }
+        else oq[q].take(t, w);
+        xferLeft--;
+    }
 
     /** meshsim only, for the one-memory acceptance (owner, 2026-11-05): at a segment's end the harness writes the data
      *  cache's dirty lines back into the memory, untimed, so the next segment starts where this one left it (the hardware

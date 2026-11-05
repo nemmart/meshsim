@@ -30,6 +30,7 @@ public final class TracerTest {
         compressed();
         division();
         controllerFed();
+        outputPath();
         errors();
         words();
         System.exit(T.done("TracerTest"));
@@ -305,6 +306,75 @@ public final class TracerTest {
         T.eq(g.tr.rec[2 * 66], h.tr.rec[2 * 66], "the files word unchanged");
         boolean same = true; for (int k = 4; k < 132; k++) same &= g.tr.rec[k] == h.tr.rec[k];
         T.check(same, "the same registers as the uncut run");
+    }
+
+    /** 600 iterations of sd; ld; addi; addi; bne: about 3,000 code values (raw 750 words, six credits), 600 loads and 599
+     *  branch bases (1,199 read-log values, ten credits), 600 stores (300 write-log words, three credits). */
+    static TracerRig streamy(Tracer.WindowOut[] out, java.util.function.Consumer<TracerRig> policy, int rc) throws Exception {
+        TracerRig.Prog p = new TracerRig.Prog(CODE).w(TracerRig.addi(1, 0, 600), TracerRig.sd(1, 2, 0), TracerRig.ld(3, 2, 0),
+                TracerRig.addi(1, 1, -1), TracerRig.addi(2, 2, 8), TracerRig.bne(1, 0, -16), TracerRig.END);
+        long[] base = new TracerRig().bases(p);
+        TracerRig g = new TracerRig();
+        Map<Long, long[]> pages = new HashMap<>();
+        TracerRig.poke(pages, CODE - g.lowest, p.bytes());
+        Set<Long> owned = new HashSet<>();
+        for (int k = 0; k < 2; k++) { long o = DATA - g.lowest + 4096L * k; pages.put(o, new long[512]); owned.add(o); }
+        g.buildImage(pages, owned); g.buildMap(Map.of(p.pcOf(1), base[1])); g.loadTables();
+        if (policy != null) policy.accept(g);
+        long[] r = regs(); r[2] = DATA;
+        g.loadRecord(CODE, (int) base[0], 0, r, new long[0]);
+        out[0] = g.window(rc, 2_000_000);
+        return g;
+    }
+    static void outputPath() throws Exception {
+        T.group("the output path: queues 0-3, credits, service flags, done last (4.21.6)");
+        int rows = 1 + 600 * 5 + 1 + 10;
+        Tracer.WindowOut[] o = new Tracer.WindowOut[1];
+        TracerRig g = streamy(o, null, rows);
+        T.check(o[0] != null && !g.tr.stopped(), "the window drained: " + g.tr.errorLog);
+        T.eq(rows, o[0].sizes[0].values(), "code values: one per instruction and padding row (every instruction here is one row)");
+        T.eq((rows + 3) / 4, o[0].sizes[0].words(), "raw code words: ceil(values / 4)");
+        T.eq(o[0].sizes[0].words(), o[0].code.length / 2, "the code queue delivered exactly its words");
+        T.eq(600 + 599 + 1, o[0].sizes[1].values(), "read log: loads, taken branches, the end");
+        T.eq(o[0].sizes[1].words(), o[0].rlog.length / 2, "the read-log queue delivered its words");
+        T.eq(300, o[0].wlog.length / 2, "the write-log queue: 300 words");
+        T.eq(1, g.reg(3), "the program ran (x3 = 1, the last value stored and loaded)");
+        T.check(g.tr.oq[1].maxOcc <= 256 && g.tr.oq[2].maxOcc <= 256, "the queues never exceed 256 entries");
+        T.eq(68, o[0].record.length / 2, "queue 0: the 68 words, in four transfers");
+        T.eq(g.tr.rec[0], o[0].record[0], "queue 0's word 0: the state word as it stands (window n + 1's start)");
+        long drain = g.tr.drainedAt - g.tr.rowsEndAt;
+        System.out.println("  output path: drain " + drain + " cycles, scan stalls " + g.tr.scanStalls + ", packets " + g.dmaPackets);
+        T.check(drain >= 2 + 750, "the drain takes at least the code scan (one entry a cycle) after the two-cycle start");
+        T.eq(68 + o[0].code.length / 2 + o[0].rlog.length / 2 + o[0].wlog.length / 2, g.dmaPackets, "every packet one 128-bit word");
+
+        T.group("the output path: the same output in any service order, and from a slow controller (no deadlock)");
+        java.util.List<java.util.function.Consumer<TracerRig>> pols = java.util.List.of(
+                x -> x.order = new int[] { 3, 2, 1 }, x -> x.order = new int[] { 2, 3, 1 }, x -> { x.stateLast = true; x.order = new int[] { 3, 1, 2 }; },
+                x -> x.q0One = true, x -> x.hold = 97, x -> { x.hold = 500; x.order = new int[] { 1, 2, 3 }; });
+        int k = 0;
+        for (var pol : pols) {
+            Tracer.WindowOut[] o2 = new Tracer.WindowOut[1];
+            TracerRig h = streamy(o2, pol, rows);
+            boolean same = o2[0] != null && java.util.Arrays.equals(o[0].record, o2[0].record) && java.util.Arrays.equals(o[0].code, o2[0].code)
+                    && java.util.Arrays.equals(o[0].rlog, o2[0].rlog) && java.util.Arrays.equals(o[0].wlog, o2[0].wlog);
+            T.check(same, "policy " + k + ": the same record and streams" + (o2[0] == null ? " (didn't drain)" : ""));
+            if (k == 5) T.check(h.tr.scanStalls > 0, "a slow controller stalls the scans (" + h.tr.scanStalls + " cycles) and still drains");
+            k++;
+        }
+
+        T.group("the output path: compressed, a zero-row run, and the transfers that are UB");
+        Tracer.WindowOut[] oc = new Tracer.WindowOut[1];
+        streamy(oc, null, rows | Tracer.RC_COMP_CODE | Tracer.RC_COMP_RLOG | Tracer.RC_COMP_WLOG);
+        T.check(oc[0].sizes[0].compressed(), "the loop's code stream is coded");
+        T.check(java.util.Arrays.equals(decodeLru(oc[0].code, oc[0].sizes[0].values(), false, null), TracerRig.streamValues(o[0].code, o[0].sizes[0].values(), 32)),
+                "the coded code stream decodes to the raw one");
+        T.eq(oc[0].sizes[0].words(), oc[0].code.length / 2, "and is delivered in exactly its words");
+        TracerRig big = streamy(new Tracer.WindowOut[1], x -> x.hold = 1 << 30, rows);       // a controller that never serves
+        T.check(big.tr.running(big.t), "nothing served: STATUS [0] stays 1 through the drain");
+        T.check((big.tr.events().value(big.t) & 0b1111 << Tracer.EV_SVC_STATE) != 0, "the service flags stay up");
+        T.eq(256, big.tr.oq[1].occ, "queue 1 full (two credits, 256 entries), its scan stalled");
+        T.ub(() -> big.tr.outStart(big.t, 1, 257), "a transfer from queue 1 for more than its credits cover", "credits cover");
+        T.ub(() -> big.tr.outStart(big.t, 0, 69), "a transfer from queue 0 past word 67", "past word 67");
     }
 
     static int errorsOf(TracerRig.Prog p, Map<Long, Long> targets, long[] r, int rows) throws Exception {

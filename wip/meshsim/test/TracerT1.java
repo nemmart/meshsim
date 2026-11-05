@@ -137,7 +137,8 @@ public final class TracerT1 {
         if (out != null) out.println("segment,rows,padding_rows,cycles,cycles_real_rows,cycles_per_real_row,ifetch,dmiss,bus,probe,advice,newexp,exp,"
                 + "imiss,dmiss_lines,writebacks,lru_hits,lru_misses,probe_reads,mem_index_acc,mem_index_hit,mem_data_acc,mem_data_hit,map_index_acc,map_index_hit,"
                 + "map_data_acc,map_data_hit,walk_cycles,data_cycles,lpddr_reads,early_evictions,read_waits,read_wait_cycles,map_sep_lpddr_reads,"
-                + "i_cold_first,i_cold_second,i_cap_first,i_cap_second,i_cyc_cold_first,i_cyc_cold_second,i_cyc_cap_first,i_cyc_cap_second,i_miss_lpddr,straddles,instrs,ok");
+                + "i_cold_first,i_cold_second,i_cap_first,i_cap_second,i_cyc_cold_first,i_cyc_cold_second,i_cyc_cap_first,i_cyc_cap_second,i_miss_lpddr,straddles,instrs,"
+                + "drain_cycles,scan_stalls,ok");
         // ---- the segment file
         List<Seg> segs = readSegments(segFile, lowest);
         // ---- the delivery
@@ -169,7 +170,7 @@ public final class TracerT1 {
             long segStart = g.t, cycStart = 0;
             g.loadRecord(sg.state[0], (int) sg.state[1], (int) sg.state[2], regs, sg.advice);
             long[] start = g.tr.rec.clone();
-            long segCycles = 0;
+            long segCycles = 0, segDrain = 0, scanSt0 = g.tr.scanStalls;
             for (int j = 0; j < 64; j++) {
                 int wi = 64 * s + j;
                 Tracer.WindowOut o = g.window(rc, 40L * 65536 + 2_000_000);
@@ -177,6 +178,7 @@ public final class TracerT1 {
                     System.out.printf("%s window %d: STOPPED %s%n", name, wi, g.tr.errorLog); System.exit(1);
                 }
                 segCycles += g.tr.rowsEndAt - g.tr.runStartAt;
+                segDrain += g.tr.drainedAt - g.tr.rowsEndAt;
                 List<String> bad = new ArrayList<>();
                 if (byIndex.containsKey(wi) && windowsChecked < maxWin) {
                     Map<String, Object> we = byIndex.get(wi);
@@ -246,8 +248,8 @@ public final class TracerT1 {
             if (strays > 0) bad.add(strays + " cells differ from the cumulative updates");
             long cells = 0;
             for (long[] u : sg.updates) { long v = g.fs.load64(img, 8 * u[0]); cells++; if (v != u[1]) { bad.add(String.format("memory cell 0x%x: 0x%x, the update list 0x%x", lowest + 8 * u[0], v, u[1])); break; } }
-            System.out.printf("%s segment %d: %s  %d cycles (%.3f/row, %.2f ms at 1 GHz)  pages written %d (%d created)  dirty lines %d  cells checked %d  stalls %s%n  %s%n",
-                    name, s, bad.isEmpty() ? "OK" : "FAIL", segCycles, segCycles / (64.0 * 65536), segCycles / 1e6, written.size(), created, wb, cells,
+            System.out.printf("%s segment %d: %s  drain %d cycles;  %d cycles (%.3f/row, %.2f ms at 1 GHz)  pages written %d (%d created)  dirty lines %d  cells checked %d  stalls %s%n  %s%n",
+                    name, s, bad.isEmpty() ? "OK" : "FAIL", segDrain, segCycles, segCycles / (64.0 * 65536), segCycles / 1e6, written.size(), created, wb, cells,
                     java.util.Arrays.toString(g.tr.stalls), g.ms.summary());
             for (String b : bad) System.out.println("    " + b);
             if (!bad.isEmpty()) failed++;
@@ -258,6 +260,7 @@ public final class TracerT1 {
                 for (int q = 0; q < 4; q++) ib.append(g.tr.iMissBy[q] - ib0[q]).append(',');
                 for (int q = 0; q < 4; q++) ib.append(g.tr.iCycBy[q] - ic0[q]).append(',');
                 ib.append(g.tr.iMissLpddr - il0).append(',').append(g.tr.straddles - st0).append(',').append(g.tr.instrs - in0).append(',');
+                ib.append(segDrain).append(',').append(g.tr.scanStalls - scanSt0).append(',');
                 out.printf("%d,%d,%d,%d,%d,%.4f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%s%s%n", s, rowsS, padS, segCycles, realCyc,
                         rowsS > padS ? (double) realCyc / (rowsS - padS) : 0.0, st[0], st[1], st[2], st[3], st[4], st[5], st[6],
                         g.tr.iMiss - im0, g.tr.dMiss - dm0, g.tr.writebacks - wb0, g.tr.lruHits - lh0, g.tr.lruMisses - lm0, g.tr.probeReads - pr0,

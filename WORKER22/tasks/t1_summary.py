@@ -21,8 +21,13 @@ for p in progs:
     per = [I(r, 'cycles_real_rows') / (I(r, 'rows') - I(r, 'padding_rows')) for r in real]
     out.append(f"  per segment with real rows: min {min(per):.4f}, median {st.median(per):.4f}, max {max(per):.4f}")
     segc = [I(r, 'cycles') for r in rows]
-    out.append(f"all-in per segment (rows only; the drain isn't modelled until milestone 2): median {st.median(segc) / 1e6:.2f} ms, "
+    out.append(f"rows only, per segment: median {st.median(segc) / 1e6:.2f} ms, "
                f"max {max(segc) / 1e6:.2f} ms at 1 GHz, against 100 ms (segment {segc.index(max(segc))})")
+    if 'drain_cycles' in rows[0]:
+        allin = [I(r, 'cycles') + I(r, 'drain_cycles') for r in rows]; dr = [I(r, 'drain_cycles') for r in rows]
+        out.append(f"the drain (an ideal controller, one packet a cycle): median {st.median(dr):,} cycles per segment, max {max(dr):,}; "
+                   f"all-in with it: median {st.median(allin) / 1e6:.2f} ms, max {max(allin) / 1e6:.2f} ms (segment {allin.index(max(allin))}); "
+                   f"scan stalls {sum(I(r, 'scan_stalls') for r in rows):,}")
     names = ['ifetch', 'dmiss', 'bus', 'probe', 'advice', 'newexp', 'exp']
     stall = {n: sum(I(r, n) for r in rows) for n in names}
     out.append("stalls, cycles per real row: " + ", ".join(f"{n} {stall[n] / (tot_rows - pad):.4f}" for n in names)

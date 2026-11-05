@@ -10,7 +10,7 @@ import java.util.List;
  *    reset, a consuming load takes one count from each set bit under the mask, EVENTS_PEEK takes nothing; the controller's
  *    EVENTS [13] live while (events & mask) != 0; its ERRORS [11] live while the peripheral's ERRORS != 0;
  *  - region writes (4.17.5): mode 0 at a byte offset, landing rp_latency after the director, counted at K;
- *  - the DMA (4.17.9): 128-bit packets, then 64 and 32 for the remainder, DMA_ADDR advancing, STATUS [1], DMA done, a
+ *  - the DMA (4.17.9, v1.3): a count of 128-bit words, one 128-bit packet each, DMA_ADDR advancing by 16, STATUS [1], DMA done, a
  *    count of 0, PULSE_DMA while busy and a missing output queue ignored and flagged;
  *  - the replayer through its window: type 4, its words 32-34, its credits after PULSE_RUN;
  *  - C&C 1's peripheral (8.14, 4.20): READY_LINES and READY_EXPECT, all tiles READY, PULSE_GO, ERROR_LINES and the
@@ -142,15 +142,15 @@ public final class PeripheralSlotTest {
         store(n, p, w(PULSE_DMA), 1);
         T.eq(2, (int) load(n, p, w(STATUS)) & 2, "STATUS [1]: DMA in progress");
         for (int i = 0; i < 20; i++) n.step();
-        T.eq(3, out.size(), "7 words: a 128-bit, a 64-bit and a 32-bit packet");
-        if (out.size() == 3) {
-            long[] a = out.get(0), b = out.get(1), c = out.get(2);
-            T.check(a[5] == LinkWord.SIZE_128 && a[4] == 0x400 && a[6] == ((1L << 24 | 1) << 32 | (1 << 24)) && a[7] == ((1L << 24 | 3) << 32 | (1 << 24 | 2)), "128 bits at 0x400, queue 1's words 0-3, the first in [31:0]");
-            T.check(b[5] == LinkWord.SIZE_64 && b[4] == 0x410, "then 64 bits at 0x410");
-            T.check(c[5] == LinkWord.SIZE_32 && c[4] == 0x418, "then 32 bits at 0x418");
-            T.check(a[1] == 65 && a[2] == 0 && a[3] == 5, "each stamped with dst, mode and counter");
+        // v1.3 (4.17.9): the count is in 128-bit words; seven words are seven 128-bit packets, DMA_ADDR advancing by 16
+        T.eq(7, out.size(), "7 words: seven 128-bit packets");
+        boolean all = out.size() == 7;
+        for (int i = 0; i < out.size(); i++) {
+            long[] a = out.get(i);
+            all &= a[5] == LinkWord.SIZE_128 && a[4] == 0x400 + 16 * i && a[6] == (1L << 56 | i) && a[7] == ~(1L << 56 | i) && a[1] == 65 && a[2] == 0 && a[3] == 5;
         }
-        T.eq(0x41C, (int) load(n, p, w(DMA_ADDR)), "DMA_ADDR advanced past the transfer");
+        T.check(all, "each 128 bits at 0x400 + 16 i, queue 1's word i, stamped with dst, mode and counter");
+        T.eq(0x470, (int) load(n, p, w(DMA_ADDR)), "DMA_ADDR advanced past the transfer");
         T.eq(0, (int) load(n, p, w(STATUS)) & 2, "STATUS [1] fell");
         T.eq(2, (int) load(n, p, w(EVENTS)) & 2, "DMA done, EVENTS [1]");
         n.step();
@@ -158,7 +158,7 @@ public final class PeripheralSlotTest {
         store(n, p, w(DMA_HDR), Registers.DH_COUNT.place(0)); store(n, p, w(PULSE_DMA), 1);
         for (int i = 0; i < 4; i++) n.step();
         T.eq(2, (int) load(n, p, w(EVENTS_PEEK)) & 2, "a count of 0: DMA done still posted");
-        T.eq(3, out.size(), "and nothing sent");
+        T.eq(7, out.size(), "and nothing sent");
         // v1.25 (DECISIONS-v1.25 s8e): PULSE_DMA during a transfer, and a transfer naming a missing output queue, are
         // undefined behavior: meshsim stops (v1.2 ignored both)
         {

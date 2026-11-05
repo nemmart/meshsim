@@ -55,11 +55,12 @@ interface Peripheral extends Component {
     // ---------------------------------------------------------------- output (4.17.9): the DMA's source
     /** The number of output queues (0-4); 0 for a peripheral without a DMA, such as the replayer. */
     default int outputQueues() { return 0; }
-    /** Output queue q holds a 32-bit word for the DMA at t (state at the end of t - 1). */
+    /** Output queue q holds a 128-bit word for the DMA at t (state at the end of t - 1); v1.3 (4.17.9): every packet is
+     *  one 128-bit queue entry. */
     default boolean outReady(long t, int q) { return false; }
-    /** The DMA takes queue q's next word at t; only when {@link #outReady} is true. */
-    default int outTake(long t, int q) { throw new IllegalStateException("no output queue"); }
-    /** PULSE_DMA for queue q at t: lets the peripheral produce {@code words} for it (no unsolicited output). */
+    /** The DMA takes queue q's next 128-bit word at t into w (lo, hi); only when {@link #outReady} is true. */
+    default void outTake(long t, int q, long[] w) { throw new IllegalStateException("no output queue"); }
+    /** PULSE_DMA for queue q at t: a transfer of {@code words} 128-bit words (no unsolicited output). */
     default void outStart(long t, int q, int words) {}
 
     // ---------------------------------------------------------------- the host

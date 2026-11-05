@@ -21,6 +21,12 @@ final class LruCoder {
     void reset() { java.util.Arrays.fill(e, 0); bits = hits = misses = values = 0; }
     void lastLoad(long v) { if (isWrite) e[15] = v; }
 
+    /** The bits v would take, without coding it (the scan's room check). */
+    int peekBits(long v) {
+        if (isWrite && e[15] == v) return 5;
+        for (int i = 0; i < (isWrite ? 15 : 16); i++) if (e[i] == v) return 5;
+        return (v >>> 32) != 0 ? 66 : 34;
+    }
     /** Codes v; appends its bits to sink (null: count only); returns the bits it takes. */
     int encode(long v, Bits sink) {
         values++;

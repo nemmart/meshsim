@@ -193,7 +193,10 @@ public final class PeripheralSlotTest {
         n.step();
         T.eq(0b111100, (int) load(n, p, w(EVENTS_PEEK)) & 0b111100, "PULSE_RUN leaves them");
         T.eq(0, (int) load(n, p, w(4)), "word 4 (no DMA): reserved, reads 0");
-        T.eq(0, (int) load(n, p, w(32)), "ROWS_RUN");
+        T.eq(0, (int) load(n, p, w(32)), "RUN_CONFIG (v1.26.1): 0 at the reset");
+        T.eq(0, (int) load(n, p, w(33)), "ROWS_RUN (word 33): a pass of RUN_CONFIG's 0 rows ran none");
+        store(n, p, w(32), 0x3010000); n.step(); n.step();
+        T.eq(0x3010000, (int) load(n, p, w(32)), "RUN_CONFIG takes a store while stopped, through the slot");
     }
 
     static void cc1() {

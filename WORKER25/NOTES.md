@@ -6,7 +6,8 @@ section 3, items 13-17 (cited D26-*n*).
 ## The layouts
 
 **`RUN_CONFIG`, window word 32 (offset 0xA80 in peripheral 1's window), R/W, both units** (D26-13): [23:0] rows to run,
-[24] use the store log, [25] output `rd_prev`, [31:26] reserved. **Resets to 0** (owner, 2026-11-05). Written while
+[24] use the store log, [25] output `rd_prev`, [31:26] reserved. **Resets to 0, and is sticky:** it holds the last value written across passes, untouched by `PULSE_RUN`, the
+state write and done (owner, 2026-11-05). Written while
 stopped, used by the next `PULSE_RUN`; a write while running is UB (meshsim flags it). The Tracer ignores [24] and [25].
 
 **Words 32-35, the same on both units** (D26-14): 32 `RUN_CONFIG` (R/W), 33 `ROWS_RUN` (R, [23:0], [31:24] 0, rows of this
@@ -33,12 +34,14 @@ So words at 16*s*, values at 48 + 17*s*, the flag at 99 + *s*. The values-out fi
    done is posted, as a DMA with count 0 (4.17.9). The done check [6] still applies.
 2. **[6] is unconditional:** a pass of fewer rows than its record's streams describe ends with input left over. Short passes
    are for short traces, with records sized to the pass.
-3. **`RUN_CONFIG` resets to 0.**
+3. **`RUN_CONFIG` resets to 0, and is sticky** (owner, 2026-11-05): it holds the last value written across passes;
+   `PULSE_RUN`, the state write and done leave it alone. It is 0 only after a reset.
 4. **Deliveries are converted per task, in scratch** (v1.25 straight to v1.26.1), as WORKER20 did; nothing new in persistent data.
 5. **No 8 KB controls:** 106/107 are compared with 098/099.
 6. **Reserved [115]/[116]: written 0 and ignored, not checked.**
 
 ## For the software
 
-The replay layout's header gains **`RL_H_RUN_CONFIG` (word 14)**, written to `RUN_CONFIG` before every pass; layout version 4.
+The replay layout's header gains **`RL_H_RUN_CONFIG` (word 14)**, written to `RUN_CONFIG` once, before the
+first pass (it is sticky); layout version 4.
 The record's words 0-65 are loaded verbatim every pass.

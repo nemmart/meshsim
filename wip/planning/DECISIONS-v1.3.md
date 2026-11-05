@@ -636,7 +636,9 @@ Decided (O).
   convention, and the padding rule (to confirm). Eleven hand-assembled guests cover the paths no workload reached.
 - **Rulings on `WORKER18/UPSTREAM-DIFFS.md`** (owner, 2026-11-04). **"Upstream" is a16z's Jolt, and it decides:** jolt-cpp has no
   verifier of its own; it proves `jolt_verifier::JoltProof` against a16z's `jolt_program` preprocessing, from its submodule
-  `third-party/jolt` at **7189216** (the verifier's pin, at jolt-cpp 88dca85, v1.3's pin; v1.25's 821e1bd carries f8fc214, 20
+  `third-party/jolt` at **7189216** (the verifier's pin, at jolt-cpp 88dca85, v1.3's pin, **moved and checked** 2026-11-05: PR #2's tracer re-synced, every
+  2¹⁶-row window's hash, the segment files and `capture_writes` output identical to 821e1bd on both workloads at 2²⁹; WORKER16,
+  `WORKER16/PIN-REPORT.md`, merged into `tracer-standalone-main` at fa59d9a; v1.25's 821e1bd carries f8fc214, 20
   commits earlier, with nothing in RAM checking different, section 14), so a16z's bytecode is what every proof is checked against. Where jolt-cpp
   builds a different bytecode or image, its proofs fail verification, so following a16z is forced, not a preference. The findings
   were made at 17a9459; **they hold at 7189216** (WORKER18: an ancestor, 17 commits back, with every file D1, D3 and D12 depend on

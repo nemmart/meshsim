@@ -1198,6 +1198,12 @@ Decided (O).
     Formerly: **a write to a hole** in the guest's memory (an index entry of `0xFFFFFFFF`), reported by the memory system's walker to the
     requester;
   - **an access to a page that doesn't exist**, beyond the file's length;
+  - **a failed `VirtualAssert…` row** (owner, 2026-11-05, WORKER21's Q7): the expansions' assertions (alignment, the division
+    and remainder checks, no-overflow), **a checked error**: such a run is unprovable (R1CS checks the same condition), the row
+    computes the comparison anyway, and it catches the host and the Tracer disagreeing (a wrong quotient from the host's
+    advice) before a proof is wasted, as leftover advice earned its check. **No separate misalignment check:** the templates
+    put an alignment assertion before every sub-word and doubleword access, so non-aligned loads and stores are never seen; a
+    separate bit only if SP1 finds an access path with no assertion before it.
   - **a guest access outside the provable range** (owner, 2026-11-04; WORKER17): **a dedicated comparator** in the Tracer's
     load and store path, `(address − lowest_address) < 8·K`, one subtract and one unsigned compare **on the full 64-bit
     address** (an address below the start wraps and fails the same compare), alongside the local cache lookup, so it costs no

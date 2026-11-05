@@ -1,4 +1,15 @@
-# Parked for WORKER26 (send now; remove once sent)
+# Parked for WORKER26 (send when it next reports; remove once sent)
+
+**If it already had the reply to its plan** (with 128 start images), send only this change:
+
+> Change to the scope addition (owner): not 128 start images. WORKER22 runs the segments in order on one memory, so build (1)
+> the initial image: gold's cycle-0 image as a page list (4 KB content per page), plus word 66's values, standing in for frame
+> 7; (2) per segment, the list of pages it writes (from its update list): the harness creates them, if absent, and marks them
+> owned at the segment's start; (3) a check that applying segments 0 to k−1's updates to the initial image gives gold's memory
+> at segment k's first row, every segment of both workloads at 2²⁹. Use WORKER22's format in WORKER22/NOTES.md, or agree
+> changes with it. Outputs at 2²⁹ go to the runner's persistent data.
+
+**Otherwise, the full reply:**
 
 Go ahead, with these rulings (owner, 2026-11-05; DECISIONS-v1.3 section 18, 332a518):
 

@@ -145,6 +145,27 @@ The spec's controller loop (4.21.3) doesn't say what C&C 3 does with an expansio
 chunks), since the word-0 write resets the credits and the Tracer presents the expansion again. The firmware loop in 4.21.3
 gains that line. meshsim's ideal controller follows it (37fb37e), and so will `tracer_ctl.c`.
 
+**Q16. 4.21.3, 4.19.13: when a tile may start replaying its window** (from T2, with Q15's handshake).
+
+4.21.3's controller loop doesn't say when the tiles start. The plan had the harness start all 64 at the segment's last
+done, by a command from C&C 1.
+
+With Q15's counters a tile knows by itself when its window is complete:
+- its state counter (66 words from window *n* − 1, or Q3's for tile 0);
+- its totals counter (words 1 and 67 from window *n*);
+- its stream counter, armed from word 1.
+
+When all three are at 0, everything it replays from has landed.
+
+*Proposed (and as built, b64d9d3):* **a tile starts replaying its window as soon as its three counters are done**, while C&C 3
+traces the later windows. Nothing else gates it: no command, and no wait for the segment's end. The tile's replay doesn't
+touch C&C 3 or the other tiles' regions, and its controller's start-up (the tables, the templates) can precede it.
+
+**Answered (owner, 2026-11-05): accepted**, as the departure from the plan. The spec should state it in 4.21.3 (or 4.19.13).
+
+The other departure, queue 0 sent in queue order so that the totals reach a tile before its streams but after the state
+words, was accepted with Q15's ruling.
+
 ## Open
 
 (none)

@@ -130,3 +130,25 @@ ported segment tools on a new branch from the pin branch; push both before compa
 **Done:** `worker16-pin-88dca85` (`a9b8d24`), `worker16-w3-88dca85` (`f2ae129`). One file beyond the 8 changed:
 `utils/chrome_tracer.hpp`, newly included. Window hashes, segment files (four) and `capture_writes` outputs all identical
 between the pins; `segment_check` and the Python reader pass on the new files. `PIN-REPORT.md`.
+
+## 2026-11-05, session 6: the segment tools to v1.3's formats (`worker16-v13`)
+
+**Asked** (owner, via the user; DECISIONS-v1.3 section 16 at 7ab240d): on `worker16-v13` (from `worker16-w3-88dca85`), frame 2 =
+v1.26.1's 68-word record (DECISIONS-v1.26 items 13-17); frame 6 = the whole per-proof jump table (u32 k, p1, p3, the 2^k
+lines; WORKER26's `HashTable`, with its `StaticTargets`); frame 7 = u32 version 1, u32 n, n u64: log2 K, `lowest_address`,
+then a16z's `MemoryLayout` in declaration order (`common/src/jolt_device.rs:302-325`), values checked against jolt-cpp's;
+frame 1 = the per-segment table in 4 KB pages (the per-ASIC table waits for F1); word 66 = log2 K and `lowest_address`,
+roots and depths 0. Acceptance: byte identity with WORKER18's gold files.
+
+**Sources found:**
+- `common/src/jolt_device.rs:302-325` matches **a16z/jolt `7189216`**, jolt-cpp 88dca85's `third-party/jolt` submodule.
+  `MemoryLayout`'s 20 fields: program_size, max_trusted_advice_size, trusted_advice_start/end, max_untrusted_advice_size,
+  untrusted_advice_start/end, max_input_size, max_output_size, input_start/end, output_start/end, stack_size, stack_end,
+  heap_size, heap_end, panic, termination, io_end. They are identical at `bd9aef4` (struct at line 302) and LayerZero `735355e`
+  (line 277). Values: `MemoryLayout::try_new` (`jolt_device.rs:377-534`).
+- **K:**
+  - a16z `crates/jolt-program/src/preprocess/ram.rs:96-131` (`compute_min_ram_k`: next_pow2(max(image end word, io end word));
+    `compute_max_ram_k`: next_pow2((heap_end − lowest) / 8)).
+  - jolt-cpp's run K: the tracer's next_pow2(max remapped access + 1) (`trace_owner.cpp:1134-1140`), raised by the prover to
+    next_pow2((program_start − lowest) / 8 + image words + 1) (`node_context.cpp:319-369`; its image words = align_right(end + 2, 8) / 8
+    − start / 8 + 1, not jumpmap's (end − start + 7) / 8; to compare on both workloads).

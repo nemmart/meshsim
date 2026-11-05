@@ -575,6 +575,14 @@ a really easy format to work with, from multiple languages" (O).
   a16z's `MemoryLayout` fields, all computed on the host as a16z does; **sent once, first, before frame 1.** C&C 3 fills word
   66 from it, and the proving side reads the same frame: one source for both (answers the question left to SP1). Not the
   program file (K follows the run), nor frame 1 (a fixed table of counts). Its layout: the host tools' (gold, WORKER16).
+- **Frame 7's data** (2026-11-05, merging WORKER18's and WORKER16's proposals): u32 format version (1), u32 field count *n*,
+  then *n* u64 fields, little-endian: **log₂ K, `lowest_address`, then a16z's `MemoryLayout` in its declaration order**
+  (`common/src/jolt_device.rs:302-325`; the verifier's struct, so a16z's order rather than jolt-cpp's); fields are added only at
+  the end. Computed as a16z computes them (**K by a16z's prover rule**, the run's highest access raised to the image floor, within
+  `compute_min_ram_k`..`compute_max_ram_k`; WORKER18). **Frame 2's word 66:** the host fills log₂ K and `lowest_address` from
+  frame 7, leaving the two roots and depths 0 for C&C 3 (section 22). **Frame 1, this pass:** the per-segment table in 4 KB
+  pages; the per-ASIC table waits for F1's index layout. Gold takes jumpmap's `HashTable` and `StaticTargets` into itself (jumpmap
+  then uses gold's), so the dependency stays one way.
 - **Order:** frame 7 once, first; then frame 1 once; then frame 6, the proof's jump-target supplement; then for each segment in order, frames 2, 3, and
   one of 4 or 5 (the host's choice per segment).
 - **The update words:** the segment's dirty runs in address order (PR #1's "R-dirty"): each run is **a header word** (the start

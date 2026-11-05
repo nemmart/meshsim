@@ -9,7 +9,7 @@ Tracer, no new memory system, no file system). This file lists every section v1.
 4.17 (peripherals) is unchanged: the peripheral DMA in 128-bit words belongs to the Tracer (v1.3). Section numbers, invariant
 numbers and item numbers are v1.25's; one item is added and closed (143). `spec/replayer-opcodes.md` and `spec/schedule.md` are unchanged.
 
-**For the RTL:** `CHANGES-v1.25-to-v1.26.md` is the change guide for this step, by hardware block.
+**For the RTL:** the change guide, by hardware block, now goes from v1.25 straight to v1.26.1: `CHANGES-v1.25-to-v1.26.1.md` (v1.26's own guide, `CHANGES-v1.25-to-v1.26.md`, was renamed and extended into it at v1.26.1). v1.26.1's delta from v1.26: `CHANGES-v1.26.1.md`.
 
 ## The changes in brief
 

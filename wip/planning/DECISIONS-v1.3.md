@@ -999,11 +999,13 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
   change to spec 4.17.9, which counts 32-bit words up to 4,095 and ends with 64- and 32-bit remainder packets). C&C 3 reads a
   queue's length (in 128-bit words, rounded up; the padding after a stream's last bit can be anything, even in a compressed
   stream (owner), since the stream word gives the exact bit length and value count and the decoder stops there) and sends that many with the DMA, in transfers sized to the replayer's credits (half a 4 KB queue, 128 words).
-- **Wake flags** (events), each waking the controller:
+- **Wake flags** (events), each waking the controller (now four: expand, done, advice, and the DMA's completion, 4.17.9):
   - **expand:** an instruction needs its expansion from the controller (`EXPANSION_OPCODE` holds its word, as in the replayer's
     controller-fed path, spec 4.19.9);
   - **done:** the rows the row-count register asked for are traced;
-  - **code log**, **read log** and **write log:** each stream has something ready (sections 2 and 6);
+  - ~~**code log**, **read log** and **write log:** each stream has something ready~~ **dropped** (owner, 2026-11-04): nothing goes
+    out before done, and at done every stream's length is known (the queue-length registers), so C&C 3 drains by those lengths,
+    the DMA waiting on its source queue as set 2 fills it; done and the DMA's own completion are all the pacing it needs;
   - **advice:** the read queue (section 23: the advice input) has room, so send more of the segment's advice (owner). **The queue is 4 KB**
     (owner: it mirrors the replayer's typical queue sizes; was 2 KB): 512 advice words. Advice is consumed slowly (the division family takes one word per expansion of about 12 rows,
     a secp operation at most 8 in up to 240), so a full queue lasts thousands of rows, far longer than the controller takes to

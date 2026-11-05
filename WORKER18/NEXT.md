@@ -10,7 +10,7 @@ After the rulings, the 7189216 re-check and the demo guests:
    upper-index cache (16-64), and the shared 512 KB cache (8-way, 512 sets, 128 B lines); report hit rates per segment, cold
    caches at each segment's start. Plan first.
 3. **Two of WORKER17's findings** (DECISIONS-v1.3 sections 17, 25): gold rejects `LR.D x0` / `LR.W x0` loading a nonzero
-   word; gold flags a guest access below `lowest_address` or above the layout's top as the Tracer will (the full 64-bit offset
-   beyond the file's length); and a jolt-cpp bug report against its prover, which silently drops such an access
+   word; gold flags a guest access below `lowest_address` or above the layout's top as the Tracer's comparator will
+   (`(address − lowest_address) < 8·K`, unsigned, on the full 64-bit address); and a jolt-cpp bug report against its prover, which silently drops such an access
    (`jolt-utils/ram.hpp:16-30`; GPU RW checking drops cells >= K) and produces a proof that fails verification
    (`WORKER17/REPORT.md`). Plan first.

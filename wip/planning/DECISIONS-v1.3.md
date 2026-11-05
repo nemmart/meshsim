@@ -1111,13 +1111,18 @@ Decided (O).
   - **a jump target not in the map** (the probe finds neither the pc nor a free slot within its bound);
   - **a write to a hole** in the guest's memory (an index entry of `0xFFFFFFFF`), reported by the memory system's walker to the
     requester;
-  - **an access to a page that doesn't exist**, beyond the file's length; **this also catches a guest access below
-    `lowest_address` or above the layout's top** (owner, 2026-11-04; WORKER17): the file offset is `address − lowest_address`
-    computed and compared **on the full 64-bit address**, so an address below the start wraps beyond the length (the spec must say
-    the offset is never truncated to the file's depth before the check). Such a run can't be proven in either codebase (R1CS ties
-    the address to rs1 + imm), and a16z's prover rejects it, but jolt-cpp's silently drops the access and produces a proof that
-    fails verification. **The host tracer isn't required to check** (a per-access check would slow its JIT; free only if its
-    memory mapping faults); the hardware's check is nearly free. jolt-cpp gets a bug report against its prover;
+  - **an access to a page that doesn't exist**, beyond the file's length;
+  - **a guest access outside the provable range** (owner, 2026-11-04; WORKER17): **a dedicated comparator** in the Tracer's
+    load and store path, `(address − lowest_address) < 8·K`, one subtract and one unsigned compare **on the full 64-bit
+    address** (an address below the start wraps and fails the same compare), alongside the local cache lookup, so it costs no
+    cycle; a failure sets its own `ERRORS` bit. **Not the memory system's length check:** `.pages` is larger than the provable
+    range (a 4 GB file against Cyclone's 2²⁴ cells, so an access past K but inside the file reads a hole as zero), and a request
+    reaching the memory system is already a (root, depth, line). The Tracer needs `lowest_address` and K in its state (the files
+    word, 66, or two registers: SP1 places them); the upper bound is the cell index below K, to confirm against a16z's prover
+    (or the layout's top). Instruction fetch needs none: a pc outside the code misses the jump map. Such a run can't be proven in
+    either codebase (R1CS ties the address to rs1 + imm); a16z's prover rejects it, jolt-cpp's silently drops the access and
+    produces a proof that fails verification. **The host tracer isn't required to check** (a per-access check would slow its JIT;
+    free only if its memory mapping faults). jolt-cpp gets a bug report against its prover;
   - **advice underflow** (a pop past the read queue's size, section 24);
   - and in software, **leftover advice** at the segment's end (C&C 3, section 24).
   **UB** stays for our firmware's own mistakes with the Tracer (a row count or state write out of order). A read of a hole still

@@ -1025,13 +1025,16 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
   queue's length (in 128-bit words, rounded up; the padding after a stream's last bit can be anything, even in a compressed
   stream (owner), since the stream word gives the exact bit length and value count and the decoder stops there) and sends that many with the DMA, in transfers of C&C 3's choosing: in the first implementation they go directly into the tiles' memory, so no replayer
   credits pace them (owner, 2026-11-04, below; replacing transfers sized to the replayer's credits, half a 4 KB queue, 128 words).
-- **Wake flags** (events), each waking the controller (revised 2026-11-05: expand, advice, **the four queue-service flags**, done, and the DMA's completion, 4.17.9):
+- **Wake flags** (events), each waking the controller (revised 2026-11-05: expand, **the expansion credit**, advice, **the four queue-service flags**, done, and the DMA's completion, 4.17.9):
   - **expand:** an instruction needs its expansion from the controller (`EXPANSION_OPCODE` holds its word, as in the replayer's
     controller-fed path, spec 4.19.9);
   - **done:** the rows the row-count register asked for are traced **and the window's output is fully drained** (revised
     2026-11-05, the drain below; the state queue's service flag marks the rows' end);
   - ~~**code log**, **read log** and **write log:** each stream has something ready~~ dropped 2026-11-04, and **replaced by
     the queue-service flags** (owner, 2026-11-05, below);
+  - **expansion credit** (owner, 2026-11-05; WORKER21's Q3): **as the replayer's** (spec 4.19.9), so a controller-fed expansion
+    longer than the 4 KB expansion queue (KECCAK's 3,121 words against 256 entries) streams in, C&C 3 refilling as the Tracer
+    consumes; identical mechanism, depth and firmware pattern;
   - **advice:** the read queue (section 23: the advice input) has room, so send more of the segment's advice (owner). **The queue is 4 KB**
     (owner: it mirrors the replayer's typical queue sizes; was 2 KB): 512 advice words. Advice is consumed slowly (the division family takes one word per expansion of about 12 rows,
     a secp operation at most 8 in up to 240), so a full queue lasts thousands of rows, far longer than the controller takes to
@@ -1086,7 +1089,8 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
   FIFO feeds output queues 2 and 3 in row order; with small queues and a DMA sending one queue per transfer, that deadlocks (the
   DMA waiting on one queue while the scan waits on the other). So:
   - **output queues 1-3 (code, read log, write log) are 4 KB each**, and each counts **credits**: one per 2 KB chunk present
-    (so 0-2), plus one for the last part of a finished stream. **Its service flag is up while it holds a credit**; each DMA
+    (so 0-2), plus one for the last part of a finished stream: **at a stream's end the Tracer raises a service request even
+    with less than 2 KB in the queue** (owner, 2026-11-05); none if the remainder is 0 (a stream of a whole number of chunks, or empty). **Its service flag is up while it holds a credit**; each DMA
     transfer of a chunk takes one. A request only goes up for data already in the queue, so a transfer never waits on the scan,
     and a full queue stalls the scan only while its own request is up: **no deadlock, one scan, the DMA unchanged.** A window
     heavy in one log and empty in the other just raises that queue's flag repeatedly;

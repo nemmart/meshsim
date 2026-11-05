@@ -2,14 +2,21 @@
  * The Tracer's RVC decompressor ({@link Rvc}, spec 4.21.4 step 2) against gold's (wip/gold, Decoder.uncompress, a16z's
  * rules with D12) on all 2^16 16-bit encodings, and the code-stream word's rules: bit 0 cleared as the compressed flag,
  * 0 (an invalid expansion) for the encodings with no 32-bit form and the reserved forms (c.unimp among them).
- * Gold is found on the class path (java -cp build:<gold build> RvcTest); without it the comparison is skipped.
+ * Gold is found on the class path, or in build/gold (run_tests.sh compiles it there); without it the comparison is skipped.
  */
 public final class RvcTest {
     public static void main(String[] args) throws Exception {
         T.group("Rvc against gold");
         java.lang.reflect.Method g = null;
         try { g = Class.forName("gold.Decoder").getMethod("uncompress", int.class); }
-        catch (ClassNotFoundException e) { T.pending("Rvc against gold, every 16-bit encoding", "gold on the class path"); }
+        catch (ClassNotFoundException e) {
+            // run_tests.sh's $J has build/ only: gold's classes from build/gold (run_tests.sh compiles them there)
+            java.nio.file.Path gp = java.nio.file.Path.of("build", "gold");
+            if (java.nio.file.Files.isDirectory(gp)) {
+                ClassLoader cl = new java.net.URLClassLoader(new java.net.URL[] { gp.toUri().toURL() }, RvcTest.class.getClassLoader());
+                g = Class.forName("gold.Decoder", true, cl).getMethod("uncompress", int.class);
+            } else T.pending("Rvc against gold, every 16-bit encoding", "gold's classes in build/gold");
+        }
         int same = 0, compressedForms = 0, invalid = 0;
         for (int h = 0; h < 65536; h++) {
             if ((h & 3) == 3) continue;                       // a 32-bit instruction's first half

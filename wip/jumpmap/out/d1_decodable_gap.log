@@ -1,0 +1,12 @@
+d1_decodable_gap: lowest_address 0x7fffffe0, code 0x80000000-0x80000028, 6 instructions (7 bytecode rows), 4 segments in d1_decodable_gap.seg
+cycle-0 image: 1 pages of 4 KB
+run: 6 rows, 1 jumps (lookups), 0 self-jumps, 1 program end
+table: 1 entries (1 static, 1 run, 0 run-only), k=0 (1 lines, 0 KB), load 0.063, fullest line 1, placed 0/1/2 steps 1/0/0; p1=0x9e3779b1 p3=10368899
+acceptance: 1 jumps through frame6.bin's table: 0 map errors, 0 wrong bases; lines read 1/2/3: 1/0/0
+  direct       static       1, run targets missed     0 of 1, jumps missed 0
+  +return      static       1, run targets missed     0 of 1, jumps missed 0
+  +auipc_call  static       1, run targets missed     0 of 1, jumps missed 0
+  +auipc_addr  static       1, run targets missed     0 of 1, jumps missed 0
+  +data        static       1, run targets missed     0 of 1, jumps missed 0
+  +after_ecall static       1, run targets missed     0 of 1, jumps missed 0
+word 66: log2 K 4 (run 0, image floor 4), lowest_address 0x7fffffe0; OK

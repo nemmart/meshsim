@@ -151,7 +151,7 @@ public final class Main {
             k, first, written.length, imgSha[k], !doImages ? "not run" : bad == null ? "ok" : "FAILED: " + bad));
       }
       segJump[k] = jKey.size();
-      long end = first + segRows;
+      long end = k + 1 < nseg ? first + segRows : Long.MAX_VALUE;   // as gold: the last segment runs to the end
       while (m.cycle < end && !m.halted()) {
         VInstr v = m.code.at(m.index);
         long pc = m.pc;

@@ -13,9 +13,9 @@ import java.util.Set;
 import java.util.TreeMap;
 
 /**
- * A segment's start image (WORKER26/PROMPT.md item 3b): the guest's memory as 4 KB pages of `.pages`, page n at offset
- * 4096 n, that is at guest address lowest_address + 4096 n. Built from gold's cycle-0 image, then each segment's update
- * words applied in order; checked against gold's own memory at the next segment's first row.
+ * The guest's memory as 4 KB pages of `.pages`, page n at offset 4096 n, that is at guest address lowest_address +
+ * 4096 n: the initial image (gold's cycle-0 image), then each segment's update words applied in order, checked against
+ * gold's own memory at every segment's first row (the owner's scope, DECISIONS-v1.3, B1's acceptance on one memory).
  */
 public final class Image {
   public static final int PAGE_SHIFT = 12, PAGE_WORDS = 512;
@@ -25,7 +25,7 @@ public final class Image {
   final TreeMap<Integer, long[]> pages = new TreeMap<>();
 
   public Image(long lowest) {
-    if ((lowest & 0xfff) != 0) throw new IllegalArgumentException(String.format("lowest_address %#x not 4 KB aligned", lowest));
+    if ((lowest & 7) != 0) throw new IllegalArgumentException(String.format("lowest_address %#x not 8-byte aligned", lowest));
     this.lowest = lowest;
   }
 
@@ -51,26 +51,27 @@ public final class Image {
     }
   }
 
-  static final int GOLD_SUBPAGES = 1 << (Memory.PAGE_SHIFT - PAGE_SHIFT);
-
-  /** Copies every 4 KB page of gold's memory holding a non-zero word (gold's cycle-0 image). */
+  /** Copies every non-zero word of gold's memory into its page (gold's cycle-0 image). The pages are 4 KB of `.pages`
+   *  (offsets from lowest_address), which needn't line up with gold's 16 KB pages of guest addresses. */
   public void copyNonZero(Memory m) {
     long[][] gp = goldPages(m);
     for (int gi = 0; gi < gp.length; gi++) {
       if (gp[gi] == null) continue;
-      for (int s = 0; s < GOLD_SUBPAGES; s++) {
-        int from = s * PAGE_WORDS;
-        if (allZero(gp[gi], from)) continue;
-        long addr = ((long) gi << Memory.PAGE_SHIFT) + ((long) s << PAGE_SHIFT);
+      long base = (long) gi << Memory.PAGE_SHIFT;
+      for (int w = 0; w < gp[gi].length; w++) {
+        if (gp[gi][w] == 0) continue;
+        long addr = base + 8L * w;
         if (addr < lowest) throw new IllegalStateException(String.format("data at %#x below lowest_address", addr));
-        System.arraycopy(gp[gi], from, page(pageOf(addr)), 0, PAGE_WORDS);
+        long c = (addr - lowest) >>> 3;
+        page((int) (c >>> 9))[(int) (c & 511)] = gp[gi][w];
       }
     }
   }
 
-  private static boolean allZero(long[] a, int from) {
-    for (int i = from; i < from + PAGE_WORDS; i++) if (a[i] != 0) return false;
-    return true;
+  private long word(long addr) {
+    long c = (addr - lowest) >>> 3;
+    long[] p = pages.get((int) (c >>> 9));
+    return p == null ? 0 : p[(int) (c & 511)];
   }
 
   /** Applies update words (section 16: a header, start cell low 32 and count high 32, then the values). */
@@ -107,33 +108,28 @@ public final class Image {
     return o;
   }
 
-  /** null if this image equals gold's memory word for word (every page; an unlisted page must be all zero there). */
+  /** null if this image equals gold's memory word for word (a word on no listed page must be zero in gold). */
   public String check(Memory m) {
     long[][] gp = goldPages(m);
     for (int gi = 0; gi < gp.length; gi++) {
       if (gp[gi] == null) continue;
-      for (int s = 0; s < GOLD_SUBPAGES; s++) {
-        long addr = ((long) gi << Memory.PAGE_SHIFT) + ((long) s << PAGE_SHIFT);
-        int from = s * PAGE_WORDS;
-        long[] mine = addr >= lowest ? pages.get(pageOf(addr)) : null;
-        if (mine == null) {
-          if (!allZero(gp[gi], from)) return String.format("gold has data at %#x, a page not in the image", addr);
+      long base = (long) gi << Memory.PAGE_SHIFT;
+      for (int w = 0; w < gp[gi].length; w++) {
+        long addr = base + 8L * w, g = gp[gi][w];
+        if (addr < lowest) {
+          if (g != 0) return String.format("gold has data at %#x, below lowest_address", addr);
           continue;
         }
-        for (int w = 0; w < PAGE_WORDS; w++) {
-          if (mine[w] != gp[gi][from + w]) {
-            return String.format("word %#x: image %#x, gold %#x", addr + 8L * w, mine[w], gp[gi][from + w]);
-          }
-        }
+        long mine = word(addr);
+        if (mine != g) return String.format("word %#x: image %#x, gold %#x", addr, mine, g);
       }
     }
     for (Map.Entry<Integer, long[]> e : pages.entrySet()) {
-      long addr = lowest + ((long) e.getKey() << PAGE_SHIFT);
-      long[] g = gp[(int) (addr >>> Memory.PAGE_SHIFT)];
-      if (g == null) {
-        for (int w = 0; w < PAGE_WORDS; w++) {
-          if (e.getValue()[w] != 0) return String.format("image has data at %#x, gold has none", addr + 8L * w);
-        }
+      long[] v = e.getValue();
+      for (int w = 0; w < PAGE_WORDS; w++) {
+        if (v[w] == 0) continue;
+        long addr = lowest + ((long) e.getKey() << PAGE_SHIFT) + 8L * w;
+        if (m.load(addr) != v[w]) return String.format("word %#x: image %#x, gold %#x", addr, v[w], m.load(addr));
       }
     }
     return null;

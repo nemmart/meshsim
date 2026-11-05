@@ -1201,6 +1201,13 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
   need not hold the state itself. **Where they land will evolve** (owner, 2026-11-04): **first, the DMA writes them directly into the
   compute tiles' memory** (so no replayer credits pace the drain, and C&C 3 can interleave the queues' transfers freely); **later,
   they will probably land in C&C 3's memory and go to LPDDR by file calls, for a later replay.**
+  **Arming the tiles' counters** (owner, 2026-11-05; WORKER22's Q15; an intermediate step): every write into a tile's big SRAM
+  is counted, armed before it arrives (invariant 22), but a window's stream sizes exist only after it is traced. **The record's
+  pieces are fixed** (66 words of state to tile *n* + 1, 2 of totals to tile *n*), so the tiles arm for them at boot. **For the
+  streams, a handshake:** C&C 3 sends tile *n* its totals first; the tile reads the sizes from word 1, arms its counter for the
+  streams and replies "armed"; only then does C&C 3 send the streams (one round trip per window, negligible against the drain,
+  the scans waiting on full queues meanwhile). The later design lands the windows in C&C 3's memory and LPDDR files instead;
+  candidate C2 (signed counters) would remove the handshake.
 - **A new state is written only at the start of a proof** (owner, 2026-11-01): one segment per ASIC per proof, so between the
   64 windows of a segment nothing is loaded; C&C 3 only reads the state and the queue lengths at each done, drains the output
   queues, and pulses go. **The read queue persists across the windows**, since the segment's advice runs across them (its size

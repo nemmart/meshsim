@@ -685,6 +685,13 @@ start comes in frame 2. **Only jumps need the map.**
 - **A 64-entry pc to `instr_idx` LRU in the Tracer** (owner): a hit costs nothing.
 - **On a miss, the Tracer probes the hash table itself** (owner, 2026-11-01; replacing a lookup by the controller through a
   `TARGET_PC` register and event): a multiply, a shift, one line read and 16 comparators.
+- **Revised: one table per proof, built whole on the host** (owner, 2026-11-05, on WORKER26's plan): **the static analysis
+  (below) plus the run's own targets** (the host runs the program anyway, for the memory updates), merged by the host into **a
+  single table**, about 70K entries, with its hash constants chosen for it, and **sent with the proof** (frame 6 carries the
+  table's lines and its three constants). **No supplement inserted on chip**, so no inserter, no private page copies and no
+  open question of who inserts. Not a table of the run's targets alone: that would be far smaller (about 6K and 4K entries) and
+  give unfounded confidence in the cache footprint. Cost: about 1 MB per proof in the stream, against 2.6-12.5 MB of updates.
+  *The design it replaces (2026-11-01), for the record:*
 - **The table: one hash table of target pc to base `instr_idx`, static per program, with a per-proof supplement inserted into
   it** (owner, 2026-11-01; robust to programs whose runs jump to many targets, where a per-proof table could swell to megabytes
   in the broadcast stream):

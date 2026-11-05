@@ -8,7 +8,7 @@ Frames: 7 (u32 version, u32 n, n u64: log2 K, lowest_address, a16z's MemoryLayou
 written), 6 (u32 k, p1, p3, 2^k lines of 128 B), then per segment 2 (68 x 128-bit record), 3, 4 or 5.
 Checks: frame order; frame 6 equals jumpmap's frame6.bin; frame 1 equals jumpmap's seg/NNN.json pages_written; each
 frame 2 equals the v1.2 file's 131-word state (pc, instr_idx, offset, registers), its advice field frame 3's count,
-word 66 frame 7's log2 K and lowest_address / 4 KB; frames 3-5 equal the v1.2 file's; frame 7's layout equals
+word 66 frame 7's log2 K [71:66] and the I/O region's size 0x8000_0000 - lowest_address [102:72] (spec 4.21.2, 66f399e); frames 3-5 equal the v1.2 file's; frame 7's layout equals
 upstream_rows's dump of a16z's MemoryLayout.
 """
 import json, os, re, struct, sys
@@ -65,7 +65,7 @@ def main():
             rec = struct.unpack("<136Q", segs[3 * s][1])
             adv = len(segs[3 * s + 1][1]) // 8
             want = [st[0], (st[1] & 0xffffffff) | (st[2] & 0xffff) << 32, 0, adv << 38] + list(st[3:131]) + \
-                   [0, log2k << 2 | (lowest >> 12) << 8, 0, 0]
+                   [0, log2k << 2 | (0x80000000 - lowest) << 8, 0, 0]
             if list(rec) != want or segs[3 * s + 1][1] != old[3 * s + 1][1] or segs[3 * s + 2] != old[3 * s + 2]:
                 bad += 1
         print(f"  frames 2-5 vs the v1.2 file: {nseg - bad} of {nseg} segments agree")

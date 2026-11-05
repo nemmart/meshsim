@@ -175,6 +175,7 @@ public final class SegmentWriter {
       } catch (ProofParams.Unprovable e) {
         throw new Rejected(e.getMessage());
       }
+      ioRegionSize(params);                           // rejects an I/O region of 2 GiB or more before writing
       frame(file, F_PROOF_PARAMS, params.frame7());
       byte[] counts = new byte[4 * segments.size()];
       for (int k = 0; k < segments.size(); k++) putInt(counts, 4 * k, segments.get(k).pages4k);
@@ -230,8 +231,9 @@ public final class SegmentWriter {
   /**
    * Frame 2 at v1.3: v1.26.1's 68-word record, 128-bit words, little-endian (spec 4.21.2; DECISIONS-v1.3 section 23):
    * word 0 pc [63:0], instr_idx [95:64], next offset [111:96]; word 1 only the advice field [124:102], the segment's
-   * advice values (frame 3's count); words 2-65 registers 2i, 2i + 1; word 66 log2 K [71:66] and lowest_address / 4 KB
-   * [123:72] from frame 7, the roots and depths 0 for C&C 3 (owner, 2026-11-05); word 67 the template bitmap, 0.
+   * advice values (frame 3's count); words 2-65 registers 2i, 2i + 1; word 66 log2 K [71:66] and the I/O region's
+   * size, 0x8000_0000 - lowest_address, exact in bytes at [102:72] ([127:103] spare; spec 4.21.2, 66f399e), from
+   * frame 7, the roots and depths 0 for C&C 3 (owner, 2026-11-05); word 67 the template bitmap, 0.
    */
   byte[] stateRecord(Segment sg) {
     long[] w = new long[2 * RECORD_WORDS];               // each 128-bit word as (low u64, high u64)
@@ -239,8 +241,18 @@ public final class SegmentWriter {
     w[1] = (sg.state[1] & 0xffffffffL) | (sg.state[2] & 0xffffL) << 32;
     w[3] = (long) sg.advice.size() << (102 - 64);
     for (int r = 0; r < Isa.NUM_REGS; r++) w[4 + r] = sg.state[3 + r];
-    w[2 * 66 + 1] = (long) params.log2K << (66 - 64) | (params.lowestAddress >>> 12) << (72 - 64);
+    w[2 * 66 + 1] = (long) params.log2K << (66 - 64) | ioRegionSize(params) << (72 - 64);
     return toBytes(w);
+  }
+
+  /** Word 66's I/O region size, 0x8000_0000 - lowest_address: 31 bits, so a region of 2 GiB or more is rejected. */
+  static long ioRegionSize(ProofParams p) {
+    long size = Layout.RAM_START - p.lowestAddress;
+    if (size <= 0 || size >= 1L << 31) {
+      throw new Rejected(String.format("the I/O region below 0x80000000 is %#x bytes (lowest_address %#x): word 66 "
+          + "holds less than 2 GiB (spec 4.21.2)", size, p.lowestAddress));
+    }
+    return size;
   }
 
   /** A frame: u32 length in words (header included), u32 type, the data zero-padded to whole words. */

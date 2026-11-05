@@ -13,7 +13,7 @@ blob at both: `crates/jolt-program/src/image/{elf,decode,mod}.rs`, `crates/jolt-
 `tracer/src/instruction/ecall.rs`, `tracer/src/emulator/{cpu,mod}.rs`, `crates/jolt-program/src/preprocess/bytecode.rs`,
 `crates/jolt-program/src/expand/mod.rs`, `common/src/jolt_device.rs`.
 
-**Status** (2026-11-05): D1, D3, D4, D5, D12, D14 ruled (below); D2, D6-D11 and D13 deferred.
+**Status** (2026-11-05): D1, D3, D4, D5, D12, D13, D14 ruled (below); D2, D6-D11 deferred.
 
 ## What to report (2026-11-05)
 
@@ -29,10 +29,10 @@ a16z `7189216` (same files as `17a9459` for everything below). Reproducers are m
 | 1 | **D1**: the image, initial memory, `program_end` and code come from segments; a16z's from sections | `src/tracer/loader.cpp:141-200` (one executable segment, decoded whole); a16z `crates/jolt-program/src/image/elf.rs:40-110` | `d1_decodable_gap` (rows equal, but `.text.b` at bytecode index 7 of 11, a16z's 3 of 7); `d1_rodata_in_text` (JIT fails at load) | `jolt-cpp-D1-image-by-segments.md` | `worker18-fix-d1-sections` (`7b91e8a`) | **any ELF whose executable segment holds bytes outside the Text sections** (`.rodata` in the R-X segment is a common link layout): every later bytecode index shifts, and the proof fails verification with no error; or the program can't load |
 | 2 | **the prover silently drops an out-of-range access** (below `lowest_address`, or at or above K) and produces a proof; the GPU's 32-bit column lets an address 2³⁵ or more above `lowest_address` alias into a low cell | `src/jolt-core/jolt-utils/ram.hpp:16-30` (`new_remap_address`); `src/jolt-core/zkvm/ram/gpu/rw_sparse_init_kernels.cu:93-95`; a16z rejects (`crates/jolt-prover/src/config.rs:165-174`; verifier `crates/jolt-verifier/src/verifier.rs:473-490`) | `range_below_lowest`, `range_above_top` (jolt-cpp's tracer accepts both) | `jolt-cpp-prover-out-of-range-access.md` | none | **any program with such an access** (a bug in the guest, or the JIT's unchecked memory below): a proof that fails verification instead of a clean rejection |
 | 3 | **D3**: legacy raw-ECALL host I/O detected, every ECALL rewritten to `VirtualHostIO`; a16z always traps | `src/tracer/host_io_encoding.cpp:38-105`; a16z `tracer/src/instruction/ecall.rs:39-50` | `legacy_raw_ecall` | `jolt-cpp-D3-legacy-raw-ecall.md` | `worker18-fix-d3-no-legacy-ecall` (`443e09e`) | **guests built for raw-ECALL host I/O**: a different bytecode, so proofs fail verification |
-| 4 | **D13**: the rd = x0 rewrite (`ADDI x0, x0, 0`) is flagged virtual when the opcode changed; a16z's isn't | `src/tracer/isa/virtual.cpp:174-189`, `:270-274`; a16z `crates/jolt-program/src/expand/mod.rs:144-145` | `rd0_add` | `jolt-cpp-D13-rd0-rewrite-flagged-virtual.md` | none (not ruled on gold's side) | **programs with a side-effect-free non-ADDI instruction writing x0** (HINTs such as `add x0, …`, `c.slli x0`): proofs fail verification |
+| 4 | **D13**: the rd = x0 rewrite (`ADDI x0, x0, 0`) is flagged virtual when the opcode changed; a16z's isn't | `src/tracer/isa/virtual.cpp:174-189`, `:270-274`; a16z `crates/jolt-program/src/expand/mod.rs:144-145` | `rd0_add` | `jolt-cpp-D13-rd0-rewrite-flagged-virtual.md` | `worker18-fix-d13-rd0-noop-not-virtual` (`a852cd3`) | **programs with a side-effect-free non-ADDI instruction writing x0** (HINTs such as `add x0, …`, `c.slli x0`): proofs fail verification |
 | 5 | **D14**: LR/SC with rd = x0 keep x0; a16z remaps them to a temporary | `src/tracer/isa/virtual.cpp:57-80`; a16z `crates/jolt-program/src/expand/operands.rs:51-60`, `mod.rs:133-145` | `lr_d_x0_nonzero`, `lr_w_x0_nonzero`, `lr_d_x0_zero`, `sc_d_x0`, `sc_w_x0` | `jolt-cpp-D14-lrsc-x0-not-remapped.md` | `worker18-fix-d14-lrsc-x0` (`cdde868`) | **programs with an LR or SC writing x0**: proofs fail verification (and LR x0 of a nonzero word is unprovable in jolt-cpp only). The inlines' exemption changes no provable program's rows (`inline_sha256_rd0`, `inline_bigint_rd0`) |
 | 6 | **the JIT's guest memory is unchecked**: each VM's 4 GiB is mapped read-write with its state struct right after it and no guard pages | `src/tracer/vm.cpp:13-30`; `bump_ptr.hpp:24-36`, `compressed_trace_gen.cpp:46`, `utils/mem.hpp:26, 33` (meshsim `sessions/WORKER17-REPORT.md`) | `range_above_top` (traced silently) | `jolt-cpp-prover-out-of-range-access.md` (part 2) | none | **faulty guests**: an access outside the layout silently reads zeroed RAM; past 4 GiB it corrupts the VM's state and the next VM's RAM, so other runs' traces too |
-| 7 | **D12**: C.SLLI with rd = x0 (a HINT) decoded as invalid; a16z decodes `slli x0, x0, n` | `src/tracer/isa/decoder.cpp:1022-1031`; a16z `crates/jolt-riscv/src/uncompress.rs:612-614` | `d12_c_slli_x0`; ACT4 `Zca-c.slli-00` | `jolt-cpp-D12-c-slli-x0.md` | `worker18-fix-d12-c-slli` (`2964c0a`) | **programs containing the HINT**: refused at load (loud). With the fix, the row still differs by D13 |
+| 7 | **D12**: C.SLLI with rd = x0 (a HINT) decoded as invalid; a16z decodes `slli x0, x0, n` | `src/tracer/isa/decoder.cpp:1022-1031`; a16z `crates/jolt-riscv/src/uncompress.rs:612-614` | `d12_c_slli_x0`; ACT4 `Zca-c.slli-00` | `jolt-cpp-D12-c-slli-x0.md` | `worker18-fix-d12-c-slli` (`2964c0a`) | **programs containing the HINT**: refused at load (loud). With this fix alone the row still differs by D13; with D13's fix too it equals a16z's |
 | 8 | **K capped at 2³⁰** by 32-bit fields; K = 2³² truncates to 0 | `sumcheck_context.hpp:36`, `card_context.cu:356`, `output_check.cu:89`, `rw_sparse.hpp:33-36` (WORKER17-REPORT) | none run (needs a layout over 8 GiB) | `jolt-cpp-ram-k-32-bit.md` | none | **programs needing K > 2³⁰** (over 8 GiB of RAM) can't be proven, with no clean rejection; today's workloads are 2²³-2²⁴ |
 | 9 | **D7**: EBREAK ends the run in the interpreter but aborts in the JIT; a16z ends | `src/tracer/transcode.cpp:2164-2165`; `trace_owner.cpp:277-283` | `ebreak` (interpreter only) | `jolt-cpp-D4-D5-D7-faulty-guests.md` | none | programs ending in EBREAK, where the JIT runs it: an abort |
 | 10 | **D4**: a removed UNIMP is stepped over with the pc behind by its size | `src/tracer/isa/virtual.cpp:1357`, `trace_owner.cpp:111-126`; a16z rejects (`crates/jolt-program/src/image/decode.rs:81`) | `unimp_fence_i` | `jolt-cpp-D4-D5-D7-faulty-guests.md` | none | faulty guests falling through an UNIMP: silently wrong rows, a proof that fails verification |
@@ -289,7 +289,16 @@ loads the guest and gives gold's rows; workloads and examples unchanged.
   reservation equals the address; LR.W clears it). Gold follows jolt-cpp: rd = 1, the check fails.
 - So jolt-cpp, upstream's tracer and gold agree; the ACT4 configuration (or the semantics) is what disagrees, and U1 hides it.
 
-## D13. The rd = x0 rewrite row's virtual flags (deferred)
+## D13. The rd = x0 rewrite row's virtual flags (ruled: follow a16z)
+
+**Ruling** (owner, 2026-11-05, DECISIONS-v1.3 section 17, 91ddc92): follow a16z. **Gold** had followed jolt-cpp here
+until the ruling (D13 was recorded as unruled, so stage 3's "gold matches a16z" didn't cover it: `rd0_add` and
+`d12_c_slli_x0` differed); now (`d4d22fa`) the no-op row isn't virtual, and both guests equal a16z's rows exactly;
+segment files byte-identical, workloads and examples unchanged. **jolt-cpp fix**: `worker18-fix-d13-rd0-noop-not-virtual`
+(`a852cd3`, from `fa59d9a`): after the no-op's `emit_instr`, `is_virtual` and `is_first_in_sequence` cleared; `rd0_add` then
+equals a16z's rows; workloads and examples unchanged.
+
+### The difference as found
 
 - **jolt-cpp** rewrites a side-effect-free instruction with rd = x0 to one `ADDI x0, x0, 0` row, and marks a row
   virtual whenever its opcode differs from the source's (`isa/virtual.cpp:174-189`, `:270-274`), so the rewrite of

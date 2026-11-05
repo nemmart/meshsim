@@ -1,6 +1,6 @@
 {
   "name": "rd0_add",
-  "log2_k": 3,
+  "log2_k": 4,
   "lowest_address": "0x7fffffe0",
   "hash_k": 0,
   "hash_p1": "0x9e3779b1",

@@ -16,4 +16,7 @@ what jolt-cpp's proofs are verified against.
 `lui x0, …`, `slli x0, …`, including the C.SLLI x0 of D12): its proof fails verification. None of EVM Zone, Cyclone or
 jolt-cpp's examples has one.
 
-**Fix**: none yet (the owner hasn't ruled on gold's side); one line: not virtual when the expansion is the rd = x0 no-op.
+**Fix**: jolt-asic-planning branch `worker18-fix-d13-rd0-noop-not-virtual` (`a852cd3`, from `tracer-standalone-main` fa59d9a;
+`WORKER18/fixes/jolt-cpp-d13-rd0-noop-not-virtual.patch`): after the no-op's `emit_instr`, `is_virtual` and
+`is_first_in_sequence` are cleared. With it `rd0_add` gives a16z's rows (`77c53666d3e73b90`); EVM Zone trace-23,
+Cyclone input/22, `tracer-tests`, `inlines` and `fibonacci` keep their run hashes.

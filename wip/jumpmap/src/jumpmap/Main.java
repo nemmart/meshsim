@@ -1,6 +1,7 @@
 package jumpmap;
 
 import gold.HashTable;
+import gold.ProofParams;
 import gold.StaticTargets;
 
 import gold.Elf;
@@ -290,12 +291,11 @@ public final class Main {
     }
     ro.close();
 
-    // ---- word 66's values: K as jolt-cpp chooses it (WORKER17-NOTES: the run's highest load or store, raised to the
-    //      program-image floor) ----
-    long kRun = Long.numberOfTrailingZeros(ceilPow2((maxAddr - lowest) / 8 + 1));
-    long imageWords = (L.programEnd - L.programStart + 7) / 8;
-    long kFloor = Long.numberOfTrailingZeros(ceilPow2((L.programStart - lowest) / 8 + imageWords + 1));
-    long log2K = Math.max(kRun, kFloor);
+    // ---- word 66's values: K from gold's ProofParams, a16z's prover rule (crates/jolt-prover/src/config.rs:53-99; the
+    //      image's word count as its RAMPreprocessing, no +1 on the highest access), as frame 7 carries it. (Replaces
+    //      this tool's own jolt-cpp-style formula, which differed from a16z's on six tiny fixtures; WORKER16.) ----
+    ProofParams pp = new ProofParams(p, m);
+    long log2K = pp.log2K;
 
     // ---- what each kind of analysis adds, cumulatively: static entries, run targets and jumps covered ----
     int[] order = {StaticTargets.DIRECT, StaticTargets.RETURN, StaticTargets.AUIPC_CALL, StaticTargets.AUIPC_ADDR,
@@ -372,13 +372,13 @@ public final class Main {
           c == 0 ? "" : ",", names[c], active, active == 0 ? 0 : v[0], active == 0 ? 0 : v[active / 2],
           active == 0 ? 0.0 : sum / (double) active, active == 0 ? 0 : v[active - 1]));
     }
-    rep.append(String.format(Locale.ROOT, "%n  },%n  \"word66\": {\"log2_k\": %d, \"log2_k_run\": %d, \"log2_k_image_floor\": %d,"
-        + " \"max_address\": \"%#x\", \"image_words\": %d, \"lowest_address\": \"%#x\"},%n", log2K, kRun, kFloor, maxAddr,
-        imageWords, lowest));
+    rep.append(String.format(Locale.ROOT, "%n  },%n  \"word66\": {\"log2_k\": %d, \"log2_max_ram_k\": %d,"
+        + " \"max_address\": \"%#x\", \"lowest_address\": \"%#x\", \"k_from\": \"gold ProofParams (a16z's prover rule)\"},%n",
+        log2K, Long.numberOfTrailingZeros(pp.maxRamK), m.maxAddress, lowest));
     rep.append(String.format(Locale.ROOT, "  \"images\": \"%s\",%n  \"seconds\": %.1f,%n  \"ok\": %s%n}%n", images,
         (System.nanoTime() - t0) / 1e9, ok));
     Files.writeString(out.resolve("report.json"), rep.toString());
-    log.printf("word 66: log2 K %d (run %d, image floor %d), lowest_address %#x; %s; %.1f s%n", log2K, kRun, kFloor, lowest,
+    log.printf("word 66: log2 K %d (gold's ProofParams, a16z's rule), lowest_address %#x; %s; %.1f s%n", log2K, lowest,
         ok ? "OK" : "FAILED", (System.nanoTime() - t0) / 1e9);
     return ok;
   }

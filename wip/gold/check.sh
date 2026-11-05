@@ -3,11 +3,11 @@
 # byte for byte against WORKER16's segment_writer output (jolt-asic-planning worker16-w3 at ca30b5e).
 #   ./check.sh <jolt-asic-planning tracer dir> <dir with the reference .seg files> [out dir]
 # The reference files are evm-zone-29.seg, cyclone-29.seg, evm-zone-23-hardcuts.seg, cyclone-22-hardcuts.seg as
-# segment_writer writes them (WORKER18/NOTES.md, "Stage 2"); the hard-cut lists are meshsim's WORKER16/data/w3/*.cuts.
+# segment_writer writes them (WORKER18/NOTES.md, "Stage 2"); the hard-cut lists are meshsim's wip/planning/sessions/WORKER16-data/w3/*.cuts (WORKER16, closed).
 set -e
 cd "$(dirname "$0")"
 T=$1; R=$2; O=${3:-/tmp/gold-check}
-CUTS=../../WORKER16/data/w3
+CUTS=../planning/sessions/WORKER16-data/w3
 [ -d build ] || ./build.sh
 mkdir -p "$O"
 E=evm-zone-4e3451c1d8c5

@@ -43,7 +43,7 @@ Branch **`worker16-v13`** of jolt-asic-planning, from `worker16-w3-88dca85`, now
   | 0 | pc [63:0], `instr_idx` [95:64] (the row's own index, as before), next offset [111:96], the rest 0 |
   | 1 | the advice field [124:102] = the segment's advice value count; output fields 0 |
   | 2-65 | registers two per word, low register in the low half; register 0 is 0 |
-  | 66 | log₂ K [71:66] and `lowest_address` / 4 KB [123:72] from frame 7; roots and depths 0 |
+  | 66 | log₂ K [71:66] and, from 66f399e, **the I/O region's size, 0x8000_0000 − `lowest_address`, in bytes at [102:72]** ([127:103] spare 0), from frame 7; roots and depths 0. (Before 66f399e: `lowest_address` / 4 KB at [123:72].) |
   | 67 | 0 |
 
   Padding segments: word 0 is 0, the registers are the final ones, and the advice count is 0.
@@ -139,3 +139,36 @@ My files make these choices; gold's must make the same:
 
 Since my tool follows jolt-cpp, finding 2 means byte identity with gold holds only where jolt-cpp and a16z agree on the
 bytecode. That's true on both workloads.
+
+## Word 66's I/O size (spec 4.21.2, meshsim 66f399e) and the acceptance
+
+**The change.** Word 66 [102:72] is now 0x8000_0000 − `lowest_address`, exact in bytes; [127:103] is spare. It replaces
+`lowest_address` / 4 KB at [123:72].
+- **Writer:** writes the new field, and refuses an I/O region at or above 2 GiB. That's `b2bac91`.
+- **Checker:** requires the new field to equal 0x8000_0000 − frame 7's `lowest_address`, and the spare bits to be 0.
+- **Python reader:** checks the same.
+- **Negative tests:** flipping bit 72 is caught as "word 66 differs from frame 7", and flipping bit 110 as "spare not 0".
+- **Both workloads at 2²⁹ pass every check again.** On both, the field is `0x2000000`.
+
+**Byte identity with gold.**
+- **Before the change: identical.** WORKER18's published `data/v13/segment-files-v1.3.sha256` (`e9145e04…` EVM Zone,
+  `fb1f4b6f…` Cyclone) equals my files from `7991321`.
+- **After the change: identical to gold with the same one-line change.** WORKER18 has not republished yet: gold at
+  meshsim `91ddc92` still writes `lowest_address` / 4 KB (`SegmentWriter.java:242`). So as a local, uncommitted pre-check
+  I changed that line in a copy of gold to the new field and ran it at 2²⁹. The output is **byte-identical** to mine on
+  both workloads:
+
+  | workload | bytes | SHA-256 |
+  |---|---|---|
+  | EVM Zone | 2,801,736 | `3cd328812c85fb94…` |
+  | Cyclone | 11,388,488 | `e932baafcbbfa6c9…` |
+
+  The full hashes are in `data/v13/segment-files-v1.3-66f399e.sha256`. That gold copy includes WORKER18's latest changes
+  (the D14 ruling, `60e5158`), which therefore don't change these workloads. **The acceptance is met once WORKER18's
+  republished SHA-256s equal these.**
+
+**The findings, as the owner placed them:**
+1. **K:** goes to WORKER18. Gold's `ProofParams` follows a16z's rule, and jumpmap's formula is fixed there.
+2. **`d1_decodable_gap`'s base:** expected. D1 follows a16z, so gold and jolt-cpp differ there until jolt-cpp takes the
+   D1 fix (`worker18-fix-d1-sections`).
+3. **The three fixtures jolt-cpp can't load:** the same, D1 and D12.

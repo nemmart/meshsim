@@ -567,7 +567,11 @@ a really easy format to work with, from multiple languages" (O).
 | 5 | updates, LRU-compressed | a u32 count of the 64-bit words encoded, then the codes (below) |
 | 6 | jump-target supplement | section 18: the run's jump targets the program's static table lacks, as (pc offset u32, base `instr_idx` u32) pairs | a u64 start address (64 B aligned), then two u32 per 64 B block of code from there, the base and the mask (section 18); part of the program's load, with the initial image |
 
-- **Order:** frame 1 once, first; then frame 6, the proof's jump-target supplement; then for each segment in order, frames 2, 3, and
+- **Frame 7, the proof parameters** (owner, 2026-11-05, on WORKER21's proposal; spec item 155): log₂ K, `lowest_address` and
+  a16z's `MemoryLayout` fields, all computed on the host as a16z does; **sent once, first, before frame 1.** C&C 3 fills word
+  66 from it, and the proving side reads the same frame: one source for both (answers the question left to SP1). Not the
+  program file (K follows the run), nor frame 1 (a fixed table of counts). Its layout: the host tools' (gold, WORKER16).
+- **Order:** frame 7 once, first; then frame 1 once; then frame 6, the proof's jump-target supplement; then for each segment in order, frames 2, 3, and
   one of 4 or 5 (the host's choice per segment).
 - **The update words:** the segment's dirty runs in address order (PR #1's "R-dirty"): each run is **a header word** (the start
   cell in the low 32 bits, the word count in the high 32) **followed by that many values**, each the word's last value in the
@@ -707,8 +711,11 @@ start comes in frame 2. **Only jumps need the map.**
   writes them once per proof, and they are sticky like `RUN_CONFIG`. They are context by section 24's resume test, but word 66
   has no room (4 bits spare), so registers are the pragmatic home, and the replayer's record is untouched. (A header line in the
   map file was the alternative: it costs the Tracer a read at load.) Word numbers: SP1's.
-- **Where the Tracer keeps it: open** (integrator's proposal: a dedicated SRAM next to the Tracer, 128 KB, so a lookup is a few
-  cycles and never touches the shared cache or LPDDR; the 64-entry LRU then becomes optional).
+- **Where the Tracer keeps it: a file read over the fill bus** (owner, 2026-11-05, on WORKER21's proposal; sections 19, 21), no
+  dedicated SRAM in the first implementation, and the 64-entry LRU kept. **The key is *o* = pc − `lowest_address`** (u32,
+  sharing the fetch path's `.pages` subtractor; spec item 146), so frame 6 and the static table use it; a free entry is key
+  0xFFFFFFFF; **the probe reads at most 3 lines** (home, then steps of *p*₃), and a free slot or 3 lines without a match is the
+  map error, [7]. *(Was open: a dedicated 128 KB SRAM, the integrator's proposal.)*
 - **What it replaces** (all superseded, recorded here for the history): a code map of one (base, mask) pair per 64 B of code,
   walked by decoding forward and summing expansion lengths from a 2,048-entry length table (with an rd = x0 bit, the CSR rules by
   rd and rs1, and inlines and CSRs sent to the controller through `LENGTH_OPCODE` with a 16-entry LRU); and before that, one word
@@ -1153,9 +1160,12 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
 | 35 | `EXPANSION_OPCODE` (R) | the instruction awaiting a controller-fed expansion (the same word on both units) |
 
   plus the usual `PARAMS`, `STATUS`, `ERRORS`, `EVENTS`, the two pulses (`PULSE_RUN`, `PULSE_DMA`), the DMA's words, and the four queue lengths
-  (above). Proposed (integrator, to confirm): the queue lengths at words 36-39 (state, code, read log, write log), and the
-  template number returned with an expansion in the expansion queue's first word or a register beside `EXPANSION_OPCODE`.
-- **Open:** the advice flag's threshold (proposed: half free); statistics registers.
+  (above). **Ruled** (owner, 2026-11-05, on WORKER21's proposals; spec 4.21.3, 8.16): words 36-39 the queue lengths (state,
+  code, read log, write log, in 128-bit words), 40 `HASH_MUL`, 41 `HASH_STEP`, 42 `HASH_LINES`, 43 **`EXPANSION_TEMPLATE`** (W:
+  C&C 3 stores the inline's number with a valid bit, setting its bitmap bit; `PULSE_RUN` sets it again when a run starts inside
+  that inline); **the advice flag is a credit** like the replayer's (depth 2, half a queue each, set to 2 by the word-0 write);
+  **the per-stream compression enables** in `RUN_CONFIG` [28:26] on the Tracer (sticky; the replayer ignores them).
+- **Open:** statistics registers (spec item 157).
 
 ## 25. The Tracer's core, and the program's end (2026-11-01)
 

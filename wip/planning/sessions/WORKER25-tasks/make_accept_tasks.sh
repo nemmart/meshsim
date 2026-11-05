@@ -2,6 +2,9 @@
 # make_accept_tasks.sh KIT.tgz OUTDIR [EZ_SHA CY_SHA]: WORKER25's tasks 105-107 (v1.26.1), reading the deliveries from persistent data
 # ($DATA/w9-deliveries, written by tasks 103/104) and converting them into scratch. The SHA-256s are the per-program
 # manifests' (default: WORKER9's 079/080, which 103/104 reproduce if the writer is deterministic).
+# WORKER27 (2026-11-05): the conversion below is wip/inputs/build.sh's convert step (which also rewrites the manifest's
+# "converted" object in a fixed order: v1.26.1's ConvertDelivery changes it between JVM runs, so the SHA-256 logged per
+# task varies; v1.26.1/ERRATA.md). A delivery built by wip/inputs (OUT/v1261) can be replayed without converting.
 set -eu
 K=$1; T=$2; EZ=${3:-7142e894c80a0c9d491f21c852a942885e0abd97cfe6aefd0101d716824e138f}; CY=${4:-f8a0622e144a944c51386b5b36f81101dcdeb16e5a8d950c1e9ca0e3097f8982}
 HERE=$(cd "$(dirname "$0")" && pwd); MS=$(cd "$HERE/../../wip/meshsim" && pwd)   # WORKER25/tasks -> wip/meshsim

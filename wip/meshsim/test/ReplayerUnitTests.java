@@ -831,6 +831,39 @@ final class ReplayerUnitTests {
             T.check(thrown, "a v1.25 record with [115] = 0 is refused (the tracer emits 1)");
         }
 
+        T.group("ConvertDelivery: the same manifest from every run (a fixed key order)");
+        try {
+            java.nio.file.Path tmp = java.nio.file.Files.createTempDirectory("convert-det"), src = tmp.resolve("src");
+            java.nio.file.Files.createDirectories(src.resolve("p"));
+            java.nio.ByteBuffer v = java.nio.ByteBuffer.allocate(16 * 67).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+            v.putLong(16, 0x8000_0000L); v.putLong(24, 1L | 1L << 51);              // pc; instr_idx 1, [115] = 1, raw
+            v.putLong(32, 128L | 128L << 32);                                       // code 128 bits, read log 128, write log 0
+            java.nio.file.Files.write(src.resolve("p/window_00000.state.bin"), v.array());
+            java.nio.file.Files.write(src.resolve("p/window_00000.end.bin"), v.array());
+            java.nio.file.Files.write(src.resolve("p/window_00000.code.bin"), new byte[16]);
+            java.nio.file.Files.write(src.resolve("p/window_00000.rlog.bin"), new byte[16]);
+            java.nio.file.Files.write(src.resolve("p/window_00000.wlog.bin"), new byte[0]);
+            java.nio.file.Files.writeString(src.resolve("p.manifest.json"), "{\"programs\": [{\"name\": \"p\", \"window_entries\": [{\"index\": 0, "
+                    + "\"files\": {\"state.bin\": {\"bytes\": 1072, \"sha256\": \"0\"}, \"end.bin\": {\"bytes\": 1072, \"sha256\": \"0\"}}}]}]}\n");
+            String[] mfs = new String[3];
+            for (int k = 0; k < 2; k++) {                                           // two runs, each in a JVM of its own
+                Process pr = new ProcessBuilder(java.nio.file.Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                        "-cp", System.getProperty("java.class.path"), "ConvertDelivery", src.toString(), tmp.resolve("out" + k).toString(), "p")
+                        .redirectErrorStream(true).start();
+                String log = new String(pr.getInputStream().readAllBytes());
+                T.check(pr.waitFor() == 0, "run " + (k + 1) + " converts: " + log.strip().split("\n")[0]);
+                mfs[k] = java.nio.file.Files.readString(tmp.resolve("out" + k + "/p.manifest.json"));
+            }
+            ConvertDelivery.convert(src, tmp.resolve("out2"), "p", src.resolve("p.manifest.json"));
+            mfs[2] = java.nio.file.Files.readString(tmp.resolve("out2/p.manifest.json"));
+            T.check(mfs[0].equals(mfs[1]) && mfs[1].equals(mfs[2]), "the manifest is the same in two JVM runs and in this one");
+            int by = mfs[0].indexOf("\"by\""), from = mfs[0].indexOf("\"from_manifest_sha256\"");
+            T.check(by > 0 && from > by, "\"converted\": \"by\" first, then \"from_manifest_sha256\"");
+            T.check(mfs[0].contains("\"sha256\": \"" + ReplayTables.sha256(java.nio.file.Files.readAllBytes(tmp.resolve("out0/p/window_00000.state.bin"))) + "\""),
+                    "the converted record's SHA-256 in the manifest");
+            try (var w = java.nio.file.Files.walk(tmp)) { w.sorted(java.util.Comparator.reverseOrder()).forEach(f -> f.toFile().delete()); }
+        } catch (Exception e) { T.check(false, "ConvertDelivery determinism test: " + e); }
+
         T.group("v1.26.1: ROWS_RUN past 2^16");
         {
             int n = 70_000;

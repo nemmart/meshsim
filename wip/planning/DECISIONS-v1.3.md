@@ -1095,6 +1095,10 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
     once every queue is empty and the last transfer has finished.** So C&C 3 is purely reactive (it sends what each request
     asks for, by the queue-length registers), and **done means ready for the next `PULSE_RUN`**: no rule against pulsing before
     the drain ends is needed (Q8 dissolved).
+  - **Sizing a transfer is C&C 3's job** (owner, 2026-11-05): each transfer asks for at most what the credit it answers covers,
+    2 KB for a chunk and exactly the remainder for a stream's last part (the queue-length registers give it); asking for more
+    words than the queue will hold is UB (the DMA would wait for data that never comes), flagged by meshsim, with no hardware
+    check.
   - Cost: about 12 KB of queues, four flags.
 - **The window's record is assembled by C&C 3, not the Tracer** (owner, 2026-11-01). **At each done, the Tracer presents its
   current state** (the state word and the registers: the end of the window just traced) **and the window's totals** (the stream

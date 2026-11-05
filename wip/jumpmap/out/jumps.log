@@ -9,4 +9,4 @@ acceptance: 12 jumps through frame6.bin's table: 0 map errors, 0 wrong bases; li
   +auipc_addr  static       9, run targets missed     2 of 11, jumps missed 2
   +data        static      10, run targets missed     1 of 11, jumps missed 1
   +after_ecall static      10, run targets missed     1 of 11, jumps missed 1
-word 66: log2 K 5 (run 5, image floor 5), lowest_address 0x7fffffe0; OK
+word 66: log2 K 5 (gold's ProofParams, a16z's rule), lowest_address 0x7fffffe0; OK

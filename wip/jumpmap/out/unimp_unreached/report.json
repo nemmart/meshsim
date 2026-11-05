@@ -34,7 +34,7 @@
     "image_pages": {"segments_with_rows": 1, "min": 1, "median": 1, "mean": 1.0, "max": 1},
     "pages_written": {"segments_with_rows": 1, "min": 0, "median": 0, "mean": 0.0, "max": 0}
   },
-  "word66": {"log2_k": 3, "log2_k_run": 0, "log2_k_image_floor": 3, "max_address": "0x0", "image_words": 2, "lowest_address": "0x7fffffe0"},
+  "word66": {"log2_k": 3, "log2_max_ram_k": 19, "max_address": "0x0", "lowest_address": "0x7fffffe0", "k_from": "gold ProofParams (a16z's prover rule)"},
   "images": "write",
   "ok": true
 }

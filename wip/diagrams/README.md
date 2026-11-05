@@ -1,6 +1,6 @@
 # v1.0 diagram set
 
-Twenty-nine figures in eight parts, numbered part.figure (1.0–8.1), for explaining the machine to another engineer and for building it: parts 2–7 go down to RTL (registers, gates, muxes, state machines, cycle-level timing and interface tables). They are drawn from `../spec/machine-spec.md` v1.0; each figure's subtitle and source line name its sections, and the spec's sections name their figures. Every figure is a self-contained SVG with its caption and source inside it. Pages are 1300 px wide with body text at 11.5–13 px and the smallest labels at 10–10.5 px. That reads well on screen. Printed across landscape letter or A4, body text comes out at about 6.5 pt and the smallest labels at about 5.5 pt, so print on A3 or tabloid for comfortable reading.
+Thirty figures in nine parts, numbered part.figure (1.0–9.1), for explaining the machine to another engineer and for building it: parts 2–7 go down to RTL (registers, gates, muxes, state machines, cycle-level timing and interface tables). They are drawn from `../spec/machine-spec.md` v1.0; each figure's subtitle and source line name its sections, and the spec's sections name their figures. Every figure is a self-contained SVG with its caption and source inside it. Pages are 1300 px wide with body text at 11.5–13 px and the smallest labels at 10–10.5 px. That reads well on screen. Printed across landscape letter or A4, body text comes out at about 6.5 pt and the smallest labels at about 5.5 pt, so print on A3 or tabloid for comfortable reading.
 
 **Folders.** `svg/` holds the figures (self-contained SVGs, each with its caption and source line), `png/` the same figures rendered at twice their size (for slides and viewers without SVG), and `src/` the Python generators. The file names in the tables below are in `svg/` (and `png/`, with `.png`).
 
@@ -73,6 +73,12 @@ Twenty-nine figures in eight parts, numbered part.figure (1.0–8.1), for explai
 |---|---|---|---|
 | 8.1 | `fig8_1_params.svg` | Parameters: every depth, width and latency, with its default | Every depth, width and latency the figures use, with its default. Open: the area queue depth, the array's read latency and the physical ready_latency are still to be fixed for the hardware; the token FIFO's 64 entries must absorb the area queueing a phase's placement allows (§4.2). |
 
+**Part 9. The Tracer** *(v1.3; drawn from `../planning/DECISIONS-v1.3.md`, not yet from the spec: its chapter, 4.21, is WORKER21's)*
+
+| # | file | figure | caption |
+|---|---|---|---|
+| 9.1 | `fig9_1_tracer.svg` | The Tracer: the RV64 core, its memory interface, and its peripheral side toward C&C 3 | The Tracer runs the guest on its own RV64 core. Its instruction cache, data cache and jump LRU are its only local stores; each miss is one 128 B line of a file, (root, depth, line), on the fill bus to the memory system. C&C 3 writes its state, tables and input queues into the region, runs it through the window, and at each done drains output queue 0 (part 0: window n+1's start and run n's totals) and the three streams, sized by set 1 and sent raw or through set 2, by the DMA. Writing word 0 resets everything. |
+
 Figures 4.1 and 4.2 draw the router at block level: one route block per input, one FIFO per feeder on each output (§4.7, §4.17); figure 4.3 is its RTL. Figure 1.3 hangs each table and configuration register over the engine it drives. Figure 3.1 draws one box per memory, the controller's access (r, w or r/w) on each bus tap, the unit on each memory's other side, and two zones: must be close (what the controller reads) and can be far (what it only writes).
 
 Figures 6.3 and 6.4 show the address generator's read-ahead and visit (§4.2, verified in meshsim). Where the spec is silent, they show the design as worked out with the lead: the `STREAM` reader's pointer into the `GROUP` queue, the request offered on its visit, and the token's fields.
@@ -108,3 +114,4 @@ Run `src/build.sh`: every `src/figP_N_*.py` writes its SVG into `svg/` (one figu
 - **The address generator:** gapless one-word exchanges and their link-queue peaks (§13 item 7; figure 6.1).
 - **The memory subsystem's link to C&C** (§13 item 9; figure 1.2). It hangs off C&C, with no mesh address (§7).
 - **The physical ready_latency** (§13 item 8; figure 8.1).
+- **The Tracer** (figure 9.1): the fill bus's arbitration, blocking, write buffer and error response; the jump table's dedicated SRAM and the probe's bound; the output queues' depths and the drain's interleaving; the core's inner split; register and bit numbers. Listed by number in `../../WORKER24/NOTES.md`.

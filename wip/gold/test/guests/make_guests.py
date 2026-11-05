@@ -204,6 +204,10 @@ GUESTS["lr_d_x0_zero"] = la(T0, STACK_DATA) + [lr(3, 0, T0), JAL_SELF]          
 # D14 (owner: follow a16z): LR/SC with rd = x0 are remapped to a temporary, as a16z
 GUESTS["sc_d_x0"] = la(T0, STACK_DATA) + SEVEN + [lr(3, A2, T0), sc(3, 0, T0, A1), ld(A0, T0, 0), JAL_SELF]
 GUESTS["sc_w_x0"] = la(T0, STACK_DATA) + SEVEN + [lr(2, A2, T0), sc(2, 0, T0, A1), lw(A0, T0, 0), JAL_SELF]
+# jolt-cpp also exempts the inlines from the rd = x0 remap; a16z doesn't. Invisible where the inline never reads rd
+# (SHA-256: state at rs1, block at rs2); visible where rd is the output address (BIGINT256_MUL stores the product at rd)
+GUESTS["inline_sha256_rd0"] = la(A0, STACK_DATA) + la(A1, STACK_DATA + 64) + [inline(0, 0, 0, A0, A1), JAL_SELF]
+GUESTS["inline_bigint_rd0"] = la(A0, STACK_DATA) + la(A1, STACK_DATA + 32) + [inline(4, 0, 0, A0, A1), JAL_SELF]
 GUESTS["end_jal_ra_0"] = [addi(A0, 0, 1), jal_imm0(1)]                                    # jal ra, 0: writes ra, ends
 GUESTS["misaligned_inline"] = la(A0, STACK_DATA + 4) + [inline(1, 0, 0, A0, 0), JAL_SELF] # KECCAK256's first LD at +4
 GUESTS["store_into_code"] = la(T0, RAM_START) + [addi(A0, 0, 0x13), sd(T0, A0, 0), JAL_SELF]   # sd into .text

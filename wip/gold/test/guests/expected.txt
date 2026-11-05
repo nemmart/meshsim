@@ -9,6 +9,8 @@ ebreak: 2 rows, run hash fa4608b9a8ed4479, log2 K 4, lowest_address 0x7fffffe0
 end_c_j_0: 2 rows, run hash 55f0a437a71f520e, log2 K 3, lowest_address 0x7fffffe0
 end_jal_ra_0: 2 rows, run hash ec62d2972cff7d79, log2 K 3, lowest_address 0x7fffffe0
 fence: 5 rows, run hash ed27bc7a48e5952a, log2 K 4, lowest_address 0x7fffffe0
+inline_bigint_rd0: REJECTED: access at row 22 to 0x8 is outside (address - lowest_address) < 8K: below lowest_address 0x7fffffe0 (a16z's prover: RAM address precedes the memory layout)
+inline_sha256_rd0: 1905 rows, run hash 905a925209836a44, log2 K 17, lowest_address 0x7fffffe0
 jump_into_gap: ABORT at row 3: jump target 0x8000000a is not in the bytecode map
 keccak256: 3091 rows, run hash dc3bac76540e2d86, log2 K 17, lowest_address 0x7fffffe0
 legacy_raw_ecall: ABORT at row 8: jump target 0x0 is not in the bytecode map

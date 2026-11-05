@@ -59,3 +59,17 @@ every stage passes the same two flags through `RUN_CONFIG` instead:
 
 So 106/107 run **store log on, output `rd_prev` on, 65,536 rows**, as 098/099 did, and their rows, end states and stall
 counts compare like for like.
+
+## Quest tasks (pushed 2026-11-05, kits built from `4f7831e`)
+
+| task | what | kit SHA-256 |
+|---|---|---|
+| 105 | smoke: windows 0-63 of both workloads, A, B, F every 16th | 8aa265ce97727196... (acceptance kit) |
+| 106 | evm-zone-29, all 8,192 windows, A and B, F every 64th; compare with 098 | the same |
+| 107 | cyclone-29, the same; compare with 099 | the same |
+| 108 | the suites: run_quick, run_full, p4/uniform-k128 (1,229,008 expected) | 3d5b596db028bbd4... (suite kit) |
+
+Local checks before pushing: the acceptance kit on a synthetic v1.26.1 delivery (4 full windows, the advice field set),
+stages A, B and F, 4 of 4; `ReplayerTest` 2167/0, `StageB synthetic` 19/0, `RecipeTest` 2056/0, `RegDocTest` 269/0,
+`PeripheralSlotTest` 95/0, `AgTest` 240/0, the book 47 blocks with 0 differing. The suite kit's sort image is byte-identical
+to 102b's. The full quick suite wasn't run here (one CPU); 108 runs it.

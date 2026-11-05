@@ -60,6 +60,8 @@ final class MemorySystem {
 
     /** The bus is free at t (one request outstanding). */
     boolean idle(long t) { return t >= busyUntil; }
+    /** The first cycle the bus is free (the end of the request outstanding, or of a write-back). */
+    long freeAt() { return busyUntil; }
 
     /** The result of a read: its line, status and the cycle its data arrives. */
     static final class Response { final long[] data = new long[16]; int status; long readyAt; }

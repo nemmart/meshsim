@@ -436,6 +436,21 @@ Decided (O); also a reasonable size for the chip (O).
 
   At K = 2³² a snapshot is 32 GiB and a K-sized array of field elements 128 GiB, so **jolt-cpp as written can't reach 2³²**.
   Against that, our workloads touch 69 and 693 pages (1.1 and 11 MB). Open (d).
+- **Upstream's side, and the verifier** (WORKER17, 2026-11-04, a16z at 7189216; `WORKER17/REPORT.md` 8a0f058). Between f8fc214
+  (jolt-cpp 821e1bd's submodule), 7189216 (88dca85's) and 17a9459 nothing changes what RAM checking proves (a transcript change,
+  and #2190's range check of direct RAM loads; then only prover kernels).
+  - **The verifier is never dense in K:** Val_init's public part is evaluated as sparse word segments over the inputs and the
+    program image (`stage4/verify.rs:244-269`), with the committed advice and program image placed by block selectors; the output
+    check's publics are a range mask and sparse segments.
+  - **The layout bounds K:** the verifier takes a power of two from `compute_min_ram_k` up to `compute_max_ram_k`, the whole
+    layout (`verifier.rs:473-494`), so K = 2³² needs a layout over 16 GiB above `lowest_address`; our workloads' layouts allow at
+    most 2²⁴ (EVM Zone) and 2²⁶ (Cyclone).
+  - **Upstream's prover is dense in K in five sumchecks:** read-write checking (`val_final`, `val_init`; it also requires
+    log K ≤ 32), the output check (`val_io`, `io_mask`, `val_final`), raf evaluation, and the val check and `ra` claim reduction
+    (full eq tables over K). jolt-cpp's val check isn't: the GPU's uses at most four 8-bit chunk tables, the CPU's evaluates
+    eq(r_address, cell) per access.
+  - **The binding order is the prover's choice:** the verifier takes it from the proof's config. Upstream's prover defaults to
+    cycle-first; jolt-cpp binds address-first, confirmed in its kernels (RAM and registers, CPU and GPU).
 - **The hardware's sumcheck engines** handle the RAM `ra` virtualization at degrees 3 to 5 (*d* = 2 to 4). The other RAM
   sumchecks' degrees don't depend on K; they gain address rounds, up to 32.
 - **Open:**
@@ -447,8 +462,9 @@ Decided (O); also a reasonable size for the chip (O).
     88dca85: 13 commits, the tracer's only change is image loading and reset, #1544), and row hashes per window identical on both
     2²⁹ workloads. PR #2's tracer copy (7 files) is re-synced between WORKER16's tasks, not during one.
   - (d) **The K-dense steps** (above): our hardware computes them over the touched pages instead (an absent page is zero, so
-    untouched cells contribute nothing or a closed form), or K is capped where dense structures fit. Upstream's Val_init and
-    K-dense parts are WORKER17's next reading.
+    untouched cells contribute nothing or a closed form), or K is capped where dense structures fit. Read (above): the verifier
+    needs nothing dense, and the binding order is ours to choose. 88dca85's limits (RW checking 2³⁰ and its 31-bit packed column,
+    `MAX_D` 8, the output check's `uint32_t ram_k`) are being confirmed (WORKER17).
 
 ## 15. What the host sends per segment: images and transport (2026-11-01)
 
@@ -605,9 +621,11 @@ Decided (O).
   convention, and the padding rule (to confirm). Eleven hand-assembled guests cover the paths no workload reached.
 - **Rulings on `WORKER18/UPSTREAM-DIFFS.md`** (owner, 2026-11-04). **"Upstream" is a16z's Jolt, and it decides:** jolt-cpp has no
   verifier of its own; it proves `jolt_verifier::JoltProof` against a16z's `jolt_program` preprocessing, from its submodule
-  `third-party/jolt` at **7189216** (the verifier's pin), so a16z's bytecode is what every proof is checked against. Where jolt-cpp
+  `third-party/jolt` at **7189216** (the verifier's pin, at jolt-cpp 88dca85, v1.3's pin; v1.25's 821e1bd carries f8fc214, 20
+  commits earlier, with nothing in RAM checking different, section 14), so a16z's bytecode is what every proof is checked against. Where jolt-cpp
   builds a different bytecode or image, its proofs fail verification, so following a16z is forced, not a preference. The findings
-  were made at 17a9459; D1, D3 and D12 are to be re-checked at 7189216 (or the files shown unchanged).
+  were made at 17a9459; **they hold at 7189216** (WORKER18: an ancestor, 17 commits back, with every file D1, D3 and D12 depend on
+  identical).
   - **D1, the program image: follow a16z** (by sections: the code is the text sections). jolt-cpp decodes the whole executable
     `PT_LOAD` segment, so an ordinary layout with `.rodata` in that segment fails at load, and decodable data between code shifts
     its `instr_idx`, making its proofs fail verification silently. **A jolt-cpp fix and a bug report**, with demo guests.
@@ -624,6 +642,9 @@ Decided (O).
   - **D4, narrowed:** `unimp` 0xC0001073 is rejected at load, as a16z does; `c.unimp` stays the only unreachable marker (above).
   - **The program's end is detected by `JAL x0, 0`**, with 4.19.2's end-of-trace encoding unchanged; a JALR or branch to 0 is the
     D5 error (section 25).
+  - **`LR.D x0` or `LR.W x0` loading a nonzero word** (owner, 2026-11-04; WORKER17): unprovable in both codebases (R1CS forces
+    RamReadValue = RdWriteValue on every load row, and rd = x0's is 0); **the host tracer and gold reject it**, the check emitted
+    only for those instructions (known at translation), so it costs nothing elsewhere; no Tracer hardware. Neither workload has one.
   - **D2 and the rest: deferred.** U1 and U2 (a16z's ACT4 configuration and `jolt-emu`'s exit check) and U3 (a16z rejecting the
     standard `unimp`, 0xC0001073) are a16z's bugs, written up for the owner to decide whether to report.
 
@@ -1090,7 +1111,13 @@ Decided (O).
   - **a jump target not in the map** (the probe finds neither the pc nor a free slot within its bound);
   - **a write to a hole** in the guest's memory (an index entry of `0xFFFFFFFF`), reported by the memory system's walker to the
     requester;
-  - **an access to a page that doesn't exist**, beyond the file's length;
+  - **an access to a page that doesn't exist**, beyond the file's length; **this also catches a guest access below
+    `lowest_address` or above the layout's top** (owner, 2026-11-04; WORKER17): the file offset is `address − lowest_address`
+    computed and compared **on the full 64-bit address**, so an address below the start wraps beyond the length (the spec must say
+    the offset is never truncated to the file's depth before the check). Such a run can't be proven in either codebase (R1CS ties
+    the address to rs1 + imm), and a16z's prover rejects it, but jolt-cpp's silently drops the access and produces a proof that
+    fails verification. **The host tracer isn't required to check** (a per-access check would slow its JIT; free only if its
+    memory mapping faults); the hardware's check is nearly free. jolt-cpp gets a bug report against its prover;
   - **advice underflow** (a pop past the read queue's size, section 24);
   - and in software, **leftover advice** at the segment's end (C&C 3, section 24).
   **UB** stays for our firmware's own mistakes with the Tracer (a row count or state write out of order). A read of a hole still

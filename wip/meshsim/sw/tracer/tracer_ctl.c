@@ -158,9 +158,6 @@ static void dma(uint32_t q, uint32_t n, uint32_t dst, uint32_t addr, uint32_t ct
 int main(void) {
     me = tile_index();
     const uint32_t base_mask = EV_RESET_MASK;
-    /* Q17's guard: the first tile says "armed" once its record's counters are armed after the first GO; armed here, at
-     * C&C 3's boot, long before C&C 1 boots the tiles */
-    tile->WRITE_COUNTER[TL_CTR_ARMED - 1] = 1;
     tile->EVENTS_MASK = EV_COMMAND; (void)tile->EVENTS; tile->EVENTS_MASK = base_mask;   /* no stale command landed */
     copy_to_dm(0, hdr, TL_H_WORDS / 4, base_mask);
     request_send(me, 0, 0, REQ_CC1(REQ_OP_STARTED, 0, 0));            /* as cc23.c: C&C 1 waits for it (6.2) */
@@ -182,15 +179,15 @@ int main(void) {
      *    used has booted and armed for its record (Q15) */
     copy_to_dm(hdr[TL_H_RECORD], rec, 68, base_mask);
     uint32_t first = hdr[TL_H_FIRST_TILE], trec = hdr[TL_H_T_RECORD];
-    /* Q15, Q17: C&C 1 starts C&C 3 after the first barrier's GO (a command; no done pulse here: the guard's counter is
-     * armed), then the first tile's "armed" says its record's counters are armed */
+    /* Q15, Q17 (7c53209): C&C 1 starts C&C 3 after the first barrier's GO (a landed command), and C&C 3 sends nothing
+     * sooner than stage_delay after it (invariant 25), by which the tiles have armed their record's counters on waking */
     for (;;) {
         tile->EVENTS_MASK = EV_GO | EV_COMMAND;
         if ((tile->EVENTS & EV_COMMAND) && CMD_TYPE(COMMAND[0]) == TL_CMD_START) break;
         __asm__ volatile ("wfi" ::: "memory");
     }
-    wait_event(EV_CTR(TL_CTR_ARMED), base_mask);
     tile->EVENTS_MASK = base_mask;
+    { uint32_t t0 = mcycle(); while (mcycle() - t0 < TL_STAGE_DELAY) ; }
     send_to(ROUTER_HDR_W(first, MODE_WRITE, RL_CTR_STATE), sram_addr(trec));
     sendw(&rec[0]);
     send_to(ROUTER_HDR_W(first, MODE_WRITE, RL_CTR_STATE), sram_addr(trec + 8));

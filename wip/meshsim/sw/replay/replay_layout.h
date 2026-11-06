@@ -50,13 +50,13 @@
  * before it arrives. At boot the tile arms its state counter (66 words, sent at window n - 1) and its totals counter (2
  * words, at window n) and sends C&C 3 a count-only "booted"; C&C 3 sends tile n its totals first; the tile reads the
  * stream sizes from word 1, arms its stream counter and sends a count-only "armed"; only then come the streams. */
-/* Q15's barriers and Q17's order (owner, 2026-11-06; DECISIONS-v1.3 section 24, 9544e8e): READY at boot with nothing armed,
- * GO (C&C 1 then starts C&C 3), the record's counters armed, the window delivered with the per-window handshake, READY
- * again once every counter is at 0, the final GO: the replay. The first tile also says "armed" once its record's
- * counters are armed, since window 0's start (Q3) can come sooner than a window later */
+/* Q15's barriers and Q17's ruling (owner, 2026-11-06; DECISIONS-v1.3 section 24, 7c53209), the rule of every phase (4.13:
+ * the window between GO and arming is kept, closed by timing): READY at boot with nothing armed; GO (C&C 1 then starts
+ * C&C 3); the record's counters armed on waking; C&C 3 sends nothing sooner than stage_delay after the GO (invariant 25's
+ * announced staging; a packet that beats its counter is unexpected arrival, [2]); the window delivered with the
+ * per-window handshake; READY again once every counter is at 0; the final GO: the replay */
 #define RL_WAIT_BARRIERS     1u   /* an unused tile: the two barriers, nothing armed, no replay */
 #define RL_WAIT_HANDSHAKE    2u
-#define RL_WAIT_FIRST        3u   /* the handshake, and the guard: "armed" for the record */
 #define RL_CTR_STATE         1u   /* the tile's counters for the window's delivery */
 #define RL_CTR_TOTALS        5u
 #define RL_CTR_STREAMS       6u

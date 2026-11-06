@@ -355,16 +355,15 @@ int main(void) {
     copy_to_dm(0, hdr, RL_H_WORDS / 4, base_mask);
     if (hdr[RL_H_MAGIC] != RL_MAGIC || hdr[RL_H_VERSION] < 4u || hdr[RL_H_VERSION] > RL_VERSION) { rp_results[RL_R_STATUS] = 4; return 4; }
     /* v1.3 (version 5, B1; Q15, Q17): the window is delivered by C&C 3's Tracer, every packet counted, between C&C 1's two
-     * barriers: READY with nothing armed and GO; the record's pieces armed (the first tile says "armed", the guard); the
-     * totals in, the streams' words armed and "armed" to C&C 3; everything landed, READY again with every counter at 0;
-     * the final GO, and the replay */
+     * barriers: READY with nothing armed and GO; the record's pieces armed on waking (C&C 3 sends nothing sooner than
+     * stage_delay after the GO); the totals in, the streams' words armed and "armed" to C&C 3; everything landed, READY
+     * again with every counter at 0; the final GO, and the replay */
     uint32_t wait = hdr[RL_H_VERSION] >= 5u ? hdr[RL_H_WAIT] : 0u;
     if (wait) {
         (void)wait_for_command();                                     /* barrier 1: READY, nothing armed */
         if (wait == RL_WAIT_BARRIERS) { (void)wait_for_command(); rp_results[RL_R_STATUS] = 1; return 1; }
         tile->WRITE_COUNTER[RL_CTR_STATE - 1] = 66;
         tile->WRITE_COUNTER[RL_CTR_TOTALS - 1] = 2;
-        if (wait == RL_WAIT_FIRST) { send_to(ROUTER_HDR_W(TL_ENDPOINT, MODE_COUNT, TL_CTR_ARMED), 0); send128(0, 0, 0, 0); }
         wait_event(EV_CTR(RL_CTR_TOTALS), base_mask);
         copy_to_dm(hdr[RL_H_RECORD] + 4, scratch, 1, base_mask);    /* word 1: words [15:0], [31:16], [47:32] */
         uint32_t n = (scratch[0] & 0xFFFFu) + (scratch[0] >> 16) + (scratch[1] & 0xFFFFu);

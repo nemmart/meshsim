@@ -193,7 +193,7 @@ public final class TracerT2 {
             th[0] = 0x594C5052; th[1] = 5; th[2] = StageB.TABLES; th[3] = StageB.INDEX; th[4] = tb.indexBytes.length / 16; th[5] = StageB.TEMPLATES; th[6] = StageB.RECORD;
             th[7] = StageB.CODE; th[8] = -1; th[9] = StageB.RLOG; th[10] = -1; th[11] = StageB.WLOG; th[12] = -1; th[13] = t < windows ? 1 : 0;
             th[14] = Replayer.runConfig(65536, true, true);
-            th[15] = t >= windows ? 1 : t == 0 ? 3 : 2;               // RL_WAIT_BARRIERS, RL_WAIT_FIRST (the guard), RL_WAIT_HANDSHAKE
+            th[15] = t >= windows ? 1 : 2;                            // RL_WAIT_BARRIERS, RL_WAIT_HANDSHAKE (Q17, 7c53209)
             for (int i = 0; i < 16; i++) p.sram.poke(StageB.HDR + i, th[i]);
             List<long[]> l = new ArrayList<>(); rows.add(l);
             ((Replayer) p.slot.p[1]).rowListener = l::add;

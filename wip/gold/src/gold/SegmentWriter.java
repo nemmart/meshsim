@@ -7,7 +7,7 @@ import java.util.List;
 
 /**
  * Writes DECISIONS-v1.3 section 16's segment file for a run, with every choice WORKER16's segment_writer makes
- * (jolt-asic-planning worker16-w3 at ca30b5e; the rules are listed in WORKER18/NOTES.md, "Stage 2"):
+ * (jolt-asic-planning worker16-w3 at ca30b5e; the rules are listed in wip/planning/sessions/WORKER18-NOTES.md, "Stage 2"):
  *
  * <pre>
  *   frame 1   page counts: per segment, the distinct 16 KB pages among its dirty cells (u32 each)

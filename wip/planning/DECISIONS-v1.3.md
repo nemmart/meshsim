@@ -6,6 +6,11 @@ written, the v1.2 spec). **v1.3's focus is the Tracer** (owner, 2026-10-29).
 
 ---
 
+**How v1.3's spec is meant** (owner, 2026-11-06): it makes **reasonable default calls** so Tony can start the RTL, and states
+what the hardware must do observably rather than how. Where the RTL finds a better way, the spec follows it; nobody should feel
+strongly about a default. (So, for instance, item 142's region decode is Tony's choice, and item 148's fill statuses are frozen
+as the default interface: ok, hole, not owned, beyond the depth's capacity.)
+
 ## 1. The Tracer: components (2026-10-29; restated 2026-11-01)
 
 The Tracer is C&C 3's peripheral (v1.2, 25): the RV64 row machine that executes the guest program and writes each window's run
@@ -621,13 +626,13 @@ Decided (O).
 - **Stage 2, gold:** it computes everything itself (the advice, the processor state at each cut, the dirty runs, the page counts)
   and writes the segment file. **It earns gold** by writing files byte-identical to WORKER16's tool (W3) on both workloads at 2²⁹
   and on the hard-cut tests; the C++ tool then becomes the cross-check.
-  **Stage 2 done: gold earned** (WORKER18, 2026-11-01; `WORKER18/REPORT.md`): the emulator writes section 16's file
+  **Stage 2 done: gold earned** (WORKER18, 2026-11-01; `wip/planning/sessions/WORKER18-REPORT.md`): the emulator writes section 16's file
   **byte-identical** to WORKER16's tool (ca30b5e) on both workloads at 2²⁹ (13.5 and 15.5 s) and on both hard-cut files, with the
   secp256k1 advice computed in `BigInteger`; `wip/gold/check.sh` reruns all four. Seven of jolt-cpp's example guests also match
   on every record (MULH and MULHSU, the division family, SRA and SRAW, LR.D and SC.D, every AMO, all seven secp operations,
   SHA-256 and the other inlines). Never executed yet: EBREAK, FENCE, KECCAK256 without absorb, `VirtualAssertEQ`,
   LegacyRawEcall mode, the abort paths. **The Java emulator is now our gold;** WORKER16's tool is the cross-check.
-- **The gold loader loads only instructions we can prove** (owner, 2026-11-01; a ruling on `WORKER18/UPSTREAM-DIFFS.md` D4):
+- **The gold loader loads only instructions we can prove** (owner, 2026-11-01; a ruling on `wip/planning/upstream/UPSTREAM-DIFFS.md` D4):
   - **an instruction Jolt can't prove** in the ELF's load stream (CSRRC and the immediate CSR forms, a CSR outside the six,
     FENCE.I, WFI, SRET and other privileged instructions) **throws an exception at load**, as upstream rejects it at decode
     (`instruction/mod.rs:1230-1323`). jolt-cpp instead decodes these as UNIMP and drops them from the bytecode, shifting later pcs
@@ -653,11 +658,11 @@ Decided (O).
   inputs and seven example guests record by record; both workloads at 2²⁹ by every window and the run hash), and **gold matches
   upstream everywhere jolt-cpp does**. The inlines are unchanged since f8fc214 (all 15 upstream dumps byte-identical to
   jolt-cpp's). Mapping: upstream's kinds are jolt-cpp's opcodes (NoOp is NOP); four upstream-only virtual kinds never occur. The
-  differences are at the edges, recorded in `WORKER18/UPSTREAM-DIFFS.md` for the owner's rulings: the program image (PT_LOAD
+  differences are at the edges, recorded in `wip/planning/upstream/UPSTREAM-DIFFS.md` for the owner's rulings: the program image (PT_LOAD
   segments against sections), upstream's stack-canary check, jolt-cpp's LegacyRawEcall mode, UNIMP (dropped from jolt-cpp's
   bytecode, rejected upstream), a jump into the middle of an instruction, the misaligned-access checks, the bytecode count's
   convention, and the padding rule (to confirm). Eleven hand-assembled guests cover the paths no workload reached.
-- **Rulings on `WORKER18/UPSTREAM-DIFFS.md`** (owner, 2026-11-04). **"Upstream" is a16z's Jolt, and it decides:** jolt-cpp has no
+- **Rulings on `wip/planning/upstream/UPSTREAM-DIFFS.md`** (owner, 2026-11-04). **"Upstream" is a16z's Jolt, and it decides:** jolt-cpp has no
   verifier of its own; it proves `jolt_verifier::JoltProof` against a16z's `jolt_program` preprocessing, from its submodule
   `third-party/jolt` at **7189216** (the verifier's pin, at jolt-cpp 88dca85, v1.3's pin, **moved and checked** 2026-11-05: PR #2's tracer re-synced, every
   2¹⁶-row window's hash, the segment files and `capture_writes` output identical to 821e1bd on both workloads at 2²⁹; WORKER16,
@@ -692,8 +697,8 @@ Decided (O).
   - **D13, follow a16z** (owner, 2026-11-05; WORKER18): the no-op row an rd = x0 instruction is rewritten to (`ADDI x0, x0, 0`)
     is flagged virtual in jolt-cpp but not in a16z, so jolt-cpp's row differs and its proofs of such programs fail
     verification. Gold follows a16z; **a jolt-cpp fix and a bug report**, like D1, D3, D12, D14.
-  - **What to report** is one list, ordered by impact, at the top of `WORKER18/UPSTREAM-DIFFS.md` (12 entries for jolt-cpp, 3 for
-    a16z), each with its evidence, reproducer, bug report (`WORKER18/bug-reports/`) and fix branch.
+  - **What to report** is one list, ordered by impact, at the top of `wip/planning/upstream/UPSTREAM-DIFFS.md` (12 entries for jolt-cpp, 3 for
+    a16z), each with its evidence, reproducer, bug report (`wip/planning/upstream/bug-reports/`) and fix branch.
   - **D2 and the rest: deferred.** U1 and U2 (a16z's ACT4 configuration and `jolt-emu`'s exit check) and U3 (a16z rejecting the
     standard `unimp`, 0xC0001073) are a16z's bugs, written up for the owner to decide whether to report.
 
@@ -1208,6 +1213,16 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
   streams and replies "armed"; only then does C&C 3 send the streams (one round trip per window, negligible against the drain,
   the scans waiting on full queues meanwhile). The later design lands the windows in C&C 3's memory and LPDDR files instead;
   candidate C2 (signed counters) would remove the handshake.
+  **The segment's barriers, as finally ruled** (owner, 2026-11-05; WORKER22's fan-in hang and Q17; replacing that day's first
+  READY/GO wording, which had tiles raise READY with armed counters, a done-early error): **the same rule as every phase**
+  (4.13: "the window between GO and arming is kept", closed by timing, 2026-10-29). (1) Tiles boot and raise **READY** with
+  nothing armed; (2) **C&C 1 pulses GO and starts C&C 3**, and each tile arms its counters for the record's pieces on waking;
+  (3) **C&C 3 sends nothing sooner than `stage_delay` after the GO** (as invariant 25's announced staging), the tiles' arming
+  path being short and identical; if the timing ever failed, the tile raises **unexpected arrival** ([2]), not a silent loss;
+  (4) the deliveries, the streams on the per-window handshake; (5) each tile raises **READY when its counters reach 0** (its
+  window has landed, a genuine done), which replaces C&C 3 reporting done; (6) C&C 1 sees all 64 READY and issues the **final
+  GO**: the replay. No "booted" packets and no request-tree barrier. Q16's early replay is replaced. Signed counters (item 125)
+  stay the candidate that would remove the window and the handshake together.
 - **A new state is written only at the start of a proof** (owner, 2026-11-01): one segment per ASIC per proof, so between the
   64 windows of a segment nothing is loaded; C&C 3 only reads the state and the queue lengths at each done, drains the output
   queues, and pulses go. **The read queue persists across the windows**, since the segment's advice runs across them (its size
@@ -1242,7 +1257,9 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
   C&C 3 stores the inline's number with a valid bit, setting its bitmap bit; `PULSE_RUN` sets it again when a run starts inside
   that inline); **the advice flag is a credit** like the replayer's (depth 2, half a queue each, set to 2 by the word-0 write);
   **the per-stream compression enables** in `RUN_CONFIG` [28:26] on the Tracer (sticky; the replayer ignores them).
-- **Open:** statistics registers (spec item 157).
+- **Statistics registers** (owner, 2026-11-06; spec item 157): a minimal fixed set, **words 44-51**, eight read-only 32-bit
+  counters cleared by the word-0 write: cycles running, stall cycles for fetch, data, map probe and output, I- and D-cache misses,
+  map probes. Words 52-127 reserved.
 
 ## 25. The Tracer's core, and the program's end (2026-11-01)
 
@@ -1319,8 +1336,8 @@ Decided (O).
     cycle; a failure sets its own `ERRORS` bit. **Not the memory system's length check:** `.pages` is larger than the provable
     range (a 4 GB file against Cyclone's 2²⁴ cells, so an access past K but inside the file reads a hole as zero), and a request
     reaching the memory system is already a (root, depth, line). The Tracer takes `lowest_address` and K from word 66 (section
-    23); the upper bound is the cell index below K, to confirm against a16z's prover
-    (or the layout's top). Instruction fetch needs none: a pc outside the code misses the jump map. Such a run can't be proven in
+    23); the upper bound is **8·K, the cell index below K** (owner, 2026-11-06,
+    spec item 149: the RAM sumchecks cover exactly K 64-bit cells, so nothing outside them is checked). Instruction fetch needs none: a pc outside the code misses the jump map. Such a run can't be proven in
     either codebase (R1CS ties the address to rs1 + imm); a16z's prover rejects it, jolt-cpp's silently drops the access and
     produces a proof that fails verification. **The host tracer isn't required to check** (a per-access check would slow its JIT;
     free only if its memory mapping faults). jolt-cpp gets a bug report against its prover;
@@ -1352,7 +1369,7 @@ Work agreed for v1.3, each with the decisions it carries out. Studies (below) ar
 | W4 | **The Java emulator** (`wip/gold/`): self-contained; stage 1 a Tracer model matching jolt-cpp's rows, stage 2 gold, writing section 16's file | 17 | WORKER18: **stages 1-3 done, gold earned**; rulings on the differences in section 17 |
 | W5 | **Upstream's tests through the gold emulator** (owner, 2026-11-01): (a) the **ACT4 architectural tests** (RISC-V International's `riscv-arch-test`, `tests/arch-tests/` upstream): self-checking ELFs for every RV64IMAC instruction, unprivileged, expected signatures baked in at build time by the Sail reference model; upstream skips the CSR tests its tracer doesn't fully support (`tests/arch-tests/skip.txt`). Building them needs riscv-none-elf-gcc 15+ and Sail, once; the ELFs then run as data through gold, jolt-cpp and upstream. (b) **The inline tests** (`jolt-inlines/*/src/tests.rs`): each inline's sequence run on the emulator against an independent library (arkworks for secp256k1, and so on); port their vectors to gold. Check both exist at the pin 17a9459 (seen at HEAD c670357) | 17 | **done** (WORKER18, e9f0444): ACT4 through a test-equipment runner (every ACT4 ELF has data inside its code), 123 of jolt-emu's 125 passes; the inline vectors 5,677 of 5,677 |
 | SP1 | **The Tracer's spec chapter**: overview, region and record, control, execution, memory, output, boundaries, errors, the replayer's v1.3 changes; the 512 KB cache a black box | 1-25 | to start (WORKER21), in parallel with B1 |
-| B1 | **The Tracer's bring-up in meshsim**: its model, a black-box memory system, C&C 3's firmware sending each window to its tile, the segment replayed on the full chip, checked against WORKER9's deliveries and jolt-cpp's rows, compression on and off | 1-25 | to start (WORKER22) |
+| B1 | **The Tracer's bring-up in meshsim**: its model, a black-box memory system, C&C 3's firmware sending each window to its tile, the segment replayed on the full chip, checked against WORKER9's deliveries and jolt-cpp's rows, compression on and off | 1-25 | **done** (WORKER22, merged 2026-11-06 at e67bc43): T1 on every window at 2²⁹, 18 full-chip T2 runs, the final regression 110v |
 
 **B1's acceptance at 2²⁹: one memory, carried through the segments** (owner, 2026-11-05). Instead of 128 separately built start
 images: **one initial image** (the cycle-0 image, every index level in place), and the segments run **in order on that same
@@ -1365,7 +1382,9 @@ segment's update list (frames 4 or 5), which verifies the updates for free. The 
 segments in between, so the full chip (T2) runs only the chosen ones. **WORKER26 builds the initial image, the map, and the
 per-segment lists of pages written**, not 128 images.
 
-| F1 | **The file system on C&C 2, with a shell on C&C 1 over the UART**: C&C 3's page manager black-boxed; mkfs and fsck as host tools | 20, 22 | to start (WORKER23) |
+| F1 | **The file system on C&C 2, with a shell on C&C 1 over the UART**: C&C 3's page manager black-boxed; mkfs and fsck as host tools | 20, 22 | **moved to v1.4** (owner, 2026-11-05: v1.3's goal is a Tracer design solid enough for Tony to start its RTL) |
+| P1 | **Full-detail simulation at full scale** (owner, 2026-11-05: a priority, delivered with v1.3): exact idle-skipping in meshsim, an "active" flag per unit set by any put on its inputs, a chip-wide line or its timer, cleared when nothing is in progress, counters caught up on waking; **the architecture: each cycle deliver, run, merge, with units grouped into tasks by cost and run in parallel** (one barrier per cycle; same-cycle reads between units audited and made deliveries or last-cycle reads), built on **the mechanism, one timing wheel per tile** (data in flight and scheduled wakes, so only units with something happening are stepped), **then threads over tiles**, each cycle ended at a barrier, cross-tile puts through per-thread outboxes merged there; **GO and READY at 8 cycles** in meshsim (the spec's estimates; 1 isn't physical), applied first with the baselines re-recorded; **stage 2's partitioning measured by tile against by unit type** (e.g. 4 threads for the 67 RV32 cores); **hierarchical: a whole tile sleeps** when all its units are idle and its core sleeps, woken by anything crossing its boundary (link inputs, its controller link, the chip-wide lines, its timer); proven by identical logs with skipping on and off; then **T2 on all 128 segments of both workloads at 2²⁹** | the model's conventions | prompt written (`WORKER28/PROMPT.md`); **not started** (owner); implementation after B1 merges |
+| P2 | **A faster simulation engine for busy workloads** (owner, 2026-11-06: simulation is a roadblock, worth investing in now): a busy cycle much cheaper on one thread (the sort, the replay after GO), in Java (the gains are in the design), exact by identical logs; WORKER28 owns scheduling and threads, WORKER29 a step's cost | the model's conventions | prompt written (`WORKER29/PROMPT.md`); not gating v1.3's freeze |
 
 ---
 
@@ -1386,7 +1405,7 @@ Options recorded for later, each with the evidence that would justify it.
 
 | # | study | why |
 |---|---|---|
-| ST1 | **Compare the two Jolt tracers' traces:** jolt-cpp (https://github.com/snarkify/jolt-cpp, ours) and the Rust Jolt tracer (https://github.com/a16z/jolt). They are written differently and may work slightly differently but are believed to produce the same traces. Run the same guest programs through both and find every place the traces mismatch (rows, `instr_idx`, advice, memory values, padding) | **answered by section 17's stage 3** (WORKER18): the same rows on every run; edge differences in `WORKER18/UPSTREAM-DIFFS.md`, for the owner |
+| ST1 | **Compare the two Jolt tracers' traces:** jolt-cpp (https://github.com/snarkify/jolt-cpp, ours) and the Rust Jolt tracer (https://github.com/a16z/jolt). They are written differently and may work slightly differently but are believed to produce the same traces. Run the same guest programs through both and find every place the traces mismatch (rows, `instr_idx`, advice, memory values, padding) | **answered by section 17's stage 3** (WORKER18): the same rows on every run; edge differences in `wip/planning/upstream/UPSTREAM-DIFFS.md`, for the owner |
 
 ---
 

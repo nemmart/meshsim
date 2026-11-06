@@ -72,7 +72,7 @@ WORKER9's writer emits them; `RUN.manifest.json` beside it, `manifest.json` the 
 and 4 or 5; byte-identical to WORKER16's `segment_writer`), `.cuts` (the segments' first rows), `.json` (counts).
 This is the v1.2 file, which jumpmap, T1 and the runner's data use. **`gold-v1.3/RUN/`** (`GOLD_FORMAT="v1.2 v1.3"`):
 WORKER18's v1.3 file (frame 7 the proof parameters, frame 1 the per-segment pages, frame 6 the jump table, then per
-segment frame 2 as the 68-word record, frames 3 and 4 or 5; DECISIONS-v1.3 section 16, `WORKER18/NOTES.md`). At 2²⁹ it
+segment frame 2 as the 68-word record, frames 3 and 4 or 5; DECISIONS-v1.3 section 16, `wip/planning/sessions/WORKER18-NOTES.md`). At 2²⁹ it
 equals WORKER18's and WORKER16's (`3cd32881…`, `e932baaf…`; built here in 30 s on one CPU).
 
 **`w26-jumpmap/RUN/`: the Tracer's host-side inputs** (WORKER26, `wip/jumpmap/README.md`):
@@ -108,7 +108,7 @@ mkdir /tmp/k && tar -xzf /tmp/kit.tgz -C /tmp/k && cd /tmp/k/w11-kit
 - The small runs: `-p evm-zone-23 -n 128`, `-p cyclone-22 -n 64` (`-x 16` for F). At 2²⁹ the references are Quest 106
   and 107: every window PASS in A and B, F on 128 of 128, 3.2116 and 3.1105 cycles per row in B.
 
-**The Tracer, T1** (branch `v1.3-tracer`, `WORKER22/NOTES.md`; `WORKER22/tasks/make_t1_task.sh` for the 2²⁹ task):
+**The Tracer, T1** (branch `v1.3-tracer`, `wip/planning/sessions/WORKER22-NOTES.md`; `wip/planning/sessions/WORKER22-tasks/make_t1_task.sh` for the 2²⁹ task):
 
 ```sh
 java -Xmx5g -Dreplay.tables=v1.26.1/tables/replayer -cp build:gold TracerT1 $OUT/w9-deliveries evm-zone-29 --w26 $OUT/w26-jumpmap/evm-zone-29 [--compress]

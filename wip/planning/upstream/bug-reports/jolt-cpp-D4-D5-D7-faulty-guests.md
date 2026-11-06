@@ -1,6 +1,6 @@
 # jolt-cpp: three ways a faulty or unusual guest gets wrong rows or undefined behaviour instead of a clean error
 
-jolt-cpp 88dca85 against a16z 7189216 (meshsim `WORKER18/UPSTREAM-DIFFS.md` D4, D5, D7).
+jolt-cpp 88dca85 against a16z 7189216 (meshsim `wip/planning/upstream/UPSTREAM-DIFFS.md` D4, D5, D7).
 
 1. **A removed UNIMP is stepped over with a drifting pc (D4).** jolt-cpp drops UNIMP words from the bytecode
    (`isa/virtual.cpp:1357`), and `finish_instruction` advances pc by the executed row's size and the index by one

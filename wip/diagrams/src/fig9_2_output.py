@@ -138,7 +138,7 @@ for c in (CODE, READ, WRITE):
 f.line([(CODE, 877), (DM[0] - 2, 877)], BLUE, SW, end=True, dash=WR)
 f.line([(Q0[0] + Q0[2] / 2, 802), (Q0[0] + Q0[2] / 2, DM[1] - 2)], PURPLE, SW, end=True)
 RT = (1010, 934, 262, 34)
-f.box(*RT, "its router input: C&C 3's free link", [], fill="white", stroke=INK, size=10, tsize=11.5)
+f.box(*RT, "C&C 3's router: an extra input (src 74)", ["out through its down port to tile 2 (item 118)"], fill="white", stroke=INK, size=10, tsize=11.5)
 f.line([(DM[0] + DM[2] / 2, DM[1] + DM[3]), (DM[0] + DM[2] / 2, RT[1] - 2)], BLUE, SW, end=True, dash=WR)
 f.text(1000, 955, "packets into the compute tiles' memory (first implementation, 4.21.6)", 10.5, "end", fill=BLUE)
 f.text(1000, 897, "the service flags reach C&C 3 as its EVENTS [13] (4.21.3)", 10.5, "end", fill=ORANGE)
@@ -153,5 +153,5 @@ f.rect(800, LY - 10, 30, 16, SAND, ORANGE, 1.2, rx=3); f.text(838, LY + 4, "a li
 f.caption(["Each word the core logs goes into its FIFO and through set 1, which sizes its stream as the rows run. When the rows end, set 1's sizes choose raw or coded per stream and",
            "give the state record its totals; then one scan of each FIFO drives set 2 and the packers into output queues 1–3, each with its credits and service flag, and the DMA sends them,",
            "with output queue 0, the state record read in place. The drain's order (the state queue's service, the streams, done last) is in spec 4.21.6."],
-          y=H - 66, source="Source: spec/machine-spec.md §4.21.6 (to 66f399e), §4.21.3, §4.17.9; planning/DECISIONS-v1.3.md §2–4, §24. Review: WORKER24/NOTES.md.")
+          y=H - 66, source="Source: spec/machine-spec.md §4.21.6 (to 66f399e), §4.21.3, §4.17.9; planning/DECISIONS-v1.3.md §2–4, §24. Review: wip/planning/sessions/WORKER24-NOTES.md.")
 f.save("fig9_2_output.svg")

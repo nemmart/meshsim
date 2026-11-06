@@ -1,0 +1,2 @@
+target_pc,key,base,jumps,first_jump_pc,source_opcode,row_opcode
+0x80000068,0x88,27,1,0x80000034,JALR,JALR

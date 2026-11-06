@@ -1,0 +1,571 @@
+Every changed source opcode, one operand set each (rd=5 rs1=6 c=0xfffffff4 imm_c=0; for stores c is rs2
+and rd is the immediate), at 4f36b3d (jolt-cpp 4ab349bb) and at jolt-cpp 821e1bd. Register numbers >= 0x28 are
+expansion temporaries; 0x20/0x21 are the LR/SC reservations. 'so' is shift_offset (absent before 821e1bd).
+
+===== LB
+--- 4f36b3d
+V LB rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=4 ncyc=4
+  0 VirtualAlignAddr rd=0x29 rs1=0x6 rs2=0xfffffffffffffff4i so=0 first=1 rem=3 virt=1 adv=0,0,0
+  1 LD rd=0x29 rs1=0x29 rs2=0i so=0 first=0 rem=2 virt=1 adv=0,0,0
+  2 VirtualWindowMaskB rd=0x28 rs1=0x6 rs2=0xfffffffffffffff4i so=0 first=0 rem=1 virt=1 adv=0,0,0
+  3 VirtualPextSigned rd=0x5 rs1=0x29 rs2=0x28 so=0 first=0 rem=0 virt=1 adv=0,0,0
+--- 821e1bd
+V LB rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=3 ncyc=3
+  0 VirtualLoadB rd=0x28 rs1=0x6 rs2=0xfffffffffffffff4i so=0 first=1 rem=2 virt=1 adv=0,0,0
+  1 VirtualWindowMaskB rd=0x29 rs1=0x6 rs2=0xfffffffffffffff4i so=0 first=0 rem=1 virt=1 adv=0,0,0
+  2 VirtualPextSigned rd=0x5 rs1=0x28 rs2=0x29 so=0 first=0 rem=0 virt=1 adv=0,0,0
+
+===== LH
+--- 4f36b3d
+V LH rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=5 ncyc=5
+  0 VirtualAssertHalfwordAlignment rd=0i rs1=0x6 rs2=0xfffffffffffffff4i so=0 first=1 rem=4 virt=1 adv=0,0,0
+  1 VirtualAlignAddr rd=0x29 rs1=0x6 rs2=0xfffffffffffffff4i so=0 first=0 rem=3 virt=1 adv=0,0,0
+  2 LD rd=0x29 rs1=0x29 rs2=0i so=0 first=0 rem=2 virt=1 adv=0,0,0
+  3 VirtualWindowMaskH rd=0x28 rs1=0x6 rs2=0xfffffffffffffff4i so=0 first=0 rem=1 virt=1 adv=0,0,0
+  4 VirtualPextSigned rd=0x5 rs1=0x29 rs2=0x28 so=0 first=0 rem=0 virt=1 adv=0,0,0
+--- 821e1bd
+V LH rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=3 ncyc=3
+  0 VirtualLoadH rd=0x28 rs1=0x6 rs2=0xfffffffffffffff4i so=0 first=1 rem=2 virt=1 adv=0,0,0
+  1 VirtualWindowMaskH rd=0x29 rs1=0x6 rs2=0xfffffffffffffff4i so=0 first=0 rem=1 virt=1 adv=0,0,0
+  2 VirtualPextSigned rd=0x5 rs1=0x28 rs2=0x29 so=0 first=0 rem=0 virt=1 adv=0,0,0
+
+===== LW
+--- 4f36b3d
+V LW rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=5 ncyc=5
+  0 VirtualAssertWordAlignment rd=0i rs1=0x6 rs2=0xfffffffffffffff4i so=0 first=1 rem=4 virt=1 adv=0,0,0
+  1 VirtualAlignAddr rd=0x29 rs1=0x6 rs2=0xfffffffffffffff4i so=0 first=0 rem=3 virt=1 adv=0,0,0
+  2 LD rd=0x29 rs1=0x29 rs2=0i so=0 first=0 rem=2 virt=1 adv=0,0,0
+  3 VirtualWindowMaskW rd=0x28 rs1=0x6 rs2=0xfffffffffffffff4i so=0 first=0 rem=1 virt=1 adv=0,0,0
+  4 VirtualPextSigned rd=0x5 rs1=0x29 rs2=0x28 so=0 first=0 rem=0 virt=1 adv=0,0,0
+--- 821e1bd
+V LW rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=3 ncyc=3
+  0 VirtualLoadW rd=0x28 rs1=0x6 rs2=0xfffffffffffffff4i so=0 first=1 rem=2 virt=1 adv=0,0,0
+  1 VirtualWindowMaskW rd=0x29 rs1=0x6 rs2=0xfffffffffffffff4i so=0 first=0 rem=1 virt=1 adv=0,0,0
+  2 VirtualPextSigned rd=0x5 rs1=0x28 rs2=0x29 so=0 first=0 rem=0 virt=1 adv=0,0,0
+
+===== LBU
+--- 4f36b3d
+V LBU rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=4 ncyc=4
+  0 VirtualAlignAddr rd=0x29 rs1=0x6 rs2=0xfffffffffffffff4i so=0 first=1 rem=3 virt=1 adv=0,0,0
+  1 LD rd=0x29 rs1=0x29 rs2=0i so=0 first=0 rem=2 virt=1 adv=0,0,0
+  2 VirtualWindowMaskB rd=0x28 rs1=0x6 rs2=0xfffffffffffffff4i so=0 first=0 rem=1 virt=1 adv=0,0,0
+  3 VirtualPext rd=0x5 rs1=0x29 rs2=0x28 so=0 first=0 rem=0 virt=1 adv=0,0,0
+--- 821e1bd
+V LBU rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=3 ncyc=3
+  0 VirtualLoadB rd=0x28 rs1=0x6 rs2=0xfffffffffffffff4i so=0 first=1 rem=2 virt=1 adv=0,0,0
+  1 VirtualWindowMaskB rd=0x29 rs1=0x6 rs2=0xfffffffffffffff4i so=0 first=0 rem=1 virt=1 adv=0,0,0
+  2 VirtualPext rd=0x5 rs1=0x28 rs2=0x29 so=0 first=0 rem=0 virt=1 adv=0,0,0
+
+===== LHU
+--- 4f36b3d
+V LHU rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=5 ncyc=5
+  0 VirtualAssertHalfwordAlignment rd=0i rs1=0x6 rs2=0xfffffffffffffff4i so=0 first=1 rem=4 virt=1 adv=0,0,0
+  1 VirtualAlignAddr rd=0x29 rs1=0x6 rs2=0xfffffffffffffff4i so=0 first=0 rem=3 virt=1 adv=0,0,0
+  2 LD rd=0x29 rs1=0x29 rs2=0i so=0 first=0 rem=2 virt=1 adv=0,0,0
+  3 VirtualWindowMaskH rd=0x28 rs1=0x6 rs2=0xfffffffffffffff4i so=0 first=0 rem=1 virt=1 adv=0,0,0
+  4 VirtualPext rd=0x5 rs1=0x29 rs2=0x28 so=0 first=0 rem=0 virt=1 adv=0,0,0
+--- 821e1bd
+V LHU rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=3 ncyc=3
+  0 VirtualLoadH rd=0x28 rs1=0x6 rs2=0xfffffffffffffff4i so=0 first=1 rem=2 virt=1 adv=0,0,0
+  1 VirtualWindowMaskH rd=0x29 rs1=0x6 rs2=0xfffffffffffffff4i so=0 first=0 rem=1 virt=1 adv=0,0,0
+  2 VirtualPext rd=0x5 rs1=0x28 rs2=0x29 so=0 first=0 rem=0 virt=1 adv=0,0,0
+
+===== SB
+--- 4f36b3d
+V SB rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=8 ncyc=8
+  0 ADDI rd=0x28 rs1=0x6 rs2=0x5i so=0 first=1 rem=7 virt=1 adv=0,0,0
+  1 ANDI rd=0x29 rs1=0x28 rs2=0xfffffffffffffff8i so=0 first=0 rem=6 virt=1 adv=0,0,0
+  2 LD rd=0x2a rs1=0x29 rs2=0i so=0 first=0 rem=5 virt=1 adv=0,0,0
+  3 VirtualWindowMaskB rd=0x2b rs1=0x28 rs2=0i so=0 first=0 rem=4 virt=1 adv=0,0,0
+  4 ANDN rd=0x2a rs1=0x2a rs2=0x2b so=0 first=0 rem=3 virt=1 adv=0,0,0
+  5 VirtualShiftDataB rd=0x2b rs1=0xfffffff4 rs2=0x28 so=0 first=0 rem=2 virt=1 adv=0,0,0
+  6 ADD rd=0x2a rs1=0x2a rs2=0x2b so=0 first=0 rem=1 virt=1 adv=0,0,0
+  7 SD rd=0i rs1=0x29 rs2=0x2a so=0 first=0 rem=0 virt=1 adv=0,0,0
+--- 821e1bd
+V SB rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=6 ncyc=6
+  0 VirtualLoadB rd=0x28 rs1=0x6 rs2=0x5i so=0 first=1 rem=5 virt=1 adv=0,0,0
+  1 VirtualWindowMaskB rd=0x29 rs1=0x6 rs2=0x5i so=0 first=0 rem=4 virt=1 adv=0,0,0
+  2 ANDN rd=0x28 rs1=0x28 rs2=0x29 so=0 first=0 rem=3 virt=1 adv=0,0,0
+  3 VirtualShiftDataB rd=0x29 rs1=0xfffffff4 rs2=0x6 so=5 first=0 rem=2 virt=1 adv=0,0,0
+  4 ADD rd=0x28 rs1=0x28 rs2=0x29 so=0 first=0 rem=1 virt=1 adv=0,0,0
+  5 VirtualStoreB rd=0x5i rs1=0x6 rs2=0x28 so=0 first=0 rem=0 virt=1 adv=0,0,0
+
+===== SH
+--- 4f36b3d
+V SH rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=9 ncyc=9
+  0 VirtualAssertHalfwordAlignment rd=0i rs1=0x6 rs2=0x5i so=0 first=1 rem=8 virt=1 adv=0,0,0
+  1 ADDI rd=0x28 rs1=0x6 rs2=0x5i so=0 first=0 rem=7 virt=1 adv=0,0,0
+  2 ANDI rd=0x29 rs1=0x28 rs2=0xfffffffffffffff8i so=0 first=0 rem=6 virt=1 adv=0,0,0
+  3 LD rd=0x2a rs1=0x29 rs2=0i so=0 first=0 rem=5 virt=1 adv=0,0,0
+  4 VirtualWindowMaskH rd=0x2b rs1=0x28 rs2=0i so=0 first=0 rem=4 virt=1 adv=0,0,0
+  5 ANDN rd=0x2a rs1=0x2a rs2=0x2b so=0 first=0 rem=3 virt=1 adv=0,0,0
+  6 VirtualShiftDataH rd=0x2b rs1=0xfffffff4 rs2=0x28 so=0 first=0 rem=2 virt=1 adv=0,0,0
+  7 ADD rd=0x2a rs1=0x2a rs2=0x2b so=0 first=0 rem=1 virt=1 adv=0,0,0
+  8 SD rd=0i rs1=0x29 rs2=0x2a so=0 first=0 rem=0 virt=1 adv=0,0,0
+--- 821e1bd
+V SH rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=6 ncyc=6
+  0 VirtualLoadH rd=0x28 rs1=0x6 rs2=0x5i so=0 first=1 rem=5 virt=1 adv=0,0,0
+  1 VirtualWindowMaskH rd=0x29 rs1=0x6 rs2=0x5i so=0 first=0 rem=4 virt=1 adv=0,0,0
+  2 ANDN rd=0x28 rs1=0x28 rs2=0x29 so=0 first=0 rem=3 virt=1 adv=0,0,0
+  3 VirtualShiftDataH rd=0x29 rs1=0xfffffff4 rs2=0x6 so=5 first=0 rem=2 virt=1 adv=0,0,0
+  4 ADD rd=0x28 rs1=0x28 rs2=0x29 so=0 first=0 rem=1 virt=1 adv=0,0,0
+  5 VirtualStoreH rd=0x5i rs1=0x6 rs2=0x28 so=0 first=0 rem=0 virt=1 adv=0,0,0
+
+===== SW
+--- 4f36b3d
+V SW rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=9 ncyc=9
+  0 VirtualAssertWordAlignment rd=0i rs1=0x6 rs2=0x5i so=0 first=1 rem=8 virt=1 adv=0,0,0
+  1 ADDI rd=0x28 rs1=0x6 rs2=0x5i so=0 first=0 rem=7 virt=1 adv=0,0,0
+  2 ANDI rd=0x29 rs1=0x28 rs2=0xfffffffffffffff8i so=0 first=0 rem=6 virt=1 adv=0,0,0
+  3 LD rd=0x2a rs1=0x29 rs2=0i so=0 first=0 rem=5 virt=1 adv=0,0,0
+  4 VirtualWindowMaskW rd=0x2b rs1=0x28 rs2=0i so=0 first=0 rem=4 virt=1 adv=0,0,0
+  5 ANDN rd=0x2a rs1=0x2a rs2=0x2b so=0 first=0 rem=3 virt=1 adv=0,0,0
+  6 VirtualShiftDataW rd=0x2b rs1=0xfffffff4 rs2=0x28 so=0 first=0 rem=2 virt=1 adv=0,0,0
+  7 ADD rd=0x2a rs1=0x2a rs2=0x2b so=0 first=0 rem=1 virt=1 adv=0,0,0
+  8 SD rd=0i rs1=0x29 rs2=0x2a so=0 first=0 rem=0 virt=1 adv=0,0,0
+--- 821e1bd
+V SW rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=6 ncyc=6
+  0 VirtualLoadW rd=0x28 rs1=0x6 rs2=0x5i so=0 first=1 rem=5 virt=1 adv=0,0,0
+  1 VirtualWindowMaskW rd=0x29 rs1=0x6 rs2=0x5i so=0 first=0 rem=4 virt=1 adv=0,0,0
+  2 ANDN rd=0x28 rs1=0x28 rs2=0x29 so=0 first=0 rem=3 virt=1 adv=0,0,0
+  3 VirtualShiftDataW rd=0x29 rs1=0xfffffff4 rs2=0x6 so=5 first=0 rem=2 virt=1 adv=0,0,0
+  4 ADD rd=0x28 rs1=0x28 rs2=0x29 so=0 first=0 rem=1 virt=1 adv=0,0,0
+  5 VirtualStoreW rd=0x5i rs1=0x6 rs2=0x28 so=0 first=0 rem=0 virt=1 adv=0,0,0
+
+===== LWU
+--- 4f36b3d
+V LWU rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=5 ncyc=5
+  0 VirtualAssertWordAlignment rd=0i rs1=0x6 rs2=0xfffffffffffffff4i so=0 first=1 rem=4 virt=1 adv=0,0,0
+  1 VirtualAlignAddr rd=0x29 rs1=0x6 rs2=0xfffffffffffffff4i so=0 first=0 rem=3 virt=1 adv=0,0,0
+  2 LD rd=0x29 rs1=0x29 rs2=0i so=0 first=0 rem=2 virt=1 adv=0,0,0
+  3 VirtualWindowMaskW rd=0x28 rs1=0x6 rs2=0xfffffffffffffff4i so=0 first=0 rem=1 virt=1 adv=0,0,0
+  4 VirtualPext rd=0x5 rs1=0x29 rs2=0x28 so=0 first=0 rem=0 virt=1 adv=0,0,0
+--- 821e1bd
+V LWU rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=3 ncyc=3
+  0 VirtualLoadW rd=0x28 rs1=0x6 rs2=0xfffffffffffffff4i so=0 first=1 rem=2 virt=1 adv=0,0,0
+  1 VirtualWindowMaskW rd=0x29 rs1=0x6 rs2=0xfffffffffffffff4i so=0 first=0 rem=1 virt=1 adv=0,0,0
+  2 VirtualPext rd=0x5 rs1=0x28 rs2=0x29 so=0 first=0 rem=0 virt=1 adv=0,0,0
+
+===== LR_W
+--- 4f36b3d
+V LR_W rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=9 ncyc=9
+  0 LUI rd=0x28 rs1=0x80000000i rs2=0i so=0 first=1 rem=8 virt=1 adv=0,0,0
+  1 VirtualAssertLTE rd=0i rs1=0x28 rs2=0x6 so=0 first=0 rem=7 virt=1 adv=0,0,0
+  2 ADDI rd=0x20 rs1=0x6 rs2=0i so=0 first=0 rem=6 virt=1 adv=0,0,0
+  3 ADDI rd=0x21 rs1=0 rs2=0i so=0 first=0 rem=5 virt=1 adv=0,0,0
+  4 VirtualAssertWordAlignment rd=0i rs1=0x6 rs2=0i so=0 first=0 rem=4 virt=1 adv=0,0,0
+  5 VirtualAlignAddr rd=0x29 rs1=0x6 rs2=0i so=0 first=0 rem=3 virt=1 adv=0,0,0
+  6 LD rd=0x29 rs1=0x29 rs2=0i so=0 first=0 rem=2 virt=1 adv=0,0,0
+  7 VirtualWindowMaskW rd=0x28 rs1=0x6 rs2=0i so=0 first=0 rem=1 virt=1 adv=0,0,0
+  8 VirtualPextSigned rd=0x5 rs1=0x29 rs2=0x28 so=0 first=0 rem=0 virt=1 adv=0,0,0
+--- 821e1bd
+V LR_W rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=7 ncyc=7
+  0 LUI rd=0x28 rs1=0x80000000i rs2=0i so=0 first=1 rem=6 virt=1 adv=0,0,0
+  1 VirtualAssertLTE rd=0i rs1=0x28 rs2=0x6 so=0 first=0 rem=5 virt=1 adv=0,0,0
+  2 ADDI rd=0x20 rs1=0x6 rs2=0i so=0 first=0 rem=4 virt=1 adv=0,0,0
+  3 ADDI rd=0x21 rs1=0 rs2=0i so=0 first=0 rem=3 virt=1 adv=0,0,0
+  4 VirtualLoadW rd=0x28 rs1=0x6 rs2=0i so=0 first=0 rem=2 virt=1 adv=0,0,0
+  5 VirtualWindowMaskW rd=0x29 rs1=0x6 rs2=0i so=0 first=0 rem=1 virt=1 adv=0,0,0
+  6 VirtualPextSigned rd=0x5 rs1=0x28 rs2=0x29 so=0 first=0 rem=0 virt=1 adv=0,0,0
+
+===== SC_W
+--- 4f36b3d
+V SC_W rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=26 ncyc=26
+  0 LUI rd=0x28 rs1=0x80000000i rs2=0i so=0 first=1 rem=25 virt=1 adv=0,0,0
+  1 VirtualAssertLTE rd=0i rs1=0x28 rs2=0x6 so=0 first=0 rem=24 virt=1 adv=0,0,0
+  2 XOR rd=0x28 rs1=0x20 rs2=0x6 so=0 first=0 rem=23 virt=1 adv=0,0,0
+  3 SLTIU rd=0x28 rs1=0x28 rs2=0x1i so=0 first=0 rem=22 virt=1 adv=0,0,0
+  4 ADDI rd=0x20 rs1=0x28 rs2=0i so=0 first=0 rem=21 virt=1 adv=0,0,0
+  5 VirtualAssertWordAlignment rd=0i rs1=0x6 rs2=0i so=0 first=0 rem=20 virt=1 adv=0,0,0
+  6 VirtualAlignAddr rd=0x2a rs1=0x6 rs2=0i so=0 first=0 rem=19 virt=1 adv=0,0,0
+  7 LD rd=0x2a rs1=0x2a rs2=0i so=0 first=0 rem=18 virt=1 adv=0,0,0
+  8 VirtualWindowMaskW rd=0x29 rs1=0x6 rs2=0i so=0 first=0 rem=17 virt=1 adv=0,0,0
+  9 VirtualPextSigned rd=0x28 rs1=0x2a rs2=0x29 so=0 first=0 rem=16 virt=1 adv=0,0,0
+  10 SUB rd=0x29 rs1=0xfffffff4 rs2=0x28 so=0 first=0 rem=15 virt=1 adv=0,0,0
+  11 MUL rd=0x29 rs1=0x29 rs2=0x20 so=0 first=0 rem=14 virt=1 adv=0,0,0
+  12 ADD rd=0x29 rs1=0x28 rs2=0x29 so=0 first=0 rem=13 virt=1 adv=0,0,0
+  13 ADDI rd=0x21 rs1=0x29 rs2=0i so=0 first=0 rem=12 virt=1 adv=0,0,0
+  14 VirtualAssertWordAlignment rd=0i rs1=0x6 rs2=0i so=0 first=0 rem=11 virt=1 adv=0,0,0
+  15 ADDI rd=0x28 rs1=0x6 rs2=0i so=0 first=0 rem=10 virt=1 adv=0,0,0
+  16 ANDI rd=0x29 rs1=0x28 rs2=0xfffffffffffffff8i so=0 first=0 rem=9 virt=1 adv=0,0,0
+  17 LD rd=0x2a rs1=0x29 rs2=0i so=0 first=0 rem=8 virt=1 adv=0,0,0
+  18 VirtualWindowMaskW rd=0x2b rs1=0x28 rs2=0i so=0 first=0 rem=7 virt=1 adv=0,0,0
+  19 ANDN rd=0x2a rs1=0x2a rs2=0x2b so=0 first=0 rem=6 virt=1 adv=0,0,0
+  20 VirtualShiftDataW rd=0x2b rs1=0x21 rs2=0x28 so=0 first=0 rem=5 virt=1 adv=0,0,0
+  21 ADD rd=0x2a rs1=0x2a rs2=0x2b so=0 first=0 rem=4 virt=1 adv=0,0,0
+  22 SD rd=0i rs1=0x29 rs2=0x2a so=0 first=0 rem=3 virt=1 adv=0,0,0
+  23 XORI rd=0x5 rs1=0x20 rs2=0x1i so=0 first=0 rem=2 virt=1 adv=0,0,0
+  24 ADDI rd=0x20 rs1=0 rs2=0i so=0 first=0 rem=1 virt=1 adv=0,0,0
+  25 ADDI rd=0x21 rs1=0 rs2=0i so=0 first=0 rem=0 virt=1 adv=0,0,0
+--- 821e1bd
+V SC_W rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=21 ncyc=21
+  0 LUI rd=0x28 rs1=0x80000000i rs2=0i so=0 first=1 rem=20 virt=1 adv=0,0,0
+  1 VirtualAssertLTE rd=0i rs1=0x28 rs2=0x6 so=0 first=0 rem=19 virt=1 adv=0,0,0
+  2 XOR rd=0x28 rs1=0x20 rs2=0x6 so=0 first=0 rem=18 virt=1 adv=0,0,0
+  3 SLTIU rd=0x28 rs1=0x28 rs2=0x1i so=0 first=0 rem=17 virt=1 adv=0,0,0
+  4 ADDI rd=0x20 rs1=0x28 rs2=0i so=0 first=0 rem=16 virt=1 adv=0,0,0
+  5 VirtualLoadW rd=0x29 rs1=0x6 rs2=0i so=0 first=0 rem=15 virt=1 adv=0,0,0
+  6 VirtualWindowMaskW rd=0x2a rs1=0x6 rs2=0i so=0 first=0 rem=14 virt=1 adv=0,0,0
+  7 VirtualPextSigned rd=0x28 rs1=0x29 rs2=0x2a so=0 first=0 rem=13 virt=1 adv=0,0,0
+  8 SUB rd=0x29 rs1=0xfffffff4 rs2=0x28 so=0 first=0 rem=12 virt=1 adv=0,0,0
+  9 MUL rd=0x29 rs1=0x29 rs2=0x20 so=0 first=0 rem=11 virt=1 adv=0,0,0
+  10 ADD rd=0x29 rs1=0x28 rs2=0x29 so=0 first=0 rem=10 virt=1 adv=0,0,0
+  11 ADDI rd=0x21 rs1=0x29 rs2=0i so=0 first=0 rem=9 virt=1 adv=0,0,0
+  12 VirtualLoadW rd=0x28 rs1=0x6 rs2=0i so=0 first=0 rem=8 virt=1 adv=0,0,0
+  13 VirtualWindowMaskW rd=0x29 rs1=0x6 rs2=0i so=0 first=0 rem=7 virt=1 adv=0,0,0
+  14 ANDN rd=0x28 rs1=0x28 rs2=0x29 so=0 first=0 rem=6 virt=1 adv=0,0,0
+  15 VirtualShiftDataW rd=0x29 rs1=0x21 rs2=0x6 so=0 first=0 rem=5 virt=1 adv=0,0,0
+  16 ADD rd=0x28 rs1=0x28 rs2=0x29 so=0 first=0 rem=4 virt=1 adv=0,0,0
+  17 VirtualStoreW rd=0i rs1=0x6 rs2=0x28 so=0 first=0 rem=3 virt=1 adv=0,0,0
+  18 XORI rd=0x5 rs1=0x20 rs2=0x1i so=0 first=0 rem=2 virt=1 adv=0,0,0
+  19 ADDI rd=0x20 rs1=0 rs2=0i so=0 first=0 rem=1 virt=1 adv=0,0,0
+  20 ADDI rd=0x21 rs1=0 rs2=0i so=0 first=0 rem=0 virt=1 adv=0,0,0
+
+===== AMOSWAP_W
+--- 4f36b3d
+V AMOSWAP_W rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=18 ncyc=18
+  0 VirtualAssertWordAlignment rd=0i rs1=0x6 rs2=0i so=0 first=1 rem=17 virt=1 adv=0,0,0
+  1 ANDI rd=0x2a rs1=0x6 rs2=0xfffffffffffffff8i so=0 first=0 rem=16 virt=1 adv=0,0,0
+  2 LD rd=0x29 rs1=0x2a rs2=0i so=0 first=0 rem=15 virt=1 adv=0,0,0
+  3 VirtualMULI rd=0x2a rs1=0x6 rs2=0x8i so=0 first=0 rem=14 virt=1 adv=0,0,0
+  4 VirtualShiftRightBitmask rd=0x2c rs1=0x2a rs2=0i so=0 first=0 rem=13 virt=1 adv=0,0,0
+  5 VirtualSRL rd=0x2b rs1=0x29 rs2=0x2c so=0 first=0 rem=12 virt=1 adv=0,0,0
+  6 ORI rd=0x28 rs1=0 rs2=0xffffffffffffffffi so=0 first=0 rem=11 virt=1 adv=0,0,0
+  7 VirtualSRLI rd=0x28 rs1=0x28 rs2=0xffffffff00000000i so=0 first=0 rem=10 virt=1 adv=0,0,0
+  8 VirtualPow2 rd=0x2c rs1=0x2a rs2=0i so=0 first=0 rem=9 virt=1 adv=0,0,0
+  9 MUL rd=0x28 rs1=0x28 rs2=0x2c so=0 first=0 rem=8 virt=1 adv=0,0,0
+  10 VirtualPow2 rd=0x2c rs1=0x2a rs2=0i so=0 first=0 rem=7 virt=1 adv=0,0,0
+  11 MUL rd=0x2a rs1=0xfffffff4 rs2=0x2c so=0 first=0 rem=6 virt=1 adv=0,0,0
+  12 XOR rd=0x2a rs1=0x29 rs2=0x2a so=0 first=0 rem=5 virt=1 adv=0,0,0
+  13 AND rd=0x2a rs1=0x2a rs2=0x28 so=0 first=0 rem=4 virt=1 adv=0,0,0
+  14 XOR rd=0x29 rs1=0x29 rs2=0x2a so=0 first=0 rem=3 virt=1 adv=0,0,0
+  15 ANDI rd=0x28 rs1=0x6 rs2=0xfffffffffffffff8i so=0 first=0 rem=2 virt=1 adv=0,0,0
+  16 SD rd=0i rs1=0x28 rs2=0x29 so=0 first=0 rem=1 virt=1 adv=0,0,0
+  17 VirtualSignExtendWord rd=0x5 rs1=0x2b rs2=0i so=0 first=0 rem=0 virt=1 adv=0,0,0
+--- 821e1bd
+V AMOSWAP_W rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=8 ncyc=8
+  0 VirtualLoadW rd=0x28 rs1=0x6 rs2=0i so=0 first=1 rem=7 virt=1 adv=0,0,0
+  1 VirtualWindowMaskW rd=0x29 rs1=0x6 rs2=0i so=0 first=0 rem=6 virt=1 adv=0,0,0
+  2 VirtualPextSigned rd=0x2a rs1=0x28 rs2=0x29 so=0 first=0 rem=5 virt=1 adv=0,0,0
+  3 ANDN rd=0x28 rs1=0x28 rs2=0x29 so=0 first=0 rem=4 virt=1 adv=0,0,0
+  4 VirtualShiftDataW rd=0x29 rs1=0xfffffff4 rs2=0x6 so=0 first=0 rem=3 virt=1 adv=0,0,0
+  5 ADD rd=0x28 rs1=0x28 rs2=0x29 so=0 first=0 rem=2 virt=1 adv=0,0,0
+  6 VirtualStoreW rd=0i rs1=0x6 rs2=0x28 so=0 first=0 rem=1 virt=1 adv=0,0,0
+  7 ADDI rd=0x5 rs1=0x2a rs2=0i so=0 first=0 rem=0 virt=1 adv=0,0,0
+
+===== AMOADD_W
+--- 4f36b3d
+V AMOADD_W rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=19 ncyc=19
+  0 VirtualAssertWordAlignment rd=0i rs1=0x6 rs2=0i so=0 first=1 rem=18 virt=1 adv=0,0,0
+  1 ANDI rd=0x2c rs1=0x6 rs2=0xfffffffffffffff8i so=0 first=0 rem=17 virt=1 adv=0,0,0
+  2 LD rd=0x2b rs1=0x2c rs2=0i so=0 first=0 rem=16 virt=1 adv=0,0,0
+  3 VirtualMULI rd=0x2c rs1=0x6 rs2=0x8i so=0 first=0 rem=15 virt=1 adv=0,0,0
+  4 VirtualShiftRightBitmask rd=0x2d rs1=0x2c rs2=0i so=0 first=0 rem=14 virt=1 adv=0,0,0
+  5 VirtualSRL rd=0x28 rs1=0x2b rs2=0x2d so=0 first=0 rem=13 virt=1 adv=0,0,0
+  6 ADD rd=0x29 rs1=0x28 rs2=0xfffffff4 so=0 first=0 rem=12 virt=1 adv=0,0,0
+  7 ORI rd=0x2a rs1=0 rs2=0xffffffffffffffffi so=0 first=0 rem=11 virt=1 adv=0,0,0
+  8 VirtualSRLI rd=0x2a rs1=0x2a rs2=0xffffffff00000000i so=0 first=0 rem=10 virt=1 adv=0,0,0
+  9 VirtualPow2 rd=0x2d rs1=0x2c rs2=0i so=0 first=0 rem=9 virt=1 adv=0,0,0
+  10 MUL rd=0x2a rs1=0x2a rs2=0x2d so=0 first=0 rem=8 virt=1 adv=0,0,0
+  11 VirtualPow2 rd=0x2d rs1=0x2c rs2=0i so=0 first=0 rem=7 virt=1 adv=0,0,0
+  12 MUL rd=0x2c rs1=0x29 rs2=0x2d so=0 first=0 rem=6 virt=1 adv=0,0,0
+  13 XOR rd=0x2c rs1=0x2b rs2=0x2c so=0 first=0 rem=5 virt=1 adv=0,0,0
+  14 AND rd=0x2c rs1=0x2c rs2=0x2a so=0 first=0 rem=4 virt=1 adv=0,0,0
+  15 XOR rd=0x2b rs1=0x2b rs2=0x2c so=0 first=0 rem=3 virt=1 adv=0,0,0
+  16 ANDI rd=0x2a rs1=0x6 rs2=0xfffffffffffffff8i so=0 first=0 rem=2 virt=1 adv=0,0,0
+  17 SD rd=0i rs1=0x2a rs2=0x2b so=0 first=0 rem=1 virt=1 adv=0,0,0
+  18 VirtualSignExtendWord rd=0x5 rs1=0x28 rs2=0i so=0 first=0 rem=0 virt=1 adv=0,0,0
+--- 821e1bd
+V AMOADD_W rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=9 ncyc=9
+  0 VirtualLoadW rd=0x28 rs1=0x6 rs2=0i so=0 first=1 rem=8 virt=1 adv=0,0,0
+  1 VirtualWindowMaskW rd=0x29 rs1=0x6 rs2=0i so=0 first=0 rem=7 virt=1 adv=0,0,0
+  2 VirtualPextSigned rd=0x2a rs1=0x28 rs2=0x29 so=0 first=0 rem=6 virt=1 adv=0,0,0
+  3 ADD rd=0x2b rs1=0x2a rs2=0xfffffff4 so=0 first=0 rem=5 virt=1 adv=0,0,0
+  4 ANDN rd=0x28 rs1=0x28 rs2=0x29 so=0 first=0 rem=4 virt=1 adv=0,0,0
+  5 VirtualShiftDataW rd=0x29 rs1=0x2b rs2=0x6 so=0 first=0 rem=3 virt=1 adv=0,0,0
+  6 ADD rd=0x28 rs1=0x28 rs2=0x29 so=0 first=0 rem=2 virt=1 adv=0,0,0
+  7 VirtualStoreW rd=0i rs1=0x6 rs2=0x28 so=0 first=0 rem=1 virt=1 adv=0,0,0
+  8 ADDI rd=0x5 rs1=0x2a rs2=0i so=0 first=0 rem=0 virt=1 adv=0,0,0
+
+===== AMOXOR_W
+--- 4f36b3d
+V AMOXOR_W rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=19 ncyc=19
+  0 VirtualAssertWordAlignment rd=0i rs1=0x6 rs2=0i so=0 first=1 rem=18 virt=1 adv=0,0,0
+  1 ANDI rd=0x2c rs1=0x6 rs2=0xfffffffffffffff8i so=0 first=0 rem=17 virt=1 adv=0,0,0
+  2 LD rd=0x2b rs1=0x2c rs2=0i so=0 first=0 rem=16 virt=1 adv=0,0,0
+  3 VirtualMULI rd=0x2c rs1=0x6 rs2=0x8i so=0 first=0 rem=15 virt=1 adv=0,0,0
+  4 VirtualShiftRightBitmask rd=0x2d rs1=0x2c rs2=0i so=0 first=0 rem=14 virt=1 adv=0,0,0
+  5 VirtualSRL rd=0x28 rs1=0x2b rs2=0x2d so=0 first=0 rem=13 virt=1 adv=0,0,0
+  6 XOR rd=0x29 rs1=0x28 rs2=0xfffffff4 so=0 first=0 rem=12 virt=1 adv=0,0,0
+  7 ORI rd=0x2a rs1=0 rs2=0xffffffffffffffffi so=0 first=0 rem=11 virt=1 adv=0,0,0
+  8 VirtualSRLI rd=0x2a rs1=0x2a rs2=0xffffffff00000000i so=0 first=0 rem=10 virt=1 adv=0,0,0
+  9 VirtualPow2 rd=0x2d rs1=0x2c rs2=0i so=0 first=0 rem=9 virt=1 adv=0,0,0
+  10 MUL rd=0x2a rs1=0x2a rs2=0x2d so=0 first=0 rem=8 virt=1 adv=0,0,0
+  11 VirtualPow2 rd=0x2d rs1=0x2c rs2=0i so=0 first=0 rem=7 virt=1 adv=0,0,0
+  12 MUL rd=0x2c rs1=0x29 rs2=0x2d so=0 first=0 rem=6 virt=1 adv=0,0,0
+  13 XOR rd=0x2c rs1=0x2b rs2=0x2c so=0 first=0 rem=5 virt=1 adv=0,0,0
+  14 AND rd=0x2c rs1=0x2c rs2=0x2a so=0 first=0 rem=4 virt=1 adv=0,0,0
+  15 XOR rd=0x2b rs1=0x2b rs2=0x2c so=0 first=0 rem=3 virt=1 adv=0,0,0
+  16 ANDI rd=0x2a rs1=0x6 rs2=0xfffffffffffffff8i so=0 first=0 rem=2 virt=1 adv=0,0,0
+  17 SD rd=0i rs1=0x2a rs2=0x2b so=0 first=0 rem=1 virt=1 adv=0,0,0
+  18 VirtualSignExtendWord rd=0x5 rs1=0x28 rs2=0i so=0 first=0 rem=0 virt=1 adv=0,0,0
+--- 821e1bd
+V AMOXOR_W rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=9 ncyc=9
+  0 VirtualLoadW rd=0x28 rs1=0x6 rs2=0i so=0 first=1 rem=8 virt=1 adv=0,0,0
+  1 VirtualWindowMaskW rd=0x29 rs1=0x6 rs2=0i so=0 first=0 rem=7 virt=1 adv=0,0,0
+  2 VirtualPextSigned rd=0x2a rs1=0x28 rs2=0x29 so=0 first=0 rem=6 virt=1 adv=0,0,0
+  3 XOR rd=0x2b rs1=0x2a rs2=0xfffffff4 so=0 first=0 rem=5 virt=1 adv=0,0,0
+  4 ANDN rd=0x28 rs1=0x28 rs2=0x29 so=0 first=0 rem=4 virt=1 adv=0,0,0
+  5 VirtualShiftDataW rd=0x29 rs1=0x2b rs2=0x6 so=0 first=0 rem=3 virt=1 adv=0,0,0
+  6 ADD rd=0x28 rs1=0x28 rs2=0x29 so=0 first=0 rem=2 virt=1 adv=0,0,0
+  7 VirtualStoreW rd=0i rs1=0x6 rs2=0x28 so=0 first=0 rem=1 virt=1 adv=0,0,0
+  8 ADDI rd=0x5 rs1=0x2a rs2=0i so=0 first=0 rem=0 virt=1 adv=0,0,0
+
+===== AMOAND_W
+--- 4f36b3d
+V AMOAND_W rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=19 ncyc=19
+  0 VirtualAssertWordAlignment rd=0i rs1=0x6 rs2=0i so=0 first=1 rem=18 virt=1 adv=0,0,0
+  1 ANDI rd=0x2c rs1=0x6 rs2=0xfffffffffffffff8i so=0 first=0 rem=17 virt=1 adv=0,0,0
+  2 LD rd=0x2b rs1=0x2c rs2=0i so=0 first=0 rem=16 virt=1 adv=0,0,0
+  3 VirtualMULI rd=0x2c rs1=0x6 rs2=0x8i so=0 first=0 rem=15 virt=1 adv=0,0,0
+  4 VirtualShiftRightBitmask rd=0x2d rs1=0x2c rs2=0i so=0 first=0 rem=14 virt=1 adv=0,0,0
+  5 VirtualSRL rd=0x28 rs1=0x2b rs2=0x2d so=0 first=0 rem=13 virt=1 adv=0,0,0
+  6 AND rd=0x29 rs1=0x28 rs2=0xfffffff4 so=0 first=0 rem=12 virt=1 adv=0,0,0
+  7 ORI rd=0x2a rs1=0 rs2=0xffffffffffffffffi so=0 first=0 rem=11 virt=1 adv=0,0,0
+  8 VirtualSRLI rd=0x2a rs1=0x2a rs2=0xffffffff00000000i so=0 first=0 rem=10 virt=1 adv=0,0,0
+  9 VirtualPow2 rd=0x2d rs1=0x2c rs2=0i so=0 first=0 rem=9 virt=1 adv=0,0,0
+  10 MUL rd=0x2a rs1=0x2a rs2=0x2d so=0 first=0 rem=8 virt=1 adv=0,0,0
+  11 VirtualPow2 rd=0x2d rs1=0x2c rs2=0i so=0 first=0 rem=7 virt=1 adv=0,0,0
+  12 MUL rd=0x2c rs1=0x29 rs2=0x2d so=0 first=0 rem=6 virt=1 adv=0,0,0
+  13 XOR rd=0x2c rs1=0x2b rs2=0x2c so=0 first=0 rem=5 virt=1 adv=0,0,0
+  14 AND rd=0x2c rs1=0x2c rs2=0x2a so=0 first=0 rem=4 virt=1 adv=0,0,0
+  15 XOR rd=0x2b rs1=0x2b rs2=0x2c so=0 first=0 rem=3 virt=1 adv=0,0,0
+  16 ANDI rd=0x2a rs1=0x6 rs2=0xfffffffffffffff8i so=0 first=0 rem=2 virt=1 adv=0,0,0
+  17 SD rd=0i rs1=0x2a rs2=0x2b so=0 first=0 rem=1 virt=1 adv=0,0,0
+  18 VirtualSignExtendWord rd=0x5 rs1=0x28 rs2=0i so=0 first=0 rem=0 virt=1 adv=0,0,0
+--- 821e1bd
+V AMOAND_W rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=9 ncyc=9
+  0 VirtualLoadW rd=0x28 rs1=0x6 rs2=0i so=0 first=1 rem=8 virt=1 adv=0,0,0
+  1 VirtualWindowMaskW rd=0x29 rs1=0x6 rs2=0i so=0 first=0 rem=7 virt=1 adv=0,0,0
+  2 VirtualPextSigned rd=0x2a rs1=0x28 rs2=0x29 so=0 first=0 rem=6 virt=1 adv=0,0,0
+  3 AND rd=0x2b rs1=0x2a rs2=0xfffffff4 so=0 first=0 rem=5 virt=1 adv=0,0,0
+  4 ANDN rd=0x28 rs1=0x28 rs2=0x29 so=0 first=0 rem=4 virt=1 adv=0,0,0
+  5 VirtualShiftDataW rd=0x29 rs1=0x2b rs2=0x6 so=0 first=0 rem=3 virt=1 adv=0,0,0
+  6 ADD rd=0x28 rs1=0x28 rs2=0x29 so=0 first=0 rem=2 virt=1 adv=0,0,0
+  7 VirtualStoreW rd=0i rs1=0x6 rs2=0x28 so=0 first=0 rem=1 virt=1 adv=0,0,0
+  8 ADDI rd=0x5 rs1=0x2a rs2=0i so=0 first=0 rem=0 virt=1 adv=0,0,0
+
+===== AMOOR_W
+--- 4f36b3d
+V AMOOR_W rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=19 ncyc=19
+  0 VirtualAssertWordAlignment rd=0i rs1=0x6 rs2=0i so=0 first=1 rem=18 virt=1 adv=0,0,0
+  1 ANDI rd=0x2c rs1=0x6 rs2=0xfffffffffffffff8i so=0 first=0 rem=17 virt=1 adv=0,0,0
+  2 LD rd=0x2b rs1=0x2c rs2=0i so=0 first=0 rem=16 virt=1 adv=0,0,0
+  3 VirtualMULI rd=0x2c rs1=0x6 rs2=0x8i so=0 first=0 rem=15 virt=1 adv=0,0,0
+  4 VirtualShiftRightBitmask rd=0x2d rs1=0x2c rs2=0i so=0 first=0 rem=14 virt=1 adv=0,0,0
+  5 VirtualSRL rd=0x28 rs1=0x2b rs2=0x2d so=0 first=0 rem=13 virt=1 adv=0,0,0
+  6 OR rd=0x29 rs1=0x28 rs2=0xfffffff4 so=0 first=0 rem=12 virt=1 adv=0,0,0
+  7 ORI rd=0x2a rs1=0 rs2=0xffffffffffffffffi so=0 first=0 rem=11 virt=1 adv=0,0,0
+  8 VirtualSRLI rd=0x2a rs1=0x2a rs2=0xffffffff00000000i so=0 first=0 rem=10 virt=1 adv=0,0,0
+  9 VirtualPow2 rd=0x2d rs1=0x2c rs2=0i so=0 first=0 rem=9 virt=1 adv=0,0,0
+  10 MUL rd=0x2a rs1=0x2a rs2=0x2d so=0 first=0 rem=8 virt=1 adv=0,0,0
+  11 VirtualPow2 rd=0x2d rs1=0x2c rs2=0i so=0 first=0 rem=7 virt=1 adv=0,0,0
+  12 MUL rd=0x2c rs1=0x29 rs2=0x2d so=0 first=0 rem=6 virt=1 adv=0,0,0
+  13 XOR rd=0x2c rs1=0x2b rs2=0x2c so=0 first=0 rem=5 virt=1 adv=0,0,0
+  14 AND rd=0x2c rs1=0x2c rs2=0x2a so=0 first=0 rem=4 virt=1 adv=0,0,0
+  15 XOR rd=0x2b rs1=0x2b rs2=0x2c so=0 first=0 rem=3 virt=1 adv=0,0,0
+  16 ANDI rd=0x2a rs1=0x6 rs2=0xfffffffffffffff8i so=0 first=0 rem=2 virt=1 adv=0,0,0
+  17 SD rd=0i rs1=0x2a rs2=0x2b so=0 first=0 rem=1 virt=1 adv=0,0,0
+  18 VirtualSignExtendWord rd=0x5 rs1=0x28 rs2=0i so=0 first=0 rem=0 virt=1 adv=0,0,0
+--- 821e1bd
+V AMOOR_W rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=9 ncyc=9
+  0 VirtualLoadW rd=0x28 rs1=0x6 rs2=0i so=0 first=1 rem=8 virt=1 adv=0,0,0
+  1 VirtualWindowMaskW rd=0x29 rs1=0x6 rs2=0i so=0 first=0 rem=7 virt=1 adv=0,0,0
+  2 VirtualPextSigned rd=0x2a rs1=0x28 rs2=0x29 so=0 first=0 rem=6 virt=1 adv=0,0,0
+  3 OR rd=0x2b rs1=0x2a rs2=0xfffffff4 so=0 first=0 rem=5 virt=1 adv=0,0,0
+  4 ANDN rd=0x28 rs1=0x28 rs2=0x29 so=0 first=0 rem=4 virt=1 adv=0,0,0
+  5 VirtualShiftDataW rd=0x29 rs1=0x2b rs2=0x6 so=0 first=0 rem=3 virt=1 adv=0,0,0
+  6 ADD rd=0x28 rs1=0x28 rs2=0x29 so=0 first=0 rem=2 virt=1 adv=0,0,0
+  7 VirtualStoreW rd=0i rs1=0x6 rs2=0x28 so=0 first=0 rem=1 virt=1 adv=0,0,0
+  8 ADDI rd=0x5 rs1=0x2a rs2=0i so=0 first=0 rem=0 virt=1 adv=0,0,0
+
+===== AMOMIN_W
+--- 4f36b3d
+V AMOMIN_W rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=24 ncyc=24
+  0 VirtualAssertWordAlignment rd=0i rs1=0x6 rs2=0i so=0 first=1 rem=23 virt=1 adv=0,0,0
+  1 ANDI rd=0x2a rs1=0x6 rs2=0xfffffffffffffff8i so=0 first=0 rem=22 virt=1 adv=0,0,0
+  2 LD rd=0x29 rs1=0x2a rs2=0i so=0 first=0 rem=21 virt=1 adv=0,0,0
+  3 VirtualMULI rd=0x2a rs1=0x6 rs2=0x8i so=0 first=0 rem=20 virt=1 adv=0,0,0
+  4 VirtualShiftRightBitmask rd=0x2b rs1=0x2a rs2=0i so=0 first=0 rem=19 virt=1 adv=0,0,0
+  5 VirtualSRL rd=0x28 rs1=0x29 rs2=0x2b so=0 first=0 rem=18 virt=1 adv=0,0,0
+  6 VirtualSignExtendWord rd=0x2b rs1=0xfffffff4 rs2=0i so=0 first=0 rem=17 virt=1 adv=0,0,0
+  7 VirtualSignExtendWord rd=0x2c rs1=0x28 rs2=0i so=0 first=0 rem=16 virt=1 adv=0,0,0
+  8 SLT rd=0x2c rs1=0x2b rs2=0x2c so=0 first=0 rem=15 virt=1 adv=0,0,0
+  9 SUB rd=0x2b rs1=0xfffffff4 rs2=0x28 so=0 first=0 rem=14 virt=1 adv=0,0,0
+  10 MUL rd=0x2b rs1=0x2b rs2=0x2c so=0 first=0 rem=13 virt=1 adv=0,0,0
+  11 ADD rd=0x2b rs1=0x2b rs2=0x28 so=0 first=0 rem=12 virt=1 adv=0,0,0
+  12 ORI rd=0x2c rs1=0 rs2=0xffffffffffffffffi so=0 first=0 rem=11 virt=1 adv=0,0,0
+  13 VirtualSRLI rd=0x2c rs1=0x2c rs2=0xffffffff00000000i so=0 first=0 rem=10 virt=1 adv=0,0,0
+  14 VirtualPow2 rd=0x2d rs1=0x2a rs2=0i so=0 first=0 rem=9 virt=1 adv=0,0,0
+  15 MUL rd=0x2c rs1=0x2c rs2=0x2d so=0 first=0 rem=8 virt=1 adv=0,0,0
+  16 VirtualPow2 rd=0x2d rs1=0x2a rs2=0i so=0 first=0 rem=7 virt=1 adv=0,0,0
+  17 MUL rd=0x2a rs1=0x2b rs2=0x2d so=0 first=0 rem=6 virt=1 adv=0,0,0
+  18 XOR rd=0x2a rs1=0x29 rs2=0x2a so=0 first=0 rem=5 virt=1 adv=0,0,0
+  19 AND rd=0x2a rs1=0x2a rs2=0x2c so=0 first=0 rem=4 virt=1 adv=0,0,0
+  20 XOR rd=0x29 rs1=0x29 rs2=0x2a so=0 first=0 rem=3 virt=1 adv=0,0,0
+  21 ANDI rd=0x2c rs1=0x6 rs2=0xfffffffffffffff8i so=0 first=0 rem=2 virt=1 adv=0,0,0
+  22 SD rd=0i rs1=0x2c rs2=0x29 so=0 first=0 rem=1 virt=1 adv=0,0,0
+  23 VirtualSignExtendWord rd=0x5 rs1=0x28 rs2=0i so=0 first=0 rem=0 virt=1 adv=0,0,0
+--- 821e1bd
+V AMOMIN_W rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=13 ncyc=13
+  0 VirtualLoadW rd=0x28 rs1=0x6 rs2=0i so=0 first=1 rem=12 virt=1 adv=0,0,0
+  1 VirtualWindowMaskW rd=0x29 rs1=0x6 rs2=0i so=0 first=0 rem=11 virt=1 adv=0,0,0
+  2 VirtualPextSigned rd=0x2a rs1=0x28 rs2=0x29 so=0 first=0 rem=10 virt=1 adv=0,0,0
+  3 VirtualSignExtendWord rd=0x2b rs1=0xfffffff4 rs2=0i so=0 first=0 rem=9 virt=1 adv=0,0,0
+  4 SLT rd=0x2c rs1=0x2b rs2=0x2a so=0 first=0 rem=8 virt=1 adv=0,0,0
+  5 SUB rd=0x2b rs1=0xfffffff4 rs2=0x2a so=0 first=0 rem=7 virt=1 adv=0,0,0
+  6 MUL rd=0x2b rs1=0x2b rs2=0x2c so=0 first=0 rem=6 virt=1 adv=0,0,0
+  7 ADD rd=0x2b rs1=0x2b rs2=0x2a so=0 first=0 rem=5 virt=1 adv=0,0,0
+  8 ANDN rd=0x28 rs1=0x28 rs2=0x29 so=0 first=0 rem=4 virt=1 adv=0,0,0
+  9 VirtualShiftDataW rd=0x29 rs1=0x2b rs2=0x6 so=0 first=0 rem=3 virt=1 adv=0,0,0
+  10 ADD rd=0x28 rs1=0x28 rs2=0x29 so=0 first=0 rem=2 virt=1 adv=0,0,0
+  11 VirtualStoreW rd=0i rs1=0x6 rs2=0x28 so=0 first=0 rem=1 virt=1 adv=0,0,0
+  12 ADDI rd=0x5 rs1=0x2a rs2=0i so=0 first=0 rem=0 virt=1 adv=0,0,0
+
+===== AMOMAX_W
+--- 4f36b3d
+V AMOMAX_W rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=24 ncyc=24
+  0 VirtualAssertWordAlignment rd=0i rs1=0x6 rs2=0i so=0 first=1 rem=23 virt=1 adv=0,0,0
+  1 ANDI rd=0x2a rs1=0x6 rs2=0xfffffffffffffff8i so=0 first=0 rem=22 virt=1 adv=0,0,0
+  2 LD rd=0x29 rs1=0x2a rs2=0i so=0 first=0 rem=21 virt=1 adv=0,0,0
+  3 VirtualMULI rd=0x2a rs1=0x6 rs2=0x8i so=0 first=0 rem=20 virt=1 adv=0,0,0
+  4 VirtualShiftRightBitmask rd=0x2b rs1=0x2a rs2=0i so=0 first=0 rem=19 virt=1 adv=0,0,0
+  5 VirtualSRL rd=0x28 rs1=0x29 rs2=0x2b so=0 first=0 rem=18 virt=1 adv=0,0,0
+  6 VirtualSignExtendWord rd=0x2b rs1=0xfffffff4 rs2=0i so=0 first=0 rem=17 virt=1 adv=0,0,0
+  7 VirtualSignExtendWord rd=0x2c rs1=0x28 rs2=0i so=0 first=0 rem=16 virt=1 adv=0,0,0
+  8 SLT rd=0x2c rs1=0x2c rs2=0x2b so=0 first=0 rem=15 virt=1 adv=0,0,0
+  9 SUB rd=0x2b rs1=0xfffffff4 rs2=0x28 so=0 first=0 rem=14 virt=1 adv=0,0,0
+  10 MUL rd=0x2b rs1=0x2b rs2=0x2c so=0 first=0 rem=13 virt=1 adv=0,0,0
+  11 ADD rd=0x2b rs1=0x2b rs2=0x28 so=0 first=0 rem=12 virt=1 adv=0,0,0
+  12 ORI rd=0x2c rs1=0 rs2=0xffffffffffffffffi so=0 first=0 rem=11 virt=1 adv=0,0,0
+  13 VirtualSRLI rd=0x2c rs1=0x2c rs2=0xffffffff00000000i so=0 first=0 rem=10 virt=1 adv=0,0,0
+  14 VirtualPow2 rd=0x2d rs1=0x2a rs2=0i so=0 first=0 rem=9 virt=1 adv=0,0,0
+  15 MUL rd=0x2c rs1=0x2c rs2=0x2d so=0 first=0 rem=8 virt=1 adv=0,0,0
+  16 VirtualPow2 rd=0x2d rs1=0x2a rs2=0i so=0 first=0 rem=7 virt=1 adv=0,0,0
+  17 MUL rd=0x2a rs1=0x2b rs2=0x2d so=0 first=0 rem=6 virt=1 adv=0,0,0
+  18 XOR rd=0x2a rs1=0x29 rs2=0x2a so=0 first=0 rem=5 virt=1 adv=0,0,0
+  19 AND rd=0x2a rs1=0x2a rs2=0x2c so=0 first=0 rem=4 virt=1 adv=0,0,0
+  20 XOR rd=0x29 rs1=0x29 rs2=0x2a so=0 first=0 rem=3 virt=1 adv=0,0,0
+  21 ANDI rd=0x2c rs1=0x6 rs2=0xfffffffffffffff8i so=0 first=0 rem=2 virt=1 adv=0,0,0
+  22 SD rd=0i rs1=0x2c rs2=0x29 so=0 first=0 rem=1 virt=1 adv=0,0,0
+  23 VirtualSignExtendWord rd=0x5 rs1=0x28 rs2=0i so=0 first=0 rem=0 virt=1 adv=0,0,0
+--- 821e1bd
+V AMOMAX_W rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=13 ncyc=13
+  0 VirtualLoadW rd=0x28 rs1=0x6 rs2=0i so=0 first=1 rem=12 virt=1 adv=0,0,0
+  1 VirtualWindowMaskW rd=0x29 rs1=0x6 rs2=0i so=0 first=0 rem=11 virt=1 adv=0,0,0
+  2 VirtualPextSigned rd=0x2a rs1=0x28 rs2=0x29 so=0 first=0 rem=10 virt=1 adv=0,0,0
+  3 VirtualSignExtendWord rd=0x2b rs1=0xfffffff4 rs2=0i so=0 first=0 rem=9 virt=1 adv=0,0,0
+  4 SLT rd=0x2c rs1=0x2a rs2=0x2b so=0 first=0 rem=8 virt=1 adv=0,0,0
+  5 SUB rd=0x2b rs1=0xfffffff4 rs2=0x2a so=0 first=0 rem=7 virt=1 adv=0,0,0
+  6 MUL rd=0x2b rs1=0x2b rs2=0x2c so=0 first=0 rem=6 virt=1 adv=0,0,0
+  7 ADD rd=0x2b rs1=0x2b rs2=0x2a so=0 first=0 rem=5 virt=1 adv=0,0,0
+  8 ANDN rd=0x28 rs1=0x28 rs2=0x29 so=0 first=0 rem=4 virt=1 adv=0,0,0
+  9 VirtualShiftDataW rd=0x29 rs1=0x2b rs2=0x6 so=0 first=0 rem=3 virt=1 adv=0,0,0
+  10 ADD rd=0x28 rs1=0x28 rs2=0x29 so=0 first=0 rem=2 virt=1 adv=0,0,0
+  11 VirtualStoreW rd=0i rs1=0x6 rs2=0x28 so=0 first=0 rem=1 virt=1 adv=0,0,0
+  12 ADDI rd=0x5 rs1=0x2a rs2=0i so=0 first=0 rem=0 virt=1 adv=0,0,0
+
+===== AMOMINU_W
+--- 4f36b3d
+V AMOMINU_W rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=24 ncyc=24
+  0 VirtualAssertWordAlignment rd=0i rs1=0x6 rs2=0i so=0 first=1 rem=23 virt=1 adv=0,0,0
+  1 ANDI rd=0x2a rs1=0x6 rs2=0xfffffffffffffff8i so=0 first=0 rem=22 virt=1 adv=0,0,0
+  2 LD rd=0x29 rs1=0x2a rs2=0i so=0 first=0 rem=21 virt=1 adv=0,0,0
+  3 VirtualMULI rd=0x2a rs1=0x6 rs2=0x8i so=0 first=0 rem=20 virt=1 adv=0,0,0
+  4 VirtualShiftRightBitmask rd=0x2b rs1=0x2a rs2=0i so=0 first=0 rem=19 virt=1 adv=0,0,0
+  5 VirtualSRL rd=0x28 rs1=0x29 rs2=0x2b so=0 first=0 rem=18 virt=1 adv=0,0,0
+  6 VirtualZeroExtendWord rd=0x2b rs1=0xfffffff4 rs2=0i so=0 first=0 rem=17 virt=1 adv=0,0,0
+  7 VirtualZeroExtendWord rd=0x2c rs1=0x28 rs2=0i so=0 first=0 rem=16 virt=1 adv=0,0,0
+  8 SLTU rd=0x2c rs1=0x2b rs2=0x2c so=0 first=0 rem=15 virt=1 adv=0,0,0
+  9 SUB rd=0x2b rs1=0xfffffff4 rs2=0x28 so=0 first=0 rem=14 virt=1 adv=0,0,0
+  10 MUL rd=0x2b rs1=0x2b rs2=0x2c so=0 first=0 rem=13 virt=1 adv=0,0,0
+  11 ADD rd=0x2b rs1=0x2b rs2=0x28 so=0 first=0 rem=12 virt=1 adv=0,0,0
+  12 ORI rd=0x2c rs1=0 rs2=0xffffffffffffffffi so=0 first=0 rem=11 virt=1 adv=0,0,0
+  13 VirtualSRLI rd=0x2c rs1=0x2c rs2=0xffffffff00000000i so=0 first=0 rem=10 virt=1 adv=0,0,0
+  14 VirtualPow2 rd=0x2d rs1=0x2a rs2=0i so=0 first=0 rem=9 virt=1 adv=0,0,0
+  15 MUL rd=0x2c rs1=0x2c rs2=0x2d so=0 first=0 rem=8 virt=1 adv=0,0,0
+  16 VirtualPow2 rd=0x2d rs1=0x2a rs2=0i so=0 first=0 rem=7 virt=1 adv=0,0,0
+  17 MUL rd=0x2a rs1=0x2b rs2=0x2d so=0 first=0 rem=6 virt=1 adv=0,0,0
+  18 XOR rd=0x2a rs1=0x29 rs2=0x2a so=0 first=0 rem=5 virt=1 adv=0,0,0
+  19 AND rd=0x2a rs1=0x2a rs2=0x2c so=0 first=0 rem=4 virt=1 adv=0,0,0
+  20 XOR rd=0x29 rs1=0x29 rs2=0x2a so=0 first=0 rem=3 virt=1 adv=0,0,0
+  21 ANDI rd=0x2c rs1=0x6 rs2=0xfffffffffffffff8i so=0 first=0 rem=2 virt=1 adv=0,0,0
+  22 SD rd=0i rs1=0x2c rs2=0x29 so=0 first=0 rem=1 virt=1 adv=0,0,0
+  23 VirtualSignExtendWord rd=0x5 rs1=0x28 rs2=0i so=0 first=0 rem=0 virt=1 adv=0,0,0
+--- 821e1bd
+V AMOMINU_W rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=13 ncyc=13
+  0 VirtualLoadW rd=0x28 rs1=0x6 rs2=0i so=0 first=1 rem=12 virt=1 adv=0,0,0
+  1 VirtualWindowMaskW rd=0x29 rs1=0x6 rs2=0i so=0 first=0 rem=11 virt=1 adv=0,0,0
+  2 VirtualPextSigned rd=0x2a rs1=0x28 rs2=0x29 so=0 first=0 rem=10 virt=1 adv=0,0,0
+  3 VirtualSignExtendWord rd=0x2b rs1=0xfffffff4 rs2=0i so=0 first=0 rem=9 virt=1 adv=0,0,0
+  4 SLTU rd=0x2c rs1=0x2b rs2=0x2a so=0 first=0 rem=8 virt=1 adv=0,0,0
+  5 SUB rd=0x2b rs1=0xfffffff4 rs2=0x2a so=0 first=0 rem=7 virt=1 adv=0,0,0
+  6 MUL rd=0x2b rs1=0x2b rs2=0x2c so=0 first=0 rem=6 virt=1 adv=0,0,0
+  7 ADD rd=0x2b rs1=0x2b rs2=0x2a so=0 first=0 rem=5 virt=1 adv=0,0,0
+  8 ANDN rd=0x28 rs1=0x28 rs2=0x29 so=0 first=0 rem=4 virt=1 adv=0,0,0
+  9 VirtualShiftDataW rd=0x29 rs1=0x2b rs2=0x6 so=0 first=0 rem=3 virt=1 adv=0,0,0
+  10 ADD rd=0x28 rs1=0x28 rs2=0x29 so=0 first=0 rem=2 virt=1 adv=0,0,0
+  11 VirtualStoreW rd=0i rs1=0x6 rs2=0x28 so=0 first=0 rem=1 virt=1 adv=0,0,0
+  12 ADDI rd=0x5 rs1=0x2a rs2=0i so=0 first=0 rem=0 virt=1 adv=0,0,0
+
+===== AMOMAXU_W
+--- 4f36b3d
+V AMOMAXU_W rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=24 ncyc=24
+  0 VirtualAssertWordAlignment rd=0i rs1=0x6 rs2=0i so=0 first=1 rem=23 virt=1 adv=0,0,0
+  1 ANDI rd=0x2a rs1=0x6 rs2=0xfffffffffffffff8i so=0 first=0 rem=22 virt=1 adv=0,0,0
+  2 LD rd=0x29 rs1=0x2a rs2=0i so=0 first=0 rem=21 virt=1 adv=0,0,0
+  3 VirtualMULI rd=0x2a rs1=0x6 rs2=0x8i so=0 first=0 rem=20 virt=1 adv=0,0,0
+  4 VirtualShiftRightBitmask rd=0x2b rs1=0x2a rs2=0i so=0 first=0 rem=19 virt=1 adv=0,0,0
+  5 VirtualSRL rd=0x28 rs1=0x29 rs2=0x2b so=0 first=0 rem=18 virt=1 adv=0,0,0
+  6 VirtualZeroExtendWord rd=0x2b rs1=0xfffffff4 rs2=0i so=0 first=0 rem=17 virt=1 adv=0,0,0
+  7 VirtualZeroExtendWord rd=0x2c rs1=0x28 rs2=0i so=0 first=0 rem=16 virt=1 adv=0,0,0
+  8 SLTU rd=0x2c rs1=0x2c rs2=0x2b so=0 first=0 rem=15 virt=1 adv=0,0,0
+  9 SUB rd=0x2b rs1=0xfffffff4 rs2=0x28 so=0 first=0 rem=14 virt=1 adv=0,0,0
+  10 MUL rd=0x2b rs1=0x2b rs2=0x2c so=0 first=0 rem=13 virt=1 adv=0,0,0
+  11 ADD rd=0x2b rs1=0x2b rs2=0x28 so=0 first=0 rem=12 virt=1 adv=0,0,0
+  12 ORI rd=0x2c rs1=0 rs2=0xffffffffffffffffi so=0 first=0 rem=11 virt=1 adv=0,0,0
+  13 VirtualSRLI rd=0x2c rs1=0x2c rs2=0xffffffff00000000i so=0 first=0 rem=10 virt=1 adv=0,0,0
+  14 VirtualPow2 rd=0x2d rs1=0x2a rs2=0i so=0 first=0 rem=9 virt=1 adv=0,0,0
+  15 MUL rd=0x2c rs1=0x2c rs2=0x2d so=0 first=0 rem=8 virt=1 adv=0,0,0
+  16 VirtualPow2 rd=0x2d rs1=0x2a rs2=0i so=0 first=0 rem=7 virt=1 adv=0,0,0
+  17 MUL rd=0x2a rs1=0x2b rs2=0x2d so=0 first=0 rem=6 virt=1 adv=0,0,0
+  18 XOR rd=0x2a rs1=0x29 rs2=0x2a so=0 first=0 rem=5 virt=1 adv=0,0,0
+  19 AND rd=0x2a rs1=0x2a rs2=0x2c so=0 first=0 rem=4 virt=1 adv=0,0,0
+  20 XOR rd=0x29 rs1=0x29 rs2=0x2a so=0 first=0 rem=3 virt=1 adv=0,0,0
+  21 ANDI rd=0x2c rs1=0x6 rs2=0xfffffffffffffff8i so=0 first=0 rem=2 virt=1 adv=0,0,0
+  22 SD rd=0i rs1=0x2c rs2=0x29 so=0 first=0 rem=1 virt=1 adv=0,0,0
+  23 VirtualSignExtendWord rd=0x5 rs1=0x28 rs2=0i so=0 first=0 rem=0 virt=1 adv=0,0,0
+--- 821e1bd
+V AMOMAXU_W rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=13 ncyc=13
+  0 VirtualLoadW rd=0x28 rs1=0x6 rs2=0i so=0 first=1 rem=12 virt=1 adv=0,0,0
+  1 VirtualWindowMaskW rd=0x29 rs1=0x6 rs2=0i so=0 first=0 rem=11 virt=1 adv=0,0,0
+  2 VirtualPextSigned rd=0x2a rs1=0x28 rs2=0x29 so=0 first=0 rem=10 virt=1 adv=0,0,0
+  3 VirtualSignExtendWord rd=0x2b rs1=0xfffffff4 rs2=0i so=0 first=0 rem=9 virt=1 adv=0,0,0
+  4 SLTU rd=0x2c rs1=0x2a rs2=0x2b so=0 first=0 rem=8 virt=1 adv=0,0,0
+  5 SUB rd=0x2b rs1=0xfffffff4 rs2=0x2a so=0 first=0 rem=7 virt=1 adv=0,0,0
+  6 MUL rd=0x2b rs1=0x2b rs2=0x2c so=0 first=0 rem=6 virt=1 adv=0,0,0
+  7 ADD rd=0x2b rs1=0x2b rs2=0x2a so=0 first=0 rem=5 virt=1 adv=0,0,0
+  8 ANDN rd=0x28 rs1=0x28 rs2=0x29 so=0 first=0 rem=4 virt=1 adv=0,0,0
+  9 VirtualShiftDataW rd=0x29 rs1=0x2b rs2=0x6 so=0 first=0 rem=3 virt=1 adv=0,0,0
+  10 ADD rd=0x28 rs1=0x28 rs2=0x29 so=0 first=0 rem=2 virt=1 adv=0,0,0
+  11 VirtualStoreW rd=0i rs1=0x6 rs2=0x28 so=0 first=0 rem=1 virt=1 adv=0,0,0
+  12 ADDI rd=0x5 rs1=0x2a rs2=0i so=0 first=0 rem=0 virt=1 adv=0,0,0
+
+===== VirtualHostIO
+--- 4f36b3d
+V VirtualHostIO rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=1 ncyc=1
+  0 VirtualHostIO rd=0x5 rs1=0x6 rs2=0xfffffffffffffff4 so=0 first=0 rem=0 virt=0 adv=0,0,0
+--- 821e1bd
+V VirtualHostIO rd=5 rs1=6 c=0xfffffff4 imm_c=0 rows=1 ncyc=1
+  0 VirtualHostIO rd=0i rs1=0i rs2=0i so=0 first=0 rem=0 virt=0 adv=0,0,0
+

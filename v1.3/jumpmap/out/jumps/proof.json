@@ -1,0 +1,18 @@
+{
+  "name": "jumps",
+  "log2_k": 5,
+  "lowest_address": "0x7fffffe0",
+  "hash_k": 1,
+  "hash_p1": "0x9e3779b1",
+  "hash_p3": 10368899,
+  "map_entries": 11,
+  "program_elf_sha256": "2825a9061ac507ad09cdef892f0531573d8e28289cf30150103d34cf331970bd",
+  "input": "empty",
+  "gold_commit": "fixture",
+  "segment_file_sha256": "18e895747aecb721e904e30eca525f50c67ac6f153949fe4c87eed826ff433a2",
+  "segment_rows": 8,
+  "segments": 4,
+  "sha256": {"map.lines": "ce937891e85589744b97a9c3ab5bd1eaef3d1ae9402f78292176d31d1782c991", "frame6.bin": "7c92a4be41a813ca6f0526e92da64a9d9e5117843b8b4651f2b183cecbb405f7", "initial.pages": "a390696271f57ebd837084fda074b6258b95ba22f633b362c31a4873b86e7e34"},
+  "initial_pages": 1,
+  "seg_written_sha256": ["e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"]
+}

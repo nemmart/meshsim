@@ -77,7 +77,12 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
   Open in v1.3: register offsets beyond words 32-35; sizes to confirm by gold (caches, TLB); UPSTREAM-DIFFS ruled (section 17:
   D1, D3, D12 follow a16z, the verifier's source, with jolt-cpp fixes; D5 rejected by the host tracer; D2 and the rest deferred);
   WORKER18 is re-checking them at 7189216 and writing the demo guests.
-## Pending (2026-11-06, 10:30 UTC): the freeze sequence
+## v1.3 frozen (2026-11-06)
+
+`v1.3/` is frozen (the README's banner points the RTL at it). Next: item 158 (the tables to a16z's D13/D14 rule); P2 (WORKER29:
+C, then the framework design); P1's stage 2 if wanted; v1.4's scope (F1, the file system, moved there).
+
+## (Done) the freeze sequence, as of 2026-11-06 10:30 UTC
 
 1. WORKER28 (interrupted with the owner's message): `stage_delay` to 64 in code, the counters' catch-up in stage 1, then once
    116b passes, `main` merged forward into `sim-idle-skip`, ready for the integrator to merge into `main`. (Its superseded

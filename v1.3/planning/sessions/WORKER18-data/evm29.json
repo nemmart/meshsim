@@ -1,0 +1,13 @@
+{
+  "rows": 354861942,
+  "padded_rows": 536870912,
+  "window": 65536,
+  "windows": 5415,
+  "run_hash": "bcea2e34bc23ccec",
+  "advice_words": 3674,
+  "rows_written": 0,
+  "ram_K": 8388608,
+  "bytecode_instrs": 790242,
+  "host_io_encoding": "standard",
+  "layout": {"untrusted_advice_start": 2113929216, "untrusted_advice_end": 2130706432, "trusted_advice_start": 2130706432, "trusted_advice_end": 2130771968, "input_start": 2130771968, "input_end": 2130772080, "output_start": 2130772080, "output_end": 2130772080, "panic": 2130772080, "termination": 2130772088, "io_end": 2130772096, "program_start": 2147483648, "program_end": 2149494056, "stack_start": 2149494184, "stack_end": 2157882792, "heap_start": 2157882792, "heap_end": 2224991656, "code_start": 2147483648, "code_end": 2149397168, "entry_point": 2147483648}
+}

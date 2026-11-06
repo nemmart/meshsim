@@ -1,0 +1,423 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="1848" viewBox="0 0 1300 1848" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif">
+<defs><marker id="m444441" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#444441"/></marker><marker id="mC0392B" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#C0392B"/></marker><marker id="mD85A30" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#D85A30"/></marker></defs>
+<rect width="1300" height="1848" fill="white"/>
+<text x="24.0" y="34.0" font-size="18" text-anchor="start" font-weight="bold" fill="#444441">Figure 6.2. The address generator's control: the run state machine, the stream-run and group-run sequencers</text>
+<text x="24.0" y="56.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#6b6a64">v1.0 (spec/machine-spec.md §4.2, §4.13, §8.5, §8.6) — drives figure 6.3 (read-ahead) and figure 6.4 (each visit's request)</text>
+<rect x="16.0" y="76.0" width="700.0" height="330.0" rx="10" fill="white" stroke="#B4B2A9" stroke-width="1"/>
+<text x="30.0" y="100.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">A. The run state machine (§4.2, §8.6)</text>
+<rect x="128.0" y="202.0" width="124.0" height="48.0" rx="22" fill="#F1EFE8" stroke="#888780" stroke-width="1.6"/>
+<text x="190.0" y="223.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">IDLE</text>
+<text x="190.0" y="239.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">no run</text>
+<rect x="455.0" y="202.0" width="170.0" height="48.0" rx="22" fill="#A8DCC8" stroke="#1D9E75" stroke-width="1.6"/>
+<text x="540.0" y="223.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">RUNNING</text>
+<text x="540.0" y="239.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">reads ahead, then issues</text>
+<polyline points="252.0,220.0 453.0,220.0" fill="none" stroke="#444441" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="365.0" y="200.0" font-size="11" text-anchor="middle" font-weight="bold" fill="#444441">start_p, count &gt; 0</text>
+<text x="365.0" y="214.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">load the run; rd_done ← 0</text>
+<path d="M540,250 Q365.0,320.0 190,250" fill="none" stroke="#444441" stroke-width="1.5" marker-end="url(#m444441)"/>
+<text x="365.0" y="312.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">the run's last entry walked: rd_done ← 1</text>
+<path d="M518,202 C512,164 568,164 562,202" fill="none" stroke="#444441" stroke-width="1.4" marker-end="url(#m444441)"/>
+<text x="540.0" y="166.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">start_p: ignored</text>
+<path d="M168,202 C162,164 218,164 212,202" fill="none" stroke="#444441" stroke-width="1.4" marker-end="url(#m444441)"/>
+<text x="190.0" y="166.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">start_p, count = 0: rd_done ← 1</text>
+<polyline points="36.0,226.0 126.0,226.0" fill="none" stroke="#D85A30" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<text x="36.0" y="242.0" font-size="10" text-anchor="start" font-weight="normal" fill="#D85A30">chip reset</text>
+<text x="30.0" y="338.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">On start (the end of the start store's cycle): load kind, start and count (fig 6.1), begin the read-ahead (fig 6.3); rd_running ← 1, rd_done ← 0.</text>
+<text x="30.0" y="353.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">A start while RUNNING, its lead-in included, is ignored with no condition; meshsim flags it (§4.13's principle).</text>
+<text x="30.0" y="368.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">A state change is taken at the end of the pulse's cycle. In one DMA_PULSE store, start acts before done.</text>
+<text x="30.0" y="383.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">A start with count 0 is a run with no entries: IDLE stays, rd_done is set that cycle, no request, rd_running never rises.</text>
+<rect x="732.0" y="76.0" width="552.0" height="330.0" rx="10" fill="white" stroke="#B4B2A9" stroke-width="1"/>
+<text x="746.0" y="100.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">B. Status and the first request (§4.2, §8.2)</text>
+<text x="746.0" y="128.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">rd_running = 1 and rd_done = 0 from the end of the start store's cycle,</text>
+<text x="746.0" y="143.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">so the next instruction's load of TILE_STATUS sees them; rd_running</text>
+<text x="746.0" y="158.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">stays 1 through the lead-in until the run's last entry is walked, then</text>
+<text x="746.0" y="173.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">rd_done = 1 (§4.2, §8.2). Count 0: rd_done = 1 at once. Bit 2 is spare.</text>
+<text x="746.0" y="227.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">group run</text>
+<rect x="842.0" y="212.0" width="170.0" height="22.0" rx="3" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="927.0" y="227.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">GROUP read</text>
+<rect x="1012.0" y="212.0" width="170.0" height="22.0" rx="3" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="1097.0" y="227.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">STREAM read</text>
+<polyline points="1182.0,208.0 1182.0,238.0" fill="none" stroke="#1D9E75" stroke-width="2" stroke-linejoin="round"/>
+<text x="1188.0" y="227.0" font-size="10" text-anchor="start" font-weight="normal" fill="#1D9E75">first request</text>
+<text x="746.0" y="267.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">stream run</text>
+<rect x="842.0" y="252.0" width="170.0" height="22.0" rx="3" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="927.0" y="267.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">STREAM read</text>
+<polyline points="1012.0,248.0 1012.0,278.0" fill="none" stroke="#1D9E75" stroke-width="2" stroke-linejoin="round"/>
+<text x="1018.0" y="267.0" font-size="10" text-anchor="start" font-weight="normal" fill="#1D9E75">first request</text>
+<line x1="842" y1="202" x2="842" y2="282" stroke="#D85A30" stroke-width="1.6" stroke-dasharray="4 3"/>
+<text x="842.0" y="198.0" font-size="10" text-anchor="start" font-weight="normal" fill="#D85A30">the start takes effect (the store's cycle + 1)</text>
+<text x="746.0" y="314.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">A table read is a round trip of 2·L_ts + 1 cycles (L_ts = 2 drawn). The first request</text>
+<text x="746.0" y="328.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">goes out as soon as its entries are in: 4·L_ts + 3 cycles after the start store for a</text>
+<text x="746.0" y="342.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">group run (4·L_ts + 2 after the cycle the start takes effect), 2·L_ts + 2 (2·L_ts + 1)</text>
+<text x="746.0" y="356.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">for a stream run. S_0 is that first-request cycle. No lead-in counter: the sequencer waits in G_WAIT or</text>
+<text x="746.0" y="370.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">S_WAIT (C, D), and the time depends only on the run kind, the tables and L_ts, so it</text>
+<text x="746.0" y="384.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">is the same on every tile and a synchronised start stays in lockstep.</text>
+<rect x="16.0" y="424.0" width="620.0" height="482.0" rx="10" fill="white" stroke="#B4B2A9" stroke-width="1"/>
+<text x="30.0" y="448.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">C. Stream runs: stream after stream (§4.2)</text>
+<rect x="55.0" y="550.0" width="110.0" height="48.0" rx="22" fill="white" stroke="#888780" stroke-width="1.6"/>
+<text x="110.0" y="571.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">S_WAIT</text>
+<text x="110.0" y="587.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">entry not in</text>
+<rect x="275.0" y="550.0" width="110.0" height="48.0" rx="22" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1.6"/>
+<text x="330.0" y="571.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">S_VISIT</text>
+<text x="330.0" y="587.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">element j</text>
+<rect x="275.0" y="680.0" width="110.0" height="48.0" rx="22" fill="#F1EFE8" stroke="#888780" stroke-width="1.6"/>
+<text x="330.0" y="701.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">S_GAP</text>
+<text x="330.0" y="717.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">gapc cycles</text>
+<polyline points="165.0,568.0 273.0,568.0" fill="none" stroke="#444441" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="219.0" y="562.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">entry in, count &gt; 0</text>
+<path d="M308,550 C302,512 358,512 352,550" fill="none" stroke="#444441" stroke-width="1.4" marker-end="url(#m444441)"/>
+<text x="330.0" y="514.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">issue; hold until taken</text>
+<polyline points="330.0,598.0 330.0,678.0" fill="none" stroke="#444441" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="338.0" y="630.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">last element taken, run_left &gt; 1:</text>
+<text x="338.0" y="643.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">gapc ← gap after</text>
+<path d="M110,598 Q191.5,691.0 273,704" fill="none" stroke="#444441" stroke-width="1.5" marker-end="url(#m444441)"/>
+<text x="96.0" y="670.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">count = 0,</text>
+<text x="96.0" y="683.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">run_left &gt; 1</text>
+<path d="M385,704 C490,704 490,574 387,578" fill="none" stroke="#444441" stroke-width="1.5" marker-end="url(#m444441)"/>
+<text x="500.0" y="640.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">gapc = 0:</text>
+<text x="500.0" y="653.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">next stream,</text>
+<text x="500.0" y="666.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">entry in</text>
+<text x="30.0" y="474.0" font-size="10" text-anchor="start" font-weight="normal" fill="#6b6a64">next stream's entry not in yet → S_WAIT (also from S_VISIT and S_GAP)</text>
+<rect x="55.0" y="765.0" width="110.0" height="48.0" rx="22" fill="#F1EFE8" stroke="#444441" stroke-width="1.6"/>
+<text x="110.0" y="786.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">→ IDLE</text>
+<text x="110.0" y="802.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">run ends (A)</text>
+<polyline points="80.0,598.0 80.0,763.0" fill="none" stroke="#444441" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="86.0" y="734.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">entry in, count = 0,</text>
+<text x="86.0" y="747.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">run_left = 1</text>
+<polyline points="275.0,586.0 260.0,586.0 260.0,789.0 167.0,789.0" fill="none" stroke="#444441" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="268.0" y="764.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">last element taken, run_left = 1:</text>
+<text x="268.0" y="777.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">the last gap-after is not waited</text>
+<text x="30.0" y="862.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">A visit takes 1 cycle (2 for 128 bits, two packets). j += 1 per element taken. A refusal holds the visit: no condition</text>
+<text x="30.0" y="876.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">in a stream run. gapc = 0 skips S_GAP. A count-0 stream takes only its gap-after.</text>
+<rect x="652.0" y="424.0" width="632.0" height="482.0" rx="10" fill="white" stroke="#B4B2A9" stroke-width="1"/>
+<text x="666.0" y="448.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">D. Group runs: the timetable (§4.2)</text>
+<rect x="687.0" y="550.0" width="110.0" height="48.0" rx="22" fill="white" stroke="#888780" stroke-width="1.6"/>
+<text x="742.0" y="571.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">G_WAIT</text>
+<text x="742.0" y="587.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">entry not in</text>
+<rect x="902.0" y="550.0" width="140.0" height="48.0" rx="22" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1.6"/>
+<text x="972.0" y="571.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">G_ROT</text>
+<text x="972.0" y="587.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">visit v of rotation r</text>
+<rect x="917.0" y="680.0" width="110.0" height="48.0" rx="22" fill="#F1EFE8" stroke="#888780" stroke-width="1.6"/>
+<text x="972.0" y="701.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">G_GAP</text>
+<text x="972.0" y="717.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">gapc cycles</text>
+<rect x="687.0" y="680.0" width="110.0" height="48.0" rx="22" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1.6"/>
+<text x="742.0" y="701.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">G_ZERO</text>
+<text x="742.0" y="717.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">R = 0: 1 cycle</text>
+<polyline points="797.0,568.0 900.0,568.0" fill="none" stroke="#444441" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="848.0" y="562.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">entry in, R &gt; 0</text>
+<polyline points="742.0,598.0 742.0,678.0" fill="none" stroke="#444441" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="748.0" y="644.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">entry in, R = 0</text>
+<rect x="687.0" y="780.0" width="110.0" height="48.0" rx="22" fill="#F1EFE8" stroke="#444441" stroke-width="1.6"/>
+<text x="742.0" y="801.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">→ IDLE</text>
+<text x="742.0" y="817.0" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">run ends (A)</text>
+<polyline points="742.0,728.0 742.0,778.0" fill="none" stroke="#444441" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="748.0" y="756.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">run_left = 1</text>
+<polyline points="908.0,598.0 908.0,804.0 799.0,804.0" fill="none" stroke="#444441" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="916.0" y="770.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">the last visit time, run_left = 1:</text>
+<text x="916.0" y="783.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">the last gap is not waited</text>
+<polyline points="797.0,704.0 915.0,704.0" fill="none" stroke="#444441" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="852.0" y="684.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">run_left &gt; 1:</text>
+<text x="852.0" y="697.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">gapc ← gap</text>
+<path d="M950,550 C944,512 1000,512 994,550" fill="none" stroke="#444441" stroke-width="1.4" marker-end="url(#m444441)"/>
+<text x="972.0" y="514.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">next visit time</text>
+<polyline points="972.0,598.0 972.0,678.0" fill="none" stroke="#444441" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="980.0" y="630.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">r = R − 1, v = t − 1, last half,</text>
+<text x="980.0" y="643.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">run_left &gt; 1: gapc ← gap</text>
+<path d="M1029,704 C1152,704 1152,574 1044,578" fill="none" stroke="#444441" stroke-width="1.5" marker-end="url(#m444441)"/>
+<text x="1162.0" y="640.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">gapc = 0:</text>
+<text x="1162.0" y="653.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">next group,</text>
+<text x="1162.0" y="666.0" font-size="10" text-anchor="start" font-weight="normal" fill="#444441">entry in</text>
+<text x="666.0" y="848.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">Each visit time (1 cycle, 2 for 128 bits): STREAM entry not in → hold (timetable, the same on</text>
+<text x="666.0" y="862.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">every tile); r &lt; count → offer the request, hold until taken; a refusal sets drift (condition 0)</text>
+<text x="666.0" y="876.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">and shifts every later time; r ≥ count → idle. gapc = 0 skips G_GAP. Next entry not in → G_WAIT.</text>
+<text x="30.0" y="924.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">E. The counters (registers in the address generator; e = j or r feeds figure 6.4's address)</text>
+<rect x="30.0" y="936.0" width="120.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="950.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">register</text>
+<rect x="150.0" y="936.0" width="60.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="156.0" y="950.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">width</text>
+<rect x="210.0" y="936.0" width="240.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="216.0" y="950.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">loaded</text>
+<rect x="450.0" y="936.0" width="390.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="456.0" y="950.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">steps</text>
+<rect x="840.0" y="936.0" width="430.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="846.0" y="950.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">ends (last)</text>
+<rect x="30.0" y="957.0" width="120.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="971.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">run_left</text>
+<rect x="150.0" y="957.0" width="60.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="156.0" y="971.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">9</text>
+<rect x="210.0" y="957.0" width="240.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="216.0" y="971.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">on start: count</text>
+<rect x="450.0" y="957.0" width="390.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="456.0" y="971.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">−1 as each stream or group ends</text>
+<rect x="840.0" y="957.0" width="430.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="846.0" y="971.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1: the last entry; the run ends when it is walked</text>
+<rect x="30.0" y="978.0" width="120.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="992.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">idx (s or g)</text>
+<rect x="150.0" y="978.0" width="60.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="156.0" y="992.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">8</text>
+<rect x="210.0" y="978.0" width="240.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="216.0" y="992.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">on start: the run's start field</text>
+<rect x="450.0" y="978.0" width="390.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="456.0" y="992.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">+1 per stream or group, wrapping within the table (mod 256 or 64)</text>
+<rect x="840.0" y="978.0" width="430.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="846.0" y="992.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">—</text>
+<rect x="30.0" y="999.0" width="120.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="1013.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">j (stream runs)</text>
+<rect x="150.0" y="999.0" width="60.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="156.0" y="1013.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">18</text>
+<rect x="210.0" y="999.0" width="240.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="216.0" y="1013.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0 at each stream</text>
+<rect x="450.0" y="999.0" width="390.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="456.0" y="1013.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">+1 per element taken</text>
+<rect x="840.0" y="999.0" width="430.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="846.0" y="1013.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">j = count − 1</text>
+<rect x="30.0" y="1020.0" width="120.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="1034.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">r (group runs)</text>
+<rect x="150.0" y="1020.0" width="60.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="156.0" y="1034.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">18</text>
+<rect x="210.0" y="1020.0" width="240.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="216.0" y="1034.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0 at each group</text>
+<rect x="450.0" y="1020.0" width="390.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="456.0" y="1034.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">+1 per rotation</text>
+<rect x="840.0" y="1020.0" width="430.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="846.0" y="1034.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">r = R − 1</text>
+<rect x="30.0" y="1041.0" width="120.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="1055.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">v (group runs)</text>
+<rect x="150.0" y="1041.0" width="60.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="156.0" y="1055.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">4</text>
+<rect x="210.0" y="1041.0" width="240.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="216.0" y="1055.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0 at each rotation</text>
+<rect x="450.0" y="1041.0" width="390.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="456.0" y="1055.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">+1 per visit time</text>
+<rect x="840.0" y="1041.0" width="430.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="846.0" y="1055.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">v = t − 1</text>
+<rect x="30.0" y="1062.0" width="120.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="1076.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">h</text>
+<rect x="150.0" y="1062.0" width="60.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="156.0" y="1076.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1</text>
+<rect x="210.0" y="1062.0" width="240.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="216.0" y="1076.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0 at each visit</text>
+<rect x="450.0" y="1062.0" width="390.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="456.0" y="1076.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">toggles: the second cycle of a 128-bit visit</text>
+<rect x="840.0" y="1062.0" width="430.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="846.0" y="1076.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">h = 1, or the visit is 1 cycle</text>
+<rect x="30.0" y="1083.0" width="120.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="1097.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">gapc</text>
+<rect x="150.0" y="1083.0" width="60.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="156.0" y="1097.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">3 / 8</text>
+<rect x="210.0" y="1083.0" width="240.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="216.0" y="1097.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">gap after (stream) or gap (group)</text>
+<rect x="450.0" y="1083.0" width="390.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="456.0" y="1097.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">−1 per cycle</text>
+<rect x="840.0" y="1083.0" width="430.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="846.0" y="1097.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">0</text>
+<rect x="16.0" y="1138.0" width="1268.0" height="342.0" rx="10" fill="white" stroke="#B4B2A9" stroke-width="1"/>
+<text x="30.0" y="1162.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">F. A group run, cycle by cycle, with one refusal: request-offered cycles (§4.2)</text>
+<text x="30.0" y="1182.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">g0: streams a (count 2), b (count 1), t = 2, R = 2, gap 1.  g1: R = 0, gap 0.  g2: stream c (count 1), t = 1, R = 1.  64-bit; S_0 = t, the first-request cycle: 4·L_ts + 3 cycles after the start store.</text>
+<text x="202.0" y="1210.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#6b6a64">t</text>
+<line x1="150" y1="1216" x2="150" y2="1398" stroke="#ECEAE3" stroke-width="1"/>
+<text x="306.0" y="1210.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#6b6a64">t+1</text>
+<line x1="254" y1="1216" x2="254" y2="1398" stroke="#ECEAE3" stroke-width="1"/>
+<text x="410.0" y="1210.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#6b6a64">t+2</text>
+<line x1="358" y1="1216" x2="358" y2="1398" stroke="#ECEAE3" stroke-width="1"/>
+<text x="514.0" y="1210.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#6b6a64">t+3</text>
+<line x1="462" y1="1216" x2="462" y2="1398" stroke="#ECEAE3" stroke-width="1"/>
+<text x="618.0" y="1210.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#6b6a64">t+4</text>
+<line x1="566" y1="1216" x2="566" y2="1398" stroke="#ECEAE3" stroke-width="1"/>
+<text x="722.0" y="1210.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#6b6a64">t+5</text>
+<line x1="670" y1="1216" x2="670" y2="1398" stroke="#ECEAE3" stroke-width="1"/>
+<text x="826.0" y="1210.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#6b6a64">t+6</text>
+<line x1="774" y1="1216" x2="774" y2="1398" stroke="#ECEAE3" stroke-width="1"/>
+<text x="930.0" y="1210.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#6b6a64">t+7</text>
+<line x1="878" y1="1216" x2="878" y2="1398" stroke="#ECEAE3" stroke-width="1"/>
+<text x="1034.0" y="1210.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#6b6a64">t+8</text>
+<line x1="982" y1="1216" x2="982" y2="1398" stroke="#ECEAE3" stroke-width="1"/>
+<text x="1138.0" y="1210.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#6b6a64">t+9</text>
+<line x1="1086" y1="1216" x2="1086" y2="1398" stroke="#ECEAE3" stroke-width="1"/>
+<text x="30.0" y="1233.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">state</text>
+<polygon points="150,1230 154,1222 250,1222 254,1230 250,1238 154,1238" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="202.0" y="1234.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">G_ROT</text>
+<polygon points="254,1230 258,1222 354,1222 358,1230 354,1238 258,1238" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="306.0" y="1234.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">G_ROT</text>
+<polygon points="358,1230 362,1222 458,1222 462,1230 458,1238 362,1238" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="410.0" y="1234.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">G_ROT</text>
+<polygon points="462,1230 466,1222 562,1222 566,1230 562,1238 466,1238" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="514.0" y="1234.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">G_ROT</text>
+<polygon points="566,1230 570,1222 666,1222 670,1230 666,1238 570,1238" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="618.0" y="1234.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">G_ROT</text>
+<polygon points="670,1230 674,1222 770,1222 774,1230 770,1238 674,1238" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="722.0" y="1234.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">G_GAP</text>
+<polygon points="774,1230 778,1222 874,1222 878,1230 874,1238 778,1238" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="826.0" y="1234.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">G_ZERO</text>
+<polygon points="878,1230 882,1222 978,1222 982,1230 978,1238 882,1238" fill="#E1F5EE" stroke="#888780" stroke-width="1"/>
+<text x="930.0" y="1234.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">G_ROT</text>
+<polygon points="982,1230 986,1222 1082,1222 1086,1230 1082,1238 986,1238" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="1034.0" y="1234.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">IDLE</text>
+<polygon points="1086,1230 1090,1222 1186,1222 1190,1230 1186,1238 1090,1238" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="1138.0" y="1234.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">IDLE</text>
+<text x="30.0" y="1259.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">g, r, v</text>
+<polygon points="150,1256 154,1248 250,1248 254,1256 250,1264 154,1264" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="202.0" y="1260.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">0, 0, 0</text>
+<polygon points="254,1256 258,1248 354,1248 358,1256 354,1264 258,1264" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="306.0" y="1260.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">0, 0, 1</text>
+<polygon points="358,1256 362,1248 458,1248 462,1256 458,1264 362,1264" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="410.0" y="1260.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">0, 1, 0</text>
+<polygon points="462,1256 466,1248 562,1248 566,1256 562,1264 466,1264" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="514.0" y="1260.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">0, 1, 0</text>
+<polygon points="566,1256 570,1248 666,1248 670,1256 666,1264 570,1264" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="618.0" y="1260.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">0, 1, 1</text>
+<polygon points="670,1256 674,1248 770,1248 774,1256 770,1264 674,1264" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="722.0" y="1260.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">0: gap</text>
+<polygon points="774,1256 778,1248 874,1248 878,1256 874,1264 778,1264" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="826.0" y="1260.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">1</text>
+<polygon points="878,1256 882,1248 978,1248 982,1256 978,1264 882,1264" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="930.0" y="1260.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">2, 0, 0</text>
+<polygon points="982,1256 986,1248 1082,1248 1086,1256 1082,1264 986,1264" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="1034.0" y="1260.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441"></text>
+<polygon points="1086,1256 1090,1248 1186,1248 1190,1256 1186,1264 1090,1264" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="1138.0" y="1260.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441"></text>
+<text x="30.0" y="1285.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">visit</text>
+<polygon points="150,1282 154,1274 250,1274 254,1282 250,1290 154,1290" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="202.0" y="1286.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">a e0</text>
+<polygon points="254,1282 258,1274 354,1274 358,1282 354,1290 258,1290" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="306.0" y="1286.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">b e0</text>
+<polygon points="358,1282 362,1274 458,1274 462,1282 458,1290 362,1290" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="410.0" y="1286.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">a e1</text>
+<polygon points="462,1282 466,1274 562,1274 566,1282 562,1290 466,1290" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="514.0" y="1286.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">a e1</text>
+<polygon points="566,1282 570,1274 666,1274 670,1282 666,1290 570,1290" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="618.0" y="1286.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">b idle</text>
+<polygon points="670,1282 674,1274 770,1274 774,1282 770,1290 674,1290" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="722.0" y="1286.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441"></text>
+<polygon points="774,1282 778,1274 874,1274 878,1282 874,1290 778,1290" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="826.0" y="1286.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441"></text>
+<polygon points="878,1282 882,1274 978,1274 982,1282 978,1290 882,1290" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="930.0" y="1286.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">c e0</text>
+<polygon points="982,1282 986,1274 1082,1274 1086,1282 1082,1290 986,1290" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="1034.0" y="1286.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441"></text>
+<polygon points="1086,1282 1090,1274 1186,1274 1190,1282 1186,1290 1090,1290" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="1138.0" y="1286.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441"></text>
+<text x="30.0" y="1311.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">offered</text>
+<polyline points="150.0,1300.0 254.0,1300.0 254.0,1300.0 254.0,1300.0 358.0,1300.0 358.0,1300.0 358.0,1300.0 462.0,1300.0 462.0,1300.0 462.0,1300.0 566.0,1300.0 566.0,1300.0 566.0,1316.0 670.0,1316.0 670.0,1316.0 670.0,1316.0 774.0,1316.0 774.0,1316.0 774.0,1316.0 878.0,1316.0 878.0,1316.0 878.0,1300.0 982.0,1300.0 982.0,1300.0 982.0,1316.0 1086.0,1316.0 1086.0,1316.0 1086.0,1316.0 1190.0,1316.0" fill="none" stroke="#444441" stroke-width="1.8" stroke-linejoin="round"/>
+<text x="30.0" y="1337.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">taken</text>
+<polyline points="150.0,1326.0 254.0,1326.0 254.0,1326.0 254.0,1326.0 358.0,1326.0 358.0,1326.0 358.0,1342.0 462.0,1342.0 462.0,1342.0 462.0,1326.0 566.0,1326.0 566.0,1326.0 566.0,1342.0 670.0,1342.0 670.0,1342.0 670.0,1342.0 774.0,1342.0 774.0,1342.0 774.0,1342.0 878.0,1342.0 878.0,1342.0 878.0,1326.0 982.0,1326.0 982.0,1326.0 982.0,1342.0 1086.0,1342.0 1086.0,1342.0 1086.0,1342.0 1190.0,1342.0" fill="none" stroke="#1D9E75" stroke-width="1.8" stroke-linejoin="round"/>
+<text x="30.0" y="1363.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">drift (bit 0)</text>
+<polyline points="150.0,1368.0 254.0,1368.0 254.0,1368.0 254.0,1368.0 358.0,1368.0 358.0,1368.0 358.0,1368.0 462.0,1368.0 462.0,1368.0 462.0,1352.0 566.0,1352.0 566.0,1352.0 566.0,1352.0 670.0,1352.0 670.0,1352.0 670.0,1352.0 774.0,1352.0 774.0,1352.0 774.0,1352.0 878.0,1352.0 878.0,1352.0 878.0,1352.0 982.0,1352.0 982.0,1352.0 982.0,1352.0 1086.0,1352.0 1086.0,1352.0 1086.0,1352.0 1190.0,1352.0" fill="none" stroke="#C0392B" stroke-width="1.8" stroke-linejoin="round"/>
+<text x="30.0" y="1389.0" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">rd_running, rd_done</text>
+<polygon points="150,1386 154,1378 250,1378 254,1386 250,1394 154,1394" fill="#A8DCC8" stroke="#888780" stroke-width="1"/>
+<text x="202.0" y="1390.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">running</text>
+<polygon points="254,1386 258,1378 354,1378 358,1386 354,1394 258,1394" fill="#A8DCC8" stroke="#888780" stroke-width="1"/>
+<text x="306.0" y="1390.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">running</text>
+<polygon points="358,1386 362,1378 458,1378 462,1386 458,1394 362,1394" fill="#A8DCC8" stroke="#888780" stroke-width="1"/>
+<text x="410.0" y="1390.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">running</text>
+<polygon points="462,1386 466,1378 562,1378 566,1386 562,1394 466,1394" fill="#A8DCC8" stroke="#888780" stroke-width="1"/>
+<text x="514.0" y="1390.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">running</text>
+<polygon points="566,1386 570,1378 666,1378 670,1386 666,1394 570,1394" fill="#A8DCC8" stroke="#888780" stroke-width="1"/>
+<text x="618.0" y="1390.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">running</text>
+<polygon points="670,1386 674,1378 770,1378 774,1386 770,1394 674,1394" fill="#A8DCC8" stroke="#888780" stroke-width="1"/>
+<text x="722.0" y="1390.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">running</text>
+<polygon points="774,1386 778,1378 874,1378 878,1386 874,1394 778,1394" fill="#A8DCC8" stroke="#888780" stroke-width="1"/>
+<text x="826.0" y="1390.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">running</text>
+<polygon points="878,1386 882,1378 978,1378 982,1386 978,1394 882,1394" fill="#A8DCC8" stroke="#888780" stroke-width="1"/>
+<text x="930.0" y="1390.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">running</text>
+<polygon points="982,1386 986,1378 1082,1378 1086,1386 1082,1394 986,1394" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="1034.0" y="1390.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">done</text>
+<polygon points="1086,1386 1090,1378 1186,1378 1190,1386 1186,1394 1090,1394" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+<text x="1138.0" y="1390.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">done</text>
+<text x="30.0" y="1418.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">At t+2 the SRAM read queue refuses a's element 1: the visit holds, drift is set at the end of t+2, and every later time moves by one cycle.</text>
+<text x="30.0" y="1433.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">Without the refusal g0 ends at t+4 (2·2 + 1 gap), g1 takes t+5 and c issues at t+6. The run ends when its last entry has been walked (g2, at t+7): rd_done ← 1, back to IDLE.</text>
+<text x="30.0" y="1448.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#6b6a64">Had the run ended in R = 0 groups, each would still cost its one cycle; the last entry's gap is not waited. An entry not yet read ahead holds the timetable on every tile alike.</text>
+<text x="30.0" y="1500.0" font-size="14" text-anchor="start" font-weight="bold" fill="#444441">G. Interface</text>
+<rect x="30.0" y="1512.0" width="210.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="1526.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">signal</text>
+<rect x="240.0" y="1512.0" width="90.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="246.0" y="1526.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">width</text>
+<rect x="330.0" y="1512.0" width="290.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="1526.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">from → to</text>
+<rect x="620.0" y="1512.0" width="650.0" height="21.0" rx="0" fill="#F1EFE8" stroke="#888780" stroke-width="0.8"/>
+<text x="626.0" y="1526.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">meaning</text>
+<rect x="30.0" y="1533.0" width="210.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="1547.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">start_p</text>
+<rect x="240.0" y="1533.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="246.0" y="1547.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1</text>
+<rect x="330.0" y="1533.0" width="290.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="1547.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">DMA_PULSE [1] (fig 3.2) → here</text>
+<rect x="620.0" y="1533.0" width="650.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="626.0" y="1547.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">one-cycle pulse; acts before done within one store</text>
+<rect x="30.0" y="1554.0" width="210.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="1568.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">kind, start, count</text>
+<rect x="240.0" y="1554.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="246.0" y="1568.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1, 8, 9</text>
+<rect x="330.0" y="1554.0" width="290.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="1568.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">DMA_CONFIG (fig 6.1, fig 3.2) → here</text>
+<rect x="620.0" y="1554.0" width="650.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="626.0" y="1568.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">the run, loaded on start</text>
+<rect x="30.0" y="1575.0" width="210.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="1589.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">GROUP head, valid</text>
+<rect x="240.0" y="1575.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="246.0" y="1589.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">64, 1</text>
+<rect x="330.0" y="1575.0" width="290.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="1589.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">figure 6.3's GROUP queue → here</text>
+<rect x="620.0" y="1575.0" width="650.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="626.0" y="1589.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">R, start stream, t − 1, gap; valid = the entry is in</text>
+<rect x="30.0" y="1596.0" width="210.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="1610.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">STREAM head, valid</text>
+<rect x="240.0" y="1596.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="246.0" y="1610.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">64, 1</text>
+<rect x="330.0" y="1596.0" width="290.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="1610.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">figure 6.3's STREAM queue → here, fig 6.4</text>
+<rect x="620.0" y="1596.0" width="650.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="626.0" y="1610.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">count, d, mode, size, gap after, source, cm field</text>
+<rect x="30.0" y="1617.0" width="210.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="1631.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">pop_group, pop_stream</text>
+<rect x="240.0" y="1617.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="246.0" y="1631.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1 each</text>
+<rect x="330.0" y="1617.0" width="290.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="1631.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">here → figure 6.3</text>
+<rect x="620.0" y="1617.0" width="650.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="626.0" y="1631.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">the visit used the entry: return its credit</text>
+<rect x="30.0" y="1638.0" width="210.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="1652.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">e, h, offer</text>
+<rect x="240.0" y="1638.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="246.0" y="1652.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">18, 1, 1</text>
+<rect x="330.0" y="1638.0" width="290.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="1652.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">here → figure 6.4</text>
+<rect x="620.0" y="1638.0" width="650.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="626.0" y="1652.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">element index (j or r), half, offer the request this cycle</text>
+<rect x="30.0" y="1659.0" width="210.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="1673.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">taken</text>
+<rect x="240.0" y="1659.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="246.0" y="1673.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1</text>
+<rect x="330.0" y="1659.0" width="290.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="1673.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">SRAM read queue (fig 7.1) → here</text>
+<rect x="620.0" y="1659.0" width="650.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="626.0" y="1673.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">the request was accepted this cycle</text>
+<rect x="30.0" y="1680.0" width="210.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="1694.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">drift_set</text>
+<rect x="240.0" y="1680.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="246.0" y="1694.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1</text>
+<rect x="330.0" y="1680.0" width="290.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="1694.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">here → TILE_CONDITIONS bit 0 (fig 2.4)</text>
+<rect x="620.0" y="1680.0" width="650.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="626.0" y="1694.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">group run &amp; offer &amp; ¬taken</text>
+<rect x="30.0" y="1701.0" width="210.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="36.0" y="1715.5" font-size="10.5" text-anchor="start" font-weight="bold" fill="#444441">rd_running, rd_done</text>
+<rect x="240.0" y="1701.0" width="90.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="246.0" y="1715.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">1 each</text>
+<rect x="330.0" y="1701.0" width="290.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="336.0" y="1715.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">here → TILE_STATUS [1:0] (fig 3.2)</text>
+<rect x="620.0" y="1701.0" width="650.0" height="21.0" rx="0" fill="white" stroke="#888780" stroke-width="0.8"/>
+<text x="626.0" y="1715.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">panel B; bit 2 is spare</text>
+<polyline points="30.0,1752.0 70.0,1752.0" fill="none" stroke="#444441" stroke-width="2" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="78.0" y="1756.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">transitions and datapath</text>
+<polyline points="260.0,1752.0 300.0,1752.0" fill="none" stroke="#D85A30" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<text x="308.0" y="1756.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">reset</text>
+<polyline points="380.0,1752.0 420.0,1752.0" fill="none" stroke="#C0392B" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#mC0392B)"/>
+<text x="428.0" y="1756.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">condition</text>
+<text x="530.0" y="1756.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">one state = one cycle; transitions at the end of the cycle; drawn where the spec is silent, as the README lists</text>
+<line x1="24" y1="1772" x2="1276" y2="1772" stroke="#B4B2A9" stroke-width="0.8"/>
+<text x="24.0" y="1794.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">Start loads the run and begins the read-ahead; the first request goes out when its entries are in; the run ends once its last entry is walked. Streams run one after another;</text>
+<text x="24.0" y="1810.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">a group run follows a fixed timetable, S_g = S_{g−1} + max(R·P, 1) + gap. A missing table entry holds the timetable on every tile alike; a request the SRAM</text>
+<text x="24.0" y="1826.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">read queue refuses holds it on this tile alone, which is drift.</text>
+<text x="24.0" y="1842.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">Source: spec/machine-spec.md v1.0, §4.2, §4.13, §8.5, §8.6; figures 6.1, 6.3, 6.4, 2.4 and 3.2.</text>
+</svg>

@@ -1,0 +1,33 @@
+From a852cd32abcf33a7ba7b80a33e2056acfc96870d Mon Sep 17 00:00:00 2001
+From: WORKER18 <worker18@meshsim.local>
+Date: Thu, 5 Nov 2026 13:38:30 +0000
+Subject: [PATCH] D13 (meshsim UPSTREAM-DIFFS, owner's ruling): the rd = x0
+ no-op row (ADDI x0, x0, 0) is not a virtual sequence even when the opcode
+ changed, as a16z 7189216's noop_for. Reproducer (meshsim
+ wip/gold/test/guests): rd0_add now gives a16z's rows (77c53666d3e73b90; was
+ 914cba73ca81d34f). EVM Zone trace-23, Cyclone input/22, tracer-tests, inlines
+ and fibonacci unchanged
+
+---
+ tracer/src/tracer/isa/virtual.cpp | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/tracer/src/tracer/isa/virtual.cpp b/tracer/src/tracer/isa/virtual.cpp
+index 55b7ff7..2bb6196 100644
+--- a/tracer/src/tracer/isa/virtual.cpp
++++ b/tracer/src/tracer/isa/virtual.cpp
+@@ -269,6 +269,11 @@ u64 expand_virt_seq(std::span<VirtualInstruction> dst, isa::Instruction src) {
+ 
+   if (should_nop_for_rd0(src)) {
+     emit_instr(isa::ADDI, 0, 0, 0, false, false, true);
++    // The rd = x0 no-op is not a virtual sequence, even when the opcode changed: a16z 7189216 returns it directly
++    // (crates/jolt-program/src/expand/mod.rs:144-145, noop_for), and a16z's bytecode is what proofs are verified
++    // against. (meshsim UPSTREAM-DIFFS D13.)
++    dst[0].is_virtual = false;
++    dst[0].is_first_in_sequence = false;
+     assert_expected_len(num_cycles(src));
+     return num_instrs_emitted;
+   }
+-- 
+2.43.0
+

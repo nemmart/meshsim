@@ -1,0 +1,37 @@
+{
+  "rows": 371526406, "padded_rows": 536870912, "segment_rows": 4194304, "segments": 128,
+  "ram_K": 16777216, "lowest_address": 2113929216, "page_bytes": 16384, "leaf_bytes": 16777216,
+  "replay_mismatches": 0, "below_lowest": 0, "other_mem_rows": 0,
+  "rewound_chunks": 48081, "max_skip_cycles": 1066, "rows_in_rewound_chunks": 24617472, "register_continuity_mismatches": 0, "of_which_in_rewound_chunks": 0,
+  "loads_to_x0": 0, "loads_to_x0_nonzero_word": 0,
+  "total": {"cells": 1380356, "cells_read_only": 365296, "cells_written": 1015060, "cells_first_access_load": 365639, "pages": 693, "pages_read_only": 194, "pages_written": 499, "initial_nonzero_cells": 737988, "final_changed_cells": 685948},
+  "by_region": {
+    "untrusted_advice": {"loads": 2902036, "stores": 0, "agg": {"cells": 362755, "cells_read_only": 362755, "cells_written": 0, "cells_first_access_load": 362755, "pages": 178, "pages_read_only": 178, "pages_written": 0, "initial_nonzero_cells": 326774, "final_changed_cells": 0}},
+    "trusted_advice": {"loads": 0, "stores": 0, "agg": {"cells": 0, "cells_read_only": 0, "cells_written": 0, "cells_first_access_load": 0, "pages": 0, "pages_read_only": 0, "pages_written": 0, "initial_nonzero_cells": 0, "final_changed_cells": 0}},
+    "input": {"loads": 1042, "stores": 0, "agg": {"cells": 131, "cells_read_only": 131, "cells_written": 0, "cells_first_access_load": 131, "pages": 1, "pages_read_only": 0, "pages_written": 1, "initial_nonzero_cells": 131, "final_changed_cells": 0}},
+    "output": {"loads": 722, "stores": 722, "agg": {"cells": 91, "cells_read_only": 0, "cells_written": 91, "cells_first_access_load": 91, "pages": 0, "pages_read_only": 0, "pages_written": 0, "initial_nonzero_cells": 0, "final_changed_cells": 91}},
+    "panic_termination": {"loads": 1, "stores": 1, "agg": {"cells": 1, "cells_read_only": 0, "cells_written": 1, "cells_first_access_load": 1, "pages": 0, "pages_read_only": 0, "pages_written": 0, "initial_nonzero_cells": 0, "final_changed_cells": 1}},
+    "io_padding": {"loads": 0, "stores": 0, "agg": {"cells": 0, "cells_read_only": 0, "cells_written": 0, "cells_first_access_load": 0, "pages": 0, "pages_read_only": 0, "pages_written": 0, "initial_nonzero_cells": 0, "final_changed_cells": 0}},
+    "program": {"loads": 3530786, "stores": 47799, "agg": {"cells": 2621, "cells_read_only": 2410, "cells_written": 211, "cells_first_access_load": 2518, "pages": 18, "pages_read_only": 16, "pages_written": 2, "initial_nonzero_cells": 411083, "final_changed_cells": 153}},
+    "canary": {"loads": 0, "stores": 0, "agg": {"cells": 0, "cells_read_only": 0, "cells_written": 0, "cells_first_access_load": 0, "pages": 0, "pages_read_only": 0, "pages_written": 0, "initial_nonzero_cells": 0, "final_changed_cells": 0}},
+    "stack": {"loads": 31033250, "stores": 24623472, "agg": {"cells": 2019, "cells_read_only": 0, "cells_written": 2019, "cells_first_access_load": 43, "pages": 2, "pages_read_only": 0, "pages_written": 2, "initial_nonzero_cells": 0, "final_changed_cells": 1474}},
+    "heap": {"loads": 22927649, "stores": 12364078, "agg": {"cells": 1012738, "cells_read_only": 0, "cells_written": 1012738, "cells_first_access_load": 100, "pages": 494, "pages_read_only": 0, "pages_written": 494, "initial_nonzero_cells": 0, "final_changed_cells": 684229}},
+    "above_heap": {"loads": 0, "stores": 0, "agg": {"cells": 0, "cells_read_only": 0, "cells_written": 0, "cells_first_access_load": 0, "pages": 0, "pages_read_only": 0, "pages_written": 0, "initial_nonzero_cells": 0, "final_changed_cells": 0}}
+  },
+  "leaves": [
+    {"leaf": 0, "base": "0x7e000000", "pages": 178, "pages_written": 0},
+    {"leaf": 1, "base": "0x7f000000", "pages": 1, "pages_written": 1},
+    {"leaf": 2, "base": "0x80000000", "pages": 18, "pages_written": 2},
+    {"leaf": 6, "base": "0x84000000", "pages": 496, "pages_written": 496}
+  ],
+  "page_runs": [
+    {"from": "0x7e000000", "to": "0x7e2c8000", "pages": 178},
+    {"from": "0x7f000000", "to": "0x7f004000", "pages": 1},
+    {"from": "0x801b0000", "to": "0x801cc000", "pages": 7},
+    {"from": "0x801d0000", "to": "0x801d4000", "pages": 1},
+    {"from": "0x802e0000", "to": "0x802e4000", "pages": 1},
+    {"from": "0x802e8000", "to": "0x802ec000", "pages": 1},
+    {"from": "0x8030c000", "to": "0x8032c000", "pages": 8},
+    {"from": "0x84324000", "to": "0x84ae4000", "pages": 496}
+  ]
+}

@@ -1422,3 +1422,12 @@ Options recorded for later, each with the evidence that would justify it.
 | T6 | `VirtualPext`/`VirtualPextSigned` in hardware | 9 | **answered: section 9** (any mask must work; the method is the implementation's) |
 | T7 | The modular inverse within the Tracer's 100 ms budget | 11 | **answered: section 13** (host-supplied advice; no inverse on the Tracer) |
 | T5 | The inlines' advice | 8 | **answered: section 13** (the host supplies all advice in the read log; was section 10) |
+
+**Done: frozen as `v1.3/`, 2026-11-06** (from `main` at 1d06dbc). v1.3 is the Tracer, solid enough for the RTL: the spec (4.21 with
+B1's answers folded in, 4.21.10's barriers and deliveries, `CHANGES-v1.3.md`, and **the RTL guide `CHANGES-v1.26.1-to-v1.3.md`**);
+meshsim with the Tracer, its memory system, C&C 3's and C&C 1's firmware, T1 and T2, and P1's stage 1 (exact idle-skipping,
+about 18× on the full chip), with GO, READY and the error line at 8 cycles and `stage_delay` 64; gold, jumpmap and the input
+pipeline. **Accepted:** T1 on every window of both workloads at 2²⁹; 18 full-chip T2 runs (Quest 110m-110u); stage 1 identical
+off and on (114-117b); **the final regression, Quest 118 on 2d8d9c1**: the quick and full suites, the full-size sort (1,229,687
+cycles at latency 8, `BASELINES-8.md`), the 64-window Stage B smoke, T2 segment 0 of both workloads. Out of v1.3: F1 (to v1.4),
+P1's stage 2 and P2 (in progress), item 158 (the tables to a16z's D13/D14 rule, right after the freeze).

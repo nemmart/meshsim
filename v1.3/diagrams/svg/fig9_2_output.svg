@@ -1,0 +1,204 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="1120" viewBox="0 0 1300 1120" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif">
+<defs><marker id="m3B6EA5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#3B6EA5"/></marker><marker id="m7F77DD" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7F77DD"/></marker><marker id="mD85A30" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#D85A30"/></marker></defs>
+<rect width="1300" height="1120" fill="white"/>
+<text x="24.0" y="34.0" font-size="18" text-anchor="start" font-weight="bold" fill="#444441">Figure 9.2. The Tracer's output path: the FIFOs, the two compressor sets, the packers and the output queues</text>
+<text x="24.0" y="56.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#6b6a64">v1.3 (spec §4.21.6, §4.21.3) — block level; the stream's data in blue, the state record in purple, control in orange</text>
+<rect x="150.0" y="76.0" width="1000.0" height="46.0" rx="6" fill="#F1EFE8" stroke="#444441" stroke-width="1"/>
+<text x="650.0" y="95.5" font-size="12.5" text-anchor="middle" font-weight="bold" fill="#444441">the RV64 core (figure 9.1)</text>
+<text x="650.0" y="112.4" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">one code value per instruction or padding row; at most one log word per row</text>
+<polyline points="230.0,122.0 230.0,158.0" fill="none" stroke="#3B6EA5" stroke-width="2.0" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<polyline points="1060.0,122.0 1060.0,158.0" fill="none" stroke="#3B6EA5" stroke-width="2.0" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<text x="236.0" y="136.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#3B6EA5">code value (32 bits)</text>
+<text x="1054.0" y="136.0" font-size="10.5" text-anchor="end" font-weight="normal" fill="#3B6EA5">log word: 64 bits + a 2-bit tag</text>
+<polyline points="1150.0,99.0 1230.0,99.0 1230.0,688.0" fill="none" stroke="#7F77DD" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#m7F77DD)"/>
+<text transform="rotate(-90 1244.0 420.0)" x="1244.0" y="420.0" font-size="10.5" text-anchor="middle" fill="#7F77DD">the state record, read in place as output queue 0 (4.21.6)</text>
+<rect x="150.0" y="160.0" width="180.0" height="140.0" rx="6" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1"/>
+<text x="240.0" y="205.7" font-size="12.5" text-anchor="middle" font-weight="bold" fill="#444441">code FIFO</text>
+<text x="240.0" y="222.6" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">65,536 × 32 bits</text>
+<text x="240.0" y="236.5" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">256 KB: one window</text>
+<text x="240.0" y="250.3" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">a code value per</text>
+<text x="240.0" y="264.2" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">instruction or padding row</text>
+<rect x="970.0" y="160.0" width="180.0" height="140.0" rx="6" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1"/>
+<text x="1060.0" y="205.7" font-size="12.5" text-anchor="middle" font-weight="bold" fill="#444441">log FIFO</text>
+<text x="1060.0" y="222.6" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">65,536 × 66 bits</text>
+<text x="1060.0" y="236.5" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">528 KB: one window</text>
+<text x="1060.0" y="250.3" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">a 64-bit word and a tag:</text>
+<text x="1060.0" y="264.2" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">0 load, 1 other read, 2 write</text>
+<rect x="420.0" y="150.0" width="460.0" height="150.0" rx="6" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1.4"/>
+<text x="650.0" y="170.0" font-size="12.5" text-anchor="middle" font-weight="bold" fill="#444441">set 1: sizing as the rows run (4.21.6)</text>
+<rect x="436.0" y="186.0" width="130.0" height="50.0" rx="6" fill="white" stroke="#3B6EA5" stroke-width="1"/>
+<text x="501.0" y="207.4" font-size="11" text-anchor="middle" font-weight="bold" fill="#444441">code encoder</text>
+<text x="501.0" y="222.3" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">16-entry LRU</text>
+<rect x="586.0" y="186.0" width="130.0" height="50.0" rx="6" fill="white" stroke="#3B6EA5" stroke-width="1"/>
+<text x="651.0" y="207.4" font-size="11" text-anchor="middle" font-weight="bold" fill="#444441">read log encoder</text>
+<text x="651.0" y="222.3" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">16-entry LRU</text>
+<rect x="736.0" y="186.0" width="130.0" height="50.0" rx="6" fill="white" stroke="#3B6EA5" stroke-width="1"/>
+<text x="801.0" y="207.4" font-size="11" text-anchor="middle" font-weight="bold" fill="#444441">write log encoder</text>
+<text x="801.0" y="222.3" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">15 LRU + E[15]</text>
+<text x="650.0" y="258.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">the coded bits are counted, then discarded;</text>
+<text x="650.0" y="273.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">the tag picks the encoder; loads (tag 0) update E[15]</text>
+<text x="650.0" y="288.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64">reset to all zeros by PULSE_RUN</text>
+<circle cx="230.0" cy="146.0" r="3.2" fill="#3B6EA5"/>
+<polyline points="230.0,146.0 501.0,146.0 501.0,184.0" fill="none" stroke="#3B6EA5" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<circle cx="1060.0" cy="146.0" r="3.2" fill="#3B6EA5"/>
+<polyline points="1060.0,146.0 651.0,146.0 651.0,184.0" fill="none" stroke="#3B6EA5" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<circle cx="801.0" cy="146.0" r="3.2" fill="#3B6EA5"/>
+<polyline points="801.0,146.0 801.0,184.0" fill="none" stroke="#3B6EA5" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<rect x="420.0" y="322.0" width="460.0" height="56.0" rx="6" fill="#FAEEDA" stroke="#D85A30" stroke-width="1"/>
+<text x="650.0" y="339.4" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">the choice, when the rows end</text>
+<text x="650.0" y="355.6" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">per stream: LRU-coded if fewer 128-bit words than raw, raw on a tie;</text>
+<text x="650.0" y="369.5" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#444441">only where RUN_CONFIG [28:26] enables it</text>
+<polyline points="501.0,300.0 501.0,320.0" fill="none" stroke="#D85A30" stroke-width="1.4" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<polyline points="651.0,300.0 651.0,320.0" fill="none" stroke="#D85A30" stroke-width="1.4" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<polyline points="801.0,300.0 801.0,320.0" fill="none" stroke="#D85A30" stroke-width="1.4" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<text x="512.0" y="314.0" font-size="9.5" text-anchor="start" font-weight="normal" fill="#D85A30">sizes</text>
+<polyline points="880.0,350.0 1228.0,350.0" fill="none" stroke="#7F77DD" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#m7F77DD)"/>
+<circle cx="1230.0" cy="350.0" r="3.2" fill="#7F77DD"/>
+<text x="888.0" y="342.0" font-size="10" text-anchor="start" font-weight="normal" fill="#7F77DD">the totals: word 1's three</text>
+<text x="888.0" y="366.0" font-size="10" text-anchor="start" font-weight="normal" fill="#7F77DD">output fields; words 37–39</text>
+<polyline points="650.0,378.0 650.0,392.0" fill="none" stroke="#D85A30" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="4 3"/>
+<polyline points="100.0,392.0 730.0,392.0" fill="none" stroke="#D85A30" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="4 3"/>
+<polyline points="100.0,392.0 100.0,554.0 144.0,554.0" fill="none" stroke="#D85A30" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<polyline points="430.0,392.0 430.0,554.0 474.0,554.0" fill="none" stroke="#D85A30" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<polyline points="730.0,392.0 730.0,554.0 774.0,554.0" fill="none" stroke="#D85A30" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<polyline points="230.0,300.0 230.0,456.0" fill="none" stroke="#3B6EA5" stroke-width="2.0" stroke-linejoin="round" stroke-dasharray="9 3"/>
+<text x="238.0" y="318.0" font-size="10" text-anchor="start" font-weight="normal" fill="#3B6EA5">scan: one entry a cycle,</text>
+<text x="238.0" y="331.0" font-size="10" text-anchor="start" font-weight="normal" fill="#3B6EA5">from the rows' end</text>
+<polyline points="1060.0,300.0 1060.0,398.0" fill="none" stroke="#3B6EA5" stroke-width="2.0" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<text x="1068.0" y="318.0" font-size="10" text-anchor="start" font-weight="normal" fill="#3B6EA5">scan, in parallel</text>
+<rect x="940.0" y="400.0" width="240.0" height="38.0" rx="6" fill="white" stroke="#3B6EA5" stroke-width="1"/>
+<text x="1060.0" y="415.4" font-size="11" text-anchor="middle" font-weight="bold" fill="#444441">tag demux</text>
+<text x="1060.0" y="430.3" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">0, 1 → read log; 2 → write log</text>
+<polyline points="940.0,412.0 560.0,412.0 560.0,456.0" fill="none" stroke="#3B6EA5" stroke-width="2.0" stroke-linejoin="round" stroke-dasharray="9 3"/>
+<polyline points="940.0,428.0 860.0,428.0 860.0,456.0" fill="none" stroke="#3B6EA5" stroke-width="2.0" stroke-linejoin="round" stroke-dasharray="9 3"/>
+<rect x="110.0" y="462.0" width="856.0" height="70.0" rx="6" fill="none" stroke="#3B6EA5" stroke-width="1.2" stroke-dasharray="3 3"/>
+<text x="976.0" y="470.0" font-size="10" text-anchor="start" font-weight="normal" fill="#3B6EA5">set 2: on the way out,</text>
+<text x="976.0" y="482.5" font-size="10" text-anchor="start" font-weight="normal" fill="#3B6EA5">from all zeros by the</text>
+<text x="976.0" y="495.0" font-size="10" text-anchor="start" font-weight="normal" fill="#3B6EA5">same rules: exactly</text>
+<text x="976.0" y="507.5" font-size="10" text-anchor="start" font-weight="normal" fill="#3B6EA5">set 1's sizes; every log</text>
+<text x="976.0" y="520.0" font-size="10" text-anchor="start" font-weight="normal" fill="#3B6EA5">word passes the write</text>
+<text x="976.0" y="532.5" font-size="10" text-anchor="start" font-weight="normal" fill="#3B6EA5">log's table (E[15])</text>
+<circle cx="230.0" cy="456.0" r="3.2" fill="#3B6EA5"/>
+<polyline points="230.0,456.0 185.0,456.0 185.0,470.0" fill="none" stroke="#3B6EA5" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<polyline points="230.0,456.0 290.0,456.0 290.0,538.0" fill="none" stroke="#3B6EA5" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<text x="296.0" y="500.0" font-size="9.5" text-anchor="start" font-weight="normal" fill="#3B6EA5">raw</text>
+<rect x="110.0" y="472.0" width="150.0" height="50.0" rx="6" fill="white" stroke="#3B6EA5" stroke-width="1"/>
+<text x="185.0" y="493.4" font-size="11" text-anchor="middle" font-weight="bold" fill="#444441">code encoder</text>
+<text x="185.0" y="508.3" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">16-entry LRU</text>
+<polyline points="185.0,522.0 185.0,538.0" fill="none" stroke="#3B6EA5" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<polygon points="135,540 325,540 300,568 160,568" fill="white" stroke="#3B6EA5" stroke-width="1.4"/>
+<text x="230.0" y="558.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">raw | coded</text>
+<polyline points="230.0,568.0 230.0,598.0" fill="none" stroke="#3B6EA5" stroke-width="2.0" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<rect x="135.0" y="600.0" width="190.0" height="52.0" rx="6" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1"/>
+<text x="230.0" y="616.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#444441">packer</text>
+<text x="230.0" y="631.5" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">LSB first into 128-bit words;</text>
+<text x="230.0" y="644.7" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">commits the last partial word</text>
+<polyline points="230.0,652.0 230.0,688.0" fill="none" stroke="#3B6EA5" stroke-width="2.0" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<rect x="115.0" y="690.0" width="230.0" height="112.0" rx="6" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1.4"/>
+<text x="230.0" y="710.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">output queue 1: code</text>
+<text x="230.0" y="726.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">4 KB, 256 × 128 bits</text>
+<rect x="122.0" y="742.0" width="104.0" height="52.0" rx="6" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="174.0" y="758.3" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">credits 0–2</text>
+<text x="174.0" y="772.5" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">one per 2 KB chunk,</text>
+<text x="174.0" y="785.1" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">one for a last part</text>
+<rect x="234.0" y="742.0" width="104.0" height="52.0" rx="6" fill="#FAEEDA" stroke="#D85A30" stroke-width="1"/>
+<text x="286.0" y="758.3" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">EVENTS [8]</text>
+<text x="286.0" y="772.5" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">needs service:</text>
+<text x="286.0" y="785.1" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">up while a credit</text>
+<circle cx="560.0" cy="456.0" r="3.2" fill="#3B6EA5"/>
+<polyline points="560.0,456.0 515.0,456.0 515.0,470.0" fill="none" stroke="#3B6EA5" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<polyline points="560.0,456.0 620.0,456.0 620.0,538.0" fill="none" stroke="#3B6EA5" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<text x="626.0" y="500.0" font-size="9.5" text-anchor="start" font-weight="normal" fill="#3B6EA5">raw</text>
+<rect x="440.0" y="472.0" width="150.0" height="50.0" rx="6" fill="white" stroke="#3B6EA5" stroke-width="1"/>
+<text x="515.0" y="493.4" font-size="11" text-anchor="middle" font-weight="bold" fill="#444441">read log encoder</text>
+<text x="515.0" y="508.3" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">16-entry LRU</text>
+<polyline points="515.0,522.0 515.0,538.0" fill="none" stroke="#3B6EA5" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<polygon points="465,540 655,540 630,568 490,568" fill="white" stroke="#3B6EA5" stroke-width="1.4"/>
+<text x="560.0" y="558.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">raw | coded</text>
+<polyline points="560.0,568.0 560.0,598.0" fill="none" stroke="#3B6EA5" stroke-width="2.0" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<rect x="465.0" y="600.0" width="190.0" height="52.0" rx="6" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1"/>
+<text x="560.0" y="616.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#444441">packer</text>
+<text x="560.0" y="631.5" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">LSB first into 128-bit words;</text>
+<text x="560.0" y="644.7" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">commits the last partial word</text>
+<polyline points="560.0,652.0 560.0,688.0" fill="none" stroke="#3B6EA5" stroke-width="2.0" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<rect x="445.0" y="690.0" width="230.0" height="112.0" rx="6" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1.4"/>
+<text x="560.0" y="710.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">output queue 2: read log</text>
+<text x="560.0" y="726.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">4 KB, 256 × 128 bits</text>
+<rect x="452.0" y="742.0" width="104.0" height="52.0" rx="6" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="504.0" y="758.3" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">credits 0–2</text>
+<text x="504.0" y="772.5" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">one per 2 KB chunk,</text>
+<text x="504.0" y="785.1" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">one for a last part</text>
+<rect x="564.0" y="742.0" width="104.0" height="52.0" rx="6" fill="#FAEEDA" stroke="#D85A30" stroke-width="1"/>
+<text x="616.0" y="758.3" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">EVENTS [9]</text>
+<text x="616.0" y="772.5" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">needs service:</text>
+<text x="616.0" y="785.1" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">up while a credit</text>
+<circle cx="860.0" cy="456.0" r="3.2" fill="#3B6EA5"/>
+<polyline points="860.0,456.0 815.0,456.0 815.0,470.0" fill="none" stroke="#3B6EA5" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<polyline points="860.0,456.0 920.0,456.0 920.0,538.0" fill="none" stroke="#3B6EA5" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<text x="926.0" y="500.0" font-size="9.5" text-anchor="start" font-weight="normal" fill="#3B6EA5">raw</text>
+<rect x="740.0" y="472.0" width="150.0" height="50.0" rx="6" fill="white" stroke="#3B6EA5" stroke-width="1"/>
+<text x="815.0" y="493.4" font-size="11" text-anchor="middle" font-weight="bold" fill="#444441">write log encoder</text>
+<text x="815.0" y="508.3" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">15 LRU + E[15]</text>
+<polyline points="815.0,522.0 815.0,538.0" fill="none" stroke="#3B6EA5" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<polygon points="765,540 955,540 930,568 790,568" fill="white" stroke="#3B6EA5" stroke-width="1.4"/>
+<text x="860.0" y="558.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">raw | coded</text>
+<polyline points="860.0,568.0 860.0,598.0" fill="none" stroke="#3B6EA5" stroke-width="2.0" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<rect x="765.0" y="600.0" width="190.0" height="52.0" rx="6" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1"/>
+<text x="860.0" y="616.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#444441">packer</text>
+<text x="860.0" y="631.5" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">LSB first into 128-bit words;</text>
+<text x="860.0" y="644.7" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">commits the last partial word</text>
+<polyline points="860.0,652.0 860.0,688.0" fill="none" stroke="#3B6EA5" stroke-width="2.0" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<rect x="745.0" y="690.0" width="230.0" height="112.0" rx="6" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1.4"/>
+<text x="860.0" y="710.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">output queue 3: write log</text>
+<text x="860.0" y="726.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">4 KB, 256 × 128 bits</text>
+<rect x="752.0" y="742.0" width="104.0" height="52.0" rx="6" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="804.0" y="758.3" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">credits 0–2</text>
+<text x="804.0" y="772.5" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">one per 2 KB chunk,</text>
+<text x="804.0" y="785.1" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">one for a last part</text>
+<rect x="864.0" y="742.0" width="104.0" height="52.0" rx="6" fill="#FAEEDA" stroke="#D85A30" stroke-width="1"/>
+<text x="916.0" y="758.3" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">EVENTS [10]</text>
+<text x="916.0" y="772.5" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">needs service:</text>
+<text x="916.0" y="785.1" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">up while a credit</text>
+<rect x="1010.0" y="690.0" width="262.0" height="112.0" rx="6" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1.4"/>
+<text x="1141.0" y="710.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">output queue 0: the state record</text>
+<text x="1141.0" y="726.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">68 words, in place, by a read pointer</text>
+<rect x="1018.0" y="742.0" width="120.0" height="52.0" rx="6" fill="white" stroke="#888780" stroke-width="1"/>
+<text x="1078.0" y="758.3" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">four transfers</text>
+<text x="1078.0" y="772.5" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">words 0, 1,</text>
+<text x="1078.0" y="785.1" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">2–66 and 67</text>
+<rect x="1146.0" y="742.0" width="118.0" height="52.0" rx="6" fill="#FAEEDA" stroke="#D85A30" stroke-width="1"/>
+<text x="1205.0" y="758.3" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">EVENTS [7]</text>
+<text x="1205.0" y="772.5" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">at the rows' end;</text>
+<text x="1205.0" y="785.1" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#444441">one credit</text>
+<rect x="1010.0" y="846.0" width="262.0" height="62.0" rx="6" fill="white" stroke="#444441" stroke-width="1"/>
+<text x="1141.0" y="867.2" font-size="12.5" text-anchor="middle" font-weight="bold" fill="#444441">DMA (4.17.9)</text>
+<text x="1141.0" y="884.1" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">one transfer at a time (PULSE_DMA), sized</text>
+<text x="1141.0" y="897.3" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">by C&amp;C 3 to the credits and words 37–39</text>
+<polyline points="230.0,802.0 230.0,877.0" fill="none" stroke="#3B6EA5" stroke-width="2.0" stroke-linejoin="round" stroke-dasharray="9 3"/>
+<circle cx="230.0" cy="877.0" r="3.2" fill="#3B6EA5"/>
+<polyline points="560.0,802.0 560.0,877.0" fill="none" stroke="#3B6EA5" stroke-width="2.0" stroke-linejoin="round" stroke-dasharray="9 3"/>
+<circle cx="560.0" cy="877.0" r="3.2" fill="#3B6EA5"/>
+<polyline points="860.0,802.0 860.0,877.0" fill="none" stroke="#3B6EA5" stroke-width="2.0" stroke-linejoin="round" stroke-dasharray="9 3"/>
+<circle cx="860.0" cy="877.0" r="3.2" fill="#3B6EA5"/>
+<polyline points="230.0,877.0 1008.0,877.0" fill="none" stroke="#3B6EA5" stroke-width="2.0" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<polyline points="1141.0,802.0 1141.0,844.0" fill="none" stroke="#7F77DD" stroke-width="2.0" stroke-linejoin="round" marker-end="url(#m7F77DD)"/>
+<rect x="1010.0" y="934.0" width="262.0" height="34.0" rx="6" fill="white" stroke="#444441" stroke-width="1"/>
+<text x="1141.0" y="947.6" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#444441">C&amp;C 3's router: an extra input (src 74)</text>
+<text x="1141.0" y="963.1" font-size="10" text-anchor="middle" font-weight="normal" fill="#444441">out through its down port to tile 2 (item 118)</text>
+<polyline points="1141.0,908.0 1141.0,932.0" fill="none" stroke="#3B6EA5" stroke-width="2.0" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<text x="1000.0" y="955.0" font-size="10.5" text-anchor="end" font-weight="normal" fill="#3B6EA5">packets into the compute tiles' memory (first implementation, 4.21.6)</text>
+<text x="1000.0" y="897.0" font-size="10.5" text-anchor="end" font-weight="normal" fill="#D85A30">the service flags reach C&amp;C 3 as its EVENTS [13] (4.21.3)</text>
+<polyline points="40.0,1004.0 76.0,1004.0" fill="none" stroke="#3B6EA5" stroke-width="2.0" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<text x="84.0" y="1008.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">the streams' data</text>
+<polyline points="240.0,1004.0 276.0,1004.0" fill="none" stroke="#7F77DD" stroke-width="2.0" stroke-linejoin="round" marker-end="url(#m7F77DD)"/>
+<text x="284.0" y="1008.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">the state record and its totals</text>
+<polyline points="520.0,1004.0 556.0,1004.0" fill="none" stroke="#D85A30" stroke-width="2.0" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<text x="564.0" y="1008.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">control: the sizes, the choice</text>
+<rect x="800.0" y="994.0" width="30.0" height="16.0" rx="3" fill="#FAEEDA" stroke="#D85A30" stroke-width="1.2"/>
+<text x="838.0" y="1008.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">a live service flag</text>
+<line x1="24" y1="1032" x2="1276" y2="1032" stroke="#B4B2A9" stroke-width="0.8"/>
+<text x="24.0" y="1054.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">Each word the core logs goes into its FIFO and through set 1, which sizes its stream as the rows run. When the rows end, set 1's sizes choose raw or coded per stream and</text>
+<text x="24.0" y="1070.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">give the state record its totals; then one scan of each FIFO drives set 2 and the packers into output queues 1–3, each with its credits and service flag, and the DMA sends them,</text>
+<text x="24.0" y="1086.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">with output queue 0, the state record read in place. The drain's order (the state queue's service, the streams, done last) is in spec 4.21.6.</text>
+<text x="24.0" y="1102.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">Source: spec/machine-spec.md §4.21.6 (to 66f399e), §4.21.3, §4.17.9; planning/DECISIONS-v1.3.md §2–4, §24. Review: wip/planning/sessions/WORKER24-NOTES.md.</text>
+</svg>

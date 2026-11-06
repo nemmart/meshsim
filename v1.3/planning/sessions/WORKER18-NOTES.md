@@ -1,0 +1,472 @@
+# WORKER18 notes: the Java emulator of Jolt's tracer (W4, DECISIONS-v1.3 section 17)
+
+Citations are jolt-cpp at `821e1bd` (`src/tracer/...` unless noted) unless marked otherwise.
+
+## Status
+
+- jolt-asic-planning branch **`worker18-rows`** (from `tracer-standalone-main` `8d546e3`): `tracer/rows/row_dump.cpp`,
+  `build.sh` (as WORKER16's `state/build.sh`). Built locally: 1 CPU, 3 GB, `vm.overcommit_memory=1`.
+- `wip/gold/`: stage 1 Tracer model. **Matches jolt-cpp row for row on EVM Zone trace-23 and Cyclone input/22
+  (every record), and on both workloads at 2^29 (every 2^16-row window hash and the run hash)** (2026-11-02).
+  **All 15 inlines written and passing InlineEmitTest** (secp256k1 x7, BLAKE2b, BLAKE3 x2, Keccak x2, SHA-256 x2,
+  BIGINT256_MUL). Stage 1 is complete.
+- **Stage 2 (gold), 2026-11-02:** secp256k1 advice computed (SecpCompute); `segments` writes section 16's file
+  **byte-identical to segment_writer `ca30b5e`** on both workloads at 2^29 and both hard-cut tests (`check.sh`).
+
+## The row record (agreed with the owner, 2026-11-02)
+
+jolt-cpp's full CPU row, `RiscCycle` (`trace_owner.hpp:19-68`), as a fixed record of ten little-endian u64 words (not the
+struct's memory, whose padding bytes can't be reproduced outside C++):
+
+| word | contents |
+|---|---|
+| 0 | pc |
+| 1 | opcode \| rd_reg << 8 \| rs1_reg << 16 \| rs2_reg << 24 \| (u16) inline_sequence_remaining << 32 \| is_compressed << 48 \| virt_flags << 56 (bit 0 is_virtual, bit 1 first in sequence) |
+| 2 | `_imm` (i64) |
+| 3-6 | rd, rs1, rs2, rd_prev (values) |
+| 7-9 | mem_access_addr, mem_pre_value, mem_post_value |
+
+Opcode numbers are jolt-cpp's enum order (`isa/riscv.inc`, NOP = 0). Covers the SoA columns (`trace_columns.inc`).
+Stage 3 will map upstream's Cycle rows into the same record.
+
+**Hash:** WORKER16's `mix` (jolt-asic-planning `worker16-state`, `tracer/state/state_probe.cpp:42`) over the record's words:
+row hash = fold `mix` over w0..w9 from `0x243f6a8885a308d3`; window hash = fold `mix` over row hashes from 0 (windows of
+2^16 rows); run hash = fold `mix` over window hashes from 0. Only the run's rows are hashed; padding rows (all zero) are
+a count: the next power of two above rows + 1, at least 256 (`trace_owner.hpp:437-450`).
+
+## row_dump
+
+`row_dump <program dir> <input dir> <out> [--window=W] [--rows] [--max-rows=N]` runs jolt-cpp's pipeline unchanged
+(`gen_compressed_trace`, `expand_trace` per window) and writes `<out>.hashes.csv`, `<out>.advice.bin` (u64 per row whose
+**bytecode** opcode is `VirtualAdvice`, i.e. the secp buffer words, found by `get_pc(pc, inline_sequence_remaining)`),
+`<out>.json` (rows, padded rows, run hash, ram_K, layout, host I/O encoding), and with `--rows` `<out>.rows.bin`.
+
+## jolt-cpp's rules (for the emulator; each to be cited in the report)
+
+### Loading and layout
+- ELF: little-endian, `EM_RISCV`, `ET_EXEC`; entry nonzero, < 4 GiB, 2-aligned; PT_LOAD segments only, `p_align` must be
+  4096, nonzero `p_memsz >= p_filesz`; exactly one executable segment, which is the code range; program range = min/max
+  of the loaded segments, and must start at `0x8000_0000` (`loader.cpp:25-190`, `:197-205`).
+- Memory config from program.json: `heap_size` **or** `memory_size` is the heap (`utils/elf_helper.cpp:99`); optional
+  `host_io_encoding` (`:43-63`).
+- Layout (`loader.cpp:228-300`): sizes aligned up to 8; advice sizes power of two or 0; io region = advice + input +
+  output + 16 bytes, rounded up to a power of two **in words**; the larger advice region first at `program_start - io_bytes`
+  (trusted first on a tie); input after the higher advice end; output; panic; termination; io_end. Stack from
+  `program_end + 128` (canary), size `stack_size`; heap after the stack.
+- Inputs copied unparsed into input, trusted and untrusted advice (`compressed_trace_gen.cpp`, `execute_fast`); missing or
+  empty files are empty (`elf_helper.cpp`, `read_optional_input_file`).
+- Initial state: all registers 0, pc = entry (`vm.cpp:56-63`).
+
+### Host I/O encoding (`host_io_encoding.cpp`)
+- Auto-detect: scan the code; if every instruction decodes, there is at least one raw ECALL, no `VirtualHostIO`, and no
+  CSRRW/CSRRS/MRET, the encoding is LegacyRawEcall, else Standard. The scan stops at the first undecodable instruction
+  (decode_failed means Standard).
+- LegacyRawEcall turns ECALL into `VirtualHostIO` (all operands immediate 0) in the bytecode; RAM keeps the raw word.
+
+### Decoding (`isa/decoder.cpp`)
+- 16-bit units; compressed if the low two bits aren't `11`; compressed words are expanded to 32-bit encodings
+  (`uncompress_instruction`, `:646-1167`), which return `0xffffffff` (invalid) or 0 (UNIMP) for reserved forms.
+- Operand convention: `op_a, op_b, op_c` with immediate flags. R: rd, rs1, rs2. I: rd, rs1, imm. Shift-immediate: rd, rs1,
+  shamt (6 bits). S and B: imm, rs1, rs2 (`imm_a`). LUI/AUIPC: rd, imm (bits 31:12 kept in place), 0. JAL: rd, imm, 0.
+  CSRRW/CSRRS: rd, rs1, csr (only the six M-mode CSRs decode, `:598-644`). ECALL, EBREAK, MRET, FENCE, UNIMP: all
+  immediate 0. Funct3 011/101/110/111 SYSTEM and non-zero MISC_MEM funct3 are UNIMP. LR ignores the rs2 field; aq/rl are
+  ignored.
+- Custom opcodes: 0x0B the inlines by funct7/funct3 (`:1210-1250`); 0x5B: rev8w (funct3 0, funct7 5, immediate 0),
+  `VirtualAssertEQ` (funct3 1, B format), `VirtualHostIO` (funct3 2, rd 0) (`:1251-1268`).
+- An invalid instruction (opcode 255) is still expanded in release builds (asserts off): one bytecode row, never run.
+
+### Bytecode (`isa/virtual.cpp`)
+- Entry 0 is a NOP; each source instruction's expansion follows; UNIMP is **removed** (no rows, its bytes skipped)
+  (`:1357-1363`). `risc_pc_to_instr_idx` per 2 bytes (`virtual.hpp:159-171`). The last row of an expansion carries
+  `pc_increment` = 2 or 4; others 0. Every row of an expansion carries the source pc.
+- Row flags (`:174-189`): virtual iff the expansion has more than one row **or** the opcode changed;
+  first-in-sequence iff virtual and row 0; `virt_seq_remaining` = length - 1 - index.
+- Immediates are sign-extended to 64 bits ((i32) op then u64).
+- **rd = x0** (`:15-128`, `:270-283`): unless the opcode handles rd = x0 itself (ECALL, MRET, EBREAK, CSRs, LR/SC, all
+  inlines), an instruction with rd = x0 becomes one `ADDI x0, x0, 0` if it has no side effects beyond rd, else rd is
+  remapped to the first temporary (register 40). Side-effecting: JAL, JALR, loads, LR/SC, AMOs, CSRs, `VirtualHostIO`,
+  inlines.
+- Temporaries are allocated from 40 upward per expansion, freed in stack order (`:148-158`).
+- Per family: division (`:285-447`), MULH/MULHSU (`:220-232`, `:448-473`), narrow loads and stores (`:239-262`,
+  `:474-527`), shifts (`:528-611`: SRAI/SRLI become a bitmask immediate; SLLI becomes `VirtualMULI` by 2^shamt; SLLIW
+  `VirtualMULIW`; SRL/SRA/SLL/SLLW/SRLW/SRAW two rows), LR/SC (`:612-712`), AMOs (`:713-987`), FENCE and `VirtualHostIO`
+  (`:1063-1067`), ECALL (`:1068-1085`, 7 rows to mtvec), CSRRW/CSRRS (`:1086-1127`, 1-3 rows by rd/rs1), MRET
+  (`:1128-1133`, JALR through mepc), EBREAK (`:1134-1164`, `JAL vN, 0`), JAL/JALR with rd = 0 get a temporary rd
+  (`:1165-1184`), default: one row with the source operands (`:1185-1187`).
+- Lengths: `num_cycles` (`:1210-1306`); secp inlines from `inlines/secp256k1_shapes.hpp`.
+- secp inlines put `advice_source` (operation, rs1, rs2 if two-input) on their first row (`:1194-1201`).
+
+### Execution (`trace_owner.cpp`)
+- Operands: a field marked immediate supplies its value, else the register's (`:78-83`). Writes to x0 are dropped
+  (`:85-93`).
+- **Next pc** (`finish_instruction`, `:111-126`): if the new pc is 0, halt; if it differs from the current pc, jump
+  (instr_idx = the target's first row); **if it equals the current pc** (no jump, or a jump to itself) the pc advances by
+  `pc_increment` and instr_idx by 1.
+- **JAL with immediate 0 halts** (new pc 0) (`:277-283`); JALR targets `(rs1 + imm) & ~1`. The run ends when pc = 0.
+- Branches compare and add the immediate to the current pc (`:247-276`).
+- `VirtualAdviceRemU` returns the **quotient**, as `VirtualAdviceDivU` (REMU's expansion uses DivU anyway); `VirtualAdviceRem`
+  returns |quotient|; `VirtualAdviceRemW` |quotient| (32-bit); `VirtualAdviceRemUW` the 32-bit quotient. Division by zero:
+  all ones (Div, DivU), `UINT32_MAX` zero-extended (DivUW), -1 (DivW), 0 (the Rem ones). Overflow cases per `:536-618`.
+- Shifts by bitmask use `trailing_zeros` of the mask (`:355-379`); `VirtualROTRIW` caps at 32; `VirtualShiftRightBitmaskW`
+  = 2^32 - 2^shift.
+- Narrow memory: the word address is floored (`isa/riscv.hpp:215-270`); a misaligned word address aborts.
+- Window masks and shift-data (`:448-485`): masks by `(ea >> 2) & 1`, `ea & 7`, `ea & 6`; shift-data adds the row's
+  `shift_offset` to the base register.
+- Asserts (`VirtualAssert*`, `:620-639`) abort on failure; UNIMP aborts (`:648-652`).
+- secp advice: `prepare_advice` at a sequence's first row (`:52-66`, called at `:787-791`) evaluates the operation on the
+  32-byte inputs at rs1 (and rs2) and resets the buffer; each `VirtualAdvice` row pops the next word.
+- **Inline registers 48-127 are never zeroed on the row path** (`expand_compressed_chunk` doesn't call
+  `normalize_inline_vregs`; zeroing happens only at chunk headers and snapshots, `:128-139`). Rows stay consistent because
+  every inline zeroes its own registers at its end (e.g. `inlines/secp256k1_mulq.inc` tail). So plain sequential
+  execution matches.
+
+### Rows (`expand_compressed_chunk`, `trace_owner.cpp:855-915`)
+- pc, opcode, flags, `inline_sequence_remaining` from the bytecode row; `is_compressed` = `pc_increment == 2`.
+- `_imm` = sum of the immediate fields (`trace_owner.hpp:168-177`), or `shift_offset` for shift-data, 0 for advice rows.
+- reg numbers 0 where the field is immediate; rs1, rs2, rd_prev read before execution, rd after (0 where immediate).
+- **Every division-family advice row is relabelled `VirtualAdvice`**, rs1/rs2 numbers and values and `_imm` zeroed.
+- Stores: address from rs1 + imm (floored), pre = the word before, post = rs2's value. Loads: address, pre = post = rd.
+- Padding rows are all zero (NOP = 0).
+
+### Syscalls and the JIT
+- `jolt_syscall_dispatch` (`syscalls.cpp:43-80`): advice-write, cycle-track, print: no architectural effect.
+- The JIT runs threads to their start; the rows come from the interpreter (`trace_owner.cpp:783-845`).
+
+## Inlines
+
+The `.inc` files are generated straight-line emit code (`secp256k1_shapes.hpp`: "Generated by examples/inlines
+--dump-inlines"): jolt-cpp's `examples/inlines/src/dump_inlines.rs` runs upstream Jolt's sequence builders (the
+`third-party/jolt` submodule, `f8fc214`) and prints each row. The Java inlines follow those builders
+(`jolt-inlines/<name>/src/sequence_builder.rs`) and the shared InlineExpansionBuilder
+(`crates/jolt-program/src/expand/inline.rs`, `allocator.rs`):
+- inline registers from 48 up, lowest free first; after the sequence, an `ADDI r, x0, 0` reset row for every register
+  ever allocated, **in register order** (`allocator.rs`, `take_registers_for_reset`). *(Correction: last turn's
+  report that Keccak's tail was unsorted was my misreading of two files' tails printed together; it is 48..84 in order.)*
+- the constant-folding helpers (`inline.rs:290-414`): an operation on two known constants emits nothing, a constant
+  first operand is swapped into the immediate slot. SHA256_INIT relies on them for its first four rounds.
+- `jolt_asm!`'s `srli`, `slli`, `zextw` are source instructions, expanded as usual (VirtualSRLI with a mask, VirtualMULI,
+  VirtualZeroExtendWord). The emulator writes them as readable loops; **a test that runs on every build** checks each generated
+sequence row for row against the `.inc` emit lists, parsed as data (owner, 2026-11-02).
+
+## Reference data (2026-11-02, row_dump `df1b231`, local runs)
+
+`wip/planning/sessions/WORKER18-data/`: `<name>.json`, `<name>.hashes.csv` (and EVM Zone's `advice.bin`); the row files (80 B per row) stay
+local (467 MB and 216 MB).
+
+| run | rows | padded | windows (2^16) | run hash | secp advice words | bytecode rows |
+|---|---|---|---|---|---|---|
+| EVM Zone `trace-23-812ded164e49` (`evm23`) | 5,833,069 | 2^23 | 90 | `c6055e2211414a5a` | 3,710 | 790,242 |
+| Cyclone `input/22/input-default` (`cyc22`) | 2,705,819 | 2^22 | 42 | `a3898b8a64eb2d62` | 0 | |
+
+Opcode census: evm23 uses 57 opcodes, among them the secp256k1 inlines (`VirtualAdvice`, `VirtualAssertEQ`), no Keccak
+(`VirtualXORROTL1` absent); cyc22 72, among them BLAKE2b (`VirtualXORROT63/32/24/16`) and BLAKE3 (`VirtualXORROTW16/12/8/7`),
+no secp, 30 `VirtualHostIO` rows, and a division family (256 `VirtualAdvice` rows, all division advice).
+
+Sandbox note: `vm.overcommit_memory` resets to 0 between sessions; set it to 1 before running jolt-cpp.
+
+## Stage 1 results (2026-11-02, gold `12631db`; reference row_dump `df1b231`, jolt-cpp 821e1bd)
+
+| run | rows | check | result | gold run time | jolt-cpp row_dump |
+|---|---|---|---|---|---|
+| EVM Zone trace-23 | 5,833,069 | every record (80 B) + 90 windows + run hash | **match** | 1.0 s (5.9 M rows/s, hashing) | |
+| Cyclone input/22 | 2,705,819 | every record + 42 windows + run hash | **match** | 0.5 s (5 M rows/s) | |
+| EVM Zone `trace-29-4599adc50712` | 354,861,942 (padded 2^29) | 5,415 window hashes + run hash `bcea2e34bc23ccec`; 3,674 secp advice words all used | **match** | 21.2 s, **16.7 M rows/s** | 29 s |
+| Cyclone `input/29/input-15961266` | 371,526,406 (padded 2^29) | 5,670 window hashes + run hash `0a6e6fe67d902fb9` | **match** | 22.5 s, **16.5 M rows/s** | 27 s |
+
+Speed: one CPU, Java 21, default heap; short runs include JIT warm-up (5-6 M rows/s); warm, about 16.5 M rows/s.
+Loading and expanding the program takes 0.7 s. Comparing every record from a file costs about 30% more than hashing.
+The 2^29 runs fit this 3 GB sandbox (memory is sparse 16 KB pages), so no runner was needed.
+
+Advice in stage 1: the division family computes its own (as jolt-cpp's interpreter does); secp256k1 words come from
+row_dump's `advice.bin` (stage 2 computes them).
+
+## Stage 2: the segment file, as WORKER16's segment_writer writes it (jolt-asic-planning `worker16-w3` at `ca30b5e`)
+
+Section 16's format **plus every choice the encoder makes**, read from `tracer/segments/segment_writer.cpp` and
+`segment_common.hpp` at `ca30b5e`. Byte-identical files need all of them (owner, 2026-11-02). Frame 6 (an `instr_idx`
+table) is left out: the tool doesn't write it and where it belongs is open (owner, 2026-11-02).
+
+- **Cuts:** by default `k * 2^22` for k = 0..127 (`--segment-rows`, `--segments`); `--cuts=` gives an explicit
+  increasing list starting at 0 (the hard-cut tests), and then the file has one page count per cut. Segment k runs
+  rows [cut k, cut k+1), the last one until the program ends.
+- **Frame order:** frame 1 once; then per segment frames 2, 3, then 4 or 5. Frame header: u32 length in 32-bit words
+  including the 2 header words, u32 type; data zero-padded to a whole word (`put_frame`, `segment_common.hpp:129-137`).
+- **Frame 1:** per segment a u32: the number of distinct 16 KB pages among its dirty cells (cell >> 11).
+- **Frame 2:** 131 u64 taken before the cut row runs: pc; `instr_idx` (the row's bytecode index); the next offset =
+  `instr_idx` - the first index of pc's expansion; then registers 0-127 (register 0's word is 0; 48-127 as they are,
+  live mid-sequence). **A segment past the end of the run** (padding): pc 0, `instr_idx` 0, offset 0, and the
+  registers **as the run left them** (writer `:170-178`).
+- **Frame 3:** the advice words of the segment's advice rows, in row order: a secp row's word, a division row's
+  result (`segment_common.hpp:89-103`). Words of a sequence that crosses a cut fall in the next segment.
+- **Dirty cells:** every cell a store row writes during the segment (even with an unchanged value), cell =
+  (word address - lowest_address) / 8, lowest_address = min(trusted, untrusted advice start).
+- **Update words:** the dirty cells sorted, split into maximal runs of consecutive cells; per run a header word
+  `start cell | count << 32` and the cells' values **at the segment's end** (read from memory then).
+- **Frame 5's data:** u32 count of update words, then the codes, bit-packed least significant bit first in each byte;
+  a 32-entry table, all zero at the start of each frame. Per word: if it equals an entry, **the lowest matching index**:
+  bit 1, then the index in 5 bits; the entry moves to the front. Otherwise bit 0, then a size bit (1 if the word has
+  any of bits 63:32 set, else 0), then 64 or 32 bits of the value; the word is pushed at the front and the last entry
+  drops. The last byte's spare bits are 0 (`lru_encode`, writer `:29-57`).
+- **Raw or LRU per segment** (writer `:204-211`): LRU size = frame 5's data rounded up to 4 bytes; raw size =
+  8 x the word count. **Frame 5 iff the list is non-empty and the LRU size is strictly smaller**; on a tie, raw; an
+  empty list is always frame 4 (with no data).
+
+Reference files (regenerated locally from `ca30b5e`, SHA-256 equal to WORKER16's committed `wip/planning/sessions/WORKER16-data/w3/*.writer.json`):
+
+| file | rows | segments | bytes | SHA-256 |
+|---|---|---|---|---|
+| `evm-zone-29` | 354,861,942 | 128 | 1,747,828 | `208520ec...8aa17d18` |
+| `cyclone-29` | 371,526,406 | 128 | 10,334,580 | `f45f71b6...8aa64070` |
+| `evm-zone-23-hardcuts` (cuts: `wip/planning/sessions/WORKER16-data/w3/*.cuts`) | 5,833,069 | 93 | 326,576 | `b33f9fc4...5b35c566` |
+| `cyclone-22-hardcuts` | 2,705,819 | 111 | 339,884 | `a3858f5e...8cac81ec` |
+
+### Stage 2 results (2026-11-02, gold `98561df`)
+
+- **Computed secp256k1 advice** (`SecpCompute`, jolt-cpp `inlines/secp256k1.cpp`'s evaluate in BigInteger): rows
+  identical with it on EVM Zone trace-23 (every record; 668 operations of six kinds) and at 2^29 (every window and the
+  run hash; 662 operations).
+- **Segment files**, byte for byte: all four reference files above are identical (EVM Zone 2^29 13.5 s, Cyclone 2^29
+  15.5 s, the hard-cut tests 2.8 s and 1.6 s, including program loading).
+- WORKER16's tool needed nothing changed to build here: the tracer sources at `ca30b5e` equal `tracer-standalone-main`'s;
+  only an include path (`json-src/single_include`) was added on the command line.
+
+### Wider validation: jolt-cpp's example guests (2026-11-02)
+
+The two workloads leave paths unexercised (`compare --coverage`). jolt-cpp's `examples/` (at `821e1bd`) has more
+guests; `row_dump` ran on seven (summaries in `wip/planning/sessions/WORKER18-data/examples/`; `sha2-chain-advice` fails to load in jolt-cpp
+itself), and gold, with **computed** secp advice, matches **every record** of all seven:
+
+| guest | rows | what it adds |
+|---|---|---|
+| `tracer-tests` (input.bin) | 17,161 | MULH, MULHSU, DIV, REM, DIVW/DIVUW/REMW/REMUW, SRA, SRAW, LR.D/SC.D, every AMO, CSRs, ECALL/MRET |
+| `inlines` (input.bin) | 21,622 | every inline but KECCAK256 and SHA256_INLINE, all seven secp ops (SQUARE_R included), rev8w |
+| `merkle-tree` | 25,269 | SHA256_INLINE, SHA256_INIT_INLINE |
+| `fibonacci` | 36,786 | `VirtualHostIO` |
+| `sha2-chain-profile-15`, `sha3-chain-profile`, `btreemap-profile` (no input) | 18,201; 656; 442 | |
+
+Across all eleven runs, **never executed**: source EBREAK, FENCE, KECCAK256 (its builder is the absorb form's minus
+the absorb, which runs), the custom `VirtualAssertEQ`, UNIMP (removed from bytecode); row opcodes `VirtualMove`,
+`VirtualAdviceRemU`, `VirtualAdviceRemUW` (no expansion emits them). Also untested: the LegacyRawEcall host I/O mode
+(every guest here is Standard) and abort paths (failed asserts, misaligned access).
+
+## Stage 3: upstream Jolt (a16z/jolt `17a9459`), 2026-11-02
+
+### The tool
+
+jolt-asic-planning branch **`worker18-upstream`**, `tracer/upstream_rows/`: a Cargo crate depending on a16z/jolt by git
+rev `17a9459082ec62fe8b50d61cc1f38cc060bd20f8` (tracer, common, jolt-program, jolt-riscv and the six inline crates,
+referenced with `use ... as _` so their `inventory` registrations link). Rust 1.95 from conda-forge, unpacked by hand
+(rustup's host isn't reachable); a release build takes 4 minutes here. It writes `row_dump`'s file set from
+`tracer::trace_lazy`, so gold's `compare` reads it unchanged. Program config as jolt-host's: program.json's mem_conf,
+`heap_size` or `memory_size`, and `program_size = program_end - 0x8000_0000` from `build_jolt_program`
+(`crates/jolt-host/src/program.rs`, `memory_config_with_program_size`), profile `RV64IMAC_JOLT_ALL_INLINES`.
+`--dump-inlines=<dir>` writes upstream's inline sequences in jolt-cpp's `.inc` form; `--list-kinds` the kind mapping.
+
+### The mapping: upstream's Cycle into the record
+
+From the cycle's instruction row (`crates/jolt-riscv/src/row.rs:76-83`: kind, address, operands, virtual_sequence_remaining,
+is_first_in_sequence, is_compressed) and its register reads, rd write and RAM access (`tracer/src/instruction/mod.rs`,
+`rs1_read`, `rs2_read`, `rd_write`, `ram_access`):
+
+| word | from |
+|---|---|
+| 0 pc | the row's address |
+| 1 opcode | the kind's `name()` mapped to jolt-cpp's opcode of the same name, except `NoOp` -> NOP; 0xFE for a kind with none (`VirtualAdviceLoad`, `VirtualPow2I`, `VirtualPow2IW`, `VirtualShiftRightBitmaskI`; none appears in any run) |
+| 1 rd/rs1/rs2_reg | the operands' registers, 0 where None |
+| 1 inline_sequence_remaining, is_virtual | `virtual_sequence_remaining`: Some(n) is n and virtual; None is 0 and not virtual |
+| 1 first in sequence, is_compressed | the row's flags |
+| 2 imm | the operands' imm (i128) truncated to i64 |
+| 3 rd, 6 rd_prev | the rd write's post and pre values; 0 without one |
+| 4 rs1, 5 rs2 | the values read; 0 without a read |
+| 7-9 memory | Read(address, value): pre = post = value; Write(address, pre, post); NoOp: 0 |
+
+Upstream's final kinds are jolt-cpp's row opcodes by name, so no translation table beyond NoOp was needed.
+
+### Results
+
+| run | rows | checked | upstream = jolt-cpp = gold |
+|---|---|---|---|
+| EVM Zone trace-23 | 5,833,069 | every record | yes (run hash `c6055e2211414a5a`) |
+| Cyclone input/22 | 2,705,819 | every record | yes (`a3898b8a64eb2d62`) |
+| seven jolt-cpp example guests | 442 to 36,786 | every record | yes |
+| EVM Zone trace-29 | 354,861,942 | 5,415 windows, run hash | yes (`bcea2e34bc23ccec`; upstream 82 s) |
+| Cyclone input/29 | 371,526,406 | 5,670 windows, run hash | yes (`0a6e6fe67d902fb9`; upstream 88 s) |
+
+All 15 inline sequences dumped from upstream `17a9459` are byte-identical to jolt-cpp's `.inc` files (from `f8fc214`),
+and InlineEmitTest passes against them. The differences found are all outside the rows: `UPSTREAM-DIFFS.md` (D1-D10).
+
+### Test guests (`wip/gold/test/guests/`)
+
+`make_guests.py` writes eleven hand-assembled ELFs with both a PT_LOAD segment (jolt-cpp) and a `.text` section
+(upstream), each ending `jal x0, 0`; addresses are formed with auipc (lui sign-extends on RV64). `check_guests.sh` pins
+gold's results (`expected.txt`).
+
+| guest | jolt-cpp | upstream | gold |
+|---|---|---|---|
+| `ebreak` | 2 rows | same rows | same |
+| `fence` (FENCE, FENCE.TSO) | 5 rows | same | same |
+| `keccak256` (no absorb) | 3,091 rows | same | same |
+| `assert_eq_pass` (custom VirtualAssertEQ) | 4 rows | same | same |
+| `assert_eq_fail` | abort (`trace_owner.cpp:622`) | panic (assert) | abort |
+| `legacy_raw_ecall` | 4 rows, LegacyRawEcall (ECALL as VirtualHostIO) | panic: traps to mtvec 0 (D3) | as jolt-cpp |
+| `misaligned_ld` | abort (`riscv.hpp:265`) | panic (`mmu.rs:323`) | abort |
+| `misaligned_lw` | abort (`riscv.hpp:265`) | panic (`floor_access.rs:69`) | abort |
+| `unimp_fence_i` | 3 rows, pc behind by 4 after the removed UNIMP (D4) | refuses the ELF | as jolt-cpp |
+| `jump_into_gap` | abort ("executed UNIMP", undefined behaviour, D5) | 6 rows (decodes the gap) | abort |
+| `stack_canary_store` | 6 rows | panic: stack canary (D2) | as jolt-cpp |
+
+"Same" means the run hash is equal. Still unexercised: jolt-cpp's JIT path for EBREAK (`row_dump` on short guests
+uses the interpreter only), and abort paths inside inlines.
+
+## W5: upstream's own tests through gold (2026-11-02)
+
+Both exist at the pin 17a9459: `tests/arch-tests/` (ACT4 config, `skip.txt`, riscv-arch-test submodule at
+`a7c9930`) and the inline tests (`jolt-inlines/*/src/tests.rs`, and `spec.rs` InlineSpec cases).
+
+### (a) ACT4 architectural tests
+
+- **Toolchain**, as upstream's `scripts/bootstrap`: xpack riscv-none-elf-gcc v15.2.0-1, Sail `2026-04-20-40d25df`,
+  mise (Ruby 3.4.9, uv 0.11.6 per ACT4's `.mise.toml`), the `udb` gem bundle. GCC and Sail work in this sandbox, but
+  ACT4's generator needs gems from rubygems.org, which the sandbox can't reach: the generation runs on the Quest
+  runner, **task 095** (upstream's `tests/arch-tests/` embedded; ELFs into `results/095-w18-act4-build/`, with
+  upstream's own `jolt-emu` verdicts for every ELF, skipped ones included).
+- **Verdicts**: each test stores to `tohost` (`tests/arch-tests/jolt/rvmodel_macros.h:36-52`): 1 passes, `(gp << 1) | 1`
+  fails case gp; then `j 1b` (JAL immediate 0: jolt-cpp ends, upstream stalls). Gold reads `tohost` from memory
+  (`Elf.symbols` reads `.symtab`); for jolt-cpp and upstream_rows it is the last store to tohost in their rows.
+  `wip/gold/test/act4/run_act4.py` runs every ELF through the three and tabulates verdicts and row agreement;
+  `program.json` beside it is jolt-emu's defaults (`common/src/constants.rs:23-31`).
+- Smoke check, upstream's deliberate failure (`tests/arch-tests/smoke/fail.S`, built here with GCC 15): gold, jolt-cpp
+  and upstream_rows all 5 rows, the same run hash, verdict FAIL.
+
+### (b) Inline tests
+
+- Instead of copying the generators, the vectors are **captured from upstream's own tests**: a patch to
+  `tracer/src/utils/inline_test_harness.rs` (with `JOLT_INLINE_VECTORS` set, `execute_inline` appends each call's
+  operand registers and memory span before and after as JSON lines) and `cargo test` of the six inline crates with one
+  test thread: **task 096**. Every test, hand-written and InlineSpec, edge and random, is covered exactly, and every
+  "post" was asserted by the test against its independent reference; a "pre" without a "post" is an expected panic.
+- `wip/gold/test/gold/InlineVectorTest.java` (in `build.sh`) runs each call on gold: the "pre" memory and registers,
+  gold's expansion, a Machine with SecpCompute advice; the span must equal "post", and an expected panic must abort.
+  Checked on handmade BIGINT256_MUL vectors (one right, one deliberately wrong).
+- Out of scope: grumpkin, p256, NTT (UPSTREAM-DIFFS D11).
+
+### W5 results (2026-11-03)
+
+**Gold has one loading mode, strict** (owner, DECISIONS-v1.3 section 17): the D4 ruling's permissive mode is gone
+(`7d1066d`); `Machine` runs a `Code` (Bytecode implements it). Segment files, guests and workloads unchanged.
+
+**ACT4 can't be made provable by relinking**: all 133 ELFs carry data inside their code, emitted by the test body
+itself: every self-check is `RVTEST_SIGUPD` (riscv-arch-test `tests/env/signature.h:21-31`), a `jal` to the failure
+handler followed by two `RVTEST_WORD_PTR` words (the tested instruction's address and its description string) that
+the handler reads through the link register. With the ACT4 sources unmodified, no linker script can separate them, so
+step (1) of the owner's plan yields no strictly loadable ELF and step (2) applies: **`test/act4/Act4Runner.java`**,
+test equipment (not part of gold): it loads every PT_LOAD segment, decodes at run time from memory like jolt-emu, and
+executes through gold's Decoder, Expander and Machine (`RuntimeCode`: each instruction reached is expanded and appended;
+an unprovable instruction or a standard UNIMP becomes a row that throws if executed). `--trace-failure` prints the first
+failed check (its tested instruction, its description string, expected value and registers).
+
+| ACT4 (133 ELFs, `wip/planning/sessions/WORKER18-data/act4/act4-runner.tsv`) | count |
+|---|---|
+| jolt-emu (upstream CI) pass | 125 |
+| ... of those, gold's runner PASS | 123 |
+| ... gold's runner FAIL: `Zalrsc-sc.d-00` check 241 (LR.W then SC.D), a real failure jolt-emu masks (UPSTREAM-DIFFS U1, U2) | 1 |
+| ... gold's runner aborts: `Zca-c.slli-00`, C.SLLI x0 (a HINT jolt-cpp treats as invalid, D12) | 1 |
+| skip.txt (8 CSR tests, reported apart): jolt-emu exits 101; gold's runner throws at the first unprovable CSR instruction (CSRRC on mscratch 0x340, the immediate forms, `cycle`/`hpmcounter3` 0xC00/0xC03 reads) | 8 |
+| jolt-cpp (its JIT, `transcode.cpp:2546`) and upstream's static decoder (`build_jolt_program`: "unknown RV64 opcode") | reject all 133 at load |
+
+Strict gold also rejects all 133 at load, and names the same first unprovable word as jolt-cpp's JIT (0x8000022e in
+`I-add-00`, the first RVTEST_SIGUPD descriptor). The smoke ELF (`smoke/fail.S`) gives identical rows in all three.
+
+**Inline tests (task 096b)**: 096 ran no tests (the crates' tests need `--features host`, as upstream CI passes per
+crate, `.github/workflows/rust.yml:955-960`); 096b: 57 tests passed, 2 ignored, 5,677 `execute_inline` calls captured.
+**All 5,677 agree with gold** (`test/inline-vectors.jsonl.gz`, `InlineVectorTest`, run by `build.sh`): SHA256 103,
+SHA256_INIT 103, KECCAK256 2,003, KECCAK256_ABSORB_PERMUTE 2,102, BLAKE2 13, BLAKE3 1,003, BLAKE3_KEYED64 206,
+BIGINT256_MUL 120, secp256k1 MULQ/SQUAREQ/DIVQ/MULR/SQUARER/DIVR 4 each (advice from gold's SecpCompute). Not covered
+by upstream's harness calls: GLVR (no test calls it through `execute_inline`), and no expected-panic call was captured
+(upstream's panicking tests fail before the inline runs).
+
+## Rulings round (2026-11-03) and the 88dca85 re-check (2026-11-05)
+
+- **Gold** follows the owner's rulings (UPSTREAM-DIFFS D1, D3, D4 follow-up, D5, D12; DECISIONS-v1.3 sections 17, 25):
+  image and code by sections (`c65bb37`); no host I/O detection, ECALL always traps (`65289d9`); 0xC0001073 rejected
+  at load, c.unimp the only marker; only a JAL with immediate 0 ends the run, a jump to 0 or into no instruction is
+  "jump target not in the bytecode map"; C.SLLI x0 is `SLLI x0, x0, n`. Segment files byte-identical after each.
+- **jolt-cpp fixes**, jolt-asic-planning branches from `tracer-standalone-main` `fa59d9a` (jolt-cpp 88dca85), each
+  tested on its reproducer and on EVM Zone and Cyclone (small inputs; D1 also both at 2^29 and seven examples):
+  `worker18-fix-d1-sections` (`7b91e8a`), `worker18-fix-d3-no-legacy-ecall` (`443e09e`), `worker18-fix-d12-c-slli`
+  (`2964c0a`). Bug-report drafts: `wip/planning/upstream/bug-reports/` (jolt-cpp D1, D3, D12; a16z U1, U2, U3).
+- **NEXT.md item 1, check.sh at 88dca85: done.** `row_dump` and WORKER16's `segment_writer` ported to 88dca85 (one
+  line each; jolt-asic-planning `worker18-rows-88dca85` `f039fa1`); references regenerated at the new pin
+  (`wip/planning/sessions/WORKER18-data/88dca85/`): run hashes of evm23, cyc22, evm29, cyc29 and the four segment files' SHA-256 all equal
+  821e1bd's. Gold against them: **all four segment files byte-identical**; EVM Zone trace-23 and Cyclone input/22
+  identical on every record; both workloads at 2^29 identical on every window (5,415 and 5,670) and the run hash.
+
+## v1.3 round (2026-11-05): WORKER17's findings, the host's rules, the v1.3 file
+
+### WORKER17's findings and the host's v1.3 rules (gold `ca952d6`)
+- **LR.D x0 / LR.W x0 loading a nonzero word**: rejected (the LD row's word; for LR.W the VirtualPextSigned row's
+  value written to x0; owner 2026-11-05). But see UPSTREAM-DIFFS **D14**: a16z remaps LR/SC's rd = x0 to a temporary,
+  so under a16z these are provable and jolt-cpp's rows differ for every LR x0. Awaiting a ruling.
+- **The provable range** (`ProofParams`): K by a16z's prover rule (`crates/jolt-prover/src/config.rs:53-99`:
+  next_pow2(max(remap(highest address touched), remap(min image address) + image words + 1)), the image's extent as
+  `RAMPreprocessing` (`preprocess/ram.rs:39-60`)); every access checked as the Tracer's comparator,
+  `(address − lowest_address) < 8·K` unsigned on 64 bits, and K ≤ `compute_max_ram_k` (`ram.rs:118-130`, the verifier's
+  bound). K equals jolt-cpp's `ram_K` on both workloads (2²³ EVM Zone, 2²⁴ Cyclone). (a16z's rule takes next_pow2 of the
+  highest touched index itself, so a touched index exactly a power of two would sit at K, outside the range; the check
+  would flag it; not seen.)
+- **The end, jumps to 0, misalignment**: unchanged rules, now with guests `end_jal_ra_0`, `end_c_j_0`,
+  `misaligned_inline`; the misalignment error names a16z's floor rule.
+- **Stores into code**: rejected; `run` checks every store against the merged Text ranges, `segments` scans each
+  segment's write list (its dirty cells) once.
+- Guests: `range_below_lowest`, `range_above_top`, `lr_d_x0_nonzero`, `lr_w_x0_nonzero`, `lr_d_x0_zero`,
+  `end_jal_ra_0`, `end_c_j_0`, `misaligned_inline`, `store_into_code`. Bug report:
+  `bug-reports/jolt-cpp-prover-out-of-range-access.md`.
+
+### The v1.3 segment file (gold `d0f93d6`; the default; `--format=v1.2` keeps the old one)
+Every multi-byte value little-endian; frames as section 16 (u32 length in words with the header, u32 type, data
+zero-padded). **Order: frame 7, frame 1, frame 6, then per segment frames 2, 3, and 4 or 5.**
+- **Frame 7** (owner's layout, 7ab240d): u32 version 1, u32 n (22), then n u64: log₂ K, `lowest_address`, then a16z's
+  `MemoryLayout` in declaration order (`common/src/jolt_device.rs:302-325`: program_size, max_trusted_advice_size,
+  trusted_advice_start, trusted_advice_end, max_untrusted_advice_size, untrusted_advice_start, untrusted_advice_end,
+  max_input_size, max_output_size, input_start, input_end, output_start, output_end, stack_size, stack_end (a16z's:
+  the program's end, the stack's low end), heap_size, heap_end, panic, termination, io_end). Sizes are the 8-aligned
+  ones a16z stores (max_input_size 108 → 112). Fields are only ever added at the end.
+- **Frame 1**: per segment a u32, its distinct **4 KB** pages written (dirty cell >> 9). The per-ASIC table waits for F1.
+- **Frame 6**: u32 k, u32 p1, u32 p3, then the 2^k lines (128 B: 16 × (key u32, base u32), free = all ones), from
+  `gold.JumpTable`: the static targets (`StaticTargets`) with their bytecode bases, then the run's targets (every taken
+  branch, JAL other than the end, JALR, a transfer to its own pc excluded; gold's next `instr_idx`), keys o = pc −
+  `lowest_address`, sorted unsigned, placed by `HashTable.choose` (k the smallest at most half full; p1 0x9E3779B1 if
+  every key lands in its home line, else the best of 31 alternatives; p3 the first prime at or above 0x9E3779).
+- **Frame 2**: v1.26.1's 68-word record, 128-bit words (spec 4.21.2): word 0 pc [63:0], `instr_idx` [95:64], next
+  offset [111:96]; word 1 only the advice field [124:102] = the segment's advice values (frame 3's count); words 2-65
+  registers 2i, 2i + 1; word 66 log₂ K at [71:66] and **the I/O region's size, 0x8000_0000 − `lowest_address`, exact in
+  bytes at [102:72]** ([127:103] spare; owner, spec 4.21.2, 66f399e, replacing `lowest_address` / 4 KB at [123:72]),
+  roots and depths 0 for C&C 3; word 67 0. **A layout whose I/O region is 2 GiB or more is rejected** before anything
+  is written. A segment past the end: pc, `instr_idx`, offset 0, the final registers (as v1.2).
+- **Frames 3, 4, 5**: unchanged from v1.2, with every encoder choice above ("Stage 2").
+- Stores into code are rejected before anything is written, and so is a run the range check rejects.
+
+**Validated** (`test/v13/read_v13.py`): on EVM Zone trace-23 and Cyclone input/22 (128 segments of 2²⁰ rows), frame 6
+is byte-identical to jumpmap's `frame6.bin` (jumpmap's own acceptance: 373,731 and 116,957 jumps, 0 map errors), frame
+7's log₂ K and `lowest_address` equal jumpmap's `proof.json` and its MemoryLayout a16z's (upstream_rows' dump), frame 1
+equals jumpmap's per-segment `pages_written`, frames 2-5 equal the v1.2 file's; at 2²⁹ both workloads' frames 2-5 equal
+the v1.2 references and frame 7 a16z's layout. **For WORKER16's byte identity**, the v1.3 files at 2²⁹ (128 segments
+of 2²² rows), **republished 2026-11-05 with word 66's new field and D13's ruling** (gold `d4d22fa` and the word 66 commit):
+`wip/planning/sessions/WORKER18-data/v13/segment-files-v1.3.sha256`: EVM Zone 2,801,736 B `3cd32881…2a824d72`, Cyclone 11,388,488 B
+`e932baaf…0640eb38`. (The earlier `e9145e04…`/`fb1f4b6f…` are superseded; D13 doesn't change them, word 66 does.)
+
+**HashTable and StaticTargets** moved from `wip/jumpmap` into gold (`11eac42`); jumpmap uses gold's, and its fixtures
+are unchanged (its `fixtures.sh` asks gold for `--format=v1.2`, which its `SegmentFile` reads).
+
+### v1.3 accepted (owner, 2026-11-05)
+- **gold's v1.3 files are byte-identical to WORKER16's at 2²⁹** (EVM Zone `3cd32881…`, Cyclone `e932baaf…`), so the v1.3
+  formats are accepted. WORKER16's segment tools are merged into jolt-asic-planning `tracer-standalone-main` (`ccfb772`)
+  and its session is closed: its reports and data are now `wip/planning/sessions/WORKER16-*` (references here repointed;
+  `check.sh` reads the hard-cut lists from `wip/planning/sessions/WORKER16-data/w3/`). My one-line port of its
+  `segment_writer` on `worker18-rows-88dca85` is superseded by the merged tools.
+- **jumpmap's K** now comes from gold's `ProofParams` (a16z's prover rule), replacing its own jolt-cpp-style formula
+  (image words from `program_end`, +1 on the highest access), which WORKER16 found differing from a16z's on tiny
+  fixtures (`WORKER16-V13-REPORT.md`, finding 1). Fixtures regenerated: `log2_k` 3 → 4 on `assert_eq_pass`, `ebreak`,
+  `fence`, `rd0_add`, `stack_canary_store` (the five WORKER16 compared) and on `d12_c_slli_x0`, `d1_rodata_in_text` (which
+  jolt-cpp can't load, so WORKER16 had no value); every fixture with an a16z value in `jumpmap-fixtures.json` now equals
+  it; `jumps`, `keccak256`, `unimp_unreached`, `d1_decodable_gap` unchanged; frame 6 and the other outputs unchanged.

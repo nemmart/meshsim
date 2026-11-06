@@ -1,0 +1,121 @@
+[
+ {
+  "fixture": "assert_eq_pass",
+  "jolt_cpp_loads": true,
+  "check_ok": true,
+  "frame6_identical": true,
+  "log2_k_a16z": 4,
+  "log2_k_jumpmap": 3,
+  "K_jolt_cpp": 16,
+  "image_words_a16z": 4,
+  "image_words_jumpmap": 2,
+  "min_init": "0x80000000",
+  "max_init": "0x8000000f"
+ },
+ {
+  "fixture": "d12_c_slli_x0",
+  "jolt_cpp_loads": false,
+  "jumpmap_log2_k": 3
+ },
+ {
+  "fixture": "d1_decodable_gap",
+  "jolt_cpp_loads": true,
+  "check_ok": true,
+  "frame6_identical": false,
+  "log2_k_a16z": 4,
+  "log2_k_jumpmap": 4,
+  "K_jolt_cpp": 16,
+  "image_words_a16z": 7,
+  "image_words_jumpmap": 5,
+  "min_init": "0x80000000",
+  "max_init": "0x80000027"
+ },
+ {
+  "fixture": "d1_rodata_in_text",
+  "jolt_cpp_loads": false,
+  "jumpmap_log2_k": 3
+ },
+ {
+  "fixture": "ebreak",
+  "jolt_cpp_loads": true,
+  "check_ok": true,
+  "frame6_identical": true,
+  "log2_k_a16z": 4,
+  "log2_k_jumpmap": 3,
+  "K_jolt_cpp": 16,
+  "image_words_a16z": 4,
+  "image_words_jumpmap": 2,
+  "min_init": "0x80000000",
+  "max_init": "0x8000000f"
+ },
+ {
+  "fixture": "fence",
+  "jolt_cpp_loads": true,
+  "check_ok": true,
+  "frame6_identical": true,
+  "log2_k_a16z": 4,
+  "log2_k_jumpmap": 3,
+  "K_jolt_cpp": 16,
+  "image_words_a16z": 4,
+  "image_words_jumpmap": 3,
+  "min_init": "0x80000000",
+  "max_init": "0x80000013"
+ },
+ {
+  "fixture": "keccak256",
+  "jolt_cpp_loads": true,
+  "check_ok": true,
+  "frame6_identical": true,
+  "log2_k_a16z": 17,
+  "log2_k_jumpmap": 17,
+  "K_jolt_cpp": 131072,
+  "image_words_a16z": 4,
+  "image_words_jumpmap": 3,
+  "min_init": "0x80000000",
+  "max_init": "0x80000013"
+ },
+ {
+  "fixture": "rd0_add",
+  "jolt_cpp_loads": true,
+  "check_ok": true,
+  "frame6_identical": true,
+  "log2_k_a16z": 4,
+  "log2_k_jumpmap": 3,
+  "K_jolt_cpp": 16,
+  "image_words_a16z": 4,
+  "image_words_jumpmap": 2,
+  "min_init": "0x80000000",
+  "max_init": "0x8000000f"
+ },
+ {
+  "fixture": "stack_canary_store",
+  "jolt_cpp_loads": true,
+  "check_ok": true,
+  "frame6_identical": true,
+  "log2_k_a16z": 4,
+  "log2_k_jumpmap": 3,
+  "K_jolt_cpp": 16,
+  "image_words_a16z": 5,
+  "image_words_jumpmap": 3,
+  "min_init": "0x80000000",
+  "max_init": "0x80000017"
+ },
+ {
+  "fixture": "unimp_unreached",
+  "jolt_cpp_loads": true,
+  "check_ok": true,
+  "frame6_identical": true,
+  "log2_k_a16z": 3,
+  "log2_k_jumpmap": 3,
+  "K_jolt_cpp": 8,
+  "image_words_a16z": 3,
+  "image_words_jumpmap": 2,
+  "min_init": "0x80000000",
+  "max_init": "0x8000000b"
+ },
+ {
+  "fixture": "jumps",
+  "jolt_cpp_loads": false,
+  "jumpmap_log2_k": 5
+ }
+]

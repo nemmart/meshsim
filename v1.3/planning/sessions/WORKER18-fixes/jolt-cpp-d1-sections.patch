@@ -1,0 +1,271 @@
+From 7b91e8a6f2e52ec5076a6e7ee07455f7981e9fab Mon Sep 17 00:00:00 2001
+From: WORKER18 <worker18@meshsim.local>
+Date: Thu, 5 Nov 2026 08:51:50 +0000
+Subject: [PATCH] D1 (meshsim UPSTREAM-DIFFS, owner's ruling): the program
+ image, initial memory, program_end and code from sections, as a16z's
+ jolt_program (crates/jolt-program/src/image/elf.rs:40-110), not from
+ segments. The JIT, the bytecode and the host I/O scan decode a code image in
+ which bytes outside the Text sections are zero (no bytecode entry, as in
+ a16z); guest RAM keeps their contents. Reproducers (meshsim
+ wip/gold/test/guests): d1_rodata_in_text now loads (rows = a16z's);
+ d1_decodable_gap: .text.b at bytecode index 3 of 7 as a16z (was 7 of 11). EVM
+ Zone and Cyclone (small inputs and 2^29) and seven example guests: run
+ hashes, layout and bytecode size unchanged
+
+---
+ tracer/src/tracer/compressed_trace_gen.cpp | 20 ++++-
+ tracer/src/tracer/compressed_trace_gen.hpp |  2 +
+ tracer/src/tracer/loader.cpp               | 89 +++++++++++++++++++++-
+ tracer/src/tracer/loader.hpp               |  4 +
+ tracer/src/tracer/transcode.cpp            |  3 +-
+ tracer/src/tracer/transcode.hpp            |  3 +
+ 6 files changed, 113 insertions(+), 8 deletions(-)
+
+diff --git a/tracer/src/tracer/compressed_trace_gen.cpp b/tracer/src/tracer/compressed_trace_gen.cpp
+index dc8cb39..ecbda74 100644
+--- a/tracer/src/tracer/compressed_trace_gen.cpp
++++ b/tracer/src/tracer/compressed_trace_gen.cpp
+@@ -73,7 +73,17 @@ std::optional<CompressedTraceGen> CompressedTraceGen::create_from_elf(
+     gen.layout_hosts[i] = loader::ProgramMemoryLayoutHost::create(layout, *gen.vms[i]);
+   }
+ 
+-  const auto host_io_scan = scan_host_io_encoding(gen.layout_hosts[0].code);
++  // The code as a16z decodes it: only the Text sections; other bytes in [code_start, code_end) are zero (c.unimp),
++  // which gives them no bytecode entry, while guest RAM keeps their real contents for loads.
++  {
++    const auto code = gen.layout_hosts[0].code;
++    gen.code_image.assign(code.size(), 0);
++    for (const auto &[start, end] : gen.program_image.text_ranges) {
++      std::copy(code.begin() + (start - layout.code_start), code.begin() + (end - layout.code_start),
++                gen.code_image.begin() + (start - layout.code_start));
++    }
++  }
++  const auto host_io_scan = scan_host_io_encoding(gen.code_image);
+   gen.resolved_host_io_encoding = resolve_host_io_encoding(host_io_scan, meta.host_io_encoding);
+   if (gen.resolved_host_io_encoding == HostIoEncoding::LegacyRawEcall) {
+     log::info(
+@@ -120,7 +130,8 @@ std::optional<CompressedTraceGen> CompressedTraceGen::create_from_elf(
+     TranscodeParams{
+       .checkpoint_every_n_cycles = 0,
+       .count_cycles = true,
+-      .host_io_encoding = gen.resolved_host_io_encoding
++      .host_io_encoding = gen.resolved_host_io_encoding,
++      .code_image = gen.code_image
+     });
+   err |= gen.cc_fast.mark_re();
+   if (err) {
+@@ -136,7 +147,8 @@ std::optional<CompressedTraceGen> CompressedTraceGen::create_from_elf(
+     TranscodeParams{
+       .checkpoint_every_n_cycles = std::max<u64>(1, meta.max_trace_length / trace_threads), // TODO: don't set it here
+       .count_cycles = true,
+-      .host_io_encoding = gen.resolved_host_io_encoding
++      .host_io_encoding = gen.resolved_host_io_encoding,
++      .code_image = gen.code_image
+     });
+   err |= gen.cc_min_trace.mark_re();
+   if (err) {
+@@ -148,7 +160,7 @@ std::optional<CompressedTraceGen> CompressedTraceGen::create_from_elf(
+ 
+   // generate virtual bytecode
+   gen.bytecode = isa::virt::VirtualBytecode::from_riscv_code(
+-    layout.code_start, gen.layout_hosts[0].code, gen.resolved_host_io_encoding);
++    layout.code_start, gen.code_image, gen.resolved_host_io_encoding);
+ 
+   // allocate heap memory for the compressed trace
+   gen.trace_owner = CompressedTraceOwner::create(meta.max_trace_length, meta.compressed_chunk_size);
+diff --git a/tracer/src/tracer/compressed_trace_gen.hpp b/tracer/src/tracer/compressed_trace_gen.hpp
+index 1b83b03..cbe3552 100644
+--- a/tracer/src/tracer/compressed_trace_gen.hpp
++++ b/tracer/src/tracer/compressed_trace_gen.hpp
+@@ -118,6 +118,8 @@ struct CompressedTraceGen {
+ 
+   // expanded riscv bytecode, mix of the riscv and virtual instructions
+   isa::virt::VirtualBytecode bytecode;
++  // [code_start, code_end) as decoded: RAM's bytes inside the Text sections, zero outside (see ProgramImage::text_ranges)
++  std::vector<u8> code_image;
+   HostIoEncoding resolved_host_io_encoding = HostIoEncoding::Standard;
+ 
+   CompressedTraceOwner trace_owner;
+diff --git a/tracer/src/tracer/loader.cpp b/tracer/src/tracer/loader.cpp
+index 27257b9..9672fd0 100644
+--- a/tracer/src/tracer/loader.cpp
++++ b/tracer/src/tracer/loader.cpp
+@@ -33,7 +33,7 @@ struct ProgramImageExtent {
+   u64 size;
+ };
+ 
+-bool _load_segment(RiscV &risc_vm, const GElf_Phdr &pheader, int elf_fd) {
++[[maybe_unused]] bool _load_segment(RiscV &risc_vm, const GElf_Phdr &pheader, int elf_fd) {
+   if (!risc_vm.is_correct_ram_slice(pheader.p_vaddr, pheader.p_memsz)) {
+     log::error("invalid pheader size {:#x}", pheader.p_vaddr);
+     return true;
+@@ -85,8 +85,28 @@ struct LoadedElf {
+   RiscAddr code_start, code_end;
+   RiscAddr entry_point;
+   std::vector<ProgramImageExtent> initialized;
++  std::vector<std::pair<RiscAddr, RiscAddr>> text_ranges;
+ };
+ 
++// A section's file bytes into guest RAM.
++bool _load_section(RiscV &risc_vm, const GElf_Shdr &sh, int elf_fd) {
++  if (!risc_vm.is_correct_ram_slice(sh.sh_addr, sh.sh_size)) {
++    log::error("section outside RAM {:#x}", sh.sh_addr);
++    return true;
++  }
++  u8 *dst = (u8 *)risc_vm.risc_addr_to_host(sh.sh_addr);
++  u64 done = 0;
++  while (done < sh.sh_size) {
++    ssize_t n = pread(elf_fd, dst + done, sh.sh_size - done, sh.sh_offset + done);
++    if (n <= 0) {
++      log::error("failed to read section {:#x}", sh.sh_addr);
++      return true;
++    }
++    done += (u64)n;
++  }
++  return false;
++}
++
+ std::optional<LoadedElf> _load_elf(RiscV &risc_vm, const char *elf_fname) {
+   if (elf_version(EV_CURRENT) == EV_NONE) {
+     log::error("ELF library initialization failed");
+@@ -127,6 +147,63 @@ std::optional<LoadedElf> _load_elf(RiscV &risc_vm, const char *elf_fname) {
+     return std::nullopt;
+   }
+ 
++  // The image by sections, as a16z's jolt_program builds it (crates/jolt-program/src/image/elf.rs:40-110), since a16z's
++  // preprocessing is what proofs are verified against: every section at or above RAM's start is copied into RAM
++  // (SHT_NOBITS has no file bytes) and extends program_end; the code is the Text sections, merged. Program headers
++  // aren't used.
++  constexpr RiscAddr ram_start = 0x80000000;
++  RiscAddr program_end = ram_start;
++  std::vector<ProgramImageExtent> initialized;
++  std::vector<std::pair<RiscAddr, RiscAddr>> text;
++  for (Elf_Scn *scn = elf_nextscn(elf, nullptr); scn != nullptr; scn = elf_nextscn(elf, scn)) {
++    GElf_Shdr sh;
++    if (!gelf_getshdr(scn, &sh)) {
++      log::error("gelf_getshdr failed {}", elf_errmsg(-1));
++      return std::nullopt;
++    }
++    if (sh.sh_addr < ram_start) {
++      continue;
++    }
++    if (sh.sh_addr + sh.sh_size < sh.sh_addr) {
++      log::error("section extent overflows address space {:#x}", sh.sh_addr);
++      return std::nullopt;
++    }
++    program_end = std::max<RiscAddr>(program_end, sh.sh_addr + sh.sh_size);
++    if (sh.sh_type != SHT_NOBITS && sh.sh_size != 0) {
++      if (_load_section(risc_vm, sh, fd)) {
++        return std::nullopt;
++      }
++      initialized.push_back({(RiscAddr)sh.sh_addr, sh.sh_size});
++    }
++    if (sh.sh_type == SHT_PROGBITS && (sh.sh_flags & SHF_EXECINSTR)) {
++      text.push_back({(RiscAddr)sh.sh_addr, (RiscAddr)(sh.sh_addr + sh.sh_size)});
++    }
++  }
++  std::ranges::sort(text);
++  std::vector<std::pair<RiscAddr, RiscAddr>> text_ranges;   // merge_ranges (elf.rs:96-109)
++  for (const auto &r : text) {
++    if (!text_ranges.empty() && r.first <= text_ranges.back().second) {
++      text_ranges.back().second = std::max(text_ranges.back().second, r.second);
++    } else {
++      text_ranges.push_back(r);
++    }
++  }
++  if (text_ranges.empty()) {
++    log::error("no text section");
++    return std::nullopt;
++  }
++  return LoadedElf{
++    .program_start = ram_start,
++    .program_end = program_end,
++    .code_start = text_ranges.front().first,
++    .code_end = text_ranges.back().second,
++    .entry_point = entry,
++    .initialized = std::move(initialized),
++    .text_ranges = std::move(text_ranges)
++  };
++}
++
++[[maybe_unused]] std::optional<LoadedElf> _load_elf_by_segments(RiscV &risc_vm, int fd, Elf *elf, RiscAddr entry) {
+   size_t phnum = 0;
+   if (elf_getphdrnum(elf, &phnum) != 0) {
+     log::error("elf_getphdrnum failed {}", elf_errmsg(-1));
+@@ -298,7 +375,8 @@ ProgramImage::~ProgramImage() {
+ }
+ 
+ ProgramImage::ProgramImage(ProgramImage&& other)
+-    : fd(std::exchange(other.fd, -1)), layout(other.layout), ranges(std::move(other.ranges)) {}
++    : fd(std::exchange(other.fd, -1)), layout(other.layout), ranges(std::move(other.ranges)),
++      text_ranges(std::move(other.text_ranges)) {}
+ 
+ ProgramImage& ProgramImage::operator=(ProgramImage&& other) {
+   if (this != &other) {
+@@ -306,6 +384,7 @@ ProgramImage& ProgramImage::operator=(ProgramImage&& other) {
+     fd = std::exchange(other.fd, -1);
+     layout = other.layout;
+     ranges = std::move(other.ranges);
++    text_ranges = std::move(other.text_ranges);
+   }
+   return *this;
+ }
+@@ -428,7 +507,11 @@ std::optional<ProgramImage> loader::load_program(
+       .code_end = loaded_elf->code_end,
+       .entry_point = loaded_elf->entry_point
+   };
+-  return capture_program_image(risc_vm, layout, loaded_elf->initialized);
++  auto image = capture_program_image(risc_vm, layout, loaded_elf->initialized);
++  if (image) {
++    image->text_ranges = loaded_elf->text_ranges;
++  }
++  return image;
+ }
+ 
+ std::optional<ProgramMemoryLayout> loader::load_c_program(RiscV &risc_vm, const char *elf_fname) {
+diff --git a/tracer/src/tracer/loader.hpp b/tracer/src/tracer/loader.hpp
+index 1f7da93..3f77eee 100644
+--- a/tracer/src/tracer/loader.hpp
++++ b/tracer/src/tracer/loader.hpp
+@@ -93,6 +93,10 @@ struct ProgramImage {
+   ProgramMemoryLayout layout{};
+   // Disjoint, in address order, within the program range.
+   std::vector<ProgramImageRange> ranges;
++  // The code: the ELF's Text sections (SHT_PROGBITS with SHF_EXECINSTR), merged, in address order, as a16z's
++  // jolt_program decodes them (crates/jolt-program/src/image/elf.rs). Bytes of [code_start, code_end) outside them
++  // aren't code.
++  std::vector<std::pair<RiscAddr, RiscAddr>> text_ranges;
+ 
+   // Empty until assigned a loaded image; owns no descriptor.
+   ProgramImage() = default;
+diff --git a/tracer/src/tracer/transcode.cpp b/tracer/src/tracer/transcode.cpp
+index ee37345..13b6b6b 100644
+--- a/tracer/src/tracer/transcode.cpp
++++ b/tracer/src/tracer/transcode.cpp
+@@ -2536,7 +2536,8 @@ bool tracer::transcode_into_code_cache(
+   u64 num_cycles_since_last_checkpoint = 0;
+ 
+   while (cur_risc_addr < code_end) {
+-    auto cur_host_addr = (u8*)vm.risc_addr_to_host(cur_risc_addr);
++    auto cur_host_addr = params.code_image.empty() ? (u8*)vm.risc_addr_to_host(cur_risc_addr)
++                                                   : (u8*)params.code_image.data() + (cur_risc_addr - code_start);
+     size_t remaining_code_size = code_end - cur_risc_addr;
+ 
+     // decode instruction
+diff --git a/tracer/src/tracer/transcode.hpp b/tracer/src/tracer/transcode.hpp
+index d1ce958..207a0b8 100644
+--- a/tracer/src/tracer/transcode.hpp
++++ b/tracer/src/tracer/transcode.hpp
+@@ -12,6 +12,9 @@ struct TranscodeParams {
+   u64 checkpoint_every_n_cycles = 0; // when zero we don't instrument code in any way
+   bool count_cycles = false; // when true we count number of virtual instructions
+   HostIoEncoding host_io_encoding = HostIoEncoding::Standard;
++  // The code to compile, [code_start, code_end), with bytes outside the Text sections zeroed (c.unimp: they get no
++  // bytecode entry, as in a16z's jolt_program); empty: read guest RAM.
++  std::span<const u8> code_image = {};
+ };
+ 
+ // Turns all riscv instructions from the given memory segment into x86 instructions
+-- 
+2.43.0
+

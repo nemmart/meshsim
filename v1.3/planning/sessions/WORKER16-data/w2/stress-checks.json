@@ -1,0 +1,40 @@
+{
+ "evm-zone-29-stress": {
+  "slices": "128 slices of 2^22 plus a boundary every 97 rows over rows 2,000,000-2,600,000 (the secp region)",
+  "check": {
+   "reference_rows": 354861942,
+   "streams_equal": 6314,
+   "streams_differ": 0,
+   "first_differing_stream": -1,
+   "heads_differ": 0,
+   "slices_with_head_in_reference": 68,
+   "advice_rows_with_rd_x0": 0,
+   "ok": true
+  },
+  "registers_40_47_pairs": {
+   "pairs_covered_by_tail": 6448,
+   "pairs_not_covered": 6436,
+   "pairs_never_written": 37620
+  },
+  "summary": "evm-zone-4e3451c1d8c5: 354861942 rows, 6314 slices, 3782 words (JIT 108, interpreter 3674), rows JIT 353927429 interpreter 934513, 68 slices with a head (max 8), 0.7 s"
+ },
+ "cyclone-29-2p16": {
+  "slices": "8,192 slices of 2^16 rows (JIT and interpreter interleaved 8,192 times)",
+  "check": {
+   "reference_rows": 371526406,
+   "streams_equal": 8192,
+   "streams_differ": 0,
+   "first_differing_stream": -1,
+   "heads_differ": 0,
+   "slices_with_head_in_reference": 0,
+   "advice_rows_with_rd_x0": 0,
+   "ok": true
+  },
+  "registers_40_47_pairs": {
+   "pairs_covered_by_tail": 31601,
+   "pairs_not_covered": 28879,
+   "pairs_never_written": 5048
+  },
+  "summary": "cyclone: 371526406 rows, 8192 slices, 96687 words (JIT 90898, interpreter 5789), rows JIT 348302842 interpreter 23223564, 0 slices with a head (max 0), 1.2 s"
+ }
+}

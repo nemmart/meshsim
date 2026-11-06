@@ -1,0 +1,19 @@
+--- sort/split/split.c
++++ meshsim/sw/ext/split-bisect/split.c
+@@ -70,7 +70,16 @@
+ /* owner side: ub at the last probe below, lb at the last probe above, the cuts */
+ static uint32_t ubA[64], lessB[64], cq[64];
+ 
++/* The barrier (patch, worker 8, 3 Oct 2026, lead's agreement): by default worker 4's own (done, WFI; v1.2:
++ * wait_for_command(), which also consumes GO); a caller may supply its own with -DSPLIT_BARRIER=fn, a function of no
++ * arguments that pulses done, WFIs and reads the command word in command slot 0, as mesh.h's wait_for_command() does
++ * (lead, 3 Oct: every wake from a command reads slot 0). */
++#ifdef SPLIT_BARRIER
++void SPLIT_BARRIER(void);
++static void barrier(void) { SPLIT_BARRIER(); }
++#else
+ static void barrier(void) { (void)wait_for_command(); }
++#endif
+ 
+ /* The spec 4.3 search loop over the m searches in s_* (s_lo = plo, s_len = the
+  * bracket's width w: the answer is in [plo, plo + w]).  Lower bounds (upper = 0:

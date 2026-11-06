@@ -1,0 +1,5 @@
+evm-zone-29  window    53  state      OK     65536 rows  pass   227982 cycles  3.479 cycles/row  newexp 226 (served 226, slow path 1), refills 288, stalls [64, 118, 13004, 960, 127, 61, 0]  [meas: StageB]
+evm-zone-29  window    54  state      OK     65536 rows  pass   228837 cycles  3.492 cycles/row  newexp 222 (served 222, slow path 1), refills 283, stalls [64, 118, 14480, 589, 0, 0, 0]  [meas: StageB]
+StageB evm-zone-29 state: 2 windows, 0 failed
+cyclone-25   window    78  state      OK     65536 rows  pass   202506 cycles  3.090 cycles/row  newexp 52 (served 52, slow path 1), refills 440, stalls [64, 118, 4281, 1231, 0, 0, 0]  [meas: StageB]
+StageB cyclone-25 state: 1 windows, 0 failed

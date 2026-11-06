@@ -1,0 +1,920 @@
+diff -ru a/spec/machine-spec.md b/spec/machine-spec.md
+--- a/spec/machine-spec.md	2026-10-23 14:56:08.638950687 +0000
++++ b/spec/machine-spec.md	2026-10-23 14:56:08.924470826 +0000
+@@ -14,7 +14,7 @@
+ 
+ **Changes from v1.0** (section by section: `CHANGES-v1.1.md` at the top of the package, which also lists the figures, recipes and generated files still at v1.0):
+ - **Link word** (3.1): 169 bits, with a 21-bit addr, with a 2-bit size (00 = 32, 01 = 64, 10 = 128 bits, so an element is 1 << size chunks; 11 is undefined) and a 128-bit payload. One element of any width is one packet. Bad packets (mode 0 or 9–15, mode 4 at 128 bits) set the bad-mode-or-size condition.
+-- **Mode 8,** the replayer write (3.1, 4.8): routed to the replayer and never counted.
++- **Mode 8,** the replayer write (3.1, 4.8): routed to the replayer; counted in `DMA_REPLAYER_REMAINING` when it comes from the tile itself (4.12, 4.17.10).
+ - **Address generator** (4.2): one packet per element at every size, stamped with the read size. A 128-bit visit takes one cycle, so a group's period is *t*, and the schedule runs 128-bit values at T = 4. Modes 5 and 8 step their destination word by 1, 2 or 4.
+ - **`STREAM`** (4.2, 4.10, 8.9): three 256 × 32-bit arrays, `STREAM_SRC`, `STREAM_DEST` and `STREAM_COUNT`, with a 4-bit mode, a 21-bit source and a 21-bit destination word. `GROUP` moves to 0x3400.
+ - **Return path** (4.5): every return carries its size, and a 128-bit read is one packet.
+@@ -22,7 +22,7 @@
+ - **Controller memories** (4.11): four word-interleaved banks each; port B writes 1, 2 or 4 words a cycle.
+ - **Send port** (4.11, 8.4): `ROUTER_SET_W0`–`W2` and `ROUTER_SEND_32`, `_64` and `_128` replace `ROUTER_SET_HI` and `ROUTER_SEND_LO`. A packet's words are stored in ascending order, and the send store supplies its top word.
+ - **Registers** (section 8): reordered by family, 17 registers at 0x800–0x840. `DMA_PULSE` is renamed `TILE_PULSE`, and `TILE_STATUS` and `TILE_CONDITIONS` are regrouped.
+-- **Replayer hooks** (4.17): mode 8, `TILE_PULSE` [2], `TILE_STATUS` [3] and [4], `TILE_CONDITIONS` [13:11], offsets from 0x844 and a wake source are reserved. The replayer itself is *to be specified with the replayer*. Its direction (4.17, and the design notes) is a small ALU, small queues and a resident trace in big SRAM: about 32.5 KB of replayer memory per tile instead of 768 KB.
++- **The replayer** (4.17): specified in full. A small ALU with fixed 3- and 5-cycle rows regenerates the tile's 2¹⁶ trace rows from an opcode stream and a memory log resident in big SRAM, fed through credit-managed code, expansion and value queues, with an 8 KB template ROM and a 4 KB decode table: about 32.5 KB of replayer memory per tile instead of 768 KB. Its hooks: mode 8, `TILE_PULSE` [2], `TILE_STATUS` [3] and [4], `TILE_CONDITIONS` [13:11], `WAKE_EVENTS` [20:16] and the registers at 0x84C–0x854 (8.11).
+ - **Measurements** that v1.1 may invalidate are kept, labelled *v1.0 measurement; to be re-measured in v1.1*.
+ 
+ ---
+@@ -108,7 +108,7 @@
+ | 5 | **controller-memory write:** 1, 2 or 4 consecutive words (the payload's size) at addr | yes | instruction or data memory (4.11) | `DMA_CM_REMAINING` |
+ | 6 | **mailbox write:** the low 32 bits to slot = addr[7:0] | yes | data memory (4.12); slot 0 sets "command landed" (6.3) | — |
+ | 7 | **reply:** the low 32 bits to data-memory word addr | yes | data memory, outside the mailbox (4.12) | `DMA_REPLY_REMAINING` |
+-| 8 | **replayer write:** to the replayer at addr; to be specified with the replayer (4.17) | yes | the replayer (4.17) | — (never counted) |
++| 8 | **replayer write:** to the replayer memory or queue port at addr (4.17.10): 128-bit words to the memories; 1, 2 or 4 entries to a queue | yes | the replayer (4.17) | `DMA_REPLAYER_REMAINING`, on landing, when src is the tile itself (4.17.10) |
+ | 9–15 | reserved | — | dropped; sets the bad-mode-or-size condition (4.13) | — |
+ 
+ Where the address is unused, senders put 0.
+@@ -560,7 +560,7 @@
+ | 5 | port B of instruction or data memory: 1, 2 or 4 words by size (4.11) |
+ | 6 | port B of data memory: the mailbox (4.12) |
+ | 7 | port B of data memory: the word at addr (4.12) |
+-| 8 | the replayer's write port (4.17); never counted |
++| 8 | the replayer's write port (4.17.10); counted on landing when it comes from the tile itself |
+ 
+ **Consequences:**
+ - **Port B has one writer.** Port B of both controller memories is written only by the director, at most once per cycle (up to 128 bits across its four banks, 4.11), so it needs no arbitration and no ownership setting.
+@@ -569,7 +569,7 @@
+ - **src is used** by the router (routes, the broadcast tree), by modes 2 and 4 (`PTR[src]`) and by C&C (READY bits are per line, not per packet). It is never stored in memory.
+ - **On tile 0,** packets for C&C (dst 64) leave through the "to C&C" output instead of the eject path (4.16).
+ 
+-The controller-memory path carries modes 5–7 to port B with a fixed latency (`cm_latency` = 2 [built]) and needs no queue. Mode 8's path to the replayer, and its latency, are to be specified with the replayer (4.17). **The director decrements the down-counters** (4.12) as it accepts each packet, and keeps `cm_idle`.
++The controller-memory path carries modes 5–7 to port B with a fixed latency (`cm_latency` = 2 [built]) and needs no queue. Mode 8 goes to the replayer's write port, one packet per cycle, and lands `rp_latency` = 2 cycles later with no queue *(Proposed, item 48)*; its address map, sizes and ownership are in 4.17.10. **The director decrements the down-counters** (4.12) as it accepts each packet, and keeps `cm_idle`; `DMA_REPLAYER_REMAINING` alone is decremented when its packet lands (4.17.10).
+ 
+ ### 4.9 DMA write engine
+ 
+@@ -723,25 +723,26 @@
+ - **Mode 5 and the mailbox range:** a mode-5 write into the mailbox range is likewise a programming error (invariant 11).
+ - Commands are signalled by "command landed", and replies are counted by `DMA_REPLY_REMAINING`.
+ 
+-**Three down-counters.** Each is written by software with the number of arrivals it expects. Each arrival of its kind decrements it when the traffic director accepts the packet:
++**Four down-counters.** Each is written by software with the number of arrivals it expects. Each arrival of its kind decrements it when the traffic director accepts the packet, except `DMA_REPLAYER_REMAINING`, which counts its packet when it lands:
+ 
+ | counter | counts down | done when |
+ |---|---|---|
+ | `DMA_SRAM_REMAINING` | modes 2–4 (big-SRAM writes, including gather values) | 0 and `mem_idle` (4.1) |
+ | `DMA_CM_REMAINING` | mode 5 (controller-memory writes) | 0 and `cm_idle` |
+ | `DMA_REPLY_REMAINING` | mode 7 (replies) | 0 and `cm_idle` |
++| `DMA_REPLAYER_REMAINING` | mode 8 from the tile itself, on landing or drop (4.17.10) | 0 |
+ 
+ - **`cm_idle`** (a status bit): the port-B pipeline is empty. It drains within `cm_latency` cycles of the last accepted packet.
+ - **Each packet counts 1,** whatever its size: a 128-bit mode-5 packet writes 4 words and counts 1.
+ - **Width: 20 bits each.** A gather of 64K values at *k* = 2 counts 131,072 packets, and *k* = 8 at the largest X needs 20 bits.
+-- **Modes 1, 6 and 8 are never counted.** Mode 1 goes to the GATHER engine (its gather values count), mode 6 is signalled by "command landed", and mode 8 (the replayer write) is uncounted by decision (4.17). Read-port results are mode-7 packets, so they count in `DMA_REPLY_REMAINING`.
++- **Modes 1 and 6 are never counted, and mode 8 only from the tile itself.** Mode 1 goes to the GATHER engine (its gather values count), mode 6 is signalled by "command landed", and mode 8 (the replayer write) counts in `DMA_REPLAYER_REMAINING` only when the tile sent it, which is how the replayer's controller loop knows a refill has landed (4.17.9, 4.17.10). Read-port results are mode-7 packets, so they count in `DMA_REPLY_REMAINING`.
+ - **Separate counters let different traffic overlap and be tracked on its own,** for example a split's searches and an overlay copy.
+ - **An arrival at a counter already at 0** is unexpected traffic. It leaves the counter at 0 and sets the unexpected-arrival condition (4.13).
+ - **Packets from C&C (src 64) are never counted, in any of the three counters.** Boot loads controller memory by mode 5 from C&C while the counters are 0, and staging arrives while tiles wait for a command; counting either would trip unexpected arrival. C&C's data is known to have landed because its command follows it (in-order delivery).
+ - **A store and an arrival in the same cycle:** the store wins, and the arrival is judged against the **old** count, so it sets unexpected arrival if the old count was 0: `next = store ? N : (arrive ? max(count − 1, 0) : count)`, `unexpected = arrive & (count == 0)`.
+ 
+ **The local wake.** `WFI` has three wake sources: **GO** (the global wake, 6.3), the **local wake** and the **replayer wake** (4.17), which is reserved: *to be specified with the replayer*, and 0 until then.
+-- **The local wake is the rising edge of "every counter is done":** all three at 0, with `mem_idle` and `cm_idle`, **counted only if some counter was non-zero since the latch last fired** (the qualifier). Without the qualifier, an uncounted packet passing through port B (a command, C&C traffic) drops `cm_idle` briefly and makes a spurious edge that wakes `wait_for_command()` without a GO. So the tile wakes when the last outstanding counter it was waiting on reaches 0 and the writes have cleared.
++- **The local wake is the rising edge of "every counter is done":** all four at 0, with `mem_idle` and `cm_idle`, **counted only if some counter was non-zero since the latch last fired** (the qualifier). Without the qualifier, an uncounted packet passing through port B (a command, C&C traffic) drops `cm_idle` briefly and makes a spurious edge that wakes `wait_for_command()` without a GO. So the tile wakes when the last outstanding counter it was waiting on reaches 0 and the writes have cleared.
+ - **The edge is latched,** so an edge before `WFI` is not lost: if a copy finishes before the core reaches `WFI`, the `WFI` falls straight through. `WFI` consumes the latch.
+ - **The latch is cleared** by a store to any counter (so every new wait starts clean), by the `done` pulse and by HALT → RUN. A set and a clear in the same cycle: the clear wins. The qualifier is cleared by the same three events.
+ - **Polling and `WFI`, and the end of a phase.** Within a phase a program may poll one counter to 0 and act on it, then `WFI` for the rest. The latch persists until a `WFI` consumes it or a counter store clears it, so that `WFI` returns at once if everything has already landed, and waits otherwise. **Rule: a phase that sets counters must end with a `WFI` before it pulses `done`.** That `WFI` proves the arrivals are in (invariant 4); `done` with a counter still non-zero is the done-early condition (4.13). No store-to-clear idiom and no wake mask are needed.
+@@ -766,7 +767,7 @@
+ **Live bits** (in `TILE_STATUS`):
+ - `rd_running`, `rd_done` (4.2);
+ - GATHER busy (4.4);
+-- two replayer bits (4.17, *to be specified with the replayer*);
++- `replay_running`, `replay_wait` (4.17.11);
+ - `send_busy` (4.11);
+ - `ts_busy` (4.14);
+ - `mem_idle`, `cm_idle` (4.1, 4.12);
+@@ -787,9 +788,11 @@
+ | 8 | done early | `done` was pulsed while a down-counter was non-zero: the tile declared itself finished with arrivals outstanding (4.12, 6.3) |
+ | 9 | bus error | 4.11 |
+ | 10 | illegal instruction | 4.11 |
+-| 11–13 | replayer conditions | reserved for the replayer (4.17), *to be specified with the replayer*; they read 0 until then |
++| 11 | bad replayer write | a mode-8 packet was dropped: unmapped address, a size its region doesn't take, a single-ported memory written while a pass runs, or a queue port written in HALT (4.17.10) |
++| 12 | queue overrun | a push into a full replayer queue was dropped (4.17.8) |
++| 13 | invalid expansion | the replayer met a reserved decode class, operand code or `format`, an opcode it doesn't execute, or a template running past ROM word 511; the pass stops (4.17.11) |
+ 
+-Bits 14–31 are reserved and read 0. The bits are grouped by unit: the network (0, 1), the arrivals (2), the address generator (3), the write engine (4), the tables (5), the GATHER engine (6), the read port (7), control (8), the controller (9, 10) and the replayer (11–13); v1.0 numbered them in another order (section 8.3). **Kinds:** 5 and 6 are hardware-fault detectors (H); the rest are program errors (P): 0, 1, 2, 3, 4, 7 and 8 always; 9 and 10 also on a fault (a corrupted image). The replayer's kinds are to be specified with it.
++Bits 14–31 are reserved and read 0. The bits are grouped by unit: the network (0, 1), the arrivals (2), the address generator (3), the write engine (4), the tables (5), the GATHER engine (6), the read port (7), control (8), the controller (9, 10) and the replayer (11–13); v1.0 numbered them in another order (section 8.3). **Kinds:** 5 and 6 are hardware-fault detectors (H); the rest are program errors (P): 0, 1, 2, 3, 4, 7 and 8 always; 9 and 10 also on a fault (a corrupted image). The replayer's three are program errors (P), and 13 also on a fault (a corrupted decode table or ROM) *(Proposed, item 55)*.
+ 
+ - **Read-only to the controller.** Nothing in RUN clears a condition, so a program cannot hide one. A store to `TILE_CONDITIONS` is a bus error (condition 9). **Entering HALT clears them all** (the RUN → HALT edge, and chip reset); conditions from loading a halted tile therefore survive into RUN, where the loader can check them.
+ - **Any non-zero condition raises the tile's error line** to C&C (6.6), so C&C learns of it at once.
+@@ -804,7 +807,7 @@
+ - **big SRAM:** `DMA_SRAM_REMAINING` = 0 and `mem_idle`, which means every expected payload was accepted and every write has reached its area;
+ - **controller memory and the mailbox:** `DMA_CM_REMAINING` or `DMA_REPLY_REMAINING` = 0 and `cm_idle`, after which a load reads the word.
+ 
+-The local wake (4.12) fires on exactly this condition. Mode 8 (the replayer write) is not counted; how a program knows its replayer writes have landed is *to be specified with the replayer* (4.17).
++The local wake (4.12) fires on exactly this condition. **Replayer:** `DMA_REPLAYER_REMAINING` = 0, which counts the tile's own mode-8 packets as they land (4.17.10). C&C's mode-8 data (queue refills from LPDDR, boot loads) is known to have landed as C&C's other data is (4.12).
+ 
+ **Counters-ready:** `ts_busy` → 0 (4.10) is one bit for all the table memories. It is the OR of: an engine put a table request within the last `ts_engine_latency` + 1 cycles; `PTR` or `HIST` has a request arriving or queued, or took its last read-modify-write too recently for the result to be readable.
+ 
+@@ -833,29 +836,455 @@
+ - **Cost:** ten extra FIFOs of 16 × 169 bits (~27 Kbit of flops) plus the wider selectors, ≈ 0.03–0.05 mm² [estimate; v1.0's 102-bit FIFOs were ≈ 0.02–0.03], tile 0 only (section 11). Their overflows are reported like the other router FIFOs.
+ - **Pacing is policy.** Every packet C&C sends during an all-to-all adds load to tile 0's links that the schedule's queue bounds don't count (one broadcast per 64 cycles raised tile 0's link queues to 12 of 16 [meas: meshsim]). So C&C sends commands and bulk data between passes, or paces them.
+ 
+-### 4.17 The replayer (reserved hooks)
++### 4.17 The replayer
+ 
+-The **replayer** is a tile unit that regenerates the tile's share of a proof's execution trace from the run log the tracer engine writes, for the units that consume it. Its design is being revised and is **to be specified with the replayer**. v1.1 fixes only its **hooks** into the rest of the tile, so that the link word, the packet modes, the registers and the wake can be settled now.
++*No figures yet; the figure set gains a replayer part (handoff in `CHANGES-v1.1.md`).*
+ 
+-| hook | where | reserved for |
++The **replayer** is a tile unit that regenerates the tile's share of a proof's execution trace, 2¹⁶ rows of Jolt's expanded trace, from the run log the tracer engine writes, and streams the rows to the unit that consumes them (the materializer, outside this specification). It recomputes every row it can with a small ALU and takes from the log only the words it cannot compute. This section specifies it in full; it follows the owner's design notes *Replayer and mesh v1.1* (updated 2026-10-23) and their shared-resource allocation table.
++
++#### 4.17.1 Overview
++
++**What a pass is.** A replay start (`TILE_PULSE` [2], 4.17.11) loads the tile's checkpoint and runs exactly **65,536 rows**, then stops; that is one **pass**. The replayer runs many passes per proof, once for every sumcheck stage that needs the trace (46 per Akita proof in the repo's kernel scratchpad plan [estimate]), and every pass starts from the same checkpoint, because replay never writes it.
++
++**The parts.**
++
++| part | size | role | section |
++|---|---|---|---|
++| code queue | 4 KB, 1,024 × 32 bits | the opcode stream: one word per native instruction | 4.17.8 |
++| expansion queue | 4 KB, 256 × 128 bits | expansion words the controller supplies (inlines, system instructions) | 4.17.8 |
++| value queue | 8 KB, 1,024 × 64 bits | the memory log | 4.17.8 |
++| decode table | 4 KB, 2K × 16 bits | instruction → template | 4.17.5 |
++| ROM | 8 KB, 512 × 128 bits, dual-ported | the templates: one expansion word per row | 4.17.6 |
++| register image, state word | 1 KB + 16 B | the checkpoint | 4.17.2 |
++| working register file | 1 KB, 128 × 64 bits, true dual-port | the registers a pass reads and writes | 4.17.7 |
++| ALU, comparator, two adders | — | row results, branch outcomes, memory address, pc + imm | 4.17.7 |
++| output queue | 32 rows of 80 B | rows waiting for the consumer | 4.17.12 |
++
++**Its interfaces.** Every replayer memory and queue is written by **mode 8** (4.17.10). The controller starts a pass with `TILE_PULSE` [2], follows it with `TILE_STATUS` [3] and [4], serves it through three registers (`REPLAYER_OPCODE`, `REPLAYER_STATUS`, `DMA_REPLAYER_REMAINING`, 8.11) and is woken by its five events in the shared `WAKE_EVENTS` register (bits [20:16], 4.17.9). Its errors are `TILE_CONDITIONS` [13:11] (4.17.11).
++
++**Rate.** A row takes a fixed 3 cycles, or 5 for a multiply (4.17.7): about 3.3 cycles per row with about 10 % multiply rows [estimate; to be measured, item 37], so a pass is about 216K cycles plus about 1.3K cycles of controller-fed expansion stalls, about 0.22 ms at 1 GHz with everything local [estimate]. The consuming kernels likely need 3–6 cycles per row anyway [estimate].
++
++**The reference.** The rows must match Jolt's bit for bit. The reference is the jolt-cpp tracer copy on the `tracer-standalone` branch of `jolt-asic-planning` (PR #1, commit `4f36b3d`); citations in this section are to files under its `tracer/src/tracer/`. Three of its functions are normative: `expand_virt_seq` (`isa/virtual.cpp:132`) for what an instruction expands to, `execute_instruction` (`trace_owner.cpp:145`) for what a row computes, and `expand_compressed_chunk` (`trace_owner.cpp:868`) for what a row records. Where this section departs from them (log-fed values, unchecked assertions), it says so.
++
++**Status.** The design notes record most of this design as candidate and some of it as decided (the run log, 2026-10-22 and 2026-10-23; the fixed row schedules, every instruction a template, the queues as true FIFOs and the resident region, all 2026-10-23; the allocation table, confirmed 2026-10-23). This section states the notes' design unmarked, as the design to build; its own additions are marked *(Proposed)* and gathered in section 13 (items 33–59), and so are the details the owner accepted as proposals on 2026-10-23. Facts about Jolt's expansions are cited to the tracer; the template enumeration that would confirm them across real programs is open (item 34).
++
++#### 4.17.2 The run log and the checkpoint
++
++The tracer engine writes, per tile, two streams and a checkpoint. They live in the tile's 512 KB resident replay region of big SRAM (4.17.13) and reach the replayer through its queues.
++
++| stream | granularity | contents | per tile |
++|---|---|---|---|
++| **opcode** | one 32-bit word per native instruction, held while its expansion runs | the RISC-V instruction; a compressed one is stored decompressed with bit 0 cleared as its flag | about 43K words (175 KB) at 1.5 rows per native instruction; 256 KB at most [estimate] |
++| **memory log** | one 64-bit word per row that needs one, in row order | below | 0.28–0.32 words per row on average, up to 0.833 in the densest windows: about 160 KB on average, 437 KB at most [meas: design notes] |
++
++Every stored instruction has bit 1 set, so **bits [1:0] = 00 mark a padding word** (below) and bits [1:0] = 10 a compressed instruction.
++
++**Which rows take a log word.** At most one per row, in row order:
++- **LD:** the value loaded.
++- **SD:** the memory's pre-value; the post-value is rs2's value.
++- **Advice:** `VirtualAdvice` and the DIV/REM advice rows (4.17.7, class L): the advice value.
++- **A control transfer:** a row with `next_from_value` set (4.17.3) whose new pc differs from its pc (4.17.7): the next `instr_idx`.
++
++The first three are the rows whose expansion word has `from_log` set (4.17.3).
++
++The measured densities (words per row, LD / SD / advice / non-sequential) are 0.170 / 0.115 / 0.0001 / 0.030 on EVM Zone (total 0.315) and 0.147 / 0.090 / 0.0002 / 0.039 on Cyclone (total 0.277); per 64K-row window the median is 0.29–0.32 and the maximum 0.833 on both, and the worst sliding 512-, 1,024- and 4,096-row spans are all about 0.835, so dense stretches are sustained, not bursts [meas: design notes]. A replay pass reads 9.1–11.1 MB of log per chip on EVM Zone and 4.0–15.4 MB on Cyclone [meas: design notes].
++
++**A requirement on our tracer engine.** The run log differs from jolt-cpp's memory log on purpose. jolt-cpp logs only LD, SD and `VirtualAdvice` (`trace_owner.cpp:822–855`): it computes the DIV/REM advice in its interpreter (`trace_owner.cpp:545–630`) and looks a jump's next index up in a pc-to-index table (`finish_instruction`, `trace_owner.cpp:111–126`). The replayer has no divider and no such table, so **the tracer engine must write the DIV/REM advice and the next `instr_idx` of every control transfer into the run log**, in row order with the other log words (item 33). The validation harness (item 58) proves the format, the tracer engine's extra words and the replayer together.
++
++**The checkpoint.** Per tile, loaded by mode 8 (4.17.10):
++- the **register image**: all 128 registers, as 64 words of 128 bits; word *i* holds register 2*i* in bits [63:0] and 2*i* + 1 in [127:64];
++- the **state word** (128 bits): pc [63:0], `instr_idx` [95:64], next offset [111:96] (the rows of the first instruction's expansion that the previous tile already ran), spare [127:112].
++
++Sending all 128 registers avoids special-casing a mid-sequence start, at 1 KB per tile. **A tile that starts inside an expansion** has that instruction as its first opcode-stream entry, and the next offset says where in the expansion to begin. jolt-cpp's chunked replay instead rewinds to the start of the expansion when inline scratch registers are live (`trace_owner.cpp:722–739`); the full image makes that unnecessary. **Register 0** of the image is ignored: the working file's register 0 always reads 0 *(Proposed, item 41)*.
++
++**Re-runs.** The start copies the image into the working register file (64 cycles, two registers per cycle) and the state word into working copies of pc, `instr_idx` and the offset. Replay never writes the image or the state word, so every pass starts from the same point.
++
++**Inline scratch.** Registers 48–127 hold an expansion's scratch values and are 0 between expansions (`isa/virtual.hpp:25–27`). Inline templates end with explicit `ADDI vN, x0, 0` rows that zero each scratch register they used (for example the end of `inlines/blake3.inc`), so the replayer needs no state for them. jolt-cpp also zeroes them defensively at chunk starts (`normalize_inline_vregs`, `trace_owner.cpp:128`); with the full register image the replayer doesn't need to.
++
++**End of trace.** The trace is padded to 2²⁹ rows after the program ends. The program's last real row jumps to pc 0: a JAL with immediate 0 sends pc to 0 (`trace_owner.cpp:281`), and its log word sets `instr_idx` to 0. The tracer writes the padding as real opcode entries: one opcode word 0x00000000 per padding row, with no log words. The padding word maps to the ROM's padding template (4.17.6), an all-zero NOP row with `hold` set, so pc and `instr_idx` stay 0, as in the tracer's padding, where every padded row is zero and decodes as the zero-filled NOP at bytecode index 0 (`trace_owner.hpp:160–163`; real instructions start at index 1, `isa/virtual.cpp:1359`).
++
++#### 4.17.3 The expansion word and the operand codes
++
++Every row is described by one **128-bit expansion word**, in place of the tracer's 48-byte `VirtualInstruction` (`isa/virtual.hpp:89–126`). The same format serves the ROM and the words the controller supplies.
++
++| bits | field | contents |
++|---|---|---|
++| [7:0] | `opcode` | the row opcode, 0–167, numbered in the tracer's order (`isa/riscv.inc`, enum `OpCode`, `isa/riscv.hpp:17`); 4.17.7 lists the ones that occur in rows |
++| [15:8] | `rd` | operand code (below) |
++| [23:16] | `rs1` | operand code |
++| [31:24] | `rs2` | operand code |
++| [43:32] | `seq_remaining` | rows left in the expansion after this one; 0 on its last row. At most 3,120 (`KECCAK256_ABSORB_PERMUTE` expands to 3,121 rows, `isa/virtual.cpp:1310`) |
++| [44] | `next_from_value` | this row can change control flow: when it does (4.17.7), the next `instr_idx` comes from the log |
++| [45] | `hold` | pc and `instr_idx` don't advance after this row (padding) |
++| [47:46] | `rd0` | the rd = x0 policy of the template (4.17.4): 0 none, 1 NOP (the NOP row is virtual), 2 remap, 3 NOP (the NOP row is not virtual: the source is ADDI). Read from a template's first word only |
++| [50:48] | `format` | the source instruction's immediate format, for code 132: 0 R, 1 I, 2 S, 3 B, 4 U, 5 J; 6 and 7 reserved |
++| [51] | `virt` | the row's opcode differs from the source instruction's *(Proposed, item 35)* |
++| [52] | `imm0_pc0` | Jolt's program-end convention: if this row is a JAL whose immediate is 0, its new pc is 0 (4.17.7) *(Proposed, item 56)* |
++| [53] | `report_c` | report `is_compressed` on this row when the instruction is compressed (4.17.12) *(Proposed, item 56)* |
++| [54] | `from_log` | the row consumes one log word: rd's value, or an SD row's memory pre-value (4.17.7) *(Proposed, item 56)* |
++| [63:55] | spare | 9 bits, 0 |
++| [127:64] | `const` | a constant immediate (code 128) |
++
++**`virt`** *(Proposed, item 35)*. Jolt marks a row virtual when its expansion has more than one row **or its opcode differs from the source instruction's** (`isa/virtual.cpp:183`). The second half is not derivable in hardware, since the replayer never sees the source instruction as a row opcode: SLLI becomes one `VirtualMULI` row and is virtual, while ADD stays one ADD row and is not. The template builder therefore sets `virt` on every word whose opcode isn't the source's, and the replayer derives the rest (below).
++
++`seq_remaining` = 0 marks the end of an expansion; there is no separate end bit. The per-instruction fields (`rd0`, `format`, `next_from_value`) live in the ROM words, not the decode table, because every instruction is a template (4.17.5).
++
++**Operand codes.** Each of `rd`, `rs1` and `rs2` names where the slot's value comes from:
++
++| code | meaning | slot kind |
++|---|---|---|
++| 0–127 | register: x0–x31, then virtual registers 32–127 | register |
++| 128 | `const` (also the zero placeholder, with `const` = 0) | immediate |
++| 129, 130, 131 | the source instruction's rd, rs1, rs2 field (bits [11:7], [19:15], [24:20]) | register |
++| 132 | the source instruction's immediate, decoded by `format` and sign-extended to 64 bits (`isa/decoder.cpp:74–212`); 0 for format R | immediate |
++| 133 | `mask_trailing_zeros(imm & 0x3f)`: ones in bits [63:*s*], *s* = `imm & 0x3f` (SRLI, SRAI; `isa/virtual.cpp:565–573`, `../utils/math.hpp:134`) | immediate |
++| 134 | `1 << (imm & 0x3f)` (SLLI → `VirtualMULI`; `isa/virtual.cpp:596–600`) | immediate |
++| 135 | `1 << (imm & 0x1f)`, as a 32-bit value (SLLIW → `VirtualMULIW`; `isa/virtual.cpp:616–620`) | immediate |
++| 136 | `(1 << 32) − (1 << (imm & 0x1f))`, the 32-bit window bitmask (SRLIW, SRAIW; `isa/virtual.cpp:575–579`, `629–633`) | immediate |
++| 137–144 | temporary *k* = code − 137, resolved as register 40 + *k* + offset (4.17.4) | register |
++| 145–255 | reserved: an invalid expansion (4.17.11) | — |
++
++In codes 133–136, `imm` is the source instruction's immediate, the same value as code 132; the masks make the shift-immediate formats' funct bits irrelevant (the tracer decodes shift immediates with their own shamt format, `isa/decoder.cpp:98`, and only these codes ever use them). Templates never contain literal registers 40–47; they use the temporary codes.
++
++**The slot kind is committed.** A register slot reads its register; an immediate slot carries its value, and Jolt records which slots are immediates (`rd_is_imm`, `rs1_is_imm`, `rs2_is_imm`, `isa/virtual.hpp:100–102`). So code 0 (x0) and code 128 with `const` = 0 differ: a zero placeholder must not replay as x0.
++
++**The row's immediate** is the sum of its immediate slots' values, as Jolt computes it (`trace_owner.cpp:900`); in every template the tracer emits, at most one immediate slot is non-zero (to be confirmed by the enumeration, item 34).
++
++**Derived, not stored:**
++- `is_first`: the row is the first of its expansion and the expansion is virtual (`isa/virtual.cpp:186`);
++- `is_virtual`: `virt` is set, or the expansion has more than one row (`seq_remaining` > 0, or the row is not the first); for the shared NOP row, `rd0` = 1 (4.17.4);
++- `pc_increment`: 0 unless `seq_remaining` = 0, then 2 for a compressed instruction (opcode word bit 0 = 0) and 4 otherwise; only an expansion's last row carries it (`isa/virtual.cpp:1416`);
++- `is_compressed`: the instruction is compressed and the word has `report_c` set. Jolt reports it only where `pc_increment` = 2 (`trace_owner.hpp:184`, `trace_owner.cpp:899`), that is on an expansion's last row, so the template builder sets `report_c` on last words only;
++- `risc_pc`: the pc register, the same for every row of an expansion (`isa/virtual.cpp:1413–1415`).
++
++**Jolt's conventions are data where they can be** *(Proposed, item 56)*. Each place where the replayer must copy a Jolt convention rather than plain RISC-V is a flag in the expansion word or a code in it, set by whoever builds the tables, so a change in Jolt means new tables rather than new silicon: `virt` (which rows Jolt calls virtual), `rd0` 1 and 3 (whether the rd = x0 NOP row is virtual), `imm0_pc0` (JAL to immediate 0 ends the program), `report_c` (which rows carry `is_compressed`), `from_log` (which rows take a log word), and the advice rows' operands (4.17.7). What stays in logic is listed in 4.17.7 and item 57.
++
++#### 4.17.4 The rd = x0 policy and the temporary offset
++
++Jolt rewrites an instruction whose rd is x0 before expanding it (`isa/virtual.cpp:307–319`):
++- with **no side effect beyond writing rd**, it becomes one NOP row, `ADDI x0, x0, 0` (`isa/virtual.cpp:307–311`);
++- with **side effects**, rd is remapped to a throwaway virtual register, v40, and the template's own temporaries then start at v41 (`isa/virtual.cpp:315–319`; temporaries are allocated upward from 40, `isa/virtual.cpp:140`, `148–153`);
++- **a few instructions handle rd = x0 themselves** and are expanded unchanged (`rd0_is_handled_internally`, `isa/virtual.cpp:57–102`).
++
++The replayer reproduces this with the template's `rd0` policy and a one-bit **offset**.
++
++**The rule.** For one expansion, offset = 1 when the source instruction's rd field (bits [11:7]) is 0 and the template's `rd0` is remap; otherwise 0. Then:
++- temporary *k* (codes 137–144) resolves to register 40 + *k* + offset;
++- under remap, the source rd (code 129) resolves to register 40.
++
++Under a **NOP** policy with rd = x0, the instruction becomes the one shared NOP row (4.17.6) in place of its template. The tracer marks that row virtual unless the source instruction is ADDI itself (`isa/virtual.cpp:183`), so the policy says which: `rd0` = 1 makes the NOP row virtual (and so `is_first`), and `rd0` = 3, used only by ADDI's template, makes it not virtual *(Proposed, item 35)*. The row's virtual-ness is data, not an opcode compare.
++
++**Example.** `lb a5, 4(a0)` against `lb x0, 4(a0)` (`expand_load`, `isa/virtual.cpp:237–250`):
++
++| row | normal (offset 0) | remapped (offset 1) |
++|---|---|---|
++| 1 | `VirtualAlignAddr v41, a0, 4` | `VirtualAlignAddr v42, a0, 4` |
++| 2 | `LD v41, v41, 0` | `LD v42, v42, 0` |
++| 3 | `VirtualWindowMaskB v40, a0, 4` | `VirtualWindowMaskB v41, a0, 4` |
++| 4 | `VirtualPextSigned a5, v41, v40` | `VirtualPextSigned v40, v42, v41` |
++
++**Which instructions remap**: those in `has_side_effects_beyond_rd` and not in `rd0_is_handled_internally` (`isa/virtual.cpp:19–55`, `57–102`):
++
++| instructions | served by | effect |
++|---|---|---|
++| JAL, JALR, LD, `VirtualHostIO` | one-word ROM templates | rd becomes 40; e.g. `ret` becomes `JALR v40, ra, 0` |
++| LB, LBU, LH, LHU, LW, LWU | ROM templates | rd becomes 40, temporaries + 1 |
++| the 18 AMOs | ROM templates | rd becomes 40, temporaries + 1; no stored variants |
++
++LR/SC, CSRRW, CSRRS, ECALL, EBREAK, MRET and the inlines are exempt (`rd0` = 0), as is every instruction whose rd field is an immediate (stores, branches, `VirtualAssertEQ`, FENCE; `isa/virtual.cpp:104–106`). JAL, JALR and `VirtualHostIO` also allocate their own throwaway register when rd is x0 (`isa/virtual.cpp:1195–1226`); after the generic remap that case never arises, and both paths give rd = 40, so one-word remap templates reproduce them. With the decode table's AMO index (4.17.5), every atomic reaches its own template and the offset handles the remap in hardware.
++
++**The temporaries stay in 40–47.** The tracer asserts that no expansion, remap included, allocates beyond register 47 (`isa/virtual.cpp:148–153`), so every correct template keeps 40 + *k* + offset ≤ 47. The replayer doesn't check it *(Proposed, item 36)*.
++
++**Mid-sequence start.** The offset is recomputed from the opcode-stream entry's rd field and the `rd0` of the template's **first word**, ROM[start], not ROM[start + offset]. Controller-fed expansions (inlines and system instructions) are all exempt, so their offset is always 0.
++
++#### 4.17.5 The decode table and its index
++
++**Every instruction is a template.** A pass-through instruction is a one-word template whose operands are codes 129–132 (copy the source instruction's registers or immediate), so there is one datapath: every row comes from an expansion word.
++
++**The decode table** is 2K × 16 bits (4 KB), single-ported. Its **11-bit index** is formed by a small hardware decoder from the opcode-stream word *w* (bit 0, the compressed flag, plays no part):
++
++| *w*[6:0] | index[10] | index[9:0] |
++|---|---|---|
++| any other opcode | 0 | {*w*[6:2], *w*[14:12] (funct3), *w*[30], *w*[25]} |
++| 0101111 (AMO) | 1 | {00, 00, *w*[12] (W/D), *w*[31:27] (funct5)}: separates LR, SC and every AMO |
++| 0001011 (custom-0, the inlines) | 1 | {01, *w*[29:25] (funct7[4:0]), *w*[14:12] (funct3)}: one entry per inline |
++| 1110011 (SYSTEM) | 1 | {10, 0000, *sel*}: *sel* = funct3 when funct3 ≠ 0 (the CSR instructions); when funct3 = 0, *sel* = 8 for ECALL (*w* = 0x00000073), 9 for EBREAK (0x00100073), 10 for MRET (0x30200073), 11 otherwise |
++
++*(Proposed, item 38: the special groups' bit positions; the notes fix only which instruction bits each group uses.)* Index[9:8] = 11 with index[10] = 1 is never formed. The general group's entries for the three special opcodes are never read.
++
++The jolt instruction encodings it must separate (`isa/decoder.cpp`): the inlines are custom-0 with funct7 0x00–0x05 and funct3 0–7 (`isa/decoder.cpp:1210–1249`); custom-2 (0x5B) carries `VirtualRev8W` (funct3 0, funct7 0x05), `VirtualAssertEQ` (funct3 1) and `VirtualHostIO` (funct3 2) (`isa/decoder.cpp:1251–1264`), which the general group separates by funct3; MRET is recognised by its exact encoding (`isa/decoder.cpp:603–606`).
++
++**The entry** uses 11 of 16 bits:
++
++| bits | field |
++|---|---|
++| [1:0] | `class`: 0 ROM template, 1 controller (inline), 2 controller (system), 3 reserved (an invalid expansion) |
++| [10:2] | `start`: the template's first ROM word |
++| [15:11] | spare |
++
++There is no length field: each ROM word's `seq_remaining` marks the template's end, including on a mid-sequence start (start + offset). **The padding word** (bits [1:0] = 00) is caught before the lookup and goes to the padding template (4.17.6).
++
++**The table builder's rules** (software contract): every entry is written, because the table isn't reset; unused entries are controller class, so an unknown instruction becomes a question for software rather than an error; and an instruction whose index bits include immediate bits (the U, J and most I formats) has its entry **replicated** across every index those bits can form. The table is per program, which also absorbs program-level choices: under the legacy raw-ECALL host-I/O encoding, the tracer rewrites ECALL as `VirtualHostIO x0, x0, 0` (`host_io_encoding.cpp:79–92`), so ECALL's entry points at a one-word `VirtualHostIO` remap template instead of the controller.
++
++#### 4.17.6 The ROM and its contents
++
++**The ROM is 8 KB, 512 × 128-bit words, dual-ported,** loaded by mode 8 (4.17.10); one port serves the replayer's reads and the other mode-8 writes, which it accepts even while a pass runs. It is a RAM; "ROM" says that replay never writes it. It holds every template the hardware serves:
++
++| content | words |
++|---|---|
++| ROM words 0 and 1: the **padding** row (word 0: opcode NOP, every operand code 0, `seq_remaining` 0, `hold` 1) and the **shared NOP** row (word 1: `ADDI x0, x0, 0`, i.e. opcode ADDI, `rd` 0, `rs1` 0, `rs2` 128 with `const` 0, `report_c` 1, since it is its instruction's only row) *(Proposed, item 39: their fixed places)* | 2 |
++| emulation sequences: shifts, sub-word loads and stores, the M extension (`isa/virtual.cpp:321–640`) | about 172 |
++| pass-through instructions, one word each | about 45 |
++| atomics: LR.D 5, LR.W 9, SC.D 12, SC.W 26, the 18 AMOs 237 (`isa/virtual.cpp:1287–1306`) | 289 |
++| **total** | **about 508 of 512** |
++
++The fit is tight; reusing identical words or a slightly larger ROM restores headroom (item 40). rd = x0 remaps need no variant words: the offset rule applies in hardware. With the atomics in the ROM, the controller serves only the inlines and the system instructions.
++
++**How a template is read.** A ROM template is consecutive words from `start` (from `start` + offset on a mid-sequence start), each word one row, until the word with `seq_remaining` = 0. A template that would run past word 511 (a word at 511 with `seq_remaining` > 0, or `start` + offset > 511) is an invalid expansion (4.17.11).
++
++**Loading.** The table and ROM load through mode 8, broadcast by C&C at boot (4.17.10).
++
++#### 4.17.7 Executing a row: the register file, the ALU and the schedules
++
++**Per row** the replayer:
++1. takes the current native instruction from the code queue and finds its row: the next ROM word of its template, or the next word of the expansion queue for a controller-fed instruction;
++2. resolves the row's operand codes (4.17.3, 4.17.4) and reads rs1, rs2 and rd_prev from the register file;
++3. computes the result with the ALU, or takes it from the log (class L, below); writes rd; forms the memory address as rs1 + immediate;
++4. pushes the row record into the output queue (4.17.12), and advances pc and `instr_idx` (below).
++
++An instruction's opcode word leaves the code queue when its expansion's last row (`seq_remaining` = 0) completes. Fetch and decode for the next row overlap the current row; only execution is strictly sequential *(Proposed, item 42)*.
++
++**The register file** is 128 × 64 bits (1 KB), true dual-port, and holds the working copy of all 128 registers. **Register 0 reads 0 and writes to it are dropped**, as the tracer's `save_rd` drops them (`trace_owner.cpp:85–93`). It is not addressable by mode 8; each start fills it from the image.
++
++**What a row computes** is what `execute_instruction` (`trace_owner.cpp:145–669`) computes for it, reading each slot's value as `read_reg_vals` does (a register slot reads its register, an immediate slot carries its value, `trace_owner.cpp:78–83`), with four departures:
++- **class L rows take the log word** (below) instead of reading memory or computing advice;
++- **assertions are not evaluated:** the `VirtualAssert…` rows write nothing, and the tracer aborts on a failed assertion while tracing (`release_assert`, e.g. `trace_owner.cpp:334–351`), so a traced program never contains one that fails;
++- **`VirtualPext` and `VirtualPextSigned`** need only contiguous masks, (rs1 & m) >> tz(m) and its sign-extended form: every mask they receive comes from a `VirtualWindowMask…` row (`expand_load`, `isa/virtual.cpp:237–250`) *(Proposed, item 43)*;
++- **control flow** follows the pc rules below, with the next `instr_idx` from the log rather than from a pc-to-index table.
++
++**Row classes and their schedules.** Of the tracer's 168 opcodes, 91 occur in Jolt's rows; 74 occur only as source instructions, which their templates replace, and 3 never occur (`VirtualMove` 126, `VirtualAdviceRemU` 161, `VirtualAdviceRemUW` 165) [derived from `isa/virtual.cpp` and `inlines/`; the enumeration, item 34, confirms it]. Codes are the tracer's (`isa/riscv.inc`):
++
++| class | cycles | opcodes (code) |
++|---|---|---|
++| **L**, log | 3 | LD 54 (rd = the log word), SD 53 (the log word is the memory pre-value; rd is an immediate slot), `VirtualAdvice` 122 (rd = the log word), and the DIV/REM advice opcodes `VirtualAdviceDivU` 160, `VirtualAdviceDiv` 162, `VirtualAdviceRem` 163, `VirtualAdviceDivUW` 164, `VirtualAdviceDivW` 166, `VirtualAdviceRemW` 167, which the templates write as `VirtualAdvice` (below) |
++| **M**, multiply | 5 | MUL 43 and `VirtualMULI` 114 (low 64 bits of the product), MULHU 45 (high 64 bits, unsigned), MULW 65 and `VirtualMULIW` 115 (low 32 bits, sign-extended) (`trace_owner.cpp:213–231`) |
++| **S**, simple | 3 | every other row opcode: NOP 0, ADD 1, ADDI 2, SUB 3, XOR 4, XORI 5, OR 6, ORI 7, AND 8, ANDI 9, SLT 16, SLTI 17, SLTU 18, SLTIU 19, BEQ 28, BNE 29, BLT 30, BGE 31, BLTU 32, BGEU 33, JAL 34, JALR 35, AUIPC 36, LUI 37, FENCE 52, SUBW 62, ADDW 63, ADDIW 64, and the virtual opcodes 107–113, 116–121, 123–125, 127–159 |
++| source only | — | the shifts SLL–SRAI 10–15 and SLLW–SRAIW 56–61, the sub-word loads and stores 20–27 and LWU 55, ECALL–MRET 38–42, MULH 44, MULHSU 46, DIV–REMU 47–50, UNIMP 51, DIVW–REMUW 66–69, LR/SC and the AMOs 70–91, the inlines 92–106 |
++
++*(Proposed, item 37: the class of every opcode; the notes settle only the principle.)* The class L rows are exactly those whose word has `from_log` set (4.17.3): the flag, not the opcode, decides that a row takes a log word. The replayer **executes 85 opcodes**: the S and M classes, LD, SD and `VirtualAdvice`. A word with any other opcode is an invalid expansion *(Proposed, item 36)*.
++
++**Advice rows are data** *(Proposed, item 56)*. Jolt reports every advice row as `VirtualAdvice` with rs1, rs2 and the immediate all 0 (`trace_owner.cpp:912–917`), though the tracer's DIV/REM advice rows name real source registers (`isa/virtual.cpp:331`, for example) so that its interpreter can compute them. The replayer takes the value from the log, so the template builder writes those rows as `VirtualAdvice rd, x0, x0` with `from_log` set: the record then comes out exactly as Jolt reports it, with no masking logic. (The inlines' own advice rows are already `VirtualAdvice` with two zero immediates, `isa/virtual.cpp:216–218`, and are recorded the same way.)
++
++**The multiplier needs no signed high half.** MULH and MULHSU never reach a row: the tracer expands them through MULHU and MUL (`isa/virtual.cpp:485–503`). So the multiplier produces the low product, the unsigned high product and the low 32 bits sign-extended; the sign corrections the notes provide for MULH are not needed *(Proposed, item 37)*. `VirtualAssertMulUNoOverflow` multiplies only to check, so it is class S.
++
++**The fixed row schedules** (decided 2026-10-23). Rows are strictly sequential, never overlapped, so there are no hazards and no bypass. The register file is true dual-port; every read of a row happens before its write, so a row whose rs1 or rs2 is also its rd reads the old value, as the tracer does (`trace_owner.cpp:903–908`).
++
++| row kind | cycles | schedule |
++|---|---|---|
++| simple (class S) and log rows (class L) | 3 | 1: read rs1 and rs2. 2: compute (or take the log word), read rd_prev. 3: write rd |
++| multiply (class M) | 5 | 1: read rs1 and rs2. 2: four 16 × 64 partial products, read rd_prev. 3–4: carry-save and final add into the 128-bit product. 5: write rd (low or high half, or the low word sign-extended) |
++
++The multiplier is four 16 × 64 multipliers in parallel, a full 64 × 64 array, which is cheap in area. There is no divider: Jolt's DIV and REM use advice plus checks, and the advice comes from the log. **Stalls** (an empty code, expansion or value queue, a full output queue) delay a row's start; they never change its schedule.
++
++**Semantics that matter for exactness** (from `execute_instruction`): AUIPC adds the source instruction's pc (`trace_owner.cpp:156–160`); JAL and JALR link pc + `pc_increment`, which is 2 or 4 because a JAL or JALR row is always its expansion's last row (`trace_owner.cpp:277–291`); `VirtualHostIO` writes rd's own value back (`trace_owner.cpp:294–299`); the W forms sign-extend their low 32 bits; `VirtualROTRIW` rotates by min(32, tz(imm)) (`trace_owner.cpp:381–385`).
++
++**pc and `instr_idx`.** pc is computed, never stored per row; `instr_idx` increments by 1 on every row that continues sequentially, because the committed bytecode lays each expansion out contiguously in program order (`isa/virtual.cpp:1405–1420`). The **new pc** of a row:
++
++| row | new pc |
++|---|---|
++| not its expansion's last row | pc (unchanged) |
++| last row, no control transfer | pc + `pc_increment` |
++| conditional branch | pc + imm if the comparator says taken, else as above |
++| JAL | pc + imm; **0 if imm = 0 and `imm0_pc0` is set**: Jolt's program-end convention (`trace_owner.cpp:281`) |
++| JALR | (rs1 + imm) & ~1 (`trace_owner.cpp:287`); MRET and traps are JALR rows through mepc (v36) or mtvec (v34) (`isa/virtual.hpp:36–38`; `isa/virtual.cpp:1098–1162`) |
++| `hold` set | pc (unchanged), and `instr_idx` unchanged |
++
++Then, as `finish_instruction` does (`trace_owner.cpp:111–126`): **if the new pc differs from pc,** the row transfers control: pc takes the new pc and the next `instr_idx` is the row's log word (`next_from_value` must be set; a new pc of 0 has the log word 0). **Otherwise** pc += `pc_increment` and `instr_idx` += 1, with no log word, **even for a taken branch or a jump whose target is its own pc** (`trace_owner.cpp:117–124`): Jolt treats a jump to itself as sequential, so the row's pc advances past it.
++
++**Hardwired Jolt behaviour** *(Proposed, item 57)*. Three conventions can't be table data, because they depend on values only known while the row runs; the replayer builds them in, and a change in Jolt would change silicon:
++- **the self-jump compare:** a control transfer whose new pc equals its pc is sequential (above);
++- **register 0** reads 0 and drops writes (`trace_owner.cpp:85–93`);
++- **the row record's memory fields** are formed for LD and SD only, the normalized ISA's only memory opcodes (`trace_owner.hpp:219–235`), and JALR clears bit 0 of its target (`trace_owner.cpp:287`).
++The ALU's per-opcode arithmetic is hardwired too, by nature: a new Jolt opcode needs new logic. Which rows can transfer control is explicit, not inferred from the row opcode: `next_from_value` is set in the ROM for branches, JAL and JALR, and in the controller's words for the JALR rows of MRET, ECALL and trap returns. No pc-to-index table is needed.
++
++**Rate.** About 3.3 cycles per row on average with about 10 % multiply rows (item 37 measures the density), so a 64K-row pass is about 216K cycles plus about 1.3K cycles of controller-fed expansion stalls: about 0.22 ms at 1 GHz with everything local, or about 10 ms for the 46 passes of an Akita proof [estimate].
++
++#### 4.17.8 The queues, their mode-8 ports and credits
++
++Three queues feed the replayer. They are **true FIFOs**: producers push at the tail and the replayer pops, with no slot addresses (decided 2026-10-23).
++
++| queue | size | entries | half (the refill unit) | normal source |
++|---|---|---|---|---|
++| code | 4 KB | 1,024 × 32-bit opcode words | 512 | always local |
++| expansion | 4 KB | 256 × 128-bit expansion words | 128 | always local |
++| value | 8 KB | 1,024 × 64-bit log words | 512 | local, or LPDDR on overflow (4.17.13) |
++
++All three are dual-ported, so pushes land while the replayer runs. Code and expansion data are always resident, so a half covers the local refill latency (a few hundred cycles) with room to spare; values may come from LPDDR, so their queue is the larger one.
++
++**The ports.** In mode 8 an address window names a queue (4.17.10): the packet is appended at the tail and the rest of its address is ignored, so the address generator's per-packet stepping stays inside the port. A packet pushes its entries low first: a 128-bit packet pushes 4 opcode words (payload [31:0] first), 2 log words ([63:0] first) or 1 expansion word; a 64-bit packet 2 opcode words or 1 log word; a 32-bit packet 1 opcode word. A size that isn't a whole number of the queue's entries is a bad replayer write *(Proposed, item 45)*.
++
++**Credits.** Each queue tracks its **occupancy** (entries landed and not yet popped) and its **pending** count (entries promised but not landed). Its **low-water event** (`WAKE_EVENTS` [16] code, [17] value, [18] expansion; 4.17.9) is a live condition, true while the replayer runs and
++
++  capacity − occupancy − pending ≥ half,
++
++and, for the expansion queue only, while the current controller-fed expansion still has words that nobody has asked for: the newest landed word's `seq_remaining` (the words after it) exceeds pending *(Proposed, item 51: how "still has words to deliver" is judged)*.
++- **A read of `WAKE_EVENTS` that returns a low-water event under `WAKE_MASK` adds half to that queue's pending,** which drops the condition. Each landed entry moves one entry from pending to occupancy (pending stops at 0). A read with the event's mask bit clear (a peek) changes nothing (4.17.9).
++- **Up to two refills can be outstanding,** which keeps a draining queue fed; a queue that empties simply stalls the replayer until data lands.
++- **The controller sends min(half, words remaining).** A short final push overstates pending, which only suppresses requests that aren't needed; the count resets at the next expansion or pass. It may also deliver a half as several smaller chunks; the queue doesn't care.
++- **A new expansion** (4.17.9): consuming the new-expansion event credits the expansion queue's first 128 words (pending = 128), so the controller sends min(128, the expansion's words from the start offset) at once, before any word has landed to judge the low-water condition by.
++
++**Overrun.** A push into a full queue (occupancy at capacity before the cycle's pop, as for every FIFO, 4.13) is dropped and sets **queue overrun** (`TILE_CONDITIONS` [12]).
++
++**Reset.** A queue's contents, occupancy and pending are cleared **at done** (the end of a pass, which may leave words a following tile needs, such as the rest of an expansion that straddles tiles), **in HALT** and **when the controller halts** (4.17.11). The expansion queue's pending is also cleared at each new expansion. **A start does not clear the queues,** so software may preload them while the replayer is stopped (4.17.10) *(Proposed, item 52)*.
++
++#### 4.17.9 The wake events and the controller loop
++
++**The events.** The replayer posts five events in the shared `WAKE_EVENTS` register (8.10, specified with the request bus), which wakes `WFI` through `WAKE_MASK` (4.12):
++
++| bit | event | kind |
+ |---|---|---|
+-| **mode 8, the replayer write** | 3.1, 4.8 | packets that load the replayer's memories. The traffic director routes every mode-8 packet to the replayer's write port, and no down-counter counts it (4.12). Its addr is in 32-bit words, and a stream or the send port steps it by 1, 2 or 4 words by size (4.2, 4.11). The address map, the sizes each region accepts, ownership while the replayer runs, the write path's latency and how a program knows its writes have landed are *to be specified with the replayer* |
+-| **`TILE_PULSE` [2], replay start** | 8.6 | starting the replayer. **Start only, no resume**, as for every engine: a start while the replayer runs is ignored. What a start loads is *to be specified with the replayer* |
+-| **`TILE_STATUS` [3] and [4]** | 8.2 | two replayer live bits, *to be specified with the replayer* |
+-| **`TILE_CONDITIONS` [13:11]** | 4.13, 8.3 | three replayer conditions, *to be specified with the replayer* |
+-| **registers 0x844 onward** | 8.1 | the replayer's registers, *to be specified with the replayer* |
+-| **the replayer wake** | 4.12, 6.3 | one wake source in the `WFI` term, beside GO and the local wake; its events are *to be specified with the replayer* |
+-
+-**Until the replayer is specified** *(Proposed)*: the replayer bits of `TILE_STATUS` and `TILE_CONDITIONS` read 0; `replayer_wake` is 0; `TILE_PULSE` [2] does nothing (meshsim flags a 1 there, as for [3]); offsets 0x844 onward are unmapped, so an access is a bus error; and a mode-8 packet reaches the replayer's port and is dropped there, uncounted, with no condition (meshsim records it).
+-
+-**What the hooks require of any replayer design** *(Proposed)*:
+-- the `done` gate blocks the replayer wake as it blocks the local wake, so `wait_for_command()` is still woken by GO alone (4.12);
+-- HALT holds the replayer in reset, like the address generator and the GATHER engine (6.1), and a controller halted by an error, `ecall` or `ebreak` stops it;
+-- its live bits read 0 while it is idle, so a program that never starts it sees v1.0's behaviour.
++| [16] | code low-water | live (4.17.8) |
++| [17] | value low-water | live (4.17.8) |
++| [18] | expansion low-water | live (4.17.8) |
++| [19] | new expansion: the replayer has reached an instruction whose decode class is controller (1 or 2), holds it in `REPLAYER_OPCODE` and waits (`replay_wait`, `TILE_STATUS` [4]) | sticky |
++| [20] | done: the pass has ended (`replay_running` has fallen, 4.17.11) | sticky |
++
++A load of `WAKE_EVENTS` returns every pending event and **consumes** only those under `WAKE_MASK`: a consumed low-water event credits its queue (4.17.8); a consumed new-expansion event clears and credits the first 128 expansion words; a consumed done event clears. **A read with a bit's mask clear is a peek** and changes nothing for that bit, so credits move only on a read that returns the event under the mask *(Proposed, item 50)*. A sticky event the replayer sets in the same cycle as the read survives to the next read. Software acts on value & mask. Nothing but the tile's own controller reads the register.
++
++**What the controller reads with them.** `REPLAYER_OPCODE` (8.11) holds the instruction word of the expansion it must supply (the stored opcode-stream word, bit 0 clear for a compressed instruction). `REPLAYER_STATUS` (8.11) gives the rows run in this pass and the **next offset**: the row within the current expansion where the next row starts, which is where the controller begins sending the expansion's words (non-zero only for a tile that starts mid-expansion).
+ 
+-**Design direction** *(Open; superseded in detail)*. The owner's current replayer design is recorded in the design notes *Replayer and mesh v1.1* (updated 2026-10-23): a small ALU with fixed 3-cycle (simple) and 5-cycle (multiply) rows; code, expansion and value queues of 4, 4 and 8 KB with credit-managed refills; an 8 KB template ROM and a 2K × 16-bit decode table; the compressed trace resident in a 512 KB region of big SRAM; and a request bus to LPDDR. About 32.5 KB of replayer memory per tile replaces the 768 KB of resident replay memory planned earlier. The full replayer is to be specified in a later pass that follows that note's shared-resource allocation table.
++**The controller loop.** Every `WFI` has exactly one possible source. `REPLAY` below is `WAKE_MASK`'s replayer bits, [20:16]; the loop sets and clears them with read-modify-write, leaving the request bus's bits alone.
+ 
+-The replayer's memories and logic are not in section 11's budget; they are added with the replayer. Under the design direction they come to about 32.5 KB of memory per tile plus a small ALU [estimate].
++```
++    WAKE_MASK |= REPLAY
++    TILE_PULSE = replay start
++loop:
++    WFI                              ; only a replayer event can wake it
++    ev = WAKE_EVENTS & REPLAY        ; consumes the events: credits taken
++    if ev.done: exit
++    if ev.new_expansion: decode REPLAYER_OPCODE (inlines and system only),
++                         start at REPLAYER_STATUS.next_offset
++    WAKE_MASK &= ~REPLAY             ; squelch: events now accumulate
++    set DMA_REPLAYER_REMAINING; write STREAM entries; start the run
++    WFI                              ; only the counter reaching 0 can wake it
++    WAKE_MASK |= REPLAY              ; events posted meanwhile fall through
++    goto loop
++```
++
++The wake term is `GO | local_latch | (WAKE_EVENTS & WAKE_MASK) ≠ 0` (4.12). `DMA_REPLAYER_REMAINING` counts the run's mode-8 packets as they land (4.17.10), so the second `WFI` returns when every word is in its queue. Events posted during a run accumulate and, the wake being a level, make the next `WFI` fall through. GO can't arrive mid-pass, and no other counter is set. A refill from LPDDR (4.17.13) is a request instead of a run, and its completion counts in `DMA_REPLY_REMAINING` (4.12).
++
++**Short runs, not interruption.** The address generator is not interruptible. Instead every run is short: a 1 KB chunk is 64 packets, about 64 cycles, so nothing waits long for the engine, and the controller re-checks the queues after each chunk. Streaming occupies about 11–20 % of a pass [estimate]. Group runs (the sort's all-to-alls) stay exclusive and don't coincide with replay.
++
++**Controller-fed expansions** are only the inlines (custom-0) and ECALL, EBREAK, MRET, CSRRW and CSRRS: about 13 per 64K-row window on Cyclone, about 0.4 % of a pass in stalls [meas: design notes]. CSRRW and CSRRS expand to 1–3 rows depending on their registers (`num_cycles`, `isa/virtual.cpp:1324–1345`), which is one reason they stay with the controller. The current window's inline templates are resident in big SRAM (4.17.13).
++
++#### 4.17.10 Mode 8: the address map, landing and ownership
++
++**The map.** Everything the replayer reads is written by mode 8, whose addr is a 21-bit word address stepped by 1, 2 or 4 per packet (3.1, 4.2, 4.11). addr[20:18] selects a window *(Proposed, item 44)*:
++
++| addr (32-bit words) | addr[20:18] | region | size | sizes taken | ports |
++|---|---|---|---|---|---|
++| 0x00000–0x000FF | 0 | register image: 128-bit word *i* at 4*i* | 1 KB | 128 | single |
++| 0x00100–0x00103 | 0 | state word | 16 B | 128 | single |
++| 0x00400–0x007FF | 0 | decode table: entry *e* in the packet at 0x400 + 4·(*e* >> 3), bits [16·(*e* & 7) + 15 : 16·(*e* & 7)] | 4 KB | 128 | single |
++| 0x00800–0x00FFF | 0 | ROM: word *j* at 0x800 + 4*j* | 8 KB | 128 | dual |
++| 0x40000–0x7FFFF | 1 | code queue port | 4 KB queue | 32, 64, 128 | dual |
++| 0x80000–0xBFFFF | 2 | value queue port | 8 KB queue | 64, 128 | dual |
++| 0xC0000–0xFFFFF | 3 | expansion queue port | 4 KB queue | 128 | dual |
++| everything else | 0, 4–7 | unmapped | — | — | — |
++
++*(Proposed, items 44–46: the windows, the offsets in window 0 and the sizes each region takes.)* The notes' map is in 128-bit words (packet addr = 4 ×); in those units the register image is 0–63, the state word 64, the decode table 256–511 and the ROM 512–1023. A 128-bit write in window 0 must start at a multiple of 4. The working register file (1 KB, true dual-port) isn't addressable; each start fills it from the image.
++
++**A bad replayer write** (`TILE_CONDITIONS` [11]) is a mode-8 packet that is dropped because it addresses an unmapped word, has a size its region doesn't take, starts a 128-bit write in window 0 off a multiple of 4, writes a single-ported memory while a pass runs, or writes a queue port in HALT (below) *(Proposed, item 47)*.
++
++**Landing.** The traffic director hands each mode-8 packet to the replayer's write port, one per cycle; the write lands a fixed **`rp_latency`** = 2 cycles later, with no queue on the path *(Proposed, item 48: the value)*.
++
++**Counting** (the allocation table, which supersedes v1.1's "mode 8 is never counted"). A mode-8 packet **from the tile itself** (src = the tile's index) counts 1 in **`DMA_REPLAYER_REMAINING`** (8.11) **when it lands**, or when it is dropped as a bad replayer write or a queue overrun, so a count of 0 means every counted write has landed or been refused and no idle bit is needed *(Proposed, item 48)*. Packets from C&C (the memory system's queue refills, boot loads) are uncounted, like C&C's other data (4.12); a requested transfer proves its landing with its mode-7 completion, which follows its data on the same route. A mode-8 packet from another tile is uncounted and is a programming error the simulator flags (invariant 16) *(Proposed, item 49)*. An arrival for the counter at 0 sets unexpected arrival (4.12).
++
++**Ownership** follows `replay_running` and the RUN/HALT line:
++
++| state | image, state word, decode table | ROM | queue ports |
++|---|---|---|---|
++| **stopped** (in RUN, `replay_running` = 0) | written | written | pushed (preload) |
++| **running** (`replay_running` = 1) | bad replayer write | written (second port) | pushed |
++| **HALT** | written (boot loads) | written | bad replayer write |
++
++*(Proposed, item 54: the HALT row; the notes give the first two.)* A halt hands everything back.
++
++#### 4.17.11 Start, done, halt and the conditions
++
++**`TILE_PULSE` [2], replay start.** Sets `replay_running` (`TILE_STATUS` [3]), giving the replayer its single-ported memories until it finishes or halts; copies the register image into the working file (64 cycles) and the state word into working pc, `instr_idx` and offset; clears the rows-run count. The first row starts when the copy is done. **Start only, no resume,** as for every engine: a start while the replayer runs is ignored (meshsim flags it, 4.13). 
++
++**`TILE_STATUS` [3] `replay_running`, [4] `replay_wait`.** `replay_running` is 1 from the end of the start store's cycle until the pass's last row has been pushed into the output queue, or a halt. `replay_wait` is 1 while the replayer waits for the first word of a controller-fed expansion: set with the new-expansion event, cleared when that word lands *(Proposed, item 53: when [4] clears)*. Both read 0 while the replayer is idle, so a program that never starts it sees v1.0's behaviour.
++
++**Done.** The pass ends after its **65,536th row**: `replay_running` falls, the done event ([20]) is posted, and the queues reset (4.17.8). Rows still in the output queue drain to the consumer. Done is `replay_running` = 0.
++
++**Halt.** C&C's HALT, or the controller halting itself (bus error, illegal instruction, `ecall`, `ebreak`; 6.1), stops the replayer at once: `replay_running` and `replay_wait` drop, its queues, its events and its stop state reset, and it stays idle until the next start. HALT holds it in reset. Its memories keep their contents and, in HALT, take mode-8 writes (4.17.10).
++
++**The conditions** (raise and run, as in v1.0):
++
++| bit | condition | set when | kind |
++|---|---|---|---|
++| 11 | bad replayer write | a mode-8 packet was dropped (4.17.10) | P |
++| 12 | queue overrun | a push found its queue full and was dropped (4.17.8) | P |
++| 13 | invalid expansion | a decode-table class 3; an expansion word with a reserved operand code (145–255), `format` 6 or 7, or an opcode the replayer doesn't execute (4.17.7); or a template running past ROM word 511 (4.17.6) | P, and H on a corrupted table or ROM |
++
++*(Proposed, item 55: the kinds, and the opcode check.)* **An invalid expansion stops the pass** as if it had ended: `replay_running` falls and the done event is posted, so the controller loop exits instead of waiting for rows that can't be right; the condition says why *(Proposed, item 55)*. The other two conditions leave the replayer running.
++
++#### 4.17.12 The output row
++
++**The record** *(Proposed, item 59: the layout; the field semantics are Jolt's)*. Each row is 640 bits, five 128-bit words, carrying what Jolt's 80-byte trace row `RiscCycle` carries (`trace_owner.hpp:19–94`) plus `instr_idx`, which Jolt's provers take from a separate column (`trace_columns.inc:53`), and less the memory post-value, which the consumer derives (an LD's is the value loaded, an SD's is rs2's value; `trace_owner.hpp:230–235`). The values are those `expand_compressed_chunk` records (`trace_owner.cpp:893–927`):
++
++| word | bits | field | value |
++|---|---|---|---|
++| 0 | [31:0] | `instr_idx` | the row's bytecode index (0 in padding) |
++| 0 | [39:32] | `opcode` | the row opcode; `VirtualAdvice` (122) for every advice row (4.17.7) |
++| 0 | [47:40] | `rd_reg` | rd's register number, 0 if rd is an immediate slot |
++| 0 | [55:48] | `rs1_reg` | rs1's register number, 0 if an immediate slot |
++| 0 | [63:56] | `rs2_reg` | rs2's register number, 0 if an immediate slot |
++| 0 | [79:64] | `inline_sequence_remaining` | `seq_remaining` |
++| 0 | [80] | `is_compressed` | 4.17.3 |
++| 0 | [81] | `is_virtual` | 4.17.3 |
++| 0 | [82] | `is_first_in_sequence` | 4.17.3 |
++| 0 | [85:83] | `rd_is_imm`, `rs1_is_imm`, `rs2_is_imm` | the slot kinds (4.17.3), as the bytecode commits them |
++| 0 | [127:86] | spare | 0 |
++| 1 | [63:0] | `pc` | the source instruction's pc (0 in padding) |
++| 1 | [127:64] | `imm` | the sum of the immediate slots (4.17.3); Jolt's raw `_imm`, which consumers normalize by opcode (`imm()`, `trace_owner.hpp:80–92`) |
++| 2 | [63:0] | `rs1` | rs1's value before the row; 0 if an immediate slot |
++| 2 | [127:64] | `rs2` | rs2's value before the row; 0 if an immediate slot |
++| 3 | [63:0] | `rd_prev` | rd's value before the row; 0 if an immediate slot |
++| 3 | [127:64] | `rd` | rd's value after the row; 0 if an immediate slot, and 0 for x0 |
++| 4 | [63:0] | `mem_addr` | rs1 + imm for LD and SD, else 0 |
++| 4 | [127:64] | `mem_value` | the value loaded (LD), the memory pre-value from the log (SD), else 0 |
++
++A padding row's record is all zeros, as Jolt's padded rows are (4.17.2).
++
++**The output queue** holds 32 rows (about 2.5 KB) between the replayer and its consumer, with ready/valid backpressure: when it is full, the replayer stops before its next row. It absorbs consumer slowdowns and the replayer's own stalls on expansion misses (tens of cycles). The consumer's side of it, its width and its rate, belong to the materializer and are *(Open, item 59)*; until it is specified, meshsim drains it with a sink that takes one row per cycle.
++
++#### 4.17.13 The resident replay region (the software contract)
++
++The trace stays in big SRAM for the whole proof, in a **512 KB replay region** per tile, a software-managed cache. The hardware knows nothing of it: it sees only the mode-8 packets the controller's streams and the memory system send. This subsection is the contract software keeps so that the hardware above works.
++
++**Layout.**
++1. **This window's templates first:** only the controller-fed templates its 64K rows actually use (often none; a window of BLAKE3 calls needs about 20 KB [estimate]). The tracer engine lists the set with the checkpoint.
++2. **Then code and values** as 4 KB blocks in consumption order, opcode and value blocks interleaved, so "resident" is a single boundary.
++3. **Overflow** beyond 512 KB, at most about 190 KB in the densest windows [meas: design notes], stays in LPDDR and is fetched over the request bus in 4 KB requests as the replayer reaches it, delivered straight to the value or code queue port.
++
++The median window's trace is about 335 KB and the densest about 700 KB [meas: design notes]. At the stages whose scratchpad margin is too small, the controller evicts the region and reloads it afterwards (up to 512 KB per tile, about 33 MB per chip, about 2 ms [estimate]). The same mechanism can spill compact, expensive-to-rebuild intermediates; anything the trace can regenerate is better replayed (about 0.2 ms per pass) than spilled. In sumcheck tails the controller can prefetch the next pass's streams from LPDDR (about 21 MB per chip, about 1.3 ms at 16–17 GB/s [estimate]), into areas the remaining rounds don't use, with C&C pacing the fill so it never fans in.
++
++**The rules software keeps:**
++- **Stream to a queue port from its window's base** (4.17.10), with runs of at most a half; a refill is min(half, words remaining) (4.17.8).
++- **At most one outstanding LPDDR read per queue,** because the memory system may answer reads out of order except into one queue; local refills may have two outstanding (4.17.8).
++- **Only the tile itself and C&C send mode 8** (invariant 16).
++- **Load the checkpoint, the decode table and the ROM while the replayer is stopped or the tile is halted** (4.17.10); preload queues only while it is stopped, never in HALT.
++- **Don't send past a pass's needs:** words that land after done are taken as the next pass's preload.
++
++**Code is not in big SRAM.** Each tile controller has its own instruction and data memories, and stage overlays are broadcast by C&C at stage boundaries into a parked controller (6.5), so the earlier plan's 256 KiB code reservation in big SRAM is reclaimed for data.
++
++#### 4.17.14 Cost
++
++**Memory per tile:** 4 + 4 + 8 KB of queues, an 8 KB ROM, a 4 KB decode table, 1 KB of working registers, about 1 KB of image and state, and about 2.5 KB of output queue (32 × 80 B): **about 32.5 KB** [estimate]. Across 64 tiles that is about 2.2 MB, roughly 7–10 mm² per chip with the logic [estimate], against 48 MB for the 768 KB-per-tile design planned earlier.
++
++**Logic per tile:** the ALU and comparator, the 128 × 64-bit true dual-port register file, two adders (memory address, pc + imm), the operand resolver, the decode index logic, three queue readers and the credit counters: about 0.1–0.15 mm² with its memories [estimate]. Section 11 adds it to the tile's budget; its placement is in section 12.
+ 
+ ---
+ 
+@@ -875,7 +1304,7 @@
+ | GO | a pulse at t wakes every core in `WFI` at t+1 and clears `done` and "command landed"; engines start at the start store (`TILE_PULSE` [1]) that follows (6.3) |
+ | READY lines | READY fires when "command landed" and `done` are both 1; a pulse at s sets the tile's bit at C&C, readable from s + `ready_latency` + 2; equal for every tile |
+ | RUN/HALT | a change at C&C reaches every tile `run_latency` cycles later |
+-| replayer | *to be specified with the replayer* (4.17) |
++| replayer | a start copies the register image in 64 cycles, then runs one row per 3 cycles (5 for a multiply) when its queues are fed; a mode-8 write lands `rp_latency` = 2 cycles after the director *(Proposed)*; a pass is 65,536 rows, about 216K cycles [estimate] (4.17.7, 4.17.10) |
+ 
+ ---
+ 
+@@ -891,7 +1320,7 @@
+ - **The tile's edge.** Both RUN/HALT edges come from one register, `run_q`. HALT → RUN gives a one-cycle pulse; RUN → HALT clears the conditions.
+ - **In HALT:**
+   - the controller does not fetch;
+-  - the address generator, the GATHER engine, the read port, the token FIFO and the replayer (4.17) are held in reset: the address generator is idle, the GATHER engine's queue and its request in progress are cleared, the read port's queue and in-flight count are cleared, and the token FIFO is empty. `rd_done` keeps its value;
++  - the address generator, the GATHER engine, the read port, the token FIFO and the replayer (4.17.11) are held in reset: the address generator is idle, the GATHER engine's queue and its request in progress are cleared, the read port's queue and in-flight count are cleared, the token FIFO is empty, and the replayer is idle with its queues empty and its events clear (its memories keep their contents and take mode-8 writes, 4.17.10). `rd_done` keeps its value;
+   - the routers, the traffic director and the write engine run, so packets land exactly as in RUN (4.8);
+   - `done` is forced to 1 (6.3).
+ - **HALT → RUN resets the core only:** PC = **0x1F00** (the resident loader) and x1–x31 = 0. Memories, registers and engines keep their values; `done` and "command landed" are cleared (6.3), and so are the local-wake latch and its qualifier (4.12).
+@@ -943,7 +1372,7 @@
+ **`WFI`** stalls the core until a wake event, then continues at the next instruction. There are three wake events:
+ - **GO;**
+ - **the local wake** (4.12), the latched rising edge of every counter being done;
+-- **the replayer wake** (4.12, 4.17), reserved: *to be specified with the replayer*, and blocked by the `done` gate like the local wake *(Proposed)*.
++- **the replayer's events,** which wake `WFI` through `WAKE_EVENTS` [20:16] and `WAKE_MASK` (4.17.9, 8.10).
+ 
+ **`wait_for_command()`**: the controller pulses `done` and then executes `WFI` **immediately**, and on waking **reads mailbox slot 0 and returns the command word** (the simulator checks that every command word is read before the next lands), as two back-to-back instructions in a `sw/mesh.h` inline helper.
+ - This is safe because GO cannot come back sooner than the READY round trip (≈ `ready_latency` + 3 cycles), so the core is always in `WFI` when GO arrives.
+@@ -1021,7 +1450,7 @@
+ 
+ ### 8.1 Register map and general rules
+ 
+-The tile has **17 registers**, with offsets from 0x844 onward reserved for the replayer (4.17). Register *i* is at 0xFFFFF800 + 4·*i*; the offset below is the address's low 12 bits. They are grouped by owner: `TILE_` for the whole tile, `ROUTER_` for the send port (it puts packets into the network), `DMA_` for the engines and their arrival counters, and `SRAM_` for the read port (the controller's reads of big SRAM). `sw/mesh.h` (version 1.1) and `sw/REGISTERS.md` are generated from the same register table and match this section. v1.1 reorders the map by family, for sanity rather than compatibility: every offset after `TILE_CONDITIONS` moved, so every tile image, and every header that hard-codes addresses (`sort/split/split_regs.h`), is rebuilt against `mesh.h` 1.1.
++The tile has **17 registers**, with offsets from 0x844 onward holding the wake and request-bus registers (8.10) and the replayer's (8.11). Register *i* is at 0xFFFFF800 + 4·*i*; the offset below is the address's low 12 bits. They are grouped by owner: `TILE_` for the whole tile, `ROUTER_` for the send port (it puts packets into the network), `DMA_` for the engines and their arrival counters, and `SRAM_` for the read port (the controller's reads of big SRAM). `sw/mesh.h` (version 1.1) and `sw/REGISTERS.md` are generated from the same register table and match this section. v1.1 reorders the map by family, for sanity rather than compatibility: every offset after `TILE_CONDITIONS` moved, so every tile image, and every header that hard-codes addresses (`sort/split/split_regs.h`), is rebuilt against `mesh.h` 1.1.
+ 
+ | offset | register | access | function | section |
+ |---|---|---|---|---|
+@@ -1042,15 +1471,17 @@
+ | 0x838 | `DMA_RECORD_BASE_ADDRESS` | W | the run's record buffer, for augmenting and gathers | 8.7 |
+ | 0x83C | `SRAM_RD_ADDR_QUEUE` | R/W | write: queue a read; read: free entries | 8.8 |
+ | 0x840 | `SRAM_RD_DEST_ADDR` | W | the data-memory word for the next read-port result | 8.8 |
+-| 0x844– | reserved | — | the replayer's registers, *to be specified with the replayer* (4.17); unmapped until then | 4.17 |
++| 0x84C | `REPLAYER_OPCODE` | R | the instruction whose expansion the controller must supply | 8.11 |
++| 0x850 | `REPLAYER_STATUS` | R | rows run, next offset | 8.11 |
++| 0x854 | `DMA_REPLAYER_REMAINING` | R/W | down-counter for the tile's own mode-8 packets | 8.11 |
+ 
+ **General rules:**
+ - Registers sit in the top 2 KB (0xFFFFF800–0xFFFFFFFF), each one `lw`/`sw` with `rs1 = x0`.
+ - **Write-only registers read as 0,** not a bus error.
+ - **Sub-word accesses** (`lb`, `lh`, `lbu`, `lhu`, `sb`, `sh`) to a register are a bus error; registers are `lw`/`sw` only.
+-- **A store to a read-only register, or any access to an unmapped offset** (0x844–0xFFC, including the replayer's reserved offsets until they are specified), is a bus error.
+-- **Reserved and spare bits** are ignored on a store and read 0; meshsim also flags a 1 written to `TILE_PULSE` [3], or to [2] until the replayer is specified.
+-- **Reset values:** at chip reset the down-counters, `TILE_CONDITIONS`, the local-wake latch and the read port's queue are 0 or empty, and `TILE_STATUS` reflects the idle machine (6.1). **The configuration registers** (`DMA_CONFIG`, `DMA_RECORD_BASE_ADDRESS`, `ROUTER_SET_HDR`, `ROUTER_SET_W0`–`W2`, `SRAM_RD_DEST_ADDR`) **are undefined at chip reset and kept across HALT → RUN**; software writes each before use. The tables' contents are likewise undefined at reset.
++- **A store to a read-only register, or any access to an unmapped offset** (any offset from 0x844 that the table doesn't list), is a bus error.
++- **Reserved and spare bits** are ignored on a store and read 0; meshsim also flags a 1 written to `TILE_PULSE` [3].
++- **Reset values:** at chip reset the down-counters, `TILE_CONDITIONS`, the local-wake latch and the read port's queue are 0 or empty, and `TILE_STATUS` reflects the idle machine (6.1), with the replayer idle (4.17.11). **The configuration registers** (`DMA_CONFIG`, `DMA_RECORD_BASE_ADDRESS`, `ROUTER_SET_HDR`, `ROUTER_SET_W0`–`W2`, `SRAM_RD_DEST_ADDR`) **are undefined at chip reset and kept across HALT → RUN**; software writes each before use. The tables' contents are likewise undefined at reset.
+ - Configuration registers are static during a phase.
+ 
+ ### 8.2 `TILE_STATUS` (0x800, read-only)
+@@ -1060,8 +1491,8 @@
+ | `rd_running`: the address generator is running, from the end of the start store's cycle (lead-in included) until it has walked the run's last entry (4.2) | [0] | 0 |
+ | `rd_done`: the last run has finished; cleared by the next start; 0 before a tile's first run (4.2) | [1] | 0 |
+ | GATHER busy (4.4) | [2] | 0 |
+-| replayer bit, *to be specified with the replayer* (4.17); reads 0 until then | [3] | 0 |
+-| replayer bit, *to be specified with the replayer* (4.17); reads 0 until then | [4] | 0 |
++| `replay_running`: a replay pass is running, from the end of the replay-start store's cycle until its last row is in the output queue, or a halt (4.17.11) | [3] | 0 |
++| `replay_wait`: the replayer waits for a controller-fed expansion, from the new-expansion event until its first word lands (4.17.9, 4.17.11) | [4] | 0 |
+ | `send_busy`: the send holding register is occupied (4.11) | [5] | 0 |
+ | `ts_busy`: a table memory is in use by an engine (4.14) | [6] | 0 |
+ | `mem_idle`: the big-SRAM write path is empty (4.1) | [7] | 1 |
+@@ -1076,7 +1507,7 @@
+ 
+ ### 8.3 `TILE_CONDITIONS` (0x804, read-only)
+ 
+-The conditions of 4.13, bit *n* as in its table: 11 conditions in [10:0], three replayer conditions reserved in [13:11] (*to be specified with the replayer*; read 0 until then), and [31:14] reserved, reading 0. The bits moved from v1.0 (v1.0 → v1.1): drift 0 → 3, router overflow 1 → 0, write-engine input overflow 2 → 4, read-port overflow 3 → 7, unexpected arrival 4 → 2, table request overflow 5 → 5, bus error 6 → 9, illegal instruction 7 → 10, GATHER queue overflow 8 → 6, bad mode 9 → 1 (now bad mode or size), done early 10 → 8. Read-only: a store is a bus error. Cleared only on entering HALT. Non-zero raises the tile's error line (6.6).
++The conditions of 4.13, bit *n* as in its table: 14 conditions in [13:0], the replayer's in [13:11] (bad replayer write, queue overrun, invalid expansion; 4.17.11), and [31:14] reserved, reading 0. The bits moved from v1.0 (v1.0 → v1.1): drift 0 → 3, router overflow 1 → 0, write-engine input overflow 2 → 4, read-port overflow 3 → 7, unexpected arrival 4 → 2, table request overflow 5 → 5, bus error 6 → 9, illegal instruction 7 → 10, GATHER queue overflow 8 → 6, bad mode 9 → 1 (now bad mode or size), done early 10 → 8. Read-only: a store is a bus error. Cleared only on entering HALT. Non-zero raises the tile's error line (6.6).
+ 
+ ### 8.4 The send port: `ROUTER_SET_HDR`, `ROUTER_SET_W0`–`W2`, `ROUTER_SEND_32`, `_64`, `_128` (0x80C–0x824, write-only)
+ 
+@@ -1116,7 +1547,7 @@
+ |---|---|
+ | [0] | `done` (6.3); READY then fires automatically when a command has landed |
+ | [1] | start: load the run in `DMA_CONFIG` and begin it (4.2); ignored while a run is running |
+-| [2] | replay start: start the replayer (4.17); ignored while it runs. *To be specified with the replayer*; until then it does nothing (meshsim flags a 1) |
++| [2] | replay start: load the checkpoint and run one pass (4.17.11); ignored while a pass runs (meshsim flags it) |
+ | [3] | reserved (meshsim flags a 1) |
+ | [31:4] | spare |
+ 
+@@ -1155,6 +1586,19 @@
+ 
+ **Access rules:** only `HIST` can be loaded; a load from `PTR`, a `STREAM` array or `GROUP` (which the controller only writes) is a bus error, as is any sub-word access in the window and any access to 0x3600–0x3FFF. v1.0 had `STREAM` as one 64-bit entry per stream at 0x2800 + 8·*i* and `GROUP` at 0x3000. When the controller may touch the tables: 4.10.
+ 
++
++### 8.11 The replayer registers: `REPLAYER_OPCODE`, `REPLAYER_STATUS`, `DMA_REPLAYER_REMAINING` (0x84C–0x854)
++
++| register | offset | access | bits | function | reset |
++|---|---|---|---|---|---|
++| `REPLAYER_OPCODE` | 0x84C | R | [31:0] | the instruction whose expansion the controller must supply: the stored opcode-stream word, bit 0 clear for a compressed instruction (4.17.2). Set with the new-expansion event and held until the next | 0 |
++| `REPLAYER_STATUS` | 0x850 | R | rows run [15:0], next offset [31:16] | rows run: rows of this pass completed, modulo 2¹⁶, so 0 again after a full pass; rows left = 65,536 − rows run while `replay_running` is 1. Next offset: the row within the current expansion where the next row starts (0 to 3,120), where the controller begins sending a controller-fed expansion's words | 0 |
++| `DMA_REPLAYER_REMAINING` | 0x854 | R/W | count [19:0] | down-counter for mode-8 packets from the tile itself, decremented when each lands or is dropped (4.12, 4.17.10) | 0 |
++
++*(Proposed, item 53: `REPLAYER_STATUS`'s layout is the design notes'; reading rows run modulo 2¹⁶ is the proposal.)* `REPLAYER_OPCODE` and `REPLAYER_STATUS` are read-only: a store is a bus error. A load returns the state at the end of the previous cycle. `DMA_REPLAYER_REMAINING` behaves like the other counters (8.7): a store of *N* sets the count and clears the local-wake latch and its qualifier, a load returns the count, and bits [31:20] are spare.
++
++**The replayer's wake events** are `WAKE_EVENTS` [20:16] (8.10): [16] code low-water, [17] value low-water, [18] expansion low-water, [19] new expansion, [20] done. Their meaning, and the credits a consuming read takes, are in 4.17.8 and 4.17.9.
++
+ ---
+ 
+ ## 9. Invariants (to be checked by the simulator)
+@@ -1174,7 +1618,7 @@
+ 13. **Mode 7 stays in data memory:** no mode-7 packet addresses a word outside data memory.
+ 14. **Read-port results and incoming traffic do not overlap** (4.3): no packet from outside the tile, other than C&C's mode-6 command words, arrives while the tile has read-port results outstanding (issued and not yet accepted by the traffic director). Checked as actual overlap in time [built: meshsim's `Config.checkReadPortOverlap`, on by default].
+ 15. **No conditions:** every tile's `TILE_CONDITIONS` stays 0 (4.13). A program error that the hardware can see shows up here, and on C&C's error bit.
+-16. **The replayer's invariants** (mode 8 and the rest): *to be specified with the replayer* (4.17).
++16. **The replayer's invariants** (4.17): no bad replayer write, no queue overrun and no invalid expansion (conditions 11–13); mode 8 is sent only by the tile itself and C&C (4.17.10); at most one LPDDR read is outstanding per replayer queue (4.17.13); every opcode word and log word a pass is given is consumed in order, and a pass consumes exactly its tile's log; and the replayer's rows equal jolt-cpp's (the validation harness, item 58).
+ 
+ ---
+ 
+@@ -1214,7 +1658,7 @@
+ | C&C receive FIFO | at least 64 entries (6.6) |
+ | load-use penalty (data memory, registers, table window) | 0 each (the design target; section 12) |
+ | taken-branch penalty, multiply latency | 1, 3 |
+-| replayer | *to be specified with the replayer* (4.17); direction: 4/4/8 KB queues, an 8 KB ROM and a 4 KB decode table, about 32.5 KB of memory per tile (design notes) |
++| replayer (4.17) | a pass of 65,536 rows; code, expansion and value queues of 1,024 × 32, 256 × 128 and 1,024 × 64 bits (halves 512, 128, 512); ROM 512 × 128 bits; decode table 2K × 16 bits; register file 128 × 64 bits; output queue 32 rows of 640 bits; rows of 3 or 5 cycles; start copy 64 cycles; `rp_latency` 2 *(Proposed)*; about 32.5 KB of memory per tile |
+ 
+ ---
+ 
+@@ -1233,7 +1677,8 @@
+ | table memories: `STREAM` (three 256 × 32 macros, 3 KB) and `GROUP` (512 B) macros; `PTR` (256 × 20) and `HIST` (256 × 17) macros with request FIFOs, RMW pipelines and bypass | ~33 Kbit | ~0.017 mm² |
+ | controller: RV32I ~20k gates + Zmmul ~5–10k gates + `WFI`; 8 KB + 8 KB as eight 512 × 32 dual-port macros (four 1K × 32 in v1.0); 17 peripheral registers; the three down-counters | | ~0.07 mm² |
+ | RUN/HALT, `done`, "command landed", READY, GO, the local-wake latch, flags | | 0.005 mm² |
+-| **total per tile** | | **≈ 0.22 mm²**, about 15 % of the per-tile logic budget (≈ 0.17 mm² in v1.0); the replayer is not included (4.17) |
++| replayer (4.17.14): ALU and comparator, 128 × 64-bit true dual-port register file, two adders, operand resolver, decode index, three queue readers and credit counters; with its 32.5 KB of memories (queues, ROM, decode table, image, output queue) | ~260 Kbit of SRAM | ~0.1–0.15 mm² |
++| **total per tile** | | **≈ 0.32–0.37 mm²** with the replayer, about 21–25 % of the per-tile logic budget; ≈ 0.22 mm² without it (≈ 0.17 mm² in v1.0) |
+ | tile 0 only: fifth router port (4.16), ten 16 × 169-bit FIFOs + wider selectors | ~27 Kbit of flops | 0.03–0.05 mm² |
+ | once per die: C&C controller (6.6) | | ~0.04 mm² |
+ 
+@@ -1260,7 +1705,7 @@
+ - **Not in the island:**
+   - everything the engines touch every cycle other than the table memories: the address generator's read-ahead queues and token FIFO, the pointer stage, the area queues, the router queues;
+   - the GATHER engine and the read port's request queue, which sit by the big SRAM.
+-- **Paths that cross the gap:** engine table accesses, and the traffic director's port-B writes (modes 5–7, `cm_latency`); where the replayer sits, and so mode 8's path, is *to be specified with the replayer* (4.17). Both are pipelined and tolerate latency, so the island costs no throughput.
++- **Paths that cross the gap:** engine table accesses, and the traffic director's port-B writes (modes 5–7, `cm_latency`); the replayer sits beside the traffic director, outside the island, with its memories as SRAM macros, and mode 8's path to it is pipelined over `rp_latency` *(Proposed, item 48; its placement against the materializer is open with item 59)*. Both are pipelined and tolerate latency, so the island costs no throughput.
+ - **Big SRAM:** eight 512 KB areas (128 bits × 32K each) around the logic, with the link channels between them. Their arrangement awaits the compiler numbers.
+ 
+ ---
+@@ -1302,7 +1747,7 @@
+ 
+ **v1.1: open, to be settled**
+ 
+-23. **The replayer** (4.17): everything marked *to be specified with the replayer*: mode 8's address map, the sizes each region accepts, ownership while the replayer runs, the write path's latency and how a program knows its writes have landed; `TILE_PULSE` [2]'s action; the meaning of `TILE_STATUS` [3] and [4]; the conditions in `TILE_CONDITIONS` [13:11] and their kinds; the registers from 0x844; the replayer wake's events; and the replayer's placement and its memories' area against section 11's budget. The current direction is in the design notes (4.17 points to them): a small ALU, small queues and the trace resident in big SRAM, about 32.5 KB per tile instead of 768 KB of resident replay memory.
++23. **The replayer** (4.17): specified in v1.1's replayer pass, following the design notes and their allocation table. What remains is in items 33–59: the open ones are the tracer engine's run log (33), the template enumeration (34), the ROM's fit (40), the validation harness (58) and the consumer's interface (59); the rest are proposals.
+ 24. **Re-measurement** (all sections): every number labelled *v1.0 measurement; to be re-measured in v1.1*, chiefly the fan-in table (3.2), the read-port tolerances (4.3), the queue peaks and schedule comparison of the all-to-alls (4.2) and the sort's results (section 14), once meshsim models the 169-bit link word.
+ 25. **The `STREAM` count's width** (4.2). `STREAM_COUNT` keeps 18 bits. In the sort and the skew planner every stream lies inside one buffer of at most 65,536 elements: an area of 64-bit records, or two areas of 128-bit values (`sort/program/sw/sort.h`). Every count written (`local.c`, `transfer.c`, `config.c`, the planner's `write_stream`) is at most the keys per tile, 65,536 at 64 × 65,536, and the overlay copies are far smaller. So **17 bits (up to 131,071) would serve the sort, 128-bit streams included, with a factor of two to spare.** But the field is in elements: 17 bits would cap a 128-bit stream at half the big SRAM and a 32- or 64-bit stream lower still, and 18 bits already falls one element short of a whole-memory 128-bit stream (2¹⁸ rows). `STREAM_COUNT` has 5 spare bits, so narrowing it frees nothing needed today. No change proposed.
+ 
+@@ -1312,9 +1757,45 @@
+ 27. **Mixed read sizes within a group** (4.2): every visit now takes one cycle, so v1.0's one-size-per-group rule no longer sets the period, and dropping it costs nothing. meshsim's mixed-size report would go.
+ 28. **128-bit staging from C&C** (6.2): one row per packet halves v1.0's staging traffic; images would start on a row and be padded to whole rows, a change to the boot document's image layout (item 12).
+ 29. **C&C's receive FIFO** (6.6) holds the full 128-bit payload and its size, so a result or REPORT reply may use a whole packet; the register pair becomes the payload's words plus src, size and valid, part of item 11.
+-30. **The replayer wake and the `done` gate** (4.12, 4.17): the gate blocks the replayer wake as it blocks the local wake, keeping v1.0's guarantee that `wait_for_command()` is woken by GO alone.
+-31. **The interim replayer hooks** (4.17): until the replayer is specified its status and condition bits and its wake read 0, `TILE_PULSE` [2] does nothing, 0x844 onward is unmapped and mode-8 packets are dropped at its port, uncounted and without a condition. A tile then behaves exactly as without a replayer, and meshsim can model the hooks now.
+-32. **What the hooks require of the replayer** (4.17): HALT holds it in reset and a halted controller stops it, like the other engines, and its live bits read 0 when it is idle, so the rules every other engine follows carry over unchanged.
++30. **The replayer wake and the `done` gate** (4.12, 4.17): superseded. The replayer's events now wake `WFI` only through the shared `WAKE_EVENTS` & `WAKE_MASK` term (4.17.9, 8.10); how the `done` gate treats that term is specified with the register (8.10). The replayer's controller loop never runs inside the `done` window.
++31. **The interim replayer hooks** (4.17): superseded by the full replayer (4.17). meshsim's stub (a mode-8 packet dropped, the replayer bits 0) is replaced by the model the handoff describes.
++32. **What the hooks require of the replayer** (4.17): kept, and met by 4.17.11: HALT holds the replayer in reset and a halted controller stops it, like the other engines, and its live bits read 0 when it is idle, so a program that never starts it sees v1.0's behaviour.
++
++**v1.1, the replayer (4.17): open and proposed**
++
++33. **The run log, a requirement on our tracer engine** *(Open)* (4.17.2). The tracer engine must write, per tile, the opcode stream (decompressed instructions with bit 0 as the compressed flag, the padding word 0) and a memory log with one 64-bit word for every LD, SD and advice row **and every control transfer's next `instr_idx`**, in row order, plus the checkpoint. It differs from jolt-cpp's memory log on purpose: jolt-cpp computes DIV/REM advice in its interpreter and finds jump targets with a pc-to-index table (`trace_owner.cpp:111–126`, `545–630`), and the replayer has neither.
++34. **The template enumeration** *(Open)* (4.17.3–4.17.7). Enumerate `expand_virt_seq` against the generated bytecode of both ELFs: the template contents and ROM words, the single non-zero immediate per row, `virt` on rewrites and remapped rows, the inline scratch zeroing, the padding rows, and the 91 opcodes that occur in rows.
++35. **The `virt` bit and the NOP row's virtual-ness** *(Proposed)* (4.17.3, 4.17.4). Jolt's `is_virtual` depends on whether the row opcode differs from the source's (`isa/virtual.cpp:183`), which the replayer can't see, so it is stored per word (bit 51); `rd0` = 3 marks ADDI, whose rd = x0 NOP row is not virtual. Accepted in principle 2026-10-23.
++36. **What the replayer executes and checks** *(Proposed)* (4.17.4, 4.17.7). It executes 85 opcodes (classes S and M, LD, SD, `VirtualAdvice`); any other opcode is an invalid expansion. It doesn't check that temporaries stay in 40–47; the tracer guarantees it.
++37. **The row classes and the multiplier** *(Proposed)* (4.17.7). The per-opcode class table (L, M, S, source-only, never); MULH and MULHSU never reach a row, so the multiplier drops the signed high half and the sign corrections (accepted 2026-10-23). Measure the multiply and MULHU density per 64K-row window, which sets the 3.3-cycle average.
++38. **The decode index's special groups** *(Proposed)* (4.17.5): index[10] = 1 for AMO, custom-0 and SYSTEM, with index[9:8] choosing the group and the bit positions given there.
++39. **The padding and shared NOP rows at ROM words 0 and 1** *(Proposed)* (4.17.6), so the hardware needs no pointer to them.
++40. **The ROM's fit** *(Open)* (4.17.6): about 508 of 512 words; share identical words or grow the ROM slightly.
++41. **Register 0 of the image is ignored** *(Proposed)* (4.17.2): the working file's register 0 always reads 0.
++42. **Fetch and decode overlap the previous row** *(Proposed)* (4.17.7); only execution is strictly sequential, so the 3- and 5-cycle schedules hold with the table and ROM lookups hidden.
++43. **`VirtualPext` with contiguous masks only** *(Proposed)* (4.17.7): every mask comes from a `VirtualWindowMask…` row; a general bit-extract isn't built.
++44. **The queue ports by addr[20:18]** *(Proposed, accepted 2026-10-23)* (4.17.10): window 0 the memories, 1 code, 2 value, 3 expansion, 4–7 unmapped; a port ignores addr[17:0].
++45. **The sizes each region takes** *(Proposed, accepted)* (4.17.8, 4.17.10): the memories and the expansion port 128 bits, the code port 32, 64 or 128, the value port 64 or 128; a packet's entries are pushed low first.
++46. **The offsets in window 0** *(Proposed, accepted)* (4.17.10), with eight decode-table entries per 128-bit packet, entry *e* in bits [16·(*e* & 7) + 15 : 16·(*e* & 7)].
++47. **What is a bad replayer write** *(Proposed, accepted)* (4.17.10): an unmapped word, a wrong size, a misaligned window-0 write, a single-ported memory while running, a queue port in HALT.
++48. **Mode 8's landing and counting** *(Proposed, accepted)* (4.8, 4.12, 4.17.10): a fixed `rp_latency` of 2 with no queue; `DMA_REPLAYER_REMAINING` counts the tile's own packets when they land or are dropped, so 0 means landed and no idle bit is needed.
++49. **Mode 8 from another tile** *(Proposed)* (4.17.10): uncounted, and a programming error the simulator flags.
++50. **Consuming wake events** *(Proposed, accepted)* (4.17.9): a read of `WAKE_EVENTS` moves credits and clears sticky events only for bits under `WAKE_MASK`; a peek changes nothing.
++51. **The expansion queue's low-water rule** *(Proposed)* (4.17.8): set only while the newest landed word's `seq_remaining` exceeds pending; consuming the new-expansion event credits the first 128 words.
++52. **Queue reset and preload** *(Proposed)* (4.17.8): the queues clear at done, in HALT and when the controller halts, not at a start, so software may preload them while the replayer is stopped.
++53. **`replay_wait` and `REPLAYER_STATUS`** *(Proposed)* (4.17.11, 8.11): `replay_wait` clears when the expansion's first word lands; rows run reads modulo 2¹⁶.
++54. **Ownership in HALT** *(Proposed, accepted)* (4.17.10): the memories take mode-8 writes for boot loads, and a queue-port write is a bad replayer write.
++55. **The replayer's conditions** *(Proposed, accepted)* (4.13, 4.17.11): all three are program errors, invalid expansion also a fault detector; an invalid expansion stops the pass and posts done, so the controller loop exits.
++56. **Jolt's conventions as table data** *(Proposed)* (4.17.3, 4.17.4, 4.17.7). Each convention that can be data is: `virt` (bit 51), `rd0` 1 and 3, `imm0_pc0` (bit 52: a JAL with immediate 0 goes to pc 0, Jolt's program end, `trace_owner.cpp:281`), `report_c` (bit 53: `is_compressed` only on an expansion's last row, `trace_owner.cpp:899`), `from_log` (bit 54: which rows take a log word), and the advice rows written as `VirtualAdvice rd, x0, x0` so the record matches Jolt's masking (`trace_owner.cpp:912–917`) with no logic. A change in Jolt then means new tables, not new silicon. The owner's preference, 2026-10-23.
++57. **The replayer's hardwired Jolt behaviour** *(Proposed)* (4.17.7). What depends on values known only while a row runs, and so can't be table data: **a control transfer whose new pc equals its pc is sequential**, advancing pc by `pc_increment` and `instr_idx` by 1 with no log word (`trace_owner.cpp:117–124`); register 0 reads 0 and drops writes; the record's memory fields for LD and SD only; JALR's cleared bit 0; and the ALU's arithmetic per opcode. A Jolt change to any of these is a silicon change.
++58. **A validation harness** *(Open; building it is a later session)*. It proves the replayer, the run-log format and the tracer engine's extra log words together. It runs the tracer on both 2²⁹ workloads (EVM Zone and Cyclone), produces our run log, decode table, ROM and per-tile checkpoints, and replays every tile's 65,536 rows in a software model of the replayer that sees only those inputs (4.17.2–4.17.12). It then compares, **row by row and byte for byte**, against jolt-cpp's expanded trace:
++    - every field of jolt-cpp's `RiscCycle` (`trace_owner.hpp:19–94`): pc, opcode, the three register numbers, `inline_sequence_remaining`, `is_compressed`, the virtual flags, `_imm`, rd, rs1, rs2, rd_prev, the memory address, pre-value and post-value, the last derived from our record as 4.17.12 says;
++    - `instr_idx` against jolt-cpp's `instr_idx` column, and the record's three `*_is_imm` bits against the bytecode's at that index;
++    - the run log itself: each tile consumes exactly its opcode words and log words, in order, with none left over and none missing; the extra words (DIV/REM advice, next `instr_idx`) equal what jolt-cpp computes for those rows;
++    - each tile boundary: a tile's registers 0–47 at its last row equal the next tile's checkpoint image, registers 48–127 are 0 outside expansions, and mid-expansion starts resume at the right row;
++    - and it covers, and reports separately, every rd = x0 case, every controller-fed expansion, every control transfer (including self-jumps and the JAL to pc 0) and the padding rows.
++    On a mismatch it reports the tile, the row, the field and both values.
++59. **The output row and its consumer** (4.17.12). The 640-bit record's layout *(Proposed, accepted 2026-10-23: it keeps `instr_idx` and drops the memory post-value)*; the output queue's consumer side, its width and rate, and the replayer's placement against the materializer *(Open)*, with the materializer.
+ 
+ The logic budget (section 11) is unreviewed.
+ 
+--- a/sw/REGISTERS.md	2026-10-23 14:56:08.871518855 +0000
++++ b/sw/REGISTERS.md	2026-10-23 14:56:08.929551310 +0000
+@@ -46,7 +46,7 @@
+ 1. **Registers and the table window take `lw` and `sw` only.** `lb`, `lh`, `lbu`, `lhu`, `sb` and `sh` there are bus errors. Data memory takes every width.
+ 2. **A load from a write-only register returns 0.**
+ 3. **A store to a read-only register is a bus error.** So is a load from `PTR`, a `STREAM` array or `GROUP`, which the controller only writes.
+-4. **Unmapped addresses are bus errors:** register offsets `0x844`–`0xFFC` (from `0x844` reserved for the replayer's registers, to be specified with it), the window's `0x3600`–`0x3FFF`, and everything else outside the map. So are misaligned accesses and any data access to instruction memory.
++4. **Unmapped addresses are bus errors:** register offsets from `0x844` that section 2 doesn't list, the window's `0x3600`–`0x3FFF`, and everything else outside the map. So are misaligned accesses and any data access to instruction memory.
+ 5. **Spare and reserved bits** are ignored on a store and read 0.
+ 6. **Registers are one instruction each:** `lw`/`sw` with `rs1` = `x0` reaches every register.
+ 
+@@ -124,7 +124,8 @@
+ - **`rd_running`**: the address generator has a run: from the start (its lead-in included) until it has walked the run's last entry.
+ - **`rd_done`**: the last run has finished. Cleared by the next start; 0 before a tile's first run. It does not mean the packets have arrived anywhere: that is what the counters are for (2.3.2).
+ - **`gather_busy`**: the GATHER engine's request queue is non-empty, or a request is part-way through its *k* reads. Reads issued but not yet landed are not included (`DMA_SRAM_REMAINING` covers their landing).
+-- **[3] and [4]** are reserved for the replayer's live bits, to be specified with the replayer (spec 4.17); they read 0 until then.
++- **`replay_running`** [3]: a replay pass is running, from the end of the replay-start store's cycle until its last row is in the output queue, or a halt (2.6).
++- **`replay_wait`** [4]: the replayer waits for an expansion the controller must supply, from the new-expansion event until its first word lands (2.6).
+ - **`send_busy`**: the send port's holding register is occupied, so a send store now would stall (2.2).
+ - **`ts_busy`**: an engine is using a table memory: it issued a table request within the last *L* + 1 cycles, or `PTR` or `HIST` has a request arriving, queued, or too recent to read back.
+ - **`mem_idle`**: the big-SRAM write path is empty: the write engine's input FIFO, its pointer stage and every area's queue.
+@@ -173,7 +174,7 @@
+ 
+ **A condition means something went wrong** (figure 2.4). In a correct program on correct hardware this register reads 0 for ever, so the test is `conditions() == 0`. **A store is a bus error** (and sets the bus-error condition). Nothing in RUN clears a condition; **entering HALT** (the RUN → HALT edge, and chip reset) clears them all, and a condition set in the same cycle is cleared too. **Any non-zero condition raises the tile's error line to C&C.** A program sees what a phase caused by comparing `conditions()` at its start and its end.
+ 
+-**The bits are grouped by unit** (v1.1): the network ([0] router overflow, [1] bad mode or size), the arrivals ([2] unexpected arrival), the address generator ([3] drift), the write engine ([4]), the tables ([5]), the GATHER engine ([6]), the read port ([7]), control ([8] done early) and the controller ([9] bus error, [10] illegal instruction). **[13:11]** are reserved for the replayer's conditions, to be specified with it, and read 0 until then. v1.0 numbered the bits differently: the spec's 8.3 gives the mapping. **Bad mode or size** is set by any packet the traffic director drops as bad: mode 0 or 9–15, size 00, or mode 4 at 128 bits.
++**The bits are grouped by unit** (v1.1): the network ([0] router overflow, [1] bad mode or size), the arrivals ([2] unexpected arrival), the address generator ([3] drift), the write engine ([4]), the tables ([5]), the GATHER engine ([6]), the read port ([7]), control ([8] done early) and the controller ([9] bus error, [10] illegal instruction). **[13:11]** are the replayer's: [11] bad replayer write, [12] queue overrun, [13] invalid expansion, which also stops the pass (2.6). v1.0 numbered the bits differently: the spec's 8.3 gives the mapping. **Bad mode or size** is set by any packet the traffic director drops as bad: mode 0 or 9–15, size 00, or mode 4 at 128 bits.
+ 
+ **Kinds** (in the table): **P** a program error, which a program can cause; **H** a hardware-fault detector, which no program on a correct design can cause; **P (or H)** a program error that a corrupted image can also cause. All raise the error line alike.
+ 
+@@ -217,7 +218,7 @@
+ - **A start while a run is running** (its lead-in included) is ignored; meshsim flags it.
+ - **The run ends** when the address generator has walked its last entry, trailing count-0 streams and R = 0 groups included; the last entry's gap-after is not waited out. Then `rd_running` = 0 and `rd_done` = 1, until the next start.
+ - **Done** declares the tile finished with its command: `done` = 1, and READY goes to C&C once a command has also landed (`landed`, 2.1.1). Done also clears the local-wake latch, and from then until GO only GO can wake `WFI` (the done gate, 2.3.3). **Done while a down-counter is non-zero sets done early.**
+-- **[2], replay start,** is reserved for the replayer (spec 4.17), to be specified with it: start only, ignored while the replayer runs. Until then it does nothing, and meshsim flags a 1 there. **[3]** is reserved and ignored (meshsim flags a 1 there).
++- **[2], replay start,** loads the replayer's checkpoint and runs one pass of 65,536 rows (2.6): start only, ignored while a pass runs (meshsim flags it). **[3]** is reserved and ignored (meshsim flags a 1 there).
+ - **v1.0** called this register `DMA_PULSE`, at offset `0x818`. It is renamed because it now carries more than the engines' pulses.
+ 
+ An ignored pulse sets no condition: the run the program expected never happens, and the tile hangs where C&C's watchdog sees it.
+@@ -324,8 +325,8 @@
+ 
+ **Rules.**
+ - **dst** is absolute: a tile 0–63, 64 for C&C, 126 for broadcast. C&C's port ignores mode and addr.
+-- **mode** is 1–8 (4.2). Never send mode 0 or 9–15, or mode 4 with `ROUTER_SEND_128`: the receiver drops it and sets bad mode or size. Mode 1 goes only to the tile itself. Mode 8 is the replayer write, to be specified with the replayer.
+-- **addr** is used by modes 5–8 only: a packed word for modes 5–7 (4.3), a replayer address for mode 8; put 0 otherwise.
++- **mode** is 1–8 (4.2). Never send mode 0 or 9–15, or mode 4 with `ROUTER_SEND_128`: the receiver drops it and sets bad mode or size. Mode 1 goes only to the tile itself. Mode 8 is the replayer write (2.6).
++- **addr** is used by modes 5–8 only: a packed word for modes 5–7 (4.3), a replayer address for mode 8 (2.6); put 0 otherwise.
+ - **Order:** packets from one sender to one tile arrive in the order sent if they are all unicast or all broadcast. A unicast and a broadcast may overtake each other.
+ - **No flow control:** many-to-one traffic must be paced by the program (spec/machine-spec.md v1.1, §3.2, the fan-in table).
+ - **Writing big SRAM** from the controller is mode 2 to the tile itself, landing at `PTR[me]` at the packet's size (32, 64 or 128 bits).
+@@ -405,12 +406,13 @@
+ | `DMA_SRAM_REMAINING` | modes 2, 3 and 4, gather values included | 0 and `mem_idle` |
+ | `DMA_CM_REMAINING` | mode 5 (a packet counts 1, whatever its size) | 0 and `cm_idle` |
+ | `DMA_REPLY_REMAINING` | mode 7, read-port results included | 0 and `cm_idle` |
++| `DMA_REPLAYER_REMAINING` | mode 8 from the tile itself, when it lands (2.6) | 0 |
+ 
+-- **Never counted:** modes 1, 6 and 8, and every packet from C&C (src 64).
++- **Never counted:** modes 1 and 6, mode 8 from anyone but the tile itself, and every packet from C&C (src 64).
+ - **An arrival at a counter already at 0** leaves it at 0 and sets unexpected arrival.
+ - **A store and an arrival in the same cycle:** the store wins, and the arrival is judged against the old count: next = store ? *N* : (arrive ? max(count − 1, 0) : count), unexpected = arrive & (count = 0).
+ 
+-**The local wake** (figure 2.3). The local-wake latch is set on the rising edge of "every counter is done": all three at 0 with `mem_idle` and `cm_idle`, **counted only if some counter has been non-zero since the latch last fired** (the qualifier).
++**The local wake** (figure 2.3). The local-wake latch is set on the rising edge of "every counter is done": all four at 0 with `mem_idle` and `cm_idle`, **counted only if some counter has been non-zero since the latch last fired** (the qualifier).
+ - The latch holds an edge until a `WFI` consumes it, so a wait that finishes before the `WFI` is not lost.
+ - **Cleared** by any counter store (which also clears the qualifier), by the done pulse and by HALT → RUN. A set and a clear in the same cycle: the clear wins.
+ - **A count of 0 never makes an edge;** a phase that expects nothing must not `WFI` for a local wake.
+@@ -524,7 +526,7 @@
+ - the send port, from `ROUTER_SET_HDR`'s addr, advancing per packet;
+ - the read port, from `SRAM_RD_DEST_ADDR`, advancing per read.
+ 
+-One write path, three address sources; nothing on the write side chooses addresses. A mode-5 packet writes 1, 2 or 4 consecutive words, by its size. Mode 8 (the replayer write) is addressed the same way, by a stream or the send port; where it lands is to be specified with the replayer.
++One write path, three address sources; nothing on the write side chooses addresses. A mode-5 packet writes 1, 2 or 4 consecutive words, by its size. Mode 8 (the replayer write) is addressed the same way, by a stream or the send port; where it lands is in 2.6.
+ 
+ <!-- generated: cmwrites -->
+ | producer | packets | typical use | the address comes from | advances | counted in |
+@@ -536,6 +538,40 @@
+ 
+ Mode 6 (the mailbox) also writes data memory, by slot: it carries C&C's commands and is not counted (section 5).
+ 
++<a id="replayer"></a>
++### 2.6 The replayer: `REPLAYER_OPCODE`, `REPLAYER_STATUS`, `DMA_REPLAYER_REMAINING` and its wake events
++
++The replayer regenerates the tile's 65,536 trace rows per pass from the run log; the spec's 4.17 is the full description. A program drives it with one pulse, three registers, five wake events and mode-8 packets.
++
++<!-- generated: reg REPLAYER_OPCODE REPLAYER_STATUS DMA_REPLAYER_REMAINING -->
++<!-- end generated -->
++
++| offset | register | access | bits | a load returns | reset |
++|---|---|---|---|---|---|
++| `0x84C` | `REPLAYER_OPCODE` | R | [31:0] | the instruction whose expansion the controller must supply (bit 0 clear if it was compressed) | 0 |
++| `0x850` | `REPLAYER_STATUS` | R | rows run [15:0], next offset [31:16] | rows of this pass done (modulo 2¹⁶), and the row within the current expansion where the next row starts | 0 |
++| `0x854` | `DMA_REPLAYER_REMAINING` | R/W | count [19:0] | the count; a store sets it and clears the local-wake latch, like the other counters (2.3.2) | 0 |
++
++**Start and stop.** `TILE_PULSE` [2] starts a pass: the register image goes into the working file (64 cycles) and the replayer runs 65,536 rows, then stops with `replay_running` = 0 and posts its done event. HALT, or the controller halting, stops it at once.
++
++**Its wake events** are `WAKE_EVENTS` [20:16]: [16] code low-water, [17] value low-water, [18] expansion low-water, [19] new expansion, [20] done. A load of `WAKE_EVENTS` returns them all but consumes only the bits set in `WAKE_MASK`: consuming a low-water event credits half its queue (so it is the program's promise to send that much), consuming new expansion credits the first 128 expansion words, and consuming done clears it. With a bit's mask clear the load is a peek and changes nothing.
++
++**Feeding it.** Mode-8 packets, from a stream or the send port, land by address (`addr` in 32-bit words):
++
++| `addr` | region | sizes | written when |
++|---|---|---|---|
++| `0x00000`–`0x000FF` | register image, 128-bit word *i* (registers 2*i*, 2*i* + 1) at 4*i* | 128 | stopped or halted |
++| `0x00100` | state word: pc [63:0], `instr_idx` [95:64], next offset [111:96] | 128 | stopped or halted |
++| `0x00400`–`0x007FF` | decode table, eight 16-bit entries per packet | 128 | stopped or halted |
++| `0x00800`–`0x00FFF` | ROM, 128-bit word *j* at `0x800` + 4*j* | 128 | always |
++| `0x40000`–`0x7FFFF` | code queue (appended; addr ignored) | 32, 64, 128 | running or stopped, not halted |
++| `0x80000`–`0xBFFFF` | value queue | 64, 128 | running or stopped, not halted |
++| `0xC0000`–`0xFFFFF` | expansion queue | 128 | running or stopped, not halted |
++
++Anything else is a **bad replayer write**: dropped, with condition [11]. The tile's own mode-8 packets count in `DMA_REPLAYER_REMAINING` when they land, so a `WFI` after a refill run returns when the words are in the queue.
++
++**The loop that serves it** (spec 4.17.9): with the replayer's mask bits set, `WFI`; read `WAKE_EVENTS`; exit on done; on new expansion read `REPLAYER_OPCODE` and `REPLAYER_STATUS`; clear the replayer's mask bits; set `DMA_REPLAYER_REMAINING`, write the `STREAM` entries and start the refill run; `WFI` for the counter; set the mask bits again. A refill is at most half a queue: 512 opcodes, 512 log words or 128 expansion words.
++
+ ## 3. The table window
+ 
+ <a id="table-window"></a>
+@@ -667,7 +703,7 @@
+ 
+ **Fields.**
+ - **source** (`STREAM_SRC` [19:0]) is the chunk address of element 0. Element *e* is read at source + *e* × (1, 2 or 4 chunks for read size 32, 64 or 128 bits).
+-- **destination word** (`STREAM_DEST` [19:0]) is used by modes 5 and 8 only: the addr of element 0's packet, then + 1, 2 or 4 words per element by the read size. For mode 5 it is a packed word (4.3), with [19:12] = 0; for mode 8 it is a replayer address, to be specified with the replayer. Other modes ignore it.
++- **destination word** (`STREAM_DEST` [19:0]) is used by modes 5 and 8 only: the addr of element 0's packet, then + 1, 2 or 4 words per element by the read size. For mode 5 it is a packed word (4.3), with [19:12] = 0; for mode 8 it is a replayer address (2.6). Other modes ignore it.
+ - **d** (`STREAM_DEST` [25:20]) is the destination as an offset: the packets go to tile (`me` + *d*) mod 64; *d* = 0 is the tile itself.
+ - **count** (`STREAM_COUNT` [17:0]) is the number of elements, 0 to 262,143. A count-0 stream sends nothing and takes only its gap after.
+ - **mode** (`STREAM_COUNT` [21:18]) is the packet mode, 4 bits: 1–5 or 8. **0, 6, 7 and 9–15 are errors**, even at count 0. Mode 1 needs *d* = 0, and mode 4 needs read size 32 or 64.
+@@ -763,7 +799,7 @@
+ - **The modes** are figure 1.4's.
+ - **`ROUTER_SET_HDR`'s mode and `STREAM_COUNT`'s are both 4 bits.** A stream can send modes 1–5 and 8; modes 6 and 7 come only from the send port (and mode 7 also from the read port, 2.4).
+ - **Size.** Every packet carries its payload's size, 32, 64 or 128 bits: a stream stamps its read size, the send port the size of the send register used, the read port 32. Modes 2, 3 and 5 write the payload at its size; mode 4 writes a 64-bit record from a 32- or 64-bit packet; modes 1, 6 and 7 read fixed bits at any size (proposed). Size 00, and mode 4 at 128 bits, are bad packets.
+-- **Mode 8** is the replayer write, never counted; the rest is to be specified with the replayer (spec 4.17).
++- **Mode 8** is the replayer write (2.6), counted in `DMA_REPLAYER_REMAINING` when the tile sent it to itself.
+ - **Digits** (mode 3 and count-on-arrival): selector *s* = 1–4 picks payload bits [8*s* − 1 : 8(*s* − 1)] of the key in bits [31:0].
+ - **Augmenting** (mode 4): the record written is the packet's low 32 bits and, in [63:32], the ordinal (2.3.3).
+ 

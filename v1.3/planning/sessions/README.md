@@ -1,0 +1,57 @@
+# Sessions: their reports, questions and findings
+
+Their prompts and notes were removed when the sessions closed; git history has them.
+
+| session | wrote | kept here |
+|---|---|---|
+| WORKER5 | `wip/spec/machine-spec.md` v1.2 and `wip/spec/CHANGES-v1.2.md` | its reports (rounds 1-3), `QUESTIONS.md` (W5-01 to W5-26, all answered), `RECIPE-CHECK.md` (the recipes checked against the spec) |
+| WORKER6 | `wip/sw/RECIPES.md` v1.2, `wip/sw/CONVENTIONS.md`, `wip/sw/mesh-v1.2-draft.h`, and the compiled recipe sources now in `wip/sw/recipes/` | its reports (rounds 1-3) and `FINDINGS.md` (F1 to F17, all answered) |
+
+The reviews of the decisions themselves are in `../reviews/`.
+
+## Added at v1.2's freeze (2026-11-01)
+
+| session | what it did | kept here |
+|---|---|---|
+| WORKER4 | ported meshsim to v1.2 in six phases, the replayer included, and verified the combined branch with the sort (Quest tasks 073-077) | `WORKER4-REPORT.md`, `WORKER4-QUESTIONS.md` (W4-01 to W4-08) |
+| WORKER7 | the Tracer's advice: the inventory, the division family's untraced templates (8.04 M cases), the inlines' layout | `WORKER7-REPORT.md`, `WORKER7-QUESTIONS.md`; its templates and harness are in `wip/tracer/` |
+| WORKER8 | ported the sort to v1.2: all 43 full-size runs pass (Quest 070-072), every cycle difference explained | `WORKER8-REPORT.md`, `-QUESTIONS.md`, `-REQUESTS.md`, `WORKER8-results/`; its runner kit was stale after the boot ROM and is not kept (WORKER4 rebuilt one for task 077) |
+| WORKER12 | counted what EVM Zone and Cyclone execute at 2²⁹: inlines, untraced rows, CSR instructions, per window (v1.3 log section 11) | `WORKER12-REPORT.md`, `WORKER12-data/`, `WORKER12-report_tables.py`; its counting tool is on jolt-asic-planning's `worker12-counts` branch |
+| WORKER9 | v1.25's tables and deliveries: the standalone tracer refreshed to jolt-cpp `821e1bd` (jolt-asic-planning PR #2), the universal replayer and Tracer tables (`wip/tables/`), the delivery writer, both 2²⁹ programs delivered and proved (Quest 079, 080), `--validate` at 2²⁹ (069b) | `WORKER9-REPORT.md` (with how to rebuild the deliveries and redo all of it for a later jolt-cpp), `-QUESTIONS.md`, `-PLAN-PART2.md`, `-PLAN-PART3.md`, `WORKER9-expansion-diff/`, `WORKER9-tracer-div-821e1bd/`; its opcode-harness outputs moved to `wip/tools/replayer-opcodes/out-821e1bd/` |
+
+## Added at v1.2.1's freeze (2026-11-01)
+
+| session | what it did | kept here |
+|---|---|---|
+| WORKER15 | v1.2.1: v1.2 with errata E1-E11 and cleanups CL1-CL5 applied, meshsim and the software in line; `v1.2.1/CHANGES-v1.2.1.md`, the changelog from Tony's copy; verified on the runner (Quest 088: quick 34/34, full 10/10, p4/uniform-k128 1,360,082 cycles) | `WORKER15-REPORT.md`, `WORKER15-QUESTIONS.md` (Q1-Q3, which became E9, CL3 and CL4). Its report's diff commands use a `v1.2.1` tag that was never made; `CHANGES-v1.2.1.md` has the folder diffs |
+| WORKER13 | the change guide `wip/spec/CHANGES-to-v1.25.md` (v1.1 -> v1.25 and v1.2 -> v1.25 in one; 200 entry IDs), stamped at spec `d590722`, with DECISIONS-v1.25 section 8 and CL1-CL6; found v1.2 errata E1 (extended), E9, E10, E11 | `WORKER13-REPORT.md`, `WORKER13-QUESTIONS.md` (Q1-Q10; Q10, v1.1's two ordinal ranges, is for Tony), `WORKER13-opcode-map.txt` |
+
+## Added at v1.25's freeze (2026-11-01)
+
+| session | what it did | kept here |
+|---|---|---|
+| WORKER10 | the v1.25 spec (`machine-spec.md`, `replayer-opcodes.md`) and `CHANGES-v1.25.md`, through DECISIONS-v1.25 sections 1-9 (with section 8's principle, the UB conversions, the gather unit, the 256-byte ROM, and section 9's reserved fields) and the measured figures | `WORKER10-REPORT.md`, `WORKER10-QUESTIONS.md` (Q1-Q14; Q12 and the overrun's count are for Tony; Q14 is item 142) |
+| WORKER11 | meshsim's replayer at v1.25 and the acceptance kit (both programs at 2²⁹ matched row for row, Quest 083/084); CL1, CL4; section 8 (`s8`: UB stops, the even-*k* gather unit, the 256-byte ROM; Quest 089, 091) and section 9 (`s9`); the freeze check (Quest 093, 094) | `WORKER11-REPORT.md`, `WORKER11-QUESTIONS.md` (Q5: `stopLoudly` stays separate from UB). Its table-builder change is on jolt-asic-planning branch `w11-section9`, unmerged |
+| WORKER14 | C&C 1-3 as real cores in meshsim, opt-in (`Config.ccCores`): firmware, `Mach.bootCores`, C&C 1's error path for both report sets, CcBench (boot 901 cycles, phase 88, against the Java model's 120 and 43); Quest 090, 092 | `WORKER14-REPORT.md` (its first section lists the shared simulator changes; the "Pending" items were finished, see "Runner verification", task 092), `WORKER14-QUESTIONS.md` (W14-01 to W14-07) |
+
+## Added at v1.26's freeze (2026-11-04)
+
+| session | what it did | kept here |
+|---|---|---|
+| WORKER19 | the v1.26 spec: DECISIONS-v1.26 items 1-12 into 4.19 and the places restating it, `CHANGES-v1.26.md`, the RTL guide `CHANGES-v1.25-to-v1.26.md`; item 143 closed with WORKER20's stall counts | `WORKER19-REPORT.md`, `WORKER19-NOTES.md` (the record, stream-word and state-word layouts, the rulings) |
+| WORKER20 | meshsim, the firmware, the kit and the deliveries at v1.26: the replayer model (part 0 as the working state), `replay_ctl.c` and recipe 26, `ConvertDelivery`, the deliveries regenerated into persistent data (Quest 103, 104: identical to WORKER9's); acceptance on every window of both workloads at 2²⁹ with 4 KB queues (Quest 098, 099), the 8 KB controls (100, 101), suites and sort (102b) | `WORKER20-REPORT.md`, `WORKER20-NOTES.md` (the item 143 counts, the model's choices), `WORKER20-tools/` (task generators, `stalls.py`, `pair.py`, the suite kit) |
+
+## Added during v1.3 (2026-11-04)
+
+| session | what it did | kept here |
+|---|---|---|
+| WORKER17 | Jolt's memory from the tracing and checking sides (jolt-cpp 821e1bd, checked at 88dca85; a16z 7189216 and 17a9459): the layout, ram_K, the per-row rules, the workloads' pages at 2²⁹ (`mem_probe`, jolt-asic-planning `worker17-memory` a916ee8), the RAM sumchecks sized by K or T, what is and isn't proved, the trace-to-prover mapping; the 88dca85 limits (jolt-cpp's real K ceiling 2³⁰), the rewound chunk headers (no wrong row), the JIT's unchecked guest memory. Fed DECISIONS-v1.3 sections 12, 14, 15, 17, 23, 25 | `WORKER17-REPORT.md`, `WORKER17-NOTES.md`, `WORKER17-data/` (the probe's JSON and per-segment CSVs) |
+| WORKER25 | v1.26.1, the point release (DECISIONS-v1.26 items 13-19): the spec, `CHANGES-v1.26.1.md`, the RTL guide from v1.25 straight to v1.26.1, meshsim, `mesh.h`, `replay_ctl.c` layout 4 and recipe 26, the kit; Quest 105-108, identical to v1.26 on every window | `WORKER25-REPORT.md`, `WORKER25-NOTES.md`, `WORKER25-tasks/` (the task generators and `make_release.sh`) |
+| WORKER21 | SP1, the Tracer's spec chapter: 4.21 The Tracer (nine subsections), 4.17.9 the DMA in 128-bit words, 4.19's ground truth, the template broadcast, 8.16, items 144-157, `CHANGES-v1.3.md` (merged 2026-11-05) | `WORKER21-REPORT.md` |
+| WORKER26 | the jump-target map for B1: one table per proof (static kinds incl. the AUIPC pairs and after-ECALL, the data scan, the run's targets; k = 13, 0 map errors over every jump at 2²⁹), frame 6's format, the initial image and per-segment page lists checked against gold; the map's footprint (one line per distinct target); dropped targets all c.unimp traps; 2²⁹ outputs in the runner's data (Quest 109); tool in `wip/jumpmap/` | `WORKER26-REPORT.md`, `WORKER26-NOTES.md` |
+| WORKER16 | T2 (the JIT's advice streams' design), W2 (the advice streams, built and checked), W3 (the segment-file tool), the pin move to jolt-cpp 88dca85 (rows, segment files and capture_writes identical; merged fa59d9a), and the segment tools at v1.3's formats, byte-identical to gold's (merged into tracer-standalone-main at ccfb772) | `WORKER16-REPORT.md`, `-W2-REPORT.md`, `-W3-REPORT.md`, `-PIN-REPORT.md`, `-V13-REPORT.md`, `-NOTES.md`, `WORKER16-data/` |
+| WORKER27 | the input pipeline: `wip/inputs/` rebuilds every simulation input (deliveries, the v1.26.1 conversion, gold's segment files v1.2 and v1.3, jumpmap's table, image and page lists) from pinned sources on a fresh machine; both workloads at 2²⁹ identical to the runner's copies (Quest 111, 112); the README for Tony; ConvertDelivery's manifest made deterministic | `WORKER27-REPORT.md`, `WORKER27-NOTES.md` |
+| WORKER18 | the Java emulator gold (`wip/gold/`): stages 1-3 (gold earned, byte-identical to jolt-cpp's tracer), W5 (ACT4 through `Act4Runner`, the inline vectors), the UPSTREAM-DIFFS rulings D1-D14 with jolt-cpp fix branches (jolt-asic-planning `worker18-fix-*`) and bug reports, the host's v1.3 rules, `ProofParams` (K by a16z's rule, frame 7), and gold's v1.3 files, byte-identical to WORKER16's. **The living documents moved to `wip/planning/upstream/`:** `UPSTREAM-DIFFS.md` (with the report list) and `bug-reports/` | `WORKER18-REPORT.md`, `WORKER18-NOTES.md`, `WORKER18-data/`, `WORKER18-fixes/` |
+| WORKER24 | the Tracer's figures 9.1 (block level), 9.2 (the output path) and 9.3 (the 68-word record), in `wip/diagrams/`, at v1.3's final layouts (the integrator fixed 9.2's router label for item 118) | `WORKER24-NOTES.md` |
+| WORKER22 | B1, the Tracer in meshsim, and 4.21's review: the Tracer's model and memory system, C&C 3's `tracer_ctl.c`, C&C 1's `CC_SEGMENT` barriers, the DMA's router port, `replay_ctl` layout 5, T1 and T2; every window of both workloads at 2²⁹ (T1), 18 full-chip T2 runs, the final regression (110v); Q1-Q17 answered; 4.65 and 4.48 cycles per row, worst segment 28.1 ms; the fan-in hang found by its fail-fast (merged at e67bc43) | `WORKER22-REPORT.md`, `-NOTES.md`, `-PLAN.md`, `-SPEC-QUESTIONS.md` (the spec fold-in's input), `WORKER22-tasks/` |
+| WORKER30 | v1.3's spec fold-in: B1's Q1-Q17 into 4.21 (cited as "B1 Qn"), 4.21.10 the segment's barriers and deliveries, items 148, 153, 157, 158, D13/D14, `CHANGES-v1.3.md` complete, the RTL guide `CHANGES-v1.26.1-to-v1.3.md`, the statistics counters in the model (merged 2026-11-06 at 46355cc) | `WORKER30-REPORT.md`, `WORKER30-NOTES.md` (the audit) |

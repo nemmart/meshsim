@@ -1,0 +1,16 @@
+# inline rows digest-binding-1 digest-binding-2 (InlineEmitTest, from jolt-cpp 821e1bd's .inc)
+bigint_multiply 141 94eb96c190303182 6d4fc54f4548f064
+blake2b 1067 293426b9e105197b aa15e4a1676e4d42
+blake3 648 f1a4f3120aef79dc 3f2a2cb7f2687ac0
+blake3_keyed64 646 1a788f4b35198d6b c2c084bc64e0c687
+keccak256 3087 49213e6a11d1d493 d67b3b8a302fa982
+keccak256_absorb_permute 3121 2e9e646b0226fe91 f0becc589fa4309b
+sha256 1900 3b079dfdadaff002 7edd73873ec9a235
+sha256_init 1864 fee3ac827b84a09a 46fa1423b63d169e
+secp256k1_mulq 186 48e518d367843c78 87ca5364f09334fc
+secp256k1_squareq 167 c895496995c7e63c 048ed90ac4f81dc9
+secp256k1_divq 194 6399fcec076bbfeb 7f0d031522dc7087
+secp256k1_mulr 232 8ab1495adad3faa9 d47c192566be22da
+secp256k1_squarer 213 ead407508ae693fc 4098ffebb85cecb8
+secp256k1_divr 240 1c1c08eea08ac309 f9f8c3e7b0f8a321
+secp256k1_glvr_adv 13 99bf5d32aa8c9d69 7cacba7d3847fd6e

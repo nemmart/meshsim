@@ -1252,7 +1252,9 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
   C&C 3 stores the inline's number with a valid bit, setting its bitmap bit; `PULSE_RUN` sets it again when a run starts inside
   that inline); **the advice flag is a credit** like the replayer's (depth 2, half a queue each, set to 2 by the word-0 write);
   **the per-stream compression enables** in `RUN_CONFIG` [28:26] on the Tracer (sticky; the replayer ignores them).
-- **Open:** statistics registers (spec item 157).
+- **Statistics registers** (owner, 2026-11-06; spec item 157): a minimal fixed set, **words 44-51**, eight read-only 32-bit
+  counters cleared by the word-0 write: cycles running, stall cycles for fetch, data, map probe and output, I- and D-cache misses,
+  map probes. Words 52-127 reserved.
 
 ## 25. The Tracer's core, and the program's end (2026-11-01)
 

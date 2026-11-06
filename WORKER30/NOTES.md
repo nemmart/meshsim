@@ -64,3 +64,8 @@ are left as history. **Code constants at 32, not mine to change (asked):** `Conf
   the rewrite row not virtual for every NOP-policy template); no hardware change.
 - **G2, the counters while stopped.** Item 157 counts while `STATUS` [0] is 1; after a stopping error it stays 1, so
   `STAT_CYCLES` keeps counting. Taken as written.
+
+## 5. Done (see REPORT.md)
+
+Every row of sections 1-2 above marked "no" is now in the spec (branch v1.3-spec-final, bf36fef). Owner 2026-11-06: item 158
+decided (tables after the freeze, no RTL effect); stage_delay's code constants are WORKER28's; the counter catch-up note relayed.

@@ -53,6 +53,18 @@ F on windows 0-15 of both, under JFR and the probe; ~25 min), 113b (the time pro
   the three C&C units are 3.4 µs per cycle in all, of which C&C 1 and 2 are pure idle cost.
 - **The interpreter's share is small:** a core cycle that executes costs 89-129 ns (mesh cores 89-113, C&C 3 100-129);
   C&C 3 executes 1.0-1.1 M of the 10.5-11.4 M cycles, the mesh cores 0.3% of theirs. About 0.3% of T2's time.
+**113, T2 segment 0** (JFR on all 64 windows, 1,052-1,221 s; the activity probe on the first 32; its Stage B runs failed
+at the start, the kit lacking the tables' manifest: 113c redid them): **98.3% of tile-cycles idle** (router only 0.4%,
+engines 0.9-1.0%, core 0.3%), and **the idle stretches are long: 85-90% of idle cycles are in runs of 2²⁰ cycles or more**
+(56% in runs of 2²³), so a sleeping tile is woken rarely. JFR's top units are the idle polling again:
+`TileControl.endCycle` 20%, the SRAM read queue 19%, the router 8%, the table store 8%, the replayer 5%; the interpreter
+executing (`Controller.step`, inclusive) is below the fold's top 60 methods, under 0.5%.
+
+**113d, the same probe on WORKER22's READY/GO barriers** (v1.3-tracer a326fbd, now B1 in main): **the analytic adjustment
+holds.** Idle tile-cycles 98.3-98.4% as before; the cores now wait in WFI for the segment's GO (98.7%, halted 1.1%) where
+before most had replayed early and halted (WFI 26-28%, halted 72-74%); the idle stretches the same (55% in runs of 2²³).
+For stage 1 a WFI-waiting tile and a halted one sleep alike, so the gain is unchanged.
+
 **113c, Stage B on windows 0-15 of both workloads** (stage B: tile 0 alone, 63 parked; stage F: the full chip;
 197K cycles a window; the probe runs held every chip and ran out of heap after 12 windows, so their figures are over 12):
 
@@ -228,8 +240,28 @@ times masked; `shuffle_vs_unshuffled.sh`):
   sleeping tiles draw nothing from their shuffle (owner, 2026-11-06), so these are different step orders.
 - Three harness paths reached into sleeping units without a wake and were fixed by the proof (HooksTest's direct loads and
   stores, PeripheralSlotTest's feeding of the send port, CcCoresTest's hand-raised conditions).
-- **T2 and Stage B: Quest 114** (segment 0 of both workloads, all 64 windows, and the 64-window Stage B/F of both, off and
-  on, compared by every chip's fingerprint, the logs and the CSVs; and the speed).
+- **Quest 114b, the quick suite on the runner: all 39 steps the same off and on, the sort and its seed included; all 15
+  shuffled steps with stage 1 on the same as their unshuffled bases with stage 1 off.**
+- **Quest 114, T2 segment 0 of both workloads, all 64 windows: every chip's fingerprint, the logs and the CSVs the same off
+  and on.** Stage B/F (windows 0-63 of both): all four JVMs ran out of heap after 12 windows, off and on alike, because
+  the fingerprint held every chip to the end; up to there (24 chips each) the fingerprints, the logs (the heap error's
+  trace aside) and the CSVs were the same. Fixed (each chip fingerprinted when its thread makes the next one, then
+  dropped) and rerun in 115.
+- **Speed (114), wall seconds per simulated cycle:**
+
+  | run | stage 1 off | stage 1 on | gain |
+  |---|---|---|---|
+  | T2 segment 0, EVM Zone (21.4 M cycles) | 1,030 s, 48.2 µs/cycle | **54 s, 2.53 µs/cycle** | 19× |
+  | T2 segment 0, Cyclone (21.6 M cycles) | 1,052 s, 48.7 µs/cycle | **54 s, 2.50 µs/cycle** | 19× |
+  | Stage B and F, 12 windows, EVM Zone | 28.5 µs/cycle | 3.3 µs/cycle | 8.6× |
+  | Stage B and F, 12 windows, Cyclone | 27.5 µs/cycle | 4.0 µs/cycle | 6.8× |
+
+  Against 113b's 46.9 µs per cycle (the time probe, 32 windows): 2.5, **18.5× faster**, inside section 1's 15-30×
+  estimate. A T2 segment is now under a minute. (The Stage B rows mix stage B, tile 0 alone, and F, the full chip, and
+  predate the parked-tile change.)
+- **After B1 (merged into main at e67bc43, then into `sim-idle-skip` at 3fd4e5f, a clean merge: main changed only the
+  firmware and TracerT2 since 515c11a):** Quest 115 (T2 and the 64-window Stage B/F, off and on) and 115b (the quick suite
+  with the sort, and the shuffled comparison) rerun the proof.
 - Local speed-ups on full-chip suites: StageB synthetic 16.2 → 4.1 s, CcCoresTest 30 → 7.1 s (seeded 61.8 → 8.6), the request
   bus suite 3.6 → 2.0; the coreless suites (no sleeping: their tiles are driven from Java) unchanged.
 

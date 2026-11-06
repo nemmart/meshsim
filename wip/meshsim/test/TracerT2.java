@@ -192,7 +192,8 @@ public final class TracerT2 {
             int[] th = new int[16];
             th[0] = 0x594C5052; th[1] = 5; th[2] = StageB.TABLES; th[3] = StageB.INDEX; th[4] = tb.indexBytes.length / 16; th[5] = StageB.TEMPLATES; th[6] = StageB.RECORD;
             th[7] = StageB.CODE; th[8] = -1; th[9] = StageB.RLOG; th[10] = -1; th[11] = StageB.WLOG; th[12] = -1; th[13] = t < windows ? 1 : 0;
-            th[14] = Replayer.runConfig(65536, true, true); th[15] = t < windows ? 2 : 0;   // RL_WAIT_HANDSHAKE (Q15)
+            th[14] = Replayer.runConfig(65536, true, true);
+            th[15] = t >= windows ? 1 : t == 0 ? 3 : 2;               // RL_WAIT_BARRIERS, RL_WAIT_FIRST (the guard), RL_WAIT_HANDSHAKE
             for (int i = 0; i < 16; i++) p.sram.poke(StageB.HDR + i, th[i]);
             List<long[]> l = new ArrayList<>(); rows.add(l);
             ((Replayer) p.slot.p[1]).rowListener = l::add;
@@ -202,6 +203,15 @@ public final class TracerT2 {
         Mach.Image tile = new Mach.Image(Path.of("sw/replay/build"), "replay_ctl"), cc3 = new Mach.Image(Path.of("sw/tracer/build"), "tracer_ctl");
         m.bootCores(tile, cc3);
         Tile u3 = m.c.cores.unit(2);
+        // ---- the segment's barriers (Q15, Q17; 9544e8e), the host standing in for C&C 1's sequencing: the first phase
+        //      (all READY with nothing armed, GO), C&C 1 then starts C&C 3, and the second phase (C&C 1 waits for all
+        //      READY, which each tile raises once its window has landed, then GO: the replay)
+        if (!m.run(m::coresBooted, 2_000_000)) { res.detail.add("the boot didn't finish: " + m.haltSummary()); return res; }
+        int done0 = m.mbox(0);
+        m.phase(1 << 24);
+        if (!m.run(() -> m.mbox(0) > done0, 2_000_000)) { res.detail.add("barrier 1 (READY, GO) didn't finish"); res.detail.addAll(dump(m, windows)); return res; }
+        m.c.cores.hostCommand(2, 0x53 << 24);                         // TL_CMD_START, as C&C 1 would send it
+        m.phase(2 << 24);
         long cap = (long) windows * 65536 * 12 + 5_000_000;
         // the tiles replay as their windows land (Q15's counters), while C&C 3 traces the later ones. Fail fast (owner,
         // 2026-11-06): no progress (the Tracer's rows, the DMA's packets, the tiles' rows) for 3 M cycles, or a tile not

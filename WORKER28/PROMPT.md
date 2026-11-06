@@ -13,6 +13,11 @@ any of its input buses, a chip-wide line (GO, RUN, the error line), or its timer
 after a step when nothing is in progress (queues and FIFOs empty, engines idle, core halted or in WFI with no wake pending).
 The chip steps only active units, and a skipped unit's counters (mcycle, WFI and stall counts) are caught up when it wakes, so
 every log stays identical.
+**Hierarchical (owner, 2026-11-05): wakes at the tile level too.** A whole tile sleeps when every unit in it is idle and its core is
+in a sleep state (WFI or halted); then the chip doesn't step the tile at all. It wakes on anything crossing its boundary: a word
+on any of its link inputs from a neighbour, its controller link, a chip-wide line (GO, READY, RUN, the error line), or its
+timer coming due. Inside an awake tile, the per-unit flags skip its idle units. The same idea one level up if the profile
+says so: a C&C unit, or the chip outside the busy units.
 
 THE WORK
 1. Profile a T2 segment and a Stage B run: where the cycles go, by unit and state, to confirm idle units dominate and estimate

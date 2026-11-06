@@ -203,15 +203,11 @@ public final class TracerT2 {
         Mach.Image tile = new Mach.Image(Path.of("sw/replay/build"), "replay_ctl"), cc3 = new Mach.Image(Path.of("sw/tracer/build"), "tracer_ctl");
         m.bootCores(tile, cc3);
         Tile u3 = m.c.cores.unit(2);
-        // ---- the segment's barriers (Q15, Q17; 9544e8e), the host standing in for C&C 1's sequencing: the first phase
-        //      (all READY with nothing armed, GO), C&C 1 then starts C&C 3, and the second phase (C&C 1 waits for all
-        //      READY, which each tile raises once its window has landed, then GO: the replay)
+        // ---- the segment's barriers (Q15, Q17; 9544e8e, 7c53209), C&C 1's own: one CC_SEGMENT command (sw/cc/cc1.c) waits
+        //      for all READY (nothing armed), pulses GO, starts C&C 3, waits for all READY again (every window landed) and
+        //      issues the final GO: the replay. The host only gives C&C 1 that command, as it gives it every phase
         if (!m.run(m::coresBooted, 2_000_000)) { res.detail.add("the boot didn't finish: " + m.haltSummary()); return res; }
-        int done0 = m.mbox(0);
-        m.phase(1 << 24);
-        if (!m.run(() -> m.mbox(0) > done0, 2_000_000)) { res.detail.add("barrier 1 (READY, GO) didn't finish"); res.detail.addAll(dump(m, windows)); return res; }
-        m.c.cores.hostCommand(2, 0x53 << 24);                         // TL_CMD_START, as C&C 1 would send it
-        m.phase(2 << 24);
+        m.cc1Command(0x54, 2, 1 << 24, 0x53 << 24);                    // CC_SEGMENT: the tiles' command, C&C 3's start (TL_CMD_START)
         long cap = (long) windows * 65536 * 12 + 5_000_000;
         // the tiles replay as their windows land (Q15's counters), while C&C 3 traces the later ones. Fail fast (owner,
         // 2026-11-06): no progress (the Tracer's rows, the DMA's packets, the tiles' rows) for 3 M cycles, or a tile not

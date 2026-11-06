@@ -206,7 +206,7 @@ final class Chip implements Component {
         else for (Component c : children) if (!(c instanceof Tile p && parked[p.idx])) c.runCycle(t);
         boolean err = false;
         for (Tile p : tiles) {
-            if (skip && asleep[p.idx]) continue;                  // a sleeping tile's lines are as it left them
+            if (skip && (asleep[p.idx] || parked != null && parked[p.idx])) continue;   // a sleeping or parked tile's lines are as it left them
             if (p.ctl.readyPulseAt == t) { cc.readyPulse(p.idx, t); phases.onReady(p.idx, t); }
             boolean e = p.ctl.errorLine(); err |= e;
             if (e != errSeen[p.idx]) { errSeen[p.idx] = e; errHighN += e ? 1 : -1; cc1p.errorLine(t, p.idx, e); }   // ERROR_LINES (8.14)
@@ -255,7 +255,7 @@ final class Chip implements Component {
     private void checkInvariants(long t) {
         if ((t & 15) == 0) scanOverflows();
         for (int i = 0; i < 64; i++) {
-            if (skip && asleep[i]) continue;                      // its counters move only when it steps
+            if (skip && (asleep[i] || parked != null && parked[i])) continue;   // its counters move only when it steps
             Tile p = tiles[i];
             long[] s = seen[i];
             if (p.router.ejectErrors != s[0]) { s[0] = p.router.ejectErrors; violation(t, i, "packet ejected at the wrong tile"); }

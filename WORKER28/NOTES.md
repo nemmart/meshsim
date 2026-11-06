@@ -66,8 +66,9 @@ F on windows 0-15 of both, under JFR and the probe; ~25 min), 113b (the time pro
 
 - On the full chip **98.4% of tile-cycles are idle**, in runs of a whole window (2¹⁷ cycles and more); tile 0's core sits in
   WFI 85% of the time while its replayer runs (the "engines" class), executing 12%.
-- In stage B the chip's own loops cost three times tile 0 itself: they visit all 64 tiles, parked or not. Stage 1 treats
-  sleeping tiles that way already; parked tiles should be skipped the same (a small change, no effect on any result).
+- In stage B the chip's own loops cost three times tile 0 itself: they visit all 64 tiles, parked or not. **Done (with
+  stage 1 on):** the READY/error-line loop and `checkInvariants` skip parked tiles as they skip sleeping ones (a parked
+  tile never steps, so its lines and counters never move); StageB synthetic, full and `-Dstageb.lone`, the same off and on.
 - JFR (stage F dominates the samples): the SRAM read queue 22%, `TileControl.endCycle` 22%, the router 8%,
   `checkInvariants` 6%, the table store 6%: the same polling of empty units as on T2.
 

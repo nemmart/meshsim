@@ -140,7 +140,7 @@
 <polyline points="1256.0,662.0 1256.0,154.0" fill="none" stroke="#3B6EA5" stroke-width="2.6" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
 <text transform="rotate(-90 1268.0 400.0)" x="1268.0" y="400.0" font-size="10.5" text-anchor="middle" fill="#3B6EA5">DMA packets into a router input of its own → the tiles' memory (first implementation, 4.21.6)</text>
 <rect x="40.0" y="676.0" width="392.0" height="86.0" rx="6" fill="white" stroke="#B5651D" stroke-width="1.3" stroke-dasharray="2 3"/>
-<text x="52.0" y="696.0" font-size="12" text-anchor="start" font-weight="bold" fill="#B5651D">Still open or provisional (WORKER24/NOTES.md)</text>
+<text x="52.0" y="696.0" font-size="12" text-anchor="start" font-weight="bold" fill="#B5651D">Still open or provisional (wip/planning/sessions/WORKER24-NOTES.md)</text>
 <text x="52.0" y="714.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">20 the core's inner split: the figure's, for orientation</text>
 <text x="52.0" y="729.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">21 the range check's upper bound (item 149)</text>
 <text x="52.0" y="744.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441">the fill bus's read status: provisional (item 148)</text>
@@ -163,5 +163,5 @@
 <text x="24.0" y="874.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">The Tracer runs the guest on its own RV64 core. Its instruction cache, data cache and jump LRU are its only local stores; each miss is one 128 B line of a file, (root, depth, line),</text>
 <text x="24.0" y="890.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">on the fill bus to the memory system. One bus from C&amp;C 3 fills the advice and expansion queues, loads the expansion tables once at startup, and writes the state into the core;</text>
 <text x="24.0" y="906.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">the window runs it. At each done the DMA drains the output queues (figure 9.2): the state, read in place, and the three streams. Writing word 0 resets everything.</text>
-<text x="24.0" y="922.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">Source: spec/machine-spec.md §4.21 (4.21.1–4.21.6, 4.21.9); planning/DECISIONS-v1.3.md (to a6bd6c9) §1–25; spec §4.17, §4.19. Review: WORKER24/NOTES.md.</text>
+<text x="24.0" y="922.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">Source: spec/machine-spec.md §4.21 (4.21.1–4.21.6, 4.21.9); planning/DECISIONS-v1.3.md (to a6bd6c9) §1–25; spec §4.17, §4.19. Review: wip/planning/sessions/WORKER24-NOTES.md.</text>
 </svg>

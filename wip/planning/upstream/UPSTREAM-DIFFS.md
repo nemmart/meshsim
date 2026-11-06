@@ -20,7 +20,7 @@ blob at both: `crates/jolt-program/src/image/{elf,decode,mod}.rs`, `crates/jolt-
 Everything to send, ordered by impact within each part; the owner decides what to file. Commits: jolt-cpp `88dca85`
 (the fix branches are from jolt-asic-planning `tracer-standalone-main` `fa59d9a`, which is jolt-cpp 88dca85's tracer),
 a16z `7189216` (same files as `17a9459` for everything below). Reproducers are meshsim `wip/gold/test/guests/<name>`
-(`make_guests.py`) unless noted; reports are in `WORKER18/bug-reports/`.
+(`make_guests.py`) unless noted; reports are in `wip/planning/upstream/bug-reports/`.
 
 ### To jolt-cpp
 
@@ -48,7 +48,7 @@ to confirm), D11 (inlines only a16z has: a feature gap, not a bug).
 | # | what's wrong | evidence | reproducer | report | impact |
 |---|---|---|---|---|---|
 | 1 | **U3**: the standard 32-bit `unimp` (0xC0001073) makes an ELF unprovable (`UnsupportedCsr(3072)`), while c.unimp is skipped | `crates/jolt-program/src/image/decode.rs:195-206` and the expansion; `image/elf.rs:126-134` | `unimp32_unreached` | `a16z-U3-unimp-rejected.md` | **programs built without the C extension's c.unimp** (assemblers emit the 32-bit `unimp` for traps and padding): refused, even when never reached |
-| 2 | **U1**: `jolt-emu` reports a failing arch test as passing when gp has a bit at 55 or above (the HTIF device byte is nonzero, the write ignored, the stall taken for success) | `tracer/src/emulator/mod.rs:117-148`; `tests/arch-tests/jolt/rvmodel_macros.h:47-52` | ACT4 `Zalrsc-sc.d-00` (built by task 095; meshsim `WORKER18/data/act4/`) | `a16z-U1-jolt-emu-masks-failures.md` | **CI's arch-tests job**: some failures pass silently (one known) |
+| 2 | **U1**: `jolt-emu` reports a failing arch test as passing when gp has a bit at 55 or above (the HTIF device byte is nonzero, the write ignored, the stall taken for success) | `tracer/src/emulator/mod.rs:117-148`; `tests/arch-tests/jolt/rvmodel_macros.h:47-52` | ACT4 `Zalrsc-sc.d-00` (built by task 095; meshsim `wip/planning/sessions/WORKER18-data/act4/`) | `a16z-U1-jolt-emu-masks-failures.md` | **CI's arch-tests job**: some failures pass silently (one known) |
 | 3 | **U2**: the ACT4 configuration (`LRSC_FAIL_ON_NON_EXACT_LRSC: false`) lets SC.D succeed after LR.W; the tracer's width rule fails it | `tests/arch-tests/jolt/jolt-rv64imac.yaml`; `tracer/src/emulator/cpu.rs:535-547`, test `:1677-1695` | ACT4 `Zalrsc-sc.d-00`, check 241 | `a16z-U2-act4-lrsc-config.md` | one arch test fails (hidden by U1); the configuration and the semantics disagree |
 
 

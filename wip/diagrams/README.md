@@ -117,4 +117,4 @@ Run `src/build.sh`: every `src/figP_N_*.py` writes its SVG into `svg/` (one figu
 - **The address generator:** gapless one-word exchanges and their link-queue peaks (§13 item 7; figure 6.1).
 - **The memory subsystem's link to C&C** (§13 item 9; figure 1.2). It hangs off C&C, with no mesh address (§7).
 - **The physical ready_latency** (§13 item 8; figure 8.1).
-- **The Tracer** (figure 9.1): the range check's upper bound (item 149) and the fill bus's read status (provisional, item 148); the core's inner split is the figure's. Listed in `../../WORKER24/NOTES.md`.
+- **The Tracer** (figure 9.1): the range check's upper bound (item 149) and the fill bus's read status (provisional, item 148); the core's inner split is the figure's. Listed in `../../wip/planning/sessions/WORKER24-NOTES.md`.

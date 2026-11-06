@@ -621,13 +621,13 @@ Decided (O).
 - **Stage 2, gold:** it computes everything itself (the advice, the processor state at each cut, the dirty runs, the page counts)
   and writes the segment file. **It earns gold** by writing files byte-identical to WORKER16's tool (W3) on both workloads at 2²⁹
   and on the hard-cut tests; the C++ tool then becomes the cross-check.
-  **Stage 2 done: gold earned** (WORKER18, 2026-11-01; `WORKER18/REPORT.md`): the emulator writes section 16's file
+  **Stage 2 done: gold earned** (WORKER18, 2026-11-01; `wip/planning/sessions/WORKER18-REPORT.md`): the emulator writes section 16's file
   **byte-identical** to WORKER16's tool (ca30b5e) on both workloads at 2²⁹ (13.5 and 15.5 s) and on both hard-cut files, with the
   secp256k1 advice computed in `BigInteger`; `wip/gold/check.sh` reruns all four. Seven of jolt-cpp's example guests also match
   on every record (MULH and MULHSU, the division family, SRA and SRAW, LR.D and SC.D, every AMO, all seven secp operations,
   SHA-256 and the other inlines). Never executed yet: EBREAK, FENCE, KECCAK256 without absorb, `VirtualAssertEQ`,
   LegacyRawEcall mode, the abort paths. **The Java emulator is now our gold;** WORKER16's tool is the cross-check.
-- **The gold loader loads only instructions we can prove** (owner, 2026-11-01; a ruling on `WORKER18/UPSTREAM-DIFFS.md` D4):
+- **The gold loader loads only instructions we can prove** (owner, 2026-11-01; a ruling on `wip/planning/upstream/UPSTREAM-DIFFS.md` D4):
   - **an instruction Jolt can't prove** in the ELF's load stream (CSRRC and the immediate CSR forms, a CSR outside the six,
     FENCE.I, WFI, SRET and other privileged instructions) **throws an exception at load**, as upstream rejects it at decode
     (`instruction/mod.rs:1230-1323`). jolt-cpp instead decodes these as UNIMP and drops them from the bytecode, shifting later pcs
@@ -653,11 +653,11 @@ Decided (O).
   inputs and seven example guests record by record; both workloads at 2²⁹ by every window and the run hash), and **gold matches
   upstream everywhere jolt-cpp does**. The inlines are unchanged since f8fc214 (all 15 upstream dumps byte-identical to
   jolt-cpp's). Mapping: upstream's kinds are jolt-cpp's opcodes (NoOp is NOP); four upstream-only virtual kinds never occur. The
-  differences are at the edges, recorded in `WORKER18/UPSTREAM-DIFFS.md` for the owner's rulings: the program image (PT_LOAD
+  differences are at the edges, recorded in `wip/planning/upstream/UPSTREAM-DIFFS.md` for the owner's rulings: the program image (PT_LOAD
   segments against sections), upstream's stack-canary check, jolt-cpp's LegacyRawEcall mode, UNIMP (dropped from jolt-cpp's
   bytecode, rejected upstream), a jump into the middle of an instruction, the misaligned-access checks, the bytecode count's
   convention, and the padding rule (to confirm). Eleven hand-assembled guests cover the paths no workload reached.
-- **Rulings on `WORKER18/UPSTREAM-DIFFS.md`** (owner, 2026-11-04). **"Upstream" is a16z's Jolt, and it decides:** jolt-cpp has no
+- **Rulings on `wip/planning/upstream/UPSTREAM-DIFFS.md`** (owner, 2026-11-04). **"Upstream" is a16z's Jolt, and it decides:** jolt-cpp has no
   verifier of its own; it proves `jolt_verifier::JoltProof` against a16z's `jolt_program` preprocessing, from its submodule
   `third-party/jolt` at **7189216** (the verifier's pin, at jolt-cpp 88dca85, v1.3's pin, **moved and checked** 2026-11-05: PR #2's tracer re-synced, every
   2¹⁶-row window's hash, the segment files and `capture_writes` output identical to 821e1bd on both workloads at 2²⁹; WORKER16,
@@ -692,8 +692,8 @@ Decided (O).
   - **D13, follow a16z** (owner, 2026-11-05; WORKER18): the no-op row an rd = x0 instruction is rewritten to (`ADDI x0, x0, 0`)
     is flagged virtual in jolt-cpp but not in a16z, so jolt-cpp's row differs and its proofs of such programs fail
     verification. Gold follows a16z; **a jolt-cpp fix and a bug report**, like D1, D3, D12, D14.
-  - **What to report** is one list, ordered by impact, at the top of `WORKER18/UPSTREAM-DIFFS.md` (12 entries for jolt-cpp, 3 for
-    a16z), each with its evidence, reproducer, bug report (`WORKER18/bug-reports/`) and fix branch.
+  - **What to report** is one list, ordered by impact, at the top of `wip/planning/upstream/UPSTREAM-DIFFS.md` (12 entries for jolt-cpp, 3 for
+    a16z), each with its evidence, reproducer, bug report (`wip/planning/upstream/bug-reports/`) and fix branch.
   - **D2 and the rest: deferred.** U1 and U2 (a16z's ACT4 configuration and `jolt-emu`'s exit check) and U3 (a16z rejecting the
     standard `unimp`, 0xC0001073) are a16z's bugs, written up for the owner to decide whether to report.
 
@@ -1386,7 +1386,7 @@ Options recorded for later, each with the evidence that would justify it.
 
 | # | study | why |
 |---|---|---|
-| ST1 | **Compare the two Jolt tracers' traces:** jolt-cpp (https://github.com/snarkify/jolt-cpp, ours) and the Rust Jolt tracer (https://github.com/a16z/jolt). They are written differently and may work slightly differently but are believed to produce the same traces. Run the same guest programs through both and find every place the traces mismatch (rows, `instr_idx`, advice, memory values, padding) | **answered by section 17's stage 3** (WORKER18): the same rows on every run; edge differences in `WORKER18/UPSTREAM-DIFFS.md`, for the owner |
+| ST1 | **Compare the two Jolt tracers' traces:** jolt-cpp (https://github.com/snarkify/jolt-cpp, ours) and the Rust Jolt tracer (https://github.com/a16z/jolt). They are written differently and may work slightly differently but are believed to produce the same traces. Run the same guest programs through both and find every place the traces mismatch (rows, `instr_idx`, advice, memory values, padding) | **answered by section 17's stage 3** (WORKER18): the same rows on every run; edge differences in `wip/planning/upstream/UPSTREAM-DIFFS.md`, for the owner |
 
 ---
 

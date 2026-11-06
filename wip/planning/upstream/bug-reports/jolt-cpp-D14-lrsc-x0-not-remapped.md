@@ -18,5 +18,5 @@ identical rows (guest `inline_sha256_rd0`), and one whose rd is the output addre
 unprovable either way (`inline_bigint_rd0`: a16z's tracer panics, jolt-cpp's traces it).
 
 **Fix**: jolt-asic-planning `worker18-fix-d14-lrsc-x0` (`cdde868`, from `tracer-standalone-main` fa59d9a;
-`WORKER18/fixes/jolt-cpp-d14-lrsc-x0.patch`): LR/SC removed from the exemption. With it all five reproducers give
+`wip/planning/sessions/WORKER18-fixes/jolt-cpp-d14-lrsc-x0.patch`): LR/SC removed from the exemption. With it all five reproducers give
 a16z's rows; EVM Zone trace-23, Cyclone input/22 and `tracer-tests` keep their run hashes.

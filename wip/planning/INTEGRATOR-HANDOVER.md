@@ -42,9 +42,7 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
 
 | worker | doing | state | what's left | waiting for it |
 |---|---|---|---|---|
-| WORKER18 | the Java emulator `wip/gold/` (DECISIONS-v1.3 section 17): gold earned, stage 3 done, **W5 done** (e9f0444: ACT4 through test-equipment `Act4Runner`, 123 of 125; inline vectors 5,677 of 5,677; strict loading only) | **sent 2026-11-04: the rulings** (D1, D3, D12 follow a16z, with jolt-cpp fixes and bug reports on its own branches; D5 rejected by the host tracer), the demo guests, the U1-U3 write-ups; **plan approved 2026-11-04** (7189216 checked: the files are identical; the end detected by `JAL x0, 0`; 0xC0001073 rejected at load; fix branches `worker18-fix-d1-sections`, `-d3-no-legacy-ecall`, `-d12-c-slli`; bug reports in `WORKER18/bug-reports/`) | its report | parked in `WORKER18/NEXT.md`: `check.sh` at 88dca85, then section 21(d) |
 | WORKER22 | **B1, the Tracer's bring-up in meshsim**, built from 4.21, and 4.21's review (`SPEC-QUESTIONS.md`); the host-side inputs moved to WORKER26 (`NEXT.md`) | **started 2026-11-05**, branch `v1.3-tracer` | milestone 2 | **before merging: one full regression** (owner, 2026-11-05: the quick and full suites, the full-size sort at 1,229,008, the 64-window Stage B smoke, since `RowCore` touched the replayer); then F1 (WORKER23) |
-| WORKER24 | a block diagram of the Tracer (`WORKER24/PROMPT.md`, owner, 2026-11-04): review sections 1-25, then `fig9_1_tracer` in `wip/diagrams/` in the v1.0 figure style | **started 2026-11-04** | its review and plan (a sketch welcome) | - |
 
 ## What's left, by milestone
 
@@ -84,6 +82,8 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
 
 - **To ask the owner:** a `v1.26.1/ERRATA.md` line on ConvertDelivery's manifest key order (it varies between runs, the contents
   don't; fixed in `wip`, and `wip/inputs` writes it in a fixed order); and whether F1 stays in v1.3 or moves to v1.4.
+- **What to report upstream** (jolt-cpp, a16z): `wip/planning/upstream/UPSTREAM-DIFFS.md`, its report list at the top, with
+  `bug-reports/` beside it (moved from WORKER18 when it closed).
 - **The input pipeline** for Tony is `wip/inputs/` (WORKER27, merged): every simulation input rebuilt from pinned sources,
   checked against the runner's copies.
 
@@ -108,4 +108,4 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
 
 - Repositories: meshsim (this), jolt-asic-planning (`tracer-standalone`, PR #1; `tracer-standalone-main`, PR #2; `worker12-counts`),
   jolt-cpp (snarkify, our tracer), a16z/jolt (upstream, public), Quest (the runner). Tokens are in the owner's preferences.
-- Closed workers' reports: `wip/planning/sessions/` (WORKER4-17, 19-21, 25-27) and `wip/planning/reviews/` (WORKER1-3).
+- Closed workers' reports: `wip/planning/sessions/` (WORKER4-21, 24-27) and `wip/planning/reviews/` (WORKER1-3).

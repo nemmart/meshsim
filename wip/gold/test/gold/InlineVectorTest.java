@@ -11,7 +11,7 @@ import java.util.Map;
 /**
  * Upstream Jolt's own inline tests (jolt-inlines/*: arkworks for secp256k1, the crates' reference implementations and
  * published vectors for the hashes), run on gold. Their vectors were captured from upstream's `cargo test` at 17a9459
- * (Quest task 096, a logging patch to InlineTestHarness::execute_inline; WORKER18/NOTES.md, "W5b"): each call's operand
+ * (Quest task 096, a logging patch to InlineTestHarness::execute_inline; wip/planning/sessions/WORKER18-NOTES.md, "W5b"): each call's operand
  * registers and memory span before ("pre") and after ("post"). The tests assert every "post" against their
  * independent references, so a "post" is a checked expected output; a "pre" with no "post" is a call upstream's test
  * expected to panic.

@@ -26,6 +26,8 @@ T2WIN=${T2WIN:-32}; SBN=${SBN:-16}; LIM=${LIM:-40m}
 # cycle in 16, C&C 1-3 per child every cycle), on the same T2 windows and Stage B windows, four JVMs
 # SET=sb (113c): Stage B and F only, under JFR, the activity probe and the time probe, six JVMs (113 and 113b lacked the
 # tables' manifest.json, so their Stage B runs failed at the start)
+# SET=probe (113d): the activity probe alone on T2 (both workloads, the first $T2WIN windows of segment 0): the short run on
+# WORKER22's READY/GO barriers (a326fbd), to confirm the tiles idle through the trace and replay together after GO
 SET=${SET:-all}
 cat <<EOF
 #!/bin/bash
@@ -46,7 +48,9 @@ cat <<EOF
 # THIS TASK'S SET: $SET$( [ $SET = time ] && echo " -- the time probe only, four JVMs: T2 on the first $T2WIN windows of segment 0 of both
 # workloads and Stage B and F on windows 0-$((SBN - 1)), with -Dmeshsim.timeprobe (ns per cycle by chip section; by tile class and child, 1
 # cycle in 16; C&C 1-3 per child every cycle, the Tracer's slot split from its DMA; the cores by state: the interpreter's share).
-# Expected ~13 min (about 5% slower than an untimed run)." )$( [ $SET = sb ] && echo " -- Stage B only: B (tile 0 alone) and F (the full chip)
+# Expected ~13 min (about 5% slower than an untimed run)." )$( [ $SET = probe ] && echo " -- the activity probe alone on T2, the first $T2WIN windows of segment 0 of both
+# workloads, on WORKER22's READY/GO barriers (C&C 1's CC_SEGMENT): the tiles idle through the trace and replay together
+# after GO. Two JVMs. Expected ~22 min." )$( [ $SET = sb ] && echo " -- Stage B only: B (tile 0 alone) and F (the full chip)
 # on windows 0-$((SBN - 1)) of both programs, under JFR, the activity probe and the time probe, six JVMs. Expected ~10 min." )
 set -u
 cd "\$(dirname "\$0")/.."
@@ -86,7 +90,10 @@ run() {   # run NAME JVM-OPTIONS -- MAIN ARGS...
   ( a=\$(date +%s); timeout -s TERM $LIM java \$O -cp \$CP "\$@" > "\$RES/\$N.log" 2>&1; r=\$?; echo "\$N: exit \$r, \$((\$(date +%s) - a)) s" >> "\$RES/\$N.log"; exit \$r ) &
   PIDS="\$PIDS \$!:\$N"
 }
-if [ $SET = sb ]; then for PS in \$PROGS; do
+if [ $SET = probe ]; then for PS in \$PROGS; do
+  P=\${PS%%:*}
+  run probe-t2-\$P -Xmx5g -Dreplay.tables=\$W/k/tables/replayer -Dmeshsim.probe=\$RES/probe-t2-\$P.txt -- TracerT2 "\$D9" "\$P" --w26 "\$D26/\$P" --segments 0 --windows $T2WIN --quiet
+done; elif [ $SET = sb ]; then for PS in \$PROGS; do
   P=\${PS%%:*}
   SB="-Xmx1500m -Dstageb.norow=50000 -Dreplayer.logq=256 -Dreplay.tables=\$W/k/tables/replayer -Dreplay.build=\$W/k/sw/replay/build"
   SA="--manifest \$W/v1261/\$P.manifest.json --stages B --first 0 --count $SBN --stride 1 --phase 0 --full-every 1"

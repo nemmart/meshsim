@@ -23,6 +23,19 @@ sensitivity lists, Verilator's ordering of combinational logic, SystemC's delta 
 - **Migration is gradual:** first a whole tile as one unit with its links as ports, then inside it. The current simulator is the
   exactness oracle throughout: identical logs, cycle for cycle.
 
+**First, A-C in today's engine** (owner, 2026-11-06, on WORKER29's profile: a busy cycle is dominated by bookkeeping and
+polling, not by the units' logic): (A) cheap S1 and checks (primitive maps, messages only when reported, clearing only what was
+touched); (B) eager bus commit (a put registers its bus on a per-chip dirty list committed at the cycle's end, so an empty bus is
+never touched; the framework's double-buffered ports in miniature); (C) status recomputed only when its inputs change, direct
+calls instead of one interface call. Each proved exact before the next, on `sim-step-cost` off `sim-idle-skip`; B changes
+`BusBase`, keeping WORKER28's wake hook. **Then the framework design**, below, with those measurements as its basis.
+
+**The workload that matters most** (owner): a busy chip replaying for a long time: each tile's window is replayed about 50
+times per proof for the sumchecks, so a proof's simulation is dominated by all 64 tiles replaying at once. Make that the main
+benchmark. **A GPU backend later** is a design target, assessed but not built: one unit type per warp, over many segments' chips
+at once (a proof's 128 segments are independent ASICs, so 128 × 64 instances of each type), the state laid out so a warp's lanes
+read adjacent memory; the cores the hardest part (divergence), eased when a batch runs the same firmware.
+
 READ FIRST: wip/meshsim/README.md (the conventions: timed buses, a put at t seen at t + L, the shuffle seeds), Chip.java, Tile
 and its units, Bus.java, Buses.java and WordBuses.java; WORKER28/PROMPT.md and NOTES.md on branch sim-idle-skip (its profile, its
 audit of same-cycle calls between units, stage 1 as built).

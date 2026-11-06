@@ -22,10 +22,43 @@ synthetic, TracerTest and CtrlTest give identical logs with and without each, wa
   and by method (`Controller.step`: the interpreter executing).
 
 **Runs:** Quest 113 (JFR on T2 segment 0 of both workloads, all 64 windows; the activity probe on the first 32; Stage B and
-F on windows 0-15 of both, under JFR and the probe; ~25 min) and 113b (the time probe on the same T2 and Stage B windows;
-~13 min). Results to be added here.
+F on windows 0-15 of both, under JFR and the probe; ~25 min), 113b (the time probe on the same T2 windows; ~13 min) and
+113c (Stage B and F under all three tools: 113 and 113b's Stage B runs failed at their start, the kit lacking
+`tables/manifest.json`).
 
-**Before the runs (local, one slow core, so only proportions):**
+**113b, T2 segment 0, first 32 windows (10.5 M cycles EVM Zone, 11.4 M Cyclone; 540 and 585 s), µs per cycle:**
+
+| section | EVM Zone | Cyclone |
+|---|---|---|
+| **the 64 mesh tiles** | **39.8** | **39.9** |
+| CcCores (C&C 1-3 together) | 3.4 | 3.2 |
+| `checkInvariants` | 1.8 | 1.8 |
+| the READY and error-line loop | 1.2 | 1.2 |
+| the request bus | 0.6 | 0.6 |
+| the rest (endpoints, the CnC model, the tail) | 0.1 | 0.1 |
+| **total** | **46.9** | **46.8** |
+
+- **The mesh tiles are 85% of the time, and 98.4% of their tile-cycles are idle** (sampled: 41.3 M of 42.0 M EVM Zone,
+  44.9 M of 45.6 M Cyclone; router only 0.4%, engines 1.0%, core 0.35%). An idle tile-cycle costs about 0.6 µs
+  (39.8 µs / 64, from the unsampled cycles). The per-child split is small numbers after subtracting `nanoTime()`'s
+  41-53 ns per section (some come out slightly negative, the calibration over-correcting), so it ranks the units
+  rather than sizes them: the SRAM read queue with the injection point (~100 ns), `ctl.endCycle` (~90 ns) and the router
+  (~35 ns) lead, the others near nothing. The sum of the children (40-230 ns) is well under the whole tile's 0.6 µs
+  measured unsampled: most of an idle tile's cost is reaching its objects (64 tiles' graphs walked every cycle, out of
+  cache), which is what the wheel removes.
+- **C&C 3's tile is about 0.55 µs per cycle, not 11-25:** its router 47 ns, the read queue and injection 115, its core
+  122 (in WFI 87% of the time; 129 ns per cycle executing), the slot 150 (**the Tracer and the memory system under it
+  85-128 ns**, its DMA 18-22), `ctl.endCycle` 100. C&C 1 and C&C 2, in WFI almost throughout, are 0.52 and 0.41 µs. So
+  the three C&C units are 3.4 µs per cycle in all, of which C&C 1 and 2 are pure idle cost.
+- **The interpreter's share is small:** a core cycle that executes costs 89-129 ns (mesh cores 89-113, C&C 3 100-129);
+  C&C 3 executes 1.0-1.1 M of the 10.5-11.4 M cycles, the mesh cores 0.3% of theirs. About 0.3% of T2's time.
+- **Estimate for stage 1** on T2's trace: skipping the idle tiles removes ~39 of the 40 µs; the line loop and the
+  invariant checks fall to the tiles that stepped (~3 µs → near 0); C&C 1 and 2 sleep (~0.9 µs); left: C&C 3 (~0.55 µs,
+  less with its idle units skipped), the request bus (0.6, to be made event-driven too), the few awake tiles. **About 1.5-3 µs
+  per cycle against 47: 15-30×**, so a 21 M-cycle segment in roughly 30-60 s instead of 20 minutes. To be checked by
+  113's activity probe (the idle runs' lengths) and by stage 1 itself.
+
+**Before the runs (local, one slow core, so only proportions; superseded by 113b above where they differ):**
 
 - 110h's Stage B smoke: stage F (the full chip) 8.1 s per window against stage B (tile 0 alone, 63 parked) 2.2 s, for
   the same 197K cycles: **41 against 11 µs per cycle, so 63 idle tiles cost about 30 µs per cycle** (0.48 µs per idle
@@ -36,12 +69,10 @@ F on windows 0-15 of both, under JFR and the probe; ~25 min) and 113b (the time 
   and the READY/error-line loop are another few µs per cycle at chip level.
 - JFR on the same: `TileControl.advance` and `BusBase.enterSlow` (a bus's first touch in a cycle) at the top. That is
   polling empty buses: a bus is entered, committed and found empty every cycle whether or not anything was put.
-- The owner's point stands: T1 does the Tracer's work at about 0.4 µs per cycle, C&C 3's tile costs 11-25 µs. 113b's
-  per-child figures for cc3 say how much of that is its idle units (router, SRAM, engines with nothing to do), the
-  core, the slot's plumbing and the DMA (which appends every packet to `dmaOut`, 1.4 M `long[8]`s per raw segment), and
-  how much is the Tracer itself.
+- (The question 113b answered: is C&C 3's tile the 11-25 µs per cycle the totals suggested, against T1's ~0.4 µs for the
+  Tracer's work? No: see above.)
 
-## 2. Wake sources and pending work (step 2)
+## 2. Wake sources, pending work and the audit (step 2)
 
 Each tile has these units, stepped in this order (Tile's `children`, then the slot, its end of cycle and the control's):
 router, SRAM read queue + injection point (one unit: they share the token pool), traffic director, controller memories
@@ -105,6 +136,44 @@ stepped in the cycle, not all 64.
 6. **The shuffle**: a skipped tile draws nothing (owner, 2026-11-06). Exactness is proved without a seed (skip on and off,
    cycle for cycle); with seeds, skip-on runs must give the same logs as unshuffled ones, which the convention requires.
 
+### The audit: same-cycle reads and calls between units
+
+Every place a unit reads or changes another unit's state within the cycle, other than through a bus's committed data.
+Stage 1 and stage 2 by tile keep a tile's units in one thread in a fixed order, so these are safe there; the chip-level
+and cross-tile ones are what stage 2 by tile must route through the barrier; for the by-type step (deliver, run, merge)
+every one becomes data delivered in phase 1 (a credit, an occupancy snapshot) or a read of last cycle's committed state.
+
+**Direct calls inside a tile** (from the code, `sim-idle-profile`):
+- router → SRAM read queue: `tokens.loopbackLeft` (a loopback token freed by the eject selector);
+- injection point → SRAM read queue: `loops`, `takeForSend` (a send waits for a token), `injected`; → read port:
+  `injectedAt`;
+- director → control: `ctl.pendingAdd` (a counter write in the same cycle is judged against count + N); → read port:
+  `acceptedAt`, `outstanding`; → the slot: `periph.accept` (a landing, queued by time in the peripheral);
+- gather engine → SRAM read queue: `inFlightOf`;
+- table store → its client buses (`req.ready/peek/take`, delay lines), its memory;
+- core → control: register `read`/`write`, `takeWake`, `errorsAt` (the interrupt), the send header and the read-port
+  setup; → cmem: `loaded`, `stored`, `peek`, `poke`; → AG: `idle`, `runningForStatus`; → read port: `store`; → request port:
+  `canPush`; → the send holding register: `put`, `refused`, `retry`; → the slot: `storeStalls` (UART_TX full);
+- `TileControl` (its loads and stores, and `endCycle` after every unit): the director's counters (`counterAtStart`,
+  `remaining`, `resetCounters`), the AG (`doneForStatus`, `pulse`), the gather engine (`busy`), the read port (`free`),
+  the request port (`busy`, `pending`, `get`, `receive`, `send`, `setW`), `sendHold.isEmpty`, the slot (`liveEvents`,
+  `liveErrors`, `read`, `write`), the big SRAM (`newPhase`), the core's pc (the boot ROM's command check);
+- the slot ↔ its peripheral and DMA (`outReady`, `outTake`, the DMA port's `canPut`); the Tracer ↔ its memory system
+  (one unit: they stay together in every partition).
+
+**Bus reads that see the other side's current cycle:** a producer's `canPut(t)` on a FIFO reads the consumer's count
+before the cycle's pop (the FIFO rule; order-independent, but a read of shared state); `WordHold.refused(t)` reads the
+consumer's refusal of t − 1; every `ready`/`peek`/`isEmpty` runs the bus's lazy commit (`BusBase.enter`), which writes
+the bus. Within one thread these are safe; across threads the lazy commit is the race (the owner's point), which is
+why by-type needs the delivery queues.
+
+**Across tiles and chip-wide:** the links and the C&C links (shared delay lines: stage 2 by tile routes their puts through
+per-thread outboxes merged at the barrier); **GO**: C&C 1's peripheral (`pulseGo` → `CnC.goNet`) writes every tile's GO
+queue during C&C 1's step (a cross-tile write: through the outbox, due at t + go_latency ≥ t + 1); the CnC model's
+`ctl.scheduleGo` the same; READY and the error lines are read after the cycle by the chip's line loop (serial, after the
+barrier); the request bus runs first and serially, reading and writing every port; `checkInvariants`, `scanOverflows`,
+the logs, S1 and PhaseLog are chip-serial after the barrier.
+
 ## 3. Plans
 
 ### 3a. GO and READY at 8 cycles (first, its own commit)
@@ -121,8 +190,9 @@ check, `SortTest`'s `ready=` option, `Sweep` (which already runs 4 and 8, so the
   (C&C 3's start to exit, the tiles' replay), the T1/T2 "all-in" numbers WORKER22 reports;
 - one Quest task for the suites and the sort (as 110h), one for Stage B's 64-window smoke and a T2 segment.
 
-Open for you: should the spec text (meshsim README: "1 in simulation; 8 used for estimates", Config's comments, 4.13's
-references) change in the same commit?
+Decided (owner, 2026-11-06): **the first commit on `sim-idle-skip`, once B1 is merged**, so every baseline (the Tracer's T2
+cycle counts included) is re-recorded once; **the spec and README text that says "1 in simulation", and Config's
+comments, change in the same commit**; the new baselines go in `WORKER28/BASELINES-8.md`.
 
 ### 3b. Stage 1: a timing wheel per tile, one thread
 
@@ -133,12 +203,12 @@ beyond W cycles (the watchdog, a long core stall) goes to a small per-tile heap,
 range. The chip has the same one level up: a ring of tile bitmasks (`long` + 3 bits), so the chip steps only tiles with
 an entry at t or a unit still working.
 
-**Proposal: the wheel holds the wakes; the data in flight stays in the buses.** The delay lines already hold each
+**Decided (owner, 2026-11-06): the wheel holds the wakes; the data in flight stays in the buses.** The delay lines already hold each
 word with its arrival time, and their semantics (a put at t seen at t + L, the FIFO rule) are what BusTest and every suite
 check. Making each bus schedule its consumer's wake on its put (a bus gets a `consumer`: a wheel and a unit bit, set when
 the tile wires it) gives the wheel its job, never walks the object graph, and leaves the bus classes' behaviour intact.
-Moving the data itself into the wheel (your wording) is a later step if 113b shows the buses' own cost matters once
-nothing polls them. **Your call: wakes-only first, or data in the wheel from the start?**
+It is enough for stage 1 and for stage 2 by tile. Data in delivery queues is the by-type step's (3d), built only if the
+numbers justify it.
 
 **A unit's step** returns whether it still has work (the table's left column); if so it is re-armed for t + 1, or for a
 known later cycle (a core stall of n, the director's next decrement, the watchdog's expiry). A unit with no work and no
@@ -159,9 +229,8 @@ that stepped; `scanOverflows` stays as is (every 16 cycles).
 frequent wake), then the injection/read-queue pair, the director, the core and control; the tile and chip loops; the
 counters' catch-up. Each unit converted is proved exact (the suites with skipping on and off) before the next.
 
-**Expected gain** (to be replaced by 113's numbers): the 63 idle tiles' ~30 µs per cycle go; inside the active tiles
-(C&C 3 during the trace; tile 0 in Stage B; every tile during T2's replay after GO) the idle units go too. If C&C 3's tile
-falls towards the Tracer's own cost (T1's ~0.4 µs plus the core), a 21 M-cycle segment is a few minutes, not 20.
+**Expected gain** (113b, section 1): on T2's trace about 47 → 1.5-3 µs per cycle, 15-30×; inside the active tiles (C&C 3
+during the trace, tile 0 in Stage B, every tile during the replay after GO) the idle units go too.
 
 ### 3c. Stage 2: threads with a barrier per cycle
 
@@ -179,7 +248,7 @@ consumer, so it is split: the producer's put goes to its thread's outbox, merged
 at the barrier (visible at t + 3 ≥ t + 1, so the consumer never needs it within t). Shared chip state (the log, violation
 messages, S1, PhaseLog, overflow sets) gets per-thread buffers merged in tile order, which is today's stepping order.
 
-**By unit type** (to measure against by tile): e.g. 4 threads for the 67 RV32 cores, others for the units. Inside a tile
+**By unit type**: superseded by 3d below. Inside a tile
 the couplings are 1 cycle through buses, but several are same-cycle direct calls (hazard 1) and shared arrays: the core's
 stores land in `TileControl` at the end of the same cycle, its fetches read `cmem` while the director writes through port B
 in the same cycle, its sends go through `sendHold` to the injection point at t + 1, its loads read the slot's and the
@@ -187,4 +256,14 @@ control's state of t − 1. So by-type needs a second phase in the cycle (the co
 reverse) and an audit of every such call; I'd build it after by-tile, behind the same partition interface, and let the
 measurements choose (the brief: the profile decides).
 
-**Flags.** `-Dmeshsim.threads=N` (1: stage 2 off), `-Dmeshsim.partition=tile|type`. Proofs at 1, 2, 8 and 16 threads.
+**Flags.** `-Dmeshsim.threads=N` (1: stage 2 off). Proofs at 1, 2, 8 and 16 threads.
+
+### 3d. Deliver, run, merge (the owner's final form; a third step, only if the numbers say so)
+
+Each cycle: deliver the data due at t from the wheel into the units' inputs; run every unit with something delivered or
+work pending, reading only what was delivered and its own state, writing outputs into its task's delivery queue at
+t + L ≥ t + 1; merge the queues into the wheel. Units grouped into tasks by cost (e.g. 16 cores a task, 64 routers
+another), one barrier per cycle, no races by construction. It needs every entry of the audit above turned into
+delivered data or last cycle's committed state, and the buses' lazy commit replaced by delivery. **Whether to build it:**
+113b says the cores cost little (0.3% of T2) and stage 1 leaves C&C 3's tile as the critical path during the trace, so
+the case rests on the all-tile phases (T2's replay after GO, the sort); stage 2 by tile's numbers decide.

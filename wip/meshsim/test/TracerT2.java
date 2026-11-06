@@ -138,7 +138,6 @@ public final class TracerT2 {
         }
         d.add(running + " tiles still running at cycle " + t);
         if (m.c.violations > 0) d.add("meshsim: " + StageB.cut(m.c.violationReport().replace("\n", "; ")));
-        String lg = m.c.logTail(20); if (lg != null && !lg.isEmpty()) d.add("log: " + StageB.cut(lg.replace("\n", "; ")));
         return d;
     }
 

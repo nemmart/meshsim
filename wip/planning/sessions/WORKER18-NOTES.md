@@ -150,7 +150,7 @@ sequence row for row against the `.inc` emit lists, parsed as data (owner, 2026-
 
 ## Reference data (2026-11-02, row_dump `df1b231`, local runs)
 
-`WORKER18/data/`: `<name>.json`, `<name>.hashes.csv` (and EVM Zone's `advice.bin`); the row files (80 B per row) stay
+`wip/planning/sessions/WORKER18-data/`: `<name>.json`, `<name>.hashes.csv` (and EVM Zone's `advice.bin`); the row files (80 B per row) stay
 local (467 MB and 216 MB).
 
 | run | rows | padded | windows (2^16) | run hash | secp advice words | bytecode rows |
@@ -233,7 +233,7 @@ Reference files (regenerated locally from `ca30b5e`, SHA-256 equal to WORKER16's
 ### Wider validation: jolt-cpp's example guests (2026-11-02)
 
 The two workloads leave paths unexercised (`compare --coverage`). jolt-cpp's `examples/` (at `821e1bd`) has more
-guests; `row_dump` ran on seven (summaries in `WORKER18/data/examples/`; `sha2-chain-advice` fails to load in jolt-cpp
+guests; `row_dump` ran on seven (summaries in `wip/planning/sessions/WORKER18-data/examples/`; `sha2-chain-advice` fails to load in jolt-cpp
 itself), and gold, with **computed** secp advice, matches **every record** of all seven:
 
 | guest | rows | what it adds |
@@ -365,7 +365,7 @@ executes through gold's Decoder, Expander and Machine (`RuntimeCode`: each instr
 an unprovable instruction or a standard UNIMP becomes a row that throws if executed). `--trace-failure` prints the first
 failed check (its tested instruction, its description string, expected value and registers).
 
-| ACT4 (133 ELFs, `WORKER18/data/act4/act4-runner.tsv`) | count |
+| ACT4 (133 ELFs, `wip/planning/sessions/WORKER18-data/act4/act4-runner.tsv`) | count |
 |---|---|
 | jolt-emu (upstream CI) pass | 125 |
 | ... of those, gold's runner PASS | 123 |
@@ -394,10 +394,10 @@ by upstream's harness calls: GLVR (no test calls it through `execute_inline`), a
 - **jolt-cpp fixes**, jolt-asic-planning branches from `tracer-standalone-main` `fa59d9a` (jolt-cpp 88dca85), each
   tested on its reproducer and on EVM Zone and Cyclone (small inputs; D1 also both at 2^29 and seven examples):
   `worker18-fix-d1-sections` (`7b91e8a`), `worker18-fix-d3-no-legacy-ecall` (`443e09e`), `worker18-fix-d12-c-slli`
-  (`2964c0a`). Bug-report drafts: `WORKER18/bug-reports/` (jolt-cpp D1, D3, D12; a16z U1, U2, U3).
+  (`2964c0a`). Bug-report drafts: `wip/planning/upstream/bug-reports/` (jolt-cpp D1, D3, D12; a16z U1, U2, U3).
 - **NEXT.md item 1, check.sh at 88dca85: done.** `row_dump` and WORKER16's `segment_writer` ported to 88dca85 (one
   line each; jolt-asic-planning `worker18-rows-88dca85` `f039fa1`); references regenerated at the new pin
-  (`WORKER18/data/88dca85/`): run hashes of evm23, cyc22, evm29, cyc29 and the four segment files' SHA-256 all equal
+  (`wip/planning/sessions/WORKER18-data/88dca85/`): run hashes of evm23, cyc22, evm29, cyc29 and the four segment files' SHA-256 all equal
   821e1bd's. Gold against them: **all four segment files byte-identical**; EVM Zone trace-23 and Cyclone input/22
   identical on every record; both workloads at 2^29 identical on every window (5,415 and 5,670) and the run hash.
 
@@ -452,7 +452,7 @@ is byte-identical to jumpmap's `frame6.bin` (jumpmap's own acceptance: 373,731 a
 equals jumpmap's per-segment `pages_written`, frames 2-5 equal the v1.2 file's; at 2²⁹ both workloads' frames 2-5 equal
 the v1.2 references and frame 7 a16z's layout. **For WORKER16's byte identity**, the v1.3 files at 2²⁹ (128 segments
 of 2²² rows), **republished 2026-11-05 with word 66's new field and D13's ruling** (gold `d4d22fa` and the word 66 commit):
-`WORKER18/data/v13/segment-files-v1.3.sha256`: EVM Zone 2,801,736 B `3cd32881…2a824d72`, Cyclone 11,388,488 B
+`wip/planning/sessions/WORKER18-data/v13/segment-files-v1.3.sha256`: EVM Zone 2,801,736 B `3cd32881…2a824d72`, Cyclone 11,388,488 B
 `e932baaf…0640eb38`. (The earlier `e9145e04…`/`fb1f4b6f…` are superseded; D13 doesn't change them, word 66 does.)
 
 **HashTable and StaticTargets** moved from `wip/jumpmap` into gold (`11eac42`); jumpmap uses gold's, and its fixtures

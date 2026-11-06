@@ -1,6 +1,6 @@
 # Figure 9.1: the Tracer at block level: the RV64 core, its three local stores and the fill bus to the memory system on the
 # left; the region, the register window and the output side toward C&C 3 on the right and along the bottom.
-# Drawn from spec 4.21 and DECISIONS-v1.3 sections 1-25 (to a6bd6c9); the review and the open points are in WORKER24/NOTES.md.
+# Drawn from spec 4.21 and DECISIONS-v1.3 sections 1-25 (to a6bd6c9); the review and the open points are in wip/planning/sessions/WORKER24-NOTES.md.
 from common import *
 
 W, H = 1300, 940
@@ -153,7 +153,7 @@ rot_text(OT + 12, 400, "DMA packets into a router input of its own → the tiles
 # ================= lower left: the open points ========================================================
 OB = (40, 676, 392, 86)
 f.rect(*OB, "white", OPEN_C, 1.3, dash=OPEN, rx=6)
-f.text(OB[0] + 12, OB[1] + 20, "Still open or provisional (WORKER24/NOTES.md)", 12, "start", "bold", fill=OPEN_C)
+f.text(OB[0] + 12, OB[1] + 20, "Still open or provisional (wip/planning/sessions/WORKER24-NOTES.md)", 12, "start", "bold", fill=OPEN_C)
 f.lines(OB[0] + 12, OB[1] + 38, [
     "20 the core's inner split: the figure's, for orientation",
     "21 the range check's upper bound (item 149)",
@@ -173,5 +173,5 @@ f.legend_status(40, LY + 28)
 f.caption(["The Tracer runs the guest on its own RV64 core. Its instruction cache, data cache and jump LRU are its only local stores; each miss is one 128 B line of a file, (root, depth, line),",
            "on the fill bus to the memory system. One bus from C&C 3 fills the advice and expansion queues, loads the expansion tables once at startup, and writes the state into the core;",
            "the window runs it. At each done the DMA drains the output queues (figure 9.2): the state, read in place, and the three streams. Writing word 0 resets everything."],
-          y=H - 66, source="Source: spec/machine-spec.md §4.21 (4.21.1–4.21.6, 4.21.9); planning/DECISIONS-v1.3.md (to a6bd6c9) §1–25; spec §4.17, §4.19. Review: WORKER24/NOTES.md.")
+          y=H - 66, source="Source: spec/machine-spec.md §4.21 (4.21.1–4.21.6, 4.21.9); planning/DECISIONS-v1.3.md (to a6bd6c9) §1–25; spec §4.17, §4.19. Review: wip/planning/sessions/WORKER24-NOTES.md.")
 f.save("fig9_1_tracer.svg")

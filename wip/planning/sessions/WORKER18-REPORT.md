@@ -76,7 +76,7 @@ run**: EVM Zone trace-23 and Cyclone input/22 (every record), the seven example 
 workloads at 2^29 (every window and the run hash). All 15 inline sequences are identical between upstream `17a9459`
 and jolt-cpp's `.inc` files (from `f8fc214`). ST1 is answered (DECISIONS-v1.3 section 17).
 
-The differences are outside the rows: ten, each cited on both sides, in `WORKER18/UPSTREAM-DIFFS.md` (D1 program image
+The differences are outside the rows: ten, each cited on both sides, in `wip/planning/upstream/UPSTREAM-DIFFS.md` (D1 program image
 from segments or sections; D2 the stack canary; D3 LegacyRawEcall; D4 UNIMP skipped with a drifting pc, or the ELF
 rejected; D5 executing where no instruction was decoded; D6 misaligned access checks; D7 EBREAK; D8 the bytecode
 count; D9 the stack bounds' names; D10 padding, to confirm). None is resolved; gold stays jolt-cpp-exact until the
@@ -122,7 +122,7 @@ the absorb), the custom `VirtualAssertEQ` and UNIMP (removed from bytecode); see
 
 ## The rules, with their sources
 
-`WORKER18/NOTES.md` lists every rule with its jolt-cpp citation (file:line at `821e1bd`); the inline builders cite
+`wip/planning/sessions/WORKER18-NOTES.md` lists every rule with its jolt-cpp citation (file:line at `821e1bd`); the inline builders cite
 upstream Jolt at `f8fc214` (the commit jolt-cpp's submodule pins, from which its `.inc` files are dumped). The
 non-obvious ones, which a hardware Tracer must also follow:
 

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Runs gold on every hand-assembled guest (make_guests.py) and compares with expected.txt:
 # rows and run hash, or the abort or load rejection. The jolt-cpp and upstream results for the same guests are in
-# WORKER18/NOTES.md ("Test guests").
+# wip/planning/sessions/WORKER18-NOTES.md ("Test guests").
 cd "$(dirname "$0")"
 [ -d ../../build ] || ../../build.sh
 mkdir -p /tmp/gold-empty-input

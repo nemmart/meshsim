@@ -41,6 +41,9 @@
 #define TL_H_T_WLOG          19
 #define TL_H_FIRST_TILE      20   /* window n goes to tile FIRST_TILE + n: 0 */
 #define TL_H_WORDS           32
+/* invariant 25's announced staging (6.2): nothing sent to a tile sooner than stage_delay after the GO store (32 cycles,
+ * Proposed; meshsim's harness has used 64). C&C 3's start comes after C&C 1's GO, and C&C 3 waits this long after it */
+#define TL_STAGE_DELAY       64u
 
 /* results: tr_results[16] in data memory (the harness finds it in the .sym file) */
 #define TL_R_STATUS          0    /* 1 ok; 2 a template missing; 3 ERRORS set; 4 a bad header; 5 advice left over; 6 the end state differs */

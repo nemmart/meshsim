@@ -31,7 +31,7 @@ failed assertion checked; Q9 the pin pending; Q10 stores into code caught by the
    alignment assertion before it. **At `821e1bd` none has one:** `VirtualAssertWordAlignment` and
    `VirtualAssertHalfwordAlignment` are gone (spec 4.19.7, appendix 2.0), LD and SD are one-word templates
    (`tables/replayer/listing.txt`), the sub-word loads are three rows with no assertion, and both tracers abort instead
-   (`WORKER18/UPSTREAM-DIFFS.md` D6). So I added [12]: a load or store row's address not a multiple of 8, jolt-cpp's
+   (`wip/planning/upstream/UPSTREAM-DIFFS.md` D6). So I added [12]: a load or store row's address not a multiple of 8, jolt-cpp's
    `checked_memory_address` test. Drop it if you'd rather leave misalignment unchecked.
 2. **The service flags are live, and a credit is taken when the DMA has read the last entry it covers** (4.21.6), rather
    than "per transfer": it gives the same behaviour for one transfer per credit, and also covers queue 0's four transfers

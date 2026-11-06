@@ -156,8 +156,11 @@ final class TracerRig {
             tr.accept(t, SRC, (int) p[0], LinkWord.SIZE_128, p[1], p[2]);
         }
         tr.runCycle(t);
+        if (onStep != null) onStep.run();
         t++;
     }
+    /** Called after each cycle's runCycle (TracerTest's counters: a window word read every cycle). */
+    Runnable onStep;
     void drainPort() { while (!port.isEmpty() || !portExp.isEmpty()) step(); for (int k = 0; k < Peripheral.RP_LATENCY + 1; k++) step(); }
 
     /** Startup: the decode table and the ROM, the hash constants and RUN_CONFIG. */

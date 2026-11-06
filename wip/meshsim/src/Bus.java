@@ -34,10 +34,16 @@ abstract class BusBase {
     /** The reset (6.1): empty the bus, a pending put included. */
     void flush() { pendPut = false; takes = 0; }
 
-    /** Enter cycle t: commit the previous cycle's put, reset per-cycle counters. */
+    /** Enter cycle t: commit the previous cycle's put, reset per-cycle counters.
+     *  B (WORKER29): a clean bus (no put waiting for its commit, no take counted) has nothing to commit or reset, so a query
+     *  of it at a later cycle writes nothing and calls nothing; its lastT is brought up to date by the next put or take
+     *  ({@link #touch}), which is what commit(lastT) and the per-cycle checks need. A clean bus's lastT may therefore lag
+     *  the cycle of its last query, which weakens only the time-went-backwards check, never what the bus shows. */
     protected final void enter(long t) {
-        if (t != lastT) enterSlow(t);
+        if (t != lastT && (pendPut || takes != 0 || t < lastT)) enterSlow(t);
     }
+    /** Enter cycle t to change the bus (a put, a take, a register write): lastT becomes t. */
+    protected final void touch(long t) { enter(t); lastT = t; }
     private void enterSlow(long t) {
         if (t < lastT) throw new IllegalStateException(name + ": time went backwards " + lastT + " -> " + t);
         if (pendPut) { commit(lastT); pendPut = false; }
@@ -49,13 +55,13 @@ abstract class BusBase {
     protected abstract void commit(long tPut);
 
     protected final void notePut(long t) {
-        enter(t);
+        touch(t);
         if (pendPut) throw new IllegalStateException(name + ": two puts in cycle " + t);
         pendPut = true;
     }
 
     protected final void noteTake(long t) {
-        enter(t);
+        touch(t);
         if (takes > 0) throw new IllegalStateException(name + ": two takes in cycle " + t);
         takes++;
     }

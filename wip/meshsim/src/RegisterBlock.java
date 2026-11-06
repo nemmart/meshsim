@@ -88,14 +88,14 @@ final class RegisterBlock extends BusBase {
     // ---- core side ----
     int read(long t, int i) { enter(t); return val[i]; }
     void write(long t, int i, int v) {
-        enter(t);
+        touch(t);
         if (coreWrites++ > 0) throw new IllegalStateException(name + ": two core writes in cycle " + t);
         pendPut = true; corePend[i] = true; coreVal[i] = v;
     }
 
     // ---- unit side ----
     void unitWrite(long t, int i, int v, int mask) {
-        enter(t);
+        touch(t);
         if (!orMerge[i] && (unitMask[i] & mask) != 0) throw new IllegalStateException(name + ": overlapping unit writes to register " + i + " in cycle " + t);
         pendPut = true; unitPend[i] = true; unitVal[i] |= v & mask; unitMask[i] |= mask;
     }

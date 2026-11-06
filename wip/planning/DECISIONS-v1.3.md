@@ -6,6 +6,11 @@ written, the v1.2 spec). **v1.3's focus is the Tracer** (owner, 2026-10-29).
 
 ---
 
+**How v1.3's spec is meant** (owner, 2026-11-06): it makes **reasonable default calls** so Tony can start the RTL, and states
+what the hardware must do observably rather than how. Where the RTL finds a better way, the spec follows it; nobody should feel
+strongly about a default. (So, for instance, item 142's region decode is Tony's choice, and item 148's fill statuses are frozen
+as the default interface: ok, hole, not owned, beyond the depth's capacity.)
+
 ## 1. The Tracer: components (2026-10-29; restated 2026-11-01)
 
 The Tracer is C&C 3's peripheral (v1.2, 25): the RV64 row machine that executes the guest program and writes each window's run

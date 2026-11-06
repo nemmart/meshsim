@@ -77,6 +77,17 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
   Open in v1.3: register offsets beyond words 32-35; sizes to confirm by gold (caches, TLB); UPSTREAM-DIFFS ruled (section 17:
   D1, D3, D12 follow a16z, the verifier's source, with jolt-cpp fixes; D5 rejected by the host tracer; D2 and the rest deferred);
   WORKER18 is re-checking them at 7189216 and writing the demo guests.
+## Pending (2026-11-06, 10:30 UTC): the freeze sequence
+
+1. WORKER28 (interrupted with the owner's message): `stage_delay` to 64 in code, the counters' catch-up in stage 1, then once
+   116b passes, `main` merged forward into `sim-idle-skip`, ready for the integrator to merge into `main`. (Its superseded
+   116-w28-baselines-8 is in Quest's `tasks/hold/`.)
+2. The full regression on `main` (fresh Quest number): the quick and full suites, the full-size sort, the 64-window Stage B
+   smoke, T2 segment 0 of both workloads with stage 1 on; `BASELINES-8.md` from its numbers.
+3. The freeze: `v1.3/` (as v1.26.1 was made), the README's version table with **"For the RTL: start here"** at the top
+   (`v1.3/spec/CHANGES-v1.26.1-to-v1.3.md`, 4.21), DECISIONS-v1.3's "done" statement. P1 stage 2 and P2 (WORKER29) stay out.
+4. After the freeze: item 158 (the tables to a16z's D13/D14 rule).
+
 ## Pending (2026-11-05)
 
 - `v1.26.1/ERRATA.md` E1 (ConvertDelivery's manifest order) **added** 2026-11-06; the owner tells Tony. (F1 moved to v1.4, owner, 2026-11-05: v1.3 is the Tracer, solid enough for Tony's RTL).

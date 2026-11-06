@@ -1,0 +1,14 @@
+net-shuf (on) vs net (off): SAME
+net-shuf2 (on) vs net (off): SAME
+mem-shuf (on) vs mem (off): SAME
+mem-shuf2 (on) vs mem (off): SAME
+eng-shuf (on) vs engine (off): SAME
+ctrl-shuf (on) vs ctrl (off): SAME
+rdport-shuf (on) vs rdport (off): SAME
+agtest-shuf (on) vs agtest (off): SAME
+recipes-shuf (on) vs recipes (off): SAME
+cond-shuf (on) vs cond (off): SAME
+hooks-shuf (on) vs hooks (off): SAME
+periph-shuf (on) vs periph (off): SAME
+reqbus-shuf (on) vs reqbus (off): SAME
+cccores-shuf (on) vs cccores (off): SAME

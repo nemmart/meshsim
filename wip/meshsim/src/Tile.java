@@ -189,12 +189,11 @@ final class Tile implements Component {
     /** The reset (6.1), at the end of t, with Chip.reset (which empties every bus): the engines idle, every queue empty,
      *  the core in the boot ROM, the control state as at power-on; the memories, the tables and big SRAM keep. */
     /** Item S1's measurement (simulator only): every counted write's acceptance -> completion, against K. */
-    @SuppressWarnings("unchecked")
     void s1Attach(S1 s1) {
-        java.util.ArrayDeque<Long> q = new java.util.ArrayDeque<>(); dir.acceptQ = q; writer.acceptQ = q;
-        java.util.Map<Integer, Long> m = new java.util.HashMap<>(); writer.sramAcc = m; sram.s1Acc = m; sram.s1 = s1; sram.s1K = cfg.K;
-        writer.ptrAcc = new java.util.ArrayDeque[256]; writer.histAcc = new java.util.ArrayDeque[256];
-        for (int i = 0; i < 256; i++) { writer.ptrAcc[i] = new java.util.ArrayDeque<>(); writer.histAcc[i] = new java.util.ArrayDeque<>(); }
+        Prim.LongRing q = new Prim.LongRing(); dir.acceptQ = q; writer.acceptQ = q;      // WORKER29 (A): primitive, no boxing
+        Prim.IntLongMap m = new Prim.IntLongMap(); writer.sramAcc = m; sram.s1Acc = m; sram.s1 = s1; sram.s1K = cfg.K;
+        writer.ptrAcc = new Prim.LongRing[256]; writer.histAcc = new Prim.LongRing[256];
+        for (int i = 0; i < 256; i++) { writer.ptrAcc[i] = new Prim.LongRing(4); writer.histAcc[i] = new Prim.LongRing(4); }
         ts.s1Acc = writer.ptrAcc; ts.s1 = s1; ts.s1K = cfg.K; ts.s1Tile = idx;
         hist.s1Acc = writer.histAcc; hist.s1 = s1; hist.s1K = cfg.K; hist.s1Tile = idx;
     }

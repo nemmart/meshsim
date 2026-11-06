@@ -98,7 +98,7 @@ final class TableStore implements Component {
     final SRAMMacro group = new SRAMMacro("GROUP", 128, 2, false);
     final SRAMMacro ptr = new SRAMMacro("PTR", 256, 2, false);
     final RmwPipe pipe;
-    java.util.ArrayDeque<Long>[] s1Acc; S1 s1; int s1K, s1Tile;
+    Prim.LongRing[] s1Acc; S1 s1; int s1K, s1Tile;
     WordSource reqStream, reqGroup, reqWe;   // delay lines of ts_engine_latency
     WordSink retStream, retGroup, retWe;     // delay lines of ts_engine_latency
     final WordFIFO qStream, qGroup, qWe;     // the request FIFOs (16)
@@ -114,8 +114,8 @@ final class TableStore implements Component {
     @Override public void runCycle(long t) {
         pipe.writeBack(t);
         if (s1Acc != null && pipe.lastWbT() == t) {                    // the PTR pipe's index is the entry, 0-255
-            Long acc = s1Acc[pipe.lastWbIdx() & 255].poll();
-            if (acc != null) { long lat = t - acc; s1.ptr(lat); if (lat > s1K + S1.REACTION) { s1.late++; s1.lastLate = "tile " + s1Tile + ": PTR[" + (pipe.lastWbIdx() & 255) + "] complete " + lat + " cycles after acceptance, past K = " + s1K + " (invariant 24)"; } }
+            Prim.LongRing aq = s1Acc[pipe.lastWbIdx() & 255];
+            if (!aq.isEmpty()) { long acc = aq.poll(); long lat = t - acc; s1.ptr(lat); if (lat > s1K + S1.REACTION) { s1.late++; s1.lastLate = "tile " + s1Tile + ": PTR[" + (pipe.lastWbIdx() & 255) + "] complete " + lat + " cycles after acceptance, past K = " + s1K + " (invariant 24)"; } }
         }
         boolean arrAg = false, arrWe = false;
         if (reqStream.ready(t)) { qStream.put(t, reqStream.peekA(t), reqStream.peekB(t), reqStream.peekC(t)); reqStream.take(t); arrAg = true; }
@@ -175,12 +175,12 @@ final class HistStore implements Component {
     boolean histOverflow, busy;
     HistStore(int tile) { q = new WordFIFO("t" + tile + ".hist.q", 16); pipe = new RmwPipe(mem, TableStore.RD_PORT, TableStore.WR_PORT); }
 
-    java.util.ArrayDeque<Long>[] s1Acc; S1 s1; int s1K, s1Tile;
+    Prim.LongRing[] s1Acc; S1 s1; int s1K, s1Tile;
     @Override public void runCycle(long t) {
         pipe.writeBack(t);
         if (s1Acc != null && pipe.lastWbT() == t) {
-            Long acc = s1Acc[pipe.lastWbIdx() & 255].poll();
-            if (acc != null) { long lat = t - acc; s1.hist(lat); if (lat > s1K + S1.REACTION) { s1.late++; s1.lastLate = "tile " + s1Tile + ": HIST[" + pipe.lastWbIdx() + "] complete " + lat + " cycles after acceptance, past K = " + s1K + " (invariant 24)"; } }
+            Prim.LongRing aq = s1Acc[pipe.lastWbIdx() & 255];
+            if (!aq.isEmpty()) { long acc = aq.poll(); long lat = t - acc; s1.hist(lat); if (lat > s1K + S1.REACTION) { s1.late++; s1.lastLate = "tile " + s1Tile + ": HIST[" + pipe.lastWbIdx() + "] complete " + lat + " cycles after acceptance, past K = " + s1K + " (invariant 24)"; } }
         }
         boolean arriving = false;
         if (req.ready(t)) { q.put(t, req.peekA(t), req.peekB(t), req.peekC(t)); req.take(t); arriving = true; }

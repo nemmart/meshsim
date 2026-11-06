@@ -37,9 +37,9 @@ final class WriteEngine implements Component {
     private final int cap;
     private final long[] stD, stH, stC; private final int[] stPtr; private final boolean[] stHave;
     private long[] stAcc;                                 // S1: each entry's acceptance at the director
-    java.util.ArrayDeque<Long> acceptQ;                   // S1: fed by the director, in the input bus's order
-    java.util.Map<Integer, Long> sramAcc;                 // S1: chunk -> acceptance, until the area stores it
-    java.util.ArrayDeque<Long>[] histAcc, ptrAcc;         // S1: per table index, acceptances awaiting their write-back
+    Prim.LongRing acceptQ;                                // S1: fed by the director, in the input bus's order
+    Prim.IntLongMap sramAcc;                              // S1: chunk -> acceptance, until the area stores it
+    Prim.LongRing[] histAcc, ptrAcc;                      // S1: per table index, acceptances awaiting their write-back
     private int head, count;
     private final java.util.ArrayDeque<Integer> awaiting = new java.util.ArrayDeque<>();   // stage entries waiting for their PTR return, in order
     long lastTsReq = Long.MIN_VALUE / 2;

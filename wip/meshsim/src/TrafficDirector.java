@@ -190,7 +190,7 @@ final class TrafficDirector implements Component {
     }
 
     /** S1's bookkeeping: the acceptance cycle of every packet handed to the write engine, in order (simulator only). */
-    java.util.ArrayDeque<Long> acceptQ;
+    Prim.LongRing acceptQ;
 
     /** cm_idle (a diagnostic only in v1.2, 4.8): the port-B pipeline is empty. */
     boolean cmIdle(long t) { return toPortB.inFlight(t) == 0; }

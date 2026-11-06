@@ -1329,8 +1329,8 @@ Decided (O).
     cycle; a failure sets its own `ERRORS` bit. **Not the memory system's length check:** `.pages` is larger than the provable
     range (a 4 GB file against Cyclone's 2²⁴ cells, so an access past K but inside the file reads a hole as zero), and a request
     reaching the memory system is already a (root, depth, line). The Tracer takes `lowest_address` and K from word 66 (section
-    23); the upper bound is the cell index below K, to confirm against a16z's prover
-    (or the layout's top). Instruction fetch needs none: a pc outside the code misses the jump map. Such a run can't be proven in
+    23); the upper bound is **8·K, the cell index below K** (owner, 2026-11-06,
+    spec item 149: the RAM sumchecks cover exactly K 64-bit cells, so nothing outside them is checked). Instruction fetch needs none: a pc outside the code misses the jump map. Such a run can't be proven in
     either codebase (R1CS ties the address to rs1 + imm); a16z's prover rejects it, jolt-cpp's silently drops the access and
     produces a proof that fails verification. **The host tracer isn't required to check** (a per-access check would slow its JIT;
     free only if its memory mapping faults). jolt-cpp gets a bug report against its prover;

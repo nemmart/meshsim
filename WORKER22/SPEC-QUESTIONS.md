@@ -145,6 +145,16 @@ The spec's controller loop (4.21.3) doesn't say what C&C 3 does with an expansio
 chunks), since the word-0 write resets the credits and the Tracer presents the expansion again. The firmware loop in 4.21.3
 gains that line. meshsim's ideal controller follows it (37fb37e), and so will `tracer_ctl.c`.
 
+**Q15, the barriers (owner, 2026-11-06; DECISIONS-v1.3 section 24, 9544e8e): the segment's two barriers are C&C 1's
+READY/GO,** since C&C 1 handles global barriers and starts. This was ruled after the fan-in hang: 64 direct "booted"
+packets to C&C 3 overflowed tile 2's port and dropped two (3.2 already rules that out).
+- **(1) Before tracing:** each tile boots, arms its counters for the record's fixed pieces and raises READY; C&C 1 waits for
+  all READY, then tells C&C 3 to start tracing. Tiles send nothing to C&C 3: "booted" is dropped altogether (the request-tree
+  version, d6b4d8d, is superseded).
+- **(2) After the last delivery:** C&C 3 reports done to C&C 1, which issues GO, and all 64 tiles start replaying together.
+- The per-window "armed" stays a direct packet, one tile to C&C 3 at a time.
+- How (1) meets 4.13's done rule is Q17 below.
+
 **Q16. 4.21.3, 4.19.13: when a tile may start replaying its window** (from T2, with Q15's handshake).
 
 4.21.3's controller loop doesn't say when the tiles start. The plan had the harness start all 64 at the segment's last
@@ -161,10 +171,50 @@ When all three are at 0, everything it replays from has landed.
 traces the later windows. Nothing else gates it: no command, and no wait for the segment's end. The tile's replay doesn't
 touch C&C 3 or the other tiles' regions, and its controller's start-up (the tables, the templates) can precede it.
 
-**Answered (owner, 2026-11-05): accepted**, as the departure from the plan. The spec should state it in 4.21.3 (or 4.19.13).
+**Answered (owner, 2026-11-05): accepted**, as the departure from the plan. **Reversed (owner, 2026-11-06; 9544e8e): all 64
+tiles start replaying together, at C&C 1's GO after C&C 3's last delivery** (Q15's barrier (2)); the replay's ~236K cycles
+then follow the trace, negligible against its ~21 M.
 
 The other departure, queue 0 sent in queue order so that the totals reach a tile before its streams but after the state
 words, was accepted with Q15's ruling.
+
+**Q17. Q15's barrier (1) against 4.13's done rule: READY with the record's counters still armed.**
+
+A tile raises READY with its done pulse (`wait_for_command`, 6.3). But two rules stand in the way:
+- **Done early:** 4.12 and 4.13 (invariant 4) make a done pulse with a write counter non-zero done early, `ERRORS` [8], a
+  terminal error. The record's counters, once armed at boot, stay non-zero until window *n* − 1's state and window *n*'s
+  totals have landed, which is long after the barrier.
+- **The done gate:** from the done pulse until GO nothing but GO wakes `WFI`, and counter events can't be set (4.13). A tile
+  that has raised READY therefore can't take its totals, arm its streams and send "armed" during the trace.
+
+*Proposed:* keep the two barriers and the "nothing to C&C 3 but armed" of the ruling, and order each tile's steps so its
+done pulses come with its counters at 0:
+1. **Boot, READY.** The tile boots and raises READY at once, with nothing armed.
+2. **First barrier.** C&C 1 waits for all READY and issues GO (a first phase), then tells C&C 3 to start tracing.
+3. **Arm.** On that GO the tile arms its record's counters. C&C 3's first delivery (Q3, to tile 0) comes long after: C&C 1
+   must first tell it to start, and C&C 3 then loads its tables and record. So arming wins by timing, as every phase's
+   window between GO and arming already does (4.12, the owner's rule of 2026-10-29; signed counters, item 125, would remove
+   the window).
+4. **During the trace,** awake, the tile takes its totals, arms its streams, sends "armed", and waits for its counters done.
+5. **READY again,** now with every counter at 0, which is legal.
+6. **Second barrier.** C&C 3 reports done to C&C 1, which waits for that and for all READY, then issues GO, and all 64
+   tiles replay together.
+
+In the harness, standing in for C&C 1's sequencing, the host commands C&C 1's phase and GO and starts C&C 3 directly.
+cc1.c gains no new command yet.
+
+**Answered (owner, 2026-11-06): yes, this order,** with one guard:
+- READY at boot with nothing armed.
+- GO, after which each tile arms its counters for the record's pieces and C&C 1 starts C&C 3.
+- The deliveries, with the per-window handshake.
+- READY again when a tile's counters reach 0 (its window has landed); this replaces C&C 3 reporting done.
+- C&C 1's final GO, for the replay.
+- **The guard:** tile 0's first delivery (window 0's start, Q3) can come before it has armed after the GO, so C&C 3 waits
+  for a single "armed" from tile 0 (for its record) before sending it. Every other tile's first delivery is a window later.
+
+*As built* (v1.3-tracer, after 515c11a): C&C 3 arms the guard's counter at its own boot, long before C&C 1 boots the
+tiles, and waits for its start as a landed command, with no done pulse, since that counter is armed. In T2 the host
+sequences C&C 1's two phases and C&C 3's start.
 
 ## Open
 

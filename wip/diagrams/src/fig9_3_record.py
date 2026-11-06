@@ -166,5 +166,5 @@ f.lines(40, NY, [
 f.caption(["The state record is one format from the host through the Tracer to the replayers: 68 words of 128 bits at byte offsets 0x000–0x43F, loaded state word first,",
            "whose write resets the unit. It is the Tracer's working state, so at the end of each run it is read out in place: purple fields are window n+1's start,",
            "blue fields run n's totals, and the advice field is the live count of the segment's advice."],
-          y=H - 66, source="Source: spec/machine-spec.md §4.19.2 (v1.26.1), §4.21.2 (to 66f399e), §4.21.6; DECISIONS-v1.26.md items 2, 15–17; DECISIONS-v1.3.md §23, §24. Review: WORKER24/NOTES.md.")
+          y=H - 66, source="Source: spec/machine-spec.md §4.19.2 (v1.26.1), §4.21.2 (to 66f399e), §4.21.6; DECISIONS-v1.26.md items 2, 15–17; DECISIONS-v1.3.md §23, §24. Review: wip/planning/sessions/WORKER24-NOTES.md.")
 f.save("fig9_3_record.svg")

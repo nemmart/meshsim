@@ -1,9 +1,9 @@
 # WORKER22 report: B1, the Tracer's bring-up in meshsim
 
 Branch **`v1.3-tracer`** (from `main`, main merged throughout; last at a326fbd). The plan, the rulings and the formats are in
-`PLAN.md` and `NOTES.md`, and the review of spec 4.21 is in `SPEC-QUESTIONS.md` (Q1–Q17, all answered). **Status: 110q–110t
-(T2's subset on the READY/GO barriers) and 110u (one segment per workload with C&C 1's firmware owning the barriers) are
-pending; everything else is in.**
+`PLAN.md` and `NOTES.md`, and the review of spec 4.21 is in `SPEC-QUESTIONS.md` (Q1–Q17, all answered). **Status: complete.**
+T2's subset passes on the READY/GO barriers (110q–110t), and with C&C 1's firmware owning them (110u). The final
+regression at the branch head is Quest 110v (section 6).
 
 ## 1. What was built (`wip/meshsim/`)
 
@@ -88,8 +88,8 @@ For each tile, its delivered record and streams are checked against WORKER9's, a
 | **110e** | 2²⁹, segment 0 of both workloads, 64 windows, raw and LRU (before the handshake, under its interim exemption) | **PASS**: 4,194,304 rows a run |
 | 110f, 110g; 110i–110l | the subset with the 64-tile "booted" | timed out: the fan-in hang (section 6) |
 | **110m–110p** | the subset, "booted" up the request tree: 16 runs | **PASS** |
-| 110q–110t | the subset on the READY/GO barriers (Q17), host-sequenced | *pending* |
-| 110u | segment 10 of each workload, C&C 1's firmware sequencing the barriers | *pending* |
+| **110q–110t** | the subset on the READY/GO barriers (Q17), host-sequenced: 16 runs | **PASS** |
+| **110u** | segment 10 of each workload, C&C 1's `CC_SEGMENT` running the barriers: every unit's real firmware | **PASS** |
 
 **The regression (110h): PASS** (section 6).
 
@@ -141,6 +141,11 @@ For each tile, its delivered record and streams are checked against WORKER9's, a
 
 ## 6. The regression, the T2 subset, the fan-in hang and the firmware
 
+### The final regression (Quest 110v, at the branch head 0d023ba)
+
+*Pending.* It is as 110h: the quick and full suites, the full-size sort and the 64-window smoke. The branch head's `wip/` is
+identical to a326fbd's, the code 110u ran.
+
 ### The full regression (Quest 110h): PASS
 
 Branch 181232a, everything precompiled for the runner, gold's classes included.
@@ -163,13 +168,21 @@ deliveries against WORKER9's and all 4,194,304 rows against jolt-cpp's.
 
 | runs | 110m–110p (request-tree "booted") | 110q–110t (READY/GO, host-sequenced) |
 |---|---|---|
-| EVM Zone 16, 32, 37, 48 | OK; C&C 3 23.7 ms each | *pending* |
-| EVM Zone 37 LRU, 64, 80, 84 | OK; 22.6–23.7 ms | *pending* |
-| Cyclone 10, 10 LRU, 14, 16 | OK; 28.2, 27.2, 27.4, 18.9 ms | *pending* |
-| Cyclone 32, 48, 64, 80 | OK; 21.6–23.3 ms | *pending* |
+| EVM Zone 16, 32, 37, 48 | OK; C&C 3 23.7 ms each | OK; 23.7 ms each |
+| EVM Zone 37 LRU, 64, 80, 84 | OK; 22.6–23.7 ms | OK; 23.7, 23.6, 23.7, 22.6 ms |
+| Cyclone 10, 10 LRU, 14, 16 | OK; 28.2, 27.2, 27.4, 18.9 ms | OK; 28.1, 27.2, 27.4, 18.9 ms |
+| Cyclone 32, 48, 64, 80 | OK; 21.6–23.3 ms | OK; 23.2, 23.2, 23.2, 21.5 ms |
 
-110u (C&C 1's `CC_SEGMENT`, segment 10 of each workload): *pending*. Locally, EVM Zone trace-23 segment 0 (64 windows)
-passes on all three barrier versions: 419 s, 429 s and 448 s, against 425 s before the handshake.
+The times are C&C 3's, from its start to its exit, at 1 GHz. Each task took 22–24 minutes.
+
+**110u (PASS)** ran C&C 1's `CC_SEGMENT`: every unit runs its real firmware, the barriers' owner included. Segment 10 of EVM
+Zone took 23.7 ms and segment 10 of Cyclone 28.1 ms, the same cycles as the host-sequenced 110s to within 20.
+
+**The worst segment of either workload is Cyclone 10:** 28.1 ms raw and 27.2 ms LRU-coded, against the 100 ms budget. The
+tiles' replay follows the trace, at most about 236K cycles.
+
+Locally, EVM Zone trace-23 segment 0 (64 windows) passes on every barrier version: 419 s, 429 s and 448 s, against 425 s
+before the handshake.
 
 ### The fan-in hang (Quest 110f, 110i–110l)
 

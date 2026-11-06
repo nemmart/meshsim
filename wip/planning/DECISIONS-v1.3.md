@@ -1300,7 +1300,8 @@ Decided (O).
   from corruption somewhere (a host table or a page damaged on the way, a hardware fault), where hanging or running on would hide
   it:
   - **a jump target not in the map** (the probe finds neither the pc nor a free slot within its bound);
-  - **a store where the copy can't write** (owner, 2026-11-05, WORKER21's Q6; *provisional*): **a hole or a page the copy
+  - **a store where the copy can't write** (owner, 2026-11-05, WORKER21's Q6; the statuses frozen as the default, item 148,
+    2026-11-06): **a hole or a page the copy
     doesn't own** (section 15), one `ERRORS` bit, [8], since a line is writable only when its fill succeeded; the fill status
     can still tell them apart. **To revisit with the memory system's design:** which statuses and page flags it reports is still a
     black box, so this follows WORKER21's proposed fill responses (ok, hole, not owned, beyond the length) until then.

@@ -24,6 +24,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 final class Probe {
     static final String FILE = System.getProperty("meshsim.probe");
     static final boolean ON = FILE != null;
+    /** The time probe (-Dmeshsim.timeprobe=FILE): nanoseconds by chip section every cycle; by tile, child, class and core
+     *  state on every SAMPLE-th cycle; every C&C unit's children every cycle. Unshuffled runs only. */
+    static final String TFILE = System.getProperty("meshsim.timeprobe");
+    static final boolean TIME = TFILE != null;
+    static final int SAMPLE = Integer.getInteger("meshsim.timeprobe.every", 16);
     static final int IDLE = 0, ROUTER = 1, ENGINES = 2, CORE = 3, NCLS = 4;
     static final int C_OFF = 0, C_HALT = 1, C_WFI = 2, C_STALL = 3, C_RUN = 4, NCORE = 5;
     static final String[] CLS = { "idle", "router", "engines", "core" }, CORES = { "disabled", "halted", "wfi", "stalled", "running" };
@@ -31,7 +36,7 @@ final class Probe {
     private static final ConcurrentLinkedQueue<Probe> ALL = new ConcurrentLinkedQueue<>();
     private static final AtomicInteger SEQ = new AtomicInteger();
     static {
-        if (ON) Runtime.getRuntime().addShutdownHook(new Thread(Probe::reportAll));
+        if (ON || TIME) Runtime.getRuntime().addShutdownHook(new Thread(Probe::reportAll));
     }
 
     final Chip chip; final int seq; final String thread;
@@ -45,7 +50,8 @@ final class Probe {
     long cycles, first = -1, last;
     final java.util.ArrayList<long[]> bins = new java.util.ArrayList<>();    // per 2^20 cycles: the tiles' 4 classes
 
-    static Probe attach(Chip c) { if (!ON) return null; Probe p = new Probe(c); ALL.add(p); return p; }
+    static Probe attach(Chip c) { if (!ON && !TIME) return null; Probe p = new Probe(c); ALL.add(p); return p; }
+    final boolean timing = TIME;
 
     private Probe(Chip c) {
         chip = c; seq = SEQ.incrementAndGet(); thread = Thread.currentThread().getName();
@@ -57,6 +63,110 @@ final class Probe {
         runHist = new long[n][HB]; runs = new long[n]; runLen = new long[n]; parkedCycles = new long[n];
         preRouter = new boolean[n]; preEng = new boolean[n]; preFlight = new boolean[n];
         wfi0 = new long[n]; halt0 = new long[n]; stall0 = new long[n];
+        if (TIME && c.cores != null) for (int i = 0; i < 3; i++) c.cores.units[i].slot.probeT = ccSlot[i];
+    }
+
+    // ---------------------------------------------------------------- the time probe
+    static final int S_REQ = 0, S_EP = 1, S_TILES = 2, S_TILES_SAMPLED = 3, S_CNC = 4, S_CORES = 5, S_LINES = 6, S_REST = 7, S_INV = 8, NS = 9;
+    static final String[] SEC = { "request bus", "C&C endpoints", "the 64 tiles (unsampled cycles)", "the 64 tiles (sampled, timed per child)",
+            "CnC model", "CcCores (C&C 1-3)", "READY and error lines", "the cycle's tail", "checkInvariants" };
+    final long[] sec = new long[NS]; long sampled, unsampled;
+    final long[][] tileTmp = new long[64][Tile.NCH]; final long[] tileTot = new long[64];
+    final long[][][] byCls = new long[NCLS][Tile.NCH][];          // [class][child] -> {ns}; [class] tile-cycles below
+    final long[] clsTileNs = new long[NCLS], clsTiles = new long[NCLS];
+    final long[][] clsChild = new long[NCLS][Tile.NCH];
+    final long[] coreNs = new long[NCORE], coreN = new long[NCORE];          // the mesh cores' step by state (sampled)
+    final long[][] cc = new long[3][Tile.NCH], ccCoreNs = new long[3][NCORE], ccCoreN = new long[3][NCORE], ccSlot = new long[3][2];
+    private final long[] ccCoreTmp = new long[3];
+    static final long NT = calibrate();
+    /** The cost of one System.nanoTime() call, the median of many back-to-back pairs (subtracted from every section). */
+    static long calibrate() {
+        long[] d = new long[20001]; long a = System.nanoTime();
+        for (int i = 0; i < d.length; i++) { long b = System.nanoTime(); d[i] = b - a; a = b; }
+        java.util.Arrays.sort(d); return d[d.length / 2];
+    }
+
+    void timedCycle(long t) {
+        boolean s = t % SAMPLE == 0;
+        if (s) pre(t);
+        if (chip.cores != null) for (int i = 0; i < 3; i++) { Controller c = chip.cores.units[i].core; wfi0[64 + i] = c.cyclesWfi; halt0[64 + i] = c.cyclesHalted; stall0[64 + i] = c.cyclesStalled; }
+        Component[] ch = chip.children;
+        long a = System.nanoTime(), b;
+        chip.reqBus.runCycle(t); b = System.nanoTime(); sec[S_REQ] += b - a; a = b;
+        for (int i = 0; i < 3; i++) ch[i].runCycle(t);
+        b = System.nanoTime(); sec[S_EP] += b - a; a = b;
+        for (int i = 3; i < 67; i++) {
+            Tile p = (Tile) ch[i];
+            if (chip.parked != null && chip.parked[p.idx]) continue;
+            if (s) { long x = System.nanoTime(); p.runCycleTimed(t, tileTmp[p.idx]); tileTot[p.idx] = System.nanoTime() - x; } else p.runCycle(t);
+        }
+        b = System.nanoTime(); sec[s ? S_TILES_SAMPLED : S_TILES] += b - a; a = b;
+        ch[67].runCycle(t); b = System.nanoTime(); sec[S_CNC] += b - a; a = b;
+        if (ch.length > 68) { ch[68].runCycle(t); b = System.nanoTime(); sec[S_CORES] += b - a; a = b; }
+        boolean err = chip.tailLines(t); b = System.nanoTime(); sec[S_LINES] += b - a; a = b;
+        chip.tailRest(t, err); b = System.nanoTime(); sec[S_REST] += b - a; a = b;
+        chip.checkInvariants(t); b = System.nanoTime(); sec[S_INV] += b - a;
+        if (s) { sampled++; post(t); classTimes(); } else unsampled++;
+        if (chip.cores != null) for (int i = 0; i < 3; i++) {
+            Controller c = chip.cores.units[i].core; int u = 64 + i;
+            int cs = !c.enabled ? C_OFF : c.cyclesHalted != halt0[u] ? C_HALT : c.cyclesWfi != wfi0[u] ? C_WFI : c.cyclesStalled != stall0[u] ? C_STALL : C_RUN;
+            ccCoreNs[i][cs] += ccCoreTmp[i]; ccCoreN[i][cs]++;
+        }
+    }
+    /** CcCores.runCycle's units, timed per child (every cycle). */
+    void ccUnits(long t) {
+        CcCores k = chip.cores;                                   // (the host port has stepped: CcCores.runCycle)
+        for (int i = 0; i < 3; i++) { long c0 = cc[i][11]; k.units[i].runCycleTimed(t, cc[i]); ccCoreTmp[i] = cc[i][11] - c0; }
+    }
+    /** After a sampled cycle's post: each tile's child times under its class, its core's under the core's state. */
+    private void classTimes() {
+        for (int u = 0; u < 64; u++) {
+            if (parked(u)) continue;
+            int k = lastCls[u], cs = lastCore[u];
+            clsTiles[k]++; clsTileNs[k] += tileTot[u];
+            long[] x = tileTmp[u];
+            for (int c = 0; c < Tile.NCH; c++) { clsChild[k][c] += x[c]; }
+            coreNs[cs] += x[11]; coreN[cs]++;
+            java.util.Arrays.fill(x, 0);
+        }
+    }
+    private final int[] lastCls = new int[67], lastCore = new int[67];
+
+    private void timeReport(PrintWriter w) {
+        long cyc = sampled + unsampled; if (cyc == 0) return;
+        String id = "TIME " + seq + " (" + thread + ", " + kind() + ")";
+        w.printf("%s: %d cycles, %d sampled (1 in %d); nanoTime() costs %d ns, subtracted per section%n", id, cyc, sampled, SAMPLE, NT);
+        double tot = 0;
+        for (int k = 0; k < NS; k++) {
+            if (k == S_TILES_SAMPLED) continue;
+            double per = k == S_TILES ? (double) sec[k] / Math.max(1, unsampled) - NT : (double) sec[k] / cyc - NT;
+            tot += per;
+            w.printf("%s section %-36s %9.3f us/cycle%n", id, SEC[k], per / 1000);
+        }
+        w.printf("%s section %-36s %9.3f us/cycle%n", id, "total", tot / 1000);
+        w.printf("%s sampled tile-cycles by class: count, ns per tile-cycle (the children summed), then per child%n", id);
+        StringBuilder hd = new StringBuilder(id + " child   "); for (String c : Tile.CHILD) hd.append(String.format(" %9s", c)); w.println(hd);
+        for (int k = 0; k < NCLS; k++) {
+            if (clsTiles[k] == 0) continue;
+            double sumc = 0; for (int c = 0; c < Tile.NCH; c++) sumc += (double) clsChild[k][c] / clsTiles[k] - NT;
+            StringBuilder sb = new StringBuilder(String.format("%s %-7s %d %.1f |", id, CLS[k], clsTiles[k], sumc));
+            for (int c = 0; c < Tile.NCH; c++) sb.append(String.format(" %9.1f", (double) clsChild[k][c] / clsTiles[k] - NT));
+            w.println(sb);
+        }
+        StringBuilder cs = new StringBuilder(id + " mesh cores' step by state (ns per core-cycle, count):");
+        for (int k = 0; k < NCORE; k++) if (coreN[k] > 0) cs.append(String.format(" %s %.1f (%d)", CORES[k], (double) coreNs[k] / coreN[k] - NT, coreN[k]));
+        w.println(cs);
+        if (chip.cores == null) return;
+        for (int i = 0; i < 3; i++) {
+            StringBuilder sb = new StringBuilder(String.format("%s cc%d per child (ns/cycle):", id, i + 1));
+            double sum = 0;
+            for (int c = 0; c < Tile.NCH; c++) { double v = (double) cc[i][c] / cyc - NT; sum += v; sb.append(String.format(" %s %.1f", Tile.CHILD[c], v)); }
+            sb.append(String.format("; total %.1f; the slot: peripheral %.1f, DMA %.1f", sum, (double) ccSlot[i][0] / cyc, (double) ccSlot[i][1] / cyc));
+            w.println(sb);
+            StringBuilder cc2 = new StringBuilder(String.format("%s cc%d core by state (ns per cycle in it, cycles):", id, i + 1));
+            for (int k = 0; k < NCORE; k++) if (ccCoreN[i][k] > 0) cc2.append(String.format(" %s %.1f (%d)", CORES[k], (double) ccCoreNs[i][k] / ccCoreN[i][k] - NT, ccCoreN[i][k]));
+            w.println(cc2);
+        }
     }
 
     private boolean parked(int u) { return u < 64 && chip.parked != null && chip.parked[u]; }
@@ -111,6 +221,7 @@ final class Probe {
             core[u][cs]++;
             boolean coreIdle = cs <= C_WFI;
             int k = !coreIdle ? CORE : preEng[u] ? ENGINES : preRouter[u] ? ROUTER : IDLE;
+            lastCls[u] = k; lastCore[u] = cs;
             cls[u][k]++;
             if (u < 64) bin[k]++;
             if (k == IDLE) { runLen[u]++; if (preFlight[u]) inFlightIdle[u]++; }
@@ -126,6 +237,11 @@ final class Probe {
 
     // ---------------------------------------------------------------- the report
     private static synchronized void reportAll() {
+        if (TIME) try (PrintWriter w = new PrintWriter(new FileWriter(TFILE, true))) {
+            w.printf("# meshsim time probe (WORKER28): %d chip(s) in this JVM, %s%n", ALL.size(), new java.util.Date());
+            for (Probe p : ALL) p.timeReport(w);
+        } catch (IOException ex) { System.err.println("probe: " + ex); }
+        if (!ON) return;
         try (PrintWriter w = new PrintWriter(new FileWriter(FILE, true))) {
             java.util.Map<String, long[][]> agg = new java.util.TreeMap<>();
             for (Probe p : ALL) {

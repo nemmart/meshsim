@@ -128,6 +128,19 @@ final class Tile implements Component {
         ctl.endCycle(t);
     }
 
+    /** WORKER28's time probe: the same step as runCycle (unshuffled), each child's nanoseconds into acc[0-14]: the children
+     *  in construction order (router, SRAM read queue + injection, director, cmem, big SRAM, write engine, address
+     *  generator, table store, HIST store, read port, gather, core), then the slot's step, its end of cycle, the control's. */
+    static final int NCH = 15;
+    static final String[] CHILD = { "router", "srq+inj", "director", "cmem", "sram", "writer", "ag", "tables", "hist", "readport", "gather", "core", "slot", "slot.end", "ctl.end" };
+    void runCycleTimed(long t, long[] acc) {
+        long a = System.nanoTime(), b;
+        for (int i = 0; i < children.length; i++) { children[i].runCycle(t); b = System.nanoTime(); acc[i] += b - a; a = b; }
+        slot.runCycle(t); b = System.nanoTime(); acc[12] += b - a; a = b;
+        slot.endCycle(t); b = System.nanoTime(); acc[13] += b - a; a = b;
+        ctl.endCycle(t); b = System.nanoTime(); acc[14] += b - a;
+    }
+
     /** Monotonic event counts per condition (TileControl sets a condition when its count grows; spec 4.13). */
     private final long[] evc = new long[Conditions.N];
     long[] eventCounts() {

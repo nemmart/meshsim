@@ -97,12 +97,15 @@ final class PeripheralSlot implements Peripheral.Host {
 
     void runCycle(long t) {
         for (int n = 1; n <= 3; n++) if (p[n] != null) {
-            p[n].runCycle(t); dma[n].runCycle(t);
+            if (Probe.TIME && probeT != null) { long a = System.nanoTime(); p[n].runCycle(t); long b = System.nanoTime(); dma[n].runCycle(t); long c = System.nanoTime(); probeT[0] += b - a; probeT[1] += c - b; }
+            else { p[n].runCycle(t); dma[n].runCycle(t); }
             EventCounts e = p[n].events();
             if (e.fullPosts != fullSeen[n]) { fullSeen[n] = e.fullPosts; violate(t, "peripheral " + n + ": " + e.lastFull + " (invariant 16)"); }
         }
     }
     private final long[] fullSeen = new long[4];
+    /** WORKER28's time probe: the peripherals' steps [0] against their DMAs' [1] (C&C units only; null: untimed). */
+    long[] probeT;
     /** After every child has run t: the consuming loads and EVENTS_MASK stores of t take effect. */
     void endCycle(long t) {
         for (int n = 1; n <= 3; n++) {

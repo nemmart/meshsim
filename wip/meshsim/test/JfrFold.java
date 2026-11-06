@@ -16,13 +16,14 @@ import jdk.jfr.consumer.RecordingFile;
  *              sample is in Chip's own loops: checkInvariants, the error lines, scanOverflows);
  *   self       the top frame's class;
  *   method     the top frame's class.method;
- *   inclusive  every class on the stack, counted once per sample (the memory system under the Tracer, for example).
+ *   inclusive  every class on the stack, counted once per sample (the memory system under the Tracer, for example);
+ *   inclusive methods  the same by class.method (Controller.step: the RV32 interpreter executing an instruction).
  * Usage: java JfrFold FILE.jfr [TOP]
  */
 public final class JfrFold {
     public static void main(String[] a) throws Exception {
         int top = a.length > 1 ? Integer.parseInt(a[1]) : 30;
-        Map<String, Long> unit = new HashMap<>(), self = new HashMap<>(), method = new HashMap<>(), incl = new HashMap<>(), threads = new HashMap<>();
+        Map<String, Long> imeth = new HashMap<>(), unit = new HashMap<>(), self = new HashMap<>(), method = new HashMap<>(), incl = new HashMap<>(), threads = new HashMap<>();
         long all = 0, sim = 0;
         for (RecordedEvent e : RecordingFile.readAllEvents(Path.of(a[0]))) {
             if (!e.getEventType().getName().equals("jdk.ExecutionSample") || e.getStackTrace() == null) continue;
@@ -46,6 +47,8 @@ public final class JfrFold {
             if (t0 != null) { self.merge(cls(t0), 1L, Long::sum); method.merge(cls(t0) + "." + t0.getMethod().getName(), 1L, Long::sum); }
             Set<String> seen = new HashSet<>();
             for (RecordedFrame f : fs) if (f.isJavaFrame() && seen.add(cls(f))) incl.merge(cls(f), 1L, Long::sum);
+            Set<String> seenM = new HashSet<>();
+            for (RecordedFrame f : fs) { if (!f.isJavaFrame()) continue; String k = cls(f) + "." + f.getMethod().getName(); if (seenM.add(k)) imeth.merge(k, 1L, Long::sum); }
         }
         System.out.printf("%s: %d execution samples, %d (%.1f%%) inside Chip.runCycle%n", a[0], all, sim, 100.0 * sim / Math.max(1, all));
         print("threads (all samples)", threads, all, top);
@@ -53,6 +56,7 @@ public final class JfrFold {
         print("self (top frame's class)", self, sim, top);
         print("method (top frame)", method, sim, top);
         print("inclusive (class anywhere on the stack)", incl, sim, top);
+        print("inclusive methods (Controller.step: the interpreter executing; anywhere on the stack)", imeth, sim, top + 20);
     }
     static String cls(RecordedFrame f) {
         String n = f.getMethod().getType().getName();

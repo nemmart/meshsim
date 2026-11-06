@@ -21,6 +21,9 @@ cp $WIP/meshsim/sw/tracer/build/tracer_ctl.code.bin $WIP/meshsim/sw/tracer/build
 tar -czf $K/kit.tgz -C $K k
 SHA=$(sha256sum $K/kit.tgz | cut -d' ' -f1)
 T2WIN=${T2WIN:-32}; SBN=${SBN:-16}; LIM=${LIM:-40m}
+# SET=time (113b): instead, the time probe (-Dmeshsim.timeprobe: ns by chip section every cycle, by tile class and child 1
+# cycle in 16, C&C 1-3 per child every cycle), on the same T2 windows and Stage B windows, four JVMs
+SET=${SET:-all}
 cat <<EOF
 #!/bin/bash
 # Task $NAME -- meshsim WORKER28, step 1 of the exact idle-skipping work (meshsim WORKER28/PROMPT.md): the profile, on
@@ -37,6 +40,10 @@ cat <<EOF
 # (no progress for 3 M cycles; a tile not exited 1 M cycles after C&C 3's exit), Stage B's no-row limit (50,000 cycles),
 # and every JVM under timeout $LIM (the probe's report and the recording are still written on the TERM). Writes only
 # results/$NAME/. Reboot-safe: scratch in /tmp, removed first. Expected ~25 min (110e: 1,228 s per T2 segment, four JVMs).
+# THIS TASK'S SET: $SET$( [ $SET = time ] && echo " -- the time probe only, four JVMs: T2 on the first $T2WIN windows of segment 0 of both
+# workloads and Stage B and F on windows 0-$((SBN - 1)), with -Dmeshsim.timeprobe (ns per cycle by chip section; by tile class and child, 1
+# cycle in 16; C&C 1-3 per child every cycle, the Tracer's slot split from its DMA; the cores by state: the interpreter's share).
+# Expected ~13 min (about 5% slower than an untimed run)." )
 set -u
 cd "\$(dirname "\$0")/.."
 REPO=\$PWD
@@ -75,6 +82,12 @@ run() {   # run NAME JVM-OPTIONS -- MAIN ARGS...
   ( a=\$(date +%s); timeout -s TERM $LIM java \$O -cp \$CP "\$@" > "\$RES/\$N.log" 2>&1; r=\$?; echo "\$N: exit \$r, \$((\$(date +%s) - a)) s" >> "\$RES/\$N.log"; exit \$r ) &
   PIDS="\$PIDS \$!:\$N"
 }
+if [ $SET = time ]; then for PS in \$PROGS; do
+  P=\${PS%%:*}
+  run time-t2-\$P -Xmx5g -Dreplay.tables=\$W/k/tables/replayer -Dmeshsim.timeprobe=\$RES/time-t2-\$P.txt -- TracerT2 "\$D9" "\$P" --w26 "\$D26/\$P" --segments 0 --windows $T2WIN --quiet
+  SB="-Xmx1500m -Dstageb.norow=50000 -Dreplayer.logq=256 -Dreplay.tables=\$W/k/tables/replayer -Dreplay.build=\$W/k/sw/replay/build"
+  run time-sb-\$P \$SB -Dmeshsim.timeprobe=\$RES/time-sb-\$P.txt -- ReplayShard "\$W/v1261" "\$P" "\$RES/time-sb-\$P.csv" --manifest \$W/v1261/\$P.manifest.json --stages B --first 0 --count $SBN --stride 1 --phase 0 --full-every 1
+done; else
 for PS in \$PROGS; do
   P=\${PS%%:*}
   run jfr-t2-\$P -Xmx5g -Dreplay.tables=\$W/k/tables/replayer \$JFR=\$W/jfr-t2-\$P.jfr -- TracerT2 "\$D9" "\$P" --w26 "\$D26/\$P" --segments 0 --quiet
@@ -84,6 +97,7 @@ for PS in \$PROGS; do
   run jfr-sb-\$P \$SB \$JFR=\$W/jfr-sb-\$P.jfr -- ReplayShard "\$W/v1261" "\$P" "\$RES/jfr-sb-\$P.csv" \$SA
   run probe-sb-\$P \$SB -Dmeshsim.probe=\$RES/probe-sb-\$P.txt -- ReplayShard "\$W/v1261" "\$P" "\$RES/probe-sb-\$P.csv" \$SA
 done
+fi
 RC=0
 for X in \$PIDS; do wait \${X%%:*}; R=\$?; echo "\${X#*:}: exit \$R; \$(grep -h -E 'OK;|FAIL|STOPPED|T2 on' "\$RES/\${X#*:}.log" | tail -2 | tr '\n' ' ')"; [ \$R = 0 ] || RC=1; done
 for F in "\$W"/*.jfr; do
@@ -93,6 +107,7 @@ for F in "\$W"/*.jfr; do
   sed -n '1p;/== unit/,/== self/p' "\$RES/\$B-fold.txt" | head -24
 done
 for F in "\$RES"/probe-*.txt; do [ -f "\$F" ] && { echo "== \$(basename "\$F")"; grep '^AGG' "\$F"; }; done
+for F in "\$RES"/time-*.txt; do [ -f "\$F" ] && { echo "== \$(basename "\$F")"; grep -E 'section|cc3 |idle |router |engines |core ' "\$F" | head -60; }; done
 grep -h -E "Exception|STOPPED" "\$RES"/*.log | head -20
 echo "verdict: \$([ \$RC = 0 ] && echo PASS || echo FAIL); exit \$RC at \$(date -u)"
 rm -rf "\$W"

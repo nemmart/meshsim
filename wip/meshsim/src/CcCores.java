@@ -99,10 +99,14 @@ final class CcCores implements Component {
 
     // ================================================================ the cycle
     @Override public void runCycle(long t) {
+        hostStep(t);
+        if (Probe.TIME && chip.probe != null && chip.probe.timing) { chip.probe.ccUnits(t); return; }
+        for (Tile u : units) u.runCycle(t);
+    }
+    void hostStep(long t) {
         for (int c = 0; c < 3; c++) if (!hostQ[c].isEmpty() && host[c].canPut(t)) {
             long[] p = hostQ[c].poll(); host[c].put(t, p[0], p[1], p[2]); hostPackets++;
         }
-        for (Tile u : units) u.runCycle(t);
     }
     /** After every unit has run t (Chip): the controllers' error lines into C&C 1's peripheral. */
     void endCycle(long t) {

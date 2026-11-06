@@ -35,7 +35,7 @@ final class Chip implements Component {
     final PhaseLog phases;                                       // per-phase accounting
     final RequestBus reqBus;                                     // the request bus (3.3), run first every cycle
     final List<String> log = new ArrayList<>();                  // events worth a line in reports (controller halts)
-    private final Component[] children;
+    final Component[] children;
     /**
      * Tiles not simulated (null: none), for a run that provably never involves them: WORKER11's Stage B option
      * (-Dstageb.lone), where tile 0 replays from its own big SRAM and the other 63 tiles only wait in their boot ROMs.
@@ -116,6 +116,7 @@ final class Chip implements Component {
 
     final Probe probe;                                           // WORKER28 (sim-idle-profile): -Dmeshsim.probe, measurement only
     @Override public void runCycle(long t) {
+        if (Probe.TIME && probe != null && shuffle == null) { probe.timedCycle(t); return; }   // the same cycle, timed (WORKER28)
         if (Probe.ON && probe != null) probe.pre(t);
         if (shuffle != null) {
             for (int i = children.length - 1; i > 0; i--) { int j = shuffle.nextInt(i + 1); Component x = children[i]; children[i] = children[j]; children[j] = x; }
@@ -123,12 +124,22 @@ final class Chip implements Component {
         reqBus.runCycle(t);                                      // first: a request store at t sees the entry it frees
         if (parked == null) for (Component c : children) c.runCycle(t);
         else for (Component c : children) if (!(c instanceof Tile p && parked[p.idx])) c.runCycle(t);
+        boolean err = tailLines(t);
+        tailRest(t, err);
+        checkInvariants(t);
+        if (Probe.ON && probe != null) probe.post(t);
+    }
+    /** The end of a cycle, after every child (split out for WORKER28's timed path; the statements and their order unchanged). */
+    boolean tailLines(long t) {
         boolean err = false;
         for (Tile p : tiles) {
             if (p.ctl.readyPulseAt == t) { cc.readyPulse(p.idx, t); phases.onReady(p.idx, t); }
             boolean e = p.ctl.errorLine(); err |= e;
             if (e != errSeen[p.idx]) { errSeen[p.idx] = e; cc1p.errorLine(t, p.idx, e); }   // ERROR_LINES (8.14)
         }
+        return err;
+    }
+    void tailRest(long t, boolean err) {
         if (cores != null) cores.endCycle(t); else cc1p.runCycle(t);   // with cores, C&C 1's slot runs its peripheral
         if (s1.late != s1LateSeen) { s1LateSeen = s1.late; violation(t, -1, s1.lastLate); }
         if (resetRequest != 0) doReset(t);
@@ -142,8 +153,6 @@ final class Chip implements Component {
             }
         }
         if (!err) java.util.Arrays.fill(condSeen, 0);
-        checkInvariants(t);
-        if (Probe.ON && probe != null) probe.post(t);
     }
 
     void log(long t, int tile, String msg) { log.add("cycle " + t + (tile >= 0 ? " tile " + tile : "") + ": " + msg); }
@@ -165,7 +174,7 @@ final class Chip implements Component {
         if (violationMessages.size() < cfg.maxViolationMessages) violationMessages.add("cycle " + t + (tile >= 0 ? " tile " + tile : "") + ": " + msg);
     }
 
-    private void checkInvariants(long t) {
+    void checkInvariants(long t) {
         if ((t & 15) == 0) scanOverflows();
         for (int i = 0; i < 64; i++) {
             Tile p = tiles[i];

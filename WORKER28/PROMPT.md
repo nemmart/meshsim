@@ -30,6 +30,18 @@ the cycle at a barrier before t + 1. A put to another tile lands in that tile's 
 outboxes merged at the barrier, so there are no locks in the cycle. Chip-wide work (the lines, the invariant checks, the
 request bus) stays serial at the barrier. Links' 3-cycle latency may later let threads sync less often than every cycle.
 The active flags above are the simplest form of the same idea; the wheel is where the wakes live.
+**The architecture, final form (owner, 2026-11-05): deliver, run, merge; tasks grouped by cost.** Each cycle t: (1) **deliver**:
+all data due at t is handed to its units' inputs, `deliverData(bus, value)`, from the timing wheel; (2) **run**: each unit with
+something delivered or work pending runs `runCycle(out)`, reading only what was delivered and its own state, writing its outputs
+into its task's own `DeliveryQueue`, each at arrival t + L ≥ t + 1; (3) **merge**: the tasks' queues go into the wheel. Units are
+grouped into **tasks by cost**, e.g. 16 RV32 cores in a task, 64 routers in another, so a thread pool gets even pieces and each
+kind's code stays hot; tasks run in parallel, one barrier per cycle. No races by construction, and idle-skipping falls out (an
+idle unit is in no task this cycle). **The audit that comes first (step 2):** every direct read between units in the same cycle
+(`canPut`, `ready`, status registers, any `peek` across units; "a FIFO is full by its count before the cycle's pop") must become
+data delivered in phase 1 (a credit, an occupancy snapshot) or a read of last cycle's committed state. This supersedes the
+per-tile wheels and threads above as the target; they remain its ingredients. **Performance is the question** (owner): measure
+each stage's gain, and report where it gets to.
+
 **Two more decisions (owner, 2026-11-05).** (1) **GO and READY at 8 cycles** (`go_latency`, `ready_latency`; the error line
 follows READY), as the spec's own estimates assume (4.13), instead of meshsim's 1, which isn't physical: applied **first, as
 its own commit**, with every baseline it moves (the sort's 1,229,008, recorded cycle counts) re-recorded and documented, so the
@@ -43,7 +55,8 @@ stage 2's partitioning.
 THE WORK
 1. Profile a T2 segment and a Stage B run: where the cycles go, by unit and state, to confirm idle units dominate and estimate
    the gain.
-2. List every unit's wake sources and pending-work conditions, in WORKER28/NOTES.md, before any code.
+2. List every unit's wake sources and pending-work conditions, and audit every same-cycle read between units, in
+   WORKER28/NOTES.md, before any code.
 3. Implement the per-tile wheels (stage 1, one thread), then the threads over tiles (stage 2), on a branch, sim-idle-skip, made from v1.3-tracer once B1 is merged into main (until then, profile and plan
    only), with flags to turn each stage off.
 4. Prove it exact: identical logs, cycle for cycle, with each stage on and off, and at 1, 2, 8 and 16 threads, for the quick and full suites, the full-size sort

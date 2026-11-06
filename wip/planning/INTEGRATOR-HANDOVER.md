@@ -42,7 +42,6 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
 
 | worker | doing | state | what's left | waiting for it |
 |---|---|---|---|---|
-| WORKER22 | **B1, the Tracer's bring-up in meshsim**, built from 4.21, and 4.21's review (`SPEC-QUESTIONS.md`); the host-side inputs moved to WORKER26 (`NEXT.md`) | **started 2026-11-05**, branch `v1.3-tracer` | milestone 2 | **before merging: one full regression** (owner, 2026-11-05: the quick and full suites, the full-size sort at 1,229,008, the 64-window Stage B smoke, since `RowCore` touched the replayer); then F1 (WORKER23) |
 
 ## What's left, by milestone
 
@@ -81,6 +80,9 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
 ## Pending (2026-11-05)
 
 - `v1.26.1/ERRATA.md` E1 (ConvertDelivery's manifest order) **added** 2026-11-06; the owner tells Tony. (F1 moved to v1.4, owner, 2026-11-05: v1.3 is the Tracer, solid enough for Tony's RTL).
+- **B1 done and merged** (2026-11-06, e67bc43; WORKER22 closed). Next for v1.3: fold `sessions/WORKER22-SPEC-QUESTIONS.md`
+  (Q1-Q17) and the 11-06 rulings (items 142, 148, 149, 157, `stage_delay`) into 4.21 and `CHANGES-v1.3.md`; the statistics
+  counters into the model; Tony's implementer's review; the RTL guide v1.26.1 → v1.3; the freeze.
 - **P1, full-detail simulation at full scale** (WORKER28): **started 2026-11-05** on steps 1-2 only (the profile on the scratch
   branch `sim-idle-profile`, never merged, and the wake-source list); implementation after B1 merges. The runner's 45-minute
   task limit can be raised by the owner when a task needs it.
@@ -112,4 +114,4 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
 
 - Repositories: meshsim (this), jolt-asic-planning (`tracer-standalone`, PR #1; `tracer-standalone-main`, PR #2; `worker12-counts`),
   jolt-cpp (snarkify, our tracer), a16z/jolt (upstream, public), Quest (the runner). Tokens are in the owner's preferences.
-- Closed workers' reports: `wip/planning/sessions/` (WORKER4-21, 24-27) and `wip/planning/reviews/` (WORKER1-3).
+- Closed workers' reports: `wip/planning/sessions/` (WORKER4-22, 24-27) and `wip/planning/reviews/` (WORKER1-3).

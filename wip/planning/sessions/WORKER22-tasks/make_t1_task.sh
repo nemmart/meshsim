@@ -26,7 +26,7 @@ tar -czf $K/kit.tgz -C $K t1
 SHA=$(sha256sum $K/kit.tgz | cut -d' ' -f1)
 cat <<EOF
 #!/bin/bash
-# Task $NAME -- meshsim WORKER22, B1's T1 at 2^29 (meshsim WORKER22/PLAN.md section 5; DECISIONS-v1.3 after the work list, 9cf1b52):
+# Task $NAME -- meshsim WORKER22, B1's T1 at 2^29 (meshsim wip/planning/sessions/WORKER22-PLAN.md section 5; DECISIONS-v1.3 after the work list, 9cf1b52):
 # the Tracer model, its memory system (the shared cache, no TLB) and an ideal controller on every segment of evm-zone-29
 # and cyclone-29, in order on one memory: WORKER26's initial image, map and per-segment pages written (Quest 109,
 # \$DATA/w26-jumpmap), gold's segment file for frame 2, frame 3 and the update lists. Per window: the start state, the

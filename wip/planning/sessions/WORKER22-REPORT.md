@@ -21,7 +21,7 @@ at the branch head passes (Quest 110v). **The branch is ready to merge at 0d023b
 | the tiles' side | `sw/replay/replay_ctl.c`, `replay_layout.h` | layout version 5 (4 still accepted): READY with nothing armed; on the GO, the record's counters armed; the streams armed from the totals' word 1 and "armed" sent; READY again with every counter at 0; the replay at the final GO (Q15, Q17); the stream sizes from the record |
 | **C&C 1's barriers** | `sw/cc/cc1.c` | `CC_SEGMENT`: the tiles' command, all 64 READY, GO, C&C 3's start, the second command, all READY again, the final GO (Q15's barriers, owned by C&C 1) |
 | **the harnesses** | `test/TracerRig.java`, `TracerTest`, `MemorySystemTest`, `RvcTest`, `TracerT1`, `TracerT2`, `Mach` | the rig (an assembler, images, maps, an ideal controller serving the real queues); T1 (the model on real segments in order on one memory, against WORKER9's deliveries and Stage A); T2 (the full chip, every unit's real firmware: C&C 1 boots C&C 2, C&C 3 with `tracer_ctl` and the 64 tiles with `replay_ctl`, then runs the segment's barriers; every tile's delivery and rows checked; each chosen segment in a thread of its own on a snapshot of the one memory; a fail-fast that stops a hung run within minutes with every unit's state) |
-| tasks | `WORKER22/tasks/` | the Quest task generators (T1, T2, the regression) and their summaries |
+| tasks | `wip/planning/sessions/WORKER22-tasks/` | the Quest task generators (T1, T2, the regression) and their summaries |
 
 ## 2. The review of 4.21 (`SPEC-QUESTIONS.md`)
 

@@ -108,7 +108,7 @@ mkdir /tmp/k && tar -xzf /tmp/kit.tgz -C /tmp/k && cd /tmp/k/w11-kit
 - The small runs: `-p evm-zone-23 -n 128`, `-p cyclone-22 -n 64` (`-x 16` for F). At 2²⁹ the references are Quest 106
   and 107: every window PASS in A and B, F on 128 of 128, 3.2116 and 3.1105 cycles per row in B.
 
-**The Tracer, T1** (branch `v1.3-tracer`, `WORKER22/NOTES.md`; `WORKER22/tasks/make_t1_task.sh` for the 2²⁹ task):
+**The Tracer, T1** (branch `v1.3-tracer`, `wip/planning/sessions/WORKER22-NOTES.md`; `wip/planning/sessions/WORKER22-tasks/make_t1_task.sh` for the 2²⁹ task):
 
 ```sh
 java -Xmx5g -Dreplay.tables=v1.26.1/tables/replayer -cp build:gold TracerT1 $OUT/w9-deliveries evm-zone-29 --w26 $OUT/w26-jumpmap/evm-zone-29 [--compress]

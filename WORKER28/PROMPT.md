@@ -5,7 +5,7 @@ spend most in WFI with every queue empty, so T2 costs about 20 minutes per segme
 meshsim skip idle units exactly, so T2 runs every segment of both workloads at 2²⁹ at full detail, as part of v1.3's acceptance.
 
 READ FIRST: wip/meshsim/README.md (the model's conventions: timed buses, a put at t seen at t + 1, the shuffle seeds),
-Chip.java's step loop, and every unit's step(); WORKER22's branch v1.3-tracer and WORKER22/NOTES.md (TracerT2, the Tracer, the
+Chip.java's step loop, and every unit's step(); WORKER22's branch v1.3-tracer and wip/planning/sessions/WORKER22-NOTES.md (TracerT2, the Tracer, the
 memory system); wip/planning/sessions/WORKER20-REPORT.md and WORKER25-REPORT.md (the replayer's acceptance).
 
 THE MECHANISM (owner, 2026-11-05): an "active" flag per unit. It's set by anything that can change the unit's state: a put on

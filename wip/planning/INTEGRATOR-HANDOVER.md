@@ -80,8 +80,9 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
 ## Pending (2026-11-05)
 
 - `v1.26.1/ERRATA.md` E1 (ConvertDelivery's manifest order) **added** 2026-11-06; the owner tells Tony. (F1 moved to v1.4, owner, 2026-11-05: v1.3 is the Tracer, solid enough for Tony's RTL).
-- **WORKER30, the spec fold-in** (started 2026-11-06, `WORKER30/PROMPT.md`, branch `v1.3-spec-final`): Q1-Q17 and the
-  rulings into 4.21, `CHANGES-v1.3.md`, the RTL guide v1.26.1 → v1.3, the counters in the model.
+- **The spec fold-in is done** (WORKER30, merged 2026-11-06 at 46355cc, closed): Q1-Q17 and the rulings in 4.21,
+  `CHANGES-v1.3.md`, the RTL guide `wip/spec/CHANGES-v1.26.1-to-v1.3.md`, the counters in the model. Item 158 (the tables to
+  a16z's D13/D14 rule) right after the freeze.
 - **B1 done and merged** (2026-11-06, e67bc43; WORKER22 closed). Next for v1.3: fold `sessions/WORKER22-SPEC-QUESTIONS.md`
   (Q1-Q17) and the 11-06 rulings (items 142, 148, 149, 157, `stage_delay`) into 4.21 and `CHANGES-v1.3.md`; the statistics
   counters into the model; Tony's implementer's review; the RTL guide v1.26.1 → v1.3; **stage 1 and the latency commit merged (owner: in v1.3)**; one
@@ -117,4 +118,4 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
 
 - Repositories: meshsim (this), jolt-asic-planning (`tracer-standalone`, PR #1; `tracer-standalone-main`, PR #2; `worker12-counts`),
   jolt-cpp (snarkify, our tracer), a16z/jolt (upstream, public), Quest (the runner). Tokens are in the owner's preferences.
-- Closed workers' reports: `wip/planning/sessions/` (WORKER4-22, 24-27) and `wip/planning/reviews/` (WORKER1-3).
+- Closed workers' reports: `wip/planning/sessions/` (WORKER4-22, 24-27, 30) and `wip/planning/reviews/` (WORKER1-3).

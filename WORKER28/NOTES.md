@@ -260,8 +260,23 @@ times masked; `shuffle_vs_unshuffled.sh`):
   estimate. A T2 segment is now under a minute. (The Stage B rows mix stage B, tile 0 alone, and F, the full chip, and
   predate the parked-tile change.)
 - **After B1 (merged into main at e67bc43, then into `sim-idle-skip` at 3fd4e5f, a clean merge: main changed only the
-  firmware and TracerT2 since 515c11a):** Quest 115 (T2 and the 64-window Stage B/F, off and on) and 115b (the quick suite
-  with the sort, and the shuffled comparison) rerun the proof.
+  firmware and TracerT2 since 515c11a), the proof rerun passes in full:**
+  - **115b:** the quick suite, all 39 steps the same off and on, the sort included; all 15 shuffled steps on the same as
+    their unshuffled bases off;
+  - **115:** T2 segment 0 of both workloads (all 64 windows, READY/GO barriers) and Stage B/F on windows 0-63 of both (128
+    chips each): every chip's fingerprint, the logs and the CSVs the same off and on. Speed:
+
+    | run (115, B1 + stage 1 + the parked-tile change) | stage 1 off | stage 1 on | gain |
+    |---|---|---|---|
+    | T2 segment 0, EVM Zone (21.4 M cycles) | 1,170 s, 54.7 µs/cycle | **64 s, 2.99 µs/cycle** | 18.3× |
+    | T2 segment 0, Cyclone (21.6 M cycles) | 1,200 s, 55.6 µs/cycle | **64 s, 2.96 µs/cycle** | 18.8× |
+    | Stage B and F, 64 windows, EVM Zone (29.9 M cycles) | 786 s, 26.3 µs/cycle | **64 s, 2.14 µs/cycle** | 12.3× |
+    | Stage B and F, 64 windows, Cyclone (29.0 M cycles) | 762 s, 26.3 µs/cycle | **58 s, 2.00 µs/cycle** | 13.1× |
+
+    (The off runs are slower than 114's, 54.7 against 48.2 µs, and the on runs by the same proportion: the runner's load
+    differed, eight JVMs at once both times. Against 113b's 46.9 µs, 2.99 is 15.7×; against its own off run, 18.3×.)
+- **Then the latency commit** (GO, READY and the error line at 8: owner, P1), its baselines re-recorded in
+  `WORKER28/BASELINES-8.md` (Quest 116: the suites, the full-size sort and the Stage B smoke; 116b: T2 off and on at 8).
 - Local speed-ups on full-chip suites: StageB synthetic 16.2 → 4.1 s, CcCoresTest 30 → 7.1 s (seeded 61.8 → 8.6), the request
   bus suite 3.6 → 2.0; the coreless suites (no sleeping: their tiles are driven from Java) unchanged.
 

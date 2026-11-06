@@ -40,7 +40,8 @@ idle unit is in no task this cycle). **The audit that comes first (step 2):** ev
 (`canPut`, `ready`, status registers, any `peek` across units; "a FIFO is full by its count before the cycle's pop") must become
 data delivered in phase 1 (a credit, an occupancy snapshot) or a read of last cycle's committed state. This supersedes the
 per-tile wheels and threads above as the target; they remain its ingredients. **Performance is the question** (owner): measure
-each stage's gain, and report where it gets to.
+each stage's gain, and report where it gets to. **Order (2026-11-05):** stage 1's wheel holds wakes only, the data staying in
+the buses; stage 2 by tile; deliver-run-merge with data in delivery queues only for by-type, if the numbers justify it.
 
 **Two more decisions (owner, 2026-11-05).** (1) **GO and READY at 8 cycles** (`go_latency`, `ready_latency`; the error line
 follows READY), as the spec's own estimates assume (4.13), instead of meshsim's 1, which isn't physical: applied **first, as

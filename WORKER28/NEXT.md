@@ -1,10 +1,13 @@
 # Parked for WORKER28 (send at its next report; remove once sent)
 
-Put 113 straight into tasks/; push the branch and 113 before anything else this turn.
-The owner has set P1's architecture (your brief, updated: read its new sections): each cycle deliver, run, merge, with units
-grouped into tasks by cost and run in parallel, one barrier per cycle, built on per-tile timing wheels; GO and READY at 8 cycles, applied first as its own commit with the baselines re-recorded; and stage
-2's partitioning measured by tile against by unit type (for instance 4 threads for the 67 RV32 cores, about 17 each). Your early
-numbers point the same way: the gain isn't only skipping idle tiles (your ~2×) but skipping the idle units inside the active
-one. C&C 3's tile costs 11-25 µs a cycle, while T1 does the same Tracer work at about 0.4 µs, so have the profile break C&C 3's
-tile down by unit, and measure the per-cycle cost of polling empty buses and the interpreter's share. Then write NOTES.md: the
-wake sources, the audit of same-cycle reads between units (canPut, ready, cross-unit peeks), and plans for the latency change, stage 1 (the wheels, one thread) and stage 2 (the threads, by tile or by type).
+Good notes. Answers:
+1. The wheel holds only wakes, with the data staying in today's buses: yes, as you propose. It's enough for stage 1 and for
+   stage 2 by tile (link puts collected per thread, merged at the barrier). The owner's final architecture (your brief,
+   updated at 1c0aaea: deliver, run, merge, units grouped into tasks by cost, data through per-task delivery queues) is what
+   stage 2 by unit type needs, since a core and its tile's units on different threads would race on the buses' lazy commit; so
+   it's a third step, built only if 113b and stage 2's numbers say by-type is worth it. Keep the audit of same-cycle calls
+   between units in NOTES.md either way.
+2. The latency commit goes on sim-idle-skip as its first commit, once B1 is merged, so every baseline (including the Tracer's
+   T2 cycle counts) is re-recorded once. Yes, update the spec and README text that says "1 in simulation", and Config's comments;
+   record the new baselines in BASELINES-8.md.
+Then the numbers from 113 and 113b into NOTES.md, and the short probe run on WORKER22's READY/GO version when it lands.

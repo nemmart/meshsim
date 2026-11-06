@@ -2,8 +2,8 @@
 
 Branch **`v1.3-tracer`** (from `main`, main merged throughout; last at a326fbd). The plan, the rulings and the formats are in
 `PLAN.md` and `NOTES.md`, and the review of spec 4.21 is in `SPEC-QUESTIONS.md` (Q1–Q17, all answered). **Status: complete.**
-T2's subset passes on the READY/GO barriers (110q–110t), and with C&C 1's firmware owning them (110u). The final
-regression at the branch head is Quest 110v (section 6).
+T2's subset passes on the READY/GO barriers (110q–110t), and with C&C 1's firmware owning them (110u). The final regression
+at the branch head passes (Quest 110v). **The branch is ready to merge at 0d023ba** (section 7).
 
 ## 1. What was built (`wip/meshsim/`)
 
@@ -141,10 +141,15 @@ For each tile, its delivered record and streams are checked against WORKER9's, a
 
 ## 6. The regression, the T2 subset, the fan-in hang and the firmware
 
-### The final regression (Quest 110v, at the branch head 0d023ba)
+### The final regression (Quest 110v, at the branch head 0d023ba): PASS
 
-*Pending.* It is as 110h: the quick and full suites, the full-size sort and the 64-window smoke. The branch head's `wip/` is
-identical to a326fbd's, the code 110u ran.
+The branch head's `wip/` is identical to a326fbd's, the code 110u ran.
+- **The quick suite:** 39 steps, 0 failures.
+- **The full-mode extras:** 11 steps, 0 failures.
+- **The full-size sort**, p4/uniform-k128: 1,229,008 cycles.
+- **The 64-window smoke** of both workloads: Stage A 64/64, Stage B 64/64, F 4/4 each.
+- **Every window's verdict, rows and cycles in every stage equal 110h's.** The barrier changes to `replay_ctl` after
+  181232a don't touch Stage B's layout-4 path.
 
 ### The full regression (Quest 110h): PASS
 
@@ -225,6 +230,10 @@ The firmware is identical to the cycle in 9 of the 18 runs and within +0.6% in a
 costs a little.
 
 ## 7. For the integrator (the merge)
+
+- **Merge `v1.3-tracer` at 0d023ba.** That is the commit 110v regressed and, in `wip/`, the code 110u ran. `WORKER22/` is
+  already on main (the report, the plan, the notes, the questions and the task generators). The branch has a merge of main
+  through 0d023ba; main's later commits are WORKER22's docs only.
 
 - The branch changes these files outside the new ones: `cc1.c` (`CC_SEGMENT`; CcCoresTest and RecipeTest pass), `Replayer.java` (now using `RowCore`; cycle-identical),
   `PeripheralSlot.java` and `Peripheral.java` (the DMA's 128-bit words; `PeripheralSlotTest` updated), `Router.java`

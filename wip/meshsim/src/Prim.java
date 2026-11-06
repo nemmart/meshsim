@@ -18,6 +18,7 @@ final class Prim {
             v[(head + n++) & (v.length - 1)] = x;
         }
         /** The oldest value, removed; empty: throws (callers check isEmpty, as ArrayDeque.poll's null was checked). */
+        long peek() { if (n == 0) throw new IllegalStateException("empty"); return v[head]; }
         long poll() { if (n == 0) throw new IllegalStateException("empty"); long x = v[head]; head = (head + 1) & (v.length - 1); n--; return x; }
         void clear() { head = 0; n = 0; }
     }

@@ -53,7 +53,8 @@ final class TileControl {
     private final long[] evPrev = new long[Conditions.N];
     long errorSince = -1;                                         // the cycle the conditions last became non-zero (the error line, 6.6)
     // ---- lines from C&C, as this tile sees them (scheduled by Chip; each already includes this tile's skew) ----
-    private final ArrayDeque<Long> goQ = new ArrayDeque<>();
+    private final Prim.LongRing goQ = new Prim.LongRing(4);   // C (WORKER29): primitive; its head cached in goHead
+    private long goHead = Long.MAX_VALUE;                         // the oldest scheduled GO (MAX_VALUE: none)
     private long goAt = Long.MIN_VALUE;
     long readyPulseAt = Long.MIN_VALUE;                           // Chip collects it after the cycle
     // ---- stats and checks ----
@@ -73,7 +74,7 @@ final class TileControl {
         condAllPrev = true; java.util.Arrays.fill(condOnePrev, true); readyLevel = false; rdDonePrev = false; requestBusyPrev = false;
         wakeMask = Registers.EVENTS_MASK_RESET; wakeRequired = 0; conditions = 0; errorSince = -1;
         long[] c = tile.eventCounts(); System.arraycopy(c, 0, evPrev, 0, evPrev.length);
-        goQ.clear(); goAt = Long.MIN_VALUE; consumeT = Long.MIN_VALUE; pendT = Long.MIN_VALUE;
+        goQ.clear(); goHead = Long.MAX_VALUE; goAt = Long.MIN_VALUE; consumeT = Long.MIN_VALUE; pendT = Long.MIN_VALUE;
         routerHdr = routerAddr = dmaConfig = recordBase = rdSetup = 0; setW[0] = setW[1] = setW[2] = 0; simExitAt = -1;
         tile.dir.resetCounters();
     }
@@ -85,13 +86,13 @@ final class TileControl {
     }
 
     // ================================================================ lines
-    void scheduleGo(long t) { goQ.add(t); if (tile.chip != null) tile.chip.wake(tile.idx, t); }
+    void scheduleGo(long t) { if (goQ.isEmpty()) goHead = t; goQ.add(t); if (tile.chip != null) tile.chip.wake(tile.idx, t); }
     /** Stage 1: the next cycle a GO acts here after t (Long.MAX_VALUE: none). */
-    long nextGoAt(long t) { long g = goAt > t ? goAt : Long.MAX_VALUE; Long q = goQ.peek(); return q != null ? Math.min(g, q) : g; }
+    long nextGoAt(long t) { long g = goAt > t ? goAt : Long.MAX_VALUE; return Math.min(g, goHead); }
 
     /** Apply line changes due at or before t (idempotent; every caller in cycle t sees the same result). */
     private void advance(long t) {
-        while (!goQ.isEmpty() && goQ.peek() <= t) goAt = goQ.poll();
+        while (goHead <= t) { goAt = goQ.poll(); goHead = goQ.isEmpty() ? Long.MAX_VALUE : goQ.peek(); }
     }
 
     boolean goVisible(long t) { advance(t); return goAt == t; }

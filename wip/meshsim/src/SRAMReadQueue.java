@@ -145,7 +145,8 @@ final class SRAMReadQueue implements Component {
         }
     }
 
-    private void ready(int tok, long t) { readyT[tok] = t; if (cl[tok] == READPORT) { rpIsReady[tok] = true; rpReady.add(new long[] { t, tok }); } }
+    private void ready(int tok, long t) { readyT[tok] = t; if (cl[tok] == READPORT) { rpIsReady[tok] = true; rpReady.add(new long[] { t, tok }); if (t < rpReadyMin) rpReadyMin = t; } }
+    private long rpReadyMin = Long.MAX_VALUE;   // C (WORKER29): rpReady's first time (MAX_VALUE: empty), so an empty set isn't walked
 
     private void issue(long t, int c, long a, long b) {
         int tok = free.poll();
@@ -187,7 +188,7 @@ final class SRAMReadQueue implements Component {
             Integer h = order[c].peek();
             if (h != null && partsLeft[h] == 0 && readyT[h] <= t) { tok = h; order[c].poll(); }
         }
-        if (tok < 0 && !rpReady.isEmpty() && rpReady.first()[0] <= t) { tok = (int) rpReady.pollFirst()[1]; rpIsReady[tok] = false; }
+        if (tok < 0 && rpReadyMin <= t) { tok = (int) rpReady.pollFirst()[1]; rpIsReady[tok] = false; rpReadyMin = rpReady.isEmpty() ? Long.MAX_VALUE : rpReady.first()[0]; }
         if (tok < 0) return;
         emit(t, tok);
     }
@@ -209,7 +210,7 @@ final class SRAMReadQueue implements Component {
     /** HALT (6.1): the return queues clear and every read's token is free (nothing is in flight when RUN/HALT changes:
      *  invariant 7). Loopback packets keep theirs until they leave the loopback FIFO. */
     void haltReset() {
-        order[0].clear(); order[1].clear(); rpReady.clear();
+        order[0].clear(); order[1].clear(); rpReady.clear(); rpReadyMin = Long.MAX_VALUE;
         free.clear(); for (int i = 0; i < cap; i++) free.add(i);
         reads = 0; java.util.Arrays.fill(inFlightBy, 0);
     }

@@ -102,7 +102,7 @@ final class WordFIFO extends WordBus {
         boolean fullAtStart = count + takes >= capacity;           // takes: this FIFO's pops in cycle tPut
         if (fullAtStart && count < capacity) pushAtFullWithPop++;
         if (count == capacity || countBeforePop && fullAtStart) {
-            overflowCount++;
+            overflowCount++; if (ovfSink != null) ovfSink[ovfSlot]++;
             if (!overflow) { overflow = true; overflowCycle = tPut; }
             return;
         }
@@ -133,7 +133,11 @@ final class WordFIFO extends WordBus {
     /** True only if nothing is visible and nothing is pending (for quiescence checks). */
     boolean isEmpty(long t) { enter(t); return count == 0 && !pendPut; }
     void resetStats(long t) { enter(t); highWater = count; }
-    void clearOverflow() { overflow = false; overflowCycle = -1; overflowCount = 0; }
+    void clearOverflow() { if (ovfSink != null) ovfSink[ovfSlot] -= overflowCount; overflow = false; overflowCycle = -1; overflowCount = 0; }
+    /** C (WORKER29): where this FIFO's overflows are also counted (a tile's event-count slot: the sum of its FIFOs'
+     *  overflowCount, kept as they happen, so Tile.eventCounts reads one word instead of every FIFO each cycle). */
+    long[] ovfSink; int ovfSlot;
+    void sinkOverflows(long[] sink, int slot) { if (ovfSink != null) throw new IllegalStateException(name + ": overflow sink set twice"); ovfSink = sink; ovfSlot = slot; sink[slot] += overflowCount; }
     /** Empty the FIFO at the end of a cycle, pending put included (a unit held in reset, 13a). */
     void clear() { count = 0; head = 0; pendPut = false; }
     /** Restart the high-water mark from the current occupancy (per-phase peaks; between cycles). */

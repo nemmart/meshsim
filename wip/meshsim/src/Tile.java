@@ -107,8 +107,9 @@ final class Tile implements Component {
         gatherStub = new Drain(p + "gather");
         if (cfg.realResponder && !cfg.testReadClients) gather.in = gatherIn; else gatherStub.in = gatherIn;
         Component gat = gather.in != null ? gather : gatherStub;
-        for (WordFIFO[] fs : router.q) for (WordFIFO f : fs) hardwareFifos.add(f);
-        hardwareFifos.add(weIn); hardwareFifos.add(gatherIn);
+        for (WordFIFO[] fs : router.q) for (WordFIFO f : fs) { hardwareFifos.add(f); f.sinkOverflows(ovf, Conditions.ROUTER_OVF); }
+        hardwareFifos.add(weIn); hardwareFifos.add(gatherIn); weIn.sinkOverflows(ovf, Conditions.WE_IN_OVF); gatherIn.sinkOverflows(ovf, Conditions.GATHER_OVF);
+        for (WordFIFO f : new WordFIFO[] { ts.qStream, ts.qGroup, ts.qWe, hist.q }) f.sinkOverflows(ovf, Conditions.TABLE_OVF);
         hardwareFifos.add(ts.qStream); hardwareFifos.add(ts.qGroup); hardwareFifos.add(ts.qWe); hardwareFifos.add(hist.q);
         ctl = new TileControl(this, cfg);
         core = new Controller(this, ctl, cmem);
@@ -136,18 +137,19 @@ final class Tile implements Component {
 
     /** Monotonic event counts per condition (TileControl sets a condition when its count grows; spec 4.13). */
     private final long[] evc = new long[Conditions.N];
+    /** C (WORKER29): the hardware FIFOs' overflow counts by condition, summed as they happen (WordFIFO.sinkOverflows). */
+    private final long[] ovf = new long[Conditions.N];
     long[] eventCounts() {
         long[] c = evc;
         c[Conditions.DRIFT] = ag.driftEvents;
-        long r = 0; for (WordFIFO[] fs : router.q) for (WordFIFO f : fs) r += f.overflowCount;
-        c[Conditions.ROUTER_OVF] = r;
-        c[Conditions.WE_IN_OVF] = weIn.overflowCount;
+        c[Conditions.ROUTER_OVF] = ovf[Conditions.ROUTER_OVF];          // C (WORKER29): the FIFOs' overflows as they happen
+        c[Conditions.WE_IN_OVF] = ovf[Conditions.WE_IN_OVF];
         c[Conditions.READ_PORT] = readPort.errors;
         c[Conditions.UNEXPECTED] = dir.unexpectedTotal;
-        c[Conditions.TABLE_OVF] = ts.qStream.overflowCount + ts.qGroup.overflowCount + ts.qWe.overflowCount + hist.q.overflowCount;
+        c[Conditions.TABLE_OVF] = ovf[Conditions.TABLE_OVF];
         c[Conditions.BUS_ERROR] = core.busErrors;
         c[Conditions.ILLEGAL] = core.illegals;
-        c[Conditions.GATHER_OVF] = gatherIn.overflowCount;
+        c[Conditions.GATHER_OVF] = ovf[Conditions.GATHER_OVF];
         c[Conditions.BAD_MODE_OR_SIZE] = dir.badTotal;                    // ERRORS [1] (4.13): bad packets (v1.25: misalignment is UB)
         c[Conditions.DONE_EARLY] = ctl.doneEarlyEvents;
         // ERRORS [13:11] are live (the peripherals' ERRORS != 0), not counted events: TileControl.errorsAt

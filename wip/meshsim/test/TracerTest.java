@@ -33,6 +33,7 @@ public final class TracerTest {
         outputPath();
         errors();
         words();
+        counters();
         System.exit(T.done("TracerTest"));
     }
 
@@ -427,7 +428,10 @@ public final class TracerTest {
         TracerRig.Prog p = loopProg();
         TracerRig g = rig(p, Map.of(), null);
         T.eq(0, g.tr.writeWord(g.t, Tracer.W_ROWS_RUN, 1), "a store to ROWS_RUN is a bus error");
-        T.eq(-1, g.tr.writeWord(g.t, 44, 1), "word 44: reserved");
+        T.eq(0, g.tr.writeWord(g.t, 44, 1), "a store to word 44, STAT_CYCLES, is a bus error (item 157)");
+        T.eq(0, g.tr.writeWord(g.t, 51, 1), "and to word 51, STAT_PROBES");
+        T.eq(-1, g.tr.writeWord(g.t, 52, 1), "word 52: reserved");
+        T.check(g.tr.word(g.t, 52) == null, "word 52 reads as reserved");
         T.eq(68, g.tr.word(g.t, Tracer.W_STATE_LENGTH), "STATE_LENGTH reads 68");
         g.word(Tracer.W_RUN_CONFIG, 5 | Tracer.RC_COMP_CODE);
         g.step();
@@ -445,5 +449,62 @@ public final class TracerTest {
         h.loadRecord(CODE, 1, 0, regs(), new long[] { 1, 2, 3 });
         h.port.add(new long[] { 0x000, CODE, 1 }); h.drainPort();
         T.check(h.tr.violations.stream().anyMatch(v -> v.contains("unconsumed")), "a word-0 write finding advice above 0 is flagged");
+    }
+
+    /** The statistics counters, words 44-51 (4.21.3, 8.16, item 157). */
+    static int stat(TracerRig g, int k) { return g.tr.word(g.t, Tracer.W_STAT + k); }
+    static void counters() throws Exception {
+        T.group("the statistics counters, words 44-51 (item 157)");
+        TracerRig.Prog p = loopProg();
+        long[] base = new TracerRig().bases(p);
+        Map<Long, Long> targets = new HashMap<>(); targets.put(p.pcOf(2), base[2]);
+        TracerRig g = rig(p, targets, null);
+        long[] r = regs(); r[2] = DATA;
+        g.loadRecord(CODE, (int) base[0], 0, r, new long[0]);
+        for (int k = 0; k < Tracer.STAT_N; k++) T.eq(0, stat(g, k), "word " + (44 + k) + " is 0 after the word-0 write");
+        // read every counter every cycle: each moves by at most 1 a cycle (miss counts by the misses), never back
+        int[] last = new int[Tracer.STAT_N]; boolean[] ok = { true };
+        g.onStep = () -> {
+            for (int k = 0; k < Tracer.STAT_N; k++) {
+                int v = g.tr.word(g.t + 1, Tracer.W_STAT + k), d = v - last[k];
+                if (d < 0 || (k <= Tracer.ST_STALL_OUTPUT && d > 1)) ok[0] = false;
+                last[k] = v;
+            }
+        };
+        int rows = 2 + 5 * 5 + 1 + 6;
+        Tracer.WindowOut o = g.window(rows, 100000);
+        g.onStep = null;
+        T.check(o != null && !g.tr.stopped(), "the window drained: " + g.tr.errorLog);
+        T.check(ok[0], "read every cycle, each stall and cycle counter moves by at most one a cycle, never back (counted in its own cycle)");
+        T.eq((int) (g.tr.drainedAt - g.tr.runStartAt), stat(g, Tracer.ST_CYCLES), "STAT_CYCLES: every cycle STATUS [0] was 1, the drain included");
+        long[] s = g.tr.stalls;
+        T.eq((int) s[Tracer.Stall.IFETCH.ordinal()], stat(g, Tracer.ST_STALL_FETCH), "STAT_STALL_FETCH: the instruction-fetch stalls");
+        T.eq((int) (s[Tracer.Stall.DMISS.ordinal()] + s[Tracer.Stall.BUS.ordinal()]), stat(g, Tracer.ST_STALL_DATA), "STAT_STALL_DATA: the data misses, the write-back wait included");
+        T.eq((int) s[Tracer.Stall.PROBE.ordinal()], stat(g, Tracer.ST_STALL_MAP), "STAT_STALL_MAP: the map probes' stalls");
+        T.eq((int) g.tr.iMiss, stat(g, Tracer.ST_MISS_I), "STAT_MISS_I");
+        T.eq((int) g.tr.dMiss, stat(g, Tracer.ST_MISS_D), "STAT_MISS_D");
+        T.eq((int) g.tr.lruMisses, stat(g, Tracer.ST_PROBES), "STAT_PROBES: the jump-LRU misses");
+        T.check(stat(g, Tracer.ST_STALL_FETCH) > 0 && stat(g, Tracer.ST_STALL_DATA) > 0 && stat(g, Tracer.ST_STALL_MAP) > 0,
+                "a cold start stalls on fetch, data and the map");
+        T.check(stat(g, Tracer.ST_MISS_I) > 0 && stat(g, Tracer.ST_MISS_D) > 0 && stat(g, Tracer.ST_PROBES) > 0, "and misses each");
+        int cyc = stat(g, Tracer.ST_CYCLES), fetch = stat(g, Tracer.ST_STALL_FETCH);
+        long t1 = g.t;
+        Tracer.WindowOut o2 = g.window(4, 10000);                 // padding rows: nothing fetched
+        T.check(o2 != null, "a second run drains");
+        T.eq(cyc + (int) (g.tr.drainedAt - g.tr.runStartAt), stat(g, Tracer.ST_CYCLES), "PULSE_RUN doesn't clear them: they count across a segment's runs");
+        T.eq(fetch, stat(g, Tracer.ST_STALL_FETCH), "padding rows fetch nothing");
+        T.check(g.tr.runStartAt >= t1, "(the second run started after the first)");
+        g.loadRecord(CODE, (int) base[0], 0, r, new long[0]);
+        int sum = 0; for (int k = 0; k < Tracer.STAT_N; k++) sum |= stat(g, k);
+        T.eq(0, sum, "the next word-0 write clears all eight");
+
+        T.group("the statistics counters: STAT_STALL_OUTPUT, either scan stalled on a full queue");
+        int orows = 1 + 600 * 5 + 1 + 10;
+        TracerRig h = streamy(new Tracer.WindowOut[1], x -> { x.hold = 500; x.order = new int[] { 1, 2, 3 }; }, orows);
+        int out = stat(h, Tracer.ST_STALL_OUTPUT);
+        T.check(out > 0, "a slow controller: the scans stalled for " + out + " cycles");
+        T.check(out <= h.tr.scanStalls && out >= (h.tr.scanStalls + 1) / 2, "counted once a cycle when both scans stall (" + out + " of " + h.tr.scanStalls + " scan-stall cycles)");
+        TracerRig f = streamy(new Tracer.WindowOut[1], null, orows);
+        T.eq(0, stat(f, Tracer.ST_STALL_OUTPUT), "an ideal controller: no output stall");
     }
 }

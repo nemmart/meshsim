@@ -19,13 +19,25 @@ on any of its link inputs from a neighbour, its controller link, a chip-wide lin
 timer coming due. Inside an awake tile, the per-unit flags skip its idle units. The same idea one level up if the profile
 says so: a C&C unit, or the chip outside the busy units.
 
+**The architecture (owner, 2026-11-05): one event queue per tile, then threads over tiles.** Each tile (and each C&C unit) keeps
+a **timing wheel**: a ring of buckets indexed by cycle, holding the data in flight to its units with arrival times, and its
+units' scheduled wakes. Every latency is small and bounded (a link 3 cycles, a fill 80), so insertion and removal are O(1) and a
+cycle's entries sit together in memory. Each cycle a tile steps only the units its wheel names, plus units with work in
+progress, which schedule their own next wake: an idle unit, or a whole sleeping tile, is never visited, and nothing walks the
+object graph polling empty buses. A put at t onto a bus of latency L becomes an entry at t + L, the same semantics as now.
+**Then parallelise over tiles:** threads own sets of tiles and each steps its own tiles' wheels for cycle t; everyone ticks off
+the cycle at a barrier before t + 1. A put to another tile lands in that tile's wheel at t + L ≥ t + 1, through per-thread
+outboxes merged at the barrier, so there are no locks in the cycle. Chip-wide work (the lines, the invariant checks, the
+request bus) stays serial at the barrier. Links' 3-cycle latency may later let threads sync less often than every cycle.
+The active flags above are the simplest form of the same idea; the wheel is where the wakes live.
+
 THE WORK
 1. Profile a T2 segment and a Stage B run: where the cycles go, by unit and state, to confirm idle units dominate and estimate
    the gain.
 2. List every unit's wake sources and pending-work conditions, in WORKER28/NOTES.md, before any code.
-3. Implement it on a branch, sim-idle-skip, made from v1.3-tracer once B1 is merged into main (until then, profile and plan
-   only), with a flag to turn skipping off.
-4. Prove it exact: identical logs, cycle for cycle, with skipping on and off, for the quick and full suites, the full-size sort
+3. Implement the per-tile wheels (stage 1, one thread), then the threads over tiles (stage 2), on a branch, sim-idle-skip, made from v1.3-tracer once B1 is merged into main (until then, profile and plan
+   only), with flags to turn each stage off.
+4. Prove it exact: identical logs, cycle for cycle, with each stage on and off, and at 1, 2, 8 and 16 threads, for the quick and full suites, the full-size sort
    (1,229,008 cycles), Stage B on its windows, and T2 segments of both workloads; and under shuffle seeds.
 5. Then the acceptance: T2 on all 128 segments of both workloads at 2²⁹, raw and LRU-coded, on the Quest runner, each task
    well under 45 minutes, with a fail-fast on hung tiles.

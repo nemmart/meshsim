@@ -68,6 +68,7 @@ def t2(old, new):
     out = ["## T2, segment 0, all 64 windows (stage 1 on)", "",
            "| program | column | at 1 | at 8 | change |", "|---|---|---|---|---|"]
     for prog in ("evm-zone-29", "cyclone-29"):
+        if not os.path.exists(os.path.join(new, f"t2-{prog}-true.csv")): out.append(f"| {prog} | (no T2 result) | | | |"); continue
         A = list(csv.DictReader(open(os.path.join(old, f"t2-{prog}-true.csv"))))
         B = list(csv.DictReader(open(os.path.join(new, f"t2-{prog}-true.csv"))))
         if not A or not B: continue
@@ -79,6 +80,8 @@ def t2(old, new):
     out += ["", "## Stage B/F, windows 0-63 on every window (stage 1 on): cycles per window", "",
             "| program | stage | windows | mean at 1 | mean at 8 | change, mean | min / max change |", "|---|---|---|---|---|---|---|"]
     for prog in ("evm-zone-29", "cyclone-29"):
+        if not (os.path.exists(os.path.join(old, f"sb-{prog}-true.csv")) and os.path.exists(os.path.join(new, f"sb-{prog}-true.csv"))):
+            continue
         a = windows(os.path.join(old, f"sb-{prog}-true.csv"), 3, 6, lambda r: (r[1], r[3]))
         b = windows(os.path.join(new, f"sb-{prog}-true.csv"), 3, 6, lambda r: (r[1], r[3]))
         for st in ("B", "F"):

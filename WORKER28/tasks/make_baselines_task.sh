@@ -33,15 +33,18 @@ tar -C "$K" -czf "$K/kit.tgz" wip sortrunner w11-kit VERSION
 SHA=$(sha256sum "$K/kit.tgz" | cut -d' ' -f1)
 cat <<EOF
 #!/bin/bash
-# Task $NAME -- meshsim WORKER28, the baselines at GO, READY and error-line latency 8 (P1's latency commit; branch
-# sim-idle-skip, stage 1 on): WORKER22's B1 regression (110v) rerun to re-record every number the latencies move:
+# Task $NAME -- meshsim WORKER28, the full regression on main (the commit in VERSION: P1's stage 1 merged, GO/READY/error at
+# 8, stage_delay 64; stage 1 on), the last step before the freeze: WORKER22's B1 regression (110v) plus T2, re-recording
+# every number the latencies move:
 #  1. run_tests.sh's quick suite (tools/run_quick.sh, 8 at a time) and its full-mode extras (tools/run_full.sh, 4 at a time),
 #     the B1 suites included (MemorySystemTest, RvcTest, TracerTest);
 #  2. the full-size sort p4/uniform-k128 (WORKER8's runner, meshsim.jar rebuilt from the branch; the sort image and boot ROM
 #     checked byte-identical to the base's), 1,229,008 cycles at latency 1, now re-recorded;
 #  3. the 64-window Stage B smoke, as Quest 105: both w9 deliveries (\$DATA/w9-deliveries, tasks 103/104) converted to
-#     v1.26.1 records in scratch, windows 0-63 of each in Stages A and B, F every 16th.
-# The kit is embedded below, SHA-256 checked. Writes only results/$NAME/. Scratch in /tmp, removed first. ~35 min.
+#     v1.26.1 records in scratch, windows 0-63 of each in Stages A and B, F every 16th;
+#  4. T2 on segment 0 of evm-zone-29 and cyclone-29, raw, all 64 windows, stage 1 on (\$DATA/w26-jumpmap, task 109,
+#     checked first; every chip's fingerprint kept), each under timeout 30m.
+# The kit is embedded below, SHA-256 checked. Writes only results/$NAME/. Scratch in /tmp, removed first. ~20 min.
 set -u
 cd "\$(dirname "\$0")/.."
 REPO=\$PWD; RES=\$REPO/results/$NAME; mkdir -p "\$RES"
@@ -76,11 +79,23 @@ for PS in evm-zone-29:7142e894c80a0c9d491f21c852a942885e0abd97cfe6aefd0101d71682
   ./run_shard.sh -d "\$W/v1261" -p "\$P" -M "\$W/v1261/\$P.manifest.json" -f 0 -n 64 -j 16 -x 16 "\$RES/smoke-\$P" || RA=1
   cat "\$RES/smoke-\$P/VERDICT.txt" 2>/dev/null
 done
-echo "run_quick.sh exit \$RQ, run_full.sh exit \$RF, run_p4.sh exit \$RS, the smoke \$RA at \$(date -u)"
+# ---- 4. T2 on segment 0 of both workloads, all 64 windows, stage 1 on (WORKER28: TracerT2, two JVMs at once)
+D26=\$DATA/w26-jumpmap; RT=0; PIDS=""
+cd "\$W/wip/meshsim" || exit 2                 # the full chip reads hops.txt and sw/ from here
+for PS in evm-zone-29:57dc0ffe7574ab3e11f79f8414501bd1ceb2fd75faab0b03f3b4a6c2c61cad2d cyclone-29:ace78f61efbb9c0e418a0b1d7f54a79f6e299b7ff45ad7f09537b11961b95fba; do
+  P=\${PS%%:*}; S26=\${PS#*:}
+  [ "\$(sha256sum "\$D26/\$P/manifest.sha256" 2>/dev/null | cut -d' ' -f1)" = "\$S26" ] && [ "\$(cat "\$D26/\$P.COMPLETE" 2>/dev/null)" = "\$S26" ] || { echo "\$P: WORKER26's inputs aren't complete or differ (task 109)"; RT=2; continue; }
+  (cd "\$D26/\$P" && sha256sum -c --quiet manifest.sha256) || { echo "\$P: WORKER26's files differ from their manifest"; RT=2; continue; }
+  ( a=\$(date +%s); timeout -s TERM 30m java -Xmx5g -Dmeshsim.digest="\$RES/t2-\$P.digest" -Dreplay.tables="\$W/wip/tables/replayer" -cp build:build/gold TracerT2 "\$SRC" "\$P" --w26 "\$D26/\$P" --segments 0 --quiet --csv "\$RES/t2-\$P-true.csv" > "\$RES/t2-\$P.log" 2>&1; r=\$?; echo "t2-\$P: exit \$r, \$((\$(date +%s) - a)) s" >> "\$RES/t2-\$P.log"; exit \$r ) &
+  PIDS="\$PIDS \$!"
+done
+for X in \$PIDS; do wait \$X || RT=1; done
+for P in evm-zone-29 cyclone-29; do tail -2 "\$RES/t2-\$P.log" 2>/dev/null; cat "\$RES/t2-\$P-true.csv" 2>/dev/null; done
+echo "run_quick.sh exit \$RQ, run_full.sh exit \$RF, run_p4.sh exit \$RS, the smoke \$RA, T2 \$RT at \$(date -u)"
 grep -h "TOTAL" "\$W"/p4/VERDICT.txt 2>/dev/null | sed 's/^/p4 (1,229,008 cycles at latency 1): /'
 cat "\$W/out/VERDICT.txt" "\$W/out/FULL-VERDICT.txt" "\$W/p4/VERDICT.txt" 2>/dev/null
 rm -rf "\$W"
-[ \$RQ = 0 ] && [ \$RF = 0 ] && [ \$RS = 0 ] && [ \$RA = 0 ]; exit \$?
+[ \$RQ = 0 ] && [ \$RF = 0 ] && [ \$RS = 0 ] && [ \$RA = 0 ] && [ \$RT = 0 ]; exit \$?
 __KIT_BEGIN__
 EOF
 base64 -w 76 "$K/kit.tgz"

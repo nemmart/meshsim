@@ -3,7 +3,7 @@
 This document specifies the hardware of the 64-tile mesh sorter: the tiles, the network that joins them, the control that sequences them, and the registers a tile program uses. It is written for an engineer who will build the machine.
 
 **Companion material** (paths in the package):
-- `spec/CHANGES-v1.3.md`: what changed from v1.26.1, section by section, each item citing `planning/DECISIONS-v1.3.md`.
+- `spec/CHANGES-v1.3.md`: what changed from v1.26.1, section by section, each item citing `planning/DECISIONS-v1.3.md`; **`spec/CHANGES-v1.26.1-to-v1.3.md` is the RTL's guide from v1.26.1 to v1.3**, unit by unit, each item marked whether it affects the RTL.
 - `spec/CHANGES-v1.26.1.md`: what changed from v1.26, section by section, each item citing `planning/DECISIONS-v1.26.md` section 3; **`spec/CHANGES-v1.25-to-v1.26.1.md` is the RTL's guide from v1.25 straight to v1.26.1**.
 - `spec/CHANGES-v1.26.md`: what changed from v1.25 to v1.26, section by section, each item citing `planning/DECISIONS-v1.26.md`.
 - `spec/CHANGES-v1.25.md`: what changed from v1.2, section by section, each item citing its decision; `planning/DECISIONS-v1.25.md` is the decisions log behind it.

@@ -82,8 +82,9 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
 
 - **To ask the owner:** a `v1.26.1/ERRATA.md` line on ConvertDelivery's manifest key order (it varies between runs, the contents
   don't; fixed in `wip`, and `wip/inputs` writes it in a fixed order); and whether F1 stays in v1.3 or moves to v1.4.
-- **P1, full-detail simulation at full scale** (WORKER28): prompt committed, **not to start yet** (owner, 2026-11-05); a v1.3
-  deliverable, implemented after B1 merges.
+- **P1, full-detail simulation at full scale** (WORKER28): **started 2026-11-05** on steps 1-2 only (the profile on the scratch
+  branch `sim-idle-profile`, never merged, and the wake-source list); implementation after B1 merges. The runner's 45-minute
+  task limit can be raised by the owner when a task needs it.
 - **What to report upstream** (jolt-cpp, a16z): `wip/planning/upstream/UPSTREAM-DIFFS.md`, its report list at the top, with
   `bug-reports/` beside it (moved from WORKER18 when it closed).
 - **The input pipeline** for Tony is `wip/inputs/` (WORKER27, merged): every simulation input rebuilt from pinned sources,

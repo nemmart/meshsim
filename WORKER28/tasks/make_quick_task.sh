@@ -2,10 +2,10 @@
 # make_quick_task.sh REPO TASKNAME > task.sh -- stage 1's exactness on the quick suite, on the runner (WORKER28): every step
 # of run_tests.sh's quick suite twice, stage 1 off and on (WORKER28/tools/prove_skip.sh, 8 steps at a time), and each
 # shuffled step with stage 1 on against its unshuffled base with stage 1 off (shuffle_vs_unshuffled.sh). The kit: wip/meshsim
-# (classes compiled for Java 21, every tile image built) and wip/tables, embedded, SHA-256 checked.
+# (classes compiled for Java 21, every tile image built), wip/sort, wip/sw and wip/tables, embedded, SHA-256 checked.
 set -e
 R=$(cd "$1" && pwd); NAME=$2; K=$(mktemp -d); trap 'rm -rf "$K"' EXIT
-mkdir -p "$K/wip"; rsync -a --exclude results --exclude build "$R/wip/meshsim" "$R/wip/tables" "$K/wip/"
+mkdir -p "$K/wip"; for d in meshsim sort sw tables; do cp -r "$R/wip/$d" "$K/wip/"; done; rm -rf "$K/wip/meshsim/results" "$K/wip/meshsim/build"
 M="$K/wip/meshsim"; mkdir -p "$M/build"
 (cd "$M" && sh sw/build.sh >/dev/null && sh sw/build_cc.sh >/dev/null && sh sw/build_recipes.sh >/dev/null && sh sw/ext/sort/build.sh >/dev/null 2>&1 && sh sw/replay/build.sh >/dev/null && sh sw/tracer/build.sh >/dev/null)
 javac --release 21 -nowarn -d "$M/build" "$M"/src/*.java

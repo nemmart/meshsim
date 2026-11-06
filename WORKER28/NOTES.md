@@ -286,7 +286,10 @@ times masked; `shuffle_vs_unshuffled.sh`):
   there is nothing to catch up. `Peripheral.skipCycles` now carries the catch-up to peripherals (the Tracer's throws if it
   were ever skipped while counting) and the fingerprint includes every peripheral's counters, so the proof covers them:
   Quest 117 (T2 and Stage B/F off and on) and 117b (the quick suite, the shuffled comparison) on fec569c.
-- **The baselines** come from the full regression on main once stage 1 is merged (a fresh number), against 110v and 115.
+- **117 and 117b passed; stage 1 merged into main at 2d8d9c1.** **Quest 118, the full regression on main: PASS** (quick and
+  full suites, the full-size sort, the 64-window Stage B smoke, T2 segment 0 of both workloads with stage 1 on, 43-45 s
+  each). **The baselines are in `WORKER28/BASELINES-8.md`** (against 110v and 115): the sort 1,229,008 → 1,229,687
+  (+0.06%), T2's C&C 3 +26 cycles a segment, the Stage B smoke unchanged, 21 suite logs moved by the lines' latencies.
 - **Stage 1 and the bus's commit (for WORKER29's change B, eager commit):** stage 1 doesn't depend on the lazy commit's
   timing. It needs three things of any bus: (1) `put` still calls the `wakeChip` hook with the cycle the word becomes
   visible; (2) at the end of cycle t, `isEmpty(t)`, `inFlight(t)` and `ready(t)` count every put made during t (the sleep

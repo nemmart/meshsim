@@ -275,8 +275,25 @@ times masked; `shuffle_vs_unshuffled.sh`):
 
     (The off runs are slower than 114's, 54.7 against 48.2 µs, and the on runs by the same proportion: the runner's load
     differed, eight JVMs at once both times. Against 113b's 46.9 µs, 2.99 is 15.7×; against its own off run, 18.3×.)
-- **Then the latency commit** (GO, READY and the error line at 8: owner, P1), its baselines re-recorded in
-  `WORKER28/BASELINES-8.md` (Quest 116: the suites, the full-size sort and the Stage B smoke; 116b: T2 off and on at 8).
+- **Then the latency commit** (e8b18e6: GO, READY and the error line at 8, owner P1). **Quest 116b, at 8: T2 segment 0 of
+  both workloads and Stage B/F windows 0-63 of both, every fingerprint, log and CSV the same off and on** (T2 3.32 and
+  2.73 µs/cycle on, 54.3 and 55.7 off; Stage B/F 1.91 and 1.96 on, 25.5 and 25.3 off). The baselines task (116-w28,
+  sharing its number with WORKER29's profile) was moved to hold by the integrator: it predated stage_delay 64.
+- **Main merged forward again** (3337cca: WORKER30's spec fold-in and the Tracer's statistics counters, words 44-51), then
+  **stage_delay 64** (bfff988, owner: Config.stageDelay, the recipes' C&C 1, RecipeTest; RECIPES.md names it only
+  symbolically, regenerated unchanged) and **the Tracer's counters under stage 1** (fec569c): they tick only while
+  STATUS [0] is 1 or a stall started then runs out, and the Tracer never reports idle, so C&C 3's tile never sleeps and
+  there is nothing to catch up. `Peripheral.skipCycles` now carries the catch-up to peripherals (the Tracer's throws if it
+  were ever skipped while counting) and the fingerprint includes every peripheral's counters, so the proof covers them:
+  Quest 117 (T2 and Stage B/F off and on) and 117b (the quick suite, the shuffled comparison) on fec569c.
+- **The baselines** come from the full regression on main once stage 1 is merged (a fresh number), against 110v and 115.
+- **Stage 1 and the bus's commit (for WORKER29's change B, eager commit):** stage 1 doesn't depend on the lazy commit's
+  timing. It needs three things of any bus: (1) `put` still calls the `wakeChip` hook with the cycle the word becomes
+  visible; (2) at the end of cycle t, `isEmpty(t)`, `inFlight(t)` and `ready(t)` count every put made during t (the sleep
+  check runs then: today the uncommitted `pendPut` covers it); (3) queries stay idempotent at a given t, since the sleep
+  check also queries at t + 1 before that cycle runs (the wake term, the peripheral's live lines). A sleeping unit's
+  buses go untouched for many cycles; with the lazy commit the next touch commits a put of long ago, which is correct
+  because the commit doesn't depend on when it runs; with an eager commit nothing is pending, which is simpler still.
 - Local speed-ups on full-chip suites: StageB synthetic 16.2 → 4.1 s, CcCoresTest 30 → 7.1 s (seeded 61.8 → 8.6), the request
   bus suite 3.6 → 2.0; the coreless suites (no sleeping: their tiles are driven from Java) unchanged.
 

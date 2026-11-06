@@ -53,7 +53,7 @@ final class Config {
     // ---- the controller (spec 4.11) ----
     int regLoadLatency = 2;              // register and table-window load latency, cycles (4.11: 1 or 2, fixed per register; meshsim models 2, the worst case: its reference setting)
     // ---- C&C (spec 6.2, section 10) ----
-    int stageDelay = 32;                 // stage_delay: C&C's first staged packet no sooner than this after its GO store (Proposed)
+    int stageDelay = 64;                 // stage_delay: C&C's first staged packet no sooner than this after its GO store (64, owner 2026-11-06: was 32)
     boolean ccCores = false;             // WORKER14: C&C 1-3 as cores (controller tiles 64-66, CcCores); off = the Java model (CnC)
     /** WORKER22 (B1): C&C 3's peripheral is the Tracer (spec 4.21; needs ccCores), its DMA wired into C&C 3's router
      *  (item 118); the harness sets the Tracer's memory system. Off: the type-3 stub. */

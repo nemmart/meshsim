@@ -17,7 +17,8 @@
  *      each into tile n's stream area, once tile n has said "armed" (Q15). Run done: the next window;
  * Q15 (owner, 2026-11-05): every delivery into a tile is counted: the state on the tile's RL_CTR_STATE (armed at its boot
  * for 66), the totals on RL_CTR_TOTALS (2), the streams on RL_CTR_STREAMS, which the tile arms from the totals' word 1
- * before its count-only "armed"; C&C 3 waits for every tile's "booted" before the first delivery (Q3).
+ * before its count-only "armed". The tiles arm their record's counters after C&C 1's GO, and C&C 3 sends nothing sooner
+ * than stage_delay after its start (Q17, DECISIONS-v1.3 section 24; no "booted" packets).
  *   5. checks the advice left (the last record's word 1 [124:102]) is 0 and the end state (words 0, 2-65) equals the
  *      expected one (the next segment's frame 2, if given), and returns its status (crt0: the simulator's exit word).
  * Q14: an expansion being fed when a segment's record is loaded is dropped (one segment per run here: nothing is pending).
@@ -176,7 +177,7 @@ int main(void) {
     adv_entries = (hdr[TL_H_ADVICE_N] + 1) >> 1; adv_next = 0;
 
     /* 3. Q3: window 0's start (words 0 and 2-66) to the first tile, from C&C 3's own copy of the record, once every tile
-     *    used has booted and armed for its record (Q15) */
+     *    used has armed for its record after the GO, at least stage_delay after the start (Q17) */
     copy_to_dm(hdr[TL_H_RECORD], rec, 68, base_mask);
     uint32_t first = hdr[TL_H_FIRST_TILE], trec = hdr[TL_H_T_RECORD];
     /* Q15, Q17 (7c53209): C&C 1 starts C&C 3 after the first barrier's GO (a landed command), and C&C 3 sends nothing

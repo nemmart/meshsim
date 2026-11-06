@@ -136,8 +136,8 @@ For each tile, its delivered record and streams are checked against WORKER9's, a
 - **One departure from 4.21.3, accepted:** queue 0 is sent in its read order, so the totals reach a tile before its streams,
   but after the state words.
 - **The barriers:** C&C 1's `CC_SEGMENT` runs them in T2 from 110u on. Before that, the host sequenced the same steps
-  (C&C 1's two phases and C&C 3's start). stage_delay is 64 cycles in `tracer_ctl` (32 Proposed, 64 as meshsim's harness
-  has always used).
+  (C&C 1's two phases and C&C 3's start). stage_delay is 64 cycles in `tracer_ctl`, the spec's value (owner, 2026-11-06; spec 6.2
+  and section 10).
 
 ## 6. The regression, the T2 subset, the fan-in hang and the firmware
 

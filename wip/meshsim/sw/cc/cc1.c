@@ -20,6 +20,11 @@
  *  CC_EXIT:  SIM_EXIT with the argument;
  *  CC_WATCHDOG: WATCHDOG = the argument (each GO restarts it; 0 off), for the phases after;
  *  CC_UART:  UART_DIVISOR = the argument (the host's baud rate; the harness speeds the dump up with 1).
+ *  CC_SEGMENT (v1.3, B1; DECISIONS-v1.3 section 24, 9544e8e and 7c53209): a traced segment's two barriers. Slot +0 the
+ *            tiles' command word, +1 C&C 3's start word. The tiles' command; all READY (each tile booted, nothing
+ *            armed); GO; C&C 3's start, into its command block (it sends nothing sooner than stage_delay after it); the
+ *            tiles' second command; all READY again (each tile's window has landed, its counters at 0); the final GO,
+ *            the replay.
  * After the boot C&C 1 points mtvec at its own handler and enables its hard interrupt: a unit's error line (through
  * ERROR_LINES and the unit-error bit, its ERRORS [11]) or its own error traps it into the error path (cc1_toast,
  * below); so does the watchdog's expiry while it waits for READY.
@@ -33,6 +38,7 @@
 #define CC_EXPECT 0x45   /* 'E' */
 #define CC_EXIT   0x58   /* 'X' */
 #define CC_WATCHDOG 0x57 /* 'W' */
+#define CC_SEGMENT 0x54  /* 'T' */
 #define CC_UART   0x55   /* 'U' */
 
 typedef struct { uint32_t pmem, pmem_packets, dmem, dmem_packets, cmd, entry; } Image;   /* chunk addresses in C&C 1's big SRAM */
@@ -240,6 +246,18 @@ int main(void) {
             break;
         }
         case CC_GO: wait_all_ready(); go(); break;
+        case CC_SEGMENT: {                          /* B1's barriers (Q15, Q17): C&C 1 owns the segment's READY/GO */
+            uint32_t tw = a[0], c3 = a[1];
+            command(DST_BROADCAST, tw, 0, 0);       /* a landed command: each tile's READY (nothing armed) */
+            wait_all_ready();
+            go();                                   /* the tiles arm their record's counters on waking */
+            send_to(ROUTER_HDR_W(DST_CC3, MODE_WRITE, CTR_NONE), COMMAND_BASE);
+            send32(c3);                             /* C&C 3's start (a command: uncounted, invariant 22) */
+            command(DST_BROADCAST, tw, 0, 0);       /* the second barrier's command, landing mid-trace */
+            wait_all_ready();                       /* every tile's window has landed */
+            go();                                   /* the replay, all 64 together */
+            break;
+        }
         case CC_EXPECT: cc1->READY_EXPECT[0] = a[0]; cc1->READY_EXPECT[1] = a[1]; break;
         case CC_EXIT: mbox[0]++; sim_exit(arg); break;
         case CC_WATCHDOG: cc1->WATCHDOG = arg; break;

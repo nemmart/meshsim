@@ -84,6 +84,24 @@ typedef struct {
 """);
         b.append("    uint32_t _defined[" + (own - 4) + "];\n} ReplayerRegs;\n\n");
         b.append("""
+/* the Tracer, peripheral type 3, C&C 3's peripheral 1 (8.16; v1.3, spec 4.21.3) */
+typedef struct {
+    PERIPHERAL_STD_MEMBERS;
+    MESH_RW RUN_CONFIG;         /* 32: [23:0] rows (at most 65,536), [26] [27] [28] compress code, read log, write log */
+    MESH_RO ROWS_RUN;           /* 33: rows of this run completed, 24 bits */
+    MESH_RO EXPANSION_OFFSET;   /* 34: the row within the current expansion where the next row starts */
+    MESH_RO EXPANSION_OPCODE;   /* 35: the code-stream word awaiting a controller-fed expansion */
+    MESH_RO STATE_LENGTH;       /* 36: output queue 0's length, 68 */
+    MESH_RO CODE_LENGTH;        /* 37: output queue 1's stream in 128-bit words; 0 until the rows end */
+    MESH_RO READ_LOG_LENGTH;    /* 38: output queue 2's */
+    MESH_RO WRITE_LOG_LENGTH;   /* 39: output queue 3's */
+    MESH_RW HASH_MUL;           /* 40: the map's multiplier p1, odd */
+    MESH_RW HASH_STEP;          /* 41: [23:0] the probe's step p3 */
+    MESH_RW HASH_LINES;         /* 42: [4:0] k, the map's 2^k lines */
+    MESH_WO EXPANSION_TEMPLATE; /* 43: [31] valid, [6:0] the template being fed; a load reads 0 */
+""");
+        b.append("    uint32_t _defined[" + (own - 12) + "];\n} TracerRegs;\n\n");
+        b.append("""
 /* C&C 1's peripheral, Ingress/Egress and the UART (8.14): words 32-45 */
 typedef struct {
     PERIPHERAL_STD_MEMBERS;
@@ -130,7 +148,8 @@ typedef struct {
         b.append("    MESH_RW HIST[256];            /* 17-bit counts */\n    MESH_WO PTR[256];             /* 21-bit chunk addresses; a load is a bus error */\n");
         b.append("    MESH_WO STREAM_SRC[256];\n    MESH_WO STREAM_DEST[256];\n    MESH_WO STREAM_COUNT[256];\n    MESH_WO GROUP[64][2];         /* [g][0] low, [g][1] high */\n} TableRegs;\n\n");
         b.append(String.format("""
-_Static_assert(sizeof(PeripheralStd) == 0x%X && sizeof(ReplayerRegs) == 0x%X && sizeof(Cnc1Regs) == 0x%X, "window size");
+_Static_assert(sizeof(PeripheralStd) == 0x%X && sizeof(ReplayerRegs) == 0x%X && sizeof(Cnc1Regs) == 0x%X && sizeof(TracerRegs) == 0x200, "window size");
+_Static_assert(__builtin_offsetof(TracerRegs, RUN_CONFIG) == 128 && __builtin_offsetof(TracerRegs, EXPANSION_TEMPLATE) == 172, "the Tracer's window (8.16)");
 _Static_assert(sizeof(TileRegs) == 0x%X, "block size");
 _Static_assert(__builtin_offsetof(TileRegs, EVENTS) == 0x%X && __builtin_offsetof(TileRegs, ROUTER_HDR) == 0x%X &&
                __builtin_offsetof(TileRegs, REQUEST_SEND) == 0x%X && __builtin_offsetof(TileRegs, WRITE_COUNTER) == 0x%X &&
@@ -150,6 +169,7 @@ _Static_assert(__builtin_offsetof(TableRegs, PTR) == 0x%X && __builtin_offsetof(
         b.append(String.format("#define peripheral(n) ((volatile PeripheralStd *)(0x%Xu + 0x200u * (n)))   /* n = 1-3 */%n", Registers.REG_BASE));
         b.append(String.format("#define replayer      ((volatile ReplayerRegs *)0x%Xu)   /* peripheral 1 on a tile that has the replayer */%n", Registers.windowBase(1)));
         b.append(String.format("#define cc1           ((volatile Cnc1Regs *)0x%Xu)       /* peripheral 1 on C&C 1 */%n", Registers.windowBase(1)));
+        b.append(String.format("#define tracer        ((volatile TracerRegs *)0x%Xu)     /* peripheral 1 on C&C 3 (v1.3) */%n", Registers.windowBase(1)));
         b.append(String.format("#define tables        ((volatile TableRegs *)0x%Xu)%n", Registers.TABLE_BASE));
         b.append("#define COMMAND       ((volatile uint32_t *)COMMAND_BASE)       /* COMMAND[0] the command word, [1-15] arguments */\n");
         b.append("#define REPLY         ((volatile uint32_t *)REPLY_BASE)         /* REPLY[2 src], REPLY[2 src + 1] */\n");
@@ -282,6 +302,22 @@ _Static_assert(__builtin_offsetof(TableRegs, PTR) == 0x%X && __builtin_offsetof(
 #define RP_RC_ROWS(n)      ((uint32_t)(n) & 0xFFFFFFu)   /* RUN_CONFIG [23:0]: the rows a pass runs (v1.26.1) */
 #define RP_RC_STORE_LOG    (1u << 24)                    /* RUN_CONFIG [24]: use the store log */
 #define RP_RC_RD_PREV      (1u << 25)                    /* RUN_CONFIG [25]: output rd_prev */
+
+/* the Tracer (v1.3, spec 4.21, 8.16): its events (item 144), RUN_CONFIG's compression enables, its region 0x04 */
+#define TR_EV_ADVICE       (1 << 3)    /* advice credit: half the read queue free (depth 2) */
+#define TR_EV_EXP          (1 << 5)    /* expansion credit (depth 2) */
+#define TR_EV_NEWEXP       (1 << 6)    /* new expansion (depth 1) */
+#define TR_EV_SVC_STATE    (1 << 7)    /* live: output queue 0 needs service */
+#define TR_EV_SVC_CODE     (1 << 8)    /* live: output queue 1 holds a credit */
+#define TR_EV_SVC_RLOG     (1 << 9)
+#define TR_EV_SVC_WLOG     (1 << 10)
+#define TR_RC_COMPRESS     (7u << 26)  /* RUN_CONFIG [28:26]: compress code, read log, write log */
+#define TR_TEMPLATE_VALID  (1u << 31)  /* EXPANSION_TEMPLATE [31] */
+#define TR_STATE           (REGION_PERIPH(1) + 0x000000u)   /* the record, 68 x 16 bytes; word 0 first */
+#define TR_TABLES          (REGION_PERIPH(1) + 0x001000u)   /* the decode table, then the ROM: 768 x 16 bytes */
+#define TR_Q_ADVICE        (REGION_PERIPH(1) + 0x200000u)   /* the read queue: the segment's advice, two values an entry */
+#define TR_Q_EXP           (REGION_PERIPH(1) + 0x400000u)   /* the expansion queue */
+#define TR_HALF            128u        /* entries per credit, every queue (4.21.3, 4.21.6) */
 
 /* C&C 1's peripheral events (8.14) */
 #define CC1_EV_ALL_READY   (1 << 2)    /* live: (READY & EXPECT) == EXPECT and EXPECT != 0 */

@@ -168,7 +168,7 @@ final class Registers {
     static final Field RB_CHUNK = f("RECORD_BASE", "CHUNK", 0, 21, "the record buffer's chunk address");
     static final Field WC_COUNT = f("WRITE_COUNTER", "COUNT", 0, 20, "the count");
     // a peripheral's DMA_HDR (4.17.9)
-    static final Field DH_COUNT = f("DMA_HDR", "COUNT", 0, 12, "32-bit words to send");
+    static final Field DH_COUNT = f("DMA_HDR", "COUNT", 0, 12, "128-bit words to send (v1.3)");
     static final Field DH_QUEUE = f("DMA_HDR", "QUEUE", 12, 2, "the peripheral's output queue (0-3)");
     // the request (3.3)
     static final Field RQ_REQUESTOR = f("REQ", "REQUESTOR", 0, 7, "the sender's endpoint id, stamped by the tree (software writes 0)");

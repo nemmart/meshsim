@@ -30,6 +30,8 @@ final class CcCores implements Component {
     final Tile[] units = new Tile[3];                  // C&C 1-3: endpoints 64-66
     final WordDelayLine[] toCc = new WordDelayLine[3], fromCc = new WordDelayLine[3];
     final WordFIFO[] host = new WordFIFO[3];
+    /** C&C 3's Tracer (Config.cc3Tracer) and its DMA's FIFO into the router; null otherwise. */
+    Tracer tracer; WordFIFO dmaIn;
     @SuppressWarnings("unchecked") private final ArrayDeque<long[]>[] hostQ = new ArrayDeque[3];   // {lo, hdr, hi}
     private final boolean[] errSeen = new boolean[3];
     private final long[][] seen = new long[3][12];
@@ -39,7 +41,7 @@ final class CcCores implements Component {
     CcCores(Chip chip) {
         this.chip = chip; this.cfg = chip.cfg;
         for (int c = 0; c < 3; c++) {
-            Peripheral p1 = c == 0 ? chip.cc1p : new Stub(2 + c - 1);
+            Peripheral p1 = c == 0 ? chip.cc1p : c == 2 && cfg.cc3Tracer ? (tracer = new Tracer(LinkWord.CC3)) : new Stub(2 + c - 1);
             Tile u = new Tile(LinkWord.CC1 + c, cfg, p1);
             u.chip = chip; units[c] = u;
             String n = "cc" + (c + 1);
@@ -50,6 +52,13 @@ final class CcCores implements Component {
             chip.tiles[c].router.toCnc = toCc[c]; u.router.linkIn[Router.CC_LINK_IN] = toCc[c];
             u.router.linkOut[Router.CC_LINK_OUT] = fromCc[c]; chip.tiles[c].router.fromCnc = fromCc[c];
             u.router.linkIn[Router.CC_HOST_IN] = host[c];
+            if (c == 2 && cfg.cc3Tracer) {
+                // item 118 (owner, 2026-11-05): the Tracer's DMA packets (src 74) enter C&C 3's router as an extra input,
+                // a FIFO of cfg.ccDmaDepth packets (the DMA waits while it's full: the port's flow control, modelled simply)
+                dmaIn = new WordFIFO("cc3.dma", cfg.ccDmaDepth);
+                u.slot.dmaPort = dmaIn; u.router.linkIn[Router.CC_DMA_IN] = dmaIn;
+                fifos.add(dmaIn);
+            }
             u.req.bus = chip.reqBus; u.req.target = c;
             for (WordFIFO[] fs : u.router.q) for (WordFIFO f : fs) fifos.add(f);
             fifos.add(u.weIn); fifos.add(u.gatherIn);

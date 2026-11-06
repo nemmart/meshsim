@@ -9,8 +9,8 @@ import java.util.List;
  *  - a run lasts {@link #runLength} cycles; STATUS [0] while it runs; ERRORS [0] when a test calls {@link #fault};
  *  - words: 32 the runs started (R), 33 a scratch word (R/W), 34 a constant (R), the rest undefined;
  *  - region writes are recorded when they land (rp_latency after the director), at their byte offset;
- *  - two output queues: after outStart(q, n) it makes n words, word i = q << 24 | the queue's running count, one per
- *    cycle from the next cycle (or all at once with {@link #burst}).
+ *  - two output queues: after outStart(q, n) it makes n 128-bit words, word i's low half q << 56 | the queue's running
+ *    count and its high half the complement, one per cycle from the next cycle (or all at once with {@link #burst}).
  */
 final class TestPeripheral implements Peripheral {
     final EventCounts ev = new EventCounts(new int[] { 1, 0, 1, 2, 0 }, new boolean[] { false, false, false, true, false });
@@ -44,7 +44,7 @@ final class TestPeripheral implements Peripheral {
     @Override public int writeWord(long t, int w, int v) { if (w == 33) { scratch = v; return 1; } return w == 32 || w == 34 ? 0 : -1; }
     @Override public int outputQueues() { return 2; }
     @Override public boolean outReady(long t, int q) { return q < 2 && taken[q] < availAt[q].size() && availAt[q].get(taken[q]) <= t; }
-    @Override public int outTake(long t, int q) { if (!outReady(t, q)) throw new IllegalStateException("no word"); return q << 24 | taken[q]++; }
+    @Override public void outTake(long t, int q, long[] w) { if (!outReady(t, q)) throw new IllegalStateException("no word"); int i = taken[q]++; w[0] = (long) q << 56 | i; w[1] = ~w[0]; }
     @Override public void outStart(long t, int q, int words) {
         long from = Math.max(t + 1, availAt[q].isEmpty() ? t + 1 : availAt[q].get(availAt[q].size() - 1) + (burst ? 0 : 1));
         for (int i = 0; i < words; i++) availAt[q].add(burst ? from : from + i);

@@ -21,7 +21,7 @@
 #define REPLAY_LAYOUT_H
 
 #define RL_MAGIC             0x594C5052u   /* "RPLY" */
-#define RL_VERSION           4u      /* v1.26.1: RL_H_RUN_CONFIG; v1.26 (3): the 68-word record in its new order; v1.25 (2): the index keyed by RL_IX_KEY */
+#define RL_VERSION           5u      /* v1.3 (B1, WORKER22): RL_H_WAIT and stream sizes from the record (5); v1.26.1: RL_H_RUN_CONFIG (4); v1.26 (3): the 68-word record in its new order; v1.25 (2): the index keyed by RL_IX_KEY */
 #define RL_RECORD_WORDS      68      /* v1.26: the state record, in 128-bit words */
 #define RL_PART0_WORDS       66      /* words 0-65 go to the replayer's part 0 */
 #define RL_RECORD_BITMAP     67      /* the template bitmap's word */
@@ -42,6 +42,27 @@
 #define RL_H_WLOG_N          12
 #define RL_H_PASSES          13  /* passes to run, each from the same checkpoint */
 #define RL_H_RUN_CONFIG      14  /* v1.26.1: the passes' RUN_CONFIG, written once (it is sticky): rows [23:0], [24] use the store log, [25] output rd_prev */
+#define RL_H_WAIT            15  /* v1.3 (version 5): RL_WAIT_HANDSHAKE, the window is delivered by C&C 3's Tracer (B1): Q15's
+                                    handshake below before reading the record; a stream's entries word RL_N_FROM_RECORD takes the
+                                    record's stream word (4.19.2: its 128-bit words) */
+#define RL_N_FROM_RECORD     0xFFFFFFFFu
+/* Q15 (owner, 2026-11-05; DECISIONS-v1.3 section 24, 058a926): every delivery into a tile's big SRAM is counted, armed
+ * before it arrives. At boot the tile arms its state counter (66 words, sent at window n - 1) and its totals counter (2
+ * words, at window n) and sends C&C 3 a count-only "booted"; C&C 3 sends tile n its totals first; the tile reads the
+ * stream sizes from word 1, arms its stream counter and sends a count-only "armed"; only then come the streams. */
+/* Q15's barriers and Q17's ruling (owner, 2026-11-06; DECISIONS-v1.3 section 24, 7c53209), the rule of every phase (4.13:
+ * the window between GO and arming is kept, closed by timing): READY at boot with nothing armed; GO (C&C 1 then starts
+ * C&C 3); the record's counters armed on waking; C&C 3 sends nothing sooner than stage_delay after the GO (invariant 25's
+ * announced staging; a packet that beats its counter is unexpected arrival, [2]); the window delivered with the
+ * per-window handshake; READY again once every counter is at 0; the final GO: the replay */
+#define RL_WAIT_BARRIERS     1u   /* an unused tile: the two barriers, nothing armed, no replay */
+#define RL_WAIT_HANDSHAKE    2u
+#define RL_CTR_STATE         1u   /* the tile's counters for the window's delivery */
+#define RL_CTR_TOTALS        5u
+#define RL_CTR_STREAMS       6u
+#define TL_CMD_START         0x53u /* C&C 1's command to C&C 3: start tracing (after the first GO) */
+#define TL_CTR_ARMED         6u   /* C&C 3's: the window's tile is armed for its streams */
+#define TL_ENDPOINT          66u  /* C&C 3 */
 #define RL_H_WORDS           16
 
 /* results: the program writes them to data memory, uint32_t rp_results[16] (the harness finds it in the .sym file) */

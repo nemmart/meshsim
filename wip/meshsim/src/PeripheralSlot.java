@@ -128,8 +128,8 @@ final class PeripheralSlot implements Peripheral.Host {
         int hdr, addr, done;                          // done: DMA done's count (depth 1)
         private long doneAt = Long.MIN_VALUE, startedAt = Long.MIN_VALUE, busyFrom = Long.MAX_VALUE, busyTo = Long.MIN_VALUE;
         private boolean busy;
-        private int left, q, have;
-        private final int[] buf = new int[4];
+        private int left, q;
+        private final long[] buf = new long[2];
         long transfers, packets, ignored;
         Dma(int n) { this.n = n; }
         boolean busy(long t) { return busy && t > startedAt; }
@@ -141,25 +141,25 @@ final class PeripheralSlot implements Peripheral.Host {
             int qq = Registers.DH_QUEUE.get(hdr);
             if (busy) throw new UndefinedBehavior(t, tile.idx, "peripheral " + n + "'s DMA", "PULSE_DMA while a transfer is in progress (4.17.9; v1.2 ignored it; DECISIONS-v1.25 s8e)");
             if (qq >= pp.outputQueues()) throw new UndefinedBehavior(t, tile.idx, "peripheral " + n + "'s DMA", "a transfer naming output queue " + qq + ", which the peripheral doesn't have (4.17.9; v1.2 ignored it; DECISIONS-v1.25 s8e)");
-            q = qq; left = Registers.DH_COUNT.get(hdr); have = 0; busy = true; startedAt = t; transfers++;
+            q = qq; left = Registers.DH_COUNT.get(hdr); busy = true; startedAt = t; transfers++;
             if (left > 0) pp.outStart(t, q, left);
         }
         void runCycle(long t) {
             if (!busy || t <= startedAt) return;
             if (left == 0) { finish(t); return; }
-            int need = left >= 4 ? 4 : left >= 2 ? 2 : 1;
-            while (have < need && p[n].outReady(t, q)) buf[have++] = p[n].outTake(t, q);
-            if (have < need) return;
+            // v1.3 (4.17.9; DECISIONS-v1.3 section 24): the count is in 128-bit words, every packet one queue entry of 128
+            // bits, DMA_ADDR advancing by 16; no remainder packets
+            if (!p[n].outReady(t, q)) return;
             if (dmaPort != null && !dmaPort.canPut(t)) return;
-            int size = need == 4 ? LinkWord.SIZE_128 : need == 2 ? LinkWord.SIZE_64 : LinkWord.SIZE_32;
-            long lo = buf[0] & 0xFFFFFFFFL, hi = 0;
-            if (need >= 2) lo |= (long) buf[1] << 32;
-            if (need == 4) hi = (buf[2] & 0xFFFFFFFFL) | (long) buf[3] << 32;
+            p[n].outTake(t, q, buf);
+            int size = LinkWord.SIZE_128;
+            long lo = buf[0], hi = buf[1];
             int dst = Registers.HDR_DST.get(hdr), mode = Registers.HDR_MODE.get(hdr), ctr = Registers.HDR_CTR.get(hdr);
+            int src = LinkWord.controller(tile.idx) ? tile.idx + 8 : 0;     // item 118: the controller's id + 8 (the Tracer's 74)
             dmaOut.add(new long[] { t, dst, mode, ctr, addr & 0xFFFFFFFFL, size, lo, hi });
-            if (dmaPort != null) dmaPort.put(t, lo, LinkWord.hdr(0, dst, mode, ctr, addr, size), hi);
+            if (dmaPort != null) dmaPort.put(t, lo, LinkWord.hdr(src, dst, mode, ctr, addr, size), hi);
             packets++;
-            addr += 4 * need; left -= need; have = 0;
+            addr += 16; left--;
             if (left == 0) finish(t);
         }
         private void finish(long t) { busy = false; if (done < 1) done = 1; doneAt = t; }

@@ -49,3 +49,15 @@ tile-local occupancy mask so a unit learns an input is empty without touching it
 - 0ab09b8: `Tile.runCycle` steps its children by direct calls (the shuffle permutes their indices with the same draws).
   Locally ~2% on the sort, ~5% on the synthetic replay bench (noisy).
 - Proof against A, locally: the 30 faster quick-suite steps SAME (the rest, the sorts and the big runs: on the runner).
+- **Quest 120** (A + C, b7655df, against main 2d8d9c1): the quick suite 39 of 39 the same; the full-size sort, T2 segment 0
+  and ReplayBench of both workloads 5 of 5 the same. Speed, each alone on the box: **the full-size sort 110.1 → 92.2 s
+  (-16%); the real replay (evm-zone-29, 3 repeats) 49.7 → 41.7 µs/cycle (-16%)**, all of it from C (A left the replay
+  unchanged in 119). A busy cycle's cost moves with how many scattered objects it reaches, as B's result said.
+
+## 5. The tile's object graph (for the design)
+
+A tile on the machine config with a replayer (`Config.machine()`, scratch measurement by reflection): **2,251 objects and
+236 KB** reachable from it in objects and arrays up to 64 KB (the controller memories included), **77 buses** (37
+WordFIFO, 34 WordDelayLine, 6 WordHold), plus 512 KB in two large arrays (the disjoint-buffer bitmaps) and big SRAM's areas
+as they are touched. The chip: about 144 K small objects and ~15 MB, interleaved in the heap with the large arrays, of which
+a busy cycle touches a scattered subset.

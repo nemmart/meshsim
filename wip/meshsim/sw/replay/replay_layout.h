@@ -54,7 +54,9 @@
 #define RL_CTR_STATE         1u   /* the tile's counters for the window's delivery */
 #define RL_CTR_TOTALS        5u
 #define RL_CTR_STREAMS       6u
-#define TL_CTR_BOOTED        5u   /* C&C 3's: a "booted" from every tile used */
+/* "booted" goes up the request tree to C&C 3 (TARGET_CC3, op TL_REQ_OP_BOOTED, no reply: as C&C 2's and C&C 3's
+ * "started"): 64 tiles at once is a fan-in the mesh can't take (3.2: no flow control; 63 x 1 overflows), the tree can */
+#define TL_REQ_OP_BOOTED     0x40u
 #define TL_CTR_ARMED         6u   /* C&C 3's: the window's tile is armed for its streams */
 #define TL_ENDPOINT          66u  /* C&C 3 */
 #define RL_H_WORDS           16

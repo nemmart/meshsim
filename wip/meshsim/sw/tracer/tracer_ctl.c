@@ -159,8 +159,6 @@ int main(void) {
     me = tile_index();
     const uint32_t base_mask = EV_RESET_MASK;
     copy_to_dm(0, hdr, TL_H_WORDS / 4, base_mask);
-    /* Q15: a "booted" from every tile used, armed before C&C 1 boots them (it does once C&C 2 and C&C 3 have started) */
-    tile->WRITE_COUNTER[TL_CTR_BOOTED - 1] = hdr[TL_H_WINDOWS];
     request_send(me, 0, 0, REQ_CC1(REQ_OP_STARTED, 0, 0));            /* as cc23.c: C&C 1 waits for it (6.2) */
     if (hdr[TL_H_MAGIC] != TL_MAGIC || hdr[TL_H_VERSION] != TL_VERSION) { tr_results[TL_R_STATUS] = 4; return 4; }
     uint32_t nt = min32(hdr[TL_H_NTEMPLATES], 128);
@@ -180,7 +178,17 @@ int main(void) {
      *    used has booted and armed for its record (Q15) */
     copy_to_dm(hdr[TL_H_RECORD], rec, 68, base_mask);
     uint32_t first = hdr[TL_H_FIRST_TILE], trec = hdr[TL_H_T_RECORD];
-    wait_event(EV_CTR(TL_CTR_BOOTED), base_mask);
+    /* Q15: every tile used says "booted" (its record's counters armed) up the request tree; counted here */
+    for (uint32_t booted = 0; booted < hdr[TL_H_WINDOWS]; ) {
+        tile->EVENTS_MASK = EV_GO | EV_REQ_PENDING;
+        while (!(tile->EVENTS_PEEK & EV_REQ_PENDING)) __asm__ volatile ("wfi" ::: "memory");
+        while (tile->EVENTS_PEEK & EV_REQ_PENDING) {                  /* never pop an empty queue */
+            uint32_t w0 = tile->REQUEST_GET_W0;
+            (void)tile->REQUEST_GET_W1; (void)tile->REQUEST_GET_W2; (void)tile->REQUEST_RECEIVE;
+            if (REQ_OP(w0) == TL_REQ_OP_BOOTED) booted++;
+        }
+    }
+    tile->EVENTS_MASK = base_mask;
     send_to(ROUTER_HDR_W(first, MODE_WRITE, RL_CTR_STATE), sram_addr(trec));
     sendw(&rec[0]);
     send_to(ROUTER_HDR_W(first, MODE_WRITE, RL_CTR_STATE), sram_addr(trec + 8));

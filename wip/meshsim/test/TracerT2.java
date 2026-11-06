@@ -118,6 +118,30 @@ public final class TracerT2 {
         boolean ok() { return detail.isEmpty(); }
     }
 
+    /** Every unit's state for a stopped run: C&C 3's pc, WFI, ERRORS and counters, and every tile still running with its
+     *  Q15 counters (state 1, totals 5, streams 6) and ERRORS. */
+    static List<String> dump(Mach m, int windows) {
+        List<String> d = new ArrayList<>();
+        long t = m.c.cycle;
+        java.util.function.Function<Tile, String> st = u -> {
+            StringBuilder b = new StringBuilder(String.format("pc 0x%x%s%s, ERRORS 0x%x, counters", u.core.pc, u.core.inWfi ? " (WFI)" : "",
+                    u.core.halt != Controller.RUN ? " " + u.core.haltReport() : "", u.ctl.conditions));
+            for (int k = 1; k <= 7; k++) b.append(' ').append(k).append(':').append(u.dir.counterAtStart(k, t));
+            return b.toString();
+        };
+        Tile u3 = m.c.cores.unit(2);
+        d.add("C&C 3: " + st.apply(u3) + " (5: the tiles' 'booted', 6: 'armed', 1: its own record)");
+        int running = 0;
+        for (int i = 0; i < 64; i++) {
+            Tile p = m.c.tiles[i];
+            if (p.core.halt == Controller.RUN) { if (running++ < 12) d.add("tile " + i + " running: " + st.apply(p) + " (1: state, 5: totals, 6: streams)"); }
+        }
+        d.add(running + " tiles still running at cycle " + t);
+        if (m.c.violations > 0) d.add("meshsim: " + StageB.cut(m.c.violationReport().replace("\n", "; ")));
+        String lg = m.c.logTail(20); if (lg != null && !lg.isEmpty()) d.add("log: " + StageB.cut(lg.replace("\n", "; ")));
+        return d;
+    }
+
     static void put(BigSRAM s, int chunk, long[] words) { for (int i = 0; i < words.length; i++) { s.poke(chunk + 2 * i, (int) words[i]); s.poke(chunk + 2 * i + 1, (int) (words[i] >>> 32)); } }
     static void putBytes(BigSRAM s, int chunk, byte[] b) {
         ByteBuffer bb = ReplayDelivery.le(java.util.Arrays.copyOf(b, (b.length + 15) & ~15));
@@ -180,9 +204,29 @@ public final class TracerT2 {
         m.bootCores(tile, cc3);
         Tile u3 = m.c.cores.unit(2);
         long cap = (long) windows * 65536 * 12 + 5_000_000;
-        // the tiles replay as their windows land (Q15's counters), while C&C 3 traces the later ones
-        m.run(() -> { if (tr.stopped()) return true; if (u3.core.halt == Controller.RUN || u3.core.firstImageAt <= 0) return false;
-                      for (int t = 0; t < 64; t++) if (m.c.tiles[t].core.halt == Controller.RUN) return false; return true; }, cap);
+        // the tiles replay as their windows land (Q15's counters), while C&C 3 traces the later ones. Fail fast (owner,
+        // 2026-11-06): no progress (the Tracer's rows, the DMA's packets, the tiles' rows) for 3 M cycles, or a tile not
+        // exited 1 M cycles after C&C 3's exit (a replay takes at most about 236K), stops at once with every unit's state
+        final long[] prog = { -1, 0, -1 };                            // last progress, its cycle, C&C 3's exit
+        final String[] stall = { null };
+        final PeripheralSlot.Dma dma3 = m.c.cores.unit(2).slot.dma[1];
+        m.run(() -> {
+            if (tr.stopped()) return true;
+            long c = m.c.cycle;
+            if (c % 250_000 == 0) {
+                long p = tr.rows + dma3.packets; for (List<long[]> l : rows) p += l.size();
+                if (p != prog[0]) { prog[0] = p; prog[1] = c; }
+                else if (c - prog[1] >= 3_000_000) { stall[0] = "no progress for 3 M cycles (to cycle " + c + ")"; return true; }
+            }
+            if (u3.core.halt == Controller.RUN || u3.core.firstImageAt <= 0) return false;
+            if (prog[2] < 0) prog[2] = c;
+            for (int t = 0; t < 64; t++) if (m.c.tiles[t].core.halt == Controller.RUN) {
+                if (c - prog[2] >= 1_000_000) { stall[0] = "tile " + t + " not exited 1 M cycles after C&C 3's exit (cycle " + prog[2] + ")"; return true; }
+                return false;
+            }
+            return true;
+        }, cap);
+        if (stall[0] != null) { res.detail.add("STOPPED: " + stall[0]); res.detail.addAll(dump(m, windows)); return res; }
         long cc3End = u3.core.halt == Controller.HALT_EXIT ? u3.ctl.simExitAt : m.c.cycle;
         int R = cc3.sym("tr_results");
         int status = u3.core.peekLocal(R), wins = u3.core.peekLocal(R + 4), transfers = u3.core.peekLocal(R + 16), terr = u3.core.peekLocal(R + 24),

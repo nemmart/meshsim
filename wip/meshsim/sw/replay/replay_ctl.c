@@ -360,7 +360,7 @@ int main(void) {
     if (hdr[RL_H_VERSION] >= 5u && hdr[RL_H_WAIT] == RL_WAIT_HANDSHAKE) {
         tile->WRITE_COUNTER[RL_CTR_STATE - 1] = 66;
         tile->WRITE_COUNTER[RL_CTR_TOTALS - 1] = 2;
-        send_to(ROUTER_HDR_W(TL_ENDPOINT, MODE_COUNT, TL_CTR_BOOTED), 0); send128(0, 0, 0, 0);
+        request_send(me, 0, 0, REQ_TARGET(TARGET_CC3) | (TL_REQ_OP_BOOTED << 10));   /* "booted", up the request tree */
         wait_event(EV_CTR(RL_CTR_TOTALS), base_mask);
         copy_to_dm(hdr[RL_H_RECORD] + 4, scratch, 1, base_mask);    /* word 1: words [15:0], [31:16], [47:32] */
         uint32_t n = (scratch[0] & 0xFFFFu) + (scratch[0] >> 16) + (scratch[1] & 0xFFFFu);

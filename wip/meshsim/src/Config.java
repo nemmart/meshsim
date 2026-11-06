@@ -4,6 +4,8 @@ import java.nio.file.Path;
 final class Config {
     Hops hops;
     // ---- network (spec 3.2, 4.7) ----
+    /** Stage 1 (WORKER28): sleeping units are not stepped (-Dmeshsim.skip=false: every unit every cycle, as before). */
+    boolean idleSkip = !"false".equalsIgnoreCase(System.getProperty("meshsim.skip", "true"));
     int linkLatency = 3;                 // every link direction (spec 3.2)
     int[][] linkLatencyOverride;         // [tile][direction], tests only (null = uniform)
     int queueDepth = 16;                 // router FIFOs, including tile 0's C&C FIFOs

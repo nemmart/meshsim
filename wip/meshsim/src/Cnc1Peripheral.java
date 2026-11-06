@@ -65,13 +65,22 @@ final class Cnc1Peripheral implements Peripheral {
         ev.clearAll(); mask = 0;
     }
     @Override public boolean running(long t) { return false; }
+    /** Stage 1: C&C 1's unit to wake when a line changes (CcCores sets it); null with the Java model. */
+    java.util.function.LongConsumer wakeMe;
+    @Override public boolean idle(long t) { return wdCount == 0 && tx.isEmpty() && rx.isEmpty() && errChanges.isEmpty(); }
+    @Override public long nextWakeAt(long t) {
+        long w = Long.MAX_VALUE;
+        for (long r : readyAt) if (r > t && r < w) w = r;
+        long[] e = errChanges.peek(); if (e != null && e[0] > t) w = Math.min(w, e[0]);
+        return w;
+    }
     private void violate(long t, String m) { if (host != null) host.violate(t, m); }
 
     // ---------------------------------------------------------------- the lines (the outside world and the units)
     /** A unit's error line (its ERRORS != 0) as it stands at the end of t; visible error_latency later. */
-    void errorLine(long t, int id, boolean high) { errChanges.add(new long[] { t + Math.max(1, cfg.errorLatency()), id, high ? 1 : 0 }); }
+    void errorLine(long t, int id, boolean high) { errChanges.add(new long[] { t + Math.max(1, cfg.errorLatency()), id, high ? 1 : 0 }); if (wakeMe != null) wakeMe.accept(t + Math.max(1, cfg.errorLatency())); }
     /** A tile's READY pulse at tEdge, visible ready_latency later. */
-    void readyPulse(int tile, long tEdge) { readyAt[tile] = Math.max(readyAt[tile], tEdge + cfg.readyLatency); }
+    void readyPulse(int tile, long tEdge) { readyAt[tile] = Math.max(readyAt[tile], tEdge + cfg.readyLatency); if (wakeMe != null) wakeMe.accept(tEdge + cfg.readyLatency); }
     boolean ready(int tile, long t) { return readyAt[tile] != Long.MIN_VALUE && readyAt[tile] >= clearedAt && readyAt[tile] <= t; }
     long readyBits(long t) { long b = 0; for (int i = 0; i < 64; i++) if (ready(i, t)) b |= 1L << i; return b; }
     boolean allReady(long t) { return expect != 0 && (readyBits(t) & expect) == expect; }
@@ -84,6 +93,7 @@ final class Cnc1Peripheral implements Peripheral {
         if (badStop) { framing = true; return; }
         if (rx.size() >= FIFO) { rxOverrun = true; return; }
         rx.add(b & 0xFF);
+        if (wakeMe != null) wakeMe.accept(t + 1);
     }
     boolean errorLineOf(int id) { return errLine[id]; }
     /** C&C 1's own ERRORS as a level (Config.ccCores, WORKER14): non-zero latches the toast pin (6.1); C&C 1's hard

@@ -23,6 +23,9 @@ abstract class BusBase {
     final String name;
     protected long lastT = Long.MIN_VALUE;
     protected boolean pendPut;      // a put happened at lastT and is not yet committed
+    /** Stage 1 (WORKER28): the unit this bus wakes when something is put on it (a bus that crosses a unit's boundary:
+     *  a link, a C&C link, a host or fifth-port FIFO); null: none. */
+    Chip wakeChip; int wakeUnit;
     protected int takes;            // takes at lastT
 
     BusBase(String name) { this.name = name; java.util.List<BusBase> r = REGISTRY.get(); if (r != null) r.add(this); }

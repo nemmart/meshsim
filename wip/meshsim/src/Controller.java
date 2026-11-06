@@ -92,10 +92,20 @@ final class Controller implements Component {
     Controller(Tile tile, TileControl ctl, ControllerMemories cm) { this.tile = tile; this.ctl = ctl; this.cm = cm; }
 
     // ================================================================ cycle
+    /** Stage 1 (WORKER28): the last cycle the core did nothing (halted, or in a WFI it didn't leave). */
+    long idleAt = Long.MIN_VALUE;
+    /** Stage 1: n cycles skipped while asleep, counted as runCycle would have (halted, or in WFI with no wake). */
+    void skipCycles(long n) {
+        if (!enabled || n <= 0) return;
+        mcycle += n;
+        if (halt != RUN) { cyclesHalted += n; return; }
+        if (pc >= profLo && pc < profHi) profCycles += n;
+        cyclesWfi += n;
+    }
     @Override public void runCycle(long t) {
         if (!enabled) return;
         mcycle++;
-        if (halt != RUN) { cyclesHalted++; return; }
+        if (halt != RUN) { cyclesHalted++; idleAt = t; return; }
         if (pc >= profLo && pc < profHi) profCycles++;
         if (pendingT == t - 1 && tile.sendHold.refused(t)) {           // a send store's packet was not taken: retry, core stalls (any of the three)
             tile.sendHold.retry(t); pendingT = t; stallSend++; cyclesStalled++;
@@ -105,7 +115,7 @@ final class Controller implements Component {
         curStall = 0;
         if (interruptPending(t) && stall == 0) { inWfi = false; trap(t, CAUSE_EXTERNAL, 0, pc, pc); return; }   // the hard interrupt, WFI included (4.11)
         if (inWfi) {
-            if (!ctl.takeWake(t, false)) { cyclesWfi++; return; }
+            if (!ctl.takeWake(t, false)) { cyclesWfi++; idleAt = t; return; }
             inWfi = false; wokeAt = t; if (!wfiInRom) wfiLog.add(new long[] { wfiAt, t, ctl.lastWake });
         }
         if (stall > 0) { stall--; cyclesStalled++; return; }
@@ -336,6 +346,7 @@ final class Controller implements Component {
 
     /** A load of `width` bytes at t (the aligned word containing ea); null = bus error. */
     Integer load(long t, int ea, int width) {
+        if (tile.chip != null && tile.chip.skip) tile.chip.wakeNow(tile.idx);   // stage 1: a load from Java wakes the unit
         int a = ea & ~3;
         if (inData(a)) { int w = memWord(t, a); cm.loaded(w); return cm.dmem.read32(ControllerMemories.PORT_A, t, w); }
         if (inProgram(a)) return cm.imem.read32(ControllerMemories.PORT_A, t, memWord(t, a));
@@ -347,6 +358,7 @@ final class Controller implements Component {
 
     /** A store at t; returns the bus-error reason, or null. */
     String store(long t, int ea, int v, int mask) {
+        if (tile.chip != null && tile.chip.skip) tile.chip.wakeNow(tile.idx);   // stage 1: a store from Java wakes the unit
         int a = ea & ~3;
         if (inData(a)) {
             int w = memWord(t, a);
@@ -410,6 +422,7 @@ final class Controller implements Component {
         }
     }
     void pokeLocal(int byteAddr, int w) {
+        if (tile.chip != null && tile.chip.skip) tile.chip.wakeNow(tile.idx);
         int a = byteAddr & ~3;
         if ((inData(a) || inProgram(a)) && LinkWord.offset(a) < ControllerMemories.BYTES) cm.poke(a, w);
         else throw new IllegalArgumentException("not controller memory: 0x" + Integer.toHexString(byteAddr));

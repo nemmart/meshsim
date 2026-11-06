@@ -269,6 +269,7 @@ final class Replayer implements Peripheral {
     private int sLines, sStatus0, sStatus1, sRows, sRunConfig;
 
     @Override public boolean running(long t) { settle(t); return sRunning; }
+    @Override public boolean idle(long t) { return !running && inputs.isEmpty() && landing.isEmpty() && outQ.isEmpty(); }
     /** Bring the model to the start of t (the slot calls it before reading the events). */
     @Override public void sync(long t) { settle(t); }
     /** v1.1's PERIPH_STATUS_0/1, for the replayer's own tests: rows done [15:0] | the next offset [31:16]; the presented item. */

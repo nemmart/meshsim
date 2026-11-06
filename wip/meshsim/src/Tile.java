@@ -57,6 +57,7 @@ final class Tile implements Component {
     /** A unit with peripheral 1 p1: a mesh tile (0-63), or a controller (64-66, Config.ccCores: CcCores builds it with its engine). */
     Tile(int idx, Config cfg, Peripheral p1) {
         this.idx = idx; this.cfg = cfg;
+        java.util.List<BusBase> reg = BusBase.REGISTRY.get(); int reg0 = reg == null ? 0 : reg.size();
         router = new Router(idx, cfg.hops, cfg.queueDepth, cfg.loopbackDepth > 0 ? cfg.loopbackDepth : cfg.readTokens, idx < 3);
         inj = new InjectionPath(idx);
         dir = new TrafficDirector(idx, cfg);
@@ -116,7 +117,12 @@ final class Tile implements Component {
         // the SRAM read queue and the injection point share the token pool: one unit, run in that order (4.5)
         Component srqInj = t -> { srq.runCycle(t); inj.runCycle(t); };
         children = new Component[] { router, srqInj, dir, cmem, sram, writer, ag, ts, hist, readPort, gat, core };
+        ownBuses = reg == null ? java.util.List.of() : new ArrayList<>(reg.subList(reg0, reg.size()));
     }
+    /** The buses this unit built (its internal ones): stage 1 wakes the unit on a put to any of them, so a put from
+     *  outside its step (a test feeding the send port, a harness) wakes it; from inside, the unit is awake anyway. */
+    private final java.util.List<BusBase> ownBuses;
+    void wakeOnOwnBuses(Chip c) { for (BusBase b : ownBuses) if (b.wakeChip == null) { b.wakeChip = c; b.wakeUnit = idx; } }
 
     @Override public void runCycle(long t) {
         if (shuffle != null) {
@@ -168,7 +174,7 @@ final class Tile implements Component {
         gather.k = Fields.mcK(v);
     }
     /** TILE_PULSE's start from Java (coreless tests), acting from the next cycle. */
-    void pulse(int bits) { ag.pulse(bits); }
+    void pulse(int bits) { if (chip != null && chip.skip) chip.wakeNow(idx); ag.pulse(bits); }
     /** DMA_RECORD_BASE_ADDRESS (v1.0: DMA_RECORD_BASE_ADDRESS and DMA_RECORD_BASE_ADDRESS merged): augment and gather use one base. */
     /** v1.25 (DECISIONS-v1.25 s8c): gather buffers are 128-bit aligned whatever k is, the source (DMA_RECORD_BASE_ADDRESS)
      *  and the destination (PTR[me]); checked when a run with mode-4 streams starts. Misalignment is UB (s8b). */
@@ -208,6 +214,31 @@ final class Tile implements Component {
         int L = cfg.tsEngineLatency;
         return ts.busy || hist.busy || t <= ag.lastTsReq + L + 1 || t <= writer.lastTsReq + L + 1
                 || agStreamReq.inFlight(t) > 0 || agStreamRet.inFlight(t) > 0 || agGroupReq.inFlight(t) > 0 || agGroupRet.inFlight(t) > 0 || weTsReq.inFlight(t) > 0 || weTsRet.inFlight(t) > 0 || weHistReq.inFlight(t) > 0;
+    }
+
+    /**
+     * Stage 1 (WORKER28): at the end of cycle t, nothing in this unit can change until something wakes it: its core did
+     * nothing at t (halted, or in a WFI it didn't leave) and won't wake at t + 1, its peripherals, DMAs and request port
+     * are idle, every queue, bus and engine is empty, and nothing is in flight towards it on a link or its fifth port.
+     * Its steps until a wake would then change only the per-cycle counters (Controller.skipCycles).
+     */
+    boolean canSleep(long t) {
+        Controller c = core;
+        if (!c.enabled || c.idleAt != t) return false;
+        if (!slot.idle(t) || !req.idle() || !writer.idle(t) || ag.runningForStatus() || gather.in != null && gather.busy(t)) return false;
+        if (!quiescent(t)) return false;
+        for (WordSource s : router.linkIn) if (s != null && pendingIn(s, t)) return false;
+        if (router.fromCnc != null && pendingIn(router.fromCnc, t)) return false;
+        if (c.halt == Controller.RUN && (!c.inWfi || c.interruptPending(t + 1) || ctl.wakeTerm(t + 1))) return false;
+        return true;
+    }
+    /** Stage 1: the cycle after t a sleeping tile must step at though nothing reaches it (a GO; a peripheral's line). */
+    long sleepWakeAt(long t) { return Math.min(ctl.nextGoAt(t), slot.nextWakeAt(t)); }
+    static boolean pendingIn(WordSource s, long t) {
+        if (s instanceof WordDelayLine d) return d.inFlight(t) > 0;
+        if (s instanceof WordFIFO f) return !f.isEmpty(t);
+        if (s instanceof WordHold h) return !h.isEmpty(t);
+        return true;
     }
 
     boolean quiescent(long t) {

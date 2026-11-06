@@ -85,7 +85,9 @@ final class TileControl {
     }
 
     // ================================================================ lines
-    void scheduleGo(long t) { goQ.add(t); }
+    void scheduleGo(long t) { goQ.add(t); if (tile.chip != null) tile.chip.wake(tile.idx, t); }
+    /** Stage 1: the next cycle a GO acts here after t (Long.MAX_VALUE: none). */
+    long nextGoAt(long t) { long g = goAt > t ? goAt : Long.MAX_VALUE; Long q = goQ.peek(); return q != null ? Math.min(g, q) : g; }
 
     /** Apply line changes due at or before t (idempotent; every caller in cycle t sees the same result). */
     private void advance(long t) {

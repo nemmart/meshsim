@@ -88,6 +88,7 @@ final class PhaseLog {
 
     // ---------------------------------------------------------------- counters and peaks
     private long[] counters() {
+        c.syncCounters();
         long[] v = new long[COUNTS.length];
         for (Tile t : c.tiles) {
             Controller k = t.core;

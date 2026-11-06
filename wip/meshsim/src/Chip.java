@@ -96,7 +96,13 @@ final class Chip implements Component {
         cc = new CnC(this, cnc);
         cc1p.goNet = cc::goNet;
         if (cfg.measureS1) for (Tile p : tiles) p.s1Attach(s1);
-        cores = cfg.ccCores ? new CcCores(this) : null;          // WORKER14: built before the registry closes (the reset flushes its buses)
+        skip = cfg.idleSkip;
+        for (int i = 0; i < 64; i++) unit[i] = tiles[i];
+        for (int i = 0; i < 64; i++) tiles[i].wakeOnOwnBuses(this);
+        for (int i = 0; i < 64; i++) for (int d = 0; d < 4; d++) { links[i][d].wakeChip = this; links[i][d].wakeUnit = neighbour(i, d); }
+        for (int c = 0; c < 3; c++) { ccs[c].send.wakeChip = this; ccs[c].send.wakeUnit = c; }
+        cores = cfg.ccCores ? new CcCores(this) : null;
+        if (cores != null) for (int c = 0; c < 3; c++) { unit[64 + c] = cores.units[c]; cores.units[c].wakeOnOwnBuses(this); }          // WORKER14: built before the registry closes (the reset flushes its buses)
         BusBase.REGISTRY.remove();
         children = new Component[cores != null ? 69 : 68];
         if (cores != null) children[68] = cores;
@@ -104,6 +110,7 @@ final class Chip implements Component {
         for (int i = 0; i < 64; i++) children[3 + i] = tiles[i];
         shuffle = cfg.shuffleSeed >= 0 ? new Random(cfg.shuffleSeed) : null;
         if (shuffle != null) for (Tile p : tiles) p.shuffle = new Random(shuffle.nextLong());
+        if (DIGEST != null) DIGESTED.add(this);
     }
 
     static int neighbour(int tile, int dir) {
@@ -113,19 +120,98 @@ final class Chip implements Component {
         return switch (dir) { case Router.TO_RIGHT -> Router.FROM_LEFT; case Router.TO_LEFT -> Router.FROM_RIGHT; case Router.TO_DOWN -> Router.FROM_UP; default -> Router.FROM_DOWN; };
     }
 
+    // ================================================================ stage 1 (WORKER28): sleeping units
+    /** Stage 1 on (Config.idleSkip): units 0-63 (the tiles) and 64-66 (C&C 1-3, with cores) sleep when nothing can change
+     *  in them and are not stepped; a put on a bus into them, a GO, a READY or error line, a request delivered, wakes
+     *  them at the cycle it becomes visible. Their per-cycle counters are caught up on waking (and by syncCounters). */
+    final boolean skip;
+    final Tile[] unit = new Tile[67];
+    final boolean[] asleep = new boolean[67];
+    private final long[] countedTo = new long[67];
+    private static final int RING = 512;
+    private final long[] ringLo = new long[RING];
+    private final int[] ringHi = new int[RING];
+    private final java.util.PriorityQueue<long[]> far = new java.util.PriorityQueue<>((x, y) -> Long.compare(x[0], y[0]));
+    long sleeps, wakes;
+    private int errHighN;
+    /** Unit u must step at cycle at (a no-op unless it sleeps). Called during a cycle (at > cycle) or between cycles. */
+    void wake(int u, long at) {
+        if (!skip || !asleep[u]) return;
+        if (at <= cycle) at = cycle + 1;
+        if (at - cycle >= RING) { far.add(new long[] { at, u }); return; }
+        int b = (int) (at & (RING - 1));
+        if (u < 64) ringLo[b] |= 1L << u; else ringHi[b] |= 1 << (u - 64);
+    }
+    private void wakeDue(long t) {
+        int b = (int) (t & (RING - 1));
+        long m = ringLo[b];
+        if (m != 0) { ringLo[b] = 0; while (m != 0) { int i = Long.numberOfTrailingZeros(m); m &= m - 1; awaken(i, t); } }
+        int h = ringHi[b];
+        if (h != 0) { ringHi[b] = 0; for (int i = 0; i < 3; i++) if ((h >> i & 1) != 0) awaken(64 + i, t); }
+        while (!far.isEmpty() && far.peek()[0] <= t) awaken((int) far.poll()[1], t);
+    }
+    private void awaken(int u, long t) { if (!asleep[u]) return; asleep[u] = false; wakes++; catchUp(u, t - 1); }
+    private void catchUp(int u, long upTo) { long n = upTo - countedTo[u]; if (n > 0) unit[u].core.skipCycles(n); countedTo[u] = upTo; }
+    private void sleepCheck(long t) {
+        for (int u = 0; u < 67; u++) {
+            Tile p = unit[u];
+            if (p == null || asleep[u] || u < 64 && parked != null && parked[u] || !p.canSleep(t)) continue;
+            asleep[u] = true; countedTo[u] = t; sleeps++;
+            long w = p.sleepWakeAt(t);
+            if (w != Long.MAX_VALUE) wake(u, w);
+        }
+    }
+    // ---- the proof's fingerprint (-Dmeshsim.digest=FILE): at exit, per chip in creation order, every unit's counters
+    private static final String DIGEST = System.getProperty("meshsim.digest");
+    private static final java.util.List<Chip> DIGESTED = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+    static { if (DIGEST != null) Runtime.getRuntime().addShutdownHook(new Thread(Chip::writeDigests)); }
+    private static void writeDigests() {
+        try (java.io.PrintWriter w = new java.io.PrintWriter(new java.io.FileWriter(DIGEST, true))) {
+            synchronized (DIGESTED) { int i = 0; for (Chip c : DIGESTED) w.println("chip " + (i++) + " " + c.digest()); }
+        } catch (java.io.IOException e) { System.err.println("digest: " + e); }
+    }
+    /** Every unit's counters and state summary at the current cycle, hashed (and the totals in clear). */
+    String digest() {
+        syncCounters();
+        long h = 1125899906842597L, mc = 0, wfi = 0, ins = 0;
+        java.util.List<Tile> all = new java.util.ArrayList<>(java.util.Arrays.asList(tiles));
+        if (cores != null) all.addAll(java.util.Arrays.asList(cores.units));
+        for (Tile p : all) {
+            Controller k = p.core;
+            long[] v = { k.mcycle, k.cyclesWfi, k.cyclesHalted, k.cyclesStalled, k.instructions, k.pc, k.halt, k.profCycles,
+                    p.router.injected, p.router.routed, p.router.ejected, p.dir.accepted, p.sram.accesses, p.ctl.gos, p.ctl.readies,
+                    p.ctl.dones, p.ctl.conditions, p.writer.stallCycles, p.srq.stallCycles, p.req.sends };
+            for (long x : v) h = 31 * h + x;
+            mc += k.mcycle; wfi += k.cyclesWfi; ins += k.instructions;
+        }
+        h = 31 * h + violations; h = 31 * h + log.size(); h = 31 * h + conditionEvents;
+        return String.format("cycle %d units %d mcycle %d wfi %d instructions %d violations %d log %d hash %016x", cycle, all.size(), mc, wfi, ins, violations, log.size(), h);
+    }
+
+    /** Every sleeping unit's per-cycle counters brought up to the current cycle (before anything outside reads them). */
+    void syncCounters() { if (skip) for (int u = 0; u < 67; u++) if (asleep[u]) catchUp(u, cycle); }
+    /** Unit u awake from now (the harness reaches into it directly: a load, a store, a pulse). */
+    void wakeNow(int u) { if (asleep[u]) { catchUp(u, cycle); asleep[u] = false; } }
+    /** Every unit awake from the next cycle (the harness changed something directly). */
+    void wakeAll() { if (skip) for (int u = 0; u < 67; u++) if (asleep[u]) { catchUp(u, cycle); asleep[u] = false; } }
+
     @Override public void runCycle(long t) {
+        if (skip) wakeDue(t);
         if (shuffle != null) {
             for (int i = children.length - 1; i > 0; i--) { int j = shuffle.nextInt(i + 1); Component x = children[i]; children[i] = children[j]; children[j] = x; }
         }
         reqBus.runCycle(t);                                      // first: a request store at t sees the entry it frees
-        if (parked == null) for (Component c : children) c.runCycle(t);
+        if (skip) { for (Component c : children) if (!(c instanceof Tile p && (asleep[p.idx] || parked != null && parked[p.idx]))) c.runCycle(t); }
+        else if (parked == null) for (Component c : children) c.runCycle(t);
         else for (Component c : children) if (!(c instanceof Tile p && parked[p.idx])) c.runCycle(t);
         boolean err = false;
         for (Tile p : tiles) {
+            if (skip && asleep[p.idx]) continue;                  // a sleeping tile's lines are as it left them
             if (p.ctl.readyPulseAt == t) { cc.readyPulse(p.idx, t); phases.onReady(p.idx, t); }
             boolean e = p.ctl.errorLine(); err |= e;
-            if (e != errSeen[p.idx]) { errSeen[p.idx] = e; cc1p.errorLine(t, p.idx, e); }   // ERROR_LINES (8.14)
+            if (e != errSeen[p.idx]) { errSeen[p.idx] = e; errHighN += e ? 1 : -1; cc1p.errorLine(t, p.idx, e); }   // ERROR_LINES (8.14)
         }
+        if (skip) err = errHighN > 0;
         if (cores != null) cores.endCycle(t); else cc1p.runCycle(t);   // with cores, C&C 1's slot runs its peripheral
         if (s1.late != s1LateSeen) { s1LateSeen = s1.late; violation(t, -1, s1.lastLate); }
         if (resetRequest != 0) doReset(t);
@@ -140,18 +226,23 @@ final class Chip implements Component {
         }
         if (!err) java.util.Arrays.fill(condSeen, 0);
         checkInvariants(t);
+        if (skip) sleepCheck(t);
     }
 
     void log(long t, int tile, String msg) { log.add("cycle " + t + (tile >= 0 ? " tile " + tile : "") + ": " + msg); }
 
     /** Advance one cycle (the first call runs cycle 1). */
     void step() { runCycle(++cycle); }
-    void run(long n) { for (long i = 0; i < n; i++) step(); scanOverflows(); }
+    /** run and runUntil wake every unit first: the harness may have changed any of them directly between cycles (a
+     *  field poked, a condition raised), which no bus or line reports; a unit with nothing to do sleeps again after one
+     *  cycle. Stepping a unit with nothing to do is exact either way. */
+    void run(long n) { wakeAll(); for (long i = 0; i < n; i++) step(); scanOverflows(); syncCounters(); }
     boolean runUntil(java.util.function.BooleanSupplier cond, long max) {
+        wakeAll();
         try {
             for (long i = 0; i < max; i++) { if (cond.getAsBoolean()) return true; step(); }
             return cond.getAsBoolean();
-        } finally { scanOverflows(); }
+        } finally { scanOverflows(); syncCounters(); }
     }
     /** Run until nothing is in flight anywhere (or max cycles); true if quiescent. */
     boolean drain(long max) { return runUntil(this::quiescent, max); }
@@ -164,6 +255,7 @@ final class Chip implements Component {
     private void checkInvariants(long t) {
         if ((t & 15) == 0) scanOverflows();
         for (int i = 0; i < 64; i++) {
+            if (skip && asleep[i]) continue;                      // its counters move only when it steps
             Tile p = tiles[i];
             long[] s = seen[i];
             if (p.router.ejectErrors != s[0]) { s[0] = p.router.ejectErrors; violation(t, i, "packet ejected at the wrong tile"); }
@@ -227,10 +319,11 @@ final class Chip implements Component {
     }
 
     /** Back door (tests): copy words into every tile's controller memory (instruction or data) at a byte address. */
-    void pokeAll(int byteAddr, int[] words) { for (Tile p : tiles) for (int i = 0; i < words.length; i++) p.core.pokeLocal(byteAddr + 4 * i, words[i]); }
+    void pokeAll(int byteAddr, int[] words) {
+        wakeAll(); for (Tile p : tiles) for (int i = 0; i < words.length; i++) p.core.pokeLocal(byteAddr + 4 * i, words[i]); }
 
     /** Arm and/or start every tile's address generator in the same cycle (+ its start skew when skewed is set). */
-    void pulseAll(int bits) { for (Tile p : tiles) p.pulse(bits); }
+    void pulseAll(int bits) { wakeAll(); for (Tile p : tiles) p.pulse(bits); }
 
     /** Lateness and drift of the last address-generator run on every tile (invariant 3; the 2 October ruling). */
     String agReport() {
@@ -278,6 +371,8 @@ final class Chip implements Component {
      *  LVDS, AXI and LPDDR side kept: nothing meshsim models). Every unit is reset as at power-on except the memories. */
     void reset(boolean hard) { resetRequest = Math.max(resetRequest, hard ? 2 : 1); }
     private void doReset(long t) {
+        if (skip) for (int u = 0; u < 67; u++) if (asleep[u]) { catchUp(u, t); asleep[u] = false; }
+        errHighN = 0;
         for (BusBase b : buses) b.flush();
         for (Tile p : tiles) p.reset(t);
         reqBus.reset(); cc1p.reset(t); cc.resetModel(t);

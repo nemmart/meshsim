@@ -23,7 +23,11 @@ the request bus, `PeripheralSlot.liveErrors`, `scanOverflows` (chip-level loops:
 
 S1 on primitive collections (`src/Prim.java`), its message built only when reported; `newPhase` clears only the bitmap words
 set since the last phase. Exact on all 39 quick-suite steps, the sort at n=16384 and ReplayBench, locally. **About -20%
-locally** (the sort at n=16384 62 → 50 s; the synthetic replay bench median 57 → 46 µs/cycle). Runner proof: Quest 119.
+locally** (the sort at n=16384 62 → 50 s; the synthetic replay bench median 57 → 46 µs/cycle). **Quest 119** (A merged
+forward, 7606a9e, against main 2d8d9c1): the quick suite 39 of 39 the same, and the full-size sort, T2 segment 0 and
+ReplayBench of both workloads 5 of 5 the same (fingerprints, logs, T2's CSVs). The full-size sort's baseline with GO/READY at 8
+is now **1,229,687 cycles**. Speed, each alone on the box: the full-size sort 109.1 → 100.5 s (-8%); **the real replay
+unchanged** (evm-zone-29, 3 repeats: 49.8 → 49.6 µs/cycle): its cost was never in S1 or newPhase.
 
 ## 3. B: eager bus commit — dropped (owner, 2026-11-06); the key finding for the design
 

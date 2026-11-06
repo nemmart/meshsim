@@ -82,7 +82,8 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
 - `v1.26.1/ERRATA.md` E1 (ConvertDelivery's manifest order) **added** 2026-11-06; the owner tells Tony. (F1 moved to v1.4, owner, 2026-11-05: v1.3 is the Tracer, solid enough for Tony's RTL).
 - **B1 done and merged** (2026-11-06, e67bc43; WORKER22 closed). Next for v1.3: fold `sessions/WORKER22-SPEC-QUESTIONS.md`
   (Q1-Q17) and the 11-06 rulings (items 142, 148, 149, 157, `stage_delay`) into 4.21 and `CHANGES-v1.3.md`; the statistics
-  counters into the model; Tony's implementer's review; the RTL guide v1.26.1 → v1.3; the freeze.
+  counters into the model; Tony's implementer's review; the RTL guide v1.26.1 → v1.3; **stage 1 and the latency commit merged (owner: in v1.3)**; one
+  final regression; the freeze.
 - **P1, full-detail simulation at full scale** (WORKER28): **started 2026-11-05** on steps 1-2 only (the profile on the scratch
   branch `sim-idle-profile`, never merged, and the wake-source list); implementation after B1 merges. The runner's 45-minute
   task limit can be raised by the owner when a task needs it.

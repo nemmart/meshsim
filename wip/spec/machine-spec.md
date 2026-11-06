@@ -32,7 +32,10 @@ In the rules below, **"(hardware)"** marks a checked rule and **"(meshsim)"** ma
 - **The peripheral DMA counts 128-bit words** (4.17.9): every packet 128 bits, no remainders.
 - **The controller-fed templates are broadcast** by C&C 3 when proving starts, and each tile trims them by its record's bitmap (4.19.9, 4.19.13).
 - **The ground truth is a16z's Jolt** (`7189216`, the verifier's source), **gold the Java emulator**, and jolt-cpp `88dca85` the pin, checked (4.19).
-- The Tracer's side of the memory system (6.7, 7), its window (8.16), invariants (9), parameters (5, 10) and items 144–157 (13).
+- The Tracer's side of the memory system (6.7, 7), its window (8.16), invariants (9), parameters (5, 10) and items 144–158 (13).
+- **The segment on the chip** (4.21.10, 6.3): C&C 1's two barriers around the trace, the per-window "armed" handshake, and the final GO that starts the replay.
+
+**How v1.3's text is meant** (owner, 2026-11-06). It makes **reasonable default calls** so that the RTL can start, and states **what the hardware must do observably, not how**. Where the RTL finds a better way, the spec follows it; nobody should feel strongly about a default. So a statement here of a mechanism (a buffer, an order of operations, a counter's exact attribution) is the default, and an implementation that is observably the same, or better and reported back, is welcome.
 
 **v1.26.1 in brief** (a point release; in full: `CHANGES-v1.26.1.md`). v1.26.1 is v1.26 with **exactly the four changes of `planning/DECISIONS-v1.26.md` section 3**, made with the Tracer's design so that both units start from the final layouts, and nothing else:
 - **`RUN_CONFIG`, window word 32** (4.19.9, 8.11): the rows a pass runs ([23:0], so a pass can be shorter or longer than a window) and the two per-pass flags, use the store log [24] and output `rd_prev` [25]; [28:26] the Tracer's per-stream compression enables, which the replayer ignores (owner, 2026-11-05); sticky, 0 at reset. The same word on the Tracer, which ignores [24] and [25].
@@ -1968,7 +1971,7 @@ The table update happens as each value is produced; the core takes one code valu
 
 *Figures 9.1 (the Tracer), 9.3 (the state record); 9.2 (the output path) is to come.*
 
-The **Tracer** is **C&C 3's peripheral** (2, 6.6): the RV64 row machine that executes the guest program and writes each window's **run log**, the state record and the three streams that the tiles' replayers consume (4.19.2). It runs one **segment** of 2²² rows per proof, as 64 runs of one window each, and stops at the end of every run until its output is drained. It is **peripheral 1, type 3**, and uses the standard window throughout (4.17). This section specifies it in full for the model and the RTL; it states `planning/DECISIONS-v1.3.md` sections 1–25 as decided (cited **§*n*** in this section; the owner's rulings on SP1's plan, 2026-11-05, are recorded there up to 830b8e7). Its own additions, all ruled on by the owner on 2026-11-05 (DECISIONS-v1.3 up to 7fab0ad), are gathered in section 13 (items 144–157), and what is still open or provisional is marked.
+The **Tracer** is **C&C 3's peripheral** (2, 6.6): the RV64 row machine that executes the guest program and writes each window's **run log**, the state record and the three streams that the tiles' replayers consume (4.19.2). It runs one **segment** of 2²² rows per proof, as 64 runs of one window each, and stops at the end of every run until its output is drained. It is **peripheral 1, type 3**, and uses the standard window throughout (4.17). This section specifies it in full for the model and the RTL; it states `planning/DECISIONS-v1.3.md` sections 1–25 as decided (cited **§*n*** in this section; the owner's rulings on SP1's plan, 2026-11-05, are recorded there up to 830b8e7), **the answers to the seventeen questions that building it in meshsim raised** (B1, WORKER22; cited **Q*n***, `planning/sessions/WORKER22-SPEC-QUESTIONS.md`, all answered by the owner on 2026-11-05 and 2026-11-06), and the owner's rulings of 2026-11-06. Its own additions are gathered in section 13 (items 144–158). **It states defaults** (the front matter's "How v1.3's text is meant"): what the Tracer must do observably is the rule, and where a mechanism is given it is a reasonable way to get there, which the RTL may better. 4.21.1–4.21.9 are the hardware; **4.21.10 is the software contract** around it, the segment's sequence on the chip.
 
 #### 4.21.1 Overview
 
@@ -2053,7 +2056,8 @@ So at the end of run *n* the 68 words are mixed (§24): **words 0 and 2–66 are
 - **sets the credits:** the advice credit and the expansion credit to 2 (below); every output queue's credits to 0;
 - **clears the counters:** the read queue's half-entry pointer (an entry holds two advice values) and the queue-length registers (words 37–39); the advice field itself is the count, written with word 1 after it;
 - **invalidates the instruction cache, the data cache and the jump LRU, without writing back dirty lines** (§21, §23): the previous segment's copy of memory is throwaway, so its dirty lines are simply dropped;
-- **clears the template latch** (4.21.4) and the template bitmap.
+- **clears the template latch** (4.21.4) and the template bitmap;
+- **clears the statistics counters**, words 44–51 (below).
 
 That is safe although words 1–67 follow, because the caches fill only during execution, which begins at `PULSE_RUN`. **Word 0 is written only at a segment's start** (§24): a rewrite mid-segment would flush the read queue and the caches and lose the segment's progress, so **a mid-segment rewrite is UB** (meshsim can't tell a rewrite from a new segment's record, so it flags a word-0 write that finds advice still unconsumed, the advice field above 0). Words 1–67 are written only while the Tracer is stopped, like every part-0 write (a write while running is UB); firmware writes them only at a segment's start, in the record's order, word 0 first.
 
@@ -2088,16 +2092,18 @@ The replayer ignores [28:26], as the Tracer ignores [25:24]. As on the replayer:
 | 41 | `HASH_STEP` | R/W | [23:0] *p*₃; [31:24] reserved | the map's probe step, a 24-bit prime (so odd) |
 | 42 | `HASH_LINES` | R/W | [4:0] *k*; [31:5] reserved | the map has 2*ᵏ* lines of 128 B |
 | 43 | `EXPANSION_TEMPLATE` | W | [6:0] template number, [31] valid; [30:7] reserved | the template C&C 3 is feeding (4.21.4); a load reads 0 |
-| 44 | `STAT_CYCLES` | R | [31:0] | cycles running (`STATUS` [0] 1) since the word-0 write (item 157) |
-| 45 | `STAT_STALL_FETCH` | R | [31:0] | instruction-fetch stall cycles |
-| 46 | `STAT_STALL_DATA` | R | [31:0] | data-miss stall cycles |
-| 47 | `STAT_STALL_MAP` | R | [31:0] | map-probe stall cycles |
-| 48 | `STAT_STALL_OUTPUT` | R | [31:0] | cycles stalled on a full FIFO or output queue |
-| 49 | `STAT_MISS_I` | R | [31:0] | instruction-cache misses |
+| 44 | `STAT_CYCLES` | R | [31:0] | cycles with `STATUS` [0] at 1 (item 157): running, the drain included |
+| 45 | `STAT_STALL_FETCH` | R | [31:0] | cycles a row waits for an instruction fill (one or two, 4.21.5) |
+| 46 | `STAT_STALL_DATA` | R | [31:0] | cycles a row waits for its data line: the fill, **and the wait for the write-back buffer** (owner, 2026-11-06) |
+| 47 | `STAT_STALL_MAP` | R | [31:0] | cycles a row waits for its map probe: the lines' fills and comparisons |
+| 48 | `STAT_STALL_OUTPUT` | R | [31:0] | cycles in which **either drain scan is stalled on a full output queue** (owner, 2026-11-06; 4.21.6): one count per cycle, whether one scan or both |
+| 49 | `STAT_MISS_I` | R | [31:0] | instruction-cache misses: lookups that missed, a straddling instruction's two halves each its own |
 | 50 | `STAT_MISS_D` | R | [31:0] | data-cache misses |
-| 51 | `STAT_PROBES` | R | [31:0] | jump-LRU misses, each a map probe |
+| 51 | `STAT_PROBES` | R | [31:0] | jump-LRU misses, each starting a map probe (4.21.4) |
 
-Words 37–39 are **0 from `PULSE_RUN` until the run's rows end**, then **fixed and exact** until the next `PULSE_RUN` (the stream word's word counts, 4.21.6). Words 40–42, **the hash's constants**, are context, not state (§18: word 66 has no room), so they are registers: **written once per proof** while the Tracer is stopped (a write while running is UB), sticky, untouched by the word-0 write, 0 after the reset. Words 44–127 are reserved *(Open, item 157: statistics registers, if bring-up wants them)*.
+Words 37–39 are **0 from `PULSE_RUN` until the run's rows end**, then **fixed and exact** until the next `PULSE_RUN` (the stream word's word counts, 4.21.6). Words 40–42, **the hash's constants**, are context, not state (§18: word 66 has no room), so they are registers: **written once per proof** while the Tracer is stopped (a write while running is UB), sticky, untouched by the word-0 write, 0 after the reset.
+
+**Words 44–51, the statistics counters** (owner, 2026-11-06; item 157): a minimal fixed set for bring-up, so the RTL and meshsim can be compared counter for counter. Each is **32 bits, wrapping**, read-only (a store is a bus error), **0 after the reset and cleared by the word-0 write**, so they count across a segment's runs (`PULSE_RUN` leaves them alone; a segment is about 21 M cycles, well inside 32 bits); they **count while `STATUS` [0] is 1**, which includes the drain and, after a stopping error, the cycles until the reset (4.21.8). A stall cycle is counted in the cycle it happens, so a load mid-stall reads the cycles so far. **The waits on C&C 3 are in none of them:** an advice row waiting on an empty read queue, a controller-fed expansion waiting on new expansion or on the expansion queue (4.21.9). The attributions are **defaults** (owner, 2026-11-06): the RTL may refine them (a finer split, a cause counted differently) and say so, and meshsim follows. Words 52–127 are reserved.
 
 **Its events** (4.17.3) (the flag set §24's; the bit positions SP1's, item 144, accepted, owner, 2026-11-05). The positions shared with the replayer are kept, so the advice credit sits where the replayer's read-log credit does:
 
@@ -2122,31 +2128,37 @@ Words 37–39 are **0 from `PULSE_RUN` until the run's rows end**, then **fixed 
 - **The expansion queue, part 4**, 4 KB, **identical to the replayer's** (§24; 4.19.8): depth-2 credits of half a queue, set to 2 by the word-0 write and again at each new expansion, so a template longer than the queue (KECCAK's 3,121 words against 256 entries) streams in as the Tracer consumes it.
 - **Overrun:** a push into a full queue is dropped and sets `ERRORS` [1] (4.21.8), checked as on the replayer.
 
-**The controller's loops** (C&C 3's firmware, for orientation; the rules are the text above and in 4.21.6). Per proof, once the update stream is applied and the Tracer's copy exists (§22):
+**The controller's loops** (C&C 3's firmware, for orientation; the rules are the text above, 4.21.6 and 4.21.10; meshsim's `sw/tracer/tracer_ctl.c` is the working version). Per proof, once the update stream is applied and the Tracer's copy exists (§22):
 
 ```
     (at startup, once) load the decode table and the ROM into part 0 (0x1000, 0x2000)
     tr->HASH_MUL = p1; tr->HASH_STEP = p3; tr->HASH_LINES = k      ; per proof, from the program's map
     tr->RUN_CONFIG = 65536 | COMPRESS_CODE | COMPRESS_READ | COMPRESS_WRITE
+    drop any expansion being fed (its template, position, pending chunks)   ; Q14: the word-0 write resets
+          the expansion credit, and the Tracer presents the expansion again
     write record words 0-67, word 0 first: frame 2's state; word 1's advice field = frame 3's count,
           its other fields 0; frame 2's registers; word 66 from C&C 3 (section 22) and frame 7; word 67 0
     tr->EVENTS_MASK = RUN_DONE | DMA_DONE | ADVICE | EXPANSION | NEW_EXP | SVC_STATE | SVC_CODE | SVC_READ | SVC_WRITE
     preload advice: up to two half-queue refills from frame 3 (the credits are already 2)
+    wait for C&C 1's start (a landed command, after the first barrier's GO), then stage_delay (4.21.10)
+    send window 0's start, record words 0 and 2-66 from C&C 3's own copy, to tile 0's record   ; Q3
     for window n in 0..63:
         tr->PULSE_RUN = 1
         loop: WFI; ev = tr->EVENTS & tr->EVENTS_MASK             ; consumes the counted bits only
             new expansion: key(EXPANSION_OPCODE) -> template t; if t is an inline:
                            tr->EXPANSION_TEMPLATE = VALID | t; feed t's words from EXPANSION_OFFSET on its credits
             expansion / advice credit: send up to half a queue of what remains
-            state service: four transfers from queue 0 (4.21.6): word 0 and words 2-66 to tile n+1's record,
-                           words 1 and 67 to tile n's (at n = 63, all 68 to C&C 3's own memory)
-            code / read / write service: one transfer of what the credit covers, to tile n's stream area
+            state service: arm a counter for tile n's "armed"; then four transfers from queue 0, in its
+                           order (4.21.6): word 0 to tile n+1, word 1 to tile n, words 2-66 to n+1, word 67 to n
+                           (n = 63: all 68 to C&C 3's own memory, then words 1 and 67 forwarded to tile 63; Q4)
+            code / read / write service, once tile n has said "armed": one transfer of what the credit
+                           covers, to tile n's stream area
             run done: next window
-    check the advice left (word 1's field, read at the 64th state service) is 0, and the end state
+    check the advice left (word 1's field, from the 64th record) is 0, and the end state
           (words 0, 2-65) equals the next segment's frame 2; else report (section 24)
 ```
 
-C&C 3 waits for DMA done between transfers (one at a time, 4.17.9), and re-reads `EVENTS` after each, since the service flags are live.
+C&C 3 waits for DMA done between transfers (one at a time, 4.17.9), and re-reads `EVENTS` after each, since the service flags are live. Until tile *n* has said "armed" its stream queues simply wait full, their scans stalled (4.21.6): no deadlock, since the state service never depends on them.
 
 #### 4.21.4 Execution
 
@@ -2876,8 +2888,16 @@ The reset empties both FIFOs, clears [17:16] and loads the reset divisor (4.20).
 | 41 | `HASH_STEP` (R/W) | [23:0] *p*₃; [31:24] reserved | the probe's step, a 24-bit prime; the same rules | 0 |
 | 42 | `HASH_LINES` (R/W) | [4:0] *k*; [31:5] reserved | the map has 2*ᵏ* lines; the same rules | 0 |
 | 43 | `EXPANSION_TEMPLATE` (W) | [6:0] template number, [31] valid; [30:7] reserved | sets the run's template bitmap bit and latches the number (4.21.4); a load reads 0 | — |
+| 44 | `STAT_CYCLES` (R) | [31:0] | cycles with `STATUS` [0] at 1, the drain included (4.21.3) | 0 |
+| 45 | `STAT_STALL_FETCH` (R) | [31:0] | cycles waiting for instruction fills | 0 |
+| 46 | `STAT_STALL_DATA` (R) | [31:0] | cycles waiting for data lines, the write-back buffer's wait included | 0 |
+| 47 | `STAT_STALL_MAP` (R) | [31:0] | cycles waiting for map probes | 0 |
+| 48 | `STAT_STALL_OUTPUT` (R) | [31:0] | cycles in which either drain scan is stalled on a full output queue | 0 |
+| 49 | `STAT_MISS_I` (R) | [31:0] | instruction-cache misses | 0 |
+| 50 | `STAT_MISS_D` (R) | [31:0] | data-cache misses | 0 |
+| 51 | `STAT_PROBES` (R) | [31:0] | jump-LRU misses, each a map probe | 0 |
 
-Words 33–39 have no read side effects, and a store to any is a bus error; words 44–51 are the statistics counters (item 157: read-only, cleared by the word-0 write; a store to one is a bus error), and 52–127 are reserved.
+Words 33–39 and 44–51 have no read side effects, and a store to any is a bus error. **Words 44–51 are the statistics counters** (item 157; 4.21.3): 32 bits, wrapping, cleared by the word-0 write as well as the reset, counting while `STATUS` [0] is 1; the waits on C&C 3 (advice, expansions) are in none of them. Words 52–127 are reserved.
 
 ---
 

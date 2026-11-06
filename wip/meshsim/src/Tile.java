@@ -118,6 +118,7 @@ final class Tile implements Component {
         // the SRAM read queue and the injection point share the token pool: one unit, run in that order (4.5)
         Component srqInj = t -> { srq.runCycle(t); inj.runCycle(t); };
         children = new Component[] { router, srqInj, dir, cmem, sram, writer, ag, ts, hist, readPort, gat, core };
+        gatherReal = gather.in != null;
         ownBuses = reg == null ? java.util.List.of() : new ArrayList<>(reg.subList(reg0, reg.size()));
     }
     /** The buses this unit built (its internal ones): stage 1 wakes the unit on a put to any of them, so a put from
@@ -125,14 +126,41 @@ final class Tile implements Component {
     private final java.util.List<BusBase> ownBuses;
     void wakeOnOwnBuses(Chip c) { for (BusBase b : ownBuses) if (b.wakeChip == null) { b.wakeChip = c; b.wakeUnit = idx; } }
 
+    /** C (WORKER29): the children stepped by direct calls, in the order of {@link #order} (their indices in
+     *  {@link #children}), so the JIT can inline each unit's step instead of one megamorphic interface call; the shuffle
+     *  permutes the indices with the same draws as it permuted the children. */
+    private final int[] order = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 };
+    private boolean gatherReal;
     @Override public void runCycle(long t) {
         if (shuffle != null) {
-            for (int i = children.length - 1; i > 0; i--) { int j = shuffle.nextInt(i + 1); Component x = children[i]; children[i] = children[j]; children[j] = x; }
+            for (int i = order.length - 1; i > 0; i--) { int j = shuffle.nextInt(i + 1); int x = order[i]; order[i] = order[j]; order[j] = x; }
+            for (int i = 0; i < order.length; i++) step(order[i], t);
+        } else {
+            router.runCycle(t); srq.runCycle(t); inj.runCycle(t); dir.runCycle(t); cmem.runCycle(t); sram.runCycle(t);
+            writer.runCycle(t); ag.runCycle(t); ts.runCycle(t); hist.runCycle(t); readPort.runCycle(t);
+            if (gatherReal) gather.runCycle(t); else gatherStub.runCycle(t);
+            core.runCycle(t);
         }
-        for (Component c : children) c.runCycle(t);
         slot.runCycle(t);
         slot.endCycle(t);
         ctl.endCycle(t);
+    }
+
+    private void step(int k, long t) {
+        switch (k) {
+            case 0 -> router.runCycle(t);
+            case 1 -> { srq.runCycle(t); inj.runCycle(t); }       // one unit: they share the token pool (4.5)
+            case 2 -> dir.runCycle(t);
+            case 3 -> cmem.runCycle(t);
+            case 4 -> sram.runCycle(t);
+            case 5 -> writer.runCycle(t);
+            case 6 -> ag.runCycle(t);
+            case 7 -> ts.runCycle(t);
+            case 8 -> hist.runCycle(t);
+            case 9 -> readPort.runCycle(t);
+            case 10 -> { if (gatherReal) gather.runCycle(t); else gatherStub.runCycle(t); }
+            default -> core.runCycle(t);
+        }
     }
 
     /** Monotonic event counts per condition (TileControl sets a condition when its count grows; spec 4.13). */

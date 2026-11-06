@@ -207,7 +207,7 @@ public final class PeripheralSlotTest {
         long t = n.c.cycle;
         // READY and GO
         c.write(t, Cnc1Peripheral.READY_EXPECT, 0b1010); c.write(t, Cnc1Peripheral.READY_EXPECT + 1, 0);
-        c.readyPulse(1, t); c.readyPulse(3, t); n.step(); n.step();
+        c.readyPulse(1, t); c.readyPulse(3, t); for (int i = 0; i <= k.readyLatency; i++) n.step();   // visible ready_latency + 1 on
         T.eq(0b1010, c.read(n.c.cycle, Cnc1Peripheral.READY_LINES), "READY_LINES_0: tiles 1 and 3 (sticky)");
         T.eq(1 << Cnc1Peripheral.EV_ALL_READY, c.read(n.c.cycle, 6) & 1 << Cnc1Peripheral.EV_ALL_READY, "all tiles READY: (READY & EXPECT) == EXPECT (live)");
         T.eq(1, c.read(t, 0), "PARAMS: type 1, Ingress/Egress with the UART (4.17.1, D46)");
@@ -218,12 +218,12 @@ public final class PeripheralSlotTest {
         T.eq(0, c.read(n.c.cycle, 6) & 1 << Cnc1Peripheral.EV_ALL_READY, "all tiles READY falls");
         // the error lines
         n.c.tiles[33].ctl.conditions = 1 << Conditions.DRIFT;
-        for (int i = 0; i < 5; i++) n.step();
+        for (int i = 0; i < k.errorLatency() + 4; i++) n.step();         // the line's latency, then the unit-error path
         T.eq(2, c.read(n.c.cycle, Cnc1Peripheral.ERROR_LINES + 1), "ERROR_LINES_1 bit 1: tile 33's ERRORS non-zero (live)");
         T.eq(1, c.read(n.c.cycle, 2), "ERRORS [0], the unit-error bit");
         T.check(c.toast, "the toast pin latches on a C&C 1 error");
         n.c.tiles[33].ctl.conditions = 0;
-        for (int i = 0; i < 5; i++) n.step();
+        for (int i = 0; i < k.errorLatency() + 4; i++) n.step();
         T.eq(0, c.read(n.c.cycle, Cnc1Peripheral.ERROR_LINES + 1), "the line follows its unit");
         T.check(c.toast, "the toast pin stays latched (until the reset)");
         // the watchdog

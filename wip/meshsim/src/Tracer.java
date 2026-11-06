@@ -179,6 +179,13 @@ final class Tracer implements Peripheral {
      *  the reset, counting while STATUS [0] is 1. Each stall cycle is counted in its own cycle (stat, statUntil below), so a
      *  load mid-stall reads exactly the cycles so far. Advice and expansion waits are in none of them. */
     final int[] stat = new int[STAT_N];
+    /** Stage 1: the counters tick only while STATUS [0] is 1 (running) or a stall started then runs out; the tile sleeps
+     *  only with its peripheral idle, and the Tracer reports idle never (Peripheral.idle's default), so C&C 3's tile never
+     *  sleeps and there is nothing to catch up. Should it ever be skipped while counting, fail rather than drift. */
+    @Override public void skipCycles(long n) {
+        if (n > 0 && (running || statUntil > settled)) throw new IllegalStateException("the Tracer's counters (words 44-51) would tick while its tile sleeps");
+    }
+    @Override public long[] digestWords() { long[] w = new long[STAT_N]; for (int i = 0; i < STAT_N; i++) w[i] = stat[i]; return w; }
     private long statUntil = Long.MIN_VALUE;          // a data or map stall in progress: its cycles up to (excluding) this
     private int statCause;                            // ST_STALL_DATA or ST_STALL_MAP
 

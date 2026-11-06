@@ -621,7 +621,7 @@ public final class RecipeTest {
         final int P = 16, AT = 0xE0000;                                 // 16 rows into area 7 (6.2's staging area)
         List<long[]> ps = new ArrayList<>();
         for (int i = 0; i < P; i++) ps.add(new long[] { LinkWord.BROADCAST, LinkWord.M_WRITE, 0x03000000 | (AT + 4 * i) << 2, 0x5EED0000L | i, LinkWord.SIZE_128, (long) i << 32, LinkWord.counter(0) + 1 });
-        m.c.cc.command(LinkWord.BROADCAST, 0x53 << 24 | P).go().waitCycles(32).send(ps);   // CMD_STAGE; the data no sooner than stage_delay after GO
+        m.c.cc.command(LinkWord.BROADCAST, 0x53 << 24 | P).go().waitCycles(m.c.cfg.stageDelay).send(ps);   // CMD_STAGE; the data no sooner than stage_delay after GO
         T.check(m.run(() -> idle(m), 40000), "every tile armed, took the staged data and pulsed done");
         int bad = 0, irq = 0;
         for (Tile p : m.c.tiles) {

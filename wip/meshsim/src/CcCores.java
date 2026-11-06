@@ -60,10 +60,14 @@ final class CcCores implements Component {
                 fifos.add(dmaIn);
             }
             u.req.bus = chip.reqBus; u.req.target = c;
+            toCc[c].wakeChip = chip; toCc[c].wakeUnit = LinkWord.CC1 + c;        // stage 1: what crosses into a unit wakes it
+            fromCc[c].wakeChip = chip; fromCc[c].wakeUnit = c;
+            host[c].wakeChip = chip; host[c].wakeUnit = LinkWord.CC1 + c;
             for (WordFIFO[] fs : u.router.q) for (WordFIFO f : fs) fifos.add(f);
             fifos.add(u.weIn); fifos.add(u.gatherIn);
         }
         chip.reqBus.ccTiles = units;
+        chip.cc1p.wakeMe = at -> chip.wake(LinkWord.CC1, at);
         if (cfg.measureS1) for (Tile u : units) u.s1Attach(chip.s1);
     }
 
@@ -102,7 +106,7 @@ final class CcCores implements Component {
         for (int c = 0; c < 3; c++) if (!hostQ[c].isEmpty() && host[c].canPut(t)) {
             long[] p = hostQ[c].poll(); host[c].put(t, p[0], p[1], p[2]); hostPackets++;
         }
-        for (Tile u : units) u.runCycle(t);
+        for (Tile u : units) if (!chip.skip || !chip.asleep[u.idx]) u.runCycle(t);
     }
     /** After every unit has run t (Chip): the controllers' error lines into C&C 1's peripheral. */
     void endCycle(long t) {
@@ -159,6 +163,7 @@ final class CcCores implements Component {
         @Override public void accept(long t, int src, int offset, int size, long lo, long hi) { if (host != null) host.violate(t, "a write into a stub engine's region (type " + type + ", WORKER14)"); }
         @Override public void run(long t) {}
         @Override public boolean running(long t) { return false; }
+        @Override public boolean idle(long t) { return true; }
         @Override public int errors(long t) { return 0; }
         @Override public EventCounts events() { return ev; }
         @Override public void attach(Host h) { host = h; }

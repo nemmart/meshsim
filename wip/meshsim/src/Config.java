@@ -4,6 +4,8 @@ import java.nio.file.Path;
 final class Config {
     Hops hops;
     // ---- network (spec 3.2, 4.7) ----
+    /** Stage 1 (WORKER28): sleeping units are not stepped (-Dmeshsim.skip=false: every unit every cycle, as before). */
+    boolean idleSkip = !"false".equalsIgnoreCase(System.getProperty("meshsim.skip", "true"));
     int linkLatency = 3;                 // every link direction (spec 3.2)
     int[][] linkLatencyOverride;         // [tile][direction], tests only (null = uniform)
     int queueDepth = 16;                 // router FIFOs, including tile 0's C&C FIFOs
@@ -51,7 +53,7 @@ final class Config {
     // ---- the controller (spec 4.11) ----
     int regLoadLatency = 2;              // register and table-window load latency, cycles (4.11: 1 or 2, fixed per register; meshsim models 2, the worst case: its reference setting)
     // ---- C&C (spec 6.2, section 10) ----
-    int stageDelay = 32;                 // stage_delay: C&C's first staged packet no sooner than this after its GO store (Proposed)
+    int stageDelay = 64;                 // stage_delay: C&C's first staged packet no sooner than this after its GO store (64, owner 2026-11-06: was 32)
     boolean ccCores = false;             // WORKER14: C&C 1-3 as cores (controller tiles 64-66, CcCores); off = the Java model (CnC)
     /** WORKER22 (B1): C&C 3's peripheral is the Tracer (spec 4.21; needs ccCores), its DMA wired into C&C 3's router
      *  (item 118); the harness sets the Tracer's memory system. Off: the type-3 stub. */
@@ -71,9 +73,9 @@ final class Config {
     // ---- control (spec 6, 10) ----
     boolean realResponder = false;       // M1-M3 test machines: the GATHER engine is a drain; machine() = real (name kept from M5)
     boolean coreless = true;             // M1-M3 test machines: tiles start in RUN with no controller; Config.machine() = the spec's
-    int goLatency = 1;                   // C&C's GO store to every tile (balanced net)
+    int goLatency = 8;                   // C&C's GO store to every tile (balanced net; 8, owner P1 2026-11-06: was 1)
     int runLatency = 1;                  // as GO
-    int readyLatency = 1;                // the READY lines (1 in simulation; 8 used for estimates)
+    int readyLatency = 8;                // the READY lines (8, owner P1 2026-11-06: was 1 in simulation, 8 for estimates)
     boolean cncGoSettle = true;          // C&C sends nothing until GO has reached every tile (go_latency + 1 after the store)
     int cncReaction = 1;                 // cycles from C&C seeing all 64 READY bits to its clear-and-GO store (Java sequencer)
     // ---- simulator ----
@@ -92,7 +94,7 @@ final class Config {
     // ---- Conditions, the done gate, the error line, C&C's receive FIFO ----
     boolean doneGate = true;             // spec 4.12: from done until GO only GO wakes the core; done clears the latch. false: TEST ONLY,
                                          // to show the wake-in-done check fires and what the gate prevents
-    int errorLatency = -1;               // the error line's OR tree to C&C's sticky error bit (6.6; no equal-latency requirement); -1 = ready_latency
+    int errorLatency = -1;               // the error line's OR tree to C&C's sticky error bit (6.6; no equal-latency requirement); -1 = ready_latency (8: a chip-wide net like READY, P1)
     int errorLatency() { return errorLatency >= 0 ? errorLatency : readyLatency; }
     int cncRxDepth = 64;                 // C&C's receive FIFO (6.6: at least 64 entries of 128-bit payload, size and src; item 29); a packet arriving full is lost
 

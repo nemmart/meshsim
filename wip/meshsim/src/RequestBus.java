@@ -93,7 +93,7 @@ final class RequestBus implements Component {
             q.deliveredAt = t; delivered.add(q);
             int tg = q.target();
             if (queue[tg].size() >= cfg.receiveQueueDepth[tg]) { violations++; lastViolation = "SIMULATOR: target " + tg + "'s receive queue overflowed (the root's credits should prevent it)"; }
-            else queue[tg].add(new long[] { q.w[0], q.w[1], q.w[2], q.w[3], t, q.storeT });
+            else { queue[tg].add(new long[] { q.w[0], q.w[1], q.w[2], q.w[3], t, q.storeT }); if (ccTiles != null) chip.wake(ccTiles[tg].idx, t + 1); }
         }
         for (Buf b : rootIn) b.arrive(t);
         for (int r = 0; r < 8; r++) for (int c = 0; c < 8; c++) rowIn[r][c].arrive(t);

@@ -58,7 +58,7 @@ final class WordDelayLine extends WordBus {
         va[i] = pa; vb[i] = pb; vc[i] = pc; at[i] = pendAt; count++;
     }
     @Override public boolean canPut(long t) { enter(t); return true; }
-    @Override public void put(long t, long a, long b, long c) { notePut(t); pa = a; pb = b; pc = c; pendAt = t + latency; }
+    @Override public void put(long t, long a, long b, long c) { notePut(t); pa = a; pb = b; pc = c; pendAt = t + latency; if (wakeChip != null) wakeChip.wake(wakeUnit, t + latency); }
     @Override public boolean ready(long t) { enter(t); return count > 0 && at[head] <= t; }
     private void check(long t) { if (!ready(t)) throw new IllegalStateException(name + ": nothing visible at " + t); }
     @Override public long peekA(long t) { check(t); return va[head]; }
@@ -111,7 +111,7 @@ final class WordFIFO extends WordBus {
         if (count > highWater) highWater = count;
     }
     @Override public boolean canPut(long t) { enter(t); return true; }
-    @Override public void put(long t, long a, long b, long c) { notePut(t); pa = a; pb = b; pc = c; }
+    @Override public void put(long t, long a, long b, long c) { notePut(t); pa = a; pb = b; pc = c; if (wakeChip != null) wakeChip.wake(wakeUnit, t + 1); }
     @Override public boolean ready(long t) { enter(t); return count > 0; }
     private void check(long t) { enter(t); if (count == 0) throw new IllegalStateException(name + ": empty at " + t); }
     @Override public long peekA(long t) { check(t); return va[head]; }
@@ -165,7 +165,7 @@ final class WordHold extends WordBus {
     }
     /** True if the register was empty at the start of cycle t. */
     @Override public boolean canPut(long t) { enter(t); return !occ && takes == 0; }
-    @Override public void put(long t, long a, long b, long c) { notePut(t); pa = a; pb = b; pc = c; }
+    @Override public void put(long t, long a, long b, long c) { notePut(t); pa = a; pb = b; pc = c; if (wakeChip != null) wakeChip.wake(wakeUnit, t + 1); }
     /** True at t if the put made at t-1 was refused (the old word was not taken at t-1). */
     boolean refused(long t) { enter(t); return refusedAt == t - 1; }
     /** Present the refused word again (the producer's retry; the register still holds it). */

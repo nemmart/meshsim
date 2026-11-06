@@ -116,6 +116,11 @@ final class PeripheralSlot implements Peripheral.Host {
         for (int n = 1; n <= 3; n++) if (p[n] != null) { p[n].reset(t); mask[n] = 0; dma[n] = new Dma(n); consumeT[n] = -1; pendMaskT[n] = -1; }
     }
     boolean inFlight(long t) { return false; }
+    /** Stage 1 (WORKER28): every peripheral idle and every DMA idle. */
+    boolean idle(long t) { for (int n = 1; n <= 3; n++) if (p[n] != null && (dma[n].busy || !p[n].idle(t))) return false; return true; }
+    void skipCycles(long n) { for (int k = 1; k <= 3; k++) if (p[k] != null) p[k].skipCycles(n); }
+    long[] digestWords() { java.util.List<Long> w = new java.util.ArrayList<>(); for (int k = 1; k <= 3; k++) if (p[k] != null) for (long x : p[k].digestWords()) w.add(x); return w.stream().mapToLong(Long::longValue).toArray(); }
+    long nextWakeAt(long t) { long w = Long.MAX_VALUE; for (int n = 1; n <= 3; n++) if (p[n] != null) w = Math.min(w, p[n].nextWakeAt(t)); return w; }
 
     /** The output port every DMA packet leaves by (4.17.9): {t, dst, mode, counter, addr, size, lo, hi}; tests read it, and
      *  a controller's unit wires it to its router port ({@link #dmaPort}). */

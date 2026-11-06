@@ -1,8 +1,8 @@
 /* Recipes 22 (C&C 1's side of the boot) and 27 (C&C 1's side of a phase). C&C 1 is a behavioural Java model in
  * meshsim v1.2 (D36); this is its firmware's shape for later, against D28's registers. Compiled, not run. */
 #include "rcp.h"
-#define GO_LATENCY   1      /* go_latency (param) */
-#define STAGE_DELAY  32     /* stage_delay (param, spec 6.2) */
+#define GO_LATENCY   8      /* go_latency (param; 8, P1 2026-11-06: was 1) */
+#define STAGE_DELAY  64     /* stage_delay (param, spec 6.2; 64, owner 2026-11-06: was 32) */
 void cc1_toast(uint32_t mcause, uint32_t mepc);   /* recipe 27's toast path, below */
 static unsigned parity[67];                         /* per unit: the next command's parity; tiles move together on broadcasts */
 volatile uint32_t results[64][2];

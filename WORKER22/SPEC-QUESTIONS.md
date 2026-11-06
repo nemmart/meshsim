@@ -178,8 +178,6 @@ then follow the trace, negligible against its ~21 M.
 The other departure, queue 0 sent in queue order so that the totals reach a tile before its streams but after the state
 words, was accepted with Q15's ruling.
 
-## Open
-
 **Q17. Q15's barrier (1) against 4.13's done rule: READY with the record's counters still armed.**
 
 A tile raises READY with its done pulse (`wait_for_command`, 6.3). But two rules stand in the way:
@@ -205,3 +203,19 @@ done pulses come with its counters at 0:
 In the harness, standing in for C&C 1's sequencing, the host commands C&C 1's phase and GO and starts C&C 3 directly.
 cc1.c gains no new command yet.
 
+**Answered (owner, 2026-11-06): yes, this order,** with one guard:
+- READY at boot with nothing armed.
+- GO, after which each tile arms its counters for the record's pieces and C&C 1 starts C&C 3.
+- The deliveries, with the per-window handshake.
+- READY again when a tile's counters reach 0 (its window has landed); this replaces C&C 3 reporting done.
+- C&C 1's final GO, for the replay.
+- **The guard:** tile 0's first delivery (window 0's start, Q3) can come before it has armed after the GO, so C&C 3 waits
+  for a single "armed" from tile 0 (for its record) before sending it. Every other tile's first delivery is a window later.
+
+*As built* (v1.3-tracer, after 515c11a): C&C 3 arms the guard's counter at its own boot, long before C&C 1 boots the
+tiles, and waits for its start as a landed command, with no done pulse, since that counter is armed. In T2 the host
+sequences C&C 1's two phases and C&C 3's start.
+
+## Open
+
+(none)

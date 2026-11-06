@@ -1366,6 +1366,7 @@ segments in between, so the full chip (T2) runs only the chosen ones. **WORKER26
 per-segment lists of pages written**, not 128 images.
 
 | F1 | **The file system on C&C 2, with a shell on C&C 1 over the UART**: C&C 3's page manager black-boxed; mkfs and fsck as host tools | 20, 22 | to start (WORKER23) |
+| P1 | **Full-detail simulation at full scale** (owner, 2026-11-05: a priority, delivered with v1.3): exact idle-skipping in meshsim, an "active" flag per unit set by any put on its inputs, a chip-wide line or its timer, cleared when nothing is in progress, counters caught up on waking; proven by identical logs with skipping on and off; then **T2 on all 128 segments of both workloads at 2²⁹** | the model's conventions | prompt written (`WORKER28/PROMPT.md`); **not started** (owner); implementation after B1 merges |
 
 ---
 

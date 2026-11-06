@@ -2088,6 +2088,14 @@ The replayer ignores [28:26], as the Tracer ignores [25:24]. As on the replayer:
 | 41 | `HASH_STEP` | R/W | [23:0] *p*₃; [31:24] reserved | the map's probe step, a 24-bit prime (so odd) |
 | 42 | `HASH_LINES` | R/W | [4:0] *k*; [31:5] reserved | the map has 2*ᵏ* lines of 128 B |
 | 43 | `EXPANSION_TEMPLATE` | W | [6:0] template number, [31] valid; [30:7] reserved | the template C&C 3 is feeding (4.21.4); a load reads 0 |
+| 44 | `STAT_CYCLES` | R | [31:0] | cycles running (`STATUS` [0] 1) since the word-0 write (item 157) |
+| 45 | `STAT_STALL_FETCH` | R | [31:0] | instruction-fetch stall cycles |
+| 46 | `STAT_STALL_DATA` | R | [31:0] | data-miss stall cycles |
+| 47 | `STAT_STALL_MAP` | R | [31:0] | map-probe stall cycles |
+| 48 | `STAT_STALL_OUTPUT` | R | [31:0] | cycles stalled on a full FIFO or output queue |
+| 49 | `STAT_MISS_I` | R | [31:0] | instruction-cache misses |
+| 50 | `STAT_MISS_D` | R | [31:0] | data-cache misses |
+| 51 | `STAT_PROBES` | R | [31:0] | jump-LRU misses, each a map probe |
 
 Words 37–39 are **0 from `PULSE_RUN` until the run's rows end**, then **fixed and exact** until the next `PULSE_RUN` (the stream word's word counts, 4.21.6). Words 40–42, **the hash's constants**, are context, not state (§18: word 66 has no room), so they are registers: **written once per proof** while the Tracer is stopped (a write while running is UB), sticky, untouched by the word-0 write, 0 after the reset. Words 44–127 are reserved *(Open, item 157: statistics registers, if bring-up wants them)*.
 
@@ -2869,7 +2877,7 @@ The reset empties both FIFOs, clears [17:16] and loads the reset divisor (4.20).
 | 42 | `HASH_LINES` (R/W) | [4:0] *k*; [31:5] reserved | the map has 2*ᵏ* lines; the same rules | 0 |
 | 43 | `EXPANSION_TEMPLATE` (W) | [6:0] template number, [31] valid; [30:7] reserved | sets the run's template bitmap bit and latches the number (4.21.4); a load reads 0 | — |
 
-Words 33–39 have no read side effects, and a store to any is a bus error; words 44–127 are reserved.
+Words 33–39 have no read side effects, and a store to any is a bus error; words 44–51 are the statistics counters (item 157: read-only, cleared by the word-0 write; a store to one is a bus error), and 52–127 are reserved.
 
 ---
 

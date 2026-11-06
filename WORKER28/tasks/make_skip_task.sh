@@ -92,12 +92,13 @@ mask() { sed -E 's/[0-9]+(\.[0-9]+)? ?(s|ms)\b/#s/g; s/[0-9]+ rows per JVM-secon
 csvmask() { awk -F, -v c=\$2 'BEGIN{OFS=","} {\$c="#"; print}' "\$1" | sort; }
 SAME=0; DIFF=0
 for N in t2-evm-zone-29 t2-cyclone-29 sb-evm-zone-29 sb-cyclone-29; do
-  V=SAME
+  V=""
   cmp -s "\$RES/\$N-false.digest" "\$RES/\$N-true.digest" || V="DIFF (fingerprints)"
   [ -s "\$RES/\$N-false.digest" ] || V="DIFF (no fingerprints)"
-  cmp -s <(mask "\$RES/\$N-false.log" | grep -v ': exit [0-9]*, ') <(mask "\$RES/\$N-true.log" | grep -v ': exit [0-9]*, ') || V="\$V; DIFF (logs)"
+  cmp -s <(mask "\$RES/\$N-false.log" | grep -v ': exit [0-9]*, ') <(mask "\$RES/\$N-true.log" | grep -v ': exit [0-9]*, ') || V="\$V DIFF (logs)"
   case \$N in t2-*) C=10;; *) C=8;; esac
-  cmp -s <(csvmask "\$RES/\$N-false.csv" \$C) <(csvmask "\$RES/\$N-true.csv" \$C) || V="\$V; DIFF (CSV)"
+  cmp -s <(csvmask "\$RES/\$N-false.csv" \$C) <(csvmask "\$RES/\$N-true.csv" \$C) || V="\$V DIFF (CSV)"
+  V=\${V:-SAME}
   [ "\$V" = SAME ] && SAME=\$((SAME + 1)) || { DIFF=\$((DIFF + 1)); RC=1; }
   echo "\$N: \$V; chips \$(wc -l < "\$RES/\$N-true.digest" 2>/dev/null)"
 done

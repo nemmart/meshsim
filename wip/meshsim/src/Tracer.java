@@ -201,6 +201,7 @@ final class Tracer implements Peripheral {
     private boolean sRunning; private int sErrors, sRows, sExpOffset, sExpOpcode, sRunConfig, sCodeL, sRlogL, sWlogL, sMul, sStep, sLines;
 
     @Override public boolean running(long t) { settle(t); return sRunning; }
+    @Override public boolean probeBusy(long t) { settle(t); return sRunning || !inputs.isEmpty() || !landing.isEmpty(); }
     @Override public void sync(long t) { settle(t); }
     @Override public int errors(long t) { settle(t); return sErrors; }
     @Override public Integer word(long t, int w) {

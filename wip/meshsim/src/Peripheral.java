@@ -36,6 +36,8 @@ interface Peripheral extends Component {
     // ---------------------------------------------------------------- level reads (state at the end of t - 1)
     /** STATUS [0], run in progress: the ownership state (4.17.2). */
     boolean running(long t);
+    /** WORKER28's probe (sim-idle-profile): running, or inputs not yet applied (default: running). */
+    default boolean probeBusy(long t) { return running(t); }
     /** STATUS's peripheral-defined bits, [31:2] in place ([1:0] are the slot's and the run bit). */
     default int statusBits(long t) { return 0; }
     /** ERRORS (window word 2), sticky until the reset (4.17.6). */

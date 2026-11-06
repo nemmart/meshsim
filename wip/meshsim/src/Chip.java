@@ -104,6 +104,7 @@ final class Chip implements Component {
         for (int i = 0; i < 64; i++) children[3 + i] = tiles[i];
         shuffle = cfg.shuffleSeed >= 0 ? new Random(cfg.shuffleSeed) : null;
         if (shuffle != null) for (Tile p : tiles) p.shuffle = new Random(shuffle.nextLong());
+        probe = Probe.attach(this);
     }
 
     static int neighbour(int tile, int dir) {
@@ -113,7 +114,9 @@ final class Chip implements Component {
         return switch (dir) { case Router.TO_RIGHT -> Router.FROM_LEFT; case Router.TO_LEFT -> Router.FROM_RIGHT; case Router.TO_DOWN -> Router.FROM_UP; default -> Router.FROM_DOWN; };
     }
 
+    final Probe probe;                                           // WORKER28 (sim-idle-profile): -Dmeshsim.probe, measurement only
     @Override public void runCycle(long t) {
+        if (Probe.ON && probe != null) probe.pre(t);
         if (shuffle != null) {
             for (int i = children.length - 1; i > 0; i--) { int j = shuffle.nextInt(i + 1); Component x = children[i]; children[i] = children[j]; children[j] = x; }
         }
@@ -140,6 +143,7 @@ final class Chip implements Component {
         }
         if (!err) java.util.Arrays.fill(condSeen, 0);
         checkInvariants(t);
+        if (Probe.ON && probe != null) probe.post(t);
     }
 
     void log(long t, int tile, String msg) { log.add("cycle " + t + (tile >= 0 ? " tile " + tile : "") + ": " + msg); }

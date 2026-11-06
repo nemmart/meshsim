@@ -81,7 +81,7 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
 ## Pending (2026-11-05)
 
 - **To ask the owner:** a `v1.26.1/ERRATA.md` line on ConvertDelivery's manifest key order (it varies between runs, the contents
-  don't; fixed in `wip`, and `wip/inputs` writes it in a fixed order); and whether F1 stays in v1.3 or moves to v1.4.
+  don't; fixed in `wip`, and `wip/inputs` writes it in a fixed order); (F1 moved to v1.4, owner, 2026-11-05: v1.3 is the Tracer, solid enough for Tony's RTL).
 - **P1, full-detail simulation at full scale** (WORKER28): **started 2026-11-05** on steps 1-2 only (the profile on the scratch
   branch `sim-idle-profile`, never merged, and the wake-source list); implementation after B1 merges. The runner's 45-minute
   task limit can be raised by the owner when a task needs it.

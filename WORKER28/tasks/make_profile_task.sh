@@ -11,6 +11,7 @@ javac --release 21 -nowarn -d $K/k/classes $WIP/meshsim/src/*.java 2>&1 | grep -
 javac --release 21 -nowarn -d $K/k/classes -cp $K/k/classes:$K/k/gold $(ls $WIP/meshsim/test/*.java | grep -v -x -F -f $K/pending.txt) 2>&1 | grep -v '^Note:' || true
 for c in TracerT2 ReplayShard ConvertDelivery JfrFold Probe; do [ -f $K/k/classes/$c.class ] || { echo "no $c.class" >&2; exit 1; }; done
 cp -r $WIP/tables/replayer $K/k/tables/
+cp $WIP/tables/manifest.json $K/k/tables/            # Stage B reads replay.tables/../manifest.json (113b failed without it)
 mkdir -p $K/k/sw/build $K/k/sw/replay/build $K/k/sw/tracer/build
 cp $WIP/meshsim/hops.txt $K/k/; cp $WIP/meshsim/sw/bootrom.hex $K/k/sw/
 cp $WIP/meshsim/sw/build/cc1.* $WIP/meshsim/sw/build/cc23.* $K/k/sw/build/
@@ -23,6 +24,8 @@ SHA=$(sha256sum $K/kit.tgz | cut -d' ' -f1)
 T2WIN=${T2WIN:-32}; SBN=${SBN:-16}; LIM=${LIM:-40m}
 # SET=time (113b): instead, the time probe (-Dmeshsim.timeprobe: ns by chip section every cycle, by tile class and child 1
 # cycle in 16, C&C 1-3 per child every cycle), on the same T2 windows and Stage B windows, four JVMs
+# SET=sb (113c): Stage B and F only, under JFR, the activity probe and the time probe, six JVMs (113 and 113b lacked the
+# tables' manifest.json, so their Stage B runs failed at the start)
 SET=${SET:-all}
 cat <<EOF
 #!/bin/bash
@@ -43,7 +46,8 @@ cat <<EOF
 # THIS TASK'S SET: $SET$( [ $SET = time ] && echo " -- the time probe only, four JVMs: T2 on the first $T2WIN windows of segment 0 of both
 # workloads and Stage B and F on windows 0-$((SBN - 1)), with -Dmeshsim.timeprobe (ns per cycle by chip section; by tile class and child, 1
 # cycle in 16; C&C 1-3 per child every cycle, the Tracer's slot split from its DMA; the cores by state: the interpreter's share).
-# Expected ~13 min (about 5% slower than an untimed run)." )
+# Expected ~13 min (about 5% slower than an untimed run)." )$( [ $SET = sb ] && echo " -- Stage B only: B (tile 0 alone) and F (the full chip)
+# on windows 0-$((SBN - 1)) of both programs, under JFR, the activity probe and the time probe, six JVMs. Expected ~10 min." )
 set -u
 cd "\$(dirname "\$0")/.."
 REPO=\$PWD
@@ -82,7 +86,14 @@ run() {   # run NAME JVM-OPTIONS -- MAIN ARGS...
   ( a=\$(date +%s); timeout -s TERM $LIM java \$O -cp \$CP "\$@" > "\$RES/\$N.log" 2>&1; r=\$?; echo "\$N: exit \$r, \$((\$(date +%s) - a)) s" >> "\$RES/\$N.log"; exit \$r ) &
   PIDS="\$PIDS \$!:\$N"
 }
-if [ $SET = time ]; then for PS in \$PROGS; do
+if [ $SET = sb ]; then for PS in \$PROGS; do
+  P=\${PS%%:*}
+  SB="-Xmx1500m -Dstageb.norow=50000 -Dreplayer.logq=256 -Dreplay.tables=\$W/k/tables/replayer -Dreplay.build=\$W/k/sw/replay/build"
+  SA="--manifest \$W/v1261/\$P.manifest.json --stages B --first 0 --count $SBN --stride 1 --phase 0 --full-every 1"
+  run jfr-sb-\$P \$SB \$JFR=\$W/jfr-sb-\$P.jfr -- ReplayShard "\$W/v1261" "\$P" "\$RES/jfr-sb-\$P.csv" \$SA
+  run probe-sb-\$P \$SB -Dmeshsim.probe=\$RES/probe-sb-\$P.txt -- ReplayShard "\$W/v1261" "\$P" "\$RES/probe-sb-\$P.csv" \$SA
+  run time-sb-\$P \$SB -Dmeshsim.timeprobe=\$RES/time-sb-\$P.txt -- ReplayShard "\$W/v1261" "\$P" "\$RES/time-sb-\$P.csv" \$SA
+done; elif [ $SET = time ]; then for PS in \$PROGS; do
   P=\${PS%%:*}
   run time-t2-\$P -Xmx5g -Dreplay.tables=\$W/k/tables/replayer -Dmeshsim.timeprobe=\$RES/time-t2-\$P.txt -- TracerT2 "\$D9" "\$P" --w26 "\$D26/\$P" --segments 0 --windows $T2WIN --quiet
   SB="-Xmx1500m -Dstageb.norow=50000 -Dreplayer.logq=256 -Dreplay.tables=\$W/k/tables/replayer -Dreplay.build=\$W/k/sw/replay/build"

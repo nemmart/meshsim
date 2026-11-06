@@ -203,18 +203,22 @@ done pulses come with its counters at 0:
 In the harness, standing in for C&C 1's sequencing, the host commands C&C 1's phase and GO and starts C&C 3 directly.
 cc1.c gains no new command yet.
 
-**Answered (owner, 2026-11-06): yes, this order,** with one guard:
-- READY at boot with nothing armed.
-- GO, after which each tile arms its counters for the record's pieces and C&C 1 starts C&C 3.
-- The deliveries, with the per-window handshake.
-- READY again when a tile's counters reach 0 (its window has landed); this replaces C&C 3 reporting done.
-- C&C 1's final GO, for the replay.
-- **The guard:** tile 0's first delivery (window 0's start, Q3) can come before it has armed after the GO, so C&C 3 waits
-  for a single "armed" from tile 0 (for its record) before sending it. Every other tile's first delivery is a window later.
+**Answered (owner, 2026-11-06; DECISIONS-v1.3 section 24, 7c53209): the segment follows the rule of every phase** (4.13:
+"the window between GO and arming is kept", closed by timing). There is no guard, no "booted" packet and no request-tree
+barrier:
+1. Tiles boot and raise READY with nothing armed.
+2. C&C 1 pulses GO and starts C&C 3; each tile arms its counters for the record's pieces on waking.
+3. C&C 3 sends nothing sooner than stage_delay after the GO, as invariant 25's announced staging. If the timing ever fails,
+   the tile raises unexpected arrival ([2]).
+4. The deliveries, the streams on the per-window handshake.
+5. Each tile raises READY when its counters reach 0 (its window has landed), replacing C&C 3 reporting done.
+6. C&C 1 sees all 64 READY and issues the final GO: the replay.
 
-*As built* (v1.3-tracer, after 515c11a): C&C 3 arms the guard's counter at its own boot, long before C&C 1 boots the
-tiles, and waits for its start as a landed command, with no done pulse, since that counter is armed. In T2 the host
-sequences C&C 1's two phases and C&C 3's start.
+*As built* (v1.3-tracer, after e537973): C&C 3 waits for its start as a landed command, then lets `TL_STAGE_DELAY` = 64
+cycles pass (stage_delay is 32, Proposed; meshsim's harness has used 64) before its first packet, Q3's window 0 start. Its
+start comes after C&C 1's GO, so that is at least stage_delay after the GO. In T2 the host sequences C&C 1's two phases and
+C&C 3's start, standing in for C&C 1's firmware. A guard version (C&C 3 waiting for tile 0's "armed") was built first,
+from my proposal, and is superseded.
 
 ## Open
 

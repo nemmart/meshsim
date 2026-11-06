@@ -1,33 +1,64 @@
-# Worker 29: a faster simulation engine for busy workloads (P2)
+# Worker 29: a simulation framework that is very fast, parallel, and easy to build units in (P2)
 
-Simulation is a roadblock for the project (owner): we'll be doing much more of it, so the engine is worth investing in now.
-meshsim simulates the chip cycle by cycle on one thread. WORKER28 (P1) is making it skip idle units and tiles, which helps runs
-where most tiles wait (the Tracer's full-chip T2: 19× faster), but does nothing when every tile is busy, as in the sort, the
-replay after GO, or any real use of the mesh. Your job: make a busy cycle much cheaper on one thread, staying exact. **Stay in
-Java** (owner): the JVM is fast, and the gains are in the design (data in compact arrays, no allocation in a cycle, only units with
-work touched, calls the JIT can inline), not the language.
+**Why** (owner, 2026-11-06): simulation is a roadblock, and every version after v1.3 (v1.4, v1.5, v1.6 ...) gets bigger, with runs
+of many replays (50 at a time). We need full-detail simulation to run blazingly fast, without making new units harder to write.
+This doesn't have to land in v1.3; it's the foundation for what follows.
 
-READ FIRST: wip/meshsim/README.md (the conventions: timed buses, a put at t seen at t + L, the shuffle seeds), Chip.java's step
-loop, Tile and its units, Bus.java, Buses.java and WordBuses.java (the buses commit lazily), and WORKER28/PROMPT.md and NOTES.md
-(P1's architecture: timing wheels, then threads; deliver, run, merge as the target).
+**Where meshsim is today.** A Java, cycle-level model: every unit stepped every cycle; timed buses that commit lazily; inside a
+tile, units call each other directly in a fixed stepping order. WORKER28 (P1) has added exact idle-skipping (the full-chip T2 is
+19× faster: a segment in 54 s instead of 1,030) and is planning threads over tiles. A busy chip (the sort, the replay after GO)
+gains nothing from skipping: its cost is the step itself, and walking a large graph of small objects every cycle.
+
+**The idea: the framework carries the rules, so a unit's author writes ordinary code.** Prior art to borrow from: Verilog's
+sensitivity lists, Verilator's ordering of combinational logic, SystemC's delta cycles, gem5's ports and events, Sparta.
+- **Ports, declared once**, of a few framework kinds: `Reg<T>` (read gives last cycle's value, a write is visible next cycle),
+  `Wire<T>` (combinational: this cycle's value), `Fifo<T>` (with "full before this cycle's pop" built in), `Link<T>` (a latency).
+  A unit's `step()` reads its inputs and writes its outputs as plain code: no commits, no stepping order, no reaching into another
+  unit (it holds only ports).
+- **The framework, from those declarations:** orders units by their combinational wires (a combinational loop rejected when the
+  chip is built); double-buffers registers and FIFOs (no lazy-commit race); steps only units whose inputs changed or that have
+  work pending (idle-skipping everywhere, for free); owns the ports' storage as compact arrays by kind (no allocation in a cycle);
+  partitions across threads along registered ports and links (units joined by wires stay together); and has a debug mode that
+  varies the order within a level to catch any undeclared dependence.
+- **Migration is gradual:** first a whole tile as one unit with its links as ports, then inside it. The current simulator is the
+  exactness oracle throughout: identical logs, cycle for cycle.
+
+**First, A-C in today's engine** (owner, 2026-11-06, on WORKER29's profile: a busy cycle is dominated by bookkeeping and
+polling, not by the units' logic): (A) cheap S1 and checks (primitive maps, messages only when reported, clearing only what was
+touched); (B) eager bus commit (a put registers its bus on a per-chip dirty list committed at the cycle's end, so an empty bus is
+never touched; the framework's double-buffered ports in miniature); (C) status recomputed only when its inputs change, direct
+calls instead of one interface call. Each proved exact before the next, on `sim-step-cost` off `sim-idle-skip`; B changes
+`BusBase`, keeping WORKER28's wake hook. **Then the framework design**, below, with those measurements as its basis.
+
+**The workload that matters most** (owner): a busy chip replaying for a long time: each tile's window is replayed about 50
+times per proof for the sumchecks, so a proof's simulation is dominated by all 64 tiles replaying at once. Make that the main
+benchmark. **A GPU backend later** is a design target, assessed but not built: one unit type per warp, over many segments' chips
+at once (a proof's 128 segments are independent ASICs, so 128 × 64 instances of each type), the state laid out so a warp's lanes
+read adjacent memory; the cores the hardest part (divergence), eased when a batch runs the same firmware.
+
+READ FIRST: wip/meshsim/README.md (the conventions: timed buses, a put at t seen at t + L, the shuffle seeds), Chip.java, Tile
+and its units, Bus.java, Buses.java and WordBuses.java; WORKER28/PROMPT.md and NOTES.md on branch sim-idle-skip (its profile, its
+audit of same-cycle calls between units, stage 1 as built).
 
 THE WORK
-1. Profile the sort (the full-size p4/uniform-k128 on the runner, and a smaller configuration that runs locally) and a busy
-   full-chip phase: where a busy cycle's time goes, by unit, bus, allocation, dispatch and data layout.
-2. Prototype the biggest wins on a scratch branch, measured locally on a small sort: for instance cheaper buses and commits,
-   fewer objects touched per cycle, no allocation in the cycle, data laid out by kind; and the deliver-run-merge structure if
-   the profile justifies it.
-3. Agree with WORKER28 who changes what: it owns scheduling (which units step; the threads), you own a step's cost (the units'
-   and buses' internals). Then build on its branch sim-idle-skip once its exactness proof passes.
-4. Prove each change exact: identical logs, cycle for cycle, for the quick and full suites, the full-size sort (1,229,008
-   cycles; after WORKER28's latency commit, its new baseline), and a T2 segment, under shuffle seeds too.
-5. Report the sort's wall time and µs per cycle before and after, single-threaded, and what's left for P1's threads.
+1. **Profile** a busy chip (the sort: the full-size p4/uniform-k128 on the runner, a smaller configuration locally) and a T2
+   segment with stage 1 on: where a cycle's time goes.
+2. **Design** the framework: the port kinds and their exact semantics (including how today's same-cycle couplings map onto
+   them: WORKER28's audit is the list), ordering, wakes, threads, data layout, the debug checks, and the migration path. In
+   WORKER29/DESIGN.md, before code.
+3. **Prototype** it on a scratch branch with two or three units (a FIFO, a router, a small core), and measure **speed per cycle**
+   (single-threaded and threaded) and **authoring cost** (the code a unit needs, against today's).
+4. **Recommend:** whether to migrate meshsim onto it, how, in what order, and the expected speed for a busy chip and for many
+   replays at once.
 
 RULES
-- Propose a plan first and wait for the owner's go-ahead.
-- Exactness is the requirement: any difference is a bug, never a tolerance.
+- Propose a plan first and wait for the owner's go-ahead. The owner decides on migration after step 4.
+- Stay in Java (owner: the JVM is fast; the gains are in the design).
+- Exactness is the requirement for anything that replaces existing behaviour: any difference is a bug, never a tolerance.
+- Coordinate with WORKER28, which owns P1 (idle-skipping and threads in today's engine); don't change the engine's main line.
 - Long runs go to the runner (claim plain Quest numbers: PIPELINE.md); background jobs don't survive a turn.
 - Commit and push before anything long in a turn, and keep the last tool calls for committing; end each turn with a clean git
   status.
 
-DELIVERABLES: the profile, the measured prototypes, the changes on a branch with their proof, WORKER29/REPORT.md.
+DELIVERABLES: the profile, WORKER29/DESIGN.md, the prototype branch with its measurements, WORKER29/REPORT.md with the
+recommendation.

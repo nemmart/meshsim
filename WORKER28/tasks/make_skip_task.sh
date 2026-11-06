@@ -26,7 +26,7 @@ LIM=${LIM:-42m}; SBN=${SBN:-64}
 cat <<EOF
 #!/bin/bash
 # Task $NAME -- meshsim WORKER28, stage 1 of the idle-skipping work (meshsim WORKER28/PROMPT.md, step 4 for stage 1):
-# branch sim-idle-skip (v1.3-tracer 515c11a plus stage 1: sleeping units are not stepped; -Dmeshsim.skip=false steps every
+# branch sim-idle-skip (the commit in VERSION; stage 1: sleeping units are not stepped; -Dmeshsim.skip=false steps every
 # unit every cycle, as before). Each run twice, stage 1 off and on, eight JVMs at once:
 #   t2-*  TracerT2 on segment 0 of evm-zone-29 and cyclone-29, raw, all 64 windows (the full chip, C&C 3 tracing, every
 #         tile replaying its window);

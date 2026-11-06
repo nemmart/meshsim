@@ -151,7 +151,7 @@ final class Chip implements Component {
         while (!far.isEmpty() && far.peek()[0] <= t) awaken((int) far.poll()[1], t);
     }
     private void awaken(int u, long t) { if (!asleep[u]) return; asleep[u] = false; wakes++; catchUp(u, t - 1); }
-    private void catchUp(int u, long upTo) { long n = upTo - countedTo[u]; if (n > 0) unit[u].core.skipCycles(n); countedTo[u] = upTo; }
+    private void catchUp(int u, long upTo) { long n = upTo - countedTo[u]; if (n > 0) { unit[u].core.skipCycles(n); unit[u].slot.skipCycles(n); } countedTo[u] = upTo; }
     private void sleepCheck(long t) {
         for (int u = 0; u < 67; u++) {
             Tile p = unit[u];
@@ -193,6 +193,7 @@ final class Chip implements Component {
                     p.router.injected, p.router.routed, p.router.ejected, p.dir.accepted, p.sram.accesses, p.ctl.gos, p.ctl.readies,
                     p.ctl.dones, p.ctl.conditions, p.writer.stallCycles, p.srq.stallCycles, p.req.sends };
             for (long x : v) h = 31 * h + x;
+            for (long x : p.slot.digestWords()) h = 31 * h + x;      // the peripherals' own counters (the Tracer's words 44-51)
             mc += k.mcycle; wfi += k.cyclesWfi; ins += k.instructions;
         }
         h = 31 * h + violations; h = 31 * h + log.size(); h = 31 * h + conditionEvents;

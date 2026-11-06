@@ -215,7 +215,7 @@ barrier:
 6. C&C 1 sees all 64 READY and issues the final GO: the replay.
 
 *As built* (v1.3-tracer, after e537973): C&C 3 waits for its start as a landed command, then lets `TL_STAGE_DELAY` = 64
-cycles pass (stage_delay is 32, Proposed; meshsim's harness has used 64) before its first packet, Q3's window 0 start. Its
+cycles pass (stage_delay is 64 cycles, owner, 2026-11-06, spec 6.2 and section 10) before its first packet, Q3's window 0 start. Its
 start comes after C&C 1's GO, so that is at least stage_delay after the GO. In T2 the host sequences C&C 1's two phases and
 C&C 3's start, standing in for C&C 1's firmware. A guard version (C&C 3 waiting for tile 0's "armed") was built first,
 from my proposal, and is superseded.

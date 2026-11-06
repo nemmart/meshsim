@@ -41,6 +41,11 @@ interface Peripheral extends Component {
     default boolean idle(long t) { return false; }
     /** Stage 1: the next cycle after t at which the peripheral must step though idle (a line's arrival); MAX: none. */
     default long nextWakeAt(long t) { return Long.MAX_VALUE; }
+    /** Stage 1: n cycles skipped while the unit slept (idle throughout): a peripheral with counters that tick every cycle
+     *  in some state catches them up here (default: none). */
+    default void skipCycles(long n) {}
+    /** Stage 1's fingerprint: the peripheral's own counters (default: none). */
+    default long[] digestWords() { return new long[0]; }
     /** STATUS's peripheral-defined bits, [31:2] in place ([1:0] are the slot's and the run bit). */
     default int statusBits(long t) { return 0; }
     /** ERRORS (window word 2), sticky until the reset (4.17.6). */

@@ -77,17 +77,32 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
   Open in v1.3: register offsets beyond words 32-35; sizes to confirm by gold (caches, TLB); UPSTREAM-DIFFS ruled (section 17:
   D1, D3, D12 follow a16z, the verifier's source, with jolt-cpp fixes; D5 rejected by the host tracer; D2 and the rest deferred);
   WORKER18 is re-checking them at 7189216 and writing the demo guests.
+## Pending (2026-11-06, 10:30 UTC): the freeze sequence
+
+1. WORKER28 (interrupted with the owner's message): `stage_delay` to 64 in code, the counters' catch-up in stage 1, then once
+   116b passes, `main` merged forward into `sim-idle-skip`, ready for the integrator to merge into `main`. (Its superseded
+   116-w28-baselines-8 is in Quest's `tasks/hold/`.)
+2. The full regression on `main` (fresh Quest number): the quick and full suites, the full-size sort, the 64-window Stage B
+   smoke, T2 segment 0 of both workloads with stage 1 on; `BASELINES-8.md` from its numbers.
+3. The freeze: `v1.3/` (as v1.26.1 was made), the README's version table with **"For the RTL: start here"** at the top
+   (`v1.3/spec/CHANGES-v1.26.1-to-v1.3.md`, 4.21), DECISIONS-v1.3's "done" statement. P1 stage 2 and P2 (WORKER29) stay out.
+4. After the freeze: item 158 (the tables to a16z's D13/D14 rule).
+
 ## Pending (2026-11-05)
 
 - `v1.26.1/ERRATA.md` E1 (ConvertDelivery's manifest order) **added** 2026-11-06; the owner tells Tony. (F1 moved to v1.4, owner, 2026-11-05: v1.3 is the Tracer, solid enough for Tony's RTL).
+- **The spec fold-in is done** (WORKER30, merged 2026-11-06 at 46355cc, closed): Q1-Q17 and the rulings in 4.21,
+  `CHANGES-v1.3.md`, the RTL guide `wip/spec/CHANGES-v1.26.1-to-v1.3.md`, the counters in the model. Item 158 (the tables to
+  a16z's D13/D14 rule) right after the freeze.
 - **B1 done and merged** (2026-11-06, e67bc43; WORKER22 closed). Next for v1.3: fold `sessions/WORKER22-SPEC-QUESTIONS.md`
   (Q1-Q17) and the 11-06 rulings (items 142, 148, 149, 157, `stage_delay`) into 4.21 and `CHANGES-v1.3.md`; the statistics
-  counters into the model; Tony's implementer's review; the RTL guide v1.26.1 → v1.3; the freeze.
+  counters into the model; Tony's implementer's review; the RTL guide v1.26.1 → v1.3; **stage 1 and the latency commit merged (owner: in v1.3)**; one
+  final regression; the freeze.
 - **P1, full-detail simulation at full scale** (WORKER28): **started 2026-11-05** on steps 1-2 only (the profile on the scratch
   branch `sim-idle-profile`, never merged, and the wake-source list); implementation after B1 merges. The runner's 45-minute
   task limit can be raised by the owner when a task needs it.
-- **P2, a faster engine for busy workloads** (WORKER29): prompt committed 2026-11-06; stays in Java; coordinates with WORKER28
-  (it owns scheduling and threads, WORKER29 a step's cost).
+- **P2, a simulation framework** (WORKER29): very fast, parallel, easy to write units in; design, prototype, measure, recommend
+  (prompt rewritten 2026-11-06); not part of v1.3, the foundation for v1.4 on; Java; WORKER28 keeps P1 in today's engine.
 - **What to report upstream** (jolt-cpp, a16z): `wip/planning/upstream/UPSTREAM-DIFFS.md`, its report list at the top, with
   `bug-reports/` beside it (moved from WORKER18 when it closed).
 - **The input pipeline** for Tony is `wip/inputs/` (WORKER27, merged): every simulation input rebuilt from pinned sources,
@@ -114,4 +129,4 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
 
 - Repositories: meshsim (this), jolt-asic-planning (`tracer-standalone`, PR #1; `tracer-standalone-main`, PR #2; `worker12-counts`),
   jolt-cpp (snarkify, our tracer), a16z/jolt (upstream, public), Quest (the runner). Tokens are in the owner's preferences.
-- Closed workers' reports: `wip/planning/sessions/` (WORKER4-22, 24-27) and `wip/planning/reviews/` (WORKER1-3).
+- Closed workers' reports: `wip/planning/sessions/` (WORKER4-22, 24-27, 30) and `wip/planning/reviews/` (WORKER1-3).

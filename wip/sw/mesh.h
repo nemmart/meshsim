@@ -86,7 +86,15 @@ typedef struct {
     MESH_RW HASH_STEP;          /* 41: [23:0] the probe's step p3 */
     MESH_RW HASH_LINES;         /* 42: [4:0] k, the map's 2^k lines */
     MESH_WO EXPANSION_TEMPLATE; /* 43: [31] valid, [6:0] the template being fed; a load reads 0 */
-    uint32_t _defined[84];
+    MESH_RO STAT_CYCLES;        /* 44: cycles running (STATUS [0] 1); words 44-51 cleared by the word-0 write (item 157) */
+    MESH_RO STAT_STALL_FETCH;   /* 45: instruction-fetch stall cycles */
+    MESH_RO STAT_STALL_DATA;    /* 46: data-miss stall cycles, the write-back buffer's wait included */
+    MESH_RO STAT_STALL_MAP;     /* 47: map-probe stall cycles */
+    MESH_RO STAT_STALL_OUTPUT;  /* 48: cycles either drain scan stalled on a full output queue */
+    MESH_RO STAT_MISS_I;        /* 49: instruction-cache misses */
+    MESH_RO STAT_MISS_D;        /* 50: data-cache misses */
+    MESH_RO STAT_PROBES;        /* 51: jump-LRU misses, each a map probe */
+    uint32_t _defined[76];
 } TracerRegs;
 
 /* C&C 1's peripheral, Ingress/Egress and the UART (8.14): words 32-45 */
@@ -146,7 +154,8 @@ typedef struct {
 } TableRegs;
 
 _Static_assert(sizeof(PeripheralStd) == 0x200 && sizeof(ReplayerRegs) == 0x200 && sizeof(Cnc1Regs) == 0x200 && sizeof(TracerRegs) == 0x200, "window size");
-_Static_assert(__builtin_offsetof(TracerRegs, RUN_CONFIG) == 128 && __builtin_offsetof(TracerRegs, EXPANSION_TEMPLATE) == 172, "the Tracer's window (8.16)");
+_Static_assert(__builtin_offsetof(TracerRegs, RUN_CONFIG) == 128 && __builtin_offsetof(TracerRegs, EXPANSION_TEMPLATE) == 172 &&
+               __builtin_offsetof(TracerRegs, STAT_PROBES) == 204, "the Tracer's window (8.16)");
 _Static_assert(sizeof(TileRegs) == 0x200, "block size");
 _Static_assert(__builtin_offsetof(TileRegs, EVENTS) == 0x18 && __builtin_offsetof(TileRegs, ROUTER_HDR) == 0x28 &&
                __builtin_offsetof(TileRegs, REQUEST_SEND) == 0x54 && __builtin_offsetof(TileRegs, WRITE_COUNTER) == 0x60 &&

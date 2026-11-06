@@ -250,7 +250,11 @@ The replayer (type 4, every mesh tile's peripheral 1): `RUN_CONFIG` (32, R/W: [2
 [25] output `rd_prev`, [28:26] the Tracer's compression enables, ignored; sticky, 0 at reset), `ROWS_RUN` (33, 24 bits), `EXPANSION_OFFSET` (34), `EXPANSION_OPCODE` (35),
 the same four as the Tracer's (v1.26.1). C&C 1's peripheral (type 1, Ingress/Egress): `ERROR_LINES[3]` (32-34), `READY_LINES[2]` (35-36), `READY_EXPECT[2]` (37-38), `PULSE_GO`
 (39), `WATCHDOG` (40), `LED` (41), and the UART: `UART_TX` (42), `UART_RX` (43), `UART_DIVISOR` (44), `UART_STATUS`
-(45). Spec 4.17, 4.19, 8.11-8.14 give their meanings.
+(45). The Tracer (type 3, C&C 3's peripheral 1, v1.3): `RUN_CONFIG` to `EXPANSION_OPCODE` (32-35) as the replayer's,
+the queue lengths `STATE_LENGTH`, `CODE_LENGTH`, `READ_LOG_LENGTH`, `WRITE_LOG_LENGTH` (36-39), `HASH_MUL`, `HASH_STEP`,
+`HASH_LINES` (40-42), `EXPANSION_TEMPLATE` (43, write-only), and the statistics counters (44-51, read-only, cleared by the
+word-0 write): `STAT_CYCLES`, `STAT_STALL_FETCH`, `STAT_STALL_DATA`, `STAT_STALL_MAP`, `STAT_STALL_OUTPUT`, `STAT_MISS_I`,
+`STAT_MISS_D`, `STAT_PROBES`. Spec 4.17, 4.19, 4.21.3, 8.11-8.14 and 8.16 give their meanings.
 
 ## 4. The table window
 

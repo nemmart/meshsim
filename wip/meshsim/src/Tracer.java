@@ -38,7 +38,10 @@ final class Tracer implements Peripheral {
     static final int TYPE = 3;
     static final int W_RUN_CONFIG = 32, W_ROWS_RUN = 33, W_EXP_OFFSET = 34, W_EXP_OPCODE = 35, W_STATE_LENGTH = 36,
             W_CODE_LENGTH = 37, W_RLOG_LENGTH = 38, W_WLOG_LENGTH = 39, W_HASH_MUL = 40, W_HASH_STEP = 41, W_HASH_LINES = 42,
-            W_EXP_TEMPLATE = 43;
+            W_EXP_TEMPLATE = 43, W_STAT = 44, STAT_N = 8;
+    /** The statistics counters, words 44-51 (8.16, item 157), in word order. */
+    static final int ST_CYCLES = 0, ST_STALL_FETCH = 1, ST_STALL_DATA = 2, ST_STALL_MAP = 3, ST_STALL_OUTPUT = 4, ST_MISS_I = 5,
+            ST_MISS_D = 6, ST_PROBES = 7;
     static final int RC_ROWS = 0xFFFFFF, RC_COMP_CODE = 1 << 26, RC_COMP_RLOG = 1 << 27, RC_COMP_WLOG = 1 << 28, RC_DEFINED = 0x1FFFFFFF;
     static final int MAX_ROWS = 65536;
     // events (4.21.3, item 144)
@@ -172,6 +175,19 @@ final class Tracer implements Peripheral {
     long iMissLpddr, straddles;
     private final java.util.HashSet<Long> iSeen = new java.util.HashSet<>();
     long runStartAt, rowsEndAt, drainedAt;
+    /** The window's statistics counters, words 44-51 (4.21.3, item 157): 32 bits, wrapping, cleared by the word-0 write and
+     *  the reset, counting while STATUS [0] is 1. Each stall cycle is counted in its own cycle (stat, statUntil below), so a
+     *  load mid-stall reads exactly the cycles so far. Advice and expansion waits are in none of them. */
+    final int[] stat = new int[STAT_N];
+    /** Stage 1: the counters tick only while STATUS [0] is 1 (running) or a stall started then runs out; the tile sleeps
+     *  only with its peripheral idle, and the Tracer reports idle never (Peripheral.idle's default), so C&C 3's tile never
+     *  sleeps and there is nothing to catch up. Should it ever be skipped while counting, fail rather than drift. */
+    @Override public void skipCycles(long n) {
+        if (n > 0 && (running || statUntil > settled)) throw new IllegalStateException("the Tracer's counters (words 44-51) would tick while its tile sleeps");
+    }
+    @Override public long[] digestWords() { long[] w = new long[STAT_N]; for (int i = 0; i < STAT_N; i++) w[i] = stat[i]; return w; }
+    private long statUntil = Long.MIN_VALUE;          // a data or map stall in progress: its cycles up to (excluding) this
+    private int statCause;                            // ST_STALL_DATA or ST_STALL_MAP
 
     // ================================================================ the errors (4.21.8)
     private int errors;
@@ -198,6 +214,7 @@ final class Tracer implements Peripheral {
     @Override public void run(long t) { inputs.add(new Input(t, IN_RUN, 0, 0, 0, 0)); }
 
     // ---- level reads: the snapshot at the end of t - 1
+    private final int[] sStat = new int[STAT_N];
     private boolean sRunning; private int sErrors, sRows, sExpOffset, sExpOpcode, sRunConfig, sCodeL, sRlogL, sWlogL, sMul, sStep, sLines;
 
     @Override public boolean running(long t) { settle(t); return sRunning; }
@@ -209,14 +226,14 @@ final class Tracer implements Peripheral {
             case W_RUN_CONFIG -> sRunConfig; case W_ROWS_RUN -> sRows; case W_EXP_OFFSET -> sExpOffset; case W_EXP_OPCODE -> sExpOpcode;
             case W_STATE_LENGTH -> REC_WORDS; case W_CODE_LENGTH -> sCodeL; case W_RLOG_LENGTH -> sRlogL; case W_WLOG_LENGTH -> sWlogL;
             case W_HASH_MUL -> sMul; case W_HASH_STEP -> sStep; case W_HASH_LINES -> sLines; case W_EXP_TEMPLATE -> 0;
-            default -> null;
+            default -> w >= W_STAT && w < W_STAT + STAT_N ? sStat[w - W_STAT] : null;
         };
     }
     @Override public int writeWord(long t, int w, int v) {
         switch (w) {
             case W_RUN_CONFIG, W_HASH_MUL, W_HASH_STEP, W_HASH_LINES, W_EXP_TEMPLATE -> { inputs.add(new Input(t, IN_WORD, w, v, 0, 0)); return 1; }
             case W_ROWS_RUN, W_EXP_OFFSET, W_EXP_OPCODE, W_STATE_LENGTH, W_CODE_LENGTH, W_RLOG_LENGTH, W_WLOG_LENGTH -> { return 0; }   // a bus error (8.16)
-            default -> { return -1; }
+            default -> { return w >= W_STAT && w < W_STAT + STAT_N ? 0 : -1; }    // the counters: read-only, a bus error
         }
     }
 
@@ -227,6 +244,7 @@ final class Tracer implements Peripheral {
         rqHead = rqOcc = rqHalf = rqPopped = 0; eqHead = eqOcc = eqPopped = 0;
         icache.clear(); dcache.clear(); jumpLru.clear(); wbLine = -1;
         codeN = logN = 0; ev.clearAll(); presented = expansionOffset = 0; latch = -1;
+        java.util.Arrays.fill(stat, 0); statUntil = Long.MIN_VALUE;
     }
 
     /** Applies every input and landing of cycles before T, then takes the snapshot that reads at T return. */
@@ -246,6 +264,7 @@ final class Tracer implements Peripheral {
         sExpOffset = expansionOffset; sExpOpcode = presented;
         sCodeL = lengthCode; sRlogL = lengthRlog; sWlogL = lengthWlog;
         sMul = hashMul; sStep = hashStep; sLines = hashLines;
+        System.arraycopy(stat, 0, sStat, 0, STAT_N);
         ev.live(EV_SVC_STATE, rowsEnded && !stopped && q0ptr < REC_WORDS);
         for (int q = 1; q <= 3; q++) ev.live(EV_SVC_STATE + q, rowsEnded && !stopped && oq[q].flag());
     }
@@ -315,6 +334,7 @@ final class Tracer implements Peripheral {
         ev.set(t, EV_ADVICE, 2); ev.set(t, EV_EXP, 2);
         icache.clear(); dcache.clear(); jumpLru.clear(); wbLine = -1; iSeen.clear();
         latch = -1; bitmap[0] = bitmap[1] = 0; cur = null;
+        java.util.Arrays.fill(stat, 0); statUntil = Long.MIN_VALUE;
         if (onStateWrite != null) onStateWrite.run();
         stateWrites++;
     }
@@ -339,16 +359,18 @@ final class Tracer implements Peripheral {
     @Override public void runCycle(long T) {
         settle(T);
         if (expDiscard > 0 && eqOcc > 0) { eqPop(T); expDiscard--; }      // a NOP-substituted expansion's words, dropped one a cycle (N3)
+        if (running) stat[ST_CYCLES]++;                   // STATUS [0] is 1: the drain included, and after a stopping error
         if (!running || stopped) return;
         if (rowsEnded) { drainCycle(T); return; }
         runCycles++;
         if (T < startAt) return;
+        if (T < statUntil) stat[statCause]++;
         if (busyUntil >= T) {
             if (T == busyUntil) { rowsDone++; if (rowsDone == rowsTarget) endRows(T); }
             return;
         }
         if (rowsTarget == 0) { endRows(T); return; }
-        if (T < waitUntil) { stalls[waitCause.ordinal()]++; return; }
+        if (T < waitUntil) { stalls[waitCause.ordinal()]++; if (waitCause == Stall.IFETCH) stat[ST_STALL_FETCH]++; return; }
         step(T);
     }
 
@@ -366,7 +388,7 @@ final class Tracer implements Peripheral {
                 long ready = fetch(T, in);
                 if (stopped) return;
                 in.fetched = true;
-                if (ready > T) { waitUntil = ready; waitCause = Stall.IFETCH; stalls[Stall.IFETCH.ordinal()]++; return; }
+                if (ready > T) { waitUntil = ready; waitCause = Stall.IFETCH; stalls[Stall.IFETCH.ordinal()]++; stat[ST_STALL_FETCH]++; return; }
             }
         }
         if (in.kind == RowCore.K_CTRL && !in.presented) {
@@ -495,7 +517,11 @@ final class Tracer implements Peripheral {
         rows++; if (ReplayerAlu.CLASS[op] == 'M') rowsM++; if (in.kind == RowCore.K_PAD) rowsPad++;
         if (last) { cur = null; instrs++; setStateOffset(0); }
         else { expansionOffset = in.nextRow; setStateOffset(in.nextRow); }    // the state word is live (4.21.2)
-        if (ready > T) stalls[(isMem ? Stall.DMISS : Stall.PROBE).ordinal()] += ready - T - busWait;
+        if (ready > T) {
+            stalls[(isMem ? Stall.DMISS : Stall.PROBE).ordinal()] += ready - T - busWait;
+            // the counters: the whole wait, the write-back buffer's included (STAT_STALL_DATA), one cycle at a time from T
+            statCause = isMem ? ST_STALL_DATA : ST_STALL_MAP; statUntil = ready; stat[statCause]++;
+        }
         busyUntil = ready + (ReplayerAlu.CLASS[op] == 'M' ? mulCycles : rowCycles) - 1;
     }
     long newExpansions;
@@ -561,7 +587,7 @@ final class Tracer implements Peripheral {
         iAccess++;
         Line l = icache.get(line);
         if (l == null) {
-            iMiss++;
+            iMiss++; stat[ST_MISS_I]++;
             int cls = (iSeen.add(line) ? 0 : 2) + (second ? 1 : 0);
             long lp = mem.lpddrReads;
             long t0 = Math.max(t, mem.freeAt());
@@ -583,7 +609,7 @@ final class Tracer implements Peripheral {
     private long dataLine(long t, long line) {
         dAccess++;
         if (dcache.get(line) != null) return t;
-        dMiss++;
+        dMiss++; stat[ST_MISS_D]++;
         long t0 = Math.max(t, mem.freeAt());
         if (t0 > t) { stalls[Stall.BUS.ordinal()] += t0 - t; busWait = t0 - t; }
         mem.read(t0, memRoot(), memDepth(), line, resp);
@@ -608,7 +634,7 @@ final class Tracer implements Peripheral {
         lookupReady = T;
         Integer hit = jumpLru.get(np);
         if (hit != null) { lruHits++; return hit & 0xFFFFFFFFL; }
-        lruMisses++;
+        lruMisses++; stat[ST_PROBES]++;
         long o = np - lowest();
         if (Long.compareUnsigned(o, 1L << 32) >= 0) { error(T, 1 << ERR_MAP, String.format("a jump to 0x%x, whose offset from lowest_address doesn't fit 32 bits", np)); return 0; }
         int key = (int) o, k = hashLines;
@@ -719,6 +745,7 @@ final class Tracer implements Peripheral {
     /** One cycle of the drain: each scan moves one FIFO entry into its encoder and packer while its queue has room. */
     private void drainCycle(long T) {
         pushT = T;
+        long st0 = scanStalls;
         if (!scansDone && T >= scanStart) {
             // the code scan
             if (!codeEnded) {
@@ -756,6 +783,7 @@ final class Tracer implements Peripheral {
                 codeN = logN = 0;
             }
         }
+        if (scanStalls != st0) stat[ST_STALL_OUTPUT]++;   // either scan stalled on a full output queue (item 157)
         // done comes last (4.21.6): the rows, both scans, every queue empty and the last transfer finished, all as of
         // the end of T - 1 (so the cycle the DMA took the last word doesn't matter)
         if (scansDone && q0ptr == REC_WORDS && q0LastT < T && xferLeft == 0) {

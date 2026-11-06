@@ -86,8 +86,8 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
 - **P1, full-detail simulation at full scale** (WORKER28): **started 2026-11-05** on steps 1-2 only (the profile on the scratch
   branch `sim-idle-profile`, never merged, and the wake-source list); implementation after B1 merges. The runner's 45-minute
   task limit can be raised by the owner when a task needs it.
-- **P2, a faster engine for busy workloads** (WORKER29): prompt committed 2026-11-06; stays in Java; coordinates with WORKER28
-  (it owns scheduling and threads, WORKER29 a step's cost).
+- **P2, a simulation framework** (WORKER29): very fast, parallel, easy to write units in; design, prototype, measure, recommend
+  (prompt rewritten 2026-11-06); not part of v1.3, the foundation for v1.4 on; Java; WORKER28 keeps P1 in today's engine.
 - **What to report upstream** (jolt-cpp, a16z): `wip/planning/upstream/UPSTREAM-DIFFS.md`, its report list at the top, with
   `bug-reports/` beside it (moved from WORKER18 when it closed).
 - **The input pipeline** for Tony is `wip/inputs/` (WORKER27, merged): every simulation input rebuilt from pinned sources,

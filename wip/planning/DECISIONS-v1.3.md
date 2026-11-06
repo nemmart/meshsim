@@ -1208,6 +1208,13 @@ Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17)
   streams and replies "armed"; only then does C&C 3 send the streams (one round trip per window, negligible against the drain,
   the scans waiting on full queues meanwhile). The later design lands the windows in C&C 3's memory and LPDDR files instead;
   candidate C2 (signed counters) would remove the handshake.
+  **The segment's two barriers are C&C 1's READY/GO** (owner, 2026-11-05; WORKER22's fan-in hang): C&C 1 is the unit that
+  handles global barriers and starts. **(1) Before tracing:** each tile boots, arms its counters for the record's fixed pieces,
+  and raises **READY**; C&C 1 waits for all READY, then tells C&C 3 to start tracing. Tiles send nothing to C&C 3 (64 direct
+  "booted" packets to one receiver overflow tile 2's port and drop packets, which 3.2 already rules out). **(2) After the last
+  delivery:** C&C 3 reports done to C&C 1, which issues **GO**, and all 64 tiles start replaying together (**replacing Q16's
+  replay as soon as a window lands**; the replay's ~236K cycles then follow the trace, negligible against 21 M). The per-window
+  "armed" stays a direct packet: one tile to C&C 3 at a time, no fan-in.
 - **A new state is written only at the start of a proof** (owner, 2026-11-01): one segment per ASIC per proof, so between the
   64 windows of a segment nothing is loaded; C&C 3 only reads the state and the queue lengths at each done, drains the output
   queues, and pulses go. **The read queue persists across the windows**, since the segment's advice runs across them (its size

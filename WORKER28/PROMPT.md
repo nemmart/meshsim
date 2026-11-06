@@ -30,6 +30,15 @@ the cycle at a barrier before t + 1. A put to another tile lands in that tile's 
 outboxes merged at the barrier, so there are no locks in the cycle. Chip-wide work (the lines, the invariant checks, the
 request bus) stays serial at the barrier. Links' 3-cycle latency may later let threads sync less often than every cycle.
 The active flags above are the simplest form of the same idea; the wheel is where the wakes live.
+**Two more decisions (owner, 2026-11-05).** (1) **GO and READY at 8 cycles** (`go_latency`, `ready_latency`; the error line
+follows READY), as the spec's own estimates assume (4.13), instead of meshsim's 1, which isn't physical: applied **first, as
+its own commit**, with every baseline it moves (the sort's 1,229,008, recorded cycle counts) re-recorded and documented, so the
+exactness proofs compare like with like. With every cross-tile coupling then at 3 cycles or more, threads could sync every 3
+cycles; start with a barrier every cycle and adaptive one-or-many threads, and use the lookahead only if the barrier limits.
+(2) **Partitioning by unit type, to measure against by tile:** for instance **4 threads running the RV32 cores** (the 67 cores,
+about 17 each, keeping the interpreter's code hot in their caches) and the other threads the tiles' units (routers, SRAM,
+engines, replayers, the Tracer); a core's couplings to its tile are 1 cycle, safe with a per-cycle barrier. The profile decides
+stage 2's partitioning.
 
 THE WORK
 1. Profile a T2 segment and a Stage B run: where the cycles go, by unit and state, to confirm idle units dominate and estimate

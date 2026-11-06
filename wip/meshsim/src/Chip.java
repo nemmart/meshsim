@@ -110,7 +110,7 @@ final class Chip implements Component {
         for (int i = 0; i < 64; i++) children[3 + i] = tiles[i];
         shuffle = cfg.shuffleSeed >= 0 ? new Random(cfg.shuffleSeed) : null;
         if (shuffle != null) for (Tile p : tiles) p.shuffle = new Random(shuffle.nextLong());
-        if (DIGEST != null) DIGESTED.add(this);
+        if (DIGEST != null) digestRegister(this);
     }
 
     static int neighbour(int tile, int dir) {
@@ -163,11 +163,22 @@ final class Chip implements Component {
     }
     // ---- the proof's fingerprint (-Dmeshsim.digest=FILE): at exit, per chip in creation order, every unit's counters
     private static final String DIGEST = System.getProperty("meshsim.digest");
-    private static final java.util.List<Chip> DIGESTED = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+    // A thread's chips are used one after another, so a chip is fingerprinted when its thread makes the next one (and the
+    // rest at exit) and then dropped: holding every chip to the end ran Stage B's JVMs out of heap (114).
+    private static final java.util.Map<Thread, Chip> DIGEST_CURRENT = new java.util.HashMap<>();
+    private static final java.util.TreeMap<Integer, String> DIGEST_DONE = new java.util.TreeMap<>();
+    private static int digestNext;
+    private int digestSeq;
     static { if (DIGEST != null) Runtime.getRuntime().addShutdownHook(new Thread(Chip::writeDigests)); }
-    private static void writeDigests() {
+    private static synchronized void digestRegister(Chip c) {
+        c.digestSeq = digestNext++;
+        Chip prev = DIGEST_CURRENT.put(Thread.currentThread(), c);
+        if (prev != null) DIGEST_DONE.put(prev.digestSeq, prev.digest());
+    }
+    private static synchronized void writeDigests() {
+        for (Chip c : DIGEST_CURRENT.values()) DIGEST_DONE.put(c.digestSeq, c.digest());
         try (java.io.PrintWriter w = new java.io.PrintWriter(new java.io.FileWriter(DIGEST, true))) {
-            synchronized (DIGESTED) { int i = 0; for (Chip c : DIGESTED) w.println("chip " + (i++) + " " + c.digest()); }
+            for (var e : DIGEST_DONE.entrySet()) w.println("chip " + e.getKey() + " " + e.getValue());
         } catch (java.io.IOException e) { System.err.println("digest: " + e); }
     }
     /** Every unit's counters and state summary at the current cycle, hashed (and the totals in clear). */

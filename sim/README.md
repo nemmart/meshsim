@@ -31,6 +31,7 @@ no locks in the cycle.
   fixed-size values copied inline into delivery entries and ring slots; payloads too big to copy travel as handles into
   **thread-local free lists**.
 
-**Build** (owner, 2026-11-06): **plain `make`**, not CMake.
+**Build** (owner, 2026-11-06): **plain `make`**, not CMake. **No RTTI anywhere** (`-fno-rtti`; owner): no `dynamic_cast` or `typeid`;
+the framework gives each unit type its own small integer id, which the run lists are grouped by anyway.
 
 **Discipline from the first commit:** sanitizers (ASan, UBSan) and deterministic tests.

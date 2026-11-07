@@ -456,13 +456,19 @@ Footprint:
   next structure is its own line in `Sizes`, so the lines add up to the total.
 - **Debug-only arrays carved only when used**: the detector's in debug builds, the debug orders' when an order is set.
 
+**A regression found and fixed before the runner:** with 16-bit head/count/depth fields, clang compiled the rings'
+wrap-arounds (`if (j >= depth) j -= depth`) to branches instead of conditional moves; in rings of depth L + 2 the wrap
+comes every few takes, so the predictor missed them: +280 K mispredicts over 3,000 mesh-cycles (cachegrind's branch
+simulator, by line), about 10% slower on the mesh with equal instructions and fewer cache misses. 32-bit fields, as W1's
+Ring, give cmovs: mispredicts back to the before level (3.26 M against 3.15 M), the mesh even. `LinkPort` is 40 B (not 32).
+
 Local (this container; valgrind for instructions and simulated cache, wall clock too noisy here to settle the mesh):
 
 | | before 0c7df79 | after |
 |---|---|---|
 | controller bench, instructions | 1,195 M | 1,010 M (-15.5%; the engine's own part about -23%) |
 | mesh, instructions / L1d misses | 269.2 M / 8.47 M | 270.3 M / 5.93 M (-30%) |
-| mesh footprint per chip | 286,848 B | 238,144 B (-17%) |
+| mesh footprint per chip | 286,848 B | 242,240 B (-15.6%; 32-bit ring fields) |
 | mesh digest | fb3d4e3253ba04ef | fb3d4e3253ba04ef |
 
 `make check` (both compilers, debug, release, TSan; W5's goldens under all six option sets) and `make conformance` (42

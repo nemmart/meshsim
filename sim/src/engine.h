@@ -32,28 +32,32 @@ inline constexpr uint16_t kNoClass = 0xFFFF;   // a port carrying its payload by
 inline constexpr Word kZeroWords[3] = {0, 0, 0};
 struct SlimRing {
     Word* w = nullptr;
-    uint16_t head = 0, n = 0, depth = 0;
-    uint8_t wid = 0;
-    void init(Word* storage, unsigned width, unsigned d) { w = storage; head = 0; n = 0; depth = uint16_t(d); wid = uint8_t(width); }
+    uint32_t head = 0, n = 0, depth = 0, wid = 0;   // 32-bit, as W1's Ring: with 16-bit fields clang compiled the wraps
+                                                    // below to branches, which the predictor misses (+13% mispredicts on
+                                                    // the mesh, measured in the performance pass); 32-bit gives cmovs
+    // Width 0: the storage is the shared zero words (index x 0 is always 0), so peek needs no branch on the width.
+    void init(Word* storage, unsigned width, unsigned d) {
+        w = width ? storage : const_cast<Word*>(kZeroWords);
+        head = 0; n = 0; depth = d; wid = width;
+    }
     unsigned count() const { return n; }
     bool empty() const { return n == 0; }
     unsigned width() const { return wid; }
     const Word* peek(unsigned k = 0) const {
-        if (!wid) return kZeroWords;
-        unsigned i = head + k;
-        if (i >= depth) i -= depth;
-        return w + size_t(i) * wid;
+        unsigned j = head + k;
+        if (j >= depth) j -= depth;
+        return w + size_t(j) * wid;
     }
     Word* push() {
-        DCHECK(n < depth, "ring full: depth %u", unsigned(depth));
-        unsigned i = head + n++;
-        if (i >= depth) i -= depth;
-        return w + size_t(i) * wid;
+        DCHECK(n < depth, "ring full: depth %u", depth);
+        unsigned j = head + n++;
+        if (j >= depth) j -= depth;
+        return w + size_t(j) * wid;
     }
     void pop() {
         DCHECK(n > 0, "ring pop when empty");
+        --n;
         if (++head == depth) head = 0;
-        n--;
     }
 };
 

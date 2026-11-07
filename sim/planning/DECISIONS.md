@@ -65,3 +65,5 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   thread's 128-bit value array remains only for payloads larger than 128 bits.
 - **D18. Release and timing builds use clang** (owner, on W6's report: ~10% on the mesh; an Fp128 multiply 2.4 ns against
   gcc's best 4.3). gcc stays in `make check`, both compilers in both builds.
+- **D19. API reviews** (owner, 2026-11-07; amends D10): the integrator reviews APIs; the owner looks only at points the
+  integrator flags for his judgement. Stage 2 and later implementation still start on the owner's go-ahead.

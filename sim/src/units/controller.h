@@ -107,6 +107,7 @@ struct RegBlock {
         c.drive(req_busy, s.busy());
         return Wake::none();                                        // nothing changes until something arrives
     }
+    uint64_t digest() const { return s.digest(); }
 };
 
 // ------------------------------------------------------------------------------------------------------ the test bench

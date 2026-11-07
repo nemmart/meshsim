@@ -22,6 +22,29 @@ TEST(golden_all_match_direct) {
     CHECK_EQ(bad, 0u);
 }
 
+TEST(golden_all_match_engine) {
+    unsigned bad = 0;
+    std::vector<sim::Options> ready(1);
+    for (const RunSpec& r : read_runs()) {
+        std::string d = check_engine(r, ready);
+        if (!d.empty()) { fprintf(stderr, "%s\n", d.c_str()); bad++; }
+    }
+    CHECK_EQ(bad, 0u);
+}
+
+// Shuffle seeds 1-3, instance-major and step-all: each trace equal to the golden, each digest to the ready-driven run's.
+// Enforced once the engine implements them (W3's increment 5); until then this says so and passes.
+TEST(golden_engine_debug_checks) {
+    if (!engine_has_debug_checks()) { printf("  (pending: the engine ignores shuffle, order and step-all until W3's increment 5)\n"); return; }
+    unsigned bad = 0;
+    auto opts = debug_check_options();
+    for (const RunSpec& r : read_runs()) {
+        std::string d = check_engine(r, opts);
+        if (!d.empty()) { fprintf(stderr, "%s\n", d.c_str()); bad++; }
+    }
+    CHECK_EQ(bad, 0u);
+}
+
 static bool load(const char* name, RunSpec& r, Golden& g, Images& im) {
     auto runs = read_runs();
     const RunSpec* p = find_run(runs, name);

@@ -76,8 +76,34 @@ std::vector<std::string> closing_lines(const units::Rv32& core, const uint32_t* 
 // The direct driver: runs `t` to its stop, at most to the golden's last cycle; returns the whole trace.
 std::vector<std::string> run_direct(Tile& t, const Golden& g, const std::vector<std::string>& header);
 
+// The engine driver: the three units of units/controller.h on the framework, run to the golden's last cycle (the core
+// stops itself before, and then nothing changes). `opt` selects the debug checks (shuffle, order, step-all).
+struct EngineRun {
+    std::vector<std::string> lines;   // the whole trace
+    uint64_t digest = 0;              // Sim::digest() at the end
+    std::string sleepers;             // Sim::sleepers() at the end
+    uint64_t steps[3] = {};           // steps of the core, the block, the bench
+    uint64_t instructions = 0;        // retired by the core
+    double seconds = 0;               // the run alone (Sim::run), not the build or the formatting
+};
+EngineRun run_engine(Tile& t, const Golden& g, const std::vector<std::string>& header, const sim::Options& opt);
+
 // Line-for-line comparison: empty if equal, else the first difference with context.
 std::string compare(const std::vector<std::string>& ours, const std::vector<std::string>& golden);
+
+// One golden on the engine under each option set in `opts`: every trace must equal the golden, and every digest the
+// first's (opts[0] the ready-driven run). Where the engine's trace differs from the golden, the direct driver's is
+// compared too, to say whether the unit or the engine is at fault. Empty if all is well.
+std::string check_engine(const RunSpec& r, const std::vector<sim::Options>& opts);
+// The debug-check option sets: ready-driven (type-major), shuffle seeds 1-3, instance-major, step-all.
+std::vector<sim::Options> debug_check_options();
+// A first speed figure: the golden run `reps` times on the engine (ready-driven), the runs alone timed.
+struct BenchResult { double seconds = 0; uint64_t instructions = 0, cycles = 0, steps = 0; };
+BenchResult bench_engine(const RunSpec& r, unsigned reps, bool trace = true);
+
+// Whether the engine implements the debug checks yet (W3's increment 5): step-all on `hello` steps the block every cycle.
+// Until then Options' shuffle_seed, order and step_all are accepted and ignored.
+bool engine_has_debug_checks();
 
 // One golden, start to finish, with the direct driver: empty if it matches, else why not (refusal or difference).
 std::string check_direct(const RunSpec& r);

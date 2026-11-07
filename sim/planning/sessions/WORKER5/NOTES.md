@@ -138,3 +138,53 @@ Makefile included.
   last ran. Worth a sentence in sim.h's step-all paragraph: "counts the same either way" holds only after catch-up.
 - Struct padding: a unit digested by its bytes can differ in its padding between two machines; my units define
   `digest()` anyway, but the default might want a note.
+
+## The engine path (after W3's increments 1-3 merged into main, 2026-11-07)
+
+- **All 67 goldens match on the engine**, ready-driven, the whole file, with the end-of-run sleepers report empty and the
+  run under the allocation hook (`golden --engine`; `test_golden: golden_all_match_engine` in `make check`, every build).
+  Nothing in my units needed changing for the engine except RegBlock's `digest()`, which W3's new static_assert caught
+  missing (a struct with padding).
+- The harness also runs shuffle seeds 1-3, instance-major and step-all, each trace against the golden and each digest
+  against the ready-driven run's; where the engine's trace differs from the golden it compares the direct driver's too
+  and says which side is at fault.
+
+### For the owner: the debug-check options are accepted and ignored (W3's increment 5)
+
+`Options::shuffle_seed`, `order` and `step_all` are declared in config.h and documented in sim.h's DEBUG CHECKS, but
+nothing in `src/*.cpp` reads them yet (W3's NOTES schedules them for increment 5, with the missed-wake detector). They
+are silently no-ops: all six option sets give identical step counts and digests. **Smallest case:** `hello` with
+`Options{.step_all = true}` steps the block 5 times in 104 cycles (core 78, bench 4), exactly as ready-driven. And a unit
+deliberately broken for step-all (the block counting its own steps in its digest) passes all six. So the debug checks
+can't be claimed clean yet. Not worked around: the harness probes for it (`engine_has_debug_checks()`: step-all on
+`hello` must step the block every cycle), runs ready-driven only while it is absent, and enforces all six the moment it
+lands; `make check` prints "pending" meanwhile. Suggestion for W3: until a check exists, a non-default option could be
+fatal ("not implemented yet") rather than ignored.
+
+### For W3 (minor)
+
+- `Sim::run_until(t)` stops **before** cycle t (the engine's `now` is the next cycle to run), so after it `now() == t`
+  and cycle t hasn't run; `run(n)` from a fresh machine runs cycles 1..n. Natural once known, but sim.h/config.h don't
+  say; my first engine run stopped one cycle short of every halt. I use `run(END)`.
+
+### Line counts (code lines: not blank, not comment-only; total in brackets)
+
+| C++ (src/units) | | ref | |
+|---|---|---|---|
+| `rv32.h` (the core, its catch-up and digest, the block's load/store decode) | 406 (466) | `Controller.java` | 376 (449) |
+| `regblock.h` (endCycle's M1 subset, the view, the request count) | 84 (107) | `TileControl.java`'s M1 parts (fields, reset, eventsAt, wakeTerm, takeWake, read/write's block decode, endCycle, apply's M1 branches, conditions, status, params): ~165 of its 300; `RequestPort`'s count: ~10 of 29 | |
+| `regmap.h` (the address map, the register table) | 67 (82) | `Registers.java`'s map and block table | |
+| `controller.h/.cpp` (the three units, their ports and wiring) | 149 (190) | (`Tile`'s wiring of the same) | |
+| `trace_log.h/.cpp` (records, formatting) | 107 (129) | `Observer.java` | |
+
+### First local speed figure (this sandbox, 1 vCPU VM, clang release, not pinned: the runner measurement follows)
+
+`golden --bench 300`: every golden run 300 times on the engine, ready-driven, the run alone timed (not the build):
+
+| | instructions/s | cycles/s | per unit step |
+|---|---|---|---|
+| traced (the core writes its trace) | 21-22 M | 26-28 M | 41-44 ns |
+| no trace | 23 M | 29 M | 39-40 ns |
+
+The programs are short (100-1,000 cycles each), so this includes cold-start effects; ~40 ns a step for three small units
+looks high for the engine against W6's measurements, worth a `perf` look on the runner.

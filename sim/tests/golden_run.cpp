@@ -2,6 +2,7 @@
 // loop, which allocates nothing).
 #include "golden_run.h"
 
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -304,6 +305,103 @@ std::vector<std::string> run_direct(Tile& tile, const Golden& g, const std::vect
     if (log.full) out.push_back("(the trace log is full: more lines than the golden's)");
     for (std::string& l : closing_lines(tile.core, tile.dmem.data(), end)) out.push_back(l);
     return out;
+}
+
+// ---------------------------------------------------------------------------------------------------------- engine
+EngineRun run_engine(Tile& tile, const Golden& g, const std::vector<std::string>& header, const sim::Options& opt) {
+    sim::Config cfg(opt);
+    configure_tile(cfg, "t", tile.core, tile.block, g.events.data(), uint32_t(g.events.size()), &tile.trace.log);
+    sim::Sim s = cfg.build();
+    auto t0 = std::chrono::steady_clock::now();
+    sim::begin_run();                                  // the units and the engine allocate nothing
+    s.run(g.end_cycle);                                // cycles 1 .. END (run_until(t) stops before t)
+    sim::end_run();
+    double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    const Rv32& core = s.unit<Core>("t.core").rv;
+    EngineRun out;
+    uint64_t end = core.stop != Stop::running ? core.stop_cycle : g.end_cycle;
+    out.lines = header;
+    TraceLog& log = tile.trace.log;
+    for (std::string& l : format_body(log)) out.lines.push_back(l);
+    if (log.full) out.lines.push_back("(the trace log is full: more lines than the golden's)");
+    for (std::string& l : closing_lines(core, core.dmem, end)) out.lines.push_back(l);
+    out.digest = s.digest();
+    out.sleepers = s.sleepers();
+    out.seconds = seconds;
+    out.instructions = core.instructions;
+    out.steps[0] = s.steps("t.core"); out.steps[1] = s.steps("t.ctl"); out.steps[2] = s.steps("t.bench");
+    return out;
+}
+
+BenchResult bench_engine(const RunSpec& r, unsigned reps, bool trace) {
+    BenchResult b;
+    Golden g; Images im; std::string err;
+    if (!read_golden("tests/golden/" + r.name + ".trace", g, err) || !load_images(r, im, err)) return b;
+    TileConfig c = tile_config(r.tile);
+    auto header = header_lines(r, im, c);
+    for (unsigned k = 0; k < reps; k++) {
+        Tile tile(im, c, uint32_t(g.body_lines + 64));
+        if (!trace) tile.core.log = nullptr;           // the core writes no trace (the bench's few lines remain)
+        EngineRun e = run_engine(tile, g, header, sim::Options{});
+        b.seconds += e.seconds; b.instructions += e.instructions; b.cycles += g.end_cycle;
+        b.steps += e.steps[0] + e.steps[1] + e.steps[2];
+    }
+    return b;
+}
+
+bool engine_has_debug_checks() {
+    auto runs = read_runs();
+    const RunSpec* r = find_run(runs, "hello");
+    Golden g; Images im; std::string err;
+    if (!r || !read_golden("tests/golden/hello.trace", g, err) || !load_images(*r, im, err)) return false;
+    TileConfig c = tile_config(r->tile);
+    Tile tile(im, c, uint32_t(g.body_lines + 64));
+    sim::Options o; o.step_all = true;
+    return run_engine(tile, g, header_lines(*r, im, c), o).steps[1] == g.end_cycle;
+}
+
+std::vector<sim::Options> debug_check_options() {
+    std::vector<sim::Options> o(6);
+    o[1].shuffle_seed = 1; o[2].shuffle_seed = 2; o[3].shuffle_seed = 3;
+    o[4].order = sim::Options::Order::instance_major;
+    o[5].step_all = true;
+    return o;
+}
+static std::string describe(const sim::Options& o) {
+    std::string s = o.step_all ? "step-all" : o.order == sim::Options::Order::instance_major ? "instance-major" : "ready-driven";
+    if (o.shuffle_seed) s += ", shuffle seed " + std::to_string(o.shuffle_seed);
+    return s;
+}
+
+std::string check_engine(const RunSpec& r, const std::vector<sim::Options>& opts) {
+    Golden g; Images im; std::string err;
+    if (!read_golden("tests/golden/" + r.name + ".trace", g, err)) return err;
+    if (!load_images(r, im, err)) return err;
+    TileConfig c = tile_config(r.tile);
+    std::vector<std::string> header = header_lines(r, im, c);
+    std::string refused = check_header(g, header);
+    if (!refused.empty()) return refused;
+    uint64_t digest0 = 0;
+    for (size_t k = 0; k < opts.size(); k++) {
+        Tile tile(im, c, uint32_t(g.body_lines + 64));
+        EngineRun e = run_engine(tile, g, header, opts[k]);
+        std::string d = compare(e.lines, g.lines);
+        if (!d.empty()) {
+            Tile t2(im, c, uint32_t(g.body_lines + 64));
+            std::string dd = compare(e.lines, run_direct(t2, g, header));
+            return r.name + " (engine, " + describe(opts[k]) + "): " + d + "against the direct driver: "
+                 + (dd.empty() ? "the same (so the unit logic, not the engine)\n" : dd);
+        }
+        if (!e.sleepers.empty()) return r.name + " (engine, " + describe(opts[k]) + "): asleep with data waiting:\n" + e.sleepers;
+        if (opts[k].step_all && e.steps[1] != g.end_cycle)
+            return r.name + " (engine, step-all): the block was stepped " + std::to_string(e.steps[1]) + " times in "
+                 + std::to_string(g.end_cycle) + " cycles: step-all is not in effect";
+        if (k == 0) digest0 = e.digest;
+        else if (e.digest != digest0)
+            return r.name + " (engine, " + describe(opts[k]) + "): digest " + std::to_string(e.digest) + ", ready-driven "
+                 + std::to_string(digest0);
+    }
+    return "";
 }
 
 // ---------------------------------------------------------------------------------------------------------- compare

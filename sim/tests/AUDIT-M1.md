@@ -1,5 +1,7 @@
 # The coupling audit: what the controller sees of its tile in M1
 
+*(WORKER2, 2026-11-07; moved here from its session folder when it closed. W5's specification.)*
+
 W5's specification for the controller's surroundings in M1: the register-block subset and the test-bench unit. Every
 interaction between `Controller` and the rest of its tile that the M1 programs exercise (the 48 riscv-tests, `hello`,
 `faults` 0-7, `misalign_ld`, `misalign_st`, and `sim/fw`'s `csr` (3 variants), `timers`, `irq`, `wfi_cmd`, `wfi_go`,

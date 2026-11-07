@@ -33,6 +33,6 @@ measured proof, not on that mechanism:
 - `RiscvTest` and `CtrlTest` (seeds -1 and 4): logs and every chip's fingerprint (`-Dmeshsim.digest`) identical to the
   pristine copy's, with the observer off and on (WORKER2, locally);
 - the quick suite (`run_tests.sh quick`'s 39 Java steps, `sim/tests/ref/prove_observer.sh`): masked logs, exit codes and
-  fingerprints against the pristine copy, off and on: Quest 123 (`sim/planning/sessions/WORKER2/REPORT.md` has the verdict).
+  fingerprints against the pristine copy, off and on: Quest 123 (`sim/planning/sessions/WORKER2-REPORT.md` has the verdict).
 
 With it on, only the trace file is new: the logs and fingerprints stay identical.

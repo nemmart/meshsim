@@ -28,6 +28,12 @@ at the first cycle the core can see it); and the cycles the request FIFO frees a
 FIFO's count from the core's `REQUEST_SEND` stores and those frees, so refusals, STATUS [6] (request busy) and EVENTS [11]
 (request room) all follow; `REQ-REFUSED` stays in the trace as a check.
 
+**The bar** (D8, measured by W2, Quest 123: ReplayBench, segment 0 of evm-zone-29, `sim-step-cost`): **36.8 µs per
+chip-cycle** for one replay alone (one JVM on one P-core and its hyperthread), and **about 100,000-110,000 chip-cycles per
+second** for the whole box (12 JVMs on the P-cores: 96,800; 16 on every CPU: 108,700). Two JVMs per P-core each run 3.4×
+slower than one alone, more than hyperthreading explains: shared cache and memory, as the measurements in SIMULATOR-NEXT
+section 3 predict.
+
 ## Components, in build order
 
 1. **Build and discipline.** Plain `make` (`sim/Makefile`), gcc and clang, C++20, `-fno-exceptions -fno-rtti -Wall -Wextra
@@ -152,7 +158,7 @@ Workers may refine the layout under `src/` and `tests/` in their plans.
 | worker | state |
 |---|---|
 | W1 | **done**, merged 2026-11-07 (`sessions/WORKER1-REPORT.md`); D4: prebuilt firmware images, the C++ shipped as source |
-| W2 | prompt written 2026-11-06 (`sessions/WORKER2/PROMPT.md`) |
+| W2 | **done**, merged 2026-11-07 (`sessions/WORKER2-REPORT.md`); the audit is `sim/tests/AUDIT-M1.md`; 67 goldens, `regen.sh --check` all SAME |
 | W6 | prompt written 2026-11-07 (`sessions/WORKER6/PROMPT.md`) |
 | W3 | prompt written 2026-11-07 (`sessions/WORKER3/PROMPT.md`): stage 1 (the API) first, held for W6's findings and the owner's review |
 | W4, W5 | not started |

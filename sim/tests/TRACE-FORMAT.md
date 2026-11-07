@@ -84,7 +84,7 @@ any difference. Lines in this order:
   (`.data.bin`, loaded at `data_at`); `entry` is the boot command's jump target (its slot 1).
 - `bootrom`: the sha256 of the boot ROM's words (`sim/ref/meshsim/sw/bootrom.hex`, little-endian bytes).
 - `config`: the values the controller's behaviour, or the cycles of what the test bench replays, depend on
-  (`AUDIT.md` says which matters how):
+  (`AUDIT-M1.md` says which matters how):
 
 | key | ref (`Config`, `Controller`) | default |
 |---|---|---|

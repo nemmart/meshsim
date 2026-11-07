@@ -4,6 +4,7 @@
 #   (no flag)  regenerate: the "git" runs' files into this directory, every file's sha256 into HASHES
 #   --check    regenerate into a scratch directory and compare every file's sha256 with HASHES: SAME, DIFF or MISSING per
 #              file; exits 1 on any difference
+#   KEEP=DIR   also copy every file the runs made into DIR (the hash-only ones included)
 #   ALL=1      also the "runner" runs (the full sort); JX: their heap (default -Xmx6g); JS: the others' (default -Xmx2500m)
 # Nothing in sim/ref is written: the runs use a scratch copy of sim/ref/meshsim with this directory's images installed
 # (checked against images/MANIFEST.md first). Needs a JDK (javac), not the riscv toolchain.
@@ -66,6 +67,7 @@ xargs -d '\n' -P "${P:-$(nproc)}" -I{} bash -c 'run "{}"' < "$W/runs"
 for f in "$OUT"/*; do [ "$f" = "$OUT/rc.txt" ] || sed -i "s#$W/keys-[0-9]*/##g; s#$OUT/##g; s#$W/m/##g" "$f"; done   # scratch paths out of logs and trace headers
 grep -v ' rc=0$' "$OUT/rc.txt" && echo "regen: runs above exited non-zero"
 
+[ -n "${KEEP:-}" ] && { mkdir -p "$KEEP"; for f in "$OUT"/*; do [ "$f" = "$OUT/rc.txt" ] || cp "$f" "$KEEP/"; done; }
 # 4. hashes; regenerate or check
 (cd "$OUT" && for f in $(ls | grep -v '^rc.txt$' | sort); do sha256sum "$f"; done) > "$W/new.sha"
 [ -f "$W/keyhashes" ] && cat "$W/keyhashes" >> "$W/new.sha"

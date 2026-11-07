@@ -38,7 +38,11 @@ a small group of `uint64_t` words whose interpretation is up to the destination;
 (128-bit payload plus a 54-bit header, three words in `ref`) is the case to measure: (a) **two words, the routing header and
 the data** (owner's proposal): routers read only the header word, never dereference; the second word is the data itself for a
 32- or 64-bit payload, a pointer to the 128 bits otherwise, the header's size field saying which; against (b) **three words
-inline**, no allocation or dereference, one more word copied per hop. The first benchmarks measure both on a busy mesh.
+inline**, no allocation or dereference, one more word copied per hop. The first benchmarks measure both on a busy mesh. **The pointer is an index** (owner, 2026-11-06): each thread keeps **one array of
+128-bit values** with a free list of indices, so word 2 of a 128-bit link word is an index into the thread's own array:
+allocation is popping an index, data stays in one dense array. **Only crossing threads changes that:** at the outbox merge the
+payload is copied into the destination thread's array and the index rewritten, so no array is ever shared and nothing is
+freed by a thread that doesn't own it.
 
 **Build** (owner, 2026-11-06): **plain `make`**, not CMake. **No RTTI anywhere** (`-fno-rtti`; owner): no `dynamic_cast` or `typeid`;
 the framework gives each unit type its own small integer id, which the run lists are grouped by anyway.

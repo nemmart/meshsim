@@ -199,3 +199,11 @@ Wire, RegFile and Count are already readable from their producers' and readers' 
   thread 15.61 us. Every digest equal across both revisions. The plateau (~1.6 us at 6-12 threads against 0.9 ideal) is
   the next target: the per-interval fixed cost (barrier every 3 cycles, the drain's copy, ~11% of instructions at 6
   engines locally) and imbalance (Quest 138 measures placement by load).
+- 2026-11-07: **Quest 138** (placement by load against rows and tiles, 2-12 threads, every digest equal): **placement
+  by load lost to the plain grouping by tiles** on the mesh: at 6 threads tiles 1.597 us (3.40x), profile 1.791 (3.03x),
+  load 1.874, rows 1.964; at 8: tiles 1.566, profile 1.959; at 12: tiles 1.656, profile 1.776. Profile beats load (the
+  measured loads help) but not tiles, though its balance by its own measure is 1.025 at 6. So the calibrated step time
+  isn't what limits the run: the per-interval costs (drain per crossing word: profile 590 crossing words at 6 threads,
+  its irregular blocks) and compute inflation are not in that load. Synth: clusters already the granules (interval 1),
+  load/profile ~ tiles. Mesh at 0.05: best 0.61 us at 4-6 threads against 1.17 on one: fixed cost bound. Next: Quest
+  139, Options::time_threads (2d19444, a measurement option) for the breakdown.

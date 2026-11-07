@@ -176,3 +176,12 @@ cycle against `golden-m2`, under every debug option (shuffle, both orders, step-
   M1's tests unchanged (test_golden, test_rv32, test_regblock, test_controllers, test_broken_units).
   **Next:** the core's M2 paths (the send Hold with its retry and stall, the table window and HIST loads, counter and
   M2 register loads, `regmap.h`'s access table), the TileCtl and Director steps, `add_g1`; then regs and wfi with W9.
+- 2026-11-07: **make check clean at f427549**, build by build (this container: g++ 13.3.0, clang 18.1.3): `make run`
+  gcc debug (27 test binaries, 144 s), gcc release (65 s), clang debug (118 s), clang release (19 s), every binary 0
+  failed; `make tsan` (gcc and clang: test_matrix, test_parallel, test_threads, test_topology) and `make tsan-units`
+  (test_controllers, gcc and clang) clean.
+- **Rule (owner, 2026-11-07): a memory's fingerprint sum is kept incrementally only where a scan is too slow** (big SRAM,
+  82 ms a call in ref). The controller memories are scanned at fingerprint time (2 x 8 K words, ~30 us), so a store in
+  the loop costs nothing extra; the tables (window stores and, with G3, RMWs) keep theirs, cheap either way.
+- The port observer is built (W10, `Sim::observe`, sim-w10 c8601be); once merged: close the 284 in-flight port-B
+  cycles, the K-line's entries, GO's queue and the eject bus with it.

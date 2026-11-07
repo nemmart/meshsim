@@ -495,6 +495,42 @@ hook again** (its comment removed): it reports the missed wake, not the hook.
 - W4's E5 digest: on hold until the integrator says; at the merge, its `ring(..., const Ring& r, ...)` takes the
   `SlimRing` instead (a one-word change on my side).
 
+### The performance pass on the runner: Quest 132 (2026-11-07)
+
+Before 0c7df79, after 057a9d5, built and run in the same task, interleaved 5 runs each, pinned to CPU 0 (detected: the
+first P core's first thread). **Machine** (recorded by the task, D21): Intel Core i5-14400F, 6 P cores (CPUs 0-11 with
+hyperthreads, max 4.7 GHz) and 4 E cores (CPUs 12-15, max 3.5 GHz), L2 9.5 MiB, L3 20 MiB, 64 GB, Linux 6.8, governor
+powersave, clang 18.1.3 (release -O2), gcc 13.3. All six verdicts PASS: both builds and their own checks, the 67 goldens
+on the after engine under the six option sets, the mesh digests equal (4a116005d9095712, all ten runs).
+
+| | before | after | change |
+|---|---|---|---|
+| controller: ns per unit step (median of 5; spread under 0.5%) | 20.43 | 20.37 | -0.3% |
+| controller: instructions (perf stat, one run) | 54.7 G | 43.7 G | **-20%** |
+| controller: CPU cycles (perf stat) | 9.62 G | 9.58 G | -0.4% |
+| controller: IPC | 5.69 | 4.57 | |
+| controller: sim::Engine/detail symbols' share (perf record, self) | 64.1% | 53.6% | |
+| mesh: us per mesh-cycle (median of 5; spread under 1.3%) | 5.643 | 5.444 | **-3.5%** |
+| mesh: instructions / cycles (perf stat) | 10.53 G / 5.38 G | 10.21 G / 5.18 G | -3.0% / -3.6% |
+| mesh: L1d load misses | 165 M | 119 M | **-28%** |
+| mesh: sim::Engine/detail symbols' share | 18.3% | 14.4% | |
+| mesh: footprint per chip (Sizes) | 286,848 B | 242,240 B | **-15.6%** |
+
+(The plain core alone measured 5.21 and 5.79 ns per step in single runs of identical code: layout noise, so the table's
+"engine part = step - core" line, -4.2%, is not to be quoted.)
+
+**What it says.** The mesh is 3.5% faster and 15.6% smaller, with 28% fewer L1 misses. **The controller runs 20% fewer
+instructions in the same time**: its IPC fell from 5.7 to 4.6, so it is bound by a dependency chain, not by instruction
+count. A P core overlapped the engine's old bookkeeping with the core's own work; what is left is the serial path of a
+simulated cycle: about 74 CPU cycles per simulated cycle, through memory (the run's ready word stored at the end of a cycle
+and loaded at the next, the next-cycle bit, the ready mask, the near slot of a stall), each a store-to-load round trip.
+Removing work off that path did nothing; shortening the path is the next lever.
+
+**Proposed next (not done):** a solo loop. When a cycle ends with exactly one instance scheduled, nothing in flight and no
+wake due before the next cycle (W5's busy core most of the time; any one-unit phase), `run_until` keeps stepping that
+instance directly, its bookkeeping in registers, until a put, a wake or a mark breaks the condition; then back to the
+general cycle. Exact (the same steps, in the same cycles), and measurable with the same task.
+
 ## Log
 
 - 2026-11-07: plan agreed (owner's go-ahead with five notes). W2's audit not yet on `sim-w2`; W6 not started.
@@ -516,3 +552,4 @@ hook again** (its comment removed): it reports the missed wake, not the hook.
 - 2026-11-07: the performance pass's changes, verified locally (the runner A/B to follow).
 - 2026-11-07: D24 (the detector formats into a fixed buffer; every diagnostic tested under the hook; W5's death test back
   under it); NEXT.md folded in.
+- 2026-11-07: the rings' 32-bit fields (a branchy wrap found locally); Quest 132, the performance pass A/B on the runner.

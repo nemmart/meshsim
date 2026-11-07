@@ -34,6 +34,13 @@ void w_core(const void* g1tile, FpOut& o, const FpCtx& x);
 // port-B bus (empty until the observer). `w_core_mem` is the same without the bus (CoreFp's "mem", M1's goldens).
 void w_cmem(const void* g1tile, FpOut& o, const FpCtx& x);
 void w_core_mem(const void* g1tile, FpOut& o, const FpCtx& x);
+// StateFp.ctl: the registers, the events and qualifiers, STATUS, SIM_EXIT; then the GO line's pending arrivals (an
+// in-flight Link: empty until the observer). `w_ctl_nogo` stops before them (CoreFp's "ctlx": M1's bench keeps no queue).
+void w_ctl(const void* g1tile, FpOut& o, const FpCtx& x);
+void w_ctl_nogo(const void* g1tile, FpOut& o, const FpCtx& x);
+// StateFp.dir: the write counters (the block's here), the K-stage line's pending decrements (a Link(K + 1) into the
+// block: empty until the observer), the eject bus (likewise).
+void w_dir(const void* g1tile, FpOut& o, const FpCtx& x);
 void w_we(const void* g1tile, FpOut& o, const FpCtx& x);
 void w_ag(const void* g1tile, FpOut& o, const FpCtx& x);
 void w_gather(const void* g1tile, FpOut& o, const FpCtx& x);

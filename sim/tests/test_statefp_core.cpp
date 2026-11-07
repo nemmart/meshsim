@@ -20,7 +20,7 @@ using namespace test;
 
 namespace {
 
-struct RefLine { uint64_t core, mem; };
+struct RefLine { uint64_t core = 0, mem = 0, ctlx = 0; };
 
 bool read_corefp(const std::string& path, std::vector<RefLine>& out, uint64_t& last) {
     std::ifstream f(path);
@@ -33,7 +33,9 @@ bool read_corefp(const std::string& path, std::vector<RefLine>& out, uint64_t& l
         in >> c >> u >> h;
         if (out.size() <= c) out.resize(c + 1);
         uint64_t v = std::stoull(h, nullptr, 16);
-        if (u.size() > 5 && u.compare(u.size() - 5, 5, ".core") == 0) out[c].core = v; else out[c].mem = v;
+        if (u.size() > 5 && u.compare(u.size() - 5, 5, ".core") == 0) out[c].core = v;
+        else if (u.size() > 4 && u.compare(u.size() - 4, 4, ".mem") == 0) out[c].mem = v;
+        else if (u.size() > 5 && u.compare(u.size() - 5, 5, ".ctlx") == 0) out[c].ctlx = v;
         last = c;
     }
     return true;
@@ -70,6 +72,70 @@ std::string check_run(const RunSpec& r, const sim::Options& opt, uint64_t& lagge
         }
     }
     return "";
+}
+
+// W5's direct driver (golden_run.cpp run_direct: the core and the block as plain code, in ref's order, endCycle(t) at the
+// end of t), with the block's stream (without the GO queue) and the core's checked after every cycle.
+std::string direct_fp(const RunSpec& r) {
+    Golden g; Images im; std::string err;
+    if (!read_golden("tests/golden/" + r.name + ".trace", g, err) || !load_images(r, im, err)) return err;
+    std::vector<RefLine> ref; uint64_t last = 0;
+    if (!read_corefp("tests/fp-m1/" + r.name + ".corefp", ref, last)) return "no tests/fp-m1/" + r.name + ".corefp";
+    Tile tile(im, tile_config(r.tile), uint32_t(g.body_lines + 64));
+    struct Env {
+        units::RegBlockState& b; bool freed; units::RegBlockState::In& in;
+        uint32_t reg(unsigned i) const { return b.reg(i); }
+        bool wake() const { return b.wake(); }
+        bool irq() const { return b.irq(); }
+        bool can_push() const { return !b.busy() || freed; }
+        void post(uint32_t op, uint32_t arg, uint32_t v) { in.op = op; in.arg = arg; in.v = v; }
+    };
+    fp::G1Tile view;
+    view.tile = r.tile; view.core = &tile.core; view.ctl = &tile.block;
+    const auto& ev = g.events;
+    size_t i = 0;
+    char b[200];
+    auto check = [&](uint64_t c) -> bool {
+        fp::FpOut oc, ox;
+        fp::w_core(&view, oc, fp::FpCtx{c, nullptr});
+        fp::w_ctl_nogo(&view, ox, fp::FpCtx{c, nullptr});
+        if (oc.done() == ref[c].core && ox.done() == ref[c].ctlx) return true;
+        std::snprintf(b, sizeof b, "%s (direct): t%u.%s differs at cycle %llu", r.name.c_str(), r.tile,
+                      oc.done() != ref[c].core ? "core" : "ctl", (unsigned long long)c);
+        return false;
+    };
+    if (!check(0)) return b;
+    for (uint64_t t = 1; t <= last; t++) {
+        units::RegBlockState::In in;
+        bool freed = false;
+        for (; i < ev.size() && ev[i].t == t - 1 && ev[i].kind != units::T_FREED; i++) {
+            const units::BenchEvent& e = ev[i];
+            if (e.kind != units::T_MEMW) continue;
+            uint32_t* m = units::region(e.addr) == units::R_PMEM ? tile.imem.data() : tile.dmem.data();
+            for (uint32_t k = 0; k < e.n; k++)
+                m[(((units::offset(e.addr) & (units::MEM_BYTES - 1)) >> 2) + k) & (units::MEM_WORDS - 1)] = e.v[k];
+        }
+        for (; i < ev.size() && ev[i].t == t && ev[i].kind == units::T_FREED; i++) freed = true;
+        Env env{tile.block, freed, in};
+        tile.core.step(env, t);
+        if (tile.core.stop == units::Stop::ub) break;
+        in.freed = freed;
+        for (size_t j = i; j < ev.size() && ev[j].t == t; j++) {
+            if (ev[j].kind == units::T_GO) in.go = true;
+            if (ev[j].kind == units::T_CMD) in.landed = true;
+        }
+        tile.block.end_cycle(t, in);
+        if (!check(t)) return b;
+        if (tile.core.stop != units::Stop::running) break;
+    }
+    return "";
+}
+
+TEST(block_fingerprint_equals_ref_every_cycle_on_m1_goldens_direct) {
+    for (const RunSpec& r : read_runs()) {
+        std::string e = direct_fp(r);
+        if (!e.empty()) { test::fail(__FILE__, __LINE__, "%s", e.c_str()); return; }
+    }
 }
 
 TEST(core_fingerprint_equals_ref_every_cycle_on_m1_goldens) {

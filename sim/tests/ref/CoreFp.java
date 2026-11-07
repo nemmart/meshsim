@@ -13,7 +13,8 @@ import java.util.Map;
  * against ref on every M1 program. Reads ref by reflection only (StateFp), the observer off.
  *
  *   java -cp REF_BUILD:THIS_BUILD CoreFp OUT TILE IMAGE_DIR NAME [SCHEDULE]
- * OUT: "cycle t<k>.core hash" and "cycle t<k>.mem hash" per cycle, from 0 to the run's end (the core halts, parks, or
+ * OUT: "cycle t<k>.core hash", "cycle t<k>.mem hash" and "cycle t<k>.ctlx hash" (StateFp.ctl without its GO queue,
+ * go.n and go.at: M1's bench delivers GO at its cycle and keeps no queue) per cycle, from 0 to the run's end (the core halts, parks, or
  * a UB stop).
  */
 public final class CoreFp {
@@ -72,5 +73,8 @@ public final class CoreFp {
         StateFp.Out m = new StateFp.Out();
         m.w("dmem", StateFp.banked(StateFp.R_DMEM, p.cmem.dmem)); m.w("pmem", StateFp.banked(StateFp.R_PMEM, p.cmem.imem));
         w.printf("%d t%d.mem %016x%n", c.cycle, tile, m.done());
+        StateFp.Out x = new StateFp.Out() { @Override void w(String n, long v) { if (!n.startsWith("go.")) super.w(n, v); } };
+        StateFp.ctl(x, p.ctl, c.cycle);
+        w.printf("%d t%d.ctlx %016x%n", c.cycle, tile, x.done());
     }
 }

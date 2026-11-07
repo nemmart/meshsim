@@ -33,7 +33,8 @@ TEST(regs_configuration_and_table_writes_equal_refs) {
     units::RegBlockState ctl;
     units::TableMems ts;
     units::HistMem hist;
-    fp::G1Tile g{0, &ctl, &ts, &hist};
+    fp::G1Tile g;
+    g.ctl = &ctl; g.ts = &ts; g.hist = &hist;
     fp::FpRegistry r;
     fp::register_g1(r, g);
     auto check = [&](uint64_t c, std::initializer_list<const char*> us) {

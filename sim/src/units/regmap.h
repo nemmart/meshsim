@@ -70,7 +70,7 @@ enum : uint32_t {
     EVENTS_VALID = 0xFFFF, EVENTS_LIVE = 1u << EV_REQUEST_PENDING | 7u << EV_PERIPH_1,
     EVENTS_MASK_RESET = 1u << EV_GO | 1u << EV_COUNTERS_DONE,
     COUNTER_EVENTS = 0x7F | 1u << EV_COUNTERS_DONE,
-    ST_DONE = 4, ST_LANDED = 5, ST_REQUEST_BUSY = 6,
+    ST_RD_RUNNING = 0, ST_RD_DONE = 1, ST_GATHER_BUSY = 2, ST_SEND_BUSY = 3, ST_DONE = 4, ST_LANDED = 5, ST_REQUEST_BUSY = 6,
     COND_BUS_ERROR = 9, COND_ILLEGAL = 10,                                       // ERRORS bits (Conditions.java)
 };
 

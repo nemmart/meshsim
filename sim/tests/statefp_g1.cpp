@@ -49,6 +49,34 @@ void w_cmem(const void* p, FpOut& o, const FpCtx& x) {
     link_empty(o, "portB");
 }
 
+void w_ctl_nogo(const void* p, FpOut& o, const FpCtx&) {
+    const units::RegBlockState z{};
+    const units::RegBlockState& b = tile(p).ctl ? *tile(p).ctl : z;
+    o.w("routerHdr", b.router_hdr); o.w("routerAddr", b.router_addr); o.w("dmaConfig", b.dma_config);
+    o.w("recordBase", b.record_base); o.w("rdSetup", b.rd_setup);
+    for (unsigned k = 0; k < 3; k++) o.wi("setW", k, b.router_w[k]);
+    o.w("done", b.done); o.w("landed", b.landed); o.w("gate", b.gate); o.w("readyLevel", b.ready_level);
+    o.w("events", b.events); o.w("mask", b.mask); o.w("required", b.required);
+    o.w("qAll", b.q_all);
+    for (unsigned k = 1; k < 8; k++) o.wi("qOne", k, b.q_one[k]);
+    o.w("condAllPrev", b.cond_all_prev);
+    for (unsigned k = 1; k < 8; k++) o.wi("condOnePrev", k, b.cond_one_prev[k]);
+    o.w("rdDonePrev", b.rd_done_prev); o.w("requestBusyPrev", b.request_busy_prev);
+    o.w("conditions", b.conditions); o.w("status", b.status);
+    o.w("simExit", b.sim_exit_at != 0); o.w("simExitValue", b.sim_exit_value);
+}
+void w_ctl(const void* p, FpOut& o, const FpCtx& x) {
+    w_ctl_nogo(p, o, x);
+    o.w("go.n", 0);                                                      // GO's arrivals in flight: with the observer
+}
+void w_dir(const void* p, FpOut& o, const FpCtx&) {
+    const units::RegBlockState z{};
+    const units::RegBlockState& b = tile(p).ctl ? *tile(p).ctl : z;
+    for (unsigned c = 1; c <= 7; c++) o.wi("remaining", c, b.remaining[c]);
+    o.w("line.n", 0);                                                    // the K-line: a Link, with the observer
+    link_empty(o, "in");
+}
+
 // StateFp.we: bucketDigit, histDigit, augmentBase; the pointer stage; awaiting; in (we-in), tsRet. (G3: stage, buses.)
 void w_we(const void* p, FpOut& o, const FpCtx&) {
     const G1Tile& g = tile(p);
@@ -128,6 +156,8 @@ void w_req(const void* p, FpOut& o, const FpCtx&) {
 void register_g1(FpRegistry& r, const G1Tile& g) {
     const std::string t = "t" + std::to_string(g.tile) + ".";
     if (g.core) { r.add(t + "core", w_core, &g); r.add(t + "cmem", w_cmem, &g); }
+    r.add(t + "ctl", w_ctl, &g);
+    r.add(t + "dir", w_dir, &g);
     r.add(t + "sram", w_sram_stub, &g);
     r.add(t + "sram.data", w_sram_data_stub, &g);
     r.add(t + "we", w_we, &g);

@@ -164,3 +164,15 @@ cycle against `golden-m2`, under every debug option (shuffle, both orders, step-
   equals ref's on all 67 runs**; the memories too, except at the 284 cycles where the bench's MEMW is in flight (ref's
   port-B write has landed: the shifted end of cycle the observer closes; counted and printed). A corrupted ref line is
   caught (checked by hand).
+- 2026-11-07: **the register block's state in full** (`regblock.h`'s `RegBlockState`, plain logic shared by W5's M1
+  unit and the M2 unit): the send port's registers (ROUTER_HDR's mask, ROUTER_ADDR's advance at mode 0 without
+  no-increment, W0-W2 cleared), the write counters (adds, wraps flagged, armed qualifiers; the director's due decrement
+  first, judged without the store: D27), `counter_events` (TileControl.counterEvents: [6:0], [7], the done gate, a clear
+  winning), DMA_CONFIG (digits 5-7 fatal: UB) and the record base, SRAM_RD_DEST_ADDR, the condition counts (ROUTER_OVF,
+  BAD, UNEXPECTED, WE_IN_OVF, GATHER_OVF, DONE_EARLY; G3/G4's later), STATUS's send-busy, the READY pulse and the error
+  line. PULSE_DMA is fatal until G4. Writers `w_ctl` (GO's queue: with the observer) and `w_dir` (the counters; the
+  K-line and eject bus: with the observer). **Checked: the block's stream (all but the GO queue) equals ref's every cycle
+  on all 67 M1 goldens** through W5's direct driver (`CoreFp` now also writes `ctlx`; `tests/fp-m1` regenerated, 2.1 MB);
+  M1's tests unchanged (test_golden, test_rv32, test_regblock, test_controllers, test_broken_units).
+  **Next:** the core's M2 paths (the send Hold with its retry and stall, the table window and HIST loads, counter and
+  M2 register loads, `regmap.h`'s access table), the TileCtl and Director steps, `add_g1`; then regs and wfi with W9.

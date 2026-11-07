@@ -33,16 +33,15 @@ run() {   # NAME N CPUS
   echo "== $n: $k JVM(s) on CPUs $cpus, $(date -u +%T)"
   cpustat > "$OUT/$n.stat0"; : > "$OUT/$n.pids"; touch "$OUT/$n.running"
   for i in $(seq 1 "$k"); do
-    taskset -c "$cpus" java $TB -cp build:build/gold ReplayBench "$D" evm-zone-29 --first 0 --repeats "$REP" > "$OUT/$n.$i.log" 2>&1 &
+    taskset -c "$cpus" java $TB -cp build:build/gold ReplayBench ${BENCH:-"$D" evm-zone-29 --first 0 --repeats "$REP"} > "$OUT/$n.$i.log" 2>&1 &
     echo $! >> "$OUT/$n.pids"
   done
   sampler "$n" & local sp=$!
   for p in $(cat "$OUT/$n.pids"); do wait "$p"; done
   rm -f "$OUT/$n.running"; wait "$sp"; cpustat > "$OUT/$n.stat1"
 }
-run one 1 0-1
-run p12 12 0-11
-run all16 16 0-15
+CONFIGS=${CONFIGS:-one:1:0-1 p12:12:0-11 all16:16:0-15}   # NAME:JVMS:CPUS (tests: a short list, BENCH="synthetic 20 8 3")
+for c in $CONFIGS; do IFS=: read -r a b d <<< "$c"; run "$a" "$b" "$d"; done
 
 summary() {   # NAME
   local n=$1
@@ -65,5 +64,5 @@ summary() {   # NAME
   awk '$1=="T" {if ($3>m) m=$3; n++} END{printf "load average (1 min) at most %.1f over %d s\n", m, n}' "$OUT/$n.samples"
   paste "$OUT/$n.stat0" "$OUT/$n.stat1" | awk '{dt=$5-$2; di=$6-$3; b=dt ? 100*(dt-di)/dt : 0; printf "%s %.0f%%  ", $1, b; if ($1=="cpu11") printf "\n"} END{printf "\n"}'
 }
-{ echo "ReplayBench on segment 0 of evm-zone-29, $REP repeats per JVM, heap ${HEAP:-3g}; $(date -u)"; summary one; summary p12; summary all16; } > "$OUT/BASELINE.txt"
+{ echo "ReplayBench on segment 0 of evm-zone-29, $REP repeats per JVM, heap ${HEAP:-3g}; $(date -u)"; for c in $CONFIGS; do summary "${c%%:*}"; done; } > "$OUT/BASELINE.txt"
 cat "$OUT/BASELINE.txt"

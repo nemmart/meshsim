@@ -66,6 +66,17 @@
 // wheel (a route lookup, no branch on the kind or the domain); a Wire read is a load, a write a compare and a store (and
 // the readers' bits when it changes).
 //
+// DEBUG CHECKS (config.h's Options), each compared by the digest of every port and unit (Sim::digest):
+//   shuffle      within a level, runs and instances in a seeded random order: any difference is an undeclared dependence
+//                (a missing Wire); bisect the level to find it.
+//   two orders   type-major (each run's instances together) against instance-major (each instance's units together).
+//   wires        a Wire written after a reader read it in the same cycle, or written twice in a cycle: fatal.
+//   step-all     every instance stepped every cycle, whatever its wakes. Its digest must equal the ready-driven run's
+//                (WORKER28's proof for idle-skipping): it catches a missed wake, which otherwise fails silently. The
+//                rule it checks: a step at a cycle the unit did not ask for, with nothing delivered, changes nothing
+//                but what the skipped cycles would have changed (a unit's catch-up counters count the same either way),
+//                so a correct unit pays nothing for it.
+//
 // THE TWO REGIMES (D6). A unit's constructor runs at configuration (any C++). `step` runs in the cycle loop: no STL, no
 // allocation (the hook in W1's alloc_guard aborts on one), no virtual calls, no exceptions, untyped 64-bit words.
 // ---------------------------------------------------------------------------------------------------------------------

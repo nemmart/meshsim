@@ -54,6 +54,7 @@ struct Options {
     uint64_t shuffle_seed = 0;   // 0: none; else instances and runs within a level are stepped in a seeded random order
     enum class Order : uint8_t { type_major, instance_major } order = Order::type_major;   // the debug comparison (PLAN-M1 item 6)
     bool wire_checks = true;     // wire discipline (written after a read in the cycle, written twice): debug builds
+    bool step_all = false;       // step every instance every cycle (the missed-wake check, sim.h DEBUG CHECKS)
     unsigned threads = 1;        // W4
 };
 

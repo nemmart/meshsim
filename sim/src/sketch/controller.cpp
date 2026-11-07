@@ -4,7 +4,8 @@
 // rest of its tile in M1, which is what tests the phases and the Wires.
 //
 // Three units, two levels:
-//   level 0  TestBench  replays `ref`'s trace: command landed, GO, and the request FIFO's refusals (PLAN-M1 item 8)
+//   level 0  TestBench  replays `ref`'s trace (W2's golden traces): command landed, GO, and the request bus freeing the
+//                       request FIFO's head; it keeps the FIFO's occupancy from those and the core's pushes
 //   level 0  RegBlock   TileControl's M1 subset, as the shifted end of cycle (sim.h): at t it does endCycle(t - 1) from
 //                       what reached it at t, then drives the register view, the wake term and the interrupt term for t
 //   level 1  Core       the RV32 core; reads those three Wires/RegFile at t; its stores and consuming loads reach the
@@ -22,7 +23,10 @@
 //   ctl.errorsAt(t) != 0  the interrupt term: conditions from endCycle(t - 1) | the slot's live errors at t
 //                         -> Wire `irq`, driven by the block at level 0 (no slot in M1)
 //   tile.req.canPush(t)   room, or an entry freed by the request bus in t (the bus runs first, Chip.java:215)
-//                         -> Wire `req_free`, driven by the test bench from the trace in M1 (the bus itself in M2)
+//                         -> Wire `req_free`, driven by the test bench in M1 (the bus itself in M2): occupancy < depth
+//                            or freed at t, the occupancy kept from the core's pushes (Link(1) `req_push`) and the
+//                            trace's REQ-FREED events. REQ-REFUSED is not an input: the C++ side writes its own, and the
+//                            trace comparison checks it line for line
 //   GO at goAt            visible to the tile at goAt only; endCycle(goAt) latches EVENTS [8]
 //                         -> the bench puts an event on Link(1) `go` at goAt; the block latches it in endCycle(goAt) at goAt + 1
 //   command landed at t   a director write covering slot 0 at t sets it in endCycle(t) step 3 -> the same, Link(1) `landed`
@@ -51,6 +55,7 @@ struct Core {
     WireIn wake, irq;     // the wake term, the interrupt term
     WireIn req_free;      // a REQUEST_SEND store may complete this cycle
     LinkOut bus;          // stores and consuming loads to the block, latency 1
+    LinkOut req_push;     // a REQUEST_SEND that completed (the test bench's model of the request FIFO), latency 1
     // architectural state (Controller.java)
     uint32_t x[32] = {}, pc = 0x02000000, mstatus = 0, mie = 0;
     uint64_t mcycle = 0, last = ~0ull;               // `last`: the cycle this core last ran (catch-up); ~0: never
@@ -62,7 +67,7 @@ struct Core {
 
     explicit Core(Ports& p) {
         p.in(regs, "regs"); p.in(wake, "wake"); p.in(irq, "irq"); p.in(req_free, "req_free");
-        p.out(bus, "bus", 2);
+        p.out(bus, "bus", 2); p.out(req_push, "req_push", 0);
     }
 
     // Controller.runCycle. A core with nothing to do this cycle (halted, in WFI without a wake, in a branch or multiply
@@ -105,7 +110,10 @@ struct Core {
     bool store_reg(Ctx& c, uint32_t ea, uint32_t v, bool& bus_error) {
         Reg r;
         if (!reg_of(ea, r) || !reg_writable(r)) { bus_error = true; return true; }
-        if (r == REQUEST_SEND && !c.read(req_free)) { stall_request++; return false; }
+        if (r == REQUEST_SEND) {
+            if (!c.read(req_free)) { stall_request++; return false; }   // the trace line REQ-REFUSED at t
+            c.put(req_push);
+        }
         if (r == SIM_EXIT) halted = true;
         c.put(bus, BUS_STORE << 32 | r, v);              // acts at the end of t: the block applies it at t + 1
         return true;
@@ -151,42 +159,47 @@ struct RegBlock {
 
 // ------------------------------------------------------------------------------------------------------ the test bench
 struct TestBench {
-    LinkOut go, landed; WireOut req_free;
-    // `ref`'s events for this run, from the golden trace (sorted by cycle; configuration data, read-only in the loop)
-    struct Event { uint64_t t; uint8_t kind; };          // 0 landed, 1 GO, 2 a REQUEST_SEND refused at t
+    LinkIn req_push; LinkOut go, landed; WireOut req_free;
+    // `ref`'s events for this run, from the golden trace, sorted by cycle (configuration data, read-only in the loop). The
+    // trace's GO and CMD lines at s mean "seen from s": the bench puts them at s - 1, and the block latches them in
+    // endCycle(s - 1), at s. A REQ-FREED line at s: the bus freed the head at s, before the core's store of s.
+    struct Event { uint64_t t; uint8_t kind; };          // 0 landed, 1 GO, 2 the request FIFO's head freed
     const Event* ev; uint32_t n, i = 0;
+    uint32_t depth, count = 0;                           // the request FIFO (request_fifo_depth, from the trace header)
 
-    TestBench(Ports& p, const Event* events, uint32_t count) : ev(events), n(count) {
-        p.out(go, "go", 0); p.out(landed, "landed", 0); p.out(req_free, "req_free", 1);   // reset value 1: the FIFO has room
+    TestBench(Ports& p, const Event* events, uint32_t count_, uint32_t fifo_depth) : ev(events), n(count_), depth(fifo_depth) {
+        p.in(req_push, "req_push", 0);
+        p.out(go, "go", 0); p.out(landed, "landed", 0); p.out(req_free, "req_free", 1);   // reset value 1: room
     }
-    // Stepped only at its events' cycles, and the cycle after a refusal to drive req_free back.
-    bool refused_now = false;
+    // Stepped at its events' cycles, when the core pushes, and the cycle after a free (to drive req_free again).
     Wake step(Ctx& c) {
-        uint64_t t = c.now();
-        if (refused_now) { c.drive(req_free, 1); refused_now = false; }
+        uint64_t t = c.now(); bool freed = false;
+        if (c.ready(req_push)) { c.take(req_push); count++; }          // pushed at t - 1 (RequestPort.send)
         for (; i < n && ev[i].t == t; i++) {
             if (ev[i].kind == 0) c.put(landed);
             else if (ev[i].kind == 1) c.put(go);
-            else { c.drive(req_free, 0); refused_now = true; }
+            else { count--; freed = true; }
         }
-        if (refused_now) return c.next();
+        c.drive(req_free, count < depth || freed);                     // RequestPort.canPush
+        if (freed) return c.next();
         return i < n ? Wake::at_cycle(ev[i].t) : Wake::none();
     }
 };
 
 // ----------------------------------------------------------------------------------------------------- configuration
-void configure_tile(Config& cfg, const TestBench::Event* events, uint32_t n, uint32_t params) {
-    auto& bench = cfg.add<TestBench>("t0.bench", events, n);
+void configure_tile(Config& cfg, const TestBench::Event* events, uint32_t n, uint32_t params, uint32_t request_fifo_depth) {
+    auto& bench = cfg.add<TestBench>("t0.bench", events, n, request_fifo_depth);
     auto& block = cfg.add<RegBlock>("t0.ctl", params);
     auto& core = cfg.add<Core>("t0.core");
     cfg.link(core.bus, block.bus, 1);
+    cfg.link(core.req_push, bench.req_push, 1);
     cfg.link(bench.go, block.go, 1);
     cfg.link(bench.landed, block.landed, 1);
     cfg.connect(block.regs, core.regs);
     cfg.connect(block.wake, core.wake);
     cfg.connect(block.irq, core.irq);
     cfg.connect(bench.req_free, core.req_free);
-    // levels: bench 0, block 0, core 1 (from the wires); no loop: core -> block is a Link
+    // levels: bench 0, block 0, core 1 (from the wires); no loop: core -> block and core -> bench are Links
 }
 
 }  // namespace sketch

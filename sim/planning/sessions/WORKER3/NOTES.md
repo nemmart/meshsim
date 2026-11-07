@@ -54,6 +54,10 @@ PORTS.md and the stage 2 tests share one vocabulary.
 PLAN-M1 items 3-6, local forms only, with the acceptance tests of PLAN-M1 (W3); the Java driver in `sim/tests/ref/` under
 my own names (`PortConf*.java`). `WORKER3/REPORT.md` at the end.
 
+**Added to the acceptance (integrator, 2026-11-07): step-all.** A debug mode that steps every instance every cycle; its
+digest must equal the ready-driven run's (WORKER28's proof for idle-skipping), on the synthetic graphs and on the sketched
+units once they run. It is the safety net for explicit wakes: a missed `next()` otherwise fails silently.
+
 ### W1's `base/`
 
 No change foreseen; any proposal goes here first.
@@ -115,8 +119,24 @@ No change foreseen; any proposal goes here first.
   subset 29, test bench 20). No fair `ref` equivalent yet: the same couplings are spread over `Controller.java`,
   `TileControl.java` and `RequestPort.java`. W5 reports the full controller against `Controller.java` (444).
 
+### The integrator's notes on stage 1 (2026-11-07)
+
+1. The three choices (explicit wakes, the shifted end of cycle, Wires as persistent levels): provisionally yes; they go
+   to the owner with the API.
+2. Step-all, a fourth debug check: in `sim.h` (DEBUG CHECKS), `config.h` (`Options::step_all`) and stage 2's acceptance.
+   The rule it checks, stated in `sim.h`: a step the unit did not ask for, with nothing delivered, changes nothing but what
+   the skipped cycles would have; both sketches keep it (the core counts a stalled or WFI cycle the same either way).
+3. A Count wakes nobody; a count whose change must step a unit is an event (PORTS.md 8; M2's write counters).
+4. clang 18.1 installed locally: `make check` clean with gcc and clang, debug and release.
+5. The test bench and the request FIFO: it keeps the FIFO's occupancy from the core's pushes (a `Link(1)` from the core)
+   and the trace's REQ-FREED events, and drives `req_free` = occupancy < depth or freed at t (`RequestPort.canPush`).
+   **REQ-REFUSED is not an input**: driving the refusal from the trace would make it an input, and the comparison could
+   no longer catch a core that stalls on the wrong cycle; modelled this way it is an output, checked line for line. The
+   trace's GO and CMD lines at s mean "seen from s", so the bench puts them at s - 1. To check against AUDIT.md.
+
 ## Log
 
 - 2026-11-07: plan agreed (owner's go-ahead with five notes). W2's audit not yet on `sim-w2`; W6 not started.
 - 2026-11-07: stage 1 drafts pushed (PORTS.md, sim.h, config.h, two sketches). Waiting for W2's AUDIT.md (sketch 2) and
   W6's findings (through the integrator) before the review.
+- 2026-11-07: the integrator's five notes folded in (step-all, Counts as events, clang, the bench from REQ-FREED).

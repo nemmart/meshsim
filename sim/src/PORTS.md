@@ -188,6 +188,13 @@ producer, a `Wire` read) or `through(t - 1)` (as at the end of the previous cycl
 at level 0 of t + 1 for `endCycle(t)`: the increments of t's steps and of t's delivery, not t + 1's delivery. (`EventCounts`'
 credits are M2.)
 
+**A Count wakes nobody.** Reading it is the reader's business, whenever it runs; an increment sets no ready bit. That suits
+M1 (the conditions are read by the register block when something else steps it). **Where a count's change must step a
+unit, it is modelled as an event, not a Count**: the producer puts on a width-0 `Link` (or a `Reg` holding the value) to
+that unit, which is what wakes it. Otherwise the reader would have to step every cycle to notice. The first case is M2's:
+the write counters feed `endCycle`'s status and events (done, the per-counter done events), so their decrements reach the
+register block as events.
+
 ## 9. `Wire`: this cycle's value (`ref`'s same-cycle direct calls)
 
 `ref` has no wire class: same-cycle couplings are direct calls, correct because of the fixed child order

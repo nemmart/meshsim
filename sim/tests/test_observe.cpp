@@ -374,3 +374,53 @@ TEST(time_threads_reports_phase_shares_and_changes_nothing) {
     }
     CHECK_EQ(d[0], d[1]);
 }
+
+// Crossing Links of different latencies into one domain: their outboxes have windows of different sizes (direct delivery,
+// W >= latency + interval); the observer reads each over its own window, so no word is found twice (W8's eject link).
+namespace {
+struct Pacer {   // puts its count every other cycle
+    LinkOut out; uint32_t i = 0;
+    explicit Pacer(Ports& p) { p.out(out, "out", 1); }
+    uint64_t digest() const { return hash_fields(i); }
+    Wake step(Ctx& c) { if (c.now() % 2 == 0) c.put(out, i++); return c.next(); }
+};
+struct Sink2 {   // takes whatever arrives
+    LinkIn a, b; uint64_t h = 0;
+    explicit Sink2(Ports& p) { p.in(a, "a", 1); p.in(b, "b", 1); }
+    uint64_t digest() const { return hash_fields(h); }
+    Wake step(Ctx& c) {
+        if (c.ready(a)) { h = hash_mix(h, c.peek(a)[0]); c.take(a); }
+        if (c.ready(b)) { h = hash_mix(h, c.peek(b)[0] + 1); c.take(b); }
+        return Wake::none();
+    }
+};
+}  // namespace
+
+TEST(observe_links_of_different_latencies_split_as_in_one_domain) {
+    PortEntry x[64], y[64];
+    auto make = [](bool split) {
+        Options o; o.threads = split ? 2 : 1; o.observe_arrivals = true;
+        Config cfg(o);
+        cfg.domain(0);
+        auto& p = cfg.add<Pacer>("p");
+        auto& q = cfg.add<Pacer>("q");
+        cfg.domain(split ? 1 : 0);
+        auto& k = cfg.add<Sink2>("k");
+        cfg.link(p.out, k.a, 3);
+        cfg.link(q.out, k.b, 13);                   // window 16 against the other's 8
+        return cfg.build();
+    };
+    Sim s[2] = {make(false), make(true)};
+    for (Cycle n : {1u, 2u, 3u, 5u, 7u, 11u, 1u, 1u, 20u}) {
+        for (auto& m : s) m.run(n);
+        for (int port = 0; port < 2; port++) {
+            const Sink2& a = s[0].unit<Sink2>("k");
+            const Sink2& b = s[1].unit<Sink2>("k");
+            const PortView va = s[0].observe(port ? a.b : a.a, x, 64), vb = s[1].observe(port ? b.b : b.a, y, 64);
+            CHECK_EQ(va.n, vb.n);
+            CHECK(std::memcmp(x, y, sizeof(PortEntry) * va.n) == 0);
+            if (s[0].now() > 15)                        // steady: a put every other cycle, latency 13 or 3
+                CHECK(port ? (va.n == 6 || va.n == 7) : (va.n == 1 || va.n == 2));
+        }
+    }
+}

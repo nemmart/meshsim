@@ -37,8 +37,8 @@ enum Reg : unsigned {
 // What a word holds for a load or a store.
 enum Access : uint8_t {
     A_NONE = 0,       // no register (a load: write-only or reserved; a store: read-only or reserved)
-    A_M1 = 1,         // modelled in M1
-    A_OUT = 2,        // a register outside M1: fatal, "not modelled in M1"
+    A_M1 = 1,         // modelled (M1's subset, and M2's registers since W8)
+    A_OUT = 2,        // not modelled yet: fatal, named
 };
 struct RegInfo { const char* name; Access load, store; };
 // Indexed by word. Reserved words (5, 33-125) have no name and A_NONE both ways.
@@ -47,16 +47,16 @@ inline const RegInfo& reg_info(unsigned i) {
     static constexpr RegInfo t[33] = {
         {"PARAMS", A_M1, A_NONE}, {"STATUS", A_M1, A_NONE}, {"ERRORS", A_M1, A_NONE}, {"PULSE_DONE", A_NONE, A_M1},
         {"PULSE_DMA", A_NONE, A_OUT}, kNone, {"EVENTS", A_M1, A_NONE}, {"EVENTS_PEEK", A_M1, A_NONE},
-        {"EVENTS_MASK", A_M1, A_M1}, {"EVENTS_REQUIRED", A_M1, A_M1}, {"ROUTER_HDR", A_OUT, A_OUT},
-        {"ROUTER_ADDR", A_OUT, A_OUT}, {"ROUTER_SET_W0", A_NONE, A_OUT}, {"ROUTER_SET_W1", A_NONE, A_OUT},
-        {"ROUTER_SET_W2", A_NONE, A_OUT}, {"ROUTER_SEND_32", A_NONE, A_OUT}, {"ROUTER_SEND_64", A_NONE, A_OUT},
-        {"ROUTER_SEND_128", A_NONE, A_OUT},
+        {"EVENTS_MASK", A_M1, A_M1}, {"EVENTS_REQUIRED", A_M1, A_M1}, {"ROUTER_HDR", A_M1, A_M1},
+        {"ROUTER_ADDR", A_M1, A_M1}, {"ROUTER_SET_W0", A_NONE, A_M1}, {"ROUTER_SET_W1", A_NONE, A_M1},
+        {"ROUTER_SET_W2", A_NONE, A_M1}, {"ROUTER_SEND_32", A_NONE, A_M1}, {"ROUTER_SEND_64", A_NONE, A_M1},
+        {"ROUTER_SEND_128", A_NONE, A_M1},
         {"REQUEST_SET_W0/REQUEST_GET_W0", A_OUT, A_M1}, {"REQUEST_SET_W1/REQUEST_GET_W1", A_OUT, A_M1},
         {"REQUEST_SET_W2/REQUEST_GET_W2", A_OUT, A_M1}, {"REQUEST_SEND/REQUEST_RECEIVE", A_OUT, A_M1},
-        {"DMA_CONFIG", A_OUT, A_OUT}, {"DMA_RECORD_BASE_ADDRESS", A_OUT, A_OUT},
-        {"WRITE_COUNTER_1", A_OUT, A_OUT}, {"WRITE_COUNTER_2", A_OUT, A_OUT}, {"WRITE_COUNTER_3", A_OUT, A_OUT},
-        {"WRITE_COUNTER_4", A_OUT, A_OUT}, {"WRITE_COUNTER_5", A_OUT, A_OUT}, {"WRITE_COUNTER_6", A_OUT, A_OUT},
-        {"WRITE_COUNTER_7", A_OUT, A_OUT}, {"SRAM_RD_ADDR_QUEUE", A_OUT, A_OUT}, {"SRAM_RD_DEST_ADDR", A_OUT, A_OUT},
+        {"DMA_CONFIG", A_M1, A_M1}, {"DMA_RECORD_BASE_ADDRESS", A_M1, A_M1},
+        {"WRITE_COUNTER_1", A_M1, A_M1}, {"WRITE_COUNTER_2", A_M1, A_M1}, {"WRITE_COUNTER_3", A_M1, A_M1},
+        {"WRITE_COUNTER_4", A_M1, A_M1}, {"WRITE_COUNTER_5", A_M1, A_M1}, {"WRITE_COUNTER_6", A_M1, A_M1},
+        {"WRITE_COUNTER_7", A_M1, A_M1}, {"SRAM_RD_ADDR_QUEUE", A_OUT, A_OUT}, {"SRAM_RD_DEST_ADDR", A_M1, A_M1},
     };
     static constexpr RegInfo kSimExit{"SIM_EXIT", A_NONE, A_M1}, kTrace{"TRACE", A_NONE, A_M1};
     return i < 33 ? t[i] : i == SIM_EXIT ? kSimExit : i == TRACE ? kTrace : kNone;

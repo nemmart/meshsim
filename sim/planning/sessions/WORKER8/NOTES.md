@@ -185,3 +185,12 @@ cycle against `golden-m2`, under every debug option (shuffle, both orders, step-
   the loop costs nothing extra; the tables (window stores and, with G3, RMWs) keep theirs, cheap either way.
 - The port observer is built (W10, `Sim::observe`, sim-w10 c8601be); once merged: close the 284 in-flight port-B
   cycles, the K-line's entries, GO's queue and the eject bus with it.
+- 2026-11-07: **the core's M2 paths** (`rv32.h`): a ROUTER_SEND_* store builds its packet from the block's view as it
+  stands at t (TileControl.sendLo/Hi/Header: W0-W2 below the store's top word, src 0 for the router to stamp) and puts
+  it on the send Hold; a refusal seen at t + 1 re-puts the same words and stalls (ref's pendingT; `sendRetry` in the
+  fingerprint); table-window stores (masked as ref masks them) and one-cycle HIST loads; PTR/STREAM/GROUP loads are bus
+  errors; ROUTER_HDR/ADDR, DMA_*, the counters and SRAM_RD_DEST_ADDR load through the view. Each M2 hook is optional
+  in the environment (`if constexpr (requires ...)`): M1's benches don't have them and stop, named, if a program uses
+  one. `regmap.h`: those registers modelled; PULSE_DMA (G4), SRAM_RD_ADDR_QUEUE (G3), REQUEST_* loads stay "not
+  modelled yet". W5's death tests updated to what is still unmodelled. `test_core_m2` (5): packets at 32/64/128 bits,
+  the retry and stall, the window, HIST, the view.

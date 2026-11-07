@@ -34,7 +34,7 @@ void w_core(const void* p, FpOut& o, const FpCtx& x) {
     o.w("halt", uint64_t(int64_t(k.halt)));
     o.w("inWfi", k.in_wfi); o.w("inHandler", k.in_handler);
     o.w("stall", stall);
-    o.w("sendRetry", 0);                                                // M2's send path: with the core's send port
+    o.w("sendRetry", k.pending_t == c);                                  // a send awaiting its acceptance at c + 1
     bool lw = k.load_wait_t == c;
     o.w("regLoad", lw);
     if (lw) o.w("regLoadPc", k.load_wait_pc);

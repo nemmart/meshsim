@@ -298,27 +298,28 @@ TEST(rv32_sim_exit_halts_after_its_retire_line) {
     CHECK_EQ(m.core.pc, 0x01000004u);
 }
 
-DEATH_TEST(rv32_router_register_not_modelled, "ROUTER_HDR \\(0xfffff828\\): not modelled in M1") {
-    M m; m.core.x[1] = REG_BASE; m.prog({LW(2, 1, 0x28)});
-    m.steps(2);
-}
-DEATH_TEST(rv32_write_counter_not_modelled, "WRITE_COUNTER_1 \\(0xfffff860\\): not modelled in M1") {
-    M m; m.core.x[1] = REG_BASE; m.prog({SW(2, 1, 0x60)});
+// M2 (W8): ROUTER_* and the write counters are modelled now; PULSE_DMA (G4) and the read port (G3) are not yet.
+DEATH_TEST(rv32_pulse_dma_not_modelled, "PULSE_DMA \\(0xfffff810\\): not modelled yet") {
+    M m; m.core.x[1] = REG_BASE; m.prog({SW(2, 1, 0x10)});
     m.step();
 }
-DEATH_TEST(rv32_request_receive_not_modelled, "REQUEST_RECEIVE.*not modelled in M1") {
+DEATH_TEST(rv32_read_port_not_modelled, "SRAM_RD_ADDR_QUEUE \\(0xfffff87c\\): not modelled yet") {
+    M m; m.core.x[1] = REG_BASE; m.prog({SW(2, 1, 0x7C)});
+    m.step();
+}
+DEATH_TEST(rv32_request_receive_not_modelled, "REQUEST_RECEIVE.*not modelled yet") {
     M m; m.core.x[1] = REG_BASE; m.prog({LW(2, 1, 0x54)});
     m.steps(2);
 }
-DEATH_TEST(rv32_peripheral_window_not_modelled, "peripheral 1's window at 0xfffffa00: not modelled in M1") {
+DEATH_TEST(rv32_peripheral_window_not_modelled, "peripheral 1's window at 0xfffffa00: not modelled yet") {
     M m; m.core.x[1] = REG_BASE + 0x200; m.prog({LW(2, 1, 0)});
     m.steps(2);
 }
-DEATH_TEST(rv32_hist_not_modelled, "HIST in the table window at 0xffff2000: not modelled in M1") {
+DEATH_TEST(rv32_hist_without_a_hist, "HIST in the table window at 0xffff2000: this bench has no HIST") {
     M m; m.core.x[1] = 0xFFFF2000; m.prog({LW(2, 1, 0)});
     m.step();
 }
-DEATH_TEST(rv32_table_store_not_modelled, "table window at 0xffff2800: not modelled in M1") {
+DEATH_TEST(rv32_table_store_without_a_table_store, "table window at 0xffff2800: this bench has no table store") {
     M m; m.core.x[1] = 0xFFFF2800; m.prog({SW(2, 1, 0)});
     m.step();
 }

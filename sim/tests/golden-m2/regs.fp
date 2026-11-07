@@ -1,4 +1,73 @@
-# M2Sort state fingerprint v1 (sim/tests/AUDIT-M2.md section 6): cycle unit hash
+# state fingerprint v1 (sim/tests/AUDIT-M2.md section 6): cycle unit hash
+# M2Prog regs seed -1
+# image regs.code.bin be0cd808098b8d0d796074255b28e572333614a81e5e81a855fa5be725c681af
+# image regs.data.bin e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+# image regs.sym 43ce506a5f2fd6b092fb7979d96268eb95bdb160a696329afa91fd3bd2887265
+# bootrom sw/bootrom.hex b2165425aef54cb357cf2c1a82e3a5bc7965392c60a4e0c2b92b7f9f060855af
+# hops hops.txt a3b90f3c2fbc64f1a93c8c0ff916cfbaf40823aae38c4540811482873741d3da
+# config hops (Hops)
+# config idleSkip true
+# config linkLatency 3
+# config linkLatencyOverride null
+# config queueDepth 16
+# config intraTileLatency 1
+# config skew true
+# config skewSeed 1
+# config startSkew null
+# config weInDepth 4
+# config readPortDepth 64
+# config gatherDepth 16
+# config cmLatency 2
+# config logTrace false
+# config refCycle 40
+# config rpLatency 2
+# config K 8
+# config memChunks 1048576
+# config areaQueueDepth 8
+# config sramReadLatency 2
+# config writeCombining false
+# config fifoCountBeforePop true
+# config readTokens 64
+# config loopbackLast true
+# config loopbackTokens true
+# config loopbackDepth -1
+# config tsEngineLatency 1
+# config agLookahead -1
+# config streamLookahead 4
+# config testReadClients false
+# config regLoadLatency 2
+# config stageDelay 64
+# config ccCores false
+# config cc3Tracer false
+# config ccDmaDepth 4
+# config ccLinkLatency 1
+# config requestFifoDepth 128
+# config receiveQueueDepth [128, 256, 128]
+# config reqHopLatency 3
+# config periphType 4
+# config periphTypes null
+# config testPeripheral null
+# config realResponder true
+# config coreless false
+# config goLatency 8
+# config runLatency 1
+# config readyLatency 8
+# config cncGoSettle true
+# config cncReaction 1
+# config strictReplies false
+# config counterStoreClearsLatch true
+# config checkReadPortOverlap true
+# config checkCommandRead true
+# config checkDisjoint true
+# config shuffleSeed -1
+# config maxViolationMessages 1000
+# config measureS1 true
+# config checkErrors true
+# config checkUnexpected true
+# config doneGate true
+# config errorLatency -1
+# config cncRxDepth 64
+# start skew [1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0]
 0 t0.core d861b6378b972d69
 0 t0.ctl b43af518060478f7
 0 t0.cmem c7a809aa0549890c

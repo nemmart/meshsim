@@ -1,4 +1,73 @@
-# M2Sort state fingerprint v1 (sim/tests/AUDIT-M2.md section 6): cycle unit hash
+# state fingerprint v1 (sim/tests/AUDIT-M2.md section 6): cycle unit hash
+# M2Prog a2a seed -1
+# image a2a.code.bin 49d234782e2c88a48d83a1a16c434c82284ab02bff540d2a2827c83737d7a5bd
+# image a2a.data.bin b5abd0ca112905f852b3722772a5489b979570c7f8b754a45af33040bc3de81a
+# image a2a.sym 1a941d9049c099ac3e98e732635ca6d609af56be56ef5e55dfae1a94e13ebc02
+# bootrom sw/bootrom.hex b2165425aef54cb357cf2c1a82e3a5bc7965392c60a4e0c2b92b7f9f060855af
+# hops hops.txt a3b90f3c2fbc64f1a93c8c0ff916cfbaf40823aae38c4540811482873741d3da
+# config hops (Hops)
+# config idleSkip true
+# config linkLatency 3
+# config linkLatencyOverride null
+# config queueDepth 16
+# config intraTileLatency 1
+# config skew true
+# config skewSeed 1
+# config startSkew null
+# config weInDepth 4
+# config readPortDepth 64
+# config gatherDepth 16
+# config cmLatency 2
+# config logTrace false
+# config refCycle 40
+# config rpLatency 2
+# config K 8
+# config memChunks 1048576
+# config areaQueueDepth 8
+# config sramReadLatency 2
+# config writeCombining false
+# config fifoCountBeforePop true
+# config readTokens 64
+# config loopbackLast true
+# config loopbackTokens true
+# config loopbackDepth -1
+# config tsEngineLatency 1
+# config agLookahead -1
+# config streamLookahead 4
+# config testReadClients false
+# config regLoadLatency 2
+# config stageDelay 64
+# config ccCores false
+# config cc3Tracer false
+# config ccDmaDepth 4
+# config ccLinkLatency 1
+# config requestFifoDepth 128
+# config receiveQueueDepth [128, 256, 128]
+# config reqHopLatency 3
+# config periphType 4
+# config periphTypes null
+# config testPeripheral null
+# config realResponder true
+# config coreless false
+# config goLatency 8
+# config runLatency 1
+# config readyLatency 8
+# config cncGoSettle true
+# config cncReaction 1
+# config strictReplies false
+# config counterStoreClearsLatch true
+# config checkReadPortOverlap true
+# config checkCommandRead true
+# config checkDisjoint true
+# config shuffleSeed -1
+# config maxViolationMessages 1000
+# config measureS1 true
+# config checkErrors true
+# config checkUnexpected true
+# config doneGate true
+# config errorLatency -1
+# config cncRxDepth 64
+# start skew [1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0]
 0 t0.core d861b6378b972d69
 0 t0.ctl b43af518060478f7
 0 t0.cmem c7a809aa0549890c

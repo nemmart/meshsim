@@ -51,7 +51,11 @@ final class M2Prog {
             TraceRun.header(m.c.cfg, m.c, traceTile, prog, Mach.SW.resolve(prog + ".code.bin"), Mach.SW.resolve(prog + ".data.bin"),
                     im.sym("_data_start"), im.sym("_start"), List.of("M2Prog " + String.join(" ", a)));
         }
-        FpHooks h = new FpHooks(m.c, kv);
+        java.util.List<String> hdr = new java.util.ArrayList<>(List.of("M2Prog " + prog + " seed " + kv.getOrDefault("seed", "-1")));
+        for (String f : new String[] { prog + ".code.bin", prog + ".data.bin", prog + ".sym" }) hdr.add("image " + f + " " + TraceRun.sha256(java.nio.file.Files.readAllBytes(Mach.SW.resolve(f))));
+        hdr.add("bootrom sw/bootrom.hex " + TraceRun.sha256(java.nio.file.Files.readAllBytes(java.nio.file.Path.of("sw/bootrom.hex"))));
+        hdr.add("hops hops.txt " + TraceRun.sha256(java.nio.file.Files.readAllBytes(java.nio.file.Path.of("hops.txt"))));
+        FpHooks h = new FpHooks(m.c, kv, hdr);
         boolean ok = m.run(() -> { h.cycle(); return m.allStopped(); }, max);
         h.end();
         if (traceW != null) { TraceRun.closing(m.c, m.c.tiles[traceTile].core, "run end"); Observer.stop(); }

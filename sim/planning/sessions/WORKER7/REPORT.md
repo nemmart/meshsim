@@ -58,7 +58,7 @@ runs `RUNS`, and checks every file's sha256 against `HASHES` (all SAME locally).
 | regs / wfi / a2a (CtrlTest's runs) | end at 869 / 1,616 / 7,698 cycles; tile 0 fingerprinted every cycle (a2a every 10); traces of tiles 0, 27, 63 | git |
 | NetTest -1 quick, EngineTest -1 | logs and ref's per-chip digests (171, 23 chips) | git |
 | the sort, 64 x 16,384 | 496,619 cycles, verified; PhaseLog; coverage; fingerprints; traces of tiles 0, 27, 63 | facts in git, the rest by hash |
-| the sort, 64 x 65,536 | BASELINE-PENDING | runner (Quest 134), by hash |
+| the sort, 64 x 65,536 (`p4/uniform-k128`) | **1,229,687 cycles**, verified; PhaseLog; coverage; fingerprints; traces of tiles 0, 27, 63 (Quest 134, 135) | facts in git, the rest by hash; files in the runner's `$DATA/w7-golden-m2/` |
 
 ## 5. Localising a mismatch (item 4; AUDIT-M2 section 8)
 
@@ -71,7 +71,27 @@ tile at 16K, Quest 123's proof again.
 
 ## 6. The baseline (item 5)
 
-BASELINE-PENDING (Quest 134).
+Quest 134 (`results/134-w7-m2-refs-baseline/` in Quest): `sim/ref` at main, one JVM (`-Xmx6g`, OpenJDK as installed on
+the runner), **pinned to CPU 0** (the first P-core detected by W5's `machine.inc`, D21); each run alone on the box. The
+machine: Intel Core i5-14400F, 6 P-cores (CPUs 0-11, 4.7 GHz max) and 4 E-cores (12-15, 3.5 GHz), 64 GB, governor
+powersave, Linux 6.8 (`machine.txt` in the result). `M2Sort` runs SortTest's own pieces and times them; hooks off.
+
+| run | setup (JVM start → the sort's first command) | of which the boot | the run (`runUntil`) | **the counted span** (L1 GO → L2 all READY) |
+|---|---|---|---|---|
+| M2Sort 1 | 2.084 s | 1.301 s (14,791 cycles) | 96.005 s, 1,229,773 cycles | **95.981 s, 1,229,687 cycles: 78.05 µs/cycle** |
+| M2Sort 2 | 2.145 s | 1.332 s | 95.870 s | **95.843 s: 77.94 µs/cycle** |
+| M2Sort 3 | 1.980 s | 1.232 s | 95.827 s | **95.802 s: 77.91 µs/cycle** |
+| SortTest, the whole JVM (`date` around `java`) | | | | **97.70 s** in all |
+
+Setup's parts (run 1): JVM start to `main` 0.005 s, the key file and the oracle 0.52 s, the chip 0.12 s, the boot 1.30 s,
+the input load 0.13 s; verification after the run 0.14 s.
+
+- **The figure to beat is ~95.9 s for the counted 1,229,687 cycles (78 µs per chip-cycle)**, pinned to one P-core.
+  PLAN-M2's ~110 s (Quest 120, the same code) was the whole JVM unpinned; pinned, the whole JVM is 97.7 s. The ~4 s aim is
+  ~3.3 µs per cycle: **~24× the counted span**.
+- Run to run, the counted span varies by 0.2%; the boot is 1.3% of the setup-excluded run's cycles' worth of time.
+- The counted span includes `SortTest.Machine.monitor()` between every two cycles (as SortTest's own run does): a scan
+  of 64 tiles that the C++ bench need not reproduce. It is part of the baseline as measured.
 
 ## 7. Deviations and notes
 

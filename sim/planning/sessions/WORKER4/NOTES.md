@@ -115,7 +115,37 @@ port (declared as `held` on the boundary input, so W3's sizing counts them). Hol
 - **R1** (sim.h, by-reference payloads): a slot index is opaque; a partition changes which index a payload gets, so a
   unit's behaviour and its `digest()` must not depend on the value (hash the slot's contents).
 
-### Determinism: why the partition can't change a result
+### Quest 133: form 2 measured (2026-11-07)
+
+The framework mesh (64 Routers, rate 0.35 unless stated; tile k in domain (k / 8) x D / 8, bands of rows; every crossing
+a Link of 3, so a barrier every 3 cycles), clang release, the machine from machine.sh (i5-14400F, 6 P + 4 E; one thread
+per P core), 3 repeats, medians (spreads 0-7%, 12% at rate 0). µs per mesh-cycle, wall time.
+
+| run | µs/mesh-cycle | against one thread |
+|---|---|---|
+| one domain, one thread | 5.457 | 1 |
+| due mask off (one domain) | 5.449 (rate 0.35), 1.226 against 1.197 (rate 0.05) | the same at 0.35; +2.4% at 0.05, inside the spread |
+| split on one thread: 2 / 4 / 6 domains | 5.614 / 5.980 / 6.415 | +2.9% / +9.6% / +17.6% (the split's own cost) |
+| 2 threads (spin / yield 200 / 2000 / 20000 / block) | 2.887 / 2.917 / 2.872 / 2.924 / 3.078 | **1.90x** |
+| 4 threads | 1.789 / 1.786 / 1.815 / 1.844 / 1.859 | **3.05x** |
+| 6 threads | 1.966 / 1.951 / 1.952 / 1.932 / 2.024 | 2.80x: 8 rows over 6 threads leaves two with 2 rows (the same longest share as 4), plus more crossings |
+| rate 0 (no words move): one / 6 spin / 6 yield | 0.447 / 0.235 / 0.325 | the barrier's own cost: ~0.5 µs per barrier spinning, ~0.75 yielding |
+
+- **Digests**: one per rate over every run (threads, domains, barrier mode, due mask): VERDICT PASS.
+- **The barrier**: spinning, yielding after 200, 2,000 or 20,000 pauses are within the spread of each other on a busy
+  mesh; blocking (futex) costs 3-7%. At rate 0, where the barrier is most of the work, spinning is 1.4x faster than
+  yielding. **Default kept: yield after 2,000 pauses** (equal on real work, and it can't livelock with more threads than
+  CPUs, the case that hung this session); `Options::barrier_spins = ~0u` spins only, for a dedicated machine.
+- **The due mask off** in split domains costs nothing measurable on the busy mesh and at most ~2% on a quiet one.
+- **The split's own cost** grows with domains on one thread (more outboxes to walk, a drain per domain per interval, a
+  run_until per domain per interval): 3% at 2, 18% at 6. On real threads it is paid once per thread.
+- **Footprint** (words per machine): one domain 24,136 (193 KB); 2 domains 28,144 (+17%), 4: 32,512 (+35%), 6: 36,800
+  (+52%): each domain's own engine structures (its instance arrays, wheels, run sets), the boundary units and proxies,
+  the outboxes.
+- **Scaling**: 1.9x at 2 threads, 3.05x at 4; the mesh's 8 rows don't divide over 6. A busier chip with more tiles per
+  domain, or a partition by load, would scale further; M2's chip will tell.
+
+## Determinism: why the partition can't change a result
 
 1. **Within a domain the order is W3's**: a domain's instances are a subsequence of the single-threaded order (same rule:
    level, type, form, add order), and units interact within a cycle only through Wires, RegFiles and Count `now`, none of
@@ -248,6 +278,36 @@ jump is computed by every thread from the same status words after the barrier (e
 **The watchdog** (debug): a barrier wait over 10 s prints each thread's state (the interval's first cycle, its domain,
 its phase: running, draining, at which barrier) and is fatal; a death test plants a unit stuck in its step.
 
+## Quest 133: form 2 measured (2026-11-07)
+
+The framework mesh (64 Routers, rate 0.35 unless stated; tile k in domain (k / 8) x D / 8, bands of rows; every crossing
+a Link of 3, so a barrier every 3 cycles), clang release, the machine from machine.sh (i5-14400F, 6 P + 4 E; one thread
+per P core), 3 repeats, medians (spreads 0-7%, 12% at rate 0). µs per mesh-cycle, wall time.
+
+| run | µs/mesh-cycle | against one thread |
+|---|---|---|
+| one domain, one thread | 5.457 | 1 |
+| due mask off (one domain) | 5.449 (rate 0.35), 1.226 against 1.197 (rate 0.05) | the same at 0.35; +2.4% at 0.05, inside the spread |
+| split on one thread: 2 / 4 / 6 domains | 5.614 / 5.980 / 6.415 | +2.9% / +9.6% / +17.6% (the split's own cost) |
+| 2 threads (spin / yield 200 / 2000 / 20000 / block) | 2.887 / 2.917 / 2.872 / 2.924 / 3.078 | **1.90x** |
+| 4 threads | 1.789 / 1.786 / 1.815 / 1.844 / 1.859 | **3.05x** |
+| 6 threads | 1.966 / 1.951 / 1.952 / 1.932 / 2.024 | 2.80x: 8 rows over 6 threads leaves two with 2 rows (the same longest share as 4), plus more crossings |
+| rate 0 (no words move): one / 6 spin / 6 yield | 0.447 / 0.235 / 0.325 | the barrier's own cost: ~0.5 µs per barrier spinning, ~0.75 yielding |
+
+- **Digests**: one per rate over every run (threads, domains, barrier mode, due mask): VERDICT PASS.
+- **The barrier**: spinning, yielding after 200, 2,000 or 20,000 pauses are within the spread of each other on a busy
+  mesh; blocking (futex) costs 3-7%. At rate 0, where the barrier is most of the work, spinning is 1.4x faster than
+  yielding. **Default kept: yield after 2,000 pauses** (equal on real work, and it can't livelock with more threads than
+  CPUs, the case that hung this session); `Options::barrier_spins = ~0u` spins only, for a dedicated machine.
+- **The due mask off** in split domains costs nothing measurable on the busy mesh and at most ~2% on a quiet one.
+- **The split's own cost** grows with domains on one thread (more outboxes to walk, a drain per domain per interval, a
+  run_until per domain per interval): 3% at 2, 18% at 6. On real threads it is paid once per thread.
+- **Footprint** (words per machine): one domain 24,136 (193 KB); 2 domains 28,144 (+17%), 4: 32,512 (+35%), 6: 36,800
+  (+52%): each domain's own engine structures (its instance arrays, wheels, run sets), the boundary units and proxies,
+  the outboxes.
+- **Scaling**: 1.9x at 2 threads, 3.05x at 4; the mesh's 8 rows don't divide over 6. A busier chip with more tiles per
+  domain, or a partition by load, would scale further; M2's chip will tell.
+
 ## Determinism: why the partition can't change a result
 
 1. **Within a domain the order is W3's**: a domain's instances are a subsequence of the single-domain order (the same
@@ -296,3 +356,7 @@ its phase: running, draining, at which barrier) and is fatal; a death test plant
   test_threads; two races found and fixed (a thread reading another's cycle at the start of a run; clearing an outbox
   after an idle jump wiped the next interval's entries); E5's fix (the default digest leaves out port handles,
   `TypeInfo::own_digest`; the sim.h rule); the "hang" was a spinning barrier's livelock with more threads than CPUs.
+- 2026-11-07: merges of main (W3's increment 5, then its performance pass: routes by wheel index, the due mask and run
+  masks, the near wheel, the packing rule); E6; the D21 helper (machine.sh, topology.h/.cpp, W5's machine.inc a shim);
+  W3's idle-jump cap carried across domains; the full matrix (test_matrix.cpp); Options::barrier_spins; Quest 133
+  (form 2); D21 fixes to W2's baseline.sh and W6's Quest bodies.

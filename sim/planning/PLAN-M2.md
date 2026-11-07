@@ -58,9 +58,10 @@ extend D5's one observer, so it is the owner's decision, with W7's proposal and 
 |---|---|
 | W7 | **done**, merged 2026-11-07 (`sessions/WORKER7-REPORT.md`): `sim/tests/AUDIT-M2.md` (what the sort touches, the units, the order that matters, D23's chip-level events, unit groups G1-G4, the canonical state fingerprint), `sim/tests/golden-m2/` (references for regs, wfi, a2a, NetTest, EngineTest, the sort at 16K and full size), the baseline (Quest 134) |
 | W8 | G1 on main: the tile's control (register block, director, port B, the core's M2 paths), the fingerprint's C++ side (`tests/statefp.*`), ERRORS by events; the configuration parts of the write engine, AG, gather and table store |
-| W9 | G2 on main: the router, injection send side, C&C, row collectors, endpoints, **the 64-tile chip**: the whole chip matches `golden-m2` every cycle on `wfi` and on `regs` through 824, one thread and split over 2, 4 and 8 |
+| W9 | **done**, closed 2026-11-08 (`sessions/WORKER9-REPORT.md`): G2, the network and the 64-tile chip; `a2a`'s network part and NetTest pass to W11/W12; the sort's driver sequence to W12 |
 | W10 | framework speed: the Link that holds words, the port observer, the stop request, the between-cycles wake, **the cheaper split** (64 tile-domains on one thread now cost the same as one: Quest 137) and **partitioning by load** (max/mean 1.01-1.07 at 2-12 threads), all on main; the mesh split over threads now **3.38× at 6 threads** (was 2.76×), flattening near 1.6 µs per mesh-cycle; next: Quest 138, then the drain |
-| G3, G4 | after W8's register block, then after G3. **G3 starts with `regs`' path** (W8, 2026-11-07): mode-1 self-sends through the write engine, PTR's read-modify-write and big SRAM writes, so `regs` completes; until then `regs` is checked in full through cycle 824 |
+| W11 | G3, the memory path (first `regs`' path from 825): prompt written 2026-11-08 (`sessions/WORKER11/PROMPT.md`); starts when W8's and W9's reports are merged |
+| W12 | G4, the engines, and the sort end to end: prompt written 2026-11-08 (`sessions/WORKER12/PROMPT.md`); starts with W11 |
 
 **Open at the end of 2026-11-07** (for the next integrator turn):
 - **W8:** f3f344f (the ROUTER_OVF tile-level test) waits for its build-by-build `make check`, then merge. Next scope

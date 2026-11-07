@@ -18,6 +18,7 @@ struct Stand {
     sim::CountOut ovf;
     sim::LinkOut ovf_ev;   // the router's overflow event (D29; W9's merge: ControlIO::router_ovf_ev), never put here
     struct Ev { uint64_t t; uint64_t lo, hdr, hi; bool go; };
+    uint64_t ovf_at = 0;                                        // a cycle the router counts an overflow (0: never)
     const Ev* ev; unsigned n, i = 0;
     uint64_t sends = 0, lines = 0;
     Stand(sim::Ports& p, const Ev* e, unsigned count) : ev(e), n(count) {
@@ -27,10 +28,12 @@ struct Stand {
     sim::Wake step(sim::Ctx& c) {
         if (c.ready(send)) { c.take(send); sends++; }
         if (c.ready(line)) { c.take(line); lines++; }
+        if (c.now() == ovf_at) c.put(ovf_ev);
         for (; i < n && ev[i].t == c.now(); i++) {
             if (ev[i].go) c.put(go); else c.put(eject, ev[i].lo, ev[i].hdr, ev[i].hi);
         }
-        return i < n ? sim::Wake::at_cycle(ev[i].t) : sim::Wake::none();
+        if (i < n) return sim::Wake::at_cycle(ovf_at > c.now() && ovf_at < ev[i].t ? ovf_at : ev[i].t);
+        return ovf_at > c.now() ? sim::Wake::at_cycle(ovf_at) : sim::Wake::none();
     }
     uint64_t digest() const { return i * 31 + sends * 7 + lines; }
 };
@@ -50,6 +53,7 @@ TEST(g1_tile_port_b_landing_and_the_k_line) {
     };
     sim::Config cfg;
     auto& s = cfg.add<Stand>("stand", ev, 4u);
+    s.ovf_at = 40;
     ControlIO io = add_g1(cfg, 0, &g);
     cfg.link(s.eject, io.eject, 1);
     cfg.link(s.go, io.go, 1);
@@ -87,4 +91,9 @@ TEST(g1_tile_port_b_landing_and_the_k_line) {
     CHECK(ctl.s.conditions >> 1 & 1);
     CHECK_EQ(m.unit<Director>("t0.dir").bad_packets, uint64_t(1));
     CHECK_EQ(ctl.s.bad_total, uint64_t(1));
+    // D29: the router's overflow event alone (counted at 40, Link(1)): ERRORS [0] at endCycle(40), level 0 of 41.
+    m.run_until(40);
+    CHECK(!(ctl.s.conditions & 1));
+    m.run_until(41);
+    CHECK(ctl.s.conditions & 1);
 }

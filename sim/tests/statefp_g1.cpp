@@ -17,36 +17,10 @@ constexpr uint32_t kMax = 64;
 template <class Port>
 uint32_t entries(const G1Tile& g, const Port& port, sim::PortEntry* buf) { return g.sim->observe(port, buf, kMax).n; }
 
-// The register block as ref has it at the end of c: endCycle(c) applied to a copy, from the inputs arriving at c + 1
-// (the block's step at c + 1 applies exactly these; with none, endCycle is a no-op).
-template <class U>
-units::RegBlockState block_end_of(const G1Tile& g, const U& u, uint64_t c) {
-    units::RegBlockState b = u.s;
-    units::RegBlockState::In in;
-    sim::PortEntry e[kMax];
-    bool send_put = false;
-    for (uint32_t i = 0, n = entries(g, u.bus, e); i < n; i++)
-        if (e[i].at == c + 1) {
-            in.op = uint32_t(e[i].w[0] >> 32); in.arg = uint32_t(e[i].w[0]); in.v = uint32_t(e[i].w[1]);
-            send_put = in.op == units::BUS_STORE && in.arg >= units::ROUTER_SEND_32 && in.arg <= units::ROUTER_SEND_128;
-        }
-    for (uint32_t i = 0, n = entries(g, u.go, e); i < n; i++) if (e[i].at == c + 1) in.go = true;
-    for (uint32_t i = 0, n = entries(g, u.landed, e); i < n; i++) if (e[i].at == c + 1) in.landed = true;
-    if constexpr (requires { u.kline; }) {                              // M2's block
-        for (uint32_t i = 0, n = entries(g, u.kline, e); i < n; i++) if (e[i].at == c + 1) in.kline = uint32_t(e[i].w[0]);
-        for (uint32_t i = 0, n = entries(g, u.bad, e); i < n; i++) if (e[i].at == c + 1) in.bad = true;
-        sim::PortView r = g.sim->observe(u.send_busy, e, kMax);
-        in.send_busy = send_put || (r.put ? r.put_w[0] != 0 : (r.valid && e[0].w[0] != 0));
-        in.router_ovf = b.ev_prev[0]; in.we_in_ovf = b.ev_prev[4]; in.gather_ovf = b.ev_prev[6];   // D28: Counts, not here
-    } else {                                                             // M1's block (W5's bench)
-        for (uint32_t i = 0, n = entries(g, u.freed, e); i < n; i++) if (e[i].at == c + 1) in.freed = true;
-    }
-    b.end_cycle(c, in);
-    return b;
-}
+// The register block as ref has it at the end of c (units::block_at_end, tile_ctl.h).
 units::RegBlockState block_end(const G1Tile& g, uint64_t c) {
-    if (g.sim && g.uctl) return block_end_of(g, *g.uctl, c);
-    if (g.sim && g.m1ctl) return block_end_of(g, *g.m1ctl, c);
+    if (g.sim && g.uctl) return units::block_at_end(*g.sim, *g.uctl, c);
+    if (g.sim && g.m1ctl) return units::block_at_end(*g.sim, *g.m1ctl, c);
     return g.ctl ? *g.ctl : units::RegBlockState{};
 }
 uint32_t dma_config(const G1Tile& g, uint64_t c) { return block_end(g, c).dma_config; }

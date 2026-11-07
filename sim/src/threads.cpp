@@ -769,6 +769,25 @@ void Threads::drain(uint32_t di, Cycle t0, Cycle n, unsigned par, bool any) {
     Engine& e = *d.e;
     // Nothing sent anywhere: the outboxes aren't read at all (after an idle jump the next interval's buckets may alias
     // this one's, and their source may already be writing them).
+    // W10: the buckets are another thread's, just written: their lines are misses. Ask for every bucket's header first,
+    // then every non-empty bucket's entries, so the misses overlap instead of following one another.
+    if (any) {
+        for (uint32_t o : d.in) {
+            const Outbox& ob = outboxes[o];
+            for (Cycle t = t0; t < t0 + n; t++) __builtin_prefetch(&ob.buckets[(t + ob.latency) & ob.mask]);
+        }
+        for (uint32_t o : d.in) {
+            const Outbox& ob = outboxes[o];
+            for (Cycle t = t0; t < t0 + n; t++) {
+                const Bucket& b = ob.buckets[(t + ob.latency) & ob.mask];
+                const uint32_t c = b.count();
+                if (!c) continue;
+                const char* p = reinterpret_cast<const char*>(b.begin());
+                const size_t bytes = size_t(c) * (ob.width + 1u) * sizeof(Word);
+                for (size_t k = 0; k < bytes; k += 64) __builtin_prefetch(p + k);
+            }
+        }
+    }
     if (any) for (uint32_t o : d.in) {
         const Outbox& ob = outboxes[o];
         const Wheel& wh = e.wheels[ob.wheel[di]];

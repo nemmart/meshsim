@@ -239,3 +239,4 @@ cycles (`regs-chip`, `wfi-chip`, regenerated locally); a2a's network part once G
   every tile every 10 cycles (CHIP_FP_DIR), under the debug options and form 2.
 - make check on the merged tree: gcc and clang, debug and release (36 binaries; 322 / 291 tests), TSan threads and
   units (71 + 2 + 72 with tsan-chip, clang; 71 + 2 and tsan-chip, gcc): clean.
+- 2026-11-07: closed. Main merged (W10, W11/W12 prompts); clang release make run clean (36 binaries, 293 tests). REPORT.md written for W11 and W12.

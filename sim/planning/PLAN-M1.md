@@ -122,6 +122,11 @@ section 3 predict.
 - An idle unit is never stepped (counted); a 10⁹-cycle sleep costs one wake; no allocation in the loop; a toy unit's two forms
   agree.
 
+- **Wide payloads** (2026-11-07, from the v1.x integrator's review): payloads over 128 bits travel by index into **pools
+  per size class** (e.g. 128-bit slots, and 128-byte slots for the Tracer's 1024-bit fill bus), each sized at startup from
+  the declared ports, free slots in a bitmap, fatal if exceeded, copied into the destination thread's pool on a crossing
+  (W4). Not used in M1; the shape is in the API now.
+
 **W4, threads.**
 - Cross-domain forms of every port kind, chosen at configuration; the barrier interval from the partition.
 - A seeded synthetic graph on 1, 2, 4 and 8 threads, over several partitions: identical digests; the 128-bit copy across

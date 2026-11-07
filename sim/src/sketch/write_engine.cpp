@@ -45,6 +45,10 @@ struct WriteEngine {
         p.out(to_sram, "sram.wr", 3);
     }
 
+    uint64_t digest() const {
+        return hash_fields(in, ts_req, ts_ret, hist_req, to_sram, head, count, aw_head, aw_count, st_d, st_h, st_c, st_ptr,
+                           awaiting, sent, taken, written, stall_cycles, augmented, explicit_, out_of_range);
+    }
     Wake step(Ctx& c) {
         // pointer returns, in order
         if (c.ready(ts_ret)) {

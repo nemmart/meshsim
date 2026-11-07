@@ -45,10 +45,11 @@
 // drives the Wires and RegFile that the others read at t + 1 at later levels. That is `ref`'s "a store at t acts from
 // t + 1; status computed at t is read at t + 1", with no phase of its own.
 //
-// LEVELS. Levels come from the Wires (and RegFiles and `now` Count reads, which are wire reads): a unit's level is its
-// longest wire path from a unit with no wire input. All instances of a (type, form) run at one level, the largest of
-// theirs. A combinational loop is rejected at build with its units named. Rule for authors: an input that must be this
-// cycle's value is a Wire; anything else is registered (Link, Fifo, Hold, Reg).
+// LEVELS. Levels come from the Wires and RegFiles: a unit's level is its longest wire path from a unit with no wire
+// input. All instances of a (type, form) run at one level, the largest of theirs. A combinational loop is rejected at
+// build with its units named. A Count's `now` is a wire read too, but declares no edge: debug builds check at the read
+// that every producer of the count sits below the reader (else read `through_last`). Rule for authors: an input that
+// must be this cycle's value is a Wire; anything else is registered (Link, Fifo, Hold, Reg).
 //
 // WAKES. Every instance is stepped at the first cycle (to drive its initial outputs). After that a unit is stepped at t
 // only if something was delivered to it at t, a Wire or RegFile it reads changed at t, or its last step asked for t (a
@@ -82,7 +83,13 @@
 // permanent state allocated apart (a memory from `alloc_big`, a read-only table built at configuration) are fine; they
 // don't move.
 //
-// DEBUG CHECKS (config.h's Options), each compared by the digest of every port and unit (Sim::digest):
+// DEBUG CHECKS (config.h's Options), each compared by the digest of every port and unit (Sim::digest). A unit's part of
+// the digest is `uint64_t digest() const` if its type defines one; nothing for a type with no state (std::is_empty_v);
+// otherwise its bytes, allowed only when the type has
+// no padding and nothing else whose bytes may differ between equal values (std::has_unique_object_representations_v,
+// checked by a static_assert at `add`). A type with padding, or holding a pointer (to a memory allocated apart: its value
+// differs between two machines built side by side), must define digest(), usually one line with `hash_fields` (below);
+// so a flaky digest is a compile error, not an intermittent difference.
 //   shuffle      within a level, runs and instances in a seeded random order: any difference is an undeclared dependence
 //                (a missing Wire); bisect the level to find it.
 //   two orders   type-major (each run's instances together) against instance-major (each instance's units together).
@@ -92,6 +99,18 @@
 //                rule it checks: a step at a cycle the unit did not ask for, with nothing delivered, changes nothing
 //                but what the skipped cycles would have changed (a unit's catch-up counters count the same either way),
 //                so a correct unit pays nothing for it.
+//   missed wake  (D20; debug builds) at the end of every cycle, a unit asleep (not stepped next cycle, no wake pending)
+//                with data waiting in an input (a Link, Fifo or Hold input with a word visible) is reported, naming the
+//                unit and the port, once it has stayed so for `missed_wake_after` cycles (Options; default 1); fatal by
+//                default (`missed_wake_fatal`). A unit is legitimately asleep with data waiting only when something already
+//                on its way will step it, and the engine counts those per instance: a delivery in the wheel addressed to
+//                one of its inputs (a word in flight on a Link to it), a credit return due to one of its credit outputs,
+//                or a Hold put it made this cycle (a refusal at t + 1 wakes it). So a unit blocked on an output is not
+//                flagged while its credit or refusal is coming; one whose put was accepted and still sleeps on its data
+//                is. Not seen by this rule: a unit waiting for a Wire to change while data sits in an input; it is
+//                flagged (raise `missed_wake_after` for it, or take the data into the unit's own state).
+//   report       at the end of a run (Sim::sleepers), every unit asleep with data waiting, its ports and since when,
+//                whether or not the detector is on.
 //
 // THE TWO REGIMES (D6). A unit's constructor runs at configuration (any C++). `step` runs in the cycle loop: no STL, no
 // allocation (the hook in W1's alloc_guard aborts on one), no virtual calls, no exceptions, untyped 64-bit words.
@@ -99,7 +118,9 @@
 #pragma once
 
 #include <concepts>
+#include <cstddef>
 #include <cstdint>
+#include <type_traits>
 
 #include "base/value_pool.h"
 
@@ -107,6 +128,28 @@ namespace sim {
 
 using Word = uint64_t;
 using Cycle = uint64_t;
+
+// ---- digests ----------------------------------------------------------------------------------------------------
+// hash_fields(a, b, ...): a digest of the fields named, each of a type with a unique object representation (integers,
+// handles, arrays of them); a unit with padding or pointers lists the fields that are its state:
+//     uint64_t digest() const { return hash_fields(x, pc, mcycle, stall_until) ^ hash_bytes(dmem, kDmemBytes); }
+inline uint64_t hash_mix(uint64_t h, uint64_t v) {
+    h ^= v + 0x9e3779b97f4a7c15ull + (h << 6) + (h >> 2);
+    return h * 0xff51afd7ed558ccdull;
+}
+inline uint64_t hash_bytes(const void* p, size_t n, uint64_t h = 0x84222325cbf29ce4ull) {
+    const unsigned char* b = static_cast<const unsigned char*>(p);
+    for (size_t i = 0; i < n; i++) h = (h ^ b[i]) * 0x100000001b3ull;
+    return h;
+}
+template <class... F>
+uint64_t hash_fields(const F&... f) {
+    static_assert((std::has_unique_object_representations_v<F> && ...),
+                  "hash_fields: a field has padding or several representations of one value; hash its parts");
+    uint64_t h = 0x9e3779b97f4a7c15ull;
+    ((h = hash_mix(h, hash_bytes(&f, sizeof(F)))), ...);
+    return h;
+}
 
 // ---- port handles ------------------------------------------------------------------------------------------------
 // A handle is a small index into its kind's pool (ports are numbered consumer type-major, then instance), never a pointer
@@ -144,6 +187,8 @@ struct Wake {
 };
 
 enum class Form : uint8_t { cycle, result };
+
+struct Engine;   // engine.h: the framework's internals
 
 // ---- the step's view of the machine ------------------------------------------------------------------------------
 // One Ctx per thread; the framework sets the current instance before each step. Every method is inline over the thread's
@@ -213,6 +258,12 @@ public:
     // Payloads larger than 128 bits only (D17): the thread's array of 128-bit values, a payload's word an index into it.
     // A 128-bit value travels inline as two words and is held in a unit as two words; it never comes here.
     ValuePool& values();
+
+private:
+    friend struct Engine;
+    Engine* e_ = nullptr;
+    uint32_t cur_ = 0;           // the instance being stepped
+    uint64_t* mask_ = nullptr;   // its ready bits
 };
 
 // ---- declaring a unit's ports (configuration) -----------------------------------------------------------------------
@@ -266,3 +317,5 @@ concept HasResultForm = UnitType<T> && requires(T& u, Ctx& c) {
 };
 
 }  // namespace sim
+
+#include "engine.h"   // the internals Ctx inlines over (not for unit authors)

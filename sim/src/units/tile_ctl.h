@@ -18,8 +18,10 @@
 //   bad         Link(1), width 0, from the director: a bad packet dropped at t (ERRORS [1] at endCycle(t)). A condition
 //               that sets ERRORS in ref's cycle reaches the block as an event (PORTS.md 8): it steps the block. UNEXPECTED
 //               and DONE_EARLY arise in the block itself (the K-line's event, a store); BUS_ERROR and ILLEGAL on `bus`.
-//   router_ovf, we_in_ovf, gather_ovf: FIFO overflow Counts read through_last, the exception: D28 (ref's lazy FIFO
-//               commit counts an overflow a variable number of cycles late; no M2 program overflows a FIFO)
+//   ovf         Link(1), width 0, from W9's router (when the tile builder offers it, `ControlIO::router_ovf_ev`): an
+//               overflow counted at t (D28's timing) as an event that steps the block (D29): ERRORS [0] at endCycle(t)
+//   router_ovf, we_in_ovf, gather_ovf: the overflow Counts (statistics; ROUTER_OVF read only while the router offers no
+//               event). The write engine's and the gather queue's overflows become events when G3/G4 build those units.
 // Its outputs:
 //   regs        RegFile, read by the core at level 1: the view for t (see TileCtl::kView)
 //   wake, irq   Wires to the core
@@ -52,7 +54,7 @@ namespace units {
 // ------------------------------------------------------------------------------------------------- the register block
 struct TileCtl {
     // ---- inputs ----
-    sim::LinkIn bus, go, landed, kline, bad;
+    sim::LinkIn bus, go, landed, kline, bad, ovf;
     sim::RegIn send_busy;
     sim::CountIn router_ovf, we_in_ovf, gather_ovf;
     // ---- outputs ----
@@ -67,8 +69,10 @@ struct TileCtl {
     static constexpr unsigned kRegs = SRAM_RD_DEST_ADDR + 1;
 
     bool error_out = false;            // the error line's level as last put on `line`
+    bool ovf_event = false;            // `ovf` declared: ROUTER_OVF arrives as an event (D29)
 
-    TileCtl(sim::Ports& p, const RegBlockState& initial) : s(initial) {
+    TileCtl(sim::Ports& p, const RegBlockState& initial, bool router_ovf_event = false) : s(initial), ovf_event(router_ovf_event) {
+        if (ovf_event) p.in(ovf, "ovf", 0);
         p.in(bus, "bus", 2); p.in(go, "go", 0); p.in(landed, "landed", 0); p.in(kline, "kline", 1);
         p.in(send_busy, "send_busy", 1);
         p.in(bad, "bad", 0);
@@ -85,6 +89,7 @@ struct TileCtl {
         if (c.ready(landed)) { c.take(landed); in.landed = true; }
         if (c.ready(kline)) { in.kline = uint32_t(c.peek(kline)[0]); c.take(kline); }
         if (c.ready(bad)) { c.take(bad); in.bad = true; }
+        if (ovf_event && c.ready(ovf)) { c.take(ovf); in.router_ovf_ev = true; }
         bool send_put = false;
         if (c.ready(bus)) {
             const sim::Word* m = c.peek(bus);
@@ -93,7 +98,7 @@ struct TileCtl {
             c.take(bus);
         }
         in.send_busy = send_put || (c.valid(send_busy) && c.read(send_busy)[0] != 0);   // ref: !sendHold.isEmpty(t)
-        in.router_ovf = c.through_last(router_ovf);
+        in.router_ovf = ovf_event ? s.ev_prev[0] : c.through_last(router_ovf);
         in.we_in_ovf = c.through_last(we_in_ovf); in.gather_ovf = c.through_last(gather_ovf);
         s.end_cycle(c.now() - 1, in);
         for (unsigned r = 0; r < kRegs; r++) c.write(regs, r, s.reg(r));
@@ -109,6 +114,52 @@ struct TileCtl {
     }
     uint64_t digest() const { return digest_mix(s.digest(), error_out); }
 };
+
+// ------------------------------------------------------------------------- previews (configuration regime, read-only)
+// For the fingerprint writers only, between runs (Sim::observe; the machine built with Options::observe_arrivals). The
+// block's endCycle(c) runs at level 0 of c + 1; ref's state at the end of c is endCycle(c) applied to a copy of the block,
+// from its inputs arriving at c + 1 (those its step at c + 1 applies; with none, endCycle is a no-op). `U` is the M2
+// block (TileCtl) or W5's M1 block (RegBlock: bus, GO, landed, freed).
+template <class U>
+RegBlockState block_at_end(const sim::Sim& m, const U& u, uint64_t c) {
+    constexpr uint32_t kMax = 64;
+    RegBlockState b = u.s;
+    RegBlockState::In in;
+    sim::PortEntry e[kMax];
+    bool send_put = false;
+    auto at_next = [&](const sim::LinkIn& p, auto f) {
+        uint32_t n = m.observe(p, e, kMax).n;
+        for (uint32_t i = 0; i < n; i++) if (e[i].at == c + 1) f(e[i]);
+    };
+    at_next(u.bus, [&](const sim::PortEntry& x) {
+        in.op = uint32_t(x.w[0] >> 32); in.arg = uint32_t(x.w[0]); in.v = uint32_t(x.w[1]);
+        send_put = in.op == BUS_STORE && in.arg >= ROUTER_SEND_32 && in.arg <= ROUTER_SEND_128;
+    });
+    at_next(u.go, [&](const sim::PortEntry&) { in.go = true; });
+    at_next(u.landed, [&](const sim::PortEntry&) { in.landed = true; });
+    if constexpr (requires { u.kline; }) {                               // M2's block
+        at_next(u.kline, [&](const sim::PortEntry& x) { in.kline = uint32_t(x.w[0]); });
+        at_next(u.bad, [&](const sim::PortEntry&) { in.bad = true; });
+        if (u.ovf_event) at_next(u.ovf, [&](const sim::PortEntry&) { in.router_ovf_ev = true; });
+        sim::PortView r = m.observe(u.send_busy, e, kMax);
+        in.send_busy = send_put || (r.put ? r.put_w[0] != 0 : (r.valid && e[0].w[0] != 0));
+        in.router_ovf = b.ev_prev[0]; in.we_in_ovf = b.ev_prev[4]; in.gather_ovf = b.ev_prev[6];   // Counts: not here
+    } else {                                                             // M1's block (W5's bench)
+        at_next(u.freed, [&](const sim::PortEntry&) { in.freed = true; });
+    }
+    b.end_cycle(c, in);
+    return b;
+}
+// What the block's endCycle(c) puts on `line` (READY's rising edge, bit 0; the error line, bit 1), which it puts at
+// c + 1: W9's C&C fingerprint writers (G2Chip::edge) read it here as ref has it at the end of c.
+struct LineEdge { bool put = false; sim::Word word = 0; };
+inline LineEdge line_edge(const sim::Sim& m, const TileCtl& u, uint64_t c) {
+    RegBlockState b = block_at_end(m, u, c);
+    LineEdge r;
+    r.put = b.ready_pulse || b.error_line != u.error_out;
+    if (r.put) r.word = sim::Word(b.ready_pulse) | sim::Word(b.error_line) << 1;
+    return r;
+}
 
 // ------------------------------------------------------------------------------------------------ the core, M2 tile
 // The core of an M2 tile (W5's Rv32 with M2's ports; W5's `Core` stays for M1's bench). Its memories live outside the

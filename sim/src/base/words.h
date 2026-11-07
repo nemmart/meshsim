@@ -3,6 +3,11 @@
 // Every structure takes its storage from outside: `words_needed(...)` says how many 64-bit words it uses, rounded up to
 // whole cache lines (kLineWords), and `init(storage, ...)` checks (DCHECK) that the storage is 64-byte aligned. So the
 // sizing pass can add them up and carve one block per thread, every structure on its own lines.
+//
+// Why whole lines: structures owned (written) by different threads must never share a cache line. Within one thread's
+// own block nothing else writes, so the sizing pass may pack small structures it alone writes (a port's ring, say)
+// without rounding each (integrator, 2026-11-07). Anything another thread writes, or that is merged at a barrier (W4's
+// outboxes), keeps its own lines.
 #pragma once
 
 #include <cstddef>

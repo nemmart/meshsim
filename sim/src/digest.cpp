@@ -25,7 +25,7 @@ void payload(Hash& h, const Engine& e, uint16_t cls, const Word* w, unsigned wid
     }
     for (unsigned k = 0; k < width; k++) h.add(w[k]);
 }
-void ring(Hash& h, const Engine& e, uint16_t cls, const Ring& r, unsigned width) {
+void ring(Hash& h, const Engine& e, uint16_t cls, const SlimRing& r, unsigned width) {
     h.add(r.count());
     for (unsigned i = 0; i < r.count(); i++) payload(h, e, cls, r.peek(i), width);
 }

@@ -165,6 +165,10 @@ chip loop); **unit for unit** (Controller plus TileControl), `ref` spends ~104 n
 - **Chip-level work event-driven** (D23): when M2 models the whole chip, no per-cycle scans over all tiles (overflows,
   invariants, the request bus); `ref` spends most of an idle-skipped cycle there.
 
+- **The per-cycle dependency chain** (W3, Quest 132: ~74 CPU cycles per simulated cycle on a lone busy unit, through
+  bookkeeping stored at the end of one cycle and loaded at the start of the next): if it matters on M2's busy workloads,
+  look for a general fix to the common cycle's bookkeeping, not a lone-unit special case (the "solo loop", set aside).
+
 ## Layout
 
 `sim/Makefile`; `sim/src/` (the framework, then `units/`); `sim/tests/` (C++ tests, the Java drivers, `golden/`,

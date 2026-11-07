@@ -53,16 +53,17 @@ struct Outbox {
     std::vector<std::vector<Xl>> fan;            // dst == kFan: by destination domain, then source index
     std::vector<uint32_t> hold_of;               // a Hold outbox: the crossing (XHold) of each source proxy, else empty
     std::vector<uint32_t> wheel;                 // by domain: the wheel it drains into there (kNone: not drained there)
+    uint16_t src_wheel = 0;                      // its index in the source domain's wheel table (Route::wheel)
 };
 inline constexpr uint32_t kFan = 0xFFFFFFFEu;
 
-struct XHold {                                   // a Hold across domains
+struct alignas(64) XHold {                       // a Hold across domains (its own line: written by its producer's thread)
     uint32_t p, proxy, route;                    // the producer's domain, its proxy HoldPort, the producer's route
     uint32_t q, port;                            // the consumer's domain and HoldPort
     uint32_t slot;                               // its status word
     Cycle refused_at = kNoCycle;                 // the put cycle of the last refusal (a by-reference slot is kept)
 };
-struct XCount {                                  // one domain's replica of a Count read across domains
+struct alignas(64) XCount {                      // one domain's replica of a Count read across domains (its own line)
     uint32_t dom, idx, slot;                     // its domain, its CountPort, its status word (the delta)
     uint32_t comp;
     uint64_t base = 0;                           // the machine's total at the last barrier
@@ -87,7 +88,10 @@ struct Threads {
     std::vector<Outbox> outboxes;
     std::vector<XHold> holds;
     std::vector<XCount> counts;
-    std::vector<uint64_t> status[2];             // status words, by interval parity: each written by one domain
+    std::unique_ptr<Block> status_block;
+    uint64_t* status[2] = {nullptr, nullptr};    // status words, by interval parity, one per cache line (slot x kLineWords):
+                                                 // each written by one domain's thread
+    std::vector<std::vector<Wheel>> wheel_tables;   // per domain: its wheels, then its outboxes (Route::wheel indexes it)
     std::vector<std::unique_ptr<Block>> blocks;  // the outboxes' storage, per source domain
     DigestView view;
     std::unordered_map<std::string, uint32_t> dom_of;   // unit name -> domain
@@ -108,7 +112,7 @@ struct Threads {
     Cycle target = 0;
     bool stop = false, guard = false;
     // what each thread is doing, for the barrier's watchdog (debug): its cycle, its domain, its phase
-    struct Where { std::atomic<uint64_t> cycle{0}; std::atomic<uint32_t> dom{0}; std::atomic<const char*> phase{"idle"}; };
+    struct alignas(64) Where { std::atomic<uint64_t> cycle{0}; std::atomic<uint32_t> dom{0}; std::atomic<const char*> phase{"idle"}; };
     std::unique_ptr<Where[]> where;
     void at(unsigned t, Cycle c, uint32_t d, const char* ph) {
         if constexpr (kDebug) {

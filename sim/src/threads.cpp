@@ -388,11 +388,25 @@ Sim::Impl* Internals::split(Config::Impl& G) {
         if (ob.dst == kFan) { for (uint32_t d = 0; d < D; d++) if (!ob.fan[d].empty()) T->doms[d].in.push_back(id); }
         else T->doms[ob.dst].in.push_back(id);
     }
-    for (auto& r : retarget) {
-        Route& rt = eng(r.dom).routes[r.route];
-        rt.wheel = T->outboxes[r.ob].buckets;
-        rt.mask = W - 1;
+    // Routes name their wheel by index (W3's performance pass): each source domain's wheel table is copied and its outboxes
+    // appended after its own wheels (index >= nwheels: never delivered by the domain's cycle), and its routes retargeted.
+    // The due mask (a bit per wheel) is off in a split machine's domains: an outbox's index may pass 63, and the drain
+    // appends into a destination's wheels between cycles.
+    T->wheel_tables.resize(D);
+    for (uint32_t d = 0; d < D; d++) {
+        Engine& e = eng(d);
+        auto& tab = T->wheel_tables[d];
+        tab.assign(e.wheels, e.wheels + e.nwheels);
+        for (uint32_t o : T->doms[d].out) {
+            Outbox& ob = T->outboxes[o];
+            if (tab.size() >= 0xFFFF) FATAL("split: more than 65535 wheels and outboxes in domain %u", d);
+            ob.src_wheel = uint16_t(tab.size());
+            tab.push_back(Wheel{ob.buckets, ob.mask, ob.kind, ob.width});
+        }
+        e.wheels = tab.data();                      // nwheels unchanged: the cycle delivers only the domain's own
+        e.due_ok = false;
     }
+    for (auto& r : retarget) eng(r.dom).routes[r.route].wheel = T->outboxes[r.ob].src_wheel;
     // where each outbox lands: the destination's wheel of its kind and width
     for (auto& ob : T->outboxes) {
         ob.wheel.assign(D, kNone);
@@ -438,8 +452,11 @@ Sim::Impl* Internals::split(Config::Impl& G) {
         if (remote_producer) eng(x.dom).counts[x.idx].max_producer_level = 0xFFFFFFFEu;
     }
     for (uint32_t d = 0; d < D; d++) { T->doms[d].next_slot = nslots++; T->doms[d].sent_slot = nslots++; }
-    T->status[0].assign(nslots, 0);
-    T->status[1].assign(nslots, 0);
+    // the packing rule (base/words.h): each status word is written by one domain's thread and read by others, so each has
+    // its own cache line; the two banks too
+    T->status_block = std::make_unique<Block>(std::max<size_t>(1, 2 * size_t(nslots)) * kLineWords, "sim: the status words");
+    T->status[0] = T->status_block->words();
+    T->status[1] = T->status_block->words() + size_t(nslots) * kLineWords;
 
     // ---- the digest view, in the global add order; names, types
     for (uint32_t u = 0; u < n; u++) {
@@ -462,11 +479,11 @@ Sim::Impl* Internals::split(Config::Impl& G) {
     // consumer's detector can't see it on its way for up to an interval. The drain marks it on its way (below, as
     // on_its_way would have each cycle), and a consumer of a crossing waits an interval longer before it is judged (a real
     // missed wake is still caught, at most `interval` cycles later)
-    if (interval != kNoCycle)
+    if (kDebug && interval != kNoCycle)              // (release builds have no detector: its arrays are empty)
         for (size_t k = 0; k < cross.size(); k++) {
             const uint32_t q = cross[k].q, inst = T->doms[q].S->view.units[new_unit[G.decls[cross[k].i].unit]].inst;
             Engine& e = eng(q);
-            if (e.missed_after && e.missed_after[inst]) e.missed_after[inst] += uint32_t(interval);
+            if (e.missed_after[inst]) e.missed_after[inst] += uint32_t(interval);
         }
 
     // ---- threads
@@ -590,17 +607,10 @@ void Threads::thread_main(unsigned t) {
 }
 
 namespace {
-// A domain's cycles from its now to `stop`, jumping over idle cycles as Engine::run_until does (nothing can arrive from
-// another domain before the next drain, so the jump is exact).
+// A domain's cycles from its now to `stop` (exclusive): W3's run_until, with its idle jumps (nothing can arrive from
+// another domain before the next drain, so a jump inside an interval is exact) and its debug checks.
 void run_domain(Engine& e, Cycle stop) {
-    while (e.now < stop) {
-        e.cycle();
-        if (!e.step_all && e.idle()) {                     // (step-all: every cycle stepped, no jump, as Engine::run_until)
-            Cycle t = e.heap_n ? e.wake_at[e.heap[0]] : stop;
-            if (t > stop) t = stop;
-            if (t > e.now) e.now = t;
-        }
-    }
+    if (stop > e.now) e.run_until(stop - 1);
 }
 }  // namespace
 
@@ -619,7 +629,7 @@ void Threads::run_thread(unsigned t, Cycle end) {
         // the whole machine idle and nothing sent: every thread jumps to the same next event
         Cycle next = kNoCycle;
         uint64_t sent = 0;
-        for (auto& d : doms) { next = std::min<Cycle>(next, status[par][d.next_slot]); sent += status[par][d.sent_slot]; }
+        for (auto& d : doms) { next = std::min<Cycle>(next, status[par][d.next_slot * kLineWords]); sent += status[par][d.sent_slot * kLineWords]; }
         for (uint32_t di = 0; di < doms.size(); di++) if (doms[di].thread == t) { at(t, now, di, "draining"); drain(di, now, n, par, sent != 0); }
         for (auto& d : doms) if (d.thread == t) clear(d, prev);
         prev = Span{now, n};
@@ -653,11 +663,11 @@ void Threads::publish(Dom& d, Cycle t0, Cycle n, unsigned par) {
         for (Cycle t = t0; t < t0 + n; t++) sent += ob.buckets[(t + ob.latency) & ob.mask].count();
     }
     e.pending -= sent;
-    std::vector<uint64_t>& st = status[par];
-    for (uint32_t h : d.holds_q) st[holds[h].slot] = e.holds[holds[h].port].occ;
-    for (uint32_t c : d.counts) st[counts[c].slot] = e.counts[counts[c].idx].total - counts[c].base;
-    st[d.sent_slot] = sent;
-    st[d.next_slot] = !e.step_all && e.idle() ? (e.heap_n ? e.wake_at[e.heap[0]] : kNoCycle) : t0 + n;
+    uint64_t* st = status[par];
+    for (uint32_t h : d.holds_q) st[holds[h].slot * kLineWords] = e.holds[holds[h].port].occ;
+    for (uint32_t c : d.counts) st[counts[c].slot * kLineWords] = e.counts[counts[c].idx].total - counts[c].base;
+    st[d.sent_slot * kLineWords] = sent;
+    st[d.next_slot * kLineWords] = !e.step_all && e.idle() ? e.next_wake() : t0 + n;
 }
 
 // After the barrier: the outboxes addressed to this domain into its wheels, at the bucket each entry was put for (so it
@@ -705,11 +715,11 @@ void Threads::drain(uint32_t di, Cycle t0, Cycle n, unsigned par, bool any) {
             }
         }
     }
-    const std::vector<uint64_t>& st = status[par];
+    const uint64_t* st = status[par];
     for (uint32_t h : d.holds_p) {                                  // the producer's view of a Hold across
         XHold& x = holds[h];
         HoldPort& px = e.holds[x.proxy];
-        const bool occ = st[x.slot] != 0, put = e.routes[x.route].last_put == e.now - 1;
+        const bool occ = st[x.slot * kLineWords] != 0, put = e.routes[x.route].last_put == e.now - 1;
         px.occ = occ || put;
         px.last_take = kNoCycle;
         if (put && occ) {
@@ -723,7 +733,7 @@ void Threads::drain(uint32_t di, Cycle t0, Cycle n, unsigned par, bool any) {
     for (uint32_t c : d.counts) {
         XCount& x = counts[c];
         uint64_t sum = 0;
-        for (uint32_t r : x.reps) sum += st[counts[r].slot];
+        for (uint32_t r : x.reps) sum += st[counts[r].slot * kLineWords];
         x.base += sum;
         e.counts[x.idx].total = x.base;
     }

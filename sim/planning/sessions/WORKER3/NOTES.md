@@ -432,6 +432,111 @@ W5's goldens, and re-measured.
 9. Per-instance arrays (seven, each line-rounded) and the debug-only ones (watches, suspects, scratch): the debug ones
    carved only in debug builds.
 
+### The performance pass: the changes (2026-11-07; before = 0c7df79)
+
+Speed (cost per cycle with activity, not structure):
+- **Delivery by a due mask**: per cycle mod 64, a word of the wheels with entries due, set by a bucket's first put (not
+  every put: a read-modify-write per put chained the puts of a busy cycle); the cycle reads one word. Falls back to
+  scanning the wheels if a latency is 64 or more.
+- **Runs by mask**: a bit per run with ready instances, set by `mark`, walked with ctz in level order (a wire's change
+  marks only higher runs, re-read as the walk goes); the end of the cycle visits only runs with next-cycle requests and
+  flips a byte (`RunSet::cur`) instead of copying two Bitmaps per run per cycle; `idle()` reads the masks.
+- **Near wakes**: a 16-slot wheel of instance bitmaps with summary words for wakes 2-15 cycles ahead (every multiply or
+  branch stall); the heap keeps far ones; fast-forward goes to the earlier of the two.
+- `run_form` reads and clears each ready word (no memset after); `after()` inline, its rare paths out of line;
+  `cycle()` inlined into `run_until`; `cur_level` set in debug only.
+- **Hot paths forced inline** (`SIM_HOT`, `[[gnu::always_inline]]`): puts, takes, peeks, marks. The compiler stopped
+  inlining a put once it grew, which cost the mesh 7% more instructions until forced.
+
+Footprint:
+- **Slim rings** (`SlimRing`: pointer, head, count, depth, width) in the port headers instead of W1's `Ring`; a width-0
+  Link keeps the count only (W4's mesh's 256 credit lines had 64 B of zeros each). `LinkPort` 56 -> 32 B (its
+  last-take field debug-only), `Route` 40 -> 24 B (its wheel by index, its owner debug-only).
+- **Rings packed** in the thread's block (base/words.h, the integrator's rule); the padding back to a line before the
+  next structure is its own line in `Sizes`, so the lines add up to the total.
+- **Debug-only arrays carved only when used**: the detector's in debug builds, the debug orders' when an order is set.
+
+**A regression found and fixed before the runner:** with 16-bit head/count/depth fields, clang compiled the rings'
+wrap-arounds (`if (j >= depth) j -= depth`) to branches instead of conditional moves; in rings of depth L + 2 the wrap
+comes every few takes, so the predictor missed them: +280 K mispredicts over 3,000 mesh-cycles (cachegrind's branch
+simulator, by line), about 10% slower on the mesh with equal instructions and fewer cache misses. 32-bit fields, as W1's
+Ring, give cmovs: mispredicts back to the before level (3.26 M against 3.15 M), the mesh even. `LinkPort` is 40 B (not 32).
+
+Local (this container; valgrind for instructions and simulated cache, wall clock too noisy here to settle the mesh):
+
+| | before 0c7df79 | after |
+|---|---|---|
+| controller bench, instructions | 1,195 M | 1,010 M (-15.5%; the engine's own part about -23%) |
+| mesh, instructions / L1d misses | 269.2 M / 8.47 M | 270.3 M / 5.93 M (-30%) |
+| mesh footprint per chip | 286,848 B | 242,240 B (-15.6%; 32-bit ring fields) |
+| mesh digest | fb3d4e3253ba04ef | fb3d4e3253ba04ef |
+
+`make check` (both compilers, debug, release, TSan; W5's goldens under all six option sets) and `make conformance` (42
+scripts of 10^5 cycles) pass. The runner A/B (Quest) follows the D24 fix.
+
+### D24: diagnostics don't allocate (2026-11-07, from W5's finding)
+
+The engine's fatal paths were already safe (W1's `FATAL` clears the hook's flag before printing; they pass names and
+numbers only). Two weren't: the missed-wake detector built its message as a `std::string` inside the run, so the hook
+fired first ("operator new ... inside a run") in both modes. Now it formats into `Engine::diag[]` (1 KB, part of the
+engine, a long description cut, never grown) with `snprintf`; report-and-go-on writes the line with one `write(2)` (no
+stdio, no heap). `sleepers()` stays a configuration-time report (between runs). Tests (`test_debug.cpp`, 8): each of the
+engine's diagnostics fires under the allocation hook with its own message: the missed wake (fatal, and report-and-go-on
+followed by a FATAL after the run, both lines seen), the leak check, a wire written twice, two puts, a link not taken, a
+put without a credit, a wake in the past. **W5's `broken_lazy_block_caught_by_the_missed_wake_detector` runs under the
+hook again** (its comment removed): it reports the missed wake, not the hook.
+
+### Folded in from NEXT.md (integrator, 2026-11-07)
+
+- D21: the Quest task takes its CPU lists as arguments (W5's interim `WORKER5-tasks/machine.inc` detects them); the
+  before/after table records the machine (CPU model, core types and counts, clocks, memory, compiler).
+- W4's footprint inputs: the slim headers (LinkPort 56 -> 32 B, Route 40 -> 24 B) and count-only width-0 Links are in the
+  performance pass; words held twice (a router copying each arrival into its own queue) is M2's design item, unchanged.
+- W4's E5 digest: on hold until the integrator says; at the merge, its `ring(..., const Ring& r, ...)` takes the
+  `SlimRing` instead (a one-word change on my side).
+
+### The performance pass on the runner: Quest 132 (2026-11-07)
+
+Before 0c7df79, after 057a9d5, built and run in the same task, interleaved 5 runs each, pinned to CPU 0 (detected: the
+first P core's first thread). **Machine** (recorded by the task, D21): Intel Core i5-14400F, 6 P cores (CPUs 0-11 with
+hyperthreads, max 4.7 GHz) and 4 E cores (CPUs 12-15, max 3.5 GHz), L2 9.5 MiB, L3 20 MiB, 64 GB, Linux 6.8, governor
+powersave, clang 18.1.3 (release -O2), gcc 13.3. All six verdicts PASS: both builds and their own checks, the 67 goldens
+on the after engine under the six option sets, the mesh digests equal (4a116005d9095712, all ten runs).
+
+| | before | after | change |
+|---|---|---|---|
+| controller: ns per unit step (median of 5; spread under 0.5%) | 20.43 | 20.37 | -0.3% |
+| controller: instructions (perf stat, one run) | 54.7 G | 43.7 G | **-20%** |
+| controller: CPU cycles (perf stat) | 9.62 G | 9.58 G | -0.4% |
+| controller: IPC | 5.69 | 4.57 | |
+| controller: sim::Engine/detail symbols' share (perf record, self) | 64.1% | 53.6% | |
+| mesh: us per mesh-cycle (median of 5; spread under 1.3%) | 5.643 | 5.444 | **-3.5%** |
+| mesh: instructions / cycles (perf stat) | 10.53 G / 5.38 G | 10.21 G / 5.18 G | -3.0% / -3.6% |
+| mesh: L1d load misses | 165 M | 119 M | **-28%** |
+| mesh: sim::Engine/detail symbols' share | 18.3% | 14.4% | |
+| mesh: footprint per chip (Sizes) | 286,848 B | 242,240 B | **-15.6%** |
+
+(The plain core alone measured 5.21 and 5.79 ns per step in single runs of identical code: layout noise, so the table's
+"engine part = step - core" line, -4.2%, is not to be quoted.)
+
+**What it says.** The mesh is 3.5% faster and 15.6% smaller, with 28% fewer L1 misses. **The controller runs 20% fewer
+instructions in the same time**: its IPC fell from 5.7 to 4.6, so it is bound by a dependency chain, not by instruction
+count. A P core overlapped the engine's old bookkeeping with the core's own work; what is left is the serial path of a
+simulated cycle: about 74 CPU cycles per simulated cycle, through memory (the run's ready word stored at the end of a cycle
+and loaded at the next, the next-cycle bit, the ready mask, the near slot of a stall), each a store-to-load round trip.
+Removing work off that path did nothing; shortening the path is the next lever.
+
+**Proposed, then set aside (integrator, 2026-11-07):** a solo loop. When a cycle ends with exactly one instance scheduled, nothing in flight and no
+wake due before the next cycle (W5's busy core most of the time; any one-unit phase), `run_until` keeps stepping that
+instance directly, its bookkeeping in registers, until a put, a wake or a mark breaks the condition; then back to the
+general cycle. Exact (the same steps, in the same cycles), and measurable with the same task.
+
+**The decision: not now.** It speeds up only a machine with exactly one busy unit, a microbenchmark case (even the
+Tracer's idle-looking segment has several busy units), and it would be a second engine path to keep exact forever. If the
+per-cycle dependency chain matters on M2's busy workloads, the fix to look for is general, in the common cycle's
+bookkeeping (fewer store-to-load round trips per simulated cycle: the ready word, the next-cycle bit, the run masks), not
+a lone-unit special case. Carried to M2 in PLAN-M1.md.
+
 ## Log
 
 - 2026-11-07: plan agreed (owner's go-ahead with five notes). W2's audit not yet on `sim-w2`; W6 not started.
@@ -450,3 +555,7 @@ W5's goldens, and re-measured.
 - 2026-11-07: E1 (the type registry per configuration) and E2 (config_impl.h) for W4, before increment 5.
 - 2026-11-07: increment 5 (options refused or implemented; shuffle, instance-major, step-all; the missed-wake detector;
   run_until inclusive); the performance pass planned.
+- 2026-11-07: the performance pass's changes, verified locally (the runner A/B to follow).
+- 2026-11-07: D24 (the detector formats into a fixed buffer; every diagnostic tested under the hook; W5's death test back
+  under it); NEXT.md folded in.
+- 2026-11-07: the rings' 32-bit fields (a branchy wrap found locally); Quest 132, the performance pass A/B on the runner.

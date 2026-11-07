@@ -209,8 +209,8 @@ TEST(no_allocation_in_the_loop) {
 }
 
 TEST(sizes_equal_hand_derived_ones) {
-    // one Link of latency 3, width 3: its ring L + 2 = 5 slots of 3 words (15, one line rounding: 16); its wheel 4 buckets
-    // (the next power of two above 3) of one entry of 4 words each (8, a line).
+    // one Link of latency 3, width 3: its ring L + 2 = 5 slots of 3 words, 15 (packed in the thread's block: no rounding);
+    // its wheel 4 buckets (the next power of two above 3) of one entry of 4 words each (8, a line).
     Config cfg;
     auto& s = cfg.add<LinkSource>("src", Cycle(5));
     auto& d = cfg.add<LinkSink>("dst");
@@ -223,7 +223,7 @@ TEST(sizes_equal_hand_derived_ones) {
         if (l.what == "ring link w3") ring = l.words;
         if (l.what == "wheel link w3") { wheel = l.words; wheel_count = l.count; }
     }
-    CHECK_EQ(ring, 16u);
+    CHECK_EQ(ring, 15u);
     CHECK_EQ(wheel, 4u * 8u);
     CHECK_EQ(wheel_count, 4u);
     CHECK_EQ(z.wheel_buckets, 4u);

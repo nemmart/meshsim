@@ -105,8 +105,9 @@ struct Options {
                                  // domain) and assigns them to threads, balancing load and keeping crossings few
     const LoadProfile* load = nullptr;     // by_load: measured loads (Sim::load_profile); null: Config::weight,
                                                 // else 1 per unit. Read during build() only
-    double crossing_ns = 20;     // by_load with a profile: what a word crossing between threads costs (ns; Quest 141:
-                                 // ~20 ns, a cache miss), weighed against load in the placement objective
+    double crossing_ns = 0;      // by_load with a profile: a price per word crossing between threads (ns), weighed against
+                                 // load in the placement objective. 0 (balance only) by default: Quest 142 found no gain
+                                 // on the chip at 20 or 60 ns, a loss on the mesh; ~20 ns is a crossing's cost (Quest 141)
     unsigned min_interval = 0;   // by_load: the smallest barrier interval allowed; 0: the largest Link latency that still
                                  // leaves at least 4 granules per thread
     bool calibrate = false;      // W10: time each unit's steps (for Sim::load_profile): two clock reads per step

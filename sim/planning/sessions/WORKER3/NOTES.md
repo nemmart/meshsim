@@ -186,6 +186,12 @@ For stage 2 (proposal): `make check` can't need Java, so a small fixture set (ea
 script and `ref`'s observations, about 2.5 MB) is committed for the C++ test, and the full matrix runs as `make conformance`
 (Java present) and on the runner. The C++ side is not started (the owner's go-ahead).
 
+**Approved for stage 2 (integrator, 2026-11-07)**, with two conditions:
+1. `portconf.sh --check`: regenerate the fixtures from `ref` and compare with the committed ones (as W2's `regen.sh
+   --check`), so they can't drift from `ref` unnoticed.
+2. Each fixture records at its top its configuration, its generator seed and cycles, and the `ref` commit it was made
+   from. Compressed (gzip) if git handles that better: decided when they are made.
+
 ## Log
 
 - 2026-11-07: plan agreed (owner's go-ahead with five notes). W2's audit not yet on `sim-w2`; W6 not started.

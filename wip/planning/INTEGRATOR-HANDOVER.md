@@ -77,6 +77,15 @@ not tags** (owner, 2026-11-01): no new tags; the old ones stay as history. "Froz
   Open in v1.3: register offsets beyond words 32-35; sizes to confirm by gold (caches, TLB); UPSTREAM-DIFFS ruled (section 17:
   D1, D3, D12 follow a16z, the verifier's source, with jolt-cpp fixes; D5 rejected by the host tracer; D2 and the rest deferred);
   WORKER18 is re-checking them at 7189216 and writing the demo guests.
+## Clean sheet (2026-11-06): every session closed
+
+At the owner's request, after v1.3's freeze, **every worker session is closed** (WORKER28 and WORKER29 last; their documents
+in `sessions/`), and the next phase starts in a **new integrator session, its workers numbered from W1 again**. Its first
+project is **the next simulator**: read **`wip/planning/SIMULATOR-NEXT.md`** first (why, what was measured, the design
+direction, the open questions, where everything is). Still open from this phase: item 158 (the replayer's tables to a16z's
+D13/D14 rule); v1.4's scope (F1, the file system, moved there); merging `sim-step-cost` (A + C) into `main` (the owner's
+call); passing the jolt-cpp report list (`wip/planning/upstream/UPSTREAM-DIFFS.md`) to its owners.
+
 ## v1.3 frozen (2026-11-06)
 
 `v1.3/` is frozen (the README's banner points the RTL at it). Next: item 158 (the tables to a16z's D13/D14 rule); P2 (WORKER29:
@@ -134,4 +143,4 @@ C, then the framework design); P1's stage 2 if wanted; v1.4's scope (F1, the fil
 
 - Repositories: meshsim (this), jolt-asic-planning (`tracer-standalone`, PR #1; `tracer-standalone-main`, PR #2; `worker12-counts`),
   jolt-cpp (snarkify, our tracer), a16z/jolt (upstream, public), Quest (the runner). Tokens are in the owner's preferences.
-- Closed workers' reports: `wip/planning/sessions/` (WORKER4-22, 24-27, 30) and `wip/planning/reviews/` (WORKER1-3).
+- Closed workers' reports: `wip/planning/sessions/` (WORKER4-30) and `wip/planning/reviews/` (WORKER1-3).

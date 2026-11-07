@@ -108,3 +108,10 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   always 0 in `ref`'s run: the director judges a due decrement without the core's same-cycle counter store. The
   framework models that order-free (the core's store reaches the register block registered, for t + 1). No M2 program
   reaches the case (W7's `pendcheck`: 0); `AUDIT-M2` sections 2.5 and 3.3 are corrected accordingly.
+- **D28. Where `ref` isn't self-consistent, follow the rule** (2026-11-07, W9's finding on router overflows): `ref` judges
+  a router FIFO's put only when the FIFO is next touched (its selector reaching it, a later put, or idle-skip's quiescence
+  scan), so an overflow's count, and ERRORS' ROUTER_OVF bit, rise a variable number of cycles late, differently with
+  idle-skip on and off. That is an artefact of `ref`'s lazy commit, not a behaviour D27 asks us to reproduce: `ref` has no
+  single answer. The framework counts at t + 1 (PORTS.md's rule), and references avoid the case (no M2 program
+  overflows a router FIFO; the fingerprint carries no counts). D27 still applies wherever `ref`'s default run is
+  self-consistent.

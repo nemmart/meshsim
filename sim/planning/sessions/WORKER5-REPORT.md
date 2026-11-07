@@ -97,7 +97,7 @@ Hyperthreads add nothing (IPC 5.5: one thread fills a core); six P cores give 5.
   time with 3 wheels and 3 runs); with W3 for its performance pass. The core's own fast path (~141 instructions per RV32
   instruction now; a third in the checks before each one) can follow.
 - **Chip-level work is where ref spends its time**: the request bus and the chip's scans and checks run every cycle in
-  ref. As M2 adds them, keep them event-driven, or most of the 58x goes.
+  ref. As M2 adds them, keep them event-driven (D23), or the framework rebuilds ref's bottleneck one level up.
 - **Open, with W3**: the missed-wake detector allocates inside the run (one death test runs outside the allocation hook
   until the fix lands). `Sim::run_until(t)` is now inclusive; the harness uses `run(END)`, unaffected.
 - **D21**: my task scripts take the CPU lists as arguments or detect them, and record the machine

@@ -179,5 +179,5 @@ Workers may refine the layout under `src/` and `tests/` in their plans.
 | W2 | **done**, merged 2026-11-07 (`sessions/WORKER2-REPORT.md`); the audit is `sim/tests/AUDIT-M1.md`; 67 goldens, `regen.sh --check` all SAME |
 | W6 | **done**, merged 2026-11-07 (`sessions/WORKER6-REPORT.md`); its recommendations go to the owner with W3's API |
 | W3 | stage 1 (the API) done, reviewed by the integrator (D19) and merged 2026-11-07; stage 2 started (owner's go-ahead, D20) |
-| W5 | **all 67 goldens match on the engine, and N controllers on N threads** (Quest 129: N up to 12 pinned, 16 unpinned; TSan clean); 43.6 M instructions/s per thread (Quest 127); the debug checks wait for W3's increment 5 |
+| W5 | **done**, merged 2026-11-07 (`sessions/WORKER5-REPORT.md`): all 67 goldens on the engine under all six option sets, N on N threads (Quest 131); its detector death test goes back under the hook with W3's D24 fix |
 | W4 | prompt written 2026-11-07 (`sessions/WORKER4/PROMPT.md`) |

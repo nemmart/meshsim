@@ -27,3 +27,6 @@ Three additions to the performance pass:
    (D24): **every fatal and report path in the engine** formats into a preallocated buffer with snprintf, or records
    fixed-size facts (cycle, unit, port) in a list sized at startup and formats them after the run. Apply it to all of them
    (the leak check, wire discipline, overflows, the detector), and add a test that each fires under the allocation hook.
+
+5. W5 has closed. When the D24 fix lands, put W5's missed-wake death test (`sim/tests`, `test_broken_units`, the lazy block)
+   back under the allocation hook, removing its comment, and show it reports the missed wake rather than the hook.

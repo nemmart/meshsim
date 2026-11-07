@@ -77,3 +77,22 @@ then `make check` from an embedded kit (sim/Makefile, src, tests; `exit` before 
 1. Full checks always on, misuse checks debug only: agreed?
 2. Ring and Bucket width as a runtime value (one code path, W3-friendly), or a template parameter? I'd start runtime and have W6
    measure a fixed-width form against it.
+
+## The go-ahead (2026-11-07) and what changed from the plan
+
+- Answers: full checks always on, misuse in `DCHECK` (debug only); widths at runtime, the interfaces kept so a fixed-width
+  form can replace them without changing callers (a template on width is the owner's call, after W6). Added: `words_needed`
+  rounds to whole lines (8 words), `init` DCHECKs 64-byte alignment; the hook's death tests proven in debug (ASan) and release,
+  on both compilers; Quest 121 claimed before the task was pushed.
+- **No owning `create()`** on the structures: instead `sim::Block(words, name)` (arena.h), an RAII line-aligned block from
+  `alloc_big`. The structures stay trivially copyable headers over storage they don't own.
+- **Deallocation in a run is fatal too** (`free`, `operator delete`): the cycle loop has no business freeing either.
+- **Tests must hide allocations from the optimiser**: gcc elides a `malloc`/`free` (or `new`/`delete`) pair it can see, so
+  the hook's death tests go through a `volatile` sink. Worth knowing for any later "no allocation" proof.
+- **ASan's own report on an impossible size** exits 1 instead of returning null; the harness sets
+  `__asan_default_options() = "allocator_may_return_null=1"` so `alloc_big`'s FATAL is what's seen, as in release.
+- Under clang's static ASan runtime our `operator new` still wins over ASan's, and `--wrap` applies (checked with objdump;
+  the `__wrap_` frame vanishes from ASan's stack traces only because the call to `__real_` is a tail call).
+- Local: gcc 13.3 and clang 18.1 (apt), 1 core; `make check` from clean 29 s.
+
+## Quest 121 (pushed 1fe5914, kit = sim-w1 fc27ea1, sha256 8ee76301...)

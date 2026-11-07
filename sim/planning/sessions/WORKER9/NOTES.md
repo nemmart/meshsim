@@ -189,3 +189,39 @@ cycles (`regs-chip`, `wfi-chip`, regenerated locally); a2a's network part once G
   would break form 2). The model keeps the spec's sticky bit and counts these (`ready_repulses`); the generator makes
   none. For the owner.
 - make check after stage 3: gcc and clang, debug and release (33 binaries; 303 / 272 tests), TSan (60 + 2): clean.
+- 2026-11-07, owner: stage 3 merged. **D29** (a second READY pulse: the spec's sticky bit, `ready_repulses` counted and
+  reported in every M2 run's output, references avoid it; overflows feeding ERRORS are events). **ROUTER_OVF as an
+  event too**, beside the Count (t + 1 timing kept). **The preview hook** `G2Chip::edge`: W8 supplies it,
+  fingerprint-only; agree its shape with W8. **W10's `Sim::wake`** on main: the driver's release uses it.
+- 2026-11-07: **the release by `Sim::wake`**: the C&C conformance now has a release point (`P release T`: the program's
+  later steps queued between cycles T and T + 1, as SortTest queues after its boot); the C++ driver calls
+  `Cnc::release_next()` then `Sim::wake("cnc")`; equal to ref every cycle on the 3 fixtures (regenerated).
+- **For W8 (agree directly; the owner arbitrates):**
+  1. *ROUTER_OVF's event* (D29): `ControlIO::router_ovf_ev`, a `LinkIn` width 0, wired `Link(1)` from the router's
+     `ovf_ev`, which is put in the step that counts the overflow (t + 1, D28), so the block steps at t + 2 and its
+     endCycle(t + 1) reads the Count `through_last`. The block only takes it (the Count carries the number). Until
+     TileCtl declares it, `tile_cycle` leaves the router without the event (it checks `router_ovf_ev.idx`); once
+     declared it is wired with no change on my side.
+  2. *The preview hook* (`tests/statefp_g2.h`): `fp::LineEdge (*)(const void* ctx, unsigned k, uint64_t c)`, returning
+     what tile k's block will put on `line` at its endCycle(c): `put` (READY rises, or the error line differs from the
+     level last put), `ready`, `level`. Proposed: W8 exports `fp::LineEdge fp::g1_line_edge(const void* tiles, unsigned
+     k, uint64_t c)` from `statefp_g1`, `tiles` the 64 tiles' `G1Tile` array (block_end_of(c) on a copy, then
+     {ready_pulse || error_line != uctl->error_out, ready_pulse, error_line}). Until it lands, `tests/test_chip.cpp` has
+     an interim copy of block_end_of, marked, deleted when W8's lands.
+- 2026-11-07: **stage 4, the chip's assembly** (`chip.cpp`): `tile_cycle` (W8's `add_g1` through `ControlBuilder`, the
+  router, the injection unit; a stand-in control part for network-only runs), `build_chip` (64 tiles, the mesh links
+  `Link(link_latency)`, C&C and the 8 collectors with tile 0, C&C 2 and 3 with tiles 1 and 2, GO `Link(go_latency +
+  skew[k] + 1)` with Java's Random(1) skews, the lines `Link(ready_latency - 2)`), `row_bands` (form 2 by bands of
+  rows). Fingerprint writers for the tile's G2 units (`statefp_g2`: "router", "inj", and "srq" with no reads until G3).
+  **Checked** (`tests/test_chip.cpp`), the C&C sequence exactly Mach.boot's and M2Prog's:
+  - **wfi to its end (cycle 1616) and regs through 824, every unit of tile 0 and the chip-level units every cycle, equal
+    to golden-m2** (the golden's 21 lines a point, `chip` included); both stop where the golden does (regs: at the
+    limit, PLAN-M2); `ready_repulses` 0, printed with every run.
+  - under step-all, a shuffle, instance-major; and **form 2: 2, 4 and 8 domains by bands of rows on as many threads**
+    (the partition asserted: every crossing a mesh link, barrier every 3 cycles), equal every cycle too; under
+    ThreadSanitizer, gcc and clang (`make tsan-chip`, added to make check in `net.mk`).
+  - **every tile every 10 cycles** against the hash-only `wfi-chip.fp` and `regs-chip.fp` (regenerated with
+    `regen.sh --check KEEP=DIR`: SAME), equal (`CHIP_FP_DIR=DIR test_chip every_tile`; not in make check, the files
+    aren't committed).
+- make check after stage 4: gcc and clang, debug and release (36 binaries; 320 / 289 tests), TSan (threads and units
+  71 + 2, the chip's form 2 on both compilers): clean.

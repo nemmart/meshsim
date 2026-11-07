@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "config.h"
+#include "units/chip.h"
 
 namespace fp {
 namespace {
@@ -122,6 +123,70 @@ void w_ep(const void* p, FpOut& o, const FpCtx& x) {
     const G2Chip& g = *static_cast<const G2Chip*>(p);
     fifo_port(o, "memsub.rx", x.sim, g.ep[0]->rx);
     fifo_port(o, "cc3.rx", x.sim, g.ep[1]->rx);
+}
+
+// ---- the tile's units -------------------------------------------------------------------------------------------------
+G2Tile g2_tile(sim::Sim& s, unsigned k) {
+    G2Tile g;
+    g.tile = k;
+    g.router = &s.unit<units::Router>(units::tile_unit(k, "router"));
+    g.inj = &s.unit<units::Injection>(units::tile_unit(k, "inj"));
+    return g;
+}
+
+namespace {
+void link_port(FpOut& o, const char* nm, const sim::Sim* s, const sim::LinkIn& port) {
+    sim::PortEntry e[64];
+    sim::PortView v = s->observe(port, e, 64);
+    BusEntry b[64];
+    for (uint32_t i = 0; i < v.n; i++) b[i] = {e[i].at, e[i].w[0], e[i].w[1], e[i].w[2]};
+    link(o, nm, b, v.n);
+}
+void hold_port(FpOut& o, const char* nm, const sim::Sim* s, const sim::HoldIn& port) {
+    sim::PortEntry e[4];
+    sim::PortView v = s->observe(port, e, 4);
+    BusEntry held{0, e[0].w[0], e[0].w[1], e[0].w[2]}, put{0, v.put_w[0], v.put_w[1], v.put_w[2]};
+    hold(o, nm, v.valid ? &held : nullptr, v.put ? &put : nullptr);
+}
+}  // namespace
+
+void w_router(const void* p, FpOut& o, const FpCtx& x) {
+    const G2Tile& g = *static_cast<const G2Tile*>(p);
+    const units::Router& r = *g.router;
+    r.fp_own(o, x.cycle);
+    static const char* const kLink[4] = {"link0", "link1", "link2", "link3"};
+    for (unsigned d = 0; d < 4; d++) link_port(o, kLink[d], x.sim, r.in[d]);
+    link_port(o, "inj", x.sim, r.inj);
+    if (r.attached) hold_port(o, "fromCnc", x.sim, r.from_cnc);
+}
+
+void w_inj(const void* p, FpOut& o, const FpCtx& x) {
+    const G2Tile& g = *static_cast<const G2Tile*>(p);
+    hold_empty(o, "readReturn");
+    hold_port(o, "send", x.sim, g.inj->send);
+}
+
+void w_srq_stub(const void* p, FpOut& o, const FpCtx& x) {
+    const G2Tile& g = *static_cast<const G2Tile*>(p);
+    const units::Injection& in = *g.inj;
+    if (in.tok.reads) { std::fprintf(stderr, "statefp_g2: t%u.srq: reads held, the stub can't write them (G3)\n", g.tile); std::abort(); }
+    o.w("free.n", 64);
+    for (unsigned k = 0; k < 64; k++) o.w("free", k);
+    for (unsigned c = 0; c < 2; c++) o.w("order.n", 0);
+    o.w("rpReady.n", 0);
+    sim::PortEntry e[8];
+    sim::PortView v = x.sim->observe(in.loop_left, e, 8);
+    uint64_t freeing = 0;
+    for (uint32_t i = 0; i < v.n; i++) if (e[i].at > x.cycle) freeing++;   // a free of c, applied at c + 1
+    o.w("held", in.tok.loop_held - freeing);
+    for (unsigned c = 0; c < 3; c++) fifo_empty(o, "client");               // empty: a FIFO's and a hold's streams agree
+    for (unsigned a = 0; a < 16; a++) link_empty(o, "ret");
+}
+
+void register_g2_tile(FpRegistry& r, const G2Tile& g) {
+    r.add(units::tile_unit(g.tile, "router"), w_router, &g);
+    r.add(units::tile_unit(g.tile, "inj"), w_inj, &g);
+    r.add(units::tile_unit(g.tile, "srq"), w_srq_stub, &g);
 }
 
 void register_g2(FpRegistry& r, const G2Chip& g) {

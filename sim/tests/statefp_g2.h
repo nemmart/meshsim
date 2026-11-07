@@ -14,6 +14,8 @@
 
 #include "statefp.h"
 #include "units/cnc.h"
+#include "units/inject.h"
+#include "units/router.h"
 
 namespace sim { class Sim; }
 
@@ -31,6 +33,24 @@ struct G2Chip {
     LineEdgeFn edge = nullptr;                // null: no edge pending at the end of any cycle
     const void* edge_ctx = nullptr;
 };
+
+// A tile's G2 units.
+struct G2Tile {
+    unsigned tile = 0;
+    const units::Router* router = nullptr;
+    const units::Injection* inj = nullptr;
+};
+G2Tile g2_tile(sim::Sim& s, unsigned k);
+
+// StateFp "router": rr, every FIFO (Router::fp_own), the four links, the injection link, C&C's hold (tiles 0-2).
+void w_router(const void* g2tile, FpOut& o, const FpCtx& x);
+// StateFp "inj": the read-return hold (G3's: empty until G3), the send hold.
+void w_inj(const void* g2tile, FpOut& o, const FpCtx& x);
+// StateFp "srq" with no reads (G3 replaces it): the free list 0-63, the tokens held as at the start of c + 1 (the
+// loopback's, minus a free on its way), the three clients' buses and the 16 areas' return links, empty.
+void w_srq_stub(const void* g2tile, FpOut& o, const FpCtx& x);
+// Registers "t<k>.router", "t<k>.inj", "t<k>.srq". `g` outlives the registry.
+void register_g2_tile(FpRegistry& r, const G2Tile& g);
 
 void w_cnc(const void* g2chip, FpOut& o, const FpCtx& x);
 void w_cc1p(const void* g2chip, FpOut& o, const FpCtx& x);

@@ -25,7 +25,9 @@ import java.util.Random;
  *   P load DST ADDR w0 w1 ...    CnC.loadWords (hex words)          P go            CnC.go
  *   P cmd DST WORD a0 a1 ...     CnC.command (hex)                  P run ID        CnC.go().call(ID)
  *   P wait N                     CnC.waitCycles                     P allready ID   SortTest's atAllReady(ID)
- *   P call ID                    CnC.call
+ *   P call ID                    CnC.call                           P release T     the P lines after it are queued
+ *                                                                                   between cycles T and T + 1 (as
+ *                                                                                   SortTest queues after its boot)
  *   R K E        tile K's READY rises at the end of cycle E
  *   E K E L      tile K's error line has level L after cycle E (a change)
  *   X T a,b,c    tile 0's router puts a packet on C&C's receive FIFO at T
@@ -64,8 +66,9 @@ final class CncConf {
         sb.append("P load 7e ").append(Integer.toHexString(0x01000000 + 16 * r.nextInt(64))).append(words(r, 1 + r.nextInt(12))).append('\n');
         sb.append("P cmd 7e 4a000000 ").append(Integer.toHexString(r.nextInt(1 << 16))).append('\n');
         sb.append("P run ").append(ids++).append('\n');
-        int steps = 70 + r.nextInt(30);
+        int steps = 70 + r.nextInt(30), rel = steps * 3 / 5;
         for (int i = 0; i < steps; i++) {
+            if (i == rel) sb.append("P release ").append(800 + r.nextInt(1200)).append('\n');
             int k = r.nextInt(10);
             if (k < 2) sb.append("P load ").append(r.nextInt(4) == 0 ? Integer.toHexString(r.nextInt(64)) : "7e").append(' ')
                          .append(Integer.toHexString(16 * r.nextInt(1 << 10))).append(words(r, 1 + r.nextInt(30))).append('\n');
@@ -118,13 +121,18 @@ final class CncConf {
         Map<Long, long[]> rx = new HashMap<>();
         java.util.Set<Long> stall = new java.util.HashSet<>();
         Map<Long, List<Integer>> calls = new HashMap<>();
+        long releaseAt = -1; List<String[]> later = new ArrayList<>();
         try (BufferedReader in = new BufferedReader(new FileReader(script))) {
             for (String line; (line = in.readLine()) != null; ) {
                 if (line.startsWith("# seed ")) { String[] f = line.split(" "); seed = Long.parseLong(f[2]); cycles = Integer.parseInt(f[4]); continue; }
                 if (line.startsWith("#") || line.isEmpty()) continue;
                 String[] f = line.split(" ");
                 switch (f[0]) {
-                    case "P" -> program(cc, f, calls);
+                    case "P" -> {
+                        if (f[1].equals("release")) releaseAt = Long.parseLong(f[2]);
+                        else if (releaseAt >= 0) later.add(f);
+                        else program(cc, f, calls);
+                    }
                     case "R" -> ready.computeIfAbsent(Long.parseLong(f[2]), x -> new ArrayList<>()).add(Integer.parseInt(f[1]));
                     case "E" -> err.computeIfAbsent(Long.parseLong(f[2]), x -> new ArrayList<>()).add(new int[] { Integer.parseInt(f[1]), Integer.parseInt(f[3]) });
                     case "X" -> { String[] w = f[2].split(","); rx.put(Long.parseLong(f[1]), new long[] { Long.parseUnsignedLong(w[0], 16), Long.parseUnsignedLong(w[1], 16), Long.parseUnsignedLong(w[2], 16) }); }
@@ -170,6 +178,7 @@ final class CncConf {
                 StateFp.Out b = new StateFp.Out(); StateFp.chipUnit(b, ch, "cc1p", t);
                 sb.append(" H:").append(Long.toHexString(a.done())).append(',').append(Long.toHexString(b.done())).append('\n');
                 out.write(sb.toString());
+                if (t == releaseAt) for (String[] f : later) program(cc, f, calls);   // between cycles t and t + 1
             }
         }
     }

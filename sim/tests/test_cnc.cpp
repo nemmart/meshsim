@@ -43,6 +43,7 @@ struct Script {
     std::vector<TileEv> tile[64];
     std::vector<std::pair<uint64_t, std::vector<Word>>> rx;
     std::vector<uint64_t> stalls;
+    uint64_t release_at = 0;                   // 0: none
 };
 
 uint32_t hexu(const std::string& s) { return uint32_t(std::strtoull(s.c_str(), nullptr, 16)); }
@@ -74,6 +75,7 @@ void parse(const std::string& text, Script& s) {
             else if (f[1] == "wait") s.prog.wait_cycles(uint32_t(std::stoul(f[2])));
             else if (f[1] == "allready") s.prog.at_all_ready(uint32_t(std::stoul(f[2])));
             else if (f[1] == "call") s.prog.call(uint32_t(std::stoul(f[2])));
+            else if (f[1] == "release") { s.prog.release(); s.release_at = std::stoull(f[2]); }
         } else if (f[0] == "R") s.tile[std::stoul(f[1])].push_back({std::stoull(f[2]), 0, 0});
         else if (f[0] == "E") s.tile[std::stoul(f[1])].push_back({std::stoull(f[2]), 1, uint8_t(std::stoul(f[3]))});
         else if (f[0] == "X") {
@@ -228,6 +230,7 @@ std::string run(const Script& s, sim::Options opt, std::string* extra = nullptr)
         fp::w_cc1p(&g, bb, x);
         std::snprintf(b, sizeof b, " H:%" PRIx64 ",%" PRIx64, a.done(), bb.done());
         out += line + b + "\n";
+        if (t == s.release_at) { sim.unit<Cnc>("cnc").release_next(); sim.wake("cnc"); }   // the driver, between cycles
     }
     {
         const Cnc& c = *g.cnc;

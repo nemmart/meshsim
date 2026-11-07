@@ -58,7 +58,7 @@ runs `RUNS`, and checks every file's sha256 against `HASHES` (all SAME locally).
 | regs / wfi / a2a (CtrlTest's runs) | end at 869 / 1,616 / 7,698 cycles; tile 0 fingerprinted every cycle (a2a every 10); traces of tiles 0, 27, 63 | git |
 | NetTest -1 quick, EngineTest -1 | logs and ref's per-chip digests (171, 23 chips) | git |
 | the sort, 64 x 16,384 | 496,619 cycles, verified; PhaseLog; coverage; fingerprints; traces of tiles 0, 27, 63 | facts in git, the rest by hash |
-| the sort, 64 x 65,536 (`p4/uniform-k128`) | **1,229,687 cycles**, verified; PhaseLog; coverage; fingerprints; traces of tiles 0, 27, 63 (Quest 134, 135) | facts in git, the rest by hash; files in the runner's `$DATA/w7-golden-m2/` |
+| the sort, 64 x 65,536 (`p4/uniform-k128`) | **1,229,687 cycles**, verified; PhaseLog; coverage; fingerprints; traces of tiles 0, 27, 63 (Quest 134; Quest 135 re-made them at fb6f21e with the `.fp` header: 10 files byte-identical, the fingerprints identical) | facts in git, the rest by hash; files in the runner's `$DATA/w7-golden-m2/fb6f21e` |
 
 ## 5. Localising a mismatch (item 4; AUDIT-M2 section 8)
 

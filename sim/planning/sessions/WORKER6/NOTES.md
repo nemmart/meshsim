@@ -11,7 +11,8 @@ only; the scale runs on the (a)/(b) pair at the best layout and width, both mixe
 injection queue, 0.35 has no refusals and a mean queue of 0.43-0.50 over 100 K and 400 K cycles (bounded); 0.36 starts
 refusing. Quest task A repeats the sweep on the runner.
 
-**Quest tasks:** 124 (the mesh), 125 (Fp128); bodies in `sim/bench/quest/`, assembled with `mk_task.sh`.
+**Quest tasks:** 124 (the mesh), 125 (Fp128), 126 (D15's addition: throughput against N, footprint, ready marks by
+load); bodies in `sim/bench/quest/`, assembled with `mk_task.sh`; `summarize.py` gives medians and spreads of a raw.txt.
 
 ---
 

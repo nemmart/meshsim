@@ -1,36 +1,43 @@
 # WORKER6 (sim/): report — the link word, widths, ready marks, and the cost of Fp128
 
 Branch `sim-w6`. Harness in `sim/bench/` (`make`, `make all-builds`, `make check`); the plan and its changes in `NOTES.md`.
-Runner results: Quest **124** (the mesh), **125** (Fp128), **126** (D15: throughput against N, footprint; pending).
+Runner results: Quest **124** (the mesh), **125** (Fp128), **126** (D15: throughput against N, footprint, ready marks).
 All numbers are medians of 3 runs with the spread (max − min, % of the median); P-core runs pinned to CPU 0 unless stated.
 Every variant's digests agreed in every task (verdicts in each task's `VERDICTS.txt`), so the variants compared do the same
 work; `make check` (gcc and clang, ASan/UBSan) proves it locally and proves the loop allocates nothing (W1's hook fires).
 
-## Recommendations for W3
+## What the numbers say (the detail behind the recommendations at the end)
 
-1. **Link word: (b), three words inline.** On speed it is a wash: on one mesh (b) is faster (median 5.7% over the 16
-   cells of T1, range 0.4-9%, 0-4.6% fewer instructions); with 128 meshes on a thread (an 18 MB working set) (a) is 1-2%
-   faster on the P-cores and 2-5% on the E-cores, its rings being two-thirds the size. On allocation (b) wins: (a)'s value
-   pool must be sized for every slot that could hold a 128-bit value, which costs more than the word it saves per slot
-   (143.5 KB per mesh for (a) against 126.7 KB for (b)). (a) also adds alloc/free at every injection and ejection and a
-   copy at every thread crossing, and the toy multiplier says the same for units (item 4). *Provisional on 126, which
-   measures both under memory pressure (16 meshes per thread, N = 1..12).*
+1. **Link word: (b), three words inline; a close call.** Speed is a wash whose sign depends on the cache regime: with one
+   mesh per thread (cache-resident) (b) is faster (median 5.7% over T1's 16 cells, 0-4.6% fewer instructions); with 16
+   or 128 meshes per thread (past L2) (a) is faster by up to 5.5% (from −1% to +5.5%), because its rings are two-thirds the size and its pool is
+   touched only at injection and ejection (2.6× fewer L3 loads per mesh-cycle: N16). (a)'s allocation is the larger
+   (143.5 KB per mesh against 126.7 KB: the pool must be sized for every slot that could hold a 128-bit value), and it
+   adds alloc/free at every injection and ejection, a copy at every thread crossing, and a second kind of payload for
+   units to handle. A 3-5% edge in the memory-bound regime doesn't pay for that machinery, and the toy multiplier
+   points the same way for compute units (item 4). If the owner weighs D15's memory-boundness above simplicity, (a) is
+   the defensible other choice: it is slower only when cache-resident (by up to 9%, median 6%).
 2. **Width: compile-time for the hot transports**, if the owner accepts it: 11-13% fewer instructions and ~5% faster on
-   one mesh (runtime width copies through a `memcpy` call). Not measured but likely to recover most of it without
-   templates: keep runtime widths and dispatch the copy on width 1-4 with inline fixed copies.
-3. **The destination id: a word of the delivery entry** (E1, W1's `Bucket` as is). A parallel `uint32_t` array (E2) was no
+   one mesh (a runtime width copies through a `memcpy` call). Not measured, but likely to recover most of it without
+   templates: keep runtime widths and dispatch the copy on width 1-4 to inline fixed-size copies.
+3. **The destination id: a word of the delivery entry** (E1, W1's `Bucket` as is). A parallel `uint32_t` array (E2) is no
    better beyond noise.
 4. **128-bit values in units: inline, two words, computed with explicit 64-bit limbs** (`_addcarry_u64`, the `limbs`
-   form). Inline operands beat pool indices by 2 ns per multiply on one thread and by 25% in total at 12 threads; `limbs`
-   is the best or equal-best form on every build and core type. **Build with clang**: it makes every form ~2.4 ns per
-   multiply in throughput against gcc's best 4.3 ns (and gcc's plain `__int128` form 11 ns).
-5. **Ready marks: don't mark per delivery inside a busy group.** On a busy mesh (rate 0.35) stepping all 64 routers
-   without marks is 15-19% faster than a bitmap mark per delivered word; at rate 0.1 they tie. Task 126 measures marks on transitions
-   only (empty → non-empty) and a quiet mesh (rate 0.01). *(Filled in when 126 lands.)*
-6. **The credit wheel** costs 1.1-1.8% of the time in its delivery phase (119 credits per mesh-cycle against 142 hops), and
-   is identical in (a) and (b), so none of the link-word difference is the credit wheel's.
-7. **Footprint per mesh**: (b) 126.7 KB, (a) 143.5 KB, as the sizing allocates them; 128 meshes are 16.2 / 18.4 MB against
-   the runner's 20 MB L3. *(Bytes touched per mesh-cycle and the N-curve: 126.)*
+   form). Inline operands beat pool indices by 2 ns per multiply on one thread (9.1 against 11.2 ns) and by 25% in total
+   at 12 threads; the data movement alone is 4.2 ns inline against 8.7 ns through the pool. `limbs` is the best or
+   equal-best form on every build and core type. **Build with clang**: every form runs at ~2.4 ns per multiply in
+   throughput, against gcc's best 4.3 ns (and gcc's plain `__int128` form 11 ns).
+5. **Ready marks: keep them per delivery; they cost ~2.7 ns per delivered word.** On a saturated mesh that is 11-13% of the
+   time against stepping every router unmarked; at rate 0.1 they tie; on a quiet mesh (rate 0.01) marks are 1.85×
+   faster. A chip is mostly idle (WORKER28: 98.4% of tile-cycles), so marks pay. Marking only on empty → non-empty
+   transitions (a held-word count per unit) saves nothing: the count costs what the skipped marks would.
+6. **The credit wheel: 1.1-1.8% of the time** in its delivery phase (119 credits per mesh-cycle against 142 hops), the
+   same in (a) and (b); none of the link-word difference is the credit wheel's.
+7. **Footprint per mesh: 126.7 KB for (b), 143.5 KB for (a)**, as the sizing allocates them (F). 128 meshes are 16.2 and
+   18.4 MB against the runner's 20 MiB (21 MB) L3; the L3 starts to bite at about that point (N16: L3 loads jump from 128 meshes
+   on the box, L3 misses appear from 160). A mesh-cycle touches 2.7-4.5 KB from L2 when its mesh is cache-resident, and
+   20-23 KB from L2 plus 0.5 KB (a) or 1.3 KB (b) from L3 with 16 meshes per thread. Up to six P-cores the throughput
+   is limited by the clock, not memory: IPC stays at 2.4 while the all-core clock falls from 4.7 to ~3.5 GHz.
 
 ## The mesh (Quest 124)
 
@@ -105,15 +112,90 @@ cache: 8,192 routers' rings), injection 8-11%, routers 65-66%. `perf record` on 
 P1, P6, P12 are 1 thread on CPU 0, one per P-core (CPUs 0, 2, .., 10) and all 12 hyperthreads; E1 and E4 are CPU 12
 and CPUs 12-15. 128 meshes split 21-22 per thread on 6 threads and 10-11 on 12, so the slowest thread sets the wall time:
 on P6 the wall time is 0.82-0.88 s against a mean thread time of 0.81 s (slowest thread ≈ 2.5 × 10⁵ mesh-cycles/s, mean
-2.6 × 10⁵); task 126 prints the slowest and mean rates directly. Six P-cores give 6.1-6.5× one; their hyperthreads add another
-43-52% (9.2-9.4×); the four E-cores add 3.0-3.2 × 10⁵. One thread with 128 meshes (an 18 MB working set) runs 35% slower per mesh than
+2.6 × 10⁵; 124's lines carry the wall and mean times, 126's print the slowest and mean thread rates directly). Six P-cores give 6.1-6.5× one; their hyperthreads add another
+43-52% (9.2-9.4×); the four E-cores add 3.0-3.2 × 10⁵. One thread with 128 meshes (a 16-18 MB working set) runs 35% slower per mesh than
 one mesh alone (4.1 against 3.07 µs per mesh-cycle): the delivery walk's cache misses. (a) and (b) are within a few percent at
-every scale, (a) slightly ahead (P1 +2%, P12 +1%, E +1.5-5.5%; P6 mixed within its 8% spread).
+every scale, (a) slightly ahead (P1 +2%, P12 +1%, E +1.5-5.5%; on P6 (b) leads by 5% on 128-bit, within (a)'s 8% spread).
 
 **Against `ref` (D15), for scale only:** a mesh-cycle here is 64 routers and their links, not a chip-cycle (`ref`'s router
 was 7.7% of a busy replay's time), so these don't compare directly with `ref`'s 36.8 µs per chip-cycle and
 100,000-110,000 chip-cycles/s for the box. What does carry over: a busy router costs ~21 ns per hop here (~220
 instructions, the bench's injection and digest included), and the whole box runs ~2.5 × 10⁶ busy mesh-cycles/s.
+
+## D15: throughput against N, footprint, ready marks (Quest 126)
+
+### F: footprint per mesh — bytes the sizing allocates (depth 8, injection 16, wheel of 4)
+
+| | rings | ring headers | link wheel | credit wheel | value pool | router state | digests | **total** | × 128 meshes |
+|---|---|---|---|---|---|---|---|---|---|
+| (a) | 49152 | 10240 | 24576 | 8192 | 49536 | 1280 | 512 | **143488** | 18.4 MB |
+| (b) | 73728 | 10240 | 32768 | 8192 | 0 | 1280 | 512 | **126720** | 16.2 MB |
+
+The link wheel is sized for the worst case (every router putting on all four outputs in one cycle): at rate 0.35 it holds
+~142 of its 256 entries. (a)'s pool is sized for every slot (48 values per router); the lowest-free allocation keeps the
+values in use dense at the low indices, so most of it is never touched (hence N16's L3 loads).
+
+### N1: N independent meshes, one per thread, rate 0.35 — total 10⁶ mesh-cycles/s (spread); slowest and mean thread, 10⁵/s
+
+CPUs in order 0, 2, 4, 6, 8, 10 (one per P-core), then 1, 3, .., 11 (the siblings).
+
+| N | (a) 128-bit | (b) 128-bit | (a) mixed | (b) mixed |
+|---|---|---|---|---|
+| 1 | 0.34 ±4%; 3.42 / 3.42 | 0.36 ±2%; 3.64 / 3.64 | 0.34 ±1%; 3.37 / 3.37 | 0.35 ±3%; 3.48 / 3.48 |
+| 2 | 0.68 ±6%; 3.42 / 3.44 | 0.70 ±4%; 3.50 / 3.52 | 0.66 ±4%; 3.29 / 3.30 | 0.68 ±8%; 3.40 / 3.41 |
+| 3 | 1.00 ±10%; 3.32 / 3.34 | 0.99 ±5%; 3.31 / 3.35 | 0.92 ±9%; 3.07 / 3.12 | 0.94 ±11%; 3.15 / 3.21 |
+| 4 | 1.19 ±17%; 2.98 / 3.04 | 1.20 ±14%; 3.01 / 3.03 | 1.10 ±12%; 2.75 / 2.78 | 1.14 ±12%; 2.84 / 2.88 |
+| 5 | 1.41 ±16%; 2.82 / 2.83 | 1.41 ±10%; 2.83 / 2.86 | 1.30 ±13%; 2.61 / 2.64 | 1.36 ±13%; 2.73 / 2.75 |
+| 6 | 1.64 ±21%; 2.73 / 2.78 | 1.68 ±9%; 2.80 / 2.83 | 1.54 ±14%; 2.57 / 2.60 | 1.59 ±6%; 2.65 / 2.68 |
+| 7 | 1.39 ±13%; 1.98 / 2.50 | 1.42 ±2%; 2.02 / 2.57 | 1.37 ±9%; 1.96 / 2.43 | 1.38 ±4%; 1.98 / 2.50 |
+| 8 | 1.59 ±15%; 1.99 / 2.38 | 1.59 ±2%; 1.98 / 2.37 | 1.66 ±13%; 2.08 / 2.50 | 1.56 ±6%; 1.95 / 2.36 |
+| 9 | 1.73 ±18%; 1.92 / 2.19 | 1.77 ±3%; 1.96 / 2.25 | 1.65 ±12%; 1.84 / 2.08 | 1.71 ±5%; 1.90 / 2.18 |
+| 10 | 1.90 ±20%; 1.90 / 2.08 | 1.91 ±7%; 1.91 / 2.09 | 1.88 ±10%; 1.88 / 2.02 | 1.84 ±8%; 1.84 / 2.00 |
+| 11 | 2.04 ±19%; 1.85 / 1.94 | 2.05 ±6%; 1.86 / 1.96 | 2.05 ±8%; 1.87 / 1.94 | 2.00 ±8%; 1.82 / 1.90 |
+| 12 | 2.13 ±22%; 1.78 / 1.78 | 2.18 ±11%; 1.81 / 1.83 | 2.13 ±8%; 1.78 / 1.78 | 2.11 ±9%; 1.76 / 1.76 |
+
+Up to six threads each mesh fits its core's L2 and the IPC stays at 2.3-2.4: the per-thread rate falls to ~0.8 of one
+thread's only because the all-core clock falls (4.7 GHz alone, 3.4-4.1 GHz with six busy, varying between repeats, hence
+the spreads). L3 traffic is nil (0.03-0.17 loads per mesh-cycle). From seven threads a hyperthread shares a core: the
+paired threads run at ~0.57 of one thread alone (IPC 2.1 at 7, 1.6 at 12), and the wall time follows the slowest thread,
+so the total dips at 7 before climbing again. **12 threads give 6.2× one thread** (2.1-2.2 × 10⁶ mesh-cycles/s; `ref`'s 12
+JVMs give 3.6×). L1 misses grow from ~60 to ~250 lines per mesh-cycle as siblings share an L1.
+
+### N16: 16 meshes per thread (2.0-2.3 MB each, past L2), 128-bit — total 10⁶ mesh-cycles/s; L3 loads and misses per mesh-cycle
+
+| N (meshes) | (a) total | (a) L3 loads / misses | (b) total | (b) L3 loads / misses |
+|---|---|---|---|---|
+| 1 (16) | 0.32 ±2% | 7.7 / 0.01 | 0.32 ±0% | 20.1 / 0.01 |
+| 2 (32) | 0.62 ±1% | 6.7 / 0.00 | 0.61 ±1% | 21.7 / 0.00 |
+| 4 (64) | 1.09 ±4% | 8.0 / 0.00 | 1.03 ±1% | 18.9 / 0.00 |
+| 6 (96) | 1.45 ±6% | 7.6 / 0.00 | 1.44 ±8% | 17.8 / 0.00 |
+| 8 (128) | 1.32 ±3% | 47.3 / 0.00 | 1.28 ±3% | 64.9 / 0.03 |
+| 10 (160) | 1.54 ±5% | 71.8 / 0.04 | 1.48 ±3% | 92.3 / 0.44 |
+| 12 (192) | 1.73 ±3% | 87.6 / 0.36 | 1.67 ±4% | 111.2 / 2.11 |
+
+IPC stays at 2.1-2.2 up to six threads (96 meshes, 12-14 MB), so the shared L3 serves them without stalls; at eight
+threads (128 meshes, 16-18 MB, close to the L3's 21 MB) L3 loads jump 3.6-6×; from 160 meshes (20-23 MB, past it) L3
+misses appear, more for (b) (2.1 per mesh-cycle at 192 meshes against 0.36). From seven threads hyperthreads share cores as well, so
+compare IPC with N1: at 12 threads it is 1.43 for (a) and 1.33 for (b) against 1.63 with one mesh per thread, so memory
+costs a further 12-18% beyond what hyperthreading alone costs. (a) leads (b) by 0.7-5.5% from two threads up.
+
+### R: ready marks by load — ns per mesh-cycle (instructions, 10⁹), one mesh, 128-bit, E1 fixed width
+
+`bm` marks per delivered word; `poll` steps every router every cycle; `tr` marks only on empty → non-empty with a
+held-word count per router.
+
+| lw | rate (hops per mesh-cycle) | bm | poll | tr |
+|---|---|---|---|---|
+| (a) | 0.010 (4) | 156 ±4% (2.91) | 288 ±2% (6.97) | 157 ±3% (2.89) |
+| (a) | 0.100 (41) | 942 ±3% (12.91) | 936 ±2% (13.43) | 981 ±2% (12.83) |
+| (a) | 0.350 (142) | 2914 ±2% (10.63) | 2534 ±2% (9.53) | 3028 ±4% (10.60) |
+| (b) | 0.010 (4) | 154 ±2% (2.81) | 286 ±0% (6.59) | 154 ±3% (2.79) |
+| (b) | 0.100 (41) | 887 ±4% (12.62) | 918 ±3% (12.77) | 956 ±10% (12.51) |
+| (b) | 0.350 (142) | 2745 ±9% (10.40) | 2437 ±1% (9.10) | 2898 ±12% (10.37) |
+
+A mark per delivered word costs ~2.7 ns at saturation (380 ns per mesh-cycle over ~142 deliveries and injections), 11-13%
+of a saturated mesh; at rate 0.1 marks and polling tie; on a quiet mesh polling costs 1.85× (it visits 64 routers to find
+4 hops). Transition-only marks are no faster anywhere. (124's T3 showed a 15-19% gap at 0.35; 126's repeats are tighter.)
 
 ## Fp128 (Quest 125; D14: p = 2¹²⁸ − 159, folded by 159)
 
@@ -167,6 +249,21 @@ indirect loads add ~4.5 ns, as much as the multiply itself. With clang the pool 
 | none | pool | 1e8 ±2% [10.0] | 5.59e8 ±26% [10.2] | 7.38e8 ±0% [16.2] | 6.5e7 ±8% [15.4] | 1.66e8 ±8% [21.8] |
 | none | inline | 1.46e8 ±3% [6.9] | 6.87e8 ±1% [6.8] | 1.14e9 ±0% [10.5] | 1.01e8 ±14% [9.9] | 1.91e8 ±2% [20.8] |
 
-
 At 12 threads `limbs` inline does 6.6 × 10⁸ multiplies/s against 5.3 × 10⁸ through the pool (+25%); the u128 form
 loses a third. Six P-cores give 4.4-5.3× one, their hyperthreads add 44-58%, the four E-cores 0.9-1.9 × 10⁸ more.
+
+## Recommendations for W3
+
+1. **Link word: (b), three words inline.** A close call: around 5% either way depending on the cache regime, (b) allocates 12% less, and (a)'s
+   pool, alloc/free and cross-thread copy aren't paid for by its 1-5.5% edge under memory pressure.
+2. **Width: fixed at compile time** for the hot transports (11-13% fewer instructions, ~5% faster), if the owner accepts
+   templated slot widths; otherwise specialise the runtime copy for widths 1-4.
+3. **Destination id: a word of the delivery entry** (W1's `Bucket` unchanged); a parallel array gains nothing.
+4. **128-bit values: inline in the unit's slots, two words, multiplied with the `limbs` form** (`_addcarry_u64`), built
+   with clang (2.4 ns per multiply in throughput; gcc's best 4.3). Not pool indices: they cost 2 ns more per operation.
+5. **Ready marks: per delivery, as designed**, at ~2.7 ns per word (11-13% of a saturated mesh, 1.85× faster than polling
+   on a quiet one). Transition-only marks don't help.
+6. **The credit wheel: 1-2% of the time**, the same for every link word.
+7. **Footprint: 127 KB per 8 × 8 mesh with (b)** (58% rings, 32% delivery wheels sized for the worst case, 8% ring
+   headers); 143 KB with (a); about 128 meshes fill the runner's L3. Up to 6 P-cores the box scales by the clock, not memory; 12 threads give 6.2× one.
+

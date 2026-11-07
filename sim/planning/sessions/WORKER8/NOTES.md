@@ -108,3 +108,10 @@ cycle against `golden-m2`, under every debug option (shuffle, both orders, step-
 
 - 2026-11-07: read the prompt's list; plan proposed; approved with the rulings above. JDK and clang installed. Branch
   `sim-w8` from `ea332a8`.
+- 2026-11-07: AUDIT-M2 2.5 and 3.3 corrected (D27). **Port headers published** (declarations; gcc and clang
+  `-fsyntax-only` clean): `units/linkword.h` (shared with W9), `units/director.h` (`Director`), `units/tile_ctl.h`
+  (`TileCtl`, the core's M2 ports, `G1Config`, `G1IO` and `add_g1`: the handles W9's tile builder wires). Choices made
+  there: the K-line is a `Link(K + 1)` of counter ids from the director to the block (no wake at the due cycle); port B and
+  command landed are `Link(cm_latency + 1)` (the memories stay in the core); ports to G3/G4 are added with those units;
+  the director's `we_in` and `gather` outputs exist from the start, wired to stubs; the K-line's entries are a bus, so
+  `dir.line` is stubbed until the observer lands (no shadow copy in the loop).

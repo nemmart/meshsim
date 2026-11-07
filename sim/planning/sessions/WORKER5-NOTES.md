@@ -280,7 +280,7 @@ on this machine.
 4 GB; Linux 6.18.44; clang 18.1.3, g++ 13.3.0, OpenJDK 21.0.12.1.
 
 From Quest 131 on, my tasks take the CPU lists as arguments (`$1` P cores, `$2` E cores) or detect them
-(`planning/sessions/WORKER5/tasks/machine.inc`: `/sys/devices/cpu_core/cpus`, `cpu_atom/cpus`, thread siblings), and
+(`planning/sessions/WORKER5-tasks/machine.inc`: `/sys/devices/cpu_core/cpus`, `cpu_atom/cpus`, thread siblings), and
 record the machine first; W4's `sim/tools/machine.sh` replaces machine.inc once it is on main. Quest 127, 129 and 130
 (before D21) used CPU 0 and the lists `0,2,4,6,8,10`, `0-11`, `12-15` written in.
 

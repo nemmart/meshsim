@@ -101,5 +101,5 @@ Hyperthreads add nothing (IPC 5.5: one thread fills a core); six P cores give 5.
 - **Open, with W3**: the missed-wake detector allocates inside the run (one death test runs outside the allocation hook
   until the fix lands). `Sim::run_until(t)` is now inclusive; the harness uses `run(END)`, unaffected.
 - **D21**: my task scripts take the CPU lists as arguments or detect them, and record the machine
-  (`planning/sessions/WORKER5/tasks/machine.inc`, until W4's `sim/tools/machine.sh`).
+  (`planning/sessions/WORKER5-tasks/machine.inc`, until W4's `sim/tools/machine.sh`).
 - **The direct driver** stays as a regression check only (`golden --direct`, `test_golden`), not to be extended.

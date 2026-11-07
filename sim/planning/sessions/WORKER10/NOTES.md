@@ -207,3 +207,18 @@ Wire, RegFile and Count are already readable from their producers' and readers' 
   its irregular blocks) and compute inflation are not in that load. Synth: clusters already the granules (interval 1),
   load/profile ~ tiles. Mesh at 0.05: best 0.61 us at 4-6 threads against 1.17 on one: fixed cost bound. Next: Quest
   139, Options::time_threads (2d19444, a measurement option) for the breakdown.
+- 2026-11-07: **Quest 139, the breakdown** (Options::time_threads; the timer costs ~1%; us per chip-cycle, the shares of
+  the timed runs times the plain wall). **The flattening point, mesh 0.35 by tiles at 6 threads: wall 1.603** = compute
+  1.019 (ideal 5.371/6 = 0.895, so 0.124 of compute inflation, 1.14x) + imbalance 0.192 + barrier wait 0.117 + drain
+  0.227 + clear 0.044 + publish 0.006. At 8: compute 0.949 (inflation 1.41x) + imbalance 0.230 + barrier 0.095 + drain
+  0.235 + clear 0.053 = 1.571. At 12 (hyperthreads): compute 0.863 (1.93x) + imbalance 0.238 + barrier 0.098 + drain
+  0.343 + clear 0.100. By profile at 6: imbalance halves (0.094) but drain + clear grow (0.434) and inflation (1.26x):
+  why profile loses to tiles (Quest 138). Mesh 0.05 at 6: compute 0.291 (1.47x) + imbalance 0.083 + barrier 0.094 +
+  drain 0.088 + clear 0.039 = 0.599. Synth (interval 1) at 4: compute 2.086 + imbalance 0.207 + barrier 0.338 + drain
+  1.608 + clear 0.522 + publish 0.105 = 4.874: the drain is a third.
+  **Decision: do the drain.** Drain + clear is the largest overhead after compute (17% at the mesh's flattening point, 44%
+  on synth), and it is what makes the cut expensive (so a placement by load can't trade crossings for balance). ~23 ns
+  per crossing entry at 6 threads: the lines are another core's, just written, so it is miss-bound, not
+  instruction-bound. Step 1, cheap: overlap the misses (prefetch headers, then entries) - Quest 140. Step 2 if the
+  drain is still large: deliver straight from the source's outbox (no copy; the destination reads each line once, at
+  delivery). Then the placement's objective weighs crossings by the measured drain cost.

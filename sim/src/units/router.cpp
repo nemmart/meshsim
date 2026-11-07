@@ -8,8 +8,8 @@
 
 namespace units {
 
-Router::Router(sim::Ports& p, unsigned tile, const NetConfig& c, const Hops* h)
-    : me(uint8_t(tile)), attached(tile < 3), loopback_last(c.loopback_last), hops(h) {
+Router::Router(sim::Ports& p, unsigned tile, const NetConfig& c, const Hops* h, bool overflow_event)
+    : ovf_event(overflow_event), me(uint8_t(tile)), attached(tile < 3), loopback_last(c.loopback_last), hops(h) {
     static const char* kIn[4] = {"from-left", "from-right", "from-up", "from-down"};
     static const char* kOutName[4] = {"to-right", "to-left", "to-down", "to-up"};
     for (unsigned d = 0; d < 4; d++) { p.in(in[d], kIn[d], 3); p.out(out[d], kOutName[d], 3); }
@@ -17,6 +17,7 @@ Router::Router(sim::Ports& p, unsigned tile, const NetConfig& c, const Hops* h)
     p.out(eject, "eject", 3);
     p.out(loop_left, "loop-left", 0);
     p.out(ovf, "ovf");
+    if (ovf_event) p.out(ovf_ev, "ovf-ev", 0);
     if (attached) { p.in(from_cnc, "from-cnc", 3); p.out(to_cnc, "to-cnc", 3); }
     if (tile > 63) FATAL("router: tile %u (a controller's router is not modelled in M2)", tile);
     if (!h) FATAL("router t%u: no hops table", tile);
@@ -68,7 +69,7 @@ unsigned route_broadcast(unsigned me, unsigned port, unsigned src) {
 }
 
 uint64_t Router::digest() const {
-    uint64_t h = sim::hash_fields(me, attached, loopback_last, rr, occ, ovf_due);
+    uint64_t h = sim::hash_fields(me, attached, loopback_last, ovf_event, rr, occ, ovf_due);
     for (unsigned i = 0; i < kFifos; i++) {
         const Fifo& f = q[i];
         h = sim::hash_mix(h, sim::hash_fields(f.cap, f.count, f.put_kept, f.put_at, f.put_w, f.overflows, f.first_overflow));

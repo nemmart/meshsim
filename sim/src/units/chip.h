@@ -31,6 +31,8 @@ struct ControlIO {
     sim::LinkIn go;               // C&C -> the register block (width 0, go_latency + skew + 1)
     sim::LinkOut line;            // the register block -> the row collector (width 1, ready_latency - 2)
     sim::CountIn router_ovf;      // the router's FIFO overflows (ROUTER_OVF), read `through_last` at endCycle
+    sim::LinkIn router_ovf_ev;    // D29: width 0, Link(1) from the router's `ovf_ev`, put in the step that counts an
+                                  // overflow (t + 1, D28), so the block steps and its endCycle(t + 1) sets ERRORS [0]
 };
 // Adds tile `k`'s control units (names prefixed "t<k>."), wires them inside, returns the ports above. `ctx` is the
 // builder's own (images, configuration).

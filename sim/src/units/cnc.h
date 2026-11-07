@@ -12,10 +12,13 @@
 // latency 1; C&C sees it at t + ready_latency, as ref's `readyAt = edge + ready_latency`. The error line uses the same
 // links, so M2 requires error_latency == ready_latency (fatal otherwise: not modelled in M2).
 //
-//   line word (register block -> collector, width 1):  bit 0 READY's edge at t; bit 1 the error line changed at t;
-//                                                      bit 2 its new level.
-//   row word (collector -> C&C, width 1):              [7:0] READY edges, [15:8] error changes, [23:16] levels, of the
-//                                                      row's tiles 8r .. 8r + 7.
+//   line word (register block -> collector, width 1; W8's tile_ctl.h): bit 0 READY rose at the end of t; bit 1 the error
+//                                                      line's level after endCycle(t). Put only in a cycle where READY
+//                                                      rises or the error line changes.
+//   row word (collector -> C&C, width 1):              [7:0] READY edges, [15:8] which tiles sent a line word, [23:16]
+//                                                      their error levels, of the row's tiles 8r .. 8r + 7.
+// C&C applies a row word at its arrival, the cycle ref's READY and error changes become visible: READY bits
+// (Cnc1Peripheral.readyAt), the tiles' error lines (ERROR_LINES), their OR (CnC.errLine) and the error bit.
 //
 // GO'S NET: C&C's GO store at t reaches tile k's register block by a width-0 Link of latency go_latency + skew[k] + 1
 // (the tile sees GO at t + go_latency + skew[k]; the block handles that cycle's endCycle one cycle later).
@@ -70,13 +73,16 @@ public:
     CncProgram& call(uint32_t id);
     CncProgram& release();                                // the harness queues the next steps here (between cycles)
 
-    explicit CncProgram(const NetConfig& c) : cfg_(c) {}
+    CncProgram();
     std::vector<CncStep> steps;
     std::vector<CncPacket> packets;
-    std::vector<CncRelease> releases;                     // the last is the end of the program
+    std::vector<CncRelease> releases;                     // the release points; the program's end is the last
     uint32_t commands_to[64] = {};                        // commands sent to each tile so far (the argument block's parity)
-private:
-    NetConfig cfg_;
+    uint64_t parity() const;                              // commandsTo's parity bits as queued so far
+    // ref's constants (Registers, ControllerMemories)
+    static constexpr unsigned kCmdParityBit = 23, kArgsEven = 1, kArgsOdd = 8, kArgsPerBlock = 7;
+    static constexpr uint32_t kCommand = 0x7FC0;          // command slot 0's byte address (ControllerMemories.COMMAND)
+    static constexpr uint32_t kCalls = 256;               // CALL ids 0 .. kCalls - 1
 };
 
 // ---- C&C 1: the sequencer and its peripheral ----------------------------------------------------------------------
@@ -89,7 +95,9 @@ struct Cnc {
     sim::LinkOut go[64];              // GO's net (width 0), latency go_latency + skew[k] + 1
 
     // ---- configuration ----
-    NetConfig cfg;
+    unsigned cnc_reaction = 1, go_latency = 8;
+    bool go_settle = true;
+    uint32_t rx_depth = 64;
     const CncStep* prog = nullptr;    // the program (owned by the harness, read-only, outlives the machine)
     const CncPacket* packets = nullptr;
     const CncRelease* releases = nullptr;
@@ -97,10 +105,11 @@ struct Cnc {
 
     // ---- the sequencer's state (CnC) ----
     uint32_t cur = 0, released = 0, rel = 0;   // the next step; steps queued; release points passed
-    uint32_t sub = 0;                 // a SEND step's next packet; a WAIT's cycles left
+    uint32_t sub = 0;                 // a SEND step's next packet
     int64_t seen = -1;                // a GO step: the cycle it saw all READY
+    int64_t wait_until = -1;          // a WAIT step: the cycle it finishes (fixed the first cycle it runs)
     uint64_t parity = 0;              // commandsTo's parity bits as queued
-    int64_t last_go_at = -1, last_all_ready_at = -1, last_run_at = -1;
+    int64_t last_go_at = -1, last_all_ready_at = -1;
     uint32_t last_command_word = 0xFFFFFFFFu;
     uint8_t pending_retry = 0;        // a refused send is presented again
     uint64_t retry_w[3] = {};
@@ -108,17 +117,24 @@ struct Cnc {
     uint64_t rxq[kRx][5] = {};
     uint32_t rx_head = 0, rx_count = 0;
     bool rx_overflow = false;
-    // the error bit (6.6)
-    bool error_bit = false, err_line_seen = false, err_line_last = false;
+    // the error bit (6.6): the tiles' OR'd error line as visible, the sticky bit
+    bool error_bit = false, err_line_seen = false;
+    int64_t error_set_at = -1;
     // ---- C&C 1's peripheral (Cnc1Peripheral): READY, READY_EXPECT, the error lines ----
     int64_t ready_at[64];             // the latest READY arrival (INT64_MIN: none)
     int64_t cleared_at = INT64_MIN;
     uint64_t expect = ~0ull;          // READY_EXPECT_0-1: the model waits for all 64
-    uint64_t err_line = 0;            // the tiles' error lines as visible
-    uint32_t err_high = 0;
+    uint64_t err_line = 0;            // the tiles' error lines as visible (ERROR_LINES_0-1)
 
     // ---- statistics and the harness's marks ----
-    uint64_t gos = 0, packets_sent = 0, ready_wait_cycles = 0, rx_lost = 0;
+    uint64_t gos = 0, packets_sent = 0, rx_lost = 0, rx_taken = 0, refusals = 0, violations = 0;
+    // READY pulses arriving while the tile's previous pulse is still visible (not cleared by a GO). ref's READY bit reads 0
+    // from such a pulse's edge until its arrival (readyAt is one cycle: max(old, edge + ready_latency)); the spec's bit is
+    // sticky, and this model keeps it set (it cannot know of the pulse before it arrives). Counted, so a run can show it
+    // never happened (W9 NOTES, stage 3).
+    uint64_t ready_repulses = 0;
+    uint64_t stepped = 0;             // cycles C&C was stepped (D23: only when something happens)
+    uint32_t rx_peak = 0;
     static constexpr unsigned kCalls = 256;
     int64_t call_at[kCalls];          // CALL id -> the cycle it ran (-1: not yet)
 
@@ -126,13 +142,23 @@ struct Cnc {
     sim::Wake step(sim::Ctx& c);
     uint64_t digest() const;
     bool busy() const { return cur < released; }                      // ref's CnC.busy (steps queued)
-    void release_next();                                              // the driver, between cycles
+    uint32_t steps_queued() const { return released - cur; }         // ref's steps.size()
+    void release_next();                                              // the driver, between cycles (then wakes C&C)
+    bool ready(unsigned k, int64_t t) const {
+        return ready_at[k] != INT64_MIN && ready_at[k] >= cleared_at && ready_at[k] <= t;
+    }
     bool all_ready(int64_t t) const;
+private:
+    sim::Wake sequence(sim::Ctx& c, int64_t t);                       // CnC's sequencer at t (after the lines and the FIFO)
+    sim::Wake after_step(sim::Ctx& c);                                // the next cycle if a step is queued, else none
+    void send_packet(sim::Ctx& c, const CncPacket& p);
 };
 
 // ---- a row collector -----------------------------------------------------------------------------------------------
 struct RowCollector {
     sim::LinkIn line[8];              // the row's register blocks (width 1, latency ready_latency - 2)
+    // the row word's fields
+    static constexpr unsigned kEdges = 0, kPresent = 8, kLevels = 16;
     sim::LinkOut out;                 // to C&C (width 1, latency 1)
     uint8_t row = 0;
     RowCollector(sim::Ports& p, unsigned row);

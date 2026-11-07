@@ -16,12 +16,13 @@ struct Stand {
     sim::RegOut send_busy;
     sim::LinkIn line;
     sim::CountOut ovf;
+    sim::LinkOut ovf_ev;   // the router's overflow event (D29; W9's merge: ControlIO::router_ovf_ev), never put here
     struct Ev { uint64_t t; uint64_t lo, hdr, hi; bool go; };
     const Ev* ev; unsigned n, i = 0;
     uint64_t sends = 0, lines = 0;
     Stand(sim::Ports& p, const Ev* e, unsigned count) : ev(e), n(count) {
         p.out(eject, "eject", 3); p.out(go, "go", 0); p.in(send, "send", 3); p.out(send_busy, "send_busy", 1);
-        p.in(line, "line", 1); p.out(ovf, "ovf");
+        p.in(line, "line", 1); p.out(ovf, "ovf"); p.out(ovf_ev, "ovf_ev", 0);
     }
     sim::Wake step(sim::Ctx& c) {
         if (c.ready(send)) { c.take(send); sends++; }
@@ -56,6 +57,7 @@ TEST(g1_tile_port_b_landing_and_the_k_line) {
     cfg.connect(s.send_busy, io.send_busy);
     cfg.link(io.line, s.line, 6);
     cfg.connect(s.ovf, io.router_ovf);
+    cfg.link(s.ovf_ev, io.router_ovf_ev, 1);
     sim::Sim m = cfg.build();
     m.run_until(8);                                                   // eject at 5 (arrives 6): port B at 6 + 3 = 9
     const TileCore& core = m.unit<TileCore>("t0.core");

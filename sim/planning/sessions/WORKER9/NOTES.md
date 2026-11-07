@@ -168,3 +168,74 @@ cycles (`regs-chip`, `wfi-chip`, regenerated locally); a2a's network part once G
   ends (`token_waits(t)` is ref's count at the end of t).
 - make check after stage 2: gcc and clang, debug and release (25 binaries; 257 / 226 tests), TSan (41 + 2): clean.
   (The whole make check in one call exceeds the tool's 5-minute limit here: run build by build.)
+- 2026-11-07: **stage 3, C&C's model, the row collectors, the endpoints** (`cnc.h/.cpp`), and **G2's chip-level
+  fingerprint writers** (`tests/statefp_g2.*`: "cnc", "cc1p", "reqbus", "ep", registered in W8's `FpRegistry`).
+  C&C is one unit (CnC with Cnc1Peripheral), its program built at configuration with ref's step granularity (sends one
+  packet a cycle with the refused one retried, commands with their parity, GO with cnc_reaction and the settle, waits,
+  SortTest's atAllReady, calls), READY bits as Cnc1Peripheral keeps them (cleared by PULSE_GO, a pulse arriving the
+  next cycle kept), the tiles' error lines, their OR and the error bit, the receive FIFO. Event-driven (D23): stepped
+  only when a step acts, a wait ends, a READY or error word arrives, a send is refused, a packet reaches its FIFO.
+  Line words as W8 puts them (bit 0 READY rose, bit 1 the level); the row collectors forward a row word (edges,
+  present, levels). The writers rebuild ref's pending queues (readyAt pending, errChanges, CnC.errLine) from the line
+  words in flight (W10's observer) and, for the end of cycle c itself, from `G2Chip::edge` (the block's preview).
+  **Checked against ref** (`tests/ref/CncConf.java`, `cncconf.sh`, `tests/test_cnc.cpp`): ref's CnC, peripheral and
+  endpoint in a real Chip whose tiles the driver plays (READY at boot and answering every GO with seeded delays, error
+  lines up and down, packets into the receive FIFO, tile 0's router stalling one cycle in six); every cycle the packet
+  taken, GO, the calls, and the "cnc" and "cc1p" streams are equal: 3 fixtures (6,000 cycles; 37-42 GOs, 9-24
+  refusals, 40 receive packets, the error bit set, every step done; C&C stepped ~1,600 of 6,000 cycles), also under
+  shuffle, instance-major and step-all; "ep" and "reqbus" at rest equal.
+  **Found:** a second READY pulse while a tile's first is visible (not cleared) makes ref's bit read 0 until the second
+  lands (readyAt is one cycle: max(old, edge + ready_latency)); C&C can't know of it before it lands (a shorter link
+  would break form 2). The model keeps the spec's sticky bit and counts these (`ready_repulses`); the generator makes
+  none. For the owner.
+- make check after stage 3: gcc and clang, debug and release (33 binaries; 303 / 272 tests), TSan (60 + 2): clean.
+- 2026-11-07, owner: stage 3 merged. **D29** (a second READY pulse: the spec's sticky bit, `ready_repulses` counted and
+  reported in every M2 run's output, references avoid it; overflows feeding ERRORS are events). **ROUTER_OVF as an
+  event too**, beside the Count (t + 1 timing kept). **The preview hook** `G2Chip::edge`: W8 supplies it,
+  fingerprint-only; agree its shape with W8. **W10's `Sim::wake`** on main: the driver's release uses it.
+- 2026-11-07: **the release by `Sim::wake`**: the C&C conformance now has a release point (`P release T`: the program's
+  later steps queued between cycles T and T + 1, as SortTest queues after its boot); the C++ driver calls
+  `Cnc::release_next()` then `Sim::wake("cnc")`; equal to ref every cycle on the 3 fixtures (regenerated).
+- **For W8 (agree directly; the owner arbitrates):**
+  1. *ROUTER_OVF's event* (D29): `ControlIO::router_ovf_ev`, a `LinkIn` width 0, wired `Link(1)` from the router's
+     `ovf_ev`, which is put in the step that counts the overflow (t + 1, D28), so the block steps at t + 2 and its
+     endCycle(t + 1) reads the Count `through_last`. The block only takes it (the Count carries the number). Until
+     TileCtl declares it, `tile_cycle` leaves the router without the event (it checks `router_ovf_ev.idx`); once
+     declared it is wired with no change on my side.
+  2. *The preview hook* (`tests/statefp_g2.h`): `fp::LineEdge (*)(const void* ctx, unsigned k, uint64_t c)`, returning
+     what tile k's block will put on `line` at its endCycle(c): `put` (READY rises, or the error line differs from the
+     level last put), `ready`, `level`. Proposed: W8 exports `fp::LineEdge fp::g1_line_edge(const void* tiles, unsigned
+     k, uint64_t c)` from `statefp_g1`, `tiles` the 64 tiles' `G1Tile` array (block_end_of(c) on a copy, then
+     {ready_pulse || error_line != uctl->error_out, ready_pulse, error_line}). Until it lands, `tests/test_chip.cpp` has
+     an interim copy of block_end_of, marked, deleted when W8's lands.
+- 2026-11-07: **stage 4, the chip's assembly** (`chip.cpp`): `tile_cycle` (W8's `add_g1` through `ControlBuilder`, the
+  router, the injection unit; a stand-in control part for network-only runs), `build_chip` (64 tiles, the mesh links
+  `Link(link_latency)`, C&C and the 8 collectors with tile 0, C&C 2 and 3 with tiles 1 and 2, GO `Link(go_latency +
+  skew[k] + 1)` with Java's Random(1) skews, the lines `Link(ready_latency - 2)`), `row_bands` (form 2 by bands of
+  rows). Fingerprint writers for the tile's G2 units (`statefp_g2`: "router", "inj", and "srq" with no reads until G3).
+  **Checked** (`tests/test_chip.cpp`), the C&C sequence exactly Mach.boot's and M2Prog's:
+  - **wfi to its end (cycle 1616) and regs through 824, every unit of tile 0 and the chip-level units every cycle, equal
+    to golden-m2** (the golden's 21 lines a point, `chip` included); both stop where the golden does (regs: at the
+    limit, PLAN-M2); `ready_repulses` 0, printed with every run.
+  - under step-all, a shuffle, instance-major; and **form 2: 2, 4 and 8 domains by bands of rows on as many threads**
+    (the partition asserted: every crossing a mesh link, barrier every 3 cycles), equal every cycle too; under
+    ThreadSanitizer, gcc and clang (`make tsan-chip`, added to make check in `net.mk`).
+  - **every tile every 10 cycles** against the hash-only `wfi-chip.fp` and `regs-chip.fp` (regenerated with
+    `regen.sh --check KEEP=DIR`: SAME), equal (`CHIP_FP_DIR=DIR test_chip every_tile`; not in make check, the files
+    aren't committed).
+- make check after stage 4: gcc and clang, debug and release (36 binaries; 320 / 289 tests), TSan (threads and units
+  71 + 2, the chip's form 2 on both compilers): clean.
+- 2026-11-07, merge round: **main merged** (W8's ROUTER_OVF event input and `units::line_edge`). The chip failed to
+  build ("t0.ctl.ovf not wired"): `tile_cycle` decided whether to wire the event from the handle's `idx`, which the
+  framework only assigns at build, so it never wired it, while W8's block declares it whenever `ControlIO` has the
+  field. Now **always wired** (`Link(1)`, the router's `ovf_ev` -> `ControlIO::router_ovf_ev`), the stand-in control
+  part takes it too. **W8's two stand-in tests** (`test_g1_tile`, `test_g1_replay`) wire a never-put event output
+  to it (one line each, needed for the merged tree to build; W8 told through the owner). **The tile-level test**
+  (`test_chip`: `tile_router_overflow_steps_the_register_block`): one tile with add_g1, its four inputs flooding its
+  eject output; the first overflow of a put at t sets ERRORS [0] in the block at its endCycle(t + 1) (stepped at t + 2
+  by the event, its core asleep in the boot ROM), and the error line (level 1, no READY) reaches the collector's side
+  at t + 2 + ready_latency - 2. **The preview**: `test_chip`'s interim copy deleted; `G2Chip::edge` wraps W8's
+  `units::line_edge(sim, ctl, c)`. wfi and regs (through 824) still equal golden-m2 every cycle (tile 0 and chip),
+  every tile every 10 cycles (CHIP_FP_DIR), under the debug options and form 2.
+- make check on the merged tree: gcc and clang, debug and release (36 binaries; 322 / 291 tests), TSan threads and
+  units (71 + 2 + 72 with tsan-chip, clang; 71 + 2 and tsan-chip, gcc): clean.

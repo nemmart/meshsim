@@ -12,6 +12,9 @@
 //                    at t, its token is free from t + 1 (ref: `srq.loopbackLeft(t)`).
 //        to_cnc      FifoOut, tiles 0-2 only: the to-controller output into the endpoint's receive FIFO.
 //        ovf         CountOut, every overflow of the router's FIFOs (ROUTER_OVF, read by W8's register block).
+//        ovf_ev      LinkOut, width 0, latency 1, to W8's register block, beside the Count (D29: an overflow that feeds
+//                    ERRORS steps the block): put in the step that counts (t + 1, D28), so the block's endCycle(t + 1)
+//                    runs. Declared when asked (the tile builder always asks; the router's own tests don't).
 //
 // STATE. One FIFO per (output, feeder), ref's `FEEDERS_TILE0` on every tile (every router has the fifth port's FIFOs;
 // `attached`, tiles 0-2, only decides whether the to-controller selector runs). The FIFOs are the router's own (owner,
@@ -63,8 +66,10 @@ struct Router {
     sim::LinkOut out[4], eject, loop_left;
     sim::FifoOut to_cnc;              // attached only
     sim::CountOut ovf;
+    sim::LinkOut ovf_ev;              // ovf_event only
 
     // ---- configuration ----
+    bool ovf_event = false;
     uint8_t me = 0;
     bool attached = false;            // tiles 0-2: the fifth port is connected (C&C 1-3)
     bool loopback_last = true;
@@ -88,7 +93,7 @@ struct Router {
     // references avoid the case.
     uint32_t ovf_due = 0;
 
-    Router(sim::Ports& p, unsigned tile, const NetConfig& c, const Hops* h);
+    Router(sim::Ports& p, unsigned tile, const NetConfig& c, const Hops* h, bool overflow_event = false);
     sim::Wake step(sim::Ctx& c);
     uint64_t digest() const;          // the state above (not the statistics, not the pointer)
 
@@ -175,7 +180,7 @@ inline void Router::route(sim::Ctx& c, unsigned port, uint64_t d, uint64_t a, ui
 }
 
 inline sim::Wake Router::step(sim::Ctx& c) {
-    if (ovf_due) { c.inc(ovf, ovf_due); ovf_due = 0; }
+    if (ovf_due) { c.inc(ovf, ovf_due); if (ovf_event) c.put(ovf_ev); ovf_due = 0; }
     uint32_t taken = 0;
     Sel s;
     // selectors: one word per output, from the FIFOs as at the start of t

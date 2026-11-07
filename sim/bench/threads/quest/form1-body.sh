@@ -9,34 +9,37 @@ B=build/clang-release/bench_threads
 sec "footprint per chip (D15), from Sizes"
 for c in mesh synth; do $B --sizes --chip $c | tee -a "$RES/sizes.txt"; done
 
-sec "1. one chip per thread (as W6's N1): P-cores one per core 1..6, then 12 with hyperthreads; E-cores 1 and 4; 3 repeats"
+# the machine (D21, sim/tools/machine.sh, sourced by the task): one CPU per P core in placement order, every P CPU, the E
+# CPUs; NP P cores, NPT P threads, NE E CPUs. Nothing about the runner is written here.
+NP=$(count "$P_ONE"); NPT=$(count "$P_CPUS"); NE=$(count "$E_CPUS"); P1=$(take 1 "$P_ONE")
+
+sec "1. one chip per thread (as W6's N1): one per P core, 1..$NP; then all $NPT P threads; the E cores, 1 and $NE; 3 repeats"
 for rep in 1 2 3; do for c in mesh synth; do
   V="--chip $c --cycles 40000 --warmup 4000"
-  for n in 1 2 3 4 5 6; do
-    cpus=$(seq -s, 0 2 $((2 * n - 2)))
-    run "N1-P$n" 0-11 $B $V --chips $n --threads $n --cpus $cpus
-  done
-  run "N1-P12" 0-11 $B $V --chips 12 --threads 12 --cpus 0-11
-  run "N1-E1" 12-15 $B $V --chips 1 --threads 1 --cpus 12
-  run "N1-E4" 12-15 $B $V --chips 4 --threads 4 --cpus 12-15
+  for n in $(seq 1 "$NP"); do run "N1-P$n" "$P_CPUS" $B $V --chips $n --threads $n --cpus "$(take $n "$P_ONE")"; done
+  run "N1-P$NPT" "$P_CPUS" $B $V --chips $NPT --threads $NPT --cpus "$P_CPUS"
+  if [ "$NE" -gt 0 ]; then
+    run "N1-E1" "$E_CPUS" $B $V --chips 1 --threads 1 --cpus "$(take 1 "$E_CPUS")"
+    run "N1-E$NE" "$E_CPUS" $B $V --chips $NE --threads $NE --cpus "$E_CPUS"
+  fi
 done; done
 
-sec "2. sixteen chips per thread (past L2, as W6's N16): P1, P6, P12; E4; 3 repeats"
+sec "2. sixteen chips per thread (past L2, as W6's N16): P1, P$NP, P$NPT; E$NE; 3 repeats"
 for rep in 1 2 3; do for c in mesh synth; do
   V="--chip $c --cycles 4000 --warmup 400"
-  run "N16-P1" 0-11 $B $V --chips 16 --threads 1 --cpus 0
-  run "N16-P6" 0-11 $B $V --chips 96 --threads 6 --cpus 0,2,4,6,8,10
-  run "N16-P12" 0-11 $B $V --chips 192 --threads 12 --cpus 0-11
-  run "N16-E4" 12-15 $B $V --chips 64 --threads 4 --cpus 12-15
+  run "N16-P1" "$P_CPUS" $B $V --chips 16 --threads 1 --cpus "$P1"
+  run "N16-P$NP" "$P_CPUS" $B $V --chips $((16 * NP)) --threads $NP --cpus "$P_ONE"
+  run "N16-P$NPT" "$P_CPUS" $B $V --chips $((16 * NPT)) --threads $NPT --cpus "$P_CPUS"
+  if [ "$NE" -gt 0 ]; then run "N16-E$NE" "$E_CPUS" $B $V --chips $((16 * NE)) --threads $NE --cpus "$E_CPUS"; fi
 done; done
 
-sec "3. the same 12 chips on 1, 6 and 12 threads: identical digests (and IPC, perf stat)"
+sec "3. the same 12 chips on 1, $NP and $NPT threads: identical digests (and IPC, perf stat)"
 for c in mesh synth; do
   V="--chip $c --chips 12 --cycles 10000 --warmup 1000"
-  PERF=1 run "D-P1" 0-11 $B $V --threads 1 --cpus 0
-  PERF=1 run "D-P6" 0-11 $B $V --threads 6 --cpus 0,2,4,6,8,10
-  PERF=1 run "D-P12" 0-11 $B $V --threads 12 --cpus 0-11
+  PERF=1 run "D-P1" "$P_CPUS" $B $V --threads 1 --cpus "$P1"
+  PERF=1 run "D-P$NP" "$P_CPUS" $B $V --threads $(( NP < 12 ? NP : 12 )) --cpus "$P_ONE"
+  PERF=1 run "D-P$NPT" "$P_CPUS" $B $V --threads $(( NPT < 12 ? NPT : 12 )) --cpus "$P_CPUS"
   n=$(grep "^D-P" "$RES/raw.txt" | grep "chip=$c " | field digest | sort -u | wc -l)
-  [ "$n" = 1 ] && verdict "digests of 12 $c chips on 1, 6, 12 threads" PASS || verdict "digests of 12 $c chips ($n distinct)" FAIL
+  [ "$n" = 1 ] && verdict "digests of 12 $c chips on 1, $NP, $NPT threads" PASS || verdict "digests of 12 $c chips ($n distinct)" FAIL
 done
 [ "$FAILS" = 0 ] && verdict "every run completed" PASS || verdict "every run completed ($FAILS failed)" FAIL

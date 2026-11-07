@@ -259,3 +259,7 @@ cycle against `golden-m2`, under every debug option (shuffle, both orders, step-
   **Next, with W9:** when its assembly (C&C, `build_chip`) lands, the same comparison on the real network:
   `test_g1_replay`'s loop with `build_chip` in place of the stand-in, every unit of tile 0 (W9's registered beside
   mine) against regs.fp (through 824) and wfi.fp; then more tiles (`fptiles`).
+- 2026-11-07: main merged (W9's chip: the whole chip matches golden-m2 on wfi and regs through 824, split too).
+  W9's two lines in `test_g1_tile` / `test_g1_replay` (a never-put width-0 `Link(1)` into `router_ovf_ev`): correct,
+  kept. Added the deferred tile-level check: the router's overflow event alone, counted at 40, sets ERRORS [0] at
+  endCycle(40) through the block's step (`test_g1_tile`).

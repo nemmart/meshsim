@@ -5,6 +5,7 @@
 #   hook fires inside the measured loop (so "no allocation" is proven, not assumed).
 set -u
 B=${1:?build dir}
+C=$("$(dirname "$0")/../tools/machine.sh" cpus all 1)   # one usable CPU, every thread on it (D21: detected, not CPU 0)
 FAIL=0
 ok() { echo "ok   $*"; }
 bad() { echo "FAIL $*"; FAIL=1; }
@@ -22,7 +23,7 @@ done; done
 
 ref=""
 for t in 1 3 4; do
-  d=$($B/mesh --lw a --meshes 4 --threads $t --cpus 0,0,0,0 --mix mixed --cycles 2000 --warmup 200 | dig)
+  d=$($B/mesh --lw a --meshes 4 --threads $t --cpus $C,$C,$C,$C --mix mixed --cycles 2000 --warmup 200 | dig)
   [ -z "$ref" ] && ref=$d
   [ "$d" = "$ref" ] && [ "$d" != none ] || bad "mesh 4 meshes on $t threads: digest $d != $ref"
 done
@@ -39,7 +40,7 @@ print(n, bad); sys.exit(1 if bad or not n else 0)" && ok "fp128: forms against P
 
 ref=""
 for f in u128 acc limbs; do for h in pool inline; do for t in 1 3; do
-  d=$($B/fp128 --unit --form $f --hold $h --units 64 --threads $t --cpus 0,0,0,0 --cycles 2000 --warmup 100 | dig)
+  d=$($B/fp128 --unit --form $f --hold $h --units 64 --threads $t --cpus $C,$C,$C,$C --cycles 2000 --warmup 100 | dig)
   [ -z "$ref" ] && ref=$d
   [ "$d" = "$ref" ] && [ "$d" != none ] || bad "fp128 unit form=$f hold=$h threads=$t: digest $d != $ref"
 done; done; done

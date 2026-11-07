@@ -1,6 +1,6 @@
 # units.mk: WORKER5's rules (the controller's units in src/units/, the golden-trace harness), included by sim/Makefile.
 #
-#   make bench_controller   the controller's speed (tests/bench_controller.cpp): pin it (taskset -c 0)
+#   make bench_controller   the controller's speed (tests/bench_controller.cpp): pin it (taskset -c $(tools/machine.sh cpus p1 1): D21)
 #   make tsan-units   the threads test (test_controllers) under TSan, gcc and clang; also run by make check
 #   make golden       every golden trace (tests/golden/RUNS) on the engine, with the debug checks, and on the direct driver
 

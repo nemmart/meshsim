@@ -129,6 +129,10 @@ cycle they have work; the wake makes polling unnecessary). `refused()` = `refuse
 last_take != now`; `held_at_start()` = `occ || last_take == now`. The producer keeps its own copy of the word to retry
 (`ref`'s `retry` re-puts the pending words: the same thing). WORKER29 agrees.
 
+**For authors: an accepted put wakes no one** (only a refusal does). A producer with more data waiting must return
+`next()` after a put and look again, as `ref`'s WriteEngine does every cycle; the missed-wake detector flags one that
+sleeps on its input instead (increment 5).
+
 ## 6. `Reg`: a registered value (`WordLatch`, `WordBuses.java:16-37`; and `TileControl`'s registers)
 
 `WordLatch`: a put at t is visible from **t + 1** and stays until the next put replaces it (23-24); `take` is

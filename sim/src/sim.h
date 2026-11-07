@@ -240,6 +240,7 @@ public:
     void put(HoldOut p, Word a, Word b);
     void put(HoldOut p, Word a, Word b, Word c);
     bool refused(HoldOut p) const;                   // the put of t - 1 was refused: put the same words again
+                                                     // (an accepted put wakes no one: with more data waiting, return next())
     bool can_put(HoldOut p) const;                   // empty at the start of t ("not busy")
     bool held_at_start(HoldOut p) const;             // occupied at the start of t (WordHold.heldAtStart)
 

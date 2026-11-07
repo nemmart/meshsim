@@ -58,6 +58,65 @@ my own names (`PortConf*.java`). `WORKER3/REPORT.md` at the end.
 
 No change foreseen; any proposal goes here first.
 
+## Stage 1: state (2026-11-07)
+
+| deliverable | file | state |
+|---|---|---|
+| the port semantics | `sim/src/PORTS.md` | draft |
+| the API | `sim/src/sim.h` (the unit author's view), `sim/src/config.h` (building a machine) | draft, declarations only |
+| sketch 1, a FIFO consumer | `sim/src/sketch/write_engine.cpp` (`ref`'s WriteEngine) | compiles (gcc and clang, `make check`) |
+| sketch 2, the controller's surroundings | `sim/src/sketch/controller.cpp` (core, register block subset, test bench) | compiles; from PLAN-M1 item 8, **to revise against W2's AUDIT.md** (not yet on `sim-w2`) |
+| W6's findings | — | not yet (W6 not started); widths are per port, at run time |
+
+`sim/Makefile`: one rule added (the sketches are compiled in every build, never linked or run).
+
+### What PORTS.md found
+
+- **The machine runs three bus classes**: `WordDelayLine`, `WordFIFO`, `WordHold`. `WordLatch`, `RegisterBlock` and the
+  backpressure classes are instantiated only by `BusTest`; `Reg`, `RegFile`, `Wire` and `Count` follow the timing rules
+  `TileControl`, `EventCounts`, `RequestPort` and `Chip` implement by hand.
+- **Fifo full**: `WordFIFO`'s start-of-cycle rule (the generic `TimedFIFO` judges after the pop; the word class wins).
+- **Reg's same-value no-op** (owner's note 1): no unit puts on a `WordLatch`, so none relies on it; the framework's `Reg`
+  is stricter in debug (a second put in a cycle is fatal) and equal in behaviour.
+- **Credit Fifo**: `WordBackpressureFIFO` is unused; the machine's credited queue is the request tree's receive queues
+  (credit back at t + 1). Both reduce to a producer-side credit count, returned through the wheel.
+- **The request FIFO's stall** (`RequestPort.canPush`: room, or freed by the bus in the same cycle) is a `Wire` from the
+  bus, not a FIFO rule; in M1 the test bench drives it (W2's observer now logs REQ-FREED, which is this wire).
+- **GO** is a pulse visible at one cycle: a width-0 `Link`, not a `Reg`.
+- **Overflow timing**: `ref` counts an overflow at the FIFO's first touch after the put, which is t + 1 for every FIFO the
+  machine runs (its consumer polls every cycle it is awake); the framework counts it at delivery, t + 1.
+
+### Design choices for review (sim.h, config.h)
+
+1. **Wakes are explicit**: a unit is stepped on a delivery, a change of a Wire or RegFile it reads, or a wake it asked
+   for. Data left in an input does not re-step it; the unit returns `next()` if it wants another look. The alternative
+   (re-step while any input holds data) is simpler for authors and costs a step per blocked unit per cycle.
+2. **The shifted end of cycle**: `TileControl.endCycle(t)` becomes a level-0 step at t + 1 fed by Links of latency 1, which
+   drives the Wires and the RegFile the core reads at level 1. No commit phase for unit logic; the cycle is deliver, run
+   by level, end.
+3. **A Wire is a persistent level**, changed only by its producer's step; a change wakes its readers in the same cycle.
+   An idle producer need not run to keep its wire driven.
+4. **A Hold's refusal wakes its producer** (`ref`'s producers poll every cycle; the wake makes polling unnecessary).
+5. **One level per (type, form)**: the largest of its instances.
+6. **Handles are patched after the build**: units are staged at configuration, moved into one arena per type, and their
+   handles rewritten to final pool indices (ports numbered consumer type-major). So a unit type must be movable and hold no
+   pointer into itself.
+7. **One wheel per (kind, width)**: delivery is a tight loop per kind, the route selects the wheel (no branch on kind or
+   domain in a put), and W6's two-or-three-word link word is a width.
+8. **Every unit is stepped at the first cycle**, to drive its initial outputs.
+
+### Line counts (code lines, no comments or blanks)
+
+- **The write engine**: `ref` 84 (of which about 15 are S1 accounting, the log and stats resets, left out of the sketch);
+  the sketch 76 with its local link-word helpers, **53 for the unit itself**. The gain is small for this unit: `ref`'s write
+  engine was already a clean consumer of three buses. What disappears is outside it: the per-cycle polling, the commit
+  rules, and `Tile.java`'s construction of its buses.
+- **The controller's surroundings**: 124 lines for the three units and their configuration (core outline 51, register block
+  subset 29, test bench 20). No fair `ref` equivalent yet: the same couplings are spread over `Controller.java`,
+  `TileControl.java` and `RequestPort.java`. W5 reports the full controller against `Controller.java` (444).
+
 ## Log
 
 - 2026-11-07: plan agreed (owner's go-ahead with five notes). W2's audit not yet on `sim-w2`; W6 not started.
+- 2026-11-07: stage 1 drafts pushed (PORTS.md, sim.h, config.h, two sketches). Waiting for W2's AUDIT.md (sketch 2) and
+  W6's findings (through the integrator) before the review.

@@ -169,7 +169,13 @@ TEST(calibration_measures_uneven_loads_and_round_trips_as_text) {
     const LoadProfile q = LoadProfile::from_text(p.to_text());
     CHECK(q.unit == p.unit);
     CHECK(q.load == p.load);
+    CHECK(q.link == p.link);
+    CHECK(q.words == p.words);
+    CHECK(!p.link.empty());                       // the Links' traffic, counted while calibrating
+    CHECK(q.ticks_per_ns == p.ticks_per_ns && p.ticks_per_ns > 0);
     CHECK_EQ(q.cycles, p.cycles);
+    const LoadProfile v1 = LoadProfile::from_text("loadprofile v1\ncycles 7\na.b 3\n");   // the first format, still read
+    CHECK(v1.unit.size() == 1 && v1.unit[0] == "a.b" && v1.load[0] == 3 && v1.cycles == 7);
     // a profile from a split machine names the machine's units only (no boundary units)
     Options so; so.calibrate = true; so.threads = 2; so.placement = Options::Placement::by_load;
     Config sc(so);

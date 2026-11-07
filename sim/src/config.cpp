@@ -5,6 +5,7 @@
 #include "threads.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 
@@ -739,6 +740,10 @@ Sim Config::build() {
     if (I.opt.calibrate) {                                     // W10: time per instance, for Sim::load_profile
         S->run_ticks_v.assign(e.ninst, 0);
         e.inst_ticks = S->run_ticks_v.data();
+        S->link_words_v.assign(e.nlinks, 0);
+        e.link_words = S->link_words_v.data();
+        S->cal_ticks0 = sim_ticks();
+        S->cal_ns0 = double(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
     }
     if (I.opt.observe_arrivals && e.nlinks) {                  // W10: one arrival cycle per Link ring slot
         S->link_at_off_v.resize(e.nlinks);
@@ -797,6 +802,13 @@ void profile_of(const detail::Internals::SImpl& S, LoadProfile& p) {
         p.unit.push_back(e.unit_names[i]);
         p.load.push_back(double(e.inst_ticks[i]));
     }
+    for (uint32_t k = 0; k < e.nlinks; k++) {
+        if (!e.link_words[k] || e.link_names[k][0] == '~') continue;
+        p.link.push_back(e.link_names[k]);
+        p.words.push_back(double(e.link_words[k]));
+    }
+    const double ns = double(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()) - S.cal_ns0;
+    if (ns > 0) p.ticks_per_ns = double(sim_ticks() - S.cal_ticks0) / ns;
 }
 }  // namespace
 LoadProfile Sim::load_profile() const {
@@ -807,14 +819,17 @@ LoadProfile Sim::load_profile() const {
     return p;
 }
 std::string LoadProfile::to_text() const {
-    std::string t = "loadprofile v1\ncycles " + std::to_string(cycles) + "\n";
     char b[64];
-    for (size_t k = 0; k < unit.size(); k++) { std::snprintf(b, sizeof b, " %.17g\n", load[k]); t += unit[k] + b; }
+    std::snprintf(b, sizeof b, "%.17g", ticks_per_ns);
+    std::string t = "loadprofile v2\ncycles " + std::to_string(cycles) + "\nticks_per_ns " + b + "\n";
+    for (size_t k = 0; k < unit.size(); k++) { std::snprintf(b, sizeof b, " %.17g\n", load[k]); t += "unit " + unit[k] + b; }
+    for (size_t k = 0; k < link.size(); k++) { std::snprintf(b, sizeof b, " %.17g\n", words[k]); t += "link " + link[k] + b; }
     return t;
 }
 LoadProfile LoadProfile::from_text(const std::string& text) {
     LoadProfile p;
     size_t pos = 0, line = 0;
+    int version = 0;
     while (pos < text.size()) {
         size_t end = text.find('\n', pos);
         if (end == std::string::npos) end = text.size();
@@ -822,18 +837,31 @@ LoadProfile LoadProfile::from_text(const std::string& text) {
         pos = end + 1;
         line++;
         if (l.empty()) continue;
-        if (line == 1) { if (l != "loadprofile v1") FATAL("load profile line 1: '%s', expected 'loadprofile v1'", l.c_str()); continue; }
+        if (line == 1) {
+            if (l == "loadprofile v1") version = 1;
+            else if (l == "loadprofile v2") version = 2;
+            else FATAL("load profile line 1: '%s', expected 'loadprofile v1' or 'v2'", l.c_str());
+            continue;
+        }
         if (line == 2) {
             if (l.rfind("cycles ", 0) != 0) FATAL("load profile line 2: '%s', expected 'cycles N'", l.c_str());
             p.cycles = std::strtoull(l.c_str() + 7, nullptr, 10);
             continue;
         }
-        const size_t sp = l.rfind(' ');
+        if (version == 2 && l.rfind("ticks_per_ns ", 0) == 0) { p.ticks_per_ns = std::strtod(l.c_str() + 13, nullptr); continue; }
+        std::string rest = l;
+        bool is_link = false;
+        if (version == 2) {
+            if (l.rfind("unit ", 0) == 0) rest = l.substr(5);
+            else if (l.rfind("link ", 0) == 0) { rest = l.substr(5); is_link = true; }
+            else FATAL("load profile line %zu: '%s', expected 'unit NAME LOAD' or 'link NAME WORDS'", line, l.c_str());
+        }
+        const size_t sp = rest.rfind(' ');
         char* e = nullptr;
-        const double v = sp == std::string::npos ? 0 : std::strtod(l.c_str() + sp + 1, &e);
+        const double v = sp == std::string::npos ? 0 : std::strtod(rest.c_str() + sp + 1, &e);
         if (sp == std::string::npos || sp == 0 || !e || *e) FATAL("load profile line %zu: '%s', expected 'name load'", line, l.c_str());
-        p.unit.push_back(l.substr(0, sp));
-        p.load.push_back(v);
+        if (is_link) { p.link.push_back(rest.substr(0, sp)); p.words.push_back(v); }
+        else { p.unit.push_back(rest.substr(0, sp)); p.load.push_back(v); }
     }
     if (line < 2) FATAL("load profile: no header");
     return p;

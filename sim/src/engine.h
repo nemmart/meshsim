@@ -239,6 +239,7 @@ struct Engine {
     bool stop_breaks = true;
     // W10: the port observer's arrival cycles (Options::observe_arrivals): per Link input, one per ring slot, at
     // link_at + link_at_off[port]; null when off (nothing recorded)
+    uint64_t* link_words = nullptr; // W10: Options::calibrate: words delivered per Link input (each entry: width + 1)
     uint64_t* inst_ticks = nullptr; // W10: Options::calibrate: time stamp ticks per instance's steps, summed (the runs'
                                     // calibrating loops, config.h run_form_cal; null: not timed)
     Cycle* link_at = nullptr;
@@ -592,8 +593,11 @@ namespace detail {
 template <unsigned W>
 void deliver_link(Engine& e, const Bucket& b) {
     const Word* p = b.begin();
-    if (__builtin_expect(e.link_at != nullptr, 0))                      // the observer's arrival cycles (W10): per bucket
-        for (uint32_t n = b.count(); n; n--, p += W + 1) e.link_at[e.link_at_off[p[0]] + e.links[p[0]].ring.tail()] = e.now;
+    if (__builtin_expect(e.link_at != nullptr || e.link_words != nullptr, 0)) {   // W10: the observer, calibration
+        if (e.link_at) for (uint32_t n = b.count(); n; n--, p += W + 1) e.link_at[e.link_at_off[p[0]] + e.links[p[0]].ring.tail()] = e.now;
+        p = b.begin();
+        if (e.link_words) for (uint32_t n = b.count(); n; n--, p += W + 1) e.link_words[p[0]] += W + 1;
+    }
     p = b.begin();
     for (uint32_t n = b.count(); n; n--, p += W + 1) {
         LinkPort& l = e.links[p[0]];
@@ -609,8 +613,11 @@ void deliver_link(Engine& e, const Bucket& b) {
 template <unsigned W>
 void deliver_link_x(Engine& e, const Bucket& b, const uint32_t* xdst) {
     const Word* p = b.begin();
-    if (__builtin_expect(e.link_at != nullptr, 0))
-        for (uint32_t n = b.count(); n; n--, p += W + 1) { const uint32_t q = xdst[p[0]]; e.link_at[e.link_at_off[q] + e.links[q].ring.tail()] = e.now; }
+    if (__builtin_expect(e.link_at != nullptr || e.link_words != nullptr, 0)) {
+        if (e.link_at) for (uint32_t n = b.count(); n; n--, p += W + 1) { const uint32_t q = xdst[p[0]]; e.link_at[e.link_at_off[q] + e.links[q].ring.tail()] = e.now; }
+        p = b.begin();
+        if (e.link_words) for (uint32_t n = b.count(); n; n--, p += W + 1) e.link_words[xdst[p[0]]] += W + 1;
+    }
     p = b.begin();
     for (uint32_t n = b.count(); n; n--, p += W + 1) {
         const uint32_t q = xdst[p[0]];

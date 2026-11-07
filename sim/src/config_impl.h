@@ -150,6 +150,9 @@ struct Sim::Impl {
     std::vector<uint32_t> link_at_off_v;
     bool running = false;                              // W10: inside Sim::run (the observer refuses)
     std::vector<uint64_t> run_ticks_v;                 // W10: Options::calibrate: ticks per instance, summed
+    std::vector<uint64_t> link_words_v;                //   and words delivered per Link input
+    uint64_t cal_ticks0 = 0;                           //   the clock at build, against steady time: ticks per ns
+    double cal_ns0 = 0;
     detail::Threads* threads = nullptr;                // W4 (E3): set when the machine is split over domains; the Sim's
                                                        // operations go to it, and the fields above are unused
     unsigned char* obj(uint32_t i) const {

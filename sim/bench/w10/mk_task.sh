@@ -1,7 +1,8 @@
 #!/bin/bash
 # mk_task.sh NNN-name BODY "header lines" NAME=REV [NAME=REV ...] > task.sh (WORKER10): a self-contained Quest task with an
 # embedded kit holding sim/ (Makefile, src, tests, bench, tools) at each named revision, unpacked to $W/kit/NAME/sim, so
-# a before/after pair is built and run in one task. golden-m2 and the portconf fixtures are left out unless KIT_EXCLUDE is
+# a before/after pair is built and run in one task. golden-m2 (but its images/, and ref/meshsim/hops.txt: the chip) and the
+# portconf fixtures are left out unless KIT_EXCLUDE is
 # set (e.g. to " " for everything). The body (sourced) sees KITS ("NAME ..."), sec, verdict, run (common.inc)
 # and the machine (sim/tools/machine.sh of the last revision, D21). Run from inside the repo; commit first.
 set -eu
@@ -12,7 +13,7 @@ NAMES=; DESC=
 for nv in "$@"; do
   n=${nv%%=*}; r=$(cd "$TOP" && git rev-parse --short "${nv#*=}")
   mkdir -p "$KIT/k/$n"
-  ( cd "$TOP" && git archive --format=tar "$r" sim/Makefile sim/src sim/tests sim/bench sim/tools ${KIT_EXCLUDE:-":(exclude)sim/tests/golden-m2" ":(exclude)sim/tests/portconf"} ) | tar -xf - -C "$KIT/k/$n"
+  ( cd "$TOP" && git archive --format=tar "$r" sim/Makefile sim/src sim/tests sim/bench sim/tools sim/ref/meshsim/hops.txt ${KIT_EXCLUDE:-":(exclude,glob)sim/tests/golden-m2/*" ":(exclude)sim/tests/portconf"} ) | tar -xf - -C "$KIT/k/$n"
   NAMES+="${NAMES:+ }$n"; DESC+="${DESC:+, }$n $r"; LAST=$n
 done
 ( cd "$KIT/k" && tar --sort=name --mtime=@0 --owner=0 --group=0 -cf - . ) | gzip -9n > "$KIT/kit.tgz"

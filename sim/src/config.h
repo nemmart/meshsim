@@ -105,6 +105,8 @@ struct Options {
                                  // domain) and assigns them to threads, balancing load and keeping crossings few
     const LoadProfile* load = nullptr;     // by_load: measured loads (Sim::load_profile); null: Config::weight,
                                                 // else 1 per unit. Read during build() only
+    double crossing_ns = 20;     // by_load with a profile: what a word crossing between threads costs (ns; Quest 141:
+                                 // ~20 ns, a cache miss), weighed against load in the placement objective
     unsigned min_interval = 0;   // by_load: the smallest barrier interval allowed; 0: the largest Link latency that still
                                  // leaves at least 4 granules per thread
     bool calibrate = false;      // W10: time each unit's steps (for Sim::load_profile): two clock reads per step
@@ -118,8 +120,12 @@ struct Options {
 struct LoadProfile {
     std::vector<std::string> unit;   // unit names
     std::vector<double> load;        // per unit: the time its steps took (time stamp ticks, or ns without a counter)
+    std::vector<std::string> link;   // Link inputs ("unit.port")
+    std::vector<double> words;       // per Link input: words delivered (each entry its width + 1)
+    double ticks_per_ns = 1;         // the clock's rate during the calibration (to price a crossing word in load units)
     uint64_t cycles = 0;             // cycles the profile covers
-    std::string to_text() const;                    // "loadprofile v1", "cycles N", then "name load" per line
+    std::string to_text() const;     // "loadprofile v2", "cycles N", "ticks_per_ns X", then "unit NAME LOAD" and
+                                     // "link NAME WORDS" lines (v1, "NAME LOAD" lines only, is still read)
     static LoadProfile from_text(const std::string& text);   // fatal on a malformed text, naming the line
 };
 

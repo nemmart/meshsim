@@ -93,7 +93,8 @@ run, so nothing outside the controller has to be modelled in M1.
 **W6, the first benchmarks** (D6): on a hand-rolled loop over W1's structures, before W3's API is agreed.
 - A synthetic busy 8 × 8 mesh of simple XY routers with FIFOs (not exact to `ref`), link words as (a) two words, the header and
   the data or a 128-bit index into the thread's value array, against (b) three words inline; µs per mesh-cycle on one mesh and
-  one thread, then 128 meshes on 1, 8 and 16 threads.
+  one thread, then 128 meshes on 1, 6 and 12 threads pinned to the
+  performance cores (D13), the efficiency cores reported separately.
 - The cost of an Fp128 multiply (Montgomery with native 128-bit arithmetic), per operation and in a unit-like loop.
 - A recommendation for the link word and for how units do 128-bit arithmetic, **delivered to W3 before its API header is
   agreed**.
@@ -113,7 +114,8 @@ run, so nothing outside the controller has to be modelled in M1.
 - Cross-domain forms of every port kind, chosen at configuration; the barrier interval from the partition.
 - A seeded synthetic graph on 1, 2, 4 and 8 threads, over several partitions: identical digests; the 128-bit copy across
   threads checked; no value array shared (asserted in debug).
-- TSan, ASan and UBSan clean; the scaling of N independent instances on N threads measured.
+- TSan (gcc and clang), ASan and UBSan clean; the scaling of N independent instances on N threads measured, threads pinned
+  to the performance cores (D13), the efficiency cores reported separately.
 
 **W5, the controller.**
 - The test bench checks its own configuration against the golden trace's header before comparing, and refuses on any

@@ -43,3 +43,7 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   the register load, the rest of `Config`'s relevant values), `stage_delay`, the shuffle seed, the tile, and the image's
   sha256. The C++ test bench checks its own configuration against the header before comparing and refuses on any difference,
   so a parameter mismatch shows as one clear error rather than every cycle disagreeing.
+- **D13. The runner, for sim/** (owner). clang and lld installed, `kernel.perf_event_paranoid=1`, `vm.mmap_rnd_bits=28`
+  (TSan), confirmed by Quest 122. The runner has 6 performance cores with hyperthreading plus 4 efficiency cores: **benchmark
+  threads are pinned to the performance cores** (`taskset`; Quest 122 lists the CPU ids), and any run on the efficiency
+  cores is reported separately. Scaling is reported at 1, 6 and 12 threads on the P-cores.

@@ -13,8 +13,8 @@ today's engine.
 - **Today:** about **110 s** on one `ref` JVM on the runner (110.1 s on `main`, 92.2 s with `sim-step-cost`'s A + C;
   WORKER29, Quest 120): about 90 µs per chip-cycle.
 - **The aim:** about **4 s**, excluding setup (build, image and input load): about **3.3 µs per chip-cycle**, ~27× today.
-  For scale: M1 measured ~4.5× unit for unit per thread (D22) and ~5-7× from threads (Quest 128, 129), so the aim needs
-  both, and chip-level work kept event-driven (D23).
+  For scale: M1 measured ~4.5× unit for unit per thread (D22) and, for one chip split over threads (form 2, the only
+  threading that counts: D26), ~3× on four threads so far (Quest 133), so the aim needs both pushed further, and chip-level work kept event-driven (D23).
 - Measured on the owner's runner and recorded with its machine (D21); the same build runs anywhere.
 
 ## What it needs
@@ -45,7 +45,10 @@ extend D5's one observer, so it is the owner's decision, with W7's proposal and 
 3. **Units**, by several workers in parallel once M1 closes and the audit has landed, in groups the audit proposes, each
    checked against `ref` as it lands.
 4. **One tile, then 64**: `regs`, `wfi`, the mesh tests (NetTest, all-to-all), the sort at n = 16,384, then full size.
-5. **Speed**: one thread, then form 2 over 2-12 threads, against the 110 s, aiming at ~4 s.
+5. **Speed**: one thread, then form 2 over 2-12 threads, against the 110 s, aiming at ~4 s. The two levers (D26): **speed
+   per thread**, and **one chip split over threads** made cheaper (today +18% time and +52% memory at six parts on one
+   thread, W4) and **balanced by load** rather than by rows (the mesh's 8 rows over 6 threads left two threads with twice the
+   work). Form 1 is not a lever: it stays a thread-safety test.
 
 ## Status
 

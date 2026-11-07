@@ -4,8 +4,9 @@
 traces and the bar (W2); the framework with port conformance against `ref`, the debug checks and the performance pass
 (W3); both thread forms with identical digests across thread counts and partitions (W4); the RV32 controller matching all
 67 goldens on the engine under all six debug option sets, and N controllers on N threads (W5); the first benchmarks (W6).
-Speed: 44 M instructions/s per thread for the controller, about 4.5× `ref` unit for unit (D22); independent chips scale
-about 5× on six P-cores; one mesh split over threads reaches 3.05× on four. What M2 inherits is in "Carried to M2" below
+**The figures that count** (D26: we simulate one chip at a time): **speed per thread**, 44 M instructions/s for the
+controller, about 4.5× `ref` unit for unit (D22); and **one chip split over threads** (form 2), 3.05× on four threads for
+the mesh so far. Form 1 (independent machines on separate threads) is a thread-safety test only: don't quote its scaling. What M2 inherits is in "Carried to M2" below
 and in each worker's report.
 
 Agreed with the owner 2026-11-06 (integrator's draft, the owner's answers folded in; decisions in `DECISIONS.md`). The brief

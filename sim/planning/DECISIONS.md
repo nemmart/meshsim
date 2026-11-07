@@ -54,7 +54,8 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
 - **D15. The bar** (D8, measured by W2, Quest 123: ReplayBench on segment 0 of evm-zone-29, `sim-step-cost`, repeat 2):
   **36.8 µs per chip-cycle for one replay alone, and about 100,000-110,000 chip-cycles/s for the whole box.** Today's engine
   is memory-bound across the box (12 JVMs give 3.6× one; two sharing a P-core each run 3.4× slower), so the new framework is
-  judged on **memory footprint per chip** as well as speed per thread: the footprint decides how many chips run side by side.
+  judged on **memory footprint per chip** as well as speed per thread: *(amended by D26: we simulate one chip at a time, so footprint matters for how well one chip's state fits the caches of
+  the cores it is split over, not for running chips side by side.)*
 - **D16. Word width** (owner, on W6's T1): runtime in declarations, specialised inside the framework, never visible to unit
   authors. Internal templates on the word count (1, 2, 3) are fine: at most three instantiations, each genuinely different
   code. What to avoid is templating on payload types, which stamps out identical copies of the same code for same-sized
@@ -95,3 +96,9 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
 - **D25. M2's target** (owner, 2026-11-07): **the full-size sort** (`p4/uniform-k128`) on the new framework, exact against
   `ref`, **multithreaded**, to see how fast it is against today's engine: about 110 s on one `ref` JVM, **aiming at about
   4 s** excluding setup. The plan is `PLAN-M2.md`.
+- **D26. One chip at a time** (owner, 2026-11-07; corrects SIMULATOR-NEXT 4's "throughput first, independent chips"): we
+  simulate one chip at a time and don't expect to run separate simulations side by side. **M1's form 1** (N independent
+  machines on N threads) **is a thread-safety test only**, not a benchmark or a design goal: don't quote its scaling (W5's
+  Quest 129, W4's Quest 128, W6's throughput against N). **The figures that count** are **speed per thread** (~4.5× `ref`
+  unit for unit, D22) and **one chip split over threads** (form 2: ~3× on four threads for the mesh so far, Quest 133).
+  M2's work pushes those two: a faster thread, and a cheaper, load-balanced split.

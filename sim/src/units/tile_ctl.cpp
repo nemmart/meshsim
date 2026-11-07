@@ -17,6 +17,7 @@ template <class IO> void set_ovf_event(IO& io, const sim::LinkIn& h) {
 ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     G1Ctx& g = *static_cast<G1Ctx*>(ctx);
     if (!g.mem || !g.bootrom) FATAL("add_g1: tile %u: the context has no memories or no boot ROM", k);
+    if (!g.sram) FATAL("add_g1: tile %u: the context has no big-SRAM blocks (G1Ctx::sram)", k);
     if (g.cfg.K + 1 > 63 || g.cfg.cm_latency + 1 > 63) FATAL("add_g1: K %u or cm_latency %u past the wheel", g.cfg.K, g.cfg.cm_latency);
     const std::string t = "t" + std::to_string(k) + ".";
 
@@ -35,11 +36,15 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     auto& c = cfg.add<TileCore>(t + "core", core);
     auto& b = cfg.add<TileCtl>(t + "ctl", block, kHasOvfEvent<ControlIO>);
     auto& d = cfg.add<Director>(t + "dir", dc);
-    auto& we = cfg.add<WriteEngine>(t + "we", g.we_in_depth);
+    auto& we = cfg.add<WriteEngine>(t + "we", g.we_in_depth, g.cfg.ts_engine_latency, g.cfg.mem_chunks);
     auto& ag = cfg.add<AddrGen>(t + "ag");
     auto& ga = cfg.add<Gather>(t + "gather", g.gather_depth);
     auto& ts = cfg.add<TableStore>(t + "ts");
     auto& hs = cfg.add<HistStore>(t + "hist");
+    SramConfig sc;
+    sc.mem_chunks = g.cfg.mem_chunks; sc.area_queue_depth = g.cfg.area_queue_depth;
+    sc.write_combining = g.cfg.write_combining; sc.fifo_count_before_pop = g.cfg.fifo_count_before_pop;
+    auto& sr = cfg.add<BigSram>(t + "sram", sc, g.sram->block(k, g.cfg.mem_chunks), false);
 
     cfg.link(c.bus, b.bus, 1);
     cfg.connect(b.regs, c.regs);
@@ -59,6 +64,11 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     cfg.link(c.tables, ts.window, 1);
     cfg.link(c.hist_w, hs.window, 1);
     cfg.connect(hs.out, c.hist);
+    // G3 (W11): the write engine's PTR RMWs, count-on-arrival, and its writes into the big SRAM
+    cfg.link(we.ts_req, ts.req_we, g.cfg.ts_engine_latency);
+    cfg.link(ts.ret_we, we.ts_ret, g.cfg.ts_engine_latency);
+    cfg.link(we.hist_req, hs.req, g.cfg.ts_engine_latency);
+    cfg.connect(we.to_sram, sr.wr);
 
     ControlIO io;
     io.send = c.send; io.send_busy = b.send_busy; io.eject = d.in; io.go = b.go; io.line = b.line;

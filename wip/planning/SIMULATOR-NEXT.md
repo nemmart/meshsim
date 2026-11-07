@@ -71,14 +71,23 @@ lists, Verilator's ordering of combinational logic, SystemC's delta cycles, gem5
 - **A GPU backend later, as a design target, not built** (owner's idea): **one unit type per warp**, over **many chips at
   once** (a proof's 128 segments × 64 tiles = 8,192 instances of each type), state laid out so a warp's lanes read adjacent
   words; the cores the hardest part (divergence), eased when a batch runs the same firmware.
-- **Languages** (owner): **build the framework in Java first** (the JVM is fast, and today's engine is the oracle), get it
-  running and tuned, **then port it to C++ with minimal STL and our own low-level structures** (rings of fixed slots,
-  bitmasks, pools with free lists, the wheel). Lay the Java version out so the port is mechanical: slots as `long[]` ranges,
-  no generics over boxed objects.
+- **Language and approach, revised** (owner, 2026-11-06, superseding "Java first, then C++"): **a clean-sheet framework,
+  built from components, not a migration of meshsim**, and **in C++ from the start**, with minimal STL and our own
+  low-level structures (rings of fixed-size slots, bitmasks, pools with free lists, the timing wheel). C++ lets the types do
+  the work the design needs: a payload is a value in one place and a handle in another, slots of declared width hold structs
+  inline (Java has no value types; it would mean hand-flattening into `long[]`), layout and alignment are ours, there is no
+  GC, and the GPU target (CUDA) is C++ too. The cost, undefined behaviour and memory bugs, is met with sanitizers (ASan,
+  UBSan) and deterministic tests from the first commit. **meshsim stays as the reference model and exactness oracle**: where a
+  unit is modelled in both, the new framework must match it cycle for cycle.
 
-## 5. How it would be built (WORKER29's migration plan, each step proven against today's engine)
+## 5. How it would be built
 
-M0, the framework core with a whole `Tile` as one unit (its links and C&C links as ports, the lines as lines); M1, inside
+**Not by migrating meshsim** (owner): the framework is built fresh, from its components up (the slots and rings, the port
+kinds, the wheel, the ready masks, the scheduler, the threads), each tested on its own; then units are written on it, and
+checked against meshsim, the oracle, where meshsim models the same thing (identical cycle counts and outputs). WORKER29's
+migration plan, kept below for its order of units and its prototype, is superseded as a plan.
+
+*WORKER29's plan, for reference:* M0, the framework core with a whole `Tile` as one unit (its links and C&C links as ports, the lines as lines); M1, inside
 the tile, unit by unit, hottest first (router and FIFOs, the SRAM read queue and injection, the director, a status array
 for `TileControl`, the engines, the core, the slot); M2, the layout (type-contiguous allocation, type-major evaluation); M3,
 threads (independent chips, then tile groups); M4, the GPU form, only if the owner decides. **Exactness is the requirement

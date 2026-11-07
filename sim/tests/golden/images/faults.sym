@@ -1,0 +1,8 @@
+00000038 B _bss_end
+00000030 B _bss_start
+00000010 D _data_start
+00000038 B _end
+01000000 T _start
+01000038 T main
+00000034 B ok
+00000030 B st

@@ -54,6 +54,7 @@ final class ControllerMemories implements Component {
             int v = (int) ((i < 2 ? d : hi) >>> (32 * (i & 1)));
             if (data && (result || inReply(w << 2))) markReply(w, d, h);
             m.write32(PORT_B, t, w, v);
+            if (Observer.ON) Observer.memw(this, t, data ? w << 2 : Registers.PMEM_BASE + (w << 2), v);
         }
         if (data && inReply(w0 << 2)) writesReply++;
         if (data && w0 <= CMD_DWORD && w0 + n > CMD_DWORD) {          // covers slot 0: command landed (4.8)

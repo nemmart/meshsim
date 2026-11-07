@@ -12,6 +12,7 @@
 
 #include "base/arena.h"
 #include "config.h"
+#include "digest_view.h"
 
 namespace sim {
 
@@ -114,6 +115,11 @@ struct Config::Impl {
     }
 };
 
+namespace detail {
+struct Threads;                                     // threads.h (W4): a machine split over several domains
+void destroy_threads(Threads* t);
+}  // namespace detail
+
 // ---- Sim ---------------------------------------------------------------------------------------------------------------
 struct Sim::Impl {
     Engine e;
@@ -130,11 +136,15 @@ struct Sim::Impl {
     std::vector<std::vector<std::pair<uint8_t, std::string>>> level_ports;   // per instance: (bit, port name) of its level inputs
     std::vector<unsigned> missed_after;               // per instance: the missed-wake detector's threshold (increment 5)
     Sizes sizes;
+    detail::DigestView view;                           // the digest, unit by unit (W4, E5: digest.h)
+    detail::Threads* threads = nullptr;                // W4 (E3): set when the machine is split over domains; the Sim's
+                                                       // operations go to it, and the fields above are unused
     unsigned char* obj(uint32_t i) const {
         const Store& s = stores[inst[i].store];
         return s.base + size_t(inst[i].index) * (*types[s.type]).size;
     }
     ~Impl() {
+        if (threads) detail::destroy_threads(threads);
         for (auto& s : stores) {
             const auto& ti = *types[s.type];
             for (uint32_t k = 0; k < s.count; k++) ti.destroy(s.base + size_t(k) * ti.size);

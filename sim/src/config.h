@@ -66,21 +66,12 @@
 
 namespace sim {
 
-// The resolved route of an output: where a put's entry is appended. A data value (no pointer to a port object, no
-// virtual call): `wheel` is the first bucket of the wheel it lands in (its (kind, width) wheel in its own thread, or an
-// outbox), `dest` the destination's pool index (an entry's first word: W6's E1, Bucket unchanged), `latency` the delay
-// (1 for Fifo, Hold, Reg). A put of width w is
-//     Bucket& b = r.wheel[(now + r.latency) & wheel_mask]; Word* e = b.append(); e[0] = r.dest; e[1..w] = words;
+// The resolved route of an output (engine.h's Route) is a data value: `wheel` is the first bucket of the wheel it lands in
+// (its (kind, width) wheel in its own thread, or an outbox), `dest` the destination's pool index (an entry's first word:
+// W6's E1, Bucket unchanged), `latency` the delay (1 for Fifo, Hold, Reg). A put of width w is
+//     Bucket& b = r.wheel[(now + r.latency) & r.mask]; Word* e = b.append(); e[0] = r.dest; e[1..w] = words;
 // with w a compile-time constant of the put's arity (sim.h's put overloads are fixed-arity), so the copy is fixed-size
 // (D16), and the same instructions whether the destination is local or across a domain.
-struct Bucket;
-struct Route {
-    Bucket* wheel;
-    uint32_t dest;
-    uint16_t latency;
-    uint8_t width;     // checks only (debug: the put's arity equals the declared width)
-    uint8_t kind;      // checks only
-};
 
 struct Options {
     uint64_t shuffle_seed = 0;   // 0: none; else instances and runs within a level are stepped in a seeded random order
@@ -108,9 +99,80 @@ struct Sizes {
     uint32_t wheel_buckets;               // W, per wheel (kept for the sizing tests)
 };
 
+namespace detail {
+// What the framework knows of a unit type, made once per type by a template (no RTTI).
+struct TypeInfo {
+    std::string name;
+    size_t size, align;
+    void (*move)(void* dst, void* src);           // move-construct at dst, then destroy src
+    void (*destroy)(void* obj);
+    void (*run[2])(Engine&, RunSet&);             // by Form: cycle, result (null if the type has no result form)
+    uint64_t (*digest)(const void* obj);          // T::digest() if it has one, else its bytes (sim.h, DEBUG CHECKS)
+};
+uint16_t register_type(TypeInfo&& t);
+const TypeInfo& type_info(uint16_t id);
+size_t registry_size();
+
+// The run function of a (type, form): one per run, called once per run per cycle with the run's ready instances. This
+// is the whole dispatch: the step is inlined, nothing is called per port.
+template <class T, bool Result>
+void run_form(Engine& e, RunSet& r) {
+    T* units = reinterpret_cast<T*>(r.units);
+    r.ready.for_each_set([&](size_t k) {
+        e.enter(r, uint32_t(k));
+        Wake w;
+        if constexpr (Result) w = units[k].step_result(e.ctx); else w = units[k].step(e.ctx);
+        e.after(r, uint32_t(k), w);
+    });
+    r.ready.clear_all();
+    r.nready = 0;
+}
+
+template <class T>
+std::string type_name() {   // from the compiler's signature, for messages ("unit Router")
+    std::string f = __PRETTY_FUNCTION__;
+    size_t a = f.find("T = ");
+    if (a == std::string::npos) return "?";
+    a += 4;
+    size_t b = f.find_first_of(";]", a);
+    return f.substr(a, b - a);
+}
+
+template <class T>
+uint64_t digest_of(const void* p) {
+    if constexpr (requires(const T& u) { { u.digest() } -> std::convertible_to<uint64_t>; }) {
+        return static_cast<const T*>(p)->digest();
+    } else {
+        const unsigned char* b = static_cast<const unsigned char*>(p);
+        uint64_t h = 0xcbf29ce484222325ull;
+        for (size_t i = 0; i < sizeof(T); i++) h = (h ^ b[i]) * 0x100000001b3ull;
+        return h;
+    }
+}
+
+template <UnitType T>
+uint16_t type_id() {
+    static const uint16_t id = [] {
+        TypeInfo t;
+        t.name = type_name<T>();
+        t.size = sizeof(T);
+        t.align = alignof(T);
+        t.move = [](void* dst, void* src) { ::new (dst) T(std::move(*static_cast<T*>(src))); static_cast<T*>(src)->~T(); };
+        t.destroy = [](void* p) { static_cast<T*>(p)->~T(); };
+        t.run[0] = &run_form<T, false>;
+        t.run[1] = nullptr;
+        if constexpr (HasResultForm<T>) t.run[1] = &run_form<T, true>;
+        t.digest = &digest_of<T>;
+        return register_type(std::move(t));
+    }();
+    return id;
+}
+}  // namespace detail
+
 class Sim;
 
 class Config {
+    friend class Ports;     // a unit's declarations land in the configuration being built
 public:
     explicit Config(Options o = {});
     ~Config();
@@ -140,8 +202,6 @@ public:
     Sim build();
 
 private:
-    // A type's id and its run functions, made once per type by the template below (no RTTI).
-    template <class T> uint16_t type_id();
     void* stage(uint16_t type, size_t size, size_t align, Form f, const std::string& name);
     Ports& begin_ports(void* unit);
     void end_ports();
@@ -152,7 +212,7 @@ private:
         // storage is poisoned for ASan once the units are moved (debug builds), so a stale one faults on first use.
         static_assert(std::is_move_constructible_v<T>, "a unit type must be move-constructible (it is moved into its arena)");
         static_assert(!std::is_polymorphic_v<T>, "a unit type has no virtual functions (D6: no virtual calls in the loop)");
-        void* slot = stage(type_id<T>(), sizeof(T), alignof(T), f, name);
+        void* slot = stage(detail::type_id<T>(), sizeof(T), alignof(T), f, name);
         T* u = new (slot) T(begin_ports(slot), std::forward<A>(a)...);
         end_ports();
         return *u;
@@ -161,17 +221,6 @@ private:
     Impl* impl_;
 };
 
-// The run function of a (type, form): one per run, called once per run per cycle with the run's ready instances. This is
-// the whole dispatch: the step is inlined, nothing is called per port.
-struct RunSet;      // the run's ready instances (a Bitmap over the type's instances) and the type's arena
-struct Engine;      // the thread's state: Ctx, wheels, run sets
-template <UnitType T>
-void run_cycle_form(Engine& e, RunSet& r);         // for each ready i: e.ctx.enter(r, i); w = units[i].step(e.ctx); e.after(r, i, w)
-template <HasResultForm T>
-void run_result_form(Engine& e, RunSet& r);        // the same with step_result
-// The delivery loops, internal: one per (kind, width), templated on the word count (D16: widths 0-3), e.g.
-//     template <unsigned W> void deliver_fifo(Engine&, const Bucket&);
-// Never visible to unit authors.
 
 class Sim {
 public:
@@ -185,6 +234,20 @@ public:
     const Sizes& sizes() const;
     uint64_t steps(const std::string& unit_name) const;   // how many times an instance was stepped (idle-unit tests)
     std::string sleepers() const;      // the end-of-run report: units asleep with data waiting, their ports, since when
+
+    Sim(Sim&& o) noexcept;
+    Sim& operator=(Sim&& o) noexcept;
+    ~Sim();
+
+private:
+    friend class Config;
+    struct Impl;
+    explicit Sim(Impl* i) : impl_(i) {}
+    void* unit_ptr(const std::string& name, uint16_t type) const;
+    Impl* impl_ = nullptr;
 };
+
+template <class T>
+T& Sim::unit(const std::string& name) { return *static_cast<T*>(unit_ptr(name, detail::type_id<T>())); }
 
 }  // namespace sim

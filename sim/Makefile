@@ -37,7 +37,7 @@ $(error CC_NAME must be gcc or clang)
 endif
 
 B        := build/$(CC_NAME)-$(MODE)
-LIB_SRC  := $(wildcard src/base/*.cpp)
+LIB_SRC  := $(wildcard src/base/*.cpp src/*.cpp)
 LIB_OBJ  := $(LIB_SRC:%.cpp=$(B)/%.o)
 TEST_SRC := $(wildcard tests/test_*.cpp)
 TESTS    := $(TEST_SRC:tests/%.cpp=$(B)/%)

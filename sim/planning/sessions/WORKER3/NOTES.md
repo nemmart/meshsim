@@ -277,6 +277,23 @@ script and `ref`'s observations, about 2.5 MB) is committed for the C++ test, an
 
 `make check` clean on gcc and clang, debug and release (the three sketches compiled in every build).
 
+### Stage 2, increment 2: the engine, local, Link/Fifo/Hold (2026-11-07)
+
+`src/engine.h` (the internals: port pools, routes, wheels, run sets; `Ctx`'s operations inline; the delivery loops per
+(kind, width)), `src/engine.cpp` (the cycle: deliver, run by level, end; the far-wake heap; fast-forward when nothing is
+in flight or ready), `src/config.cpp` (staging, `Ports`, wiring, the build: order, numbering, wheels, sizing carved from
+one block, unit arenas and handle patching, `Sizes`; `Sim`). `tests/test_engine.cpp`, 16 tests: a link word's latency;
+WordFIFO's start-of-cycle full (depth 1, a put and a take every cycle: half dropped); a hold's refusals and retries in
+order; an idle unit stepped only at cycle 1; a 10^9-cycle sleep, two steps; no allocation in 10^4 busy cycles (W1's
+hook); sizes against hand-derived ones; the digest; the end-of-run report; death tests (two puts, a link not taken, a
+wake in the past, an unwired port, a unit of the wrong type, widths). ASan found one bug on the way (name strings in a
+reallocating vector, fixed).
+
+Engine choices below the API: far wakes in an indexed heap (each instance at most once, so a step's wake replaces its
+last: no stale entries); `next()` in a per-run "next" bitmap swapped in at the end of the cycle; with nothing in flight
+and nothing ready, the clock jumps to the next far wake. A unit's digest is its bytes unless its type defines
+`digest()` (optional, additive: flagged to the integrator).
+
 ## Log
 
 - 2026-11-07: plan agreed (owner's go-ahead with five notes). W2's audit not yet on `sim-w2`; W6 not started.
@@ -286,3 +303,5 @@ script and `ref`'s observations, about 2.5 MB) is committed for the C++ test, an
 - 2026-11-07: main merged (W2 closed); sketch 2 revised against AUDIT-M1.md and TRACE-FORMAT.md. Waiting for W6's report.
 - 2026-11-07: the conformance driver's Java side (PortConfGen, PortConfDriver, portconf.sh); the full matrix runs clean.
 - 2026-11-07: main merged (W6, D15-D18); the integrator's review folded in (1-7). Ready for the owner's review.
+- 2026-11-07: stage 2 (owner's go-ahead, D20). Increment 1 (the build, D18; fixtures and --check) and increment 2 (the
+  engine with Link, Fifo, Hold) landed.

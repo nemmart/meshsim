@@ -82,7 +82,9 @@
 // permanent state allocated apart (a memory from `alloc_big`, a read-only table built at configuration) are fine; they
 // don't move.
 //
-// DEBUG CHECKS (config.h's Options), each compared by the digest of every port and unit (Sim::digest):
+// DEBUG CHECKS (config.h's Options), each compared by the digest of every port and unit (Sim::digest). A unit's part of
+// the digest is its bytes, unless its type defines `uint64_t digest() const` (optional): a unit holding a pointer (to a
+// memory allocated apart) defines it, since a pointer's value differs between two machines built side by side.
 //   shuffle      within a level, runs and instances in a seeded random order: any difference is an undeclared dependence
 //                (a missing Wire); bisect the level to find it.
 //   two orders   type-major (each run's instances together) against instance-major (each instance's units together).
@@ -157,6 +159,8 @@ struct Wake {
 
 enum class Form : uint8_t { cycle, result };
 
+struct Engine;   // engine.h: the framework's internals
+
 // ---- the step's view of the machine ------------------------------------------------------------------------------
 // One Ctx per thread; the framework sets the current instance before each step. Every method is inline over the thread's
 // pools (stage 2). Misuse (peek of an empty input, a put of the wrong width, a second take) is DCHECK; a second put on a
@@ -225,6 +229,12 @@ public:
     // Payloads larger than 128 bits only (D17): the thread's array of 128-bit values, a payload's word an index into it.
     // A 128-bit value travels inline as two words and is held in a unit as two words; it never comes here.
     ValuePool& values();
+
+private:
+    friend struct Engine;
+    Engine* e_ = nullptr;
+    uint32_t cur_ = 0;           // the instance being stepped
+    uint64_t* mask_ = nullptr;   // its ready bits
 };
 
 // ---- declaring a unit's ports (configuration) -----------------------------------------------------------------------
@@ -278,3 +288,5 @@ concept HasResultForm = UnitType<T> && requires(T& u, Ctx& c) {
 };
 
 }  // namespace sim
+
+#include "engine.h"   // the internals Ctx inlines over (not for unit authors)

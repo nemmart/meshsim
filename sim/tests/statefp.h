@@ -28,21 +28,20 @@
 #include <string>
 #include <vector>
 
+#include "units/memsum.h"
+
 namespace sim { class Sim; }
 
 namespace fp {
 
 // ------------------------------------------------------------------------------------------------------------ hashing
-inline uint64_t fmix(uint64_t k) {
-    k ^= k >> 33; k *= 0xff51afd7ed558ccdull; k ^= k >> 33; k *= 0xc4ceb9fe1a85ec53ull; k ^= k >> 33;
-    return k;
-}
+inline uint64_t fmix(uint64_t k) { return units::fmix64(k); }
 constexpr uint64_t kSeed = 0x6A09E667F3BCC908ull;
-inline uint64_t term(uint32_t region, uint64_t index, uint32_t value) {
-    return fmix(uint64_t(region) << 56 ^ index << 32 ^ uint64_t(value));
-}
-enum : uint32_t { R_DMEM = 1, R_PMEM = 2, R_SRAM = 3, R_STREAM_SRC = 4, R_STREAM_DEST = 5, R_STREAM_COUNT = 6,
-                  R_GROUP = 7, R_PTR = 8, R_HIST = 9 };
+inline uint64_t term(uint32_t region, uint64_t index, uint32_t value) { return units::mem_term(region, index, value); }
+enum : uint32_t { R_DMEM = units::FP_DMEM, R_PMEM = units::FP_PMEM, R_SRAM = units::FP_SRAM,
+                  R_STREAM_SRC = units::FP_STREAM_SRC, R_STREAM_DEST = units::FP_STREAM_DEST,
+                  R_STREAM_COUNT = units::FP_STREAM_COUNT, R_GROUP = units::FP_GROUP, R_PTR = units::FP_PTR,
+                  R_HIST = units::FP_HIST };
 
 // A canonical stream. `w` hashes a word; when dumping, it also prints `unit name hex` (StateFp.Dump's format). Names with
 // an index are formatted only when dumping (`wi`: name and index concatenated, as Java's "x" + r).
@@ -74,23 +73,7 @@ inline uint64_t combine(const uint64_t* h, size_t n) {
 }
 
 // ------------------------------------------------------------------------------------------------------------ memories
-// A memory's sum, kept at every write. Index: the word's (or chunk's) index as StateFp numbers it.
-struct MemSum {
-    uint32_t region = 0;
-    uint64_t sum = 0;
-    explicit MemSum(uint32_t r = 0) : region(r) {}
-    void write(uint64_t index, uint32_t old_v, uint32_t new_v) {
-        if (old_v == new_v) return;
-        if (old_v) sum -= term(region, index, old_v);
-        if (new_v) sum += term(region, index, new_v);
-    }
-    // The full sum over words[0..n) at index k * stride + offset (StateFp.setHash), for checks and initial images.
-    static uint64_t scan(uint32_t region, const uint32_t* words, size_t n, uint64_t stride = 1, uint64_t offset = 0) {
-        uint64_t s = 0;
-        for (size_t k = 0; k < n; k++) if (words[k]) s += term(region, k * stride + offset, words[k]);
-        return s;
-    }
-};
+using units::MemSum;   // src/units/memsum.h: kept by the unit owning the memory
 
 // --------------------------------------------------------------------------------------------------------------- buses
 // A bus entry as the observer gives it (and as a unit may hold one): its arrival cycle (Links) and three words.

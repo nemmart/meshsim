@@ -9,7 +9,7 @@
 //   mode 0, region 0x00/0x01 -> `port_b` (and `landed` if it covers command slot 0);
 //   mode 0, region 0x03; modes 1, 2, 3 -> `we_in` (the write engine, G3);
 //   mode 4 -> `gather` (G4); mode 5 -> count only; mode 0 to a peripheral's region -> fatal, not modelled in M2.
-// Counting (modes 0-3 and 5, counter 1-7): the counter id goes on `line`, a Link(K + 1) into the register block, which
+// Counting (modes 0-3 and 5, counter 1-7): the counter id goes on `kline`, a Link(K + 1) into the register block, which
 // applies the decrement in its endCycle(t + K) (level 0 of t + K + 1): ref's K-stage line, with no wake of its own. The
 // judgement (a counter at 0 stays 0: unexpected, ERRORS [2]) is the block's, without a same-cycle store (D27).
 //
@@ -42,18 +42,18 @@ struct Director {
     // ---- outputs ----
     sim::LinkOut port_b;       // width 3: mode 0 to regions 0x00/0x01 -> the core's port B, Link(cm_latency + 1)
     sim::LinkOut landed;       // width 0: that write covers command slot 0 (0x7FC0) -> the block, Link(cm_latency + 1)
-    sim::LinkOut line;         // width 1: a counted packet's counter id (1-7) -> the block, Link(K + 1)
+    sim::LinkOut kline;        // width 1: a counted packet's counter id (1-7) -> the block, Link(K + 1)
     sim::FifoOut we_in;        // width 3: mode 0 region 0x03, modes 1-3 -> the write engine, Fifo(we_in_depth) (G3)
     sim::FifoOut gather;       // width 3: mode 4 -> the GATHER engine's queue, Fifo(gather_depth) (G4)
     sim::CountOut bad;         // bad packets dropped (Conditions.BAD_MODE_OR_SIZE, ERRORS [1])
 
     DirectorConfig cfg;
     // statistics (not state: outside the fingerprint)
-    uint64_t accepted = 0, per_mode[lw::N_MODES] = {}, count_only = 0, undefined_size = 0, violations = 0;
+    uint64_t accepted = 0, per_mode[lwx::N_MODES] = {}, count_only = 0, undefined_size = 0, violations = 0;
 
     Director(sim::Ports& p, const DirectorConfig& c) : cfg(c) {
         p.in(in, "in", 3);
-        p.out(port_b, "port_b", 3); p.out(landed, "landed", 0); p.out(line, "line", 1);
+        p.out(port_b, "port_b", 3); p.out(landed, "landed", 0); p.out(kline, "kline", 1);
         p.out(we_in, "we_in", 3); p.out(gather, "gather", 3);
         p.out(bad, "bad");
     }

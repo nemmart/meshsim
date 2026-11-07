@@ -39,3 +39,4 @@ check: tsan-units
 # WORKER8: the canonical state fingerprint's C++ side (tests/statefp.*), and its test.
 FP_OBJ := $(B)/tests/statefp.o
 $(B)/test_statefp: $(FP_OBJ)
+$(B)/test_statefp_g1: $(FP_OBJ) $(B)/tests/statefp_g1.o

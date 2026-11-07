@@ -1,5 +1,7 @@
-// linkword.h: the link word as ref carries it (sim/ref/meshsim/src/LinkWord.java), shared by every unit that puts or
-// reads one (WORKER8 owns it; WORKER9's router and injection unit include it; a change goes through the integrator).
+// linkword.h: the link word's helpers G1's units need (sim/ref/meshsim/src/LinkWord.java; WORKER8). W9's `units/net.h`
+// (namespace `units::lw`) is the shared definition of the link word (agreed 2026-11-07); until it reaches main this file
+// carries the accessors too, in its own namespace `units::lwx` so both can be included together. When net.h is on main,
+// only what net.h lacks stays here (bytes, chunks, aligned, region, offset, bad_packet, counted_mode, N_COUNTERS).
 //
 // A link word is three untyped words on every bus (D17), in ref's order:
 //     w[0] = payload [63:0]      w[1] = the header      w[2] = payload [127:64]
@@ -11,7 +13,7 @@
 
 #include <cstdint>
 
-namespace units::lw {
+namespace units::lwx {
 
 // ---- endpoints (2.1) ----
 enum : uint32_t { CC1 = 64, CC2 = 65, CC3 = 66, BROADCAST = 126, NONE = 127, DMA1 = CC1 + 8 };
@@ -74,4 +76,4 @@ inline bool bad_packet(uint32_t mode, uint32_t size, uint32_t addr, uint32_t per
 inline uint64_t mask_lo(uint64_t lo, uint32_t size) { return size == SIZE_32 ? lo & 0xFFFFFFFFu : lo; }
 inline uint64_t mask_hi(uint64_t hi, uint32_t size) { return size == SIZE_128 || size == SIZE_UNDEF ? hi : 0; }
 
-}  // namespace units::lw
+}  // namespace units::lwx

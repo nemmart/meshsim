@@ -21,6 +21,7 @@ struct RegBlockState {
     bool done = false, landed = false, gate = false, ready_level = false, request_busy_prev = false;
     uint32_t events = 0, mask = EVENTS_MASK_RESET, required = 0, conditions = 0, status = 0;
     uint32_t req_n = 0, set_w[3] = {};
+    uint32_t dma_config = 0, record_base = 0;   // M2 (W8): DMA_CONFIG and DMA_RECORD_BASE_ADDRESS as TileControl holds them
     // ---- statistics, and ref's violations (counted) ----
     uint64_t gos = 0, dones = 0, readies = 0, sends = 0, trace_stores = 0, violations = 0, sim_exit_at = 0;
     uint32_t sim_exit_value = 0;

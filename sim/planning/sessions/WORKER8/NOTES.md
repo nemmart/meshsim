@@ -122,3 +122,31 @@ cycle against `golden-m2`, under every debug option (shuffle, both orders, step-
   streams equal the golden's `t0.inj`/`ep` and `t0.hist`/`t0.req` at cycle 0, and every `chip` line of `regs.fp`,
   `wfi.fp` and `a2a.fp` equals our combine of its unit lines. Next: the stubs (reset streams, checked against ref's
   `fpdump` at cycle 0), the core's and the memories' writers, the ref driver for M1 goldens.
+- 2026-11-07, the owner's second round: (1) regs' G3/G4 state: build the configuration parts in the future units' own
+  files; (2) W9's `ControlIO` is the contract, ROUTER_OVF agreed, send-busy = W9's Reg OR the core's own put at t;
+  (3) the K-line and port B latencies approved; (4) the observer request relayed to W10.
+  - **wfi is G1 + G2 only**: over every cycle of `wfi.fp`, tile 0's `we, ag, ts, hist, gather, sram, sram.data, rdport,
+    req` never change; `srq` takes 2 values (the loopback token of the self-sends: W9's injection unit).
+  - **regs is not G1 + G2 + configuration only.** From cycle 825 its mode-1 self-sends (regs.c line 49: "mode 1 to
+    itself, at PTR[me]") go through the write engine, PTR's read-modify-write and big SRAM: `t0.we` changes at
+    825-837, `t0.ts` at 826-837 (PTR += 4, 2, 1), `t0.sram` at 829-839, `t0.sram.data` at 831, 836, 839. That is G3's
+    path (a2a's). Up to cycle 824 the configuration parts suffice (test below). Question for the owner (in my reply).
+  - **Built: the configuration parts** (headers say "configuration part by W8 (G1); G3/G4 extend this file"):
+    `units/write_engine.h` (the unit, its we-in input, its digits and augment base), `units/ag.h` (kind, run start,
+    count), `units/gather.h` (its input, k, base), `units/table_store.h` (`TableStore`: STREAM_SRC/DEST/COUNT, GROUP,
+    PTR; `HistStore`: HIST with a 256-register RegFile for the core's one-cycle HIST loads; each with incremental sums;
+    the table window's decode; stores arrive from the core on a Link(1) and apply before t + 1's readers). The
+    configuration is never copied: the block exports a `dma` RegFile (DMA_CONFIG, the record base) that the three
+    engines read at their step (ref: setMasterConfig/setRecordBase at endCycle(t), used from t + 1). A packet reaching
+    the write engine or the gather engine is fatal, "not modelled in M2 yet (G3/G4)".
+  - `units/memsum.h` (fmix64, the regions, `MemSum`) moved under src/ so units keep their sums; `statefp.h` uses it.
+  - `tests/statefp_g1.*`: writers for `we, ag, gather, ts, hist`, stubs for `sram, sram.data, rdport`, the idle request
+    port `req`, and `register_g1`. `test_statefp_g1`: **every one equals ref's `regs.fp` at cycle 0, and with regs'
+    own DMA_CONFIG (0x00BCDEF), record base (0x54321), HIST[5], PTR[1], STREAM 3, GROUP 63 and PTR[0] stores applied,
+    equals it at 506, 507, 509, 510, 591, 607, 613, 614, 802, 803, 824 and 869** (hist).
+  - **With W9 (one round, through the integrator):** `G1IO` now has `ControlIO`'s fields, names and kinds exactly
+    (send, send_busy, eject, go, line, router_ovf), and `add_g1(cfg, k, ctx)` has `ControlBuilder`'s signature; when
+    chip.h reaches main, G1IO becomes ControlIO and that's all. The K-line port is renamed `kline` (ControlIO's `line`
+    is READY's). W9's `net.h` (`units::lw`) is adopted as the link word's definition; my `linkword.h` moved to
+    `units::lwx` so both can be included together, and shrinks to what net.h lacks once net.h is on main. **Ask:** the
+    integrator merges W9's stage-0 headers (net.h, chip.h, ...) into main, so both of us build against one copy.

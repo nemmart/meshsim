@@ -1,10 +1,8 @@
 #!/bin/bash
 # mk_task.sh NNN-name BODY "header lines" NAME=REV [NAME=REV ...] > task.sh (WORKER10): a self-contained Quest task with an
 # embedded kit holding sim/ (Makefile, src, tests, bench, tools) at each named revision, unpacked to $W/kit/NAME/sim, so
-# a before/after pair is built and run in one task. golden-m2 (but its images/, ref/meshsim/hops.txt and the boot ROM: the
-# chip) and the
-# portconf fixtures are left out unless KIT_EXCLUDE is
-# set (e.g. to " " for everything). The body (sourced) sees KITS ("NAME ..."), sec, verdict, run (common.inc)
+# a before/after pair is built and run in one task. It also carries ref/meshsim/hops.txt and the boot ROM (the chip);
+# golden-m2 (all but its images/) and the portconf fixtures are left out unless KIT_EXCLUDE is set (" ": everything). The body (sourced) sees KITS ("NAME ..."), sec, verdict, run (common.inc)
 # and the machine (sim/tools/machine.sh of the last revision, D21). Run from inside the repo; commit first.
 set -eu
 NAME=$1 BODY=$2 HDR=$3; shift 3

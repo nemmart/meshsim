@@ -1,0 +1,8 @@
+# wfi_go's test bench (sim/tests/ref/TraceRun.java): after the boot's GO
+at 300
+go                         # A: GO while the core sleeps under the done gate
+at 600
+go                         # B: GO while the core is in its busy loop
+at 1500
+cmd 4d000000 33333333      # C: the command lands; READY; C&C's GO
+readygo

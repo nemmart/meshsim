@@ -25,6 +25,7 @@ import java.util.Map;
  *   go                C&C clears READY and stores GO now, without waiting for READY
  *   readygo           C&C waits for the tile's READY, then GO (as at the boot)
  *   max N             run at most N cycles (default 200000)
+ *   boot ARG..        the boot command's arguments after the entry (slots 2-7; hex), wherever the line stands
  * The run ends when the core halts, the boot ROM's handler parks, or an UndefinedBehavior stop; then the closing block.
  */
 public final class TraceRun {
@@ -45,6 +46,9 @@ public final class TraceRun {
         List<String> steps = new ArrayList<>();
         if (tb != null) for (String l : Files.readAllLines(tb)) { String s = l.replaceAll("#.*", "").trim(); if (!s.isEmpty()) steps.add(s); }
 
+        List<Integer> bootArgs = new ArrayList<>(List.of(entry));
+        for (String s : steps) if (s.startsWith("boot ")) for (String a : s.substring(5).trim().split("\\s+")) bootArgs.add((int) Long.parseLong(a, 16));
+
         Config k = Config.machine();
         k.checkErrors = false;                                   // faults, irq and the div tests raise ERRORS on purpose
         Chip c = new Chip(k);
@@ -52,7 +56,7 @@ public final class TraceRun {
         for (int i = 0; i < code.length; i++) core.pokeLocal(Registers.PMEM_BASE + 4 * i, code[i]);
         for (int i = 0; i < data.length; i++) core.pokeLocal(dataAt + 4 * i, data[i]);
         c.cc1p.expect = 1L << tile;                              // only this tile starts (6.2): its command, then GO
-        c.cc.command(tile, Registers.CMD_JUMP << 24, entry).go();
+        c.cc.command(tile, Registers.CMD_JUMP << 24, bootArgs.stream().mapToInt(Integer::intValue).toArray()).go();
         long max = 200_000;
         for (String s : steps) {
             String[] f = s.split("\\s+");
@@ -62,6 +66,7 @@ public final class TraceRun {
                 case "go" -> c.cc.then((cc, t) -> { cc.clearReady(t); cc.storeGo(t); return true; });
                 case "readygo" -> c.cc.go();
                 case "max" -> max = Long.parseLong(f[1]);
+                case "boot" -> { }
                 default -> throw new IllegalArgumentException(tb + ": unknown step: " + s);
             }
         }

@@ -45,5 +45,7 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   so a parameter mismatch shows as one clear error rather than every cycle disagreeing.
 - **D13. The runner, for sim/** (owner). clang and lld installed, `kernel.perf_event_paranoid=1`, `vm.mmap_rnd_bits=28`
   (TSan), confirmed by Quest 122. The runner has 6 performance cores with hyperthreading plus 4 efficiency cores: **benchmark
-  threads are pinned to the performance cores** (`taskset`; Quest 122 lists the CPU ids), and any run on the efficiency
+  threads are pinned to the performance cores** (`taskset -c 0-11`: CPUs 0-11 are the six P-cores and their hyperthreads, 12-15 the E-cores; Quest 122), and any run on the efficiency
   cores is reported separately. Scaling is reported at 1, 6 and 12 threads on the P-cores.
+  Quest 122 confirmed clang and lld, perf (`perf record` and `report` work, IPC visible per core type) and TSan on gcc and clang;
+  its `mmap_rnd_bits` check failed only because the runner's user can't read the sysctl, while TSan itself now works.

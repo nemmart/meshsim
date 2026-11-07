@@ -139,4 +139,6 @@ Workers may refine the layout under `src/` and `tests/` in their plans.
 |---|---|
 | W1 | **done**, merged 2026-11-07 (`sessions/WORKER1-REPORT.md`); D4: prebuilt firmware images, the C++ shipped as source |
 | W2 | prompt written 2026-11-06 (`sessions/WORKER2/PROMPT.md`) |
-| W3, W4, W5, W6 | not started |
+| W6 | prompt written 2026-11-07 (`sessions/WORKER6/PROMPT.md`) |
+| W3 | prompt written 2026-11-07 (`sessions/WORKER3/PROMPT.md`): stage 1 (the API) first, held for W6's findings and the owner's review |
+| W4, W5 | not started |

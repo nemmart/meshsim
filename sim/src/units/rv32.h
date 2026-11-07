@@ -1,0 +1,440 @@
+// rv32.h: the tile controller's core, `ref`'s Controller.java (v1.3) line for line, as plain code.
+//
+// `Rv32::step(env, t)` is Controller.runCycle(t), preceded by the catch-up of the cycles since the core last ran (it sleeps
+// through a stall, a WFI and the end of its run). Everything the core sees of its tile comes through `env` (one class per
+// use: the unit's adapter over the framework's Ctx, a plain struct in tests and in the direct driver):
+//
+//   uint32_t reg(unsigned r)    the register block's view at t (PARAMS, STATUS, ERRORS, EVENTS, EVENTS_MASK,
+//                               EVENTS_REQUIRED: the state at the end of t - 1)
+//   bool wake()                 the WFI wake term at t (TileControl.wakeTerm)
+//   bool irq()                  ERRORS != 0 at t (TileControl.errorsAt(t) != 0)
+//   bool can_push()             a REQUEST_SEND store may complete at t (RequestPort.canPush)
+//   void post(op, arg, v)       what the block applies at the end of t (one a cycle): BUS_STORE (register, value),
+//                               BUS_CONSUME (-, the EVENTS bits returned), BUS_ERROR (condition, -)
+//
+// What M1 doesn't model stops with FATAL("... not modelled in M1"), naming the register or window.
+#pragma once
+
+#include <cstdint>
+
+#include "base/fatal.h"
+#include "units/regmap.h"
+#include "units/trace_log.h"
+
+namespace units {
+
+enum : uint32_t { BUS_STORE = 1, BUS_CONSUME = 2, BUS_ERROR = 3 };
+
+struct Rv32Timing {
+    uint32_t reg_load_latency = 2, branch_penalty = 1, mul_latency = 3, ref_cycle = 40;
+};
+
+// How a core's run ended (TRACE-FORMAT's END): it runs until one of these, then nothing (TraceRun's chip stops there).
+enum class Stop : uint8_t { running, halt, parked, ub };
+
+struct Rv32 {
+    enum : int { RUN = 0, HALT_ECALL = 2, HALT_EBREAK = 3, HALT_EXIT = 5, HALT_FETCH = 6, HALT_JUMP = 7, HALT_TRAP2 = 8 };
+    enum : uint32_t {
+        MSTATUS = 0x300, MISA = 0x301, MIE_CSR = 0x304, MTVEC = 0x305, MSCRATCH = 0x340, MEPC = 0x341, MCAUSE = 0x342,
+        MTVAL = 0x343, MIP = 0x344, MCYCLE = 0xB00, MCYCLEH = 0xB80, MTIME = 0xC01, MTIMEH = 0xC81,
+        MSTATUS_MIE = 1u << 3, MSTATUS_MPIE = 1u << 7, MEIE = 1u << 11,
+        CAUSE_FETCH = 1, CAUSE_ILLEGAL = 2, CAUSE_LOAD_FAULT = 5, CAUSE_STORE_FAULT = 7, CAUSE_EXTERNAL = 0x8000000B,
+        WFI = 0x10500073,
+    };
+    static constexpr uint64_t kNever = ~uint64_t(0);
+
+    // ---- architectural state (Controller.reset: pc in the boot ROM, everything else 0) ----
+    uint32_t x[32] = {};
+    uint32_t pc = BOOTROM_BASE;
+    uint32_t mstatus = 0, mie = 0, mtvec = 0, mscratch = 0, mepc = 0, mcause = 0, mtval = 0;
+    uint64_t mcycle = 0;
+    int halt = RUN;
+    bool in_wfi = false, in_handler = false, parked = false, ub = false;
+    uint32_t stall = 0;
+    uint64_t load_wait_t = kNever; uint32_t load_wait_pc = 0;
+    // ---- configuration, and permanent state allocated apart ----
+    Rv32Timing timing;
+    uint32_t periph_present = 1;           // PARAMS [2:0]: which windows are present (present: not modelled in M1)
+    uint32_t* dmem = nullptr;              // MEM_WORDS each
+    uint32_t* imem = nullptr;
+    const uint32_t* bootrom = nullptr; uint32_t bootrom_words = 0;
+    TraceLog* log = nullptr;               // null: no trace
+    // ---- the run ----
+    uint64_t last = 0;                     // the last cycle stepped (cycle 1 is the first)
+    Stop stop = Stop::running; uint64_t stop_cycle = 0;
+    // ---- statistics (Controller's) and ref's violations (counted, never a stop: TileControl.violate) ----
+    uint64_t instructions = 0, cycles_stalled = 0, stall_branch = 0, stall_mul = 0, stall_reg_load = 0,
+             stall_request = 0, cycles_wfi = 0, traps = 0, bus_errors = 0, illegals = 0, violations = 0,
+             alias_accesses = 0, reserved_accesses = 0, trace_stores = 0;
+
+    // ================================================================ the cycle
+    // Controller.runCycle(t), after catching up the cycles slept since `last`. Returns the next cycle the core needs
+    // to run (kNever: only if its inputs change). A step at a cycle it didn't ask for is exactly ref's runCycle, so a
+    // core stepped every cycle and one stepped only when it asks end in the same state.
+    template <class Env>
+    uint64_t step(Env& e, uint64_t t) {
+        if (stop != Stop::running) return kNever;                     // the run ended: nothing more (mcycle frozen)
+        catch_up(t);
+        mcycle++;                                                       // 1.
+        // 2. halted: a halt ends the run (below), so never here. 3. a refused router send: not in M1.
+        if (interrupt_pending(e) && stall == 0) {                       // 4.
+            in_wfi = false; trap(t, CAUSE_EXTERNAL, 0, pc, pc);
+            return after(t);
+        }
+        if (in_wfi) {                                                   // 5.
+            if (!e.wake()) { cycles_wfi++; return kNever; }
+            in_wfi = false;
+            if (log) log->add(t, T_WAKE, (e.reg(EVENTS) >> EV_GO & 1) ? 1 : 2);
+        }
+        if (stall > 0) { stall--; cycles_stalled++; return t + 1 + stall; }   // 6.
+        fetch_execute(e, t);                                            // 7.
+        return after(t);
+    }
+
+    // The cycles t0 = last + 1 .. t - 1 were skipped: each would have been a stall cycle or a cycle asleep in WFI (the
+    // core asked for nothing earlier, and nothing it reads changed, or it would have been stepped).
+    void catch_up(uint64_t t) {
+        uint64_t gap = t - last - 1;
+        last = t;
+        if (gap == 0) return;
+        mcycle += gap;
+        if (in_wfi) { cycles_wfi += gap; return; }
+        DCHECK(gap <= stall, "core skipped %llu cycles with %u stall cycles left",
+               (unsigned long long)gap, stall);
+        stall -= uint32_t(gap); cycles_stalled += gap;
+    }
+    uint64_t after(uint64_t t) {
+        if (halt != RUN || ub || parked) { stop = halt != RUN ? Stop::halt : ub ? Stop::ub : Stop::parked; stop_cycle = t; return kNever; }
+        if (in_wfi) return kNever;
+        return t + 1 + stall;
+    }
+    template <class Env>
+    bool interrupt_pending(Env& e) const { return (mstatus & MSTATUS_MIE) && (mie & MEIE) && e.irq(); }
+
+    // ================================================================ traps and halts
+    void trap(uint64_t t, uint32_t cause, uint32_t tval, uint32_t at, uint32_t resume) {
+        if (in_handler && cause != CAUSE_EXTERNAL) { stop_loudly(t, HALT_TRAP2, at); return; }
+        traps++;
+        mepc = cause == CAUSE_EXTERNAL ? resume : at; mcause = cause; mtval = tval;
+        mstatus = (mstatus & ~(MSTATUS_MIE | MSTATUS_MPIE)) | ((mstatus & MSTATUS_MIE) ? uint32_t(MSTATUS_MPIE) : 0u);
+        in_handler = true; pc = mtvec & ~3u; stall = 0;
+        if (log) log->add(t, T_TRAP, 0, mcause, mepc, mtval, pc);
+    }
+    // ecall, ebreak, a fetch fault, a misaligned jump, a trap inside the handler: ref stops loudly (and counts a violation).
+    void stop_loudly(uint64_t t, int why, uint32_t at) { violations++; halt_with(t, why, at); }
+    void halt_with(uint64_t t, int why, uint32_t at) {
+        halt = why;
+        if (log) log->add(t, T_HALT, 0, uint32_t(why), at);
+    }
+    template <class Env>
+    void illegal(Env& e, uint64_t t, uint32_t ipc, uint32_t ins) {
+        illegals++; e.post(BUS_ERROR, COND_ILLEGAL, 0);
+        trap(t, CAUSE_ILLEGAL, ins, ipc, ipc);
+    }
+    template <class Env>
+    void bus_error(Env& e, uint64_t t, uint32_t ipc, uint32_t ins, uint32_t ea) {
+        bus_errors++; e.post(BUS_ERROR, COND_BUS_ERROR, 0);
+        uint32_t op = ins & 0x7F;
+        trap(t, op == 0x23 ? CAUSE_STORE_FAULT : op == 0x03 ? CAUSE_LOAD_FAULT : CAUSE_FETCH, ea, ipc, ipc);
+    }
+    void undefined(uint64_t t, bool store, uint32_t width, uint32_t ea, uint32_t ipc) {
+        ub = true;
+        if (log) log->add(t, T_UB, store, ea, ipc, width);
+    }
+
+    // ================================================================ fetch and execute
+    template <class Env>
+    void fetch_execute(Env& e, uint64_t t) {
+        uint32_t ipc = pc, ins;
+        if ((ipc & 3) == 0 && region(ipc) == R_PMEM) ins = imem[mem_word(ipc)];
+        else if ((ipc & 3) == 0 && region(ipc) == R_BOOTROM && offset(ipc) >> 2 < bootrom_words) ins = bootrom[offset(ipc) >> 2];
+        else { stop_loudly(t, HALT_FETCH, ipc); return; }
+        execute(e, t, ins, ipc);
+    }
+
+    template <class Env>
+    void execute(Env& e, uint64_t t, uint32_t ins, uint32_t ipc) {
+        instructions++;
+        const uint32_t op = ins & 0x7F, rd = (ins >> 7) & 31, f3 = (ins >> 12) & 7, rs1 = (ins >> 15) & 31,
+                       rs2 = (ins >> 20) & 31, f7 = ins >> 25;
+        const int32_t sins = int32_t(ins);
+        const uint32_t a = x[rs1], b = x[rs2];
+        uint32_t next = ipc + 4, res = 0;
+        bool wr = false;
+        switch (op) {
+        case 0x37: res = ins & 0xFFFFF000u; wr = true; break;                                   // lui
+        case 0x17: res = ipc + (ins & 0xFFFFF000u); wr = true; break;                           // auipc
+        case 0x6F: {                                                                            // jal
+            uint32_t imm = uint32_t(sins >> 31) << 20 | (ins & 0xFF000) | ((ins >> 20) & 1) << 11 | ((ins >> 21) & 0x3FF) << 1;
+            res = next; wr = true; next = ipc + imm; stall += timing.branch_penalty; stall_branch += timing.branch_penalty;
+            if (next & 3) { stop_loudly(t, HALT_JUMP, ipc); return; }
+            if (next == ipc && in_handler) parked = true;                                       // the handler's park loop
+            break;
+        }
+        case 0x67:                                                                              // jalr
+            if (f3 != 0) { illegal(e, t, ipc, ins); return; }
+            res = next; wr = true; next = (a + uint32_t(sins >> 20)) & ~1u;
+            stall += timing.branch_penalty; stall_branch += timing.branch_penalty;
+            if (next & 3) { stop_loudly(t, HALT_JUMP, ipc); return; }
+            break;
+        case 0x63: {                                                                            // branches
+            uint32_t imm = uint32_t(sins >> 31) << 12 | ((ins >> 7) & 1) << 11 | ((ins >> 25) & 0x3F) << 5 | ((ins >> 8) & 0xF) << 1;
+            bool take;
+            switch (f3) {
+            case 0: take = a == b; break;
+            case 1: take = a != b; break;
+            case 4: take = int32_t(a) < int32_t(b); break;
+            case 5: take = int32_t(a) >= int32_t(b); break;
+            case 6: take = a < b; break;
+            case 7: take = a >= b; break;
+            default: illegal(e, t, ipc, ins); return;
+            }
+            if (take) { next = ipc + imm; stall += timing.branch_penalty; stall_branch += timing.branch_penalty; }
+            break;
+        }
+        case 0x03: {                                                                            // loads
+            uint32_t ea = a + uint32_t(sins >> 20);
+            if (timing.reg_load_latency > 1 && in_regs(ea) && !(load_wait_t == t - 1 && load_wait_pc == ipc)) {
+                load_wait_t = t; load_wait_pc = ipc; instructions--; stall_reg_load++; cycles_stalled++;
+                return;                                       // a block or window load samples in its second cycle
+            }
+            uint32_t width = 1u << (f3 & 3);
+            if (f3 > 5 || f3 == 3) { illegal(e, t, ipc, ins); return; }
+            if (ea & (width - 1)) { undefined(t, false, width, ea, ipc); return; }
+            uint32_t v;
+            if (!load(e, ea, width, v)) { bus_error(e, t, ipc, ins, ea); return; }
+            uint32_t sh = (ea & 3) * 8;
+            switch (f3) {
+            case 0: res = uint32_t(int32_t(int8_t(v >> sh))); break;
+            case 1: res = uint32_t(int32_t(int16_t(v >> sh))); break;
+            case 2: res = v; break;
+            case 4: res = (v >> sh) & 0xFF; break;
+            default: res = (v >> sh) & 0xFFFF; break;
+            }
+            wr = true;
+            break;
+        }
+        case 0x23: {                                                                            // stores
+            uint32_t ea = a + (uint32_t(sins >> 25) << 5 | rd);
+            if (f3 == 2 && in_regs(ea) && !in_windows(ea) && (ea & 3) == 0 && (ea - REG_BASE) >> 2 == REQUEST_SEND
+                && !e.can_push()) {
+                if (log) log->add(t, T_REFUSED);
+                instructions--; stall_request++; cycles_stalled++;
+                return;                                       // a full request FIFO: re-executed at t + 1
+            }
+            if (f3 == 2 && in_windows(ea) && window_present(window_of(ea)))
+                FATAL("tile core: a store to peripheral %u's window at 0x%x: not modelled in M1", window_of(ea), ea);
+            if (f3 > 2) { illegal(e, t, ipc, ins); return; }
+            uint32_t width = 1u << f3;
+            if (ea & (width - 1)) { undefined(t, true, width, ea, ipc); return; }
+            uint32_t sh = (ea & 3) * 8;
+            uint32_t mask = (f3 == 2 ? 0xFFFFFFFFu : f3 == 1 ? 0xFFFFu : 0xFFu) << sh;
+            if (!store(e, t, ea, b << sh, mask, ipc)) { bus_error(e, t, ipc, ins, ea); return; }
+            break;
+        }
+        case 0x13: {                                                                            // op-imm
+            uint32_t imm = uint32_t(sins >> 20), sh = rs2;
+            switch (f3) {
+            case 0: res = a + imm; break;
+            case 2: res = int32_t(a) < int32_t(imm); break;
+            case 3: res = a < imm; break;
+            case 4: res = a ^ imm; break;
+            case 6: res = a | imm; break;
+            case 7: res = a & imm; break;
+            case 1: if (f7 != 0) { illegal(e, t, ipc, ins); return; } res = a << sh; break;
+            default:
+                if (f7 == 0) res = a >> sh;
+                else if (f7 == 0x20) res = uint32_t(int32_t(a) >> sh);
+                else { illegal(e, t, ipc, ins); return; }
+            }
+            wr = true;
+            break;
+        }
+        case 0x33:                                                                              // op
+            if (f7 == 1) {                                    // Zmmul; the divide opcodes are illegal
+                int64_t la = int32_t(a), lb = int32_t(b);
+                switch (f3) {
+                case 0: res = a * b; break;
+                case 1: res = uint32_t(uint64_t(la * lb) >> 32); break;
+                case 2: res = uint32_t(uint64_t(la * int64_t(uint64_t(b))) >> 32); break;
+                case 3: res = uint32_t((uint64_t(a) * uint64_t(b)) >> 32); break;
+                default: illegal(e, t, ipc, ins); return;
+                }
+                stall += timing.mul_latency - 1; stall_mul += timing.mul_latency - 1;
+            } else if (f7 == 0 || f7 == 0x20) {
+                if (f7 == 0x20 && f3 != 0 && f3 != 5) { illegal(e, t, ipc, ins); return; }
+                switch (f3) {
+                case 0: res = f7 == 0 ? a + b : a - b; break;
+                case 1: res = a << (b & 31); break;
+                case 2: res = int32_t(a) < int32_t(b); break;
+                case 3: res = a < b; break;
+                case 4: res = a ^ b; break;
+                case 5: res = f7 == 0 ? a >> (b & 31) : uint32_t(int32_t(a) >> (b & 31)); break;
+                case 6: res = a | b; break;
+                default: res = a & b; break;
+                }
+            } else { illegal(e, t, ipc, ins); return; }
+            wr = true;
+            break;
+        case 0x0F: if (f3 > 1) { illegal(e, t, ipc, ins); return; } break;                      // fence: a no-op
+        case 0x73:
+            if (ins == 0x00000073) { stop_loudly(t, HALT_ECALL, ipc); return; }
+            if (ins == 0x00100073) { stop_loudly(t, HALT_EBREAK, ipc); return; }
+            if (ins == WFI) {
+                if (in_handler && !interrupt_pending(e)) parked = true;
+                if (!e.wake()) in_wfi = true;                 // the wake term holds: falls through
+            } else if (ins == 0x30200073) {                   // mret: legal, flagged (every trap is terminal)
+                violations++;
+                next = mepc;
+                mstatus = (mstatus & ~MSTATUS_MIE) | ((mstatus & MSTATUS_MPIE) ? uint32_t(MSTATUS_MIE) : 0u) | MSTATUS_MPIE;
+            } else if (f3 != 0 && f3 != 4) {                  // the CSR instructions
+                uint32_t csr = ins >> 20, old;
+                if (!csr_read(e, csr, old)) { illegal(e, t, ipc, ins); return; }
+                uint32_t src = f3 >= 5 ? rs1 : a;
+                bool writes = (f3 & 3) == 1 || rs1 != 0;
+                if (writes) {
+                    uint32_t v = (f3 & 3) == 1 ? src : (f3 & 3) == 2 ? old | src : old & ~src;
+                    if (!csr_write(csr, v)) { illegal(e, t, ipc, ins); return; }
+                }
+                res = old; wr = true;
+            } else { illegal(e, t, ipc, ins); return; }
+            break;
+        default: illegal(e, t, ipc, ins); return;
+        }
+        bool w = wr && rd != 0;
+        if (log) log->add(t, T_RETIRE, w, ipc, ins, a, b, res);
+        if (w) x[rd] = res;
+        pc = next;
+    }
+
+    // ================================================================ the CSRs
+    template <class Env>
+    bool csr_read(Env& e, uint32_t csr, uint32_t& v) const {
+        uint64_t mt = mcycle / (timing.ref_cycle ? timing.ref_cycle : 1);
+        switch (csr) {
+        case MSTATUS: v = mstatus | 3u << 11; return true;
+        case MISA: v = 1u << 30 | 1u << 8 | 1u << 12; return true;
+        case MIE_CSR: v = mie; return true;
+        case MTVEC: v = mtvec; return true;
+        case MSCRATCH: v = mscratch; return true;
+        case MEPC: v = mepc; return true;
+        case MCAUSE: v = mcause; return true;
+        case MTVAL: v = mtval; return true;
+        case MIP: v = e.irq() ? uint32_t(MEIE) : 0u; return true;
+        case MCYCLE: v = uint32_t(mcycle); return true;
+        case MCYCLEH: v = uint32_t(mcycle >> 32); return true;
+        case MTIME: v = uint32_t(mt); return true;
+        case MTIMEH: v = uint32_t(mt >> 32); return true;
+        default: return false;
+        }
+    }
+    bool csr_write(uint32_t csr, uint32_t v) {
+        switch (csr) {
+        case MSTATUS: mstatus = v & (MSTATUS_MIE | MSTATUS_MPIE); return true;
+        case MIE_CSR: mie = v & MEIE; return true;
+        case MTVEC: mtvec = v & ~3u; return true;
+        case MSCRATCH: mscratch = v; return true;
+        case MEPC: mepc = v & ~3u; return true;
+        case MCAUSE: mcause = v; return true;
+        case MTVAL: mtval = v; return true;
+        case MCYCLE: mcycle = (mcycle & ~0xFFFFFFFFull) | v; return true;
+        case MCYCLEH: mcycle = (mcycle & 0xFFFFFFFFull) | uint64_t(v) << 32; return true;
+        case MISA: case MIP: return true;                                     // read-only here: writes ignored
+        default: return false;                                                // mtime and mtimeh included
+        }
+    }
+
+    // ================================================================ the data side
+    // A data- or program-memory word: the offset's high bits are ignored (it aliases; ref flags it).
+    uint32_t mem_word(uint32_t a) {
+        uint32_t off = offset(a);
+        if (off >= MEM_BYTES) { alias_accesses++; violations++; }
+        return (off & (MEM_BYTES - 1)) >> 2;
+    }
+    bool window_present(unsigned n) const { return n >= 1 && n <= 3 && (periph_present >> (n - 1) & 1); }
+
+    // A load of `width` bytes (the aligned word holding ea); false: a bus error.
+    template <class Env>
+    bool load(Env& e, uint32_t ea, uint32_t width, uint32_t& v) {
+        uint32_t a = ea & ~3u;
+        if (region(a) == R_DMEM) { v = dmem[mem_word(a)]; return true; }
+        if (region(a) == R_PMEM) { v = imem[mem_word(a)]; return true; }
+        if (region(a) == R_BOOTROM) {
+            if (offset(a) >> 2 >= bootrom_words) return false;
+            v = bootrom[offset(a) >> 2]; return true;
+        }
+        if (in_tables(a)) {
+            if (width != 4 || a >= PTR_BASE) return false;                     // PTR, STREAM, GROUP: bus error
+            FATAL("tile core: a load from HIST in the table window at 0x%x: not modelled in M1", a);
+        }
+        if (in_regs(a)) {
+            if (width != 4) return false;
+            return read_reg(e, a, v);
+        }
+        return false;
+    }
+    template <class Env>
+    bool read_reg(Env& e, uint32_t a, uint32_t& v) {
+        if (unsigned n = window_of(a)) {
+            if (window_present(n)) FATAL("tile core: a load from peripheral %u's window at 0x%x: not modelled in M1", n, a);
+            return false;                                                      // an absent peripheral: bus error
+        }
+        unsigned i = (a - REG_BASE) >> 2;
+        const RegInfo& r = reg_info(i);
+        if (r.load == A_OUT) FATAL("tile core: a load from %s (0x%x): not modelled in M1", r.name, a);
+        if (r.load == A_NONE) {                                                // write-only or reserved: reads 0
+            if (r.store == A_NONE) { reserved_accesses++; violations++; }
+            v = 0; return true;
+        }
+        switch (i) {
+        case EVENTS: {                                                         // consumes what it returned under the mask
+            v = e.reg(EVENTS);
+            uint32_t c = v & e.reg(EVENTS_MASK) & ~EVENTS_LIVE;
+            if (c) e.post(BUS_CONSUME, 0, c);
+            return true;
+        }
+        case EVENTS_PEEK: v = e.reg(EVENTS); return true;
+        default: v = e.reg(i); return true;                                    // PARAMS, STATUS, ERRORS, the mask, required
+        }
+    }
+
+    // A store at t (value and mask shifted into place); false: a bus error.
+    template <class Env>
+    bool store(Env& e, uint64_t t, uint32_t ea, uint32_t v, uint32_t mask, uint32_t ipc) {
+        uint32_t a = ea & ~3u;
+        if (region(a) == R_DMEM) {
+            uint32_t w = mem_word(a);
+            if (offset(a) < DMEM_FIRST) violations++;
+            dmem[w] = (dmem[w] & ~mask) | (v & mask);
+            return true;
+        }
+        if (region(a) == R_PMEM || region(a) == R_BOOTROM) return false;
+        if (in_tables(a)) {
+            if (mask != 0xFFFFFFFFu) return false;
+            FATAL("tile core: a store to the table window at 0x%x: not modelled in M1", a);
+        }
+        if (in_regs(a)) {
+            if (mask != 0xFFFFFFFFu) return false;
+            if (unsigned n = window_of(a)) {
+                if (window_present(n)) FATAL("tile core: a store to peripheral %u's window at 0x%x: not modelled in M1", n, a);
+                return false;
+            }
+            unsigned i = (a - REG_BASE) >> 2;
+            const RegInfo& r = reg_info(i);
+            if (r.store == A_OUT) FATAL("tile core: a store to %s (0x%x): not modelled in M1", r.name, a);
+            if (r.store == A_NONE) {
+                if (r.load != A_NONE) return false;                            // a read-only register: bus error
+                reserved_accesses++; violations++; return true;                // reserved: ignored
+            }
+            uint32_t defined = i == PULSE_DONE ? 1u : (i == EVENTS_MASK || i == EVENTS_REQUIRED) ? EVENTS_VALID : ~0u;
+            if (v & ~defined) violations++;                                    // reserved bits set: ignored
+            if (i == TRACE) trace_stores++;
+            e.post(BUS_STORE, i, v);
+            if (i == SIM_EXIT) halt_with(t, HALT_EXIT, ipc);
+            return true;
+        }
+        return false;
+    }
+};
+
+}  // namespace units

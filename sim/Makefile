@@ -66,4 +66,6 @@ check:
 clean:
 	rm -rf build
 
+include src/units/units.mk
+
 -include $(shell find build -name '*.d' 2>/dev/null)

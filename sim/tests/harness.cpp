@@ -13,6 +13,10 @@
 
 #include "base/fatal.h"
 
+// Under ASan, an allocation too big to serve returns null (as without ASan) instead of ASan's own report, so the
+// tests can see our FATAL on it (test_arena's alloc_big_failure_is_fatal).
+extern "C" __attribute__((used)) const char* __asan_default_options() { return "allocator_may_return_null=1"; }
+
 namespace test {
 namespace {
 

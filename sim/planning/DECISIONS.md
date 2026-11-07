@@ -55,3 +55,7 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   **36.8 µs per chip-cycle for one replay alone, and about 100,000-110,000 chip-cycles/s for the whole box.** Today's engine
   is memory-bound across the box (12 JVMs give 3.6× one; two sharing a P-core each run 3.4× slower), so the new framework is
   judged on **memory footprint per chip** as well as speed per thread: the footprint decides how many chips run side by side.
+- **D16. Word width** (owner, on W6's T1): runtime in declarations, specialised inside the framework, never visible to unit
+  authors. Internal templates on the word count (1, 2, 3) are fine: at most three instantiations, each genuinely different
+  code. What to avoid is templating on payload types, which stamps out identical copies of the same code for same-sized
+  types; payloads stay untyped words.

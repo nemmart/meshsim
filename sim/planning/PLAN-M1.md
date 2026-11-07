@@ -1,5 +1,13 @@
 # Milestone 1: the primitives and one RV32 controller, matching `ref` instruction for instruction
 
+**Closed 2026-11-07.** Every acceptance item passes: the structures and the build (W1); the reference side, 67 golden
+traces and the bar (W2); the framework with port conformance against `ref`, the debug checks and the performance pass
+(W3); both thread forms with identical digests across thread counts and partitions (W4); the RV32 controller matching all
+67 goldens on the engine under all six debug option sets, and N controllers on N threads (W5); the first benchmarks (W6).
+Speed: 44 M instructions/s per thread for the controller, about 4.5× `ref` unit for unit (D22); independent chips scale
+about 5× on six P-cores; one mesh split over threads reaches 3.05× on four. What M2 inherits is in "Carried to M2" below
+and in each worker's report.
+
 Agreed with the owner 2026-11-06 (integrator's draft, the owner's answers folded in; decisions in `DECISIONS.md`). The brief
 is `sim/README.md` and `wip/planning/SIMULATOR-NEXT.md`; this file is the plan for the first milestone, with each worker's
 acceptance tests. Workers are numbered from W1 again; their folders and reports are in `sessions/`.
@@ -184,4 +192,4 @@ Workers may refine the layout under `src/` and `tests/` in their plans.
 | W6 | **done**, merged 2026-11-07 (`sessions/WORKER6-REPORT.md`); its recommendations go to the owner with W3's API |
 | W3 | **done**, merged 2026-11-07 (`sessions/WORKER3-REPORT.md`): the framework, conformance, the debug checks, the performance pass |
 | W5 | **done**, merged 2026-11-07 (`sessions/WORKER5-REPORT.md`): all 67 goldens on the engine under all six option sets, N on N threads (Quest 131); its detector death test goes back under the hook with W3's D24 fix |
-| W4 | prompt written 2026-11-07 (`sessions/WORKER4/PROMPT.md`) |
+| W4 | **done**, merged 2026-11-07 (`sessions/WORKER4-REPORT.md`): both thread forms, the matrix, Quests 128 and 133, D21 |

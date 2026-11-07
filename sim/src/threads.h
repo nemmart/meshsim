@@ -134,7 +134,7 @@ struct Threads {
     void thread_main(unsigned t);
     void run_thread(unsigned t, Cycle end);
     void publish(Dom& d, Cycle t0, Cycle n, unsigned par);
-    void drain(uint32_t di, Cycle t0, Cycle n, unsigned par);
+    void drain(uint32_t di, Cycle t0, Cycle n, unsigned par, bool any);
     void clear(Dom& d, Span s);
     uint32_t dom_index(const std::string& name) const;
 };

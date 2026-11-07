@@ -609,7 +609,7 @@ void Threads::run_thread(unsigned t, Cycle end) {
         Cycle next = kNoCycle;
         uint64_t sent = 0;
         for (auto& d : doms) { next = std::min<Cycle>(next, status[par][d.next_slot]); sent += status[par][d.sent_slot]; }
-        for (uint32_t di = 0; di < doms.size(); di++) if (doms[di].thread == t) { at(t, now, di, "draining"); drain(di, now, n, par); }
+        for (uint32_t di = 0; di < doms.size(); di++) if (doms[di].thread == t) { at(t, now, di, "draining"); drain(di, now, n, par, sent != 0); }
         for (auto& d : doms) if (d.thread == t) clear(d, prev);
         prev = Span{now, n};
         now += n;
@@ -651,10 +651,12 @@ void Threads::publish(Dom& d, Cycle t0, Cycle n, unsigned par) {
 
 // After the barrier: the outboxes addressed to this domain into its wheels, at the bucket each entry was put for (so it
 // arrives at t + L exactly as in one domain); then the status words.
-void Threads::drain(uint32_t di, Cycle t0, Cycle n, unsigned par) {
+void Threads::drain(uint32_t di, Cycle t0, Cycle n, unsigned par, bool any) {
     Dom& d = doms[di];
     Engine& e = *d.e;
-    for (uint32_t o : d.in) {
+    // Nothing sent anywhere: the outboxes aren't read at all (after an idle jump the next interval's buckets may alias
+    // this one's, and their source may already be writing them).
+    if (any) for (uint32_t o : d.in) {
         const Outbox& ob = outboxes[o];
         const Wheel& wh = e.wheels[ob.wheel[di]];
         const unsigned ew = ob.width + 1u;

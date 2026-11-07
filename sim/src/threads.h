@@ -111,7 +111,8 @@ struct Threads {
     unsigned nthreads = 1;
     // W10, Options::time_threads (a measurement option): per thread, time stamp ticks summed over the runs, by phase; and
     // per interval, the slowest and the mean of the threads' compute (thread 0 sums them after the barrier).
-    struct alignas(64) PhaseTicks { uint64_t run = 0, publish = 0, wait = 0, drain = 0, clear = 0, end = 0, total = 0; uint64_t last_run = 0; };
+    struct alignas(64) PhaseTicks { uint64_t run = 0, publish = 0, wait = 0, drain = 0, clear = 0, end = 0, total = 0; uint64_t last_run[2] = {0, 0}; };
+    // last_run by the interval's parity: thread 0 reads [par] after the barrier while the others may already write [par ^ 1]
     std::vector<PhaseTicks> ph;
     std::vector<std::vector<Engine::XIn>> xins;  // W10: per domain, its incoming direct outboxes
     uint64_t ph_intervals = 0, ph_max_run = 0, ph_sum_run = 0;

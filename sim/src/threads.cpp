@@ -703,7 +703,7 @@ void Threads::run_thread(unsigned t, Cycle end) {
         const Cycle n = interval == kNoCycle ? end - now : std::min(interval, end - now);
         for (uint32_t di = 0; di < doms.size(); di++)
             if (doms[di].thread == t) { at(t, now, di, "running"); run_domain(*doms[di].e, now + n); }
-        if (P) { c1 = sim_ticks(); P->run += c1 - c0; P->last_run = c1 - c0; c0 = c1; }
+        if (P) { c1 = sim_ticks(); P->run += c1 - c0; P->last_run[par] = c1 - c0; c0 = c1; }
         for (auto& d : doms) if (d.thread == t) publish(d, now, n, par);
         if (P) { c1 = sim_ticks(); P->publish += c1 - c0; c0 = c1; }
         at(t, now, kNone, "at the barrier after its interval");
@@ -712,7 +712,7 @@ void Threads::run_thread(unsigned t, Cycle end) {
             c1 = sim_ticks(); P->wait += c1 - c0; c0 = c1;
             if (t == 0) {                     // every thread's last_run was written before the barrier
                 uint64_t mx = 0, sum = 0;
-                for (unsigned k = 0; k < nthreads; k++) { mx = std::max(mx, ph[k].last_run); sum += ph[k].last_run; }
+                for (unsigned k = 0; k < nthreads; k++) { mx = std::max(mx, ph[k].last_run[par]); sum += ph[k].last_run[par]; }
                 ph_intervals++; ph_max_run += mx; ph_sum_run += sum;
             }
         }
@@ -745,9 +745,9 @@ void Threads::run_thread(unsigned t, Cycle end) {
         clear(d, prev);
         if constexpr (kDebug) if (d.e->npools) d.e->check_leaks();
     }
+    if (P) { c1 = sim_ticks(); P->end += c1 - c0; P->total += c1 - start; }   // before the barrier: the caller reads them
     at(t, now, kNone, "at the last barrier of the run");
     barrier.wait();                           // the machine is still: the caller may read it
-    if (P) { c1 = sim_ticks(); P->end += c1 - c0; P->total += c1 - start; }
     at(t, now, kNone, "idle");
 }
 

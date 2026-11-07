@@ -25,9 +25,11 @@
 // queue's length is in the fingerprint: a `send` of many packets is one step; `command` is an instant mark and one send;
 // `go` is a step and, with cnc_go_settle, a settle step; `atAllReady` a wait for all READY and an instant call). A
 // harness that queues more steps later (SortTest: the sort's commands after the boot has run) marks a release point;
-// steps past it are not yet in the queue (nor in the fingerprint) until the driver releases them between cycles. While C&C
-// has nothing released and something is left to release, it steps every cycle doing nothing (a few cycles at the boot's
-// end), so no external wake is needed.
+// steps past it are not yet in the queue (nor in the fingerprint) until the driver releases them between cycles. ref's
+// release cycle is decided by the harness from state (SortTest's boot ends at the first cycle with C&C idle and every
+// core in WFI, which no line reports), so the driver polls that between cycles, as ref does, then releases and wakes C&C
+// for the next cycle through the framework's between-cycles wake (asked of W10, 2026-11-07). C&C never steps while it
+// waits for a release (D23).
 #pragma once
 
 #include <cstdint>

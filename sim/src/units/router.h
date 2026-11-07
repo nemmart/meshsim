@@ -79,13 +79,160 @@ struct Router {
     // ---- statistics (ref's counters; not state) ----
     uint64_t injected = 0, routed = 0, ejected = 0, eject_errors = 0, route_errors = 0, from_cnc_words = 0, to_cnc_words = 0;
 
+    // non-empty FIFOs, one bit per FIFO index (exact, unlike ref's `maybe` hint)
+    uint32_t occ = 0;
+    // overflows of this cycle's puts, counted on `ovf` at t + 1: a put of t is judged at t + 1 (PORTS.md 3), so the
+    // register block's endCycle(t + 1) is the first to see it, as in ref with the FIFO touched at t + 1
+    uint32_t ovf_due = 0;
+
     Router(sim::Ports& p, unsigned tile, const NetConfig& c, const Hops* h);
     sim::Wake step(sim::Ctx& c);
     uint64_t digest() const;          // the state above (not the statistics, not the pointer)
 
-    static unsigned fifo_index(unsigned o, unsigned slot);
+    static constexpr uint8_t kFirst[kOut] = {0, 3, 6, 11, 16, 22};          // output o's first FIFO index
+    static unsigned fifo_index(unsigned o, unsigned slot) { return kFirst[o] + slot; }
     unsigned unicast(unsigned src, unsigned dst) const;      // ref's Router.unicast: the output mask
     unsigned broadcast(unsigned port, unsigned src) const;   // ref's Router.broadcast
+
+    // The router's own part of its canonical stream (StateFp.router, AUDIT-M2 6.2): rr[0..5], then every FIFO as
+    // StateFp.fifo writes it (entries, then the put made at `cyc`, not yet judged). The buses delivering into it (the
+    // four links, the injection link, from C&C) follow, written from the ports by the fingerprint library.
+    template <class Out> void fp_own(Out& o, uint64_t cyc) const;
+
+private:
+    struct Sel { uint64_t w[3]; unsigned slot; };
+    bool select(unsigned o, uint32_t m, Sel& s, uint32_t& taken);
+    void push(sim::Ctx& c, unsigned o, unsigned port, const uint64_t* w, uint32_t taken);
+    void route(sim::Ctx& c, unsigned port, uint64_t d, uint64_t a, uint64_t cw, uint32_t taken);
 };
+
+// ref's routing decisions as pure functions (the router at tile `me`): output masks (Router::M_*).
+unsigned route_unicast(const Hops& hops, unsigned me, unsigned src, unsigned dst);
+unsigned route_broadcast(unsigned me, unsigned port, unsigned src);
+inline unsigned Router::unicast(unsigned src, unsigned dst) const { return route_unicast(*hops, me, src, dst); }
+inline unsigned Router::broadcast(unsigned port, unsigned src) const { return route_broadcast(me, port, src); }
+
+// ---- the step (inline: the run function inlines it, config.h DISPATCH) --------------------------------------------
+
+// One selector: the first FIFO after rr[o] in round-robin order among `m` (FIFO bits of output o, relative) that holds a
+// word as at the start of t. ref's rr is updated except for the eject's loopback slot.
+inline bool Router::select(unsigned o, uint32_t m, Sel& s, uint32_t& taken) {
+    const unsigned n = kNFeeders[o], base = kFirst[o];
+    m &= occ >> base;
+    if (!m) return false;
+    unsigned f = rr[o];
+    for (unsigned i = 0; i < n; i++) {
+        f = f + 1 == n ? 0 : f + 1;
+        if (!(m >> f & 1)) continue;
+        Fifo& q = this->q[base + f];
+        const uint64_t* e = store + (q.base + q.head) * 3u;
+        s.w[0] = e[0]; s.w[1] = e[1]; s.w[2] = e[2]; s.slot = f;
+        q.head = uint8_t(q.head + 1 == q.cap ? 0 : q.head + 1);
+        if (--q.count == 0) occ &= ~(1u << (base + f));
+        taken |= 1u << (base + f);
+        if (o != EJECT || f != slot_of[EJECT][LOOPBACK]) rr[o] = uint8_t(f);
+        return true;
+    }
+    return false;
+}
+
+// WordFIFO.put then its settle: full by the occupancy at the start of t (count + this cycle's take).
+inline void Router::push(sim::Ctx& c, unsigned o, unsigned port, const uint64_t* w, uint32_t taken) {
+    const unsigned f = slot_of[o][port];
+    if (f == 0xFF) { route_errors++; return; }
+    const unsigned i = kFirst[o] + f;
+    Fifo& q = this->q[i];
+    const uint64_t t = c.now();
+    q.put_at = t; q.put_w[0] = w[0]; q.put_w[1] = w[1]; q.put_w[2] = w[2];
+    if (q.count + (taken >> i & 1) >= q.cap) {
+        q.put_kept = 0;
+        if (q.overflows++ == 0) q.first_overflow = t;
+        ovf_due++;
+        return;
+    }
+    q.put_kept = 1;
+    unsigned tail = q.head + q.count; if (tail >= q.cap) tail -= q.cap;
+    uint64_t* e = store + (q.base + tail) * 3u;
+    e[0] = w[0]; e[1] = w[1]; e[2] = w[2];
+    if (++q.count > q.peak) q.peak = q.count;
+    occ |= 1u << i;
+}
+
+inline void Router::route(sim::Ctx& c, unsigned port, uint64_t d, uint64_t a, uint64_t cw, uint32_t taken) {
+    routed++;
+    const unsigned dst = lw::dst(a);
+    const unsigned mask = dst == lw::BROADCAST ? broadcast(port, lw::src(a)) : unicast(lw::src(a), dst);
+    const uint64_t w[3] = {d, a, cw};
+    if (mask & M_RIGHT) push(c, TO_RIGHT, port, w, taken);
+    if (mask & M_LEFT) push(c, TO_LEFT, port, w, taken);
+    if (mask & M_DOWN) push(c, TO_DOWN, port, w, taken);
+    if (mask & M_UP) push(c, TO_UP, port, w, taken);
+    if (mask & M_EJ) push(c, EJECT, port, w, taken);
+    if (mask & M_CNC) push(c, TO_CNC, port, w, taken);
+}
+
+inline sim::Wake Router::step(sim::Ctx& c) {
+    if (ovf_due) { c.inc(ovf, ovf_due); ovf_due = 0; }
+    uint32_t taken = 0;
+    Sel s;
+    // selectors: one word per output, from the FIFOs as at the start of t
+    for (unsigned o = 0; o < 4; o++)
+        if (select(o, 0x3F, s, taken)) c.put(out[o], s.w[0], s.w[1], s.w[2]);
+    const unsigned loop = slot_of[EJECT][LOOPBACK];
+    bool ej;
+    if (loopback_last) ej = select(EJECT, 0x3F & ~(1u << loop), s, taken) || select(EJECT, 1u << loop, s, taken);
+    else { ej = select(EJECT, 0x3F, s, taken); if (ej && s.slot == loop) rr[EJECT] = uint8_t(loop); }
+    if (ej) {
+        if (s.slot == loop && (s.w[1] & lw::TAG_TOKEN)) c.put(loop_left);
+        ejected++;
+        const unsigned dst = lw::dst(s.w[1]);
+        if (dst == me || dst == lw::BROADCAST) c.put(eject, s.w[0], s.w[1], s.w[2]);
+        else eject_errors++;
+    }
+    if (attached && select(TO_CNC, 0x3F, s, taken)) { to_cnc_words++; c.put(to_cnc, s.w[0], s.w[1], s.w[2]); }
+    // route blocks: the links, the injection (src stamped), C&C's input
+    for (unsigned p = 0; p < 4; p++)
+        if (c.ready(in[p])) {
+            const sim::Word* w = c.peek(in[p]);
+            const uint64_t d = w[0], a = w[1], cw = w[2];
+            c.take(in[p]);
+            route(c, p, d, a, cw, taken);
+        }
+    if (c.ready(inj)) {
+        const sim::Word* w = c.peek(inj);
+        const uint64_t d = w[0], a = lw::with_src(w[1], me), cw = w[2];
+        c.take(inj);
+        injected++;
+        route(c, LOOPBACK, d, a, cw, taken);
+    }
+    if (attached && c.ready(from_cnc)) {
+        const sim::Word* w = c.peek(from_cnc);
+        const uint64_t d = w[0], a = w[1], cw = w[2];
+        c.take(from_cnc);
+        from_cnc_words++;
+        route(c, FROM_CNC, d, a, cw, taken);
+    }
+    // FIFOs that will be selected (the to-controller output only where attached) hold words: look again next cycle
+    const uint32_t live = attached ? occ : occ & ((1u << kFirst[TO_CNC]) - 1);
+    return live || ovf_due ? c.next() : sim::Wake::none();
+}
+
+template <class Out>
+void Router::fp_own(Out& o, uint64_t cyc) const {
+    for (unsigned k = 0; k < kOut; k++) o.w("rr", rr[k]);
+    for (unsigned i = 0; i < kFifos; i++) {
+        const Fifo& f = q[i];
+        const bool now = f.put_at == cyc && cyc != 0;
+        const unsigned n = now && f.put_kept ? f.count - 1u : f.count;   // a put of cyc is listed apart
+        o.w("n", n);
+        for (unsigned k = 0; k < n; k++) {
+            unsigned j = f.head + k; if (j >= f.cap) j -= f.cap;
+            const uint64_t* e = store + (f.base + j) * 3u;
+            o.w("a", e[0]); o.w("b", e[1]); o.w("c", e[2]);
+        }
+        o.w("put", now ? 1 : 0);
+        if (now) { o.w("pa", f.put_w[0]); o.w("pb", f.put_w[1]); o.w("pc", f.put_w[2]); }
+    }
+}
 
 }  // namespace units

@@ -22,8 +22,8 @@ on them, checked against `ref` running the same program, cycle for cycle.
 
 **How many phases a cycle has is for the framework to settle** (owner, 2026-11-06): deliver, run and commit are the
 minimum; units with same-cycle (combinational) dependences add sub-phases, such as levels of wires, or a request then grant
-step for arbitration. Three or four phases, or whatever the units turn out to need, as long as each is defined by what it may
-read and write.
+step for arbitration. There is **no target number**: as many as the units need, as long as each phase is defined by
+what it may read and write.
 
 **Thread-local work** (owner): each thread owns its partition (a set of tiles, or whole chips) with its own delivery lists,
 run lists and free lists. Entries for another thread's units go into a per-destination outbox, merged at the barrier, with

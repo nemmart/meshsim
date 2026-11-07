@@ -71,7 +71,14 @@
 //
 // PAYLOADS AND WIDTHS (D16, D17). Everything in motion is 0 to 3 untyped 64-bit words; the link word is three words
 // inline (D17). A unit holds a 128-bit value inline as two words (W6: 2 ns per multiply cheaper than pool indices, 25%
-// more throughput at 12 threads; the `limbs` form, built with clang, D18). A port's width is a runtime value in its
+// more throughput at 12 threads; the `limbs` form, built with clang, D18). A payload wider than three words (a 1024-bit
+// cache line on the Tracer's fill bus, after M1) travels by reference: its port declares a size class (`Ports::by_ref`,
+// slots of N words), word 0 of its payload is a slot's index, the producer allocates the slot and fills it before the
+// put, and the consumer frees it after taking it (or later, if it declared that it holds it). Each class's pool is sized
+// at startup from the ports that carry it (config.h); allocation takes the lowest free index (deterministic); exceeding
+// the size is fatal, naming the class. A Fifo overflow frees the dropped payload's slot; a refused Hold put keeps its
+// slot (the producer retries with it). Across threads the outbox merge copies the slot into the destination's pool and
+// rewrites the index (W4; the route already knows its class). A port's width is a runtime value in its
 // declaration and is never visible to authors beyond that; inside the framework each (kind, width) has its own wheel
 // with fixed-size entries and its own delivery loop, templated on the word count (widths 1, 2, 3, and 0 for events,
 // which carry only the destination word): a few instantiations, each genuinely different code. Nothing is templated on
@@ -255,9 +262,14 @@ public:
     uint64_t now(CountIn p) const;                   // every increment so far (a wire read: producers at lower levels)
     uint64_t through_last(CountIn p) const;          // as at the end of t - 1 (what endCycle(t - 1) saw)
 
-    // Payloads larger than 128 bits only (D17): the thread's array of 128-bit values, a payload's word an index into it.
-    // A 128-bit value travels inline as two words and is held in a unit as two words; it never comes here.
-    ValuePool& values();
+    // By-reference payloads (PAYLOADS AND WIDTHS): a slot of the port's size class. alloc on an output; slot and free on
+    // either end. Word 0 of the payload is the index.
+    uint32_t alloc(LinkOut p);
+    uint32_t alloc(FifoOut p);
+    uint32_t alloc(CreditOut p);
+    uint32_t alloc(HoldOut p);
+    template <class P> Word* slot(P p, uint32_t i) const;    // P: LinkIn/Out, FifoIn/Out, CreditOut, HoldIn/Out
+    template <class P> void free(P p, uint32_t i);
 
 private:
     friend struct Engine;
@@ -297,12 +309,24 @@ public:
     void out(RegFileOut& h, const char* name, unsigned registers);
     void out(CountOut& h, const char* name);
 
+    // A port carrying payloads by reference: its size class (slots of `slot_words` words), declared on both ends (checked
+    // equal), and how many slots this end holds beyond the port's own capacity (taken and kept, or allocated ahead of
+    // the put). Link, Fifo, credit Fifo and Hold only.
+    void by_ref(LinkIn& h, unsigned slot_words, unsigned held = 0);
+    void by_ref(LinkOut& h, unsigned slot_words, unsigned held = 0);
+    void by_ref(FifoIn& h, unsigned slot_words, unsigned held = 0);
+    void by_ref(FifoOut& h, unsigned slot_words, unsigned held = 0);
+    void by_ref(CreditOut& h, unsigned slot_words, unsigned held = 0);
+    void by_ref(HoldIn& h, unsigned slot_words, unsigned held = 0);
+    void by_ref(HoldOut& h, unsigned slot_words, unsigned held = 0);
+
     Ports(const Ports&) = delete;
     Ports& operator=(const Ports&) = delete;
 
 private:
     friend class Config;
     Ports() = default;
+    void by_ref_decl(uint32_t id, unsigned slot_words, unsigned held);
     void* impl_ = nullptr;
 };
 

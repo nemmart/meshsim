@@ -162,3 +162,30 @@ DEBUG_DEATH_TEST(pool_storage_misaligned, "value pool 'vals': storage 0x[0-9a-f]
     ValuePool p;
     p.init(b.words() + 4, 8, "vals");
 }
+
+// ---- SlotPool: N-word slots (W3: payloads by reference, a size class per pool) ----
+using sim::SlotPool;
+
+TEST(slot_pool_wide_class_sizes_allocates_and_frees) {
+    CHECK_EQ(SlotPool::words_needed(16, 5), 80u + 8u);       // five 16-word slots (80, whole lines), the bitmap a line
+    Block b(SlotPool::words_needed(16, 5), "t");
+    SlotPool p;
+    p.init(b.words(), 16, 5, "w16");
+    CHECK_EQ(p.slot_words(), 16u);
+    uint32_t a = p.alloc(), c = p.alloc(), d = p.alloc();
+    CHECK_EQ(a, 0u); CHECK_EQ(c, 1u); CHECK_EQ(d, 2u);
+    for (unsigned k = 0; k < 16; k++) { p.slot(a)[k] = 100 + k; p.slot(c)[k] = 200 + k; p.slot(d)[k] = 300 + k; }
+    CHECK_EQ(p.slot(c) - p.slot(a), 16);                         // adjacent slots, 16 words apart
+    CHECK_EQ(p.slot(c)[15], 215u);
+    p.free(c);
+    CHECK_EQ(p.alloc(), 1u);                                     // the lowest free index again
+    CHECK_EQ(p.slot(a)[0], 100u); CHECK_EQ(p.slot(d)[15], 315u);
+    CHECK_EQ(p.in_use(), 3u);
+}
+
+DEATH_TEST(slot_pool_full_is_fatal_naming_the_class, "slot pool 'w16' full: capacity 5 \\(slots of 16 words\\)") {
+    Block b(SlotPool::words_needed(16, 5), "t");
+    SlotPool p;
+    p.init(b.words(), 16, 5, "w16");
+    for (int i = 0; i < 6; ++i) p.alloc();
+}

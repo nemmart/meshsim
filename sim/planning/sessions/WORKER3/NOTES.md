@@ -308,6 +308,30 @@ else its bytes only when `std::has_unique_object_representations_v<T>` (static_a
 `digest()`, made one line by `hash_fields` (sim.h). **The missed-wake threshold per unit**:
 `Config::missed_wake_after(unit, cycles)` (stored; the detector is increment 5). Both additive.
 
+### For M2 (integrator, 2026-11-07)
+
+- **One level per (type, form) refuses a Wire chain through units of the same type** (build names them: `levels: 'r1'
+  ... drives a wire read by 'r2'`). Nothing in M1 has one; M2 may (identical pipeline stages joined by Wires). If one
+  appears, **split a type's run by level** (runs keyed by (level, type, form) already: let a type's instances sit at
+  several levels) rather than force the unit's design. Not changed now.
+- **The wheel's worst-case sizing** (config.h): the two options named there, decided on M2's numbers.
+
+### Wide payloads by reference (integrator, 2026-11-07; PLAN-M1, W3)
+
+`values()` is gone; payloads wider than three words travel by reference through **slot pools per size class**:
+- `base/value_pool.h`: W1's ValuePool generalised to `SlotPool` (N-word slots, lowest free index, full fatal naming the
+  pool and its slot size); `ValuePool` stays as its 2-word view, W1's tests unchanged, two added for a 16-word class.
+- `sim.h`: `Ports::by_ref(handle, slot_words, held = 0)` on both ends of a Link, Fifo, credit Fifo or Hold (checked
+  equal); `Ctx::alloc(out)`, `slot(port, i)`, `free(port, i)`; word 0 of the payload is the index. A Fifo overflow frees
+  the dropped slot; a refused Hold put keeps it for the retry. Reg and Wire carry no references (a replaced value would
+  leak).
+- `config.h`: each class's pool is sized from its ports: L + 2 per Link, depth + 1 per Fifo, depth per credit Fifo, 2
+  per Hold, plus what either end declares it holds. Sizes reports `slot pool wN`.
+- Thread crossings (W4): the route carries its class, so the outbox merge can copy the slot and rewrite word 0.
+- `tests/test_wide.cpp`, 5 tests: a 16-word class sized as derived (5 slots for a depth-4 Fifo; 7 for a latency-3 Link
+  with 2 held), lines intact and freed, overflows freeing their slots, allocating beyond the declaration fatal naming the
+  class, mismatched declarations refused. M1 doesn't use it.
+
 ## Log
 
 - 2026-11-07: plan agreed (owner's go-ahead with five notes). W2's audit not yet on `sim-w2`; W6 not started.
@@ -320,3 +344,4 @@ else its bytes only when `std::has_unique_object_representations_v<T>` (static_a
 - 2026-11-07: stage 2 (owner's go-ahead, D20). Increment 1 (the build, D18; fixtures and --check) and increment 2 (the
   engine with Link, Fifo, Hold) landed.
 - 2026-11-07: increment 3 (Reg, Wire, RegFile, Count, credit Fifo; levels) landed: W5 can integrate on every kind.
+- 2026-11-07: wide payloads by reference (SlotPool, size classes; values() replaced); the M2 notes.

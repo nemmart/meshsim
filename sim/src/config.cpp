@@ -49,6 +49,7 @@ struct Config::Impl {
         uint8_t bit = 0xFF;
         std::string name;               // "unit.port"
         unsigned width = 0, depth = 0, latency = 0, regs = 0;
+        unsigned slot_words = 0, held = 0;  // by reference: the size class (0: by value), and slots held beyond the port
         Word reset = 0;
         size_t offset = 0;
         std::vector<uint32_t> peers;
@@ -183,8 +184,22 @@ void Ports::out(RegFileOut& h, const char* name, unsigned registers) {
     IMPL.decls[h.idx].regs = registers;
 }
 void Ports::out(CountOut& h, const char* name) { h.idx = IMPL.declare(&h, Kind::count, true, Shape::idx, name, 0, false, false); }
+void Ports::by_ref_decl(uint32_t id, unsigned slot_words, unsigned held) {
+    Config::Impl::Decl& d = IMPL.decl(id, "by_ref");
+    if (slot_words < 1) FATAL("by_ref: '%s' with slots of 0 words", d.name.c_str());
+    if (d.width < 1) FATAL("by_ref: '%s' has no payload word to carry the index", d.name.c_str());
+    if (d.slot_words) FATAL("by_ref: '%s' declared twice", d.name.c_str());
+    d.slot_words = slot_words;
+    d.held = held;
+}
+void Ports::by_ref(LinkIn& h, unsigned w, unsigned held) { by_ref_decl(h.idx, w, held); }
+void Ports::by_ref(LinkOut& h, unsigned w, unsigned held) { by_ref_decl(h.route, w, held); }
+void Ports::by_ref(FifoIn& h, unsigned w, unsigned held) { by_ref_decl(h.idx, w, held); }
+void Ports::by_ref(FifoOut& h, unsigned w, unsigned held) { by_ref_decl(h.route, w, held); }
+void Ports::by_ref(CreditOut& h, unsigned w, unsigned held) { by_ref_decl(h.route, w, held); }
+void Ports::by_ref(HoldIn& h, unsigned w, unsigned held) { by_ref_decl(h.idx, w, held); }
+void Ports::by_ref(HoldOut& h, unsigned w, unsigned held) { by_ref_decl(h.route, w, held); }
 #undef IMPL
-
 // ---- Config ----------------------------------------------------------------------------------------------------------
 Config::Config(Options o) : impl_(new Impl) {
     impl_->opt = o;
@@ -307,6 +322,32 @@ Sim Config::build() {
     for (const Decl& d : I.decls)
         if (d.peers.empty() && d.kind != Kind::count)
             FATAL("port '%s' (%s %s) is not wired", d.name.c_str(), kind_name(d.kind), d.out ? "output" : "input");
+
+    // 1b. by-reference payloads: both ends declare the same size class; a class per slot size; its capacity the most
+    //     payloads its ports hold at once (config.h's sizing) plus what the ends declare they hold
+    std::map<unsigned, uint32_t> class_of;          // slot words -> class
+    std::vector<unsigned> class_words;
+    std::vector<uint64_t> class_cap;
+    std::vector<uint16_t> decl_cls(I.decls.size(), kNoClass);
+    for (uint32_t id = 0; id < I.decls.size(); id++) {
+        const Decl& d = I.decls[id];
+        if (d.out || d.peers.empty() || d.kind == Kind::count || d.kind == Kind::reg || d.kind == Kind::wire || d.kind == Kind::regfile) continue;
+        const Decl& o = I.decls[d.peers[0]];
+        if (d.slot_words != o.slot_words)
+            FATAL("by_ref: '%s' (slots of %u words) and '%s' (slots of %u words) must declare the same size class (0: by value)",
+                  o.name.c_str(), o.slot_words, d.name.c_str(), d.slot_words);
+        if (!d.slot_words) continue;
+        auto it = class_of.find(d.slot_words);
+        if (it == class_of.end()) {
+            it = class_of.emplace(d.slot_words, uint32_t(class_words.size())).first;
+            class_words.push_back(d.slot_words);
+            class_cap.push_back(0);
+        }
+        unsigned per = d.kind == Kind::link ? d.latency + 2 : d.kind == Kind::fifo ? d.depth + 1 : d.kind == Kind::credit ? d.depth : 2;
+        class_cap[it->second] += per + d.held + o.held;
+        decl_cls[id] = decl_cls[d.peers[0]] = uint16_t(it->second);
+    }
+    for (uint64_t cap : class_cap) if (cap > 0xFFFFFFFFull) FATAL("a size class of more than 2^32 slots");
 
     // 2. levels, from the Wires and RegFiles (a producer below each reader); a loop is fatal with its units named
     std::vector<std::vector<uint32_t>> succ(n);
@@ -476,6 +517,11 @@ Sim Config::build() {
         o_bheads[w] = c.add_array<Bucket>(nm + ": buckets", wheels[w].W);
         o_bstore[w] = c.add(nm, wheels[w].W * Bucket::words_needed(wheels[w].width + 1, wheels[w].cap), wheels[w].W);
     }
+    const size_t o_pools = c.add_array<SlotPool>("slot pools: headers", class_words.size());
+    std::vector<size_t> o_pool(class_words.size());
+    for (size_t k = 0; k < class_words.size(); k++)
+        o_pool[k] = c.add("slot pool w" + std::to_string(class_words[k]), SlotPool::words_needed(class_words[k], uint32_t(class_cap[k])),
+                          uint32_t(class_cap[k]));
     const size_t o_runs = c.add_array<RunSet>("runs", runs.size());
     std::vector<size_t> o_bits(runs.size());
     for (size_t r = 0; r < runs.size(); r++) o_bits[r] = c.add("run sets", 2 * Bitmap::words_needed(runs[r].count), runs[r].count);
@@ -498,6 +544,12 @@ Sim Config::build() {
     e.runs = reinterpret_cast<RunSet*>(B + o_runs); e.nruns = uint32_t(runs.size());
     e.nlinks = nlink; e.nfifos = nfifo; e.nholds = nhold; e.nroutes = nroute;
     e.nregs = nreg; e.nwires = nwire; e.nregfiles = nrf; e.ncounts = ncount;
+    e.pools = reinterpret_cast<SlotPool*>(B + o_pools); e.npools = uint32_t(class_words.size());
+    for (size_t k = 0; k < class_words.size(); k++) {
+        S->port_names.push_back("w" + std::to_string(class_words[k]));
+        new (&e.pools[k]) SlotPool();
+        e.pools[k].init(B + o_pool[k], class_words[k], uint32_t(class_cap[k]), S->port_names.back().c_str());
+    }
 
     // 7. the units: one arena per type (moved from staging, in the instances' order); handles rewritten in place
     S->inst.resize(n);
@@ -599,7 +651,7 @@ Sim Config::build() {
             r.wheel = reinterpret_cast<Bucket*>(B + o_bheads[route_wheel[d.final]]);
             r.last_put = kNoCycle; r.mask = wd.W - 1; r.owner = owner;
             r.dest = d.kind == Kind::reg ? regidx[id] : in.final;
-            r.latency = uint16_t(d.latency); r.width = uint8_t(d.width); r.kind = d.kind;
+            r.latency = uint16_t(d.latency); r.width = uint8_t(d.width); r.kind = d.kind; r.cls = decl_cls[id];
             if (d.kind == Kind::reg) {
                 RegPort& rp = e.regs[regidx[id]];
                 rp = RegPort{};
@@ -612,12 +664,13 @@ Sim Config::build() {
             LinkPort& l = *new (&e.links[d.final]) LinkPort{};
             l.ring.init(B + o_ring[id], std::max(1u, d.width), d.latency + 2, nm);
             l.last_take = kNoCycle; l.owner = owner; l.inflight = 0; l.cap = uint16_t(d.latency + 2); l.bit = d.bit; l.width = uint8_t(d.width);
+            l.cls = decl_cls[id];
         } else if (d.kind == Kind::fifo || d.kind == Kind::credit) {
             FifoPort& f = *new (&e.fifos[d.final]) FifoPort{};
             f.ring.init(B + o_ring[id], d.width, d.depth, nm);
             f.last_take = kNoCycle; f.first_overflow = kNoCycle; f.overflows = 0; f.owner = owner; f.count_idx = kNone;
             f.ret = kNone; f.credits = 0; f.producer = kNone; f.pbit = 0;
-            f.depth = uint16_t(d.depth); f.bit = d.bit; f.width = uint8_t(d.width);
+            f.depth = uint16_t(d.depth); f.bit = d.bit; f.width = uint8_t(d.width); f.cls = decl_cls[id];
             for (size_t k = 1; k < d.peers.size(); k++) f.count_idx = I.decls[d.peers[k]].final;   // count_overflows
             if (d.kind == Kind::credit) {
                 const Decl& o = I.decls[d.peers[0]];
@@ -626,13 +679,13 @@ Sim Config::build() {
                 r = Route{};
                 r.wheel = reinterpret_cast<Bucket*>(B + o_bheads[route_wheel[f.ret]]);
                 r.last_put = kNoCycle; r.mask = wheels[route_wheel[f.ret]].W - 1; r.owner = owner; r.dest = d.final;
-                r.latency = 1; r.width = 0; r.kind = Kind::cret;
+                r.latency = 1; r.width = 0; r.kind = Kind::cret; r.cls = kNoClass;
             }
         } else if (d.kind == Kind::hold) {
             const Decl& o = I.decls[d.peers[0]];
             HoldPort& h = *new (&e.holds[d.final]) HoldPort{};
             h.last_take = kNoCycle; h.refused_at = kNoCycle; h.refusals = 0; h.owner = owner; h.producer = inst_of[o.unit];
-            h.bit = d.bit; h.pbit = o.bit; h.width = uint8_t(d.width); h.occ = false;
+            h.bit = d.bit; h.pbit = o.bit; h.width = uint8_t(d.width); h.occ = false; h.cls = decl_cls[id];
         }
     }
     for (size_t w = 0; w < wheels.size(); w++) {
@@ -746,6 +799,12 @@ uint64_t Sim::digest() const {
     for (uint32_t i = 0; i < e.nwires; i++) h.add(e.wires[i].v);
     for (uint32_t i = 0; i < e.nregfiles; i++) for (uint32_t k = 0; k < e.regfiles[i].n; k++) h.add(e.regfiles[i].regs[k]);
     for (uint32_t i = 0; i < e.ncounts; i++) h.add(e.counts[i].total);
+    for (uint32_t k = 0; k < e.npools; k++) {                 // by-reference payloads: which slots are in use, and their words
+        const SlotPool& p = e.pools[k];
+        h.add(p.in_use());
+        for (uint32_t i = 0; i < p.capacity(); i++)
+            if (p.allocated(i)) { h.add(i); for (unsigned w = 0; w < p.slot_words(); w++) h.add(p.slot(i)[w]); }
+    }
     for (uint32_t k = 0; k < e.ninst; k++) h.add(detail::type_info(impl_->inst[k].type).digest(impl_->obj(k)));
     return h.h;
 }

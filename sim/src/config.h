@@ -16,8 +16,10 @@
 //   - sizing (every number reported by `sizes()`, by structure and by unit type, so tests compare them with hand-derived
 //     ones and footprint per chip is tracked from M1, D15): each Link's ring L + 2 (or as declared), each Fifo's ring its
 //     depth, each Hold one slot; the wheels (THE WHEEL'S SIZING RULE below); the far-wake list one per instance; the run
-//     sets one bit per instance per run; the wires, register files, counts and routes; the value array for payloads above
-//     128 bits only (D17);
+//     sets one bit per instance per run; the wires, register files, counts and routes; one slot pool per size class
+//     (by-reference payloads, sim.h), its capacity the most payloads its ports can hold at once: each by-reference port
+//     carries at most L + 2 (Link), depth + 1 (Fifo: the visible ones and one in flight), depth (credit Fifo), 2 (Hold:
+//     the held one and one in flight), plus what either end declares it holds;
 //   - routes: each output's route resolved once to a data value (the wheel of its kind and width in its own thread, or the
 //     outbox wheel for the destination's thread: W4), so a put runs the same code either way;
 //   - levels: from the Wires and RegFiles; a loop is fatal with its units named; a (type, form) runs at the largest level

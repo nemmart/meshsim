@@ -87,6 +87,8 @@ struct Options {
     enum class Order : uint8_t { type_major, instance_major } order = Order::type_major;   // the debug comparison (PLAN-M1 item 6)
     bool wire_checks = true;     // wire discipline (written after a read in the cycle, written twice): debug builds
     bool step_all = false;       // step every instance every cycle (the missed-wake check, sim.h DEBUG CHECKS)
+    unsigned missed_wake_after = 1;   // the missed-wake detector (debug builds): cycles asleep with data waiting, 0 = off
+    bool missed_wake_fatal = true;    // else report and go on
     unsigned threads = 1;        // W4
 };
 
@@ -182,6 +184,7 @@ public:
     uint64_t digest() const;
     const Sizes& sizes() const;
     uint64_t steps(const std::string& unit_name) const;   // how many times an instance was stepped (idle-unit tests)
+    std::string sleepers() const;      // the end-of-run report: units asleep with data waiting, their ports, since when
 };
 
 }  // namespace sim

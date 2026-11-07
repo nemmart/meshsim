@@ -86,6 +86,41 @@ my own names (`PortConf*.java`). `WORKER3/REPORT.md` at the end.
 digest must equal the ready-driven run's (WORKER28's proof for idle-skipping), on the synthetic graphs and on the sketched
 units once they run. It is the safety net for explicit wakes: a missed `next()` otherwise fails silently.
 
+### Stage 2: the order (2026-11-07; the owner's go-ahead, D20)
+
+In working increments, each pushed with `make check` clean on both compilers, so W5 can integrate from increment 2:
+
+1. **The build (D18) and the fixtures.** `make` and the timing builds with clang `-O2`; `make check` gcc and clang,
+   debug and release; `make conformance` (the Java matrix against the C++ ports). The conformance fixtures
+   (`sim/tests/portconf/`, seed 1 of each configuration at 2,000 cycles, gzipped, a provenance header) and
+   `portconf.sh --check`.
+2. **The engine, local and single-threaded: Link, Fifo, Hold.** `Config` (staging, `Ports`, the type registry, wiring,
+   build), the sizing pass carved from W1's blocks, routes, the (kind, width) wheels and their delivery loops, the run
+   sets by (level, type, form), wakes (the wheel and the far list), `Ctx`, `Sim::run`, the digest, `Sizes`. Tests: sizes
+   against hand-derived ones; full fatal; an idle unit never stepped; a 10^9-cycle sleep one wake; no allocation in the
+   loop. **W5 can integrate from here.**
+3. **The rest of the kinds**: `Reg`, `Wire` (levels, loops rejected with names), `RegFile`, `Count`, credit `Fifo`; the
+   reserved `Link` if cheap. W5's controller needs Wire and RegFile: they come second only because Link/Fifo/Hold carry
+   the wheel.
+4. **Port conformance, the C++ side**: the script reader and a producer/consumer pair per kind; observations equal to the
+   fixtures in `make check`, to the full matrix in `make conformance`.
+5. **The debug checks**: shuffle within a level; type-major against instance-major; wire discipline; step-all; the
+   missed-wake detector and the end-of-run report (D20). Digests stable across seeds and orders.
+6. **The result-only form** and the toy unit's two forms agreeing.
+7. **Footprint and the report**: `Sizes` by structure, type and chip checked; what fixed-width copies recovered of W6's
+   11-13%; `REPORT.md`.
+
+**Acceptance** (PLAN-M1, W3, with D20's additions): port conformance against `ref` (fixtures in `make check`, 10^5 cycles
+per configuration in `make conformance`); sizes equal to hand-derived ones; overflow fatal; loops rejected with names;
+digests stable across shuffle seeds and both orders; wire-discipline violations fatal; an idle unit never stepped; a
+10^9-cycle sleep one wake; no allocation in the loop; a toy unit's two forms agree; **step-all's digest equal to the
+ready-driven run's; the missed-wake detector fatal on a unit that forgets `next()` (a death test) and silent on units
+blocked on a credit or a refusal; the end-of-run report listing a planted sleeper.**
+
+**API stability (integrator, 2026-11-07):** W5 writes against `sim.h` and `config.h` from now; any change to an agreed
+operation goes to the integrator first. Additions this round, before W5 depends on them: `Options::missed_wake_after`,
+`missed_wake_fatal`, `Sim::sleepers()` (D20).
+
 ### W1's `base/`
 
 No change foreseen; any proposal goes here first.

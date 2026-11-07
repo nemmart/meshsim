@@ -12,8 +12,8 @@
 //            when it asks: the interpreter's own cost, no engine and no register block
 //   threads  (--threads T) T controllers, each running the program on its own thread (W4's run_independent; thread k on
 //            cpus[k % size]): the aggregate instructions/s and each thread's ns per step
-//   --write DIR  writes the program as DIR/loop.code.bin (for ref: tests/ref/SpeedRun.java, TraceRun) and the engine's
-//            trace of it at N iterations as DIR/loop.trace, then stops
+//   --write DIR  writes the program as DIR/loop.code.bin (for ref: tests/ref/SpeedRun.java, TraceRun) and, for N up to
+//            10^5, the engine's trace of it as DIR/loop.trace, then stops
 // Run from sim/ (it reads the hello golden's replayed lines and the boot ROM).
 #include <algorithm>
 #include <chrono>
@@ -111,6 +111,10 @@ int main(int argc, char** argv) {
         if (!f) { fprintf(stderr, "bench: cannot write %s/loop.code.bin\n", write_dir); return 2; }
         for (uint32_t w : s.im.code) for (int b = 0; b < 4; b++) fputc(int(w >> (8 * b) & 0xFF), f);
         fclose(f);
+        if (iters > 100000) {                           // the trace only for small N (it is a line per instruction)
+            printf("wrote %s/loop.code.bin (%zu words, N %u); no trace above N = 100000\n", write_dir, s.im.code.size(), iters);
+            return 0;
+        }
         Tile t(s.im, s.c, uint32_t(9ull * iters + 1000));
         EngineRun e = run_engine(t, s.g, s.header, sim::Options{});
         FILE* o = fopen((dir + "/loop.trace").c_str(), "w");

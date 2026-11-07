@@ -2,6 +2,7 @@
 # regen.sh [--check] [PATTERN] -- the golden traces (sim/tests/TRACE-FORMAT.md) from sim/ref, through sim/ref's Observer
 # and sim/tests/ref/TraceRun.java, one JVM per run (RUNS; P at a time, default nproc).
 #   (no flag)  regenerate: write every trace into sim/tests/golden/
+#   (JOPTS: extra JVM options, e.g. -Dmeshsim.skip=false: then the header differs in idle_skip and nothing else may)
 #   --check    regenerate into a scratch directory and compare with the committed traces: the header (the '#' lines,
 #              D12: the configuration, the tile, the images) first, then the whole trace. Prints SAME, DIFF (header),
 #              DIFF (trace) or MISSING per run; exits 1 on any difference.
@@ -35,7 +36,7 @@ run() {
   set -- $1
   local n=$1 tile=$2 d=$3 img=$4 tb=${5:-}
   [ "$d" = riscv ] && d=$REF/test/riscv/bin || d=$HERE/images
-  (cd "$REF" && java -Xmx1g -Dmeshsim.observe=on -cp "$W/ref:$W/tr" TraceRun "$OUT/$n.trace" "$tile" "$d" "$img" ${tb:+"$SIM/fw/$tb"}) > "$W/$n.log" 2>&1 \
+  (cd "$REF" && java -Xmx1g ${JOPTS:-} -Dmeshsim.observe=on -cp "$W/ref:$W/tr" TraceRun "$OUT/$n.trace" "$tile" "$d" "$img" ${tb:+"$SIM/fw/$tb"}) > "$W/$n.log" 2>&1 \
     || { echo "$n: TraceRun failed"; cat "$W/$n.log"; }
 }
 export -f run

@@ -16,6 +16,8 @@ final class Observer {
     private static PrintWriter out;
     private static int tile = -1;
     private static String pendingHalt;               // a halt raised inside execute (SIM_EXIT) follows its store's retire line
+    private static final StringBuilder ahead = new StringBuilder();   // port-B writes at t, visible from t + 1: written at the end of t
+    private static ControllerMemories tracedCm;       // the traced tile's memories (learnt at its first endCycle)
     static {
         String p = System.getProperty("meshsim.observe");
         ON = p != null && !p.isEmpty() && !"false".equalsIgnoreCase(p);
@@ -29,7 +31,7 @@ final class Observer {
     private Observer() { }
 
     /** Drivers: trace tile t's controller into w from now (any earlier output is closed). */
-    static synchronized void start(Writer w, int t) { stop(); out = new PrintWriter(w); tile = t; pendingHalt = null; }
+    static synchronized void start(Writer w, int t) { stop(); out = new PrintWriter(w); tile = t; pendingHalt = null; ahead.setLength(0); tracedCm = null; }
     /** Drivers: write a line of their own (the header, the closing block, an UndefinedBehavior stop). */
     static synchronized void line(String s) { if (out != null) { flushHalt(); out.println(s); } }
     /** Drivers: end the trace (a pending halt is written first). */
@@ -73,9 +75,19 @@ final class Observer {
     static synchronized void refused(Controller c, long t) {
         if (mine(c)) emit(t + " REQ-REFUSED");
     }
-    /** TileControl.endCycle at t: GO, and a command landing, applied at the end of t; the controller sees them from t + 1. */
+    /** ControllerMemories.runCycle: a port-B (traffic director) write of word v at byte address a during t, visible to
+     *  the core from t + 1 (the memories commit at the end of the cycle); written out at the end of t. */
+    static synchronized void memw(ControllerMemories cm, long t, int a, int v) {
+        if (out != null && cm == tracedCm) ahead.append(t + 1).append(" MEMW ").append(h(a)).append(' ').append(h(v)).append('\n');
+    }
+    /** TileControl.endCycle at t, after every unit of the tile has run t: the request FIFO's head entry freed by the bus
+     *  at t (RequestBus runs first in the cycle, so a REQUEST_SEND at t already sees it); then, for t + 1, the port-B
+     *  writes of t, and GO and a command landing, applied at the end of t: the controller sees them from t + 1. */
     static synchronized void endCycle(TileControl ctl, long t, boolean go, boolean landed) {
-        if (out == null || ctl.idx != tile || !(go || landed)) return;
+        if (out == null || ctl.idx != tile) return;
+        tracedCm = ctl.tile.cmem;
+        if (ctl.tile.req.freedAt == t) emit(t + " REQ-FREED");
+        if (ahead.length() > 0) { flushHalt(); out.print(ahead); ahead.setLength(0); }
         if (go) emit((t + 1) + " GO");
         if (landed) emit((t + 1) + " CMD");
     }

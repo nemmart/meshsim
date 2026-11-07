@@ -101,7 +101,7 @@ public final class TraceRun {
             { "reg_load_latency", "" + k.regLoadLatency }, { "branch_penalty", "" + core.branchPenalty }, { "mul_latency", "" + core.mulLatency },
             { "ref_cycle", "" + k.refCycle }, { "go_latency", "" + k.goLatency }, { "ready_latency", "" + k.readyLatency },
             { "error_latency", "" + k.errorLatency() }, { "start_skew", "" + c.startSkew[tile] }, { "stage_delay", "" + k.stageDelay },
-            { "cnc_reaction", "" + k.cncReaction }, { "cnc_go_settle", "" + k.cncGoSettle }, { "done_gate", "" + k.doneGate },
+            { "cnc_reaction", "" + k.cncReaction }, { "cnc_drain_reports", "" + c.cc.drainReports }, { "cnc_go_settle", "" + k.cncGoSettle }, { "done_gate", "" + k.doneGate },
             { "request_fifo_depth", "" + k.requestFifoDepth }, { "req_hop_latency", "" + k.reqHopLatency },
             { "link_latency", "" + k.linkLatency }, { "intra_tile_latency", "" + k.intraTileLatency }, { "cm_latency", "" + k.cmLatency },
             { "queue_depth", "" + k.queueDepth }, { "K", "" + k.K }, { "mem_chunks", "" + k.memChunks }, { "periph_type", "" + k.periphTypeOf(tile) },

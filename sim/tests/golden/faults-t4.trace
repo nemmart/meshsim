@@ -13,6 +13,7 @@
 # config start_skew 0
 # config stage_delay 64
 # config cnc_reaction 1
+# config cnc_drain_reports false
 # config cnc_go_settle true
 # config done_gate true
 # config request_fifo_depth 128
@@ -38,6 +39,8 @@
 10 02000020 00100e13 x28=00000001
 11 02000024 81c02623 st fffff80c 4 00000001
 12 02000028 10500073
+23 MEMW 00007fc4 01000000
+24 MEMW 00007fc0 4a000000
 24 CMD
 41 GO
 41 WAKE go
@@ -107,6 +110,7 @@
 117 020000ac 032002b7 x5=03200000
 118 020000b0 40028293 x5=03200400
 119 020000b4 84502423 st fffff848 4 03200400
+119 REQ-FREED
 120 020000b8 84102a23 st fffff854 4 01000030
 121 020000bc 0000006f
 END parked cycle 121

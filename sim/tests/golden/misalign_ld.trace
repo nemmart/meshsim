@@ -13,6 +13,7 @@
 # config start_skew 1
 # config stage_delay 64
 # config cnc_reaction 1
+# config cnc_drain_reports false
 # config cnc_go_settle true
 # config done_gate true
 # config request_fifo_depth 128
@@ -38,6 +39,8 @@
 10 02000020 00100e13 x28=00000001
 11 02000024 81c02623 st fffff80c 4 00000001
 12 02000028 10500073
+15 MEMW 00007fc4 01000000
+16 MEMW 00007fc0 4a000000
 16 CMD
 34 GO
 34 WAKE go

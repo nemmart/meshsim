@@ -42,6 +42,8 @@ struct SlimRing {
     }
     unsigned count() const { return n; }
     bool empty() const { return n == 0; }
+    unsigned tail() const { unsigned j = head + n; return j >= depth ? j - depth : j; }   // the slot the next push takes
+    unsigned slot(unsigned k) const { unsigned j = head + k; return j >= depth ? j - depth : j; }
     unsigned width() const { return wid; }
     const Word* peek(unsigned k = 0) const {
         unsigned j = head + k;
@@ -220,6 +222,14 @@ struct Engine {
     char diag[1024] = {};
     uint32_t cur_level = 0;            // the level running (checks)
     uint64_t pending = 0;         // entries in the wheels (fast-forward when 0 and nothing is ready)
+    // W10: the stop request (Ctx::stop): the earliest cycle a unit asked the run to stop at the end of, kNoCycle if none;
+    // one domain breaks the run there (stop_breaks), a split domain runs on to its interval's barrier (threads.cpp)
+    Cycle stop_at = kNoCycle;
+    bool stop_breaks = true;
+    // W10: the port observer's arrival cycles (Options::observe_arrivals): per Link input, one per ring slot, at
+    // link_at + link_at_off[port]; null when off (nothing recorded)
+    Cycle* link_at = nullptr;
+    uint32_t* link_at_off = nullptr;
     // Cost per cycle with activity, not structure (the performance pass):
     uint64_t due[64] = {};        // per cycle mod 64: the wheels with entries due (when every latency < 64: due_ok)
     bool due_ok = false;
@@ -341,6 +351,7 @@ SIM_HOT Cycle Ctx::now() const { return e_->now; }
 SIM_HOT Wake Ctx::next() const { return Wake{e_->now + 1}; }
 SIM_HOT Wake Ctx::in(Cycle n) const { return Wake{e_->now + n}; }
 SIM_HOT uint64_t Ctx::mask() const { return *mask_; }
+SIM_HOT void Ctx::stop() { if (e_->stop_at == kNoCycle) e_->stop_at = e_->now; }
 
 // Link
 SIM_HOT bool Ctx::ready(LinkIn p) const { return *mask_ >> p.bit & 1; }
@@ -545,6 +556,9 @@ namespace detail {
 template <unsigned W>
 void deliver_link(Engine& e, const Bucket& b) {
     const Word* p = b.begin();
+    if (__builtin_expect(e.link_at != nullptr, 0))                      // the observer's arrival cycles (W10): per bucket
+        for (uint32_t n = b.count(); n; n--, p += W + 1) e.link_at[e.link_at_off[p[0]] + e.links[p[0]].ring.tail()] = e.now;
+    p = b.begin();
     for (uint32_t n = b.count(); n; n--, p += W + 1) {
         LinkPort& l = e.links[p[0]];
         Word* d = l.ring.push();                                         // width 0: the count only

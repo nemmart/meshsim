@@ -80,6 +80,7 @@ struct Dom {
     std::vector<uint32_t> counts;                // its XCount replicas
     std::vector<const Word*> slot_base;          // by size class: its pool's slot storage (the drain copies from it)
     uint32_t next_slot = 0, sent_slot = 0;       // its status words: its next event when idle, the words it sent
+    uint32_t stop_slot = 0;                      // W10: the cycle a unit asked to stop in, kNoCycle if none
 };
 
 struct Threads {

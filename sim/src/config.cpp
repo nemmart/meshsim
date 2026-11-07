@@ -718,6 +718,15 @@ Sim Config::build() {
     z.wheel_buckets = 0;
     for (auto& w : wheels) z.wheel_buckets = std::max(z.wheel_buckets, w.W);
     detail::Internals::record_view(I, inst_of, S->view);       // W4 (E5): the digest, unit by unit
+    if (I.opt.observe_arrivals && e.nlinks) {                  // W10: one arrival cycle per Link ring slot
+        S->link_at_off_v.resize(e.nlinks);
+        size_t tot = 0;
+        for (uint32_t k = 0; k < e.nlinks; k++) { S->link_at_off_v[k] = uint32_t(tot); tot += e.links[k].ring.depth; }
+        if (tot > 0xFFFFFFFFull) FATAL("observe_arrivals: more than 2^32 link slots");
+        S->link_at_v.assign(tot, 0);
+        e.link_at = S->link_at_v.data();
+        e.link_at_off = S->link_at_off_v.data();
+    }
     return Sim(S);
 }
 
@@ -733,11 +742,35 @@ Sim::~Sim() { delete impl_; }
 
 // W4 (E3): a machine split over domains forwards each operation to its threads (threads.h; its run_until(end) runs the
 // cycles before `end`, so these keep W3's meaning: run(n) runs n cycles, run_until(t) runs through t inclusive).
+// W10: a run clears the stop request and marks itself running (the observer refuses while it is).
+namespace {
+struct Running {
+    detail::Internals::SImpl* s;
+    explicit Running(detail::Internals::SImpl* i) : s(i) {
+        if (s->running) FATAL("Sim::run inside a run");
+        s->running = true;
+        if (s->threads) for (auto& d : s->threads->doms) d.e->stop_at = kNoCycle;
+        else s->e.stop_at = kNoCycle;
+    }
+    ~Running() { s->running = false; }
+};
+}  // namespace
 void Sim::run(Cycle n) {
+    Running r(impl_);
     if (impl_->threads) return impl_->threads->run_until(impl_->threads->now() + n);
     if (n) impl_->e.run_until(impl_->e.now + n - 1);
 }
-void Sim::run_until(Cycle t) { if (impl_->threads) return impl_->threads->run_until(t + 1); impl_->e.run_until(t); }
+void Sim::run_until(Cycle t) {
+    Running r(impl_);
+    if (impl_->threads) return impl_->threads->run_until(t + 1);
+    impl_->e.run_until(t);
+}
+Cycle Sim::stop_cycle() const {
+    if (!impl_->threads) return impl_->e.stop_at;
+    Cycle c = kNoCycle;
+    for (auto& d : impl_->threads->doms) c = std::min(c, d.e->stop_at);
+    return c;
+}
 Cycle Sim::now() const { return impl_->threads ? impl_->threads->now() : impl_->e.now; }
 const Sizes& Sim::sizes() const { return impl_->threads ? impl_->threads->sizes() : impl_->sizes; }
 std::string Sim::partition() const { return impl_->threads ? impl_->threads->partition() : std::string("one domain"); }

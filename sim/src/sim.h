@@ -212,6 +212,8 @@ public:
     Wake next() const;                               // at(now + 1)
     Wake in(Cycle n) const;                          // at(now + n), n >= 1
     uint64_t mask() const;                           // this instance's ready bits (levels and this cycle's edges)
+    void stop();                                     // W10: the run stops at the end of this cycle (one domain; split:
+                                                     // at the barrier ending this cycle's interval); Sim::stop_cycle
 
     // Link
     bool ready(LinkIn p) const;                      // a word is visible (mask bit)

@@ -451,7 +451,10 @@ Sim::Impl* Internals::split(Config::Impl& G) {
             if (G.decls[id].kind == Kind::count && G.decls[id].out && find(id) == x.comp && ddom(id) != x.dom) remote_producer = true;
         if (remote_producer) eng(x.dom).counts[x.idx].max_producer_level = 0xFFFFFFFEu;
     }
-    for (uint32_t d = 0; d < D; d++) { T->doms[d].next_slot = nslots++; T->doms[d].sent_slot = nslots++; }
+    for (uint32_t d = 0; d < D; d++) {
+        T->doms[d].next_slot = nslots++; T->doms[d].sent_slot = nslots++; T->doms[d].stop_slot = nslots++;
+        T->doms[d].e->stop_breaks = false;       // W10: a stop runs on to the interval's barrier, where every thread ends
+    }
     // the packing rule (base/words.h): each status word is written by one domain's thread and read by others, so each has
     // its own cache line; the two banks too
     T->status_block = std::make_unique<Block>(std::max<size_t>(1, 2 * size_t(nslots)) * kLineWords, "sim: the status words");
@@ -629,11 +632,16 @@ void Threads::run_thread(unsigned t, Cycle end) {
         // the whole machine idle and nothing sent: every thread jumps to the same next event
         Cycle next = kNoCycle;
         uint64_t sent = 0;
-        for (auto& d : doms) { next = std::min<Cycle>(next, status[par][d.next_slot * kLineWords]); sent += status[par][d.sent_slot * kLineWords]; }
+        Cycle stop = kNoCycle;                // W10: a stop asked in any domain ends the run at this barrier, on every thread
+        for (auto& d : doms) {
+            next = std::min<Cycle>(next, status[par][d.next_slot * kLineWords]); sent += status[par][d.sent_slot * kLineWords];
+            stop = std::min<Cycle>(stop, status[par][d.stop_slot * kLineWords]);
+        }
         for (uint32_t di = 0; di < doms.size(); di++) if (doms[di].thread == t) { at(t, now, di, "draining"); drain(di, now, n, par, sent != 0); }
         for (auto& d : doms) if (d.thread == t) clear(d, prev);
         prev = Span{now, n};
         now += n;
+        if (stop != kNoCycle) { par ^= 1; break; }
         if (sent == 0 && next > now && now < end) {
             const Cycle j = std::min(next, end);
             for (auto& d : doms) if (d.thread == t) d.e->now = j;
@@ -667,6 +675,7 @@ void Threads::publish(Dom& d, Cycle t0, Cycle n, unsigned par) {
     for (uint32_t h : d.holds_q) st[holds[h].slot * kLineWords] = e.holds[holds[h].port].occ;
     for (uint32_t c : d.counts) st[counts[c].slot * kLineWords] = e.counts[counts[c].idx].total - counts[c].base;
     st[d.sent_slot * kLineWords] = sent;
+    st[d.stop_slot * kLineWords] = e.stop_at;
     Cycle next = t0 + n;
     if (!e.step_all && e.idle()) {
         next = e.next_wake();

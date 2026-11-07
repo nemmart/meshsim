@@ -144,6 +144,9 @@ struct Sim::Impl {
     std::vector<unsigned> missed_after;               // per instance: the missed-wake detector's threshold (increment 5)
     Sizes sizes;
     detail::DigestView view;                           // the digest, unit by unit (W4, E5: digest.h)
+    std::vector<Cycle> link_at_v;                      // W10: the observer's arrival cycles (Options::observe_arrivals)
+    std::vector<uint32_t> link_at_off_v;
+    bool running = false;                              // W10: inside Sim::run (the observer refuses)
     detail::Threads* threads = nullptr;                // W4 (E3): set when the machine is split over domains; the Sim's
                                                        // operations go to it, and the fields above are unused
     unsigned char* obj(uint32_t i) const {

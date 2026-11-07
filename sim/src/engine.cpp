@@ -150,6 +150,7 @@ bool Engine::asleep(uint32_t i) const {
 void Engine::run_until(Cycle end) {
     while (now <= end) {
         cycle();
+        if (__builtin_expect(stop_at != kNoCycle, 0) && stop_breaks) break;   // W10: a unit asked to stop after this cycle
         if constexpr (kDebug) if (leak_every && npools && now % leak_every == 0) check_leaks();
         if (!step_all && idle()) {                     // nothing in flight, nothing ready: jump to the next wake
             Cycle t = next_wake();

@@ -1,0 +1,258 @@
+// The port observer (W8's request) and the stop request (W9's) (WORKER10). The observer is checked against the machine
+// itself: what it reports at the end of cycle c must be exactly what the consumer sees at c + 1 (its visible words then
+// are the ones visible at c, plus those arriving at c + 1, plus the put judged at c + 1 if accepted), in one domain and
+// split over two threads, with run lengths that end between barriers; and against the producer's own log for a Link's
+// arrival cycles. Then: refused during a run, no allocation, and the stop request's cycle in both forms.
+#include <cstring>
+#include <string>
+#include <vector>
+
+#include "base/alloc_guard.h"
+#include "config.h"
+#include "harness.h"
+
+using namespace sim;
+
+namespace {
+
+uint64_t lcg(uint64_t& s) { s = s * 6364136223846793005ull + 1442695040888963407ull; return s >> 33; }
+
+enum K : unsigned { LINK, FIFO, HOLD, REG };
+constexpr unsigned kLat = 3, kDepth = 6, kMaxLog = 4096;
+
+// Puts (i, i ^ 0x55, i + 7) at random cycles: a Link bounded by credits returned on an event line, a Fifo (overflows
+// allowed), a Hold (retrying a refused word), a Reg. Logs every put's cycle (a Link's arrival is put + L).
+struct Src {
+    LinkOut lo; LinkIn cred; FifoOut fo; HoldOut ho; RegOut ro;
+    unsigned kind; uint64_t rng; uint32_t i = 0, credits = kDepth;
+    Cycle put_at[kMaxLog] = {};
+    Word last[3] = {};
+    bool retry = false;
+    Src(Ports& p, unsigned k, uint64_t seed) : kind(k), rng(seed) {
+        if (k == LINK) { p.out(lo, "out", 3); p.in(cred, "cred", 0); }
+        if (k == FIFO) p.out(fo, "out", 3);
+        if (k == HOLD) p.out(ho, "out", 3);
+        if (k == REG) p.out(ro, "out", 3);
+    }
+    uint64_t digest() const { return hash_fields(kind, rng, i, credits, put_at, last, retry); }
+    Wake step(Ctx& c) {
+        if (kind == LINK && c.ready(cred)) { c.take(cred); credits++; }
+        if (kind == HOLD && c.refused(ho)) { c.put(ho, last[0], last[1], last[2]); return c.next(); }
+        if (lcg(rng) % 3 == 0 && i < kMaxLog) {
+            const Word a = i, b = i ^ 0x55, d = i + 7;
+            if (kind == LINK && credits) { c.put(lo, a, b, d); credits--; put_at[i++] = c.now(); }
+            else if (kind == FIFO) { c.put(fo, a, b, d); put_at[i++] = c.now(); }
+            else if (kind == HOLD && c.can_put(ho)) { c.put(ho, a, b, d); last[0] = a; last[1] = b; last[2] = d; put_at[i++] = c.now(); }
+            else if (kind == REG) { c.put(ro, a, b, d); put_at[i++] = c.now(); }
+        }
+        return c.next();
+    }
+};
+
+// Stepped every cycle: first records what it sees (its visible words, in order), then takes at random.
+struct Dst {
+    LinkIn li; LinkOut cred; FifoIn fi; HoldIn hi; RegIn ri;
+    unsigned kind; uint64_t rng;
+    uint32_t taken = 0, nseen = 0;
+    Cycle seen_at = 0;
+    Word seen[16][3] = {};
+    Dst(Ports& p, unsigned k, uint64_t seed) : kind(k), rng(seed) {
+        if (k == LINK) { p.in(li, "in", 3, kDepth); p.out(cred, "cred", 0); }
+        if (k == FIFO) p.in(fi, "in", 3, 4);
+        if (k == HOLD) p.in(hi, "in", 3);
+        if (k == REG) p.in(ri, "in", 3);
+    }
+    uint64_t digest() const { return hash_fields(kind, rng, taken, nseen, seen_at, seen); }
+    Wake step(Ctx& c) {
+        seen_at = c.now();
+        nseen = 0;
+        auto rec = [&](const Word* w) { for (unsigned k = 0; k < 3; k++) seen[nseen][k] = w[k]; nseen++; };
+        if (kind == LINK) for (unsigned k = 0; k < c.size(li); k++) rec(c.peek(li, k));
+        if (kind == FIFO) for (unsigned k = 0; k < c.size(fi); k++) rec(c.peek(fi, k));
+        if (kind == HOLD && c.ready(hi)) rec(c.peek(hi));
+        if (kind == REG && c.valid(ri)) rec(c.read(ri));
+        if (lcg(rng) % 2 == 0) {
+            if (kind == LINK && c.ready(li)) { c.take(li); c.put(cred); taken++; }
+            if (kind == FIFO && c.ready(fi)) { c.take(fi); taken++; }
+            if (kind == HOLD && c.ready(hi)) { c.take(hi); taken++; }
+        }
+        return c.next();
+    }
+};
+
+struct Pair { Sim sim; };
+
+Sim build_pair(unsigned kind, bool split, bool arrivals = true) {
+    Options o;
+    o.threads = split ? 2 : 1;
+    o.observe_arrivals = arrivals;
+    o.missed_wake_after = 0;
+    Config cfg(o);
+    cfg.domain(0);
+    auto& s = cfg.add<Src>("src", kind, uint64_t(7 + kind));
+    cfg.domain(split ? 1 : 0);
+    auto& d = cfg.add<Dst>("dst", kind, uint64_t(99 + kind));
+    if (kind == LINK) { cfg.link(s.lo, d.li, kLat); cfg.link(d.cred, s.cred, kLat); }
+    if (kind == FIFO) cfg.connect(s.fo, d.fi);
+    if (kind == HOLD) cfg.connect(s.ho, d.hi);
+    if (kind == REG) cfg.connect(s.ro, d.ri);
+    return cfg.build();
+}
+
+PortView view_of(const Sim& sim, const Dst& d, unsigned kind, PortEntry* out, uint32_t max) {
+    if (kind == LINK) return sim.observe(d.li, out, max);
+    if (kind == FIFO) return sim.observe(d.fi, out, max);
+    if (kind == HOLD) return sim.observe(d.hi, out, max);
+    return sim.observe(d.ri, out, max);
+}
+
+// Observes after runs of varied lengths and checks each view against the next cycle's sight; returns the checks made.
+void check_kind(unsigned kind, bool split, unsigned& checks) {
+    Sim sim = build_pair(kind, split);
+    sim.run(5);
+    PortEntry buf[32];
+    checks = 0;
+    const unsigned steps[] = {1, 2, 4, 1, 7, 3, 1, 1, 5};
+    for (unsigned r = 0; r < 120; r++) {
+        sim.run(steps[r % 9]);
+        const Cycle c = sim.now() - 1;
+        const Dst& d = sim.unit<Dst>("dst");
+        const Src& s = sim.unit<Src>("src");
+        begin_run();
+        const PortView v = view_of(sim, d, kind, buf, 32);
+        end_run();
+        // Link: every entry is a put not yet taken, in order, arriving at put + L
+        if (kind == LINK)
+            for (uint32_t k = 0; k < v.n; k++) {
+                const uint32_t i = d.taken + k;
+                CHECK_EQ(buf[k].w[0], Word(i));
+                CHECK_EQ(buf[k].at, s.put_at[i] + kLat);
+                CHECK(k + 1 == v.n || buf[k].at < buf[k + 1].at);
+            }
+        // what the consumer will see at c + 1
+        std::vector<std::vector<Word>> want;
+        for (uint32_t k = 0; k < v.n; k++)
+            if (kind != LINK || buf[k].at <= c + 1) want.push_back({buf[k].w[0], buf[k].w[1], buf[k].w[2]});
+        if (kind == REG && v.put) { want.clear(); want.push_back({v.put_w[0], v.put_w[1], v.put_w[2]}); }
+        if (kind == HOLD && v.put && !v.valid) want.push_back({v.put_w[0], v.put_w[1], v.put_w[2]});
+        const size_t base = want.size();
+        if (kind == FIFO && v.put) want.push_back({v.put_w[0], v.put_w[1], v.put_w[2]});
+        CHECK(!(kind == LINK && v.put));
+        sim.run(1);
+        const Dst& n = sim.unit<Dst>("dst");
+        CHECK_EQ(n.seen_at, c + 1);
+        if (kind == FIFO && v.put && n.nseen == base) want.pop_back();   // the put judged at c + 1 overflowed: dropped
+        CHECK_EQ(size_t(n.nseen), want.size());
+        for (uint32_t k = 0; k < n.nseen && k < want.size(); k++)
+            for (unsigned j = 0; j < 3; j++) CHECK_EQ(n.seen[k][j], want[k][j]);
+        checks++;
+    }
+}
+
+}  // namespace
+
+TEST(observe_a_link_one_domain) { unsigned n = 0; check_kind(LINK, false, n); CHECK_EQ(n, 120u); }
+TEST(observe_a_link_split) { unsigned n = 0; check_kind(LINK, true, n); CHECK_EQ(n, 120u); }
+TEST(observe_a_fifo_one_domain) { unsigned n = 0; check_kind(FIFO, false, n); CHECK_EQ(n, 120u); }
+TEST(observe_a_fifo_split) { unsigned n = 0; check_kind(FIFO, true, n); CHECK_EQ(n, 120u); }
+TEST(observe_a_hold_one_domain) { unsigned n = 0; check_kind(HOLD, false, n); CHECK_EQ(n, 120u); }
+TEST(observe_a_hold_split) { unsigned n = 0; check_kind(HOLD, true, n); CHECK_EQ(n, 120u); }
+TEST(observe_a_reg_one_domain) { unsigned n = 0; check_kind(REG, false, n); CHECK_EQ(n, 120u); }
+TEST(observe_a_reg_split) { unsigned n = 0; check_kind(REG, true, n); CHECK_EQ(n, 120u); }
+
+TEST(observe_the_same_view_in_one_domain_and_split) {
+    for (unsigned kind : {LINK, FIFO, HOLD, REG}) {
+        Sim a = build_pair(kind, false), b = build_pair(kind, true);
+        PortEntry x[32], y[32];
+        for (Cycle n : {7u, 1u, 2u, 11u}) {
+            a.run(n); b.run(n);
+            const PortView va = view_of(a, a.unit<Dst>("dst"), kind, x, 32), vb = view_of(b, b.unit<Dst>("dst"), kind, y, 32);
+            CHECK_EQ(va.n, vb.n); CHECK_EQ(va.put, vb.put); CHECK_EQ(va.valid, vb.valid);
+            CHECK(std::memcmp(x, y, sizeof(PortEntry) * va.n) == 0);
+            CHECK(std::memcmp(va.put_w, vb.put_w, sizeof va.put_w) == 0);
+        }
+    }
+}
+
+DEATH_TEST(observe_a_link_without_arrivals_is_fatal_while_a_word_is_visible, "no arrival cycles kept") {
+    Sim sim = build_pair(LINK, false, false);
+    PortEntry buf[32];
+    for (int r = 0; r < 200; r++) { sim.run(1); sim.observe(sim.unit<Dst>("dst").li, buf, 32); }
+}
+
+namespace {
+struct Peeker {   // observes from inside a step: refused
+    LinkIn in; const Sim* sim = nullptr;
+    explicit Peeker(Ports& p) { p.in(in, "in", 0); }
+    uint64_t digest() const { return 0; }
+    Wake step(Ctx& c) {
+        PortEntry b[4];
+        if (sim) sim->observe(in, b, 4);
+        if (c.ready(in)) c.take(in);
+        return c.now() < 3 ? c.next() : Wake::none();
+    }
+};
+struct Ticker {
+    LinkOut out; Cycle stop_at = 0; Cycle stop2 = 0;
+    explicit Ticker(Ports& p, Cycle at = 0, Cycle at2 = 0) : stop_at(at), stop2(at2) { p.out(out, "out", 0); }
+    uint64_t digest() const { return hash_fields(stop_at, stop2); }
+    Wake step(Ctx& c) {
+        if (c.now() == stop_at || c.now() == stop2) c.stop();
+        if (c.now() % 5 == 0) c.put(out);
+        return c.next();
+    }
+};
+}  // namespace
+
+DEATH_TEST(observe_during_a_run_is_fatal, "during a run") {
+    Config cfg;
+    auto& t = cfg.add<Ticker>("t");
+    auto& p = cfg.add<Peeker>("p");
+    cfg.link(t.out, p.in, 1);
+    Sim sim = cfg.build();
+    sim.unit<Peeker>("p").sim = &sim;
+    sim.run(10);
+}
+
+TEST(stop_ends_a_run_after_its_cycle_in_one_domain) {
+    Config cfg;
+    auto& t = cfg.add<Ticker>("t", Cycle(37), Cycle(40));
+    auto& p = cfg.add<Peeker>("p");
+    cfg.link(t.out, p.in, 1);
+    Sim sim = cfg.build();
+    begin_run();
+    sim.run(1000);
+    end_run();
+    CHECK_EQ(sim.stop_cycle(), Cycle(37));
+    CHECK_EQ(sim.now(), Cycle(38));
+    sim.run(1000);                      // a new run: the request is cleared; the second stop is at 40
+    CHECK_EQ(sim.stop_cycle(), Cycle(40));
+    CHECK_EQ(sim.now(), Cycle(41));
+    sim.run(100);
+    CHECK_EQ(sim.stop_cycle(), kNoCycle);
+    CHECK_EQ(sim.now(), Cycle(141));
+}
+
+TEST(stop_ends_a_split_run_at_the_barrier_on_every_thread) {
+    for (unsigned where = 0; where < 2; where++) {
+        Options o; o.threads = 2;
+        Config cfg(o);
+        cfg.domain(0);
+        auto& t = cfg.add<Ticker>("t", where ? Cycle(0) : Cycle(37));
+        cfg.domain(1);
+        auto& u = cfg.add<Ticker>("u", where ? Cycle(37) : Cycle(0));
+        auto& p = cfg.add<Peeker>("p");
+        auto& q = cfg.add<Peeker>("q");
+        cfg.link(t.out, p.in, 3);       // crossing: a barrier every 3 cycles
+        cfg.link(u.out, q.in, 3);
+        Sim sim = cfg.build();
+        sim.run(1000);
+        CHECK_EQ(sim.stop_cycle(), Cycle(37));
+        CHECK(sim.now() - 1 >= 37 && sim.now() - 1 < 37 + 3);
+        CHECK_EQ(sim.steps("p") + sim.steps("q") > 0, true);
+        const Cycle at = sim.now();
+        sim.run(10);
+        CHECK_EQ(sim.stop_cycle(), kNoCycle);
+        CHECK_EQ(sim.now(), at + 10);
+    }
+}

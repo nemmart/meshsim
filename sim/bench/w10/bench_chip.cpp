@@ -3,13 +3,15 @@
 // sort's boot (the sort image loaded over the network and port B: 14,791 cycles before any engine runs), wfi, regs.
 //
 //   bench_chip --prog sort|wfi|regs [--cycles N] [--threads T] [--partition one|rows|tiles|load|profile]
-//              [--cpus a,b,..] [--time] [--crossing-ns X]
+//              [--cpus a,b,..] [--time] [--crossing-ns X] [--reps R]
 //
 // --cycles: default sort 14791 (the boot), wfi and regs: until every core has stopped (checked every 64 cycles; the
 // count is the cycles run). rows: row_bands(T); tiles: one domain per tile (grouped in order, one engine per thread);
 // load: Placement::by_load, 1 per unit; profile: by_load from a one-thread calibration run of the same program and
 // cycles. The first cycle runs outside the timing (a split machine's first run starts its workers). One line:
-//   chip prog=P threads=T part=X cycles=C secs=S us_per_cycle=U words=W digest=D times="..." partition="..."
+//   chip prog=P threads=T part=X cycles=C reps=R us_per_cycle=<median> us_min=.. us_max=.. words=W digest=D times="..."
+//   partition="..." (times: the last machine's; with --time, its phase shares)
+#include <algorithm>
 #include <chrono>
 #include <cinttypes>
 #include <cstdio>
@@ -35,6 +37,8 @@ struct Args {
     std::vector<int> cpus;
     bool time = false;
     double crossing_ns = -1;   // --crossing-ns: Options::crossing_ns (default: the framework's)
+    unsigned reps = 5;         // --reps: machines built and run in this process, after one untimed (a run is milliseconds:
+                               // the clock's ramp, first touches and the workers' start would otherwise dominate)
 };
 
 struct World {   // what the machine reads while it runs: outlives it
@@ -105,6 +109,7 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--partition")) a.part = val();
         else if (!std::strcmp(argv[i], "--time")) a.time = true;
         else if (!std::strcmp(argv[i], "--crossing-ns")) a.crossing_ns = std::atof(val());
+        else if (!std::strcmp(argv[i], "--reps")) a.reps = unsigned(std::atoi(val()));
         else if (!std::strcmp(argv[i], "--cpus")) {
             const char* s = val();
             while (*s) { a.cpus.push_back(std::atoi(s)); while (*s && *s != ',') s++; if (*s) s++; }
@@ -114,8 +119,6 @@ int main(int argc, char** argv) {
     const uint64_t cycles = a.cycles ? a.cycles : a.prog == "sort" ? 14791 : a.prog == "regs" ? 824 : 0;
     const std::string part = a.threads == 1 && a.part != "load" && a.part != "profile" ? std::string("one") : a.part;
 
-    World w;
-    prepare(w, a.prog);
     sim::LoadProfile prof;
     sim::Options opt;
     opt.threads = a.threads;
@@ -131,15 +134,28 @@ int main(int argc, char** argv) {
         prof = cal.load_profile();
         opt.load = &prof;
     }
-    sim::Sim m = build(w, a, opt, part);
-    m.run(1);                                             // the first run starts the workers: outside the count
-    const auto t0 = std::chrono::steady_clock::now();
-    const uint64_t ran = 1 + run_prog(m, cycles ? cycles - 1 : 0, 2000000);
-    const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
-    std::printf("chip prog=%s threads=%u part=%s cycles=%" PRIu64 " secs=%.4f us_per_cycle=%.3f words=%llu digest=%016llx "
-                "times=\"%s\" partition=\"%s\"\n",
-                a.prog.c_str(), a.threads, part.c_str(), ran, secs, 1e6 * secs / double(ran),
-                (unsigned long long)m.sizes().total_words, (unsigned long long)m.digest(), m.thread_times().c_str(),
-                m.partition().c_str());
+    // one untimed machine, then `reps` timed ones; each its own World (the program's state is the machine's input)
+    std::vector<double> us;
+    uint64_t ran = 0, words = 0, digest = 0;
+    std::string times, partition;
+    for (unsigned r = 0; r <= a.reps; r++) {
+        World rw;
+        prepare(rw, a.prog);
+        sim::Sim m = build(rw, a, opt, part);
+        m.run(1);                                         // the first run starts the workers: outside the count
+        const auto t0 = std::chrono::steady_clock::now();
+        ran = 1 + run_prog(m, cycles ? cycles - 1 : 0, 2000000);
+        const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+        if (r == 0) continue;
+        us.push_back(1e6 * secs / double(ran));
+        words = m.sizes().total_words; digest = m.digest(); times = m.thread_times(); partition = m.partition();
+    }
+    std::vector<double> so(us);
+    std::sort(so.begin(), so.end());
+    const double medv = so.empty() ? 0 : so[so.size() / 2];
+    std::printf("chip prog=%s threads=%u part=%s cycles=%" PRIu64 " reps=%u us_per_cycle=%.3f us_min=%.3f us_max=%.3f "
+                "words=%llu digest=%016llx times=\"%s\" partition=\"%s\"\n",
+                a.prog.c_str(), a.threads, part.c_str(), ran, a.reps, medv, so.empty() ? 0 : so.front(), so.empty() ? 0 : so.back(),
+                (unsigned long long)words, (unsigned long long)digest, times.c_str(), partition.c_str());
     return 0;
 }

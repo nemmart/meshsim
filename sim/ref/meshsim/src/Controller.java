@@ -117,6 +117,7 @@ final class Controller implements Component {
         if (inWfi) {
             if (!ctl.takeWake(t, false)) { cyclesWfi++; idleAt = t; return; }
             inWfi = false; wokeAt = t; if (!wfiInRom) wfiLog.add(new long[] { wfiAt, t, ctl.lastWake });
+            if (Observer.ON) Observer.wake(this, t, ctl.lastWake);
         }
         if (stall > 0) { stall--; cyclesStalled++; return; }
         step(t);
@@ -149,6 +150,7 @@ final class Controller implements Component {
         mepc = cause == CAUSE_EXTERNAL ? resumePc : at; mcause = cause; mtval = tval;
         mstatus = (mstatus & ~(MSTATUS_MIE | MSTATUS_MPIE)) | ((mstatus & MSTATUS_MIE) != 0 ? MSTATUS_MPIE : 0);
         inHandler = true; pc = mtvec & ~3; stall = 0;
+        if (Observer.ON) Observer.trap(this, t);
         tile.chip.log(t, tile.idx, "trap: cause 0x" + Integer.toHexString(cause) + " at pc=0x" + Integer.toHexString(at) + " (mtval 0x" + Integer.toHexString(tval) + "), to mtvec 0x" + Integer.toHexString(mtvec));
     }
     /** ecall, ebreak, a fetch fault, a misaligned jump and a trap inside the handler set no ERRORS bit: software bugs
@@ -160,6 +162,7 @@ final class Controller implements Component {
 
     private void haltWith(long t, int reason, int at, int ins, String why) {
         halt = reason; haltPc = at; haltInstr = ins;
+        if (Observer.ON) Observer.halt(this, t, reason, at);
         // v1.2 (4.13, 4.17.8): a stopped controller leaves its peripherals running
         tile.chip.log(t, tile.idx, "controller halted: " + HALT_NAME[reason] + " at pc=0x" + Integer.toHexString(at)
                 + String.format(" instr=0x%08x", ins) + (why != null ? " (" + why + ")" : ""));
@@ -224,6 +227,7 @@ final class Controller implements Component {
             case 0x23 -> {                                                                        // stores
                 int ea = a + (((ins >> 25) << 5) | rd);
                 if (f3 == 2 && Registers.inRegs(ea) && Registers.storeAt(ea) == Registers.REQUEST_SEND && !tile.req.canPush(t)) {
+                    if (Observer.ON) Observer.refused(this, t);
                     instructions--; stallRequest++; cyclesStalled++; return;                       // 4.18: a full request FIFO stalls the store
                 }
                 if (f3 == 2 && Registers.inWindows(ea) && tile.slot.storeStalls(t, Registers.windowOf(ea), (ea & 0x1FF) >>> 2)) {
@@ -301,6 +305,7 @@ final class Controller implements Component {
             }
             default -> { illegal(t, ipc, ins); return; }
         }
+        if (Observer.ON) Observer.retire(this, t, ipc, ins, a, b, wr && rd != 0, res);
         if (wr && rd != 0) x[rd] = res;
         pc = next;
     }

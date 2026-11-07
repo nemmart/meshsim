@@ -237,6 +237,7 @@ final class TileControl {
         int clearBits = 0;                                        // clears that beat a same-cycle set of [7] and [6:0]
         if (pendT == t) clearBits = apply(t, pendIdx, pendVal);
         if (tile.cmem.landedAt == t) { landed = true; lastLandedAt = t; events |= 1 << Registers.EV_COMMAND; }
+        if (Observer.ON) Observer.endCycle(this, t, goAt == t, tile.cmem.landedAt == t);
         conditionEvents(t);
         boolean rd = done && landed;
         if (rd && !readyLevel) { readyPulseAt = t; readies++; }

@@ -2,9 +2,11 @@
 # baseline.sh MESHSIM DELIVERY OUT -- the baseline the new framework is judged against (sim/planning/DECISIONS.md D8, D13):
 # ReplayBench (all 64 tiles replaying; sim-step-cost) on segment 0 of evm-zone-29 (windows 0-63, as Quest 120), REPEATS
 # repeats per JVM (default 3), as
-#   one  1 JVM on one P-core (CPUs 0-1: the core and its hyperthread),
-#   p12  12 JVMs at once on CPUs 0-11 (the six P-cores and their hyperthreads; taskset -c 0-11),
-#   all16 16 JVMs at once on all CPUs 0-15 (the four E-cores 12-15 included).
+#   one    1 JVM on one P core (the core and its hyperthread),
+#   pN     N JVMs at once on the P cores' N CPUs (every P core and its hyperthreads),
+#   allN   N JVMs at once on all N usable CPUs (the E cores included).
+# The CPUs come from sim/tools/machine.sh (D21: detected, or P_LIST and E_LIST in QUEST_P_CPUS / QUEST_E_CPUS); the
+# machine is recorded in OUT/machine.txt. CONFIGS overrides the list (NAME:JVMS:CPUS ...).
 # MESHSIM is a wip/meshsim tree with build/ and build/gold compiled and sw/replay/build built; DELIVERY the v1.26.1
 # deliveries (ConvertDelivery's output). Each configuration runs alone, one after the other. Per JVM and repeat the log's
 # "the replay from cycle C: S s, U us/cycle" gives U, microseconds per chip-cycle; a JVM's steady rate is the mean of its
@@ -13,6 +15,10 @@
 # on; per CPU, the busy share over the configuration (/proc/stat). Writes OUT/<config>.* and OUT/BASELINE.txt.
 set -u
 M=$(cd "$1" && pwd); D=$2; OUT=$(mkdir -p "$3" && cd "$3" && pwd); REP=${REPEATS:-3}
+. "$(cd "$(dirname "$0")/../../tools" && pwd)/machine.sh" "${QUEST_P_CPUS:-}" "${QUEST_E_CPUS:-}"
+machine_record "$OUT/machine.txt"
+P1=$(take 1 "$P_ONE")
+ONE=$(keep "$(expand "$(cat "${SIM_SYSFS:-/sys}/devices/system/cpu/cpu$P1/topology/thread_siblings_list" 2>/dev/null || echo "$P1")")" "$P_CPUS")
 cd "$M"
 TB="-Xmx${HEAP:-3g} -Dreplay.tables=$M/../tables/replayer -Dreplay.build=$M/sw/replay/build"
 sampler() {   # NAME: until OUT/NAME.running goes
@@ -40,7 +46,7 @@ run() {   # NAME N CPUS
   for p in $(cat "$OUT/$n.pids"); do wait "$p"; done
   rm -f "$OUT/$n.running"; wait "$sp"; cpustat > "$OUT/$n.stat1"
 }
-CONFIGS=${CONFIGS:-one:1:0-1 p12:12:0-11 all16:16:0-15}   # NAME:JVMS:CPUS (tests: a short list, BENCH="synthetic 20 8 3")
+CONFIGS=${CONFIGS:-one:1:$ONE p$(count "$P_CPUS"):$(count "$P_CPUS"):$P_CPUS all$(count "$ALL_CPUS"):$(count "$ALL_CPUS"):$ALL_CPUS}   # NAME:JVMS:CPUS (tests: a short list, BENCH="synthetic 20 8 3")
 for c in $CONFIGS; do IFS=: read -r a b d <<< "$c"; run "$a" "$b" "$d"; done
 
 summary() {   # NAME
@@ -54,7 +60,7 @@ summary() {   # NAME
     ok=$(grep -c '^repeat [0-9]*: OK' "$OUT/$n.$i.log")
     rss=$(awk -v p=$p '$1=="P" && $2==p && $3>m {m=$3} END{printf "%.2f", m/1048576}' "$OUT/$n.samples")
     cpus=$(awk -v p=$p '$1=="P" && $2==p && $4>=0 {c[$4]++} END{for (k in c) printf "%s:%d ", k, c[k]}' "$OUT/$n.samples")
-    ecore=$(awk -v p=$p '$1=="P" && $2==p && $4>=0 {n++; if ($4>=12) e++} END{printf "%.0f", n ? 100*e/n : 0}' "$OUT/$n.samples")
+    ecore=$(awk -v p=$p -v E=",$E_CPUS," '$1=="P" && $2==p && $4>=0 {n++; if (index(E, "," $4 ",")) e++} END{printf "%.0f", n ? 100*e/n : 0}' "$OUT/$n.samples")
     echo "$us" | awk -v j=$i -v ok=$ok -v rss=$rss -v cpus="$cpus" -v e=$ecore '{s=0; for(r=2;r<=NF;r++) s+=$r; m=NF>1 ? s/(NF-1) : $1;
       printf "jvm %2d: us/cycle by repeat %s; steady %.2f us/cycle = %.0f chip-cycles/s; %d of %d repeats OK; peak RSS %s GB; on E-cores %s%% of samples; CPUs %s\n", j, $0, m, 1e6/m, ok, NF, rss, e, cpus}'
   done > "$OUT/$n.jvms"

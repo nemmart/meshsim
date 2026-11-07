@@ -78,3 +78,14 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   **Every benchmark result records its machine**: CPU model, core types and counts, clocks, memory, compiler and versions.
   D13 stays as the note on how to pin on the owner's runner. Existing scripts with hardcoded CPU lists (W2's `baseline.sh`,
   W6's `sim/bench/quest/*`, W4's and W5's task scripts) are made to take them as arguments, defaulting to detection.
+- **D22. The honest speed figure** (2026-11-07, W5, Quest 130): **unit for unit, the framework is about 4.5× `ref` per
+  thread** (Controller plus TileControl: ~23 ns per instruction, engine included, against ~104; identical traces). The 58×
+  (idle-skip on) and 2,300× (off) figures mainly measure chip-level work M1 doesn't model yet: **don't quote them as
+  speedups.**
+- **D23. Chip-level work is event-driven too** (2026-11-07, from `ref`'s profile with idle-skip on: 33% the request bus,
+  19.5% scanning overflows, 17% the chip's own loop, 2.3% the controller). When M2 models the whole chip, nothing scans all
+  tiles every cycle (overflows, invariants, the request bus): such work is driven by the events that cause it, like every
+  unit, or the framework rebuilds `ref`'s bottleneck one level up.
+- **D24. Diagnostics don't allocate** (2026-11-07, from W5's finding): every fatal and report path in the engine formats
+  into a preallocated buffer (`snprintf`), or records fixed-size facts (cycle, unit, port) in a list sized at startup and
+  formats them after the run. No allocation in the cycle loop, diagnostics included.

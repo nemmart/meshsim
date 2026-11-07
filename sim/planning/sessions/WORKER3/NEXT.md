@@ -23,5 +23,7 @@ Three additions to the performance pass:
    loop, so under W1's allocation hook the hook fires first ("operator new of 37 bytes inside a run") and the missed-wake
    message is never seen, in both fatal and report-and-go-on modes. Smallest case: W5's lazy block on hello, debug build,
    inside begin_run()/end_run() (sim/tests, test_broken_units). Fix: format into a fixed buffer (snprintf) or straight to
-   stderr, with no allocation in either mode; then W5 can run its detector death test under the hook again. Check the
-   other debug reports (leak check, wire discipline) for the same.
+   stderr, with no allocation in either mode; then W5 can run its detector death test under the hook again. This is now a rule
+   (D24): **every fatal and report path in the engine** formats into a preallocated buffer with snprintf, or records
+   fixed-size facts (cycle, unit, port) in a list sized at startup and formats them after the run. Apply it to all of them
+   (the leak check, wire discipline, overflows, the detector), and add a test that each fires under the allocation hook.

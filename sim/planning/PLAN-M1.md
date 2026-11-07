@@ -38,7 +38,7 @@ section 3 predict.
 runs it at **44.0 M instructions/s**; `ref` at 0.76 M with idle-skip on (0.91 µs per chip-cycle) and 0.019 M with it off
 (36 µs, D15's bar). Most of `ref`'s time is chip-level work M1 doesn't model yet (the request bus, overflow scans, the
 chip loop); **unit for unit** (Controller plus TileControl), `ref` spends ~104 ns per instruction against the framework's
-~23 ns, engine included: **about 4.5×**, the honest figure for now.
+~23 ns, engine included: **about 4.5×**, the honest figure for now (D22: don't quote the others as speedups).
 
 ## Components, in build order
 
@@ -161,6 +161,9 @@ chip loop); **unit for unit** (Controller plus TileControl), `ref` spends ~104 n
 - **A Link whose consumer may hold up to a declared depth** (W4's footprint breakdown, 2026-11-07): today a Link's consumer
   must take each word the cycle it arrives, so a router copies it into its own queue, holding every word twice (~74 KB of
   the framework mesh's 228 KB). Also the worst-case wheel sizing (W3, flagged earlier).
+
+- **Chip-level work event-driven** (D23): when M2 models the whole chip, no per-cycle scans over all tiles (overflows,
+  invariants, the request bus); `ref` spends most of an idle-skipped cycle there.
 
 ## Layout
 

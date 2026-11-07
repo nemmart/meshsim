@@ -49,3 +49,5 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   cores is reported separately. Scaling is reported at 1, 6 and 12 threads on the P-cores.
   Quest 122 confirmed clang and lld, perf (`perf record` and `report` work, IPC visible per core type) and TSan on gcc and clang;
   its `mmap_rnd_bits` check failed only because the runner's user can't read the sysctl, while TSan itself now works.
+- **D14. Fp128 is a Crandall prime** (owner): 2^128 - 159 for the benchmarks. Reduce by folding, not Montgomery: multiply the
+  high half of the 256-bit product by 159, combine it with the low half in ~160-bit arithmetic, then normalise.

@@ -95,7 +95,8 @@ run, so nothing outside the controller has to be modelled in M1.
   the data or a 128-bit index into the thread's value array, against (b) three words inline; µs per mesh-cycle on one mesh and
   one thread, then 128 meshes on 1, 6 and 12 threads pinned to the
   performance cores (D13), the efficiency cores reported separately.
-- The cost of an Fp128 multiply (Montgomery with native 128-bit arithmetic), per operation and in a unit-like loop.
+- The cost of an Fp128 multiply (a Crandall prime, reduced by folding the high half, not Montgomery: D14), per operation
+  and in a unit-like loop.
 - A recommendation for the link word and for how units do 128-bit arithmetic, **delivered to W3 before its API header is
   agreed**.
 

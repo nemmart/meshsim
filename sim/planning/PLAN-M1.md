@@ -20,7 +20,8 @@ reset (the boot ROM included) to halt**, with the same halt reason, registers, C
   counters, GO and commands.
 
 **What the controller sees of its tile** is reproduced by a **test-bench unit**: when a command lands, when GO arrives, and
-when the send holding register accepts or refuses (the trap handler's reports). Its cycles come from `ref`'s trace of the same
+when the request FIFO accepts or refuses a `REQUEST_SEND` store (the boot ROM handler's reports; no M1 program uses the router's
+send holding register). Its cycles come from `ref`'s trace of the same
 run, so nothing outside the controller has to be modelled in M1.
 
 ## Components, in build order
@@ -74,13 +75,12 @@ run, so nothing outside the controller has to be modelled in M1.
 
 **W2, the reference side** (Java and Quest).
 - **The observer** (D5): one opt-in class in `sim/ref`, off by default, logging each retired instruction (cycle, pc, the
-  instruction word, rd and its value, any memory operation) and the test-bench events (command landed, GO, send accepted or
-  refused). **Proof it changes nothing:** with it present and off, `run_tests.sh` quick, `RiscvTest` and `CtrlTest` give logs
+  instruction word, rd and its value, any memory operation) and the test-bench events (command landed, GO, a request refused). **Proof it changes nothing:** with it present and off, `run_tests.sh` quick, `RiscvTest` and `CtrlTest` give logs
   identical to the pristine copy; on, only the trace files differ. Recorded in `sim/ref/README.md` as the one permitted change.
 - **The trace format** (`sim/tests/TRACE-FORMAT.md`): what a line's cycle means for multi-cycle instructions, stalls, WFI,
   traps and halts.
 - **The coupling audit**: every interaction between the Controller and the rest of its tile in the M1 programs (registers
-  read and written, the WFI wake term, the interrupt term, the send holding register, the command and GO), with the cycle each
+  read and written, the WFI wake term, the interrupt term, the request FIFO, the command and GO), with the cycle each
   takes effect and every same-cycle query. It is W5's specification of the register-block subset and the test bench.
 - **The M1 programs** (`sim/fw/`): CSRs, `mcycle`/`mtime`, WFI woken by a command and by GO; sources, build script and images
   committed; each run in `ref` with a driver that lands the commands and GO where the program expects them.

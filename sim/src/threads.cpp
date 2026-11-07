@@ -396,12 +396,28 @@ Sim::Impl* Internals::split(Config::Impl& G) {
         retarget.push_back({r.p, route, uint32_t(&ob - T->outboxes.data())});
         counts_by_kind[unsigned(Kind::reg)]++;
     }
-    // storage: per source domain, one block; buckets W >= 2 x interval, each as deep as its routes
+    // W10: direct delivery for every Link outbox carrying values (no by-reference class): its destination delivers from
+    // its buckets at their cycle. Its window must outlast an entry's flight and the interval it was put in (W >= L + I),
+    // so the source never writes a bucket its destination may still be reading in the same interval.
+    for (auto& ob : T->outboxes) {
+        if (ob.kind != Kind::link || ob.dst == kFan || interval == kNoCycle) continue;
+        bool by_value = true;
+        for (const Xl& x : ob.xl) by_value = by_value && x.scls == kNoClass;
+        if (!by_value || ob.width > 3) continue;
+        ob.direct = true;
+        ob.xdst.resize(ob.xl.size());
+        for (size_t k = 0; k < ob.xl.size(); k++) ob.xdst[k] = ob.xl[k].dst;
+    }
+    // storage: per source domain, one block; buckets W >= 2 x interval (direct: >= latency + interval), each as deep as
+    // its routes
     const unsigned W = interval == kNoCycle ? 2 : pow2_at_least(unsigned(std::max<Cycle>(2, 2 * interval)));
+    auto window = [&](const Outbox& ob) {
+        return ob.direct ? std::max(W, pow2_at_least(unsigned(ob.latency + interval))) : W;
+    };
     std::vector<size_t> words(D, 0);
     for (auto& ob : T->outboxes) {
-        ob.mask = W - 1;
-        words[ob.src] += round_to_lines((sizeof(Bucket) * W + 7) / 8) + W * Bucket::words_needed(ob.width + 1u, ob.routes);
+        ob.mask = window(ob) - 1;
+        words[ob.src] += round_to_lines((sizeof(Bucket) * window(ob) + 7) / 8) + window(ob) * Bucket::words_needed(ob.width + 1u, ob.routes);
     }
     std::vector<uint64_t*> cur(D, nullptr);
     T->blocks.resize(D);
@@ -413,15 +429,16 @@ Sim::Impl* Internals::split(Config::Impl& G) {
                                 std::to_string(ob.latency) + " " + std::to_string(ob.src) + "->" +
                                 (ob.dst == kFan ? std::string("fan") : std::to_string(ob.dst)));
         uint64_t*& p = cur[ob.src];
+        const unsigned OW = window(ob);
         ob.buckets = reinterpret_cast<Bucket*>(p);
-        p += round_to_lines((sizeof(Bucket) * W + 7) / 8);
+        p += round_to_lines((sizeof(Bucket) * OW + 7) / 8);
         const size_t per = Bucket::words_needed(ob.width + 1u, ob.routes);
-        for (unsigned b = 0; b < W; b++) {
+        for (unsigned b = 0; b < OW; b++) {
             new (&ob.buckets[b]) Bucket();
             ob.buckets[b].init(p, ob.width + 1u, ob.routes, T->port_names.back().c_str());
             p += per;
         }
-        outbox_words += round_to_lines((sizeof(Bucket) * W + 7) / 8) + W * per;
+        outbox_words += round_to_lines((sizeof(Bucket) * OW + 7) / 8) + OW * per;
         const uint32_t id = uint32_t(&ob - T->outboxes.data());
         T->doms[ob.src].out.push_back(id);
         if (ob.dst == kFan) { for (uint32_t d = 0; d < D; d++) if (!ob.fan[d].empty()) T->doms[d].in.push_back(id); }
@@ -449,6 +466,7 @@ Sim::Impl* Internals::split(Config::Impl& G) {
     // where each outbox lands: the destination's wheel of its kind and width
     for (auto& ob : T->outboxes) {
         ob.wheel.assign(D, kNone);
+        if (ob.direct) continue;                     // W10: delivered from the outbox itself
         for (uint32_t d = 0; d < D; d++) {
             if (ob.dst != kFan ? d != ob.dst : ob.fan[d].empty()) continue;
             const Engine& e = eng(d);
@@ -457,6 +475,14 @@ Sim::Impl* Internals::split(Config::Impl& G) {
             if (ob.wheel[d] == kNone) FATAL("split: no %s wheel of width %u in domain %u", kind_name(ob.kind), ob.width, d);
         }
     }
+    // W10: each domain's incoming direct outboxes
+    T->xins.resize(D);
+    for (auto& ob : T->outboxes) {
+        if (!ob.direct) continue;
+        T->xins[ob.dst].push_back(Engine::XIn{ob.buckets, ob.xdst.data(), ob.mask, ob.width});
+        if (ob.latency + interval > 64) eng(ob.dst).xdue_all = true;
+    }
+    for (uint32_t d = 0; d < D; d++) { eng(d).xin = T->xins[d].data(); eng(d).nxin = uint32_t(T->xins[d].size()); }
     // by reference: each class's slot storage, by domain (the drain reads a source's slot without its pool's checks)
     for (uint32_t d = 0; d < D; d++) {
         Engine& e = eng(d);
@@ -530,6 +556,8 @@ Sim::Impl* Internals::split(Config::Impl& G) {
 
     // ---- threads
     T->nthreads = std::max(1u, std::min(G.opt.threads, D));
+    T->timing = G.opt.time_threads;
+    T->ph.assign(T->nthreads, Threads::PhaseTicks{});
     for (uint32_t d = 0; d < D; d++) T->doms[d].thread = unsigned(uint64_t(d) * T->nthreads / D);
     T->cpus = G.opt.cpus;
     T->barrier.init(T->nthreads, G.opt.barrier_block, G.opt.barrier_spins);
@@ -561,6 +589,11 @@ Sim::Impl* Internals::split(Config::Impl& G) {
     for (Kind k : kinds)
         if (counts_by_kind[unsigned(k)]) { rep += " " + std::to_string(counts_by_kind[unsigned(k)]) + " " + kind_name(k); any = true; }
     if (!any) rep += " none";
+    {
+        uint64_t direct = 0;
+        for (const auto& ob : T->outboxes) if (ob.direct) direct += ob.routes;
+        if (direct) rep += " (" + std::to_string(direct) + " link delivered direct)";   // W10
+    }
     rep += interval == kNoCycle ? "; no barrier until the end of a run"
                                 : "; barrier every " + std::to_string(interval) + " cycles, set by " + why;
     T->report = rep;
@@ -663,13 +696,26 @@ void Threads::run_thread(unsigned t, Cycle end) {
     for (auto& d : doms) if (d.thread == t) { now = d.e->now; break; }
     Span prev{now, 0};
     unsigned par = 0;
+    PhaseTicks* P = timing ? &ph[t] : nullptr;   // W10: Options::time_threads only
+    uint64_t c0 = P ? sim_ticks() : 0, c1 = 0;
+    const uint64_t start = c0;
     while (now < end) {
         const Cycle n = interval == kNoCycle ? end - now : std::min(interval, end - now);
         for (uint32_t di = 0; di < doms.size(); di++)
             if (doms[di].thread == t) { at(t, now, di, "running"); run_domain(*doms[di].e, now + n); }
+        if (P) { c1 = sim_ticks(); P->run += c1 - c0; P->last_run[par] = c1 - c0; c0 = c1; }
         for (auto& d : doms) if (d.thread == t) publish(d, now, n, par);
+        if (P) { c1 = sim_ticks(); P->publish += c1 - c0; c0 = c1; }
         at(t, now, kNone, "at the barrier after its interval");
         barrier.wait();
+        if (P) {
+            c1 = sim_ticks(); P->wait += c1 - c0; c0 = c1;
+            if (t == 0) {                     // every thread's last_run was written before the barrier
+                uint64_t mx = 0, sum = 0;
+                for (unsigned k = 0; k < nthreads; k++) { mx = std::max(mx, ph[k].last_run[par]); sum += ph[k].last_run[par]; }
+                ph_intervals++; ph_max_run += mx; ph_sum_run += sum;
+            }
+        }
         // the whole machine idle and nothing sent: every thread jumps to the same next event
         Cycle next = kNoCycle;
         uint64_t sent = 0;
@@ -679,7 +725,9 @@ void Threads::run_thread(unsigned t, Cycle end) {
             stop = std::min<Cycle>(stop, status[par][d.stop_slot * kLineWords]);
         }
         for (uint32_t di = 0; di < doms.size(); di++) if (doms[di].thread == t) { at(t, now, di, "draining"); drain(di, now, n, par, sent != 0); }
+        if (P) { c1 = sim_ticks(); P->drain += c1 - c0; c0 = c1; }
         for (auto& d : doms) if (d.thread == t) clear(d, prev);
+        if (P) { c1 = sim_ticks(); P->clear += c1 - c0; c0 = c1; }
         prev = Span{now, n};
         now += n;
         if (stop != kNoCycle) { par ^= 1; break; }
@@ -697,9 +745,27 @@ void Threads::run_thread(unsigned t, Cycle end) {
         clear(d, prev);
         if constexpr (kDebug) if (d.e->npools) d.e->check_leaks();
     }
+    if (P) { c1 = sim_ticks(); P->end += c1 - c0; P->total += c1 - start; }   // before the barrier: the caller reads them
     at(t, now, kNone, "at the last barrier of the run");
     barrier.wait();                           // the machine is still: the caller may read it
     at(t, now, kNone, "idle");
+}
+
+// W10: the phase report (Options::time_threads): each phase as a share of the threads' time over the runs, the mean
+// over threads; "imbalance" is the slowest thread's compute less the mean, per interval, summed; "barrier_wait" is the mean
+// wait less that (the barrier's own latency, and differences in publishing).
+std::string Threads::thread_times() const {
+    if (!timing) return "time_threads off";
+    double run = 0, pub = 0, wait = 0, drn = 0, clr = 0, endp = 0, tot = 0;
+    for (const auto& p : ph) { run += p.run; pub += p.publish; wait += p.wait; drn += p.drain; clr += p.clear; endp += p.end; tot += p.total; }
+    const double T = double(ph.size());
+    run /= T; pub /= T; wait /= T; drn /= T; clr /= T; endp /= T; tot /= T;
+    const double imb = ph_intervals ? double(ph_max_run) - double(ph_sum_run) / T : 0;
+    char b[400];
+    std::snprintf(b, sizeof b, "intervals=%llu total=%.0f compute=%.4f imbalance=%.4f barrier_wait=%.4f drain=%.4f publish=%.4f clear=%.4f "
+                  "end=%.4f other=%.4f", (unsigned long long)ph_intervals, tot, run / tot, imb / tot, (wait - imb) / tot,
+                  drn / tot, pub / tot, clr / tot, endp / tot, (tot - run - wait - drn - pub - clr - endp) / tot);
+    return b;
 }
 
 // Before the barrier: what this domain sent this interval leaves its count in flight; its Holds' occupancy, its Counts'
@@ -734,8 +800,48 @@ void Threads::drain(uint32_t di, Cycle t0, Cycle n, unsigned par, bool any) {
     Engine& e = *d.e;
     // Nothing sent anywhere: the outboxes aren't read at all (after an idle jump the next interval's buckets may alias
     // this one's, and their source may already be writing them).
+    // W10: the buckets are another thread's, just written: their lines are misses. Ask for every bucket's header first,
+    // then every non-empty bucket's entries, so the misses overlap instead of following one another.
+    if (any) {
+        for (uint32_t o : d.in) {
+            const Outbox& ob = outboxes[o];
+            for (Cycle t = t0; t < t0 + n; t++) __builtin_prefetch(&ob.buckets[(t + ob.latency) & ob.mask]);
+        }
+        for (uint32_t o : d.in) {
+            const Outbox& ob = outboxes[o];
+            for (Cycle t = t0; t < t0 + n; t++) {
+                const Bucket& b = ob.buckets[(t + ob.latency) & ob.mask];
+                const uint32_t c = b.count();
+                if (!c) continue;
+                const char* p = reinterpret_cast<const char*>(b.begin());
+                const size_t bytes = size_t(c) * (ob.width + 1u) * sizeof(Word);
+                for (size_t k = 0; k < bytes; k += 64) __builtin_prefetch(p + k);
+            }
+        }
+    }
     if (any) for (uint32_t o : d.in) {
         const Outbox& ob = outboxes[o];
+        if (ob.direct) {                                            // W10: counted and marked due; delivered at its cycle
+            for (Cycle t = t0; t < t0 + n; t++) {
+                const Cycle at = t + ob.latency;
+                const Bucket& b = ob.buckets[at & ob.mask];
+                const uint32_t c = b.count();
+                if (!c) continue;
+                e.pending += c;
+                e.xdue |= uint64_t(1) << (at & 63);
+                if constexpr (kDebug) {                             // the exact capacity check, and the detector (E6)
+                    const Word* p = b.begin();
+                    for (uint32_t k = 0; k < c; k++, p += ob.width + 1u) {
+                        const uint32_t q = ob.xdst[p[0]];
+                        LinkPort& l = e.links[q];
+                        if (l.ring.count() + l.inflight >= l.cap) e.die_link_full(q);
+                        l.inflight++;
+                        if (e.detector && e.suspect_since[l.owner] != kNoCycle) e.suspect_since[l.owner] = e.now;
+                    }
+                }
+            }
+            continue;
+        }
         const Wheel& wh = e.wheels[ob.wheel[di]];
         const unsigned ew = ob.width + 1u;
         const std::vector<Xl>& xl = ob.dst == kFan ? ob.fan[di] : ob.xl;
@@ -802,6 +908,7 @@ void Threads::clear(Dom& d, Span s) {
     Engine& e = *d.e;
     for (uint32_t o : d.out) {
         const Outbox& ob = outboxes[o];
+        if (ob.direct) continue;                     // W10: its destination empties each bucket as it delivers it
         const unsigned ew = ob.width + 1u;
         for (Cycle t = s.t0; t < s.t0 + s.n; t++) {
             Bucket& b = ob.buckets[(t + ob.latency) & ob.mask];

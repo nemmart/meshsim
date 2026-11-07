@@ -58,6 +58,9 @@ struct Outbox {
     std::vector<uint32_t> hold_of;               // a Hold outbox: the crossing (XHold) of each source proxy, else empty
     std::vector<uint32_t> wheel;                 // by domain: the wheel it drains into there (kNone: not drained there)
     uint16_t src_wheel = 0;                      // its index in the source domain's wheel table (Route::wheel)
+    bool direct = false;                         // W10: a Link outbox by value: delivered from here by its destination at
+                                                 // its cycle (Engine::deliver_xin), not copied at the barrier
+    std::vector<uint32_t> xdst;                  //   its translation, by source index (xl's dst)
 };
 inline constexpr uint32_t kFan = 0xFFFFFFFEu;
 
@@ -106,6 +109,15 @@ struct Threads {
     std::string report;
     Cycle interval = 0;                          // kNoCycle: no crossing, no barrier until the end of a run
     unsigned nthreads = 1;
+    // W10, Options::time_threads (a measurement option): per thread, time stamp ticks summed over the runs, by phase; and
+    // per interval, the slowest and the mean of the threads' compute (thread 0 sums them after the barrier).
+    struct alignas(64) PhaseTicks { uint64_t run = 0, publish = 0, wait = 0, drain = 0, clear = 0, end = 0, total = 0; uint64_t last_run[2] = {0, 0}; };
+    // last_run by the interval's parity: thread 0 reads [par] after the barrier while the others may already write [par ^ 1]
+    std::vector<PhaseTicks> ph;
+    std::vector<std::vector<Engine::XIn>> xins;  // W10: per domain, its incoming direct outboxes
+    uint64_t ph_intervals = 0, ph_max_run = 0, ph_sum_run = 0;
+    bool timing = false;
+    std::string thread_times() const;
     std::vector<int> cpus;
     Barrier barrier;
     // the run: thread 0 is the caller's; the workers wait between runs

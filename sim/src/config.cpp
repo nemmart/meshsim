@@ -838,6 +838,7 @@ LoadProfile LoadProfile::from_text(const std::string& text) {
     if (line < 2) FATAL("load profile: no header");
     return p;
 }
+std::string Sim::thread_times() const { return impl_->threads ? impl_->threads->thread_times() : std::string("one domain"); }
 void Sim::wake(const std::string& name) {
     if (impl_->running) FATAL("Sim::wake('%s') during a run: between runs only", name.c_str());
     if (impl_->threads) return impl_->threads->wake(name);

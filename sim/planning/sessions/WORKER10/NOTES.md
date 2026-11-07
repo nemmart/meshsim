@@ -199,3 +199,61 @@ Wire, RegFile and Count are already readable from their producers' and readers' 
   thread 15.61 us. Every digest equal across both revisions. The plateau (~1.6 us at 6-12 threads against 0.9 ideal) is
   the next target: the per-interval fixed cost (barrier every 3 cycles, the drain's copy, ~11% of instructions at 6
   engines locally) and imbalance (Quest 138 measures placement by load).
+- 2026-11-07: **Quest 138** (placement by load against rows and tiles, 2-12 threads, every digest equal): **placement
+  by load lost to the plain grouping by tiles** on the mesh: at 6 threads tiles 1.597 us (3.40x), profile 1.791 (3.03x),
+  load 1.874, rows 1.964; at 8: tiles 1.566, profile 1.959; at 12: tiles 1.656, profile 1.776. Profile beats load (the
+  measured loads help) but not tiles, though its balance by its own measure is 1.025 at 6. So the calibrated step time
+  isn't what limits the run: the per-interval costs (drain per crossing word: profile 590 crossing words at 6 threads,
+  its irregular blocks) and compute inflation are not in that load. Synth: clusters already the granules (interval 1),
+  load/profile ~ tiles. Mesh at 0.05: best 0.61 us at 4-6 threads against 1.17 on one: fixed cost bound. Next: Quest
+  139, Options::time_threads (2d19444, a measurement option) for the breakdown.
+- 2026-11-07: **Quest 139, the breakdown** (Options::time_threads; the timer costs ~1%; us per chip-cycle, the shares of
+  the timed runs times the plain wall). **The flattening point, mesh 0.35 by tiles at 6 threads: wall 1.603** = compute
+  1.019 (ideal 5.371/6 = 0.895, so 0.124 of compute inflation, 1.14x) + imbalance 0.192 + barrier wait 0.117 + drain
+  0.227 + clear 0.044 + publish 0.006. At 8: compute 0.949 (inflation 1.41x) + imbalance 0.230 + barrier 0.095 + drain
+  0.235 + clear 0.053 = 1.571. At 12 (hyperthreads): compute 0.863 (1.93x) + imbalance 0.238 + barrier 0.098 + drain
+  0.343 + clear 0.100. By profile at 6: imbalance halves (0.094) but drain + clear grow (0.434) and inflation (1.26x):
+  why profile loses to tiles (Quest 138). Mesh 0.05 at 6: compute 0.291 (1.47x) + imbalance 0.083 + barrier 0.094 +
+  drain 0.088 + clear 0.039 = 0.599. Synth (interval 1) at 4: compute 2.086 + imbalance 0.207 + barrier 0.338 + drain
+  1.608 + clear 0.522 + publish 0.105 = 4.874: the drain is a third.
+  **Decision: do the drain.** Drain + clear is the largest overhead after compute (17% at the mesh's flattening point, 44%
+  on synth), and it is what makes the cut expensive (so a placement by load can't trade crossings for balance). ~23 ns
+  per crossing entry at 6 threads: the lines are another core's, just written, so it is miss-bound, not
+  instruction-bound. Step 1, cheap: overlap the misses (prefetch headers, then entries) - Quest 140. Step 2 if the
+  drain is still large: deliver straight from the source's outbox (no copy; the destination reads each line once, at
+  delivery). Then the placement's objective weighs crossings by the measured drain cost.
+- 2026-11-07: **Quest 140, the drain's prefetch** (before d1f86dd / after a58144b, interleaved; digests equal): mesh
+  0.35 by tiles at 6 threads: drain 0.223 -> 0.141, wall 1.594 -> 1.479 (3.63x one thread); at 4: 1.796 -> 1.726; at 8:
+  1.572 -> 1.533; at 12: 1.655 -> 1.576. By profile at 6: drain 0.339 -> 0.218, wall 1.752 -> 1.615. Mesh 0.05: no
+  change (drain ~0.085 at 6 with few entries: the per-interval walk over the incoming outboxes' buckets, not the
+  entries). Synth: drain -10%, wall -2 to -5%. Left at the mesh's flattening point (6 threads, 1.479): compute ~1.02,
+  imbalance 0.183, barrier wait 0.084, drain 0.141, clear 0.044.
+- 2026-11-07: **Quest 141, drain step 2 (direct delivery, 15e1bd7)** against the prefetch (a58144b), interleaved, digests
+  equal. Mesh 0.35 by tiles: 6 threads 1.470 -> 1.443 us, 8: 1.536 -> 1.466, 12: 1.576 -> 1.511 (2-5%). Drain + clear
+  at 6: 0.183 -> 0.062, but compute 1.006 -> 1.103: **the cost moved into compute rather than vanishing** (the other
+  core's lines are now missed at delivery instead of at the barrier), which confirms the drain is miss-bound. What is
+  left of the drain (~0.06 at 6, 0.07 at rate 0.05) is the barrier's walk over the incoming buckets' headers.
+  At 6 threads now: compute 1.10 (inflation 1.23x, delivery's misses included) + imbalance 0.21 + barrier 0.065 +
+  drain 0.06 = 1.443.
+- 2026-11-07: TSan on 15e1bd7 found a race in the phase timer (2d19444, a measurement option): fixed in 4bf2f54.
+  Merging main (W8's and W9's chip) showed the observer counting a direct outbox's bucket twice when crossing Links of
+  different latencies have outboxes of different windows (W8's 't0.dir.in'); fixed in f6a4e2a (each wheel and outbox
+  over its own window), with a test that reproduces the exact abort without the fix. **f6a4e2a clean** (main merged):
+  clean checkout, build by build, gcc and clang debug and release (36 test binaries each, test_chip and
+  test_g1_replay included), TSan gcc and clang (the 7 thread tests, test_controllers, test_chip form2: tsan-chip).
+
+## What carries over to the sort's chip (and what may not)
+
+The benchmark that counts is the sort's chip at 16K (owner, 2026-11-07); until it runs, W9's chip as far as it runs
+(the boot: 14,791 cycles of network and port-B traffic; wfi, regs). From then on every change is reported on it first,
+the mesh second. Of today's findings (on W4's synthetic mesh and W6's synthetic chip):
+
+- **Expected to carry over.** A crossing word costs a cache miss (~20 ns, moved but not removed by direct delivery), so
+  the drain's cost per word and crossings against balance hold: a placement must weigh the words it makes cross
+  against the imbalance it removes. Imbalance as the next overhead after compute (0.2 of 1.44 us at 6 threads on the
+  mesh). The fixed cost per barrier interval (the barrier, the walk over the incoming buckets): the real chip's
+  crossings are Links of at least 3, as on the mesh.
+- **May not carry over.** The synthetic chip barriering every cycle and its drain at a third of its time: the real chip
+  shouldn't barrier every cycle (every crossing a Link of at least 3). The mesh's uniform random traffic (its loads
+  and crossings are symmetric; the sort's are not). Loads from step time alone: the sort's load moves between phases,
+  so a calibration should cover the whole boot (and the sort, once it runs), not a window of it.

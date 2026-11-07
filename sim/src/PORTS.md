@@ -93,6 +93,11 @@ counterpart (a model's own view of its queue). Producers that must never overflo
    consumer's takes made earlier in t only, and across domains at the barrier's drain (the cycle in the message is the
    drain's). They differ only for a producer that needs a take of the same cycle to make room, which a unit can't know
    (the order of steps within a level is not part of the semantics: shuffle), so no correct model depends on it.
+   *Across threads, release builds* (W10, direct delivery: a crossing Link's words are delivered from the producer's
+   outbox at their cycle, not copied at the barrier): the producer's side still allows at most one interval's puts, and
+   the consumer's side checks the visible words against the capacity at each arrival; the exact in-flight-plus-visible
+   check is made at the barrier in debug builds, and in one domain always. Results never depend on the partition, so a
+   model that overflows is caught by its one-domain or debug runs.
  Conformance: the `link L C` scripts (`PortConfGen`, `PortConfDriver`
 drive the three-argument constructor; fixtures `link-1-2`, `link-3-4`, `link-3-11`, `link-3-35`, `link-8-12`), equal
 line for line; `tests/test_link_depth.cpp` for peek(k), size, the capacity's death in one domain and across, and the

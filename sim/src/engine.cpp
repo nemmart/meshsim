@@ -42,6 +42,29 @@ inline void deliver_wheel(Engine& e, const Wheel& wh, Bucket& b) {
 }
 }  // namespace
 
+// W10: direct delivery. The bucket of `now` of each incoming Link outbox; the destination empties it (the source won't
+// write it again until after a barrier: its window is at least latency + interval, threads.cpp).
+void Engine::deliver_xin() {
+    const uint64_t bit = uint64_t(1) << (now & 63);
+    if (!xdue_all && !(xdue & bit)) return;
+    xdue &= ~bit;
+    for (uint32_t i = 0; i < nxin; i++) {
+        XIn& x = xin[i];
+        Bucket& b = x.buckets[now & x.mask];
+        const uint32_t c = b.count();
+        if (!c) continue;
+        switch (x.width) {
+            case 0: detail::deliver_link_x<0>(*this, b, x.xdst); break;
+            case 1: detail::deliver_link_x<1>(*this, b, x.xdst); break;
+            case 2: detail::deliver_link_x<2>(*this, b, x.xdst); break;
+            case 3: detail::deliver_link_x<3>(*this, b, x.xdst); break;
+            default: FATAL("direct delivery of width %u", unsigned(x.width));
+        }
+        pending -= c;
+        b.clear();
+    }
+}
+
 // One cycle. Its fixed cost does not grow with the machine: delivery visits the wheels with entries due (one mask word),
 // the run phase the runs with ready instances, the end of the cycle the runs with next-cycle requests.
 [[gnu::always_inline]] inline void Engine::cycle() {
@@ -61,6 +84,7 @@ inline void deliver_wheel(Engine& e, const Wheel& wh, Bucket& b) {
             if (!b.empty()) deliver_wheel(*this, wheels[w], b);
         }
     }
+    if (__builtin_expect(nxin != 0, 0)) deliver_xin();    // W10: a split domain's incoming Link outboxes
     if (near_busy >> (now & (kNear - 1)) & 1) near_slot();
     while (heap_n && wake_at[heap[0]] == now) mark(heap_pop());
     if (step_all)                                      // the missed-wake check: every instance, every cycle

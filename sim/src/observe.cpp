@@ -31,11 +31,12 @@ void put_entry(PortEntry* out, uint32_t max, uint32_t& n, Cycle at, const Word* 
     for (unsigned k = 0; k < 3; k++) e.w[k] = k < width ? w[k] : 0;
 }
 
-// The entry for input `dest` in the bucket of cycle `t` of every wheel of kind `k` and width `width`, if any.
+// The entry for input `dest` in the bucket of cycle `t` (now <= t <= now + the wheel's mask: each wheel over its own
+// window, so no bucket is read twice) of every wheel of kind `k` and width `width`, if any.
 const Word* in_bucket(const Engine& e, Kind k, unsigned width, uint32_t dest, Cycle t) {
     for (uint32_t wi = 0; wi < e.nwheels; wi++) {
         const Wheel& wh = e.wheels[wi];
-        if (wh.kind != k || wh.width != width) continue;
+        if (wh.kind != k || wh.width != width || t > e.now + wh.mask) continue;
         const Bucket& b = wh.buckets[t & wh.mask];
         const Word* p = b.begin();
         for (uint32_t m = b.count(); m; m--, p += width + 1) if (p[0] == dest) return p + 1;
@@ -67,10 +68,22 @@ PortView Sim::observe(const LinkIn& p, PortEntry* out, uint32_t max) const {
     uint32_t mask = 0;
     for (uint32_t wi = 0; wi < e.nwheels; wi++)
         if (e.wheels[wi].kind == Kind::link && e.wheels[wi].width == l.width && e.wheels[wi].mask > mask) mask = e.wheels[wi].mask;
-    uint32_t left = l.inflight;
-    for (Cycle t = e.now; left && t <= e.now + mask; t++)
-        if (const Word* w = in_bucket(e, Kind::link, l.width, p.idx, t)) { put_entry(out, max, v.n, t, w, l.width, "link"); left--; }
-    if (left) FATAL("Sim::observe(link '%s'): %u words in flight not found in the wheels", e.link_names[p.idx], left);
+    // W10: a crossing Link's words may also sit in the source's outbox (direct delivery), translated by its xdst
+    for (uint32_t i = 0; i < e.nxin; i++) if (e.xin[i].width == l.width && e.xin[i].mask > mask) mask = e.xin[i].mask;
+    uint32_t found = 0;
+    for (Cycle t = e.now; t <= e.now + mask; t++) {
+        const Word* w = in_bucket(e, Kind::link, l.width, p.idx, t);
+        for (uint32_t i = 0; !w && i < e.nxin; i++) {
+            const Engine::XIn& x = e.xin[i];
+            if (x.width != l.width || t > e.now + x.mask) continue;   // each outbox over its own window: no bucket twice
+            const Bucket& b = x.buckets[t & x.mask];
+            const Word* q = b.begin();
+            for (uint32_t m = b.count(); m; m--, q += x.width + 1u) if (x.xdst[q[0]] == p.idx) { w = q + 1; break; }
+        }
+        if (w) { put_entry(out, max, v.n, t, w, l.width, "link"); found++; }
+    }
+    if (found != e.link_inflight(p.idx))
+        FATAL("Sim::observe(link '%s'): %u words in flight, %u found in the wheels", e.link_names[p.idx], e.link_inflight(p.idx), found);
     return v;
 }
 

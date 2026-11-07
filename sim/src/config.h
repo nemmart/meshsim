@@ -108,6 +108,7 @@ struct Options {
     unsigned min_interval = 0;   // by_load: the smallest barrier interval allowed; 0: the largest Link latency that still
                                  // leaves at least 4 granules per thread
     bool calibrate = false;      // W10: time each unit's steps (for Sim::load_profile): two clock reads per step
+    bool time_threads = false;   // W10, A MEASUREMENT OPTION: a split run times its phases per thread (Sim::thread_times)
     bool observe_arrivals = false;   // W10: keep each visible Link word's arrival cycle for Sim::observe (a store per
                                      // delivered Link word; off: observe(LinkIn) is fatal while a word is visible)
 };
@@ -360,6 +361,9 @@ public:
     // W10, the between-cycles wake (W9's driver): between runs only (fatal during one), the named unit is stepped at the
     // next cycle run, now(), exactly, in whichever domain it sits (as a timed wake due then; its own wakes are unchanged).
     void wake(const std::string& unit);
+    // W10 (measurement): with Options::time_threads, a split machine's phases as shares of its threads' time over the runs
+    // ("compute imbalance barrier drain publish clear end other"); "one domain" otherwise.
+    std::string thread_times() const;
     // W10: after runs with Options::calibrate, the time each unit's steps took over them (its load).
     LoadProfile load_profile() const;
 

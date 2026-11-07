@@ -114,12 +114,10 @@ of a 200-cycle window, every unit of every tile (`M2Sort ... seed=4`, identical 
    (`injected`) after the queue has issued at t. Build them as one unit.
 3. `TileControl.endCycle(t)` after every unit of its tile: it reads what they did at t (below).
 4. The chip's READY and error-line pass after every tile.
-5. **One order dependence ref leaves open, in an error case only:** `TrafficDirector.decrement`/`schedule` call
-   `ctl.pendingAdd(c, t)`, the counter store the core made at t, which `TileControl.write` records only when the core has
-   already run at t. With the director first, a decrement meeting a counter at 0 in the cycle the core writes that counter
-   is judged without the write (an "unexpected" arrival, ERRORS [2]). It never happens in a correct program (none in the
-   sort, regs, wfi or a2a); the C++ should take ref's fixed order (the core before the director), i.e. read the store as a
-   same-cycle `Wire` from the core.
+5. **One order dependence ref leaves open, in a case the M2 programs never reach:** `TrafficDirector.decrement` and
+   `schedule` call `ctl.pendingAdd(c, t)`, the write-counter store the core made at t, which `TileControl.write` records
+   only if the core has already run at t. With the director first, the store is missed. The framework must not depend on
+   order within a level, so the result has to come from structure: section 3.3 gives the model.
 
 ## 3. The units: state, ports, same-cycle couplings
 
@@ -169,11 +167,38 @@ normative there).
 - **State.** The write counters `remaining[1..7]` (20 bits); the K-stage line (K = 8): pending decrements (due cycle,
   counter).
 - **At t:** the decrement due at t first (a counter at 0 stays 0: unexpected), then one packet.
-- **Couplings.** `ctl.pendingAdd(c, t)` (section 2, item 5); `readPort.acceptedAt(t)` and `readPort.outstanding()`
-  (the overlap check); `remaining[]` read by `TileControl` at `endCycle(t)` (the counter events) and by the core's
-  counter load (`counterAtStart`: the value at the start of t, so order-free); counter stores add to `remaining[]` at
-  `endCycle(t)` (`apply`). In the framework: the director owns the counters, the core's store reaches it as a `Link(1)`
-  applied at level 0 of t + 1, and `TileControl` reads them as a `RegFile`/`Wire` (PORTS.md 7).
+- **Couplings.** `ctl.pendingAdd(c, t)` (below); `readPort.acceptedAt(t)` and `readPort.outstanding()` (the overlap
+  check); `remaining[]` read by `TileControl` at `endCycle(t)` (the counter events) and by the core's counter load
+  (`counterAtStart`: the value at the start of t, so order-free); counter stores add to `remaining[]` at `endCycle(t)`
+  (`apply`).
+- **The write counters' arithmetic, and `pendingAdd` (section 2, item 5).** ref's result with its fixed order (the core
+  before the director) is, for counter c in cycle t, with N the core's store to c at t (0 if none) and D whether a
+  decrement of c falls due at t (accepted at t - K):
+  - **judgement:** if D and `remaining + N == 0`, the arrival is unexpected: the counter stays where it is, ERRORS [2]
+    (`unexpectedTotal`) at the end of t; otherwise a due decrement takes one;
+  - **the value at the end of t:** `remaining - (D and not unexpected) + N` (wrapping at 20 bits, flagged);
+  - **during t** every reader sees the value at the start of t (`counterAtStart`; the core's counter load samples it);
+  - the stray diagnostic at an acceptance at t (invariant 9, a violation only with `checkUnexpected`) uses
+    `remaining - (decrements in the line) + N` the same way.
+
+  **Model (order-free, equal to ref's core-before-director in every case):** do the counter arithmetic in the register
+  block's shifted end of cycle (PORTS.md 7), the place `TileControl.endCycle` already holds. The director keeps its K-stage
+  line and, at t, emits "decrement c falls due" as a `Link(1)` event to the register block; the core's counter store at t
+  reaches the register block as its usual `Link(1)` store; at level 0 of t + 1 the register block applies both by the
+  rule above (judge `remaining + N == 0` with D, then subtract and add), then the counter events, then STATUS. Both inputs
+  are registered, so no order within any level matters. During t + 1 the core and the director read the counters as the
+  register block's `RegFile` (the start-of-cycle value, as `counterAtStart`). The stray diagnostic moves with it (the
+  acceptance's counter as a `Link(1)` event; or keep it in the director, reading the pending store through the same
+  path, as it is a diagnostic only). *Alternative:* the core's pending store as a `Wire` (value, counter and the cycle it
+  was written: a Wire keeps its last value while the core sleeps, so the reader must check the cycle) read by the director
+  at a later level; exact too, but it ties the director's level to the core's for a case that never occurs. *Not
+  equivalent:* registering the store for t + 1 while the director judges at t (the judgement would miss N).
+
+  **The M2 programs never reach the case** (`FpHooks pendcheck=1`: cycles in which a tile's core stores a write counter
+  and its director decrements or accepts a packet on that same counter): **0** in the sort at 16K (fixed order), at
+  2,000 with the children shuffled (seed 4), in regs, wfi and a2a; ref's unexpected arrivals and strays are 0 in all of
+  them (`dir.unexpectedTotal`, `dir.strays`). So the model matters for exactness in principle (a program that arms a
+  counter in the cycle a stray decrement falls due), not for any M2 reference.
 - **Port B** (`ControllerMemories`): one write per cycle into data or program memory (four word-interleaved banks); a
   write covering command slot 0 sets `landedAt = t`, which `endCycle(t)` latches (command landed, EVENTS [9]). The
   memories commit writes at the end of the cycle (`SRAMMacro`): a core load at t + 1 sees a port-B write of t.
@@ -362,8 +387,9 @@ PhaseLog; by hash only: the whole-chip fingerprints, the 16K and full sort's fin
 | `sort64k` (+ `-fp`, `-t0/27/63`) | the full sort, the same set | runner, Quest 134 |
 
 The D12 header: each trace carries TraceRun's (configuration, images, boot ROM); the sort's `.out` starts with SortTest's
-`inputs:` line (every file's sha256); the configuration is `Config.machine()` with `ready_latency` 8 and is not yet
-written into the `.fp` files (a header there is the next step, with a re-hash).
+`inputs:` line (every file's sha256); every `.fp` file starts with the run (driver, program or key set, ready latency,
+seed), its inputs' sha256 (images, boot ROM, hops, the key file), every `Config` field and the start skews. A C++ bench
+compares its own configuration with these lines before the hashes and refuses on any difference.
 
 ## 8. Localising a mismatch
 
@@ -381,14 +407,15 @@ not give is stimulus**: it checks a unit, it cannot drive one in isolation, as M
 into a lone controller. That matters only if a unit is to be tested before its neighbours exist. The groups of section 5
 are built to run whole programs early (G1 with G2 on regs/wfi), so the fingerprint suffices.
 
-**Proposal (owner's decision, D5 would grow), only if replay-driven unit tests are wanted:** a put/take trace of one
+**It stays a proposal** (owner, 2026-11-07: not now): the fingerprint finds the first differing cycle, unit and word,
+which is enough to develop G1-G4 against whole-program references. It is available if a unit ever needs testing before
+its neighbours exist. **The proposal (D5 would grow):** a put/take trace of one
 tile's named buses. Hooks: `WordDelayLine.put/take`, `WordFIFO.put/take/commit` (an overflow), `WordHold.put/take/
 commit` (a refusal), each one guarded line as D5's, filtered to the traced tile by the bus's name (`t5.we-in`); plus the
 direct same-cycle calls of section 2 (5 call sites: `loopbackLeft`, `takeForSend`, `injected`, `injectedAt`,
 `pendingAdd`). About 10 call sites in 4 files. Volume: tile 0 at 16K moves about 1 M packets through its buses (routed
 400 K, SRAM accesses 460 K, ...), each a few puts and takes: 3-5 M lines, ~200 MB per tile; full size about 4×. Proof:
-Quest 123's quick-suite proof again (39 steps, off and on). Recommendation: **not now**; revisit if G1-G4 need to test a
-unit before its neighbours run.
+Quest 123's quick-suite proof again (39 steps, off and on). Not built.
 
 ## 9. Findings for the record
 - `p4/uniform-k128` reads KeyGen's `uniform.keys`, not SortTest's `kind=uniform` (section 0).

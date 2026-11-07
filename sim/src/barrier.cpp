@@ -14,7 +14,7 @@
 namespace sim::detail {
 
 namespace {
-double seconds() { timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return double(t.tv_sec) + 1e-9 * double(t.tv_nsec); }
+[[maybe_unused]] double seconds() { timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return double(t.tv_sec) + 1e-9 * double(t.tv_nsec); }
 inline void pause() {
 #if defined(__x86_64__) || defined(__i386__)
     __builtin_ia32_pause();

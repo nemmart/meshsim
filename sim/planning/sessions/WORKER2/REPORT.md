@@ -85,7 +85,7 @@ configuration ran alone, after the proof had finished.
 | configuration | µs per chip-cycle per JVM (repeat 2) | chip-cycles/s in total (repeat 2) | vs 1 JVM | peak RSS per JVM | the E-cores |
 |---|---|---|---|---|---|
 | **1 JVM**, CPUs 0-1 (one P-core) | **36.8** (repeats 38.5, 36.8, 37.5) | **27,170** | 1 | 1.67 GB | idle |
-| **12 JVMs**, CPUs 0-11 (the six P-cores, 2 threads each) | **124.3** (mean; 118-137) | **96,800** | 3.6 × | 1.22-1.94 GB | 6-13 % busy (not ours) |
+| **12 JVMs**, CPUs 0-11 (the six P-cores, 2 threads each) | **124.3** (mean; 118-138) | **96,800** | 3.6 × | 1.22-1.94 GB | 6-13 % busy (not ours) |
 | **16 JVMs**, CPUs 0-15 (P and E) | **151.4** (mean; 116-215) | **108,700** | 4.0 × | 1.55-1.93 GB | 90-93 % busy |
 
 - **Repeat 2 is the figure for "N at once".** The JVMs start together but finish apart, so a JVM's third repeat runs
@@ -97,7 +97,7 @@ configuration ran alone, after the proof had finished.
   (each JVM's chip is about 1.5-1.9 GB resident). The 12 JVMs give 3.6 × one JVM's throughput, not 12 ×.
 - **The E-cores' share**: they add 12 % (96,800 to 108,700 chip-cycles/s) at 90-93 % busy, and they slow everything
   else: the scheduler moved JVMs between core types, so no JVM ran on one kind only. The JVMs that spent 40-80 % of their
-  samples on the E-cores ran repeat 2 at 135-215 µs, those that stayed on the P-cores at 116-150 µs.
+  samples on the E-cores ran repeat 2 at 135-215 µs, the others (at most 29 % on the E-cores) at 116-150 µs.
 - The box's load: the 1-minute load average reached 10.8 (12 JVMs) and 16.8 (16); the P-core threads were 95-99 % busy
   with 12 JVMs.
 - Against Quest 120 (the same code, one JVM unpinned on an otherwise idle box: 40.9-43.9 µs), pinning to one P-core gives

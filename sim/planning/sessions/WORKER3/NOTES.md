@@ -526,10 +526,16 @@ simulated cycle: about 74 CPU cycles per simulated cycle, through memory (the ru
 and loaded at the next, the next-cycle bit, the ready mask, the near slot of a stall), each a store-to-load round trip.
 Removing work off that path did nothing; shortening the path is the next lever.
 
-**Proposed next (not done):** a solo loop. When a cycle ends with exactly one instance scheduled, nothing in flight and no
+**Proposed, then set aside (integrator, 2026-11-07):** a solo loop. When a cycle ends with exactly one instance scheduled, nothing in flight and no
 wake due before the next cycle (W5's busy core most of the time; any one-unit phase), `run_until` keeps stepping that
 instance directly, its bookkeeping in registers, until a put, a wake or a mark breaks the condition; then back to the
 general cycle. Exact (the same steps, in the same cycles), and measurable with the same task.
+
+**The decision: not now.** It speeds up only a machine with exactly one busy unit, a microbenchmark case (even the
+Tracer's idle-looking segment has several busy units), and it would be a second engine path to keep exact forever. If the
+per-cycle dependency chain matters on M2's busy workloads, the fix to look for is general, in the common cycle's
+bookkeeping (fewer store-to-load round trips per simulated cycle: the ready word, the next-cycle bit, the run masks), not
+a lone-unit special case. Carried to M2 in PLAN-M1.md.
 
 ## Log
 

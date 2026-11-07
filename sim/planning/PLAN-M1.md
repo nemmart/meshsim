@@ -22,7 +22,11 @@ reset (the boot ROM included) to halt**, with the same halt reason, registers, C
 **What the controller sees of its tile** is reproduced by a **test-bench unit**: when a command lands, when GO arrives, and
 when the request FIFO accepts or refuses a `REQUEST_SEND` store (the boot ROM handler's reports; no M1 program uses the router's
 send holding register). Its cycles come from `ref`'s trace of the same
-run, so nothing outside the controller has to be modelled in M1.
+run, so nothing outside the controller has to be modelled in M1. **What the bench replays** (W2, 2026-11-07): the command
+landing and GO; each word the traffic director writes into data memory (the command's slot-0 words and arguments: `MEMW`,
+at the first cycle the core can see it); and the cycles the request FIFO frees an entry (`REQ-FREED`). The bench keeps the
+FIFO's count from the core's `REQUEST_SEND` stores and those frees, so refusals, STATUS [6] (request busy) and EVENTS [11]
+(request room) all follow; `REQ-REFUSED` stays in the trace as a check.
 
 ## Components, in build order
 
@@ -43,8 +47,9 @@ run, so nothing outside the controller has to be modelled in M1.
    catch-up of per-cycle counters, so a long sleep costs one wake; a unit type may have a **result-only form** beside its
    cycle-accurate one, chosen at configuration (D7). No STL, no allocation, no virtual calls in the loop.
 5. **Port kinds, local form**, with `ref`'s exact bus semantics: `Link(L)`, `Fifo(N)` with its overflow count, credit `Fifo`,
-   `Hold`, `Reg`, `Wire`, `Count`, and a minimal `RegFile`. Shared `Mem` ports wait for M2 (nothing outside the controller
-   writes its memories in M1).
+   `Hold`, `Reg`, `Wire`, `Count`, and a minimal `RegFile`. Shared `Mem` ports wait for M2: in M1 the only outside writer of
+   the controller's memory is the test bench's replay of the director's writes (`MEMW`), a registered input to the core, with
+   no port contention to model.
 6. **Debug checks.** Shuffle within a level by seed; wire discipline (read before driven, or driven twice, is fatal); the
    type-major and instance-major orders compared by digest.
 7. **Cross-domain forms and threads.** The outbox merge at the barrier copies a 128-bit payload into the destination thread's

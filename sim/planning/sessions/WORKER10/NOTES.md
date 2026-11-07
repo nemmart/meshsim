@@ -172,3 +172,8 @@ Wire, RegFile and Count are already readable from their producers' and readers' 
   `Router` takes every arriving word at once (Router.java:125) into per-(output, feeder) overflow `WordFIFO`s of
   queue_depth (85), visible at t + 1, dropping on overflow; a Link that holds is one in-order queue per input, head-only
   take, fatal when full. Whether a router on it reproduces ref is W9's to judge; I see those two differences.
+- 2026-11-07: the port observer and the stop request (c8601be); the cheaper split (f703da9): domains grouped into one
+  engine per thread, `Options::engines` a measurement option only. **Both commits clean**, each on a clean checkout,
+  build by build (this container, clang 18.1.3, gcc 13.3.0): gcc and clang, debug and release, 25 test binaries each
+  (W5's 67 goldens included, test_golden); TSan gcc and clang: test_parallel, test_threads, test_topology,
+  test_matrix, test_observe, test_link_depth (the last two now in `TSAN_TESTS`).

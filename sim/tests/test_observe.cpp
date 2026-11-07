@@ -256,3 +256,86 @@ TEST(stop_ends_a_split_run_at_the_barrier_on_every_thread) {
         CHECK_EQ(sim.now(), at + 10);
     }
 }
+
+// ---- the between-cycles wake (W9's driver): Sim::wake(name) steps the unit at now(), exactly, in its own domain
+namespace {
+struct Sleeper {   // never asks to be woken; records the cycles it was stepped at
+    LinkIn in; Cycle seen[8] = {}; uint32_t n = 0;
+    explicit Sleeper(Ports& p) { p.in(in, "in", 0); }
+    uint64_t digest() const { return hash_fields(seen, n); }
+    Wake step(Ctx& c) {
+        if (n < 8) seen[n++] = c.now();
+        if (c.ready(in)) c.take(in);
+        return Wake::none();
+    }
+};
+struct Quiet {     // puts one event at cycle 1 and then sleeps: the machine goes idle (the run jumps to its end)
+    LinkOut out;
+    explicit Quiet(Ports& p) { p.out(out, "out", 0); }
+    uint64_t digest() const { return 0; }
+    Wake step(Ctx& c) { if (c.now() == 1) c.put(out); return Wake::none(); }
+};
+void wake_case(bool split) {
+    Options o; o.threads = split ? 2 : 1;
+    Config cfg(o);
+    cfg.domain(0);
+    auto& q = cfg.add<Quiet>("q");
+    auto& q2 = cfg.add<Quiet>("q2");
+    cfg.domain(split ? 1 : 0);
+    auto& z = cfg.add<Sleeper>("z");
+    auto& z2 = cfg.add<Sleeper>("z2");
+    cfg.link(q.out, z.in, 3);
+    cfg.link(q2.out, z2.in, 3);
+    Sim s = cfg.build();
+    s.run(100);                                   // z stepped at 1 (its first cycle) and 4 (the event); then idle
+    const Sleeper& a = s.unit<Sleeper>("z");
+    CHECK_EQ(a.n, 2u);
+    CHECK_EQ(a.seen[1], Cycle(4));
+    CHECK_EQ(s.now(), Cycle(101));
+    s.wake("z");
+    s.run(50);
+    CHECK_EQ(a.n, 3u);
+    CHECK_EQ(a.seen[2], Cycle(101));              // exactly the next cycle
+    CHECK_EQ(s.unit<Sleeper>("z2").n, 2u);        // nothing else stepped
+    s.wake("z"); s.wake("z");                     // twice before one run: one step
+    s.run(1);
+    CHECK_EQ(a.n, 4u);
+    CHECK_EQ(a.seen[3], Cycle(151));
+    s.run(7);
+    s.wake("z2");
+    s.run(1);
+    CHECK_EQ(s.unit<Sleeper>("z2").n, 3u);
+    CHECK_EQ(s.unit<Sleeper>("z2").seen[2], Cycle(159));
+    CHECK_EQ(a.n, 4u);
+}
+}  // namespace
+
+TEST(wake_steps_the_unit_at_the_next_cycle_in_one_domain) { wake_case(false); }
+TEST(wake_steps_the_unit_at_the_next_cycle_split) { wake_case(true); }
+
+TEST(wake_gives_the_same_digest_in_one_domain_and_split) {
+    uint64_t d[2];
+    for (int split = 0; split < 2; split++) {
+        Options o; o.threads = split ? 2 : 1;
+        Config cfg(o);
+        cfg.domain(0);
+        auto& q = cfg.add<Quiet>("q");
+        cfg.domain(split ? 1 : 0);
+        auto& z = cfg.add<Sleeper>("z");
+        cfg.link(q.out, z.in, 3);
+        Sim s = cfg.build();
+        for (Cycle n : {5u, 9u, 1u, 30u}) { s.run(n); s.wake("z"); }
+        s.run(10);
+        d[split] = s.digest();
+    }
+    CHECK_EQ(d[0], d[1]);
+}
+
+DEATH_TEST(wake_of_an_unknown_unit_is_fatal, "no unit named 'nope'") {
+    Config cfg;
+    auto& q = cfg.add<Quiet>("q");
+    auto& z = cfg.add<Sleeper>("z");
+    cfg.link(q.out, z.in, 1);
+    Sim s = cfg.build();
+    s.wake("nope");
+}

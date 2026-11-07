@@ -554,8 +554,8 @@ Sim::Impl* Internals::split(Config::Impl& G) {
     T->sz.total_words = total + outbox_words;
     T->sz.chips = unsigned(std::max<size_t>(1, by_chip.size()));
     T->sz.words_per_chip = T->sz.total_words / T->sz.chips;
-    std::string rep = std::to_string(declared) + " domains in " + std::to_string(D) + " engines on " +
-                      std::to_string(T->nthreads) + " threads; crossings:";
+    std::string rep = (G.placement.empty() ? std::to_string(declared) + " domains in " : G.placement + "; ") +
+                      std::to_string(D) + " engines on " + std::to_string(T->nthreads) + " threads; crossings:";
     const Kind kinds[] = {Kind::link, Kind::fifo, Kind::credit, Kind::hold, Kind::reg, Kind::count};
     bool any = false;
     for (Kind k : kinds)
@@ -598,6 +598,7 @@ void* Threads::unit_ptr(const std::string& name, const TypeInfo* type) const {
     return Internals::unit_ptr(sims[dom_index(name)], name, type);
 }
 uint64_t Threads::steps(const std::string& name) const { return sims[dom_index(name)].steps(name); }
+void Threads::wake(const std::string& name) { sims[dom_index(name)].wake(name); }   // W10: in its own domain
 std::string Threads::sleepers() const {
     std::string s;
     for (auto& x : sims) s += x.sleepers();

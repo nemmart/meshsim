@@ -37,6 +37,9 @@ namespace sim::detail {
 
 bool split_needed(const Internals::CImpl& I);        // more than one domain declared, and more than one engine (W10)
 void check_domains(const Internals::CImpl& I);       // W10: no Wire or RegFile across declared domains (fatal)
+// W10 (partition.cpp): Placement::by_load: each unit's group in [0, groups), the interval it assumed, a report line.
+std::vector<unsigned> place_by_load(const Internals::CImpl& G, unsigned threads, unsigned& groups, Cycle& interval,
+                                    std::string& report);
 
 struct Xl {                                      // an outbox entry's translation, by its source-side index
     uint32_t dst = kNone;                        // the destination port's index in the destination domain
@@ -133,6 +136,7 @@ struct Threads {
     uint16_t type_of(const std::string& name) const;
     void* unit_ptr(const std::string& name, const TypeInfo* type) const;
     uint64_t steps(const std::string& name) const;
+    void wake(const std::string& name);              // W10: Sim::wake, in the unit's domain
     uint64_t digest() const;
     std::string sleepers() const;
 

@@ -67,3 +67,7 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   gcc's best 4.3). gcc stays in `make check`, both compilers in both builds.
 - **D19. API reviews** (owner, 2026-11-07; amends D10): the integrator reviews APIs; the owner looks only at points the
   integrator flags for his judgement. Stage 2 and later implementation still start on the owner's go-ahead.
+- **D20. Explicit wakes, with tools to catch a missed one** (owner, 2026-11-07): a unit that leaves data in an input is not
+  stepped again unless it asks; accepted provided development has tools that catch the mistake: the step-all check
+  (digest equal to the ready-driven run), a debug detector naming any unit asleep with data waiting in an input and no wake
+  pending, and an end-of-run report of the same. Stage 2 of W3 and W5 start (owner's go-ahead).

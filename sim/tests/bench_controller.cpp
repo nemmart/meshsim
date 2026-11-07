@@ -1,6 +1,6 @@
 // bench_controller: the controller's speed (D13, D18: run it pinned to one P-core, clang release).
 //
-//   bench_controller [--iters N] [--reps R] [--trace] [--only engine|core]
+//   bench_controller [--iters N] [--reps R] [--trace] [--only engine|core] [--threads T --cpus a,b,...]
 //
 // The program: booted as `hello` is (the boot ROM, the replayed command and GO), then a loop of N iterations of nine
 // instructions, 13 cycles: a data-memory load and store, three ALU operations, a multiply (3 cycles), a register-block load
@@ -10,8 +10,12 @@
 //            cycles/s, ns per unit step (the run alone: not the build)
 //   core     the same program from its entry (no boot) on the plain core (rv32.h) with a constant environment, stepped
 //            when it asks: the interpreter's own cost, no engine and no register block
+//   threads  (--threads T) T controllers, each running the program on its own thread (W4's run_independent; thread k on
+//            cpus[k % size]): the aggregate instructions/s and each thread's ns per step
 // Run from sim/ (it reads the hello golden's replayed lines and the boot ROM).
+#include <algorithm>
 #include <chrono>
+#include <memory>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -19,6 +23,7 @@
 #include <vector>
 
 #include "golden_run.h"
+#include "parallel.h"
 #include "rv32_asm.h"
 
 using namespace test;
@@ -71,12 +76,17 @@ int main(int argc, char** argv) {
     uint32_t iters = 10000000, reps = 3;
     bool trace = false;
     const char* only = "";
+    unsigned threads = 0;
+    std::vector<int> cpus;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--iters") && i + 1 < argc) iters = uint32_t(atol(argv[++i]));
         else if (!strcmp(argv[i], "--reps") && i + 1 < argc) reps = uint32_t(atoi(argv[++i]));
         else if (!strcmp(argv[i], "--trace")) trace = true;
         else if (!strcmp(argv[i], "--only") && i + 1 < argc) only = argv[++i];
-        else { fprintf(stderr, "usage: bench_controller [--iters N] [--reps R] [--trace] [--only engine|core]\n"); return 2; }
+        else if (!strcmp(argv[i], "--threads") && i + 1 < argc) threads = unsigned(atoi(argv[++i]));
+        else if (!strcmp(argv[i], "--cpus") && i + 1 < argc)
+            for (char* t = strtok(argv[++i], ","); t; t = strtok(nullptr, ",")) cpus.push_back(atoi(t));
+        else { fprintf(stderr, "usage: bench_controller [--iters N] [--reps R] [--trace] [--only engine|core] [--threads T --cpus a,b,...]\n"); return 2; }
     }
     // The check: the engine and the direct driver agree on the program, and it does what it should.
     {
@@ -91,6 +101,31 @@ int main(int argc, char** argv) {
     }
     Setup s;
     if (!setup(iters, s)) return 2;
+    if (threads) {                                      // T controllers on T threads, the same program each
+        for (uint32_t k = 0; k < reps; k++) {
+            std::vector<std::unique_ptr<Tile>> tile(threads);
+            std::vector<EngineRun> res(threads);
+            sim::run_independent(threads,
+                [&](unsigned i) {
+                    tile[i] = std::make_unique<Tile>(s.im, s.c, 64);
+                    tile[i]->core.log = nullptr;
+                    return build_engine(*tile[i], s.g, sim::Options{});
+                },
+                [&](unsigned i, sim::Sim& sm) { res[i] = run_built(sm, *tile[i], s.g, s.header); },
+                cpus);
+            double slowest = 0, sum_ns = 0; uint64_t instr = 0; bool ok = true;
+            for (unsigned i = 0; i < threads; i++) {
+                slowest = std::max(slowest, res[i].seconds);
+                instr += res[i].instructions;
+                sum_ns += res[i].seconds / double(res[i].steps[0] + res[i].steps[1] + res[i].steps[2]) * 1e9;
+                ok = ok && res[i].lines.size() > 3 && res[i].lines[res[i].lines.size() - 4].rfind("END halt 5", 0) == 0;
+            }
+            printf("threads %u: N %u each: %.2f M instructions/s in all (%.2f per thread), %.2f ns per step on average, "
+                   "slowest thread %.3f s%s\n", threads, iters, instr / slowest / 1e6, instr / slowest / 1e6 / threads,
+                   sum_ns / threads, slowest, ok ? "" : "  (A THREAD DID NOT HALT BY SIM_EXIT)");
+        }
+        return 0;
+    }
     for (uint32_t k = 0; k < reps && strcmp(only, "core"); k++) {
         uint32_t cap = trace ? uint32_t(9ull * iters + 1000) : 64;
         Tile t(s.im, s.c, cap);

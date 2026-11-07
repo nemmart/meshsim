@@ -570,3 +570,5 @@ at cycle 22 (18 + 5 - 1), and fails with the cap removed; with the detector off,
 - 2026-11-07: the rings' 32-bit fields (a branchy wrap found locally); Quest 132, the performance pass A/B on the runner.
 - 2026-11-07: the solo loop set aside; the result-only form's test; REPORT drafted; the idle jump capped at the earliest
   suspect's deadline (W4's finding).
+- 2026-11-07: main merged (W4's form 2 and E5 digest); step-all comparisons and W5's 67 goldens under the six option sets
+  re-run with the new digest, all equal; REPORT finished. M1 done.

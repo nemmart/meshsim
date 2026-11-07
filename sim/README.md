@@ -34,9 +34,11 @@ no locks in the cycle.
 **Payloads are 64-bit words, untyped** (owner, 2026-11-06): no templated transports or message types. Everything in motion is
 a small group of `uint64_t` words whose interpretation is up to the destination; a transport (a delivery list, a ring, a
 `Fifo`, a `Hold`, a `Link`) moves words and never looks at them. A large payload travels as a handle, which is itself one
-64-bit word. *(Proposed, for the plan: a delivery entry is one header word, the destination port id and the word count, plus
-up to a small fixed number of payload words, enough for the largest message, a link word with its header; anything bigger
-goes by handle.)*
+64-bit word. **Inline up to 128 bits; anything bigger by pointer** (owner): the receiver knows what to do with it. **The mesh's link word**
+(128-bit payload plus a 54-bit header, three words in `ref`) is the case to measure: (a) **two words, the routing header and
+the data** (owner's proposal): routers read only the header word, never dereference; the second word is the data itself for a
+32- or 64-bit payload, a pointer to the 128 bits otherwise, the header's size field saying which; against (b) **three words
+inline**, no allocation or dereference, one more word copied per hop. The first benchmarks measure both on a busy mesh.
 
 **Build** (owner, 2026-11-06): **plain `make`**, not CMake. **No RTTI anywhere** (`-fno-rtti`; owner): no `dynamic_cast` or `typeid`;
 the framework gives each unit type its own small integer id, which the run lists are grouped by anyway.

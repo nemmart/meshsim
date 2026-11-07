@@ -8,6 +8,7 @@
 
 #include "statefp.h"
 #include "units/regblock.h"
+#include "units/rv32.h"
 #include "units/table_store.h"
 
 namespace fp {
@@ -19,11 +20,20 @@ constexpr uint64_t kRegsCheckedThrough = 824;
 
 struct G1Tile {
     unsigned tile = 0;
+    const units::Rv32* core = nullptr;           // its memories: core->dmem, core->imem
     const units::RegBlockState* ctl = nullptr;   // null: the reset state
     const units::TableMems* ts = nullptr;
     const units::HistMem* hist = nullptr;
 };
 
+// StateFp.core: pc, x1-x31, the CSRs, mcycle (caught up to the end of c for a core asleep since `last`, as Chip.catchUp
+// does; a stopped core's keeps counting, as ref's halted core does), halt, inWfi, inHandler, stall (as at the end of c),
+// sendRetry, regLoad and its pc.
+void w_core(const void* g1tile, FpOut& o, const FpCtx& x);
+// StateFp cmem: data and program memory (scanned: 2 x 8 K words, ~30 us; only big SRAM is kept incrementally), then the
+// port-B bus (empty until the observer). `w_core_mem` is the same without the bus (CoreFp's "mem", M1's goldens).
+void w_cmem(const void* g1tile, FpOut& o, const FpCtx& x);
+void w_core_mem(const void* g1tile, FpOut& o, const FpCtx& x);
 void w_we(const void* g1tile, FpOut& o, const FpCtx& x);
 void w_ag(const void* g1tile, FpOut& o, const FpCtx& x);
 void w_gather(const void* g1tile, FpOut& o, const FpCtx& x);

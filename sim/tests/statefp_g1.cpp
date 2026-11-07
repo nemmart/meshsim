@@ -15,6 +15,40 @@ uint32_t dma_config(const G1Tile& g) { return g.ctl ? g.ctl->dma_config : 0; }
 uint32_t record_base(const G1Tile& g) { return g.ctl ? g.ctl->record_base : 0; }
 }  // namespace
 
+void w_core(const void* p, FpOut& o, const FpCtx& x) {
+    const units::Rv32& k = *tile(p).core;
+    const uint64_t c = x.cycle;
+    uint64_t mcycle = k.mcycle;
+    uint32_t stall = k.stall;
+    if (k.stop != units::Stop::running) mcycle += c - k.stop_cycle;      // ref's halted core: mcycle++ every cycle
+    else if (c > k.last) {                                              // asleep since `last`: in a WFI or a stall
+        uint64_t gap = c - k.last;
+        mcycle += gap;
+        if (!k.in_wfi) stall -= uint32_t(gap);
+    }
+    o.w("pc", k.pc);
+    for (unsigned r = 1; r < 32; r++) o.wi("x", r, k.x[r]);
+    o.w("mstatus", k.mstatus); o.w("mie", k.mie); o.w("mtvec", k.mtvec); o.w("mscratch", k.mscratch);
+    o.w("mepc", k.mepc); o.w("mcause", k.mcause); o.w("mtval", k.mtval);
+    o.w("mcycle", mcycle);
+    o.w("halt", uint64_t(int64_t(k.halt)));
+    o.w("inWfi", k.in_wfi); o.w("inHandler", k.in_handler);
+    o.w("stall", stall);
+    o.w("sendRetry", 0);                                                // M2's send path: with the core's send port
+    bool lw = k.load_wait_t == c;
+    o.w("regLoad", lw);
+    if (lw) o.w("regLoadPc", k.load_wait_pc);
+}
+void w_core_mem(const void* p, FpOut& o, const FpCtx&) {
+    const units::Rv32& k = *tile(p).core;
+    o.w("dmem", MemSum::scan(R_DMEM, k.dmem, units::MEM_WORDS));
+    o.w("pmem", MemSum::scan(R_PMEM, k.imem, units::MEM_WORDS));
+}
+void w_cmem(const void* p, FpOut& o, const FpCtx& x) {
+    w_core_mem(p, o, x);
+    link_empty(o, "portB");
+}
+
 // StateFp.we: bucketDigit, histDigit, augmentBase; the pointer stage; awaiting; in (we-in), tsRet. (G3: stage, buses.)
 void w_we(const void* p, FpOut& o, const FpCtx&) {
     const G1Tile& g = tile(p);
@@ -93,6 +127,7 @@ void w_req(const void* p, FpOut& o, const FpCtx&) {
 
 void register_g1(FpRegistry& r, const G1Tile& g) {
     const std::string t = "t" + std::to_string(g.tile) + ".";
+    if (g.core) { r.add(t + "core", w_core, &g); r.add(t + "cmem", w_cmem, &g); }
     r.add(t + "sram", w_sram_stub, &g);
     r.add(t + "sram.data", w_sram_data_stub, &g);
     r.add(t + "we", w_we, &g);

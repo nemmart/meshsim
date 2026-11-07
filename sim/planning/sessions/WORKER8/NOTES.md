@@ -154,3 +154,13 @@ cycle against `golden-m2`, under every debug option (shuffle, both orders, step-
   that lands G3's mode-1 path); wfi fully with W9. Main merged (W9's stage-0 headers): `G1IO` is gone, `add_g1` returns
   chip.h's `ControlIO` and is a `ControlBuilder` (static_assert); `linkword.h` now only adds to net.h's `units::lw`
   what net.h lacks.
+- 2026-11-07: **the core's and the memories' writers**, checked against ref on all 67 M1 goldens, every cycle:
+  `tests/ref/CoreFp.java` (TraceRun's setup copied, StateFp.core and the memories after every cycle; reflection only),
+  `tests/fp-m1/regen.sh [--check]` -> `tests/fp-m1/NAME.corefp` (67 files, 22,873 cycles, 1.4 MB; cycle 0's core hash
+  is regs.fp's `t0.core` at 0). `w_core` catches a sleeping core up to the end of c (mcycle, the stall left) and keeps a
+  stopped core's mcycle counting, as ref's halted core does; `w_cmem`/`w_core_mem` scan the two memories (2 x 8 K words,
+  ~30 us: not kept incrementally, so a store in the loop costs nothing extra; big SRAM is the one kept incrementally,
+  with G3). `test_statefp_core`: W5's controller on the engine, ready-driven and step-all: **every cycle's core stream
+  equals ref's on all 67 runs**; the memories too, except at the 284 cycles where the bench's MEMW is in flight (ref's
+  port-B write has landed: the shifted end of cycle the observer closes; counted and printed). A corrupted ref line is
+  caught (checked by hand).

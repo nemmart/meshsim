@@ -13,7 +13,7 @@ runs, **D28/D29** where it can't be), **`sim/tests/AUDIT-M2.md`** (sections 1, 2
 `sim/tests/golden-m2/`, and the reports of the workers whose code you extend:
 `sim/planning/sessions/WORKER8-REPORT.md` (G1: the register block, the director, port B, **the configuration parts of
 the write engine and table store it already built in your future units' files**, the fingerprint library and how units
-plug in) and `WORKER9-REPORT.md` (G2: the chip's assembly and driver, **the injection unit's read-side slot
+plug in) and `sim/planning/sessions/WORKER9-REPORT.md` (G2: the chip's assembly and driver, **the injection unit's read-side slot
 `InjReadSide` and the shared `Tokens`**, the partition). **The framework:** `sim/src/sim.h`, `config.h`, `PORTS.md`
 (incl. 2b, the Link that holds words) and `WORKER3-REPORT.md`. **The oracle:** `BigSRAM.java`, `SRAMReadQueue.java`,
 `InjectionPath.java` (read side), `WriteEngine.java`, `TableStore.java`, the read port's sources, in

@@ -36,6 +36,7 @@ final class FpHooks {
         if (kv.containsKey("fpdump")) for (String d : kv.get("fpdump").split(";")) { String[] x = d.split(":"); dumps.put(Long.parseLong(x[0]), List.of(x[1].split(","))); }
         dumpW = dumps.isEmpty() ? null : new PrintWriter(new FileWriter(kv.getOrDefault("dumpto", "fpdump.txt")));
         phasesSeen = c.phases.phases.size();
+        costAt = Long.parseLong(kv.getOrDefault("fpcost", "-1"));
         if (fp != null) { fp.println("# M2Sort state fingerprint v1 (sim/tests/AUDIT-M2.md section 6): cycle unit hash"); fingerprint(true); }
         if (cover != null) snap();
     }
@@ -50,6 +51,7 @@ final class FpHooks {
         boolean phase = c.phases.phases.size() != phasesSeen;
         if (phase) { phasesSeen = c.phases.phases.size(); if (cover != null) snap(); }
         if (dumpW != null && dumps.containsKey(t)) for (String u : dumps.get(t)) StateFp.dump(dumpW, c, u);
+        if (t == costAt) cost();
         if (fp == null) return;
         boolean inWin = t >= winA && t <= winB;
         if (inWin && sramH == null) startWindow();
@@ -57,6 +59,22 @@ final class FpHooks {
         if (inWin) fingerprintWindow();
         else if (t % every == 0 || phase || t == lastReadySeen && lastReadySeen >= 0 && wall.get(wall.size() - 1)[0] == t) fingerprint(fpData);
         if (sramH != null && t >= winB) endWindow();
+    }
+    long costAt = -1;
+    /** fpcost=C: at cycle C, each unit's fingerprint timed over all 64 tiles (best of 10 after 3 warm-ups), in us. */
+    void cost() {
+        StringBuilder b = new StringBuilder("fpcost at cycle " + c.cycle + " (us for all 64 tiles, best of 10):");
+        for (String u : StateFp.TILE_UNITS) {
+            long best = Long.MAX_VALUE;
+            for (int r = 0; r < 13; r++) { long a = System.nanoTime(); for (Tile p : c.tiles) { StateFp.Out o = new StateFp.Out(); StateFp.unit(o, c, p, u, c.cycle); o.done(); } long d = System.nanoTime() - a; if (r >= 3) best = Math.min(best, d); }
+            b.append(String.format(" %s %.0f;", u, best / 1e3));
+        }
+        for (String u : StateFp.CHIP_UNITS) {
+            long best = Long.MAX_VALUE;
+            for (int r = 0; r < 13; r++) { long a = System.nanoTime(); StateFp.Out o = new StateFp.Out(); StateFp.chipUnit(o, c, u, c.cycle); o.done(); long d = System.nanoTime() - a; if (r >= 3) best = Math.min(best, d); }
+            b.append(String.format(" %s %.0f;", u, best / 1e3));
+        }
+        System.out.println(b);
     }
     void end() {
         if (fp != null) { fingerprint(true); fp.close(); }

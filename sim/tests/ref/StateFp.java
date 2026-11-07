@@ -374,10 +374,10 @@ final class StateFp {
 
     // ================================================================ one fingerprint
     /** Every unit's hash at the end of cycle c (= ch.cycle): lines "c unit hash", then "c chip hash" over them all. */
-    static void write(PrintWriter w, Chip ch, boolean withData) {
+    static void write(PrintWriter w, Chip ch, boolean withData, boolean[] tiles) {
         long cyc = ch.cycle, all = 0x6A09E667F3BCC908L; int n = 0;
         for (Tile p : ch.tiles) for (String u : TILE_UNITS) {
-            if (!withData && u.equals("sram.data")) continue;
+            if (!tiles[p.idx] || !withData && u.equals("sram.data")) continue;
             Out o = new Out(); unit(o, ch, p, u, cyc); long h = o.done();
             w.printf("%d t%d.%s %016x%n", cyc, p.idx, u, h); all = fmix(all ^ h); n++;
         }

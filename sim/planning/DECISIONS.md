@@ -51,3 +51,7 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   its `mmap_rnd_bits` check failed only because the runner's user can't read the sysctl, while TSan itself now works.
 - **D14. Fp128 is a Crandall prime** (owner): 2^128 - 159 for the benchmarks. Reduce by folding, not Montgomery: multiply the
   high half of the 256-bit product by 159, combine it with the low half in ~160-bit arithmetic, then normalise.
+- **D15. The bar** (D8, measured by W2, Quest 123: ReplayBench on segment 0 of evm-zone-29, `sim-step-cost`, repeat 2):
+  **36.8 µs per chip-cycle for one replay alone, and about 100,000-110,000 chip-cycles/s for the whole box.** Today's engine
+  is memory-bound across the box (12 JVMs give 3.6× one; two sharing a P-core each run 3.4× slower), so the new framework is
+  judged on **memory footprint per chip** as well as speed per thread: the footprint decides how many chips run side by side.

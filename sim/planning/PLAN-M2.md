@@ -67,6 +67,5 @@ extend D5's one observer, so it is the owner's decision, with W7's proposal and 
   proposed to the owner, not yet agreed: G3 (the memory path), first `regs`' path from 825.
 - **W9:** merged; idle. Next scope proposed, not yet agreed: G4 (AG, gather, the director's modes 2-4) on G3's read
   queue; meanwhile `a2a`'s network part waits on G3, NetTest last.
-- **W10:** 4bf2f54 (the phase timer, the drain's prefetch and direct delivery) **not merged**: with W9's chip, the
-  observer's accounting fails in split runs (`t0.dir.in`: 1 in flight, 2 found). W10 merges main, fixes it, re-checks;
-  then the NOTES entries, the placement objective weighing crossings, measurements on the real chip.
+- **W10:** merged (bdceac0: direct delivery, the observer's per-window fix); next the placement objective, measured on
+  W9's chip first.

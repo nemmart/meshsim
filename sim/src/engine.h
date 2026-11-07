@@ -12,6 +12,7 @@
 #include "base/bucket.h"
 #include "base/fatal.h"
 #include "base/ring.h"
+#include "base/value_pool.h"
 
 namespace sim {
 
@@ -19,6 +20,7 @@ enum class Kind : uint8_t { link, fifo, credit, hold, reg, wire, regfile, count,
 inline constexpr unsigned kKinds = 9;
 inline constexpr Cycle kNoCycle = ~Cycle(0);
 inline constexpr uint32_t kNone = ~0u;
+inline constexpr uint16_t kNoClass = 0xFFFF;   // a port carrying its payload by value
 
 // One per Link input: the visible words (a ring as deep as the capacity) and the count in the wheel.
 struct LinkPort {
@@ -27,6 +29,7 @@ struct LinkPort {
     uint32_t owner;           // the consumer's instance
     uint32_t inflight;        // entries in the wheel for this port
     uint16_t cap;             // in flight + visible (WordDelayLine: L + 2)
+    uint16_t cls;             // the size class of a by-reference payload, kNoClass if by value
     uint8_t bit, width;
 };
 
@@ -40,7 +43,7 @@ struct FifoPort {
     uint32_t owner, count_idx;
     uint32_t ret;             // credit Fifo: the return route; kNone for a plain Fifo
     uint32_t credits, producer;
-    uint16_t depth;
+    uint16_t depth, cls;
     uint8_t bit, width, pbit;
 };
 
@@ -80,6 +83,7 @@ struct HoldPort {
     Cycle last_take, refused_at;
     uint64_t refusals;
     uint32_t owner, producer;
+    uint16_t cls;
     uint8_t bit, pbit, width;
     bool occ;
 };
@@ -93,6 +97,7 @@ struct Route {
     uint32_t dest;            // the destination's pool index: an entry's first word
     uint32_t owner;           // the producer's instance (checks)
     uint16_t latency;
+    uint16_t cls;             // the size class of a by-reference payload, kNoClass if by value
     uint8_t width;
     Kind kind;
 };
@@ -139,10 +144,12 @@ struct Engine {
     uint32_t* reader_inst = nullptr;   // the readers of Regs, Wires and RegFiles, by port, contiguous
     uint8_t* reader_bit = nullptr;
     Route* routes = nullptr;
+    SlotPool* pools = nullptr;         // one per size class (by-reference payloads)
     Wheel* wheels = nullptr;
     RunSet* runs = nullptr;
     uint32_t nwheels = 0, nruns = 0, nlinks = 0, nfifos = 0, nholds = 0, nroutes = 0, nregs = 0, nwires = 0, nregfiles = 0,
              ncounts = 0;
+    uint32_t npools = 0;
     uint32_t cur_level = 0;            // the level running (checks)
     uint64_t pending = 0;         // entries in the wheels (fast-forward when 0 and nothing is ready)
     const char* const* unit_names = nullptr;   // for messages
@@ -367,6 +374,30 @@ inline uint64_t Ctx::through_last(CountIn p) const {
     return c.total - (c.last_cycle == e_->now ? c.last_amount : 0);
 }
 
+// By-reference payloads
+namespace detail {
+inline uint16_t cls_of(const Engine* e, LinkOut p) { return e->routes[p.route].cls; }
+inline uint16_t cls_of(const Engine* e, FifoOut p) { return e->routes[p.route].cls; }
+inline uint16_t cls_of(const Engine* e, CreditOut p) { return e->routes[p.route].cls; }
+inline uint16_t cls_of(const Engine* e, HoldOut p) { return e->routes[p.route].cls; }
+inline uint16_t cls_of(const Engine* e, LinkIn p) { return e->links[p.idx].cls; }
+inline uint16_t cls_of(const Engine* e, FifoIn p) { return e->fifos[p.idx].cls; }
+inline uint16_t cls_of(const Engine* e, HoldIn p) { return e->holds[p.idx].cls; }
+template <class P>
+SlotPool& pool_of(Engine* e, P p, uint32_t cur) {
+    uint16_t c = cls_of(e, p);
+    DCHECK(c != kNoClass, "a slot operation on a port carrying its payload by value (%s)", e->unit_names[cur]);
+    (void)cur;
+    return e->pools[c];
+}
+}  // namespace detail
+inline uint32_t Ctx::alloc(LinkOut p) { return detail::pool_of(e_, p, cur_).alloc(); }
+inline uint32_t Ctx::alloc(FifoOut p) { return detail::pool_of(e_, p, cur_).alloc(); }
+inline uint32_t Ctx::alloc(CreditOut p) { return detail::pool_of(e_, p, cur_).alloc(); }
+inline uint32_t Ctx::alloc(HoldOut p) { return detail::pool_of(e_, p, cur_).alloc(); }
+template <class P> Word* Ctx::slot(P p, uint32_t i) const { return detail::pool_of(e_, p, cur_).slot(i); }
+template <class P> void Ctx::free(P p, uint32_t i) { detail::pool_of(e_, p, cur_).free(i); }
+
 // ---- the delivery loops, one per (kind, width) (D16) ---------------------------------------------------------------
 namespace detail {
 template <unsigned W>
@@ -391,6 +422,7 @@ void deliver_fifo(Engine& e, const Bucket& b) {
             f.overflows++;
             if (f.first_overflow == kNoCycle) f.first_overflow = put_at;
             if (f.count_idx != kNone) e.count_inc(f.count_idx, 1);       // counted at t + 1 (PORTS.md 3, 8)
+            if (f.cls != kNoClass) e.pools[f.cls].free(uint32_t(p[1]));   // a dropped by-reference payload: its slot back
             continue;
         }
         Word* d = f.ring.push();

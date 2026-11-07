@@ -134,6 +134,15 @@ No change foreseen; any proposal goes here first.
    no longer catch a core that stalls on the wrong cycle; modelled this way it is an output, checked line for line. The
    trace's GO and CMD lines at s mean "seen from s", so the bench puts them at s - 1. To check against AUDIT.md.
 
+### For sketch 2's revision against AUDIT.md (integrator, 2026-11-07)
+
+- **MEMW**: port-B writes into the traced tile's memories, as a bench `Link` carrying address and value into the core
+  (visible from t + 1, as W2's observer writes them).
+- **GO or CMD visible from cycle 0** can't be put at -1. In `ref` it can't happen: the first cycle is 1 (`Chip.step` runs
+  `++cycle`), the earliest `endCycle` is 1, so GO and CMD are seen from 2 at the earliest (the goldens' first CMD is at
+  8). So **the engine numbers its first cycle 1, as `ref` and the traces do**, and the bench refuses at configuration
+  (fatal, naming the event) any event that would need a put before the first cycle.
+
 ## Log
 
 - 2026-11-07: plan agreed (owner's go-ahead with five notes). W2's audit not yet on `sim-w2`; W6 not started.

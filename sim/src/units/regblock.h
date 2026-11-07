@@ -33,7 +33,8 @@ struct RegBlockState {
     uint64_t ev_prev[15] = {};                  // the condition counts as endCycle last saw them (Conditions.N)
     bool ready_pulse = false;                   // READY rose at this endCycle (Chip collects readyPulseAt == t)
     bool error_line = false;                    // TILE_CONDITIONS != 0 after this endCycle
-    uint64_t unexpected_total = 0, done_early = 0, counter_wraps = 0, router_sends = 0;
+    uint64_t unexpected_total = 0, done_early = 0, counter_wraps = 0, router_sends = 0, bad_total = 0;
+    enum : unsigned { COND_BAD = 1 };
     // ---- statistics, and ref's violations (counted) ----
     uint64_t gos = 0, dones = 0, readies = 0, sends = 0, trace_stores = 0, violations = 0, sim_exit_at = 0;
     uint32_t sim_exit_value = 0;
@@ -45,7 +46,8 @@ struct RegBlockState {
         // M2
         uint32_t kline = 0;                // a decrement of this counter (1-7) fell due at t (the director's K-stage line)
         bool send_busy = false;            // the send hold occupied at the end of t (W9's Reg), or the core's put at t
-        uint64_t router_ovf = 0, bad = 0, we_in_ovf = 0, gather_ovf = 0;   // condition counts, through t
+        bool bad = false;                  // the director dropped a bad packet at t (an event: ERRORS [1] at endCycle(t))
+        uint64_t router_ovf = 0, we_in_ovf = 0, gather_ovf = 0;   // FIFO overflow counts through t (D28: Counts)
     };
 
     UNITS_NOINLINE void end_cycle(uint64_t t, const In& in) {
@@ -59,7 +61,8 @@ struct RegBlockState {
         if (in.op == BUS_STORE) clears = apply(t, in.arg, in.v);                                     // 2.
         if (in.landed) { landed = true; events |= 1u << EV_COMMAND; }                                // 3.
         if (in.op == BUS_ERROR) conditions |= 1u << in.arg;                                          // 4. new errors
-        const uint64_t counts[] = {in.router_ovf, in.bad, unexpected_total, 0, in.we_in_ovf, 0, in.gather_ovf, 0, done_early};
+        if (in.bad) { bad_total++; conditions |= 1u << COND_BAD; }
+        const uint64_t counts[] = {in.router_ovf, bad_total, unexpected_total, 0, in.we_in_ovf, 0, in.gather_ovf, 0, done_early};
         for (unsigned i = 0; i < sizeof counts / sizeof counts[0]; i++) {
             if (counts[i] > ev_prev[i]) conditions |= 1u << i;
             ev_prev[i] = counts[i];
@@ -173,7 +176,7 @@ struct RegBlockState {
         const uint64_t m2[] = {router_hdr, router_addr, router_w[0], router_w[1], router_w[2], dma_config, record_base,
                                rd_setup, uint64_t(q_all) | uint64_t(cond_all_prev) << 1 | uint64_t(rd_done_prev) << 2
                                    | uint64_t(ready_pulse) << 3 | uint64_t(error_line) << 4,
-                               unexpected_total, done_early, counter_wraps, router_sends};
+                               unexpected_total, done_early, counter_wraps, router_sends, bad_total};
         for (uint64_t v : m2) h = digest_mix(h, v);
         for (unsigned c = 0; c < 8; c++) h = digest_mix(h, uint64_t(remaining[c]) << 2 | uint64_t(q_one[c]) << 1 | cond_one_prev[c]);
         for (uint64_t v : ev_prev) h = digest_mix(h, v);

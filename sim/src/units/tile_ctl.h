@@ -15,7 +15,11 @@
 //   send_busy   Reg, width 1, from W9's injection unit: the send hold occupied at the end of t; STATUS [3] is that OR
 //               the core's own put at t (a send store or a retry: ref's `!sendHold.isEmpty(t)`, WordHold.isEmpty =
 //               !occ && !pendPut), which the block sees on `bus`; none landed yet reads as not busy
-//   router_ovf, we_in_ovf, gather_ovf, bad: Counts read through_last (endCycle(t) sees the increments of t)
+//   bad         Link(1), width 0, from the director: a bad packet dropped at t (ERRORS [1] at endCycle(t)). A condition
+//               that sets ERRORS in ref's cycle reaches the block as an event (PORTS.md 8): it steps the block. UNEXPECTED
+//               and DONE_EARLY arise in the block itself (the K-line's event, a store); BUS_ERROR and ILLEGAL on `bus`.
+//   router_ovf, we_in_ovf, gather_ovf: FIFO overflow Counts read through_last, the exception: D28 (ref's lazy FIFO
+//               commit counts an overflow a variable number of cycles late; no M2 program overflows a FIFO)
 // Its outputs:
 //   regs        RegFile, read by the core at level 1: the view for t (see TileCtl::kView)
 //   wake, irq   Wires to the core
@@ -48,9 +52,9 @@ namespace units {
 // ------------------------------------------------------------------------------------------------- the register block
 struct TileCtl {
     // ---- inputs ----
-    sim::LinkIn bus, go, landed, kline;
+    sim::LinkIn bus, go, landed, kline, bad;
     sim::RegIn send_busy;
-    sim::CountIn router_ovf, we_in_ovf, gather_ovf, bad;
+    sim::CountIn router_ovf, we_in_ovf, gather_ovf;
     // ---- outputs ----
     sim::RegFileOut regs, dma;
     sim::WireOut wake, irq;
@@ -67,7 +71,8 @@ struct TileCtl {
     TileCtl(sim::Ports& p, const RegBlockState& initial) : s(initial) {
         p.in(bus, "bus", 2); p.in(go, "go", 0); p.in(landed, "landed", 0); p.in(kline, "kline", 1);
         p.in(send_busy, "send_busy", 1);
-        p.in(router_ovf, "router_ovf"); p.in(we_in_ovf, "we_in_ovf"); p.in(gather_ovf, "gather_ovf"); p.in(bad, "bad");
+        p.in(bad, "bad", 0);
+        p.in(router_ovf, "router_ovf"); p.in(we_in_ovf, "we_in_ovf"); p.in(gather_ovf, "gather_ovf");
         p.out(regs, "regs", kRegs); p.out(dma, "dma", DMA_REGS); p.out(wake, "wake"); p.out(irq, "irq");
         p.out(line, "line", 1);
     }
@@ -79,6 +84,7 @@ struct TileCtl {
         if (c.ready(go)) { c.take(go); in.go = true; }
         if (c.ready(landed)) { c.take(landed); in.landed = true; }
         if (c.ready(kline)) { in.kline = uint32_t(c.peek(kline)[0]); c.take(kline); }
+        if (c.ready(bad)) { c.take(bad); in.bad = true; }
         bool send_put = false;
         if (c.ready(bus)) {
             const sim::Word* m = c.peek(bus);
@@ -87,7 +93,7 @@ struct TileCtl {
             c.take(bus);
         }
         in.send_busy = send_put || (c.valid(send_busy) && c.read(send_busy)[0] != 0);   // ref: !sendHold.isEmpty(t)
-        in.router_ovf = c.through_last(router_ovf); in.bad = c.through_last(bad);
+        in.router_ovf = c.through_last(router_ovf);
         in.we_in_ovf = c.through_last(we_in_ovf); in.gather_ovf = c.through_last(gather_ovf);
         s.end_cycle(c.now() - 1, in);
         for (unsigned r = 0; r < kRegs; r++) c.write(regs, r, s.reg(r));

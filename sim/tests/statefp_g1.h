@@ -2,14 +2,22 @@
 // G4's units (WORKER8; the streams are StateFp.java's, word for word), plus stubs that write the reset stream of units
 // nobody has built yet (sram, sram.data, rdport, req). A writer reads a G1Tile: the tile's state as the units hold it.
 //
-// Until the port observer lands (NOTES.md), the bus parts of every stream are written empty, and state applied at the
-// shifted end of cycle (the register block's endCycle(c), a table-window store of c) shows one cycle late.
+// With a machine (G1Tile::sim and the units), the writers read the units' inputs in flight at the end of c through the
+// port observer (Sim::observe; the machine built with Options::observe_arrivals) and give ref's view at the end of c:
+//   - a shifted input (one whose latency carries the +1 of the shifted end of cycle: port B, command landed, the
+//     K-line, GO, the bad-packet event, the core's bus and table-window stores) arriving at c + 1 has been applied by
+//     ref at c: the writer applies it to a copy (the block's endCycle(c), a memory's write); one arriving later is
+//     listed with ref's arrival (one less);
+//   - an unshifted bus (the eject link) is listed as it is.
+// Without a machine (plain state: W5's direct driver, the tests), the state is taken as it is.
 #pragma once
 
 #include "statefp.h"
 #include "units/regblock.h"
 #include "units/rv32.h"
+#include "units/controller.h"
 #include "units/table_store.h"
+#include "units/tile_ctl.h"
 
 namespace fp {
 
@@ -24,7 +32,18 @@ struct G1Tile {
     const units::RegBlockState* ctl = nullptr;   // null: the reset state
     const units::TableMems* ts = nullptr;
     const units::HistMem* hist = nullptr;
+    // with a machine: the units whose inputs the observer reads
+    const sim::Sim* sim = nullptr;
+    const units::TileCore* ucore = nullptr;
+    const units::TileCtl* uctl = nullptr;
+    const units::Director* udir = nullptr;
+    const units::TableStore* uts = nullptr;
+    const units::HistStore* uhist = nullptr;
+    const units::Core* m1core = nullptr;          // W5's M1 core: the bench's port-B words on `memw`
+    const units::RegBlock* m1ctl = nullptr;       // W5's M1 block: its inputs in flight (bus, GO, landed, freed)
 };
+// An M2 tile's G1 units by name ("t<k>.core", ...), in a machine built with Options::observe_arrivals.
+G1Tile g1_tile(sim::Sim& s, unsigned k);
 
 // StateFp.core: pc, x1-x31, the CSRs, mcycle (caught up to the end of c for a core asleep since `last`, as Chip.catchUp
 // does; a stopped core's keeps counting, as ref's halted core does), halt, inWfi, inHandler, stall (as at the end of c),

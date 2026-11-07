@@ -4,7 +4,8 @@
 //
 // At t (one packet a cycle, as ref): the packet visible on `in` is taken and switched on its mode (and, mode 0, its
 // address's region):
-//   bad (3.1: mode 0 to a region it can't reach, mode 3 at 128 bits) -> dropped, uncounted, `bad` counted (ERRORS [1]);
+//   bad (3.1: mode 0 to a region it can't reach, mode 3 at 128 bits) -> dropped, uncounted, an event on `bad` (ERRORS [1]
+//   at endCycle(t): an event, not a Count, so it steps the block in ref's cycle: PORTS.md 8);
 //   size 11 -> dropped, uncounted, no error (flagged); a misaligned mode 0, modes 6-7 -> fatal (UB in ref);
 //   mode 0, region 0x00/0x01 -> `port_b` (and `landed` if it covers command slot 0);
 //   mode 0, region 0x03; modes 1, 2, 3 -> `we_in` (the write engine, G3);
@@ -47,17 +48,17 @@ struct Director {
     sim::LinkOut kline;        // width 1: a counted packet's counter id (1-7) -> the block, Link(K + 1)
     sim::FifoOut we_in;        // width 3: mode 0 region 0x03, modes 1-3 -> the write engine, Fifo(we_in_depth) (G3)
     sim::FifoOut gather;       // width 3: mode 4 -> the GATHER engine's queue, Fifo(gather_depth) (G4)
-    sim::CountOut bad;         // bad packets dropped (Conditions.BAD_MODE_OR_SIZE, ERRORS [1])
+    sim::LinkOut bad;          // width 0: a bad packet dropped at t (Conditions.BAD_MODE_OR_SIZE) -> the block, Link(1)
 
     DirectorConfig cfg;
     // statistics (not state: outside the fingerprint)
-    uint64_t accepted = 0, per_mode[lw::N_MODES] = {}, count_only = 0, undefined_size = 0, violations = 0;
+    uint64_t accepted = 0, per_mode[lw::N_MODES] = {}, count_only = 0, undefined_size = 0, violations = 0, bad_packets = 0;
 
     Director(sim::Ports& p, const DirectorConfig& c) : cfg(c) {
         p.in(in, "in", 3);
         p.out(port_b, "port_b", 3); p.out(landed, "landed", 0); p.out(kline, "kline", 1);
         p.out(we_in, "we_in", 3); p.out(gather, "gather", 3);
-        p.out(bad, "bad");
+        p.out(bad, "bad", 0);
     }
     sim::Wake step(sim::Ctx& c) {
         if (!c.ready(in)) return sim::Wake::none();
@@ -71,7 +72,7 @@ struct Director {
         if (lw::read_port_tag(h)) FATAL("director: a read-port result at cycle %llu: not modelled in M2 yet (G3)", (unsigned long long)c.now());
         if (mode == lw::M_WRITE && size != lw::SIZE_UNDEF && !lw::aligned(a, size))
             FATAL("director (tile %u): a mode-0 packet at 0x%x not aligned to its size, cycle %llu: UB (v1.25 s8b)", cfg.tile, a, (unsigned long long)c.now());
-        if (lw::bad_packet(mode, size, a, cfg.periph_present)) { c.inc(bad); violations++; return sim::Wake::none(); }
+        if (lw::bad_packet(mode, size, a, cfg.periph_present)) { c.put(bad); bad_packets++; return sim::Wake::none(); }
         if (size == lw::SIZE_UNDEF) { undefined_size++; violations++; return sim::Wake::none(); }
         if (lw::reserved_mode(mode))
             FATAL("director (tile %u): a packet in the reserved mode %u at cycle %llu: UB (v1.25 s8e)", cfg.tile, mode, (unsigned long long)c.now());
@@ -96,7 +97,7 @@ struct Director {
     uint64_t digest() const {
         uint64_t h = digest_mix(accepted, count_only);
         for (uint64_t v : per_mode) h = digest_mix(h, v);
-        return digest_mix(digest_mix(h, undefined_size), violations);
+        return digest_mix(digest_mix(digest_mix(h, undefined_size), violations), bad_packets);
     }
     static constexpr uint32_t kCmdWord = 0x7FC0 >> 2;                 // command slot 0 (ControllerMemories.COMMAND)
 };

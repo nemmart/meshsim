@@ -242,6 +242,29 @@ struct Engine {
     uint64_t* inst_ticks = nullptr; // W10: Options::calibrate: time stamp ticks per instance's steps, summed (the runs'
                                     // calibrating loops, config.h run_form_cal; null: not timed)
     Cycle* link_at = nullptr;
+    // W10, direct delivery (threads.cpp): a split machine's Link outboxes into this domain are delivered from the source's
+    // buckets at their cycle, not copied at the barrier. xdue: a bit per cycle (& 63) with entries due, set by the drain;
+    // xdue_all: check every cycle (some latency + interval over 64). Empty in one domain (nxin 0: one branch a cycle).
+    struct XIn { Bucket* buckets; const uint32_t* xdst; uint32_t mask; uint8_t width; };
+    XIn* xin = nullptr;
+    uint32_t nxin = 0;
+    uint64_t xdue = 0;
+    bool xdue_all = false;
+    void deliver_xin();
+    // a Link input's words in flight: its count, plus (release builds, which don't count them) those still in the
+    // incoming direct outboxes; between runs (the digest, the observer)
+    uint32_t link_inflight(uint32_t port) const {
+        uint32_t n = links[port].inflight;
+        if (!kDebug)
+            for (uint32_t i = 0; i < nxin; i++) {
+                const XIn& x = xin[i];
+                for (uint32_t b = 0; b <= x.mask; b++) {
+                    const Word* p = x.buckets[b].begin();
+                    for (uint32_t m = x.buckets[b].count(); m; m--, p += x.width + 1u) n += x.xdst[p[0]] == port;
+                }
+            }
+        return n;
+    }
     uint32_t* link_at_off = nullptr;
     // Cost per cycle with activity, not structure (the performance pass):
     uint64_t due[64] = {};        // per cycle mod 64: the wheels with entries due (when every latency < 64: due_ok)
@@ -577,6 +600,25 @@ void deliver_link(Engine& e, const Bucket& b) {
         Word* d = l.ring.push();                                         // width 0: the count only
         for (unsigned k = 0; k < W; k++) d[k] = p[1 + k];
         l.inflight--;
+        e.mark_bit(l.owner, l.bit);
+    }
+}
+// W10: a Link outbox's bucket, delivered from the source's memory by the destination (direct delivery): the entry's
+// first word is the source's index, translated by xdst. In flight isn't counted here in a release build (the drain does
+// it only in debug, with the exact capacity check); a release build checks the visible words against the capacity.
+template <unsigned W>
+void deliver_link_x(Engine& e, const Bucket& b, const uint32_t* xdst) {
+    const Word* p = b.begin();
+    if (__builtin_expect(e.link_at != nullptr, 0))
+        for (uint32_t n = b.count(); n; n--, p += W + 1) { const uint32_t q = xdst[p[0]]; e.link_at[e.link_at_off[q] + e.links[q].ring.tail()] = e.now; }
+    p = b.begin();
+    for (uint32_t n = b.count(); n; n--, p += W + 1) {
+        const uint32_t q = xdst[p[0]];
+        LinkPort& l = e.links[q];
+        if constexpr (kDebug) l.inflight--;
+        else if (__builtin_expect(l.ring.count() >= l.cap, 0)) e.die_link_full(q);
+        Word* d = l.ring.push();
+        for (unsigned k = 0; k < W; k++) d[k] = p[1 + k];
         e.mark_bit(l.owner, l.bit);
     }
 }

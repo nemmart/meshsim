@@ -396,12 +396,28 @@ Sim::Impl* Internals::split(Config::Impl& G) {
         retarget.push_back({r.p, route, uint32_t(&ob - T->outboxes.data())});
         counts_by_kind[unsigned(Kind::reg)]++;
     }
-    // storage: per source domain, one block; buckets W >= 2 x interval, each as deep as its routes
+    // W10: direct delivery for every Link outbox carrying values (no by-reference class): its destination delivers from
+    // its buckets at their cycle. Its window must outlast an entry's flight and the interval it was put in (W >= L + I),
+    // so the source never writes a bucket its destination may still be reading in the same interval.
+    for (auto& ob : T->outboxes) {
+        if (ob.kind != Kind::link || ob.dst == kFan || interval == kNoCycle) continue;
+        bool by_value = true;
+        for (const Xl& x : ob.xl) by_value = by_value && x.scls == kNoClass;
+        if (!by_value || ob.width > 3) continue;
+        ob.direct = true;
+        ob.xdst.resize(ob.xl.size());
+        for (size_t k = 0; k < ob.xl.size(); k++) ob.xdst[k] = ob.xl[k].dst;
+    }
+    // storage: per source domain, one block; buckets W >= 2 x interval (direct: >= latency + interval), each as deep as
+    // its routes
     const unsigned W = interval == kNoCycle ? 2 : pow2_at_least(unsigned(std::max<Cycle>(2, 2 * interval)));
+    auto window = [&](const Outbox& ob) {
+        return ob.direct ? std::max(W, pow2_at_least(unsigned(ob.latency + interval))) : W;
+    };
     std::vector<size_t> words(D, 0);
     for (auto& ob : T->outboxes) {
-        ob.mask = W - 1;
-        words[ob.src] += round_to_lines((sizeof(Bucket) * W + 7) / 8) + W * Bucket::words_needed(ob.width + 1u, ob.routes);
+        ob.mask = window(ob) - 1;
+        words[ob.src] += round_to_lines((sizeof(Bucket) * window(ob) + 7) / 8) + window(ob) * Bucket::words_needed(ob.width + 1u, ob.routes);
     }
     std::vector<uint64_t*> cur(D, nullptr);
     T->blocks.resize(D);
@@ -413,15 +429,16 @@ Sim::Impl* Internals::split(Config::Impl& G) {
                                 std::to_string(ob.latency) + " " + std::to_string(ob.src) + "->" +
                                 (ob.dst == kFan ? std::string("fan") : std::to_string(ob.dst)));
         uint64_t*& p = cur[ob.src];
+        const unsigned OW = window(ob);
         ob.buckets = reinterpret_cast<Bucket*>(p);
-        p += round_to_lines((sizeof(Bucket) * W + 7) / 8);
+        p += round_to_lines((sizeof(Bucket) * OW + 7) / 8);
         const size_t per = Bucket::words_needed(ob.width + 1u, ob.routes);
-        for (unsigned b = 0; b < W; b++) {
+        for (unsigned b = 0; b < OW; b++) {
             new (&ob.buckets[b]) Bucket();
             ob.buckets[b].init(p, ob.width + 1u, ob.routes, T->port_names.back().c_str());
             p += per;
         }
-        outbox_words += round_to_lines((sizeof(Bucket) * W + 7) / 8) + W * per;
+        outbox_words += round_to_lines((sizeof(Bucket) * OW + 7) / 8) + OW * per;
         const uint32_t id = uint32_t(&ob - T->outboxes.data());
         T->doms[ob.src].out.push_back(id);
         if (ob.dst == kFan) { for (uint32_t d = 0; d < D; d++) if (!ob.fan[d].empty()) T->doms[d].in.push_back(id); }
@@ -449,6 +466,7 @@ Sim::Impl* Internals::split(Config::Impl& G) {
     // where each outbox lands: the destination's wheel of its kind and width
     for (auto& ob : T->outboxes) {
         ob.wheel.assign(D, kNone);
+        if (ob.direct) continue;                     // W10: delivered from the outbox itself
         for (uint32_t d = 0; d < D; d++) {
             if (ob.dst != kFan ? d != ob.dst : ob.fan[d].empty()) continue;
             const Engine& e = eng(d);
@@ -457,6 +475,14 @@ Sim::Impl* Internals::split(Config::Impl& G) {
             if (ob.wheel[d] == kNone) FATAL("split: no %s wheel of width %u in domain %u", kind_name(ob.kind), ob.width, d);
         }
     }
+    // W10: each domain's incoming direct outboxes
+    T->xins.resize(D);
+    for (auto& ob : T->outboxes) {
+        if (!ob.direct) continue;
+        T->xins[ob.dst].push_back(Engine::XIn{ob.buckets, ob.xdst.data(), ob.mask, ob.width});
+        if (ob.latency + interval > 64) eng(ob.dst).xdue_all = true;
+    }
+    for (uint32_t d = 0; d < D; d++) { eng(d).xin = T->xins[d].data(); eng(d).nxin = uint32_t(T->xins[d].size()); }
     // by reference: each class's slot storage, by domain (the drain reads a source's slot without its pool's checks)
     for (uint32_t d = 0; d < D; d++) {
         Engine& e = eng(d);
@@ -563,6 +589,11 @@ Sim::Impl* Internals::split(Config::Impl& G) {
     for (Kind k : kinds)
         if (counts_by_kind[unsigned(k)]) { rep += " " + std::to_string(counts_by_kind[unsigned(k)]) + " " + kind_name(k); any = true; }
     if (!any) rep += " none";
+    {
+        uint64_t direct = 0;
+        for (const auto& ob : T->outboxes) if (ob.direct) direct += ob.routes;
+        if (direct) rep += " (" + std::to_string(direct) + " link delivered direct)";   // W10
+    }
     rep += interval == kNoCycle ? "; no barrier until the end of a run"
                                 : "; barrier every " + std::to_string(interval) + " cycles, set by " + why;
     T->report = rep;
@@ -790,6 +821,27 @@ void Threads::drain(uint32_t di, Cycle t0, Cycle n, unsigned par, bool any) {
     }
     if (any) for (uint32_t o : d.in) {
         const Outbox& ob = outboxes[o];
+        if (ob.direct) {                                            // W10: counted and marked due; delivered at its cycle
+            for (Cycle t = t0; t < t0 + n; t++) {
+                const Cycle at = t + ob.latency;
+                const Bucket& b = ob.buckets[at & ob.mask];
+                const uint32_t c = b.count();
+                if (!c) continue;
+                e.pending += c;
+                e.xdue |= uint64_t(1) << (at & 63);
+                if constexpr (kDebug) {                             // the exact capacity check, and the detector (E6)
+                    const Word* p = b.begin();
+                    for (uint32_t k = 0; k < c; k++, p += ob.width + 1u) {
+                        const uint32_t q = ob.xdst[p[0]];
+                        LinkPort& l = e.links[q];
+                        if (l.ring.count() + l.inflight >= l.cap) e.die_link_full(q);
+                        l.inflight++;
+                        if (e.detector && e.suspect_since[l.owner] != kNoCycle) e.suspect_since[l.owner] = e.now;
+                    }
+                }
+            }
+            continue;
+        }
         const Wheel& wh = e.wheels[ob.wheel[di]];
         const unsigned ew = ob.width + 1u;
         const std::vector<Xl>& xl = ob.dst == kFan ? ob.fan[di] : ob.xl;
@@ -856,6 +908,7 @@ void Threads::clear(Dom& d, Span s) {
     Engine& e = *d.e;
     for (uint32_t o : d.out) {
         const Outbox& ob = outboxes[o];
+        if (ob.direct) continue;                     // W10: its destination empties each bucket as it delivers it
         const unsigned ew = ob.width + 1u;
         for (Cycle t = s.t0; t < s.t0 + s.n; t++) {
             Bucket& b = ob.buckets[(t + ob.latency) & ob.mask];

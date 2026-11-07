@@ -31,6 +31,13 @@ no locks in the cycle.
   fixed-size values copied inline into delivery entries and ring slots; payloads too big to copy travel as handles into
   **thread-local free lists**.
 
+**Payloads are 64-bit words, untyped** (owner, 2026-11-06): no templated transports or message types. Everything in motion is
+a small group of `uint64_t` words whose interpretation is up to the destination; a transport (a delivery list, a ring, a
+`Fifo`, a `Hold`, a `Link`) moves words and never looks at them. A large payload travels as a handle, which is itself one
+64-bit word. *(Proposed, for the plan: a delivery entry is one header word, the destination port id and the word count, plus
+up to a small fixed number of payload words, enough for the largest message, a link word with its header; anything bigger
+goes by handle.)*
+
 **Build** (owner, 2026-11-06): **plain `make`**, not CMake. **No RTTI anywhere** (`-fno-rtti`; owner): no `dynamic_cast` or `typeid`;
 the framework gives each unit type its own small integer id, which the run lists are grouped by anyway.
 

@@ -332,6 +332,28 @@ else its bytes only when `std::has_unique_object_representations_v<T>` (static_a
   with 2 held), lines intact and freed, overflows freeing their slots, allocating beyond the declaration fatal naming the
   class, mismatched declarations refused. M1 doesn't use it.
 
+### The leak check (integrator, 2026-11-07)
+
+Debug builds, at the end of every `Sim::run` and optionally every `Options::leak_check_every` cycles: per size class, the
+slots in use must not exceed those on its ports (visible in a ring or a hold, or an entry in a wheel) plus what units may
+hold (their declared `held`, and one per by-reference Hold for a refused word awaiting its retry). Fatal, naming the class
+and the count (`slot pool 'w16' leaks at cycle 10: 1 slots in use, 0 on its ports, at most 0 held by units: 1 allocated
+and never put or freed`). Two tests: a planted leak; none reported for lines in flight, queued, overflowing or held.
+
+### Stage 2, increment 4: port conformance against ref (2026-11-07)
+
+`tests/portconf.h` (the script parser; one unit owning both ends of the port under test, so the ops run in their written
+order as in the Java driver; the observer queries through `TestingAccess`), `tests/test_portconf.cpp` (every committed
+fixture, in `make check`), `tests/portconf_main.cpp` (the tool) and `make conformance` (the Java matrix, then the tool on
+every script, compared file by file). **All 14 configurations of the four kinds M1 builds conform: the fixtures in
+`make check`, and the full matrix, 42 scripts of 10^5 cycles (three seeds), equal to ref line for line.** The reserved
+link's 3 configurations are reported as M2's. The comparison has teeth: planting the generic TimedFIFO's after-pop rule
+fails three fifo fixtures at their first differing cycle.
+
+Two fixes the driver found before it ran (both to match `ref`, both additive or a correction to the documented meaning):
+`Ctx::credits` deducted the unit's own put of the same cycle, unlike `canPut` (and unlike its documented "room as of
+the start of t"): it now adds it back; and `put(RegOut, a, b, c)`, the three-word Reg put the other kinds have.
+
 ## Log
 
 - 2026-11-07: plan agreed (owner's go-ahead with five notes). W2's audit not yet on `sim-w2`; W6 not started.
@@ -345,3 +367,5 @@ else its bytes only when `std::has_unique_object_representations_v<T>` (static_a
   engine with Link, Fifo, Hold) landed.
 - 2026-11-07: increment 3 (Reg, Wire, RegFile, Count, credit Fifo; levels) landed: W5 can integrate on every kind.
 - 2026-11-07: wide payloads by reference (SlotPool, size classes; values() replaced); the M2 notes.
+- 2026-11-07: the leak check; increment 4 (port conformance, the C++ side): every M1 kind equal to ref over the full
+  matrix.

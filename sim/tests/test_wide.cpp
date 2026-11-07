@@ -139,3 +139,33 @@ DEATH_TEST(both_ends_declare_the_same_class, "by_ref: 'src.out' \\(slots of 16 w
     cfg.connect(s.out, d.in);
     Sim sim = cfg.build();
 }
+
+DEBUG_DEATH_TEST(a_slot_allocated_and_never_put_is_a_leak, "slot pool 'w16' leaks at cycle .*: 1 allocated and never put or freed") {
+    struct Leaky {
+        FifoOut out;
+        explicit Leaky(Ports& p) { p.out(out, "out", 1); p.by_ref(out, kLine); }
+        Wake step(Ctx& c) { c.alloc(out); return Wake::none(); }   // at cycle 1, and never put or freed
+    };
+    struct Quiet { FifoIn in; explicit Quiet(Ports& p) { p.in(in, "in", 1, 4); p.by_ref(in, kLine); } Wake step(Ctx&) { return Wake::none(); } };
+    Config cfg;
+    auto& l = cfg.add<Leaky>("leaky");
+    auto& q = cfg.add<Quiet>("q");
+    cfg.connect(l.out, q.in);
+    Sim sim = cfg.build();
+    sim.run(10);
+}
+
+TEST(no_leak_reported_for_lines_in_flight_queued_or_held) {
+    Options o;
+    o.leak_check_every = 1;
+    Config cfg(o);
+    auto& s = cfg.add<LinkLineSource>("src", uint64_t(200));
+    auto& d = cfg.add<LinkLineSink>("dst");
+    cfg.link(s.out, d.in, 3);
+    auto& f = cfg.add<LineSource>("fsrc", uint64_t(300), false);
+    auto& g = cfg.add<LineSink>("fdst", 4u, false);       // never takes: queued slots and freed overflows
+    cfg.connect(f.out, g.in);
+    Sim sim = cfg.build();
+    sim.run(400);
+    CHECK_EQ(sim.unit<LinkLineSink>("dst").sum, 200u * 201u / 2);
+}

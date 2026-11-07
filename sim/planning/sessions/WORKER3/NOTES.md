@@ -3,6 +3,34 @@
 Branch `sim-w3`. PLAN-M1 items 3-6: configuration, the engine, the port kinds (local forms), the debug checks; the unit
 author's API first. Plan agreed with the owner 2026-11-07 (his five notes folded in below, marked **owner**).
 
+## For the owner: stage 1 for review (2026-11-07)
+
+**What to read:** `sim/src/sim.h` (the unit author's API: the cycle, wakes, payloads and widths, unit state, the debug
+checks), `sim/src/config.h` (building a machine: sizing, the wheel's rule and cost, mixed fidelity), `sim/src/PORTS.md`
+(each port kind's exact rule from `ref`), and three compiled sketches in `sim/src/sketch/`: `write_engine.cpp` (a FIFO
+consumer), `controller.cpp` (the controller's surroundings, against W2's AUDIT-M1), `tile_builder.cpp` (a tile cycle-level
+or high-level per instance).
+
+**The eight choices**, each with what the alternative would cost:
+
+| # | choice | the alternative, and its cost |
+|---|---|---|
+| 1 | **Explicit wakes**: a unit steps on a delivery, a change of a Wire it reads, or a wake it asked for; data left waiting doesn't re-step it. Safety net: the step-all debug check (digests equal) | re-step while any input holds data: simpler for authors, but a step per blocked unit per cycle (W6: polling a quiet mesh is 1.85x slower than marks) |
+| 2 | **The shifted end of cycle**: `endCycle(t)` is a level-0 step at t + 1, fed by Links of latency 1 | a commit phase that runs unit logic: a third kind of step with its own ordering rules and run lists |
+| 3 | **A Wire is a persistent level**; a change wakes its readers in the same cycle | wires driven every cycle: every wire's producer steps every cycle, so no idle-skipping for those units |
+| 4 | **A Hold's refusal wakes its producer** | producers poll `refused` every cycle while they hold a put (as `ref` does): steps with nothing to do |
+| 5 | **One level per (type, form)**, the largest of its instances | levels per instance: more, shorter runs per type and more dispatches; nothing in M1 needs it |
+| 6 | **Units moved into arenas, handles patched** at build (move-constructible and no virtuals checked by `static_assert`; no pointer into itself or another unit, stated) | units allocated in place: count instances before adding them (by hand, which the brief forbids) or give up type-contiguous state; or an indirection on every port access |
+| 7 | **One wheel per (kind, width)**, fixed-size copies, a delivery loop per width (D16) | one wheel for all: a switch per delivered entry and copies at the widest width (W6: 11-13% more instructions with runtime widths) |
+| 8 | **Every unit is stepped at the first cycle** (cycle 1, as in `ref`), to drive its initial outputs | an `init` hook per type: one more concept for authors, for what the first step already does |
+
+**Folded in from W6 and D15-D18:** the link word is three words inline and 128-bit values live in units as two words
+(`values()` only above 128 bits, D17); widths are runtime in declarations and specialised inside (D16); the destination
+id is an entry's first word, marks per delivery, one run per (type, form) (W6 confirms all three); `Sizes` reports words by
+structure, by unit type and per chip (D15). **Flagged for M2, unchanged:** the wheel's worst-case sizing (a quarter of W6's
+mesh footprint; two options in `config.h`). **Stage 2's Makefile (D18):** `make` and the timing builds use clang (release
+`-O2`); `make check` keeps gcc and clang, debug and release; `make conformance` runs the Java matrix (`portconf.sh`).
+
 ## The plan
 
 ### Stage 1: the API, before implementation (then stop for review: the integrator, then the owner)
@@ -70,7 +98,8 @@ No change foreseen; any proposal goes here first.
 | the API | `sim/src/sim.h` (the unit author's view), `sim/src/config.h` (building a machine) | draft, declarations only |
 | sketch 1, a FIFO consumer | `sim/src/sketch/write_engine.cpp` (`ref`'s WriteEngine) | compiles (gcc and clang, `make check`) |
 | sketch 2, the controller's surroundings | `sim/src/sketch/controller.cpp` (core, register block subset, test bench) | compiles; **revised against `sim/tests/AUDIT-M1.md` and `TRACE-FORMAT.md`** (main, W2 merged) |
-| W6's findings | — | not yet (W6 not started); widths are per port, at run time |
+| W6's findings | `sim.h`, `config.h` | folded in (D15-D18; below) |
+| sketch 3, mixed fidelity | `sim/src/sketch/tile_builder.cpp` | compiles |
 
 `sim/Makefile`: one rule added (the sketches are compiled in every build, never linked or run).
 
@@ -192,6 +221,27 @@ script and `ref`'s observations, about 2.5 MB) is committed for the C++ test, an
 2. Each fixture records at its top its configuration, its generator seed and cycles, and the `ref` commit it was made
    from. Compressed (gzip) if git handles that better: decided when they are made.
 
+### The integrator's review and D15-D18 (2026-11-07)
+
+1. D17: three-word link word; 128-bit values inline as two words; `values()` only for payloads above 128 bits (`sim.h`,
+   PAYLOADS AND WIDTHS, and `Ctx::values`).
+2. D16: widths runtime in declarations; a wheel and a delivery loop per (kind, width), templated on the word count
+   (0-3); puts fixed-arity, so copies are fixed-size (`sim.h`, `config.h`'s Route). Stage 2 measures how much of W6's
+   11-13% this recovers.
+3. D18: planned for stage 2's Makefile (above).
+4. Mixed fidelity: `config.h` (MIXED FIDELITY) and sketch 3, `tile_builder.cpp`: a tile is a function returning its
+   external handles (`TileIO`); a high-level tile adds one unit with the same ports; it emits each result at t + k with a
+   wake and an ordinary put (a queue of results in flight in its own state). No new mechanism. `Config::add` now takes a
+   `std::string` name (64 tiles need unique names).
+5. Footprint: `Sizes` by structure, by unit type and per chip (`Config::chip` scopes); the wheel's sizing rule and its
+   cost stated, M2's two options named, nothing changed.
+6. Unit state: `static_assert` move-constructible and not polymorphic at `add`; `sim.h` states that a unit holds no
+   pointer into itself or another unit (permanent state allocated apart is fine); stale self-pointers fault under ASan
+   (the staging storage is poisoned after the move, debug).
+7. The summary for the owner: at the top of this file.
+
+`make check` clean on gcc and clang, debug and release (the three sketches compiled in every build).
+
 ## Log
 
 - 2026-11-07: plan agreed (owner's go-ahead with five notes). W2's audit not yet on `sim-w2`; W6 not started.
@@ -200,3 +250,4 @@ script and `ref`'s observations, about 2.5 MB) is committed for the C++ test, an
 - 2026-11-07: the integrator's five notes folded in (step-all, Counts as events, clang, the bench from REQ-FREED).
 - 2026-11-07: main merged (W2 closed); sketch 2 revised against AUDIT-M1.md and TRACE-FORMAT.md. Waiting for W6's report.
 - 2026-11-07: the conformance driver's Java side (PortConfGen, PortConfDriver, portconf.sh); the full matrix runs clean.
+- 2026-11-07: main merged (W6, D15-D18); the integrator's review folded in (1-7). Ready for the owner's review.

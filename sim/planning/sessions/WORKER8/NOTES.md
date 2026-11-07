@@ -253,3 +253,9 @@ cycle against `golden-m2`, under every debug option (shuffle, both orders, step-
     c + 1 (moved from the fingerprint library into src so W9's C&C writers and mine share one). Checked in
     `test_g1_replay`: every cycle of wfi and of regs through 824, the preview of endCycle(c) equals what the block puts
     on `line` at c + 1, under the four option sets.
+  **make check clean at 93c891b**: make run gcc debug, gcc release, clang debug, clang release (34 binaries each, all
+  0 failed); make tsan (7 binaries x gcc and clang, after a first call timed out on this tool's 5-minute limit while
+  building) and make tsan-units clean.
+  **Next, with W9:** when its assembly (C&C, `build_chip`) lands, the same comparison on the real network:
+  `test_g1_replay`'s loop with `build_chip` in place of the stand-in, every unit of tile 0 (W9's registered beside
+  mine) against regs.fp (through 824) and wfi.fp; then more tiles (`fptiles`).

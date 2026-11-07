@@ -147,3 +147,24 @@ cycles (`regs-chip`, `wfi-chip`, regenerated locally); a2a's network part once G
 - W8's branch (read, not merged): `linkword.h` extends `net.h`'s `lw`; `add_g1` is a `ControlBuilder` returning
   `ControlIO`; the fingerprint library `tests/statefp.h` (`FpRegistry`: one writer per unit name, `FpCtx` with the
   `Sim` for the port observer). My units will register writers there (the router's own part is `Router::fp_own`).
+- 2026-11-07: **stage 2, the injection unit's send side and the loopback tokens** (`inject.h/.cpp`). The step:
+  `loop_left`'s free of t - 1 applied, the start-of-cycle count fixed (`SRAMReadQueue.advance`), G3's phase, then a
+  read return before a send; a send for the tile itself or a broadcast takes a token if `start + taken < cap` (else it
+  waits, woken by the router's next `loop_left`), `TAG_TOKEN` set; InjectionPath's invariants counted; then STATUS's
+  send-busy Reg (put only when it changes). **The token pool is a `Tokens` struct** shared with G3's `InjReadSide`
+  (reads, loopback-held, start, taken): G3's issue takes a token from the same count, its `injected` frees a read's
+  token (or moves it to the loopback), so G3 adds the read side without restructuring. A send that loses to a read
+  return is judged again next cycle (`next()`); a token wait sleeps (no polling) and has its own missed-wake threshold
+  in the tile builder, since the free it waits for may not be on its way yet (the loopback FIFO drains when the eject
+  selector reaches it).
+  **Checked against ref**: `RouterConf ... send` puts ref's InjectionPath with SRAMReadQueue's tokens behind the router
+  (Tile's order: the router, then the read queue and the injection point), fed by a core that retries a refused send
+  and stalls; the observation adds STATUS's send-busy (`!sendHold.isEmpty(t)`, so the core's put of t included, as
+  agreed with W8), StateFp's "inj" stream (both holds), the tokens held as at the start of t + 1, token waits, the
+  send hold's refusals, the violations. Tokens run out in these scripts (64 held, hundreds of waits and refusals).
+  Equal to ref every cycle: 3 new fixtures (tiles 0, 5, 63) in make check with the router's 5, also under shuffle,
+  instance-major and step-all; 24 runs of 10^5 cycles locally. One statistic needed care: ref counts a token wait every
+  cycle the send waits, while the unit sleeps through it; it keeps when the wait began and counts the cycles when it
+  ends (`token_waits(t)` is ref's count at the end of t).
+- make check after stage 2: gcc and clang, debug and release (25 binaries; 257 / 226 tests), TSan (41 + 2): clean.
+  (The whole make check in one call exceeds the tool's 5-minute limit here: run build by build.)

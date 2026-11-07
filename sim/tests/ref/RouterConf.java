@@ -13,7 +13,8 @@ import java.util.Random;
  * are package-private; nothing in sim/ref is changed).
  *
  * <pre>
- *   java -cp REF:. RouterConf gen TILE SEED CYCLES      a script on stdout
+ *   java -cp REF:. RouterConf gen TILE SEED CYCLES [send]   a script on stdout (send: the injection point behind the
+ *                                                           router, fed by a core's send holding register)
  *   java -cp REF:. RouterConf run HOPS SCRIPT           ref's observations on stdout
  *   java -cp REF:. RouterConf table HOPS                every router's routing decisions, hashed per tile
  * </pre>
@@ -23,16 +24,24 @@ import java.util.Random;
  * from-down), on the injection link, or (tiles 0-2) in C&C's send holding register; each is visible to the router at
  * t + 1 (links and the injection of latency 1; the hold's put of t). Words in lowercase hex.
  *
+ * With "# send" (stage 2: the injection point, InjectionPath with SRAMReadQueue's tokens, as Tile runs them: the router,
+ * then the read queue and the injection point), source 4 is {@code S:a,b,c}: the core's send store at t into the send
+ * holding register (the core runs after them); if the put of t - 1 was refused, the core retries it at t instead and the
+ * script's word of t is dropped (the core stalls).
+ *
  * Observation line for cycle t, after the router ran t: {@code t [Od:a,b,c]... [E:a,b,c] [X:a,b,c] [F] Q:fp,ovf,rerr,eerr}:
  * the words the router put at t on link output d (to-right, to-left, to-down, to-up), on the eject bus, on the
  * to-controller output; F if a token-holding packet left the loopback FIFO at t (srq.loopbackLeft(t)); then the router's
  * own canonical stream (StateFp.router's rr and FIFOs, AUDIT-M2 6.2) hashed, the overflow total (every put through t
- * judged: see observe), route and eject errors.
+ * judged: see observe), route and eject errors. With "# send", then {@code [B] P:fp,held,waits,refusals,violations}: B if
+ * STATUS's send-busy is set at the end of t (!sendHold.isEmpty(t)); the injection unit's stream (StateFp's "inj": the
+ * read-return and send holds) hashed; the tokens held as at the start of t + 1; token-wait cycles; the send hold's
+ * refusals; the injection point's violations.
  */
 final class RouterConf {
     public static void main(String[] a) throws IOException {
         switch (a[0]) {
-            case "gen" -> gen(Integer.parseInt(a[1]), Long.parseLong(a[2]), Integer.parseInt(a[3]));
+            case "gen" -> gen(Integer.parseInt(a[1]), Long.parseLong(a[2]), Integer.parseInt(a[3]), a.length > 4 && a[4].equals("send"));
             case "run" -> run(Hops.load(Path.of(a[1])), a[2]);
             case "table" -> table(Hops.load(Path.of(a[1])));
             default -> throw new IllegalArgumentException(a[0]);
@@ -41,10 +50,10 @@ final class RouterConf {
 
     // ------------------------------------------------------------------------------------------------ the generator
     /** Rates vary in phases of 1-64 cycles per source (idle to every cycle), so FIFOs fill, overflow and drain. */
-    static void gen(int tile, long seed, int cycles) {
+    static void gen(int tile, long seed, int cycles, boolean send) {
         Random r = new Random(seed);
         StringBuilder sb = new StringBuilder();
-        sb.append("# routerconf v1\n# tile ").append(tile).append("\n# seed ").append(seed).append(" cycles ").append(cycles).append('\n');
+        sb.append("# routerconf v1\n# tile ").append(tile).append("\n# seed ").append(seed).append(" cycles ").append(cycles).append(send ? " send" : "").append('\n');
         int nsrc = tile < 3 ? 6 : 5;
         double[] rate = new double[nsrc]; int[] left = new int[nsrc];
         for (int t = 1; t <= cycles; t++) {
@@ -52,8 +61,8 @@ final class RouterConf {
             for (int s = 0; s < nsrc; s++) {
                 if (left[s]-- <= 0) { left[s] = 1 + r.nextInt(64); int k = r.nextInt(4); rate[s] = k == 0 ? 0 : k == 1 ? 0.15 : k == 2 ? 0.6 : 1.0; }
                 if (r.nextDouble() >= rate[s]) continue;
-                String tag = s < 4 ? "L" + s : s == 4 ? "I" : "C";
-                sb.append(' ').append(tag).append(':').append(word(r, tile, s, (long) t << 3 | s));
+                String tag = s < 4 ? "L" + s : s == 4 ? (send ? "S" : "I") : "C";
+                sb.append(' ').append(tag).append(':').append(send && s == 4 ? sendWord(r, tile, (long) t << 3 | s) : word(r, tile, s, (long) t << 3 | s));
             }
             sb.append('\n');
             if (sb.length() > 1 << 16) { System.out.print(sb); sb.setLength(0); }
@@ -79,6 +88,15 @@ final class RouterConf {
         return Long.toHexString(seq) + "," + Long.toHexString(h) + "," + Integer.toHexString(r.nextInt(1 << 12));   // payloads: a sequence number and a small tag
     }
 
+    /** A core's send: mostly to the tile itself or a broadcast (they take loopback tokens), the rest anywhere. The
+     *  simulator-only bits are 0, as the register block makes them (TileControl.sendHeader). */
+    static String sendWord(Random r, int tile, long seq) {
+        int k = r.nextInt(100);
+        int dst = k < 40 ? tile : k < 70 ? LinkWord.BROADCAST : k < 72 ? 64 + r.nextInt(3) : k < 73 ? r.nextInt(128) : r.nextInt(64);
+        long h = LinkWord.hdr(0, dst, r.nextInt(8), r.nextInt(8), r.nextInt(), r.nextInt(4));
+        return Long.toHexString(seq) + "," + Long.toHexString(h) + "," + Integer.toHexString(r.nextInt(1 << 12));
+    }
+
     // ------------------------------------------------------------------------------------------------ the driver
     static long hex(String s) { return Long.parseUnsignedLong(s, 16); }
 
@@ -88,6 +106,7 @@ final class RouterConf {
              Writer out = new BufferedWriter(new OutputStreamWriter(System.out), 1 << 16)) {
             Router rt = null; WordDelayLine[] lin = new WordDelayLine[4], lout = new WordDelayLine[4];
             WordDelayLine inj = null, ej = null; WordHold cnc = null; WordFIFO toCnc = null; SRAMReadQueue tok = null;
+            InjectionPath ip = null; WordHold send = null, rret = null;
             long t = 0;
             for (String line; (line = in.readLine()) != null; ) {
                 if (line.startsWith("#")) {
@@ -100,26 +119,42 @@ final class RouterConf {
                         Config c = new Config();
                         tok = new SRAMReadQueue(tile, c); rt.tokens = tok;
                     }
+                    if (line.startsWith("# seed ") && line.endsWith(" send")) {
+                        send = new WordHold("send"); rret = new WordHold("readReturn");
+                        ip = new InjectionPath(tile); ip.readReturn = rret; ip.send = send; ip.toRouter = inj; ip.srq = tok;
+                        tok.toSram = new WordHold("sram.rd"); tok.toInjection = rret;
+                    }
                     continue;
                 }
                 String[] f = line.split(" ");
                 t = Long.parseLong(f[0]);
                 if (t > 1) observe(out, rt, t - 1, lout, ej, toCnc, tok);     // the outputs of t - 1, visible at t
+                long[] core = null;                                            // the core's send store of t (runs last)
                 for (int i = 1; i < f.length; i++) {
                     String[] w = f[i].substring(f[i].indexOf(':') + 1).split(",");
                     long x = hex(w[0]), y = hex(w[1]), z = hex(w[2]);
                     char k = f[i].charAt(0);
                     if (k == 'L') lin[f[i].charAt(1) - '0'].put(t, x, y, z);
                     else if (k == 'I') inj.put(t, x, y, z);
+                    else if (k == 'S') core = new long[] { x, y, z };
                     else cnc.put(t, x, y, z);
                 }
                 rt.runCycle(t);
+                if (ip != null) {
+                    tok.runCycle(t); ip.runCycle(t);                           // Tile's srqInj
+                    if (send.refused(t)) send.retry(t);                        // the core stalls: the script's word is dropped
+                    else if (core != null) send.put(t, core[0], core[1], core[2]);
+                    StateFp.Out o = new StateFp.Out(); StateFp.hold(o, "readReturn", rret, t); StateFp.hold(o, "send", send, t);
+                    sendFp[0] = (send.isEmpty(t) ? "" : " B") + " P:" + Long.toHexString(o.done()) + ","
+                            + (StateFp.l(tok, "loopHeld") - StateFp.l(tok, "freesPending")) + "," + ip.tokenWaitCycles + "," + send.refusals + "," + ip.violations;
+                }
                 fp[0] = own(rt, t);
             }
             observe(out, rt, t, lout, ej, toCnc, tok);
         }
     }
     static final long[] fp = new long[1];
+    static final String[] sendFp = { "" };
     /** The router's own stream at the end of t, as StateFp.router writes it (without the buses delivering into it). */
     static long own(Router r, long t) {
         StateFp.Out o = new StateFp.Out();
@@ -138,7 +173,7 @@ final class RouterConf {
         // reaches it, a put lands in it, or idle-skip's quiescence scan reads it). The framework judges every put at
         // t + 1 (PORTS.md 3): settle every FIFO here, at t + 1, so the count is the overflows of every put through t.
         long ovf = 0; for (WordFIFO[] fs : r.q) for (WordFIFO f : fs) { f.sizeAtStart(u); ovf += f.overflowCount; }
-        sb.append(" Q:").append(Long.toHexString(fp[0])).append(',').append(ovf).append(',').append(r.routeErrors).append(',').append(r.ejectErrors).append('\n');
+        sb.append(" Q:").append(Long.toHexString(fp[0])).append(',').append(ovf).append(',').append(r.routeErrors).append(',').append(r.ejectErrors).append(sendFp[0]).append('\n');
         out.write(sb.toString());
     }
     static String w3(long a, long b, long c) { return Long.toHexString(a) + "," + Long.toHexString(b) + "," + Long.toHexString(c); }

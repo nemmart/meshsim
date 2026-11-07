@@ -78,6 +78,7 @@ struct Router {
 
     // ---- statistics (ref's counters; not state) ----
     uint64_t injected = 0, routed = 0, ejected = 0, eject_errors = 0, route_errors = 0, from_cnc_words = 0, to_cnc_words = 0;
+    uint64_t loop_left_at = 0;        // the last cycle a token-holding packet left the loopback FIFO (tests)
 
     // non-empty FIFOs, one bit per FIFO index (exact, unlike ref's `maybe` hint)
     uint32_t occ = 0;
@@ -185,7 +186,7 @@ inline sim::Wake Router::step(sim::Ctx& c) {
     if (loopback_last) ej = select(EJECT, 0x3F & ~(1u << loop), s, taken) || select(EJECT, 1u << loop, s, taken);
     else { ej = select(EJECT, 0x3F, s, taken); if (ej && s.slot == loop) rr[EJECT] = uint8_t(loop); }
     if (ej) {
-        if (s.slot == loop && (s.w[1] & lw::TAG_TOKEN)) c.put(loop_left);
+        if (s.slot == loop && (s.w[1] & lw::TAG_TOKEN)) { c.put(loop_left); loop_left_at = c.now(); }
         ejected++;
         const unsigned dst = lw::dst(s.w[1]);
         if (dst == me || dst == lw::BROADCAST) c.put(eject, s.w[0], s.w[1], s.w[2]);

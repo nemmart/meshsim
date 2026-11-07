@@ -2,6 +2,6 @@
 #
 #   tests/ref/routerconf.sh --check   the router's conformance fixtures regenerated from ref and compared (needs a JDK)
 
-NET_LINK := $(B)/src/units/net.o $(B)/src/units/router.o
+NET_LINK := $(B)/src/units/net.o $(B)/src/units/router.o $(B)/src/units/inject.o
 
 $(B)/test_router $(B)/test_net_headers: $(NET_LINK)

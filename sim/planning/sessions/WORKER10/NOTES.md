@@ -140,7 +140,13 @@ Wire, RegFile and Count are already readable from their producers' and readers' 
     // end of the barrier interval holding that cycle, and the run returns there, every thread at the same cycle
     // (now() - 1 >= stop_cycle(), within one interval). The next run starts afresh (no request pending).
 
-**Partitioning by load** (piece 2; drafted now, refined with notice when built), `config.h`:
+**The between-cycles wake** (W9's driver), `config.h`:
+
+    void Sim::wake(const std::string& unit);   // between runs only (fatal during one; fatal for an unknown name): the
+                                               // unit is stepped at the next cycle run, now(), exactly, in whichever
+                                               // domain it sits; its own wakes are unchanged; twice before a run: once
+
+**Partitioning by load** (piece 2, as built in 4089276), `config.h`:
 
     // Options:
     enum class Placement : uint8_t { declared, by_load } placement = Placement::declared;   // by_load: the framework
@@ -148,8 +154,8 @@ Wire, RegFile and Count are already readable from their producers' and readers' 
     const LoadProfile* load = nullptr;     // by_load: a calibration run's profile; null: declared weights, else 1 per unit
     unsigned min_interval = 0;             // by_load: the smallest barrier interval allowed; 0: the largest latency that
                                            //   leaves at least 4 granules per thread
-    bool calibrate = false;                // record steps per instance, time per run call and puts per route (one thread)
-    // struct LoadProfile { names and numbers, a plain value the caller keeps; read and written as text };
+    bool calibrate = false;                // time each step (a calibrating run loop, bound only when set)
+    // struct LoadProfile { unit names, their loads (ticks), cycles; to_text(), static from_text(text) };
     void Config::weight(const std::string& unit, double w);   // a declared load, for a first run with no profile
     LoadProfile Sim::load_profile() const;                    // after a run with Options::calibrate
 
@@ -177,3 +183,19 @@ Wire, RegFile and Count are already readable from their producers' and readers' 
   build by build (this container, clang 18.1.3, gcc 13.3.0): gcc and clang, debug and release, 25 test binaries each
   (W5's 67 goldens included, test_golden); TSan gcc and clang: test_parallel, test_threads, test_topology,
   test_matrix, test_observe, test_link_depth (the last two now in `TSAN_TESTS`).
+- 2026-11-07: sim-w10 merged into main through 2e016ea (owner). Placement by load (4089276): granules, recursive
+  bisection with a balance phase and cut refinement, then a k-way polish; calibration times each step by a separate run
+  loop (no cost when off). Mesh by profile: load max/mean 1.009 / 1.028 / 1.031 / 1.041 / 1.068 at 2 / 4 / 6 / 8 / 12
+  threads, the digest equal at each. test_partition 7/7 (debug, release). The between-cycles wake `Sim::wake` (W9's
+  driver), tests beside the stop request: one domain and split, exact cycle, digest equal.
+- 2026-11-07: **38f1784 clean** (placement by load, calibration, the wake): clean checkout, build by build, gcc and clang
+  debug and release (26 test binaries each) and TSan gcc and clang (7 binaries, test_partition added).
+- 2026-11-07: **Quest 137** (the cheaper split, before 45b4cbf / after 2e016ea, interleaved; i5-14400F): one thread
+  unchanged (mesh 5.418 -> 5.423 us; 0.05: 1.182 -> 1.197; synth 6.407 -> 6.431; instructions +0.02%): the observer's
+  and the stop's branches cost nothing measurable. Split on one thread: rows 2-8 now 0-1% (was 3-20%), tiles 64 now
+  5.42 us and 24,136 words (was 15.82 us, 103,552 words: 2.9x, 4.3x). Form 2 by tiles: 2 / 4 / 6 / 8 / 12 threads
+  2.91 / 1.85 / 1.60 / 1.57 / 1.66 us (was 8.48 / 5.08 / 4.18 / 3.66 / 3.11): **3.38x at 6 threads** (rows 2.76x);
+  synth 1.12 / 1.33 / 1.21 / 1.29x (was 0.62 / 1.06 / 0.98 / 1.29x). W4's layout kept measurable: 64 engines on one
+  thread 15.61 us. Every digest equal across both revisions. The plateau (~1.6 us at 6-12 threads against 0.9 ideal) is
+  the next target: the per-interval fixed cost (barrier every 3 cycles, the drain's copy, ~11% of instructions at 6
+  engines locally) and imbalance (Quest 138 measures placement by load).

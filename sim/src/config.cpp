@@ -155,6 +155,10 @@ void Config::connect(CountOut o, CountIn i) {
     I.peers.push_back(o.idx);
 }
 void Config::missed_wake_after(const std::string& unit, unsigned cycles) { impl_->missed[unit] = cycles; }
+void Config::weight(const std::string& unit, double w) {
+    if (!(w >= 0)) FATAL("weight of '%s': %g (a load is >= 0)", unit.c_str(), w);
+    impl_->weights[unit] = w;
+}
 void Config::count_overflows(FifoIn f, CountIn c) {
     Impl::Decl& F = impl_->decl(f.idx, "count_overflows");
     Impl::Decl& C = impl_->decl(c.idx, "count_overflows");
@@ -197,16 +201,27 @@ unsigned pow2_above(unsigned x) { unsigned w = 2; while (w <= x) w <<= 1; return
 Sim Config::build() {
     Impl& I = *impl_;
     if (I.built) FATAL("build() called twice");
-    if (detail::split_needed(I)) { I.built = true; return Sim(detail::Internals::split(I)); }   // W4 (E3): several engines
-    I.built = true;
     bool domains = false;                     // W10: several domains in one engine: checked as if split, then built whole
     for (const auto& u : I.units) domains = domains || u.domain != I.units[0].domain;
+    bool placed_whole = false;                // W10: by_load found one group: one engine, whatever the threads
+    if (I.opt.placement == Options::Placement::by_load) {
+        if (domains) detail::check_domains(I);   // on the author's domains, before they are replaced by the groups
+        unsigned groups = 1;
+        if (I.opt.threads > 1 && I.units.size() > 1) {
+            Cycle interval = 0;
+            const std::vector<unsigned> g = detail::place_by_load(I, I.opt.threads, groups, interval, I.placement);
+            if (groups > 1) for (size_t u = 0; u < I.units.size(); u++) I.units[u].domain = g[u];
+        }
+        if (groups <= 1) { placed_whole = true; for (auto& u : I.units) u.domain = 0; domains = false; }
+    }
+    if (detail::split_needed(I)) { I.built = true; return Sim(detail::Internals::split(I)); }   // W4 (E3): several engines
+    I.built = true;
     if (domains) detail::check_domains(I);
     using Decl = Impl::Decl;
     const uint32_t n = uint32_t(I.units.size());
 
     // 0. every option is implemented, or refused: an option set must never be silently ignored (integrator, 2026-11-07)
-    if (I.opt.threads != 1 && !domains)
+    if (I.opt.threads != 1 && !domains && !placed_whole)
         FATAL("option threads = %u not implemented for one domain: split the machine with Config::domain, or run independent "
               "chips with run_independent (W4)", I.opt.threads);
 
@@ -629,7 +644,7 @@ Sim Config::build() {
         RunSet& rs = *new (&e.runs[r]) RunSet{};
         const RunDef& rd = runs[r];
         const auto& ti = *I.types[rd.type];
-        rs.fn = ti.run[rd.form == Form::result ? 1 : 0];
+        rs.fn = (I.opt.calibrate ? ti.run_cal : ti.run)[rd.form == Form::result ? 1 : 0];
         rs.one = ti.one[rd.form == Form::result ? 1 : 0];
         rs.units = S->obj(rd.first);
         rs.first = rd.first; rs.count = rd.count; rs.level = rd.level; rs.type = rd.type; rs.form = rd.form;
@@ -721,6 +736,10 @@ Sim Config::build() {
     z.wheel_buckets = 0;
     for (auto& w : wheels) z.wheel_buckets = std::max(z.wheel_buckets, w.W);
     detail::Internals::record_view(I, inst_of, S->view);       // W4 (E5): the digest, unit by unit
+    if (I.opt.calibrate) {                                     // W10: time per instance, for Sim::load_profile
+        S->run_ticks_v.assign(e.ninst, 0);
+        e.inst_ticks = S->run_ticks_v.data();
+    }
     if (I.opt.observe_arrivals && e.nlinks) {                  // W10: one arrival cycle per Link ring slot
         S->link_at_off_v.resize(e.nlinks);
         size_t tot = 0;
@@ -767,6 +786,64 @@ void Sim::run_until(Cycle t) {
     Running r(impl_);
     if (impl_->threads) return impl_->threads->run_until(t + 1);
     impl_->e.run_until(t);
+}
+// W10: each instance's load: the time its steps took in calibrating runs.
+namespace {
+void profile_of(const detail::Internals::SImpl& S, LoadProfile& p) {
+    const Engine& e = S.e;
+    if (!e.inst_ticks) FATAL("Sim::load_profile: the machine wasn't built with Options::calibrate");
+    for (uint32_t i = 0; i < e.ninst; i++) {
+        if (e.unit_names[i][0] == '~') continue;           // a split's boundary units are the framework's, not the machine's
+        p.unit.push_back(e.unit_names[i]);
+        p.load.push_back(double(e.inst_ticks[i]));
+    }
+}
+}  // namespace
+LoadProfile Sim::load_profile() const {
+    LoadProfile p;
+    p.cycles = now() - 1;
+    if (impl_->threads) { for (auto& d : impl_->threads->doms) profile_of(*d.S, p); }
+    else profile_of(*impl_, p);
+    return p;
+}
+std::string LoadProfile::to_text() const {
+    std::string t = "loadprofile v1\ncycles " + std::to_string(cycles) + "\n";
+    char b[64];
+    for (size_t k = 0; k < unit.size(); k++) { std::snprintf(b, sizeof b, " %.17g\n", load[k]); t += unit[k] + b; }
+    return t;
+}
+LoadProfile LoadProfile::from_text(const std::string& text) {
+    LoadProfile p;
+    size_t pos = 0, line = 0;
+    while (pos < text.size()) {
+        size_t end = text.find('\n', pos);
+        if (end == std::string::npos) end = text.size();
+        const std::string l = text.substr(pos, end - pos);
+        pos = end + 1;
+        line++;
+        if (l.empty()) continue;
+        if (line == 1) { if (l != "loadprofile v1") FATAL("load profile line 1: '%s', expected 'loadprofile v1'", l.c_str()); continue; }
+        if (line == 2) {
+            if (l.rfind("cycles ", 0) != 0) FATAL("load profile line 2: '%s', expected 'cycles N'", l.c_str());
+            p.cycles = std::strtoull(l.c_str() + 7, nullptr, 10);
+            continue;
+        }
+        const size_t sp = l.rfind(' ');
+        char* e = nullptr;
+        const double v = sp == std::string::npos ? 0 : std::strtod(l.c_str() + sp + 1, &e);
+        if (sp == std::string::npos || sp == 0 || !e || *e) FATAL("load profile line %zu: '%s', expected 'name load'", line, l.c_str());
+        p.unit.push_back(l.substr(0, sp));
+        p.load.push_back(v);
+    }
+    if (line < 2) FATAL("load profile: no header");
+    return p;
+}
+void Sim::wake(const std::string& name) {
+    if (impl_->running) FATAL("Sim::wake('%s') during a run: between runs only", name.c_str());
+    if (impl_->threads) return impl_->threads->wake(name);
+    auto it = impl_->by_name.find(name);
+    if (it == impl_->by_name.end()) FATAL("Sim::wake: no unit named '%s'", name.c_str());
+    impl_->e.mark(it->second);       // ready for the next cycle's run phase (nothing clears it before)
 }
 Cycle Sim::stop_cycle() const {
     if (!impl_->threads) return impl_->e.stop_at;

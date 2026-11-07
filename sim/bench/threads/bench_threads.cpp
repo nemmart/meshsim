@@ -174,28 +174,43 @@ int form1(const Args& a) {
 //   rate=<chip-cycles/s> us_per_chip_cycle=<wall> words=<Sizes> digest=<D> partition="..."
 int form2(const Args& a) {
     const bool tiles = a.partition == "tiles";
-    if (!tiles && a.partition != "rows") FATAL("--partition %s: rows or tiles", a.partition.c_str());
+    const bool by_load = a.partition == "load" || a.partition == "profile";   // W10: the framework places (no domains)
+    if (!tiles && !by_load && a.partition != "rows") FATAL("--partition %s: rows, tiles, load or profile", a.partition.c_str());
     const bool mesh_chip = a.chip == "mesh";
     if (!mesh_chip && a.chip != "synth") FATAL("--chip %s: mesh or synth", a.chip.c_str());
     const unsigned granules = mesh_chip ? mesh::kSide * mesh::kSide : 8;
-    const unsigned D = tiles ? granules : a.domains ? a.domains : a.threads;
+    const unsigned D = by_load ? 1 : tiles ? granules : a.domains ? a.domains : a.threads;
+    auto add_chip = [&](Config& cfg, unsigned dom_count, bool per_granule) {
+        if (mesh_chip) {
+            if (per_granule) mesh::build(cfg, a.seed, a.rate, [](unsigned k) { return k; });
+            else mesh::build(cfg, a.seed, a.rate, [dom_count](unsigned k) { return (k / mesh::kSide) * dom_count / mesh::kSide; });
+        } else {
+            synth::Params p;
+            p.seed = a.seed;
+            p.clusters = 8; p.nodes_per_cluster = 8; p.gap = 1;
+            if (per_granule) synth::build(cfg, p, [](unsigned c) { return c; });
+            else synth::build(cfg, p, [dom_count](unsigned c) { return c * dom_count / 8; });
+        }
+    };
+    // --partition profile: a calibration run first (one thread, the warmup plus the measured cycles), its loads kept
+    LoadProfile prof;
+    if (a.partition == "profile") {
+        Options c; c.calibrate = true;
+        Config cc(c);
+        add_chip(cc, 1, false);
+        Sim cal = cc.build();
+        cal.run(a.warmup + a.cycles);
+        prof = cal.load_profile();
+    }
     Options o;
     o.threads = D > 1 ? a.threads : 1;
     o.engines = a.engines;
     o.cpus = a.cpus;
+    if (by_load) { o.placement = Options::Placement::by_load; o.threads = a.threads; if (a.partition == "profile") o.load = &prof; }
     o.barrier_block = a.barrier == "block";
     o.barrier_spins = a.barrier == "spin" ? ~0u : a.spins;
     Config cfg(o);
-    if (mesh_chip) {
-        if (tiles) mesh::build(cfg, a.seed, a.rate, [](unsigned k) { return k; });
-        else mesh::build(cfg, a.seed, a.rate, [D](unsigned k) { return (k / mesh::kSide) * D / mesh::kSide; });
-    } else {
-        synth::Params p;
-        p.seed = a.seed;
-        p.clusters = 8; p.nodes_per_cluster = 8; p.gap = 1;
-        if (tiles) synth::build(cfg, p, [](unsigned c) { return c; });
-        else synth::build(cfg, p, [D](unsigned c) { return c * D / 8; });
-    }
+    add_chip(cfg, D, tiles);
     Sim s = cfg.build();
     if (a.due_off) {
         if (detail::Internals::impl(s)->threads) FATAL("--due-off: one engine only (a split machine's engines have it off already)");

@@ -7,6 +7,7 @@
 #pragma once
 
 #include <cstdint>
+#include <ctime>
 #include <string>
 
 #include "base/bitmap.h"
@@ -24,6 +25,16 @@ inline constexpr Cycle kNoCycle = ~Cycle(0);
 // size limits (a put that grew past them became a call, costing the mesh 7% more instructions: the performance pass).
 #define SIM_HOT [[gnu::always_inline]] inline
 inline constexpr uint32_t kNone = ~0u;
+// W10: calibration's clock: the time stamp counter where there is one, else the monotonic clock in nanoseconds.
+inline uint64_t sim_ticks() {
+#if defined(__x86_64__) || defined(__i386__)
+    return __builtin_ia32_rdtsc();
+#else
+    timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return uint64_t(ts.tv_sec) * 1000000000ull + uint64_t(ts.tv_nsec);
+#endif
+}
 inline constexpr uint16_t kNoClass = 0xFFFF;   // a port carrying its payload by value
 
 // A port's ring of visible entries, slim (the performance pass): its storage packed in the thread's block (base/words.h),
@@ -228,6 +239,8 @@ struct Engine {
     bool stop_breaks = true;
     // W10: the port observer's arrival cycles (Options::observe_arrivals): per Link input, one per ring slot, at
     // link_at + link_at_off[port]; null when off (nothing recorded)
+    uint64_t* inst_ticks = nullptr; // W10: Options::calibrate: time stamp ticks per instance's steps, summed (the runs'
+                                    // calibrating loops, config.h run_form_cal; null: not timed)
     Cycle* link_at = nullptr;
     uint32_t* link_at_off = nullptr;
     // Cost per cycle with activity, not structure (the performance pass):

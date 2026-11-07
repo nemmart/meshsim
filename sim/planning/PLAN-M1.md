@@ -167,4 +167,4 @@ Workers may refine the layout under `src/` and `tests/` in their plans.
 | W6 | **done**, merged 2026-11-07 (`sessions/WORKER6-REPORT.md`); its recommendations go to the owner with W3's API |
 | W3 | stage 1 (the API) done, reviewed by the integrator (D19) and merged 2026-11-07; stage 2 started (owner's go-ahead, D20) |
 | W5 | prompt written 2026-11-07 (`sessions/WORKER5/PROMPT.md`) |
-| W4 | not started (after W3's engine) |
+| W4 | prompt written 2026-11-07 (`sessions/WORKER4/PROMPT.md`) |

@@ -33,6 +33,7 @@ struct Config::Impl {
         uint8_t bit = 0xFF;
         std::string name;               // "unit.port"
         unsigned width = 0, depth = 0, latency = 0, regs = 0;
+        bool ovf_step = false;          // W10: a Fifo input whose overflows step its owner (Ports::overflow_steps)
         unsigned slot_words = 0, held = 0;  // by reference: the size class (0: by value), and slots held beyond the port
         Word reset = 0;
         size_t offset = 0;

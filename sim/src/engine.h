@@ -99,6 +99,7 @@ struct FifoPort {
     uint32_t credits, producer;
     uint16_t depth, cls;
     uint8_t bit, width, pbit;
+    uint8_t ovf_step;         // W10: an overflow steps the owner in the cycle it is judged (Ports::overflow_steps)
 };
 
 // One per Reg output: the registered value, its readers.
@@ -404,6 +405,7 @@ SIM_HOT const Word* Ctx::peek(LinkIn p, unsigned k) const {
     return l.ring.peek(k);
 }
 SIM_HOT unsigned Ctx::size(LinkIn p) const { return e_->links[p.idx].ring.count(); }
+SIM_HOT uint64_t Ctx::overflows(FifoIn p) const { return e_->fifos[p.idx].overflows; }
 SIM_HOT void Ctx::take(LinkIn p) {
     LinkPort& l = e_->links[p.idx];
 #ifdef SIM_DEBUG
@@ -640,6 +642,7 @@ void deliver_fifo(Engine& e, const Bucket& b) {
             if (f.first_overflow == kNoCycle) f.first_overflow = put_at;
             if (f.count_idx != kNone) e.count_inc(f.count_idx, 1);       // counted at t + 1 (PORTS.md 3, 8)
             if (f.cls != kNoClass) e.pools[f.cls].free(uint32_t(p[1]));   // a dropped by-reference payload: its slot back
+            if (f.ovf_step) e.mark(f.owner);                              // W10: the owner steps now (D29)
             continue;
         }
         Word* d = f.ring.push();

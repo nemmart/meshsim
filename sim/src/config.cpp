@@ -32,6 +32,10 @@ void Ports::in(FifoIn& h, const char* name, unsigned width, unsigned depth) {
     h.bit = IMPL.decls[h.idx].bit;
     IMPL.decls[h.idx].depth = depth;
 }
+void Ports::overflow_steps(FifoIn& h) {
+    if (h.idx == kNone || IMPL.decls[h.idx].kind != Kind::fifo) FATAL("overflow_steps: declare a plain Fifo input first (in(FifoIn&, ...))");
+    IMPL.decls[h.idx].ovf_step = true;
+}
 void Ports::in_credit(FifoIn& h, const char* name, unsigned width, unsigned depth) {
     if (width < 1 || depth < 1 || depth > 0xFFFF) FATAL("credit fifo '%s': width %u and depth %u", name, width, depth);
     h.idx = IMPL.declare(&h, Kind::credit, false, Shape::in, name, width, true, false);
@@ -608,6 +612,7 @@ Sim Config::build() {
             FifoPort& f = *new (&e.fifos[d.final]) FifoPort{};
             f.ring.init(B + o_ring[id], d.width, d.depth);
             f.last_take = kNoCycle; f.first_overflow = kNoCycle; f.overflows = 0; f.owner = owner; f.count_idx = kNone;
+            f.ovf_step = d.ovf_step ? 1 : 0;
             f.ret = kNone; f.credits = 0; f.producer = kNone; f.pbit = 0;
             f.depth = uint16_t(d.depth); f.bit = d.bit; f.width = uint8_t(d.width); f.cls = decl_cls[id];
             for (size_t k = 1; k < d.peers.size(); k++) f.count_idx = I.decls[d.peers[k]].final;   // count_overflows

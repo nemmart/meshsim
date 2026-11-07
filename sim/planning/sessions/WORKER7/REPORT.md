@@ -89,7 +89,7 @@ the input load 0.13 s; verification after the run 0.14 s.
 - **The figure to beat is ~95.9 s for the counted 1,229,687 cycles (78 µs per chip-cycle)**, pinned to one P-core.
   PLAN-M2's ~110 s (Quest 120, the same code) was the whole JVM unpinned; pinned, the whole JVM is 97.7 s. The ~4 s aim is
   ~3.3 µs per cycle: **~24× the counted span**.
-- Run to run, the counted span varies by 0.2%; the boot is 1.3% of the setup-excluded run's cycles' worth of time.
+- Run to run, the counted span varies by 0.2%. The boot (14,791 simulated cycles) takes ~1.3 s, outside the count.
 - The counted span includes `SortTest.Machine.monitor()` between every two cycles (as SortTest's own run does): a scan
   of 64 tiles that the C++ bench need not reproduce. It is part of the baseline as measured.
 

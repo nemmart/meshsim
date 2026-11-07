@@ -59,3 +59,9 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   authors. Internal templates on the word count (1, 2, 3) are fine: at most three instantiations, each genuinely different
   code. What to avoid is templating on payload types, which stamps out identical copies of the same code for same-sized
   types; payloads stay untyped words.
+- **D17. The link word is (b), three words inline** (owner, on W6's report; reverses the owner's proposal (a)): no
+  allocation or free per 128-bit payload, no copy when crossing threads, one kind of payload; 12% less memory per mesh; (a)'s
+  edge under memory pressure (up to 5.5%) doesn't pay for that machinery. Units hold 128-bit values inline as two words. The
+  thread's 128-bit value array remains only for payloads larger than 128 bits.
+- **D18. Release and timing builds use clang** (owner, on W6's report: ~10% on the mesh; an Fp128 multiply 2.4 ns against
+  gcc's best 4.3). gcc stays in `make check`, both compilers in both builds.

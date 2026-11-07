@@ -1,14 +1,25 @@
 # WORKER11 (G3: the memory path): notes
 
 Branch `sim-w11` from `4774960`. The prompt is `PROMPT.md`; the specification is `sim/tests/AUDIT-M2.md` (1, 2, 3.2, 3.4,
-3.5, 5, 6). **Plan proposed 2026-11-08, waiting for the go-ahead. No code until then.**
+3.5, 5, 6). **Plan approved by the owner, 2026-11-08**, with the answers below.
 
 Read: PLAN-M2, DECISIONS (D5-D29), AUDIT-M2, WORKER8 and WORKER9 NOTES (their REPORTs are not on main yet), W12's
 prompt, PORTS.md, `inject.h/.cpp`, `write_engine.h`, `table_store.h`, `memsum.h`, `director.h`, `statefp_g1/g2`,
 and ref's `BigSRAM`, `SRAMReadQueue`, `InjectionPath`, `ReadPort`, `WriteEngine`, `TableStore`/`RmwPipe`/`HistStore`,
 `Tile` (wiring), `StateFp` (srq, inj, sram, we, ts, hist, rdport).
 
-## Questions for the owner
+## The owner's answers (2026-11-08)
+
+1. Start now. W9's report is on main (read); W8's report later: its NOTES and code until then.
+2. **The framework hook**: a Fifo's overflow reported to its consumer as an event (W10, asked by the owner). Build the
+   write engine to use it; don't wait (no M2 program overflows we-in).
+3. **Big SRAM: one zero-filled block per tile, allocated once at configuration at its declared size** (4 MB by
+   default); the OS backs only touched pages. Sum kept incrementally. **Record the footprint (allocated against
+   touched) for W10.**
+4. MemConf.java: yes, outside sim/ref, reflection only.
+5. Agree the ports with W12 in one round (its proposal mirrors mine).
+
+## Questions asked (2026-11-08)
 
 1. **W8's and W9's reports aren't on main** (PLAN-M2: W11 starts when they are). I can start from their NOTES and code,
    which cover what I extend; or wait. Proposal: start, and re-read the reports when merged.
@@ -40,7 +51,7 @@ and ref's `BigSRAM`, `SRAMReadQueue`, `InjectionPath`, `ReadPort`, `WriteEngine`
 
 Reads go through the srq's free list exactly as ref's (client priority 0, 1, 2; one issue a cycle; a refused SRAM read
 Hold stalls the queue). In-order returns per client; W12's units see their data as packets through the injection point,
-so there is no other return port between us. Headers (declarations only) published right after the go-ahead.
+so there is no other return port between us. **Published: `src/units/mem.h`** (declarations only: the table, the words, the client numbers, `MemIO`).
 
 ## The plan
 
@@ -84,3 +95,10 @@ Each piece: its tests, `make check` clean on gcc and clang (build by build if th
 ## Log
 
 - 2026-11-08: read the prompt's list; plan proposed (above). Branch `sim-w11`.
+- 2026-11-08: go-ahead. Main merged (W9's report). **`src/units/mem.h` published** for W12: the crossing (two Holds of
+  2 words into the read queue, clients 0 and 1; the gather's in-flight Reg; STREAM/GROUP requests and returns as
+  `Link(ts_engine_latency)` of 3 words), the request words, and `MemIO` (the read queue's ports as the control builder
+  hands them to tile_cycle). **Wiring proposal for the integrator:** `ControlIO` grows a `MemIO mem` (W9's contract);
+  `tile_cycle` connects it to the injection unit's read side; the injection unit declares the read side's ports only
+  when `mem.present` (network-only tiles, RouterConf and test_router keep today's ports). clang 18 and OpenJDK 21
+  installed in this container (apt).

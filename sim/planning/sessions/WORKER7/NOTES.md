@@ -119,5 +119,6 @@ then 4, then the report. Probably two Quest numbers, claimed per the sessions RE
 - Quest 134: the baseline (REPORT section 6) and the full-size references. Its one FAIL was the task's own file count (11
   is right, it expected 13); parked in `tasks/hold/` so the runner would not retry it.
 - Quest 135: the full-size references again at fb6f21e with the `.fp` D12 header: 10 files identical to 134's, the
-  fingerprints identical; HASHES equal to the local file.
+  fingerprints identical; the runner's HASHES has the same 58 entries as the local one, in another order (its locale
+  sorted differently): regen.sh now sorts with LC_ALL=C.
 - AUDIT-M2 3.3: the write counters' order-free model, with `pendcheck`'s evidence (0 everywhere).

@@ -9,6 +9,7 @@
 # Nothing in sim/ref is written: the runs use a scratch copy of sim/ref/meshsim with this directory's images installed
 # (checked against images/MANIFEST.md first). Needs a JDK (javac), not the riscv toolchain.
 set -u
+export LC_ALL=C   # one sort order for HASHES, whatever the machine's locale
 HERE=$(cd "$(dirname "$0")" && pwd); SIM=$(cd "$HERE/../.." && pwd); REF=$SIM/ref/meshsim
 CHECK=0; [ "${1:-}" = --check ] && { CHECK=1; shift; }
 PAT=${1:-.}

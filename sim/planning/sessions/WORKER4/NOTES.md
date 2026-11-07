@@ -183,6 +183,33 @@ only.
 6. With W5: N controllers on N threads, different programs, each matching its golden (M1's last acceptance test).
 7. `REPORT.md`.
 
+## Footprint of the framework mesh against W6's (for W3; the owner's question 2026-11-07)
+
+`bench_threads --sizes --chip mesh` (Sizes, one 8 × 8 mesh, 64 Routers, 256 data Links w3 and 256 credit lines w0, all of
+latency 3). W6's hand-rolled mesh (Quest 126, F): **127 KB**, of which rings 58%, wheels 32%, ring headers 8%.
+
+| part | as first built (Quest 128) | now | what it is |
+|---|---|---|---|
+| Router unit state | 134.1 KB | **85.0 KB** | 64 × 1,328 B: the five input queues **inside the unit** (4 × 8 + 16 entries × 24 B = 1,152 B), 96 B of port handles (8 LinkIn × 8 B, 8 LinkOut × 4 B), 80 B of counters, credits, round-robin. As first built every queue had 16 entries (my bench's waste: 49 KB); fixed |
+| Link input rings, w3 | 32.8 KB | 32.8 KB | 256 × 128 B: L + 2 = 5 entries × 24 B = 120 B, rounded to a cache line |
+| Link input rings, w0 | 16.4 KB | 16.4 KB | 256 × 64 B: an event carries no word, but its ring holds 5 one-word entries (40 B), rounded to a line |
+| LinkPort headers | 28.7 KB | 28.7 KB | 512 × 56 B (the ring's header, owner, in flight, capacity, class, bit, width) |
+| Routes | 20.5 KB | 20.5 KB | 512 × 40 B (one per output) |
+| Wheels | 41.0 KB | 41.0 KB | w3: 4 buckets × 256 entries × 4 words; w0: 4 × 256 × 1 word: the worst-case rule (config.h), as in W6 |
+| instances, runs, heap | 3.3 KB | 3.3 KB | per-instance arrays, padded to lines |
+| **total** | **276.8 KB** | **227.6 KB** | |
+
+**Where W3 might look** (the framework's side, about 140 KB of the 228):
+1. **Data held twice.** The Router copies each word from the Link's ring into its own queue, because a Link's consumer
+   must take a word the cycle it arrives (capacity L + 2) and the credit Fifo's latency is 1. W6's router kept its words
+   in the transport's ring (depth 8, credits). A Link whose consumer may hold up to a declared depth (the credit protocol
+   on a Link of latency L: `ref`'s mesh links) would let the queues live in the framework's rings: about 74 KB of unit
+   state (32 + 16 + ... per router) and the copy per hop.
+2. **Event lines as rings.** A width-0 Link stores five dummy words per input, a line each: 16.4 KB for 256 credit lines.
+   A count of arrivals (one word) would do: about 14 KB.
+3. **Headers.** 96 B per Link (LinkPort 56 + Route 40) against W6's 8% for ring headers: 49 KB, as much as the data rings.
+4. **Wheels**: 41 KB, the worst-case rule already flagged for M2.
+
 ## Log
 
 - 2026-11-07: read the brief, PLAN-M1, DECISIONS, the engine (main 078d29e), W3's notes, W6's and W2's reports; plan

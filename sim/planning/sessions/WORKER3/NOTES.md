@@ -183,7 +183,7 @@ observations' sha256s). The format is PORTS.md section 10. Full matrix: 51 runs 
 observations (not committed).
 
 For stage 2 (proposal): `make check` can't need Java, so a small fixture set (each configuration at seed 1, 2,000 cycles,
-script and `ref`'s observations, about 7 MB) is committed for the C++ test, and the full matrix runs as `make conformance`
+script and `ref`'s observations, about 2.5 MB) is committed for the C++ test, and the full matrix runs as `make conformance`
 (Java present) and on the runner. The C++ side is not started (the owner's go-ahead).
 
 ## Log

@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include "base/alloc_guard.h"
 #include "config.h"
 #include "harness.h"
 #include "synth.h"
@@ -266,4 +267,88 @@ DEATH_TEST(an_option_not_implemented_is_refused, "option threads = 4 not impleme
     Config cfg(o);
     cfg.add<Halt>("h", Cycle(3));
     Sim s = cfg.build();
+}
+
+// ---- D24: every diagnostic of the engine fires under the allocation hook (its message, not the hook's) ----
+namespace {
+template <class F>
+void under_hook(F f) { begin_run(); f(); end_run(); }
+struct Flood3 { LinkOut out; explicit Flood3(Ports& p) { p.out(out, "out", 3); } Wake step(Ctx& c) { c.put(out, 1, 2, 3); return c.next(); } };
+struct Deaf { LinkIn in; explicit Deaf(Ports& p) { p.in(in, "in", 3); } Wake step(Ctx&) { return Wake::none(); } };
+struct Twice { FifoOut out; explicit Twice(Ports& p) { p.out(out, "out", 1); } Wake step(Ctx& c) { c.put(out, 1); c.put(out, 2); return Wake::none(); } };
+struct Hoarder { FifoIn in; explicit Hoarder(Ports& p) { p.in_credit(in, "in", 1, 1); } Wake step(Ctx&) { return Wake::none(); } };
+struct Spender { CreditOut out; explicit Spender(Ports& p) { p.out(out, "out", 1); } Wake step(Ctx& c) { c.put(out, 1); return c.next(); } };
+struct FifoNeverTake { FifoIn in; explicit FifoNeverTake(Ports& p) { p.in(in, "in", 1, 4); } Wake step(Ctx&) { return Wake::none(); } };
+struct Past { explicit Past(Ports&) {} Wake step(Ctx& c) { return Wake::at_cycle(c.now()); } };
+struct Wide { FifoOut out; explicit Wide(Ports& p) { p.out(out, "out", 1); p.by_ref(out, 16); } Wake step(Ctx& c) { c.alloc(out); return Wake::none(); } };
+struct WideIn { FifoIn in; explicit WideIn(Ports& p) { p.in(in, "in", 1, 2); p.by_ref(in, 16); } Wake step(Ctx&) { return Wake::none(); } };
+struct Twice2 { WireOut out; explicit Twice2(Ports& p) { p.out(out, "out"); } Wake step(Ctx& c) { c.drive(out, 1); c.drive(out, 2); return Wake::none(); } };
+struct WireSink { WireIn in; explicit WireSink(Ports& p) { p.in(in, "in"); } Wake step(Ctx&) { return Wake::none(); } };
+}  // namespace
+
+DEBUG_DEATH_TEST(d24_missed_wake_fatal_under_the_hook, "missed wake at cycle [0-9]+: sink is asleep with data waiting in sink.in") {
+    Config cfg;
+    auto& b = cfg.add<Burst>("burst");
+    auto& f = cfg.add<Forgetful>("sink");
+    cfg.connect(b.out, f.in);
+    Sim s = cfg.build();
+    under_hook([&] { s.run(100); });
+}
+DEBUG_DEATH_TEST(d24_missed_wake_report_under_the_hook, "missed wake at cycle [0-9]+: sink is asleep with data waiting in sink.in.*after the run") {
+    Options o;
+    o.missed_wake_fatal = false;
+    Config cfg(o);
+    auto& b = cfg.add<Burst>("burst");
+    auto& f = cfg.add<Forgetful>("sink");
+    cfg.connect(b.out, f.in);
+    Sim s = cfg.build();
+    under_hook([&] { s.run(100); });                     // reported and gone on, without allocating
+    FATAL("after the run");
+}
+DEBUG_DEATH_TEST(d24_leak_under_the_hook, "slot pool 'w16' leaks at cycle") {
+    Config cfg;
+    auto& w = cfg.add<Wide>("w");
+    auto& i = cfg.add<WideIn>("i");
+    cfg.connect(w.out, i.in);
+    Sim s = cfg.build();
+    under_hook([&] { s.run(5); });
+}
+DEBUG_DEATH_TEST(d24_wire_twice_under_the_hook, "wire of tw written twice in one cycle") {
+    Config cfg;
+    auto& t = cfg.add<Twice2>("tw");
+    auto& r = cfg.add<WireSink>("ws");
+    cfg.connect(t.out, r.in);
+    Sim s = cfg.build();
+    under_hook([&] { s.run(3); });
+}
+DEATH_TEST(d24_two_puts_under_the_hook, "two puts on 'two.out' in cycle 1") {
+    Config cfg;
+    auto& t = cfg.add<Twice>("two");
+    auto& h = cfg.add<FifoNeverTake>("nt");
+    cfg.connect(t.out, h.in);
+    cfg.missed_wake_after("nt", 0);
+    Sim s = cfg.build();
+    under_hook([&] { s.run(3); });
+}
+DEATH_TEST(d24_link_full_under_the_hook, "link 'deaf.in' full at cycle") {
+    Config cfg;
+    auto& f = cfg.add<Flood3>("flood");
+    auto& d = cfg.add<Deaf>("deaf");
+    cfg.link(f.out, d.in, 1);
+    Sim s = cfg.build();
+    under_hook([&] { s.run(10); });
+}
+DEATH_TEST(d24_no_credit_under_the_hook, "put on 'sp.out' at cycle 2 without a credit") {
+    Config cfg;
+    auto& p = cfg.add<Spender>("sp");
+    auto& h = cfg.add<Hoarder>("ho");
+    cfg.connect(p.out, h.in);
+    Sim s = cfg.build();
+    under_hook([&] { s.run(5); });
+}
+DEATH_TEST(d24_wake_in_the_past_under_the_hook, "unit 'past' asked to be woken at cycle 1") {
+    Config cfg;
+    cfg.add<Past>("past");
+    Sim s = cfg.build();
+    under_hook([&] { s.run(3); });
 }

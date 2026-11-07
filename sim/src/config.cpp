@@ -163,7 +163,17 @@ struct Carver {
     std::vector<Item> items;
     size_t total = 0;
     size_t add(std::string what, size_t words, uint32_t count = 1, int type = -1, int chip = -1) {
+        if (round_to_lines(total) != total) {           // a structure on its own lines (after packed ones): the gap counted
+            items.push_back({"padding (to whole lines)", round_to_lines(total) - total, 1, -1, -1, total});
+            total = round_to_lines(total);
+        }
         words = round_to_lines(words);
+        items.push_back({std::move(what), words, count, type, chip, total});
+        total += words;
+        return total - words;
+    }
+    // Packed: no rounding, so small structures this thread alone writes share lines (base/words.h). Word-aligned.
+    size_t add_packed(std::string what, size_t words, uint32_t count = 1, int type = -1, int chip = -1) {
         items.push_back({std::move(what), words, count, type, chip, total});
         total += words;
         return total - words;
@@ -374,11 +384,11 @@ Sim Config::build() {
         const auto& u = I.units[d.unit];
         if (d.out && d.kind == Kind::regfile) { o_ring[id] = c.add("regfile registers", (d.regs + 1) / 2, 1, u.type, int(u.chip)); continue; }
         if (d.out) continue;
-        if (d.kind == Kind::link)
-            o_ring[id] = c.add("ring link w" + std::to_string(d.width), Ring::words_needed(std::max(1u, d.width), d.latency + 2), 1, u.type, int(u.chip));
+        if (d.kind == Kind::link)            // width 0 (an event line): no storage, the count only
+            o_ring[id] = c.add_packed("ring link w" + std::to_string(d.width), size_t(d.width) * (d.latency + 2), 1, u.type, int(u.chip));
         else if (d.kind == Kind::fifo || d.kind == Kind::credit)
-            o_ring[id] = c.add(std::string("ring ") + (d.kind == Kind::credit ? "credit" : "fifo") + " w" + std::to_string(d.width),
-                               Ring::words_needed(d.width, d.depth), 1, u.type, int(u.chip));
+            o_ring[id] = c.add_packed(std::string("ring ") + (d.kind == Kind::credit ? "credit" : "fifo") + " w" + std::to_string(d.width),
+                                      size_t(d.width) * d.depth, 1, u.type, int(u.chip));
     }
     const size_t o_wheels = c.add_array<Wheel>("wheels: headers", wheels.size());
     std::vector<size_t> o_bheads(wheels.size()), o_bstore(wheels.size());
@@ -395,18 +405,25 @@ Sim Config::build() {
     const size_t o_allow = c.add_array<uint64_t>("slot pools: allowances", class_words.size());
     const size_t o_runs = c.add_array<RunSet>("runs", runs.size());
     std::vector<size_t> o_bits(runs.size());
-    for (size_t r = 0; r < runs.size(); r++) o_bits[r] = c.add("run sets", 2 * Bitmap::words_needed(runs[r].count), runs[r].count);
+    for (size_t r = 0; r < runs.size(); r++) o_bits[r] = c.add_packed("run sets", 2 * size_t((runs[r].count + 63) / 64), runs[r].count);
     // the debug orders and the missed-wake detector: add order, a level's scratch, watches, thresholds, suspects
     uint32_t nwatch = 0;
     for (const Decl& d : I.decls)
         if ((!d.out && (d.kind == Kind::link || d.kind == Kind::fifo || d.kind == Kind::credit || d.kind == Kind::hold)) ||
             (d.out && (d.kind == Kind::hold || d.kind == Kind::credit)))
             nwatch++;
-    const size_t o_addord = c.add_array<uint32_t>("instances: add order", n), o_scratch = c.add_array<uint32_t>("debug: a level's order", n),
-                 o_watch = c.add_array<Engine::Watch>("debug: detector watches", nwatch),
-                 o_wfirst = c.add_array<uint32_t>("debug: detector watch index", n + 1),
-                 o_mwafter = c.add_array<uint32_t>("debug: detector thresholds", n),
-                 o_since = c.add_array<Cycle>("debug: detector suspects since", n), o_susp = c.add_array<uint32_t>("debug: detector suspects", n);
+    // carved only when they are used: the debug orders' when an order is set; the detector's in debug builds
+    const bool orders = I.opt.shuffle_seed || I.opt.order == Options::Order::instance_major;
+    const size_t nd = kDebug ? n : 0, no = orders ? n : 0;
+    const size_t o_addord = c.add_array<uint32_t>("debug: add order", no), o_scratch = c.add_array<uint32_t>("debug: a level's order", no),
+                 o_watch = c.add_array<Engine::Watch>("debug: detector watches", kDebug ? nwatch : 0),
+                 o_wfirst = c.add_array<uint32_t>("debug: detector watch index", kDebug ? n + 1 : 0),
+                 o_mwafter = c.add_array<uint32_t>("debug: detector thresholds", nd),
+                 o_since = c.add_array<Cycle>("debug: detector suspects since", nd), o_susp = c.add_array<uint32_t>("debug: detector suspects", nd);
+    // the run masks (one bit per run) and the near wakes (16 slots of an instance bitmap and its summary)
+    const uint32_t nrw = uint32_t((runs.size() + 63) / 64), niw = (n + 63) / 64, nsw = (niw + 63) / 64;
+    const size_t o_rmask = c.add_array<uint64_t>("run masks", 2 * size_t(nrw));
+    const size_t o_near = c.add_array<uint64_t>("near wakes", Engine::kNear * size_t(niw + nsw));
 
     auto* S = new Sim::Impl;
     S->types = I.types;
@@ -506,7 +523,6 @@ Sim Config::build() {
     for (uint32_t id = 0; id < I.decls.size(); id++) {
         const Decl& d = I.decls[id];
         const uint32_t owner = inst_of[d.unit];
-        const char* nm = S->port_names[id].c_str();
         if (d.kind == Kind::count) {
             if (d.out) {
                 CountPort& cp = e.counts[d.final];
@@ -534,8 +550,12 @@ Sim Config::build() {
             const WheelDef& wd = wheels[route_wheel[d.final]];
             Route& r = e.routes[d.final];
             r = Route{};
-            r.wheel = reinterpret_cast<Bucket*>(B + o_bheads[route_wheel[d.final]]);
-            r.last_put = kNoCycle; r.mask = wd.W - 1; r.owner = owner;
+            r.wheel = uint16_t(route_wheel[d.final]);
+            r.last_put = kNoCycle;
+#ifdef SIM_DEBUG
+            r.owner = owner;
+#endif
+            (void)wd;
             r.dest = d.kind == Kind::reg ? regidx[id] : in.final;
             r.latency = uint16_t(d.latency); r.width = uint8_t(d.width); r.kind = d.kind; r.cls = decl_cls[id];
             if (d.kind == Kind::reg) {
@@ -548,12 +568,15 @@ Sim Config::build() {
         }
         if (d.kind == Kind::link) {
             LinkPort& l = *new (&e.links[d.final]) LinkPort{};
-            l.ring.init(B + o_ring[id], std::max(1u, d.width), d.latency + 2, nm);
-            l.last_take = kNoCycle; l.owner = owner; l.inflight = 0; l.cap = uint16_t(d.latency + 2); l.bit = d.bit; l.width = uint8_t(d.width);
+            l.ring.init(B + o_ring[id], d.width, d.latency + 2);
+            l.owner = owner; l.inflight = 0; l.cap = uint16_t(d.latency + 2); l.bit = d.bit; l.width = uint8_t(d.width);
+#ifdef SIM_DEBUG
+            l.last_take = kNoCycle;
+#endif
             l.cls = decl_cls[id];
         } else if (d.kind == Kind::fifo || d.kind == Kind::credit) {
             FifoPort& f = *new (&e.fifos[d.final]) FifoPort{};
-            f.ring.init(B + o_ring[id], d.width, d.depth, nm);
+            f.ring.init(B + o_ring[id], d.width, d.depth);
             f.last_take = kNoCycle; f.first_overflow = kNoCycle; f.overflows = 0; f.owner = owner; f.count_idx = kNone;
             f.ret = kNone; f.credits = 0; f.producer = kNone; f.pbit = 0;
             f.depth = uint16_t(d.depth); f.bit = d.bit; f.width = uint8_t(d.width); f.cls = decl_cls[id];
@@ -563,8 +586,11 @@ Sim Config::build() {
                 f.ret = ret_route[id]; f.credits = d.depth; f.producer = inst_of[o.unit]; f.pbit = o.bit;
                 Route& r = e.routes[f.ret];
                 r = Route{};
-                r.wheel = reinterpret_cast<Bucket*>(B + o_bheads[route_wheel[f.ret]]);
-                r.last_put = kNoCycle; r.mask = wheels[route_wheel[f.ret]].W - 1; r.owner = owner; r.dest = d.final;
+                r.wheel = uint16_t(route_wheel[f.ret]);
+                r.last_put = kNoCycle; r.dest = d.final;
+#ifdef SIM_DEBUG
+                r.owner = owner;
+#endif
                 r.latency = 1; r.width = 0; r.kind = Kind::cret; r.cls = kNoClass;
             }
         } else if (d.kind == Kind::hold) {
@@ -594,15 +620,31 @@ Sim Config::build() {
         rs.units = S->obj(rd.first);
         rs.first = rd.first; rs.count = rd.count; rs.level = rd.level; rs.type = rd.type; rs.form = rd.form;
         S->misc_names.push_back("run set " + ti.name);
-        const size_t bw = Bitmap::words_needed(rd.count);
-        rs.ready.init(B + o_bits[r], rd.count, S->misc_names.back().c_str());
-        rs.next.init(B + o_bits[r] + bw, rd.count, S->misc_names.back().c_str());
+        rs.nwords = (rd.count + 63) / 64;
+        rs.cur = 0;
+        rs.bits[0] = B + o_bits[r];
+        rs.bits[1] = B + o_bits[r] + rs.nwords;
         for (uint32_t k = rd.first; k < rd.first + rd.count; k++) e.run_of[k] = uint32_t(r);
     }
+    // the run masks, the near wakes, whether delivery can go by the due masks (every latency below 64, at most 64 wheels)
+    e.nrw = nrw;
+    e.run_ready = B + o_rmask;
+    e.run_next = B + o_rmask + nrw;
+    e.niw = niw; e.nsw = nsw;
+    e.near_bits = B + o_near;
+    e.near_sum = B + o_near + Engine::kNear * size_t(niw);
+    {
+        unsigned maxlat = 0;
+        for (uint32_t r = 0; r < nroute; r++) maxlat = std::max<unsigned>(maxlat, e.routes[r].latency);
+        e.due_ok = maxlat < 64 && wheels.size() <= 64;
+    }
+    S->link_name_ptrs.resize(nlink);
+    for (const Decl& d : I.decls) if (!d.out && d.kind == Kind::link) S->link_name_ptrs[d.final] = S->port_names[&d - I.decls.data()].c_str();
+    e.link_names = S->link_name_ptrs.data();
     // the debug orders, step-all, the detector
     e.add_order = reinterpret_cast<uint32_t*>(B + o_addord);
     e.scratch = reinterpret_cast<uint32_t*>(B + o_scratch);
-    for (uint32_t k = 0; k < n; k++) e.add_order[k] = order[k];
+    if (orders) for (uint32_t k = 0; k < n; k++) e.add_order[k] = order[k];
     e.step_all = I.opt.step_all;
     e.instance_major = I.opt.order == Options::Order::instance_major;
     e.shuffle = I.opt.shuffle_seed ? hash_mix(I.opt.shuffle_seed, 0x5eed) | 1 : 0;
@@ -613,7 +655,7 @@ Sim Config::build() {
     e.suspects = reinterpret_cast<uint32_t*>(B + o_susp);
     e.nsuspects = 0;
     e.missed_fatal = I.opt.missed_wake_fatal;
-    {
+    if (kDebug) {
         uint32_t w = 0;
         bool any = false;
         for (uint32_t k = 0; k < n; k++) {
@@ -705,7 +747,7 @@ namespace {
 struct Hash {
     uint64_t h = 0x9e3779b97f4a7c15ull;
     void add(uint64_t v) { h ^= v + 0x9e3779b97f4a7c15ull + (h << 6) + (h >> 2); h *= 0xff51afd7ed558ccdull; }
-    void ring(const Ring& r) { add(r.count()); for (unsigned i = 0; i < r.count(); i++) for (unsigned k = 0; k < r.width(); k++) add(r.peek(i)[k]); }
+    void ring(const SlimRing& r) { add(r.count()); for (unsigned i = 0; i < r.count(); i++) for (unsigned k = 0; k < r.width(); k++) add(r.peek(i)[k]); }
 };
 }  // namespace
 
@@ -743,7 +785,7 @@ std::string Sim::sleepers() const {
         uint64_t data = e.mask[k] & ~e.edges[k];
         if (!data) continue;
         const RunSet& r = e.runs[e.run_of[k]];
-        if (r.ready.test(k - r.first) || e.heap_pos[k] != kNone) continue;
+        if (RunSet::test(r.ready(), k - r.first) || e.wake_at[k] != kNoCycle) continue;   // (between cycles: next cycle's set is current)
         out += impl_->inst[k].name + ": asleep with data waiting in";
         for (auto& [bit, nm] : impl_->level_ports[k]) if (data >> bit & 1) out += " " + nm;
         out += "\n";

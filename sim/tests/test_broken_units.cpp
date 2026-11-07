@@ -86,8 +86,7 @@ TEST(broken_lazy_block_caught_by_step_all) {
            (unsigned long long)stepped.digest);
 }
 
-// Run without the allocation hook: the detector builds its message with std::string inside the run, which the hook
-// would stop first (written up for W3 in NOTES).
+// Under the allocation hook: the report, not the hook, stops it (D24: diagnostics don't allocate).
 DEBUG_DEATH_TEST(broken_lazy_block_caught_by_the_missed_wake_detector, "missed wake at cycle [0-9]+: .*t\\.ctl") {
-    run_with<LazyBlock>(sim::Options{}, nullptr, false);
+    run_with<LazyBlock>(sim::Options{}, nullptr, true);
 }

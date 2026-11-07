@@ -4,6 +4,8 @@
 
 #include <cstdio>
 
+#include <unistd.h>
+
 namespace sim {
 
 namespace {
@@ -23,48 +25,125 @@ template <unsigned W> struct DCredit { static void go(Engine& e, const Bucket& b
 template <unsigned W> struct DReg { static void go(Engine& e, const Bucket& b) { if constexpr (W) detail::deliver_reg<W>(e, b); } };
 }  // namespace
 
-void Engine::cycle() {
-    // 1. deliver t: each wheel's bucket, then the far wakes due
-    for (uint32_t w = 0; w < nwheels; w++) {
-        Bucket& b = wheels[w].buckets[now & wheels[w].mask];
-        if (b.empty()) continue;
-        switch (wheels[w].kind) {
-            case Kind::link: by_width<DLink>(wheels[w].width, *this, b); break;
-            case Kind::fifo: by_width<DFifo>(wheels[w].width, *this, b); break;
-            case Kind::hold: by_width<DHold>(wheels[w].width, *this, b); break;
-            case Kind::credit: by_width<DCredit>(wheels[w].width, *this, b); break;
-            case Kind::reg: by_width<DReg>(wheels[w].width, *this, b); break;
-            case Kind::cret: detail::deliver_cret(*this, b); break;
-            default: FATAL("wheel of kind %u: not in this increment", unsigned(wheels[w].kind));
-        }
-        pending -= b.count();
-        b.clear();
+namespace {
+inline void deliver_wheel(Engine& e, const Wheel& wh, Bucket& b) {
+    switch (wh.kind) {
+        case Kind::link: by_width<DLink>(wh.width, e, b); break;
+        case Kind::fifo: by_width<DFifo>(wh.width, e, b); break;
+        case Kind::hold: by_width<DHold>(wh.width, e, b); break;
+        case Kind::credit: by_width<DCredit>(wh.width, e, b); break;
+        case Kind::reg: by_width<DReg>(wh.width, e, b); break;
+        case Kind::cret: detail::deliver_cret(e, b); break;
+        default: FATAL("wheel of kind %u", unsigned(wh.kind));
     }
+    e.pending -= b.count();
+    b.clear();
+}
+}  // namespace
+
+// One cycle. Its fixed cost does not grow with the machine: delivery visits the wheels with entries due (one mask word),
+// the run phase the runs with ready instances, the end of the cycle the runs with next-cycle requests.
+[[gnu::always_inline]] inline void Engine::cycle() {
+    // 1. deliver t: the wheels with entries due, then the near and far wakes due
+    if (due_ok) {
+        uint64_t m = due[now & 63];
+        due[now & 63] = 0;
+        while (m) {
+            const uint32_t w = uint32_t(__builtin_ctzll(m));
+            m &= m - 1;
+            Bucket& b = wheels[w].buckets[now & wheels[w].mask];
+            if (!b.empty()) deliver_wheel(*this, wheels[w], b);
+        }
+    } else if (pending) {
+        for (uint32_t w = 0; w < nwheels; w++) {
+            Bucket& b = wheels[w].buckets[now & wheels[w].mask];
+            if (!b.empty()) deliver_wheel(*this, wheels[w], b);
+        }
+    }
+    if (near_busy >> (now & (kNear - 1)) & 1) near_slot();
     while (heap_n && wake_at[heap[0]] == now) mark(heap_pop());
     if (step_all)                                      // the missed-wake check: every instance, every cycle
-        for (uint32_t r = 0; r < nruns; r++) { runs[r].ready.set_all(); runs[r].nready = runs[r].count; }
-    // 2. run, level by level (runs are sorted by level)
+        for (uint32_t r = 0; r < nruns; r++) {
+            RunSet& rs = runs[r];
+            for (uint32_t k = 0; k < rs.count; k++) RunSet::set(rs.ready(), k);
+            rs.nready = rs.count;
+            run_ready[r >> 6] |= uint64_t(1) << (r & 63);
+        }
+    // 2. run, level by level (runs are numbered in level order; a wire's change marks only higher runs, so the masks are
+    //    read again as they go)
     if (shuffle || instance_major) {
         for (uint32_t r = 0; r < nruns;) run_level_debug(r);
+        for (uint32_t w = 0; w < nrw; w++) run_ready[w] = 0;
     } else {
-        for (uint32_t r = 0; r < nruns; r++)
-            if (runs[r].nready) { cur_level = runs[r].level; runs[r].fn(*this, runs[r]); }
+        for (uint32_t w = 0; w < nrw; w++)
+            while (uint64_t m = run_ready[w]) {
+                const uint32_t r = (w << 6) + uint32_t(__builtin_ctzll(m));
+                run_ready[w] = m & (m - 1);
+                if constexpr (kDebug) cur_level = runs[r].level;
+                runs[r].fn(*this, runs[r]);
+            }
     }
     if constexpr (kDebug) if (detector) check_suspects();
-    // 3. end: the next cycle's run sets become current
-    for (uint32_t r = 0; r < nruns; r++) {
-        RunSet& rs = runs[r];
-        Bitmap t = rs.ready; rs.ready = rs.next; rs.next = t;
-        rs.nready = rs.nnext;
-        rs.nnext = 0;
+    // 3. end: the runs with next-cycle requests make them current (the others' ready sets are already empty)
+    for (uint32_t w = 0; w < nrw; w++) {
+        uint64_t m = run_next[w];
+        run_next[w] = 0;
+        run_ready[w] = m;
+        while (m) {
+            RunSet& rs = runs[(w << 6) + uint32_t(__builtin_ctzll(m))];
+            m &= m - 1;
+            rs.cur ^= 1;                               // next becomes ready; the old ready set is already empty
+            rs.nready = rs.nnext;
+            rs.nnext = 0;
+        }
     }
     now++;
 }
 
 bool Engine::idle() const {
     if (pending) return false;
-    for (uint32_t r = 0; r < nruns; r++) if (runs[r].nready) return false;
+    for (uint32_t w = 0; w < nrw; w++) if (run_ready[w]) return false;
     return true;
+}
+
+// The near wakes of this cycle's slot: an instance whose wake is still this cycle is marked (a later step may have moved
+// its wake: its old bit is then stale, and ignored).
+void Engine::near_slot() {
+    const unsigned s = unsigned(now & (kNear - 1));
+    uint64_t* bits = near_bits + size_t(s) * niw;
+    uint64_t* sum = near_sum + size_t(s) * nsw;
+    for (uint32_t q = 0; q < nsw; q++) {
+        uint64_t sm = sum[q];
+        sum[q] = 0;
+        while (sm) {
+            const uint32_t wi = (q << 6) + uint32_t(__builtin_ctzll(sm));
+            sm &= sm - 1;
+            uint64_t m = bits[wi];
+            bits[wi] = 0;
+            while (m) {
+                const uint32_t i = (wi << 6) + uint32_t(__builtin_ctzll(m));
+                m &= m - 1;
+                if (wake_at[i] == now && heap_pos[i] == kNone) { wake_at[i] = kNoCycle; mark(i); }
+            }
+        }
+    }
+    near_busy &= ~(1u << s);
+}
+
+Cycle Engine::next_wake() const {
+    Cycle t = heap_n ? wake_at[heap[0]] : kNoCycle;
+    if (near_busy) {
+        const unsigned s = unsigned(now & (kNear - 1));
+        const uint32_t rot = ((near_busy >> s) | (near_busy << (kNear - s))) & ((1u << kNear) - 1);
+        const Cycle n = now + unsigned(__builtin_ctz(rot));
+        if (n < t) t = n;
+    }
+    return t;
+}
+
+bool Engine::asleep(uint32_t i) const {
+    const RunSet& r = runs[run_of[i]];
+    return !RunSet::test(r.next(), i - r.first) && wake_at[i] == kNoCycle;
 }
 
 // Runs cycles now, now + 1, ..., end: through `end` inclusive (config.h, Sim::run_until).
@@ -73,7 +152,7 @@ void Engine::run_until(Cycle end) {
         cycle();
         if constexpr (kDebug) if (leak_every && npools && now % leak_every == 0) check_leaks();
         if (!step_all && idle()) {                     // nothing in flight, nothing ready: jump to the next wake
-            Cycle t = heap_n ? wake_at[heap[0]] : end + 1;
+            Cycle t = next_wake();
             if (t > end + 1) t = end + 1;
             if (t > now) now = t;
         }
@@ -111,28 +190,21 @@ void Engine::check_leaks() const {
     }
 }
 
-void Engine::after(RunSet& r, uint32_t k, Wake w) {
-    const uint32_t i = r.first + k;
-    steps[i]++;
-    mask[i] &= ~edges[i];
-    const Cycle at = w.at;
-    if constexpr (kDebug) {
-        if (detector) {                                // asleep with data waiting: a suspect, judged at the end of the cycle
-            if (at == Wake::kNever && (mask[i] & ~edges[i]) && missed_after[i]) {
-                if (suspect_since[i] == kNoCycle) { suspect_since[i] = now; suspects[nsuspects++] = i; }
-            } else {
-                suspect_since[i] = kNoCycle;           // dropped from the list at the end of the cycle
-            }
-        }
-    }
-    if (at == Wake::kNever) { if (heap_pos[i] != kNone) heap_remove(i); return; }
+// A wake 2 cycles ahead or more (after()'s rare path): the near wheel, or the heap.
+void Engine::after_far(uint32_t i, Cycle at) {
     if (__builtin_expect(at <= now, 0)) die_wake(i, at);
-    if (at == now + 1) {
-        if (heap_pos[i] != kNone) heap_remove(i);
-        if (!r.next.test(k)) { r.next.set(k); r.nnext++; }
-        return;
-    }
+    if (at - now < kNear) { wake_at[i] = at; near_set(i, at); return; }
     heap_set(i, at);
+}
+
+// The detector's bookkeeping (debug): asleep with data waiting makes a suspect, judged at the end of the cycle.
+void Engine::note_suspect(uint32_t i, Cycle at) {
+    if (!detector) return;
+    if (at == Wake::kNever && (mask[i] & ~edges[i]) && missed_after[i]) {
+        if (suspect_since[i] == kNoCycle) { suspect_since[i] = now; suspects[nsuspects++] = i; }
+    } else {
+        suspect_since[i] = kNoCycle;                   // dropped from the list at the end of the cycle
+    }
 }
 
 // ---- the debug orders: one level's ready instances in instance-major or a seeded order, stepped one by one ----------
@@ -141,7 +213,9 @@ void Engine::run_level_debug(uint32_t& r) {
     uint32_t n = 0;
     for (; r < nruns && runs[r].level == level; r++) {
         RunSet& rs = runs[r];
-        if (rs.nready) rs.ready.for_each_set([&](size_t k) { scratch[n++] = rs.first + uint32_t(k); });
+        if (rs.nready)
+            for (uint32_t wi = 0; wi < rs.nwords; wi++)
+                for (uint64_t m = rs.ready()[wi]; m; m &= m - 1) scratch[n++] = rs.first + (wi << 6) + uint32_t(__builtin_ctzll(m));
     }
     if (instance_major) {                              // by add order (each instance's units together): a shell sort, in place
         for (uint32_t gap = n / 2; gap; gap /= 2)
@@ -166,7 +240,7 @@ void Engine::run_level_debug(uint32_t& r) {
         RunSet& rs = runs[run_of[i]];
         rs.one(*this, rs, i - rs.first);
     }
-    for (uint32_t q = first; q < r; q++) { runs[q].ready.clear_all(); runs[q].nready = 0; }
+    for (uint32_t q = first; q < r; q++) { for (uint32_t wi = 0; wi < runs[q].nwords; wi++) runs[q].ready()[wi] = 0; runs[q].nready = 0; }
 }
 
 // ---- the missed-wake detector (D20; debug builds) ------------------------------------------------------------------
@@ -194,33 +268,37 @@ bool Engine::on_its_way(uint32_t i) const {
     }
     return false;
 }
-std::string Engine::describe_suspect(uint32_t i) const {
-    std::string s = std::string(unit_names[i]) + " is asleep with data waiting in";
-    for (uint32_t w = watch_first[i]; w < watch_first[i + 1]; w++) {
+// The suspect's description, formatted into diag[] (D24: no allocation in the run, diagnostics included); a description
+// longer than the buffer is cut, never grown.
+const char* Engine::describe_suspect(uint32_t i) {
+    size_t n = size_t(std::snprintf(diag, sizeof diag, "%s is asleep with data waiting in", unit_names[i]));
+    for (uint32_t w = watch_first[i]; w < watch_first[i + 1] && n < sizeof diag; w++) {
         const Watch& x = watch[w];
         if (!x.name) continue;
-        uint64_t data = 0;
+        bool data = false;
         if (x.kind == Kind::link) data = !links[x.idx].ring.empty();
         else if (x.kind == Kind::fifo || x.kind == Kind::credit) data = !fifos[x.idx].ring.empty();
         else if (x.kind == Kind::hold) data = holds[x.idx].occ;
-        if (data) { s += " "; s += x.name; }
+        if (data) n += size_t(std::snprintf(diag + n, sizeof diag - n, " %s", x.name));
     }
-    return s;
+    return diag;
 }
 void Engine::check_suspects() {
     uint32_t w = 0;
     for (uint32_t k = 0; k < nsuspects; k++) {
         const uint32_t i = suspects[k];
         if (suspect_since[i] == kNoCycle) continue;
-        const RunSet& r = runs[run_of[i]];
-        if (r.next.test(i - r.first) || heap_pos[i] != kNone || !(mask[i] & ~edges[i])) { suspect_since[i] = kNoCycle; continue; }
+        if (!asleep(i) || !(mask[i] & ~edges[i])) { suspect_since[i] = kNoCycle; continue; }
         if (on_its_way(i)) { suspect_since[i] = now + 1; suspects[w++] = i; continue; }
         if (now + 1 - suspect_since[i] >= missed_after[i]) {
-            std::string d = describe_suspect(i);
+            const char* d = describe_suspect(i);
             if (missed_fatal)
                 FATAL("missed wake at cycle %llu: %s, and nothing on its way will step it (no wake asked, no delivery, credit or "
-                      "refusal due); a unit that leaves data in an input returns next() (sim.h, WAKES)", (unsigned long long)now, d.c_str());
-            std::fprintf(stderr, "missed wake at cycle %llu: %s\n", (unsigned long long)now, d.c_str());
+                      "refusal due); a unit that leaves data in an input returns next() (sim.h, WAKES)", (unsigned long long)now, d);
+            char line[sizeof diag + 64];                // report and go on: one write(2) of a formatted line (no stdio, no heap)
+            int len = std::snprintf(line, sizeof line, "missed wake at cycle %llu: %s\n", (unsigned long long)now, d);
+            if (len > int(sizeof line) - 1) len = int(sizeof line) - 1;
+            if (len > 0 && ::write(2, line, size_t(len)) < 0) {}
             suspect_since[i] = kNoCycle;               // reported: not again until it steps and sleeps on data again
             continue;
         }
@@ -293,7 +371,7 @@ void Engine::die_wire(uint32_t w, const char* what) const {
     FATAL("wire of %s %s, cycle %llu", unit_names[wires[w].producer], what, (unsigned long long)now);
 }
 void Engine::die_link_full(uint32_t port) const {
-    FATAL("link '%s' full at cycle %llu: capacity %u (the consumer must take each word as it arrives)", links[port].ring.name(),
+    FATAL("link '%s' full at cycle %llu: capacity %u (the consumer must take each word as it arrives)", link_names[port],
           (unsigned long long)now, unsigned(links[port].cap));
 }
 void Engine::die_wake(uint32_t i, Cycle at) const {

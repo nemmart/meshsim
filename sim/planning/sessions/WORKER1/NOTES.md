@@ -96,3 +96,26 @@ then `make check` from an embedded kit (sim/Makefile, src, tests; `exit` before 
 - Local: gcc 13.3 and clang 18.1 (apt), 1 core; `make check` from clean 29 s.
 
 ## Quest 121 (pushed 1fe5914, kit = sim-w1 fc27ea1, sha256 8ee76301...)
+
+Result: **DONE**. `make check` exit 0 in 15 s (gcc only: no clang there), `make -j16 check` 12 s. Facts (results/121-w1-sim-probe/):
+- **CPU:** Intel Core i5-14400F (Raptor Lake, hybrid): 10 cores, 16 threads = 6 P-cores with HT + 4 E-cores; up to 4.7 GHz;
+  L2 9.5 MB, L3 20 MB; one NUMA node; `-march=native` = alderlake. **The 16 threads are not equal**: past 6 threads a run lands
+  on HT siblings or E-cores.
+- **Memory:** 62 GB, swap 7 GB. **Limits:** none (memory.max, pids.max, cpu.max all max; ulimit -v unlimited; 1024 open files).
+  The task ran in `user.slice/.../session-10.scope`, i.e. the runner was started by hand from a session, not under the hardened
+  unit. Disk: 260 GB free on `/`.
+- **Compilers:** gcc 13.3 (Ubuntu 24.04), make 4.3, cmake 3.28; **no clang, no lld**.
+- **riscv:** **no toolchain at all** (`riscv64-unknown-elf-gcc` and the others absent; nothing under /opt but ROCm), and no clang
+  to cross-compile with.
+- **Java:** OpenJDK 21.0.12 with javac.
+- **perf:** 6.8 installed, but `perf_event_paranoid` = 4 (and `kptr_restrict` 1): unusable by the runner user.
+- **Huge pages:** THP `enabled` = madvise, `defrag` = madvise: `alloc_big`'s `MADV_HUGEPAGE` takes effect; a JVM needs
+  `-XX:+UseTransparentHugePages`.
+- **TSan:** gcc's fails at start, "unexpected memory mapping" (kernel 6.8's 32-bit mmap randomisation against gcc 13's TSan).
+  Known remedies: `sysctl vm.mmap_rnd_bits=28` (owner), or per process `setarch -R` (no root needed); to be confirmed by W4.
+
+**D4 recommendation:** commit prebuilt firmware images (and their sources and build script) in `sim/fw/`, built where the
+riscv toolchain is (a session container or the owner's machine); the C++ framework ships in each kit as source and builds
+on the runner with gcc 13 (proven). For the owner, optional: `apt install clang lld` on the runner (both compilers in
+`make check` there, and clang could then build the rv32 images), `perf_event_paranoid` to 1 (W6's profiling), and
+`vm.mmap_rnd_bits=28` (TSan, W4).

@@ -10,9 +10,11 @@ the new framework, **exactly as in `ref`** (the same cycle count, 1,229,687 at G
 and fingerprints), **multithreaded** (M1's form 2: one chip over several threads), so we see how fast it is against
 today's engine.
 
-- **Today:** about **110 s** on one `ref` JVM on the runner (110.1 s on `main`, 92.2 s with `sim-step-cost`'s A + C;
-  WORKER29, Quest 120): about 90 µs per chip-cycle.
-- **The aim:** about **4 s**, excluding setup (build, image and input load): about **3.3 µs per chip-cycle**, ~27× today.
+- **Today** (W7, Quest 134, the runner pinned to one P-core, `ref` at `main`): the **counted span** (L1's GO to L2's
+  all-READY, 1,229,687 cycles) takes **about 96 s** (95.80-95.98 s, ~78 µs per chip-cycle); setup before the first GO
+  about 2 s, of which the boot (14,791 cycles) about 1.3 s; SortTest as a whole JVM 97.7 s. (The earlier "110 s" was a
+  whole JVM in a different run, Quest 120.)
+- **The aim:** about **4 s** for the counted span, excluding setup: about **3.25 µs per chip-cycle, ~24× today**.
   For scale: M1 measured ~4.5× unit for unit per thread (D22) and, for one chip split over threads (form 2, the only
   threading that counts: D26), ~3× on four threads so far (Quest 133), so the aim needs both pushed further, and chip-level work kept event-driven (D23).
 - Measured on the owner's runner and recorded with its machine (D21); the same build runs anywhere.
@@ -54,4 +56,4 @@ extend D5's one observer, so it is the owner's decision, with W7's proposal and 
 
 | worker | state |
 |---|---|
-| W7 | prompt written 2026-11-07 (`sessions/WORKER7/PROMPT.md`) |
+| W7 | **done**, merged 2026-11-07 (`sessions/WORKER7-REPORT.md`): `sim/tests/AUDIT-M2.md` (what the sort touches, the units, the order that matters, D23's chip-level events, unit groups G1-G4, the canonical state fingerprint), `sim/tests/golden-m2/` (references for regs, wfi, a2a, NetTest, EngineTest, the sort at 16K and full size), the baseline (Quest 134) |

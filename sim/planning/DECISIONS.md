@@ -95,7 +95,7 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
 
 - **D25. M2's target** (owner, 2026-11-07): **the full-size sort** (`p4/uniform-k128`) on the new framework, exact against
   `ref`, **multithreaded**, to see how fast it is against today's engine: about 110 s on one `ref` JVM, **aiming at about
-  4 s** excluding setup. The plan is `PLAN-M2.md`.
+  4 s** excluding setup. *(W7, Quest 134: the counted span is ~96 s; the aim is ~24× that.)* The plan is `PLAN-M2.md`.
 - **D26. One chip at a time** (owner, 2026-11-07; corrects SIMULATOR-NEXT 4's "throughput first, independent chips"): we
   simulate one chip at a time and don't expect to run separate simulations side by side. **M1's form 1** (N independent
   machines on N threads) **is a thread-safety test only**, not a benchmark or a design goal: don't quote its scaling (W5's

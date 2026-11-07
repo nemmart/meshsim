@@ -67,11 +67,23 @@ check:
 	  echo "==== $$c $$m"; $(MAKE) --no-print-directory CC_NAME=$$c MODE=$$m run; done; done; \
 	echo "==== make check: all passed ($(COMPILERS); debug, release)"
 
-# The full matrix (10^5 cycles per configuration), ref's side; the C++ side joins it in stage 2's increment 4.
+# The conformance tool (the C++ side of PORTS.md 10) and the full matrix: 10^5 cycles per configuration, three seeds,
+# ref's observations (tests/ref/portconf.sh, a JDK) against the framework's (clang release), file by file.
+$(B)/portconf: $(B)/tests/portconf_main.o $(LIB_OBJ)
+	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
+
 conformance:
+	@$(MAKE) --no-print-directory CC_NAME=clang MODE=release build/clang-release/portconf
 	./tests/ref/portconf.sh 100000 build/portconf
+	@set -e; n=0; for s in build/portconf/*.script; do \
+	  case $$s in *rlink*) continue;; esac; \
+	  ./build/clang-release/portconf $$s | cmp -s - $${s%.script}.obs || { echo "DIFFERS from ref: $$s"; exit 1; }; \
+	  n=$$((n + 1)); done; \
+	echo "conformance: $$n scripts of 10^5 cycles equal to ref, line for line (the reserved link is M2's)"
 
 clean:
 	rm -rf build
+
+include src/units/units.mk
 
 -include $(shell find build -name '*.d' 2>/dev/null)

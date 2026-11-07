@@ -327,7 +327,7 @@ Sim Config::build() {
     //     payloads its ports hold at once (config.h's sizing) plus what the ends declare they hold
     std::map<unsigned, uint32_t> class_of;          // slot words -> class
     std::vector<unsigned> class_words;
-    std::vector<uint64_t> class_cap;
+    std::vector<uint64_t> class_cap, class_allow;
     std::vector<uint16_t> decl_cls(I.decls.size(), kNoClass);
     for (uint32_t id = 0; id < I.decls.size(); id++) {
         const Decl& d = I.decls[id];
@@ -342,9 +342,11 @@ Sim Config::build() {
             it = class_of.emplace(d.slot_words, uint32_t(class_words.size())).first;
             class_words.push_back(d.slot_words);
             class_cap.push_back(0);
+            class_allow.push_back(0);
         }
         unsigned per = d.kind == Kind::link ? d.latency + 2 : d.kind == Kind::fifo ? d.depth + 1 : d.kind == Kind::credit ? d.depth : 2;
         class_cap[it->second] += per + d.held + o.held;
+        class_allow[it->second] += d.held + o.held + (d.kind == Kind::hold ? 1 : 0);   // a refused word awaiting its retry
         decl_cls[id] = decl_cls[d.peers[0]] = uint16_t(it->second);
     }
     for (uint64_t cap : class_cap) if (cap > 0xFFFFFFFFull) FATAL("a size class of more than 2^32 slots");
@@ -522,6 +524,7 @@ Sim Config::build() {
     for (size_t k = 0; k < class_words.size(); k++)
         o_pool[k] = c.add("slot pool w" + std::to_string(class_words[k]), SlotPool::words_needed(class_words[k], uint32_t(class_cap[k])),
                           uint32_t(class_cap[k]));
+    const size_t o_allow = c.add_array<uint64_t>("slot pools: allowances", class_words.size());
     const size_t o_runs = c.add_array<RunSet>("runs", runs.size());
     std::vector<size_t> o_bits(runs.size());
     for (size_t r = 0; r < runs.size(); r++) o_bits[r] = c.add("run sets", 2 * Bitmap::words_needed(runs[r].count), runs[r].count);
@@ -545,6 +548,9 @@ Sim Config::build() {
     e.nlinks = nlink; e.nfifos = nfifo; e.nholds = nhold; e.nroutes = nroute;
     e.nregs = nreg; e.nwires = nwire; e.nregfiles = nrf; e.ncounts = ncount;
     e.pools = reinterpret_cast<SlotPool*>(B + o_pools); e.npools = uint32_t(class_words.size());
+    e.pool_allow = B + o_allow;
+    for (size_t k = 0; k < class_words.size(); k++) e.pool_allow[k] = class_allow[k];
+    e.leak_every = I.opt.leak_check_every;
     for (size_t k = 0; k < class_words.size(); k++) {
         S->port_names.push_back("w" + std::to_string(class_words[k]));
         new (&e.pools[k]) SlotPool();

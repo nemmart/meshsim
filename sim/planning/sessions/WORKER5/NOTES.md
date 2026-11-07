@@ -179,6 +179,8 @@ fatal ("not implemented yet") rather than ignored.
 
 ### First local speed figure (this sandbox, 1 vCPU VM, clang release, not pinned: the runner measurement follows)
 
+**Machine:** this sandbox ("The machines", below): Intel Xeon @ 2.10 GHz VM, 1 vCPU, 4 GB; clang 18.1.3 -O2.
+
 `golden --bench 300`: every golden run 300 times on the engine, ready-driven, the run alone timed (not the build):
 
 | | instructions/s | cycles/s | per unit step |
@@ -190,6 +192,9 @@ The programs are short (100-1,000 cycles each), so this includes cold-start effe
 looks high for the engine against W6's measurements, worth a `perf` look on the runner.
 
 ## Speed on the runner (Quest 127, sim-w5 8738cfd; i5-14400F, CPU 0 alone (P-core, sibling 1 idle), clang 18 -O2)
+
+**Machine:** the runner ("The machines", below): Intel Core i5-14400F, 6 P cores (CPUs 0-11, 4.7 GHz max) + 4 E cores
+(CPUs 12-15, 3.5 GHz max), L3 20 MiB, 64 GB, Linux 6.8.0; clang 18.1.3 -O2 -DNDEBUG; CPU 0 (a P core), its sibling idle.
 
 The program (`tests/bench_controller.cpp`): booted as `hello` (boot ROM, replayed command and GO), then a loop of 9
 instructions in 13 cycles (data load and store, three ALU, a multiply, a register-block load, the count, a taken branch),
@@ -233,6 +238,10 @@ the statistics counters out of the hot path. Not done: correctness first, and th
 
 ## M1's threads test: N controllers on N threads (W4's run_independent; Quest 129, sim-w5 8e19528)
 
+**Machine:** the runner ("The machines", below): Intel Core i5-14400F, 6 P cores (CPUs 0-11, 4.7 GHz max) + 4 E cores
+(CPUs 12-15, 3.5 GHz max), L3 20 MiB, 64 GB, Linux 6.8.0; clang 18.1.3 -O2 -DNDEBUG. (Before increment 5: ready-driven only;
+under all six option sets see Quest 131 below.)
+
 `check_parallel` (tests/golden_run.cpp): the 67 goldens in a mixed order (k·7 mod 67, so rounds mix riscv-tests and the M1
 programs), in rounds of N; each round N controllers on N threads through `run_independent`, each a different golden. Each
 chip's tile (memories, trace) and machine are built, run and compared on its own thread; only read-only data (goldens,
@@ -257,3 +266,111 @@ Throughput (T controllers, each running the 13-cycle loop, 10^7 iterations; 3 re
 Six P-cores give 5.2x (each thread 14% slower than one alone: the all-core clock is lower than the single-core boost; the
 working set per controller is ~70 KB, so not memory). Hyperthreads add nothing: at IPC 5.5 one thread already fills the
 core. So the box's best for this load is about 300 M instructions/s (P-cores plus E-cores).
+
+## The machines (D21: every speed result records its machine)
+
+**The runner** (Quest 127, 129, 130, 131: the same box; recorded by Quest 131's `machine.txt`, the CPU list by Quest 122):
+Intel Core i5-14400F, 1 socket, 16 CPUs: 6 P cores (CPUs 0-11, two threads each, max 4.7 GHz, min 0.8 GHz) and 4 E cores
+(CPUs 12-15, max 3.5 GHz); governor powersave; L1d 416 KiB (10), L1i 448 KiB (10), L2 9.5 MiB (7), L3 20 MiB; 64 GB
+(65,671,456 kB); Linux 6.8.0-147-generic; clang 18.1.3 (Ubuntu 18.1.3-1ubuntu1), g++ 13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04.1),
+OpenJDK 21.0.12.1. Builds: clang -O2 -DNDEBUG (D18) unless stated. The tables above for Quest 127 and 129 were measured
+on this machine.
+
+**This sandbox** (the "first local figure" and local runs): Intel Xeon @ 2.10 GHz (a VM), 1 vCPU, L2 2 MiB, L3 260 MiB,
+4 GB; Linux 6.18.44; clang 18.1.3, g++ 13.3.0, OpenJDK 21.0.12.1.
+
+From Quest 131 on, my tasks take the CPU lists as arguments (`$1` P cores, `$2` E cores) or detect them
+(`planning/sessions/WORKER5/tasks/machine.inc`: `/sys/devices/cpu_core/cpus`, `cpu_atom/cpus`, thread siblings), and
+record the machine first; W4's `sim/tools/machine.sh` replaces machine.inc once it is on main. Quest 127, 129 and 130
+(before D21) used CPU 0 and the lists `0,2,4,6,8,10`, `0-11`, `12-15` written in.
+
+## The debug checks real (W3's increment 5), and M1's acceptance under them (Quest 131)
+
+**Machine:** the runner, as recorded above (Quest 131).
+
+- All six option sets (ready-driven, shuffle seeds 1-3, instance-major, step-all) are enforced everywhere: `golden
+  --engine`, `test_golden`, and the threads test (`check_parallel`: every trace equal to its golden, every digest equal
+  to the same golden's run alone ready-driven, step-all checked to be in effect). The "pending" probe is gone.
+- **Quest 131, all PASS:** 67 goldens × 6 option sets on the engine; N controllers on N threads under the six option sets
+  at N = 1, 2, 4, 6 (one per P core), 12 (every P-core thread) pinned and 16 unpinned, with the CPU lists detected;
+  `make check` (gcc and clang, debug and release, TSan).
+- **The checks bite** (`tests/test_broken_units.cpp`, in `make check`): a register block that counts its own steps
+  (invisible to the trace) gives a step-all digest unlike the ready-driven one (6b30c796fa65afea against
+  e285d089a19551ba), the healthy block equal ones; a block that leaves the core's bus word untaken on even cycles gives
+  unequal digests, and the missed-wake detector stops it: `missed wake at cycle 12: t.ctl is asleep with data waiting in
+  t.ctl.bus, and nothing on its way will step it (...)`.
+
+### For the owner and W3: the missed-wake report allocates inside the run
+
+The detector formats its report with `std::string` in the cycle loop, so under W1's allocation hook (`sim::begin_run()`,
+which my harness puts around every run, D6) the hook fires first: `FATAL src/base/alloc_guard.cpp:68: operator new of 37
+bytes inside a run`, in both modes (fatal, and report-and-go-on). Smallest case: the LazyBlock tile on `hello`, debug
+build, run inside begin_run/end_run. Not worked around in the units: only the one death test that shows the detector's
+message runs outside the hook (`run_built(..., alloc_guard = false)`, with a comment); it goes back under the hook when W3's
+fix (a fixed buffer, no allocation in either mode) lands. *(Owner, 2026-11-07: with W3 now.)*
+
+## The framework against ref (Quest 130, sim-w5 a228eee)
+
+**Machine:** the runner, as recorded above; CPU 0 (a P core), `taskset`; clang 18.1.3 -O2 for the framework; OpenJDK
+21.0.12.1, `java -Xmx1g`, for ref.
+
+**Like for like.** The same program: bench_controller's loop (9 instructions in 13 cycles; then SIM_EXIT), written by
+`bench_controller --write` and booted in ref exactly as TraceRun boots a golden (`tests/ref/SpeedRun.java`: the image
+poked in, C&C 1 expecting tile 0 alone, the boot command with entry 0x01000000, GO; observer off). At N = 1000 ref's trace
+(TraceRun, observer on) equals the framework's, body and closing block, 9,038 lines; at every N both report the same
+instructions and cycles (N = 10^6: 9,000,028 and 13,000,048). Timed: Chip.runUntil alone in ref (a fresh Chip per run, in
+one JVM; run 1 warms the JIT), Sim::run alone in the framework.
+
+| | N | runs | M instructions/s | M cycles/s | per chip cycle | framework ahead |
+|---|---|---|---|---|---|---|
+| **framework** (engine, untraced) | 10^4, 10^6, 10^7 | 3 each | **43.6-44.0** | 63.5 | 15.7 ns | — |
+| **ref, idle-skip on** (the default) | 10^6 | 4 (2-4: 0.75, 0.76, 0.77) | **0.76** | 1.10 | 0.91 µs | **58x** |
+| **ref, idle-skip off** (`-Dmeshsim.skip=false`) | 10^4 | 4 (2-4: 0.019 each) | **0.019** | 0.028 | 36 µs | **2,300x** |
+
+Ref's run 1: 0.71 (skip on), 0.018 (off). Skip off's 36 µs per chip cycle agrees with D15's 36.8 µs per chip-cycle.
+
+**Where it isn't like for like.** Ref steps a whole chip: 64 tiles with every unit of each (router, director, read port,
+engines, SRAMs, the peripheral slot), C&C, the request bus, its invariant and overflow checks. With idle-skip on the 63
+other tiles are skipped but the chip-level work is not; with it off every unit of every tile runs every cycle. M1's
+framework run has the one tile's three units and nothing else (M1's scope: the rest is replayed by the bench or absent).
+So 58x and 2,300x mostly measure chip-level work the framework doesn't do yet. **Unit for unit:** ref's Controller and
+TileControl together take 7.95% of its idle-skip-on time (below), 72 ns per chip cycle = ~104 ns per instruction; the
+framework's whole run (the core, the block, the bench and the engine) is ~23 ns per instruction: **~4.5x**. The core
+alone (no engine, `bench_controller --only core`, Quest 127) is 6.4 ns per instruction against ref's Controller at ~30
+ns: ~4.7x.
+
+### Ref's profile (JFR, settings=profile, folded by WORKER28/29's JfrFold; Quest 130)
+
+Idle-skip on, N = 10^6, 2 runs (2,098 samples, 98.9% inside Chip.runCycle). By unit (the innermost runCycle/endCycle):
+
+| unit | share | ≈ ns per chip cycle |
+|---|---|---|
+| RequestBus (`runCycle`, every cycle, all 64 leaves) | 33.3% | 303 |
+| Chip.scanOverflows | 19.5% | 177 |
+| Chip's own loop (`runCycle`) | 17.0% | 155 |
+| Chip.sleepCheck (`Tile.canSleep`) | 7.0% | 64 |
+| TileControl.endCycle | 5.6% | 51 |
+| Chip.checkInvariants | 5.0% | 45 |
+| Cnc1Peripheral | 2.5% | 23 |
+| **Controller** | **2.3%** | **21** |
+| SRAMReadQueue | 2.2% | 20 |
+| Replayer | 1.8% | 17 |
+| the rest (CnC, BigSRAM, Router, TableStore, ...) | 3.8% | 35 |
+
+By top frame: RequestBus.runCycle 33.3%, Chip.scanOverflows 19.5%, Chip.runCycle 11.0%, Tile.canSleep 7.0%,
+Replayer.errors 6.0%, TileControl.endCycle 5.4%, Chip.checkInvariants 5.0%, BusBase.enterSlow 3.4%, Controller.execute
+0.8%, Controller.step 0.7%.
+
+Idle-skip off, N = 10^4, 2 runs (864 samples, 99.4% inside Chip.runCycle). By unit: TileControl.endCycle 21.8% (64 tiles),
+SRAMReadQueue 19.9%, Router 9.4%, TableStore 6.5%, Replayer 5.0%, Controller 4.1%, Tile 4.0%, Chip's loop 3.8%,
+Chip.checkInvariants 3.8%, WriteEngine 3.1%, AddressGenerator 2.8%, the rest ≤ 2.4% each. By top frame's class: BusBase
+36.6% (the bus classes' settle on every touch), TileControl 22.2%, Router 9.4%, Replayer 7.2%, PeripheralSlot 6.1%.
+
+### The framework's profile beside it (perf, Quest 127, the same loop; the table in "Speed on the runner" above)
+
+| | framework (20.6 ns per core step, 15.7 ns per chip cycle) | ref, idle-skip on (910 ns per chip cycle) |
+|---|---|---|
+| the controller core | ~34% (~7 ns per step: execute, step, Core::step, fetch, load/store) | 2.3% (21 ns) |
+| its register block | (in the units' 34%: end_cycle runs 6 times in the run) | TileControl.endCycle 5.6% (51 ns) |
+| the engine or the chip loop | ~63% (~13 ns: Engine::cycle, dispatch, after, run_until, the wake heap) | Chip's loop, scans and checks 49% (446 ns) |
+| the rest of the chip | — (not modelled in M1) | RequestBus 33%, the other units ~8% |

@@ -40,7 +40,7 @@ int main(int argc, char** argv) {
         std::string d = test::check_parallel(sel, threads, cpus);
         double s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
         if (!d.empty()) printf("%s", d.c_str());
-        printf("golden (engine, %u threads%s): %zu runs in rounds of %u, %s, %.3f s\n", threads,
+        printf("golden (engine, %u threads%s, 6 option sets): %zu runs in rounds of %u, %s, %.3f s\n", threads,
                cpus.empty() ? "" : ", pinned", sel.size(), threads, d.empty() ? "all match" : "DIFFERENCES", s);
         return d.empty() ? 0 : 1;
     }
@@ -60,10 +60,6 @@ int main(int argc, char** argv) {
     }
     unsigned bad = 0;
     auto opts = test::debug_check_options();
-    if (engine && !test::engine_has_debug_checks()) {
-        printf("note: the engine ignores the debug-check options (W3's increment 5): ready-driven only\n");
-        opts.resize(1);
-    }
     auto t0 = std::chrono::steady_clock::now();
     for (const test::RunSpec* r : todo) {
         std::string d = engine ? test::check_engine(*r, opts) : test::check_direct(*r);
@@ -71,6 +67,6 @@ int main(int argc, char** argv) {
         else { printf("DIFF  %s\n%s\n", r->name.c_str(), d.c_str()); bad++; }
     }
     double s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
-    printf("golden (%s): %zu runs, %u differ, %.3f s\n", engine ? (opts.size() > 1 ? "engine, 6 option sets each" : "engine, ready-driven") : "direct", todo.size(), bad, s);
+    printf("golden (%s): %zu runs, %u differ, %.3f s\n", engine ? "engine, 6 option sets each" : "direct", todo.size(), bad, s);
     return bad ? 1 : 0;
 }

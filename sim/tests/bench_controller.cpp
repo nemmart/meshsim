@@ -1,6 +1,6 @@
 // bench_controller: the controller's speed (D13, D18: run it pinned to one P-core, clang release).
 //
-//   bench_controller [--iters N] [--reps R] [--trace] [--only engine|core] [--threads T --cpus a,b,...]
+//   bench_controller [--iters N] [--reps R] [--trace] [--only engine|core] [--threads T --cpus a,b,...] [--write DIR]
 //
 // The program: booted as `hello` is (the boot ROM, the replayed command and GO), then a loop of N iterations of nine
 // instructions, 13 cycles: a data-memory load and store, three ALU operations, a multiply (3 cycles), a register-block load
@@ -12,6 +12,8 @@
 //            when it asks: the interpreter's own cost, no engine and no register block
 //   threads  (--threads T) T controllers, each running the program on its own thread (W4's run_independent; thread k on
 //            cpus[k % size]): the aggregate instructions/s and each thread's ns per step
+//   --write DIR  writes the program as DIR/loop.code.bin (for ref: tests/ref/SpeedRun.java, TraceRun) and, for N up to
+//            10^5, the engine's trace of it as DIR/loop.trace, then stops
 // Run from sim/ (it reads the hello golden's replayed lines and the boot ROM).
 #include <algorithm>
 #include <chrono>
@@ -77,6 +79,7 @@ int main(int argc, char** argv) {
     bool trace = false;
     const char* only = "";
     unsigned threads = 0;
+    const char* write_dir = nullptr;
     std::vector<int> cpus;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--iters") && i + 1 < argc) iters = uint32_t(atol(argv[++i]));
@@ -84,6 +87,7 @@ int main(int argc, char** argv) {
         else if (!strcmp(argv[i], "--trace")) trace = true;
         else if (!strcmp(argv[i], "--only") && i + 1 < argc) only = argv[++i];
         else if (!strcmp(argv[i], "--threads") && i + 1 < argc) threads = unsigned(atoi(argv[++i]));
+        else if (!strcmp(argv[i], "--write") && i + 1 < argc) write_dir = argv[++i];
         else if (!strcmp(argv[i], "--cpus") && i + 1 < argc)
             for (char* t = strtok(argv[++i], ","); t; t = strtok(nullptr, ",")) cpus.push_back(atoi(t));
         else { fprintf(stderr, "usage: bench_controller [--iters N] [--reps R] [--trace] [--only engine|core] [--threads T --cpus a,b,...]\n"); return 2; }
@@ -101,6 +105,26 @@ int main(int argc, char** argv) {
     }
     Setup s;
     if (!setup(iters, s)) return 2;
+    if (write_dir) {                                    // --write DIR: the program for ref (DIR/loop.code.bin) and our trace
+        std::string dir = write_dir;
+        FILE* f = fopen((dir + "/loop.code.bin").c_str(), "wb");
+        if (!f) { fprintf(stderr, "bench: cannot write %s/loop.code.bin\n", write_dir); return 2; }
+        for (uint32_t w : s.im.code) for (int b = 0; b < 4; b++) fputc(int(w >> (8 * b) & 0xFF), f);
+        fclose(f);
+        if (iters > 100000) {                           // the trace only for small N (it is a line per instruction)
+            printf("wrote %s/loop.code.bin (%zu words, N %u); no trace above N = 100000\n", write_dir, s.im.code.size(), iters);
+            return 0;
+        }
+        Tile t(s.im, s.c, uint32_t(9ull * iters + 1000));
+        EngineRun e = run_engine(t, s.g, s.header, sim::Options{});
+        FILE* o = fopen((dir + "/loop.trace").c_str(), "w");
+        if (!o) return 2;
+        for (const std::string& l : e.lines) fprintf(o, "%s\n", l.c_str());
+        fclose(o);
+        printf("wrote %s/loop.code.bin (%zu words) and %s/loop.trace (%zu lines, N %u)\n", write_dir, s.im.code.size(),
+               write_dir, e.lines.size(), iters);
+        return 0;
+    }
     if (threads) {                                      // T controllers on T threads, the same program each
         for (uint32_t k = 0; k < reps; k++) {
             std::vector<std::unique_ptr<Tile>> tile(threads);

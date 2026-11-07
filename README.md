@@ -17,6 +17,7 @@ Simulator and software for a parallel compute mesh, part of an ASIC for proving 
 | ~~`v1.26/`~~ | superseded by v1.26.1, deleted 2026-11-05 (owner) | v1.25 plus the replayer changes designed for v1.3 (the 68-word record, the stream word's sizes, 4 KB queues, the flush on a state write, part 0 as the working state); accepted by Quest 098-104. Nobody built on it; **the folder is in git at commit 63ea8de** (`git show 63ea8de:v1.26/...`) |
 | `v1.3/` | frozen (2026-11-06) | **the RTL's target: the Tracer** (guide: `spec/CHANGES-v1.26.1-to-v1.3.md`; spec 4.21): C&C 3's RV64 row machine, its memory interface and output path, the DMA in 128-bit words, the segment's barriers; meshsim with the Tracer and exact idle-skipping (about 18× on the full chip), gold, jumpmap and the input pipeline. **Accepted on every window of both workloads at 2²⁹ (T1), 18 full-chip T2 runs, and the final regression (Quest 118)** |
 | `wip/` | in progress | work toward **v1.4**; started from v1.3 |
+| `sim/` | started 2026-11-06 | **the next simulator**: a clean-sheet C++ framework (`sim/src/`), with v1.3's Java simulator as its reference and oracle (`sim/ref/`); see `sim/README.md` |
 
 **How versions are used:** each frozen version (spec plus meshsim) is the reference the RTL is upgraded against,
 outside this repository. What the RTL work turns up comes back afterwards as a delta, folded into the next version;

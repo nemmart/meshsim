@@ -1,0 +1,38 @@
+read port from C [meas: ReadPortGatherTest read port from C]: 40 32-bit, 8 64-bit and 4 128-bit reads land at the setup register's destination + the size in bytes per read, counting on their counter; the free count reads 64, then less, then 64 after counters done; a misaligned read lands 0 with ERRORS [1]; a 65th store into a full queue is dropped with the read-port error
+the 16-group all-to-all (uniform, Data(7, 2000), gap 0) with every tile's read port holding 64 queued reads from the start, against 4.3's rule [meas: ReadPortGatherTest read port under an all-to-all]:
+  without: 3120 cycles; with: 3120 cycles (+0); late rotations or groups: 0; the longest read-port read waited 5 cycles in the SRAM read queue
+  with: 9,527 packets accepted with results outstanding; 0 packets lost to FIFO overflows (eject<loopback); records failing the all-to-all's check: 0
+read-port results against an incoming stream [meas: ReadPortGatherTest read-port tolerance]: tile 20 receives a 256-packet mode-5 stream from tile 21 while R read-port reads are issued one per cycle, starting 0-24 cycles after the stream's start store (worst over 6 offsets). Results return as mode-7 packets through tile 20's loopback (4.3, M10). Eject FIFO peaks, of 16:
+  stream at full rate (1/cycle), R =  0: loopback peak  0, link peak  1
+  stream at full rate (1/cycle), R =  8: loopback peak  8, link peak  1
+  stream at full rate (1/cycle), R = 16: loopback peak 16, link peak  1
+  stream at full rate (1/cycle), R = 20: loopback peak 20, link peak  1
+  stream at full rate (1/cycle), R = 24: loopback peak 24, link peak  1
+  stream at full rate (1/cycle), R = 28: loopback peak 28, link peak  1
+  stream at full rate (1/cycle), R = 32: loopback peak 32, link peak  1
+  stream at full rate (1/cycle), R = 40: loopback peak 40, link peak  1
+  stream at full rate (1/cycle), R = 48: loopback peak 48, link peak  1
+  stream at full rate (1/cycle), R = 64: loopback peak 64, link peak  1
+  stream at full rate: no overflow up to R = 64
+  stream at half rate,          R =  0: loopback peak  0, link peak  1
+  stream at half rate,          R =  8: loopback peak  4, link peak  1
+  stream at half rate,          R = 16: loopback peak  8, link peak  1
+  stream at half rate,          R = 20: loopback peak 10, link peak  1
+  stream at half rate,          R = 24: loopback peak 12, link peak  1
+  stream at half rate,          R = 28: loopback peak 14, link peak  1
+  stream at half rate,          R = 32: loopback peak 16, link peak  1
+  stream at half rate,          R = 40: loopback peak 20, link peak  1
+  stream at half rate,          R = 48: loopback peak 24, link peak  1
+  stream at half rate,          R = 64: loopback peak 32, link peak  1
+  stream at half rate: no overflow up to R = 64
+overlap check [meas: ReadPortGatherTest read-port overlap check]: an outside packet accepted while read-port results are outstanding is a violation (Config.checkReadPortOverlap, default on); C&C 1's command writes are exempt, its other packets are not; results first and the stream after: none
+disjoint buffers [meas: ReadPortGatherTest disjoint buffers per engine run]: a copy A -> B, then B -> A after its local wake with no GO between, passes; one run reading and writing one buffer is flagged
+local gather on every tile: the index stream (mode 1, d = 0, 64-bit) from area 3, values from area 1, output at PTR[me] in area 5; 0/+1 skew [meas: ReadPortGatherTest gather]:
+  k = 1  N =   4096       8217 cycles   2.006 per value (k + 1 = 2)  GATHER queue peak  1 of 16  address generator stalled 4090 cycles, area queue peak 1
+  k = 2  N =   4096      12313 cycles   3.006 per value (k + 1 = 3)  GATHER queue peak  5 of 16  address generator stalled 8180 cycles, area queue peak 1
+  k = 3  N =   4096      16409 cycles   4.006 per value (k + 1 = 4)  GATHER queue peak  7 of 16  address generator stalled 12270 cycles, area queue peak 1
+  k = 4  N =   4096      20505 cycles   5.006 per value (k + 1 = 5)  GATHER queue peak  7 of 16  address generator stalled 16360 cycles, area queue peak 1
+  k = 8  N =   4096      36889 cycles   9.006 per value (k + 1 = 9)  GATHER queue peak  8 of 16  address generator stalled 32720 cycles, area queue peak 1
+  k = 2  N =  65536     196633 cycles   3.000 per value (k + 1 = 3)  GATHER queue peak  5 of 16  address generator stalled 131060 cycles, area queue peak 1
+gather 1 from C (sw/tests/gather.c, one-command phase, 65,536 values, k = 2) [meas: ReadPortGatherTest gather from C]: C&C's GO -> all 64 READY 50 cycles (0.001 per value); the walk-through estimates 196,648
+ReadPortGatherTest full: 567 passed, 0 failed

@@ -80,6 +80,21 @@ lists, Verilator's ordering of combinational logic, SystemC's delta cycles, gem5
   UBSan) and deterministic tests from the first commit. **meshsim stays as the reference model and exactness oracle**: where a
   unit is modelled in both, the new framework must match it cycle for cycle.
 
+## 4b. The core loop, the folder and the first milestone (owner, 2026-11-06)
+
+- **Where:** the top-level folder **`sim/`**: `sim/ref/`, the reference (a frozen copy of v1.3's Java simulator with the
+  siblings it reads, the oracle), and `sim/src/`, the C++ framework. `sim/README.md` states the rest.
+- **The first milestone:** the primitives, and **one RV32 controller running real firmware** on them, checked against `ref`
+  cycle for cycle.
+- **The core loop:** big **delivery lists** drive everything (a put appends an entry to the bucket for its arrival cycle;
+  delivery walks the bucket front to back into destination slots and marks units ready); ready units go on **run lists
+  grouped by type** (a list, or a 64-bit mask per chip, per type), so the same type's code runs together; then commit. No bus
+  or register object is ever walked: a port is a destination id plus a slot.
+- **Thread-local work:** each thread owns its partition, its delivery lists, run lists and free lists; cross-thread entries
+  through outboxes merged at the barrier.
+- **Memory:** permanent state (`RV32_core`, big memories, a unit's own state) with `new`/`malloc`, once; data in motion never
+  touches `malloc` in steady state: small values inline, large payloads as handles into thread-local free lists.
+
 ## 5. How it would be built
 
 **Not by migrating meshsim** (owner): the framework is built fresh, from its components up (the slots and rings, the port

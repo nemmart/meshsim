@@ -1,0 +1,35 @@
+ALU vectors: 242 rows; 210 match the tracer; 7 undefined for the replayer and flagged (invariant 16); 25 not applicable
+  flag VirtualSRL rs1 0x8000000000000001 rs2 0x0000000000000000 (tz(0)=64: C++ UB): undefined for the replayer (zero shift mask), flagged; tracer 0x8000000000000001|0x0000000080000104|sequential|0, model 0x8000000000000001|0x0000000080000104|sequential|0
+  flag VirtualSRLI rs1 0x8000000000000001 imm 0x0000000000000000 (tz(0)=64: C++ UB): undefined for the replayer (zero shift mask), flagged; tracer 0x8000000000000001|0x0000000080000104|sequential|0, model 0x8000000000000001|0x0000000080000104|sequential|0
+  flag VirtualSRA rs1 0x8000000000000001 rs2 0x0000000000000000 (tz(0)=64: C++ UB): undefined for the replayer (zero shift mask), flagged; tracer 0x8000000000000001|0x0000000080000104|sequential|0, model 0x8000000000000001|0x0000000080000104|sequential|0
+  flag VirtualSRAI rs1 0x8000000000000001 imm 0x0000000000000000 (tz(0)=64: C++ UB): undefined for the replayer (zero shift mask), flagged; tracer 0x8000000000000001|0x0000000080000104|sequential|0, model 0x8000000000000001|0x0000000080000104|sequential|0
+  flag VirtualPext rs1 0xffffffffffffffff rs2 0x000000000000000a (non-contiguous mask (never emitted)): undefined for the replayer (non-contiguous pext mask), flagged; tracer 0x0000000000000003|0x0000000080000104|sequential|0, model 0x0000000000000005|0x0000000080000104|sequential|0
+  flag VirtualPext rs1 0xffffffffffffffff rs2 0x0000000000000000 (mask 0): undefined for the replayer (zero pext mask), flagged; tracer 0x0000000000000000|0x0000000080000104|sequential|0, model 0x0000000000000000|0x0000000080000104|sequential|0
+  flag VirtualPextSigned rs1 0xffffffffffffffff rs2 0x0000000000000000 (mask 0): undefined for the replayer (zero pext mask), flagged; tracer 0x0000000000000000|0x0000000080000104|sequential|0, model 0x0000000000000000|0x0000000080000104|sequential|0
+  n/a  VirtualAdviceDivU rs1 0x0000000000000005 rs2 0x0000000000000000: not a replayer opcode (advice is written as VirtualAdvice and taken from the log, 4.19.7)
+  n/a  VirtualAdviceDivU rs1 0xffffffffffffffff rs2 0x0000000000000002: not a replayer opcode (advice is written as VirtualAdvice and taken from the log, 4.19.7)
+  n/a  VirtualAdviceDiv rs1 0x8000000000000000 rs2 0xffffffffffffffff: not a replayer opcode (advice is written as VirtualAdvice and taken from the log, 4.19.7)
+  n/a  VirtualAdviceDiv rs1 0xfffffffffffffff9 rs2 0x0000000000000002: not a replayer opcode (advice is written as VirtualAdvice and taken from the log, 4.19.7)
+  n/a  VirtualAdviceDiv rs1 0x0000000000000005 rs2 0x0000000000000000: not a replayer opcode (advice is written as VirtualAdvice and taken from the log, 4.19.7)
+  n/a  VirtualAdviceRem rs1 0xfffffffffffffff9 rs2 0x0000000000000002 (quotient magnitude, not the remainder): not a replayer opcode (advice is written as VirtualAdvice and taken from the log, 4.19.7)
+  n/a  VirtualAdviceRem rs1 0x8000000000000000 rs2 0xffffffffffffffff: not a replayer opcode (advice is written as VirtualAdvice and taken from the log, 4.19.7)
+  n/a  VirtualAdviceRem rs1 0x0000000000000005 rs2 0x0000000000000000: not a replayer opcode (advice is written as VirtualAdvice and taken from the log, 4.19.7)
+  n/a  VirtualAdviceDivUW rs1 0x0000000000000005 rs2 0x0000000000000000: not a replayer opcode (advice is written as VirtualAdvice and taken from the log, 4.19.7)
+  n/a  VirtualAdviceDivUW rs1 0x00000001ffffffff rs2 0x0000000100000002 (low words only): not a replayer opcode (advice is written as VirtualAdvice and taken from the log, 4.19.7)
+  n/a  VirtualAdviceDivW rs1 0xffffffff80000000 rs2 0xffffffffffffffff (zero-extended INT32_MIN): not a replayer opcode (advice is written as VirtualAdvice and taken from the log, 4.19.7)
+  n/a  VirtualAdviceDivW rs1 0xfffffffffffffff9 rs2 0x0000000000000002: not a replayer opcode (advice is written as VirtualAdvice and taken from the log, 4.19.7)
+  n/a  VirtualAdviceDivW rs1 0x0000000000000005 rs2 0x0000000000000000: not a replayer opcode (advice is written as VirtualAdvice and taken from the log, 4.19.7)
+  n/a  VirtualAdviceRemW rs1 0xfffffffffffffff9 rs2 0x0000000000000002: not a replayer opcode (advice is written as VirtualAdvice and taken from the log, 4.19.7)
+  n/a  VirtualAdviceRemW rs1 0xffffffff80000000 rs2 0xffffffffffffffff: not a replayer opcode (advice is written as VirtualAdvice and taken from the log, 4.19.7)
+  n/a  VirtualAdviceRemW rs1 0x0000000000000005 rs2 0x0000000000000000: not a replayer opcode (advice is written as VirtualAdvice and taken from the log, 4.19.7)
+  n/a  VirtualAdviceRemU rs1 0x0000000000000007 rs2 0x0000000000000002 (dead case: computes the quotient): not a replayer opcode (advice is written as VirtualAdvice and taken from the log, 4.19.7)
+  n/a  VirtualAdviceRemUW rs1 0x0000000000000007 rs2 0x0000000000000002 (dead case): not a replayer opcode (advice is written as VirtualAdvice and taken from the log, 4.19.7)
+  n/a  VirtualAssertEQ rs1 0x0000000000000001 rs2 0x0000000000000002: the tracer aborts (a failing assertion never reaches a replayer)
+  n/a  VirtualAssertLTE rs1 0xffffffffffffffff rs2 0x0000000000000000 (unsigned compare): the tracer aborts (a failing assertion never reaches a replayer)
+  n/a  VirtualAssertValidDiv0 rs1 0x0000000000000000 rs2 0x0000000000000005: the tracer aborts (a failing assertion never reaches a replayer)
+  n/a  VirtualAssertValidUnsignedRemainder rs1 0x0000000000000005 rs2 0x0000000000000003: the tracer aborts (a failing assertion never reaches a replayer)
+  n/a  VirtualAssertMulUNoOverflow rs1 0x0000000100000000 rs2 0x0000000100000000: the tracer aborts (a failing assertion never reaches a replayer)
+  n/a  VirtualAssertHalfwordAlignment rs1 0x0000000000000001 imm 0x0000000000000000: the tracer aborts (a failing assertion never reaches a replayer)
+  n/a  VirtualAssertWordAlignment rs1 0x0000000000000002 imm 0x0000000000000001: the tracer aborts (a failing assertion never reaches a replayer)
+  program pass: 143 cycles from the run to the last row: rows 79, stalls [64, 0, 0, 0, 0, 0, 0] [IMAGE, CODE, NEWEXP, EXP, RLOG, WLOG, OUTQ]
+ReplayerTest: 1188 passed, 0 failed

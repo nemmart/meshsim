@@ -1,0 +1,25 @@
+area under two queues of one request a cycle each (unit test, depth 8): the queue fills to 7 after a cycle (room is judged by the count before the pop, 13a); from then on every freed slot goes to the write (writes win the tie, ruled 2 October), so the SRAM read queue waits while the writes continue [meas: MemTest queue depth and stalls]
+write combining (param, off by default): after a congested stretch, 6 of 26 64-bit writes merged into a queued write to the same row [meas: MemTest write combining]
+read latency, request put into the SRAM's holding register at t -> row on the return line [meas: MemTest read latency]: L=1: 3 L=2: 4 L=3: 5 L=4: 6 = 2 + L: taken at t + 1, served at t + 2, row visible at t + 2 + L; the SRAM read queue releases the packet in that cycle
+throughput [meas: MemTest throughput], 2,000 requests, cycles from the first packet to the last at the receiver:
+  64-bit reads, one area                                                  2000 cycles for 2000 packets; read stalls 0, write stalls 0
+  64-bit reads, round-robin over 8 areas                                  2000 cycles for 2000 packets; read stalls 0, write stalls 0
+  128-bit reads, one area (1 packet each)                                 2000 cycles for 2000 packets; read stalls 0, write stalls 0
+  32-bit reads, one area                                                  2000 cycles for 2000 packets; read stalls 0, write stalls 0
+  64-bit reads (area 1) + 2,000 incoming writes (area 2), together        2000 cycles for 2000 packets; read stalls 0, write stalls 0
+  reads every 2nd cycle (area 1) + writes every 2nd cycle (area 1, another buffer)  3999 cycles for 2000 packets; read stalls 0, write stalls 0
+priority: with requests from all three clients waiting, the SRAM read queue issues gather value, address generator, read port in that order; 50 back-to-back gather values hold the address generator's request back 50 cycles [meas: MemTest priority]
+return order: 200 reads alternating a busy area (also taking bursts of 8 writes) and a free one leave in request order; read latency max 9 (unloaded 4), write stalls 0 [meas: MemTest return order]
+token window: 128-bit reads issued at one a cycle, array latency 80: in flight peaks at 64 of 64, then issue waits (80 cycles) [meas: MemTest token window; v1.0's case, 128-bit returns as two packets, no longer exists]
+disjoint-buffer check: a phase that reads one buffer while another tile's writes land in it is reported once per tile and phase, e.g. "tile 50: chunk 0x40000 written after being read in the same phase (invariant 2, phase 2)" [meas: MemTest disjoint-buffer check]
+  memReport for the full-rate case:
+    area queue peak 7 of 8 (t36); SRAM accesses 1200; SRAM read queue stalled 394 cycles, SRAM write queue stalled 0 cycles; read latency max 405
+    FINDING: an area was asked for more than one access a cycle: the SRAM read queue waited 394 cycles at a full area queue, the SRAM write queue 0; write-engine input peak 1 of 4, eject FIFO peak 1 of 16; no FIFO overflowed
+one area shared by the SRAM read queue (reads every Pr cycles) and incoming writes from a neighbour (every Pw cycles), 400 of each; depth 8, read latency 2 [meas: MemTest oversubscription]:
+  Pr   Pw   demand  read lat max   read waits     write stalls   we-in peak   outcome
+  2    2    1.00    5              0              0              1 of 4       all 400 writes landed; last read packet at cycle 812 (last read issued on schedule at 800)
+  1    4    1.25    12             122            0              1 of 4       all 400 writes landed; last read packet at cycle 541 (last read issued on schedule at 401)
+  2    1    1.50    398            387            0              1 of 4       all 400 writes landed; last read packet at cycle 818 (last read issued on schedule at 800)
+  1    2    1.50    13             377            0              1 of 4       all 400 writes landed; last read packet at cycle 796 (last read issued on schedule at 401)
+  1    1    2.00    405            394            0              1 of 4       all 400 writes landed; last read packet at cycle 813 (last read issued on schedule at 401)
+MemTest (shuffled, seed 8): 177 passed, 0 failed

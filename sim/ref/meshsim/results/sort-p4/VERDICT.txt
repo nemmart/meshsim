@@ -1,0 +1,2 @@
+ok   p4/uniform-k128: TOTAL 1,360,082 cycles (L1 GO -> L2 all READY; real split), 
+== 1 runs, 0 failed, 119 s

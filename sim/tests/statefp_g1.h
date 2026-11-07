@@ -12,6 +12,11 @@
 
 namespace fp {
 
+// regs is checked, every unit of tile 0 every cycle, THROUGH THIS CYCLE ONLY: from 825 its mode-1 self-sends take G3's
+// path (the write engine, PTR's read-modify-write, big SRAM), and a packet at the write engine is fatal until G3 lands
+// (owner, 2026-11-07; PLAN-M2). Lift it on purpose, in the commit that lands that path.
+constexpr uint64_t kRegsCheckedThrough = 824;
+
 struct G1Tile {
     unsigned tile = 0;
     const units::RegBlockState* ctl = nullptr;   // null: the reset state

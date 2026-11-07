@@ -64,7 +64,7 @@ TEST(regs_configuration_and_table_writes_equal_refs) {
     check(869, {"hist"});
     ts.write(units::TBL_PTR, 0, 0x100);
     check(803, {"ts"});
-    check(824, {"we", "ag", "gather", "ts", "hist", "sram", "sram.data", "rdport", "req"});
+    check(fp::kRegsCheckedThrough, {"we", "ag", "gather", "ts", "hist", "sram", "sram.data", "rdport", "req"});
 }
 
 TEST(table_window_decode) {

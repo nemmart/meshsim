@@ -49,7 +49,7 @@ struct Director {
 
     DirectorConfig cfg;
     // statistics (not state: outside the fingerprint)
-    uint64_t accepted = 0, per_mode[lwx::N_MODES] = {}, count_only = 0, undefined_size = 0, violations = 0;
+    uint64_t accepted = 0, per_mode[lw::N_MODES] = {}, count_only = 0, undefined_size = 0, violations = 0;
 
     Director(sim::Ports& p, const DirectorConfig& c) : cfg(c) {
         p.in(in, "in", 3);

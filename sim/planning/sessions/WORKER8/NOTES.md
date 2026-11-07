@@ -110,7 +110,7 @@ cycle against `golden-m2`, under every debug option (shuffle, both orders, step-
   `sim-w8` from `ea332a8`.
 - 2026-11-07: AUDIT-M2 2.5 and 3.3 corrected (D27). **Port headers published** (declarations; gcc and clang
   `-fsyntax-only` clean): `units/linkword.h` (shared with W9), `units/director.h` (`Director`), `units/tile_ctl.h`
-  (`TileCtl`, the core's M2 ports, `G1Config`, `G1IO` and `add_g1`: the handles W9's tile builder wires). Choices made
+  (`TileCtl`, the core's M2 ports, `G1Config`, `G1IO` (now chip.h's `ControlIO`) and `add_g1`: the handles W9's tile builder wires). Choices made
   there: the K-line is a `Link(K + 1)` of counter ids from the director to the block (no wake at the due cycle); port B and
   command landed are `Link(cm_latency + 1)` (the memories stay in the core); ports to G3/G4 are added with those units;
   the director's `we_in` and `gather` outputs exist from the start, wired to stubs; the K-line's entries are a bus, so
@@ -150,3 +150,7 @@ cycle against `golden-m2`, under every debug option (shuffle, both orders, step-
     is READY's). W9's `net.h` (`units::lw`) is adopted as the link word's definition; my `linkword.h` moved to
     `units::lwx` so both can be included together, and shrinks to what net.h lacks once net.h is on main. **Ask:** the
     integrator merges W9's stage-0 headers (net.h, chip.h, ...) into main, so both of us build against one copy.
+- 2026-11-07, third round: regs is checked through cycle 824 (`fp::kRegsCheckedThrough`, named, lifted by the commit
+  that lands G3's mode-1 path); wfi fully with W9. Main merged (W9's stage-0 headers): `G1IO` is gone, `add_g1` returns
+  chip.h's `ControlIO` and is a `ControlBuilder` (static_assert); `linkword.h` now only adds to net.h's `units::lw`
+  what net.h lacks.

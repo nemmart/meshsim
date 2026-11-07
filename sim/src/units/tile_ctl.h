@@ -30,9 +30,11 @@
 
 #include <cstdint>
 #include <string>
+#include <type_traits>
 
 #include "config.h"
 #include "sim.h"
+#include "units/chip.h"
 #include "units/director.h"
 #include "units/write_engine.h"
 #include "units/regblock.h"
@@ -87,26 +89,18 @@ struct G1Config {
     unsigned K = 8, cm_latency = 2;    // the write counters' line, director -> port B
 };
 
-// G1's part of a tile, as W9's tile builder meets it: W9's chip.h (`ControlIO`, `ControlBuilder`) is the contract
-// (owner, 2026-11-07). Until chip.h reaches main, G1IO has ControlIO's fields, names and kinds exactly, so the switch is
-// a rename. ControlIO's ports (agreed in NOTES.md, plus ROUTER_OVF, agreed 2026-11-07):
-struct G1IO {
-    sim::HoldOut send;                 // core.send -> W9's injection unit (Hold, 3 words)
-    sim::RegIn send_busy;              // W9's injection unit (Reg, 1 word) -> the block
-    sim::LinkIn eject;                 // W9's router -> Link(intra_tile_latency) -> director.in
-    sim::LinkIn go;                    // W9's C&C -> Link(go_latency + skew[k] + 1) -> the block
-    sim::LinkOut line;                 // the block -> Link(ready_latency - 2) -> W9's row collector
-    sim::CountIn router_ovf;           // W9's router's FIFO overflows -> the block, read through_last
-};
+// G1's part of a tile, as W9's tile builder meets it: chip.h's `ControlIO` (the ports agreed in NOTES.md, plus
+// ROUTER_OVF), returned by a `ControlBuilder`.
 // The units G1 adds for tile k (names "t<k>.core", "t<k>.ctl", "t<k>.dir", and the configuration parts of G3/G4's
 // units it owns until they extend them: "t<k>.we", "t<k>.ag", "t<k>.gather", "t<k>.ts", "t<k>.hist"), wired to each
 // other inside; the director's we-in and gather outputs go to the write engine's and the gather engine's inputs. `ctx`
-// is a G1Ctx. The signature is ControlBuilder's.
+// is a G1Ctx. A ControlBuilder (chip.h).
 struct G1Ctx {
     G1Config cfg;                      // per tile: cfg.tile is overwritten with k
     const Rv32* core = nullptr;        // the core's initial state (boot ROM, memories), the same for every tile
     unsigned we_in_depth = 4, gather_depth = 16;
 };
-G1IO add_g1(sim::Config& cfg, unsigned k, void* ctx);
+ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx);
+static_assert(std::is_same_v<decltype(&add_g1), ControlBuilder>);
 
 }  // namespace units

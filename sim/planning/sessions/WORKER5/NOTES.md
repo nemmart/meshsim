@@ -230,3 +230,30 @@ perf-report-{plain,noinline,traced,core}.txt`.
 more than an interpreter needs; `Rv32::step` is a third of it (the catch-up and the checks before every instruction).
 Possible later, keeping exactness: a fast path when nothing can interrupt (no catch-up gap, not in WFI, no stall), and
 the statistics counters out of the hot path. Not done: correctness first, and the engine is the larger part.
+
+## M1's threads test: N controllers on N threads (W4's run_independent; Quest 129, sim-w5 8e19528)
+
+`check_parallel` (tests/golden_run.cpp): the 67 goldens in a mixed order (k·7 mod 67, so rounds mix riscv-tests and the M1
+programs), in rounds of N; each round N controllers on N threads through `run_independent`, each a different golden. Each
+chip's tile (memories, trace) and machine are built, run and compared on its own thread; only read-only data (goldens,
+images, headers) is shared, prepared before. Every trace must equal its golden, every digest the same golden's run alone,
+and no unit may be left asleep with data waiting. In `make check`: `test_controllers` at N = 3 (debug and release, gcc
+and clang), and under TSan (`make tsan-units`, gcc and clang, included in `make check`). CLI: `golden --threads N --cpus
+a,b,...`; `bench_controller --threads T --cpus ...`.
+
+- Locally (1 vCPU): N = 2, 3, 4: all 67 match; TSan clean on gcc and clang.
+- **Runner (Quest 129): all 67 match at N = 1, 2, 4, 6, 8, 12 pinned to the P-cores and 16 unpinned, 3 repetitions
+  each; TSan clean on gcc and clang.**
+
+Throughput (T controllers, each running the 13-cycle loop, 10^7 iterations; 3 repetitions):
+
+| threads | CPUs | M instructions/s in all | per thread | ns per step | vs 1 thread |
+|---|---|---|---|---|---|
+| 1 | 0 | 43.0 | 43.0 | 20.9 | 1.0x |
+| 6 | 0,2,4,6,8,10 (one per P-core) | 221-224 | 37.2 | 24.1 | 5.2x |
+| 12 | 0-11 (P-cores and their hyperthreads) | 211-239 | 18.6 | 48 | 5.2x (±0.4) |
+| 4 | 12-15 (E-cores) | 75.0 | 18.8 | 47.9 | — |
+
+Six P-cores give 5.2x (each thread 14% slower than one alone: the all-core clock is lower than the single-core boost; the
+working set per controller is ~70 KB, so not memory). Hyperthreads add nothing: at IPC 5.5 one thread already fills the
+core. So the box's best for this load is about 300 M instructions/s (P-cores plus E-cores).

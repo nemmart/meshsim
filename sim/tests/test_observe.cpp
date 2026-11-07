@@ -3,6 +3,7 @@
 // are the ones visible at c, plus those arriving at c + 1, plus the put judged at c + 1 if accepted), in one domain and
 // split over two threads, with run lengths that end between barriers; and against the producer's own log for a Link's
 // arrival cycles. Then: refused during a run, no allocation, and the stop request's cycle in both forms.
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -338,4 +339,38 @@ DEATH_TEST(wake_of_an_unknown_unit_is_fatal, "no unit named 'nope'") {
     cfg.link(q.out, z.in, 1);
     Sim s = cfg.build();
     s.wake("nope");
+}
+
+// ---- Options::time_threads (a measurement option): the phase shares of a split run add up, and change nothing
+TEST(time_threads_reports_phase_shares_and_changes_nothing) {
+    uint64_t d[2];
+    for (int timed = 0; timed < 2; timed++) {
+        Options o; o.threads = 2; o.time_threads = timed != 0;
+        Config cfg(o);
+        cfg.domain(0);
+        auto& t = cfg.add<Ticker>("t");
+        auto& p = cfg.add<Peeker>("p");
+        cfg.domain(1);
+        auto& u = cfg.add<Ticker>("u");
+        auto& q = cfg.add<Peeker>("q");
+        cfg.link(t.out, q.in, 3);
+        cfg.link(u.out, p.in, 3);
+        Sim s = cfg.build();
+        s.run(1);
+        begin_run();
+        s.run(3000);
+        end_run();
+        d[timed] = s.digest();
+        const std::string r = s.thread_times();
+        if (!timed) { CHECK(r == std::string("time_threads off")); continue; }
+        double sum = 0;
+        for (const char* f : {"compute=", "imbalance=", "barrier=", "drain=", "publish=", "clear=", "end=", "other="}) {
+            const size_t k = r.find(f);
+            CHECK(k != std::string::npos);
+            if (k != std::string::npos) sum += std::atof(r.c_str() + k + std::strlen(f));
+        }
+        CHECK(sum > 0.99 && sum < 1.01);
+        CHECK(r.find("intervals=") == 0);
+    }
+    CHECK_EQ(d[0], d[1]);
 }

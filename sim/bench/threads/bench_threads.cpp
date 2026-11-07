@@ -46,6 +46,7 @@ struct Args {
     unsigned spins = 2000;
     bool due_off = false;          // form 2 with one domain: the due mask off, as in a split machine's domains
     unsigned engines = 0;          // form 2 (W10): Options::engines (0: one per thread)
+    bool time_threads = false;     // form 2 (W10): Options::time_threads, the phase shares printed as times="..."
     std::string partition = "rows";   // form 2 (W10): rows (mesh: bands of rows; synth: clusters in order), or tiles
                                       // (mesh: one domain per tile, 64; synth: one per cluster), spread over the threads
 };
@@ -83,6 +84,7 @@ Args parse(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--due-off")) a.due_off = true;
         else if (!std::strcmp(argv[i], "--partition")) a.partition = val();
         else if (!std::strcmp(argv[i], "--engines")) a.engines = unsigned(std::atoi(val()));
+        else if (!std::strcmp(argv[i], "--time")) a.time_threads = true;
         else FATAL("unknown option %s", argv[i]);
     }
     if (a.form == 1 && (a.threads < 1 || a.chips < a.threads)) FATAL("need 1 <= threads <= chips");
@@ -205,6 +207,7 @@ int form2(const Args& a) {
     Options o;
     o.threads = D > 1 ? a.threads : 1;
     o.engines = a.engines;
+    o.time_threads = a.time_threads;
     o.cpus = a.cpus;
     if (by_load) { o.placement = Options::Placement::by_load; o.threads = a.threads; if (a.partition == "profile") o.load = &prof; }
     o.barrier_block = a.barrier == "block";
@@ -226,10 +229,10 @@ int form2(const Args& a) {
     const double secs = now_s() - t0;
     end_run();
     std::printf("threads form=2 chip=%s threads=%u domains=%u engines=%u part=%s barrier=%s spins=%u due=%s rate_in=%.2f cycles=%llu "
-                "secs=%.4f rate=%.0f us_per_chip_cycle=%.3f words=%llu digest=%016llx partition=\"%s\"\n",
+                "secs=%.4f rate=%.0f us_per_chip_cycle=%.3f words=%llu digest=%016llx times=\"%s\" partition=\"%s\"\n",
                 a.chip.c_str(), o.threads, D, a.engines, a.partition.c_str(), a.barrier.c_str(), a.spins, due ? "on" : "off", a.rate,
                 (unsigned long long)a.cycles, secs, double(a.cycles) / secs, 1e6 * secs / double(a.cycles),
-                (unsigned long long)s.sizes().total_words, (unsigned long long)s.digest(), s.partition().c_str());
+                (unsigned long long)s.sizes().total_words, (unsigned long long)s.digest(), s.thread_times().c_str(), s.partition().c_str());
     return 0;
 }
 

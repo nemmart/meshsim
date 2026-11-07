@@ -530,6 +530,8 @@ Sim::Impl* Internals::split(Config::Impl& G) {
 
     // ---- threads
     T->nthreads = std::max(1u, std::min(G.opt.threads, D));
+    T->timing = G.opt.time_threads;
+    T->ph.assign(T->nthreads, Threads::PhaseTicks{});
     for (uint32_t d = 0; d < D; d++) T->doms[d].thread = unsigned(uint64_t(d) * T->nthreads / D);
     T->cpus = G.opt.cpus;
     T->barrier.init(T->nthreads, G.opt.barrier_block, G.opt.barrier_spins);
@@ -663,13 +665,26 @@ void Threads::run_thread(unsigned t, Cycle end) {
     for (auto& d : doms) if (d.thread == t) { now = d.e->now; break; }
     Span prev{now, 0};
     unsigned par = 0;
+    PhaseTicks* P = timing ? &ph[t] : nullptr;   // W10: Options::time_threads only
+    uint64_t c0 = P ? sim_ticks() : 0, c1 = 0;
+    const uint64_t start = c0;
     while (now < end) {
         const Cycle n = interval == kNoCycle ? end - now : std::min(interval, end - now);
         for (uint32_t di = 0; di < doms.size(); di++)
             if (doms[di].thread == t) { at(t, now, di, "running"); run_domain(*doms[di].e, now + n); }
+        if (P) { c1 = sim_ticks(); P->run += c1 - c0; P->last_run = c1 - c0; c0 = c1; }
         for (auto& d : doms) if (d.thread == t) publish(d, now, n, par);
+        if (P) { c1 = sim_ticks(); P->publish += c1 - c0; c0 = c1; }
         at(t, now, kNone, "at the barrier after its interval");
         barrier.wait();
+        if (P) {
+            c1 = sim_ticks(); P->wait += c1 - c0; c0 = c1;
+            if (t == 0) {                     // every thread's last_run was written before the barrier
+                uint64_t mx = 0, sum = 0;
+                for (unsigned k = 0; k < nthreads; k++) { mx = std::max(mx, ph[k].last_run); sum += ph[k].last_run; }
+                ph_intervals++; ph_max_run += mx; ph_sum_run += sum;
+            }
+        }
         // the whole machine idle and nothing sent: every thread jumps to the same next event
         Cycle next = kNoCycle;
         uint64_t sent = 0;
@@ -679,7 +694,9 @@ void Threads::run_thread(unsigned t, Cycle end) {
             stop = std::min<Cycle>(stop, status[par][d.stop_slot * kLineWords]);
         }
         for (uint32_t di = 0; di < doms.size(); di++) if (doms[di].thread == t) { at(t, now, di, "draining"); drain(di, now, n, par, sent != 0); }
+        if (P) { c1 = sim_ticks(); P->drain += c1 - c0; c0 = c1; }
         for (auto& d : doms) if (d.thread == t) clear(d, prev);
+        if (P) { c1 = sim_ticks(); P->clear += c1 - c0; c0 = c1; }
         prev = Span{now, n};
         now += n;
         if (stop != kNoCycle) { par ^= 1; break; }
@@ -699,7 +716,25 @@ void Threads::run_thread(unsigned t, Cycle end) {
     }
     at(t, now, kNone, "at the last barrier of the run");
     barrier.wait();                           // the machine is still: the caller may read it
+    if (P) { c1 = sim_ticks(); P->end += c1 - c0; P->total += c1 - start; }
     at(t, now, kNone, "idle");
+}
+
+// W10: the phase report (Options::time_threads): each phase as a share of the threads' time over the runs, the mean
+// over threads; "imbalance" is the slowest thread's compute less the mean, per interval, summed; "barrier" is the mean
+// wait less that (the barrier's own latency, and differences in publishing).
+std::string Threads::thread_times() const {
+    if (!timing) return "time_threads off";
+    double run = 0, pub = 0, wait = 0, drn = 0, clr = 0, endp = 0, tot = 0;
+    for (const auto& p : ph) { run += p.run; pub += p.publish; wait += p.wait; drn += p.drain; clr += p.clear; endp += p.end; tot += p.total; }
+    const double T = double(ph.size());
+    run /= T; pub /= T; wait /= T; drn /= T; clr /= T; endp /= T; tot /= T;
+    const double imb = ph_intervals ? double(ph_max_run) - double(ph_sum_run) / T : 0;
+    char b[400];
+    std::snprintf(b, sizeof b, "intervals=%llu total=%.0f compute=%.4f imbalance=%.4f barrier=%.4f drain=%.4f publish=%.4f clear=%.4f "
+                  "end=%.4f other=%.4f", (unsigned long long)ph_intervals, tot, run / tot, imb / tot, (wait - imb) / tot,
+                  drn / tot, pub / tot, clr / tot, endp / tot, (tot - run - wait - drn - pub - clr - endp) / tot);
+    return b;
 }
 
 // Before the barrier: what this domain sent this interval leaves its count in flight; its Holds' occupancy, its Counts'

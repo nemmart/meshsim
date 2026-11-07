@@ -77,6 +77,10 @@ struct Core {
         p.out(bus, "bus", 2);
     }
 
+    uint64_t digest() const {   // the memories are apart (pointers): their contents, not the pointers
+        return hash_fields(x, pc, mstatus, mie, mcycle, last, stall_until, load_wait_t, load_wait_pc, instructions) ^
+               hash_mix(in_wfi, halted) ^ hash_bytes(dmem, 0x8000) ^ hash_bytes(imem, 0x8000);
+    }
     // Controller.runCycle in AUDIT 0's order. A core with nothing to do (halted, in WFI without a wake, in a branch or
     // multiply stall) is not stepped; the cycles it slept through are counted from `last`, in the state it slept in, so a
     // 10^9-cycle WFI costs one wake. A step it didn't ask for (a port-B write, a wire waking it early) changes nothing
@@ -207,6 +211,7 @@ struct TestBench {
         p.out(memw, "memw", 3); p.out(go, "go", 0); p.out(landed, "landed", 0); p.out(freed, "freed", 0);
         p.out(req_freed, "req_freed");
     }
+    uint64_t digest() const { return hash_fields(i, n) ^ freed_now; }
     // Stepped at its events' cycles, and the cycle after a REQ-FREED (to drive req_freed back to 0).
     Wake step(Ctx& c) {
         uint64_t t = c.now();

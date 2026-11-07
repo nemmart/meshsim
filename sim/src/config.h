@@ -20,8 +20,8 @@
 //     128 bits only (D17);
 //   - routes: each output's route resolved once to a data value (the wheel of its kind and width in its own thread, or the
 //     outbox wheel for the destination's thread: W4), so a put runs the same code either way;
-//   - levels: from the Wires, RegFiles and Count `now` reads; a loop is fatal with its units named; a (type, form) runs at
-//     the largest level of its instances, re-checked after that;
+//   - levels: from the Wires and RegFiles; a loop is fatal with its units named; a (type, form) runs at the largest level
+//     of its instances, re-checked after that (Count `now` reads are checked at the read, debug);
 //   - checks: every declared port wired (an unwired input or output is fatal, named), widths equal, at most 64 mask bits per
 //     unit, every latency within the wheel.
 //
@@ -99,6 +99,9 @@ struct Sizes {
     uint32_t wheel_buckets;               // W, per wheel (kept for the sizing tests)
 };
 
+template <class T>
+concept HasDigest = requires(const T& u) { { u.digest() } -> std::convertible_to<uint64_t>; };
+
 namespace detail {
 // What the framework knows of a unit type, made once per type by a template (no RTTI).
 struct TypeInfo {
@@ -140,14 +143,9 @@ std::string type_name() {   // from the compiler's signature, for messages ("uni
 
 template <class T>
 uint64_t digest_of(const void* p) {
-    if constexpr (requires(const T& u) { { u.digest() } -> std::convertible_to<uint64_t>; }) {
-        return static_cast<const T*>(p)->digest();
-    } else {
-        const unsigned char* b = static_cast<const unsigned char*>(p);
-        uint64_t h = 0xcbf29ce484222325ull;
-        for (size_t i = 0; i < sizeof(T); i++) h = (h ^ b[i]) * 0x100000001b3ull;
-        return h;
-    }
+    if constexpr (HasDigest<T>) return static_cast<const T*>(p)->digest();
+    else if constexpr (std::is_empty_v<T>) { (void)p; return 0; }   // no state
+    else return hash_bytes(p, sizeof(T));      // only with a unique object representation (static_assert at add)
 }
 
 template <UnitType T>
@@ -199,6 +197,10 @@ public:
     void connect(CountOut o, CountIn i);          // several producers and readers
     void count_overflows(FifoIn f, CountIn c);    // the Fifo's overflows also increment c (ROUTER_OVF sums all router FIFOs)
 
+    // The missed-wake detector's threshold for one unit (D20; Options::missed_wake_after for the rest): a unit with a
+    // legitimate wait the detector can't see (on a Wire, with data in an input) gets its own, and no one else's moves.
+    void missed_wake_after(const std::string& unit, unsigned cycles);
+
     Sim build();
 
 private:
@@ -212,6 +214,8 @@ private:
         // storage is poisoned for ASan once the units are moved (debug builds), so a stale one faults on first use.
         static_assert(std::is_move_constructible_v<T>, "a unit type must be move-constructible (it is moved into its arena)");
         static_assert(!std::is_polymorphic_v<T>, "a unit type has no virtual functions (D6: no virtual calls in the loop)");
+        static_assert(HasDigest<T> || std::is_empty_v<T> || std::has_unique_object_representations_v<T>,
+                      "a unit type with padding or pointers defines `uint64_t digest() const` (sim.h, DEBUG CHECKS)");
         void* slot = stage(detail::type_id<T>(), sizeof(T), alignof(T), f, name);
         T* u = new (slot) T(begin_ports(slot), std::forward<A>(a)...);
         end_ports();

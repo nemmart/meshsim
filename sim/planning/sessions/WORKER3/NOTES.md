@@ -294,6 +294,20 @@ last: no stale entries); `next()` in a per-run "next" bitmap swapped in at the e
 and nothing ready, the clock jumps to the next far wake. A unit's digest is its bytes unless its type defines
 `digest()` (optional, additive: flagged to the integrator).
 
+### Stage 2, increment 3: every port kind (2026-11-07)
+
+Reg (a change wakes its readers; the registered value again is a no-op), Wire (a persistent level; a change steps its
+readers in the same cycle at higher levels; debug: written twice, written after a read), RegFile (owner writes, readers
+at later levels), Count (one per connected set of producers and readers; `now` and `through_last`; a Fifo's overflows
+counted at t + 1), the credit Fifo (credits on the producer's side, a take's return delivered at t + 1 through its own
+wheel). Levels from the Wires and RegFiles, a loop rejected with its units named, one level per (type, form) checked.
+`tests/test_kinds.cpp`, 12 tests. The reserved Link stays M2's (PORTS.md 2a).
+
+From the integrator's review of increment 2: **a unit's digest** is `digest()` if defined, nothing for an empty type,
+else its bytes only when `std::has_unique_object_representations_v<T>` (static_assert at `add`): padding or pointers mean
+`digest()`, made one line by `hash_fields` (sim.h). **The missed-wake threshold per unit**:
+`Config::missed_wake_after(unit, cycles)` (stored; the detector is increment 5). Both additive.
+
 ## Log
 
 - 2026-11-07: plan agreed (owner's go-ahead with five notes). W2's audit not yet on `sim-w2`; W6 not started.
@@ -305,3 +319,4 @@ and nothing ready, the clock jumps to the next far wake. A unit's digest is its 
 - 2026-11-07: main merged (W6, D15-D18); the integrator's review folded in (1-7). Ready for the owner's review.
 - 2026-11-07: stage 2 (owner's go-ahead, D20). Increment 1 (the build, D18; fixtures and --check) and increment 2 (the
   engine with Link, Fifo, Hold) landed.
+- 2026-11-07: increment 3 (Reg, Wire, RegFile, Count, credit Fifo; levels) landed: W5 can integrate on every kind.

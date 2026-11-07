@@ -12,6 +12,7 @@ namespace {
 // ---- toy units ---------------------------------------------------------------------------------------------------
 // Puts 1, 2, ..., n on a Fifo, one a cycle from cycle 1.
 struct FifoSource {
+    uint64_t digest() const { return hash_fields(out, n, sent); }
     FifoOut out;
     uint64_t n, sent = 0;
     FifoSource(Ports& p, uint64_t count) : n(count) { p.out(out, "out", 1); }
@@ -22,6 +23,7 @@ struct FifoSource {
 };
 // Takes one word a cycle while any is visible; sums them, keeps the last cycle it took one.
 struct FifoSink {
+    uint64_t digest() const { return hash_fields(in, got, sum, last); }
     FifoIn in;
     uint64_t got = 0, sum = 0, last = 0;
     FifoSink(Ports& p, unsigned depth) { p.in(in, "in", 1, depth); }
@@ -32,6 +34,7 @@ struct FifoSink {
 };
 // Puts one three-word word on a Link at cycle `at`.
 struct LinkSource {
+    uint64_t digest() const { return hash_fields(out, at); }
     LinkOut out;
     Cycle at;
     LinkSource(Ports& p, Cycle when) : at(when) { p.out(out, "out", 3); }
@@ -41,6 +44,7 @@ struct LinkSource {
     }
 };
 struct LinkSink {
+    uint64_t digest() const { return hash_fields(in, seen, w) ^ take; }
     LinkIn in;
     Cycle seen = 0; Word w[3] = {};
     bool take = true;
@@ -63,6 +67,7 @@ struct Silent {   // the Idle's producer: never puts
 };
 // Asks to be woken once, far away.
 struct Sleeper {
+    uint64_t digest() const { return hash_fields(until, woke); }
     Cycle until, woke = 0;
     Sleeper(Ports&, Cycle u) : until(u) {}
     Wake step(Ctx& c) {
@@ -73,6 +78,7 @@ struct Sleeper {
 };
 // A hold producer that retries refusals (WordHold's protocol) and a consumer that takes every other cycle.
 struct HoldSource {
+    uint64_t digest() const { return hash_fields(out, n, next_v, last); }
     HoldOut out;
     uint64_t n, next_v = 1, last = 0;
     HoldSource(Ports& p, uint64_t count) : n(count) { p.out(out, "out", 1); }
@@ -83,6 +89,7 @@ struct HoldSource {
     }
 };
 struct HoldSink {
+    uint64_t digest() const { return hash_fields(in, got, expect) ^ in_order; }
     HoldIn in;
     uint64_t got = 0, expect = 1;
     bool in_order = true;

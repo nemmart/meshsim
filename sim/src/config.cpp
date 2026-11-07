@@ -1,7 +1,5 @@
 // config.cpp: building a machine (WORKER3, stage 2). The configuration regime (D6): any C++.
 //
-// Increment 2: Link, Fifo and Hold are built; the other kinds are declared and wired, and build() refuses them by name
-// until increment 3.
 #include "config.h"
 
 #include <algorithm>
@@ -35,7 +33,7 @@ size_t registry_size() { return registry().size(); }
 
 namespace {
 const char* kind_name(Kind k) {
-    static const char* n[] = { "link", "fifo", "credit fifo", "hold", "reg", "wire", "regfile", "count" };
+    static const char* n[] = { "link", "fifo", "credit fifo", "hold", "reg", "wire", "regfile", "count", "credit return" };
     return n[unsigned(k)];
 }
 enum class Shape : uint8_t { in, out, out_bit, idx };
@@ -74,6 +72,7 @@ struct Config::Impl {
     std::unordered_map<std::string, uint32_t> names;
     unsigned chip = 0, domain = 0;
     int cur = -1;
+    std::map<std::string, unsigned> missed;   // per-unit missed-wake thresholds (D20)
     Ports* ports = nullptr;
     bool built = false;
 
@@ -240,11 +239,13 @@ void Config::connect(CountOut o, CountIn i) {
     O.peers.push_back(i.idx);
     I.peers.push_back(o.idx);
 }
+void Config::missed_wake_after(const std::string& unit, unsigned cycles) { impl_->missed[unit] = cycles; }
 void Config::count_overflows(FifoIn f, CountIn c) {
     Impl::Decl& F = impl_->decl(f.idx, "count_overflows");
     Impl::Decl& C = impl_->decl(c.idx, "count_overflows");
     if (F.kind != Kind::fifo || F.out || C.kind != Kind::count || C.out) FATAL("count_overflows: '%s', '%s'", F.name.c_str(), C.name.c_str());
-    F.peers.push_back(c.idx);   // a fifo input's second peer: its count (increment 3)
+    if (F.peers.size() > 1) FATAL("count_overflows: '%s' already counts into a Count", F.name.c_str());
+    F.peers.push_back(c.idx);   // a fifo input's second peer: its Count
     C.peers.push_back(f.idx);
 }
 
@@ -261,6 +262,7 @@ struct Sim::Impl {
     std::vector<const char*> unit_names, route_names;
     std::deque<std::string> port_names;                // ring, bucket and run names: stable addresses (W1's structures keep pointers)
     std::vector<std::vector<std::pair<uint8_t, std::string>>> level_ports;   // per instance: (bit, port name) of its level inputs
+    std::vector<unsigned> missed_after;               // per instance: the missed-wake detector's threshold (increment 5)
     Sizes sizes;
     unsigned char* obj(uint32_t i) const {
         const Store& s = stores[inst[i].store];
@@ -299,27 +301,64 @@ Sim Config::build() {
     if (I.built) FATAL("build() called twice");
     I.built = true;
     using Decl = Impl::Decl;
+    const uint32_t n = uint32_t(I.units.size());
 
-    // 1. every port wired; kinds of this increment
-    for (const Decl& d : I.decls) {
-        if (d.peers.empty() && !(d.kind == Kind::count)) FATAL("port '%s' (%s %s) is not wired", d.name.c_str(), kind_name(d.kind), d.out ? "output" : "input");
-        if (d.kind != Kind::link && d.kind != Kind::fifo && d.kind != Kind::hold)
-            FATAL("port '%s': %s ports come with increment 3", d.name.c_str(), kind_name(d.kind));
+    // 1. every port wired (a Count may stand alone: a counter no one reads, or read but never incremented)
+    for (const Decl& d : I.decls)
+        if (d.peers.empty() && d.kind != Kind::count)
+            FATAL("port '%s' (%s %s) is not wired", d.name.c_str(), kind_name(d.kind), d.out ? "output" : "input");
+
+    // 2. levels, from the Wires and RegFiles (a producer below each reader); a loop is fatal with its units named
+    std::vector<std::vector<uint32_t>> succ(n);
+    std::vector<uint32_t> indeg(n, 0);
+    for (const Decl& d : I.decls)
+        if (d.out && (d.kind == Kind::wire || d.kind == Kind::regfile))
+            for (uint32_t r : d.peers) { succ[d.unit].push_back(I.decls[r].unit); indeg[I.decls[r].unit]++; }
+    {
+        std::vector<uint32_t> q, deg = indeg;
+        for (uint32_t u = 0; u < n; u++) if (!deg[u]) q.push_back(u);
+        for (size_t k = 0; k < q.size(); k++)
+            for (uint32_t v : succ[q[k]]) {
+                I.units[v].level = std::max(I.units[v].level, I.units[q[k]].level + 1);
+                if (--deg[v] == 0) q.push_back(v);
+            }
+        if (q.size() != n) {                         // a loop: walk back from a unit left over until one repeats
+            std::vector<std::vector<uint32_t>> pred(n);
+            for (uint32_t u = 0; u < n; u++) for (uint32_t v : succ[u]) if (deg[u] && deg[v]) pred[v].push_back(u);
+            uint32_t u = 0;
+            while (!deg[u]) u++;
+            std::vector<int> seen(n, -1);
+            std::vector<uint32_t> path;
+            while (seen[u] < 0) { seen[u] = int(path.size()); path.push_back(u); u = pred[u][0]; }
+            std::string loop;
+            for (size_t k = path.size(); k-- > size_t(seen[u]);) loop += I.units[path[k]].name + " -> ";   // forward order
+            loop += I.units[path.back()].name;
+            FATAL("a combinational loop through wires: %s", loop.c_str());
+        }
     }
+    // one level per (type, form): the largest of its instances (sim.h), then every wire checked again
+    std::map<std::pair<uint16_t, int>, uint32_t> tf_level;
+    for (auto& u : I.units) { auto& l = tf_level[{u.type, int(u.form)}]; l = std::max(l, u.level); }
+    for (auto& u : I.units) u.level = tf_level[{u.type, int(u.form)}];
+    for (uint32_t u = 0; u < n; u++)
+        for (uint32_t v : succ[u])
+            if (I.units[v].level <= I.units[u].level)
+                FATAL("levels: '%s' (type %s, level %u) drives a wire read by '%s' (type %s, level %u): one level per type "
+                      "can't order them", I.units[u].name.c_str(), detail::type_info(I.units[u].type).name.c_str(),
+                      I.units[u].level, I.units[v].name.c_str(), detail::type_info(I.units[v].type).name.c_str(), I.units[v].level);
 
-    // 2. the instances' order: (level, type in first-add order, form), then add order; runs are its contiguous groups
+    // 3. the instances' order: (level, type in first-add order, form), then add order; runs are its contiguous groups
     std::vector<uint16_t> type_rank(detail::registry_size(), 0xFFFF);
     uint16_t nt = 0;
     for (auto& u : I.units) if (type_rank[u.type] == 0xFFFF) type_rank[u.type] = nt++;
-    std::vector<uint32_t> order(I.units.size());
-    for (uint32_t i = 0; i < order.size(); i++) order[i] = i;
+    std::vector<uint32_t> order(n);
+    for (uint32_t i = 0; i < n; i++) order[i] = i;
     std::stable_sort(order.begin(), order.end(), [&](uint32_t a, uint32_t b) {
         const auto &A = I.units[a], &B = I.units[b];
         if (A.level != B.level) return A.level < B.level;
         if (type_rank[A.type] != type_rank[B.type]) return type_rank[A.type] < type_rank[B.type];
         return A.form < B.form;
     });
-    const uint32_t n = uint32_t(order.size());
     std::vector<uint32_t> inst_of(n);
     for (uint32_t k = 0; k < n; k++) inst_of[order[k]] = k;
     struct RunDef { uint32_t first, count, level; uint16_t type; Form form; };
@@ -331,36 +370,82 @@ Sim Config::build() {
         runs.back().count++;
     }
 
-    // 3. numbering: inputs per kind, consumer type-major then instance; outputs as routes in the same order
-    uint32_t nlink = 0, nfifo = 0, nhold = 0, nroute = 0;
+    // 4. numbering. Inputs of Link, Fifo (credit too), Hold: their own pools, consumer type-major then instance. Reg, Wire
+    //    and RegFile: one port per output, its readers pointing at it. Outputs that put (Link, Fifo, credit, Hold, Reg):
+    //    routes, in the same order, then one return route per credit Fifo. Counts: one per connected set.
+    uint32_t nlink = 0, nfifo = 0, nhold = 0, nroute = 0, nreg = 0, nwire = 0, nrf = 0, ncount = 0;
+    std::vector<uint32_t> regidx(I.decls.size(), kNone);
+    std::vector<std::string> route_names;
+    std::vector<uint32_t> route_decl;
     for (uint32_t k = 0; k < n; k++)
         for (uint32_t id : I.units[order[k]].decls) {
             Decl& d = I.decls[id];
-            if (d.out) { d.final = nroute++; continue; }
+            if (d.out) {
+                switch (d.kind) {
+                    case Kind::wire: d.final = nwire++; break;
+                    case Kind::regfile: d.final = nrf++; break;
+                    case Kind::count: break;
+                    case Kind::reg: regidx[id] = nreg++; [[fallthrough]];
+                    default: d.final = nroute++; route_names.push_back(d.name); route_decl.push_back(id); break;
+                }
+                continue;
+            }
             if (d.kind == Kind::link) d.final = nlink++;
-            else if (d.kind == Kind::fifo) d.final = nfifo++;
+            else if (d.kind == Kind::fifo || d.kind == Kind::credit) d.final = nfifo++;
             else if (d.kind == Kind::hold) d.final = nhold++;
         }
-    std::vector<uint32_t> route_decl(nroute);
-    for (uint32_t id = 0; id < I.decls.size(); id++) if (I.decls[id].out) route_decl[I.decls[id].final] = id;
+    for (Decl& d : I.decls) {
+        if (d.out || d.peers.empty()) continue;
+        const uint32_t prod = d.peers[0];
+        if (d.kind == Kind::reg) d.final = regidx[prod];
+        else if (d.kind == Kind::wire || d.kind == Kind::regfile) d.final = I.decls[prod].final;
+    }
+    std::vector<uint32_t> ret_route(I.decls.size(), kNone);
+    for (uint32_t k = 0; k < n; k++)
+        for (uint32_t id : I.units[order[k]].decls)
+            if (!I.decls[id].out && I.decls[id].kind == Kind::credit) {
+                ret_route[id] = nroute++;
+                route_names.push_back(I.decls[id].name + " (credit return)");
+                route_decl.push_back(kNone);
+            }
+    {   // counts: union-find over the count declarations and the Fifos that count their overflows into one
+        std::vector<uint32_t> parent(I.decls.size());
+        for (uint32_t i = 0; i < parent.size(); i++) parent[i] = i;
+        auto find = [&](uint32_t x) { while (parent[x] != x) x = parent[x] = parent[parent[x]]; return x; };
+        for (uint32_t id = 0; id < I.decls.size(); id++)
+            if (I.decls[id].kind == Kind::count) for (uint32_t p : I.decls[id].peers) parent[find(id)] = find(p);
+        std::map<uint32_t, uint32_t> comp;
+        for (uint32_t k = 0; k < n; k++)
+            for (uint32_t id : I.units[order[k]].decls)
+                if (I.decls[id].kind == Kind::count) {
+                    auto it = comp.find(find(id));
+                    if (it == comp.end()) it = comp.emplace(find(id), ncount++).first;
+                    I.decls[id].final = it->second;
+                }
+    }
 
-    // 4. wheels: one per (kind, width) with routes on it; W above its largest latency; a bucket holds one put per route
+    // 5. wheels: one per (kind, width) with routes on it; W above its largest latency; a bucket holds one put per route
     struct WheelDef { Kind kind; unsigned width, W, cap; };
     std::vector<WheelDef> wheels;
     std::map<std::pair<unsigned, unsigned>, uint32_t> wheel_of;
     std::vector<uint32_t> route_wheel(nroute);
     for (uint32_t r = 0; r < nroute; r++) {
-        const Decl& d = I.decls[route_decl[r]];
-        auto key = std::make_pair(unsigned(d.kind), d.width);
+        Kind kd = route_decl[r] == kNone ? Kind::cret : I.decls[route_decl[r]].kind;
+        unsigned w = route_decl[r] == kNone ? 0 : I.decls[route_decl[r]].width;
+        unsigned lat = route_decl[r] == kNone ? 1 : I.decls[route_decl[r]].latency;
+        auto key = std::make_pair(unsigned(kd), w);
         auto it = wheel_of.find(key);
-        if (it == wheel_of.end()) { it = wheel_of.emplace(key, uint32_t(wheels.size())).first; wheels.push_back({d.kind, d.width, 2, 0}); }
-        WheelDef& w = wheels[it->second];
-        w.W = std::max(w.W, pow2_above(d.latency));
-        w.cap++;
+        if (it == wheel_of.end()) { it = wheel_of.emplace(key, uint32_t(wheels.size())).first; wheels.push_back({kd, w, 2, 0}); }
+        WheelDef& wd = wheels[it->second];
+        wd.W = std::max(wd.W, pow2_above(lat));
+        wd.cap++;
         route_wheel[r] = it->second;
     }
 
-    // 5. sizing: every structure's words, by structure, type and chip (D15)
+    // 6. sizing: every structure's words, by structure, type and chip (D15)
+    uint32_t nreaders = 0;
+    for (const Decl& d : I.decls)
+        if (d.out && (d.kind == Kind::reg || d.kind == Kind::wire || d.kind == Kind::regfile)) nreaders += uint32_t(d.peers.size());
     Carver c;
     auto tname = [&](uint16_t t) { return detail::type_info(t).name; };
     const size_t o_mask = c.add("instances: ready masks", n), o_edges = c.add("instances: edge bits", n),
@@ -368,16 +453,21 @@ Sim Config::build() {
                  o_runof = c.add("instances: run of", (n + 1) / 2), o_hpos = c.add("instances: heap places", (n + 1) / 2),
                  o_heap = c.add("far wakes (heap)", (n + 1) / 2);
     const size_t o_links = c.add_array<LinkPort>("link ports", nlink), o_fifos = c.add_array<FifoPort>("fifo ports", nfifo),
-                 o_holds = c.add_array<HoldPort>("hold ports", nhold), o_routes = c.add_array<Route>("routes", nroute);
+                 o_holds = c.add_array<HoldPort>("hold ports", nhold), o_regs = c.add_array<RegPort>("reg ports", nreg),
+                 o_wires = c.add_array<WirePort>("wire ports", nwire), o_rfs = c.add_array<RegFilePort>("regfile ports", nrf),
+                 o_counts = c.add_array<CountPort>("counts", ncount), o_rinst = c.add_array<uint32_t>("readers", nreaders),
+                 o_rbit = c.add_array<uint8_t>("readers: bits", nreaders), o_routes = c.add_array<Route>("routes", nroute);
     std::vector<size_t> o_ring(I.decls.size(), 0);
     for (uint32_t id = 0; id < I.decls.size(); id++) {
         const Decl& d = I.decls[id];
-        if (d.out) continue;
         const auto& u = I.units[d.unit];
+        if (d.out && d.kind == Kind::regfile) { o_ring[id] = c.add("regfile registers", (d.regs + 1) / 2, 1, u.type, int(u.chip)); continue; }
+        if (d.out) continue;
         if (d.kind == Kind::link)
             o_ring[id] = c.add("ring link w" + std::to_string(d.width), Ring::words_needed(std::max(1u, d.width), d.latency + 2), 1, u.type, int(u.chip));
-        else if (d.kind == Kind::fifo)
-            o_ring[id] = c.add("ring fifo w" + std::to_string(d.width), Ring::words_needed(d.width, d.depth), 1, u.type, int(u.chip));
+        else if (d.kind == Kind::fifo || d.kind == Kind::credit)
+            o_ring[id] = c.add(std::string("ring ") + (d.kind == Kind::credit ? "credit" : "fifo") + " w" + std::to_string(d.width),
+                               Ring::words_needed(d.width, d.depth), 1, u.type, int(u.chip));
     }
     const size_t o_wheels = c.add_array<Wheel>("wheels: headers", wheels.size());
     std::vector<size_t> o_bheads(wheels.size()), o_bstore(wheels.size());
@@ -399,12 +489,17 @@ Sim Config::build() {
     e.run_of = reinterpret_cast<uint32_t*>(B + o_runof); e.heap_pos = reinterpret_cast<uint32_t*>(B + o_hpos);
     e.heap = reinterpret_cast<uint32_t*>(B + o_heap);
     e.links = reinterpret_cast<LinkPort*>(B + o_links); e.fifos = reinterpret_cast<FifoPort*>(B + o_fifos);
-    e.holds = reinterpret_cast<HoldPort*>(B + o_holds); e.routes = reinterpret_cast<Route*>(B + o_routes);
+    e.holds = reinterpret_cast<HoldPort*>(B + o_holds); e.regs = reinterpret_cast<RegPort*>(B + o_regs);
+    e.wires = reinterpret_cast<WirePort*>(B + o_wires); e.regfiles = reinterpret_cast<RegFilePort*>(B + o_rfs);
+    e.counts = reinterpret_cast<CountPort*>(B + o_counts);
+    e.reader_inst = reinterpret_cast<uint32_t*>(B + o_rinst); e.reader_bit = reinterpret_cast<uint8_t*>(B + o_rbit);
+    e.routes = reinterpret_cast<Route*>(B + o_routes);
     e.wheels = reinterpret_cast<Wheel*>(B + o_wheels); e.nwheels = uint32_t(wheels.size());
     e.runs = reinterpret_cast<RunSet*>(B + o_runs); e.nruns = uint32_t(runs.size());
     e.nlinks = nlink; e.nfifos = nfifo; e.nholds = nhold; e.nroutes = nroute;
+    e.nregs = nreg; e.nwires = nwire; e.nregfiles = nrf; e.ncounts = ncount;
 
-    // 6. the units: one arena per type (moved from staging, in the instances' order); handles rewritten in place
+    // 7. the units: one arena per type (moved from staging, in the instances' order); handles rewritten in place
     S->inst.resize(n);
     std::map<uint16_t, uint32_t> store_of;
     for (uint32_t k = 0; k < n; k++) {
@@ -436,52 +531,103 @@ Sim Config::build() {
         S->by_name[u.name] = k;
     }
 
-    // 7. initialise every structure
+    // 8. initialise every structure
     S->unit_names.resize(n);
     for (uint32_t k = 0; k < n; k++) S->unit_names[k] = S->inst[k].name.c_str();
     for (const Decl& d : I.decls) S->port_names.push_back(d.name);
+    S->route_name_s = route_names;
     S->route_names.resize(nroute);
-    for (uint32_t r = 0; r < nroute; r++) S->route_names[r] = S->port_names[route_decl[r]].c_str();
+    for (uint32_t r = 0; r < nroute; r++) S->route_names[r] = S->route_name_s[r].c_str();
     e.unit_names = S->unit_names.data();
     e.route_names = S->route_names.data();
     S->level_ports.resize(n);
+    S->missed_after.assign(n, I.opt.missed_wake_after);
     for (uint32_t k = 0; k < n; k++) {
         const auto& u = I.units[order[k]];
         e.mask[k] = 0; e.edges[k] = u.edges; e.wake_at[k] = kNoCycle; e.steps[k] = 0; e.heap_pos[k] = kNone;
+        auto mw = I.missed.find(u.name);
+        if (mw != I.missed.end()) S->missed_after[k] = mw->second;
         for (uint32_t id : u.decls) {
             const Decl& d = I.decls[id];
-            if (!d.out && (d.kind == Kind::link || d.kind == Kind::fifo || d.kind == Kind::hold))
+            if (!d.out && (d.kind == Kind::link || d.kind == Kind::fifo || d.kind == Kind::credit || d.kind == Kind::hold))
                 S->level_ports[k].push_back({d.bit, d.name});
         }
     }
+    for (const auto& [nm, v] : I.missed) if (!I.names.count(nm)) FATAL("missed_wake_after: no unit named '%s'", nm.c_str());
+    uint32_t next_reader = 0;
+    auto add_readers = [&](const Decl& d, uint32_t& first, uint32_t& cnt) {
+        first = next_reader;
+        cnt = uint32_t(d.peers.size());
+        for (uint32_t r : d.peers) {
+            e.reader_inst[next_reader] = inst_of[I.decls[r].unit];
+            e.reader_bit[next_reader] = I.decls[r].bit;
+            next_reader++;
+        }
+    };
+    for (uint32_t r = 0; r < ncount; r++) e.counts[r] = CountPort{0, 0, kNoCycle, kNone};
     for (uint32_t id = 0; id < I.decls.size(); id++) {
         const Decl& d = I.decls[id];
         const uint32_t owner = inst_of[d.unit];
         const char* nm = S->port_names[id].c_str();
+        if (d.kind == Kind::count) {
+            if (d.out) {
+                CountPort& cp = e.counts[d.final];
+                const uint32_t lv = I.units[d.unit].level;
+                cp.max_producer_level = cp.max_producer_level == kNone ? lv : std::max(cp.max_producer_level, lv);
+            }
+            continue;
+        }
+        if (d.out && d.kind == Kind::wire) {
+            WirePort& w = e.wires[d.final];
+            w = WirePort{};
+            w.v = d.reset; w.written_at = kNoCycle; w.read_at = kNoCycle; w.producer = owner; w.level = I.units[d.unit].level;
+            add_readers(d, w.readers, w.nreaders);
+            continue;
+        }
+        if (d.out && d.kind == Kind::regfile) {
+            RegFilePort& r = e.regfiles[d.final];
+            r = RegFilePort{};
+            r.regs = reinterpret_cast<uint32_t*>(B + o_ring[id]); r.read_at = kNoCycle; r.owner = owner; r.n = d.regs;
+            add_readers(d, r.readers, r.nreaders);
+            continue;
+        }
         if (d.out) {
             const Decl& in = I.decls[d.peers[0]];
             const WheelDef& wd = wheels[route_wheel[d.final]];
             Route& r = e.routes[d.final];
             r = Route{};
             r.wheel = reinterpret_cast<Bucket*>(B + o_bheads[route_wheel[d.final]]);
-            r.last_put = kNoCycle;
-            r.mask = wd.W - 1;
-            r.dest = in.final;
-            r.owner = owner;
-            r.latency = uint16_t(d.latency);
-            r.width = uint8_t(d.width);
-            r.kind = d.kind;
+            r.last_put = kNoCycle; r.mask = wd.W - 1; r.owner = owner;
+            r.dest = d.kind == Kind::reg ? regidx[id] : in.final;
+            r.latency = uint16_t(d.latency); r.width = uint8_t(d.width); r.kind = d.kind;
+            if (d.kind == Kind::reg) {
+                RegPort& rp = e.regs[regidx[id]];
+                rp = RegPort{};
+                rp.width = uint8_t(d.width); rp.valid = false;
+                add_readers(d, rp.readers, rp.nreaders);
+            }
             continue;
         }
         if (d.kind == Kind::link) {
             LinkPort& l = *new (&e.links[d.final]) LinkPort{};
             l.ring.init(B + o_ring[id], std::max(1u, d.width), d.latency + 2, nm);
             l.last_take = kNoCycle; l.owner = owner; l.inflight = 0; l.cap = uint16_t(d.latency + 2); l.bit = d.bit; l.width = uint8_t(d.width);
-        } else if (d.kind == Kind::fifo) {
+        } else if (d.kind == Kind::fifo || d.kind == Kind::credit) {
             FifoPort& f = *new (&e.fifos[d.final]) FifoPort{};
             f.ring.init(B + o_ring[id], d.width, d.depth, nm);
             f.last_take = kNoCycle; f.first_overflow = kNoCycle; f.overflows = 0; f.owner = owner; f.count_idx = kNone;
+            f.ret = kNone; f.credits = 0; f.producer = kNone; f.pbit = 0;
             f.depth = uint16_t(d.depth); f.bit = d.bit; f.width = uint8_t(d.width);
+            for (size_t k = 1; k < d.peers.size(); k++) f.count_idx = I.decls[d.peers[k]].final;   // count_overflows
+            if (d.kind == Kind::credit) {
+                const Decl& o = I.decls[d.peers[0]];
+                f.ret = ret_route[id]; f.credits = d.depth; f.producer = inst_of[o.unit]; f.pbit = o.bit;
+                Route& r = e.routes[f.ret];
+                r = Route{};
+                r.wheel = reinterpret_cast<Bucket*>(B + o_bheads[route_wheel[f.ret]]);
+                r.last_put = kNoCycle; r.mask = wheels[route_wheel[f.ret]].W - 1; r.owner = owner; r.dest = d.final;
+                r.latency = 1; r.width = 0; r.kind = Kind::cret;
+            }
         } else if (d.kind == Kind::hold) {
             const Decl& o = I.decls[d.peers[0]];
             HoldPort& h = *new (&e.holds[d.final]) HoldPort{};
@@ -516,7 +662,7 @@ Sim Config::build() {
     e.bind();
     for (uint32_t k = 0; k < n; k++) e.mark(k);   // every unit is stepped at the first cycle (sim.h)
 
-    // 8. sizes, by structure, by type, per chip
+    // 9. sizes, by structure, by type, per chip
     Sizes& z = S->sizes;
     std::map<std::string, SizeLine> by_s, by_t;
     std::map<unsigned, uint64_t> by_chip;
@@ -595,6 +741,11 @@ uint64_t Sim::digest() const {
         h.add(p.occ); h.add(p.refusals); h.add(p.refused_at);
         if (p.occ) for (unsigned k = 0; k < p.width; k++) h.add(p.w[k]);
     }
+    for (uint32_t i = 0; i < e.nfifos; i++) h.add(e.fifos[i].credits);
+    for (uint32_t i = 0; i < e.nregs; i++) { h.add(e.regs[i].valid); for (unsigned k = 0; k < e.regs[i].width; k++) h.add(e.regs[i].w[k]); }
+    for (uint32_t i = 0; i < e.nwires; i++) h.add(e.wires[i].v);
+    for (uint32_t i = 0; i < e.nregfiles; i++) for (uint32_t k = 0; k < e.regfiles[i].n; k++) h.add(e.regfiles[i].regs[k]);
+    for (uint32_t i = 0; i < e.ncounts; i++) h.add(e.counts[i].total);
     for (uint32_t k = 0; k < e.ninst; k++) h.add(detail::type_info(impl_->inst[k].type).digest(impl_->obj(k)));
     return h.h;
 }

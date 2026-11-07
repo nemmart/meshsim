@@ -19,6 +19,8 @@ void by_width(unsigned w, Engine& e, const Bucket& b) {
 template <unsigned W> struct DLink { static void go(Engine& e, const Bucket& b) { detail::deliver_link<W>(e, b); } };
 template <unsigned W> struct DFifo { static void go(Engine& e, const Bucket& b) { if constexpr (W) detail::deliver_fifo<W>(e, b); } };
 template <unsigned W> struct DHold { static void go(Engine& e, const Bucket& b) { if constexpr (W) detail::deliver_hold<W>(e, b); } };
+template <unsigned W> struct DCredit { static void go(Engine& e, const Bucket& b) { if constexpr (W) detail::deliver_credit<W>(e, b); } };
+template <unsigned W> struct DReg { static void go(Engine& e, const Bucket& b) { if constexpr (W) detail::deliver_reg<W>(e, b); } };
 }  // namespace
 
 void Engine::cycle() {
@@ -30,6 +32,9 @@ void Engine::cycle() {
             case Kind::link: by_width<DLink>(wheels[w].width, *this, b); break;
             case Kind::fifo: by_width<DFifo>(wheels[w].width, *this, b); break;
             case Kind::hold: by_width<DHold>(wheels[w].width, *this, b); break;
+            case Kind::credit: by_width<DCredit>(wheels[w].width, *this, b); break;
+            case Kind::reg: by_width<DReg>(wheels[w].width, *this, b); break;
+            case Kind::cret: detail::deliver_cret(*this, b); break;
             default: FATAL("wheel of kind %u: not in this increment", unsigned(wheels[w].kind));
         }
         pending -= b.count();
@@ -38,7 +43,7 @@ void Engine::cycle() {
     while (heap_n && wake_at[heap[0]] == now) mark(heap_pop());
     // 2. run, level by level (runs are sorted by level)
     for (uint32_t r = 0; r < nruns; r++)
-        if (runs[r].nready) runs[r].fn(*this, runs[r]);
+        if (runs[r].nready) { cur_level = runs[r].level; runs[r].fn(*this, runs[r]); }
     // 3. end: the next cycle's run sets become current
     for (uint32_t r = 0; r < nruns; r++) {
         RunSet& rs = runs[r];
@@ -136,6 +141,13 @@ uint32_t Engine::heap_pop() {
 
 void Engine::die_two_puts(uint32_t route) const {
     FATAL("two puts on '%s' in cycle %llu (one put per output per cycle)", route_names[route], (unsigned long long)now);
+}
+void Engine::die_no_credit(uint32_t route) const {
+    FATAL("put on '%s' at cycle %llu without a credit (a credit fifo's producer puts only with room)", route_names[route],
+          (unsigned long long)now);
+}
+void Engine::die_wire(uint32_t w, const char* what) const {
+    FATAL("wire of %s %s, cycle %llu", unit_names[wires[w].producer], what, (unsigned long long)now);
 }
 void Engine::die_link_full(uint32_t port) const {
     FATAL("link '%s' full at cycle %llu: capacity %u (the consumer must take each word as it arrives)", links[port].ring.name(),

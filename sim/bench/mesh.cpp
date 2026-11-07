@@ -328,16 +328,17 @@ private:
 template <int LW, int DL, bool FX, bool POLL>
 int run_variant(const Cfg& cfg, unsigned meshes, int nthreads, const int* cpus, const char* name) {
     using P = Partition<LW, DL, FX, POLL>;
-    if (meshes % unsigned(nthreads)) FATAL("meshes %u not divisible by threads %d", meshes, nthreads);
-    const unsigned per = meshes / unsigned(nthreads);
+    // thread i owns meshes [i * meshes / T, (i + 1) * meshes / T): uneven when T doesn't divide the count
+    auto first_of = [&](int i) { return unsigned(uint64_t(i) * meshes / unsigned(nthreads)); };
     Result res[64];
     uint64_t digs[4096];
     if (nthreads > 64 || meshes > 4096) FATAL("too many threads or meshes");
     bench::StartLine line;
     auto body = [&](int tid) {
         bench::pin_to(cpus[tid]);
+        const unsigned first = first_of(tid), per = first_of(tid + 1) - first;
         P part;
-        part.build(per, unsigned(tid) * per, cfg);
+        part.build(per, first, cfg);
         line.arrive_and_wait();
         sim::begin_run();
         part.run(0, uint64_t(cfg.warmup), res[tid]);
@@ -351,7 +352,7 @@ int run_variant(const Cfg& cfg, unsigned meshes, int nthreads, const int* cpus, 
         r.secs = t1 - t0;
         for (int k = 0; k < 4; ++k) r.ph[k] -= res[tid].ph[k];
         res[tid] = r;
-        for (unsigned m = 0; m < per; ++m) digs[unsigned(tid) * per + m] = part.mesh_digest(m);
+        for (unsigned m = 0; m < per; ++m) digs[first + m] = part.mesh_digest(m);
     };
     std::thread th[64];
     for (int i = 1; i < nthreads; ++i) th[i] = std::thread(body, i);

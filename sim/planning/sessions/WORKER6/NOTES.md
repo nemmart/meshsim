@@ -1,4 +1,20 @@
-# WORKER6 notes: the plan (for the go-ahead)
+# WORKER6 notes: the plan
+
+**Agreed 2026-11-07 (owner's go-ahead), with these changes:** Fp128 reduces by folding (D14), no Montgomery: three forms
+(`unsigned __int128` values; `__int128` column accumulators; explicit `_addcarry_u64` limbs; the third added because gcc
+compiles the first form's 128-bit carry compares to branches). Credits agreed; the credit wheel's share reported apart.
+Rates reported as offered and accepted; 0.35 is below saturation (~0.365, measured: below). The full matrix on one mesh
+only; the scale runs on the (a)/(b) pair at the best layout and width, both mixes. Three repeats, median and spread.
+128 meshes over 6 or 12 threads split unevenly (21-22, 10-11 per thread): the slowest thread sets the wall time.
+
+**Saturation (local, deterministic):** offered 0.30/0.35/0.36/0.40 → accepted 0.300/0.350/0.359/0.368; with a 64-deep
+injection queue, 0.35 has no refusals and a mean queue of 0.43-0.50 over 100 K and 400 K cycles (bounded); 0.36 starts
+refusing. Quest task A repeats the sweep on the runner.
+
+**Quest tasks:** 124 (the mesh), 125 (Fp128); bodies in `sim/bench/quest/`, assembled with `mk_task.sh`.
+
+---
+
 
 Measurements to decide W3's API (D10), not a product. Everything in `sim/bench/`, on W1's structures, `sim/src/base/`
 untouched (bench-only copies where a variant needs a different structure).

@@ -286,16 +286,17 @@ private:
 
 template <int F, bool POOL>
 int unit_bench(uint32_t units, int nthreads, const int* cpus, long cycles, long warmup, const char* name) {
-    if (units % uint32_t(nthreads)) FATAL("units %u not divisible by threads %d", units, nthreads);
     if (nthreads > 64) FATAL("too many threads");
-    const uint32_t per = units / uint32_t(nthreads);
+    // thread i owns units [i * units / T, (i + 1) * units / T): uneven when T doesn't divide the count
+    auto first_of = [&](int i) { return uint32_t(uint64_t(i) * units / uint32_t(nthreads)); };
     double secs[64];
     uint64_t* digs = static_cast<uint64_t*>(sim::alloc_big(size_t(units) * 8, "digests"));
     bench::StartLine line;
     auto body = [&](int tid) {
         bench::pin_to(cpus[tid]);
+        const uint32_t first = first_of(tid), per = first_of(tid + 1) - first;
         Units<F, POOL> us;
-        us.build(per, uint32_t(tid) * per);
+        us.build(per, first);
         line.arrive_and_wait();
         sim::begin_run();
         us.run(0, uint64_t(warmup));
@@ -304,7 +305,7 @@ int unit_bench(uint32_t units, int nthreads, const int* cpus, long cycles, long 
         const double t1 = bench::now_s();
         sim::end_run();
         secs[tid] = t1 - t0;
-        us.digests(digs + size_t(tid) * per, uint64_t(warmup + cycles));
+        us.digests(digs + first, uint64_t(warmup + cycles));
     };
     std::thread th[64];
     for (int i = 1; i < nthreads; ++i) th[i] = std::thread(body, i);

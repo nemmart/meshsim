@@ -21,12 +21,12 @@ for mix in 128 mixed; do for rate in 0.1 0.35; do
 done; done
 
 ref=""
-for t in 1 2 4; do
+for t in 1 3 4; do
   d=$($B/mesh --lw a --meshes 4 --threads $t --cpus 0,0,0,0 --mix mixed --cycles 2000 --warmup 200 | dig)
   [ -z "$ref" ] && ref=$d
   [ "$d" = "$ref" ] && [ "$d" != none ] || bad "mesh 4 meshes on $t threads: digest $d != $ref"
 done
-ok "mesh: 4 meshes on 1, 2, 4 threads, one digest $ref"
+ok "mesh: 4 meshes on 1, 3 (uneven), 4 threads, one digest $ref"
 
 $B/fp128 --check 20000 && ok "fp128: forms against the reference" || bad "fp128 --check"
 $B/fp128 --dump 2000 | python3 -c "
@@ -38,12 +38,12 @@ for l in sys.stdin:
 print(n, bad); sys.exit(1 if bad or not n else 0)" && ok "fp128: forms against Python" || bad "fp128 against Python"
 
 ref=""
-for f in u128 acc limbs; do for h in pool inline; do for t in 1 4; do
+for f in u128 acc limbs; do for h in pool inline; do for t in 1 3; do
   d=$($B/fp128 --unit --form $f --hold $h --units 64 --threads $t --cpus 0,0,0,0 --cycles 2000 --warmup 100 | dig)
   [ -z "$ref" ] && ref=$d
   [ "$d" = "$ref" ] && [ "$d" != none ] || bad "fp128 unit form=$f hold=$h threads=$t: digest $d != $ref"
 done; done; done
-ok "fp128 unit: 3 forms x 2 holds x 1, 4 threads, one digest $ref"
+ok "fp128 unit: 3 forms x 2 holds x 1, 3 threads, one digest $ref"
 
 out=$($B/mesh --alloc-probe --cycles 100 --warmup 10 2>&1); rc=$?
 [ $rc -ne 0 ] && echo "$out" | grep -q "inside a run" && ok "allocation hook fires in the mesh loop" \

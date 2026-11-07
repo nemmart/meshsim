@@ -82,6 +82,7 @@ struct Options {
     bool step_all = false;       // step every instance every cycle (the missed-wake check, sim.h DEBUG CHECKS)
     unsigned missed_wake_after = 1;   // the missed-wake detector (debug builds): cycles asleep with data waiting, 0 = off
     bool missed_wake_fatal = true;    // else report and go on
+    unsigned leak_check_every = 0;    // debug builds: check the slot pools every N cycles too (always at the end of a run)
     unsigned threads = 1;        // W4
 };
 

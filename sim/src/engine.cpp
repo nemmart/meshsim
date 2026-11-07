@@ -63,11 +63,43 @@ bool Engine::idle() const {
 void Engine::run_until(Cycle end) {
     while (now < end) {
         cycle();
+        if constexpr (kDebug) if (leak_every && npools && now % leak_every == 0) check_leaks();
         if (idle()) {                                  // nothing in flight, nothing ready: jump to the next wake
             Cycle t = heap_n ? wake_at[heap[0]] : end;
             if (t > end) t = end;
             if (t > now) now = t;
         }
+    }
+    if constexpr (kDebug) if (npools) check_leaks();
+}
+
+// The leak check (debug): a slot in use is on a port (visible in a ring or a hold, or an entry in a wheel) or held by a
+// unit, within what the units declared (Ports::by_ref's `held`, and one per by-reference Hold for a refused word awaiting
+// its retry). More than that is a slot allocated and never put or freed.
+void Engine::check_leaks() const {
+    uint64_t queued[64] = {};
+    if (npools > 64) FATAL("more than 64 size classes");
+    for (uint32_t i = 0; i < nlinks; i++) if (links[i].cls != kNoClass) queued[links[i].cls] += links[i].ring.count();
+    for (uint32_t i = 0; i < nfifos; i++) if (fifos[i].cls != kNoClass) queued[fifos[i].cls] += fifos[i].ring.count();
+    for (uint32_t i = 0; i < nholds; i++) if (holds[i].cls != kNoClass) queued[holds[i].cls] += holds[i].occ;
+    for (uint32_t w = 0; w < nwheels; w++) {
+        const Wheel& wh = wheels[w];
+        if (wh.kind != Kind::link && wh.kind != Kind::fifo && wh.kind != Kind::credit && wh.kind != Kind::hold) continue;
+        for (uint32_t b = 0; b <= wh.mask; b++) {
+            const Bucket& bk = wh.buckets[b];
+            const Word* p = bk.begin();
+            for (uint32_t k = 0; k < bk.count(); k++, p += wh.width + 1) {
+                uint16_t c = wh.kind == Kind::link ? links[p[0]].cls : wh.kind == Kind::hold ? holds[p[0]].cls : fifos[p[0]].cls;
+                if (c != kNoClass) queued[c]++;
+            }
+        }
+    }
+    for (uint32_t c = 0; c < npools; c++) {
+        const uint64_t used = pools[c].in_use();
+        if (used > queued[c] + pool_allow[c])
+            FATAL("slot pool '%s' leaks at cycle %llu: %llu slots in use, %llu on its ports, at most %llu held by units: %llu "
+                  "allocated and never put or freed", pools[c].name(), (unsigned long long)now, (unsigned long long)used,
+                  (unsigned long long)queued[c], (unsigned long long)pool_allow[c], (unsigned long long)(used - queued[c] - pool_allow[c]));
     }
 }
 

@@ -14,7 +14,7 @@
 //        ovf         CountOut, every overflow of the router's FIFOs (ROUTER_OVF, read by W8's register block).
 //        ovf_ev      LinkOut, width 0, latency 1, to W8's register block, beside the Count (D29: an overflow that feeds
 //                    ERRORS steps the block): put in the step that counts (t + 1, D28), so the block's endCycle(t + 1)
-//                    runs. Declared when the tile's control part takes it (ControlIO::router_ovf_ev).
+//                    runs. Declared when asked (the tile builder always asks; the router's own tests don't).
 //
 // STATE. One FIFO per (output, feeder), ref's `FEEDERS_TILE0` on every tile (every router has the fifth port's FIFOs;
 // `attached`, tiles 0-2, only decides whether the to-controller selector runs). The FIFOs are the router's own (owner,

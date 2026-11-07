@@ -225,3 +225,17 @@ cycles (`regs-chip`, `wfi-chip`, regenerated locally); a2a's network part once G
     aren't committed).
 - make check after stage 4: gcc and clang, debug and release (36 binaries; 320 / 289 tests), TSan (threads and units
   71 + 2, the chip's form 2 on both compilers): clean.
+- 2026-11-07, merge round: **main merged** (W8's ROUTER_OVF event input and `units::line_edge`). The chip failed to
+  build ("t0.ctl.ovf not wired"): `tile_cycle` decided whether to wire the event from the handle's `idx`, which the
+  framework only assigns at build, so it never wired it, while W8's block declares it whenever `ControlIO` has the
+  field. Now **always wired** (`Link(1)`, the router's `ovf_ev` -> `ControlIO::router_ovf_ev`), the stand-in control
+  part takes it too. **W8's two stand-in tests** (`test_g1_tile`, `test_g1_replay`) wire a never-put event output
+  to it (one line each, needed for the merged tree to build; W8 told through the owner). **The tile-level test**
+  (`test_chip`: `tile_router_overflow_steps_the_register_block`): one tile with add_g1, its four inputs flooding its
+  eject output; the first overflow of a put at t sets ERRORS [0] in the block at its endCycle(t + 1) (stepped at t + 2
+  by the event, its core asleep in the boot ROM), and the error line (level 1, no READY) reaches the collector's side
+  at t + 2 + ready_latency - 2. **The preview**: `test_chip`'s interim copy deleted; `G2Chip::edge` wraps W8's
+  `units::line_edge(sim, ctl, c)`. wfi and regs (through 824) still equal golden-m2 every cycle (tile 0 and chip),
+  every tile every 10 cycles (CHIP_FP_DIR), under the debug options and form 2.
+- make check on the merged tree: gcc and clang, debug and release (36 binaries; 322 / 291 tests), TSan threads and
+  units (71 + 2 + 72 with tsan-chip, clang; 71 + 2 and tsan-chip, gcc): clean.

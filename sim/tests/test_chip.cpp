@@ -20,38 +20,14 @@ using namespace units;
 
 namespace {
 
-// ---- the register block's line at the end of c (G2Chip::edge) ----------------------------------------------------
-// INTERIM, until W8 exports it from statefp_g1 (agreed shape: fp::LineEdge (const void* ctx, unsigned k, uint64_t c),
-// ctx the 64 tiles' G1Tile): W8's block_end_of for an M2 block, copied, then what TileCtl::step would put on `line`.
-constexpr uint32_t kMax = 64;
-RegBlockState block_end(const fp::G1Tile& g, uint64_t c) {
-    const TileCtl& u = *g.uctl;
-    RegBlockState b = u.s;
-    RegBlockState::In in;
-    sim::PortEntry e[kMax];
-    bool send_put = false;
-    for (uint32_t i = 0, n = g.sim->observe(u.bus, e, kMax).n; i < n; i++)
-        if (e[i].at == c + 1) {
-            in.op = uint32_t(e[i].w[0] >> 32); in.arg = uint32_t(e[i].w[0]); in.v = uint32_t(e[i].w[1]);
-            send_put = in.op == BUS_STORE && in.arg >= ROUTER_SEND_32 && in.arg <= ROUTER_SEND_128;
-        }
-    for (uint32_t i = 0, n = g.sim->observe(u.go, e, kMax).n; i < n; i++) if (e[i].at == c + 1) in.go = true;
-    for (uint32_t i = 0, n = g.sim->observe(u.landed, e, kMax).n; i < n; i++) if (e[i].at == c + 1) in.landed = true;
-    for (uint32_t i = 0, n = g.sim->observe(u.kline, e, kMax).n; i < n; i++) if (e[i].at == c + 1) in.kline = uint32_t(e[i].w[0]);
-    for (uint32_t i = 0, n = g.sim->observe(u.bad, e, kMax).n; i < n; i++) if (e[i].at == c + 1) in.bad = true;
-    sim::PortView r = g.sim->observe(u.send_busy, e, kMax);
-    in.send_busy = send_put || (r.put ? r.put_w[0] != 0 : (r.valid && e[0].w[0] != 0));
-    in.router_ovf = b.ev_prev[0]; in.we_in_ovf = b.ev_prev[4]; in.gather_ovf = b.ev_prev[6];
-    b.end_cycle(c, in);
-    return b;
-}
+// ---- the register block's line at the end of c (G2Chip::edge): W8's preview (tile_ctl.h, units::line_edge) -----------
 fp::LineEdge line_edge(const void* ctx, unsigned k, uint64_t c) {
     const fp::G1Tile& g = static_cast<const fp::G1Tile*>(ctx)[k];
-    const RegBlockState b = block_end(g, c);
+    const units::LineEdge e = units::line_edge(*g.sim, *g.uctl, c);
     fp::LineEdge le;
-    le.ready = b.ready_pulse;
-    le.level = b.error_line;
-    le.put = b.ready_pulse || b.error_line != g.uctl->error_out;
+    le.put = e.put;
+    le.ready = e.word & 1;
+    le.level = e.word >> 1 & 1;
     return le;
 }
 
@@ -190,4 +166,71 @@ TEST(chip_under_debug_options) {
 
 TEST(chip_form2_row_bands) {
     for (unsigned parts : {2u, 4u, 8u}) { Setup s; s.parts = parts; s.threads = parts; run_all(s); }
+}
+
+namespace {
+// The tile's surroundings for one tile alone: floods its four link inputs with packets for it, sinks its outputs,
+// records its error line.
+struct Flood {
+    sim::LinkOut out[4], go;
+    sim::LinkIn in[4], line;
+    unsigned tile; uint64_t until;
+    uint64_t line_at = 0; sim::Word line_w = 0;
+    Flood(sim::Ports& p, unsigned k, uint64_t n) : tile(k), until(n) {
+        for (unsigned d = 0; d < 4; d++) { p.out(out[d], "out", 3); p.in(in[d], "in", 3); }
+        p.out(go, "go", 0); p.in(line, "line", 1);
+    }
+    sim::Wake step(sim::Ctx& c) {
+        for (unsigned d = 0; d < 4; d++) if (c.ready(in[d])) c.take(in[d]);
+        if (c.ready(line)) { line_at = c.now(); line_w = c.peek(line)[0]; c.take(line); }
+        if (c.now() > until) return sim::Wake::none();
+        // uncounted 32-bit writes into data memory, src = the tile itself: ejected here from any input
+        for (unsigned d = 0; d < 4; d++) c.put(out[d], c.now(), lw::hdr(tile, tile, lw::M_WRITE, 0, 0x1000 + 4 * d, lw::SIZE_32), 0);
+        return c.next();
+    }
+    uint64_t digest() const { return line_at; }
+};
+}  // namespace
+
+// D29: a router FIFO's overflow reaches the tile's register block as an event. The tile's four inputs flood its eject
+// output; the overflow of a put made at t is counted at t + 1 (D28) and its event put then (Link(1)), so the block,
+// asleep (its core waits in the boot ROM), steps at t + 2 and its endCycle(t + 1) sets ERRORS [0]; its error line then
+// reaches the collector's side ready_latency - 2 later.
+TEST(tile_router_overflow_steps_the_register_block) {
+    test::RunSpec rs; rs.name = "wfi"; rs.dir = "tests/golden-m2/images"; rs.image = "wfi";
+    test::Images im; std::string err;
+    CHECK(test::load_images(rs, im, err));
+    const Hops hops = load_hops("ref/meshsim/hops.txt");
+    TileConfig tc = test::tile_config(0);
+    std::vector<uint32_t> mem(64 * 2 * MEM_WORDS, 0);
+    G1Ctx gx;
+    gx.cfg.timing = tc.timing; gx.cfg.periph_present = tc.periph_present; gx.cfg.mem_chunks = 1u << 20;
+    gx.cfg.done_gate = true; gx.cfg.K = 8; gx.cfg.cm_latency = 2;
+    gx.bootrom = im.bootrom.data(); gx.bootrom_words = uint32_t(im.bootrom.size()); gx.mem = mem.data();
+    CncProgram prog;
+    prog.release();
+    ChipSpec spec;
+    spec.hops = &hops; spec.program = &prog; spec.control = add_g1; spec.control_ctx = &gx;
+    const unsigned k = 3;
+    sim::Config cfg;
+    TileIO io = tile_cycle(cfg, spec, k);
+    auto& f = cfg.add<Flood>("flood", k, 60u);
+    for (unsigned d = 0; d < 4; d++) { cfg.link(f.out[d], io.link_in[d], 1); cfg.link(io.link_out[d], f.in[d], 1); }
+    cfg.link(f.go, io.go, 1);
+    cfg.link(io.line, f.line, spec.net.ready_latency - 2);
+    sim::Sim m = cfg.build();
+    const Router& r = m.unit<Router>(tile_unit(k, "router"));
+    const TileCtl& b = m.unit<TileCtl>(tile_unit(k, "ctl"));
+    uint64_t first = 0, set_at = 0;
+    for (uint64_t c = 1; c <= 100; c++) {
+        m.run(1);
+        if (!first)
+            for (const auto& q : r.q) if (q.overflows && (!first || q.first_overflow < first)) first = q.first_overflow;
+        if (!set_at && (b.s.conditions & 1u << RegBlockState::COND_ROUTER_OVF)) set_at = c;
+    }
+    CHECK(first != 0);                                     // the flood overflowed a FIFO
+    CHECK_EQ(set_at, first + 2);                           // stepped at t + 2: endCycle(t + 1) set ERRORS [0]
+    const Flood& fl = m.unit<Flood>("flood");
+    CHECK_EQ(fl.line_at, first + 2 + spec.net.ready_latency - 2);   // put at t + 2, ready_latency - 2 on its way
+    CHECK_EQ(fl.line_w, sim::Word(2));                     // the error line high, no READY
 }

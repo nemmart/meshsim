@@ -28,11 +28,12 @@ struct Stand {
     sim::RegOut send_busy;
     sim::LinkIn line;
     sim::CountOut ovf;
+    sim::LinkOut ovf_ev;   // the router's overflow event (D29; W9's merge: ControlIO::router_ovf_ev), never put here
     const Ev* ev; unsigned n, i = 0;
     bool busy = false;
     Stand(sim::Ports& p, const Ev* e, unsigned count) : ev(e), n(count) {
         p.out(eject, "eject", 3); p.out(go, "go", 0); p.in(send, "send", 3); p.out(send_busy, "send_busy", 1);
-        p.in(line, "line", 1); p.out(ovf, "ovf");
+        p.in(line, "line", 1); p.out(ovf, "ovf"); p.out(ovf_ev, "ovf_ev", 0);
     }
     sim::Wake step(sim::Ctx& c) {
         if (c.ready(line)) c.take(line);
@@ -95,6 +96,7 @@ std::string replay(const char* name, uint64_t through, sim::Options opt) {
     cfg.connect(st.send_busy, io.send_busy);
     cfg.link(io.line, st.line, 6);
     cfg.connect(st.ovf, io.router_ovf);
+    cfg.link(st.ovf_ev, io.router_ovf_ev, 1);
     sim::Sim m = cfg.build();
     fp::G1Tile view = fp::g1_tile(m, 0);
     fp::FpRegistry reg;

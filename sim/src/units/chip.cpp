@@ -18,13 +18,15 @@ struct ControlStandIn {
     sim::LinkIn eject, go;
     sim::LinkOut line;
     sim::CountIn router_ovf;
+    sim::LinkIn router_ovf_ev;
     explicit ControlStandIn(sim::Ports& p) {
         p.out(send, "send", 3); p.in(send_busy, "send_busy", 1); p.in(eject, "eject", 3); p.in(go, "go", 0);
-        p.out(line, "line", 1); p.in(router_ovf, "router_ovf");
+        p.out(line, "line", 1); p.in(router_ovf, "router_ovf"); p.in(router_ovf_ev, "ovf", 0);
     }
     sim::Wake step(sim::Ctx& c) {
         if (c.ready(eject)) c.take(eject);
         if (c.ready(go)) c.take(go);
+        if (c.ready(router_ovf_ev)) c.take(router_ovf_ev);
         return sim::Wake::none();
     }
     uint64_t digest() const { return 0; }
@@ -34,6 +36,7 @@ ControlIO stand_in(sim::Config& cfg, unsigned k) {
     auto& s = cfg.add<ControlStandIn>(tile_unit(k, "stand"));
     ControlIO io;
     io.send = s.send; io.send_busy = s.send_busy; io.eject = s.eject; io.go = s.go; io.line = s.line; io.router_ovf = s.router_ovf;
+    io.router_ovf_ev = s.router_ovf_ev;
     return io;
 }
 
@@ -43,8 +46,7 @@ TileIO tile_cycle(sim::Config& cfg, const ChipSpec& spec, unsigned k) {
     const NetConfig& nc = spec.net;
     if (spec.domain) cfg.domain(spec.domain[k]);
     ControlIO io = spec.control ? spec.control(cfg, k, spec.control_ctx) : stand_in(cfg, k);
-    const bool ovf_event = io.router_ovf_ev.idx != ~0u;
-    auto& r = cfg.add<Router>(tile_unit(k, "router"), k, nc, spec.hops, ovf_event);
+    auto& r = cfg.add<Router>(tile_unit(k, "router"), k, nc, spec.hops, true);
     auto& in = cfg.add<Injection>(tile_unit(k, "inj"), k, nc);
     cfg.connect(io.send, in.send);
     cfg.connect(in.send_busy, io.send_busy);
@@ -52,7 +54,7 @@ TileIO tile_cycle(sim::Config& cfg, const ChipSpec& spec, unsigned k) {
     cfg.link(r.loop_left, in.loop_left, 1);
     cfg.link(r.eject, io.eject, nc.intra_tile_latency);
     cfg.connect(r.ovf, io.router_ovf);
-    if (ovf_event) cfg.link(r.ovf_ev, io.router_ovf_ev, 1);
+    cfg.link(r.ovf_ev, io.router_ovf_ev, 1);              // D29: the overflow steps the block (counted at t + 1, D28)
     // A send waiting for a loopback token sleeps until the router frees one, which may not be on its way yet (the
     // loopback FIFO drains when the eject selector reaches it): longer than the detector's default.
     cfg.missed_wake_after(tile_unit(k, "inj"), 1u << 20);

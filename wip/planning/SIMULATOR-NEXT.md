@@ -18,6 +18,12 @@ this, and dozens of sessions"; a new integrator session, its workers numbered fr
   **But high-level models don't replace cycle-level runs** (owner): we will build higher-level simulators too, and still
   need **a lot of cycle-level runs** (timing, the RTL's comparison, architecture decisions), so **the cycle-level framework's
   speed stays the priority**; a high-level mode supplements it, checked against it.
+  **Mixed fidelity, kept possible, not decided** (owner, 2026-11-06): some tiles cycle-level, the rest high-level. It fits
+  the framework, since units interact only through ports and timed delivery: a high-level tile computes its results directly
+  and puts them on its ports at estimated arrival times. Good for per-tile questions (a tile's time on its sumcheck), weaker
+  for whole-chip effects (contention, back-pressure), which are only as good as the estimates. So **each unit, or each tile,
+  should be configurable as cycle-level or high-level per instance**, chosen at configuration like the local and
+  cross-domain port forms.
 - **The goal:** full detail, run blazingly fast, **and units that stay easy to write**. Investing in a framework now pays for
   itself across v1.4, v1.5, v1.6 and beyond (owner).
 

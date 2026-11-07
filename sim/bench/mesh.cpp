@@ -39,7 +39,7 @@ struct Cfg {
     int mix = 0;  // 0: all 128-bit; 1: 32/64/128 in equal thirds
     uint64_t seed = 1;
     long cycles = 100000, warmup = 10000;
-    bool phases = false, alloc_probe = false;
+    bool phases = false, alloc_probe = false, footprint = false;
 };
 
 struct Result {
@@ -48,7 +48,9 @@ struct Result {
     uint64_t ph[4] = {0, 0, 0, 0};  // TSC ticks: credits, links, inject, run
 };
 
-template <int LW, int DL, bool FX, bool POLL>
+enum { RD_BM = 0, RD_POLL = 1, RD_TR = 2 };  // ready marks: per delivery; none (step every router); on empty -> non-empty
+
+template <int LW, int DL, bool FX, int RD>
 class Partition {
 public:
     static constexpr unsigned W = LW == LW_A ? 2 : 3;
@@ -62,7 +64,7 @@ public:
     Partition() = default;
     Partition(const Partition&) = delete;
     ~Partition() {
-        for (void* q : {(void*)block_, (void*)rings_, (void*)credits_, (void*)rr_, (void*)rng_, (void*)dig_})
+        for (void* q : {(void*)block_, (void*)rings_, (void*)credits_, (void*)rr_, (void*)rng_, (void*)dig_, (void*)held_})
             if (q) sim::free_big(q);
     }
 
@@ -79,6 +81,16 @@ public:
         words += sim::Bitmap::words_needed(nr_);
         if (LW == LW_A) words += sim::ValuePool::words_needed(pool_cap);
         block_ = static_cast<uint64_t*>(sim::alloc_big(words * 8, "mesh partition"));
+        // the footprint, by kind (bytes for the whole partition)
+        fp_.rings = 0;
+        for (unsigned r = 0; r < nr_; ++r)
+            fp_.rings += 8 * (4 * RingT::words_needed(W, c.depth) + RingT::words_needed(W, c.injdepth));
+        fp_.ring_headers = sizeof(RingT) * nr_ * 5;
+        fp_.link_wheel = 8 * kWheel * LinkBucket::words_needed(kEntryWidth, bucket_cap);
+        fp_.credit_wheel = 8 * kWheel * CreditBucket::words_needed(1, bucket_cap);
+        fp_.pool = LW == LW_A ? 8 * sim::ValuePool::words_needed(pool_cap) : 0;
+        fp_.router = nr_ * (4 + 5 + 8 + 2) + 8 * sim::Bitmap::words_needed(nr_);  // credits, rr, rng, held; ready bits
+        fp_.digests = nr_ * 8;
         uint64_t* p = block_;
         rings_ = static_cast<RingT*>(sim::alloc_big(sizeof(RingT) * nr_ * 5, "rings"));
         for (unsigned k = 0; k < nr_ * 5; ++k) new (&rings_[k]) RingT();
@@ -105,6 +117,7 @@ public:
         rr_ = static_cast<uint8_t*>(sim::alloc_big(nr_ * 5, "rr"));
         rng_ = static_cast<uint64_t*>(sim::alloc_big(nr_ * 8, "rng"));
         dig_ = static_cast<uint64_t*>(sim::alloc_big(nr_ * 8, "digests"));
+        held_ = static_cast<uint16_t*>(sim::alloc_big(nr_ * 2, "held"));
         for (unsigned r = 0; r < nr_; ++r) {
             for (unsigned o = 0; o < 4; ++o) credits_[r * 4 + o] = uint8_t(c.depth);
             uint64_t s = c.seed * 0x100000001b3ull + (uint64_t(first_mesh + r / kTiles) << 6) + (r % kTiles);
@@ -140,6 +153,10 @@ public:
         r.sends = sends_, r.ejects = ejects_, r.injected = injected_, r.refused = refused_, r.credits = credits_sent_;
         r.occ_sum = occ_sum_, r.occ_samples = occ_n_;
     }
+    struct Footprint {
+        size_t rings, ring_headers, link_wheel, credit_wheel, pool, router, digests;
+    };
+    const Footprint& footprint() const { return fp_; }
     uint64_t mesh_digest(unsigned m) const {
         uint64_t h = 0;
         for (unsigned i = 0; i < kTiles; ++i) h = bench::fold(h, dig_[m * kTiles + i]);
@@ -164,7 +181,7 @@ private:
             for (uint32_t k = 0; k < n; ++k, e += ew) {
                 const uint64_t port = e[0];
                 rings_[(port >> 3) * 5 + (port & 7)].push(e + 1);
-                if (!POLL) ready_.set(port >> 3);
+                mark(port >> 3);
             }
         } else {
             const unsigned ew = b.width();
@@ -172,7 +189,7 @@ private:
             for (uint32_t k = 0; k < n; ++k, e += ew) {
                 const uint32_t port = d[k];
                 rings_[(port >> 3) * 5 + (port & 7)].push(e);
-                if (!POLL) ready_.set(port >> 3);
+                mark(port >> 3);
             }
         }
         b.clear();
@@ -212,12 +229,12 @@ private:
                 w[2] = hi;
             }
             ++injected_;
-            if (!POLL) ready_.set(r);
+            mark(r);
         }
     }
 
     __attribute__((noinline)) void step_all(uint64_t t) {
-        if constexpr (POLL) {
+        if constexpr (RD == RD_POLL) {
             for (uint32_t r = 0; r < nr_; ++r) step(r, t);
         } else {
             ready_.for_each_set([&](size_t r) { step(uint32_t(r), t); });
@@ -236,6 +253,14 @@ private:
         }
     };
     static constexpr RouteTable kRoute{};
+    // A word arrived for router r: mark it ready (RD_BM: always; RD_TR: only when it held nothing).
+    inline void mark(uint32_t r) {
+        if constexpr (RD == RD_BM) ready_.set(r);
+        else if constexpr (RD == RD_TR) {
+            if (held_[r]++ == 0) ready_.set(r);
+        }
+    }
+
     static unsigned route(uint32_t tile, uint64_t hdr) { return kRoute.out[tile * kTiles + ((hdr >> 7) & 63)]; }
 
     inline void step(uint32_t r, uint64_t t) {
@@ -249,7 +274,7 @@ private:
                 outs |= 1u << o;
             }
         if (!outs) {
-            if (!POLL) ready_.clear(r);
+            if (RD != RD_POLL) ready_.clear(r);
             return;
         }
         const uint64_t slot = (t + kLatency) & (kWheel - 1);
@@ -276,15 +301,18 @@ private:
                 eject(r, w);
             }
             in[i].pop();
+            if (RD == RD_TR) --held_[r];
             if (i < 4) {  // input i came through the neighbour's output i: its credit goes back
                 *cwheel_[slot].append() = uint64_t(uint32_t(int(r) + kDelta[i ^ 1]) * 4 + i);
                 ++credits_sent_;
             }
         }
-        if (!POLL) {
+        if constexpr (RD == RD_BM) {
             unsigned left = 0;
             for (unsigned i = 0; i < 5; ++i) left |= in[i].count();
             if (!left) ready_.clear(r);
+        } else if constexpr (RD == RD_TR) {
+            if (!held_[r]) ready_.clear(r);
         }
     }
 
@@ -312,6 +340,7 @@ private:
     }
 
     Cfg cfg_;
+    Footprint fp_{};
     uint32_t nr_ = 0;
     uint64_t* block_ = nullptr;
     RingT* rings_ = nullptr;
@@ -321,17 +350,20 @@ private:
     sim::ValuePool pool_;
     uint8_t *credits_ = nullptr, *rr_ = nullptr;
     uint64_t *rng_ = nullptr, *dig_ = nullptr;
+    uint16_t* held_ = nullptr;  // RD_TR: words held in the router's five rings
     uint64_t thresh_ = 0;
     uint64_t sends_ = 0, ejects_ = 0, injected_ = 0, refused_ = 0, credits_sent_ = 0, occ_sum_ = 0, occ_n_ = 0;
 };
 
-template <int LW, int DL, bool FX, bool POLL>
+template <int LW, int DL, bool FX, int RD>
 int run_variant(const Cfg& cfg, unsigned meshes, int nthreads, const int* cpus, const char* name) {
-    using P = Partition<LW, DL, FX, POLL>;
+    using P = Partition<LW, DL, FX, RD>;
     // thread i owns meshes [i * meshes / T, (i + 1) * meshes / T): uneven when T doesn't divide the count
     auto first_of = [&](int i) { return unsigned(uint64_t(i) * meshes / unsigned(nthreads)); };
     Result res[64];
+    unsigned owned[64];
     uint64_t digs[4096];
+    typename P::Footprint fpt{};
     if (nthreads > 64 || meshes > 4096) FATAL("too many threads or meshes");
     bench::StartLine line;
     auto body = [&](int tid) {
@@ -339,6 +371,8 @@ int run_variant(const Cfg& cfg, unsigned meshes, int nthreads, const int* cpus, 
         const unsigned first = first_of(tid), per = first_of(tid + 1) - first;
         P part;
         part.build(per, first, cfg);
+        owned[tid] = per;
+        if (tid == 0) fpt = part.footprint();
         line.arrive_and_wait();
         sim::begin_run();
         part.run(0, uint64_t(cfg.warmup), res[tid]);
@@ -362,9 +396,12 @@ int run_variant(const Cfg& cfg, unsigned meshes, int nthreads, const int* cpus, 
     for (int i = 1; i < nthreads; ++i) th[i].join();
 
     Result tot;
-    double maxs = 0, sums = 0;
+    double maxs = 0, sums = 0, slowest = 1e300, rate_sum = 0;
     for (int i = 0; i < nthreads; ++i) {
         const Result& r = res[i];
+        const double rate = double(owned[i]) * double(cfg.cycles) / r.secs;  // this thread's mesh-cycles/s
+        slowest = rate < slowest ? rate : slowest;
+        rate_sum += rate;
         maxs = r.secs > maxs ? r.secs : maxs;
         sums += r.secs;
         tot.sends += r.sends, tot.ejects += r.ejects, tot.injected += r.injected, tot.refused += r.refused;
@@ -379,12 +416,20 @@ int run_variant(const Cfg& cfg, unsigned meshes, int nthreads, const int* cpus, 
     printf("mesh %s mix=%s rate=%.3f depth=%u meshes=%u threads=%d cycles=%ld secs=%.4f"
            " ns_per_mesh_cycle=%.2f ns_per_hop=%.3f thread_ns_per_mesh_cycle=%.2f mesh_cycles_per_s=%.4g"
            " hops_per_mesh_cycle=%.2f accepted=%.4f refused_frac=%.4f ejected=%.4f avg_injq=%.3f"
-           " credits_per_mesh_cycle=%.2f digest=%016llx",
+           " credits_per_mesh_cycle=%.2f slowest_thread_rate=%.4g mean_thread_rate=%.4g digest=%016llx",
            name, cfg.mix ? "mixed" : "128", cfg.rate, cfg.depth, meshes, nthreads, cfg.cycles, maxs,
            1e9 * maxs * nthreads / mc, 1e9 * maxs * nthreads / hops, 1e9 * sums / mc, mc / maxs, hops / mc,
            double(tot.injected) / tc, double(tot.refused) / double(tot.injected + tot.refused + 1), double(tot.ejects) / tc,
-           tot.occ_samples ? double(tot.occ_sum) / double(tot.occ_samples) : 0.0, double(tot.credits) / mc,
-           (unsigned long long)dig);
+           tot.occ_samples ? double(tot.occ_sum) / double(tot.occ_samples) : 0.0, double(tot.credits) / mc, slowest,
+           rate_sum / nthreads, (unsigned long long)dig);
+    if (cfg.footprint) {  // thread 0's partition, per mesh
+        const unsigned m0 = owned[0];
+        const auto& f = fpt;
+        const size_t all = f.rings + f.ring_headers + f.link_wheel + f.credit_wheel + f.pool + f.router + f.digests;
+        printf(" fp_rings=%zu fp_ring_headers=%zu fp_link_wheel=%zu fp_credit_wheel=%zu fp_pool=%zu fp_router=%zu"
+               " fp_digests=%zu fp_total=%zu", f.rings / m0, f.ring_headers / m0, f.link_wheel / m0, f.credit_wheel / m0,
+               f.pool / m0, f.router / m0, f.digests / m0, all / m0);
+    }
     if (cfg.phases) {
         const double s = double(tot.ph[0] + tot.ph[1] + tot.ph[2] + tot.ph[3]);
         printf(" phase_credits=%.3f phase_links=%.3f phase_inject=%.3f phase_run=%.3f", tot.ph[0] / s, tot.ph[1] / s,
@@ -408,6 +453,7 @@ int main(int argc, char** argv) {
     c.warmup = a.num("--warmup", 10000);
     c.phases = a.flag("--phases");
     c.alloc_probe = a.flag("--alloc-probe");
+    c.footprint = a.flag("--footprint");
     if (c.depth < 1 || c.depth > 255) FATAL("depth %u out of range", c.depth);
     const unsigned meshes = unsigned(a.num("--meshes", 1));
     int cpus[64];
@@ -420,19 +466,20 @@ int main(int argc, char** argv) {
     const bool lwa = !strcmp(a.get("--lw", "a"), "a");
     const bool e2 = !strcmp(a.get("--dl", "e1"), "e2");
     const bool fx = !strcmp(a.get("--width", "rt"), "fx");
-    const bool poll = !strcmp(a.get("--ready", "bm"), "poll");
+    const char* rd = a.get("--ready", "bm");
+    const int ready = !strcmp(rd, "bm") ? RD_BM : !strcmp(rd, "poll") ? RD_POLL : !strcmp(rd, "tr") ? RD_TR : -1;
+    if (ready < 0) FATAL("unknown --ready '%s' (bm, poll, tr)", rd);
     char name[96];
-    snprintf(name, sizeof name, "lw=%s dl=%s width=%s ready=%s", lwa ? "a" : "b", e2 ? "e2" : "e1", fx ? "fx" : "rt",
-             poll ? "poll" : "bm");
-    const int key = (lwa ? 0 : 8) | (e2 ? 4 : 0) | (fx ? 2 : 0) | (poll ? 1 : 0);
-#define V(k, LW, DL, FX, POLL) \
-    case k: return run_variant<LW, DL, FX, POLL>(c, meshes, nthreads, cpus, name);
+    snprintf(name, sizeof name, "lw=%s dl=%s width=%s ready=%s", lwa ? "a" : "b", e2 ? "e2" : "e1", fx ? "fx" : "rt", rd);
+    const int key = (lwa ? 0 : 12) + (e2 ? 6 : 0) + (fx ? 3 : 0) + ready;
+#define V3(k, LW, DL, FX) \
+    case k: return run_variant<LW, DL, FX, RD_BM>(c, meshes, nthreads, cpus, name); \
+    case k + 1: return run_variant<LW, DL, FX, RD_POLL>(c, meshes, nthreads, cpus, name); \
+    case k + 2: return run_variant<LW, DL, FX, RD_TR>(c, meshes, nthreads, cpus, name);
     switch (key) {
-        V(0, LW_A, E1, false, false) V(1, LW_A, E1, false, true) V(2, LW_A, E1, true, false) V(3, LW_A, E1, true, true)
-        V(4, LW_A, E2, false, false) V(5, LW_A, E2, false, true) V(6, LW_A, E2, true, false) V(7, LW_A, E2, true, true)
-        V(8, LW_B, E1, false, false) V(9, LW_B, E1, false, true) V(10, LW_B, E1, true, false) V(11, LW_B, E1, true, true)
-        V(12, LW_B, E2, false, false) V(13, LW_B, E2, false, true) V(14, LW_B, E2, true, false) V(15, LW_B, E2, true, true)
+        V3(0, LW_A, E1, false) V3(3, LW_A, E1, true) V3(6, LW_A, E2, false) V3(9, LW_A, E2, true)
+        V3(12, LW_B, E1, false) V3(15, LW_B, E1, true) V3(18, LW_B, E2, false) V3(21, LW_B, E2, true)
     }
-#undef V
+#undef V3
     return 1;
 }

@@ -12,12 +12,12 @@ dig() { grep -o 'digest=[0-9a-f]*' | cut -d= -f2 | grep . || echo "none"; }
 
 for mix in 128 mixed; do for rate in 0.1 0.35; do
   ref=""
-  for lw in a b; do for dl in e1 e2; do for w in rt fx; do for rd in bm poll; do
+  for lw in a b; do for dl in e1 e2; do for w in rt fx; do for rd in bm poll tr; do
     d=$($B/mesh --lw $lw --dl $dl --width $w --ready $rd --mix $mix --rate $rate --cycles 3000 --warmup 300 | dig)
     [ -z "$ref" ] && ref=$d
     [ "$d" = "$ref" ] && [ "$d" != none ] || bad "mesh lw=$lw dl=$dl width=$w ready=$rd mix=$mix rate=$rate: digest $d != $ref"
   done; done; done; done
-  [ -n "$ref" ] && ok "mesh: 16 variants, mix=$mix rate=$rate, one digest $ref"
+  [ -n "$ref" ] && ok "mesh: 24 variants, mix=$mix rate=$rate, one digest $ref"
 done; done
 
 ref=""

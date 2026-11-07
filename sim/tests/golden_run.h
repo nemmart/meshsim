@@ -89,15 +89,22 @@ struct EngineRun {
 EngineRun run_engine(Tile& t, const Golden& g, const std::vector<std::string>& header, const sim::Options& opt);
 // Its two halves: build the tile's machine; run a built machine to the golden's last cycle and collect the trace.
 sim::Sim build_engine(Tile& t, const Golden& g, const sim::Options& opt);
-EngineRun run_built(sim::Sim& s, Tile& t, const Golden& g, const std::vector<std::string>& header);
+// `alloc_guard`: run under W1's allocation hook (always, except to show the missed-wake detector's message: its report
+// allocates in the loop, NOTES "For the owner: the missed-wake report allocates").
+EngineRun run_built(sim::Sim& s, Tile& t, const Golden& g, const std::vector<std::string>& header, bool alloc_guard = true);
 
-// M1's threads test: the runs in rounds of n, each round n controllers on n threads (W4's run_independent, thread k pinned
-// to cpus[k % size] when cpus is given), each running a different golden; every trace must equal its golden and every
-// digest the same golden's run alone. Empty if all is well, else the differences.
+// The debug-check option sets: ready-driven (type-major), shuffle seeds 1-3, instance-major, step-all.
+std::vector<sim::Options> debug_check_options();
+
 // The runs in a mixed order (k * 7 mod the count: a prime count of 67 visits every run), so each round of a threads test
 // mixes riscv-tests and the M1 programs.
 std::vector<RunSpec> mixed_order(const std::vector<RunSpec>& runs);
-std::string check_parallel(const std::vector<RunSpec>& runs, unsigned n, const std::vector<int>& cpus = {});
+// M1's threads test: the runs in rounds of n, each round n controllers on n threads (W4's run_independent, thread k pinned
+// to cpus[k % size] when cpus is given), each running a different golden, under each option set of `opts` (default: the
+// six of debug_check_options()); every trace must equal its golden and every digest the same golden's run alone,
+// ready-driven. Empty if all is well, else the differences.
+std::string check_parallel(const std::vector<RunSpec>& runs, unsigned n, const std::vector<int>& cpus = {},
+                           const std::vector<sim::Options>& opts = debug_check_options());
 
 // Line-for-line comparison: empty if equal, else the first difference with context.
 std::string compare(const std::vector<std::string>& ours, const std::vector<std::string>& golden);
@@ -107,14 +114,10 @@ std::string compare(const std::vector<std::string>& ours, const std::vector<std:
 // compared too, to say whether the unit or the engine is at fault. Empty if all is well.
 std::string check_engine(const RunSpec& r, const std::vector<sim::Options>& opts);
 // The debug-check option sets: ready-driven (type-major), shuffle seeds 1-3, instance-major, step-all.
-std::vector<sim::Options> debug_check_options();
 // A first speed figure: the golden run `reps` times on the engine (ready-driven), the runs alone timed.
 struct BenchResult { double seconds = 0; uint64_t instructions = 0, cycles = 0, steps = 0; };
 BenchResult bench_engine(const RunSpec& r, unsigned reps, bool trace = true);
 
-// Whether the engine implements the debug checks yet (W3's increment 5): step-all on `hello` steps the block every cycle.
-// Until then Options' shuffle_seed, order and step_all are accepted and ignored.
-bool engine_has_debug_checks();
 
 // One golden, start to finish, with the direct driver: empty if it matches, else why not (refusal or difference).
 std::string check_direct(const RunSpec& r);

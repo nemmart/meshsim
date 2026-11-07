@@ -7,7 +7,7 @@
 UNITS_LINK  := $(B)/src/units/trace_log.o $(B)/src/units/controller.o
 GOLDEN_OBJ  := $(B)/tests/golden_run.o $(B)/tests/sha256.o
 
-$(B)/test_rv32 $(B)/test_regblock $(B)/test_golden $(B)/test_controllers: $(UNITS_LINK) $(GOLDEN_OBJ)
+$(B)/test_rv32 $(B)/test_regblock $(B)/test_golden $(B)/test_controllers $(B)/test_broken_units: $(UNITS_LINK) $(GOLDEN_OBJ)
 
 $(B)/golden: $(B)/tests/golden_main.o $(GOLDEN_OBJ) $(UNITS_LINK) $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)

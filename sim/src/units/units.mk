@@ -42,3 +42,4 @@ $(B)/test_statefp: $(FP_OBJ)
 $(B)/test_statefp_g1: $(FP_OBJ) $(B)/tests/statefp_g1.o
 $(B)/test_statefp_core: $(FP_OBJ) $(B)/tests/statefp_g1.o $(UNITS_LINK) $(GOLDEN_OBJ)
 $(B)/test_g1_tile: $(UNITS_LINK)
+$(B)/test_g1_replay: $(FP_OBJ) $(B)/tests/statefp_g1.o $(UNITS_LINK) $(GOLDEN_OBJ)

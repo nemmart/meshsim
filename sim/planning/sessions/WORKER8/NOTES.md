@@ -222,3 +222,16 @@ cycle against `golden-m2`, under every debug option (shuffle, both orders, step-
   `Options::observe_arrivals`). **Closed: the 284 port-B cycles** (memories compared every cycle, the in-flight MEMW
   overlaid), and **the block's endCycle(c) through the observer checked on the engine** (W5's M1 block, ready-driven
   and step-all) against ref's block stream every cycle on all 67 M1 goldens.
+- 2026-11-07: **regs and wfi, G1's units of tile 0 every cycle, ahead of W9's chip.** W9's C&C model and `build_chip`
+  (its stages 3-4) aren't built yet, so G1 is checked by **replaying tile 0's G1 boundary from ref**:
+  `tests/ref/G1Trace.java` (M2Prog's setup copied; reflection only) records what crosses it (every eject arrival with
+  its words and cycle, every GO's scheduling and acting cycle, every take of the send holding register);
+  `tests/g1-replay/{regs,wfi}.g1` (+ `regen.sh [--check]`: SAME); `test_g1_replay` feeds them to `add_g1`'s units
+  through a stand-in network (eject on Link(1), GO on Link(e - s + 1) = 10, the send Hold taken where ref took it, the
+  send-busy Reg) and compares `t0.core, ctl, cmem, dir, sram, sram.data, we, ag, ts, hist, gather, rdport, req` with
+  golden-m2's lines through the fingerprint library and the observer. **Equal every cycle: wfi to its end (1,616
+  cycles, the boot included), regs through `fp::kRegsCheckedThrough` (824)**, ready-driven, step-all, shuffle seed 3
+  and instance-major. A corrupted eject word in the trace is caught at the cycle it is in flight to the director
+  (checked by hand). This confirms the agreed latencies from G1's side (GO's + 1, port B's and landed's
+  cm_latency + 1, the K-line's K + 1), and STATUS's send-busy as W9's Reg OR the core's put. With W9's chip the same
+  check runs on the real network (and W9's units' streams with it).

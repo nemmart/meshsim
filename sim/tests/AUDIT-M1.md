@@ -151,9 +151,11 @@ same cycle; 6. STATUS for t + 1.
   the mask `0x180`, `done`/`landed`/gate clear. The images are loaded before cycle 1 (the C++ side loads them directly).
 - **Fetch**: program memory (`0x01xxxxxx`, word aligned) or the boot ROM (`0x02000000`, 64 words); anything else stops
   (`HALT 6`). No fetch timing beyond the instruction's.
-- **Timing**: one cycle per instruction; a register-block, window or table-window load 2 (`reg_load_latency`, sampling in
+- **Timing**: one cycle per instruction; a register-block or window load 2 (`reg_load_latency`, sampling in
   the second); a taken branch, `jal`, `jalr` +1 (`branch_penalty`); a multiply (`mul`, `mulh`, `mulhsu`, `mulhu`) 3 in all
-  (`mul_latency`); data-memory and boot-ROM loads 1; stores 1, posted.
+  (`mul_latency`); data-memory, boot-ROM and table-window loads 1 (the table window, `0xFFFF2000`-`0xFFFF35FF`, is below
+  `REG_BASE` `0xFFFFF800`, so `Registers.inRegs` is false: corrected 2026-11-07 from W5's reading, `faults-t6` agrees); stores 1,
+  posted.
 - **Counters**: `mcycle` is incremented at the start of every cycle, so a read at t returns t (no writes); a write at t sets
   it after that cycle's increment, so a read at t + 1 returns the value + 1 (`timers`); `mcycleh` the high half.
   `mtime = mcycle / ref_cycle` (40), `mtimeh` its high half: read-only, **a write to `mtime`/`mtimeh` is an illegal

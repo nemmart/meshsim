@@ -288,3 +288,6 @@ the mesh second. Of today's findings (on W4's synthetic mesh and W6's synthetic 
   imbalance 0.026-0.029 + **barrier wait 0.082-0.105** + drain 0.025-0.029 + publish and clear 0.016 = 0.338-0.351:
   the barrier is the chip's main overhead (~27%), as planned next. At 8 (two threads share a core) imbalance rises to
   0.094. (Quests 136-141 ran 60,000 cycles a run, 60-300 ms: not affected; their medians stand.)
+- 2026-11-07: **ae0d599 clean** (main merged at 4175824; the priced placement, bench_chip, crossing_ns 0, the Fifo
+  overflow event, bench_chip --reps): clean checkout, build by build, gcc and clang debug and release (36 test binaries
+  each) and TSan gcc and clang (the thread tests, test_controllers, test_chip form2).

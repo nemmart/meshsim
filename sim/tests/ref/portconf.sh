@@ -15,6 +15,7 @@ SIM=$(cd "$(dirname "$0")/../.." && pwd)
 FIX="$SIM/tests/portconf"
 MATRIX=(
   "link 1" "link 2" "link 3" "link 8"
+  "link 1 2" "link 3 4" "link 3 11" "link 3 35" "link 8 12"
   "fifo 1" "fifo 2" "fifo 4" "fifo 16"
   "credit 1" "credit 2" "credit 4" "credit 16"
   "hold" "reg"

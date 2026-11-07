@@ -349,6 +349,13 @@ SIM_HOT const Word* Ctx::peek(LinkIn p) const {
     DCHECK(l.owner == cur_ && !l.ring.empty(), "peek of an empty or foreign link (%s)", e_->unit_names[cur_]);
     return l.ring.peek(0);
 }
+SIM_HOT const Word* Ctx::peek(LinkIn p, unsigned k) const {
+    const LinkPort& l = e_->links[p.idx];
+    DCHECK(l.owner == cur_ && k < l.ring.count(), "peek(%u) of a link holding %u, or foreign (%s)", k, l.ring.count(),
+           e_->unit_names[cur_]);
+    return l.ring.peek(k);
+}
+SIM_HOT unsigned Ctx::size(LinkIn p) const { return e_->links[p.idx].ring.count(); }
 SIM_HOT void Ctx::take(LinkIn p) {
     LinkPort& l = e_->links[p.idx];
 #ifdef SIM_DEBUG

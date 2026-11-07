@@ -15,7 +15,7 @@ import java.io.Writer;
  * <pre>
  *   P:a,b,c   put (fifo, hold's plain put, reg)                         -> P
  *   G:a,b,c   put if the guard holds, else nothing                       -> G | G:-
- *             link: in flight + visible below the capacity (L + 2); credit, rlink: canPut(t)
+ *             link: in flight + visible below the capacity (L + 2, or C); credit, rlink: canPut(t)
  *   R:a,b,c   hold: if the put of t - 1 was refused, retry it (the same words), else put a,b,c   -> R | P
  *   T         take if something is visible (reg: read, non-destructive)  -> T:a,b,c | T:-
  *   K         peek if something is visible                               -> K:a,b,c | K:-
@@ -72,7 +72,11 @@ final class PortConfDriver {
     void make(String[] k) {
         kind = k[0];
         switch (kind) {
-            case "link" -> { int l = Integer.parseInt(k[1]); link = new WordDelayLine("link", l); linkCapacity = l + 2; }
+            case "link" -> {   // link L [C] (W10: the 3-argument WordDelayLine when a capacity is given)
+                int l = Integer.parseInt(k[1]);
+                if (k.length > 2) { linkCapacity = Integer.parseInt(k[2]); link = new WordDelayLine("link", l, linkCapacity); }
+                else { link = new WordDelayLine("link", l); linkCapacity = l + 2; }
+            }
             case "fifo" -> fifo = new WordFIFO("fifo", Integer.parseInt(k[1]));
             case "credit" -> credit = new WordBackpressureFIFO("credit", Integer.parseInt(k[1]));
             case "hold" -> hold = new WordHold("hold");

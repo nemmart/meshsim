@@ -18,6 +18,13 @@ void Ports::in(LinkIn& h, const char* name, unsigned width) {
     h.idx = IMPL.declare(&h, Kind::link, false, Shape::in, name, width, true, false);
     h.bit = IMPL.decls[h.idx].bit;
 }
+// W10: a Link whose consumer may hold up to `depth` words (capacity L + depth: ref's WordDelayLine(name, L, L + depth));
+// the plain declaration is depth 2 (WordDelayLine's default, L + 2).
+void Ports::in(LinkIn& h, const char* name, unsigned width, unsigned depth) {
+    if (depth < 1 || depth > 0x7FFF) FATAL("link '%s': depth %u (1-32767)", name, depth);
+    in(h, name, width);
+    IMPL.decls[h.idx].depth = depth;
+}
 void Ports::in(FifoIn& h, const char* name, unsigned width, unsigned depth) {
     if (width < 1 || depth < 1 || depth > 0xFFFF) FATAL("fifo '%s': width %u and depth %u (1-3, 1-65535)", name, width, depth);
     h.idx = IMPL.declare(&h, Kind::fifo, false, Shape::in, name, width, true, false);
@@ -226,7 +233,7 @@ Sim Config::build() {
             class_cap.push_back(0);
             class_allow.push_back(0);
         }
-        unsigned per = d.kind == Kind::link ? d.latency + 2 : d.kind == Kind::fifo ? d.depth + 1 : d.kind == Kind::credit ? d.depth : 2;
+        unsigned per = d.kind == Kind::link ? Config::Impl::link_capacity(d) : d.kind == Kind::fifo ? d.depth + 1 : d.kind == Kind::credit ? d.depth : 2;
         class_cap[it->second] += per + d.held + o.held;
         class_allow[it->second] += d.held + o.held + (d.kind == Kind::hold ? 1 : 0);   // a refused word awaiting its retry
         decl_cls[id] = decl_cls[d.peers[0]] = uint16_t(it->second);
@@ -389,7 +396,7 @@ Sim Config::build() {
         if (d.out && d.kind == Kind::regfile) { o_ring[id] = c.add("regfile registers", (d.regs + 1) / 2, 1, u.type, int(u.chip)); continue; }
         if (d.out) continue;
         if (d.kind == Kind::link)            // width 0 (an event line): no storage, the count only
-            o_ring[id] = c.add_packed("ring link w" + std::to_string(d.width), size_t(d.width) * (d.latency + 2), 1, u.type, int(u.chip));
+            o_ring[id] = c.add_packed("ring link w" + std::to_string(d.width), size_t(d.width) * Config::Impl::link_capacity(d), 1, u.type, int(u.chip));
         else if (d.kind == Kind::fifo || d.kind == Kind::credit)
             o_ring[id] = c.add_packed(std::string("ring ") + (d.kind == Kind::credit ? "credit" : "fifo") + " w" + std::to_string(d.width),
                                       size_t(d.width) * d.depth, 1, u.type, int(u.chip));
@@ -572,8 +579,8 @@ Sim Config::build() {
         }
         if (d.kind == Kind::link) {
             LinkPort& l = *new (&e.links[d.final]) LinkPort{};
-            l.ring.init(B + o_ring[id], d.width, d.latency + 2);
-            l.owner = owner; l.inflight = 0; l.cap = uint16_t(d.latency + 2); l.bit = d.bit; l.width = uint8_t(d.width);
+            l.ring.init(B + o_ring[id], d.width, Config::Impl::link_capacity(d));
+            l.owner = owner; l.inflight = 0; l.cap = uint16_t(Config::Impl::link_capacity(d)); l.bit = d.bit; l.width = uint8_t(d.width);
 #ifdef SIM_DEBUG
             l.last_take = kNoCycle;
 #endif

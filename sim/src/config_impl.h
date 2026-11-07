@@ -39,6 +39,12 @@ struct Config::Impl {
         std::vector<uint32_t> peers;
         uint32_t final = kNone;         // the pool index (inputs) or the route (outputs)
     };
+    // A Link's capacity, in flight and visible together (PORTS.md 2): L + its declared depth (W10), L + 2 by default.
+    static unsigned link_capacity(const Decl& d) {
+        const unsigned c = d.latency + (d.depth ? d.depth : 2);
+        if (c > 0xFFFF) FATAL("link '%s': latency %u + depth %u over 65535", d.name.c_str(), d.latency, d.depth);
+        return c;
+    }
     struct Staged {
         uint16_t type;
         Form form;

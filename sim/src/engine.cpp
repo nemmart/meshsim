@@ -386,7 +386,7 @@ void Engine::die_wire(uint32_t w, const char* what) const {
     FATAL("wire of %s %s, cycle %llu", unit_names[wires[w].producer], what, (unsigned long long)now);
 }
 void Engine::die_link_full(uint32_t port) const {
-    FATAL("link '%s' full at cycle %llu: capacity %u (the consumer must take each word as it arrives)", link_names[port],
+    FATAL("link '%s' full at cycle %llu: capacity %u (in flight and visible: the latency plus the input's declared depth, 2 unless declared)", link_names[port],
           (unsigned long long)now, unsigned(links[port].cap));
 }
 void Engine::die_wake(uint32_t i, Cycle at) const {

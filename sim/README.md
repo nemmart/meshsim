@@ -31,4 +31,6 @@ no locks in the cycle.
   fixed-size values copied inline into delivery entries and ring slots; payloads too big to copy travel as handles into
   **thread-local free lists**.
 
+**Build** (owner, 2026-11-06): **plain `make`**, not CMake.
+
 **Discipline from the first commit:** sanitizers (ASan, UBSan) and deterministic tests.

@@ -263,3 +263,5 @@ cycle against `golden-m2`, under every debug option (shuffle, both orders, step-
   W9's two lines in `test_g1_tile` / `test_g1_replay` (a never-put width-0 `Link(1)` into `router_ovf_ev`): correct,
   kept. Added the deferred tile-level check: the router's overflow event alone, counted at 40, sets ERRORS [0] at
   endCycle(40) through the block's step (`test_g1_tile`).
+  **make check clean at f3f344f**: make run gcc debug, gcc release, clang debug, clang release (36 binaries each, all
+  0 failed); make tsan (14) and make tsan-units (2) clean, no ThreadSanitizer warnings. Waiting for the next scope.

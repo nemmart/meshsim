@@ -7,7 +7,7 @@
 //       chip-cycles/s> mean=<...> us_per_chip_cycle=<mean per thread> words_per_chip=<Sizes> digest=<all chips'>
 //   bench_threads --sizes --chip mesh|synth: one chip's footprint by structure and by type (D15)
 //   bench_threads --form 2 --threads T [--chip mesh|synth] [--domains D] [--partition rows|tiles] [--barrier spin|yield|block]
-//       [--spins N] [--due-off] [--rate R]: one chip over T threads (form2() below)
+//       [--spins N] [--due-off] [--rate R] [--engines E]: one chip over T threads (form2() below)
 //
 // The digest folds every chip's digest in chip order: it must not depend on the threads or the CPUs.
 #include <algorithm>
@@ -45,6 +45,7 @@ struct Args {
     std::string barrier = "yield"; // form 2: spin (never yields), yield (after --spins pauses), block (futex after them)
     unsigned spins = 2000;
     bool due_off = false;          // form 2 with one domain: the due mask off, as in a split machine's domains
+    unsigned engines = 0;          // form 2 (W10): Options::engines (0: one per thread)
     std::string partition = "rows";   // form 2 (W10): rows (mesh: bands of rows; synth: clusters in order), or tiles
                                       // (mesh: one domain per tile, 64; synth: one per cluster), spread over the threads
 };
@@ -81,6 +82,7 @@ Args parse(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--spins")) a.spins = unsigned(std::atoi(val()));
         else if (!std::strcmp(argv[i], "--due-off")) a.due_off = true;
         else if (!std::strcmp(argv[i], "--partition")) a.partition = val();
+        else if (!std::strcmp(argv[i], "--engines")) a.engines = unsigned(std::atoi(val()));
         else FATAL("unknown option %s", argv[i]);
     }
     if (a.form == 1 && (a.threads < 1 || a.chips < a.threads)) FATAL("need 1 <= threads <= chips");
@@ -179,6 +181,7 @@ int form2(const Args& a) {
     const unsigned D = tiles ? granules : a.domains ? a.domains : a.threads;
     Options o;
     o.threads = D > 1 ? a.threads : 1;
+    o.engines = a.engines;
     o.cpus = a.cpus;
     o.barrier_block = a.barrier == "block";
     o.barrier_spins = a.barrier == "spin" ? ~0u : a.spins;
@@ -195,10 +198,11 @@ int form2(const Args& a) {
     }
     Sim s = cfg.build();
     if (a.due_off) {
-        if (D > 1) FATAL("--due-off: one domain only (a split machine's domains have it off already)");
+        if (detail::Internals::impl(s)->threads) FATAL("--due-off: one engine only (a split machine's engines have it off already)");
         detail::Internals::impl(s)->e.due_ok = false;
     }
-    const bool due = D > 1 ? false : detail::Internals::impl(s)->e.due_ok;
+    const bool split = detail::Internals::impl(s)->threads != nullptr;   // W10: several domains may be one engine
+    const bool due = split ? false : detail::Internals::impl(s)->e.due_ok;
     if (o.threads == 1 && !a.cpus.empty()) pin_to_cpu(a.cpus[0]);
     s.run(a.warmup);
     begin_run();
@@ -206,9 +210,9 @@ int form2(const Args& a) {
     s.run(a.cycles);
     const double secs = now_s() - t0;
     end_run();
-    std::printf("threads form=2 chip=%s threads=%u domains=%u part=%s barrier=%s spins=%u due=%s rate_in=%.2f cycles=%llu "
+    std::printf("threads form=2 chip=%s threads=%u domains=%u engines=%u part=%s barrier=%s spins=%u due=%s rate_in=%.2f cycles=%llu "
                 "secs=%.4f rate=%.0f us_per_chip_cycle=%.3f words=%llu digest=%016llx partition=\"%s\"\n",
-                a.chip.c_str(), o.threads, D, a.partition.c_str(), a.barrier.c_str(), a.spins, due ? "on" : "off", a.rate,
+                a.chip.c_str(), o.threads, D, a.engines, a.partition.c_str(), a.barrier.c_str(), a.spins, due ? "on" : "off", a.rate,
                 (unsigned long long)a.cycles, secs, double(a.cycles) / secs, 1e6 * secs / double(a.cycles),
                 (unsigned long long)s.sizes().total_words, (unsigned long long)s.digest(), s.partition().c_str());
     return 0;

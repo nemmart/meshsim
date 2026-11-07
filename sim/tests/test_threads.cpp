@@ -76,7 +76,7 @@ TEST(the_partition_reports_its_interval_and_why) {
     cfg.link(p2.out, c2.in, 3);
     Sim s = cfg.build();
     const std::string r = s.partition();
-    CHECK(r.find("2 domains on 2 threads") != std::string::npos);
+    CHECK(r.find("2 domains in 2 engines on 2 threads") != std::string::npos);
     CHECK(r.find("2 link") != std::string::npos);
     CHECK(r.find("barrier every 3 cycles, set by link 'p2.out' -> 'c2.in' (latency 3)") != std::string::npos);
 }

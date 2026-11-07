@@ -91,6 +91,10 @@ struct Options {
                                  // (topology.h); a CPU of -1: that thread not pinned ({-1}: leave placement to the OS)
     bool barrier_block = false;  // W4: the barrier sleeps (futex) after its spin, instead of yielding (barrier.h)
     unsigned barrier_spins = 2000;   // W4: pauses before the barrier yields (or sleeps); 0: yield at once; ~0u: spin only
+    unsigned engines = 0;        // W10, A MEASUREMENT OPTION ONLY: leave it 0. A machine split over domains is built as
+                                 // one engine per thread (its domains grouped in order, min(threads, domains) groups);
+                                 // engines > threads instead builds that many and runs several on a thread in turn
+                                 // (W4's layout), only to measure a split's own cost (bench_threads --engines)
     bool observe_arrivals = false;   // W10: keep each visible Link word's arrival cycle for Sim::observe (a store per
                                      // delivered Link word; off: observe(LinkIn) is fatal while a word is visible)
 };

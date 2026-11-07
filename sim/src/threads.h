@@ -35,7 +35,8 @@
 
 namespace sim::detail {
 
-bool split_needed(const Internals::CImpl& I);        // more than one domain declared
+bool split_needed(const Internals::CImpl& I);        // more than one domain declared, and more than one engine (W10)
+void check_domains(const Internals::CImpl& I);       // W10: no Wire or RegFile across declared domains (fatal)
 
 struct Xl {                                      // an outbox entry's translation, by its source-side index
     uint32_t dst = kNone;                        // the destination port's index in the destination domain

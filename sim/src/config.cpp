@@ -197,13 +197,16 @@ unsigned pow2_above(unsigned x) { unsigned w = 2; while (w <= x) w <<= 1; return
 Sim Config::build() {
     Impl& I = *impl_;
     if (I.built) FATAL("build() called twice");
-    if (detail::split_needed(I)) { I.built = true; return Sim(detail::Internals::split(I)); }   // W4 (E3): several domains
+    if (detail::split_needed(I)) { I.built = true; return Sim(detail::Internals::split(I)); }   // W4 (E3): several engines
     I.built = true;
+    bool domains = false;                     // W10: several domains in one engine: checked as if split, then built whole
+    for (const auto& u : I.units) domains = domains || u.domain != I.units[0].domain;
+    if (domains) detail::check_domains(I);
     using Decl = Impl::Decl;
     const uint32_t n = uint32_t(I.units.size());
 
     // 0. every option is implemented, or refused: an option set must never be silently ignored (integrator, 2026-11-07)
-    if (I.opt.threads != 1)
+    if (I.opt.threads != 1 && !domains)
         FATAL("option threads = %u not implemented for one domain: split the machine with Config::domain, or run independent "
               "chips with run_independent (W4)", I.opt.threads);
 

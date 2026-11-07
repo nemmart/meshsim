@@ -79,9 +79,37 @@ struct XCountMember {     // a domain's member of a Count read across domains, w
 unsigned pow2_at_least(unsigned x) { unsigned w = 1; while (w < x) w <<= 1; return w; }
 }  // namespace
 
-bool split_needed(const Internals::CImpl& I) {
-    for (const auto& u : I.units) if (u.domain != I.units[0].domain) return true;
-    return false;
+// W10: the declared domains are units of placement, not engines. They are grouped, in order, into E engines (one per
+// thread unless Options::engines says otherwise; W4's spread, domain d of D in group d * E / D); each group is built as
+// one engine, so a connection between two domains of a group is an ordinary local port and only connections between
+// groups are crossings. What may not cross is judged on the declared domains, so a configuration's validity doesn't
+// depend on the thread count.
+namespace {
+unsigned declared_domains(const Internals::CImpl& I) {
+    std::set<unsigned> ds;
+    for (const auto& u : I.units) ds.insert(u.domain);
+    return unsigned(ds.size());
+}
+unsigned engines_of(const Internals::CImpl& I) {
+    const unsigned D = declared_domains(I);
+    const unsigned want = I.opt.engines ? I.opt.engines : std::max(1u, I.opt.threads);
+    return std::min(want, D);
+}
+}  // namespace
+
+bool split_needed(const Internals::CImpl& I) { return declared_domains(I) > 1 && engines_of(I) > 1; }
+
+void check_domains(const Internals::CImpl& I) {
+    for (const auto& O : I.decls) {
+        if (!O.out || (O.kind != Kind::wire && O.kind != Kind::regfile)) continue;
+        const unsigned p = I.units[O.unit].domain;
+        for (uint32_t r : O.peers)
+            if (I.units[I.decls[r].unit].domain != p)
+                FATAL("a %s can't cross thread domains: '%s' (unit '%s', domain %u) drives '%s' (unit '%s', domain %u); put "
+                      "both units in one domain, or make the coupling registered (a Reg or a Link)", kind_name(O.kind),
+                      O.name.c_str(), I.units[O.unit].name.c_str(), p, I.decls[r].name.c_str(),
+                      I.units[I.decls[r].unit].name.c_str(), I.units[I.decls[r].unit].domain);
+    }
 }
 
 void destroy_threads(Threads* t) { delete t; }
@@ -90,6 +118,17 @@ void destroy_threads(Threads* t) { delete t; }
 Sim::Impl* Internals::split(Config::Impl& G) {
     using Decl = Config::Impl::Decl;
     const uint32_t n = uint32_t(G.units.size());
+
+    // W10: the declared domains checked, then grouped into engines (the rest of the split sees the groups as domains)
+    check_domains(G);
+    const unsigned declared = declared_domains(G), E = engines_of(G);
+    {
+        std::map<unsigned, uint32_t> dense;
+        for (auto& u : G.units) dense[u.domain] = 0;
+        uint32_t k = 0;
+        for (auto& [key, v] : dense) v = k++;
+        for (auto& u : G.units) u.domain = unsigned(uint64_t(dense[u.domain]) * E / declared);
+    }
 
     // domains, dense in increasing order of their numbers
     std::map<unsigned, uint32_t> dmap;
@@ -515,7 +554,8 @@ Sim::Impl* Internals::split(Config::Impl& G) {
     T->sz.total_words = total + outbox_words;
     T->sz.chips = unsigned(std::max<size_t>(1, by_chip.size()));
     T->sz.words_per_chip = T->sz.total_words / T->sz.chips;
-    std::string rep = std::to_string(D) + " domains on " + std::to_string(T->nthreads) + " threads; crossings:";
+    std::string rep = std::to_string(declared) + " domains in " + std::to_string(D) + " engines on " +
+                      std::to_string(T->nthreads) + " threads; crossings:";
     const Kind kinds[] = {Kind::link, Kind::fifo, Kind::credit, Kind::hold, Kind::reg, Kind::count};
     bool any = false;
     for (Kind k : kinds)

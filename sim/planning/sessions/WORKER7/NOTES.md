@@ -1,4 +1,4 @@
-# WORKER7 notes: the plan (proposed 2026-11-07, waiting for the go-ahead)
+# WORKER7 notes: the plan (proposed 2026-11-07; go-ahead 2026-11-07)
 
 Branch `sim-w7`. Nothing below is built yet; `sim/ref` is not touched (D5 stays W2's seven call sites).
 
@@ -71,3 +71,29 @@ then 4, then the report. Probably two Quest numbers, claimed per the sessions RE
 2. **Per-tile retire traces of the sort:** which tiles? I propose tile 0 and tile 63 at n = 16,384, on the runner with
    hashes, in git only if small.
 3. **Interval fingerprints:** every 10,000 cycles unless you prefer another spacing.
+
+## The owner's answers and addition (2026-11-07, with the go-ahead)
+
+1. **Setup** is everything before the sort's first GO: JVM start, chip construction, image and input load. **The run** is
+   SortTest's own count (L1's GO to L2's all READY: 1,229,687), and the ~4 s aim is for it. **The boot** through C&C
+   gets its own line, in cycles and in seconds.
+2. Retire traces: tiles 0 and 63 at 16 K, plus an interior tile if cheap (27). Tiles 0-2 have special routers
+   (`Router(..., idx < 3)`): tile 0 stands for that class.
+3. Interval fingerprints every 10 K cycles by default, plus a driver option to fingerprint every cycle in a window, for
+   bisecting.
+4. **The gap: a canonical state fingerprint.** `Chip.digest()` hashes ref's own objects, which C++ can't reproduce. Define
+   a fingerprint from state both sides have (per tile and unit: memories and SRAM, architectural registers, the register
+   block, what is queued or in flight on each named bus), in a canonical order and encoding; find what `digest()`
+   covers; propose it in `AUDIT-M2.md` (contents, how each side computes it, cost per call); **build the ref side**
+   (a driver reading ref's state between cycles, no change to `sim/ref`). The C++ side comes with the units.
+
+## Found on the way
+
+- `p4/uniform-k128` reads `KeyGen`'s `uniform.keys` (`KeyGen DIR --n 65536 --only uniform`), not SortTest's built-in
+  `kind=uniform`: `SortTest -1 run label=p4/uniform-k128 keys=.../uniform.keys fmt=k128 ready=8` (Quest 118, 120). The
+  16 K reference uses `KeyGen --n 16384 --only uniform` the same way.
+- The sort image built here (Ubuntu 24.04's riscv64-unknown-elf-gcc 13.2) is byte-identical to Quest 118's
+  (`sort.code.bin` 2ab3c746..., `sort.data.bin` 412d9f3f..., `sort.sym` 4a742353...). The image has no `ORACLE`: the
+  real split runs.
+- Quest 120's 110.1 s is the whole JVM (`date` around `java SortTest`): key file read, chip, boot, input, the run and
+  verification together. The split asked for in item 5 is new.

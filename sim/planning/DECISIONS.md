@@ -115,3 +115,11 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   single answer. The framework counts at t + 1 (PORTS.md's rule), and references avoid the case (no M2 program
   overflows a router FIFO; the fingerprint carries no counts). D27 still applies wherever `ref`'s default run is
   self-consistent.
+- **D29. Where reproducing `ref` would need news faster than a Link of 3 can carry, follow the spec** (2026-11-07, W9's
+  finding on a second READY pulse): `ref` keeps one timestamp per tile, so a READY raised again while the earlier one is
+  still visible reads 0 at C&C until the new pulse lands. C&C can't know of that pulse before it arrives without a link
+  shorter than 3 cycles, which would break form 2 (every crossing a Link of at least 3, D26). The framework keeps the
+  spec's sticky bit, **counts the case** (`ready_repulses`), and references avoid it (0 in every M2 run so far).
+  Also from D28's reasoning: **an overflow that feeds ERRORS reaches the register block as an event** (PORTS.md section
+  8), counted at t + 1, never seen only at the block's next step: ROUTER_OVF, the write engine's input and the gather
+  queue alike.

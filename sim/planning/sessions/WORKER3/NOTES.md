@@ -371,6 +371,67 @@ the start of t"): it now adds it back; and `put(RegOut, a, b, c)`, the three-wor
   TSan build doesn't link with it. For this test I linked a stub instead; W4's TSan builds need a decision there (the
   hook off under TSan, or the wrap form for new as well).
 
+### Stage 2, increment 5: the debug checks (2026-11-07)
+
+Done first, before the detector, after W5 broke a unit on purpose and it passed all six option sets (they were accepted
+and ignored). **Every option is now implemented or refused at `build()`** (`option threads = 4 not implemented`); the rule
+holds for any future option (config.h).
+- **Shuffle and instance-major** (`Engine::run_level_debug`): a level's ready instances collected, ordered by add order
+  (instance-major) or by run (type-major), shuffled with a seeded splitmix64 if asked, and stepped one by one through a
+  per-type step function (`detail::step_one`). The fast path is untouched.
+- **Step-all**: every instance marked after delivery, every cycle; no fast-forward.
+- **The missed-wake detector** (debug): a unit becomes a suspect when a step leaves it asleep with data waiting; at the end
+  of each cycle each suspect is checked against D20's rule (a delivery to its inputs in a wheel, a credit output with no
+  credit left, a Hold put this cycle) and reported after its threshold, naming the unit and the ports. Per-unit
+  thresholds (`Config::missed_wake_after`); fatal or report-and-go-on.
+- **`run_until(t)` runs through cycle t inclusive**; `run(n)` the next n cycles (config.h). W5's harness calls `run(n)`,
+  unaffected; its comment "(run_until(t) stops before t)" in `tests/golden_run.cpp:317` is now stale (W5's file).
+- `tests/test_debug.cpp`, 10 tests: W4's synthetic chip digests the same under seven option sets; step-all catches a
+  forgotten `next()` (and the corrected unit agrees); the detector names it (death test); instance-major and the seeds
+  catch an illegal shared global; the detector is silent on a credit-blocked and a refusal-blocked relay; a per-unit
+  threshold covers a wait on a Wire, which without it is flagged; report-and-go-on; `run_until` inclusive; `threads`
+  refused. **W5's `golden_engine_debug_checks` now really runs its six option sets: all 67 goldens match under each.**
+
+Two findings on the way. The rule's credit case was too narrow: a producer blocked on credits sleeps while the consumer
+holds them, before any return is in a wheel; "a credit output with no credit left" is the right test (a consumer that
+never takes is a deadlock, not a missed wake). And the detector caught a real bug in my own test unit: **a Hold's
+acceptance wakes no one**, so a Hold producer with more data waiting must look again next cycle (`ref`'s WriteEngine
+idiom); only the cycle of a put is covered by the refusal that may come.
+
+Bug found and fixed: the slot pools' names went into the per-declaration name list before the declarations, shifting
+every ring's name when a size class existed (names only, no behaviour); they now have their own list.
+
+Still to do for increment 5: merge main once W4's E5 digest is there and re-run the comparisons with it.
+
+### The performance pass (planned, after increment 5)
+
+Benchmarks: W5's `bench_controller` (Quest 127: 20.6 ns per unit step, about 13 of them the engine's: `Engine::cycle`
+33%, dispatch 15%, `after` 7%, `run_until` 5%, the heap 3%; ~390 instructions per cycle for 3 wheels and 3 runs) and W4's
+framework mesh (speed per mesh-cycle; 228 KB per mesh after W4's queue sizing, against W6's hand-rolled 127 KB). Measured
+on the runner (perf stat and record, P-cores, clang release), each change guarded by digests, the conformance matrix and
+W5's goldens, and re-measured.
+
+**Speed: make the per-cycle cost scale with activity, not structure.**
+1. Delivery visits only non-empty buckets: a per-bucket-slot mask of wheels with entries, set by the put (one OR), read
+   by the cycle (one word), instead of testing every wheel's bucket.
+2. The run phase visits only runs with ready instances (a mask or list of non-empty runs set by `mark`), and the end of
+   the cycle swaps only runs with next-cycle requests; `idle()` reads one global ready count instead of every run.
+3. Near wakes on a short wheel (e.g. 16 cycles) of per-run bitmaps, as `next()` already is: every 1-2 cycle stall (a
+   multiply, a taken branch) avoids the heap, which keeps only far wakes.
+4. `after`'s common case (a `next()` or `none` with nothing in the heap) on a straight path; the step counters kept (cheap)
+   or moved to stats.
+5. Dispatch: run sets iterated by their non-zero words only (a summary word for big runs).
+
+**Footprint (D15): W4's breakdown first, then:**
+6. Port headers: `LinkPort`/`FifoPort` carry a whole `Ring` (pointer, width, depth, head, count, name); a ring of a known
+   width and depth per port could keep only head and count, the rest in the type or the kind's table.
+7. Rings rounded to whole cache lines each: small rings of one domain packed together (one thread owns them; W1's
+   one-structure-per-line convention guards against false sharing, which can't happen inside a domain): a W1 convention
+   change, to propose.
+8. The wheels' worst-case sizing (M2's flag, config.h): per (kind, width, latency) wheels, Σ L words per output.
+9. Per-instance arrays (seven, each line-rounded) and the debug-only ones (watches, suspects, scratch): the debug ones
+   carved only in debug builds.
+
 ## Log
 
 - 2026-11-07: plan agreed (owner's go-ahead with five notes). W2's audit not yet on `sim-w2`; W6 not started.
@@ -387,3 +448,5 @@ the start of t"): it now adds it back; and `put(RegOut, a, b, c)`, the three-wor
 - 2026-11-07: the leak check; increment 4 (port conformance, the C++ side): every M1 kind equal to ref over the full
   matrix.
 - 2026-11-07: E1 (the type registry per configuration) and E2 (config_impl.h) for W4, before increment 5.
+- 2026-11-07: increment 5 (options refused or implemented; shuffle, instance-major, step-all; the missed-wake detector;
+  run_until inclusive); the performance pass planned.

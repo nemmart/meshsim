@@ -31,7 +31,7 @@ struct RegBlockState {
         uint32_t op = 0, arg = 0, v = 0;   // op: 0 none, BUS_STORE (register, value), BUS_CONSUME (-, bits), BUS_ERROR (cond, -)
     };
 
-    void end_cycle(uint64_t t, const In& in) {
+    UNITS_NOINLINE void end_cycle(uint64_t t, const In& in) {
         if (in.freed) { if (req_n == 0) violations++; else req_n--; }   // the bus freed the head at t, before the tile ran
         if (in.go) { done = landed = gate = false; gos++; events |= 1u << EV_GO; }                    // 1.
         if (in.op == BUS_STORE) apply(t, in.arg, in.v);                                             // 2.

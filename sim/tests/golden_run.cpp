@@ -6,10 +6,13 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <algorithm>
 #include <map>
+#include <memory>
 #include <sstream>
 
 #include "base/alloc_guard.h"
+#include "parallel.h"
 #include "java_random.h"
 #include "sha256.h"
 
@@ -308,14 +311,17 @@ std::vector<std::string> run_direct(Tile& tile, const Golden& g, const std::vect
 }
 
 // ---------------------------------------------------------------------------------------------------------- engine
-EngineRun run_engine(Tile& tile, const Golden& g, const std::vector<std::string>& header, const sim::Options& opt) {
+sim::Sim build_engine(Tile& tile, const Golden& g, const sim::Options& opt) {
     sim::Config cfg(opt);
     configure_tile(cfg, "t", tile.core, tile.block, g.events.data(), uint32_t(g.events.size()), &tile.trace.log);
-    sim::Sim s = cfg.build();
+    return cfg.build();
+}
+
+EngineRun run_built(sim::Sim& s, Tile& tile, const Golden& g, const std::vector<std::string>& header, bool alloc_guard) {
     auto t0 = std::chrono::steady_clock::now();
-    sim::begin_run();                                  // the units and the engine allocate nothing
-    s.run(g.end_cycle);                                // cycles 1 .. END (run_until(t) stops before t)
-    sim::end_run();
+    if (alloc_guard) sim::begin_run();                 // the units and the engine allocate nothing
+    s.run(g.end_cycle);                                // cycles 1 .. END from a fresh machine (= run_until(END))
+    if (alloc_guard) sim::end_run();
     double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
     const Rv32& core = s.unit<Core>("t.core").rv;
     EngineRun out;
@@ -331,6 +337,72 @@ EngineRun run_engine(Tile& tile, const Golden& g, const std::vector<std::string>
     out.instructions = core.instructions;
     out.steps[0] = s.steps("t.core"); out.steps[1] = s.steps("t.ctl"); out.steps[2] = s.steps("t.bench");
     return out;
+}
+
+EngineRun run_engine(Tile& tile, const Golden& g, const std::vector<std::string>& header, const sim::Options& opt) {
+    sim::Sim s = build_engine(tile, g, opt);
+    return run_built(s, tile, g, header);
+}
+
+static std::string describe(const sim::Options& o) {
+    std::string s = o.step_all ? "step-all" : o.order == sim::Options::Order::instance_major ? "instance-major" : "ready-driven";
+    if (o.shuffle_seed) s += ", shuffle seed " + std::to_string(o.shuffle_seed);
+    return s;
+}
+
+// ---------------------------------------------------------------------------------------------------------- threads
+std::vector<RunSpec> mixed_order(const std::vector<RunSpec>& runs) {
+    std::vector<RunSpec> out;
+    std::vector<bool> seen(runs.size());
+    for (size_t k = 0, i = 0; k < runs.size(); k++, i = (i + 7) % runs.size()) {
+        while (seen[i]) i = (i + 1) % runs.size();
+        seen[i] = true; out.push_back(runs[i]);
+    }
+    return out;
+}
+std::string check_parallel(const std::vector<RunSpec>& runs, unsigned n, const std::vector<int>& cpus,
+                           const std::vector<sim::Options>& opts) {
+    // Everything read-only is prepared here, on the calling thread; each chip's tile and machine are built, run and
+    // compared on its own thread (W4's run_independent), touching only its own slot.
+    struct Prep { Golden g; Images im; TileConfig c; std::vector<std::string> header; uint64_t digest = 0; };
+    std::vector<Prep> prep(runs.size());
+    for (size_t i = 0; i < runs.size(); i++) {
+        std::string err;
+        Prep& p = prep[i];
+        if (!read_golden("tests/golden/" + runs[i].name + ".trace", p.g, err) || !load_images(runs[i], p.im, err)) return err;
+        p.c = tile_config(runs[i].tile);
+        p.header = header_lines(runs[i], p.im, p.c);
+        std::string refused = check_header(p.g, p.header);
+        if (!refused.empty()) return runs[i].name + ": " + refused;
+        Tile t(p.im, p.c, uint32_t(p.g.body_lines + 64));
+        p.digest = run_engine(t, p.g, p.header, sim::Options{}).digest;        // the same golden alone, for the digest
+    }
+    struct Slot { std::unique_ptr<Tile> tile; std::string result; };
+    std::string report;
+    for (const sim::Options& opt : opts)
+    for (size_t first = 0; first < runs.size(); first += n) {                // rounds of n chips, each a different golden
+        unsigned m = unsigned(std::min<size_t>(n, runs.size() - first));
+        std::vector<Slot> slot(m);
+        sim::run_independent(m,
+            [&](unsigned k) {
+                const Prep& p = prep[first + k];
+                slot[k].tile = std::make_unique<Tile>(p.im, p.c, uint32_t(p.g.body_lines + 64));
+                return build_engine(*slot[k].tile, p.g, opt);
+            },
+            [&](unsigned k, sim::Sim& s) {
+                const Prep& p = prep[first + k];
+                EngineRun e = run_built(s, *slot[k].tile, p.g, p.header);
+                std::string who = runs[first + k].name + " (thread " + std::to_string(k) + ", " + describe(opt) + "): ";
+                std::string d = compare(e.lines, p.g.lines);
+                if (!d.empty()) slot[k].result = who + d;
+                else if (opt.step_all && e.steps[1] != p.g.end_cycle) slot[k].result = who + "step-all not in effect";
+                else if (e.digest != p.digest) slot[k].result = who + "digest differs from the same golden run alone, ready-driven";
+                else if (!e.sleepers.empty()) slot[k].result = runs[first + k].name + ": asleep with data waiting:\n" + e.sleepers;
+            },
+            cpus);
+        for (Slot& sl : slot) if (!sl.result.empty()) report += sl.result + "\n";
+    }
+    return report;
 }
 
 BenchResult bench_engine(const RunSpec& r, unsigned reps, bool trace) {
@@ -349,28 +421,12 @@ BenchResult bench_engine(const RunSpec& r, unsigned reps, bool trace) {
     return b;
 }
 
-bool engine_has_debug_checks() {
-    auto runs = read_runs();
-    const RunSpec* r = find_run(runs, "hello");
-    Golden g; Images im; std::string err;
-    if (!r || !read_golden("tests/golden/hello.trace", g, err) || !load_images(*r, im, err)) return false;
-    TileConfig c = tile_config(r->tile);
-    Tile tile(im, c, uint32_t(g.body_lines + 64));
-    sim::Options o; o.step_all = true;
-    return run_engine(tile, g, header_lines(*r, im, c), o).steps[1] == g.end_cycle;
-}
-
 std::vector<sim::Options> debug_check_options() {
     std::vector<sim::Options> o(6);
     o[1].shuffle_seed = 1; o[2].shuffle_seed = 2; o[3].shuffle_seed = 3;
     o[4].order = sim::Options::Order::instance_major;
     o[5].step_all = true;
     return o;
-}
-static std::string describe(const sim::Options& o) {
-    std::string s = o.step_all ? "step-all" : o.order == sim::Options::Order::instance_major ? "instance-major" : "ready-driven";
-    if (o.shuffle_seed) s += ", shuffle seed " + std::to_string(o.shuffle_seed);
-    return s;
 }
 
 std::string check_engine(const RunSpec& r, const std::vector<sim::Options>& opts) {

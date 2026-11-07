@@ -458,6 +458,17 @@ Sim::Impl* Internals::split(Config::Impl& G) {
         }
     T->types = G.types;
 
+    // E6, the missed-wake detector across domains: a word put in another domain sits in an outbox until the drain, so the
+    // consumer's detector can't see it on its way for up to an interval. The drain marks it on its way (below, as
+    // on_its_way would have each cycle), and a consumer of a crossing waits an interval longer before it is judged (a real
+    // missed wake is still caught, at most `interval` cycles later)
+    if (interval != kNoCycle)
+        for (size_t k = 0; k < cross.size(); k++) {
+            const uint32_t q = cross[k].q, inst = T->doms[q].S->view.units[new_unit[G.decls[cross[k].i].unit]].inst;
+            Engine& e = eng(q);
+            if (e.missed_after && e.missed_after[inst]) e.missed_after[inst] += uint32_t(interval);
+        }
+
     // ---- threads
     T->nthreads = std::max(1u, std::min(G.opt.threads, D));
     for (uint32_t d = 0; d < D; d++) T->doms[d].thread = unsigned(uint64_t(d) * T->nthreads / D);
@@ -584,7 +595,7 @@ namespace {
 void run_domain(Engine& e, Cycle stop) {
     while (e.now < stop) {
         e.cycle();
-        if (e.idle()) {
+        if (!e.step_all && e.idle()) {                     // (step-all: every cycle stepped, no jump, as Engine::run_until)
             Cycle t = e.heap_n ? e.wake_at[e.heap[0]] : stop;
             if (t > stop) t = stop;
             if (t > e.now) e.now = t;
@@ -646,7 +657,7 @@ void Threads::publish(Dom& d, Cycle t0, Cycle n, unsigned par) {
     for (uint32_t h : d.holds_q) st[holds[h].slot] = e.holds[holds[h].port].occ;
     for (uint32_t c : d.counts) st[counts[c].slot] = e.counts[counts[c].idx].total - counts[c].base;
     st[d.sent_slot] = sent;
-    st[d.next_slot] = e.idle() ? (e.heap_n ? e.wake_at[e.heap[0]] : kNoCycle) : t0 + n;
+    st[d.next_slot] = !e.step_all && e.idle() ? (e.heap_n ? e.wake_at[e.heap[0]] : kNoCycle) : t0 + n;
 }
 
 // After the barrier: the outboxes addressed to this domain into its wheels, at the bucket each entry was put for (so it
@@ -672,6 +683,11 @@ void Threads::drain(uint32_t di, Cycle t0, Cycle n, unsigned par, bool any) {
                 if (x.dst == kNone) continue;                       // a fanned Reg not read here
                 Word* q = db.append();
                 q[0] = x.dst;
+                if constexpr (kDebug) if (e.detector) {    // E6: on its way now, as the detector would have seen it locally
+                    const uint32_t owner = ob.kind == Kind::link ? e.links[x.dst].owner : ob.kind == Kind::hold ? e.holds[x.dst].owner
+                                         : ob.kind == Kind::cret ? e.fifos[x.dst].producer : ob.kind == Kind::reg ? kNone : e.fifos[x.dst].owner;
+                    if (owner != kNone && e.suspect_since[owner] != kNoCycle) e.suspect_since[owner] = e.now;
+                }
                 for (unsigned w = 1; w < ew; w++) q[w] = p[w];
                 e.pending++;
                 if (ob.kind == Kind::link) {

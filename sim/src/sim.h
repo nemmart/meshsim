@@ -115,9 +115,9 @@
 //                with data waiting in an input (a Link, Fifo or Hold input with a word visible) is reported, naming the
 //                unit and the port, once it has stayed so for `missed_wake_after` cycles (Options; default 1); fatal by
 //                default (`missed_wake_fatal`). A unit is legitimately asleep with data waiting only when something already
-//                on its way will step it, and the engine counts those per instance: a delivery in the wheel addressed to
-//                one of its inputs (a word in flight on a Link to it), a credit return due to one of its credit outputs,
-//                or a Hold put it made this cycle (a refusal at t + 1 wakes it). So a unit blocked on an output is not
+//                on its way will step it, and the engine checks those for each suspect: a delivery in the wheel addressed
+//                to one of its inputs (a word in flight on a Link to it), a credit output with no credit left (each of the
+//                consumer's takes returns one), or a Hold put it made this cycle (a refusal at t + 1 wakes it). So a unit blocked on an output is not
 //                flagged while its credit or refusal is coming; one whose put was accepted and still sleeps on its data
 //                is. Not seen by this rule: a unit waiting for a Wire to change while data sits in an input; it is
 //                flagged (raise `missed_wake_after` for it, or take the data into the unit's own state).

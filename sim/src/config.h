@@ -75,17 +75,20 @@ namespace sim {
 // with w a compile-time constant of the put's arity (sim.h's put overloads are fixed-arity), so the copy is fixed-size
 // (D16), and the same instructions whether the destination is local or across a domain.
 
+// Every option is implemented or refused at build() ("option X not implemented"): never silently ignored.
 struct Options {
     uint64_t shuffle_seed = 0;   // 0: none; else instances and runs within a level are stepped in a seeded random order
     enum class Order : uint8_t { type_major, instance_major } order = Order::type_major;   // the debug comparison (PLAN-M1 item 6)
     bool wire_checks = true;     // wire discipline (written after a read in the cycle, written twice): debug builds
     bool step_all = false;       // step every instance every cycle (the missed-wake check, sim.h DEBUG CHECKS)
-    unsigned missed_wake_after = 1;   // the missed-wake detector (debug builds): cycles asleep with data waiting, 0 = off
+    unsigned missed_wake_after = 1;   // the missed-wake detector (debug builds; off under step-all): cycles asleep with data
+                                      // waiting and nothing on its way, 0 = off
     bool missed_wake_fatal = true;    // else report and go on
     unsigned leak_check_every = 0;    // debug builds: check the slot pools every N cycles too (always at the end of a run)
-    unsigned threads = 1;        // W4: OS threads for a machine split over domains (Config::domain); domains are spread
-                                 // over them in order (at most one thread per domain)
-    std::vector<int> cpus;       // W4 (A2): thread k pinned to cpus[k % size], when not empty
+    unsigned threads = 1;        // W4: OS threads for a machine split over domains (Config::domain), at most one per
+                                 // domain; domains are spread over them in order. Independent chips: run_independent
+    std::vector<int> cpus;       // W4 (A2, D21): thread k pinned to cpus[k % size]; empty: the detected default placement
+                                 // (topology.h); a CPU of -1: that thread not pinned ({-1}: leave placement to the OS)
     bool barrier_block = false;  // W4: the barrier sleeps (futex) after a short spin, instead of spinning (barrier.h)
 };
 
@@ -116,6 +119,7 @@ struct TypeInfo {
     void (*move)(void* dst, void* src);           // move-construct at dst, then destroy src
     void (*destroy)(void* obj);
     void (*run[2])(Engine&, RunSet&);             // by Form: cycle, result (null if the type has no result form)
+    void (*one[2])(Engine&, RunSet&, uint32_t);   // one instance, by Form (the debug orders)
     uint64_t (*digest)(const void* obj);          // T::digest() if it has one, else its bytes (sim.h, DEBUG CHECKS)
     bool own_digest = false;                      // W4 (E5): T::digest() is the author's; else the machine's digest
                                                   // hashes the bytes with the port handles left out (digest.cpp)
@@ -134,6 +138,15 @@ void run_form(Engine& e, RunSet& r) {
     });
     r.ready.clear_all();
     r.nready = 0;
+}
+
+template <class T, bool Result>
+void step_one(Engine& e, RunSet& r, uint32_t k) {
+    T* units = reinterpret_cast<T*>(r.units);
+    e.enter(r, k);
+    Wake w;
+    if constexpr (Result) w = units[k].step_result(e.ctx); else w = units[k].step(e.ctx);
+    e.after(r, k, w);
 }
 
 template <class T>
@@ -166,7 +179,9 @@ const TypeInfo* type_ops() {
         t.destroy = [](void* p) { static_cast<T*>(p)->~T(); };
         t.run[0] = &run_form<T, false>;
         t.run[1] = nullptr;
-        if constexpr (HasResultForm<T>) t.run[1] = &run_form<T, true>;
+        t.one[0] = &step_one<T, false>;
+        t.one[1] = nullptr;
+        if constexpr (HasResultForm<T>) { t.run[1] = &run_form<T, true>; t.one[1] = &step_one<T, true>; }
         t.digest = &digest_of<T>;
         t.own_digest = HasDigest<T>;
         return t;
@@ -239,8 +254,8 @@ private:
 
 class Sim {
 public:
-    void run(Cycle n);                 // n cycles
-    void run_until(Cycle t);
+    void run(Cycle n);                 // the next n cycles: now() .. now() + n - 1
+    void run_until(Cycle t);           // through cycle t inclusive (a halt at t is reached); afterwards now() is t + 1
     Cycle now() const;
 
     // Observers, between cycles (tests, tracing): a unit by name, a port's state, a digest of every port and unit.

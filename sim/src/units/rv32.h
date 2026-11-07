@@ -21,6 +21,14 @@
 #include "units/regmap.h"
 #include "units/trace_log.h"
 
+// A profiling build (-DUNITS_PROFILE) keeps the core's step and its interpreter out of line, so `perf` can tell them from
+// the engine's run function they are otherwise inlined into.
+#ifdef UNITS_PROFILE
+#define UNITS_NOINLINE __attribute__((noinline))
+#else
+#define UNITS_NOINLINE
+#endif
+
 namespace units {
 
 enum : uint32_t { BUS_STORE = 1, BUS_CONSUME = 2, BUS_ERROR = 3 };
@@ -80,7 +88,7 @@ struct Rv32 {
     // to run (kNever: only if its inputs change). A step at a cycle it didn't ask for is exactly ref's runCycle, so a
     // core stepped every cycle and one stepped only when it asks end in the same state.
     template <class Env>
-    uint64_t step(Env& e, uint64_t t) {
+    UNITS_NOINLINE uint64_t step(Env& e, uint64_t t) {
         if (stop != Stop::running) return kNever;                     // the run ended: nothing more (mcycle frozen)
         catch_up(t);
         mcycle++;                                                       // 1.
@@ -170,7 +178,7 @@ struct Rv32 {
 
     // ================================================================ fetch and execute
     template <class Env>
-    void fetch_execute(Env& e, uint64_t t) {
+    UNITS_NOINLINE void fetch_execute(Env& e, uint64_t t) {
         uint32_t ipc = pc, ins;
         if ((ipc & 3) == 0 && region(ipc) == R_PMEM) ins = imem[mem_word(ipc)];
         else if ((ipc & 3) == 0 && region(ipc) == R_BOOTROM && offset(ipc) >> 2 < bootrom_words) ins = bootrom[offset(ipc) >> 2];

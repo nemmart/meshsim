@@ -39,7 +39,7 @@ struct Catch {
 struct Arrival { Cycle seen, stepped; uint64_t steps; };
 Arrival pulse(unsigned latency, bool split, Cycle at) {
     Options o;
-    o.threads = 2;
+    o.threads = split ? 2 : 1;
     Config cfg(o);
     cfg.domain(0);
     Pulse& p = cfg.add<Pulse>("p", at);
@@ -254,7 +254,7 @@ struct LineDst {
 };
 uint64_t lines(bool split, unsigned threads) {
     Options o;
-    o.threads = threads;
+    o.threads = split ? threads : 1;
     Config cfg(o);
     cfg.domain(0);
     LineSrc& a = cfg.add<LineSrc>("a");
@@ -271,6 +271,53 @@ TEST(wide_payloads_cross_by_copy) {
     CHECK(one != 0);
     CHECK_EQ(lines(true, 1), one);
     CHECK_EQ(lines(true, 2), one);
+}
+
+// ---- E6: the missed-wake detector across domains ----------------------------------------------------------------------
+// A producer putting every other cycle; a consumer leaving a single word waiting and sleeping until the next arrives (it
+// takes when two are queued, or the last). Legitimate, with a threshold of 2: the next word is in the wheel by the end of
+// the following cycle. Across domains that word sits in an outbox until the drain: the detector must not flag it.
+struct Every2 {
+    FifoOut out;
+    uint64_t n = 0;
+    Every2(Ports& p) { p.out(out, "out", 1); }
+    uint64_t digest() const { return hash_fields(n); }
+    Wake step(Ctx& c) {
+        if (n < 20 && c.now() % 2 == 1) c.put(out, ++n);
+        return c.next();                    // ticks on, so the machine never idles (an idle jump skips the detector)
+    }
+};
+struct Lazy {
+    FifoIn in;
+    uint64_t got = 0, last;                 // last: 20, or 0 to forget the last word (a real missed wake)
+    Lazy(Ports& p, uint64_t l) : last(l) { p.in(in, "in", 1, 4); }
+    uint64_t digest() const { return hash_fields(got, last); }
+    bool wants(Ctx& c) const { return c.size(in) >= 2 || (c.ready(in) && c.peek(in)[0] == last); }
+    Wake step(Ctx& c) {
+        if (wants(c)) { c.take(in); got++; }
+        return wants(c) ? c.next() : Wake::none();
+    }
+};
+uint64_t lazy(bool split, uint64_t last = 20) {
+    Options o;
+    o.threads = split ? 2 : 1;
+    Config cfg(o);
+    cfg.domain(0);
+    Every2& a = cfg.add<Every2>("a");
+    cfg.domain(split ? 1 : 0);
+    Lazy& b = cfg.add<Lazy>("b", last);
+    cfg.connect(a.out, b.in);
+    cfg.missed_wake_after("b", 2);
+    Sim s = cfg.build();
+    s.run(60);
+    return s.unit<Lazy>("b").got;
+}
+TEST(the_missed_wake_detector_sees_words_on_their_way_across_domains) {
+    CHECK_EQ(lazy(false), uint64_t(20));
+    CHECK_EQ(lazy(true), uint64_t(20));
+}
+DEBUG_DEATH_TEST(a_real_missed_wake_across_domains_is_still_caught, "missed wake at cycle [0-9]+: b is asleep with data waiting in b.in") {
+    lazy(true, 0);
 }
 
 // ---- the kinds that can't cross ---------------------------------------------------------------------------------------

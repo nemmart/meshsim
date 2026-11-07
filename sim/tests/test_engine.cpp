@@ -254,6 +254,7 @@ TEST(the_end_of_run_report_names_a_sleeper) {
     auto& l = cfg.add<LinkSource>("lsrc", Cycle(3));
     auto& m = cfg.add<LinkSink>("ldst", false);           // never takes: the word sits in its input
     cfg.link(l.out, m.in, 1);
+    cfg.missed_wake_after("ldst", 0);                     // on purpose: the detector's own threshold off for it
     Sim sim = cfg.build();
     sim.run(10);
     std::string r = sim.sleepers();

@@ -22,3 +22,11 @@ Two items, the first from my last reply:
    wfi needs only G1 and G2, so wfi with every unit of tile 0 every cycle is your joint first full check. regs is checked
    through cycle 824 until G3 lands. Its mode-1 self-sends reach the write engine and big SRAM from 825; that's G3's first
    path.
+
+3. From W10 (sim-w10, PORTS.md section 2b): the Link that holds words is built and conformant (73ec325). Before you
+   decide whether the router switches to it, weigh W10's flag: ref's Router takes every arrival at once into
+   per-(output, feeder) overflow FIFOs that drop when full, while a Link that holds is one in-order queue per input,
+   head-only take, and fatal when full. Those are two shape differences. Exactness comes first: if the Link can't
+   reproduce ref's router exactly, keep your FIFOs and say why in NOTES.md (W4's "words held twice" then stays a speed
+   item for later). Also from W10: the stop request is built (Ctx::stop, Sim::stop_cycle); use it for the sort's timing
+   runs once sim-w10 is on main. It is not a between-cycles poke: if C&C's release needs one (item 1), ask through me.

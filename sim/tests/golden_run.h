@@ -87,6 +87,17 @@ struct EngineRun {
     double seconds = 0;               // the run alone (Sim::run), not the build or the formatting
 };
 EngineRun run_engine(Tile& t, const Golden& g, const std::vector<std::string>& header, const sim::Options& opt);
+// Its two halves: build the tile's machine; run a built machine to the golden's last cycle and collect the trace.
+sim::Sim build_engine(Tile& t, const Golden& g, const sim::Options& opt);
+EngineRun run_built(sim::Sim& s, Tile& t, const Golden& g, const std::vector<std::string>& header);
+
+// M1's threads test: the runs in rounds of n, each round n controllers on n threads (W4's run_independent, thread k pinned
+// to cpus[k % size] when cpus is given), each running a different golden; every trace must equal its golden and every
+// digest the same golden's run alone. Empty if all is well, else the differences.
+// The runs in a mixed order (k * 7 mod the count: a prime count of 67 visits every run), so each round of a threads test
+// mixes riscv-tests and the M1 programs.
+std::vector<RunSpec> mixed_order(const std::vector<RunSpec>& runs);
+std::string check_parallel(const std::vector<RunSpec>& runs, unsigned n, const std::vector<int>& cpus = {});
 
 // Line-for-line comparison: empty if equal, else the first difference with context.
 std::string compare(const std::vector<std::string>& ours, const std::vector<std::string>& golden);

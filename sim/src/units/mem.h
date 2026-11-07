@@ -8,7 +8,11 @@
 //   port              kind  from -> to                               words                         latency
 //   gather read       Hold  gather `rd`   -> srq client 0            2: reqA, reqB (below)          (Hold) refused, retried t + 1
 //   AG read           Hold  AG `rd`       -> srq client 1            2: reqA, reqB                  (Hold) refused, retried t + 1
-//   gather in flight  Reg   srq `gather_reads` -> gather (fan-out)   1: SRAMReadQueue.inFlightOf(GATHER) at the end of t
+//   gather srq busy   Reg   srq `gather_srq_busy` -> register block   1: the gather's Hold occupied at the end of t, OR
+//                                                                       SRAMReadQueue.inFlightOf(GATHER) > 0 (one of
+//                                                                       STATUS's three gather-busy inputs; W12 ORs them)
+//   PTR view          RegFile  table store `ptr` -> W12's AG             256 registers: PTR as at the table store's step
+//                                                                       (the gather alignment check's PTR half)
 //   STREAM request    Link  AG `stream_req` -> table store           3: op, index, addend (below)   ts_engine_latency
 //   GROUP request     Link  AG `group_req`  -> table store           3                              ts_engine_latency
 //   STREAM return     Link  table store -> AG `stream_ret`           3: TableStore.retStream's      ts_engine_latency
@@ -68,7 +72,7 @@ struct MemIO {
     sim::FifoOut rd_port;              // the core's read port (client 2), width 2, Fifo(read_port_depth)
     sim::HoldIn sram_rd;               // the big SRAM's read holding register, width 1 (BigSRAM.readReq)
     sim::LinkOut sram_ret[16];         // the big SRAM's area returns, width 3, Link(sram_read_latency)
-    sim::RegIn gather_reads;           // W12's gather: inFlightOf(GATHER), width 1
+    sim::RegIn gather_srq_busy;        // the register block: gather Hold occupied or a gather read in flight, width 1
     sim::CountIn rp_injected;          // the core: read-port returns injected (ReadPort.injectedAt), read through t - 1
 };
 

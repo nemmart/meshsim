@@ -125,6 +125,8 @@ struct BigSram {
     // Host access between cycles (SortTest's input load: BigSRAM.poke), keeping the sum.
     void poke(uint32_t c, uint32_t v) { store(c & 0x1FFFFF, v); }
     uint32_t peek(uint32_t c) const { return load(c & 0x1FFFFF); }
+    void poke64(uint32_t c, uint64_t v) { poke(c, uint32_t(v)); poke(c + 1, uint32_t(v >> 32)); }
+    uint64_t peek64(uint32_t c) const { return uint64_t(peek(c)) | uint64_t(peek(c + 1)) << 32; }
 
     const Entry& at(unsigned a, unsigned k) const { return q[a][(head[a] + k) % cfg.area_queue_depth]; }
 

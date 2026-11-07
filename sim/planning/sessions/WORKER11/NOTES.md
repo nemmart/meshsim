@@ -44,7 +44,8 @@ and ref's `BigSRAM`, `SRAMReadQueue`, `InjectionPath`, `ReadPort`, `WriteEngine`
 |---|---|---|---|---|
 | gather read | Hold | W12's gather -> my srq (client 0) | 2: reqA, reqB (SRAMReadQueue.reqA/reqB) | (Hold) refused, retried at t + 1 |
 | AG read | Hold | W12's AG -> my srq (client 1) | 2: reqA, reqB | (Hold) refused, retried at t + 1 (its 2.1 M refusals) |
-| gather in flight | Reg | my srq -> W12's gather (and the block's STATUS) | 1: inFlightOf(GATHER) at the end of t | (Reg) put on change |
+| gather srq busy | Reg | my srq -> the register block | 1: the gather Hold occupied at the end of t OR inFlightOf(GATHER) > 0 | (Reg) put on change (W12's change, agreed) |
+| PTR view | RegFile | my table store -> W12's AG | 256: PTR as at the store's step | (RegFile) the gather alignment check |
 | STREAM / GROUP requests | Link | W12's AG -> my table store | 3: op, index, addend (TableStore's words) | ts_engine_latency (2) |
 | STREAM / GROUP returns | Link | my table store -> W12's AG | 3: as TableStore.retStream / retGroup | ts_engine_latency (2) |
 | we-in, gather-q | Fifo | W8's director -> my WE / W12's gather | 3 (link words) | as now (W8); overflow per question 2 |
@@ -102,3 +103,21 @@ Each piece: its tests, `make check` clean on gcc and clang (build by build if th
   `tile_cycle` connects it to the injection unit's read side; the injection unit declares the read side's ports only
   when `mem.present` (network-only tiles, RouterConf and test_router keep today's ports). clang 18 and OpenJDK 21
   installed in this container (apt).
+- 2026-11-08, owner's second round: commit first (P1 pushed as WIP 1710fef, "unchecked: clang release only"), then
+  builds and make check; from here, commit after each piece compiles and passes its own test.
+  - **chip.h is shared with W12** now: `ControlIO` grows `MemIO mem`, wired by `tile_cycle`, the read side's ports declared
+    only when present (approved). Changes to chip.h noted here as they land.
+  - **Footprint for W10:** big SRAM 256 MB allocated (64 x 4 MB, one mapping per tile at configuration), regs touches
+    256 KB (one page per tile), wfi none (`test_chip` prints both).
+  - **Agreed with W12 (its NOTES on sim-w12):** the port table as proposed; the gather's busy half is mine as a Reg to the
+    register block (`gather_srq_busy`: its Hold occupied at the end of t OR a gather read in flight), the other two halves
+    W12's; **a PTR view** (a RegFile from the table store) for the gather alignment check: no problem; big-SRAM `poke` and
+    `peek` of 32 and 64 bits between cycles (`BigSram::poke/peek/poke64/peek64`, the sum kept). **The split of the register
+    block and the director, as W12 proposes:** mine `SRAM_RD_*`, READ_PORT, WE_IN_OVF, TABLE_OVF, the director's read-port
+    results; W12's PULSE_DMA, STATUS's rd_running/rd_done/gather_busy, EVENTS [10], ERRORS [3] and [6], mode 4 and
+    `gather_put`. `mem.h` updated.
+
+## Owed before M2 closes (D29: overflows feeding ERRORS are events)
+- **TABLE_OVF:** the table store's three request FIFOs and HIST's: fatal "not modelled yet" today (nothing reaches them).
+- **WE_IN_OVF:** waits on W10's framework hook (a Fifo's overflow reported to its consumer as an event).
+- **READ_PORT:** a dropped SRAM_RD_ADDR_QUEUE store (P2).

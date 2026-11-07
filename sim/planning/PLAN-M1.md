@@ -160,5 +160,5 @@ Workers may refine the layout under `src/` and `tests/` in their plans.
 | W1 | **done**, merged 2026-11-07 (`sessions/WORKER1-REPORT.md`); D4: prebuilt firmware images, the C++ shipped as source |
 | W2 | **done**, merged 2026-11-07 (`sessions/WORKER2-REPORT.md`); the audit is `sim/tests/AUDIT-M1.md`; 67 goldens, `regen.sh --check` all SAME |
 | W6 | **done**, merged 2026-11-07 (`sessions/WORKER6-REPORT.md`); its recommendations go to the owner with W3's API |
-| W3 | prompt written 2026-11-07 (`sessions/WORKER3/PROMPT.md`): stage 1 (the API) first, held for W6's findings and the owner's review |
+| W3 | stage 1 (the API) done, reviewed by the integrator (D19) and merged 2026-11-07; stage 2 waits for the owner's go-ahead |
 | W4, W5 | not started |

@@ -182,6 +182,10 @@ Sim Config::build() {
     using Decl = Impl::Decl;
     const uint32_t n = uint32_t(I.units.size());
 
+    // 0. every option is implemented, or refused: an option set must never be silently ignored (integrator, 2026-11-07)
+    if (I.opt.threads != 1)
+        FATAL("option threads = %u not implemented: run independent chips with run_independent (W4, form 1)", I.opt.threads);
+
     // 1. every port wired (a Count may stand alone: a counter no one reads, or read but never incremented)
     for (const Decl& d : I.decls)
         if (d.peers.empty() && d.kind != Kind::count)
@@ -392,6 +396,17 @@ Sim Config::build() {
     const size_t o_runs = c.add_array<RunSet>("runs", runs.size());
     std::vector<size_t> o_bits(runs.size());
     for (size_t r = 0; r < runs.size(); r++) o_bits[r] = c.add("run sets", 2 * Bitmap::words_needed(runs[r].count), runs[r].count);
+    // the debug orders and the missed-wake detector: add order, a level's scratch, watches, thresholds, suspects
+    uint32_t nwatch = 0;
+    for (const Decl& d : I.decls)
+        if ((!d.out && (d.kind == Kind::link || d.kind == Kind::fifo || d.kind == Kind::credit || d.kind == Kind::hold)) ||
+            (d.out && (d.kind == Kind::hold || d.kind == Kind::credit)))
+            nwatch++;
+    const size_t o_addord = c.add_array<uint32_t>("instances: add order", n), o_scratch = c.add_array<uint32_t>("debug: a level's order", n),
+                 o_watch = c.add_array<Engine::Watch>("debug: detector watches", nwatch),
+                 o_wfirst = c.add_array<uint32_t>("debug: detector watch index", n + 1),
+                 o_mwafter = c.add_array<uint32_t>("debug: detector thresholds", n),
+                 o_since = c.add_array<Cycle>("debug: detector suspects since", n), o_susp = c.add_array<uint32_t>("debug: detector suspects", n);
 
     auto* S = new Sim::Impl;
     S->types = I.types;
@@ -417,9 +432,9 @@ Sim Config::build() {
     for (size_t k = 0; k < class_words.size(); k++) e.pool_allow[k] = class_allow[k];
     e.leak_every = I.opt.leak_check_every;
     for (size_t k = 0; k < class_words.size(); k++) {
-        S->port_names.push_back("w" + std::to_string(class_words[k]));
+        S->misc_names.push_back("w" + std::to_string(class_words[k]));
         new (&e.pools[k]) SlotPool();
-        e.pools[k].init(B + o_pool[k], class_words[k], uint32_t(class_cap[k]), S->port_names.back().c_str());
+        e.pools[k].init(B + o_pool[k], class_words[k], uint32_t(class_cap[k]), S->misc_names.back().c_str());
     }
 
     // 7. the units: one arena per type (moved from staging, in the instances' order); handles rewritten in place
@@ -562,11 +577,11 @@ Sim Config::build() {
     for (size_t w = 0; w < wheels.size(); w++) {
         Bucket* heads = reinterpret_cast<Bucket*>(B + o_bheads[w]);
         std::string nm = std::string("wheel ") + kind_name(wheels[w].kind) + " w" + std::to_string(wheels[w].width);
-        S->port_names.push_back(nm);
+        S->misc_names.push_back(nm);
         const size_t per = Bucket::words_needed(wheels[w].width + 1, wheels[w].cap);
         for (unsigned b = 0; b < wheels[w].W; b++) {
             new (&heads[b]) Bucket();
-            heads[b].init(B + o_bstore[w] + b * per, wheels[w].width + 1, wheels[w].cap, S->port_names.back().c_str());
+            heads[b].init(B + o_bstore[w] + b * per, wheels[w].width + 1, wheels[w].cap, S->misc_names.back().c_str());
         }
         e.wheels[w] = Wheel{heads, wheels[w].W - 1, wheels[w].kind, uint8_t(wheels[w].width)};
     }
@@ -575,13 +590,49 @@ Sim Config::build() {
         const RunDef& rd = runs[r];
         const auto& ti = *I.types[rd.type];
         rs.fn = ti.run[rd.form == Form::result ? 1 : 0];
+        rs.one = ti.one[rd.form == Form::result ? 1 : 0];
         rs.units = S->obj(rd.first);
         rs.first = rd.first; rs.count = rd.count; rs.level = rd.level; rs.type = rd.type; rs.form = rd.form;
-        S->port_names.push_back("run set " + ti.name);
+        S->misc_names.push_back("run set " + ti.name);
         const size_t bw = Bitmap::words_needed(rd.count);
-        rs.ready.init(B + o_bits[r], rd.count, S->port_names.back().c_str());
-        rs.next.init(B + o_bits[r] + bw, rd.count, S->port_names.back().c_str());
+        rs.ready.init(B + o_bits[r], rd.count, S->misc_names.back().c_str());
+        rs.next.init(B + o_bits[r] + bw, rd.count, S->misc_names.back().c_str());
         for (uint32_t k = rd.first; k < rd.first + rd.count; k++) e.run_of[k] = uint32_t(r);
+    }
+    // the debug orders, step-all, the detector
+    e.add_order = reinterpret_cast<uint32_t*>(B + o_addord);
+    e.scratch = reinterpret_cast<uint32_t*>(B + o_scratch);
+    for (uint32_t k = 0; k < n; k++) e.add_order[k] = order[k];
+    e.step_all = I.opt.step_all;
+    e.instance_major = I.opt.order == Options::Order::instance_major;
+    e.shuffle = I.opt.shuffle_seed ? hash_mix(I.opt.shuffle_seed, 0x5eed) | 1 : 0;
+    e.watch = reinterpret_cast<Engine::Watch*>(B + o_watch);
+    e.watch_first = reinterpret_cast<uint32_t*>(B + o_wfirst);
+    e.missed_after = reinterpret_cast<uint32_t*>(B + o_mwafter);
+    e.suspect_since = reinterpret_cast<Cycle*>(B + o_since);
+    e.suspects = reinterpret_cast<uint32_t*>(B + o_susp);
+    e.nsuspects = 0;
+    e.missed_fatal = I.opt.missed_wake_fatal;
+    {
+        uint32_t w = 0;
+        bool any = false;
+        for (uint32_t k = 0; k < n; k++) {
+            e.watch_first[k] = w;
+            e.missed_after[k] = S->missed_after[k];
+            e.suspect_since[k] = kNoCycle;
+            any = any || e.missed_after[k];
+            for (uint32_t id : I.units[order[k]].decls) {
+                const Decl& d = I.decls[id];
+                if (!d.out && (d.kind == Kind::link || d.kind == Kind::fifo || d.kind == Kind::credit || d.kind == Kind::hold))
+                    e.watch[w++] = Engine::Watch{d.kind, d.final, S->port_names[id].c_str()};
+                else if (d.out && d.kind == Kind::hold)
+                    e.watch[w++] = Engine::Watch{Kind::hold, d.final, nullptr};                     // its route: a put this cycle
+                else if (d.out && d.kind == Kind::credit)
+                    e.watch[w++] = Engine::Watch{Kind::cret, I.decls[d.peers[0]].final, nullptr};    // its fifo's returns
+            }
+        }
+        e.watch_first[n] = w;
+        e.detector = kDebug && !I.opt.step_all && any;
     }
     e.bind();
     for (uint32_t k = 0; k < n; k++) e.mark(k);   // every unit is stepped at the first cycle (sim.h)
@@ -626,7 +677,7 @@ Sim& Sim::operator=(Sim&& o) noexcept {
 }
 Sim::~Sim() { delete impl_; }
 
-void Sim::run(Cycle n) { impl_->e.run_until(impl_->e.now + n); }
+void Sim::run(Cycle n) { if (n) impl_->e.run_until(impl_->e.now + n - 1); }
 void Sim::run_until(Cycle t) { impl_->e.run_until(t); }
 Cycle Sim::now() const { return impl_->e.now; }
 const Sizes& Sim::sizes() const { return impl_->sizes; }

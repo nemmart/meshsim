@@ -267,6 +267,7 @@ TEST(fifo_overflows_are_counted_at_the_next_cycle) {
     auto& o = cfg.add<OvfReader>("rd");
     cfg.connect(f.out, n.in);
     cfg.count_overflows(n.in, o.in);
+    cfg.missed_wake_after("never", 0);                    // never takes, on purpose
     Sim sim = cfg.build();
     sim.run(60);
     // puts at 1, 2 fit; the put at 3 overflows at its delivery in 4; through_last sees it at 5

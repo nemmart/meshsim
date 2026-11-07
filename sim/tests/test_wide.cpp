@@ -104,6 +104,7 @@ TEST(a_fifo_overflow_frees_the_dropped_slot) {
     auto& s = cfg.add<LineSource>("src", uint64_t(200), false);
     auto& d = cfg.add<LineSink>("dst", 4u, false);
     cfg.connect(s.out, d.in);
+    cfg.missed_wake_after("dst", 0);                      // never takes, on purpose
     Sim sim = cfg.build();
     sim.run(300);
     CHECK_EQ(sim.unit<LineSource>("src").sent, 200u);
@@ -165,6 +166,7 @@ TEST(no_leak_reported_for_lines_in_flight_queued_or_held) {
     auto& f = cfg.add<LineSource>("fsrc", uint64_t(300), false);
     auto& g = cfg.add<LineSink>("fdst", 4u, false);       // never takes: queued slots and freed overflows
     cfg.connect(f.out, g.in);
+    cfg.missed_wake_after("fdst", 0);
     Sim sim = cfg.build();
     sim.run(400);
     CHECK_EQ(sim.unit<LinkLineSink>("dst").sum, 200u * 201u / 2);

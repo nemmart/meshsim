@@ -45,9 +45,10 @@ TEST(g1_tile_port_b_landing_and_the_k_line) {
         {5, 0x1111222233334444ull, lw::hdr(64, 0, lw::M_WRITE, 0, 0x100, lw::SIZE_64), 0, false},      // data memory
         {6, 0xABCD, lw::hdr(64, 0, lw::M_WRITE, 0, 0x7FC0, lw::SIZE_32), 0, false},                    // command slot 0
         {7, 0x5, lw::hdr(3, 0, lw::M_WRITE, 2, 0x200, lw::SIZE_32), 0, false},                         // counted, unarmed
+        {30, 0x6, lw::hdr(3, 0, lw::M_WRITE, 0, 0x02000010, lw::SIZE_32), 0, false},                   // bad: the boot ROM
     };
     sim::Config cfg;
-    auto& s = cfg.add<Stand>("stand", ev, 3u);
+    auto& s = cfg.add<Stand>("stand", ev, 4u);
     ControlIO io = add_g1(cfg, 0, &g);
     cfg.link(s.eject, io.eject, 1);
     cfg.link(s.go, io.go, 1);
@@ -75,4 +76,13 @@ TEST(g1_tile_port_b_landing_and_the_k_line) {
     CHECK(ctl.s.conditions >> 2 & 1);                                 // ERRORS [2]
     CHECK_EQ(ctl.s.remaining[2], 0u);                                 // stays 0
     CHECK(ctl.s.error_line);
+    // A condition with nothing else reaching the block (PORTS.md 8): the bad packet arrives at 31, the director drops it
+    // at 31, ref's endCycle(31) sets ERRORS [1]; here the director's event steps the block at level 0 of 32.
+    CHECK(!(ctl.s.conditions >> 1 & 1));
+    m.run_until(31);
+    CHECK(!(ctl.s.conditions >> 1 & 1));
+    m.run_until(32);
+    CHECK(ctl.s.conditions >> 1 & 1);
+    CHECK_EQ(m.unit<Director>("t0.dir").bad_packets, uint64_t(1));
+    CHECK_EQ(ctl.s.bad_total, uint64_t(1));
 }

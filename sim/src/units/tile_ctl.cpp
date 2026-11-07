@@ -41,7 +41,7 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     cfg.link(d.port_b, c.port_b, g.cfg.cm_latency + 1);
     cfg.link(d.landed, b.landed, g.cfg.cm_latency + 1);
     cfg.link(d.kline, b.kline, g.cfg.K + 1);
-    cfg.connect(d.bad, b.bad);
+    cfg.link(d.bad, b.bad, 1);
     cfg.connect(d.we_in, we.in);
     cfg.count_overflows(we.in, b.we_in_ovf);
     cfg.connect(d.gather, ga.in);

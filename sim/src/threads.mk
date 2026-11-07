@@ -2,6 +2,7 @@
 #
 #   make tsan          the thread tests under ThreadSanitizer, gcc and clang (build/<cc>-tsan/); also run by make check
 #   make tsan-one      one compiler: make tsan-one CC_NAME=gcc
+#   bench_threads      the threads' benchmark (bench/threads/), built by `make` in every build
 #
 # TSan can't share a process with ASan, so it is its own build, debug-like (-O1 -g, SIM_DEBUG's checks on).
 
@@ -21,6 +22,11 @@ $(TB)/%.o: %.cpp
 # hook's, is kept; it allocates through malloc, which TSan intercepts, so TSan still sees every allocation.
 $(TB)/test_%: $(TB)/tests/test_%.o $(TB)/tests/harness.o $(TB_LIB)
 	$(CXX) $(TSAN_FLAGS) $^ -o $@ $(WRAP) -Wl,--allow-multiple-definition
+
+# The threads' benchmark (timing: clang release, D18): make build/clang-release/bench_threads
+$(B)/bench_threads: $(B)/bench/threads/bench_threads.o $(LIB_OBJ)
+	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
+all: $(B)/bench_threads
 
 .PHONY: tsan tsan-one
 tsan-one: $(TB_TESTS)

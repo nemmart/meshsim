@@ -18,13 +18,25 @@
 #include <vector>
 
 #include "config.h"
-#include "harness.h"
 
 namespace synth {
 
 using namespace sim;
 
 inline uint64_t mix(uint64_t a, uint64_t b) { return hash_mix(a, b); }
+
+// splitmix64 (as the tests' Rng), so the bench can use this header without the test harness.
+struct Rng {
+    uint64_t s;
+    explicit Rng(uint64_t seed) : s(seed) {}
+    uint64_t next() {
+        uint64_t z = (s += 0x9e3779b97f4a7c15ull);
+        z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ull;
+        z = (z ^ (z >> 27)) * 0x94d049bb133111ebull;
+        return z ^ (z >> 31);
+    }
+    uint64_t below(uint64_t n) { return next() % n; }
+};
 
 struct Node {
     LinkIn lin; LinkOut lout;
@@ -145,7 +157,7 @@ struct Synth {
 // carry `prefix` (several machines in one Config: independent chips as domains).
 template <class DomainOf>
 Synth build(Config& cfg, const Params& P, DomainOf domain_of, const std::string& prefix = "") {
-    test::Rng r(P.seed);
+    Rng r(P.seed);
     Synth s;
     const unsigned n = P.clusters * P.nodes_per_cluster;
     std::vector<Node*> nd(n);

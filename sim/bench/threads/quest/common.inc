@@ -2,6 +2,7 @@
 # "TAG <bench line> [perf: ...]" to $RES/raw.txt.
 run() {
   local tag=$1 cpus=$2; shift 2
+  command -v perf > /dev/null || PERF=0             # no perf on this machine: the run without its counters
   if [ "${PERF:-0}" = 1 ]; then
     taskset -c "$cpus" perf stat -x, -e cycles,instructions,cache-misses -o "$W/perf.csv" -- "$@" > "$W/out.txt" 2> "$W/err.txt"
   else

@@ -227,7 +227,7 @@ public:
     void put(FifoOut p, Word a, Word b);
     void put(FifoOut p, Word a, Word b, Word c);
     // credit Fifo, producer side
-    unsigned credits(CreditOut p) const;             // room as of the start of t
+    unsigned credits(CreditOut p) const;             // room as of the start of t (this cycle's put not deducted)
     void put(CreditOut p, Word a);                   // fatal without a credit
     void put(CreditOut p, Word a, Word b);
     void put(CreditOut p, Word a, Word b, Word c);
@@ -248,6 +248,7 @@ public:
     const Word* read(RegIn p) const;
     void put(RegOut p, Word a);
     void put(RegOut p, Word a, Word b);
+    void put(RegOut p, Word a, Word b, Word c);
 
     // Wire: this cycle's value (one word); its producer is at a lower level than every reader
     Word read(WireIn p) const;
@@ -273,6 +274,7 @@ public:
 
 private:
     friend struct Engine;
+    friend struct TestingAccess;   // tests/: port observers inside a step (the conformance driver)
     Engine* e_ = nullptr;
     uint32_t cur_ = 0;           // the instance being stepped
     uint64_t* mask_ = nullptr;   // its ready bits

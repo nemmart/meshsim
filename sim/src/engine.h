@@ -150,6 +150,8 @@ struct Engine {
     uint32_t nwheels = 0, nruns = 0, nlinks = 0, nfifos = 0, nholds = 0, nroutes = 0, nregs = 0, nwires = 0, nregfiles = 0,
              ncounts = 0;
     uint32_t npools = 0;
+    uint64_t* pool_allow = nullptr;    // per class: the slots units may hold outside the ports (declared held, refused holds)
+    uint64_t leak_every = 0;           // debug: check the pools every N cycles (0: at the end of each run only)
     uint32_t cur_level = 0;            // the level running (checks)
     uint64_t pending = 0;         // entries in the wheels (fast-forward when 0 and nothing is ready)
     const char* const* unit_names = nullptr;   // for messages
@@ -194,6 +196,7 @@ struct Engine {
     void after(RunSet& r, uint32_t k, Wake w);
     void cycle();
     void run_until(Cycle end);
+    void check_leaks() const;          // debug builds: each class's slots in use against its ports and declared holds
     bool idle() const;
 
     void heap_set(uint32_t i, Cycle at);
@@ -272,7 +275,10 @@ inline void Ctx::put(FifoOut p, Word a, Word b) { Word* w = e_->append<2>(p.rout
 inline void Ctx::put(FifoOut p, Word a, Word b, Word c) { Word* w = e_->append<3>(p.route); w[0] = a; w[1] = b; w[2] = c; }
 
 // credit Fifo, producer side
-inline unsigned Ctx::credits(CreditOut p) const { return e_->fifos[e_->routes[p.route].dest].credits; }
+inline unsigned Ctx::credits(CreditOut p) const {
+    const Route& r = e_->routes[p.route];
+    return e_->fifos[r.dest].credits + (r.last_put == e_->now);   // as of the start of t, whatever this cycle's put
+}
 namespace detail {
 inline void credit_spend(Engine* e, CreditOut p) {
     FifoPort& f = e->fifos[e->routes[p.route].dest];
@@ -323,6 +329,7 @@ inline const Word* Ctx::read(RegIn p) const {
 }
 inline void Ctx::put(RegOut p, Word a) { Word* w = e_->append<1>(p.route); w[0] = a; }
 inline void Ctx::put(RegOut p, Word a, Word b) { Word* w = e_->append<2>(p.route); w[0] = a; w[1] = b; }
+inline void Ctx::put(RegOut p, Word a, Word b, Word c) { Word* w = e_->append<3>(p.route); w[0] = a; w[1] = b; w[2] = c; }
 
 // Wire
 inline Word Ctx::read(WireIn p) const {

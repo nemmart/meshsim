@@ -352,3 +352,29 @@ DEATH_TEST(d24_wake_in_the_past_under_the_hook, "unit 'past' asked to be woken a
     Sim s = cfg.build();
     under_hook([&] { s.run(3); });
 }
+
+// W4's finding: when the machine goes idle the engine jumps ahead; the jump must not skip the judgement of a suspect whose
+// threshold is above 1. The burst ends at 17, the forgetful sink's last step leaves data at 18, and then nothing runs: the
+// sink, with a threshold of 5, must still be reported at the end of cycle 22 (18 + 5 - 1), not skipped by the jump.
+DEBUG_DEATH_TEST(an_idle_jump_does_not_skip_a_suspects_judgement, "missed wake at cycle 22: sink is asleep with data waiting in sink.in") {
+    Config cfg;
+    auto& b = cfg.add<Burst>("burst");
+    auto& f = cfg.add<Forgetful>("sink");
+    cfg.connect(b.out, f.in);
+    cfg.missed_wake_after("sink", 5);
+    Sim s = cfg.build();
+    s.run(1000000);
+}
+
+TEST(an_idle_jump_still_jumps_when_no_suspect_is_due) {
+    // the same machine with the sink's detector off: the run of 10^9 cycles still takes the jump (a few steps in all)
+    Config cfg;
+    auto& b = cfg.add<Burst>("burst");
+    auto& f = cfg.add<Forgetful>("sink");
+    cfg.connect(b.out, f.in);
+    cfg.missed_wake_after("sink", 0);
+    Sim s = cfg.build();
+    s.run(1000000000);
+    CHECK(s.steps("sink") < 20u);
+    CHECK_EQ(s.now(), Cycle(1000000001));
+}

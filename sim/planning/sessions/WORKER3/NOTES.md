@@ -537,6 +537,15 @@ per-cycle dependency chain matters on M2's busy workloads, the fix to look for i
 bookkeeping (fewer store-to-load round trips per simulated cycle: the ready word, the next-cycle bit, the run masks), not
 a lone-unit special case. Carried to M2 in PLAN-M1.md.
 
+### The idle jump and the detector (W4's finding, 2026-11-07)
+
+When the machine went idle the engine jumped to the next wake and skipped the detector's end-of-cycle checks, so a suspect
+with a threshold above 1 was never judged (locally and across domains). Fixed by capping the jump at the earliest
+suspect's deadline (`Engine::suspect_deadline`, debug only): the jump keeps its cost when there are no suspects. On an
+idle machine only a credit output with no credit left can keep a suspect fine, and it stays so until a unit steps, so such
+suspects set no deadline. Tests: a sink with a threshold of 5 missing a wake just before the machine goes idle is reported
+at cycle 22 (18 + 5 - 1), and fails with the cap removed; with the detector off, 10^9 idle cycles still take the jump.
+
 ## Log
 
 - 2026-11-07: plan agreed (owner's go-ahead with five notes). W2's audit not yet on `sim-w2`; W6 not started.
@@ -559,3 +568,5 @@ a lone-unit special case. Carried to M2 in PLAN-M1.md.
 - 2026-11-07: D24 (the detector formats into a fixed buffer; every diagnostic tested under the hook; W5's death test back
   under it); NEXT.md folded in.
 - 2026-11-07: the rings' 32-bit fields (a branchy wrap found locally); Quest 132, the performance pass A/B on the runner.
+- 2026-11-07: the solo loop set aside; the result-only form's test; REPORT drafted; the idle jump capped at the earliest
+  suspect's deadline (W4's finding).

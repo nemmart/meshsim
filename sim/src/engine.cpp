@@ -153,6 +153,7 @@ void Engine::run_until(Cycle end) {
         if constexpr (kDebug) if (leak_every && npools && now % leak_every == 0) check_leaks();
         if (!step_all && idle()) {                     // nothing in flight, nothing ready: jump to the next wake
             Cycle t = next_wake();
+            if constexpr (kDebug) if (detector && nsuspects) { const Cycle d = suspect_deadline(); if (d < t) t = d; }
             if (t > end + 1) t = end + 1;
             if (t > now) now = t;
         }
@@ -249,6 +250,20 @@ void Engine::run_level_debug(uint32_t& r) {
 // holds them all, and each take returns one: a return in the wheel, or one to come; if it never takes, that is a
 // deadlock, not a missed wake), or a Hold put it made this cycle (a refusal at t + 1 wakes it). Anything else is reported once it has lasted the unit's
 // threshold. Not seen: a wait on a Wire's change (sim.h).
+// The jump of an idle machine must not skip a suspect's judgement (W4's finding): the earliest cycle at whose end a
+// suspect would be reported. On an idle machine nothing is in flight, so only a credit output with no credit left can keep
+// a suspect fine, and it stays so until some unit steps (which ends the idleness): such suspects set no deadline.
+Cycle Engine::suspect_deadline() const {
+    Cycle d = kNoCycle;
+    for (uint32_t k = 0; k < nsuspects; k++) {
+        const uint32_t i = suspects[k];
+        if (suspect_since[i] == kNoCycle || on_its_way(i)) continue;
+        const Cycle due = suspect_since[i] + missed_after[i] - 1;   // check_suspects reports at the end of this cycle
+        if (due < d) d = due;
+    }
+    return d;
+}
+
 bool Engine::on_its_way(uint32_t i) const {
     for (uint32_t w = watch_first[i]; w < watch_first[i + 1]; w++) {
         const Watch& x = watch[w];

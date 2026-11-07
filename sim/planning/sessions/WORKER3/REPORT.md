@@ -1,7 +1,7 @@
 # WORKER3 (sim/): report
 
-Branch `sim-w3`, merged into main through the performance pass and D24 (fcb1015), and later commits as listed in the log
-of `NOTES.md`. PLAN-M1 items 3-6: configuration, the engine, the port kinds (local forms), the debug checks; the unit
+Branch `sim-w3`, merged into main (last: 9e126a1, the idle jump's cap); the final re-run on main a77ac03 (W4's form 2
+and E5 digest). PLAN-M1 items 3-6: configuration, the engine, the port kinds (local forms), the debug checks; the unit
 author's API first. Every detail, finding and decision is in `NOTES.md`; this is the summary.
 
 ## What was built
@@ -40,8 +40,14 @@ author's API first. Every detail, finding and decision is in `NOTES.md`; this is
 | Options never silently ignored | `test_debug` an_option_not_implemented_is_refused (`threads`) | pass |
 | Type ids per configuration (E1, for W4) | `test_registry`: first-add order per Config; three threads building at once (TSan-clean) | pass |
 
-After W4's E5 digest reaches main: the step-all comparisons and W5's goldens under the six option sets re-run with it
-(**pending**: the integrator's signal).
+**Re-run with W4's E5 digest** (main a77ac03: W4's form 2 and E5, unit by unit in add order, wide payloads by their
+contents, merged into `sim-w3`; no conflict): `make check` passes in every build (gcc and clang, debug and release; both
+TSan builds), 21 test binaries each. The step-all comparisons: W4's synthetic chip digests the same under all seven option
+sets (ready-driven, shuffle seeds 1-3, instance-major alone and with a seed, step-all); step-all still catches a
+forgotten `next()` (`test_debug`) and W5's two broken blocks (CountingBlock: ready-driven e57594832d78cfaf against
+step-all 739d8e39d4462446; LazyBlock: abc0c646391598ff against 10ccadefe6731367), and the detector still reports the lazy
+block under the allocation hook; W4's `test_digest` passes. **W5's 67 goldens under the six option sets: 67 runs, 0
+differ** (`golden --engine`, clang release).
 
 ## The performance pass (Quest 132)
 

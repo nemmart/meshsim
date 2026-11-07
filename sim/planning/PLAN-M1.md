@@ -84,7 +84,9 @@ run, so nothing outside the controller has to be modelled in M1.
   takes effect and every same-cycle query. It is W5's specification of the register-block subset and the test bench.
 - **The M1 programs** (`sim/fw/`): CSRs, `mcycle`/`mtime`, WFI woken by a command and by GO; sources, build script and images
   committed; each run in `ref` with a driver that lands the commands and GO where the program expects them.
-- **Golden traces** (`sim/tests/golden/`) for every M1 program, each run on the traced tile alone.
+- **Golden traces** (`sim/tests/golden/`) for every M1 program, each run on the traced tile alone. Each starts with a **header
+  recording its configuration** (D12): the latencies (GO and READY 8, the register load, the rest of `Config`'s relevant
+  values), `stage_delay`, the shuffle seed, the tile, and the image's sha256.
 - **The baseline** (D8): ReplayBench (on `sim-step-cost`) as 1 JVM and as 16 JVMs at once on the runner: µs per chip-cycle per
   JVM and chip-cycles per second in aggregate. The bar the framework is judged against.
 
@@ -114,6 +116,8 @@ run, so nothing outside the controller has to be modelled in M1.
 - TSan, ASan and UBSan clean; the scaling of N independent instances on N threads measured.
 
 **W5, the controller.**
+- The test bench checks its own configuration against the golden trace's header before comparing, and refuses on any
+  difference, naming it (D12).
 - Every M1 program's trace equal to its golden trace, line for line, from reset to halt; halt reason, registers, CSRs,
   `mcycle` and the data-memory digest equal.
 - Shuffle and order checks pass; sanitizers clean.

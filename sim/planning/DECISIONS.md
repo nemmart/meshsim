@@ -36,3 +36,10 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   owner reviews W3's API header after the integrator: it decides whether units are easy to build, half the goal.
 - **D11. Files.** The new series' workers live in `sim/planning/sessions/` (never colliding with the old WORKER1-30); this
   project's decisions in `sim/planning/`.
+
+## 2026-11-07
+
+- **D12. A golden trace carries its configuration.** Every golden trace starts with a header: the latencies (GO and READY 8,
+  the register load, the rest of `Config`'s relevant values), `stage_delay`, the shuffle seed, the tile, and the image's
+  sha256. The C++ test bench checks its own configuration against the header before comparing and refuses on any difference,
+  so a parameter mismatch shows as one clear error rather than every cycle disagreeing.

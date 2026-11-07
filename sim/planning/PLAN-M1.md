@@ -152,6 +152,10 @@ section 3 predict.
   counters. M1 covers the interrupt only inside a handler that sets MIE again (`irq`); W5 still implements `ref`'s rule in
   full, and M2 tests these paths once the counters exist.
 
+- **A Link whose consumer may hold up to a declared depth** (W4's footprint breakdown, 2026-11-07): today a Link's consumer
+  must take each word the cycle it arrives, so a router copies it into its own queue, holding every word twice (~74 KB of
+  the framework mesh's 228 KB). Also the worst-case wheel sizing (W3, flagged earlier).
+
 ## Layout
 
 `sim/Makefile`; `sim/src/` (the framework, then `units/`); `sim/tests/` (C++ tests, the Java drivers, `golden/`,

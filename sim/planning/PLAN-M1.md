@@ -135,6 +135,6 @@ Workers may refine the layout under `src/` and `tests/` in their plans.
 
 | worker | state |
 |---|---|
-| W1 | prompt written 2026-11-06 (`sessions/WORKER1/PROMPT.md`) |
+| W1 | **done**, merged 2026-11-07 (`sessions/WORKER1-REPORT.md`); D4: prebuilt firmware images, the C++ shipped as source |
 | W2 | prompt written 2026-11-06 (`sessions/WORKER2/PROMPT.md`) |
 | W3, W4, W5, W6 | not started |

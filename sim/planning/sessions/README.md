@@ -10,3 +10,4 @@ here as `WORKERn-REPORT.md` etc., with a line in the table below, and its folder
 
 | session | what it did | kept here |
 |---|---|---|
+| WORKER1 | the build (plain make, gcc and clang, debug with ASan/UBSan and release), `FATAL`/`DCHECK`, the allocation hook, the cycle loop's structures (Ring, Bitmap, ValuePool, Bucket, the arena) with unit, differential and death tests; the runner probe (Quest 121: hybrid 6P+4E, gcc only, no riscv toolchain) and D4's answer | `WORKER1-REPORT.md` (the interfaces, the runner, notes for W3 and W6), `WORKER1-NOTES.md` (the plan and its details) |

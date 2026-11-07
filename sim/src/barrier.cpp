@@ -36,8 +36,7 @@ void Barrier::wait() {
     }
     double since = 0;
     for (unsigned k = 0; round_.load(std::memory_order_acquire) == r; k++) {
-        if (k < 2000) { pause(); continue; }
-        if constexpr (kDebug) if (secs_ > 0 && (block_ || (k & 1023) == 0)) {   // the watchdog
+        if constexpr (kDebug) if (secs_ > 0 && ((k & 1023) == 1023 || (block_ && k >= spins_))) {   // the watchdog
             const double now = seconds();
             if (since == 0) since = now;
             else if (now - since > secs_) {
@@ -45,7 +44,8 @@ void Barrier::wait() {
                 FATAL("barrier: waited more than %.0f s for the other threads (their state above)", secs_);
             }
         }
-        if (!block_) { sched_yield(); continue; }                       // spinning, but not starving a thread sharing the CPU
+        if (k < spins_) { pause(); continue; }
+        if (!block_) { sched_yield(); continue; }                       // not starving a thread sharing the CPU
         const timespec tick{0, 100000000};                              // 0.1 s: returns at once if the round moved on
         syscall(SYS_futex, reinterpret_cast<uint32_t*>(&round_), FUTEX_WAIT_PRIVATE, r, &tick, nullptr, 0);
     }

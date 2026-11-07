@@ -6,7 +6,7 @@
 #
 # TSan can't share a process with ASan, so it is its own build, debug-like (-O1 -g, SIM_DEBUG's checks on).
 
-TSAN_TESTS := test_parallel test_threads test_topology
+TSAN_TESTS := test_parallel test_threads test_topology test_matrix
 TB         := build/$(CC_NAME)-tsan
 TSAN_FLAGS := $(COMMON) -O1 -g -DSIM_DEBUG -fsanitize=thread -fno-omit-frame-pointer -pthread
 TB_LIB     := $(LIB_SRC:%.cpp=$(TB)/%.o)

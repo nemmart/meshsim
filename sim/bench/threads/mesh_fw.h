@@ -54,17 +54,17 @@ struct Router {
     uint32_t tile;
     uint8_t credits[4], rr[5], head[5], count[5];
     uint8_t pad[1] = {0};
-    Word q[5][kInjDepth][3];          // queues 0-3 use kDepth entries, 4 (injection) kInjDepth
+    Word lq[4][kDepth][3];            // the input queues, fed by the links
+    Word iq[kInjDepth][3];            // the injection queue
 
     uint64_t digest() const {
-        return hash_fields(in, out, cin, cout, rng, dig, thresh, sends, ejects, injected, refused, tile, credits, rr, head,
-                           count) ^ live_words();
+        return hash_fields(rng, dig, thresh, sends, ejects, injected, refused, tile, credits, rr, head, count) ^ live_words();
     }
     uint64_t live_words() const {
         uint64_t h = 0;
         for (unsigned i = 0; i < 5; i++)
             for (unsigned k = 0; k < count[i]; k++) {
-                const Word* w = q[i][(head[i] + k) % cap(i)];
+                const Word* w = at(i, (head[i] + k) % cap(i));
                 h = fold(fold(fold(h, w[0]), w[1]), w[2]);
             }
         return h;
@@ -82,11 +82,14 @@ struct Router {
         rng = seed * 0x100000001b3ull + t;
         splitmix(rng);
         thresh = rate >= 1.0 ? ~uint64_t(0) : uint64_t(rate * 18446744073709551616.0);
-        for (auto& a : q) for (auto& b : a) b[0] = b[1] = b[2] = 0;
+        for (auto& a : lq) for (auto& b : a) b[0] = b[1] = b[2] = 0;
+        for (auto& b : iq) b[0] = b[1] = b[2] = 0;
     }
 
-    Word* push(unsigned i) { Word* w = q[i][(head[i] + count[i]) % cap(i)]; count[i]++; return w; }
-    const Word* front(unsigned i) const { return q[i][head[i]]; }
+    Word* at(unsigned i, unsigned k) { return i == 4 ? iq[k] : lq[i][k]; }
+    const Word* at(unsigned i, unsigned k) const { return i == 4 ? iq[k] : lq[i][k]; }
+    Word* push(unsigned i) { Word* w = at(i, (head[i] + count[i]) % cap(i)); count[i]++; return w; }
+    const Word* front(unsigned i) const { return at(i, head[i]); }
     void pop(unsigned i) { head[i] = uint8_t((head[i] + 1) % cap(i)); count[i]--; }
 
     Wake step(Ctx& c) {

@@ -85,7 +85,11 @@ struct Options {
                                       // waiting and nothing on its way, 0 = off
     bool missed_wake_fatal = true;    // else report and go on
     unsigned leak_check_every = 0;    // debug builds: check the slot pools every N cycles too (always at the end of a run)
-    unsigned threads = 1;        // 1 only: independent chips run on threads with run_independent (W4, form 1)
+    unsigned threads = 1;        // W4: OS threads for a machine split over domains (Config::domain), at most one per
+                                 // domain; domains are spread over them in order. Independent chips: run_independent
+    std::vector<int> cpus;       // W4 (A2, D21): thread k pinned to cpus[k % size]; empty: the detected default placement
+                                 // (topology.h); a CPU of -1: that thread not pinned ({-1}: leave placement to the OS)
+    bool barrier_block = false;  // W4: the barrier sleeps (futex) after a short spin, instead of spinning (barrier.h)
 };
 
 // Sizes computed by build(): words allocated per thread, by structure and by unit type, and per chip (D15).
@@ -117,6 +121,8 @@ struct TypeInfo {
     void (*run[2])(Engine&, RunSet&);             // by Form: cycle, result (null if the type has no result form)
     void (*one[2])(Engine&, RunSet&, uint32_t);   // one instance, by Form (the debug orders)
     uint64_t (*digest)(const void* obj);          // T::digest() if it has one, else its bytes (sim.h, DEBUG CHECKS)
+    bool own_digest = false;                      // W4 (E5): T::digest() is the author's; else the machine's digest
+                                                  // hashes the bytes with the port handles left out (digest.cpp)
 };
 
 // The run function of a (type, form): one per run, called once per run per cycle with the run's ready instances. This
@@ -184,6 +190,7 @@ const TypeInfo* type_ops() {
         t.one[1] = nullptr;
         if constexpr (HasResultForm<T>) { t.run[1] = &run_form<T, true>; t.one[1] = &step_one<T, true>; }
         t.digest = &digest_of<T>;
+        t.own_digest = HasDigest<T>;
         return t;
     }();
     return &info;
@@ -192,8 +199,11 @@ const TypeInfo* type_ops() {
 
 class Sim;
 
+namespace detail { struct Internals; }   // W4: the digest unit by unit (digest.h, E5) and the split into domains (E3)
+
 class Config {
     friend class Ports;     // a unit's declarations land in the configuration being built
+    friend struct detail::Internals;
 public:
     explicit Config(Options o = {});
     ~Config();
@@ -262,6 +272,8 @@ public:
     uint64_t steps(const std::string& unit_name) const;   // how many times an instance was stepped (idle-unit tests)
     uint16_t type_of(const std::string& unit_name) const; // the unit's type id in this machine (first-add order, E1)
     std::string sleepers() const;      // the end-of-run report: units asleep with data waiting, their ports, since when
+    std::string partition() const;     // W4: the domains, threads, crossings by kind, and the barrier interval with the
+                                       // crossing that set it ("one domain" for a machine that isn't split)
 
     Sim(Sim&& o) noexcept;
     Sim& operator=(Sim&& o) noexcept;
@@ -269,6 +281,7 @@ public:
 
 private:
     friend class Config;
+    friend struct detail::Internals;
     struct Impl;
     explicit Sim(Impl* i) : impl_(i) {}
     void* unit_ptr(const std::string& name, const detail::TypeInfo* type) const;

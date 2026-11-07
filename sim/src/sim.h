@@ -97,6 +97,11 @@
 // checked by a static_assert at `add`). A type with padding, or holding a pointer (to a memory allocated apart: its value
 // differs between two machines built side by side), must define digest(), usually one line with `hash_fields` (below);
 // so a flaky digest is a compile error, not an intermittent difference.
+// The machine's digest goes unit by unit in add order (W4, E5: digest.h), so it doesn't depend on how the build numbered
+// anything, and a machine split over threads gives the same digest as in one: **a unit's own digest() leaves out its port
+// handles** (they are the build's numbering, not its state; the default, its bytes, leaves them out by itself), and
+// **a slot index is opaque** (R1): which index a by-reference payload gets changes with the partition, so neither the
+// unit's behaviour nor its digest() may depend on the value (hash the slot's contents; the framework does so for ports).
 //   shuffle      within a level, runs and instances in a seeded random order: any difference is an undeclared dependence
 //                (a missing Wire); bisect the level to find it.
 //   two orders   type-major (each run's instances together) against instance-major (each instance's units together).

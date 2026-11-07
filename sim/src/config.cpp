@@ -1,6 +1,8 @@
 // config.cpp: building a machine (WORKER3, stage 2). The configuration regime (D6): any C++.
 //
 #include "config_impl.h"
+#include "digest.h"
+#include "threads.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -188,13 +190,15 @@ unsigned pow2_above(unsigned x) { unsigned w = 2; while (w <= x) w <<= 1; return
 Sim Config::build() {
     Impl& I = *impl_;
     if (I.built) FATAL("build() called twice");
+    if (detail::split_needed(I)) { I.built = true; return Sim(detail::Internals::split(I)); }   // W4 (E3): several domains
     I.built = true;
     using Decl = Impl::Decl;
     const uint32_t n = uint32_t(I.units.size());
 
     // 0. every option is implemented, or refused: an option set must never be silently ignored (integrator, 2026-11-07)
     if (I.opt.threads != 1)
-        FATAL("option threads = %u not implemented: run independent chips with run_independent (W4, form 1)", I.opt.threads);
+        FATAL("option threads = %u not implemented for one domain: split the machine with Config::domain, or run independent "
+              "chips with run_independent (W4)", I.opt.threads);
 
     // 1. every port wired (a Count may stand alone: a counter no one reads, or read but never incremented)
     for (const Decl& d : I.decls)
@@ -706,6 +710,7 @@ Sim Config::build() {
     z.words_per_chip = z.total_words / z.chips;
     z.wheel_buckets = 0;
     for (auto& w : wheels) z.wheel_buckets = std::max(z.wheel_buckets, w.W);
+    detail::Internals::record_view(I, inst_of, S->view);       // W4 (E5): the digest, unit by unit
     return Sim(S);
 }
 
@@ -719,17 +724,25 @@ Sim& Sim::operator=(Sim&& o) noexcept {
 }
 Sim::~Sim() { delete impl_; }
 
-void Sim::run(Cycle n) { if (n) impl_->e.run_until(impl_->e.now + n - 1); }
-void Sim::run_until(Cycle t) { impl_->e.run_until(t); }
-Cycle Sim::now() const { return impl_->e.now; }
-const Sizes& Sim::sizes() const { return impl_->sizes; }
+// W4 (E3): a machine split over domains forwards each operation to its threads (threads.h; its run_until(end) runs the
+// cycles before `end`, so these keep W3's meaning: run(n) runs n cycles, run_until(t) runs through t inclusive).
+void Sim::run(Cycle n) {
+    if (impl_->threads) return impl_->threads->run_until(impl_->threads->now() + n);
+    if (n) impl_->e.run_until(impl_->e.now + n - 1);
+}
+void Sim::run_until(Cycle t) { if (impl_->threads) return impl_->threads->run_until(t + 1); impl_->e.run_until(t); }
+Cycle Sim::now() const { return impl_->threads ? impl_->threads->now() : impl_->e.now; }
+const Sizes& Sim::sizes() const { return impl_->threads ? impl_->threads->sizes() : impl_->sizes; }
+std::string Sim::partition() const { return impl_->threads ? impl_->threads->partition() : std::string("one domain"); }
 
 uint16_t Sim::type_of(const std::string& name) const {
+    if (impl_->threads) return impl_->threads->type_of(name);
     auto it = impl_->by_name.find(name);
     if (it == impl_->by_name.end()) FATAL("no unit named '%s'", name.c_str());
     return impl_->inst[it->second].type;
 }
 void* Sim::unit_ptr(const std::string& name, const detail::TypeInfo* type) const {
+    if (impl_->threads) return impl_->threads->unit_ptr(name, type);
     auto it = impl_->by_name.find(name);
     if (it == impl_->by_name.end()) FATAL("no unit named '%s'", name.c_str());
     if (impl_->types[impl_->inst[it->second].type] != type)
@@ -738,47 +751,21 @@ void* Sim::unit_ptr(const std::string& name, const detail::TypeInfo* type) const
     return impl_->obj(it->second);
 }
 uint64_t Sim::steps(const std::string& name) const {
+    if (impl_->threads) return impl_->threads->steps(name);
     auto it = impl_->by_name.find(name);
     if (it == impl_->by_name.end()) FATAL("no unit named '%s'", name.c_str());
     return impl_->e.steps[it->second];
 }
 
-namespace {
-struct Hash {
-    uint64_t h = 0x9e3779b97f4a7c15ull;
-    void add(uint64_t v) { h ^= v + 0x9e3779b97f4a7c15ull + (h << 6) + (h >> 2); h *= 0xff51afd7ed558ccdull; }
-    void ring(const SlimRing& r) { add(r.count()); for (unsigned i = 0; i < r.count(); i++) for (unsigned k = 0; k < r.width(); k++) add(r.peek(i)[k]); }
-};
-}  // namespace
-
+// W4 (E5): unit by unit in add order, wide payloads by their contents (digest.h).
 uint64_t Sim::digest() const {
-    const Engine& e = impl_->e;
-    Hash h;
-    h.add(e.now);
-    // ports, in pool order: their visible state (not who is scheduled: step-all and the ready-driven run must agree)
-    for (uint32_t i = 0; i < e.nlinks; i++) { h.ring(e.links[i].ring); h.add(e.links[i].inflight); }
-    for (uint32_t i = 0; i < e.nfifos; i++) { h.ring(e.fifos[i].ring); h.add(e.fifos[i].overflows); h.add(e.fifos[i].first_overflow); }
-    for (uint32_t i = 0; i < e.nholds; i++) {
-        const HoldPort& p = e.holds[i];
-        h.add(p.occ); h.add(p.refusals); h.add(p.refused_at);
-        if (p.occ) for (unsigned k = 0; k < p.width; k++) h.add(p.w[k]);
-    }
-    for (uint32_t i = 0; i < e.nfifos; i++) h.add(e.fifos[i].credits);
-    for (uint32_t i = 0; i < e.nregs; i++) { h.add(e.regs[i].valid); for (unsigned k = 0; k < e.regs[i].width; k++) h.add(e.regs[i].w[k]); }
-    for (uint32_t i = 0; i < e.nwires; i++) h.add(e.wires[i].v);
-    for (uint32_t i = 0; i < e.nregfiles; i++) for (uint32_t k = 0; k < e.regfiles[i].n; k++) h.add(e.regfiles[i].regs[k]);
-    for (uint32_t i = 0; i < e.ncounts; i++) h.add(e.counts[i].total);
-    for (uint32_t k = 0; k < e.npools; k++) {                 // by-reference payloads: which slots are in use, and their words
-        const SlotPool& p = e.pools[k];
-        h.add(p.in_use());
-        for (uint32_t i = 0; i < p.capacity(); i++)
-            if (p.allocated(i)) { h.add(i); for (unsigned w = 0; w < p.slot_words(); w++) h.add(p.slot(i)[w]); }
-    }
-    for (uint32_t k = 0; k < e.ninst; k++) h.add(impl_->types[impl_->inst[k].type]->digest(impl_->obj(k)));
-    return h.h;
+    if (impl_->threads) return impl_->threads->digest();
+    const Sim::Impl* one = impl_;
+    return detail::Internals::digest(impl_->view, &one, impl_->e.now);
 }
 
 std::string Sim::sleepers() const {
+    if (impl_->threads) return impl_->threads->sleepers();
     const Engine& e = impl_->e;
     std::string out;
     for (uint32_t k = 0; k < e.ninst; k++) {

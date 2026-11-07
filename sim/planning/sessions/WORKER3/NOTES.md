@@ -174,6 +174,18 @@ and the traces (`sim.h`); and a unit stepped by a delivery it didn't ask for (th
 stall) handles it and sleeps on, which is the step-all rule already stated. The one-put-per-cycle rule shaped MEMW into one
 packed entry per packet: no API change. Lines: core 64, register block 45, bench 24 (166 with the configuration).
 
+### The conformance driver, Java side (2026-11-07; the integrator's go-ahead, before the owner's review)
+
+`sim/tests/ref/PortConfGen.java` (the seeded script), `PortConfDriver.java` (runs it on `ref`'s `WordDelayLine`,
+`WordFIFO`, `WordBackpressureFIFO`, `WordHold`, `WordLatch`, `WordBackpressureDelayLine`), `portconf.sh` (builds `ref`
+unchanged plus the two, runs the matrix, checks that `ref` never raises and that both are deterministic, writes the
+observations' sha256s). The format is PORTS.md section 10. Full matrix: 51 runs × 10^5 cycles, 70 s, 346 MB of scripts and
+observations (not committed).
+
+For stage 2 (proposal): `make check` can't need Java, so a small fixture set (each configuration at seed 1, 2,000 cycles,
+script and `ref`'s observations, about 7 MB) is committed for the C++ test, and the full matrix runs as `make conformance`
+(Java present) and on the runner. The C++ side is not started (the owner's go-ahead).
+
 ## Log
 
 - 2026-11-07: plan agreed (owner's go-ahead with five notes). W2's audit not yet on `sim-w2`; W6 not started.
@@ -181,3 +193,4 @@ packed entry per packet: no API change. Lines: core 64, register block 45, bench
   W6's findings (through the integrator) before the review.
 - 2026-11-07: the integrator's five notes folded in (step-all, Counts as events, clang, the bench from REQ-FREED).
 - 2026-11-07: main merged (W2 closed); sketch 2 revised against AUDIT-M1.md and TRACE-FORMAT.md. Waiting for W6's report.
+- 2026-11-07: the conformance driver's Java side (PortConfGen, PortConfDriver, portconf.sh); the full matrix runs clean.

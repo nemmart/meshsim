@@ -17,3 +17,11 @@ Three additions to the performance pass:
 
 3. Still hold on W4's digest: its E5 needs one more fix commit (port handles left out of the default digest). I'll tell
    you when to merge it.
+
+4. From W5 (the debug checks now run everywhere, and its deliberately broken units prove step-all and the detector bite):
+   **the missed-wake report allocates inside the run.** The detector builds its message as a std::string in the cycle
+   loop, so under W1's allocation hook the hook fires first ("operator new of 37 bytes inside a run") and the missed-wake
+   message is never seen, in both fatal and report-and-go-on modes. Smallest case: W5's lazy block on hello, debug build,
+   inside begin_run()/end_run() (sim/tests, test_broken_units). Fix: format into a fixed buffer (snprintf) or straight to
+   stderr, with no allocation in either mode; then W5 can run its detector death test under the hook again. Check the
+   other debug reports (leak check, wire discipline) for the same.

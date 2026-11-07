@@ -34,6 +34,12 @@ second** for the whole box (12 JVMs on the P-cores: 96,800; 16 on every CPU: 108
 slower than one alone, more than hyperthreading explains: shared cache and memory, as the measurements in SIMULATOR-NEXT
 section 3 predict.
 
+**The first comparison with `ref`** (W5, Quest 130, one P-core): the same long loop program, identical traces. The framework
+runs it at **44.0 M instructions/s**; `ref` at 0.76 M with idle-skip on (0.91 µs per chip-cycle) and 0.019 M with it off
+(36 µs, D15's bar). Most of `ref`'s time is chip-level work M1 doesn't model yet (the request bus, overflow scans, the
+chip loop); **unit for unit** (Controller plus TileControl), `ref` spends ~104 ns per instruction against the framework's
+~23 ns, engine included: **about 4.5×**, the honest figure for now.
+
 ## Components, in build order
 
 1. **Build and discipline.** Plain `make` (`sim/Makefile`), gcc and clang, C++20, `-fno-exceptions -fno-rtti -Wall -Wextra

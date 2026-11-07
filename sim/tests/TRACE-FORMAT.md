@@ -60,8 +60,8 @@ cycles after a halt) write no line.
 | `C HALT R pc=P` | the core stops at C: `R` is `Controller`'s halt reason (2 `ecall`, 3 `ebreak`, 5 `SIM_EXIT`, 6 a fetch outside program memory and the boot ROM, 7 a misaligned jump target, 8 a trap inside the handler); `P` the halting instruction's address | no |
 | `C UB UNIT: WHAT` | `ref` stopped at C on undefined behavior (`UndefinedBehavior`: in M1 a misaligned load or store), written by the driver; `WHAT` is ref's description (e.g. `a misaligned 4-byte load from 0x102 at pc 0x1000050`) | no |
 
-**Order within a cycle C**: `REQ-FREED`, `MEMW` (in address order), `GO`, `CMD`, then `WAKE`, `REQ-REFUSED`, `TRAP` or
-the retire line, then `HALT`. `ref` writes the lines labelled C (`MEMW`, `GO`, `CMD`) at the end of C - 1, after every unit
+**Order within a cycle C**: `MEMW` (in address order), `GO`, `CMD`, then `WAKE`, `REQ-REFUSED`, `TRAP` or the retire
+line, then `HALT`, then `REQ-FREED`. `ref` writes the lines labelled C (`MEMW`, `GO`, `CMD`) at the end of C - 1, after every unit
 of the tile has run C - 1, and `REQ-FREED` for C at the end of C; the order above is the order in the file, which the
 C++ side writes the same way. A trace's cycles never decrease.
 

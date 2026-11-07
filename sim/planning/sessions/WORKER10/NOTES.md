@@ -188,3 +188,14 @@ Wire, RegFile and Count are already readable from their producers' and readers' 
   loop (no cost when off). Mesh by profile: load max/mean 1.009 / 1.028 / 1.031 / 1.041 / 1.068 at 2 / 4 / 6 / 8 / 12
   threads, the digest equal at each. test_partition 7/7 (debug, release). The between-cycles wake `Sim::wake` (W9's
   driver), tests beside the stop request: one domain and split, exact cycle, digest equal.
+- 2026-11-07: **38f1784 clean** (placement by load, calibration, the wake): clean checkout, build by build, gcc and clang
+  debug and release (26 test binaries each) and TSan gcc and clang (7 binaries, test_partition added).
+- 2026-11-07: **Quest 137** (the cheaper split, before 45b4cbf / after 2e016ea, interleaved; i5-14400F): one thread
+  unchanged (mesh 5.418 -> 5.423 us; 0.05: 1.182 -> 1.197; synth 6.407 -> 6.431; instructions +0.02%): the observer's
+  and the stop's branches cost nothing measurable. Split on one thread: rows 2-8 now 0-1% (was 3-20%), tiles 64 now
+  5.42 us and 24,136 words (was 15.82 us, 103,552 words: 2.9x, 4.3x). Form 2 by tiles: 2 / 4 / 6 / 8 / 12 threads
+  2.91 / 1.85 / 1.60 / 1.57 / 1.66 us (was 8.48 / 5.08 / 4.18 / 3.66 / 3.11): **3.38x at 6 threads** (rows 2.76x);
+  synth 1.12 / 1.33 / 1.21 / 1.29x (was 0.62 / 1.06 / 0.98 / 1.29x). W4's layout kept measurable: 64 engines on one
+  thread 15.61 us. Every digest equal across both revisions. The plateau (~1.6 us at 6-12 threads against 0.9 ideal) is
+  the next target: the per-interval fixed cost (barrier every 3 cycles, the drain's copy, ~11% of instructions at 6
+  engines locally) and imbalance (Quest 138 measures placement by load).

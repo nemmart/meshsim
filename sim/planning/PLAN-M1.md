@@ -127,6 +127,14 @@ run, so nothing outside the controller has to be modelled in M1.
 - Reported: lines of code against `Controller.java` (444) and the subset of `TileControl` it replaces; instructions per
   second against `ref`.
 
+## Carried to M2
+
+- `regs.c` and `wfi.c` (D2): they send through the router and use the write counters, GO and commands.
+- **The external interrupt from ordinary code, and a pending interrupt waiting for a multiply or branch stall** (W2,
+  2026-11-07): the only controller-local error source that doesn't trap first is "done early", which needs the write
+  counters. M1 covers the interrupt only inside a handler that sets MIE again (`irq`); W5 still implements `ref`'s rule in
+  full, and M2 tests these paths once the counters exist.
+
 ## Layout
 
 `sim/Makefile`; `sim/src/` (the framework, then `units/`); `sim/tests/` (C++ tests, the Java drivers, `golden/`,

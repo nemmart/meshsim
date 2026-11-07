@@ -6,7 +6,8 @@
 // wiring them, sizing, building) is in config.h.
 //
 // ---------------------------------------------------------------------------------------------------------------------
-// THE CYCLE (per thread; t is the cycle)
+// THE CYCLE (per thread; t is the cycle). Cycles are numbered from 1, as in `ref` (`Chip.step` runs `++cycle`) and its
+// traces; configuration (loading images included) happens before cycle 1.
 //
 //   1. Deliver t. The framework walks the delivery buckets due at t, one wheel per port kind (and word width):
 //        Link   words put at t - L join the port's visible ring;

@@ -69,7 +69,7 @@ No change foreseen; any proposal goes here first.
 | the port semantics | `sim/src/PORTS.md` | draft |
 | the API | `sim/src/sim.h` (the unit author's view), `sim/src/config.h` (building a machine) | draft, declarations only |
 | sketch 1, a FIFO consumer | `sim/src/sketch/write_engine.cpp` (`ref`'s WriteEngine) | compiles (gcc and clang, `make check`) |
-| sketch 2, the controller's surroundings | `sim/src/sketch/controller.cpp` (core, register block subset, test bench) | compiles; from PLAN-M1 item 8, **to revise against W2's AUDIT.md** (not yet on `sim-w2`) |
+| sketch 2, the controller's surroundings | `sim/src/sketch/controller.cpp` (core, register block subset, test bench) | compiles; **revised against `sim/tests/AUDIT-M1.md` and `TRACE-FORMAT.md`** (main, W2 merged) |
 | W6's findings | — | not yet (W6 not started); widths are per port, at run time |
 
 `sim/Makefile`: one rule added (the sketches are compiled in every build, never linked or run).
@@ -134,7 +134,7 @@ No change foreseen; any proposal goes here first.
    no longer catch a core that stalls on the wrong cycle; modelled this way it is an output, checked line for line. The
    trace's GO and CMD lines at s mean "seen from s", so the bench puts them at s - 1. To check against AUDIT.md.
 
-### For sketch 2's revision against AUDIT.md (integrator, 2026-11-07)
+### For sketch 2's revision against AUDIT.md (integrator, 2026-11-07; done, below)
 
 - **MEMW**: port-B writes into the traced tile's memories, as a bench `Link` carrying address and value into the core
   (visible from t + 1, as W2's observer writes them).
@@ -143,9 +143,41 @@ No change foreseen; any proposal goes here first.
   8). So **the engine numbers its first cycle 1, as `ref` and the traces do**, and the bench refuses at configuration
   (fatal, naming the event) any event that would need a put before the first cycle.
 
+### Sketch 2 against AUDIT-M1.md (2026-11-07)
+
+Main merged into `sim-w3` (W2's audit, trace format, goldens). The integrator's five checks:
+
+1. **`Controller.runCycle`'s order** (AUDIT 0): mcycle, halted, the interrupt (only when `stall == 0`), WFI's wake (going
+   on in the same cycle), the stall, execute. The sketch sleeps through a branch or multiply stall (an early wake finds it
+   still stalled, so no interrupt is taken during one), and judges the interrupt before WFI's wake. A register load's first
+   cycle and a refused `REQUEST_SEND` are not stalls: the instruction returns without retiring and is re-executed at
+   t + 1 after the interrupt check, so an interrupt preempts it with `mepc` = that instruction.
+2. **`errorsAt`**: the core puts the error on `bus` at t (an event, so it steps the block: PORTS.md 8); the block sets the
+   condition in `endCycle(t)` at level 0 of t + 1 and drives `irq`; the core sees it at t + 1, not before.
+3. **Memories and MEMW**: a MEMW line at C is a port-B write at C - 1; the bench puts it at C - 1 on `Link(1)` `memw`;
+   delivered at C, the core applies it at the start of its step at C, before executing: a load at C sees it, as the
+   start-of-cycle read rule says. A 64- or 128-bit packet writes up to four words in one cycle and a Link takes one put a
+   cycle, so the bench packs a cycle's words into one width-3 entry (address and count, then four 32-bit values in two
+   words); configuration checks they are consecutive and at most four.
+4. **The request FIFO** (depth 128, a free at t before the push at t): the count is the tile's (RequestPort), so it moved
+   from the bench into the register block. `canPush(t)` = `!req_busy || req_freed`: `req_busy` (the block's Wire,
+   STATUS [6], the count at the end of t - 1 at or above the depth) and `req_freed` (the bench's Wire, REQ-FREED at t).
+   The block's `endCycle(t)` counts t's free (a `Link(1)` event from the bench) and t's push (the store on `bus`), then
+   busy, then EVENTS [11] on its fall. The bench replays exactly AUDIT 5's four kinds: MEMW, GO, CMD, REQ-FREED.
+5. **`endCycle`'s same-cycle cases**: the block applies GO, then the store, then the landing (TileControl.java:227-258),
+   so a `PULSE_DONE` in GO's cycle leaves `done` and the gate set, and a command landing in GO's cycle sets `landed` and
+   EVENTS [9] after GO cleared `landed`. The consume clears only the bits the load returned under the mask, so a GO latched
+   in the same `endCycle` survives.
+
+**Did the API need a change?** No change to any operation. Two clarifications: cycles are numbered from 1, as in `ref`
+and the traces (`sim.h`); and a unit stepped by a delivery it didn't ask for (the core receiving MEMW while in WFI or a
+stall) handles it and sleeps on, which is the step-all rule already stated. The one-put-per-cycle rule shaped MEMW into one
+packed entry per packet: no API change. Lines: core 64, register block 45, bench 24 (166 with the configuration).
+
 ## Log
 
 - 2026-11-07: plan agreed (owner's go-ahead with five notes). W2's audit not yet on `sim-w2`; W6 not started.
 - 2026-11-07: stage 1 drafts pushed (PORTS.md, sim.h, config.h, two sketches). Waiting for W2's AUDIT.md (sketch 2) and
   W6's findings (through the integrator) before the review.
 - 2026-11-07: the integrator's five notes folded in (step-all, Counts as events, clang, the bench from REQ-FREED).
+- 2026-11-07: main merged (W2 closed); sketch 2 revised against AUDIT-M1.md and TRACE-FORMAT.md. Waiting for W6's report.

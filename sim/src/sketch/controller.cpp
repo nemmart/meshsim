@@ -1,205 +1,248 @@
-// Sketch 2 (WORKER3, stage 1): the outline of the controller's surroundings against sim.h, compiled, not run. From
-// PLAN-M1 item 8 and `ref` (Controller.java, TileControl.java, RequestPort.java); to be revised against W2's AUDIT.md
-// when it lands. The interpreter (Controller.execute) is elided; what is here is every coupling between the core and the
-// rest of its tile in M1, which is what tests the phases and the Wires.
+// Sketch 2 (WORKER3, stage 1): the outline of the controller's surroundings against sim.h, compiled, not run. Revised
+// against W2's coupling audit (sim/tests/AUDIT-M1.md, "AUDIT" below) and sim/tests/TRACE-FORMAT.md ("TRACE"). The
+// interpreter (Controller.execute) is elided; what is here is every coupling between the core and the rest of its tile in
+// M1, with the cycle each takes effect, which is what tests the phases and the Wires.
 //
 // Three units, two levels:
-//   level 0  TestBench  replays `ref`'s trace (W2's golden traces): command landed, GO, and the request bus freeing the
-//                       request FIFO's head; it keeps the FIFO's occupancy from those and the core's pushes
-//   level 0  RegBlock   TileControl's M1 subset, as the shifted end of cycle (sim.h): at t it does endCycle(t - 1) from
-//                       what reached it at t, then drives the register view, the wake term and the interrupt term for t
-//   level 1  Core       the RV32 core; reads those three Wires/RegFile at t; its stores and consuming loads reach the
-//                       block at t + 1
+//   level 0  TestBench  replays the golden trace's MEMW, GO, CMD and REQ-FREED lines, nothing else (AUDIT 5)
+//   level 0  RegBlock   TileControl's M1 subset and the request FIFO's count (RequestPort), as the shifted end of cycle
+//                       (sim.h): its step at t does endCycle(t - 1) from what reached it at t, then drives the register
+//                       view, the wake term, the interrupt term and request busy for t
+//   level 1  Core       Controller.runCycle; reads those Wires and the RegFile at t; its stores, consuming loads and
+//                       errors reach the block at t + 1
 //
-// `ref`'s same-cycle couplings, and what each becomes:
-//   ctl.read(t, a)        a block load issued at t samples at t + 1 (regLoadLatency 2) and returns the state at the end of t
-//                         -> the core stalls at t, reads `regs` (RegFile) at t + 1: the block wrote it at level 0 of t + 1
-//                         after doing endCycle(t)                                              (TileControl.java:8-13)
-//   ctl.write(t, a, v)    a store at t acts at the end of t (endCycle step 2), seen from t + 1
-//                         -> Link(1) `bus` to the block, applied in its step at t + 1, before the core reads
-//                         (read-only and absent-window bus errors are decided by the core from the static map)
-//   ctl.takeWake(t)       the wake term from the sticky events at the end of t - 1 and the live events at t
-//                         -> Wire `wake`, driven by the block at level 0 (M1 has no live events on a mesh tile)
-//   ctl.errorsAt(t) != 0  the interrupt term: conditions from endCycle(t - 1) | the slot's live errors at t
-//                         -> Wire `irq`, driven by the block at level 0 (no slot in M1)
-//   tile.req.canPush(t)   room, or an entry freed by the request bus in t (the bus runs first, Chip.java:215)
-//                         -> Wire `req_free`, driven by the test bench in M1 (the bus itself in M2): occupancy < depth
-//                            or freed at t, the occupancy kept from the core's pushes (Link(1) `req_push`) and the
-//                            trace's REQ-FREED events. REQ-REFUSED is not an input: the C++ side writes its own, and the
-//                            trace comparison checks it line for line
-//   GO at goAt            visible to the tile at goAt only; endCycle(goAt) latches EVENTS [8]
-//                         -> the bench puts an event on Link(1) `go` at goAt; the block latches it in endCycle(goAt) at goAt + 1
-//   command landed at t   a director write covering slot 0 at t sets it in endCycle(t) step 3 -> the same, Link(1) `landed`
+// `ref`'s couplings (AUDIT 0-5) and what each becomes:
+//   a block store at t       effect at the end of t (endCycle(t), step 2)
+//                            -> Link(1) `bus` to the block, applied by its step at t + 1 before the core runs
+//   a block load at t        samples at t + 1, returns the state at the end of t (+ live bits, 0 in M1); EVENTS consumes
+//                            at the end of t + 1 -> the core waits one cycle, reads `regs` at t + 1 (the block did
+//                            endCycle(t) at level 0 of t + 1); the consume goes on `bus` at t + 1
+//   ctl.errorsAt(t)          conditions from endCycle(t - 1): an error the core raises at t is seen at t + 1 (AUDIT 1)
+//                            -> the error goes on `bus` at t (an event, not a Count: it must step the block, PORTS.md 8);
+//                            the block sets the condition in endCycle(t) at t + 1 and drives `irq`; the core sees it at t + 1
+//   ctl.takeWake(t)          EVENTS' sticky bits at the end of t - 1, the mask, the gate -> Wire `wake` from the block
+//   tile.req.canPush(t)      size < 128 || freedAt == t, the bus running first (AUDIT 4)
+//                            -> Wires `req_busy` (the block: the count at the end of t - 1 >= depth, STATUS [6]) and
+//                            `req_freed` (the bench: REQ-FREED at t); canPush = !req_busy || req_freed. The push at t
+//                            reaches the block on `bus` (the store) and counts at the end of t, after t's free
+//   a port-B write at C - 1  (MEMW C) seen by a load at C: memories return the contents as at the start of a cycle and
+//                            commit writes at its end -> the bench puts at C - 1 on Link(1) `memw`; delivered at C, the
+//                            core applies it at the start of its step at C, before it executes (AUDIT 0, TRACE)
+//   GO, CMD at C             reached the tile at C - 1, latched by endCycle(C - 1) -> the bench puts at C - 1 on Link(1)
+//                            `go` / `landed`; the block latches them at C, in endCycle's order (go, the store, the landing)
+//   REQ-REFUSED              not replayed: the core writes its own, and the comparison checks it line for line
 #include <cstdint>
 
+#include "base/fatal.h"
 #include "config.h"
 #include "sim.h"
 
 namespace sketch {
 using namespace sim;
 
-// The register map is static configuration data, shared read-only (Registers.java): which word is which register.
-enum Reg : unsigned { PARAMS, STATUS, EVENTS, EVENTS_MASK, PULSE_DONE, COMMAND, ERRORS, REQUEST_SEND, SIM_EXIT, TRACE, N_REGS };
-enum : unsigned { EV_GO = 8, EV_LANDED = 9 };
-bool reg_of(uint32_t addr, Reg& r);                    // the block's decode (0xFFFFF800-0xFFFFF9FF); false: unmapped
-bool reg_writable(Reg r);
-bool reg_consuming(Reg r);                             // a load with a side effect at the end of its sampling cycle
+// The register map is static configuration data, shared read-only (Registers.java).
+enum Reg : unsigned { PARAMS, STATUS, ERRORS, PULSE_DONE, EVENTS, EVENTS_PEEK, EVENTS_MASK, REQUEST_SET_W0, REQUEST_SET_W1,
+                      REQUEST_SET_W2, REQUEST_SEND, SIM_EXIT, N_REGS };
+enum : unsigned { EV_COUNTERS_DONE = 7, EV_GO = 8, EV_LANDED = 9, EV_REQUEST_ROOM = 11 };
+enum : unsigned { ST_DONE = 4, ST_LANDED = 5, ST_REQUEST_BUSY = 6 };
+enum : unsigned { COND_BUS_ERROR = 9, COND_ILLEGAL = 10 };    // ERRORS bits
+bool reg_of(uint32_t addr, Reg& r);                    // the decode of 0xFFFFF800-0xFFFFF9FF; false: unmapped or reserved
+bool reg_writable(Reg r);                              // false: a store is a bus error (STATUS, ERRORS, EVENTS, PARAMS)
 
-// The core's messages to the block on `bus` (one per cycle at most: a core does one load or store a cycle).
-enum : Word { BUS_STORE = 1, BUS_CONSUME = 2 };
+// What the core tells the block on `bus`: at most one a cycle (one instruction a cycle; a faulting access has no effect).
+enum : Word { BUS_STORE = 1, BUS_CONSUME = 2, BUS_ERROR = 3 };
+inline Word bus_op(Word op, unsigned arg) { return op << 32 | arg; }
 
 // ---------------------------------------------------------------------------------------------------------------- core
 struct Core {
     // ports
-    RegFileIn regs;       // the block's register view for this cycle
-    WireIn wake, irq;     // the wake term, the interrupt term
-    WireIn req_free;      // a REQUEST_SEND store may complete this cycle
-    LinkOut bus;          // stores and consuming loads to the block, latency 1
-    LinkOut req_push;     // a REQUEST_SEND that completed (the test bench's model of the request FIFO), latency 1
+    RegFileIn regs;                  // the block's register view for this cycle
+    WireIn wake, irq, req_busy;      // the wake term, the interrupt term, STATUS [6] (from the block)
+    WireIn req_freed;                // REQ-FREED at this cycle (from the bench)
+    LinkIn memw;                     // port-B writes of t - 1: {addr | n << 32, v0 | v1 << 32, v2 | v3 << 32}
+    LinkOut bus;                     // stores, consuming loads and errors to the block, latency 1
     // architectural state (Controller.java)
     uint32_t x[32] = {}, pc = 0x02000000, mstatus = 0, mie = 0;
-    uint64_t mcycle = 0, last = ~0ull;               // `last`: the cycle this core last ran (catch-up); ~0: never
+    uint32_t* dmem; uint32_t* imem;                  // the memories (permanent state, alloc_big, loaded before cycle 1)
+    uint64_t mcycle = 0, last = 0;                   // `last`: the cycle this core last ran (the first cycle is 1)
     uint64_t stall_until = 0;                        // a branch or multiply stall: the core sleeps until then
     bool in_wfi = false, halted = false;
-    uint64_t load_wait_t = ~0ull; uint32_t load_wait_pc = 0;
+    uint64_t load_wait_t = 0; uint32_t load_wait_pc = 0;
     // statistics
     uint64_t instructions = 0, cycles_stalled = 0, cycles_wfi = 0, cycles_halted = 0, stall_request = 0, stall_reg_load = 0;
 
-    explicit Core(Ports& p) {
-        p.in(regs, "regs"); p.in(wake, "wake"); p.in(irq, "irq"); p.in(req_free, "req_free");
-        p.out(bus, "bus", 2); p.out(req_push, "req_push", 0);
+    Core(Ports& p, uint32_t* data_memory, uint32_t* program_memory) : dmem(data_memory), imem(program_memory) {
+        p.in(regs, "regs"); p.in(wake, "wake"); p.in(irq, "irq"); p.in(req_busy, "req_busy"); p.in(req_freed, "req_freed");
+        p.in(memw, "memw", 3);
+        p.out(bus, "bus", 2);
     }
 
-    // Controller.runCycle. A core with nothing to do this cycle (halted, in WFI without a wake, in a branch or multiply
-    // stall) is not stepped: the cycles it slept through are counted from `last` when it next runs, in the state it
-    // slept in, so a 10^9-cycle WFI costs one wake. `ref` takes no interrupt during a stall (`interruptPending && stall ==
-    // 0`), so sleeping through one loses nothing; a wire waking it early finds it still stalled.
+    // Controller.runCycle in AUDIT 0's order. A core with nothing to do (halted, in WFI without a wake, in a branch or
+    // multiply stall) is not stepped; the cycles it slept through are counted from `last`, in the state it slept in, so a
+    // 10^9-cycle WFI costs one wake. A step it didn't ask for (a port-B write, a wire waking it early) changes nothing
+    // else: the step-all check holds.
     Wake step(Ctx& c) {
         uint64_t t = c.now(), gap = t - last - 1; last = t;
-        mcycle += gap + 1;
-        if (halted) { cycles_halted += gap + 1; return Wake::none(); }
+        if (c.ready(memw)) { apply_memw(c.peek(memw)); c.take(memw); }          // written at t - 1: seen by a load at t
+        mcycle += gap + 1;                                                          // 1. every cycle, halted included
+        if (halted) { cycles_halted += gap + 1; return Wake::none(); }             // 2.
         if (in_wfi) cycles_wfi += gap; else cycles_stalled += gap;
-        if (t < stall_until) { cycles_stalled++; return Wake::at_cycle(stall_until); }
-        if (interrupt_pending(c)) { in_wfi = false; trap_external(); return c.next(); }    // WFI included (4.11)
-        if (in_wfi) {
-            if (!c.read(wake)) { cycles_wfi++; return Wake::none(); }   // woken again by `wake` or `irq` changing
-            in_wfi = false;
+        if (t < stall_until) { cycles_stalled++; return Wake::at_cycle(stall_until); }   // 6. (4. waits for the stall)
+        if (interrupt_pending(c)) { in_wfi = false; trap_external(); return c.next(); }   // 4. WFI included, no WAKE line
+        if (in_wfi) {                                                               // 5.
+            if (!c.read(wake)) { cycles_wfi++; return Wake::none(); }              // woken again by `wake` or `irq`
+            in_wfi = false;                                                         // the WAKE line; go on in this cycle
         }
-        unsigned stall = execute(c, t);                  // 1 for a taken branch, 2 more for a multiply (ref's `stall`)
+        unsigned stall = execute(c, t);                                             // 7. returns ref's `stall`
         if (halted) return Wake::none();
         if (stall) { stall_until = t + 1 + stall; return Wake::at_cycle(stall_until); }
         return c.next();
     }
+    // A register-block load's first cycle and a refused REQUEST_SEND are not `stall`: the instruction is re-executed at
+    // t + 1 after step 4, so an interrupt pending then preempts it with mepc = that instruction (AUDIT 1). Here: execute
+    // returns 0 without retiring, pc unchanged, and the core steps at t + 1.
 
     bool interrupt_pending(Ctx& c) { return (mstatus & 1u << 3) && (mie & 1u << 11) && c.read(irq) != 0; }
-    void trap_external();                                // Controller.trap(CAUSE_EXTERNAL): CSRs, pc = mtvec
-    unsigned execute(Ctx& c, uint64_t t);                // the interpreter (returns its stall); loads and stores call the two below
+    void trap_external();                                // Controller.trap(CAUSE_EXTERNAL): CSRs, pc = mtvec & ~3
+    unsigned execute(Ctx& c, uint64_t t);                // the interpreter; register accesses call the three below
 
-    // A word load from the block (Controller.load's register case and the 2-cycle rule, Controller.java:208-211).
-    // Returns false while the load waits for its sampling cycle (the instruction is retried at t + 1).
+    void apply_memw(const Word* w) {
+        uint32_t a = uint32_t(w[0]); unsigned n = unsigned(w[0] >> 32);
+        for (unsigned k = 0; k < n; k++) {
+            uint32_t v = uint32_t(w[1 + k / 2] >> (32 * (k & 1)));
+            uint32_t* m = (a >> 24) == 0x01 ? imem : dmem;
+            m[((a & 0x7FFF) >> 2) + k] = v;
+        }
+    }
+    // A word load from the block: false while it waits for its sampling cycle (the first returns with nothing done).
     bool load_reg(Ctx& c, uint64_t t, uint32_t ipc, uint32_t ea, uint32_t& v, bool& bus_error) {
         Reg r;
         if (!reg_of(ea, r)) { bus_error = true; return true; }
         if (!(load_wait_t == t - 1 && load_wait_pc == ipc)) { load_wait_t = t; load_wait_pc = ipc; stall_reg_load++; return false; }
-        v = c.read(regs, r);                              // the state at the end of t - 1: the block did endCycle(t - 1) at level 0
-        if (reg_consuming(r)) c.put(bus, BUS_CONSUME << 32 | r, v);   // its side effect at the end of t (applied at t + 1)
+        v = c.read(regs, r);                              // the state at the end of t - 1
+        if (r == EVENTS) c.put(bus, bus_op(BUS_CONSUME, r), v);   // the clear at the end of t: the bits it returned
         return true;
     }
-    // A word store to the block (Controller.store's register case, Controller.java:226-229, 366-378). Returns false
-    // while a REQUEST_SEND stalls (retried at t + 1).
+    // A word store to the block: false while a REQUEST_SEND is refused (REQ-REFUSED at t; re-executed at t + 1).
     bool store_reg(Ctx& c, uint32_t ea, uint32_t v, bool& bus_error) {
         Reg r;
         if (!reg_of(ea, r) || !reg_writable(r)) { bus_error = true; return true; }
-        if (r == REQUEST_SEND) {
-            if (!c.read(req_free)) { stall_request++; return false; }   // the trace line REQ-REFUSED at t
-            c.put(req_push);
-        }
-        if (r == SIM_EXIT) halted = true;
-        c.put(bus, BUS_STORE << 32 | r, v);              // acts at the end of t: the block applies it at t + 1
+        if (r == REQUEST_SEND && c.read(req_busy) && !c.read(req_freed)) { stall_request++; return false; }   // !canPush
+        if (r == SIM_EXIT) halted = true;                 // at t, inside the store (HALT 5 after its retire line)
+        c.put(bus, bus_op(BUS_STORE, r), v);              // effect at the end of t: the block applies it at t + 1
         return true;
     }
+    // A bus error or an illegal instruction at t (the core traps at t itself): ERRORS from t + 1.
+    void raise(Ctx& c, unsigned cond) { c.put(bus, bus_op(BUS_ERROR, cond), 0); }
 };
 
 // ------------------------------------------------------------------------------------------------- the register block
 struct RegBlock {
-    LinkIn bus, go, landed;          // what happened at t - 1, delivered at t
-    RegFileOut regs; WireOut wake, irq;
-    // TileControl's state (M1 subset)
-    bool done = false, landed_ = false, gate = false;
-    uint32_t events = 0, wake_mask = 0, wake_required = 0, conditions = 0, command = 0, params = 0;
+    LinkIn bus, go, landed, freed;   // what happened at t - 1, delivered at t
+    RegFileOut regs; WireOut wake, irq, req_busy;
+    // TileControl's state (M1 subset) and the request FIFO's count (RequestPort)
+    bool done = false, landed_ = false, gate = false, busy_prev = false;
+    uint32_t events = 0, mask = 0x180, conditions = 0, params;
+    uint32_t req_n = 0, req_depth;
 
-    explicit RegBlock(Ports& p, uint32_t params_value) : params(params_value) {
-        p.in(bus, "bus", 2); p.in(go, "go", 0); p.in(landed, "landed", 0);
-        p.out(regs, "regs", N_REGS); p.out(wake, "wake"); p.out(irq, "irq");
+    RegBlock(Ports& p, uint32_t params_value, uint32_t request_fifo_depth) : params(params_value), req_depth(request_fifo_depth) {
+        p.in(bus, "bus", 2); p.in(go, "go", 0); p.in(landed, "landed", 0); p.in(freed, "freed", 0);
+        p.out(regs, "regs", N_REGS); p.out(wake, "wake"); p.out(irq, "irq"); p.out(req_busy, "req_busy");
     }
 
-    // Stepped at t when something reached it, and at the first cycle (every unit is): endCycle(t - 1), in TileControl's order, then
-    // the view for t.
+    // Stepped at t when something reached it (and at the first cycle): endCycle(t - 1) in TileControl's order
+    // (TileControl.java:227-258; AUDIT 3's sequencing), then the view for t.
     Wake step(Ctx& c) {
-        if (c.ready(go)) { c.take(go); events |= 1u << EV_GO; done = false; landed_ = false; gate = false; }   // step 1
-        if (c.ready(bus)) {                                                                                    // steps 2, 4
-            const Word* m = c.peek(bus); unsigned op = unsigned(m[0] >> 32), r = unsigned(m[0] & 0xFFFF); uint32_t v = uint32_t(m[1]);
-            if (op == BUS_STORE) store(r, v); else if (r == EVENTS) events &= ~(v & wake_mask);
+        if (c.ready(go)) { c.take(go); done = landed_ = gate = false; events |= 1u << EV_GO; }   // 1. GO
+        if (c.ready(freed)) { c.take(freed); req_n--; }                 // the bus freed the head (before the store's push)
+        uint32_t consume = 0;
+        if (c.ready(bus)) {
+            const Word* m = c.peek(bus); unsigned op = unsigned(m[0] >> 32), arg = unsigned(m[0] & 0xFFFF);
+            uint32_t v = uint32_t(m[1]);
+            if (op == BUS_STORE) store(Reg(arg), v);                    // 2. the store (PULSE_DONE after GO: done and the gate stay set)
+            else if (op == BUS_ERROR) conditions |= 1u << arg;          // 4. the new condition
+            else consume = v;                                           // 5. below
             c.take(bus);
         }
-        if (c.ready(landed)) { c.take(landed); landed_ = true; events |= 1u << EV_LANDED; }                    // step 3
-        // step 5 (errors, READY, STATUS) and the view for t:
-        c.write(regs, EVENTS, events); c.write(regs, ERRORS, conditions); c.write(regs, PARAMS, params);
-        c.write(regs, COMMAND, command); c.write(regs, EVENTS_MASK, wake_mask);
+        if (c.ready(landed)) { c.take(landed); landed_ = true; events |= 1u << EV_LANDED; }   // 3. survives a GO of the same cycle
+        // READY's edge (done && landed rising) goes to C&C: not in M1's bench (its effect returns as a replayed GO).
+        events &= ~(consume & mask);                                    // 5. only the bits it returned (a set at t survives)
+        bool busy = req_n >= req_depth;
+        if (!busy && busy_prev) events |= 1u << EV_REQUEST_ROOM;        //    the edge events
+        busy_prev = busy;
+        // 6. the view for t (STATUS for t; EVENTS as at the end of t - 1, live bits 0 in M1)
+        uint32_t status = uint32_t(done) << ST_DONE | uint32_t(landed_) << ST_LANDED | uint32_t(busy) << ST_REQUEST_BUSY;
+        c.write(regs, PARAMS, params); c.write(regs, STATUS, status); c.write(regs, ERRORS, conditions);
+        c.write(regs, EVENTS, events); c.write(regs, EVENTS_PEEK, events); c.write(regs, EVENTS_MASK, mask);
         c.drive(wake, wake_term());
         c.drive(irq, conditions != 0);
-        return Wake::none();                                                     // nothing changes until something arrives
+        c.drive(req_busy, busy);
+        return Wake::none();                                            // nothing changes until something arrives
     }
-    void store(unsigned r, uint32_t v);                  // TileControl.write's M1 registers (PULSE_DONE, EVENTS_MASK, ...)
-    bool wake_term() const {                             // TileControl.wakeTerm (4.12)
+    void store(Reg r, uint32_t v) {
+        if (r == PULSE_DONE && (v & 1)) { done = true; gate = true; events &= ~(0x7Fu | 1u << EV_COUNTERS_DONE); }
+        else if (r == EVENTS_MASK) mask = v & 0xFFFF;
+        else if (r == REQUEST_SEND) req_n++;                            // the push, at the end of its cycle (W0-W2 cleared)
+    }
+    bool wake_term() const {                                            // TileControl.wakeTerm (4.12); EVENTS_REQUIRED 0 in M1
         if (gate) return events >> EV_GO & 1;
-        return (events & wake_mask & ~wake_required) != 0 || (wake_required != 0 && (events & wake_required) == wake_required);
+        return (events & mask) != 0;
     }
 };
 
 // ------------------------------------------------------------------------------------------------------ the test bench
 struct TestBench {
-    LinkIn req_push; LinkOut go, landed; WireOut req_free;
-    // `ref`'s events for this run, from the golden trace, sorted by cycle (configuration data, read-only in the loop). The
-    // trace's GO and CMD lines at s mean "seen from s": the bench puts them at s - 1, and the block latches them in
-    // endCycle(s - 1), at s. A REQ-FREED line at s: the bus freed the head at s, before the core's store of s.
-    struct Event { uint64_t t; uint8_t kind; };          // 0 landed, 1 GO, 2 the request FIFO's head freed
+    LinkOut memw, go, landed, freed; WireOut req_freed;
+    // The golden trace's MEMW, GO, CMD and REQ-FREED lines (configuration data, read-only in the loop), as the bench's own
+    // actions: `t` is the cycle the bench acts. A trace line at C for MEMW, GO or CMD ("seen from C") is put at C - 1; a
+    // MEMW cycle's words (one packet, consecutive addresses, at most four) are one put. REQ-FREED at C is acted at C.
+    // The first cycle is 1 and `ref` latches nothing before endCycle(1), so no event needs a put before it; configuration
+    // refuses one that would (fatal, naming the line).
+    struct Event { uint64_t t; uint8_t kind; Word w[3]; };   // 0 MEMW (w: the packed words), 1 GO, 2 CMD, 3 REQ-FREED
     const Event* ev; uint32_t n, i = 0;
-    uint32_t depth, count = 0;                           // the request FIFO (request_fifo_depth, from the trace header)
+    bool freed_now = false;
 
-    TestBench(Ports& p, const Event* events, uint32_t count_, uint32_t fifo_depth) : ev(events), n(count_), depth(fifo_depth) {
-        p.in(req_push, "req_push", 0);
-        p.out(go, "go", 0); p.out(landed, "landed", 0); p.out(req_free, "req_free", 1);   // reset value 1: room
+    TestBench(Ports& p, const Event* events, uint32_t count) : ev(events), n(count) {
+        if (n && ev[0].t < 1) FATAL("test bench: an event at cycle %llu, before the first cycle (1)", (unsigned long long)ev[0].t);
+        p.out(memw, "memw", 3); p.out(go, "go", 0); p.out(landed, "landed", 0); p.out(freed, "freed", 0);
+        p.out(req_freed, "req_freed");
     }
-    // Stepped at its events' cycles, when the core pushes, and the cycle after a free (to drive req_free again).
+    // Stepped at its events' cycles, and the cycle after a REQ-FREED (to drive req_freed back to 0).
     Wake step(Ctx& c) {
-        uint64_t t = c.now(); bool freed = false;
-        if (c.ready(req_push)) { c.take(req_push); count++; }          // pushed at t - 1 (RequestPort.send)
+        uint64_t t = c.now();
+        if (freed_now) { c.drive(req_freed, 0); freed_now = false; }
         for (; i < n && ev[i].t == t; i++) {
-            if (ev[i].kind == 0) c.put(landed);
-            else if (ev[i].kind == 1) c.put(go);
-            else { count--; freed = true; }
+            const Event& e = ev[i];
+            if (e.kind == 0) c.put(memw, e.w[0], e.w[1], e.w[2]);
+            else if (e.kind == 1) c.put(go);
+            else if (e.kind == 2) c.put(landed);
+            else { c.drive(req_freed, 1); c.put(freed); freed_now = true; }
         }
-        c.drive(req_free, count < depth || freed);                     // RequestPort.canPush
-        if (freed) return c.next();
+        if (freed_now) return c.next();
         return i < n ? Wake::at_cycle(ev[i].t) : Wake::none();
     }
 };
 
 // ----------------------------------------------------------------------------------------------------- configuration
-void configure_tile(Config& cfg, const TestBench::Event* events, uint32_t n, uint32_t params, uint32_t request_fifo_depth) {
-    auto& bench = cfg.add<TestBench>("t0.bench", events, n, request_fifo_depth);
-    auto& block = cfg.add<RegBlock>("t0.ctl", params);
-    auto& core = cfg.add<Core>("t0.core");
+// `events` is built from the golden trace at configuration (any C++); the header's values are checked first (D12).
+void configure_tile(Config& cfg, const TestBench::Event* events, uint32_t n, uint32_t params, uint32_t request_fifo_depth,
+                    uint32_t* dmem, uint32_t* imem) {
+    auto& bench = cfg.add<TestBench>("t0.bench", events, n);
+    auto& block = cfg.add<RegBlock>("t0.ctl", params, request_fifo_depth);
+    auto& core = cfg.add<Core>("t0.core", dmem, imem);
     cfg.link(core.bus, block.bus, 1);
-    cfg.link(core.req_push, bench.req_push, 1);
+    cfg.link(bench.memw, core.memw, 1);
     cfg.link(bench.go, block.go, 1);
     cfg.link(bench.landed, block.landed, 1);
+    cfg.link(bench.freed, block.freed, 1);
     cfg.connect(block.regs, core.regs);
     cfg.connect(block.wake, core.wake);
     cfg.connect(block.irq, core.irq);
-    cfg.connect(bench.req_free, core.req_free);
-    // levels: bench 0, block 0, core 1 (from the wires); no loop: core -> block and core -> bench are Links
+    cfg.connect(block.req_busy, core.req_busy);
+    cfg.connect(bench.req_freed, core.req_freed);
+    // levels from the wires: bench 0, block 0, core 1; no loop (everything into the block or the bench is a Link)
 }
+
+static_assert(UnitType<Core> && UnitType<RegBlock> && UnitType<TestBench>);
 
 }  // namespace sketch

@@ -20,7 +20,7 @@ event takes effect as defined below. The cases that follow from that one rule:
 | case | the line's cycle |
 |---|---|
 | a one-cycle instruction | its cycle |
-| a load from the register block, a peripheral window or the table window (`reg_load_latency` 2) | the **second** cycle, in which it samples; the first cycle writes nothing |
+| a load from the register block or a peripheral window (`reg_load_latency` 2; addresses from `0xFFFFF800`, `Registers.inRegs`; a table-window load, `0xFFFF2000`-`0xFFFF35FF`, takes 1 cycle) | the **second** cycle, in which it samples; the first cycle writes nothing |
 | a multiply (`mul_latency` 3) | its issue cycle; the next 2 cycles write nothing |
 | a taken branch, `jal`, `jalr` (`branch_penalty` 1) | its issue cycle; the next cycle writes nothing |
 | a `REQUEST_SEND` store refused by a full request FIFO | each refused cycle writes `REQ-REFUSED`; the accepting cycle writes the store's retire line |

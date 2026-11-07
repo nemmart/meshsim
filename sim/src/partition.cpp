@@ -210,13 +210,21 @@ std::vector<unsigned> place_by_load(const Internals::CImpl& G, unsigned threads,
         else if (auto it = G.weights.find(G.units[u].name); it != G.weights.end()) w = it->second;
         gr.load[g[u]] += w;
     }
+    // edges: with a profile that has the Links' traffic, what a crossing would cost in load units (the words delivered
+    // over the calibration, times Options::crossing_ns in the profile's ticks); else the words per put
+    std::map<std::string, double> traffic;
+    if (G.opt.load) for (size_t k = 0; k < G.opt.load->link.size(); k++) traffic[G.opt.load->link[k]] = G.opt.load->words[k];
+    const bool priced = !traffic.empty();
+    const double alpha = priced ? G.opt.crossing_ns * G.opt.load->ticks_per_ns : 0;
     std::vector<std::map<uint32_t, double>> e(ng);
     for (const auto& O : G.decls) {
         if (!O.out || O.kind == Kind::count) continue;
         for (uint32_t r : O.peers) {
             const uint32_t x = g[O.unit], y = g[G.decls[r].unit];
             if (x == y) continue;
-            e[x][y] += O.width + 1; e[y][x] += O.width + 1;
+            double w = O.width + 1;
+            if (priced) { auto it = traffic.find(G.decls[r].name); w = alpha * (it == traffic.end() ? 0 : it->second); }
+            e[x][y] += w; e[y][x] += w;
         }
     }
     for (uint32_t x = 0; x < ng; x++) for (auto [y, w] : e[x]) gr.adj[x].push_back({y, w});
@@ -239,14 +247,17 @@ std::vector<unsigned> place_by_load(const Internals::CImpl& G, unsigned threads,
         jobs.push_back({b, kb, j.first + ka});
         jobs.push_back({a, ka, j.first});
     }
-    // k-way polish: a granule moves to a neighbouring group when that lowers the larger of the two groups' loads (so the
-    // largest load never grows), the cut's change breaking ties toward fewer crossings; passes until nothing moves
+    // k-way polish: a granule moves to a neighbouring group when that lowers the larger of the two groups' costs (so the
+    // largest never grows), the cut's change breaking ties toward fewer crossings; passes until nothing moves. A group's
+    // cost is its load, plus (priced, with a profile's traffic) every crossing edge's price, paid on both sides.
     std::vector<unsigned> grp(ng);
     for (uint32_t x = 0; x < ng; x++) grp[x] = final_group[side[x]];
     {
         std::vector<double> L(groups, 0);
         double total = 0;
         for (uint32_t x = 0; x < ng; x++) { L[grp[x]] += gr.load[x]; total += gr.load[x]; }
+        if (priced)
+            for (uint32_t x = 0; x < ng; x++) for (auto [y, w] : gr.adj[x]) if (grp[y] != grp[x]) L[grp[x]] += w;
         const double eps = 1e-9 * (total > 0 ? total : 1);
         for (int pass = 0; pass < 64; pass++) {
             bool moved = false;
@@ -255,15 +266,21 @@ std::vector<unsigned> place_by_load(const Internals::CImpl& G, unsigned threads,
                 std::map<unsigned, double> link;   // neighbouring group -> weight to it
                 double own = 0;
                 for (auto [y, w] : gr.adj[x]) { if (grp[y] == X) own += w; else link[grp[y]] += w; }
+                double out_all = 0;
+                for (auto [Y, w] : link) out_all += w;
                 unsigned best = X;
-                double best_max = std::max(L[X], 0.0), best_cut = 0;
+                double best_max = 0, best_cut = 0, bx = 0, by = 0;
                 for (auto [Y, w] : link) {
-                    const double m = std::max(L[X] - gr.load[x], L[Y] + gr.load[x]), dc = own - w;
+                    // after the move: X loses x's load; its edges to X now cross (both pay), to Y no longer cross (both
+                    // stop paying), to a third group Z move from X's bill to Y's
+                    double nx = L[X] - gr.load[x], ny = L[Y] + gr.load[x];
+                    if (priced) { nx += own - (out_all - w) - w; ny += own - w + (out_all - w); }
+                    const double m = std::max(nx, ny), dc = own - w;
                     if (m < std::max(L[X], L[Y]) - eps && (best == X || m < best_max - eps || (m <= best_max + eps && dc < best_cut))) {
-                        best = Y; best_max = m; best_cut = dc;
+                        best = Y; best_max = m; best_cut = dc; bx = nx; by = ny;
                     }
                 }
-                if (best != X) { L[X] -= gr.load[x]; L[best] += gr.load[x]; grp[x] = best; moved = true; }
+                if (best != X) { L[X] = bx; L[best] = by; grp[x] = best; moved = true; }
             }
             if (!moved) break;
         }
@@ -282,12 +299,21 @@ std::vector<unsigned> place_by_load(const Internals::CImpl& G, unsigned threads,
     std::vector<int> gseen(ng, -1);
     for (uint32_t u = 0; u < n; u++) if (gseen[g[u]] < 0) { gseen[g[u]] = int(out[u]); gl[out[u]] += gr.load[g[u]]; }
     double cut = 0, tot = 0, mx = 0;
+    std::vector<double> gc(gl);
     for (uint32_t x = 0; x < ng; x++)
-        for (auto [y, w] : gr.adj[x]) if (x < y && gseen[x] != gseen[y]) cut += w;
+        for (auto [y, w] : gr.adj[x]) if (gseen[x] != gseen[y]) { if (x < y) cut += w; gc[gseen[x]] += w; }
     for (double v : gl) { tot += v; mx = std::max(mx, v); }
-    char b[160];
-    std::snprintf(b, sizeof b, "by load: %u granules (interval %llu), %u groups; load max/mean %.3f; %.0f crossing words per put round",
-                  ng, (unsigned long long)interval, groups, groups && tot > 0 ? mx / (tot / groups) : 1.0, cut);
+    double ctot = 0, cmx = 0;
+    for (double v : gc) { ctot += v; cmx = std::max(cmx, v); }
+    char b[220];
+    if (priced)
+        std::snprintf(b, sizeof b, "by load: %u granules (interval %llu), %u groups; load max/mean %.3f; crossings priced at "
+                      "%.0f ns a word: %.1f%% of the load; cost max/mean %.3f",
+                      ng, (unsigned long long)interval, groups, groups && tot > 0 ? mx / (tot / groups) : 1.0, G.opt.crossing_ns,
+                      tot > 0 ? 100.0 * cut / tot : 0.0, groups && ctot > 0 ? cmx / (ctot / groups) : 1.0);
+    else
+        std::snprintf(b, sizeof b, "by load: %u granules (interval %llu), %u groups; load max/mean %.3f; %.0f crossing words per put round",
+                      ng, (unsigned long long)interval, groups, groups && tot > 0 ? mx / (tot / groups) : 1.0, cut);
     report = b;
     return out;
 }

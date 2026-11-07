@@ -47,6 +47,7 @@ struct Args {
     bool due_off = false;          // form 2 with one domain: the due mask off, as in a split machine's domains
     unsigned engines = 0;          // form 2 (W10): Options::engines (0: one per thread)
     bool time_threads = false;     // form 2 (W10): Options::time_threads, the phase shares printed as times="..."
+    double crossing_ns = -1;       // form 2 (W10): Options::crossing_ns (default: the framework's)
     std::string partition = "rows";   // form 2 (W10): rows (mesh: bands of rows; synth: clusters in order), or tiles
                                       // (mesh: one domain per tile, 64; synth: one per cluster), spread over the threads
 };
@@ -85,6 +86,7 @@ Args parse(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--partition")) a.partition = val();
         else if (!std::strcmp(argv[i], "--engines")) a.engines = unsigned(std::atoi(val()));
         else if (!std::strcmp(argv[i], "--time")) a.time_threads = true;
+        else if (!std::strcmp(argv[i], "--crossing-ns")) a.crossing_ns = std::atof(val());
         else FATAL("unknown option %s", argv[i]);
     }
     if (a.form == 1 && (a.threads < 1 || a.chips < a.threads)) FATAL("need 1 <= threads <= chips");
@@ -208,6 +210,7 @@ int form2(const Args& a) {
     o.threads = D > 1 ? a.threads : 1;
     o.engines = a.engines;
     o.time_threads = a.time_threads;
+    if (a.crossing_ns >= 0) o.crossing_ns = a.crossing_ns;
     o.cpus = a.cpus;
     if (by_load) { o.placement = Options::Placement::by_load; o.threads = a.threads; if (a.partition == "profile") o.load = &prof; }
     o.barrier_block = a.barrier == "block";

@@ -129,6 +129,12 @@ with no per-cycle reset of any counter. A refused put increments the FIFO's over
 cycle; an accepted one is pushed and sets the consumer's ready bit. `size()` and `size_at_start()` (= count + (last_take ==
 t)) are the consumer's queries; the FIFO's sticky overflow and first cycle are observer queries.
 
+**Overflow as an event** (W10, for W11's write-engine input and W12's gather queue; D29): a consumer that declares
+`Ports::overflow_steps(FifoIn&)` is stepped in the cycle an overflow is judged (the put's t + 1, the cycle the count
+moves), and reads the running count with `Ctx::overflows(FifoIn)`. Without the declaration an overflow is counted
+(and, with `count_overflows`, counted into a Count) but does not step the consumer, as before. `ref` has no counterpart
+on the bus: it is the unit's own reaction (its endCycle reading the count), which the step makes possible.
+
 ## 4. Credit `Fifo(N)`
 
 **What `ref` has.** Two credited shapes, neither of them WORKER29's mapping:

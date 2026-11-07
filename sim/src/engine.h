@@ -99,6 +99,7 @@ struct FifoPort {
     uint32_t credits, producer;
     uint16_t depth, cls;
     uint8_t bit, width, pbit;
+    uint8_t ovf_step;         // W10: an overflow steps the owner in the cycle it is judged (Ports::overflow_steps)
 };
 
 // One per Reg output: the registered value, its readers.
@@ -239,6 +240,7 @@ struct Engine {
     bool stop_breaks = true;
     // W10: the port observer's arrival cycles (Options::observe_arrivals): per Link input, one per ring slot, at
     // link_at + link_at_off[port]; null when off (nothing recorded)
+    uint64_t* link_words = nullptr; // W10: Options::calibrate: words delivered per Link input (each entry: width + 1)
     uint64_t* inst_ticks = nullptr; // W10: Options::calibrate: time stamp ticks per instance's steps, summed (the runs'
                                     // calibrating loops, config.h run_form_cal; null: not timed)
     Cycle* link_at = nullptr;
@@ -403,6 +405,7 @@ SIM_HOT const Word* Ctx::peek(LinkIn p, unsigned k) const {
     return l.ring.peek(k);
 }
 SIM_HOT unsigned Ctx::size(LinkIn p) const { return e_->links[p.idx].ring.count(); }
+SIM_HOT uint64_t Ctx::overflows(FifoIn p) const { return e_->fifos[p.idx].overflows; }
 SIM_HOT void Ctx::take(LinkIn p) {
     LinkPort& l = e_->links[p.idx];
 #ifdef SIM_DEBUG
@@ -592,8 +595,11 @@ namespace detail {
 template <unsigned W>
 void deliver_link(Engine& e, const Bucket& b) {
     const Word* p = b.begin();
-    if (__builtin_expect(e.link_at != nullptr, 0))                      // the observer's arrival cycles (W10): per bucket
-        for (uint32_t n = b.count(); n; n--, p += W + 1) e.link_at[e.link_at_off[p[0]] + e.links[p[0]].ring.tail()] = e.now;
+    if (__builtin_expect(e.link_at != nullptr || e.link_words != nullptr, 0)) {   // W10: the observer, calibration
+        if (e.link_at) for (uint32_t n = b.count(); n; n--, p += W + 1) e.link_at[e.link_at_off[p[0]] + e.links[p[0]].ring.tail()] = e.now;
+        p = b.begin();
+        if (e.link_words) for (uint32_t n = b.count(); n; n--, p += W + 1) e.link_words[p[0]] += W + 1;
+    }
     p = b.begin();
     for (uint32_t n = b.count(); n; n--, p += W + 1) {
         LinkPort& l = e.links[p[0]];
@@ -609,8 +615,11 @@ void deliver_link(Engine& e, const Bucket& b) {
 template <unsigned W>
 void deliver_link_x(Engine& e, const Bucket& b, const uint32_t* xdst) {
     const Word* p = b.begin();
-    if (__builtin_expect(e.link_at != nullptr, 0))
-        for (uint32_t n = b.count(); n; n--, p += W + 1) { const uint32_t q = xdst[p[0]]; e.link_at[e.link_at_off[q] + e.links[q].ring.tail()] = e.now; }
+    if (__builtin_expect(e.link_at != nullptr || e.link_words != nullptr, 0)) {
+        if (e.link_at) for (uint32_t n = b.count(); n; n--, p += W + 1) { const uint32_t q = xdst[p[0]]; e.link_at[e.link_at_off[q] + e.links[q].ring.tail()] = e.now; }
+        p = b.begin();
+        if (e.link_words) for (uint32_t n = b.count(); n; n--, p += W + 1) e.link_words[xdst[p[0]]] += W + 1;
+    }
     p = b.begin();
     for (uint32_t n = b.count(); n; n--, p += W + 1) {
         const uint32_t q = xdst[p[0]];
@@ -633,6 +642,7 @@ void deliver_fifo(Engine& e, const Bucket& b) {
             if (f.first_overflow == kNoCycle) f.first_overflow = put_at;
             if (f.count_idx != kNone) e.count_inc(f.count_idx, 1);       // counted at t + 1 (PORTS.md 3, 8)
             if (f.cls != kNoClass) e.pools[f.cls].free(uint32_t(p[1]));   // a dropped by-reference payload: its slot back
+            if (f.ovf_step) e.mark(f.owner);                              // W10: the owner steps now (D29)
             continue;
         }
         Word* d = f.ring.push();

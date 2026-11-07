@@ -424,3 +424,45 @@ TEST(observe_links_of_different_latencies_split_as_in_one_domain) {
         }
     }
 }
+
+// ---- Ports::overflow_steps (W11's and W12's request, D29): a Fifo overflow steps its owner in the cycle it is judged
+namespace {
+struct Flood {   // puts every cycle from 1 to 10
+    FifoOut out;
+    explicit Flood(Ports& p) { p.out(out, "out", 1); }
+    uint64_t digest() const { return 0; }
+    Wake step(Ctx& c) { c.put(out, c.now()); return c.now() < 10 ? c.next() : Wake::none(); }
+};
+struct Deaf {    // never takes, never asks to be woken: steps only on its first cycle and on overflows
+    FifoIn in; bool steps_on_ovf;
+    uint64_t seen[16] = {}; Cycle at[16] = {}; uint32_t n = 0;
+    Deaf(Ports& p, bool s) : steps_on_ovf(s) { p.in(in, "in", 1, 3); if (s) p.overflow_steps(in); }
+    uint64_t digest() const { return hash_fields(seen, at, n); }
+    Wake step(Ctx& c) { if (n < 16) { seen[n] = c.overflows(in); at[n] = c.now(); n++; } return Wake::none(); }
+};
+void ovf_case(bool split, bool steps) {
+    Options o; o.threads = split ? 2 : 1; o.missed_wake_after = 0;
+    Config cfg(o);
+    cfg.domain(0);
+    auto& f = cfg.add<Flood>("f");
+    cfg.domain(split ? 1 : 0);
+    auto& d = cfg.add<Deaf>("d", steps);
+    cfg.connect(f.out, d.in);
+    Sim s = cfg.build();
+    s.run(30);
+    const Deaf& r = s.unit<Deaf>("d");
+    // puts at 1..10, judged at 2..11; depth 3, never taken: arrivals at 2, 3, 4 step it (the level's edge), the puts at
+    // 4..10 overflow, judged at 5..11
+    const uint32_t base = 1 + 3;                              // its first cycle and the three arrivals
+    if (!steps) { CHECK_EQ(r.n, base); CHECK_EQ(r.seen[base - 1], 0u); return; }
+    CHECK_EQ(r.n, base + 7u);
+    for (uint32_t k = 0; k < 7 && base + k < r.n; k++) {
+        CHECK_EQ(r.at[base + k], Cycle(5 + k));
+        CHECK_EQ(r.seen[base + k], uint64_t(k + 1));
+    }
+}
+}  // namespace
+
+TEST(overflow_steps_the_owner_when_judged_in_one_domain) { ovf_case(false, true); }
+TEST(overflow_steps_the_owner_when_judged_split) { ovf_case(true, true); }
+TEST(overflow_without_the_declaration_stays_hidden) { ovf_case(false, false); }

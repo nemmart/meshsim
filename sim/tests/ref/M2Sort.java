@@ -14,7 +14,7 @@ import java.util.Map;
  *
  *   java -cp REF_CLASSES:THIS M2Sort keys=FILE | kind=uniform n=N   [fmt=k128|kv32] [ready=8] [seed=-1]
  *        [fp=FILE] [fpevery=10000] [fpwin=A-B] [fpdata=0|1] [fpdump=CYCLE:UNIT[,UNIT..]] [dumpto=FILE]
- *        [cover=FILE] [trace=TILE,FILE]   (trace: run with -Dmeshsim.observe=on)
+ *        [cover=FILE] [phases=FILE] [trace=TILE,FILE]   (trace: run with -Dmeshsim.observe=on)
  *
  * fp: a fingerprint every fpevery cycles from the boot's end (cycle 0 of the sort's sequence: the boot's last cycle),
  * at the sort's GO's and all-READY's, at the end; and every cycle in [A, B] (fpwin). fpdata=0 leaves out sram.data (the
@@ -86,6 +86,7 @@ final class M2Sort {
         if (traceW != null) { TraceRun.closing(m.c, m.c.tiles[Integer.parseInt(kv.get("trace").split(",")[0])].core, "run end"); Observer.stop(); }
         if (!ok) { out("FAIL: the sequence did not finish by cycle " + m.c.cycle); m.dumpState(); System.exit(1); }
         m.c.phases.close();
+        if (kv.containsKey("phases")) m.c.phases.csv(Path.of(kv.get("phases")));
 
         // ---- verification (SortTest.sortRun's checks)
         int bad = 0, sizeBad = 0, vBad = 0;

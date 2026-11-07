@@ -212,6 +212,8 @@ struct Engine {
     uint32_t* suspects = nullptr;      // the suspects, nsuspects of them
     uint32_t nsuspects = 0;
     bool missed_fatal = true, detector = false;
+    // Diagnostics don't allocate (D24): a report is formatted here with snprintf, inside the run as well as after it.
+    char diag[1024] = {};
     uint32_t cur_level = 0;            // the level running (checks)
     uint64_t pending = 0;         // entries in the wheels (fast-forward when 0 and nothing is ready)
     // Cost per cycle with activity, not structure (the performance pass):
@@ -306,7 +308,7 @@ struct Engine {
     void run_level_debug(uint32_t& r); // the debug orders: one level's ready instances, ordered and stepped one by one
     bool on_its_way(uint32_t i) const; // the detector: a delivery, a credit return or a refusal will step instance i
     void check_suspects();
-    std::string describe_suspect(uint32_t i) const;
+    const char* describe_suspect(uint32_t i);   // into diag[] (D24)
     bool idle() const;
 
     void near_set(uint32_t i, Cycle at) {

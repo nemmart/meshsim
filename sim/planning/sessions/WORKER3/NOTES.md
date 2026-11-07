@@ -468,6 +468,27 @@ Local (this container; valgrind for instructions and simulated cache, wall clock
 `make check` (both compilers, debug, release, TSan; W5's goldens under all six option sets) and `make conformance` (42
 scripts of 10^5 cycles) pass. The runner A/B (Quest) follows the D24 fix.
 
+### D24: diagnostics don't allocate (2026-11-07, from W5's finding)
+
+The engine's fatal paths were already safe (W1's `FATAL` clears the hook's flag before printing; they pass names and
+numbers only). Two weren't: the missed-wake detector built its message as a `std::string` inside the run, so the hook
+fired first ("operator new ... inside a run") in both modes. Now it formats into `Engine::diag[]` (1 KB, part of the
+engine, a long description cut, never grown) with `snprintf`; report-and-go-on writes the line with one `write(2)` (no
+stdio, no heap). `sleepers()` stays a configuration-time report (between runs). Tests (`test_debug.cpp`, 8): each of the
+engine's diagnostics fires under the allocation hook with its own message: the missed wake (fatal, and report-and-go-on
+followed by a FATAL after the run, both lines seen), the leak check, a wire written twice, two puts, a link not taken, a
+put without a credit, a wake in the past. **W5's `broken_lazy_block_caught_by_the_missed_wake_detector` runs under the
+hook again** (its comment removed): it reports the missed wake, not the hook.
+
+### Folded in from NEXT.md (integrator, 2026-11-07)
+
+- D21: the Quest task takes its CPU lists as arguments (W5's interim `WORKER5-tasks/machine.inc` detects them); the
+  before/after table records the machine (CPU model, core types and counts, clocks, memory, compiler).
+- W4's footprint inputs: the slim headers (LinkPort 56 -> 32 B, Route 40 -> 24 B) and count-only width-0 Links are in the
+  performance pass; words held twice (a router copying each arrival into its own queue) is M2's design item, unchanged.
+- W4's E5 digest: on hold until the integrator says; at the merge, its `ring(..., const Ring& r, ...)` takes the
+  `SlimRing` instead (a one-word change on my side).
+
 ## Log
 
 - 2026-11-07: plan agreed (owner's go-ahead with five notes). W2's audit not yet on `sim-w2`; W6 not started.
@@ -487,3 +508,5 @@ scripts of 10^5 cycles) pass. The runner A/B (Quest) follows the D24 fix.
 - 2026-11-07: increment 5 (options refused or implemented; shuffle, instance-major, step-all; the missed-wake detector;
   run_until inclusive); the performance pass planned.
 - 2026-11-07: the performance pass's changes, verified locally (the runner A/B to follow).
+- 2026-11-07: D24 (the detector formats into a fixed buffer; every diagnostic tested under the hook; W5's death test back
+  under it); NEXT.md folded in.

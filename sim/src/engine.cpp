@@ -4,6 +4,8 @@
 
 #include <cstdio>
 
+#include <unistd.h>
+
 namespace sim {
 
 namespace {
@@ -266,18 +268,20 @@ bool Engine::on_its_way(uint32_t i) const {
     }
     return false;
 }
-std::string Engine::describe_suspect(uint32_t i) const {
-    std::string s = std::string(unit_names[i]) + " is asleep with data waiting in";
-    for (uint32_t w = watch_first[i]; w < watch_first[i + 1]; w++) {
+// The suspect's description, formatted into diag[] (D24: no allocation in the run, diagnostics included); a description
+// longer than the buffer is cut, never grown.
+const char* Engine::describe_suspect(uint32_t i) {
+    size_t n = size_t(std::snprintf(diag, sizeof diag, "%s is asleep with data waiting in", unit_names[i]));
+    for (uint32_t w = watch_first[i]; w < watch_first[i + 1] && n < sizeof diag; w++) {
         const Watch& x = watch[w];
         if (!x.name) continue;
-        uint64_t data = 0;
+        bool data = false;
         if (x.kind == Kind::link) data = !links[x.idx].ring.empty();
         else if (x.kind == Kind::fifo || x.kind == Kind::credit) data = !fifos[x.idx].ring.empty();
         else if (x.kind == Kind::hold) data = holds[x.idx].occ;
-        if (data) { s += " "; s += x.name; }
+        if (data) n += size_t(std::snprintf(diag + n, sizeof diag - n, " %s", x.name));
     }
-    return s;
+    return diag;
 }
 void Engine::check_suspects() {
     uint32_t w = 0;
@@ -287,11 +291,14 @@ void Engine::check_suspects() {
         if (!asleep(i) || !(mask[i] & ~edges[i])) { suspect_since[i] = kNoCycle; continue; }
         if (on_its_way(i)) { suspect_since[i] = now + 1; suspects[w++] = i; continue; }
         if (now + 1 - suspect_since[i] >= missed_after[i]) {
-            std::string d = describe_suspect(i);
+            const char* d = describe_suspect(i);
             if (missed_fatal)
                 FATAL("missed wake at cycle %llu: %s, and nothing on its way will step it (no wake asked, no delivery, credit or "
-                      "refusal due); a unit that leaves data in an input returns next() (sim.h, WAKES)", (unsigned long long)now, d.c_str());
-            std::fprintf(stderr, "missed wake at cycle %llu: %s\n", (unsigned long long)now, d.c_str());
+                      "refusal due); a unit that leaves data in an input returns next() (sim.h, WAKES)", (unsigned long long)now, d);
+            char line[sizeof diag + 64];                // report and go on: one write(2) of a formatted line (no stdio, no heap)
+            int len = std::snprintf(line, sizeof line, "missed wake at cycle %llu: %s\n", (unsigned long long)now, d);
+            if (len > int(sizeof line) - 1) len = int(sizeof line) - 1;
+            if (len > 0 && ::write(2, line, size_t(len)) < 0) {}
             suspect_since[i] = kNoCycle;               // reported: not again until it steps and sleeps on data again
             continue;
         }

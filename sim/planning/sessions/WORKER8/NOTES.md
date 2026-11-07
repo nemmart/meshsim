@@ -235,3 +235,5 @@ cycle against `golden-m2`, under every debug option (shuffle, both orders, step-
   (checked by hand). This confirms the agreed latencies from G1's side (GO's + 1, port B's and landed's
   cm_latency + 1, the K-line's K + 1), and STATUS's send-busy as W9's Reg OR the core's put. With W9's chip the same
   check runs on the real network (and W9's units' streams with it).
+  **make check clean at 0167928**: make run gcc debug, gcc release, clang debug, clang release (33 test binaries each,
+  all 0 failed), make tsan (12 binaries) and make tsan-units clean.

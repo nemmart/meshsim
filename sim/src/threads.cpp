@@ -79,9 +79,37 @@ struct XCountMember {     // a domain's member of a Count read across domains, w
 unsigned pow2_at_least(unsigned x) { unsigned w = 1; while (w < x) w <<= 1; return w; }
 }  // namespace
 
-bool split_needed(const Internals::CImpl& I) {
-    for (const auto& u : I.units) if (u.domain != I.units[0].domain) return true;
-    return false;
+// W10: the declared domains are units of placement, not engines. They are grouped, in order, into E engines (one per
+// thread unless Options::engines says otherwise; W4's spread, domain d of D in group d * E / D); each group is built as
+// one engine, so a connection between two domains of a group is an ordinary local port and only connections between
+// groups are crossings. What may not cross is judged on the declared domains, so a configuration's validity doesn't
+// depend on the thread count.
+namespace {
+unsigned declared_domains(const Internals::CImpl& I) {
+    std::set<unsigned> ds;
+    for (const auto& u : I.units) ds.insert(u.domain);
+    return unsigned(ds.size());
+}
+unsigned engines_of(const Internals::CImpl& I) {
+    const unsigned D = declared_domains(I);
+    const unsigned want = I.opt.engines ? I.opt.engines : std::max(1u, I.opt.threads);
+    return std::min(want, D);
+}
+}  // namespace
+
+bool split_needed(const Internals::CImpl& I) { return declared_domains(I) > 1 && engines_of(I) > 1; }
+
+void check_domains(const Internals::CImpl& I) {
+    for (const auto& O : I.decls) {
+        if (!O.out || (O.kind != Kind::wire && O.kind != Kind::regfile)) continue;
+        const unsigned p = I.units[O.unit].domain;
+        for (uint32_t r : O.peers)
+            if (I.units[I.decls[r].unit].domain != p)
+                FATAL("a %s can't cross thread domains: '%s' (unit '%s', domain %u) drives '%s' (unit '%s', domain %u); put "
+                      "both units in one domain, or make the coupling registered (a Reg or a Link)", kind_name(O.kind),
+                      O.name.c_str(), I.units[O.unit].name.c_str(), p, I.decls[r].name.c_str(),
+                      I.units[I.decls[r].unit].name.c_str(), I.units[I.decls[r].unit].domain);
+    }
 }
 
 void destroy_threads(Threads* t) { delete t; }
@@ -90,6 +118,17 @@ void destroy_threads(Threads* t) { delete t; }
 Sim::Impl* Internals::split(Config::Impl& G) {
     using Decl = Config::Impl::Decl;
     const uint32_t n = uint32_t(G.units.size());
+
+    // W10: the declared domains checked, then grouped into engines (the rest of the split sees the groups as domains)
+    check_domains(G);
+    const unsigned declared = declared_domains(G), E = engines_of(G);
+    {
+        std::map<unsigned, uint32_t> dense;
+        for (auto& u : G.units) dense[u.domain] = 0;
+        uint32_t k = 0;
+        for (auto& [key, v] : dense) v = k++;
+        for (auto& u : G.units) u.domain = unsigned(uint64_t(dense[u.domain]) * E / declared);
+    }
 
     // domains, dense in increasing order of their numbers
     std::map<unsigned, uint32_t> dmap;
@@ -451,7 +490,10 @@ Sim::Impl* Internals::split(Config::Impl& G) {
             if (G.decls[id].kind == Kind::count && G.decls[id].out && find(id) == x.comp && ddom(id) != x.dom) remote_producer = true;
         if (remote_producer) eng(x.dom).counts[x.idx].max_producer_level = 0xFFFFFFFEu;
     }
-    for (uint32_t d = 0; d < D; d++) { T->doms[d].next_slot = nslots++; T->doms[d].sent_slot = nslots++; }
+    for (uint32_t d = 0; d < D; d++) {
+        T->doms[d].next_slot = nslots++; T->doms[d].sent_slot = nslots++; T->doms[d].stop_slot = nslots++;
+        T->doms[d].e->stop_breaks = false;       // W10: a stop runs on to the interval's barrier, where every thread ends
+    }
     // the packing rule (base/words.h): each status word is written by one domain's thread and read by others, so each has
     // its own cache line; the two banks too
     T->status_block = std::make_unique<Block>(std::max<size_t>(1, 2 * size_t(nslots)) * kLineWords, "sim: the status words");
@@ -512,7 +554,8 @@ Sim::Impl* Internals::split(Config::Impl& G) {
     T->sz.total_words = total + outbox_words;
     T->sz.chips = unsigned(std::max<size_t>(1, by_chip.size()));
     T->sz.words_per_chip = T->sz.total_words / T->sz.chips;
-    std::string rep = std::to_string(D) + " domains on " + std::to_string(T->nthreads) + " threads; crossings:";
+    std::string rep = std::to_string(declared) + " domains in " + std::to_string(D) + " engines on " +
+                      std::to_string(T->nthreads) + " threads; crossings:";
     const Kind kinds[] = {Kind::link, Kind::fifo, Kind::credit, Kind::hold, Kind::reg, Kind::count};
     bool any = false;
     for (Kind k : kinds)
@@ -629,11 +672,16 @@ void Threads::run_thread(unsigned t, Cycle end) {
         // the whole machine idle and nothing sent: every thread jumps to the same next event
         Cycle next = kNoCycle;
         uint64_t sent = 0;
-        for (auto& d : doms) { next = std::min<Cycle>(next, status[par][d.next_slot * kLineWords]); sent += status[par][d.sent_slot * kLineWords]; }
+        Cycle stop = kNoCycle;                // W10: a stop asked in any domain ends the run at this barrier, on every thread
+        for (auto& d : doms) {
+            next = std::min<Cycle>(next, status[par][d.next_slot * kLineWords]); sent += status[par][d.sent_slot * kLineWords];
+            stop = std::min<Cycle>(stop, status[par][d.stop_slot * kLineWords]);
+        }
         for (uint32_t di = 0; di < doms.size(); di++) if (doms[di].thread == t) { at(t, now, di, "draining"); drain(di, now, n, par, sent != 0); }
         for (auto& d : doms) if (d.thread == t) clear(d, prev);
         prev = Span{now, n};
         now += n;
+        if (stop != kNoCycle) { par ^= 1; break; }
         if (sent == 0 && next > now && now < end) {
             const Cycle j = std::min(next, end);
             for (auto& d : doms) if (d.thread == t) d.e->now = j;
@@ -667,6 +715,7 @@ void Threads::publish(Dom& d, Cycle t0, Cycle n, unsigned par) {
     for (uint32_t h : d.holds_q) st[holds[h].slot * kLineWords] = e.holds[holds[h].port].occ;
     for (uint32_t c : d.counts) st[counts[c].slot * kLineWords] = e.counts[counts[c].idx].total - counts[c].base;
     st[d.sent_slot * kLineWords] = sent;
+    st[d.stop_slot * kLineWords] = e.stop_at;
     Cycle next = t0 + n;
     if (!e.step_all && e.idle()) {
         next = e.next_wake();

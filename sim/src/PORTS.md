@@ -57,6 +57,47 @@ visibility as `Link(L)`. Not instantiated in v1.3 (the memory port's landing in 
 with a producer-side credit count (section 4's mechanism: a take returns a credit visible at t + 1). Documented now;
 implemented in stage 2 only because it is the credit `Fifo`'s mechanism on a `Link` (cheap), otherwise left for M2.
 
+### 2b. A Link that holds: `WordDelayLine(name, L, C)` (`WordBuses.java:47-52`), WORKER10
+
+`ref`'s three-argument constructor: the same delay line with capacity C instead of L + 2, so its consumer may leave
+words visible (it peeks the head, takes when it chooses) up to the capacity. Every rule of section 2 holds unchanged; only
+the capacity differs.
+
+**Framework.** Declared on the input: `Ports::in(LinkIn&, name, width, depth)`; the capacity (in flight + visible,
+fatal when exceeded, in every build and at a domain crossing's drain) is **L + depth**, so
+
+| framework | `ref` |
+|---|---|
+| `in(h, name, w)` (no depth) | `new WordDelayLine(name, L)`: capacity L + 2 |
+| `in(h, name, w, depth)` | `new WordDelayLine(name, L, L + depth)` |
+
+The visible ring is L + depth entries; a by-reference payload's size class counts L + depth per port. For a consumer
+that keeps its queue in the Link (W4's routers, which otherwise copy every word into their own): `size(LinkIn)` (words
+visible, after this cycle's takes) and `peek(LinkIn, k)` (the k-th oldest visible, k < size) are additions with no `ref`
+counterpart (a model's own view of its queue). Producers that must never overflow it bound what they put themselves
+(the mesh: credits returned on an event line).
+
+**What the consumer sees, exactly** (one put and one take per cycle, PORTS.md 1):
+1. *Visible.* A word put at t is visible from **t + L**: delivered at the start of t + L, before any unit steps, behind
+   every word put earlier (put order). Its arrival steps the consumer at t + L (`ref`: `ready(t + L)` is true).
+2. *Reading.* `ready`: at least one word visible. `peek`: the head (oldest); `peek(k)`: the k-th oldest; `size`: visible
+   words after the consumer's own takes this cycle. `take` removes the head, at once (seen by the consumer's next read
+   in the same step); nothing else removes a word, and only the head can be taken.
+3. *Holding.* A word not taken stays visible, in order, up to the capacity. It does not step the consumer again by itself:
+   the consumer returns `next()` (or a cycle) to look again, or is stepped by its next arrival (sim.h, WAKES).
+4. *Full.* The capacity C = L + depth counts words in flight (put, not yet visible) and visible together. **A put that
+   would exceed it is an error in both, never a refusal or a drop**: `ref` throws when the put commits ("delay line full"),
+   the framework is fatal (`link '...' full at cycle t: capacity C`). The producer is never told (no backpressure:
+   `canPut` is always true); it must bound its puts itself (credits). Where it does, the two agree exactly.
+   *Where the check is made:* `ref` at the commit, counting every take of t; the framework at the put, counting the
+   consumer's takes made earlier in t only, and across domains at the barrier's drain (the cycle in the message is the
+   drain's). They differ only for a producer that needs a take of the same cycle to make room, which a unit can't know
+   (the order of steps within a level is not part of the semantics: shuffle), so no correct model depends on it.
+ Conformance: the `link L C` scripts (`PortConfGen`, `PortConfDriver`
+drive the three-argument constructor; fixtures `link-1-2`, `link-3-4`, `link-3-11`, `link-3-35`, `link-8-12`), equal
+line for line; `tests/test_link_depth.cpp` for peek(k), size, the capacity's death in one domain and across, and the
+credit protocol across partitions.
+
 ## 3. `Fifo(N)`: `WordFIFO` (`WordBuses.java:81-139`)
 
 | | rule | lines |

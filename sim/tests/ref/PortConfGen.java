@@ -8,7 +8,7 @@ import java.util.SplittableRandom;
  * Port conformance, the script (WORKER3; sim/src/PORTS.md section 10): a seeded script of puts, takes and peeks for one
  * port kind, read by both sides (PortConfDriver over ref's bus classes, and the C++ ports). Usage:
  * <pre>  java PortConfGen KIND P1 [P2] SEED CYCLES &gt; script</pre>
- * KIND and its parameters: {@code link L} (WordDelayLine, latency L), {@code fifo N} (WordFIFO, depth N), {@code credit N}
+ * KIND and its parameters: {@code link L [C]} (WordDelayLine, latency L, capacity C, default L + 2: W10), {@code fifo N} (WordFIFO, depth N), {@code credit N}
  * (WordBackpressureFIFO), {@code hold} (WordHold), {@code reg} (WordLatch), {@code rlink L N}
  * (WordBackpressureDelayLine, latency L, capacity N).
  * <p>The script is stateless: every op whose legality depends on the port's state is either always legal for the kind
@@ -25,6 +25,7 @@ final class PortConfGen {
         if (a.length < 3) usage();
         String kind = a[0];
         int nParams = switch (kind) { case "link", "fifo", "credit" -> 1; case "rlink" -> 2; case "hold", "reg" -> 0; default -> -1; };
+        if (kind.equals("link") && a.length == 5) nParams = 2;   // W10: link L C, a capacity C (the consumer may hold C - L)
         if (nParams < 0 || a.length != 3 + nParams) usage();
         long seed = Long.parseLong(a[1 + nParams]);
         long cycles = Long.parseLong(a[2 + nParams]);
@@ -36,7 +37,7 @@ final class PortConfGen {
     }
 
     static void usage() {
-        System.err.println("usage: java PortConfGen link L | fifo N | credit N | hold | reg | rlink L N  SEED CYCLES");
+        System.err.println("usage: java PortConfGen link L [C] | fifo N | credit N | hold | reg | rlink L N  SEED CYCLES");
         System.exit(2);
     }
 

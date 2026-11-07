@@ -6,8 +6,8 @@
 //       threads form=1 chip=mesh chips=N threads=T cycles=C secs=<wall> rate=<chip-cycles/s> slowest=<per-thread
 //       chip-cycles/s> mean=<...> us_per_chip_cycle=<mean per thread> words_per_chip=<Sizes> digest=<all chips'>
 //   bench_threads --sizes --chip mesh|synth: one chip's footprint by structure and by type (D15)
-//   bench_threads --form 2 --threads T [--domains D] [--barrier spin|yield|block] [--spins N] [--due-off] [--rate R]
-//       one mesh over T threads (form2() below)
+//   bench_threads --form 2 --threads T [--chip mesh|synth] [--domains D] [--partition rows|tiles] [--barrier spin|yield|block]
+//       [--spins N] [--due-off] [--rate R] [--engines E]: one chip over T threads (form2() below)
 //
 // The digest folds every chip's digest in chip order: it must not depend on the threads or the CPUs.
 #include <algorithm>
@@ -45,6 +45,9 @@ struct Args {
     std::string barrier = "yield"; // form 2: spin (never yields), yield (after --spins pauses), block (futex after them)
     unsigned spins = 2000;
     bool due_off = false;          // form 2 with one domain: the due mask off, as in a split machine's domains
+    unsigned engines = 0;          // form 2 (W10): Options::engines (0: one per thread)
+    std::string partition = "rows";   // form 2 (W10): rows (mesh: bands of rows; synth: clusters in order), or tiles
+                                      // (mesh: one domain per tile, 64; synth: one per cluster), spread over the threads
 };
 
 std::vector<int> parse_cpus(const char* s) {
@@ -78,6 +81,8 @@ Args parse(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--barrier")) a.barrier = val();
         else if (!std::strcmp(argv[i], "--spins")) a.spins = unsigned(std::atoi(val()));
         else if (!std::strcmp(argv[i], "--due-off")) a.due_off = true;
+        else if (!std::strcmp(argv[i], "--partition")) a.partition = val();
+        else if (!std::strcmp(argv[i], "--engines")) a.engines = unsigned(std::atoi(val()));
         else FATAL("unknown option %s", argv[i]);
     }
     if (a.form == 1 && (a.threads < 1 || a.chips < a.threads)) FATAL("need 1 <= threads <= chips");
@@ -161,37 +166,55 @@ int form1(const Args& a) {
     return 0;
 }
 
-// Form 2: one mesh over several threads. Tile k is in domain (k / 8) * D / 8 (bands of rows); every crossing is a Link
-// of 3 (words and credits), so the barrier is every 3 cycles. One line:
-//   threads form=2 chip=mesh threads=T domains=D barrier=B spins=N due=on|off cycles=C secs=S rate=<mesh-cycles/s>
-//   us_per_chip_cycle=<wall> words=<Sizes> digest=<D> partition="..."
+// Form 2: one chip over several threads. The mesh: by rows, tile k is in domain (k / 8) * D / 8 (bands of rows); by
+// tiles, domain k (64 domains). The synthetic chip (8 clusters of 8 nodes): by rows, cluster c in domain c * D / 8; by
+// tiles, domain c. Domains are spread over the threads in order (W4). On the mesh every crossing is a Link of 3 (words and
+// credits), so the barrier is every 3 cycles. One line:
+//   threads form=2 chip=C threads=T domains=D partition=P barrier=B spins=N due=on|off cycles=C secs=S
+//   rate=<chip-cycles/s> us_per_chip_cycle=<wall> words=<Sizes> digest=<D> partition="..."
 int form2(const Args& a) {
-    const unsigned D = a.domains ? a.domains : a.threads;
+    const bool tiles = a.partition == "tiles";
+    if (!tiles && a.partition != "rows") FATAL("--partition %s: rows or tiles", a.partition.c_str());
+    const bool mesh_chip = a.chip == "mesh";
+    if (!mesh_chip && a.chip != "synth") FATAL("--chip %s: mesh or synth", a.chip.c_str());
+    const unsigned granules = mesh_chip ? mesh::kSide * mesh::kSide : 8;
+    const unsigned D = tiles ? granules : a.domains ? a.domains : a.threads;
     Options o;
     o.threads = D > 1 ? a.threads : 1;
+    o.engines = a.engines;
     o.cpus = a.cpus;
     o.barrier_block = a.barrier == "block";
     o.barrier_spins = a.barrier == "spin" ? ~0u : a.spins;
     Config cfg(o);
-    mesh::build(cfg, a.seed, a.rate, [D](unsigned k) { return (k / mesh::kSide) * D / mesh::kSide; });
+    if (mesh_chip) {
+        if (tiles) mesh::build(cfg, a.seed, a.rate, [](unsigned k) { return k; });
+        else mesh::build(cfg, a.seed, a.rate, [D](unsigned k) { return (k / mesh::kSide) * D / mesh::kSide; });
+    } else {
+        synth::Params p;
+        p.seed = a.seed;
+        p.clusters = 8; p.nodes_per_cluster = 8; p.gap = 1;
+        if (tiles) synth::build(cfg, p, [](unsigned c) { return c; });
+        else synth::build(cfg, p, [D](unsigned c) { return c * D / 8; });
+    }
     Sim s = cfg.build();
     if (a.due_off) {
-        if (D > 1) FATAL("--due-off: one domain only (a split machine's domains have it off already)");
+        if (detail::Internals::impl(s)->threads) FATAL("--due-off: one engine only (a split machine's engines have it off already)");
         detail::Internals::impl(s)->e.due_ok = false;
     }
-    const bool due = D > 1 ? false : detail::Internals::impl(s)->e.due_ok;
-    if (D == 1 && !a.cpus.empty()) pin_to_cpu(a.cpus[0]);
+    const bool split = detail::Internals::impl(s)->threads != nullptr;   // W10: several domains may be one engine
+    const bool due = split ? false : detail::Internals::impl(s)->e.due_ok;
+    if (o.threads == 1 && !a.cpus.empty()) pin_to_cpu(a.cpus[0]);
     s.run(a.warmup);
     begin_run();
     const double t0 = now_s();
     s.run(a.cycles);
     const double secs = now_s() - t0;
     end_run();
-    std::printf("threads form=2 chip=mesh threads=%u domains=%u barrier=%s spins=%u due=%s rate_in=%.2f cycles=%llu secs=%.4f "
-                "rate=%.0f us_per_chip_cycle=%.3f words=%llu digest=%016llx partition=\"%s\"\n",
-                o.threads, D, a.barrier.c_str(), a.spins, due ? "on" : "off", a.rate, (unsigned long long)a.cycles, secs,
-                double(a.cycles) / secs, 1e6 * secs / double(a.cycles), (unsigned long long)s.sizes().total_words,
-                (unsigned long long)s.digest(), s.partition().c_str());
+    std::printf("threads form=2 chip=%s threads=%u domains=%u engines=%u part=%s barrier=%s spins=%u due=%s rate_in=%.2f cycles=%llu "
+                "secs=%.4f rate=%.0f us_per_chip_cycle=%.3f words=%llu digest=%016llx partition=\"%s\"\n",
+                a.chip.c_str(), o.threads, D, a.engines, a.partition.c_str(), a.barrier.c_str(), a.spins, due ? "on" : "off", a.rate,
+                (unsigned long long)a.cycles, secs, double(a.cycles) / secs, 1e6 * secs / double(a.cycles),
+                (unsigned long long)s.sizes().total_words, (unsigned long long)s.digest(), s.partition().c_str());
     return 0;
 }
 

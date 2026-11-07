@@ -18,6 +18,13 @@ void Ports::in(LinkIn& h, const char* name, unsigned width) {
     h.idx = IMPL.declare(&h, Kind::link, false, Shape::in, name, width, true, false);
     h.bit = IMPL.decls[h.idx].bit;
 }
+// W10: a Link whose consumer may hold up to `depth` words (capacity L + depth: ref's WordDelayLine(name, L, L + depth));
+// the plain declaration is depth 2 (WordDelayLine's default, L + 2).
+void Ports::in(LinkIn& h, const char* name, unsigned width, unsigned depth) {
+    if (depth < 1 || depth > 0x7FFF) FATAL("link '%s': depth %u (1-32767)", name, depth);
+    in(h, name, width);
+    IMPL.decls[h.idx].depth = depth;
+}
 void Ports::in(FifoIn& h, const char* name, unsigned width, unsigned depth) {
     if (width < 1 || depth < 1 || depth > 0xFFFF) FATAL("fifo '%s': width %u and depth %u (1-3, 1-65535)", name, width, depth);
     h.idx = IMPL.declare(&h, Kind::fifo, false, Shape::in, name, width, true, false);
@@ -190,13 +197,16 @@ unsigned pow2_above(unsigned x) { unsigned w = 2; while (w <= x) w <<= 1; return
 Sim Config::build() {
     Impl& I = *impl_;
     if (I.built) FATAL("build() called twice");
-    if (detail::split_needed(I)) { I.built = true; return Sim(detail::Internals::split(I)); }   // W4 (E3): several domains
+    if (detail::split_needed(I)) { I.built = true; return Sim(detail::Internals::split(I)); }   // W4 (E3): several engines
     I.built = true;
+    bool domains = false;                     // W10: several domains in one engine: checked as if split, then built whole
+    for (const auto& u : I.units) domains = domains || u.domain != I.units[0].domain;
+    if (domains) detail::check_domains(I);
     using Decl = Impl::Decl;
     const uint32_t n = uint32_t(I.units.size());
 
     // 0. every option is implemented, or refused: an option set must never be silently ignored (integrator, 2026-11-07)
-    if (I.opt.threads != 1)
+    if (I.opt.threads != 1 && !domains)
         FATAL("option threads = %u not implemented for one domain: split the machine with Config::domain, or run independent "
               "chips with run_independent (W4)", I.opt.threads);
 
@@ -226,7 +236,7 @@ Sim Config::build() {
             class_cap.push_back(0);
             class_allow.push_back(0);
         }
-        unsigned per = d.kind == Kind::link ? d.latency + 2 : d.kind == Kind::fifo ? d.depth + 1 : d.kind == Kind::credit ? d.depth : 2;
+        unsigned per = d.kind == Kind::link ? Config::Impl::link_capacity(d) : d.kind == Kind::fifo ? d.depth + 1 : d.kind == Kind::credit ? d.depth : 2;
         class_cap[it->second] += per + d.held + o.held;
         class_allow[it->second] += d.held + o.held + (d.kind == Kind::hold ? 1 : 0);   // a refused word awaiting its retry
         decl_cls[id] = decl_cls[d.peers[0]] = uint16_t(it->second);
@@ -389,7 +399,7 @@ Sim Config::build() {
         if (d.out && d.kind == Kind::regfile) { o_ring[id] = c.add("regfile registers", (d.regs + 1) / 2, 1, u.type, int(u.chip)); continue; }
         if (d.out) continue;
         if (d.kind == Kind::link)            // width 0 (an event line): no storage, the count only
-            o_ring[id] = c.add_packed("ring link w" + std::to_string(d.width), size_t(d.width) * (d.latency + 2), 1, u.type, int(u.chip));
+            o_ring[id] = c.add_packed("ring link w" + std::to_string(d.width), size_t(d.width) * Config::Impl::link_capacity(d), 1, u.type, int(u.chip));
         else if (d.kind == Kind::fifo || d.kind == Kind::credit)
             o_ring[id] = c.add_packed(std::string("ring ") + (d.kind == Kind::credit ? "credit" : "fifo") + " w" + std::to_string(d.width),
                                       size_t(d.width) * d.depth, 1, u.type, int(u.chip));
@@ -572,8 +582,8 @@ Sim Config::build() {
         }
         if (d.kind == Kind::link) {
             LinkPort& l = *new (&e.links[d.final]) LinkPort{};
-            l.ring.init(B + o_ring[id], d.width, d.latency + 2);
-            l.owner = owner; l.inflight = 0; l.cap = uint16_t(d.latency + 2); l.bit = d.bit; l.width = uint8_t(d.width);
+            l.ring.init(B + o_ring[id], d.width, Config::Impl::link_capacity(d));
+            l.owner = owner; l.inflight = 0; l.cap = uint16_t(Config::Impl::link_capacity(d)); l.bit = d.bit; l.width = uint8_t(d.width);
 #ifdef SIM_DEBUG
             l.last_take = kNoCycle;
 #endif
@@ -711,6 +721,15 @@ Sim Config::build() {
     z.wheel_buckets = 0;
     for (auto& w : wheels) z.wheel_buckets = std::max(z.wheel_buckets, w.W);
     detail::Internals::record_view(I, inst_of, S->view);       // W4 (E5): the digest, unit by unit
+    if (I.opt.observe_arrivals && e.nlinks) {                  // W10: one arrival cycle per Link ring slot
+        S->link_at_off_v.resize(e.nlinks);
+        size_t tot = 0;
+        for (uint32_t k = 0; k < e.nlinks; k++) { S->link_at_off_v[k] = uint32_t(tot); tot += e.links[k].ring.depth; }
+        if (tot > 0xFFFFFFFFull) FATAL("observe_arrivals: more than 2^32 link slots");
+        S->link_at_v.assign(tot, 0);
+        e.link_at = S->link_at_v.data();
+        e.link_at_off = S->link_at_off_v.data();
+    }
     return Sim(S);
 }
 
@@ -726,11 +745,35 @@ Sim::~Sim() { delete impl_; }
 
 // W4 (E3): a machine split over domains forwards each operation to its threads (threads.h; its run_until(end) runs the
 // cycles before `end`, so these keep W3's meaning: run(n) runs n cycles, run_until(t) runs through t inclusive).
+// W10: a run clears the stop request and marks itself running (the observer refuses while it is).
+namespace {
+struct Running {
+    detail::Internals::SImpl* s;
+    explicit Running(detail::Internals::SImpl* i) : s(i) {
+        if (s->running) FATAL("Sim::run inside a run");
+        s->running = true;
+        if (s->threads) for (auto& d : s->threads->doms) d.e->stop_at = kNoCycle;
+        else s->e.stop_at = kNoCycle;
+    }
+    ~Running() { s->running = false; }
+};
+}  // namespace
 void Sim::run(Cycle n) {
+    Running r(impl_);
     if (impl_->threads) return impl_->threads->run_until(impl_->threads->now() + n);
     if (n) impl_->e.run_until(impl_->e.now + n - 1);
 }
-void Sim::run_until(Cycle t) { if (impl_->threads) return impl_->threads->run_until(t + 1); impl_->e.run_until(t); }
+void Sim::run_until(Cycle t) {
+    Running r(impl_);
+    if (impl_->threads) return impl_->threads->run_until(t + 1);
+    impl_->e.run_until(t);
+}
+Cycle Sim::stop_cycle() const {
+    if (!impl_->threads) return impl_->e.stop_at;
+    Cycle c = kNoCycle;
+    for (auto& d : impl_->threads->doms) c = std::min(c, d.e->stop_at);
+    return c;
+}
 Cycle Sim::now() const { return impl_->threads ? impl_->threads->now() : impl_->e.now; }
 const Sizes& Sim::sizes() const { return impl_->threads ? impl_->threads->sizes() : impl_->sizes; }
 std::string Sim::partition() const { return impl_->threads ? impl_->threads->partition() : std::string("one domain"); }

@@ -98,7 +98,12 @@ struct Conf {
 
     Conf(Ports& p, const Script* sc, char* buf, size_t bufcap) : s(sc), out(buf), cap(bufcap) {
         switch (s->kind) {
-            case LINK: p.out(lo, "out", 3); p.in(li, "in", 3); link_cap = s->p1 + 2; break;
+            case LINK:   // link L [C]: C given, the input declared with depth C - L (W10; PORTS.md 2b)
+                p.out(lo, "out", 3);
+                if (s->p2) { if (s->p2 <= s->p1) FATAL("portconf: link %u %u: C must exceed L", s->p1, s->p2);
+                             p.in(li, "in", 3, s->p2 - s->p1); link_cap = s->p2; }
+                else { p.in(li, "in", 3); link_cap = s->p1 + 2; }
+                break;
             case FIFO: p.out(fo, "out", 3); p.in(fi, "in", 3, s->p1); break;
             case CREDIT: p.out(co, "out", 3); p.in_credit(fi, "in", 3, s->p1); break;
             case HOLD: p.out(ho, "out", 3); p.in(hi, "in", 3); break;

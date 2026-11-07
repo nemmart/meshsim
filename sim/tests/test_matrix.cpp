@@ -136,9 +136,10 @@ const char* kname(K k) {
 constexpr unsigned kUnits = 16;
 
 // The machine: 16 units of one kind, outputs paired to inputs by a seeded permutation; unit i in domain dom[i].
-Sim machine(K kind, const std::vector<unsigned>& dom, unsigned threads) {
+Sim machine(K kind, const std::vector<unsigned>& dom, unsigned threads, unsigned engines = 0) {
     Options o;
     o.threads = threads;
+    o.engines = engines;   // W10: 0, one engine per thread; else several engines per thread (W4's layout)
     Config cfg(o);
     test::Rng r(77);
     std::vector<unsigned> perm(kUnits);
@@ -183,8 +184,8 @@ Sim machine(K kind, const std::vector<unsigned>& dom, unsigned threads) {
     return cfg.build();
 }
 
-std::vector<uint64_t> digests(K kind, const std::vector<unsigned>& dom, unsigned threads) {
-    Sim s = machine(kind, dom, threads);
+std::vector<uint64_t> digests(K kind, const std::vector<unsigned>& dom, unsigned threads, unsigned engines = 0) {
+    Sim s = machine(kind, dom, threads, engines);
     std::vector<uint64_t> d;
     for (Cycle c : {Cycle(1), Cycle(2), Cycle(9), Cycle(60), Cycle(330)}) { s.run(c); d.push_back(s.digest()); }
     return d;
@@ -197,16 +198,17 @@ void matrix(K kind) {
             test::Rng r(pseed * 1000 + D);
             std::vector<unsigned> dom(kUnits);
             for (unsigned i = 0; i < kUnits; i++) dom[i] = i < D ? i : unsigned(r.below(D));   // every domain used
-            for (unsigned threads : {1u, 2u, 4u, 8u}) {
-                if (threads > D) continue;
-                const auto got = digests(kind, dom, threads);
-                for (size_t k = 0; k < want.size(); k++)
-                    if (got[k] != want[k]) {
-                        test::fail(__FILE__, __LINE__, "%s: %u domains (partition %llu) on %u threads: checkpoint %zu differs",
-                                   kname(kind), D, (unsigned long long)pseed, threads, k);
-                        return;
-                    }
-            }
+            for (unsigned threads : {1u, 2u, 4u, 8u})
+                for (unsigned engines : {0u, D}) {      // W10: one engine per thread (domains grouped), and one per domain
+                    if (threads > D || (engines && threads == D)) continue;
+                    const auto got = digests(kind, dom, threads, engines);
+                    for (size_t k = 0; k < want.size(); k++)
+                        if (got[k] != want[k]) {
+                            test::fail(__FILE__, __LINE__, "%s: %u domains (partition %llu) on %u threads, %u engines: checkpoint %zu differs",
+                                       kname(kind), D, (unsigned long long)pseed, threads, engines, k);
+                            return;
+                        }
+                }
         }
 }
 

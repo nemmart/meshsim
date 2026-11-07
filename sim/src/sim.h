@@ -212,10 +212,14 @@ public:
     Wake next() const;                               // at(now + 1)
     Wake in(Cycle n) const;                          // at(now + n), n >= 1
     uint64_t mask() const;                           // this instance's ready bits (levels and this cycle's edges)
+    void stop();                                     // W10: the run stops at the end of this cycle (one domain; split:
+                                                     // at the barrier ending this cycle's interval); Sim::stop_cycle
 
     // Link
     bool ready(LinkIn p) const;                      // a word is visible (mask bit)
     const Word* peek(LinkIn p) const;                // the head's words
+    const Word* peek(LinkIn p, unsigned k) const;    // W10: the k-th oldest visible word (0: head; k < size)
+    unsigned size(LinkIn p) const;                   // W10: words visible, after this cycle's takes
     void take(LinkIn p);
     void put(LinkOut p, Word a);
     void put(LinkOut p, Word a, Word b);
@@ -300,6 +304,8 @@ private:
 class Ports {
 public:
     void in(LinkIn& h, const char* name, unsigned width);
+    void in(LinkIn& h, const char* name, unsigned width, unsigned depth);   // W10: the consumer may hold up to `depth`
+                                                     // words (capacity L + depth; PORTS.md 2b); the line above is depth 2
     void in(FifoIn& h, const char* name, unsigned width, unsigned depth);
     void in_credit(FifoIn& h, const char* name, unsigned width, unsigned depth);
     void in(HoldIn& h, const char* name, unsigned width);

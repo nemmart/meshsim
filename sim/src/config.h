@@ -91,6 +91,24 @@ struct Options {
                                  // (topology.h); a CPU of -1: that thread not pinned ({-1}: leave placement to the OS)
     bool barrier_block = false;  // W4: the barrier sleeps (futex) after its spin, instead of yielding (barrier.h)
     unsigned barrier_spins = 2000;   // W4: pauses before the barrier yields (or sleeps); 0: yield at once; ~0u: spin only
+    unsigned engines = 0;        // W10, A MEASUREMENT OPTION ONLY: leave it 0. A machine split over domains is built as
+                                 // one engine per thread (its domains grouped in order, min(threads, domains) groups);
+                                 // engines > threads instead builds that many and runs several on a thread in turn
+                                 // (W4's layout), only to measure a split's own cost (bench_threads --engines)
+    bool observe_arrivals = false;   // W10: keep each visible Link word's arrival cycle for Sim::observe (a store per
+                                     // delivered Link word; off: observe(LinkIn) is fatal while a word is visible)
+};
+
+// W10, the port observer (W8's request): one input port's contents at the end of cycle c, the last cycle run
+// (Sim::now() == c + 1), into the caller's buffer. ref's order (tests/ref/StateFp.java): a Link's entries in arrival
+// order, visible then in flight, each with its arrival cycle; a Fifo's visible entries; a Hold's word; a Reg's value; and
+// for a Fifo, credit Fifo, Hold or Reg the put made at c, judged at c + 1.
+struct PortEntry { Cycle at; Word w[3]; };    // at: a Link entry's arrival cycle (0 for the other kinds); w: its words
+struct PortView {
+    uint32_t n = 0;                           // entries written, in order
+    bool put = false;                         // Fifo, credit Fifo, Hold, Reg: a put made at c (judged at c + 1)
+    Word put_w[3] = {};                       //   its words
+    bool valid = false;                       // Hold: occupied; Reg: a value has landed (either way n = 1)
 };
 
 // Sizes computed by build(): words allocated per thread, by structure and by unit type, and per chip (D15).
@@ -275,6 +293,17 @@ public:
     std::string sleepers() const;      // the end-of-run report: units asleep with data waiting, their ports, since when
     std::string partition() const;     // W4: the domains, threads, crossings by kind, and the barrier interval with the
                                        // crossing that set it ("one domain" for a machine that isn't split)
+    // W10, the port observer (PortView above): between runs only (fatal during one), reads only, allocates nothing;
+    // fatal if the port holds more than `max` entries. The handle is the one in the unit object (unit<T>(name).port);
+    // a split machine's port is found by the handle's address, wherever its in-flight entries were drained.
+    PortView observe(const LinkIn& p, PortEntry* out, uint32_t max) const;
+    PortView observe(const FifoIn& p, PortEntry* out, uint32_t max) const;   // a credit Fifo too
+    PortView observe(const HoldIn& p, PortEntry* out, uint32_t max) const;
+    PortView observe(const RegIn& p, PortEntry* out, uint32_t max) const;
+    // W10, the stop request (Ctx::stop): the cycle a unit asked the last run to stop in, kNoCycle if none. One domain:
+    // the run returned right after it (now() == stop_cycle() + 1); split: at the barrier ending its interval, every
+    // thread at the same cycle. A run clears it at its start.
+    Cycle stop_cycle() const;
 
     Sim(Sim&& o) noexcept;
     Sim& operator=(Sim&& o) noexcept;

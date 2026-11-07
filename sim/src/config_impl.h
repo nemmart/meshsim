@@ -39,6 +39,12 @@ struct Config::Impl {
         std::vector<uint32_t> peers;
         uint32_t final = kNone;         // the pool index (inputs) or the route (outputs)
     };
+    // A Link's capacity, in flight and visible together (PORTS.md 2): L + its declared depth (W10), L + 2 by default.
+    static unsigned link_capacity(const Decl& d) {
+        const unsigned c = d.latency + (d.depth ? d.depth : 2);
+        if (c > 0xFFFF) FATAL("link '%s': latency %u + depth %u over 65535", d.name.c_str(), d.latency, d.depth);
+        return c;
+    }
     struct Staged {
         uint16_t type;
         Form form;
@@ -138,6 +144,9 @@ struct Sim::Impl {
     std::vector<unsigned> missed_after;               // per instance: the missed-wake detector's threshold (increment 5)
     Sizes sizes;
     detail::DigestView view;                           // the digest, unit by unit (W4, E5: digest.h)
+    std::vector<Cycle> link_at_v;                      // W10: the observer's arrival cycles (Options::observe_arrivals)
+    std::vector<uint32_t> link_at_off_v;
+    bool running = false;                              // W10: inside Sim::run (the observer refuses)
     detail::Threads* threads = nullptr;                // W4 (E3): set when the machine is split over domains; the Sim's
                                                        // operations go to it, and the fields above are unused
     unsigned char* obj(uint32_t i) const {

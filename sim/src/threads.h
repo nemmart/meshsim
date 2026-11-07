@@ -35,7 +35,8 @@
 
 namespace sim::detail {
 
-bool split_needed(const Internals::CImpl& I);        // more than one domain declared
+bool split_needed(const Internals::CImpl& I);        // more than one domain declared, and more than one engine (W10)
+void check_domains(const Internals::CImpl& I);       // W10: no Wire or RegFile across declared domains (fatal)
 
 struct Xl {                                      // an outbox entry's translation, by its source-side index
     uint32_t dst = kNone;                        // the destination port's index in the destination domain
@@ -80,6 +81,7 @@ struct Dom {
     std::vector<uint32_t> counts;                // its XCount replicas
     std::vector<const Word*> slot_base;          // by size class: its pool's slot storage (the drain copies from it)
     uint32_t next_slot = 0, sent_slot = 0;       // its status words: its next event when idle, the words it sent
+    uint32_t stop_slot = 0;                      // W10: the cycle a unit asked to stop in, kNoCycle if none
 };
 
 struct Threads {

@@ -150,6 +150,7 @@ bool Engine::asleep(uint32_t i) const {
 void Engine::run_until(Cycle end) {
     while (now <= end) {
         cycle();
+        if (__builtin_expect(stop_at != kNoCycle, 0) && stop_breaks) break;   // W10: a unit asked to stop after this cycle
         if constexpr (kDebug) if (leak_every && npools && now % leak_every == 0) check_leaks();
         if (!step_all && idle()) {                     // nothing in flight, nothing ready: jump to the next wake
             Cycle t = next_wake();
@@ -386,7 +387,7 @@ void Engine::die_wire(uint32_t w, const char* what) const {
     FATAL("wire of %s %s, cycle %llu", unit_names[wires[w].producer], what, (unsigned long long)now);
 }
 void Engine::die_link_full(uint32_t port) const {
-    FATAL("link '%s' full at cycle %llu: capacity %u (the consumer must take each word as it arrives)", link_names[port],
+    FATAL("link '%s' full at cycle %llu: capacity %u (in flight and visible: the latency plus the input's declared depth, 2 unless declared)", link_names[port],
           (unsigned long long)now, unsigned(links[port].cap));
 }
 void Engine::die_wake(uint32_t i, Cycle at) const {

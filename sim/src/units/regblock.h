@@ -72,6 +72,17 @@ struct RegBlockState {
         }
     }
 
+    uint64_t digest() const {
+        const uint64_t w[] = {uint64_t(done) | uint64_t(landed) << 1 | uint64_t(gate) << 2 | uint64_t(ready_level) << 3
+                                  | uint64_t(request_busy_prev) << 4,
+                              events, mask, required, conditions, status, req_n, set_w[0], set_w[1], set_w[2], gos, dones,
+                              readies, sends, trace_stores, violations, sim_exit_at, sim_exit_value, params,
+                              request_fifo_depth, uint64_t(done_gate)};
+        uint64_t h = 0;
+        for (uint64_t v : w) h = digest_mix(h, v);
+        return h;
+    }
+
     // ---- the view at t + 1 ----
     bool busy() const { return req_n >= request_fifo_depth; }
     uint32_t reg(unsigned r) const {

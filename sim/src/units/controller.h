@@ -67,6 +67,7 @@ struct Core {
         uint64_t next = rv.step(e, c.now());
         return next == Rv32::kNever ? Wake::none() : Wake::at_cycle(next);
     }
+    uint64_t digest() const { return rv.digest(); }
     void apply_memw(const Word* w) {
         uint32_t a = uint32_t(w[0]), n = uint32_t(w[0] >> 32);
         uint32_t* m = region(a) == R_PMEM ? rv.imem : rv.dmem;
@@ -150,6 +151,7 @@ struct TestBench {
         if (freed_now) return c.next();
         return i < n ? Wake::at_cycle(ev[i].t) : Wake::none();
     }
+    uint64_t digest() const { return digest_mix(digest_mix(n, i), freed_now); }
 };
 
 // ------------------------------------------------------------------------------------------------------ configuration

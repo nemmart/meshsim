@@ -561,3 +561,19 @@ TEST(rv32_sleeping_through_a_stall_equals_stepping_it) {
     CHECK_EQ(a.core.cycles_stalled, b.core.cycles_stalled);
     CHECK(a.lines() == b.lines());
 }
+
+TEST(rv32_digest_is_the_same_slept_or_stepped) {
+    M a, b;
+    for (M* m : {&a, &b}) m->prog({R(1, 0, 0, 0, 1), WFI});
+    a.steps(20);                                    // every cycle: the multiply's stall, then WFI from cycle 4
+    b.step();                                       // only when asked: 1, then 4 (the WFI)
+    b.t = 3;
+    CHECK_EQ(b.step(), Rv32::kNever);
+    CHECK(a.core.mcycle != b.core.mcycle);          // b's counters lag until it next runs ...
+    CHECK_EQ(a.core.digest(), b.core.digest());     // ... which the digest accounts for
+    M c;
+    c.prog({R(1, 0, 0, 0, 1), WFI});
+    c.step(); c.t = 3; c.step();
+    c.core.x[5] = 1;
+    CHECK(c.core.digest() != b.core.digest());
+}

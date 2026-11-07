@@ -25,6 +25,14 @@ namespace units {
 
 enum : uint32_t { BUS_STORE = 1, BUS_CONSUME = 2, BUS_ERROR = 3 };
 
+// A unit's digest (sim.h, DEBUG CHECKS): words folded in order.
+inline uint64_t digest_mix(uint64_t h, uint64_t v) {
+    uint64_t z = h ^ (v + 0x9e3779b97f4a7c15ull + (h << 6) + (h >> 2));
+    z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ull;
+    z = (z ^ (z >> 27)) * 0x94d049bb133111ebull;
+    return z ^ (z >> 31);
+}
+
 struct Rv32Timing {
     uint32_t reg_load_latency = 2, branch_penalty = 1, mul_latency = 3, ref_cycle = 40;
 };
@@ -110,6 +118,24 @@ struct Rv32 {
     }
     template <class Env>
     bool interrupt_pending(Env& e) const { return (mstatus & MSTATUS_MIE) && (mie & MEIE) && e.irq(); }
+
+    // The core's digest: its state and its memories, not their addresses. A core that slept (ready-driven) and one stepped
+    // every cycle (step-all) differ only in what catch_up adds per skipped cycle, so those are folded in relative to
+    // `last`: mcycle and the stall and WFI cycle counts grow by one per cycle in every state the core can sleep in, and the
+    // stall's end cycle doesn't move.
+    uint64_t digest() const {
+        uint64_t h = 0;
+        for (uint32_t v : x) h = digest_mix(h, v);
+        const uint64_t w[] = {pc, mstatus, mie, mtvec, mscratch, mepc, mcause, mtval, mcycle - last, uint64_t(halt),
+                              uint64_t(in_wfi) | uint64_t(in_handler) << 1 | uint64_t(parked) << 2 | uint64_t(ub) << 3,
+                              stall ? stall + last : 0, load_wait_t, load_wait_pc, uint64_t(stop), stop_cycle,
+                              instructions, cycles_stalled + cycles_wfi - last, stall_branch, stall_mul, stall_reg_load,
+                              stall_request, traps, bus_errors, illegals, violations, alias_accesses, reserved_accesses,
+                              trace_stores};
+        for (uint64_t v : w) h = digest_mix(h, v);
+        for (uint32_t i = 0; i < MEM_WORDS; i++) h = digest_mix(h, uint64_t(dmem[i]) | uint64_t(imem[i]) << 32);
+        return h;
+    }
 
     // ================================================================ traps and halts
     void trap(uint64_t t, uint32_t cause, uint32_t tval, uint32_t at, uint32_t resume) {

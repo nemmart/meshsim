@@ -101,3 +101,40 @@ The 67 goldens are at most ~1,000 lines and a few thousand cycles each, so all o
 - Item 1's doc fix (AUDIT 6, TRACE-FORMAT): table-window loads are 1 cycle.
 - Item 7's list of what is fatal and what is exact: OK?
 - No API change needed so far.
+
+## The go-ahead (owner, 2026-11-07)
+
+Approved as planned, with: the doc fix for table-window loads (done on main, merged); follow `ref` for the block load's
+order; the fatal/exact split as listed, each fatal message naming the register or window and saying "not modelled in M1"
+(so M2 can grep for them); the direct driver kept small, a regression check once the engine path matches; my make rules in
+`src/units/units.mk`, one include line in `sim/Makefile`.
+
+## Progress
+
+**Step 1-4 done (commit "W5: the controller's logic ...").** `src/units/`: `regmap.h` (the address map and register
+table), `rv32.h` (the core), `regblock.h` (the block's subset), `trace_log.h/.cpp`, `controller.h/.cpp` (the three units,
+compiled in every build, linked once the engine lands). `tests/`: `golden_run.h/.cpp` (the harness and the direct
+driver, ~60 lines of loop, run under the allocation hook), `golden_main.cpp` (`make golden`), `sha256`, `java_random.h`,
+`test_rv32.cpp` (34), `test_regblock.cpp` (7), `test_golden.cpp` (6).
+
+- **All 67 goldens match with the direct driver**, the whole file: our own header (sha256 of the images and the boot ROM,
+  `data_at` and `entry` from the `.sym` as TraceRun takes them, the skew from `java.util.Random(1)`, the schedule's steps),
+  the body, and the closing block. 0.03 s for all 67 (release).
+- The D12 check refuses with the key and both values (`refused (D12): config mul_latency: golden 4, ours 3`), or the
+  header line otherwise (image, tile, boot ROM). Tested, as is a core that differs (a 4-cycle multiply) being caught.
+- `make check` clean: gcc and clang, debug (ASan, UBSan) and release.
+- Digests: each unit defines `digest()` (sim.h: a unit holding pointers must). The core folds the counters `catch_up`
+  advances in relative to `last` (`mcycle - last`, stall and WFI cycles `- last`, the stall's end cycle), so a core that
+  slept and one stepped every cycle digest the same (tested).
+
+**Waiting for W3**: increment 2 (on `sim-w3`, not on `main`) has Link, Fifo and Hold; the controller needs `Wire` and
+`RegFile` (increment 3). A trial merge of `sim-w3` into this branch (scratch worktree, not pushed) merges cleanly, the
+Makefile included.
+
+### For W3 (no change asked)
+
+- **Catch-up counters and the step-all digest.** A unit that counts cycles lazily (`mcycle`) differs between the two
+  runs until it next steps, so its bytes can't be compared; `digest()` has to fold those counters relative to the cycle it
+  last ran. Worth a sentence in sim.h's step-all paragraph: "counts the same either way" holds only after catch-up.
+- Struct padding: a unit digested by its bytes can differ in its padding between two machines; my units define
+  `digest()` anyway, but the default might want a note.

@@ -58,8 +58,7 @@ struct Router {
     Word iq[kInjDepth][3];            // the injection queue
 
     uint64_t digest() const {
-        return hash_fields(in, out, cin, cout, rng, dig, thresh, sends, ejects, injected, refused, tile, credits, rr, head,
-                           count) ^ live_words();
+        return hash_fields(rng, dig, thresh, sends, ejects, injected, refused, tile, credits, rr, head, count) ^ live_words();
     }
     uint64_t live_words() const {
         uint64_t h = 0;

@@ -55,8 +55,7 @@ struct Node {
     Word held[3] = {};           // the Hold put to retry after a refusal
 
     uint64_t digest() const {
-        return hash_fields(lin, lout, ein, eout, fin, fout, cin, cout, hin, hout, rin0, rin1, rout, kin, kglob, kloc, wout,
-                           rfout, h, seed, next_act, gap, events, refusals, no_credit, held);
+        return hash_fields(h, seed, next_act, gap, events, refusals, no_credit, held);   // not the handles (R1)
     }
     Node(Ports& p, uint64_t s, uint32_t g, unsigned fifo_depth) : h(s), seed(s), next_act(1), gap(g) {
         p.in(lin, "lin", 3); p.out(lout, "lout", 3);
@@ -118,7 +117,7 @@ struct Leaf {
     uint64_t h = 0;
     uint32_t n;
     uint32_t pad = 0;
-    uint64_t digest() const { return hash_fields(win, rfin, kin, h, n); }
+    uint64_t digest() const { return hash_fields(h, n); }
     Leaf(Ports& p, unsigned k) : n(k) {
         for (unsigned i = 0; i < k; i++) {
             p.in(win[i], ("win" + std::to_string(i)).c_str());

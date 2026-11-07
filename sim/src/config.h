@@ -83,7 +83,10 @@ struct Options {
     unsigned missed_wake_after = 1;   // the missed-wake detector (debug builds): cycles asleep with data waiting, 0 = off
     bool missed_wake_fatal = true;    // else report and go on
     unsigned leak_check_every = 0;    // debug builds: check the slot pools every N cycles too (always at the end of a run)
-    unsigned threads = 1;        // W4
+    unsigned threads = 1;        // W4: OS threads for a machine split over domains (Config::domain); domains are spread
+                                 // over them in order (at most one thread per domain)
+    std::vector<int> cpus;       // W4 (A2): thread k pinned to cpus[k % size], when not empty
+    bool barrier_block = false;  // W4: the barrier sleeps (futex) after a short spin, instead of spinning (barrier.h)
 };
 
 // Sizes computed by build(): words allocated per thread, by structure and by unit type, and per chip (D15).
@@ -114,6 +117,8 @@ struct TypeInfo {
     void (*destroy)(void* obj);
     void (*run[2])(Engine&, RunSet&);             // by Form: cycle, result (null if the type has no result form)
     uint64_t (*digest)(const void* obj);          // T::digest() if it has one, else its bytes (sim.h, DEBUG CHECKS)
+    bool own_digest = false;                      // W4 (E5): T::digest() is the author's; else the machine's digest
+                                                  // hashes the bytes with the port handles left out (digest.cpp)
 };
 
 // The run function of a (type, form): one per run, called once per run per cycle with the run's ready instances. This
@@ -163,6 +168,7 @@ const TypeInfo* type_ops() {
         t.run[1] = nullptr;
         if constexpr (HasResultForm<T>) t.run[1] = &run_form<T, true>;
         t.digest = &digest_of<T>;
+        t.own_digest = HasDigest<T>;
         return t;
     }();
     return &info;
@@ -244,6 +250,8 @@ public:
     uint64_t steps(const std::string& unit_name) const;   // how many times an instance was stepped (idle-unit tests)
     uint16_t type_of(const std::string& unit_name) const; // the unit's type id in this machine (first-add order, E1)
     std::string sleepers() const;      // the end-of-run report: units asleep with data waiting, their ports, since when
+    std::string partition() const;     // W4: the domains, threads, crossings by kind, and the barrier interval with the
+                                       // crossing that set it ("one domain" for a machine that isn't split)
 
     Sim(Sim&& o) noexcept;
     Sim& operator=(Sim&& o) noexcept;

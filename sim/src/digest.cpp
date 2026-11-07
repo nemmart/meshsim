@@ -1,6 +1,7 @@
 // digest.cpp: the machine's digest, unit by unit (WORKER4, E5). The configuration regime: called between cycles.
 #include "digest.h"
 
+#include <cstring>
 #include <map>
 
 namespace sim::detail {
@@ -34,9 +35,11 @@ void Internals::record_view(const Config::Impl& I, const std::vector<uint32_t>& 
     v.units.clear();
     v.units.reserve(I.units.size());
     for (uint32_t u = 0; u < I.units.size(); u++) {
-        DigestUnit du{0, inst_of[u], false, {}};
+        DigestUnit du{0, inst_of[u], false, {}, {}};
         for (uint32_t id : I.units[u].decls) {
             const auto& d = I.decls[id];
+            const uint32_t bytes = d.shape == Shape::in || d.shape == Shape::out_bit ? 8 : 4;
+            du.handles.push_back({uint32_t(d.offset), bytes});
             const bool keep = d.out ? (d.kind == Kind::wire || d.kind == Kind::regfile || d.kind == Kind::count)
                                     : (d.kind != Kind::wire && d.kind != Kind::regfile);
             if (!keep || d.final == kNone) continue;
@@ -52,7 +55,14 @@ uint64_t Internals::digest(const DigestView& v, const Sim::Impl* const* sims, Cy
     for (const DigestUnit& u : v.units) {
         if (u.skip) continue;
         const Sim::Impl& S = *sims[u.eng];
-        h.add(S.types[S.inst[u.inst].type]->digest(S.obj(u.inst)));
+        const TypeInfo& ti = *S.types[S.inst[u.inst].type];
+        if (ti.own_digest || u.handles.empty()) {
+            h.add(ti.digest(S.obj(u.inst)));
+        } else {                     // its bytes, but not its port handles: they are the build's numbering, not state
+            std::vector<unsigned char> b(S.obj(u.inst), S.obj(u.inst) + ti.size);
+            for (auto& [off, n] : u.handles) std::memset(b.data() + off, 0, n);
+            h.add(ti.digest(b.data()));
+        }
         for (const DigestPort& p : u.ports) {
             const Engine& e = sims[p.eng]->e;
             switch (p.kind) {

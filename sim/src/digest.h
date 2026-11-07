@@ -12,17 +12,8 @@
 #include <cstdint>
 #include <vector>
 
-#include "config_impl.h"
-#include "digest_view.h"
+#include "internals.h"
 
 namespace sim::detail {
-
-// The framework's internal access (config.h names it a friend of Config and Sim): W4's digest (E5) and split (E3).
-struct Internals {
-    // The view of a single-domain build: config.cpp records it at the end of build() (engine 0).
-    static void record_view(const Config::Impl& I, const std::vector<uint32_t>& inst_of, DigestView& v);
-    // The digest over one engine or several (sims[eng]); `now` is the machine's cycle.
-    static uint64_t digest(const DigestView& v, const Sim::Impl* const* sims, Cycle now);
-};
 
 }  // namespace sim::detail

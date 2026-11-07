@@ -204,11 +204,77 @@ latency 3). W6's hand-rolled mesh (Quest 126, F): **127 KB**, of which rings 58%
    must take a word the cycle it arrives (capacity L + 2) and the credit Fifo's latency is 1. W6's router kept its words
    in the transport's ring (depth 8, credits). A Link whose consumer may hold up to a declared depth (the credit protocol
    on a Link of latency L: `ref`'s mesh links) would let the queues live in the framework's rings: about 74 KB of unit
-   state (32 + 16 + ... per router) and the copy per hop.
+   state (1,152 B of queues per router) and the copy per hop. (The owner: an M2 design item.)
 2. **Event lines as rings.** A width-0 Link stores five dummy words per input, a line each: 16.4 KB for 256 credit lines.
    A count of arrivals (one word) would do: about 14 KB.
 3. **Headers.** 96 B per Link (LinkPort 56 + Route 40) against W6's 8% for ring headers: 49 KB, as much as the data rings.
 4. **Wheels**: 41 KB, the worst-case rule already flagged for M2.
+
+## Quest 128: form 1 measured (2026-11-07)
+
+clang release, pinned (D13), 3 repeats (spreads 0-6%). The framework mesh (64 Routers, rate 0.35, as first built: 277 KB)
+and the synthetic chip (64 nodes, 8 leaves, every kind). Chip-cycles/s in total; per thread µs per chip-cycle.
+
+| threads | mesh total | mesh µs/thread | synth total | synth µs/thread |
+|---|---|---|---|---|
+| P1 (CPU 0) | 177,800 | 5.63 | 159,000 | 6.29 |
+| P2 / P3 / P4 / P5 (one per core) | 353 K / 486 K / 647 K / 728 K | 5.6-6.7 | 304 K / 450 K / 600 K / 670 K | 6.4-7.3 |
+| P6 (one per core) | 873,600 (4.9x) | 6.72 | 798,500 (5.0x) | 7.34 |
+| P12 (with hyperthreads) | 1,287,100 (7.2x) | 9.30 | 1,027,300 (6.5x) | 11.64 |
+| E1 / E4 | 101,900 / 371,100 | 9.8 / 10.7 | 86,500 / 334,400 | 11.6 / 11.9 |
+| 16 chips per thread: P1 / P6 / P12 / E4 | 176.6 K / 925.7 K / 1,284 K / 363.8 K | as one per thread | 158 K / 823 K / 1,027 K / 331 K | as one |
+
+- **Digests**: the same 12 chips on 1, 6 and 12 threads give one digest (both chips). test_parallel passes there.
+- **Scaling** like W6's N1: the clock falls as cores fill (5.6 to 6.7 µs per thread from 1 to 6), hyperthreads add 47%
+  (mesh); IPC 1.96 alone, 1.92 at 6, 1.36 at 12. **16 chips per thread (3.5-4.4 MB per thread) cost nothing**: the working
+  set still fits; memory is not yet the limit at this footprint.
+- Against W6's hand-rolled mesh (~3.9 µs per mesh-cycle on one P-core) the framework mesh is ~1.45x slower per thread:
+  the per-unit dispatch, the copy into the router's own queues, the ready marks of 512 Links. For W3's performance pass.
+
+## Form 2: state (2026-11-07)
+
+`src/threads.h/.cpp` (the split: boundary units, outboxes, the drain, Hold and Count status words, Reg fan-out, wide
+payloads by copy, the idle jump agreed by all threads), `src/barrier.h/.cpp` (spinning, or a futex after a short spin;
+the debug watchdog), the E3 hooks (config.cpp forwards; `Options::cpus`, `barrier_block`; `Sim::partition()`).
+`tests/test_threads.cpp` (15).
+
+**The "hang"** (2026-11-07) was a livelock, not a deadlock: the spinning barrier never gave up the CPU, and on a box with
+fewer CPUs than threads (this session's container has one) the last thread to arrive barely ran: 235 s for the tests
+that passed, the 8-domains-on-3-threads test past 120 s. The barrier now yields after 2,000 pauses: the same tests take
+3 s, and every test passes, the ones with several domains per thread included. The owner's three checks hold by
+construction: the barrier counts threads (`init(nthreads)`); a thread runs, publishes and drains its domains in
+domain order and never waits on its own outbox (the drain reads only what was published before the barrier); the idle
+jump is computed by every thread from the same status words after the barrier (every domain idle, nothing sent).
+**The watchdog** (debug): a barrier wait over 10 s prints each thread's state (the interval's first cycle, its domain,
+its phase: running, draining, at which barrier) and is fatal; a death test plants a unit stuck in its step.
+
+## Determinism: why the partition can't change a result
+
+1. **Within a domain the order is W3's**: a domain's instances are a subsequence of the single-domain order (the same
+   rule: level, type, form, add order); units interact within a cycle only through Wires, RegFiles and Count `now`, none
+   of which cross (fatal at build; `now` across: debug). Shuffle and both orders per domain test that a level's order
+   doesn't matter.
+2. **Delivery order within a bucket can't matter.** Every Link, Fifo, credit Fifo and Hold has one producer and a Reg
+   one output; an output puts at most once a cycle with a fixed latency; so a bucket holds **at most one entry per
+   destination port** (a credit's return likewise: one take a cycle). Entries to different ports touch disjoint state
+   except the ready mark (an OR), a Fifo overflow's Count (a sum) and a dropped slot's free (a set of free bits: the
+   lowest-free allocation after it doesn't depend on the order of frees). So a drained entry may land before or after the
+   domain's own entries in the same bucket.
+3. **Arrival is exact**: the drain appends each entry to the destination's wheel at the bucket of its put cycle plus its
+   latency; every crossing's latency is at least the interval, so the entry is there before its cycle. The boundary units
+   are never a hop (tested: arrival at t + L for L = 1-8, the same step count as in one domain).
+4. **What a producer reads as "at the start of t"** across a domain depends only on the consumer at the end of t - 1 and
+   the producer's own puts, which the barrier carries (I = 1 whenever a Hold, credit Fifo, Fifo, Reg or Count crosses): a
+   Hold's occupancy at the start of t is `occ at the end of t - 1, or a put at t - 1`, and a refusal is both, decided
+   identically by the consumer's delivery; credits return through the wheel as locally.
+5. **Counts** are sums: each replica adds the others' deltas at every barrier, so `through_last` at t is every domain's
+   increments through t - 1.
+6. **Idle jumps**: inside an interval a domain jumps as W3's `run_until` does (nothing from another domain can arrive
+   before the next drain); across intervals only when every domain is idle and nothing was sent, to the smallest next
+   wake, each thread deciding from the same status words.
+7. **What the digest leaves out** is exactly what a partition changes: indices (port handles, slot indices: E5, R1),
+   proxies and boundary units, and the moment an entry sits in an outbox (digests are compared after a run, which ends at
+   a barrier after the merge).
 
 ## Log
 
@@ -226,3 +292,7 @@ latency 3). W6's hand-rolled mesh (Quest 126, F): **127 KB**, of which rings 58%
   registry race** (two threads building machines of different unit types: a probe, not committed): until W3's E1,
   `test_parallel` registers its types on one thread first; the concurrent-registration test comes with E1.
   `make check` clean (gcc, clang; debug, release, tsan).
+- 2026-11-07: Quest 128 (form 1) back, all PASS. E5 landed (8a1e1c3), the footprint breakdown. Form 2: threads.cpp,
+  test_threads; two races found and fixed (a thread reading another's cycle at the start of a run; clearing an outbox
+  after an idle jump wiped the next interval's entries); E5's fix (the default digest leaves out port handles,
+  `TypeInfo::own_digest`; the sim.h rule); the "hang" was a spinning barrier's livelock with more threads than CPUs.

@@ -18,6 +18,7 @@ struct DigestUnit {
     uint32_t eng, inst;                   // the unit's engine and instance
     bool skip = false;                    // a boundary unit (threads.h): no state of the machine's own
     std::vector<DigestPort> ports;
+    std::vector<std::pair<uint32_t, uint32_t>> handles;   // (offset, bytes) of each port handle in the unit's object
 };
 struct DigestView {
     std::vector<DigestUnit> units;        // in add order

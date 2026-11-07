@@ -2,6 +2,7 @@
 //
 #include "config_impl.h"
 #include "digest.h"
+#include "threads.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -179,6 +180,7 @@ unsigned pow2_above(unsigned x) { unsigned w = 2; while (w <= x) w <<= 1; return
 Sim Config::build() {
     Impl& I = *impl_;
     if (I.built) FATAL("build() called twice");
+    if (detail::split_needed(I)) { I.built = true; return Sim(detail::Internals::split(I)); }   // W4 (E3): several domains
     I.built = true;
     using Decl = Impl::Decl;
     const uint32_t n = uint32_t(I.units.size());
@@ -628,17 +630,24 @@ Sim& Sim::operator=(Sim&& o) noexcept {
 }
 Sim::~Sim() { delete impl_; }
 
-void Sim::run(Cycle n) { impl_->e.run_until(impl_->e.now + n); }
-void Sim::run_until(Cycle t) { impl_->e.run_until(t); }
-Cycle Sim::now() const { return impl_->e.now; }
-const Sizes& Sim::sizes() const { return impl_->sizes; }
+// W4 (E3): a machine split over domains forwards each operation to its threads (threads.h).
+void Sim::run(Cycle n) {
+    if (impl_->threads) return impl_->threads->run_until(impl_->threads->now() + n);
+    impl_->e.run_until(impl_->e.now + n);
+}
+void Sim::run_until(Cycle t) { if (impl_->threads) return impl_->threads->run_until(t); impl_->e.run_until(t); }
+Cycle Sim::now() const { return impl_->threads ? impl_->threads->now() : impl_->e.now; }
+const Sizes& Sim::sizes() const { return impl_->threads ? impl_->threads->sizes() : impl_->sizes; }
+std::string Sim::partition() const { return impl_->threads ? impl_->threads->partition() : std::string("one domain"); }
 
 uint16_t Sim::type_of(const std::string& name) const {
+    if (impl_->threads) return impl_->threads->type_of(name);
     auto it = impl_->by_name.find(name);
     if (it == impl_->by_name.end()) FATAL("no unit named '%s'", name.c_str());
     return impl_->inst[it->second].type;
 }
 void* Sim::unit_ptr(const std::string& name, const detail::TypeInfo* type) const {
+    if (impl_->threads) return impl_->threads->unit_ptr(name, type);
     auto it = impl_->by_name.find(name);
     if (it == impl_->by_name.end()) FATAL("no unit named '%s'", name.c_str());
     if (impl_->types[impl_->inst[it->second].type] != type)
@@ -647,6 +656,7 @@ void* Sim::unit_ptr(const std::string& name, const detail::TypeInfo* type) const
     return impl_->obj(it->second);
 }
 uint64_t Sim::steps(const std::string& name) const {
+    if (impl_->threads) return impl_->threads->steps(name);
     auto it = impl_->by_name.find(name);
     if (it == impl_->by_name.end()) FATAL("no unit named '%s'", name.c_str());
     return impl_->e.steps[it->second];
@@ -654,11 +664,13 @@ uint64_t Sim::steps(const std::string& name) const {
 
 // W4 (E5): unit by unit in add order, wide payloads by their contents (digest.h).
 uint64_t Sim::digest() const {
+    if (impl_->threads) return impl_->threads->digest();
     const Sim::Impl* one = impl_;
     return detail::Internals::digest(impl_->view, &one, impl_->e.now);
 }
 
 std::string Sim::sleepers() const {
+    if (impl_->threads) return impl_->threads->sleepers();
     const Engine& e = impl_->e;
     std::string out;
     for (uint32_t k = 0; k < e.ninst; k++) {

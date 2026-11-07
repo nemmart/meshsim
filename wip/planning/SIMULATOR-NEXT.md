@@ -24,6 +24,10 @@ this, and dozens of sessions"; a new integrator session, its workers numbered fr
   for whole-chip effects (contention, back-pressure), which are only as good as the estimates. So **each unit, or each tile,
   should be configurable as cycle-level or high-level per instance**, chosen at configuration like the local and
   cross-domain port forms.
+  **The high-level timing comes from calibration** (owner): cycle-level runs measure **when data pops out** of a unit or tile
+  (its latency and throughput as functions of what it is given), and those measurements become the high-level form's timing
+  description. A calibration is checked by running a few cases both ways (mixed against all cycle-level) and comparing; it is
+  redone when a unit's design changes.
 - **The goal:** full detail, run blazingly fast, **and units that stay easy to write**. Investing in a framework now pays for
   itself across v1.4, v1.5, v1.6 and beyond (owner).
 

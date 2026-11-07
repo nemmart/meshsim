@@ -10,6 +10,11 @@ this, and dozens of sessions"; a new integrator session, its workers numbered fr
   **a proof replays each tile's window about 50 times for the sumchecks**, so a proof's simulation is dominated by all 64
   tiles replaying at once. With 128 segments × 50 replays × ~236 K cycles, a proof's replay is **~1.5 × 10⁹ chip-cycles:
   about 17.5 hours on one thread with today's engine** (WORKER29, Quest 120).
+- **And the hardest load hasn't been built yet** (owner, 2026-11-06): the whole project exists to compute **sumchecks over
+  Fp128**, so a **field engine** (128-bit modular arithmetic) is still to come, and it will be much heavier to simulate than
+  anything today. Its runs will likely be **one sumcheck at a time**. Bottom line (owner): **either a much better simulator, or
+  regressions that take days.** So units must be able to do real arithmetic cheaply (native 128-bit multiplies), not only move
+  data, and the framework must leave room for faster-than-cycle modes where a run checks results rather than timing.
 - **The goal:** full detail, run blazingly fast, **and units that stay easy to write**. Investing in a framework now pays for
   itself across v1.4, v1.5, v1.6 and beyond (owner).
 
@@ -115,9 +120,8 @@ against 41.7); a proof's replay in ~20-40 minutes on 16 threads with independent
 
 ## 6. Open questions, carried over
 
-1. **Are a window's ~50 replays identical in control flow?** Each pass replays the same window from the same record and
-   streams; what can differ is `RUN_CONFIG`'s two per-pass flags (use the store log, output rd_prev). The owner to confirm
-   how the flags vary over a proof. If identical, a GPU can run passes in lockstep.
+1. **The ~50 replays' control flow: unknown** (owner, 2026-11-06). The sumchecks, and the field engine that computes them,
+   don't exist yet; runs will likely be one sumcheck at a time. Not needed for the first milestone.
 2. **Unit state as objects first, arrays opt-in later** (integrator: yes, for ease of authoring; the measurements decide).
 3. **Measure today's engine with 16 independent chips at once first**, so the framework is judged against today's best,
    not one thread (integrator: yes).

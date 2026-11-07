@@ -24,6 +24,13 @@ on them, checked against `ref` running the same program, cycle for cycle.
 run lists and free lists. Entries for another thread's units go into a per-destination outbox, merged at the barrier, with
 no locks in the cycle.
 
+**Crossing a thread domain is a different kind of port** (owner, 2026-11-06): the same port kinds come in a **local** and a
+**cross-domain** form. A local put appends to the thread's own delivery bucket; a cross-domain put goes to the outbox for the
+destination's thread, and at the merge any 128-bit payload index is replaced by a copy in the destination's own array. The
+configuration phase knows the partition, so it chooses each port's form when it wires the chip; a unit's code is the same
+either way. *(For the plan: chosen at configuration time, not by virtual calls in the cycle loop, e.g. a port's route resolved
+once to "my bucket" or "this outbox".)*
+
 **Memory** (owner): two kinds of object.
 - **Permanent state**, allocated once at build time with `new`/`malloc`: an `RV32_core` with all its state, a big memory, a
   unit's own state. Grouped by type where possible.

@@ -5,6 +5,9 @@
 //     arrivals and records every output word, every token freed, and the router's canonical stream (rr and every FIFO,
 //     AUDIT-M2 6.2) each cycle; here the same script drives the C++ router on the engine and must give the same lines,
 //     under the debug options too (shuffle, both orders, step-all).
+//   - stage 2: the injection unit behind the router (ref's InjectionPath with SRAMReadQueue's tokens, as Tile runs them),
+//     fed by a core's send holding register that retries a refused put: the same lines plus STATUS's send-busy, the
+//     injection unit's stream (StateFp's "inj"), the tokens held, token waits, refusals and violations.
 // The fixtures are regenerated and checked against ref by tests/ref/routerconf.sh --check.
 #include <cinttypes>
 #include <cstdio>
@@ -16,6 +19,7 @@
 #include "config.h"
 #include "harness.h"
 #include "portconf.h"
+#include "units/inject.h"
 #include "units/router.h"
 
 using namespace units;
@@ -31,8 +35,8 @@ const std::string kDir = "tests/routerconf/";
 Hops hops() { return load_hops("ref/meshsim/hops.txt"); }
 
 // ---- the script ----------------------------------------------------------------------------------------------------
-struct Ev { uint64_t t; uint8_t port; Word w[3]; };   // port: 0-3 a link, 4 the injection, 5 C&C's hold
-struct Script { unsigned tile = 0; uint64_t cycles = 0; std::vector<Ev> ev; };
+struct Ev { uint64_t t; uint8_t port; Word w[3]; };   // port: 0-3 a link, 4 the injection, 5 C&C's hold, 6 a core send
+struct Script { unsigned tile = 0; uint64_t cycles = 0; bool send = false; std::vector<Ev> ev; };
 
 Script parse_script(const std::string& text) {
     Script s;
@@ -43,7 +47,11 @@ Script parse_script(const std::string& text) {
         std::string line = text.substr(p, e - p);
         p = e + 1;
         if (line.empty()) continue;
-        if (line[0] == '#') { if (line.rfind("# tile ", 0) == 0) s.tile = unsigned(std::atoi(line.c_str() + 7)); continue; }
+        if (line[0] == '#') {
+            if (line.rfind("# tile ", 0) == 0) s.tile = unsigned(std::atoi(line.c_str() + 7));
+            if (line.rfind("# seed ", 0) == 0 && line.size() > 5 && line.compare(line.size() - 5, 5, " send") == 0) s.send = true;
+            continue;
+        }
         char* q = nullptr;
         uint64_t t = std::strtoull(line.c_str(), &q, 10);
         s.cycles = t;
@@ -51,7 +59,7 @@ Script parse_script(const std::string& text) {
             q++;
             Ev ev{t, 0, {}};
             if (*q == 'L') { ev.port = uint8_t(q[1] - '0'); q += 3; }
-            else { ev.port = *q == 'I' ? 4 : 5; q += 2; }
+            else { ev.port = *q == 'I' ? 4 : *q == 'S' ? 6 : 5; q += 2; }
             for (int k = 0; k < 3; k++) { ev.w[k] = std::strtoull(q, &q, 16); if (*q == ',') q++; }
             s.ev.push_back(ev);
         }
@@ -62,23 +70,35 @@ Script parse_script(const std::string& text) {
 // ---- the stimulus and the observer -----------------------------------------------------------------------------------
 struct Stim {
     sim::LinkOut link[4], inj;
-    sim::HoldOut cnc;
-    bool attached;
+    sim::HoldOut cnc, send;
+    bool attached, core;
     const Ev* ev; uint32_t n, i = 0;
-    Stim(Ports& p, bool att, const Ev* e, uint32_t count) : attached(att), ev(e), n(count) {
+    // the core's send holding register, as the core uses it: a refused put is retried, the script's word dropped
+    Word put_w[3] = {}, occupant[3] = {};
+    uint64_t put_at = 0, refusals = 0;
+    Stim(Ports& p, bool att, bool with_core, const Ev* e, uint32_t count) : attached(att), core(with_core), ev(e), n(count) {
         for (unsigned d = 0; d < 4; d++) p.out(link[d], "link", 3);
-        p.out(inj, "inj", 3);
+        if (core) p.out(send, "send", 3); else p.out(inj, "inj", 3);
         if (attached) p.out(cnc, "cnc", 3);
     }
     Wake step(Ctx& c) {
         const uint64_t t = c.now();
+        bool retried = false;
+        if (core && put_at == t - 1) {
+            if (c.refused(send)) { refusals++; c.put(send, put_w[0], put_w[1], put_w[2]); put_at = t; retried = true; }
+            else std::memcpy(occupant, put_w, sizeof occupant);   // accepted at t: the hold's word
+        }
         for (; i < n && ev[i].t == t; i++) {
             const Ev& e = ev[i];
             if (e.port < 4) c.put(link[e.port], e.w[0], e.w[1], e.w[2]);
             else if (e.port == 4) c.put(inj, e.w[0], e.w[1], e.w[2]);
+            else if (e.port == 6) {
+                if (retried) continue;                            // the core stalls on its retry
+                c.put(send, e.w[0], e.w[1], e.w[2]); std::memcpy(put_w, e.w, sizeof put_w); put_at = t;
+            }
             else c.put(cnc, e.w[0], e.w[1], e.w[2]);
         }
-        return i < n ? Wake::at_cycle(ev[i].t) : Wake::none();
+        return c.next();                                          // every cycle: it plays the core
     }
     uint64_t digest() const { return i; }
 };
@@ -88,19 +108,21 @@ struct Obs {
     sim::LinkIn link[4], eject, left;
     sim::FifoIn cnc;
     sim::CountIn ovf;
-    bool attached;
+    sim::RegIn busy;
+    bool attached, core;
     Got out[4], ej, x, lf;
     uint64_t ovf_through_last = 0;   // the router's overflow Count as the register block reads it at its shifted end
-    Obs(Ports& p, bool att) : attached(att) {
+    Obs(Ports& p, bool att, bool with_core) : attached(att), core(with_core) {
         for (unsigned d = 0; d < 4; d++) p.in(link[d], "link", 3);
-        p.in(eject, "eject", 3); p.in(left, "left", 0); p.in(ovf, "ovf");
+        p.in(eject, "eject", 3); p.in(ovf, "ovf");
+        if (core) p.in(busy, "busy", 1); else p.in(left, "left", 0);
         if (attached) p.in(cnc, "cnc", 3, 16);
     }
     static void got(Ctx& c, Got& g, const Word* w) { g.at = c.now(); std::memcpy(g.w, w, sizeof g.w); }
     Wake step(Ctx& c) {
         for (unsigned d = 0; d < 4; d++) if (c.ready(link[d])) { got(c, out[d], c.peek(link[d])); c.take(link[d]); }
         if (c.ready(eject)) { got(c, ej, c.peek(eject)); c.take(eject); }
-        if (c.ready(left)) { lf.at = c.now(); c.take(left); }
+        if (!core && c.ready(left)) { lf.at = c.now(); c.take(left); }
         if (attached && c.ready(cnc)) { got(c, x, c.peek(cnc)); c.take(cnc); }
         ovf_through_last = c.through_last(ovf);
         return c.next();                                    // every cycle: it samples the Count
@@ -127,17 +149,28 @@ std::string run(const Script& s, const Hops& h, sim::Options opt) {
     NetConfig nc;
     sim::Config cfg(opt);
     const bool att = s.tile < 3;
-    auto& st = cfg.add<Stim>("stim", att, s.ev.data(), uint32_t(s.ev.size()));
+    auto& st = cfg.add<Stim>("stim", att, s.send, s.ev.data(), uint32_t(s.ev.size()));
     auto& r = cfg.add<Router>("router", s.tile, nc, &h);
-    auto& ob = cfg.add<Obs>("obs", att);
+    auto& ob = cfg.add<Obs>("obs", att, s.send);
     for (unsigned d = 0; d < 4; d++) { cfg.link(st.link[d], r.in[d], 1); cfg.link(r.out[d], ob.link[d], 1); }
-    cfg.link(st.inj, r.inj, 1);
     cfg.link(r.eject, ob.eject, 1);
-    cfg.link(r.loop_left, ob.left, 1);
+    if (s.send) {
+        auto& ij = cfg.add<Injection>("inj", s.tile, nc);
+        cfg.connect(st.send, ij.send);
+        cfg.link(ij.to_router, r.inj, nc.intra_tile_latency);
+        cfg.link(r.loop_left, ij.loop_left, 1);
+        cfg.connect(ij.send_busy, ob.busy);
+        cfg.missed_wake_after("inj", 1u << 20);                   // a token wait: woken by a free that may not be on its way yet
+    } else {
+        cfg.link(st.inj, r.inj, 1);
+        cfg.link(r.loop_left, ob.left, 1);
+    }
     cfg.connect(r.ovf, ob.ovf);
     if (att) { cfg.connect(st.cnc, r.from_cnc); cfg.connect(r.to_cnc, ob.cnc); }
     sim::Sim sim = cfg.build();
-    std::string out, snap;
+    std::string out, snap, injsnap;
+    uint64_t held_end = 0;                                    // the injection unit's loopback tokens at the end of t - 1
+    bool freed_end = false;                                   // a token freed (loop_left put) at t - 1
     uint64_t ovf_prev = 0, ovf_prev2 = 0;                    // the overflows of every put through t - 1, t - 2
     for (uint64_t t = 1; t <= s.cycles + 1; t++) {
         sim.run(1);                                           // cycle t
@@ -150,8 +183,15 @@ std::string run(const Script& s, const Hops& h, sim::Options opt) {
                 if (o.out[d].at == t) { const char tag[3] = {'O', char('0' + d), 0}; w3(line, tag, o.out[d].w); }
             if (o.ej.at == t) w3(line, "E", o.ej.w);
             if (o.x.at == t) w3(line, "X", o.x.w);
-            if (o.lf.at == t) line += " F";
-            out += line + snap + "\n";
+            const bool freed = s.send ? freed_end : o.lf.at == t;
+            if (freed) line += " F";
+            if (s.send) {                                     // tokens held as at the start of t: minus the free in flight
+                char b[32];
+                std::snprintf(b, sizeof b, "%" PRIu64, held_end - (freed ? 1 : 0));
+                const size_t k = injsnap.find('#');
+                line += snap + injsnap.substr(0, k) + b + injsnap.substr(k + 1);
+            } else line += snap;
+            out += line + "\n";
             // at t, the Count through t - 1 holds the overflows of the puts through t - 2 (judged at t - 1)
             if (o.ovf_through_last != ovf_prev2) {
                 ::test::fail(__FILE__, __LINE__, "cycle %" PRIu64 ": the overflow Count through t - 1 is %" PRIu64 ", want %" PRIu64,
@@ -170,6 +210,22 @@ std::string run(const Script& s, const Hops& h, sim::Options opt) {
                           rp.eject_errors);
             snap = b;
             ovf_prev2 = ovf_prev; ovf_prev = ovf;
+            if (s.send) {                                     // StateFp's "inj" (read return: empty; the send hold)
+                const Injection& ij = sim.unit<Injection>("inj");
+                const Stim& sp = sim.unit<Stim>("stim");
+                const bool put_now = sp.put_at == t, occ = ij.busy_out != 0;
+                FpOut g;
+                g.w("readReturn.occ", 0); g.w("readReturn.put", 0);
+                g.w("send.occ", occ);
+                if (occ) { g.w("a", sp.occupant[0]); g.w("b", sp.occupant[1]); g.w("c", sp.occupant[2]); }
+                g.w("send.put", put_now);
+                if (put_now) { g.w("pa", sp.put_w[0]); g.w("pb", sp.put_w[1]); g.w("pc", sp.put_w[2]); }
+                std::snprintf(b, sizeof b, "%s P:%" PRIx64 ",#,%" PRIu64 ",%" PRIu64 ",%" PRIu64, occ || put_now ? " B" : "",
+                              g.done(), ij.token_waits(t), sp.refusals, ij.violations);
+                injsnap = b;
+                held_end = ij.tok.loop_held;
+                freed_end = rp.loop_left_at == t;
+            }
         }
     }
     (void)st;
@@ -200,7 +256,7 @@ bool same(const std::string& name, const std::string& got, const std::string& wa
     return false;
 }
 
-const char* kFixtures[] = {"t0-s1", "t1-s2", "t5-s3", "t27-s1", "t63-s2"};
+const char* kFixtures[] = {"t0-s1", "t1-s2", "t5-s3", "t27-s1", "t63-s2", "t0-s4-send", "t5-s5-send", "t63-s6-send"};
 
 void conformance(sim::Options opt) {
     const Hops h = hops();
@@ -261,11 +317,12 @@ TEST(router_conformance_long_runs_when_asked) {
     const char* dir = std::getenv("ROUTERCONF_LONG");
     if (!dir) return;
     const Hops h = hops();
-    const char* tiles[] = {"0", "1", "5", "27", "63"};
+    const char* confs[] = {"0", "1", "5", "27", "63", "0|-send", "5|-send", "63|-send"};
     unsigned n = 0;
-    for (const char* t : tiles)
+    for (const char* cf : confs)
         for (int seed = 1; seed <= 3; seed++) {
-            std::string name = std::string(dir) + "/t" + t + "-s" + std::to_string(seed);
+            std::string c = cf, tile = c.substr(0, c.find('|')), mode = c.find('|') == std::string::npos ? "" : c.substr(c.find('|') + 1);
+            std::string name = std::string(dir) + "/t" + tile + "-s" + std::to_string(seed) + mode;
             bool ok1 = false, ok2 = false;
             std::string script = portconf::read_command("gzip -dc " + name + ".script.gz", &ok1);
             std::string ref = body(portconf::read_command("gzip -dc " + name + ".obs.gz", &ok2));

@@ -78,11 +78,14 @@ struct Router {
 
     // ---- statistics (ref's counters; not state) ----
     uint64_t injected = 0, routed = 0, ejected = 0, eject_errors = 0, route_errors = 0, from_cnc_words = 0, to_cnc_words = 0;
+    uint64_t loop_left_at = 0;        // the last cycle a token-holding packet left the loopback FIFO (tests)
 
     // non-empty FIFOs, one bit per FIFO index (exact, unlike ref's `maybe` hint)
     uint32_t occ = 0;
     // overflows of this cycle's puts, counted on `ovf` at t + 1: a put of t is judged at t + 1 (PORTS.md 3), so the
-    // register block's endCycle(t + 1) is the first to see it, as in ref with the FIFO touched at t + 1
+    // register block's endCycle(t + 1) is the first to see it. D28: ref counts it lazily, at the FIFO's next touch (a
+    // variable number of cycles late, differently with idle-skip on and off); the framework follows PORTS.md's rule and
+    // references avoid the case.
     uint32_t ovf_due = 0;
 
     Router(sim::Ports& p, unsigned tile, const NetConfig& c, const Hops* h);
@@ -183,7 +186,7 @@ inline sim::Wake Router::step(sim::Ctx& c) {
     if (loopback_last) ej = select(EJECT, 0x3F & ~(1u << loop), s, taken) || select(EJECT, 1u << loop, s, taken);
     else { ej = select(EJECT, 0x3F, s, taken); if (ej && s.slot == loop) rr[EJECT] = uint8_t(loop); }
     if (ej) {
-        if (s.slot == loop && (s.w[1] & lw::TAG_TOKEN)) c.put(loop_left);
+        if (s.slot == loop && (s.w[1] & lw::TAG_TOKEN)) { c.put(loop_left); loop_left_at = c.now(); }
         ejected++;
         const unsigned dst = lw::dst(s.w[1]);
         if (dst == me || dst == lw::BROADCAST) c.put(eject, s.w[0], s.w[1], s.w[2]);

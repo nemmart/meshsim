@@ -4,7 +4,7 @@
 #   make tsan-units   the threads test (test_controllers) under TSan, gcc and clang; also run by make check
 #   make golden       every golden trace (tests/golden/RUNS) on the engine, with the debug checks, and on the direct driver
 
-UNITS_LINK  := $(B)/src/units/trace_log.o $(B)/src/units/controller.o
+UNITS_LINK  := $(B)/src/units/trace_log.o $(B)/src/units/controller.o $(B)/src/units/tile_ctl.o
 GOLDEN_OBJ  := $(B)/tests/golden_run.o $(B)/tests/sha256.o
 
 $(B)/test_rv32 $(B)/test_regblock $(B)/test_golden $(B)/test_controllers $(B)/test_broken_units: $(UNITS_LINK) $(GOLDEN_OBJ)
@@ -35,3 +35,10 @@ tsan-units-one: $(UTB)/test_controllers
 tsan-units:
 	@set -e; for c in $(COMPILERS); do echo "==== $$c tsan (controllers)"; $(MAKE) --no-print-directory CC_NAME=$$c tsan-units-one; done
 check: tsan-units
+
+# WORKER8: the canonical state fingerprint's C++ side (tests/statefp.*), and its test.
+FP_OBJ := $(B)/tests/statefp.o
+$(B)/test_statefp: $(FP_OBJ)
+$(B)/test_statefp_g1: $(FP_OBJ) $(B)/tests/statefp_g1.o
+$(B)/test_statefp_core: $(FP_OBJ) $(B)/tests/statefp_g1.o $(UNITS_LINK) $(GOLDEN_OBJ)
+$(B)/test_g1_tile: $(UNITS_LINK)

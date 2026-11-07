@@ -12,13 +12,20 @@
 //   void post(op, arg, v)       what the block applies at the end of t (one a cycle): BUS_STORE (register, value),
 //                               BUS_CONSUME (-, the EVENTS bits returned), BUS_ERROR (condition, -)
 //
-// What M1 doesn't model stops with FATAL("... not modelled in M1"), naming the register or window.
+// M2 (W8), each optional (an environment without it, M1's benches, stops with a FATAL naming what it lacks):
+//   void send(lo, hdr, hi)      a ROUTER_SEND_* store's packet on the send holding register (W9's injection unit)
+//   bool send_refused()         the send put of t - 1 was refused: the core puts the same packet again and stalls
+//   void table_store(table, i, v)  a table-window store (table_store.h), applied before t + 1's readers
+//   uint32_t hist(i)            HIST[i] for a one-cycle table-window load
+// What isn't modelled yet stops with FATAL("... not modelled yet"), naming the register or window.
 #pragma once
 
 #include <cstdint>
 
 #include "base/fatal.h"
+#include "units/linkword.h"
 #include "units/regmap.h"
+#include "units/table_store.h"
 #include "units/trace_log.h"
 
 // A profiling build (-DUNITS_PROFILE) keeps the core's step and its interpreter out of line, so `perf` can tell them from
@@ -68,9 +75,10 @@ struct Rv32 {
     bool in_wfi = false, in_handler = false, parked = false, ub = false;
     uint32_t stall = 0;
     uint64_t load_wait_t = kNever; uint32_t load_wait_pc = 0;
+    uint64_t pending_t = kNever; uint64_t send_w[3] = {};   // M2: a send store's packet awaiting acceptance (ref's pendingT)
     // ---- configuration, and permanent state allocated apart ----
     Rv32Timing timing;
-    uint32_t periph_present = 1;           // PARAMS [2:0]: which windows are present (present: not modelled in M1)
+    uint32_t periph_present = 1;           // PARAMS [2:0]: which windows are present (present: not modelled yet)
     uint32_t* dmem = nullptr;              // MEM_WORDS each
     uint32_t* imem = nullptr;
     const uint32_t* bootrom = nullptr; uint32_t bootrom_words = 0;
@@ -81,7 +89,7 @@ struct Rv32 {
     // ---- statistics (Controller's) and ref's violations (counted, never a stop: TileControl.violate) ----
     uint64_t instructions = 0, cycles_stalled = 0, stall_branch = 0, stall_mul = 0, stall_reg_load = 0,
              stall_request = 0, cycles_wfi = 0, traps = 0, bus_errors = 0, illegals = 0, violations = 0,
-             alias_accesses = 0, reserved_accesses = 0, trace_stores = 0;
+             alias_accesses = 0, reserved_accesses = 0, trace_stores = 0, stall_send = 0, sends = 0;
 
     // ================================================================ the cycle
     // Controller.runCycle(t), after catching up the cycles slept since `last`. Returns the next cycle the core needs
@@ -92,7 +100,14 @@ struct Rv32 {
         if (stop != Stop::running) return kNever;                     // the run ended: nothing more (mcycle frozen)
         catch_up(t);
         mcycle++;                                                       // 1.
-        // 2. halted: a halt ends the run (below), so never here. 3. a refused router send: not in M1.
+        // 2. halted: a halt ends the run (below), so never here.
+        if constexpr (requires { e.send_refused(); }) {                 // 3. a refused send: retry, the core stalls
+            if (pending_t == t - 1 && e.send_refused()) {
+                e.send(send_w[0], send_w[1], send_w[2]);
+                pending_t = t; stall_send++; cycles_stalled++;
+                return t + 1;
+            }
+        }
         if (interrupt_pending(e) && stall == 0) {                       // 4.
             in_wfi = false; trap(t, CAUSE_EXTERNAL, 0, pc, pc);
             return after(t);
@@ -257,7 +272,7 @@ struct Rv32 {
                 return;                                       // a full request FIFO: re-executed at t + 1
             }
             if (f3 == 2 && in_windows(ea) && window_present(window_of(ea)))
-                FATAL("tile core: a store to peripheral %u's window at 0x%x: not modelled in M1", window_of(ea), ea);
+                FATAL("tile core: a store to peripheral %u's window at 0x%x: not modelled yet", window_of(ea), ea);
             if (f3 > 2) { illegal(e, t, ipc, ins); return; }
             uint32_t width = 1u << f3;
             if (ea & (width - 1)) { undefined(t, true, width, ea, ipc); return; }
@@ -399,7 +414,8 @@ struct Rv32 {
         }
         if (in_tables(a)) {
             if (width != 4 || a >= PTR_BASE) return false;                     // PTR, STREAM, GROUP: bus error
-            FATAL("tile core: a load from HIST in the table window at 0x%x: not modelled in M1", a);
+            if constexpr (requires { e.hist(0u); }) { v = e.hist(table_addr(a).index); return true; }
+            else FATAL("tile core: a load from HIST in the table window at 0x%x: this bench has no HIST", a);
         }
         if (in_regs(a)) {
             if (width != 4) return false;
@@ -410,12 +426,12 @@ struct Rv32 {
     template <class Env>
     bool read_reg(Env& e, uint32_t a, uint32_t& v) {
         if (unsigned n = window_of(a)) {
-            if (window_present(n)) FATAL("tile core: a load from peripheral %u's window at 0x%x: not modelled in M1", n, a);
+            if (window_present(n)) FATAL("tile core: a load from peripheral %u's window at 0x%x: not modelled yet", n, a);
             return false;                                                      // an absent peripheral: bus error
         }
         unsigned i = (a - REG_BASE) >> 2;
         const RegInfo& r = reg_info(i);
-        if (r.load == A_OUT) FATAL("tile core: a load from %s (0x%x): not modelled in M1", r.name, a);
+        if (r.load == A_OUT) FATAL("tile core: a load from %s (0x%x): not modelled yet", r.name, a);
         if (r.load == A_NONE) {                                                // write-only or reserved: reads 0
             if (r.store == A_NONE) { reserved_accesses++; violations++; }
             v = 0; return true;
@@ -428,8 +444,35 @@ struct Rv32 {
             return true;
         }
         case EVENTS_PEEK: v = e.reg(EVENTS); return true;
-        default: v = e.reg(i); return true;                                    // PARAMS, STATUS, ERRORS, the mask, required
+        default: v = e.reg(i); return true;   // PARAMS, STATUS, ERRORS, the mask, required; M2: ROUTER_HDR/ADDR, DMA_*,
+                                              // the counters (at the start of t), SRAM_RD_DEST_ADDR
         }
+    }
+
+    // TileControl.definedBits: a store's defined bits per register (the rest reserved; a violation, ignored).
+    static uint32_t defined_bits(unsigned i) {
+        switch (i) {
+        case PULSE_DONE: case PULSE_DMA: return 1;
+        case EVENTS_MASK: case EVENTS_REQUIRED: return EVENTS_VALID;
+        case ROUTER_HDR: return 1u | 0xFFF80000u;
+        case DMA_CONFIG: return (1u << 27) - 1;
+        case DMA_RECORD_BASE_ADDRESS: case SRAM_RD_ADDR_QUEUE: return 0x1FFFFF;
+        case SRAM_RD_DEST_ADDR: return 0x3FFFFF;
+        default: return i >= WRITE_COUNTER_1 && i <= WRITE_COUNTER_7 ? 0xFFFFFu : ~0u;
+        }
+    }
+    // A ROUTER_SEND_* store (8.4): the packet from the registers as they stand at t (the block's view: ROUTER_HDR's
+    // counter, mode and dst, ROUTER_ADDR, W0-W2 below the store's top word), put on the send holding register at t.
+    template <class Env>
+    void send_store(Env& e, uint64_t t, uint32_t size, uint32_t v) {
+        if constexpr (requires { e.send(0ull, 0ull, 0ull); }) {
+            uint32_t h = e.reg(ROUTER_HDR), w0 = e.reg(ROUTER_SET_W0), w1 = e.reg(ROUTER_SET_W1), w2 = e.reg(ROUTER_SET_W2);
+            send_w[0] = size == lw::SIZE_32 ? uint64_t(v) : size == lw::SIZE_64 ? uint64_t(v) << 32 | w0 : uint64_t(w1) << 32 | w0;
+            send_w[1] = lw::hdr(0, h >> 25 & 0x7F, h >> 22 & 7, h >> 19 & 7, e.reg(ROUTER_ADDR), size);
+            send_w[2] = size == lw::SIZE_128 ? uint64_t(v) << 32 | w2 : 0;
+            e.send(send_w[0], send_w[1], send_w[2]);
+            pending_t = t; sends++;
+        } else FATAL("tile core: a send store at cycle %llu: this bench has no send port", (unsigned long long)t);
     }
 
     // A store at t (value and mask shifted into place); false: a bus error.
@@ -445,25 +488,29 @@ struct Rv32 {
         if (region(a) == R_PMEM || region(a) == R_BOOTROM) return false;
         if (in_tables(a)) {
             if (mask != 0xFFFFFFFFu) return false;
-            FATAL("tile core: a store to the table window at 0x%x: not modelled in M1", a);
+            if constexpr (requires { e.table_store(0u, 0u, 0u); }) {
+                TableAddr ta = table_addr(a);
+                e.table_store(ta.table, ta.index, v & table_mask(ta.table));
+                return true;
+            } else FATAL("tile core: a store to the table window at 0x%x: this bench has no table store", a);
         }
         if (in_regs(a)) {
             if (mask != 0xFFFFFFFFu) return false;
             if (unsigned n = window_of(a)) {
-                if (window_present(n)) FATAL("tile core: a store to peripheral %u's window at 0x%x: not modelled in M1", n, a);
+                if (window_present(n)) FATAL("tile core: a store to peripheral %u's window at 0x%x: not modelled yet", n, a);
                 return false;
             }
             unsigned i = (a - REG_BASE) >> 2;
             const RegInfo& r = reg_info(i);
-            if (r.store == A_OUT) FATAL("tile core: a store to %s (0x%x): not modelled in M1", r.name, a);
+            if (r.store == A_OUT) FATAL("tile core: a store to %s (0x%x): not modelled yet", r.name, a);
             if (r.store == A_NONE) {
                 if (r.load != A_NONE) return false;                            // a read-only register: bus error
                 reserved_accesses++; violations++; return true;                // reserved: ignored
             }
-            uint32_t defined = i == PULSE_DONE ? 1u : (i == EVENTS_MASK || i == EVENTS_REQUIRED) ? EVENTS_VALID : ~0u;
-            if (v & ~defined) violations++;                                    // reserved bits set: ignored
+            if (v & ~defined_bits(i)) violations++;                           // reserved bits set: ignored (invariant 21)
             if (i == TRACE) trace_stores++;
             e.post(BUS_STORE, i, v);
+            if (i >= ROUTER_SEND_32 && i <= ROUTER_SEND_128) send_store(e, t, i - ROUTER_SEND_32, v);
             if (i == SIM_EXIT) halt_with(t, HALT_EXIT, ipc);
             return true;
         }

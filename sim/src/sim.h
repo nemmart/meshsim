@@ -63,9 +63,24 @@
 // add `Wake step_result(Ctx&)`, same ports, computing results without per-cycle timing), chosen per instance.
 //
 // COST MODEL (release). `ready` tests a bit of the instance's mask (no port is read); `peek` is a load from the port's
-// ring; `take` a decrement and a bit update; a put appends the words and one destination word to a bucket of its kind's
-// wheel (a route lookup, no branch on the kind or the domain); a Wire read is a load, a write a compare and a store (and
-// the readers' bits when it changes).
+// ring; `take` a decrement and a bit update; a put appends one destination word and the words to a bucket of its (kind,
+// width) wheel (a route lookup, no branch on the kind or the domain); a Wire read is a load, a write a compare and a store
+// (and the readers' bits when it changes). A ready mark per delivered word costs ~2.7 ns at saturation (W6, R): 11-13% of
+// a saturated mesh, and 1.85x faster than polling on a quiet one, which is what a chip mostly is.
+//
+// PAYLOADS AND WIDTHS (D16, D17). Everything in motion is 0 to 3 untyped 64-bit words; the link word is three words
+// inline (D17). A unit holds a 128-bit value inline as two words (W6: 2 ns per multiply cheaper than pool indices, 25%
+// more throughput at 12 threads; the `limbs` form, built with clang, D18). A port's width is a runtime value in its
+// declaration and is never visible to authors beyond that; inside the framework each (kind, width) has its own wheel
+// with fixed-size entries and its own delivery loop, templated on the word count (widths 1, 2, 3, and 0 for events,
+// which carry only the destination word): a few instantiations, each genuinely different code. Nothing is templated on
+// payload types (D16).
+//
+// UNIT STATE. Units are constructed at configuration, then moved into one arena per type when the machine is built, and
+// their port handles are rewritten in place. So a unit type must be move-constructible (checked at `add`), and a unit
+// may hold no pointer into itself or into another unit: another unit is reached only through ports. Pointers to
+// permanent state allocated apart (a memory from `alloc_big`, a read-only table built at configuration) are fine; they
+// don't move.
 //
 // DEBUG CHECKS (config.h's Options), each compared by the digest of every port and unit (Sim::digest):
 //   shuffle      within a level, runs and instances in a seeded random order: any difference is an undeclared dependence
@@ -195,7 +210,8 @@ public:
     uint64_t now(CountIn p) const;                   // every increment so far (a wire read: producers at lower levels)
     uint64_t through_last(CountIn p) const;          // as at the end of t - 1 (what endCycle(t - 1) saw)
 
-    // 128-bit values travelling by index (sim/README.md): the thread's array. W6's findings may change this.
+    // Payloads larger than 128 bits only (D17): the thread's array of 128-bit values, a payload's word an index into it.
+    // A 128-bit value travels inline as two words and is held in a unit as two words; it never comes here.
     ValuePool& values();
 };
 
@@ -208,7 +224,7 @@ public:
 //         Wake step(Ctx& c);
 //     };
 //
-// Widths are words per entry (0 for an event Link, 1 to 3 otherwise). Capacities that belong to the receiver are declared
+// Widths are words per entry (0 for an event Link, 1 to 3 otherwise; a link word is 3, D17). Capacities that belong to the receiver are declared
 // on the input (a Fifo's depth); latencies belong to the wiring (config.h). Names are copied (any std::string is fine).
 class Ports {
 public:

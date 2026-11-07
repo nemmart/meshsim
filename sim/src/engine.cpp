@@ -41,9 +41,16 @@ void Engine::cycle() {
         b.clear();
     }
     while (heap_n && wake_at[heap[0]] == now) mark(heap_pop());
+    if (step_all)                                      // the missed-wake check: every instance, every cycle
+        for (uint32_t r = 0; r < nruns; r++) { runs[r].ready.set_all(); runs[r].nready = runs[r].count; }
     // 2. run, level by level (runs are sorted by level)
-    for (uint32_t r = 0; r < nruns; r++)
-        if (runs[r].nready) { cur_level = runs[r].level; runs[r].fn(*this, runs[r]); }
+    if (shuffle || instance_major) {
+        for (uint32_t r = 0; r < nruns;) run_level_debug(r);
+    } else {
+        for (uint32_t r = 0; r < nruns; r++)
+            if (runs[r].nready) { cur_level = runs[r].level; runs[r].fn(*this, runs[r]); }
+    }
+    if constexpr (kDebug) if (detector) check_suspects();
     // 3. end: the next cycle's run sets become current
     for (uint32_t r = 0; r < nruns; r++) {
         RunSet& rs = runs[r];
@@ -60,13 +67,14 @@ bool Engine::idle() const {
     return true;
 }
 
+// Runs cycles now, now + 1, ..., end: through `end` inclusive (config.h, Sim::run_until).
 void Engine::run_until(Cycle end) {
-    while (now < end) {
+    while (now <= end) {
         cycle();
         if constexpr (kDebug) if (leak_every && npools && now % leak_every == 0) check_leaks();
-        if (idle()) {                                  // nothing in flight, nothing ready: jump to the next wake
-            Cycle t = heap_n ? wake_at[heap[0]] : end;
-            if (t > end) t = end;
+        if (!step_all && idle()) {                     // nothing in flight, nothing ready: jump to the next wake
+            Cycle t = heap_n ? wake_at[heap[0]] : end + 1;
+            if (t > end + 1) t = end + 1;
             if (t > now) now = t;
         }
     }
@@ -108,6 +116,15 @@ void Engine::after(RunSet& r, uint32_t k, Wake w) {
     steps[i]++;
     mask[i] &= ~edges[i];
     const Cycle at = w.at;
+    if constexpr (kDebug) {
+        if (detector) {                                // asleep with data waiting: a suspect, judged at the end of the cycle
+            if (at == Wake::kNever && (mask[i] & ~edges[i]) && missed_after[i]) {
+                if (suspect_since[i] == kNoCycle) { suspect_since[i] = now; suspects[nsuspects++] = i; }
+            } else {
+                suspect_since[i] = kNoCycle;           // dropped from the list at the end of the cycle
+            }
+        }
+    }
     if (at == Wake::kNever) { if (heap_pos[i] != kNone) heap_remove(i); return; }
     if (__builtin_expect(at <= now, 0)) die_wake(i, at);
     if (at == now + 1) {
@@ -116,6 +133,100 @@ void Engine::after(RunSet& r, uint32_t k, Wake w) {
         return;
     }
     heap_set(i, at);
+}
+
+// ---- the debug orders: one level's ready instances in instance-major or a seeded order, stepped one by one ----------
+void Engine::run_level_debug(uint32_t& r) {
+    const uint32_t level = runs[r].level, first = r;
+    uint32_t n = 0;
+    for (; r < nruns && runs[r].level == level; r++) {
+        RunSet& rs = runs[r];
+        if (rs.nready) rs.ready.for_each_set([&](size_t k) { scratch[n++] = rs.first + uint32_t(k); });
+    }
+    if (instance_major) {                              // by add order (each instance's units together): a shell sort, in place
+        for (uint32_t gap = n / 2; gap; gap /= 2)
+            for (uint32_t a = gap; a < n; a++)
+                for (uint32_t b = a; b >= gap && add_order[scratch[b - gap]] > add_order[scratch[b]]; b -= gap) {
+                    uint32_t x = scratch[b]; scratch[b] = scratch[b - gap]; scratch[b - gap] = x;
+                }
+    }
+    if (shuffle) {                                     // Fisher-Yates with splitmix64
+        for (uint32_t a = n; a > 1; a--) {
+            uint64_t z = (shuffle += 0x9e3779b97f4a7c15ull);
+            z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ull;
+            z = (z ^ (z >> 27)) * 0x94d049bb133111ebull;
+            z ^= z >> 31;
+            uint32_t b = uint32_t(z % a);
+            uint32_t x = scratch[a - 1]; scratch[a - 1] = scratch[b]; scratch[b] = x;
+        }
+    }
+    cur_level = level;
+    for (uint32_t j = 0; j < n; j++) {
+        const uint32_t i = scratch[j];
+        RunSet& rs = runs[run_of[i]];
+        rs.one(*this, rs, i - rs.first);
+    }
+    for (uint32_t q = first; q < r; q++) { runs[q].ready.clear_all(); runs[q].nready = 0; }
+}
+
+// ---- the missed-wake detector (D20; debug builds) ------------------------------------------------------------------
+// A unit asleep (no step next cycle, no far wake) with data waiting in an input is fine only while something already on
+// its way will step it: a delivery to one of its inputs (in a wheel), a credit output with no credit left (the consumer
+// holds them all, and each take returns one: a return in the wheel, or one to come; if it never takes, that is a
+// deadlock, not a missed wake), or a Hold put it made this cycle (a refusal at t + 1 wakes it). Anything else is reported once it has lasted the unit's
+// threshold. Not seen: a wait on a Wire's change (sim.h).
+bool Engine::on_its_way(uint32_t i) const {
+    for (uint32_t w = watch_first[i]; w < watch_first[i + 1]; w++) {
+        const Watch& x = watch[w];
+        if (x.kind == Kind::link) { if (links[x.idx].inflight) return true; continue; }
+        if (x.kind == Kind::hold && x.name == nullptr) { if (routes[x.idx].last_put == now) return true; continue; }   // a Hold output
+        if (x.kind == Kind::cret && fifos[x.idx].credits == 0) return true;   // no credit left: the consumer's takes return them
+        Kind wk = x.kind == Kind::cret ? Kind::cret : x.kind;       // fifo, credit or hold inputs; cret: a credit output's returns
+        for (uint32_t h = 0; h < nwheels; h++) {
+            const Wheel& wh = wheels[h];
+            if (wh.kind != wk) continue;
+            for (uint32_t b = 0; b <= wh.mask; b++) {
+                const Bucket& bk = wh.buckets[b];
+                const Word* p = bk.begin();
+                for (uint32_t k = 0; k < bk.count(); k++, p += wh.width + 1) if (p[0] == x.idx) return true;
+            }
+        }
+    }
+    return false;
+}
+std::string Engine::describe_suspect(uint32_t i) const {
+    std::string s = std::string(unit_names[i]) + " is asleep with data waiting in";
+    for (uint32_t w = watch_first[i]; w < watch_first[i + 1]; w++) {
+        const Watch& x = watch[w];
+        if (!x.name) continue;
+        uint64_t data = 0;
+        if (x.kind == Kind::link) data = !links[x.idx].ring.empty();
+        else if (x.kind == Kind::fifo || x.kind == Kind::credit) data = !fifos[x.idx].ring.empty();
+        else if (x.kind == Kind::hold) data = holds[x.idx].occ;
+        if (data) { s += " "; s += x.name; }
+    }
+    return s;
+}
+void Engine::check_suspects() {
+    uint32_t w = 0;
+    for (uint32_t k = 0; k < nsuspects; k++) {
+        const uint32_t i = suspects[k];
+        if (suspect_since[i] == kNoCycle) continue;
+        const RunSet& r = runs[run_of[i]];
+        if (r.next.test(i - r.first) || heap_pos[i] != kNone || !(mask[i] & ~edges[i])) { suspect_since[i] = kNoCycle; continue; }
+        if (on_its_way(i)) { suspect_since[i] = now + 1; suspects[w++] = i; continue; }
+        if (now + 1 - suspect_since[i] >= missed_after[i]) {
+            std::string d = describe_suspect(i);
+            if (missed_fatal)
+                FATAL("missed wake at cycle %llu: %s, and nothing on its way will step it (no wake asked, no delivery, credit or "
+                      "refusal due); a unit that leaves data in an input returns next() (sim.h, WAKES)", (unsigned long long)now, d.c_str());
+            std::fprintf(stderr, "missed wake at cycle %llu: %s\n", (unsigned long long)now, d.c_str());
+            suspect_since[i] = kNoCycle;               // reported: not again until it steps and sleeps on data again
+            continue;
+        }
+        suspects[w++] = i;
+    }
+    nsuspects = w;
 }
 
 // ---- the far wakes: a binary min-heap of instances by (wake_at, instance), each instance at most once -------------------

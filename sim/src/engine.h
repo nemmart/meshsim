@@ -7,6 +7,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 
 #include "base/bitmap.h"
 #include "base/bucket.h"
@@ -114,6 +115,7 @@ struct Engine;
 // A run: the ready instances of one (level, type, form), contiguous instance ids [first, first + count).
 struct RunSet {
     void (*fn)(Engine&, RunSet&);
+    void (*one)(Engine&, RunSet&, uint32_t k);   // one instance (the debug orders)
     unsigned char* units;     // the type's arena, at this run's first unit
     uint32_t first, count, level, nready, nnext;
     uint16_t type;
@@ -152,6 +154,20 @@ struct Engine {
     uint32_t npools = 0;
     uint64_t* pool_allow = nullptr;    // per class: the slots units may hold outside the ports (declared held, refused holds)
     uint64_t leak_every = 0;           // debug: check the pools every N cycles (0: at the end of each run only)
+    // the debug orders and step-all (sim.h, DEBUG CHECKS)
+    bool step_all = false, instance_major = false;
+    uint64_t shuffle = 0;              // the seeded order's state (0: none)
+    uint32_t* add_order = nullptr;     // per instance: its place in the configuration's add order (instance-major)
+    uint32_t* scratch = nullptr;       // a level's ready instances, ninst entries
+    // the missed-wake detector (D20; debug builds)
+    struct Watch { Kind kind; uint32_t idx; const char* name; };   // a level input, or a Hold or credit output
+    Watch* watch = nullptr;
+    uint32_t* watch_first = nullptr;   // per instance: its watches are [watch_first[i], watch_first[i + 1])
+    uint32_t* missed_after = nullptr;  // per instance: the threshold (0: off)
+    Cycle* suspect_since = nullptr;    // per instance: since when asleep with data waiting, kNoCycle if not a suspect
+    uint32_t* suspects = nullptr;      // the suspects, nsuspects of them
+    uint32_t nsuspects = 0;
+    bool missed_fatal = true, detector = false;
     uint32_t cur_level = 0;            // the level running (checks)
     uint64_t pending = 0;         // entries in the wheels (fast-forward when 0 and nothing is ready)
     const char* const* unit_names = nullptr;   // for messages
@@ -197,6 +213,10 @@ struct Engine {
     void cycle();
     void run_until(Cycle end);
     void check_leaks() const;          // debug builds: each class's slots in use against its ports and declared holds
+    void run_level_debug(uint32_t& r); // the debug orders: one level's ready instances, ordered and stepped one by one
+    bool on_its_way(uint32_t i) const; // the detector: a delivery, a credit return or a refusal will step instance i
+    void check_suspects();
+    std::string describe_suspect(uint32_t i) const;
     bool idle() const;
 
     void heap_set(uint32_t i, Cycle at);

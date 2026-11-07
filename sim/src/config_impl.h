@@ -12,6 +12,7 @@
 
 #include "base/arena.h"
 #include "config.h"
+#include "digest_view.h"
 
 namespace sim {
 
@@ -130,6 +131,7 @@ struct Sim::Impl {
     std::vector<std::vector<std::pair<uint8_t, std::string>>> level_ports;   // per instance: (bit, port name) of its level inputs
     std::vector<unsigned> missed_after;               // per instance: the missed-wake detector's threshold (increment 5)
     Sizes sizes;
+    detail::DigestView view;                           // the digest, unit by unit (W4, E5: digest.h)
     unsigned char* obj(uint32_t i) const {
         const Store& s = stores[inst[i].store];
         return s.base + size_t(inst[i].index) * (*types[s.type]).size;

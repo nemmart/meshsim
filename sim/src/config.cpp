@@ -1,6 +1,7 @@
 // config.cpp: building a machine (WORKER3, stage 2). The configuration regime (D6): any C++.
 //
 #include "config_impl.h"
+#include "digest.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -613,6 +614,7 @@ Sim Config::build() {
     z.words_per_chip = z.total_words / z.chips;
     z.wheel_buckets = 0;
     for (auto& w : wheels) z.wheel_buckets = std::max(z.wheel_buckets, w.W);
+    detail::Internals::record_view(I, inst_of, S->view);       // W4 (E5): the digest, unit by unit
     return Sim(S);
 }
 
@@ -650,39 +652,10 @@ uint64_t Sim::steps(const std::string& name) const {
     return impl_->e.steps[it->second];
 }
 
-namespace {
-struct Hash {
-    uint64_t h = 0x9e3779b97f4a7c15ull;
-    void add(uint64_t v) { h ^= v + 0x9e3779b97f4a7c15ull + (h << 6) + (h >> 2); h *= 0xff51afd7ed558ccdull; }
-    void ring(const Ring& r) { add(r.count()); for (unsigned i = 0; i < r.count(); i++) for (unsigned k = 0; k < r.width(); k++) add(r.peek(i)[k]); }
-};
-}  // namespace
-
+// W4 (E5): unit by unit in add order, wide payloads by their contents (digest.h).
 uint64_t Sim::digest() const {
-    const Engine& e = impl_->e;
-    Hash h;
-    h.add(e.now);
-    // ports, in pool order: their visible state (not who is scheduled: step-all and the ready-driven run must agree)
-    for (uint32_t i = 0; i < e.nlinks; i++) { h.ring(e.links[i].ring); h.add(e.links[i].inflight); }
-    for (uint32_t i = 0; i < e.nfifos; i++) { h.ring(e.fifos[i].ring); h.add(e.fifos[i].overflows); h.add(e.fifos[i].first_overflow); }
-    for (uint32_t i = 0; i < e.nholds; i++) {
-        const HoldPort& p = e.holds[i];
-        h.add(p.occ); h.add(p.refusals); h.add(p.refused_at);
-        if (p.occ) for (unsigned k = 0; k < p.width; k++) h.add(p.w[k]);
-    }
-    for (uint32_t i = 0; i < e.nfifos; i++) h.add(e.fifos[i].credits);
-    for (uint32_t i = 0; i < e.nregs; i++) { h.add(e.regs[i].valid); for (unsigned k = 0; k < e.regs[i].width; k++) h.add(e.regs[i].w[k]); }
-    for (uint32_t i = 0; i < e.nwires; i++) h.add(e.wires[i].v);
-    for (uint32_t i = 0; i < e.nregfiles; i++) for (uint32_t k = 0; k < e.regfiles[i].n; k++) h.add(e.regfiles[i].regs[k]);
-    for (uint32_t i = 0; i < e.ncounts; i++) h.add(e.counts[i].total);
-    for (uint32_t k = 0; k < e.npools; k++) {                 // by-reference payloads: which slots are in use, and their words
-        const SlotPool& p = e.pools[k];
-        h.add(p.in_use());
-        for (uint32_t i = 0; i < p.capacity(); i++)
-            if (p.allocated(i)) { h.add(i); for (unsigned w = 0; w < p.slot_words(); w++) h.add(p.slot(i)[w]); }
-    }
-    for (uint32_t k = 0; k < e.ninst; k++) h.add(impl_->types[impl_->inst[k].type]->digest(impl_->obj(k)));
-    return h.h;
+    const Sim::Impl* one = impl_;
+    return detail::Internals::digest(impl_->view, &one, impl_->e.now);
 }
 
 std::string Sim::sleepers() const {

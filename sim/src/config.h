@@ -171,8 +171,11 @@ const TypeInfo* type_ops() {
 
 class Sim;
 
+namespace detail { struct Internals; }   // W4: the digest unit by unit (digest.h, E5) and the split into domains (E3)
+
 class Config {
     friend class Ports;     // a unit's declarations land in the configuration being built
+    friend struct detail::Internals;
 public:
     explicit Config(Options o = {});
     ~Config();
@@ -248,6 +251,7 @@ public:
 
 private:
     friend class Config;
+    friend struct detail::Internals;
     struct Impl;
     explicit Sim(Impl* i) : impl_(i) {}
     void* unit_ptr(const std::string& name, const detail::TypeInfo* type) const;

@@ -1,124 +1,14 @@
 // config.cpp: building a machine (WORKER3, stage 2). The configuration regime (D6): any C++.
 //
-#include "config.h"
+#include "config_impl.h"
 
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
-#include <deque>
-#include <map>
-#include <memory>
-#include <unordered_map>
 
 #include "base/alloc_guard.h"
-#include "base/arena.h"
 
 namespace sim {
-
-// ---- the type registry (process-wide; ids are small integers, no RTTI) ---------------------------------------------
-namespace detail {
-static std::vector<TypeInfo>& registry() {
-    static std::vector<TypeInfo> r;
-    return r;
-}
-uint16_t register_type(TypeInfo&& t) {
-    auto& r = registry();
-    if (r.size() >= 0xFFFF) FATAL("too many unit types");
-    r.push_back(std::move(t));
-    return uint16_t(r.size() - 1);
-}
-const TypeInfo& type_info(uint16_t id) { return registry()[id]; }
-size_t registry_size() { return registry().size(); }
-}  // namespace detail
-
-namespace {
-const char* kind_name(Kind k) {
-    static const char* n[] = { "link", "fifo", "credit fifo", "hold", "reg", "wire", "regfile", "count", "credit return" };
-    return n[unsigned(k)];
-}
-enum class Shape : uint8_t { in, out, out_bit, idx };
-}  // namespace
-
-// ---- the configuration's state ---------------------------------------------------------------------------------------
-struct Config::Impl {
-    struct Decl {
-        uint32_t unit;
-        Kind kind;
-        bool out;
-        Shape shape;
-        uint8_t bit = 0xFF;
-        std::string name;               // "unit.port"
-        unsigned width = 0, depth = 0, latency = 0, regs = 0;
-        unsigned slot_words = 0, held = 0;  // by reference: the size class (0: by value), and slots held beyond the port
-        Word reset = 0;
-        size_t offset = 0;
-        std::vector<uint32_t> peers;
-        uint32_t final = kNone;         // the pool index (inputs) or the route (outputs)
-    };
-    struct Staged {
-        uint16_t type;
-        Form form;
-        std::string name;
-        unsigned chip = 0, domain = 0;
-        unsigned char* obj = nullptr;
-        std::vector<uint32_t> decls;
-        unsigned nbits = 0;
-        uint64_t edges = 0;
-        uint32_t level = 0;
-    };
-
-    Options opt;
-    std::vector<Staged> units;
-    std::vector<Decl> decls;
-    std::unordered_map<std::string, uint32_t> names;
-    unsigned chip = 0, domain = 0;
-    int cur = -1;
-    std::map<std::string, unsigned> missed;   // per-unit missed-wake thresholds (D20)
-    Ports* ports = nullptr;
-    bool built = false;
-
-    Decl& decl(uint32_t id, const char* what) {
-        if (id >= decls.size()) FATAL("%s: not a port handle of this configuration (%u)", what, id);
-        return decls[id];
-    }
-    uint32_t declare(const void* h, Kind k, bool out, Shape shape, const char* name, unsigned width, bool bit, bool edge) {
-        if (cur < 0) FATAL("a port declared outside a unit's constructor ('%s')", name);
-        Staged& u = units[size_t(cur)];
-        const auto& ti = detail::type_info(u.type);
-        const unsigned char* p = static_cast<const unsigned char*>(h);
-        if (p < u.obj || p >= u.obj + ti.size) FATAL("unit '%s': port '%s' is not a member of the unit", u.name.c_str(), name);
-        if (width > 3) FATAL("unit '%s': port '%s' of width %u (at most 3 words, D17)", u.name.c_str(), name, width);
-        Decl d;
-        d.unit = uint32_t(cur);
-        d.kind = k;
-        d.out = out;
-        d.shape = shape;
-        d.name = u.name + "." + name;
-        d.width = width;
-        d.offset = size_t(p - u.obj);
-        if (bit) {
-            if (u.nbits == 64) FATAL("unit '%s': more than 64 ready bits (port '%s')", u.name.c_str(), name);
-            d.bit = uint8_t(u.nbits++);
-            if (edge) u.edges |= uint64_t(1) << d.bit;
-        }
-        decls.push_back(std::move(d));
-        u.decls.push_back(uint32_t(decls.size() - 1));
-        return uint32_t(decls.size() - 1);
-    }
-    void wire(uint32_t o, uint32_t i, Kind k, unsigned latency, bool fan_out, const char* what) {
-        Decl& O = decl(o, what);
-        Decl& I = decl(i, what);
-        if (O.kind != k || !O.out) FATAL("%s: '%s' is not a %s output", what, O.name.c_str(), kind_name(k));
-        if (I.kind != k || I.out) FATAL("%s: '%s' is not a %s input", what, I.name.c_str(), kind_name(k));
-        if (O.width != I.width) FATAL("%s: '%s' (width %u) to '%s' (width %u)", what, O.name.c_str(), O.width, I.name.c_str(), I.width);
-        if (!I.peers.empty()) FATAL("%s: '%s' is already wired (from '%s')", what, I.name.c_str(), decls[I.peers[0]].name.c_str());
-        if (!fan_out && !O.peers.empty()) FATAL("%s: '%s' is already wired (to '%s')", what, O.name.c_str(), decls[O.peers[0]].name.c_str());
-        if (latency < 1 || latency > 0x8000) FATAL("%s: '%s' latency %u (1 to 32768)", what, O.name.c_str(), latency);
-        O.peers.push_back(i);
-        I.peers.push_back(o);
-        O.latency = I.latency = latency;
-    }
-};
 
 // ---- Ports: a unit's declarations ------------------------------------------------------------------------------------
 #define IMPL (*static_cast<Config::Impl*>(impl_))
@@ -208,22 +98,23 @@ Config::Config(Options o) : impl_(new Impl) {
 }
 Config::~Config() {
     for (auto& u : impl_->units)
-        if (u.obj) { detail::type_info(u.type).destroy(u.obj); ::operator delete(u.obj, std::align_val_t(detail::type_info(u.type).align)); }
+        if (u.obj) { (*impl_->types[u.type]).destroy(u.obj); ::operator delete(u.obj, std::align_val_t((*impl_->types[u.type]).align)); }
     delete impl_->ports;
     delete impl_;
 }
 void Config::domain(unsigned d) { impl_->domain = d; }
 void Config::chip(unsigned c) { impl_->chip = c; }
 
-void* Config::stage(uint16_t type, size_t size, size_t align, Form f, const std::string& name) {
+void* Config::stage(const detail::TypeInfo* type, Form f, const std::string& name) {
     Impl& I = *impl_;
     if (I.built) FATAL("unit '%s' added after build()", name.c_str());
     if (I.cur >= 0) FATAL("unit '%s' added inside another unit's constructor", name.c_str());
     if (name.empty()) FATAL("a unit needs a name");
     if (!I.names.emplace(name, uint32_t(I.units.size())).second) FATAL("two units named '%s'", name.c_str());
-    if (f == Form::result && !detail::type_info(type).run[1]) FATAL("unit '%s': its type has no result form", name.c_str());
+    if (f == Form::result && !type->run[1]) FATAL("unit '%s': its type has no result form", name.c_str());
     Impl::Staged u;
-    u.type = type;
+    u.type = I.type_id(type);
+    const size_t size = type->size, align = type->align;
     u.form = f;
     u.name = name;
     u.chip = I.chip;
@@ -264,34 +155,7 @@ void Config::count_overflows(FifoIn f, CountIn c) {
     C.peers.push_back(f.idx);
 }
 
-// ---- Sim ---------------------------------------------------------------------------------------------------------------
-struct Sim::Impl {
-    Engine e;
-    std::unique_ptr<Block> block;
-    struct Store { uint16_t type; unsigned char* base; uint32_t count; };
-    std::vector<Store> stores;
-    struct Inst { uint32_t store, index; std::string name; uint16_t type; unsigned chip; };
-    std::vector<Inst> inst;
-    std::unordered_map<std::string, uint32_t> by_name;
-    std::vector<std::string> route_name_s;
-    std::vector<const char*> unit_names, route_names;
-    std::deque<std::string> port_names;                // ring, bucket and run names: stable addresses (W1's structures keep pointers)
-    std::vector<std::vector<std::pair<uint8_t, std::string>>> level_ports;   // per instance: (bit, port name) of its level inputs
-    std::vector<unsigned> missed_after;               // per instance: the missed-wake detector's threshold (increment 5)
-    Sizes sizes;
-    unsigned char* obj(uint32_t i) const {
-        const Store& s = stores[inst[i].store];
-        return s.base + size_t(inst[i].index) * detail::type_info(s.type).size;
-    }
-    ~Impl() {
-        for (auto& s : stores) {
-            const auto& ti = detail::type_info(s.type);
-            for (uint32_t k = 0; k < s.count; k++) ti.destroy(s.base + size_t(k) * ti.size);
-            free_big(s.base);
-        }
-    }
-};
-
+// ---- Sim --------------------------------------------------------------------------------------------------------------
 namespace {
 // The carving: every structure's words, named, then one block and the pointers.
 struct Carver {
@@ -387,11 +251,11 @@ Sim Config::build() {
         for (uint32_t v : succ[u])
             if (I.units[v].level <= I.units[u].level)
                 FATAL("levels: '%s' (type %s, level %u) drives a wire read by '%s' (type %s, level %u): one level per type "
-                      "can't order them", I.units[u].name.c_str(), detail::type_info(I.units[u].type).name.c_str(),
-                      I.units[u].level, I.units[v].name.c_str(), detail::type_info(I.units[v].type).name.c_str(), I.units[v].level);
+                      "can't order them", I.units[u].name.c_str(), I.types[I.units[u].type]->name.c_str(),
+                      I.units[u].level, I.units[v].name.c_str(), I.types[I.units[v].type]->name.c_str(), I.units[v].level);
 
     // 3. the instances' order: (level, type in first-add order, form), then add order; runs are its contiguous groups
-    std::vector<uint16_t> type_rank(detail::registry_size(), 0xFFFF);
+    std::vector<uint16_t> type_rank(I.types.size(), 0xFFFF);
     uint16_t nt = 0;
     for (auto& u : I.units) if (type_rank[u.type] == 0xFFFF) type_rank[u.type] = nt++;
     std::vector<uint32_t> order(n);
@@ -490,7 +354,7 @@ Sim Config::build() {
     for (const Decl& d : I.decls)
         if (d.out && (d.kind == Kind::reg || d.kind == Kind::wire || d.kind == Kind::regfile)) nreaders += uint32_t(d.peers.size());
     Carver c;
-    auto tname = [&](uint16_t t) { return detail::type_info(t).name; };
+    auto tname = [&](uint16_t t) { return I.types[t]->name; };
     const size_t o_mask = c.add("instances: ready masks", n), o_edges = c.add("instances: edge bits", n),
                  o_wake = c.add("instances: wake cycles", n), o_steps = c.add("instances: step counts", n),
                  o_runof = c.add("instances: run of", (n + 1) / 2), o_hpos = c.add("instances: heap places", (n + 1) / 2),
@@ -530,6 +394,7 @@ Sim Config::build() {
     for (size_t r = 0; r < runs.size(); r++) o_bits[r] = c.add("run sets", 2 * Bitmap::words_needed(runs[r].count), runs[r].count);
 
     auto* S = new Sim::Impl;
+    S->types = I.types;
     S->block = std::make_unique<Block>(c.total ? c.total : 8, "sim: the thread's block");
     uint64_t* B = S->block->words();
     Engine& e = S->e;
@@ -567,14 +432,14 @@ Sim Config::build() {
         S->inst[k] = {it->second, S->stores[it->second].count++, u.name, u.type, u.chip};
     }
     for (auto& st : S->stores) {
-        const auto& ti = detail::type_info(st.type);
+        const auto& ti = *I.types[st.type];
         st.base = static_cast<unsigned char*>(alloc_big(std::max<size_t>(1, ti.size * st.count), "sim: a type's units"));
     }
     for (uint32_t k = 0; k < n; k++) {
         auto& u = I.units[order[k]];
         unsigned char* dst = S->obj(k);
-        detail::type_info(u.type).move(dst, u.obj);
-        ::operator delete(u.obj, std::align_val_t(detail::type_info(u.type).align));
+        (*I.types[u.type]).move(dst, u.obj);
+        ::operator delete(u.obj, std::align_val_t((*I.types[u.type]).align));
         u.obj = nullptr;
         for (uint32_t id : u.decls) {
             const Decl& d = I.decls[id];
@@ -708,7 +573,7 @@ Sim Config::build() {
     for (size_t r = 0; r < runs.size(); r++) {
         RunSet& rs = *new (&e.runs[r]) RunSet{};
         const RunDef& rd = runs[r];
-        const auto& ti = detail::type_info(rd.type);
+        const auto& ti = *I.types[rd.type];
         rs.fn = ti.run[rd.form == Form::result ? 1 : 0];
         rs.units = S->obj(rd.first);
         rs.first = rd.first; rs.count = rd.count; rs.level = rd.level; rs.type = rd.type; rs.form = rd.form;
@@ -733,13 +598,13 @@ Sim Config::build() {
     }
     uint64_t unit_words = 0;
     for (auto& st : S->stores) {
-        const auto& ti = detail::type_info(st.type);
+        const auto& ti = *I.types[st.type];
         uint64_t w = (ti.size * st.count + 7) / 8;
         SizeLine& t = by_t["unit " + ti.name];
         t.what = "unit " + ti.name; t.words += w; t.count += st.count;
         unit_words += w;
     }
-    for (uint32_t k = 0; k < n; k++) by_chip[S->inst[k].chip] += (detail::type_info(S->inst[k].type).size + 7) / 8;
+    for (uint32_t k = 0; k < n; k++) by_chip[S->inst[k].chip] += (I.types[S->inst[k].type]->size + 7) / 8;
     for (auto& [k, v] : by_s) z.by_structure.push_back(v);
     for (auto& [k, v] : by_t) z.by_type.push_back(v);
     z.total_words = c.total + unit_words;
@@ -766,12 +631,17 @@ void Sim::run_until(Cycle t) { impl_->e.run_until(t); }
 Cycle Sim::now() const { return impl_->e.now; }
 const Sizes& Sim::sizes() const { return impl_->sizes; }
 
-void* Sim::unit_ptr(const std::string& name, uint16_t type) const {
+uint16_t Sim::type_of(const std::string& name) const {
     auto it = impl_->by_name.find(name);
     if (it == impl_->by_name.end()) FATAL("no unit named '%s'", name.c_str());
-    if (impl_->inst[it->second].type != type)
-        FATAL("unit '%s' is a %s, not a %s", name.c_str(), detail::type_info(impl_->inst[it->second].type).name.c_str(),
-              detail::type_info(type).name.c_str());
+    return impl_->inst[it->second].type;
+}
+void* Sim::unit_ptr(const std::string& name, const detail::TypeInfo* type) const {
+    auto it = impl_->by_name.find(name);
+    if (it == impl_->by_name.end()) FATAL("no unit named '%s'", name.c_str());
+    if (impl_->types[impl_->inst[it->second].type] != type)
+        FATAL("unit '%s' is a %s, not a %s", name.c_str(), impl_->types[impl_->inst[it->second].type]->name.c_str(),
+              type->name.c_str());
     return impl_->obj(it->second);
 }
 uint64_t Sim::steps(const std::string& name) const {
@@ -811,7 +681,7 @@ uint64_t Sim::digest() const {
         for (uint32_t i = 0; i < p.capacity(); i++)
             if (p.allocated(i)) { h.add(i); for (unsigned w = 0; w < p.slot_words(); w++) h.add(p.slot(i)[w]); }
     }
-    for (uint32_t k = 0; k < e.ninst; k++) h.add(detail::type_info(impl_->inst[k].type).digest(impl_->obj(k)));
+    for (uint32_t k = 0; k < e.ninst; k++) h.add(impl_->types[impl_->inst[k].type]->digest(impl_->obj(k)));
     return h.h;
 }
 

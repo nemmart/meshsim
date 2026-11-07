@@ -354,6 +354,23 @@ Two fixes the driver found before it ran (both to match `ref`, both additive or 
 `Ctx::credits` deducted the unit's own put of the same cycle, unlike `canPut` (and unlike its documented "room as of
 the start of t"): it now adds it back; and `put(RegOut, a, b, c)`, the three-word Reg put the other kinds have.
 
+### E1 and E2, for W4 (integrator, 2026-11-07; before increment 5)
+
+- **E1, the type registry per configuration.** The process-wide part is only each type's pure description
+  (`detail::type_ops<T>()`: a function-local static `TypeInfo`, name, size, move, destroy, run and digest functions,
+  initialised thread-safely by the language). Each `Config` numbers the types it uses itself, in the order they are first
+  added to it (`Config::Impl::types`); the `Sim` keeps that list. So ids are deterministic per machine, whatever other
+  threads build. `Sim::type_of(unit)` reads an id (an observer, additive). `tests/test_registry.cpp`: ids in each
+  Config's first-add order (ABC, CAB, BCA), and three threads building 200 machines each at once, every id as expected;
+  also clean under TSan (built locally, not in `make check`).
+- **E2, the internals in a header.** `Config::Impl` (declarations, staging, the type list) and `Sim::Impl` (the engine,
+  the unit stores, names) moved to `src/config_impl.h`, with `kind_name` and the handle shapes; `config.cpp` keeps the
+  behaviour. A mechanical move.
+- `-pthread` added to the build flags (the test's threads; W4's).
+- **For W4:** W1's allocation hook (`alloc_guard.cpp`) replaces `operator new`, which TSan's runtime also defines, so a
+  TSan build doesn't link with it. For this test I linked a stub instead; W4's TSan builds need a decision there (the
+  hook off under TSan, or the wrap form for new as well).
+
 ## Log
 
 - 2026-11-07: plan agreed (owner's go-ahead with five notes). W2's audit not yet on `sim-w2`; W6 not started.
@@ -369,3 +386,4 @@ the start of t"): it now adds it back; and `put(RegOut, a, b, c)`, the three-wor
 - 2026-11-07: wide payloads by reference (SlotPool, size classes; values() replaced); the M2 notes.
 - 2026-11-07: the leak check; increment 4 (port conformance, the C++ side): every M1 kind equal to ref over the full
   matrix.
+- 2026-11-07: E1 (the type registry per configuration) and E2 (config_impl.h) for W4, before increment 5.

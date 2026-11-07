@@ -5,7 +5,8 @@ The workers of the next-simulator project (from 2026-11-06). The old series (WOR
 
 **While a worker runs**, its folder is `WORKERn/` here: `PROMPT.md` (the integrator's), and the worker's own `NOTES.md`,
 `QUESTIONS.md`, `REPORT.md`. A message for a busy worker is parked in `WORKERn/NEXT.md` and removed once sent. Code goes on
-the worker's branch (`sim-wn`); the integrator merges into `main`. **When it closes**, its report, questions and data move
+the worker's branch (`sim-wn`); the integrator merges into `main`. **Quest numbers** (two collisions so far): pull Quest and re-read `NUMBERS.md` immediately before claiming, and push the
+claim before writing the task; on a rejected push, pull and take the next free number. **When it closes**, its report, questions and data move
 here as `WORKERn-REPORT.md` etc., with a line in the table below, and its folder goes.
 
 | session | what it did | kept here |

@@ -8,6 +8,7 @@ simulator. The brief, the measurements behind it and the design direction are in
 |---|---|
 | `ref/` | **the reference: v1.3's Java simulator, the exactness oracle.** A frozen copy of `v1.3/`'s `meshsim/` with the siblings it reads (`sw/`, `sort/`, `tables/`, `gold/`), so it builds and runs here as it did there. Not developed further here (`wip/meshsim` carries on for v1.4). Wherever the new framework models a unit that `ref` models, they must agree cycle for cycle. |
 | `src/` | **the C++ framework**: first the primitives, then an RV32 controller running real firmware on them |
+| `planning/` | the project's plan (`PLAN-M1.md`), decisions (`DECISIONS.md`) and its workers, numbered from WORKER1 (`sessions/`) |
 
 **The first milestone** (owner, 2026-11-06): the framework's primitives, and **one RV32 controller running real firmware**
 on them, checked against `ref` running the same program, cycle for cycle.

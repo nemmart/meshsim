@@ -22,7 +22,17 @@ reset (the boot ROM included) to halt**, with the same halt reason, registers, C
 **What the controller sees of its tile** is reproduced by a **test-bench unit**: when a command lands, when GO arrives, and
 when the request FIFO accepts or refuses a `REQUEST_SEND` store (the boot ROM handler's reports; no M1 program uses the router's
 send holding register). Its cycles come from `ref`'s trace of the same
-run, so nothing outside the controller has to be modelled in M1.
+run, so nothing outside the controller has to be modelled in M1. **What the bench replays** (W2, 2026-11-07): the command
+landing and GO; each word the traffic director writes into data memory (the command's slot-0 words and arguments: `MEMW`,
+at the first cycle the core can see it); and the cycles the request FIFO frees an entry (`REQ-FREED`). The bench keeps the
+FIFO's count from the core's `REQUEST_SEND` stores and those frees, so refusals, STATUS [6] (request busy) and EVENTS [11]
+(request room) all follow; `REQ-REFUSED` stays in the trace as a check.
+
+**The bar** (D8, measured by W2, Quest 123: ReplayBench, segment 0 of evm-zone-29, `sim-step-cost`): **36.8 µs per
+chip-cycle** for one replay alone (one JVM on one P-core and its hyperthread), and **about 100,000-110,000 chip-cycles per
+second** for the whole box (12 JVMs on the P-cores: 96,800; 16 on every CPU: 108,700). Two JVMs per P-core each run 3.4×
+slower than one alone, more than hyperthreading explains: shared cache and memory, as the measurements in SIMULATOR-NEXT
+section 3 predict.
 
 ## Components, in build order
 
@@ -43,8 +53,9 @@ run, so nothing outside the controller has to be modelled in M1.
    catch-up of per-cycle counters, so a long sleep costs one wake; a unit type may have a **result-only form** beside its
    cycle-accurate one, chosen at configuration (D7). No STL, no allocation, no virtual calls in the loop.
 5. **Port kinds, local form**, with `ref`'s exact bus semantics: `Link(L)`, `Fifo(N)` with its overflow count, credit `Fifo`,
-   `Hold`, `Reg`, `Wire`, `Count`, and a minimal `RegFile`. Shared `Mem` ports wait for M2 (nothing outside the controller
-   writes its memories in M1).
+   `Hold`, `Reg`, `Wire`, `Count`, and a minimal `RegFile`. Shared `Mem` ports wait for M2: in M1 the only outside writer of
+   the controller's memory is the test bench's replay of the director's writes (`MEMW`), a registered input to the core, with
+   no port contention to model.
 6. **Debug checks.** Shuffle within a level by seed; wire discipline (read before driven, or driven twice, is fatal); the
    type-major and instance-major orders compared by digest.
 7. **Cross-domain forms and threads.** The outbox merge at the barrier copies a 128-bit payload into the destination thread's
@@ -95,7 +106,8 @@ run, so nothing outside the controller has to be modelled in M1.
   the data or a 128-bit index into the thread's value array, against (b) three words inline; µs per mesh-cycle on one mesh and
   one thread, then 128 meshes on 1, 6 and 12 threads pinned to the
   performance cores (D13), the efficiency cores reported separately.
-- The cost of an Fp128 multiply (Montgomery with native 128-bit arithmetic), per operation and in a unit-like loop.
+- The cost of an Fp128 multiply (a Crandall prime, reduced by folding the high half, not Montgomery: D14), per operation
+  and in a unit-like loop.
 - A recommendation for the link word and for how units do 128-bit arithmetic, **delivered to W3 before its API header is
   agreed**.
 
@@ -146,7 +158,7 @@ Workers may refine the layout under `src/` and `tests/` in their plans.
 | worker | state |
 |---|---|
 | W1 | **done**, merged 2026-11-07 (`sessions/WORKER1-REPORT.md`); D4: prebuilt firmware images, the C++ shipped as source |
-| W2 | prompt written 2026-11-06 (`sessions/WORKER2/PROMPT.md`) |
+| W2 | **done**, merged 2026-11-07 (`sessions/WORKER2-REPORT.md`); the audit is `sim/tests/AUDIT-M1.md`; 67 goldens, `regen.sh --check` all SAME |
 | W6 | prompt written 2026-11-07 (`sessions/WORKER6/PROMPT.md`) |
 | W3 | prompt written 2026-11-07 (`sessions/WORKER3/PROMPT.md`): stage 1 (the API) first, held for W6's findings and the owner's review |
 | W4, W5 | not started |

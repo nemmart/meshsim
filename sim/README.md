@@ -49,7 +49,10 @@ freed by a thread that doesn't own it.
 slot); then the framework **adds them up** and allocates every pool, ring and delivery bucket once, at its exact maximum, per
 thread. Nobody counts by hand. The 128-bit value array is sized to the most values all its queues can hold at once, its free
 slots tracked by **a bitmap** (one bit per slot). A delivery bucket's size follows from the ports' latencies (each port takes
-at most one put per cycle). At run time, needing more than was declared is a bug, so it stops with a fatal error, never grows.
+at most one put per cycle). At run time, needing more than was declared is a bug, so it stops with a fatal error, never grows. **Two
+coding regimes** (owner): the **configuration phase** (declaring, building, sizing, wiring, loading) may use whatever C++ makes
+it clear: the STL, templates, lambdas, `std::vector`, maps, strings; **the cycle loop** (deliver, run, commit) uses none of
+it: plain arrays, the framework's own structures, untyped 64-bit words, no allocation. (No RTTI in either.)
 
 **Build** (owner, 2026-11-06): **plain `make`**, not CMake. **No RTTI anywhere** (`-fno-rtti`; owner): no `dynamic_cast` or `typeid`;
 the framework gives each unit type its own small integer id, which the run lists are grouped by anyway.

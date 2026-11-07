@@ -1,7 +1,23 @@
 # WORKER4 (sim/): notes
 
 Branch `sim-w4`. PLAN-M1 item 7: threads, in two forms (independent chips; one chip over several threads). **This file is
-the plan, for the go-ahead; no code yet.** Read against `main` at 078d29e (W3 increments 1-3 and wide payloads merged).
+the plan, agreed with the owner 2026-11-07** (his decisions below); read against `main` at 078d29e.
+
+## The owner's decisions (2026-11-07)
+
+1. **E1 and E2: W3 does them**, now, ahead of its increment 5. E1 changes: **each Config gets its own registry**, ids in
+   first-add order (a global registry hands out ids in a thread-dependent order). I start with what doesn't need E2 and
+   merge main when W3's commit lands.
+2. **E3**: approved, in my files.
+3. **E4**: approved, in a separate include (`src/threads.mk`, one include line in the Makefile), as W5 did.
+4. **E5**: approved and preferred (unit by unit, wide payloads by contents). **Digests compared only at barrier points,
+   after the merge.**
+5. **E6**: approved, once the detector lands.
+6. **A1, A2**: approved. **A3**: the debug-only check for M1; **for M2**: a declared `now` read lets build() refuse it.
+7. **R1**: approved; one line in sim.h (W3, or in my E3 commit, telling the owner).
+8. **A crossing's arrival cycle and ready mark are exactly the single-domain build's**: the boundary units are
+   build-time placeholders, never an extra hop. Tested (a Link across delivers at t + L, as locally).
+9. **The configuration reports the barrier interval and which crossing set it**, so a slow partition explains itself.
 
 ## For the owner: what needs a decision
 
@@ -171,3 +187,15 @@ only.
 
 - 2026-11-07: read the brief, PLAN-M1, DECISIONS, the engine (main 078d29e), W3's notes, W6's and W2's reports; plan
   written, waiting for the go-ahead.
+- 2026-11-07: the owner's go-ahead and decisions (above). Main merged (W3 increment 4).
+- 2026-11-07: **form 1** (no E2 needed). `src/parallel.h/.cpp` (A1: `run_independent` over Sims or over builders, each
+  chip built, run and destroyed on its own thread; `pin_to_cpu`); `tests/synth.h` (the seeded synthetic chip: every kind,
+  wires and counts inside clusters, step-all safe; busy: Hold refusals, exhausted credits, events, overflows);
+  `tests/test_parallel.cpp` (5: deterministic and busy; N chips on N threads equal to one at a time at 3 checkpoints;
+  built and run on their own threads, the allocation hook on in each; the same chip twice; a Sim given twice refused).
+  `src/threads.mk` (E4): `make tsan` (gcc and clang) runs the thread tests under TSan, and `make check` runs it first.
+  **TSan and W1's hook**: clang links TSan's operator new/delete statically beside the hook's, so the TSan link keeps the
+  first (the hook's, `--allow-multiple-definition`); it allocates through malloc, which TSan intercepts. **TSan sees the
+  registry race** (two threads building machines of different unit types: a probe, not committed): until W3's E1,
+  `test_parallel` registers its types on one thread first; the concurrent-registration test comes with E1.
+  `make check` clean (gcc, clang; debug, release, tsan).

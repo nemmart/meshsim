@@ -1,7 +1,6 @@
 # WORKER12 (G4: the engines, and the sort end to end): notes
 
-Branch `sim-w12` from `4a4c363`. The prompt is `PROMPT.md`. **Plan proposed 2026-11-08, waiting for the go-ahead. No code
-until then.**
+Branch `sim-w12` from `4a4c363`. The prompt is `PROMPT.md`. **Plan approved by the owner, 2026-11-08** (answers below).
 
 I have read PLAN-M2, DECISIONS (D5-D29), AUDIT-M2 (0-8), and `WORKER9-REPORT.md`. W8's report is not on main yet, so I
 used W8's `NOTES.md` and code (`ag.h`, `gather.h`, `director.h`, `tile_ctl.h`, `regblock.h`) in its place. I have also
@@ -63,7 +62,45 @@ gather queue (GATHER_OVF) alike. It changes W10's API, so it goes to the integra
 **For the sort's input load** I need between-cycles `poke` and `peek` of 32 and 64 bits on W11's big SRAM, with its
 incremental sum kept. These are ref's `BigSRAM.poke`, `poke64` and `peek64`.
 
-## Questions (owner / integrator)
+## The owner's answers (2026-11-08)
+
+1. **No merging `sim-w11`.** The integrator merges each W11 piece to main once its make check passes and tells me; I
+   merge main.
+2. **The gather alignment check's PTR half: not dropped.** ref stops there. Ask W11 for a read-only view of PTR within
+   the tile. If that is cheap, check it exactly; if it makes a same-cycle coupling problem, make it an explicit fatal
+   ("gather alignment PTR check: not modelled in M2") and record it here.
+3. **W8's and W9's files are mine to edit**, each change noted here. The register block and director split is agreed
+   with W11 before either of us edits. Gather busy into the block as the OR of three inputs: agreed.
+- The halt fan-in, C&C's stops at L1's GO and L2's all-READY, and EngConf.java: agreed.
+
+## For W11 (2026-11-08): three points to settle before either of us edits
+
+**(a) `mem.h`'s "gather in flight" row, per the owner's ruling.** It should be `gather_srq_busy`, a Reg, width 1, from
+the srq to **the block**, not to the gather. Its value is (gather Hold occupied at the end of t) OR
+(`inFlightOf(GATHER) > 0`). In `MemIO`, `gather_reads` would become the block's RegIn under that name. My ends are in
+`gather.h` (published on `sim-w12`).
+
+**(b) PTR[me] for the alignment check:** `ptr_misaligned`, a Reg, width 1, from your table store to my AG. Its value is
+`(PTR[me] & 3) != 0` as the table memory stands at the end of t, put on change.
+- **Why it is exact:** ref's AG reads `ts.peek(PTR + me)` at its step, before `ts.runCycle(t)` (`Tile.children`: ag
+  before ts), so it sees the memory as at the end of t - 1. A Reg of the end of t - 1, read at t, is that.
+- **Why it is cheap:** one compare per PTR write-back of entry `me`, and a put only when the low bits change, which is
+  rare.
+- If you see a problem, the check becomes the explicit fatal (owner's answer 2).
+
+**(c) The split of W8's files:**
+
+| file | mine (G4) | W11's (G3) |
+|---|---|---|
+| `regblock.h` | PULSE_DMA; STATUS rd_running, rd_done, gather_busy (the OR); EVENTS [10] and `rd_done_prev`; ERRORS [3] DRIFT and [6] GATHER_OVF as events (in `counts[]`, indices 3 and 6 only) | SRAM_RD_ADDR_QUEUE, SRAM_RD_DEST_ADDR; ERRORS [4] WE_IN_OVF, [5] TABLE_OVF, [7] READ_PORT (indices 4, 5, 7) |
+| `tile_ctl.h/.cpp` | the block's inputs `ag_status`, `gather_busy`, `gather_srq_busy` (your Reg, my declaration), `gather_put`, `drift`, the `ag_start` Wire; in `add_g1`, the AG and gather units and every connection with one end on them (incl. the STREAM/GROUP Links and `ptr_misaligned`) | the block's read-port and G3 event inputs; in `add_g1`, WE, ts, hist and their connections; `ControlIO`/`MemIO` |
+| `regmap.h` | PULSE_DMA's entry | SRAM_RD_* entries |
+| `director.h` | the mode-4 path, `gather_put` | the read-port results (the overlap check, `acceptedAt`) |
+| `chip.*` | the halt fan-in (P6) | `MemIO` into `tile_cycle` |
+
+**Also for the integrator:** merge `mem.h` (declarations only) to main early, so both sides build against one copy.
+
+## Questions (owner / integrator), answered above
 
 1. **W11's units before they reach main.** a2a and the sort need W11's table store, write engine, big SRAM and read
    queue. May I merge `sim-w11` into `sim-w12` (merge, never rebase)? The alternative is that the integrator merges each
@@ -78,7 +115,7 @@ incremental sum kept. These are ref's `BigSRAM.poke`, `poke64` and `peek64`.
 
 ## The plan
 
-**P1. Headers, declarations only**, right after the go-ahead. `ag.h` and `gather.h` get the ports above, and so do the
+**P1. Headers, declarations only** (done, 2026-11-08: `ag.h`, `gather.h`; the block's and director's after the split is agreed). `ag.h` and `gather.h` get the ports above, and so do the
 director's and the block's G4 inputs. W11 and I publish ours together.
 
 **P2. The GATHER engine and the director's modes 2-4.**
@@ -162,3 +199,7 @@ poke. a2a and the sort need W11's P1 and P2 (question 1). Each piece: its tests,
 ## Log
 
 - 2026-11-08: read the list; ports answered to W11; plan proposed (above). Branch `sim-w12`.
+- 2026-11-08: go-ahead; main merged (W8's report). P1: `ag.h` and `gather.h` carry G4's port tables and members.
+  They are declared to the framework only when `add_g1` wires them, since the build refuses an unwired port. g++ and
+  clang syntax-check both headers, and `test_g1_tile` passes (gcc debug). clang 18 and OpenJDK 21 are installed in
+  this container. For W11: (a)-(c) above.

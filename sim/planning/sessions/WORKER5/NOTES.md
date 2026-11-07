@@ -179,6 +179,8 @@ fatal ("not implemented yet") rather than ignored.
 
 ### First local speed figure (this sandbox, 1 vCPU VM, clang release, not pinned: the runner measurement follows)
 
+**Machine:** this sandbox ("The machines", below): Intel Xeon @ 2.10 GHz VM, 1 vCPU, 4 GB; clang 18.1.3 -O2.
+
 `golden --bench 300`: every golden run 300 times on the engine, ready-driven, the run alone timed (not the build):
 
 | | instructions/s | cycles/s | per unit step |
@@ -190,6 +192,9 @@ The programs are short (100-1,000 cycles each), so this includes cold-start effe
 looks high for the engine against W6's measurements, worth a `perf` look on the runner.
 
 ## Speed on the runner (Quest 127, sim-w5 8738cfd; i5-14400F, CPU 0 alone (P-core, sibling 1 idle), clang 18 -O2)
+
+**Machine:** the runner ("The machines", below): Intel Core i5-14400F, 6 P cores (CPUs 0-11, 4.7 GHz max) + 4 E cores
+(CPUs 12-15, 3.5 GHz max), L3 20 MiB, 64 GB, Linux 6.8.0; clang 18.1.3 -O2 -DNDEBUG; CPU 0 (a P core), its sibling idle.
 
 The program (`tests/bench_controller.cpp`): booted as `hello` (boot ROM, replayed command and GO), then a loop of 9
 instructions in 13 cycles (data load and store, three ALU, a multiply, a register-block load, the count, a taken branch),
@@ -232,6 +237,10 @@ Possible later, keeping exactness: a fast path when nothing can interrupt (no ca
 the statistics counters out of the hot path. Not done: correctness first, and the engine is the larger part.
 
 ## M1's threads test: N controllers on N threads (W4's run_independent; Quest 129, sim-w5 8e19528)
+
+**Machine:** the runner ("The machines", below): Intel Core i5-14400F, 6 P cores (CPUs 0-11, 4.7 GHz max) + 4 E cores
+(CPUs 12-15, 3.5 GHz max), L3 20 MiB, 64 GB, Linux 6.8.0; clang 18.1.3 -O2 -DNDEBUG. (Before increment 5: ready-driven only;
+under all six option sets see Quest 131 below.)
 
 `check_parallel` (tests/golden_run.cpp): the 67 goldens in a mixed order (k·7 mod 67, so rounds mix riscv-tests and the M1
 programs), in rounds of N; each round N controllers on N threads through `run_independent`, each a different golden. Each

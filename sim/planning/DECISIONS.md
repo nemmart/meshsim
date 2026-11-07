@@ -102,3 +102,24 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   Quest 129, W4's Quest 128, W6's throughput against N). **The figures that count** are **speed per thread** (~4.5× `ref`
   unit for unit, D22) and **one chip split over threads** (form 2: ~3× on four threads for the mesh so far, Quest 133).
   M2's work pushes those two: a faster thread, and a cheaper, load-balanced split.
+- **D27. Model `ref` as it runs** (2026-11-07, W8's finding on `pendingAdd`): where `ref`'s default run and the spec's
+  intent differ, the framework reproduces `ref`'s default run (its fixed child order, no shuffle) and the difference is
+  recorded for the spec. First case: `Tile.children` steps the director before the core, so `TileControl.pendingAdd` is
+  always 0 in `ref`'s run: the director judges a due decrement without the core's same-cycle counter store. The
+  framework models that order-free (the core's store reaches the register block registered, for t + 1). No M2 program
+  reaches the case (W7's `pendcheck`: 0); `AUDIT-M2` sections 2.5 and 3.3 are corrected accordingly.
+- **D28. Where `ref` isn't self-consistent, follow the rule** (2026-11-07, W9's finding on router overflows): `ref` judges
+  a router FIFO's put only when the FIFO is next touched (its selector reaching it, a later put, or idle-skip's quiescence
+  scan), so an overflow's count, and ERRORS' ROUTER_OVF bit, rise a variable number of cycles late, differently with
+  idle-skip on and off. That is an artefact of `ref`'s lazy commit, not a behaviour D27 asks us to reproduce: `ref` has no
+  single answer. The framework counts at t + 1 (PORTS.md's rule), and references avoid the case (no M2 program
+  overflows a router FIFO; the fingerprint carries no counts). D27 still applies wherever `ref`'s default run is
+  self-consistent.
+- **D29. Where reproducing `ref` would need news faster than a Link of 3 can carry, follow the spec** (2026-11-07, W9's
+  finding on a second READY pulse): `ref` keeps one timestamp per tile, so a READY raised again while the earlier one is
+  still visible reads 0 at C&C until the new pulse lands. C&C can't know of that pulse before it arrives without a link
+  shorter than 3 cycles, which would break form 2 (every crossing a Link of at least 3, D26). The framework keeps the
+  spec's sticky bit, **counts the case** (`ready_repulses`), and references avoid it (0 in every M2 run so far).
+  Also from D28's reasoning: **an overflow that feeds ERRORS reaches the register block as an event** (PORTS.md section
+  8), counted at t + 1, never seen only at the block's next step: ROUTER_OVF, the write engine's input and the gather
+  queue alike.

@@ -85,6 +85,7 @@ clean:
 	rm -rf build
 
 include src/units/units.mk
+include src/units/net.mk
 include src/threads.mk
 
 -include $(shell find build -name '*.d' 2>/dev/null)

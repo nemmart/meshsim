@@ -114,10 +114,14 @@ of a 200-cycle window, every unit of every tile (`M2Sort ... seed=4`, identical 
    (`injected`) after the queue has issued at t. Build them as one unit.
 3. `TileControl.endCycle(t)` after every unit of its tile: it reads what they did at t (below).
 4. The chip's READY and error-line pass after every tile.
-5. **One order dependence ref leaves open, in a case the M2 programs never reach:** `TrafficDirector.decrement` and
-   `schedule` call `ctl.pendingAdd(c, t)`, the write-counter store the core made at t, which `TileControl.write` records
-   only if the core has already run at t. With the director first, the store is missed. The framework must not depend on
-   order within a level, so the result has to come from structure: section 3.3 gives the model.
+5. **One order dependence in ref, in a case the M2 programs never reach** *(corrected by W8, 2026-11-07; D27)*:
+   `TrafficDirector.decrement` and `schedule` call `ctl.pendingAdd(c, t)`, the write-counter store the core made at t,
+   which `TileControl.write` records (`pendT = t`, TileControl.java:186) only if the core has already run at t
+   (`pendingAdd`, TileControl.java:207). **ref's default order steps the director before the core** (`Tile.children`,
+   Tile.java:119: `router, srqInj, dir, ..., core`), so in ref's run `pendingAdd` is always 0: the director judges a due
+   decrement **without** the core's same-cycle store. (This draft first said the opposite.) D27: the framework models ref
+   as it runs, order-free, from structure: section 3.3 gives the model. ref under a shuffle seed could differ here (the
+   core stepped first would see its own store judged).
 
 ## 3. The units: state, ports, same-cycle couplings
 
@@ -167,32 +171,32 @@ normative there).
 - **State.** The write counters `remaining[1..7]` (20 bits); the K-stage line (K = 8): pending decrements (due cycle,
   counter).
 - **At t:** the decrement due at t first (a counter at 0 stays 0: unexpected), then one packet.
-- **Couplings.** `ctl.pendingAdd(c, t)` (below); `readPort.acceptedAt(t)` and `readPort.outstanding()` (the overlap
+- **Couplings.** `ctl.pendingAdd(c, t)` (below: always 0 in ref's default order); `readPort.acceptedAt(t)` and `readPort.outstanding()` (the overlap
   check); `remaining[]` read by `TileControl` at `endCycle(t)` (the counter events) and by the core's counter load
   (`counterAtStart`: the value at the start of t, so order-free); counter stores add to `remaining[]` at `endCycle(t)`
   (`apply`).
-- **The write counters' arithmetic, and `pendingAdd` (section 2, item 5).** ref's result with its fixed order (the core
-  before the director) is, for counter c in cycle t, with N the core's store to c at t (0 if none) and D whether a
-  decrement of c falls due at t (accepted at t - K):
-  - **judgement:** if D and `remaining + N == 0`, the arrival is unexpected: the counter stays where it is, ERRORS [2]
-    (`unexpectedTotal`) at the end of t; otherwise a due decrement takes one;
-  - **the value at the end of t:** `remaining - (D and not unexpected) + N` (wrapping at 20 bits, flagged);
+- **The write counters' arithmetic, and `pendingAdd` (section 2, item 5).** *(Corrected by W8, 2026-11-07; D27.)* ref's
+  result with its default order (**the director before the core**: Tile.java:119; `pendingAdd` is then always 0) is,
+  for counter c in cycle t, with N the core's store to c at t (0 if none) and D whether a decrement of c falls due at t
+  (accepted at t - K):
+  - **judgement:** if D and `remaining == 0` (N is not seen), the arrival is unexpected: the counter stays at 0,
+    ERRORS [2] (`unexpectedTotal`) at the end of t; otherwise a due decrement takes one;
+  - **the value at the end of t:** `remaining - (D and not unexpected) + N` (the store's add at `endCycle(t)`, wrapping
+    at 20 bits, flagged);
   - **during t** every reader sees the value at the start of t (`counterAtStart`; the core's counter load samples it);
   - the stray diagnostic at an acceptance at t (invariant 9, a violation only with `checkUnexpected`) uses
-    `remaining - (decrements in the line) + N` the same way.
+    `remaining - (decrements in the line)`, without N, the same way.
 
-  **Model (order-free, equal to ref's core-before-director in every case):** do the counter arithmetic in the register
-  block's shifted end of cycle (PORTS.md 7), the place `TileControl.endCycle` already holds. The director keeps its K-stage
-  line and, at t, emits "decrement c falls due" as a `Link(1)` event to the register block; the core's counter store at t
-  reaches the register block as its usual `Link(1)` store; at level 0 of t + 1 the register block applies both by the
-  rule above (judge `remaining + N == 0` with D, then subtract and add), then the counter events, then STATUS. Both inputs
-  are registered, so no order within any level matters. During t + 1 the core and the director read the counters as the
-  register block's `RegFile` (the start-of-cycle value, as `counterAtStart`). The stray diagnostic moves with it (the
-  acceptance's counter as a `Link(1)` event; or keep it in the director, reading the pending store through the same
-  path, as it is a diagnostic only). *Alternative:* the core's pending store as a `Wire` (value, counter and the cycle it
-  was written: a Wire keeps its last value while the core sleeps, so the reader must check the cycle) read by the director
-  at a later level; exact too, but it ties the director's level to the core's for a case that never occurs. *Not
-  equivalent:* registering the store for t + 1 while the director judges at t (the judgement would miss N).
+  **Model (order-free, equal to ref's default run in every case):** the core's counter store at t reaches the register
+  block registered, as its usual `Link(1)` store, and is applied in the block's `endCycle(t)` (level 0 of t + 1, the
+  shifted end of cycle, PORTS.md 7) **after** the decrement due at t, which is judged against `remaining` alone. The
+  director's due decrements reach the same `endCycle(t)` as registered events (W8: the K-stage line as a `Link(K + 1)` of
+  counter ids from the director's acceptance at t - K). So: judge D against `remaining`, subtract, then add N, then the
+  counter events, then STATUS. Both inputs are registered, so no order within any level matters. During t + 1 the core
+  and the director read the counters as the register block's `RegFile` (the start-of-cycle value, as `counterAtStart`).
+  The stray diagnostic needs no store at all. *The spec's intent* (a same-cycle store judged first, `remaining + N == 0`,
+  which `pendingAdd` was written for) is ref's result only under a shuffle that steps the core first; D27 records the
+  difference for the spec.
 
   **The M2 programs never reach the case** (`FpHooks pendcheck=1`: cycles in which a tile's core stores a write counter
   and its director decrements or accepts a packet on that same counter): **0** in the sort at 16K (fixed order), at
@@ -421,5 +425,6 @@ Quest 123's quick-suite proof again (39 steps, off and on). Not built.
 - `p4/uniform-k128` reads KeyGen's `uniform.keys`, not SortTest's `kind=uniform` (section 0).
 - Quest 120's 110 s is the whole JVM (key file, chip, boot, run, verification); Quest 134 splits it.
 - The read queue's token free-list order is observable behaviour (3.2).
-- `TrafficDirector`'s `pendingAdd` makes an error-case judgement order-dependent (section 2, item 5).
+- `TrafficDirector`'s `pendingAdd` makes an error-case judgement order-dependent (section 2, item 5); in ref's default
+  order (the director first) it is always 0 (W8, D27: modelled as ref runs).
 - `RequestBus.runCycle` scans 64 empty request FIFOs every cycle of the sort (section 4).

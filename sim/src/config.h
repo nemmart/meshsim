@@ -124,13 +124,20 @@ struct TypeInfo {
 template <class T, bool Result>
 void run_form(Engine& e, RunSet& r) {
     T* units = reinterpret_cast<T*>(r.units);
-    r.ready.for_each_set([&](size_t k) {
-        e.enter(r, uint32_t(k));
-        Wake w;
-        if constexpr (Result) w = units[k].step_result(e.ctx); else w = units[k].step(e.ctx);
-        e.after(r, uint32_t(k), w);
-    });
-    r.ready.clear_all();
+    uint64_t* b = r.ready();
+    for (uint32_t wi = 0; wi < r.nwords; wi++) {        // each word read and cleared: no separate clear (marks during a
+        uint64_t m = b[wi];                             // run reach only higher runs)
+        if (!m) continue;
+        b[wi] = 0;
+        while (m) {
+            const uint32_t k = (wi << 6) + uint32_t(__builtin_ctzll(m));
+            m &= m - 1;
+            e.enter(r, k);
+            Wake w;
+            if constexpr (Result) w = units[k].step_result(e.ctx); else w = units[k].step(e.ctx);
+            e.after(r, k, w);
+        }
+    }
     r.nready = 0;
 }
 

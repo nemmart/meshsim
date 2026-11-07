@@ -20,24 +20,60 @@ namespace sim {
 enum class Kind : uint8_t { link, fifo, credit, hold, reg, wire, regfile, count, cret };   // cret: a credit's return
 inline constexpr unsigned kKinds = 9;
 inline constexpr Cycle kNoCycle = ~Cycle(0);
+// The cycle loop's hot paths (a put, a take, a peek, a mark): always inline into the unit's step, whatever the compiler's
+// size limits (a put that grew past them became a call, costing the mesh 7% more instructions: the performance pass).
+#define SIM_HOT [[gnu::always_inline]] inline
 inline constexpr uint32_t kNone = ~0u;
 inline constexpr uint16_t kNoClass = 0xFFFF;   // a port carrying its payload by value
 
+// A port's ring of visible entries, slim (the performance pass): its storage packed in the thread's block (base/words.h),
+// its depth and width the port's own; W1's Ring keeps a name and full-width fields a port doesn't need. Width 0 (an
+// event Link) keeps only the count. Full is a framework bug here (the ports check capacity before), so a DCHECK.
+inline constexpr Word kZeroWords[3] = {0, 0, 0};
+struct SlimRing {
+    Word* w = nullptr;
+    uint16_t head = 0, n = 0, depth = 0;
+    uint8_t wid = 0;
+    void init(Word* storage, unsigned width, unsigned d) { w = storage; head = 0; n = 0; depth = uint16_t(d); wid = uint8_t(width); }
+    unsigned count() const { return n; }
+    bool empty() const { return n == 0; }
+    unsigned width() const { return wid; }
+    const Word* peek(unsigned k = 0) const {
+        if (!wid) return kZeroWords;
+        unsigned i = head + k;
+        if (i >= depth) i -= depth;
+        return w + size_t(i) * wid;
+    }
+    Word* push() {
+        DCHECK(n < depth, "ring full: depth %u", unsigned(depth));
+        unsigned i = head + n++;
+        if (i >= depth) i -= depth;
+        return w + size_t(i) * wid;
+    }
+    void pop() {
+        DCHECK(n > 0, "ring pop when empty");
+        if (++head == depth) head = 0;
+        n--;
+    }
+};
+
 // One per Link input: the visible words (a ring as deep as the capacity) and the count in the wheel.
 struct LinkPort {
-    Ring ring;
-    Cycle last_take;
+    SlimRing ring;
     uint32_t owner;           // the consumer's instance
-    uint32_t inflight;        // entries in the wheel for this port
+    uint16_t inflight;        // entries in the wheel for this port
     uint16_t cap;             // in flight + visible (WordDelayLine: L + 2)
     uint16_t cls;             // the size class of a by-reference payload, kNoClass if by value
     uint8_t bit, width;
+#ifdef SIM_DEBUG
+    Cycle last_take;          // a second take in a cycle (DCHECK)
+#endif
 };
 
 // One per Fifo input (a credit Fifo too: then `ret` is the route its takes return credits on, and the producer's credits
 // live here, read by the producer as room as of the start of its cycle).
 struct FifoPort {
-    Ring ring;
+    SlimRing ring;
     Cycle last_take;          // the cycle of the last take: the occupancy at the start of t is count + (last_take == t)
     Cycle first_overflow;     // the put cycle of the first overflow, kNoCycle if none
     uint64_t overflows;
@@ -92,15 +128,16 @@ struct HoldPort {
 // The resolved route of an output: where a put's entry is appended (config.h). A data value: the same code puts locally
 // or across a domain.
 struct Route {
-    Bucket* wheel;            // the first of the wheel's buckets
     Cycle last_put;           // one put per output per cycle (fatal)
-    uint32_t mask;            // wheel size - 1
     uint32_t dest;            // the destination's pool index: an entry's first word
-    uint32_t owner;           // the producer's instance (checks)
+    uint16_t wheel;           // its wheel (Engine::wheels)
     uint16_t latency;
     uint16_t cls;             // the size class of a by-reference payload, kNoClass if by value
     uint8_t width;
     Kind kind;
+#ifdef SIM_DEBUG
+    uint32_t owner;           // the producer's instance (checks)
+#endif
 };
 
 struct Wheel {
@@ -120,7 +157,14 @@ struct RunSet {
     uint32_t first, count, level, nready, nnext;
     uint16_t type;
     Form form;
-    Bitmap ready, next;       // this cycle's, the next cycle's
+    uint8_t cur;              // which of bits[] is this cycle's ready set (the other is the next cycle's): the end of a
+                              // cycle flips it, nothing is copied
+    uint32_t nwords;
+    uint64_t* bits[2];
+    uint64_t* ready() const { return bits[cur]; }
+    uint64_t* next() const { return bits[cur ^ 1]; }
+    static bool test(const uint64_t* b, uint32_t k) { return b[k >> 6] >> (k & 63) & 1; }
+    static void set(uint64_t* b, uint32_t k) { b[k >> 6] |= uint64_t(1) << (k & 63); }
 };
 
 struct Engine {
@@ -170,15 +214,32 @@ struct Engine {
     bool missed_fatal = true, detector = false;
     uint32_t cur_level = 0;            // the level running (checks)
     uint64_t pending = 0;         // entries in the wheels (fast-forward when 0 and nothing is ready)
+    // Cost per cycle with activity, not structure (the performance pass):
+    uint64_t due[64] = {};        // per cycle mod 64: the wheels with entries due (when every latency < 64: due_ok)
+    bool due_ok = false;
+    uint32_t nrw = 0;             // words of the run masks
+    uint64_t* run_ready = nullptr;// runs with ready instances this cycle (one bit per run, in level order)
+    uint64_t* run_next = nullptr; // runs with next-cycle requests
+    // near wakes (2 .. 15 cycles ahead): per slot (cycle mod 16) a bitmap of instances, with a summary of its non-zero words
+    static constexpr unsigned kNear = 16;
+    uint64_t* near_bits = nullptr;   // kNear x niw words
+    uint64_t* near_sum = nullptr;    // kNear x nsw words
+    uint32_t niw = 0, nsw = 0, near_busy = 0;
+    const char* const* link_names = nullptr;
     const char* const* unit_names = nullptr;   // for messages
     const char* const* route_names = nullptr;
 
-    void mark(uint32_t i) {
-        RunSet& r = runs[run_of[i]];
+    [[gnu::always_inline]] void mark(uint32_t i) {
+        const uint32_t ri = run_of[i];
+        RunSet& r = runs[ri];
         uint32_t k = i - r.first;
-        if (!r.ready.test(k)) { r.ready.set(k); r.nready++; }
+        uint64_t* b = r.ready();
+        if (!RunSet::test(b, k)) {
+            RunSet::set(b, k);
+            if (r.nready++ == 0) run_ready[ri >> 6] |= uint64_t(1) << (ri & 63);
+        }
     }
-    void mark_bit(uint32_t i, unsigned bit) { mask[i] |= uint64_t(1) << bit; mark(i); }
+    [[gnu::always_inline]] void mark_bit(uint32_t i, unsigned bit) { mask[i] |= uint64_t(1) << bit; mark(i); }
     // A Wire's or RegFile's change wakes its readers in this cycle: they run at higher levels (checked).
     void mark_readers(uint32_t first, uint32_t n) {
         for (uint32_t k = first; k < first + n; k++) {
@@ -195,13 +256,19 @@ struct Engine {
     }
 
     template <unsigned W>
-    Word* append(uint32_t route) {
+    [[gnu::always_inline]] Word* append(uint32_t route) {   // the put's hot path: inline in every step
         Route& r = routes[route];
+#ifdef SIM_DEBUG
         DCHECK(r.owner == ctx.cur_, "put on '%s' by %s, not its owner", route_names[route], unit_names[ctx.cur_]);
+#endif
         DCHECK(r.width == W, "put of %u words on '%s', declared width %u", W, route_names[route], r.width);
         if (__builtin_expect(r.last_put == now, 0)) die_two_puts(route);
         r.last_put = now;
-        Word* e = r.wheel[(now + r.latency) & r.mask].append();
+        const Wheel& wh = wheels[r.wheel];
+        const Cycle at = now + r.latency;
+        Bucket& b = wh.buckets[at & wh.mask];
+        if (b.empty() && due_ok) due[at & 63] |= uint64_t(1) << r.wheel;   // the bucket's first entry only: no chain of
+        Word* e = b.append();                                                // read-modify-writes across a cycle's puts
         e[0] = r.dest;
         pending++;
         return e + 1;
@@ -209,7 +276,30 @@ struct Engine {
 
     void bind() { ctx.e_ = this; }
     void enter(RunSet& r, uint32_t k) { ctx.cur_ = r.first + k; ctx.mask_ = &mask[r.first + k]; }
-    void after(RunSet& r, uint32_t k, Wake w);
+    // A step's wake replaces the instance's last: next cycle (the run's next set), 2-15 cycles (the near wheel), further
+    // (the heap), or none. Inline: the common cases are a few instructions; the rare ones are calls.
+    [[gnu::always_inline]] void after(RunSet& r, uint32_t k, Wake w) {
+        const uint32_t i = r.first + k;
+        steps[i]++;
+        mask[i] &= ~edges[i];
+        const Cycle at = w.at;
+        if constexpr (kDebug) note_suspect(i, at);
+        if (__builtin_expect(heap_pos[i] != kNone, 0)) heap_remove(i);   // a far wake overtaken
+        if (at == now + 1) {
+            wake_at[i] = kNoCycle;
+            uint64_t* nb = r.next();
+            if (!RunSet::test(nb, k)) {
+                RunSet::set(nb, k);
+                if (r.nnext++ == 0) { const uint32_t ri = run_of[i]; run_next[ri >> 6] |= uint64_t(1) << (ri & 63); }
+            }
+            return;
+        }
+        wake_at[i] = kNoCycle;
+        if (at == Wake::kNever) return;
+        after_far(i, at);
+    }
+    void after_far(uint32_t i, Cycle at);   // 2 cycles ahead or more: the near wheel or the heap
+    void note_suspect(uint32_t i, Cycle at);
     void cycle();
     void run_until(Cycle end);
     void check_leaks() const;          // debug builds: each class's slots in use against its ports and declared holds
@@ -219,6 +309,15 @@ struct Engine {
     std::string describe_suspect(uint32_t i) const;
     bool idle() const;
 
+    void near_set(uint32_t i, Cycle at) {
+        const unsigned s = unsigned(at & (kNear - 1));
+        near_bits[size_t(s) * niw + (i >> 6)] |= uint64_t(1) << (i & 63);
+        near_sum[size_t(s) * nsw + (i >> 12)] |= uint64_t(1) << ((i >> 6) & 63);
+        near_busy |= 1u << s;
+    }
+    void near_slot();                  // this cycle's slot: mark the instances whose wake is now
+    Cycle next_wake() const;           // the earliest near or far wake, kNoCycle if none
+    bool asleep(uint32_t i) const;     // no step next cycle, no wake pending
     void heap_set(uint32_t i, Cycle at);
     void heap_remove(uint32_t i);
     uint32_t heap_pop();
@@ -231,52 +330,54 @@ struct Engine {
 };
 
 // ---- Ctx's operations ---------------------------------------------------------------------------------------------
-inline Cycle Ctx::now() const { return e_->now; }
-inline Wake Ctx::next() const { return Wake{e_->now + 1}; }
-inline Wake Ctx::in(Cycle n) const { return Wake{e_->now + n}; }
-inline uint64_t Ctx::mask() const { return *mask_; }
+SIM_HOT Cycle Ctx::now() const { return e_->now; }
+SIM_HOT Wake Ctx::next() const { return Wake{e_->now + 1}; }
+SIM_HOT Wake Ctx::in(Cycle n) const { return Wake{e_->now + n}; }
+SIM_HOT uint64_t Ctx::mask() const { return *mask_; }
 
 // Link
-inline bool Ctx::ready(LinkIn p) const { return *mask_ >> p.bit & 1; }
-inline const Word* Ctx::peek(LinkIn p) const {
+SIM_HOT bool Ctx::ready(LinkIn p) const { return *mask_ >> p.bit & 1; }
+SIM_HOT const Word* Ctx::peek(LinkIn p) const {
     const LinkPort& l = e_->links[p.idx];
     DCHECK(l.owner == cur_ && !l.ring.empty(), "peek of an empty or foreign link (%s)", e_->unit_names[cur_]);
     return l.ring.peek(0);
 }
-inline void Ctx::take(LinkIn p) {
+SIM_HOT void Ctx::take(LinkIn p) {
     LinkPort& l = e_->links[p.idx];
+#ifdef SIM_DEBUG
     DCHECK(l.owner == cur_ && !l.ring.empty() && l.last_take != e_->now, "take of an empty or foreign link, or a second take (%s)",
            e_->unit_names[cur_]);
     l.last_take = e_->now;
+#endif
     l.ring.pop();
     if (l.ring.empty()) *mask_ &= ~(uint64_t(1) << p.bit);
 }
 namespace detail {
-inline LinkPort& link_put_check(Engine* e, LinkOut p) {
+SIM_HOT LinkPort& link_put_check(Engine* e, LinkOut p) {
     LinkPort& l = e->links[e->routes[p.route].dest];
     if (__builtin_expect(l.ring.count() + l.inflight >= l.cap, 0)) e->die_link_full(e->routes[p.route].dest);
     l.inflight++;
     return l;
 }
 }  // namespace detail
-inline void Ctx::put(LinkOut p) { detail::link_put_check(e_, p); e_->append<0>(p.route); }
-inline void Ctx::put(LinkOut p, Word a) { detail::link_put_check(e_, p); Word* w = e_->append<1>(p.route); w[0] = a; }
-inline void Ctx::put(LinkOut p, Word a, Word b) {
+SIM_HOT void Ctx::put(LinkOut p) { detail::link_put_check(e_, p); e_->append<0>(p.route); }
+SIM_HOT void Ctx::put(LinkOut p, Word a) { detail::link_put_check(e_, p); Word* w = e_->append<1>(p.route); w[0] = a; }
+SIM_HOT void Ctx::put(LinkOut p, Word a, Word b) {
     detail::link_put_check(e_, p); Word* w = e_->append<2>(p.route); w[0] = a; w[1] = b;
 }
-inline void Ctx::put(LinkOut p, Word a, Word b, Word c) {
+SIM_HOT void Ctx::put(LinkOut p, Word a, Word b, Word c) {
     detail::link_put_check(e_, p); Word* w = e_->append<3>(p.route); w[0] = a; w[1] = b; w[2] = c;
 }
 
 // Fifo
-inline bool Ctx::ready(FifoIn p) const { return *mask_ >> p.bit & 1; }
-inline const Word* Ctx::peek(FifoIn p, unsigned k) const {
+SIM_HOT bool Ctx::ready(FifoIn p) const { return *mask_ >> p.bit & 1; }
+SIM_HOT const Word* Ctx::peek(FifoIn p, unsigned k) const {
     const FifoPort& f = e_->fifos[p.idx];
     DCHECK(f.owner == cur_ && k < f.ring.count(), "peek(%u) of a fifo holding %u, or foreign (%s)", k, f.ring.count(),
            e_->unit_names[cur_]);
     return f.ring.peek(k);
 }
-inline void Ctx::take(FifoIn p) {
+SIM_HOT void Ctx::take(FifoIn p) {
     FifoPort& f = e_->fifos[p.idx];
     DCHECK(f.owner == cur_ && !f.ring.empty() && f.last_take != e_->now, "take of an empty or foreign fifo, or a second take (%s)",
            e_->unit_names[cur_]);
@@ -285,79 +386,79 @@ inline void Ctx::take(FifoIn p) {
     if (f.ring.empty()) *mask_ &= ~(uint64_t(1) << p.bit);
     if (f.ret != kNone) e_->append<0>(f.ret);          // a credit Fifo: the credit returns, seen by the producer at t + 1
 }
-inline unsigned Ctx::size(FifoIn p) const { return e_->fifos[p.idx].ring.count(); }
-inline unsigned Ctx::size_at_start(FifoIn p) const {
+SIM_HOT unsigned Ctx::size(FifoIn p) const { return e_->fifos[p.idx].ring.count(); }
+SIM_HOT unsigned Ctx::size_at_start(FifoIn p) const {
     const FifoPort& f = e_->fifos[p.idx];
     return f.ring.count() + (f.last_take == e_->now);
 }
-inline void Ctx::put(FifoOut p, Word a) { Word* w = e_->append<1>(p.route); w[0] = a; }
-inline void Ctx::put(FifoOut p, Word a, Word b) { Word* w = e_->append<2>(p.route); w[0] = a; w[1] = b; }
-inline void Ctx::put(FifoOut p, Word a, Word b, Word c) { Word* w = e_->append<3>(p.route); w[0] = a; w[1] = b; w[2] = c; }
+SIM_HOT void Ctx::put(FifoOut p, Word a) { Word* w = e_->append<1>(p.route); w[0] = a; }
+SIM_HOT void Ctx::put(FifoOut p, Word a, Word b) { Word* w = e_->append<2>(p.route); w[0] = a; w[1] = b; }
+SIM_HOT void Ctx::put(FifoOut p, Word a, Word b, Word c) { Word* w = e_->append<3>(p.route); w[0] = a; w[1] = b; w[2] = c; }
 
 // credit Fifo, producer side
-inline unsigned Ctx::credits(CreditOut p) const {
+SIM_HOT unsigned Ctx::credits(CreditOut p) const {
     const Route& r = e_->routes[p.route];
     return e_->fifos[r.dest].credits + (r.last_put == e_->now);   // as of the start of t, whatever this cycle's put
 }
 namespace detail {
-inline void credit_spend(Engine* e, CreditOut p) {
+SIM_HOT void credit_spend(Engine* e, CreditOut p) {
     FifoPort& f = e->fifos[e->routes[p.route].dest];
     if (__builtin_expect(f.credits == 0, 0)) e->die_no_credit(p.route);
     f.credits--;
 }
 }  // namespace detail
-inline void Ctx::put(CreditOut p, Word a) { detail::credit_spend(e_, p); Word* w = e_->append<1>(p.route); w[0] = a; }
-inline void Ctx::put(CreditOut p, Word a, Word b) {
+SIM_HOT void Ctx::put(CreditOut p, Word a) { detail::credit_spend(e_, p); Word* w = e_->append<1>(p.route); w[0] = a; }
+SIM_HOT void Ctx::put(CreditOut p, Word a, Word b) {
     detail::credit_spend(e_, p); Word* w = e_->append<2>(p.route); w[0] = a; w[1] = b;
 }
-inline void Ctx::put(CreditOut p, Word a, Word b, Word c) {
+SIM_HOT void Ctx::put(CreditOut p, Word a, Word b, Word c) {
     detail::credit_spend(e_, p); Word* w = e_->append<3>(p.route); w[0] = a; w[1] = b; w[2] = c;
 }
 
 // Hold
-inline bool Ctx::ready(HoldIn p) const { return *mask_ >> p.bit & 1; }
-inline const Word* Ctx::peek(HoldIn p) const {
+SIM_HOT bool Ctx::ready(HoldIn p) const { return *mask_ >> p.bit & 1; }
+SIM_HOT const Word* Ctx::peek(HoldIn p) const {
     const HoldPort& h = e_->holds[p.idx];
     DCHECK(h.owner == cur_ && h.occ, "peek of an empty or foreign hold (%s)", e_->unit_names[cur_]);
     return h.w;
 }
-inline void Ctx::take(HoldIn p) {
+SIM_HOT void Ctx::take(HoldIn p) {
     HoldPort& h = e_->holds[p.idx];
     DCHECK(h.owner == cur_ && h.occ, "take of an empty or foreign hold (%s)", e_->unit_names[cur_]);
     h.occ = false;
     h.last_take = e_->now;
     *mask_ &= ~(uint64_t(1) << p.bit);
 }
-inline void Ctx::put(HoldOut p, Word a) { Word* w = e_->append<1>(p.route); w[0] = a; }
-inline void Ctx::put(HoldOut p, Word a, Word b) { Word* w = e_->append<2>(p.route); w[0] = a; w[1] = b; }
-inline void Ctx::put(HoldOut p, Word a, Word b, Word c) { Word* w = e_->append<3>(p.route); w[0] = a; w[1] = b; w[2] = c; }
-inline bool Ctx::refused(HoldOut p) const { return e_->holds[e_->routes[p.route].dest].refused_at == e_->now - 1; }
-inline bool Ctx::can_put(HoldOut p) const {
+SIM_HOT void Ctx::put(HoldOut p, Word a) { Word* w = e_->append<1>(p.route); w[0] = a; }
+SIM_HOT void Ctx::put(HoldOut p, Word a, Word b) { Word* w = e_->append<2>(p.route); w[0] = a; w[1] = b; }
+SIM_HOT void Ctx::put(HoldOut p, Word a, Word b, Word c) { Word* w = e_->append<3>(p.route); w[0] = a; w[1] = b; w[2] = c; }
+SIM_HOT bool Ctx::refused(HoldOut p) const { return e_->holds[e_->routes[p.route].dest].refused_at == e_->now - 1; }
+SIM_HOT bool Ctx::can_put(HoldOut p) const {
     const HoldPort& h = e_->holds[e_->routes[p.route].dest];
     return !h.occ && h.last_take != e_->now;
 }
-inline bool Ctx::held_at_start(HoldOut p) const {
+SIM_HOT bool Ctx::held_at_start(HoldOut p) const {
     const HoldPort& h = e_->holds[e_->routes[p.route].dest];
     return h.occ || h.last_take == e_->now;
 }
 
 // Reg
-inline bool Ctx::valid(RegIn p) const { return e_->regs[p.idx].valid; }
-inline const Word* Ctx::read(RegIn p) const {
+SIM_HOT bool Ctx::valid(RegIn p) const { return e_->regs[p.idx].valid; }
+SIM_HOT const Word* Ctx::read(RegIn p) const {
     DCHECK(e_->regs[p.idx].valid, "read of a reg with no value yet (%s)", e_->unit_names[cur_]);
     return e_->regs[p.idx].w;
 }
-inline void Ctx::put(RegOut p, Word a) { Word* w = e_->append<1>(p.route); w[0] = a; }
-inline void Ctx::put(RegOut p, Word a, Word b) { Word* w = e_->append<2>(p.route); w[0] = a; w[1] = b; }
-inline void Ctx::put(RegOut p, Word a, Word b, Word c) { Word* w = e_->append<3>(p.route); w[0] = a; w[1] = b; w[2] = c; }
+SIM_HOT void Ctx::put(RegOut p, Word a) { Word* w = e_->append<1>(p.route); w[0] = a; }
+SIM_HOT void Ctx::put(RegOut p, Word a, Word b) { Word* w = e_->append<2>(p.route); w[0] = a; w[1] = b; }
+SIM_HOT void Ctx::put(RegOut p, Word a, Word b, Word c) { Word* w = e_->append<3>(p.route); w[0] = a; w[1] = b; w[2] = c; }
 
 // Wire
-inline Word Ctx::read(WireIn p) const {
+SIM_HOT Word Ctx::read(WireIn p) const {
     WirePort& w = e_->wires[p.idx];
     if constexpr (kDebug) w.read_at = e_->now;
     return w.v;
 }
-inline void Ctx::drive(WireOut p, Word v) {
+SIM_HOT void Ctx::drive(WireOut p, Word v) {
     WirePort& w = e_->wires[p.idx];
     DCHECK(w.producer == cur_, "drive of wire by %s, not its producer", e_->unit_names[cur_]);
     if constexpr (kDebug) {
@@ -371,13 +472,13 @@ inline void Ctx::drive(WireOut p, Word v) {
 }
 
 // RegFile
-inline uint32_t Ctx::read(RegFileIn p, unsigned i) const {
+SIM_HOT uint32_t Ctx::read(RegFileIn p, unsigned i) const {
     RegFilePort& r = e_->regfiles[p.idx];
     DCHECK(i < r.n, "register %u of %u (%s)", i, r.n, e_->unit_names[cur_]);
     if constexpr (kDebug) r.read_at = e_->now;
     return r.regs[i];
 }
-inline void Ctx::write(RegFileOut p, unsigned i, uint32_t v) {
+SIM_HOT void Ctx::write(RegFileOut p, unsigned i, uint32_t v) {
     RegFilePort& r = e_->regfiles[p.idx];
     DCHECK(r.owner == cur_ && i < r.n, "write of register %u of %u by %s", i, r.n, e_->unit_names[cur_]);
     if constexpr (kDebug) if (r.read_at == e_->now) FATAL("register file written after a reader read it in cycle %llu (%s)",
@@ -388,15 +489,15 @@ inline void Ctx::write(RegFileOut p, unsigned i, uint32_t v) {
 }
 
 // Count
-inline void Ctx::inc(CountOut p, uint64_t n) { e_->count_inc(p.idx, n); }
-inline uint64_t Ctx::now(CountIn p) const {
+SIM_HOT void Ctx::inc(CountOut p, uint64_t n) { e_->count_inc(p.idx, n); }
+SIM_HOT uint64_t Ctx::now(CountIn p) const {
     const CountPort& c = e_->counts[p.idx];
     DCHECK(c.max_producer_level < e_->cur_level || c.max_producer_level == kNone,
            "Count::now read by %s at level %u, not above a producer (level %u): read through_last",
            e_->unit_names[cur_], e_->cur_level, c.max_producer_level);
     return c.total;
 }
-inline uint64_t Ctx::through_last(CountIn p) const {
+SIM_HOT uint64_t Ctx::through_last(CountIn p) const {
     const CountPort& c = e_->counts[p.idx];
     return c.total - (c.last_cycle == e_->now ? c.last_amount : 0);
 }
@@ -418,10 +519,10 @@ SlotPool& pool_of(Engine* e, P p, uint32_t cur) {
     return e->pools[c];
 }
 }  // namespace detail
-inline uint32_t Ctx::alloc(LinkOut p) { return detail::pool_of(e_, p, cur_).alloc(); }
-inline uint32_t Ctx::alloc(FifoOut p) { return detail::pool_of(e_, p, cur_).alloc(); }
-inline uint32_t Ctx::alloc(CreditOut p) { return detail::pool_of(e_, p, cur_).alloc(); }
-inline uint32_t Ctx::alloc(HoldOut p) { return detail::pool_of(e_, p, cur_).alloc(); }
+SIM_HOT uint32_t Ctx::alloc(LinkOut p) { return detail::pool_of(e_, p, cur_).alloc(); }
+SIM_HOT uint32_t Ctx::alloc(FifoOut p) { return detail::pool_of(e_, p, cur_).alloc(); }
+SIM_HOT uint32_t Ctx::alloc(CreditOut p) { return detail::pool_of(e_, p, cur_).alloc(); }
+SIM_HOT uint32_t Ctx::alloc(HoldOut p) { return detail::pool_of(e_, p, cur_).alloc(); }
 template <class P> Word* Ctx::slot(P p, uint32_t i) const { return detail::pool_of(e_, p, cur_).slot(i); }
 template <class P> void Ctx::free(P p, uint32_t i) { detail::pool_of(e_, p, cur_).free(i); }
 
@@ -432,8 +533,7 @@ void deliver_link(Engine& e, const Bucket& b) {
     const Word* p = b.begin();
     for (uint32_t n = b.count(); n; n--, p += W + 1) {
         LinkPort& l = e.links[p[0]];
-        Word* d = l.ring.push();
-        if constexpr (W == 0) d[0] = 0;
+        Word* d = l.ring.push();                                         // width 0: the count only
         for (unsigned k = 0; k < W; k++) d[k] = p[1 + k];
         l.inflight--;
         e.mark_bit(l.owner, l.bit);

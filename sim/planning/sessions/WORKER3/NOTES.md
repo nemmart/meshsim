@@ -432,6 +432,42 @@ W5's goldens, and re-measured.
 9. Per-instance arrays (seven, each line-rounded) and the debug-only ones (watches, suspects, scratch): the debug ones
    carved only in debug builds.
 
+### The performance pass: the changes (2026-11-07; before = 0c7df79)
+
+Speed (cost per cycle with activity, not structure):
+- **Delivery by a due mask**: per cycle mod 64, a word of the wheels with entries due, set by a bucket's first put (not
+  every put: a read-modify-write per put chained the puts of a busy cycle); the cycle reads one word. Falls back to
+  scanning the wheels if a latency is 64 or more.
+- **Runs by mask**: a bit per run with ready instances, set by `mark`, walked with ctz in level order (a wire's change
+  marks only higher runs, re-read as the walk goes); the end of the cycle visits only runs with next-cycle requests and
+  flips a byte (`RunSet::cur`) instead of copying two Bitmaps per run per cycle; `idle()` reads the masks.
+- **Near wakes**: a 16-slot wheel of instance bitmaps with summary words for wakes 2-15 cycles ahead (every multiply or
+  branch stall); the heap keeps far ones; fast-forward goes to the earlier of the two.
+- `run_form` reads and clears each ready word (no memset after); `after()` inline, its rare paths out of line;
+  `cycle()` inlined into `run_until`; `cur_level` set in debug only.
+- **Hot paths forced inline** (`SIM_HOT`, `[[gnu::always_inline]]`): puts, takes, peeks, marks. The compiler stopped
+  inlining a put once it grew, which cost the mesh 7% more instructions until forced.
+
+Footprint:
+- **Slim rings** (`SlimRing`: pointer, head, count, depth, width) in the port headers instead of W1's `Ring`; a width-0
+  Link keeps the count only (W4's mesh's 256 credit lines had 64 B of zeros each). `LinkPort` 56 -> 32 B (its
+  last-take field debug-only), `Route` 40 -> 24 B (its wheel by index, its owner debug-only).
+- **Rings packed** in the thread's block (base/words.h, the integrator's rule); the padding back to a line before the
+  next structure is its own line in `Sizes`, so the lines add up to the total.
+- **Debug-only arrays carved only when used**: the detector's in debug builds, the debug orders' when an order is set.
+
+Local (this container; valgrind for instructions and simulated cache, wall clock too noisy here to settle the mesh):
+
+| | before 0c7df79 | after |
+|---|---|---|
+| controller bench, instructions | 1,195 M | 1,010 M (-15.5%; the engine's own part about -23%) |
+| mesh, instructions / L1d misses | 269.2 M / 8.47 M | 270.3 M / 5.93 M (-30%) |
+| mesh footprint per chip | 286,848 B | 238,144 B (-17%) |
+| mesh digest | fb3d4e3253ba04ef | fb3d4e3253ba04ef |
+
+`make check` (both compilers, debug, release, TSan; W5's goldens under all six option sets) and `make conformance` (42
+scripts of 10^5 cycles) pass. The runner A/B (Quest) follows the D24 fix.
+
 ## Log
 
 - 2026-11-07: plan agreed (owner's go-ahead with five notes). W2's audit not yet on `sim-w2`; W6 not started.
@@ -450,3 +486,4 @@ W5's goldens, and re-measured.
 - 2026-11-07: E1 (the type registry per configuration) and E2 (config_impl.h) for W4, before increment 5.
 - 2026-11-07: increment 5 (options refused or implemented; shuffle, instance-major, step-all; the missed-wake detector;
   run_until inclusive); the performance pass planned.
+- 2026-11-07: the performance pass's changes, verified locally (the runner A/B to follow).

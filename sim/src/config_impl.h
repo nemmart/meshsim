@@ -125,7 +125,7 @@ struct Sim::Impl {
     std::vector<Inst> inst;
     std::unordered_map<std::string, uint32_t> by_name;
     std::vector<std::string> route_name_s;
-    std::vector<const char*> unit_names, route_names;
+    std::vector<const char*> unit_names, route_names, link_name_ptrs;
     std::deque<std::string> port_names;                // one per declaration, by declaration id: stable addresses (rings keep them)
     std::deque<std::string> misc_names;                // pools, wheels, run sets (W1's structures keep pointers)
     std::vector<std::vector<std::pair<uint8_t, std::string>>> level_ports;   // per instance: (bit, port name) of its level inputs

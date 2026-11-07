@@ -2,7 +2,8 @@
 
 Branch `sim-w2`. The plan is in `NOTES.md` (agreed 2026-11-07); W5's specification is `AUDIT.md`.
 
-**Status: Quest 123 (the quick-suite proof and the baseline) pending; sections 1 and 6 are filled in from its results.**
+**Status: every deliverable done.** Quest 123 (2026-11-07, `results/123-w2-observer-proof-baseline/` in the Quest
+repository): the observer's proof 39 of 39 steps the same, off and on; the baseline in section 6.
 
 ## 1. The observer (D5)
 
@@ -14,7 +15,16 @@ against main: those four files, +101 lines.
 **The proof** (with the observer present and off, and on: logs, exit codes and every chip's fingerprint against main's
 pristine `sim/ref`):
 - locally: `RiscvTest` and `CtrlTest` seeds -1 and 4: identical, off and on;
-- Quest 123, the quick suite's 39 Java steps (`sim/tests/ref/prove_observer.sh`): *pending*.
+- **Quest 123, the quick suite's 39 Java steps** (`sim/tests/ref/prove_observer.sh`, main 3f0e919's `sim/ref` against
+  sim-w2 03dee7a's): **39 of 39 SAME, off and on**: every exit code equal (all 0), every masked log identical, every
+  fingerprint identical. The steps and their chips: `bus` (0), `net`, `net-shuf`, `net-shuf2` (171 each), `mem`,
+  `mem-shuf`, `mem-shuf2` (23), `engine`, `eng-shuf` (23), `ctrl`, `ctrl-shuf` (16), `riscv` (48), `rdport`, `rdport-shuf`
+  (42), `accounting` (1), `searchbench` (2), `agtest`, `agtest-shuf` (48), `recipes`, `recipes-shuf` (21), `cond`,
+  `cond-shuf` (1), `regdoc` (1), `hooks`, `hooks-shuf` (6), `periph`, `periph-shuf` (11), `reqbus`, `reqbus-shuf` (7),
+  `cccores`, `cccores-shuf` (7), `stageb` (19), `replayer`, `memsys`, `rvc`, `tracer` (0), `sort-p1` (6), `sort`,
+  `sort-shuf` (10). With the observer on, tile 0's trace had up to 1.6 million lines (`sort`) and nothing else changed.
+  Wall times off and on are within the run-to-run noise of base (e.g. `sort` 188.8 / 190.3 / 196.2 s, 12 steps at a time).
+  The verdicts are `VERDICTS.txt` in the result.
 
 ## 2. The trace format
 
@@ -67,8 +77,34 @@ the `idle_skip` header line differs).
 
 ## 6. The baseline (D8, D13)
 
-Quest 123: ReplayBench (sim-step-cost 8fd1ecd, code = b7655df) on segment 0 of evm-zone-29, windows 0-63, 3 repeats
-per JVM, 3 GB heaps; steady rate = the mean of repeats 2-3. *Pending.*
+Quest 123: ReplayBench (sim-step-cost 8fd1ecd, code = b7655df as Quest 120) on segment 0 of evm-zone-29, windows 0-63
+(all 64 tiles replaying: 265,494 chip cycles, of which the timed replay is the 235,713 from cycle 29,781), 3 repeats per
+JVM, 3 GB heaps, every repeat of every JVM OK. µs per chip-cycle is ReplayBench's own figure over the timed replay. Each
+configuration ran alone, after the proof had finished.
+
+| configuration | µs per chip-cycle per JVM (repeat 2) | chip-cycles/s in total (repeat 2) | vs 1 JVM | peak RSS per JVM | the E-cores |
+|---|---|---|---|---|---|
+| **1 JVM**, CPUs 0-1 (one P-core) | **36.8** (repeats 38.5, 36.8, 37.5) | **27,170** | 1 | 1.67 GB | idle |
+| **12 JVMs**, CPUs 0-11 (the six P-cores, 2 threads each) | **124.3** (mean; 118-137) | **96,800** | 3.6 × | 1.22-1.94 GB | 6-13 % busy (not ours) |
+| **16 JVMs**, CPUs 0-15 (P and E) | **151.4** (mean; 116-215) | **108,700** | 4.0 × | 1.55-1.93 GB | 90-93 % busy |
+
+- **Repeat 2 is the figure for "N at once".** The JVMs start together but finish apart, so a JVM's third repeat runs
+  against fewer neighbours (in the 16-JVM run, the last JVMs' third repeats ran at 61-87 µs): repeat 1 carries the JIT's
+  warm-up, repeat 3 the thinning tail. The script's "steady" figure (mean of repeats 2 and 3) gives 37.1 / 120.5 / 130.2 µs
+  and 26,925 / 99,570 / 123,575 chip-cycles/s; it overstates the 16-JVM total.
+- **Sharing a core costs far more than half.** One JVM on a P-core runs at 36.8 µs; 12 JVMs, two per P-core, at 124 µs
+  each: 3.4 × slower per JVM where hyperthreading alone would give about 2 ×. The rest is shared cache and memory
+  (each JVM's chip is about 1.5-1.9 GB resident). The 12 JVMs give 3.6 × one JVM's throughput, not 12 ×.
+- **The E-cores' share**: they add 12 % (96,800 to 108,700 chip-cycles/s) at 90-93 % busy, and they slow everything
+  else: the scheduler moved JVMs between core types, so no JVM ran on one kind only. The JVMs that spent 40-80 % of their
+  samples on the E-cores ran repeat 2 at 135-215 µs, those that stayed on the P-cores at 116-150 µs.
+- The box's load: the 1-minute load average reached 10.8 (12 JVMs) and 16.8 (16); the P-core threads were 95-99 % busy
+  with 12 JVMs.
+- Against Quest 120 (the same code, one JVM unpinned on an otherwise idle box: 40.9-43.9 µs), pinning to one P-core gives
+  36.8 µs.
+
+**The bar for the new framework**: 36.8 µs per chip-cycle for one replay alone (27,000 chip-cycles/s), and **about
+100,000-110,000 chip-cycles/s** for the box as a whole, today's best with 12-16 JVMs.
 
 ## 7. Deviations from the prompt, and why
 

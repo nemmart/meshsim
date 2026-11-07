@@ -274,3 +274,17 @@ the mesh second. Of today's findings (on W4's synthetic mesh and W6's synthetic 
   boot at 6 by profile-20: compute 0.188 (ideal 0.158) + imbalance 0.035 + barrier wait 0.077 + drain 0.029 + publish
   and clear 0.016 = 0.343: **on the chip the barrier, not imbalance, is the largest overhead** (a light chip: 0.95 us
   of work a cycle over 6 threads is 0.16, against a barrier every 3 cycles).
+- 2026-11-07: crossing_ns defaults to 0 (owner). A Fifo overflow as an event (W11, W12; D29): Ports::overflow_steps
+  steps the owner in the cycle an overflow is judged, Ctx::overflows reads the count; PORTS.md 3; tests.
+- 2026-11-07: **Quest 143, the anomalies: Quest 142's placement differences were measurement artifacts.** A boot is
+  14,791 cycles, ~7 ms split: one run per process measured the clock's ramp, first touches and the workers' start as
+  much as the machine (142's per-repeat times for one configuration ranged 0.42-0.74 and 0.70-1.48 us). bench_chip now
+  builds and runs an untimed machine first, then 9 timed ones in the same process. Measured so, **every placement is
+  the same on the boot**: 6 threads tiles 0.329-0.330, load 0.327-0.339, profile 0.332-0.340 us (one thread 0.931-0.945:
+  2.8x); 8 threads rows 0.416, tiles 0.415, load 0.410-0.413, profile 0.409-0.432. So the tiles-at-8 and load-1
+  anomalies are gone, and **so is Quest 142's "placement by profile wins on the chip"**: withdrawn. The boot's load is
+  even enough that grouping by tiles balances it; the sort's may not be, and that is where placement by load gets
+  measured next. The breakdown at 6 (tiles, three processes): compute 0.179-0.184 (ideal 0.156: inflation 1.16x) +
+  imbalance 0.026-0.029 + **barrier wait 0.082-0.105** + drain 0.025-0.029 + publish and clear 0.016 = 0.338-0.351:
+  the barrier is the chip's main overhead (~27%), as planned next. At 8 (two threads share a core) imbalance rises to
+  0.094. (Quests 136-141 ran 60,000 cycles a run, 60-300 ms: not affected; their medians stand.)

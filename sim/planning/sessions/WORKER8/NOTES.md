@@ -115,3 +115,10 @@ cycle against `golden-m2`, under every debug option (shuffle, both orders, step-
   command landed are `Link(cm_latency + 1)` (the memories stay in the core); ports to G3/G4 are added with those units;
   the director's `we_in` and `gather` outputs exist from the start, wired to stubs; the K-line's entries are a bus, so
   `dir.line` is stubbed until the observer lands (no shadow copy in the loop).
+- 2026-11-07: **the fingerprint library, first piece** (`sim/tests/statefp.h/.cpp`, `test_statefp`, 8 tests; gcc and
+  clang, debug and release): the hash, `FpOut` (hash, or dump in `fpdump`'s format), `MemSum`, the bus encodings,
+  `FpRegistry` (one writer per unit name, a point as ref writes it), `FpGolden` (load, the D12 header check naming the
+  difference, `compare`: the first differing cycle and unit). Checked against ref's own files: the four- and five-zero
+  streams equal the golden's `t0.inj`/`ep` and `t0.hist`/`t0.req` at cycle 0, and every `chip` line of `regs.fp`,
+  `wfi.fp` and `a2a.fp` equals our combine of its unit lines. Next: the stubs (reset streams, checked against ref's
+  `fpdump` at cycle 0), the core's and the memories' writers, the ref driver for M1 goldens.

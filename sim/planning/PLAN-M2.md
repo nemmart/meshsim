@@ -61,3 +61,12 @@ extend D5's one observer, so it is the owner's decision, with W7's proposal and 
 | W9 | G2 on main: the router, injection send side, C&C, row collectors, endpoints, **the 64-tile chip**: the whole chip matches `golden-m2` every cycle on `wfi` and on `regs` through 824, one thread and split over 2, 4 and 8 |
 | W10 | framework speed: the Link that holds words, the port observer, the stop request, the between-cycles wake, **the cheaper split** (64 tile-domains on one thread now cost the same as one: Quest 137) and **partitioning by load** (max/mean 1.01-1.07 at 2-12 threads), all on main; the mesh split over threads now **3.38× at 6 threads** (was 2.76×), flattening near 1.6 µs per mesh-cycle; next: Quest 138, then the drain |
 | G3, G4 | after W8's register block, then after G3. **G3 starts with `regs`' path** (W8, 2026-11-07): mode-1 self-sends through the write engine, PTR's read-modify-write and big SRAM writes, so `regs` completes; until then `regs` is checked in full through cycle 824 |
+
+**Open at the end of 2026-11-07** (for the next integrator turn):
+- **W8:** f3f344f (the ROUTER_OVF tile-level test) waits for its build-by-build `make check`, then merge. Next scope
+  proposed to the owner, not yet agreed: G3 (the memory path), first `regs`' path from 825.
+- **W9:** merged; idle. Next scope proposed, not yet agreed: G4 (AG, gather, the director's modes 2-4) on G3's read
+  queue; meanwhile `a2a`'s network part waits on G3, NetTest last.
+- **W10:** 4bf2f54 (the phase timer, the drain's prefetch and direct delivery) **not merged**: with W9's chip, the
+  observer's accounting fails in split runs (`t0.dir.in`: 1 in flight, 2 found). W10 merges main, fixes it, re-checks;
+  then the NOTES entries, the placement objective weighing crossings, measurements on the real chip.

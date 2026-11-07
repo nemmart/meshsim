@@ -66,7 +66,8 @@ coding regimes** (owner): the **configuration phase** (declaring, building, sizi
 it clear: the STL, templates, lambdas, `std::vector`, maps, strings; **the cycle loop** (deliver, run, commit) uses none of
 it: plain arrays, the framework's own structures, untyped 64-bit words, no allocation. (No RTTI in either.)
 
-**Build** (owner, 2026-11-06): **plain `make`**, not CMake. **No RTTI anywhere** (`-fno-rtti`; owner): no `dynamic_cast` or `typeid`;
+**Build** (owner, 2026-11-06): **plain `make`**, not CMake. **No exceptions** (`-fno-exceptions`; owner): a fatal condition (a broken
+invariant, undefined behaviour, a capacity exceeded) prints its context to stderr with `fprintf` and calls `std::abort()`. **No RTTI anywhere** (`-fno-rtti`; owner): no `dynamic_cast` or `typeid`;
 the framework gives each unit type its own small integer id, which the run lists are grouped by anyway.
 
 **Discipline from the first commit:** sanitizers (ASan, UBSan) and deterministic tests.

@@ -265,3 +265,4 @@ cycle against `golden-m2`, under every debug option (shuffle, both orders, step-
   endCycle(40) through the block's step (`test_g1_tile`).
   **make check clean at f3f344f**: make run gcc debug, gcc release, clang debug, clang release (36 binaries each, all
   0 failed); make tsan (14) and make tsan-units (2) clean, no ThreadSanitizer warnings. Waiting for the next scope.
+- 2026-11-07: **REPORT.md** written for W11 (G3) and W12 (G4). G1 closed.

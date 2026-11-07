@@ -13,7 +13,7 @@ READ FIRST: `sim/planning/PLAN-M2.md`, `sim/planning/DECISIONS.md` (D5, D12, D17
 the runner), `sim/planning/sessions/WORKER7-REPORT.md` (the sort's coverage: the AG's 2.1 M hold refusals; the
 baseline), and the reports of the workers whose code you extend: `WORKER8-REPORT.md` (the director's switch slot for
 modes 2-4, **the configuration parts of the AG and gather engine** in your future units' files, the fingerprint library)
-and `WORKER9-REPORT.md` (**the chip's driver: how a program is booted, released (`Sim::wake`), and run; how far its
+and `sim/planning/sessions/WORKER9-REPORT.md` (**the chip's driver: how a program is booted, released (`Sim::wake`), and run; how far its
 `M2Sort` sequence goes**, the partition). **The framework:** `sim/src/sim.h`, `config.h`, `PORTS.md`,
 `WORKER3-REPORT.md`, and `WORKER10`'s notes on `sim-w10` (stop request, placement by load). **The oracle:**
 `AddressGenerator.java`, `GatherEngine.java`, `TrafficDirector.java` (modes 2-4) in `sim/ref/meshsim/src/`,

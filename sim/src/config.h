@@ -115,9 +115,6 @@ struct TypeInfo {
     void (*run[2])(Engine&, RunSet&);             // by Form: cycle, result (null if the type has no result form)
     uint64_t (*digest)(const void* obj);          // T::digest() if it has one, else its bytes (sim.h, DEBUG CHECKS)
 };
-uint16_t register_type(TypeInfo&& t);
-const TypeInfo& type_info(uint16_t id);
-size_t registry_size();
 
 // The run function of a (type, form): one per run, called once per run per cycle with the run's ready instances. This
 // is the whole dispatch: the step is inlined, nothing is called per port.
@@ -151,9 +148,11 @@ uint64_t digest_of(const void* p) {
     else return hash_bytes(p, sizeof(T));      // only with a unique object representation (static_assert at add)
 }
 
+// The type's description: pure, made once per type (a function-local static, so thread-safe) and shared by every
+// configuration; each Config numbers the types it uses itself (E1), in the order they are first added to it.
 template <UnitType T>
-uint16_t type_id() {
-    static const uint16_t id = [] {
+const TypeInfo* type_ops() {
+    static const TypeInfo info = [] {
         TypeInfo t;
         t.name = type_name<T>();
         t.size = sizeof(T);
@@ -164,9 +163,9 @@ uint16_t type_id() {
         t.run[1] = nullptr;
         if constexpr (HasResultForm<T>) t.run[1] = &run_form<T, true>;
         t.digest = &digest_of<T>;
-        return register_type(std::move(t));
+        return t;
     }();
-    return id;
+    return &info;
 }
 }  // namespace detail
 
@@ -207,7 +206,7 @@ public:
     Sim build();
 
 private:
-    void* stage(uint16_t type, size_t size, size_t align, Form f, const std::string& name);
+    void* stage(const detail::TypeInfo* type, Form f, const std::string& name);
     Ports& begin_ports(void* unit);
     void end_ports();
     template <UnitType T, class... A>
@@ -219,7 +218,7 @@ private:
         static_assert(!std::is_polymorphic_v<T>, "a unit type has no virtual functions (D6: no virtual calls in the loop)");
         static_assert(HasDigest<T> || std::is_empty_v<T> || std::has_unique_object_representations_v<T>,
                       "a unit type with padding or pointers defines `uint64_t digest() const` (sim.h, DEBUG CHECKS)");
-        void* slot = stage(detail::type_id<T>(), sizeof(T), alignof(T), f, name);
+        void* slot = stage(detail::type_ops<T>(), f, name);
         T* u = new (slot) T(begin_ports(slot), std::forward<A>(a)...);
         end_ports();
         return *u;
@@ -240,6 +239,7 @@ public:
     uint64_t digest() const;
     const Sizes& sizes() const;
     uint64_t steps(const std::string& unit_name) const;   // how many times an instance was stepped (idle-unit tests)
+    uint16_t type_of(const std::string& unit_name) const; // the unit's type id in this machine (first-add order, E1)
     std::string sleepers() const;      // the end-of-run report: units asleep with data waiting, their ports, since when
 
     Sim(Sim&& o) noexcept;
@@ -250,11 +250,11 @@ private:
     friend class Config;
     struct Impl;
     explicit Sim(Impl* i) : impl_(i) {}
-    void* unit_ptr(const std::string& name, uint16_t type) const;
+    void* unit_ptr(const std::string& name, const detail::TypeInfo* type) const;
     Impl* impl_ = nullptr;
 };
 
 template <class T>
-T& Sim::unit(const std::string& name) { return *static_cast<T*>(unit_ptr(name, detail::type_id<T>())); }
+T& Sim::unit(const std::string& name) { return *static_cast<T*>(unit_ptr(name, detail::type_ops<T>())); }
 
 }  // namespace sim

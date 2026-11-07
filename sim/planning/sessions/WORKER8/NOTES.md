@@ -237,3 +237,19 @@ cycle against `golden-m2`, under every debug option (shuffle, both orders, step-
   check runs on the real network (and W9's units' streams with it).
   **make check clean at 0167928**: make run gcc debug, gcc release, clang debug, clang release (33 test binaries each,
   all 0 failed), make tsan (12 binaries) and make tsan-units clean.
+- 2026-11-07, owner: 213ae07 merged. **D29**: every overflow feeding ERRORS steps the block as an event (counted at
+  t + 1, D28's timing). **W9 needs a preview of the block's line** (`G2Chip::edge`).
+  - **Port for W9 (proposed, one round through the integrator): `ControlIO::router_ovf_ev`, a `sim::LinkIn`, width 0,
+    `Link(1)` router -> block (same tile, same domain), one put in a cycle in which the router counted one or more
+    overflows.** The block sets ERRORS [0] at the endCycle of that cycle; the Count stays (statistics) and is no longer
+    read by the block once the event exists. My side is in, forward-compatible: `add_g1` declares the block's `ovf` input
+    and fills `router_ovf_ev` only when chip.h's ControlIO has that field (a dependent `requires`), so nothing breaks
+    before W9 adds it, and the event replaces the Count the day it does. `RegBlockState`: `In::router_ovf_ev`
+    (`test_regblock`: ERRORS [0] and the error line at that endCycle, nothing else arriving). The tile-level check of
+    the port comes with W9's field. The write engine's and gather queue's overflows: events when G3/G4 build them.
+  - **The preview for W9: `units::line_edge(sim, tile_ctl, c)`** (`tile_ctl.h`; configuration regime, read-only,
+    fingerprint-only): what the block's endCycle(c) puts on `line` at c + 1 (READY's rising edge bit 0, the error line
+    bit 1), from `units::block_at_end(sim, unit, c)`, the block's endCycle(c) on a copy from its inputs arriving at
+    c + 1 (moved from the fingerprint library into src so W9's C&C writers and mine share one). Checked in
+    `test_g1_replay`: every cycle of wfi and of regs through 824, the preview of endCycle(c) equals what the block puts
+    on `line` at c + 1, under the four option sets.

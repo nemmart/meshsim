@@ -102,8 +102,26 @@ std::string replay(const char* name, uint64_t through, sim::Options opt) {
     static const char* const kUnits[] = {"core", "ctl", "cmem", "dir", "sram", "sram.data", "we", "ag", "ts", "hist",
                                          "gather", "rdport", "req"};
     uint64_t last = std::min(through, end);
+    const TileCtl& ctl = m.unit<TileCtl>("t0.ctl");
+    Stand& sm = m.unit<Stand>("stand");
+    LineEdge expect;
+    uint64_t edges = 0;
     for (uint64_t c = 0; c <= last; c++) {
         if (c > 0) m.run(1);
+        if (c > 0) {                                                       // the preview of endCycle(c - 1), put at c
+            sim::PortEntry e[8];
+            uint32_t n = m.observe(sm.line, e, 8).n;
+            bool put = false; sim::Word w = 0;
+            for (uint32_t i = 0; i < n; i++) if (e[i].at == c + 6) { put = true; w = e[i].w[0]; }
+            if (put != expect.put || w != expect.word) {
+                char b[160];
+                std::snprintf(b, sizeof b, "%s: line_edge(%llu) predicted put %d word %llu; the block put %d word %llu",
+                              name, (unsigned long long)(c - 1), expect.put, (unsigned long long)expect.word, put, (unsigned long long)w);
+                return b;
+            }
+            edges += put;
+        }
+        expect = line_edge(m, ctl, c);
         auto pts = g.at(c);
         if (pts.empty()) return std::string(name) + ": the golden has no point at cycle " + std::to_string(c);
         for (const char* u : kUnits) {
@@ -120,6 +138,7 @@ std::string replay(const char* name, uint64_t through, sim::Options opt) {
             }
         }
     }
+    if (edges == 0) return std::string(name) + ": no READY or error-line edge to check the preview with";
     return "";
 }
 

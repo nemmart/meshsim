@@ -34,7 +34,7 @@ struct RegBlockState {
     bool ready_pulse = false;                   // READY rose at this endCycle (Chip collects readyPulseAt == t)
     bool error_line = false;                    // TILE_CONDITIONS != 0 after this endCycle
     uint64_t unexpected_total = 0, done_early = 0, counter_wraps = 0, router_sends = 0, bad_total = 0;
-    enum : unsigned { COND_BAD = 1 };
+    enum : unsigned { COND_ROUTER_OVF = 0, COND_BAD = 1 };
     // ---- statistics, and ref's violations (counted) ----
     uint64_t gos = 0, dones = 0, readies = 0, sends = 0, trace_stores = 0, violations = 0, sim_exit_at = 0;
     uint32_t sim_exit_value = 0;
@@ -47,6 +47,7 @@ struct RegBlockState {
         uint32_t kline = 0;                // a decrement of this counter (1-7) fell due at t (the director's K-stage line)
         bool send_busy = false;            // the send hold occupied at the end of t (W9's Reg), or the core's put at t
         bool bad = false;                  // the director dropped a bad packet at t (an event: ERRORS [1] at endCycle(t))
+        bool router_ovf_ev = false;        // the router counted an overflow at t (an event, D29: ERRORS [0] at endCycle(t))
         uint64_t router_ovf = 0, we_in_ovf = 0, gather_ovf = 0;   // FIFO overflow counts through t (D28: Counts)
     };
 
@@ -62,6 +63,7 @@ struct RegBlockState {
         if (in.landed) { landed = true; events |= 1u << EV_COMMAND; }                                // 3.
         if (in.op == BUS_ERROR) conditions |= 1u << in.arg;                                          // 4. new errors
         if (in.bad) { bad_total++; conditions |= 1u << COND_BAD; }
+        if (in.router_ovf_ev) conditions |= 1u << COND_ROUTER_OVF;
         const uint64_t counts[] = {in.router_ovf, bad_total, unexpected_total, 0, in.we_in_ovf, 0, in.gather_ovf, 0, done_early};
         for (unsigned i = 0; i < sizeof counts / sizeof counts[0]; i++) {
             if (counts[i] > ev_prev[i]) conditions |= 1u << i;

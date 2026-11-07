@@ -57,3 +57,7 @@ extend D5's one observer, so it is the owner's decision, with W7's proposal and 
 | worker | state |
 |---|---|
 | W7 | **done**, merged 2026-11-07 (`sessions/WORKER7-REPORT.md`): `sim/tests/AUDIT-M2.md` (what the sort touches, the units, the order that matters, D23's chip-level events, unit groups G1-G4, the canonical state fingerprint), `sim/tests/golden-m2/` (references for regs, wfi, a2a, NetTest, EngineTest, the sort at 16K and full size), the baseline (Quest 134) |
+| W8 | G1, the tile's control and the fingerprint's C++ side: prompt written 2026-11-07 (`sessions/WORKER8/PROMPT.md`) |
+| W9 | G2, the network and the chip's assembly: prompt written 2026-11-07 (`sessions/WORKER9/PROMPT.md`) |
+| W10 | framework speed (D26's two levers): prompt written 2026-11-07 (`sessions/WORKER10/PROMPT.md`) |
+| G3, G4 | after W8's register block, then after G3 |

@@ -97,3 +97,20 @@ then 4, then the report. Probably two Quest numbers, claimed per the sessions RE
   real split runs.
 - Quest 120's 110.1 s is the whole JVM (`date` around `java SortTest`): key file read, chip, boot, input, the run and
   verification together. The split asked for in item 5 is new.
+
+## Progress (2026-11-07)
+
+- Drivers (sim/tests/ref): `StateFp` (the canonical fingerprint, ref's side), `FpHooks` (fingerprints, windows, dumps,
+  coverage, cost), `M2Sort` (the sort as SortTest runs it), `M2Prog` (regs, wfi, the C all-to-all as CtrlTest runs them).
+  Proofs: ref's digest unchanged with every hook on; fingerprints identical with idle-skip off and under shuffle seed 4.
+- `sim/tests/AUDIT-M2.md` (draft): sections 0-9.
+- `sim/tests/golden-m2`: images + manifest, RUNS, regen.sh, HASHES; the small runs and the 16K sort regenerated and
+  checked (all SAME).
+- Quest 134 (claimed and pushed 2026-11-07): the baseline (3 x M2Sort split + SortTest whole JVM, one detected P-core),
+  the full-size references into `$DATA/w7-golden-m2/f47b12f`, `regen.sh --check` of the local set. Waiting.
+- A lesson: `pkill -f` with a pattern that also matched my own command killed the shell (the prompt's rule); not repeated.
+
+## Next
+- Quest 134's results: the baseline table (setup, boot, counted run), the full-size HASHES and files into golden-m2.
+- A D12 header in the `.fp` files (the configuration's keys, the images' and keys' sha256), then re-hash.
+- `REPORT.md`.

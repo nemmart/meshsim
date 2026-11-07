@@ -188,3 +188,45 @@ fatal ("not implemented yet") rather than ignored.
 
 The programs are short (100-1,000 cycles each), so this includes cold-start effects; ~40 ns a step for three small units
 looks high for the engine against W6's measurements, worth a `perf` look on the runner.
+
+## Speed on the runner (Quest 127, sim-w5 8738cfd; i5-14400F, CPU 0 alone (P-core, sibling 1 idle), clang 18 -O2)
+
+The program (`tests/bench_controller.cpp`): booted as `hello` (boot ROM, replayed command and GO), then a loop of 9
+instructions in 13 cycles (data load and store, three ALU, a multiply, a register-block load, the count, a taken branch),
+10^7 iterations, then SIM_EXIT. Checked first: at 10^3 iterations the engine's trace equals the direct driver's; every run
+halts by SIM_EXIT with the count in memory. Runs alone timed (not the build); 3 repetitions each, spread under 1%.
+
+| run | M instructions/s | M cycles/s | ns per unit step | x86 instructions per step (perf stat) | IPC |
+|---|---|---|---|---|---|
+| engine, untraced, 9·10^7 instructions | **43.6** | 63.0 | **20.6** | ~535 | 5.5 |
+| engine, traced (10^6 iterations) | 42.0 | 60.6 | 21.4 | — | — |
+| the plain core alone (no engine, no block; constant environment) | **156** | — | **5.8** | ~141 | 5.2 |
+| the 67 goldens, 300 times each (short runs, cold start) | 37.4 | 46.6 | 24.6 | — | — |
+
+Steps: the core is stepped 10^8 times in 1.3·10^8 cycles (it sleeps through multiply and branch stalls); the block 6 and
+the bench 4 times in the whole run, so "per step" is per core step. The trace costs ~0.8 ns a step in the loop (its
+formatting after the run dominates a traced run's profile, but that is outside the timed run). Footprint of the tile's
+engine structures (`Sizes`): 484 words, 3 wheels, 3 runs, 5 links, 4 wires, 1 register file.
+
+### Where the 20.6 ns per step goes (perf record, UNITS_PROFILE build: the core's step and interpreter out of line)
+
+| part | symbols | share | ≈ ns/step |
+|---|---|---|---|
+| **the engine** | `Engine::cycle` 33.1%, `run_form<Core>` 14.9% (dispatch, the inlined Ctx reads), `Engine::after` 7.0%, `run_until` 5.1%, `heap_set` 1.6%, `heap_remove` 1.2%, memset 0.5% | **~63%** | **~13** |
+| **my units** | `Rv32::execute` 12.7%, `Rv32::step` 10.7% (catch-up, interrupt and WFI checks), `Core::step` 5.7%, `fetch_execute` 3.3%, load/store/read_reg 1.7% | **~34%** | **~7** |
+| the trace | in the loop: ~4% (traced against untraced); untraced runs have none | | ~0.8 |
+| unresolved | ~2% | | |
+
+The plain build (no UNITS_PROFILE) gives the same split within a point or two (clang keeps `execute` out of line anyway).
+
+**For W3 (the engine's part):** with one ready unit, ~390 x86 instructions a cycle are the engine's (535 per step, of
+which the core alone accounts for ~141), at IPC 5.5: cheap instructions, but many. `Engine::cycle` alone is a third of the
+time with only 3 wheels and 3 runs, so it is fixed per-cycle work (the wheel scan, the far-wake check, the run-set
+swaps, `idle()`), not scaling with ports. The far wakes cost ~3% (a multiply and a taken branch each iteration go
+through the heap; a stall of 1-2 cycles might not want the heap). Profiles: Quest `results/127-w5-controller-speed/
+perf-report-{plain,noinline,traced,core}.txt`.
+
+**For me (the units' part, ~7 ns):** the plain core alone runs ~141 x86 instructions per RV32 instruction, which is
+more than an interpreter needs; `Rv32::step` is a third of it (the catch-up and the checks before every instruction).
+Possible later, keeping exactness: a fast path when nothing can interrupt (no catch-up gap, not in WFI, no stall), and
+the statistics counters out of the hot path. Not done: correctness first, and the engine is the larger part.

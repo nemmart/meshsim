@@ -29,6 +29,13 @@ for rep in $(seq $REPS); do for k in $KITS; do B=$W/kit/$k/sim/build/clang-relea
   run "$k split1-synth8" "$P1" $B $V --chip synth --threads 1 --partition tiles --cpus "$P1"
 done; done
 
+sec "2b. W4's layout, for revisions that have it (Options::engines, a measurement option): one thread running 6 and 64 engines; $REPS repeats"
+for rep in $(seq $REPS); do for k in $KITS; do B=$W/kit/$k/sim/build/clang-release/bench_threads
+  grep -q -- '--engines' "$W/kit/$k/sim/bench/threads/bench_threads.cpp" || continue
+  run "$k eng1-rows6" "$P1" $B $V --threads 1 --domains 6 --engines 6 --cpus "$P1"
+  run "$k eng1-tiles64" "$P1" $B $V --threads 1 --partition tiles --engines 64 --cpus "$P1"
+done; done
+
 sec "3. form 2: mesh by rows (T domains, T <= 8) and by tiles (64 domains), synth by clusters (8 domains), over T = $TS threads (placement: $PLACE); $REPS repeats"
 for rep in $(seq $REPS); do for k in $KITS; do B=$W/kit/$k/sim/build/clang-release/bench_threads
   for t in $TS; do C=$(take $t "$PLACE"); TSET=$(cpus_for $t)
@@ -48,6 +55,7 @@ sec "5. summary: medians, us per chip-cycle (wall), words (Sizes), and against o
 for k in $KITS; do
   base=$(med "$k one-mesh35" us_per_chip_cycle); sb=$(med "$k one-synth" us_per_chip_cycle)
   for tag in one-mesh35 one-mesh05 one-synth split1-rows2 split1-rows4 split1-rows6 split1-rows8 split1-tiles64 split1-synth8 \
+             eng1-rows6 eng1-tiles64 \
              $(for t in $TS; do echo t$t-rows t$t-tiles64 t$t-synth8; done); do
     u=$(med "$k $tag" us_per_chip_cycle); [ "$u" = - ] && continue
     w=$(med "$k $tag" words); case $tag in *synth*) b=$sb ;; one-mesh05) b=$u ;; *) b=$base ;; esac

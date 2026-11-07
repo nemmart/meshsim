@@ -60,4 +60,4 @@ extend D5's one observer, so it is the owner's decision, with W7's proposal and 
 | W8 | G1, the tile's control and the fingerprint's C++ side: prompt written 2026-11-07 (`sessions/WORKER8/PROMPT.md`) |
 | W9 | G2, the network and the chip's assembly: prompt written 2026-11-07 (`sessions/WORKER9/PROMPT.md`) |
 | W10 | framework speed (D26's two levers): prompt written 2026-11-07 (`sessions/WORKER10/PROMPT.md`) |
-| G3, G4 | after W8's register block, then after G3 |
+| G3, G4 | after W8's register block, then after G3. **G3 starts with `regs`' path** (W8, 2026-11-07): mode-1 self-sends through the write engine, PTR's read-modify-write and big SRAM writes, so `regs` completes; until then `regs` is checked in full through cycle 824 |

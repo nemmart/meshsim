@@ -598,6 +598,7 @@ void* Threads::unit_ptr(const std::string& name, const TypeInfo* type) const {
     return Internals::unit_ptr(sims[dom_index(name)], name, type);
 }
 uint64_t Threads::steps(const std::string& name) const { return sims[dom_index(name)].steps(name); }
+void Threads::wake(const std::string& name) { sims[dom_index(name)].wake(name); }   // W10: in its own domain
 std::string Threads::sleepers() const {
     std::string s;
     for (auto& x : sims) s += x.sleepers();

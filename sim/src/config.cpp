@@ -838,6 +838,13 @@ LoadProfile LoadProfile::from_text(const std::string& text) {
     if (line < 2) FATAL("load profile: no header");
     return p;
 }
+void Sim::wake(const std::string& name) {
+    if (impl_->running) FATAL("Sim::wake('%s') during a run: between runs only", name.c_str());
+    if (impl_->threads) return impl_->threads->wake(name);
+    auto it = impl_->by_name.find(name);
+    if (it == impl_->by_name.end()) FATAL("Sim::wake: no unit named '%s'", name.c_str());
+    impl_->e.mark(it->second);       // ready for the next cycle's run phase (nothing clears it before)
+}
 Cycle Sim::stop_cycle() const {
     if (!impl_->threads) return impl_->e.stop_at;
     Cycle c = kNoCycle;

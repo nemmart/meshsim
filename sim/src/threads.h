@@ -136,6 +136,7 @@ struct Threads {
     uint16_t type_of(const std::string& name) const;
     void* unit_ptr(const std::string& name, const TypeInfo* type) const;
     uint64_t steps(const std::string& name) const;
+    void wake(const std::string& name);              // W10: Sim::wake, in the unit's domain
     uint64_t digest() const;
     std::string sleepers() const;
 

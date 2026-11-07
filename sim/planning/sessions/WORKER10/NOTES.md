@@ -140,7 +140,13 @@ Wire, RegFile and Count are already readable from their producers' and readers' 
     // end of the barrier interval holding that cycle, and the run returns there, every thread at the same cycle
     // (now() - 1 >= stop_cycle(), within one interval). The next run starts afresh (no request pending).
 
-**Partitioning by load** (piece 2; drafted now, refined with notice when built), `config.h`:
+**The between-cycles wake** (W9's driver), `config.h`:
+
+    void Sim::wake(const std::string& unit);   // between runs only (fatal during one; fatal for an unknown name): the
+                                               // unit is stepped at the next cycle run, now(), exactly, in whichever
+                                               // domain it sits; its own wakes are unchanged; twice before a run: once
+
+**Partitioning by load** (piece 2, as built in 4089276), `config.h`:
 
     // Options:
     enum class Placement : uint8_t { declared, by_load } placement = Placement::declared;   // by_load: the framework
@@ -148,8 +154,8 @@ Wire, RegFile and Count are already readable from their producers' and readers' 
     const LoadProfile* load = nullptr;     // by_load: a calibration run's profile; null: declared weights, else 1 per unit
     unsigned min_interval = 0;             // by_load: the smallest barrier interval allowed; 0: the largest latency that
                                            //   leaves at least 4 granules per thread
-    bool calibrate = false;                // record steps per instance, time per run call and puts per route (one thread)
-    // struct LoadProfile { names and numbers, a plain value the caller keeps; read and written as text };
+    bool calibrate = false;                // time each step (a calibrating run loop, bound only when set)
+    // struct LoadProfile { unit names, their loads (ticks), cycles; to_text(), static from_text(text) };
     void Config::weight(const std::string& unit, double w);   // a declared load, for a first run with no profile
     LoadProfile Sim::load_profile() const;                    // after a run with Options::calibrate
 
@@ -177,3 +183,8 @@ Wire, RegFile and Count are already readable from their producers' and readers' 
   build by build (this container, clang 18.1.3, gcc 13.3.0): gcc and clang, debug and release, 25 test binaries each
   (W5's 67 goldens included, test_golden); TSan gcc and clang: test_parallel, test_threads, test_topology,
   test_matrix, test_observe, test_link_depth (the last two now in `TSAN_TESTS`).
+- 2026-11-07: sim-w10 merged into main through 2e016ea (owner). Placement by load (4089276): granules, recursive
+  bisection with a balance phase and cut refinement, then a k-way polish; calibration times each step by a separate run
+  loop (no cost when off). Mesh by profile: load max/mean 1.009 / 1.028 / 1.031 / 1.041 / 1.068 at 2 / 4 / 6 / 8 / 12
+  threads, the digest equal at each. test_partition 7/7 (debug, release). The between-cycles wake `Sim::wake` (W9's
+  driver), tests beside the stop request: one domain and split, exact cycle, digest equal.

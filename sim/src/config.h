@@ -357,6 +357,9 @@ public:
     // the run returned right after it (now() == stop_cycle() + 1); split: at the barrier ending its interval, every
     // thread at the same cycle. A run clears it at its start.
     Cycle stop_cycle() const;
+    // W10, the between-cycles wake (W9's driver): between runs only (fatal during one), the named unit is stepped at the
+    // next cycle run, now(), exactly, in whichever domain it sits (as a timed wake due then; its own wakes are unchanged).
+    void wake(const std::string& unit);
     // W10: after runs with Options::calibrate, the time each unit's steps took over them (its load).
     LoadProfile load_profile() const;
 

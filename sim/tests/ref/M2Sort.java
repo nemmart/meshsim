@@ -37,7 +37,8 @@ final class M2Sort {
         int[][] k; String label;
         if (kv.containsKey("keys")) { k = SortTest.readKeys(Path.of(kv.get("keys"))); label = Path.of(kv.get("keys")).getFileName().toString(); }
         else { String kind = kv.getOrDefault("kind", "uniform"); int n = Integer.parseInt(kv.getOrDefault("n", "2000")); k = SortTest.keys(kind, n, 11 + kind.hashCode()); label = kind + " n=" + n; }
-        out(Inputs.line(Inputs.of(SortTest.build, kv.containsKey("keys") ? Path.of(kv.get("keys")) : null)));
+        String inputs = Inputs.line(Inputs.of(SortTest.build, kv.containsKey("keys") ? Path.of(kv.get("keys")) : null));
+        out(inputs);
         long tKeys = System.nanoTime();
         SortTest.Oracle o = new SortTest.Oracle(k, fmt, false);
         long tOracle = System.nanoTime();
@@ -78,7 +79,7 @@ final class M2Sort {
         }
 
         // ---- the hooks
-        FpHooks h = new FpHooks(m.c, kv);
+        FpHooks h = new FpHooks(m.c, kv, List.of("M2Sort " + label + (fmt == SortTest.FMT_K128 ? " k128" : " kv32") + " ready " + op.readyLatency + " seed " + op.shuffle, inputs.replaceAll("keys=\\S*/", "keys=")));
         long tRun = System.nanoTime();
         boolean ok = m.c.runUntil(() -> { m.monitor(); h.cycle(); return !m.cc.busy() && m.allStopped(); }, Long.getLong("sort.maxcycles", 400_000_000L));
         long tEnd = System.nanoTime();

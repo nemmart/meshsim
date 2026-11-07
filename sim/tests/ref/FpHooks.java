@@ -24,7 +24,9 @@ final class FpHooks {
     long[] sramH; final List<int[]> pendRows = new ArrayList<>();   // {tile, area, row}, old values captured below
     final List<int[]> pendOld = new ArrayList<>();
 
-    FpHooks(Chip chip, Map<String, String> kv) throws Exception {
+    FpHooks(Chip chip, Map<String, String> kv) throws Exception { this(chip, kv, List.of()); }
+    /** header: the run's own D12 lines (its inputs' sha256), written into the .fp file after the configuration. */
+    FpHooks(Chip chip, Map<String, String> kv, List<String> header) throws Exception {
         c = chip;
         if (kv.containsKey("fptiles")) for (String x : kv.get("fptiles").split(",")) tiles[Integer.parseInt(x)] = true; else java.util.Arrays.fill(tiles, true);
         every = Long.parseLong(kv.getOrDefault("fpevery", "10000"));
@@ -37,7 +39,14 @@ final class FpHooks {
         dumpW = dumps.isEmpty() ? null : new PrintWriter(new FileWriter(kv.getOrDefault("dumpto", "fpdump.txt")));
         phasesSeen = c.phases.phases.size();
         costAt = Long.parseLong(kv.getOrDefault("fpcost", "-1"));
-        if (fp != null) { fp.println("# M2Sort state fingerprint v1 (sim/tests/AUDIT-M2.md section 6): cycle unit hash"); fingerprint(true); }
+        pendCheck = kv.containsKey("pendcheck");
+        if (fp != null) {
+            fp.println("# state fingerprint v1 (sim/tests/AUDIT-M2.md section 6): cycle unit hash");
+            for (String h : header) fp.println("# " + h);
+            for (String h : configLines(c.cfg)) fp.println("# config " + h);
+            fp.println("# start skew " + java.util.Arrays.toString(c.startSkew));
+            fingerprint(true);
+        }
         if (cover != null) snap();
     }
     String describe() { return fp == null ? "off" : String.format("%d fingerprints, %.3f s in them", fpCalls, fpNanos * 1e-9); }
@@ -52,6 +61,7 @@ final class FpHooks {
         if (phase) { phasesSeen = c.phases.phases.size(); if (cover != null) snap(); }
         if (dumpW != null && dumps.containsKey(t)) for (String u : dumps.get(t)) StateFp.dump(dumpW, c, u);
         if (t == costAt) cost();
+        if (pendCheck) pendCheck(t);
         if (fp == null) return;
         boolean inWin = t >= winA && t <= winB;
         if (inWin && sramH == null) startWindow();
@@ -61,6 +71,35 @@ final class FpHooks {
         if (sramH != null && t >= winB) endWindow();
     }
     long costAt = -1;
+    /** Config's instance fields (D12), in declaration order: primitives and arrays of them; others by class name. */
+    static List<String> configLines(Config k) {
+        List<String> out = new ArrayList<>();
+        for (java.lang.reflect.Field f : Config.class.getDeclaredFields()) {
+            if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
+            f.setAccessible(true);
+            Object v; try { v = f.get(k); } catch (IllegalAccessException e) { throw new RuntimeException(e); }
+            String s = v == null ? "null" : v instanceof int[] a ? java.util.Arrays.toString(a) : v instanceof long[] a ? java.util.Arrays.toString(a)
+                    : v instanceof boolean[] a ? java.util.Arrays.toString(a) : v instanceof int[][] a ? java.util.Arrays.deepToString(a)
+                    : f.getType().isPrimitive() || v instanceof String ? String.valueOf(v) : "(" + v.getClass().getSimpleName() + ")";
+            out.add(f.getName() + " " + s);
+        }
+        return out;
+    }
+    // ---- pendcheck: AUDIT-M2 3.3's case. Per cycle and tile: a write-counter store (applied at endCycle(t)) in the same
+    //      cycle as the director's decrement of that counter, or as its acceptance of a packet counted on it.
+    boolean pendCheck; long[][] countedPrev; long storeDec, storeAccept, storeDecAtZero;
+    void pendCheck(long t) {
+        if (countedPrev == null) { countedPrev = new long[64][]; for (Tile p : c.tiles) countedPrev[p.idx] = p.dir.counted.clone(); return; }
+        for (Tile p : c.tiles) {
+            long[] dec = (long[]) StateFp.o(p.dir, "decAt"), cnt = p.dir.counted, prev = countedPrev[p.idx];
+            for (int k = 1; k <= TrafficDirector.N_COUNTERS; k++) {
+                boolean store = p.ctl.counterWriteAt[k] == t;
+                if (store && dec[k] == t) storeDec++;
+                if (store && cnt[k] != prev[k]) storeAccept++;
+                prev[k] = cnt[k];
+            }
+        }
+    }
     /** fpcost=C: at cycle C, each unit's fingerprint timed over all 64 tiles (best of 10 after 3 warm-ups), in us. */
     void cost() {
         StringBuilder b = new StringBuilder("fpcost at cycle " + c.cycle + " (us for all 64 tiles, best of 10):");
@@ -77,10 +116,13 @@ final class FpHooks {
         System.out.println(b);
     }
     void end() {
+        if (pendCheck) System.out.println("pendcheck: same-cycle counter store and decrement " + storeDec + ", store and acceptance " + storeAccept
+                + "; unexpected arrivals " + sumDir("unexpectedTotal") + ", strays " + sumDir("strays"));
         if (fp != null) { fingerprint(true); fp.close(); }
         if (dumpW != null) dumpW.close();
         if (cover != null) { snap(); writeCover(); cover.close(); }
     }
+    long sumDir(String f) { long s = 0; for (Tile p : c.tiles) s += StateFp.l(p.dir, f); return s; }
     void fingerprint(boolean data) {
         long a = System.nanoTime(); StateFp.write(fp, c, data, tiles); fpNanos += System.nanoTime() - a; fpCalls++;
     }

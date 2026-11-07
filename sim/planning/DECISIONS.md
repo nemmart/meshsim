@@ -43,7 +43,7 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   the register load, the rest of `Config`'s relevant values), `stage_delay`, the shuffle seed, the tile, and the image's
   sha256. The C++ test bench checks its own configuration against the header before comparing and refuses on any difference,
   so a parameter mismatch shows as one clear error rather than every cycle disagreeing.
-- **D13. The runner, for sim/** (owner). clang and lld installed, `kernel.perf_event_paranoid=1`, `vm.mmap_rnd_bits=28`
+- **D13. The runner, for sim/** (owner; *a note on pinning the owner's runner, not a project rule: D21*). clang and lld installed, `kernel.perf_event_paranoid=1`, `vm.mmap_rnd_bits=28`
   (TSan), confirmed by Quest 122. The runner has 6 performance cores with hyperthreading plus 4 efficiency cores: **benchmark
   threads are pinned to the performance cores** (`taskset -c 0-11`: CPUs 0-11 are the six P-cores and their hyperthreads, 12-15 the E-cores; Quest 122), and any run on the efficiency
   cores is reported separately. Scaling is reported at 1, 6 and 12 threads on the P-cores.
@@ -71,3 +71,21 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   stepped again unless it asks; accepted provided development has tools that catch the mistake: the step-all check
   (digest equal to the ready-driven run), a debug detector naming any unit asleep with data waiting in an input and no wake
   pending, and an end-of-run report of the same. Stage 2 of W3 and W5 start (owner's go-ahead).
+- **D21. Nothing machine-specific is baked in** (owner, 2026-11-07; the owner also runs on other machines, e.g. Snarkify's
+  servers). CPU sets, core counts and core types are arguments or environment settings, or detected at run time (`lscpu`,
+  `/sys/devices/system/cpu`, including P/E core types on hybrid chips: `/sys/devices/cpu_core/cpus`, `cpu_atom/cpus`),
+  never hardcoded. The framework's thread placement takes a CPU list from configuration, with a sensible detected default.
+  **Every benchmark result records its machine**: CPU model, core types and counts, clocks, memory, compiler and versions.
+  D13 stays as the note on how to pin on the owner's runner. Existing scripts with hardcoded CPU lists (W2's `baseline.sh`,
+  W6's `sim/bench/quest/*`, W4's and W5's task scripts) are made to take them as arguments, defaulting to detection.
+- **D22. The honest speed figure** (2026-11-07, W5, Quest 130): **unit for unit, the framework is about 4.5× `ref` per
+  thread** (Controller plus TileControl: ~23 ns per instruction, engine included, against ~104; identical traces). The 58×
+  (idle-skip on) and 2,300× (off) figures mainly measure chip-level work M1 doesn't model yet: **don't quote them as
+  speedups.**
+- **D23. Chip-level work is event-driven too** (2026-11-07, from `ref`'s profile with idle-skip on: 33% the request bus,
+  19.5% scanning overflows, 17% the chip's own loop, 2.3% the controller). When M2 models the whole chip, nothing scans all
+  tiles every cycle (overflows, invariants, the request bus): such work is driven by the events that cause it, like every
+  unit, or the framework rebuilds `ref`'s bottleneck one level up.
+- **D24. Diagnostics don't allocate** (2026-11-07, from W5's finding): every fatal and report path in the engine formats
+  into a preallocated buffer (`snprintf`), or records fixed-size facts (cycle, unit, port) in a list sized at startup and
+  formats them after the run. No allocation in the cycle loop, diagnostics included.

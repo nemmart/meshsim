@@ -34,6 +34,12 @@ second** for the whole box (12 JVMs on the P-cores: 96,800; 16 on every CPU: 108
 slower than one alone, more than hyperthreading explains: shared cache and memory, as the measurements in SIMULATOR-NEXT
 section 3 predict.
 
+**The first comparison with `ref`** (W5, Quest 130, one P-core): the same long loop program, identical traces. The framework
+runs it at **44.0 M instructions/s**; `ref` at 0.76 M with idle-skip on (0.91 µs per chip-cycle) and 0.019 M with it off
+(36 µs, D15's bar). Most of `ref`'s time is chip-level work M1 doesn't model yet (the request bus, overflow scans, the
+chip loop); **unit for unit** (Controller plus TileControl), `ref` spends ~104 ns per instruction against the framework's
+~23 ns, engine included: **about 4.5×**, the honest figure for now (D22: don't quote the others as speedups).
+
 ## Components, in build order
 
 1. **Build and discipline.** Plain `make` (`sim/Makefile`), gcc and clang, C++20, `-fno-exceptions -fno-rtti -Wall -Wextra
@@ -152,6 +158,13 @@ section 3 predict.
   counters. M1 covers the interrupt only inside a handler that sets MIE again (`irq`); W5 still implements `ref`'s rule in
   full, and M2 tests these paths once the counters exist.
 
+- **A Link whose consumer may hold up to a declared depth** (W4's footprint breakdown, 2026-11-07): today a Link's consumer
+  must take each word the cycle it arrives, so a router copies it into its own queue, holding every word twice (~74 KB of
+  the framework mesh's 228 KB). Also the worst-case wheel sizing (W3, flagged earlier).
+
+- **Chip-level work event-driven** (D23): when M2 models the whole chip, no per-cycle scans over all tiles (overflows,
+  invariants, the request bus); `ref` spends most of an idle-skipped cycle there.
+
 ## Layout
 
 `sim/Makefile`; `sim/src/` (the framework, then `units/`); `sim/tests/` (C++ tests, the Java drivers, `golden/`,
@@ -166,5 +179,5 @@ Workers may refine the layout under `src/` and `tests/` in their plans.
 | W2 | **done**, merged 2026-11-07 (`sessions/WORKER2-REPORT.md`); the audit is `sim/tests/AUDIT-M1.md`; 67 goldens, `regen.sh --check` all SAME |
 | W6 | **done**, merged 2026-11-07 (`sessions/WORKER6-REPORT.md`); its recommendations go to the owner with W3's API |
 | W3 | stage 1 (the API) done, reviewed by the integrator (D19) and merged 2026-11-07; stage 2 started (owner's go-ahead, D20) |
-| W5 | **all 67 goldens match on the engine, and N controllers on N threads** (Quest 129: N up to 12 pinned, 16 unpinned; TSan clean); 43.6 M instructions/s per thread (Quest 127); the debug checks wait for W3's increment 5 |
+| W5 | **done**, merged 2026-11-07 (`sessions/WORKER5-REPORT.md`): all 67 goldens on the engine under all six option sets, N on N threads (Quest 131); its detector death test goes back under the hook with W3's D24 fix |
 | W4 | prompt written 2026-11-07 (`sessions/WORKER4/PROMPT.md`) |

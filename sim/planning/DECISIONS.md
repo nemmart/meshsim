@@ -102,3 +102,9 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   Quest 129, W4's Quest 128, W6's throughput against N). **The figures that count** are **speed per thread** (~4.5× `ref`
   unit for unit, D22) and **one chip split over threads** (form 2: ~3× on four threads for the mesh so far, Quest 133).
   M2's work pushes those two: a faster thread, and a cheaper, load-balanced split.
+- **D27. Model `ref` as it runs** (2026-11-07, W8's finding on `pendingAdd`): where `ref`'s default run and the spec's
+  intent differ, the framework reproduces `ref`'s default run (its fixed child order, no shuffle) and the difference is
+  recorded for the spec. First case: `Tile.children` steps the director before the core, so `TileControl.pendingAdd` is
+  always 0 in `ref`'s run: the director judges a due decrement without the core's same-cycle counter store. The
+  framework models that order-free (the core's store reaches the register block registered, for t + 1). No M2 program
+  reaches the case (W7's `pendcheck`: 0); `AUDIT-M2` sections 2.5 and 3.3 are corrected accordingly.

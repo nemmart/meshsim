@@ -15,6 +15,9 @@ this, and dozens of sessions"; a new integrator session, its workers numbered fr
   anything today. Its runs will likely be **one sumcheck at a time**. Bottom line (owner): **either a much better simulator, or
   regressions that take days.** So units must be able to do real arithmetic cheaply (native 128-bit multiplies), not only move
   data, and the framework must leave room for faster-than-cycle modes where a run checks results rather than timing.
+  **But high-level models don't replace cycle-level runs** (owner): we will build higher-level simulators too, and still
+  need **a lot of cycle-level runs** (timing, the RTL's comparison, architecture decisions), so **the cycle-level framework's
+  speed stays the priority**; a high-level mode supplements it, checked against it.
 - **The goal:** full detail, run blazingly fast, **and units that stay easy to write**. Investing in a framework now pays for
   itself across v1.4, v1.5, v1.6 and beyond (owner).
 

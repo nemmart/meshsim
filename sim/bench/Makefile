@@ -3,7 +3,7 @@
 #   make                 release, gcc -O2: build/gcc-O2/{mesh,fp128}
 #   make all-builds      also gcc -O3, gcc -O2 -march=native, clang -O2 (when clang is present)
 #   make check           the debug build (ASan, UBSan): every variant's digests equal, the fold checked, the hook fires
-#   make kit             build/kit.tgz: sim/src/base and sim/bench, for a Quest task's embedded kit
+#   make kit             build/kit.tgz: sim/src/base, sim/bench and sim/tools (machine.sh, D21), for a Quest task's kit
 #   make clean
 
 CC_NAME ?= gcc
@@ -49,7 +49,7 @@ check:
 kit:
 	@mkdir -p build
 	cd ../.. && tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -czf sim/bench/build/kit.tgz \
-	  --exclude=sim/bench/build sim/src/base sim/bench
+	  --exclude=sim/bench/build sim/src/base sim/bench sim/tools
 
 clean:
 	rm -rf build

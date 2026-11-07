@@ -7,10 +7,11 @@ NAME=$1 BODY=$2 HDR=$3
 TOP=$(git rev-parse --show-toplevel)
 REV=$(git rev-parse --short HEAD)
 KIT=$(mktemp -d)
-( cd "$TOP" && git archive --format=tar HEAD sim/Makefile sim/src sim/bench/threads \
-    sim/tests/harness.h sim/tests/harness.cpp sim/tests/synth.h sim/tests/test_parallel.cpp sim/tests/test_threads.cpp 2>/dev/null \
-  || git archive --format=tar HEAD sim/Makefile sim/src sim/bench/threads sim/tests/harness.h sim/tests/harness.cpp \
-    sim/tests/synth.h sim/tests/test_parallel.cpp ) | gzip -9n > "$KIT/kit.tgz"
+FILES="sim/Makefile sim/src sim/bench/threads sim/tools"
+for f in harness.h harness.cpp synth.h test_parallel.cpp test_threads.cpp test_matrix.cpp test_topology.cpp test_digest.cpp; do
+  ( cd "$TOP" && git cat-file -e "HEAD:sim/tests/$f" 2>/dev/null ) && FILES="$FILES sim/tests/$f"
+done
+( cd "$TOP" && git archive --format=tar HEAD $FILES ) | gzip -9n > "$KIT/kit.tgz"
 SHA=$(sha256sum "$KIT/kit.tgz" | cut -d' ' -f1)
 cat <<HEAD
 #!/bin/bash
@@ -32,7 +33,7 @@ sec() { echo; echo "==== \$*  [\$(date +%T)]"; }
 verdict() { echo "VERDICT \$1: \$2"; [ "\$2" = PASS ] || FAIL=1; }
 START=\$(date +%s)
 {
-sec "machine"; uname -r; nproc; lscpu | grep -E 'Model name|^CPU\\(s\\)'; uptime; clang++ --version | head -1
+sec "machine (D21)"; . "\$S/tools/machine.sh" "\${QUEST_P_CPUS:-}" "\${QUEST_E_CPUS:-}"; machine_record "\$RES/machine.txt"; uptime
 $(cat "$(dirname "$0")/common.inc")
 $(cat "$BODY")
 sec "done in \$((\$(date +%s) - START)) s"

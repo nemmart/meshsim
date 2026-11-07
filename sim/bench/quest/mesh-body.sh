@@ -10,13 +10,13 @@ CS="--cycles 10000 --warmup 1000"       # 128 meshes
 
 sec "1. saturation: offered against accepted (lw=a e1 rt, injection queue 64 deep, 1 run each)"
 for r in 0.30 0.33 0.35 0.36 0.37 0.40 0.50; do
-  run "sat" 0 $B --rate $r --injdepth 64 --cycles 200000 --warmup 50000 --cpus 0
+  run "sat" "$P1" $B --rate $r --injdepth 64 --cycles 200000 --warmup 50000 --cpus "$P1"
 done
 
 sec "2. the matrix: one mesh, one thread (CPU 0), ready marks, 3 repeats"
 for rep in 1 2 3; do for lw in a b; do for dl in e1 e2; do for w in rt fx; do for mix in 128 mixed; do
-  run "matrix" 0 $B --lw $lw --dl $dl --width $w --mix $mix --rate 0.35 $C1 --cpus 0
-  run "matrix" 0 $B --lw $lw --dl $dl --width $w --mix $mix --rate 0.1 $C2 --cpus 0
+  run "matrix" "$P1" $B --lw $lw --dl $dl --width $w --mix $mix --rate 0.35 $C1 --cpus "$P1"
+  run "matrix" "$P1" $B --lw $lw --dl $dl --width $w --mix $mix --rate 0.1 $C2 --cpus "$P1"
 done; done; done; done; done
 
 sec "choosing the best destination layout and width for the pair (median, rate 0.35, a and b, both mixes)"
@@ -34,29 +34,29 @@ echo "best: dl=$DL width=$WD"
 
 sec "3. ready marks against polling (best layout; one mesh; 3 repeats)"
 for rep in 1 2 3; do for lw in a b; do for mix in 128 mixed; do
-  run "poll" 0 $B --lw $lw --dl $DL --width $WD --ready poll --mix $mix --rate 0.35 $C1 --cpus 0
-  run "poll" 0 $B --lw $lw --dl $DL --width $WD --ready poll --mix $mix --rate 0.1 $C2 --cpus 0
+  run "poll" "$P1" $B --lw $lw --dl $DL --width $WD --ready poll --mix $mix --rate 0.35 $C1 --cpus "$P1"
+  run "poll" "$P1" $B --lw $lw --dl $DL --width $WD --ready poll --mix $mix --rate 0.1 $C2 --cpus "$P1"
 done; done; done
 
 sec "4. compilers and flags (best layout, rate 0.35, one mesh; 3 repeats; -O2 gcc is the matrix)"
 for rep in 1 2 3; do for bld in gcc-O3 gcc-native clang-O2; do for lw in a b; do for mix in 128 mixed; do
-  run "flags-$bld" 0 build/$bld/mesh --lw $lw --dl $DL --width $WD --mix $mix --rate 0.35 $C1 --cpus 0
+  run "flags-$bld" "$P1" build/$bld/mesh --lw $lw --dl $DL --width $WD --mix $mix --rate 0.35 $C1 --cpus "$P1"
 done; done; done; done
 
 sec "5. phase shares (rdtsc per phase; not a timing run)"
 for lw in a b; do for mix in 128 mixed; do
-  run "phases-1" 0 $B --lw $lw --dl $DL --width $WD --mix $mix --rate 0.35 --cycles 100000 --warmup 10000 --phases --cpus 0
-  run "phases-128" 0 $B --lw $lw --dl $DL --width $WD --mix $mix --rate 0.35 --meshes 128 --cycles 2000 --warmup 200 --phases --cpus 0
+  run "phases-1" "$P1" $B --lw $lw --dl $DL --width $WD --mix $mix --rate 0.35 --cycles 100000 --warmup 10000 --phases --cpus "$P1"
+  run "phases-128" "$P1" $B --lw $lw --dl $DL --width $WD --mix $mix --rate 0.35 --meshes 128 --cycles 2000 --warmup 200 --phases --cpus "$P1"
 done; done
 
-sec "6. scale: 128 independent meshes (rate 0.35; P: 1 thread, 6 = one per P-core, 12 = with HT; E: 1 and 4; 3 repeats)"
+sec "6. scale: 128 independent meshes (rate 0.35; P: 1 thread, $NP = one per P core, $NPT = with HT; E: 1 and $NE; 3 repeats)"
 for rep in 1 2 3; do for lw in a b; do for mix in 128 mixed; do
   V="--lw $lw --dl $DL --width $WD --mix $mix --rate 0.35 --meshes 128 $CS"
-  run "scale-P1" 0-11 $B $V --cpus 0
-  run "scale-P6" 0-11 $B $V --cpus 0,2,4,6,8,10 --threads 6
-  run "scale-P12" 0-11 $B $V --cpus 0-11 --threads 12
-  run "scale-E1" 12-15 $B $V --cpus 12
-  run "scale-E4" 12-15 $B $V --cpus 12-15 --threads 4
+  run "scale-P1" "$P_CPUS" $B $V --cpus "$P1"
+  run "scale-P$NP" "$P_CPUS" $B $V --cpus "$P_ONE" --threads $NP
+  run "scale-P$NPT" "$P_CPUS" $B $V --cpus "$P_CPUS" --threads $NPT
+  [ "$NE" -gt 0 ] && run "scale-E1" "$E_CPUS" $B $V --cpus "$E1"
+  [ "$NE" -gt 0 ] && run "scale-E$NE" "$E_CPUS" $B $V --cpus "$E_CPUS" --threads $NE
 done; done; done
 sec "7. digests: every variant, rate and mix agree; the scale runs agree across thread counts"
 for key in "mix=128 rate=0.350" "mix=mixed rate=0.350" "mix=128 rate=0.100" "mix=mixed rate=0.100"; do
@@ -70,8 +70,8 @@ done
 
 sec "8. perf record: the busiest case (128 meshes, 128-bit, rate 0.35, 1 thread), a and b"
 for lw in a b; do
-  taskset -c 0 perf record -q -F 4000 -o "$W/perf-$lw.data" -- $B --lw $lw --dl $DL --width $WD --mix 128 --rate 0.35 \
-    --meshes 128 --cycles 4000 --warmup 400 --cpus 0 > /dev/null 2>&1
+  taskset -c "$P1" perf record -q -F 4000 -o "$W/perf-$lw.data" -- $B --lw $lw --dl $DL --width $WD --mix 128 --rate 0.35 \
+    --meshes 128 --cycles 4000 --warmup 400 --cpus "$P1" > /dev/null 2>&1
   perf report -i "$W/perf-$lw.data" --stdio --no-children --sort symbol 2>/dev/null | grep -v '^#' | grep -v '^$' \
     | head -25 > "$RES/perf-report-$lw.txt"
   echo "-- lw=$lw"; cat "$RES/perf-report-$lw.txt"

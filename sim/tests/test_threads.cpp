@@ -194,12 +194,16 @@ TEST(nothing_allocated_in_the_loop_with_threads) {
     CHECK(s.now() == 2011);
 }
 
-TEST(barrier_block_gives_the_same) {
+TEST(every_barrier_mode_gives_the_same) {
     const auto want = synth_digests(7, 1, 1, 0);
-    Options o;
-    o.barrier_block = true;
-    const auto got = synth_digests(7, 3, 3, 5, o);
-    for (size_t k = 0; k < want.size(); k++) CHECK_EQ(got[k], want[k]);
+    for (int m = 0; m < 4; m++) {
+        Options o;
+        o.barrier_block = m == 3;
+        o.barrier_spins = m == 0 ? 0u : m == 1 ? 50u : m == 2 ? ~0u : 2000u;   // yield at once, early, spin only, block
+        if (m == 2) o.threads = 2;                                             // (spin only: no more threads than CPUs here)
+        const auto got = synth_digests(7, m == 2 ? 2 : 3, 3, 5, o);
+        for (size_t k = 0; k < want.size(); k++) CHECK_EQ(got[k], want[k]);
+    }
 }
 
 // ---- a quiet machine jumps whole intervals ---------------------------------------------------------------------------
@@ -280,11 +284,12 @@ TEST(wide_payloads_cross_by_copy) {
 struct Every2 {
     FifoOut out;
     uint64_t n = 0;
-    Every2(Ports& p) { p.out(out, "out", 1); }
-    uint64_t digest() const { return hash_fields(n); }
+    uint32_t tick, pad = 0;                 // tick: keeps stepping after its 20 puts (the machine never idles)
+    Every2(Ports& p, uint32_t t) : tick(t) { p.out(out, "out", 1); }
+    uint64_t digest() const { return hash_fields(n, tick); }
     Wake step(Ctx& c) {
         if (n < 20 && c.now() % 2 == 1) c.put(out, ++n);
-        return c.next();                    // ticks on, so the machine never idles (an idle jump skips the detector)
+        return n < 20 || tick ? c.next() : Wake::none();
     }
 };
 struct Lazy {
@@ -298,16 +303,16 @@ struct Lazy {
         return wants(c) ? c.next() : Wake::none();
     }
 };
-uint64_t lazy(bool split, uint64_t last = 20) {
+uint64_t lazy(bool split, uint64_t last = 20, uint32_t tick = 1, unsigned after = 2) {
     Options o;
     o.threads = split ? 2 : 1;
     Config cfg(o);
     cfg.domain(0);
-    Every2& a = cfg.add<Every2>("a");
+    Every2& a = cfg.add<Every2>("a", tick);
     cfg.domain(split ? 1 : 0);
     Lazy& b = cfg.add<Lazy>("b", last);
     cfg.connect(a.out, b.in);
-    cfg.missed_wake_after("b", 2);
+    cfg.missed_wake_after("b", after);
     Sim s = cfg.build();
     s.run(60);
     return s.unit<Lazy>("b").got;
@@ -318,6 +323,16 @@ TEST(the_missed_wake_detector_sees_words_on_their_way_across_domains) {
 }
 DEBUG_DEATH_TEST(a_real_missed_wake_across_domains_is_still_caught, "missed wake at cycle [0-9]+: b is asleep with data waiting in b.in") {
     lazy(true, 0);
+}
+// W3's idle-jump cap, across domains: the producer stops after its last put, the consumer leaves the last word and
+// sleeps, and the whole machine goes idle; with a threshold of 5 the suspect is judged only if the agreed jump stops at
+// its deadline.
+DEBUG_DEATH_TEST(a_missed_wake_just_before_the_machine_idles_is_reported_across_domains,
+                 "missed wake at cycle [0-9]+: b is asleep with data waiting in b.in") {
+    lazy(true, 0, 0, 5);
+}
+DEBUG_DEATH_TEST(and_in_one_domain, "missed wake at cycle [0-9]+: b is asleep with data waiting in b.in") {
+    lazy(false, 0, 0, 5);
 }
 
 // ---- the kinds that can't cross ---------------------------------------------------------------------------------------

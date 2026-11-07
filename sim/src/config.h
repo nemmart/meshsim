@@ -89,7 +89,8 @@ struct Options {
                                  // domain; domains are spread over them in order. Independent chips: run_independent
     std::vector<int> cpus;       // W4 (A2, D21): thread k pinned to cpus[k % size]; empty: the detected default placement
                                  // (topology.h); a CPU of -1: that thread not pinned ({-1}: leave placement to the OS)
-    bool barrier_block = false;  // W4: the barrier sleeps (futex) after a short spin, instead of spinning (barrier.h)
+    bool barrier_block = false;  // W4: the barrier sleeps (futex) after its spin, instead of yielding (barrier.h)
+    unsigned barrier_spins = 2000;   // W4: pauses before the barrier yields (or sleeps); 0: yield at once; ~0u: spin only
 };
 
 // Sizes computed by build(): words allocated per thread, by structure and by unit type, and per chip (D15).

@@ -6,6 +6,8 @@
 //       threads form=1 chip=mesh chips=N threads=T cycles=C secs=<wall> rate=<chip-cycles/s> slowest=<per-thread
 //       chip-cycles/s> mean=<...> us_per_chip_cycle=<mean per thread> words_per_chip=<Sizes> digest=<all chips'>
 //   bench_threads --sizes --chip mesh|synth: one chip's footprint by structure and by type (D15)
+//   bench_threads --form 2 --threads T [--domains D] [--barrier spin|yield|block] [--spins N] [--due-off] [--rate R]
+//       one mesh over T threads (form2() below)
 //
 // The digest folds every chip's digest in chip order: it must not depend on the threads or the CPUs.
 #include <algorithm>
@@ -22,6 +24,7 @@
 #include "base/fatal.h"
 #include "config.h"
 #include "mesh_fw.h"
+#include "internals.h"
 #include "parallel.h"
 #include "../../tests/synth.h"
 
@@ -38,6 +41,10 @@ struct Args {
     double rate = 0.35;
     uint64_t seed = 1;
     bool sizes = false;
+    unsigned domains = 0;          // form 2: 0 = as many as threads
+    std::string barrier = "yield"; // form 2: spin (never yields), yield (after --spins pauses), block (futex after them)
+    unsigned spins = 2000;
+    bool due_off = false;          // form 2 with one domain: the due mask off, as in a split machine's domains
 };
 
 std::vector<int> parse_cpus(const char* s) {
@@ -67,9 +74,13 @@ Args parse(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--rate")) a.rate = std::atof(val());
         else if (!std::strcmp(argv[i], "--seed")) a.seed = std::strtoull(val(), nullptr, 10);
         else if (!std::strcmp(argv[i], "--sizes")) a.sizes = true;
+        else if (!std::strcmp(argv[i], "--domains")) a.domains = unsigned(std::atoi(val()));
+        else if (!std::strcmp(argv[i], "--barrier")) a.barrier = val();
+        else if (!std::strcmp(argv[i], "--spins")) a.spins = unsigned(std::atoi(val()));
+        else if (!std::strcmp(argv[i], "--due-off")) a.due_off = true;
         else FATAL("unknown option %s", argv[i]);
     }
-    if (a.threads < 1 || a.chips < a.threads) FATAL("need 1 <= threads <= chips");
+    if (a.form == 1 && (a.threads < 1 || a.chips < a.threads)) FATAL("need 1 <= threads <= chips");
     return a;
 }
 
@@ -150,11 +161,46 @@ int form1(const Args& a) {
     return 0;
 }
 
+// Form 2: one mesh over several threads. Tile k is in domain (k / 8) * D / 8 (bands of rows); every crossing is a Link
+// of 3 (words and credits), so the barrier is every 3 cycles. One line:
+//   threads form=2 chip=mesh threads=T domains=D barrier=B spins=N due=on|off cycles=C secs=S rate=<mesh-cycles/s>
+//   us_per_chip_cycle=<wall> words=<Sizes> digest=<D> partition="..."
+int form2(const Args& a) {
+    const unsigned D = a.domains ? a.domains : a.threads;
+    Options o;
+    o.threads = D > 1 ? a.threads : 1;
+    o.cpus = a.cpus;
+    o.barrier_block = a.barrier == "block";
+    o.barrier_spins = a.barrier == "spin" ? ~0u : a.spins;
+    Config cfg(o);
+    mesh::build(cfg, a.seed, a.rate, [D](unsigned k) { return (k / mesh::kSide) * D / mesh::kSide; });
+    Sim s = cfg.build();
+    if (a.due_off) {
+        if (D > 1) FATAL("--due-off: one domain only (a split machine's domains have it off already)");
+        detail::Internals::impl(s)->e.due_ok = false;
+    }
+    const bool due = D > 1 ? false : detail::Internals::impl(s)->e.due_ok;
+    if (D == 1 && !a.cpus.empty()) pin_to_cpu(a.cpus[0]);
+    s.run(a.warmup);
+    begin_run();
+    const double t0 = now_s();
+    s.run(a.cycles);
+    const double secs = now_s() - t0;
+    end_run();
+    std::printf("threads form=2 chip=mesh threads=%u domains=%u barrier=%s spins=%u due=%s rate_in=%.2f cycles=%llu secs=%.4f "
+                "rate=%.0f us_per_chip_cycle=%.3f words=%llu digest=%016llx partition=\"%s\"\n",
+                o.threads, D, a.barrier.c_str(), a.spins, due ? "on" : "off", a.rate, (unsigned long long)a.cycles, secs,
+                double(a.cycles) / secs, 1e6 * secs / double(a.cycles), (unsigned long long)s.sizes().total_words,
+                (unsigned long long)s.digest(), s.partition().c_str());
+    return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
     const Args a = parse(argc, argv);
     if (a.sizes) return sizes(a);
     if (a.form == 1) return form1(a);
-    FATAL("--form %d: only 1 so far", a.form);
+    if (a.form == 2) return form2(a);
+    FATAL("--form %d: 1 or 2", a.form);
 }

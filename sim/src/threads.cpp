@@ -490,7 +490,7 @@ Sim::Impl* Internals::split(Config::Impl& G) {
     T->nthreads = std::max(1u, std::min(G.opt.threads, D));
     for (uint32_t d = 0; d < D; d++) T->doms[d].thread = unsigned(uint64_t(d) * T->nthreads / D);
     T->cpus = G.opt.cpus;
-    T->barrier.init(T->nthreads, G.opt.barrier_block);
+    T->barrier.init(T->nthreads, G.opt.barrier_block, G.opt.barrier_spins);
     T->where = std::make_unique<Threads::Where[]>(T->nthreads);
     T->barrier.watchdog(10.0, &Threads::report_where, T);
 
@@ -667,7 +667,14 @@ void Threads::publish(Dom& d, Cycle t0, Cycle n, unsigned par) {
     for (uint32_t h : d.holds_q) st[holds[h].slot * kLineWords] = e.holds[holds[h].port].occ;
     for (uint32_t c : d.counts) st[counts[c].slot * kLineWords] = e.counts[counts[c].idx].total - counts[c].base;
     st[d.sent_slot * kLineWords] = sent;
-    st[d.next_slot * kLineWords] = !e.step_all && e.idle() ? e.next_wake() : t0 + n;
+    Cycle next = t0 + n;
+    if (!e.step_all && e.idle()) {
+        next = e.next_wake();
+        // W3's cap (debug): a missed-wake suspect is judged at its deadline, so no jump passes it; every thread caps the
+        // agreed jump at the same cycle, the earliest deadline of any domain
+        if constexpr (kDebug) if (e.detector && e.nsuspects) next = std::min(next, e.suspect_deadline());
+    }
+    st[d.next_slot * kLineWords] = next;
 }
 
 // After the barrier: the outboxes addressed to this domain into its wheels, at the bucket each entry was put for (so it

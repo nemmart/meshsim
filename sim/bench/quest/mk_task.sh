@@ -1,6 +1,7 @@
 #!/bin/bash
 # mk_task.sh NNN-name BODY "header lines" > task.sh: a self-contained Quest task with an embedded kit (sim/src/base and
-# sim/bench at HEAD), the body sourced after the kit is checked and unpacked. Run from sim/bench.
+# sim/bench at HEAD), the body sourced after the kit is checked and unpacked. Run from sim/bench. The machine comes from
+# sim/tools/machine.sh (D21): P_CPUS, P_ONE, E_CPUS, PLACE and NP, NPT, NE, P1, E1 for the bodies; nothing hardcoded.
 set -eu
 NAME=$1 BODY=$2 HDR=$3
 make -s kit >&2
@@ -26,7 +27,8 @@ sec() { echo; echo "==== \$*  [\$(date +%T)]"; }
 verdict() { echo "VERDICT \$1: \$2"; [ "\$2" = PASS ] || FAIL=1; }
 START=\$(date +%s)
 {
-sec "machine"; uname -r; nproc; lscpu | grep -E 'Model name|^CPU\\(s\\)'; uptime
+sec "machine (D21)"; . "\$K/../tools/machine.sh" "\${QUEST_P_CPUS:-}" "\${QUEST_E_CPUS:-}"; machine_record "\$RES/machine.txt"; uptime
+NP=\$(count "\$P_ONE"); NPT=\$(count "\$P_CPUS"); NE=\$(count "\$E_CPUS"); P1=\$(take 1 "\$P_ONE"); E1=\$(take 1 "\$E_CPUS")
 $(cat quest/common.inc)
 $(cat "$BODY")
 sec "done in \$((\$(date +%s) - START)) s"

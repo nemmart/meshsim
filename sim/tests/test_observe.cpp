@@ -364,7 +364,7 @@ TEST(time_threads_reports_phase_shares_and_changes_nothing) {
         const std::string r = s.thread_times();
         if (!timed) { CHECK(r == std::string("time_threads off")); continue; }
         double sum = 0;
-        for (const char* f : {"compute=", "imbalance=", "barrier=", "drain=", "publish=", "clear=", "end=", "other="}) {
+        for (const char* f : {"compute=", "imbalance=", "barrier_wait=", "drain=", "publish=", "clear=", "end=", "other="}) {
             const size_t k = r.find(f);
             CHECK(k != std::string::npos);
             if (k != std::string::npos) sum += std::atof(r.c_str() + k + std::strlen(f));

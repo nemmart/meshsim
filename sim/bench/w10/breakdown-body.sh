@@ -1,7 +1,7 @@
 # Task body (WORKER10): where a split run's time goes, at the flattening point and around it. For each placement and
 # thread count, runs with --time (Options::time_threads: per-thread phase shares) interleaved with plain runs (the
 # timer's own cost), REPS each. The shares times the plain run's wall time give us per chip-cycle per phase:
-# compute (mean thread), imbalance (slowest less mean, per interval), barrier (mean wait less imbalance), drain,
+# compute (mean thread), imbalance (slowest less mean, per interval), barrier_wait (mean wait less imbalance), drain,
 # publish + clear. Also compute inflation: threads x compute against the one-thread run.
 REPS=${REPS:-5}; CYC=${CYC:-60000}
 sec "build (clang release, D18)"
@@ -50,7 +50,7 @@ for k in $KITS; do
       u=$(med "$k t$t-$c-plain" us_per_chip_cycle); [ "$u" = - ] && continue
       ut=$(med "$k t$t-$c-timed" us_per_chip_cycle)
       line="$k t$t-$c one=$base wall=$u timed=$ut ideal=$(awk -v b=$base -v t=$t 'BEGIN { printf "%.3f", b / t }')"
-      for f in compute imbalance barrier drain publish clear end other; do
+      for f in compute imbalance barrier_wait drain publish clear end other; do
         sh=$(med "$k t$t-$c-timed" $f)
         line+=" $f=$(awk -v s=$sh -v u=$u 'BEGIN { printf "%.3f", s * u }')"
       done

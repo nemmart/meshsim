@@ -721,7 +721,7 @@ void Threads::run_thread(unsigned t, Cycle end) {
 }
 
 // W10: the phase report (Options::time_threads): each phase as a share of the threads' time over the runs, the mean
-// over threads; "imbalance" is the slowest thread's compute less the mean, per interval, summed; "barrier" is the mean
+// over threads; "imbalance" is the slowest thread's compute less the mean, per interval, summed; "barrier_wait" is the mean
 // wait less that (the barrier's own latency, and differences in publishing).
 std::string Threads::thread_times() const {
     if (!timing) return "time_threads off";
@@ -731,7 +731,7 @@ std::string Threads::thread_times() const {
     run /= T; pub /= T; wait /= T; drn /= T; clr /= T; endp /= T; tot /= T;
     const double imb = ph_intervals ? double(ph_max_run) - double(ph_sum_run) / T : 0;
     char b[400];
-    std::snprintf(b, sizeof b, "intervals=%llu total=%.0f compute=%.4f imbalance=%.4f barrier=%.4f drain=%.4f publish=%.4f clear=%.4f "
+    std::snprintf(b, sizeof b, "intervals=%llu total=%.0f compute=%.4f imbalance=%.4f barrier_wait=%.4f drain=%.4f publish=%.4f clear=%.4f "
                   "end=%.4f other=%.4f", (unsigned long long)ph_intervals, tot, run / tot, imb / tot, (wait - imb) / tot,
                   drn / tot, pub / tot, clr / tot, endp / tot, (tot - run - wait - drn - pub - clr - endp) / tot);
     return b;

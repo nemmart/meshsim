@@ -3,6 +3,7 @@
 #include "sim.h"
 
 #include <cstdio>
+#include <ctime>
 
 #include <unistd.h>
 

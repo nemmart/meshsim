@@ -75,6 +75,8 @@ namespace sim {
 // with w a compile-time constant of the put's arity (sim.h's put overloads are fixed-arity), so the copy is fixed-size
 // (D16), and the same instructions whether the destination is local or across a domain.
 
+struct LoadProfile;   // W10: below
+
 // Every option is implemented or refused at build() ("option X not implemented"): never silently ignored.
 struct Options {
     uint64_t shuffle_seed = 0;   // 0: none; else instances and runs within a level are stepped in a seeded random order
@@ -95,8 +97,29 @@ struct Options {
                                  // one engine per thread (its domains grouped in order, min(threads, domains) groups);
                                  // engines > threads instead builds that many and runs several on a thread in turn
                                  // (W4's layout), only to measure a split's own cost (bench_threads --engines)
+    // W10, placement: how a machine is split over threads (sim/planning/sessions/WORKER10/NOTES.md, "Partitioning")
+    enum class Placement : uint8_t { declared, by_load } placement = Placement::declared;
+                                 // declared: Config::domain's domains, grouped in order, one group per thread;
+                                 // by_load: the framework forms granules (units that must stay together: joined by a
+                                 // Wire, RegFile, Count, a Fifo, Hold or Reg, a Link below min_interval, or one declared
+                                 // domain) and assigns them to threads, balancing load and keeping crossings few
+    const LoadProfile* load = nullptr;     // by_load: measured loads (Sim::load_profile); null: Config::weight,
+                                                // else 1 per unit. Read during build() only
+    unsigned min_interval = 0;   // by_load: the smallest barrier interval allowed; 0: the largest Link latency that still
+                                 // leaves at least 4 granules per thread
+    bool calibrate = false;      // W10: time each unit's steps (for Sim::load_profile): two clock reads per step
     bool observe_arrivals = false;   // W10: keep each visible Link word's arrival cycle for Sim::observe (a store per
                                      // delivered Link word; off: observe(LinkIn) is fatal while a word is visible)
+};
+
+// W10: a calibration run's load per unit (Options::calibrate, Sim::load_profile), for Placement::by_load. A plain value:
+// keep it, write it out (to_text) and read it back (from_text) for later runs of the same machine.
+struct LoadProfile {
+    std::vector<std::string> unit;   // unit names
+    std::vector<double> load;        // per unit: the time its steps took (time stamp ticks, or ns without a counter)
+    uint64_t cycles = 0;             // cycles the profile covers
+    std::string to_text() const;                    // "loadprofile v1", "cycles N", then "name load" per line
+    static LoadProfile from_text(const std::string& text);   // fatal on a malformed text, naming the line
 };
 
 // W10, the port observer (W8's request): one input port's contents at the end of cycle c, the last cycle run
@@ -138,6 +161,7 @@ struct TypeInfo {
     void (*move)(void* dst, void* src);           // move-construct at dst, then destroy src
     void (*destroy)(void* obj);
     void (*run[2])(Engine&, RunSet&);             // by Form: cycle, result (null if the type has no result form)
+    void (*run_cal[2])(Engine&, RunSet&);         // W10: the same, timing each step (Options::calibrate)
     void (*one[2])(Engine&, RunSet&, uint32_t);   // one instance, by Form (the debug orders)
     uint64_t (*digest)(const void* obj);          // T::digest() if it has one, else its bytes (sim.h, DEBUG CHECKS)
     bool own_digest = false;                      // W4 (E5): T::digest() is the author's; else the machine's digest
@@ -161,6 +185,30 @@ void run_form(Engine& e, RunSet& r) {
             Wake w;
             if constexpr (Result) w = units[k].step_result(e.ctx); else w = units[k].step(e.ctx);
             e.after(r, k, w);
+        }
+    }
+    r.nready = 0;
+}
+
+// W10: the same loop, timing each step into the instance's ticks (Options::calibrate only: bound in place of run_form
+// at build, so an ordinary run has no clock read and no branch for it).
+template <class T, bool Result>
+void run_form_cal(Engine& e, RunSet& r) {
+    T* units = reinterpret_cast<T*>(r.units);
+    uint64_t* b = r.ready();
+    for (uint32_t wi = 0; wi < r.nwords; wi++) {
+        uint64_t m = b[wi];
+        if (!m) continue;
+        b[wi] = 0;
+        while (m) {
+            const uint32_t k = (wi << 6) + uint32_t(__builtin_ctzll(m));
+            m &= m - 1;
+            const uint64_t t0 = sim_ticks();
+            e.enter(r, k);
+            Wake w;
+            if constexpr (Result) w = units[k].step_result(e.ctx); else w = units[k].step(e.ctx);
+            e.after(r, k, w);
+            e.inst_ticks[r.first + k] += sim_ticks() - t0;
         }
     }
     r.nready = 0;
@@ -205,9 +253,11 @@ const TypeInfo* type_ops() {
         t.destroy = [](void* p) { static_cast<T*>(p)->~T(); };
         t.run[0] = &run_form<T, false>;
         t.run[1] = nullptr;
+        t.run_cal[0] = &run_form_cal<T, false>;
+        t.run_cal[1] = nullptr;
         t.one[0] = &step_one<T, false>;
         t.one[1] = nullptr;
-        if constexpr (HasResultForm<T>) { t.run[1] = &run_form<T, true>; t.one[1] = &step_one<T, true>; }
+        if constexpr (HasResultForm<T>) { t.run[1] = &run_form<T, true>; t.one[1] = &step_one<T, true>; t.run_cal[1] = &run_form_cal<T, true>; }
         t.digest = &digest_of<T>;
         t.own_digest = HasDigest<T>;
         return t;
@@ -252,6 +302,9 @@ public:
     // The missed-wake detector's threshold for one unit (D20; Options::missed_wake_after for the rest): a unit with a
     // legitimate wait the detector can't see (on a Wire, with data in an input) gets its own, and no one else's moves.
     void missed_wake_after(const std::string& unit, unsigned cycles);
+
+    // W10: a unit's declared load, for Placement::by_load without a measured profile (default 1).
+    void weight(const std::string& unit, double w);
 
     Sim build();
 
@@ -304,6 +357,8 @@ public:
     // the run returned right after it (now() == stop_cycle() + 1); split: at the barrier ending its interval, every
     // thread at the same cycle. A run clears it at its start.
     Cycle stop_cycle() const;
+    // W10: after runs with Options::calibrate, the time each unit's steps took over them (its load).
+    LoadProfile load_profile() const;
 
     Sim(Sim&& o) noexcept;
     Sim& operator=(Sim&& o) noexcept;

@@ -75,6 +75,8 @@ struct Config::Impl {
     unsigned chip = 0, domain = 0;
     int cur = -1;
     std::map<std::string, unsigned> missed;   // per-unit missed-wake thresholds (D20)
+    std::map<std::string, double> weights;    // W10: declared loads (Config::weight), for Placement::by_load
+    std::string placement;                    // W10: by_load's report (Sim::partition), when it placed the units
     Ports* ports = nullptr;
     bool built = false;
 
@@ -147,6 +149,7 @@ struct Sim::Impl {
     std::vector<Cycle> link_at_v;                      // W10: the observer's arrival cycles (Options::observe_arrivals)
     std::vector<uint32_t> link_at_off_v;
     bool running = false;                              // W10: inside Sim::run (the observer refuses)
+    std::vector<uint64_t> run_ticks_v;                 // W10: Options::calibrate: ticks per instance, summed
     detail::Threads* threads = nullptr;                // W4 (E3): set when the machine is split over domains; the Sim's
                                                        // operations go to it, and the fields above are unused
     unsigned char* obj(uint32_t i) const {

@@ -136,3 +136,14 @@ cycles (`regs-chip`, `wfi-chip`, regenerated locally); a2a's network part once G
     see it; tested). No M2 program overflows a router FIFO (AUDIT-M2 1.1), and the fingerprint has no counts, so no
     reference is affected. To record for the spec (D27's list), unless the owner wants ref's lazy timing reproduced.
   - make check after stage 1: gcc and clang, debug and release, 25 binaries (257 / 226 tests), TSan (41 + 2): clean.
+- 2026-11-07, owner: stage 1 merged. **D28** (ref's lazy overflow count isn't self-consistent: the router counts at
+  t + 1, PORTS.md's rule; references avoid the case), cited in `router.h`. **The release**: the driver's check between
+  cycles, then a wake of C&C; W10's between-cycles wake (the driver names a unit, stepped at the next cycle in its
+  domain) is asked by the owner. **Until it is on main, the driver keeps its own check** and the sort's release waits
+  for it (nothing before the sort needs it). **W10's holding Link** (PORTS.md 2b on sim-w10) is one in-order queue per
+  input, head-only take, fatal when full; ref's router takes every arrival at once into per-(output, feeder) FIFOs that
+  drop when full: not the same shape, so the router keeps its own FIFOs (W4's "words held twice" stays a speed item).
+  W10's stop request (`Ctx::stop`) is for the sort's timing runs, once on main.
+- W8's branch (read, not merged): `linkword.h` extends `net.h`'s `lw`; `add_g1` is a `ControlBuilder` returning
+  `ControlIO`; the fingerprint library `tests/statefp.h` (`FpRegistry`: one writer per unit name, `FpCtx` with the
+  `Sim` for the port observer). My units will register writers there (the router's own part is `Router::fp_own`).

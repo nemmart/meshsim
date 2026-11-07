@@ -89,3 +89,9 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
 - **D24. Diagnostics don't allocate** (2026-11-07, from W5's finding): every fatal and report path in the engine formats
   into a preallocated buffer (`snprintf`), or records fixed-size facts (cycle, unit, port) in a list sized at startup and
   formats them after the run. No allocation in the cycle loop, diagnostics included.
+
+## M2
+
+- **D25. M2's target** (owner, 2026-11-07): **the full-size sort** (`p4/uniform-k128`) on the new framework, exact against
+  `ref`, **multithreaded**, to see how fast it is against today's engine: about 110 s on one `ref` JVM, **aiming at about
+  4 s** excluding setup. The plan is `PLAN-M2.md`.

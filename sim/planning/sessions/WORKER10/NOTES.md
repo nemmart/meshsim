@@ -222,3 +222,9 @@ Wire, RegFile and Count are already readable from their producers' and readers' 
   instruction-bound. Step 1, cheap: overlap the misses (prefetch headers, then entries) - Quest 140. Step 2 if the
   drain is still large: deliver straight from the source's outbox (no copy; the destination reads each line once, at
   delivery). Then the placement's objective weighs crossings by the measured drain cost.
+- 2026-11-07: **Quest 140, the drain's prefetch** (before d1f86dd / after a58144b, interleaved; digests equal): mesh
+  0.35 by tiles at 6 threads: drain 0.223 -> 0.141, wall 1.594 -> 1.479 (3.63x one thread); at 4: 1.796 -> 1.726; at 8:
+  1.572 -> 1.533; at 12: 1.655 -> 1.576. By profile at 6: drain 0.339 -> 0.218, wall 1.752 -> 1.615. Mesh 0.05: no
+  change (drain ~0.085 at 6 with few entries: the per-interval walk over the incoming outboxes' buckets, not the
+  entries). Synth: drain -10%, wall -2 to -5%. Left at the mesh's flattening point (6 threads, 1.479): compute ~1.02,
+  imbalance 0.183, barrier wait 0.084, drain 0.141, clear 0.044.

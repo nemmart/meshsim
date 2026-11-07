@@ -44,6 +44,13 @@ allocation is popping an index, data stays in one dense array. **Only crossing t
 payload is copied into the destination thread's array and the index rewritten, so no array is ever shared and nothing is
 freed by a thread that doesn't own it.
 
+**Everything is sized at startup, never resized** (owner, 2026-11-06). Construction has two steps: first every component
+**declares** its ports and their capacities (a FIFO's depth, a link's latency and so its most words in flight, a hold's one
+slot); then the framework **adds them up** and allocates every pool, ring and delivery bucket once, at its exact maximum, per
+thread. Nobody counts by hand. The 128-bit value array is sized to the most values all its queues can hold at once, its free
+slots tracked by **a bitmap** (one bit per slot). A delivery bucket's size follows from the ports' latencies (each port takes
+at most one put per cycle). At run time, needing more than was declared is a bug, so it stops with a fatal error, never grows.
+
 **Build** (owner, 2026-11-06): **plain `make`**, not CMake. **No RTTI anywhere** (`-fno-rtti`; owner): no `dynamic_cast` or `typeid`;
 the framework gives each unit type its own small integer id, which the run lists are grouped by anyway.
 

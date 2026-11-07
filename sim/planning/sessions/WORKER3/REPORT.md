@@ -16,7 +16,7 @@ author's API first. Every detail, finding and decision is in `NOTES.md`; this is
 | `src/base/value_pool.h` | W1's ValuePool generalised to `SlotPool` (N-word slots) for by-reference payloads; `ValuePool` its 2-word view |
 | `src/base/words.h` | the packing rule: line rounding between threads' structures, packing within one thread's block |
 | `src/sketch/` | the three stage-1 sketches (a FIFO consumer, the controller's surroundings, a tile cycle- or high-level), compiled in every build |
-| `tests/` | `test_engine` (16), `test_kinds` (12), `test_wide` (7), `test_registry` (2), `test_portconf` (17), `test_debug` (18), `test_forms` (2), two `SlotPool` tests in `test_value_pool`; `portconf.h`, the `portconf` tool; `tests/ref/PortConfGen.java`, `PortConfDriver.java`, `portconf.sh` (`--fixtures`, `--check`); the fixtures in `tests/portconf/` |
+| `tests/` | `test_engine` (16), `test_kinds` (12), `test_wide` (7), `test_registry` (2), `test_portconf` (17), `test_debug` (20), `test_forms` (2), two `SlotPool` tests in `test_value_pool`; `portconf.h`, the `portconf` tool; `tests/ref/PortConfGen.java`, `PortConfDriver.java`, `portconf.sh` (`--fixtures`, `--check`); the fixtures in `tests/portconf/` |
 | `Makefile` | D18: `make` and timing builds clang release; `make check` gcc and clang, debug and release; `make conformance` |
 
 ## Stage 2's acceptance (PLAN-M1, W3; D20's additions)
@@ -35,6 +35,7 @@ author's API first. Every detail, finding and decision is in `NOTES.md`; this is
 | A toy unit's two forms agree | `test_forms`: a 4-stage multiplier's cycle and result-only forms give the same results in the same order, also under the debug orders | pass |
 | Step-all's digest equals the ready-driven run's (D20) | `test_debug` (the synthetic chip; a forgotten `next()` caught, the corrected unit agrees); W5's goldens under step-all | pass |
 | The missed-wake detector: fatal on a forgotten `next()`, silent on units blocked on a credit or a refusal (D20) | `test_debug`: the death test naming the unit and port; silent on a credit-blocked and a refusal-blocked relay; a per-unit threshold for a wait on a Wire; report-and-go-on; W5's lazy block, under the hook | pass |
+| The detector judges a suspect even when the machine goes idle (W4's finding) | `test_debug` an_idle_jump_does_not_skip_a_suspects_judgement (threshold 5, reported at its deadline; fails with the cap removed), an_idle_jump_still_jumps_when_no_suspect_is_due | pass (fixed: the idle jump stops at the earliest suspect's deadline) |
 | The end-of-run report lists a planted sleeper (D20) | `test_engine` the_end_of_run_report_names_a_sleeper; `test_debug` report-and-go-on | pass |
 | Options never silently ignored | `test_debug` an_option_not_implemented_is_refused (`threads`) | pass |
 | Type ids per configuration (E1, for W4) | `test_registry`: first-add order per Config; three threads building at once (TSan-clean) | pass |

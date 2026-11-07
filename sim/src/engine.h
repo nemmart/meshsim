@@ -312,6 +312,7 @@ struct Engine {
     void run_level_debug(uint32_t& r); // the debug orders: one level's ready instances, ordered and stepped one by one
     bool on_its_way(uint32_t i) const; // the detector: a delivery, a credit return or a refusal will step instance i
     void check_suspects();
+    Cycle suspect_deadline() const;    // the earliest cycle a suspect is judged: an idle jump stops there (debug)
     const char* describe_suspect(uint32_t i);   // into diag[] (D24)
     bool idle() const;
 

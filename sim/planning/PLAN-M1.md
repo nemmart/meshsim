@@ -34,6 +34,12 @@ second** for the whole box (12 JVMs on the P-cores: 96,800; 16 on every CPU: 108
 slower than one alone, more than hyperthreading explains: shared cache and memory, as the measurements in SIMULATOR-NEXT
 section 3 predict.
 
+**The first comparison with `ref`** (W5, Quest 130, one P-core): the same long loop program, identical traces. The framework
+runs it at **44.0 M instructions/s**; `ref` at 0.76 M with idle-skip on (0.91 µs per chip-cycle) and 0.019 M with it off
+(36 µs, D15's bar). Most of `ref`'s time is chip-level work M1 doesn't model yet (the request bus, overflow scans, the
+chip loop); **unit for unit** (Controller plus TileControl), `ref` spends ~104 ns per instruction against the framework's
+~23 ns, engine included: **about 4.5×**, the honest figure for now.
+
 ## Components, in build order
 
 1. **Build and discipline.** Plain `make` (`sim/Makefile`), gcc and clang, C++20, `-fno-exceptions -fno-rtti -Wall -Wextra
@@ -151,6 +157,10 @@ section 3 predict.
   2026-11-07): the only controller-local error source that doesn't trap first is "done early", which needs the write
   counters. M1 covers the interrupt only inside a handler that sets MIE again (`irq`); W5 still implements `ref`'s rule in
   full, and M2 tests these paths once the counters exist.
+
+- **A Link whose consumer may hold up to a declared depth** (W4's footprint breakdown, 2026-11-07): today a Link's consumer
+  must take each word the cycle it arrives, so a router copies it into its own queue, holding every word twice (~74 KB of
+  the framework mesh's 228 KB). Also the worst-case wheel sizing (W3, flagged earlier).
 
 ## Layout
 

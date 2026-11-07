@@ -105,3 +105,34 @@ cycles (`regs-chip`, `wfi-chip`, regenerated locally); a2a's network part once G
   queue's length is in the fingerprint. The sort's commands are queued after the boot has run (SortTest's boot ends on
   a harness condition): release points in the program; with nothing released and more to come, C&C steps every cycle
   doing nothing (exact, a few cycles), so no external wake is needed.
+- 2026-11-07, owner: stage 0 good; make check build by build before any merge. The three W8 points passed on
+  (ROUTER_OVF as a `CountIn` is fine: same tile, same domain; the block reads it `through_last`). **No polling for the
+  release (D23)**: find the cycle ref releases at. Found: SortTest's boot ends at the first cycle with C&C idle and
+  every core in WFI (`allWaiting`), a harness condition on state that no line reports, so the driver polls it between
+  cycles (as ref) and then wakes C&C for the next cycle: **a between-cycles wake asked of W10 through the owner**
+  (`cnc.h` updated; C&C never steps while waiting). M2Prog's runs queue everything up front: no release.
+- make check before stage 1 (stage 0's tree): gcc and clang, debug and release, 24 binaries each (252 / 221 tests
+  passed), TSan (threads 39, units 2) on both: clean.
+- 2026-11-07: **stage 1, the router** (`router.h/.cpp`, `net.cpp`, `net.mk`, one `include` line in `sim/Makefile`).
+  Checked against ref's `Router` itself, not only by reasoning:
+  - **Routing**: `route_unicast`/`route_broadcast` for every (tile, src 0-127, dst 0-127) and (tile, port, src), hashed
+    per tile, equal to ref's (`tests/routerconf/tables.txt` from `RouterConf table`); the broadcast tree from every
+    source reaches every tile exactly once and never a controller.
+  - **Conformance, cycle by cycle** (`tests/ref/RouterConf.java`, `routerconf.sh`, `tests/test_router.cpp`): one of
+    ref's routers alone, driven by a seeded script (four links, the injection, C&C's hold; rates in phases so FIFOs
+    fill and overflow; every destination kind, random modes and simulator-only bits), observing every output word,
+    every `loopbackLeft`, and **the router's canonical stream (rr and every FIFO, StateFp's encoding) every cycle**,
+    the overflow total, route and eject errors. The C++ router on the engine gives identical lines: 5 fixtures (tiles
+    0, 1, 5, 27, 63; 2,000 cycles) in make check, also under shuffle, instance-major and step-all; and 15 runs of
+    10^5 cycles (seeds 1-3) locally (`ROUTERCONF_LONG=DIR test_router long`). `routerconf.sh --check` regenerates the
+    fixtures from ref.
+  - **A finding (for the owner): when ref counts a router FIFO's overflow.** ref judges a put at the FIFO's first touch
+    after it (`Bus.enter`, lazy): for a router FIFO that is when its selector next *reaches* it (the selector stops at
+    the first ready FIFO in round-robin order), when a put lands in it, or when idle-skip's quiescence scan reads it.
+    So `overflowCount`, which `TileControl.endCycle` reads into ERRORS' ROUTER_OVF, can rise one or more cycles after
+    t + 1, depending on the round-robin position and on idle-skip. PORTS.md 3 assumes every FIFO is touched every
+    cycle (true of the FIFOs it lists, not of the router's). The router counts it **at t + 1** (PORTS.md 3's rule: ref
+    with every FIFO touched each cycle; the Count incremented in the step of t + 1, so endCycle(t + 1) is the first to
+    see it; tested). No M2 program overflows a router FIFO (AUDIT-M2 1.1), and the fingerprint has no counts, so no
+    reference is affected. To record for the spec (D27's list), unless the owner wants ref's lazy timing reproduced.
+  - make check after stage 1: gcc and clang, debug and release, 25 binaries (257 / 226 tests), TSan (41 + 2): clean.

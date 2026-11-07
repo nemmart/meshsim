@@ -85,3 +85,23 @@ cycles (`regs-chip`, `wfi-chip`, regenerated locally); a2a's network part once G
 
 - 2026-11-07: read the prompt's list; plan proposed; approved. D27 (model ref's default order) noted: none of my units'
   couplings depends on the child order (Holds and Links only; READY and GO are registered).
+- 2026-11-07: **stage 0, the port headers** (declarations; `tests/test_net_headers.cpp` checks they compile and meet the
+  unit rules on gcc and clang): `src/units/net.h` (the link word as `LinkWord`, `NetConfig`, `Hops`, the mesh's
+  neighbours; shared read-only, W8's director can use the header accessors), `router.h`, `inject.h` (the read side as
+  G3's member `InjReadSide`), `cnc.h` (C&C, `CncProgram`, the row collectors, the endpoints), `chip.h` (`ControlIO`: what
+  W8's tile part returns to the tile builder; `TileIO`, `ChipSpec`, `build_chip`, `row_bands`). JDK 21 and clang 18
+  installed (Q1).
+  **For W8, through the integrator** (details in the headers):
+  1. *send-busy.* ref's STATUS bit is `!sendHold.isEmpty(t)` at endCycle(t), and `WordHold.isEmpty` is `!occ &&
+     !pendPut`: occupied at the end of t **or a put made at t**. My Reg carries the first (I see the hold); the put of t
+     is the core's (a send store or a retry), so W8's block ORs it in. Same Reg, just the exact meaning written down.
+  2. *ROUTER_OVF.* `ControlIO.router_ovf` is a `CountIn` the router increments per FIFO overflow (TileControl reads the
+     sum of every router FIFO's `overflowCount`). Not in the agreed list (it never fires in M2, but ERRORS reads it):
+     proposed as an addition.
+  3. *How W8's part plugs in.* `tile_cycle` calls a `ControlBuilder` (W8's function) that adds W8's units for tile k and
+     returns `ControlIO`; G3/G4 the same way later.
+- C&C details found while writing `cnc.h`: SortTest's `atAllReady` is a `waitUntil` step (one cycle of its own) then an
+  instant call, so `go` after it sees all READY one cycle later: the program keeps ref's step granularity, since the
+  queue's length is in the fingerprint. The sort's commands are queued after the boot has run (SortTest's boot ends on
+  a harness condition): release points in the program; with nothing released and more to come, C&C steps every cycle
+  doing nothing (exact, a few cycles), so no external wake is needed.

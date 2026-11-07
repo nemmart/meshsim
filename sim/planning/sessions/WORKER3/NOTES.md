@@ -86,6 +86,41 @@ my own names (`PortConf*.java`). `WORKER3/REPORT.md` at the end.
 digest must equal the ready-driven run's (WORKER28's proof for idle-skipping), on the synthetic graphs and on the sketched
 units once they run. It is the safety net for explicit wakes: a missed `next()` otherwise fails silently.
 
+### Stage 2: the order (2026-11-07; the owner's go-ahead, D20)
+
+In working increments, each pushed with `make check` clean on both compilers, so W5 can integrate from increment 2:
+
+1. **The build (D18) and the fixtures.** `make` and the timing builds with clang `-O2`; `make check` gcc and clang,
+   debug and release; `make conformance` (the Java matrix against the C++ ports). The conformance fixtures
+   (`sim/tests/portconf/`, seed 1 of each configuration at 2,000 cycles, gzipped, a provenance header) and
+   `portconf.sh --check`.
+2. **The engine, local and single-threaded: Link, Fifo, Hold.** `Config` (staging, `Ports`, the type registry, wiring,
+   build), the sizing pass carved from W1's blocks, routes, the (kind, width) wheels and their delivery loops, the run
+   sets by (level, type, form), wakes (the wheel and the far list), `Ctx`, `Sim::run`, the digest, `Sizes`. Tests: sizes
+   against hand-derived ones; full fatal; an idle unit never stepped; a 10^9-cycle sleep one wake; no allocation in the
+   loop. **W5 can integrate from here.**
+3. **The rest of the kinds**: `Reg`, `Wire` (levels, loops rejected with names), `RegFile`, `Count`, credit `Fifo`; the
+   reserved `Link` if cheap. W5's controller needs Wire and RegFile: they come second only because Link/Fifo/Hold carry
+   the wheel.
+4. **Port conformance, the C++ side**: the script reader and a producer/consumer pair per kind; observations equal to the
+   fixtures in `make check`, to the full matrix in `make conformance`.
+5. **The debug checks**: shuffle within a level; type-major against instance-major; wire discipline; step-all; the
+   missed-wake detector and the end-of-run report (D20). Digests stable across seeds and orders.
+6. **The result-only form** and the toy unit's two forms agreeing.
+7. **Footprint and the report**: `Sizes` by structure, type and chip checked; what fixed-width copies recovered of W6's
+   11-13%; `REPORT.md`.
+
+**Acceptance** (PLAN-M1, W3, with D20's additions): port conformance against `ref` (fixtures in `make check`, 10^5 cycles
+per configuration in `make conformance`); sizes equal to hand-derived ones; overflow fatal; loops rejected with names;
+digests stable across shuffle seeds and both orders; wire-discipline violations fatal; an idle unit never stepped; a
+10^9-cycle sleep one wake; no allocation in the loop; a toy unit's two forms agree; **step-all's digest equal to the
+ready-driven run's; the missed-wake detector fatal on a unit that forgets `next()` (a death test) and silent on units
+blocked on a credit or a refusal; the end-of-run report listing a planted sleeper.**
+
+**API stability (integrator, 2026-11-07):** W5 writes against `sim.h` and `config.h` from now; any change to an agreed
+operation goes to the integrator first. Additions this round, before W5 depends on them: `Options::missed_wake_after`,
+`missed_wake_fatal`, `Sim::sleepers()` (D20).
+
 ### W1's `base/`
 
 No change foreseen; any proposal goes here first.
@@ -242,6 +277,37 @@ script and `ref`'s observations, about 2.5 MB) is committed for the C++ test, an
 
 `make check` clean on gcc and clang, debug and release (the three sketches compiled in every build).
 
+### Stage 2, increment 2: the engine, local, Link/Fifo/Hold (2026-11-07)
+
+`src/engine.h` (the internals: port pools, routes, wheels, run sets; `Ctx`'s operations inline; the delivery loops per
+(kind, width)), `src/engine.cpp` (the cycle: deliver, run by level, end; the far-wake heap; fast-forward when nothing is
+in flight or ready), `src/config.cpp` (staging, `Ports`, wiring, the build: order, numbering, wheels, sizing carved from
+one block, unit arenas and handle patching, `Sizes`; `Sim`). `tests/test_engine.cpp`, 16 tests: a link word's latency;
+WordFIFO's start-of-cycle full (depth 1, a put and a take every cycle: half dropped); a hold's refusals and retries in
+order; an idle unit stepped only at cycle 1; a 10^9-cycle sleep, two steps; no allocation in 10^4 busy cycles (W1's
+hook); sizes against hand-derived ones; the digest; the end-of-run report; death tests (two puts, a link not taken, a
+wake in the past, an unwired port, a unit of the wrong type, widths). ASan found one bug on the way (name strings in a
+reallocating vector, fixed).
+
+Engine choices below the API: far wakes in an indexed heap (each instance at most once, so a step's wake replaces its
+last: no stale entries); `next()` in a per-run "next" bitmap swapped in at the end of the cycle; with nothing in flight
+and nothing ready, the clock jumps to the next far wake. A unit's digest is its bytes unless its type defines
+`digest()` (optional, additive: flagged to the integrator).
+
+### Stage 2, increment 3: every port kind (2026-11-07)
+
+Reg (a change wakes its readers; the registered value again is a no-op), Wire (a persistent level; a change steps its
+readers in the same cycle at higher levels; debug: written twice, written after a read), RegFile (owner writes, readers
+at later levels), Count (one per connected set of producers and readers; `now` and `through_last`; a Fifo's overflows
+counted at t + 1), the credit Fifo (credits on the producer's side, a take's return delivered at t + 1 through its own
+wheel). Levels from the Wires and RegFiles, a loop rejected with its units named, one level per (type, form) checked.
+`tests/test_kinds.cpp`, 12 tests. The reserved Link stays M2's (PORTS.md 2a).
+
+From the integrator's review of increment 2: **a unit's digest** is `digest()` if defined, nothing for an empty type,
+else its bytes only when `std::has_unique_object_representations_v<T>` (static_assert at `add`): padding or pointers mean
+`digest()`, made one line by `hash_fields` (sim.h). **The missed-wake threshold per unit**:
+`Config::missed_wake_after(unit, cycles)` (stored; the detector is increment 5). Both additive.
+
 ## Log
 
 - 2026-11-07: plan agreed (owner's go-ahead with five notes). W2's audit not yet on `sim-w2`; W6 not started.
@@ -251,3 +317,6 @@ script and `ref`'s observations, about 2.5 MB) is committed for the C++ test, an
 - 2026-11-07: main merged (W2 closed); sketch 2 revised against AUDIT-M1.md and TRACE-FORMAT.md. Waiting for W6's report.
 - 2026-11-07: the conformance driver's Java side (PortConfGen, PortConfDriver, portconf.sh); the full matrix runs clean.
 - 2026-11-07: main merged (W6, D15-D18); the integrator's review folded in (1-7). Ready for the owner's review.
+- 2026-11-07: stage 2 (owner's go-ahead, D20). Increment 1 (the build, D18; fixtures and --check) and increment 2 (the
+  engine with Link, Fifo, Hold) landed.
+- 2026-11-07: increment 3 (Reg, Wire, RegFile, Count, credit Fifo; levels) landed: W5 can integrate on every kind.

@@ -59,6 +59,11 @@ struct TileModel {
     TileModel(Ports& p, uint64_t calibrated_latency) : latency(calibrated_latency) {
         for (unsigned d = 0; d < NDIR; d++) { p.in(in[d], "in", 3); p.out(out[d], "out", 3); }
     }
+    uint64_t digest() const {
+        uint64_t h = hash_fields(head, count, latency);
+        for (unsigned k = 0; k < count; k++) { const Pending& p = q[(head + k) % kMax]; h = hash_mix(h, hash_fields(p.due, p.dir, p.w)); }
+        return h;
+    }
     Wake step(Ctx& c) {
         uint64_t t = c.now();
         for (unsigned d = 0; d < NDIR; d++) if (c.ready(in[d])) {           // take every arrival (a Link's consumer must)

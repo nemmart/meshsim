@@ -20,8 +20,8 @@
 //     128 bits only (D17);
 //   - routes: each output's route resolved once to a data value (the wheel of its kind and width in its own thread, or the
 //     outbox wheel for the destination's thread: W4), so a put runs the same code either way;
-//   - levels: from the Wires, RegFiles and Count `now` reads; a loop is fatal with its units named; a (type, form) runs at
-//     the largest level of its instances, re-checked after that;
+//   - levels: from the Wires and RegFiles; a loop is fatal with its units named; a (type, form) runs at the largest level
+//     of its instances, re-checked after that (Count `now` reads are checked at the read, debug);
 //   - checks: every declared port wired (an unwired input or output is fatal, named), widths equal, at most 64 mask bits per
 //     unit, every latency within the wheel.
 //
@@ -66,27 +66,20 @@
 
 namespace sim {
 
-// The resolved route of an output: where a put's entry is appended. A data value (no pointer to a port object, no
-// virtual call): `wheel` is the first bucket of the wheel it lands in (its (kind, width) wheel in its own thread, or an
-// outbox), `dest` the destination's pool index (an entry's first word: W6's E1, Bucket unchanged), `latency` the delay
-// (1 for Fifo, Hold, Reg). A put of width w is
-//     Bucket& b = r.wheel[(now + r.latency) & wheel_mask]; Word* e = b.append(); e[0] = r.dest; e[1..w] = words;
+// The resolved route of an output (engine.h's Route) is a data value: `wheel` is the first bucket of the wheel it lands in
+// (its (kind, width) wheel in its own thread, or an outbox), `dest` the destination's pool index (an entry's first word:
+// W6's E1, Bucket unchanged), `latency` the delay (1 for Fifo, Hold, Reg). A put of width w is
+//     Bucket& b = r.wheel[(now + r.latency) & r.mask]; Word* e = b.append(); e[0] = r.dest; e[1..w] = words;
 // with w a compile-time constant of the put's arity (sim.h's put overloads are fixed-arity), so the copy is fixed-size
 // (D16), and the same instructions whether the destination is local or across a domain.
-struct Bucket;
-struct Route {
-    Bucket* wheel;
-    uint32_t dest;
-    uint16_t latency;
-    uint8_t width;     // checks only (debug: the put's arity equals the declared width)
-    uint8_t kind;      // checks only
-};
 
 struct Options {
     uint64_t shuffle_seed = 0;   // 0: none; else instances and runs within a level are stepped in a seeded random order
     enum class Order : uint8_t { type_major, instance_major } order = Order::type_major;   // the debug comparison (PLAN-M1 item 6)
     bool wire_checks = true;     // wire discipline (written after a read in the cycle, written twice): debug builds
     bool step_all = false;       // step every instance every cycle (the missed-wake check, sim.h DEBUG CHECKS)
+    unsigned missed_wake_after = 1;   // the missed-wake detector (debug builds): cycles asleep with data waiting, 0 = off
+    bool missed_wake_fatal = true;    // else report and go on
     unsigned threads = 1;        // W4
 };
 
@@ -106,9 +99,78 @@ struct Sizes {
     uint32_t wheel_buckets;               // W, per wheel (kept for the sizing tests)
 };
 
+template <class T>
+concept HasDigest = requires(const T& u) { { u.digest() } -> std::convertible_to<uint64_t>; };
+
+namespace detail {
+// What the framework knows of a unit type, made once per type by a template (no RTTI).
+struct TypeInfo {
+    std::string name;
+    size_t size, align;
+    void (*move)(void* dst, void* src);           // move-construct at dst, then destroy src
+    void (*destroy)(void* obj);
+    void (*run[2])(Engine&, RunSet&);             // by Form: cycle, result (null if the type has no result form)
+    uint64_t (*digest)(const void* obj);          // T::digest() if it has one, else its bytes (sim.h, DEBUG CHECKS)
+};
+uint16_t register_type(TypeInfo&& t);
+const TypeInfo& type_info(uint16_t id);
+size_t registry_size();
+
+// The run function of a (type, form): one per run, called once per run per cycle with the run's ready instances. This
+// is the whole dispatch: the step is inlined, nothing is called per port.
+template <class T, bool Result>
+void run_form(Engine& e, RunSet& r) {
+    T* units = reinterpret_cast<T*>(r.units);
+    r.ready.for_each_set([&](size_t k) {
+        e.enter(r, uint32_t(k));
+        Wake w;
+        if constexpr (Result) w = units[k].step_result(e.ctx); else w = units[k].step(e.ctx);
+        e.after(r, uint32_t(k), w);
+    });
+    r.ready.clear_all();
+    r.nready = 0;
+}
+
+template <class T>
+std::string type_name() {   // from the compiler's signature, for messages ("unit Router")
+    std::string f = __PRETTY_FUNCTION__;
+    size_t a = f.find("T = ");
+    if (a == std::string::npos) return "?";
+    a += 4;
+    size_t b = f.find_first_of(";]", a);
+    return f.substr(a, b - a);
+}
+
+template <class T>
+uint64_t digest_of(const void* p) {
+    if constexpr (HasDigest<T>) return static_cast<const T*>(p)->digest();
+    else if constexpr (std::is_empty_v<T>) { (void)p; return 0; }   // no state
+    else return hash_bytes(p, sizeof(T));      // only with a unique object representation (static_assert at add)
+}
+
+template <UnitType T>
+uint16_t type_id() {
+    static const uint16_t id = [] {
+        TypeInfo t;
+        t.name = type_name<T>();
+        t.size = sizeof(T);
+        t.align = alignof(T);
+        t.move = [](void* dst, void* src) { ::new (dst) T(std::move(*static_cast<T*>(src))); static_cast<T*>(src)->~T(); };
+        t.destroy = [](void* p) { static_cast<T*>(p)->~T(); };
+        t.run[0] = &run_form<T, false>;
+        t.run[1] = nullptr;
+        if constexpr (HasResultForm<T>) t.run[1] = &run_form<T, true>;
+        t.digest = &digest_of<T>;
+        return register_type(std::move(t));
+    }();
+    return id;
+}
+}  // namespace detail
+
 class Sim;
 
 class Config {
+    friend class Ports;     // a unit's declarations land in the configuration being built
 public:
     explicit Config(Options o = {});
     ~Config();
@@ -135,11 +197,13 @@ public:
     void connect(CountOut o, CountIn i);          // several producers and readers
     void count_overflows(FifoIn f, CountIn c);    // the Fifo's overflows also increment c (ROUTER_OVF sums all router FIFOs)
 
+    // The missed-wake detector's threshold for one unit (D20; Options::missed_wake_after for the rest): a unit with a
+    // legitimate wait the detector can't see (on a Wire, with data in an input) gets its own, and no one else's moves.
+    void missed_wake_after(const std::string& unit, unsigned cycles);
+
     Sim build();
 
 private:
-    // A type's id and its run functions, made once per type by the template below (no RTTI).
-    template <class T> uint16_t type_id();
     void* stage(uint16_t type, size_t size, size_t align, Form f, const std::string& name);
     Ports& begin_ports(void* unit);
     void end_ports();
@@ -150,7 +214,9 @@ private:
         // storage is poisoned for ASan once the units are moved (debug builds), so a stale one faults on first use.
         static_assert(std::is_move_constructible_v<T>, "a unit type must be move-constructible (it is moved into its arena)");
         static_assert(!std::is_polymorphic_v<T>, "a unit type has no virtual functions (D6: no virtual calls in the loop)");
-        void* slot = stage(type_id<T>(), sizeof(T), alignof(T), f, name);
+        static_assert(HasDigest<T> || std::is_empty_v<T> || std::has_unique_object_representations_v<T>,
+                      "a unit type with padding or pointers defines `uint64_t digest() const` (sim.h, DEBUG CHECKS)");
+        void* slot = stage(detail::type_id<T>(), sizeof(T), alignof(T), f, name);
         T* u = new (slot) T(begin_ports(slot), std::forward<A>(a)...);
         end_ports();
         return *u;
@@ -159,17 +225,6 @@ private:
     Impl* impl_;
 };
 
-// The run function of a (type, form): one per run, called once per run per cycle with the run's ready instances. This is
-// the whole dispatch: the step is inlined, nothing is called per port.
-struct RunSet;      // the run's ready instances (a Bitmap over the type's instances) and the type's arena
-struct Engine;      // the thread's state: Ctx, wheels, run sets
-template <UnitType T>
-void run_cycle_form(Engine& e, RunSet& r);         // for each ready i: e.ctx.enter(r, i); w = units[i].step(e.ctx); e.after(r, i, w)
-template <HasResultForm T>
-void run_result_form(Engine& e, RunSet& r);        // the same with step_result
-// The delivery loops, internal: one per (kind, width), templated on the word count (D16: widths 0-3), e.g.
-//     template <unsigned W> void deliver_fifo(Engine&, const Bucket&);
-// Never visible to unit authors.
 
 class Sim {
 public:
@@ -182,6 +237,21 @@ public:
     uint64_t digest() const;
     const Sizes& sizes() const;
     uint64_t steps(const std::string& unit_name) const;   // how many times an instance was stepped (idle-unit tests)
+    std::string sleepers() const;      // the end-of-run report: units asleep with data waiting, their ports, since when
+
+    Sim(Sim&& o) noexcept;
+    Sim& operator=(Sim&& o) noexcept;
+    ~Sim();
+
+private:
+    friend class Config;
+    struct Impl;
+    explicit Sim(Impl* i) : impl_(i) {}
+    void* unit_ptr(const std::string& name, uint16_t type) const;
+    Impl* impl_ = nullptr;
 };
+
+template <class T>
+T& Sim::unit(const std::string& name) { return *static_cast<T*>(unit_ptr(name, detail::type_id<T>())); }
 
 }  // namespace sim

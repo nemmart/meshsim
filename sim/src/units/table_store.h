@@ -59,6 +59,7 @@ struct TableMems {
 struct TableStore {
     sim::LinkIn window;        // width 2, from the core: a table-window store of t (Link(1))
     TableMems m;
+    uint64_t digest() const { return m.s_src.sum ^ m.s_dest.sum * 3 ^ m.s_count.sum * 5 ^ m.s_group.sum * 7 ^ m.s_ptr.sum * 11; }
 
     explicit TableStore(sim::Ports& p) { p.in(window, "window", 2); }
     sim::Wake step(sim::Ctx& c) {
@@ -85,6 +86,7 @@ struct HistStore {
     sim::LinkIn window;        // width 2, from the core: a HIST store through the window, of t (Link(1))
     sim::RegFileOut out;       // HIST as the core's one-cycle loads read it (256 registers)
     HistMem m;
+    uint64_t digest() const { return m.s_hist.sum; }
 
     explicit HistStore(sim::Ports& p) { p.in(window, "window", 2); p.out(out, "hist", 256); }
     sim::Wake step(sim::Ctx& c) {

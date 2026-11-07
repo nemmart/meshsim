@@ -194,3 +194,16 @@ cycle against `golden-m2`, under every debug option (shuffle, both orders, step-
   one. `regmap.h`: those registers modelled; PULSE_DMA (G4), SRAM_RD_ADDR_QUEUE (G3), REQUEST_* loads stay "not
   modelled yet". W5's death tests updated to what is still unmodelled. `test_core_m2` (5): packets at 32/64/128 bits,
   the retry and stall, the window, HIST, the view.
+- 2026-11-07: **the units' steps and add_g1**: `TileCtl::step` (endCycle(t - 1) from bus, GO, landed, the K-line, the
+  send-busy Reg OR the core's own send store, the condition Counts through_last; the view, `dma`, wake, irq; READY and
+  the error line on `line` when READY rises or the line changes), `TileCore` (Rv32 with M2's ports: port B applied
+  before its step, the send Hold, the table window, HIST's RegFile; REQUEST_* fatal in M2), `Director::step` (modes
+  0-5 as ref switches them; bad packets counted; UB fatal; port B and command landed; the K-line; we-in and gather to
+  the configuration-part units, fatal there until G3/G4), `add_g1` (`tile_ctl.cpp`, a ControlBuilder). Digests for every
+  unit (the step-all check). `test_g1_tile`: a G1 tile with a stand-in network on the engine: port B lands where ref's
+  load sees it, command landed latched at endCycle(t + cm_latency), and an unarmed counted packet is judged unexpected
+  at endCycle(t + K) (ERRORS [2], the counter stays 0, the error line rises).
+  **make check clean at this commit**: make run gcc debug, gcc release, clang debug, clang release (29 test binaries,
+  all 0 failed); make tsan (8) and make tsan-units (2) clean.
+  **Next:** regs (through cycle 824) and wfi on W9's chip, every unit of tile 0 every cycle; the observer once
+  sim-w10 is merged.

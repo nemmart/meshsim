@@ -170,6 +170,13 @@ struct RegBlockState {
                               request_fifo_depth, uint64_t(done_gate)};
         uint64_t h = 0;
         for (uint64_t v : w) h = digest_mix(h, v);
+        const uint64_t m2[] = {router_hdr, router_addr, router_w[0], router_w[1], router_w[2], dma_config, record_base,
+                               rd_setup, uint64_t(q_all) | uint64_t(cond_all_prev) << 1 | uint64_t(rd_done_prev) << 2
+                                   | uint64_t(ready_pulse) << 3 | uint64_t(error_line) << 4,
+                               unexpected_total, done_early, counter_wraps, router_sends};
+        for (uint64_t v : m2) h = digest_mix(h, v);
+        for (unsigned c = 0; c < 8; c++) h = digest_mix(h, uint64_t(remaining[c]) << 2 | uint64_t(q_one[c]) << 1 | cond_one_prev[c]);
+        for (uint64_t v : ev_prev) h = digest_mix(h, v);
         return h;
     }
 

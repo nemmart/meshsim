@@ -38,10 +38,12 @@ LIB_OBJ  := $(LIB_SRC:%.cpp=$(B)/%.o)
 TEST_SRC := $(wildcard tests/test_*.cpp)
 TESTS    := $(TEST_SRC:tests/%.cpp=$(B)/%)
 HARNESS  := $(B)/tests/harness.o
+# W3's stage 1 sketches: compiled in every build (they must build against the API), never linked or run.
+SKETCH   := $(patsubst %.cpp,$(B)/%.o,$(wildcard src/sketch/*.cpp))
 
 .PHONY: all debug run check clean
 .SECONDARY:
-all: $(TESTS)
+all: $(TESTS) $(SKETCH)
 
 debug:
 	@$(MAKE) --no-print-directory MODE=debug all
@@ -53,7 +55,7 @@ $(B)/%.o: %.cpp
 $(B)/test_%: $(B)/tests/test_%.o $(HARNESS) $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 
-run: $(TESTS)
+run: $(TESTS) $(SKETCH)
 	@set -e; for t in $(TESTS); do ./$$t; done
 
 check:

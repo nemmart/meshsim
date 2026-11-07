@@ -168,3 +168,24 @@ cycles (`regs-chip`, `wfi-chip`, regenerated locally); a2a's network part once G
   ends (`token_waits(t)` is ref's count at the end of t).
 - make check after stage 2: gcc and clang, debug and release (25 binaries; 257 / 226 tests), TSan (41 + 2): clean.
   (The whole make check in one call exceeds the tool's 5-minute limit here: run build by build.)
+- 2026-11-07: **stage 3, C&C's model, the row collectors, the endpoints** (`cnc.h/.cpp`), and **G2's chip-level
+  fingerprint writers** (`tests/statefp_g2.*`: "cnc", "cc1p", "reqbus", "ep", registered in W8's `FpRegistry`).
+  C&C is one unit (CnC with Cnc1Peripheral), its program built at configuration with ref's step granularity (sends one
+  packet a cycle with the refused one retried, commands with their parity, GO with cnc_reaction and the settle, waits,
+  SortTest's atAllReady, calls), READY bits as Cnc1Peripheral keeps them (cleared by PULSE_GO, a pulse arriving the
+  next cycle kept), the tiles' error lines, their OR and the error bit, the receive FIFO. Event-driven (D23): stepped
+  only when a step acts, a wait ends, a READY or error word arrives, a send is refused, a packet reaches its FIFO.
+  Line words as W8 puts them (bit 0 READY rose, bit 1 the level); the row collectors forward a row word (edges,
+  present, levels). The writers rebuild ref's pending queues (readyAt pending, errChanges, CnC.errLine) from the line
+  words in flight (W10's observer) and, for the end of cycle c itself, from `G2Chip::edge` (the block's preview).
+  **Checked against ref** (`tests/ref/CncConf.java`, `cncconf.sh`, `tests/test_cnc.cpp`): ref's CnC, peripheral and
+  endpoint in a real Chip whose tiles the driver plays (READY at boot and answering every GO with seeded delays, error
+  lines up and down, packets into the receive FIFO, tile 0's router stalling one cycle in six); every cycle the packet
+  taken, GO, the calls, and the "cnc" and "cc1p" streams are equal: 3 fixtures (6,000 cycles; 37-42 GOs, 9-24
+  refusals, 40 receive packets, the error bit set, every step done; C&C stepped ~1,600 of 6,000 cycles), also under
+  shuffle, instance-major and step-all; "ep" and "reqbus" at rest equal.
+  **Found:** a second READY pulse while a tile's first is visible (not cleared) makes ref's bit read 0 until the second
+  lands (readyAt is one cycle: max(old, edge + ready_latency)); C&C can't know of it before it lands (a shorter link
+  would break form 2). The model keeps the spec's sticky bit and counts these (`ready_repulses`); the generator makes
+  none. For the owner.
+- make check after stage 3: gcc and clang, debug and release (33 binaries; 303 / 272 tests), TSan (60 + 2): clean.

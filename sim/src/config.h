@@ -186,17 +186,19 @@ template <class T, bool Result>
 void run_form(Engine& e, RunSet& r) {
     T* units = reinterpret_cast<T*>(r.units);
     uint64_t* b = r.ready();
-    for (uint32_t wi = 0; wi < r.nwords; wi++) {        // each word read and cleared: no separate clear (marks during a
+    const uint32_t nwords = r.nwords;
+    const Engine::StepView v = e.step_view(r);         // W10: loaded once, not after every step
+    for (uint32_t wi = 0; wi < nwords; wi++) {          // each word read and cleared: no separate clear (marks during a
         uint64_t m = b[wi];                             // run reach only higher runs)
         if (!m) continue;
         b[wi] = 0;
         while (m) {
             const uint32_t k = (wi << 6) + uint32_t(__builtin_ctzll(m));
             m &= m - 1;
-            e.enter(r, k);
+            e.enter_at(v.first + k, &v.mask[v.first + k]);
             Wake w;
             if constexpr (Result) w = units[k].step_result(e.ctx); else w = units[k].step(e.ctx);
-            e.after(r, k, w);
+            e.after(r, v, k, w);
         }
     }
     r.nready = 0;

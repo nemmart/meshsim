@@ -255,3 +255,13 @@ Pieces, each committed when it compiles and passes its own test:
   ties counted** (`InjReadSide::rp_ties`: an entry ready in a cycle when another is already waiting at that cycle):
   **7-32 per fixture** (t5 26, t0 7, t63 32, t27 29, t9 31). Fixtures regenerated; all equal ref, also under the debug
   options.
+- 2026-11-08: **a2a equals golden-m2 to its end (7698)**, every unit of tile 0 every 10 cycles (a2a.fp), one thread and
+  split over 4; and **every tile every 100 cycles** (a2a-chip, regenerated from ref: SAME), one thread and split.
+  Checked on a local trial merge of W12's sim-w12 (3ef43ac: its PULSE_DMA store is needed; not on main yet), then the
+  trial branch dropped. test_chip drives it as M2Prog does: Mach.boot, three broadcast commands with GOs, and A2A's
+  Data(7, 2000) poked into every tile's big SRAM before cycle 1 (ported with test/java_random.h). The test skips itself
+  while PULSE_DMA isn't modelled on the branch (so sim-w11's make check stays clean); once main has W12's 83fb888 it
+  runs in make check. Big SRAM touched: 2.3 MB of 256 MB allocated.
+- 2026-11-08: **The sort's SPLIT:** W12's P7 (3ef43ac, sim-w12) runs the 16K sort end to end equal to ref at all 248
+  sort16k-fp points, every unit of every tile, with my read queue, read port, write engine, table store, HIST and big
+  SRAM in it; no difference reached my units. I will rerun test_sort here once it is on main and record it.

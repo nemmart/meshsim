@@ -334,3 +334,15 @@ the mesh second. Of today's findings (on W4's synthetic mesh and W6's synthetic 
 - 2026-11-07: **8e3aeca clean** (main merged at 7152510; the flags barrier, Options::barrier automatic, the sweep's
   revert, bench_chip with W11's SRAM blocks): clean checkout, build by build, gcc and clang debug and release (37 test
   binaries each) and TSan gcc and clang (the 7 thread tests, test_controllers, test_chip form2).
+- 2026-11-07: **Quest 147, per-thread speed on what runs now** (W9's chip with W8's and W11's units, one thread; regs
+  now runs whole, to cycle 897, since G3). Plain: the sort's boot 0.945-0.951 us/cycle, wfi 0.866-0.873, regs
+  1.632-1.636. By unit kind (bench_chip --units: each step timed, the clock's 5.6 ns a step taken off; the timing
+  itself slows the rest, so only the units' shares are read from it):
+  the boot: core 0.35 us/cycle (52 steps a cycle, 6.6 ns a step: the cores polling in the boot ROM), router 0.15 (6
+  steps, 24.6 ns), director 0.03 (6 steps, 4.4 ns), the rest under 0.01. wfi: core 0.40, ctl 0.11 (1.3 steps, 90 ns),
+  router 0.05. regs: core 0.46, **ctl 0.39 (4.3 steps a cycle, 91 ns a step)**, **sram 0.14 (0.5 steps, 286 ns a
+  step)**, router 0.14 (5.7 steps, 24 ns). perf on the boot (plain): Rv32's execute/step/fetch and TileCore's step ~36%,
+  run_form<TileCore> (the dispatch of 52 core steps a cycle) 11%, the router ~15%, deliver_link 4.8%, the director
+  3.8%, after_far and near_slot ~3%. (Rv32::digest's 10-33% in perf is the bench's one digest after the timed span.)
+  For the sort: the core's steps and their dispatch, TileCtl's 91 ns and BigSram's 286 ns a step are the units' costs
+  to watch; the engines (G4) are not measured yet.

@@ -132,3 +132,8 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   differences no reference program reaches (as D28, D29), so every check stays exact. Where one does show in a program:
   the result must be identical, the cycle count very close (working bound: within 1% of `ref`'s on the sort's counted
   span), and the comparison uses the fingerprints before the difference plus the end result.
+- **D31. Enough speed work for M2** (owner, 2026-11-08): the full-size sort is exact and 17.8× `ref` at 6 threads (5.38 s
+  against ~96 s; Quest 157). M2's speed work ends with **two cheap, general wins**: BigSram's running memory hash kept only
+  when fingerprints are wanted (W11), and the register block writing only the registers that changed (W12). Then M2
+  closes and M3 is planned. No further unit-specific tuning (router layout, huge pages, index arithmetic) for this
+  workload: the units that matter next (the field engine, D7) don't exist yet, and the framework's own overhead is ~8%.

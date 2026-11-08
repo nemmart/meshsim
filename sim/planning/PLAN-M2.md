@@ -15,6 +15,10 @@ imbalance 0.19, barrier 0.08, drain 0.04 µs per cycle: the barrier is under 3% 
 runs at the same rate, its counted span (1,229,687 cycles) would take **about 3.6 s against `ref`'s ~96 s (~27×)**: to be
 measured directly. Unit costs dominate: TileCtl 25%, BigSram 16%, Injection 16%, Router 13% of the units' time.
 
+**Full size measured (W10, Quest 157):** one thread 29.15 s (23.7 µs per cycle, 3.3× `ref`); **6 threads 5.38 s
+(17.8× `ref`)**, 35% over the ~4 s aim; the units are ~92% of the time. **D31:** two cheap general wins (W11: BigSram's
+hash only when fingerprinting; W12: the register block writing only changed registers), then M2 closes.
+
 ## The target (owner, 2026-11-07)
 
 **The full-size sort** (`p4/uniform-k128`; `SortTest` in `sim/ref/meshsim/test/`, the program in `sim/ref/sort/`) runs on

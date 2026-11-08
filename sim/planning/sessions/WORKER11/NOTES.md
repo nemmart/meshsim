@@ -266,3 +266,4 @@ Pieces, each committed when it compiles and passes its own test:
   sort16k-fp points, every unit of every tile, with my read queue, read port, write engine, table store, HIST and big
   SRAM in it; no difference reached my units. I will rerun test_sort here once it is on main and record it.
 - 2026-11-08: **make check clean at 7295f07** (build by build: gcc and clang, debug and release, 42 binaries each; tsan, tsan-units, tsan-chip on both compilers). a2a skips itself here (no PULSE_DMA on the branch). Merge order (integrator): W12's sort commits first, then mine; then I rerun a2a and test_sort on main.
+- 2026-11-08: main merged (W12's sort, PULSE_DMA): **make check clean at 6aef29b** (build by build: gcc and clang, debug and release, 42 binaries each; tsan, tsan-units, tsan-chip on both). **a2a now runs in make check** (one thread and 4 domains, to 7698).

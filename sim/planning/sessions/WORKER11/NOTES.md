@@ -139,3 +139,18 @@ Each piece: its tests, `make check` clean on gcc and clang (build by build if th
   the PTR path and the SRAM Hold's refusal, ReqFifo's judgment, the block's bits, the big SRAM's writes, sum and room
   by the count before the pop. (Write combining needs a read in the same area: with P2's MemConf.)
 - 2026-11-08: **make check clean at 4de8844** (build by build: gcc and clang debug and release, 37 binaries each; tsan, tsan-units, tsan-chip on both). The overflow events piece is ready to merge. Next: P2.
+- 2026-11-08: **the write engine's missed-wake threshold (1,024 cycles, add_g1), why it waits legitimately:** with its
+  pointer stage full, the engine can take nothing from we-in until its head's PTR returns; that return's request sits in
+  the table store's request FIFO (ReqFifo, the store's own state: ref's WordFIFO behind a delay line), so for a cycle or
+  more nothing is on its way to the engine's ports while we-in holds data. The store serves the FIFO every cycle and the
+  return follows at ts_engine_latency, so the wait is bounded by the FIFO's 16 entries plus the two latencies; ref's
+  engine simply polls every cycle. Same reasoning as W9's injection unit (a token free that isn't on its way yet).
+- 2026-11-08: **the PTR view for W12** (`TableStore::ptr_view`, 256 registers, declared with `with_ag`). Checked against
+  ref's order: the tile's children run router, srqInj, dir, cmem, sram, writer, **ag, ts**, hist, ...;
+  `Tile.checkGatherAlignment` reads `ts.peek`, which flushes the macro's pending port writes (the controller's store
+  and the write-back of t - 1) but the store hasn't run its write-back of t. So the AG at t sees PTR at the end of t - 1.
+  A RegFile is read at a later level of the same cycle, so the store publishes a write-back of t at its step at t + 1
+  (it asks for that step); a window store of t - 1 is published at t, as it lands. Test
+  `table_store_ptr_view_is_ptr_before_this_cycles_write_back` (hand-derived): the write-back of 4 is seen from 5, a window
+  store of 6 from 7, and a window store on a write-back cycle (10) is lost while the write-back is seen from 11. (Under
+  ref's debug shuffle the children's order varies; the model follows the default order.)

@@ -114,7 +114,14 @@ struct TableStore {
     sim::LinkIn req_stream, req_group;      // width 3, the AG's (with_ag: G4)
     sim::LinkOut ret_stream, ret_group;     // width 3, to the AG (with_ag)
     sim::LinkOut ovf_ev;       // width 0, Link(1) to the block: a request FIFO overflowed (D29, TABLE_OVF)
+    // PTR as the AG reads it at t (with_ag; the gather alignment check, Tile.checkGatherAlignment): ref's AG runs
+    // before the table store in the tile's cycle and reads PTR through a host peek, so it sees PTR as committed at the
+    // end of t - 1 (the controller's store of t - 1 and the write-back of t - 1), never the write-back of t. A RegFile is
+    // read at a later level of the same cycle, so the write-back of t is published at the store's step at t + 1.
+    sim::RegFileOut ptr_view;
     bool with_ag = false;
+    bool pub = false;          // a write-back of an earlier cycle not yet in ptr_view
+    uint32_t pub_idx = 0, pub_val = 0;
 
     // ---- state ----
     TableMems m;
@@ -124,7 +131,8 @@ struct TableStore {
 
     uint64_t digest() const {
         return sim::hash_fields(m.s_src.sum, m.s_dest.sum, m.s_count.sum, m.s_group.sum, m.s_ptr.sum) ^
-               q_stream.digest() * 3 ^ q_group.digest() * 5 ^ q_we.digest() * 7 ^ pipe.digest() * 11;
+               q_stream.digest() * 3 ^ q_group.digest() * 5 ^ q_we.digest() * 7 ^ pipe.digest() * 11 ^
+               sim::hash_fields(pub, pub_idx, pub_val) * 13;
     }
 
     explicit TableStore(sim::Ports& p, bool ag = false) : with_ag(ag) {
@@ -135,21 +143,27 @@ struct TableStore {
         if (with_ag) {
             p.in(req_stream, "req_stream", 3); p.in(req_group, "req_group", 3);
             p.out(ret_stream, "ret_stream", 3); p.out(ret_group, "ret_group", 3);
+            p.out(ptr_view, "ptr", 256);
         }
     }
     sim::Wake step(sim::Ctx& c) {
         const uint64_t t = c.now();
+        if (pub) { c.write(ptr_view, pub_idx, pub_val); pub = false; }   // the write-back of t - 1 (with_ag)
         if (c.ready(window)) {                                 // the controller's store of t - 1 (lost on a write-back)
             const sim::Word* w = c.peek(window);
             const uint32_t table = uint32_t(w[0] >> 32);
             if (table == TBL_PTR && pipe.last_wb == t - 1) pipe.ctrl_writes_lost++;
-            else m.write(table, uint32_t(w[0]), uint32_t(w[1]));
+            else {
+                m.write(table, uint32_t(w[0]), uint32_t(w[1]));
+                if (with_ag && table == TBL_PTR) c.write(ptr_view, uint32_t(w[0]), m.ptr[uint32_t(w[0]) & 255]);
+            }
             c.take(window);
         }
         if (pipe.valid && pipe.due <= t) {                     // the write-back of t (scheduled at t - 1)
             if (pipe.due != t) FATAL("table store: PTR's write-back due at %llu done at %llu", (unsigned long long)pipe.due, (unsigned long long)t);
             m.write(TBL_PTR, pipe.idx, pipe.val);
             pipe.valid = false; pipe.last_wb = t;
+            if (with_ag) { pub = true; pub_idx = pipe.idx; pub_val = pipe.val; }
         }
         const bool o1 = q_stream.commit(t), o2 = q_group.commit(t), o3 = q_we.commit(t);
         if (o1 || o2 || o3) c.put(ovf_ev);                    // judged at t, the put's t - 1 (PORTS.md 3)
@@ -180,7 +194,7 @@ struct TableStore {
             pipe.schedule(t, idx, (old + add) & 0x1FFFFF);
             c.put(ret_we, idx, old, 0);
         }
-        return pipe.valid || q_stream.n || q_group.n || q_we.n || q_stream.pend || q_group.pend || q_we.pend ? c.next() : sim::Wake::none();
+        return pipe.valid || pub || q_stream.n || q_group.n || q_we.n || q_stream.pend || q_group.pend || q_we.pend ? c.next() : sim::Wake::none();
     }
 };
 

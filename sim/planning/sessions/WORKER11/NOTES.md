@@ -186,3 +186,13 @@ Pieces, each committed when it compiles and passes its own test:
   outstanding), "sram" with its `rd` Hold; W9's stubs removed.
 - **P2d, MemConf** (tests/ref/MemConf.java): ref's srq + inj + sram + we + ts + hist driven by a seeded script at the
   tile's G3 boundary, fingerprinted every cycle, against the same script on the units; then a2a with W12.
+- 2026-11-08: **P2a landed, make check clean at 49399c7** (gcc and clang debug and release, 37 binaries each; tsan,
+  tsan-units, tsan-chip on both). The read queue in the injection unit (InjReadSide, as designed above); `MemIO` in
+  `ControlIO` (chip.h, shared with W12) wired by `tile_cycle` when `mem.present`; the big SRAM's read side on in
+  add_g1; the core declares `rd_port` (Fifo out to client 2) and `rp_injected` (Count in), unused until P2b; tests that
+  build add_g1 without the chip wire `tests/mem_stand.h`. regs and wfi unchanged (no reads). **For W12:** to join as
+  clients, set `io.mem.gather` / `io.mem.ag` and give `io.mem.rd_gather` / `rd_ag` (HoldOut, width 2) and
+  `io.mem.gather_srq_busy` (RegIn, width 1, the block's) in add_g1. test_mem's
+  `read_queue_read_port_returns_and_a_same_cycle_tie` (hand-derived): a read waits in the SRAM's Hold behind a full
+  area (depth 1), a zero-width read past mem_chunks becomes ready the same cycle (8) and goes second by token order; the
+  freed tokens join the free list's tail in injection order. Next: P2b (the read port), P2c (writers), P2d (MemConf).

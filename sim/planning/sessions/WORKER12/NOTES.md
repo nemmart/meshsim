@@ -399,3 +399,20 @@ poke. a2a and the sort need W11's P1 and P2 (question 1). Each piece: its tests,
   - **The guard:** a debug build checks every register against `reg(r)` after each publish.
   - **If you add a register or change what `reg()` returns for one, add it to `publish()` too**; the debug check names any
     you miss.
+- 2026-11-08: **D31, the register block writes only the registers that changed** (c6d480c; W11 told first, 3f81012).
+  - **The change:**
+    - `RegBlockState::publish(pub)`: the registers' values as `reg(r)` gives them, straight-line with no switch,
+      compared with `pub`, TileCtl's copy of the register file as last written (zero at power-on, as the engine's). It
+      returns the mask of those that differ and brings `pub` up to date.
+    - TileCtl's step writes only the masked registers, and the `dma` RegFile's two registers only on change.
+  - **Why the register file is identical:** the engine ignores a write of an unchanged value (`engine.h:550`) and
+    TileCtl is its only writer, so skipping those writes changes nothing a reader sees.
+  - **Guard:** in debug builds, every register is compared with `reg(r)` after each publish, fatal and named if
+    `publish()` misses one (none did, through the whole 16K sort in debug).
+  **Checks:**
+  - wfi, regs and a2a on every unit of tile 0 every cycle, and on every tile (10 / 10 / 100 cycles; regenerated
+    locally, SAME), on one thread and 4 domains.
+  - The 16K sort in gcc debug (the guard on) and clang release: 248 points equal, PASS, TOTAL 496,619.
+  - make check: gcc and clang, debug and release, 42 binaries each, 0 failed; `tsan-units` and `tsan-chip` on both
+    compilers clean. Framework `tsan` was not rerun: the change is in units only.
+  W10 measures the speed on the full-size sort.

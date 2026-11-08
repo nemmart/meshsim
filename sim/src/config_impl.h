@@ -134,6 +134,8 @@ struct Sim::Impl {
     Engine e;
     std::vector<const detail::TypeInfo*> types;        // the configuration's, by id
     std::unique_ptr<Block> block;
+    struct Carved { std::string what; size_t off, words; int type; };   // W10: the block's structures, for footprints
+    std::vector<Carved> carved;
     struct Store { uint16_t type; unsigned char* base; uint32_t count; };
     std::vector<Store> stores;
     struct Inst { uint32_t store, index; std::string name; uint16_t type; unsigned chip; };

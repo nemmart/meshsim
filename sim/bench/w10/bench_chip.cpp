@@ -3,7 +3,7 @@
 // sort's boot (the sort image loaded over the network and port B: 14,791 cycles before any engine runs), wfi, regs.
 //
 //   bench_chip --prog sort|wfi|regs [--cycles N] [--threads T] [--partition one|rows|tiles|load|profile]
-//              [--units] [--windows W] [--cpus a,b,..] [--time] [--crossing-ns X] [--reps R] [--barrier auto|counter|flags|flags-spin]
+//              [--units] [--windows W] [--trace-map F [--trace-from C --trace-window W --trace-windows N]] [--cpus a,b,..] [--time] [--crossing-ns X] [--reps R] [--barrier auto|counter|flags|flags-spin]
 //
 // --cycles: default sort 14791 (the boot), wfi and regs (whole, since G3): until every core has stopped (every 64 cycles; the
 // count is the cycles run). rows: row_bands(T); tiles: one domain per tile (grouped in order, one engine per thread);
@@ -42,6 +42,8 @@ struct Args {
     std::vector<int> cpus;
     bool time = false;
     double crossing_ns = -1;   // --crossing-ns: Options::crossing_ns (default: the framework's)
+    std::string trace_map;             // --trace-map FILE: the regions, then windows marked for a memory tracer (lackey)
+    uint64_t trace_from = 2000, trace_window = 3, trace_windows = 300;   // --trace-from C --trace-window W --trace-windows N
     unsigned windows = 0;              // --windows W: one thread, the run in windows of W cycles: steps and time each (quiet case)
     bool units = false;                // --units: one thread, calibrating: each unit kind's time, steps and ns a step
     std::string barrier = "auto";      // --barrier auto (the framework's choice) | counter (W4's) | flags | flags-spin
@@ -93,6 +95,20 @@ sim::Sim build(World& w, const Args& a, sim::Options opt, const std::string& par
     return cfg.build();
 }
 
+// the process's resident set (VmRSS), KB
+long rss_kb() {
+    FILE* f = std::fopen("/proc/self/status", "r");
+    if (!f) return -1;
+    char l[256]; long v = -1;
+    while (std::fgets(l, sizeof l, f)) if (!std::strncmp(l, "VmRSS:", 6)) { v = std::atol(l + 6); break; }
+    std::fclose(f);
+    return v;
+}
+
+volatile uint64_t g_trace_mark = 0;   // --trace-map: a store here starts a window (the tracer sees its address)
+// tile k's slice of the bench's port-B memory (64 x 2 x MEM_WORDS words, data then program per tile, tile_ctl.h)
+const void* w_tile_mem(const World& w, unsigned k) { return w.mem.data() + size_t(k) * 2 * MEM_WORDS; }
+
 bool all_stopped(sim::Sim& m) {
     for (unsigned k = 0; k < 64; k++)
         if (m.unit<TileCore>(tile_unit(k, "core")).rv.halt == Rv32::RUN) return false;
@@ -122,6 +138,10 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--reps")) a.reps = unsigned(std::atoi(val()));
         else if (!std::strcmp(argv[i], "--barrier")) a.barrier = val();
         else if (!std::strcmp(argv[i], "--units")) a.units = true;
+        else if (!std::strcmp(argv[i], "--trace-map")) a.trace_map = val();
+        else if (!std::strcmp(argv[i], "--trace-from")) a.trace_from = std::strtoull(val(), nullptr, 10);
+        else if (!std::strcmp(argv[i], "--trace-window")) a.trace_window = std::strtoull(val(), nullptr, 10);
+        else if (!std::strcmp(argv[i], "--trace-windows")) a.trace_windows = std::strtoull(val(), nullptr, 10);
         else if (!std::strcmp(argv[i], "--windows")) a.windows = unsigned(std::atoi(val()));
         else if (!std::strcmp(argv[i], "--cpus")) {
             const char* s = val();
@@ -132,6 +152,32 @@ int main(int argc, char** argv) {
     const uint64_t cycles = a.cycles ? a.cycles : a.prog == "sort" ? 14791 : 0;   // wfi, regs: to their stop
     const std::string part = a.threads == 1 && a.part != "load" && a.part != "profile" ? std::string("one") : a.part;
 
+    if (!a.trace_map.empty()) {   // footprint: the region map, then marked windows (bench/w10/trace_filter.cpp reads both)
+        World rw;
+        prepare(rw, a.prog);
+        sim::Options o; o.threads = a.threads; o.cpus = a.cpus;
+        sim::Sim m = build(rw, a, o, part);
+        m.run(a.trace_from);
+        FILE* f = std::fopen(a.trace_map.c_str(), "w");
+        if (!f) FATAL("--trace-map %s: cannot write", a.trace_map.c_str());
+        std::fprintf(f, "marker %p\nwindows %llu\n", (const void*)&g_trace_mark, (unsigned long long)a.trace_windows);
+        auto reg = [&](const void* p, size_t bytes, int dom, const std::string& what) {
+            if (bytes) std::fprintf(f, "region %p %zu %d %s\n", p, bytes, dom, what.c_str());
+        };
+        for (const auto& r : sim::detail::Internals::regions(m)) reg(r.base, r.bytes, r.domain, r.what);
+        const unsigned T = part == "one" ? 1 : a.threads;
+        for (unsigned k = 0; k < 64; k++) {                   // the units' own memory the bench gave them (G1Ctx)
+            const int dom = int(k * T / 64);
+            reg(w_tile_mem(rw, k), 2 * MEM_WORDS * 4, dom, "units' memory (port B data and program)");
+            reg(rw.sram.block(k, rw.gx.cfg.mem_chunks), size_t(rw.gx.cfg.mem_chunks) * 4, dom, "big SRAM block");
+        }
+        std::fclose(f);
+        for (uint64_t w = 0; w < a.trace_windows; w++) { g_trace_mark = w; m.run(a.trace_window); }
+        g_trace_mark = ~uint64_t(0);
+        std::printf("trace prog=%s threads=%u part=%s from=%llu windows=%llu of %llu cycles\n", a.prog.c_str(), a.threads,
+                    part.c_str(), (unsigned long long)a.trace_from, (unsigned long long)a.trace_windows, (unsigned long long)a.trace_window);
+        return 0;
+    }
     if (a.windows) {   // the quiet case: per window, the steps taken (active units) against the time; reps machines, the
                        // median time per window; then by bins of steps a cycle
         std::vector<std::vector<double>> ns;              // per window, per rep
@@ -251,10 +297,13 @@ int main(int argc, char** argv) {
     std::vector<double> us;
     uint64_t ran = 0, words = 0, digest = 0;
     std::string times, partition;
+    long rss_built = 0, rss_ran = 0;
+    size_t sram_alloc = 0, sram_res_built = 0, sram_res_ran = 0;
     for (unsigned r = 0; r <= a.reps; r++) {
         World rw;
         prepare(rw, a.prog);
         sim::Sim m = build(rw, a, opt, part);
+        if (r == a.reps) { rss_built = rss_kb(); sram_res_built = rw.sram.touched_bytes(); }
         m.run(1);                                         // the first run starts the workers: outside the count
         const auto t0 = std::chrono::steady_clock::now();
         ran = 1 + run_prog(m, cycles ? cycles - 1 : 0, 2000000);
@@ -262,13 +311,16 @@ int main(int argc, char** argv) {
         if (r == 0) continue;
         us.push_back(1e6 * secs / double(ran));
         words = m.sizes().total_words; digest = m.digest(); times = m.thread_times(); partition = m.partition();
+        if (r == a.reps) { rss_ran = rss_kb(); sram_alloc = rw.sram.allocated_bytes(); sram_res_ran = rw.sram.touched_bytes(); }
     }
     std::vector<double> so(us);
     std::sort(so.begin(), so.end());
     const double medv = so.empty() ? 0 : so[so.size() / 2];
     std::printf("chip prog=%s threads=%u part=%s barrier=%s cycles=%" PRIu64 " reps=%u us_per_cycle=%.3f us_min=%.3f us_max=%.3f "
-                "words=%llu digest=%016llx times=\"%s\" partition=\"%s\"\n",
+                "words=%llu digest=%016llx rss_mb_built=%.1f rss_mb_ran=%.1f sram_mb=%.1f sram_resident_mb_built=%.2f "
+                "sram_resident_mb_ran=%.2f times=\"%s\" partition=\"%s\"\n",
                 a.prog.c_str(), a.threads, part.c_str(), a.barrier.c_str(), ran, a.reps, medv, so.empty() ? 0 : so.front(), so.empty() ? 0 : so.back(),
-                (unsigned long long)words, (unsigned long long)digest, times.c_str(), partition.c_str());
+                (unsigned long long)words, (unsigned long long)digest, rss_built / 1024.0, rss_ran / 1024.0, sram_alloc / 1048576.0,
+                sram_res_built / 1048576.0, sram_res_ran / 1048576.0, times.c_str(), partition.c_str());
     return 0;
 }

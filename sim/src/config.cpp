@@ -718,6 +718,7 @@ Sim Config::build() {
     Sizes& z = S->sizes;
     std::map<std::string, SizeLine> by_s, by_t;
     std::map<unsigned, uint64_t> by_chip;
+    for (auto& it : c.items) S->carved.push_back({it.what, it.off, it.words, it.type});   // W10 (Internals::regions)
     for (auto& it : c.items) {
         SizeLine& l = by_s[it.what];
         l.what = it.what; l.words += it.words; l.count += it.count;

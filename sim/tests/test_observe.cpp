@@ -3,6 +3,7 @@
 // are the ones visible at c, plus those arriving at c + 1, plus the put judged at c + 1 if accepted), in one domain and
 // split over two threads, with run lengths that end between barriers; and against the producer's own log for a Link's
 // arrival cycles. Then: refused during a run, no allocation, and the stop request's cycle in both forms.
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -466,3 +467,31 @@ void ovf_case(bool split, bool steps) {
 TEST(overflow_steps_the_owner_when_judged_in_one_domain) { ovf_case(false, true); }
 TEST(overflow_steps_the_owner_when_judged_split) { ovf_case(true, true); }
 TEST(overflow_without_the_declaration_stays_hidden) { ovf_case(false, false); }
+
+// ---- Internals::regions (W10, footprints): the machine's memory by structure, each with its owning domain; no two
+// regions overlap, and together they cover the engine blocks and arenas Sizes counts (padding aside)
+#include "internals.h"
+TEST(regions_cover_the_machine_without_overlap) {
+    for (int split = 0; split < 2; split++) {
+        Options o; o.threads = split ? 2 : 1;
+        Config cfg(o);
+        cfg.domain(0);
+        auto& q = cfg.add<Quiet>("q");
+        cfg.domain(split ? 1 : 0);
+        auto& z = cfg.add<Sleeper>("z");
+        cfg.link(q.out, z.in, 3);
+        Sim s = cfg.build();
+        auto r = detail::Internals::regions(s);
+        CHECK(!r.empty());
+        std::sort(r.begin(), r.end(), [](const auto& a, const auto& b) { return a.base < b.base; });
+        uint64_t total = 0;
+        for (size_t k = 0; k < r.size(); k++) {
+            CHECK(r[k].bytes > 0);
+            CHECK(r[k].domain >= 0 && r[k].domain < (split ? 2 : 1));
+            if (k + 1 < r.size()) CHECK(static_cast<const char*>(r[k].base) + r[k].bytes <= static_cast<const char*>(r[k + 1].base));
+            if (r[k].what.rfind("outbox", 0) != 0) total += r[k].bytes;
+        }
+        CHECK(total <= s.sizes().total_words * 8 * (split ? 2 : 1));
+        CHECK(total * 2 >= s.sizes().total_words * 8);   // most of it: Sizes adds padding to whole lines
+    }
+}

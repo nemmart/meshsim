@@ -6,7 +6,7 @@
 set -u
 OUT=$1; shift
 MAP1=$(mktemp); MAP2=$(mktemp)
-valgrind --tool=none ./build/clang-release/bench_chip "$@" --trace-map "$MAP1" --trace-windows 0 > /dev/null 2>&1 || { echo "trace.sh: the map run failed"; exit 1; }
+valgrind --tool=none ./build/clang-release/bench_chip "$@" --trace-map "$MAP1" > /dev/null 2>&1 || { echo "trace.sh: the map run failed"; exit 1; }
 valgrind --tool=lackey --trace-mem=yes --log-fd=9 ./build/clang-release/bench_chip "$@" --trace-map "$MAP2" 9>&1 1>/dev/null 2>/dev/null \
   | ./build/clang-release/trace_filter "$MAP1" > "$OUT"
 if cmp -s "$MAP1" "$MAP2"; then echo "trace.sh: the maps agree" >> "$OUT"; rc=0

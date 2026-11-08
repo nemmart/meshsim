@@ -3,8 +3,7 @@
 # embedded kit holding sim/ (Makefile, src, tests, bench, tools) at each named revision, unpacked to $W/kit/NAME/sim, so
 # a before/after pair is built and run in one task. It also carries what the tests and benches read from ref/
 # (hops.txt, sw/ with the boot ROM, test/ with the RISC-V test images) and sim/fw (the schedules), checked present, so
-# a golden verdict never
-# fails for the kit (Quest 149). KIT_EXCLUDE (git pathspecs, e.g. ":(exclude)sim/tests/golden-m2") trims it, unchecked.
+# a golden verdict never fails for the kit (Quest 149). KIT_EXCLUDE (git pathspecs, e.g. ":(exclude)sim/tests/golden-m2") trims it, unchecked.
 # The body (sourced) sees KITS ("NAME ..."), sec, verdict, run (common.inc)
 # and the machine (sim/tools/machine.sh of the last revision, D21). Run from inside the repo; commit first.
 set -eu

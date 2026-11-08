@@ -203,3 +203,28 @@ poke. a2a and the sort need W11's P1 and P2 (question 1). Each piece: its tests,
   They are declared to the framework only when `add_g1` wires them, since the build refuses an unwired port. g++ and
   clang syntax-check both headers, and `test_g1_tile` passes (gcc debug). clang 18 and OpenJDK 21 are installed in
   this container. For W11: (a)-(c) above.
+- 2026-11-08: main merged (W11's P1; W10's Fifo overflow event). WIP 3d15a73 (pushed before any run; "unchecked").
+  **P2 built:** the gather engine (`gather.h`) and `tests/test_gather.cpp` (6 tests). Also the director's `gather_put`
+  and the block's G4 bits, all behind the `g4` / `wired` flags, which are off by default:
+  - PULSE_DMA counts starts on the `ag_start` Wire, and clears EVENTS [10] unless the AG is running.
+  - STATUS: rd_running, rd_done and gather_busy, the last as the OR of the gather's Reg, `gather_put` and W11's
+    `gather_srq_busy`.
+  - EVENTS [10] on rd_done's edge.
+  - ERRORS [3] (drift) and [6] (the gather queue's overflow, through W10's `overflow_steps`) as events.
+  - The fingerprint preview `block_at_end` covers all of these.
+  **Also written: the AG** (`ag.h`, a port of AddressGenerator.java; no tests yet). The flags stay off until W11's
+  read queue (P2) brings `MemIO`; both read Holds need a consumer.
+  **Edits to W8's files** (split agreed with W11):
+  - `regblock.h`: `dma_starts`, `dma_pulse`, `rd_running()`, `rd_done()`; the In fields `gather_busy`,
+    `gather_ovf_ev`, `ag_running`, `ag_done`, `drift_ev`; `apply()` takes the AG's running.
+  - `tile_ctl.h`: TileCtl's g4 inputs and the `ag_start` Wire; `block_at_end`'s g4 part.
+  - `director.h`: `DirectorConfig::g4`, `gather_put`.
+- 2026-11-08: **checked at 3d15a73:**
+  - Every test binary passes in gcc debug, gcc release, clang debug and clang release (one per call, under the tool
+    limit). `test_chip`'s wfi and regs are unchanged.
+  - `make tsan-chip` is clean (gcc and clang, form 2, 8 domains).
+  - Not run: `tsan` and `tsan-units`. My edits don't reach them: they cover framework and M1 units.
+- **For W11 (relayed by the owner):** the PTR view's timing. At the AG's step in cycle t, `ptr[me]` must be PTR as it
+  stood at the end of t - 1, before the table store's write-back of t. ref's AG runs before ts and reads
+  `ts.peek(PTR + me)`. A RegFile is read at a later level in the same cycle, so the table store must publish the value
+  from before its write-back.

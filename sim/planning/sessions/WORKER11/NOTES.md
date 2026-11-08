@@ -206,7 +206,7 @@ Pieces, each committed when it compiles and passes its own test:
     store). A load returns free(t) at its sampling cycle. The director counts read-port results accepted and packets
     accepted with results outstanding (readPortOverlaps; the core's stores as a Count, through t - 1: ref's director runs
     before the core). Touched W8's rv32.h, regmap.h, regblock.h, tile_ctl.*, director.h: the bits agreed with W12.
-    test_rv32's death test now names the bench without a read port. **test_chip ** (one
+    test_rv32's death test now names the bench without a read port. **test_chip `tile_read_port_end_to_end`** (one
     tile, hand-written boot ROM, the router's loopback): both results land in data memory, the load sees 62 free, the
     destination advances to 0x208; at depth 1 the second store is dropped, ERRORS = bit 7, the destination still
     advances.

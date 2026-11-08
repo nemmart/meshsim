@@ -346,3 +346,21 @@ the mesh second. Of today's findings (on W4's synthetic mesh and W6's synthetic 
   3.8%, after_far and near_slot ~3%. (Rv32::digest's 10-33% in perf is the bench's one digest after the timed span.)
   For the sort: the core's steps and their dispatch, TileCtl's 91 ns and BigSram's 286 ns a step are the units' costs
   to watch; the engines (G4) are not measured yet.
+- 2026-11-07: **Quest 148, the quiet case** (PLAN-M2's expectation: a mostly idle machine shouldn't pay for its size).
+  bench_threads --form 4, one thread, N units of which K busy (a little hashing and a put a cycle), the rest asleep
+  with idle Links; us per cycle (the run only):
+
+  | K busy \ N units | 64 | 1,024 | 16,384 | 131,072 |
+  |---|---|---|---|---|
+  | 1 | 0.026 | 0.026 | 0.037 | 0.050 |
+  | 8 | 0.139 | 0.137 | 0.197 | 0.246 |
+  | 64 | 0.920 | 1.005 | 0.988 | 1.043 |
+
+  **Idle units cost nothing per cycle up to ~1,000** (the chip's size: ~1,000 units), and at 128x that a fixed
+  0.02-0.12 us a cycle (not proportional: 128x the units, at most 2x the time with one busy unit, +13% with 64): the
+  sleepers' memory (4 M words at 131,072) crowding the busy units' lines, not work done for them (their instructions
+  don't enter the cycle loop; perf's misses here include the build's). A wholly idle machine costs ~0 (the run jumps:
+  wfi's idle window 0.0025 us a cycle). **W9's chip is never quiet in the boot or wfi**: in windows of 64 cycles
+  (bench_chip --windows, 9 machines) the boot sits at 51 steps a cycle (the cores' polling) 0.64 us a cycle, 12.5 ns a
+  step, and its busy stretches at 190 steps 3.96 us (20.8 ns a step); wfi's quietest window 14 steps a cycle, 0.28 us
+  (19.7 ns a step), its usual 49 steps 0.78 us. **Cost follows the steps taken, not the chip's size.**

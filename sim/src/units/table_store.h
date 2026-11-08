@@ -113,6 +113,7 @@ struct TableStore {
     sim::LinkOut ret_we;       // width 3, their returns {i, old, 0}
     sim::LinkIn req_stream, req_group;      // width 3, the AG's (with_ag: G4)
     sim::LinkOut ret_stream, ret_group;     // width 3, to the AG (with_ag)
+    sim::LinkOut ovf_ev;       // width 0, Link(1) to the block: a request FIFO overflowed (D29, TABLE_OVF)
     bool with_ag = false;
 
     // ---- state ----
@@ -130,6 +131,7 @@ struct TableStore {
         p.in(window, "window", 2);
         p.in(req_we, "req_we", 3);
         p.out(ret_we, "ret_we", 3);
+        p.out(ovf_ev, "ovf_ev", 0);
         if (with_ag) {
             p.in(req_stream, "req_stream", 3); p.in(req_group, "req_group", 3);
             p.out(ret_stream, "ret_stream", 3); p.out(ret_group, "ret_group", 3);
@@ -150,7 +152,7 @@ struct TableStore {
             pipe.valid = false; pipe.last_wb = t;
         }
         const bool o1 = q_stream.commit(t), o2 = q_group.commit(t), o3 = q_we.commit(t);
-        if (o1 || o2 || o3) overflow(t);
+        if (o1 || o2 || o3) c.put(ovf_ev);                    // judged at t, the put's t - 1 (PORTS.md 3)
         if (with_ag) {
             if (c.ready(req_stream)) { q_stream.put(t, c.peek(req_stream)); c.take(req_stream); }
             if (c.ready(req_group)) { q_group.put(t, c.peek(req_group)); c.take(req_group); }
@@ -180,9 +182,6 @@ struct TableStore {
         }
         return pipe.valid || q_stream.n || q_group.n || q_we.n || q_stream.pend || q_group.pend || q_we.pend ? c.next() : sim::Wake::none();
     }
-    void overflow(uint64_t t) {
-        FATAL("table store: a request FIFO overflowed at cycle %llu (TABLE_OVF as an event: not modelled yet, G3 P3)", (unsigned long long)t);
-    }
 };
 
 struct HistMem {
@@ -204,6 +203,7 @@ struct HistStore {
     sim::LinkIn window;        // width 2, from the core: a HIST store through the window, of t (Link(1))
     sim::LinkIn req;           // width 3, the write engine's count-on-arrival {OP_ADD_RET, i, addend}, Link(ts_engine_latency)
     sim::RegFileOut out;       // HIST as the core's one-cycle loads read it (HIST_REGS registers)
+    sim::LinkOut ovf_ev;       // width 0, Link(1) to the block: its request FIFO overflowed (D29, TABLE_OVF)
     HistMem m;
     ReqFifo q;
     Rmw pipe;
@@ -211,7 +211,7 @@ struct HistStore {
     bool hist_overflow = false;        // a count past 17 bits (invariant 6)
     uint64_t digest() const { return m.s_hist.sum ^ q.digest() * 3 ^ pipe.digest() * 5 ^ uint64_t(hist_overflow); }
 
-    explicit HistStore(sim::Ports& p) { p.in(window, "window", 2); p.in(req, "req", 3); p.out(out, "hist", HIST_REGS); }
+    explicit HistStore(sim::Ports& p) { p.in(window, "window", 2); p.in(req, "req", 3); p.out(out, "hist", HIST_REGS); p.out(ovf_ev, "ovf_ev", 0); }
     sim::Wake step(sim::Ctx& c) {
         const uint64_t t = c.now();
         if (c.ready(window)) {                                 // the controller's store of t - 1 (lost on a write-back)
@@ -229,7 +229,7 @@ struct HistStore {
             c.write(out, HIST_WB_VAL, pipe.val);
             pipe.valid = false; pipe.last_wb = t;
         }
-        if (q.commit(t)) FATAL("HIST: its request FIFO overflowed at cycle %llu (TABLE_OVF as an event: not modelled yet, G3 P3)", (unsigned long long)t);
+        if (q.commit(t)) c.put(ovf_ev);                        // judged at t (D29)
         if (c.ready(req)) { q.put(t, c.peek(req)); c.take(req); }
         if (q.n) {
             const uint64_t* r = q.front();

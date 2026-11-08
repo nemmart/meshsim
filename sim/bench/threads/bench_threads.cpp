@@ -50,6 +50,7 @@ struct Args {
     unsigned engines = 0;          // form 2 (W10): Options::engines (0: one per thread)
     bool time_threads = false;     // form 2 (W10): Options::time_threads, the phase shares printed as times="..."
     bool barrier_only = false;     // form 3 (W10): the barrier alone
+    unsigned units = 64, active = 1;   // form 4 (W10): units in all, busy among them
     double crossing_ns = -1;       // form 2 (W10): Options::crossing_ns (default: the framework's)
     std::string partition = "rows";   // form 2 (W10): rows (mesh: bands of rows; synth: clusters in order), or tiles
                                       // (mesh: one domain per tile, 64; synth: one per cluster), spread over the threads
@@ -90,6 +91,8 @@ Args parse(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--engines")) a.engines = unsigned(std::atoi(val()));
         else if (!std::strcmp(argv[i], "--time")) a.time_threads = true;
         else if (!std::strcmp(argv[i], "--barrier-only")) a.barrier_only = true;
+        else if (!std::strcmp(argv[i], "--units")) a.units = unsigned(std::atoi(val()));
+        else if (!std::strcmp(argv[i], "--active")) a.active = unsigned(std::atoi(val()));
         else if (!std::strcmp(argv[i], "--crossing-ns")) a.crossing_ns = std::atof(val());
         else FATAL("unknown option %s", argv[i]);
     }
@@ -307,6 +310,50 @@ int form3(const Args& a) {
     return 0;
 }
 
+// Form 4 (W10): the quiet case. --units N units on one thread, --active K of them busy (each cycle: a little hashing and
+// a put on a Link of 1 to the next busy unit, a ring), the rest asleep after their first step (each with a Link in
+// and out, wired in a ring of their own that never carries a word). Cost per cycle against N and K: does an idle unit
+// cost anything per cycle?
+//   threads form=4 units=N active=K cycles=C secs=S us_per_cycle=U ns_per_active_step=X words=W
+struct Busy {
+    LinkOut out; LinkIn in; uint64_t h;
+    explicit Busy(Ports& p, uint64_t seed) : h(seed) { p.out(out, "out", 1); p.in(in, "in", 1); }
+    uint64_t digest() const { return hash_fields(h); }
+    Wake step(Ctx& c) {
+        if (c.ready(in)) { h = hash_mix(h, c.peek(in)[0]); c.take(in); }
+        for (int r = 0; r < 8; r++) h = hash_mix(h, uint64_t(r));
+        c.put(out, h);
+        return c.next();
+    }
+};
+struct Asleep {
+    LinkOut out; LinkIn in; uint64_t n = 0;
+    explicit Asleep(Ports& p) { p.out(out, "out", 1); p.in(in, "in", 1); }
+    uint64_t digest() const { return hash_fields(n); }
+    Wake step(Ctx& c) { n++; if (c.ready(in)) c.take(in); return Wake::none(); }
+};
+int form4(const Args& a) {
+    const unsigned N = a.units, K = a.active;
+    if (K > N || K == 0) FATAL("--active %u of --units %u: 1 <= active <= units", K, N);
+    Options o;
+    Config cfg(o);
+    std::vector<Busy*> b; std::vector<Asleep*> z;
+    for (unsigned i = 0; i < K; i++) b.push_back(&cfg.add<Busy>("b" + std::to_string(i), uint64_t(i + 1)));
+    for (unsigned i = 0; i < N - K; i++) z.push_back(&cfg.add<Asleep>("z" + std::to_string(i)));
+    for (unsigned i = 0; i < K; i++) cfg.link(b[i]->out, b[(i + 1) % K]->in, 1);
+    for (unsigned i = 0; i < z.size(); i++) cfg.link(z[i]->out, z[(i + 1) % z.size()]->in, 3);
+    Sim s = cfg.build();
+    if (!a.cpus.empty()) pin_to_cpu(a.cpus[0]);
+    s.run(a.warmup);
+    const double t0 = now_s();
+    s.run(a.cycles);
+    const double secs = now_s() - t0;
+    std::printf("threads form=4 units=%u active=%u cycles=%llu secs=%.4f us_per_cycle=%.4f ns_per_active_step=%.2f words=%llu digest=%016llx\n",
+                N, K, (unsigned long long)a.cycles, secs, 1e6 * secs / double(a.cycles), 1e9 * secs / double(a.cycles) / K,
+                (unsigned long long)s.sizes().total_words, (unsigned long long)s.digest());
+    return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -315,5 +362,6 @@ int main(int argc, char** argv) {
     if (a.form == 1) return form1(a);
     if (a.form == 2) return form2(a);
     if (a.form == 3) return form3(a);
-    FATAL("--form %d: 1, 2 or 3", a.form);
+    if (a.form == 4) return form4(a);
+    FATAL("--form %d: 1, 2, 3 or 4", a.form);
 }

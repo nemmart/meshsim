@@ -37,6 +37,7 @@ struct DirectorConfig {
     unsigned tile = 0;                 // this tile's endpoint id (0-63)
     uint32_t periph_present = 1;       // PARAMS [2:0]: which peripheral regions are reachable (bad packets)
     uint32_t mem_chunks = 1u << 20;    // big SRAM's size, for mode 0 region 0x03's bounds (flagged, invariant 19)
+    bool g4 = false;                   // the tile has G4's gather engine wired (W12): `gather_put` is declared
 };
 
 struct Director {
@@ -49,6 +50,8 @@ struct Director {
     sim::FifoOut we_in;        // width 3: mode 0 region 0x03, modes 1-3 -> the write engine, Fifo(we_in_depth) (G3)
     sim::FifoOut gather;       // width 3: mode 4 -> the GATHER engine's queue, Fifo(gather_depth) (G4)
     sim::LinkOut bad;          // width 0: a bad packet dropped at t (Conditions.BAD_MODE_OR_SIZE) -> the block, Link(1)
+    sim::LinkOut gather_put;   // width 0: a mode-4 put on `gather` at t -> the block, Link(1) (W12, G4: one of STATUS's
+                               // three gather-busy inputs: ref's gatherIn.isEmpty counts the pending put); when cfg.g4
 
     DirectorConfig cfg;
     // statistics (not state: outside the fingerprint)
@@ -59,6 +62,7 @@ struct Director {
         p.out(port_b, "port_b", 3); p.out(landed, "landed", 0); p.out(kline, "kline", 1);
         p.out(we_in, "we_in", 3); p.out(gather, "gather", 3);
         p.out(bad, "bad", 0);
+        if (cfg.g4) p.out(gather_put, "gather_put", 0);
     }
     sim::Wake step(sim::Ctx& c) {
         if (!c.ready(in)) return sim::Wake::none();
@@ -89,7 +93,10 @@ struct Director {
             break;
         }
         case lw::M_SRC: case lw::M_BUCKET: case lw::M_AUG: c.put(we_in, d, h, hi); break;   // the write engine (G3, G4)
-        case lw::M_GATHER: c.put(gather, d, h, hi); break;                                 // the gather engine (G4)
+        case lw::M_GATHER:                                                                  // the gather engine (G4)
+            c.put(gather, d, h, hi);
+            if (cfg.g4) c.put(gather_put);
+            break;
         default: count_only++; break;                                                       // mode 5: counted only
         }
         return sim::Wake::none();                                     // the eject link brings at most one word a cycle

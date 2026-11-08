@@ -29,12 +29,14 @@ struct RegBlockState {
     uint32_t router_hdr = 0, router_addr = 0, router_w[3] = {}, dma_config = 0, record_base = 0, rd_setup = 0;
     bool q_all = false, q_one[8] = {}, cond_all_prev = true, cond_one_prev[8] = {true, true, true, true, true, true, true, true};
     bool rd_done_prev = false;
+    uint32_t dma_starts = 0;                    // G4 (W12): PULSE_DMA starts so far (the AG's `start` Wire: a change = a start)
+    bool dma_pulse = false;                     // PULSE_DMA's start applied at this endCycle (the AG's pStart until its step)
     uint32_t remaining[8] = {};                 // the write counters (20 bits), 1-7: the director's in ref
     uint64_t ev_prev[15] = {};                  // the condition counts as endCycle last saw them (Conditions.N)
     bool ready_pulse = false;                   // READY rose at this endCycle (Chip collects readyPulseAt == t)
     bool error_line = false;                    // TILE_CONDITIONS != 0 after this endCycle
     uint64_t unexpected_total = 0, done_early = 0, counter_wraps = 0, router_sends = 0, bad_total = 0;
-    enum : unsigned { COND_ROUTER_OVF = 0, COND_BAD = 1, COND_WE_IN_OVF = 4, COND_TABLE_OVF = 5 };
+    enum : unsigned { COND_ROUTER_OVF = 0, COND_BAD = 1, COND_DRIFT = 3, COND_WE_IN_OVF = 4, COND_TABLE_OVF = 5, COND_GATHER_OVF = 6 };
     // ---- statistics, and ref's violations (counted) ----
     uint64_t gos = 0, dones = 0, readies = 0, sends = 0, trace_stores = 0, violations = 0, sim_exit_at = 0;
     uint32_t sim_exit_value = 0;
@@ -49,10 +51,19 @@ struct RegBlockState {
         bool bad = false;                  // the director dropped a bad packet at t (an event: ERRORS [1] at endCycle(t))
         bool router_ovf_ev = false;        // the router counted an overflow at t (an event, D29: ERRORS [0] at endCycle(t))
         uint64_t router_ovf = 0, we_in_ovf = 0, gather_ovf = 0;   // FIFO overflow counts through t (D28: Counts)
+        // G4 (W12)
+        bool gather_busy = false;          // GatherEngine.busy(t): the OR of its three inputs (gather.h)
+        bool gather_ovf_ev = false;        // the gather queue overflowed, judged at t (an event, D29: ERRORS [6])
+        bool ag_running = false, ag_done = false;   // the AG's running and done at the end of t (its status Reg)
+        bool drift_ev = false;             // a refusal in a group run at t (an event, D29: ERRORS [3], Conditions.DRIFT)
         // W11 (G3), D29: overflows judged at t, as events: ERRORS [4] (the write engine's input), [5] (the table
         // store's and HIST's request FIFOs) at endCycle(t)
         bool we_in_ovf_ev = false, table_ovf_ev = false;
     };
+    // AddressGenerator.runningForStatus / doneForStatus at this endCycle: the AG's state at the end of t with the pulse
+    // of this endCycle (ref's pStart, set by apply and consumed at the AG's next step)
+    bool rd_running(const In& in) const { return in.ag_running || dma_pulse; }
+    bool rd_done(const In& in) const { return in.ag_done && !dma_pulse; }
 
     UNITS_NOINLINE void end_cycle(uint64_t t, const In& in) {
         if (in.kline) {                                                  // the director's decrement due at t (D27)
@@ -62,11 +73,14 @@ struct RegBlockState {
         if (in.freed) { if (req_n == 0) violations++; else req_n--; }   // the bus freed the head at t, before the tile ran
         if (in.go) { done = landed = gate = false; gos++; events |= 1u << EV_GO; }                    // 1.
         uint32_t clears = 0;
-        if (in.op == BUS_STORE) clears = apply(t, in.arg, in.v);                                     // 2.
+        dma_pulse = false;
+        if (in.op == BUS_STORE) clears = apply(t, in.arg, in.v, in.ag_running);                                     // 2.
         if (in.landed) { landed = true; events |= 1u << EV_COMMAND; }                                // 3.
         if (in.op == BUS_ERROR) conditions |= 1u << in.arg;                                          // 4. new errors
         if (in.bad) { bad_total++; conditions |= 1u << COND_BAD; }
         if (in.router_ovf_ev) conditions |= 1u << COND_ROUTER_OVF;
+        if (in.gather_ovf_ev) conditions |= 1u << COND_GATHER_OVF;
+        if (in.drift_ev) conditions |= 1u << COND_DRIFT;
         if (in.we_in_ovf_ev) conditions |= 1u << COND_WE_IN_OVF;
         if (in.table_ovf_ev) conditions |= 1u << COND_TABLE_OVF;
         const uint64_t counts[] = {in.router_ovf, bad_total, unexpected_total, 0, in.we_in_ovf, 0, in.gather_ovf, 0, done_early};
@@ -79,13 +93,17 @@ struct RegBlockState {
         if (ready_pulse) readies++;
         ready_level = rd;
         if (in.op == BUS_CONSUME) events &= ~(in.v & ~EVENTS_LIVE);                                  // 5. the consume
-        // [10]: the AG's done (G4); rd_done_prev stays false until it exists
+        const bool rdd = rd_done(in);                                                               //    [10]: rd_done's edge
+        if (rdd && !rd_done_prev) events |= 1u << EV_RUN_DONE;
+        rd_done_prev = rdd;
         bool rb = busy();                                                                            //    the edge events
         if (!rb && request_busy_prev) events |= 1u << EV_REQUEST_ROOM;
         request_busy_prev = rb;
         counter_events(clears);
         error_line = conditions != 0;
-        status = uint32_t(in.send_busy) << ST_SEND_BUSY | uint32_t(done) << ST_DONE | uint32_t(landed) << ST_LANDED
+        status = uint32_t(rd_running(in)) << ST_RD_RUNNING | uint32_t(rdd) << ST_RD_DONE
+                 | uint32_t(in.gather_busy) << ST_GATHER_BUSY
+                 | uint32_t(in.send_busy) << ST_SEND_BUSY | uint32_t(done) << ST_DONE | uint32_t(landed) << ST_LANDED
                  | uint32_t(rb) << ST_REQUEST_BUSY;                                                  // 6.
     }
 
@@ -114,7 +132,7 @@ struct RegBlockState {
     }
 
     // The core's store of t (TileControl.apply); returns the event bits it clears this cycle (beating a same-cycle set).
-    uint32_t apply(uint64_t t, uint32_t r, uint32_t v) {
+    uint32_t apply(uint64_t t, uint32_t r, uint32_t v, bool ag_running = false) {
         uint32_t clears = 0;
         switch (r) {
         case PULSE_DONE:
@@ -128,8 +146,11 @@ struct RegBlockState {
                 for (bool& q : q_one) q = false;
             }
             break;
-        case PULSE_DMA:
-            if (v & 1) FATAL("register block: PULSE_DMA at cycle %llu: not modelled in M2 yet (G4)", (unsigned long long)t);
+        case PULSE_DMA:                                                   // TileControl.apply (W12, G4)
+            if (v & 1) {
+                if (!ag_running) { clears |= 1u << EV_RUN_DONE; events &= ~clears; }   // running: the AG stops (UB, 8.6)
+                dma_starts++; dma_pulse = true;
+            }
             break;
         case DMA_CONFIG:
             if ((v >> 18 & 7) > 4 || (v >> 21 & 7) > 4)
@@ -181,7 +202,7 @@ struct RegBlockState {
         uint64_t h = 0;
         for (uint64_t v : w) h = digest_mix(h, v);
         const uint64_t m2[] = {router_hdr, router_addr, router_w[0], router_w[1], router_w[2], dma_config, record_base,
-                               rd_setup, uint64_t(q_all) | uint64_t(cond_all_prev) << 1 | uint64_t(rd_done_prev) << 2
+                               rd_setup, dma_starts, uint64_t(q_all) | uint64_t(cond_all_prev) << 1 | uint64_t(rd_done_prev) << 2
                                    | uint64_t(ready_pulse) << 3 | uint64_t(error_line) << 4,
                                unexpected_total, done_early, counter_wraps, router_sends, bad_total};
         for (uint64_t v : m2) h = digest_mix(h, v);

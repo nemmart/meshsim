@@ -435,3 +435,11 @@ the mesh second. Of today's findings (on W4's synthetic mesh and W6's synthetic 
   kit (the kit's fix holds); digests equal; one thread boot 0.948 / 0.952, wfi 0.861 / 0.868, regs 1.637 / 1.661, the
   boot at 6 threads 0.302 / 0.301, mesh 5.378 / 5.485, synth 6.402 / 6.423: noise-level (nothing in the cycle path
   changed; the carving kept is build-time).
+- 2026-11-08: **The sort, first measurement set-up.** bench_sort (bench/w10/): W12's machine and sequence (test_sort's
+  SortChip, without the fingerprints), the boot to B by polling, the input at B, then M2Sort's counted span (L1's GO
+  14,838 to L2's all-READY 511,457: **496,619 cycles**, found by a polling run and checked in every timed machine).
+  Modes: by placement (one, rows, tiles, load, profile calibrated over the whole sort), --time, --phases (97, each
+  timed), --units, --windows (cost by steps a cycle), --trace-map (footprints). The keys: KeyGen's uniform 64 x 16384
+  (sha256 = HASHES), carried in the kit (mk_task.sh KIT_ADD). Here (one CPU, not the runner): 16.4 us a cycle, 8.1 s.
+  **The runner and W12:** the runner takes the oldest unresulted task, one at a time (PIPELINE.md), so W12's full-size
+  sort (Quest 154, done) and my timing tasks can't overlap; I claim plain numbers after pulling NUMBERS.md.

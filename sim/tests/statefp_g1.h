@@ -17,6 +17,7 @@
 #include "units/rv32.h"
 #include "units/controller.h"
 #include "units/big_sram.h"
+#include "units/inject.h"
 #include "units/table_store.h"
 #include "units/write_engine.h"
 #include "units/tile_ctl.h"
@@ -44,6 +45,8 @@ struct G1Tile {
     const units::HistStore* uhist = nullptr;
     const units::WriteEngine* uwe = nullptr;      // G3 (W11)
     const units::BigSram* usram = nullptr;        // G3 (W11)
+    const units::Injection* uinj = nullptr;       // G3 (W11): the read port's injections (rdport); set by a chip's
+                                                  // driver (g1_tile doesn't: G1's tests have no injection unit)
     const units::Core* m1core = nullptr;          // W5's M1 core: the bench's port-B words on `memw`
     const units::RegBlock* m1ctl = nullptr;       // W5's M1 block: its inputs in flight (bus, GO, landed, freed)
 };
@@ -73,8 +76,8 @@ void w_hist(const void* g1tile, FpOut& o, const FpCtx& x);
 // G3 (W11): the big SRAM's area queues and holds (StateFp.sramQ), its contents (sram.data: the incremental sum).
 void w_sram(const void* g1tile, FpOut& o, const FpCtx& x);
 void w_sram_data(const void* g1tile, FpOut& o, const FpCtx& x);
-// Stubs: units not built yet, idle (their reset stream). G3 replaces rdport with its writer.
-void w_rdport_stub(const void*, FpOut& o, const FpCtx& x);
+// G3 (W11): StateFp "rdport": inUse (stores - injected), outstanding (stores - accepted).
+void w_rdport(const void* g1tile, FpOut& o, const FpCtx& x);
 void w_req(const void* g1tile, FpOut& o, const FpCtx& x);   // the request port: idle in M2 (AUDIT-M2 1.2 (C))
 
 // Registers every writer above for tile g.tile ("t<k>.we", ...). `g` outlives the registry.

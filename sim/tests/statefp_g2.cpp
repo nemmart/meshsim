@@ -160,33 +160,83 @@ void w_router(const void* p, FpOut& o, const FpCtx& x) {
     if (r.attached) hold_port(o, "fromCnc", x.sim, r.from_cnc);
 }
 
+// StateFp "inj": the read-return holding register (W11: the read queue's, inside the unit: empty at the end of c, the
+// injection takes it the cycle it is visible; a release of c listed as the put), then the send hold (observer).
 void w_inj(const void* p, FpOut& o, const FpCtx& x) {
     const G2Tile& g = *static_cast<const G2Tile*>(p);
-    hold_empty(o, "readReturn");
+    const units::InjReadSide& rs = g.inj->rs;
+    if (rs.cur_v || (rs.nxt_v && rs.nxt_at != x.cycle)) {
+        std::fprintf(stderr, "statefp_g2: t%u.inj: the read-return hold out of step at %llu\n", g.tile, (unsigned long long)x.cycle);
+        std::abort();
+    }
+    BusEntry put{0, rs.nxt_w[0], rs.nxt_w[1], rs.nxt_w[2]};
+    hold(o, "readReturn", nullptr, rs.nxt_v ? &put : nullptr);
     hold_port(o, "send", x.sim, g.inj->send);
 }
 
-void w_srq_stub(const void* p, FpOut& o, const FpCtx& x) {
+// StateFp "srq" (W11): the free list in order; every held token's slot in token order (reqA, reqB, issueT, readyT
+// (Long.MAX_VALUE until ready), partsLeft, client, lo, hi, zero); the two in-order queues; the read port's ready set;
+// held (reads and loopback tokens, less a loopback free arriving at c + 1); the clients' buses; the area returns.
+void w_srq(const void* p, FpOut& o, const FpCtx& x) {
     const G2Tile& g = *static_cast<const G2Tile*>(p);
     const units::Injection& in = *g.inj;
-    if (in.tok.reads) { std::fprintf(stderr, "statefp_g2: t%u.srq: reads held, the stub can't write them (G3)\n", g.tile); std::abort(); }
-    o.w("free.n", 64);
-    for (unsigned k = 0; k < 64; k++) o.w("free", k);
-    for (unsigned c = 0; c < 2; c++) o.w("order.n", 0);
-    o.w("rpReady.n", 0);
-    sim::PortEntry e[8];
-    sim::PortView v = x.sim->observe(in.loop_left, e, 8);
+    const units::InjReadSide& rs = in.rs;
+    const unsigned cap = in.tok.cap;
+    if (!rs.cfg.present) {                                                  // no read side: free 0..cap-1, nothing held
+        if (in.tok.reads) { std::fprintf(stderr, "statefp_g2: t%u.srq: reads held without a read side\n", g.tile); std::abort(); }
+        o.w("free.n", cap);
+        for (unsigned k = 0; k < cap; k++) o.w("free", k);
+    } else {
+        o.w("free.n", rs.free_n);
+        for (unsigned k = 0; k < rs.free_n; k++) o.w("free", rs.free_q[(rs.free_head + k) % units::InjReadSide::MAX]);
+        for (unsigned t = 0; t < cap; t++) {
+            if (!rs.held_slot[t]) continue;
+            o.w("tok", t); o.w("reqA", rs.reqA[t]); o.w("reqB", rs.reqB[t]); o.w("issueT", rs.issueT[t]);
+            o.w("readyT", rs.readyT[t] == ~0ull ? 0x7FFFFFFFFFFFFFFFull : rs.readyT[t]);
+            o.w("partsLeft", rs.parts[t]); o.w("client", rs.cl[t]); o.w("lo", rs.lo[t]); o.w("hi", rs.hi[t]); o.w("zero", rs.zero[t]);
+        }
+    }
+    for (unsigned c = 0; c < 2; c++) {
+        const unsigned n = rs.cfg.present ? rs.ord_n[c] : 0;
+        o.wpi("order", c, ".n", n);
+        for (unsigned i = 0; i < n; i++) o.wi("order", c, rs.ord[c][(rs.ord_head[c] + i) % units::InjReadSide::MAX]);
+    }
+    const unsigned rn = rs.cfg.present ? rs.rp_n : 0;
+    o.w("rpReady.n", rn);
+    for (unsigned i = 0; i < rn; i++) { o.w("rpReady.t", rs.rp[i].t); o.w("rpReady.tok", rs.rp[i].tok); }
+    sim::PortEntry e[64];
+    sim::PortView v = x.sim->observe(in.loop_left, e, 64);
     uint64_t freeing = 0;
     for (uint32_t i = 0; i < v.n; i++) if (e[i].at > x.cycle) freeing++;   // a free of c, applied at c + 1
-    o.w("held", in.tok.loop_held - freeing);
-    for (unsigned c = 0; c < 3; c++) fifo_empty(o, "client");               // empty: a FIFO's and a hold's streams agree
-    for (unsigned a = 0; a < 16; a++) link_empty(o, "ret");
+    o.w("held", in.tok.reads + in.tok.loop_held - freeing);
+    // the clients (gather, AG: Holds; the read port: a Fifo; an absent one is empty: the two empty streams agree)
+    for (unsigned c = 0; c < 2; c++) {
+        const bool has = rs.cfg.present && (c == 0 ? rs.cfg.gather : rs.cfg.ag);
+        if (!has) { hold_empty(o, "client"); continue; }
+        sim::PortView h = x.sim->observe(rs.client_hold[c], e, 64);
+        BusEntry held{0, e[0].w[0], e[0].w[1], 0}, put{0, h.put_w[0], h.put_w[1], 0};
+        hold(o, "client", h.valid ? &held : nullptr, h.put ? &put : nullptr);
+    }
+    if (!rs.cfg.present) fifo_empty(o, "client");
+    else {
+        sim::PortView f = x.sim->observe(rs.rp_q, e, 64);
+        BusEntry be[64], put{0, f.put_w[0], f.put_w[1], 0};
+        for (uint32_t i = 0; i < f.n; i++) be[i] = BusEntry{0, e[i].w[0], e[i].w[1], 0};
+        fifo(o, "client", be, f.n, f.put ? &put : nullptr);
+    }
+    for (unsigned a = 0; a < units::InjReadSide::AREAS; a++) {
+        if (!rs.cfg.present) { link_empty(o, "ret"); continue; }
+        sim::PortView l = x.sim->observe(rs.ret[a], e, 64);
+        BusEntry be[64];
+        for (uint32_t i = 0; i < l.n; i++) be[i] = BusEntry{e[i].at, e[i].w[0], e[i].w[1], e[i].w[2]};
+        link(o, "ret", be, l.n);
+    }
 }
 
 void register_g2_tile(FpRegistry& r, const G2Tile& g) {
     r.add(units::tile_unit(g.tile, "router"), w_router, &g);
     r.add(units::tile_unit(g.tile, "inj"), w_inj, &g);
-    r.add(units::tile_unit(g.tile, "srq"), w_srq_stub, &g);
+    r.add(units::tile_unit(g.tile, "srq"), w_srq, &g);
 }
 
 void register_g2(FpRegistry& r, const G2Chip& g) {

@@ -48,7 +48,7 @@ void w_router(const void* g2tile, FpOut& o, const FpCtx& x);
 void w_inj(const void* g2tile, FpOut& o, const FpCtx& x);
 // StateFp "srq" with no reads (G3 replaces it): the free list 0-63, the tokens held as at the start of c + 1 (the
 // loopback's, minus a free on its way), the three clients' buses and the 16 areas' return links, empty.
-void w_srq_stub(const void* g2tile, FpOut& o, const FpCtx& x);
+void w_srq(const void* g2tile, FpOut& o, const FpCtx& x);   // W11: the read queue
 // Registers "t<k>.router", "t<k>.inj", "t<k>.srq". `g` outlives the registry.
 void register_g2_tile(FpRegistry& r, const G2Tile& g);
 

@@ -91,7 +91,7 @@ std::string check(const char* name, uint64_t through, const Setup& su, const std
 
     // the fingerprint: tile 0's units, the chip's
     std::vector<fp::G1Tile> g1(64);
-    for (unsigned k = 0; k < 64; k++) g1[k] = fp::g1_tile(m, k);
+    for (unsigned k = 0; k < 64; k++) { g1[k] = fp::g1_tile(m, k); g1[k].uinj = &m.unit<Injection>(tile_unit(k, "inj")); }
     std::vector<fp::G2Tile> g2(64);
     for (unsigned k = 0; k < 64; k++) g2[k] = fp::g2_tile(m, k);
     fp::G2Chip gc;

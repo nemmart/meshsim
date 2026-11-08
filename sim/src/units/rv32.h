@@ -444,6 +444,9 @@ struct Rv32 {
             return true;
         }
         case EVENTS_PEEK: v = e.reg(EVENTS); return true;
+        case SRAM_RD_ADDR_QUEUE:                                               // the read port's free entries at t (4.3)
+            if constexpr (requires { e.rp_free(); }) { v = e.rp_free(); return true; }
+            else FATAL("tile core: a load from SRAM_RD_ADDR_QUEUE at 0x%x: this bench has no read port", a);
         default: v = e.reg(i); return true;   // PARAMS, STATUS, ERRORS, the mask, required; M2: ROUTER_HDR/ADDR, DMA_*,
                                               // the counters (at the start of t), SRAM_RD_DEST_ADDR
         }
@@ -509,6 +512,13 @@ struct Rv32 {
             }
             if (v & ~defined_bits(i)) violations++;                           // reserved bits set: ignored (invariant 21)
             if (i == TRACE) trace_stores++;
+            if (i == SRAM_RD_ADDR_QUEUE) {                                     // the read port (4.3; Controller.java:380)
+                if constexpr (requires { e.read_port(uint64_t(0), 0u); }) {
+                    const bool queued = e.read_port(t, v & 0x1FFFFF);
+                    e.post(BUS_STORE, i, (v & 0x1FFFFF) | (queued ? 0u : 1u << 31));   // bit 31: dropped (ERRORS [7])
+                } else FATAL("tile core: a store to SRAM_RD_ADDR_QUEUE at 0x%x: this bench has no read port", a);
+                return true;
+            }
             e.post(BUS_STORE, i, v);
             if (i >= ROUTER_SEND_32 && i <= ROUTER_SEND_128) send_store(e, t, i - ROUTER_SEND_32, v);
             if (i == SIM_EXIT) halt_with(t, HALT_EXIT, ipc);

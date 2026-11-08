@@ -303,7 +303,7 @@ DEATH_TEST(rv32_pulse_dma_not_modelled, "PULSE_DMA \\(0xfffff810\\): not modelle
     M m; m.core.x[1] = REG_BASE; m.prog({SW(2, 1, 0x10)});
     m.step();
 }
-DEATH_TEST(rv32_read_port_not_modelled, "SRAM_RD_ADDR_QUEUE \\(0xfffff87c\\): not modelled yet") {
+DEATH_TEST(rv32_read_port_needs_a_read_port, "SRAM_RD_ADDR_QUEUE at 0xfffff87c: this bench has no read port") {
     M m; m.core.x[1] = REG_BASE; m.prog({SW(2, 1, 0x7C)});
     m.step();
 }

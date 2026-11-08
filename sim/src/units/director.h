@@ -52,10 +52,14 @@ struct Director {
     sim::LinkOut bad;          // width 0: a bad packet dropped at t (Conditions.BAD_MODE_OR_SIZE) -> the block, Link(1)
     sim::LinkOut gather_put;   // width 0: a mode-4 put on `gather` at t -> the block, Link(1) (W12, G4: one of STATUS's
                                // three gather-busy inputs: ref's gatherIn.isEmpty counts the pending put); when cfg.g4
+    sim::CountIn rp_stores;    // W11: the core's read-port stores (read through t - 1: ref's director runs before the core)
 
     DirectorConfig cfg;
     // statistics (not state: outside the fingerprint)
     uint64_t accepted = 0, per_mode[lw::N_MODES] = {}, count_only = 0, undefined_size = 0, violations = 0, bad_packets = 0;
+    // W11: read-port results accepted (ReadPort.acceptedAt; the "rdport" fingerprint's outstanding = stores - this) and
+    // packets accepted with results outstanding (TrafficDirector.readPortOverlaps: the software rule of 4.3, counted)
+    uint64_t rp_accepted = 0, rp_overlaps = 0;
 
     Director(sim::Ports& p, const DirectorConfig& c) : cfg(c) {
         p.in(in, "in", 3);
@@ -63,6 +67,7 @@ struct Director {
         p.out(we_in, "we_in", 3); p.out(gather, "gather", 3);
         p.out(bad, "bad", 0);
         if (cfg.g4) p.out(gather_put, "gather_put", 0);
+        p.in(rp_stores, "rp_stores");
     }
     sim::Wake step(sim::Ctx& c) {
         if (!c.ready(in)) return sim::Wake::none();
@@ -73,7 +78,8 @@ struct Director {
         const unsigned mode = lw::mode(h), ctr = lw::counter(h), size = lw::size(h);
         const uint32_t a = lw::addr(h);
         per_mode[mode]++;
-        if (lw::read_port_tag(h)) FATAL("director: a read-port result at cycle %llu: not modelled in M2 yet (G3)", (unsigned long long)c.now());
+        if (lw::read_port_tag(h)) rp_accepted++;
+        else if (c.through_last(rp_stores) > rp_accepted && lw::src(h) != cfg.tile && !command(h)) rp_overlaps++;
         if (mode == lw::M_WRITE && size != lw::SIZE_UNDEF && !lw::aligned(a, size))
             FATAL("director (tile %u): a mode-0 packet at 0x%x not aligned to its size, cycle %llu: UB (v1.25 s8b)", cfg.tile, a, (unsigned long long)c.now());
         if (lw::bad_packet(mode, size, a, cfg.periph_present)) { c.put(bad); bad_packets++; return sim::Wake::none(); }
@@ -104,9 +110,16 @@ struct Director {
     uint64_t digest() const {
         uint64_t h = digest_mix(accepted, count_only);
         for (uint64_t v : per_mode) h = digest_mix(h, v);
-        return digest_mix(digest_mix(digest_mix(h, undefined_size), violations), bad_packets);
+        return digest_mix(digest_mix(digest_mix(digest_mix(h, undefined_size), violations), bad_packets), rp_accepted);
     }
     static constexpr uint32_t kCmdWord = 0x7FC0 >> 2;                 // command slot 0 (ControllerMemories.COMMAND)
+    static bool in_command(uint32_t byte) { return byte >= 0x7FC0 && byte < 0x7FC0 + 64; }   // ControllerMemories.inCommand
+    // TrafficDirector's `command`: an uncounted mode-0 write from a controller into data memory's command area
+    static bool command(uint64_t h) {
+        const uint32_t a = lw::addr(h);
+        return lw::mode(h) == lw::M_WRITE && lw::counter(h) == 0 && lw::controller(lw::src(h)) && lw::region(a) == lw::R_DMEM &&
+               in_command(lw::offset(a));
+    }
 };
 
 }  // namespace units

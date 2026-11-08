@@ -56,7 +56,7 @@ inline const RegInfo& reg_info(unsigned i) {
         {"DMA_CONFIG", A_M1, A_M1}, {"DMA_RECORD_BASE_ADDRESS", A_M1, A_M1},
         {"WRITE_COUNTER_1", A_M1, A_M1}, {"WRITE_COUNTER_2", A_M1, A_M1}, {"WRITE_COUNTER_3", A_M1, A_M1},
         {"WRITE_COUNTER_4", A_M1, A_M1}, {"WRITE_COUNTER_5", A_M1, A_M1}, {"WRITE_COUNTER_6", A_M1, A_M1},
-        {"WRITE_COUNTER_7", A_M1, A_M1}, {"SRAM_RD_ADDR_QUEUE", A_OUT, A_OUT}, {"SRAM_RD_DEST_ADDR", A_M1, A_M1},
+        {"WRITE_COUNTER_7", A_M1, A_M1}, {"SRAM_RD_ADDR_QUEUE", A_M1, A_M1}, {"SRAM_RD_DEST_ADDR", A_M1, A_M1},
     };
     static constexpr RegInfo kSimExit{"SIM_EXIT", A_NONE, A_M1}, kTrace{"TRACE", A_NONE, A_M1};
     return i < 33 ? t[i] : i == SIM_EXIT ? kSimExit : i == TRACE ? kTrace : kNone;

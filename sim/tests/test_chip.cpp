@@ -91,7 +91,7 @@ std::string check(const char* name, uint64_t through, const Setup& su, const std
 
     // the fingerprint: tile 0's units, the chip's
     std::vector<fp::G1Tile> g1(64);
-    for (unsigned k = 0; k < 64; k++) g1[k] = fp::g1_tile(m, k);
+    for (unsigned k = 0; k < 64; k++) { g1[k] = fp::g1_tile(m, k); g1[k].uinj = &m.unit<Injection>(tile_unit(k, "inj")); }
     std::vector<fp::G2Tile> g2(64);
     for (unsigned k = 0; k < 64; k++) g2[k] = fp::g2_tile(m, k);
     fp::G2Chip gc;
@@ -241,4 +241,84 @@ TEST(tile_router_overflow_steps_the_register_block) {
     const Flood& fl = m.unit<Flood>("flood");
     CHECK_EQ(fl.line_at, first + 2 + spec.net.ready_latency - 2);   // put at t + 2, ready_latency - 2 on its way
     CHECK_EQ(fl.line_w, sim::Word(2));                     // the error line high, no READY
+}
+
+namespace {
+// A tile's surroundings that do nothing: its four links, GO and its line, sunk.
+struct Quiet {
+    sim::LinkOut out[4], go;
+    sim::LinkIn in[4], line;
+    explicit Quiet(sim::Ports& p) {
+        for (unsigned d = 0; d < 4; d++) { p.out(out[d], "out", 3); p.in(in[d], "in", 3); }
+        p.out(go, "go", 0); p.in(line, "line", 1);
+    }
+    sim::Wake step(sim::Ctx& c) {
+        for (unsigned d = 0; d < 4; d++) if (c.ready(in[d])) c.take(in[d]);
+        if (c.ready(line)) c.take(line);
+        return sim::Wake::none();
+    }
+    uint64_t digest() const { return 0; }
+};
+// The read port end to end in one tile (W11, P2b): the core's boot ROM sets SRAM_RD_DEST_ADDR to 0x200 (32 bits,
+// uncounted), queues reads of chunks 0x40 and 0x44, loads SRAM_RD_ADDR_QUEUE (free entries) into x4 and
+// SRAM_RD_DEST_ADDR into x5, then waits. The results go through the read queue, the injection unit, the router's
+// loopback and the director to data memory at 0x200 and 0x204.
+struct RpRun { uint32_t x4, x5, d0, d1, errors; uint64_t stored, dropped, accepted, injected; };
+RpRun read_port_run(unsigned depth) {
+    static const uint32_t rom[] = {0x80000093, 0x20000113, 0x0820a023, 0x04000193, 0x0630ae23, 0x04400193, 0x0630ae23,
+                                   0x07c0a203, 0x0800a283, 0x10500073, 0x0000006f};
+    const Hops hops = load_hops("ref/meshsim/hops.txt");
+    std::vector<uint32_t> mem(64 * 2 * MEM_WORDS, 0);
+    SramBlocks blocks;
+    G1Ctx gx;
+    gx.cfg.read_port_depth = depth;
+    gx.bootrom = rom; gx.bootrom_words = sizeof rom / 4; gx.mem = mem.data(); gx.sram = &blocks;
+    CncProgram prog;
+    prog.release();
+    ChipSpec spec;
+    spec.hops = &hops; spec.program = &prog; spec.control = add_g1; spec.control_ctx = &gx;
+    const unsigned k = 3;
+    sim::Config cfg;
+    TileIO io = tile_cycle(cfg, spec, k);
+    auto& q = cfg.add<Quiet>("quiet");
+    for (unsigned d = 0; d < 4; d++) { cfg.link(q.out[d], io.link_in[d], 1); cfg.link(io.link_out[d], q.in[d], 1); }
+    cfg.link(q.go, io.go, 1);
+    cfg.link(io.line, q.line, spec.net.ready_latency - 2);
+    sim::Sim m = cfg.build();
+    m.unit<BigSram>(tile_unit(k, "sram")).poke(0x40, 0xABCD0040);
+    m.unit<BigSram>(tile_unit(k, "sram")).poke(0x44, 0xABCD0044);
+    m.run(100);
+    const TileCore& c = m.unit<TileCore>(tile_unit(k, "core"));
+    const TileCtl& b = m.unit<TileCtl>(tile_unit(k, "ctl"));
+    RpRun r;
+    r.x4 = c.rv.x[4]; r.x5 = c.rv.x[5];
+    r.d0 = c.rv.dmem[0x200 >> 2]; r.d1 = c.rv.dmem[0x204 >> 2];
+    r.errors = b.s.conditions;
+    r.stored = c.rp_stored; r.dropped = c.rp_dropped;
+    r.accepted = m.unit<Director>(tile_unit(k, "dir")).rp_accepted;
+    r.injected = m.unit<Injection>(tile_unit(k, "inj")).rs.rp_injected_n;
+    return r;
+}
+}  // namespace
+
+// Depth 64: both reads queued and their results written; the load at its sampling cycle sees 62 free (no result
+// injected yet: the second read was queued two cycles before, the first's row is not back); the destination advanced
+// twice (0x208). Depth 1: the second store is dropped (READ_PORT: ERRORS [7]), the destination still advances.
+TEST(tile_read_port_end_to_end) {
+    RpRun a = read_port_run(64);
+    CHECK_EQ(a.d0, 0xABCD0040u);
+    CHECK_EQ(a.d1, 0xABCD0044u);
+    CHECK_EQ(a.x4, 62u);
+    CHECK_EQ(a.x5, 0x208u);
+    CHECK_EQ(a.stored, uint64_t(2));
+    CHECK_EQ(a.accepted, uint64_t(2));
+    CHECK_EQ(a.injected, uint64_t(2));
+    CHECK_EQ(a.errors, 0u);
+    RpRun b = read_port_run(1);
+    CHECK_EQ(b.d0, 0xABCD0040u);
+    CHECK_EQ(b.d1, 0u);
+    CHECK_EQ(b.dropped, uint64_t(1));
+    CHECK_EQ(b.x4, 0u);
+    CHECK_EQ(b.x5, 0x208u);
+    CHECK_EQ(b.errors, 1u << 7);
 }

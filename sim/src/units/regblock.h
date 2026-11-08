@@ -27,6 +27,7 @@ struct RegBlockState {
     uint32_t req_n = 0, set_w[3] = {};          // the request port's FIFO count and REQUEST_SET_W0-W2
     // ---- M2 (W8): TileControl's registers and qualifiers ----
     uint32_t router_hdr = 0, router_addr = 0, router_w[3] = {}, dma_config = 0, record_base = 0, rd_setup = 0;
+    uint64_t rp_errors = 0;            // W11: read-port stores dropped (ReadPort.errors: ERRORS [7], READ_PORT)
     bool q_all = false, q_one[8] = {}, cond_all_prev = true, cond_one_prev[8] = {true, true, true, true, true, true, true, true};
     bool rd_done_prev = false;
     uint32_t dma_starts = 0;                    // G4 (W12): PULSE_DMA starts so far (the AG's `start` Wire: a change = a start)
@@ -83,7 +84,7 @@ struct RegBlockState {
         if (in.drift_ev) conditions |= 1u << COND_DRIFT;
         if (in.we_in_ovf_ev) conditions |= 1u << COND_WE_IN_OVF;
         if (in.table_ovf_ev) conditions |= 1u << COND_TABLE_OVF;
-        const uint64_t counts[] = {in.router_ovf, bad_total, unexpected_total, 0, in.we_in_ovf, 0, in.gather_ovf, 0, done_early};
+        const uint64_t counts[] = {in.router_ovf, bad_total, unexpected_total, 0, in.we_in_ovf, 0, in.gather_ovf, rp_errors, done_early};
         for (unsigned i = 0; i < sizeof counts / sizeof counts[0]; i++) {
             if (counts[i] > ev_prev[i]) conditions |= 1u << i;
             ev_prev[i] = counts[i];
@@ -167,6 +168,12 @@ struct RegBlockState {
             router_w[0] = router_w[1] = router_w[2] = 0;
             break;
         case SRAM_RD_DEST_ADDR: rd_setup = v & 0x3FFFFF; break;
+        case SRAM_RD_ADDR_QUEUE: {                                       // W11: the destination advances, queued or not
+            const unsigned size = rd_setup >> 17 & 3, n = size == 3 ? 0 : 4u << size;
+            rd_setup = (rd_setup & ~0x1FFFFu) | ((rd_setup + n) & 0x1FFFFu);
+            if (v >> 31) rp_errors++;                                    // dropped: no free entry (the core's bit 31)
+            break;
+        }
         case EVENTS_MASK: mask = v & EVENTS_VALID; break;
         case EVENTS_REQUIRED: required = v & EVENTS_VALID; break;
         case REQUEST_SET_W0: case REQUEST_SET_W1: case REQUEST_SET_W2: set_w[r - REQUEST_SET_W0] = v; break;
@@ -204,7 +211,7 @@ struct RegBlockState {
         const uint64_t m2[] = {router_hdr, router_addr, router_w[0], router_w[1], router_w[2], dma_config, record_base,
                                rd_setup, dma_starts, uint64_t(q_all) | uint64_t(cond_all_prev) << 1 | uint64_t(rd_done_prev) << 2
                                    | uint64_t(ready_pulse) << 3 | uint64_t(error_line) << 4,
-                               unexpected_total, done_early, counter_wraps, router_sends, bad_total};
+                               unexpected_total, done_early, counter_wraps, router_sends, bad_total, rp_errors};
         for (uint64_t v : m2) h = digest_mix(h, v);
         for (unsigned c = 0; c < 8; c++) h = digest_mix(h, uint64_t(remaining[c]) << 2 | uint64_t(q_one[c]) << 1 | cond_one_prev[c]);
         for (uint64_t v : ev_prev) h = digest_mix(h, v);

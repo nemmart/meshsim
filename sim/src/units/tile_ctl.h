@@ -44,6 +44,7 @@
 #include "units/director.h"
 #include "units/linkword.h"
 #include "units/big_sram.h"
+#include "units/mem.h"
 #include "units/table_store.h"
 #include "units/write_engine.h"
 #include "units/regblock.h"
@@ -223,12 +224,19 @@ struct TileCore {
     sim::LinkOut tables, hist_w;       // width 2: table-window stores -> the table store, HIST (Link(1))
     sim::FifoOut rd_port;              // W11: width 2, the read port's requests -> the read queue (client 2)
     sim::CountIn rp_injected;          // W11: read-port returns injected (free entries: injections before t)
+    sim::CountOut rp_stores;           // W11: read-port reads queued (ReadPort.stores) -> the director (results outstanding)
     Rv32 rv;
+    // W11: the read port (ReadPort.java). Its queue is the Fifo into the read queue; its accounting is the core's stores
+    // and the injection unit's injections (free entries) and the director's acceptances (outstanding).
+    uint8_t rp_tile = 0;
+    unsigned rp_depth = 64;
+    uint64_t rp_stored = 0, rp_dropped = 0, rp_violations = 0;
 
-    TileCore(sim::Ports& p, const Rv32& initial) : rv(initial) {
+    TileCore(sim::Ports& p, const Rv32& initial, unsigned tile = 0, unsigned read_port_depth = 64)
+        : rv(initial), rp_tile(uint8_t(tile)), rp_depth(read_port_depth) {
         p.in(regs, "regs"); p.in(hist, "hist"); p.in(wake, "wake"); p.in(irq, "irq"); p.in(port_b, "port_b", 3);
         p.out(bus, "bus", 2); p.out(send, "send", 3); p.out(tables, "tables", 2); p.out(hist_w, "hist_w", 2);
-        p.out(rd_port, "rd_port", 2); p.in(rp_injected, "rp_injected");
+        p.out(rd_port, "rd_port", 2); p.in(rp_injected, "rp_injected"); p.out(rp_stores, "rp_stores");
     }
     struct Env {
         sim::Ctx& c; TileCore& u;
@@ -242,6 +250,21 @@ struct TileCore {
         void table_store(uint32_t table, uint32_t i, uint32_t v) {
             if (table == TBL_HIST) c.put(u.hist_w, sim::Word(i), sim::Word(v));
             else c.put(u.tables, sim::Word(table) << 32 | i, sim::Word(v));
+        }
+        // ReadPort.free(t): entries free at the start of t (the stores so far; returns injected before t)
+        uint32_t rp_free() const { return uint32_t(int64_t(u.rp_depth) - int64_t(u.rp_stored - c.through_last(u.rp_injected))); }
+        // ReadPort.store at t, with SRAM_RD_DEST_ADDR as it stands at t; false: no free entry, dropped
+        bool read_port(uint64_t, uint32_t chunk) {
+            const uint32_t setup = c.read(u.regs, SRAM_RD_DEST_ADDR);
+            const unsigned size = setup >> 17 & 3, ctr = setup >> 19 & 7;
+            if (size == lw::SIZE_UNDEF) u.rp_violations++;
+            if (int32_t(rp_free()) <= 0) { u.rp_dropped++; u.rp_violations++; return false; }
+            const uint32_t a = uint32_t(lw::R_DMEM) << 24 | (setup & 0x1FFFF);
+            if (!lw::aligned(a, size)) u.rp_violations++;            // its result is a bad packet (invariant 20)
+            c.put(u.rd_port, mem::req_a(chunk, size, lw::M_WRITE, ctr, u.rp_tile), mem::req_b(a));
+            u.rp_stored++;
+            c.inc(u.rp_stores);
+            return true;
         }
         uint32_t hist(uint32_t i) const {                // RmwPipe.ctrlRead: on a write-back cycle, the engine's value
             if (c.read(u.hist, HIST_WB_AT) == uint32_t(c.now() + 1)) return c.read(u.hist, HIST_WB_VAL);

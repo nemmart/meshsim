@@ -104,6 +104,7 @@ struct InjReadSide {
 
     // ---- statistics, ref's checks ----
     uint64_t issued[3] = {}, stall_cycles = 0, window_full_cycles = 0, packets = 0, out_of_range = 0, violations = 0;
+    uint64_t rp_injected_n = 0;        // read-port returns injected (ReadPort.injected; the "rdport" fingerprint)
 
     void declare(sim::Ports& p) {
         if (!cfg.present) return;
@@ -320,7 +321,7 @@ inline void InjReadSide::injected(sim::Ctx& c, uint64_t h, Tokens& tok) {
     tok.reads--; in_flight[cl[t_]]--;
     if (tokens_on && loops(lw::dst(h))) tok.loop_held++;   // the token moves to the loopback packet: still held
     free_q[(free_head + free_n) % MAX] = uint8_t(t_); free_n++;
-    if (h & lw::TAG_READPORT) c.inc(rp_injected);
+    if (h & lw::TAG_READPORT) { c.inc(rp_injected); rp_injected_n++; }
     publish_busy(c);
 }
 

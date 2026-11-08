@@ -318,7 +318,12 @@ void w_sram_data(const void* p, FpOut& o, const FpCtx&) {
     const G1Tile& g = tile(p);
     o.w("data", g.usram ? g.usram->sum.sum : 0);
 }
-void w_rdport_stub(const void*, FpOut& o, const FpCtx&) { o.w("inUse", 0); o.w("outstanding", 0); }
+void w_rdport(const void* p, FpOut& o, const FpCtx&) {
+    const G1Tile& g = tile(p);
+    const uint64_t st = g.ucore ? g.ucore->rp_stored : 0;
+    o.w("inUse", st - (g.uinj ? g.uinj->rs.rp_injected_n : 0));
+    o.w("outstanding", st - (g.udir ? g.udir->rp_accepted : 0));
+}
 // StateFp.req: the request FIFO (empty), beatsSent, W0-W2 (REQUEST_SET_W*, never stored in M2's programs).
 void w_req(const void* p, FpOut& o, const FpCtx&) {
     const G1Tile& g = tile(p);
@@ -339,7 +344,7 @@ void register_g1(FpRegistry& r, const G1Tile& g) {
     r.add(t + "ts", w_ts, &g);
     r.add(t + "hist", w_hist, &g);
     r.add(t + "gather", w_gather, &g);
-    r.add(t + "rdport", w_rdport_stub, &g);
+    r.add(t + "rdport", w_rdport, &g);
     r.add(t + "req", w_req, &g);
 }
 

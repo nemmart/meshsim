@@ -222,3 +222,11 @@ Pieces, each committed when it compiles and passes its own test:
   the integrator merges it, I run test_chip (regs, wfi, every tile, the read port tile) and test_mem on that commit and
   record the result here; then a2a is the joint check.
 - 2026-11-08: **main (71b1d7a, with W12's register block and the director.h merge) fully checked here:** make run gcc and clang, debug and release, 40 binaries each, all pass; tsan, tsan-units, tsan-chip clean on both compilers.
+- 2026-11-08: **W12's g4 checked as offered** (clang release, test_chip and test_mem):
+  - on W12's commit dcc0b74 alone (before P2b/c): test_mem 8/8; test_chip 5/5 (regs and wfi every unit of tile 0 every
+    cycle, every tile every 10 against regs-chip/wfi-chip regenerated from ref, the debug options, form 2);
+  - **on main 8afe64f (g4 with P2b/c: the srq writer sees the real gather and AG Holds)**: test_mem 8/8; test_chip 6/6
+    (the same, plus the read port end to end in one tile); every tile every 10 cycles, one thread and split over 4:
+    pass. The scratch worktree of the trial merge is dropped.
+- 2026-11-08: **D30** read (very close is enough where exact would be costly; propose a deliberate difference with what
+  it changes, preferring ones no reference program reaches). None needed so far in G3.

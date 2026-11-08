@@ -58,6 +58,12 @@ struct TileCtl {
     sim::LinkIn bus, go, landed, kline, bad, ovf;
     sim::RegIn send_busy;
     sim::CountIn router_ovf, we_in_ovf, gather_ovf;
+    // G4 (W12), declared when `g4`: STATUS's gather_busy as the OR of three inputs (gather.h), the queue's overflow event
+    sim::RegIn gather_busy, gather_srq_busy;   // the gather's own half; the read queue's (W11, through MemIO)
+    sim::LinkIn gather_put, gather_ovf_ev;     // width 0, Link(1): the director's mode-4 put; the gather queue's overflow
+    sim::RegIn ag_status;                      // the AG's running | done << 1 at the end of t (ag.h)
+    sim::LinkIn drift;                         // width 0, Link(1): the AG's drift (ERRORS [3])
+    sim::WireOut ag_start;                     // PULSE_DMA's starts so far, driven at level 0 of t + 1 (endCycle(t))
     // ---- outputs ----
     sim::RegFileOut regs, dma;
     sim::WireOut wake, irq;
@@ -71,9 +77,17 @@ struct TileCtl {
 
     bool error_out = false;            // the error line's level as last put on `line`
     bool ovf_event = false;            // `ovf` declared: ROUTER_OVF arrives as an event (D29)
+    bool g4 = false;                   // G4's inputs declared (the tile has the read side and G4's engines)
 
-    TileCtl(sim::Ports& p, const RegBlockState& initial, bool router_ovf_event = false) : s(initial), ovf_event(router_ovf_event) {
+    TileCtl(sim::Ports& p, const RegBlockState& initial, bool router_ovf_event = false, bool g4_ = false)
+        : s(initial), ovf_event(router_ovf_event), g4(g4_) {
         if (ovf_event) p.in(ovf, "ovf", 0);
+        if (g4) {
+            p.in(gather_busy, "gather_busy", 1); p.in(gather_srq_busy, "gather_srq_busy", 1);
+            p.in(gather_put, "gather_put", 0); p.in(gather_ovf_ev, "gather_ovf_ev", 0);
+            p.in(ag_status, "ag_status", 1); p.in(drift, "drift", 0);
+            p.out(ag_start, "ag_start");
+        }
         p.in(bus, "bus", 2); p.in(go, "go", 0); p.in(landed, "landed", 0); p.in(kline, "kline", 1);
         p.in(send_busy, "send_busy", 1);
         p.in(bad, "bad", 0);
@@ -101,7 +115,18 @@ struct TileCtl {
         in.send_busy = send_put || (c.valid(send_busy) && c.read(send_busy)[0] != 0);   // ref: !sendHold.isEmpty(t)
         in.router_ovf = ovf_event ? s.ev_prev[0] : c.through_last(router_ovf);
         in.we_in_ovf = c.through_last(we_in_ovf); in.gather_ovf = c.through_last(gather_ovf);
+        if (g4) {
+            bool put = false;
+            if (c.ready(gather_put)) { c.take(gather_put); put = true; }
+            if (c.ready(gather_ovf_ev)) { c.take(gather_ovf_ev); in.gather_ovf_ev = true; }
+            in.gather_ovf = s.ev_prev[RegBlockState::COND_GATHER_OVF];          // the event, not the Count
+            in.gather_busy = put || reg_bit(c, gather_busy) || reg_bit(c, gather_srq_busy);
+            if (c.ready(drift)) { c.take(drift); in.drift_ev = true; }
+            const sim::Word st = c.valid(ag_status) ? c.read(ag_status)[0] : 0;
+            in.ag_running = st & 1; in.ag_done = st >> 1 & 1;
+        }
         s.end_cycle(c.now() - 1, in);
+        if (g4) c.drive(ag_start, s.dma_starts);
         for (unsigned r = 0; r < kRegs; r++) c.write(regs, r, s.reg(r));
         c.write(dma, DMA_R_CONFIG, s.dma_config);
         c.write(dma, DMA_R_RECORD_BASE, s.record_base);
@@ -114,6 +139,7 @@ struct TileCtl {
         return sim::Wake::none();
     }
     uint64_t digest() const { return digest_mix(s.digest(), error_out); }
+    static bool reg_bit(const sim::Ctx& c, sim::RegIn r) { return c.valid(r) && c.read(r)[0] != 0; }
 };
 
 // ------------------------------------------------------------------------- previews (configuration regime, read-only)
@@ -145,6 +171,20 @@ RegBlockState block_at_end(const sim::Sim& m, const U& u, uint64_t c) {
         sim::PortView r = m.observe(u.send_busy, e, kMax);
         in.send_busy = send_put || (r.put ? r.put_w[0] != 0 : (r.valid && e[0].w[0] != 0));
         in.router_ovf = b.ev_prev[0]; in.we_in_ovf = b.ev_prev[4]; in.gather_ovf = b.ev_prev[6];   // Counts: not here
+        if (u.g4) {                                                      // G4: the gather-busy OR, the overflow event
+            bool put = false;
+            at_next(u.gather_put, [&](const sim::PortEntry&) { put = true; });
+            at_next(u.gather_ovf_ev, [&](const sim::PortEntry&) { in.gather_ovf_ev = true; });
+            auto reg = [&](const sim::RegIn& p) {
+                sim::PortView v = m.observe(p, e, kMax);
+                return v.put ? v.put_w[0] != 0 : (v.valid && e[0].w[0] != 0);
+            };
+            in.gather_busy = put || reg(u.gather_busy) || reg(u.gather_srq_busy);
+            at_next(u.drift, [&](const sim::PortEntry&) { in.drift_ev = true; });
+            sim::PortView v = m.observe(u.ag_status, e, kMax);
+            const sim::Word st = v.put ? v.put_w[0] : (v.valid ? e[0].w[0] : 0);
+            in.ag_running = st & 1; in.ag_done = st >> 1 & 1;
+        }
     } else {                                                             // M1's block (W5's bench)
         at_next(u.freed, [&](const sim::PortEntry&) { in.freed = true; });
     }

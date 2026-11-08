@@ -307,3 +307,9 @@ the mesh second. Of today's findings (on W4's synthetic mesh and W6's synthetic 
   interval can't pass 3 on the chip: every split crosses mesh links). First candidate: **Options::barrier_flags**, a
   barrier on per-thread epochs (each thread writes only its own line, waits for the others' to reach its round): no
   contended read-modify-write; each waiter sees the last arrival in one line transfer. Same digests (test). Quest 145.
+- 2026-11-07: **Quest 145, the flags barrier** (digests equal). The chip's boot by tiles (in-process repeats): 6 threads
+  0.333 -> **0.295 us** (2.82x -> 3.18x one thread), barrier wait 0.088 -> 0.050 (drain 0.026 -> 0.036: the lines'
+  transfers move); 4: 0.347 -> 0.337; 8: 0.419 -> 0.408; 12: 0.413 -> 0.390; but 2: 0.545 -> 0.588 (two threads: the
+  counter is already cheap). Mesh: 6 1.476 -> 1.451, 8 1.608 -> 1.510. The barrier alone barely moves (6: 0.255 ->
+  0.235 a round, all arriving at once): the waiter read the epochs one at a time, each a miss. Next (Quest 146): one
+  sweep over every epoch per poll, so the misses overlap.

@@ -1,5 +1,7 @@
 # WORKER11 report: M2's G3 (the memory path)
 
+**Done with M2.**
+
 Branch `sim-w11`, merged into `main` piece by piece. Day-by-day detail is in `NOTES.md`; this is what the integrator,
 W12 and M3 need.
 
@@ -15,6 +17,9 @@ W12 and M3 need.
 - **`make check`** is clean at 6aef29b: gcc and clang, debug and release, 42 binaries each; tsan, tsan-units and
   tsan-chip on both compilers.
 - **No D30 difference** was needed.
+- **D31 (BigSram's running sum only when wanted)** is done (section 2). Every golden and fingerprint is unchanged:
+  `make check` is clean, and the 16K sort (`test_sort`, fingerprints on) is equal at all 248 points. Its speed on the
+  full-size sort, with fingerprints off, is W10's to measure.
 
 ## 1. Files
 
@@ -48,7 +53,10 @@ Reads return on 16 `Link(sram_read_latency)`s. Writes at or past `mem_chunks` ar
   allocated in the loop and the OS backs only touched pages.
 - **Footprint (for W10):** 256 MB is allocated. `regs` touches 256 KB, `a2a` 2.3 MB, `wfi` none. `test_chip` prints
   both figures.
-- **The fingerprint's sum** is kept at every store; `poke`/`peek` (32 and 64 bits) keep it too.
+- **The fingerprint's sum (D31):** with `SramConfig::running_sum` (G1Config's `sram_running_sum`, on by default and in
+  every test that fingerprints) the sum is kept at every store, and `poke`/`peek` (32 and 64 bits) keep it too. Without
+  it, a store is a plain store and `data_sum()` scans the block if a fingerprint is ever taken. The sum was about 60% of
+  `serve`'s cost in W10's profile. `bench_sort` turns it off.
 
 **Write engine.**
 - **The pointer stage** has 2L + 2 entries in order. PTR read-modify-writes and their in-order returns go through Links
@@ -119,6 +127,7 @@ The register block and director were split by bit:
   - `a2a`, in `make check`: tile 0 every 10 cycles to its end, on one thread and on 4 domains; every tile every 100
     with `CHIP_FP_DIR`.
   - The read port end to end in one tile, from a hand-assembled boot ROM.
+  - D31's scan path: `regs` and `a2a` with the running sum off, the fingerprint scanning the block, equal to their goldens.
   - The router overflow test (W9's).
 - **`test_mem`** (hand-derived, each passed as derived):
   - the overflow events' timing;
@@ -127,7 +136,8 @@ The register block and director were split by bit:
   - the block's ERRORS [4] and [5];
   - big SRAM writes, the sum, room by the count before the pop;
   - the PTR view against a same-cycle write-back and a lost window store;
-  - read-port returns, including a same-cycle tie broken by token order.
+  - read-port returns, including a same-cycle tie broken by token order;
+  - the running and scanned sums agreeing after overwrites and zeroes (D31).
 - **MemConf** (`test_memconf`): ref's own Tile with only G3's components running in Tile's order. A seeded script
   plays everything around them:
   - the gather's and AG's read Holds, with refusals retried;
@@ -152,7 +162,13 @@ The register block and director were split by bit:
     - 7–32 same-cycle read-port ties.
   - **Regenerate:** `tests/ref/memconf.sh --check` (needs a JDK).
 - **The sorts:** W12's `test_sort` covers SPLIT's read port and every G3 unit on every tile. The 16K sort (248 points)
-  and the full-size sort (321 points) are equal on the runner, one thread and 8 domains (Quest 154).
+  and the full-size sort (321 points) are equal on the runner, one thread and 8 domains (Quest 154). After D31 I ran
+  the 16K sort here (clang release, fingerprints on, the golden regenerated with `regen.sh --check '^sort16k-fp '`:
+  SAME):
+  - all 248 points equal through 511496;
+  - verification clean (0 keys misplaced, 0 violations, ERRORS 0);
+  - TOTAL 496619 cycles, 98 phases;
+  - the state at B equal on 1 and 4 domains.
 
 ## 5. Surprises worth knowing
 
@@ -171,8 +187,8 @@ The register block and director were split by bit:
 
 ## 6. What's left
 
-- **Performance (next, through the integrator).** W10's profile of the sort (Quest 156) puts BigSram, the read side and
-  the table store among the top costs. Its hot-lines write-up for these units comes next.
+- **Performance.** By D31, M2's speed work ends with the two cheap wins; mine (the running sum) is done. Other tuning of
+  these units is set aside for M2: the router, huge pages, the `%` index arithmetic.
 - **Footprint (W10's study, for awareness).** BigSram, TableStore and Injection each hold 3-7 KB per tile that is
   barely touched outside `regs`. This is not a problem today, and W10 checks again in the sort's traces. If it ever
   matters, the cheap fixes are these, neither changing behaviour:

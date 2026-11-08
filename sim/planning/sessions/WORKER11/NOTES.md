@@ -268,3 +268,16 @@ Pieces, each committed when it compiles and passes its own test:
 - 2026-11-08: **make check clean at 7295f07** (build by build: gcc and clang, debug and release, 42 binaries each; tsan, tsan-units, tsan-chip on both compilers). a2a skips itself here (no PULSE_DMA on the branch). Merge order (integrator): W12's sort commits first, then mine; then I rerun a2a and test_sort on main.
 - 2026-11-08: main merged (W12's sort, PULSE_DMA): **make check clean at 6aef29b** (build by build: gcc and clang, debug and release, 42 binaries each; tsan, tsan-units, tsan-chip on both). **a2a now runs in make check** (one thread and 4 domains, to 7698).
 - 2026-11-08: REPORT.md finished: a2a in make check; the sorts equal on the runner (W12, Quest 154: 16K and full size, 248 and 321 points, one thread and 8 domains; no local regen, owner); W10's footprint note. Stopped here: W10's hot-lines write-up for BigSram, the read side and the table store (Quest 156) comes next through the integrator.
+- 2026-11-08: **D31, BigSram's running sum only when wanted.**
+  - **The change:** `SramConfig::running_sum` and `G1Config::sram_running_sum`, on by default. Off: the store is plain
+    and `data_sum()` scans the block for a fingerprint. The unit's digest drops the contents.
+  - **The timing run:** `bench_sort` turns it off (one line in W10's file).
+  - **Tests:** `test_mem` checks the running and scanned sums agree; `test_chip` checks `regs` and `a2a` equal their
+    goldens through the scan path.
+  - **Proof:** make check clean at cb3de70 (gcc and clang, debug and release, 42 binaries each; tsan, tsan-units, tsan-chip
+    on both). The 16K sort (`test_sort`, clang release, fingerprints on) is equal at all 248 points through 511496:
+    verification clean, TOTAL 496619, state at B equal on 1 and 4 domains. The golden was regenerated here with
+    `KEEP=DIR regen.sh --check '^sort16k-fp '` (SAME; the pattern matches the whole RUNS line, so `$` never matches),
+    and the keys with KeyGen (sha256 = HASHES).
+  - **For W10:** measure the full-size sort with it off.
+  REPORT.md updated. **Done with M2.**

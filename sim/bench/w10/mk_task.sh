@@ -1,8 +1,11 @@
 #!/bin/bash
 # mk_task.sh NNN-name BODY "header lines" NAME=REV [NAME=REV ...] > task.sh (WORKER10): a self-contained Quest task with an
 # embedded kit holding sim/ (Makefile, src, tests, bench, tools) at each named revision, unpacked to $W/kit/NAME/sim, so
-# a before/after pair is built and run in one task. It also carries ref/meshsim/hops.txt and the boot ROM (the chip);
-# golden-m2 (all but its images/) and the portconf fixtures are left out unless KIT_EXCLUDE is set (" ": everything). The body (sourced) sees KITS ("NAME ..."), sec, verdict, run (common.inc)
+# a before/after pair is built and run in one task. It also carries what the tests and benches read from ref/
+# (hops.txt, sw/ with the boot ROM, test/ with the RISC-V test images) and sim/fw (the schedules), checked present, so
+# a golden verdict never
+# fails for the kit (Quest 149). KIT_EXCLUDE (git pathspecs, e.g. ":(exclude)sim/tests/golden-m2") trims it, unchecked.
+# The body (sourced) sees KITS ("NAME ..."), sec, verdict, run (common.inc)
 # and the machine (sim/tools/machine.sh of the last revision, D21). Run from inside the repo; commit first.
 set -eu
 NAME=$1 BODY=$2 HDR=$3; shift 3
@@ -12,7 +15,13 @@ NAMES=; DESC=
 for nv in "$@"; do
   n=${nv%%=*}; r=$(cd "$TOP" && git rev-parse --short "${nv#*=}")
   mkdir -p "$KIT/k/$n"
-  ( cd "$TOP" && git archive --format=tar "$r" sim/Makefile sim/src sim/tests sim/bench sim/tools sim/ref/meshsim/hops.txt sim/ref/meshsim/sw/bootrom.hex ${KIT_EXCLUDE:-":(exclude,glob)sim/tests/golden-m2/*" ":(exclude)sim/tests/portconf"} ) | tar -xf - -C "$KIT/k/$n"
+  ( cd "$TOP" && git archive --format=tar "$r" sim/Makefile sim/src sim/tests sim/bench sim/tools sim/ref/meshsim/hops.txt \
+      sim/ref/meshsim/sw sim/ref/meshsim/test sim/fw ${KIT_EXCLUDE:-} ) | tar -xf - -C "$KIT/k/$n"
+  # every input a test or bench reads must be in the kit (a golden verdict must never fail for the kit): checked here
+  for need in sim/ref/meshsim/test/riscv/bin sim/ref/meshsim/sw/bootrom.hex sim/ref/meshsim/hops.txt sim/tests/golden/RUNS \
+              sim/tests/golden-m2/images sim/tests/golden-m2/wfi.fp sim/tests/portconf sim/fw/wfi_go.tb; do
+    [ -e "$KIT/k/$n/$need" ] || [ -n "${KIT_EXCLUDE:-}" ] || { echo "mk_task.sh: the kit for $n lacks $need" >&2; exit 1; }
+  done
   NAMES+="${NAMES:+ }$n"; DESC+="${DESC:+, }$n $r"; LAST=$n
 done
 ( cd "$KIT/k" && tar --sort=name --mtime=@0 --owner=0 --group=0 -cf - . ) | gzip -9n > "$KIT/kit.tgz"

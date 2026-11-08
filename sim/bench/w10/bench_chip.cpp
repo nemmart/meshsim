@@ -3,7 +3,7 @@
 // sort's boot (the sort image loaded over the network and port B: 14,791 cycles before any engine runs), wfi, regs.
 //
 //   bench_chip --prog sort|wfi|regs [--cycles N] [--threads T] [--partition one|rows|tiles|load|profile]
-//              [--units] [--cpus a,b,..] [--time] [--crossing-ns X] [--reps R] [--barrier auto|counter|flags|flags-spin]
+//              [--units] [--windows W] [--cpus a,b,..] [--time] [--crossing-ns X] [--reps R] [--barrier auto|counter|flags|flags-spin]
 //
 // --cycles: default sort 14791 (the boot), wfi and regs (whole, since G3): until every core has stopped (every 64 cycles; the
 // count is the cycles run). rows: row_bands(T); tiles: one domain per tile (grouped in order, one engine per thread);
@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <cinttypes>
 #include <cstdio>
 #include <cstdlib>
@@ -24,6 +25,8 @@
 
 #include "base/fatal.h"
 #include "config.h"
+#include "config_impl.h"
+#include "internals.h"
 #include "../../tests/golden_run.h"
 #include "units/chip.h"
 #include "units/tile_ctl.h"
@@ -39,6 +42,7 @@ struct Args {
     std::vector<int> cpus;
     bool time = false;
     double crossing_ns = -1;   // --crossing-ns: Options::crossing_ns (default: the framework's)
+    unsigned windows = 0;              // --windows W: one thread, the run in windows of W cycles: steps and time each (quiet case)
     bool units = false;                // --units: one thread, calibrating: each unit kind's time, steps and ns a step
     std::string barrier = "auto";      // --barrier auto (the framework's choice) | counter (W4's) | flags | flags-spin
     unsigned reps = 5;         // --reps: machines built and run in this process, after one untimed (a run is milliseconds:
@@ -118,6 +122,7 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--reps")) a.reps = unsigned(std::atoi(val()));
         else if (!std::strcmp(argv[i], "--barrier")) a.barrier = val();
         else if (!std::strcmp(argv[i], "--units")) a.units = true;
+        else if (!std::strcmp(argv[i], "--windows")) a.windows = unsigned(std::atoi(val()));
         else if (!std::strcmp(argv[i], "--cpus")) {
             const char* s = val();
             while (*s) { a.cpus.push_back(std::atoi(s)); while (*s && *s != ',') s++; if (*s) s++; }
@@ -127,6 +132,54 @@ int main(int argc, char** argv) {
     const uint64_t cycles = a.cycles ? a.cycles : a.prog == "sort" ? 14791 : 0;   // wfi, regs: to their stop
     const std::string part = a.threads == 1 && a.part != "load" && a.part != "profile" ? std::string("one") : a.part;
 
+    if (a.windows) {   // the quiet case: per window, the steps taken (active units) against the time; reps machines, the
+                       // median time per window; then by bins of steps a cycle
+        std::vector<std::vector<double>> ns;              // per window, per rep
+        std::vector<uint64_t> wsteps, wcycles;
+        for (unsigned r = 0; r <= a.reps; r++) {
+            World rw;
+            prepare(rw, a.prog);
+            sim::Sim m = build(rw, a, sim::Options{}, "one");
+            const sim::Engine& e = sim::detail::Internals::impl(m)->e;
+            auto total_steps = [&]() { uint64_t t = 0; for (uint32_t i = 0; i < e.ninst; i++) t += e.steps[i]; return t; };
+            m.run(1);
+            uint64_t done = 1, w = 0;
+            const uint64_t want = cycles ? cycles : 2000000;
+            while (done < want) {
+                const uint64_t n = std::min<uint64_t>(a.windows, want - done);
+                const uint64_t s0 = total_steps();
+                const auto t0 = std::chrono::steady_clock::now();
+                m.run(n);
+                const double d = std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - t0).count();
+                const uint64_t st = total_steps() - s0;
+                if (r > 0) {
+                    if (w >= ns.size()) { ns.emplace_back(); wsteps.push_back(st); wcycles.push_back(n); }
+                    ns[w].push_back(d);
+                }
+                done += n; w++;
+                if (!cycles && done % 64 < n && all_stopped(m)) break;
+            }
+        }
+        // per window: the median time; then bins by steps a cycle
+        struct B { double ns = 0; uint64_t cyc = 0, steps = 0, n = 0; };
+        std::map<int, B> bins;   // bin: steps a cycle, 0, 1, 2-3, 4-7, ... (powers of two)
+        double tot_ns = 0; uint64_t tot_cyc = 0;
+        for (size_t w = 0; w < ns.size(); w++) {
+            std::vector<double> v = ns[w]; std::sort(v.begin(), v.end());
+            const double med = v[v.size() / 2];
+            const double spc = double(wsteps[w]) / double(wcycles[w]);
+            const int bin = spc < 0.5 ? -1 : int(std::floor(std::log2(spc)));
+            B& b = bins[bin]; b.ns += med; b.cyc += wcycles[w]; b.steps += wsteps[w]; b.n++;
+            tot_ns += med; tot_cyc += wcycles[w];
+        }
+        std::printf("quiet prog=%s windows=%zu of %u cycles reps=%u us_per_cycle=%.3f\n", a.prog.c_str(), ns.size(), a.windows,
+                    a.reps, tot_ns / 1e3 / double(tot_cyc));
+        for (auto& [bin, b] : bins)
+            std::printf("quiet bin=%s windows=%llu cycles=%llu steps_per_cycle=%.2f us_per_cycle=%.4f ns_per_step=%.1f\n",
+                        bin < 0 ? "<0.5" : ("2^" + std::to_string(bin)).c_str(), (unsigned long long)b.n, (unsigned long long)b.cyc,
+                        double(b.steps) / double(b.cyc), b.ns / 1e3 / double(b.cyc), b.steps ? b.ns / double(b.steps) : 0.0);
+        return 0;
+    }
     if (a.units) {   // the units' own costs: a calibrating run (each step timed), totals by kind (the name after "t<k>.")
         World cw;
         prepare(cw, a.prog);

@@ -332,3 +332,42 @@ poke. a2a and the sort need W11's P1 and P2 (question 1). Each piece: its tests,
   - **Negative check:** without the load, the first difference is `t0.cmem` (S.n_in).
 - **Next (with W11):** the sort past B. Cycle by cycle against sort16k-fp's points (every 10,000 cycles, each GO and
   all-READY), L1 first, then whole; then the phases and the verification (the Oracle).
+- 2026-11-08: **P7, the 16K sort end to end equal to ref** (3ef43ac, then f1b6a52 and abe8166; merged into main as
+  aa013ce).
+  - **Equal to ref:**
+    - every one of the 248 sort16k-fp points (every 10,000 cycles and each GO and all-READY; every unit of every tile,
+      big SRAM's data included, and the chip's), with the run's end at 511,496 as ref;
+    - M2Sort's verification PASS: keys misplaced 0, receive sizes wrong 0, values wrong 0, every core exited 0,
+      violations 0, ERRORS 0. The violations sum the core, the block, the director, the AG (its checkEntry counts and
+      late rotations), injection and its read side, and C&C;
+    - the 98 phases equal sort16k.phases.csv (go_at, end_at); TOTAL 496,619 (L1's GO at 14,838 -> L2's all-READY at
+      511,457).
+    - No fingerprint differed, so no D30 case.
+  - **Where:** one thread, and 2 and 4 domains (row bands). Also under shuffle, instance-major and step-all; in gcc
+    debug (ASan, UBSan, the missed-wake detector) plain and step-all; in clang release.
+    - Release takes 13-18 s; debug 55 s, and 74 s with step-all.
+    - 4 domains on this one-CPU container take 166 s. **8 domains is not checked here** (past the tool's limit even
+      with the blocking barrier): for the runner.
+  - **Edits to W8's files:**
+    - `src/units/regmap.h`: PULSE_DMA's store is `A_M1` (it was `A_OUT`, "not modelled yet": the core stopped at L1's
+      first PULSE_DMA store).
+    - `tests/test_rv32.cpp`: the death test `rv32_pulse_dma_not_modelled` becomes
+      `rv32_pulse_dma_store_reaches_the_block` (the store posts PULSE_DMA to the block).
+  - **The driver's phase record:** a GO opens a phase and the all-READY a later GO waits on closes it. The last phase
+    (EXIT) closes at the run's end, as PhaseLog.close does when no tile reported READY.
+  - **make check after abe8166:** gcc and clang, debug and release, 41 binaries each, 0 failed, the sketches built;
+    `tsan` (7 + 7), `tsan-units` and `tsan-chip`, gcc and clang: clean.
+  **To reproduce:**
+
+      # the key set (KeyGen; sha256 3db703f3..., HASHES) and the hash-only golden (SAME)
+      javac -d CLS ref/meshsim/src/*.java ref/meshsim/test/KeyGen.java
+      java -cp CLS KeyGen KEYS/keys-16384 --n 16384 --only uniform
+      KEEP=FPDIR tests/golden-m2/regen.sh --check sort16k-fp
+      # the run (release; debug for the sanitizers and the missed-wake detector)
+      make CC_NAME=gcc MODE=release build/gcc-release/test_sort
+      SORT_KEYS=KEYS/keys-16384/uniform.keys SORT_FP=FPDIR/sort16k-fp.fp build/gcc-release/test_sort
+      #   SORT_THROUGH=N (stop at N), SORT_PARTS=P (row bands), SORT_BLOCK=1 (the barrier sleeps: more threads than
+      #   CPUs), SORT_OPT=shuffle|instance|stepall, SORT_DUMP=1 (dump the first differing unit)
+- **For awareness (owner, from W10's footprint study):** AddrGen holds about 3 KB per tile, barely touched outside regs:
+  the read-ahead rings are sized for the maximum lookahead (64), with 6 used, plus the per-run statistics arrays. Not a
+  problem today. If it matters, the rings can be sized to the configured lookahead at construction.

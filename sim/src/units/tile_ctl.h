@@ -76,6 +76,9 @@ struct TileCtl {
     // counters (their value at the start of t), ROUTER_HDR/ADDR and ROUTER_SET_W0-W2 (a send store at t builds its packet
     // from them as they stand at t).
     static constexpr unsigned kRegs = SRAM_RD_DEST_ADDR + 1;
+    static_assert(kRegs <= 64, "publish()'s mask");
+    uint32_t pub[kRegs] = {};                  // the register file as last written (zero at power-on, as the engine's)
+    uint32_t pub_dma[2] = {};                  // the `dma` RegFile likewise
 
     bool error_out = false;            // the error line's level as last put on `line`
     bool ovf_event = false;            // `ovf` declared: ROUTER_OVF arrives as an event (D29)
@@ -133,9 +136,13 @@ struct TileCtl {
         }
         s.end_cycle(c.now() - 1, in);
         if (g4) c.drive(ag_start, s.dma_starts);
-        for (unsigned r = 0; r < kRegs; r++) c.write(regs, r, s.reg(r));
-        c.write(dma, DMA_R_CONFIG, s.dma_config);
-        c.write(dma, DMA_R_RECORD_BASE, s.record_base);
+        // only the registers that changed (W12, D31): the same register file, without 33 writes a step
+        for (uint64_t m = s.publish(pub); m; m &= m - 1) { const unsigned r = unsigned(__builtin_ctzll(m)); c.write(regs, r, pub[r]); }
+        if constexpr (sim::kDebug)
+            for (unsigned r = 0; r < kRegs; r++)
+                if (pub[r] != s.reg(r)) FATAL("register block: register %u is 0x%x, published 0x%x (RegBlockState::publish misses it)", r, s.reg(r), pub[r]);
+        if (s.dma_config != pub_dma[0]) { pub_dma[0] = s.dma_config; c.write(dma, DMA_R_CONFIG, s.dma_config); }
+        if (s.record_base != pub_dma[1]) { pub_dma[1] = s.record_base; c.write(dma, DMA_R_RECORD_BASE, s.record_base); }
         c.drive(wake, s.wake());
         c.drive(irq, s.irq());
         if (s.ready_pulse || s.error_line != error_out) {

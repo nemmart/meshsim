@@ -196,3 +196,21 @@ Pieces, each committed when it compiles and passes its own test:
   `read_queue_read_port_returns_and_a_same_cycle_tie` (hand-derived): a read waits in the SRAM's Hold behind a full
   area (depth 1), a zero-width read past mem_chunks becomes ready the same cycle (8) and goes second by token order; the
   freed tokens join the free list's tail in injection order. Next: P2b (the read port), P2c (writers), P2d (MemConf).
+- 2026-11-08: **P2b and P2c landed, make check clean at 93c2316** (all four builds, 37 binaries each; tsan, tsan-units,
+  tsan-chip on both; clang release run before the debug ones).
+  - **P2b, the read port:** the core's store to SRAM_RD_ADDR_QUEUE (Controller.java:380) queues
+    {reqA(chunk, size, mode 0, counter, me), reqB(DMEM | dest)} on its Fifo into client 2 with SRAM_RD_DEST_ADDR as it
+    stands at t, if free(t) = depth - (stores - injections before t) > 0 (the injection unit's Count, read through
+    t - 1); else dropped. The store reaches the block on the bus with bit 31 = dropped: endCycle advances the destination
+    by the size (queued or not, TileControl:337) and counts READ_PORT (ERRORS [7], an event since it comes with the
+    store). A load returns free(t) at its sampling cycle. The director counts read-port results accepted and packets
+    accepted with results outstanding (readPortOverlaps; the core's stores as a Count, through t - 1: ref's director runs
+    before the core). Touched W8's rv32.h, regmap.h, regblock.h, tile_ctl.*, director.h: the bits agreed with W12.
+    test_rv32's death test now names the bench without a read port. **test_chip ** (one
+    tile, hand-written boot ROM, the router's loopback): both results land in data memory, the load sees 62 free, the
+    destination advances to 0x208; at depth 1 the second store is dropped, ERRORS = bit 7, the destination still
+    advances.
+  - **P2c, the writers:** "srq" (free list, held slots in token order with readyT = Long.MAX_VALUE until ready, the two
+    orders, rpReady, held, client buses: absent W12 clients written as empty Holds, the read port's Fifo, the 16 area
+    returns), "inj" (the read-return hold: its release of c as the put), "rdport" (inUse, outstanding; G1Tile::uinj set
+    by the chip's driver). regs, wfi and every tile unchanged; the writers' real check is MemConf (P2d) and a2a.

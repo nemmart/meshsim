@@ -7,10 +7,12 @@ W12 and M3 need.
 - **`regs`** equals `golden-m2` to its end (869): every unit of tile 0 every cycle, every tile every 10 cycles, on one
   thread, under the debug options, and split over 2, 4 and 8 domains.
 - **`a2a`** equals its golden to its end (7698): tile 0 every 10 cycles and every tile every 100, one thread and split
-  over 4. This was checked on a merge with W12's PULSE_DMA; the test skips itself until that is on main.
+  over 4. **It runs in `make check`** (since main had W12's PULSE_DMA, merged at 808b72a).
 - **MemConf** shows my units equal to ref every cycle, on fixtures and long runs (section 4).
-- **The 16K sort**, W12's P7 on `sim-w12`, equals ref at all 248 points with every one of my units in it.
-- **`make check`** is clean at 7295f07: gcc and clang, debug and release, 42 binaries each; tsan, tsan-units and
+- **The 16K and full-size sorts** equal ref with every one of my units in them: W12 ran them on the runner (Quest
+  154), with 248 and 321 points, each on one thread and on 8 domains, covering every unit of every tile. I did not
+  regenerate the sort golden locally.
+- **`make check`** is clean at 6aef29b: gcc and clang, debug and release, 42 binaries each; tsan, tsan-units and
   tsan-chip on both compilers.
 - **No D30 difference** was needed.
 
@@ -114,7 +116,8 @@ The register block and director were split by bit:
   - `regs` and `wfi`: every unit of tile 0 every cycle; one thread, step-all, shuffle, instance-major; 2, 4 and 8
     domains.
   - Every tile every 10 cycles (`CHIP_FP_DIR`, the hash-only goldens regenerated from ref).
-  - `a2a`: tile 0 every 10 cycles, and every tile every 100 with `CHIP_FP_DIR`.
+  - `a2a`, in `make check`: tile 0 every 10 cycles to its end, on one thread and on 4 domains; every tile every 100
+    with `CHIP_FP_DIR`.
   - The read port end to end in one tile, from a hand-assembled boot ROM.
   - The router overflow test (W9's).
 - **`test_mem`** (hand-derived, each passed as derived):
@@ -148,7 +151,8 @@ The register block and director were split by bit:
     - 27–46 write-combining merges per combining fixture;
     - 7–32 same-cycle read-port ties.
   - **Regenerate:** `tests/ref/memconf.sh --check` (needs a JDK).
-- **The sort:** W12's `test_sort` covers SPLIT's read port and every G3 unit on every tile, at all 248 points.
+- **The sorts:** W12's `test_sort` covers SPLIT's read port and every G3 unit on every tile. The 16K sort (248 points)
+  and the full-size sort (321 points) are equal on the runner, one thread and 8 domains (Quest 154).
 
 ## 5. Surprises worth knowing
 
@@ -167,7 +171,12 @@ The register block and director were split by bit:
 
 ## 6. What's left
 
-- **On main once W12's sort commits land:** `a2a` runs in `make check` (it skips itself until PULSE_DMA is modelled).
-  Re-run `a2a` and `test_sort` there and record the results in NOTES.md.
-- **M3, by D30:** nothing in G3 needed a difference from ref. The memory path is cheap per cycle; big SRAM's cost is its
-  touched pages only.
+- **Performance (next, through the integrator).** W10's profile of the sort (Quest 156) puts BigSram, the read side and
+  the table store among the top costs. Its hot-lines write-up for these units comes next.
+- **Footprint (W10's study, for awareness).** BigSram, TableStore and Injection each hold 3-7 KB per tile that is
+  barely touched outside `regs`. This is not a problem today, and W10 checks again in the sort's traces. If it ever
+  matters, the cheap fixes are these, neither changing behaviour:
+  - size BigSram's area queues to the configured depth instead of a fixed 16 x 16 entries;
+  - keep the read side's slot arrays out of tiles without it.
+- **M3, by D30:** nothing in G3 needed a difference from ref. The big SRAM costs only its touched pages (256 MB
+  allocated; `a2a` touches 2.3 MB).

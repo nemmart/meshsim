@@ -221,3 +221,4 @@ Pieces, each committed when it compiles and passes its own test:
   view connected to its AG. Nothing in my files changes for it (the read queue and the writers take the flags). Before
   the integrator merges it, I run test_chip (regs, wfi, every tile, the read port tile) and test_mem on that commit and
   record the result here; then a2a is the joint check.
+- 2026-11-08: **main (71b1d7a, with W12's register block and the director.h merge) fully checked here:** make run gcc and clang, debug and release, 40 binaries each, all pass; tsan, tsan-units, tsan-chip clean on both compilers.

@@ -396,3 +396,36 @@ the mesh second. Of today's findings (on W4's synthetic mesh and W6's synthetic 
   built every test binary and **all 40 pass from the kit alone** (clang release). Other kit makers checked: W4's
   (bench/threads/quest) and W6's (bench/quest) carry only what their bodies run (test_parallel, test_threads,
   test_matrix: no inputs from ref/ or the goldens), so they have no such gap. A kit is ~6 MB a revision now.
+- 2026-11-07: **Footprint (item 4; D15 as amended by D26)** on W9's chip. The machine: i5-14400F (D21): a P-core's
+  L1d 48 KB and L2 1.25 MB, the E-cores' L2 2 MB a cluster, L3 20 MB.
+  Tools: `Internals::regions` (each structure's memory and the domain that owns it), `bench_chip --trace-map` (the
+  region map, then windows marked by a store), `trace_filter` + `trace.sh` (valgrind lackey's trace of a second,
+  identical run filtered against the first run's map; refused if the maps differ). Touched lines are a property of
+  the machine's state and layout, not of the CPU, so they are measured here; the runner gives the caches, the resident
+  set and the misses (Quest 152). Windows of 3 cycles (one barrier interval), 100 a trace: the boot busy (from cycle
+  400, its network load) and quiet (from 3,000), wfi (from 600), regs (from 300), one thread and 6 by tiles.
+  - **Per thread per interval at 6 threads** (KB, mean / max of the busiest thread): the boot busy 45 / 47 (the others
+    31-36), the boot quiet 11 / 12, wfi 13 / 31, regs 14 / 42; plus ~21 KB an interval outside the map for all threads
+    together (stacks, the threads' status and barrier lines). **Under a P-core's 48 KB L1d at the mean, and far under its
+    1.25 MB L2**; over a whole trace (300 cycles) the chip touches 74-380 KB in all at 6 threads.
+  - **Allocated against touched** (one thread; without the big SRAM and the bench's port-B memory): **3.6 MB allocated,
+    35-321 KB touched over a trace** (the boot quiet 35, wfi 181, the boot busy 221, regs 321). The biggest allocations
+    are units' state, mostly untouched: Router 842 KB (13.5 KB a router; touched 86 KB over the busy boot, 51.6 KB an
+    interval), BigSram 460 KB, TableStore 385 KB, Injection 314 KB, AddrGen 194 KB (each ~0.1 KB touched on the boot
+    and wfi; regs: TableStore 41 KB, AddrGen 20 KB). Touched most: TileCore (24-27 KB an interval: the cores' state,
+    all of it), TileCtl (all 35.5 KB over regs), the director (9 KB an interval on the busy boot).
+  - **Framework structures**: the link wheel of width 3 240 KB allocated (254 KB split), 18.8-24 KB touched (the fronts
+    of its buckets, busy boot), ~0 quiet; the width-0 wheel (event links) 88-98 KB, ~0 touched; routes 87 KB, 11 KB;
+    link ports 115-124 KB, 11-20 KB; the per-instance arrays 5.6 KB each, 0.6-1.6 KB; the direct outboxes' entries
+    55 KB, 11.5 KB (busy boot); their bucket headers 10.5 KB, read every interval (the drain's walk, 3.4-6.4 KB an
+    interval). Slot pools: none on this chip (every port inline).
+  - **Big SRAM** (Quest 152, the runner): 256 MB allocated (64 x 4 MB, mmap NORESERVE), **0 resident after the boot
+    and wfi, 0.25 MB (64 pages) after regs** (mincore); the process's resident set 17-20 MB in all. LLC load misses
+    41-66 thousand for a whole process (10 machines built and run): ~0.3 a simulated cycle. It doesn't crowd the caches.
+  - **Decision on the wheels: leave them.** Worst-case sizing costs address space and resident memory, not cache: a
+    bucket is filled from its front, so what the caches see is the touched fronts (at most ~24 KB an interval chip-wide,
+    busy), whatever the allocation. Per-latency wheels or count-only event links would shrink the 240 + 98 KB allocated,
+    not the lines touched. Revisit if the sort's traces show the wheels' touched share large.
+  - **For the units' owners** (not a problem now, a note): the Router's state is the chip's largest (13.5 KB a router,
+    842 KB) and its largest touched item on busy traffic (51.6 KB an interval); BigSram's, TableStore's, Injection's
+    and AddrGen's are 3-7 KB a tile each, ~untouched outside regs. All fit; worth a look in the sort's traces.

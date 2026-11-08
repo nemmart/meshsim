@@ -265,3 +265,4 @@ Pieces, each committed when it compiles and passes its own test:
 - 2026-11-08: **The sort's SPLIT:** W12's P7 (3ef43ac, sim-w12) runs the 16K sort end to end equal to ref at all 248
   sort16k-fp points, every unit of every tile, with my read queue, read port, write engine, table store, HIST and big
   SRAM in it; no difference reached my units. I will rerun test_sort here once it is on main and record it.
+- 2026-11-08: **make check clean at 7295f07** (build by build: gcc and clang, debug and release, 42 binaries each; tsan, tsan-units, tsan-chip on both compilers). a2a skips itself here (no PULSE_DMA on the branch). Merge order (integrator): W12's sort commits first, then mine; then I rerun a2a and test_sort on main.

@@ -560,7 +560,7 @@ Sim::Impl* Internals::split(Config::Impl& G) {
     T->ph.assign(T->nthreads, Threads::PhaseTicks{});
     for (uint32_t d = 0; d < D; d++) T->doms[d].thread = unsigned(uint64_t(d) * T->nthreads / D);
     T->cpus = G.opt.cpus;
-    T->barrier.init(T->nthreads, G.opt.barrier_block, G.opt.barrier_spins);
+    T->barrier.init(T->nthreads, G.opt.barrier_block, G.opt.barrier_spins, G.opt.barrier_flags);
     T->where = std::make_unique<Threads::Where[]>(T->nthreads);
     T->barrier.watchdog(10.0, &Threads::report_where, T);
 
@@ -707,7 +707,7 @@ void Threads::run_thread(unsigned t, Cycle end) {
         for (auto& d : doms) if (d.thread == t) publish(d, now, n, par);
         if (P) { c1 = sim_ticks(); P->publish += c1 - c0; c0 = c1; }
         at(t, now, kNone, "at the barrier after its interval");
-        barrier.wait();
+        barrier.wait(t);
         if (P) {
             c1 = sim_ticks(); P->wait += c1 - c0; c0 = c1;
             if (t == 0) {                     // every thread's last_run was written before the barrier
@@ -740,14 +740,14 @@ void Threads::run_thread(unsigned t, Cycle end) {
         par ^= 1;
     }
     at(t, now, kNone, "at the barrier ending the run");
-    barrier.wait();                           // every drain done: the last interval's outbox entries can go
+    barrier.wait(t);                          // every drain done: the last interval's outbox entries can go
     for (auto& d : doms) if (d.thread == t) {
         clear(d, prev);
         if constexpr (kDebug) if (d.e->npools) d.e->check_leaks();
     }
     if (P) { c1 = sim_ticks(); P->end += c1 - c0; P->total += c1 - start; }   // before the barrier: the caller reads them
     at(t, now, kNone, "at the last barrier of the run");
-    barrier.wait();                           // the machine is still: the caller may read it
+    barrier.wait(t);                          // the machine is still: the caller may read it
     at(t, now, kNone, "idle");
 }
 

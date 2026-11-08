@@ -217,7 +217,8 @@ int form2(const Args& a) {
     o.cpus = a.cpus;
     if (by_load) { o.placement = Options::Placement::by_load; o.threads = a.threads; if (a.partition == "profile") o.load = &prof; }
     o.barrier_block = a.barrier == "block";
-    o.barrier_spins = a.barrier == "spin" ? ~0u : a.spins;
+    o.barrier_flags = a.barrier.rfind("flags", 0) == 0;
+    o.barrier_spins = (a.barrier == "spin" || a.barrier == "flags-spin") ? ~0u : a.spins;
     Config cfg(o);
     add_chip(cfg, D, tiles);
     Sim s = cfg.build();
@@ -263,16 +264,16 @@ int form3(const Args& a) {
     const unsigned T = std::max(2u, a.threads);
     if (a.barrier_only) {
         detail::Barrier b;
-        b.init(T, a.barrier == "block", a.barrier == "spin" ? ~0u : a.spins);
+        b.init(T, a.barrier == "block", (a.barrier == "spin" || a.barrier == "flags-spin") ? ~0u : a.spins, a.barrier.rfind("flags", 0) == 0);
         std::vector<std::thread> th;
         const uint64_t rounds = a.cycles;
         double secs = 0;
         for (unsigned t = 0; t < T; t++)
             th.emplace_back([&, t] {
                 if (!a.cpus.empty()) pin_to_cpu(a.cpus[t % a.cpus.size()]);
-                b.wait();
+                b.wait(t);
                 const double t0 = now_s();
-                for (uint64_t r = 0; r < rounds; r++) b.wait();
+                for (uint64_t r = 0; r < rounds; r++) b.wait(t);
                 if (t == 0) secs = now_s() - t0;
             });
         for (auto& x : th) x.join();
@@ -284,7 +285,8 @@ int form3(const Args& a) {
     o.threads = T;
     o.cpus = a.cpus;
     o.barrier_block = a.barrier == "block";
-    o.barrier_spins = a.barrier == "spin" ? ~0u : a.spins;
+    o.barrier_flags = a.barrier.rfind("flags", 0) == 0;
+    o.barrier_spins = (a.barrier == "spin" || a.barrier == "flags-spin") ? ~0u : a.spins;
     o.time_threads = a.time_threads;
     Config cfg(o);
     std::vector<Idle*> u;

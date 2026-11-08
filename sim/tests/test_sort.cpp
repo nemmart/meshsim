@@ -11,6 +11,7 @@
 #include <cinttypes>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <memory>
 #include <sstream>
@@ -51,15 +52,24 @@ uint32_t symbol(const std::string& name) {
     return ~0u;
 }
 
-// sort16k.out's "boot N cycles".
-uint64_t golden_boot_cycles() {
-    std::ifstream f("tests/golden-m2/sort16k.out");
+// The reference checked against: sort16k (default) or sort64k (SORT_SIZE=64k): its committed facts (NAME.out, NAME.phases.csv)
+// and its key set's sha256 (HASHES).
+struct Ref { std::string name; const char* keys_sha; };
+Ref reference() {
+    const char* z = std::getenv("SORT_SIZE");
+    if (z && std::string(z) == "64k") return {"sort64k", "a7636b687a6db39cac8fbf63c2f16f686fd1ce858fe8a7ed5d98621e452c9b7a"};
+    return {"sort16k", "3db703f3e170ee6fa337eb7ee539800b371a3d6fcf924225baade1a8386aeb40"};
+}
+// NAME.out's "sort ..." line's number after `key` ("TOTAL ", "; boot ").
+uint64_t golden_fact(const std::string& name, const char* key) {
+    std::ifstream f("tests/golden-m2/" + name + ".out");
     for (std::string ln; std::getline(f, ln); ) {
-        const size_t a = ln.find("; boot ");
-        if (ln.rfind("sort ", 0) == 0 && a != std::string::npos) return std::stoull(ln.substr(a + 7));
+        const size_t a = ln.find(key);
+        if (ln.rfind("sort ", 0) == 0 && a != std::string::npos) return std::stoull(ln.substr(a + std::strlen(key)));
     }
     return 0;
 }
+uint64_t golden_boot_cycles() { return golden_fact("sort16k", "; boot "); }
 
 // The chip with the sort's image and M2Sort's sequence, booted to B.
 struct SortChip {
@@ -180,7 +190,7 @@ struct Checked {
         const char* keys_path = std::getenv("SORT_KEYS");
         const char* golden = std::getenv("SORT_FP");
         if (!keys_path || !golden) { err = "skip"; return; }
-        if (sha256_file(keys_path) != "3db703f3e170ee6fa337eb7ee539800b371a3d6fcf924225baade1a8386aeb40") { err = "the key file is not HASHES' keys-16384/uniform.keys"; return; }
+        if (sha256_file(keys_path) != reference().keys_sha) { err = "the key file is not HASHES' for " + reference().name; return; }
         keys = sortin::read_keys(keys_path, err);
         if (!err.empty()) return;
         g = fp::FpGolden::load(golden);
@@ -253,10 +263,10 @@ TEST(sort_state_after_the_input_load_equals_refs) {
     }
 }
 
-// sort16k.phases.csv: (go_at, end_at) of the phases from L1 (the boot's phase, cmd 4A, opens before B).
+// NAME.phases.csv: (go_at, end_at) of the phases from L1 (the boot's phase, cmd 4A, opens before B).
 std::vector<std::pair<int64_t, int64_t>> golden_phases() {
     std::vector<std::pair<int64_t, int64_t>> v;
-    std::ifstream f("tests/golden-m2/sort16k.phases.csv");
+    std::ifstream f("tests/golden-m2/" + reference().name + ".phases.csv");
     std::string ln;
     std::getline(f, ln);                              // the header
     while (std::getline(f, ln)) {
@@ -303,13 +313,16 @@ void sort_end_checks(SortChip& s, const Checked& k, const std::vector<Ph>& ph) {
     CHECK_EQ(diff, size_t(0));
     if (ph.size() >= 2) {
         const int64_t total = ph[ph.size() - 2].end_at - ph[0].go_at;   // L2 is the last but one (EXIT's last)
-        std::fprintf(stderr, "sort: TOTAL %lld cycles (L1 GO at %lld -> L2 all READY at %lld); phases %zu (ref: 496619, 14838 -> 511457, 98 after the boot's)\n",
-                     (long long)total, (long long)ph[0].go_at, (long long)ph[ph.size() - 2].end_at, ph.size());
-        CHECK_EQ(total, int64_t(496619));
+        const int64_t want = int64_t(golden_fact(reference().name, "TOTAL "));
+        std::fprintf(stderr, "sort: TOTAL %lld cycles (L1 GO at %lld -> L2 all READY at %lld); phases %zu (%s.out: TOTAL %lld; phases.csv: %zu after the boot's)\n",
+                     (long long)total, (long long)ph[0].go_at, (long long)ph[ph.size() - 2].end_at, ph.size(), reference().name.c_str(),
+                     (long long)want, gp.size());
+        CHECK(want > 0);
+        CHECK_EQ(total, want);
     }
 }
 
-// The sort past B, every golden point compared (every 10,000 cycles, each GO and all-READY), to the run's end or to
+// The sort past B (SORT_SIZE=64k: the full size, against sort64k-fp and sort64k's facts), every golden point compared (every 10,000 cycles, each GO and all-READY), to the run's end or to
 // SORT_THROUGH; SORT_PARTS splits it (in row bands); SORT_BLOCK: the barrier sleeps (more threads than CPUs);
 // SORT_OPT=shuffle|instance|stepall: a debug option.
 TEST(sort_runs_equal_to_refs) {

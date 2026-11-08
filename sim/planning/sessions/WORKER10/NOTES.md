@@ -242,6 +242,13 @@ Wire, RegFile and Count are already readable from their producers' and readers' 
   clean checkout, build by build, gcc and clang debug and release (36 test binaries each, test_chip and
   test_g1_replay included), TSan gcc and clang (the 7 thread tests, test_controllers, test_chip form2: tsan-chip).
 
+## Rules for measurement (owner, 2026-11-07)
+
+- **Every chip measurement uses in-process repeats** (bench_chip --reps: an untimed machine first, then R timed
+  machines in the same process, the median reported with min and max), over several processes. A chip run is
+  milliseconds: one run per process measures the clock's ramp, first touches and the workers' start (Quest 142, withdrawn
+  by Quest 143). Mesh runs (bench_threads, 60,000 cycles, 60-300 ms) are long enough as they are.
+
 ## What carries over to the sort's chip (and what may not)
 
 The benchmark that counts is the sort's chip at 16K (owner, 2026-11-07); until it runs, W9's chip as far as it runs

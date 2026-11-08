@@ -33,7 +33,7 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     DirectorConfig dc;
     dc.tile = k; dc.periph_present = g.cfg.periph_present; dc.mem_chunks = g.cfg.mem_chunks;
 
-    auto& c = cfg.add<TileCore>(t + "core", core);
+    auto& c = cfg.add<TileCore>(t + "core", core, k, g.cfg.read_port_depth);
     auto& b = cfg.add<TileCtl>(t + "ctl", block, kHasOvfEvent<ControlIO>);
     auto& d = cfg.add<Director>(t + "dir", dc);
     auto& we = cfg.add<WriteEngine>(t + "we", g.we_in_depth, g.cfg.ts_engine_latency, g.cfg.mem_chunks);
@@ -54,6 +54,7 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     cfg.link(d.landed, b.landed, g.cfg.cm_latency + 1);
     cfg.link(d.kline, b.kline, g.cfg.K + 1);
     cfg.link(d.bad, b.bad, 1);
+    cfg.connect(c.rp_stores, d.rp_stores);                // W11: the read port's results outstanding (overlap check)
     cfg.connect(d.we_in, we.in);
     cfg.count_overflows(we.in, b.we_in_ovf);
     cfg.connect(d.gather, ga.in);

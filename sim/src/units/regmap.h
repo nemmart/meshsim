@@ -46,7 +46,7 @@ inline const RegInfo& reg_info(unsigned i) {
     static constexpr RegInfo kNone{nullptr, A_NONE, A_NONE};
     static constexpr RegInfo t[33] = {
         {"PARAMS", A_M1, A_NONE}, {"STATUS", A_M1, A_NONE}, {"ERRORS", A_M1, A_NONE}, {"PULSE_DONE", A_NONE, A_M1},
-        {"PULSE_DMA", A_NONE, A_OUT}, kNone, {"EVENTS", A_M1, A_NONE}, {"EVENTS_PEEK", A_M1, A_NONE},
+        {"PULSE_DMA", A_NONE, A_M1}, kNone, {"EVENTS", A_M1, A_NONE}, {"EVENTS_PEEK", A_M1, A_NONE},
         {"EVENTS_MASK", A_M1, A_M1}, {"EVENTS_REQUIRED", A_M1, A_M1}, {"ROUTER_HDR", A_M1, A_M1},
         {"ROUTER_ADDR", A_M1, A_M1}, {"ROUTER_SET_W0", A_NONE, A_M1}, {"ROUTER_SET_W1", A_NONE, A_M1},
         {"ROUTER_SET_W2", A_NONE, A_M1}, {"ROUTER_SEND_32", A_NONE, A_M1}, {"ROUTER_SEND_64", A_NONE, A_M1},

@@ -171,64 +171,116 @@ TEST(sort_boot_ends_at_refs_cycle) {
     std::fprintf(stderr, "sort: the boot ends at cycle %" PRIu64 " (sort16k.out: %" PRIu64 ")\n", s.B, want);
 }
 
-TEST(sort_state_after_the_input_load_equals_refs) {
-    const char* keys = std::getenv("SORT_KEYS");
-    const char* golden = std::getenv("SORT_FP");
-    if (!keys || !golden) return;                     // on demand (header)
-    const std::string kh = sha256_file(keys);
-    CHECK(kh == "3db703f3e170ee6fa337eb7ee539800b371a3d6fcf924225baade1a8386aeb40");   // HASHES: keys-16384/uniform.keys
+// The golden, the keys and the registry for a run checked against sort16k-fp.
+struct Checked {
+    sortin::Keys keys;
+    fp::FpGolden g;
     std::string err;
-    const sortin::Keys k = sortin::read_keys(keys, err);
-    CHECK(err.empty());
-    if (!err.empty()) return;
-    fp::FpGolden g = fp::FpGolden::load(golden);
-    CHECK(g.error.empty());
-    if (!g.error.empty()) { std::fprintf(stderr, "%s\n", g.error.c_str()); return; }
-    // D12: the golden's configuration must be the one built here (test_chip's keys)
-    const std::pair<const char*, const char*> cfgkeys[] = {{"linkLatency", "3"}, {"queueDepth", "16"}, {"K", "8"}, {"cmLatency", "2"},
-        {"goLatency", "8"}, {"readyLatency", "8"}, {"cncReaction", "1"}, {"cncGoSettle", "true"}, {"skew", "true"},
-        {"skewSeed", "1"}, {"readTokens", "64"}, {"intraTileLatency", "1"}, {"doneGate", "true"}, {"memChunks", "1048576"},
-        {"tsEngineLatency", "1"}, {"areaQueueDepth", "8"}, {"sramReadLatency", "2"}, {"writeCombining", "false"},
-        {"fifoCountBeforePop", "true"}, {"weInDepth", "4"}, {"gatherDepth", "16"}, {"readPortDepth", "64"}};
-    for (auto& kv : cfgkeys) {
-        auto it = g.config.find(kv.first);
-        if (it == g.config.end() || it->second != kv.second) {
-            test::fail(__FILE__, __LINE__, "refused (D12): the golden's %s is %s, this run builds %s", kv.first,
-                       it == g.config.end() ? "absent" : it->second.c_str(), kv.second);
-            return;
+    Checked() {
+        const char* keys_path = std::getenv("SORT_KEYS");
+        const char* golden = std::getenv("SORT_FP");
+        if (!keys_path || !golden) { err = "skip"; return; }
+        if (sha256_file(keys_path) != "3db703f3e170ee6fa337eb7ee539800b371a3d6fcf924225baade1a8386aeb40") { err = "the key file is not HASHES' keys-16384/uniform.keys"; return; }
+        keys = sortin::read_keys(keys_path, err);
+        if (!err.empty()) return;
+        g = fp::FpGolden::load(golden);
+        if (!g.error.empty()) { err = g.error; return; }
+        // D12: the golden's configuration must be the one built here (test_chip's keys)
+        const std::pair<const char*, const char*> cfgkeys[] = {{"linkLatency", "3"}, {"queueDepth", "16"}, {"K", "8"}, {"cmLatency", "2"},
+            {"goLatency", "8"}, {"readyLatency", "8"}, {"cncReaction", "1"}, {"cncGoSettle", "true"}, {"skew", "true"},
+            {"skewSeed", "1"}, {"readTokens", "64"}, {"intraTileLatency", "1"}, {"doneGate", "true"}, {"memChunks", "1048576"},
+            {"tsEngineLatency", "1"}, {"areaQueueDepth", "8"}, {"sramReadLatency", "2"}, {"writeCombining", "false"},
+            {"fifoCountBeforePop", "true"}, {"weInDepth", "4"}, {"gatherDepth", "16"}, {"readPortDepth", "64"}};
+        for (auto& kv : cfgkeys) {
+            auto it = g.config.find(kv.first);
+            if (it == g.config.end() || it->second != kv.second) {
+                err = std::string("refused (D12): the golden's ") + kv.first + " is " + (it == g.config.end() ? "absent" : it->second) + ", this run builds " + kv.second;
+                return;
+            }
         }
     }
-    for (unsigned parts : {1u, 4u}) {
-        SortChip s(sortin::FMT_K128, {}, parts);
-        CHECK(s.err.empty() && s.boot());
-        s.load(k, sortin::FMT_K128);
-        auto pts = g.at(s.B);
-        CHECK(!pts.empty());
-        if (pts.empty()) return;
-        std::vector<fp::G2Tile> g2(64);
+};
+struct Fps {
+    std::vector<fp::G2Tile> g2;
+    fp::G2Chip gc;
+    fp::FpRegistry reg;
+    std::vector<unsigned> tiles;
+    explicit Fps(SortChip& s) : g2(64) {
         for (unsigned t = 0; t < 64; t++) g2[t] = fp::g2_tile(*s.m, t);
-        fp::G2Chip gc;
         gc.cnc = &s.m->unit<Cnc>("cnc");
         for (unsigned r = 0; r < 8; r++) gc.rows[r] = &s.m->unit<RowCollector>("row" + std::to_string(r));
         gc.ep[0] = &s.m->unit<Endpoint>("ep2"); gc.ep[1] = &s.m->unit<Endpoint>("ep3");
         gc.ready_latency = NetConfig{}.ready_latency;
         gc.edge = line_edge; gc.edge_ctx = s.g1.data();
-        fp::FpRegistry reg;
-        std::vector<unsigned> tiles;
         for (unsigned t = 0; t < 64; t++) { fp::register_g1(reg, s.g1[t]); fp::register_g2_tile(reg, g2[t]); tiles.push_back(t); }
         fp::register_g2(reg, gc);
+    }
+    // Our point at c against the golden's points at c ("" if equal or none there); `n` counts the points compared.
+    std::string compare(SortChip& s, const fp::FpGolden& g, uint64_t c, unsigned& n) {
+        auto pts = g.at(c);
+        if (pts.empty()) return "";
         std::vector<std::string> lines;
-        reg.point(fp::FpCtx{s.B, s.m.get()}, tiles, true, lines);
+        reg.point(fp::FpCtx{c, s.m.get()}, tiles, true, lines);
         const std::vector<fp::FpLine> ours = fp::parse_lines(lines);
         for (const fp::FpPoint* p : pts) {
             fp::FpDiff d = fp::compare(*p, ours);
             if (d.any) {
-                if (std::getenv("SORT_DUMP")) reg.dump(d.unit, fp::FpCtx{s.B, s.m.get()}, stderr);
-                test::fail(__FILE__, __LINE__, "sort, %u domain(s): at B = %" PRIu64 ", %s: %s", parts, s.B, d.unit.c_str(), d.why.c_str());
-                return;
+                if (std::getenv("SORT_DUMP")) reg.dump(d.unit, fp::FpCtx{c, s.m.get()}, stderr);
+                return "cycle " + std::to_string(c) + ", " + d.unit + ": " + d.why;
             }
         }
-        std::fprintf(stderr, "sort (%u domain%s): the state at B = %" PRIu64 ", after the input load, equals ref's (%zu units)\n",
-                     parts, parts > 1 ? "s" : "", s.B, ours.size());
+        n++;
+        return "";
     }
+};
+
+TEST(sort_state_after_the_input_load_equals_refs) {
+    Checked k;
+    if (k.err == "skip") return;                      // on demand (header)
+    CHECK(k.err.empty());
+    if (!k.err.empty()) { std::fprintf(stderr, "%s\n", k.err.c_str()); return; }
+    for (unsigned parts : {1u, 4u}) {
+        SortChip s(sortin::FMT_K128, {}, parts);
+        CHECK(s.err.empty() && s.boot());
+        s.load(k.keys, sortin::FMT_K128);
+        Fps f(s);
+        unsigned n = 0;
+        const std::string e = f.compare(s, k.g, s.B, n);
+        if (!e.empty()) { test::fail(__FILE__, __LINE__, "sort, %u domain(s): %s", parts, e.c_str()); return; }
+        CHECK_EQ(n, 1u);
+        std::fprintf(stderr, "sort (%u domain%s): the state at B = %" PRIu64 ", after the input load, equals ref's\n",
+                     parts, parts > 1 ? "s" : "", s.B);
+    }
+}
+
+// The sort past B, every golden point compared (every 10,000 cycles, each GO and all-READY), to the run's end or to
+// SORT_THROUGH; SORT_PARTS splits it.
+TEST(sort_runs_equal_to_refs) {
+    Checked k;
+    if (k.err == "skip") return;
+    CHECK(k.err.empty());
+    if (!k.err.empty()) { std::fprintf(stderr, "%s\n", k.err.c_str()); return; }
+    const uint64_t through = std::getenv("SORT_THROUGH") ? std::strtoull(std::getenv("SORT_THROUGH"), nullptr, 10) : ~uint64_t(0);
+    const unsigned parts = std::getenv("SORT_PARTS") ? unsigned(std::atoi(std::getenv("SORT_PARTS"))) : 1u;
+    SortChip s(sortin::FMT_K128, {}, parts);
+    CHECK(s.err.empty() && s.boot());
+    s.load(k.keys, sortin::FMT_K128);
+    Fps f(s);
+    const Cnc& cc = s.m->unit<Cnc>("cnc");
+    const uint64_t last = k.g.points.back().cycle;
+    unsigned n = 0;
+    std::string e = f.compare(s, k.g, s.B, n);
+    uint64_t c = s.B;
+    while (e.empty() && c < through) {
+        s.m->run(1); c++;
+        e = f.compare(s, k.g, c, n);
+        bool stopped = !cc.busy();
+        for (unsigned t = 0; t < 64 && stopped; t++) stopped = s.g1[t].core->halt != Rv32::RUN;
+        if (stopped) break;
+        if (c > last + 10) { e = "still running " + std::to_string(c - last) + " cycles past the golden's end"; break; }
+    }
+    std::fprintf(stderr, "sort (%u domain%s): %u points equal, through cycle %" PRIu64 " (the golden's last %" PRIu64 ")%s%s\n",
+                 parts, parts > 1 ? "s" : "", n, c, last, e.empty() ? "" : "; first difference: ", e.c_str());
+    CHECK(e.empty());
+    if (through == ~uint64_t(0)) CHECK_EQ(c, last);
 }

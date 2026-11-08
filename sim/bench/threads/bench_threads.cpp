@@ -43,7 +43,8 @@ struct Args {
     uint64_t seed = 1;
     bool sizes = false;
     unsigned domains = 0;          // form 2: 0 = as many as threads
-    std::string barrier = "yield"; // form 2: spin (never yields), yield (after --spins pauses), block (futex after them)
+    std::string barrier = "auto";  // form 2: spin (never yields), yield (after --spins pauses), block (futex after them):
+                                   // W4's counter barrier; flags, flags-spin: the flags barrier (W10); auto: the default
     unsigned spins = 2000;
     bool due_off = false;          // form 2 with one domain: the due mask off, as in a split machine's domains
     unsigned engines = 0;          // form 2 (W10): Options::engines (0: one per thread)
@@ -217,7 +218,8 @@ int form2(const Args& a) {
     o.cpus = a.cpus;
     if (by_load) { o.placement = Options::Placement::by_load; o.threads = a.threads; if (a.partition == "profile") o.load = &prof; }
     o.barrier_block = a.barrier == "block";
-    o.barrier_flags = a.barrier.rfind("flags", 0) == 0;
+    o.barrier = a.barrier.rfind("flags", 0) == 0 ? Options::Barrier::flags
+              : a.barrier == "auto" ? Options::Barrier::automatic : Options::Barrier::counter;   // W10
     o.barrier_spins = (a.barrier == "spin" || a.barrier == "flags-spin") ? ~0u : a.spins;
     Config cfg(o);
     add_chip(cfg, D, tiles);
@@ -285,7 +287,8 @@ int form3(const Args& a) {
     o.threads = T;
     o.cpus = a.cpus;
     o.barrier_block = a.barrier == "block";
-    o.barrier_flags = a.barrier.rfind("flags", 0) == 0;
+    o.barrier = a.barrier.rfind("flags", 0) == 0 ? Options::Barrier::flags
+              : a.barrier == "auto" ? Options::Barrier::automatic : Options::Barrier::counter;   // W10
     o.barrier_spins = (a.barrier == "spin" || a.barrier == "flags-spin") ? ~0u : a.spins;
     o.time_threads = a.time_threads;
     Config cfg(o);

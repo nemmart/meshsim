@@ -93,7 +93,10 @@ struct Options {
                                  // (topology.h); a CPU of -1: that thread not pinned ({-1}: leave placement to the OS)
     bool barrier_block = false;  // W4: the barrier sleeps (futex) after its spin, instead of yielding (barrier.h)
     unsigned barrier_spins = 2000;   // W4: pauses before the barrier yields (or sleeps); 0: yield at once; ~0u: spin only
-    bool barrier_flags = false;  // W10: the barrier on per-thread epochs (no shared counter; barrier.h); yields, never sleeps
+    // W10: the barrier's kind. automatic: the flags barrier from 3 threads (Quests 145-146 on the i5-14400F: -11% on the
+    // chip's boot at 6 threads, worse at 2; D21: re-check the crossover on other machines), the counter below 3 or with
+    // barrier_block (the flags barrier yields, never sleeps). counter: W4's (one shared line). flags: per-thread epochs.
+    enum class Barrier : uint8_t { automatic, counter, flags } barrier = Barrier::automatic;
     unsigned engines = 0;        // W10, A MEASUREMENT OPTION ONLY: leave it 0. A machine split over domains is built as
                                  // one engine per thread (its domains grouped in order, min(threads, domains) groups);
                                  // engines > threads instead builds that many and runs several on a thread in turn

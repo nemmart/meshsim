@@ -321,3 +321,13 @@ the mesh second. Of today's findings (on W4's synthetic mesh and W6's synthetic 
   The remaining structural lever (the interval can't pass 3): **wait only for the threads one exchanges words with**
   (a split by tiles has 2-4 neighbours, not 5), instead of every thread. That needs the idle jump and the stop request
   (whole-machine decisions, made at the barrier today) taken another way: proposed to the owner before building.
+- 2026-11-07: **The flags barrier is the default from 3 threads** (owner): `Options::barrier` (automatic | counter |
+  flags; automatic: flags from 3 threads unless barrier_block, the counter below). **The crossover (flags better from
+  4 threads, worse at 2; 3 not measured apart) was measured on the i5-14400F (D21): re-check it on any other machine**
+  (bench_threads --form 3 and bench_chip --barrier, Quests 145-146's body). The partition report names the barrier.
+- 2026-11-07: **Considered, not built: a neighbour-only barrier** (each thread waiting only for the threads it exchanges
+  words with). Owner's reasoning: the boot's light work (~0.16 us a thread a cycle at 6 threads) inflates the barrier's
+  share; the sort is far heavier (if the controller's ~4.5x over ref holds for the rest of the chip, one thread ~17 us
+  a cycle against ref's 78, so ~3 us at 6 threads, where 0.05 us of barrier is under 2%), and it would need new
+  mechanisms for the idle jump and the stop request (whole-machine decisions at the barrier today). Little gain on the
+  target for real complexity: revisit only if the sort's measurements show the barrier large.

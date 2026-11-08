@@ -3,7 +3,7 @@
 // sort's boot (the sort image loaded over the network and port B: 14,791 cycles before any engine runs), wfi, regs.
 //
 //   bench_chip --prog sort|wfi|regs [--cycles N] [--threads T] [--partition one|rows|tiles|load|profile]
-//              [--cpus a,b,..] [--time] [--crossing-ns X] [--reps R] [--barrier counter|flags|flags-spin]
+//              [--cpus a,b,..] [--time] [--crossing-ns X] [--reps R] [--barrier auto|counter|flags|flags-spin]
 //
 // --cycles: default sort 14791 (the boot), wfi and regs: until every core has stopped (checked every 64 cycles; the
 // count is the cycles run). rows: row_bands(T); tiles: one domain per tile (grouped in order, one engine per thread);
@@ -37,7 +37,7 @@ struct Args {
     std::vector<int> cpus;
     bool time = false;
     double crossing_ns = -1;   // --crossing-ns: Options::crossing_ns (default: the framework's)
-    std::string barrier = "counter";   // --barrier counter (W4's) | flags (Options::barrier_flags) | flags-spin
+    std::string barrier = "auto";      // --barrier auto (the framework's choice) | counter (W4's) | flags | flags-spin
     unsigned reps = 5;         // --reps: machines built and run in this process, after one untimed (a run is milliseconds:
                                // the clock's ramp, first touches and the workers' start would otherwise dominate)
 };
@@ -47,6 +47,7 @@ struct World {   // what the machine reads while it runs: outlives it
     Hops hops;
     CncProgram prog;
     std::vector<uint32_t> mem;
+    SramBlocks sram;                 // G3's big-SRAM blocks (W11), as test_chip
     G1Ctx gx;
 };
 
@@ -69,6 +70,7 @@ void prepare(World& w, const std::string& name) {
     w.gx.cfg.timing = tc.timing; w.gx.cfg.periph_present = tc.periph_present; w.gx.cfg.mem_chunks = 1u << 20;
     w.gx.cfg.done_gate = true; w.gx.cfg.K = 8; w.gx.cfg.cm_latency = 2;
     w.gx.bootrom = w.im.bootrom.data(); w.gx.bootrom_words = uint32_t(w.im.bootrom.size()); w.gx.mem = w.mem.data();
+    w.gx.sram = &w.sram;
 }
 
 sim::Sim build(World& w, const Args& a, sim::Options opt, const std::string& part) {
@@ -127,8 +129,9 @@ int main(int argc, char** argv) {
     opt.cpus = a.cpus;
     opt.time_threads = a.time && a.threads > 1;
     if (a.crossing_ns >= 0) opt.crossing_ns = a.crossing_ns;
-    if (a.barrier != "counter" && a.barrier != "flags" && a.barrier != "flags-spin") FATAL("--barrier %s", a.barrier.c_str());
-    opt.barrier_flags = a.barrier != "counter";
+    if (a.barrier != "auto" && a.barrier != "counter" && a.barrier != "flags" && a.barrier != "flags-spin") FATAL("--barrier %s", a.barrier.c_str());
+    opt.barrier = a.barrier == "auto" ? sim::Options::Barrier::automatic
+                : a.barrier == "counter" ? sim::Options::Barrier::counter : sim::Options::Barrier::flags;
     if (a.barrier == "flags-spin") opt.barrier_spins = ~0u;
     if (part == "profile") {                              // the same program and cycles, one thread, calibrating
         World cw;

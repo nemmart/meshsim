@@ -560,7 +560,9 @@ Sim::Impl* Internals::split(Config::Impl& G) {
     T->ph.assign(T->nthreads, Threads::PhaseTicks{});
     for (uint32_t d = 0; d < D; d++) T->doms[d].thread = unsigned(uint64_t(d) * T->nthreads / D);
     T->cpus = G.opt.cpus;
-    T->barrier.init(T->nthreads, G.opt.barrier_block, G.opt.barrier_spins, G.opt.barrier_flags);
+    const bool flags = G.opt.barrier == Options::Barrier::flags ||
+                       (G.opt.barrier == Options::Barrier::automatic && T->nthreads >= 3 && !G.opt.barrier_block);   // W10
+    T->barrier.init(T->nthreads, G.opt.barrier_block, G.opt.barrier_spins, flags);
     T->where = std::make_unique<Threads::Where[]>(T->nthreads);
     T->barrier.watchdog(10.0, &Threads::report_where, T);
 
@@ -597,6 +599,7 @@ Sim::Impl* Internals::split(Config::Impl& G) {
     rep += interval == kNoCycle ? "; no barrier until the end of a run"
                                 : "; barrier every " + std::to_string(interval) + " cycles, set by " + why;
     T->report = rep;
+    if (T->nthreads > 1) T->report += flags ? "; the flags barrier" : "; the counter barrier";   // W10
 
     auto* SI = new Sim::Impl;
     SI->threads = T;

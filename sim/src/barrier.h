@@ -23,7 +23,7 @@ public:
     // Every thread calls it once per round; all return after the last has arrived. Release/acquire: what a thread wrote
     // before arriving is visible to every thread after it returns.
     void wait();
-    // W10: thread t's arrival (t < n). With `flags` (Options::barrier_flags): no shared counter; each thread bumps its own
+    // W10: thread t's arrival (t < n). With `flags` (Options::barrier): no shared counter; each thread bumps its own
     // epoch (its own line) and waits until every other thread's has reached it: no contended read-modify-write, and the
     // last arrival is seen by each waiter in one line transfer. Otherwise the counter barrier above.
     void wait(unsigned t);

@@ -202,7 +202,7 @@ DEATH_TEST(a_malformed_profile_is_fatal_naming_its_line, "load profile line 3: '
     LoadProfile::from_text("loadprofile v1\ncycles 10\nr0 x\n");
 }
 
-// W10: the barrier on per-thread epochs (Options::barrier_flags) gives the same machine: the synthetic chip over 2-4
+// W10: the barrier on per-thread epochs (Options::Barrier::flags) gives the same machine: the synthetic chip over 2-4
 // threads, spinning and yielding, in several runs, against one thread.
 TEST(the_flags_barrier_gives_the_one_thread_digest) {
     synth::Params P;
@@ -215,7 +215,7 @@ TEST(the_flags_barrier_gives_the_one_thread_digest) {
     const uint64_t want = a.digest();
     for (unsigned t : {2u, 3u, 4u})
         for (unsigned spins : {2000u, ~0u}) {
-            Options o; o.threads = t; o.barrier_flags = true; o.barrier_spins = spins;
+            Options o; o.threads = t; o.barrier = Options::Barrier::flags; o.barrier_spins = spins;
             Config c(o);
             synth::build(c, P, [](unsigned cl) { return cl; });
             Sim s = c.build();

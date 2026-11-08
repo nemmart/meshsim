@@ -3,7 +3,7 @@
 // sort's boot (the sort image loaded over the network and port B: 14,791 cycles before any engine runs), wfi, regs.
 //
 //   bench_chip --prog sort|wfi|regs [--cycles N] [--threads T] [--partition one|rows|tiles|load|profile]
-//              [--cpus a,b,..] [--time] [--crossing-ns X] [--reps R]
+//              [--cpus a,b,..] [--time] [--crossing-ns X] [--reps R] [--barrier counter|flags|flags-spin]
 //
 // --cycles: default sort 14791 (the boot), wfi and regs: until every core has stopped (checked every 64 cycles; the
 // count is the cycles run). rows: row_bands(T); tiles: one domain per tile (grouped in order, one engine per thread);
@@ -37,6 +37,7 @@ struct Args {
     std::vector<int> cpus;
     bool time = false;
     double crossing_ns = -1;   // --crossing-ns: Options::crossing_ns (default: the framework's)
+    std::string barrier = "counter";   // --barrier counter (W4's) | flags (Options::barrier_flags) | flags-spin
     unsigned reps = 5;         // --reps: machines built and run in this process, after one untimed (a run is milliseconds:
                                // the clock's ramp, first touches and the workers' start would otherwise dominate)
 };
@@ -110,6 +111,7 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--time")) a.time = true;
         else if (!std::strcmp(argv[i], "--crossing-ns")) a.crossing_ns = std::atof(val());
         else if (!std::strcmp(argv[i], "--reps")) a.reps = unsigned(std::atoi(val()));
+        else if (!std::strcmp(argv[i], "--barrier")) a.barrier = val();
         else if (!std::strcmp(argv[i], "--cpus")) {
             const char* s = val();
             while (*s) { a.cpus.push_back(std::atoi(s)); while (*s && *s != ',') s++; if (*s) s++; }
@@ -125,6 +127,9 @@ int main(int argc, char** argv) {
     opt.cpus = a.cpus;
     opt.time_threads = a.time && a.threads > 1;
     if (a.crossing_ns >= 0) opt.crossing_ns = a.crossing_ns;
+    if (a.barrier != "counter" && a.barrier != "flags" && a.barrier != "flags-spin") FATAL("--barrier %s", a.barrier.c_str());
+    opt.barrier_flags = a.barrier != "counter";
+    if (a.barrier == "flags-spin") opt.barrier_spins = ~0u;
     if (part == "profile") {                              // the same program and cycles, one thread, calibrating
         World cw;
         prepare(cw, a.prog);
@@ -153,9 +158,9 @@ int main(int argc, char** argv) {
     std::vector<double> so(us);
     std::sort(so.begin(), so.end());
     const double medv = so.empty() ? 0 : so[so.size() / 2];
-    std::printf("chip prog=%s threads=%u part=%s cycles=%" PRIu64 " reps=%u us_per_cycle=%.3f us_min=%.3f us_max=%.3f "
+    std::printf("chip prog=%s threads=%u part=%s barrier=%s cycles=%" PRIu64 " reps=%u us_per_cycle=%.3f us_min=%.3f us_max=%.3f "
                 "words=%llu digest=%016llx times=\"%s\" partition=\"%s\"\n",
-                a.prog.c_str(), a.threads, part.c_str(), ran, a.reps, medv, so.empty() ? 0 : so.front(), so.empty() ? 0 : so.back(),
+                a.prog.c_str(), a.threads, part.c_str(), a.barrier.c_str(), ran, a.reps, medv, so.empty() ? 0 : so.front(), so.empty() ? 0 : so.back(),
                 (unsigned long long)words, (unsigned long long)digest, times.c_str(), partition.c_str());
     return 0;
 }

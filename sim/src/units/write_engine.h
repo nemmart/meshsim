@@ -40,6 +40,7 @@ struct WriteEngine {
     sim::LinkIn ts_ret;        // width 3: their returns {i, old pointer, 0}, Link(ts_engine_latency), in order
     sim::LinkOut hist_req;     // width 3: count-on-arrival {OP_ADD_RET, digit, 1}, Link(ts_engine_latency)
     sim::HoldOut to_sram;      // width 3: the big SRAM's write holding register {chunk | n << 21, lo, hi}
+    sim::LinkOut ovf_ev;       // width 0, Link(1) to the block: we-in overflowed (judged at this step; D29, WE_IN_OVF)
 
     // ---- configuration ----
     uint32_t mem_chunks = 1u << 20;
@@ -53,6 +54,7 @@ struct WriteEngine {
     uint8_t aw[MAX_STAGE] = {};          // stage entries awaiting their PTR return, in order (a ring)
     uint8_t aw_head = 0, aw_n = 0;
     uint64_t last_put[3] = {};           // the write put on to_sram (re-put on a refusal)
+    uint64_t ovf_seen = 0;               // we-in's overflows reported so far
 
     // ---- statistics and ref's checks ----
     uint64_t taken = 0, written = 0, stall_cycles = 0, augmented = 0, explicit_writes = 0, out_of_range = 0;
@@ -66,6 +68,8 @@ struct WriteEngine {
         p.in(ts_ret, "ts_ret", 3);
         p.out(hist_req, "hist_req", 3);
         p.out(to_sram, "to_sram", 3);
+        p.out(ovf_ev, "ovf_ev", 0);
+        p.overflow_steps(in);                                  // W10: stepped in the cycle an overflow is judged
     }
 
     // The configuration as the engine uses it (WriteEngine's fields), from the block's registers.
@@ -77,7 +81,7 @@ struct WriteEngine {
 
     sim::Wake step(sim::Ctx& c);
     uint64_t digest() const {
-        uint64_t h = sim::hash_fields(head, count, aw_head, aw_n, last_put[0], last_put[1], last_put[2]);
+        uint64_t h = sim::hash_fields(head, count, aw_head, aw_n, last_put[0], last_put[1], last_put[2], ovf_seen);
         for (unsigned k = 0; k < count; k++) {
             const unsigned j = (head + k) % cap;
             h = sim::hash_mix(h, sim::hash_fields(st_d[j], st_h[j], st_c[j], st_ptr[j], st_have[j]));
@@ -91,6 +95,7 @@ struct WriteEngine {
 // one packet in while the stage has room.
 inline sim::Wake WriteEngine::step(sim::Ctx& c) {
     const uint64_t t = c.now();
+    if (const uint64_t o = c.overflows(in); o != ovf_seen) { ovf_seen = o; c.put(ovf_ev); }   // D29: an event
     if (c.ready(ts_ret)) {                                     // pointer returns, in order
         const uint32_t old = uint32_t(c.peek(ts_ret)[1]);
         c.take(ts_ret);

@@ -118,9 +118,10 @@ Each piece: its tests, `make check` clean on gcc and clang (build by build if th
     `gather_put`. `mem.h` updated.
 
 ## Owed before M2 closes (D29: overflows feeding ERRORS are events)
-- **TABLE_OVF:** the table store's three request FIFOs and HIST's: fatal "not modelled yet" today (nothing reaches them).
-- **WE_IN_OVF:** waits on W10's framework hook (a Fifo's overflow reported to its consumer as an event).
 - **READ_PORT:** a dropped SRAM_RD_ADDR_QUEUE store (P2).
+- (Done 2026-11-08: WE_IN_OVF through W10's `overflow_steps`; TABLE_OVF from the table store's and HIST's request FIFOs.
+  Both reach the block as width-0 `Link(1)` events, put in the step that judges the overflow, so its endCycle(t + 1)
+  sets ERRORS [4] / [5].)
 - 2026-11-08: **P1 done: make check clean at d10789c**, build by build (this container: g++ 13.3.0, clang 18.1.3; one CPU):
   make run gcc debug, gcc release, clang debug, clang release (36 test binaries each, all 0 failed); make tsan gcc and
   clang (7 binaries each), make tsan-units, make tsan-chip gcc and clang (form 2 over 2, 4 and 8 threads). **regs
@@ -130,3 +131,10 @@ Each piece: its tests, `make check` clean on gcc and clang (build by build if th
   The fix after the WIP commit: test_statefp_g1's plain-state check stops at 824 (no G3 path without a machine).
   The container needed `libclang-rt-18-dev` for clang's sanitizers. **Ready for the integrator to merge.**
   Next: P2 (the read side in the injection unit, the read port; MemIO through ControlIO and tile_cycle).
+- 2026-11-08: main merged (P1, W10's Fifo overflow event). **WE_IN_OVF and TABLE_OVF are events (D29):** the write
+  engine declares `overflow_steps(in)` and puts `ovf_ev` when `Ctx::overflows(in)` moves; the table store and HIST put
+  theirs when a request FIFO's put is judged dropped. The block has three width-0 inputs (`we_ovf`, `ts_ovf`,
+  `hist_ovf`; regblock's `In::we_in_ovf_ev`, `table_ovf_ev`), also in `block_at_end`. [4] no longer reads the we-in
+  Count (still wired, statistics). **`tests/test_mem.cpp`**: the overflow event's timing (judged t + 1, event t + 2),
+  the PTR path and the SRAM Hold's refusal, ReqFifo's judgment, the block's bits, the big SRAM's writes, sum and room
+  by the count before the pop. (Write combining needs a read in the same area: with P2's MemConf.)

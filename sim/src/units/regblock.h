@@ -34,7 +34,7 @@ struct RegBlockState {
     bool ready_pulse = false;                   // READY rose at this endCycle (Chip collects readyPulseAt == t)
     bool error_line = false;                    // TILE_CONDITIONS != 0 after this endCycle
     uint64_t unexpected_total = 0, done_early = 0, counter_wraps = 0, router_sends = 0, bad_total = 0;
-    enum : unsigned { COND_ROUTER_OVF = 0, COND_BAD = 1 };
+    enum : unsigned { COND_ROUTER_OVF = 0, COND_BAD = 1, COND_WE_IN_OVF = 4, COND_TABLE_OVF = 5 };
     // ---- statistics, and ref's violations (counted) ----
     uint64_t gos = 0, dones = 0, readies = 0, sends = 0, trace_stores = 0, violations = 0, sim_exit_at = 0;
     uint32_t sim_exit_value = 0;
@@ -49,6 +49,9 @@ struct RegBlockState {
         bool bad = false;                  // the director dropped a bad packet at t (an event: ERRORS [1] at endCycle(t))
         bool router_ovf_ev = false;        // the router counted an overflow at t (an event, D29: ERRORS [0] at endCycle(t))
         uint64_t router_ovf = 0, we_in_ovf = 0, gather_ovf = 0;   // FIFO overflow counts through t (D28: Counts)
+        // W11 (G3), D29: overflows judged at t, as events: ERRORS [4] (the write engine's input), [5] (the table
+        // store's and HIST's request FIFOs) at endCycle(t)
+        bool we_in_ovf_ev = false, table_ovf_ev = false;
     };
 
     UNITS_NOINLINE void end_cycle(uint64_t t, const In& in) {
@@ -64,6 +67,8 @@ struct RegBlockState {
         if (in.op == BUS_ERROR) conditions |= 1u << in.arg;                                          // 4. new errors
         if (in.bad) { bad_total++; conditions |= 1u << COND_BAD; }
         if (in.router_ovf_ev) conditions |= 1u << COND_ROUTER_OVF;
+        if (in.we_in_ovf_ev) conditions |= 1u << COND_WE_IN_OVF;
+        if (in.table_ovf_ev) conditions |= 1u << COND_TABLE_OVF;
         const uint64_t counts[] = {in.router_ovf, bad_total, unexpected_total, 0, in.we_in_ovf, 0, in.gather_ovf, 0, done_early};
         for (unsigned i = 0; i < sizeof counts / sizeof counts[0]; i++) {
             if (counts[i] > ev_prev[i]) conditions |= 1u << i;

@@ -69,6 +69,9 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     cfg.link(ts.ret_we, we.ts_ret, g.cfg.ts_engine_latency);
     cfg.link(we.hist_req, hs.req, g.cfg.ts_engine_latency);
     cfg.connect(we.to_sram, sr.wr);
+    cfg.link(we.ovf_ev, b.we_ovf, 1);                     // D29: the overflow events, judged at t, endCycle(t) at t + 1
+    cfg.link(ts.ovf_ev, b.ts_ovf, 1);
+    cfg.link(hs.ovf_ev, b.hist_ovf, 1);
 
     ControlIO io;
     io.send = c.send; io.send_busy = b.send_busy; io.eject = d.in; io.go = b.go; io.line = b.line;

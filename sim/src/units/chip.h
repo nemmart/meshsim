@@ -19,6 +19,7 @@
 #include "config.h"
 #include "sim.h"
 #include "units/cnc.h"
+#include "units/mem.h"
 #include "units/net.h"
 
 namespace units {
@@ -33,6 +34,8 @@ struct ControlIO {
     sim::CountIn router_ovf;      // the router's FIFO overflows (ROUTER_OVF), read `through_last` at endCycle
     sim::LinkIn router_ovf_ev;    // D29: width 0, Link(1) from the router's `ovf_ev`, put in the step that counts an
                                   // overflow (t + 1, D28), so the block steps and its endCycle(t + 1) sets ERRORS [0]
+    MemIO mem;                    // W11 (G3, approved 2026-11-08): the read queue's ports, which live in the injection
+                                  // unit; tile_cycle wires them when `mem.present` (W12's clients by its flags)
 };
 // Adds tile `k`'s control units (names prefixed "t<k>."), wires them inside, returns the ports above. `ctx` is the
 // builder's own (images, configuration).

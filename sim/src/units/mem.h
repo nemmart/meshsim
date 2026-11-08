@@ -68,6 +68,9 @@ constexpr unsigned kTsWidth = 3;
 // Injection::rs): the clients' outputs and the big SRAM's ends.
 struct MemIO {
     bool present = false;              // false: a network-only tile (no read side)
+    bool gather = false, ag = false;   // W12's clients present (their `rd` Holds declared and given below)
+    unsigned read_port_depth = 64, sram_read_latency = 2;
+    uint32_t mem_chunks = 1u << 20;
     sim::HoldOut rd_gather;            // W12's gather `rd` (client 0), width 2
     sim::HoldOut rd_ag;                // W12's AG `rd` (client 1), width 2
     sim::FifoOut rd_port;              // the core's read port (client 2), width 2, Fifo(read_port_depth)

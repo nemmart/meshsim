@@ -44,7 +44,7 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     SramConfig sc;
     sc.mem_chunks = g.cfg.mem_chunks; sc.area_queue_depth = g.cfg.area_queue_depth;
     sc.write_combining = g.cfg.write_combining; sc.fifo_count_before_pop = g.cfg.fifo_count_before_pop;
-    auto& sr = cfg.add<BigSram>(t + "sram", sc, g.sram->block(k, g.cfg.mem_chunks), false);
+    auto& sr = cfg.add<BigSram>(t + "sram", sc, g.sram->block(k, g.cfg.mem_chunks), true);
 
     cfg.link(c.bus, b.bus, 1);
     cfg.connect(b.regs, c.regs);
@@ -81,6 +81,13 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     io.send = c.send; io.send_busy = b.send_busy; io.eject = d.in; io.go = b.go; io.line = b.line;
     io.router_ovf = b.router_ovf;
     set_ovf_event(io, b.ovf);
+    // W11: the read queue's ports (in the injection unit), wired by tile_cycle. W12's clients join with their units.
+    io.mem.present = true;
+    io.mem.read_port_depth = g.cfg.read_port_depth; io.mem.sram_read_latency = g.cfg.sram_read_latency;
+    io.mem.mem_chunks = g.cfg.mem_chunks;
+    io.mem.rd_port = c.rd_port; io.mem.rp_injected = c.rp_injected;
+    io.mem.sram_rd = sr.rd;
+    for (unsigned a = 0; a < BigSram::AREAS; a++) io.mem.sram_ret[a] = sr.ret[a];
     return io;
 }
 

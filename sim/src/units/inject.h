@@ -26,6 +26,7 @@
 
 #include <cstdint>
 
+#include "base/fatal.h"
 #include "sim.h"
 #include "units/net.h"
 
@@ -44,16 +45,112 @@ struct Tokens {
     uint64_t digest() const { return uint64_t(reads) | uint64_t(loop_held) << 32; }
 };
 
-// G3's part (the SRAM read queue, its clients and the read side of the injection): empty until G3 builds it. Its
-// interface to the step is the calls below; until then it never has a return and holds no reads.
+// G3's part (W11): the SRAM read queue (SRAMReadQueue.java), its clients and the read side of the injection.
+//
+// Configuration: present only in a tile with G3's units (ControlIO::mem); clients 0 (the gather engine) and 1 (the
+// address generator) only when their units have their read Holds (W12), client 2 (the read port: the core's
+// Fifo(read_port_depth)) with the read side.
+//
+// The step at t (after the frees of t - 1 and the start-of-cycle count, Injection::step):
+//   1. area returns: each area's Link(sram_read_latency) {tok | part << 16, lo, hi}: the read's chunks placed, ready at t;
+//   2. one release into the read-return holding register (inside this unit: ref's WordHold, put at t, injected at t + 1,
+//      never refused since the injection takes it first): the gather's head, the AG's head (each in issue order, ready),
+//      else the read port's earliest ready entry (by ready cycle, then token: ref's TreeSet);
+//   3. issue: a refused SRAM read Hold is put again and nothing issues; else, with a token free, the first client with
+//      a request is taken and issued: a token from the head of the free list (ref's ArrayDeque order), its request to
+//      the big SRAM's read Hold. A misaligned read is undefined (fatal, named); one past mem_chunks or of size 11 is a
+//      zero-width entry (payload 0), ready at t + 2 + sram_read_latency.
+// `injected` (the injection unit injected a read return at t): reads - 1, the token to the free list's tail, held on as
+// a loopback token if the packet loops; a read-port return counts on `rp_injected` (ReadPort.injectedAt).
+struct ReadSideConfig {
+    bool present = false;
+    bool gather = false, ag = false;   // W12's clients
+    unsigned read_port_depth = 64;
+    unsigned sram_read_latency = 2;
+    uint32_t mem_chunks = 1u << 20;
+};
+
 struct InjReadSide {
-    void declare(sim::Ports&) {}
-    void step(sim::Ctx&, Tokens&) {}                           // G3: returns placed, one release, one issue (takes a token)
-    bool has_return(sim::Ctx&) const { return false; }         // a read return ready to inject
-    const uint64_t* peek_return(sim::Ctx&) const { return nullptr; }
-    void injected(sim::Ctx&, uint64_t /*hdr*/, Tokens&) {}     // G3: frees the read's token (moved to the loopback if the
-                                                               //  packet loops), tells the read port
-    uint64_t digest() const { return 0; }
+    static constexpr unsigned MAX = 64, AREAS = 16;
+    enum : unsigned { GATHER = 0, AG = 1, READPORT = 2 };
+
+    // ---- ports (declared with the read side) ----
+    sim::HoldIn client_hold[2];        // gather, AG: width 2 {reqA, reqB}
+    sim::FifoIn rp_q;                  // the read port: width 2, Fifo(read_port_depth)
+    sim::LinkIn ret[AREAS];            // the big SRAM's area returns, width 3
+    sim::HoldOut sram_rd;              // width 1: BigSRAM.readReq
+    sim::RegOut gather_srq_busy;       // width 1 (with the gather client): its Hold occupied or a gather read in flight
+    sim::CountOut rp_injected;         // read-port returns injected
+
+    // ---- configuration ----
+    ReadSideConfig cfg;
+    uint8_t me = 0;
+    bool tokens_on = true;
+    uint32_t cap = 64;
+
+    // ---- state (StateFp.srq's) ----
+    uint64_t reqA[MAX] = {}, reqB[MAX] = {}, issueT[MAX] = {}, readyT[MAX] = {}, lo[MAX] = {}, hi[MAX] = {};
+    uint8_t parts[MAX] = {}, cl[MAX] = {}, zero[MAX] = {}, held_slot[MAX] = {};
+    uint8_t free_q[MAX] = {}; uint8_t free_head = 0, free_n = 0;
+    uint8_t ord[2][MAX] = {}; uint8_t ord_head[2] = {}, ord_n[2] = {};
+    struct Rp { uint64_t t; uint32_t tok; uint32_t pad; };
+    Rp rp[MAX] = {}; uint8_t rp_n = 0;
+    uint32_t in_flight[3] = {};
+    uint64_t last_rd = 0;              // the read put on sram_rd (re-put on a refusal)
+    // the read-return holding register: `cur` visible at t (put at t - 1), `nxt` put at t
+    bool cur_v = false, nxt_v = false;
+    uint64_t cur_w[3] = {}, nxt_w[3] = {}, nxt_at = 0;
+    uint8_t busy_out = 0;              // the last gather_srq_busy put
+
+    // ---- statistics, ref's checks ----
+    uint64_t issued[3] = {}, stall_cycles = 0, window_full_cycles = 0, packets = 0, out_of_range = 0, violations = 0;
+
+    void declare(sim::Ports& p) {
+        if (!cfg.present) return;
+        if (cfg.gather) p.in(client_hold[GATHER], "rd-gather", 2);
+        if (cfg.ag) p.in(client_hold[AG], "rd-ag", 2);
+        p.in(rp_q, "rd-port", 2, cfg.read_port_depth);
+        for (unsigned a = 0; a < AREAS; a++) p.in(ret[a], "sram-ret", 3);
+        p.out(sram_rd, "sram-rd", 1);
+        if (cfg.gather) p.out(gather_srq_busy, "gather-srq-busy", 1);
+        p.out(rp_injected, "rp-injected");
+    }
+    void configure(const ReadSideConfig& c, unsigned tile, const NetConfig& n) {
+        cfg = c; me = uint8_t(tile); tokens_on = n.loopback_tokens; cap = n.read_tokens;
+        if (cap > MAX) FATAL("read queue: read_tokens %u (at most %u)", cap, MAX);
+        for (uint32_t i = 0; i < cap; i++) free_q[i] = uint8_t(i);
+        free_head = 0; free_n = uint8_t(cap);
+    }
+    bool loops(unsigned dst) const { return dst == me || (dst == lw::BROADCAST && me < 64); }
+    static unsigned chunks_of(unsigned size) { return size == lw::SIZE_UNDEF ? 0 : 1u << size; }
+
+    void step(sim::Ctx& c, Tokens& tok);
+    bool has_return(sim::Ctx&) const { return cur_v; }
+    const uint64_t* peek_return(sim::Ctx&) const { return cur_w; }
+    void injected(sim::Ctx& c, uint64_t h, Tokens& tok);
+    sim::Wake wake(sim::Ctx& c, const Tokens& tok) const;
+
+    void ready_at(uint32_t t_, uint64_t t) {               // SRAMReadQueue.ready
+        readyT[t_] = t;
+        if (cl[t_] == READPORT) {
+            unsigned k = rp_n;
+            while (k > 0 && (rp[k - 1].t > t || (rp[k - 1].t == t && rp[k - 1].tok > t_))) { rp[k] = rp[k - 1]; k--; }
+            rp[k] = Rp{t, t_, 0}; rp_n++;
+        }
+    }
+    void place(uint32_t t_, uint64_t rlo, uint64_t rhi) {
+        const uint32_t addr = uint32_t(reqA[t_] & 0x1FFFFF);
+        const unsigned n = chunks_of(unsigned(reqA[t_] >> 21 & 3)), o = addr & 3;
+        for (unsigned j = 0; j < n; j++) {
+            const unsigned k = o + j;
+            const uint64_t v = ((k < 2 ? rlo : rhi) >> (32 * (k & 1))) & 0xFFFFFFFFull;
+            if (j < 2) lo[t_] |= v << (32 * j); else hi[t_] |= v << (32 * (j - 2));
+        }
+    }
+    void issue(sim::Ctx& c, Tokens& tok, unsigned client, uint64_t a, uint64_t b);
+    void emit(uint64_t t, uint32_t t_);
+    void publish_busy(sim::Ctx& c);
+    uint64_t digest() const;
 };
 
 struct Injection {
@@ -80,7 +177,7 @@ struct Injection {
     uint64_t token_wait_cycles = 0, wait_from = 0;
     uint64_t token_waits(uint64_t t) const { return token_wait_cycles + (wait_from ? t - wait_from + 1 : 0); }
 
-    Injection(sim::Ports& p, unsigned tile, const NetConfig& c);
+    Injection(sim::Ports& p, unsigned tile, const NetConfig& c, const ReadSideConfig& rc = ReadSideConfig{});
     sim::Wake step(sim::Ctx& c);
     uint64_t digest() const;
 
@@ -127,7 +224,125 @@ inline sim::Wake Injection::step(sim::Ctx& c) {
     // A send waiting for a token is woken by the router's loop_left (a token freed), the read side by its own wakes (G3).
     // The wait may outlast a cycle with no free on its way (the loopback FIFO drains when the eject selector reaches
     // it): the tile builder gives this unit its own missed-wake threshold.
-    return sim::Wake::none();
+    return rs.cfg.present ? rs.wake(c, tok) : sim::Wake::none();
+}
+
+// ---- the read side's step (W11) -------------------------------------------------------------------------------------
+inline void InjReadSide::step(sim::Ctx& c, Tokens& tok) {
+    if (!cfg.present) return;
+    const uint64_t t = c.now();
+    // the read-return hold: the put of t - 1 is visible now (the previous one was injected when it was)
+    if (cur_v) FATAL("read queue: tile %u, cycle %llu: a read return not injected the cycle it was visible", me, (unsigned long long)t);
+    if (nxt_v && nxt_at < t) { cur_v = true; cur_w[0] = nxt_w[0]; cur_w[1] = nxt_w[1]; cur_w[2] = nxt_w[2]; nxt_v = false; }
+    // 1. returns from the areas
+    for (unsigned a = 0; a < AREAS; a++) {
+        if (!c.ready(ret[a])) continue;
+        const sim::Word* w = c.peek(ret[a]);
+        const uint32_t t_ = uint32_t(w[0] & 0xFFFF);
+        place(t_, w[1], w[2]);
+        c.take(ret[a]);
+        if (parts[t_] == 0) FATAL("read queue: tile %u: a return for token %u with no part outstanding", me, t_);
+        if (--parts[t_] == 0) ready_at(t_, t);
+    }
+    // 2. one release a cycle, by client priority
+    int32_t pick = -1;
+    for (unsigned k = 0; k < 2 && pick < 0; k++)
+        if (ord_n[k]) {
+            const uint32_t h = ord[k][ord_head[k]];
+            if (parts[h] == 0 && readyT[h] <= t) { pick = int32_t(h); ord_head[k] = uint8_t((ord_head[k] + 1) % MAX); ord_n[k]--; }
+        }
+    if (pick < 0 && rp_n && rp[0].t <= t) {
+        pick = int32_t(rp[0].tok);
+        for (unsigned k = 1; k < rp_n; k++) rp[k - 1] = rp[k];
+        rp_n--;
+    }
+    if (pick >= 0) emit(t, uint32_t(pick));
+    // 3. issue
+    if (c.refused(sram_rd)) { c.put(sram_rd, last_rd); stall_cycles++; }
+    else if (!tok.free()) {
+        if ((cfg.gather && c.ready(client_hold[GATHER])) || (cfg.ag && c.ready(client_hold[AG])) || c.ready(rp_q)) window_full_cycles++;
+    } else if (cfg.gather && c.ready(client_hold[GATHER])) {
+        const sim::Word* w = c.peek(client_hold[GATHER]); const uint64_t a = w[0], b = w[1];
+        c.take(client_hold[GATHER]); issue(c, tok, GATHER, a, b);
+    } else if (cfg.ag && c.ready(client_hold[AG])) {
+        const sim::Word* w = c.peek(client_hold[AG]); const uint64_t a = w[0], b = w[1];
+        c.take(client_hold[AG]); issue(c, tok, AG, a, b);
+    } else if (c.ready(rp_q)) {
+        const sim::Word* w = c.peek(rp_q); const uint64_t a = w[0], b = w[1];
+        c.take(rp_q); issue(c, tok, READPORT, a, b);
+    }
+    publish_busy(c);
+}
+
+inline void InjReadSide::issue(sim::Ctx& c, Tokens& tok, unsigned client, uint64_t a, uint64_t b) {
+    const uint64_t t = c.now();
+    if (free_n == 0) FATAL("read queue: tile %u: a token free by count but none on the free list", me);
+    const uint32_t t_ = free_q[free_head];
+    free_head = uint8_t((free_head + 1) % MAX); free_n--;
+    tok.taken++; tok.reads++;
+    reqA[t_] = a; reqB[t_] = b; issueT[t_] = t; cl[t_] = uint8_t(client); lo[t_] = hi[t_] = 0; readyT[t_] = ~0ull;
+    held_slot[t_] = 1;
+    if (client != READPORT) { ord[client][(ord_head[client] + ord_n[client]) % MAX] = uint8_t(t_); ord_n[client]++; }
+    issued[client]++; in_flight[client]++;
+    const unsigned width = unsigned(a >> 21 & 3);
+    unsigned n = chunks_of(width);
+    const uint32_t addr = uint32_t(a & 0x1FFFFF);
+    if (n != 0 && (addr & (n - 1)) != 0) {
+        static const char* const kClient[] = {"gather", "address generator", "read port"};
+        FATAL("read queue: tile %u, cycle %llu: the %s's read of chunk 0x%x, not aligned to its size (%u bits): undefined "
+              "behaviour (v1.25 s8b)", me, (unsigned long long)t, kClient[client], addr, 32 * n);
+    } else if (n != 0 && addr + n > cfg.mem_chunks) { out_of_range++; violations++; n = 0; }   // invariant 19: reads 0
+    if (n == 0) { parts[t_] = 0; zero[t_] = 1; ready_at(t_, t + 2 + cfg.sram_read_latency); return; }
+    zero[t_] = 0; parts[t_] = 1;
+    last_rd = uint64_t(addr) | uint64_t(n) << 21 | uint64_t(t_) << 24;               // BigSRAM.readReq, part 0
+    c.put(sram_rd, last_rd);
+}
+
+// The return as one packet (SRAMReadQueue.emit): size the request's width, payload the chunks read, the token in the
+// header's simulator-only bits.
+inline void InjReadSide::emit(uint64_t t, uint32_t t_) {
+    const uint64_t a = reqA[t_], b = reqB[t_];
+    const unsigned mode = unsigned(a >> 23 & 7), dst = unsigned(a >> 29 & 0x7F), size = unsigned(a >> 21 & 3);
+    const uint64_t pl = zero[t_] ? 0 : lo[t_], ph = zero[t_] ? 0 : hi[t_];
+    const uint64_t h = lw::hdr(0, dst, mode, unsigned(a >> 26 & 7), uint32_t(b), size) | uint64_t(t_) << lw::TOKEN_SHIFT |
+                       lw::TAG_FROM_SRQ | (cl[t_] == READPORT ? lw::TAG_READPORT : 0) | (tokens_on && loops(dst) ? lw::TAG_TOKEN : 0);
+    if (nxt_v) FATAL("read queue: tile %u: two releases in cycle %llu", me, (unsigned long long)t);
+    nxt_v = true; nxt_at = t;
+    nxt_w[0] = lw::mask_lo(pl, size); nxt_w[1] = h; nxt_w[2] = lw::mask_hi(ph, size);
+    packets++;
+}
+
+inline void InjReadSide::injected(sim::Ctx& c, uint64_t h, Tokens& tok) {
+    const uint32_t t_ = lw::token(h);
+    cur_v = false;
+    if (!held_slot[t_]) FATAL("read queue: tile %u: injected token %u, not held", me, t_);
+    held_slot[t_] = 0;
+    tok.reads--; in_flight[cl[t_]]--;
+    if (tokens_on && loops(lw::dst(h))) tok.loop_held++;   // the token moves to the loopback packet: still held
+    free_q[(free_head + free_n) % MAX] = uint8_t(t_); free_n++;
+    if (h & lw::TAG_READPORT) c.inc(rp_injected);
+    publish_busy(c);
+}
+
+inline void InjReadSide::publish_busy(sim::Ctx& c) {
+    if (!cfg.gather) return;
+    const uint8_t b = (c.ready(client_hold[GATHER]) || in_flight[GATHER] > 0) ? 1 : 0;
+    if (b != busy_out) { busy_out = b; c.put(gather_srq_busy, b); }
+}
+
+// Stepped next cycle while the hold has a packet to inject, a release or an issue may happen; at the earliest zero-width
+// ready cycle; otherwise by the area returns, the clients' puts and the router's frees.
+inline sim::Wake InjReadSide::wake(sim::Ctx& c, const Tokens& tok) const {
+    const uint64_t t = c.now();
+    if (nxt_v) return c.next();
+    const bool client = (cfg.gather && c.ready(client_hold[GATHER])) || (cfg.ag && c.ready(client_hold[AG])) || c.ready(rp_q);
+    if (client && tok.reads + tok.loop_held < cap) return c.next();
+    uint64_t at = ~0ull;
+    for (unsigned k = 0; k < 2; k++)
+        if (ord_n[k]) { const uint32_t h = ord[k][ord_head[k]]; if (parts[h] == 0) at = readyT[h] < at ? readyT[h] : at; }
+    if (rp_n) at = rp[0].t < at ? rp[0].t : at;
+    if (at == ~0ull) return sim::Wake::none();
+    return at <= t + 1 ? c.next() : sim::Wake::at_cycle(at);
 }
 
 }  // namespace units

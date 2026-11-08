@@ -298,10 +298,13 @@ TEST(rv32_sim_exit_halts_after_its_retire_line) {
     CHECK_EQ(m.core.pc, 0x01000004u);
 }
 
-// M2 (W8): ROUTER_* and the write counters are modelled now; PULSE_DMA (G4) and the read port (G3) are not yet.
-DEATH_TEST(rv32_pulse_dma_not_modelled, "PULSE_DMA \\(0xfffff810\\): not modelled yet") {
-    M m; m.core.x[1] = REG_BASE; m.prog({SW(2, 1, 0x10)});
+// M2 (W8): ROUTER_* and the write counters are modelled; PULSE_DMA since G4 (W12): a store reaches the block.
+TEST(rv32_pulse_dma_store_reaches_the_block) {
+    M m; m.core.x[1] = REG_BASE; m.core.x[2] = 1; m.prog({SW(2, 1, 0x10)});
     m.step();
+    CHECK_EQ(m.core.pc, 0x01000004u);
+    CHECK_EQ(m.env.posts.size(), 1u);
+    if (!m.env.posts.empty()) CHECK_EQ(m.env.posts[0].arg, uint32_t(PULSE_DMA));
 }
 DEATH_TEST(rv32_read_port_needs_a_read_port, "SRAM_RD_ADDR_QUEUE at 0xfffff87c: this bench has no read port") {
     M m; m.core.x[1] = REG_BASE; m.prog({SW(2, 1, 0x7C)});

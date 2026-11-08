@@ -376,3 +376,10 @@ the mesh second. Of today's findings (on W4's synthetic mesh and W6's synthetic 
   (Quest 149's test_golden verdict failed for the kit, which lacked ref/meshsim/test's images; test_golden and
   test_chip pass on every revision here.) What the 11% in run_form<TileCore> is (perf attributes stalls to the
   instruction after a miss: the loads of each core's state as its step begins) is next: perf annotate on the runner.
+- 2026-11-07: **Quest 150** (perf record, cycles, on the boot built with -g): the framework's share of the boot is
+  ~15% of the timed run (run_form<TileCore> 6.5%, deliver_link<3> 5.0%, near_slot 1.9%, run_form<Router> 0.8%;
+  Rv32::digest's 8.8% is the bench's digest after the timed span), the rest the units (Rv32 and TileCore ~40%, the
+  router ~14%, the director 2.8%). The annotate step printed no lines (its parse of perf annotate's headers missed);
+  not repeated, given Quest 149: the per-step bookkeeping overlaps the units' own work. **Conclusion for now: the
+  framework's per-step overhead is near its floor on this chip; per-thread speed is the units'** (W11's, W12's).
+  Revisit with the sort's profile, where the engines' steps dominate.

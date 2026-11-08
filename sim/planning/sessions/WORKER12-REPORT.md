@@ -100,6 +100,20 @@ changed) and `tests/test_engconf.cpp` (ours, on W11's real table store) run the 
 - **At the end:** M2Sort's verification (the Oracle, receive sizes, values, every core exited 0, violations summed over
   the units, ERRORS) and TOTAL from `NAME.out`.
 
+## 4b. The register block publishes only what changed (D31)
+
+TileCtl's step used to recompute all 33 registers through `RegBlockState::reg`'s switch and write each into the
+register file, which the engine compares with its stored value. That loop was a third of the block's step and 12.4% of
+the sort.
+- **Now:** `RegBlockState::publish(pub)` compares the registers' values (straight-line, the same as `reg()`'s) with
+  TileCtl's copy of the register file as last written. It returns a mask of those that changed, and TileCtl writes only
+  them; `dma`'s two registers likewise.
+- **Why it's exactly equivalent:** the engine ignores a write of an unchanged value, and TileCtl is the only writer.
+- **Guard:** debug builds compare every register with `reg()` after each publish. **A register added to `reg()` must be
+  added to `publish()`;** the guard names any that is missed.
+- **Checked:** wfi, regs and a2a (every unit every cycle; every tile), the 16K sort in debug and release, and make check
+  (c6d480c). W10 measures it on the full-size sort.
+
 ## 5. To reproduce
 
 ```
@@ -123,6 +137,7 @@ On the runner, Quest 154 does all of the full-size work. Its body is `WORKER12/t
 
 ## 6. What's owed, and notes
 
+- **The register block's speed change (D31):** to be measured by W10 on the full-size sort (§4b).
 - **Possible work from W10's hot-lines write-up** on the AG and gather, through the integrator. The obvious candidates
   are timed wakes across the AG's gaps and rotations (it now steps every cycle while running) and the ring sizes. Either
   must keep every check above exact, or come as a D30 proposal.

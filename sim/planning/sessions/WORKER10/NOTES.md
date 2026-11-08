@@ -313,3 +313,11 @@ the mesh second. Of today's findings (on W4's synthetic mesh and W6's synthetic 
   counter is already cheap). Mesh: 6 1.476 -> 1.451, 8 1.608 -> 1.510. The barrier alone barely moves (6: 0.255 ->
   0.235 a round, all arriving at once): the waiter read the epochs one at a time, each a miss. Next (Quest 146): one
   sweep over every epoch per poll, so the misses overlap.
+- 2026-11-07: **Quest 146, the sweep: worse, reverted** (dc7c177). Polling every epoch in one sweep made the barrier
+  alone slower (6 threads 0.235 -> 0.287 a round; 12: 0.418 -> 0.536) and the chip's boot no faster (6: 0.296 -> 0.304):
+  every sweep pulls every line into each waiter's cache, so each arrival must invalidate them all. Waiting on one epoch
+  at a time (Quest 145) stays. Reproduced in 146's "before": the boot at 6 threads 0.296 us (3.15x).
+  Where the barrier stands: ~0.24 us a round alone at 6 threads, ~0.05 us a cycle of wait on the boot (from 0.09).
+  The remaining structural lever (the interval can't pass 3): **wait only for the threads one exchanges words with**
+  (a split by tiles has 2-4 neighbours, not 5), instead of every thread. That needs the idle jump and the stop request
+  (whole-machine decisions, made at the barrier today) taken another way: proposed to the owner before building.

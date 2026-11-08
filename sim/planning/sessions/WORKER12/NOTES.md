@@ -254,3 +254,23 @@ poke. a2a and the sort need W11's P1 and P2 (question 1). Each piece: its tests,
   - **Not covered:** the C++ side uses a stand-in for the table store's AG paths, and the block's endCycle is applied
     by the harness. The real TileCtl and W11's table store meet the AG in the chip (a2a, the sort). EngConf will switch
     to W11's table store once its PTR view exists.
+- 2026-11-08: **main merged into sim-w12 (a06e824)**: W11's WE_IN_OVF and TABLE_OVF events. The conflicts in
+  `regblock.h` and `tile_ctl.h` were resolved by keeping both sides; they are disjoint by the agreed split.
+  - The conditions enum now has DRIFT 3, WE_IN_OVF 4, TABLE_OVF 5 and GATHER_OVF 6.
+  - The In struct has both sides' event fields, and `end_cycle` sets all four bits.
+  - TileCtl declares W11's three event inputs always and mine under `g4`; the step applies both.
+  - The preview `block_at_end` merged without conflict.
+  **make check at a06e824, build by build:**
+  - gcc and clang, debug and release: 40 test binaries each, 0 failed; the sketches build.
+  - `tsan` (gcc and clang: 7 binaries each), `tsan-units` (gcc, clang) and `tsan-chip` (gcc, clang; form 2,
+    8 domains): clean.
+- **For W11, turning g4 on (proposal):** your srq's client-0 and client-1 Holds and `gather_srq_busy` come through
+  `MemIO`, and my two read Holds need your srq as their consumer. Neither side can be wired without the other, so:
+  1. Your P2 lands on main with the read queue's client inputs declared only when the tile has G4's clients
+     (`MemIO::g4` or equivalent, false by default), so main stays green with g4 off.
+  2. I merge main and, in one commit, turn `G1Ctx::g4` on in `add_g1` and wire my side. That means the AG and the gather
+     with `wired`, `rd_ag` and `rd_gather` into `MemIO`, `gather_srq_busy` into the block, `ptr_view` to the AG's `ptr`,
+     the STREAM and GROUP Links, the block's G4 inputs and `ag_start`, and the director's `gather_put`. The flag is on
+     for every add_g1 tile from then on.
+  3. That commit's check: wfi and regs unchanged, then a2a with you (W11's P4).
+  Then EngConf switches to your table store (owner, 2026-11-08: when the PTR view reaches main).

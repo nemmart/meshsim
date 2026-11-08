@@ -221,3 +221,30 @@ Pieces, each committed when it compiles and passes its own test:
   view connected to its AG. Nothing in my files changes for it (the read queue and the writers take the flags). Before
   the integrator merges it, I run test_chip (regs, wfi, every tile, the read port tile) and test_mem on that commit and
   record the result here; then a2a is the joint check.
+- 2026-11-08: **main (71b1d7a, with W12's register block and the director.h merge) fully checked here:** make run gcc and clang, debug and release, 40 binaries each, all pass; tsan, tsan-units, tsan-chip clean on both compilers.
+- 2026-11-08: **W12's g4 checked as offered** (clang release, test_chip and test_mem):
+  - on W12's commit dcc0b74 alone (before P2b/c): test_mem 8/8; test_chip 5/5 (regs and wfi every unit of tile 0 every
+    cycle, every tile every 10 against regs-chip/wfi-chip regenerated from ref, the debug options, form 2);
+  - **on main 8afe64f (g4 with P2b/c: the srq writer sees the real gather and AG Holds)**: test_mem 8/8; test_chip 6/6
+    (the same, plus the read port end to end in one tile); every tile every 10 cycles, one thread and split over 4:
+    pass. The scratch worktree of the trial merge is dropped.
+- 2026-11-08: **D30** read (very close is enough where exact would be costly; propose a deliberate difference with what
+  it changes, preferring ones no reference program reaches). None needed so far in G3.
+- 2026-11-08: **P2d, MemConf: G3 equals ref every cycle.** `tests/ref/MemConf.java` builds ref's own Tile
+  (Config.machine()) and runs only G3's components in Tile's order (srq, inj, sram, writer, ts, hist); the driver plays
+  the rest from a seeded script: the gather's and AG's read Holds (a refused put retried, the word of t dropped), the
+  read port's queue, we-in, the controller's PTR/HIST window stores, the AG's STREAM/GROUP requests, the core's send
+  Hold, and the router (takes every injected packet, frees each loopback token one a cycle, 0-127 cycles later). Big
+  SRAM rows 0-255 of areas 0-7 and the tables are preset. Each cycle's line: the packet injected, the STREAM/GROUP
+  returns, the free, and StateFp's srq, inj, sram, sram.data, we, ts, hist hashed. `tests/test_memconf.cpp` drives my
+  units (the injection unit with its read queue, BigSram, WriteEngine, TableStore with_ag, HistStore) through a stand
+  with the same script and the same writers the chip uses. **Fixtures** (`tests/ref/memconf.sh --fixtures`, 5 x 3,000
+  cycles, depth 1-8 per seed, one with write combining): equal, also under step-all, shuffle and instance-major; a
+  corrupted line fails. **Long runs:** 15 x 20,000 cycles (`memconf.sh 20000 DIR`, `MEMCONF_LONG=DIR`): equal.
+  Reached (MEMCONF_STATS, per fixture): ~2,000-2,800 reads issued over the three clients, token window full 450-650
+  cycles, out-of-range (zero-width) reads ~150-240, SRAM read Hold refusals and area-full stalls (t0: depth small, 443
+  srq stalls, 572 read and 245 write stalls), the write engine's SRAM refusals and we-in overflows (60 events), ~30-60
+  window stores lost to write-backs each in PTR and HIST, ~300 augmented writes. Thin: write combining merged once (it
+  needs a write behind a read in its area with the next write into the same row); same-cycle read-port ties not counted.
+  Nothing needed a D30 difference.
+- 2026-11-08: **make check clean at cee7550** with test_memconf (41 binaries in each of the four builds; tsan, tsan-units, tsan-chip on both). P2 is done: ready to merge. Left for G3: a2a with W12 (needs the AG's DMA path), then the sort's SPLIT (the read port), and REPORT.md.

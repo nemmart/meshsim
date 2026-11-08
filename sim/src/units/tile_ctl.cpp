@@ -32,14 +32,16 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     block.done_gate = g.cfg.done_gate;
     DirectorConfig dc;
     dc.tile = k; dc.periph_present = g.cfg.periph_present; dc.mem_chunks = g.cfg.mem_chunks;
+    dc.g4 = true;                                         // W12: G4's engines are in every M2 tile
+    const unsigned lookahead = g.cfg.ag_lookahead ? g.cfg.ag_lookahead : 2 * g.cfg.ts_engine_latency + 2;
 
     auto& c = cfg.add<TileCore>(t + "core", core, k, g.cfg.read_port_depth);
-    auto& b = cfg.add<TileCtl>(t + "ctl", block, kHasOvfEvent<ControlIO>);
+    auto& b = cfg.add<TileCtl>(t + "ctl", block, kHasOvfEvent<ControlIO>, true);
     auto& d = cfg.add<Director>(t + "dir", dc);
     auto& we = cfg.add<WriteEngine>(t + "we", g.we_in_depth, g.cfg.ts_engine_latency, g.cfg.mem_chunks);
-    auto& ag = cfg.add<AddrGen>(t + "ag");
-    auto& ga = cfg.add<Gather>(t + "gather", g.gather_depth);
-    auto& ts = cfg.add<TableStore>(t + "ts");
+    auto& ag = cfg.add<AddrGen>(t + "ag", k, lookahead, true);
+    auto& ga = cfg.add<Gather>(t + "gather", g.gather_depth, k, true);
+    auto& ts = cfg.add<TableStore>(t + "ts", true);
     auto& hs = cfg.add<HistStore>(t + "hist");
     SramConfig sc;
     sc.mem_chunks = g.cfg.mem_chunks; sc.area_queue_depth = g.cfg.area_queue_depth;
@@ -77,18 +79,35 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     cfg.link(we.ovf_ev, b.we_ovf, 1);                     // D29: the overflow events, judged at t, endCycle(t) at t + 1
     cfg.link(ts.ovf_ev, b.ts_ovf, 1);
     cfg.link(hs.ovf_ev, b.hist_ovf, 1);
+    // G4 (W12): the AG's table reads and the PTR view, its start and status, drift; the gather's busy half and its
+    // queue's overflow event; the director's mode-4 put (STATUS's gather_busy is the OR of three inputs, gather.h)
+    cfg.link(ag.stream_req, ts.req_stream, g.cfg.ts_engine_latency);
+    cfg.link(ag.group_req, ts.req_group, g.cfg.ts_engine_latency);
+    cfg.link(ts.ret_stream, ag.stream_ret, g.cfg.ts_engine_latency);
+    cfg.link(ts.ret_group, ag.group_ret, g.cfg.ts_engine_latency);
+    cfg.connect(ts.ptr_view, ag.ptr);
+    cfg.connect(b.ag_start, ag.start);
+    cfg.connect(ag.status, b.ag_status);
+    cfg.link(ag.drift, b.drift, 1);
+    cfg.connect(ga.busy, b.gather_busy);
+    cfg.link(ga.ovf, b.gather_ovf_ev, 1);
+    cfg.link(d.gather_put, b.gather_put, 1);
 
     ControlIO io;
     io.send = c.send; io.send_busy = b.send_busy; io.eject = d.in; io.go = b.go; io.line = b.line;
     io.router_ovf = b.router_ovf;
     set_ovf_event(io, b.ovf);
-    // W11: the read queue's ports (in the injection unit), wired by tile_cycle. W12's clients join with their units.
+    // W11: the read queue's ports (in the injection unit), wired by tile_cycle; W12's two clients and the block's
+    // gather_srq_busy input with them.
     io.mem.present = true;
     io.mem.read_port_depth = g.cfg.read_port_depth; io.mem.sram_read_latency = g.cfg.sram_read_latency;
     io.mem.mem_chunks = g.cfg.mem_chunks;
     io.mem.rd_port = c.rd_port; io.mem.rp_injected = c.rp_injected;
     io.mem.sram_rd = sr.rd;
     for (unsigned a = 0; a < BigSram::AREAS; a++) io.mem.sram_ret[a] = sr.ret[a];
+    io.mem.gather = io.mem.ag = true;                     // W12: the read queue's clients 0 and 1
+    io.mem.rd_gather = ga.rd; io.mem.rd_ag = ag.rd;
+    io.mem.gather_srq_busy = b.gather_srq_busy;
     return io;
 }
 

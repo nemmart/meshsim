@@ -20,6 +20,8 @@
 #include "units/inject.h"
 #include "units/table_store.h"
 #include "units/write_engine.h"
+#include "units/ag.h"
+#include "units/gather.h"
 #include "units/tile_ctl.h"
 
 namespace fp {
@@ -47,6 +49,8 @@ struct G1Tile {
     const units::BigSram* usram = nullptr;        // G3 (W11)
     const units::Injection* uinj = nullptr;       // G3 (W11): the read port's injections (rdport); set by a chip's
                                                   // driver (g1_tile doesn't: G1's tests have no injection unit)
+    const units::AddrGen* uag = nullptr;          // G4 (W12)
+    const units::Gather* ugather = nullptr;       // G4 (W12)
     const units::Core* m1core = nullptr;          // W5's M1 core: the bench's port-B words on `memw`
     const units::RegBlock* m1ctl = nullptr;       // W5's M1 block: its inputs in flight (bus, GO, landed, freed)
 };

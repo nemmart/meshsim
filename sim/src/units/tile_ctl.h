@@ -310,6 +310,7 @@ struct G1Config {
     unsigned K = 8, cm_latency = 2;    // the write counters' line, director -> port B
     // G3 (W11): the memory path's keys
     unsigned ts_engine_latency = 1;    // tsEngineLatency: the engines' Links to and from the table store and HIST
+    unsigned ag_lookahead = 0;         // agLookahead: the AG's read-ahead rings; 0: ref's default, 2 ts_engine_latency + 2
     unsigned area_queue_depth = 8, sram_read_latency = 2, read_port_depth = 64;
     bool write_combining = false, fifo_count_before_pop = true;
 };

@@ -228,3 +228,29 @@ poke. a2a and the sort need W11's P1 and P2 (question 1). Each piece: its tests,
   stood at the end of t - 1, before the table store's write-back of t. ref's AG runs before ts and reads
   `ts.peek(PTR + me)`. A RegFile is read at a later level in the same cycle, so the table store must publish the value
   from before its write-back.
+- 2026-11-08: **P3, the AG's tests:** `tests/test_ag.cpp`, 10 tests (80bb78c), passing in gcc and clang, debug and
+  release. They cover:
+  - the stream timetable by hand: lead-in 2L + 1, gaps, the last gap not waited, done when the Hold empties;
+  - the group timetable: lead-in 4L + 2, the rotation period;
+  - refusals in a group run as drift events, losing nothing; refusals in a stream run, which are not drift;
+  - a count-0 run; two runs (per-run counters);
+  - the three UB stops (a start while running, a run past the table, misaligned gather buffers);
+  - checkEntry's counts.
+- 2026-11-08: **P4, EngConf** (1b0b138): ref's AddressGenerator, TableStore (STREAM and GROUP paths) and GatherEngine,
+  against ours, every cycle.
+  - **Files:** `tests/ref/EngConf.java` and `engconf.sh`, as RouterConf; `tests/engconf/` (4 fixtures of 3,000 cycles,
+    L = 1, 2, 3); `tests/test_engconf.cpp`.
+  - **The script:** random STREAM and GROUP tables (every mode but 6-7; size 11, misaligned sources, odd d values
+    counted as violations); runs started only while idle (a config store, then the pulse); mode-4 requests; the read
+    queue taking one client a cycle, gather first, at phased rates.
+  - **Each cycle's observation:** the AG's and gather's Hold puts, rd_running and rd_done, the AG's StateFp stream
+    (without its return lines), the gather's, the three-way gather busy, drift, violations.
+  - **Results:** the fixtures are equal to ref (20-25 runs each, 173-898 drift events), also under shuffle,
+    instance-major and step-all, in gcc and clang, debug and release. The long runs (24 scripts x 10^5 cycles, run with
+    `ENGCONF_LONG=DIR test_engconf long`) are equal too. `engconf.sh --check` regenerates the fixtures identically.
+  - **Negative check:** a perturbed observation is reported at its line.
+  - **Generator note:** a first generator had the gather starve the AG (client 0 first) for 1,700 of 3,000 cycles, so I
+    lowered the gather's rate.
+  - **Not covered:** the C++ side uses a stand-in for the table store's AG paths, and the block's endCycle is applied
+    by the harness. The real TileCtl and W11's table store meet the AG in the chip (a2a, the sort). EngConf will switch
+    to W11's table store once its PTR view exists.

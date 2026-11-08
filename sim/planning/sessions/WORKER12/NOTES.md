@@ -308,3 +308,27 @@ poke. a2a and the sort need W11's P1 and P2 (question 1). Each piece: its tests,
 - **For W11:** g4 is on in dcc0b74 (merging to main). From then on, your read queue serves clients 0 and 1 in every M2
   tile, and the block's `gather_srq_busy` reads your Reg. Please cross-check `test_chip` and `test_mem` on main after
   the merge; then a2a with your P2b-P2d.
+- 2026-11-08: main merged (f10f866's merge with W11's P2b/P2c). The integrator's two resolved lines are right:
+  `TileCore` takes W11's tile and read-port depth, `TileCtl` my `g4`; `G1Tile` has both sides' pointers. D30 read.
+- 2026-11-08: **P5a, the sort's driver up to the input load** (1240253).
+  - **`tests/sort_input.h`:** SortTest's `readKeys` (KeyGen's file), `value32`, `valueHalf`, `loadInput` (big SRAM
+    BUF_IN and BUF_VIN; S.n_in at the image's `S`, 0x1778) and `Oracle` (for the verification; not exercised until the
+    sort ends).
+  - **`tests/test_sort.cpp`:**
+    - **The program:** SortTest.Machine.boot (`run_when_ready(0)`, without Mach's extra `.call`), then a release point,
+      then M2Sort's sequence exactly as M2Sort queues it (L1, SPLIT + 66 barriers, ..., L2, EXIT; `at_all_ready(0)`).
+    - **The run:** cycle by cycle until `!cnc.busy()` and every core is in WFI with `halt == RUN`. That cycle is B.
+    - **At B:** the input load, then `release_next()` and `wake("cnc")`.
+  - **`src/units/g4.mk`** (included by the Makefile) links `test_sort` as `test_chip`.
+  **Results:**
+  - **The boot ends at B = 14791**, sort16k.out's "boot 14791 cycles" (in make check; gcc and clang, debug and release).
+  - **The state at B after the input load equals ref's**, sort16k-fp's first point (FpHooks takes it at B, after the
+    load and the queueing): 1029 unit streams, every unit of every tile (big SRAM's data included) and the chip's, on
+    one thread and on 4 domains.
+    - On demand, as the hash-only goldens: `SORT_KEYS=.../uniform.keys SORT_FP=.../sort16k-fp.fp test_sort`.
+    - The keys come from KeyGen (`--n 16384 --only uniform`), sha256 checked against HASHES. The golden comes from
+      `KEEP=DIR regen.sh --check sort16k-fp` (SAME; a few minutes here). The test refuses a golden whose D12
+      configuration keys differ.
+  - **Negative check:** without the load, the first difference is `t0.cmem` (S.n_in).
+- **Next (with W11):** the sort past B. Cycle by cycle against sort16k-fp's points (every 10,000 cycles, each GO and
+  all-READY), L1 first, then whole; then the phases and the verification (the Oracle).

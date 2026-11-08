@@ -253,6 +253,62 @@ TEST(sort_state_after_the_input_load_equals_refs) {
     }
 }
 
+// sort16k.phases.csv: (go_at, end_at) of the phases from L1 (the boot's phase, cmd 4A, opens before B).
+std::vector<std::pair<int64_t, int64_t>> golden_phases() {
+    std::vector<std::pair<int64_t, int64_t>> v;
+    std::ifstream f("tests/golden-m2/sort16k.phases.csv");
+    std::string ln;
+    std::getline(f, ln);                              // the header
+    while (std::getline(f, ln)) {
+        std::vector<std::string> w; std::stringstream ss(ln);
+        for (std::string x; std::getline(ss, x, ','); ) w.push_back(x);
+        if (w.size() > 4 && w[1] != "cmd 4A") v.push_back({std::stoll(w[3]), std::stoll(w[4])});
+    }
+    return v;
+}
+
+// M2Sort's verification (SortTest.sortRun's checks) and the phases, at the run's end.
+template <class Ph>
+void sort_end_checks(SortChip& s, const Checked& k, const std::vector<Ph>& ph) {
+    using namespace sortin;
+    const Oracle o(k.keys, FMT_K128);
+    const uint32_t S = symbol("S");
+    unsigned bad = 0, size_bad = 0, v_bad = 0, not_exited = 0;
+    uint64_t violations = 0; uint32_t cond = 0;
+    for (unsigned q = 0; q < 64; q++) {
+        const BigSram& sr = s.m->unit<BigSram>(tile_unit(q, "sram"));
+        if (s.mem[size_t(q) * 2 * MEM_WORDS + (((S + 4 * S_NRECV) & 0x7FFF) >> 2)] != o.expect[q].size()) size_bad++;
+        for (size_t i = 0; i < o.expect[q].size(); i++) if (sr.peek64(BUF_Y + 2 * uint32_t(i)) != o.expect[q][i]) bad++;
+        for (size_t r = 0; r < o.source[q].size(); r++) {
+            const uint32_t sp = uint32_t(o.source[q][r] >> 32), sj = uint32_t(o.source[q][r]);
+            if (sr.peek64(BUF_VS + 4 * uint32_t(r)) != value_half(sp, sj, 0) || sr.peek64(BUF_VS + 4 * uint32_t(r) + 2) != value_half(sp, sj, 1)) v_bad++;
+        }
+        const fp::G1Tile& g = s.g1[q];
+        if (g.core->halt != Rv32::HALT_EXIT || g.ctl->sim_exit_value != 0) not_exited++;
+        cond |= g.ctl->conditions;
+        const AddrGen& ag = s.m->unit<AddrGen>(tile_unit(q, "ag"));
+        violations += g.core->violations + g.ctl->violations + g.udir->violations + ag.violations() + (ag.rotations_late ? 1 : 0)
+                      + g.uinj->violations + g.uinj->rs.violations;
+    }
+    violations += s.m->unit<Cnc>("cnc").violations;
+    std::fprintf(stderr, "sort verify: keys misplaced %u, receive sizes wrong %u, values wrong %u, cores not exited 0: %u, violations %" PRIu64 ", ERRORS %x\n",
+                 bad, size_bad, v_bad, not_exited, violations, cond);
+    CHECK_EQ(bad, 0u); CHECK_EQ(size_bad, 0u); CHECK_EQ(v_bad, 0u); CHECK_EQ(not_exited, 0u); CHECK_EQ(violations, 0u); CHECK_EQ(cond, 0u);
+    // the phases against sort16k.phases.csv, and M2Sort's TOTAL (L1's GO -> L2's all-READY)
+    const auto gp = golden_phases();
+    CHECK_EQ(ph.size(), gp.size());
+    size_t diff = 0;
+    for (size_t i = 0; i < ph.size() && i < gp.size(); i++)
+        if (ph[i].go_at != gp[i].first || ph[i].end_at != gp[i].second) { if (!diff) std::fprintf(stderr, "sort phase %zu: ours (%lld, %lld), ref (%lld, %lld)\n", i, (long long)ph[i].go_at, (long long)ph[i].end_at, (long long)gp[i].first, (long long)gp[i].second); diff++; }
+    CHECK_EQ(diff, size_t(0));
+    if (ph.size() >= 2) {
+        const int64_t total = ph[ph.size() - 2].end_at - ph[0].go_at;   // L2 is the last but one (EXIT's last)
+        std::fprintf(stderr, "sort: TOTAL %lld cycles (L1 GO at %lld -> L2 all READY at %lld); phases %zu (ref: 496619, 14838 -> 511457, 98 after the boot's)\n",
+                     (long long)total, (long long)ph[0].go_at, (long long)ph[ph.size() - 2].end_at, ph.size());
+        CHECK_EQ(total, int64_t(496619));
+    }
+}
+
 // The sort past B, every golden point compared (every 10,000 cycles, each GO and all-READY), to the run's end or to
 // SORT_THROUGH; SORT_PARTS splits it.
 TEST(sort_runs_equal_to_refs) {
@@ -271,8 +327,17 @@ TEST(sort_runs_equal_to_refs) {
     unsigned n = 0;
     std::string e = f.compare(s, k.g, s.B, n);
     uint64_t c = s.B;
+    // the phases (PhaseLog): a GO opens one, the all-READY that a later GO waits on closes it (go_at, end_at)
+    struct Phase { int64_t go_at, end_at; };
+    std::vector<Phase> ph;
+    int64_t go_seen = cc.last_go_at, ready_seen = cc.last_all_ready_at;
+    auto track = [&]() {
+        if (cc.last_all_ready_at != ready_seen) { ready_seen = cc.last_all_ready_at; if (!ph.empty()) ph.back().end_at = ready_seen; }
+        if (cc.last_go_at != go_seen) { go_seen = cc.last_go_at; ph.push_back({go_seen, -1}); }
+    };
     while (e.empty() && c < through) {
         s.m->run(1); c++;
+        track();
         e = f.compare(s, k.g, c, n);
         bool stopped = !cc.busy();
         for (unsigned t = 0; t < 64 && stopped; t++) stopped = s.g1[t].core->halt != Rv32::RUN;
@@ -282,5 +347,8 @@ TEST(sort_runs_equal_to_refs) {
     std::fprintf(stderr, "sort (%u domain%s): %u points equal, through cycle %" PRIu64 " (the golden's last %" PRIu64 ")%s%s\n",
                  parts, parts > 1 ? "s" : "", n, c, last, e.empty() ? "" : "; first difference: ", e.c_str());
     CHECK(e.empty());
-    if (through == ~uint64_t(0)) CHECK_EQ(c, last);
+    if (through != ~uint64_t(0) || !e.empty()) return;
+    CHECK_EQ(c, last);
+    if (!ph.empty() && ph.back().end_at < 0) ph.back().end_at = int64_t(c);   // PhaseLog.close: the open phase ends with the run
+    sort_end_checks(s, k, ph);
 }

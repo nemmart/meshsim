@@ -55,11 +55,30 @@ final class MemConf {
         double[] rate = new double[N]; int[] left = new int[N];
         String[] tag = { "G", "A", "R", "W", "P", "H", "S", "Q", "X" };
         double[] top = { 1, 1, 0.5, 1, 0.1, 0.1, 0.5, 0.5, 0.3 };
+        // Combining bursts (write combining, 13a): we-in writes W0-W3 into the four chunks of one row of area a at c..c+3
+        // and read-port reads of other rows of area a at c and c + 1. Through the write engine and the read queue they
+        // reach area a as R0, then W0 with R1 (the write first), then W1, W2, W3 one a cycle: W1 queues behind R1 and
+        // W2 (W3) merges into it. A read delayed (higher clients, a full token window) spoils a burst; one in 12 cycles
+        // starts one. The bursts' cycles carry no other we-in word or read.
+        java.util.TreeMap<Integer, String[]> burst = new java.util.TreeMap<>();
+        int quiet = 0;
         for (int t = 1; t <= cycles; t++) {
             sb.append(Integer.toHexString(t));
+            if (burst.isEmpty() && t + 4 <= cycles && r.nextInt(12) == 0) {
+                int area = r.nextInt(8), row = r.nextInt(256), other = (row + 1 + r.nextInt(200)) & 255;
+                for (int j = 0; j < 4; j++) {
+                    int chunk = area << 17 | row << 2 | j;
+                    long hd = LinkWord.hdr(r.nextInt(64), 0, LinkWord.M_WRITE, 0, 3 << 24 | chunk << 2, LinkWord.SIZE_32);
+                    burst.put(t + j, new String[] { "W:" + h(r.nextLong()) + "," + h(hd) + "," + h(r.nextLong()), j <= 1 ? "R:" + h((area << 17 | (other + j) % 256 << 2) | (long) tile << 29) + "," + h(0x2000 + 4 * t + 4 * j) : null });
+                }
+                quiet = t + 4;
+            }
+            String[] b = burst.remove(t);
+            if (b != null) for (String x : b) if (x != null) sb.append(' ').append(x);
             for (int s = 0; s < N; s++) {
                 if (left[s]-- <= 0) { left[s] = 1 + r.nextInt(48); int k = r.nextInt(4); rate[s] = k == 0 ? 0 : k == 1 ? 0.15 * top[s] : k == 2 ? 0.6 * top[s] : top[s]; }
                 if (r.nextDouble() >= rate[s]) continue;
+                if (t <= quiet && s <= 3) continue;                   // a burst's cycles: no other read or we-in word
                 sb.append(' ').append(tag[s]).append(':').append(switch (s) {
                     case 0, 1, 2 -> read(r, tile);
                     case 3 -> weWord(r, bucketSel);

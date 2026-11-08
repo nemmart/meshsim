@@ -248,3 +248,22 @@ Pieces, each committed when it compiles and passes its own test:
   needs a write behind a read in its area with the next write into the same row); same-cycle read-port ties not counted.
   Nothing needed a D30 difference.
 - 2026-11-08: **make check clean at cee7550** with test_memconf (41 binaries in each of the four builds; tsan, tsan-units, tsan-chip on both). P2 is done: ready to merge. Left for G3: a2a with W12 (needs the AG's DMA path), then the sort's SPLIT (the read port), and REPORT.md.
+- 2026-11-08: **MemConf's two thin spots closed** (owner): (1) **combining bursts** in the generator: we-in writes into
+  the four chunks of one row of area a at c..c+3 and read-port reads of other rows of area a at c and c + 1, so the
+  area sees R0, then W0 with R1, then W1 behind R1 and W2/W3 merging into it (one burst in 12 cycles; a delayed read
+  spoils one); a second fixture with combining on (t9-s5-comb). **Merges per comb fixture: 46 and 27.** (2) **read-port
+  ties counted** (`InjReadSide::rp_ties`: an entry ready in a cycle when another is already waiting at that cycle):
+  **7-32 per fixture** (t5 26, t0 7, t63 32, t27 29, t9 31). Fixtures regenerated; all equal ref, also under the debug
+  options.
+- 2026-11-08: **a2a equals golden-m2 to its end (7698)**, every unit of tile 0 every 10 cycles (a2a.fp), one thread and
+  split over 4; and **every tile every 100 cycles** (a2a-chip, regenerated from ref: SAME), one thread and split.
+  Checked on a local trial merge of W12's sim-w12 (3ef43ac: its PULSE_DMA store is needed; not on main yet), then the
+  trial branch dropped. test_chip drives it as M2Prog does: Mach.boot, three broadcast commands with GOs, and A2A's
+  Data(7, 2000) poked into every tile's big SRAM before cycle 1 (ported with test/java_random.h). The test skips itself
+  while PULSE_DMA isn't modelled on the branch (so sim-w11's make check stays clean); once main has W12's 83fb888 it
+  runs in make check. Big SRAM touched: 2.3 MB of 256 MB allocated.
+- 2026-11-08: **The sort's SPLIT:** W12's P7 (3ef43ac, sim-w12) runs the 16K sort end to end equal to ref at all 248
+  sort16k-fp points, every unit of every tile, with my read queue, read port, write engine, table store, HIST and big
+  SRAM in it; no difference reached my units. I will rerun test_sort here once it is on main and record it.
+- 2026-11-08: **make check clean at 7295f07** (build by build: gcc and clang, debug and release, 42 binaries each; tsan, tsan-units, tsan-chip on both compilers). a2a skips itself here (no PULSE_DMA on the branch). Merge order (integrator): W12's sort commits first, then mine; then I rerun a2a and test_sort on main.
+- 2026-11-08: main merged (W12's sort, PULSE_DMA): **make check clean at 6aef29b** (build by build: gcc and clang, debug and release, 42 binaries each; tsan, tsan-units, tsan-chip on both). **a2a now runs in make check** (one thread and 4 domains, to 7698).

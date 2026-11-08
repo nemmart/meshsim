@@ -105,6 +105,7 @@ struct InjReadSide {
     // ---- statistics, ref's checks ----
     uint64_t issued[3] = {}, stall_cycles = 0, window_full_cycles = 0, packets = 0, out_of_range = 0, violations = 0;
     uint64_t rp_injected_n = 0;        // read-port returns injected (ReadPort.injected; the "rdport" fingerprint)
+    uint64_t rp_ties = 0;              // a read-port entry ready in the same cycle as one already waiting (by token order)
 
     void declare(sim::Ports& p) {
         if (!cfg.present) return;
@@ -135,6 +136,7 @@ struct InjReadSide {
         readyT[t_] = t;
         if (cl[t_] == READPORT) {
             unsigned k = rp_n;
+            for (unsigned i = 0; i < rp_n; i++) if (rp[i].t == t) { rp_ties++; break; }
             while (k > 0 && (rp[k - 1].t > t || (rp[k - 1].t == t && rp[k - 1].tok > t_))) { rp[k] = rp[k - 1]; k--; }
             rp[k] = Rp{t, t_, 0}; rp_n++;
         }

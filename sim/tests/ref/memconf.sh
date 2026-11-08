@@ -9,7 +9,7 @@
 set -u
 SIM=$(cd "$(dirname "$0")/../.." && pwd)
 FIX="$SIM/tests/memconf"
-CONFS=("5 1" "0 2" "63 3" "27 4 comb" "9 5")      # tile seed [comb: write combining on]
+CONFS=("5 1" "0 2" "63 3" "27 4 comb" "9 5 comb")      # tile seed [comb: write combining on]
 REFCOMMIT=$(git -C "$SIM" log -1 --format=%H -- ref 2>/dev/null || echo unknown)
 build() {
   rm -rf "$1"; mkdir -p "$1"

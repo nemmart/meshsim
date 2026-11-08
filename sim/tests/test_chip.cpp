@@ -5,11 +5,14 @@
 // One thread, the debug options, and form 2 (the tiles in 2, 4 and 8 domains by bands of rows, on several threads).
 #include <cinttypes>
 #include <cstdio>
+#include <cstring>
+#include <algorithm>
 #include <cstdlib>
 #include <string>
 #include <vector>
 
 #include "golden_run.h"
+#include "java_random.h"
 #include "harness.h"
 #include "statefp_g1.h"
 #include "statefp_g2.h"
@@ -29,6 +32,37 @@ fp::LineEdge line_edge(const void* ctx, unsigned k, uint64_t c) {
     le.ready = e.word & 1;
     le.level = e.word >> 1 & 1;
     return le;
+}
+
+// ---- a2a's input (ref/meshsim/test/A2A.java: Data(7, 2000), uniform; M2Prog pokes it into every tile's big SRAM) ----
+void a2a_input(sim::Sim& m) {
+    static const int G4[16][4] = {{1, 29, 35, 63}, {2, 30, 34, 62}, {3, 31, 33, 61}, {5, 23, 41, 59}, {6, 22, 42, 58},
+        {7, 21, 43, 57}, {8, 28, 36, 56}, {9, 27, 37, 55}, {10, 26, 38, 54}, {11, 25, 39, 53}, {12, 24, 40, 52},
+        {13, 15, 49, 51}, {14, 18, 46, 50}, {16, 20, 44, 48}, {17, 19, 45, 47}, {0, 4, 32, 60}};
+    const int n = 2000;
+    static int cnt[64][64];
+    static std::vector<uint64_t> rec[64];
+    std::memset(cnt, 0, sizeof cnt);
+    test::JavaRandom r(7);
+    for (int s = 0; s < 64; s++) {
+        std::vector<int> dst(n);
+        for (int k = 0; k < n; k++) { dst[k] = r.next_int_pow2(64); cnt[s][dst[k]]++; }   // weights all 1: d = x
+        rec[s].assign(n, 0);
+        int pos[64] = {};
+        for (int d = 1; d < 64; d++) pos[d] = pos[d - 1] + cnt[s][d - 1];
+        for (int k = 0; k < n; k++) rec[s][pos[dst[k]]++] = uint64_t(dst[k]) << 58 | uint64_t(s) << 52 | uint64_t(k);
+    }
+    int R[16] = {};
+    for (int g = 0; g < 16; g++) for (int s = 0; s < 64; s++) for (int k : G4[g]) R[g] = std::max(R[g], cnt[s][(s + k) & 63]);
+    for (unsigned s = 0; s < 64; s++) {
+        BigSram& b = m.unit<BigSram>(tile_unit(s, "sram"));
+        for (int k = 0; k < n; k++) b.poke64(uint32_t(2 * k), rec[s][k]);                  // A2A.SRC = 0
+        const uint32_t base = 0xF0000;
+        for (int d = 0; d < 64; d++) b.poke(base + d, uint32_t(cnt[s][d]));
+        for (int src = 0; src < 64; src++) b.poke(base + 64 + src, uint32_t(cnt[src][s]));
+        for (int g = 0; g < 16; g++) b.poke(base + 128 + g, uint32_t(R[g]));
+        b.poke(base + 144, 0);
+    }
 }
 
 // ---- one run ---------------------------------------------------------------------------------------------------------
@@ -63,6 +97,8 @@ std::string check(const char* name, uint64_t through, const Setup& su, const std
     const uint32_t entry = im.entry;
     prog.command(lw::BROADCAST, 0x4Au << 24, &entry, 1);
     prog.run_when_ready(0).call(1);                                       // runWhenReady's call, then Mach's
+    if (std::string(name) == "a2a")                                       // M2Prog a2a (CtrlTest.allToAll's first set)
+        prog.command(lw::BROADCAST, 1u << 24).go().command(lw::BROADCAST, 2u << 24).go().command(lw::BROADCAST, 3u << 24).go();
     if (std::string(name) == "wfi")
         prog.command(lw::BROADCAST, 1u << 24).go().command(lw::BROADCAST, 2u << 24).go().wait_cycles(700)
             .command(lw::BROADCAST, 3u << 24).go();
@@ -89,6 +125,7 @@ std::string check(const char* name, uint64_t through, const Setup& su, const std
     sim::Sim m = cfg.build();
     if (su.parts > 1 && m.partition().find("barrier every 3 cycles") == std::string::npos) return "the partition's barrier interval is not 3: " + m.partition();
 
+    if (std::string(name) == "a2a") a2a_input(m);                         // before cycle 1, as M2Prog pokes it
     // the fingerprint: tile 0's units, the chip's
     std::vector<fp::G1Tile> g1(64);
     for (unsigned k = 0; k < 64; k++) { g1[k] = fp::g1_tile(m, k); g1[k].uinj = &m.unit<Injection>(tile_unit(k, "inj")); }
@@ -111,7 +148,7 @@ std::string check(const char* name, uint64_t through, const Setup& su, const std
         if (c > 0) m.run(1);
         if (c <= through) {
             auto pts = g.at(c);
-            if (pts.empty() && !all_tiles) return std::string(name) + ": the golden has no point at cycle " + std::to_string(c);
+            if (pts.empty() && !all_tiles && std::string(name) != "a2a") return std::string(name) + ": the golden has no point at cycle " + std::to_string(c);
             std::vector<std::string> lines;
             if (!pts.empty()) reg.point(fp::FpCtx{c, &m}, tiles, true, lines);
             std::vector<fp::FpLine> ours = fp::parse_lines(lines);
@@ -152,6 +189,19 @@ void run_all(const Setup& su) {
 
 TEST(chip_wfi_and_regs_every_cycle) { run_all({}); }
 
+// a2a (W11 with W12's AG): every unit of tile 0 every 10 cycles (golden-m2/a2a.fp) to its end, one thread and split.
+TEST(chip_a2a_every_10_cycles) {
+    if (units::reg_info(units::PULSE_DMA).store == units::A_OUT) {   // W12's DMA start (sim-w12 83fb888): not on this branch
+        std::fprintf(stderr, "a2a: skipped (PULSE_DMA not modelled on this branch yet)\n");
+        return;
+    }
+    std::string e = check("a2a", ~uint64_t(0), {});
+    if (!e.empty()) { test::fail(__FILE__, __LINE__, "%s", e.c_str()); return; }
+    Setup sp; sp.parts = 4; sp.threads = 4;
+    e = check("a2a", ~uint64_t(0), sp);
+    if (!e.empty()) test::fail(__FILE__, __LINE__, "%s", e.c_str());
+}
+
 // The hash-only goldens (every tile every 10 cycles), when CHIP_FP_DIR names a directory holding them
 // (tests/golden-m2/regen.sh with KEEP=DIR): not in make check (the files are not committed).
 TEST(chip_every_tile_when_asked) {
@@ -159,7 +209,9 @@ TEST(chip_every_tile_when_asked) {
     if (!dir) return;
     Setup split; split.parts = 4; split.threads = 4;
     for (const Setup& su : {Setup{}, split})
-        for (auto [name, through] : {std::pair<const char*, uint64_t>{"wfi", ~uint64_t(0)}, {"regs", fp::kRegsCheckedThrough}}) {
+        for (auto [name, through] : {std::pair<const char*, uint64_t>{"wfi", ~uint64_t(0)}, {"regs", fp::kRegsCheckedThrough},
+                                     {"a2a", ~uint64_t(0)}}) {
+            if (std::string(name) == "a2a" && units::reg_info(units::PULSE_DMA).store == units::A_OUT) continue;
             std::string e = check(name, through, su, std::string(dir) + "/" + name + "-chip.fp", true);
             if (!e.empty()) { test::fail(__FILE__, __LINE__, "%s", e.c_str()); return; }
         }

@@ -387,3 +387,15 @@ poke. a2a and the sort need W11's P1 and P2 (question 1). Each piece: its tests,
   - **Coordination with W10:** none needed. The queue runs one task at a time and 154 ran alone between W10's 153 and
     its next task. The last VERDICT and "done" lines appear twice in run.log, as the runner's own capture of stdout
     joins the task's tee into the same file (cosmetic; VERDICTS.txt has all seven verdicts).
+- **For W11 (2026-11-08, D31, before I touch the block's register paths):** the register block will publish only the
+  registers that changed.
+  - **The change:** `RegBlockState::publish(pub)` compares each register's value (the same values `reg(r)` gives,
+    straight-line, no switch) with `pub`, TileCtl's copy of the register file as last written, and returns a mask of the
+    ones that differ. TileCtl's step writes only those.
+  - **Why behaviour can't change:** the engine already ignores a write of an unchanged value (`engine.h:550`), and
+    TileCtl is the register file's only writer.
+  - **Your registers:** this covers SRAM_RD_DEST_ADDR (`rd_setup`) like every other register; SRAM_RD_ADDR_QUEUE is 0 in
+    the register file, as before. Nothing about how your fields are set changes.
+  - **The guard:** a debug build checks every register against `reg(r)` after each publish.
+  - **If you add a register or change what `reg()` returns for one, add it to `publish()` too**; the debug check names any
+    you miss.

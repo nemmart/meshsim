@@ -242,6 +242,13 @@ Wire, RegFile and Count are already readable from their producers' and readers' 
   clean checkout, build by build, gcc and clang debug and release (36 test binaries each, test_chip and
   test_g1_replay included), TSan gcc and clang (the 7 thread tests, test_controllers, test_chip form2: tsan-chip).
 
+## Rules for measurement (owner, 2026-11-07)
+
+- **Every chip measurement uses in-process repeats** (bench_chip --reps: an untimed machine first, then R timed
+  machines in the same process, the median reported with min and max), over several processes. A chip run is
+  milliseconds: one run per process measures the clock's ramp, first touches and the workers' start (Quest 142, withdrawn
+  by Quest 143). Mesh runs (bench_threads, 60,000 cycles, 60-300 ms) are long enough as they are.
+
 ## What carries over to the sort's chip (and what may not)
 
 The benchmark that counts is the sort's chip at 16K (owner, 2026-11-07); until it runs, W9's chip as far as it runs
@@ -291,3 +298,51 @@ the mesh second. Of today's findings (on W4's synthetic mesh and W6's synthetic 
 - 2026-11-07: **ae0d599 clean** (main merged at 4175824; the priced placement, bench_chip, crossing_ns 0, the Fifo
   overflow event, bench_chip --reps): clean checkout, build by build, gcc and clang debug and release (36 test binaries
   each) and TSan gcc and clang (the thread tests, test_controllers, test_chip form2).
+- 2026-11-07: **Quest 144, the barrier bare.** W4's counter barrier alone (threads doing nothing but wait): 0.045 us a
+  round at 2 threads, 0.135 at 3, 0.166 at 4, **0.254 at 6**, 0.28 at 8, 0.30 at 12 (spin or yield alike). On the
+  chip's boot at 6 threads the barrier wait is ~0.27 us an interval (0.09 a cycle): the barrier itself, against 0.47 us
+  of useful work a thread an interval. It grows with the threads because every arrival is a read-modify-write on one
+  line, served one after another. The bare interval (no work; a ring of Links of 3) at 6: 0.42 us (rate 0) - 0.50 (0.3):
+  barrier 0.29-0.30, drain 0.05-0.10, clear 0.015-0.045, publish 0.014. So a lighter barrier, as the owner said (the
+  interval can't pass 3 on the chip: every split crosses mesh links). First candidate: **Options::barrier_flags**, a
+  barrier on per-thread epochs (each thread writes only its own line, waits for the others' to reach its round): no
+  contended read-modify-write; each waiter sees the last arrival in one line transfer. Same digests (test). Quest 145.
+- 2026-11-07: **Quest 145, the flags barrier** (digests equal). The chip's boot by tiles (in-process repeats): 6 threads
+  0.333 -> **0.295 us** (2.82x -> 3.18x one thread), barrier wait 0.088 -> 0.050 (drain 0.026 -> 0.036: the lines'
+  transfers move); 4: 0.347 -> 0.337; 8: 0.419 -> 0.408; 12: 0.413 -> 0.390; but 2: 0.545 -> 0.588 (two threads: the
+  counter is already cheap). Mesh: 6 1.476 -> 1.451, 8 1.608 -> 1.510. The barrier alone barely moves (6: 0.255 ->
+  0.235 a round, all arriving at once): the waiter read the epochs one at a time, each a miss. Next (Quest 146): one
+  sweep over every epoch per poll, so the misses overlap.
+- 2026-11-07: **Quest 146, the sweep: worse, reverted** (dc7c177). Polling every epoch in one sweep made the barrier
+  alone slower (6 threads 0.235 -> 0.287 a round; 12: 0.418 -> 0.536) and the chip's boot no faster (6: 0.296 -> 0.304):
+  every sweep pulls every line into each waiter's cache, so each arrival must invalidate them all. Waiting on one epoch
+  at a time (Quest 145) stays. Reproduced in 146's "before": the boot at 6 threads 0.296 us (3.15x).
+  Where the barrier stands: ~0.24 us a round alone at 6 threads, ~0.05 us a cycle of wait on the boot (from 0.09).
+  The remaining structural lever (the interval can't pass 3): **wait only for the threads one exchanges words with**
+  (a split by tiles has 2-4 neighbours, not 5), instead of every thread. That needs the idle jump and the stop request
+  (whole-machine decisions, made at the barrier today) taken another way: proposed to the owner before building.
+- 2026-11-07: **The flags barrier is the default from 3 threads** (owner): `Options::barrier` (automatic | counter |
+  flags; automatic: flags from 3 threads unless barrier_block, the counter below). **The crossover (flags better from
+  4 threads, worse at 2; 3 not measured apart) was measured on the i5-14400F (D21): re-check it on any other machine**
+  (bench_threads --form 3 and bench_chip --barrier, Quests 145-146's body). The partition report names the barrier.
+- 2026-11-07: **Considered, not built: a neighbour-only barrier** (each thread waiting only for the threads it exchanges
+  words with). Owner's reasoning: the boot's light work (~0.16 us a thread a cycle at 6 threads) inflates the barrier's
+  share; the sort is far heavier (if the controller's ~4.5x over ref holds for the rest of the chip, one thread ~17 us
+  a cycle against ref's 78, so ~3 us at 6 threads, where 0.05 us of barrier is under 2%), and it would need new
+  mechanisms for the idle jump and the stop request (whole-machine decisions at the barrier today). Little gain on the
+  target for real complexity: revisit only if the sort's measurements show the barrier large.
+- 2026-11-07: **8e3aeca clean** (main merged at 7152510; the flags barrier, Options::barrier automatic, the sweep's
+  revert, bench_chip with W11's SRAM blocks): clean checkout, build by build, gcc and clang debug and release (37 test
+  binaries each) and TSan gcc and clang (the 7 thread tests, test_controllers, test_chip form2).
+- 2026-11-07: **Quest 147, per-thread speed on what runs now** (W9's chip with W8's and W11's units, one thread; regs
+  now runs whole, to cycle 897, since G3). Plain: the sort's boot 0.945-0.951 us/cycle, wfi 0.866-0.873, regs
+  1.632-1.636. By unit kind (bench_chip --units: each step timed, the clock's 5.6 ns a step taken off; the timing
+  itself slows the rest, so only the units' shares are read from it):
+  the boot: core 0.35 us/cycle (52 steps a cycle, 6.6 ns a step: the cores polling in the boot ROM), router 0.15 (6
+  steps, 24.6 ns), director 0.03 (6 steps, 4.4 ns), the rest under 0.01. wfi: core 0.40, ctl 0.11 (1.3 steps, 90 ns),
+  router 0.05. regs: core 0.46, **ctl 0.39 (4.3 steps a cycle, 91 ns a step)**, **sram 0.14 (0.5 steps, 286 ns a
+  step)**, router 0.14 (5.7 steps, 24 ns). perf on the boot (plain): Rv32's execute/step/fetch and TileCore's step ~36%,
+  run_form<TileCore> (the dispatch of 52 core steps a cycle) 11%, the router ~15%, deliver_link 4.8%, the director
+  3.8%, after_far and near_slot ~3%. (Rv32::digest's 10-33% in perf is the bench's one digest after the timed span.)
+  For the sort: the core's steps and their dispatch, TileCtl's 91 ns and BigSram's 286 ns a step are the units' costs
+  to watch; the engines (G4) are not measured yet.

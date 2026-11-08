@@ -201,3 +201,25 @@ TEST(calibration_measures_uneven_loads_and_round_trips_as_text) {
 DEATH_TEST(a_malformed_profile_is_fatal_naming_its_line, "load profile line 3: 'r0 x'") {
     LoadProfile::from_text("loadprofile v1\ncycles 10\nr0 x\n");
 }
+
+// W10: the barrier on per-thread epochs (Options::Barrier::flags) gives the same machine: the synthetic chip over 2-4
+// threads, spinning and yielding, in several runs, against one thread.
+TEST(the_flags_barrier_gives_the_one_thread_digest) {
+    synth::Params P;
+    P.seed = 21; P.clusters = 8; P.nodes_per_cluster = 4; P.gap = 1;
+    Options one;
+    Config c1(one);
+    synth::build(c1, P, [](unsigned c) { return c; });
+    Sim a = c1.build();
+    a.run(1500);
+    const uint64_t want = a.digest();
+    for (unsigned t : {2u, 3u, 4u})
+        for (unsigned spins : {2000u, ~0u}) {
+            Options o; o.threads = t; o.barrier = Options::Barrier::flags; o.barrier_spins = spins;
+            Config c(o);
+            synth::build(c, P, [](unsigned cl) { return cl; });
+            Sim s = c.build();
+            s.run(1); s.run(499); s.run(1000);
+            CHECK_EQ(s.digest(), want);
+        }
+}

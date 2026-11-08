@@ -3,20 +3,22 @@
 // sort's boot (the sort image loaded over the network and port B: 14,791 cycles before any engine runs), wfi, regs.
 //
 //   bench_chip --prog sort|wfi|regs [--cycles N] [--threads T] [--partition one|rows|tiles|load|profile]
-//              [--cpus a,b,..] [--time] [--crossing-ns X] [--reps R]
+//              [--units] [--cpus a,b,..] [--time] [--crossing-ns X] [--reps R] [--barrier auto|counter|flags|flags-spin]
 //
-// --cycles: default sort 14791 (the boot), wfi and regs: until every core has stopped (checked every 64 cycles; the
+// --cycles: default sort 14791 (the boot), wfi and regs (whole, since G3): until every core has stopped (every 64 cycles; the
 // count is the cycles run). rows: row_bands(T); tiles: one domain per tile (grouped in order, one engine per thread);
 // load: Placement::by_load, 1 per unit; profile: by_load from a one-thread calibration run of the same program and
 // cycles. The first cycle runs outside the timing (a split machine's first run starts its workers). One line:
 //   chip prog=P threads=T part=X cycles=C reps=R us_per_cycle=<median> us_min=.. us_max=.. words=W digest=D times="..."
 //   partition="..." (times: the last machine's; with --time, its phase shares)
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cinttypes>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -37,6 +39,8 @@ struct Args {
     std::vector<int> cpus;
     bool time = false;
     double crossing_ns = -1;   // --crossing-ns: Options::crossing_ns (default: the framework's)
+    bool units = false;                // --units: one thread, calibrating: each unit kind's time, steps and ns a step
+    std::string barrier = "auto";      // --barrier auto (the framework's choice) | counter (W4's) | flags | flags-spin
     unsigned reps = 5;         // --reps: machines built and run in this process, after one untimed (a run is milliseconds:
                                // the clock's ramp, first touches and the workers' start would otherwise dominate)
 };
@@ -46,6 +50,7 @@ struct World {   // what the machine reads while it runs: outlives it
     Hops hops;
     CncProgram prog;
     std::vector<uint32_t> mem;
+    SramBlocks sram;                 // G3's big-SRAM blocks (W11), as test_chip
     G1Ctx gx;
 };
 
@@ -68,6 +73,7 @@ void prepare(World& w, const std::string& name) {
     w.gx.cfg.timing = tc.timing; w.gx.cfg.periph_present = tc.periph_present; w.gx.cfg.mem_chunks = 1u << 20;
     w.gx.cfg.done_gate = true; w.gx.cfg.K = 8; w.gx.cfg.cm_latency = 2;
     w.gx.bootrom = w.im.bootrom.data(); w.gx.bootrom_words = uint32_t(w.im.bootrom.size()); w.gx.mem = w.mem.data();
+    w.gx.sram = &w.sram;
 }
 
 sim::Sim build(World& w, const Args& a, sim::Options opt, const std::string& part) {
@@ -110,21 +116,75 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--time")) a.time = true;
         else if (!std::strcmp(argv[i], "--crossing-ns")) a.crossing_ns = std::atof(val());
         else if (!std::strcmp(argv[i], "--reps")) a.reps = unsigned(std::atoi(val()));
+        else if (!std::strcmp(argv[i], "--barrier")) a.barrier = val();
+        else if (!std::strcmp(argv[i], "--units")) a.units = true;
         else if (!std::strcmp(argv[i], "--cpus")) {
             const char* s = val();
             while (*s) { a.cpus.push_back(std::atoi(s)); while (*s && *s != ',') s++; if (*s) s++; }
         } else FATAL("bench_chip: unknown argument %s", argv[i]);
     }
     if (a.prog != "sort" && a.prog != "wfi" && a.prog != "regs") FATAL("--prog %s: sort, wfi or regs", a.prog.c_str());
-    const uint64_t cycles = a.cycles ? a.cycles : a.prog == "sort" ? 14791 : a.prog == "regs" ? 824 : 0;
+    const uint64_t cycles = a.cycles ? a.cycles : a.prog == "sort" ? 14791 : 0;   // wfi, regs: to their stop
     const std::string part = a.threads == 1 && a.part != "load" && a.part != "profile" ? std::string("one") : a.part;
 
+    if (a.units) {   // the units' own costs: a calibrating run (each step timed), totals by kind (the name after "t<k>.")
+        World cw;
+        prepare(cw, a.prog);
+        sim::Options co; co.calibrate = true;
+        sim::Sim cal = build(cw, a, co, "one");
+        cal.run(1);
+        const auto t0 = std::chrono::steady_clock::now();
+        const uint64_t ran = 1 + run_prog(cal, cycles ? cycles - 1 : 0, 2000000);
+        const double wall_ns = std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - t0).count();
+        const sim::LoadProfile p = cal.load_profile();
+        // the clock's own cost inside each timed step (two reads, as run_form_cal): measured here, taken off each step
+        double pair = 0;
+        {
+            const int N = 1000000;
+            uint64_t acc = 0;
+            const uint64_t c0 = sim::sim_ticks();
+            for (int i = 0; i < N; i++) { const uint64_t a0 = sim::sim_ticks(); acc += sim::sim_ticks() - a0; }
+            pair = double(acc) / N;
+            (void)c0;
+        }
+        struct K { double ticks = 0; uint64_t steps = 0, n = 0; };
+        std::map<std::string, K> kinds;
+        double total = 0;
+        for (size_t i = 0; i < p.unit.size(); i++) {
+            std::string kind = p.unit[i];
+            if (kind.size() > 1 && kind[0] == 't' && kind.find('.') != std::string::npos && isdigit(kind[1])) kind = kind.substr(kind.find('.') + 1);
+            K& k = kinds[kind];
+            const uint64_t st = cal.steps(p.unit[i]);
+            const double t = std::max(0.0, p.load[i] - pair * double(st));
+            k.ticks += t; k.steps += st; k.n++;
+            total += t;
+        }
+        const double units_ns = total / p.ticks_per_ns;
+        std::printf("units prog=%s cycles=%" PRIu64 " wall_us_per_cycle=%.3f (calibrating: two clock reads a step) "
+                    "units_us_per_cycle=%.3f (the clock's %.1f ns a step taken off) rest_us_per_cycle=%.3f (delivery, scheduling, "
+                    "and the clock again)\n", a.prog.c_str(), ran, wall_ns / 1e3 / double(ran),
+                    units_ns / 1e3 / double(ran), pair / p.ticks_per_ns, (wall_ns - units_ns) / 1e3 / double(ran));
+        std::vector<std::pair<double, std::string>> order;
+        for (auto& [nm, k] : kinds) order.push_back({k.ticks, nm});
+        std::sort(order.rbegin(), order.rend());
+        for (auto& [t, nm] : order) {
+            const K& k = kinds[nm];
+            std::printf("unit kind=%s count=%llu share=%.4f us_per_cycle=%.4f steps_per_cycle=%.2f ns_per_step=%.1f\n", nm.c_str(),
+                        (unsigned long long)k.n, total > 0 ? k.ticks / total : 0, k.ticks / p.ticks_per_ns / 1e3 / double(ran),
+                        double(k.steps) / double(ran), k.steps ? k.ticks / p.ticks_per_ns / double(k.steps) : 0);
+        }
+        return 0;
+    }
     sim::LoadProfile prof;
     sim::Options opt;
     opt.threads = a.threads;
     opt.cpus = a.cpus;
     opt.time_threads = a.time && a.threads > 1;
     if (a.crossing_ns >= 0) opt.crossing_ns = a.crossing_ns;
+    if (a.barrier != "auto" && a.barrier != "counter" && a.barrier != "flags" && a.barrier != "flags-spin") FATAL("--barrier %s", a.barrier.c_str());
+    opt.barrier = a.barrier == "auto" ? sim::Options::Barrier::automatic
+                : a.barrier == "counter" ? sim::Options::Barrier::counter : sim::Options::Barrier::flags;
+    if (a.barrier == "flags-spin") opt.barrier_spins = ~0u;
     if (part == "profile") {                              // the same program and cycles, one thread, calibrating
         World cw;
         prepare(cw, a.prog);
@@ -153,9 +213,9 @@ int main(int argc, char** argv) {
     std::vector<double> so(us);
     std::sort(so.begin(), so.end());
     const double medv = so.empty() ? 0 : so[so.size() / 2];
-    std::printf("chip prog=%s threads=%u part=%s cycles=%" PRIu64 " reps=%u us_per_cycle=%.3f us_min=%.3f us_max=%.3f "
+    std::printf("chip prog=%s threads=%u part=%s barrier=%s cycles=%" PRIu64 " reps=%u us_per_cycle=%.3f us_min=%.3f us_max=%.3f "
                 "words=%llu digest=%016llx times=\"%s\" partition=\"%s\"\n",
-                a.prog.c_str(), a.threads, part.c_str(), ran, a.reps, medv, so.empty() ? 0 : so.front(), so.empty() ? 0 : so.back(),
+                a.prog.c_str(), a.threads, part.c_str(), a.barrier.c_str(), ran, a.reps, medv, so.empty() ? 0 : so.front(), so.empty() ? 0 : so.back(),
                 (unsigned long long)words, (unsigned long long)digest, times.c_str(), partition.c_str());
     return 0;
 }

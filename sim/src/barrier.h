@@ -7,20 +7,31 @@
 
 #include <atomic>
 #include <cstdint>
+#include <memory>
 
 namespace sim::detail {
 
 class Barrier {
 public:
-    void init(unsigned n, bool block, unsigned spins = 2000) { n_ = n; block_ = block; spins_ = spins; left_.store(n); }
+    void init(unsigned n, bool block, unsigned spins = 2000, bool flags = false) {
+        n_ = n; block_ = block; spins_ = spins; left_.store(n); flags_ = flags;
+        epoch_.reset(flags ? new Epoch[n] : nullptr);
+    }
     // The watchdog (debug builds): a wait longer than `secs` seconds calls report(ctx) (which prints every thread's
     // state) and is fatal, so a hang explains itself, in CI too.
     void watchdog(double secs, void (*report)(void*), void* ctx) { secs_ = secs; report_ = report; ctx_ = ctx; }
     // Every thread calls it once per round; all return after the last has arrived. Release/acquire: what a thread wrote
     // before arriving is visible to every thread after it returns.
     void wait();
+    // W10: thread t's arrival (t < n). With `flags` (Options::barrier): no shared counter; each thread bumps its own
+    // epoch (its own line) and waits until every other thread's has reached it: no contended read-modify-write, and the
+    // last arrival is seen by each waiter in one line transfer. Otherwise the counter barrier above.
+    void wait(unsigned t);
 
 private:
+    struct alignas(64) Epoch { std::atomic<uint64_t> v{0}; };
+    std::unique_ptr<Epoch[]> epoch_;
+    bool flags_ = false;
     alignas(64) std::atomic<uint32_t> left_{0};
     alignas(64) std::atomic<uint32_t> round_{0};
     unsigned n_ = 1;

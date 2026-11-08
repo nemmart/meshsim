@@ -22,6 +22,7 @@
 
 #include "base/alloc_guard.h"
 #include "base/fatal.h"
+#include "barrier.h"
 #include "config.h"
 #include "mesh_fw.h"
 #include "internals.h"
@@ -42,11 +43,13 @@ struct Args {
     uint64_t seed = 1;
     bool sizes = false;
     unsigned domains = 0;          // form 2: 0 = as many as threads
-    std::string barrier = "yield"; // form 2: spin (never yields), yield (after --spins pauses), block (futex after them)
+    std::string barrier = "auto";  // form 2: spin (never yields), yield (after --spins pauses), block (futex after them):
+                                   // W4's counter barrier; flags, flags-spin: the flags barrier (W10); auto: the default
     unsigned spins = 2000;
     bool due_off = false;          // form 2 with one domain: the due mask off, as in a split machine's domains
     unsigned engines = 0;          // form 2 (W10): Options::engines (0: one per thread)
     bool time_threads = false;     // form 2 (W10): Options::time_threads, the phase shares printed as times="..."
+    bool barrier_only = false;     // form 3 (W10): the barrier alone
     double crossing_ns = -1;       // form 2 (W10): Options::crossing_ns (default: the framework's)
     std::string partition = "rows";   // form 2 (W10): rows (mesh: bands of rows; synth: clusters in order), or tiles
                                       // (mesh: one domain per tile, 64; synth: one per cluster), spread over the threads
@@ -86,6 +89,7 @@ Args parse(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--partition")) a.partition = val();
         else if (!std::strcmp(argv[i], "--engines")) a.engines = unsigned(std::atoi(val()));
         else if (!std::strcmp(argv[i], "--time")) a.time_threads = true;
+        else if (!std::strcmp(argv[i], "--barrier-only")) a.barrier_only = true;
         else if (!std::strcmp(argv[i], "--crossing-ns")) a.crossing_ns = std::atof(val());
         else FATAL("unknown option %s", argv[i]);
     }
@@ -214,7 +218,9 @@ int form2(const Args& a) {
     o.cpus = a.cpus;
     if (by_load) { o.placement = Options::Placement::by_load; o.threads = a.threads; if (a.partition == "profile") o.load = &prof; }
     o.barrier_block = a.barrier == "block";
-    o.barrier_spins = a.barrier == "spin" ? ~0u : a.spins;
+    o.barrier = a.barrier.rfind("flags", 0) == 0 ? Options::Barrier::flags
+              : a.barrier == "auto" ? Options::Barrier::automatic : Options::Barrier::counter;   // W10
+    o.barrier_spins = (a.barrier == "spin" || a.barrier == "flags-spin") ? ~0u : a.spins;
     Config cfg(o);
     add_chip(cfg, D, tiles);
     Sim s = cfg.build();
@@ -239,6 +245,68 @@ int form2(const Args& a) {
     return 0;
 }
 
+// Form 3 (W10): the bare interval. T domains on T threads, each one unit that steps every cycle and does nothing but,
+// with --rate R > 0, put on a Link of latency 3 to the next domain with that probability (a ring): what a barrier
+// interval costs with no work (publish, the barrier, the drain, clear, the engine's per-interval entry and exit).
+// And --barrier-only: T threads doing nothing but Barrier::wait, rounds per second (the barrier alone).
+//   threads form=3 threads=T barrier=B spins=N rate=R cycles=C secs=S us_per_cycle=U us_per_interval=I times="..."
+struct Idle {
+    LinkOut out; LinkIn in;
+    uint64_t rng; double rate; uint64_t got = 0;
+    Idle(Ports& p, uint64_t seed, double r) : rng(seed), rate(r) { p.out(out, "out", 1); p.in(in, "in", 1); }
+    uint64_t digest() const { return hash_fields(rng, got); }
+    Wake step(Ctx& c) {
+        if (c.ready(in)) { got++; c.take(in); }
+        rng = rng * 6364136223846793005ull + 1442695040888963407ull;
+        if (rate > 0 && double(rng >> 11) * (1.0 / 9007199254740992.0) < rate) c.put(out, rng);
+        return c.next();
+    }
+};
+int form3(const Args& a) {
+    const unsigned T = std::max(2u, a.threads);
+    if (a.barrier_only) {
+        detail::Barrier b;
+        b.init(T, a.barrier == "block", (a.barrier == "spin" || a.barrier == "flags-spin") ? ~0u : a.spins, a.barrier.rfind("flags", 0) == 0);
+        std::vector<std::thread> th;
+        const uint64_t rounds = a.cycles;
+        double secs = 0;
+        for (unsigned t = 0; t < T; t++)
+            th.emplace_back([&, t] {
+                if (!a.cpus.empty()) pin_to_cpu(a.cpus[t % a.cpus.size()]);
+                b.wait(t);
+                const double t0 = now_s();
+                for (uint64_t r = 0; r < rounds; r++) b.wait(t);
+                if (t == 0) secs = now_s() - t0;
+            });
+        for (auto& x : th) x.join();
+        std::printf("threads form=3 barrier_only threads=%u barrier=%s spins=%u rounds=%llu secs=%.4f us_per_round=%.4f\n",
+                    T, a.barrier.c_str(), a.spins, (unsigned long long)rounds, secs, 1e6 * secs / double(rounds));
+        return 0;
+    }
+    Options o;
+    o.threads = T;
+    o.cpus = a.cpus;
+    o.barrier_block = a.barrier == "block";
+    o.barrier = a.barrier.rfind("flags", 0) == 0 ? Options::Barrier::flags
+              : a.barrier == "auto" ? Options::Barrier::automatic : Options::Barrier::counter;   // W10
+    o.barrier_spins = (a.barrier == "spin" || a.barrier == "flags-spin") ? ~0u : a.spins;
+    o.time_threads = a.time_threads;
+    Config cfg(o);
+    std::vector<Idle*> u;
+    for (unsigned d = 0; d < T; d++) { cfg.domain(d); u.push_back(&cfg.add<Idle>("u" + std::to_string(d), uint64_t(d + 1), a.rate)); }
+    for (unsigned d = 0; d < T; d++) cfg.link(u[d]->out, u[(d + 1) % T]->in, 3);
+    Sim s = cfg.build();
+    s.run(a.warmup);
+    const double t0 = now_s();
+    s.run(a.cycles);
+    const double secs = now_s() - t0;
+    std::printf("threads form=3 threads=%u barrier=%s spins=%u rate_in=%.2f cycles=%llu secs=%.4f us_per_cycle=%.4f "
+                "us_per_interval=%.4f digest=%016llx times=\"%s\"\n", T, a.barrier.c_str(), a.spins, a.rate,
+                (unsigned long long)a.cycles, secs, 1e6 * secs / double(a.cycles), 3e6 * secs / double(a.cycles),
+                (unsigned long long)s.digest(), s.thread_times().c_str());
+    return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -246,5 +314,6 @@ int main(int argc, char** argv) {
     if (a.sizes) return sizes(a);
     if (a.form == 1) return form1(a);
     if (a.form == 2) return form2(a);
-    FATAL("--form %d: 1 or 2", a.form);
+    if (a.form == 3) return form3(a);
+    FATAL("--form %d: 1, 2 or 3", a.form);
 }

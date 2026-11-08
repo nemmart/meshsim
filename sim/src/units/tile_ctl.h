@@ -313,6 +313,7 @@ struct G1Config {
     unsigned ag_lookahead = 0;         // agLookahead: the AG's read-ahead rings; 0: ref's default, 2 ts_engine_latency + 2
     unsigned area_queue_depth = 8, sram_read_latency = 2, read_port_depth = 64;
     bool write_combining = false, fifo_count_before_pop = true;
+    bool sram_running_sum = true;      // D31: BigSram keeps its fingerprint sum per store; false in timing runs
 };
 
 // G1's part of a tile, as W9's tile builder meets it: chip.h's `ControlIO` (the ports agreed in NOTES.md, plus

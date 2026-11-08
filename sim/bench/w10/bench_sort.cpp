@@ -103,6 +103,7 @@ struct SortRun {
         mem.assign(64 * 2 * MEM_WORDS, 0);
         gx.cfg.timing = tc.timing; gx.cfg.periph_present = tc.periph_present; gx.cfg.mem_chunks = 1u << 20;
         gx.cfg.done_gate = true; gx.cfg.K = 8; gx.cfg.cm_latency = 2;
+        gx.cfg.sram_running_sum = false;                  // D31 (W11): no fingerprints here, so no running SRAM sum
         gx.bootrom = im.bootrom.data(); gx.bootrom_words = uint32_t(im.bootrom.size()); gx.mem = mem.data();
         gx.sram = &sram;
         uint8_t dom[64];

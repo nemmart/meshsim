@@ -46,6 +46,7 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     SramConfig sc;
     sc.mem_chunks = g.cfg.mem_chunks; sc.area_queue_depth = g.cfg.area_queue_depth;
     sc.write_combining = g.cfg.write_combining; sc.fifo_count_before_pop = g.cfg.fifo_count_before_pop;
+    sc.running_sum = g.cfg.sram_running_sum;
     auto& sr = cfg.add<BigSram>(t + "sram", sc, g.sram->block(k, g.cfg.mem_chunks), true);
 
     cfg.link(c.bus, b.bus, 1);

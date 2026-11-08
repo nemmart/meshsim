@@ -11,7 +11,8 @@
 //
 // THE CONTENTS. One zero-filled block per tile, mem_chunks 32-bit words, allocated once at configuration by its owner
 // (`SramBlocks`: anonymous mmap; the OS backs only the pages touched), never in the loop (D6; owner, 2026-11-08). The
-// fingerprint's sum (region 3, AUDIT 6.2) is kept incrementally at every store.
+// fingerprint's sum (region 3, AUDIT 6.2) is kept incrementally at every store when `running_sum` (the default; D31:
+// off in timing runs, where data_sum() scans the block if a fingerprint is ever asked for).
 //
 // PORTS
 //   in   wr      HoldIn, 3 words: the write engine's request {chunk | chunks << 21, chunks 0-1, chunks 2-3}
@@ -38,6 +39,9 @@ struct SramConfig {
     unsigned area_queue_depth = 8;
     bool write_combining = false;
     bool fifo_count_before_pop = true;
+    // Keep the contents' fingerprint sum at every store (D31). Off in timing runs, where no fingerprint is taken: the
+    // store is then a plain store, and data_sum() scans the block when asked.
+    bool running_sum = true;
 };
 
 // The tiles' big-SRAM blocks: one anonymous mapping per tile, made at configuration, unmapped by the destructor.
@@ -119,9 +123,11 @@ struct BigSram {
     uint32_t load(uint32_t c) const { return c < cfg.mem_chunks ? data[c] : 0; }
     void store(uint32_t c, uint32_t v) {
         if (c >= cfg.mem_chunks) return;
-        sum.write(c, data[c], v);
+        if (cfg.running_sum) sum.write(c, data[c], v);
         data[c] = v;
     }
+    // The contents' fingerprint sum (StateFp's sram.data): the running sum, or a scan of the block without it.
+    uint64_t data_sum() const { return cfg.running_sum ? sum.sum : MemSum::scan(FP_SRAM, data, cfg.mem_chunks); }
     // Host access between cycles (SortTest's input load: BigSRAM.poke), keeping the sum.
     void poke(uint32_t c, uint32_t v) { store(c & 0x1FFFFF, v); }
     uint32_t peek(uint32_t c) const { return load(c & 0x1FFFFF); }
@@ -203,7 +209,7 @@ struct BigSram {
     }
 
     uint64_t digest() const {
-        uint64_t h = sim::hash_fields(head, count, busy, sum.sum);
+        uint64_t h = sim::hash_fields(head, count, busy, cfg.running_sum ? sum.sum : 0);   // contents: with the sum only
         for (unsigned a = 0; a < AREAS; a++)
             for (unsigned k = 0; k < count[a]; k++) {
                 const Entry& e = at(a, k);

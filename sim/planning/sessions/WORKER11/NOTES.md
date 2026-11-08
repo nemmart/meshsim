@@ -214,3 +214,10 @@ Pieces, each committed when it compiles and passes its own test:
     orders, rpReady, held, client buses: absent W12 clients written as empty Holds, the read port's Fifo, the 16 area
     returns), "inj" (the read-return hold: its release of c as the put), "rdport" (inUse, outstanding; G1Tile::uinj set
     by the chip's driver). regs, wfi and every tile unchanged; the writers' real check is MemConf (P2d) and a2a.
+- 2026-11-08: **Turning on g4 with W12 (proposal, for W12 to confirm on its NOTES):** one commit on sim-w12, after W12
+  merges main with P2 (a97d6c8 or later), made by W12 since the ports it fills are its units': in add_g1,
+  `io.mem.gather = io.mem.ag = true` with `io.mem.rd_gather` / `rd_ag` (its Holds, width 2) and `io.mem.gather_srq_busy`
+  (the block's RegIn); `TableStore(p, true)` with the STREAM/GROUP Links both ways (`ts_engine_latency`) and the PTR
+  view connected to its AG. Nothing in my files changes for it (the read queue and the writers take the flags). Before
+  the integrator merges it, I run test_chip (regs, wfi, every tile, the read port tile) and test_mem on that commit and
+  record the result here; then a2a is the joint check.

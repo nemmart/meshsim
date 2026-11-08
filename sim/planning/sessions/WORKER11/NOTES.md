@@ -248,3 +248,10 @@ Pieces, each committed when it compiles and passes its own test:
   needs a write behind a read in its area with the next write into the same row); same-cycle read-port ties not counted.
   Nothing needed a D30 difference.
 - 2026-11-08: **make check clean at cee7550** with test_memconf (41 binaries in each of the four builds; tsan, tsan-units, tsan-chip on both). P2 is done: ready to merge. Left for G3: a2a with W12 (needs the AG's DMA path), then the sort's SPLIT (the read port), and REPORT.md.
+- 2026-11-08: **MemConf's two thin spots closed** (owner): (1) **combining bursts** in the generator: we-in writes into
+  the four chunks of one row of area a at c..c+3 and read-port reads of other rows of area a at c and c + 1, so the
+  area sees R0, then W0 with R1, then W1 behind R1 and W2/W3 merging into it (one burst in 12 cycles; a delayed read
+  spoils one); a second fixture with combining on (t9-s5-comb). **Merges per comb fixture: 46 and 27.** (2) **read-port
+  ties counted** (`InjReadSide::rp_ties`: an entry ready in a cycle when another is already waiting at that cycle):
+  **7-32 per fixture** (t5 26, t0 7, t63 32, t27 29, t9 31). Fixtures regenerated; all equal ref, also under the debug
+  options.

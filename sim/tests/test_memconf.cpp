@@ -232,11 +232,11 @@ std::string run(const Script& s, sim::Options opt) {
         const WriteEngine& w = m.unit<WriteEngine>(t + "we");
         const HistStore& hh = m.unit<HistStore>(t + "hist");
         std::fprintf(stderr, "memconf t%u: issued %" PRIu64 "/%" PRIu64 "/%" PRIu64 ", srq stalls %" PRIu64 ", window full %" PRIu64
-                     ", out of range %" PRIu64 ", packets %" PRIu64 "; sram reads %" PRIu64 " writes %" PRIu64 " combined %" PRIu64
+                     ", out of range %" PRIu64 ", packets %" PRIu64 ", read-port ties %" PRIu64 "; sram reads %" PRIu64 " writes %" PRIu64 " combined %" PRIu64
                      ", read stalls %" PRIu64 ", write stalls %" PRIu64 "; we taken %" PRIu64 " written %" PRIu64 " stalls %" PRIu64
                      " aug %" PRIu64 "; ptr rmws %" PRIu64 " lost %" PRIu64 "; hist rmws %" PRIu64 " lost %" PRIu64 "; overflow events %" PRIu64 "\n",
                      s.tile, j.rs.issued[0], j.rs.issued[1], j.rs.issued[2], j.rs.stall_cycles, j.rs.window_full_cycles, j.rs.out_of_range,
-                     j.rs.packets, bs.reads_served, bs.writes_served, bs.combined, bs.read_stall_cycles, bs.write_stall_cycles, w.taken,
+                     j.rs.packets, j.rs.rp_ties, bs.reads_served, bs.writes_served, bs.combined, bs.read_stall_cycles, bs.write_stall_cycles, w.taken,
                      w.written, w.stall_cycles, w.augmented, tsu.rmws, tsu.pipe.ctrl_writes_lost, hh.rmws, hh.pipe.ctrl_writes_lost,
                      m.unit<Stand>("stand").overflow_events);
     }
@@ -283,7 +283,7 @@ bool check_file(const std::string& stem, sim::Options opt) {
     return same(stem.c_str(), run(parse(script), opt), ref);
 }
 
-const char* kFixtures[] = {"t5-s1", "t0-s2", "t63-s3", "t27-s4-comb", "t9-s5"};
+const char* kFixtures[] = {"t5-s1", "t0-s2", "t63-s3", "t27-s4-comb", "t9-s5-comb"};
 
 }  // namespace
 

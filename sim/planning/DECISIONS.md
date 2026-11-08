@@ -123,7 +123,3 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   Also from D28's reasoning: **an overflow that feeds ERRORS reaches the register block as an event** (PORTS.md section
   8), counted at t + 1, never seen only at the block's next step: ROUTER_OVF, the write engine's input and the gather
   queue alike.
-- **D30. Two regimes, two levers** (owner, 2026-11-08): on **busy** chips more units do work per interval, so the barrier
-  isn't critical: what counts is speed per thread and balance. On **quiet** chips (or quiet phases) most tiles get no
-  inputs: what counts is that **idle units cost nothing**, skipped, with the cost per cycle scaling with activity and the
-  idle jump taking whole idle stretches. Both are measured on the sort: its busy phases, and its quiet ones.

@@ -513,3 +513,9 @@ owners to judge; each keeps ref's behaviour as long as what other units see is u
   ~25% off the units' time at full size.** Next: the units by kind and the hot lines on the full-size sort (where
   BigSram's share is expected to be larger than at 16K), and two cheap tests of the memory: huge pages for the big
   SRAM's blocks (madvise; W11's code, a suggestion to measure) and BigSram's running hash off (its old-value loads).
+- 2026-11-08: **Quest 158, D31 on the full-size sort** (before ef9cd71 / w11 14195b9 / after d51b6e1, interleaved, 3
+  processes, fingerprints off): one thread 28.74 / 28.27 / **24.89 s**; 6 by tiles 5.26 / 5.30 / **4.60 s (20.9x ref)**.
+  W12's register change gives most of it; W11's running sum off ~1.6% on one thread, none measurable at 6. After: the
+  breakdown at 6, compute 3.662 + imbalance 0.188 + barrier 0.067 + drain 0.046 + publish and clear 0.018 = 3.98 us a
+  cycle. Digests differ before/after by construction (BigSram's digest folds its running sum only when kept). REPORT.md
+  written: done with M2.

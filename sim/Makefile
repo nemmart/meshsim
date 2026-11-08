@@ -86,6 +86,7 @@ clean:
 
 include src/units/units.mk
 include src/units/net.mk
+include src/units/mem.mk
 include src/threads.mk
 include bench/w10/w10.mk
 

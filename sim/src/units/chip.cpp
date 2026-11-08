@@ -47,7 +47,10 @@ TileIO tile_cycle(sim::Config& cfg, const ChipSpec& spec, unsigned k) {
     if (spec.domain) cfg.domain(spec.domain[k]);
     ControlIO io = spec.control ? spec.control(cfg, k, spec.control_ctx) : stand_in(cfg, k);
     auto& r = cfg.add<Router>(tile_unit(k, "router"), k, nc, spec.hops, true);
-    auto& in = cfg.add<Injection>(tile_unit(k, "inj"), k, nc);
+    ReadSideConfig rc;
+    rc.present = io.mem.present; rc.gather = io.mem.gather; rc.ag = io.mem.ag;
+    rc.read_port_depth = io.mem.read_port_depth; rc.sram_read_latency = io.mem.sram_read_latency; rc.mem_chunks = io.mem.mem_chunks;
+    auto& in = cfg.add<Injection>(tile_unit(k, "inj"), k, nc, rc);
     cfg.connect(io.send, in.send);
     cfg.connect(in.send_busy, io.send_busy);
     cfg.link(in.to_router, r.inj, nc.intra_tile_latency);
@@ -55,6 +58,15 @@ TileIO tile_cycle(sim::Config& cfg, const ChipSpec& spec, unsigned k) {
     cfg.link(r.eject, io.eject, nc.intra_tile_latency);
     cfg.connect(r.ovf, io.router_ovf);
     cfg.link(r.ovf_ev, io.router_ovf_ev, 1);              // D29: the overflow steps the block (counted at t + 1, D28)
+    if (io.mem.present) {                                 // W11: the read queue's clients, the big SRAM's ends
+        if (io.mem.gather) cfg.connect(io.mem.rd_gather, in.rs.client_hold[InjReadSide::GATHER]);
+        if (io.mem.ag) cfg.connect(io.mem.rd_ag, in.rs.client_hold[InjReadSide::AG]);
+        if (io.mem.gather) cfg.connect(in.rs.gather_srq_busy, io.mem.gather_srq_busy);
+        cfg.connect(io.mem.rd_port, in.rs.rp_q);
+        cfg.connect(in.rs.sram_rd, io.mem.sram_rd);
+        for (unsigned a = 0; a < InjReadSide::AREAS; a++) cfg.link(io.mem.sram_ret[a], in.rs.ret[a], io.mem.sram_read_latency);
+        cfg.connect(in.rs.rp_injected, io.mem.rp_injected);
+    }
     // A send waiting for a loopback token sleeps until the router frees one, which may not be on its way yet (the
     // loopback FIFO drains when the eject selector reaches it): longer than the detector's default.
     cfg.missed_wake_after(tile_unit(k, "inj"), 1u << 20);

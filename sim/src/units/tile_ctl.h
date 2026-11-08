@@ -181,11 +181,14 @@ struct TileCore {
     sim::LinkOut bus;                  // width 2: the core's store, consume or bus error of t -> the block, Link(1)
     sim::HoldOut send;                 // width 3: the send holding register -> W9's injection unit
     sim::LinkOut tables, hist_w;       // width 2: table-window stores -> the table store, HIST (Link(1))
+    sim::FifoOut rd_port;              // W11: width 2, the read port's requests -> the read queue (client 2)
+    sim::CountIn rp_injected;          // W11: read-port returns injected (free entries: injections before t)
     Rv32 rv;
 
     TileCore(sim::Ports& p, const Rv32& initial) : rv(initial) {
         p.in(regs, "regs"); p.in(hist, "hist"); p.in(wake, "wake"); p.in(irq, "irq"); p.in(port_b, "port_b", 3);
         p.out(bus, "bus", 2); p.out(send, "send", 3); p.out(tables, "tables", 2); p.out(hist_w, "hist_w", 2);
+        p.out(rd_port, "rd_port", 2); p.in(rp_injected, "rp_injected");
     }
     struct Env {
         sim::Ctx& c; TileCore& u;
@@ -244,7 +247,7 @@ struct G1Config {
     unsigned K = 8, cm_latency = 2;    // the write counters' line, director -> port B
     // G3 (W11): the memory path's keys
     unsigned ts_engine_latency = 1;    // tsEngineLatency: the engines' Links to and from the table store and HIST
-    unsigned area_queue_depth = 8, sram_read_latency = 2;
+    unsigned area_queue_depth = 8, sram_read_latency = 2, read_port_depth = 64;
     bool write_combining = false, fifo_count_before_pop = true;
 };
 

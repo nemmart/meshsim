@@ -3,7 +3,9 @@
 // K-line: a counted packet nothing armed for is judged unexpected at endCycle(t + K) (ERRORS [2]), by D27's rule.
 #include <vector>
 
+#include "base/fatal.h"
 #include "harness.h"
+#include "mem_stand.h"
 #include "units/tile_ctl.h"
 
 using namespace units;
@@ -63,6 +65,7 @@ TEST(g1_tile_port_b_landing_and_the_k_line) {
     cfg.link(io.line, s.line, 6);
     cfg.connect(s.ovf, io.router_ovf);
     cfg.link(s.ovf_ev, io.router_ovf_ev, 1);
+    wire_mem_stand(cfg, io);
     sim::Sim m = cfg.build();
     m.run_until(8);                                                   // eject at 5 (arrives 6): port B at 6 + 3 = 9
     const TileCore& core = m.unit<TileCore>("t0.core");

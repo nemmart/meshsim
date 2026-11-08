@@ -139,3 +139,60 @@ Each piece: its tests, `make check` clean on gcc and clang (build by build if th
   the PTR path and the SRAM Hold's refusal, ReqFifo's judgment, the block's bits, the big SRAM's writes, sum and room
   by the count before the pop. (Write combining needs a read in the same area: with P2's MemConf.)
 - 2026-11-08: **make check clean at 4de8844** (build by build: gcc and clang debug and release, 37 binaries each; tsan, tsan-units, tsan-chip on both). The overflow events piece is ready to merge. Next: P2.
+- 2026-11-08: **the write engine's missed-wake threshold (1,024 cycles, add_g1), why it waits legitimately:** with its
+  pointer stage full, the engine can take nothing from we-in until its head's PTR returns; that return's request sits in
+  the table store's request FIFO (ReqFifo, the store's own state: ref's WordFIFO behind a delay line), so for a cycle or
+  more nothing is on its way to the engine's ports while we-in holds data. The store serves the FIFO every cycle and the
+  return follows at ts_engine_latency, so the wait is bounded by the FIFO's 16 entries plus the two latencies; ref's
+  engine simply polls every cycle. Same reasoning as W9's injection unit (a token free that isn't on its way yet).
+- 2026-11-08: **the PTR view for W12** (`TableStore::ptr_view`, 256 registers, declared with `with_ag`). Checked against
+  ref's order: the tile's children run router, srqInj, dir, cmem, sram, writer, **ag, ts**, hist, ...;
+  `Tile.checkGatherAlignment` reads `ts.peek`, which flushes the macro's pending port writes (the controller's store
+  and the write-back of t - 1) but the store hasn't run its write-back of t. So the AG at t sees PTR at the end of t - 1.
+  A RegFile is read at a later level of the same cycle, so the store publishes a write-back of t at its step at t + 1
+  (it asks for that step); a window store of t - 1 is published at t, as it lands. Test
+  `table_store_ptr_view_is_ptr_before_this_cycles_write_back` (hand-derived): the write-back of 4 is seen from 5, a window
+  store of 6 from 7, and a window store on a write-back cycle (10) is lost while the write-back is seen from 11. (Under
+  ref's debug shuffle the children's order varies; the model follows the default order.)
+
+## P2's design (2026-11-08, from SRAMReadQueue, InjectionPath, ReadPort, Controller.java:380, TileControl 222-340)
+
+Pieces, each committed when it compiles and passes its own test:
+- **P2a, the read queue in the injection unit (`InjReadSide`):** 64 token slots (reqA, reqB, issueT, readyT, lo, hi,
+  partsLeft, client, zero); **the free list as a ring in ref's ArrayDeque order** (poll the head at issue, add at the
+  tail at `injected`); two in-order queues (gather, AG) as rings of 64; the read port's ready set ordered by (readyT,
+  token) as a sorted array of at most 64 (insertion; ties by token as ref's TreeSet). The step at t: (1) area returns
+  placed (16 `Link(sram_read_latency)` from the big SRAM, `{tok | part << 16, lo, hi}`); (2) one release (gather head,
+  AG head, then the earliest ready read-port entry with readyT <= t) put into the read-return hold, **inside the unit**
+  (ref's WordHold: put at t, injected at t + 1; never refused, since the injection takes it first); (3) issue: a refused
+  SRAM read Hold is retried and nothing issues; else with a token free (start + taken < cap) the first ready client
+  (0, 1, 2) is taken and issued (misaligned: UB, fatal, named; past mem_chunks or size 11: zero-width, ready at
+  t + 2 + sram_read_latency, a timed wake). `injected(h)`: reads--, the token to the free list's tail, kept as
+  loop_held when the packet loops; the read port's injected count (a Count to the core: free entries at t are from
+  injections before t). Wakes: next() while a release or issue is possible, the earliest zero-width readyT, the SRAM
+  return Links and the clients wake it otherwise.
+  **Clients present by flag** (`MemIO::present`, and per client): W12's gather and AG Holds are declared and wired when
+  W12's units have their `rd` ports; until then only the read port (client 2). The big SRAM's `rd` Hold and 16 returns
+  are declared with the read side (BigSram `with_reads`, today false).
+- **P2b, the read port:** the core's store to SRAM_RD_ADDR_QUEUE at t (ref: `readPort.store` in the store's cycle, with
+  `rdDest/rdSize/rdCounter` as they stand at t): free(t) = depth - (stores - injections before t), from the core's own
+  stores and the injection unit's Count; a store with no free entry is dropped and is a READ_PORT event (D29, ERRORS
+  [7]); else the request (reqA mode 0, dst me; reqB DMEM | dest) on the core's `Fifo(read_port_depth)` into client 2.
+  The block's endCycle advances SRAM_RD_DEST_ADDR's destination on the store (TileControl:337). A load of
+  SRAM_RD_ADDR_QUEUE returns free(t) at its sampling cycle. The director: read-port results (TAG_READPORT) accepted
+  (`acceptedAt`; ref's overlap check counted). Touches W8's core, regmap, block and director: the bits agreed with W12.
+- **P2c, the writers:** "srq" (the free list in order, the held slots in token order, the two orders, rpReady, held,
+  client0-2 buses, ret0-15 links), "inj" (the read-return hold: occupied, its word, a put at c), "rdport" (inUse,
+  outstanding), "sram" with its `rd` Hold; W9's stubs removed.
+- **P2d, MemConf** (tests/ref/MemConf.java): ref's srq + inj + sram + we + ts + hist driven by a seeded script at the
+  tile's G3 boundary, fingerprinted every cycle, against the same script on the units; then a2a with W12.
+- 2026-11-08: **P2a landed, make check clean at 49399c7** (gcc and clang debug and release, 37 binaries each; tsan,
+  tsan-units, tsan-chip on both). The read queue in the injection unit (InjReadSide, as designed above); `MemIO` in
+  `ControlIO` (chip.h, shared with W12) wired by `tile_cycle` when `mem.present`; the big SRAM's read side on in
+  add_g1; the core declares `rd_port` (Fifo out to client 2) and `rp_injected` (Count in), unused until P2b; tests that
+  build add_g1 without the chip wire `tests/mem_stand.h`. regs and wfi unchanged (no reads). **For W12:** to join as
+  clients, set `io.mem.gather` / `io.mem.ag` and give `io.mem.rd_gather` / `rd_ag` (HoldOut, width 2) and
+  `io.mem.gather_srq_busy` (RegIn, width 1, the block's) in add_g1. test_mem's
+  `read_queue_read_port_returns_and_a_same_cycle_tie` (hand-derived): a read waits in the SRAM's Hold behind a full
+  area (depth 1), a zero-width read past mem_chunks becomes ready the same cycle (8) and goes second by token order; the
+  freed tokens join the free list's tail in injection order. Next: P2b (the read port), P2c (writers), P2d (MemConf).

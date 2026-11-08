@@ -11,8 +11,9 @@
 //   gather srq busy   Reg   srq `gather_srq_busy` -> register block   1: the gather's Hold occupied at the end of t, OR
 //                                                                       SRAMReadQueue.inFlightOf(GATHER) > 0 (one of
 //                                                                       STATUS's three gather-busy inputs; W12 ORs them)
-//   PTR view          RegFile  table store `ptr` -> W12's AG             256 registers: PTR as at the table store's step
-//                                                                       (the gather alignment check's PTR half)
+//   PTR view          RegFile  table store `ptr` -> W12's AG             256 registers: PTR as committed at the end of
+//                                                                       t - 1 (ref's AG peeks before the store's
+//                                                                       write-back of t; with_ag only)
 //   STREAM request    Link  AG `stream_req` -> table store           3: op, index, addend (below)   ts_engine_latency
 //   GROUP request     Link  AG `group_req`  -> table store           3                              ts_engine_latency
 //   STREAM return     Link  table store -> AG `stream_ret`           3: TableStore.retStream's      ts_engine_latency
@@ -67,6 +68,9 @@ constexpr unsigned kTsWidth = 3;
 // Injection::rs): the clients' outputs and the big SRAM's ends.
 struct MemIO {
     bool present = false;              // false: a network-only tile (no read side)
+    bool gather = false, ag = false;   // W12's clients present (their `rd` Holds declared and given below)
+    unsigned read_port_depth = 64, sram_read_latency = 2;
+    uint32_t mem_chunks = 1u << 20;
     sim::HoldOut rd_gather;            // W12's gather `rd` (client 0), width 2
     sim::HoldOut rd_ag;                // W12's AG `rd` (client 1), width 2
     sim::FifoOut rd_port;              // the core's read port (client 2), width 2, Fifo(read_port_depth)

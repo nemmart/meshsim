@@ -44,7 +44,9 @@ extend D5's one observer, so it is the owner's decision, with W7's proposal and 
 
 On **busy** chips more units do work per interval, so the barrier shouldn't be critical: speed per thread and balance
 should be. On **quiet** chips or phases most tiles get no inputs, so idle units costing nothing (the cost per cycle scaling
-with activity, the idle jump) should be what counts. W10 measures both regimes on the sort.
+with activity, the idle jump) should be what counts. W10 measures both regimes on the sort. *First result (W10, Quest 148): up to about 1,000 units (the chip's size), idle units cost nothing per cycle;
+at 128 times that, a small fixed extra (likely cache crowding), not a proportional one; a wholly idle machine jumps ahead.
+On the real chip, cost tracks the steps taken (12-21 ns per step).*
 
 ## Order (to be refined after the audit)
 

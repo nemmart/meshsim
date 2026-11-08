@@ -493,3 +493,23 @@ owners to judge; each keeps ref's behaviour as long as what other units see is u
   TableStore (9.0%) in the full-size sort's profile before suggesting anything.
 - **The framework's share** in the sort: deliver_link<3> 5.7%, <1> 1.2%, <0> 0.5%, deliver_fifo<3> 0.8%, the run
   loops ~3%: ~11%. Unchanged by these.
+- 2026-11-08: **Quest 157, the full-size sort's timing: the number M2 is judged by** (i5-14400F, D21; bench_sort over
+  M2Sort's counted span, **1,229,687 cycles**, setup excluded as W7's baseline; 64 x 65536 uniform keys, KeyGen on the
+  runner, sha256 = HASHES; in-process repeats, 3 processes; digests equal over every configuration):
+
+  | | seconds (median; the 3 processes) | us a cycle | x one thread | x ref (95.9 s) |
+  |---|---|---|---|---|
+  | one thread | 29.15 (28.56, 29.15, 29.30) | 23.71 | 1.00 | 3.3 |
+  | 4 by tiles | 7.09 (6.65, 7.09, 7.21) | 5.76 | 4.11 | 13.5 |
+  | **6 by tiles** | **5.38 (5.29, 5.38, 5.39)** | 4.37 | 5.42 | **17.8** |
+  | 12 by tiles | 6.09 (5.72, 6.09, 6.13) | 4.96 | 4.78 | 15.7 |
+
+  **Against the ~4 s aim: 5.38 s, 35% over.** The 16K projection (2.92 us a cycle, ~3.6 s) missed because the full
+  size costs more a cycle: one thread 23.7 us against 15.15 (1.56x), the big SRAM's resident data 208 MB against 52
+  (RSS 241 MB): the units' memory traffic (BigSram's loads and stores, its running hash's old-value loads; 4 KB pages
+  over 208 MB) grows with the data. The breakdown at 6: compute 4.249 (ideal 23.71 / 6 = 3.95: inflation 1.08x) +
+  imbalance 0.241 + barrier 0.068 + drain 0.044 + publish and clear 0.021 (us a cycle; the --time run 4.63). The
+  framework's overheads are ~0.37 of 4.6 (8%); the rest is the units' own time. **To reach ~4 s at 6 threads needs
+  ~25% off the units' time at full size.** Next: the units by kind and the hot lines on the full-size sort (where
+  BigSram's share is expected to be larger than at 16K), and two cheap tests of the memory: huge pages for the big
+  SRAM's blocks (madvise; W11's code, a suggestion to measure) and BigSram's running hash off (its old-value loads).

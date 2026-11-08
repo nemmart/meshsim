@@ -331,3 +331,6 @@ the mesh second. Of today's findings (on W4's synthetic mesh and W6's synthetic 
   a cycle against ref's 78, so ~3 us at 6 threads, where 0.05 us of barrier is under 2%), and it would need new
   mechanisms for the idle jump and the stop request (whole-machine decisions at the barrier today). Little gain on the
   target for real complexity: revisit only if the sort's measurements show the barrier large.
+- 2026-11-07: **8e3aeca clean** (main merged at 7152510; the flags barrier, Options::barrier automatic, the sweep's
+  revert, bench_chip with W11's SRAM blocks): clean checkout, build by build, gcc and clang debug and release (37 test
+  binaries each) and TSan gcc and clang (the 7 thread tests, test_controllers, test_chip form2).

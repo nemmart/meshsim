@@ -310,7 +310,8 @@ void sort_end_checks(SortChip& s, const Checked& k, const std::vector<Ph>& ph) {
 }
 
 // The sort past B, every golden point compared (every 10,000 cycles, each GO and all-READY), to the run's end or to
-// SORT_THROUGH; SORT_PARTS splits it.
+// SORT_THROUGH; SORT_PARTS splits it (in row bands); SORT_BLOCK: the barrier sleeps (more threads than CPUs);
+// SORT_OPT=shuffle|instance|stepall: a debug option.
 TEST(sort_runs_equal_to_refs) {
     Checked k;
     if (k.err == "skip") return;
@@ -318,7 +319,15 @@ TEST(sort_runs_equal_to_refs) {
     if (!k.err.empty()) { std::fprintf(stderr, "%s\n", k.err.c_str()); return; }
     const uint64_t through = std::getenv("SORT_THROUGH") ? std::strtoull(std::getenv("SORT_THROUGH"), nullptr, 10) : ~uint64_t(0);
     const unsigned parts = std::getenv("SORT_PARTS") ? unsigned(std::atoi(std::getenv("SORT_PARTS"))) : 1u;
-    SortChip s(sortin::FMT_K128, {}, parts);
+    sim::Options opt;
+    opt.barrier_block = std::getenv("SORT_BLOCK") != nullptr;   // more threads than CPUs (this container has one)
+    if (const char* o = std::getenv("SORT_OPT")) {               // the debug options: shuffle, instance, stepall
+        const std::string x = o;
+        if (x == "shuffle") opt.shuffle_seed = 5;
+        else if (x == "instance") opt.order = sim::Options::Order::instance_major;
+        else if (x == "stepall") opt.step_all = true;
+    }
+    SortChip s(sortin::FMT_K128, opt, parts);
     CHECK(s.err.empty() && s.boot());
     s.load(k.keys, sortin::FMT_K128);
     Fps f(s);

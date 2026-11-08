@@ -69,6 +69,10 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     cfg.link(ts.ret_we, we.ts_ret, g.cfg.ts_engine_latency);
     cfg.link(we.hist_req, hs.req, g.cfg.ts_engine_latency);
     cfg.connect(we.to_sram, sr.wr);
+    // A full pointer stage waits for PTR's return, which sits in the table store's request FIFO (unit state, not a port)
+    // between its request's arrival and its service: the write engine sleeps with we-in non-empty and nothing on its
+    // way to it. Longer than the detector's default (a request FIFO holds 16).
+    cfg.missed_wake_after(t + "we", 1u << 10);
     cfg.link(we.ovf_ev, b.we_ovf, 1);                     // D29: the overflow events, judged at t, endCycle(t) at t + 1
     cfg.link(ts.ovf_ev, b.ts_ovf, 1);
     cfg.link(hs.ovf_ev, b.hist_ovf, 1);

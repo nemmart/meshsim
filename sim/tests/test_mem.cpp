@@ -63,6 +63,7 @@ struct WeRig {
         cfg.link(w.hist_req, s.hist_req, 1);
         cfg.connect(w.to_sram, s.sram);
         cfg.link(w.ovf_ev, s.ovf, 1);
+        cfg.missed_wake_after("we", 1u << 10);          // as add_g1: the stage waits on returns that may never come here
         return cfg.build();
     }
 };

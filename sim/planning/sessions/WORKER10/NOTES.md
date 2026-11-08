@@ -429,3 +429,9 @@ the mesh second. Of today's findings (on W4's synthetic mesh and W6's synthetic 
   - **For the units' owners** (not a problem now, a note): the Router's state is the chip's largest (13.5 KB a router,
     842 KB) and its largest touched item on busy traffic (51.6 KB an interval); BigSram's, TableStore's, Injection's
     and AddrGen's are 3-7 KB a tile each, ~untouched outside regs. All fit; worth a look in the sort's traces.
+- 2026-11-08: **f6bb357 clean** (main merged at 378931d): clean checkout, build by build, gcc and clang debug and
+  release (42 test binaries each), TSan gcc and clang (the 7 thread tests, test_controllers, test_chip form2).
+  **Quest 153** (main 378931d against 51c9e5b, interleaved, 5 processes): test_golden and test_chip PASS on both from the
+  kit (the kit's fix holds); digests equal; one thread boot 0.948 / 0.952, wfi 0.861 / 0.868, regs 1.637 / 1.661, the
+  boot at 6 threads 0.302 / 0.301, mesh 5.378 / 5.485, synth 6.402 / 6.423: noise-level (nothing in the cycle path
+  changed; the carving kept is build-time).

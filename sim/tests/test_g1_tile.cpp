@@ -5,6 +5,7 @@
 
 #include "base/fatal.h"
 #include "harness.h"
+#include "mem_stand.h"
 #include "units/tile_ctl.h"
 
 using namespace units;
@@ -41,24 +42,6 @@ struct Stand {
 
 }  // namespace
 
-// W11: the read queue's ends (the injection unit's in a chip), idle: no read is made here.
-struct MemStand {
-    sim::FifoIn rd_port;
-    sim::HoldOut sram_rd;
-    sim::LinkIn ret[16];
-    sim::CountOut rp_injected;
-    explicit MemStand(sim::Ports& p) {
-        p.in(rd_port, "rd_port", 2, 64); p.out(sram_rd, "sram_rd", 1);
-        for (auto& r : ret) p.in(r, "ret", 3);
-        p.out(rp_injected, "rp_injected");
-    }
-    sim::Wake step(sim::Ctx& c) {
-        if (c.ready(rd_port)) FATAL("MemStand: a read-port request");
-        return sim::Wake::none();
-    }
-    uint64_t digest() const { return 0; }
-};
-
 TEST(g1_tile_port_b_landing_and_the_k_line) {
     static const uint32_t rom[] = {0x10500073, 0x0000006f};          // wfi; j . (a stand-in boot ROM)
     std::vector<uint32_t> mem(64 * 2 * MEM_WORDS, 0);
@@ -82,11 +65,7 @@ TEST(g1_tile_port_b_landing_and_the_k_line) {
     cfg.link(io.line, s.line, 6);
     cfg.connect(s.ovf, io.router_ovf);
     cfg.link(s.ovf_ev, io.router_ovf_ev, 1);
-    auto& ms = cfg.add<MemStand>("mem");
-    cfg.connect(io.mem.rd_port, ms.rd_port);
-    cfg.connect(ms.sram_rd, io.mem.sram_rd);
-    for (unsigned a = 0; a < 16; a++) cfg.link(io.mem.sram_ret[a], ms.ret[a], 2);
-    cfg.connect(ms.rp_injected, io.mem.rp_injected);
+    wire_mem_stand(cfg, io);
     sim::Sim m = cfg.build();
     m.run_until(8);                                                   // eject at 5 (arrives 6): port B at 6 + 3 = 9
     const TileCore& core = m.unit<TileCore>("t0.core");

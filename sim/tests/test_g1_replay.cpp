@@ -13,6 +13,7 @@
 
 #include "golden_run.h"
 #include "harness.h"
+#include "mem_stand.h"
 #include "statefp_g1.h"
 #include "units/tile_ctl.h"
 
@@ -98,6 +99,7 @@ std::string replay(const char* name, uint64_t through, sim::Options opt) {
     cfg.link(io.line, st.line, 6);
     cfg.connect(st.ovf, io.router_ovf);
     cfg.link(st.ovf_ev, io.router_ovf_ev, 1);
+    wire_mem_stand(cfg, io);
     sim::Sim m = cfg.build();
     fp::G1Tile view = fp::g1_tile(m, 0);
     fp::FpRegistry reg;

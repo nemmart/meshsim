@@ -54,6 +54,7 @@ G1Tile g1_tile(sim::Sim& s, unsigned k) {
     g.udir = &s.unit<units::Director>(t + "dir"); g.uts = &s.unit<units::TableStore>(t + "ts");
     g.uhist = &s.unit<units::HistStore>(t + "hist");
     g.uwe = &s.unit<units::WriteEngine>(t + "we"); g.usram = &s.unit<units::BigSram>(t + "sram");
+    g.uag = &s.unit<units::AddrGen>(t + "ag"); g.ugather = &s.unit<units::Gather>(t + "gather");
     g.core = &g.ucore->rv; g.ctl = &g.uctl->s; g.ts = &g.uts->m; g.hist = &g.uhist->m;
     return g;
 }
@@ -227,31 +228,44 @@ void w_we(const void* p, FpOut& o, const FpCtx& x) {
     w_link(o, "tsRet", g, w ? &w->ts_ret : nullptr);
 }
 
-// StateFp.ag: forty fields (the configuration first), the read-ahead queues, the two table-return lines. (G4: the rest.)
+// StateFp.ag (W12): forty fields (the configuration first, from the block's registers; pStart is the block's PULSE_DMA of
+// endCycle(c), which the AG takes at c + 1), the read-ahead rings in queue order, the two table-return lines. Java's
+// int fields are sign-extended (a STREAM_DEST past 2^31), its longs as they are.
 void w_ag(const void* p, FpOut& o, const FpCtx& x) {
     const G1Tile& g = tile(p);
-    static const char* const kIdle[] = {"pStart", "running", "done", "leadIn", "finishedIssuing", "gatherChecked", "sqOut",
-                                        "cqOut", "streamDiscard", "groupDiscard", "sReads", "cReads", "rg", "rr", "rv",
-                                        "slRun", "cur", "cSrc", "cDest", "cCount", "cJ", "cD", "cMode", "cSize", "cGap",
-                                        "cCtr", "gapLeft", "g", "r", "v", "gR", "gT", "gGap", "groupS", "rotSched",
-                                        "inRot", "stalledSinceGroup"};
-    o.w("kind", units::AddrGen::kind(dma_config(g, x.cycle)));
-    o.w("runStart", units::AddrGen::run_start(dma_config(g, x.cycle)));
-    o.w("runCount", units::AddrGen::run_count(dma_config(g, x.cycle)));
-    for (const char* f : kIdle) o.w(f, 0);
-    o.w("sq.n", 0);
-    o.w("cq.n", 0);
-    link_empty(o, "streamRet");
-    link_empty(o, "groupRet");
+    static const units::AddrGen kIdle(units::AddrGen::idle());
+    const units::AddrGen* a = g.uag ? g.uag : &kIdle;       // a bench without the unit: the reset state
+    auto i = [&](const char* nm, uint32_t v) { o.w(nm, uint64_t(int64_t(int32_t(v)))); };
+    const uint32_t mc = dma_config(g, x.cycle);
+    i("kind", units::AddrGen::kind(mc)); i("runStart", units::AddrGen::run_start(mc)); i("runCount", units::AddrGen::run_count(mc));
+    o.w("pStart", g.sim ? block_end(g, x.cycle).dma_pulse : 0);
+    o.w("running", a->running); o.w("done", a->done); o.w("leadIn", a->lead_in); o.w("finishedIssuing", a->finished_issuing);
+    o.w("gatherChecked", a->gather_checked);
+    i("sqOut", a->sq_out); i("cqOut", a->cq_out); i("streamDiscard", a->stream_discard); i("groupDiscard", a->group_discard);
+    i("sReads", a->s_reads); i("cReads", a->c_reads); i("rg", a->rg); i("rr", a->rr); i("rv", a->rv);
+    i("slRun", a->sl_run); o.w("cur", a->cur);
+    i("cSrc", a->c_src); i("cDest", a->c_dest); i("cCount", a->c_count); i("cJ", a->c_j); i("cD", a->c_d); i("cMode", a->c_mode);
+    i("cSize", a->c_size); i("cGap", a->c_gap); i("cCtr", a->c_ctr); i("gapLeft", a->gap_left);
+    i("g", a->g); i("r", a->r); i("v", a->v); i("gR", a->g_r); i("gT", a->g_t); i("gGap", a->g_gap);
+    o.w("groupS", uint64_t(a->group_s)); o.w("rotSched", uint64_t(a->rot_sched)); o.w("inRot", a->in_rot);
+    o.w("stalledSinceGroup", a->stalled_since_group);
+    i("sq.n", a->sq_buf);
+    for (uint32_t k = 0; k < a->sq_buf; k++) { const uint32_t j = (a->sq_head + k) % a->lookahead; o.w("sq.e0", a->sq[j]); o.w("sq.e1", a->sq1[j]); }
+    i("cq.n", a->cq_buf);
+    for (uint32_t k = 0; k < a->cq_buf; k++) o.w("cq.e", a->cq[(a->cq_head + k) % a->lookahead]);
+    w_link(o, "streamRet", g, g.uag ? &a->stream_ret : nullptr);
+    w_link(o, "groupRet", g, g.uag ? &a->group_ret : nullptr);
 }
 
-// StateFp.gather: k, base, the active request (left, ord, i, ctr, wide), its input queue. (G4: the request.)
+// StateFp.gather (W12): k, base (the block's registers), the active request (left, ord, i, ctr, wide), its input queue.
 void w_gather(const void* p, FpOut& o, const FpCtx& x) {
     const G1Tile& g = tile(p);
+    static const units::Gather kIdle(units::Gather::idle());
+    const units::Gather* a = g.ugather ? g.ugather : &kIdle;  // a bench without the unit: the reset state
     o.w("k", units::Gather::k(dma_config(g, x.cycle)));
     o.w("base", units::Gather::base(record_base(g, x.cycle)));
-    for (const char* f : {"left", "ord", "i", "ctr", "wide"}) o.w(f, 0);
-    fifo_empty(o, "in");
+    o.w("left", a->left); o.w("ord", a->ord); o.w("i", a->i); o.w("ctr", a->ctr); o.w("wide", a->wide);
+    w_fifo(o, "in", g, g.ugather ? &a->in : nullptr);
 }
 
 // StateFp.ts: the five memories (with the window's store of c, committed by ref at c unless a write-back was done at c:

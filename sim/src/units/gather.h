@@ -71,6 +71,7 @@ struct Gather {
     // ---- statistics (GatherEngine: requests, reads = packets, stallCycles) ----
     uint64_t requests = 0, reads = 0, stall_cycles = 0, overflows = 0;
 
+    Gather() = default;
     Gather(sim::Ports& p, unsigned gather_depth, uint32_t tile = 0, bool wired_ = false) : me(tile), wired(wired_) {
         p.in(in, "in", 3, gather_depth);
         p.in(dma, "dma");
@@ -116,6 +117,7 @@ struct Gather {
         return put || c.ready(in) ? c.next() : sim::Wake::none();
     }
 
+    static Gather idle() { return Gather(); }             // the reset state, outside a machine (fingerprint writers)
     static uint32_t k(uint32_t dma_config) { return mc_k(dma_config); }
     static uint32_t base(uint32_t record_base) { return record_base & 0x1FFFFF; }
     static uint32_t read_chunk(uint32_t base, uint32_t k, uint32_t ord, uint32_t i, bool wide) {

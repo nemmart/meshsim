@@ -60,7 +60,7 @@ extend D5's one observer, so it is the owner's decision, with W7's proposal and 
 | W8 | **done**, closed 2026-11-08 (`sessions/WORKER8-REPORT.md`): G1, the tile's control, and the fingerprint's C++ side |
 | W9 | **done**, closed 2026-11-08 (`sessions/WORKER9-REPORT.md`): G2, the network and the 64-tile chip; `a2a`'s network part and NetTest pass to W11/W12; the sort's driver sequence to W12 |
 | W10 | framework speed, on main: the Link that holds words, the observer, stop request, between-cycles wake, the cheaper split, partitioning by load, direct delivery, the Fifo overflow event. On the chip's boot (Quest 143, in-process repeats): **0.33 µs per cycle at 6 threads, 2.8× one thread**; every placement equal there (the boot's load is even); the barrier is the largest overhead (~27%), next. Quest 142's "profile wins" was a measurement artefact, withdrawn |
-| W11 | G3, the memory path (first `regs`' path from 825): prompt written 2026-11-08 (`sessions/WORKER11/PROMPT.md`); starts when W8's and W9's reports are merged |
+| W11 | G3: P1 on main (big SRAM, the write engine, the table store and HIST): **`regs` matches `golden-m2` to its end (869)**, every unit of tile 0 every cycle, every tile every 10 cycles, one thread and split; next P2, the read side and the read port |
 | W12 | G4, the engines, and the sort end to end: prompt written 2026-11-08 (`sessions/WORKER12/PROMPT.md`); starts with W11 |
 
 **Open at the end of 2026-11-07** (for the next integrator turn):

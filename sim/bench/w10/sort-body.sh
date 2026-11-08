@@ -16,7 +16,8 @@ done
 NPC=$(count "$P_CPUS"); P1=$(take 1 "$P_ONE")
 cpus_for() { local t=$1; if [ "$t" -le "$NPC" ]; then echo "$P_CPUS"; else echo "$ALL_CPUS"; fi; }
 TS=; for t in 2 4 6 8 $NPC; do [ "$t" -le "$NPC" ] && [[ " $TS " != *" $t "* ]] && TS+="${TS:+ }$t"; done
-srun() { local tag=$1 cpus=$2 k=$3; shift 3; ( cd "$W/kit/$k/sim" && run "$tag" "$cpus" ./build/clang-release/bench_sort --keys "$KEYS" "$@" ); }
+SPAN=""   # found by the first run (its polling), then passed to the rest
+srun() { local tag=$1 cpus=$2 k=$3; shift 3; ( cd "$W/kit/$k/sim" && run "$tag" "$cpus" ./build/clang-release/bench_sort --keys "$KEYS" $SPAN "$@" ); }
 # run() greps "^(threads|chip) ": this body's lines start "sort "
 run() {
   local tag=$1 cpus=$2; shift 2
@@ -29,6 +30,7 @@ run() {
 for k in $KITS; do
   sec "1. one thread ($k)"
   srun "$k one" "$P1" $k --threads 1 --cpus "$P1" --reps $REPS
+  SPAN="--span $(grep -o 'span [0-9]* -> [0-9]*' "$W/err.txt" | awk '{print $2, $4}')"; echo "span: $SPAN"
   sec "2. split ($k): T = $TS"
   for t in $TS; do C=$(take $t "$PLACE"); TSET=$(cpus_for $t)
     for p in tiles rows load profile; do

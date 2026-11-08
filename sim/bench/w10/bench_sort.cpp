@@ -6,7 +6,7 @@
 //
 //   bench_sort --keys keys-16384/uniform.keys [--threads T] [--partition one|rows|tiles|load|profile] [--reps R]
 //              [--cpus a,b,..] [--time] [--phases] [--units] [--windows W] [--trace-map F --trace-from C
-//              --trace-window W --trace-windows N]
+//              --trace-window W --trace-windows N] [--span GO END]
 //
 // One line per configuration:
 //   sort threads=T part=X span=C reps=R us_per_cycle=<median> us_min us_max secs=<median> words digest times partition
@@ -58,6 +58,7 @@ struct Args {
     std::vector<int> cpus;
     bool time = false, phases = false, units = false;
     uint64_t trace_from = 0, trace_window = 3, trace_windows = 100;
+    uint64_t span_go = 0, span_end = 0;   // --span GO END: skip the polling run (its phases unknown: --phases needs it)
 };
 
 // SortChip of test_sort.cpp, without the fingerprints: the image, the boot, M2Sort's sequence, the chip.
@@ -197,6 +198,7 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--trace-from")) a.trace_from = std::strtoull(val(), nullptr, 10);
         else if (!std::strcmp(argv[i], "--trace-window")) a.trace_window = std::strtoull(val(), nullptr, 10);
         else if (!std::strcmp(argv[i], "--trace-windows")) a.trace_windows = std::strtoull(val(), nullptr, 10);
+        else if (!std::strcmp(argv[i], "--span")) { a.span_go = std::strtoull(val(), nullptr, 10); a.span_end = std::strtoull(val(), nullptr, 10); }
         else if (!std::strcmp(argv[i], "--cpus")) {
             const char* s = val();
             while (*s) { a.cpus.push_back(std::atoi(s)); while (*s && *s != ',') s++; if (*s) s++; }
@@ -210,12 +212,13 @@ int main(int argc, char** argv) {
 
     // the span (and the phases), once, by polling a one-thread machine
     Span sp;
-    {
+    if (a.span_go && !a.phases) { sp.go = a.span_go; sp.end = a.span_end; }
+    else {
         SortRun s(a, sim::Options{}, "one");
         s.boot(); s.load(keys);
         sp = find_span(s);
     }
-    std::fprintf(stderr, "bench_sort: B=%llu span %llu -> %llu (%llu cycles), %zu phases\n", (unsigned long long)0,
+    std::fprintf(stderr, "bench_sort: span %llu -> %llu (%llu cycles), %zu phases\n",
                  (unsigned long long)sp.go, (unsigned long long)sp.end, (unsigned long long)(sp.end - sp.go), sp.phases.size());
     const uint64_t span = sp.end - sp.go;
 

@@ -1,5 +1,5 @@
 // The chip (WORKER9, stage 4): build_chip with W8's G1 units in every tile (add_g1), the network and C&C's model, running
-// M2Prog's regs (through fp::kRegsCheckedThrough, G3's mode-1 path after it) and wfi exactly as CtrlTest runs them
+// M2Prog's regs (to its end since G3's mode-1 path, W11) and wfi exactly as CtrlTest runs them
 // (Mach.boot's C&C sequence, then the program's), checked against golden-m2 every cycle: every unit of tile 0 and the
 // chip-level units (the golden's 21 lines a point, `chip` included), from cycle 0 to the cycle every core has stopped.
 // One thread, the debug options, and form 2 (the tiles in 2, 4 and 8 domains by bands of rows, on several threads).
@@ -42,7 +42,9 @@ std::string check(const char* name, uint64_t through, const Setup& su, const std
     // D12: what this run builds (the keys it reads; the rest are ref's defaults, which this build assumes)
     const std::pair<const char*, const char*> keys[] = {{"linkLatency", "3"}, {"queueDepth", "16"}, {"K", "8"}, {"cmLatency", "2"},
         {"goLatency", "8"}, {"readyLatency", "8"}, {"cncReaction", "1"}, {"cncGoSettle", "true"}, {"skew", "true"},
-        {"skewSeed", "1"}, {"readTokens", "64"}, {"intraTileLatency", "1"}, {"doneGate", "true"}, {"memChunks", "1048576"}};
+        {"skewSeed", "1"}, {"readTokens", "64"}, {"intraTileLatency", "1"}, {"doneGate", "true"}, {"memChunks", "1048576"},
+        {"tsEngineLatency", "1"}, {"areaQueueDepth", "8"}, {"sramReadLatency", "2"}, {"writeCombining", "false"},
+        {"fifoCountBeforePop", "true"}, {"weInDepth", "4"}, {"gatherDepth", "16"}, {"readPortDepth", "64"}};
     for (auto& kv : keys) {
         auto it = g.config.find(kv.first);
         if (it == g.config.end() || it->second != kv.second)
@@ -72,6 +74,7 @@ std::string check(const char* name, uint64_t through, const Setup& su, const std
     gx.cfg.timing = tc.timing; gx.cfg.periph_present = tc.periph_present; gx.cfg.mem_chunks = 1u << 20;
     gx.cfg.done_gate = true; gx.cfg.K = 8; gx.cfg.cm_latency = 2;
     gx.bootrom = im.bootrom.data(); gx.bootrom_words = uint32_t(im.bootrom.size()); gx.mem = mem.data();
+    SramBlocks sram_blocks; gx.sram = &sram_blocks;
 
     sim::Options opt = su.opt;
     opt.observe_arrivals = true;
@@ -128,9 +131,11 @@ std::string check(const char* name, uint64_t through, const Setup& su, const std
     }
     const Cnc& cc = m.unit<Cnc>("cnc");
     std::fprintf(stderr, "%s (%u domain%s, %u thread%s): stopped at cycle %" PRIu64 " (the golden's last point %" PRIu64 "), checked through %" PRIu64
-                 "; C&C: GOs %" PRIu64 ", packets %" PRIu64 ", ready_repulses %" PRIu64 ", stepped %" PRIu64 "\n",
+                 "; C&C: GOs %" PRIu64 ", packets %" PRIu64 ", ready_repulses %" PRIu64 ", stepped %" PRIu64
+                 "; big SRAM: %zu KB allocated, %zu KB touched\n",
                  name, su.parts, su.parts > 1 ? "s" : "", su.threads, su.threads > 1 ? "s" : "", c, last,
-                 std::min(c, through), cc.gos, cc.packets_sent, cc.ready_repulses, cc.stepped);
+                 std::min(c, through), cc.gos, cc.packets_sent, cc.ready_repulses, cc.stepped,
+                 sram_blocks.allocated_bytes() >> 10, sram_blocks.touched_bytes() >> 10);
     if (cc.ready_repulses != 0) return std::string(name) + ": READY pulsed again while visible (D29), " + std::to_string(cc.ready_repulses) + " times";
     if (c != through && c != last) return std::string(name) + ": stopped at cycle " + std::to_string(c) + ", the golden at " + std::to_string(last);
     return "";
@@ -152,10 +157,12 @@ TEST(chip_wfi_and_regs_every_cycle) { run_all({}); }
 TEST(chip_every_tile_when_asked) {
     const char* dir = std::getenv("CHIP_FP_DIR");
     if (!dir) return;
-    for (auto [name, through] : {std::pair<const char*, uint64_t>{"wfi", ~uint64_t(0)}, {"regs", fp::kRegsCheckedThrough}}) {
-        std::string e = check(name, through, {}, std::string(dir) + "/" + name + "-chip.fp", true);
-        if (!e.empty()) { test::fail(__FILE__, __LINE__, "%s", e.c_str()); return; }
-    }
+    Setup split; split.parts = 4; split.threads = 4;
+    for (const Setup& su : {Setup{}, split})
+        for (auto [name, through] : {std::pair<const char*, uint64_t>{"wfi", ~uint64_t(0)}, {"regs", fp::kRegsCheckedThrough}}) {
+            std::string e = check(name, through, su, std::string(dir) + "/" + name + "-chip.fp", true);
+            if (!e.empty()) { test::fail(__FILE__, __LINE__, "%s", e.c_str()); return; }
+        }
 }
 
 TEST(chip_under_debug_options) {
@@ -207,6 +214,7 @@ TEST(tile_router_overflow_steps_the_register_block) {
     gx.cfg.timing = tc.timing; gx.cfg.periph_present = tc.periph_present; gx.cfg.mem_chunks = 1u << 20;
     gx.cfg.done_gate = true; gx.cfg.K = 8; gx.cfg.cm_latency = 2;
     gx.bootrom = im.bootrom.data(); gx.bootrom_words = uint32_t(im.bootrom.size()); gx.mem = mem.data();
+    SramBlocks sram_blocks; gx.sram = &sram_blocks;
     CncProgram prog;
     prog.release();
     ChipSpec spec;

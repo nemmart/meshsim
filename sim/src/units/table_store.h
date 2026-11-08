@@ -1,12 +1,13 @@
 // table_store.h: the table memories (sim/ref/meshsim/src/TableStore.java: TableStore and HistStore; AUDIT-M2 3.5).
-// CONFIGURATION PART BY W8 (G1); G3 EXTENDS THIS FILE with the behaviour (the request FIFOs and returns for the AG and
-// the write engine, PTR's and HIST's read-modify-write pipes with their bypass, a controller access losing port B to a
-// write-back), in these same units.
+// Configuration part by W8 (G1): the memories with their incremental fingerprint sums (memsum.h), written by the
+// controller through the table window (Controller.window). Behaviour by W11 (G3): the engines' request Links into
+// 16-entry request FIFOs (ReqFifo), one STREAM read, one GROUP read and one PTR read-modify-write a cycle (TableStore),
+// HIST's count-on-arrival (HistStore), the RMW pipe with its bypass (Rmw), and the window's figure-12 rule: a
+// controller store on a write-back cycle is lost, a HIST load on one returns the engine's value.
 //
-// What exists now: the memories with their incremental fingerprint sums (memsum.h), written by the controller through
-// the table window (Controller.window). ref's controller store at t is a macro port write committed at the end of t (a
-// load at t + 1 sees it); here the core puts it on `window`, a Link(1), and the store applies it at its step at t + 1,
-// before any reader of t + 1 (HIST: the core reads `hist`, a RegFile, at a later level).
+// ref's controller store at t is a macro port write committed at the end of t (a load at t + 1 sees it); here the core
+// puts it on `window`, a Link(1), and the store applies it at its step at t + 1, before any reader of t + 1 (HIST: the
+// core reads `hist`, a RegFile, at a later level), unless a write-back was done at t.
 //   TableStore: STREAM_SRC, STREAM_DEST, STREAM_COUNT (256 x 32), GROUP (64 x 64 bits: 128 words), PTR (256 x 21).
 //   HistStore:  HIST (256 x 17); the only table the controller loads (one-cycle loads, through `hist`).
 // The window's word {table << 32 | index, value}; values already masked by the core as ref's window masks them (PTR 21
@@ -17,6 +18,7 @@
 
 #include "base/fatal.h"
 #include "sim.h"
+#include "units/mem.h"
 #include "units/memsum.h"
 
 namespace units {
@@ -56,19 +58,130 @@ struct TableMems {
     }
 };
 
-struct TableStore {
-    sim::LinkIn window;        // width 2, from the core: a table-window store of t (Link(1))
-    TableMems m;
-    uint64_t digest() const { return m.s_src.sum ^ m.s_dest.sum * 3 ^ m.s_count.sum * 5 ^ m.s_group.sum * 7 ^ m.s_ptr.sum * 11; }
+// A request FIFO fed by a Link inside the store (TableStore's qStream, qGroup, qWe, HistStore's q: WordFIFO(16) after a
+// delay line). A put at t (an arrival) is judged at the store's next step, t + 1, against the occupancy at the start of
+// t (PORTS.md 3: count + a take at t >= 16 drops it); entries visible from t + 1.
+struct ReqFifo {
+    static constexpr unsigned N = 16;
+    uint64_t e[N][3] = {};
+    uint8_t head = 0, n = 0;
+    bool pend = false;                 // a put not yet judged (made at put_at)
+    uint64_t put_at = 0, pw[3] = {};
+    uint64_t last_take = ~0ull;
+    uint64_t overflows = 0, first_overflow = 0;
+    // Judge a put made before t; true if it overflowed (dropped).
+    bool commit(uint64_t t) {
+        if (!pend || put_at >= t) return false;
+        pend = false;
+        if (n + (last_take == put_at ? 1u : 0u) >= N) { if (!overflows++) first_overflow = put_at; return true; }
+        uint64_t* d = e[(head + n) % N];
+        d[0] = pw[0]; d[1] = pw[1]; d[2] = pw[2]; n++;
+        return false;
+    }
+    void put(uint64_t t, const sim::Word* w) { pend = true; put_at = t; pw[0] = w[0]; pw[1] = w[1]; pw[2] = w[2]; }
+    const uint64_t* front() const { return e[head]; }
+    void pop(uint64_t t) { head = uint8_t((head + 1) % N); n--; last_take = t; }
+    const uint64_t* at(unsigned k) const { return e[(head + k) % N]; }
+    uint64_t digest() const {
+        uint64_t h = sim::hash_fields(n, pend, put_at, pw, last_take);
+        for (unsigned k = 0; k < n; k++) h = sim::hash_mix(h, sim::hash_bytes(at(k), 24));
+        return h;
+    }
+};
 
-    explicit TableStore(sim::Ports& p) { p.in(window, "window", 2); }
+// PTR's and HIST's read-modify-write (TableStore.java's RmwPipe; figure 12): read on port A at t, the new value written
+// back on port B at t + 1, with a bypass (the RMW at t sees the write-back of t). One RMW a cycle, so at most one write-back
+// is pending; the store steps at its due cycle. A controller store on a write-back cycle is lost; a controller load on one
+// returns the engine's value (at the engine's index).
+struct Rmw {
+    bool valid = false;
+    uint64_t due = 0;
+    uint32_t idx = 0, val = 0;
+    uint64_t last_wb = ~0ull;          // the cycle of the last write-back done
+    uint64_t ctrl_writes_lost = 0;
+    void schedule(uint64_t t, uint32_t i, uint32_t v) {
+        if (valid) FATAL("RMW: a write-back already pending at cycle %llu", (unsigned long long)t);
+        valid = true; due = t + 1; idx = i; val = v;
+    }
+    uint64_t digest() const { return sim::hash_fields(valid, due, idx, val, last_wb); }
+};
+
+struct TableStore {
+    // ---- ports ----
+    sim::LinkIn window;        // width 2, from the core: a table-window store of t (Link(1))
+    sim::LinkIn req_we;        // width 3, the write engine's PTR RMWs, Link(ts_engine_latency)
+    sim::LinkOut ret_we;       // width 3, their returns {i, old, 0}
+    sim::LinkIn req_stream, req_group;      // width 3, the AG's (with_ag: G4)
+    sim::LinkOut ret_stream, ret_group;     // width 3, to the AG (with_ag)
+    bool with_ag = false;
+
+    // ---- state ----
+    TableMems m;
+    ReqFifo q_stream, q_group, q_we;
+    Rmw pipe;
+    uint64_t table_reads = 0, rmws = 0;
+
+    uint64_t digest() const {
+        return sim::hash_fields(m.s_src.sum, m.s_dest.sum, m.s_count.sum, m.s_group.sum, m.s_ptr.sum) ^
+               q_stream.digest() * 3 ^ q_group.digest() * 5 ^ q_we.digest() * 7 ^ pipe.digest() * 11;
+    }
+
+    explicit TableStore(sim::Ports& p, bool ag = false) : with_ag(ag) {
+        p.in(window, "window", 2);
+        p.in(req_we, "req_we", 3);
+        p.out(ret_we, "ret_we", 3);
+        if (with_ag) {
+            p.in(req_stream, "req_stream", 3); p.in(req_group, "req_group", 3);
+            p.out(ret_stream, "ret_stream", 3); p.out(ret_group, "ret_group", 3);
+        }
+    }
     sim::Wake step(sim::Ctx& c) {
-        if (c.ready(window)) {
+        const uint64_t t = c.now();
+        if (c.ready(window)) {                                 // the controller's store of t - 1 (lost on a write-back)
             const sim::Word* w = c.peek(window);
-            m.write(uint32_t(w[0] >> 32), uint32_t(w[0]), uint32_t(w[1]));
+            const uint32_t table = uint32_t(w[0] >> 32);
+            if (table == TBL_PTR && pipe.last_wb == t - 1) pipe.ctrl_writes_lost++;
+            else m.write(table, uint32_t(w[0]), uint32_t(w[1]));
             c.take(window);
         }
-        return sim::Wake::none();
+        if (pipe.valid && pipe.due <= t) {                     // the write-back of t (scheduled at t - 1)
+            if (pipe.due != t) FATAL("table store: PTR's write-back due at %llu done at %llu", (unsigned long long)pipe.due, (unsigned long long)t);
+            m.write(TBL_PTR, pipe.idx, pipe.val);
+            pipe.valid = false; pipe.last_wb = t;
+        }
+        const bool o1 = q_stream.commit(t), o2 = q_group.commit(t), o3 = q_we.commit(t);
+        if (o1 || o2 || o3) overflow(t);
+        if (with_ag) {
+            if (c.ready(req_stream)) { q_stream.put(t, c.peek(req_stream)); c.take(req_stream); }
+            if (c.ready(req_group)) { q_group.put(t, c.peek(req_group)); c.take(req_group); }
+        }
+        if (c.ready(req_we)) { q_we.put(t, c.peek(req_we)); c.take(req_we); }
+        if (q_stream.n) {
+            const uint64_t idx = q_stream.front()[1];
+            q_stream.pop(t); table_reads++;
+            const unsigned i = unsigned(idx - mem::IDX_STREAM) & 255;
+            c.put(ret_stream, uint64_t(m.stream_src[i]) | uint64_t(m.stream_dest[i]) << 32, m.stream_count[i], idx);
+        }
+        if (q_group.n) {
+            const uint64_t idx = q_group.front()[1];
+            q_group.pop(t); table_reads++;
+            const unsigned i = unsigned(idx - mem::IDX_GROUP);
+            if (i + 1 >= 128) FATAL("table store: GROUP read at word %u", i);
+            c.put(ret_group, idx, uint64_t(m.group[i]) | uint64_t(m.group[i + 1]) << 32, 0);
+        }
+        if (q_we.n) {
+            const uint64_t* r = q_we.front();
+            const uint32_t idx = uint32_t(r[1] - mem::IDX_PTR), add = uint32_t(r[2]);
+            q_we.pop(t); rmws++;
+            if (idx >= 256) FATAL("table store: PTR RMW at index %u", idx);
+            const uint32_t old = m.ptr[idx];                     // the write-back of t is in (the bypass)
+            pipe.schedule(t, idx, (old + add) & 0x1FFFFF);
+            c.put(ret_we, idx, old, 0);
+        }
+        return pipe.valid || q_stream.n || q_group.n || q_we.n || q_stream.pend || q_group.pend || q_we.pend ? c.next() : sim::Wake::none();
+    }
+    void overflow(uint64_t t) {
+        FATAL("table store: a request FIFO overflowed at cycle %llu (TABLE_OVF as an event: not modelled yet, G3 P3)", (unsigned long long)t);
     }
 };
 
@@ -82,22 +195,51 @@ struct HistMem {
     }
 };
 
+// HIST's RegFile (the core's one-cycle window loads): HIST[0..255], then the write-back of this cycle: register
+// HIST_WB_AT holds its cycle + 1 (low 32 bits; 0: none yet) and HIST_WB_VAL its value, so a load at t returns the
+// engine's value when HIST_WB_AT == t + 1 (RmwPipe.ctrlRead), else HIST[i] as committed at the end of t - 1.
+enum : unsigned { HIST_WB_AT = 256, HIST_WB_VAL = 257, HIST_REGS = 258 };
+
 struct HistStore {
     sim::LinkIn window;        // width 2, from the core: a HIST store through the window, of t (Link(1))
-    sim::RegFileOut out;       // HIST as the core's one-cycle loads read it (256 registers)
+    sim::LinkIn req;           // width 3, the write engine's count-on-arrival {OP_ADD_RET, i, addend}, Link(ts_engine_latency)
+    sim::RegFileOut out;       // HIST as the core's one-cycle loads read it (HIST_REGS registers)
     HistMem m;
-    uint64_t digest() const { return m.s_hist.sum; }
+    ReqFifo q;
+    Rmw pipe;
+    uint64_t rmws = 0;
+    bool hist_overflow = false;        // a count past 17 bits (invariant 6)
+    uint64_t digest() const { return m.s_hist.sum ^ q.digest() * 3 ^ pipe.digest() * 5 ^ uint64_t(hist_overflow); }
 
-    explicit HistStore(sim::Ports& p) { p.in(window, "window", 2); p.out(out, "hist", 256); }
+    explicit HistStore(sim::Ports& p) { p.in(window, "window", 2); p.in(req, "req", 3); p.out(out, "hist", HIST_REGS); }
     sim::Wake step(sim::Ctx& c) {
-        if (c.ready(window)) {
+        const uint64_t t = c.now();
+        if (c.ready(window)) {                                 // the controller's store of t - 1 (lost on a write-back)
             const sim::Word* w = c.peek(window);
-            uint32_t i = uint32_t(w[0]), v = uint32_t(w[1]);
-            m.write(i, v);
-            c.write(out, i, v);
+            const uint32_t i = uint32_t(w[0]), v = uint32_t(w[1]);
+            if (pipe.last_wb == t - 1) pipe.ctrl_writes_lost++;
+            else { m.write(i, v); c.write(out, i, v); }
             c.take(window);
         }
-        return sim::Wake::none();
+        if (pipe.valid && pipe.due <= t) {
+            if (pipe.due != t) FATAL("HIST: write-back due at %llu done at %llu", (unsigned long long)pipe.due, (unsigned long long)t);
+            m.write(pipe.idx, pipe.val);
+            c.write(out, pipe.idx, pipe.val);
+            c.write(out, HIST_WB_AT, uint32_t(t + 1));
+            c.write(out, HIST_WB_VAL, pipe.val);
+            pipe.valid = false; pipe.last_wb = t;
+        }
+        if (q.commit(t)) FATAL("HIST: its request FIFO overflowed at cycle %llu (TABLE_OVF as an event: not modelled yet, G3 P3)", (unsigned long long)t);
+        if (c.ready(req)) { q.put(t, c.peek(req)); c.take(req); }
+        if (q.n) {
+            const uint64_t* r = q.front();
+            const uint32_t idx = uint32_t(r[1]) & 0xFF, add = uint32_t(r[2]);
+            q.pop(t); rmws++;
+            const uint32_t nv = m.hist[idx] + add;
+            if (nv & ~0x1FFFFu) hist_overflow = true;
+            pipe.schedule(t, idx, nv & 0x1FFFF);
+        }
+        return pipe.valid || q.n || q.pend ? c.next() : sim::Wake::none();
     }
 };
 

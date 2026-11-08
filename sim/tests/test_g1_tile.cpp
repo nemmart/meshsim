@@ -45,6 +45,7 @@ TEST(g1_tile_port_b_landing_and_the_k_line) {
     std::vector<uint32_t> mem(64 * 2 * MEM_WORDS, 0);
     G1Ctx g;
     g.bootrom = rom; g.bootrom_words = 2; g.mem = mem.data();
+    static SramBlocks sram_blocks; g.sram = &sram_blocks;
     const Stand::Ev ev[] = {
         {5, 0x1111222233334444ull, lw::hdr(64, 0, lw::M_WRITE, 0, 0x100, lw::SIZE_64), 0, false},      // data memory
         {6, 0xABCD, lw::hdr(64, 0, lw::M_WRITE, 0, 0x7FC0, lw::SIZE_32), 0, false},                    // command slot 0

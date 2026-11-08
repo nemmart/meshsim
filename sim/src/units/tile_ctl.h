@@ -43,6 +43,7 @@
 #include "units/chip.h"
 #include "units/director.h"
 #include "units/linkword.h"
+#include "units/big_sram.h"
 #include "units/table_store.h"
 #include "units/write_engine.h"
 #include "units/regblock.h"
@@ -191,7 +192,10 @@ struct TileCore {
             if (table == TBL_HIST) c.put(u.hist_w, sim::Word(i), sim::Word(v));
             else c.put(u.tables, sim::Word(table) << 32 | i, sim::Word(v));
         }
-        uint32_t hist(uint32_t i) const { return c.read(u.hist, i); }
+        uint32_t hist(uint32_t i) const {                // RmwPipe.ctrlRead: on a write-back cycle, the engine's value
+            if (c.read(u.hist, HIST_WB_AT) == uint32_t(c.now() + 1)) return c.read(u.hist, HIST_WB_VAL);
+            return c.read(u.hist, i);
+        }
     };
     sim::Wake step(sim::Ctx& c) {
         if (c.ready(port_b)) {
@@ -230,6 +234,10 @@ struct G1Config {
     uint32_t mem_chunks = 1u << 20;
     uint32_t periph_present = 1;
     unsigned K = 8, cm_latency = 2;    // the write counters' line, director -> port B
+    // G3 (W11): the memory path's keys
+    unsigned ts_engine_latency = 1;    // tsEngineLatency: the engines' Links to and from the table store and HIST
+    unsigned area_queue_depth = 8, sram_read_latency = 2;
+    bool write_combining = false, fifo_count_before_pop = true;
 };
 
 // G1's part of a tile, as W9's tile builder meets it: chip.h's `ControlIO` (the ports agreed in NOTES.md, plus
@@ -244,6 +252,8 @@ struct G1Ctx {
     uint32_t* mem = nullptr;           // 64 x 2 x MEM_WORDS words (data, program per tile), zero at power-on; outlives
                                        // the machine (the boot fills them through port B)
     unsigned we_in_depth = 4, gather_depth = 16;
+    SramBlocks* sram = nullptr;        // G3: the tiles' big-SRAM blocks (one per tile, mapped at configuration); outlives
+                                       // the machine
 };
 ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx);
 static_assert(std::is_same_v<decltype(&add_g1), ControlBuilder>);

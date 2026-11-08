@@ -16,7 +16,9 @@
 #include "units/regblock.h"
 #include "units/rv32.h"
 #include "units/controller.h"
+#include "units/big_sram.h"
 #include "units/table_store.h"
+#include "units/write_engine.h"
 #include "units/tile_ctl.h"
 
 namespace fp {
@@ -24,7 +26,8 @@ namespace fp {
 // regs is checked, every unit of tile 0 every cycle, THROUGH THIS CYCLE ONLY: from 825 its mode-1 self-sends take G3's
 // path (the write engine, PTR's read-modify-write, big SRAM), and a packet at the write engine is fatal until G3 lands
 // (owner, 2026-11-07; PLAN-M2). Lift it on purpose, in the commit that lands that path.
-constexpr uint64_t kRegsCheckedThrough = 824;
+// G3 (W11, 2026-11-08) landed that path: regs is checked to its end.
+constexpr uint64_t kRegsCheckedThrough = ~uint64_t(0);
 
 struct G1Tile {
     unsigned tile = 0;
@@ -39,6 +42,8 @@ struct G1Tile {
     const units::Director* udir = nullptr;
     const units::TableStore* uts = nullptr;
     const units::HistStore* uhist = nullptr;
+    const units::WriteEngine* uwe = nullptr;      // G3 (W11)
+    const units::BigSram* usram = nullptr;        // G3 (W11)
     const units::Core* m1core = nullptr;          // W5's M1 core: the bench's port-B words on `memw`
     const units::RegBlock* m1ctl = nullptr;       // W5's M1 block: its inputs in flight (bus, GO, landed, freed)
 };
@@ -65,9 +70,10 @@ void w_ag(const void* g1tile, FpOut& o, const FpCtx& x);
 void w_gather(const void* g1tile, FpOut& o, const FpCtx& x);
 void w_ts(const void* g1tile, FpOut& o, const FpCtx& x);
 void w_hist(const void* g1tile, FpOut& o, const FpCtx& x);
-// Stubs: units not built yet, idle (their reset stream). G3 replaces sram, sram.data and rdport with its units' writers.
-void w_sram_stub(const void*, FpOut& o, const FpCtx& x);
-void w_sram_data_stub(const void*, FpOut& o, const FpCtx& x);
+// G3 (W11): the big SRAM's area queues and holds (StateFp.sramQ), its contents (sram.data: the incremental sum).
+void w_sram(const void* g1tile, FpOut& o, const FpCtx& x);
+void w_sram_data(const void* g1tile, FpOut& o, const FpCtx& x);
+// Stubs: units not built yet, idle (their reset stream). G3 replaces rdport with its writer.
 void w_rdport_stub(const void*, FpOut& o, const FpCtx& x);
 void w_req(const void* g1tile, FpOut& o, const FpCtx& x);   // the request port: idle in M2 (AUDIT-M2 1.2 (C))
 

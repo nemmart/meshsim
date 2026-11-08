@@ -86,6 +86,7 @@ std::string replay(const char* name, uint64_t through, sim::Options opt) {
     gx.cfg.timing = tc.timing; gx.cfg.periph_present = tc.periph_present; gx.cfg.mem_chunks = 1u << 20;
     gx.cfg.done_gate = true; gx.cfg.K = 8; gx.cfg.cm_latency = 2;
     gx.bootrom = im.bootrom.data(); gx.bootrom_words = uint32_t(im.bootrom.size()); gx.mem = mem.data();
+    SramBlocks sram_blocks; gx.sram = &sram_blocks;
     opt.observe_arrivals = true;
     sim::Config cfg(opt);
     auto& st = cfg.add<Stand>("stand", ev.data(), unsigned(ev.size()));

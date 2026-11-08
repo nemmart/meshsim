@@ -383,3 +383,16 @@ the mesh second. Of today's findings (on W4's synthetic mesh and W6's synthetic 
   not repeated, given Quest 149: the per-step bookkeeping overlaps the units' own work. **Conclusion for now: the
   framework's per-step overhead is near its floor on this chip; per-thread speed is the units'** (W11's, W12's).
   Revisit with the sort's profile, where the engines' steps dominate.
+- 2026-11-07: **The hot-lines tooling** (owner: ready for the sort, tested on the boot, not acted on): annotate-body.sh
+  now follows perf annotate's blocks (the symbol on its own "<name>:" line, which the first parse missed), takes any
+  symbols (SYMS, '|'-separated parts of names), any run (ARGS to bench_chip) and a threshold (THRESH, % of the
+  symbol); each hot instruction carries its file:line (perf -l). **Quest 151**: 136 hot lines on the boot (the router's
+  step, the run loops, deliver_link, near_slot, TileCore's step), each with its source line; the raw head of perf's
+  output kept for any later format change.
+- 2026-11-07: **The Quest kit carries every input the tests read** (owner: Quest 149's golden verdict failed for the
+  kit): mk_task.sh now archives ref/meshsim/sw (the boot ROM), ref/meshsim/test (the RISC-V test images), sim/fw (the
+  schedules) and all of tests/ (golden-m2, portconf), and refuses to write a task whose kit lacks one (checked:
+  test/riscv/bin, the boot ROM, hops.txt, golden/RUNS, golden-m2's images and a .fp, portconf, fw). A kit from HEAD
+  built every test binary and **all 40 pass from the kit alone** (clang release). Other kit makers checked: W4's
+  (bench/threads/quest) and W6's (bench/quest) carry only what their bodies run (test_parallel, test_threads,
+  test_matrix: no inputs from ref/ or the goldens), so they have no such gap. A kit is ~6 MB a revision now.

@@ -14,7 +14,7 @@ import java.util.Random;
  * the GATHER engine's and the address generator's read holding registers (a refused put retried), the read port's
  * queue, the director's we-in FIFO, the controller's PTR and HIST window stores, the AG's STREAM and GROUP requests,
  * the core's send holding register (retried), and the router (it takes every injected packet and frees each loopback
- * token, one a cycle, a few cycles later). Compiled into ref's default package (D5: nothing in sim/ref changes).
+ * token, one a cycle, 0-127 cycles later: the token window fills). Compiled into ref's default package (D5: nothing in sim/ref changes).
  *
  * <pre>
  *   java -cp REF:. MemConf gen TILE SEED CYCLES [comb]   a script on stdout (comb: write combining on)
@@ -166,7 +166,7 @@ final class MemConf {
                 if (tl.injBus.ready(u)) {
                     long d = tl.injBus.peekA(u), hd = tl.injBus.peekB(u), c = tl.injBus.peekC(u); tl.injBus.take(u);
                     sb.append(" I:").append(h(d)).append(',').append(h(hd)).append(',').append(h(c));
-                    if ((hd & LinkWord.TAG_TOKEN) != 0) frees.add(u + (hd >>> 22 & 7));
+                    if ((hd & LinkWord.TAG_TOKEN) != 0) frees.add(u + (hd >>> 22 & 127));   // held 0-127 cycles: the window fills
                 }
                 if (tl.agStreamRet.ready(u)) { sb.append(" SR:").append(h(tl.agStreamRet.peekA(u))).append(',').append(h(tl.agStreamRet.peekB(u))).append(',').append(h(tl.agStreamRet.peekC(u))); tl.agStreamRet.take(u); }
                 if (tl.agGroupRet.ready(u)) { sb.append(" GR:").append(h(tl.agGroupRet.peekA(u))).append(',').append(h(tl.agGroupRet.peekB(u))).append(',').append(h(tl.agGroupRet.peekC(u))); tl.agGroupRet.take(u); }

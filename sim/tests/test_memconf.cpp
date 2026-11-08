@@ -115,7 +115,7 @@ struct Stand {
             const sim::Word* w = c.peek(to_router);
             Seen& x = (*seen)[t - 1];
             x.i = true; x.iw[0] = w[0]; x.iw[1] = w[1]; x.iw[2] = w[2];
-            if (w[1] & lw::TAG_TOKEN) frees.push_back(t + (w[1] >> 22 & 7));
+            if (w[1] & lw::TAG_TOKEN) frees.push_back(t + (w[1] >> 22 & 127));
             c.take(to_router);
         }
         if (c.ready(stream_ret)) { const sim::Word* w = c.peek(stream_ret); Seen& x = (*seen)[t - L]; x.sr = true; for (int k = 0; k < 3; k++) x.srw[k] = w[k]; c.take(stream_ret); }
@@ -227,6 +227,19 @@ std::string run(const Script& s, sim::Options opt) {
         u[c] = x;
     }
     m.run(L > 1 ? L : 1);                                       // the last cycle's outputs reach the stand
+    if (std::getenv("MEMCONF_STATS")) {                         // what the script reached (NOTES.md's coverage)
+        const Injection& j = m.unit<Injection>(t + "inj");
+        const WriteEngine& w = m.unit<WriteEngine>(t + "we");
+        const HistStore& hh = m.unit<HistStore>(t + "hist");
+        std::fprintf(stderr, "memconf t%u: issued %" PRIu64 "/%" PRIu64 "/%" PRIu64 ", srq stalls %" PRIu64 ", window full %" PRIu64
+                     ", out of range %" PRIu64 ", packets %" PRIu64 "; sram reads %" PRIu64 " writes %" PRIu64 " combined %" PRIu64
+                     ", read stalls %" PRIu64 ", write stalls %" PRIu64 "; we taken %" PRIu64 " written %" PRIu64 " stalls %" PRIu64
+                     " aug %" PRIu64 "; ptr rmws %" PRIu64 " lost %" PRIu64 "; hist rmws %" PRIu64 " lost %" PRIu64 "; overflow events %" PRIu64 "\n",
+                     s.tile, j.rs.issued[0], j.rs.issued[1], j.rs.issued[2], j.rs.stall_cycles, j.rs.window_full_cycles, j.rs.out_of_range,
+                     j.rs.packets, bs.reads_served, bs.writes_served, bs.combined, bs.read_stall_cycles, bs.write_stall_cycles, w.taken,
+                     w.written, w.stall_cycles, w.augmented, tsu.rmws, tsu.pipe.ctrl_writes_lost, hh.rmws, hh.pipe.ctrl_writes_lost,
+                     m.unit<Stand>("stand").overflow_events);
+    }
     std::string out;
     for (uint64_t c = 1; c <= N; c++) {
         const Seen& x = seen[c];

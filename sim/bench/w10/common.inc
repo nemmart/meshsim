@@ -11,7 +11,7 @@ run() {
     taskset -c "$cpus" "$@" > "$W/out.txt" 2> "$W/err.txt"
   fi
   local rc=$?
-  local line; line=$(grep -E '^threads ' "$W/out.txt" | tail -1)
+  local line; line=$(grep -E '^(threads|chip) ' "$W/out.txt" | tail -1)
   if [ $rc -ne 0 ] || [ -z "$line" ]; then echo "RUNFAIL $tag rc=$rc: $*"; head -5 "$W/err.txt"; FAILS=$((FAILS + 1)); return 1; fi
   local pc=""
   [ "${PERF:-0}" = 1 ] && pc=" perf: $(awk -F, '$1 ~ /^[0-9]+$/ { n=split($3,a,"/"); ev=(n>1)?a[2]:a[1]; k=(a[1]=="cpu_atom")?"atom":"core";

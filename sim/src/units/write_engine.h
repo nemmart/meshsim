@@ -1,9 +1,11 @@
 // write_engine.h: the write engine (sim/ref/meshsim/src/WriteEngine.java; AUDIT-M2 3.5).
-// CONFIGURATION PART BY W8 (G1); G3 EXTENDS THIS FILE with the behaviour (the pointer stage, PTR's returns, the SRAM
-// write hold, modes 0-3), in this same unit.
+// Configuration part by W8 (G1); the behaviour by W11 (G3): the pointer stage (2 * ts_engine_latency + 2 entries, in
+// order), PTR's read-modify-writes and their in-order returns, count-on-arrival into HIST, the SRAM write Hold with its
+// refusal and retry (the stage stops, the input fills), modes 0 (region 0x03, at its address), 1 (PTR[src]), 2
+// (PTR[bucket digit]) and 3 (the 64-bit augmented record at PTR[src]). A misaligned PTR is undefined (fatal, named); a
+// write at or past mem_chunks is dropped and counted (invariant 19).
 //
-// What exists now: the unit, its input from the director (`in`, the we-in Fifo) and its configuration. The
-// configuration is the register block's (TileControl.apply -> Tile.setMasterConfig / setRecordBase at endCycle(t), used
+// The is the register block's (TileControl.apply -> Tile.setMasterConfig / setRecordBase at endCycle(t), used
 // from t + 1): the block's `dma` RegFile, read at this unit's step (a later level than the block's), so a store at t
 // is seen at t + 1 as in ref. The digits and the augment base are derived from it, never copied.
 #pragma once
@@ -12,6 +14,8 @@
 
 #include "base/fatal.h"
 #include "sim.h"
+#include "units/linkword.h"
+#include "units/mem.h"
 
 namespace units {
 
@@ -27,25 +31,117 @@ inline uint32_t mc_hist_digit(uint32_t v) { return v >> 21 & 7; }
 inline uint32_t mc_k(uint32_t v) { return (v >> 24 & 7) + 1; }
 
 struct WriteEngine {
+    static constexpr unsigned MAX_STAGE = 2 * 15 + 2;
+
+    // ---- ports ----
     sim::FifoIn in;            // width 3: link words from the director (mode 0 region 0x03, modes 1-3), Fifo(we_in_depth)
     sim::RegFileIn dma;        // the block's DMA_CONFIG and record base
+    sim::LinkOut ts_req;       // width 3: PTR's read-modify-write requests {OP_ADD_RET, PTR + i, addend}, Link(ts_engine_latency)
+    sim::LinkIn ts_ret;        // width 3: their returns {i, old pointer, 0}, Link(ts_engine_latency), in order
+    sim::LinkOut hist_req;     // width 3: count-on-arrival {OP_ADD_RET, digit, 1}, Link(ts_engine_latency)
+    sim::HoldOut to_sram;      // width 3: the big SRAM's write holding register {chunk | n << 21, lo, hi}
 
-    WriteEngine(sim::Ports& p, unsigned we_in_depth) {
+    // ---- configuration ----
+    uint32_t mem_chunks = 1u << 20;
+    unsigned cap = 4;          // the pointer stage: 2 * ts_engine_latency + 2 entries
+
+    // ---- state (StateFp.we's order) ----
+    uint64_t st_d[MAX_STAGE] = {}, st_h[MAX_STAGE] = {}, st_c[MAX_STAGE] = {};
+    uint32_t st_ptr[MAX_STAGE] = {};
+    uint8_t st_have[MAX_STAGE] = {};
+    uint8_t head = 0, count = 0;
+    uint8_t aw[MAX_STAGE] = {};          // stage entries awaiting their PTR return, in order (a ring)
+    uint8_t aw_head = 0, aw_n = 0;
+    uint64_t last_put[3] = {};           // the write put on to_sram (re-put on a refusal)
+
+    // ---- statistics and ref's checks ----
+    uint64_t taken = 0, written = 0, stall_cycles = 0, augmented = 0, explicit_writes = 0, out_of_range = 0;
+
+    WriteEngine(sim::Ports& p, unsigned we_in_depth, unsigned ts_engine_latency, uint32_t chunks) : mem_chunks(chunks) {
+        if (ts_engine_latency < 1 || 2 * ts_engine_latency + 2 > MAX_STAGE) FATAL("write engine: ts_engine_latency %u", ts_engine_latency);
+        cap = 2 * ts_engine_latency + 2;
         p.in(in, "in", 3, we_in_depth);
         p.in(dma, "dma");
+        p.out(ts_req, "ts_req", 3);
+        p.in(ts_ret, "ts_ret", 3);
+        p.out(hist_req, "hist_req", 3);
+        p.out(to_sram, "to_sram", 3);
     }
-    sim::Wake step(sim::Ctx& c) {
-        if (c.ready(in)) {
-            const sim::Word* w = c.peek(in);
-            FATAL("write engine: a packet arrived at cycle %llu (header 0x%llx): not modelled in M2 yet (G3)",
-                  (unsigned long long)c.now(), (unsigned long long)w[1]);
-        }
-        return sim::Wake::none();
-    }
+
     // The configuration as the engine uses it (WriteEngine's fields), from the block's registers.
     static uint32_t bucket_digit(uint32_t dma_config) { return mc_bucket_digit(dma_config); }
     static uint32_t hist_digit(uint32_t dma_config) { return mc_hist_digit(dma_config); }
     static uint32_t augment_base(uint32_t record_base) { return record_base & 0x1FFFFF; }
+    // LinkWord.digit: byte sel - 1 of the payload (sel 0: 0).
+    static uint32_t digit(uint64_t payload, uint32_t sel) { return sel == 0 ? 0 : uint32_t(payload >> (8 * (sel - 1)) & 0xFF); }
+
+    sim::Wake step(sim::Ctx& c);
+    uint64_t digest() const {
+        uint64_t h = sim::hash_fields(head, count, aw_head, aw_n, last_put[0], last_put[1], last_put[2]);
+        for (unsigned k = 0; k < count; k++) {
+            const unsigned j = (head + k) % cap;
+            h = sim::hash_mix(h, sim::hash_fields(st_d[j], st_h[j], st_c[j], st_ptr[j], st_have[j]));
+        }
+        for (unsigned k = 0; k < aw_n; k++) h = sim::hash_mix(h, aw[(aw_head + k) % cap]);
+        return h;
+    }
 };
+
+// WriteEngine.runCycle(t): a PTR return; the write side (a refusal retried, else the stage's head if its PTR is in);
+// one packet in while the stage has room.
+inline sim::Wake WriteEngine::step(sim::Ctx& c) {
+    const uint64_t t = c.now();
+    if (c.ready(ts_ret)) {                                     // pointer returns, in order
+        const uint32_t old = uint32_t(c.peek(ts_ret)[1]);
+        c.take(ts_ret);
+        if (aw_n == 0) FATAL("write engine: a PTR return at cycle %llu with nothing awaiting it", (unsigned long long)t);
+        const unsigned i = aw[aw_head];
+        aw_head = uint8_t((aw_head + 1) % cap); aw_n--;
+        st_ptr[i] = old & 0x1FFFFF; st_have[i] = 1;
+    }
+    if (c.refused(to_sram)) { c.put(to_sram, last_put[0], last_put[1], last_put[2]); stall_cycles++; }
+    else if (count > 0 && st_have[head]) {
+        uint64_t lo = st_d[head], hi = st_c[head];
+        const uint64_t h = st_h[head];
+        const uint32_t a = st_ptr[head];
+        const unsigned mode = lw::mode(h);
+        unsigned n;
+        if (mode == lw::M_AUG) {
+            const uint32_t base = augment_base(c.read(dma, DMA_R_RECORD_BASE));
+            lo = (lo & 0xFFFFFFFFull) | uint64_t(((a - base) & 0x1FFFFF) >> 1) << 32; hi = 0; n = 2; augmented++;
+        } else n = 1u << lw::size(h);
+        if (a & (n - 1))
+            FATAL("write engine: tile %u, cycle %llu: a write through PTR = chunk 0x%x, not aligned to its %u-bit write "
+                  "(undefined behaviour, v1.25 s8b): header 0x%llx", lw::dst(h), (unsigned long long)t, a, 32 * n, (unsigned long long)h);
+        if (a + n > mem_chunks) out_of_range++;                  // undefined (4.1, invariant 19): dropped
+        else {
+            last_put[0] = uint64_t(a & 0x1FFFFF) | uint64_t(n) << 21; last_put[1] = lo; last_put[2] = hi;
+            c.put(to_sram, last_put[0], lo, hi);
+            written++;
+        }
+        st_have[head] = 0; head = uint8_t((head + 1) % cap); count--;
+    }
+    if (count < cap && c.ready(in)) {                          // one packet a cycle while the stage has room
+        const sim::Word* w = c.peek(in);
+        const uint64_t d = w[0], h = w[1], cw = w[2];
+        c.take(in);
+        taken++;
+        const unsigned i = (head + count) % cap, mode = lw::mode(h);
+        st_d[i] = d; st_h[i] = h; st_c[i] = cw; count++;
+        if (mode == lw::M_WRITE) { st_ptr[i] = lw::offset(lw::addr(h)) >> 2; st_have[i] = 1; explicit_writes++; }
+        else {
+            const uint32_t cfgw = c.read(dma, DMA_R_CONFIG);
+            const uint32_t idx = mode == lw::M_BUCKET ? digit(d, bucket_digit(cfgw)) : lw::src(h);
+            const uint32_t stp = mode == lw::M_AUG ? 2 : 1u << lw::size(h);
+            c.put(ts_req, mem::OP_ADD_RET, mem::IDX_PTR + idx, stp);
+            st_have[i] = 0; aw[(aw_head + aw_n) % cap] = uint8_t(i); aw_n++;
+            if (const uint32_t hd = hist_digit(cfgw)) c.put(hist_req, mem::OP_ADD_RET, digit(d, hd), 1);
+        }
+    }
+    // Stepped again while the head can be written or more input can be taken; a head awaiting its PTR is woken by the
+    // return, a refusal by its edge.
+    if ((count > 0 && st_have[head]) || (count < cap && c.ready(in))) return c.next();
+    return sim::Wake::none();
+}
 
 }  // namespace units

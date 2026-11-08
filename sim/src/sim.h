@@ -220,6 +220,8 @@ public:
     const Word* peek(LinkIn p) const;                // the head's words
     const Word* peek(LinkIn p, unsigned k) const;    // W10: the k-th oldest visible word (0: head; k < size)
     unsigned size(LinkIn p) const;                   // W10: words visible, after this cycle's takes
+    uint64_t overflows(FifoIn p) const;              // W10: the Fifo's overflows so far (judged at a put's t + 1, this
+                                                     // cycle's included); with Ports::overflow_steps, each steps the owner
     void take(LinkIn p);
     void put(LinkOut p, Word a);
     void put(LinkOut p, Word a, Word b);
@@ -307,6 +309,8 @@ public:
     void in(LinkIn& h, const char* name, unsigned width, unsigned depth);   // W10: the consumer may hold up to `depth`
                                                      // words (capacity L + depth; PORTS.md 2b); the line above is depth 2
     void in(FifoIn& h, const char* name, unsigned width, unsigned depth);
+    void overflow_steps(FifoIn& h);                  // W10: an overflow of this (plain) Fifo steps its owner in the cycle
+                                                     // it is judged, t + 1 (D29); Ctx::overflows reads the count
     void in_credit(FifoIn& h, const char* name, unsigned width, unsigned depth);
     void in(HoldIn& h, const char* name, unsigned width);
     void in(RegIn& h, const char* name, unsigned width);

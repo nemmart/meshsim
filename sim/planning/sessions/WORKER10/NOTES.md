@@ -257,3 +257,37 @@ the mesh second. Of today's findings (on W4's synthetic mesh and W6's synthetic 
   shouldn't barrier every cycle (every crossing a Link of at least 3). The mesh's uniform random traffic (its loads
   and crossings are symmetric; the sort's are not). Loads from step time alone: the sort's load moves between phases,
   so a calibration should cover the whole boot (and the sort, once it runs), not a window of it.
+- 2026-11-07: **The placement objective prices crossings** (Options::crossing_ns, default 20 ns): calibration also
+  counts each Link input's words (a branch per bucket, as the observer's), LoadProfile v2 carries them and the clock's
+  rate; the k-way polish minimises the largest group cost (its load plus every crossing's price, paid on both sides).
+  **bench_chip** (bench/w10/): W9's chip running the sort's boot (14,791 cycles), wfi (to its stop) or regs (to 824),
+  one thread or split, by placement.
+- 2026-11-07: **Quest 142, W9's chip first** (i5-14400F; digests equal across every placement). One thread: the sort's
+  boot 0.948 us/cycle, wfi 0.878, regs 1.449. **On the chip, placement by profile wins clearly**: the boot at 6 threads
+  0.328 us (2.89x) by profile, against 0.584 by tiles (1.62x) and 0.502 by rows at 4 (1.89x); at 4 threads profile
+  0.358 (2.65x). wfi at 6: profile-20 0.448 (1.96x); regs at 6: profile 0.494 (2.93x). So the mesh's lesson (grouping
+  by tiles beats placement by load) does not carry over: the chip's load is uneven (tile 0 with C&C, the boot's
+  traffic), the mesh's uniform. **Pricing crossings: no measurable gain on the chip** (the boot at 6: 0.328 / 0.331 /
+  0.332 at 0 / 20 / 60 ns; at 8: 0.421 / 0.404 / 0.393, a little), **and a loss on the mesh** (6 threads: 1.582 at 0 ns,
+  1.724 at 20). Pathological placements, to look at: tiles at 8 threads on the boot (1.271 us, worse than one thread,
+  though rows at 8 is the same grouping and 0.530) and load (1 per unit) at 6 and 8 (1.10, 0.91). The breakdown on the
+  boot at 6 by profile-20: compute 0.188 (ideal 0.158) + imbalance 0.035 + barrier wait 0.077 + drain 0.029 + publish
+  and clear 0.016 = 0.343: **on the chip the barrier, not imbalance, is the largest overhead** (a light chip: 0.95 us
+  of work a cycle over 6 threads is 0.16, against a barrier every 3 cycles).
+- 2026-11-07: crossing_ns defaults to 0 (owner). A Fifo overflow as an event (W11, W12; D29): Ports::overflow_steps
+  steps the owner in the cycle an overflow is judged, Ctx::overflows reads the count; PORTS.md 3; tests.
+- 2026-11-07: **Quest 143, the anomalies: Quest 142's placement differences were measurement artifacts.** A boot is
+  14,791 cycles, ~7 ms split: one run per process measured the clock's ramp, first touches and the workers' start as
+  much as the machine (142's per-repeat times for one configuration ranged 0.42-0.74 and 0.70-1.48 us). bench_chip now
+  builds and runs an untimed machine first, then 9 timed ones in the same process. Measured so, **every placement is
+  the same on the boot**: 6 threads tiles 0.329-0.330, load 0.327-0.339, profile 0.332-0.340 us (one thread 0.931-0.945:
+  2.8x); 8 threads rows 0.416, tiles 0.415, load 0.410-0.413, profile 0.409-0.432. So the tiles-at-8 and load-1
+  anomalies are gone, and **so is Quest 142's "placement by profile wins on the chip"**: withdrawn. The boot's load is
+  even enough that grouping by tiles balances it; the sort's may not be, and that is where placement by load gets
+  measured next. The breakdown at 6 (tiles, three processes): compute 0.179-0.184 (ideal 0.156: inflation 1.16x) +
+  imbalance 0.026-0.029 + **barrier wait 0.082-0.105** + drain 0.025-0.029 + publish and clear 0.016 = 0.338-0.351:
+  the barrier is the chip's main overhead (~27%), as planned next. At 8 (two threads share a core) imbalance rises to
+  0.094. (Quests 136-141 ran 60,000 cycles a run, 60-300 ms: not affected; their medians stand.)
+- 2026-11-07: **ae0d599 clean** (main merged at 4175824; the priced placement, bench_chip, crossing_ns 0, the Fifo
+  overflow event, bench_chip --reps): clean checkout, build by build, gcc and clang debug and release (36 test binaries
+  each) and TSan gcc and clang (the thread tests, test_controllers, test_chip form2).

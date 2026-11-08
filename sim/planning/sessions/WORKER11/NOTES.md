@@ -247,3 +247,4 @@ Pieces, each committed when it compiles and passes its own test:
   window stores lost to write-backs each in PTR and HIST, ~300 augmented writes. Thin: write combining merged once (it
   needs a write behind a read in its area with the next write into the same row); same-cycle read-port ties not counted.
   Nothing needed a D30 difference.
+- 2026-11-08: **make check clean at cee7550** with test_memconf (41 binaries in each of the four builds; tsan, tsan-units, tsan-chip on both). P2 is done: ready to merge. Left for G3: a2a with W12 (needs the AG's DMA path), then the sort's SPLIT (the read port), and REPORT.md.

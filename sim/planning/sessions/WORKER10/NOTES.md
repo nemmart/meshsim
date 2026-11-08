@@ -298,3 +298,12 @@ the mesh second. Of today's findings (on W4's synthetic mesh and W6's synthetic 
 - 2026-11-07: **ae0d599 clean** (main merged at 4175824; the priced placement, bench_chip, crossing_ns 0, the Fifo
   overflow event, bench_chip --reps): clean checkout, build by build, gcc and clang debug and release (36 test binaries
   each) and TSan gcc and clang (the thread tests, test_controllers, test_chip form2).
+- 2026-11-07: **Quest 144, the barrier bare.** W4's counter barrier alone (threads doing nothing but wait): 0.045 us a
+  round at 2 threads, 0.135 at 3, 0.166 at 4, **0.254 at 6**, 0.28 at 8, 0.30 at 12 (spin or yield alike). On the
+  chip's boot at 6 threads the barrier wait is ~0.27 us an interval (0.09 a cycle): the barrier itself, against 0.47 us
+  of useful work a thread an interval. It grows with the threads because every arrival is a read-modify-write on one
+  line, served one after another. The bare interval (no work; a ring of Links of 3) at 6: 0.42 us (rate 0) - 0.50 (0.3):
+  barrier 0.29-0.30, drain 0.05-0.10, clear 0.015-0.045, publish 0.014. So a lighter barrier, as the owner said (the
+  interval can't pass 3 on the chip: every split crosses mesh links). First candidate: **Options::barrier_flags**, a
+  barrier on per-thread epochs (each thread writes only its own line, waits for the others' to reach its round): no
+  contended read-modify-write; each waiter sees the last arrival in one line transfer. Same digests (test). Quest 145.

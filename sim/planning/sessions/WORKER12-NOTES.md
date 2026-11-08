@@ -387,3 +387,32 @@ poke. a2a and the sort need W11's P1 and P2 (question 1). Each piece: its tests,
   - **Coordination with W10:** none needed. The queue runs one task at a time and 154 ran alone between W10's 153 and
     its next task. The last VERDICT and "done" lines appear twice in run.log, as the runner's own capture of stdout
     joins the task's tee into the same file (cosmetic; VERDICTS.txt has all seven verdicts).
+- **For W11 (2026-11-08, D31, before I touch the block's register paths):** the register block will publish only the
+  registers that changed.
+  - **The change:** `RegBlockState::publish(pub)` compares each register's value (the same values `reg(r)` gives,
+    straight-line, no switch) with `pub`, TileCtl's copy of the register file as last written, and returns a mask of the
+    ones that differ. TileCtl's step writes only those.
+  - **Why behaviour can't change:** the engine already ignores a write of an unchanged value (`engine.h:550`), and
+    TileCtl is the register file's only writer.
+  - **Your registers:** this covers SRAM_RD_DEST_ADDR (`rd_setup`) like every other register; SRAM_RD_ADDR_QUEUE is 0 in
+    the register file, as before. Nothing about how your fields are set changes.
+  - **The guard:** a debug build checks every register against `reg(r)` after each publish.
+  - **If you add a register or change what `reg()` returns for one, add it to `publish()` too**; the debug check names any
+    you miss.
+- 2026-11-08: **D31, the register block writes only the registers that changed** (c6d480c; W11 told first, 3f81012).
+  - **The change:**
+    - `RegBlockState::publish(pub)`: the registers' values as `reg(r)` gives them, straight-line with no switch,
+      compared with `pub`, TileCtl's copy of the register file as last written (zero at power-on, as the engine's). It
+      returns the mask of those that differ and brings `pub` up to date.
+    - TileCtl's step writes only the masked registers, and the `dma` RegFile's two registers only on change.
+  - **Why the register file is identical:** the engine ignores a write of an unchanged value (`engine.h:550`) and
+    TileCtl is its only writer, so skipping those writes changes nothing a reader sees.
+  - **Guard:** in debug builds, every register is compared with `reg(r)` after each publish, fatal and named if
+    `publish()` misses one (none did, through the whole 16K sort in debug).
+  **Checks:**
+  - wfi, regs and a2a on every unit of tile 0 every cycle, and on every tile (10 / 10 / 100 cycles; regenerated
+    locally, SAME), on one thread and 4 domains.
+  - The 16K sort in gcc debug (the guard on) and clang release: 248 points equal, PASS, TOTAL 496,619.
+  - make check: gcc and clang, debug and release, 42 binaries each, 0 failed; `tsan-units` and `tsan-chip` on both
+    compilers clean. Framework `tsan` was not rerun: the change is in units only.
+  W10 measures the speed on the full-size sort.

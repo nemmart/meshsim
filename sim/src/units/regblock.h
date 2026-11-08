@@ -239,6 +239,20 @@ struct RegBlockState {
             return 0;
         }
     }
+    // The registers whose value differs from `pub` (the register file as its owner last wrote it, zero at power-on), as a
+    // mask of register numbers; `pub` is brought up to date. The values are reg()'s, straight-line (W12, D31: the block
+    // writes only these; the engine ignores a write of an unchanged value, so the register file is the same). A register
+    // added to reg() must be added here: TileCtl's debug check compares every one with reg() after each publish.
+    uint64_t publish(uint32_t* pub) const {
+        uint64_t m = 0;
+        auto chk = [&](unsigned r, uint32_t v) { if (pub[r] != v) { pub[r] = v; m |= uint64_t(1) << r; } };
+        chk(PARAMS, params); chk(STATUS, status); chk(ERRORS, conditions); chk(EVENTS, events & EVENTS_VALID);
+        chk(EVENTS_MASK, mask); chk(EVENTS_REQUIRED, required); chk(ROUTER_HDR, router_hdr); chk(ROUTER_ADDR, router_addr);
+        chk(ROUTER_SET_W0, router_w[0]); chk(ROUTER_SET_W1, router_w[1]); chk(ROUTER_SET_W2, router_w[2]);
+        chk(DMA_CONFIG, dma_config); chk(DMA_RECORD_BASE_ADDRESS, record_base); chk(SRAM_RD_DEST_ADDR, rd_setup);
+        for (unsigned c = 1; c <= 7; c++) chk(WRITE_COUNTER_1 + c - 1, remaining[c]);
+        return m;
+    }
     bool wake() const {                                                   // TileControl.wakeTerm
         uint32_t e = events & EVENTS_VALID;
         if (gate) return e >> EV_GO & 1;

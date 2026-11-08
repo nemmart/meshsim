@@ -23,6 +23,8 @@ for nv in "$@"; do
   done
   NAMES+="${NAMES:+ }$n"; DESC+="${DESC:+, }$n $r"; LAST=$n
 done
+# KIT_ADD="PATH ..." (optional): files outside git (e.g. KeyGen's keys, sha256-checked by the body) under kit/extra/
+if [ -n "${KIT_ADD:-}" ]; then mkdir -p "$KIT/k/extra"; for f in $KIT_ADD; do cp "$f" "$KIT/k/extra/"; done; DESC+=", extra: $(cd "$KIT/k/extra" && ls | paste -sd' ')"; fi
 ( cd "$KIT/k" && tar --sort=name --mtime=@0 --owner=0 --group=0 -cf - . ) | gzip -9n > "$KIT/kit.tgz"
 SHA=$(sha256sum "$KIT/kit.tgz" | cut -d' ' -f1)
 cat <<HEAD

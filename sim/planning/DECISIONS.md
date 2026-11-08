@@ -123,3 +123,12 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   Also from D28's reasoning: **an overflow that feeds ERRORS reaches the register block as an event** (PORTS.md section
   8), counted at t + 1, never seen only at the block's next step: ROUTER_OVF, the write engine's input and the gather
   queue alike.
+- **D30. Very close is enough where exact would be costly** (owner, 2026-11-08): the RTL doesn't match `ref` cycle for
+  cycle either (jumps take more cycles, and other small things), so `ref` is the oracle for finding bugs, not a timing
+  truth worth any price. **We don't rewrite large amounts of code, or restructure, to fix a difference of a cycle or so.**
+  Exactness stays the default check: a difference from `ref` is a bug until it's explained. Where reproducing `ref`
+  exactly would make the code markedly more complex, a worker proposes a **deliberate difference**; the integrator
+  approves it and it's recorded here or in the unit's notes, with what it changes and why it's acceptable. Prefer
+  differences no reference program reaches (as D28, D29), so every check stays exact. Where one does show in a program:
+  the result must be identical, the cycle count very close (working bound: within 1% of `ref`'s on the sort's counted
+  span), and the comparison uses the fingerprints before the difference plus the end result.

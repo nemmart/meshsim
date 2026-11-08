@@ -1,5 +1,22 @@
 # Milestone 2: the sort on the new framework, multithreaded, against `ref`
 
+**Closed 2026-11-08.** The full-size sort (`p4/uniform-k128`) runs on the new framework **exactly as in `ref`**: 321 of
+321 fingerprint points, the result verified, all 98 phases, TOTAL 1,229,687 cycles, on one thread and split over 8 (W12,
+Quest 154); no deliberate difference (D30) was needed. **Its counted span takes 4.60 s on 6 threads against `ref`'s
+~96 s: 20.9×** (one thread 24.9 s, 3.9×; W10, Quest 158, i5-14400F), 15% over the ~4 s aim, which the owner accepted
+(D31). At 6 threads the framework's overheads are ~8%; the rest is the units' own time. M1's controller, `regs`, `wfi`
+and `a2a` also run exactly. Workers: W7 (the audit and references), W8 (G1), W9 (G2 and the chip), W10 (framework speed),
+W11 (G3), W12 (G4 and the sort). What's open is in each report and in "Carried to M3" below.
+
+## Carried to M3
+
+- The last 15% to ~4 s: the units' own time at full size (BigSram's memory traffic, the router's queue store, TableStore,
+  the read side); huge pages for big SRAM never measured; the sort's footprint traces not run (W10's report).
+- Every timing, the barrier's crossover included, re-checked on any other machine (D21).
+- NetTest's log facts (W9's brief), never run; the result oracle covers only M2Sort's unshaped case (W12).
+- The runner's duplicated VERDICT line (W12's report): separate log names.
+
+
 Draft, 2026-11-07, from the owner's target; to be refined when W7's audit lands. Decisions are in `DECISIONS.md`;
 M1's plan, and the items it carried here, are in `PLAN-M1.md`.
 
@@ -83,7 +100,7 @@ On the real chip, cost tracks the steps taken (12-21 ns per step).*
 | W7 | **done**, merged 2026-11-07 (`sessions/WORKER7-REPORT.md`): `sim/tests/AUDIT-M2.md` (what the sort touches, the units, the order that matters, D23's chip-level events, unit groups G1-G4, the canonical state fingerprint), `sim/tests/golden-m2/` (references for regs, wfi, a2a, NetTest, EngineTest, the sort at 16K and full size), the baseline (Quest 134) |
 | W8 | **done**, closed 2026-11-08 (`sessions/WORKER8-REPORT.md`): G1, the tile's control, and the fingerprint's C++ side |
 | W9 | **done**, closed 2026-11-08 (`sessions/WORKER9-REPORT.md`): G2, the network and the 64-tile chip; `a2a`'s network part and NetTest pass to W11/W12; the sort's driver sequence to W12 |
-| W10 | framework speed, on main: the Link that holds words, the observer, stop request, between-cycles wake, the cheaper split, partitioning by load, direct delivery, the Fifo overflow event. On the chip's boot (Quest 143, in-process repeats): **0.33 µs per cycle at 6 threads, 2.8× one thread**; every placement equal there (the boot's load is even); the barrier is the largest overhead (~27%), next. Quest 142's "profile wins" was a measurement artefact, withdrawn |
+| W10 | **done**, closed 2026-11-08 (`sessions/WORKER10-REPORT.md`): framework speed, and the sort's timing |
 | W11 | **done**, closed 2026-11-08 (`sessions/WORKER11-REPORT.md`): G3, the memory path; D31's hash change |
 | W12 | **done**, closed 2026-11-08 (`sessions/WORKER12-REPORT.md`): G4 and the sort end to end, exact at 16K and full size; D31's register-block change |
 

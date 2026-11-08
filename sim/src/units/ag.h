@@ -97,6 +97,7 @@ struct AddrGen {
     uint64_t size_violations = 0, mode_violations = 0, aug128_violations = 0, dest_violations = 0, align_violations = 0;
     uint64_t violations() const { return size_violations + mode_violations + aug128_violations + dest_violations + align_violations; }
 
+    AddrGen() = default;
     explicit AddrGen(sim::Ports& p, uint32_t tile = 0, uint32_t ag_lookahead = 6, bool wired_ = false)
         : me(tile), lookahead(ag_lookahead), wired(wired_) {
         p.in(dma, "dma");
@@ -111,6 +112,7 @@ struct AddrGen {
         p.in(ptr, "ptr");
     }
 
+    static AddrGen idle() { return AddrGen(); }           // the reset state, outside a machine (fingerprint writers)
     static uint32_t kind(uint32_t dma_config) { return mc_kind(dma_config); }
     static uint32_t run_start(uint32_t dma_config) { return mc_start(dma_config); }
     static uint32_t run_count(uint32_t dma_config) { return mc_count(dma_config); }

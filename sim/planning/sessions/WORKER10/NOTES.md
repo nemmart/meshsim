@@ -364,3 +364,35 @@ the mesh second. Of today's findings (on W4's synthetic mesh and W6's synthetic 
   (bench_chip --windows, 9 machines) the boot sits at 51 steps a cycle (the cores' polling) 0.64 us a cycle, 12.5 ns a
   step, and its busy stretches at 190 steps 3.96 us (20.8 ns a step); wfi's quietest window 14 steps a cycle, 0.28 us
   (19.7 ns a step), its usual 49 steps 0.78 us. **Cost follows the steps taken, not the chip's size.**
+- 2026-11-07: **The framework's cost per step: two cuts tried, no gain, both reverted.** Callgrind on the boot: a step's
+  framework part (the run loop, enter, after) is ~25 instructions, plus ~27 a Link delivery and ~35 a near wake;
+  perf put run_form<TileCore> at 11% of the boot's time. Cut 1 (d3acb63): clear a step's edge bits only in runs that
+  have edge bits; one check of a pending wake instead of a heap check and a store. Cut 2 (5cd0403): the run loop
+  reads the engine's per-instance arrays and `now` once a run, not after every (opaque) step. **Quest 149** (three
+  revisions interleaved, 5 processes, in-process repeats; digests equal): instructions on the boot -1.2%, cycles
+  unchanged; boot 0.960 / 0.961 / 0.953 us, wfi 0.860 / 0.882 / 0.878, regs 1.612 / 1.673 / 1.661 (worse), the boot
+  at 6 threads 0.303 / 0.302 / 0.301, the mesh and synth within noise. The step's bookkeeping isn't what the CPU waits
+  on: it overlaps with the unit's own work, so trimming its instructions doesn't show. Reverted (c9996c8, 0576735).
+  (Quest 149's test_golden verdict failed for the kit, which lacked ref/meshsim/test's images; test_golden and
+  test_chip pass on every revision here.) What the 11% in run_form<TileCore> is (perf attributes stalls to the
+  instruction after a miss: the loads of each core's state as its step begins) is next: perf annotate on the runner.
+- 2026-11-07: **Quest 150** (perf record, cycles, on the boot built with -g): the framework's share of the boot is
+  ~15% of the timed run (run_form<TileCore> 6.5%, deliver_link<3> 5.0%, near_slot 1.9%, run_form<Router> 0.8%;
+  Rv32::digest's 8.8% is the bench's digest after the timed span), the rest the units (Rv32 and TileCore ~40%, the
+  router ~14%, the director 2.8%). The annotate step printed no lines (its parse of perf annotate's headers missed);
+  not repeated, given Quest 149: the per-step bookkeeping overlaps the units' own work. **Conclusion for now: the
+  framework's per-step overhead is near its floor on this chip; per-thread speed is the units'** (W11's, W12's).
+  Revisit with the sort's profile, where the engines' steps dominate.
+- 2026-11-07: **The hot-lines tooling** (owner: ready for the sort, tested on the boot, not acted on): annotate-body.sh
+  now follows perf annotate's blocks (the symbol on its own "<name>:" line, which the first parse missed), takes any
+  symbols (SYMS, '|'-separated parts of names), any run (ARGS to bench_chip) and a threshold (THRESH, % of the
+  symbol); each hot instruction carries its file:line (perf -l). **Quest 151**: 136 hot lines on the boot (the router's
+  step, the run loops, deliver_link, near_slot, TileCore's step), each with its source line; the raw head of perf's
+  output kept for any later format change.
+- 2026-11-07: **The Quest kit carries every input the tests read** (owner: Quest 149's golden verdict failed for the
+  kit): mk_task.sh now archives ref/meshsim/sw (the boot ROM), ref/meshsim/test (the RISC-V test images), sim/fw (the
+  schedules) and all of tests/ (golden-m2, portconf), and refuses to write a task whose kit lacks one (checked:
+  test/riscv/bin, the boot ROM, hops.txt, golden/RUNS, golden-m2's images and a .fp, portconf, fw). A kit from HEAD
+  built every test binary and **all 40 pass from the kit alone** (clang release). Other kit makers checked: W4's
+  (bench/threads/quest) and W6's (bench/quest) carry only what their bodies run (test_parallel, test_threads,
+  test_matrix: no inputs from ref/ or the goldens), so they have no such gap. A kit is ~6 MB a revision now.

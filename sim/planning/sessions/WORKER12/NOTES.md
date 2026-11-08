@@ -274,3 +274,37 @@ poke. a2a and the sort need W11's P1 and P2 (question 1). Each piece: its tests,
      for every add_g1 tile from then on.
   3. That commit's check: wfi and regs unchanged, then a2a with you (W11's P4).
   Then EngConf switches to your table store (owner, 2026-11-08: when the PTR view reaches main).
+- 2026-11-08: **g4 on (dcc0b74), step 2 of the proposal above.** W11's P2a (clients behind `io.mem.gather` and
+  `io.mem.ag`) and the PTR view (ef39033) were on main, merged first. In one commit:
+  - **The wiring (`add_g1`):** every M2 tile has the AG and the gather `wired`; TileCtl and the director have `g4`; the
+    table store has `with_ag`.
+    - Into `MemIO`: `rd_gather` (client 0), `rd_ag` (client 1) and the block's `gather_srq_busy`.
+    - Inside the tile: the PTR view to the AG's `ptr`; the STREAM and GROUP Links (ts_engine_latency); `ag_start`,
+      `status` and `drift`; the gather's `busy` and `ovf`; the director's `gather_put`.
+    - `G1Config::ag_lookahead` (0: ref's 2L + 2).
+  - **Edits to W8's and W11's files:**
+    - `tests/statefp_g1.*`: real writers for "ag" (forty fields as StateFp.ag, pStart from the block's preview
+      `dma_pulse`, Java ints sign-extended, the rings, the two return Links) and "gather" (with its queue), replacing
+      W8's idle stubs; `G1Tile::uag` and `ugather`. A bench without the units writes the reset state (`AddrGen::idle()`,
+      `Gather::idle()`).
+    - `tests/mem_stand.h` (W11's): MemStand also gives the G4 clients' ends (the two read Holds, never taken, a request
+      fatal; `gather_srq_busy`, never put), for the G1 benches built without W9's chip (`test_g1_tile`,
+      `test_g1_replay`).
+  - **EngConf on W11's table store** (`units::TableStore` with the AG's ports and the PTR view; the tables written into
+    its memories before cycle 1; PTR[me] also stored through the window at cycle 1, so the view holds it from cycle 2,
+    before the first run starts).
+  **Checks:**
+  - wfi and regs unchanged on tile 0, every unit (ag and gather now real), every cycle: one thread, step-all, shuffle,
+    instance-major, and split over 2, 4 and 8 row bands.
+  - wfi and regs unchanged on every tile every 10 cycles, one thread and split over 4 threads, against `wfi-chip` and
+    `regs-chip`, regenerated locally (`KEEP=DIR regen.sh --check 'wfi-chip|regs-chip'`: all SAME).
+  - EngConf: the 4 fixtures (plain, shuffle, instance-major, step-all) and the 24 long runs of 10^5 cycles equal to ref
+    on W11's table store.
+  - make check, build by build: gcc and clang, debug and release, 40 test binaries each, 0 failed, the sketches built;
+    `tsan` 7 binaries per compiler (threads.mk's `TSAN_TESTS`, the same list for both), clean; `tsan-units` and
+    `tsan-chip` clean on both.
+  - The "9 binaries" I first reported for gcc's tsan was an artefact. A two-compiler command hit the tool's time limit,
+    and its orphaned clang `make` kept writing into the same log. The rerun with its own log has 7, as clang's.
+- **For W11:** g4 is on in dcc0b74 (merging to main). From then on, your read queue serves clients 0 and 1 in every M2
+  tile, and the block's `gather_srq_busy` reads your Reg. Please cross-check `test_chip` and `test_mem` on main after
+  the merge; then a2a with your P2b-P2d.

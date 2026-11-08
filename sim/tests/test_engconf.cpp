@@ -18,6 +18,7 @@
 #include "portconf.h"
 #include "units/ag.h"
 #include "units/gather.h"
+#include "units/table_store.h"
 #include "units/net.h"
 
 using namespace sim;
@@ -94,32 +95,18 @@ struct Drv {
         return c.next();
     }
 };
-// The table store's AG paths (TableStore.runCycle's STREAM and GROUP parts) and the PTR view.
-struct Ts {
-    LinkIn req_stream, req_group; LinkOut ret_stream, ret_group; RegFileOut ptr;
+// The table store is W11's (units::TableStore with the AG's ports and the PTR view). Its other ends: the core's table
+// window (a store of PTR[me] at cycle 1, so the PTR view holds it from cycle 2, as ref's poke before cycle 1 does for
+// every read the AG makes), the write engine's RMW Links (idle), the overflow event (a sink).
+struct TsEnds {
+    LinkOut window, req_we; LinkIn ret_we, ovf;
     const Script* s;
-    struct Q { uint32_t idx; Cycle vis; };
-    Q qs[64] = {}, qg[64] = {}; unsigned ns = 0, ng = 0;
-    Ts(Ports& p, const Script* sc) : s(sc) {
-        p.in(req_stream, "req_stream", 3); p.in(req_group, "req_group", 3);
-        p.out(ret_stream, "ret_stream", 3); p.out(ret_group, "ret_group", 3); p.out(ptr, "ptr", 256);
-    }
-    uint64_t digest() const { return hash_fields(ns, ng); }
-    static void pop(Q* q, unsigned& n) { for (unsigned i = 1; i < n; i++) q[i - 1] = q[i]; n--; }
+    TsEnds(Ports& p, const Script* sc) : s(sc) { p.out(window, "window", 2); p.out(req_we, "req_we", 3); p.in(ret_we, "ret_we", 3); p.in(ovf, "ovf", 0); }
+    uint64_t digest() const { return 0; }
     Wake step(Ctx& c) {
-        const Cycle t = c.now();
-        if (t == 1) c.write(ptr, s->tile, s->ptr);
-        if (c.ready(req_stream)) { qs[ns++] = {uint32_t(c.peek(req_stream)[1]), t + 1}; c.take(req_stream); }
-        if (c.ready(req_group)) { qg[ng++] = {uint32_t(c.peek(req_group)[1]), t + 1}; c.take(req_group); }
-        if (ns && qs[0].vis <= t) {
-            const uint32_t i = qs[0].idx - mem::IDX_STREAM; pop(qs, ns);
-            c.put(ret_stream, uint64_t(s->src[i]) | uint64_t(s->dest[i]) << 32, s->count[i], mem::IDX_STREAM + i);
-        }
-        if (ng && qg[0].vis <= t) {
-            const uint32_t idx = qg[0].idx; pop(qg, ng);
-            c.put(ret_group, idx, s->group[(idx - mem::IDX_GROUP) / 2], 0);
-        }
-        return ns || ng ? c.next() : Wake::none();
+        if (c.now() == 1) c.put(window, uint64_t(units::TBL_PTR) << 32 | s->tile, s->ptr);
+        if (c.ready(ovf)) FATAL("engconf: a table store request FIFO overflowed at %llu", (unsigned long long)c.now());
+        return Wake::none();
     }
 };
 // The read queue's clients 0 (gather) and 1 (AG): one take a cycle when the plan allows, client 0 first.
@@ -161,7 +148,8 @@ std::string run(const Script& s, Options opt) {
     Config cfg(opt);
     auto& d = cfg.add<Drv>("blk", &plan, s.base);
     auto& a = cfg.add<AddrGen>("ag", s.tile, 2 * s.L + 2, true);
-    auto& t = cfg.add<Ts>("ts", &s);
+    auto& t = cfg.add<units::TableStore>("ts", true);
+    auto& te = cfg.add<TsEnds>("ts.ends", &s);
     auto& g = cfg.add<Gather>("gather", 16u, s.tile, true);
     auto& q = cfg.add<Srq>("srq", &plan);
     auto& m = cfg.add<Mon>("mon");
@@ -169,11 +157,22 @@ std::string run(const Script& s, Options opt) {
     cfg.connect(d.gq, g.in);
     cfg.link(a.stream_req, t.req_stream, s.L); cfg.link(a.group_req, t.req_group, s.L);
     cfg.link(t.ret_stream, a.stream_ret, s.L); cfg.link(t.ret_group, a.group_ret, s.L);
-    cfg.connect(t.ptr, a.ptr);
+    cfg.connect(t.ptr_view, a.ptr);
+    cfg.link(te.window, t.window, 1); cfg.link(te.req_we, t.req_we, s.L);
+    cfg.link(t.ret_we, te.ret_we, s.L); cfg.link(t.ovf_ev, te.ovf, 1);
     cfg.connect(a.rd, q.ag); cfg.connect(g.rd, q.ga);
     cfg.connect(a.status, m.status); cfg.link(a.drift, m.drift, 1);
     cfg.connect(g.busy, m.gbusy); cfg.link(g.ovf, m.govf, 1);
     Sim sim = cfg.build();
+    {                                                     // the tables, as ref's pokes before cycle 1
+        units::TableMems& tm = sim.unit<units::TableStore>("ts").m;
+        for (uint32_t i = 0; i < 256; i++) {
+            tm.write(units::TBL_STREAM_SRC, i, s.src[i]); tm.write(units::TBL_STREAM_DEST, i, s.dest[i]);
+            tm.write(units::TBL_STREAM_COUNT, i, s.count[i]);
+        }
+        for (uint32_t i = 0; i < 64; i++) { tm.write(units::TBL_GROUP, 2 * i, uint32_t(s.group[i])); tm.write(units::TBL_GROUP, 2 * i + 1, uint32_t(s.group[i] >> 32)); }
+        tm.write(units::TBL_PTR, s.tile, s.ptr);
+    }
     const AddrGen& A = sim.unit<AddrGen>("ag");
     const Gather& G = sim.unit<Gather>("gather");
     const Srq& Q = sim.unit<Srq>("srq");

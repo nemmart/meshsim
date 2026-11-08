@@ -24,7 +24,7 @@ release, `tsan`, `tsan-units`, `tsan-chip`); run it build by build, since one ca
 | `tests/ref/EngConf.java`, `engconf.sh`, `tests/engconf/`, `tests/test_engconf.cpp` | the engines' conformance against ref, every cycle |
 | `tests/sort_input.h` | SortTest's `readKeys`, `value32`, `valueHalf`, `loadInput`, `Oracle` |
 | `tests/test_sort.cpp` | the sort's driver and its checks (the boot in make check; the run on demand) |
-| `planning/sessions/WORKER12/tasks/` | `mk_task.sh` (a non-timing Quest task with an embedded kit), `sort64k-body.sh` (Quest 154) |
+| `planning/sessions/WORKER12-tasks/` | `mk_task.sh` (a non-timing Quest task with an embedded kit), `sort64k-body.sh` (Quest 154) |
 
 Edits to other workers' files, each agreed and noted in NOTES:
 - **W8's register block, by the split agreed with W11** (`regblock.h`, `tile_ctl.h/.cpp`, `director.h`; my registers and
@@ -132,7 +132,7 @@ tests/ref/engconf.sh --check                                        # EngConf's 
 tests/ref/engconf.sh 100000 DIR && ENGCONF_LONG=DIR build/.../test_engconf long
 ```
 
-On the runner, Quest 154 does all of the full-size work. Its body is `WORKER12/tasks/sort64k-body.sh`, made with
+On the runner, Quest 154 does all of the full-size work. Its body is `WORKER12-tasks/sort64k-body.sh`, made with
 `mk_task.sh 154-... sort64k-body.sh "header"`.
 
 ## 6. What's owed, and notes

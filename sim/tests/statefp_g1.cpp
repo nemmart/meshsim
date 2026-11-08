@@ -330,7 +330,7 @@ void w_sram(const void* p, FpOut& o, const FpCtx&) {
 }
 void w_sram_data(const void* p, FpOut& o, const FpCtx&) {
     const G1Tile& g = tile(p);
-    o.w("data", g.usram ? g.usram->sum.sum : 0);
+    o.w("data", g.usram ? g.usram->data_sum() : 0);
 }
 void w_rdport(const void* p, FpOut& o, const FpCtx&) {
     const G1Tile& g = tile(p);

@@ -15,6 +15,8 @@
 
 using namespace units;
 
+static uint32_t init_value(uint32_t i) { uint32_t x = i * 0x9E3779B1u + 1; return x ^ (x >> 15); }
+
 namespace {
 
 // The write engine's surroundings: a director stand-in putting one mode-1 packet a cycle into we-in from cycle 1 to
@@ -346,4 +348,29 @@ TEST(read_queue_read_port_returns_and_a_same_cycle_tie) {
     CHECK_EQ(j.rs.free_n, uint8_t(64));
     CHECK_EQ(unsigned(j.rs.free_q[(j.rs.free_head + 61) % 64]), 0u);   // freed tokens at the tail, in injection order
     CHECK_EQ(unsigned(j.rs.free_q[(j.rs.free_head + 63) % 64]), 2u);
+}
+
+// D31: without the running sum the store is plain and data_sum() scans the block; both give the same sum, also after
+// a value is overwritten and a word goes back to zero.
+TEST(big_sram_sum_running_or_scanned_agree) {
+    SramBlocks blocks;
+    sim::Config cfg;
+    auto& f = cfg.add<SramFeed>("feed", std::vector<SramFeed::W>{});
+    auto& g = cfg.add<SramFeed>("feed2", std::vector<SramFeed::W>{});
+    SramConfig on, off; off.running_sum = false;
+    auto& a = cfg.add<BigSram>("on", on, blocks.block(0, on.mem_chunks), false);
+    auto& b = cfg.add<BigSram>("off", off, blocks.block(1, off.mem_chunks), false);
+    cfg.connect(f.wr, a.wr);
+    cfg.connect(g.wr, b.wr);
+    sim::Sim m = cfg.build();
+    BigSram& x = m.unit<BigSram>("on");
+    BigSram& y = m.unit<BigSram>("off");
+    for (uint32_t i = 0; i < 1000; i++) {
+        const uint32_t c = (i * 7919u) % (1u << 20), v = i % 5 == 0 ? 0 : init_value(i);
+        x.poke(c, v); y.poke(c, v);
+    }
+    x.poke(7919, 0); y.poke(7919, 0);
+    CHECK(x.data_sum() != 0);
+    CHECK_EQ(x.data_sum(), y.data_sum());
+    CHECK_EQ(y.sum.sum, uint64_t(0));                  // nothing kept per store
 }

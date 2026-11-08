@@ -66,7 +66,7 @@ void a2a_input(sim::Sim& m) {
 }
 
 // ---- one run ---------------------------------------------------------------------------------------------------------
-struct Setup { unsigned parts = 1, threads = 1; sim::Options opt; };
+struct Setup { unsigned parts = 1, threads = 1; sim::Options opt; bool scan_sum = false; };   // scan_sum: D31's path
 
 // `golden`: the .fp file (default tests/golden-m2/NAME.fp, tile 0 every cycle); `all_tiles`: its points cover every
 // tile (the hash-only NAME-chip.fp, every 10 cycles), and cycles without a point are not compared.
@@ -109,6 +109,7 @@ std::string check(const char* name, uint64_t through, const Setup& su, const std
     G1Ctx gx;
     gx.cfg.timing = tc.timing; gx.cfg.periph_present = tc.periph_present; gx.cfg.mem_chunks = 1u << 20;
     gx.cfg.done_gate = true; gx.cfg.K = 8; gx.cfg.cm_latency = 2;
+    gx.cfg.sram_running_sum = !su.scan_sum;
     gx.bootrom = im.bootrom.data(); gx.bootrom_words = uint32_t(im.bootrom.size()); gx.mem = mem.data();
     SramBlocks sram_blocks; gx.sram = &sram_blocks;
 
@@ -188,6 +189,15 @@ void run_all(const Setup& su) {
 }  // namespace
 
 TEST(chip_wfi_and_regs_every_cycle) { run_all({}); }
+
+// D31: without BigSram's running sum (timing runs), a fingerprint scans the block: regs and a2a stay equal.
+TEST(chip_sram_sum_by_scan_keeps_the_goldens) {
+    Setup su; su.scan_sum = true;
+    for (const char* name : {"regs", "a2a"}) {
+        std::string e = check(name, ~uint64_t(0), su);
+        if (!e.empty()) { test::fail(__FILE__, __LINE__, "%s", e.c_str()); return; }
+    }
+}
 
 // a2a (W11 with W12's AG): every unit of tile 0 every 10 cycles (golden-m2/a2a.fp) to its end, one thread and split.
 TEST(chip_a2a_every_10_cycles) {

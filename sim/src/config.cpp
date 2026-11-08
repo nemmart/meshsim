@@ -660,6 +660,8 @@ Sim Config::build() {
         rs.bits[0] = B + o_bits[r];
         rs.bits[1] = B + o_bits[r] + rs.nwords;
         for (uint32_t k = rd.first; k < rd.first + rd.count; k++) e.run_of[k] = uint32_t(r);
+        rs.has_edges = 0;                                                 // W10
+        for (uint32_t k = rd.first; k < rd.first + rd.count; k++) if (e.edges[k]) rs.has_edges = 1;
     }
     // the run masks, the near wakes, whether delivery can go by the due masks (every latency below 64, at most 64 wheels)
     e.nrw = nrw;

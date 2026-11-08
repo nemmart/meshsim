@@ -177,6 +177,7 @@ struct RunSet {
     Form form;
     uint8_t cur;              // which of bits[] is this cycle's ready set (the other is the next cycle's): the end of a
                               // cycle flips it, nothing is copied
+    uint8_t has_edges;        // W10: some instance of the run has edge bits (else a step has none to clear)
     uint32_t nwords;
     uint64_t* bits[2];
     uint64_t* ready() const { return bits[cur]; }
@@ -335,12 +336,14 @@ struct Engine {
     [[gnu::always_inline]] void after(RunSet& r, uint32_t k, Wake w) {
         const uint32_t i = r.first + k;
         steps[i]++;
-        mask[i] &= ~edges[i];
+        if (r.has_edges) mask[i] &= ~edges[i];                          // W10: most runs have none
         const Cycle at = w.at;
         if constexpr (kDebug) note_suspect(i, at);
-        if (__builtin_expect(heap_pos[i] != kNone, 0)) heap_remove(i);   // a far wake overtaken
+        if (__builtin_expect(wake_at[i] != kNoCycle, 0)) {               // W10: a wake was pending (near or far): the
+            if (heap_pos[i] != kNone) heap_remove(i);                     // heap's overtaken; the near wheel's bit goes
+            wake_at[i] = kNoCycle;                                        // stale (near_slot checks wake_at)
+        }
         if (at == now + 1) {
-            wake_at[i] = kNoCycle;
             uint64_t* nb = r.next();
             if (!RunSet::test(nb, k)) {
                 RunSet::set(nb, k);
@@ -348,7 +351,6 @@ struct Engine {
             }
             return;
         }
-        wake_at[i] = kNoCycle;
         if (at == Wake::kNever) return;
         after_far(i, at);
     }

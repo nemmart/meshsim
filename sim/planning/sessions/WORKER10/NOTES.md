@@ -443,3 +443,79 @@ the mesh second. Of today's findings (on W4's synthetic mesh and W6's synthetic 
   (sha256 = HASHES), carried in the kit (mk_task.sh KIT_ADD). Here (one CPU, not the runner): 16.4 us a cycle, 8.1 s.
   **The runner and W12:** the runner takes the oldest unresulted task, one at a time (PIPELINE.md), so W12's full-size
   sort (Quest 154, done) and my timing tasks can't overlap; I claim plain numbers after pulling NUMBERS.md.
+- 2026-11-08: **Quest 155, the 16K sort's first timing** (i5-14400F, D21; bench_sort over M2Sort's counted span,
+  496,619 cycles, setup excluded; in-process repeats; digests equal over every configuration). One thread **15.15 us a
+  cycle, 7.52 s** (RSS 73 MB, big SRAM 52 MB resident). Split (us a cycle; x one thread):
+  tiles 2: 6.17 (2.45x), 4: 3.65 (4.15x), **6: 2.92 (5.19x, 1.45 s)**, 8: 4.00, 12: 3.35; rows 2/4/8: 6.22/3.69/4.02;
+  load 2/4/6/8/12: 6.30/3.85/2.93/4.10/3.19; profile (calibrated over the whole sort): 6.54/3.96/3.13/3.83/3.41.
+  Superlinear at 2 and 4 (each thread's share of the state fits its caches better); worse at 8 (two threads share a
+  P-core: imbalance 0.97). **Placement barely matters on the sort** (tiles = rows = load; profile a little worse except
+  at 8). The breakdown at 6 by tiles: compute 2.585 (ideal 2.525: inflation 1.02x) + imbalance 0.188 + barrier 0.079
+  + drain 0.042 + publish and clear 0.019: the barrier under 3% on the real load, as the owner expected. **Phases:**
+  four of 97 are 93% of the time (L1 121k cycles 3.23 s -> 0.57 s at 6, 5.7x; L2 105k cycles 2.62 -> 0.48, 5.5x; two
+  of ~20k at 366,545 and 387,044: 0.75 -> 0.12, 0.68 -> 0.11, ~6x); the other 93 (barriers, short phases) ~3.9x, a
+  small share. **Quiet against busy** (windows of 1,000 cycles, one thread): 48% of the cycles at 586 steps a cycle,
+  27.5 us (most of the time); 47% at 58-91 steps, 1.1-3.1 us: cost follows the steps. **Units** (calibrated shares):
+  TileCtl 25%, BigSram 16%, Injection 16%, Router 13%, TableStore 6%, core 6%, write engine 5.7%, AG 5.2%, director
+  3%, hist 3%. (The owner: the ~4 s aim is the full-size sort's, 1,229,687 cycles: Quest 157.)
+- 2026-11-08: **Quest 156, the sort's hot lines** (perf, one thread, the counted span; clang release + -g). Top
+  symbols: TileCtl::step 12.4%, BigSram::serve 9.7%, TableStore::step 9.0%, Router::step 7.3%, InjReadSide::step 6.9%,
+  deliver_link<3> 5.7% (the framework's largest), WriteEngine::step 5.3%, HistStore::step 4.2%, AddrGen::step 3.3%,
+  RegBlockState::reg 3.0%, InjReadSide::injected 2.8%, Director::step 2.6%, BigSram::step 2.4%.
+
+## For the units' owners: where the sort's time goes inside the four largest (Quest 156; nothing changed by W10)
+
+Shares are of the function's own samples; "the sort" is the counted span on one thread. Suggestions are for the
+owners to judge; each keeps ref's behaviour as long as what other units see is unchanged.
+
+- **TileCtl** (`tile_ctl.h`; 12.4% of the sort, plus RegBlockState::reg 3.0%): **33% of TileCtl::step is line 136**,
+  `for (r < kRegs) c.write(regs, r, s.reg(r))`: every step recomputes all 33 registers through `RegBlockState::reg`'s
+  switch and compares each with the register file (engine.h:550, `if (r.regs[i] == v) return`, another 6-8%). The
+  inputs taken above it (go, landed, kline, ...) and `end_cycle` are small by comparison. **Suggestion:** have
+  `end_cycle` return which registers changed (a mask), and write only those; or keep the last written values in the
+  state and skip the switch for unchanged ones. Expected: most of that third, ~4-5% of the sort.
+- **BigSram** (`big_sram.h`, `memsum.h`; serve 9.7% + step 2.4%): in `serve`, **33% is memsum.h:28** (the running
+  memory hash, two fmix64 per stored chunk: StateFp's region sum kept up to date on every store) and **26% is
+  big_sram.h:119**, `sum.write(c, data[c], v)`: the old value's load, a cache miss into the 4 MB block, needed only
+  by the sum; 12% is the read path's loads (line 192, misses too). In `step`, **17% is lines 169-170**:
+  `% cfg.area_queue_depth`, an integer division per enqueue. **Suggestions:** keep the running sum only when a
+  fingerprint is wanted (a configuration flag, or compute it from the block when the observer asks), which also drops
+  the old value's load; a power-of-two queue depth, or a wrapping index instead of `%`. Expected: up to ~half of
+  serve, ~5% of the sort, and most of step's division.
+- **Router** (`router.h`; step 7.3% + route 1.3%): **31% of Router::step is lines 136-137**, the pop of a feeder
+  queue's head (`store + (q.base + q.head) * 3` and its three words): misses into the router's 13.5 KB state (the
+  queues' store), the largest unit state on the chip (842 KB for 64). In `route`: `net.h:36` and the hop lookups
+  (~13%). **Suggestion:** a smaller or denser queue store (entries the sort's traffic actually uses; the footprint
+  traces show ~10% of it touched), so the heads stay in L1.
+- **Injection** (`inject.h`; step 1.8%, InjReadSide::step 6.9%, injected 2.8%, issue 1.4%): Injection::step's hot
+  lines are the framework's port reads (engine.h:327, 73, 395: ready, ring peek, take) more than its own logic; the
+  read side (InjReadSide, ~11% of the sort together) wasn't in the annotated set. **Next:** annotate InjReadSide and
+  TableStore (9.0%) in the full-size sort's profile before suggesting anything.
+- **The framework's share** in the sort: deliver_link<3> 5.7%, <1> 1.2%, <0> 0.5%, deliver_fifo<3> 0.8%, the run
+  loops ~3%: ~11%. Unchanged by these.
+- 2026-11-08: **Quest 157, the full-size sort's timing: the number M2 is judged by** (i5-14400F, D21; bench_sort over
+  M2Sort's counted span, **1,229,687 cycles**, setup excluded as W7's baseline; 64 x 65536 uniform keys, KeyGen on the
+  runner, sha256 = HASHES; in-process repeats, 3 processes; digests equal over every configuration):
+
+  | | seconds (median; the 3 processes) | us a cycle | x one thread | x ref (95.9 s) |
+  |---|---|---|---|---|
+  | one thread | 29.15 (28.56, 29.15, 29.30) | 23.71 | 1.00 | 3.3 |
+  | 4 by tiles | 7.09 (6.65, 7.09, 7.21) | 5.76 | 4.11 | 13.5 |
+  | **6 by tiles** | **5.38 (5.29, 5.38, 5.39)** | 4.37 | 5.42 | **17.8** |
+  | 12 by tiles | 6.09 (5.72, 6.09, 6.13) | 4.96 | 4.78 | 15.7 |
+
+  **Against the ~4 s aim: 5.38 s, 35% over.** The 16K projection (2.92 us a cycle, ~3.6 s) missed because the full
+  size costs more a cycle: one thread 23.7 us against 15.15 (1.56x), the big SRAM's resident data 208 MB against 52
+  (RSS 241 MB): the units' memory traffic (BigSram's loads and stores, its running hash's old-value loads; 4 KB pages
+  over 208 MB) grows with the data. The breakdown at 6: compute 4.249 (ideal 23.71 / 6 = 3.95: inflation 1.08x) +
+  imbalance 0.241 + barrier 0.068 + drain 0.044 + publish and clear 0.021 (us a cycle; the --time run 4.63). The
+  framework's overheads are ~0.37 of 4.6 (8%); the rest is the units' own time. **To reach ~4 s at 6 threads needs
+  ~25% off the units' time at full size.** Next: the units by kind and the hot lines on the full-size sort (where
+  BigSram's share is expected to be larger than at 16K), and two cheap tests of the memory: huge pages for the big
+  SRAM's blocks (madvise; W11's code, a suggestion to measure) and BigSram's running hash off (its old-value loads).
+- 2026-11-08: **Quest 158, D31 on the full-size sort** (before ef9cd71 / w11 14195b9 / after d51b6e1, interleaved, 3
+  processes, fingerprints off): one thread 28.74 / 28.27 / **24.89 s**; 6 by tiles 5.26 / 5.30 / **4.60 s (20.9x ref)**.
+  W12's register change gives most of it; W11's running sum off ~1.6% on one thread, none measurable at 6. After: the
+  breakdown at 6, compute 3.662 + imbalance 0.188 + barrier 0.067 + drain 0.046 + publish and clear 0.018 = 3.98 us a
+  cycle. Digests differ before/after by construction (BigSram's digest folds its running sum only when kept). REPORT.md
+  written: done with M2.

@@ -43,6 +43,7 @@
 #include "units/chip.h"
 #include "units/director.h"
 #include "units/linkword.h"
+#include "units/big_sram.h"
 #include "units/table_store.h"
 #include "units/write_engine.h"
 #include "units/regblock.h"
@@ -55,6 +56,7 @@ namespace units {
 struct TileCtl {
     // ---- inputs ----
     sim::LinkIn bus, go, landed, kline, bad, ovf;
+    sim::LinkIn we_ovf, ts_ovf, hist_ovf;   // W11 (D29): width 0, Link(1): an overflow judged at t (ERRORS [4], [5])
     sim::RegIn send_busy;
     sim::CountIn router_ovf, we_in_ovf, gather_ovf;
     // ---- outputs ----
@@ -73,6 +75,7 @@ struct TileCtl {
 
     TileCtl(sim::Ports& p, const RegBlockState& initial, bool router_ovf_event = false) : s(initial), ovf_event(router_ovf_event) {
         if (ovf_event) p.in(ovf, "ovf", 0);
+        p.in(we_ovf, "we_ovf", 0); p.in(ts_ovf, "ts_ovf", 0); p.in(hist_ovf, "hist_ovf", 0);
         p.in(bus, "bus", 2); p.in(go, "go", 0); p.in(landed, "landed", 0); p.in(kline, "kline", 1);
         p.in(send_busy, "send_busy", 1);
         p.in(bad, "bad", 0);
@@ -90,6 +93,9 @@ struct TileCtl {
         if (c.ready(kline)) { in.kline = uint32_t(c.peek(kline)[0]); c.take(kline); }
         if (c.ready(bad)) { c.take(bad); in.bad = true; }
         if (ovf_event && c.ready(ovf)) { c.take(ovf); in.router_ovf_ev = true; }
+        if (c.ready(we_ovf)) { c.take(we_ovf); in.we_in_ovf_ev = true; }
+        if (c.ready(ts_ovf)) { c.take(ts_ovf); in.table_ovf_ev = true; }
+        if (c.ready(hist_ovf)) { c.take(hist_ovf); in.table_ovf_ev = true; }
         bool send_put = false;
         if (c.ready(bus)) {
             const sim::Word* m = c.peek(bus);
@@ -99,7 +105,7 @@ struct TileCtl {
         }
         in.send_busy = send_put || (c.valid(send_busy) && c.read(send_busy)[0] != 0);   // ref: !sendHold.isEmpty(t)
         in.router_ovf = ovf_event ? s.ev_prev[0] : c.through_last(router_ovf);
-        in.we_in_ovf = c.through_last(we_in_ovf); in.gather_ovf = c.through_last(gather_ovf);
+        in.we_in_ovf = s.ev_prev[4]; in.gather_ovf = c.through_last(gather_ovf);   // [4]: the event above (D29)
         s.end_cycle(c.now() - 1, in);
         for (unsigned r = 0; r < kRegs; r++) c.write(regs, r, s.reg(r));
         c.write(dma, DMA_R_CONFIG, s.dma_config);
@@ -141,6 +147,9 @@ RegBlockState block_at_end(const sim::Sim& m, const U& u, uint64_t c) {
         at_next(u.kline, [&](const sim::PortEntry& x) { in.kline = uint32_t(x.w[0]); });
         at_next(u.bad, [&](const sim::PortEntry&) { in.bad = true; });
         if (u.ovf_event) at_next(u.ovf, [&](const sim::PortEntry&) { in.router_ovf_ev = true; });
+        at_next(u.we_ovf, [&](const sim::PortEntry&) { in.we_in_ovf_ev = true; });
+        at_next(u.ts_ovf, [&](const sim::PortEntry&) { in.table_ovf_ev = true; });
+        at_next(u.hist_ovf, [&](const sim::PortEntry&) { in.table_ovf_ev = true; });
         sim::PortView r = m.observe(u.send_busy, e, kMax);
         in.send_busy = send_put || (r.put ? r.put_w[0] != 0 : (r.valid && e[0].w[0] != 0));
         in.router_ovf = b.ev_prev[0]; in.we_in_ovf = b.ev_prev[4]; in.gather_ovf = b.ev_prev[6];   // Counts: not here
@@ -191,7 +200,10 @@ struct TileCore {
             if (table == TBL_HIST) c.put(u.hist_w, sim::Word(i), sim::Word(v));
             else c.put(u.tables, sim::Word(table) << 32 | i, sim::Word(v));
         }
-        uint32_t hist(uint32_t i) const { return c.read(u.hist, i); }
+        uint32_t hist(uint32_t i) const {                // RmwPipe.ctrlRead: on a write-back cycle, the engine's value
+            if (c.read(u.hist, HIST_WB_AT) == uint32_t(c.now() + 1)) return c.read(u.hist, HIST_WB_VAL);
+            return c.read(u.hist, i);
+        }
     };
     sim::Wake step(sim::Ctx& c) {
         if (c.ready(port_b)) {
@@ -230,6 +242,10 @@ struct G1Config {
     uint32_t mem_chunks = 1u << 20;
     uint32_t periph_present = 1;
     unsigned K = 8, cm_latency = 2;    // the write counters' line, director -> port B
+    // G3 (W11): the memory path's keys
+    unsigned ts_engine_latency = 1;    // tsEngineLatency: the engines' Links to and from the table store and HIST
+    unsigned area_queue_depth = 8, sram_read_latency = 2;
+    bool write_combining = false, fifo_count_before_pop = true;
 };
 
 // G1's part of a tile, as W9's tile builder meets it: chip.h's `ControlIO` (the ports agreed in NOTES.md, plus
@@ -244,6 +260,8 @@ struct G1Ctx {
     uint32_t* mem = nullptr;           // 64 x 2 x MEM_WORDS words (data, program per tile), zero at power-on; outlives
                                        // the machine (the boot fills them through port B)
     unsigned we_in_depth = 4, gather_depth = 16;
+    SramBlocks* sram = nullptr;        // G3: the tiles' big-SRAM blocks (one per tile, mapped at configuration); outlives
+                                       // the machine
 };
 ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx);
 static_assert(std::is_same_v<decltype(&add_g1), ControlBuilder>);

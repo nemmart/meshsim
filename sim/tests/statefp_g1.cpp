@@ -1,6 +1,8 @@
 // statefp_g1.cpp: G1's fingerprint writers (statefp_g1.h), StateFp.java's streams word for word.
 #include "statefp_g1.h"
 
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 
 #include "units/ag.h"
@@ -51,6 +53,7 @@ G1Tile g1_tile(sim::Sim& s, unsigned k) {
     g.ucore = &s.unit<units::TileCore>(t + "core"); g.uctl = &s.unit<units::TileCtl>(t + "ctl");
     g.udir = &s.unit<units::Director>(t + "dir"); g.uts = &s.unit<units::TableStore>(t + "ts");
     g.uhist = &s.unit<units::HistStore>(t + "hist");
+    g.uwe = &s.unit<units::WriteEngine>(t + "we"); g.usram = &s.unit<units::BigSram>(t + "sram");
     g.core = &g.ucore->rv; g.ctl = &g.uctl->s; g.ts = &g.uts->m; g.hist = &g.uhist->m;
     return g;
 }
@@ -158,16 +161,70 @@ void w_dir(const void* p, FpOut& o, const FpCtx& x) {
     link(o, "in", be, nb);
 }
 
-// StateFp.we: bucketDigit, histDigit, augmentBase; the pointer stage; awaiting; in (we-in), tsRet. (G3: stage, buses.)
+// G3 (W11): a port's entries as BusEntries; a Link's arrival as the observer gives it (G3's Links are unshifted).
+template <class Port>
+uint32_t bus_entries(const G1Tile& g, const Port& port, BusEntry* out, BusEntry& put, bool& has_put, bool& valid) {
+    sim::PortEntry e[kMax];
+    const sim::PortView v = g.sim->observe(port, e, kMax);
+    for (uint32_t i = 0; i < v.n; i++) out[i] = BusEntry{e[i].at, e[i].w[0], e[i].w[1], e[i].w[2]};
+    has_put = v.put; valid = v.valid;
+    if (v.put) put = BusEntry{0, v.put_w[0], v.put_w[1], v.put_w[2]};
+    return v.n;
+}
+template <class Port> void w_link(FpOut& o, const char* nm, const G1Tile& g, const Port* port) {
+    if (!g.sim || !port) { link_empty(o, nm); return; }
+    BusEntry e[kMax], p; bool hp, v;
+    const uint32_t n = bus_entries(g, *port, e, p, hp, v);
+    link(o, nm, e, n);
+}
+template <class Port> void w_fifo(FpOut& o, const char* nm, const G1Tile& g, const Port* port) {
+    if (!g.sim || !port) { fifo_empty(o, nm); return; }
+    BusEntry e[kMax], p; bool hp, v;
+    const uint32_t n = bus_entries(g, *port, e, p, hp, v);
+    fifo(o, nm, e, n, hp ? &p : nullptr);
+}
+template <class Port> void w_hold(FpOut& o, const char* nm, const G1Tile& g, const Port* port) {
+    if (!g.sim || !port) { hold_empty(o, nm); return; }
+    BusEntry e[kMax], p; bool hp, v;
+    bus_entries(g, *port, e, p, hp, v);
+    hold(o, nm, v ? &e[0] : nullptr, hp ? &p : nullptr);
+}
+// A request FIFO inside the table store (ReqFifo): the entries visible at the end of c, then a put made at c.
+void w_reqfifo(FpOut& o, const char* nm, const units::ReqFifo* f, uint64_t c) {
+    if (!f) { fifo_empty(o, nm); return; }
+    BusEntry e[units::ReqFifo::N], p;
+    for (unsigned k = 0; k < f->n; k++) e[k] = BusEntry{0, f->at(k)[0], f->at(k)[1], f->at(k)[2]};
+    const bool hp = f->pend && f->put_at == c;
+    if (f->pend && f->put_at != c) { std::fprintf(stderr, "statefp: %s: a put of %llu not judged at %llu\n", nm, (unsigned long long)f->put_at, (unsigned long long)c); std::abort(); }
+    if (hp) p = BusEntry{0, f->pw[0], f->pw[1], f->pw[2]};
+    fifo(o, nm, e, f->n, hp ? &p : nullptr);
+}
+// StateFp.pipe: the write-backs pending at the end of c (due, idx, val).
+void w_pipe(FpOut& o, const char* nm, const units::Rmw* r) {
+    const bool v = r && r->valid;
+    o.wp(nm, ".n", v ? 1 : 0);
+    if (v) { o.wp(nm, ".due", r->due); o.wp(nm, ".idx", r->idx); o.wp(nm, ".val", r->val); }
+}
+
+// StateFp.we: bucketDigit, histDigit, augmentBase; the pointer stage (d, h, c, have, ptr if have); awaiting (as stage
+// positions); its inputs: in (we-in), tsRet.
 void w_we(const void* p, FpOut& o, const FpCtx& x) {
     const G1Tile& g = tile(p);
     o.w("bucketDigit", units::WriteEngine::bucket_digit(dma_config(g, x.cycle)));
     o.w("histDigit", units::WriteEngine::hist_digit(dma_config(g, x.cycle)));
     o.w("augmentBase", units::WriteEngine::augment_base(record_base(g, x.cycle)));
-    o.w("stage.n", 0);
-    o.w("awaiting.n", 0);
-    fifo_empty(o, "in");
-    link_empty(o, "tsRet");
+    const units::WriteEngine* w = g.uwe;
+    o.w("stage.n", w ? w->count : 0);
+    if (w)
+        for (unsigned k = 0; k < w->count; k++) {
+            const unsigned j = (w->head + k) % w->cap;
+            o.w("d", w->st_d[j]); o.w("h", w->st_h[j]); o.w("c", w->st_c[j]); o.w("have", w->st_have[j]);
+            if (w->st_have[j]) o.w("ptr", w->st_ptr[j]);
+        }
+    o.w("awaiting.n", w ? w->aw_n : 0);
+    if (w) for (unsigned k = 0; k < w->aw_n; k++) o.w("awaiting", (w->aw[(w->aw_head + k) % w->cap] + w->cap - w->head) % w->cap);
+    w_fifo(o, "in", g, w ? &w->in : nullptr);
+    w_link(o, "tsRet", g, w ? &w->ts_ret : nullptr);
 }
 
 // StateFp.ag: forty fields (the configuration first), the read-ahead queues, the two table-return lines. (G4: the rest.)
@@ -197,44 +254,70 @@ void w_gather(const void* p, FpOut& o, const FpCtx& x) {
     fifo_empty(o, "in");
 }
 
-// StateFp.ts: the five memories, PTR's write-backs, the three request lines and request FIFOs. (G3: pipe, buses.)
+// StateFp.ts: the five memories (with the window's store of c, committed by ref at c unless a write-back was done at c:
+// figure 12), PTR's pending write-backs, the three request lines and request FIFOs.
 void w_ts(const void* p, FpOut& o, const FpCtx& x) {
     const G1Tile& g = tile(p);
     units::TableMems m = g.ts ? *g.ts : units::TableMems{};
-    if (g.sim && g.uts) {                                                // a window store of c: committed by ref at c
+    const units::TableStore* u = g.uts;
+    if (g.sim && u) {
         sim::PortEntry e[kMax];
-        for (uint32_t i = 0, n = entries(g, g.uts->window, e); i < n; i++)
-            if (e[i].at == x.cycle + 1) m.write(uint32_t(e[i].w[0] >> 32), uint32_t(e[i].w[0]), uint32_t(e[i].w[1]));
+        for (uint32_t i = 0, n = entries(g, u->window, e); i < n; i++)
+            if (e[i].at == x.cycle + 1) {
+                const uint32_t table = uint32_t(e[i].w[0] >> 32);
+                if (!(table == units::TBL_PTR && u->pipe.last_wb == x.cycle)) m.write(table, uint32_t(e[i].w[0]), uint32_t(e[i].w[1]));
+            }
     }
     o.w("STREAM_SRC", m.s_src.sum); o.w("STREAM_DEST", m.s_dest.sum); o.w("STREAM_COUNT", m.s_count.sum);
     o.w("GROUP", m.s_group.sum); o.w("PTR", m.s_ptr.sum);
-    o.w("wb.n", 0);
-    link_empty(o, "reqStream"); link_empty(o, "reqGroup"); link_empty(o, "reqWe");
-    fifo_empty(o, "qStream"); fifo_empty(o, "qGroup"); fifo_empty(o, "qWe");
+    w_pipe(o, "wb", u ? &u->pipe : nullptr);
+    const bool ag = u && u->with_ag;
+    w_link(o, "reqStream", g, ag ? &u->req_stream : nullptr);
+    w_link(o, "reqGroup", g, ag ? &u->req_group : nullptr);
+    w_link(o, "reqWe", g, u ? &u->req_we : nullptr);
+    w_reqfifo(o, "qStream", u ? &u->q_stream : nullptr, x.cycle);
+    w_reqfifo(o, "qGroup", u ? &u->q_group : nullptr, x.cycle);
+    w_reqfifo(o, "qWe", u ? &u->q_we : nullptr, x.cycle);
 }
 
-// StateFp hist: HIST, its write-backs, its request line and FIFO. (G3: pipe, buses.)
+// StateFp hist: HIST (with the window's store of c, as above), its write-backs, its request line and FIFO.
 void w_hist(const void* p, FpOut& o, const FpCtx& x) {
     const G1Tile& g = tile(p);
     units::HistMem h = g.hist ? *g.hist : units::HistMem{};
-    if (g.sim && g.uhist) {
+    const units::HistStore* u = g.uhist;
+    if (g.sim && u) {
         sim::PortEntry e[kMax];
-        for (uint32_t i = 0, n = entries(g, g.uhist->window, e); i < n; i++)
-            if (e[i].at == x.cycle + 1) h.write(uint32_t(e[i].w[0]), uint32_t(e[i].w[1]));
+        for (uint32_t i = 0, n = entries(g, u->window, e); i < n; i++)
+            if (e[i].at == x.cycle + 1 && u->pipe.last_wb != x.cycle) h.write(uint32_t(e[i].w[0]), uint32_t(e[i].w[1]));
     }
     o.w("HIST", h.s_hist.sum);
-    o.w("wb.n", 0);
-    link_empty(o, "req");
-    fifo_empty(o, "q");
+    w_pipe(o, "wb", u ? &u->pipe : nullptr);
+    w_link(o, "req", g, u ? &u->req : nullptr);
+    w_reqfifo(o, "q", u ? &u->q : nullptr, x.cycle);
 }
 
-// StateFp.sramQ: 16 area queues, the read and write holds.
-void w_sram_stub(const void*, FpOut& o, const FpCtx&) {
-    for (unsigned a = 0; a < 16; a++) o.wpi("area", a, ".n", 0);
-    hold_empty(o, "rd");
-    hold_empty(o, "wr");
+// StateFp.sramQ: per area its queue in order (w, row, mask, then d0-d3 for a write or tok, part for a read), then the
+// read and write holding registers.
+void w_sram(const void* p, FpOut& o, const FpCtx&) {
+    const G1Tile& g = tile(p);
+    const units::BigSram* s = g.usram;
+    for (unsigned a = 0; a < 16; a++) {
+        const unsigned n = s ? s->count[a] : 0;
+        o.wpi("area", a, ".n", n);
+        for (unsigned k = 0; k < n; k++) {
+            const units::BigSram::Entry& e = s->at(a, k);
+            o.w("w", e.write); o.w("row", e.row); o.w("mask", e.mask);
+            if (e.write) for (unsigned j = 0; j < 4; j++) o.wi("d", j, e.d[j]);
+            else { o.w("tok", e.token); o.w("part", e.part); }
+        }
+    }
+    w_hold(o, "rd", g, s && s->reads ? &s->rd : nullptr);
+    w_hold(o, "wr", g, s ? &s->wr : nullptr);
 }
-void w_sram_data_stub(const void*, FpOut& o, const FpCtx&) { o.w("data", 0); }
+void w_sram_data(const void* p, FpOut& o, const FpCtx&) {
+    const G1Tile& g = tile(p);
+    o.w("data", g.usram ? g.usram->sum.sum : 0);
+}
 void w_rdport_stub(const void*, FpOut& o, const FpCtx&) { o.w("inUse", 0); o.w("outstanding", 0); }
 // StateFp.req: the request FIFO (empty), beatsSent, W0-W2 (REQUEST_SET_W*, never stored in M2's programs).
 void w_req(const void* p, FpOut& o, const FpCtx&) {
@@ -249,8 +332,8 @@ void register_g1(FpRegistry& r, const G1Tile& g) {
     if (g.core) { r.add(t + "core", w_core, &g); r.add(t + "cmem", w_cmem, &g); }
     r.add(t + "ctl", w_ctl, &g);
     r.add(t + "dir", w_dir, &g);
-    r.add(t + "sram", w_sram_stub, &g);
-    r.add(t + "sram.data", w_sram_data_stub, &g);
+    r.add(t + "sram", w_sram, &g);
+    r.add(t + "sram.data", w_sram_data, &g);
     r.add(t + "we", w_we, &g);
     r.add(t + "ag", w_ag, &g);
     r.add(t + "ts", w_ts, &g);

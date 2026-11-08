@@ -138,3 +138,4 @@ Each piece: its tests, `make check` clean on gcc and clang (build by build if th
   Count (still wired, statistics). **`tests/test_mem.cpp`**: the overflow event's timing (judged t + 1, event t + 2),
   the PTR path and the SRAM Hold's refusal, ReqFifo's judgment, the block's bits, the big SRAM's writes, sum and room
   by the count before the pop. (Write combining needs a read in the same area: with P2's MemConf.)
+- 2026-11-08: **make check clean at 4de8844** (build by build: gcc and clang debug and release, 37 binaries each; tsan, tsan-units, tsan-chip on both). The overflow events piece is ready to merge. Next: P2.

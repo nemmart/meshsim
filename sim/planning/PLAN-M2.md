@@ -40,6 +40,12 @@ and WORKER29's proofs did); per-tile controller retire traces (M1's observer, D5
 localise a mismatch, a finer reference. A finer reference (e.g. a trace of puts and takes on a tile's named buses) would
 extend D5's one observer, so it is the owner's decision, with W7's proposal and its cost.
 
+## An expectation to check (the owner's guess, 2026-11-08; not a decision)
+
+On **busy** chips more units do work per interval, so the barrier shouldn't be critical: speed per thread and balance
+should be. On **quiet** chips or phases most tiles get no inputs, so idle units costing nothing (the cost per cycle scaling
+with activity, the idle jump) should be what counts. W10 measures both regimes on the sort.
+
 ## Order (to be refined after the audit)
 
 1. **W7, the reference side** (starts now): the audit, the goldens, the `ref` baselines on the runner.

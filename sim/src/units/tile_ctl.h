@@ -56,6 +56,7 @@ namespace units {
 struct TileCtl {
     // ---- inputs ----
     sim::LinkIn bus, go, landed, kline, bad, ovf;
+    sim::LinkIn we_ovf, ts_ovf, hist_ovf;   // W11 (D29): width 0, Link(1): an overflow judged at t (ERRORS [4], [5])
     sim::RegIn send_busy;
     sim::CountIn router_ovf, we_in_ovf, gather_ovf;
     // G4 (W12), declared when `g4`: STATUS's gather_busy as the OR of three inputs (gather.h), the queue's overflow event
@@ -82,6 +83,7 @@ struct TileCtl {
     TileCtl(sim::Ports& p, const RegBlockState& initial, bool router_ovf_event = false, bool g4_ = false)
         : s(initial), ovf_event(router_ovf_event), g4(g4_) {
         if (ovf_event) p.in(ovf, "ovf", 0);
+        p.in(we_ovf, "we_ovf", 0); p.in(ts_ovf, "ts_ovf", 0); p.in(hist_ovf, "hist_ovf", 0);
         if (g4) {
             p.in(gather_busy, "gather_busy", 1); p.in(gather_srq_busy, "gather_srq_busy", 1);
             p.in(gather_put, "gather_put", 0); p.in(gather_ovf_ev, "gather_ovf_ev", 0);
@@ -105,6 +107,9 @@ struct TileCtl {
         if (c.ready(kline)) { in.kline = uint32_t(c.peek(kline)[0]); c.take(kline); }
         if (c.ready(bad)) { c.take(bad); in.bad = true; }
         if (ovf_event && c.ready(ovf)) { c.take(ovf); in.router_ovf_ev = true; }
+        if (c.ready(we_ovf)) { c.take(we_ovf); in.we_in_ovf_ev = true; }
+        if (c.ready(ts_ovf)) { c.take(ts_ovf); in.table_ovf_ev = true; }
+        if (c.ready(hist_ovf)) { c.take(hist_ovf); in.table_ovf_ev = true; }
         bool send_put = false;
         if (c.ready(bus)) {
             const sim::Word* m = c.peek(bus);
@@ -114,7 +119,7 @@ struct TileCtl {
         }
         in.send_busy = send_put || (c.valid(send_busy) && c.read(send_busy)[0] != 0);   // ref: !sendHold.isEmpty(t)
         in.router_ovf = ovf_event ? s.ev_prev[0] : c.through_last(router_ovf);
-        in.we_in_ovf = c.through_last(we_in_ovf); in.gather_ovf = c.through_last(gather_ovf);
+        in.we_in_ovf = s.ev_prev[4]; in.gather_ovf = c.through_last(gather_ovf);   // [4]: the event above (D29)
         if (g4) {
             bool put = false;
             if (c.ready(gather_put)) { c.take(gather_put); put = true; }
@@ -168,6 +173,9 @@ RegBlockState block_at_end(const sim::Sim& m, const U& u, uint64_t c) {
         at_next(u.kline, [&](const sim::PortEntry& x) { in.kline = uint32_t(x.w[0]); });
         at_next(u.bad, [&](const sim::PortEntry&) { in.bad = true; });
         if (u.ovf_event) at_next(u.ovf, [&](const sim::PortEntry&) { in.router_ovf_ev = true; });
+        at_next(u.we_ovf, [&](const sim::PortEntry&) { in.we_in_ovf_ev = true; });
+        at_next(u.ts_ovf, [&](const sim::PortEntry&) { in.table_ovf_ev = true; });
+        at_next(u.hist_ovf, [&](const sim::PortEntry&) { in.table_ovf_ev = true; });
         sim::PortView r = m.observe(u.send_busy, e, kMax);
         in.send_busy = send_put || (r.put ? r.put_w[0] != 0 : (r.valid && e[0].w[0] != 0));
         in.router_ovf = b.ev_prev[0]; in.we_in_ovf = b.ev_prev[4]; in.gather_ovf = b.ev_prev[6];   // Counts: not here

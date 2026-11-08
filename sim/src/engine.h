@@ -331,7 +331,6 @@ struct Engine {
 
     void bind() { ctx.e_ = this; }
     void enter(RunSet& r, uint32_t k) { ctx.cur_ = r.first + k; ctx.mask_ = &mask[r.first + k]; }
-    void enter_at(uint32_t i, uint64_t* m) { ctx.cur_ = i; ctx.mask_ = m; }   // W10: the run loop's, from its view
     // A step's wake replaces the instance's last: next cycle (the run's next set), 2-15 cycles (the near wheel), further
     // (the heap), or none. Inline: the common cases are a few instructions; the rare ones are calls.
     [[gnu::always_inline]] void after(RunSet& r, uint32_t k, Wake w) {
@@ -348,35 +347,6 @@ struct Engine {
             uint64_t* nb = r.next();
             if (!RunSet::test(nb, k)) {
                 RunSet::set(nb, k);
-                if (r.nnext++ == 0) { const uint32_t ri = run_of[i]; run_next[ri >> 6] |= uint64_t(1) << (ri & 63); }
-            }
-            return;
-        }
-        if (at == Wake::kNever) return;
-        after_far(i, at);
-    }
-    // W10: the same, with what a run's loop reads per step loaded once before it (a step is an opaque call, so the
-    // compiler must reload the engine's arrays and `now` after each one; these don't change during a run).
-    struct StepView {
-        uint64_t* steps; uint64_t* mask; const uint64_t* edges; Cycle* wake_at; const uint32_t* heap_pos;
-        uint64_t* next; Cycle next_cycle; uint32_t first; bool has_edges;
-    };
-    StepView step_view(const RunSet& r) const {
-        return StepView{steps, mask, edges, wake_at, heap_pos, r.next(), now + 1, r.first, r.has_edges != 0};
-    }
-    [[gnu::always_inline]] void after(RunSet& r, const StepView& v, uint32_t k, Wake w) {
-        const uint32_t i = v.first + k;
-        v.steps[i]++;
-        if (v.has_edges) v.mask[i] &= ~v.edges[i];
-        const Cycle at = w.at;
-        if constexpr (kDebug) note_suspect(i, at);
-        if (__builtin_expect(v.wake_at[i] != kNoCycle, 0)) {
-            if (v.heap_pos[i] != kNone) heap_remove(i);
-            v.wake_at[i] = kNoCycle;
-        }
-        if (at == v.next_cycle) {
-            if (!RunSet::test(v.next, k)) {
-                RunSet::set(v.next, k);
                 if (r.nnext++ == 0) { const uint32_t ri = run_of[i]; run_next[ri >> 6] |= uint64_t(1) << (ri & 63); }
             }
             return;

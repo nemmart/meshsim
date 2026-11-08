@@ -3,6 +3,18 @@
 Draft, 2026-11-07, from the owner's target; to be refined when W7's audit lands. Decisions are in `DECISIONS.md`;
 M1's plan, and the items it carried here, are in `PLAN-M1.md`.
 
+## Where it stands (2026-11-08)
+
+**Exact:** the full-size sort runs on the new framework **equal to `ref`**: 321 of 321 fingerprint points, run end
+1,244,564, the result verified, all 98 phases, TOTAL 1,229,687 cycles; on one thread and split over 8 (W12, Quest 154).
+The 16K sort likewise (248 points), on 1, 2, 4 and 8. No deliberate difference (D30) was needed.
+
+**Fast (16K, W10, Quest 155, i5-14400F):** one thread 15.15 µs per chip-cycle (about 5× `ref`'s ~78); split by tiles
+over 6 threads **2.92 µs per chip-cycle (5.19× one thread)**, the 16K counted span in 1.45 s. Compute inflation 1.02×,
+imbalance 0.19, barrier 0.08, drain 0.04 µs per cycle: the barrier is under 3% on the real workload. If the full size
+runs at the same rate, its counted span (1,229,687 cycles) would take **about 3.6 s against `ref`'s ~96 s (~27×)**: to be
+measured directly. Unit costs dominate: TileCtl 25%, BigSram 16%, Injection 16%, Router 13% of the units' time.
+
 ## The target (owner, 2026-11-07)
 
 **The full-size sort** (`p4/uniform-k128`; `SortTest` in `sim/ref/meshsim/test/`, the program in `sim/ref/sort/`) runs on

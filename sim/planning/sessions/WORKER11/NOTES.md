@@ -121,3 +121,12 @@ Each piece: its tests, `make check` clean on gcc and clang (build by build if th
 - **TABLE_OVF:** the table store's three request FIFOs and HIST's: fatal "not modelled yet" today (nothing reaches them).
 - **WE_IN_OVF:** waits on W10's framework hook (a Fifo's overflow reported to its consumer as an event).
 - **READ_PORT:** a dropped SRAM_RD_ADDR_QUEUE store (P2).
+- 2026-11-08: **P1 done: make check clean at d10789c**, build by build (this container: g++ 13.3.0, clang 18.1.3; one CPU):
+  make run gcc debug, gcc release, clang debug, clang release (36 test binaries each, all 0 failed); make tsan gcc and
+  clang (7 binaries each), make tsan-units, make tsan-chip gcc and clang (form 2 over 2, 4 and 8 threads). **regs
+  equals golden-m2 to its end (869)**: every unit of tile 0 every cycle, one thread, the debug options (step-all,
+  shuffle, instance-major; ASan and the missed-wake detector in debug builds) and form 2; **every tile every 10 cycles**
+  (`CHIP_FP_DIR`, regs-chip and wfi-chip regenerated from ref: SAME), one thread and split over 4. wfi unchanged.
+  The fix after the WIP commit: test_statefp_g1's plain-state check stops at 824 (no G3 path without a machine).
+  The container needed `libclang-rt-18-dev` for clang's sanitizers. **Ready for the integrator to merge.**
+  Next: P2 (the read side in the injection unit, the read port; MemIO through ControlIO and tile_cycle).

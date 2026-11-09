@@ -8,7 +8,11 @@
 //   - mode 0 (exact) on every fixture, plain, step-all and shuffled;
 //   - mode 3 (the spec, D29) on the calm fixture (no buffer ever full): equal, and its count of cycles that would
 //     differ is 0; on the others, the count is reported (and positive where backpressure arises).
-// A split machine in mode 0 is refused at build (a death test).
+// A split machine in mode 0 is refused at build (a death test); mode 3 split over five domains equals one domain.
+//
+// LOCALISING a mismatch (off by default): REQBUS_DEBUG=1 prints, at the first differing state, our named `reqbus`
+// stream (FpOut's dump format), the D29 count, the first call mismatch and the framework's sleepers; ref's side prints
+// its named stream after cycle T with `java ReqConf SEED CYCLES FAMILY T` (on stderr). Diff the two by line.
 #include <cstdio>
 #include <cstdlib>
 #include <map>
@@ -247,7 +251,11 @@ Result replay(const Script& s, unsigned credit_latency, int variant, const char*
         r.hashes(t, bh, ph);
         res.checks++;
         if (strict && (bh != cy.bus_h || ph != cy.ports_h)) {
-            if (std::getenv("REQBUS_DEBUG")) { fp::FpOut d(stdout, "reqbus"); reqfp::reqbus(d, r.m, r.u, t); std::printf("lag %llu err %s\nSLEEPERS %s\n", (unsigned long long)lag_cycles(r.u), r.err, r.m.sleepers().c_str()); }
+            if (std::getenv("REQBUS_DEBUG")) {   // the localising dump (header)
+                fp::FpOut d(stdout, "reqbus");
+                reqfp::reqbus(d, r.m, r.u, t);
+                std::printf("lag %llu err %s\nsleepers %s\n", (unsigned long long)lag_cycles(r.u), r.err, r.m.sleepers().c_str());
+            }
             ::test::fail(__FILE__, __LINE__, "%s mode %u variant %d: line %zu, after cycle %llu: reqbus %016llx (ref %016llx), ports %016llx (ref %016llx)",
                          name, credit_latency, variant, cy.hline, (unsigned long long)t, (unsigned long long)bh,
                          (unsigned long long)cy.bus_h, (unsigned long long)ph, (unsigned long long)cy.ports_h);
@@ -305,8 +313,10 @@ TEST(reqbus_fanin_seed4) { run_fixture("fanin-s4.txt.gz", false); }
 TEST(reqbus_drop_seed5) { run_fixture("drop-s5.txt.gz", false); }
 
 // D34: mode 0 needs every sender in the bus's domain; a split machine is refused at build.
-DEATH_TEST(reqbus_mode0_split_is_refused_at_build, "across") {
-    sim::Config cfg;
+DEATH_TEST(reqbus_mode0_split_is_refused_at_build, "a regfile can't cross thread domains") {
+    sim::Options o;
+    o.threads = 2;
+    sim::Config cfg(o);
     ReqBusConfig rc;
     rc.credit_latency = 0;
     ReqBusPlacement pl;
@@ -315,19 +325,21 @@ DEATH_TEST(reqbus_mode0_split_is_refused_at_build, "across") {
     sim::Sim m = cfg.build();
 }
 
-// Mode 3 splits: the same calm traffic with every leaf in its own domain group (rows by 2) and the nodes apart, equal
-// to ref, and the same results as one domain.
-TEST(reqbus_mode3_split_equals_ref_on_calm) {
-    Script s = load("tests/reqconf/calm-s2.txt.gz");
-    CHECK(s.ok);
+namespace {
+// Mode 3 on a script, in one domain (threads 1) or split over five (the nodes, the controllers' leaves and queues in
+// domain 0; the tiles' leaves and their stands by pairs of rows in domains 1-4): every check's two hashes, the results'
+// mismatch text, and the D29 count.
+struct Mode3Run { std::vector<uint64_t> h; std::string err, partition; uint64_t lag = 0; };
+Mode3Run mode3(const Script& s, unsigned threads) {
+    Mode3Run out;
     sim::Options o;
     o.observe_arrivals = true;
+    o.threads = threads;
     ReqBusConfig rc;
     rc.credit_latency = 3;
     ReqBusPlacement pl;
-    pl.bus = 0;
-    for (unsigned k = 0; k < SENDERS; k++) pl.leaf[k] = k < 64 ? 1 + (k / 16) : 0;
-    for (unsigned c = 0; c < 3; c++) pl.recv[c] = 0;
+    const bool split = threads > 1;
+    for (unsigned k = 0; k < SENDERS; k++) pl.leaf[k] = split && k < 64 ? 1 + k / 16 : 0;
     char err[200] = {};
     sim::Config cfg(o);
     ReqBusIO io = add_reqbus(cfg, rc, ~uint64_t(0), 7, &pl);
@@ -335,7 +347,7 @@ TEST(reqbus_mode3_split_equals_ref_on_calm) {
                                  "stand.row5", "stand.row6", "stand.row7", "stand.cc"};
     for (unsigned r = 0; r < 9; r++) {
         const bool cc = r == 8;
-        cfg.domain(cc ? 0 : 1 + r / 2);
+        cfg.domain(split && !cc ? 1 + r / 2 : 0);
         Stand& st = cfg.add<Stand>(kSt[r], cc ? 64u : 8 * r, cc ? 3u : 8u, cc, &s, err);
         for (unsigned i = 0; i < st.n; i++) {
             ReqLeaf& l = *io.leaf[st.first + i];
@@ -351,23 +363,57 @@ TEST(reqbus_mode3_split_equals_ref_on_calm) {
             }
     }
     sim::Sim m = cfg.build();
-    std::printf("  %s\n", m.partition().c_str());
+    out.partition = m.partition();
     ReqBusUnits u = resolve(m, ~uint64_t(0), 7, rc);
-    uint64_t checks = 0;
     for (const auto& [t, cy] : s.cyc) {
         if (!cy.check) continue;
         if (m.now() <= t) m.run(t + 1 - m.now());
-        if (err[0]) break;
-        fp::FpOut o2;
-        reqfp::reqbus(o2, m, u, t);
-        if (o2.done() != cy.bus_h) {
-            ::test::fail(__FILE__, __LINE__, "split mode 3: after cycle %llu: reqbus %016llx, ref %016llx", (unsigned long long)t,
-                         (unsigned long long)o2.done(), (unsigned long long)cy.bus_h);
-            return;
+        fp::FpOut b;
+        reqfp::reqbus(b, m, u, t);
+        out.h.push_back(b.done());
+        uint64_t all = fp::kSeed;
+        for (unsigned k = 0; k < SENDERS; k++) {
+            const Stand& st = m.unit<Stand>(kSt[k < 64 ? k / 8 : 8]);
+            fp::FpOut q;
+            reqfp::port(q, m, u.leaf[k], st.set_w[k - st.first], t);
+            all = fp::fmix(all ^ q.done());
         }
-        checks++;
+        out.h.push_back(fp::fmix(all ^ uint64_t(SENDERS)));
     }
-    if (err[0]) ::test::fail(__FILE__, __LINE__, "split mode 3: %s", err);
-    CHECK(checks > 1000);
-    CHECK_EQ(lag_cycles(u), uint64_t(0));
+    if (m.now() < s.cycles) m.run(s.cycles - m.now());
+    out.err = err;
+    out.lag = lag_cycles(u);
+    return out;
+}
+}  // namespace
+
+// Mode 3 split over five thread domains gives one domain's results exactly (W4's guarantee): on the calm script equal
+// to ref as well; on the full script (backpressure) the same differences from ref, and the same count of them.
+TEST(reqbus_mode3_split_equals_one_domain) {
+    for (const char* f : {"calm-s2.txt.gz", "full-s3.txt.gz"}) {
+        Script s = load(std::string("tests/reqconf/") + f);
+        CHECK(s.ok);
+        const Mode3Run one = mode3(s, 1), five = mode3(s, 5);
+        std::printf("  %s: one domain lag %llu; split: %s, lag %llu\n", f, (unsigned long long)one.lag, five.partition.c_str(),
+                    (unsigned long long)five.lag);
+        CHECK(five.partition != "one domain");
+        CHECK(one.h == five.h);
+        CHECK(one.err == five.err);
+        CHECK_EQ(one.lag, five.lag);
+        if (std::string(f) == "calm-s2.txt.gz") {
+            CHECK(one.err.empty());
+            CHECK_EQ(one.lag, uint64_t(0));
+            size_t i = 0;
+            for (const auto& [t, cy] : s.cyc) {
+                if (!cy.check) continue;
+                if (one.h[i] != cy.bus_h || one.h[i + 1] != cy.ports_h) {
+                    ::test::fail(__FILE__, __LINE__, "calm mode 3: after cycle %llu: differs from ref", (unsigned long long)t);
+                    break;
+                }
+                i += 2;
+            }
+        } else {
+            CHECK(one.lag > 0);
+        }
+    }
 }

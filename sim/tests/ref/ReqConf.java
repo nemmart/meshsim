@@ -9,7 +9,8 @@ import java.util.Random;
  * written, so the C++ bus (tests/test_reqbus.cpp) can replay the calls and must reproduce every result and every state.
  * Compiled into ref's default package (D5); nothing in sim/ref changes.
  *
- * Usage: java ReqConf SEED CYCLES [mix|fanin|full|drop|calm]  (stdout)
+ * Usage: java ReqConf SEED CYCLES [mix|fanin|full|drop|calm [T]]  (stdout; with T, StateFp's named reqbus stream after
+ *        cycle T on stderr, to diff with test_reqbus's REQBUS_DEBUG dump)
  *   mix     everything below in turn
  *   fanin   many tiles of one or several rows at once, the controllers too (the row nodes' and the root's round-robin)
  *   full    receivers that stop popping: the queues fill, the root runs out of credit, head-of-line blocking in a row;

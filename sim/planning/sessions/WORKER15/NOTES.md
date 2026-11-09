@@ -4,8 +4,8 @@ The replayer and the peripheral slot. Branch `sim-w15`. Prompt: `PROMPT.md`.
 
 ## Status
 
-**Go-ahead 2026-11-09** (owner): the plan as written; answers to Q1-Q4 below. Steps 1 and 2's ReplayConf done: the ALU and the replayer equal to `ref` (every cycle, 13 committed traces and 36
-local ones). Next: the port of ReplayerUnitTests, then Stage A on the runner.
+**Go-ahead 2026-11-09** (owner): the plan as written; answers to Q1-Q4 below. Steps 1-2 done: the ALU and the replayer equal to `ref` (ReplayConf every cycle; ReplayerUnitTests ported, 1,456
+checks). Next: Stage A on the runner, then the slot.
 
 ## The owner's answers (2026-11-09)
 
@@ -203,3 +203,18 @@ does the last two in that order already); the window, the live bits and C&C 1's 
 `w9-deliveries-selected/` and `w9-selected-windows.tgz`; ConvertDelivery first, in scratch, as Quests 105-107 did. By
 "deliveries 1-3" I meant REPLAYER-NOTES' (the tracer session's replay-inputs 1-3, jolt-cpp rows of v1.1's era). W9's
 deliveries at 821e1bd are the ones `ref`'s v1.3 replayer was last checked on (Quests 105-107), so Stage A uses these.
+
+### ReplayerUnitTests, ported (2026-11-09)
+
+`tests/test_replayer.cpp`: every group of `ref`'s `ReplayerUnitTests`, in its order, one TEST per group, with
+`tests/replay_window.h` (ReplayWindow: the builders, the stream encoders, `java.util.Random` so the seeded inputs are
+`ref`'s), `tests/replay_driver.h` (ReplayDriver line for line, on the C++ replayer: also Stage A's driver) and
+`tests/replay_t.h` (ref's `T`; `T.ub` and `T.throwsISE` become a forked child that must abort naming the same texts).
+**1,456 checks, all passing, in all four builds**; `ref` runs 1,473. The 17 not ported, exactly: ConvertDelivery's two
+groups (10 + 5 checks: they test `ref`'s Java converter, which Stage A uses as is) and `queueSizes`' 8 KB control
+(2 checks: `-Dreplayer.logq=512`, v1.25's log queues for a stall comparison, isn't modelled; LOG_QUEUE_ENTRIES is 256).
+The timing group prints `ref`'s line exactly ("program pass: 85 cycles ..., stalls [0, 4, 0, 0, 2, 0, 0]").
+
+Also: the replayer now latches the stream word through W14's `stream_word.h` (one definition of the layout); the
+tests build stream words with its `build`. (A slip of mine on the way, worth recording: a `//` comment swallowed a
+statement in the C++ `Bits::put` exactly as in ref's ReplayerTest line 105; the compiler caught it.)

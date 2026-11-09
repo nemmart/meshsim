@@ -3,6 +3,8 @@
 
 #include <cstdio>
 
+#include "units/stream_word.h"
+
 namespace units {
 
 namespace {
@@ -10,16 +12,6 @@ uint64_t mix(uint64_t z) {
     z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ull;
     z = (z ^ (z >> 27)) * 0x94d049bb133111ebull;
     return z ^ (z >> 31);
-}
-// ref's bits128 for n <= 64 bits of a 128-bit word {lo, hi} from bit pos.
-uint64_t bits128(uint64_t lo, uint64_t hi, unsigned pos, unsigned n) {
-    uint64_t v = 0;
-    for (unsigned k = 0; k < n; k++) {
-        unsigned b = pos + k;
-        uint64_t bit = b < 64 ? lo >> b : hi >> (b - 64);
-        v |= (bit & 1) << k;
-    }
-    return v;
 }
 }  // namespace
 
@@ -198,10 +190,10 @@ void Replayer::flush(int64_t t) {
     state_written_ = true; flushes++;
 }
 void Replayer::latch_sizes() {
-    const uint64_t lo = region0[2], hi = region0[3];
+    streamword::Size sz[3];
+    streamword::parse(region0[2], region0[3], sz);   // W14's stream_word.h: the layout's one definition
     ReplayerStream* s[3] = {&code, &rlog, &wlog};
-    for (unsigned i = 0; i < 3; i++)
-        s[i]->latch(unsigned(bits128(lo, hi, 16 * i, 16)), unsigned(bits128(lo, hi, 48 + 17 * i, 17)), bits128(lo, hi, 99 + i, 1) != 0);
+    for (unsigned i = 0; i < 3; i++) s[i]->latch(sz[i].words, sz[i].values, sz[i].compressed);
 }
 
 void Replayer::stop_core(int64_t t, bool post_done) {

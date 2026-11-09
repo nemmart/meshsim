@@ -177,13 +177,8 @@ std::string run(const Script& s, sim::Options opt) {
 }
 
 // The same through W15's slot (PeriphSlot on C&C 1, peripheral 1 type PT_CNC1): the core's side puts the stores and
-// the consuming loads on S2/S3 (CoreOp, Link(1)) and reads the window RegFile at its loads' sample cycles.
-// WAITS for the slot to hold a peripheral's own ports: the framework rewrites a handle in place at the build and checks
-// that it is a member of the unit, so handles inside a heap-allocated peripheral can't be declared (asked of W15,
-// 2026-11-09). Built with -DW16_SLOT_OWN_PORTS once the slot offers them.
-// W15 (2026-11-09): the slot holds them now (OwnPorts, peripheral.h): on.
-#define W16_SLOT_OWN_PORTS 1
-#ifdef W16_SLOT_OWN_PORTS
+// the consuming loads on S2/S3 (CoreOp, Link(1)) and reads the window RegFile at its loads' sample cycles; C&C 1's own
+// ports (the rows, the controllers' lines, GO) are the slot's OwnPorts at the peripheral's indices (W15, 72b5da2).
 struct SlotCoreSide {
     uint64_t undefined_stores = 0;
     sim::LinkOut core, region;
@@ -267,7 +262,6 @@ std::string run_slot(const Script& s, sim::Options opt) {
     out += b + (hex.empty() ? std::string("-") : hex) + "\n";
     return out;
 }
-#endif
 
 std::string body(const std::string& f) {
     std::string r;
@@ -300,11 +294,7 @@ void conformance(sim::Options opt, [[maybe_unused]] bool through_slot = false) {
         std::string script = portconf::read_command("gzip -dc " + kDir + name + ".script.gz", &ok1);
         std::string ref = body(portconf::read_command("gzip -dc " + kDir + name + ".obs.gz", &ok2));
         if (!ok1 || !ok2 || ref.empty()) { ::test::fail(__FILE__, __LINE__, "fixture %s missing", name); return; }
-#ifdef W16_SLOT_OWN_PORTS
         const std::string got = through_slot ? run_slot(parse(script), opt) : run(parse(script), opt);
-#else
-        const std::string got = run(parse(script), opt);
-#endif
         if (!same(name, got, ref)) { ::test::fail(__FILE__, __LINE__, "%s differs from ref", name); return; }
     }
 }
@@ -319,14 +309,12 @@ TEST(cnc1_periph_conformance_under_debug_options) {
     sim::Options c; c.step_all = true; conformance(c);
 }
 
-#ifdef W16_SLOT_OWN_PORTS
 // Through W15's slot unit: the same fixtures, the same lines.
 TEST(cnc1_periph_through_the_slot_conformance_with_ref) {
     conformance({}, true);
     sim::Options a; a.shuffle_seed = 5; conformance(a, true);
     sim::Options c; c.step_all = true; conformance(c, true);
 }
-#endif
 
 // C&C 2's stub in a controller's slot: PARAMS type 2, never running, no events, no errors; C&C 3's without the Tracer
 // reports type 3 (CcCores.Stub(2 + c - 1)).

@@ -10,18 +10,20 @@
 // t + 1 at the earliest). Neither reference run reaches the watchdog or the UART.
 //
 // THE CHIP LINES, as events (D23, AUDIT-M3 section 4), through the peripheral's own ports (ports/begin/end):
-//   rows[8]    LinkIn, width 1, latency 1, from M2's row collectors (cnc.h's row word: [7:0] READY edges, [15:8] which
-//              tiles sent a line word, [23:16] their error levels): a word arriving at t carries what ref makes visible
-//              at t (readyAt = edge + ready_latency; an error line's change at edge, visible error_latency later; M2
-//              requires error_latency == ready_latency, one line per tile carries both).
-//   cc_line[3] LinkIn, width 1: the controllers' register blocks' line words (tile_ctl.h: bit 0 READY rose, ignored for
-//              controllers as in ref; bit 1 the error level after endCycle). [1], [2]: C&C 2's and C&C 3's, latency
-//              ready_latency - 1 (put at level 0 of t + 1 for the end of t: visible at t + error_latency, ERROR_LINES_2
-//              [1], [2]). [0]: C&C 1's own, latency 1: its ERRORS non-zero latches the toast pin (ref: at the end of t,
-//              CcCores.endCycle; here two cycles later, with toast_at = t; T2 reaches no error, so no reference sees it).
-//   go[64]     LinkOut, width 0, to every tile's register block: PULSE_GO stored at t is applied at level 0 of t + 1 and
-//              put in end(t + 1) with latency go_latency + skew[k], so the block's GO input arrives at
-//              t + go_latency + skew[k] + 1, as M2's GO net (cnc.h: the tile sees GO at t + go_latency + skew[k]).
+//   rows (8)   own LinkIns (the slot's OwnPorts, from row0), width 1, latency 1, from M2's row collectors (cnc.h's
+//              row word: [7:0] READY edges, [15:8] which tiles sent a line word, [23:16] their error levels): a word
+//              arriving at t carries what ref makes visible at t (readyAt = edge + ready_latency; an error line's
+//              change at edge, visible error_latency later; M2 requires error_latency == ready_latency, one line per
+//              tile carries both).
+//   lines (3)  own LinkIns (from line0), width 1: the controllers' register blocks' line words (tile_ctl.h: bit 0
+//              READY rose, ignored for controllers as in ref; bit 1 the error level after endCycle). [1], [2]: C&C 2's
+//              and C&C 3's, latency ready_latency - 1 (put at level 0 of t + 1 for the end of t: visible at
+//              t + error_latency, ERROR_LINES_2 [1], [2]). [0]: C&C 1's own, latency 1: its ERRORS non-zero latches
+//              the toast pin (ref: at the end of t, CcCores.endCycle; here two cycles later, with toast_at = t; T2
+//              reaches no error, so no reference sees it).
+//   go (64)    own LinkOuts (from go0), width 0, to every tile's register block: PULSE_GO stored at t is applied at
+//              level 0 of t + 1 and put in end(t + 1) with latency go_latency + skew[k], so the block's GO input
+//              arrives at t + go_latency + skew[k] + 1, as M2's GO net (the tile sees GO at t + go_latency + skew[k]).
 // READY arrivals are applied in begin(t) (READY_LINES at a sample t reads arrivals up to t, ref's readyBits(t)); error
 // line arrivals at t are applied in step(t) (ref applies errChanges visible at t in runCycle(t), after the core's reads
 // of t). EVENTS [2] (all READY) is live, set by step(t) from allReady(t), as ref's runCycle(t): a load at t + 1 sees it.
@@ -133,8 +135,6 @@ struct Cnc1Peripheral : PeripheralBase<Cnc1Peripheral> {
     uint32_t consume_events(uint32_t bits) { return ev.consume(bits); }
     // 1 written, 0 read-only (a bus error), -1 undefined. A UART_TX store never arrives with the FIFO full: the core
     // retried it while R_STALL was set (store_stalls).
-    // W15 for W16 (peripheral.h's static map): the words a store writes; 32-36 and 43 are read-only (a bus error)
-    bool writable(int w) const { return w >= 37 && w <= 45 && w != 43; }
     int write_word(int64_t t, int w, uint32_t v) {
         switch (w) {
         case 37: expect = (expect & ~0xFFFFFFFFull) | v; return 1;

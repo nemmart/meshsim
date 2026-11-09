@@ -172,3 +172,11 @@ receive queue with its controller; C&C c is in tile c's domain). Three points fo
   C&C 3's DMA input stays off until W15's `G1Config::periph_slot` builds the slot in W8's builder (`cc_cycle` wires
   the slot's DMA when the builder offers it; C&C 1's and 2's lead nowhere, as ref's null `dmaPort`).
 - 2026-11-09: make check after the harness, build by build: 53 test binaries pass on clang and gcc, debug and release; TSan `test_chip form2` on both.
+- 2026-11-09: merged main (W15's own ports, 72b5da2): W15's interface adopted as built (`ports(OwnPortsDecl&)` with
+  `link_in`/`link_out` returning indices; `begin`/`end` with `OwnPorts&`; `row0`, `line0`, `go0`). The duplicate
+  `writable` resolved to one (mine, checked against `write_word` for 32-127; W15's was the same set of words). The
+  through-the-slot conformance unconditional now (the `W16_SLOT_OWN_PORTS` flag gone). Owner on D34 for T2: mode 3
+  split with `lag_cycles` 0, mode 0 on one domain as the cross-check; W14 writes `reqbus` and the 67 `req` streams.
+  make check build by build: 53 test binaries pass on clang and gcc, debug and release; TSan on both.
+  Next: the chip wires C&C 1's own ports (instead of `cc1.lines`) once the slot is built in W8's builder for
+  controllers (`G1Config::periph_slot`); then W14's bus for the boot.

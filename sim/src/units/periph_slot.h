@@ -142,8 +142,8 @@ struct SlotCore {
     SlotCore(SlotCore&&) noexcept = default;
     SlotCore(const SlotCore&) = delete;
     SlotCore& operator=(const SlotCore&) = delete;
-    // Configuration: create peripheral n of type `type` (the slot owns it).
-    void install(unsigned n, PeriphType type, uint64_t replayer_row_buffer = 0);
+    // Configuration: create peripheral n of type `type` (the slot owns it), from the slot's configuration.
+    void install(unsigned n, PeriphType type, const PeriphSlotConfig& c = PeriphSlotConfig{});
 
     uint32_t present() const;
     // ---- ref's PeripheralSlot, method for method ----
@@ -174,6 +174,8 @@ struct SlotCore {
     Replayer& replayer(unsigned n);
     tracer::Tracer& tracer(unsigned n);   // W14
     TestPeripheral& test_peripheral(unsigned n);
+    Cnc1Peripheral& cnc1(unsigned n);         // W16 (the chip sets C&C 1's ref_cycle)
+    CcStub& cc_stub(unsigned n);              // W16
 
 private:
     void violate(int64_t t, uint16_t code, uint32_t a = 0, uint32_t b = 0);

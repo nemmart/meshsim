@@ -334,3 +334,17 @@ end.bin, clean.
 - **For W14 and W16:** wire into `units/periph_slot.cpp`: your include, your `case` in `SlotCore::visit` (marked), your
   `delete` in `SlotCore::Ref::~Ref` (marked), and your creation in `SlotCore::install` (W14: the Tracer needs its tables
   and memory system: tell me what `install` should take, or add a `PeriphSlotConfig` field for it).
+
+### make check on main a880d08, and W16's requests (2026-11-09)
+
+- **The full make check on main (a880d08, the merge of dab8ec9): clean.** gcc debug, gcc release, clang debug, clang
+  release: 49 test binaries each (`make run`'s list), all pass; TSan gcc and clang: the seven thread tests, all pass, no
+  warnings. (Run in pieces: a tool call here stops at 300 s.)
+- **W16's requests:** `SlotCore::cnc1(n)` (and `cc_stub(n)`, `tracer(n)` for W14) beside `replayer(n)`: a static_cast
+  from the slot's pointer, no include needed; `ControlIO::dma` (a CreditOut, width 3: the slot's S6 into the controller
+  router's CC_DMA_IN credit Fifo) and `ControlIO::has_dma` in `chip.h`.
+- **`install`'s place marked** for W16's types, as `visit` and `~Ref` are; `install` takes the slot's `PeriphSlotConfig`.
+- **Merged main a2009dc (W14's Tracer wiring):** W14's design stands: the Tracer created bare (`new tracer::Tracer(tile)`),
+  its tables by region packets, its memory from the harness after the build (`tracer(n).own_memory(store)`), as ref
+  does. I dropped my `PeriphSlotConfig::tracer` (no need beyond `own_memory`) and my duplicate `tracer(n)`; kept W14's
+  case lines in `visit`, `~Ref` and `install`, and its accessor.

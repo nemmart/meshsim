@@ -36,6 +36,9 @@ struct ControlIO {
                                   // overflow (t + 1, D28), so the block steps and its endCycle(t + 1) sets ERRORS [0]
     MemIO mem;                    // W11 (G3, approved 2026-11-08): the read queue's ports, which live in the injection
                                   // unit; tile_cycle wires them when `mem.present` (W12's clients by its flags)
+    sim::CreditOut dma;           // W15: the peripheral slot's DMA output (AUDIT-M3 3.1 S6, width 3), C&C 1-3 only ->
+                                  // the controller router's CC_DMA_IN, a credit Fifo of cc_dma_depth (4); set when
+    bool has_dma = false;         // the builder declared it (the slot's PeriphSlotConfig::controller)
 };
 // Adds tile `k`'s control units (names prefixed "t<k>."), wires them inside, returns the ports above. `ctx` is the
 // builder's own (images, configuration).

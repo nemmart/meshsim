@@ -1,6 +1,8 @@
 // statefp_g2.cpp: G2's chip-level writers (WORKER9). See statefp_g2.h.
 #include "statefp_g2.h"
 
+#include "reqbus_fp.h"
+
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -107,8 +109,10 @@ void w_cc1p(const void* p, FpOut& o, const FpCtx& x) {
     for (const Pending& e : chg) { o.w("errChanges", e.vis); o.w("errChanges", e.k); o.w("errChanges", e.level); }
 }
 
-// StateFp "reqbus" with the bus idle (RequestBus's reset state; nothing in M2 sends a request).
-void w_reqbus(const void*, FpOut& o, const FpCtx&) {
+// StateFp "reqbus": W14's writer (reqbus_fp.h) when the chip has the bus; else the bus idle (RequestBus's reset state).
+void w_reqbus(const void* p, FpOut& o, const FpCtx& x) {
+    const G2Chip& g = *static_cast<const G2Chip*>(p);
+    if (g.reqbus && x.sim) { reqfp::reqbus(o, *x.sim, *g.reqbus, x.cycle); return; }
     for (unsigned b = 0; b < 64 + 11; b++) { o.w("occ", 0); o.w("reqs", 0); o.w("arrivals", 0); }
     for (unsigned r = 0; r < 8; r++) { o.w("rowCur", uint64_t(-1)); o.w("rowRr", 7); }
     o.w("rootCur", uint64_t(-1)); o.w("rootRr", 10); o.w("rootDropping", 0);

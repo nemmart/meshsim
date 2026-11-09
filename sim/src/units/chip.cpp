@@ -105,6 +105,7 @@ TileIO tile_cycle(sim::Config& cfg, const ChipSpec& spec, unsigned k) {
     t.attached = k < 3;
     if (t.attached && !spec.cc_cores) { t.from_cnc = r.from_cnc; t.to_cnc = r.to_cnc; }
     if (t.attached && spec.cc_cores) { t.from_cc = r.from_cc; t.to_cc = r.to_cc; }
+    t.req = io.req;                                       // W14: wired to the request bus by build_chip
     return t;
 }
 
@@ -127,7 +128,30 @@ CcIO cc_cycle(sim::Config& cfg, const ChipSpec& spec, unsigned c) {
     o.link_in = r.in[Router::CC_LINK_IN]; o.link_out = r.out[Router::CC_LINK_OUT];
     o.has_dma = dma; if (dma) o.dma = r.dma;
     o.go = io.go; o.line = io.line;
+    o.req = io.req;                                       // W14: its request port, both sides
     return o;
+}
+
+// W14 (D34): the request bus for the senders whose control has a request port (the tiles; with `cc`, the controllers,
+// which also get their receive queues): each leaf in its unit's domain, each queue in its controller's, the nodes with
+// tile 0's. The mode is spec.reqbus.credit_latency, set explicitly (D34); mode 0 split is refused at build.
+void add_request_bus(sim::Config& cfg, const ChipSpec& spec, TileIO* io, CcIO* cc) {
+    uint64_t tiles = 0;
+    unsigned ccs = 0;
+    units::reqbus::ReqBusPlacement pl;
+    for (unsigned k = 0; k < 64; k++) {
+        if (io[k].req.present) tiles |= uint64_t(1) << k;
+        pl.leaf[k] = spec.domain ? spec.domain[k] : 0;
+    }
+    for (unsigned c = 0; cc && c < 3; c++) {
+        if (cc[c].req.present) ccs |= 1u << c;
+        pl.leaf[64 + c] = pl.recv[c] = spec.domain ? spec.domain[c] : 0;
+    }
+    pl.bus = spec.domain ? spec.domain[0] : 0;
+    if (!tiles && !ccs) return;
+    const units::reqbus::ReqBusIO rb = units::reqbus::add_reqbus(cfg, spec.reqbus, tiles, ccs, spec.domain ? &pl : nullptr);
+    for (unsigned k = 0; k < 64; k++) if (io[k].req.present) units::reqbus::wire_sender(cfg, rb, k, io[k].req);
+    for (unsigned c = 0; cc && c < 3; c++) if (cc[c].req.present) units::reqbus::wire_sender(cfg, rb, 64 + c, cc[c].req);
 }
 
 void build_chip(sim::Config& cfg, const ChipSpec& spec) {
@@ -150,6 +174,7 @@ void build_chip(sim::Config& cfg, const ChipSpec& spec) {
             cfg.link(io[c].to_cc, u[c].link_in, nc.cc_link_latency);
             cfg.link(u[c].link_out, io[c].from_cc, nc.cc_link_latency);
         }
+        add_request_bus(cfg, spec, io, u);                // W14 (D34): the tiles' and the controllers' ports
         // The chip lines (AUDIT-M3 3.4, section 4): the tiles' line words through M2's row collectors, the controllers'
         // directly, all into C&C 1's peripheral (READY, ERROR_LINES, the toast pin), GO out of it; with C&C 1, the
         // collectors in tile 0's domain. Until the slot is wired, a stand-in takes C&C 1's peripheral's place.
@@ -167,6 +192,7 @@ void build_chip(sim::Config& cfg, const ChipSpec& spec) {
         }
         return;
     }
+    add_request_bus(cfg, spec, io, nullptr);              // W14 (D34): the tiles' ports (M2's chip: no controllers)
     // C&C and the collectors with tile 0 (C&C's send is a Hold into tile 0's router), C&C 2 and 3 with tiles 1 and 2
     if (spec.domain) cfg.domain(spec.domain[0]);
     auto& cc = cfg.add<Cnc>("cnc", nc, *spec.program);

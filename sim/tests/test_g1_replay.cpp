@@ -92,6 +92,7 @@ std::string replay(const char* name, uint64_t through, sim::Options opt) {
     sim::Config cfg(opt);
     auto& st = cfg.add<Stand>("stand", ev.data(), unsigned(ev.size()));
     ControlIO io = add_g1(cfg, 0, &gx);
+    units::reqbus::tie_off(cfg, "t0.reqtie", io.req);      // W14: no request bus in a lone tile
     cfg.link(st.eject, io.eject, 1);
     cfg.link(st.go, io.go, uint32_t(go_lat));
     cfg.connect(io.send, st.send);

@@ -326,6 +326,88 @@ no violations.** The death test: a run before the memory is given. All four buil
 the record write is then UB while running: FATAL. (A Tracer-internal timing change moves both runs alike: that is
 test_tracer's to catch, and it does.)
 
+## 14. The request bus (owner, 2026-11-09: go-ahead, option 3 = D34)
+
+**Taken over from W16** (its plan's step 3; its log shows steps 1, 2 and the boot-end point, nothing on the bus).
+**For W16:** I'm building the request bus, both senders (the tiles' REQUEST_SEND and the controllers'), and the
+controllers' receive side; the ports you wire into the chip are below, one round.
+
+**D34** (in DECISIONS.md): one implementation, its credit latency an explicit configuration key (`reqbus_credit_latency`,
+never derived from the partition): **0** exact as `ref` (every sender in the bus's domain; a split is fatal at build),
+**3** the spec under D29 (each port's leaf in its tile, beats and credits over Link(3)), the default. Mode 3 counts the
+cycles where it would differ from `ref` and every run reports the count; ReqConf checks mode 0 against `ref` every
+cycle on all traffic, and mode 3 against `ref` on the traffic without backpressure.
+
+**The design** (`src/units/reqbus.h`; approved changes, owner 2026-11-09: `ref`'s own structure, forced by the
+framework's 64 inputs a unit; the root its own type, for levels):
+- `ReqLeaf` (a sender's port: `RequestPort`'s FIFO, the leaf link), one per sender in its tile's domain: `push`
+  (Link(1), from its core), `freed` (Wire to its core: the head freed at t, `canPush`), `freed_ev` (Link(1) to its
+  register block: the FIFO's count, STATUS [6], EVENTS [11]); beats to its node over Link(3).
+- `ReqNode` × 8 (the row nodes, `reqbus.row<r>`) and `ReqRoot` (`reqbus.root`): `ref`'s Buf per input, round-robin,
+  wormhole, the requestor stamped, the root's credits and drops. Event-driven: stepped while a beat or request is in
+  it, asleep otherwise.
+- `ReqRecv` × 3 (`cc<c+1>.reqrecv`), in its controller's domain: the delivery over Link(3), the head published in a
+  RegFile {pending, w0-w3} as a load at t sees it, the pop over Link(1).
+- **Room**: mode 0, each node publishes its forwarded beats per input in a RegFile written first in its step (levels:
+  root < rows < leaves < cores; same domain, so a split is refused at build); mode 3, credits over Link(3), with the
+  D29 count (`lag_cycles`, retroactive and exact: a blocked cycle counts when the credits then arriving show `ref`
+  would have had room).
+- **The queue credit**: the controller core's pop also puts the root's credit (Link(1) in mode 0, `ref`'s next cycle;
+  Link(3) in mode 3).
+
+**Checked** (`tests/test_reqbus.cpp`, `tests/ref/ReqConf.java`, `reqconf.sh`, `tests/reqconf/`: mix, calm, full,
+fanin, drop; 1 MB): mode 0 equal to `ref` every cycle (every call's result; the `reqbus` and the 67 `req` streams) on
+all five, plain, step-all, shuffled, all four builds; mode 3 equal on calm (one request in the bus at a time),
+`lag_cycles` 0, and 993-2,098 on the others; mode 3 split over five domains equal to one domain; mode 0 split refused
+at build. Teeth: the root's credit check and the leaf's room check each fail when planted.
+
+**The ports W16 wires, per controller C&C c (c = 0-2)** (one round; the tiles' are the same send side, wired by the
+chip builder): `ControlIO` gains a request side, filled by `add_g1` (W8's builder, which W16's controllers use):
+| `ControlIO` field | unit port | to / from | kind |
+|---|---|---|---|
+| `req.push` | the core's `req_push` | → `t<k>.reqleaf` / `cc<c+1>.reqleaf` `push` | Link(1), width 2 |
+| `req.freed` | the core's `req_freed` | ← the leaf's `freed` | Wire |
+| `req.freed_ev` | the block's `req_freed_ev` | ← the leaf's `freed_ev` | Link(1), width 0 |
+| `req.recv` (controllers) | the core's `recv` | ← `cc<c+1>.reqrecv` `head` | RegFile (5) |
+| `req.pop` (controllers) | the core's `recv_pop` | → the queue's `pop` | Link(1), width 0 |
+| `req.qcredit` (controllers) | the core's `recv_credit` | → `reqbus.root` `qcredit<c>` | Link(`io.queue_credit_latency()`), width 1 |
+`units::reqbus::add_reqbus(cfg, rc, tiles, ccs, placement)` adds the bus; `wire_reqbus(cfg, io, k, ControlIO&)` wires
+sender k (a tile 0-63, or 64 + c) and, for a controller, its receive side. Placement (`ReqBusPlacement`): each leaf in
+its sender's domain, each queue in its controller's, the nodes anywhere (mode 3); everything in one domain (mode 0).
+The mode is `reqbus_credit_latency` in the chip's configuration, set explicitly (D34), and every run reports
+`lag_cycles`.
+
+**W16's round (owner, 2026-11-09): agreed.** W16 takes the ports above. **T2 (confirmed, D34):** T2 runs mode 3 (the
+default, split as it needs) and **requires `lag_cycles` 0**; mode 0 on one domain is its cross-check (the same run must
+give the same results). The end-to-end core test (a tile's REQUEST_SEND into a controller's REQUEST_RECEIVE) is built
+on W16's units 64-66 once they're on main, not on a rig of mine.
+
+**Changes to closed workers' files** (D34's wiring; each marked `W14` in the file):
+- **W5's `rv32.h`**: the receive loads (REQUEST_GET_W0-W2, REQUEST_RECEIVE) and EVENTS / EVENTS_PEEK's live bit [12],
+  each only where the Env offers them (`if constexpr (requires ...)`), so M1's `Core` (controller.h) is unchanged.
+- **`regmap.h`**: `COND_RECV_UNDERFLOW = 14`.
+- **W8's `tile_ctl.h`**: `TileCore` gains `req_push` (Link out), `req_freed` (Wire in) and, for a controller (`receiver`),
+  `recv` (RegFile in), `recv_pop`, `recv_credit`; its Env's `can_push` (STATUS [6] at t - 1, or freed at t), `post`
+  (REQUEST_SET_W0-W2 kept, REQUEST_SEND pushes), `req_get` / `req_receive` / `live_events`, and `wake` (the block's
+  wake, or TileControl.wakeTerm with the live bit, never through a closed gate). `TileCtl` gains `req_freed_ev` (the
+  FIFO's count, through RegBlockState's existing `freed`).
+- **W8's `tile_ctl.cpp`** (`add_g1`): the core built with `receiver = k >= 64` and the done gate; `ControlIO::req` filled.
+- **W9's `chip.h` / `chip.cpp`**: `ReqIO` in `ControlIO` and `TileIO`; `ChipSpec::reqbus` (the configuration, credit
+  latency explicit); `build_chip` adds the bus for the tiles with a request port (leaves in their tiles' domains, the
+  nodes with tile 0's) and wires each.
+- **Tests**: `test_chip.cpp` (W9: its lone-tile builders tie the request side off with `tie_off`; the chip's
+  fingerprint takes the real streams), `test_g1_tile.cpp` and `test_g1_replay.cpp` (W8: `tie_off`), `test_sort.cpp`
+  (W12: the real streams), `statefp_g1.*` (W8: `req` from the leaf, `attach_reqbus`), `statefp_g2.*` (W9: `reqbus`
+  from the bus).
+
+**Status (2026-11-09).** `make run` on clang release: 406 tests pass. wfi, regs, a2a (test_chip, one and split
+domains), the 16K sort (`sort_runs_equal_to_refs`) and M1's goldens (`golden_all_match_*`, the block's and core's
+fingerprints on them) are unchanged, now with the real `reqbus` and `req` streams. gcc debug: test_chip, test_g1_tile,
+test_g1_replay, test_reqbus pass. **Not yet**: an end-to-end test of the M2 core's request path (a tile's REQUEST_SEND
+through its leaf and the bus into a controller core's REQUEST_RECEIVE): it needs a receiving controller, so it comes
+with W16's units 64-66 (or a small two-core rig of mine if W16's are late); the full `make check` (both compilers,
+debug, tsan).
+
 ## Log
 
 - 2026-11-09: plan agreed; branch `sim-w14` from main 1a898aa.
@@ -345,3 +427,12 @@ test_tracer's to catch, and it does.)
 - 2026-11-09: wired into W15's slot (section 13): install takes nothing; the memory given after the build
   (`own_memory`); `test_tracer_slot` equal to SlotCore driven directly in three variants.
 - 2026-11-09: REPORT.md so far (the owner: nothing more until W16's chip assembly).
+- 2026-11-09: the request bus taken over from W16 (section 14); D34 recorded by the owner; the design and W16's ports.
+- 2026-11-09: the bus equal to ref (ReqConf, mode 0 every cycle; mode 3 on calm; split tests); wired into the tiles;
+  the fingerprint writers registered; regressions unchanged (section 14, Status).
+- 2026-11-09: merged main (W15's tile paths, W16's harness; 3b65e61): chip.h/.cpp and tile_ctl.h/.cpp resolved once
+  (W15's slot ports behind `periph_slot`; the request side in ControlIO, TileIO, CcIO and the tile builder;
+  `add_request_bus` serves M2's chip and W16's `cc_cores` chip, the controllers' leaves and queues in their domains).
+  `Tracer::writable(w)` (W15's ask). **make check, build by build on the merged tree (16b8822): gcc and clang, debug and
+  release, all 54 binaries pass; TSan, gcc and clang, all 8 thread tests (83 cases, `test_reqbus`'s split run
+  included), no races.**

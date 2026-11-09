@@ -92,7 +92,8 @@ void row_bands(unsigned parts, uint8_t domain[64]);
 
 // Unit names (for observers and the fingerprint): "t<k>.router", "t<k>.inj", "cnc", "row<r>", "ep2", "ep3"; units
 // 64-66 (C&C 1-3 as cores, M3) "cc1.router" ... "cc3.inj" (AUDIT-M3 6.9's names).
-std::string unit_prefix(unsigned k);                  // "t<k>." for 0-63, "cc<k - 63>." for 64-66
+// "t<k>." for 0-63, "cc<k - 63>." for 64-66 (inline: the control builders use it without the chip's objects)
+inline std::string unit_prefix(unsigned k) { return k < 64 ? "t" + std::to_string(k) + "." : "cc" + std::to_string(k - 63) + "."; }
 std::string tile_unit(unsigned k, const char* unit);
 
 }  // namespace units

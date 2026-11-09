@@ -8,7 +8,6 @@
 
 namespace units {
 
-std::string unit_prefix(unsigned k) { return k < 64 ? "t" + std::to_string(k) + "." : "cc" + std::to_string(k - 63) + "."; }
 std::string tile_unit(unsigned k, const char* unit) { return unit_prefix(k) + unit; }
 
 namespace {

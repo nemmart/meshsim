@@ -88,3 +88,19 @@ orders, step-all, the missed-wake detector).
   watchdog is set; loads at least 2 cycles after a store; D29's re-pulse avoided. Three fixtures of 20,000 cycles (85
   GOs each, all-READY and watchdog events, error lines, the toast, UART bytes): equal to ref, under shuffle, both orders
   and step-all. A planted bug (tiles' error lines applied in `begin`) fails.
+- 2026-11-09: **step 2 done** (units 64-66): `SramBlocks` holds 67 units (`kUnits`); `G1Ctx::units` (64 by default, 67
+  with C&C as cores) with a check; `unit_prefix(k)` (inline, `chip.h`): `t<k>.` or `cc1.`-`cc3.`, used by `add_g1` and
+  `tile_unit`; `Injection::loops` as ref's (a controller's broadcast never reaches itself); the router's DMA input a
+  credit Fifo (the slot's S6 is a CreditOut); `host_port.h` (the host's queue, ref's hostWrite/hostLoad/hostCommand,
+  stepped while it holds packets); `cc_cycle` and `build_chip` with `cc_cores` (C&C c in tile c's domain, the C&C links
+  Link(1) both ways, tiles 0-2's fifth port FIFTH_LINK); until C&C 1's slot is wired, `cc1.lines` (a stand-in) takes
+  the row collectors' and the controllers' line words and drives no GO (also the controllers' GO inputs, which nothing
+  drives in ref). `test_cc_units`: C&C 1 booted through the host port (`tests/m3-images/cc_ping.c`) sends to tile 5, to
+  itself and a broadcast; one domain, 4 row bands on 4 threads, the debug options.
+- 2026-11-09: **an edit to W8's file** (`tile_ctl.h`, TileCtl::step; approved by the owner): the block steps again the
+  cycle after the core's own send (`send_put ? c.next()`), so STATUS's send-busy is fresh for a polling core. A missed
+  wake M2's programs never exposed (a landing or a K line always stepped the block); the detector can't see it (no data
+  waits, only stale published state). Found by C&C 1's first send in `test_cc_units`.
+- 2026-11-09: make check, build by build (one `make` exceeds the tool's 300 s: each build in a timed call, the tests from
+  a resumable script): 49 test binaries pass on clang debug, clang release, gcc debug and gcc release (wfi, regs, a2a
+  against their goldens in `test_chip`; the 16K sort in `test_sort`: unchanged); TSan `test_chip form2` on clang passes.

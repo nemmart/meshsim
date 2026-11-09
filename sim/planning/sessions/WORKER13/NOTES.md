@@ -69,3 +69,10 @@ Checks as 110u (`tasks/mk_task.sh`'s `checkin`): the manifest's sha256 equals `.
 `w26-jumpmap/P/manifest.sha256` likewise, then `sha256sum -c` inside it. Stage A on a v1.26.1 replayer reads v1.26.1
 records: Quests 105-107 converted the v1.25 deliveries in scratch with `ConvertDelivery` (never stored). `TracerT1`/T2
 read the v1.25 delivery directly (`state.bin` in v1.25's order).
+- 2026-11-09: **`AUDIT-M3.md` sections 3.1 (the slot) and 3.2 (the replayer) published for W15**, to the approved
+  structure (the peripheral a member of the slot unit, a switch on type). The slot's ports: the director's region write
+  a `Link(3)`, the core's stores and consuming loads a `Link(1)`, all applied at level 0; the window a `RegFile` written
+  only at level 0 (the end of t − 1); the work after. Level 0's order: the consume and mask first, then the landings,
+  then the core's inputs (a state-word landing's credits otherwise differ). Findings 9.1, 9.2. Next: W14's 3.3 and
+  section 6's Tracer streams (owner, 2026-11-09: registers, the caches' tags and lines, FIFOs, output queues, with the
+  cost per call).

@@ -172,6 +172,7 @@ struct SlotCore {
 
     // The peripheral at n as its class (tests, the harness; FATAL if it is another type).
     Replayer& replayer(unsigned n);
+    tracer::Tracer& tracer(unsigned n);   // W14
     TestPeripheral& test_peripheral(unsigned n);
 
 private:

@@ -252,6 +252,80 @@ its lazy settle, so whatever order 3.1 fixes for `ref` is reproduced exactly.
   end of 12), and the death test for an accept after its landing was settled. All fixtures and the replay still equal.
 - **Next:** wiring through W15's slot when its body lands (`PeriphSlot::tracer(n)` is declared in `periph_slot.h`).
 
+## 12. The Tracer's speed (owner, 2026-11-09: measure and report; no optimisation yet)
+
+- **`bench/w14/tracer_play`** (`w14.mk`): `convert` turns a TracerConf log (a FIFO from `ref`'s run) into a compact
+  call trace (the store, then the calls grouped by cycle, run-length coded; results and observations left out); `run`
+  replays it on the C++ Tracer, timed, per segment and in all, REPS in-process repetitions each on a fresh store, memory
+  system and Tracer (not timed), then the harness alone (decoding and dispatch, no Tracer call). Every pass must end on
+  `ref`'s last row count and record hash (so a trace that lost a call can't be timed). **`TracerPlay.java`**: the same
+  on `ref`'s Tracer. No proxy, no comparison in either: Quest 163 showed these calls equal, cycle by cycle.
+- **Locally** (one CPU, not a timing machine; small seeded traces, JIT not warm): C++ about 50 ns per Tracer cycle.
+- **Quest 166** (`166-w14-tracer-speed`; I claimed 164 first, which W15 had taken: renumbered): the traces of T1's
+  segments 0-3 of both programs, then each side alone on one P core (the JVM on the core and its hyperthread),
+  5 repetitions, the machine recorded (D21); perf (cycles) on the C++ replay with the hot lines of the Tracer's step
+  (W10's annotate parse).
+
+**Quest 166: ALL PASS** (the i5-14400F, governor powersave, P core 0; clang 18.1.3 release; Java 21.0.12; every pass
+ended on `ref`'s rows and record hash):
+
+| | Tracer cycles | C++ ns/cycle (5 reps) | C++ harness | ref ns/cycle (median; reps 0-4) | ref harness |
+|---|---|---|---|---|---|
+| evm-zone-29 0-3 | 91,765,907 (289 M calls) | **33.92** (33.88-33.98) | 0.50 | **41.89** (48.4, 42.0, 41.9, 40.2, 37.8) | 7.55 |
+| cyclone-29 0-3 | 80,108,285 (253 M calls) | **33.47** (33.36-33.56) | 0.56 | **37.03** (45.5, 37.0, 41.7, 35.8, 35.9) | 8.13 |
+
+- Per segment, C++: 32.3-34.7 ns (evm), 33.0-33.8 (cyclone), steady across segments and repetitions (±0.2 %); the
+  part before segment 0's ownership (the tables and record loading) 15-17 ns. `ref`'s first repetition carries the JIT's
+  warm-up (its first segment 1.8-2.0 µs/cycle), then 35-42 ns.
+- **C++ is 1.23x (evm) and 1.11x (cyclone) faster than `ref`'s Tracer**, medians; less against `ref`'s best
+  repetitions (1.12x, 1.07x). Net of each harness's own cost (decode and dispatch, measured alone), the two run at
+  about the same speed. At 34 ns, segment 10's 23.7 M Tracer cycles (T2) are about 0.8 s of C&C 3's work.
+- **perf** (cycles, the C++ replay, one repetition, evm-zone-29): `Tracer::settle` **31.1 %**, `main` 28.4 % (the
+  harness with the small Tracer calls inlined into it: `events().value`, `running`, `word`, `out_ready`... not
+  annotated: `main` was not in the symbol list), `Tracer::row` 9.7 %, `Tracer::step` 3.7 %, `fetch` 3.3 %, `push_code`
+  (set 1's code coder) 2.4 %, the trace's loading 2.4 %, `drain_cycle` 2.2 % plus the packers' `Bits::put` 2.3 %,
+  `fetch16` 1.9 %, `push_log` 1.0 %, `rvc::uncompress` 0.8 %, `data_line` 0.7 %, `alu::exec` 0.7 %; the memory system
+  and the LRUs under 0.5 % each.
+- **Inside settle** (called by every step and every level read, so several times a cycle): one load right after the
+  snapshot's stores (`s_mul_ = hash_mul_`) takes 45 % of its samples, which looks like a store-forwarding or cache stall
+  over the Tracer's large object (about 90 KB of inline arrays between the hot fields); the live service flags'
+  `OutQueue::flag()` (`taken()` scans the credits' bounds linearly, three queues every cycle) about 30 %.
+- In `step`, the samples sit on its entry and the `running_`/`stopped_` tests (a call per cycle, its frame); in `row`, 13 %
+  on one store into `cur_`.
+- **Not optimised** (owner: after the first T2 timing, D31's spirit). Candidates for that decision, cheapest first:
+  settle's snapshot taken only when something changed since the last (a dirty flag); `flag()` in O(1) (the count of
+  credits taken kept as reads advance); the hot fields together, the large arrays after them.
+
+## 13. Wired into W15's slot (owner, 2026-11-09)
+
+**The edits in `periph_slot.cpp`** (W15's file, the marked places): the include of `units/tracer.h`; `case PT_TRACER` in
+`SlotCore::visit`; its delete in `SlotCore::Ref::~Ref` (the Tracer deletes its memory with it); its creation in
+`SlotCore::install` (`new tracer::Tracer(int(tile))`). Also, beside them: the accessor `SlotCore::tracer(n)` (declared
+in `periph_slot.h` next to `replayer(n)`), and a Tracer branch in `SlotCore::digest()` (the debug checks' progress:
+pc, the stream word, rows, the FIFOs, the cycle counter, the fact counts). Build: `SLOT_LINK` includes `TRACER_LINK`
+(`tracer.mk` is now included before `units.mk`).
+
+**What `install` takes for the Tracer: nothing beyond the tile. For W15 (through the owner): no config field.**
+- **The tables** (the decode table, the ROM) are not configuration: they arrive as region packets from `tracer_ctl`
+  (part 0 at 0x1000 and 0x2000), as in `ref` (`Config.cc3Tracer` creates `new Tracer(me)` bare).
+- **The memory system and the memory** are given after the build by the harness, which owns the run's memory snapshot:
+  `slot.s.tracer(1).own_memory(std::unique_ptr<FileStore>)`. The Tracer then owns the store and a `MemSystem` over it,
+  made cold at every state-word landing (T2's `onStateWrite`). A PULSE_RUN without a memory system is FATAL (named).
+- `icache_lines` stays the default (128); only B1's sweep changed it.
+
+**Tested in the slot** (`tests/test_tracer_slot.cpp`, test_periph_slot's harness pattern): a stand (the core's window
+stores and consuming loads on S2/S3, the director's region writes on S1, the window RegFile read, the DMA's credit Fifo)
+runs a small controller: the tables and the record (838 region packets), the hash words, EVENTS_MASK, RUN_CONFIG and
+PULSE_RUN at the earliest legal cycle (the landing's own), then the drain (queue 0 in one transfer, the streams by
+128-word credits) to run done. A straight-line guest (ALU, MUL, loads and stores over two owned pages, END, then
+padding to 400 rows). The reference is the same controller driving `SlotCore` directly at `ref`'s timing (W15's
+SlotConf holds SlotCore to `ref`'s slot). **Plain, step-all and shuffled: the same decisions at the same cycles, the
+same 181 DMA packets at the same cycles (a cycle later through the Fifo), the same five fingerprint units at the end;
+no violations.** The death test: a run before the memory is given. All four builds; `test_periph_slot` and
+`test_slotconf` unchanged. **Teeth:** the unit's landing a cycle late (`accept(t - 2)`) makes the PULSE_RUN land first and
+the record write is then UB while running: FATAL. (A Tracer-internal timing change moves both runs alike: that is
+test_tracer's to catch, and it does.)
+
 ## Log
 
 - 2026-11-09: plan agreed; branch `sim-w14` from main 1a898aa.
@@ -265,3 +339,8 @@ its lazy settle, so whatever order 3.1 fixes for `ref` is reproduced exactly.
   20 logs equal; the runner's data absent here). The slot's interface proposed to W15 (section 9).
 - 2026-11-09: Quest 163 ALL PASS (section 10). W15's interface taken (section 11): PeripheralBase, violation_count,
   DIGEST_N, the late accept.
+- 2026-11-09: the speed measurement (section 12): tracer_play and TracerPlay; Quest 166 queued.
+- 2026-11-09: Quest 166 ALL PASS: C++ 33.9 / 33.5 ns per Tracer cycle, ref 41.9 / 37.0 (1.23x / 1.11x); perf: settle
+  31 %, the harness with inlined calls 28 %, row 10 % (section 12).
+- 2026-11-09: wired into W15's slot (section 13): install takes nothing; the memory given after the build
+  (`own_memory`); `test_tracer_slot` equal to SlotCore driven directly in three variants.

@@ -7,6 +7,7 @@
 #include "units/linkword.h"
 #include "units/replayer.h"
 #include "units/test_peripheral.h"
+#include "units/tracer.h"
 
 namespace units {
 
@@ -16,7 +17,7 @@ decltype(auto) SlotCore::visit(unsigned n, F&& f) {
     switch (per[n].type) {
         case PT_REPLAYER: return f(*static_cast<Replayer*>(per[n].p));
         case PT_TEST: return f(*static_cast<TestPeripheral*>(per[n].p));
-        // ---- W14: case PT_TRACER (units/tracer.h, tracer::Tracer), once it has violation_count and the late accept
+        case PT_TRACER: return f(*static_cast<tracer::Tracer*>(per[n].p));   // W14
         // ---- W16: case PT_CNC1 (Cnc1Peripheral), case PT_CC_STUB (CcStub), with their includes above
         default: FATAL("slot %u: peripheral %u of type %u has no dispatch case", tile, n, unsigned(per[n].type));
     }
@@ -32,7 +33,8 @@ SlotCore::Ref::~Ref() {
             break;
         }
         case PT_TEST: delete static_cast<TestPeripheral*>(p); break;
-        // ---- W14 / W16: their types' delete here too
+        case PT_TRACER: delete static_cast<tracer::Tracer*>(p); break;   // W14: its memory with it
+        // ---- W16: its types' delete here too
         default: break;
     }
 }
@@ -50,6 +52,10 @@ uint64_t SlotCore::digest() {
             Replayer& r = replayer(n);
             mixin(r.pc()); mixin(r.instr_idx()); mixin(r.rows_done()); mixin(r.is_running()); mixin(r.row_hash()); mixin(r.rows_sunk());
             mixin(r.code.occ); mixin(r.rlog.occ); mixin(r.wlog.occ); mixin(r.exp.occ);
+        } else if (per[n].type == PT_TRACER) {   // W14: the Tracer's progress
+            tracer::Tracer& x = tracer(n);
+            mixin(x.rec[0]); mixin(x.rec[2]); mixin(uint64_t(x.rows)); mixin(uint64_t(x.code_n)); mixin(uint64_t(x.log_n));
+            mixin(uint64_t(x.stat[0])); mixin(uint64_t(x.n_violations)); mixin(uint64_t(x.n_errors_logged));
         } else if (per[n].type == PT_TEST) {
             TestPeripheral& x = test_peripheral(n);
             mixin(uint64_t(x.runs)); mixin(x.scratch); mixin(x.n_accepts); mixin(x.taken[0]); mixin(x.taken[1]);
@@ -71,6 +77,9 @@ void SlotCore::install(unsigned n, PeriphType type, uint64_t replayer_row_buffer
             break;
         }
         case PT_TEST: per[n].p = new TestPeripheral(); break;
+        // W14: the Tracer, bare (ref's Config.cc3Tracer: new Tracer(me)); its tables come by region packets (tracer_ctl),
+        // its memory from the harness after the build (tracer(n).own_memory(store)): a run without one is FATAL
+        case PT_TRACER: per[n].p = new tracer::Tracer(int(tile)); break;
         default: FATAL("slot %u: peripheral type %u can't be created here yet", tile, unsigned(type));
     }
 }
@@ -78,6 +87,10 @@ void SlotCore::install(unsigned n, PeriphType type, uint64_t replayer_row_buffer
 Replayer& SlotCore::replayer(unsigned n) {
     if (per[n].type != PT_REPLAYER) FATAL("slot %u: peripheral %u is not the replayer", tile, n);
     return *static_cast<Replayer*>(per[n].p);
+}
+tracer::Tracer& SlotCore::tracer(unsigned n) {
+    if (per[n].type != PT_TRACER) FATAL("slot %u: peripheral %u is not the Tracer", tile, n);
+    return *static_cast<tracer::Tracer*>(per[n].p);
 }
 TestPeripheral& SlotCore::test_peripheral(unsigned n) {
     if (per[n].type != PT_TEST) FATAL("slot %u: peripheral %u is not the test peripheral", tile, n);

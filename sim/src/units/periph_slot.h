@@ -199,6 +199,11 @@ struct PeriphSlot {
     SlotCore s;
     OwnPorts own;                         // the peripherals' own ports (peripheral.h, OWN PORTS), declared for them
     uint32_t published[Win::REGS] = {};   // the RegFile as last written (only changed registers are written)
+    // A mesh tile has no DMA port: its peripherals' DMA packets are recorded, as ref's slot keeps them in dmaOut (its
+    // dmaPort is null there): every one counted, the last DMA_RECORD kept (a ring, oldest first from dma_recorded).
+    static constexpr unsigned DMA_RECORD = 16;
+    DmaPacket dma_record[DMA_RECORD] = {};
+    uint64_t dma_recorded = 0;
     bool first = true;
 
     PeriphSlot(sim::Ports& p, const PeriphSlotConfig& c);

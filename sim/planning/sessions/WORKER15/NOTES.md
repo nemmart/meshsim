@@ -6,8 +6,7 @@ The replayer and the peripheral slot. Branch `sim-w15`. Prompt: `PROMPT.md`.
 
 **Go-ahead 2026-11-09** (owner): the plan as written; answers to Q1-Q4 below. Steps 1-2 done: the ALU and the replayer equal to `ref` (ReplayConf every cycle; ReplayerUnitTests ported, 1,456
 checks). The slot's header published; the owner settled the round (W14: violation_count and the late accept; W16: its two
-classes and `visit` cases, the ports/begin/end hooks). Stage A passed (Quest 164: every window of both programs). The slot's SlotCore equal to ref call for call (SlotConf); the unit working under the engine. The tile's paths written (WIP:
-gcc debug's tests pass; the paths themselves untested); next a tile-level test and PeripheralSlotTest's port.
+classes and `visit` cases, the ports/begin/end hooks). Stage A passed (Quest 164: every window of both programs). The slot's SlotCore equal to ref call for call (SlotConf); the unit working under the engine. The tile's paths tested at the tile level (test_tile_slot); the DMA record on mesh tiles. Next: PeripheralSlotTest's port.
 
 ## The owner's answers (2026-11-09)
 
@@ -397,3 +396,20 @@ ports (READY rows, the error lines, GO) couldn't be declared from its heap-alloc
 - **Acceptance:** `cnc1_periph_through_the_slot_conformance_with_ref` (your s1-s3 fixtures, plain, shuffled and
   step-all) passes in all four builds; with `test_cnc1_periph`'s other tests, `test_cc_units`, `test_periph_slot`,
   `test_slotconf`, `test_tracer_slot`.
+
+### The DMA record on mesh tiles, and the tile-level test (2026-11-09)
+
+- **DMA record:** a mesh tile's slot has no DMA port; its peripherals' DMA packets are recorded (`PeriphSlot::
+  dma_record`, a ring of 16, every packet counted in `dma_recorded`), as ref's slot keeps them in `dmaOut` (its
+  `dmaPort` is null there), instead of FATAL.
+- `G1Config::periph1` (default the replayer): peripheral 1's type in a tile's slot (tests: the test peripheral).
+- **`tests/test_tile_slot.cpp`**: a tile from `add_g1` with `periph_slot` on, the test peripheral as peripheral 1, a
+  program in the boot ROM through the core's real paths: PARAMS; a store and load of a read/write word; PULSE_RUN and
+  STATUS right after it (running); the slot's EVENTS_MASK and the block's (EVENTS [13]) and a **WFI woken by the run's
+  end through the live bit** (11 cycles after PULSE_RUN, ref's run_length + 1, to 4 more for the wake's path); the
+  peek and **consuming** EVENTS loads (consumed by the next peek); a reserved word (reads 0, flagged by the core); a DMA
+  transfer of two words (recorded); the block's EVENTS [13] down (DMA done not under the slot's mask); a store to a
+  read-only word: **a store access fault at once** (mcause 7, mtval its address), the scratch word unchanged. And a
+  region-0x04 write put by the router's stand-in, accepted by the test peripheral. Plain, step-all and shuffled; the
+  debug builds' missed-wake detector on; all four builds.
+- Exact cycles against ref come with PeripheralSlotTest's port (next).

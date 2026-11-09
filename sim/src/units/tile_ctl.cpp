@@ -101,7 +101,7 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     if (g.cfg.periph_slot) {
         if ((g.cfg.periph_present & 7) != 1) FATAL("add_g1: tile %u: the slot's tile has peripheral 1 only (PARAMS [2:0] = %u)", k, g.cfg.periph_present);
         PeriphSlotConfig pc;
-        pc.tile = k; pc.type[1] = PT_REPLAYER;
+        pc.tile = k; pc.type[1] = g.cfg.periph1;
         auto& sl = cfg.add<PeriphSlot>(t + "slot", pc);
         cfg.link(d.periph, sl.region, 3);
         cfg.link(c.periph, sl.core, 1);

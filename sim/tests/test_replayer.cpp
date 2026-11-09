@@ -275,11 +275,17 @@ std::string fmt(const std::vector<uint64_t>& v) {
     return s;
 }
 
-void check_rows(const std::string& what, const ReplayDriver& d, const std::vector<std::vector<uint64_t>>& exp, unsigned padding) {
-    uint64_t n = d.rows();
+using Rows = std::vector<const uint64_t*>;
+Rows rows_of(const ReplayDriver& d) {
+    Rows r;
+    for (uint64_t k = 0; k < d.rows(); k++) r.push_back(d.row(k));
+    return r;
+}
+void check_rows(const std::string& what, const Rows& rows, const std::vector<std::vector<uint64_t>>& exp, unsigned padding) {
+    uint64_t n = rows.size();
     T::eq(int64_t(exp.size() + padding), int64_t(n), what + ": rows");
     for (size_t k = 0; k < std::min<size_t>(n, exp.size()); k++) {
-        const uint64_t* g = d.row(k);
+        const uint64_t* g = rows[k];
         const std::vector<uint64_t>& e = exp[k];
         uint64_t flags = ((g[1] >> 16) & 1) | ((g[1] >> 17) & 1) << 1 | ((g[1] >> 18) & 1) << 2 | ((g[1] >> 19) & 1) << 3 | ((g[1] >> 20) & 1) << 4 | ((g[1] >> 21) & 1) << 5;
         uint64_t ef = 0;
@@ -293,7 +299,7 @@ void check_rows(const std::string& what, const ReplayDriver& d, const std::vecto
     }
     for (size_t k = exp.size(); k < n; k++) {
         bool zero = true;
-        for (unsigned i = 0; i < Replayer::REC_LONGS; i++) zero &= d.row(k)[i] == 0;
+        for (unsigned i = 0; i < Replayer::REC_LONGS; i++) zero &= rows[k][i] == 0;
         T::check(zero, what + ": padding row " + std::to_string(k + 1) + " is all zeros");
     }
 }
@@ -317,7 +323,7 @@ void program() {
     T::group("program, raw streams");
     auto w = program_window(false, false, false, true);
     auto d = run_window(*w, 25);
-    check_rows("raw", *d, expected(true), PADDING);
+    check_rows("raw", rows_of(*d), expected(true), PADDING);
     T::eq(0, int64_t(d->r->pc()), "pc 0 after the program end");
     T::eq(0, d->r->instr_idx(), "instr_idx 0 after the program end");
     T::eq(0x1036, int64_t(d->r->reg(40)), "the remapped link is written into v40");
@@ -335,7 +341,7 @@ void program_compressed() {
         T::group("program, " + n);
         auto w = program_window(c[0], c[1], c[2], true);
         auto d = run_window(*w, 25);
-        check_rows(n, *d, exp, PADDING);
+        check_rows(n, rows_of(*d), exp, PADDING);
         T::check(d->r->clean(), n + ": clean " + error_report(*d->r));
         if (c[2]) T::check(d->r->wlog.hits >= 1, n + ": the SD's pre-value came from the last-load entry");
     }
@@ -346,7 +352,7 @@ void store_log_off() {
     auto w = program_window(false, false, false, false);
     T::eq(0, int64_t(w->wlog.size()), "the write log is empty");
     auto d = run_window(*w, 25);
-    check_rows("no store log", *d, expected(false), PADDING);
+    check_rows("no store log", rows_of(*d), expected(false), PADDING);
     T::eq(0, d->wlog_next, "the write-log queue was never fed (its line stayed quiet)");
     T::check(d->r->clean(), "clean: " + error_report(*d->r));
 }
@@ -369,6 +375,215 @@ void pext_any_mask() {
     T::check(cyc < 64 + 2 * 3 + 20, "timed like any S row (3 cycles): pass " + std::to_string(cyc));
 }
 
+// ================================================================ mid-sequence starts (4.19.2, 4.19.4)
+void mid_start() {
+    T::group("mid-sequence start");
+    ReplayWindow w;
+    templates(w);
+    uint32_t lbx0 = prog()[2], jal = prog()[12];
+    w.decode_rom(lbx0, T_LB); w.decode_rom(jal, T_JAL);
+    w.pc = 0x1008; w.instr_idx = 8; w.next_offset = 1;
+    w.regs[A0] = 0x100; w.regs[42] = 0x77; w.regs[41] = 0x99; w.regs[40] = 0x5;
+    w.set_code({lbx0, jal, 0, 0}, false);
+    w.set_logs({{true, 0, false, false, 0}}, false, false);
+    auto d = run_window(w, 5);
+    T::eq(5, int64_t(d->rows()), "rows");
+    const uint64_t *r0 = d->row(0), *r1 = d->row(1);
+    T::eq(alu::WMASK_B, int64_t((r0[0] >> 32) & 0xFF), "the first row is the template's row 1 (WindowMaskB)");
+    T::eq(42, int64_t((r0[0] >> 40) & 0xFF), "temporary 1 resolves to 42: the offset is 1 (remap, from ROM[start])");
+    T::eq(0, int64_t((r0[1] >> 18) & 1), "not is_first: the expansion's first row ran on the previous tile");
+    T::eq(1, int64_t((r0[1] >> 17) & 1), "is_virtual");
+    T::eq(8, int64_t(r0[0] & 0xFFFFFFFF), "instr_idx from the checkpoint");
+    T::eq(alu::PEXT_S, int64_t((r1[0] >> 32) & 0xFF), "then PextSigned");
+    T::eq(40, int64_t((r1[0] >> 40) & 0xFF), "into the remapped rd, v40");
+    T::eq(0x99, int64_t(r1[4]), "reading v41, the image's value (its VirtualLoadB ran on the previous tile)");
+    T::eq(0, int64_t(d->r->cond_events(0) + d->r->cond_events(1) + d->r->cond_events(2)), "no condition");
+}
+
+// ================================================================ LD to x0 (LR.D with rd = x0)
+void ld_to_x0() {
+    T::group("LD to x0");
+    uint32_t lrd = 0x02u << 27 | 0u << 20 | uint32_t(A0) << 15 | 3u << 12 | 0u << 7 | AMO;
+    uint32_t sd = s_(0, A5, A0, 3, STORE);
+    ReplayWindow w;
+    templates(w);
+    w.rom(30, {W::op(alu::LD).rd(129).rs1(130).rs2(128).cnst(0).fmt(0).from_log().report_c()});
+    w.decode_rom(lrd, 30); w.decode_rom(sd, T_SD);
+    w.pc = 0x3000; w.instr_idx = 5; w.regs[A0] = 0x200;
+    w.set_code({lrd, sd}, false);
+    w.set_logs({{true, 0xABCDEF0123ull, true, false, 0}, {false, 0, false, true, 0xABCDEF0123ull}}, false, true);
+    auto d = run_window(w, 2);
+    const uint64_t* g = d->row(0);
+    T::eq(0, int64_t((g[0] >> 40) & 0xFF), "rd_reg 0");
+    T::eq(0, int64_t(g[7]), "rd 0: the write is dropped");
+    T::eq(0x200, int64_t(g[8]), "mem_addr rs1 + imm");
+    T::eq(0, int64_t(g[9]), "mem_value 0: formed from the value written to rd, not the log word (F4)");
+    T::eq(0xABCDEF0123ll, int64_t(d->row(1)[9]), "the SD's pre-value: the log word coded as index 15 decodes to the popped LD value");
+    T::eq(1, int64_t(d->r->wlog.hits), "via the last-load entry (E[15] takes the popped value even for an LD to x0: REPLAYER-NOTES N5)");
+}
+
+// ================================================================ controller-fed expansions (4.19.8, 4.19.9)
+void controller_fed() {
+    T::group("controller-fed expansion");
+    uint32_t inl = r_(0, 2, 1, 0, 3, CUSTOM0);
+    ReplayWindow w;
+    w.fixed_rom();
+    w.decode_class(inl, 1);
+    const int n = 300;
+    std::vector<W> words(n);
+    for (int k = 0; k < n; k++) words[size_t(k)] = W::op(alu::ADDI).rd(unsigned(137 + (k % 8))).rs1(0).rs2(128).cnst(uint64_t(k + 1)).fmt(0);
+    words[n - 1].report_c();
+    w.template_(inl, words);
+    w.pc = 0x2000; w.instr_idx = 100;
+    w.set_code({inl, inl}, false);
+    w.set_logs({}, false, false);
+    auto d = run_window(w, 2 * n);
+    T::eq(2 * n, int64_t(d->rows()), "two 300-row inline expansions");
+    bool ok = true;
+    for (int k = 0; k < std::min<int>(2 * n, int(d->rows())); k++) {
+        const uint64_t* g = d->row(uint64_t(k));
+        int kk = k % n;
+        ok &= g[7] == uint64_t(kk + 1) && ((g[0] >> 40) & 0xFF) == uint64_t(40 + kk % 8) && (g[0] & 0xFFFFFFFF) == uint64_t(100 + k)
+              && (g[1] & 0xFFFF) == uint64_t(n - 1 - kk) && ((g[1] >> 18) & 1) == (kk == 0 ? 1u : 0u) && g[2] == (k < n ? 0x2000u : 0x2004u);
+    }
+    T::check(ok, "every row: its word's constant, its temporary, its instr_idx, seq_remaining, is_first, pc");
+    T::eq(2, int64_t(d->r->new_expansions), "two new-expansion events");
+    T::eq(0, int64_t(d->missing_templates), "every presented instruction had a template");
+    T::check(d->r->stalls[Replayer::ST_NEWEXP] > 0, "the first word of each expansion was waited for");
+    T::check(d->r->violations() == 0 && d->r->invalids() == 0 && d->r->overruns() == 0, "clean: " + error_report(*d->r));
+
+    T::group("controller-fed, mid-sequence start");
+    w.next_offset = 250;
+    w.set_code({inl, inl}, false);
+    auto d2 = run_window(w, 50 + n);
+    T::eq(50 + n, int64_t(d2->rows()), "rows");
+    T::eq(251, int64_t(d2->row(0)[7]), "the first row is word 250: the controller started at PERIPH_STATUS_0's next offset");
+    T::eq(49, int64_t(d2->row(0)[1] & 0xFFFF), "seq_remaining 49");
+    T::eq(0, int64_t((d2->row(0)[1] >> 18) & 1), "not is_first");
+    T::eq(1, int64_t((d2->row(50)[1] >> 18) & 1), "the next expansion's first row is is_first");
+}
+
+// ================================================================ N3: the rd = x0 policy on controller-fed words
+void controller_fed_rd0() {
+    T::group("controller-fed, rd = x0 remap (N3)");
+    ReplayWindow w;
+    templates(w);
+    uint32_t lbx0 = prog()[2], lba5 = prog()[1], jal = prog()[12];
+    w.decode_class(lbx0, 1); w.decode_class(lba5, 1); w.decode_rom(jal, T_JAL);
+    std::vector<W> lb(3);
+    for (unsigned k = 0; k < 3; k++) { lb[k].lo = w.rom_lo[T_LB + k]; lb[k].hi = w.rom_hi[T_LB + k]; }
+    w.template_(lbx0, lb); w.template_(lba5, lb);
+    w.pc = 0x1004; w.instr_idx = 2; w.regs[A0] = 0x100; w.regs[40] = 0x4040; w.regs[A5] = 0x55;
+    w.set_code({lba5, lbx0, jal, 0}, false);
+    w.set_logs({{true, V1, true, false, 0}, {true, V2, true, false, 0}, {true, 0, false, false, 0}}, false, false);
+    auto d = run_window(w, 8);
+    auto all = expected(true);
+    std::vector<std::vector<uint64_t>> exp(all.begin() + 1, all.begin() + 7);
+    Rows got = rows_of(*d);
+    got.resize(std::min<size_t>(6, got.size()));
+    check_rows("controller-fed LB and LB x0", got, exp, 0);
+    T::check(d->r->violations() == 0 && d->r->invalids() == 0, "clean: " + error_report(*d->r));
+
+    for (unsigned pol : {1u, 3u}) {
+        T::group("controller-fed, rd = x0 NOP policy " + std::to_string(pol) + " (N3)");
+        uint32_t divx0 = r_(1, A1, A0, 4, 0, OP), div = r_(1, A1, A0, 4, A2, OP), addi = prog()[0];
+        ReplayWindow v;
+        templates(v);
+        v.decode_class(divx0, 1); v.decode_class(div, 1); v.decode_rom(addi, T_ADDI);
+        std::vector<W> dw(12);
+        for (unsigned k = 0; k < 12; k++) dw[k] = W::op(alu::ADDI).rd(137 + k % 6).rs1(0).rs2(128).cnst(k).fmt(0);
+        dw[0].rd0(pol); dw[11].rd(129).report_c();
+        v.template_(divx0, dw); v.template_(div, dw);
+        v.pc = 0x2000; v.instr_idx = 1;
+        v.set_code({divx0, addi, div, divx0, addi}, false);
+        v.set_logs({}, false, false);
+        auto e = run_window(v, 1 + 1 + 12 + 1 + 1);
+        T::eq(16, int64_t(e->rows()), "rows: NOP, ADDI, 12 DIV rows, NOP, ADDI");
+        const uint64_t* nop = e->row(0);
+        T::eq(2, int64_t((nop[0] >> 32) & 0xFF), "the NOP row is ADDI");
+        T::eq(pol == 1 ? 1 : 0, int64_t((nop[1] >> 17) & 1), "is_virtual per rd0 " + std::to_string(pol));
+        T::eq(pol == 1 ? 1 : 0, int64_t((nop[1] >> 18) & 1), "is_first per rd0 " + std::to_string(pol));
+        T::eq(0, int64_t(nop[7]), "rd 0");
+        T::eq(0x100, int64_t(e->row(1)[7]), "the next instruction runs normally");
+        T::eq(11, int64_t(e->row(13)[3]), "the full DIV expansion (rd != x0) still runs: its last word's constant");
+        T::eq(A2, int64_t((e->row(13)[0] >> 40) & 0xFF), "into rd");
+        T::eq(2, int64_t((e->row(14)[0] >> 32) & 0xFF), "the second div x0 is a NOP row too");
+        T::check(e->r->exp.occ <= 11, "only the last dropped expansion's words may remain at done: " + std::to_string(e->r->exp.occ));
+        T::check(e->r->violations() == 0 && e->r->invalids() == 0 && e->r->overruns() == 0, "clean: " + error_report(*e->r));
+    }
+}
+
+// ================================================================ an all-padding window (4.19.2)
+void padding() {
+    T::group("all-padding window");
+    ReplayWindow w;
+    w.fixed_rom();
+    w.pc = 0; w.instr_idx = 0;
+    w.set_code(std::vector<uint32_t>(65536, 0), false);
+    w.set_logs({}, false, false);
+    auto d = std::make_unique<ReplayDriver>(w);
+    d->load(); d->pass(400000);
+    T::eq(65536, int64_t(d->rows()), "65,536 rows");
+    bool zero = true;
+    for (uint64_t k = 0; k < d->rows(); k++) for (unsigned i = 0; i < Replayer::REC_LONGS; i++) zero &= d->row(k)[i] == 0;
+    T::check(zero, "every record is all zeros");
+    T::check(d->done && d->r->violations() == 0 && d->r->invalids() == 0, "done, clean");
+    int64_t cyc = d->r->pass_end_at - d->r->pass_start_at;
+    T::check(cyc >= 3 * 65536 && cyc < 3 * 65536 + 200, "about 3 cycles per row (v1.26 item 12: no image copy): " + std::to_string(cyc));
+
+    T::group("all-padding window, compressed code");
+    w.set_code(std::vector<uint32_t>(65536, 0), true);
+    T::check(w.code.size() / 2 < 2600, "65,536 padding words compress to " + std::to_string(w.code.size() / 2) + " entries");
+    auto d2 = std::make_unique<ReplayDriver>(w);
+    d2->load(); d2->pass(400000);
+    bool zero2 = d2->rows() == 65536;
+    for (uint64_t k = 0; k < d2->rows(); k++) for (unsigned i = 0; i < Replayer::REC_LONGS; i++) zero2 &= d2->row(k)[i] == 0;
+    T::check(zero2 && d2->r->violations() == 0, "65,536 zero records");
+}
+
+// ================================================================ the pass length as a parameter (debug windows)
+void debug_length() {
+    T::group("debug window length");
+    ReplayWindow w;
+    w.fixed_rom();
+    w.rows = 256;
+    w.set_code(std::vector<uint32_t>(256, 0), false);
+    w.set_logs({}, false, false);
+    auto d = std::make_unique<ReplayDriver>(w);
+    d->load(); d->pass(10000);
+    T::eq(256, int64_t(d->rows()), "a 256-row pass");
+    T::check(d->done && !d->r->is_running(), "done after 256 rows");
+    T::eq(256, d->r->status(d->t, 0) & 0xFFFF, "PERIPH_STATUS_0 counts the rows run");
+    uint32_t rr = 0;
+    d->r->word(d->t, Replayer::W_ROWS_RUN, rr);
+    T::eq(256, rr, "ROWS_RUN (word 33, v1.26.1) reads the row count after the pass");
+    T::eq(0, fresh()->run_config_now(), "RUN_CONFIG is 0 after the reset (v1.26.1)");
+    T::dies([] { run_config(1u << 24, false, false); }, "a row count past 24 bits is refused", {"0 to 16,777,215"});
+}
+
+// ================================================================ code 145, immediate 0 (26q, 4.19.3)
+void immediate_zero() {
+    T::group("operand code 145, immediate 0");
+    uint32_t inl = r_(0, 2, 1, 0, 3, CUSTOM0);
+    for (unsigned zcode : {145u, 132u}) {
+        ReplayWindow w;
+        w.fixed_rom();
+        w.decode_class(inl, 1);
+        w.template_(inl, {W::op(alu::LUI).rd(137).rs1(128).rs2(zcode).cnst(0x1000003d1ull).fmt(0).report_c()});
+        w.pc = 0x3000; w.instr_idx = 7;
+        w.set_code({inl}, false);
+        w.set_logs({}, false, false);
+        auto d = run_window(w, 1);
+        const uint64_t* g = d->row(0);
+        std::string c = "code " + std::to_string(zcode);
+        T::eq(0x1000003d1ll, int64_t(g[7]), c + ": LUI writes the constant");
+        T::eq(0x1000003d1ll, int64_t(g[3]), c + ": imm = the sum of the immediate slots, the zero adding nothing");
+        T::eq(3, int64_t((g[1] >> 20) & 3), c + ": rs1 and rs2 both immediate slots");
+        T::eq(0, int64_t((g[0] >> 48) & 0xFFFF), c + ": rs1_reg and rs2_reg 0");
+        T::check(d->r->invalids() == 0, c + ": not an invalid expansion");
+    }
+}
+
 // Run a group; the TEST fails if any of its checks did.
 bool group_ok(void (*fn)()) {
     int f0 = T::failed;
@@ -385,3 +600,10 @@ TEST(unit_program) { CHECK(group_ok(program)); }
 TEST(unit_program_compressed) { CHECK(group_ok(program_compressed)); }
 TEST(unit_store_log_off) { CHECK(group_ok(store_log_off)); }
 TEST(unit_pext_any_mask) { CHECK(group_ok(pext_any_mask)); }
+TEST(unit_mid_start) { CHECK(group_ok(mid_start)); }
+TEST(unit_ld_to_x0) { CHECK(group_ok(ld_to_x0)); }
+TEST(unit_controller_fed) { CHECK(group_ok(controller_fed)); }
+TEST(unit_controller_fed_rd0) { CHECK(group_ok(controller_fed_rd0)); }
+TEST(unit_padding) { CHECK(group_ok(padding)); }
+TEST(unit_debug_length) { CHECK(group_ok(debug_length)); }
+TEST(unit_immediate_zero) { CHECK(group_ok(immediate_zero)); }

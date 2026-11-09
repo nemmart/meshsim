@@ -114,6 +114,7 @@ struct LogEvent {
 
 // ref's Replayer.runConfig and stateHi.
 inline uint32_t run_config(uint32_t rows, bool store_log, bool rd_prev) {
+    if (rows > units::Replayer::RC_ROWS) FATAL("rows %u: 0 to 16,777,215", rows);
     return rows | (store_log ? units::Replayer::RC_STORE_LOG : 0) | (rd_prev ? units::Replayer::RC_RD_PREV : 0);
 }
 inline uint64_t state_hi(uint32_t instr_idx, uint32_t next_offset) { return uint64_t(instr_idx) | uint64_t(next_offset & 0xFFFF) << 32; }

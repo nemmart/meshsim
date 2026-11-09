@@ -191,3 +191,21 @@ TEST(slot_unit_replayer_pass_of_zero_rows_and_a_landing) {
         if (variant == 0) CHECK(r.m.steps("slot") < 40);   // asleep most of the 200 cycles
     }
 }
+
+// PeripheralSlotTest's two undefined behaviours in the DMA (DECISIONS-v1.25 s8e): meshsim stops, naming them.
+DEATH_TEST(slot_pulse_dma_while_a_transfer_runs, "DMA: PULSE_DMA while a transfer is in progress") {
+    SlotCore s;
+    s.tile = 10;
+    s.install(1, PT_TEST);
+    s.write(1, 1, 8, (1u << 12) | 7u);   // DMA_HDR: queue 1, 7 words
+    s.write(2, 1, 4, 1);                 // PULSE_DMA
+    s.run_cycle(2); s.end_cycle(2);
+    s.write(3, 1, 4, 1);                 // again, while it runs
+}
+DEATH_TEST(slot_dma_naming_a_missing_queue, "output queue 3, which the peripheral doesn't have") {
+    SlotCore s;
+    s.tile = 10;
+    s.install(1, PT_TEST);
+    s.write(1, 1, 8, (3u << 12) | 4u);   // DMA_HDR: queue 3 (the test peripheral has two), 4 words
+    s.write(2, 1, 4, 1);
+}

@@ -109,7 +109,7 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
         if ((g.cfg.periph_present & 7) != 1) FATAL("add_g1: tile %u: the slot's tile has peripheral 1 only (PARAMS [2:0] = %u)", k, g.cfg.periph_present);
         PeriphSlotConfig pc;
         pc.tile = k;
-        if (k < 64) pc.type[1] = PT_REPLAYER;
+        if (k < 64) pc.type[1] = g.cfg.periph1;          // W15: a mesh tile's peripheral 1, the replayer by default
         else {
             pc.controller = true;
             pc.type[1] = k == lw::CC1 ? PT_CNC1 : k == lw::CC3 && g.cfg.cc3_tracer ? PT_TRACER : PT_CC_STUB;

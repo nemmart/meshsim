@@ -422,8 +422,8 @@ sim::Wake PeriphSlot::step(sim::Ctx& c) {
     unsigned room = cfg.controller ? c.credits(dma) : ~0u;
     s.run_cycle(t, room);
     for (unsigned k = 0; k < s.n_out; k++) {
+        if (!cfg.controller) { dma_record[dma_recorded++ % DMA_RECORD] = s.out[k]; continue; }   /* ref's dmaOut */
         if (k > 0) FATAL("slot %u: two DMA packets in one cycle on one port", cfg.tile);
-        if (!cfg.controller) FATAL("slot %u: a DMA packet without a DMA port", cfg.tile);
         c.put(dma, s.out[k].lo, s.out[k].h, s.out[k].hi);
     }
     for (unsigned n = 1; n <= 3; n++) if (s.per[n].type != PT_ABSENT) s.visit(n, [&](auto& q) { q.end(c, t, own); });

@@ -296,6 +296,36 @@ ended on `ref`'s rows and record hash):
   settle's snapshot taken only when something changed since the last (a dirty flag); `flag()` in O(1) (the count of
   credits taken kept as reads advance); the hot fields together, the large arrays after them.
 
+## 13. Wired into W15's slot (owner, 2026-11-09)
+
+**The edits in `periph_slot.cpp`** (W15's file, the marked places): the include of `units/tracer.h`; `case PT_TRACER` in
+`SlotCore::visit`; its delete in `SlotCore::Ref::~Ref` (the Tracer deletes its memory with it); its creation in
+`SlotCore::install` (`new tracer::Tracer(int(tile))`). Also, beside them: the accessor `SlotCore::tracer(n)` (declared
+in `periph_slot.h` next to `replayer(n)`), and a Tracer branch in `SlotCore::digest()` (the debug checks' progress:
+pc, the stream word, rows, the FIFOs, the cycle counter, the fact counts). Build: `SLOT_LINK` includes `TRACER_LINK`
+(`tracer.mk` is now included before `units.mk`).
+
+**What `install` takes for the Tracer: nothing beyond the tile. For W15 (through the owner): no config field.**
+- **The tables** (the decode table, the ROM) are not configuration: they arrive as region packets from `tracer_ctl`
+  (part 0 at 0x1000 and 0x2000), as in `ref` (`Config.cc3Tracer` creates `new Tracer(me)` bare).
+- **The memory system and the memory** are given after the build by the harness, which owns the run's memory snapshot:
+  `slot.s.tracer(1).own_memory(std::unique_ptr<FileStore>)`. The Tracer then owns the store and a `MemSystem` over it,
+  made cold at every state-word landing (T2's `onStateWrite`). A PULSE_RUN without a memory system is FATAL (named).
+- `icache_lines` stays the default (128); only B1's sweep changed it.
+
+**Tested in the slot** (`tests/test_tracer_slot.cpp`, test_periph_slot's harness pattern): a stand (the core's window
+stores and consuming loads on S2/S3, the director's region writes on S1, the window RegFile read, the DMA's credit Fifo)
+runs a small controller: the tables and the record (838 region packets), the hash words, EVENTS_MASK, RUN_CONFIG and
+PULSE_RUN at the earliest legal cycle (the landing's own), then the drain (queue 0 in one transfer, the streams by
+128-word credits) to run done. A straight-line guest (ALU, MUL, loads and stores over two owned pages, END, then
+padding to 400 rows). The reference is the same controller driving `SlotCore` directly at `ref`'s timing (W15's
+SlotConf holds SlotCore to `ref`'s slot). **Plain, step-all and shuffled: the same decisions at the same cycles, the
+same 181 DMA packets at the same cycles (a cycle later through the Fifo), the same five fingerprint units at the end;
+no violations.** The death test: a run before the memory is given. All four builds; `test_periph_slot` and
+`test_slotconf` unchanged. **Teeth:** the unit's landing a cycle late (`accept(t - 2)`) makes the PULSE_RUN land first and
+the record write is then UB while running: FATAL. (A Tracer-internal timing change moves both runs alike: that is
+test_tracer's to catch, and it does.)
+
 ## Log
 
 - 2026-11-09: plan agreed; branch `sim-w14` from main 1a898aa.
@@ -312,3 +342,5 @@ ended on `ref`'s rows and record hash):
 - 2026-11-09: the speed measurement (section 12): tracer_play and TracerPlay; Quest 166 queued.
 - 2026-11-09: Quest 166 ALL PASS: C++ 33.9 / 33.5 ns per Tracer cycle, ref 41.9 / 37.0 (1.23x / 1.11x); perf: settle
   31 %, the harness with inlined calls 28 %, row 10 % (section 12).
+- 2026-11-09: wired into W15's slot (section 13): install takes nothing; the memory given after the build
+  (`own_memory`); `test_tracer_slot` equal to SlotCore driven directly in three variants.

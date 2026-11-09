@@ -252,6 +252,20 @@ its lazy settle, so whatever order 3.1 fixes for `ref` is reproduced exactly.
   end of 12), and the death test for an accept after its landing was settled. All fixtures and the replay still equal.
 - **Next:** wiring through W15's slot when its body lands (`PeriphSlot::tracer(n)` is declared in `periph_slot.h`).
 
+## 12. The Tracer's speed (owner, 2026-11-09: measure and report; no optimisation yet)
+
+- **`bench/w14/tracer_play`** (`w14.mk`): `convert` turns a TracerConf log (a FIFO from `ref`'s run) into a compact
+  call trace (the store, then the calls grouped by cycle, run-length coded; results and observations left out); `run`
+  replays it on the C++ Tracer, timed, per segment and in all, REPS in-process repetitions each on a fresh store, memory
+  system and Tracer (not timed), then the harness alone (decoding and dispatch, no Tracer call). Every pass must end on
+  `ref`'s last row count and record hash (so a trace that lost a call can't be timed). **`TracerPlay.java`**: the same
+  on `ref`'s Tracer. No proxy, no comparison in either: Quest 163 showed these calls equal, cycle by cycle.
+- **Locally** (one CPU, not a timing machine; small seeded traces, JIT not warm): C++ about 50 ns per Tracer cycle.
+- **Quest 166** (`166-w14-tracer-speed`; I claimed 164 first, which W15 had taken: renumbered): the traces of T1's
+  segments 0-3 of both programs, then each side alone on one P core (the JVM on the core and its hyperthread),
+  5 repetitions, the machine recorded (D21); perf (cycles) on the C++ replay with the hot lines of the Tracer's step
+  (W10's annotate parse). Results pending.
+
 ## Log
 
 - 2026-11-09: plan agreed; branch `sim-w14` from main 1a898aa.
@@ -265,3 +279,4 @@ its lazy settle, so whatever order 3.1 fixes for `ref` is reproduced exactly.
   20 logs equal; the runner's data absent here). The slot's interface proposed to W15 (section 9).
 - 2026-11-09: Quest 163 ALL PASS (section 10). W15's interface taken (section 11): PeripheralBase, violation_count,
   DIGEST_N, the late accept.
+- 2026-11-09: the speed measurement (section 12): tracer_play and TracerPlay; Quest 166 queued.

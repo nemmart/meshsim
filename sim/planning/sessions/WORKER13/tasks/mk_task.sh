@@ -25,6 +25,7 @@ cp $M/sw/replay/build/replay_ctl.code.bin $M/sw/replay/build/replay_ctl.data.bin
 cp $M/sw/tracer/build/tracer_ctl.code.bin $M/sw/tracer/build/tracer_ctl.data.bin $M/sw/tracer/build/tracer_ctl.sym $K/kit/run/sw/tracer/build/
 (cd $K/kit/run && sha256sum -c --quiet "$HERE/IMAGES") || { echo "mk_task.sh: the images differ from IMAGES (110u's)" >&2; exit 1; }
 mkdir -p $K/kit/sim && cp -r $TOP/sim/tools $K/kit/sim/
+mkdir -p $K/kit/golden-m3 && cp $TOP/sim/tests/golden-m3/regen.sh $TOP/sim/tests/golden-m3/RUNS $TOP/sim/tests/golden-m3/HASHES $TOP/sim/tests/golden-m3/*.chip $K/kit/golden-m3/
 echo "meshsim $R (sim-w13), sim/ref, built $(date -u +%F)" > $K/kit/VERSION
 (cd $K/kit && find . -type f ! -name HASHES | sort | xargs sha256sum > HASHES)
 tar --sort=name --mtime=@0 --owner=0 --group=0 -czf $K/kit.tgz -C $K kit

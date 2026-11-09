@@ -16,7 +16,7 @@ then the rest.
 | **3.4 The C&C cores** (with the links, host port, request bus, chip lines) | **published** |
 | **4 Chip-level work (D23); 5 unit groups** | **published** |
 | 6 The fingerprint | **6.6-6.9 published**: the Tracer (W14), the slot and replayer (W15), the C&C units and the chip |
-| 7 The references; 8 localising; 9 findings | to come; 9 has first entries |
+| **7 The references; 8 the baseline; 9 findings** | **published** (Quests 159-161) |
 
 ## 0. The run
 
@@ -516,6 +516,40 @@ Left out: the checkers' bookkeeping (`pushed`, `allowance`, the violation lists)
 **The chip line** as M2's: every unit's hash, then `chip` over them in order: tiles 0-63 (M2's 16, then `slot`, `rp`),
 C&C 1-3 (the 16, `slot`; C&C 3's 6.6), then `cc1p`, `cc.host`, `reqbus`, `cnc`, `ep`.
 
+## 7. The references (`sim/tests/golden-m3/`)
+
+Quest 161 (`README.md` there): both runs with every unit's fingerprint every 100,000 cycles and at the boot's end
+(cycle 7,222: `coresBooted`), C&C 3's exit and the end (242 and 286 points of 1,214 units); the figures equal Quest
+159's; the Tracer's lines equal Quest 160's at all 1,195 common points. The chip lines and the D12 headers are in the
+repository; every unit's lines, **the memory at segment 10's start** (`M3Inputs.files`: the `FileStore` T1's carry
+leaves, 880 pages in evm-zone, 3,584 in cyclone) and **the harness's big-SRAM landings** (`M3Inputs.sram`: C&C 3's
+`tracer_layout.h` and every tile's `replay_layout.h`, as poked before the boot) are on the runner,
+`$DATA/w13-golden-m3/`, with their sha256 in `HASHES`. The framework's T2 harness loads those two dumps in place of
+T1's carry and the `poke`s; everything else (the boot, `CC_SEGMENT`, the checks against the delivery) it does as
+`M3Seg`. `regen.sh` regenerates and checks.
+
+**Localising a mismatch** (as AUDIT-M2 section 8): the first chip line that differs names the 100,000-cycle interval,
+the unit lines name the unit, `M3Seg fpchip=… fpchipevery=1` over that interval names the cycle, and
+`StateFpM3.dump` names the word.
+
+**The cost** (`ref`, per call, ms): the whole chip about 17, of which the 67 big SRAMs 12-13 (a full scan; the
+framework keeps them incrementally, M2's rule), the replayers 0.5, the Tracer's five units 0.4 (`tr.files` 0.05, or 3
+when it rescans after write-backs), C&C 1's peripheral 0.02.
+
+## 8. The baseline (Quest 161; `golden-m3/baseline/`)
+
+`ref` as T2 runs it (`M3Seg` without hooks), alone on the runner, one JVM pinned to one P core (CPUs 0 and 1: the core
+and its hyperthread; i5-14400F, `machine.txt`; D21), three runs each:
+
+| run | the segment (boot's end to the end) | per chip cycle | setup (T1's carry) | the boot | checks |
+|---|---|---|---|---|---|
+| evm-zone-29 10 | **46.23 s** (45.87-46.93), 23,933,485 cycles | 1.93 µs | 10.5 s | 0.29 s (7,222 cycles) | 0.9 s |
+| cyclone-29 10 | **50.90 s** (50.28-51.38), 28,312,354 cycles | 1.80 µs | 8.8 s | 0.29 s | 0.9 s |
+
+These are the figures M3's timing compares against (the owner, 2026-11-09). For scale: M2's sort ran at ~78 µs per chip
+cycle in `ref` (idle-skip on, but every tile busy); T2's segment runs at ~1.9 µs because the tiles sleep most of it
+(section 4) and C&C 3's units do the work.
+
 ## 9. Findings for the record
 
 - **9.1 The latency defaults since 110u** (section 0): GO, READY, error 1 → 8 and `stage_delay` 32 → 64 shift C&C 3's
@@ -526,9 +560,10 @@ C&C 1-3 (the 16, `slot`; C&C 3's 6.6), then `cc1p`, `cc.host`, `reqbus`, `cnc`, 
   as it runs is the slot's (D27). The same header's "an event posted after the sample point survives" holds for depth-2
   credits but not for a depth-1 event already at its count when posted at s (the post is dropped as full, then the
   consume clears it): run done and new expansion. To count in the coverage run (a post at s to a full depth-1 bit with
-  a consume of that bit at s); expected 0, as `replay_ctl` consumes done once per pass. **Quest 160: one in each
-  workload** (which unit and bit: to identify). The framework reproduces it without special handling, since a post
-  to a full count is dropped when it is made, as in `ref`, and 3.1 applies the consume after the cycle's posts.
+  a consume of that bit at s); expected 0, as `replay_ctl` consumes done once per pass. **Quest 161: none** in either
+  run (Quest 160's "one per workload" was the counter's own artefact: the Tracer's `drainedAt` starts at 0 and was read
+  at cycle 0). Were it reached, the framework would reproduce it without special handling: a post to a full count is
+  dropped when it is made, as in `ref`, and 3.1 applies the consume after the cycle's posts.
 - **9.3 `outStart` doesn't settle** (`Tracer.outStart`, `PeripheralSlot.Dma.start`): `ref` calls it inside the
   PULSE_DMA store, during the core's step, before the Tracer's own work of that cycle and before its pending inputs are
   settled; the framework applies the store at level 0 of the next cycle (3.1 step 1.0). The orders differ only for a
@@ -541,4 +576,6 @@ C&C 1-3 (the 16, `slot`; C&C 3's 6.6), then `cc1p`, `cc.host`, `reqbus`, `cnc`, 
   `MemorySystem.wbPush`): `wbDepth` (4) only delays a line's entry (`enter`), so lines queue beyond it; `ref` throws
   only when the ring passes 64 entries. A guest storing to 136-176 pages queues 19-63 lines. Ruled reproduced exactly
   (D27: `ref`'s own simplification, self-consistent); the C++ stops at the same point. How close the reference runs
-  come: section 7 (the golden task records the ring's largest occupancy).
+  come (Quest 161): **evm-zone 10 never queues a line; cyclone-29 10 at most 3** (1 between cycles, at most 3 within one:
+  the count before the cycle plus its early evictions), against the ring's 64 and below the depth of 4. Neither
+  reference run reaches the uncapped case; a test of it needs a store-heavy guest (W14's 136-176 pages).

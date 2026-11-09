@@ -108,6 +108,7 @@ public final class M3Seg {
             if (fpc != null) { for (String l : FpHooks.configLines(c.cfg)) fpc.println("# " + l); fpc.println("# " + kv.getOrDefault("header", "")); }
             if (fp != null) { for (String l : FpHooks.configLines(c.cfg)) fp.println("# " + l); fp.println("# units " + String.join(",", StateFpM3.TRACER_UNITS)); }
             java.util.Arrays.fill(doneSetSeen, Long.MIN_VALUE); java.util.Arrays.fill(newExpSeen, Long.MIN_VALUE);
+            trDrainSeen = tr.drainedAt; trNewExpSeen = tr.newExpansions;   // their values before any cycle (Quest 160's false 9.2 at cycle 0)
         }
         /** After cycle c.cycle - 1 ran (runUntil's condition): read only. */
         long lastT = Long.MIN_VALUE;

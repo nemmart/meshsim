@@ -92,3 +92,11 @@ read the v1.25 delivery directly (`state.bin` in v1.25's order).
   instructions (evm-zone reaches 22 `tracer_ctl` ones cyclone doesn't): **cyclone-29 segment 10 is the second M3 run**
   (the owner's rule). AUDIT-M3 section 1 written; `sim/tests/golden-m3/cover/` holds the counters and pc histograms.
   ReplayBench: T2's replay phase only, on segment 0, preloaded: its numbers compare with T2's tiles' replay, not T2's run.
+- 2026-11-09: AUDIT-M3 2.2, 3.4, 4, 5 (G7: the C&C cores and the chip's integration, the next worker), 6.7-6.9, 9.4
+  (W14's write buffer). **Quest 161** (all PASS): the references (`sim/tests/golden-m3/`: chip lines with D12 headers,
+  RUNS, HASHES of the large files in `$DATA/w13-golden-m3`: every unit's lines, the memory snapshot, the SRAM landings);
+  the Tracer's lines equal Quest 160's (1,195 points); **9.4: the write buffer holds at most 3 lines (cyclone), never
+  used in evm-zone; 9.2: none** (160's one per workload was the counter's artefact at cycle 0, fixed in M3Seg).
+  **Baseline** (one JVM pinned to CPUs 0,1): evm-zone 10 segment 46.23 s (3 runs, 45.87-46.93), setup 10.5 s, boot
+  0.29 s; cyclone 10 50.90 s (50.28-51.38), setup 8.8 s. AUDIT-M3 sections 7, 8 written. Next: regen.sh proven on the
+  runner (Quest 162), then REPORT.md.

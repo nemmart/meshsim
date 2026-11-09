@@ -109,3 +109,12 @@ orders, step-all, the missed-wake detector).
   `cc3.sram.data`. The `sram` dumps are 8.3 MB each (16.97 MB raw; they differ only from byte 16,707,085, C&C 3's part):
   over the owner's "a few MB", so not committed; the boot's check with the real landings runs on the runner.
 - 2026-11-09: TSan `test_chip form2` on gcc passes (the make check is complete: both compilers, debug, release, TSan).
+- 2026-11-09: merged main (W15's slot body, W14's Tracer in it). **C&C 1's peripheral and C&C 2's stub in the slot**,
+  W14's four edits in `periph_slot.cpp` (include, `visit` cases, delete, install; the stub on C&C 3 reports type 3, as
+  `CcCores.Stub(2 + c - 1)`). `cc_stub_through_the_slot`: PARAMS type 2 (3 on C&C 3), STATUS, ERRORS, EVENTS 0.
+  **Blocked: C&C 1's own ports can't live in the peripheral.** The framework rewrites each handle in place at the build
+  and checks that it is a member of the unit (`config_impl.h`: "port 'row' is not a member of the unit"), and the slot
+  allocates its peripherals on the heap, so `ports(sim::Ports&)` can't declare C&C 1's rows, lines and GO. Asked of W15:
+  storage for a peripheral's own ports inside `PeriphSlot` (e.g. `own_in[11]`, `own_out[64]` declared by the slot for
+  the peripheral, passed to its `begin`/`end`). The C&C 1 conformance through the slot unit (`run_slot`,
+  `cnc1_periph_through_the_slot_conformance_with_ref`) is written and waits behind `-DW16_SLOT_OWN_PORTS`.

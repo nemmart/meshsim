@@ -4,6 +4,7 @@
 
 #include <type_traits>
 
+#include "units/cnc1_periph.h"
 #include "units/linkword.h"
 #include "units/replayer.h"
 #include "units/test_peripheral.h"
@@ -18,7 +19,8 @@ decltype(auto) SlotCore::visit(unsigned n, F&& f) {
         case PT_REPLAYER: return f(*static_cast<Replayer*>(per[n].p));
         case PT_TEST: return f(*static_cast<TestPeripheral*>(per[n].p));
         case PT_TRACER: return f(*static_cast<tracer::Tracer*>(per[n].p));   // W14
-        // ---- W16: case PT_CNC1 (Cnc1Peripheral), case PT_CC_STUB (CcStub), with their includes above
+        case PT_CNC1: return f(*static_cast<Cnc1Peripheral*>(per[n].p));     // W16
+        case PT_CC_STUB: return f(*static_cast<CcStub*>(per[n].p));          // W16
         default: FATAL("slot %u: peripheral %u of type %u has no dispatch case", tile, n, unsigned(per[n].type));
     }
 }
@@ -34,7 +36,8 @@ SlotCore::Ref::~Ref() {
         }
         case PT_TEST: delete static_cast<TestPeripheral*>(p); break;
         case PT_TRACER: delete static_cast<tracer::Tracer*>(p); break;   // W14: its memory with it
-        // ---- W16: its types' delete here too
+        case PT_CNC1: delete static_cast<Cnc1Peripheral*>(p); break;         // W16
+        case PT_CC_STUB: delete static_cast<CcStub*>(p); break;              // W16
         default: break;
     }
 }
@@ -80,6 +83,10 @@ void SlotCore::install(unsigned n, PeriphType type, uint64_t replayer_row_buffer
         // W14: the Tracer, bare (ref's Config.cc3Tracer: new Tracer(me)); its tables come by region packets (tracer_ctl),
         // its memory from the harness after the build (tracer(n).own_memory(store)): a run without one is FATAL
         case PT_TRACER: per[n].p = new tracer::Tracer(int(tile)); break;
+        // W16: C&C 1's Ingress/Egress and UART (its own ports: READY, the error lines, GO; ref_cycle set by the chip
+        // through cnc1(n)), and the stub engine of C&C 2 (and of C&C 3 without the Tracer: CcCores.Stub(2 + c - 1))
+        case PT_CNC1: per[n].p = new Cnc1Peripheral(); break;
+        case PT_CC_STUB: per[n].p = new CcStub(tile == lw::CC3 ? 3 : 2); break;
         default: FATAL("slot %u: peripheral type %u can't be created here yet", tile, unsigned(type));
     }
 }

@@ -4,3 +4,4 @@
 #   tests/m3-images/build.sh --check  M3's firmware images rebuilt and compared (needs gcc-riscv64-unknown-elf)
 
 $(B)/test_cc_units: $(NET_LINK) $(UNITS_LINK) $(GOLDEN_OBJ)
+$(B)/test_cnc1_periph: $(SLOT_LINK)

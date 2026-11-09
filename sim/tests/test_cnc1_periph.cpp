@@ -21,6 +21,8 @@
 #include "harness.h"
 #include "portconf.h"
 #include "units/cnc1_periph.h"
+#include "units/net.h"
+#include "units/periph_slot.h"
 
 using namespace units;
 using sim::Ctx;
@@ -173,6 +175,86 @@ std::string run(const Script& s, sim::Options opt) {
     return out;
 }
 
+// The same through W15's slot (PeriphSlot on C&C 1, peripheral 1 type PT_CNC1): the core's side puts the stores and
+// the consuming loads on S2/S3 (CoreOp, Link(1)) and reads the window RegFile at its loads' sample cycles.
+// WAITS for the slot to hold a peripheral's own ports: the framework rewrites a handle in place at the build and checks
+// that it is a member of the unit, so handles inside a heap-allocated peripheral can't be declared (asked of W15,
+// 2026-11-09). Built with -DW16_SLOT_OWN_PORTS once the slot offers them.
+#ifdef W16_SLOT_OWN_PORTS
+struct SlotCoreSide {
+    sim::LinkOut core, region;
+    sim::RegFileIn window;
+    sim::FifoIn dma;
+    const Ev* ev; uint32_t n, i = 0;
+    Obs* obs; uint32_t cap, nobs = 0;
+    SlotCoreSide(Ports& p, const Ev* e, uint32_t count, Obs* o, uint32_t c) : ev(e), n(count), obs(o), cap(c) {
+        p.out(core, "core", 1); p.out(region, "region", 3); p.in(window, "window"); p.in_credit(dma, "dma", 3, 4);
+    }
+    Wake step(Ctx& c) {
+        const int64_t t = int64_t(c.now());
+        for (; i < n && ev[i].t == t; i++) {
+            const Ev& e = ev[i];
+            if (e.kind == 'S') c.put(core, CoreOp::store(1, e.a, e.b));
+            else if (e.kind == 'L') {
+                uint32_t v;
+                if (e.a == 5 || e.a == 6) {
+                    v = uint32_t(c.read(window, Win::reg(1, Win::R_STD + e.a)));
+                    if (e.a == 5 && (v & 0x3F)) c.put(core, CoreOp::consume(1, v & 0x3F));   // Cnc1Conf's mask
+                } else v = uint32_t(c.read(window, Win::reg(1, Win::R_OWN + (e.a - 32))));
+                if (nobs >= cap) std::abort();
+                obs[nobs++] = {t, int(e.a), v};
+            }
+        }
+        return c.next();
+    }
+    uint64_t digest() const { return i; }
+};
+
+std::string run_slot(const Script& s, sim::Options opt) {
+    sim::Config cfg(opt);
+    const uint32_t cap = uint32_t(s.cycles) + 16;
+    std::vector<Obs> lo(cap), go(cap);
+    auto& ln = cfg.add<Lines>("lines", s.ev.data(), uint32_t(s.ev.size()));
+    auto& cs = cfg.add<SlotCoreSide>("cc1.core", s.ev.data(), uint32_t(s.ev.size()), lo.data(), cap);
+    PeriphSlotConfig pc;
+    pc.tile = lw::CC1; pc.controller = true; pc.type[1] = PT_CNC1;
+    auto& sl = cfg.add<PeriphSlot>("cc1.slot", pc);
+    auto& gb = cfg.add<GoObs>("go", go.data(), cap);
+    Cnc1Peripheral& p = *static_cast<Cnc1Peripheral*>(sl.s.per[1].p);
+    cfg.link(cs.core, sl.core, 1);
+    cfg.link(cs.region, sl.region, 3);
+    cfg.connect(sl.window, cs.window);
+    cfg.connect(sl.dma, cs.dma);
+    for (unsigned r = 0; r < 8; r++) cfg.link(ln.rows[r], p.rows[r], kL);
+    cfg.link(ln.cc_line[0], p.cc_line[0], 2);
+    for (unsigned c = 1; c < 3; c++) cfg.link(ln.cc_line[c], p.cc_line[c], kL);
+    for (unsigned k = 0; k < 64; k++) cfg.link(p.go[k], gb.go[k], 1);
+    sim::Sim sim = cfg.build();
+    sim.run(uint64_t(s.cycles) + 4);
+    const SlotCoreSide& sp = sim.unit<SlotCoreSide>("cc1.core");
+    const GoObs& g = sim.unit<GoObs>("go");
+    const Cnc1Peripheral& q = *static_cast<const Cnc1Peripheral*>(sim.unit<PeriphSlot>("cc1.slot").s.per[1].p);
+    if (g.split) return "GO's 64 links arrived in different cycles\n";
+    if (sim.unit<PeriphSlot>("cc1.slot").s.violation_total()) return "the slot flagged a violation\n";
+    std::vector<Obs> all(lo.begin(), lo.begin() + sp.nobs);
+    all.insert(all.end(), go.begin(), go.begin() + g.nobs);
+    std::stable_sort(all.begin(), all.end(), [](const Obs& a, const Obs& b) { return a.t < b.t; });
+    std::string out;
+    char b[96];
+    for (const Obs& o : all) {
+        if (o.t > s.cycles) continue;
+        if (o.w < 0) std::snprintf(b, sizeof b, "%" PRId64 " GO\n", o.t);
+        else std::snprintf(b, sizeof b, "%" PRId64 " L:%d=%x\n", o.t, o.w, o.v);
+        out += b;
+    }
+    std::string hex;
+    for (unsigned k = 0; k < q.serial_n && k < Cnc1Peripheral::kSerial; k++) { std::snprintf(b, sizeof b, "%02x", uint8_t(q.serial_out[k])); hex += b; }
+    std::snprintf(b, sizeof b, "END toast %d at %" PRId64 " gos %" PRIu64 " serial ", q.toast ? 1 : 0, q.toast_at, q.gos);
+    out += b + (hex.empty() ? std::string("-") : hex) + "\n";
+    return out;
+}
+#endif
+
 std::string body(const std::string& f) {
     std::string r;
     size_t p = 0;
@@ -198,13 +280,18 @@ bool same(const std::string& name, const std::string& got, const std::string& wa
 
 const char* kFixtures[] = {"s1", "s2", "s3"};
 
-void conformance(sim::Options opt) {
+void conformance(sim::Options opt, [[maybe_unused]] bool through_slot = false) {
     for (const char* name : kFixtures) {
         bool ok1 = false, ok2 = false;
         std::string script = portconf::read_command("gzip -dc " + kDir + name + ".script.gz", &ok1);
         std::string ref = body(portconf::read_command("gzip -dc " + kDir + name + ".obs.gz", &ok2));
         if (!ok1 || !ok2 || ref.empty()) { ::test::fail(__FILE__, __LINE__, "fixture %s missing", name); return; }
-        if (!same(name, run(parse(script), opt), ref)) { ::test::fail(__FILE__, __LINE__, "%s differs from ref", name); return; }
+#ifdef W16_SLOT_OWN_PORTS
+        const std::string got = through_slot ? run_slot(parse(script), opt) : run(parse(script), opt);
+#else
+        const std::string got = run(parse(script), opt);
+#endif
+        if (!same(name, got, ref)) { ::test::fail(__FILE__, __LINE__, "%s differs from ref", name); return; }
     }
 }
 
@@ -216,6 +303,49 @@ TEST(cnc1_periph_conformance_under_debug_options) {
     sim::Options a; a.shuffle_seed = 7; conformance(a);
     sim::Options b; b.order = sim::Options::Order::instance_major; conformance(b);
     sim::Options c; c.step_all = true; conformance(c);
+}
+
+#ifdef W16_SLOT_OWN_PORTS
+// Through W15's slot unit: the same fixtures, the same lines.
+TEST(cnc1_periph_through_the_slot_conformance_with_ref) {
+    conformance({}, true);
+    sim::Options a; a.shuffle_seed = 5; conformance(a, true);
+    sim::Options c; c.step_all = true; conformance(c, true);
+}
+#endif
+
+// C&C 2's stub in a controller's slot: PARAMS type 2, never running, no events, no errors; C&C 3's without the Tracer
+// reports type 3 (CcCores.Stub(2 + c - 1)).
+TEST(cc_stub_through_the_slot) {
+    for (unsigned tile : {unsigned(lw::CC2), unsigned(lw::CC3)}) {
+        sim::Config cfg{sim::Options{}};
+        struct Reader {
+            sim::LinkOut core, region; sim::RegFileIn window; sim::FifoIn dma;
+            uint32_t params = 0, status = 1, errors = 1, events = 1;
+            explicit Reader(Ports& p) { p.out(core, "core", 1); p.out(region, "region", 3); p.in(window, "window"); p.in_credit(dma, "dma", 3, 4); }
+            Wake step(Ctx& c) {
+                if (c.now() == 5) {
+                    params = uint32_t(c.read(window, Win::reg(1, Win::R_STD + 0))); status = uint32_t(c.read(window, Win::reg(1, Win::R_STD + 1)));
+                    errors = uint32_t(c.read(window, Win::reg(1, Win::R_STD + 2))); events = uint32_t(c.read(window, Win::reg(1, Win::R_STD + 6)));
+                }
+                return c.now() < 5 ? c.next() : Wake::none();
+            }
+            uint64_t digest() const { return params; }
+        };
+        auto& rd = cfg.add<Reader>("reader");
+        PeriphSlotConfig pc;
+        pc.tile = tile; pc.controller = true; pc.type[1] = PT_CC_STUB;
+        auto& sl = cfg.add<PeriphSlot>("slot", pc);
+        cfg.link(rd.core, sl.core, 1); cfg.link(rd.region, sl.region, 3);
+        cfg.connect(sl.window, rd.window); cfg.connect(sl.dma, rd.dma);
+        sim::Sim m = cfg.build();
+        m.run(8);
+        const Reader& r = m.unit<Reader>("reader");
+        CHECK_EQ(r.params & 0xFF, tile == lw::CC2 ? 2u : 3u);
+        CHECK_EQ(r.status, 0u);
+        CHECK_EQ(r.errors, 0u);
+        CHECK_EQ(r.events, 0u);
+    }
 }
 
 TEST(cnc1_periph_identity_and_window_rules) {

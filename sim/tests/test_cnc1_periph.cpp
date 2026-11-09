@@ -97,15 +97,16 @@ struct Obs { int64_t t; int w; uint32_t v; };                 // w -1: GO
 // C&C 1's core and slot around the peripheral.
 struct Stand {
     Cnc1Peripheral p;
+    OwnPorts own;                                          // W15: the peripheral's own ports live in its host unit
     const Ev* ev; uint32_t n, i = 0;
     bool st_due = false; int64_t st_t = 0; uint32_t st_w = 0, st_v = 0;
     bool cons_due = false; uint32_t cons_bits = 0;
     Obs* obs; uint32_t cap, nobs = 0;
-    Stand(Ports& pp, const Ev* e, uint32_t count, Obs* o, uint32_t c) : ev(e), n(count), obs(o), cap(c) { p.ports(pp); }
+    Stand(Ports& pp, const Ev* e, uint32_t count, Obs* o, uint32_t c) : ev(e), n(count), obs(o), cap(c) { OwnPortsDecl d(pp, own); p.ports(d); }
     void note(int64_t t, int w, uint32_t v) { if (nobs >= cap) std::abort(); obs[nobs++] = {t, w, v}; }
     Wake step(Ctx& c) {
         const int64_t t = int64_t(c.now());
-        p.begin(c, t);
+        p.begin(c, t, own);
         if (cons_due) { p.consume_events(cons_bits); cons_due = false; }
         if (st_due) { p.write_word(st_t, int(st_w), st_v); st_due = false; }
         for (; i < n && ev[i].t == t; i++) {
@@ -121,7 +122,7 @@ struct Stand {
             }
         }
         p.step(t);
-        p.end(c, t);
+        p.end(c, t, own);
         return c.next();
     }
     uint64_t digest() const { int64_t d[Cnc1Peripheral::DIGEST_N]; p.digest_words(d); return sim::hash_fields(d, i, st_due, cons_due); }
@@ -148,10 +149,10 @@ std::string run(const Script& s, sim::Options opt) {
     auto& ln = cfg.add<Lines>("lines", s.ev.data(), uint32_t(s.ev.size()));
     auto& st = cfg.add<Stand>("cc1.slot", s.ev.data(), uint32_t(s.ev.size()), lo.data(), cap);
     auto& gb = cfg.add<GoObs>("go", go.data(), cap);
-    for (unsigned r = 0; r < 8; r++) cfg.link(ln.rows[r], st.p.rows[r], kL);
-    cfg.link(ln.cc_line[0], st.p.cc_line[0], 2);
-    for (unsigned c = 1; c < 3; c++) cfg.link(ln.cc_line[c], st.p.cc_line[c], kL);
-    for (unsigned k = 0; k < 64; k++) cfg.link(st.p.go[k], gb.go[k], 1);
+    for (unsigned r = 0; r < 8; r++) cfg.link(ln.rows[r], st.own.link_in[st.p.row0 + r], kL);
+    cfg.link(ln.cc_line[0], st.own.link_in[st.p.line0], 2);
+    for (unsigned c = 1; c < 3; c++) cfg.link(ln.cc_line[c], st.own.link_in[st.p.line0 + c], kL);
+    for (unsigned k = 0; k < 64; k++) cfg.link(st.own.link_out[st.p.go0 + k], gb.go[k], 1);
     sim::Sim sim = cfg.build();
     sim.run(uint64_t(s.cycles) + 4);
     const Stand& sp = sim.unit<Stand>("cc1.slot");
@@ -180,8 +181,11 @@ std::string run(const Script& s, sim::Options opt) {
 // WAITS for the slot to hold a peripheral's own ports: the framework rewrites a handle in place at the build and checks
 // that it is a member of the unit, so handles inside a heap-allocated peripheral can't be declared (asked of W15,
 // 2026-11-09). Built with -DW16_SLOT_OWN_PORTS once the slot offers them.
+// W15 (2026-11-09): the slot holds them now (OwnPorts, peripheral.h): on.
+#define W16_SLOT_OWN_PORTS 1
 #ifdef W16_SLOT_OWN_PORTS
 struct SlotCoreSide {
+    uint64_t undefined_stores = 0;
     sim::LinkOut core, region;
     sim::RegFileIn window;
     sim::FifoIn dma;
@@ -194,8 +198,14 @@ struct SlotCoreSide {
         const int64_t t = int64_t(c.now());
         for (; i < n && ev[i].t == t; i++) {
             const Ev& e = ev[i];
-            if (e.kind == 'S') c.put(core, CoreOp::store(1, e.a, e.b));
-            else if (e.kind == 'L') {
+            if (e.kind == 'S') {
+                // the core judges a store to a defined read-only word a bus error (W15: TileCore's window_store): not sent
+                const unsigned k = e.a - Win::OWN0;
+                const bool def = c.read(window, Win::reg(1, Win::R_DEFINED + k / 32)) >> (k % 32) & 1;
+                const bool wr = c.read(window, Win::reg(1, Win::R_WRITABLE + k / 32)) >> (k % 32) & 1;
+                if (!(def && !wr)) c.put(core, CoreOp::store(1, e.a, e.b));
+                if (!def) undefined_stores++;              // the slot flags each (ref's PeripheralSlot.reserved)
+            } else if (e.kind == 'L') {
                 uint32_t v;
                 if (e.a == 5 || e.a == 6) {
                     v = uint32_t(c.read(window, Win::reg(1, Win::R_STD + e.a)));
@@ -225,17 +235,21 @@ std::string run_slot(const Script& s, sim::Options opt) {
     cfg.link(cs.region, sl.region, 3);
     cfg.connect(sl.window, cs.window);
     cfg.connect(sl.dma, cs.dma);
-    for (unsigned r = 0; r < 8; r++) cfg.link(ln.rows[r], p.rows[r], kL);
-    cfg.link(ln.cc_line[0], p.cc_line[0], 2);
-    for (unsigned c = 1; c < 3; c++) cfg.link(ln.cc_line[c], p.cc_line[c], kL);
-    for (unsigned k = 0; k < 64; k++) cfg.link(p.go[k], gb.go[k], 1);
+    for (unsigned r = 0; r < 8; r++) cfg.link(ln.rows[r], sl.own.link_in[p.row0 + r], kL);
+    cfg.link(ln.cc_line[0], sl.own.link_in[p.line0], 2);
+    for (unsigned c = 1; c < 3; c++) cfg.link(ln.cc_line[c], sl.own.link_in[p.line0 + c], kL);
+    for (unsigned k = 0; k < 64; k++) cfg.link(sl.own.link_out[p.go0 + k], gb.go[k], 1);
     sim::Sim sim = cfg.build();
     sim.run(uint64_t(s.cycles) + 4);
     const SlotCoreSide& sp = sim.unit<SlotCoreSide>("cc1.core");
     const GoObs& g = sim.unit<GoObs>("go");
     const Cnc1Peripheral& q = *static_cast<const Cnc1Peripheral*>(sim.unit<PeriphSlot>("cc1.slot").s.per[1].p);
     if (g.split) return "GO's 64 links arrived in different cycles\n";
-    if (sim.unit<PeriphSlot>("cc1.slot").s.violation_total()) return "the slot flagged a violation\n";
+    {   // W15: the slot flags a store to an undefined word, as ref's slot does (Cnc1Conf's ref side has no slot): exactly those
+        const SlotCore& S = sim.unit<PeriphSlot>("cc1.slot").s;
+        if (S.reserved_accesses != sp.undefined_stores || const_cast<SlotCore&>(S).violation_total() != S.reserved_accesses)
+            return "the slot flagged a violation other than the script's stores to undefined words\n";
+    }
     std::vector<Obs> all(lo.begin(), lo.begin() + sp.nobs);
     all.insert(all.end(), go.begin(), go.begin() + g.nobs);
     std::stable_sort(all.begin(), all.end(), [](const Obs& a, const Obs& b) { return a.t < b.t; });

@@ -12,7 +12,8 @@ $(B)/test_chip: $(NET_LINK) $(B)/tests/statefp.o $(B)/tests/statefp_g1.o $(B)/te
 # The chip on several threads under ThreadSanitizer (W4's build/<cc>-tsan/, its rules in threads.mk): make tsan-chip;
 # in make check. Only form 2's test (the others are one thread).
 NTB := build/$(CC_NAME)-tsan
-NTB_LINK := $(addprefix $(NTB)/src/units/,net.o router.o inject.o cnc.o chip.o trace_log.o controller.o tile_ctl.o) \
+NTB_LINK := $(addprefix $(NTB)/src/units/,net.o router.o inject.o cnc.o chip.o trace_log.o controller.o tile_ctl.o \
+              periph_slot.o replayer.o file_store.o replay_tables.o tracer.o) \
             $(addprefix $(NTB)/tests/,statefp.o statefp_g1.o statefp_g2.o golden_run.o sha256.o)
 $(NTB)/test_chip: $(NTB_LINK)
 .PHONY: tsan-chip tsan-chip-one

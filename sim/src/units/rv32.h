@@ -17,6 +17,12 @@
 //   bool send_refused()         the send put of t - 1 was refused: the core puts the same packet again and stalls
 //   void table_store(table, i, v)  a table-window store (table_store.h), applied before t + 1's readers
 //   uint32_t hist(i)            HIST[i] for a one-cycle table-window load
+// M3 (W15), the peripheral slot (AUDIT-M3 3.1), each optional (without them a present window is FATAL):
+//   int window_load(n, w, v)    a load of peripheral n's window word w at t (the slot's RegFile; a consuming EVENTS
+//                               load also puts its consume): 1 read, 2 a reserved or undefined word (reads 0, flagged)
+//   bool window_stalls(n, w)    a store to w must retry at t (S8)
+//   bool window_store(t, n, w, v)  a store of t to the slot (S2); false: a bus error (a standard read-only word, or a
+//                               defined read-only word of the peripheral's)
 // What isn't modelled yet stops with FATAL("... not modelled yet"), naming the register or window.
 #pragma once
 
@@ -271,8 +277,14 @@ struct Rv32 {
                 instructions--; stall_request++; cycles_stalled++;
                 return;                                       // a full request FIFO: re-executed at t + 1
             }
-            if (f3 == 2 && in_windows(ea) && window_present(window_of(ea)))
-                FATAL("tile core: a store to peripheral %u's window at 0x%x: not modelled yet", window_of(ea), ea);
+            if (f3 == 2 && in_windows(ea) && window_present(window_of(ea))) {
+                if constexpr (requires { e.window_stalls(0u, 0u); }) {
+                    if (e.window_stalls(window_of(ea), (ea & 0x1FF) >> 2)) {
+                        instructions--; cycles_stalled++;
+                        return;                                   /* 8.14: UART_TX while the TX FIFO is full: retried */
+                    }
+                } else FATAL("tile core: a store to peripheral %u's window at 0x%x: this bench has no peripheral slot", window_of(ea), ea);
+            }
             if (f3 > 2) { illegal(e, t, ipc, ins); return; }
             uint32_t width = 1u << f3;
             if (ea & (width - 1)) { undefined(t, true, width, ea, ipc); return; }
@@ -426,8 +438,12 @@ struct Rv32 {
     template <class Env>
     bool read_reg(Env& e, uint32_t a, uint32_t& v) {
         if (unsigned n = window_of(a)) {
-            if (window_present(n)) FATAL("tile core: a load from peripheral %u's window at 0x%x: not modelled yet", n, a);
-            return false;                                                      // an absent peripheral: bus error
+            if (!window_present(n)) return false;                              // an absent peripheral: bus error
+            if constexpr (requires { e.window_load(0u, 0u, v); }) {
+                /* W15: the slot's window RegFile (PeripheralSlot.read); 2: a reserved or undefined word, read 0, flagged */
+                if (e.window_load(n, (a & 0x1FF) >> 2, v) == 2) { reserved_accesses++; violations++; }
+                return true;
+            } else FATAL("tile core: a load from peripheral %u's window at 0x%x: this bench has no peripheral slot", n, a);
         }
         unsigned i = (a - REG_BASE) >> 2;
         const RegInfo& r = reg_info(i);
@@ -500,8 +516,10 @@ struct Rv32 {
         if (in_regs(a)) {
             if (mask != 0xFFFFFFFFu) return false;
             if (unsigned n = window_of(a)) {
-                if (window_present(n)) FATAL("tile core: a store to peripheral %u's window at 0x%x: not modelled yet", n, a);
-                return false;
+                if (!window_present(n)) return false;
+                if constexpr (requires { e.window_store(uint64_t(0), 0u, 0u, 0u); }) {
+                    return e.window_store(t, n, (a & 0x1FF) >> 2, v);           /* W15: false: a bus error */
+                } else FATAL("tile core: a store to peripheral %u's window at 0x%x: this bench has no peripheral slot", n, a);
             }
             unsigned i = (a - REG_BASE) >> 2;
             const RegInfo& r = reg_info(i);

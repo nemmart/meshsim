@@ -65,6 +65,7 @@ struct TestPeripheral : PeripheralBase<TestPeripheral> {
     }
     int write_word(int64_t, int w, uint32_t v) { if (w == 33) { scratch = v; return 1; } return w == 32 || w == 34 ? 0 : -1; }
     uint64_t violation_count() const { return n_violations; }
+    bool writable(int w) const { return w == 33; }
     int out_queues() const { return 2; }
     bool out_ready(int64_t t, int q) const { return q < 2 && taken[q] < n_avail[q] && avail_at[q][taken[q] % MAXQ] <= t; }
     void out_take(int64_t t, int q, uint64_t w[2]) {

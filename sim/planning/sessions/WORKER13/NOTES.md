@@ -76,3 +76,19 @@ read the v1.25 delivery directly (`state.bin` in v1.25's order).
   then the core's inputs (a state-word landing's credits otherwise differ). Findings 9.1, 9.2. Next: W14's 3.3 and
   section 6's Tracer streams (owner, 2026-11-09: registers, the caches' tags and lines, FIFOs, output queues, with the
   cost per call).
+- 2026-11-09: **3.3 (the Tracer, its memory system and memory) and 6.6 (the Tracer's fingerprint streams) published
+  for W14.** The memory system and `FileStore` are members of the Tracer (synchronous timing model, no port). 3.1's
+  level 0 gains step 0 (the slot's store effects, `outStart` included) and finding 9.3 (`outStart` doesn't settle:
+  differs only in UB cases; counted in the coverage run). Section 6's M3 rules: cycle-valued fields as max(v, c);
+  pending inputs as (effect cycle, kind, words), never settled by the reader; large memories summed over 64-bit words.
+  Next: the `ref` side of 6.6 in `StateFp` and the coverage driver, then one runner task (coverage, the +26 check, the
+  fingerprint's cost, the counts for 9.2 and 9.3).
+- 2026-11-09, **Quest 160** (`M3Seg`, five JVMs, all PASS): M3Seg = TracerT2 (159's figures); the hooks neutral (figures
+  and fingerprints identical with coverage on or off); the Tracer's fingerprints deterministic (240 points), about
+  0.5 ms a call. **9.1 confirmed** (110u's latencies give 23,693,506). **9.3: 0** of 14,162 / 15,716 PULSE_DMAs.
+  **9.2: one lost depth-1 post per workload** (to identify: unit, bit, cycle). **Coverage: evm-zone 10 never reaches
+  controller-fed expansions or the memory system's early evictions and read waits; cyclone-29 10 does** (30 new
+  expansions; 48,501 early evictions; 16,321 read waits), and reaches 151 more `replay_ctl` and 116 more `tracer_ctl`
+  instructions (evm-zone reaches 22 `tracer_ctl` ones cyclone doesn't): **cyclone-29 segment 10 is the second M3 run**
+  (the owner's rule). AUDIT-M3 section 1 written; `sim/tests/golden-m3/cover/` holds the counters and pc histograms.
+  ReplayBench: T2's replay phase only, on segment 0, preloaded: its numbers compare with T2's tiles' replay, not T2's run.

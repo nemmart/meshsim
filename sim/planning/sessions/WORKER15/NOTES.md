@@ -4,7 +4,8 @@ The replayer and the peripheral slot. Branch `sim-w15`. Prompt: `PROMPT.md`.
 
 ## Status
 
-**Go-ahead 2026-11-09** (owner): the plan as written; answers to Q1-Q4 below. Step 1 done (shared headers, the ALU, both equal to `ref`); working on step 2 (the replayer).
+**Go-ahead 2026-11-09** (owner): the plan as written; answers to Q1-Q4 below. Steps 1 and 2's ReplayConf done: the ALU and the replayer equal to `ref` (every cycle, 13 committed traces and 36
+local ones). Next: the port of ReplayerUnitTests, then Stage A on the runner.
 
 ## The owner's answers (2026-11-09)
 
@@ -165,3 +166,40 @@ and clang at each commit; `main` merged in often.
 - Note on `ref`: ReplayerTest's "every row opcode has a matching vector" check can't fail: the `missing.append` sits
   after a `//` comment on the same line (ReplayerTest.java line 105). The C++ test makes the check as meant, and it
   passes: every executed opcode but NOP has a matching vector, as REPLAYER-NOTES says.
+
+### Step 2: the replayer, and ReplayConf (2026-11-09)
+
+- `units/replayer.h`, `replayer.cpp`: `Replayer.java` method for method (WIP commit 984025f, then tested). `ref`'s lazy
+  `settle` is kept as is (fixed rings for the landings and inputs): it is exactly AUDIT-M3 3.1's level-0 order once the
+  slot calls `consume_events` (S3) and the mask store before the peripheral's first touch of the cycle, which settles
+  (landings before inputs at one time). The stream no longer points at the replayer's events (`release_to(pos, ev)`):
+  ASan caught a copied replayer's streams posting to the old object; `Replayer` is now non-copyable.
+- **ReplayConf** (`tests/ref/ReplayConf.java trace | run`): `ReplayDriver`'s ideal controller, line for line, with
+  every call to the replayer recorded as a script (accept, run, RUN_CONFIG, the read points, the consumes, runCycle)
+  and `ref`'s observations after each cycle (running, ERRORS, EVENTS, words 32-35, the output queue, rows done,
+  `landed`, the seven stall counts, each violation class, the error lists, pc, `instr_idx`, and a hash of every row
+  the sink takes). `run` replays a script on `ref` and must equal the trace (it does: the script holds every input).
+  `tests/replayconf.h` is the C++ side; `build/<cc>-<mode>/replayconf` the tool.
+- **Fixtures** (`tests/replayer/`, 956 KB, `make check`'s `test_replayconf`): 13 traces on `ref`'s `SyntheticDelivery`
+  windows (1,024-8,192 rows; raw, LRU and picked streams; a long controller-fed expansion; two passes), with mutations
+  for the error paths: underflows of each stream, leftovers of each, an invalid expansion, RUN_CONFIG rows 0, a code
+  refill past its credits (invariant 16 and overruns), a flood past 256 entries. **All equal, every cycle, in all four
+  builds.** Planted bugs (a row reaching the sink a cycle late; E[15] written to E[14]) make it fail.
+- `replayconf.sh --long OUT`: every window of the four synthetic deliveries in all three variants: **36 traces, all
+  equal** (clang release, locally).
+- **A finding in `ref`'s test tools** (not the model): `SyntheticDelivery` isn't reproducible run to run: with the same
+  seed, its last window's logs, rows and `end.bin` differ (and so the manifest). So `replayconf.sh --check` doesn't
+  regenerate the scripts; it replays the committed ones on `ref` and compares the observations.
+
+### AUDIT-M3 3.1/3.2 (W13, on main 2026-11-09): read
+
+My design fits it: the slot one unit after the tile's children, the peripheral a member; S1 a Link(3), S2/S3 a Link(1),
+applied at level 0 in the order consume and mask, then the landings, then the core's inputs (the replayer's `settle`
+does the last two in that order already); the window, the live bits and C&C 1's stall a RegFile written at level 0.
+
+### The deliveries (Q4; owner 2026-11-09)
+
+`/home/questrunner/data/w9-deliveries/{evm-zone-29,cyclone-29}` (v1.25 records), the selected windows in
+`w9-deliveries-selected/` and `w9-selected-windows.tgz`; ConvertDelivery first, in scratch, as Quests 105-107 did. By
+"deliveries 1-3" I meant REPLAYER-NOTES' (the tracer session's replay-inputs 1-3, jolt-cpp rows of v1.1's era). W9's
+deliveries at 821e1bd are the ones `ref`'s v1.3 replayer was last checked on (Quests 105-107), so Stage A uses these.

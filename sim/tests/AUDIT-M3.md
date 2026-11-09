@@ -13,10 +13,10 @@ then the rest.
 | **3.1 The peripheral slot** (W15) | **published** |
 | **3.2 The replayer** (W15) | **published** |
 | **3.3 The Tracer, its memory system and memory** (W14) | **published** |
-| 3.4 The C&C cores; 3.5 the DMA and request paths | to come |
-| 4 Chip-level work (D23); 5 unit groups | to come |
-| 6 The fingerprint | **6.6 the Tracer's streams published** (its cost per call with the coverage run); the slot, the replayer, the C&C units to come |
-| 7 The references; 8 localising; 9 findings | to come; 9 has first entries |
+| **3.4 The C&C cores** (with the links, host port, request bus, chip lines) | **published** |
+| **4 Chip-level work (D23); 5 unit groups** | **published** |
+| 6 The fingerprint | **6.6-6.9 published**: the Tracer (W14), the slot and replayer (W15), the C&C units and the chip |
+| **7 The references; 8 the baseline; 9 findings** | **published** (Quests 159-161) |
 
 ## 0. The run
 
@@ -128,6 +128,23 @@ The slot is **outside the shuffle and after every child, the core included**. Ev
 synchronous calls during its own step (the director's `accept`, the core's window loads and stores, the register block's
 live bits), and the peripheral's lazy settle makes those calls order-free (3.1). The C&C units are `Tile`s too (6.6), so
 the same order holds on C&C 1-3 with their peripherals.
+
+### 2.2 The chip (`Chip.runCycle`, `Chip.java:210-245`, with `Config.ccCores`)
+
+```
+wakeDue (idle-skip); the request bus (first: a request store at t sees the entry it frees)
+children: [0] the Java CnC's endpoint, [1] memsub, [2] cc3 endpoint (built, unconnected with cores), tiles 0-63, [67] the
+    Java CnC (built, idle with cores), [68] CcCores: the host queue's head into each controller's host FIFO (one a cycle),
+    then units 64-66 (C&C 1-3), each a Tile (2.1: its children, its slot, its register block's end of cycle)
+per tile (awake): a READY pulse of t into C&C 1's peripheral (readyAt = t + ready_latency); its error line's change
+    into C&C 1's peripheral (visible error_latency later)
+CcCores.endCycle: C&C 2's and C&C 3's error lines into ERROR_LINES_2, C&C 1's into its toast pin
+invariants (the error scan, invariant 15), idle-skip's sleep check
+```
+
+C&C 1-3 run **after** the 64 tiles, so in `ref` a C&C unit's step at t sees the tiles' puts of t only through buses (all
+registered), and the tiles see the C&C units' puts of t from t + 1 on: no same-cycle coupling crosses between them except
+the C&C links' `Link(1)` (3.4).
 
 ## 3. The units: state, ports, same-cycle couplings
 
@@ -311,6 +328,84 @@ per 80 cycles); a write-back allocates without an LPDDR read.
 snapshot after T1's carry through segments 0-9, with segment 10's ownership), C&C 3's big-SRAM landing and every tile's
 replay region (the harness's `poke`s, step 3 of section 0).
 
+### 3.4 The C&C cores (`CcCores.java`, `Cnc1Peripheral.java`, `Router.java`'s controller variant, `RequestBus.java`) — the next worker
+
+**Structure.** With `Config.ccCores`, C&C 1-3 are units 64-66, each a `Tile` (6.6): **the same tile units M2 built**
+(controller, register block, controller memories with port B, big SRAM, read queue and injection, director, write
+engine, AG, table store, HIST, read port, gather, request port) running `cc1`, `cc23`, `tracer_ctl`, plus a slot whose
+peripheral 1 is C&C 1's Ingress/Egress (`Cnc1Peripheral`, type 1), a stub (C&C 2: type 2; `Stub`: nothing, idle) or the
+Tracer (C&C 3, 3.3). They replace M2's Java sequencer (`CnC`), which stays built and idle. What differs from a mesh tile:
+
+| part | `ref` | framework |
+|---|---|---|
+| **the router** | `Router.feeders(me ≥ 64)` (`FEEDERS_CC`), `ccRoute`: from the loopback or `CC_DMA_IN`, a packet for this controller is ejected and any other (broadcasts included) leaves on `CC_LINK_OUT` (the link); every other input is ejected | M2's router with the controller's feeder table and route rule (no hop table, no broadcast table); its inputs `CC_LINK_IN` (= `FROM_LEFT`), `CC_HOST_IN` (`FROM_RIGHT`), `CC_DMA_IN` (`FROM_UP`), output `CC_LINK_OUT` (`TO_RIGHT`) |
+| **the C&C links** | `toCc[c]`, `fromCc[c]`: `WordDelayLine(ccLinkLatency = 1)` each way between tile c's to-controller selector (`router.toCnc`) and C&C c's `CC_LINK_IN`, and C&C c's `CC_LINK_OUT` and tile c's from-controller route block (`router.fromCnc`) | **`Link(1)`**: so **C&C c and tile c must be in one thread domain** (D26: a crossing is a Link of at least 3) |
+| **the host port** | `host[c]`: `WordFIFO(4)` into `CC_HOST_IN`; `CcCores.hostQ[c]` (the outside world: `hostWrite`, `hostLoad`, `hostCommand`) feeds it one packet a cycle while it has room, at the start of `CcCores.runCycle` | a `Fifo(4)` fed by a harness stand-in (the host's queue), stepped only while the queue is non-empty |
+| **the DMA port** (C&C 3) | `dmaIn`: `WordFIFO(ccDmaDepth = 4)` into `CC_DMA_IN` | 3.1 S6 |
+| **C&C 1's chip lines** | READY: a tile's pulse at its edge e sets `readyAt[tile] = max(·, e + ready_latency)` (`Chip.java:222`); ERROR_LINES: a unit's error line's change at t is visible at t + error_latency (`errChanges`); GO: C&C 1's PULSE_GO store at t calls `goNet(t)`, every tile's GO at t + go_latency + its skew (`CnC.goNet`) | READY a width-0 `Link(ready_latency)` per tile into C&C 1's slot; an error line's change a `Link(error_latency)` event (D23: never a scan); GO a `Link(go_latency + skew − 1)` per tile from C&C 1's slot, put when it applies the PULSE_GO store at level 0 of t + 1 (3.1), so the tile sees GO at t + go_latency + skew as in `ref` |
+| **the request bus** | the controllers' request ports feed root inputs 8-10 (`RequestBus.java:113-121`: the head stored before t, one beat a cycle, the requestor stamped 64 + c); target c's queue is read by C&C c + 1's receive side; a queued request wakes that unit | M2's request bus with three more root inputs and the controllers' receive sides |
+
+**C&C 1's peripheral** (`Cnc1Peripheral`; window words 32-45, events {1, 1, 0, 1, 0, 0}: [0] run done, [1] DMA done
+(never), [2] all READY (live), [3] watchdog (depth 1), [4] UART RX not empty, [5] UART TX not full (live)). Unlike the
+replayer and the Tracer it is **not lazily settled**: a store's `writeWord` takes effect at once, in the core's step (the
+watchdog's count, a UART TX push, READY_EXPECT, PULSE_GO's `clearReady(t)` (`clearedAt = t + 1`: a pulse arriving
+during t is kept) and its GO), and `runCycle(t)` (C&C 1's slot, after its core) then applies the error lines due,
+decrements the watchdog, runs the UART's TX shifter and sets the live bits from `allReady(t)`. Reads are immediate:
+READY_LINES at a sample t is `readyBits(t)` (arrivals up to t), while EVENTS [2] is the live bit `runCycle(t − 1)` set
+(`allReady(t − 1)`). Under 3.1's rule (the store applied at level 0 of t + 1) the framework reproduces this exactly for
+every read (the earliest sample after a store is t + 2) and for GO (above); it is **one cycle later than `ref` for the
+peripheral's own work in the store's cycle**: a watchdog written at t starts counting at t + 1 instead of t, a UART byte
+pushed at t can start at t + 1 instead of t. Neither run reaches the watchdog's expiry or the UART (section 1): a
+deliberate difference to propose under D30 if the C&C worker prefers it to applying C&C 1's stores within the store's
+cycle (a `Wire` from the core, which keeps C&C 1's core and slot at one level order).
+
+**The order that matters on C&C 1's slot at level 0 of t:** the READY arrivals of t applied (READY_LINES reads them at t);
+EVENTS [2] published from `allReady(t − 1)`, i.e. before them; the error lines due at t; then the store effects of t − 1.
+
+**The boot** (`Mach.bootCores`, a harness step): C&C 1's images staged into its big SRAM by `poke` (the outside world's
+overlay), its descriptor and its first command through the host port (`hostLoad`, `hostCommand`); C&C 1's firmware then
+boots C&C 2 and C&C 3 (its AG sends their images out on its link into tile 0, across the mesh and out of tiles 1 and 2
+into their controllers' links: the tiles' `router.fromCncWords` 509 and `toCncWords` 275 at boot), waits for their
+"started" on the request bus (one request each), and boots the 64 tiles (14,976 mode-0 writes into their controller
+memories, READY, GO). At boot's end C&C 1 has run 444 instructions, C&C 2 54, C&C 3 5,101 (its tables and setup), the
+64 tiles 1,121 in all; the cycle `coresBooted` returns is in the references (section 7).
+
+## 4. Chip-level work, event-driven (D23)
+
+What `ref`'s `Chip.runCycle` does by scanning, and the event that replaces each scan:
+- **READY pulses** (`Chip.java:222`: every awake tile's `readyPulseAt == t`): the register block's pulse is a put on a
+  width-0 `Link(ready_latency)` into C&C 1's slot (3.4); M2's framework already has READY from the register block.
+- **Error lines** (`Chip.java:223-224`, `CcCores.endCycle`): a unit's ERRORS becoming non-zero or zero (its conditions,
+  or its slot's live errors, 3.1 S5) is a put on a `Link(error_latency)` into C&C 1's slot; nothing polls `errorLine()`.
+- **Invariant 15's error scan** (`Chip.java:229-237`): only while some error line is high; driven by the same events.
+- **The request bus**: M2's (event-driven there already); its controller inputs wake the bus when a head is stored.
+- **The host queue**: a harness stand-in, stepped while it holds packets.
+- **The peripherals**: the slot's wake rule (3.1 step 3); the Tracer steps every cycle it runs (its counters tick), C&C
+  1's peripheral while its watchdog counts, its UART shifts or an error line is in flight, the replayer while a pass,
+  an input or a row is pending.
+In both runs the tiles sleep most of the segment (section 1: 1.53 G of the tiles' 1.53 G core cycles in WFI, summed),
+C&C 2 sleeps throughout, and C&C 3's Tracer works almost every cycle: **the run's critical path is C&C 3's domain**.
+
+## 5. Unit groups for parallel workers, and the order
+
+| group | units | worker | its references |
+|---|---|---|---|
+| **G5** | the Tracer, its memory system and memory (3.3) | W14 (started) | its suites (`TracerTest`, `MemorySystemTest`, `RvcTest`, `TracerRig`), TracerConf, T1's path; 6.6's fingerprints on the M3 runs |
+| **G6** | the slot (every type's dispatch, the window, the DMA) and the replayer (3.1, 3.2), wired into the mesh tile | W15 (started) | `ReplayerTest`, `ReplayerUnitTests`, `PeripheralSlotTest`, Stage A on the deliveries, Stage B; 6.7-6.8 |
+| **G7** | **the C&C cores and the chip's integration** (3.4, 4): units 64-66 as framework tiles (M2's units, the controller router variant), the C&C links, the host port and its stand-in, C&C 1's peripheral (READY, GO, error lines, watchdog, UART) and C&C 2's stub inside G6's slot, the request bus's controller inputs and targets, the chip lines as events; the T2 harness (the stand-ins of section 0 step 3, the memory snapshot loaded, the rows observed, the checks); the partition (C&C c with tile c) | **the next worker** | `CcCoresTest`, `CcBench`; the boot (`coresBooted`'s cycle and the boot-end fingerprints of every unit, section 7); then T2 on both runs |
+
+**Order.** G5 and G6 go on (each against its suites and conformance drivers). G7 starts now: the C&C units and the boot
+need neither the Tracer nor the replayer (C&C 2 and the tiles' slots can hold stubs, C&C 3's a stub until G5 lands; the
+boot of section 0 step 4 reaches `coresBooted` with `replay_ctl` waiting), so **the boot exact against its references is
+G7's first milestone**. Then, with G5 and G6 wired: T2's segment exact on evm-zone-29 10 (fingerprints at every 100,000
+cycles localise any mismatch to a unit), then cyclone-29 10. G7 owns the slot's type-1 and type-2 bodies; G6 owns the
+slot and its dispatch.
+
+**For the timing that follows** (D26): one chip split over threads gains little on T2 as it is: C&C 3's Tracer is a
+serial machine stepping almost every cycle for 23.7 M cycles, while the tiles work in turn as their windows land (at
+most 234,206 cycles each). The speed of **C&C 3's domain on one thread** is the figure that decides M3's wall time;
+placement keeps C&C 3 with tile 2 (the link of 1) and spreads the replaying tiles over the others.
+
 ## 6. The canonical state fingerprint (M3)
 
 M2's definition (`AUDIT-M2.md` 6.2) holds: per unit, at the end of cycle c, a defined sequence of 64-bit words hashed
@@ -374,6 +469,87 @@ call (between write-backs it is constant).
 and ROM sums (about 3,000 terms); the caches 2 × 128 × 19 words; `tr.mem` at most 512 × 25 words; `tr.files` a scan
 of every page (evm-zone-29: about 500 image pages plus the map and the segment's copies) when it has changed.
 
+### 6.7 The slot (every unit, 0-66): unit `slot`
+
+For n = 1..3 with a peripheral present: `mask[n]`; if the peripheral has output queues, its DMA: `hdr`, `addr`, `done`,
+`busy`, `left`, `q` (`startedAt`, `doneAt` left out by rule 1: both at or before c, read only against later cycles);
+then the pending entries of c (rule 2): a consume of c (`consumeT[n] == c`: 1 and its bits, else 0), an EVENTS_MASK
+store of c (`pendMaskT[n] == c`: 1 and its value, else 0). The slot's store effects of c (DMA_HDR, DMA_ADDR, PULSE_DMA)
+are already applied in `ref`, and are written as applied.
+
+### 6.8 The replayer (tiles 0-63): unit `rp`
+
+In this order:
+1. `region0[0..131]`; the decode table and the ROM as 6.6's sums (regions 12, 13); `runConfig`;
+2. the code, read-log and write-log queues, each: `occ`, its entries head to tail (lo, hi), `pend`, `poppedSince`,
+   `base`, `consumed`, `words`, `valuesOut`, `limit`, `taken`, `endBits`, `landedEntries`, `comp`, `E[0..15]`, and the
+   pops made at c (`popCycle == c ? pops : 0`: a landing of effect cycle c is judged against them, `Stream.push`);
+   the expansion queue: `occ`, its entries, `pend`, `poppedSince`, `newestValid`, `newestSeq`, the pops at c;
+3. the core: `running`, `pc`, `instrIdx`, `startOffset`, `rowsPerPass`, `fStore`, `fRdPrev`, `stateWritten`,
+   max(`copyDoneAt`, c), `rowsStarted`, `rowsDone`, `firstInstr`, max(`busyUntil`, c), `presented`, `expDiscard`,
+   `codeEnded`, `stoppedOffset`, `srcOf[0..3]`; then `cur` and `nxt`, each 0 if null, else 1, `w`, `kind`, `start`,
+   `offset`, `rd0`, `nextRow`, `lastStarted`, `firstRow`, `ctrlFirstSeen`, `codeEnd` (`decodedAt` left out: at or
+   before c); then `inflight`: 0 if null, else 1, `rdReg`, `rdVal`, `newPc`, `newIdx`, `hold`, `lastOfInstr`, which
+   instruction it belongs to (0 `cur`, 1 `nxt`, 2 neither), its record (10 words);
+4. the events' counts (bits 0-6); ERRORS as bits (`condEvents[k] > 0`);
+5. the output queue: its rows (each max(ready cycle, c), then its 10 words), oldest first;
+6. inputs not yet in effect, as 6.6's item 11 (landings: e, src, word address, size, lo, hi; inputs: e, kind 2 run /
+   3 RUN_CONFIG, value).
+
+Left out: the checkers' bookkeeping (`pushed`, `allowance`, the violation lists), the statistics, the decode caches
+(`peekValue`, `peekBits`, `peekHit`: recomputed before every commit), `lastStartAt`, `lastSink`, `doneSetAt`,
+`newExpSetAt` (only compared with later cycles or never read).
+
+### 6.9 The C&C cores (units 64-66) and the chip
+
+- **Units 64-66** write **M2's 16 tile streams** unchanged (`StateFp.TILE_UNITS`: the router's inputs include
+  `CC_LINK_IN`, `CC_HOST_IN` and `CC_DMA_IN`, its `linkIn[0..3]`; tile c's router lists the C&C link into it as
+  `fromCnc`), named `cc1.core` ... `cc3.req`, plus their `slot` (6.7) and, on C&C 3, 6.6's.
+- **`cc1p`** (C&C 1's peripheral with cores): READY per tile as M2's (visible 1, pending its arrival, none 0, against
+  `clearedAt`), `expect`, the error lines in flight (`errChanges`: visible-at, id, level, in order), `errLine` as two
+  words of bits (ids 0-63, 64-127), max(`wdCount`, 0), `wdN`, `toast`, `led`, the TX and RX FIFOs (count, then bytes),
+  `divisor`, `txDivisor`, `rxDivisor`, max(`txBusyUntil`, c), `rxOverrun`, `framing`, the events' counts.
+- **`cc.host`**: per controller, the host queue (count, then each packet's three words) and the C&C links are in the
+  routers' streams; M2's `reqbus` (its controller root inputs included, `rootIn[8..10]`), `cnc` and `ep` are kept (the
+  Java model's, idle with cores).
+
+**The chip line** as M2's: every unit's hash, then `chip` over them in order: tiles 0-63 (M2's 16, then `slot`, `rp`),
+C&C 1-3 (the 16, `slot`; C&C 3's 6.6), then `cc1p`, `cc.host`, `reqbus`, `cnc`, `ep`.
+
+## 7. The references (`sim/tests/golden-m3/`)
+
+Quest 161 (`README.md` there): both runs with every unit's fingerprint every 100,000 cycles and at the boot's end
+(cycle 7,222: `coresBooted`), C&C 3's exit and the end (242 and 286 points of 1,214 units); the figures equal Quest
+159's; the Tracer's lines equal Quest 160's at all 1,195 common points. The chip lines and the D12 headers are in the
+repository; every unit's lines, **the memory at segment 10's start** (`M3Inputs.files`: the `FileStore` T1's carry
+leaves, 880 pages in evm-zone, 3,584 in cyclone) and **the harness's big-SRAM landings** (`M3Inputs.sram`: C&C 3's
+`tracer_layout.h` and every tile's `replay_layout.h`, as poked before the boot) are on the runner,
+`$DATA/w13-golden-m3/`, with their sha256 in `HASHES`. The framework's T2 harness loads those two dumps in place of
+T1's carry and the `poke`s; everything else (the boot, `CC_SEGMENT`, the checks against the delivery) it does as
+`M3Seg`. `regen.sh` regenerates and checks.
+
+**Localising a mismatch** (as AUDIT-M2 section 8): the first chip line that differs names the 100,000-cycle interval,
+the unit lines name the unit, `M3Seg fpchip=… fpchipevery=1` over that interval names the cycle, and
+`StateFpM3.dump` names the word.
+
+**The cost** (`ref`, per call, ms): the whole chip about 17, of which the 67 big SRAMs 12-13 (a full scan; the
+framework keeps them incrementally, M2's rule), the replayers 0.5, the Tracer's five units 0.4 (`tr.files` 0.05, or 3
+when it rescans after write-backs), C&C 1's peripheral 0.02.
+
+## 8. The baseline (Quest 161; `golden-m3/baseline/`)
+
+`ref` as T2 runs it (`M3Seg` without hooks), alone on the runner, one JVM pinned to one P core (CPUs 0 and 1: the core
+and its hyperthread; i5-14400F, `machine.txt`; D21), three runs each:
+
+| run | the segment (boot's end to the end) | per chip cycle | setup (T1's carry) | the boot | checks |
+|---|---|---|---|---|---|
+| evm-zone-29 10 | **46.23 s** (45.87-46.93), 23,933,485 cycles | 1.93 µs | 10.5 s | 0.29 s (7,222 cycles) | 0.9 s |
+| cyclone-29 10 | **50.90 s** (50.28-51.38), 28,312,354 cycles | 1.80 µs | 8.8 s | 0.29 s | 0.9 s |
+
+These are the figures M3's timing compares against (the owner, 2026-11-09). For scale: M2's sort ran at ~78 µs per chip
+cycle in `ref` (idle-skip on, but every tile busy); T2's segment runs at ~1.9 µs because the tiles sleep most of it
+(section 4) and C&C 3's units do the work.
+
 ## 9. Findings for the record
 
 - **9.1 The latency defaults since 110u** (section 0): GO, READY, error 1 → 8 and `stage_delay` 32 → 64 shift C&C 3's
@@ -384,9 +560,10 @@ of every page (evm-zone-29: about 500 image pages plus the map and the segment's
   as it runs is the slot's (D27). The same header's "an event posted after the sample point survives" holds for depth-2
   credits but not for a depth-1 event already at its count when posted at s (the post is dropped as full, then the
   consume clears it): run done and new expansion. To count in the coverage run (a post at s to a full depth-1 bit with
-  a consume of that bit at s); expected 0, as `replay_ctl` consumes done once per pass. **Quest 160: one in each
-  workload** (which unit and bit: to identify). The framework reproduces it without special handling, since a post
-  to a full count is dropped when it is made, as in `ref`, and 3.1 applies the consume after the cycle's posts.
+  a consume of that bit at s); expected 0, as `replay_ctl` consumes done once per pass. **Quest 161: none** in either
+  run (Quest 160's "one per workload" was the counter's own artefact: the Tracer's `drainedAt` starts at 0 and was read
+  at cycle 0). Were it reached, the framework would reproduce it without special handling: a post to a full count is
+  dropped when it is made, as in `ref`, and 3.1 applies the consume after the cycle's posts.
 - **9.3 `outStart` doesn't settle** (`Tracer.outStart`, `PeripheralSlot.Dma.start`): `ref` calls it inside the
   PULSE_DMA store, during the core's step, before the Tracer's own work of that cycle and before its pending inputs are
   settled; the framework applies the store at level 0 of the next cycle (3.1 step 1.0). The orders differ only for a
@@ -395,3 +572,10 @@ of every page (evm-zone-29: about 500 image pages plus the map and the segment's
   count in the coverage run (a PULSE_DMA with Tracer inputs or landings pending from the previous cycle); expected 0.
   **Quest 160: 0** of 14,162 PULSE_DMAs (evm-zone) and of 15,716 (cyclone).
   The same reason keeps the fingerprint's `ref` side from settling the Tracer early (6's second rule).
+- **9.4 The Tracer's memory system: the write buffer isn't capped at its depth** (W14, 2026-11-09;
+  `MemorySystem.wbPush`): `wbDepth` (4) only delays a line's entry (`enter`), so lines queue beyond it; `ref` throws
+  only when the ring passes 64 entries. A guest storing to 136-176 pages queues 19-63 lines. Ruled reproduced exactly
+  (D27: `ref`'s own simplification, self-consistent); the C++ stops at the same point. How close the reference runs
+  come (Quest 161): **evm-zone 10 never queues a line; cyclone-29 10 at most 3** (1 between cycles, at most 3 within one:
+  the count before the cycle plus its early evictions), against the ring's 64 and below the depth of 4. Neither
+  reference run reaches the uncapped case; a test of it needs a store-heavy guest (W14's 136-176 pages).

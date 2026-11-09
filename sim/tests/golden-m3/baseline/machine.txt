@@ -1,0 +1,12 @@
+model:     Intel(R) Core(TM) i5-14400F
+sockets:   1; CPUs usable 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 (16 of 16 online)
+P cores:   6 cores, CPUs 0,1,2,3,4,5,6,7,8,9,10,11 (12 threads), max 4700000 kHz, min 800000 kHz
+E cores:   4 CPUs 12,13,14,15, max 3500000 kHz, min 800000 kHz
+placement: 0,2,4,6,8,10,1,3,5,7,9,11,12,13,14,15
+governor:  powersave
+caches:    L1d cache: 416 KiB (10 instances);L1i cache: 448 KiB (10 instances);L2 cache: 9.5 MiB (7 instances);L3 cache: 20 MiB (1 instance);
+memory:    MemTotal: 65671456 kB
+kernel:    Linux 6.8.0-147-generic
+gcc:       g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+clang:     Ubuntu clang version 18.1.3 (1ubuntu1)
+java:      openjdk version "21.0.12.1" 2026-08-18

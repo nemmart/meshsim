@@ -15,6 +15,10 @@ import java.util.TreeSet;
  *                 start, C&C 3's exit and the end; the new units' statistics; and per image, every pc's cycles (pcs=FILE)
  *   fp=FILE       the Tracer's fingerprint units (StateFpM3) every fpevery cycles (default 100,000) and at C&C 3's exit,
  *                 with each unit's cost per call
+ *   fpchip=FILE   every unit's fingerprint (StateFpM3.write: 6.6-6.9) every fpchipevery cycles (default 100,000), at the
+ *                 boot's end, C&C 3's exit and the end, with a D12 header and the cost per call by unit kind
+ *   snapshot=FILE, sram=FILE  the framework harness's inputs (M3Inputs): the memory at the segment's start, the
+ *                 big-SRAM landings before the boot
  *   counts        finding 9.2 (a depth-1 post lost to a same-cycle consume: run done, new expansion) and 9.3 (a PULSE_DMA
  *                 on C&C 3 with the Tracer's inputs or landings of the previous cycle pending), printed at the end
  * Latency overrides (finding 9.1): go=N ready=N stage=N error=N set Config's goLatency, readyLatency, stageDelay,
@@ -61,39 +65,50 @@ public final class M3Seg {
         double setup = (System.nanoTime() - t0) / 1e9;
         System.out.printf("%s segment %d: setup (T1's carry through segments 0-%d) %.1f s; memory snapshot %d pages, sha %s%n",
                 name, seg, seg - 1, setup, snap.pagesAllocated(), Long.toHexString(StateFpM3.filesScan(snap)));
+        if (kv.containsKey("snapshot")) M3Inputs.files(snap, Path.of(kv.get("snapshot")));
         long w0 = System.nanoTime();
         Res r = chip(g, snap, in, sg, nx, regs, seg, windows, pd, man, kv);
         double wall = (System.nanoTime() - w0) / 1e9;
         System.out.printf("%s segment %d (T2, %d windows): %s  C&C 3 %d cycles (trace rows %d, drain %d), %d transfers, %d DMA packets; replay max %d cycles; %d rows checked; chip %d cycles; %.1f s%n",
                 name, seg, windows, r.ok() ? "OK" : "FAIL", r.cc3Cycles, r.rowCycles, r.drainCycles, r.transfers, r.packets, r.replayMax, r.rows, r.chipCycles, wall);
         for (String d : r.detail) System.out.println("    " + d);
+        System.out.printf("timing: setup %.2f s; boot %.2f s (%d cycles); segment %.2f s (%d cycles: %.2f us a cycle); checks %.2f s%n",
+                setup, r.bootS, r.bootCycles, r.segS, r.chipCycles - r.bootCycles, r.segS * 1e6 / Math.max(1, r.chipCycles - r.bootCycles), wall - r.bootS - r.segS);
         if (kv.containsKey("csv")) try (PrintWriter w = new PrintWriter(Files.newBufferedWriter(Path.of(kv.get("csv"))))) {
-            w.println("segment,windows,cc3_cycles,trace_rows_cycles,drain_cycles,transfers,dma_packets,replay_cycles_max,rows_checked,chip_cycles,setup_s,wall_s,ok");
-            w.printf("%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%.1f,%.1f,%s%n", seg, windows, r.cc3Cycles, r.rowCycles, r.drainCycles, r.transfers, r.packets, r.replayMax, r.rows, r.chipCycles, setup, wall, r.ok() ? "OK" : "FAIL");
+            w.println("segment,windows,cc3_cycles,trace_rows_cycles,drain_cycles,transfers,dma_packets,replay_cycles_max,rows_checked,chip_cycles,setup_s,wall_s,ok,boot_cycles,boot_s,segment_s");
+            w.printf("%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%.1f,%.1f,%s,%d,%.2f,%.2f%n", seg, windows, r.cc3Cycles, r.rowCycles, r.drainCycles, r.transfers, r.packets, r.replayMax, r.rows, r.chipCycles, setup, wall, r.ok() ? "OK" : "FAIL", r.bootCycles, r.bootS, r.segS);
         }
         System.exit(r.ok() ? 0 : 1);
     }
 
     static final class Res {
         final List<String> detail = new ArrayList<>(); long cc3Cycles, rowCycles, drainCycles, transfers, packets, replayMax, rows, chipCycles;
+        long bootCycles; double bootS, segS;
         boolean ok() { return detail.isEmpty(); }
     }
 
     // ---------------------------------------------------------------- the hooks
     static final class Hooks {
-        final Mach m; final Chip c; final Tracer tr; final Map<String, String> kv;
+        final Mach m; final Chip c; final Tracer tr; final Map<String, String> kv; final boolean cover, counts;
         final long[][] pcs = new long[4][8192]; final long[] pcOther = new long[4];   // [0] the 64 tiles, [1-3] C&C 1-3
         final List<String> snapNames = new ArrayList<>(); final List<long[]> snaps = new ArrayList<>();
         final PrintWriter fp; final long fpEvery; long fpCalls; final long[] fpNanos = new long[StateFpM3.TRACER_UNITS.length];
         long lost92, dma93, dma93Pending; long lastTransfers; boolean pendingAtPrev;
+        final List<String> lost92At = new ArrayList<>();
+        long wbMax, wbMaxAt, wbBound, lastEarly; int wbLast;               // 9.4: the write buffer's ring, between cycles and bounded within
+        final PrintWriter fpc; final long fpcEvery; long fpcCalls; final long[] fpcNanos = new long[StateFpM3.KINDS.length];
         final long[] doneSetSeen = new long[64], newExpSeen = new long[64]; long trNewExpSeen, trDrainSeen = Long.MIN_VALUE;
 
         Hooks(Mach m, Map<String, String> kv) throws Exception {
-            this.m = m; this.c = m.c; this.tr = m.c.cores.tracer; this.kv = kv;
+            this.m = m; this.c = m.c; this.tr = m.c.cores.tracer; this.kv = kv; cover = kv.containsKey("cover"); counts = kv.containsKey("counts");
             fp = kv.containsKey("fp") ? new PrintWriter(Files.newBufferedWriter(Path.of(kv.get("fp")))) : null;
             fpEvery = Long.parseLong(kv.getOrDefault("fpevery", "100000"));
+            fpc = kv.containsKey("fpchip") ? new PrintWriter(Files.newBufferedWriter(Path.of(kv.get("fpchip")))) : null;
+            fpcEvery = Long.parseLong(kv.getOrDefault("fpchipevery", "100000"));
+            if (fpc != null) { for (String l : FpHooks.configLines(c.cfg)) fpc.println("# " + l); fpc.println("# " + kv.getOrDefault("header", "")); }
             if (fp != null) { for (String l : FpHooks.configLines(c.cfg)) fp.println("# " + l); fp.println("# units " + String.join(",", StateFpM3.TRACER_UNITS)); }
             java.util.Arrays.fill(doneSetSeen, Long.MIN_VALUE); java.util.Arrays.fill(newExpSeen, Long.MIN_VALUE);
+            trDrainSeen = tr.drainedAt; trNewExpSeen = tr.newExpansions;   // their values before any cycle (Quest 160's false 9.2 at cycle 0)
         }
         /** After cycle c.cycle - 1 ran (runUntil's condition): read only. */
         long lastT = Long.MIN_VALUE;
@@ -101,12 +116,13 @@ public final class M3Seg {
             long t = c.cycle - 1;
             if (t == lastT) return;                       // runUntil checks its condition again when a new run starts
             lastT = t;
-            if (kv.containsKey("cover")) {
+            if (cover) {
                 for (int i = 0; i < 64; i++) pc(0, c.tiles[i].core.pc);
                 for (int k = 0; k < 3; k++) pc(1 + k, c.cores.unit(k).core.pc);
             }
-            if (kv.containsKey("counts")) counts(t);
+            if (counts) counts(t);
             if (fp != null && t > 0 && t % fpEvery == 0) fingerprint(t);
+            if (fpc != null && t > 0 && t % fpcEvery == 0) chipFp(t, "");
         }
         void pc(int img, int pc) { int i = (pc - 0x01000000) >>> 2; if (pc >= 0x01000000 && i < 8192) pcs[img][i]++; else pcOther[img]++; }
         void counts(long t) {
@@ -114,13 +130,17 @@ public final class M3Seg {
             for (int i = 0; i < 64; i++) {
                 Replayer rp = (Replayer) c.tiles[i].slot.p[1]; int[] cnt = (int[]) StateFp.o(rp.ev, "count");
                 long ds = StateFp.l(rp, "doneSetAt"), ns = StateFp.l(rp, "newExpSetAt");
-                if (ds == t && ds != doneSetSeen[i] && cnt[Replayer.EV_RUN_DONE] == 0) lost92++;
-                if (ns == t && ns != newExpSeen[i] && cnt[Replayer.EV_NEWEXP] == 0) lost92++;
+                if (ds == t && ds != doneSetSeen[i] && cnt[Replayer.EV_RUN_DONE] == 0) { lost92++; lost92At.add("tile " + i + " run done at " + t); }
+                if (ns == t && ns != newExpSeen[i] && cnt[Replayer.EV_NEWEXP] == 0) { lost92++; lost92At.add("tile " + i + " new expansion at " + t); }
                 doneSetSeen[i] = ds; newExpSeen[i] = ns;
             }
             int[] tc = (int[]) StateFp.o(tr.ev, "count");
-            if (tr.newExpansions != trNewExpSeen) { if (tc[Tracer.EV_NEWEXP] == 0) lost92++; trNewExpSeen = tr.newExpansions; }
-            if (tr.drainedAt == t && tr.drainedAt != trDrainSeen) { if (tc[Tracer.EV_RUN_DONE] == 0) lost92++; trDrainSeen = tr.drainedAt; }
+            if (tr.newExpansions != trNewExpSeen) { if (tc[Tracer.EV_NEWEXP] == 0) { lost92++; lost92At.add("the Tracer: new expansion at " + t); } trNewExpSeen = tr.newExpansions; }
+            if (tr.drainedAt == t && tr.drainedAt != trDrainSeen) { if (tc[Tracer.EV_RUN_DONE] == 0) { lost92++; lost92At.add("the Tracer: run done at " + t); } trDrainSeen = tr.drainedAt; }
+            int wb = (int) StateFp.l(tr.mem, "wbCount"); long early = tr.mem.earlyEvictions;
+            if (wb > wbMax) { wbMax = wb; wbMaxAt = t; }
+            long bound = wbLast + Math.max(0, early - lastEarly); if (early >= lastEarly && bound > wbBound) wbBound = bound;
+            wbLast = wb; lastEarly = early;
             // 9.3: a PULSE_DMA at t with the Tracer's landings or inputs of effect cycle t - 1 pending at the end of t - 1
             long tf = c.cores.unit(2).slot.dma[1].transfers;
             if (tf != lastTransfers) { dma93++; if (pendingAtPrev) dma93Pending++; lastTransfers = tf; }
@@ -128,6 +148,12 @@ public final class M3Seg {
             for (Object x : (java.util.ArrayDeque<?>) StateFp.o(tr, "landing")) if (StateFp.l(x, "t") <= t) p = true;
             for (Object x : (java.util.ArrayDeque<?>) StateFp.o(tr, "inputs")) if (StateFp.l(x, "t") <= t) p = true;
             pendingAtPrev = p;
+        }
+        long lastChipFp = -1;
+        void chipFp(long t, String why) {
+            if (t == lastChipFp) return; lastChipFp = t;
+            if (!why.isEmpty()) fpc.println("# " + why + " " + t);
+            StateFpM3.write(fpc, c, t, true, fpcNanos); fpcCalls++;
         }
         void fingerprint(long t) {
             long all = 0x6A09E667F3BCC908L; int n = 0;
@@ -211,6 +237,16 @@ public final class M3Seg {
                 for (int k = 0; k < fpNanos.length; k++) System.out.printf(" %s %.1f", StateFpM3.TRACER_UNITS[k], fpNanos[k] / 1e3 / fpCalls);
                 System.out.println();
             }
+            if (fpc != null) {
+                chipFp(c.cycle - 1, "end"); fpc.close();
+                StringBuilder b = new StringBuilder("chip fingerprints: " + fpcCalls + " calls; cost per call, ms:");
+                for (int k = 0; k < fpcNanos.length; k++) if (fpcNanos[k] > 0) b.append(String.format(" %s %.2f", StateFpM3.KINDS[k], fpcNanos[k] / 1e6 / fpcCalls));
+                System.out.println(b);
+            }
+            if (kv.containsKey("counts")) {
+                System.out.println("counts: 9.2 at: " + String.join("; ", lost92At));
+                System.out.printf("counts: 9.4 the write buffer's ring: at most %d lines between cycles (cycle %d), at most %d within a cycle (bound: the last count plus the cycle's early evictions); ring 64, depth %d%n", wbMax, wbMaxAt, wbBound, tr.mem.wbDepth);
+            }
             if (kv.containsKey("counts")) System.out.printf("counts: 9.2 depth-1 posts lost to a same-cycle consume %d; 9.3 PULSE_DMAs on C&C 3 %d, with the Tracer's inputs of the previous cycle pending %d%n", lost92, dma93, dma93Pending);
             if (kv.containsKey("cover")) {
                 snap("end");
@@ -283,10 +319,13 @@ public final class M3Seg {
         }
         Mach.Image tile = new Mach.Image(Path.of("sw/replay/build"), "replay_ctl"), cc3 = new Mach.Image(Path.of("sw/tracer/build"), "tracer_ctl");
         Hooks hk = new Hooks(m, kv);
+        if (kv.containsKey("sram")) M3Inputs.sram(m.c, Path.of(kv.get("sram")));
+        long tb0 = System.nanoTime();
         m.bootCores(tile, cc3);
         Tile u3 = m.c.cores.unit(2);
         if (!m.run(() -> { hk.cycle(); return m.coresBooted(); }, 2_000_000)) { res.detail.add("the boot didn't finish: " + m.haltSummary()); return res; }
-        hk.snap("boot-end");
+        hk.snap("boot-end"); if (hk.fpc != null) hk.chipFp(m.c.cycle - 1, "boot-end");
+        res.bootCycles = m.c.cycle - 1; long tb1 = System.nanoTime();
         m.cc1Command(0x54, 2, 1 << 24, 0x53 << 24);
         hk.snap("segment-start");
         long cap = (long) windows * 65536 * 12 + 5_000_000;
@@ -305,14 +344,15 @@ public final class M3Seg {
             }
             if (u3.core.halt == Controller.RUN || u3.core.firstImageAt <= 0) return false;
             if (prog[2] < 0) prog[2] = c;
-            if (!cc3Snapped[0]) { cc3Snapped[0] = true; hk.snap("cc3-exit"); }
+            if (!cc3Snapped[0]) { cc3Snapped[0] = true; hk.snap("cc3-exit"); if (hk.fpc != null) hk.chipFp(c - 1, "cc3-exit"); }
             for (int t = 0; t < 64; t++) if (m.c.tiles[t].core.halt == Controller.RUN) {
                 if (c - prog[2] >= 1_000_000) { stall[0] = "tile " + t + " not exited 1 M cycles after C&C 3's exit (cycle " + prog[2] + ")"; return true; }
                 return false;
             }
             return true;
         }, cap);
-        res.chipCycles = m.c.cycle;
+        res.chipCycles = m.c.cycle; long tb2 = System.nanoTime();
+        res.bootS = (tb1 - tb0) / 1e9; res.segS = (tb2 - tb1) / 1e9;
         hk.end(new Mach.Image[] { tile, null, null, cc3 });
         if (stall[0] != null) { res.detail.add("STOPPED: " + stall[0]); res.detail.addAll(TracerT2.dump(m, windows)); return res; }
         long cc3End = u3.core.halt == Controller.HALT_EXIT ? u3.ctl.simExitAt : m.c.cycle;

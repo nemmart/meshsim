@@ -1,0 +1,2 @@
+BASELINE evm: segment 46.23 s mean (3 runs), setup 10.47 s, boot 0.29 s, 0 not OK
+BASELINE cyclone: segment 50.90 s mean (3 runs), setup 8.83 s, boot 0.29 s, 0 not OK

@@ -6,7 +6,7 @@ The replayer and the peripheral slot. Branch `sim-w15`. Prompt: `PROMPT.md`.
 
 **Go-ahead 2026-11-09** (owner): the plan as written; answers to Q1-Q4 below. Steps 1-2 done: the ALU and the replayer equal to `ref` (ReplayConf every cycle; ReplayerUnitTests ported, 1,456
 checks). The slot's header published; the owner settled the round (W14: violation_count and the late accept; W16: its two
-classes and `visit` cases, the ports/begin/end hooks). Stage A queued (Quest 164). The slot's body written (WIP, compiles, untested): next its conformance against ref.
+classes and `visit` cases, the ports/begin/end hooks). Stage A passed (Quest 164: every window of both programs). The slot's body written (WIP, compiles, untested): next its conformance against ref.
 
 ## The owner's answers (2026-11-09)
 
@@ -266,7 +266,14 @@ Claimed and pushed (Quest c8503c3): `tasks/164-w15-stage-a.sh`, kit from sim-w15
 v1.26.1 in scratch by ref's ConvertDelivery (as 105-107); (1) the selected windows, all three variants, ref's
 ReplayDelivery and `replay_delivery` compared with cmp (each also passing on its own); (2) every window of both programs
 on the C++ driver alone (state all 8,192 each; state-lru and state-pick every 8th), against rows.bin, the streams,
-end.bin, clean. Waiting for the result.
+end.bin, clean.
+
+**Result (Quest 164, DONE, ALL PASS; runner godspeed, 16 CPUs, 2 minutes):**
+- selected windows: evm-zone-29's 12 and cyclone-29's 13, each in state, state-lru and state-pick: ref's ReplayDelivery and
+  `replay_delivery` **byte-identical** (every window's rows, the pass's cycles, the streams, new expansions, the
+  stalls), each passing (786,432 and 851,968 rows compared per variant);
+- every window: evm-zone-29 and cyclone-29, state all 8,192 each, state-lru and state-pick 1,024 each (every 8th):
+  **20,480 windows, all OK**: every row of rows.bin byte for byte, the streams consumed exactly, end.bin, clean.
 
 ### The slot's body (WIP, 2026-11-09)
 

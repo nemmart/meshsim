@@ -62,8 +62,14 @@ void cc1_command(sim::Sim& m, uint32_t type, uint32_t arg, const uint32_t* args,
 constexpr uint32_t CC_SEGMENT = 0x54, TL_CMD_START = 0x53;
 // CC_SEGMENT as TracerT2 sends it: the tiles' command (1 << 24) and C&C 3's start (TL_CMD_START << 24).
 void cc_segment(sim::Sim& m);
+struct Machine;
 // Mach.coresBooted: C&C 1's mbox[3] == 2 (cc1.c), read from its data memory (`cc1_dmem`: unit 64's MEM_WORDS words).
 bool cores_booted(const uint32_t* cc1_dmem, const Image& cc1);
+// Runs to Mach.coresBooted (at most `cap` cycles), checked between cycles as ref's runUntil. Returns ref's boot-end point
+// (M3Seg: c.cycle - 1; the framework's cycle F is ref's F - 1, so between cycles now() is ref's c.cycle + 1), or -1.
+// With `trace`, appends "CYCLE pc1 pc2 pc3 pc_t0" (ref's c.cycle; C&C 1-3's and tile 0's pc, signed) whenever one
+// changes, as tests/ref/BootStage.java's trace (tests/m3-images/boottrace.ref.gz).
+int64_t run_boot(Machine& m, const Image& cc1, uint64_t cap, std::string* trace = nullptr);
 
 // The replayer's sink hash over n records of ten words.
 uint64_t rows_hash(const uint64_t* recs, size_t n, uint64_t h = 0);

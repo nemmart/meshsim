@@ -25,6 +25,8 @@
 
 namespace units {
 
+struct PeriphSlot;                // periph_slot.h
+
 // W8's part of a tile (the register block, the director, port B, the core) as the network meets it.
 // W14 (D34, the request bus; NOTES.md section 14): a sender's port as its tile's control offers it. `present`: the
 // control has a request port (W8's; the network-only stand-in has none). `recv`: a controller's receive side.
@@ -53,6 +55,8 @@ struct ControlIO {
                                   // the controller router's CC_DMA_IN, a credit Fifo of cc_dma_depth (4); set when
     bool has_dma = false;         // the builder declared it (the slot's PeriphSlotConfig::controller)
     ReqIO req;                    // W14 (D34): the request port's send side, and a controller's receive side
+    PeriphSlot* slot = nullptr;   // W16: the slot unit as staged (configuration only: its OwnPorts for C&C 1's chip
+                                  // lines, wired by build_chip); null without one
 };
 // W14's ReqIO, ControlIO's request side (sessions/WORKER14/NOTES.md section 14), wired by units::reqbus::wire_sender.
 // ReqIO is defined before ControlIO (above).
@@ -83,6 +87,7 @@ struct CcIO {
     sim::LinkIn go;               // the register block's GO (nothing drives a controller's GO in ref)
     sim::LinkOut line;            // the register block's line word: READY (ignored for controllers) and the error level
     ReqIO req;                    // W14: the controller's request port, send and receive sides (build_chip wires them)
+    PeriphSlot* slot = nullptr;   // the controller's slot as staged (the control's `io.slot`), or null
 };
 
 struct ChipSpec {

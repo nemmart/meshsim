@@ -130,6 +130,50 @@ TEST(t2_boot_staging_equal_to_refs) {
     CHECK(!t2::cores_booted(dm, cc1));
 }
 
+// The boot to Mach.coresBooted without the landings, against ref's (BootStage trace, boottrace.ref.gz): C&C 1-3's and
+// tile 0's pc between every cycle, and the boot-end point 7,222; on one domain, on T2's split, under the debug options.
+std::string boot_trace(const uint8_t* dom, sim::Options opt, int64_t* end) {
+    std::string err;
+    auto m = t2::build_machine(dom, opt, err);
+    if (!m) return "build: " + err;
+    t2::Image cc1, cc23, tile, cc3;
+    for (auto [im, n] : {std::pair<t2::Image*, const char*>{&cc1, "cc1"}, {&cc23, "cc23"}, {&tile, "replay_ctl"}, {&cc3, "tracer_ctl"}})
+        if (!t2::load_image("tests/m3-images", n, *im, err)) return err;
+    t2::boot_cores(*m->sim, cc1, cc23, tile, cc3, 8, 0);
+    std::string tr;
+    *end = t2::run_boot(*m, cc1, 20000, &tr);
+    return tr;
+}
+
+void check_boot(const uint8_t* dom, sim::Options opt) {
+    std::vector<uint8_t> raw;
+    std::string err;
+    if (!t2::read_gz("tests/m3-images/boottrace.ref.gz", raw, err)) { test::fail(__FILE__, __LINE__, "%s", err.c_str()); return; }
+    const std::string ref(raw.begin(), raw.end());
+    int64_t end = -1;
+    const std::string got = boot_trace(dom, opt, &end);
+    CHECK_EQ(end, 7222);
+    if (got != ref) {
+        size_t p = 0, line = 1;
+        while (p < got.size() && p < ref.size() && got[p] == ref[p]) { if (got[p] == '\n') line++; p++; }
+        test::fail(__FILE__, __LINE__, "the boot's trace differs from ref's at line %zu", line);
+    }
+}
+
+TEST(t2_boot_equal_to_refs_one_domain) { check_boot(nullptr, {}); }
+
+TEST(t2_boot_equal_to_refs_split) {
+    uint8_t d[64];
+    t2::partition(6, d);
+    sim::Options o; o.threads = 6;
+    check_boot(d, o);
+}
+
+TEST(t2_boot_equal_to_refs_under_debug_options) {
+    sim::Options a; a.shuffle_seed = 3; check_boot(nullptr, a);
+    sim::Options b; b.order = sim::Options::Order::instance_major; check_boot(nullptr, b);
+}
+
 TEST(t2_cc_segment_packets) {
     std::string err;
     auto m = t2::build_machine(nullptr, {}, err);

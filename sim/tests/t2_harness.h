@@ -88,7 +88,9 @@ struct Machine {
     uint32_t* dmem(unsigned unit) { return mem.data() + size_t(unit) * 2 * units::MEM_WORDS; }
 };
 // `domains` (64 entries, or null: one domain); `threads` for the split.
-std::unique_ptr<Machine> build_machine(const uint8_t* domains, sim::Options opt, std::string& err);
+// `reqbus` (W14): the request bus's configuration (D34: credit latency 3 the default, 0 exact on one domain).
+std::unique_ptr<Machine> build_machine(const uint8_t* domains, sim::Options opt, std::string& err,
+                                       const units::reqbus::ReqBusConfig* reqbus = nullptr);
 
 // T2's partition over `parts` domains (1-64): tile 2 (with C&C 3) alone in domain 0; tiles 0, 1 (with C&C 1, 2) and the
 // rest round-robin over domains 1 .. parts - 1 (everything in domain 0 when parts is 1).

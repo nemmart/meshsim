@@ -153,3 +153,21 @@ receive queue with its controller; C&C c is in tile c's domain). Three points fo
 3. **The controllers' REQUEST_GET/RECEIVE and the EVENTS pending bit** (your edits to `rv32.h`, `tile_ctl.h`): C&C 1's
    boot waits on them (cc1.c reads the two "started" requests); `test_cc_units` will add a C&C 2 that sends "started"
    and a C&C 1 that receives it, against ref's cycles, once your branch is on main.
+- 2026-11-09: **Cnc1Peripheral::writable** (W15's static map, sim-w15 6933df3's pattern): READY_EXPECT_0-1, PULSE_GO,
+  WATCHDOG, LED, UART_TX, UART_DIVISOR, UART_STATUS; checked equal to `write_word`'s result for every word 32-127.
+- 2026-11-09: **the T2 harness's pieces** (`tests/t2_harness.h/.cpp`; owner's item 4): M3Inputs' `files` dump into the
+  Tracer's `FileStore` (grow_to, raw_page) and `sram` dump poked into the units' big SRAMs; `Image` and
+  `boot_cores` (Mach.bootCores and hostBoot: the staging from chunk 0x10000, the descriptor in cc1's data, the program,
+  data and CMD_JUMP through the host port); `cc1_command`, `cc_segment` (0x54, 2, 1 << 24, 0x53 << 24);
+  `cores_booted` (cc1's mbox[3] == 2); `rows_ref` and `rows_hash` (rows.bin's count and the replayer's sink hash: no row
+  kept during the run; the replayer's buffer localises); `partition` (tile 2 and C&C 3 alone in domain 0, the rest
+  round-robin); `build_machine` (the cores chip over 67 units). `test_t2_harness`: the dumps written in their format
+  and read back (and refused when bad); the staging equal to ref's (`tests/ref/BootStage.java` runs Mach.bootCores
+  itself, `bootstage.sh`, `tests/m3-images/bootstage.ref`: C&C 1's host queue, 235 packets, and big SRAM, 2,014 words,
+  by count and hash) and landed into C&C 1's memories; CC_SEGMENT's packets; the rows' reference; a 6-domain build
+  with a barrier every 3 cycles.
+- 2026-11-09: **the boot driver** (`tests/t2_main.cpp`, `build/<cc>-<mode>/t2`: `--sram`, `--files`, `--parts`): builds,
+  pokes, stages, boots and runs to `coresBooted`. Today it stops at **cycle 571 on a controller's REQUEST_SEND** (C&C
+  2's or 3's "started", cc23.c / tracer_ctl.c): the first thing the boot needs is W14's request bus, then C&C 1's slot.
+  C&C 3's DMA input stays off until W15's `G1Config::periph_slot` builds the slot in W8's builder (`cc_cycle` wires
+  the slot's DMA when the builder offers it; C&C 1's and 2's lead nowhere, as ref's null `dmaPort`).

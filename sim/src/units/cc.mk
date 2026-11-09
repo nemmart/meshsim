@@ -8,3 +8,5 @@ $(B)/test_cnc1_periph: $(SLOT_LINK)
 # the T2 harness (tests/t2_harness.h): its pieces' test; the T2 tool comes with the slot's C&C 1
 T2_LINK := $(B)/tests/t2_harness.o $(NET_LINK) $(UNITS_LINK) $(GOLDEN_OBJ) $(TRACER_LINK)
 $(B)/test_t2_harness: $(T2_LINK)
+$(B)/t2: $(B)/tests/t2_main.o $(T2_LINK) $(LIB_OBJ)
+	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)

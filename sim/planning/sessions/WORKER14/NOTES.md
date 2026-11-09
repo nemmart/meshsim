@@ -430,3 +430,9 @@ debug, tsan).
 - 2026-11-09: the request bus taken over from W16 (section 14); D34 recorded by the owner; the design and W16's ports.
 - 2026-11-09: the bus equal to ref (ReqConf, mode 0 every cycle; mode 3 on calm; split tests); wired into the tiles;
   the fingerprint writers registered; regressions unchanged (section 14, Status).
+- 2026-11-09: merged main (W15's tile paths, W16's harness; 3b65e61): chip.h/.cpp and tile_ctl.h/.cpp resolved once
+  (W15's slot ports behind `periph_slot`; the request side in ControlIO, TileIO, CcIO and the tile builder;
+  `add_request_bus` serves M2's chip and W16's `cc_cores` chip, the controllers' leaves and queues in their domains).
+  `Tracer::writable(w)` (W15's ask). **make check, build by build on the merged tree (16b8822): gcc and clang, debug and
+  release, all 54 binaries pass; TSan, gcc and clang, all 8 thread tests (83 cases, `test_reqbus`'s split run
+  included), no races.**

@@ -137,3 +137,9 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   when fingerprints are wanted (W11), and the register block writing only the registers that changed (W12). Then M2
   closes and M3 is planned. No further unit-specific tuning (router layout, huge pages, index arithmetic) for this
   workload: the units that matter next (the field engine, D7) don't exist yet, and the framework's own overhead is ~8%.
+
+## M3
+
+- **D32. M3's target** (owner, 2026-11-09): **get the simulator as it exists in v1.3 running on the new framework: the
+  Tracer and the replayers.** The defining workload is a segment on the full chip as `ref`'s `TracerT2` runs it (W13
+  confirms the run). Exact first (D30 applies), then timed. The plan is `PLAN-M3.md`.

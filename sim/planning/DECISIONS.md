@@ -143,9 +143,8 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
 - **D32. M3's target** (owner, 2026-11-09): **get the simulator as it exists in v1.3 running on the new framework: the
   Tracer and the replayers.** The defining workload is a segment on the full chip as `ref`'s `TracerT2` runs it (W13
   confirms the run). Exact first (D30 applies), then timed. The plan is `PLAN-M3.md`.
-- **D33. C&C 1's stores take effect under the slot's rule** (owner, 2026-11-09; W16, AUDIT-M3 3.4's open item): C&C 1's
-  peripheral (`Cnc1Peripheral`) is not lazily settled in `ref`: a store's `writeWord` acts in the store's own cycle. The
-  framework keeps the slot's rule (AUDIT-M3 3.1: a store applied at level 0 of t + 1), so every read and GO are exact,
-  and **C&C 1's own work in the store's cycle is one cycle later than `ref`**: a watchdog written at t starts counting
-  at t + 1, a UART byte pushed at t can start shifting at t + 1. Neither reference run reaches the watchdog or the UART
-  (AUDIT-M3 section 1). A deliberate difference under D30, in place of a `Wire` from C&C 1's core to its slot.
+- **D33. A deliberate difference (D30): C&C 1's peripheral stores one cycle later** (integrator, 2026-11-09, W16's
+  proposal; AUDIT-M3 3.4's open item). `ref`'s C&C 1 peripheral applies a store within the store's own cycle; the slot's
+  rule applies stores at level 0 of t + 1. The framework keeps the slot's rule, so C&C 1's own work (the watchdog's first
+  count, a UART byte's start) runs one cycle later than `ref`. Neither reference run reaches either (W13's coverage);
+  exactness otherwise would need a special path in the generic slot.

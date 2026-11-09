@@ -16,6 +16,13 @@ import java.util.TreeMap;
  * makes (TracerConfCases, TracerConfRig): the only change is that the rig's Tracer is a {@link Rec}, which forwards every
  * call to the real Tracer and records it. TracerTest's own assertions still run (their summary goes to stdout).
  *
+ * <h3>T1</h3>
+ * {@code java TracerConf t1 LOG DELIVERY_DIR NAME --w26 DIR --segments a-b ...}: ref's TracerT1 (the Tracer, its memory
+ * system and the ideal controller on a real run's segments, checked against WORKER9's delivery), through a copy
+ * TracerConfT1 that tracerconf.sh makes: its rig's Tracer is a Rec, and its three harness edits between segments are
+ * recorded as tokens (the ownership set on the memory, the shared cache made cold, the stall counters cleared). LOG may
+ * be a FIFO that test_tracer reads as it is written (TRACERCONF_STREAM).
+ *
  * <h3>Seeded stimulus</h3>
  * {@code java TracerConf gen LOG SEED [mix|wb]}: a generated guest on TracerConfRig ({@link Gen}): loops, calls and
  * returns through the map, loads and stores of every width, compressed instructions (fetches straddling lines), MUL,
@@ -45,6 +52,8 @@ import java.util.TreeMap;
  *  (lines) fp id c h0 h1 h2 h3 h4: the fingerprint's five units (AUDIT-M3 6.6, StateFpM3: tr, tr.ic, tr.dc, tr.mem,
  *        tr.files as the scan it defines) at the end of cycle c, taken after runCycle(c) every FP_EVERY cycles of the
  *        rig and at its end (fe id c ...: after its last call); C++ compares it after replaying that cycle
+ *  O,root,depth,p0,p1,..=created   FileStore.setOwnership (a harness edit)      mc   the shared cache made cold
+ *  cs    the stall counters cleared (TracerT1, between segments)
  *  F,k   the store as dump k (C++: the pages it has must be equal, the new ones are added): at a word-0 packet after
  *        the harness allocated pages     H=h   else, at a word-0 packet: the store's hash
  * </pre>
@@ -57,6 +66,7 @@ public final class TracerConf {
         out.println("# tracerconf v1: ref's side, TracerConf " + a[0]);
         switch (a[0]) {
             case "cases" -> { FP_EVERY = 2000; TracerConfCases.main(new String[0]); }   // ends with System.exit: see exit()
+            case "t1" -> { FP_EVERY = 100_000; TracerConfT1.main(java.util.Arrays.copyOfRange(a, 2, a.length)); }   // exits through exit()
             case "gen" -> { Gen.run(Long.parseLong(a[2]), a.length > 3 ? a[3] : "mix"); exit(0); }
             default -> throw new IllegalArgumentException(a[0]);
         }
@@ -491,6 +501,19 @@ public final class TracerConf {
             int value(long t) { call(t, "ev"); int v = x.events().value(t); app("=" + hx(v)); return v; }
             void consume(int bits) { call(Long.MIN_VALUE, "co," + hx(bits)); x.events().consume(bits); }
         }
+
+        // ---- the harness's own edits (TracerT1): recorded so the replay makes them too
+        int setOwnership(FileStore.File f, java.util.Collection<Long> written) {
+            StringBuilder sb = new StringBuilder("O," + f.root() + "," + f.depth());
+            for (long p : written) sb.append(',').append(p);
+            call(Long.MIN_VALUE, sb.toString());
+            int n = fs.get().setOwnership(f, written);
+            app("=" + n);
+            dumpedNext = nextFree(fs.get());      // the replay allocates the same pages: no dump needed
+            return n;
+        }
+        void memCold() { call(Long.MIN_VALUE, "mc"); x.mem.cold(); }
+        void clearStalls() { call(Long.MIN_VALUE, "cs"); java.util.Arrays.fill(x.stalls, 0); }
 
         // ---- reads that settle nothing: passed through
         boolean stopped() { return x.stopped(); }

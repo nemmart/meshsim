@@ -119,6 +119,10 @@ public:
     void reset(int64_t t);
     void step(int64_t T);                               // ref's runCycle
     bool idle(int64_t) const { return false; }          // ref: the Tracer reports idle never
+    // The wake rule (AUDIT-M3 3.3, D23): whether step(t) can change anything. False only when not running, no dropped
+    // expansion word waits, and no input or landing is pending; then skipping step(t) is exact (settle is lazy and
+    // idempotent, and the counters tick only while running). The slot may sleep C&C 3's peripheral on it.
+    bool must_step() const { return running_ || (exp_discard_ > 0 && eq_occ_ > 0) || inputs_.n > 0 || landing_.n > 0; }
     int64_t next_wake_at(int64_t) const { return INT64_MAX; }
     void skip_cycles(int64_t n) const;
     void digest_words(int64_t out[STAT_N]) const;       // the counters, words 44-51 (ref: int to long)

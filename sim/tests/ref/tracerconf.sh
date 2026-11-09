@@ -26,7 +26,14 @@ build() {
   sed -E -e 's/\bTracerTest\b/TracerConfCases/g' -e 's/\bTracerRig\b/TracerConfRig/g' \
          -e 's/System\.exit\(T\.done/TracerConf.exit(T.done/' \
          -e "s/\\btr\\.($FIELDS)\\b/tr.x.\\1/g" "$REF/test/TracerTest.java" > "$1/src/TracerConfCases.java"
+  sed -E -e 's/\bTracerT1\b/TracerConfT1/g' -e 's/\bTracerRig\b/TracerConfRig/g' -e 's/System\.exit\(/TracerConf.exit(/g' \
+         -e 's/g\.fs\.setOwnership\(img, written\)/g.tr.setOwnership(img, written)/' -e 's/g\.ms\.cold\(\);/g.tr.memCold();/' \
+         -e 's/java\.util\.Arrays\.fill\(g\.tr\.stalls, 0\);/g.tr.clearStalls();/' \
+         -e "s/\\btr\\.($FIELDS)\\b/tr.x.\\1/g" "$REF/test/TracerT1.java" > "$1/src/TracerConfT1.java"
   grep -q 'TracerConf.Rec tr = new TracerConf.Rec' "$1/src/TracerConfRig.java" || { echo "tracerconf: the rig's Tracer was not replaced"; exit 2; }
+  for x in 'g.tr.setOwnership(img, written)' 'g.tr.memCold();' 'g.tr.clearStalls();'; do
+    grep -qF "$x" "$1/src/TracerConfT1.java" || { echo "tracerconf: TracerT1's edit '$x' was not recorded"; exit 2; }
+  done
   javac -nowarn -d "$1" -sourcepath "$REF/test" "$REF"/src/*.java \
         "$SIM"/tests/ref/StateFp.java "$SIM"/tests/ref/StateFpM3.java "$SIM"/tests/ref/TracerConf.java "$1"/src/*.java 2>&1 | grep -v '^Note:'
   [ -f "$1/TracerConf.class" ] || { echo "tracerconf: the driver did not compile"; exit 2; }

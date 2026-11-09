@@ -100,3 +100,9 @@ read the v1.25 delivery directly (`state.bin` in v1.25's order).
   **Baseline** (one JVM pinned to CPUs 0,1): evm-zone 10 segment 46.23 s (3 runs, 45.87-46.93), setup 10.5 s, boot
   0.29 s; cyclone 10 50.90 s (50.28-51.38), setup 8.8 s. AUDIT-M3 sections 7, 8 written. Next: regen.sh proven on the
   runner (Quest 162), then REPORT.md.
+- 2026-11-09: REPORT.md committed. **`tr.files` rescans at every call** (W14's caveat: the cache keyed on the memory
+  system's writes went stale when a harness edited the store directly, TracerTest's map-hole case; T2 never does). The
+  sum's definition is unchanged, so the references stand; about 3 ms a call. AUDIT-M3 6.6 says so. `mk_task.sh` now
+  compiles only W13's drivers: main's `sim/tests/ref/TracerConf.java` (W14, 018836f) references `TracerConfRig`, which
+  isn't in the repository, so a build of every file there fails (reported to the owner for W14).
+  M3's reference side done, unless W14, W15 or W16 bring something back.

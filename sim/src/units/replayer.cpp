@@ -33,10 +33,7 @@ void Replayer::record(int64_t t, uint16_t c, uint64_t a, uint64_t b) {
     if (fact_shown_ < FACT_RING) fact_shown_++;
     fact_counts_[c]++;
 }
-void Replayer::violate(int64_t t, uint16_t c, uint64_t a, uint64_t b) {
-    record(t, c, a, b);
-    if (host_fn_) host_fn_(host_ctx_, t, c);
-}
+void Replayer::violate(int64_t t, uint16_t c, uint64_t a, uint64_t b) { record(t, c, a, b); }
 
 void Replayer::fact_text(const ReplayerFact& f, char* buf, size_t n) {
     const unsigned long long a = f.a, b = f.b;
@@ -67,13 +64,16 @@ void Replayer::note_input(int64_t t) {
     last_input_t_ = t;
 }
 
-void Replayer::accept(int64_t t, unsigned src, uint32_t offset, unsigned size, uint64_t lo, uint64_t hi) {
+void Replayer::accept(int64_t t, int src, uint32_t offset, int size, uint64_t lo, uint64_t hi) {
     uint32_t addr = offset >> 2;
-    note_input(t);
+    // a landing is an input at t + RP_LATENCY: in time while the replayer is settled through that cycle at most
+    if (t < last_accept_t_) FATAL("replayer %u: accept's time went backwards %lld -> %lld", me, (long long)last_accept_t_, (long long)t);
+    if (t + RP_LATENCY < settled_) FATAL("replayer %u: a landing at %lld after cycle %lld was settled", me, (long long)(t + RP_LATENCY), (long long)settled_);
+    last_accept_t_ = t;
     if (accept_n_ > 0 && accept_times_[(accept_n_ - 1) & 7] == t) FATAL("replayer %u: two mode-9 packets in cycle %lld", me, (long long)t);
     accept_times_[accept_n_++ & 7] = t;
     if (land_n_ == RING) FATAL("replayer %u: %u packets landing at once", me, RING);
-    landing_[(land_h_ + land_n_++) % RING] = Input{t + RP_LATENCY, src, addr, size, lo, hi};
+    landing_[(land_h_ + land_n_++) % RING] = Input{t + RP_LATENCY, unsigned(src), addr, unsigned(size), lo, hi};
 }
 void Replayer::run(int64_t t) {
     note_input(t);
@@ -98,13 +98,13 @@ unsigned Replayer::landed(int64_t t) const {
     return 0;
 }
 
-uint32_t Replayer::errors(int64_t t) {
+int Replayer::errors(int64_t t) {
     settle(t);
     uint32_t e = 0;
     for (unsigned k = 0; k < N_ERR; k++) if (cond_events_[k] > 0) e |= 1u << k;
-    return e;
+    return int(e);
 }
-bool Replayer::word(int64_t t, unsigned w, uint32_t& v) {
+bool Replayer::word(int64_t t, int w, uint32_t& v) {
     settle(t);
     switch (w) {
         case W_RUN_CONFIG: v = s_run_config_; return true;
@@ -114,7 +114,7 @@ bool Replayer::word(int64_t t, unsigned w, uint32_t& v) {
         default: return false;
     }
 }
-int Replayer::write_word(int64_t t, unsigned w, uint32_t v) {
+int Replayer::write_word(int64_t t, int w, uint32_t v) {
     if (w == W_RUN_CONFIG) {
         note_input(t);
         if (in_n_ == RING) FATAL("replayer %u: %u inputs pending", me, RING);
@@ -124,10 +124,11 @@ int Replayer::write_word(int64_t t, unsigned w, uint32_t v) {
     uint32_t x;
     return word(t, w, x) ? 0 : -1;
 }
-void Replayer::consume_events(uint32_t bits) {
+uint32_t Replayer::consume_events(uint32_t bits) {
     uint32_t took = ev.consume(bits);
     for (unsigned b = EV_CODE; b <= EV_EXP; b++)
         if (took >> b & 1) { unsigned q = b - EV_CODE; allowance_[q] += half(q); }
+    return took;
 }
 
 // ================================================================ the snapshot at the end of t - 1

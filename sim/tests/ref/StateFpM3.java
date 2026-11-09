@@ -141,18 +141,12 @@ final class StateFpM3 {
     }
 
     // ---------------------------------------------------------------- tr.files: nextFree, then one sum; rescanned only after a write
-    private static final java.util.IdentityHashMap<FileStore, long[]> FILES = new java.util.IdentityHashMap<>();   // store -> {key, sum}
-    /** The store changes only by the memory system's writes (a write-back), whose count `cold()` clears at every state
-     *  write in T2: the key is (state writes, writes since), so a rescan follows any write. */
+    /** nextFree, then the sum, rescanned at every call (about 3 ms in T2): a cache keyed on the memory system's writes
+     *  went stale when a harness edited the store directly between calls (TracerTest's map-hole case; W14). */
     static long files(Tracer tr, StateFp.Out o) {
         FileStore fs = tr.mem.store;
         o.w("nextFree", l(fs, "nextFree"));
-        long key = l(tr, "stateWrites") << 40 ^ tr.mem.writes;
-        long[] k = FILES.get(fs);
-        if (k != null && k[0] == key) return k[1];
-        long s = filesScan(fs);
-        FILES.put(fs, new long[] { key, s });
-        return s;
+        return filesScan(fs);
     }
     static long filesScan(FileStore fs) {
         @SuppressWarnings("unchecked") Map<Integer, long[]> pages = (Map<Integer, long[]>) o(fs, "pages");

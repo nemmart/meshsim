@@ -23,7 +23,7 @@ then the rest.
 **The reference run is evm-zone-29 segment 10** (Quest 110u's, T2's acceptance with every unit on its real firmware):
 `TracerT2 $DATA/w9-deliveries evm-zone-29 --w26 $DATA/w26-jumpmap/evm-zone-29 --segments 10` (64 windows, raw), the
 images `sw/build/cc1`, `cc23`, `sw/tracer/build/tracer_ctl`, `sw/replay/build/replay_ctl`, the boot ROM, `hops.txt` and
-the universal tables byte-identical to 110u's kit (`sim/planning/sessions/WORKER13/tasks/IMAGES`). The second run,
+the universal tables byte-identical to 110u's kit (`sim/planning/sessions/WORKER13-tasks/IMAGES`). The second run,
 **cyclone-29 segment 10** (110u's other, the heaviest segment of either workload), is added if coverage shows paths the
 first doesn't reach: **it does** (section 1), so **the M3 runs are both: evm-zone-29 segment 10 and cyclone-29 segment
 10.**
@@ -463,11 +463,12 @@ The ways' positions are written because a fill takes the first free way by index
 
 **`tr.files`** (the memory): `nextFree`, then one memory sum (region 11) over every allocated page's 512 words, index
 `(page address / 32) × 512 + i` (an index page's -1 entries included: non-zero). The C++ side keeps it incrementally (a
-write-back changes 16 words); `ref`'s side rescans only when the memory system's `writes` count has moved since the last
-call (between write-backs it is constant).
+write-back changes 16 words; a harness's direct edit of the store must update it too). `ref`'s side rescans at every
+call: it cached the sum between the memory system's writes until W14 found that a harness editing the store directly
+between calls (TracerTest's map-hole case) left it stale. T2 never edits the store; the rescan costs about 3 ms a call.
 
 **Cost per call** (`ref`, evm-zone-29 10, 240 calls, Quest 160): `tr` 339 µs, `tr.ic` 44, `tr.dc` 20, `tr.mem` 63,
-`tr.files` 44 (a rescan only after a write-back); about 0.5 ms a call in all. By size: `tr` is dominated by the FIFOs (up to 2 × 65,536 words late in a window) and the decode table
+`tr.files` 44 with the cache it then had (about 3 ms a call rescanning, Quest 161); about 3.5 ms a call in all. By size: `tr` is dominated by the FIFOs (up to 2 × 65,536 words late in a window) and the decode table
 and ROM sums (about 3,000 terms); the caches 2 × 128 × 19 words; `tr.mem` at most 512 × 25 words; `tr.files` a scan
 of every page (evm-zone-29: about 500 image pages plus the map and the segment's copies) when it has changed.
 
@@ -535,8 +536,8 @@ the unit lines name the unit, `M3Seg fpchip=… fpchipevery=1` over that interva
 `StateFpM3.dump` names the word.
 
 **The cost** (`ref`, per call, ms): the whole chip about 17, of which the 67 big SRAMs 12-13 (a full scan; the
-framework keeps them incrementally, M2's rule), the replayers 0.5, the Tracer's five units 0.4 (`tr.files` 0.05, or 3
-when it rescans after write-backs), C&C 1's peripheral 0.02.
+framework keeps them incrementally, M2's rule), the replayers 0.5, the Tracer's five units about 3.4 (`tr.files` rescans: about
+3), C&C 1's peripheral 0.02.
 
 ## 8. The baseline (Quest 161; `golden-m3/baseline/`)
 

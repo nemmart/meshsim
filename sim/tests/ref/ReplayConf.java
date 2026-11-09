@@ -9,6 +9,9 @@
  *                                             one window of a (v1.26) delivery through ReplayDriver's ideal controller, every
  *                                             call to the replayer recorded: OUT.script (the calls, cycle by cycle) and
  *                                             OUT.obs (ref's observations)
+ *   java -cp REF:. ReplayConf windows DELIVERY  every window of a delivery, for Stage A's C++ driver (no JSON reader in
+ *                                             C++): "PROGRAM_DIR TABLES_DIR INDEX ROWS FIRST_ROW" per line, ref's
+ *                                             ReplayDelivery's order and tablesFor
  *   java -cp REF:. ReplayConf run SCRIPT      the script replayed on ref's Replayer: the observations on stdout (equal to
  *                                             trace's: the script holds every input)
  * </pre>
@@ -36,6 +39,7 @@ public final class ReplayConf {
         switch (a.length > 0 ? a[0] : "") {
             case "alu" -> alu(Long.parseLong(a[1]), Integer.parseInt(a[2]));
             case "trace" -> { try { trace(a); } catch (java.io.IOException e) { throw new RuntimeException(e); } }
+            case "windows" -> { try { windows(a[1]); } catch (java.io.IOException e) { throw new RuntimeException(e); } }
             case "run" -> { try { run(a[1]); } catch (java.io.IOException e) { throw new RuntimeException(e); } }
             default -> { System.err.println("usage: ReplayConf alu SEED N | trace DELIVERY VARIANT WINDOW OUT [mutations] | run SCRIPT"); System.exit(2); }
         }
@@ -348,5 +352,25 @@ public final class ReplayConf {
             }
         }
         System.out.print("# replayconf observations v1\n" + rc.obs + "# end rows " + rc.r.rowsTotal + " stalls " + java.util.Arrays.toString(rc.r.stalls) + "\n");
+    }
+
+    // ================================================================ windows: a delivery's window list
+    static void windows(String d) throws java.io.IOException {
+        java.nio.file.Path dir = java.nio.file.Path.of(d).toAbsolutePath();
+        java.util.Map<String, Object> m = ReplayDelivery.Json.object(java.nio.file.Files.readString(dir.resolve("manifest.json")));
+        StringBuilder b = new StringBuilder();
+        for (Object po : ReplayDelivery.Json.list(m.get("programs"))) {
+            java.util.Map<String, Object> p = ReplayDelivery.Json.object(po);
+            java.nio.file.Path pd = dir.resolve((String) p.get("name"));
+            java.nio.file.Path td = java.nio.file.Files.exists(pd.resolve("decode_table.bin")) ? pd
+                    : java.nio.file.Files.exists(dir.resolve("tables/decode_table.bin")) ? dir.resolve("tables") : java.nio.file.Path.of(ReplayTables.defaultDir().toString());
+            for (Object wo : ReplayDelivery.Json.list(p.get("window_entries"))) {
+                java.util.Map<String, Object> e = ReplayDelivery.Json.object(wo);
+                if (!e.containsKey("files")) continue;          // as ReplayDelivery: a window without files isn't delivered
+                b.append(pd).append(' ').append(td.toAbsolutePath()).append(' ').append(((Number) e.get("index")).intValue()).append(' ')
+                 .append(((Number) e.get("rows")).intValue()).append(' ').append(((Number) e.get("first_row")).longValue()).append('\n');
+            }
+        }
+        System.out.print(b);
     }
 }

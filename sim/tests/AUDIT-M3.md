@@ -12,10 +12,10 @@ then the rest.
 | 2 The cycle as `ref` runs it | the slot's place (2.1); the rest to come |
 | **3.1 The peripheral slot** (W15) | **published** |
 | **3.2 The replayer** (W15) | **published** |
-| 3.3 The Tracer, its caches and memory system (W14) | next |
+| **3.3 The Tracer, its memory system and memory** (W14) | **published** |
 | 3.4 The C&C cores; 3.5 the DMA and request paths | to come |
 | 4 Chip-level work (D23); 5 unit groups | to come |
-| 6 The fingerprint | to come (the Tracer's canonical streams first, for W14) |
+| 6 The fingerprint | **6.6 the Tracer's streams published** (its cost per call with the coverage run); the slot, the replayer, the C&C units to come |
 | 7 The references; 8 localising; 9 findings | to come; 9 has first entries |
 
 ## 0. The run
@@ -123,6 +123,14 @@ on a `Link` at c + 1 and is applied at level 0 of c + 1, before anything reads**
 **The order within the slot's step at t** (this is what reproduces `ref`'s `endCycle(t − 1)` then the lazy `settle`):
 
 1. **Level 0, the end of t − 1** (`slot.endCycle(t − 1)`, then the peripheral's `settle(t)`):
+   0. the slot-owned store effects of t − 1 (S2): DMA_HDR, DMA_ADDR, and PULSE_DMA (`Dma.start`: `startedAt = t − 1`,
+      and the peripheral's `outStart(t − 1, q, words)`, synchronous in `ref`'s store). In `ref` these happen during the
+      core's step at t − 1, so before the peripheral's work of t − 1 and before its pending inputs are settled; here
+      they come after that work (step 2 of t − 1). The two orders differ only when the peripheral's work at t − 1, or an
+      input of t − 2 or t − 1, changes what `outStart` checks (the Tracer: its output queues' credits, `q0ptr`,
+      `xferLeft`): a PULSE_DMA in the cycle after a state-word landing or a PULSE_RUN, or a transfer started on queues
+      whose drain posted done in the same cycle, all undefined behaviour or impossible in a well-formed program
+      (finding 9.3; counted in the coverage run, expected 0);
    1. the consume of S3 (from t − 1) and the EVENTS_MASK store (S2, from t − 1): **before** the peripheral's inputs. In
       `ref`, `endCycle(t − 1)` consumes before `settle(t)` applies a landing of t − 1; a state-word landing sets the
       credits to 2 (`flush`), so the other order gives 1 where `ref` gives 2;
@@ -188,6 +196,132 @@ rd_prev). Every row goes to the harness's `rowListener`.
 - `Replayer.idle` ignores `doneSetAt` and the events: a tile with done posted and nothing else sleeps in `ref`; the
   framework's slot need not step for it (the `RegFile` already holds done).
 
+### 3.3 The Tracer, its memory system and its memory (`Tracer.java`, `MemorySystem.java`, `FileStore.java`, `LruCoder.java`, `Rvc.java`, `RowCore.java`) — W14
+
+**What T2 runs on it.** C&C 3's peripheral 1 (`Tracer.TYPE` 3; `Config.cc3Tracer`), driven by `tracer_ctl.c`
+(`tracer_layout.h`): the tables and ROM, the record and the hash parameters (HASH_MUL, HASH_STEP, HASH_LINES), then per
+window PULSE_RUN with RUN_CONFIG 65,536 rows (T2's raw run: no compression enables), the advice (part 2) and
+controller-fed expansions (part 4) refilled on their credits, EXPANSION_TEMPLATE stores, and after the rows the drain:
+DMA transfers from output queue 0 (the record, read in place) and queues 1-3 (code, read log, write log) into the tile's
+replay region, src 74. Which paths and how often: section 1 (the coverage run).
+
+**Structure.** The Tracer is a member object of C&C 3's slot unit (3.1), dispatched by type. **Its memory system and
+its memory are members of the Tracer**, called synchronously: `ref` times every fill-bus access at the row's start,
+serially, with one request outstanding (`MemorySystem.read`/`write` return the line and its ready cycle at once; the
+data is `FileStore`'s, functional), so there is nothing in flight between them and no port. `Rvc` (the RVC
+decompressor) and `RowCore` (decode, the expansion word's fields, operands) are pure functions shared with the replayer
+(W15), as `ReplayerAlu` is: one C++ copy for both.
+
+**State** (the fingerprint's streams, section 6.6, list it word by word):
+
+| part | `ref` | size |
+|---|---|---|
+| registers (4.21.3) | `runConfig`, `hashMul`, `hashStep`, `hashLines`, `lengthCode`, `lengthRlog`, `lengthWlog` | words 32, 40-42, 37-39 |
+| part 0 (4.21.2) | `rec` (record words 0-67: the state word, the stream word with the advice count, the 64-register image = the working register file, the files word, the template bitmap), `decodeTable` (2,048 × 16 bits), `romLo`/`romHi` (512 × 128 bits) | |
+| input queues | the advice queue (`rq*`: 256 × 128 bits, head, occupancy, the half in use, pops since the last credit), the expansion queue (`eq*`: 256 × 128 bits, head, occupancy, pops) | part 2, part 4 |
+| the caches (4.21.5) | `icache`, `dcache`: 128 lines each (`icacheLines` a sweep parameter), **fully associative, true LRU** (`LinkedHashMap` in access order: a hit moves the line to the newest end, a fill evicts the eldest); a line is its .pages line number, 16 × 64 bits, `dirty`, `writable` (its fill's status was ok) | `iSeen` is statistics only |
+| the jump LRU | `jumpLru`: 64 entries (target pc → base `instr_idx`), true LRU | |
+| the FIFOs and set 1 (4.21.6) | `codeFifo` (`codeN` × 32 bits), `logFifo`/`logTag` (`logN` × 64 bits + a 2-bit tag), `set1Code`/`Rlog`/`Wlog` (16-entry LRU tables and their bit counts), `rlogValues`, `wlogValues` | up to 65,536 each |
+| the core | `running`, `stopped`, `rowsEnded`, `drained`, `done`, `rowsTarget`, `rowsDone`, `startAt`, `busyUntil`, `waitUntil`, `waitCause`, `presented`, `expansionOffset`, `latch`, `templateStored`, `bitmap[2]`, `cur` (`Instr`: w, kind, start, rd0, offset, cls, nextRow, ctrlFirstSeen, fetched, presented, codeRun), `expDiscard`, `runId`, `statUntil`, `statCause`, `errors` | |
+| the output path | `oq[1..3]` (256 × 128 bits each, head, occupancy, `pushed`, `read`, the credits' bounds `bound[0..granted)`, `ended`, `at[]`, `lastPopT`, `popsAt`/`popsCycle`), `q0ptr`, `q0LastT`, `scanStart`, `scansDone`, `codeScan`, `logScan`, `set2*` (LRU tables), the packers `pk*` (the word being packed, its fill, words out), `comp0-2`, `codeEnded`, `logEnded`, `xferQueue`, `xferLeft` | |
+| events, errors | `ev` (depths {1, 0, 0, 2, 0, 2, 1, 0, 0, 0, 0}: [0] run done, [3] advice credit, [5] expansion credit, [6] new expansion; [7]-[10] live service flags, set in `settle`), `errors` (sticky; every bit but overrun stops the Tracer, item 152) | |
+| the statistics counters | `stat[8]` (words 44-51): architectural (the window reads them), cleared by the state word, ticking every running cycle | |
+| statistics (not architectural) | `stalls`, `rows`, `rowsM`, `iAccess`..., `iMissBy`, `runCycles`, `drainCycles`, `rowsEndAt`, ... | T2 reads `runCycles`, `drainCycles`, `rows` |
+| **the memory system** (`MemorySystem`) | the shared cache's `tag`, `dirty`, `stamp` (512 sets × 8 ways, LRU by stamp), `clock`, the write buffer (`wbDone` ring, head, count), `busyUntil` (the bus); parameters hit 6, miss 80, write buffer 4 lines, drain 80 | cold at every state-word landing in T2 (`onStateWrite = ms::cold`) |
+| **the memory** (`FileStore`) | `pages` (4 KB pages by address in 128 B units: index pages of 1,024 32-bit entries, data pages), `nextFree` | T2's is the snapshot at segment 10's start (section 7) |
+
+**Its interface to the slot**, with the time each call takes effect (3.1's rule applies unchanged):
+
+| call | `ref` | effect |
+|---|---|---|
+| `accept(t, ...)` | a landing at t + 2; two region packets in one cycle is a simulator bug | the end of t + 2 (`land`): part 0 (record words 0-66, word 67 ignored; decode table at 0x1000, ROM at 0x2000; all UB while running), part 2 the advice queue, part 4 the expansion queue (a push into a full queue: ERRORS [1], dropped, the Tracer runs on); anything else UB. **A state-word landing** (`stateWrite`) empties both input queues, the FIFOs, the output queues, sets the advice and expansion credits to 2, clears the caches and the jump LRU **without writing back**, the template latch and bitmap, the statistics counters, and (T2) makes the memory system cold |
+| `run(t)` | an input at t | the end of t (`doRun`: UB while running or with more than 65,536 rows; the first row at t + 1) |
+| `writeWord(t, w, v)` | RUN_CONFIG, HASH_MUL, HASH_STEP, HASH_LINES (UB while running), EXPANSION_TEMPLATE (the latch and the bitmap; [31] clear: the latch off): inputs at t; words 33-39, 44-51 read-only (a bus error) | the end of t |
+| `word(t, w)`, `running`, `errors`, `events().value(t)` | `settle(t)`, then the snapshot | the end of t − 1 (the live service flags [7]-[10] included: set by the settle from `rowsEnded`, `stopped`, `q0ptr`, the output queues' credits) |
+| `outStart(t, q, words)` | synchronous in the PULSE_DMA store (3.1 step 1.0, finding 9.3); UB beyond queue 0's word 67 or a queue's granted credits | `xferQueue`, `xferLeft` |
+| `outReady(t, q)`, `outTake(t, q, w)` | the DMA's work at t, after the Tracer's (3.1 step 2): queue 0 from `rowsEndAt < t`; queues 1-3 an entry pushed at t' is readable from t' + 1; the scans judge room before the cycle's pops (`room`: occupancy plus the pops of t) | one 128-bit word a cycle |
+| `runCycle(T)` | `settle(T)`; a dropped expansion word popped (`expDiscard`, **also while not running**); `stat[0]++` while running; then the rows (start, 4-cycle rows, 6 for class M; stalls by cause, the data and map stalls counted cycle by cycle from `statUntil`) or the drain (`drainCycle`: one entry per scan per cycle into the set-2 coders and packers; done last, as of the end of T − 1) | posts at T visible from T + 1 |
+
+**Wake rule** (D23). `ref` never lets C&C 3 sleep (the Tracer's `idle()` is the interface's default, false). The framework's
+slot steps the Tracer while it is running (the statistics counters tick every running cycle: step it, or catch them up
+exactly), while a dropped expansion word waits (`expDiscard > 0` with the expansion queue non-empty), and on S1/S2
+deliveries; otherwise its state cannot change. The result is the same as `ref`'s.
+
+**The memory traffic, exactly** (W14's model; `ref`'s choices in the class header): a row's accesses are timed at its
+start in the core's order (the fetch's halves, the data line, the map's lines), each `read` at `max(t, mem.freeAt())`;
+a dirty data victim's write-back is issued at the fill's ready cycle (`mem.write(ready, ...)`), so the next read waits
+for the bus (`Stall.BUS`); the one-entry write-back buffer (`wbLine`) is never occupied across a read. The memory
+system's walk costs one access per index level plus the data line, each a shared-cache hit (6) or an LPDDR read (80,
+after the write buffer drains); a dirty LRU line in a full set is evicted at once into the write buffer (4 lines, one
+per 80 cycles); a write-back allocates without an LPDDR read.
+
+**For the framework's run of T2** (section 7 provides them): the memory at segment 10's start (the `FileStore`
+snapshot after T1's carry through segments 0-9, with segment 10's ownership), C&C 3's big-SRAM landing and every tile's
+replay region (the harness's `poke`s, step 3 of section 0).
+
+## 6. The canonical state fingerprint (M3)
+
+M2's definition (`AUDIT-M2.md` 6.2) holds: per unit, at the end of cycle c, a defined sequence of 64-bit words hashed
+with `h = 0x6A09E667F3BCC908; h = fmix64(h ^ w) per word; h = fmix64(h ^ n)`; lists as their length then their entries;
+memories as order-free sums. M3 adds units (6.6-6.8) and three rules:
+
+- **Cycle-valued fields** (a deadline or a stamp: `busyUntil`, `waitUntil`, `startedAt`, ...) are written as
+  **max(v, c)**: every such field is compared only with cycles after c, so values at or before c are equivalent; a
+  field that can then only read c (`lastPopT`, `q0LastT`, `popsCycle`, an output entry's push cycle, `EventCounts`'
+  `lastPostAt`) is left out.
+- **Inputs not yet in effect** (a peripheral's `landing` and `inputs` in `ref`; the framework's S1 and S2 entries in
+  flight, 3.1) are written as a list of **(effect cycle e, kind, words)**, e the cycle at whose end the input takes
+  effect, in order; the slot's own store effects (DMA_HDR, DMA_ADDR, PULSE_DMA and its `outStart`) are written **as
+  applied**, since `ref` applies them in the store's cycle; a consume or an EVENTS_MASK store of c is a pending entry.
+  So `ref`'s side reads the deques as they are and never settles (settling early is not neutral: finding 9.3).
+- **A large memory's sum** over non-zero 64-bit words: `Σ fmix64(fmix64(region << 56 ^ index) ^ value)` mod 2^64, index
+  the word's index within its region (regions continue M2's numbering, 6.6).
+
+### 6.6 The Tracer (C&C 3, peripheral 1): units `tr`, `tr.ic`, `tr.dc`, `tr.mem`, `tr.files`
+
+**`tr`**, in this order (booleans 0/1; "none" is -1):
+1. registers: `runConfig`, `hashMul`, `hashStep`, `hashLines`, `lengthCode`, `lengthRlog`, `lengthWlog`;
+2. `rec[0..135]` (record words 0-67, lo then hi);
+3. the decode table as one memory sum (region 12; index the entry 0-2,047, value its 16 bits), the ROM as one (region
+   13; index 2j for `romLo[j]`, 2j + 1 for `romHi[j]`);
+4. the advice queue: `rqOcc`, `rqHalf`, `rqPopped`, then its entries head to tail (lo, hi); the expansion queue:
+   `eqOcc`, `eqPopped`, its entries;
+5. the core: `running`, `stopped`, `rowsEnded`, `drained`, `done`, `rowsTarget`, `rowsDone`, max(`startAt`, c),
+   max(`busyUntil`, c), max(`waitUntil`, c), `waitCause` (ordinal; none if `waitUntil` ≤ c), `presented`,
+   `expansionOffset`, `latch`, `templateStored`, `bitmap[0]`, `bitmap[1]`, `expDiscard`, max(`statUntil`, c),
+   `statCause` (none if `statUntil` ≤ c), `errors`; then `cur`: 0 if null, else 1, `w`, `kind`, `start`, `rd0`,
+   `offset`, `cls`, `nextRow`, `ctrlFirstSeen`, `fetched`, `presented`, (`codeRun == runId`);
+6. the events: the counts of bits 0-10;
+7. `stat[0..7]`;
+8. the jump LRU: its size, then (target, base) eldest to newest;
+9. the FIFOs: `codeN`, `codeFifo[0..codeN)`; `logN`, then (`logFifo[i]`, `logTag[i]`) for i < `logN`; `rlogValues`,
+   `wlogValues`; set 1's three coders: each `e[0..15]`, `bits`;
+10. the output path: `q0ptr`, max(`scanStart`, c), `scansDone`, `codeScan`, `logScan`, `comp0-2`, `codeEnded`,
+    `logEnded`, `xferQueue`, `xferLeft`; set 2's three coders' `e[0..15]`; each packer (code, read log, write log):
+    0 if null, else 1, `lo`, `hi`, `fill`, `words`; each output queue 1-3: `occ`, its entries head to tail (lo, hi),
+    `pushed`, `read`, `granted`, `bound[0..granted)`, `ended`;
+11. inputs not yet in effect (6's rule): the landings' count, then each (e, src, offset, size, lo, hi), e = the accept
+    cycle + 2; then the inputs' count, then each (e, kind, word, value): kind 1 PULSE_RUN (word, value 0), 2 a window
+    word store; e = the store's cycle.
+
+**`tr.ic`, `tr.dc`**: the line count, then each line eldest to newest: its line number, `d[0..15]`, `dirty`, `writable`.
+
+**`tr.mem`** (the memory system's timing state): max(`busyUntil`, c); the write buffer: its lines' drain completions
+after c, oldest first (a line due at or before c is retired at the next touch: left out), as count then values; then
+for each set holding a valid way, in set order: the set, then its 8 ways in way order, each (tag, dirty, rank), rank the
+way's place among the set's valid ways by `stamp` (0 the least recent; an invalid way writes tag -1, dirty 0, rank -1).
+The ways' positions are written because a fill takes the first free way by index; `stamp` and `clock` are not.
+
+**`tr.files`** (the memory): `nextFree`, then one memory sum (region 11) over every allocated page's 512 words, index
+`(page address / 32) × 512 + i` (an index page's -1 entries included: non-zero). The C++ side keeps it incrementally (a
+write-back changes 16 words); `ref`'s side rescans only when the memory system's `writes` count has moved since the last
+call (between write-backs it is constant).
+
+**Cost per call** (`ref`, by unit): measured with the reference run on the runner (section 6.9, to come with the
+coverage task). By size: `tr` is dominated by the FIFOs (up to 2 × 65,536 words late in a window) and the decode table
+and ROM sums (about 3,000 terms); the caches 2 × 128 × 19 words; `tr.mem` at most 512 × 25 words; `tr.files` a scan
+of every page (evm-zone-29: about 500 image pages plus the map and the segment's copies) when it has changed.
+
 ## 9. Findings for the record
 
 - **9.1 The latency defaults since 110u** (section 0): GO, READY, error 1 → 8 and `stage_delay` 32 → 64 shift C&C 3's
@@ -199,3 +333,10 @@ rd_prev). Every row goes to the harness's `rowListener`.
   credits but not for a depth-1 event already at its count when posted at s (the post is dropped as full, then the
   consume clears it): run done and new expansion. To count in the coverage run (a post at s to a full depth-1 bit with
   a consume of that bit at s); expected 0, as `replay_ctl` consumes done once per pass.
+- **9.3 `outStart` doesn't settle** (`Tracer.outStart`, `PeripheralSlot.Dma.start`): `ref` calls it inside the
+  PULSE_DMA store, during the core's step, before the Tracer's own work of that cycle and before its pending inputs are
+  settled; the framework applies the store at level 0 of the next cycle (3.1 step 1.0). The orders differ only for a
+  PULSE_DMA within a cycle of a state-word landing or a PULSE_RUN, or on queues whose drain posted done in the same
+  cycle: each undefined behaviour (a transfer beyond the credits granted) or impossible in a well-formed program. To
+  count in the coverage run (a PULSE_DMA with Tracer inputs or landings pending from the previous cycle); expected 0.
+  The same reason keeps the fingerprint's `ref` side from settling the Tracer early (6's second rule).

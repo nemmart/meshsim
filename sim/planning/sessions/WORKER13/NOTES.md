@@ -76,3 +76,10 @@ read the v1.25 delivery directly (`state.bin` in v1.25's order).
   then the core's inputs (a state-word landing's credits otherwise differ). Findings 9.1, 9.2. Next: W14's 3.3 and
   section 6's Tracer streams (owner, 2026-11-09: registers, the caches' tags and lines, FIFOs, output queues, with the
   cost per call).
+- 2026-11-09: **3.3 (the Tracer, its memory system and memory) and 6.6 (the Tracer's fingerprint streams) published
+  for W14.** The memory system and `FileStore` are members of the Tracer (synchronous timing model, no port). 3.1's
+  level 0 gains step 0 (the slot's store effects, `outStart` included) and finding 9.3 (`outStart` doesn't settle:
+  differs only in UB cases; counted in the coverage run). Section 6's M3 rules: cycle-valued fields as max(v, c);
+  pending inputs as (effect cycle, kind, words), never settled by the reader; large memories summed over 64-bit words.
+  Next: the `ref` side of 6.6 in `StateFp` and the coverage driver, then one runner task (coverage, the +26 check, the
+  fingerprint's cost, the counts for 9.2 and 9.3).

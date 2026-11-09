@@ -145,11 +145,14 @@ public final class ReplayConf {
             return new int[] { l, w34, w35 };
         }
         final StringBuilder yObs = new StringBuilder();
+        static long fp;
         void consume(long t, int bits) { op(t, "K:" + Integer.toHexString(bits)); r.events().consume(bits); }
         void step(long t) {
             op(t, "S");
             rowHashes.clear();
             r.runCycle(t);
+            // the canonical fingerprint (AUDIT-M3 6.8) at the end of t, before the observation's reads settle t + 1
+            StateFp.Out f = new StateFp.Out(); StateFpM3.replayer(f, r, t); fp = f.done();
             observe(r, t, last, first, yObs, rowHashes, obs);
             first = false; yObs.setLength(0);
         }
@@ -173,6 +176,7 @@ public final class ReplayConf {
         for (int i = 1; i <= VIOL.length; i++) v[k++] = vc[i];
         v[k++] = r.invalids.size(); v[k++] = r.overruns.size(); v[k++] = r.underflows.size(); v[k++] = r.leftovers.size();
         v[k++] = r.pc(); v[k++] = r.instrIdx() & 0xFFFFFFFFL;
+        v[k++] = Rec.fp;
         StringBuilder b = new StringBuilder();
         for (int i = 0; i < k; i++) if (first || v[i] != last[i]) { b.append(' ').append(FIELD[i]).append('=').append(Long.toHexString(v[i])); last[i] = v[i]; }
         b.append(y);
@@ -181,7 +185,7 @@ public final class ReplayConf {
     }
     static final String[] FIELD = { "run", "err", "ev", "w32", "w33", "w34", "w35", "outq", "done", "land",
             "stI", "stC", "stN", "stE", "stR", "stW", "stO",
-            "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "inv", "ovr", "und", "lft", "pc", "idx" };
+            "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "inv", "ovr", "und", "lft", "pc", "idx", "fp" };
 
     // ================================================================ trace: ReplayDriver, recorded
     static void trace(String[] a) throws java.io.IOException {

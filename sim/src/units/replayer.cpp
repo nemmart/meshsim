@@ -298,6 +298,7 @@ void Replayer::front_end(int64_t T) {
     uint32_t w = uint32_t(code.peek_value);
     code.commit();
     Instr in;
+    in.id = next_instr_id_++;
     in.w = w; in.decoded_at = T; in.code_end = code.consumed;
     in.next_row = in.first_row = first_instr_ ? start_offset_ : 0;
     first_instr_ = false;
@@ -409,12 +410,12 @@ void Replayer::start_row(int64_t T) {
     }
     if (o.undefined) violate(T, V_UNDEFINED, op);
     Pending p;
-    p.code_end = in.code_end; p.last_of_instr = last;
+    p.code_end = in.code_end; p.last_of_instr = last; p.instr_id = in.id;
     const bool writes = r_rd >= 0 && op != alu::NOP;
     if (writes && r_rd != 0) { p.rd_reg = r_rd; p.rd_val = o.rd; }
     const uint64_t rd_after = r_rd < 0 ? 0 : r_rd == 0 ? 0 : writes ? o.rd : v_rd;
     // pc and instr_idx (4.19.7, appendix 1.4)
-    if (hld) { p.new_pc = pc_; p.new_idx = instr_idx_; }
+    if (hld) { p.hold = true; p.new_pc = pc_; p.new_idx = instr_idx_; }
     else {
         uint64_t np = o.new_pc;
         if (np == 0) {

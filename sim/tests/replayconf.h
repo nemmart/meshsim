@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "statefp.h"
 #include "units/replayer.h"
 
 namespace replayconf {
@@ -20,7 +21,7 @@ inline uint64_t mix(uint64_t z) {
 
 constexpr const char* FIELD[] = {"run", "err", "ev", "w32", "w33", "w34", "w35", "outq", "done", "land",
                                  "stI", "stC", "stN", "stE", "stR", "stW", "stO",
-                                 "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "inv", "ovr", "und", "lft", "pc", "idx"};
+                                 "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "inv", "ovr", "und", "lft", "pc", "idx", "fp"};
 constexpr unsigned N_FIELD = sizeof(FIELD) / sizeof(FIELD[0]);
 
 struct Rec {
@@ -44,6 +45,9 @@ struct Rec {
     }
     void step(int64_t t) {
         r->step(t);
+        fp::FpOut f;                                 // the canonical fingerprint (AUDIT-M3 6.8) at the end of t
+        r->fingerprint(f, t);
+        const uint64_t fpv = f.done();
         int64_t u = t + 1;
         uint64_t v[N_FIELD];
         unsigned k = 0;
@@ -58,6 +62,7 @@ struct Rec {
         for (unsigned c = 1; c < units::Replayer::N_VIOLATION; c++) v[k++] = r->fact_count(uint16_t(c));
         v[k++] = r->invalids(); v[k++] = r->overruns(); v[k++] = r->underflows(); v[k++] = r->leftovers();
         v[k++] = r->pc(); v[k++] = r->instr_idx();
+        v[k++] = fpv;
         std::string b;
         for (unsigned i = 0; i < k; i++)
             if (first || v[i] != last[i]) { b += ' '; b += FIELD[i]; b += '='; b += hex(v[i]); last[i] = v[i]; }

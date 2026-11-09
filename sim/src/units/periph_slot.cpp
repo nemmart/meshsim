@@ -187,8 +187,6 @@ void SlotCore::run_cycle(int64_t t, unsigned dma_room) {
         visit(n, [&](auto& p) {
             const EventCounts& e = p.events();
             if (e.full_posts != full_seen[n]) { full_seen[n] = e.full_posts; violate(t, F_FULL_POST, n, e.last_full_bit); }
-            const uint64_t vc = p.violation_count();
-            if (vc != violations_seen[n]) { violations += vc - violations_seen[n]; violations_seen[n] = vc; }
         });
     }
 }
@@ -210,6 +208,12 @@ void SlotCore::reset(int64_t t) {
         visit(n, [&](auto& p) { p.reset(t); });
         mask[n] = 0; dma[n] = Dma(); consume_t[n] = -1; pend_mask_t[n] = -1;
     }
+}
+
+uint64_t SlotCore::violation_total() {
+    uint64_t v = violations;
+    for (unsigned n = 1; n <= 3; n++) if (per[n].type != PT_ABSENT) v += visit(n, [&](auto& p) { return p.violation_count(); });
+    return v;
 }
 
 bool SlotCore::idle(int64_t t) {
@@ -265,7 +269,7 @@ void SlotCore::dma_run(int64_t t, unsigned n, unsigned& room) {
     uint64_t w[2];
     visit(n, [&](auto& p) { p.out_take(t, d.q, w); });
     const unsigned dst = (d.hdr >> 25) & 0x7F, mode = (d.hdr >> 22) & 7, ctr = (d.hdr >> 19) & 7;
-    const unsigned src = tile >= 64 && tile <= 66 ? tile + 8 : 0;   // item 118: the controller's id + 8 (the Tracer's 74)
+    const unsigned src = lw::controller(tile) ? tile + 8 : 0;   // item 118: the controller's id + 8 (the Tracer's 74)
     if (n_out == 3) FATAL("slot %u: more than three DMA packets in a cycle", tile);
     out[n_out++] = DmaPacket{t, w[0], lw::hdr(src, dst, mode, ctr, d.addr, lw::SIZE_128), w[1]};
     if (room) room--;

@@ -115,10 +115,11 @@ struct SlotCore {
     uint32_t mask[4] = {};
     int64_t consume_t[4] = {-1, -1, -1, -1}, pend_mask_t[4] = {-1, -1, -1, -1};
     uint32_t consume_bits[4] = {}, pend_mask[4] = {};
-    uint64_t full_seen[4] = {}, violations_seen[4] = {};
+    uint64_t full_seen[4] = {};
     unsigned tile = 0;
     bool dma_port = false;                                 // a controller: the DMA's packets go to a port with room
-    // statistics (diagnostic): ref's accepted, reservedAccesses, violations (the slot's and the peripherals' forwarded)
+    // statistics (diagnostic): ref's accepted, reservedAccesses; violations: the slot's own flags (violation_total adds
+    // the peripherals', which ref's host forwards into one count)
     uint64_t accepted = 0, reserved_accesses = 0, violations = 0;
     // facts (D24): the slot's own flags
     enum : uint16_t { F_RESERVED = 1, F_DMA_HDR_BUSY, F_DMA_ADDR_BUSY, F_FULL_POST, F_PERIPHERAL };
@@ -150,6 +151,7 @@ struct SlotCore {
     void run_cycle(int64_t t, unsigned dma_room = ~0u);                 // dma_room: packets the DMA port takes at t
     void end_cycle(int64_t t);
     void reset(int64_t t);
+    uint64_t violation_total();                                         // ref's slot.violations
     bool idle(int64_t t);
     int64_t next_wake_at(int64_t t);
     void skip_cycles(int64_t n);

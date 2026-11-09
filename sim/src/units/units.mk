@@ -58,3 +58,7 @@ $(B)/replay_delivery: $(B)/tests/replay_delivery_main.o $(REPLAYER_LINK) $(B)/sr
 all: $(B)/replay_delivery
 # WORKER15: the peripheral slot (src/units/periph_slot.*), with the replayer and the test peripheral it dispatches to.
 SLOT_LINK := $(B)/src/units/periph_slot.o $(REPLAYER_LINK)
+$(B)/test_slotconf: $(SLOT_LINK)
+$(B)/slotconf: $(B)/tests/slotconf_main.o $(SLOT_LINK) $(LIB_OBJ)
+	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
+all: $(B)/slotconf

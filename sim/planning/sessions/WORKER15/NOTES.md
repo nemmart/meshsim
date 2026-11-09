@@ -6,7 +6,7 @@ The replayer and the peripheral slot. Branch `sim-w15`. Prompt: `PROMPT.md`.
 
 **Go-ahead 2026-11-09** (owner): the plan as written; answers to Q1-Q4 below. Steps 1-2 done: the ALU and the replayer equal to `ref` (ReplayConf every cycle; ReplayerUnitTests ported, 1,456
 checks). The slot's header published; the owner settled the round (W14: violation_count and the late accept; W16: its two
-classes and `visit` cases, the ports/begin/end hooks). Stage A passed (Quest 164: every window of both programs). The slot's body written (WIP, compiles, untested): next its conformance against ref.
+classes and `visit` cases, the ports/begin/end hooks). Stage A passed (Quest 164: every window of both programs). The slot's SlotCore equal to ref call for call (SlotConf); next the unit under the engine, pushed early for W14/W16.
 
 ## The owner's answers (2026-11-09)
 
@@ -295,3 +295,24 @@ end.bin, clean.
   faults, accepts, window loads and stores, DMA transfers with and without burst, runCycle, endCycle), every result
   and observation recorded; SlotCore must equal it call for call. Then the unit under the engine, then the tile's paths
   and PeripheralSlotTest's port.
+
+### SlotConf: SlotCore against ref's PeripheralSlot (2026-11-09)
+
+- `tests/ref/SlotConf.java gen | run`: ref's `PeripheralSlot` taken from a `Chip` built as PeripheralSlotTest builds its
+  machine (`Config.defaults()`, a TestPeripheral as tile 5's peripheral 1; tile 6 keeps its replayer), the Chip never
+  stepped, the two slots driven directly by a seeded script: the test peripheral's posts, credits, live bit, faults and
+  burst; region accepts (one per slot per cycle, as the director); window loads (standard, reserved, undefined, the
+  peripheral's words, consuming EVENTS loads) and stores (PULSE_RUN, EVENTS_MASK, DMA_HDR/DMA_ADDR/PULSE_DMA, the
+  replayer's RUN_CONFIG, scratch and read-only words, reserved words); storeStalls; runCycle and endCycle. ref's UB is
+  avoided by the generator (PULSE_DMA while busy or naming a missing queue, the replayer's PULSE_RUN or RUN_CONFIG while
+  running, part-0 writes while running). Observed after each cycle: both slots' live bits, counters, the DMA's state and
+  every packet (time, dst, mode, counter, address, data), the test peripheral's state, the replayer's.
+- `tests/slotconf.h` replays it on two `SlotCore`s; `test_slotconf` (`make check`): **5 seeds of 3,000 cycles (about
+  1,000 DMA packets), equal to ref, all four builds**; locally also **20 seeds of 10,000 cycles, all equal**
+  (`slotconf.sh --long`). A planted bug (EVENTS_MASK stores never applied) fails all five.
+- Two fixes on the way: the test peripheral's records became rings (a script has thousands of accepts); the
+  peripherals' violation counts are summed when read (`violation_total`, ref's single count) instead of forwarded at
+  `run_cycle`.
+- **My own slip, twice now:** an inline edit put a `//` comment in the middle of a line and swallowed the statements
+  after it (ref's ReplayerTest line 105 has the same bug). Caught both times by a failing comparison; I now write
+  comments in such edits as `/* */` or on their own line.

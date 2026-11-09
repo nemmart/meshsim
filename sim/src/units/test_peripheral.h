@@ -24,7 +24,7 @@ struct TestPeripheral : PeripheralBase<TestPeripheral> {
     int run_length = 10, runs = 0;
     uint32_t scratch = 0;
     int errors_ = 0;
-    struct Accept { int64_t land_t; int src; uint32_t offset; int size; uint64_t lo, hi; } accepts[MAXA] = {};
+    struct Accept { int64_t land_t; int src; uint32_t offset; int size; uint64_t lo, hi; } accepts[MAXA] = {};   // a ring
     unsigned n_accepts = 0, n_run_calls = 0;
     unsigned taken[2] = {};
     int64_t avail_at[2][MAXQ] = {};
@@ -46,8 +46,7 @@ struct TestPeripheral : PeripheralBase<TestPeripheral> {
     void level(bool on) { ev.live(4, on); }
     void fault() { errors_ |= 1; }
     void accept(int64_t t, int src, uint32_t offset, int size, uint64_t lo, uint64_t hi) {
-        if (n_accepts == MAXA) FATAL("test peripheral: too many accepts");
-        accepts[n_accepts++] = {t + RP_LATENCY, src, offset, size, lo, hi};
+        accepts[n_accepts++ % MAXA] = {t + RP_LATENCY, src, offset, size, lo, hi};   // the last MAXA kept, all counted
     }
     void reset(int64_t) { running_ = false; ev.clear_all(); errors_ = 0; }
     void run(int64_t t) {
@@ -67,18 +66,18 @@ struct TestPeripheral : PeripheralBase<TestPeripheral> {
     int write_word(int64_t, int w, uint32_t v) { if (w == 33) { scratch = v; return 1; } return w == 32 || w == 34 ? 0 : -1; }
     uint64_t violation_count() const { return n_violations; }
     int out_queues() const { return 2; }
-    bool out_ready(int64_t t, int q) const { return q < 2 && taken[q] < n_avail[q] && avail_at[q][taken[q]] <= t; }
+    bool out_ready(int64_t t, int q) const { return q < 2 && taken[q] < n_avail[q] && avail_at[q][taken[q] % MAXQ] <= t; }
     void out_take(int64_t t, int q, uint64_t w[2]) {
         if (!out_ready(t, q)) FATAL("test peripheral: no word");
         unsigned i = taken[q]++;
         w[0] = uint64_t(q) << 56 | i; w[1] = ~w[0];
     }
     void out_start(int64_t t, int q, int64_t words) {
-        int64_t from = n_avail[q] == 0 ? t + 1 : avail_at[q][n_avail[q] - 1] + (burst ? 0 : 1);
+        int64_t from = n_avail[q] == 0 ? t + 1 : avail_at[q][(n_avail[q] - 1) % MAXQ] + (burst ? 0 : 1);
         if (from < t + 1) from = t + 1;
         for (int64_t i = 0; i < words; i++) {
-            if (n_avail[q] == MAXQ) FATAL("test peripheral: too many words");
-            avail_at[q][n_avail[q]++] = burst ? from : from + i;
+            if (n_avail[q] - taken[q] == MAXQ) FATAL("test peripheral: more than %u words outstanding", MAXQ);
+            avail_at[q][n_avail[q]++ % MAXQ] = burst ? from : from + i;   // a ring: entries before taken[q] are done
         }
     }
 };

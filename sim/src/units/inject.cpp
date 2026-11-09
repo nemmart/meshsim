@@ -7,7 +7,7 @@
 namespace units {
 
 Injection::Injection(sim::Ports& p, unsigned tile, const NetConfig& c, const ReadSideConfig& rc) : me(uint8_t(tile)), tokens_on(c.loopback_tokens) {
-    if (tile > 63) FATAL("injection: tile %u (a controller's injection is not modelled in M2)", tile);
+    if (tile > 63 && !lw::controller(tile)) FATAL("injection: unit %u (0-63 a tile, 64-66 a controller)", tile);
     tok.cap = c.read_tokens;
     p.in(send, "send", 3);
     p.in(loop_left, "loop-left", 0);

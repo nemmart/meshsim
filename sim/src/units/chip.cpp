@@ -34,6 +34,25 @@ struct ControlStandIn {
     uint64_t digest() const { return 0; }
 };
 
+// M3 (cc_cores), until C&C 1's slot is wired (W15's slot body): a stand-in for C&C 1's peripheral's own ports (the
+// row collectors' words, the controllers' line words) that sinks them and never drives GO. Also the source of the
+// controllers' GO inputs, which nothing drives in ref (CnC.goNet reaches tiles 0-63 only).
+struct ChipLinesStandIn {
+    sim::LinkIn rows[8], cc_line[3];
+    sim::LinkOut go[64], cc_go[3];
+    explicit ChipLinesStandIn(sim::Ports& p) {
+        for (unsigned r = 0; r < 8; r++) p.in(rows[r], "row", 1);
+        for (unsigned c = 0; c < 3; c++) { p.in(cc_line[c], "cc-line", 1); p.out(cc_go[c], "cc-go", 0); }
+        for (unsigned k = 0; k < 64; k++) p.out(go[k], "go", 0);
+    }
+    sim::Wake step(sim::Ctx& c) {
+        for (auto& r : rows) if (c.ready(r)) c.take(r);
+        for (auto& l : cc_line) if (c.ready(l)) c.take(l);
+        return sim::Wake::none();
+    }
+    uint64_t digest() const { return 0; }
+};
+
 ControlIO stand_in(sim::Config& cfg, unsigned k) {
     auto& s = cfg.add<ControlStandIn>(tile_unit(k, "stand"));
     ControlIO io;
@@ -120,11 +139,27 @@ void build_chip(sim::Config& cfg, const ChipSpec& spec) {
         for (unsigned d = 0; d < 4; d++) cfg.link(io[k].link_out[d], io[neighbour(k, d)].link_in[arrival_port(d)], nc.link_latency);
     if (spec.cc_cores) {
         // C&C c with tile c (the C&C links are Link(cc_link_latency), 1 in ref: one domain, D26)
+        CcIO u[3];
         for (unsigned c = 0; c < 3; c++) {
             if (spec.domain) cfg.domain(spec.domain[c]);
-            CcIO u = cc_cycle(cfg, spec, c);
-            cfg.link(io[c].to_cc, u.link_in, nc.cc_link_latency);
-            cfg.link(u.link_out, io[c].from_cc, nc.cc_link_latency);
+            u[c] = cc_cycle(cfg, spec, c);
+            cfg.link(io[c].to_cc, u[c].link_in, nc.cc_link_latency);
+            cfg.link(u[c].link_out, io[c].from_cc, nc.cc_link_latency);
+        }
+        // The chip lines (AUDIT-M3 3.4, section 4): the tiles' line words through M2's row collectors, the controllers'
+        // directly, all into C&C 1's peripheral (READY, ERROR_LINES, the toast pin), GO out of it; with C&C 1, the
+        // collectors in tile 0's domain. Until the slot is wired, a stand-in takes C&C 1's peripheral's place.
+        if (spec.domain) cfg.domain(spec.domain[0]);
+        auto& cl = cfg.add<ChipLinesStandIn>("cc1.lines");
+        for (unsigned r = 0; r < 8; r++) {
+            auto& row = cfg.add<RowCollector>("row" + std::to_string(r), r);
+            cfg.link(row.out, cl.rows[r], 1);
+            for (unsigned i = 0; i < 8; i++) cfg.link(io[8 * r + i].line, row.line[i], nc.ready_latency - 2);
+        }
+        for (unsigned k = 0; k < 64; k++) cfg.link(cl.go[k], io[k].go, nc.go_latency + skew[k]);
+        for (unsigned c = 0; c < 3; c++) {
+            cfg.link(u[c].line, cl.cc_line[c], c == 0 ? 1 : nc.error_lat() - 1);
+            cfg.link(cl.cc_go[c], u[c].go, nc.go_latency + 1);
         }
         return;
     }

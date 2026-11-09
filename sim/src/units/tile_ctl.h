@@ -149,7 +149,11 @@ struct TileCtl {
             c.put(line, sim::Word(s.ready_pulse) | sim::Word(s.error_line) << 1);
             error_out = s.error_line;
         }
-        return sim::Wake::none();
+        // W16: STATUS's send-busy from the core's own put at t is the block's alone (the injection unit's Reg only
+        // changes if the send waits): look again next cycle, when the Reg says whether the hold is still occupied.
+        // Otherwise a core polling STATUS after a send that left at once reads busy until something else steps the block
+        // (C&C 1's first send in test_cc_units; M2's programs always had a landing or a K line to step it).
+        return send_put ? c.next() : sim::Wake::none();
     }
     uint64_t digest() const { return digest_mix(s.digest(), error_out); }
     static bool reg_bit(const sim::Ctx& c, sim::RegIn r) { return c.valid(r) && c.read(r)[0] != 0; }

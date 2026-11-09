@@ -93,10 +93,17 @@ struct DmaPacket {
 // The slot as ref's PeripheralSlot runs it (immediate calls, ref's timing), without ports: the unit below wraps it, and
 // the tests drive it directly. Facts and counts instead of strings (D24).
 struct SlotCore {
-    // The peripherals: [1]-[3], created at configuration (D6: no allocation in the run). type picks the class.
+    // The peripherals: [1]-[3], created at configuration (D6: no allocation in the run). type picks the class. A Ref owns
+    // its peripheral (move-only: the build moves units into their arena).
     struct Ref {
         PeriphType type = PT_ABSENT;
         void* p = nullptr;
+        Ref() = default;
+        Ref(Ref&& o) noexcept : type(o.type), p(o.p) { o.p = nullptr; o.type = PT_ABSENT; }
+        Ref& operator=(Ref&& o) noexcept;
+        Ref(const Ref&) = delete;
+        Ref& operator=(const Ref&) = delete;
+        ~Ref();
     } per[4];
 
     // A peripheral's DMA (4.17.9): PeripheralSlot.Dma's state.
@@ -132,9 +139,9 @@ struct SlotCore {
     unsigned n_out = 0;
 
     SlotCore() = default;
+    SlotCore(SlotCore&&) noexcept = default;
     SlotCore(const SlotCore&) = delete;
     SlotCore& operator=(const SlotCore&) = delete;
-    ~SlotCore();
     // Configuration: create peripheral n of type `type` (the slot owns it).
     void install(unsigned n, PeriphType type, uint64_t replayer_row_buffer = 0);
 
@@ -156,6 +163,8 @@ struct SlotCore {
     int64_t next_wake_at(int64_t t);
     void skip_cycles(int64_t n);
     unsigned digest_words(int64_t* out, unsigned cap);
+    // The debug checks' digest (sim.h, DEBUG CHECKS): the slot's state and each peripheral's progress.
+    uint64_t digest();
 
     // The dispatch: f(concrete&) for peripheral n's class (periph_slot.cpp; one case per type).
     template <class F>
@@ -186,10 +195,12 @@ struct PeriphSlot {
     bool first = true;
 
     PeriphSlot(sim::Ports& p, const PeriphSlotConfig& c);
+    PeriphSlot(PeriphSlot&&) noexcept = default;
     PeriphSlot(const PeriphSlot&) = delete;
     PeriphSlot& operator=(const PeriphSlot&) = delete;
 
     sim::Wake step(sim::Ctx& c);
+    uint64_t digest() const { return const_cast<SlotCore&>(s).digest() ^ uint64_t(first); }
 
 private:
     void publish(sim::Ctx& c, int64_t t);

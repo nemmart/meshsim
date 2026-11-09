@@ -6,7 +6,8 @@ The replayer and the peripheral slot. Branch `sim-w15`. Prompt: `PROMPT.md`.
 
 **Go-ahead 2026-11-09** (owner): the plan as written; answers to Q1-Q4 below. Steps 1-2 done: the ALU and the replayer equal to `ref` (ReplayConf every cycle; ReplayerUnitTests ported, 1,456
 checks). The slot's header published; the owner settled the round (W14: violation_count and the late accept; W16: its two
-classes and `visit` cases, the ports/begin/end hooks). Stage A passed (Quest 164: every window of both programs). The slot's SlotCore equal to ref call for call (SlotConf); next the unit under the engine, pushed early for W14/W16.
+classes and `visit` cases, the ports/begin/end hooks). Stage A passed (Quest 164: every window of both programs). The slot's SlotCore equal to ref call for call (SlotConf); the unit working under the engine (first working commit,
+for W14 and W16 to wire into). Next: the tile's paths and PeripheralSlotTest's port.
 
 ## The owner's answers (2026-11-09)
 
@@ -316,3 +317,20 @@ end.bin, clean.
 - **My own slip, twice now:** an inline edit put a `//` comment in the middle of a line and swallowed the statements
   after it (ref's ReplayerTest line 105 has the same bug). Caught both times by a failing comparison; I now write
   comments in such edits as `/* */` or on their own line.
+
+### The slot unit under the engine: first working commit (2026-11-09)
+
+- `PeriphSlot` is a framework unit now: move-only (each `SlotCore::Ref` owns its peripheral and deletes it by type),
+  non-polymorphic, with a `digest()` for the debug checks.
+- `tests/test_periph_slot.cpp`: a stand-in core and director (S2/S3 Link(1), S1 Link(3), the window RegFile, the DMA's
+  credit Fifo of 4) and the slot, run plain, with step-all and shuffled, the missed-wake detector on (debug builds):
+  - the test peripheral on a controller (64): PARAMS and the defined-word bits; PULSE_RUN at 3 seen as STATUS [0] at 4;
+    the scratch word; DMA_HDR/DMA_ADDR/PULSE_DMA at 10: STATUS [1] at 11, three packets put at 11, 12, 13 (ref's: the
+    cycle after PULSE_DMA), at 0x100 + 16k, src 72 (item 118), their data; a region write at 12 landing at the end of
+    14; EVENTS_MASK, run done and DMA done in EVENTS and the live bit, a consuming load taking both;
+  - the replayer on a mesh tile: PULSE_RUN with rows 0 (STATUS [0] for one cycle, run done), the consume, a landing in
+    the code queue, ROWS_RUN; the slot asleep for most of 200 cycles.
+  All four builds; clang release `make run`: 50 binaries, all pass.
+- **For W14 and W16:** wire into `units/periph_slot.cpp`: your include, your `case` in `SlotCore::visit` (marked), your
+  `delete` in `SlotCore::Ref::~Ref` (marked), and your creation in `SlotCore::install` (W14: the Tracer needs its tables
+  and memory system: tell me what `install` should take, or add a `PeriphSlotConfig` field for it).

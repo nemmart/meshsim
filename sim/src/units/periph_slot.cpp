@@ -22,15 +22,41 @@ decltype(auto) SlotCore::visit(unsigned n, F&& f) {
     }
 }
 
-SlotCore::~SlotCore() {
+SlotCore::Ref::~Ref() {
+    if (!p) return;
+    switch (type) {
+        case PT_REPLAYER: {
+            auto* r = static_cast<Replayer*>(p);
+            delete[] r->row_buffer();
+            delete r;
+            break;
+        }
+        case PT_TEST: delete static_cast<TestPeripheral*>(p); break;
+        // ---- W14 / W16: their types' delete here too
+        default: break;
+    }
+}
+SlotCore::Ref& SlotCore::Ref::operator=(Ref&& o) noexcept {
+    if (this != &o) { this->~Ref(); type = o.type; p = o.p; o.p = nullptr; o.type = PT_ABSENT; }
+    return *this;
+}
+
+uint64_t SlotCore::digest() {
+    uint64_t h = 0x9e3779b97f4a7c15ull;
+    auto mixin = [&](uint64_t x) { h = (h ^ x) * 0x100000001b3ull; h ^= h >> 29; };
     for (unsigned n = 1; n <= 3; n++) {
-        if (!per[n].p) continue;
-        switch (per[n].type) {
-            case PT_REPLAYER: delete static_cast<Replayer*>(per[n].p); break;
-            case PT_TEST: delete static_cast<TestPeripheral*>(per[n].p); break;
-            default: break;
+        mixin(mask[n]); mixin(dma[n].hdr); mixin(dma[n].addr); mixin(dma[n].done); mixin(dma[n].busy); mixin(uint64_t(dma[n].left));
+        if (per[n].type == PT_REPLAYER) {
+            Replayer& r = replayer(n);
+            mixin(r.pc()); mixin(r.instr_idx()); mixin(r.rows_done()); mixin(r.is_running()); mixin(r.row_hash()); mixin(r.rows_sunk());
+            mixin(r.code.occ); mixin(r.rlog.occ); mixin(r.wlog.occ); mixin(r.exp.occ);
+        } else if (per[n].type == PT_TEST) {
+            TestPeripheral& x = test_peripheral(n);
+            mixin(uint64_t(x.runs)); mixin(x.scratch); mixin(x.n_accepts); mixin(x.taken[0]); mixin(x.taken[1]);
         }
     }
+    mixin(accepted); mixin(reserved_accesses); mixin(violations);
+    return h;
 }
 
 void SlotCore::install(unsigned n, PeriphType type, uint64_t replayer_row_buffer) {

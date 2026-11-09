@@ -5,7 +5,8 @@ The replayer and the peripheral slot. Branch `sim-w15`. Prompt: `PROMPT.md`.
 ## Status
 
 **Go-ahead 2026-11-09** (owner): the plan as written; answers to Q1-Q4 below. Steps 1-2 done: the ALU and the replayer equal to `ref` (ReplayConf every cycle; ReplayerUnitTests ported, 1,456
-checks). Next: Stage A on the runner, then the slot.
+checks). The slot's header published for W14 and W16 (below); waiting on their round. Next: Stage A on the runner,
+then the slot's body.
 
 ## The owner's answers (2026-11-09)
 
@@ -218,3 +219,43 @@ The timing group prints `ref`'s line exactly ("program pass: 85 cycles ..., stal
 Also: the replayer now latches the stream word through W14's `stream_word.h` (one definition of the layout); the
 tests build stream words with its `build`. (A slip of mine on the way, worth recording: a `//` comment swallowed a
 statement in the C++ `Bits::put` exactly as in ref's ReplayerTest line 105; the compiler caught it.)
+
+### make check, all of it (2026-11-09)
+
+clang debug (47 binaries), gcc debug, gcc release, clang release: every test passes; TSan, gcc and clang (the seven
+thread tests): clean. (A tool call here is cut at 300 s and its background jobs with it, so the builds ran in pieces.)
+
+## The slot's interface: for W14 and W16 (one round; the owner arbitrates)
+
+Published, declarations only: `src/units/peripheral.h` (the method set, the type tags, `PeripheralBase<Self>`'s
+defaults) and `src/units/periph_slot.h` (the unit: ports, the window RegFile's layout, the core's word, the dispatch).
+The step's order and every port are AUDIT-M3 3.1's.
+
+**The method set** (`peripheral.h`'s header lists it with ref's names): W14's `tracer.h` signatures taken as the
+standard where they existed (int `type`, `params`, `errors`; `word(t, int w, uint32_t&)`; `write_word` 1/0/-1;
+`consume_events` returning the bits taken; `out_take(t, q, uint64_t w[2])`; `out_start(t, q, int64_t)`), plus:
+- `violation_count()`: ref's `violate()` becomes a count the slot reads after each step and forwards to the tile's
+  violation counter (no host callback);
+- `static constexpr int DIGEST_N` and `digest_words(int64_t out[DIGEST_N])`;
+- three framework hooks, no-ops by default: `ports(sim::Ports&)` (a peripheral's own ports), `begin(sim::Ctx&, t)` (level
+  0, first: its own inputs due) and `end(sim::Ctx&, t)` (after `step(t)`: its own outputs). Only C&C 1 needs them (READY,
+  the error lines, GO: AUDIT 3.4).
+- **The one timing point to agree:** the slot calls `accept(t, ...)` at level 0 of t + 3 (the director's Link(3)), so a
+  peripheral must take an accept whose landing (t + 2) is not yet settled though it may have settled through t + 2. The
+  replayer does now (its landings are checked against t + 2, not t). **W14: the Tracer's `accept` needs the same.**
+- `run`, `write_word` and `consume_events` for a core access at t are called at level 0 of t + 1, consume first.
+
+**For W14 (the Tracer, type 3):** derive `Tracer` from `PeripheralBase<Tracer>` (or keep defining every method), add
+`violation_count()` (your `n_violations`) and `DIGEST_N = STAT_N`, and the late accept above. The slot drives the DMA
+(`out_ready`/`out_take`/`out_start`) into the CreditOut S6.
+
+**For W16 (types 1 and 2):** your classes `units::Cnc1Peripheral` and `units::CcStub` (names yours to change), deriving
+`PeripheralBase<Self>`; C&C 1's own ports through `ports`/`begin`/`end`. Adding a type is one `case` in
+`PeriphSlot::visit` (periph_slot.cpp, a marked block) plus your header's include there: add your two cases yourself, or
+tell me the header and I will. AUDIT 3.4's open item (C&C 1's stores applied at level 0 of t + 1, one cycle later than
+ref for its own work in the store's cycle) is yours to settle: the interface supports the D30 route as is; a `Wire` from
+the core would need a second core input on the slot, which I'd add.
+
+**What the core side does** (my work with the slot's body, in W8's/W11's files): a window load reads the RegFile
+(`Win`'s layout; a reserved or undefined word reads 0 and the core flags it, from the `R_DEFINED` bits); a store or a
+consuming EVENTS load puts one `CoreOp` on S2/S3; a store to a word whose `R_STALL` bit is set retries (S8).

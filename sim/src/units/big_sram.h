@@ -44,16 +44,18 @@ struct SramConfig {
     bool running_sum = true;
 };
 
-// The tiles' big-SRAM blocks: one anonymous mapping per tile, made at configuration, unmapped by the destructor.
+// The units' big-SRAM blocks: one anonymous mapping per unit (tiles 0-63, C&C 1-3 as units 64-66: M3), made at
+// configuration, unmapped by the destructor.
 class SramBlocks {
 public:
+    static constexpr unsigned kUnits = 67;
     SramBlocks() = default;
-    ~SramBlocks() { for (unsigned k = 0; k < 64; k++) if (b_[k]) munmap(b_[k], size_t(n_[k]) * 4); }
+    ~SramBlocks() { for (unsigned k = 0; k < kUnits; k++) if (b_[k]) munmap(b_[k], size_t(n_[k]) * 4); }
     SramBlocks(const SramBlocks&) = delete;
     SramBlocks& operator=(const SramBlocks&) = delete;
     // Tile k's block, mapped at its first call (configuration); fatal if a later call names another size.
     uint32_t* block(unsigned k, uint32_t mem_chunks) {
-        if (k >= 64) FATAL("big SRAM blocks: tile %u", k);
+        if (k >= kUnits) FATAL("big SRAM blocks: unit %u", k);
         if (b_[k]) {
             if (n_[k] != mem_chunks) FATAL("big SRAM blocks: tile %u mapped with %u chunks, asked for %u", k, n_[k], mem_chunks);
             return b_[k];
@@ -63,13 +65,13 @@ public:
         b_[k] = static_cast<uint32_t*>(p); n_[k] = mem_chunks;
         return b_[k];
     }
-    size_t allocated_bytes() const { size_t s = 0; for (unsigned k = 0; k < 64; k++) s += size_t(n_[k]) * 4; return s; }
+    size_t allocated_bytes() const { size_t s = 0; for (unsigned k = 0; k < kUnits; k++) s += size_t(n_[k]) * 4; return s; }
     // Resident pages (mincore), for W10's footprint: what the run touched of what is allocated.
     size_t touched_bytes() const {
         const size_t pg = size_t(sysconf(_SC_PAGESIZE));
         static unsigned char vec[(size_t(1) << 23) / 4096];       // one block (8 MB at most) at 4 KB pages; between runs only
         size_t s = 0;
-        for (unsigned k = 0; k < 64; k++) {
+        for (unsigned k = 0; k < kUnits; k++) {
             if (!b_[k]) continue;
             const size_t bytes = size_t(n_[k]) * 4, pages = (bytes + pg - 1) / pg;
             if (pages > sizeof vec || mincore(b_[k], bytes, vec) != 0) FATAL("big SRAM blocks: mincore on tile %u", k);
@@ -78,8 +80,8 @@ public:
         return s;
     }
 private:
-    uint32_t* b_[64] = {};
-    uint32_t n_[64] = {};
+    uint32_t* b_[kUnits] = {};
+    uint32_t n_[kUnits] = {};
 };
 
 struct BigSram {

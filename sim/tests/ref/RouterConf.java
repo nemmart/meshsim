@@ -37,11 +37,21 @@ import java.util.Random;
  * STATUS's send-busy is set at the end of t (!sendHold.isEmpty(t)); the injection unit's stream (StateFp's "inj": the
  * read-return and send holds) hashed; the tokens held as at the start of t + 1; token-wait cycles; the send hold's
  * refusals; the injection point's violations.
+ *
+ * M3 (WORKER16): controllers' routers and the C&C links (Config.ccCores; AUDIT-M3 3.4).
+ * <pre>
+ *   java -cp REF:. RouterConf gen TILE SEED CYCLES link      tiles 0-2: the fifth port as the C&C links (WordDelayLine 1
+ *                                                           each way, as CcCores wires them) in place of the endpoint
+ *   java -cp REF:. RouterConf gen TILE SEED CYCLES [dma]     TILE 64-66: a controller's router (FEEDERS_CC, ccRoute)
+ * </pre>
+ * The script's extra header line {@code # fifth link} (tiles 0-2) or {@code # cc} / {@code # cc dma} (64-66). For a
+ * controller: L0 the C&C link into CC_LINK_IN (WordDelayLine 1), L1 the host port (WordFIFO 4, CC_HOST_IN), L2 the DMA
+ * (WordFIFO 4, CC_DMA_IN; with dma only), I the injection; outputs O0 (CC_LINK_OUT) and E. Lines as above.
  */
 final class RouterConf {
     public static void main(String[] a) throws IOException {
         switch (a[0]) {
-            case "gen" -> gen(Integer.parseInt(a[1]), Long.parseLong(a[2]), Integer.parseInt(a[3]), a.length > 4 && a[4].equals("send"));
+            case "gen" -> gen(Integer.parseInt(a[1]), Long.parseLong(a[2]), Integer.parseInt(a[3]), a.length > 4 ? a[4] : "");
             case "run" -> run(Hops.load(Path.of(a[1])), a[2]);
             case "table" -> table(Hops.load(Path.of(a[1])));
             default -> throw new IllegalArgumentException(a[0]);
@@ -50,10 +60,13 @@ final class RouterConf {
 
     // ------------------------------------------------------------------------------------------------ the generator
     /** Rates vary in phases of 1-64 cycles per source (idle to every cycle), so FIFOs fill, overflow and drain. */
-    static void gen(int tile, long seed, int cycles, boolean send) {
+    static void gen(int tile, long seed, int cycles, String mode) {
+        boolean send = mode.equals("send");
+        if (tile >= 64) { genCc(tile, seed, cycles, mode.equals("dma")); return; }
         Random r = new Random(seed);
         StringBuilder sb = new StringBuilder();
         sb.append("# routerconf v1\n# tile ").append(tile).append("\n# seed ").append(seed).append(" cycles ").append(cycles).append(send ? " send" : "").append('\n');
+        if (mode.equals("link")) sb.append("# fifth link\n");
         int nsrc = tile < 3 ? 6 : 5;
         double[] rate = new double[nsrc]; int[] left = new int[nsrc];
         for (int t = 1; t <= cycles; t++) {
@@ -69,13 +82,37 @@ final class RouterConf {
         }
         System.out.print(sb);
     }
+    /** A controller's router: the link, the host port, the DMA (with dma) and the injection, at rates varying in phases
+     *  as above. The injection's packets go mostly to the controller itself or elsewhere (the link); the others' are
+     *  any packet (every input but the loopback and the DMA is ejected, so a dst not this controller is an eject error). */
+    static void genCc(int tile, long seed, int cycles, boolean dma) {
+        Random r = new Random(seed);
+        StringBuilder sb = new StringBuilder();
+        sb.append("# routerconf v1\n# tile ").append(tile).append("\n# seed ").append(seed).append(" cycles ").append(cycles).append('\n');
+        sb.append(dma ? "# cc dma\n" : "# cc\n");
+        int[] srcs = dma ? new int[] { 0, 1, 2, 4 } : new int[] { 0, 1, 4 };
+        double[] rate = new double[5]; int[] left = new int[5];
+        for (int t = 1; t <= cycles; t++) {
+            sb.append(t);
+            for (int s : srcs) {
+                if (left[s]-- <= 0) { left[s] = 1 + r.nextInt(64); int k = r.nextInt(4); rate[s] = k == 0 ? 0 : k == 1 ? 0.15 : k == 2 ? 0.6 : 1.0; }
+                if (r.nextDouble() >= rate[s]) continue;
+                String tag = s == 4 ? "I" : "L" + s;
+                sb.append(' ').append(tag).append(':').append(word(r, tile, s, (long) t << 3 | s));
+            }
+            sb.append('\n');
+            if (sb.length() > 1 << 16) { System.out.print(sb); sb.setLength(0); }
+        }
+        System.out.print(sb);
+    }
+
     /** A packet: any source and destination (the route functions are pure: every input is legal), any mode, counter,
      *  size and address, and the simulator-only bits at random (the eject selector reads TAG_TOKEN); payload [63:0] is a
      *  sequence number (cycle, source) so a misrouted word is easy to read, payload [127:64] a small random tag. */
     static String word(Random r, int tile, int s, long seq) {
         int dst, src;
         int k = r.nextInt(100);
-        if (k < 30) dst = tile; else if (k < 45) dst = LinkWord.BROADCAST; else if (k < 50) dst = 64 + r.nextInt(3);
+        if (k < 30) dst = tile; else if (tile >= 64 && k < 40) dst = 64 + r.nextInt(3); else if (k < 45) dst = LinkWord.BROADCAST; else if (k < 50) dst = 64 + r.nextInt(3);
         else if (k < 52) dst = r.nextInt(128); else dst = r.nextInt(64);
         int j = r.nextInt(100);
         src = j < 90 ? r.nextInt(64) : j < 95 ? 64 + r.nextInt(3) : j < 97 ? 72 + r.nextInt(3) : r.nextInt(128);
@@ -105,7 +142,8 @@ final class RouterConf {
         try (BufferedReader in = new BufferedReader(new FileReader(script), 1 << 16);
              Writer out = new BufferedWriter(new OutputStreamWriter(System.out), 1 << 16)) {
             Router rt = null; WordDelayLine[] lin = new WordDelayLine[4], lout = new WordDelayLine[4];
-            WordDelayLine inj = null, ej = null; WordHold cnc = null; WordFIFO toCnc = null; SRAMReadQueue tok = null;
+            WordDelayLine inj = null, ej = null; WordHold cnc = null; WordBus toCnc = null; SRAMReadQueue tok = null;
+            WordDelayLine cncLink = null; WordSource[] lsrc = new WordSource[4];
             InjectionPath ip = null; WordHold send = null, rret = null;
             long t = 0;
             for (String line; (line = in.readLine()) != null; ) {
@@ -113,12 +151,21 @@ final class RouterConf {
                     if (line.startsWith("# tile ")) {
                         tile = Integer.parseInt(line.substring(7).trim());
                         rt = new Router(tile, hops, 16, 64, tile < 3);
-                        for (int d = 0; d < 4; d++) { lin[d] = new WordDelayLine("in" + d, 1); lout[d] = new WordDelayLine("out" + d, 1); rt.linkIn[d] = lin[d]; rt.linkOut[d] = lout[d]; }
+                        for (int d = 0; d < 4; d++) {
+                            if (tile >= 64 && d > 0) continue;
+                            lin[d] = new WordDelayLine("in" + d, 1); lout[d] = new WordDelayLine("out" + d, 1); rt.linkIn[d] = lin[d]; rt.linkOut[d] = lout[d]; lsrc[d] = lin[d];
+                        }
+                        if (tile >= 64) { WordFIFO h = new WordFIFO("host", 4); rt.linkIn[Router.CC_HOST_IN] = h; lsrc[1] = h; }
                         inj = new WordDelayLine("inj", 1); ej = new WordDelayLine("eject", 1); rt.fromInjection = inj; rt.toDirector = ej;
-                        if (tile < 3) { cnc = new WordHold("cnc"); toCnc = new WordFIFO("tocnc", 16); rt.fromCnc = cnc; rt.toCnc = toCnc; }
+                        if (tile < 3) { cnc = new WordHold("cnc"); WordFIFO f = new WordFIFO("tocnc", 16); toCnc = f; rt.fromCnc = cnc; rt.toCnc = f; }
                         Config c = new Config();
                         tok = new SRAMReadQueue(tile, c); rt.tokens = tok;
                     }
+                    if (line.equals("# fifth link")) {                         // CcCores: WordDelayLine(ccLinkLatency 1) each way
+                        cnc = null; cncLink = new WordDelayLine("from-cc", 1); WordDelayLine tl = new WordDelayLine("to-cc", 1);
+                        rt.fromCnc = cncLink; rt.toCnc = tl; toCnc = tl;
+                    }
+                    if (line.equals("# cc dma")) { WordFIFO d = new WordFIFO("dma", 4); rt.linkIn[Router.CC_DMA_IN] = d; lsrc[2] = d; }
                     if (line.startsWith("# seed ") && line.endsWith(" send")) {
                         send = new WordHold("send"); rret = new WordHold("readReturn");
                         ip = new InjectionPath(tile); ip.readReturn = rret; ip.send = send; ip.toRouter = inj; ip.srq = tok;
@@ -134,9 +181,10 @@ final class RouterConf {
                     String[] w = f[i].substring(f[i].indexOf(':') + 1).split(",");
                     long x = hex(w[0]), y = hex(w[1]), z = hex(w[2]);
                     char k = f[i].charAt(0);
-                    if (k == 'L') lin[f[i].charAt(1) - '0'].put(t, x, y, z);
+                    if (k == 'L') ((WordSink) lsrc[f[i].charAt(1) - '0']).put(t, x, y, z);
                     else if (k == 'I') inj.put(t, x, y, z);
                     else if (k == 'S') core = new long[] { x, y, z };
+                    else if (cncLink != null) cncLink.put(t, x, y, z);
                     else cnc.put(t, x, y, z);
                 }
                 rt.runCycle(t);
@@ -162,10 +210,10 @@ final class RouterConf {
         for (int q = 0; q < r.q.length; q++) for (int f = 0; f < r.q[q].length; f++) StateFp.fifo(o, "q" + q + "." + f, r.q[q][f], t);
         return o.done();
     }
-    static void observe(Writer out, Router r, long t, WordDelayLine[] lout, WordDelayLine ej, WordFIFO toCnc, SRAMReadQueue tok) throws IOException {
+    static void observe(Writer out, Router r, long t, WordDelayLine[] lout, WordDelayLine ej, WordBus toCnc, SRAMReadQueue tok) throws IOException {
         StringBuilder sb = new StringBuilder().append(t);
         long u = t + 1;
-        for (int d = 0; d < 4; d++) if (lout[d].ready(u)) { sb.append(" O").append(d).append(':').append(w3(lout[d].peekA(u), lout[d].peekB(u), lout[d].peekC(u))); lout[d].take(u); }
+        for (int d = 0; d < 4; d++) if (lout[d] != null && lout[d].ready(u)) { sb.append(" O").append(d).append(':').append(w3(lout[d].peekA(u), lout[d].peekB(u), lout[d].peekC(u))); lout[d].take(u); }
         if (ej.ready(u)) { sb.append(" E:").append(w3(ej.peekA(u), ej.peekB(u), ej.peekC(u))); ej.take(u); }
         if (toCnc != null && toCnc.ready(u)) { sb.append(" X:").append(w3(toCnc.peekA(u), toCnc.peekB(u), toCnc.peekC(u))); toCnc.take(u); }
         if (StateFp.l(tok, "lastT") == t && StateFp.l(tok, "freesPending") > 0) sb.append(" F");

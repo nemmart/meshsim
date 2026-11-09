@@ -365,6 +365,8 @@ peripheral's own work in the store's cycle**: a watchdog written at t starts cou
 pushed at t can start at t + 1 instead of t. Neither run reaches the watchdog's expiry or the UART (section 1): a
 deliberate difference to propose under D30 if the C&C worker prefers it to applying C&C 1's stores within the store's
 cycle (a `Wire` from the core, which keeps C&C 1's core and slot at one level order).
+**Ruled (owner, 2026-11-09): D33**, the deliberate difference: the slot's rule is kept, and C&C 1's watchdog and UART
+run one cycle later than `ref` after a store.
 
 **The order that matters on C&C 1's slot at level 0 of t:** the READY arrivals of t applied (READY_LINES reads them at t);
 EVENTS [2] published from `allReady(t − 1)`, i.e. before them; the error lines due at t; then the store effects of t − 1.

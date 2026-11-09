@@ -355,6 +355,13 @@ TEST(cnc1_periph_identity_and_window_rules) {
     CHECK(!p.word(0, 46, v));                                  // undefined
     CHECK_EQ(p.write_word(0, 35, 1), 0);                       // read-only
     CHECK_EQ(p.write_word(0, 60, 1), -1);                      // undefined
+    for (int w = 32; w < 128; w++) {                           // writable(w) is exactly write_word's 1 (ref's writeWord)
+        Cnc1Peripheral q;
+        uint32_t x;
+        const bool defined = q.word(0, w, x);
+        const int r = defined ? q.write_word(0, w, w == Cnc1Peripheral::PULSE_GO ? 0 : 1) : -1;
+        CHECK_EQ(q.writable(w), r == 1);
+    }
     CHECK(p.events().value(1) >> Cnc1Peripheral::EV_UART_TX & 1);   // TX not full at reset (live)
     CHECK(p.idle(0));
     for (int k = 0; k < 16; k++) CHECK_EQ(p.write_word(0, Cnc1Peripheral::UART_TX, uint32_t(k)), 1);

@@ -172,6 +172,9 @@ struct Cnc1Peripheral : PeripheralBase<Cnc1Peripheral> {
         }
     }
     bool store_stalls(int64_t, int w) const { return w == UART_TX && tx_n >= FIFO; }
+    // The static map (peripheral.h, W15): the defined words a store writes; ERROR_LINES_0-2, READY_LINES_0-1 and
+    // UART_RX are read-only (ref's writeWord returns 0: a bus error, raised by the core at once).
+    bool writable(int w) const { return (w >= READY_EXPECT && w <= UART_TX) || w == UART_DIVISOR || w == UART_STATUS; }
 
     // ---- the work of t (ref's runCycle(t)) ----
     void step(int64_t t) {

@@ -124,3 +124,32 @@ orders, step-all, the missed-wake detector).
   domain, 4 row bands and the debug options; with the fix reverted the first poll never ends (the test fails).
 - 2026-11-09: make check again after the merge and the slot's types, build by build: 52 test binaries pass on clang and
   gcc, debug and release; TSan `test_chip form2` passes on both.
+
+## Rounds with W15 and W14 (2026-11-09; the owner: one round each)
+
+**For W15: a peripheral's own ports in the slot** (the blocker; acceptance test: `test_cnc1_periph` built with
+`-DW16_SLOT_OWN_PORTS`, `cnc1_periph_through_the_slot_conformance_with_ref`). Proposal:
+- `periph_slot.h`: `struct OwnPorts { sim::LinkIn in[12]; sim::LinkOut out[64]; }`, a member `own` of `PeriphSlot`
+  (one set per slot: only peripheral 1 is ever present in v1.3, and only C&C 1's has own ports). Its handles are
+  members of the unit, so the build can declare and rewrite them. Cost: 352 bytes a slot (22 KB over the chip).
+- The hooks take it: `void ports(sim::Ports&, OwnPorts&)` (declare into `own.in[k]`, `own.out[k]`), `void begin(sim::Ctx&,
+  int64_t t, const OwnPorts&)`, `void end(sim::Ctx&, int64_t t, const OwnPorts&)`; `PeripheralBase`'s defaults the same
+  signatures, doing nothing. The peripheral keeps indices, never handles.
+- C&C 1's layout (mine, in `cnc1_periph.h`): `in[0..7]` the row collectors (`row`), `in[8..10]` the controllers' line
+  words (`cc-line`); `out[0..63]` GO (`go`). The chip wires `slot.own.in[k]` / `slot.own.out[k]` by those indices.
+- On your side, nothing else changes: the slot calls `ports` in its constructor, `begin` first at level 0, `end` after
+  the peripheral's step, as now. I change `Cnc1Peripheral` to the new signatures when your commit lands (a few lines).
+
+**For W14: the request bus's ports** (W14 NOTES section 14). Agreed as proposed: `ControlIO.req` filled by `add_g1`;
+the chip builder calls `add_reqbus(cfg, rc, tiles, ccs, placement)` and `wire_reqbus(cfg, io, k, ControlIO&)` for the 64
+tiles and the three controllers, with `ReqBusPlacement` from the chip's domains (each leaf with its sender, each
+receive queue with its controller; C&C c is in tile c's domain). Three points for the round:
+1. **The mode for T2.** The exact checks run split (the partition: C&C c with tile c, the replaying tiles spread), so
+   mode 0 (one domain for every sender) can't be used there. T2 sends two requests in all (C&C 2's and C&C 3's
+   "started", none from the tiles), with no backpressure: the calm case where mode 3 equals `ref`. So T2 runs mode 3 and
+   requires `lag_cycles` 0, on one domain and split; mode 0 on one domain as a cross-check. Agreed?
+2. **The fingerprint.** The `reqbus` stream and the 67 `req` streams are yours (`reqbus_fp.h`); I call them from the
+   M3 chip line in AUDIT-M3 6.9's order. The controllers' receive queues are in `reqbus` (as ref's `RequestBus.queue`)?
+3. **The controllers' REQUEST_GET/RECEIVE and the EVENTS pending bit** (your edits to `rv32.h`, `tile_ctl.h`): C&C 1's
+   boot waits on them (cc1.c reads the two "started" requests); `test_cc_units` will add a C&C 2 that sends "started"
+   and a C&C 1 that receives it, against ref's cycles, once your branch is on main.

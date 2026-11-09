@@ -1,0 +1,207 @@
+// rvc.h: the RISC-V C extension's decompression as the Tracer applies it (spec 4.21.4 step 2), ported from `ref`'s
+// Rvc.java line for line (WORKER14). `ref`'s is a16z's decoder at 7189216 as gold ports it, with a16z's D12 (C.SLLI with
+// rd = x0 is SLLI x0, x0, shamt); RvcTest checks it against gold's on all 2^16 encodings, test_rvc checks this against
+// `ref`'s on the same.
+//
+// `uncompress` returns 0xFFFFFFFF where an encoding has no 32-bit form and 0 for the reserved forms that trap (c.unimp,
+// 0x0000 among them); both are invalid expansions, ERRORS [2], when executed. The Tracer's code-stream word is the result
+// with bit 0 cleared (4.19.2): `code_word`, 0 when there is no valid form.
+//
+// Java's int arithmetic is two's complement with defined shifts; here everything is uint32_t, which gives the same bits
+// (the Java source uses only << and >>>, never >>).
+#pragma once
+
+#include <cstdint>
+
+namespace rvc {
+
+// Sign-extended 6-bit immediate of C.ADDI, C.ADDIW, C.LI, C.ANDI: bit 12 and bits 6:2.
+inline uint32_t c_imm6(uint32_t h) { return ((h & 0x1000) ? 0xffffffc0u : 0u) | ((h >> 7) & 0x20) | ((h >> 2) & 0x1f); }
+
+// C.J and C.JAL's jump immediate placed in a JAL encoding's bits 31:12.
+inline uint32_t c_jump_field(uint32_t h) {
+    uint32_t offset = ((h & 0x1000) ? 0xfffff000u : 0u) | ((h >> 1) & 0x800) | ((h >> 7) & 0x10) | ((h >> 1) & 0x300) |
+                      ((h << 2) & 0x400) | ((h >> 1) & 0x40) | ((h << 1) & 0x80) | ((h >> 2) & 0xe) | ((h << 3) & 0x20);
+    uint32_t imm = ((offset >> 1) & 0x80000) | ((offset << 8) & 0x7fe00) | ((offset >> 3) & 0x100) | ((offset >> 12) & 0xff);
+    return imm << 12;
+}
+
+// C.BEQZ and C.BNEZ: a branch encoding's immediate bits, with the register in the rs2 field and rs1 = x0 (as jolt-cpp).
+inline uint32_t c_branch(uint32_t h, uint32_t funct3) {
+    uint32_t r = (h >> 7) & 7;
+    uint32_t offset = ((h & 0x1000) ? 0xfffffe00u : 0u) | ((h >> 4) & 0x100) | ((h >> 7) & 0x18) | ((h << 1) & 0xc0) |
+                      ((h >> 2) & 0x6) | ((h << 3) & 0x20);
+    uint32_t imm2 = ((offset >> 6) & 0x40) | ((offset >> 5) & 0x3f);
+    uint32_t imm1 = (offset & 0x1e) | ((offset >> 11) & 1);
+    return (imm2 << 25) | ((r + 8) << 20) | (funct3 << 12) | (imm1 << 7) | 0x63;
+}
+
+// The 32-bit encoding of a compressed instruction (RV64C): 0xFFFFFFFF where it can't be expanded, 0 for the reserved
+// forms that trap (UNIMP).
+inline uint32_t uncompress(uint32_t h) {
+    const uint32_t op = h & 3, f3 = (h >> 13) & 7;
+    switch (op) {
+    case 0:
+        switch (f3) {
+        case 0: {  // C.ADDI4SPN
+            uint32_t rd = (h >> 2) & 7;
+            uint32_t nzuimm = ((h >> 7) & 0x30) | ((h >> 1) & 0x3c0) | ((h >> 4) & 0x4) | ((h >> 2) & 0x8);
+            return nzuimm != 0 ? (nzuimm << 20) | (2u << 15) | ((rd + 8) << 7) | 0x13 : 0;
+        }
+        case 1: {  // C.FLD
+            uint32_t rd = (h >> 2) & 7, rs1 = (h >> 7) & 7;
+            uint32_t offset = ((h >> 7) & 0x38) | ((h << 1) & 0xc0);
+            return (offset << 20) | ((rs1 + 8) << 15) | (3u << 12) | ((rd + 8) << 7) | 0x7;
+        }
+        case 2: {  // C.LW
+            uint32_t rs1 = (h >> 7) & 7, rd = (h >> 2) & 7;
+            uint32_t offset = ((h >> 7) & 0x38) | ((h >> 4) & 0x4) | ((h << 1) & 0x40);
+            return (offset << 20) | ((rs1 + 8) << 15) | (2u << 12) | ((rd + 8) << 7) | 0x3;
+        }
+        case 3: {  // C.LD
+            uint32_t rs1 = (h >> 7) & 7, rd = (h >> 2) & 7;
+            uint32_t offset = ((h >> 7) & 0x38) | ((h << 1) & 0xc0);
+            return (offset << 20) | ((rs1 + 8) << 15) | (3u << 12) | ((rd + 8) << 7) | 0x3;
+        }
+        case 5: {  // C.FSD
+            uint32_t rs1 = (h >> 7) & 7, rs2 = (h >> 2) & 7;
+            uint32_t offset = ((h >> 7) & 0x38) | ((h << 1) & 0xc0);
+            return (((offset >> 5) & 0x7f) << 25) | ((rs2 + 8) << 20) | ((rs1 + 8) << 15) | (3u << 12) |
+                   ((offset & 0x1f) << 7) | 0x27;
+        }
+        case 6: {  // C.SW
+            uint32_t rs1 = (h >> 7) & 7, rs2 = (h >> 2) & 7;
+            uint32_t offset = ((h >> 7) & 0x38) | ((h << 1) & 0x40) | ((h >> 4) & 0x4);
+            return (((offset >> 5) & 0x7f) << 25) | ((rs2 + 8) << 20) | ((rs1 + 8) << 15) | (2u << 12) |
+                   ((offset & 0x1f) << 7) | 0x23;
+        }
+        case 7: {  // C.SD
+            uint32_t rs1 = (h >> 7) & 7, rs2 = (h >> 2) & 7;
+            uint32_t offset = ((h >> 7) & 0x38) | ((h << 1) & 0xc0);
+            return (((offset >> 5) & 0x7f) << 25) | ((rs2 + 8) << 20) | ((rs1 + 8) << 15) | (3u << 12) |
+                   ((offset & 0x1f) << 7) | 0x23;
+        }
+        default: return 0xffffffffu;  // 4: reserved
+        }
+    case 1:
+        switch (f3) {
+        case 0: {  // C.ADDI (r = 0 or imm = 0: NOP)
+            uint32_t r = (h >> 7) & 0x1f, imm = c_imm6(h);
+            if (r == 0 || imm == 0) return 0x13;
+            return (imm << 20) | (r << 15) | (r << 7) | 0x13;
+        }
+        case 1: {  // C.ADDIW (imm 0: sext.w)
+            uint32_t r = (h >> 7) & 0x1f, imm = c_imm6(h);
+            if (r == 0) return 0xffffffffu;
+            if (imm == 0) return (r << 15) | (r << 7) | 0x1b;
+            return (imm << 20) | (r << 15) | (r << 7) | 0x1b;
+        }
+        case 2: {  // C.LI (r = 0: HINT, NOP)
+            uint32_t r = (h >> 7) & 0x1f, imm = c_imm6(h);
+            return r != 0 ? (imm << 20) | (r << 7) | 0x13 : 0x13;
+        }
+        case 3: {
+            uint32_t r = (h >> 7) & 0x1f;
+            if (r == 2) {  // C.ADDI16SP
+                uint32_t imm = ((h & 0x1000) ? 0xfffffc00u : 0u) | ((h >> 3) & 0x200) | ((h >> 2) & 0x10) |
+                               ((h << 1) & 0x40) | ((h << 4) & 0x180) | ((h << 3) & 0x20);
+                if (imm != 0) return (imm << 20) | (r << 15) | (r << 7) | 0x13;
+            }
+            if (r != 0 && r != 2) {  // C.LUI
+                uint32_t nzimm = ((h & 0x1000) ? 0xfffc0000u : 0u) | ((h << 5) & 0x20000) | ((h << 10) & 0x1f000);
+                if (nzimm != 0) return nzimm | (r << 7) | 0x37;
+            }
+            if (r == 0) return 0x13;
+            return 0xffffffffu;
+        }
+        case 4: {
+            uint32_t f2 = (h >> 10) & 3;
+            switch (f2) {
+            case 0: {  // C.SRLI
+                uint32_t sh = ((h >> 7) & 0x20) | ((h >> 2) & 0x1f), rs1 = (h >> 7) & 7;
+                return (sh << 20) | ((rs1 + 8) << 15) | (5u << 12) | ((rs1 + 8) << 7) | 0x13;
+            }
+            case 1: {  // C.SRAI
+                uint32_t sh = ((h >> 7) & 0x20) | ((h >> 2) & 0x1f), rs1 = (h >> 7) & 7;
+                return (0x20u << 25) | (sh << 20) | ((rs1 + 8) << 15) | (5u << 12) | ((rs1 + 8) << 7) | 0x13;
+            }
+            case 2: {  // C.ANDI
+                uint32_t r = (h >> 7) & 7, imm = c_imm6(h);
+                return (imm << 20) | ((r + 8) << 15) | (7u << 12) | ((r + 8) << 7) | 0x13;
+            }
+            default: {
+                uint32_t f1 = (h >> 12) & 1, f22 = (h >> 5) & 3, rs1 = (h >> 7) & 7, rs2 = (h >> 2) & 7;
+                uint32_t base = ((rs2 + 8) << 20) | ((rs1 + 8) << 15) | ((rs1 + 8) << 7);
+                if (f1 == 0) {
+                    switch (f22) {
+                    case 0: return (0x20u << 25) | base | 0x33;  // C.SUB
+                    case 1: return base | (4u << 12) | 0x33;     // C.XOR
+                    case 2: return base | (6u << 12) | 0x33;     // C.OR
+                    default: return base | (7u << 12) | 0x33;    // C.AND
+                    }
+                }
+                if (f22 == 0) return (0x20u << 25) | base | 0x3b;  // C.SUBW
+                if (f22 == 1) return base | 0x3b;                  // C.ADDW
+                return 0xffffffffu;
+            }
+            }
+        }
+        case 5: return c_jump_field(h) | 0x6f;  // C.J: jal x0
+        case 6: return c_branch(h, 0);          // C.BEQZ
+        default: return c_branch(h, 1);         // C.BNEZ
+        }
+    case 2:
+        switch (f3) {
+        case 0: {  // C.SLLI; with rd = x0 a HINT: SLLI x0, x0, shamt, as a16z (D12)
+            uint32_t r = (h >> 7) & 0x1f, sh = ((h >> 7) & 0x20) | ((h >> 2) & 0x1f);
+            return (sh << 20) | (r << 15) | (1u << 12) | (r << 7) | 0x13;
+        }
+        case 1: {  // C.FLDSP
+            uint32_t rd = (h >> 7) & 0x1f, offset = ((h >> 7) & 0x20) | ((h >> 2) & 0x18) | ((h << 4) & 0x1c0);
+            return rd != 0 ? (offset << 20) | (2u << 15) | (3u << 12) | (rd << 7) | 0x7 : 0xffffffffu;
+        }
+        case 2: {  // C.LWSP
+            uint32_t r = (h >> 7) & 0x1f, offset = ((h >> 7) & 0x20) | ((h >> 2) & 0x1c) | ((h << 4) & 0xc0);
+            return r != 0 ? (offset << 20) | (2u << 15) | (2u << 12) | (r << 7) | 0x3 : 0xffffffffu;
+        }
+        case 3: {  // C.LDSP
+            uint32_t rd = (h >> 7) & 0x1f, offset = ((h >> 7) & 0x20) | ((h >> 2) & 0x18) | ((h << 4) & 0x1c0);
+            return rd != 0 ? (offset << 20) | (2u << 15) | (3u << 12) | (rd << 7) | 0x3 : 0xffffffffu;
+        }
+        case 4: {
+            uint32_t f1 = (h >> 12) & 1, rs1 = (h >> 7) & 0x1f, rs2 = (h >> 2) & 0x1f;
+            if (f1 == 0) {
+                if (rs1 != 0 && rs2 == 0) return (rs1 << 15) | 0x67;            // C.JR
+                if (rs1 == 0 && rs2 != 0) return 0x13;                          // HINT
+                if (rs1 != 0) return (rs2 << 20) | (rs1 << 7) | 0x33;           // C.MV: add rd, x0, rs2
+                return 0xffffffffu;
+            }
+            if (rs1 == 0 && rs2 == 0) return 0x00100073;                        // C.EBREAK
+            if (rs1 != 0 && rs2 == 0) return (rs1 << 15) | (1u << 7) | 0x67;    // C.JALR
+            if (rs1 == 0) return 0x13;                                          // HINT
+            return (rs2 << 20) | (rs1 << 15) | (rs1 << 7) | 0x33;               // C.ADD
+        }
+        case 5: {  // C.FSDSP
+            uint32_t rs2 = (h >> 2) & 0x1f, offset = ((h >> 7) & 0x38) | ((h >> 1) & 0x1c0);
+            return (((offset >> 5) & 0x3f) << 25) | (rs2 << 20) | (2u << 15) | (3u << 12) | ((offset & 0x1f) << 7) | 0x27;
+        }
+        case 6: {  // C.SWSP
+            uint32_t rs2 = (h >> 2) & 0x1f, offset = ((h >> 7) & 0x3c) | ((h >> 1) & 0xc0);
+            return (((offset >> 5) & 0x3f) << 25) | (rs2 << 20) | (2u << 15) | (2u << 12) | ((offset & 0x1f) << 7) | 0x23;
+        }
+        default: {  // C.SDSP
+            uint32_t rs2 = (h >> 2) & 0x1f, offset = ((h >> 7) & 0x38) | ((h >> 1) & 0x1c0);
+            return (((offset >> 5) & 0x3f) << 25) | (rs2 << 20) | (2u << 15) | (3u << 12) | ((offset & 0x1f) << 7) | 0x23;
+        }
+        }
+    default: return 0xffffffffu;
+    }
+}
+
+// The code-stream word of a 16-bit instruction (bit 0 cleared as its flag), or 0 if it has no valid 32-bit form.
+inline uint32_t code_word(uint32_t h) {
+    uint32_t w = uncompress(h & 0xFFFF);
+    return w == 0xffffffffu || w == 0 ? 0 : w & ~1u;
+}
+
+}  // namespace rvc

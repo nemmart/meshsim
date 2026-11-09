@@ -342,7 +342,8 @@ PeriphSlot::PeriphSlot(sim::Ports& p, const PeriphSlotConfig& c) : cfg(c) {
     p.in(core, "core", 1);
     p.out(window, "window", Win::REGS);
     if (c.controller) p.out(dma, "dma", 3);
-    for (unsigned n = 1; n <= 3; n++) if (s.per[n].type != PT_ABSENT) s.visit(n, [&](auto& q) { q.ports(p); });
+    OwnPortsDecl decl(p, own);
+    for (unsigned n = 1; n <= 3; n++) if (s.per[n].type != PT_ABSENT) s.visit(n, [&](auto& q) { q.ports(decl); });
 }
 
 void PeriphSlot::publish(sim::Ctx& c, int64_t t) {
@@ -384,7 +385,7 @@ sim::Wake PeriphSlot::step(sim::Ctx& c) {
     const int64_t t = int64_t(c.now());
     bool active = first;
     // ---- level 0: (1) the peripherals' own inputs
-    for (unsigned n = 1; n <= 3; n++) if (s.per[n].type != PT_ABSENT) s.visit(n, [&](auto& q) { q.begin(c, t); });
+    for (unsigned n = 1; n <= 3; n++) if (s.per[n].type != PT_ABSENT) s.visit(n, [&](auto& q) { q.begin(c, t, own); });
     // (2) the core's access of t - 1: a consume or the EVENTS_MASK store first (ref's endCycle(t - 1)) ...
     uint64_t op = 0;
     bool have_op = false;
@@ -425,7 +426,7 @@ sim::Wake PeriphSlot::step(sim::Ctx& c) {
         if (!cfg.controller) FATAL("slot %u: a DMA packet without a DMA port", cfg.tile);
         c.put(dma, s.out[k].lo, s.out[k].h, s.out[k].hi);
     }
-    for (unsigned n = 1; n <= 3; n++) if (s.per[n].type != PT_ABSENT) s.visit(n, [&](auto& q) { q.end(c, t); });
+    for (unsigned n = 1; n <= 3; n++) if (s.per[n].type != PT_ABSENT) s.visit(n, [&](auto& q) { q.end(c, t, own); });
     // ---- the wake: the next cycle while anything is in progress, and once more after it (to publish what it left)
     if (active || !idle_before || !s.idle(t + 1)) return c.next();
     const int64_t w = s.next_wake_at(t);

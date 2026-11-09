@@ -49,9 +49,9 @@ struct Cnc1Peripheral : PeripheralBase<Cnc1Peripheral> {
     static constexpr int DIGEST_N = 4;
 
     // ---- the own ports (ports(); wired by the chip) ----
-    sim::LinkIn rows[8];
-    sim::LinkIn cc_line[3];
-    sim::LinkOut go[64];
+    // the own ports' indices in the slot's storage (peripheral.h, OWN PORTS; W15 for W16): rows at row0 .. row0 + 7,
+    // cc_line at line0 .. line0 + 2 (OwnPorts::link_in), go at go0 .. go0 + 63 (OwnPorts::link_out)
+    unsigned row0 = 0, line0 = 0, go0 = 0;
 
     // ---- configuration ----
     unsigned ref_cycle = 40;           // Config.refCycle: core cycles per reference-oscillator cycle (the UART)
@@ -89,14 +89,16 @@ struct Cnc1Peripheral : PeripheralBase<Cnc1Peripheral> {
     int params() const { return 1; }                  // type 1, Ingress/Egress with the UART (4.17.1, D46), version 0
 
     // ---- the framework hooks ----
-    void ports(sim::Ports& p) {
-        for (unsigned r = 0; r < 8; r++) p.in(rows[r], "row", 1);
-        for (unsigned c = 0; c < 3; c++) p.in(cc_line[c], "cc-line", 1);
-        for (unsigned k = 0; k < 64; k++) p.out(go[k], "go", 0);
+    void ports(OwnPortsDecl& d) {
+        for (unsigned r = 0; r < 8; r++) { const unsigned i = d.link_in("row", 1); if (r == 0) row0 = i; }
+        for (unsigned c = 0; c < 3; c++) { const unsigned i = d.link_in("cc-line", 1); if (c == 0) line0 = i; }
+        for (unsigned k = 0; k < 64; k++) { const unsigned i = d.link_out("go", 0); if (k == 0) go0 = i; }
     }
     // Level 0 of t, first: READY arrivals (visible at t), error-line changes due at t (applied by step(t)), C&C 1's own
     // error line (the toast pin).
-    void begin(sim::Ctx& c, int64_t t) {
+    void begin(sim::Ctx& c, int64_t t, OwnPorts& o) {
+        const sim::LinkIn* rows = o.link_in + row0;
+        const sim::LinkIn* cc_line = o.link_in + line0;
         for (unsigned r = 0; r < 8; r++) {
             if (!c.ready(rows[r])) continue;
             const uint64_t w = c.peek(rows[r])[0];
@@ -119,9 +121,9 @@ struct Cnc1Peripheral : PeripheralBase<Cnc1Peripheral> {
             if (high && !toast) { toast = true; toast_at = t - 2; }
         }
     }
-    void end(sim::Ctx& c, int64_t) {
+    void end(sim::Ctx& c, int64_t, OwnPorts& o) {
         if (!go_due) return;
-        for (unsigned k = 0; k < 64; k++) c.put(go[k]);
+        for (unsigned k = 0; k < 64; k++) c.put(o.link_out[go0 + k]);
         go_due = false;
     }
 
@@ -131,6 +133,8 @@ struct Cnc1Peripheral : PeripheralBase<Cnc1Peripheral> {
     uint32_t consume_events(uint32_t bits) { return ev.consume(bits); }
     // 1 written, 0 read-only (a bus error), -1 undefined. A UART_TX store never arrives with the FIFO full: the core
     // retried it while R_STALL was set (store_stalls).
+    // W15 for W16 (peripheral.h's static map): the words a store writes; 32-36 and 43 are read-only (a bus error)
+    bool writable(int w) const { return w >= 37 && w <= 45 && w != 43; }
     int write_word(int64_t t, int w, uint32_t v) {
         switch (w) {
         case 37: expect = (expect & ~0xFFFFFFFFull) | v; return 1;

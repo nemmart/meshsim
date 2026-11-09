@@ -30,12 +30,20 @@
 //   fingerprint   static constexpr int DIGEST_N; void digest_words(int64_t out[DIGEST_N]) const
 //   flags         uint64_t violation_count() const               ref's violate(): the slot forwards new ones to the tile
 //   reset         void reset(int64_t t)
-//   framework     void ports(sim::Ports&)                         declare the peripheral's own ports (C&C 1: READY,
+//   framework     void ports(OwnPortsDecl&)                       declare the peripheral's own ports (C&C 1: READY,
 //                                                                 the error lines, GO); default none
-//                 void begin(sim::Ctx&, int64_t t)                level 0 of t, first: take the own inputs due (C&C 1:
+//                 void begin(sim::Ctx&, int64_t t, OwnPorts&)     level 0 of t, first: take the own inputs due (C&C 1:
 //                                                                 READY arrivals, error lines); default none
-//                 void end(sim::Ctx&, int64_t t)                  after step(t): put the own outputs (C&C 1: GO);
+//                 void end(sim::Ctx&, int64_t t, OwnPorts&)       after step(t): put the own outputs (C&C 1: GO);
 //                                                                 default none
+//
+// OWN PORTS. The framework rewrites a port handle where it sits at the build and requires it inside the unit object,
+// so a peripheral (on the heap, owned by the slot) can't hold its own handles. The slot unit holds them for it
+// (`OwnPorts`, fixed capacity per kind, filled at configuration): the peripheral declares each through `OwnPortsDecl`,
+// which returns the handle's index, keeps the indices (plain integers survive the build's move), and reaches the
+// handles through the `OwnPorts&` its `begin` and `end` are given. The wiring code (a chip builder, a test) wires
+// `slot.own.link_in[i]` / `slot.own.link_out[i]` with the indices the peripheral exposes. Kinds as needed: Link in and
+// out now (C&C 1's); another kind is one more array and one more declare method.
 //
 // TIMING (ref's rule, Peripheral.java): an input called with t takes effect at the end of t; a level read with t sees
 // the end of t - 1. On the framework (AUDIT-M3 3.1) the slot applies the inputs at level 0 of the next cycle, so:
@@ -69,6 +77,32 @@ enum PeriphType : uint8_t {
 
 constexpr int RP_LATENCY = 2;   // rp_latency (4.17.5)
 
+// A slot's storage for its peripherals' own ports (a member of the slot unit; see OWN PORTS above).
+struct OwnPorts {
+    static constexpr unsigned MAX_LINK_IN = 16, MAX_LINK_OUT = 80;
+    sim::LinkIn link_in[MAX_LINK_IN] = {};
+    sim::LinkOut link_out[MAX_LINK_OUT] = {};
+    uint8_t n_link_in = 0, n_link_out = 0;
+};
+// Configuration only: a peripheral declares its own ports through it, each into the slot's storage; returns the index.
+class OwnPortsDecl {
+public:
+    OwnPortsDecl(sim::Ports& p, OwnPorts& o) : p_(p), o_(o) {}
+    unsigned link_in(const char* name, unsigned width) {
+        if (o_.n_link_in == OwnPorts::MAX_LINK_IN) FATAL("a peripheral's own ports: more than %u Link inputs", OwnPorts::MAX_LINK_IN);
+        p_.in(o_.link_in[o_.n_link_in], name, width);
+        return o_.n_link_in++;
+    }
+    unsigned link_out(const char* name, unsigned width) {
+        if (o_.n_link_out == OwnPorts::MAX_LINK_OUT) FATAL("a peripheral's own ports: more than %u Link outputs", OwnPorts::MAX_LINK_OUT);
+        p_.out(o_.link_out[o_.n_link_out], name, width);
+        return o_.n_link_out++;
+    }
+private:
+    sim::Ports& p_;
+    OwnPorts& o_;
+};
+
 // The defaults ref's Peripheral interface gives (default methods). Non-virtual: hidden, not overridden.
 template <class Self>
 struct PeripheralBase {
@@ -86,9 +120,9 @@ struct PeripheralBase {
     bool out_ready(int64_t, int) const { return false; }
     void out_take(int64_t, int, uint64_t*) { FATAL("peripheral: out_take without an output queue"); }
     void out_start(int64_t, int, int64_t) {}
-    void ports(sim::Ports&) {}
-    void begin(sim::Ctx&, int64_t) {}
-    void end(sim::Ctx&, int64_t) {}
+    void ports(OwnPortsDecl&) {}
+    void begin(sim::Ctx&, int64_t, OwnPorts&) {}
+    void end(sim::Ctx&, int64_t, OwnPorts&) {}
 };
 
 }  // namespace units

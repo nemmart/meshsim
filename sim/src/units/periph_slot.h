@@ -18,7 +18,7 @@
 //   S6 dma (CreditOut, width 3: lo, header, hi)   -> the controller router's CC_DMA_IN, Fifo(ccDmaDepth = 4): room as of
 //                                                    the start of t, one packet a cycle (controllers with a DMA only)
 //   S7 rows                                       an observer, not a port: the replayer's sink (hash, optional buffer)
-//   + a peripheral's own ports (Peripheral::ports: C&C 1's READY, error lines, GO)
+//   + the peripherals' own ports, held in `own` for them (peripheral.h, OWN PORTS: C&C 1's READY, error lines, GO)
 //
 // THE STEP at t (AUDIT-M3 3.1's order):
 //   level 0: (1) each peripheral's begin(t) [C&C 1's READY arrivals, error lines]; (2) the core's consume of t - 1
@@ -197,6 +197,7 @@ struct PeriphSlot {
 
     PeriphSlotConfig cfg;
     SlotCore s;
+    OwnPorts own;                         // the peripherals' own ports (peripheral.h, OWN PORTS), declared for them
     uint32_t published[Win::REGS] = {};   // the RegFile as last written (only changed registers are written)
     bool first = true;
 

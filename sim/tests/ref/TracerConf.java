@@ -41,6 +41,7 @@ import java.util.TreeMap;
  *  a,src,off,size,lo,hi  accept              ww,w,v=r     writeWord        wr,w=v   word (v '-' for null)
  *  rn=r running   er=r errors   sy sync   ev=v events().value   co,bits events().consume (no cycle)   re=r rowsEnded
  *  wb=n writeBackDirtyUntimed (no cycle)   os,q,n outStart   or,q=r outReady   ot,q=lo,hi outTake
+ *  a token ending in '%': the call raised IllegalStateException, one of ref's own fatal checks (FATAL here too)
  *  F,k   the store as dump k (C++: the pages it has must be equal, the new ones are added): at a word-0 packet after
  *        the harness allocated pages     H=h   else, at a word-0 packet: the store's hash
  * </pre>
@@ -114,6 +115,8 @@ public final class TracerConf {
         static final long CODE = 0x80000000L, DATA = 0x80001000L;
         final java.util.Random r;
         final TracerConfRig g = new TracerConfRig();
+        int wbMax;                                                    // the write buffer's most lines queued (statistics)
+        static final Field wbCount = f(MemorySystem.class, "wbCount");
         Gen(long seed) throws Exception { r = new java.util.Random(seed); }
 
         // ---- a structured program: items assembled in two passes (labels resolved after layout)
@@ -252,14 +255,23 @@ public final class TracerConf {
             }
         }
 
-        static void run(long seed, String family) throws Exception { new Gen(seed).go(family); }
+        static void run(long seed, String family) throws Exception {
+            Gen x = new Gen(seed);
+            try { x.go(family); }
+            catch (IllegalStateException e) { System.out.println("gen " + family + " " + seed + ": ref stopped: " + e.getMessage()); }
+            Tracer t = x.g.tr.x;
+            System.out.println("gen " + family + " " + seed + ": " + x.items.size() + " instructions, " + x.advice.size() + " advice, " + t.rows + " rows, "
+                    + t.runs + " runs, stopped " + t.stopped() + " " + t.errorLog + ", flags " + t.violations.size() + ", writebacks " + t.writebacks
+                    + ", newExp " + t.newExpansions + ", straddles " + t.straddles + ", early evictions " + x.g.ms.earlyEvictions + ", write buffer up to " + x.wbMax);
+        }
 
         void go(String family) throws Exception {
-            boolean wb = family.equals("wb");
+            boolean wb = family.startsWith("wb");
             int dataPages = 2;
             int stride = 4096, n = 0, R = 0;
             if (wb) {
-                n = 136 + r.nextInt(57); R = n <= 176 ? 2 : 3;
+                // wb: within the ring (up to 63 lines queued); wbover: a third pass that overflows ref's 64-line ring
+                if (family.equals("wbover")) { n = 136 + r.nextInt(41); R = 3; } else { n = 136 + r.nextInt(57); R = n <= 176 ? 2 : 3; }
                 int top = newLabel(), inner = newLabel();
                 w(TracerConfRig.addi(5, 0, R)); mark(top);
                 w(TracerConfRig.add(6, 2, 0)); w(TracerConfRig.addi(4, 0, n)); mark(inner);
@@ -287,7 +299,7 @@ public final class TracerConf {
             TracerConfRig.Prog p = assemble();
             // the advice: the DIVs in execution order (main to END; the subroutines through their calls)
             java.util.Map<Integer, int[]> loopAt = new java.util.HashMap<>();
-            for (int[] lp : loops) loopAt.put(lp[0], lp);
+            for (int[] lp : loops) loopAt.put(lp[0] - 1, lp);        // keyed by the counter's set-up, before the body
             java.util.Map<Integer, Integer> subEnd = new java.util.HashMap<>();
             for (int s : subs) { int k = labelAt.get(s); while (items.get(k).kind != 0 || items.get(k).word != TracerConfRig.jalr(0, 1, 0)) k++; subEnd.put(s, k); }
             int endAt = 0; while (!(items.get(endAt).kind == 0 && items.get(endAt).word == TracerConfRig.END)) endAt++;
@@ -298,7 +310,7 @@ public final class TracerConf {
             java.util.Map<Long, long[]> pages = new java.util.HashMap<>();
             TracerConfRig.poke(pages, CODE - g.lowest, p.bytes());
             java.util.Set<Long> owned = new java.util.HashSet<>();
-            for (int k = 0; k < dataPages; k++) { long o = DATA - g.lowest + (long) stride * k; long[] pg = new long[512]; for (int q = 0; q < 512; q++) pg[q] = r.nextInt(4) == 0 ? r.nextLong() : 0; pages.put(o, pg); owned.add(o); }
+            for (int k = 0; k < dataPages; k++) { long o = DATA - g.lowest + (long) stride * k; long[] pg = new long[512]; if (!wb) for (int q = 0; q < 512; q++) pg[q] = r.nextInt(4) == 0 ? r.nextLong() : 0; pages.put(o, pg); owned.add(o); }
             g.buildImage(pages, owned);
             java.util.Map<Long, Long> targets = new java.util.HashMap<>();
             for (int k = 0; k < p.parcels.size(); k++) targets.put(p.pcOf(k), base[k]);
@@ -308,7 +320,11 @@ public final class TracerConf {
             if (r.nextBoolean()) { int[] o = { 1, 2, 3 }; for (int k = 2; k > 0; k--) { int j = r.nextInt(k + 1), x = o[k]; o[k] = o[j]; o[j] = x; } g.order = o; }
             g.stateLast = r.nextInt(4) == 0; g.q0One = r.nextInt(4) == 0; g.hold = r.nextInt(3) == 0 ? 1 + r.nextInt(300) : 0;
             int comp = r.nextInt(8) << 26;
-            if (r.nextBoolean()) g.onStep = () -> { if (r.nextInt(8) == 0) g.tr.word(g.t, 32 + r.nextInt(21)); if (r.nextInt(64) == 0) g.tr.errors(g.t); };
+            final boolean reads = r.nextBoolean();
+            g.onStep = () -> {
+                if (reads) { if (r.nextInt(8) == 0) g.tr.word(g.t, 32 + r.nextInt(21)); if (r.nextInt(64) == 0) g.tr.errors(g.t); }
+                try { wbMax = Math.max(wbMax, wbCount.getInt(g.ms)); } catch (IllegalAccessException e) { throw new IllegalStateException(e); }
+            };
             long[] regs = new long[128]; regs[2] = DATA; regs[3] = wb ? stride : DATA + 4096; regs[1] = 7;
             for (int k : FREE) regs[k] = r.nextLong();
             long[] adv = new long[advice.size()]; for (int k = 0; k < adv.length; k++) adv[k] = advice.get(k);
@@ -316,7 +332,7 @@ public final class TracerConf {
             for (int s = 0; s < segments; s++) {
                 g.loadRecord(CODE, (int) base[0], 0, regs, adv);
                 for (int win = 0; win < 400; win++) {
-                    int rows = switch (r.nextInt(4)) { case 0 -> 1 + r.nextInt(16); case 1 -> 16 + r.nextInt(500); case 2 -> 500 + r.nextInt(5000); default -> 65536; };
+                    int rows = switch (r.nextInt(4)) { case 0 -> 1 + r.nextInt(16); case 1 -> 16 + r.nextInt(500); case 2 -> 500 + r.nextInt(5000); default -> r.nextInt(16) == 0 ? 65536 : 2000 + r.nextInt(8000); };
                     if (g.window(rows | comp, 4_000_000) == null || g.tr.stopped()) return;
                     if (g.tr.rec[0] == 0) { g.window(1 + r.nextInt(8) | comp, 100_000); break; }  // a padding window after the end
                 }
@@ -416,6 +432,9 @@ public final class TracerConf {
             try { return call.get(); }
             catch (UndefinedBehavior e) {
                 int i = callTok.size() - 1; callTok.set(i, callTok.get(i) + "!");
+                flushPartial(); throw e;
+            } catch (IllegalStateException e) {
+                int i = callTok.size() - 1; callTok.set(i, callTok.get(i) + "%");
                 flushPartial(); throw e;
             }
         }

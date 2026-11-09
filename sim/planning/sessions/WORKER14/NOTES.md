@@ -156,8 +156,27 @@ it.
 - **What TracerTest's cases leave to step 3:** the write buffer at its depth, RVC and branch-heavy code at scale,
   controller-fed templates under credit pressure, advice refills, resets and mid-run reads, error stops at random points.
 
+## 7. Step 3: TracerConf's seeded stimulus
+
+- **`TracerConf gen LOG SEED FAMILY`** (`TracerConf.Gen`, on TracerConfRig): generated guests, structured so the advice
+  is known in advance. **mix:** blocks of ALU ops (20 kinds, MUL family included), compressed instructions (fetches
+  straddling lines), loads and stores of every width in two owned pages, DIV with constant operands (its quotient
+  supplied as advice, walked in execution order through loops and calls), counted loops (two deep), calls and returns
+  (every instruction start in the map), a CSR and the 3,121-row inline now and then, and one in five seeds ending on an
+  error that stops (a store to a hole [8], misaligned [12], out of range [10], c.unimp [2], a wrong quotient [11]);
+  random window lengths, compression enables, DMA service order, `hold`, `stateLast`, `q0One`, window reads mid-run,
+  one or two segments. **wb:** stores to 136-192 pages a page apart in two or three passes: the write buffer queued
+  far past its depth of 4 (17-27 lines) within `ref`'s 64-line ring. **wbover:** a third pass that overflows the ring.
+- **The write buffer** (owner, 2026-11-09): `ref` queues lines beyond the depth of 4 (its own simplification,
+  self-consistent: D27) and throws at 64 (`write-buffer ring overflow`); the port reproduces both, FATAL at the same call
+  (`%` tokens in the log: one of `ref`'s IllegalStateExceptions, FATAL here). W13 records it as a finding.
+- **In `make check`** (`tracerconf.sh` GENS): mix seeds 1, 3, 4, 5 (c.unimp), 9 (store to a hole), 16, 21 (out of
+  range); wb seed 1 (25 lines queued); wbover seed 1 (the overflow). All equal to `ref`, every cycle. Fixtures
+  3.0 MB with the cases. **Long runs:** `tracerconf.sh SEEDS OUT`, then `TRACERCONF_LONG=OUT test_tracer long`.
+
 ## Log
 
 - 2026-11-09: plan agreed; branch `sim-w14` from main 1a898aa.
 - 2026-11-09: step 1 done (section 5); `test_tracer_parts` passes in all four builds, `tracerparts.sh --check` equal.
-- 2026-11-09: step 2 done (section 6): the Tracer equal to `ref` every cycle on TracerTest's cases.
+- 2026-11-09: step 2 done (section 6): the Tracer equal to `ref` every cycle on TracerTest's cases. Merged into main.
+- 2026-11-09: step 3: the seeded fixtures (section 7) equal to `ref`; the write buffer past its depth and at the overflow.

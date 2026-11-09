@@ -199,9 +199,10 @@ private:
         return true;
     }
 
-    // Runs `fn` in a child that must die by SIGABRT with "undefined behaviour" in its stderr.
+    // Runs `fn` in a child that must die by SIGABRT with `want` in its stderr ("undefined behaviour" for ref's
+    // UndefinedBehavior, "FATAL" for its IllegalStateException).
     template <class Fn>
-    bool expect_ub(Fn fn) {
+    bool expect_ub(Fn fn, const char* want = "undefined behaviour") {
         int pipefd[2];
         if (pipe(pipefd) != 0) { fail("pipe: %s", std::strerror(errno)); return false; }
         std::fflush(nullptr);
@@ -220,8 +221,8 @@ private:
         close(pipefd[0]);
         int status = 0;
         waitpid(pid, &status, 0);
-        if (!WIFSIGNALED(status) || WTERMSIG(status) != SIGABRT || err.find("undefined behaviour") == std::string::npos) {
-            fail("a call ref refused as UB was not FATAL here (status %d): %.200s", status, err.c_str());
+        if (!WIFSIGNALED(status) || WTERMSIG(status) != SIGABRT || err.find(want) == std::string::npos) {
+            fail("a call ref stopped on (%s) was not FATAL here (status %d): %.200s", want, status, err.c_str());
             return false;
         }
         ubs++;
@@ -231,7 +232,8 @@ private:
     // One token's call at cycle t (its group's cycle). Returns false on a mismatch.
     bool call(Rig& r, const std::string& tok0, int64_t t) {
         std::string tok = tok0;
-        const bool ub = !tok.empty() && tok.back() == '!';
+        const bool ub = !tok.empty() && (tok.back() == '!' || tok.back() == '%');
+        const char* want = !tok.empty() && tok.back() == '%' ? "FATAL" : "undefined behaviour";
         if (ub) tok.pop_back();
         std::string lhs = tok, res;
         const size_t eq = tok.find('=');
@@ -248,7 +250,7 @@ private:
         };
         char b[80];
         if (ub) {
-            if (name == "st") { r.dead = true; return expect_ub([&] { tr.step(t); }); }
+            if (name == "st") { r.dead = true; return expect_ub([&] { tr.step(t); }, want); }
             if (name == "os") return expect_ub([&] { tr.out_start(t, int(dec(args[1])), dec(args[2])); });
             if (name == "a") return expect_ub([&] { tr.accept(t, int(dec(args[1])), uint32_t(hx(args[2])), int(dec(args[3])), hx(args[4]), hx(args[5])); tr.step(t + 2); tr.step(t + 3); });
             if (name == "u") { r.dead = true; return expect_ub([&] { tr.run(t); tr.step(t + 1); }); }
@@ -361,9 +363,9 @@ private:
     std::vector<std::string>* cur_dump_ = nullptr;
 };
 
-std::string read_gz(const std::string& path, bool* ok) {
+std::string read_cmd(const std::string& cmd, bool* ok) {
     std::string r;
-    FILE* f = popen(("gzip -dc " + path).c_str(), "r");
+    FILE* f = popen(cmd.c_str(), "r");
     *ok = f != nullptr;
     if (!f) return r;
     char b[1 << 16];
@@ -372,18 +374,65 @@ std::string read_gz(const std::string& path, bool* ok) {
     *ok = pclose(f) == 0;
     return r;
 }
+std::string read_gz(const std::string& path, bool* ok) { return read_cmd("gzip -dc " + path, ok); }
+
+Replay replay_file(const std::string& path, const char* name) {
+    bool ok = false;
+    const std::string text = read_gz(path, &ok);
+    Replay rp(name);
+    if (!ok) { ::test::fail(__FILE__, __LINE__, "cannot read %s", path.c_str()); rp.failed = true; return rp; }
+    rp.run(text);
+    std::printf("  %s: %lld groups, %lld cycles, %lld calls, %lld fatal refusals%s\n", name, (long long)rp.groups,
+                (long long)rp.cycles, (long long)rp.calls, (long long)rp.ubs, rp.failed ? "" : ", all equal to ref");
+    return rp;
+}
 
 }  // namespace
 
 TEST(tracer_test_cases_equal_ref_every_cycle) {
-    bool ok = false;
-    const std::string text = read_gz("tests/tracerconf/cases.log.gz", &ok);
-    CHECK(ok);
-    Replay rp("cases.log.gz");
-    rp.run(text);
+    Replay rp = replay_file("tests/tracerconf/cases.log.gz", "cases.log.gz");
     CHECK(!rp.failed);
-    std::printf("  cases: %lld groups, %lld cycles, %lld calls, %lld UB refusals, all equal to ref\n", (long long)rp.groups,
-                (long long)rp.cycles, (long long)rp.calls, (long long)rp.ubs);
     CHECK(rp.cycles > 1000000);
     CHECK_EQ(rp.ubs, int64_t(3));
+}
+
+// TracerConf's seeded guests (tracerconf.sh GENS): the mix family (loops, calls, every width, RVC, MUL, DIV and its
+// advice, templates, errors that stop), the write buffer queued far past its depth (wb), and ref's ring overflow
+// (wbover: FATAL in both at the same call).
+#define GEN_FIXTURE(test_name, file, min_cycles, fatal)                       \
+    TEST(test_name) {                                                         \
+        Replay rp = replay_file("tests/tracerconf/" file, file);              \
+        CHECK(!rp.failed);                                                    \
+        CHECK(rp.cycles > (min_cycles));                                      \
+        CHECK_EQ(rp.ubs, int64_t(fatal));                                     \
+    }
+GEN_FIXTURE(tracerconf_mix_seed1, "mix-s1.log.gz", 10000, 0)
+GEN_FIXTURE(tracerconf_mix_seed3, "mix-s3.log.gz", 10000, 0)
+GEN_FIXTURE(tracerconf_mix_seed4, "mix-s4.log.gz", 3000, 0)
+GEN_FIXTURE(tracerconf_mix_seed5_unimp, "mix-s5.log.gz", 5000, 0)
+GEN_FIXTURE(tracerconf_mix_seed9_store_hole, "mix-s9.log.gz", 3000, 0)
+GEN_FIXTURE(tracerconf_mix_seed16, "mix-s16.log.gz", 10000, 0)
+GEN_FIXTURE(tracerconf_mix_seed21_range, "mix-s21.log.gz", 5000, 0)
+GEN_FIXTURE(tracerconf_wb_seed1_buffer_past_depth, "wb-s1.log.gz", 10000, 0)
+GEN_FIXTURE(tracerconf_wbover_seed1_ring_overflow, "wbover-s1.log.gz", 10000, 1)
+
+// Long runs: TRACERCONF_LONG=DIR test_tracer long (tracerconf.sh SEEDS OUT writes them).
+TEST(long_runs_from_tracerconf_long) {
+    const char* dir = std::getenv("TRACERCONF_LONG");
+    if (!dir) return;
+    bool ok = false;
+    const std::string list = read_cmd(std::string("ls ") + dir + "/*.log.gz", &ok);
+    size_t a = 0, n = 0;
+    while (a < list.size()) {
+        size_t b = list.find('\n', a);
+        if (b == std::string::npos) b = list.size();
+        const std::string path = list.substr(a, b - a);
+        a = b + 1;
+        if (path.empty()) continue;
+        Replay rp = replay_file(path, path.c_str());
+        CHECK(!rp.failed);
+        n++;
+    }
+    std::printf("  long runs: %zu logs, all equal to ref\n", n);
+    CHECK(n > 0);
 }

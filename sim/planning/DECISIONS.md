@@ -148,3 +148,12 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   rule applies stores at level 0 of t + 1. The framework keeps the slot's rule, so C&C 1's own work (the watchdog's first
   count, a UART byte's start) runs one cycle later than `ref`. Neither reference run reaches either (W13's coverage);
   exactness otherwise would need a special path in the generic slot.
+- **D34. The request bus: exact or splittable, chosen explicitly** (integrator, 2026-11-09, W14's question; D29 applied).
+  In `ref` three request-bus couplings act within one cycle (a tile's head beat leaving only if its row node's buffer has
+  room at that instant; a row node forwarding only if the root's input has room; a REQUEST_SEND accepted when the bus
+  freed the head that cycle). Reproducing that needs the senders in the bus's domain. So the bus has **one
+  implementation with its credit latency as a configuration**: **0, exact as `ref`** (every sender in the bus's domain;
+  a split is fatal at build), used by ReqConf and exactness runs; **3, the spec under D29** (each port's leaf in its tile,
+  beats and credits over Link(3), splittable), **the default**. Mode 3 equals `ref` until some node's 8-beat buffer fills;
+  it **counts** the cycles where the two would differ, and references avoid them (T2's two boot requests never reach it).
+  The mode is never derived from the partition, so results stay identical across thread counts and partitions.

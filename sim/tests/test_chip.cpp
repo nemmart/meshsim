@@ -138,6 +138,8 @@ std::string check(const char* name, uint64_t through, const Setup& su, const std
     gc.ep[0] = &m.unit<Endpoint>("ep2"); gc.ep[1] = &m.unit<Endpoint>("ep3");
     gc.ready_latency = nc.ready_latency;
     gc.edge = line_edge; gc.edge_ctx = g1.data();
+    units::reqbus::ReqBusUnits rbu;                                       // W14: the request bus's streams
+    fp::attach_reqbus(m, g1.data(), 64, gc, rbu, spec.reqbus);
     fp::FpRegistry reg;
     std::vector<unsigned> tiles;
     for (unsigned k = 0; k < (all_tiles ? 64u : 1u); k++) { fp::register_g1(reg, g1[k]); fp::register_g2_tile(reg, g2[k]); tiles.push_back(k); }

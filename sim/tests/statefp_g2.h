@@ -16,6 +16,7 @@
 #include "units/cnc.h"
 #include "units/inject.h"
 #include "units/router.h"
+#include "units/reqbus.h"
 
 namespace sim { class Sim; }
 
@@ -32,6 +33,7 @@ struct G2Chip {
     unsigned ready_latency = 8;
     LineEdgeFn edge = nullptr;                // null: no edge pending at the end of any cycle
     const void* edge_ctx = nullptr;
+    const units::reqbus::ReqBusUnits* reqbus = nullptr;   // W14: the request bus (null: idle, its reset stream)
 };
 
 // A tile's G2 units.

@@ -213,6 +213,7 @@ struct Checked {
 struct Fps {
     std::vector<fp::G2Tile> g2;
     fp::G2Chip gc;
+    units::reqbus::ReqBusUnits rbu;            // W14: the request bus's streams
     fp::FpRegistry reg;
     std::vector<unsigned> tiles;
     explicit Fps(SortChip& s) : g2(64) {
@@ -222,6 +223,7 @@ struct Fps {
         gc.ep[0] = &s.m->unit<Endpoint>("ep2"); gc.ep[1] = &s.m->unit<Endpoint>("ep3");
         gc.ready_latency = NetConfig{}.ready_latency;
         gc.edge = line_edge; gc.edge_ctx = s.g1.data();
+        fp::attach_reqbus(*s.m, s.g1.data(), 64, gc, rbu, units::reqbus::ReqBusConfig{});
         for (unsigned t = 0; t < 64; t++) { fp::register_g1(reg, s.g1[t]); fp::register_g2_tile(reg, g2[t]); tiles.push_back(t); }
         fp::register_g2(reg, gc);
     }

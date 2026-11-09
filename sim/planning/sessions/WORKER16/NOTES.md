@@ -203,3 +203,12 @@ receive queue with its controller; C&C c is in tile c's domain). Three points fo
   chip's fingerprint writers (AUDIT-M3 6.9; step 5 of my plan) aren't built: the slot, `cnc1p`, `cc.host`, the
   controllers' 16 streams, the controller router's streams, the M3 chip line (W14's `req`/`reqbus` and W15's `rp`/`tr`
   writers to call in its order).
+- 2026-11-09: **the cycle numbering**, recorded in AUDIT-M3 section 7 (every later comparison depends on it): the
+  framework's first cycle is 1, ref's 0; its cycle F does ref's F - 1; between cycles `now()` is ref's `c.cycle` + 1; a
+  golden-m3 point t (M3Seg's `c.cycle - 1`) is the framework's state at `now()` = t + 2. The M2 harnesses' boot cycle
+  (test_sort's B = cycles run) is the same mapping.
+- 2026-11-09: the chip.cpp link fix pushed (cae10e2: C&C 1's own-port indices read inline, so binaries linking the
+  chip without the slot link). TSan: `make tsan-one` on clang and gcc (the eight thread tests, W14's test_reqbus and
+  now `test_t2_harness`, whose split boot runs under TSan: a rule in cc.mk adds it to `TB_TESTS`), all pass with no
+  race; gcc's and clang's `test_chip form2` pass. The full check before it (cae10e2's tree): 54 test binaries pass on
+  clang and gcc, debug and release.

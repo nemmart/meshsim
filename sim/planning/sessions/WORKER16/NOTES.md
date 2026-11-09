@@ -180,3 +180,13 @@ receive queue with its controller; C&C c is in tile c's domain). Three points fo
   make check build by build: 53 test binaries pass on clang and gcc, debug and release; TSan on both.
   Next: the chip wires C&C 1's own ports (instead of `cc1.lines`) once the slot is built in W8's builder for
   controllers (`G1Config::periph_slot`); then W14's bus for the boot.
+- 2026-11-09: **C&C 1's slot in the chip, prepared** (owner: land it on top of W14's merge, both touch chip.cpp/h) on
+  branch `w16-cc1slot-prep` (feb73ab, from sim-w16 9789e81): `add_g1` builds the controllers' slots
+  (`PeriphSlotConfig::controller`; peripheral 1 PT_CNC1 on C&C 1, PT_TRACER on C&C 3 with `G1Config::cc3_tracer`,
+  PT_CC_STUB otherwise; C&C 1's `ref_cycle` from the timing) and returns `io.slot` and `io.dma`; `build_chip` wires the
+  row collectors, the controllers' line words and GO to C&C 1's own-port indices (`own.link_in[row0 + r]`,
+  `[line0 + c]`, `own.link_out[go0 + k]`), the stand-in only without a slot (and always the controllers' GO source);
+  C&C 3's DMA into its router, C&C 1's and 2's into `NoDma` (FATAL on a packet: ref's null dmaPort). The T2 machine
+  builds every slot (the tiles' replayers, C&C 3's Tracer). test_cc_units, test_chip, test_periph_slot,
+  test_cnc1_periph, test_t2_harness pass on clang debug; the boot driver still stops at cycle 571 on REQUEST_SEND.
+  W14's merge isn't on main yet (9c29eac: parked for W14).

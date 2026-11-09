@@ -52,3 +52,7 @@ $(B)/test_replayer: $(B)/src/units/replay_tables.o
 $(B)/replayconf: $(B)/tests/replayconf_main.o $(REPLAYER_LINK) $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 all: $(B)/replayconf
+# Stage A's C++ driver (tests/replay_delivery_main.cpp): a delivery's windows on the C++ replayer, ref's lines.
+$(B)/replay_delivery: $(B)/tests/replay_delivery_main.o $(REPLAYER_LINK) $(B)/src/units/replay_tables.o $(LIB_OBJ)
+	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
+all: $(B)/replay_delivery

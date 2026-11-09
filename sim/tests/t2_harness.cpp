@@ -234,13 +234,15 @@ std::unique_ptr<Machine> build_machine(const uint8_t* domains, sim::Options opt,
     units::G1Ctx& gx = m->gx;
     gx.cfg.timing = tc.timing; gx.cfg.periph_present = tc.periph_present; gx.cfg.mem_chunks = 1u << 20;
     gx.cfg.done_gate = true; gx.cfg.K = 8; gx.cfg.cm_latency = 2;
+    gx.cfg.periph_slot = true;           // every unit's slot: the tiles' replayers, C&C 1's peripheral, C&C 3's Tracer
+    gx.cfg.cc3_tracer = true;            // ref's cc3Tracer (TracerT2, M3Seg)
     gx.bootrom = m->bootrom.data(); gx.bootrom_words = uint32_t(m->bootrom.size());
     gx.mem = m->mem.data(); gx.units = 67; gx.sram = &m->sram;
     sim::Config cfg(opt);
     units::ChipSpec spec;
     spec.hops = &m->hops; spec.control = units::add_g1; spec.control_ctx = &gx; spec.domain = domains;
     spec.cc_cores = true;
-    spec.cc3_dma = false;   // C&C 3's DMA needs the slot in W8's builder (W15's G1Config::periph_slot, not yet on main)
+    spec.cc3_dma = true;                 // C&C 3's DMA into its router (the Tracer's records and streams)
     units::build_chip(cfg, spec);
     m->sim.emplace(cfg.build());
     return m;

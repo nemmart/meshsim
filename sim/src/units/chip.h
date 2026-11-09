@@ -24,6 +24,8 @@
 
 namespace units {
 
+struct PeriphSlot;                // periph_slot.h
+
 // W8's part of a tile (the register block, the director, port B, the core) as the network meets it.
 struct ControlIO {
     sim::HoldOut send;            // the core's send holding register -> the injection unit (3 words)
@@ -39,6 +41,8 @@ struct ControlIO {
     sim::CreditOut dma;           // W15: the peripheral slot's DMA output (AUDIT-M3 3.1 S6, width 3), C&C 1-3 only ->
                                   // the controller router's CC_DMA_IN, a credit Fifo of cc_dma_depth (4); set when
     bool has_dma = false;         // the builder declared it (the slot's PeriphSlotConfig::controller)
+    PeriphSlot* slot = nullptr;   // W16: the slot unit as staged (configuration only: its OwnPorts for C&C 1's chip
+                                  // lines, wired by build_chip); null without one
 };
 // Adds tile `k`'s control units (names prefixed "t<k>."), wires them inside, returns the ports above. `ctx` is the
 // builder's own (images, configuration).
@@ -65,6 +69,7 @@ struct CcIO {
     bool has_dma = false;
     sim::LinkIn go;               // the register block's GO (nothing drives a controller's GO in ref)
     sim::LinkOut line;            // the register block's line word: READY (ignored for controllers) and the error level
+    PeriphSlot* slot = nullptr;   // the controller's slot as staged (the control's `io.slot`), or null
 };
 
 struct ChipSpec {

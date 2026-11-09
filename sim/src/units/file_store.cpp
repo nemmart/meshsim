@@ -20,6 +20,13 @@ int32_t FileStore::alloc(bool index) {
     return int32_t(a);
 }
 
+void FileStore::grow_to(int64_t next_free) {
+    if (next_free < next_free_ || (next_free - first_) % PAGE_UNITS != 0 || next_free > int64_t(0x7FFFFFFF) + 1)
+        FATAL("FileStore: grow_to 0x%llx from 0x%llx", (unsigned long long)next_free, (unsigned long long)next_free_);
+    words_.resize(size_t((next_free - first_) / PAGE_UNITS) * PAGE_WORDS, 0);
+    next_free_ = next_free;
+}
+
 uint64_t* FileStore::page(int32_t a) {
     const int64_t k = (int64_t(a) - first_) / PAGE_UNITS;
     if (a < first_ || (a - first_) % PAGE_UNITS != 0 || int64_t(a) >= next_free_)

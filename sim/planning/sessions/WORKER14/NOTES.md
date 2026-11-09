@@ -4,8 +4,9 @@ The Tracer. Branch `sim-w14`. Prompt: `PROMPT.md`.
 
 ## Status
 
-**Plan agreed (owner, 2026-11-09): go-ahead.** Step 1 (the pure pieces) done and equal to `ref` (section 5); next, step
-2 (the Tracer as a class).
+**Plan agreed (owner, 2026-11-09): go-ahead.** Step 1 (the pure pieces) done (section 5). Step 2 (the Tracer as a class)
+done and equal to `ref` every cycle on TracerTest's cases (section 6). Next: TracerConf's seeded stimulus (step 3), with
+the write buffer filled to its depth; then T1 on the runner; the ports when AUDIT-M3 3.3 lands.
 
 ## 1. What the oracle is
 
@@ -129,7 +130,34 @@ it.
 - **Not reached by the stimulus:** the write buffer full at its depth of 4 (it never holds more than 2 lines between
   drains here); a stream with longer dirty bursts would reach it. Noted for TracerConf.
 
+## 6. Step 2: the Tracer (done)
+
+- **`src/units/tracer.h`, `.cpp`**: `Tracer.java` method for method, in its order, including its lazy `settle` (so it is
+  exact whatever order W15's slot calls in). W15's peripheral method list, plus `skip_cycles`, `digest_words` and
+  `consume_events` (owner, 2026-11-09). Fixed state: the record, the tables, the two input rings, the FIFOs (65,536),
+  output queues 1-3, sets 1 and 2; the caches and the jump LRU on **`src/units/lru_index.h`** (access-ordered keys,
+  open addressing plus an intrusive list: `LinkedHashMap`'s eviction order exactly). ERRORS causes and `ref`'s flags are
+  fixed-size facts (`error_log`, `violations`, codes with names); UB and `ref`'s IllegalStateExceptions are FATAL.
+- **`src/units/stream_word.h`**: the record's stream word (`Replayer.java`'s layout). **For W15:** the replayer reads the
+  same word; use it read-only, or tell me if it should move into `row_core.h`.
+- **Built on W15's step 1** (`row_core.h`, `replayer_alu.h`, `event_counts.h`): `sim-w15` merged into `sim-w14`
+  (061d54c; W15's files only, no conflict). **For the integrator:** merge `sim-w15` before `sim-w14`.
+- **TracerConf** (`tests/ref/TracerConf.java`, `tracerconf.sh`): `TracerConf.Rec`, a recording proxy for `ref`'s
+  Tracer. TracerTest's ten cases run unchanged through copies of TracerTest and TracerRig that the script makes with
+  sed (the rig's Tracer replaced by the proxy, field reads redirected to the real one); TracerTest's 180 assertions pass
+  as the fixture is made. The log groups calls by cycle (identical cycles run-length coded) with the Tracer's state
+  observed after every cycle (61 fields: the core's private state by reflection, the statistics, the counters, the
+  queues, the fact counts, the record's hash, the event counts), the store dumped at each rig's first call and hashed at
+  each word-0 packet. Fixture `tests/tracerconf/cases.log.gz` (2.3 MB; 2.28 M cycles, 6.9 M calls).
+- **`tests/test_tracer.cpp`** replays it: every result, store check and observation equal; the three calls `ref`
+  refuses as UB are FATAL here (checked in a forked child); every Tracer call under the allocation hook. Passes in all
+  four builds; `tracerconf.sh --check` equal. Teeth: four planted timing mutations (a stall counter's last cycle, the
+  scan's room rule, an expansion credit a cycle late, the scans' start) each fail at their first differing cycle.
+- **What TracerTest's cases leave to step 3:** the write buffer at its depth, RVC and branch-heavy code at scale,
+  controller-fed templates under credit pressure, advice refills, resets and mid-run reads, error stops at random points.
+
 ## Log
 
 - 2026-11-09: plan agreed; branch `sim-w14` from main 1a898aa.
 - 2026-11-09: step 1 done (section 5); `test_tracer_parts` passes in all four builds, `tracerparts.sh --check` equal.
+- 2026-11-09: step 2 done (section 6): the Tracer equal to `ref` every cycle on TracerTest's cases.

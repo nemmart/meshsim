@@ -79,6 +79,14 @@ public:
     // The doubleword at byte offset off of file f (0 in a hole): tools and tests.
     uint64_t load64(File f, int64_t off) const;
 
+    // ---- restoring a store page by page (a test's replay of `ref`'s store): configuration only
+    int32_t first() const { return first_; }
+    int64_t next_free() const { return next_free_; }
+    // New zero pages up to next_free (pages are only ever added, in address order).
+    void grow_to(int64_t next_free);
+    uint64_t* raw_page(int32_t a) { return page(a); }
+    const uint64_t* raw_page(int32_t a) const { return page(a); }
+
     static uint32_t entry_of(const uint64_t* index, int i) { return uint32_t(index[i >> 1] >> (32 * (i & 1))); }
     static void set_entry(uint64_t* index, int i, uint32_t e) {
         const int s = 32 * (i & 1);

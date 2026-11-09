@@ -23,7 +23,7 @@ then the rest.
 **The reference run is evm-zone-29 segment 10** (Quest 110u's, T2's acceptance with every unit on its real firmware):
 `TracerT2 $DATA/w9-deliveries evm-zone-29 --w26 $DATA/w26-jumpmap/evm-zone-29 --segments 10` (64 windows, raw), the
 images `sw/build/cc1`, `cc23`, `sw/tracer/build/tracer_ctl`, `sw/replay/build/replay_ctl`, the boot ROM, `hops.txt` and
-the universal tables byte-identical to 110u's kit (`sim/planning/sessions/WORKER13/tasks/IMAGES`). The second run,
+the universal tables byte-identical to 110u's kit (`sim/planning/sessions/WORKER13-tasks/IMAGES`). The second run,
 **cyclone-29 segment 10** (110u's other, the heaviest segment of either workload), is added if coverage shows paths the
 first doesn't reach: **it does** (section 1), so **the M3 runs are both: evm-zone-29 segment 10 and cyclone-29 segment
 10.**

@@ -23,7 +23,7 @@ if [ $OKIN = 1 ]; then
   for P in evm-zone-29 cyclone-29; do
     S=${P%%-*}
     $J $D9 $P --w26 $D26/$P --segment 10 fpchip=$G/$S.fpchip counts=1 snapshot=$G/$S.files.gz sram=$G/$S.sram.gz csv=$RES/$S.csv \
-       "header=run $P segment 10 windows 64 (T2, raw); delivery manifest ${S9[$P]}; w26 ${S26[$P]}; images: 110u's (sim/planning/sessions/WORKER13/tasks/IMAGES)" \
+       "header=run $P segment 10 windows 64 (T2, raw); delivery manifest ${S9[$P]}; w26 ${S26[$P]}; images: 110u's (sim/planning/sessions/WORKER13-tasks/IMAGES)" \
        > $RES/$S.log 2>&1 & PIDS="$PIDS $!:$S"
   done
   for X in $PIDS; do wait ${X%%:*}; R=$?; echo "${X#*:}: exit $R"; cat "$RES/${X#*:}.log"; [ $R = 0 ] && verdict "ref-${X#*:}" PASS || verdict "ref-${X#*:}" FAIL; done

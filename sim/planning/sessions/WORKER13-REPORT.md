@@ -26,7 +26,7 @@ C&C cores: its numbers compare with T2's tiles' replay (at most 234K cycles a ti
 | the fingerprint, `ref`'s side, for every M3 unit (6.6 Tracer, 6.7 slot, 6.8 replayer, 6.9 C&C units and the chip line) | `StateFpM3.java`; local checks `M3FpSelf`, `M3ChipFpSelf` (neutral, deterministic) | about 17 ms a whole-chip call, 0.5 ms the Tracer's |
 | the references: both runs' figures, chip lines every 100,000 cycles with D12 headers; every unit's lines, the memory snapshot and the SRAM landings on the runner with hashes; `regen.sh` | `golden-m3/`; `$DATA/w13-golden-m3/`; `M3Inputs.java` | Quest 161; regen proven by Quest 162 |
 | the baseline | AUDIT-M3 8; `golden-m3/baseline/` | Quest 161 |
-| the task maker (a precompiled `sim/ref` kit, images checked against 110u's) | `WORKER13/tasks/` | |
+| the task maker (a precompiled `sim/ref` kit, images checked against 110u's) | `WORKER13-tasks/` | |
 
 ## The baseline (Quest 161: `ref`, one JVM pinned to one P core of the runner's i5-14400F)
 

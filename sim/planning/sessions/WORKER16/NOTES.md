@@ -104,3 +104,8 @@ orders, step-all, the missed-wake detector).
 - 2026-11-09: make check, build by build (one `make` exceeds the tool's 300 s: each build in a timed call, the tests from
   a resumable script): 49 test binaries pass on clang debug, clang release, gcc debug and gcc release (wfi, regs, a2a
   against their goldens in `test_chip`; the 16K sort in `test_sort`: unchanged); TSan `test_chip form2` on clang passes.
+- 2026-11-09: **Quest 165** (DONE): `$DATA/w13-golden-m3` equal to `HASHES`; both runs' boot-end point (cycle 7,222,
+  1,214 lines each) committed as `tests/golden-m3/boot/` with `SHA256`. The two differ only in `cc3.cmem` and
+  `cc3.sram.data`. The `sram` dumps are 8.3 MB each (16.97 MB raw; they differ only from byte 16,707,085, C&C 3's part):
+  over the owner's "a few MB", so not committed; the boot's check with the real landings runs on the runner.
+- 2026-11-09: TSan `test_chip form2` on gcc passes (the make check is complete: both compilers, debug, release, TSan).

@@ -171,3 +171,4 @@ receive queue with its controller; C&C c is in tile c's domain). Three points fo
   2's or 3's "started", cc23.c / tracer_ctl.c): the first thing the boot needs is W14's request bus, then C&C 1's slot.
   C&C 3's DMA input stays off until W15's `G1Config::periph_slot` builds the slot in W8's builder (`cc_cycle` wires
   the slot's DMA when the builder offers it; C&C 1's and 2's lead nowhere, as ref's null `dmaPort`).
+- 2026-11-09: make check after the harness, build by build: 53 test binaries pass on clang and gcc, debug and release; TSan `test_chip form2` on both.

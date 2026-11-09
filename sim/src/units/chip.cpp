@@ -114,8 +114,13 @@ CcIO cc_cycle(sim::Config& cfg, const ChipSpec& spec, unsigned c) {
     const unsigned k = lw::CC1 + c;
     ControlIO io = spec.control ? spec.control(cfg, k, spec.control_ctx) : stand_in(cfg, k);
     const bool dma = c == 2 && spec.cc3_dma;
+    if (dma && !io.has_dma) FATAL("cc_cycle: C&C 3's DMA asked for, but the control part has no slot DMA output");
     auto& r = cfg.add<Router>(tile_unit(k, "router"), k, nc, spec.hops, true, Router::FIFTH_HOLD, dma);
     wire_unit(cfg, nc, k, io, r);
+    // the slot's DMA (AUDIT-M3 3.1 S6): C&C 3's into CC_DMA_IN; C&C 1's and C&C 2's lead nowhere in ref (their slots'
+    // dmaPort is null: nothing of theirs starts a DMA in v1.3), wired when the slot's builder offers them (W15)
+    if (dma) cfg.connect(io.dma, r.dma);
+    else if (io.has_dma) FATAL("cc_cycle: C&C %u's slot DMA output has nowhere to go (not modelled: ref's is null)", c + 1);
     auto& h = cfg.add<HostPort>(tile_unit(k, "host"), c, spec.host_capacity);
     cfg.connect(h.out, r.host);
     CcIO o;

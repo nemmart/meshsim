@@ -18,7 +18,7 @@
 //   S6 dma (CreditOut, width 3: lo, header, hi)   -> the controller router's CC_DMA_IN, Fifo(ccDmaDepth = 4): room as of
 //                                                    the start of t, one packet a cycle (controllers with a DMA only)
 //   S7 rows                                       an observer, not a port: the replayer's sink (hash, optional buffer)
-//   + a peripheral's own ports (Peripheral::ports: C&C 1's READY, error lines, GO)
+//   + the peripherals' own ports, held in `own` for them (peripheral.h, OWN PORTS: C&C 1's READY, error lines, GO)
 //
 // THE STEP at t (AUDIT-M3 3.1's order):
 //   level 0: (1) each peripheral's begin(t) [C&C 1's READY arrivals, error lines]; (2) the core's consume of t - 1
@@ -69,7 +69,10 @@ struct Win {
                                                            //   configuration: 0 for reserved words 10-31 and for undefined
                                                            //   own words: a load reads 0 and is flagged, ref's reserved())
     static constexpr unsigned R_STALL = 109;               // [109, 112): words 32-127 whose store stalls now (S8)
-    static constexpr unsigned PER = 112;
+    static constexpr unsigned R_WRITABLE = 112;            // [112, 115): words 32-127 a store writes (the rest of the
+                                                           //   defined ones are read-only: a store is a bus error); static,
+                                                           //   from the peripheral's writable(w) (all defined if it has none)
+    static constexpr unsigned PER = 115;
     // the tile's live bits:
     static constexpr unsigned R_LIVE = 3 * PER;            // [2:0] EVENTS [15:13] ((events | done) & mask != 0, per n);
                                                            // [5:3] ERRORS [13:11] (errors != 0, per n)
@@ -194,6 +197,7 @@ struct PeriphSlot {
 
     PeriphSlotConfig cfg;
     SlotCore s;
+    OwnPorts own;                         // the peripherals' own ports (peripheral.h, OWN PORTS), declared for them
     uint32_t published[Win::REGS] = {};   // the RegFile as last written (only changed registers are written)
     bool first = true;
 

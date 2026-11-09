@@ -38,6 +38,7 @@ struct DirectorConfig {
     uint32_t periph_present = 1;       // PARAMS [2:0]: which peripheral regions are reachable (bad packets)
     uint32_t mem_chunks = 1u << 20;    // big SRAM's size, for mode 0 region 0x03's bounds (flagged, invariant 19)
     bool g4 = false;                   // the tile has G4's gather engine wired (W12): `gather_put` is declared
+    bool periph_slot = false;          // W15 (M3): the tile has the peripheral slot: `periph` is declared
 };
 
 struct Director {
@@ -53,6 +54,8 @@ struct Director {
     sim::LinkOut gather_put;   // width 0: a mode-4 put on `gather` at t -> the block, Link(1) (W12, G4: one of STATUS's
                                // three gather-busy inputs: ref's gatherIn.isEmpty counts the pending put); when cfg.g4
     sim::CountIn rp_stores;    // W11: the core's read-port stores (read through t - 1: ref's director runs before the core)
+    sim::LinkOut periph;       // W15 (M3): width 3: mode 0 to region 0x04-0x06 -> the peripheral slot (S1), Link(3)
+                               // (rp_latency + 1: it lands at the end of t + 2, AUDIT-M3 3.1); when cfg.periph_slot
 
     DirectorConfig cfg;
     // statistics (not state: outside the fingerprint)
@@ -67,6 +70,7 @@ struct Director {
         p.out(we_in, "we_in", 3); p.out(gather, "gather", 3);
         p.out(bad, "bad", 0);
         if (cfg.g4) p.out(gather_put, "gather_put", 0);
+        if (cfg.periph_slot) p.out(periph, "periph", 3);
         p.in(rp_stores, "rp_stores");
     }
     sim::Wake step(sim::Ctx& c) {
@@ -95,6 +99,7 @@ struct Director {
                 uint32_t w0 = (lw::offset(a) & 0x7FFF) >> 2, n = lw::chunks(size);
                 if (r == lw::R_DMEM && w0 <= kCmdWord && w0 + n > kCmdWord) c.put(landed);   // covers command slot 0
             } else if (r == lw::R_SRAM) c.put(we_in, d, h, hi);
+            else if (cfg.periph_slot && r >= 0x04 && r <= 0x06) c.put(periph, d, h, hi);   /* W15: the slot (S1) */
             else FATAL("director (tile %u): a write to peripheral region 0x%x at cycle %llu: not modelled in M2", cfg.tile, r, (unsigned long long)c.now());
             break;
         }

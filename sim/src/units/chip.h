@@ -21,10 +21,25 @@
 #include "units/cnc.h"
 #include "units/mem.h"
 #include "units/net.h"
+#include "units/reqbus.h"
 
 namespace units {
 
+struct PeriphSlot;                // periph_slot.h
+
 // W8's part of a tile (the register block, the director, port B, the core) as the network meets it.
+// W14 (D34, the request bus; NOTES.md section 14): a sender's port as its tile's control offers it. `present`: the
+// control has a request port (W8's; the network-only stand-in has none). `recv`: a controller's receive side.
+struct ReqIO {
+    bool present = false;
+    sim::LinkOut push;            // the core's REQUEST_SEND: Link(1), width 2 -> the sender's leaf
+    sim::WireIn freed;            // the leaf's `freed` -> the core (canPush)
+    sim::LinkIn freed_ev;         // the leaf's `freed_ev` -> the register block (Link(1), width 0)
+    bool recv = false;
+    sim::RegFileIn head;          // the target's queue -> the core (RegFile 5)
+    sim::LinkOut pop;             // the core's REQUEST_RECEIVE -> the queue (Link(1), width 0)
+    sim::LinkOut qcredit;         // the core's pop -> the root's credit (Link(1) or (3), width 1)
+};
 struct ControlIO {
     sim::HoldOut send;            // the core's send holding register -> the injection unit (3 words)
     sim::RegIn send_busy;         // the injection unit -> the register block (STATUS's send-busy, with the core's own put)
@@ -39,7 +54,12 @@ struct ControlIO {
     sim::CreditOut dma;           // W15: the peripheral slot's DMA output (AUDIT-M3 3.1 S6, width 3), C&C 1-3 only ->
                                   // the controller router's CC_DMA_IN, a credit Fifo of cc_dma_depth (4); set when
     bool has_dma = false;         // the builder declared it (the slot's PeriphSlotConfig::controller)
+    ReqIO req;                    // W14 (D34): the request port's send side, and a controller's receive side
+    PeriphSlot* slot = nullptr;   // W16: the slot unit as staged (configuration only: its OwnPorts for C&C 1's chip
+                                  // lines, wired by build_chip); null without one
 };
+// W14's ReqIO, ControlIO's request side (sessions/WORKER14/NOTES.md section 14), wired by units::reqbus::wire_sender.
+// ReqIO is defined before ControlIO (above).
 // Adds tile `k`'s control units (names prefixed "t<k>."), wires them inside, returns the ports above. `ctx` is the
 // builder's own (images, configuration).
 using ControlBuilder = ControlIO (*)(sim::Config& cfg, unsigned k, void* ctx);
@@ -53,6 +73,7 @@ struct TileIO {
     bool attached = false;        // tiles 0-2: the fifth port
     sim::HoldIn from_cnc;         // M2: C&C's model and the endpoints
     sim::FifoOut to_cnc;
+    ReqIO req;                    // W14: the control's request side (build_chip wires it to the bus)
     sim::LinkIn from_cc;          // M3 (cc_cores): the C&C links
     sim::LinkOut to_cc;
 };
@@ -65,6 +86,8 @@ struct CcIO {
     bool has_dma = false;
     sim::LinkIn go;               // the register block's GO (nothing drives a controller's GO in ref)
     sim::LinkOut line;            // the register block's line word: READY (ignored for controllers) and the error level
+    ReqIO req;                    // W14: the controller's request port, send and receive sides (build_chip wires them)
+    PeriphSlot* slot = nullptr;   // the controller's slot as staged (the control's `io.slot`), or null
 };
 
 struct ChipSpec {
@@ -74,6 +97,8 @@ struct ChipSpec {
     ControlBuilder control = nullptr;         // W8's part of each tile (null: a stand-in that sinks the eject bus and
     void* control_ctx = nullptr;              //  never sends, never READY: the network-only checks)
     const uint8_t* domain = nullptr;          // 64 entries (null: one domain)
+    units::reqbus::ReqBusConfig reqbus;       // W14 (D34): the request bus; credit_latency set explicitly (3 the spec,
+                                              // 0 exact as ref: one domain), never from the partition
     // M3 (WORKER16): C&C 1-3 as cores (ref's Config.ccCores; AUDIT-M3 3.4). Units 64-66 are built like tiles (`control`
     // with k = 64 + c, the controller's router), each in tile c's domain (the C&C link is a Link(1)); tiles 0-2's fifth
     // port is the C&C links; M2's Java model of C&C 1, its row collectors' consumer and the endpoints are not built.

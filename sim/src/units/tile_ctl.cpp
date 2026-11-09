@@ -2,6 +2,7 @@
 #include "units/tile_ctl.h"
 
 #include "units/ag.h"
+#include "units/cnc1_periph.h"
 #include "units/gather.h"
 #include "units/write_engine.h"
 
@@ -37,7 +38,9 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     dc.periph_slot = g.cfg.periph_slot;
     const unsigned lookahead = g.cfg.ag_lookahead ? g.cfg.ag_lookahead : 2 * g.cfg.ts_engine_latency + 2;
 
-    auto& c = cfg.add<TileCore>(t + "core", core, k, g.cfg.read_port_depth, g.cfg.periph_slot);
+    // W15: the slot's paths behind periph_slot; W14: a controller (64-66) has a receive side (its target's queue), every
+    // core the request port's send side
+    auto& c = cfg.add<TileCore>(t + "core", core, k, g.cfg.read_port_depth, g.cfg.periph_slot, k >= 64, g.cfg.done_gate);
     auto& b = cfg.add<TileCtl>(t + "ctl", block, kHasOvfEvent<ControlIO>, true, g.cfg.periph_slot);
     auto& d = cfg.add<Director>(t + "dir", dc);
     auto& we = cfg.add<WriteEngine>(t + "we", g.we_in_depth, g.cfg.ts_engine_latency, g.cfg.mem_chunks);
@@ -98,18 +101,31 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     // W15 (M3, AUDIT-M3 3.1): the peripheral slot, peripheral 1 the replayer (a mesh tile's: no DMA). S1 the director's
     // region writes, Link(3); S2/S3 the core's window stores and consuming loads, Link(1); S4/S5/S8 its window RegFile,
     // read by the core (loads, stalls) and the block (EVENTS [15:13], ERRORS [13:11], the WFI wake, the error line).
+    // W16 (M3, AUDIT-M3 3.4): on a controller (k 64-66) the slot is a controller's (its DMA, S6), peripheral 1 C&C 1's
+    // Ingress/Egress and UART (type 1), C&C 2's stub, C&C 3's Tracer (cc3_tracer) or stub; the chip wires C&C 1's own
+    // ports (the chip lines) and the DMA through `io.slot` and `io.dma`.
+    PeriphSlot* slot = nullptr;
     if (g.cfg.periph_slot) {
         if ((g.cfg.periph_present & 7) != 1) FATAL("add_g1: tile %u: the slot's tile has peripheral 1 only (PARAMS [2:0] = %u)", k, g.cfg.periph_present);
         PeriphSlotConfig pc;
-        pc.tile = k; pc.type[1] = g.cfg.periph1;
+        pc.tile = k;
+        if (k < 64) pc.type[1] = g.cfg.periph1;          // W15: a mesh tile's peripheral 1, the replayer by default
+        else {
+            pc.controller = true;
+            pc.type[1] = k == lw::CC1 ? PT_CNC1 : k == lw::CC3 && g.cfg.cc3_tracer ? PT_TRACER : PT_CC_STUB;
+        }
         auto& sl = cfg.add<PeriphSlot>(t + "slot", pc);
         cfg.link(d.periph, sl.region, 3);
         cfg.link(c.periph, sl.core, 1);
         cfg.connect(sl.window, c.win);
         cfg.connect(sl.window, b.slot_win);
+        if (k == lw::CC1) sl.s.cnc1(1).ref_cycle = g.cfg.timing.ref_cycle;
+        slot = &sl;
     }
 
     ControlIO io;
+    if (slot && slot->cfg.controller) { io.dma = slot->dma; io.has_dma = true; }
+    io.slot = slot;
     io.send = c.send; io.send_busy = b.send_busy; io.eject = d.in; io.go = b.go; io.line = b.line;
     io.router_ovf = b.router_ovf;
     set_ovf_event(io, b.ovf);
@@ -124,6 +140,11 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     io.mem.gather = io.mem.ag = true;                     // W12: the read queue's clients 0 and 1
     io.mem.rd_gather = ga.rd; io.mem.rd_ag = ag.rd;
     io.mem.gather_srq_busy = b.gather_srq_busy;
+    // W14 (D34): the request port, wired to the bus by build_chip (and W16's controllers)
+    io.req.present = true;
+    io.req.push = c.req_push; io.req.freed = c.req_freed; io.req.freed_ev = b.req_freed_ev;
+    io.req.recv = k >= 64;
+    if (io.req.recv) { io.req.head = c.recv; io.req.pop = c.recv_pop; io.req.qcredit = c.recv_credit; }
     return io;
 }
 

@@ -51,6 +51,7 @@
 #include "units/regblock.h"
 #include "units/regmap.h"
 #include "units/periph_slot.h"
+#include "units/reqbus.h"
 #include "units/rv32.h"
 
 namespace units {
@@ -66,6 +67,7 @@ struct TileCtl {
     sim::RegIn gather_busy, gather_srq_busy;   // the gather's own half; the read queue's (W11, through MemIO)
     sim::LinkIn gather_put, gather_ovf_ev;     // width 0, Link(1): the director's mode-4 put; the gather queue's overflow
     sim::RegIn ag_status;                      // the AG's running | done << 1 at the end of t (ag.h)
+    sim::LinkIn req_freed_ev;                  // W14: width 0, Link(1): the request bus freed the FIFO's head at t
     sim::LinkIn drift;                         // width 0, Link(1): the AG's drift (ERRORS [3])
     sim::WireOut ag_start;                     // PULSE_DMA's starts so far, driven at level 0 of t + 1 (endCycle(t))
     sim::RegFileIn slot_win;                   // W15 (M3): the peripheral slot's window RegFile (its live bits), when `slot`
@@ -100,6 +102,7 @@ struct TileCtl {
             p.out(ag_start, "ag_start");
         }
         p.in(bus, "bus", 2); p.in(go, "go", 0); p.in(landed, "landed", 0); p.in(kline, "kline", 1);
+        p.in(req_freed_ev, "req_freed_ev", 0);
         p.in(send_busy, "send_busy", 1);
         p.in(bad, "bad", 0);
         p.in(router_ovf, "router_ovf"); p.in(we_in_ovf, "we_in_ovf"); p.in(gather_ovf, "gather_ovf");
@@ -115,6 +118,7 @@ struct TileCtl {
         if (c.ready(landed)) { c.take(landed); in.landed = true; }
         if (c.ready(kline)) { in.kline = uint32_t(c.peek(kline)[0]); c.take(kline); }
         if (c.ready(bad)) { c.take(bad); in.bad = true; }
+        if (c.ready(req_freed_ev)) { c.take(req_freed_ev); in.freed = true; }   // W14: RequestPort's free at t (count)
         if (ovf_event && c.ready(ovf)) { c.take(ovf); in.router_ovf_ev = true; }
         if (c.ready(we_ovf)) { c.take(we_ovf); in.we_in_ovf_ev = true; }
         if (c.ready(ts_ovf)) { c.take(ts_ovf); in.table_ovf_ev = true; }
@@ -245,6 +249,14 @@ struct TileCore {
     sim::RegFileIn win;                // W15 (M3): the peripheral slot's window RegFile (loads read it: AUDIT-M3 3.1 S4)
     sim::LinkOut periph;               // W15 (M3): width 1, a window store or a consuming EVENTS load -> the slot, Link(1)
     bool slot = false;                 // W15: the two above declared
+    // W14 (D34, the request bus): the port's send side (every tile and controller) and a controller's receive side
+    sim::LinkOut req_push;             // width 2: REQUEST_SEND's request {w0 | w1 << 32, w2 | w3 << 32} -> the leaf, Link(1)
+    sim::WireIn req_freed;             // the leaf freed the FIFO's head at t (canPush's freedAt == t)
+    sim::RegFileIn recv;               // a controller: its target's queue head {pending, w0-w3} as a load at t sees it
+    sim::LinkOut recv_pop, recv_credit;   // a controller's REQUEST_RECEIVE: the pop (Link(1)) and the root's credit
+    bool receiver = false;
+    bool done_gate = true;             // the block's: with the gate closed only GO wakes (a live bit doesn't)
+    uint32_t req_set_w[3] = {};        // REQUEST_SET_W0-W2 as this core stored them (the block's copy is a cycle later)
     Rv32 rv;
     // W11: the read port (ReadPort.java). Its queue is the Fifo into the read queue; its accounting is the core's stores
     // and the injection unit's injections (free entries) and the director's acceptances (outstanding).
@@ -252,9 +264,13 @@ struct TileCore {
     unsigned rp_depth = 64;
     uint64_t rp_stored = 0, rp_dropped = 0, rp_violations = 0;
 
-    TileCore(sim::Ports& p, const Rv32& initial, unsigned tile = 0, unsigned read_port_depth = 64, bool slot_ = false)
-        : slot(slot_), rv(initial), rp_tile(uint8_t(tile)), rp_depth(read_port_depth) {
+    TileCore(sim::Ports& p, const Rv32& initial, unsigned tile = 0, unsigned read_port_depth = 64, bool slot_ = false,
+             bool receiver_ = false, bool done_gate_ = true)
+        : slot(slot_), receiver(receiver_), done_gate(done_gate_), rv(initial), rp_tile(uint8_t(tile)), rp_depth(read_port_depth) {
         if (slot) { p.in(win, "win"); p.out(periph, "periph", 1); }
+        // W14: the request port's send side (every core) and a controller's receive side
+        p.out(req_push, "req_push", 2); p.in(req_freed, "req_freed");
+        if (receiver) { p.in(recv, "recv"); p.out(recv_pop, "recv_pop", 0); p.out(recv_credit, "recv_credit", 1); }
         p.in(regs, "regs"); p.in(hist, "hist"); p.in(wake, "wake"); p.in(irq, "irq"); p.in(port_b, "port_b", 3);
         p.out(bus, "bus", 2); p.out(send, "send", 3); p.out(tables, "tables", 2); p.out(hist_w, "hist_w", 2);
         p.out(rd_port, "rd_port", 2); p.in(rp_injected, "rp_injected"); p.out(rp_stores, "rp_stores");
@@ -262,10 +278,40 @@ struct TileCore {
     struct Env {
         sim::Ctx& c; TileCore& u;
         uint32_t reg(unsigned r) const { return c.read(u.regs, r); }
-        bool wake() const { return c.read(u.wake) != 0; }
+        // W14: TileControl.wakeTerm with the live bit (request pending): the block's wake covers its sticky events; a
+        // pending request wakes as EVENTS [12] under the mask (and never through a closed gate)
+        bool wake() const {
+            if (c.read(u.wake) != 0) return true;
+            const uint32_t live = live_events();
+            if (!live) return false;
+            if (u.done_gate && (reg(STATUS) >> ST_DONE & 1)) return false;
+            const uint32_t e = (reg(EVENTS) | live) & EVENTS_VALID, m = reg(EVENTS_MASK), q = reg(EVENTS_REQUIRED);
+            return (e & m & ~q) != 0 || (q != 0 && (e & q) == q);
+        }
         bool irq() const { return c.read(u.irq) != 0; }
-        bool can_push() const { FATAL("tile core: REQUEST_SEND at cycle %llu: not modelled in M2 (AUDIT-M2 1.2 (C))", (unsigned long long)c.now()); }
-        void post(uint32_t op, uint32_t arg, uint32_t v) { c.put(u.bus, sim::Word(op) << 32 | arg, sim::Word(v)); }
+        // RequestPort.canPush(t): room at the end of t - 1 (STATUS [6], request busy), or the head freed at t
+        bool can_push() const { return !(reg(STATUS) >> ST_REQUEST_BUSY & 1) || c.read(u.req_freed) != 0; }
+        void post(uint32_t op, uint32_t arg, uint32_t v) {
+            if (op == BUS_STORE && arg >= REQUEST_SET_W0 && arg <= REQUEST_SET_W2) u.req_set_w[arg - REQUEST_SET_W0] = v;
+            if (op == BUS_STORE && arg == REQUEST_SEND) {   // RequestPort.send: the request leaves for the leaf (Link(1))
+                c.put(u.req_push, sim::Word(u.req_set_w[0]) | sim::Word(u.req_set_w[1]) << 32,
+                      sim::Word(u.req_set_w[2]) | sim::Word(v) << 32);
+                u.req_set_w[0] = u.req_set_w[1] = u.req_set_w[2] = 0;
+            }
+            c.put(u.bus, sim::Word(op) << 32 | arg, sim::Word(v));
+        }
+        // the receive side (4.18): a tile's reads 0, REQUEST_RECEIVE underflows; a controller's reads its queue's head
+        uint32_t live_events() const {
+            return u.receiver && c.read(u.recv, reqbus::ReqRecv::R_PENDING) ? 1u << EV_REQUEST_PENDING : 0;
+        }
+        uint32_t req_get(unsigned i) const { return u.receiver ? c.read(u.recv, reqbus::ReqRecv::R_W0 + i) : 0; }
+        uint32_t req_receive(bool& ok) const {
+            ok = u.receiver && c.read(u.recv, reqbus::ReqRecv::R_PENDING) != 0;
+            if (!ok) return 0;
+            c.put(u.recv_pop);
+            c.put(u.recv_credit, sim::Word(c.now()));
+            return c.read(u.recv, reqbus::ReqRecv::R_W3);
+        }
         void send(uint64_t lo, uint64_t hdr, uint64_t hi) { c.put(u.send, lo, hdr, hi); }
         bool send_refused() const { return c.refused(u.send); }
         void table_store(uint32_t table, uint32_t i, uint32_t v) {
@@ -351,8 +397,9 @@ struct TileCore {
 // t puts the packet at t; refused at t + 1: retried, the core stalls); its `memw` input becomes port B, link words from
 // the director (Link(cm_latency + 1)); `tables` and `hist_w`, Link(1)s of width 2 to the table store and HIST
 // (table_store.h: a table-window store of t, {table << 32 | index, value}); `hist`, HIST's RegFile (a HIST load is one
-// cycle, as ref's). A load of PTR, STREAM or GROUP is a bus error, as in ref. M1's request ports (req_busy, req_freed) are not declared in an M2 tile:
-// REQUEST_* is fatal there, not modelled in M2 (AUDIT-M2 1.2 (C)).
+// cycle, as ref's). A load of PTR, STREAM or GROUP is a bus error, as in ref.
+// W14 (D34): the request port is modelled (REQUEST_SEND pushes over `req_push` to the bus's leaf, `req_freed` gives
+// canPush's free of t; the receive side reads a controller's queue through `recv`; NOTES.md section 14).
 
 // ------------------------------------------------------------------------------------- G1's part of the tile builder
 // The configuration G1's units depend on (the D12 header's keys that reach them).
@@ -363,7 +410,8 @@ struct G1Config {
     uint32_t mem_chunks = 1u << 20;
     uint32_t periph_present = 1;
     bool periph_slot = false;          // W15 (M3): the peripheral slot (the replayer as peripheral 1) and its paths
-    PeriphType periph1 = PT_REPLAYER;  // W15: peripheral 1's type in the slot (tests: PT_TEST)
+    PeriphType periph1 = PT_REPLAYER;  // W15: a mesh tile's peripheral 1 in the slot (tests: PT_TEST)
+    bool cc3_tracer = false;           // W16 (M3): C&C 3's peripheral 1 the Tracer (ref's cc3Tracer), else the stub
     unsigned K = 8, cm_latency = 2;    // the write counters' line, director -> port B
     // G3 (W11): the memory path's keys
     unsigned ts_engine_latency = 1;    // tsEngineLatency: the engines' Links to and from the table store and HIST

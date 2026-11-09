@@ -97,6 +97,7 @@ TEST(tile_slot_window_paths_from_the_core) {
         cfg.connect(s.ovf, io.router_ovf);
         cfg.link(s.ovf_ev, io.router_ovf_ev, 1);
         wire_mem_stand(cfg, io);
+    units::reqbus::tie_off(cfg, "t0.reqtie", io.req);      // W14: no request bus in a lone tile
         sim::Sim m = cfg.build();
         m.run(400);
         const TileCore& core = m.unit<TileCore>("t0.core");

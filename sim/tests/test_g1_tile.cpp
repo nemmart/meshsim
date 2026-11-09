@@ -58,6 +58,7 @@ TEST(g1_tile_port_b_landing_and_the_k_line) {
     auto& s = cfg.add<Stand>("stand", ev, 4u);
     s.ovf_at = 40;
     ControlIO io = add_g1(cfg, 0, &g);
+    units::reqbus::tie_off(cfg, "t0.reqtie", io.req);      // W14: no request bus in a lone tile
     cfg.link(s.eject, io.eject, 1);
     cfg.link(s.go, io.go, 1);
     cfg.connect(io.send, s.send);

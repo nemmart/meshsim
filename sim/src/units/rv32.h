@@ -447,6 +447,20 @@ struct Rv32 {
         }
         unsigned i = (a - REG_BASE) >> 2;
         const RegInfo& r = reg_info(i);
+        // W14 (the request port's receive side, 4.18): where the Env has it. A tile's reads 0 and REQUEST_RECEIVE sets
+        // receive underflow (ERRORS [14]); a controller's reads its target's queue (RequestPort.get / receive).
+        if constexpr (requires { e.req_get(0u); }) {
+            if (i >= REQUEST_GET_W0 && i <= REQUEST_RECEIVE) {
+                if (i == REQUEST_RECEIVE) {
+                    bool ok = false;
+                    v = e.req_receive(ok);
+                    if (!ok) e.post(BUS_ERROR, COND_RECV_UNDERFLOW, 0);
+                } else {
+                    v = e.req_get(i - REQUEST_GET_W0);
+                }
+                return true;
+            }
+        }
         if (r.load == A_OUT) FATAL("tile core: a load from %s (0x%x): not modelled yet", r.name, a);
         if (r.load == A_NONE) {                                                // write-only or reserved: reads 0
             if (r.store == A_NONE) { reserved_accesses++; violations++; }
@@ -455,11 +469,15 @@ struct Rv32 {
         switch (i) {
         case EVENTS: {                                                         // consumes what it returned under the mask
             v = e.reg(EVENTS);
+            if constexpr (requires { e.live_events(); }) v |= e.live_events();   // W14: request pending (EVENTS [12])
             uint32_t c = v & e.reg(EVENTS_MASK) & ~EVENTS_LIVE;
             if (c) e.post(BUS_CONSUME, 0, c);
             return true;
         }
-        case EVENTS_PEEK: v = e.reg(EVENTS); return true;
+        case EVENTS_PEEK:
+            v = e.reg(EVENTS);
+            if constexpr (requires { e.live_events(); }) v |= e.live_events();
+            return true;
         case SRAM_RD_ADDR_QUEUE:                                               // the read port's free entries at t (4.3)
             if constexpr (requires { e.rp_free(); }) { v = e.rp_free(); return true; }
             else FATAL("tile core: a load from SRAM_RD_ADDR_QUEUE at 0x%x: this bench has no read port", a);

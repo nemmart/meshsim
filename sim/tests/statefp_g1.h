@@ -22,6 +22,7 @@
 #include "units/write_engine.h"
 #include "units/ag.h"
 #include "units/gather.h"
+#include "units/reqbus.h"
 #include "units/tile_ctl.h"
 
 namespace fp {
@@ -51,11 +52,16 @@ struct G1Tile {
                                                   // driver (g1_tile doesn't: G1's tests have no injection unit)
     const units::AddrGen* uag = nullptr;          // G4 (W12)
     const units::Gather* ugather = nullptr;       // G4 (W12)
+    const units::reqbus::ReqLeaf* uleaf = nullptr;   // W14: the request port's leaf (null: no bus, the idle stream)
     const units::Core* m1core = nullptr;          // W5's M1 core: the bench's port-B words on `memw`
     const units::RegBlock* m1ctl = nullptr;       // W5's M1 block: its inputs in flight (bus, GO, landed, freed)
 };
 // An M2 tile's G1 units by name ("t<k>.core", ...), in a machine built with Options::observe_arrivals.
 G1Tile g1_tile(sim::Sim& s, unsigned k);
+// W14: a chip with the request bus (build_chip): each tile's `req` stream from its leaf, the chip's `reqbus` from the
+// bus (the G2Chip's). `units` must outlive the registry.
+struct G2Chip;
+void attach_reqbus(sim::Sim& s, G1Tile* g1, unsigned n_tiles, G2Chip& gc, units::reqbus::ReqBusUnits& units, const units::reqbus::ReqBusConfig& rc);
 
 // StateFp.core: pc, x1-x31, the CSRs, mcycle (caught up to the end of c for a core asleep since `last`, as Chip.catchUp
 // does; a stopped core's keeps counting, as ref's halted core does), halt, inWfi, inHandler, stall (as at the end of c),

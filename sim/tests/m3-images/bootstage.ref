@@ -1,0 +1,3 @@
+# Mach.bootCores(replay_ctl, tracer_ctl) on ref (BootStage; ref 5d8aaf4)
+hostq 235 7acfc67abb5762bf
+sram 2014 16c7b4c8870c8207

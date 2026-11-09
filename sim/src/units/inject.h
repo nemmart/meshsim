@@ -184,7 +184,8 @@ struct Injection {
     sim::Wake step(sim::Ctx& c);
     uint64_t digest() const;
 
-    bool loops(unsigned dst) const { return dst == me || dst == lw::BROADCAST; }   // ref's SRAMReadQueue.loops (me < 64)
+    // ref's SRAMReadQueue.loops: a controller's broadcast never reaches itself (W14-01; M3, C&C 1-3 as units 64-66)
+    bool loops(unsigned dst) const { return dst == me || (dst == lw::BROADCAST && me < 64); }
     void check(uint64_t h);           // InjectionPath's invariants (meshsim's checks; the packet is injected anyway)
 };
 

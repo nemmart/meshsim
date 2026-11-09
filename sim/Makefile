@@ -94,3 +94,4 @@ include bench/w10/w10.mk
 include bench/w14/w14.mk
 
 -include $(shell find build -name '*.d' 2>/dev/null)
+include src/units/cc.mk

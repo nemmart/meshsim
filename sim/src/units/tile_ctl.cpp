@@ -19,7 +19,8 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     if (!g.mem || !g.bootrom) FATAL("add_g1: tile %u: the context has no memories or no boot ROM", k);
     if (!g.sram) FATAL("add_g1: tile %u: the context has no big-SRAM blocks (G1Ctx::sram)", k);
     if (g.cfg.K + 1 > 63 || g.cfg.cm_latency + 1 > 63) FATAL("add_g1: K %u or cm_latency %u past the wheel", g.cfg.K, g.cfg.cm_latency);
-    const std::string t = "t" + std::to_string(k) + ".";
+    if (k >= g.units) FATAL("add_g1: unit %u, but the context's memories hold %u units", k, g.units);
+    const std::string t = unit_prefix(k);
 
     Rv32 core;
     core.timing = g.cfg.timing;

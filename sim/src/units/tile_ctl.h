@@ -155,7 +155,11 @@ struct TileCtl {
             c.put(line, sim::Word(s.ready_pulse) | sim::Word(s.error_line) << 1);
             error_out = s.error_line;
         }
-        return sim::Wake::none();
+        // W16: STATUS's send-busy from the core's own put at t is the block's alone (the injection unit's Reg only
+        // changes if the send waits): look again next cycle, when the Reg says whether the hold is still occupied.
+        // Otherwise a core polling STATUS after a send that left at once reads busy until something else steps the block
+        // (C&C 1's first send in test_cc_units; M2's programs always had a landing or a K line to step it).
+        return send_put ? c.next() : sim::Wake::none();
     }
     uint64_t digest() const { return digest_mix(s.digest(), error_out); }
     static bool reg_bit(const sim::Ctx& c, sim::RegIn r) { return c.valid(r) && c.read(r)[0] != 0; }
@@ -377,8 +381,9 @@ struct G1Config {
 struct G1Ctx {
     G1Config cfg;                      // per tile: cfg.tile is overwritten with k
     const uint32_t* bootrom = nullptr; uint32_t bootrom_words = 0;
-    uint32_t* mem = nullptr;           // 64 x 2 x MEM_WORDS words (data, program per tile), zero at power-on; outlives
+    uint32_t* mem = nullptr;           // units x 2 x MEM_WORDS words (data, program per unit), zero at power-on; outlives
                                        // the machine (the boot fills them through port B)
+    unsigned units = 64;               // the units `mem` holds: 64 tiles, or 67 with C&C 1-3 as units 64-66 (M3)
     unsigned we_in_depth = 4, gather_depth = 16;
     SramBlocks* sram = nullptr;        // G3: the tiles' big-SRAM blocks (one per tile, mapped at configuration); outlives
                                        // the machine

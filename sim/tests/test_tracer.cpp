@@ -506,3 +506,28 @@ TEST(long_runs_from_tracerconf_long) {
     std::printf("  long runs: %zu logs, all equal to ref\n", n);
     CHECK(n > 0);
 }
+
+// The slot's timing (W15's peripheral.h): accept(t) is called at level 0 of t + 3, possibly after the Tracer was settled
+// through t + 2; the packet still lands at the end of t + 2. Settled through t + 3, it is a simulator bug.
+TEST(late_accept_lands_at_t_plus_2) {
+    Tracer early(66), late(66);
+    const uint64_t lo = 0x1234, hi = 0x5678;
+    early.accept(10, 74, 0x50, 2, lo, hi);  // record word 5 (x1's image)
+    late.sync(12);                          // settled through 12: inputs before 12 applied
+    late.accept(10, 74, 0x50, 2, lo, hi);   // the slot's call at level 0 of 13
+    for (Tracer* t : {&early, &late}) {
+        t->sync(12);
+        CHECK_EQ(t->rec[10], uint64_t(0));  // not yet: it lands at the end of 12
+        t->sync(13);
+        CHECK_EQ(t->rec[10], lo);
+        CHECK_EQ(t->rec[11], hi);
+    }
+    CHECK_EQ(late.violation_count(), uint64_t(0));
+    CHECK_EQ(Tracer::DIGEST_N, 8);
+}
+
+DEATH_TEST(accept_after_its_landing_was_settled_is_fatal, "was settled") {
+    Tracer tr(66);
+    tr.sync(13);
+    tr.accept(10, 74, 0x50, 2, 1, 2);
+}

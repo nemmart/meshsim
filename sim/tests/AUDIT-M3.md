@@ -8,7 +8,7 @@ then the rest.
 | section | state |
 |---|---|
 | 0 The run | draft (Quest 159) |
-| 1 What a segment touches | to come (the coverage driver) |
+| **1 What a segment touches** | **published** (Quest 160) |
 | 2 The cycle as `ref` runs it | the slot's place (2.1); the rest to come |
 | **3.1 The peripheral slot** (W15) | **published** |
 | **3.2 The replayer** (W15) | **published** |
@@ -25,7 +25,8 @@ then the rest.
 images `sw/build/cc1`, `cc23`, `sw/tracer/build/tracer_ctl`, `sw/replay/build/replay_ctl`, the boot ROM, `hops.txt` and
 the universal tables byte-identical to 110u's kit (`sim/planning/sessions/WORKER13/tasks/IMAGES`). The second run,
 **cyclone-29 segment 10** (110u's other, the heaviest segment of either workload), is added if coverage shows paths the
-first doesn't reach.
+first doesn't reach: **it does** (section 1), so **the M3 runs are both: evm-zone-29 segment 10 and cyclone-29 segment
+10.**
 
 **Quest 159** (`sim/ref`, the runner): both OK, every delivery and 4,194,304 rows checked each.
 
@@ -59,6 +60,57 @@ references' D12 header carries these values.
 6. **Checks** (harness, after): C&C 3's `tr_results` (status 1); per tile the delivered record against `state.bin`,
    the raw streams against the delivery's; the rows (`rowListener`) against `rows.bin`, the exit value 1, the replayer
    clean; no chip violations.
+
+## 1. What a segment touches
+
+**The driver**: `sim/tests/ref/M3Seg.java` runs `TracerT2.chip` exactly (Quest 160: its figures equal 159's; with every
+hook on, the same figures and the same fingerprints as with none) and reads, between cycles, ref's own counters per
+unit group (the 64 tiles, C&C 1, 2, 3) at the boot's end, the segment's start, C&C 3's exit and the end, the new units'
+statistics, and every unit's pc each cycle. The references are `sim/tests/golden-m3/cover/` (`evm.cover.csv`,
+`cyc.cover.csv`, and the pc histograms `*.pcs.gz`: image, pc, cycles).
+
+**The run's shape** (evm-zone-29 10; cyclone-29 10 in brackets): setup on T1's path 12.5 s (9.3); the boot to
+`coresBooted`, then the segment; the chip runs 23,940,707 cycles (28,319,576), C&C 3 from its start to its exit
+23,693,532 (28,105,968).
+
+**Beyond M2's chip** (counters that are 0 in every M2 reference and not 0 here):
+- **The C&C cores** (3.4): C&C 1-3 as tiles running `cc1`, `cc23` (C&C 2 runs 54 instructions at boot, then WFI),
+  `tracer_ctl`: their controllers, register blocks, controller memories, big SRAM, read queue, AG and table store all
+  used (C&C 1: the boot's staged images, 509 AG reads; C&C 3: 2.3 M instructions in the segment); the **host port**
+  (3 packets: C&C 1's image, descriptor, command), the **C&C links** (C&C 1 to tile 0 at boot; C&C 3 to tile 2, 1.77 M
+  words in, 65 out in the segment), the **request port and bus** (C&C 2's and C&C 3's one "started" each, at boot; the
+  tiles send none), and **C&C 1's chip lines** (READY, GO, error) through `Cnc1Peripheral` in place of the Java `CnC`.
+- **The Tracer** (3.3): 64 runs, 4,194,304 rows, 662,819 class M; one state write; 6.4 M instruction fetches (69,495
+  misses, 33,390 straddling), 1.4 M data accesses (379 misses, 160 write-backs), 41,854 jumps (1,352 map probes);
+  stalls fetch 1.32 M, data 29,244, bus 52, probe 81,992 cycles; the drain 4.13 M cycles with 1.86 M scan stalls. The
+  memory system: 71,226 reads (2,054 from LPDDR), 160 writes. **No advice stall, no new expansion** in evm-zone 10;
+  **cyclone-29 10: 30 new expansions (7,356 stall cycles), and the memory system's early evictions (48,501) and read
+  waits (16,321, 786,874 cycles)**, all 0 in evm-zone.
+- **The DMA** (3.1 S6): 14,162 transfers, 1,772,179 128-bit packets (15,716 and 1,974,150), src 74, into the
+  `CC_DMA_IN` FIFO; on the tiles they arrive as mode-0 writes into big SRAM (the write engine, as M2's).
+- **The replayer and the slot** (3.1, 3.2): 64 passes of 65,536 rows; region writes 1,822,040 (the tiles' AG runs
+  through the read queue and the loopback, as 128-bit mode-0 packets into region 0x04; C&C 3's into the Tracer's
+  region); stalls code 11,776, read log 3,769, write log 9,720 cycles; no controller-fed row in evm-zone (cyclone:
+  36 rows, 30 new expansions, 5,808 stall cycles).
+- **Count-only packets** (mode 5, the director): 64 into C&C 3 (Q15's handshake), never used in M2.
+- Not reached in either run: errors of any unit, overruns, `ms.beyond`, write-allocates, padding rows, UART traffic,
+  the watchdog, traps.
+
+**Firmware** (pcs reached, against the ELFs built here, byte-identical to 110u's images):
+
+| image | instructions | evm-zone 10 | cyclone-29 10 | either | never reached |
+|---|---|---|---|---|---|
+| `replay_ctl` | 932 | 564 | 715 | 715 | `send_exp_word` (N3's send-port word), part of `main` |
+| `tracer_ctl` | 882 | 616 | 732 | 754 | `send_exp_word`, part of `main` (`exp_chunk`: cyclone only) |
+| `cc1` | 864 | 358 | 358 | 358 | `trap_handler`, `cc1_toast`, `cc1_trap`, `park` |
+| `cc23` | 198 | 34 | 34 | 34 | `trap_handler`, `park` |
+
+**`ReplayBench`** (the D8/D15 bar, `sim-step-cost`; `sim/tests/ref/baseline.sh`): every tile replays a window preloaded
+into its big SRAM in Stage B's layout (windows 0-63 of evm-zone-29, i.e. **segment 0**), the tiles booted by C&C's
+broadcast; **no Tracer, no C&C 3, no DMA, no C&C cores**. It is the replay phase of T2 only, on another segment, and
+since the tiles replay as their windows land, it is not a slice of T2's timeline either. Its numbers compare with
+T2's tiles' replay (at most 234,206 cycles a tile in evm-zone 10) and not with T2's run (23.9 M chip cycles, dominated
+by C&C 3's trace and drain). M3's timing is T2's run, against `ref`'s 46 s and 50 s (Quest 159).
 
 ## 2. The cycle as `ref` runs it (the new units' place)
 
@@ -317,26 +369,29 @@ The ways' positions are written because a fill takes the first free way by index
 write-back changes 16 words); `ref`'s side rescans only when the memory system's `writes` count has moved since the last
 call (between write-backs it is constant).
 
-**Cost per call** (`ref`, by unit): measured with the reference run on the runner (section 6.9, to come with the
-coverage task). By size: `tr` is dominated by the FIFOs (up to 2 × 65,536 words late in a window) and the decode table
+**Cost per call** (`ref`, evm-zone-29 10, 240 calls, Quest 160): `tr` 339 µs, `tr.ic` 44, `tr.dc` 20, `tr.mem` 63,
+`tr.files` 44 (a rescan only after a write-back); about 0.5 ms a call in all. By size: `tr` is dominated by the FIFOs (up to 2 × 65,536 words late in a window) and the decode table
 and ROM sums (about 3,000 terms); the caches 2 × 128 × 19 words; `tr.mem` at most 512 × 25 words; `tr.files` a scan
 of every page (evm-zone-29: about 500 image pages plus the map and the segment's copies) when it has changed.
 
 ## 9. Findings for the record
 
 - **9.1 The latency defaults since 110u** (section 0): GO, READY, error 1 → 8 and `stage_delay` 32 → 64 shift C&C 3's
-  span by 26 cycles in both workloads; nothing else in T2's summary moves. To be confirmed directly by setting the old
-  values in the coverage driver.
+  span by 26 cycles in both workloads; nothing else in T2's summary moves. **Confirmed** (Quest 160): `M3Seg` with GO
+  1, READY 1, `stage_delay` 32 gives 110u's 23,693,506 exactly.
 - **9.2 `EventCounts`' header vs the slot** (`EventCounts.java:8-9`, `PeripheralSlot.java:126-133`): the header says a
   consuming load sampling at s takes effect at the end of s + 1; the slot consumes at `endCycle(s)`, the end of s. `ref`
   as it runs is the slot's (D27). The same header's "an event posted after the sample point survives" holds for depth-2
   credits but not for a depth-1 event already at its count when posted at s (the post is dropped as full, then the
   consume clears it): run done and new expansion. To count in the coverage run (a post at s to a full depth-1 bit with
-  a consume of that bit at s); expected 0, as `replay_ctl` consumes done once per pass.
+  a consume of that bit at s); expected 0, as `replay_ctl` consumes done once per pass. **Quest 160: one in each
+  workload** (which unit and bit: to identify). The framework reproduces it without special handling, since a post
+  to a full count is dropped when it is made, as in `ref`, and 3.1 applies the consume after the cycle's posts.
 - **9.3 `outStart` doesn't settle** (`Tracer.outStart`, `PeripheralSlot.Dma.start`): `ref` calls it inside the
   PULSE_DMA store, during the core's step, before the Tracer's own work of that cycle and before its pending inputs are
   settled; the framework applies the store at level 0 of the next cycle (3.1 step 1.0). The orders differ only for a
   PULSE_DMA within a cycle of a state-word landing or a PULSE_RUN, or on queues whose drain posted done in the same
   cycle: each undefined behaviour (a transfer beyond the credits granted) or impossible in a well-formed program. To
   count in the coverage run (a PULSE_DMA with Tracer inputs or landings pending from the previous cycle); expected 0.
+  **Quest 160: 0** of 14,162 PULSE_DMAs (evm-zone) and of 15,716 (cyclone).
   The same reason keeps the fingerprint's `ref` side from settling the Tracer early (6's second rule).

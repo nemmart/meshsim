@@ -43,3 +43,11 @@ $(B)/test_statefp_g1: $(FP_OBJ) $(B)/tests/statefp_g1.o
 $(B)/test_statefp_core: $(FP_OBJ) $(B)/tests/statefp_g1.o $(UNITS_LINK) $(GOLDEN_OBJ)
 $(B)/test_g1_tile: $(UNITS_LINK)
 $(B)/test_g1_replay: $(FP_OBJ) $(B)/tests/statefp_g1.o $(UNITS_LINK) $(GOLDEN_OBJ)
+
+# WORKER15: the replayer (src/units/replayer.*), its tests and the conformance tool (tests/replayconf_main.cpp: a
+# ReplayConf script replayed on the C++ replayer; tests/ref/replayconf.sh writes ref's side).
+REPLAYER_LINK := $(B)/src/units/replayer.o
+$(B)/test_replayer $(B)/test_replayconf: $(REPLAYER_LINK)
+$(B)/replayconf: $(B)/tests/replayconf_main.o $(REPLAYER_LINK) $(LIB_OBJ)
+	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
+all: $(B)/replayconf

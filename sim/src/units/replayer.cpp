@@ -27,9 +27,9 @@ Replayer::Replayer(unsigned m) : me(m) {
     const uint8_t depth[] = {1, 0, 2, 2, 2, 2, 1};
     const bool flags[] = {false, false, true, true, true, true, false};
     ev.init(7, depth, flags);
-    code.init(0, 256, 32, false, &ev);
-    rlog.init(1, LOG_QUEUE_ENTRIES, 64, false, &ev);
-    wlog.init(2, LOG_QUEUE_ENTRIES, 64, true, &ev);
+    code.init(0, 256, 32, false);
+    rlog.init(1, LOG_QUEUE_ENTRIES, 64, false);
+    wlog.init(2, LOG_QUEUE_ENTRIES, 64, true);
     code.credit = EV_CODE; rlog.credit = EV_RLOG; wlog.credit = EV_WLOG;
 }
 
@@ -402,7 +402,7 @@ void Replayer::start_row(int64_t T) {
     if (in.kind == K_CTRL) exp_pop();
     uint64_t log_word = 0;
     if (log_s) {
-        log_word = log_s->peek_value; log_s->commit(); log_s->release_consumed();
+        log_word = log_s->peek_value; log_s->commit(); log_s->release_consumed(ev);
         if (alu::is_load(op)) wlog.last_load(log_word);
     }
     const bool last = seq_rem == 0 || in.kind == K_PAD || in.kind == K_NOP;
@@ -464,7 +464,7 @@ void Replayer::start_row(int64_t T) {
 uint64_t Replayer::pop_transfer(int64_t T) {
     int s = rlog.peek();
     if (s != ReplayerStream::AVAIL) { underflow(T, 1, UF_TRANSFER); return 0; }
-    uint64_t v = rlog.peek_value; rlog.commit(); rlog.release_consumed();
+    uint64_t v = rlog.peek_value; rlog.commit(); rlog.release_consumed(ev);
     return v;
 }
 
@@ -479,7 +479,7 @@ void Replayer::finish_row(int64_t T) {
     unsigned slot = (outq_h_ + outq_n_++) % OUTQ_ROWS;
     for (unsigned i = 0; i < REC_LONGS; i++) outq_[slot][i] = p.rec[i];
     outq_at_[slot] = T + 1;
-    if (p.last_of_instr) code.release_to(p.code_end);
+    if (p.last_of_instr) code.release_to(p.code_end, ev);
     rows_done_++;
     if (rows_done_ == rows_per_pass_) { check_leftover(T); stop_core(T, true); }
 }

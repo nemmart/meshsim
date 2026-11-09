@@ -61,11 +61,10 @@ struct ReplayerStream {
     unsigned peek_bits = 0;
     int peek_hit = -1;
     uint64_t values = 0, hits = 0, misses = 0;
-    EventCounts* ev = nullptr;     // the replayer's events (credits)
 
-    void init(unsigned i, unsigned capacity, unsigned bits, bool write, EventCounts* e) {
+    void init(unsigned i, unsigned capacity, unsigned bits, bool write) {
         if (capacity > MAX_CAP) FATAL("replayer stream: capacity %u > %u", capacity, MAX_CAP);
-        id = i; cap = capacity; half = capacity / 2; value_bits = bits; is_write = write; ev = e;
+        id = i; cap = capacity; half = capacity / 2; value_bits = bits; is_write = write;
     }
     void clear() { head = 0; occ = 0; pend = 0; base = 0; consumed = 0; popped_since = 0; landed_entries = 0; taken = 0; end_bits = -1; }
     void flush() { clear(); for (uint64_t& x : E) x = 0; }
@@ -147,13 +146,14 @@ struct ReplayerStream {
         }
     }
     void last_load(uint64_t v) { E[15] = v; }
-    void release_consumed() { release_to(consumed); }
-    void release_to(int64_t pos) {
+    // ev: the replayer's events (a credit back per half a queue popped)
+    void release_consumed(EventCounts& ev) { release_to(consumed, ev); }
+    void release_to(int64_t pos, EventCounts& ev) {
         while (occ > 0 && (base + 128 <= pos || (end_bits >= 0 && pos >= end_bits && base < end_bits))) {
             head = (head + 1) % cap; occ--; base += 128;
             if (pop_cycle != cycle) { pop_cycle = cycle; pops = 0; }
             pops++;
-            if (++popped_since == half) { popped_since = 0; if (credit >= 0) ev->post(cycle, unsigned(credit)); }
+            if (++popped_since == half) { popped_since = 0; if (credit >= 0) ev.post(cycle, unsigned(credit)); }
         }
     }
 };
@@ -203,6 +203,8 @@ public:
     using ViolateFn = void (*)(void* ctx, int64_t t, unsigned code);
 
     explicit Replayer(unsigned me = 0);
+    Replayer(const Replayer&) = delete;
+    Replayer& operator=(const Replayer&) = delete;
     void attach(ViolateFn fn, void* ctx) { host_fn_ = fn; host_ctx_ = ctx; }
 
     // ---- the Peripheral interface (Peripheral.java, non-virtual) ----------------------------------------------------

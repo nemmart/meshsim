@@ -24,12 +24,14 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 
 #include "units/event_counts.h"
 #include "units/file_store.h"
 #include "units/lru_coder.h"
 #include "units/lru_index.h"
 #include "units/mem_system.h"
+#include "units/peripheral.h"
 #include "units/replayer_alu.h"
 #include "units/row_core.h"
 #include "units/rvc.h"
@@ -38,7 +40,7 @@
 namespace units {
 namespace tracer {
 
-class Tracer {
+class Tracer : public PeripheralBase<Tracer> {
 public:
     // ================================================================ the window (8.16)
     static constexpr int TYPE = 3;
@@ -98,15 +100,33 @@ public:
     Tracer& operator=(const Tracer&) = delete;
     ~Tracer();
 
+    // The memory. In the chip (W15's slot creates the Tracer bare, as `ref`'s Config does) the harness hands it its
+    // memory: own_memory(store) keeps the store and a memory system over it, and makes the memory cold at every
+    // state-word landing (T2's onStateWrite). Tests and tools may instead point `mem` at their own.
+    void own_memory(std::unique_ptr<FileStore> store) {
+        own_store_ = std::move(store);
+        own_mem_ = std::make_unique<MemSystem>(own_store_.get());
+        mem = own_mem_.get();
+        map_mem = nullptr;
+        cold_mem_on_state_write = true;
+    }
+    FileStore* store() { return mem ? mem->store : nullptr; }
     MemSystem* mem = nullptr;      // the fill bus's other side (4.21.5)
     MemSystem* map_mem = nullptr;  // the map probe's, if a harness separates them (B1); else mem
     bool cold_mem_on_state_write = false;  // ref's onStateWrite = ms::cold: the word-0 write makes the memory cold
 
     // ================================================================ the peripheral interface (W15's list)
+    static_assert(TYPE == PT_TRACER, "the Tracer's type tag");
+    static constexpr int DIGEST_N = STAT_N;  // W15's peripheral.h: digest_words' length
     int params() const { return TYPE; }
     int type() const { return TYPE; }
+    uint64_t violation_count() const { return uint64_t(n_violations); }  // the slot forwards new ones (W15)
     EventCounts& events() { return ev; }
     uint32_t consume_events(uint32_t bits) { return ev.consume(bits); }   // ref's onConsume: the Tracer has none
+    // accept(t) lands at the end of t + 2. On the framework the slot calls it at level 0 of t + 3 (W15's peripheral.h),
+    // so the Tracer may already be settled through t + 2 (settled_ = t + 2: inputs before t + 2 applied): still in
+    // time. Settled past that (a read or step of t + 3 already made) is a simulator bug: FATAL. run and write_word for a
+    // store at t come at level 0 of t + 1, before any read of t + 1: settled_ <= t + 1 is in time.
     void accept(int64_t t, int src, uint32_t offset, int size, uint64_t lo, uint64_t hi);
     void run(int64_t t);
     bool running(int64_t t) { settle(t); return s_running_; }
@@ -125,7 +145,7 @@ public:
     bool must_step() const { return running_ || (exp_discard_ > 0 && eq_occ_ > 0) || inputs_.n > 0 || landing_.n > 0; }
     int64_t next_wake_at(int64_t) const { return INT64_MAX; }
     void skip_cycles(int64_t n) const;
-    void digest_words(int64_t out[STAT_N]) const;       // the counters, words 44-51 (ref: int to long)
+    void digest_words(int64_t out[DIGEST_N]) const;     // the counters, words 44-51 (ref: int to long)
     int out_queues() const { return 4; }
     bool out_ready(int64_t t, int q) const;
     void out_take(int64_t t, int q, uint64_t w[2]);
@@ -265,6 +285,8 @@ private:
     static bool assertion_holds(unsigned op, uint64_t a, uint64_t b);
 
     const int me_;
+    std::unique_ptr<FileStore> own_store_;
+    std::unique_ptr<MemSystem> own_mem_;
 
     // ---- registers (4.21.3)
     uint32_t run_config_ = 0, hash_mul_ = 0, hash_step_ = 0, hash_lines_ = 0;

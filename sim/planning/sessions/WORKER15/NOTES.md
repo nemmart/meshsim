@@ -5,8 +5,9 @@ The replayer and the peripheral slot. Branch `sim-w15`. Prompt: `PROMPT.md`.
 ## Status
 
 **Go-ahead 2026-11-09** (owner): the plan as written; answers to Q1-Q4 below. Steps 1-2 done: the ALU and the replayer equal to `ref` (ReplayConf every cycle; ReplayerUnitTests ported, 1,456
-checks). The slot's header published for W14 and W16 (below); waiting on their round. Next: Stage A on the runner,
-then the slot's body.
+checks). The slot's header published; the owner settled the round (W14: violation_count and the late accept; W16: its two
+classes and `visit` cases, the ports/begin/end hooks). Stage A passed (Quest 164: every window of both programs). The slot's SlotCore equal to ref call for call (SlotConf); the unit working under the engine (first working commit,
+for W14 and W16 to wire into). Next: the tile's paths and PeripheralSlotTest's port.
 
 ## The owner's answers (2026-11-09)
 
@@ -259,3 +260,77 @@ the core would need a second core input on the slot, which I'd add.
 **What the core side does** (my work with the slot's body, in W8's/W11's files): a window load reads the RegFile
 (`Win`'s layout; a reserved or undefined word reads 0 and the core flags it, from the `R_DEFINED` bits); a store or a
 consuming EVENTS load puts one `CoreOp` on S2/S3; a store to a word whose `R_STALL` bit is set retries (S8).
+
+### Stage A on the runner: Quest 164 (2026-11-09)
+
+Claimed and pushed (Quest c8503c3): `tasks/164-w15-stage-a.sh`, kit from sim-w15 fd11957. W9's deliveries converted to
+v1.26.1 in scratch by ref's ConvertDelivery (as 105-107); (1) the selected windows, all three variants, ref's
+ReplayDelivery and `replay_delivery` compared with cmp (each also passing on its own); (2) every window of both programs
+on the C++ driver alone (state all 8,192 each; state-lru and state-pick every 8th), against rows.bin, the streams,
+end.bin, clean.
+
+**Result (Quest 164, DONE, ALL PASS; runner godspeed, 16 CPUs, 2 minutes):**
+- selected windows: evm-zone-29's 12 and cyclone-29's 13, each in state, state-lru and state-pick: ref's ReplayDelivery and
+  `replay_delivery` **byte-identical** (every window's rows, the pass's cycles, the streams, new expansions, the
+  stalls), each passing (786,432 and 851,968 rows compared per variant);
+- every window: evm-zone-29 and cyclone-29, state all 8,192 each, state-lru and state-pick 1,024 each (every 8th):
+  **20,480 windows, all OK**: every row of rows.bin byte for byte, the streams consumed exactly, end.bin, clean.
+
+### The slot's body (WIP, 2026-11-09)
+
+- `periph_slot.h` restructured: **`SlotCore`** is ref's `PeripheralSlot` method for method (immediate calls, ref's
+  timing: `accept`, `read`, `write`, `store_stalls`, `live_events`, `live_errors`, `run_cycle`, `end_cycle`, `reset`,
+  the DMA, the reserved-word flags as facts), testable without the engine; **`PeriphSlot`** is the unit: AUDIT 3.1's
+  level-0 order around it (begin; the consume or EVENTS_MASK store of t - 1; the landings, `accept(t - 3)`; the other
+  store of t - 1 at t - 1; the window published, changed registers only), then `run_cycle(t)` with the DMA's credits,
+  `end(t)`. Wake: the next cycle while an input arrived or a peripheral wasn't idle, and once more after (to publish
+  what it left); else `next_wake_at`; else S1/S2.
+- `units/test_peripheral.h`: ref's TestPeripheral (type 15) for the slot's tests.
+- `visit`: the replayer and the test peripheral; marked places for W14's Tracer case and W16's two.
+- **A UB-only difference, recorded (owner: accepted, not a D30 case; also in AUDIT-M3 3.1):** a DMA_HDR/DMA_ADDR store
+  while a transfer runs (flagged as undefined in ref) takes effect a cycle later than ref's (at level 0 of t + 1, after
+  ref's runCycle(t) would have used the new value). Only in the flagged case; a store before PULSE_DMA (the defined use)
+  is unaffected. Coverage 0 in both M3 runs (ref flags each such store; AUDIT section 0: no chip violations).
+- Next: **SlotConf** (as ReplayConf): ref's `PeripheralSlot` taken from a `Net` built as PeripheralSlotTest builds it
+  (TestPeripheral on a tile; the replayer on another), driven directly by a seeded script (posts, credits, live bits,
+  faults, accepts, window loads and stores, DMA transfers with and without burst, runCycle, endCycle), every result
+  and observation recorded; SlotCore must equal it call for call. Then the unit under the engine, then the tile's paths
+  and PeripheralSlotTest's port.
+
+### SlotConf: SlotCore against ref's PeripheralSlot (2026-11-09)
+
+- `tests/ref/SlotConf.java gen | run`: ref's `PeripheralSlot` taken from a `Chip` built as PeripheralSlotTest builds its
+  machine (`Config.defaults()`, a TestPeripheral as tile 5's peripheral 1; tile 6 keeps its replayer), the Chip never
+  stepped, the two slots driven directly by a seeded script: the test peripheral's posts, credits, live bit, faults and
+  burst; region accepts (one per slot per cycle, as the director); window loads (standard, reserved, undefined, the
+  peripheral's words, consuming EVENTS loads) and stores (PULSE_RUN, EVENTS_MASK, DMA_HDR/DMA_ADDR/PULSE_DMA, the
+  replayer's RUN_CONFIG, scratch and read-only words, reserved words); storeStalls; runCycle and endCycle. ref's UB is
+  avoided by the generator (PULSE_DMA while busy or naming a missing queue, the replayer's PULSE_RUN or RUN_CONFIG while
+  running, part-0 writes while running). Observed after each cycle: both slots' live bits, counters, the DMA's state and
+  every packet (time, dst, mode, counter, address, data), the test peripheral's state, the replayer's.
+- `tests/slotconf.h` replays it on two `SlotCore`s; `test_slotconf` (`make check`): **5 seeds of 3,000 cycles (about
+  1,000 DMA packets), equal to ref, all four builds**; locally also **20 seeds of 10,000 cycles, all equal**
+  (`slotconf.sh --long`). A planted bug (EVENTS_MASK stores never applied) fails all five.
+- Two fixes on the way: the test peripheral's records became rings (a script has thousands of accepts); the
+  peripherals' violation counts are summed when read (`violation_total`, ref's single count) instead of forwarded at
+  `run_cycle`.
+- **My own slip, twice now:** an inline edit put a `//` comment in the middle of a line and swallowed the statements
+  after it (ref's ReplayerTest line 105 has the same bug). Caught both times by a failing comparison; I now write
+  comments in such edits as `/* */` or on their own line.
+
+### The slot unit under the engine: first working commit (2026-11-09)
+
+- `PeriphSlot` is a framework unit now: move-only (each `SlotCore::Ref` owns its peripheral and deletes it by type),
+  non-polymorphic, with a `digest()` for the debug checks.
+- `tests/test_periph_slot.cpp`: a stand-in core and director (S2/S3 Link(1), S1 Link(3), the window RegFile, the DMA's
+  credit Fifo of 4) and the slot, run plain, with step-all and shuffled, the missed-wake detector on (debug builds):
+  - the test peripheral on a controller (64): PARAMS and the defined-word bits; PULSE_RUN at 3 seen as STATUS [0] at 4;
+    the scratch word; DMA_HDR/DMA_ADDR/PULSE_DMA at 10: STATUS [1] at 11, three packets put at 11, 12, 13 (ref's: the
+    cycle after PULSE_DMA), at 0x100 + 16k, src 72 (item 118), their data; a region write at 12 landing at the end of
+    14; EVENTS_MASK, run done and DMA done in EVENTS and the live bit, a consuming load taking both;
+  - the replayer on a mesh tile: PULSE_RUN with rows 0 (STATUS [0] for one cycle, run done), the consume, a landing in
+    the code queue, ROWS_RUN; the slot asleep for most of 200 cycles.
+  All four builds; clang release `make run`: 50 binaries, all pass.
+- **For W14 and W16:** wire into `units/periph_slot.cpp`: your include, your `case` in `SlotCore::visit` (marked), your
+  `delete` in `SlotCore::Ref::~Ref` (marked), and your creation in `SlotCore::install` (W14: the Tracer needs its tables
+  and memory system: tell me what `install` should take, or add a `PeriphSlotConfig` field for it).

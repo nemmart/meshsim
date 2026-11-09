@@ -17,6 +17,8 @@ mkdir -p $K/kit/sim/tests && (cd "$TOP/sim/tests" && cp *.cpp *.h $K/kit/sim/tes
 # ref's classes and the drivers, as tracerconf.sh builds them
 bash -c "source <(sed -n '/^build()/,/^}/p' $TOP/sim/tests/ref/tracerconf.sh); SIM=$TOP/sim; REF=$TOP/sim/ref/meshsim; \
   FIELDS='$(grep ^FIELDS $TOP/sim/tests/ref/tracerconf.sh | cut -d"'" -f2)'; build $K/kit/classes" >&2
+javac -nowarn -d $K/kit/classes -cp $K/kit/classes $TOP/sim/bench/w14/TracerPlay.java 2>&1 | grep -v '^Note:' >&2 || true
+[ -f $K/kit/classes/TracerPlay.class ] || { echo "mk_task.sh: TracerPlay did not compile" >&2; exit 1; }
 rm -rf $K/kit/classes/src
 cp -r $TOP/sim/ref/tables/replayer $K/kit/tables/
 cp $TOP/sim/ref/meshsim/hops.txt $K/kit/run/ 2>/dev/null || true

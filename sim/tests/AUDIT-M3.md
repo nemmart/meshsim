@@ -224,6 +224,13 @@ and every DMA idle); the replayer is idle with no pass, no inputs or landings qu
 Tracer never reports idle, so **C&C 3's unit never sleeps in `ref`** (`Tracer.skipCycles`' comment). The framework's
 slot follows its own wake rule (step 3) whatever `ref` skips: the result is the same.
 
+**A UB-only difference, recorded (W15, owner 2026-11-09).** A DMA_HDR or DMA_ADDR store while the DMA's transfer runs
+(ref: `Dma.setHdr`/`setAddr` flag it, "changed mid-transfer: undefined (4.17.9)") takes effect at level 0 of t + 1 in
+the framework, so ref's `runCycle(t)` would already have used the new value where the framework's uses the old one for
+that cycle's packet. Only in the flagged (undefined) case; a store before PULSE_DMA, the defined use, is unaffected. Not
+a D30 case. Coverage: 0 in both M3 runs (ref flags every such store as a violation, and section 0's checks find no chip
+violations in either).
+
 ### 3.2 The replayer (`Replayer.java`, `ReplayerAlu.java`, `RowCore.java`) — W15
 
 **What T2 runs on it.** Every tile's peripheral 1, driven by `replay_ctl.c` (layout version 5, `RL_WAIT_HANDSHAKE`):

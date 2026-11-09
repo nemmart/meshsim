@@ -118,3 +118,9 @@ orders, step-all, the missed-wake detector).
   storage for a peripheral's own ports inside `PeriphSlot` (e.g. `own_in[11]`, `own_out[64]` declared by the slot for
   the peripheral, passed to its `begin`/`end`). The C&C 1 conformance through the slot unit (`run_slot`,
   `cnc1_periph_through_the_slot_conformance_with_ref`) is written and waits behind `-DW16_SLOT_OWN_PORTS`.
+- 2026-11-09: **the register block's fix, against ref's cycles**: `cc_ping` stamps mcycle at each send and when its
+  STATUS poll sees send-busy clear; `tests/ref/CcPing.java` (`ccping.sh`, `tests/m3-images/cc_ping.ref`) runs it on
+  ref's chip with C&C as cores: SIM_EXIT at 933, stamps 82 94 103 112 119 128. `test_cc_units` equals them on one
+  domain, 4 row bands and the debug options; with the fix reverted the first poll never ends (the test fails).
+- 2026-11-09: make check again after the merge and the slot's types, build by build: 52 test binaries pass on clang and
+  gcc, debug and release; TSan `test_chip form2` passes on both.

@@ -6,7 +6,8 @@ The replayer and the peripheral slot. Branch `sim-w15`. Prompt: `PROMPT.md`.
 
 **Go-ahead 2026-11-09** (owner): the plan as written; answers to Q1-Q4 below. Steps 1-2 done: the ALU and the replayer equal to `ref` (ReplayConf every cycle; ReplayerUnitTests ported, 1,456
 checks). The slot's header published; the owner settled the round (W14: violation_count and the late accept; W16: its two
-classes and `visit` cases, the ports/begin/end hooks). Stage A passed (Quest 164: every window of both programs). The slot's SlotCore equal to ref call for call (SlotConf); the unit working under the engine. The tile's paths tested at the tile level (test_tile_slot); the DMA record on mesh tiles. Next: PeripheralSlotTest's port.
+classes and `visit` cases, the ports/begin/end hooks). Stage A passed (Quest 164: every window of both programs). The slot's SlotCore equal to ref call for call (SlotConf); the unit working under the engine. The tile's paths tested at the tile level (test_tile_slot) and against ref's exact cycles (TileSlotConf: PeripheralSlotTest's
+groups). Waiting for W16's and W14's merges, then main merged, the full check and TSan, the merge-ready push.
 
 ## The owner's answers (2026-11-09)
 
@@ -413,3 +414,24 @@ ports (READY rows, the error lines, GO) couldn't be declared from its heap-alloc
   region-0x04 write put by the router's stand-in, accepted by the test peripheral. Plain, step-all and shuffled; the
   debug builds' missed-wake detector on; all four builds.
 - Exact cycles against ref come with PeripheralSlotTest's port (next).
+
+### PeripheralSlotTest as conformance: TileSlotConf (2026-11-09; owner: approved as planned)
+
+- `tests/ref/tileslotconf_progs.py` writes `tests/tileslotconf/<group>.prog`: the window, events, region writes
+  ("landing"), the DMA and the replayer's window, each a boot-ROM program doing the group's loads and stores from the
+  core (a prelude sends every other tile to a WFI loop), storing results and mcycle stamps to data memory; pokes on the
+  test peripheral between cycles (post, credit, the live level, fault); region writes into the tile.
+- `tests/ref/TileSlotConf.java` runs a .prog on ref: the program as `Controller.bootRom`, `Config.machine()`, the test
+  peripheral as the tile's peripheral 1 (or its replayer), the pokes before their cycles, the injects with `Net.at`;
+  writes the data-memory image, the director's accepted region writes ("dir": their cycles), bad packets, the test
+  peripheral's accepts, the slot's DMA packets (`<group>.obs`, committed).
+- `tests/test_tileslotconf.cpp` runs it on a tile from `add_g1` with the slot: the pokes at the same cycles (between runs,
+  the slot woken with `Sim::wake`), each region write put in the eject one cycle before ref's director accepted it.
+  **All five groups equal ref exactly** (the data-memory images with every mcycle stamp, the accepts and their landing
+  cycles, the bad packet, the seven DMA packets with their cycles), plain, step-all and shuffled, in all four builds.
+  Two planted timing bugs fail it (S1 as Link(4): the landings a cycle late; the core's stores applied a cycle late:
+  seven words of the images).
+- `tests/ref/tileslotconf.sh --fixtures | --check` regenerates the programs and reruns ref (`--check`: equal).
+- Not ported: PeripheralSlotTest's two UB stops (PULSE_DMA while busy; a missing queue): both FATAL in SlotCore, as
+  `T.ub` expects, covered by the slot's code paths (`dma_start`) but not by a death test yet; and the C&C 1 group (W16's
+  acceptance test covers it through the slot).

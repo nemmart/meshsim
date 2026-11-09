@@ -42,6 +42,9 @@ import java.util.TreeMap;
  *  rn=r running   er=r errors   sy sync   ev=v events().value   co,bits events().consume (no cycle)   re=r rowsEnded
  *  wb=n writeBackDirtyUntimed (no cycle)   os,q,n outStart   or,q=r outReady   ot,q=lo,hi outTake
  *  a token ending in '%': the call raised IllegalStateException, one of ref's own fatal checks (FATAL here too)
+ *  (lines) fp id c h0 h1 h2 h3 h4: the fingerprint's five units (AUDIT-M3 6.6, StateFpM3: tr, tr.ic, tr.dc, tr.mem,
+ *        tr.files as the scan it defines) at the end of cycle c, taken after runCycle(c) every FP_EVERY cycles of the
+ *        rig and at its end (fe id c ...: after its last call); C++ compares it after replaying that cycle
  *  F,k   the store as dump k (C++: the pages it has must be equal, the new ones are added): at a word-0 packet after
  *        the harness allocated pages     H=h   else, at a word-0 packet: the store's hash
  * </pre>
@@ -53,7 +56,7 @@ public final class TracerConf {
         out = new PrintWriter(new BufferedWriter(new FileWriter(a[1]), 1 << 20));
         out.println("# tracerconf v1: ref's side, TracerConf " + a[0]);
         switch (a[0]) {
-            case "cases" -> TracerConfCases.main(new String[0]);   // ends with System.exit: see exit()
+            case "cases" -> { FP_EVERY = 2000; TracerConfCases.main(new String[0]); }   // ends with System.exit: see exit()
             case "gen" -> { Gen.run(Long.parseLong(a[2]), a.length > 3 ? a[3] : "mix"); exit(0); }
             default -> throw new IllegalArgumentException(a[0]);
         }
@@ -62,6 +65,19 @@ public final class TracerConf {
     static void exit(int status) { Rec.flushAll(); out.println("# end " + status); out.close(); System.exit(status); }
 
     static String hx(long v) { return Long.toHexString(v); }
+    static int FP_EVERY = 250;
+    /** The five Tracer units' hashes at the end of cycle c (tr.files: nextFree and the scan, never StateFpM3's cache,
+     *  which is keyed by the memory system's writes and misses a harness's own edits). */
+    static String fingerprint(Tracer tr, long c) {
+        StringBuilder sb = new StringBuilder();
+        for (String u : StateFpM3.TRACER_UNITS) {
+            StateFp.Out o = new StateFp.Out();
+            if (u.equals("tr.files")) { o.w("nextFree", nextFree(tr.mem.store)); o.w("files", StateFpM3.filesScan(tr.mem.store)); }
+            else StateFpM3.unit(o, tr, u, c);
+            sb.append(' ').append(hx(o.done()));
+        }
+        return sb.toString();
+    }
 
     // ================================================================ reflection (the observation and the store)
     static Field f(Class<?> c, String n) {
@@ -414,6 +430,8 @@ public final class TracerConf {
         void flushGroup() { if (gOpen) { out.println("c " + id + " " + gT0 + " " + gN + " " + gSig); out.println("o " + id + gObs); gOpen = false; } }
         /** The cycle ends with runCycle(t): extend the open group or start one. */
         void endCycle(long t) {
+            if (++cycles % FP_EVERY == 0) out.println("fp " + id + " " + t + fingerprint(x, t));
+            lastT = t;
             String s = sig(t), o = observe(x), k = key(o);
             if (gOpen && s.equals(gSig) && k.equals(gKey) && t == gT0 + gN) { gN++; gObs = o; }
             else { flushGroup(); gOpen = true; gSig = s; gKey = k; gObs = o; gT0 = t; gN = 1; }
@@ -427,7 +445,12 @@ public final class TracerConf {
             out.println("c " + id + " " + a + " 1 " + sig(a)); out.println("o " + id + observe(x));
             callT.clear(); callTok.clear();
         }
-        void close() { if (started) flushPartial(); }
+        void close() {
+            if (!started) return;
+            flushPartial();
+            if (lastT != Long.MIN_VALUE) out.println("fe " + id + " " + lastT + fingerprint(x, lastT));
+        }
+        long cycles, lastT = Long.MIN_VALUE;
         <R> R ub(java.util.function.Supplier<R> call) {
             try { return call.get(); }
             catch (UndefinedBehavior e) {

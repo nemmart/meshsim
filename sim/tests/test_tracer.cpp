@@ -24,6 +24,7 @@
 
 #include "base/alloc_guard.h"
 #include "harness.h"
+#include "statefp.h"
 #include "units/file_store.h"
 #include "units/mem_system.h"
 #include "units/tracer.h"
@@ -72,6 +73,8 @@ auto guarded(F f) {
 }
 
 struct Rig {
+    std::map<int64_t, std::string> fp_due;  // cycle -> ref's five unit hashes, compared after that cycle
+    std::string fe;                         // the end's check: "c h0 .. h4"
     std::unique_ptr<FileStore> fs;
     std::unique_ptr<MemSystem> ms;
     std::unique_ptr<Tracer> tr;
@@ -140,6 +143,10 @@ public:
             } else if (f[0] == "F") {
                 cur_dump_ = &r.dumps[int(dec(f[2]))];
                 cur_dump_->push_back(line);
+            } else if (f[0] == "fp") {
+                r.fp_due[dec(f[2])] = line.substr(line.find(' ', line.find(' ', 3) + 1) + 1);
+            } else if (f[0] == "fe") {
+                r.fe = line.substr(line.find(' ', 3) + 1);
             } else if (f[0] == "P" || f[0] == "Z") {
                 if (!cur_dump_) { fail("a page line outside a dump"); return; }
                 cur_dump_->push_back(line);
@@ -149,7 +156,16 @@ public:
             }
         }
         if (!pending_c.empty() && !failed) fail("a group without its observation at the end");
+        for (auto& [id, r] : rigs_) {
+            if (failed) return;
+            if (!r.fp_due.empty() && !r.dead) { fail("rig %d: a fingerprint at cycle %lld never reached", id, (long long)r.fp_due.begin()->first); return; }
+            if (!r.fe.empty() && !r.dead) {
+                const size_t sp = r.fe.find(' ');
+                if (!check_fp(r, dec(r.fe.substr(0, sp)), r.fe.substr(sp + 1))) return;
+            }
+        }
     }
+    int64_t fps = 0;
 
 private:
     // A store dump: dump 0 (the rig's first) builds the store, when the rig's first group runs (its pages follow its F
@@ -196,6 +212,7 @@ private:
             }
         }
         if (expect != next) { fail("dump %d: pages end at 0x%llx, next free 0x%llx", k, (long long)expect, (long long)next); return false; }
+        r.fs->track_sum(true);  // the dump wrote the pages directly: rescan, then keep it at every write-back
         return true;
     }
 
@@ -321,6 +338,25 @@ private:
         return false;
     }
 
+    // The five units' fingerprints at the end of cycle c against ref's (AUDIT-M3 6.6); tr.files kept incrementally
+    // must equal its scan.
+    bool check_fp(Rig& r, int64_t c, const std::string& want) {
+        const auto h = split(want, ' ');
+        if (h.size() != size_t(Tracer::FP_UNITS)) { fail("a fingerprint of %zu units", h.size()); return false; }
+        if (r.fs->files_sum() != r.fs->scan_sum()) { fail("cycle %lld: tr.files kept incrementally differs from its scan", (long long)c); return false; }
+        for (int u = 0; u < Tracer::FP_UNITS; u++) {
+            fp::FpOut o;
+            r.tr->fingerprint(u, o, c);
+            if (o.done() != hx(h[size_t(u)])) {
+                fail("cycle %lld: fingerprint unit %s: ref %s, ours %llx (dump both sides to find the word)", (long long)c,
+                     Tracer::FP_NAMES[u], h[size_t(u)].c_str(), (unsigned long long)o.done());
+                return false;
+            }
+        }
+        fps++;
+        return true;
+    }
+
     bool compare_obs(Rig& r, const std::vector<std::string>& o, bool counters, int64_t t) {
         int64_t ours[Tracer::OBS_N];
         r.tr->observe(ours);
@@ -353,6 +389,10 @@ private:
                 if (!tk.empty() && !call(r, tk, t0 + i)) return;
             cycles++;
             if (r.dead) return;  // the step raised UB in ref: its state is no reference any more
+            if (!r.fp_due.empty() && r.fp_due.begin()->first == t0 + i) {
+                if (!check_fp(r, t0 + i, r.fp_due.begin()->second)) return;
+                r.fp_due.erase(r.fp_due.begin());
+            }
             if (!compare_obs(r, o, i == n - 1, t0 + i)) return;
         }
     }
@@ -382,8 +422,9 @@ Replay replay_file(const std::string& path, const char* name) {
     Replay rp(name);
     if (!ok) { ::test::fail(__FILE__, __LINE__, "cannot read %s", path.c_str()); rp.failed = true; return rp; }
     rp.run(text);
-    std::printf("  %s: %lld groups, %lld cycles, %lld calls, %lld fatal refusals%s\n", name, (long long)rp.groups,
-                (long long)rp.cycles, (long long)rp.calls, (long long)rp.ubs, rp.failed ? "" : ", all equal to ref");
+    std::printf("  %s: %lld groups, %lld cycles, %lld calls, %lld fatal refusals, %lld fingerprints%s\n", name,
+                (long long)rp.groups, (long long)rp.cycles, (long long)rp.calls, (long long)rp.ubs, (long long)rp.fps,
+                rp.failed ? "" : ", all equal to ref");
     return rp;
 }
 
@@ -394,6 +435,7 @@ TEST(tracer_test_cases_equal_ref_every_cycle) {
     CHECK(!rp.failed);
     CHECK(rp.cycles > 1000000);
     CHECK_EQ(rp.ubs, int64_t(3));
+    CHECK(rp.fps > 1000);
 }
 
 // TracerConf's seeded guests (tracerconf.sh GENS): the mix family (loops, calls, every width, RVC, MUL, DIV and its
@@ -405,6 +447,7 @@ TEST(tracer_test_cases_equal_ref_every_cycle) {
         CHECK(!rp.failed);                                                    \
         CHECK(rp.cycles > (min_cycles));                                      \
         CHECK_EQ(rp.ubs, int64_t(fatal));                                     \
+        CHECK(rp.fps > 10);                                                   \
     }
 GEN_FIXTURE(tracerconf_mix_seed1, "mix-s1.log.gz", 10000, 0)
 GEN_FIXTURE(tracerconf_mix_seed3, "mix-s3.log.gz", 10000, 0)

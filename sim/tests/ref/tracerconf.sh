@@ -28,7 +28,7 @@ build() {
          -e "s/\\btr\\.($FIELDS)\\b/tr.x.\\1/g" "$REF/test/TracerTest.java" > "$1/src/TracerConfCases.java"
   grep -q 'TracerConf.Rec tr = new TracerConf.Rec' "$1/src/TracerConfRig.java" || { echo "tracerconf: the rig's Tracer was not replaced"; exit 2; }
   javac -nowarn -d "$1" -sourcepath "$REF/test" "$REF"/src/*.java \
-        "$SIM"/tests/ref/TracerConf.java "$1"/src/*.java 2>&1 | grep -v '^Note:'
+        "$SIM"/tests/ref/StateFp.java "$SIM"/tests/ref/StateFpM3.java "$SIM"/tests/ref/TracerConf.java "$1"/src/*.java 2>&1 | grep -v '^Note:'
   [ -f "$1/TracerConf.class" ] || { echo "tracerconf: the driver did not compile"; exit 2; }
 }
 cases() {   # B DIR: TracerTest's cases recorded

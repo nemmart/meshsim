@@ -189,7 +189,26 @@ void FileStore::read_line(int32_t line_addr, uint64_t* out) const {
     std::memcpy(out, page(line_addr & ~31) + 16 * (line_addr & 31), 16 * sizeof(uint64_t));
 }
 void FileStore::write_line(int32_t line_addr, const uint64_t* in) {
-    std::memcpy(page(line_addr & ~31) + 16 * (line_addr & 31), in, 16 * sizeof(uint64_t));
+    uint64_t* d = page(line_addr & ~31) + 16 * (line_addr & 31);
+    if (tracking_) {
+        const uint64_t base = uint64_t((line_addr & ~31) - 0) / PAGE_UNITS * PAGE_WORDS + 16 * uint64_t(line_addr & 31);
+        for (int i = 0; i < 16; i++) {
+            if (d[i] != 0) sum_ -= term64(R_FILES, base + uint64_t(i), d[i]);
+            if (in[i] != 0) sum_ += term64(R_FILES, base + uint64_t(i), in[i]);
+        }
+    }
+    std::memcpy(d, in, 16 * sizeof(uint64_t));
+}
+
+uint64_t FileStore::scan_sum() const {
+    uint64_t s = 0;
+    for (int64_t a = first_; a < next_free_; a += PAGE_UNITS) {
+        const uint64_t* p = page(int32_t(a));
+        const uint64_t base = uint64_t(a) / PAGE_UNITS * PAGE_WORDS;
+        for (int i = 0; i < PAGE_WORDS; i++)
+            if (p[i] != 0) s += term64(R_FILES, base + uint64_t(i), p[i]);
+    }
+    return s;
 }
 
 uint64_t FileStore::load64(File f, int64_t off) const {

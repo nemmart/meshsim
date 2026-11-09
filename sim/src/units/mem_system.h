@@ -125,6 +125,33 @@ public:
         return now;
     }
 
+    // The fingerprint's `tr.mem` (AUDIT-M3 6.6): max(busyUntil, c); the write buffer's completions after c; each set
+    // holding a valid way, its 8 ways (tag, dirty, rank by stamp among the valid ways; -1, 0, -1 for an invalid way).
+    template <class Out>
+    void fingerprint(Out& o, int64_t c) const {
+        o.w("busyUntil", uint64_t(busy_until_ > c ? busy_until_ : c));
+        int live = 0;
+        for (int k = 0; k < wb_count_; k++) if (wb_done_[(wb_head_ + k) % WB_RING] > c) live++;
+        o.w("wb.n", uint64_t(live));
+        for (int k = 0; k < wb_count_; k++) {
+            const int64_t d = wb_done_[(wb_head_ + k) % WB_RING];
+            if (d > c) o.w("wb", uint64_t(d));
+        }
+        for (int s = 0; s < SETS; s++) {
+            const int b = s * WAYS;
+            bool any = false;
+            for (int w = 0; w < WAYS; w++) if (tag_[b + w] >= 0) { any = true; break; }
+            if (!any) continue;
+            o.w("set", uint64_t(s));
+            for (int w = 0; w < WAYS; w++) {
+                if (tag_[b + w] < 0) { o.w("tag", ~uint64_t(0)); o.w("dirty", 0); o.w("rank", ~uint64_t(0)); continue; }
+                int rank = 0;
+                for (int v = 0; v < WAYS; v++) if (v != w && tag_[b + v] >= 0 && stamp_[b + v] < stamp_[b + w]) rank++;
+                o.w("tag", uint64_t(int64_t(tag_[b + w]))); o.w("dirty", dirty_[b + w] ? 1 : 0); o.w("rank", uint64_t(rank));
+            }
+        }
+    }
+
 private:
     // One access of LPDDR line a at t; returns the cycle it completes. write: a whole-line write (Q13).
     int64_t access(int64_t t, int32_t a, bool write, bool index, int cls) {

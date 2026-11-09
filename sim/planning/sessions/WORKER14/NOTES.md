@@ -5,8 +5,8 @@ The Tracer. Branch `sim-w14`. Prompt: `PROMPT.md`.
 ## Status
 
 **Plan agreed (owner, 2026-11-09): go-ahead.** Step 1 (the pure pieces) done (section 5). Step 2 (the Tracer as a class)
-done and equal to `ref` every cycle on TracerTest's cases (section 6). Next: TracerConf's seeded stimulus (step 3), with
-the write buffer filled to its depth; then T1 on the runner; the ports when AUDIT-M3 3.3 lands.
+done (section 6). Step 3 (TracerConf's seeded guests, section 7) and the fingerprint writer (section 8) done, all equal to
+`ref`. Next: T1 on the runner; wiring through W15's slot (AUDIT-M3 3.3).
 
 ## 1. What the oracle is
 
@@ -174,9 +174,28 @@ it.
   range); wb seed 1 (25 lines queued); wbover seed 1 (the overflow). All equal to `ref`, every cycle. Fixtures
   3.0 MB with the cases. **Long runs:** `tracerconf.sh SEEDS OUT`, then `TRACERCONF_LONG=OUT test_tracer long`.
 
+## 8. The fingerprint (AUDIT-M3 6.6)
+
+- **The writer** is a template on each unit, so their state stays private: `Tracer::fingerprint(unit, Out&, c)` for
+  `tr` (all eleven parts of 6.6, in order, with 6's rules: max(v, c), "none", the inputs not yet in effect from the
+  Tracer's own rings), `tr.ic` and `tr.dc` (eldest to newest), `tr.mem` (`MemSystem::fingerprint`: the write buffer's
+  live completions, each valid set's ways with their LRU rank), `tr.files` (`nextFree` and the region-11 sum).
+  `Out` is W8's `fp::FpOut` (or any sink with `w`/`wi`).
+- **`tr.files` incrementally:** `FileStore::track_sum(true)` keeps the sum at every `write_line` (16 words: old terms
+  out, new in); off by default (only when fingerprints are wanted). The replay checks it against a full scan at every
+  fingerprint.
+- **Checked against `ref`'s StateFpM3** through TracerConf: `fp` lines every 2,000 cycles (cases) or 250 (seeded), and
+  `fe` at each rig's end, `ref`'s hashes taken right after `runCycle(c)`. **1,740 points over the ten fixtures, all
+  equal** (the incremental files sum included); a swapped pair of words fails at the first point.
+- **For W13:** TracerConf takes `tr.files` as the scan 6.6 defines, not StateFpM3's cached `files()`: the cache is keyed
+  by the memory system's writes and the state writes, so a harness's own store edits between calls (TracerTest's
+  map-hole case allocates a page) would read a stale sum. T2 makes no such edits, so it doesn't matter there.
+- **Long runs** (local, before the fingerprint lines): mix seeds 1-40 and wb 1-3, 43 logs, all equal.
+
 ## Log
 
 - 2026-11-09: plan agreed; branch `sim-w14` from main 1a898aa.
 - 2026-11-09: step 1 done (section 5); `test_tracer_parts` passes in all four builds, `tracerparts.sh --check` equal.
 - 2026-11-09: step 2 done (section 6): the Tracer equal to `ref` every cycle on TracerTest's cases. Merged into main.
 - 2026-11-09: step 3: the seeded fixtures (section 7) equal to `ref`; the write buffer past its depth and at the overflow.
+- 2026-11-09: the fingerprint writer (section 8), equal to StateFpM3 at 1,740 points.

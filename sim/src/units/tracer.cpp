@@ -346,7 +346,7 @@ void Tracer::row(int64_t T) {
             if (stopped_) return;
             in.fetched = true;
             if (ready > T) {
-                wait_until_ = ready; wait_cause_ = S_IFETCH; stalls[S_IFETCH]++; stat[ST_STALL_FETCH]++;
+                wait_until_ = ready; wait_cause_ = S_IFETCH; wait_set_ = true; stalls[S_IFETCH]++; stat[ST_STALL_FETCH]++;
                 return;
             }
         }
@@ -727,7 +727,7 @@ void Tracer::start_drain(int64_t T) {
     comp0_ = sz[0].compressed; comp1_ = sz[1].compressed; comp2_ = sz[2].compressed;
     set2_code_.reset(); set2_rlog_.reset(); set2_wlog_.reset();
     for (int q = 1; q <= 3; q++) oq[q].reset();
-    pk_code_.reset(); pk_rlog_.reset(); pk_wlog_.reset();
+    pk_code_.reset(); pk_rlog_.reset(); pk_wlog_.reset(); pk_made_ = true;
     code_scan_ = log_scan_ = 0; code_ended_ = log_ended_ = scans_done_ = done_ = false;
 }
 

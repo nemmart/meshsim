@@ -147,6 +147,12 @@ public:
     static constexpr int OBS_N = 16 + 10 + 8 + 7 + 6 + 2 + 1 + 11;
     void observe(int64_t out[OBS_N]) const;
 
+    // The canonical fingerprint (AUDIT-M3 6.6; ref's side StateFpM3): unit 0 `tr`, 1 `tr.ic`, 2 `tr.dc`, 3 `tr.mem`,
+    // 4 `tr.files`, at the end of cycle c. Out: FpOut (tests/statefp.h) or any sink with w(name, v) and wi(name, i, v).
+    static constexpr int FP_UNITS = 5;
+    static constexpr const char* FP_NAMES[FP_UNITS] = {"tr", "tr.ic", "tr.dc", "tr.mem", "tr.files"};
+    template <class Out> void fingerprint(int unit, Out& o, int64_t c) const;
+
     // ---- the FIFOs (4.21.6)
     uint32_t* code_fifo = nullptr;  // MAX_ROWS each
     uint64_t* log_fifo = nullptr;
@@ -286,6 +292,8 @@ private:
     int rows_target_ = 0, rows_done_ = 0;
     int64_t start_at_ = 0, busy_until_ = INT64_MIN, wait_until_ = INT64_MIN;
     int wait_cause_ = 0;
+    bool wait_set_ = false;  // ref's waitCause is null until the first fetch stall
+    bool pk_made_ = false;   // ref's packers are null until the first drain
     uint32_t presented_ = 0;
     int expansion_offset_ = 0;
     int latch_ = -1;
@@ -325,6 +333,111 @@ private:
     int64_t xfer_queue_ = -1, xfer_left_ = 0;
     int64_t push_t_ = 0;
 };
+
+template <class Out>
+void Tracer::fingerprint(int unit, Out& o, int64_t c) const {
+    auto mx = [c](int64_t v) { return uint64_t(v > c ? v : c); };
+    const uint64_t NONE = ~uint64_t(0);
+    auto cache = [&o](const LruIndex& ix, const Line* lines) {
+        o.w("lines", uint64_t(ix.size()));
+        for (int s = ix.eldest(); s >= 0; s = ix.next(s)) {
+            o.w("line", ix.key(s));
+            for (int k = 0; k < 16; k++) o.wi("d", unsigned(k), lines[s].d[k]);
+            o.w("dirty", lines[s].dirty ? 1 : 0); o.w("writable", lines[s].writable ? 1 : 0);
+        }
+    };
+    auto coder = [&o](const LruCoder& k) { for (int i = 0; i < 16; i++) o.wi("e", unsigned(i), k.table()[i]); };
+    switch (unit) {
+        case 1: cache(icache_, iline_); return;
+        case 2: cache(dcache_, dline_); return;
+        case 3: mem->fingerprint(o, c); return;
+        case 4: o.w("nextFree", uint64_t(mem->store->next_free())); o.w("files", mem->store->files_sum()); return;
+        default: break;
+    }
+    // 1. registers
+    const uint32_t regs[7] = {run_config_, hash_mul_, hash_step_, hash_lines_, length_code_, length_rlog_, length_wlog_};
+    for (uint32_t v : regs) o.w("reg", uint64_t(int64_t(int32_t(v))));
+    // 2. the record
+    for (int k = 0; k < REC_WORDS * 2; k++) o.wi("rec", unsigned(k), rec[k]);
+    // 3. the decode table and the ROM, as memory sums
+    uint64_t sd = 0, sr = 0;
+    for (int k = 0; k < 2048; k++) if (decode_table[k]) sd += FileStore::term64(12, uint64_t(k), decode_table[k]);
+    o.w("decodeTable", sd);
+    for (int j = 0; j < 512; j++) {
+        if (rom_lo[j]) sr += FileStore::term64(13, 2 * uint64_t(j), rom_lo[j]);
+        if (rom_hi[j]) sr += FileStore::term64(13, 2 * uint64_t(j) + 1, rom_hi[j]);
+    }
+    o.w("rom", sr);
+    // 4. the input queues
+    o.w("rq.occ", uint64_t(rq_occ_)); o.w("rqHalf", uint64_t(rq_half_)); o.w("rqPopped", uint64_t(rq_popped_));
+    for (int k = 0; k < rq_occ_; k++) { const int i = (rq_head_ + k) % QCAP; o.w("rq.lo", rq_lo_[i]); o.w("rq.hi", rq_hi_[i]); }
+    o.w("eq.occ", uint64_t(eq_occ_)); o.w("eqPopped", uint64_t(eq_popped_));
+    for (int k = 0; k < eq_occ_; k++) { const int i = (eq_head_ + k) % QCAP; o.w("eq.lo", eq_lo_[i]); o.w("eq.hi", eq_hi_[i]); }
+    // 5. the core
+    o.w("running", running_); o.w("stopped", stopped_); o.w("rowsEnded", rows_ended_); o.w("drained", drained_);
+    o.w("done", done_); o.w("rowsTarget", uint64_t(rows_target_)); o.w("rowsDone", uint64_t(rows_done_));
+    o.w("startAt", mx(start_at_)); o.w("busyUntil", mx(busy_until_)); o.w("waitUntil", mx(wait_until_));
+    o.w("waitCause", wait_until_ > c && wait_set_ ? uint64_t(wait_cause_) : NONE);
+    o.w("presented", uint64_t(int64_t(int32_t(presented_)))); o.w("expansionOffset", uint64_t(int64_t(expansion_offset_)));
+    o.w("latch", uint64_t(int64_t(latch_))); o.w("templateStored", template_stored_);
+    o.w("bitmap0", bitmap_[0]); o.w("bitmap1", bitmap_[1]);
+    o.w("expDiscard", uint64_t(exp_discard_));
+    o.w("statUntil", mx(stat_until_)); o.w("statCause", stat_until_ > c ? uint64_t(stat_cause_) : NONE);
+    o.w("errors", uint64_t(errors_));
+    if (!cur_.valid) o.w("cur", 0);
+    else {
+        o.w("cur", 1); o.w("cur.w", uint64_t(int64_t(int32_t(cur_.w)))); o.w("cur.kind", cur_.kind); o.w("cur.start", cur_.start);
+        o.w("cur.rd0", cur_.rd0); o.w("cur.offset", cur_.offset); o.w("cur.cls", uint64_t(int64_t(cur_.cls)));
+        o.w("cur.nextRow", uint64_t(int64_t(cur_.next_row))); o.w("cur.ctrlFirstSeen", cur_.ctrl_first_seen);
+        o.w("cur.fetched", cur_.fetched); o.w("cur.presented", cur_.presented);
+        o.w("cur.codeThisRun", cur_.code_run == run_id_ ? 1 : 0);
+    }
+    // 6. the events' counts
+    for (unsigned b = 0; b < EV_BITS; b++) o.wi("ev", b, ev.count_of(b));
+    // 7. the statistics counters
+    for (int k = 0; k < STAT_N; k++) o.wi("stat", unsigned(k), stat[k]);
+    // 8. the jump LRU, eldest to newest
+    o.w("lru.n", uint64_t(jump_lru_.size()));
+    for (int s = jump_lru_.eldest(); s >= 0; s = jump_lru_.next(s)) { o.w("lru.pc", jump_lru_.key(s)); o.w("lru.base", uint64_t(uint32_t(jump_base_[s]))); }
+    // 9. the FIFOs and set 1
+    o.w("codeN", uint64_t(code_n));
+    for (int k = 0; k < code_n; k++) o.w("code", code_fifo[k]);
+    o.w("logN", uint64_t(log_n));
+    for (int k = 0; k < log_n; k++) { o.w("log", log_fifo[k]); o.w("tag", log_tag[k]); }
+    o.w("rlogValues", uint64_t(rlog_values_)); o.w("wlogValues", uint64_t(wlog_values_));
+    for (const LruCoder* k : {&set1_code_, &set1_rlog_, &set1_wlog_}) { coder(*k); o.w("bits", uint64_t(k->bits)); }
+    // 10. the output path
+    o.w("q0ptr", uint64_t(q0ptr_)); o.w("scanStart", mx(scan_start_));
+    o.w("scansDone", scans_done_); o.w("codeScan", uint64_t(code_scan_)); o.w("logScan", uint64_t(log_scan_));
+    o.w("comp0", comp0_); o.w("comp1", comp1_); o.w("comp2", comp2_); o.w("codeEnded", code_ended_); o.w("logEnded", log_ended_);
+    o.w("xferQueue", uint64_t(xfer_queue_)); o.w("xferLeft", uint64_t(xfer_left_));
+    for (const LruCoder* k : {&set2_code_, &set2_rlog_, &set2_wlog_}) coder(*k);
+    for (const Bits* b : {&pk_code_, &pk_rlog_, &pk_wlog_}) {
+        if (!pk_made_) { o.w("pk", 0); continue; }
+        o.w("pk", 1); o.w("pk.lo", b->lo); o.w("pk.hi", b->hi); o.w("pk.fill", uint64_t(b->fill)); o.w("pk.words", uint64_t(b->words));
+    }
+    for (int q = 1; q <= 3; q++) {
+        const OutQueue& x = oq[q];
+        o.w("oq.occ", uint64_t(x.occ));
+        for (int k = 0; k < x.occ; k++) { const int i = (x.head + k) % QCAP; o.w("oq.lo", x.lo[i]); o.w("oq.hi", x.hi[i]); }
+        o.w("oq.pushed", uint64_t(x.pushed)); o.w("oq.read", uint64_t(x.read)); o.w("oq.granted", uint64_t(x.granted));
+        for (int k = 0; k < x.granted; k++) o.w("oq.bound", uint64_t(x.bound[k]));
+        o.w("oq.ended", x.ended ? 1 : 0);
+    }
+    // 11. inputs not yet in effect
+    o.w("landing.n", uint64_t(landing_.n));
+    for (int k = 0; k < landing_.n; k++) {
+        const Input& x = landing_.e[(landing_.head + k) % INPUTS];
+        o.w("e", uint64_t(x.t)); o.w("src", uint64_t(int64_t(x.kind))); o.w("offset", uint64_t(int64_t(x.a)));
+        o.w("size", uint64_t(int64_t(x.b))); o.w("lo", x.lo); o.w("hi", x.hi);
+    }
+    o.w("inputs.n", uint64_t(inputs_.n));
+    for (int k = 0; k < inputs_.n; k++) {
+        const Input& x = inputs_.e[(inputs_.head + k) % INPUTS];
+        o.w("e", uint64_t(x.t)); o.w("kind", uint64_t(int64_t(x.kind))); o.w("word", uint64_t(int64_t(x.a)));
+        o.w("value", uint64_t(uint32_t(x.b)));
+    }
+}
 
 }  // namespace tracer
 }  // namespace units

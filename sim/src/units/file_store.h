@@ -16,6 +16,8 @@
 #include <functional>
 #include <vector>
 
+#include "units/memsum.h"
+
 namespace units {
 namespace tracer {
 
@@ -79,6 +81,17 @@ public:
     // The doubleword at byte offset off of file f (0 in a hole): tools and tests.
     uint64_t load64(File f, int64_t off) const;
 
+    // ---- the fingerprint (AUDIT-M3 6.6, tr.files): Σ fmix64(fmix64(11 << 56 ^ index) ^ v) over the non-zero words,
+    // index (page address / 32) × 512 + i. `track_sum` keeps it at every write (a write-back changes 16 words); else
+    // `files_sum` scans. Only when fingerprints are wanted (as W11's BigSram).
+    static uint64_t term64(uint32_t region, uint64_t index, uint64_t v) {
+        return units::fmix64(units::fmix64(uint64_t(region) << 56 ^ index) ^ v);
+    }
+    static constexpr uint32_t R_FILES = 11;
+    void track_sum(bool on) { tracking_ = on; if (on) sum_ = scan_sum(); }
+    uint64_t files_sum() const { return tracking_ ? sum_ : scan_sum(); }
+    uint64_t scan_sum() const;
+
     // ---- restoring a store page by page (a test's replay of `ref`'s store): configuration only
     int32_t first() const { return first_; }
     int64_t next_free() const { return next_free_; }
@@ -102,6 +115,8 @@ private:
     void for_each(int32_t a, int levels, int64_t prefix, const std::function<void(int64_t, const uint64_t*)>& fn) const;
     static int digit(int64_t pg, int level, int depth) { return int(uint64_t(pg) >> (10 * (depth - 1 - level))) & 1023; }
 
+    bool tracking_ = false;
+    uint64_t sum_ = 0;
     int32_t first_;
     int64_t next_free_;
     std::vector<uint64_t> words_;  // page k (address first_ + 32 k) at words_[512 k]

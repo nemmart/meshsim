@@ -338,31 +338,44 @@ never derived from the partition): **0** exact as `ref` (every sender in the bus
 cycles where it would differ from `ref` and every run reports the count; ReqConf checks mode 0 against `ref` every
 cycle on all traffic, and mode 3 against `ref` on the traffic without backpressure.
 
-**The design** (`src/units/reqbus.h`, `.cpp`):
-- `ReqLeaf` (a port's send side, `RequestPort`'s FIFO, `beatsSent`, `freedAt`): fed by its core's REQUEST_SEND over
-  `push` (Link(1), the request's four words; `ref`: a push at t is the bus's from t + 1); drives `freed` (a Wire to its
-  core, the head freed at t: `canPush`'s `freedAt == t`) and `freed_ev` (Link(1) to its register block: the FIFO's
-  count, STATUS [6], EVENTS [11]). Mode 3: a unit per sender in its tile's domain, beats to the tree over Link(3) and
-  credits back over Link(3). Mode 0: inside the bus unit, against the buffers directly.
-- `ReqTree` (the row nodes, the root, the credits, the drops), unit `reqbus`. Event-driven: stepped while a beat, a
-  request or a credit is in it, asleep otherwise; nothing scans the 64 tiles.
-- `ReqRecv` (a target's receive queue, C&C c + 1's receive side), one per controller in its domain: the delivered
-  request arrives over Link(3) (`ref`'s `toReceiver`), the head published in a RegFile {pending, w0-w3} as a load at t
-  sees it (delivered before t), the pop arrives from the core over Link(1) and returns its credit to the root over
-  Link(1) in mode 0, Link(3) in mode 3. A queued request wakes the controller.
+**The design** (`src/units/reqbus.h`; approved changes, owner 2026-11-09: `ref`'s own structure, forced by the
+framework's 64 inputs a unit; the root its own type, for levels):
+- `ReqLeaf` (a sender's port: `RequestPort`'s FIFO, the leaf link), one per sender in its tile's domain: `push`
+  (Link(1), from its core), `freed` (Wire to its core: the head freed at t, `canPush`), `freed_ev` (Link(1) to its
+  register block: the FIFO's count, STATUS [6], EVENTS [11]); beats to its node over Link(3).
+- `ReqNode` × 8 (the row nodes, `reqbus.row<r>`) and `ReqRoot` (`reqbus.root`): `ref`'s Buf per input, round-robin,
+  wormhole, the requestor stamped, the root's credits and drops. Event-driven: stepped while a beat or request is in
+  it, asleep otherwise.
+- `ReqRecv` × 3 (`cc<c+1>.reqrecv`), in its controller's domain: the delivery over Link(3), the head published in a
+  RegFile {pending, w0-w3} as a load at t sees it, the pop over Link(1).
+- **Room**: mode 0, each node publishes its forwarded beats per input in a RegFile written first in its step (levels:
+  root < rows < leaves < cores; same domain, so a split is refused at build); mode 3, credits over Link(3), with the
+  D29 count (`lag_cycles`, retroactive and exact: a blocked cycle counts when the credits then arriving show `ref`
+  would have had room).
+- **The queue credit**: the controller core's pop also puts the root's credit (Link(1) in mode 0, `ref`'s next cycle;
+  Link(3) in mode 3).
 
-**The ports W16 wires, per controller C&C c (c = 0-2)** (proposal):
-| port | from | to | kind |
+**Checked** (`tests/test_reqbus.cpp`, `tests/ref/ReqConf.java`, `reqconf.sh`, `tests/reqconf/`: mix, calm, full,
+fanin, drop; 1 MB): mode 0 equal to `ref` every cycle (every call's result; the `reqbus` and the 67 `req` streams) on
+all five, plain, step-all, shuffled, all four builds; mode 3 equal on calm (one request in the bus at a time),
+`lag_cycles` 0, and 993-2,098 on the others; mode 3 split over five domains equal to one domain; mode 0 split refused
+at build. Teeth: the root's credit check and the leaf's room check each fail when planted.
+
+**The ports W16 wires, per controller C&C c (c = 0-2)** (one round; the tiles' are the same send side, wired by the
+chip builder): `ControlIO` gains a request side, filled by `add_g1` (W8's builder, which W16's controllers use):
+| `ControlIO` field | unit port | to / from | kind |
 |---|---|---|---|
-| `push` | `cc<c>.core` | `cc<c>.reqleaf` (mode 3) / `reqbus` (mode 0) | Link(1), width 2 |
-| `freed` | the leaf | `cc<c>.core` | Wire |
-| `freed_ev` | the leaf | `cc<c>.ctl` (the register block) | Link(1), width 0 |
-| `recv` | `cc<c>.reqrecv` | `cc<c>.core` | RegFile (5) |
-| `recv_pending` | `cc<c>.reqrecv` | `cc<c>.ctl` | Link(1), width 1 (the pending level's changes: EVENTS [12] and WFI's wake) |
-| `pop` | `cc<c>.core` | `cc<c>.reqrecv` | Link(1), width 0 |
-The tiles get the same send side (`push`, `freed`, `freed_ev`); their receive side reads 0 and REQUEST_RECEIVE sets
-receive underflow (ERRORS [14]), as `ref`. A builder function adds the bus, the leaves and the receivers and wires them
-to the cores and blocks it is given (W16 calls it from the chip builder; mesh-only builds call it too).
+| `req.push` | the core's `req_push` | → `t<k>.reqleaf` / `cc<c+1>.reqleaf` `push` | Link(1), width 2 |
+| `req.freed` | the core's `req_freed` | ← the leaf's `freed` | Wire |
+| `req.freed_ev` | the block's `req_freed_ev` | ← the leaf's `freed_ev` | Link(1), width 0 |
+| `req.recv` (controllers) | the core's `recv` | ← `cc<c+1>.reqrecv` `head` | RegFile (5) |
+| `req.pop` (controllers) | the core's `recv_pop` | → the queue's `pop` | Link(1), width 0 |
+| `req.qcredit` (controllers) | the core's `recv_credit` | → `reqbus.root` `qcredit<c>` | Link(`io.queue_credit_latency()`), width 1 |
+`units::reqbus::add_reqbus(cfg, rc, tiles, ccs, placement)` adds the bus; `wire_reqbus(cfg, io, k, ControlIO&)` wires
+sender k (a tile 0-63, or 64 + c) and, for a controller, its receive side. Placement (`ReqBusPlacement`): each leaf in
+its sender's domain, each queue in its controller's, the nodes anywhere (mode 3); everything in one domain (mode 0).
+The mode is `reqbus_credit_latency` in the chip's configuration, set explicitly (D34), and every run reports
+`lag_cycles`.
 
 **Changes to closed workers' files** (listed as I make them): W8's `tile_ctl.h` (the core's push, freed, receive and
 pop ports; the block's `freed_ev` and `recv_pending`), W5's `rv32.h` (REQUEST_GET/RECEIVE loads, the EVENTS live

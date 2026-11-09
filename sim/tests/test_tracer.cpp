@@ -108,16 +108,18 @@ public:
         failed = true;
     }
 
-    void run(const std::string& text) {
-        size_t a = 0;
+    // Reads the log line by line (a file, a pipe or a FIFO being written: logs of real runs are too big to hold).
+    void run(FILE* in) {
         std::string pending_c;
         size_t pending_c_no = 0;
-        while (a < text.size() && !failed) {
-            size_t b = text.find('\n', a);
-            if (b == std::string::npos) b = text.size();
-            const std::string line = text.substr(a, b - a);
-            a = b + 1;
+        char* buf = nullptr;
+        size_t cap = 0;
+        ssize_t len;
+        while (!failed && (len = getline(&buf, &cap, in)) >= 0) {
+            std::string line(buf, size_t(len));
+            if (!line.empty() && line.back() == '\n') line.pop_back();
             line_no_++;
+            if (line.compare(0, 5, "# end") == 0) ended = true;
             if (line.empty() || line[0] == '#') continue;
             if (line[0] == 'c') {
                 pending_c = line;
@@ -155,6 +157,8 @@ public:
                 return;
             }
         }
+        while (failed && getline(&buf, &cap, in) >= 0) {}  // a writer on a FIFO must not block on a reader that stopped
+        std::free(buf);
         if (!pending_c.empty() && !failed) fail("a group without its observation at the end");
         for (auto& [id, r] : rigs_) {
             if (failed) return;
@@ -166,6 +170,7 @@ public:
         }
     }
     int64_t fps = 0;
+    bool ended = false;  // the log's "# end" line: ref's run finished (not cut off)
 
 private:
     // A store dump: dump 0 (the rig's first) builds the store, when the rig's first group runs (its pages follow its F
@@ -334,6 +339,18 @@ private:
             return h == hx(res) ? true : mismatch(b);
         }
         if (name == "F") return load_dump(r, int(dec(args[1])), false);
+        if (name == "O") {  // FileStore.setOwnership by the harness (TracerT1): made here too
+            FileStore::File f;
+            f.root = int32_t(dec(args[1]));
+            f.depth = int(dec(args[2]));
+            std::vector<int64_t> pages;
+            for (size_t k = 3; k < args.size(); k++) pages.push_back(dec(args[k]));
+            const int n = r.fs->set_ownership(f, pages);
+            r.fs->track_sum(true);  // set_ownership edits entries directly: rescan
+            return n == dec(res) ? true : mismatch(std::to_string(n));
+        }
+        if (name == "mc") { r.ms->cold(); return true; }
+        if (name == "cs") { for (auto& x : tr.stalls) x = 0; return true; }
         fail("an unknown token %s", tok0.c_str());
         return false;
     }
@@ -414,14 +431,16 @@ std::string read_cmd(const std::string& cmd, bool* ok) {
     *ok = pclose(f) == 0;
     return r;
 }
-std::string read_gz(const std::string& path, bool* ok) { return read_cmd("gzip -dc " + path, ok); }
 
 Replay replay_file(const std::string& path, const char* name) {
-    bool ok = false;
-    const std::string text = read_gz(path, &ok);
     Replay rp(name);
-    if (!ok) { ::test::fail(__FILE__, __LINE__, "cannot read %s", path.c_str()); rp.failed = true; return rp; }
-    rp.run(text);
+    const bool gz = path.size() > 3 && path.compare(path.size() - 3, 3, ".gz") == 0;
+    FILE* f = gz ? popen(("gzip -dc " + path).c_str(), "r") : std::fopen(path.c_str(), "r");
+    if (!f) { ::test::fail(__FILE__, __LINE__, "cannot read %s", path.c_str()); rp.failed = true; return rp; }
+    rp.run(f);
+    const int rc = gz ? pclose(f) : std::fclose(f);
+    if (rc != 0 && !rp.failed) { ::test::fail(__FILE__, __LINE__, "reading %s failed (%d)", path.c_str(), rc); rp.failed = true; }
+    if (!rp.ended && !rp.failed) { ::test::fail(__FILE__, __LINE__, "%s: no '# end' line: ref's run was cut off", path.c_str()); rp.failed = true; }
     std::printf("  %s: %lld groups, %lld cycles, %lld calls, %lld fatal refusals, %lld fingerprints%s\n", name,
                 (long long)rp.groups, (long long)rp.cycles, (long long)rp.calls, (long long)rp.ubs, (long long)rp.fps,
                 rp.failed ? "" : ", all equal to ref");
@@ -458,6 +477,14 @@ GEN_FIXTURE(tracerconf_mix_seed16, "mix-s16.log.gz", 10000, 0)
 GEN_FIXTURE(tracerconf_mix_seed21_range, "mix-s21.log.gz", 5000, 0)
 GEN_FIXTURE(tracerconf_wb_seed1_buffer_past_depth, "wb-s1.log.gz", 10000, 0)
 GEN_FIXTURE(tracerconf_wbover_seed1_ring_overflow, "wbover-s1.log.gz", 10000, 1)
+
+// A log as ref writes it (T1 on the runner: a FIFO): TRACERCONF_STREAM=PATH test_tracer stream.
+TEST(stream_from_tracerconf_stream) {
+    const char* path = std::getenv("TRACERCONF_STREAM");
+    if (!path) return;
+    Replay rp = replay_file(path, path);
+    CHECK(!rp.failed);
+}
 
 // Long runs: TRACERCONF_LONG=DIR test_tracer long (tracerconf.sh SEEDS OUT writes them).
 TEST(long_runs_from_tracerconf_long) {

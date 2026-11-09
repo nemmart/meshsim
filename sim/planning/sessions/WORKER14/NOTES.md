@@ -377,6 +377,11 @@ its sender's domain, each queue in its controller's, the nodes anywhere (mode 3)
 The mode is `reqbus_credit_latency` in the chip's configuration, set explicitly (D34), and every run reports
 `lag_cycles`.
 
+**W16's round (owner, 2026-11-09): agreed.** W16 takes the ports above. **T2 (confirmed, D34):** T2 runs mode 3 (the
+default, split as it needs) and **requires `lag_cycles` 0**; mode 0 on one domain is its cross-check (the same run must
+give the same results). The end-to-end core test (a tile's REQUEST_SEND into a controller's REQUEST_RECEIVE) is built
+on W16's units 64-66 once they're on main, not on a rig of mine.
+
 **Changes to closed workers' files** (D34's wiring; each marked `W14` in the file):
 - **W5's `rv32.h`**: the receive loads (REQUEST_GET_W0-W2, REQUEST_RECEIVE) and EVENTS / EVENTS_PEEK's live bit [12],
   each only where the Env offers them (`if constexpr (requires ...)`), so M1's `Core` (controller.h) is unchanged.

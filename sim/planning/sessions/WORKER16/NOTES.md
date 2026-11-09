@@ -124,3 +124,59 @@ orders, step-all, the missed-wake detector).
   domain, 4 row bands and the debug options; with the fix reverted the first poll never ends (the test fails).
 - 2026-11-09: make check again after the merge and the slot's types, build by build: 52 test binaries pass on clang and
   gcc, debug and release; TSan `test_chip form2` passes on both.
+
+## Rounds with W15 and W14 (2026-11-09; the owner: one round each)
+
+**For W15: a peripheral's own ports in the slot** (the blocker; acceptance test: `test_cnc1_periph` built with
+`-DW16_SLOT_OWN_PORTS`, `cnc1_periph_through_the_slot_conformance_with_ref`). Proposal:
+- `periph_slot.h`: `struct OwnPorts { sim::LinkIn in[12]; sim::LinkOut out[64]; }`, a member `own` of `PeriphSlot`
+  (one set per slot: only peripheral 1 is ever present in v1.3, and only C&C 1's has own ports). Its handles are
+  members of the unit, so the build can declare and rewrite them. Cost: 352 bytes a slot (22 KB over the chip).
+- The hooks take it: `void ports(sim::Ports&, OwnPorts&)` (declare into `own.in[k]`, `own.out[k]`), `void begin(sim::Ctx&,
+  int64_t t, const OwnPorts&)`, `void end(sim::Ctx&, int64_t t, const OwnPorts&)`; `PeripheralBase`'s defaults the same
+  signatures, doing nothing. The peripheral keeps indices, never handles.
+- C&C 1's layout (mine, in `cnc1_periph.h`): `in[0..7]` the row collectors (`row`), `in[8..10]` the controllers' line
+  words (`cc-line`); `out[0..63]` GO (`go`). The chip wires `slot.own.in[k]` / `slot.own.out[k]` by those indices.
+- On your side, nothing else changes: the slot calls `ports` in its constructor, `begin` first at level 0, `end` after
+  the peripheral's step, as now. I change `Cnc1Peripheral` to the new signatures when your commit lands (a few lines).
+
+**For W14: the request bus's ports** (W14 NOTES section 14). Agreed as proposed: `ControlIO.req` filled by `add_g1`;
+the chip builder calls `add_reqbus(cfg, rc, tiles, ccs, placement)` and `wire_reqbus(cfg, io, k, ControlIO&)` for the 64
+tiles and the three controllers, with `ReqBusPlacement` from the chip's domains (each leaf with its sender, each
+receive queue with its controller; C&C c is in tile c's domain). Three points for the round:
+1. **The mode for T2.** The exact checks run split (the partition: C&C c with tile c, the replaying tiles spread), so
+   mode 0 (one domain for every sender) can't be used there. T2 sends two requests in all (C&C 2's and C&C 3's
+   "started", none from the tiles), with no backpressure: the calm case where mode 3 equals `ref`. So T2 runs mode 3 and
+   requires `lag_cycles` 0, on one domain and split; mode 0 on one domain as a cross-check. Agreed?
+2. **The fingerprint.** The `reqbus` stream and the 67 `req` streams are yours (`reqbus_fp.h`); I call them from the
+   M3 chip line in AUDIT-M3 6.9's order. The controllers' receive queues are in `reqbus` (as ref's `RequestBus.queue`)?
+3. **The controllers' REQUEST_GET/RECEIVE and the EVENTS pending bit** (your edits to `rv32.h`, `tile_ctl.h`): C&C 1's
+   boot waits on them (cc1.c reads the two "started" requests); `test_cc_units` will add a C&C 2 that sends "started"
+   and a C&C 1 that receives it, against ref's cycles, once your branch is on main.
+- 2026-11-09: **Cnc1Peripheral::writable** (W15's static map, sim-w15 6933df3's pattern): READY_EXPECT_0-1, PULSE_GO,
+  WATCHDOG, LED, UART_TX, UART_DIVISOR, UART_STATUS; checked equal to `write_word`'s result for every word 32-127.
+- 2026-11-09: **the T2 harness's pieces** (`tests/t2_harness.h/.cpp`; owner's item 4): M3Inputs' `files` dump into the
+  Tracer's `FileStore` (grow_to, raw_page) and `sram` dump poked into the units' big SRAMs; `Image` and
+  `boot_cores` (Mach.bootCores and hostBoot: the staging from chunk 0x10000, the descriptor in cc1's data, the program,
+  data and CMD_JUMP through the host port); `cc1_command`, `cc_segment` (0x54, 2, 1 << 24, 0x53 << 24);
+  `cores_booted` (cc1's mbox[3] == 2); `rows_ref` and `rows_hash` (rows.bin's count and the replayer's sink hash: no row
+  kept during the run; the replayer's buffer localises); `partition` (tile 2 and C&C 3 alone in domain 0, the rest
+  round-robin); `build_machine` (the cores chip over 67 units). `test_t2_harness`: the dumps written in their format
+  and read back (and refused when bad); the staging equal to ref's (`tests/ref/BootStage.java` runs Mach.bootCores
+  itself, `bootstage.sh`, `tests/m3-images/bootstage.ref`: C&C 1's host queue, 235 packets, and big SRAM, 2,014 words,
+  by count and hash) and landed into C&C 1's memories; CC_SEGMENT's packets; the rows' reference; a 6-domain build
+  with a barrier every 3 cycles.
+- 2026-11-09: **the boot driver** (`tests/t2_main.cpp`, `build/<cc>-<mode>/t2`: `--sram`, `--files`, `--parts`): builds,
+  pokes, stages, boots and runs to `coresBooted`. Today it stops at **cycle 571 on a controller's REQUEST_SEND** (C&C
+  2's or 3's "started", cc23.c / tracer_ctl.c): the first thing the boot needs is W14's request bus, then C&C 1's slot.
+  C&C 3's DMA input stays off until W15's `G1Config::periph_slot` builds the slot in W8's builder (`cc_cycle` wires
+  the slot's DMA when the builder offers it; C&C 1's and 2's lead nowhere, as ref's null `dmaPort`).
+- 2026-11-09: make check after the harness, build by build: 53 test binaries pass on clang and gcc, debug and release; TSan `test_chip form2` on both.
+- 2026-11-09: merged main (W15's own ports, 72b5da2): W15's interface adopted as built (`ports(OwnPortsDecl&)` with
+  `link_in`/`link_out` returning indices; `begin`/`end` with `OwnPorts&`; `row0`, `line0`, `go0`). The duplicate
+  `writable` resolved to one (mine, checked against `write_word` for 32-127; W15's was the same set of words). The
+  through-the-slot conformance unconditional now (the `W16_SLOT_OWN_PORTS` flag gone). Owner on D34 for T2: mode 3
+  split with `lag_cycles` 0, mode 0 on one domain as the cross-check; W14 writes `reqbus` and the 67 `req` streams.
+  make check build by build: 53 test binaries pass on clang and gcc, debug and release; TSan on both.
+  Next: the chip wires C&C 1's own ports (instead of `cc1.lines`) once the slot is built in W8's builder for
+  controllers (`G1Config::periph_slot`); then W14's bus for the boot.

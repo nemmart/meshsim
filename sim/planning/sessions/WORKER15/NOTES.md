@@ -334,3 +334,16 @@ end.bin, clean.
 - **For W14 and W16:** wire into `units/periph_slot.cpp`: your include, your `case` in `SlotCore::visit` (marked), your
   `delete` in `SlotCore::Ref::~Ref` (marked), and your creation in `SlotCore::install` (W14: the Tracer needs its tables
   and memory system: tell me what `install` should take, or add a `PeriphSlotConfig` field for it).
+
+### make check on main a880d08, and W16's requests (2026-11-09)
+
+- **The full make check on main (a880d08, the merge of dab8ec9): clean.** gcc debug, gcc release, clang debug, clang
+  release: 49 test binaries each (`make run`'s list), all pass; TSan gcc and clang: the seven thread tests, all pass, no
+  warnings. (Run in pieces: a tool call here stops at 300 s.)
+- **W16's requests:** `SlotCore::cnc1(n)` (and `cc_stub(n)`, `tracer(n)` for W14) beside `replayer(n)`: a static_cast
+  from the slot's pointer, no include needed; `ControlIO::dma` (a CreditOut, width 3: the slot's S6 into the controller
+  router's CC_DMA_IN credit Fifo) and `ControlIO::has_dma` in `chip.h`.
+- **`install`'s place marked** for W14's and W16's types, as `visit` and `~Ref` are. `install` now takes the slot's
+  `PeriphSlotConfig`; **`PeriphSlotConfig::tracer`** carries what the Tracer needs at creation (its `MemSystem`s,
+  `icache_lines`, `seen_capacity`, `cold_mem_on_state_write`); its decode table and ROM arrive as region writes, so no
+  tables field. W14 may change it.

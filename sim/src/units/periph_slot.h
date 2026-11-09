@@ -38,7 +38,7 @@ namespace units {
 
 class Replayer;
 struct TestPeripheral;
-namespace tracer { class Tracer; }
+namespace tracer { class Tracer; class MemSystem; }
 struct Cnc1Peripheral;   // W16
 struct CcStub;           // W16
 
@@ -82,6 +82,16 @@ struct PeriphSlotConfig {
     PeriphType type[4] = {};             // [1]-[3]; PT_ABSENT: absent
     bool controller = false;             // C&C 1-3: the DMA port is declared (a mesh tile's peripherals have none)
     uint64_t replayer_row_buffer = 0;    // rows of the replayer's optional record buffer (tests; 0: the hash only)
+    // The Tracer's (type 3, C&C 3; W14): its memory system (the fill bus's other side, 4.21.5; the map probe's if a
+    // harness separates them), its sizing, ref's onStateWrite = cold. Its decode table and ROM arrive as region writes,
+    // as the replayer's do. Set by the chip builder; the slot doesn't own the memory systems.
+    struct TracerParams {
+        tracer::MemSystem* mem = nullptr;
+        tracer::MemSystem* map_mem = nullptr;
+        int icache_lines = 128;
+        int seen_capacity = 1 << 17;
+        bool cold_mem_on_state_write = false;
+    } tracer;
 };
 
 // A packet a DMA sends (ref's dmaOut entry): the header as LinkWord.hdr builds it.
@@ -142,8 +152,8 @@ struct SlotCore {
     SlotCore(SlotCore&&) noexcept = default;
     SlotCore(const SlotCore&) = delete;
     SlotCore& operator=(const SlotCore&) = delete;
-    // Configuration: create peripheral n of type `type` (the slot owns it).
-    void install(unsigned n, PeriphType type, uint64_t replayer_row_buffer = 0);
+    // Configuration: create peripheral n of type `type` (the slot owns it), from the slot's configuration.
+    void install(unsigned n, PeriphType type, const PeriphSlotConfig& c);
 
     uint32_t present() const;
     // ---- ref's PeripheralSlot, method for method ----
@@ -173,6 +183,9 @@ struct SlotCore {
     // The peripheral at n as its class (tests, the harness; FATAL if it is another type).
     Replayer& replayer(unsigned n);
     TestPeripheral& test_peripheral(unsigned n);
+    tracer::Tracer& tracer(unsigned n);       // W14
+    Cnc1Peripheral& cnc1(unsigned n);         // W16 (the chip sets C&C 1's ref_cycle)
+    CcStub& cc_stub(unsigned n);              // W16
 
 private:
     void violate(int64_t t, uint16_t code, uint32_t a = 0, uint32_t b = 0);

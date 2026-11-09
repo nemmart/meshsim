@@ -59,20 +59,24 @@ uint64_t SlotCore::digest() {
     return h;
 }
 
-void SlotCore::install(unsigned n, PeriphType type, uint64_t replayer_row_buffer) {
+void SlotCore::install(unsigned n, PeriphType type, const PeriphSlotConfig& c) {
     if (n < 1 || n > 3 || per[n].p) FATAL("slot %u: peripheral %u installed twice or out of range", tile, n);
     per[n].type = type;
     switch (type) {
         case PT_ABSENT: return;
         case PT_REPLAYER: {
             auto* r = new Replayer(tile);
-            if (replayer_row_buffer) r->set_row_buffer(new uint64_t[replayer_row_buffer * Replayer::REC_LONGS], replayer_row_buffer);
+            if (c.replayer_row_buffer) r->set_row_buffer(new uint64_t[c.replayer_row_buffer * Replayer::REC_LONGS], c.replayer_row_buffer);
             per[n].p = r;
             break;
         }
         case PT_TEST: per[n].p = new TestPeripheral(); break;
-        default: FATAL("slot %u: peripheral type %u can't be created here yet", tile, unsigned(type));
+        // ---- W14: case PT_TRACER: create tracer::Tracer(int(tile), c.tracer.icache_lines, c.tracer.seen_capacity), set its
+        //      mem, map_mem and cold_mem_on_state_write from c.tracer
+        // ---- W16: case PT_CNC1: new Cnc1Peripheral(); case PT_CC_STUB: new CcStub(2)
+        default: FATAL("slot %u: peripheral type %u has no install case", tile, unsigned(type));
     }
+    (void)c;
 }
 
 Replayer& SlotCore::replayer(unsigned n) {
@@ -82,6 +86,19 @@ Replayer& SlotCore::replayer(unsigned n) {
 TestPeripheral& SlotCore::test_peripheral(unsigned n) {
     if (per[n].type != PT_TEST) FATAL("slot %u: peripheral %u is not the test peripheral", tile, n);
     return *static_cast<TestPeripheral*>(per[n].p);
+}
+// (an incomplete class is enough for a static_cast from void*: these need no include)
+tracer::Tracer& SlotCore::tracer(unsigned n) {
+    if (per[n].type != PT_TRACER) FATAL("slot %u: peripheral %u is not the Tracer", tile, n);
+    return *static_cast<tracer::Tracer*>(per[n].p);
+}
+Cnc1Peripheral& SlotCore::cnc1(unsigned n) {
+    if (per[n].type != PT_CNC1) FATAL("slot %u: peripheral %u is not C&C 1's peripheral", tile, n);
+    return *static_cast<Cnc1Peripheral*>(per[n].p);
+}
+CcStub& SlotCore::cc_stub(unsigned n) {
+    if (per[n].type != PT_CC_STUB) FATAL("slot %u: peripheral %u is not the stub", tile, n);
+    return *static_cast<CcStub*>(per[n].p);
 }
 
 void SlotCore::violate(int64_t t, uint16_t code, uint32_t a, uint32_t b) {
@@ -308,7 +325,7 @@ void SlotCore::dma_run(int64_t t, unsigned n, unsigned& room) {
 PeriphSlot::PeriphSlot(sim::Ports& p, const PeriphSlotConfig& c) : cfg(c) {
     s.tile = c.tile;
     s.dma_port = c.controller;
-    for (unsigned n = 1; n <= 3; n++) if (c.type[n] != PT_ABSENT) s.install(n, c.type[n], c.type[n] == PT_REPLAYER ? c.replayer_row_buffer : 0);
+    for (unsigned n = 1; n <= 3; n++) if (c.type[n] != PT_ABSENT) s.install(n, c.type[n], c);
     p.in(region, "region", 3);
     p.in(core, "core", 1);
     p.out(window, "window", Win::REGS);

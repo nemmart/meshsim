@@ -343,7 +343,8 @@ end.bin, clean.
 - **W16's requests:** `SlotCore::cnc1(n)` (and `cc_stub(n)`, `tracer(n)` for W14) beside `replayer(n)`: a static_cast
   from the slot's pointer, no include needed; `ControlIO::dma` (a CreditOut, width 3: the slot's S6 into the controller
   router's CC_DMA_IN credit Fifo) and `ControlIO::has_dma` in `chip.h`.
-- **`install`'s place marked** for W14's and W16's types, as `visit` and `~Ref` are. `install` now takes the slot's
-  `PeriphSlotConfig`; **`PeriphSlotConfig::tracer`** carries what the Tracer needs at creation (its `MemSystem`s,
-  `icache_lines`, `seen_capacity`, `cold_mem_on_state_write`); its decode table and ROM arrive as region writes, so no
-  tables field. W14 may change it.
+- **`install`'s place marked** for W16's types, as `visit` and `~Ref` are; `install` takes the slot's `PeriphSlotConfig`.
+- **Merged main a2009dc (W14's Tracer wiring):** W14's design stands: the Tracer created bare (`new tracer::Tracer(tile)`),
+  its tables by region packets, its memory from the harness after the build (`tracer(n).own_memory(store)`), as ref
+  does. I dropped my `PeriphSlotConfig::tracer` (no need beyond `own_memory`) and my duplicate `tracer(n)`; kept W14's
+  case lines in `visit`, `~Ref` and `install`, and its accessor.

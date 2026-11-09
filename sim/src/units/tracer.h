@@ -24,6 +24,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 
 #include "units/event_counts.h"
 #include "units/file_store.h"
@@ -99,6 +100,17 @@ public:
     Tracer& operator=(const Tracer&) = delete;
     ~Tracer();
 
+    // The memory. In the chip (W15's slot creates the Tracer bare, as `ref`'s Config does) the harness hands it its
+    // memory: own_memory(store) keeps the store and a memory system over it, and makes the memory cold at every
+    // state-word landing (T2's onStateWrite). Tests and tools may instead point `mem` at their own.
+    void own_memory(std::unique_ptr<FileStore> store) {
+        own_store_ = std::move(store);
+        own_mem_ = std::make_unique<MemSystem>(own_store_.get());
+        mem = own_mem_.get();
+        map_mem = nullptr;
+        cold_mem_on_state_write = true;
+    }
+    FileStore* store() { return mem ? mem->store : nullptr; }
     MemSystem* mem = nullptr;      // the fill bus's other side (4.21.5)
     MemSystem* map_mem = nullptr;  // the map probe's, if a harness separates them (B1); else mem
     bool cold_mem_on_state_write = false;  // ref's onStateWrite = ms::cold: the word-0 write makes the memory cold
@@ -273,6 +285,8 @@ private:
     static bool assertion_holds(unsigned op, uint64_t a, uint64_t b);
 
     const int me_;
+    std::unique_ptr<FileStore> own_store_;
+    std::unique_ptr<MemSystem> own_mem_;
 
     // ---- registers (4.21.3)
     uint32_t run_config_ = 0, hash_mul_ = 0, hash_step_ = 0, hash_lines_ = 0;

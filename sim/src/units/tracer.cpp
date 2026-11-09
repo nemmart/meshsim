@@ -296,6 +296,7 @@ void Tracer::do_run(int64_t t) {
     const int n = int(run_config_ & RC_ROWS);
     if (n > MAX_ROWS) ub(t, "RUN_CONFIG [23:0] above 65,536 rows is UB on the Tracer (4.21.3)", uint64_t(n));
     if (code_n != 0 || log_n != 0) FATAL("Tracer: PULSE_RUN at %lld with the last window's FIFOs not drained", (long long)t);
+    if (!mem) FATAL("Tracer (%d): PULSE_RUN at %lld without a memory system (own_memory, or mem, before the run)", me_, (long long)t);
     running_ = true; rows_ended_ = false; drained_ = false; done_ = false; q0ptr_ = REC_WORDS; xfer_left_ = 0;
     for (int q = 1; q <= 3; q++) oq[q].reset();
     rows_target_ = n; rows_done_ = 0; start_at_ = t + 1; run_id_++; runs++; run_start_at = t;

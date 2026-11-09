@@ -171,6 +171,18 @@ struct ReplayWindow {
     uint64_t stream_lo() const { uint64_t w[2]; stream_word_of(w); return w[0]; }
     uint64_t stream_hi() const { uint64_t w[2]; stream_word_of(w); return w[1]; }
 
+    // v1.26: the 68-word state record (lo, hi per word): [0] state, [1] stream, [2-65] the image, [66] files, [67] bitmap.
+    std::vector<uint64_t> record(const uint64_t bitmap[2]) const {
+        std::vector<uint64_t> r(2 * units::Replayer::REC_WORDS, 0);
+        uint64_t sw[2];
+        stream_word_of(sw);
+        r[0] = state_lo(); r[1] = state_hi_word(); r[2] = sw[0]; r[3] = sw[1];
+        for (int i = 0; i < 128; i++) r[size_t(4 + i)] = regs[i];
+        r[4] = 0;
+        r[2 * units::Replayer::REC_BITMAP] = bitmap[0]; r[2 * units::Replayer::REC_BITMAP + 1] = bitmap[1];
+        return r;
+    }
+
     // ---- expansion words ----
     void rom(unsigned start, std::vector<W> words) {
         for (size_t i = 0; i < words.size(); i++) {

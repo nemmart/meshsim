@@ -751,6 +751,117 @@ void timing() {
     T::eq(25, d->r->status(d->t, 0) & 0xFFFF, "PERIPH_STATUS_0 [15:0]: rows run");
 }
 
+bool same_rows(const ReplayDriver& a, const ReplayDriver& b) {
+    if (a.rows() != b.rows()) return false;
+    for (uint64_t k = 0; k < a.rows(); k++)
+        for (unsigned i = 0; i < Replayer::REC_LONGS; i++) if (a.row(k)[i] != b.row(k)[i]) return false;
+    return true;
+}
+uint32_t word_of(Replayer& r, int64_t t, unsigned w) { uint32_t v = 0; r.word(t, w, v); return v; }
+
+// ================================================================ v1.26.1 (DECISIONS-v1.26 items 13-16)
+void v1261_a() {
+    T::group("v1.26.1: RUN_CONFIG's row count");
+    auto w1 = program_window(false, false, false, true);
+    auto ok = run_window(*w1, 25);
+    T::check(ok->rows() == 25 && ok->r->clean(), "a 25-row pass of a 25-row record: clean, " + std::to_string(ok->rows()) + " rows");
+    auto w2 = program_window(false, false, false, true);
+    auto sh = run_window(*w2, 10);
+    T::eq(10, int64_t(sh->rows()), "a 10-row pass of the 25-row record runs exactly 10 rows");
+    T::check(sh->done && !sh->r->is_running(), "and raises done");
+    T::eq(1 << Replayer::ERR_LEFTOVER, sh->r->errors(sh->t), "with input left over, ERRORS [6] only");
+    T::eq(10, word_of(*sh->r, sh->t, Replayer::W_ROWS_RUN), "ROWS_RUN reads 10");
+
+    T::group("v1.26.1: a row count of 0");
+    for (bool empty : {true, false}) {
+        std::unique_ptr<ReplayWindow> w = empty ? std::make_unique<ReplayWindow>() : program_window(false, false, false, true);
+        if (empty) { w->fixed_rom(); w->set_code({}, false); w->set_logs({}, false, false); }
+        w->rows = 0;
+        auto d = std::make_unique<ReplayDriver>(*w);
+        d->load(); d->write_config();
+        int64_t t0 = d->t;
+        d->r->run(t0); d->step();
+        T::check(d->r->running(t0 + 1), std::string(empty ? "empty" : "full") + " record: STATUS [0] rises at the end of the run store's cycle");
+        d->step();
+        T::check(!d->r->running(t0 + 2), "and falls the next");
+        d->r->sync(d->t);
+        T::check((d->r->events().value(d->t) & 1u << Replayer::EV_RUN_DONE) != 0, "run done is posted");
+        T::eq(0, d->r->rows_done(), "no row");
+        T::eq(empty ? 0 : 1 << Replayer::ERR_LEFTOVER, d->r->errors(d->t), empty ? "nothing to consume: no error" : "streams not consumed: [6], as at any done");
+    }
+
+    T::group("v1.26.1: RUN_CONFIG, sticky and checked");
+    {
+        auto w = program_window(false, false, false, true);
+        auto d = std::make_unique<ReplayDriver>(*w);
+        d->w.rows = 25; d->load();
+        d->pass(200000); d->pass(200000);
+        T::eq(1, int64_t(d->config_stores), "two passes, one RUN_CONFIG store: it is sticky");
+        T::check(d->r->clean() && d->rows() == 25, "the second pass ran its 25 rows on the first write: " + error_report(*d->r));
+        T::eq(d->w.run_config_word(), word_of(*d->r, d->t, Replayer::W_RUN_CONFIG), "reads back");
+        d->r->reset(d->t); d->step();
+        T::eq(0, word_of(*d->r, d->t, Replayer::W_RUN_CONFIG), "0 after the reset");
+    }
+    {
+        auto w = program_window(false, false, false, true);
+        auto d = std::make_unique<ReplayDriver>(*w);
+        d->w.rows = 25; d->load();
+        d->write_config(); d->r->run(d->t); d->step(); d->step();
+        d->r->write_word(d->t, Replayer::W_RUN_CONFIG, 7);
+        T::dies([&] { for (int k = 0; k < 3; k++) d->step(); }, "a RUN_CONFIG write while a pass runs", {"replayer", "RUN_CONFIG write while a pass runs"});
+    }
+
+    T::group("v1.26.1: RUN_CONFIG [28:26], the Tracer's compression enables, ignored");
+    {
+        auto wb = program_window(true, true, true, true);
+        auto base = run_window(*wb, 25);
+        for (uint32_t comp = 1; comp < 8; comp++) {
+            auto w = program_window(true, true, true, true);
+            auto d = std::make_unique<ReplayDriver>(*w);
+            w->rows = 25;
+            d->run_config = w->run_config_word() | comp << 26 | (comp == 7 ? 7u << 29 : 0);
+            d->load(); d->pass(200000);
+            T::check(same_rows(*d, *base) && d->r->clean() && d->r->errors(d->t) == 0 && d->r->pass_end_at - d->r->pass_start_at == base->r->pass_end_at - base->r->pass_start_at,
+                     "[28:26] = " + std::to_string(comp) + ": the same rows and cycles, no error, nothing flagged " + error_report(*d->r));
+            T::eq(w->run_config_word() | comp << 26, word_of(*d->r, d->t, Replayer::W_RUN_CONFIG), "  reads back with [28:26]");
+        }
+        auto raw = program_window(false, false, false, true);
+        auto dr = std::make_unique<ReplayDriver>(*raw);
+        raw->rows = 25; dr->run_config = raw->run_config_word() | Replayer::RC_TRACER_COMP; dr->load(); dr->pass(200000);
+        T::check(dr->r->clean() && dr->rows() == 25, "raw streams with every enable set: still decoded raw (the stream word decides) " + error_report(*dr->r));
+    }
+
+    T::group("v1.26.1: the flags from RUN_CONFIG, not the record");
+    {
+        auto w = program_window(false, false, false, true);
+        w->store_log = false; w->rd_prev = false;
+        const uint64_t bm[2] = {0, 0};
+        std::vector<uint64_t> rec = w->record(bm);
+        rec[1] |= 3ull << 51;
+        w->region0 = rec;
+        auto d = run_window(*w, 25);
+        auto e = expected(false);
+        for (auto& row : e) row[11] = 0;
+        check_rows("record [115], [116] = 1, RUN_CONFIG [24], [25] = 0", rows_of(*d), e, PADDING);
+        T::check(d->r->clean(), "clean, the write log's sizes ignored (no [5], no [6]): " + error_report(*d->r));
+        T::check(!d->r->store_log_latched(), "the pass used no store log");
+        auto w2 = program_window(false, false, false, true);
+        auto on = run_window(*w2, 25);
+        check_rows("record [116:115] = 0, RUN_CONFIG [24], [25] = 1", rows_of(*on), expected(true), PADDING);
+    }
+
+    T::group("v1.26.1: the advice field is ignored");
+    {
+        auto w0 = program_window(true, true, true, true), w1 = program_window(true, true, true, true);
+        w1->advice_values = 1u << 22;
+        auto a = run_window(*w0, 25);
+        auto b = run_window(*w1, 25);
+        T::check(same_rows(*a, *b), "advice 0 and 2^22: the same rows");
+        T::check(b->r->clean(), "clean with advice 2^22: " + error_report(*b->r));
+        T::eq(int64_t(1) << 22, int64_t((b->r->region0[3] >> 38) & 0x7FFFFF), "the field stays in part 0 as written");
+    }
+}
+
 // Run a group; the TEST fails if any of its checks did.
 bool group_ok(void (*fn)()) {
     int f0 = T::failed;
@@ -778,3 +889,4 @@ TEST(unit_invalid) { CHECK(group_ok(invalid)); }
 TEST(unit_write_port) { CHECK(group_ok(write_port)); }
 TEST(unit_lines) { CHECK(group_ok(lines)); }
 TEST(unit_timing) { CHECK(group_ok(timing)); }
+TEST(unit_v1261_run_config) { CHECK(group_ok(v1261_a)); }

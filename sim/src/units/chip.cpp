@@ -3,7 +3,9 @@
 
 #include "base/fatal.h"
 #include "units/host_port.h"
+#include "units/cnc1_periph.h"
 #include "units/inject.h"
+#include "units/periph_slot.h"
 #include "units/router.h"
 
 namespace units {
@@ -33,20 +35,37 @@ struct ControlStandIn {
     uint64_t digest() const { return 0; }
 };
 
-// M3 (cc_cores), until C&C 1's slot is wired (W15's slot body): a stand-in for C&C 1's peripheral's own ports (the
-// row collectors' words, the controllers' line words) that sinks them and never drives GO. Also the source of the
-// controllers' GO inputs, which nothing drives in ref (CnC.goNet reaches tiles 0-63 only).
+// M3 (cc_cores): the source of the controllers' GO inputs, which nothing drives in ref (CnC.goNet reaches tiles 0-63
+// only); and, when C&C 1 has no slot (G1Config::periph_slot off), a stand-in for C&C 1's peripheral's own ports (the
+// row collectors' words, the controllers' line words) that sinks them and never drives GO.
 struct ChipLinesStandIn {
     sim::LinkIn rows[8], cc_line[3];
     sim::LinkOut go[64], cc_go[3];
-    explicit ChipLinesStandIn(sim::Ports& p) {
+    bool lines;
+    ChipLinesStandIn(sim::Ports& p, bool stand_in_lines) : lines(stand_in_lines) {
+        for (unsigned c = 0; c < 3; c++) p.out(cc_go[c], "cc-go", 0);
+        if (!lines) return;
         for (unsigned r = 0; r < 8; r++) p.in(rows[r], "row", 1);
-        for (unsigned c = 0; c < 3; c++) { p.in(cc_line[c], "cc-line", 1); p.out(cc_go[c], "cc-go", 0); }
+        for (unsigned c = 0; c < 3; c++) p.in(cc_line[c], "cc-line", 1);
         for (unsigned k = 0; k < 64; k++) p.out(go[k], "go", 0);
     }
     sim::Wake step(sim::Ctx& c) {
+        if (!lines) return sim::Wake::none();
         for (auto& r : rows) if (c.ready(r)) c.take(r);
         for (auto& l : cc_line) if (c.ready(l)) c.take(l);
+        return sim::Wake::none();
+    }
+    uint64_t digest() const { return 0; }
+};
+
+// C&C 1's and C&C 2's slot DMA (AUDIT-M3 3.1 S6): ref's dmaPort is null on them (only C&C 3's enters its router, with
+// the Tracer), and nothing of theirs starts a DMA in v1.3; a packet arriving here is a modelling error.
+struct NoDma {
+    sim::FifoIn in;
+    uint8_t cc;
+    NoDma(sim::Ports& p, unsigned c) : cc(uint8_t(c)) { p.in_credit(in, "dma", 3, 4); }
+    sim::Wake step(sim::Ctx& c) {
+        if (c.ready(in)) FATAL("C&C %u's slot sent a DMA packet at cycle %llu: its DMA leads nowhere (ref's null dmaPort)", cc + 1u, (unsigned long long)c.now());
         return sim::Wake::none();
     }
     uint64_t digest() const { return 0; }
@@ -121,13 +140,13 @@ CcIO cc_cycle(sim::Config& cfg, const ChipSpec& spec, unsigned c) {
     // the slot's DMA (AUDIT-M3 3.1 S6): C&C 3's into CC_DMA_IN; C&C 1's and C&C 2's lead nowhere in ref (their slots'
     // dmaPort is null: nothing of theirs starts a DMA in v1.3), wired when the slot's builder offers them (W15)
     if (dma) cfg.connect(io.dma, r.dma);
-    else if (io.has_dma) FATAL("cc_cycle: C&C %u's slot DMA output has nowhere to go (not modelled: ref's is null)", c + 1);
+    else if (io.has_dma) cfg.connect(io.dma, cfg.add<NoDma>(tile_unit(k, "nodma"), c).in);
     auto& h = cfg.add<HostPort>(tile_unit(k, "host"), c, spec.host_capacity);
     cfg.connect(h.out, r.host);
     CcIO o;
     o.link_in = r.in[Router::CC_LINK_IN]; o.link_out = r.out[Router::CC_LINK_OUT];
     o.has_dma = dma; if (dma) o.dma = r.dma;
-    o.go = io.go; o.line = io.line;
+    o.go = io.go; o.line = io.line; o.slot = io.slot;
     o.req = io.req;                                       // W14: its request port, both sides
     return o;
 }
@@ -176,18 +195,24 @@ void build_chip(sim::Config& cfg, const ChipSpec& spec) {
         }
         add_request_bus(cfg, spec, io, u);                // W14 (D34): the tiles' and the controllers' ports
         // The chip lines (AUDIT-M3 3.4, section 4): the tiles' line words through M2's row collectors, the controllers'
-        // directly, all into C&C 1's peripheral (READY, ERROR_LINES, the toast pin), GO out of it; with C&C 1, the
-        // collectors in tile 0's domain. Until the slot is wired, a stand-in takes C&C 1's peripheral's place.
+        // directly, all into C&C 1's peripheral (READY, ERROR_LINES, the toast pin) through its slot's own ports, GO
+        // out of them; with C&C 1, the collectors in tile 0's domain. Without C&C 1's slot, a stand-in takes its place.
         if (spec.domain) cfg.domain(spec.domain[0]);
-        auto& cl = cfg.add<ChipLinesStandIn>("cc1.lines");
+        PeriphSlot* s1 = u[0].slot;
+        auto& cl = cfg.add<ChipLinesStandIn>("cc1.lines", s1 == nullptr);
+        sim::LinkIn* rows = cl.rows; sim::LinkIn* lines = cl.cc_line; sim::LinkOut* go = cl.go;
+        if (s1) {
+            const Cnc1Peripheral& p = s1->s.cnc1(1);
+            rows = s1->own.link_in + p.row0; lines = s1->own.link_in + p.line0; go = s1->own.link_out + p.go0;
+        }
         for (unsigned r = 0; r < 8; r++) {
             auto& row = cfg.add<RowCollector>("row" + std::to_string(r), r);
-            cfg.link(row.out, cl.rows[r], 1);
+            cfg.link(row.out, rows[r], 1);
             for (unsigned i = 0; i < 8; i++) cfg.link(io[8 * r + i].line, row.line[i], nc.ready_latency - 2);
         }
-        for (unsigned k = 0; k < 64; k++) cfg.link(cl.go[k], io[k].go, nc.go_latency + skew[k]);
+        for (unsigned k = 0; k < 64; k++) cfg.link(go[k], io[k].go, nc.go_latency + skew[k]);
         for (unsigned c = 0; c < 3; c++) {
-            cfg.link(u[c].line, cl.cc_line[c], c == 0 ? 1 : nc.error_lat() - 1);
+            cfg.link(u[c].line, lines[c], c == 0 ? 1 : nc.error_lat() - 1);
             cfg.link(cl.cc_go[c], u[c].go, nc.go_latency + 1);
         }
         return;

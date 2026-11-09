@@ -356,7 +356,7 @@ public final class ReplayConf {
 
     // ================================================================ windows: a delivery's window list
     static void windows(String d) throws java.io.IOException {
-        java.nio.file.Path dir = java.nio.file.Path.of(d);
+        java.nio.file.Path dir = java.nio.file.Path.of(d).toAbsolutePath();
         java.util.Map<String, Object> m = ReplayDelivery.Json.object(java.nio.file.Files.readString(dir.resolve("manifest.json")));
         StringBuilder b = new StringBuilder();
         for (Object po : ReplayDelivery.Json.list(m.get("programs"))) {
@@ -366,6 +366,7 @@ public final class ReplayConf {
                     : java.nio.file.Files.exists(dir.resolve("tables/decode_table.bin")) ? dir.resolve("tables") : java.nio.file.Path.of(ReplayTables.defaultDir().toString());
             for (Object wo : ReplayDelivery.Json.list(p.get("window_entries"))) {
                 java.util.Map<String, Object> e = ReplayDelivery.Json.object(wo);
+                if (!e.containsKey("files")) continue;          // as ReplayDelivery: a window without files isn't delivered
                 b.append(pd).append(' ').append(td.toAbsolutePath()).append(' ').append(((Number) e.get("index")).intValue()).append(' ')
                  .append(((Number) e.get("rows")).intValue()).append(' ').append(((Number) e.get("first_row")).longValue()).append('\n');
             }

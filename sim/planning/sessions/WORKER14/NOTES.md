@@ -326,6 +326,48 @@ no violations.** The death test: a run before the memory is given. All four buil
 the record write is then UB while running: FATAL. (A Tracer-internal timing change moves both runs alike: that is
 test_tracer's to catch, and it does.)
 
+## 14. The request bus (owner, 2026-11-09: go-ahead, option 3 = D34)
+
+**Taken over from W16** (its plan's step 3; its log shows steps 1, 2 and the boot-end point, nothing on the bus).
+**For W16:** I'm building the request bus, both senders (the tiles' REQUEST_SEND and the controllers'), and the
+controllers' receive side; the ports you wire into the chip are below, one round.
+
+**D34** (in DECISIONS.md): one implementation, its credit latency an explicit configuration key (`reqbus_credit_latency`,
+never derived from the partition): **0** exact as `ref` (every sender in the bus's domain; a split is fatal at build),
+**3** the spec under D29 (each port's leaf in its tile, beats and credits over Link(3)), the default. Mode 3 counts the
+cycles where it would differ from `ref` and every run reports the count; ReqConf checks mode 0 against `ref` every
+cycle on all traffic, and mode 3 against `ref` on the traffic without backpressure.
+
+**The design** (`src/units/reqbus.h`, `.cpp`):
+- `ReqLeaf` (a port's send side, `RequestPort`'s FIFO, `beatsSent`, `freedAt`): fed by its core's REQUEST_SEND over
+  `push` (Link(1), the request's four words; `ref`: a push at t is the bus's from t + 1); drives `freed` (a Wire to its
+  core, the head freed at t: `canPush`'s `freedAt == t`) and `freed_ev` (Link(1) to its register block: the FIFO's
+  count, STATUS [6], EVENTS [11]). Mode 3: a unit per sender in its tile's domain, beats to the tree over Link(3) and
+  credits back over Link(3). Mode 0: inside the bus unit, against the buffers directly.
+- `ReqTree` (the row nodes, the root, the credits, the drops), unit `reqbus`. Event-driven: stepped while a beat, a
+  request or a credit is in it, asleep otherwise; nothing scans the 64 tiles.
+- `ReqRecv` (a target's receive queue, C&C c + 1's receive side), one per controller in its domain: the delivered
+  request arrives over Link(3) (`ref`'s `toReceiver`), the head published in a RegFile {pending, w0-w3} as a load at t
+  sees it (delivered before t), the pop arrives from the core over Link(1) and returns its credit to the root over
+  Link(1) in mode 0, Link(3) in mode 3. A queued request wakes the controller.
+
+**The ports W16 wires, per controller C&C c (c = 0-2)** (proposal):
+| port | from | to | kind |
+|---|---|---|---|
+| `push` | `cc<c>.core` | `cc<c>.reqleaf` (mode 3) / `reqbus` (mode 0) | Link(1), width 2 |
+| `freed` | the leaf | `cc<c>.core` | Wire |
+| `freed_ev` | the leaf | `cc<c>.ctl` (the register block) | Link(1), width 0 |
+| `recv` | `cc<c>.reqrecv` | `cc<c>.core` | RegFile (5) |
+| `recv_pending` | `cc<c>.reqrecv` | `cc<c>.ctl` | Link(1), width 1 (the pending level's changes: EVENTS [12] and WFI's wake) |
+| `pop` | `cc<c>.core` | `cc<c>.reqrecv` | Link(1), width 0 |
+The tiles get the same send side (`push`, `freed`, `freed_ev`); their receive side reads 0 and REQUEST_RECEIVE sets
+receive underflow (ERRORS [14]), as `ref`. A builder function adds the bus, the leaves and the receivers and wires them
+to the cores and blocks it is given (W16 calls it from the chip builder; mesh-only builds call it too).
+
+**Changes to closed workers' files** (listed as I make them): W8's `tile_ctl.h` (the core's push, freed, receive and
+pop ports; the block's `freed_ev` and `recv_pending`), W5's `rv32.h` (REQUEST_GET/RECEIVE loads, the EVENTS live
+pending bit), W8's `statefp_g1.cpp` (the tiles' `req` stream from the leaf), W9/W10's `statefp_g2.cpp` (`reqbus`).
+
 ## Log
 
 - 2026-11-09: plan agreed; branch `sim-w14` from main 1a898aa.
@@ -345,3 +387,4 @@ test_tracer's to catch, and it does.)
 - 2026-11-09: wired into W15's slot (section 13): install takes nothing; the memory given after the build
   (`own_memory`); `test_tracer_slot` equal to SlotCore driven directly in three variants.
 - 2026-11-09: REPORT.md so far (the owner: nothing more until W16's chip assembly).
+- 2026-11-09: the request bus taken over from W16 (section 14); D34 recorded by the owner; the design and W16's ports.

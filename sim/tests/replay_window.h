@@ -118,18 +118,8 @@ inline uint32_t run_config(uint32_t rows, bool store_log, bool rd_prev) {
     return rows | (store_log ? units::Replayer::RC_STORE_LOG : 0) | (rd_prev ? units::Replayer::RC_RD_PREV : 0);
 }
 inline uint64_t state_hi(uint32_t instr_idx, uint32_t next_offset) { return uint64_t(instr_idx) | uint64_t(next_offset & 0xFFFF) << 32; }
-// ref's Replayer.streamWord.
-inline void stream_word(const units::streamword::Size s[3], uint32_t advice, uint64_t out[2]) {
-    using namespace units::streamword;
-    out[0] = out[1] = 0;
-    if (advice > (1u << 22)) FATAL("advice values %u", advice);
-    put128(out, SW_ADVICE, SW_ADVICE_BITS, advice);
-    for (int k = 0; k < 3; k++) {
-        put128(out, sw_words(k), 16, s[k].words);
-        put128(out, sw_values(k), 17, s[k].values);
-        put128(out, sw_flag(k), 1, s[k].compressed ? 1 : 0);
-    }
-}
+// ref's Replayer.streamWord: W14's streamword::build.
+inline void stream_word(const units::streamword::Size s[3], uint32_t advice, uint64_t out[2]) { units::streamword::build(s[0], s[1], s[2], advice, out); }
 
 struct ReplayWindow {
     uint32_t rows = 65536;

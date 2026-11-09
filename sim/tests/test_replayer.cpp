@@ -862,6 +862,155 @@ void v1261_a() {
     }
 }
 
+// ConvertDelivery's two groups (ReplayerUnitTests lines 809-865) test ref's Java converter, not the replayer: not
+// ported (Stage A converts with ref's ConvertDelivery; its own tests run there).
+void rows_run_past_2_16() {
+    T::group("v1.26.1: ROWS_RUN past 2^16");
+    const uint32_t n = 70000;
+    ReplayWindow w;
+    w.fixed_rom();
+    w.set_code(std::vector<uint32_t>(n, 0), false); w.set_logs({}, false, false); w.rows = n;
+    auto d = std::make_unique<ReplayDriver>(w);
+    d->load(); d->pass(600000);
+    T::eq(n, int64_t(d->rows()), "a 70,000-row pass: RUN_CONFIG past a window");
+    T::eq(n, word_of(*d->r, d->t, Replayer::W_ROWS_RUN), "ROWS_RUN after it: 70,000 (24 bits; v1.26's modulo 2^16 would read 4,464)");
+    T::check(d->r->clean(), "a 70,000-row pass of 70,000 padding words: clean " + error_report(*d->r));
+}
+
+void working_state() {
+    T::group("v1.26: part 0 is the working state");
+    auto w = program_window(false, false, false, true);
+    auto rp = fresh();
+    Replayer& r = *rp;
+    w->rows = 25;
+    auto d = std::make_unique<ReplayDriver>(*w, 1u << 17, rp.get());
+    d->load();
+    T::eq(0x1000, int64_t(r.region0[0]), "before the pass: the state word's pc");
+    d->pass(200000);
+    std::vector<uint64_t> first(d->row(0), d->row(0) + d->rows() * Replayer::REC_LONGS);
+    T::eq(int64_t(r.pc()), int64_t(r.region0[0]), "after: the state word holds the end pc");
+    T::eq(r.instr_idx(), int64_t(r.region0[1] & 0xFFFFFFFF), "and the end instr_idx");
+    T::eq(0x101, int64_t(r.region0[4 + A0]), "the image holds the registers as the pass left them (a0 = 0x101)");
+    T::eq(0x1036, int64_t(r.region0[4 + 40]), "v40 too");
+    T::eq(0, int64_t(r.region0[1] >> 48), "the state word's [127:112] stay 0 (v1.26.1: no flags there)");
+    T::eq(w->run_config_word(), r.run_config_now(), "RUN_CONFIG is untouched by the pass (sticky)");
+    d->pass(200000);
+    std::vector<uint64_t> again(d->row(0), d->row(0) + d->rows() * Replayer::REC_LONGS);
+    T::check(again == first, "after reloading words 0-65, the same pass again");
+    T::check(r.clean(), "clean: " + error_report(r));
+}
+
+void stream_word_layout() {
+    namespace sw = units::streamword;
+    T::group("v1.26: the stream word");
+    JRandom g(26);
+    bool ok = true;
+    auto same = [](const sw::Size* a, const sw::Size* b) {
+        for (int k = 0; k < 3; k++) if (a[k].words != b[k].words || a[k].values != b[k].values || a[k].compressed != b[k].compressed) return false;
+        return true;
+    };
+    for (int k = 0; k < 2000; k++) {
+        sw::Size a[3];
+        for (int q = 0; q < 3; q++) { int wd = g.next_int(0x10000), vv = g.next_int(0x20000); bool c = g.next_boolean(); a[q] = sw::make(wd, vv, c); }
+        uint64_t w[2], wa[2];
+        stream_word(a, 0, w);
+        sw::Size b[3];
+        sw::parse(w[0], w[1], b);
+        uint32_t adv = uint32_t(g.next_int((1 << 22) + 1));
+        stream_word(a, adv, wa);
+        sw::Size c[3];
+        sw::parse(wa[0], wa[1], c);
+        ok &= same(a, b) && (w[1] >> 38) == 0 && same(a, c) && sw::advice(wa[0], wa[1]) == adv && (wa[1] >> 61) == 0;
+    }
+    T::check(ok, "2,000 random sizes and advice counts round-trip; the advice field doesn't touch the sizes; [127:125] spare");
+    sw::Size one_s[3] = {sw::make(0x1111, 0x10001, true), sw::make(0x2222, 0x10002, false), sw::make(0x3333, 0x10003, true)};
+    uint64_t one[2];
+    stream_word(one_s, 0, one);
+    T::eq(int64_t(0x0001333322221111ull), int64_t(one[0]), "v1.26.1's layout: words [15:0], [31:16], [47:32]; code's values out from [48]");
+    T::eq(int64_t(0x1ull | 0x10002ull << 1 | 0x10003ull << 18 | 1ull << 35 | 1ull << 37), int64_t(one[1]), "values out [64:48], [81:65], [98:82]; flags [99], [100], [101]");
+    sw::Size z[3] = {sw::make(0, 0, false), sw::make(0, 0, false), sw::make(0, 0, false)};
+    uint64_t adv[2];
+    stream_word(z, 1u << 22, adv);
+    T::eq(0, int64_t(adv[0]), "advice alone: the low half empty");
+    T::eq(int64_t(uint64_t(1 << 22) << 38), int64_t(adv[1]), "advice values [124:102], 2^22 inclusive");
+    T::dies([&] { uint64_t x[2]; stream_word(z, (1u << 22) + 1, x); }, "advice past 2^22 is refused", {"advice values"});
+    sw::Size mxs[3] = {sw::make(33800, 65536, true), sw::make(0xFFFF, 0x1FFFF, true), sw::make(0, 0, false)};
+    uint64_t mx[2];
+    stream_word(mxs, 0, mx);
+    sw::Size m[3];
+    sw::parse(mx[0], mx[1], m);
+    T::check(m[0].words == 33800 && m[0].values == 65536 && m[0].compressed && m[1].words == 0xFFFF && m[1].values == 0x1FFFF && !m[2].compressed,
+             "the largest sizes fit (a stream at most about 33,800 words and 65,536 values)");
+    T::eq(0, int64_t(state_hi(0xFFFFFFFF, 0xFFFF) >> 48), "the state word: [127:112] 0, no flags (v1.26.1)");
+    T::eq(Replayer::RC_STORE_LOG | Replayer::RC_RD_PREV | 65536, run_config(65536, true, true), "RUN_CONFIG: rows [23:0], use the store log [24], output rd_prev [25]");
+    T::dies([] { sw::make(0x10000, 0, false); }, "a size past its field is refused", {"stream size"});
+}
+
+// Items 6, 7: a pop past a stream's values, or a decode past its words, is an underflow at once: [3], [4], [5].
+void underflows() {
+    const char* cases[] = {"code past its values", "code past its words", "read log past its values", "read log past its words",
+                           "write log past its values", "write log past its words", "a transfer past the read log", "write log off: no [5]"};
+    auto starts = [](const std::string& s, const char* p) { return s.rfind(p, 0) == 0; };
+    auto ends = [](const std::string& s, const std::string& e) { return s.size() >= e.size() && s.compare(s.size() - e.size(), e.size(), e) == 0; };
+    for (std::string c : cases) {
+        T::group("v1.26 underflow: " + c);
+        ReplayWindow w;
+        w.fixed_rom();
+        uint32_t ins = i_(5, 0, 0, A0, OP_IMM);
+        int n_ins = 3;
+        uint32_t rows = 3;
+        int expect_bit = -1;
+        int64_t expect_rows = 0;
+        if (starts(c, "code")) {
+            w.rom(20, {W::op(alu::ADDI).rd(129).rs1(130).rs2(132).fmt(1).report_c()});
+            w.set_logs({}, false, false);
+            if (ends(c, "values")) { expect_rows = 3; rows = 4; }
+            else { n_ins = 5; rows = 5; w.words_adj[0] = -1; expect_rows = 3; }
+            expect_bit = Replayer::ERR_CODE_UNDER;
+        } else if (starts(c, "read log") || starts(c, "a transfer")) {
+            if (starts(c, "a transfer")) {
+                ins = j_(8, 0, JAL);
+                w.rom(20, {W::op(alu::JAL).rd(129).rs1(132).rs2(128).cnst(0).fmt(5).nfv().imm0pc0().rd0(2).report_c()});
+                w.set_logs({{true, 2, false, false, 0}}, false, false);
+                expect_rows = 1;
+            } else {
+                w.rom(20, {W::op(alu::ADVICE).rd(129).rs1(128).rs2(128).cnst(0).from_log().report_c()});
+                std::vector<LogEvent> ev;
+                for (int k = 0; k < (ends(c, "values") ? 1 : 3); k++) ev.push_back({true, uint64_t(9 + k), false, false, 0});
+                w.set_logs(ev, false, false);
+                if (ends(c, "words")) { w.words_adj[1] = -1; expect_rows = 2; } else expect_rows = 1;
+            }
+            expect_bit = Replayer::ERR_RLOG_UNDER;
+        } else {
+            ins = s_(8, A1, A0, 3, STORE);
+            w.rom(20, {W::op(alu::SD).rd(132).rs1(130).rs2(131).fmt(2).from_log().report_c().sign()});
+            std::vector<LogEvent> ev;
+            int n = ends(c, "values") ? 1 : ends(c, "words") ? 3 : 0;
+            for (int k = 0; k < n; k++) ev.push_back({false, 0, false, true, uint64_t(7 + k)});
+            w.set_logs(ev, false, false);
+            if (ends(c, "words")) { w.words_adj[2] = -1; expect_rows = 2; } else expect_rows = ends(c, "values") ? 1 : 3;
+            w.store_log = !starts(c, "write log off");
+            if (w.store_log) expect_bit = Replayer::ERR_WLOG_UNDER;
+            w.regs[A0] = 0x2000;
+        }
+        w.decode_rom(ins, 20);
+        w.pc = 0x1000; w.instr_idx = 1;
+        w.set_code(std::vector<uint32_t>(size_t(n_ins), ins), false);
+        auto d = run_window(w, rows);
+        if (expect_bit < 0) {
+            T::eq(0, d->r->errors(d->t), "no error: the write log's sizes are ignored without the store log");
+            T::eq(3, int64_t(d->rows()), "all three rows");
+            T::check(d->r->clean(), "clean: " + error_report(*d->r));
+            continue;
+        }
+        T::eq(1 << expect_bit, d->r->errors(d->t), "ERRORS [" + std::to_string(expect_bit) + "] alone");
+        T::eq(1, int64_t(d->r->cond_events(unsigned(expect_bit))), "once");
+        T::check(d->done && !d->r->is_running(), "the pass stopped, done posted");
+        T::eq(expect_rows, int64_t(d->rows()), "rows before it");
+        T::check(d->r->underflows() == 1 && d->r->invalids() == 0 && d->r->leftovers() == 0, "named as an underflow: " + error_report(*d->r));
+    }
+}
+
 // Run a group; the TEST fails if any of its checks did.
 bool group_ok(void (*fn)()) {
     int f0 = T::failed;
@@ -890,3 +1039,7 @@ TEST(unit_write_port) { CHECK(group_ok(write_port)); }
 TEST(unit_lines) { CHECK(group_ok(lines)); }
 TEST(unit_timing) { CHECK(group_ok(timing)); }
 TEST(unit_v1261_run_config) { CHECK(group_ok(v1261_a)); }
+TEST(unit_rows_run_past_2_16) { CHECK(group_ok(rows_run_past_2_16)); }
+TEST(unit_working_state) { CHECK(group_ok(working_state)); }
+TEST(unit_stream_word_layout) { CHECK(group_ok(stream_word_layout)); }
+TEST(unit_underflows) { CHECK(group_ok(underflows)); }

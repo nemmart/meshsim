@@ -180,3 +180,35 @@ receive queue with its controller; C&C c is in tile c's domain). Three points fo
   make check build by build: 53 test binaries pass on clang and gcc, debug and release; TSan on both.
   Next: the chip wires C&C 1's own ports (instead of `cc1.lines`) once the slot is built in W8's builder for
   controllers (`G1Config::periph_slot`); then W14's bus for the boot.
+- 2026-11-09: **C&C 1's slot in the chip, prepared** (owner: land it on top of W14's merge, both touch chip.cpp/h) on
+  branch `w16-cc1slot-prep` (feb73ab, from sim-w16 9789e81): `add_g1` builds the controllers' slots
+  (`PeriphSlotConfig::controller`; peripheral 1 PT_CNC1 on C&C 1, PT_TRACER on C&C 3 with `G1Config::cc3_tracer`,
+  PT_CC_STUB otherwise; C&C 1's `ref_cycle` from the timing) and returns `io.slot` and `io.dma`; `build_chip` wires the
+  row collectors, the controllers' line words and GO to C&C 1's own-port indices (`own.link_in[row0 + r]`,
+  `[line0 + c]`, `own.link_out[go0 + k]`), the stand-in only without a slot (and always the controllers' GO source);
+  C&C 3's DMA into its router, C&C 1's and 2's into `NoDma` (FATAL on a packet: ref's null dmaPort). The T2 machine
+  builds every slot (the tiles' replayers, C&C 3's Tracer). test_cc_units, test_chip, test_periph_slot,
+  test_cnc1_periph, test_t2_harness pass on clang debug; the boot driver still stops at cycle 571 on REQUEST_SEND.
+  W14's merge isn't on main yet (9c29eac: parked for W14).
+- 2026-11-09: merged main (W14's request bus, ca05abc) and applied `w16-cc1slot-prep` (feb73ab) on top: chip.h's
+  `ControlIO` and `CcIO` keep both `req` (W14) and `slot` (mine); `cc_cycle` passes both. **The boot runs to
+  `coresBooted`: boot-end 7,222, equal to ref's.** The cycle mapping (found on the way): the framework's cycle F is
+  ref's F - 1 (it starts at 1, ref at 0; the units read ref's t as now() - 1), so between cycles `now()` is ref's
+  `c.cycle` + 1 and M3Seg's boot-end point (`c.cycle - 1`) is `now() - 2`; the driver first printed 7,223 for that.
+  **Against ref cycle by cycle:** `BootStage trace` (the same boot on ref, without the landings: C&C 1-3's and tile 0's
+  pc between every cycle to `coresBooted`, 5,269 changes) committed as `tests/m3-images/boottrace.ref.gz`
+  (`bootstage.sh` writes and checks it); `run_boot` in the harness and `t2_boot_equal_to_refs_*` (one domain, T2's
+  6-domain split on 6 threads, shuffle, instance-major): identical, boot-end 7,222. Ref's boot with the landings also
+  ends at 7,222 (golden-m3's `# boot-end`). **Not yet: every unit's line at boot end against `golden-m3/boot`**: the M3
+  chip's fingerprint writers (AUDIT-M3 6.9; step 5 of my plan) aren't built: the slot, `cnc1p`, `cc.host`, the
+  controllers' 16 streams, the controller router's streams, the M3 chip line (W14's `req`/`reqbus` and W15's `rp`/`tr`
+  writers to call in its order).
+- 2026-11-09: **the cycle numbering**, recorded in AUDIT-M3 section 7 (every later comparison depends on it): the
+  framework's first cycle is 1, ref's 0; its cycle F does ref's F - 1; between cycles `now()` is ref's `c.cycle` + 1; a
+  golden-m3 point t (M3Seg's `c.cycle - 1`) is the framework's state at `now()` = t + 2. The M2 harnesses' boot cycle
+  (test_sort's B = cycles run) is the same mapping.
+- 2026-11-09: the chip.cpp link fix pushed (cae10e2: C&C 1's own-port indices read inline, so binaries linking the
+  chip without the slot link). TSan: `make tsan-one` on clang and gcc (the eight thread tests, W14's test_reqbus and
+  now `test_t2_harness`, whose split boot runs under TSan: a rule in cc.mk adds it to `TB_TESTS`), all pass with no
+  race; gcc's and clang's `test_chip form2` pass. The full check before it (cae10e2's tree): 54 test binaries pass on
+  clang and gcc, debug and release.

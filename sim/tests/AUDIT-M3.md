@@ -538,6 +538,13 @@ leaves, 880 pages in evm-zone, 3,584 in cyclone) and **the harness's big-SRAM la
 T1's carry and the `poke`s; everything else (the boot, `CC_SEGMENT`, the checks against the delivery) it does as
 `M3Seg`. `regen.sh` regenerates and checks.
 
+**The cycle numbering** (W16, 2026-11-09; every comparison depends on it): the framework's first cycle is 1, ref's is
+0, and the framework's cycle F does ref's cycle F - 1 (its units read ref's t as `now() - 1`). So between cycles the
+framework's `now()` is ref's `c.cycle` + 1. A point labelled t in these references (M3Seg: `c.cycle - 1` after cycle t
+ran, as `StateFpM3.write(..., t, ...)`; the boot's end, `coresBooted` first true with `c.cycle` 7,223, is point 7,222)
+is the framework's state when `now()` is t + 2. Checked on the boot: C&C 1-3's and tile 0's pc between every cycle
+equal to ref's under this mapping (`tests/m3-images/boottrace.ref.gz`, `test_t2_harness`).
+
 **Localising a mismatch** (as AUDIT-M2 section 8): the first chip line that differs names the 100,000-cycle interval,
 the unit lines name the unit, `M3Seg fpchip=… fpchipevery=1` over that interval names the cycle, and
 `StateFpM3.dump` names the word.

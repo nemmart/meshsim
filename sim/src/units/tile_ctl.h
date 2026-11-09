@@ -410,6 +410,7 @@ struct G1Config {
     uint32_t mem_chunks = 1u << 20;
     uint32_t periph_present = 1;
     bool periph_slot = false;          // W15 (M3): the peripheral slot (the replayer as peripheral 1) and its paths
+    bool cc3_tracer = false;           // W16 (M3): C&C 3's peripheral 1 the Tracer (ref's cc3Tracer), else the stub
     unsigned K = 8, cm_latency = 2;    // the write counters' line, director -> port B
     // G3 (W11): the memory path's keys
     unsigned ts_engine_latency = 1;    // tsEngineLatency: the engines' Links to and from the table store and HIST

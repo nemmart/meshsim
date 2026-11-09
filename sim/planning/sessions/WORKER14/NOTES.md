@@ -192,6 +192,44 @@ it.
   map-hole case allocates a page) would read a stale sum. T2 makes no such edits, so it doesn't matter there.
 - **Long runs** (local, before the fingerprint lines): mix seeds 1-40 and wb 1-3, 43 logs, all equal.
 
+## 9. The Tracer's side of W15's slot (proposal to W15, 2026-11-09; owner: agree in writing before the slot lands)
+
+The slot (W15) holds `{type, ptr}` and switches on the type; for type 3 it includes `units/tracer.h` and calls
+`units::tracer::Tracer` directly. Everything below exists today and is what TracerConf checks against `ref`.
+
+| W15's list | the Tracer | notes |
+|---|---|---|
+| `params()` | `int params() const` (3) | also `type()` |
+| `running(t)`, `errors(t)`, `sync(t)` | `bool running(int64_t)`, `int errors(int64_t)`, `void sync(int64_t)` | settle(t) first: the end of t − 1 |
+| `status_bits(t)` | `uint32_t status_bits(int64_t) const` (0) | |
+| `events()` | `EventCounts& events()` (W15's `event_counts.h`) | the live bits [7]-[10] set by settle |
+| (consume) | `uint32_t consume_events(uint32_t bits)` | `ev.consume`; the Tracer has no `onConsume` |
+| `word(t, w, v)` | `bool word(int64_t, int, uint32_t&)` | false: undefined (`ref`'s null) |
+| `write_word(t, w, v)` | `int write_word(int64_t, int, uint32_t)` | 1, 0 (a bus error), −1 (undefined) |
+| `store_stalls(t, w)` | `bool store_stalls(int64_t, int) const` (false) | |
+| `accept(t, src, off, size, lo, hi)` | `void accept(int64_t, int, uint32_t, int, uint64_t, uint64_t)` | size is LinkWord's code (2 = 128 bits); lands at t + 2 |
+| `run(t)` | `void run(int64_t)` | |
+| `step(t)` | `void step(int64_t)` (`runCycle`) | |
+| `out_queues()`, `out_ready`, `out_take`, `out_start` | as listed; `out_ready` is const and never settles (as `ref`) | queue 0 the record read in place |
+| `reset(t)` | `void reset(int64_t)` | |
+| `idle(t)`, `next_wake_at(t)` | false, INT64_MAX (as `ref`) | |
+| (added) | `bool must_step() const` | the wake rule: false only when not running, no dropped expansion word waits and nothing pending; then skipping `step` is exact |
+| (added) | `void skip_cycles(int64_t n) const` | FATAL if the counters would tick (`ref`'s check) |
+| (added) | `void digest_words(int64_t out[8]) const` | words 44-51 as `ref`'s `digestWords` |
+| (added) | `template <class Out> void fingerprint(int unit, Out&, int64_t c) const` | units `FP_NAMES`: tr, tr.ic, tr.dc, tr.mem, tr.files (AUDIT-M3 6.6); the slot's own state is W15's |
+
+**Violations.** `ref`'s Tracer flags through `host.violate(t, message)`. Proposal: the Tracer keeps its own fixed-size
+facts (`violations[64]`, `n_violations`, `violation_name(code)`), and the slot's report includes them (it reads them
+after the run, or polls `n_violations` in its step if it wants the cycle at once): no callback pointer into the slot.
+Errors likewise (`error_log`, `error_name`). **For W15: agree, or say you want a `violate` hook.**
+
+**Configuration (the chip builder, W15 or the integrator):** `Tracer(me, icache_lines = 128)`; then `mem` (a
+`MemSystem` over the run's `FileStore`, both owned beside the Tracer), `map_mem` (null: the one memory system),
+`cold_mem_on_state_write = true` (T2's `onStateWrite`); `FileStore::track_sum(true)` only when fingerprints are wanted.
+
+**Order within the slot's step** is AUDIT-M3 3.1's (W15's): the Tracer's methods are `ref`'s with `ref`'s timing and
+its lazy settle, so whatever order 3.1 fixes for `ref` is reproduced exactly.
+
 ## Log
 
 - 2026-11-09: plan agreed; branch `sim-w14` from main 1a898aa.
@@ -199,3 +237,7 @@ it.
 - 2026-11-09: step 2 done (section 6): the Tracer equal to `ref` every cycle on TracerTest's cases. Merged into main.
 - 2026-11-09: step 3: the seeded fixtures (section 7) equal to `ref`; the write buffer past its depth and at the overflow.
 - 2026-11-09: the fingerprint writer (section 8), equal to StateFpM3 at 1,740 points.
+- 2026-11-09: T1 through TracerConf: TracerT1's copy with its three harness edits recorded (ownership, cold cache,
+  stall counters), the replay streaming from a FIFO. **Quest 163** (`163-w14-t1-sweep`): T1 on segments 0-3 of both
+  programs and the long sweep (mix 41-200, wb 4-16, wbover 2-6); smoke-run locally (build from the kit, the sweep's
+  20 logs equal; the runner's data absent here). The slot's interface proposed to W15 (section 9).

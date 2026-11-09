@@ -202,7 +202,9 @@ void build_chip(sim::Config& cfg, const ChipSpec& spec) {
         auto& cl = cfg.add<ChipLinesStandIn>("cc1.lines", s1 == nullptr);
         sim::LinkIn* rows = cl.rows; sim::LinkIn* lines = cl.cc_line; sim::LinkOut* go = cl.go;
         if (s1) {
-            const Cnc1Peripheral& p = s1->s.cnc1(1);
+            // (SlotCore's own accessor, inline: the chip's object links without the slot's)
+            if (s1->s.per[1].type != PT_CNC1) FATAL("build_chip: C&C 1's slot holds no C&C 1 peripheral");
+            const Cnc1Peripheral& p = *static_cast<const Cnc1Peripheral*>(s1->s.per[1].p);
             rows = s1->own.link_in + p.row0; lines = s1->own.link_in + p.line0; go = s1->own.link_out + p.go0;
         }
         for (unsigned r = 0; r < 8; r++) {

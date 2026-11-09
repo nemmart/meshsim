@@ -584,6 +584,173 @@ void immediate_zero() {
     }
 }
 
+// ================================================================ invalid expansions (4.19.11, condition 13)
+void invalid() {
+    const char* cases[] = {"class 3", "reserved operand code", "format 6", "opcode not executed", "past ROM word 511"};
+    for (std::string c : cases) {
+        T::group("invalid expansion: " + c);
+        ReplayWindow w;
+        w.fixed_rom();
+        uint32_t ins = i_(5, 0, 0, A0, OP_IMM);
+        W word = W::op(alu::ADDI).rd(129).rs1(130).rs2(132).fmt(1).report_c();
+        unsigned start = 20;
+        if (c == "class 3") w.decode_class(ins, 3);
+        else if (c == "reserved operand code") word.rs2(146);
+        else if (c == "format 6") word.fmt(6);
+        else if (c == "opcode not executed") word.lo = (word.lo & ~0xFFull) | 163;
+        if (c == "past ROM word 511") { start = 511; word.seq(1); w.rom_lo[511] = word.lo; w.rom_hi[511] = word.hi; }
+        else w.rom(start, {word});
+        if (c != "class 3") w.decode_rom(ins, start);
+        w.set_logs({}, false, false);
+        w.set_code({ins, ins, ins}, false);
+        auto d = run_window(w, 10);
+        int64_t expect_rows = c == "past ROM word 511" ? 1 : 0;
+        T::eq(1, int64_t(d->r->cond_events(Replayer::ERR_INVALID)), "condition 13 once");
+        T::check(d->done, "done posted: the pass stops as if it had ended");
+        T::eq(expect_rows, int64_t(d->rows()), "rows before it");
+        T::check(!d->r->is_running(), "periph_running fell");
+    }
+    for (unsigned bit : {55u, 56u, 61u}) for (bool fed : {false, true}) {
+        T::group("reserved bit " + std::to_string(bit) + (fed ? ", controller-fed" : ", ROM"));
+        ReplayWindow w;
+        w.fixed_rom();
+        W word = W::op(alu::ADDI).rd(129).rs1(130).rs2(132).fmt(1).report_c().reserved(bit);
+        uint32_t ins = fed ? r_(0, 2, 1, 0, 3, CUSTOM0) : i_(5, 0, 0, A0, OP_IMM);
+        if (fed) { w.decode_class(ins, 1); w.template_(ins, {word}); }
+        else { w.rom(20, {word}); w.decode_rom(ins, 20); }
+        w.set_logs({}, false, false);
+        w.set_code({ins, ins}, false);
+        T::dies([&] { run_window(w, 10); }, "a word with bit " + std::to_string(bit) + " set", {"replayer", "reserved bits [61:55]", fed ? "controller-fed" : "ROM"});
+    }
+}
+
+// ================================================================ the write port (4.19.10)
+void write_port() {
+    T::group("write port");
+    auto r = fresh();
+    int64_t t = 0;
+    r->accept(t, 3, 0x0, 2, 0x1234, 0); r->step(t++);
+    for (int k = 0; k < 4; k++) r->step(t++);
+    T::eq(0x1234, int64_t(r->region0[0]), "the state word landed");
+    struct Bad { uint32_t at; unsigned size; const char* what; const char* name; };
+    const Bad badw[] = {{0x0, 1, "a 64-bit packet", "size 64"}, {0x100000, 0, "a queue takes 128 bits only", "size 32"},
+                        {0x800, 2, "unmapped in part 0", "unmapped"}, {0x500000, 2, "part 5 (v1.25 CL1: 1-4 the queues)", "unmapped"},
+                        {0x700000, 2, "part 7", "unmapped"}, {0x8, 2, "part 0 off a 128-bit boundary", "item 47"}};
+    for (const Bad& bw : badw) {
+        auto rb = fresh();
+        rb->accept(0, 3, bw.at, bw.size, 1, 1);
+        T::dies([&] { for (int64_t u = 0; u < 8; u++) rb->step(u); }, std::string("a bad write: ") + bw.what, {"replayer", bw.name});
+    }
+    T::eq(0, r->errors(t), "ERRORS [0] is reserved: never set");
+    T::eq(1, r->landed(2), "landed(t): a packet accepted at t - 2");
+    T::eq(0, r->landed(101), "no packet");
+    r->region0[0] = 0;
+    r->accept(t, 3, 0x0, 2, 0x99, 0); r->step(t++);
+    r->step(t++);
+    T::eq(0, int64_t(r->region0[0]), "not landed at t + 1");
+    r->step(t++); r->step(t++);
+    T::eq(0x99, int64_t(r->region0[0]), "landed by t + 3 (at the end of t + 2)");
+    for (uint32_t at : {0x0u, 0x1000u}) {
+        auto w = program_window(false, false, false, true);
+        auto d = std::make_unique<ReplayDriver>(*w);
+        d->w.rows = 25; d->load();
+        d->write_config(); d->r->run(d->t); d->step(); d->step();
+        d->r->accept(d->t, 3, 0x2000 + 16 * 500, 2, 7, 7); d->step();
+        for (int k = 0; k < 4; k++) d->step();
+        T::eq(7, int64_t(d->r->rom_lo[500]), "running: the ROM takes writes (its second port)");
+        d->r->accept(d->t, 3, at, 2, 5, 5);
+        T::dies([&] { for (int k = 0; k < 6; k++) d->step(); },
+                std::string("running: ") + (at == 0 ? "the state word" : "the decode table") + " written during a pass", {"replayer", "while a pass runs"});
+    }
+    {
+        auto w = program_window(false, false, false, true);
+        auto d = std::make_unique<ReplayDriver>(*w);
+        d->w.rows = 25; d->load();
+        d->write_config(); d->r->run(d->t); d->step(); d->step();
+        T::check(d->r->running(d->t), "a pass runs");
+        d->r->run(d->t);
+        T::dies([&] { for (int k = 0; k < 3; k++) d->step(); }, "PULSE_RUN while a pass runs", {"replayer", "PULSE_RUN while a pass runs"});
+    }
+    auto r3 = fresh();
+    int64_t t3 = 0;
+    const uint32_t ats[] = {0x100000, 0x1FFFF0, 0x200000, 0x280000, 0x2FFFF0, 0x300000, 0x3ABCD0, 0x400000, 0x4FFFF0, 0x5FFFF0, 0x700000};
+    for (uint32_t a : ats) if (a < 0x500000) { r3->accept(t3, 3, a, 2, a, 0); r3->step(t3++); }
+    for (int k = 0; k < 4; k++) r3->step(t3++);
+    T::eq(2, r3->code.occ, "part 1 (0x100000-0x1FFFFF): the code queue");
+    T::eq(3, r3->rlog.occ, "part 2 (0x200000-0x2FFFFF): the read-log queue, 0x280000 included");
+    T::eq(2, r3->wlog.occ, "part 3 (0x300000-0x3FFFFF): the write-log queue");
+    T::eq(2, r3->exp.occ, "part 4 (0x400000-0x4FFFFF): the expansion queue");
+    T::eq(0x280000, int64_t(r3->rlog.lo[(r3->rlog.head + 1) % r3->rlog.cap]), "0x280000 went to the read log, in order");
+    T::eq(0x400000, int64_t(r3->exp.lo[r3->exp.head]), "0x400000 went to the expansion queue");
+    auto r2 = fresh();
+    int64_t t2 = 0;
+    for (int k = 0; k < 257; k++) { r2->accept(t2, 3, 0x100000, 2, uint64_t(k), 0); r2->step(t2++); }
+    for (int k = 0; k < 4; k++) r2->step(t2++);
+    T::eq(1, int64_t(r2->cond_events(Replayer::ERR_OVERRUN)), "queue overrun on the 257th push");
+    T::eq(1 << Replayer::ERR_OVERRUN, r2->errors(t2), "ERRORS [1], queue overrun");
+    T::eq(256, r2->code.occ, "256 entries held");
+    T::eq(1 << Replayer::ERR_OVERRUN, r2->errors(t2), "a push while stopped is accepted: only the overrun is set");
+}
+
+// ================================================================ events and credits (4.19.8, 4.19.9, 4.17.3)
+void lines() {
+    T::group("events and credits");
+    const uint32_t code = 1u << Replayer::EV_CODE, rlog = 1u << Replayer::EV_RLOG, wlog = 1u << Replayer::EV_WLOG, exp = 1u << Replayer::EV_EXP,
+                   done = 1u << Replayer::EV_RUN_DONE;
+    auto w = program_window(false, false, false, true);
+    auto rp = fresh();
+    Replayer& r = *rp;
+    w->rows = 25;
+    auto d = std::make_unique<ReplayDriver>(*w, 1u << 17, rp.get());
+    d->load();
+    d->write_config();
+    int64_t t = d->t;
+    T::check(!r.running(t), "idle: STATUS [0] = 0");
+    T::eq(code | rlog | wlog | exp, r.events().value(t), "idle, after the load: the state word's write set every queue's credits to 2");
+    r.run(t); d->step(); r.sync(d->t);
+    T::check(r.running(t + 1), "running from the end of the run's cycle");
+    T::eq(code | rlog | wlog | exp, r.events().value(d->t), "PULSE_RUN leaves them (v1.26)");
+    for (unsigned b = Replayer::EV_CODE; b <= Replayer::EV_EXP; b++) T::eq(2, r.events().count_of(b), "credit bit " + std::to_string(b) + ": 2");
+    r.consume_events(code); d->step(); r.sync(d->t);
+    T::eq(code | rlog | wlog | exp, r.events().value(d->t), "one consuming load: code still has a credit");
+    r.consume_events(code); d->step(); r.sync(d->t);
+    T::eq(rlog | wlog | exp, r.events().value(d->t), "two: code's bit falls (two refills may be outstanding)");
+    T::eq(4, r.params(), "PARAMS: type 4 (4.17.1, D46), version 0");
+    T::eq(0, r.status(d->t, 1), "EXPANSION_OPCODE: nothing presented yet");
+    uint32_t v35 = 0, v34 = 0, v32 = 0, v36 = 0;
+    r.word(d->t, 35, v35); r.word(d->t, 34, v34); r.word(d->t, 32, v32);
+    T::eq(v35, r.status(d->t, 1), "word 35 is EXPANSION_OPCODE (v1.26.1; was 34)");
+    T::eq(r.status(d->t, 0) >> 16, v34, "word 34 is EXPANSION_OFFSET (was 33)");
+    T::eq(25 | Replayer::RC_STORE_LOG | Replayer::RC_RD_PREV, v32, "word 32 reads RUN_CONFIG back");
+    T::check(!r.word(d->t, 36, v36), "word 36 undefined");
+    T::eq(0, r.write_word(d->t, 33, 1), "a store to ROWS_RUN (33) is a bus error");
+    T::eq(0, r.write_word(d->t, 35, 1), "and to 35");
+    auto w3 = program_window(false, false, false, true);
+    auto d3 = run_window(*w3, 25);
+    T::check(d3->done, "the driver saw run done");
+    d3->r->sync(d3->t);
+    T::eq(0, d3->r->events().value(d3->t) & done, "and its consuming load took it");
+    T::check(d3->rows() == 25, "the pass ran its 25 rows on returned credits");
+}
+
+// ================================================================ timing (4.19.7, 4.19.11)
+void timing() {
+    T::group("timing");
+    auto w = program_window(false, false, false, true);
+    auto d = run_window(*w, 25);
+    int64_t cyc = d->r->pass_end_at - d->r->pass_start_at;
+    int64_t rows_cycles = 23 * 3 + 2 * 5;
+    int64_t stalls = 0;
+    std::string st;
+    for (unsigned k = 0; k < Replayer::N_STALL; k++) { stalls += int64_t(d->r->stalls[k]); st += (k ? ", " : "") + std::to_string(d->r->stalls[k]); }
+    std::printf("  program pass: %lld cycles from the run to the last row: rows %lld, stalls [%s] [IMAGE, CODE, NEWEXP, EXP, RLOG, WLOG, OUTQ]\n",
+                (long long)cyc, (long long)rows_cycles, st.c_str());
+    T::eq(rows_cycles + stalls, cyc, "cycles = row schedules (3, or 5 for class M) + stall cycles");
+    T::eq(0, int64_t(d->r->stalls[Replayer::ST_IMAGE]), "v1.26 (item 12): no image copy, the first row starts at once");
+    T::eq(2, int64_t(d->r->rows_m), "two class-M rows");
+    T::eq(25, d->r->status(d->t, 0) & 0xFFFF, "PERIPH_STATUS_0 [15:0]: rows run");
+}
+
 // Run a group; the TEST fails if any of its checks did.
 bool group_ok(void (*fn)()) {
     int f0 = T::failed;
@@ -607,3 +774,7 @@ TEST(unit_controller_fed_rd0) { CHECK(group_ok(controller_fed_rd0)); }
 TEST(unit_padding) { CHECK(group_ok(padding)); }
 TEST(unit_debug_length) { CHECK(group_ok(debug_length)); }
 TEST(unit_immediate_zero) { CHECK(group_ok(immediate_zero)); }
+TEST(unit_invalid) { CHECK(group_ok(invalid)); }
+TEST(unit_write_port) { CHECK(group_ok(write_port)); }
+TEST(unit_lines) { CHECK(group_ok(lines)); }
+TEST(unit_timing) { CHECK(group_ok(timing)); }

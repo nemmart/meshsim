@@ -58,3 +58,11 @@ orders, step-all, the missed-wake detector).
 ## Log
 
 - 2026-11-09: plan agreed (rulings above); branch `sim-w16` from main 41eb698.
+- 2026-11-09: **step 1 done**: the router's controller variant (`Router` with `tile` 64-66: `FEEDERS_CC`, `ccRoute`,
+  `step_cc`; ports `in[0]` CC_LINK_IN, `host` CC_HOST_IN Fifo(4), `dma` CC_DMA_IN Fifo(4), `out[0]` CC_LINK_OUT) and
+  tiles 0-2's fifth port as the C&C links (`FIFTH_LINK`: `from_cc`/`to_cc`, Link(cc_link_latency)). `NetConfig` gains
+  `cc_link_latency`, `cc_host_depth`, `cc_dma_depth` (ref's 1, 4, 4). The feeder table is per router now (27 FIFOs on a
+  tile, 28 on a controller); a tile router's stream and digest are unchanged. RouterConf extended (`gen ... link`,
+  `gen 64-66 [dma]`): five new fixtures (`t0-s7-link`, `t2-s8-link`, `t64-s1`, `t65-s2`, `t66-s3-dma`; overflows and
+  eject errors reached), the old eight byte-identical on regeneration; all equal to ref, under shuffle, both orders and
+  step-all (clang and gcc debug). A planted bug (the DMA's packet for the controller sent on the link) fails `t66`.

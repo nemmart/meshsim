@@ -74,6 +74,8 @@ struct NetConfig {
     unsigned cnc_rx_depth = 64;         // C&C's receive FIFO
     bool skew = true;                   // start skew: +0 or +1 per tile on GO, from Java's Random(skew_seed)
     int64_t skew_seed = 1;
+    // C&C as cores (M3, AUDIT-M3 3.4; ref's Config.ccLinkLatency, the host FIFO's 4, Config.ccDmaDepth)
+    unsigned cc_link_latency = 1, cc_host_depth = 4, cc_dma_depth = 4;
     unsigned loopback_fifo_depth() const { return loopback_depth > 0 ? unsigned(loopback_depth) : read_tokens; }
     unsigned error_lat() const { return error_latency >= 0 ? unsigned(error_latency) : ready_latency; }
 };

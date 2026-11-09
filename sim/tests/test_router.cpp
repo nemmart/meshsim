@@ -8,6 +8,8 @@
 //   - stage 2: the injection unit behind the router (ref's InjectionPath with SRAMReadQueue's tokens, as Tile runs them),
 //     fed by a core's send holding register that retries a refused put: the same lines plus STATUS's send-busy, the
 //     injection unit's stream (StateFp's "inj"), the tokens held, token waits, refusals and violations.
+//   - M3 (WORKER16): tiles 0-2 with the fifth port as the C&C links (Link(1) each way), and a controller's router
+//     (64-66: FEEDERS_CC, ccRoute; the C&C link, the host port's Fifo(4), C&C 3's DMA Fifo(4)).
 // The fixtures are regenerated and checked against ref by tests/ref/routerconf.sh --check.
 #include <cinttypes>
 #include <cstdio>
@@ -36,7 +38,7 @@ Hops hops() { return load_hops("ref/meshsim/hops.txt"); }
 
 // ---- the script ----------------------------------------------------------------------------------------------------
 struct Ev { uint64_t t; uint8_t port; Word w[3]; };   // port: 0-3 a link, 4 the injection, 5 C&C's hold, 6 a core send
-struct Script { unsigned tile = 0; uint64_t cycles = 0; bool send = false; std::vector<Ev> ev; };
+struct Script { unsigned tile = 0; uint64_t cycles = 0; bool send = false, link = false, dma = false; std::vector<Ev> ev; };
 
 Script parse_script(const std::string& text) {
     Script s;
@@ -50,6 +52,8 @@ Script parse_script(const std::string& text) {
         if (line[0] == '#') {
             if (line.rfind("# tile ", 0) == 0) s.tile = unsigned(std::atoi(line.c_str() + 7));
             if (line.rfind("# seed ", 0) == 0 && line.size() > 5 && line.compare(line.size() - 5, 5, " send") == 0) s.send = true;
+            if (line == "# fifth link") s.link = true;
+            if (line == "# cc dma") s.dma = true;
             continue;
         }
         char* q = nullptr;
@@ -69,17 +73,23 @@ Script parse_script(const std::string& text) {
 
 // ---- the stimulus and the observer -----------------------------------------------------------------------------------
 struct Stim {
-    sim::LinkOut link[4], inj;
+    sim::LinkOut link[4], inj, cc_link;
     sim::HoldOut cnc, send;
-    bool attached, core;
+    sim::FifoOut host, dma;                                   // a controller's router: L1, L2
+    bool attached, core, link5, cc;
     const Ev* ev; uint32_t n, i = 0;
     // the core's send holding register, as the core uses it: a refused put is retried, the script's word dropped
     Word put_w[3] = {}, occupant[3] = {};
     uint64_t put_at = 0, refusals = 0;
-    Stim(Ports& p, bool att, bool with_core, const Ev* e, uint32_t count) : attached(att), core(with_core), ev(e), n(count) {
-        for (unsigned d = 0; d < 4; d++) p.out(link[d], "link", 3);
+    Stim(Ports& p, const Script& s, const Ev* e, uint32_t count)
+        : attached(s.tile < 3), core(s.send), link5(s.link), cc(s.tile >= 64), ev(e), n(count) {
+        if (cc) {
+            p.out(link[0], "link", 3); p.out(host, "host", 3);
+            if (s.dma) p.out(dma, "dma", 3);
+        } else for (unsigned d = 0; d < 4; d++) p.out(link[d], "link", 3);
         if (core) p.out(send, "send", 3); else p.out(inj, "inj", 3);
-        if (attached) p.out(cnc, "cnc", 3);
+        if (attached && !link5) p.out(cnc, "cnc", 3);
+        if (attached && link5) p.out(cc_link, "cc-link", 3);
     }
     Wake step(Ctx& c) {
         const uint64_t t = c.now();
@@ -90,12 +100,15 @@ struct Stim {
         }
         for (; i < n && ev[i].t == t; i++) {
             const Ev& e = ev[i];
-            if (e.port < 4) c.put(link[e.port], e.w[0], e.w[1], e.w[2]);
+            if (cc && e.port == 1) c.put(host, e.w[0], e.w[1], e.w[2]);
+            else if (cc && e.port == 2) c.put(dma, e.w[0], e.w[1], e.w[2]);
+            else if (e.port < 4) c.put(link[e.port], e.w[0], e.w[1], e.w[2]);
             else if (e.port == 4) c.put(inj, e.w[0], e.w[1], e.w[2]);
             else if (e.port == 6) {
                 if (retried) continue;                            // the core stalls on its retry
                 c.put(send, e.w[0], e.w[1], e.w[2]); std::memcpy(put_w, e.w, sizeof put_w); put_at = t;
             }
+            else if (link5) c.put(cc_link, e.w[0], e.w[1], e.w[2]);
             else c.put(cnc, e.w[0], e.w[1], e.w[2]);
         }
         return c.next();                                          // every cycle: it plays the core
@@ -105,25 +118,28 @@ struct Stim {
 
 struct Got { uint64_t at = 0; Word w[3] = {}; };
 struct Obs {
-    sim::LinkIn link[4], eject, left;
+    sim::LinkIn link[4], eject, left, cc_link;
     sim::FifoIn cnc;
     sim::CountIn ovf;
     sim::RegIn busy;
-    bool attached, core;
+    bool attached, core, link5;
+    unsigned nlinks;
     Got out[4], ej, x, lf;
     uint64_t ovf_through_last = 0;   // the router's overflow Count as the register block reads it at its shifted end
-    Obs(Ports& p, bool att, bool with_core) : attached(att), core(with_core) {
-        for (unsigned d = 0; d < 4; d++) p.in(link[d], "link", 3);
+    Obs(Ports& p, const Script& s) : attached(s.tile < 3), core(s.send), link5(s.link), nlinks(s.tile >= 64 ? 1 : 4) {
+        for (unsigned d = 0; d < nlinks; d++) p.in(link[d], "link", 3);
         p.in(eject, "eject", 3); p.in(ovf, "ovf");
         if (core) p.in(busy, "busy", 1); else p.in(left, "left", 0);
-        if (attached) p.in(cnc, "cnc", 3, 16);
+        if (attached && !link5) p.in(cnc, "cnc", 3, 16);
+        if (attached && link5) p.in(cc_link, "cc-link", 3);
     }
     static void got(Ctx& c, Got& g, const Word* w) { g.at = c.now(); std::memcpy(g.w, w, sizeof g.w); }
     Wake step(Ctx& c) {
-        for (unsigned d = 0; d < 4; d++) if (c.ready(link[d])) { got(c, out[d], c.peek(link[d])); c.take(link[d]); }
+        for (unsigned d = 0; d < nlinks; d++) if (c.ready(link[d])) { got(c, out[d], c.peek(link[d])); c.take(link[d]); }
         if (c.ready(eject)) { got(c, ej, c.peek(eject)); c.take(eject); }
         if (!core && c.ready(left)) { lf.at = c.now(); c.take(left); }
-        if (attached && c.ready(cnc)) { got(c, x, c.peek(cnc)); c.take(cnc); }
+        if (attached && !link5 && c.ready(cnc)) { got(c, x, c.peek(cnc)); c.take(cnc); }
+        if (attached && link5 && c.ready(cc_link)) { got(c, x, c.peek(cc_link)); c.take(cc_link); }
         ovf_through_last = c.through_last(ovf);
         return c.next();                                    // every cycle: it samples the Count
     }
@@ -149,10 +165,12 @@ std::string run(const Script& s, const Hops& h, sim::Options opt) {
     NetConfig nc;
     sim::Config cfg(opt);
     const bool att = s.tile < 3;
-    auto& st = cfg.add<Stim>("stim", att, s.send, s.ev.data(), uint32_t(s.ev.size()));
-    auto& r = cfg.add<Router>("router", s.tile, nc, &h);
-    auto& ob = cfg.add<Obs>("obs", att, s.send);
-    for (unsigned d = 0; d < 4; d++) { cfg.link(st.link[d], r.in[d], 1); cfg.link(r.out[d], ob.link[d], 1); }
+    const bool cc = s.tile >= 64;
+    auto& st = cfg.add<Stim>("stim", s, s.ev.data(), uint32_t(s.ev.size()));
+    auto& r = cfg.add<Router>("router", s.tile, nc, &h, false, s.link ? Router::FIFTH_LINK : Router::FIFTH_HOLD, s.dma);
+    auto& ob = cfg.add<Obs>("obs", s);
+    for (unsigned d = 0; d < (cc ? 1u : 4u); d++) { cfg.link(st.link[d], r.in[d], 1); cfg.link(r.out[d], ob.link[d], 1); }
+    if (cc) { cfg.connect(st.host, r.host); if (s.dma) cfg.connect(st.dma, r.dma); }
     cfg.link(r.eject, ob.eject, 1);
     if (s.send) {
         auto& ij = cfg.add<Injection>("inj", s.tile, nc);
@@ -166,7 +184,8 @@ std::string run(const Script& s, const Hops& h, sim::Options opt) {
         cfg.link(r.loop_left, ob.left, 1);
     }
     cfg.connect(r.ovf, ob.ovf);
-    if (att) { cfg.connect(st.cnc, r.from_cnc); cfg.connect(r.to_cnc, ob.cnc); }
+    if (att && !s.link) { cfg.connect(st.cnc, r.from_cnc); cfg.connect(r.to_cnc, ob.cnc); }
+    if (att && s.link) { cfg.link(st.cc_link, r.from_cc, nc.cc_link_latency); cfg.link(r.to_cc, ob.cc_link, nc.cc_link_latency); }
     sim::Sim sim = cfg.build();
     std::string out, snap, injsnap;
     uint64_t held_end = 0;                                    // the injection unit's loopback tokens at the end of t - 1
@@ -256,7 +275,8 @@ bool same(const std::string& name, const std::string& got, const std::string& wa
     return false;
 }
 
-const char* kFixtures[] = {"t0-s1", "t1-s2", "t5-s3", "t27-s1", "t63-s2", "t0-s4-send", "t5-s5-send", "t63-s6-send"};
+const char* kFixtures[] = {"t0-s1", "t1-s2", "t5-s3", "t27-s1", "t63-s2", "t0-s4-send", "t5-s5-send", "t63-s6-send",
+                           "t0-s7-link", "t2-s8-link", "t64-s1", "t65-s2", "t66-s3-dma"};
 
 void conformance(sim::Options opt) {
     const Hops h = hops();
@@ -317,7 +337,7 @@ TEST(router_conformance_long_runs_when_asked) {
     const char* dir = std::getenv("ROUTERCONF_LONG");
     if (!dir) return;
     const Hops h = hops();
-    const char* confs[] = {"0", "1", "5", "27", "63", "0|-send", "5|-send", "63|-send"};
+    const char* confs[] = {"0", "1", "5", "27", "63", "0|-send", "5|-send", "63|-send", "0|-link", "2|-link", "64", "65", "66|-dma"};
     unsigned n = 0;
     for (const char* cf : confs)
         for (int seed = 1; seed <= 3; seed++) {

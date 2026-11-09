@@ -6,7 +6,7 @@
 #
 # TSan can't share a process with ASan, so it is its own build, debug-like (-O1 -g, SIM_DEBUG's checks on).
 
-TSAN_TESTS := test_parallel test_threads test_topology test_matrix test_observe test_link_depth test_partition
+TSAN_TESTS := test_parallel test_threads test_topology test_matrix test_observe test_link_depth test_partition test_reqbus
 TB         := build/$(CC_NAME)-tsan
 TSAN_FLAGS := $(COMMON) -O1 -g -DSIM_DEBUG -fsanitize=thread -fno-omit-frame-pointer -pthread
 TB_LIB     := $(LIB_SRC:%.cpp=$(TB)/%.o)
@@ -22,6 +22,9 @@ $(TB)/%.o: %.cpp
 # hook's, is kept; it allocates through malloc, which TSan intercepts, so TSan still sees every allocation.
 $(TB)/test_%: $(TB)/tests/test_%.o $(TB)/tests/harness.o $(TB_LIB)
 	$(CXX) $(TSAN_FLAGS) $^ -o $@ $(WRAP) -Wl,--allow-multiple-definition
+
+# W14: test_reqbus's mode-3 split run under TSan needs the fingerprint writer's object
+$(TB)/test_reqbus: $(TB)/tests/statefp.o
 
 # The threads' benchmark (timing: clang release, D18): make build/clang-release/bench_threads
 $(B)/bench_threads: $(B)/bench/threads/bench_threads.o $(LIB_OBJ)

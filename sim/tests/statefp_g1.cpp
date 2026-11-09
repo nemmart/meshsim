@@ -1,5 +1,7 @@
 // statefp_g1.cpp: G1's fingerprint writers (statefp_g1.h), StateFp.java's streams word for word.
 #include "statefp_g1.h"
+#include "statefp_g2.h"
+#include "reqbus_fp.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -339,11 +341,22 @@ void w_rdport(const void* p, FpOut& o, const FpCtx&) {
     o.w("outstanding", st - (g.udir ? g.udir->rp_accepted : 0));
 }
 // StateFp.req: the request FIFO (empty), beatsSent, W0-W2 (REQUEST_SET_W*, never stored in M2's programs).
-void w_req(const void* p, FpOut& o, const FpCtx&) {
+void w_req(const void* p, FpOut& o, const FpCtx& x) {
     const G1Tile& g = tile(p);
+    if (g.uleaf && x.sim) {   // W14: the port as the bus holds it (reqbus_fp.h); REQUEST_SET_W0-W2 as the core stored them
+        reqfp::port(o, *x.sim, g.uleaf, g.ucore ? g.ucore->req_set_w : g.ctl->set_w, x.cycle);
+        return;
+    }
     o.w("fifo.n", 0);
     o.w("beatsSent", 0);
     for (unsigned k = 0; k < 3; k++) o.wi("setW", k, g.ctl ? g.ctl->set_w[k] : 0);
+}
+
+void attach_reqbus(sim::Sim& s, G1Tile* g1, unsigned n_tiles, G2Chip& gc, units::reqbus::ReqBusUnits& u,
+                   const units::reqbus::ReqBusConfig& rc) {
+    u = units::reqbus::resolve(s, ~uint64_t(0) >> (64 - n_tiles), 0, rc);
+    for (unsigned k = 0; k < n_tiles; k++) g1[k].uleaf = u.leaf[k];
+    gc.reqbus = &u;
 }
 
 void register_g1(FpRegistry& r, const G1Tile& g) {

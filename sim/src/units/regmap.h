@@ -72,6 +72,7 @@ enum : uint32_t {
     COUNTER_EVENTS = 0x7F | 1u << EV_COUNTERS_DONE,
     ST_RD_RUNNING = 0, ST_RD_DONE = 1, ST_GATHER_BUSY = 2, ST_SEND_BUSY = 3, ST_DONE = 4, ST_LANDED = 5, ST_REQUEST_BUSY = 6,
     COND_BUS_ERROR = 9, COND_ILLEGAL = 10,                                       // ERRORS bits (Conditions.java)
+    COND_RECV_UNDERFLOW = 14,                                                    // W14: a REQUEST_RECEIVE of an empty queue
 };
 
 // PARAMS (TileControl.params): peripherals present [2:0], the tile [26:20], big-SRAM size [31:27].

@@ -531,3 +531,15 @@ DEATH_TEST(accept_after_its_landing_was_settled_is_fatal, "was settled") {
     tr.sync(13);
     tr.accept(10, 74, 0x50, 2, 1, 2);
 }
+
+// writable(w) (W15's static map) agrees with write_word on every own word 32-127: 1 exactly where writable.
+TEST(writable_agrees_with_write_word) {
+    Tracer tr(66);
+    unsigned n = 0;
+    for (int w = 32; w < 128; w++) {
+        const int r = tr.write_word(0, w, 0);
+        CHECK_EQ(r == 1, tr.writable(w));
+        n += tr.writable(w);
+    }
+    CHECK_EQ(n, 5u);   // RUN_CONFIG, HASH_MUL, HASH_STEP, HASH_LINES, EXP_TEMPLATE
+}

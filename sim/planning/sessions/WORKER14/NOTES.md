@@ -446,3 +446,10 @@ debug, tsan).
   peripheral is still the stand-in). Then `test_cc_req`: mode 0 one domain equal to `cc_req.ref` in every figure; mode 3
   (one domain and row bands) the same words, its `lag_cycles` reported (positive here: the queue and FIFO fill on
   purpose), the cycles equal where it is 0.
+- 2026-11-09: **`test_cc_req`** on T2's machine with C&C 1's slot (main 8e3611b; `t2::build_machine` takes the bus's
+  configuration, W16's harness, noted): **mode 0 on one domain equal to `cc_req.ref` in every figure** (C&C 1's exit
+  at 24,702; all 300 send and 300 receive cycles; every word, stamped with requestor 5; the empty receive's 0 and
+  ERRORS [14]; 2,400 beats at the root), plain, step-all and shuffled; the cycles compared as the programs' mcycle and
+  TileCtl's `sim_exit_at` (AUDIT-M3 7's mapping inside both). Mode 3, one domain and T2's split (4 domains): the same
+  words; `lag_cycles` 1,026, 42 of the 601 cycle figures differ from `ref`'s (exit still at 24,702); the split equal to
+  one domain in every figure. Clang release and gcc debug.

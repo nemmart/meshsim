@@ -15,3 +15,4 @@ TB_T2_LINK := $(subst $(B)/,$(TB)/,$(T2_LINK) $(B)/src/units/periph_slot.o $(REP
 $(TB)/test_t2_harness: $(sort $(TB_T2_LINK))
 TB_TESTS += $(TB)/test_t2_harness
 tsan-one: $(TB)/test_t2_harness
+$(B)/test_cc_req: $(T2_LINK)

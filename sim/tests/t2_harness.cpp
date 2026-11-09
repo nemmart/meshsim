@@ -239,7 +239,8 @@ bool rows_ref(const std::string& delivery, unsigned segment, unsigned windows, R
     return true;
 }
 
-std::unique_ptr<Machine> build_machine(const uint8_t* domains, sim::Options opt, std::string& err) {
+std::unique_ptr<Machine> build_machine(const uint8_t* domains, sim::Options opt, std::string& err,
+                                       const units::reqbus::ReqBusConfig* reqbus) {
     auto m = std::make_unique<Machine>();
     m->hops = units::load_hops("ref/meshsim/hops.txt");
     std::string rom;
@@ -264,6 +265,7 @@ std::unique_ptr<Machine> build_machine(const uint8_t* domains, sim::Options opt,
     spec.hops = &m->hops; spec.control = units::add_g1; spec.control_ctx = &gx; spec.domain = domains;
     spec.cc_cores = true;
     spec.cc3_dma = true;                 // C&C 3's DMA into its router (the Tracer's records and streams)
+    if (reqbus) spec.reqbus = *reqbus;   // W14 (D34): the bus's mode, explicit
     units::build_chip(cfg, spec);
     m->sim.emplace(cfg.build());
     return m;

@@ -9,6 +9,8 @@
 #include "units/chip.h"
 #include "units/host_port.h"
 #include "units/net.h"
+#include "units/periph_slot.h"
+#include "units/tracer.h"
 #include "golden_run.h"
 
 namespace t2 {
@@ -237,6 +239,11 @@ bool rows_ref(const std::string& delivery, unsigned segment, unsigned windows, R
         out[t].present = true;
     }
     return true;
+}
+
+void attach_store(Machine& m, std::unique_ptr<FileStore> store) {
+    units::PeriphSlot& s3 = m.sim->unit<units::PeriphSlot>("cc3.slot");
+    s3.s.tracer(1).own_memory(std::move(store));
 }
 
 std::unique_ptr<Machine> build_machine(const uint8_t* domains, sim::Options opt, std::string& err) {

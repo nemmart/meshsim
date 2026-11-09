@@ -87,6 +87,8 @@ struct Machine {
     std::optional<sim::Sim> sim;
     uint32_t* dmem(unsigned unit) { return mem.data() + size_t(unit) * 2 * units::MEM_WORDS; }
 };
+// C&C 3's Tracer gets its memory (M3Seg: `tr.mem = new MemorySystem(fs)`): the store, by Tracer::own_memory.
+void attach_store(Machine& m, std::unique_ptr<units::tracer::FileStore> store);
 // `domains` (64 entries, or null: one domain); `threads` for the split.
 std::unique_ptr<Machine> build_machine(const uint8_t* domains, sim::Options opt, std::string& err);
 

@@ -8,6 +8,7 @@
 #include <string>
 
 #include "units/ag.h"
+#include "units/chip.h"
 #include "units/gather.h"
 #include "units/write_engine.h"
 
@@ -49,7 +50,7 @@ struct Overlay {
 }  // namespace
 
 G1Tile g1_tile(sim::Sim& s, unsigned k) {
-    const std::string t = "t" + std::to_string(k) + ".";
+    const std::string t = units::unit_prefix(k);           // W16: "t<k>." or, for units 64-66, "cc1." .. "cc3."
     G1Tile g;
     g.tile = k; g.sim = &s;
     g.ucore = &s.unit<units::TileCore>(t + "core"); g.uctl = &s.unit<units::TileCtl>(t + "ctl");
@@ -360,7 +361,7 @@ void attach_reqbus(sim::Sim& s, G1Tile* g1, unsigned n_tiles, G2Chip& gc, units:
 }
 
 void register_g1(FpRegistry& r, const G1Tile& g) {
-    const std::string t = "t" + std::to_string(g.tile) + ".";
+    const std::string t = units::unit_prefix(g.tile);      // W16: the controllers' "cc1." .. "cc3."
     if (g.core) { r.add(t + "core", w_core, &g); r.add(t + "cmem", w_cmem, &g); }
     r.add(t + "ctl", w_ctl, &g);
     r.add(t + "dir", w_dir, &g);

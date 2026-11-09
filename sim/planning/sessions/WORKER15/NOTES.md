@@ -5,8 +5,8 @@ The replayer and the peripheral slot. Branch `sim-w15`. Prompt: `PROMPT.md`.
 ## Status
 
 **Go-ahead 2026-11-09** (owner): the plan as written; answers to Q1-Q4 below. Steps 1-2 done: the ALU and the replayer equal to `ref` (ReplayConf every cycle; ReplayerUnitTests ported, 1,456
-checks). The slot's header published for W14 and W16 (below); waiting on their round. Next: Stage A on the runner,
-then the slot's body.
+checks). The slot's header published; the owner settled the round (W14: violation_count and the late accept; W16: its two
+classes and `visit` cases, the ports/begin/end hooks). Stage A queued (Quest 164). Working on the slot's body.
 
 ## The owner's answers (2026-11-09)
 
@@ -259,3 +259,11 @@ the core would need a second core input on the slot, which I'd add.
 **What the core side does** (my work with the slot's body, in W8's/W11's files): a window load reads the RegFile
 (`Win`'s layout; a reserved or undefined word reads 0 and the core flags it, from the `R_DEFINED` bits); a store or a
 consuming EVENTS load puts one `CoreOp` on S2/S3; a store to a word whose `R_STALL` bit is set retries (S8).
+
+### Stage A on the runner: Quest 164 (2026-11-09)
+
+Claimed and pushed (Quest c8503c3): `tasks/164-w15-stage-a.sh`, kit from sim-w15 fd11957. W9's deliveries converted to
+v1.26.1 in scratch by ref's ConvertDelivery (as 105-107); (1) the selected windows, all three variants, ref's
+ReplayDelivery and `replay_delivery` compared with cmp (each also passing on its own); (2) every window of both programs
+on the C++ driver alone (state all 8,192 each; state-lru and state-pick every 8th), against rows.bin, the streams,
+end.bin, clean. Waiting for the result.

@@ -257,6 +257,7 @@ public:
     // The sink (4.19.12): one row every sink_interval cycles; a running hash of every record (h = mix(h ^ word), word 0
     // first), and the records into `buf` if given (capacity in rows; FATAL beyond it).
     void set_row_buffer(uint64_t* buf, uint64_t capacity_rows) { row_buf_ = buf; row_cap_ = capacity_rows; }
+    uint64_t* row_buffer() const { return row_buf_; }
     uint64_t rows_sunk() const { return rows_sunk_; }
     uint64_t row_hash() const { return row_hash_; }
     unsigned sink_interval = 1;

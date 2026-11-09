@@ -70,7 +70,7 @@ void w_core(const void* p, FpOut& o, const FpCtx& x) {
     if (k.stop != units::Stop::running) mcycle += c - k.stop_cycle;      // ref's halted core: mcycle++ every cycle
     else if (c > k.last) {                                              // asleep since `last`: in a WFI or a stall
         uint64_t gap = c - k.last;
-        mcycle += gap;
+        mcycle += gap - (k.in_wfi ? x.label_shift : 0);                 // ref's lag: cyc - countedTo (W16: M3's cyc)
         if (!k.in_wfi) stall -= uint32_t(gap);
     }
     o.w("pc", k.pc);
@@ -81,8 +81,8 @@ void w_core(const void* p, FpOut& o, const FpCtx& x) {
     o.w("halt", uint64_t(int64_t(k.halt)));
     o.w("inWfi", k.in_wfi); o.w("inHandler", k.in_handler);
     o.w("stall", stall);
-    o.w("sendRetry", k.pending_t == c);                                  // a send awaiting its acceptance at c + 1
-    bool lw = k.load_wait_t == c;
+    o.w("sendRetry", k.pending_t == c - x.label_shift);                  // a send awaiting its acceptance at c + 1
+    bool lw = k.load_wait_t == c - x.label_shift;
     o.w("regLoad", lw);
     if (lw) o.w("regLoadPc", k.load_wait_pc);
 }
@@ -155,7 +155,7 @@ void w_dir(const void* p, FpOut& o, const FpCtx& x) {
     uint64_t due[kMax], ctr[kMax];
     if (g.sim && g.uctl)                                                 // the K-line: decrements due after c
         for (uint32_t i = 0, m = entries(g, g.uctl->kline, e); i < m; i++)
-            if (e[i].at > x.cycle + 1) { due[n] = e[i].at - 1; ctr[n] = e[i].w[0]; n++; }
+            if (e[i].at > x.cycle + 1 - x.label_shift) { due[n] = e[i].at - 1; ctr[n] = e[i].w[0]; n++; }   // ref: due > cyc
     o.w("line.n", n);
     for (uint32_t i = 0; i < n; i++) { o.w("line.due", due[i]); o.w("line.ctr", ctr[i]); }
     BusEntry be[kMax];

@@ -115,7 +115,7 @@ int main(int argc, char** argv) {
         fp::m3_register(reg, mc);
         for (const std::string& u : dumps) {
             fp::FpCtx y{uint64_t(end), &s};
-            if (!fp::m3_own_writer(u)) y.cycle += m2_off;
+            if (!fp::m3_own_writer(u)) { y.cycle += m2_off; y.label_shift = m2_off; }
             reg.dump(u, y, stdout);
         }
     }

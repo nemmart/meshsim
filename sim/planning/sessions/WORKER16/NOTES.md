@@ -212,3 +212,18 @@ receive queue with its controller; C&C c is in tile c's domain). Three points fo
   now `test_t2_harness`, whose split boot runs under TSan: a rule in cc.mk adds it to `TB_TESTS`), all pass with no
   race; gcc's and clang's `test_chip form2` pass. The full check before it (cae10e2's tree): 54 test binaries pass on
   clang and gcc, debug and release.
+- 2026-11-09: **every unit at the boot's end against golden-m3** (the t2 tool, `--sram`, `--files`, `--fp-boot`; the
+  dumps from Quest 165 and 167): on both runs, evm-zone-29 and cyclone-29, **1,149 of 1,214 lines equal**: everything
+  but the 64 `rp` lines (a placeholder until W15's `Replayer::fingerprint`, asked by the owner) and the chip line that
+  hashes them. On the way:
+  - `cnc` with cores: ref's PULSE_GO still runs `CnC.goNet`, so `lastGoAt` is C&C 1's last GO (or -1) and
+    `lastCommandWord` -1; a PULSE_GO in flight to the slot at the point counts.
+  - **The label's convention** (owner: a parameter, M2's default unchanged): `FpCtx::label_shift`, 0 for M2
+    (StateFp.write's cyc = c.cycle), 1 for M3 (StateFpM3.write's cyc = c.cycle - 1). ref's formulas that compare an
+    event cycle with cyc use `cycle - label_shift`: a sleeping core's mcycle (lag = cyc - countedTo), `sendRetry`,
+    `regLoad`, the director's K-line (`due > cyc`). The rest of M2's writers read the framework's state and are called
+    with `cycle` = now() - 1 as before. **One approximation**: ref applies the mcycle lag only to a unit its idle-skip
+    put to sleep (`Chip.asleep`, `Tile.canSleep`), which the framework doesn't model; the writer takes "in a WFI and
+    not stepped in the last cycle" for it. It holds at both boot ends (C&C 2 asleep; the tiles after GO and C&C 3, in
+    a stall or awake, not), to be checked at every 100,000-cycle point in the segment.
+  - The Tracer's memory: `t2::attach_store` (Tracer::own_memory, M3Seg's MemorySystem over the carried store).

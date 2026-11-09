@@ -245,7 +245,7 @@ void m3_point(const FpRegistry& r, const M3Chip& c, const FpCtx& x, std::vector<
     char b[128];
     for (const std::string& n : c.names) {
         FpCtx y = x;
-        if (!m3_own_writer(n)) y.cycle += m2_offset;
+        if (!m3_own_writer(n)) { y.cycle += m2_offset; y.label_shift = m2_offset; }
         const uint64_t h = r.hash(n, y);
         hs.push_back(h);
         std::snprintf(b, sizeof b, "%llu %s %016llx", (unsigned long long)x.cycle, n.c_str(), (unsigned long long)h);

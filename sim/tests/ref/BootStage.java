@@ -7,7 +7,8 @@ import java.util.ArrayDeque;
  * packet's lo, header, hi) and C&C 1's big SRAM (count and hash over every non-zero (chunk, value)). The C++ harness's
  * boot_cores must leave the same. D5: nothing in sim/ref changes.
  *
- *   java -cp REF_CLASSES:. BootStage IMAGE_DIR      (tests/m3-images: cc1, cc23, replay_ctl, tracer_ctl), run in a
+ *   java -cp REF_CLASSES:. BootStage IMAGE_DIR [boot]   (boot: then run to Mach.coresBooted, without the landings;
+ *                                                   tests/m3-images: cc1, cc23, replay_ctl, tracer_ctl), run in a
  *                                                   directory whose sw/build holds cc1 and cc23 (bootstage.sh makes it)
  */
 final class BootStage {
@@ -26,5 +27,17 @@ final class BootStage {
         h = 0xcbf29ce484222325L; long n = 0;
         for (int ar = 0; ar < data.length; ar++) if (data[ar] != null) for (int k = 0; k < data[ar].length; k++) if (data[ar][k] != 0) { f((ar << 17) | k); f(data[ar][k] & 0xFFFFFFFFL); n++; }
         System.out.printf("sram %d %016x%n", n, h);
+        if (a.length > 1 && a[1].equals("trace")) {          // the controllers' and tile 0's pc, sampled between cycles
+            String[] last = { "" };
+            m.run(() -> {
+                String now = m.c.cores.unit(0).core.pc + " " + m.c.cores.unit(1).core.pc + " " + m.c.cores.unit(2).core.pc + " " + m.c.tiles[0].core.pc;
+                if (!now.equals(last[0])) { System.out.println(m.c.cycle + " " + now); last[0] = now; }
+                return m.coresBooted();
+            }, 2_000_000);
+        }
+        if (a.length > 1 && a[1].equals("boot")) {           // the boot itself, without the harness's landings
+            if (!m.run(m::coresBooted, 2_000_000)) throw new IllegalStateException("the boot didn't finish");
+            System.out.printf("boot-end %d%n", m.c.cycle - 1);
+        }
     }
 }

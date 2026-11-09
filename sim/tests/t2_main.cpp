@@ -24,6 +24,7 @@ int main(int argc, char** argv) {
     std::string sram, files;
     unsigned parts = 1;
     uint64_t cap = 2'000'000;
+    bool trace = false;                       // --trace: the controllers' and tile 0's pc between cycles (BootStage trace)
     for (int i = 1; i < argc; i++) {
         const std::string a = argv[i];
         auto next = [&]() -> const char* { if (i + 1 >= argc) { std::fprintf(stderr, "t2: %s needs a value\n", a.c_str()); std::exit(2); } return argv[++i]; };
@@ -31,6 +32,7 @@ int main(int argc, char** argv) {
         else if (a == "--files") files = next();
         else if (a == "--parts") parts = unsigned(std::atoi(next()));
         else if (a == "--boot-cycles") cap = std::strtoull(next(), nullptr, 10);
+        else if (a == "--trace") trace = true;
         else { std::fprintf(stderr, "t2: unknown argument %s\n", a.c_str()); return 2; }
     }
     std::string err;
@@ -58,12 +60,10 @@ int main(int argc, char** argv) {
         if (!t2::load_image("tests/m3-images", n, *im, err)) { std::fprintf(stderr, "t2: %s\n", err.c_str()); return 1; }
     t2::boot_cores(s, cc1, cc23, tile, cc3, 8, 0);
     // Mach.run(coresBooted): the condition before each cycle; the boot-end point is the cycle before it held (M3Seg)
-    uint64_t c = 0;
-    while (!t2::cores_booted(m->dmem(64), cc1) && c < cap) { s.run(1); c++; }
-    if (!t2::cores_booted(m->dmem(64), cc1)) {
-        std::printf("the boot didn't finish in %" PRIu64 " cycles\n", cap);
-        return 1;
-    }
-    std::printf("boot-end %" PRIu64 " (ref: 7222)\n", s.now() - 1);
+    std::string tr;
+    const int64_t end = t2::run_boot(*m, cc1, cap, trace ? &tr : nullptr);
+    std::fputs(tr.c_str(), stdout);
+    if (end < 0) { std::printf("the boot didn't finish in %" PRIu64 " cycles\n", cap); return 1; }
+    std::printf("boot-end %lld (ref: 7222)\n", (long long)end);
     return 0;
 }

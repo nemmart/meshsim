@@ -189,6 +189,27 @@ void cc_segment(sim::Sim& m) {
 
 bool cores_booted(const uint32_t* cc1_dmem, const Image& cc1) { return cc1_dmem[(cc1.at("mbox") + 12) / 4] == 2; }
 
+int64_t run_boot(Machine& m, const Image& cc1, uint64_t cap, std::string* trace) {
+    sim::Sim& s = *m.sim;
+    const units::TileCore* cores[4] = {&s.unit<units::TileCore>("cc1.core"), &s.unit<units::TileCore>("cc2.core"),
+                                       &s.unit<units::TileCore>("cc3.core"), &s.unit<units::TileCore>("t0.core")};
+    char last[96] = "", b[96];
+    for (uint64_t c = 0;; c++) {
+        if (trace) {
+            std::snprintf(b, sizeof b, "%d %d %d %d", int(cores[0]->rv.pc), int(cores[1]->rv.pc), int(cores[2]->rv.pc), int(cores[3]->rv.pc));
+            if (std::strcmp(last, b)) {
+                char l[128];
+                std::snprintf(l, sizeof l, "%llu %s\n", (unsigned long long)(s.now() - 1), b);
+                *trace += l;
+                std::strcpy(last, b);
+            }
+        }
+        if (cores_booted(m.dmem(64), cc1)) return int64_t(s.now()) - 2;
+        if (c >= cap) return -1;
+        s.run(1);
+    }
+}
+
 uint64_t rows_hash(const uint64_t* recs, size_t n, uint64_t h) {
     auto mix = [](uint64_t z) {
         z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ull;

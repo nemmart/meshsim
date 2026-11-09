@@ -190,3 +190,16 @@ receive queue with its controller; C&C c is in tile c's domain). Three points fo
   builds every slot (the tiles' replayers, C&C 3's Tracer). test_cc_units, test_chip, test_periph_slot,
   test_cnc1_periph, test_t2_harness pass on clang debug; the boot driver still stops at cycle 571 on REQUEST_SEND.
   W14's merge isn't on main yet (9c29eac: parked for W14).
+- 2026-11-09: merged main (W14's request bus, ca05abc) and applied `w16-cc1slot-prep` (feb73ab) on top: chip.h's
+  `ControlIO` and `CcIO` keep both `req` (W14) and `slot` (mine); `cc_cycle` passes both. **The boot runs to
+  `coresBooted`: boot-end 7,222, equal to ref's.** The cycle mapping (found on the way): the framework's cycle F is
+  ref's F - 1 (it starts at 1, ref at 0; the units read ref's t as now() - 1), so between cycles `now()` is ref's
+  `c.cycle` + 1 and M3Seg's boot-end point (`c.cycle - 1`) is `now() - 2`; the driver first printed 7,223 for that.
+  **Against ref cycle by cycle:** `BootStage trace` (the same boot on ref, without the landings: C&C 1-3's and tile 0's
+  pc between every cycle to `coresBooted`, 5,269 changes) committed as `tests/m3-images/boottrace.ref.gz`
+  (`bootstage.sh` writes and checks it); `run_boot` in the harness and `t2_boot_equal_to_refs_*` (one domain, T2's
+  6-domain split on 6 threads, shuffle, instance-major): identical, boot-end 7,222. Ref's boot with the landings also
+  ends at 7,222 (golden-m3's `# boot-end`). **Not yet: every unit's line at boot end against `golden-m3/boot`**: the M3
+  chip's fingerprint writers (AUDIT-M3 6.9; step 5 of my plan) aren't built: the slot, `cnc1p`, `cc.host`, the
+  controllers' 16 streams, the controller router's streams, the M3 chip line (W14's `req`/`reqbus` and W15's `rp`/`tr`
+  writers to call in its order).

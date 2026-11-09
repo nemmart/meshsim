@@ -453,3 +453,5 @@ debug, tsan).
   TileCtl's `sim_exit_at` (AUDIT-M3 7's mapping inside both). Mode 3, one domain and T2's split (4 domains): the same
   words; `lag_cycles` 1,026, 42 of the 601 cycle figures differ from `ref`'s (exit still at 24,702); the split equal to
   one domain in every figure. Clang release and gcc debug.
+- 2026-11-09: REPORT.md with the request bus (section 8). Paused (the owner): W16 builds the M3 fingerprint writers
+  (calling `reqbus` / `req`); T2's questions come back through the owner.

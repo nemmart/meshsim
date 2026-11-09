@@ -1011,6 +1011,191 @@ void underflows() {
     }
 }
 
+std::vector<LogEvent> program_logs() {
+    return {{true, V1, true, false, 0}, {true, V2, true, false, 0}, {false, 0, false, true, V2}, {true, 17, false, false, 0}, {true, 0, false, false, 0}};
+}
+
+// Items 6, 7: done with input left over, [6], one bit for any stream; not for the write log without the store log.
+void leftovers() {
+    const char* cases[] = {"a code value left", "a read-log value left", "a write-log value left", "a code word after its last value",
+                           "a read-log word after its last value", "an entry pushed past the words", "write log off, values left: no [6]", "exact: no [6]"};
+    for (std::string c : cases) {
+        T::group("v1.26 leftover: " + c);
+        auto w = program_window(false, false, false, c.rfind("write log off", 0) != 0);
+        if (c == "a code value left") { std::vector<uint32_t> code = prog(); code.resize(code.size() + PADDING + 1, 0); w->set_code(code, false); }
+        else if (c == "a read-log value left" || c == "a write-log value left") {
+            auto ev = program_logs();
+            ev.push_back(c.rfind("a read", 0) == 0 ? LogEvent{true, 5, false, false, 0} : LogEvent{false, 0, false, true, 5});
+            w->set_logs(ev, false, false);
+        } else if (c == "a code word after its last value") w->code.resize(w->code.size() + 2, 0);
+        else if (c == "a read-log word after its last value") w->rlog.resize(w->rlog.size() + 2, 0);
+        else if (c == "an entry pushed past the words") { w->rlog.resize(w->rlog.size() + 2, 0); w->words_adj[1] = -1; }
+        else if (c == "write log off, values left: no [6]") w->set_logs(program_logs(), false, false);
+        auto d = run_window(*w, 25);
+        T::eq(25, int64_t(d->rows()), "the pass ran its rows");
+        bool none = c.size() >= 6 && c.compare(c.size() - 6, 6, "no [6]") == 0;
+        T::eq(none ? 0 : 1 << Replayer::ERR_LEFTOVER, d->r->errors(d->t), none ? "no error" : "ERRORS [6] alone, at done");
+        T::check(d->done, "done posted");
+        if (!none) T::check(d->r->leftovers() == 1, "named: " + error_report(*d->r));
+    }
+    T::group("v1.26 leftover: a window ending inside a controller-fed expansion");
+    uint32_t inl = r_(0, 2, 1, 0, 3, CUSTOM0);
+    const int len = 20;
+    ReplayWindow w;
+    w.fixed_rom(); w.decode_class(inl, 1);
+    std::vector<W> words(len);
+    for (int k = 0; k < len; k++) words[size_t(k)] = W::op(alu::ADDI).rd(137).rs1(0).rs2(128).cnst(uint64_t(k + 1)).fmt(0);
+    words[len - 1].report_c();
+    w.template_(inl, words);
+    w.pc = 0x2000; w.instr_idx = 100;
+    w.set_code({inl}, false); w.set_logs({}, false, false);
+    auto d = run_window(w, 10);
+    T::eq(10, int64_t(d->rows()), "10 of its 20 rows");
+    T::eq(0, d->r->errors(d->t), "no [6]: the code stream's one value was popped; the expansion queue isn't counted");
+}
+
+// Item 5: a stream's padding can be anything, compressed or not: the decoder stops at its values.
+void padding_anything() {
+    T::group("v1.26: padding is anything");
+    auto exp = expected(true);
+    int n = 0;
+    for (int v = 0; v < 8; v++) {
+        bool cc = v & 1, rc = v & 2, wc = v & 4;
+        auto p = program_window(cc, rc, wc, true);
+        p->pad_seed = 0x26 + v;
+        std::vector<uint32_t> code = prog();
+        code.resize(code.size() + PADDING, 0);
+        p->set_code(code, cc);
+        auto z = program_window(cc, rc, wc, true);
+        bool differs = z->code != p->code || z->rlog != p->rlog;
+        p->set_logs(program_logs(), rc, wc);
+        differs |= z->code != p->code || z->rlog != p->rlog || z->wlog != p->wlog;
+        std::string name = std::string("code ") + (cc ? "LRU" : "raw") + ", read " + (rc ? "LRU" : "raw") + ", write " + (wc ? "LRU" : "raw");
+        T::check(differs, name + ": the padding bits are not zero");
+        auto d = run_window(*p, 25);
+        check_rows(name + ", random padding", rows_of(*d), exp, PADDING);
+        T::check(d->r->clean() && d->r->errors(d->t) == 0, name + ": clean " + error_report(*d->r));
+        n++;
+    }
+    T::eq(8, n, "every compression combination");
+}
+
+// Item 4: the write to word 0 flushes every queue; PULSE_RUN no longer does.
+void flushes() {
+    T::group("v1.26: the state word's write flushes the queues");
+    auto w = program_window(false, false, false, true);
+    auto rp = fresh();
+    Replayer& r = *rp;
+    w->rows = 25;
+    auto d = std::make_unique<ReplayDriver>(*w, 1u << 17, rp.get());
+    d->load();
+    uint64_t f0 = r.flushes;
+    for (uint32_t a : {0x40000u, 0x80000u, 0xC0000u, 0x100000u}) d->port.push_back({a, 0xBAD, 0xBAD});
+    d->port.push_back({0x8, 1, 2});
+    while (!d->port.empty()) d->step();
+    for (int k = 0; k < 4; k++) d->step();
+    T::check(r.code.occ == 1 && r.rlog.occ == 1 && r.wlog.occ == 1 && r.exp.occ == 1, "pushed while stopped: held (one entry each)");
+    T::eq(int64_t(f0), int64_t(r.flushes), "an image write doesn't flush");
+    r.consume_events(1u << Replayer::EV_CODE);
+    d->port.push_back({0x4, w->stream_lo(), w->stream_hi()});
+    while (!d->port.empty()) d->step();
+    for (int k = 0; k < 4; k++) d->step();
+    T::eq(1, r.code.occ, "the stream word's write doesn't flush");
+    d->resend_state();
+    T::eq(int64_t(f0 + 1), int64_t(r.flushes), "the state word's write flushes");
+    T::check(r.code.values_out == w->code_vals && r.rlog.words == w->rlog.size() / 2 && r.rlog.taken == 0, "and latches the sizes, the counters cleared (item 10)");
+    T::check(r.code.occ == 0 && r.rlog.occ == 0 && r.wlog.occ == 0 && r.exp.occ == 0, "every queue empty, the expansion queue too");
+    for (unsigned b = Replayer::EV_CODE; b <= Replayer::EV_EXP; b++) T::eq(2, r.events().count_of(b), "credit bit " + std::to_string(b) + " set to 2");
+    int pre = std::min<int>(int(w->code.size() / 2), int(2 * r.code.half));
+    for (int k = 0; k < pre; k++) d->port.push_back({0x40000, w->code[2 * size_t(k)], w->code[2 * size_t(k) + 1]});
+    while (!d->port.empty()) d->step();
+    for (int k = 0; k < 4; k++) d->step();
+    T::eq(pre, r.code.occ, "pushed after the flush, before the run: kept");
+    r.consume_events(1u << Replayer::EV_CODE); r.consume_events(1u << Replayer::EV_CODE);
+    d->passes_run = 1; d->code_next = pre;
+    d->pass_from(200000, pre);
+    std::vector<uint64_t> rows(d->row(0), d->row(0) + d->rows() * Replayer::REC_LONGS);
+    check_rows("preloaded code", rows_of(*d), expected(true), PADDING);
+    T::eq(0, r.code.occ, "and the pass used it");
+    T::check(r.clean(), "clean: " + error_report(r));
+    d->pass(200000);
+    std::vector<uint64_t> again(d->row(0), d->row(0) + d->rows() * Replayer::REC_LONGS);
+    T::check(again == rows, "a second pass after the state word: the same rows");
+    T::check(r.clean(), "clean: " + error_report(r));
+    T::eq(int64_t(f0 + 2), int64_t(r.flushes), "one flush per pass");
+
+    T::group("v1.26: a pass without the flush");
+    auto r2p = fresh();
+    Replayer& r2 = *r2p;
+    auto w2 = program_window(false, false, false, true);
+    auto d2 = std::make_unique<ReplayDriver>(*w2, 1u << 17, r2p.get());
+    d2->w.rows = 25; d2->load(); d2->pass(200000);
+    T::check(r2.clean(), "the first pass is clean");
+    d2->port.push_back({0x40000, 0xBAD, 0xBAD});
+    while (!d2->port.empty()) d2->step();
+    for (int k = 0; k < 4; k++) d2->step();
+    r2.run(d2->t); d2->step(); d2->step();
+    T::eq(1, r2.code.occ, "PULSE_RUN doesn't empty the queues (v1.26)");
+    T::check(r2.fact_count(Replayer::V_NO_FLUSH) > 0, "meshsim flags a pass without the flush: " + error_report(r2));
+}
+
+// Item 8: the output-rd_prev flag.
+void rd_prev_flag() {
+    T::group("v1.26: output rd_prev");
+    auto w = program_window(false, false, false, true);
+    w->rd_prev = false;
+    auto d = run_window(*w, 25);
+    auto e = expected(true);
+    for (auto& row : e) row[11] = 0;
+    check_rows("rd_prev off", rows_of(*d), e, PADDING);
+    T::check(d->r->clean(), "clean: " + error_report(*d->r));
+    auto w1 = program_window(false, false, false, true);
+    auto d1 = run_window(*w1, 25);
+    int n = 0;
+    for (uint64_t k = 0; k < d1->rows(); k++) if (d1->row(k)[6] != 0) n++;
+    T::check(n > 0, "with it on, rows carry rd_prev (" + std::to_string(n) + " non-zero)");
+}
+
+// Item 1: the record's words 66 (files) and 67 (the bitmap) are ignored by the replayer.
+void record_words() {
+    T::group("v1.26: record words 66 and 67");
+    auto rp = fresh();
+    Replayer& r = *rp;
+    int64_t t = 0;
+    std::vector<uint64_t> before(r.region0, r.region0 + 2 * Replayer::PART0_WORDS);
+    r.accept(t, 3, 16 * 66, 2, 0x66, 0x66); r.step(t++);
+    r.accept(t, 3, 16 * 67, 2, 0x67, 0x67); r.step(t++);
+    for (int k = 0; k < 4; k++) r.step(t++);
+    T::eq(2, int64_t(r.ignored_writes), "both accepted and ignored while stopped");
+    T::check(before == std::vector<uint64_t>(r.region0, r.region0 + 2 * Replayer::PART0_WORDS), "part 0's words 0-65 unchanged");
+    T::eq(0, r.errors(t), "no error");
+    for (uint32_t wd : {66u, 67u}) {
+        auto w = program_window(false, false, false, true);
+        auto d = std::make_unique<ReplayDriver>(*w);
+        d->w.rows = 25; d->load();
+        d->write_config(); d->r->run(d->t); d->step(); d->step();
+        d->r->accept(d->t, 3, 16 * wd, 2, 1, 1);
+        T::dies([&] { for (int k = 0; k < 6; k++) d->step(); }, "running: record word " + std::to_string(wd) + " written during a pass", {"replayer", "while a pass runs"});
+    }
+    auto w = program_window(false, false, false, true);
+    const uint64_t bm[2] = {5, 0};
+    std::vector<uint64_t> rec = w->record(bm);
+    T::eq(2 * 68, int64_t(rec.size()), "a record is 68 words");
+    T::eq(int64_t(w->state_lo()), int64_t(rec[0]), "word 0: the state word");
+    T::eq(int64_t(w->stream_lo()), int64_t(rec[2]), "word 1: the stream word");
+    T::eq(int64_t(w->regs[A5]), int64_t(rec[4 + A5]), "words 2-65: the image");
+    T::eq(5, int64_t(rec[2 * 67]), "word 67: the bitmap");
+}
+
+// V3-12: every queue 4 KB. (ref's -Dreplayer.logq=512 control, v1.25's 8 KB logs for a stall comparison, isn't
+// modelled: LOG_QUEUE_ENTRIES is fixed at 256; that half of ref's group is not ported.)
+void queue_sizes() {
+    T::group("v1.26: the queues are 4 KB");
+    auto rp = fresh();
+    T::check(rp->code.cap == 256 && rp->rlog.cap == 256 && rp->wlog.cap == 256 && Replayer::EXP_CAP == 256, "256 x 128-bit entries each");
+    T::check(rp->rlog.half == 128 && rp->wlog.half == 128, "a credit is 128 entries");
+}
+
 // Run a group; the TEST fails if any of its checks did.
 bool group_ok(void (*fn)()) {
     int f0 = T::failed;
@@ -1043,3 +1228,13 @@ TEST(unit_rows_run_past_2_16) { CHECK(group_ok(rows_run_past_2_16)); }
 TEST(unit_working_state) { CHECK(group_ok(working_state)); }
 TEST(unit_stream_word_layout) { CHECK(group_ok(stream_word_layout)); }
 TEST(unit_underflows) { CHECK(group_ok(underflows)); }
+TEST(unit_leftovers) { CHECK(group_ok(leftovers)); }
+TEST(unit_padding_anything) { CHECK(group_ok(padding_anything)); }
+TEST(unit_flushes) { CHECK(group_ok(flushes)); }
+TEST(unit_rd_prev_flag) { CHECK(group_ok(rd_prev_flag)); }
+TEST(unit_record_words) { CHECK(group_ok(record_words)); }
+TEST(unit_queue_sizes) { CHECK(group_ok(queue_sizes)); }
+
+// Every check of every group, against ref's: ReplayerUnitTests' groups as ported run this many checks here (printed
+// for the record; the groups themselves fail on any failed check).
+TEST(unit_check_count) { std::printf("  ReplayerUnitTests port: %d checks passed, %d failed (this binary)\n", T::passed, T::failed); CHECK_EQ(T::failed, 0); }

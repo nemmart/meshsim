@@ -30,6 +30,7 @@
 #include "units/lru_coder.h"
 #include "units/lru_index.h"
 #include "units/mem_system.h"
+#include "units/peripheral.h"
 #include "units/replayer_alu.h"
 #include "units/row_core.h"
 #include "units/rvc.h"
@@ -38,7 +39,7 @@
 namespace units {
 namespace tracer {
 
-class Tracer {
+class Tracer : public PeripheralBase<Tracer> {
 public:
     // ================================================================ the window (8.16)
     static constexpr int TYPE = 3;
@@ -103,10 +104,17 @@ public:
     bool cold_mem_on_state_write = false;  // ref's onStateWrite = ms::cold: the word-0 write makes the memory cold
 
     // ================================================================ the peripheral interface (W15's list)
+    static_assert(TYPE == PT_TRACER, "the Tracer's type tag");
+    static constexpr int DIGEST_N = STAT_N;  // W15's peripheral.h: digest_words' length
     int params() const { return TYPE; }
     int type() const { return TYPE; }
+    uint64_t violation_count() const { return uint64_t(n_violations); }  // the slot forwards new ones (W15)
     EventCounts& events() { return ev; }
     uint32_t consume_events(uint32_t bits) { return ev.consume(bits); }   // ref's onConsume: the Tracer has none
+    // accept(t) lands at the end of t + 2. On the framework the slot calls it at level 0 of t + 3 (W15's peripheral.h),
+    // so the Tracer may already be settled through t + 2 (settled_ = t + 2: inputs before t + 2 applied): still in
+    // time. Settled past that (a read or step of t + 3 already made) is a simulator bug: FATAL. run and write_word for a
+    // store at t come at level 0 of t + 1, before any read of t + 1: settled_ <= t + 1 is in time.
     void accept(int64_t t, int src, uint32_t offset, int size, uint64_t lo, uint64_t hi);
     void run(int64_t t);
     bool running(int64_t t) { settle(t); return s_running_; }
@@ -119,9 +127,13 @@ public:
     void reset(int64_t t);
     void step(int64_t T);                               // ref's runCycle
     bool idle(int64_t) const { return false; }          // ref: the Tracer reports idle never
+    // The wake rule (AUDIT-M3 3.3, D23): whether step(t) can change anything. False only when not running, no dropped
+    // expansion word waits, and no input or landing is pending; then skipping step(t) is exact (settle is lazy and
+    // idempotent, and the counters tick only while running). The slot may sleep C&C 3's peripheral on it.
+    bool must_step() const { return running_ || (exp_discard_ > 0 && eq_occ_ > 0) || inputs_.n > 0 || landing_.n > 0; }
     int64_t next_wake_at(int64_t) const { return INT64_MAX; }
     void skip_cycles(int64_t n) const;
-    void digest_words(int64_t out[STAT_N]) const;       // the counters, words 44-51 (ref: int to long)
+    void digest_words(int64_t out[DIGEST_N]) const;     // the counters, words 44-51 (ref: int to long)
     int out_queues() const { return 4; }
     bool out_ready(int64_t t, int q) const;
     void out_take(int64_t t, int q, uint64_t w[2]);

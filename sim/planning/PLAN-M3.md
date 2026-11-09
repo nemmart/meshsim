@@ -43,7 +43,7 @@ exercised. The Tracer's and replayer's own suites (`TracerTest`, `TracerRig`, `T
 
 | worker | state |
 |---|---|
-| W13 | reference side: the reference runs are **evm-zone-29 segment 10** (T2's acceptance, 110u) and **cyclone-29 segment 10** (reaches what evm misses); `sim/ref` reproduces 110u (Quests 159-160); `ref` takes ~46 s and ~50 s per segment with idle-skip on (the baseline); AUDIT-M3 sections 1, 3.1-3.3 and 6.6 on main; next 3.4 (the C&C cores), sections 4-5, the goldens |
+| W13 | **done**, closed 2026-11-09 (`sessions/WORKER13-REPORT.md`): the reference runs, AUDIT-M3, golden-m3, the baseline |
 | W14 | the Tracer: the pure pieces and the Tracer class on main, equal to `ref` every cycle on TracerTest's cases (TracerConf); next the seeded stimulus, T1, the ports |
 | W15 | the replayer: the ALU and the replayer on main, equal to `ref` every cycle (ReplayConf, 13 traces plus 36 sweeps); next ReplayerUnitTests, Stage A on W9's deliveries, the slot |
 | W16 | G7, the C&C cores and the chip's integration, then T2 end to end and the first timing: prompt written 2026-11-09 (`sessions/WORKER16/PROMPT.md`) |

@@ -13,4 +13,4 @@ which runs `TracerT2.chip` exactly (Quest 160: the same figures as `TracerT2`, h
 | `regen.sh` | regenerates both runs and checks the figures, every chip line, every unit line and the inputs' dumps |
 
 The runs: **evm-zone-29 segment 10** and **cyclone-29 segment 10**, 64 windows, raw, `Config` defaults (GO 8, READY 8,
-error 8, `stage_delay` 64, idle-skip on), the images in `sim/planning/sessions/WORKER13/tasks/IMAGES` (110u's).
+error 8, `stage_delay` 64, idle-skip on), the images in `sim/planning/sessions/WORKER13-tasks/IMAGES` (110u's).

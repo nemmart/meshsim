@@ -1,7 +1,7 @@
 #!/bin/bash
 # mk_task.sh NNN-name BODY "header lines" > task.sh (WORKER13): a self-contained Quest task with an embedded kit of sim/ref,
 # precompiled (the runner has no javac and no riscv toolchain): meshsim's classes, gold's, the test classes and W13's
-# drivers (sim/tests/ref/*.java, ref's default package) for Java 21; the universal tables; hops.txt; the boot ROM; C&C 1-2's,
+# drivers (sim/tests/ref: StateFp, FpHooks, StateFpM3, M3Inputs, M3Seg, M3FpSelf, M3ChipFpSelf; ref's default package) for Java 21; the universal tables; hops.txt; the boot ROM; C&C 1-2's,
 # C&C 3's (tracer_ctl) and the tiles' (replay_ctl) images, built here and checked against IMAGES (110u's kit); sim/tools.
 # Unpacked to $W/kit: $KR is the run directory (hops.txt, sw/), $KC the classpath, $KT the tables, $KS the kit's sim/tools.
 # The body (sourced) also sees RES, W, sec, verdict, DATA (persistent data), D9 / D26 (the deliveries, WORKER26's inputs)
@@ -17,7 +17,7 @@ javac --release 21 -nowarn -d $K/kit/gold $(find $TOP/sim/ref/gold/src -name '*.
 javac --release 21 -nowarn -d $K/kit/classes $M/src/*.java 2>&1 | grep -v '^Note:' || true
 grep -v '^#' $M/test/PENDING | awk 'NF{print "'$M'/test/"$1}' > $K/pending.txt
 javac --release 21 -nowarn -d $K/kit/classes -cp $K/kit/classes:$K/kit/gold $(ls $M/test/*.java | grep -v -x -F -f $K/pending.txt) \
-    $TOP/sim/tests/ref/*.java 2>&1 | grep -v '^Note:' || true
+    $(for f in StateFp FpHooks StateFpM3 M3Inputs M3Seg M3FpSelf M3ChipFpSelf; do echo $TOP/sim/tests/ref/$f.java; done) 2>&1 | grep -v '^Note:' || true
 cp -r $TOP/sim/ref/tables/replayer $K/kit/tables/
 cp $M/hops.txt $K/kit/run/; cp $M/sw/bootrom.hex $K/kit/run/sw/
 cp $M/sw/build/cc1.code.bin $M/sw/build/cc1.data.bin $M/sw/build/cc1.sym $M/sw/build/cc23.code.bin $M/sw/build/cc23.data.bin $M/sw/build/cc23.sym $K/kit/run/sw/build/

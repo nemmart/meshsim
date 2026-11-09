@@ -3,7 +3,7 @@
 # check them against this directory. KIT_RUN is a directory holding hops.txt and sw/ (the images, IMAGES' hashes),
 # KIT_CP the classpath of sim/ref's classes, gold's and sim/tests/ref's drivers (compiled for Java 21), TABLES the
 # universal replayer tables, DATA the persistent data (w9-deliveries, w26-jumpmap, w13-golden-m3), OUT a scratch dir.
-# As a Quest task: sim/planning/sessions/WORKER13/tasks/mk_task.sh with regen-body.sh. Checks, per run (evm-zone-29 10,
+# As a Quest task: sim/planning/sessions/WORKER13-tasks/mk_task.sh with regen-body.sh. Checks, per run (evm-zone-29 10,
 # cyclone-29 10): RUNS' figures; every chip line (*.chip); every unit line against DATA/w13-golden-m3/*.fpchip.gz; the
 # inputs' dumps against HASHES. Exit 0 when all hold.
 set -u

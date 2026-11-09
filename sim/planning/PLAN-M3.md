@@ -44,6 +44,6 @@ exercised. The Tracer's and replayer's own suites (`TracerTest`, `TracerRig`, `T
 | worker | state |
 |---|---|
 | W13 | **done**, closed 2026-11-09 (`sessions/WORKER13-REPORT.md`): the reference runs, AUDIT-M3, golden-m3, the baseline |
-| W14 | the Tracer: the pure pieces and the Tracer class on main, equal to `ref` every cycle on TracerTest's cases (TracerConf); next the seeded stimulus, T1, the ports |
-| W15 | the replayer: the ALU and the replayer on main, equal to `ref` every cycle (ReplayConf, 13 traces plus 36 sweeps); next ReplayerUnitTests, Stage A on W9's deliveries, the slot |
+| W14 | the Tracer: equal to `ref` every cycle on TracerTest, 178 seeded logs and **T1 on real segments 0-3 of both programs** (172 M cycles, Quest 163); wired into W15's slot; **speed (Quest 166): 34 ns per Tracer cycle, 1.1-1.2× `ref`'s Tracer** (segment 10's 23.7 M Tracer cycles ≈ 0.8 s of C&C 3's work); not optimised (D31's spirit) |
+| W15 | the replayer: equal to `ref` on its suites and ReplayConf; **Stage A on every window of both programs** (20,480, Quest 164); the slot unit on main (SlotConf equal call for call); next the tile's paths, PeripheralSlotTest |
 | W16 | G7, the C&C cores and the chip's integration, then T2 end to end and the first timing: prompt written 2026-11-09 (`sessions/WORKER16/PROMPT.md`) |

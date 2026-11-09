@@ -1,0 +1,60 @@
+# WORKER16 (sim/, M3, G7): notes
+
+The C&C cores and the chip's integration, then T2 end to end. Branch `sim-w16` (from main 41eb698). Prompt: `PROMPT.md`.
+
+## Findings before the plan
+
+1. **M2 has no request bus in C++.** `REQUEST_SEND` is fatal in M2's tile (`tile_ctl.h`, "not modelled in M2"), and
+   the `reqbus` fingerprint stream is a constant; AUDIT-M3 3.4 speaks of "M2's request bus", which doesn't exist.
+2. **The slot isn't on main yet** (W15). C&C 1's body needs ports beyond the slot's own: the row collectors' READY and
+   error-line words, C&C 2's and C&C 3's error lines, 64 GO links out.
+3. **C&C 1's store timing** (AUDIT-M3 3.4's open item): under the slot's rule a store applies at level 0 of t + 1, so
+   C&C 1's own work in the store's cycle (the watchdog's count, the UART's TX start) is one cycle later than `ref`.
+4. The boot's references (the unit lines at boot end) and the harness's landings are on the runner only.
+5. No clang and no RISC-V toolchain in the session's container.
+
+## Rulings (owner, 2026-11-09)
+
+- **Q1, the request bus:** build `RequestBus` as `ref` has it (row nodes, root, receive queues) with the controllers'
+  request ports and receive registers (T2's boot sends through it). Its chip-level work is event-driven (D23; AUDIT-M2
+  section 4 named `RequestBus.runCycle`'s per-cycle scan as the first case): nothing scans all tiles each cycle. The
+  tiles' `REQUEST_SEND` stays fatal ("not modelled in M3"): T2 sends none.
+- **Q2, type bodies declaring their own ports:** the owner asks W15, who publishes the slot's header next (before its
+  Stage A). Until it lands, `cc1p` is built to W15's method list (W15 NOTES, "The interface") with its own driver.
+- **Q3, C&C 1's store timing:** approved as a deliberate difference, **D33**. The slot's rule is kept: C&C 1's
+  watchdog and UART run one cycle later than `ref` after a store; neither reference run reaches them (AUDIT-M3 section
+  1: no watchdog, no UART traffic). Recorded in DECISIONS.md and AUDIT-M3 3.4.
+- **Q4, the boot-end point:** extracted by a Quest task and committed to `golden-m3` (1,214 lines); the `sram` dump too
+  if it is a few MB at most, otherwise the boot check runs on the runner.
+- **Q5, toolchains:** clang by apt. The RISC-V images: the committed prebuilt ones if they exist (D4); otherwise
+  `gcc-riscv64-unknown-elf` by apt, and the built images committed with a manifest of their hashes.
+
+## The plan (agreed 2026-11-09)
+
+A commit after each step; `make check` clean on gcc and clang; every new unit through the debug checks (shuffle, both
+orders, step-all, the missed-wake detector).
+
+1. **The router's controller variant**: `FEEDERS_CC`, `ccRoute` (from the loopback or `CC_DMA_IN`, a packet for this
+   controller is ejected, any other leaves on `CC_LINK_OUT`; every other input is ejected), the inputs `CC_LINK_IN`,
+   `CC_HOST_IN`, `CC_DMA_IN`, the output `CC_LINK_OUT`. Checked against `ref` by extending RouterConf.
+2. **Units 64-66** as framework tiles from M2's units (controller, register block, memories, big SRAM, read queue and
+   injection, director, write engine, AG, table store, HIST, read port, gather): the C&C links `Link(1)` both ways, the
+   host port (`Fifo(4)`, a host-queue stand-in stepped only while it holds packets), C&C 3's DMA input (`Fifo(4)`, the
+   slot's S6).
+3. **The request bus**, event-driven, and the controllers' request ports and receive registers.
+4. **C&C 1's body (type 1) and C&C 2's stub (type 2)**; the chip lines as events (D23, AUDIT-M3 section 4): READY
+   through the row collectors, the error lines as `Link(error_latency)` events, GO from C&C 1's slot. M2's Java `CnC`
+   and the endpoints stay built and idle (their fingerprint streams are kept).
+5. **The fingerprint** (`cc1p`, `cc.host`, `reqbus`, units 64-66, the M3 chip line) and **the boot exact** (milestone
+   1): `coresBooted` at 7,222 and every unit's line at boot end equal to golden-m3; stubs for `tr`, `rp` and the slot if
+   theirs haven't landed.
+6. **The T2 harness**: the `files` and `sram` dumps loaded, the rows observed and checked against `rows.bin`,
+   `CC_SEGMENT`, the checks of AUDIT-M3 section 0 step 6, the partition (C&C c with tile c, C&C 3 with tile 2, the
+   replaying tiles spread).
+7. **T2 end to end**: evm-zone-29 segment 10, then cyclone-29 segment 10; fingerprints every 100,000 cycles.
+8. **The first timing** on the runner, one thread and split, C&C 3's domain on one thread reported separately.
+9. `REPORT.md`.
+
+## Log
+
+- 2026-11-09: plan agreed (rulings above); branch `sim-w16` from main 41eb698.

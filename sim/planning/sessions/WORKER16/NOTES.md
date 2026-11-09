@@ -66,3 +66,9 @@ orders, step-all, the missed-wake detector).
   `gen 64-66 [dma]`): five new fixtures (`t0-s7-link`, `t2-s8-link`, `t64-s1`, `t65-s2`, `t66-s3-dma`; overflows and
   eject errors reached), the old eight byte-identical on regeneration; all equal to ref, under shuffle, both orders and
   step-all (clang and gcc debug). A planted bug (the DMA's packet for the controller sent on the link) fails `t66`.
+- 2026-11-09: **the images** (Q5): no prebuilt cc1, cc23, tracer_ctl, replay_ctl in the repo, so built with
+  `gcc-riscv64-unknown-elf` (13.2.0) and committed in `tests/m3-images/` with `MANIFEST` (sha256) and `build.sh`
+  (builds a scratch copy of `sim/ref`, nothing in it written; checks against W13's `IMAGES`, 110u's: byte-identical;
+  `--check` rebuilds and compares). The boot ROM is `ref/meshsim/sw/bootrom.hex`.
+- 2026-11-09: `make run` clean on clang release after step 1 (48 test binaries); gcc and clang debug on the router's
+  and the chip's tests.

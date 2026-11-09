@@ -149,7 +149,8 @@ int alu_report(std::vector<std::string>& report) {
     }
     // ref meant this check (ReplayerTest.java line 105; its append is lost in a comment): every executed opcode but NOP
     // (the padding row, unit-tested) has a matching vector
-    for (unsigned i = 1; i < 256; i++) check(!alu::executes(i) || covered[i], std::string("no matching vector for ") + alu::name_or_null(i));
+    for (unsigned i = 1; i < 256; i++)
+        if (alu::executes(i)) check(covered[i], std::string("no matching vector for ") + alu::name_or_null(i));
     std::snprintf(buf, sizeof buf,
                   "ALU vectors: %zu rows; %d match the tracer; %d undefined for the replayer and flagged (invariant 16); %d not applicable",
                   lines.size(), pass, flagged, na);

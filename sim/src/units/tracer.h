@@ -135,6 +135,11 @@ public:
     uint32_t status_bits(int64_t) const { return 0; }
     bool word(int64_t t, int w, uint32_t& v);           // false: an undefined word
     int write_word(int64_t t, int w, uint32_t v);       // 1 written, 0 read-only (a bus error), -1 undefined
+    // W15's peripheral.h (static map): a defined own word a store writes (write_word's 1), so the core raises the bus
+    // error of a store to a read-only word at once, as ref does
+    bool writable(int w) const {
+        return w == W_RUN_CONFIG || w == W_HASH_MUL || w == W_HASH_STEP || w == W_HASH_LINES || w == W_EXP_TEMPLATE;
+    }
     bool store_stalls(int64_t, int) const { return false; }
     void reset(int64_t t);
     void step(int64_t T);                               // ref's runCycle

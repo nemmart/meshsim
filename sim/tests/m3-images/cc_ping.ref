@@ -1,0 +1,4 @@
+# cc_ping on ref (CcPing; ref 5d8aaf4, images 567c3f415ec15052)
+exit 933 5ee
+stamp 82 94 103 112 119 128
+words c0ffee05 c0ffee40 b0b0ca57 b0b0ca57 0

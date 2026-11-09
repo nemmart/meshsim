@@ -8,6 +8,10 @@
 //     tile 0's fifth port and the mesh), to itself (the loopback ejected, with a token), and a broadcast (on the link,
 //     rooted at tile 0, into all 64 tiles and never back to C&C 1); then SIM_EXIT. On one domain and on row bands, and
 //     under the debug options (shuffle, both orders, step-all).
+//   - ref's cycles (tests/m3-images/cc_ping.ref, from tests/ref/ccping.sh): SIM_EXIT's cycle and cc_ping's stamps (mcycle at
+//     each send and when its STATUS poll sees send-busy clear). The first poll has nothing arriving at C&C 1: the
+//     register block must step again after the core's own send (W16's fix in TileCtl; the missed-wake detector can't
+//     see stale published state), else the poll never ends; ref's cycle is checked, not just the ending.
 // The slot and the chip lines (C&C 1's READY, GO and error lines) come with W15's slot; nothing here reaches them.
 #include <cinttypes>
 #include <cstdio>
@@ -28,7 +32,24 @@ using namespace units;
 
 namespace {
 
-struct Out { std::string err; uint64_t cycle = 0; uint32_t exit = 0; uint32_t t5 = 0, self = 0, bc_min = 0, bc_max = 0, self_bc = 0; };
+struct Out { std::string err; uint64_t cycle = 0, exit_at = 0; uint32_t exit = 0; uint32_t t5 = 0, self = 0, bc_min = 0, bc_max = 0, self_bc = 0; uint32_t stamp[6] = {}; };
+
+// ref's figures (cc_ping.ref): "exit CYCLE VALUE", "stamp S0 .. S5"
+struct Ref { uint64_t exit_at = 0; uint32_t exit = 0, stamp[6] = {}; bool ok = false; };
+Ref load_ref() {
+    Ref r;
+    FILE* f = std::fopen("tests/m3-images/cc_ping.ref", "r");
+    if (!f) return r;
+    char line[256]; int got = 0;
+    while (std::fgets(line, sizeof line, f)) {
+        unsigned long long a; unsigned b;
+        if (std::sscanf(line, "exit %llu %x", &a, &b) == 2) { r.exit_at = a; r.exit = b; got++; }
+        if (std::sscanf(line, "stamp %u %u %u %u %u %u", &r.stamp[0], &r.stamp[1], &r.stamp[2], &r.stamp[3], &r.stamp[4], &r.stamp[5]) == 6) got++;
+    }
+    std::fclose(f);
+    r.ok = got == 2;
+    return r;
+}
 
 Out run(unsigned parts, sim::Options opt) {
     Out o;
@@ -67,6 +88,8 @@ Out run(unsigned parts, sim::Options opt) {
     o.cycle = m.now();
     m.run(200);                                                // the broadcast's last copies land
     o.exit = m.unit<TileCtl>("cc1.ctl").s.sim_exit_value;
+    o.exit_at = m.unit<TileCtl>("cc1.ctl").s.sim_exit_at;
+    for (unsigned i = 0; i < 6; i++) o.stamp[i] = mem[size_t(64) * 2 * MEM_WORDS + 0x10 / 4 + i];   // cc_ping.sym: stamp at 0x10
     auto dmem = [&](unsigned k, uint32_t byte) { return mem[size_t(k) * 2 * MEM_WORDS + byte / 4]; };
     o.t5 = dmem(5, 0x6000); o.self = dmem(64, 0x6000); o.self_bc = dmem(64, 0x6004);
     o.bc_min = ~0u; o.bc_max = 0;
@@ -88,6 +111,11 @@ void check(unsigned parts, sim::Options opt) {
     CHECK_EQ(o.bc_min, 0xB0B0CA57u);
     CHECK_EQ(o.bc_max, 0xB0B0CA57u);
     CHECK_EQ(o.self_bc, 0u);                                   // a controller's broadcast never reaches itself
+    const Ref r = load_ref();
+    CHECK(r.ok);
+    CHECK_EQ(o.exit_at, r.exit_at);                            // ref's cycles
+    CHECK_EQ(o.exit, r.exit);
+    for (unsigned i = 0; i < 6; i++) CHECK_EQ(o.stamp[i], r.stamp[i]);
     std::fprintf(stderr, "cc_ping (%u domain%s): C&C 1 exited at cycle %" PRIu64 "\n", parts, parts > 1 ? "s" : "", o.cycle);
 }
 

@@ -28,8 +28,9 @@ struct M {
 
     M() {
         for (int s = 0; s < 2; s++) { slot[s] = std::make_unique<units::SlotCore>(); slot[s]->tile = 5 + unsigned(s); }
-        slot[0]->install(1, units::PT_TEST);
-        slot[1]->install(1, units::PT_REPLAYER);
+        units::PeriphSlotConfig pc;
+        slot[0]->install(1, units::PT_TEST, pc);
+        slot[1]->install(1, units::PT_REPLAYER, pc);
     }
     units::TestPeripheral& x() { return slot[0]->test_peripheral(1); }
     units::Replayer& r() { return slot[1]->replayer(1); }

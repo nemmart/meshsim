@@ -6,8 +6,8 @@ The replayer and the peripheral slot. Branch `sim-w15`. Prompt: `PROMPT.md`.
 
 **Go-ahead 2026-11-09** (owner): the plan as written; answers to Q1-Q4 below. Steps 1-2 done: the ALU and the replayer equal to `ref` (ReplayConf every cycle; ReplayerUnitTests ported, 1,456
 checks). The slot's header published; the owner settled the round (W14: violation_count and the late accept; W16: its two
-classes and `visit` cases, the ports/begin/end hooks). Stage A passed (Quest 164: every window of both programs). The slot's SlotCore equal to ref call for call (SlotConf); the unit working under the engine (first working commit,
-for W14 and W16 to wire into). Next: the tile's paths and PeripheralSlotTest's port.
+classes and `visit` cases, the ports/begin/end hooks). Stage A passed (Quest 164: every window of both programs). The slot's SlotCore equal to ref call for call (SlotConf); the unit working under the engine. The tile's paths written (WIP:
+gcc debug's tests pass; the paths themselves untested); next a tile-level test and PeripheralSlotTest's port.
 
 ## The owner's answers (2026-11-09)
 
@@ -334,3 +334,66 @@ end.bin, clean.
 - **For W14 and W16:** wire into `units/periph_slot.cpp`: your include, your `case` in `SlotCore::visit` (marked), your
   `delete` in `SlotCore::Ref::~Ref` (marked), and your creation in `SlotCore::install` (W14: the Tracer needs its tables
   and memory system: tell me what `install` should take, or add a `PeriphSlotConfig` field for it).
+
+### make check on main a880d08, and W16's requests (2026-11-09)
+
+- **The full make check on main (a880d08, the merge of dab8ec9): clean.** gcc debug, gcc release, clang debug, clang
+  release: 49 test binaries each (`make run`'s list), all pass; TSan gcc and clang: the seven thread tests, all pass, no
+  warnings. (Run in pieces: a tool call here stops at 300 s.)
+- **W16's requests:** `SlotCore::cnc1(n)` (and `cc_stub(n)`, `tracer(n)` for W14) beside `replayer(n)`: a static_cast
+  from the slot's pointer, no include needed; `ControlIO::dma` (a CreditOut, width 3: the slot's S6 into the controller
+  router's CC_DMA_IN credit Fifo) and `ControlIO::has_dma` in `chip.h`.
+- **`install`'s place marked** for W16's types, as `visit` and `~Ref` are; `install` takes the slot's `PeriphSlotConfig`.
+- **Merged main a2009dc (W14's Tracer wiring):** W14's design stands: the Tracer created bare (`new tracer::Tracer(tile)`),
+  its tables by region packets, its memory from the harness after the build (`tracer(n).own_memory(store)`), as ref
+  does. I dropped my `PeriphSlotConfig::tracer` (no need beyond `own_memory`) and my duplicate `tracer(n)`; kept W14's
+  case lines in `visit`, `~Ref` and `install`, and its accessor.
+
+### The tile's paths (WIP, 2026-11-09): in the closed workers' files, each change and its reason
+
+Gated by `G1Config::periph_slot` (default off: M2's machines, goldens and digests unchanged; W16's M3 chip turns it on).
+- **`rv32.h` (W5/W8, the core):** a present window's load, store and store stall go through three optional environment
+  hooks (`window_load`, `window_stalls`, `window_store`; the header lists them) instead of FATAL "not modelled yet". A
+  reserved or undefined word's load reads 0 and is counted by the core (`reserved_accesses`, `violations`): ref counts
+  it in the slot; the counts are diagnostics (T2 requires no violations). W5's death test
+  `rv32_peripheral_window_not_modelled` now expects the new message ("this bench has no peripheral slot").
+- **`tile_ctl.h` (W8):** `TileCore` declares `win` (the slot's RegFile) and `periph` (S2/S3, Link(1)) when the slot is
+  present, and implements the hooks from the `Win` layout: a consuming EVENTS load puts its `CoreOp::consume(value &
+  mask)`; a store to a standard read-only word (0, 1, 2, 5, 6) or to a defined read-only word of the peripheral's
+  (`Win::R_WRITABLE`, new: the static map from the peripheral's `writable(w)`) is a bus error at once, as ref's
+  `write()` returns false; any other store goes to the slot as `CoreOp::store`. `TileCtl` reads the slot's `R_LIVE`
+  (`slot_win`) before its end of cycle.
+- **`regblock.h` (W5/W8):** `slot_live`: EVENTS [15:13] and ERRORS [13:11] in `reg()` and `publish()`, the WFI wake,
+  `irq()` and the error line (ref's `eventsAt`, `errorsAt`, `wakeTerm`, `errorLine`).
+- **`director.h` (W8):** mode 0 to regions 0x04-0x06 goes to `periph` (S1, Link(3)) when `periph_slot`, instead of
+  FATAL.
+- **`tile_ctl.cpp` (W8, the builder):** with `periph_slot`, adds `t<k>.slot` (the replayer as peripheral 1) and wires
+  S1, S2/S3 and the RegFile to the core and the block.
+- **make:** `UNITS_LINK` and the chip's TSan link list carry the slot, the replayer and the Tracer's objects.
+- `peripheral.h`: the optional `writable(w)`; the replayer's (word 32) and the test peripheral's (word 33). **W14, W16:**
+  add `writable(w)` to the Tracer and C&C 1's peripheral (without it every defined word is taken as writable and a
+  refused store is FATAL at the slot).
+
+### The slot holds its peripherals' own ports (2026-11-09; owner's priority, for W16's boot)
+
+The framework rewrites a port handle in place at the build and requires it inside the unit object, so C&C 1's own
+ports (READY rows, the error lines, GO) couldn't be declared from its heap-allocated body. Now, in general:
+- **`OwnPorts`** (`peripheral.h`): a member of `PeriphSlot` (`slot.own`), fixed capacity per kind (Link inputs 16,
+  Link outputs 80; another kind is one more array and one more declare method), filled at configuration.
+- **`OwnPortsDecl`**: a peripheral's `ports(OwnPortsDecl& d)` declares each port with `d.link_in(name, width)` /
+  `d.link_out(name, width)`, which returns its index; the peripheral keeps the indices (integers survive the build's
+  move). Its hooks get the storage: `begin(Ctx&, t, OwnPorts&)`, `end(Ctx&, t, OwnPorts&)`.
+- **Wiring** (a chip builder, a test): `slot.own.link_in[i]` / `slot.own.link_out[i]` with the peripheral's indices.
+
+**For W16 (please confirm or adjust; the owner arbitrates): I changed your files to the interface:**
+- `cnc1_periph.h`: `rows[8]`, `cc_line[3]`, `go[64]` became the indices `row0`, `line0`, `go0` (declared in your order);
+  `ports`, `begin`, `end` take the new types and reach the handles through `OwnPorts`; their bodies otherwise
+  unchanged. Added `writable(w)` (37-45 but 43; 32-36 and 43 read-only), from your `write_word`.
+- `test_cnc1_periph.cpp`: your stand holds an `OwnPorts` for the peripheral and wires through it; **your through-the-slot
+  test is on** (`#define W16_SLOT_OWN_PORTS 1`; remove the guards when you like). In `run_slot`'s core side: a store to
+  a defined read-only word isn't sent (the core judges it a bus error, as TileCore does); and the check "the slot
+  flagged a violation" became "exactly the script's stores to undefined words": the slot flags those as ref's
+  `PeripheralSlot.reserved` does (your Cnc1Conf's ref side calls the peripheral without a slot, so it has none).
+- **Acceptance:** `cnc1_periph_through_the_slot_conformance_with_ref` (your s1-s3 fixtures, plain, shuffled and
+  step-all) passes in all four builds; with `test_cnc1_periph`'s other tests, `test_cc_units`, `test_periph_slot`,
+  `test_slotconf`, `test_tracer_slot`.

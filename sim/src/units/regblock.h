@@ -28,6 +28,11 @@ struct RegBlockState {
     // ---- M2 (W8): TileControl's registers and qualifiers ----
     uint32_t router_hdr = 0, router_addr = 0, router_w[3] = {}, dma_config = 0, record_base = 0, rd_setup = 0;
     uint64_t rp_errors = 0;            // W11: read-port stores dropped (ReadPort.errors: ERRORS [7], READ_PORT)
+    // W15 (M3): the peripheral slot's live bits at t (its window RegFile's Win::R_LIVE, set by TileCtl before end_cycle):
+    // [2:0] EVENTS [15:13] ((events | DMA done) & EVENTS_MASK != 0 per peripheral), [5:3] ERRORS [13:11] (ERRORS != 0)
+    uint32_t slot_live = 0;
+    uint32_t live_events() const { return (slot_live & 7) << EV_PERIPH_1; }
+    uint32_t live_errors() const { return (slot_live >> 3 & 7) << 11; }
     bool q_all = false, q_one[8] = {}, cond_all_prev = true, cond_one_prev[8] = {true, true, true, true, true, true, true, true};
     bool rd_done_prev = false;
     uint32_t dma_starts = 0;                    // G4 (W12): PULSE_DMA starts so far (the AG's `start` Wire: a change = a start)
@@ -101,7 +106,7 @@ struct RegBlockState {
         if (!rb && request_busy_prev) events |= 1u << EV_REQUEST_ROOM;
         request_busy_prev = rb;
         counter_events(clears);
-        error_line = conditions != 0;
+        error_line = (conditions | live_errors()) != 0;                   // TileControl.errorLine: the slot's too
         status = uint32_t(rd_running(in)) << ST_RD_RUNNING | uint32_t(rdd) << ST_RD_DONE
                  | uint32_t(in.gather_busy) << ST_GATHER_BUSY
                  | uint32_t(in.send_busy) << ST_SEND_BUSY | uint32_t(done) << ST_DONE | uint32_t(landed) << ST_LANDED
@@ -224,8 +229,8 @@ struct RegBlockState {
         switch (r) {
         case PARAMS: return params;
         case STATUS: return status;
-        case ERRORS: return conditions;                                   // the peripherals' live bits: 0 in M1
-        case EVENTS: return events & EVENTS_VALID;                        // the live bits: 0 in M1
+        case ERRORS: return conditions | live_errors();                   // TileControl.errorsAt: the slot's live bits
+        case EVENTS: return (events | live_events()) & EVENTS_VALID;      // TileControl.eventsAt: the slot's live bits
         case EVENTS_MASK: return mask;
         case EVENTS_REQUIRED: return required;
         case ROUTER_HDR: return router_hdr;
@@ -246,7 +251,7 @@ struct RegBlockState {
     uint64_t publish(uint32_t* pub) const {
         uint64_t m = 0;
         auto chk = [&](unsigned r, uint32_t v) { if (pub[r] != v) { pub[r] = v; m |= uint64_t(1) << r; } };
-        chk(PARAMS, params); chk(STATUS, status); chk(ERRORS, conditions); chk(EVENTS, events & EVENTS_VALID);
+        chk(PARAMS, params); chk(STATUS, status); chk(ERRORS, conditions | live_errors()); chk(EVENTS, (events | live_events()) & EVENTS_VALID);
         chk(EVENTS_MASK, mask); chk(EVENTS_REQUIRED, required); chk(ROUTER_HDR, router_hdr); chk(ROUTER_ADDR, router_addr);
         chk(ROUTER_SET_W0, router_w[0]); chk(ROUTER_SET_W1, router_w[1]); chk(ROUTER_SET_W2, router_w[2]);
         chk(DMA_CONFIG, dma_config); chk(DMA_RECORD_BASE_ADDRESS, record_base); chk(SRAM_RD_DEST_ADDR, rd_setup);
@@ -254,11 +259,11 @@ struct RegBlockState {
         return m;
     }
     bool wake() const {                                                   // TileControl.wakeTerm
-        uint32_t e = events & EVENTS_VALID;
+        uint32_t e = (events | live_events()) & EVENTS_VALID;
         if (gate) return e >> EV_GO & 1;
         return (e & mask & ~required) != 0 || (required != 0 && (e & required) == required);
     }
-    bool irq() const { return conditions != 0; }
+    bool irq() const { return (conditions | live_errors()) != 0; }
 };
 
 }  // namespace units

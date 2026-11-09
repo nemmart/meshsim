@@ -4,6 +4,7 @@
 
 #include <type_traits>
 
+#include "units/cnc1_periph.h"
 #include "units/linkword.h"
 #include "units/replayer.h"
 #include "units/test_peripheral.h"
@@ -18,7 +19,8 @@ decltype(auto) SlotCore::visit(unsigned n, F&& f) {
         case PT_REPLAYER: return f(*static_cast<Replayer*>(per[n].p));
         case PT_TEST: return f(*static_cast<TestPeripheral*>(per[n].p));
         case PT_TRACER: return f(*static_cast<tracer::Tracer*>(per[n].p));   // W14
-        // ---- W16: case PT_CNC1 (Cnc1Peripheral), case PT_CC_STUB (CcStub), with their includes above
+        case PT_CNC1: return f(*static_cast<Cnc1Peripheral*>(per[n].p));     // W16
+        case PT_CC_STUB: return f(*static_cast<CcStub*>(per[n].p));          // W16
         default: FATAL("slot %u: peripheral %u of type %u has no dispatch case", tile, n, unsigned(per[n].type));
     }
 }
@@ -34,7 +36,8 @@ SlotCore::Ref::~Ref() {
         }
         case PT_TEST: delete static_cast<TestPeripheral*>(p); break;
         case PT_TRACER: delete static_cast<tracer::Tracer*>(p); break;   // W14: its memory with it
-        // ---- W16: its types' delete here too
+        case PT_CNC1: delete static_cast<Cnc1Peripheral*>(p); break;         // W16
+        case PT_CC_STUB: delete static_cast<CcStub*>(p); break;              // W16
         default: break;
     }
 }
@@ -65,14 +68,14 @@ uint64_t SlotCore::digest() {
     return h;
 }
 
-void SlotCore::install(unsigned n, PeriphType type, uint64_t replayer_row_buffer) {
+void SlotCore::install(unsigned n, PeriphType type, const PeriphSlotConfig& c) {
     if (n < 1 || n > 3 || per[n].p) FATAL("slot %u: peripheral %u installed twice or out of range", tile, n);
     per[n].type = type;
     switch (type) {
         case PT_ABSENT: return;
         case PT_REPLAYER: {
             auto* r = new Replayer(tile);
-            if (replayer_row_buffer) r->set_row_buffer(new uint64_t[replayer_row_buffer * Replayer::REC_LONGS], replayer_row_buffer);
+            if (c.replayer_row_buffer) r->set_row_buffer(new uint64_t[c.replayer_row_buffer * Replayer::REC_LONGS], c.replayer_row_buffer);
             per[n].p = r;
             break;
         }
@@ -80,6 +83,10 @@ void SlotCore::install(unsigned n, PeriphType type, uint64_t replayer_row_buffer
         // W14: the Tracer, bare (ref's Config.cc3Tracer: new Tracer(me)); its tables come by region packets (tracer_ctl),
         // its memory from the harness after the build (tracer(n).own_memory(store)): a run without one is FATAL
         case PT_TRACER: per[n].p = new tracer::Tracer(int(tile)); break;
+        // W16: C&C 1's Ingress/Egress and UART (its own ports: READY, the error lines, GO; ref_cycle set by the chip
+        // through cnc1(n)), and the stub engine of C&C 2 (and of C&C 3 without the Tracer: CcCores.Stub(2 + c - 1))
+        case PT_CNC1: per[n].p = new Cnc1Peripheral(); break;
+        case PT_CC_STUB: per[n].p = new CcStub(tile == lw::CC3 ? 3 : 2); break;
         default: FATAL("slot %u: peripheral type %u can't be created here yet", tile, unsigned(type));
     }
 }
@@ -95,6 +102,15 @@ tracer::Tracer& SlotCore::tracer(unsigned n) {
 TestPeripheral& SlotCore::test_peripheral(unsigned n) {
     if (per[n].type != PT_TEST) FATAL("slot %u: peripheral %u is not the test peripheral", tile, n);
     return *static_cast<TestPeripheral*>(per[n].p);
+}
+// (an incomplete class is enough for a static_cast from void*: these need no include)
+Cnc1Peripheral& SlotCore::cnc1(unsigned n) {
+    if (per[n].type != PT_CNC1) FATAL("slot %u: peripheral %u is not C&C 1's peripheral", tile, n);
+    return *static_cast<Cnc1Peripheral*>(per[n].p);
+}
+CcStub& SlotCore::cc_stub(unsigned n) {
+    if (per[n].type != PT_CC_STUB) FATAL("slot %u: peripheral %u is not the stub", tile, n);
+    return *static_cast<CcStub*>(per[n].p);
 }
 
 void SlotCore::violate(int64_t t, uint16_t code, uint32_t a, uint32_t b) {
@@ -321,12 +337,13 @@ void SlotCore::dma_run(int64_t t, unsigned n, unsigned& room) {
 PeriphSlot::PeriphSlot(sim::Ports& p, const PeriphSlotConfig& c) : cfg(c) {
     s.tile = c.tile;
     s.dma_port = c.controller;
-    for (unsigned n = 1; n <= 3; n++) if (c.type[n] != PT_ABSENT) s.install(n, c.type[n], c.type[n] == PT_REPLAYER ? c.replayer_row_buffer : 0);
+    for (unsigned n = 1; n <= 3; n++) if (c.type[n] != PT_ABSENT) s.install(n, c.type[n], c);
     p.in(region, "region", 3);
     p.in(core, "core", 1);
     p.out(window, "window", Win::REGS);
     if (c.controller) p.out(dma, "dma", 3);
-    for (unsigned n = 1; n <= 3; n++) if (s.per[n].type != PT_ABSENT) s.visit(n, [&](auto& q) { q.ports(p); });
+    OwnPortsDecl decl(p, own);
+    for (unsigned n = 1; n <= 3; n++) if (s.per[n].type != PT_ABSENT) s.visit(n, [&](auto& q) { q.ports(decl); });
 }
 
 void PeriphSlot::publish(sim::Ctx& c, int64_t t) {
@@ -346,6 +363,19 @@ void PeriphSlot::publish(sim::Ctx& c, int64_t t) {
             if (s.store_stalls(t, n, w)) stall[k / 32] |= 1u << (k % 32);
         }
         for (unsigned k = 0; k < 3; k++) { put(Win::reg(n, Win::R_DEFINED + k), def[k]); put(Win::reg(n, Win::R_STALL + k), stall[k]); }
+        if (first) {                                       // static: which defined words a store writes
+            uint32_t wr[3] = {};
+            s.visit(n, [&](auto& q) {
+                for (unsigned w = Win::OWN0; w < Win::WORDS; w++) {
+                    const unsigned k = w - Win::OWN0;
+                    bool yes;
+                    if constexpr (requires { q.writable(0); }) yes = q.writable(int(w));
+                    else yes = (def[k / 32] >> (k % 32)) & 1;
+                    if (yes) wr[k / 32] |= 1u << (k % 32);
+                }
+            });
+            for (unsigned k = 0; k < 3; k++) put(Win::reg(n, Win::R_WRITABLE + k), wr[k]);
+        }
     }
     put(Win::R_LIVE, s.live_events(t) | s.live_errors(t) << 3);
     first = false;
@@ -355,7 +385,7 @@ sim::Wake PeriphSlot::step(sim::Ctx& c) {
     const int64_t t = int64_t(c.now());
     bool active = first;
     // ---- level 0: (1) the peripherals' own inputs
-    for (unsigned n = 1; n <= 3; n++) if (s.per[n].type != PT_ABSENT) s.visit(n, [&](auto& q) { q.begin(c, t); });
+    for (unsigned n = 1; n <= 3; n++) if (s.per[n].type != PT_ABSENT) s.visit(n, [&](auto& q) { q.begin(c, t, own); });
     // (2) the core's access of t - 1: a consume or the EVENTS_MASK store first (ref's endCycle(t - 1)) ...
     uint64_t op = 0;
     bool have_op = false;
@@ -396,7 +426,7 @@ sim::Wake PeriphSlot::step(sim::Ctx& c) {
         if (!cfg.controller) FATAL("slot %u: a DMA packet without a DMA port", cfg.tile);
         c.put(dma, s.out[k].lo, s.out[k].h, s.out[k].hi);
     }
-    for (unsigned n = 1; n <= 3; n++) if (s.per[n].type != PT_ABSENT) s.visit(n, [&](auto& q) { q.end(c, t); });
+    for (unsigned n = 1; n <= 3; n++) if (s.per[n].type != PT_ABSENT) s.visit(n, [&](auto& q) { q.end(c, t, own); });
     // ---- the wake: the next cycle while anything is in progress, and once more after it (to publish what it left)
     if (active || !idle_before || !s.idle(t + 1)) return c.next();
     const int64_t w = s.next_wake_at(t);

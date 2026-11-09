@@ -11,7 +11,7 @@ set -u
 SIM=$(cd "$(dirname "$0")/../.." && pwd)
 FIX="$SIM/tests/routerconf"
 HOPS="$SIM/ref/meshsim/hops.txt"
-CONFS=("0 1" "1 2" "5 3" "27 1" "63 2" "0 4 send" "5 5 send" "63 6 send")      # tile seed [send: the injection unit too]
+CONFS=("0 1" "1 2" "5 3" "27 1" "63 2" "0 4 send" "5 5 send" "63 6 send" "0 7 link" "2 8 link" "64 1" "65 2" "66 3 dma")   # tile seed [send: the injection unit too; link: the C&C links (tiles 0-2); dma: C&C 3's DMA input]
 REFCOMMIT=$(git -C "$SIM" log -1 --format=%H -- ref 2>/dev/null || echo unknown)
 build() {
   rm -rf "$1"; mkdir -p "$1"

@@ -43,12 +43,14 @@
 #include "units/chip.h"
 #include "units/director.h"
 #include "units/linkword.h"
+#include "units/periph_slot.h"
 #include "units/big_sram.h"
 #include "units/mem.h"
 #include "units/table_store.h"
 #include "units/write_engine.h"
 #include "units/regblock.h"
 #include "units/regmap.h"
+#include "units/periph_slot.h"
 #include "units/reqbus.h"
 #include "units/rv32.h"
 
@@ -68,6 +70,7 @@ struct TileCtl {
     sim::LinkIn req_freed_ev;                  // W14: width 0, Link(1): the request bus freed the FIFO's head at t
     sim::LinkIn drift;                         // width 0, Link(1): the AG's drift (ERRORS [3])
     sim::WireOut ag_start;                     // PULSE_DMA's starts so far, driven at level 0 of t + 1 (endCycle(t))
+    sim::RegFileIn slot_win;                   // W15 (M3): the peripheral slot's window RegFile (its live bits), when `slot`
     // ---- outputs ----
     sim::RegFileOut regs, dma;
     sim::WireOut wake, irq;
@@ -85,9 +88,11 @@ struct TileCtl {
     bool error_out = false;            // the error line's level as last put on `line`
     bool ovf_event = false;            // `ovf` declared: ROUTER_OVF arrives as an event (D29)
     bool g4 = false;                   // G4's inputs declared (the tile has the read side and G4's engines)
+    bool slot = false;                 // W15: the peripheral slot's RegFile declared
 
-    TileCtl(sim::Ports& p, const RegBlockState& initial, bool router_ovf_event = false, bool g4_ = false)
-        : s(initial), ovf_event(router_ovf_event), g4(g4_) {
+    TileCtl(sim::Ports& p, const RegBlockState& initial, bool router_ovf_event = false, bool g4_ = false, bool slot_ = false)
+        : s(initial), ovf_event(router_ovf_event), g4(g4_), slot(slot_) {
+        if (slot) p.in(slot_win, "slot_win");
         if (ovf_event) p.in(ovf, "ovf", 0);
         p.in(we_ovf, "we_ovf", 0); p.in(ts_ovf, "ts_ovf", 0); p.in(hist_ovf, "hist_ovf", 0);
         if (g4) {
@@ -138,6 +143,7 @@ struct TileCtl {
             const sim::Word st = c.valid(ag_status) ? c.read(ag_status)[0] : 0;
             in.ag_running = st & 1; in.ag_done = st >> 1 & 1;
         }
+        if (slot) s.slot_live = c.read(slot_win, Win::R_LIVE);   // W15: liveEvents(t), liveErrors(t), as ref's view at t
         s.end_cycle(c.now() - 1, in);
         if (g4) c.drive(ag_start, s.dma_starts);
         // only the registers that changed (W12, D31): the same register file, without 33 writes a step
@@ -153,7 +159,11 @@ struct TileCtl {
             c.put(line, sim::Word(s.ready_pulse) | sim::Word(s.error_line) << 1);
             error_out = s.error_line;
         }
-        return sim::Wake::none();
+        // W16: STATUS's send-busy from the core's own put at t is the block's alone (the injection unit's Reg only
+        // changes if the send waits): look again next cycle, when the Reg says whether the hold is still occupied.
+        // Otherwise a core polling STATUS after a send that left at once reads busy until something else steps the block
+        // (C&C 1's first send in test_cc_units; M2's programs always had a landing or a K line to step it).
+        return send_put ? c.next() : sim::Wake::none();
     }
     uint64_t digest() const { return digest_mix(s.digest(), error_out); }
     static bool reg_bit(const sim::Ctx& c, sim::RegIn r) { return c.valid(r) && c.read(r)[0] != 0; }
@@ -236,6 +246,9 @@ struct TileCore {
     sim::FifoOut rd_port;              // W11: width 2, the read port's requests -> the read queue (client 2)
     sim::CountIn rp_injected;          // W11: read-port returns injected (free entries: injections before t)
     sim::CountOut rp_stores;           // W11: read-port reads queued (ReadPort.stores) -> the director (results outstanding)
+    sim::RegFileIn win;                // W15 (M3): the peripheral slot's window RegFile (loads read it: AUDIT-M3 3.1 S4)
+    sim::LinkOut periph;               // W15 (M3): width 1, a window store or a consuming EVENTS load -> the slot, Link(1)
+    bool slot = false;                 // W15: the two above declared
     // W14 (D34, the request bus): the port's send side (every tile and controller) and a controller's receive side
     sim::LinkOut req_push;             // width 2: REQUEST_SEND's request {w0 | w1 << 32, w2 | w3 << 32} -> the leaf, Link(1)
     sim::WireIn req_freed;             // the leaf freed the FIFO's head at t (canPush's freedAt == t)
@@ -251,9 +264,11 @@ struct TileCore {
     unsigned rp_depth = 64;
     uint64_t rp_stored = 0, rp_dropped = 0, rp_violations = 0;
 
-    TileCore(sim::Ports& p, const Rv32& initial, unsigned tile = 0, unsigned read_port_depth = 64, bool receiver_ = false,
-             bool done_gate_ = true)
-        : receiver(receiver_), done_gate(done_gate_), rv(initial), rp_tile(uint8_t(tile)), rp_depth(read_port_depth) {
+    TileCore(sim::Ports& p, const Rv32& initial, unsigned tile = 0, unsigned read_port_depth = 64, bool slot_ = false,
+             bool receiver_ = false, bool done_gate_ = true)
+        : slot(slot_), receiver(receiver_), done_gate(done_gate_), rv(initial), rp_tile(uint8_t(tile)), rp_depth(read_port_depth) {
+        if (slot) { p.in(win, "win"); p.out(periph, "periph", 1); }
+        // W14: the request port's send side (every core) and a controller's receive side
         p.out(req_push, "req_push", 2); p.in(req_freed, "req_freed");
         if (receiver) { p.in(recv, "recv"); p.out(recv_pop, "recv_pop", 0); p.out(recv_credit, "recv_credit", 1); }
         p.in(regs, "regs"); p.in(hist, "hist"); p.in(wake, "wake"); p.in(irq, "irq"); p.in(port_b, "port_b", 3);
@@ -318,6 +333,40 @@ struct TileCore {
             c.inc(u.rp_stores);
             return true;
         }
+        // W15 (M3): PeripheralSlot.read / storeStalls / write as the core meets them (AUDIT-M3 3.1 S2-S4, S8)
+        int window_load(unsigned n, unsigned w, uint32_t& v) {
+            if (!u.slot) FATAL("tile core: a load from peripheral %u's window: the tile has no peripheral slot", n);
+            if (w == 5) {                                  // a consuming load: the value, and its consume under the mask
+                v = c.read(u.win, Win::reg(n, Win::R_STD + 5));
+                const uint32_t m = c.read(u.win, Win::reg(n, Win::R_STD + 7));
+                if (v & m) c.put(u.periph, CoreOp::consume(n, v & m));
+                return 1;
+            }
+            if (w < Win::STD) { v = c.read(u.win, Win::reg(n, Win::R_STD + w)); return 1; }   // 8, 9 without a DMA: 0
+            v = 0;
+            if (w < Win::OWN0) return 2;
+            const unsigned k = w - Win::OWN0;
+            if (!(c.read(u.win, Win::reg(n, Win::R_DEFINED + k / 32)) >> (k % 32) & 1)) return 2;
+            v = c.read(u.win, Win::reg(n, Win::R_OWN + k));
+            return 1;
+        }
+        bool window_stalls(unsigned n, unsigned w) const {
+            if (!u.slot || w < Win::OWN0) return false;
+            const unsigned k = w - Win::OWN0;
+            return c.read(u.win, Win::reg(n, Win::R_STALL + k / 32)) >> (k % 32) & 1;
+        }
+        bool window_store(uint64_t, unsigned n, unsigned w, uint32_t v) {
+            if (!u.slot) FATAL("tile core: a store to peripheral %u's window: the tile has no peripheral slot", n);
+            if (w == 0 || w == 1 || w == 2 || w == 5 || w == 6) return false;   // read-only standard words
+            if (w >= Win::OWN0) {
+                const unsigned k = w - Win::OWN0;
+                const bool def = c.read(u.win, Win::reg(n, Win::R_DEFINED + k / 32)) >> (k % 32) & 1;
+                const bool wr = c.read(u.win, Win::reg(n, Win::R_WRITABLE + k / 32)) >> (k % 32) & 1;
+                if (def && !wr) return false;              // a defined read-only word: a bus error
+            }
+            c.put(u.periph, CoreOp::store(n, w, v));       // the slot applies it at level 0 of t + 1 (and flags reserved)
+            return true;
+        }
         uint32_t hist(uint32_t i) const {                // RmwPipe.ctrlRead: on a write-back cycle, the engine's value
             if (c.read(u.hist, HIST_WB_AT) == uint32_t(c.now() + 1)) return c.read(u.hist, HIST_WB_VAL);
             return c.read(u.hist, i);
@@ -360,6 +409,7 @@ struct G1Config {
     bool done_gate = true;
     uint32_t mem_chunks = 1u << 20;
     uint32_t periph_present = 1;
+    bool periph_slot = false;          // W15 (M3): the peripheral slot (the replayer as peripheral 1) and its paths
     unsigned K = 8, cm_latency = 2;    // the write counters' line, director -> port B
     // G3 (W11): the memory path's keys
     unsigned ts_engine_latency = 1;    // tsEngineLatency: the engines' Links to and from the table store and HIST
@@ -378,8 +428,9 @@ struct G1Config {
 struct G1Ctx {
     G1Config cfg;                      // per tile: cfg.tile is overwritten with k
     const uint32_t* bootrom = nullptr; uint32_t bootrom_words = 0;
-    uint32_t* mem = nullptr;           // 64 x 2 x MEM_WORDS words (data, program per tile), zero at power-on; outlives
+    uint32_t* mem = nullptr;           // units x 2 x MEM_WORDS words (data, program per unit), zero at power-on; outlives
                                        // the machine (the boot fills them through port B)
+    unsigned units = 64;               // the units `mem` holds: 64 tiles, or 67 with C&C 1-3 as units 64-66 (M3)
     unsigned we_in_depth = 4, gather_depth = 16;
     SramBlocks* sram = nullptr;        // G3: the tiles' big-SRAM blocks (one per tile, mapped at configuration); outlives
                                        // the machine

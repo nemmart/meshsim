@@ -286,9 +286,10 @@ end.bin, clean.
   what it left); else `next_wake_at`; else S1/S2.
 - `units/test_peripheral.h`: ref's TestPeripheral (type 15) for the slot's tests.
 - `visit`: the replayer and the test peripheral; marked places for W14's Tracer case and W16's two.
-- **One difference from ref, recorded:** a DMA_HDR/DMA_ADDR store while a transfer runs (flagged as undefined in ref)
-  takes effect a cycle later than ref's (at level 0 of t + 1, after ref's runCycle(t) would have used the old value).
-  Only in the flagged case; a store before PULSE_DMA (the defined use) is unaffected.
+- **A UB-only difference, recorded (owner: accepted, not a D30 case; also in AUDIT-M3 3.1):** a DMA_HDR/DMA_ADDR store
+  while a transfer runs (flagged as undefined in ref) takes effect a cycle later than ref's (at level 0 of t + 1, after
+  ref's runCycle(t) would have used the new value). Only in the flagged case; a store before PULSE_DMA (the defined use)
+  is unaffected. Coverage 0 in both M3 runs (ref flags each such store; AUDIT section 0: no chip violations).
 - Next: **SlotConf** (as ReplayConf): ref's `PeripheralSlot` taken from a `Net` built as PeripheralSlotTest builds it
   (TestPeripheral on a tile; the replayer on another), driven directly by a seeded script (posts, credits, live bits,
   faults, accepts, window loads and stores, DMA transfers with and without burst, runCycle, endCycle), every result

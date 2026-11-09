@@ -4,7 +4,7 @@ The replayer and the peripheral slot. Branch `sim-w15`. Prompt: `PROMPT.md`.
 
 ## Status
 
-**Go-ahead 2026-11-09** (owner): the plan as written; answers to Q1-Q4 below. Working on step 1 (shared headers, the ALU).
+**Go-ahead 2026-11-09** (owner): the plan as written; answers to Q1-Q4 below. Step 1 done (shared headers, the ALU, both equal to `ref`); working on step 2 (the replayer).
 
 ## The owner's answers (2026-11-09)
 
@@ -37,7 +37,7 @@ Suggested for yours (your choice; tell me and I'll use them): `replay_tables.h` 
 `file_store.h`, `mem_system.h`, `tracer.h/.cpp`.
 
 **The interface** (`Peripheral.java`, method for method, non-virtual): each peripheral type is a class with these
-members; the slot holds `{type, ptr}` and `switch`es on the type to call them (the case for type 5, the Tracer, includes
+members; the slot holds `{type, ptr}` and `switch`es on the type to call them (the case for type 3, the Tracer, includes
 `units/tracer.h`):
 `params()`, `running(t)`, `status_bits(t)`, `errors(t)`, `sync(t)`, `events() -> EventCounts&`, `word(t, w, uint32_t& v) -> bool`
 (false: undefined), `write_word(t, w, v) -> int` (1, 0, -1), `store_stalls(t, w)`, `accept(t, src, offset, size, lo, hi)`,
@@ -144,3 +144,24 @@ and clang at each commit; `main` merged in often.
   propose a per-replayer sink that keeps a running hash and, optionally, writes the records to a preallocated buffer for
   the comparison with `rows.bin`.
 - **Q4 (integrator/W13).** The runner's data paths for deliveries 1-3 (and their hashes), for Stage A.
+
+## Log
+
+### Step 1: the shared headers and the ALU (2026-11-09)
+
+- `units/row_core.h`, `units/replayer_alu.h` (header-only: the opcode table is an `inline constexpr` table, so `cls()`
+  and `executes()` cost no call per row), `units/event_counts.h` (ref's `onConsume` callback becomes `consume`'s
+  returned mask).
+- `tests/test_replayer_alu.cpp`, three tests, all four builds:
+  - **ReplayerTest's ALU report, line for line**: the opcode table (171 opcodes, 88 row opcodes) and the 252 vectors
+    (225 match, 4 flagged, 23 n/a), every flagged and n/a line equal to `ref`'s (`tests/replayer/alu-report.txt`).
+  - **A differential sweep** against `ref` (`tests/ref/ReplayConf.java alu`): every executed opcode on 2,000 seeded
+    inputs biased to the edges (small, negative, powers of two, masks, sign bits, words), a digest of rd, the new pc and
+    the undefined flag per opcode; and RowCore (decode index, the six source immediates, `reg` for every code and both
+    offsets, `imm_val`, `invalid_word`'s cause, `needs_source_imm`) on 32,000 words. Inputs are regenerated on both
+    sides (splitmix64), so only the digests are committed (`tests/replayer/alu-sweep.txt`). Equal, under UBSan too.
+  - `EventCounts`' timing (a post or set at t hides at t, the clamp, full posts, live bits, consume's mask).
+- `tests/ref/replayconf.sh --fixtures | --check` regenerates both fixtures from `ref` (needs a JDK).
+- Note on `ref`: ReplayerTest's "every row opcode has a matching vector" check can't fail: the `missing.append` sits
+  after a `//` comment on the same line (ReplayerTest.java line 105). The C++ test makes the check as meant, and it
+  passes: every executed opcode but NOP has a matching vector, as REPLAYER-NOTES says.

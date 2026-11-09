@@ -222,6 +222,7 @@ public:
     void sync(int64_t t) { settle(t); }
     bool word(int64_t t, int w, uint32_t& v);
     int write_word(int64_t t, int w, uint32_t v);
+    bool writable(int w) const { return w == int(W_RUN_CONFIG); }   // words 33-35 read-only
     // ref's violate() count, for the slot to forward to the tile (TileControl.violate).
     uint64_t violation_count() const { return violations(); }
     void reset(int64_t t);

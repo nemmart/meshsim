@@ -314,7 +314,7 @@ DEATH_TEST(rv32_request_receive_not_modelled, "REQUEST_RECEIVE.*not modelled yet
     M m; m.core.x[1] = REG_BASE; m.prog({LW(2, 1, 0x54)});
     m.steps(2);
 }
-DEATH_TEST(rv32_peripheral_window_not_modelled, "peripheral 1's window at 0xfffffa00: not modelled yet") {
+DEATH_TEST(rv32_peripheral_window_not_modelled, "peripheral 1's window at 0xfffffa00: this bench has no peripheral slot")   /* W15: M3's message */ {
     M m; m.core.x[1] = REG_BASE + 0x200; m.prog({LW(2, 1, 0)});
     m.steps(2);
 }

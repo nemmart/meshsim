@@ -69,7 +69,10 @@ struct Win {
                                                            //   configuration: 0 for reserved words 10-31 and for undefined
                                                            //   own words: a load reads 0 and is flagged, ref's reserved())
     static constexpr unsigned R_STALL = 109;               // [109, 112): words 32-127 whose store stalls now (S8)
-    static constexpr unsigned PER = 112;
+    static constexpr unsigned R_WRITABLE = 112;            // [112, 115): words 32-127 a store writes (the rest of the
+                                                           //   defined ones are read-only: a store is a bus error); static,
+                                                           //   from the peripheral's writable(w) (all defined if it has none)
+    static constexpr unsigned PER = 115;
     // the tile's live bits:
     static constexpr unsigned R_LIVE = 3 * PER;            // [2:0] EVENTS [15:13] ((events | done) & mask != 0, per n);
                                                            // [5:3] ERRORS [13:11] (errors != 0, per n)

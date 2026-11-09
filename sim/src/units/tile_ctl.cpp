@@ -33,10 +33,11 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     DirectorConfig dc;
     dc.tile = k; dc.periph_present = g.cfg.periph_present; dc.mem_chunks = g.cfg.mem_chunks;
     dc.g4 = true;                                         // W12: G4's engines are in every M2 tile
+    dc.periph_slot = g.cfg.periph_slot;
     const unsigned lookahead = g.cfg.ag_lookahead ? g.cfg.ag_lookahead : 2 * g.cfg.ts_engine_latency + 2;
 
-    auto& c = cfg.add<TileCore>(t + "core", core, k, g.cfg.read_port_depth);
-    auto& b = cfg.add<TileCtl>(t + "ctl", block, kHasOvfEvent<ControlIO>, true);
+    auto& c = cfg.add<TileCore>(t + "core", core, k, g.cfg.read_port_depth, g.cfg.periph_slot);
+    auto& b = cfg.add<TileCtl>(t + "ctl", block, kHasOvfEvent<ControlIO>, true, g.cfg.periph_slot);
     auto& d = cfg.add<Director>(t + "dir", dc);
     auto& we = cfg.add<WriteEngine>(t + "we", g.we_in_depth, g.cfg.ts_engine_latency, g.cfg.mem_chunks);
     auto& ag = cfg.add<AddrGen>(t + "ag", k, lookahead, true);
@@ -93,6 +94,19 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     cfg.connect(ga.busy, b.gather_busy);
     cfg.link(ga.ovf, b.gather_ovf_ev, 1);
     cfg.link(d.gather_put, b.gather_put, 1);
+    // W15 (M3, AUDIT-M3 3.1): the peripheral slot, peripheral 1 the replayer (a mesh tile's: no DMA). S1 the director's
+    // region writes, Link(3); S2/S3 the core's window stores and consuming loads, Link(1); S4/S5/S8 its window RegFile,
+    // read by the core (loads, stalls) and the block (EVENTS [15:13], ERRORS [13:11], the WFI wake, the error line).
+    if (g.cfg.periph_slot) {
+        if ((g.cfg.periph_present & 7) != 1) FATAL("add_g1: tile %u: the slot's tile has peripheral 1 only (PARAMS [2:0] = %u)", k, g.cfg.periph_present);
+        PeriphSlotConfig pc;
+        pc.tile = k; pc.type[1] = PT_REPLAYER;
+        auto& sl = cfg.add<PeriphSlot>(t + "slot", pc);
+        cfg.link(d.periph, sl.region, 3);
+        cfg.link(c.periph, sl.core, 1);
+        cfg.connect(sl.window, c.win);
+        cfg.connect(sl.window, b.slot_win);
+    }
 
     ControlIO io;
     io.send = c.send; io.send_busy = b.send_busy; io.eject = d.in; io.go = b.go; io.line = b.line;

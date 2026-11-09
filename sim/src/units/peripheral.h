@@ -18,6 +18,11 @@
 //                 void sync(int64_t t); EventCounts& events()     the slot calls sync(t) before events().value(t)
 //                 bool word(int64_t t, int w, uint32_t& v)        w 32-127; false: undefined (reads 0, flagged)
 //                 bool store_stalls(int64_t t, int w)             a store to w must retry (C&C 1's UART_TX)
+//   static map    bool writable(int w) const                      (optional) a defined word 32-127 a store writes; the
+//                                                                 others defined are read-only, a store a bus error. The
+//                                                                 core judges a window store's bus error from it at once,
+//                                                                 as ref's write() does; without it, every defined word is
+//                                                                 taken as writable and a refused store is FATAL
 //   work          void step(int64_t t)                                                  [runCycle]
 //   the DMA       int out_queues() const; bool out_ready(int64_t t, int q); void out_take(int64_t t, int q, uint64_t w[2]);
 //                 void out_start(int64_t t, int q, int64_t words)

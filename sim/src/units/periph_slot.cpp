@@ -356,6 +356,19 @@ void PeriphSlot::publish(sim::Ctx& c, int64_t t) {
             if (s.store_stalls(t, n, w)) stall[k / 32] |= 1u << (k % 32);
         }
         for (unsigned k = 0; k < 3; k++) { put(Win::reg(n, Win::R_DEFINED + k), def[k]); put(Win::reg(n, Win::R_STALL + k), stall[k]); }
+        if (first) {                                       // static: which defined words a store writes
+            uint32_t wr[3] = {};
+            s.visit(n, [&](auto& q) {
+                for (unsigned w = Win::OWN0; w < Win::WORDS; w++) {
+                    const unsigned k = w - Win::OWN0;
+                    bool yes;
+                    if constexpr (requires { q.writable(0); }) yes = q.writable(int(w));
+                    else yes = (def[k / 32] >> (k % 32)) & 1;
+                    if (yes) wr[k / 32] |= 1u << (k % 32);
+                }
+            });
+            for (unsigned k = 0; k < 3; k++) put(Win::reg(n, Win::R_WRITABLE + k), wr[k]);
+        }
     }
     put(Win::R_LIVE, s.live_events(t) | s.live_errors(t) << 3);
     first = false;

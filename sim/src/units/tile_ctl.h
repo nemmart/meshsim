@@ -332,8 +332,9 @@ struct G1Config {
 struct G1Ctx {
     G1Config cfg;                      // per tile: cfg.tile is overwritten with k
     const uint32_t* bootrom = nullptr; uint32_t bootrom_words = 0;
-    uint32_t* mem = nullptr;           // 64 x 2 x MEM_WORDS words (data, program per tile), zero at power-on; outlives
+    uint32_t* mem = nullptr;           // units x 2 x MEM_WORDS words (data, program per unit), zero at power-on; outlives
                                        // the machine (the boot fills them through port B)
+    unsigned units = 64;               // the units `mem` holds: 64 tiles, or 67 with C&C 1-3 as units 64-66 (M3)
     unsigned we_in_depth = 4, gather_depth = 16;
     SramBlocks* sram = nullptr;        // G3: the tiles' big-SRAM blocks (one per tile, mapped at configuration); outlives
                                        // the machine

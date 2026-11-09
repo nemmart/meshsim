@@ -31,7 +31,7 @@
 //   - A controller's router (`tile` 64-66, ref's `Router.feeders(me >= 64)`, `FEEDERS_CC`, `ccRoute`): the tile's
 //     FIFOs plus one from CC_DMA_IN (FROM_UP) feeding output 0 (the link). Its ports: `in[0]` CC_LINK_IN (the C&C link
 //     from tile c's to-controller output, Link(cc_link_latency)), `host` CC_HOST_IN (FifoIn, cc_host_depth: the host
-//     port), `dma` CC_DMA_IN (FifoIn, cc_dma_depth: the sending peripheral's DMA, C&C 3 only), `out[0]` CC_LINK_OUT
+//     port), `dma` CC_DMA_IN (a credit FifoIn, cc_dma_depth: the slot's DMA, AUDIT-M3 3.1 S6; C&C 3 only), `out[0]` CC_LINK_OUT
 //     (the C&C link into tile c's from-controller route block), and the tile's `inj`, `eject`, `loop_left`, `ovf`. From
 //     the loopback or the DMA, a packet for this controller is ejected and any other (broadcasts included) leaves on the
 //     link; every other input is ejected (the eject selector counts one not for this controller). Outputs 1-3 and the

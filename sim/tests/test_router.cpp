@@ -75,7 +75,8 @@ Script parse_script(const std::string& text) {
 struct Stim {
     sim::LinkOut link[4], inj, cc_link;
     sim::HoldOut cnc, send;
-    sim::FifoOut host, dma;                                   // a controller's router: L1, L2
+    sim::FifoOut host;                                        // a controller's router: L1
+    sim::CreditOut dma;                                       // L2 (the slot's DMA: never without a credit here)
     bool attached, core, link5, cc;
     const Ev* ev; uint32_t n, i = 0;
     // the core's send holding register, as the core uses it: a refused put is retried, the script's word dropped

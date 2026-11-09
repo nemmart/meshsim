@@ -2,12 +2,14 @@
 #include "units/chip.h"
 
 #include "base/fatal.h"
+#include "units/host_port.h"
 #include "units/inject.h"
 #include "units/router.h"
 
 namespace units {
 
-std::string tile_unit(unsigned k, const char* unit) { return "t" + std::to_string(k) + "." + unit; }
+std::string unit_prefix(unsigned k) { return k < 64 ? "t" + std::to_string(k) + "." : "cc" + std::to_string(k - 63) + "."; }
+std::string tile_unit(unsigned k, const char* unit) { return unit_prefix(k) + unit; }
 
 namespace {
 
@@ -42,11 +44,9 @@ ControlIO stand_in(sim::Config& cfg, unsigned k) {
 
 }  // namespace
 
-TileIO tile_cycle(sim::Config& cfg, const ChipSpec& spec, unsigned k) {
-    const NetConfig& nc = spec.net;
-    if (spec.domain) cfg.domain(spec.domain[k]);
-    ControlIO io = spec.control ? spec.control(cfg, k, spec.control_ctx) : stand_in(cfg, k);
-    auto& r = cfg.add<Router>(tile_unit(k, "router"), k, nc, spec.hops, true);
+namespace {
+// A unit's injection unit and its wiring to the router and the control part (tile_cycle's and cc_cycle's).
+void wire_unit(sim::Config& cfg, const NetConfig& nc, unsigned k, const ControlIO& io, Router& r) {
     ReadSideConfig rc;
     rc.present = io.mem.present; rc.gather = io.mem.gather; rc.ag = io.mem.ag;
     rc.read_port_depth = io.mem.read_port_depth; rc.sram_read_latency = io.mem.sram_read_latency; rc.mem_chunks = io.mem.mem_chunks;
@@ -70,19 +70,47 @@ TileIO tile_cycle(sim::Config& cfg, const ChipSpec& spec, unsigned k) {
     // A send waiting for a loopback token sleeps until the router frees one, which may not be on its way yet (the
     // loopback FIFO drains when the eject selector reaches it): longer than the detector's default.
     cfg.missed_wake_after(tile_unit(k, "inj"), 1u << 20);
+}
+}  // namespace
+
+TileIO tile_cycle(sim::Config& cfg, const ChipSpec& spec, unsigned k) {
+    const NetConfig& nc = spec.net;
+    if (spec.domain) cfg.domain(spec.domain[k]);
+    ControlIO io = spec.control ? spec.control(cfg, k, spec.control_ctx) : stand_in(cfg, k);
+    auto& r = cfg.add<Router>(tile_unit(k, "router"), k, nc, spec.hops, true,
+                              spec.cc_cores ? Router::FIFTH_LINK : Router::FIFTH_HOLD);
+    wire_unit(cfg, nc, k, io, r);
     TileIO t;
     for (unsigned d = 0; d < 4; d++) { t.link_in[d] = r.in[d]; t.link_out[d] = r.out[d]; }
     t.go = io.go;
     t.line = io.line;
     t.attached = k < 3;
-    if (t.attached) { t.from_cnc = r.from_cnc; t.to_cnc = r.to_cnc; }
+    if (t.attached && !spec.cc_cores) { t.from_cnc = r.from_cnc; t.to_cnc = r.to_cnc; }
+    if (t.attached && spec.cc_cores) { t.from_cc = r.from_cc; t.to_cc = r.to_cc; }
     return t;
+}
+
+CcIO cc_cycle(sim::Config& cfg, const ChipSpec& spec, unsigned c) {
+    const NetConfig& nc = spec.net;
+    if (c > 2) FATAL("cc_cycle: controller %u (0-2)", c);
+    const unsigned k = lw::CC1 + c;
+    ControlIO io = spec.control ? spec.control(cfg, k, spec.control_ctx) : stand_in(cfg, k);
+    const bool dma = c == 2 && spec.cc3_dma;
+    auto& r = cfg.add<Router>(tile_unit(k, "router"), k, nc, spec.hops, true, Router::FIFTH_HOLD, dma);
+    wire_unit(cfg, nc, k, io, r);
+    auto& h = cfg.add<HostPort>(tile_unit(k, "host"), c, spec.host_capacity);
+    cfg.connect(h.out, r.host);
+    CcIO o;
+    o.link_in = r.in[Router::CC_LINK_IN]; o.link_out = r.out[Router::CC_LINK_OUT];
+    o.has_dma = dma; if (dma) o.dma = r.dma;
+    o.go = io.go; o.line = io.line;
+    return o;
 }
 
 void build_chip(sim::Config& cfg, const ChipSpec& spec) {
     const NetConfig& nc = spec.net;
     if (!spec.hops) FATAL("build_chip: no hops table");
-    if (!spec.program) FATAL("build_chip: no C&C program");
+    if (!spec.program && !spec.cc_cores) FATAL("build_chip: no C&C program");
     if (nc.link_latency < 1 || nc.ready_latency < 3) FATAL("build_chip: link_latency %u, ready_latency %u", nc.link_latency, nc.ready_latency);
     uint8_t skew[64];
     start_skews(nc, skew);
@@ -90,6 +118,16 @@ void build_chip(sim::Config& cfg, const ChipSpec& spec) {
     for (unsigned k = 0; k < 64; k++) io[k] = tile_cycle(cfg, spec, k);
     for (unsigned k = 0; k < 64; k++)
         for (unsigned d = 0; d < 4; d++) cfg.link(io[k].link_out[d], io[neighbour(k, d)].link_in[arrival_port(d)], nc.link_latency);
+    if (spec.cc_cores) {
+        // C&C c with tile c (the C&C links are Link(cc_link_latency), 1 in ref: one domain, D26)
+        for (unsigned c = 0; c < 3; c++) {
+            if (spec.domain) cfg.domain(spec.domain[c]);
+            CcIO u = cc_cycle(cfg, spec, c);
+            cfg.link(io[c].to_cc, u.link_in, nc.cc_link_latency);
+            cfg.link(u.link_out, io[c].from_cc, nc.cc_link_latency);
+        }
+        return;
+    }
     // C&C and the collectors with tile 0 (C&C's send is a Hold into tile 0's router), C&C 2 and 3 with tiles 1 and 2
     if (spec.domain) cfg.domain(spec.domain[0]);
     auto& cc = cfg.add<Cnc>("cnc", nc, *spec.program);

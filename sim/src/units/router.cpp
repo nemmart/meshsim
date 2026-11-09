@@ -17,7 +17,7 @@ Router::Router(sim::Ports& p, unsigned tile, const NetConfig& c, const Hops* h, 
         feed = kFeedersCc; nfeed = kNFeedersCc; first = kFirstCc; n_fifos = 28;
         p.in(in[CC_LINK_IN], "cc-link-in", 3);
         p.in(host, "cc-host-in", 3, c.cc_host_depth);
-        if (has_dma) p.in(this->dma, "cc-dma-in", 3, c.cc_dma_depth);
+        if (has_dma) p.in_credit(this->dma, "cc-dma-in", 3, c.cc_dma_depth);   // the slot's DMA: a credit Fifo (S6)
         p.out(out[CC_LINK_OUT], "cc-link-out", 3);
     } else {
         if (dma) FATAL("router t%u: a DMA input on a mesh tile's router", tile);

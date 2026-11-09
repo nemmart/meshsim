@@ -15,7 +15,9 @@ run(s) and whether `ReplayBench`'s segment (the D8/D15 bar, on `sim-step-cost`) 
 - **Exact first** (as M1 and M2), with D30: very close is enough where exact would be costly, deliberate differences
   proposed and approved.
 - **Then timed** against `ref` on the runner, one thread and split over threads (D26: one chip at a time). No speed aim
-  is set yet; M2 ended at ~20× `ref` on the sort.
+  is set yet; M2 ended at ~20× `ref` on the sort. **`ref`'s baseline** (W13, pinned, 3 runs): evm-zone-29 10 in
+  46.2 s, cyclone-29 10 in 50.9 s per segment (setup ~9-10 s separate). T2 is serial on C&C 3's Tracer (the tiles mostly
+  sleep), so **C&C 3's domain on one thread** decides the wall time, more than the split (AUDIT-M3 section 5).
 - The large inputs (deliveries, WORKER26's initial image and map) live on the runner's data directory, with their hashes.
 
 ## What it needs (W13's audit establishes it)
@@ -44,3 +46,4 @@ exercised. The Tracer's and replayer's own suites (`TracerTest`, `TracerRig`, `T
 | W13 | reference side: the reference runs are **evm-zone-29 segment 10** (T2's acceptance, 110u) and **cyclone-29 segment 10** (reaches what evm misses); `sim/ref` reproduces 110u (Quests 159-160); `ref` takes ~46 s and ~50 s per segment with idle-skip on (the baseline); AUDIT-M3 sections 1, 3.1-3.3 and 6.6 on main; next 3.4 (the C&C cores), sections 4-5, the goldens |
 | W14 | the Tracer: the pure pieces and the Tracer class on main, equal to `ref` every cycle on TracerTest's cases (TracerConf); next the seeded stimulus, T1, the ports |
 | W15 | the replayer: the ALU and the replayer on main, equal to `ref` every cycle (ReplayConf, 13 traces plus 36 sweeps); next ReplayerUnitTests, Stage A on W9's deliveries, the slot |
+| W16 | G7, the C&C cores and the chip's integration, then T2 end to end and the first timing: prompt written 2026-11-09 (`sessions/WORKER16/PROMPT.md`) |

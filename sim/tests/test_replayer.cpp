@@ -184,6 +184,191 @@ void decompressors() {
     T::eq(0xFFFFFFFFll, int64_t(r2->rlog.peek_value), "a 32-bit miss is zero-extended");
 }
 
+// ================================================================ a hand-checked program
+constexpr int A0 = 10, A1 = 11, A2 = 12, A5 = 15;
+constexpr unsigned T_ADD = 2, T_ADDI = 3, T_LB = 4, T_SD = 8, T_BEQ = 9, T_JAL = 10, T_MUL = 11, T_SLLI = 12;
+constexpr uint64_t V1 = 0x112233F555667788ull, V2 = 0x42;
+constexpr unsigned PADDING = 8;
+
+void templates(ReplayWindow& w) {
+    w.fixed_rom();
+    w.rom(T_ADD, {W::op(alu::ADD).rd(129).rs1(130).rs2(131).fmt(0).rd0(1).report_c()});
+    w.rom(T_ADDI, {W::op(alu::ADDI).rd(129).rs1(130).rs2(132).fmt(1).rd0(3).report_c()});
+    w.rom(T_LB, {W::op(alu::LOAD_B).rd(137).rs1(130).rs2(132).fmt(1).rd0(2).virt().from_log().sign(),
+                 W::op(alu::WMASK_B).rd(138).rs1(130).rs2(132).fmt(1).rd0(2).virt(),
+                 W::op(alu::PEXT_S).rd(129).rs1(137).rs2(138).fmt(1).rd0(2).virt().report_c()});
+    w.rom(T_SD, {W::op(alu::SD).rd(132).rs1(130).rs2(131).fmt(2).from_log().report_c().sign()});
+    w.rom(T_BEQ, {W::op(alu::BEQ).rd(132).rs1(130).rs2(131).fmt(3).nfv().report_c().sign()});
+    w.rom(T_JAL, {W::op(alu::JAL).rd(129).rs1(132).rs2(128).cnst(0).fmt(5).nfv().imm0pc0().rd0(2).report_c()});
+    w.rom(T_MUL, {W::op(alu::MUL).rd(129).rs1(130).rs2(131).fmt(0).rd0(1).report_c()});
+    w.rom(T_SLLI, {W::op(alu::MULI).rd(129).rs1(130).rs2(134).fmt(1).rd0(1).virt().report_c()});
+}
+
+const std::vector<uint32_t>& prog() {
+    static const std::vector<uint32_t> p = {
+        i_(0x100, 0, 0, A0, OP_IMM),   // 0x1000 addi a0, x0, 0x100
+        i_(4, A0, 0, A5, LOAD),        // 0x1004 lb a5, 4(a0)
+        i_(4, A0, 0, 0, LOAD),         // 0x1008 lb x0, 4(a0): remapped, temporaries + 1
+        r_(0, A0, A0, 0, 0, OP),       // 0x100c add x0, a0, a0: the shared NOP row, virtual
+        i_(0, 0, 0, 0, OP_IMM),        // 0x1010 addi x0, x0, 0: the shared NOP row, not virtual
+        s_(8, A5, A0, 3, STORE),       // 0x1014 sd a5, 8(a0)
+        i_(3, A0, 1, A1, OP_IMM),      // 0x1018 slli a1, a0, 3: VirtualMULI
+        r_(1, A0, A1, 0, A2, OP),      // 0x101c mul a2, a1, a0: 5 cycles
+        b_(8, A0, A0, 0, BRANCH),      // 0x1020 beq a0, a0, +8: taken
+        b_(8, A1, A0, 0, BRANCH),      // 0x1028 beq a0, a1, +8: not taken
+        b_(0, A0, A0, 0, BRANCH),      // 0x102c beq a0, a0, 0: a self-jump, sequential
+        i_(1, A0, 0, A0, OP_IMM) & ~1u,  // 0x1030 c.addi a0, 1 (stored decompressed, bit 0 clear)
+        j_(0, 0, JAL),                 // 0x1032 jal x0, 0: the program ends; link into v40
+    };
+    return p;
+}
+
+std::unique_ptr<ReplayWindow> program_window(bool cc, bool rc, bool wc, bool store_log) {
+    auto w = std::make_unique<ReplayWindow>();
+    templates(*w);
+    for (uint32_t ins : prog()) {
+        uint32_t op = (ins | 1) & 0x7F, f3 = (ins >> 12) & 7;
+        unsigned t = op == OP ? ((ins >> 25) == 1 ? T_MUL : T_ADD) : op == OP_IMM ? (f3 == 1 ? T_SLLI : T_ADDI) : op == LOAD ? T_LB
+                     : op == STORE ? T_SD : op == BRANCH ? T_BEQ : T_JAL;
+        w->decode_rom(ins, t);
+    }
+    w->pc = 0x1000; w->instr_idx = 1; w->store_log = store_log;
+    w->regs[A5] = 0x55; w->regs[40] = 0x4040;
+    std::vector<uint32_t> code = prog();
+    code.resize(code.size() + PADDING, 0);
+    w->set_code(code, cc);
+    std::vector<LogEvent> ev = {{true, V1, true, false, 0}, {true, V2, true, false, 0}, {false, 0, false, store_log, V2},
+                                {true, 17, false, false, 0}, {true, 0, false, false, 0}};
+    w->set_logs(ev, rc, wc);
+    return w;
+}
+
+// Expected rows: {instr_idx, opcode, rd_reg, rs1_reg, rs2_reg, seq, flags, pc, imm, rs1, rs2, rd_prev, rd, mem_addr,
+// mem_value, sign_imm}; flags written comp virt first rdI rs1I rs2I, left to right.
+std::vector<std::vector<uint64_t>> expected(bool store_log) {
+    const uint64_t M32 = 0xFFull << 32, F5 = 0xFFFFFFFFFFFFFFF5ull;
+    return {
+        {1, 2, A0, 0, 0, 0, 0b000001, 0x1000, 0x100, 0, 0, 0, 0x100, 0, 0, 0},
+        {2, 110, 40, A0, 0, 2, 0b011001, 0x1004, 4, 0x100, 0, 0x4040, V1, 0x100, V1, 1},
+        {3, 156, 41, A0, 0, 1, 0b010001, 0x1004, 4, 0x100, 0, 0, M32, 0, 0, 0},
+        {4, 146, A5, 40, 41, 0, 0b010000, 0x1004, 0, V1, M32, 0x55, F5, 0, 0, 0},
+        {5, 110, 41, A0, 0, 2, 0b011001, 0x1008, 4, 0x100, 0, M32, V2, 0x100, V2, 1},
+        {6, 156, 42, A0, 0, 1, 0b010001, 0x1008, 4, 0x100, 0, 0, M32, 0, 0, 0},
+        {7, 146, 40, 41, 42, 0, 0b010000, 0x1008, 0, V2, M32, V1, 0, 0, 0, 0},
+        {8, 2, 0, 0, 0, 0, 0b011001, 0x100c, 0, 0, 0, 0, 0, 0, 0, 0},
+        {9, 2, 0, 0, 0, 0, 0b000001, 0x1010, 0, 0, 0, 0, 0, 0, 0, 0},
+        {10, 53, 0, A0, A5, 0, 0b000100, 0x1014, 8, 0x100, F5, 0, 0, 0x108, store_log ? V2 : 0, 1},
+        {11, 118, A1, A0, 0, 0, 0b011001, 0x1018, 8, 0x100, 0, 0, 0x800, 0, 0, 0},
+        {12, 43, A2, A1, A0, 0, 0b000000, 0x101c, 0, 0x800, 0x100, 0, 0x80000, 0, 0, 0},
+        {13, 28, 0, A0, A0, 0, 0b000100, 0x1020, 8, 0x100, 0x100, 0, 0, 0, 0, 1},
+        {17, 28, 0, A0, A1, 0, 0b000100, 0x1028, 8, 0x100, 0x800, 0, 0, 0, 0, 1},
+        {18, 28, 0, A0, A0, 0, 0b000100, 0x102c, 0, 0x100, 0x100, 0, 0, 0, 0, 1},
+        {19, 2, A0, A0, 0, 0, 0b100001, 0x1030, 1, 0x100, 0, 0x100, 0x101, 0, 0, 0},
+        {20, 34, 40, 0, 0, 0, 0b000011, 0x1032, 0, 0, 0, 0, 0x1036, 0, 0, 0},
+    };
+}
+
+std::string fmt(const std::vector<uint64_t>& v) {
+    std::string s;
+    char b[24];
+    for (uint64_t x : v) { std::snprintf(b, sizeof b, "%llx ", (unsigned long long)x); s += b; }
+    return s;
+}
+
+void check_rows(const std::string& what, const ReplayDriver& d, const std::vector<std::vector<uint64_t>>& exp, unsigned padding) {
+    uint64_t n = d.rows();
+    T::eq(int64_t(exp.size() + padding), int64_t(n), what + ": rows");
+    for (size_t k = 0; k < std::min<size_t>(n, exp.size()); k++) {
+        const uint64_t* g = d.row(k);
+        const std::vector<uint64_t>& e = exp[k];
+        uint64_t flags = ((g[1] >> 16) & 1) | ((g[1] >> 17) & 1) << 1 | ((g[1] >> 18) & 1) << 2 | ((g[1] >> 19) & 1) << 3 | ((g[1] >> 20) & 1) << 4 | ((g[1] >> 21) & 1) << 5;
+        uint64_t ef = 0;
+        for (int bit = 0; bit < 6; bit++) ef |= ((e[6] >> bit) & 1) << (5 - bit);   // Long.reverse(e[6]) >>> 58
+        std::vector<uint64_t> got = {g[0] & 0xFFFFFFFF, (g[0] >> 32) & 0xFF, (g[0] >> 40) & 0xFF, (g[0] >> 48) & 0xFF, g[0] >> 56, g[1] & 0xFFFF, flags,
+                                     g[2], g[3], g[4], g[5], g[6], g[7], g[8], g[9], (g[1] >> Replayer::REC_SIGN_IMM) & 1};
+        std::vector<uint64_t> want = e;
+        want[6] = ef;
+        T::check(got == want, what + ": row " + std::to_string(k + 1) + "\n   got  " + fmt(got) + "\n   want " + fmt(want));
+        T::eq(0, int64_t(g[1] >> 23), what + ": row " + std::to_string(k + 1) + " spare bits");
+    }
+    for (size_t k = exp.size(); k < n; k++) {
+        bool zero = true;
+        for (unsigned i = 0; i < Replayer::REC_LONGS; i++) zero &= d.row(k)[i] == 0;
+        T::check(zero, what + ": padding row " + std::to_string(k + 1) + " is all zeros");
+    }
+}
+
+std::unique_ptr<ReplayDriver> run_window(ReplayWindow& w, uint32_t rows) {
+    auto d = std::make_unique<ReplayDriver>(w);
+    w.rows = rows;
+    d->load();
+    d->pass(200000);
+    return d;
+}
+
+std::string error_report(const Replayer& r) {
+    std::string s;
+    char b[200];
+    for (unsigned i = 0; i < r.fact_shown(); i++) { Replayer::fact_text(r.fact(i), b, sizeof b); s += b; s += "; "; }
+    return s;
+}
+
+void program() {
+    T::group("program, raw streams");
+    auto w = program_window(false, false, false, true);
+    auto d = run_window(*w, 25);
+    check_rows("raw", *d, expected(true), PADDING);
+    T::eq(0, int64_t(d->r->pc()), "pc 0 after the program end");
+    T::eq(0, d->r->instr_idx(), "instr_idx 0 after the program end");
+    T::eq(0x1036, int64_t(d->r->reg(40)), "the remapped link is written into v40");
+    T::eq(0x101, int64_t(d->r->reg(A0)), "a0");
+    T::eq(0, d->r->errors(d->t), "no condition (v1.26: ERRORS [0]-[6])");
+    T::check(d->r->clean(), "clean: " + error_report(*d->r));
+    T::check(d->done, "done was posted");
+}
+
+void program_compressed() {
+    auto exp = expected(true);
+    const bool combos[][3] = {{true, true, true}, {true, false, true}, {false, true, false}, {true, true, false}, {false, false, true}};
+    for (const auto& c : combos) {
+        std::string n = std::string("code ") + (c[0] ? "LRU" : "raw") + ", read " + (c[1] ? "LRU" : "raw") + ", write " + (c[2] ? "LRU" : "raw");
+        T::group("program, " + n);
+        auto w = program_window(c[0], c[1], c[2], true);
+        auto d = run_window(*w, 25);
+        check_rows(n, *d, exp, PADDING);
+        T::check(d->r->clean(), n + ": clean " + error_report(*d->r));
+        if (c[2]) T::check(d->r->wlog.hits >= 1, n + ": the SD's pre-value came from the last-load entry");
+    }
+}
+
+void store_log_off() {
+    T::group("includes store log = 0");
+    auto w = program_window(false, false, false, false);
+    T::eq(0, int64_t(w->wlog.size()), "the write log is empty");
+    auto d = run_window(*w, 25);
+    check_rows("no store log", *d, expected(false), PADDING);
+    T::eq(0, d->wlog_next, "the write-log queue was never fed (its line stayed quiet)");
+    T::check(d->r->clean(), "clean: " + error_report(*d->r));
+}
+
+void pext_any_mask() {
+    T::group("PEXT, a non-contiguous mask");
+    ReplayWindow w;
+    w.fixed_rom();
+    uint32_t ins = r_(0, A1, A0, 0, A2, OP);
+    w.rom(20, {W::op(alu::PEXT_S).rd(129).rs1(130).rs2(131).fmt(0).report_c()});
+    w.decode_rom(ins, 20);
+    w.pc = 0x1000; w.instr_idx = 1; w.regs[A0] = 0x8000000000000001ull; w.regs[A1] = 0x8000000000000001ull;
+    w.set_code({ins, ins}, false);
+    w.set_logs({}, false, false);
+    auto d = run_window(w, 2);
+    T::eq(-1, int64_t(d->row(0)[7]), "two single-bit runs, top bit set: sign-extended from the last bit placed");
+    T::eq(2, int64_t(d->r->pext_non_contiguous), "counted as a statistic");
+    T::check(d->r->violations() == 0 && d->r->invalids() == 0, "not flagged: " + error_report(*d->r));
+    int64_t cyc = d->r->pass_end_at - d->r->pass_start_at;
+    T::check(cyc < 64 + 2 * 3 + 20, "timed like any S row (3 cycles): pass " + std::to_string(cyc));
+}
+
 // Run a group; the TEST fails if any of its checks did.
 bool group_ok(void (*fn)()) {
     int f0 = T::failed;
@@ -196,3 +381,7 @@ bool group_ok(void (*fn)()) {
 TEST(unit_decode_index) { CHECK(group_ok(decode_index)); }
 TEST(unit_immediates) { CHECK(group_ok(immediates)); }
 TEST(unit_decompressors) { CHECK(group_ok(decompressors)); }
+TEST(unit_program) { CHECK(group_ok(program)); }
+TEST(unit_program_compressed) { CHECK(group_ok(program_compressed)); }
+TEST(unit_store_log_off) { CHECK(group_ok(store_log_off)); }
+TEST(unit_pext_any_mask) { CHECK(group_ok(pext_any_mask)); }

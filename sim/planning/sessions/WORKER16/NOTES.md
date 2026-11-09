@@ -72,3 +72,19 @@ orders, step-all, the missed-wake detector).
   `--check` rebuilds and compares). The boot ROM is `ref/meshsim/sw/bootrom.hex`.
 - 2026-11-09: `make run` clean on clang release after step 1 (48 test binaries); gcc and clang debug on the router's
   and the chip's tests.
+- 2026-11-09: merged main (W15's slot interface: `peripheral.h`, `periph_slot.h`; D33 as the integrator recorded it).
+- 2026-11-09: **C&C 1's peripheral and C&C 2's stub** (`units/cnc1_periph.h`: `Cnc1Peripheral`, type 1, and `CcStub`,
+  type 2, on `PeripheralBase`), to W15's method list; their `visit` cases wait for `periph_slot.cpp`. C&C 1 owns its
+  ports through the hooks: `rows[8]` (M2's row collectors: READY edges and the tiles' error levels), `cc_line[3]` (the
+  controllers' register blocks' line words: C&C 1's own for the toast pin, C&C 2's and 3's for ERROR_LINES_2 [1], [2]),
+  `go[64]`. READY arrivals apply in `begin(t)` (READY_LINES reads arrivals up to t); error-line arrivals in `step(t)`
+  (ref applies errChanges in runCycle, after the reads of t); EVENTS [2] from `step(t)`; PULSE_GO's GO put in `end()`
+  with latency go_latency + skew (the block's GO input at t + go_latency + skew + 1, as M2's net). UART RX has no
+  source in M3 (no rxByte): it stays empty, so its read-with-pop never arises. C&C 1's own error line reaches the toast
+  pin two cycles after ref's (the block's line word; toast_at is ref's); T2 has no error.
+  **Cnc1Conf** (`tests/ref/Cnc1Conf.java`, `cnc1conf.sh`, `tests/test_cnc1_periph.cpp`): ref's Cnc1Peripheral driven by a
+  seeded script as the chip, C&C 1's core and its slot drive it; the C++ class in a stand-in for the slot (W15's level-0
+  order) with the lines on Links. D33 in the driver: ref's stores of words 40-45 one cycle later; no PULSE_GO while a
+  watchdog is set; loads at least 2 cycles after a store; D29's re-pulse avoided. Three fixtures of 20,000 cycles (85
+  GOs each, all-READY and watchdog events, error lines, the toast, UART bytes): equal to ref, under shuffle, both orders
+  and step-all. A planted bug (tiles' error lines applied in `begin`) fails.

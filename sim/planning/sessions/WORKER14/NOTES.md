@@ -377,9 +377,31 @@ its sender's domain, each queue in its controller's, the nodes anywhere (mode 3)
 The mode is `reqbus_credit_latency` in the chip's configuration, set explicitly (D34), and every run reports
 `lag_cycles`.
 
-**Changes to closed workers' files** (listed as I make them): W8's `tile_ctl.h` (the core's push, freed, receive and
-pop ports; the block's `freed_ev` and `recv_pending`), W5's `rv32.h` (REQUEST_GET/RECEIVE loads, the EVENTS live
-pending bit), W8's `statefp_g1.cpp` (the tiles' `req` stream from the leaf), W9/W10's `statefp_g2.cpp` (`reqbus`).
+**Changes to closed workers' files** (D34's wiring; each marked `W14` in the file):
+- **W5's `rv32.h`**: the receive loads (REQUEST_GET_W0-W2, REQUEST_RECEIVE) and EVENTS / EVENTS_PEEK's live bit [12],
+  each only where the Env offers them (`if constexpr (requires ...)`), so M1's `Core` (controller.h) is unchanged.
+- **`regmap.h`**: `COND_RECV_UNDERFLOW = 14`.
+- **W8's `tile_ctl.h`**: `TileCore` gains `req_push` (Link out), `req_freed` (Wire in) and, for a controller (`receiver`),
+  `recv` (RegFile in), `recv_pop`, `recv_credit`; its Env's `can_push` (STATUS [6] at t - 1, or freed at t), `post`
+  (REQUEST_SET_W0-W2 kept, REQUEST_SEND pushes), `req_get` / `req_receive` / `live_events`, and `wake` (the block's
+  wake, or TileControl.wakeTerm with the live bit, never through a closed gate). `TileCtl` gains `req_freed_ev` (the
+  FIFO's count, through RegBlockState's existing `freed`).
+- **W8's `tile_ctl.cpp`** (`add_g1`): the core built with `receiver = k >= 64` and the done gate; `ControlIO::req` filled.
+- **W9's `chip.h` / `chip.cpp`**: `ReqIO` in `ControlIO` and `TileIO`; `ChipSpec::reqbus` (the configuration, credit
+  latency explicit); `build_chip` adds the bus for the tiles with a request port (leaves in their tiles' domains, the
+  nodes with tile 0's) and wires each.
+- **Tests**: `test_chip.cpp` (W9: its lone-tile builders tie the request side off with `tie_off`; the chip's
+  fingerprint takes the real streams), `test_g1_tile.cpp` and `test_g1_replay.cpp` (W8: `tie_off`), `test_sort.cpp`
+  (W12: the real streams), `statefp_g1.*` (W8: `req` from the leaf, `attach_reqbus`), `statefp_g2.*` (W9: `reqbus`
+  from the bus).
+
+**Status (2026-11-09).** `make run` on clang release: 406 tests pass. wfi, regs, a2a (test_chip, one and split
+domains), the 16K sort (`sort_runs_equal_to_refs`) and M1's goldens (`golden_all_match_*`, the block's and core's
+fingerprints on them) are unchanged, now with the real `reqbus` and `req` streams. gcc debug: test_chip, test_g1_tile,
+test_g1_replay, test_reqbus pass. **Not yet**: an end-to-end test of the M2 core's request path (a tile's REQUEST_SEND
+through its leaf and the bus into a controller core's REQUEST_RECEIVE): it needs a receiving controller, so it comes
+with W16's units 64-66 (or a small two-core rig of mine if W16's are late); the full `make check` (both compilers,
+debug, tsan).
 
 ## Log
 
@@ -401,3 +423,5 @@ pending bit), W8's `statefp_g1.cpp` (the tiles' `req` stream from the leaf), W9/
   (`own_memory`); `test_tracer_slot` equal to SlotCore driven directly in three variants.
 - 2026-11-09: REPORT.md so far (the owner: nothing more until W16's chip assembly).
 - 2026-11-09: the request bus taken over from W16 (section 14); D34 recorded by the owner; the design and W16's ports.
+- 2026-11-09: the bus equal to ref (ReqConf, mode 0 every cycle; mode 3 on calm; split tests); wired into the tiles;
+  the fingerprint writers registered; regressions unchanged (section 14, Status).

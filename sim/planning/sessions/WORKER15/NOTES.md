@@ -4,7 +4,46 @@ The replayer and the peripheral slot. Branch `sim-w15`. Prompt: `PROMPT.md`.
 
 ## Status
 
-**Plan proposed (below), waiting for the go-ahead.** No code yet.
+**Go-ahead 2026-11-09** (owner): the plan as written; answers to Q1-Q4 below. Working on step 1 (shared headers, the ALU).
+
+## The owner's answers (2026-11-09)
+
+- **Q1: yes.** Build to `ref` as it runs in v1.3: type 4, the window words, EVENTS [15:13], ERRORS [13:11], mode 0 to
+  region 0x04. The prompt's names were REPLAYER-NOTES' v1.1 ones; `ref`'s code wins.
+- **Q2: yes.** One generic slot for the tiles and C&C 1-3, dispatching on a type tag. W14 proposed the same: the
+  peripheral a member object of the slot unit, a fixed method interface, a switch on its type, called synchronously as
+  `ref` does. W14 implements only the Tracer's side.
+- **Q3: yes.** A running hash of the rows always; an optional record buffer, preallocated at configuration from the
+  declared window size, for comparing with `rows.bin` in tests. Nothing allocated in the run (D6).
+- **Q4:** W13's Quest 159 lists the runner's persistent data; the delivery paths and hashes come to me through the owner.
+- **Shared code:** W15 owns `row_core.h`, `replayer_alu.h`, `event_counts.h` and the slot; W14 owns the tables loader
+  (decode table, templates), RVC, LruCoder, FileStore, MemorySystem and the Tracer. Each uses the other's read-only;
+  exact file names agreed with W14 in one round (below).
+
+## For W14: file names and the peripheral interface (one round)
+
+Mine, in `sim/src/units/`, namespace `units`:
+
+| file | contents |
+|---|---|
+| `row_core.h` | `rowcore::`: `decode_index`, `source_imm`, the expansion word's field getters (`op`, `c_rd`, ... `offset_imm`), `invalid_word`, `needs_source_imm`, `reg`, `imm_val`, `decode` (`K_PAD/ROM/NOP/CTRL/BAD`, `Decoded`) |
+| `replayer_alu.h`, `replayer_alu.cpp` | `alu::`: the opcode numbers, `name`, `cls` ('S'/'M'/'L'/0), `executes`, `cycles`, `code(name)`, `Out {rd, new_pc, undefined}`, `exec(...)`, `mem_addr`, `is_load/is_store/is_shift_data`, `pext`, `mulhu` |
+| `event_counts.h` | `EventCounts`: depths and full-flags per bit (fixed 32), `post`, `set`, `clear`, `clear_all`, `live`, `value(t)`, `consume(bits)` reporting the bits it took from (no callback: the caller gets a mask) |
+| `peripheral.h` | the type tags and the fixed method list the slot calls (below) |
+| `periph_slot.h`, `periph_slot.cpp` | `PeriphSlot`: up to three peripherals and their DMAs, the window, the mask, the consuming loads, the live bits |
+| `replayer.h`, `replayer.cpp` | the replayer (type 4) |
+
+Suggested for yours (your choice; tell me and I'll use them): `replay_tables.h` (the loader), `rvc.h`, `lru_coder.h`,
+`file_store.h`, `mem_system.h`, `tracer.h/.cpp`.
+
+**The interface** (`Peripheral.java`, method for method, non-virtual): each peripheral type is a class with these
+members; the slot holds `{type, ptr}` and `switch`es on the type to call them (the case for type 5, the Tracer, includes
+`units/tracer.h`):
+`params()`, `running(t)`, `status_bits(t)`, `errors(t)`, `sync(t)`, `events() -> EventCounts&`, `word(t, w, uint32_t& v) -> bool`
+(false: undefined), `write_word(t, w, v) -> int` (1, 0, -1), `store_stalls(t, w)`, `accept(t, src, offset, size, lo, hi)`,
+`run(t)`, `step(t)` (`runCycle`), `out_queues()`, `out_ready(t, q)`, `out_take(t, q, uint64_t w[2])`,
+`out_start(t, q, words)`, `reset(t)`, `idle(t)`, `next_wake_at(t)`. Inputs take effect at the end of t, level reads see
+the end of t − 1, as in `ref`. Violations go to the slot's `violate(t, code)` (fixed-size facts, D24).
 
 ## What I read, and what the oracle actually is
 

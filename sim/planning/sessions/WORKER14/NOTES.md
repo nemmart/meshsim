@@ -6,7 +6,8 @@ The Tracer. Branch `sim-w14`. Prompt: `PROMPT.md`.
 
 **Plan agreed (owner, 2026-11-09): go-ahead.** Step 1 (the pure pieces) done (section 5). Step 2 (the Tracer as a class)
 done (section 6). Step 3 (TracerConf's seeded guests, section 7) and the fingerprint writer (section 8) done, all equal to
-`ref`. Next: T1 on the runner; wiring through W15's slot (AUDIT-M3 3.3).
+`ref`. T1 on the runner and the long sweep equal (Quest 163, section 10). W15's interface taken (section 11). Next:
+wiring through W15's slot when its body lands.
 
 ## 1. What the oracle is
 
@@ -230,6 +231,27 @@ Errors likewise (`error_log`, `error_name`). **For W15: agree, or say you want a
 **Order within the slot's step** is AUDIT-M3 3.1's (W15's): the Tracer's methods are `ref`'s with `ref`'s timing and
 its lazy settle, so whatever order 3.1 fixes for `ref` is reproduced exactly.
 
+## 10. Quest 163 (T1 and the sweep): ALL PASS
+
+- **T1, segments 0-3 of both programs** (ref's TracerT1 through TracerConf, replayed from a FIFO): `ref` against the
+  delivery 256 windows each, 0 failed (evm-zone-29 320 s, cyclone-29 286 s); **the C++ Tracer equal to `ref` on every
+  call and every cycle:** evm-zone-29 91,765,907 cycles (289 M calls, 918 fingerprints), cyclone-29 80,108,285 cycles
+  (253 M calls, 802 fingerprints), the store's hash equal at every segment's record load.
+- **The sweep:** mix seeds 41-200, wb 4-16, wbover 2-6: 178 of 178 logs equal.
+- Results in Quest's `results/163-w14-t1-sweep/`.
+
+## 11. W15's slot interface (owner, 2026-11-09)
+
+- **Violations:** `violation_count()` (W15's mechanism, as proposed: the Tracer keeps its fixed-size facts, the slot
+  forwards new ones; no callback).
+- **Done:** `Tracer` derives from `PeripheralBase<Tracer>` (`peripheral.h`); `DIGEST_N = STAT_N`; `violation_count()`;
+  `type()` asserted equal to `PT_TRACER`.
+- **The late accept:** the slot calls `accept(t, ...)` at level 0 of t + 3; the landing at t + 2 is taken while the
+  Tracer is settled through t + 2 at most (`settled_ <= t + 2`), FATAL beyond; `run`/`write_word` at t FATAL if settled
+  past t. Test: `late_accept_lands_at_t_plus_2` (an accept made before and one made after `sync(12)` land alike, at the
+  end of 12), and the death test for an accept after its landing was settled. All fixtures and the replay still equal.
+- **Next:** wiring through W15's slot when its body lands (`PeriphSlot::tracer(n)` is declared in `periph_slot.h`).
+
 ## Log
 
 - 2026-11-09: plan agreed; branch `sim-w14` from main 1a898aa.
@@ -241,3 +263,5 @@ its lazy settle, so whatever order 3.1 fixes for `ref` is reproduced exactly.
   stall counters), the replay streaming from a FIFO. **Quest 163** (`163-w14-t1-sweep`): T1 on segments 0-3 of both
   programs and the long sweep (mix 41-200, wb 4-16, wbover 2-6); smoke-run locally (build from the kit, the sweep's
   20 logs equal; the runner's data absent here). The slot's interface proposed to W15 (section 9).
+- 2026-11-09: Quest 163 ALL PASS (section 10). W15's interface taken (section 11): PeripheralBase, violation_count,
+  DIGEST_N, the late accept.

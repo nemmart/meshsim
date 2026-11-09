@@ -116,10 +116,16 @@ void Tracer::Ring::push(const Input& x) {
 // ================================================================ inputs: deferred to the end of their cycle
 void Tracer::accept(int64_t t, int src, uint32_t offset, int size, uint64_t lo, uint64_t hi) {
     if (t == last_accept_) FATAL("Tracer: two region packets in cycle %lld", (long long)t);
+    if (t < last_accept_) FATAL("Tracer: accept's time went backwards %lld -> %lld", (long long)last_accept_, (long long)t);
+    if (t + RP_LATENCY < settled_)
+        FATAL("Tracer: a landing at %lld after cycle %lld was settled", (long long)(t + RP_LATENCY), (long long)settled_);
     last_accept_ = t;
     landing_.push(Input{t + RP_LATENCY, src, int(offset), size, lo, hi});
 }
-void Tracer::run(int64_t t) { inputs_.push(Input{t, IN_RUN, 0, 0, 0, 0}); }
+void Tracer::run(int64_t t) {
+    if (t < settled_) FATAL("Tracer: PULSE_RUN at %lld after cycle %lld was settled", (long long)t, (long long)settled_);
+    inputs_.push(Input{t, IN_RUN, 0, 0, 0, 0});
+}
 
 bool Tracer::word(int64_t t, int w, uint32_t& v) {
     settle(t);
@@ -144,6 +150,7 @@ bool Tracer::word(int64_t t, int w, uint32_t& v) {
 int Tracer::write_word(int64_t t, int w, uint32_t v) {
     switch (w) {
         case W_RUN_CONFIG: case W_HASH_MUL: case W_HASH_STEP: case W_HASH_LINES: case W_EXP_TEMPLATE:
+            if (t < settled_) FATAL("Tracer: a word-%d store at %lld after cycle %lld was settled", w, (long long)t, (long long)settled_);
             inputs_.push(Input{t, IN_WORD, w, int(v), 0, 0});
             return 1;
         case W_ROWS_RUN: case W_EXP_OFFSET: case W_EXP_OPCODE: case W_STATE_LENGTH: case W_CODE_LENGTH:
@@ -824,7 +831,7 @@ void Tracer::skip_cycles(int64_t n) const {
     if (n > 0 && (running_ || stat_until_ > settled_))
         FATAL("Tracer: the counters (words 44-51) would tick while its tile sleeps");
 }
-void Tracer::digest_words(int64_t out[STAT_N]) const {
+void Tracer::digest_words(int64_t out[DIGEST_N]) const {
     for (int i = 0; i < STAT_N; i++) out[i] = int64_t(int32_t(stat[i]));
 }
 

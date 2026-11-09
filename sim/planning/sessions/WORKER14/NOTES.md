@@ -436,3 +436,13 @@ debug, tsan).
   `Tracer::writable(w)` (W15's ask). **make check, build by build on the merged tree (16b8822): gcc and clang, debug and
   release, all 54 binaries pass; TSan, gcc and clang, all 8 thread tests (83 cases, `test_reqbus`'s split run
   included), no races.**
+- 2026-11-09: the end-to-end request test, `ref`'s side done: `tests/m3-images/cc_req.c` (C&C 1: CMD_JUMP to tile 5,
+  GO from its peripheral, waits 6,000 cycles undrained, then receives 300 requests through EVENTS_PEEK [12],
+  REQUEST_GET_W0-W2 and REQUEST_RECEIVE, logs the words and mcycle, one receive on the empty queue, SIM_EXIT) and
+  `tile_req.c` (tile 5: 300 REQUEST_SENDs back to back, stalling while its FIFO is full; mcycle after each), built by
+  `build_req.sh`; `tests/ref/CcReq.java` and `ccreq.sh` write `cc_req.ref` (`ref`: exit at 24,702; the words stamped
+  with requestor 5; the empty receive reads 0 with ERRORS [14]; 2,400 beats at the root). **The C++ side waits for W16's
+  C&C 1 slot in the chip** (the tiles' boot ROM jumps only on GO, which comes from C&C 1's peripheral; on main C&C 1's
+  peripheral is still the stand-in). Then `test_cc_req`: mode 0 one domain equal to `cc_req.ref` in every figure; mode 3
+  (one domain and row bands) the same words, its `lag_cycles` reported (positive here: the queue and FIFO fill on
+  purpose), the cycles equal where it is 0.

@@ -4,7 +4,8 @@ The Tracer. Branch `sim-w14`. Prompt: `PROMPT.md`.
 
 ## Status
 
-**Plan agreed (owner, 2026-11-09): go-ahead.** Started on the pure pieces (section 3, step 1).
+**Plan agreed (owner, 2026-11-09): go-ahead.** Step 1 (the pure pieces) done and equal to `ref` (section 5); next, step
+2 (the Tracer as a class).
 
 ## 1. What the oracle is
 
@@ -97,6 +98,38 @@ record layout and region-map constants from `row_core.h`.
 **For W15:** `replay_tables.h` is a configuration-phase loader (STL allowed) returning the decode table, the ROM and the
 templates as plain arrays; your tests can use it read-only. Tell me if you want a different name or shape.
 
+**W15's round (sim-w15 3ae62c2): agreed.** The names match on both sides: W15's `row_core.h` (`rowcore::`),
+`replayer_alu.h`/`.cpp` (`alu::`), `event_counts.h`, `peripheral.h`, `periph_slot.h`/`.cpp`; mine `replay_tables.h`/`.cpp`,
+`rvc.h` (`rvc::`), `lru_coder.h`, `file_store.h`/`.cpp`, `mem_system.h`, `tracer.h`/`.cpp`, all in namespace
+`units::tracer` except `rvc::`. The Tracer will be `units::tracer::Tracer` with W15's method list as given (`params`,
+`running`, `status_bits`, `errors`, `sync`, `events`, `word`, `write_word`, `store_stalls`, `accept`, `run`, `step`,
+`out_queues`, `out_ready`, `out_take`, `out_start`, `reset`, `idle`, `next_wake_at`, violations to the slot's
+`violate(t, code)`). Two additions from `Peripheral.java` the Tracer uses: `skip_cycles(n)` (FATAL if the counters would
+tick while asleep, as `ref`) and `digest_words` (the counters, words 44-51; W13's wider fingerprint comes on top),
+approved (owner, 2026-11-09). W15's `consume_events(bits)` replaces `ref`'s `onConsume` callback; the Tracer implements
+it.
+
+## 5. Step 1: the pure pieces (done)
+
+| file | what | against `ref` |
+|---|---|---|
+| `src/units/rvc.h` | `Rvc.java`, uint32 arithmetic throughout (the Java uses only `<<` and `>>>`) | all 65,536 encodings, `uncompress` and `code_word` |
+| `src/units/lru_coder.h` | `LruCoder` and its `Bits` packer; the packer's sink is a callable (no virtual, no `std::function` in the loop) | two seeded streams of 20,000 events: every value's peek and coded bits (set 1's count-only coder too), every packed word, the statistics at each window reset |
+| `src/units/file_store.h`, `.cpp` | `FileStore`: pages in one dense array by (address − first) / 32, since `ref` hands addresses out in order; building allocates, the walk and line reads/writes don't | the image built by the same operations (create, put_page, cow_open, make_private, set_ownership: the same roots) |
+| `src/units/mem_system.h` | `MemorySystem`: the shared cache, the free-or-clean policy, the write buffer, synchronous as in `ref` | two seeded streams of 8,000 events: every read's status, ready cycle and data hash, every write's acknowledgement, every statistic; the policy reached (up to 77 early evictions and 38 read waits between colds) |
+| `src/units/replay_tables.h`, `.cpp` | `test/ReplayTables.java` (configuration phase) | the four files' sha256 against `ref/tables/manifest.json`; every template found by its key |
+
+- **`tests/ref/TracerParts.java`** (`rvc`, `lru SEED N`, `mem SEED N`) writes one event per line, inputs and results; the
+  C++ side replays the inputs and must reproduce every result. **`tests/ref/tracerparts.sh`** `--fixtures` / `--check` /
+  `N [OUT]` for long runs, as `routerconf.sh`. Fixtures in `tests/tracerparts/` (1.0 MB).
+- **`tests/test_tracer_parts.cpp`** (11 tests, in `make check`): the fixtures, `MemorySystemTest`'s cases ported with
+  their expected values (statuses, timing, policy; the two refusals as death tests), the tables.
+- **Teeth:** planted mutations fail at their first differing line (an RVC field, the write log's E[15] rule, the read
+  miss's wait for the write buffer).
+- **Not reached by the stimulus:** the write buffer full at its depth of 4 (it never holds more than 2 lines between
+  drains here); a stream with longer dirty bursts would reach it. Noted for TracerConf.
+
 ## Log
 
 - 2026-11-09: plan agreed; branch `sim-w14` from main 1a898aa.
+- 2026-11-09: step 1 done (section 5); `test_tracer_parts` passes in all four builds, `tracerparts.sh --check` equal.

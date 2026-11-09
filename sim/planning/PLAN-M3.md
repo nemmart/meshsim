@@ -41,6 +41,6 @@ exercised. The Tracer's and replayer's own suites (`TracerTest`, `TracerRig`, `T
 
 | worker | state |
 |---|---|
-| W13 | the reference side: prompt written 2026-11-09 (`sessions/WORKER13/PROMPT.md`) |
-| W14 | the Tracer: prompt written 2026-11-09 (`sessions/WORKER14/PROMPT.md`) |
-| W15 | the replayer and the peripheral slot: prompt written 2026-11-09 (`sessions/WORKER15/PROMPT.md`) |
+| W13 | reference side: the reference runs are **evm-zone-29 segment 10** (T2's acceptance, 110u) and **cyclone-29 segment 10** (reaches what evm misses); `sim/ref` reproduces 110u (Quests 159-160); `ref` takes ~46 s and ~50 s per segment with idle-skip on (the baseline); AUDIT-M3 sections 1, 3.1-3.3 and 6.6 on main; next 3.4 (the C&C cores), sections 4-5, the goldens |
+| W14 | the Tracer: the pure pieces and the Tracer class on main, equal to `ref` every cycle on TracerTest's cases (TracerConf); next the seeded stimulus, T1, the ports |
+| W15 | the replayer: the ALU and the replayer on main, equal to `ref` every cycle (ReplayConf, 13 traces plus 36 sweeps); next ReplayerUnitTests, Stage A on W9's deliveries, the slot |

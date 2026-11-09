@@ -344,3 +344,4 @@ test_tracer's to catch, and it does.)
   31 %, the harness with inlined calls 28 %, row 10 % (section 12).
 - 2026-11-09: wired into W15's slot (section 13): install takes nothing; the memory given after the build
   (`own_memory`); `test_tracer_slot` equal to SlotCore driven directly in three variants.
+- 2026-11-09: REPORT.md so far (the owner: nothing more until W16's chip assembly).

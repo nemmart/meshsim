@@ -84,16 +84,16 @@ struct PeriphSlotConfig {
     uint64_t replayer_row_buffer = 0;    // rows of the replayer's optional record buffer (tests; 0: the hash only)
 };
 
-struct PeriphSlot {
-    // ---- ports ----
-    sim::LinkIn region;      // S1: width 3, from the director, Link(3)
-    sim::LinkIn core;        // S2/S3: width 1 (CoreOp), from the core, Link(1)
-    sim::RegFileOut window;  // S4/S5/S8: Win::REGS registers
-    sim::CreditOut dma;      // S6: width 3, into the controller router's CC_DMA_IN (cfg.controller)
+// A packet a DMA sends (ref's dmaOut entry): the header as LinkWord.hdr builds it.
+struct DmaPacket {
+    int64_t t = 0;
+    uint64_t lo = 0, h = 0, hi = 0;
+};
 
-    PeriphSlotConfig cfg;
-
-    // The peripherals: [1]-[3], created at configuration (D6: no allocation in the run). type[n] picks the class.
+// The slot as ref's PeripheralSlot runs it (immediate calls, ref's timing), without ports: the unit below wraps it, and
+// the tests drive it directly. Facts and counts instead of strings (D24).
+struct SlotCore {
+    // The peripherals: [1]-[3], created at configuration (D6: no allocation in the run). type picks the class.
     struct Ref {
         PeriphType type = PT_ABSENT;
         void* p = nullptr;
@@ -107,36 +107,90 @@ struct PeriphSlot {
         bool busy = false;
         int64_t left = 0;
         int q = 0;
-        uint64_t transfers = 0, packets = 0, ignored = 0;  // statistics (transfers, packets: T2's summary)
-    } dmas[4];
+        uint64_t transfers = 0, packets = 0, ignored = 0;
+        bool busy_at(int64_t t) const { return busy && t > started_at; }
+        uint32_t done_bit(int64_t t) const { return done > 0 && done_at < t ? 2u : 0u; }
+    } dma[4];
 
     uint32_t mask[4] = {};
+    int64_t consume_t[4] = {-1, -1, -1, -1}, pend_mask_t[4] = {-1, -1, -1, -1};
+    uint32_t consume_bits[4] = {}, pend_mask[4] = {};
     uint64_t full_seen[4] = {}, violations_seen[4] = {};
-    // statistics (diagnostic): ref's accepted, runsIgnored, reservedAccesses, violations
-    uint64_t accepted = 0, runs_ignored = 0, reserved_accesses = 0, violations = 0;
+    unsigned tile = 0;
+    bool dma_port = false;                                 // a controller: the DMA's packets go to a port with room
+    // statistics (diagnostic): ref's accepted, reservedAccesses, violations (the slot's and the peripherals' forwarded)
+    uint64_t accepted = 0, reserved_accesses = 0, violations = 0;
+    // facts (D24): the slot's own flags
+    enum : uint16_t { F_RESERVED = 1, F_DMA_HDR_BUSY, F_DMA_ADDR_BUSY, F_FULL_POST, F_PERIPHERAL };
+    struct Fact { int64_t t; uint16_t code; uint32_t a, b; };
+    static constexpr unsigned FACTS = 32;
+    Fact facts[FACTS] = {};
+    uint64_t n_facts = 0;
+    // the DMA packets of the last run_cycle (at most one per peripheral), for the unit to put / a test to read
+    DmaPacket out[3];
+    unsigned n_out = 0;
+
+    SlotCore() = default;
+    SlotCore(const SlotCore&) = delete;
+    SlotCore& operator=(const SlotCore&) = delete;
+    ~SlotCore();
+    // Configuration: create peripheral n of type `type` (the slot owns it).
+    void install(unsigned n, PeriphType type, uint64_t replayer_row_buffer = 0);
+
+    uint32_t present() const;
+    // ---- ref's PeripheralSlot, method for method ----
+    void accept(int64_t t, unsigned n, uint64_t lo, uint64_t h, uint64_t hi);
+    bool read(int64_t t, unsigned n, unsigned w, uint32_t& v);          // false: a bus error
+    bool peek(int64_t t, unsigned n, unsigned w, uint32_t& v);          // read without its effects (the consume, a flag)
+    bool store_stalls(int64_t t, unsigned n, unsigned w);
+    bool write(int64_t t, unsigned n, unsigned w, uint32_t v);          // false: a bus error
+    bool defined(unsigned n, unsigned w);                               // a load of w is not flagged (configuration)
+    uint32_t live_events(int64_t t);
+    uint32_t live_errors(int64_t t);
+    void run_cycle(int64_t t, unsigned dma_room = ~0u);                 // dma_room: packets the DMA port takes at t
+    void end_cycle(int64_t t);
+    void reset(int64_t t);
+    bool idle(int64_t t);
+    int64_t next_wake_at(int64_t t);
+    void skip_cycles(int64_t n);
+    unsigned digest_words(int64_t* out, unsigned cap);
+
+    // The dispatch: f(concrete&) for peripheral n's class (periph_slot.cpp; one case per type).
+    template <class F>
+    decltype(auto) visit(unsigned n, F&& f);
+
+    // The peripheral at n as its class (tests, the harness; FATAL if it is another type).
+    Replayer& replayer(unsigned n);
+    TestPeripheral& test_peripheral(unsigned n);
+
+private:
+    void violate(int64_t t, uint16_t code, uint32_t a = 0, uint32_t b = 0);
+    uint32_t reserved(int64_t t, unsigned n, unsigned w, bool store);
+    void dma_start(int64_t t, unsigned n);
+    void dma_run(int64_t t, unsigned n, unsigned& room);
+};
+
+// The framework unit (AUDIT-M3 3.1): SlotCore behind the ports above.
+struct PeriphSlot {
+    // ---- ports ----
+    sim::LinkIn region;      // S1: width 3, from the director, Link(3)
+    sim::LinkIn core;        // S2/S3: width 1 (CoreOp), from the core, Link(1)
+    sim::RegFileOut window;  // S4/S5/S8: Win::REGS registers
+    sim::CreditOut dma;      // S6: width 3, into the controller router's CC_DMA_IN (cfg.controller)
+
+    PeriphSlotConfig cfg;
+    SlotCore s;
+    uint32_t published[Win::REGS] = {};   // the RegFile as last written (only changed registers are written)
+    bool first = true;
 
     PeriphSlot(sim::Ports& p, const PeriphSlotConfig& c);
-    ~PeriphSlot();
     PeriphSlot(const PeriphSlot&) = delete;
     PeriphSlot& operator=(const PeriphSlot&) = delete;
 
     sim::Wake step(sim::Ctx& c);
 
-    // PARAMS [2:0] (ref's present()).
-    uint32_t present() const;
-    // The peripheral at n as its class (tests, the harness; FATAL if it is another type).
-    Replayer& replayer(unsigned n);
-    tracer::Tracer& tracer(unsigned n);
-
-    // The dispatch: f(concrete&) for peripheral n's class. Adding a type is one case here (and its class's include in
-    // periph_slot.cpp, where visit is instantiated).
-    template <class F>
-    decltype(auto) visit(unsigned n, F&& f);
-
-    // The reset (6.1): every peripheral idle, EVENTS_MASK 0, the DMAs idle.
-    void reset(int64_t t);
-    // Stage 1's fingerprint words: the peripherals' digest_words, in order.
-    unsigned digest_words(int64_t* out, unsigned cap) const;
+private:
+    void publish(sim::Ctx& c, int64_t t);
 };
 
 }  // namespace units

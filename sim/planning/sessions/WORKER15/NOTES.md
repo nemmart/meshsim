@@ -6,7 +6,7 @@ The replayer and the peripheral slot. Branch `sim-w15`. Prompt: `PROMPT.md`.
 
 **Go-ahead 2026-11-09** (owner): the plan as written; answers to Q1-Q4 below. Steps 1-2 done: the ALU and the replayer equal to `ref` (ReplayConf every cycle; ReplayerUnitTests ported, 1,456
 checks). The slot's header published; the owner settled the round (W14: violation_count and the late accept; W16: its two
-classes and `visit` cases, the ports/begin/end hooks). Stage A queued (Quest 164). Working on the slot's body.
+classes and `visit` cases, the ports/begin/end hooks). Stage A queued (Quest 164). The slot's body written (WIP, compiles, untested): next its conformance against ref.
 
 ## The owner's answers (2026-11-09)
 
@@ -267,3 +267,23 @@ v1.26.1 in scratch by ref's ConvertDelivery (as 105-107); (1) the selected windo
 ReplayDelivery and `replay_delivery` compared with cmp (each also passing on its own); (2) every window of both programs
 on the C++ driver alone (state all 8,192 each; state-lru and state-pick every 8th), against rows.bin, the streams,
 end.bin, clean. Waiting for the result.
+
+### The slot's body (WIP, 2026-11-09)
+
+- `periph_slot.h` restructured: **`SlotCore`** is ref's `PeripheralSlot` method for method (immediate calls, ref's
+  timing: `accept`, `read`, `write`, `store_stalls`, `live_events`, `live_errors`, `run_cycle`, `end_cycle`, `reset`,
+  the DMA, the reserved-word flags as facts), testable without the engine; **`PeriphSlot`** is the unit: AUDIT 3.1's
+  level-0 order around it (begin; the consume or EVENTS_MASK store of t - 1; the landings, `accept(t - 3)`; the other
+  store of t - 1 at t - 1; the window published, changed registers only), then `run_cycle(t)` with the DMA's credits,
+  `end(t)`. Wake: the next cycle while an input arrived or a peripheral wasn't idle, and once more after (to publish
+  what it left); else `next_wake_at`; else S1/S2.
+- `units/test_peripheral.h`: ref's TestPeripheral (type 15) for the slot's tests.
+- `visit`: the replayer and the test peripheral; marked places for W14's Tracer case and W16's two.
+- **One difference from ref, recorded:** a DMA_HDR/DMA_ADDR store while a transfer runs (flagged as undefined in ref)
+  takes effect a cycle later than ref's (at level 0 of t + 1, after ref's runCycle(t) would have used the old value).
+  Only in the flagged case; a store before PULSE_DMA (the defined use) is unaffected.
+- Next: **SlotConf** (as ReplayConf): ref's `PeripheralSlot` taken from a `Net` built as PeripheralSlotTest builds it
+  (TestPeripheral on a tile; the replayer on another), driven directly by a seeded script (posts, credits, live bits,
+  faults, accepts, window loads and stores, DMA transfers with and without burst, runCycle, endCycle), every result
+  and observation recorded; SlotCore must equal it call for call. Then the unit under the engine, then the tile's paths
+  and PeripheralSlotTest's port.

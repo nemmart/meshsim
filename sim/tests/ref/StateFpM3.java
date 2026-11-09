@@ -163,4 +163,149 @@ final class StateFpM3 {
         }
         return s;
     }
+    // ================================================================ 6.7 the slot
+    static void slot(StateFp.Out o, PeripheralSlot sl, long c) {
+        long[] cT = (long[]) o(sl, "consumeT"), mT = (long[]) o(sl, "pendMaskT"); int[] cB = (int[]) o(sl, "consumeBits"), pM = (int[]) o(sl, "pendMask");
+        for (int n = 1; n <= 3; n++) {
+            if (sl.p[n] == null) continue;
+            o.w("mask" + n, sl.mask[n] & 0xFFFFFFFFL);
+            if (sl.p[n].outputQueues() > 0) {
+                PeripheralSlot.Dma d = sl.dma[n];
+                o.w("dma.hdr", d.hdr & 0xFFFFFFFFL); o.w("dma.addr", d.addr & 0xFFFFFFFFL); o.w("dma.done", d.done);
+                o.w("dma.busy", l(d, "busy")); o.w("dma.left", l(d, "left")); o.w("dma.q", l(d, "q"));
+            }
+            if (cT[n] == c) { o.w("consume", 1); o.w("consume.bits", cB[n] & 0xFFFFFFFFL); } else o.w("consume", 0);
+            if (mT[n] == c) { o.w("maskStore", 1); o.w("maskStore.v", pM[n] & 0xFFFFFFFFL); } else o.w("maskStore", 0);
+        }
+    }
+
+    // ================================================================ 6.8 the replayer
+    static void replayer(StateFp.Out o, Replayer rp, long c) {
+        for (int k = 0; k < rp.region0.length; k++) o.w("region0." + k, rp.region0[k]);
+        long sd = 0; for (int k = 0; k < rp.decodeTable.length; k++) { long v = rp.decodeTable[k] & 0xFFFFL; if (v != 0) sd += term64(R_DECODE, k, v); }
+        o.w("decodeTable", sd);
+        long sr = 0;
+        for (int j = 0; j < rp.romLo.length; j++) { if (rp.romLo[j] != 0) sr += term64(R_ROM, 2L * j, rp.romLo[j]); if (rp.romHi[j] != 0) sr += term64(R_ROM, 2L * j + 1, rp.romHi[j]); }
+        o.w("rom", sr);
+        o.w("runConfig", l(rp, "runConfig"));
+        for (Replayer.Stream q : new Replayer.Stream[] { rp.code, rp.rlog, rp.wlog }) {
+            o.w("q.occ", q.occ);
+            for (int k = 0; k < q.occ; k++) { int i = (q.head + k) % q.cap; o.w("q.lo", q.lo[i]); o.w("q.hi", q.hi[i]); }
+            o.w("q.pend", q.pend); o.w("q.poppedSince", q.poppedSince); o.w("q.base", q.base); o.w("q.consumed", q.consumed);
+            o.w("q.words", q.words); o.w("q.valuesOut", q.valuesOut); o.w("q.limit", q.limit); o.w("q.taken", q.taken);
+            o.w("q.endBits", q.endBits); o.w("q.landedEntries", q.landedEntries); o.w("q.comp", q.comp ? 1 : 0);
+            for (int k = 0; k < 16; k++) o.w("q.E", q.E[k]);
+            o.w("q.popsAtC", q.popCycle == c ? q.pops : 0);
+        }
+        Replayer.ExpQueue e = rp.exp;
+        o.w("exp.occ", e.occ);
+        for (int k = 0; k < e.occ; k++) { int i = (e.head + k) % Replayer.ExpQueue.CAP; o.w("exp.lo", e.lo[i]); o.w("exp.hi", e.hi[i]); }
+        o.w("exp.pend", e.pend); o.w("exp.poppedSince", e.poppedSince); o.w("exp.newestValid", e.newestValid ? 1 : 0); o.w("exp.newestSeq", e.newestSeq);
+        o.w("exp.popsAtC", e.popCycle == c ? e.pops : 0);
+        for (String n : new String[] { "running", "pc", "instrIdx", "startOffset", "rowsPerPass", "fStore", "fRdPrev", "stateWritten" }) o.w(n, l(rp, n));
+        o.w("copyDoneAt", mx(l(rp, "copyDoneAt"), c));
+        for (String n : new String[] { "rowsStarted", "rowsDone", "firstInstr" }) o.w(n, l(rp, n));
+        o.w("busyUntil", mx(l(rp, "busyUntil"), c));
+        for (String n : new String[] { "presented", "expDiscard", "codeEnded", "stoppedOffset" }) o.w(n, l(rp, n));
+        int[] src = (int[]) o(rp, "srcOf"); for (int k = 0; k < 4; k++) o.w("srcOf", src[k]);
+        Object cur = o(rp, "cur"), nxt = o(rp, "nxt");
+        instr(o, "cur", cur); instr(o, "nxt", nxt);
+        Object pd = o(rp, "inflight");
+        if (pd == null) o.w("inflight", 0);
+        else {
+            o.w("inflight", 1);
+            for (String n : new String[] { "rdReg", "rdVal", "newPc", "newIdx", "hold", "lastOfInstr" }) o.w("inflight." + n, l(pd, n));
+            Object in = o(pd, "instr"); o.w("inflight.instr", in == cur ? 0 : in == nxt ? 1 : 2);
+            long[] rec = (long[]) o(pd, "rec"); for (int k = 0; k < 10; k++) o.w("inflight.rec", rec == null ? 0 : rec[k]);
+        }
+        int[] cnt = (int[]) o(rp.ev, "count"); for (int b = 0; b < rp.ev.depth.length; b++) o.w("ev" + b, cnt[b]);
+        long err = 0; for (int k = 0; k < rp.condEvents.length; k++) if (rp.condEvents[k] > 0) err |= 1L << k; o.w("errors", err);
+        ArrayDeque<?> oq = (ArrayDeque<?>) o(rp, "outQ"), oa = (ArrayDeque<?>) o(rp, "outAt");
+        o.w("outQ.n", oq.size());
+        java.util.Iterator<?> ia = oa.iterator();
+        for (Object r : oq) { o.w("out.at", mx((Long) ia.next(), c)); for (long x : (long[]) r) o.w("out", x); }
+        ArrayDeque<?> land = (ArrayDeque<?>) o(rp, "landing"), in = (ArrayDeque<?>) o(rp, "inputs");
+        o.w("landing.n", land.size());
+        for (Object x : land) { o.w("e", l(x, "t")); o.w("src", l(x, "kind")); o.w("addr", l(x, "a")); o.w("size", l(x, "b")); o.w("lo", l(x, "lo")); o.w("hi", l(x, "hi")); }
+        o.w("inputs.n", in.size());
+        for (Object x : in) { o.w("e", l(x, "t")); o.w("kind", l(x, "kind")); o.w("value", l(x, "a") & 0xFFFFFFFFL); }
+    }
+    static void instr(StateFp.Out o, String p, Object in) {
+        if (in == null) { o.w(p, 0); return; }
+        o.w(p, 1);
+        for (String n : new String[] { "w", "kind", "start", "offset", "rd0", "nextRow", "lastStarted", "firstRow", "ctrlFirstSeen", "codeEnd" }) o.w(p + "." + n, l(in, n));
+    }
+
+    // ================================================================ 6.9 C&C 1's peripheral, the host queue
+    @SuppressWarnings("unchecked")
+    static void cc1p(StateFp.Out o, Cnc1Peripheral cp, long c) {
+        long[] at = (long[]) o(cp, "readyAt"); long clr = l(cp, "clearedAt");
+        for (int k = 0; k < 64; k++) o.w("ready" + k, at[k] == Long.MIN_VALUE || at[k] < clr ? 0 : at[k] <= c ? 1 : at[k]);
+        o.w("expect", cp.expect);
+        ArrayDeque<long[]> ec = (ArrayDeque<long[]>) o(cp, "errChanges"); o.w("errChanges.n", ec.size()); for (long[] e : ec) for (long x : e) o.w("errChanges", x);
+        long a = 0, b = 0; for (int k = 0; k < 64; k++) { if (cp.errLine[k]) a |= 1L << k; if (cp.errLine[64 + k]) b |= 1L << k; }
+        o.w("errLine0", a); o.w("errLine1", b);
+        o.w("wdCount", l(cp, "wdCount")); o.w("wdN", l(cp, "wdN")); o.w("toast", cp.toast ? 1 : 0); o.w("led", cp.led);
+        for (String n : new String[] { "tx", "rx" }) { ArrayDeque<Integer> f = (ArrayDeque<Integer>) o(cp, n); o.w(n + ".n", f.size()); for (int x : f) o.w(n, x); }
+        o.w("divisor", l(cp, "divisor")); o.w("txDivisor", l(cp, "txDivisor")); o.w("rxDivisor", l(cp, "rxDivisor"));
+        o.w("txBusyUntil", mx(l(cp, "txBusyUntil"), c)); o.w("rxOverrun", cp.rxOverrun ? 1 : 0); o.w("framing", cp.framing ? 1 : 0);
+        int[] cnt = (int[]) o(cp.ev, "count"); for (int k = 0; k < cp.ev.depth.length; k++) o.w("ev" + k, cnt[k]);
+    }
+    @SuppressWarnings("unchecked")
+    static void ccHost(StateFp.Out o, CcCores cc) {
+        ArrayDeque<long[]>[] q = (ArrayDeque<long[]>[]) o(cc, "hostQ");
+        for (int k = 0; k < 3; k++) { o.w("hostQ.n", q[k].size()); for (long[] e : q[k]) for (long x : e) o.w("hostQ", x); }
+    }
+
+    // ================================================================ the whole chip (6.9's chip line)
+    static final String[] CC_NAMES = { "cc1", "cc2", "cc3" };
+    /** Every unit's hash at the end of cycle c (= ch.cycle - 0: called between cycles as StateFp.write), then the chip's. */
+    static void write(java.io.PrintWriter w, Chip ch, long c, boolean withData, long[] nanos) {
+        long all = 0x6A09E667F3BCC908L; int n = 0;
+        java.util.List<Object[]> units = new java.util.ArrayList<>();
+        for (Tile p : ch.tiles) {
+            for (String u : StateFp.TILE_UNITS) if (withData || !u.equals("sram.data")) units.add(new Object[] { "t" + p.idx + "." + u, p, u });
+            units.add(new Object[] { "t" + p.idx + ".slot", p, "slot" }); units.add(new Object[] { "t" + p.idx + ".rp", p, "rp" });
+        }
+        for (int k = 0; k < 3; k++) {
+            Tile p = ch.cores.unit(k);
+            for (String u : StateFp.TILE_UNITS) if (withData || !u.equals("sram.data")) units.add(new Object[] { CC_NAMES[k] + "." + u, p, u });
+            units.add(new Object[] { CC_NAMES[k] + ".slot", p, "slot" });
+        }
+        if (ch.cores.tracer != null) for (String u : TRACER_UNITS) units.add(new Object[] { u, null, u });
+        for (String u : new String[] { "cc1p", "cc.host", "reqbus", "cnc", "ep" }) units.add(new Object[] { u, null, u });
+        for (Object[] x : units) {
+            long s = System.nanoTime();
+            StateFp.Out o = new StateFp.Out(); one(o, ch, (Tile) x[1], (String) x[2], c);
+            long h = o.done();
+            if (nanos != null) nanos[kind((String) x[2])] += System.nanoTime() - s;
+            w.printf("%d %s %016x%n", c, x[0], h); all = StateFp.fmix(all ^ h); n++;
+        }
+        w.printf("%d chip %016x%n", c, StateFp.fmix(all ^ n));
+    }
+    static void one(StateFp.Out o, Chip ch, Tile p, String u, long c) {
+        switch (u) {
+            case "slot" -> slot(o, p.slot, c);
+            case "rp" -> replayer(o, (Replayer) p.slot.p[1], c);
+            case "cc1p" -> cc1p(o, ch.cc1p, c);
+            case "cc.host" -> ccHost(o, ch.cores);
+            case "reqbus", "cnc", "ep" -> StateFp.chipUnit(o, ch, u, c);
+            default -> { if (u.startsWith("tr")) unit(o, ch.cores.tracer, u, c); else StateFp.unit(o, ch, p, u, c); }
+        }
+    }
+    /** Cost buckets: M2's 16 tile units, then slot, rp, the Tracer's five, cc1p, cc.host, the M2 chip units. */
+    static final String[] KINDS;
+    static { java.util.List<String> k = new java.util.ArrayList<>(java.util.List.of(StateFp.TILE_UNITS)); k.addAll(java.util.List.of("slot", "rp")); k.addAll(java.util.List.of(TRACER_UNITS)); k.addAll(java.util.List.of("cc1p", "cc.host", "reqbus", "cnc", "ep")); KINDS = k.toArray(new String[0]); }
+    static int kind(String u) { for (int i = 0; i < KINDS.length; i++) if (KINDS[i].equals(u)) return i; throw new IllegalArgumentException(u); }
+    /** One unit's stream named word by word (fpdump=C:UNIT, the C++ side's comparison target). */
+    static void dump(java.io.PrintWriter w, Chip ch, String name, long c) {
+        w.println("# fpdump cycle " + c + " unit " + name);
+        int dot = name.indexOf('.');
+        String head = dot < 0 ? name : name.substring(0, dot), u = dot < 0 ? name : name.substring(dot + 1);
+        Tile p = null;
+        if (head.startsWith("t") && !head.equals("tr")) p = ch.tiles[Integer.parseInt(head.substring(1))];
+        else if (head.startsWith("cc") && !name.equals("cc.host") && !name.equals("cc1p")) p = ch.cores.unit(Integer.parseInt(head.substring(2)) - 1);
+        else u = name;
+        one(new StateFp.Dump(w, name), ch, p, u, c);
+    }
 }

@@ -432,6 +432,6 @@ ports (READY rows, the error lines, GO) couldn't be declared from its heap-alloc
   Two planted timing bugs fail it (S1 as Link(4): the landings a cycle late; the core's stores applied a cycle late:
   seven words of the images).
 - `tests/ref/tileslotconf.sh --fixtures | --check` regenerates the programs and reruns ref (`--check`: equal).
-- Not ported: PeripheralSlotTest's two UB stops (PULSE_DMA while busy; a missing queue): both FATAL in SlotCore, as
-  `T.ub` expects, covered by the slot's code paths (`dma_start`) but not by a death test yet; and the C&C 1 group (W16's
-  acceptance test covers it through the slot).
+- PeripheralSlotTest's two UB stops (PULSE_DMA while a transfer runs; a transfer naming a missing queue): death tests
+  in `test_periph_slot` (the FATALs name them, as `T.ub` expects). Not ported here: the C&C 1 group (W16's acceptance
+  test covers it through the slot).

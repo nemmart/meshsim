@@ -227,3 +227,4 @@ receive queue with its controller; C&C c is in tile c's domain). Three points fo
     not stepped in the last cycle" for it. It holds at both boot ends (C&C 2 asleep; the tiles after GO and C&C 3, in
     a stall or awake, not), to be checked at every 100,000-cycle point in the segment.
   - The Tracer's memory: `t2::attach_store` (Tracer::own_memory, M3Seg's MemorySystem over the carried store).
+- 2026-11-09: make check build by build after the M3 fingerprint: 54 test binaries pass on clang and gcc, debug and release (test_chip's wfi, regs, a2a and test_sort's 16K sort against golden-m2 unchanged: label_shift 0); `make tsan-one` on both compilers (nine binaries, no race).

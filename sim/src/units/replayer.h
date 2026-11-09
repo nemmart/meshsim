@@ -21,6 +21,7 @@
 
 #include "base/fatal.h"
 #include "units/event_counts.h"
+#include "units/peripheral.h"
 #include "units/replayer_alu.h"
 #include "units/row_core.h"
 
@@ -158,11 +159,11 @@ struct ReplayerStream {
     }
 };
 
-class Replayer {
+class Replayer : public PeripheralBase<Replayer> {
 public:
     // ---- constants (Replayer.java) --------------------------------------------------------------------------------------
     static constexpr unsigned TYPE = 4, PARAMS = 4;
-    static constexpr int RP_LATENCY = 2;
+    static constexpr int RP_LATENCY = units::RP_LATENCY;
     static constexpr unsigned OUTQ_ROWS = 32, REC_LONGS = 10, REC_SIGN_IMM = 22;
     static constexpr unsigned REC_WORDS = 68, PART0_WORDS = 66, REC_FILES = 66, REC_BITMAP = 67;
     static constexpr uint32_t RC_ROWS = 0xFFFFFF, RC_STORE_LOG = 1u << 24, RC_RD_PREV = 1u << 25, RC_TRACER_COMP = 7u << 26, RC_DEFINED = 0x1FFFFFFF;
@@ -199,32 +200,30 @@ public:
                       UF_TRANSFER = 6 };
     static constexpr unsigned FACT_RING = 64;
 
-    // Host: where violations go (the slot's violate, a cold path), set by attach. Fixed-size facts only.
-    using ViolateFn = void (*)(void* ctx, int64_t t, unsigned code);
-
     explicit Replayer(unsigned me = 0);
     Replayer(const Replayer&) = delete;
     Replayer& operator=(const Replayer&) = delete;
-    void attach(ViolateFn fn, void* ctx) { host_fn_ = fn; host_ctx_ = ctx; }
 
     // ---- the Peripheral interface (Peripheral.java, non-virtual) ----------------------------------------------------
-    unsigned type() const { return TYPE; }
-    uint32_t params() const { return PARAMS; }
-    void accept(int64_t t, unsigned src, uint32_t offset, unsigned size, uint64_t lo, uint64_t hi);
+    int type() const { return int(TYPE); }
+    int params() const { return int(PARAMS); }
+    // ref's accept at t; the slot may call it at level 0 of t + 3 (the director's Link(3)), the replayer settled through
+    // t + 2 at most (units/peripheral.h): the landing at t + 2 is still in time.
+    void accept(int64_t t, int src, uint32_t offset, int size, uint64_t lo, uint64_t hi);
     void run(int64_t t);
     bool running(int64_t t) { settle(t); return s_running_; }
     bool idle(int64_t) const { return !running_ && in_n_ == 0 && land_n_ == 0 && outq_n_ == 0; }
     int64_t next_wake_at(int64_t) const { return INT64_MAX; }
-    uint32_t status_bits(int64_t) const { return 0; }
-    uint32_t errors(int64_t t);
+    int errors(int64_t t);
     EventCounts& events() { return ev; }
-    // A consuming load's effect (the slot's endCycle): one count from each set bit, and the refill allowances.
-    void consume_events(uint32_t bits);
+    // A consuming load's effect (the slot's endCycle): one count from each set bit, and the refill allowances; returns
+    // the bits it took a count from.
+    uint32_t consume_events(uint32_t bits);
     void sync(int64_t t) { settle(t); }
-    bool word(int64_t t, unsigned w, uint32_t& v);
-    int write_word(int64_t t, unsigned w, uint32_t v);
-    bool store_stalls(int64_t, unsigned) const { return false; }
-    unsigned out_queues() const { return 0; }
+    bool word(int64_t t, int w, uint32_t& v);
+    int write_word(int64_t t, int w, uint32_t v);
+    // ref's violate() count, for the slot to forward to the tile (TileControl.violate).
+    uint64_t violation_count() const { return violations(); }
     void reset(int64_t t);
     void step(int64_t T);   // runCycle
 
@@ -344,9 +343,6 @@ private:
     ReplayerStream& stream(unsigned i) { return i == 0 ? code : i == 1 ? rlog : wlog; }
     unsigned half(unsigned q) const { return q == 0 ? code.half : q == 1 ? rlog.half : q == 2 ? wlog.half : EXP_HALF; }
 
-    ViolateFn host_fn_ = nullptr;
-    void* host_ctx_ = nullptr;
-
     uint32_t run_config_ = 0;
     unsigned rows_per_pass_ = 0;
     bool running_ = false;
@@ -376,7 +372,7 @@ private:
     unsigned in_h_ = 0, in_n_ = 0, land_h_ = 0, land_n_ = 0;
     int64_t accept_times_[8] = {};
     uint64_t accept_n_ = 0;
-    int64_t settled_ = INT64_MIN, last_input_t_ = INT64_MIN;
+    int64_t settled_ = INT64_MIN, last_input_t_ = INT64_MIN, last_accept_t_ = INT64_MIN;
 
     // level reads: the snapshot at the end of t - 1
     bool s_running_ = false;

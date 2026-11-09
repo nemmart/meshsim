@@ -37,6 +37,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 
 #include "base/fatal.h"
 #include "config.h"
@@ -541,6 +542,52 @@ inline ReqBusIO add_reqbus(sim::Config& cfg, const ReqBusConfig& rc, uint64_t ti
     }
     return io;
 }
+// Wires sender k (a tile 0-63, a controller 64 + c) to its leaf, and a controller's receive side to its queue. `Req` is
+// chip.h's ReqIO (the control's request side).
+template <class Req>
+void wire_sender(sim::Config& cfg, const ReqBusIO& io, unsigned k, Req& r) {
+    ReqLeaf& l = *io.leaf[k];
+    cfg.link(r.push, l.push, 1);
+    cfg.connect(l.freed, r.freed);
+    cfg.link(l.freed_ev, r.freed_ev, 1);
+    if (r.recv) {
+        if (k < 64 || !io.recv[k - 64]) FATAL("reqbus: sender %u has a receive side but no queue", k);
+        ReqRecv& q = *io.recv[k - 64];
+        cfg.connect(q.head, r.head);
+        cfg.link(r.pop, q.pop, 1);
+        cfg.link(r.qcredit, io.root->qcredit[k - 64], io.queue_credit_latency());
+    }
+}
+
+// A control built without the bus (a lone tile's tests): its request side tied off. A REQUEST_SEND is FATAL there
+// (nothing to carry it); a controller's queue reads empty.
+struct ReqTie {
+    sim::LinkIn push, pop, qcredit;
+    sim::WireOut freed;
+    sim::LinkOut freed_ev;
+    sim::RegFileOut head;
+    bool recv = false;
+    ReqTie(sim::Ports& p, bool recv_) : recv(recv_) {
+        p.in(push, "push", 2); p.out(freed, "freed"); p.out(freed_ev, "freed_ev", 0);
+        if (recv) { p.out(head, "head", ReqRecv::REGS); p.in(pop, "pop", 0); p.in(qcredit, "qcredit", 1); }
+    }
+    sim::Wake step(sim::Ctx& c) {
+        if (c.ready(push)) FATAL("reqbus: a REQUEST_SEND at cycle %llu in a build without the request bus", (unsigned long long)c.now());
+        if (recv && (c.ready(pop) || c.ready(qcredit))) FATAL("reqbus: a REQUEST_RECEIVE pop in a build without the request bus");
+        return sim::Wake::none();
+    }
+    uint64_t digest() const { return 0; }
+};
+template <class Req>
+void tie_off(sim::Config& cfg, const std::string& name, Req& r) {
+    if (!r.present) return;
+    ReqTie& z = cfg.add<ReqTie>(name, r.recv);
+    cfg.link(r.push, z.push, 1);
+    cfg.connect(z.freed, r.freed);
+    cfg.link(z.freed_ev, r.freed_ev, 1);
+    if (r.recv) { cfg.connect(z.head, r.head); cfg.link(r.pop, z.pop, 1); cfg.link(r.qcredit, z.qcredit, 1); }
+}
+
 // The units as built (the ReqBusIO pointers are for wiring only: the build moves units into their arena).
 struct ReqBusUnits {
     ReqLeaf* leaf[SENDERS] = {};

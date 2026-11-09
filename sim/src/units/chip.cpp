@@ -76,6 +76,7 @@ TileIO tile_cycle(sim::Config& cfg, const ChipSpec& spec, unsigned k) {
     t.line = io.line;
     t.attached = k < 3;
     if (t.attached) { t.from_cnc = r.from_cnc; t.to_cnc = r.to_cnc; }
+    t.req = io.req;                                       // W14: wired to the request bus by build_chip
     return t;
 }
 
@@ -90,6 +91,21 @@ void build_chip(sim::Config& cfg, const ChipSpec& spec) {
     for (unsigned k = 0; k < 64; k++) io[k] = tile_cycle(cfg, spec, k);
     for (unsigned k = 0; k < 64; k++)
         for (unsigned d = 0; d < 4; d++) cfg.link(io[k].link_out[d], io[neighbour(k, d)].link_in[arrival_port(d)], nc.link_latency);
+    // W14 (D34): the request bus, for the tiles whose control has a request port: each leaf in its tile's domain, the
+    // nodes with tile 0's (C&C's side). No controllers here (M2's chip; W16's adds them with their receive sides).
+    {
+        uint64_t senders = 0;
+        units::reqbus::ReqBusPlacement pl;
+        for (unsigned k = 0; k < 64; k++) {
+            if (io[k].req.present) senders |= uint64_t(1) << k;
+            pl.leaf[k] = spec.domain ? spec.domain[k] : 0;
+        }
+        pl.bus = spec.domain ? spec.domain[0] : 0;
+        if (senders) {
+            const units::reqbus::ReqBusIO rb = units::reqbus::add_reqbus(cfg, spec.reqbus, senders, 0, spec.domain ? &pl : nullptr);
+            for (unsigned k = 0; k < 64; k++) if (io[k].req.present) units::reqbus::wire_sender(cfg, rb, k, io[k].req);
+        }
+    }
     // C&C and the collectors with tile 0 (C&C's send is a Hold into tile 0's router), C&C 2 and 3 with tiles 1 and 2
     if (spec.domain) cfg.domain(spec.domain[0]);
     auto& cc = cfg.add<Cnc>("cnc", nc, *spec.program);

@@ -284,6 +284,7 @@ TEST(tile_router_overflow_steps_the_register_block) {
     const unsigned k = 3;
     sim::Config cfg;
     TileIO io = tile_cycle(cfg, spec, k);
+    units::reqbus::tie_off(cfg, "t" + std::to_string(k) + ".reqtie", io.req);   // W14: no request bus in a lone tile
     auto& f = cfg.add<Flood>("flood", k, 60u);
     for (unsigned d = 0; d < 4; d++) { cfg.link(f.out[d], io.link_in[d], 1); cfg.link(io.link_out[d], f.in[d], 1); }
     cfg.link(f.go, io.go, 1);
@@ -342,6 +343,7 @@ RpRun read_port_run(unsigned depth) {
     const unsigned k = 3;
     sim::Config cfg;
     TileIO io = tile_cycle(cfg, spec, k);
+    units::reqbus::tie_off(cfg, "t" + std::to_string(k) + ".reqtie", io.req);   // W14: no request bus in a lone tile
     auto& q = cfg.add<Quiet>("quiet");
     for (unsigned d = 0; d < 4; d++) { cfg.link(q.out[d], io.link_in[d], 1); cfg.link(io.link_out[d], q.in[d], 1); }
     cfg.link(q.go, io.go, 1);

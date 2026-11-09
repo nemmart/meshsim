@@ -35,7 +35,8 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     dc.g4 = true;                                         // W12: G4's engines are in every M2 tile
     const unsigned lookahead = g.cfg.ag_lookahead ? g.cfg.ag_lookahead : 2 * g.cfg.ts_engine_latency + 2;
 
-    auto& c = cfg.add<TileCore>(t + "core", core, k, g.cfg.read_port_depth);
+    // W14: a controller (64-66) has a receive side (its target's queue); every core has the request port's send side
+    auto& c = cfg.add<TileCore>(t + "core", core, k, g.cfg.read_port_depth, k >= 64, g.cfg.done_gate);
     auto& b = cfg.add<TileCtl>(t + "ctl", block, kHasOvfEvent<ControlIO>, true);
     auto& d = cfg.add<Director>(t + "dir", dc);
     auto& we = cfg.add<WriteEngine>(t + "we", g.we_in_depth, g.cfg.ts_engine_latency, g.cfg.mem_chunks);
@@ -109,6 +110,11 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     io.mem.gather = io.mem.ag = true;                     // W12: the read queue's clients 0 and 1
     io.mem.rd_gather = ga.rd; io.mem.rd_ag = ag.rd;
     io.mem.gather_srq_busy = b.gather_srq_busy;
+    // W14 (D34): the request port, wired to the bus by build_chip (and W16's controllers)
+    io.req.present = true;
+    io.req.push = c.req_push; io.req.freed = c.req_freed; io.req.freed_ev = b.req_freed_ev;
+    io.req.recv = k >= 64;
+    if (io.req.recv) { io.req.head = c.recv; io.req.pop = c.recv_pop; io.req.qcredit = c.recv_credit; }
     return io;
 }
 

@@ -228,3 +228,9 @@ receive queue with its controller; C&C c is in tile c's domain). Three points fo
     a stall or awake, not), to be checked at every 100,000-cycle point in the segment.
   - The Tracer's memory: `t2::attach_store` (Tracer::own_memory, M3Seg's MemorySystem over the carried store).
 - 2026-11-09: make check build by build after the M3 fingerprint: 54 test binaries pass on clang and gcc, debug and release (test_chip's wfi, regs, a2a and test_sort's 16K sort against golden-m2 unchanged: label_shift 0); `make tsan-one` on both compilers (nine binaries, no race).
+- 2026-11-09: **the segment** (the t2 tool's `--segment`: CC_SEGMENT as M3Seg sends it, then M3Seg's run: points every
+  100,000 cycles, C&C 3's exit, the end when every tile has exited). On one domain, mode 3: **evm-zone-29 segment 10:
+  C&C 3 exits at 23,694,305 and the run ends at 23,940,706; cyclone-29 segment 10: 28,106,741 and 28,319,575: all four
+  equal to ref's** (golden-m3's `# cc3-exit`, `# end`); `lag_cycles` 0 on both. About 50 s for evm's 24 M cycles on this
+  container's one core. The split (6 domains) is too slow here (one core, a barrier every 3 cycles): it goes to the
+  runner. Every point's units against the references' unit lines: Quest 168 (fpchip.gz) claimed and pushed.

@@ -21,6 +21,106 @@
 #include "statefp_m3.h"
 #include "t2_harness.h"
 #include "units/tile_ctl.h"
+#include "units/tracer.h"
+
+namespace {
+
+// The golden's unit lines by point: label -> name -> hash (fpchip.gz: "c name hash" lines, `#` lines skipped).
+using Points = std::map<uint64_t, std::map<std::string, std::string>>;
+bool load_points(const std::string& path, Points& p, std::string& err) {
+    std::vector<uint8_t> raw;
+    if (!t2::read_gz(path, raw, err)) return false;
+    const char* s = reinterpret_cast<const char*>(raw.data());
+    const size_t n = raw.size();
+    for (size_t i = 0; i < n;) {
+        size_t e = i; while (e < n && s[e] != '\n') e++;
+        if (s[i] != '#') {
+            const std::string l(s + i, e - i);
+            const size_t a = l.find(' '), b = l.rfind(' ');
+            if (a != std::string::npos && b > a) p[std::strtoull(l.c_str(), nullptr, 10)][l.substr(a + 1, b - a - 1)] = l.substr(b + 1);
+        }
+        i = e + 1;
+    }
+    return true;
+}
+
+// One point: every unit against the golden's (rp and chip left out while rp is a placeholder). Returns the differing
+// units' count; prints the first few.
+unsigned check_point(const fp::FpRegistry& reg, const fp::M3Chip& mc, sim::Sim& s, uint64_t t, const Points& gold, unsigned m2_off,
+                     const char* tag) {
+    auto it = gold.find(t);
+    if (it == gold.end()) { std::printf("point %llu (%s): not in the golden\n", (unsigned long long)t, tag); return 1; }
+    std::vector<std::string> lines;
+    fp::m3_point(reg, mc, fp::FpCtx{t, &s}, lines, m2_off);
+    unsigned bad = 0, shown = 0, eq = 0;
+    for (const std::string& l : lines) {
+        const size_t a = l.find(' '), b = l.rfind(' ');
+        const std::string n = l.substr(a + 1, b - a - 1), h = l.substr(b + 1);
+        if (n == "chip" || (n.size() > 3 && n.compare(n.size() - 3, 3, ".rp") == 0)) continue;
+        auto g = it->second.find(n);
+        if (g != it->second.end() && g->second == h) { eq++; continue; }
+        bad++;
+        if (shown++ < 8) std::printf("  point %llu (%s): %s differs\n", (unsigned long long)t, tag, n.c_str());
+    }
+    std::printf("point %llu (%s): %u units equal, %u differ\n", (unsigned long long)t, tag, eq, bad);
+    std::fflush(stdout);
+    return bad;
+}
+
+// M3Seg's segment: CC_SEGMENT (C&C 1: the tiles' command, C&C 3's start), then the run to the Tracer's stop or C&C 3's
+// exit with every tile exited; points every 100,000 cycles, at C&C 3's exit and at the end (labels as M3Seg's).
+int run_segment(t2::Machine&, sim::Sim& s, const std::string& fp_points, const std::vector<std::string>& dumps, int64_t dump_at,
+                uint64_t cap, unsigned m2_off, unsigned parts) {
+    Points gold;
+    std::string err;
+    if (!fp_points.empty() && !load_points(fp_points, gold, err)) { std::fprintf(stderr, "t2: %s\n", err.c_str()); return 1; }
+    fp::M3Chip mc;
+    fp::m3_attach(s, mc, units::reqbus::ReqBusConfig{});
+    fp::FpRegistry reg;
+    fp::m3_register(reg, mc);
+    t2::cc_segment(s);
+    const units::TileCore& u3 = s.unit<units::TileCore>("cc3.core");
+    const units::tracer::Tracer* tr = mc.tr;
+    const uint64_t start = s.now();
+    unsigned bad_points = 0, points = 0;
+    int64_t cc3_exit = -1;
+    const char* why = "cap";
+    for (;;) {
+        const uint64_t t = s.now() - 2, c = s.now() - 1;     // the last cycle run (the label), ref's c.cycle
+        if (dump_at >= 0 && int64_t(t) == dump_at) {
+            for (const std::string& u : dumps) {
+                fp::FpCtx y{t, &s};
+                if (!fp::m3_own_writer(u)) { y.cycle += m2_off; y.label_shift = m2_off; }
+                reg.dump(u, y, stdout);
+            }
+            return 0;
+        }
+        if (!gold.empty() && t > 0 && t % 100000 == 0 && s.now() > start) { points++; if (check_point(reg, mc, s, t, gold, m2_off, "")) bad_points++; }
+        if (tr && tr->stopped()) { why = "the Tracer stopped"; break; }
+        if (u3.rv.halt != units::Rv32::RUN) {
+            if (cc3_exit < 0) {
+                cc3_exit = int64_t(c);
+                std::printf("C&C 3 exited (point %llu)\n", (unsigned long long)t);
+                if (!gold.empty()) { points++; if (check_point(reg, mc, s, t, gold, m2_off, "cc3-exit")) bad_points++; }
+            }
+            bool all = true;
+            for (unsigned k = 0; k < 64 && all; k++) if (s.unit<units::TileCore>(units::tile_unit(k, "core")).rv.halt == units::Rv32::RUN) all = false;
+            if (all) { why = "C&C 3 and every tile exited"; break; }
+            if (c - uint64_t(cc3_exit) >= 1'000'000) { why = "a tile not exited 1 M cycles after C&C 3"; break; }
+        }
+        if (s.now() - start > cap) break;
+        s.run(1);
+        if ((s.now() - start) % 1'000'000 == 0) { std::printf("... cycle %llu\n", (unsigned long long)(s.now() - 1)); std::fflush(stdout); }
+    }
+    const uint64_t t_end = s.now() - 2;
+    std::printf("end: %s at cycle %llu (ref's c.cycle %llu)\n", why, (unsigned long long)t_end, (unsigned long long)(s.now() - 1));
+    if (!gold.empty()) { points++; if (check_point(reg, mc, s, t_end, gold, m2_off, "end")) bad_points++; }
+    std::printf("points: %u checked, %u with a difference; request bus lag_cycles %llu; parts %u\n", points, bad_points,
+                (unsigned long long)mc.rbu.root->lag_cycles(), parts);
+    return bad_points ? 1 : 0;
+}
+
+}  // namespace
 
 int main(int argc, char** argv) {
     std::string sram, files;
@@ -29,7 +129,11 @@ int main(int argc, char** argv) {
     bool trace = false;                       // --trace: the controllers' and tile 0's pc between cycles (BootStage trace)
     std::string fp_boot;                      // --fp-boot FILE: every unit at the boot's end against golden-m3/boot
     unsigned m2_off = 1;                      // --m2-offset N (diagnosis)
-    std::vector<std::string> dumps;           // --fp-dump UNIT: its stream word by word at the boot's end
+    std::vector<std::string> dumps;           // --fp-dump UNIT: its stream word by word at the boot's end (or at --dump-at)
+    bool segment = false;                     // --segment: CC_SEGMENT, then the run to its end (M3Seg's conditions)
+    std::string fp_points;                    // --fp-points FILE: every point against the golden's unit lines (fpchip.gz)
+    int64_t dump_at = -1;                     // --dump-at T: the --fp-dump units at point T (label), then stop
+    uint64_t seg_cap = 64ull * 65536 * 12 + 5'000'000;   // M3Seg's cap for 64 windows
     for (int i = 1; i < argc; i++) {
         const std::string a = argv[i];
         auto next = [&]() -> const char* { if (i + 1 >= argc) { std::fprintf(stderr, "t2: %s needs a value\n", a.c_str()); std::exit(2); } return argv[++i]; };
@@ -41,6 +145,10 @@ int main(int argc, char** argv) {
         else if (a == "--fp-boot") fp_boot = next();
         else if (a == "--m2-offset") m2_off = unsigned(std::atoi(next()));
         else if (a == "--fp-dump") dumps.push_back(next());
+        else if (a == "--segment") segment = true;
+        else if (a == "--fp-points") fp_points = next();
+        else if (a == "--dump-at") dump_at = std::strtoll(next(), nullptr, 10);
+        else if (a == "--cap") seg_cap = std::strtoull(next(), nullptr, 10);
         else { std::fprintf(stderr, "t2: unknown argument %s\n", a.c_str()); return 2; }
     }
     std::string err;
@@ -108,6 +216,7 @@ int main(int argc, char** argv) {
         std::printf("fp-boot: %u units equal, %u differ\n", good, bad);
         for (auto& [k, n] : bad_kind) std::printf("  %-14s %u\n", k.c_str(), n);
     }
+    if (segment) return run_segment(*m, s, fp_points, dumps, dump_at, seg_cap, m2_off, parts);
     if (!dumps.empty()) {
         fp::M3Chip mc;
         fp::m3_attach(s, mc, units::reqbus::ReqBusConfig{});

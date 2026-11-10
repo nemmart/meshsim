@@ -474,3 +474,6 @@ clang `tsan-chip` and `tsan-units` (`test_controllers`) on gcc and clang: all pa
   168, sha256 as Quest 170's): evm-zone-29 241 points and cyclone-29 285, all 1,214 units equal, exits and ends as ref,
   64 of 64 rows equal, lag_cycles 0; make check build by build (57 binaries each).
 - Local timing (this container, clang release, the checked evm run): **53 s before, 17 s after**.
+- TSan on 07f6636: `tsan-one` on gcc (the nine binaries; three re-run alone after the tool's 300 s limit cut the
+  make: `test_threads`, `test_topology`, `test_t2_harness`) and clang (nine, in one make), `tsan-chip` and `tsan-units`
+  on both: all pass, no warnings.

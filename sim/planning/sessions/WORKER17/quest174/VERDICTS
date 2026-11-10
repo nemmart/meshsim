@@ -1,0 +1,7 @@
+build PASS
+inputs PASS
+separate-cores PASS
+chain-evm PASS
+chain-cyclone PASS
+evm-segment10-as-173 PASS
+cyclone-segment10-as-173 PASS

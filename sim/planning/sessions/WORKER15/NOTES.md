@@ -461,3 +461,16 @@ clang `tsan-chip` and `tsan-units` (`test_controllers`) on gcc and clang: all pa
   PULSE_RUN of 5 in S2) and of 12-14 (a region write in S1) equals a twin replayer driven directly, as ref's is.
 - **For W16:** call `slot.fingerprint_replayer(sim, 1, out, c)` for unit `rp` of tiles 0-63 from the M3 chip line (not
   `replayer(1).fingerprint` directly: that would miss the inputs in flight).
+
+### D35: the slot publishes only what changed (2026-11-10)
+
+- `PeriphSlot::publish`: the first publish writes every register (from `full_values`, the plain per-word way) and records
+  each peripheral's defined own words; every later one makes one dispatch per peripheral and computes only the
+  standard words, the defined own words, the store stalls if the type has its own `store_stalls`, and the live bits from
+  those values; only changed registers are written. Debug builds check every register against `full_values` after each
+  publish (fatal, naming the register; a planted missed register fires it).
+- Unchanged behaviour: the slot's tests (`test_periph_slot`, `test_slotconf`, `test_tileslotconf`, `test_tile_slot`,
+  `test_tracer_slot`, `test_cnc1_periph`); **T2 locally on one domain with every point** (inputs from Quests 165, 167,
+  168, sha256 as Quest 170's): evm-zone-29 241 points and cyclone-29 285, all 1,214 units equal, exits and ends as ref,
+  64 of 64 rows equal, lag_cycles 0; make check build by build (57 binaries each).
+- Local timing (this container, clang release, the checked evm run): **53 s before, 17 s after**.

@@ -251,3 +251,21 @@ receive queue with its controller; C&C c is in tile c's domain). Three points fo
   EVENTS_MASK store pending at the point (pendMaskT == t) where the framework's store was a cycle earlier (C&C 3's pc
   equal at both points; mask 0x43 then 0x7c3): under investigation (possibly a question for W15: the slot's store
   timing); (3) the background run stopped at 15,100,000 without an error (this container; to rerun).
+- 2026-11-10: merged main (W15's `PeriphSlot::fingerprint_replayer`): `rp` from it on tiles 0-63; **every unit at the
+  boot's end equal on both runs, 1,214 of 1,214, the chip line included.**
+- 2026-11-10: **the silent stop at 15,100,000 was a crash**, not the tool: the router's fp_own counted a put of cyc
+  followed by a take in the last cycle (a FIFO emptied: count - 1 underflowed). ref settles a pending put on any access,
+  so such a put is an entry like the others: `took_after_put` (set by a take, cleared by a put) in the router's FIFOs.
+  The whole evm run with every point takes about 3 minutes here, inside the tool's limit.
+- 2026-11-10: **cc3.slot's EVENTS_MASK at 10,800,000: the writer's labelling.** ref records a store executed at s as
+  pending at s + 1 (pendMaskT = s + 1) with the mask already applied at s (C&C 3 executes `sw EVENTS_MASK` at pc
+  0x1000da0 in cycle s in both). The writer: a store in flight (executed at t) shows the new mask, no pending store; a
+  store executed at t - 1 (`m3_note_before`, run at the cycle before each point) shows as ref's pending store.
+- 2026-11-10: **halted cores** are judged like sleeping ones for the mcycle lag (a halted core can be put to sleep):
+  the tiles' halted cores at the end needed the shift, C&C 3's (still busy) didn't.
+- 2026-11-10: **evm-zone-29 segment 10, to the end, one domain, mode 3**: 241 points checked (every 100,000 cycles, C&C
+  3's exit, the end), every unit and the chip line: **237 equal; 4 with one unit each**: cc3.slot at 11,500,000 and
+  18,100,000 (a variant of the mask store, to pin down), t4.core at 22,900,000 and t19.core at the end (tile 19 halted
+  in the last cycle: the halted/asleep judgment); `tr` skipped at 6,300,000 (W14's overlay). tr_results status 1,
+  64 windows, 14,162 transfers; all 64 tiles exited 1; lag_cycles 0. The rows: Quest 169 (rows.bin's count and sink hash
+  per window) claimed and pushed, not back yet.

@@ -10,7 +10,7 @@
 //     fromCnc as the C&C link (statefp_g2's w_router); `req` and `reqbus` W14's (reqbus_fp.h);
 //   - `slot` (6.7): mask, the DMA (peripherals with output queues), the consume and EVENTS_MASK store of c (the core's
 //     ops on the slot's S2/S3 Link, put at c);
-//   - `rp` (6.8): W15's (asked: the replayer's private state); until then a placeholder stream (marked in the output);
+//   - `rp` (6.8): W15's PeriphSlot::fingerprint_replayer;
 //   - the Tracer's five: W14's Tracer::fingerprint;
 //   - `cc1p` (6.9): C&C 1's peripheral, its READY and error lines rebuilt from the Links on their way (statefp_g2's
 //     pending_lines through C&C 1's own ports; the controllers' line words; the blocks' endCycle(c) previews);
@@ -43,11 +43,17 @@ struct M3Chip {
     const units::HostPort* host[3] = {};
     const units::tracer::Tracer* tr = nullptr;     // C&C 3's peripheral 1, or null
     std::vector<std::string> names;                // every unit, in StateFpM3.write's order
-    bool rp_placeholder = true;                    // `rp` isn't W15's yet
+    // EVENTS_MASK stores in flight one cycle before a point (m3_note_before): ref records a store executed at s as
+    // pending at s + 1 (pendMaskT = s + 1, the mask already applied at s); the framework's has been applied by then.
+    struct MaskStore { bool seen = false; uint64_t at = 0; uint32_t v = 0; };
+    MaskStore mask_store[67][4];
 };
 
 // Resolve every unit of the cores chip `s` (t2::build_machine's), and the reqbus with `rc`.
 void m3_attach(sim::Sim& s, M3Chip& c, const units::reqbus::ReqBusConfig& rc);
+// Between cycles, at the cycle before a point (label t - 1): note every slot's EVENTS_MASK store in flight (executed at
+// t - 1), which ref shows as pending at point t.
+void m3_note_before(M3Chip& c, const sim::Sim& s, uint64_t label);
 // Register every writer. `c` outlives the registry.
 void m3_register(FpRegistry& r, M3Chip& c);
 // A point: every unit's line "t name hash" and the chip line, appended to `out` (x.cycle = t). M2's writers (the 16

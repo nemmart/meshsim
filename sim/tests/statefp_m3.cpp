@@ -13,6 +13,7 @@
 namespace fp {
 
 thread_local bool g_dma_pulse_at_point = false;
+const M3Chip* g_m3 = nullptr;
 
 namespace {
 
@@ -43,21 +44,25 @@ void w_slot(const void* p, FpOut& o, const FpCtx& x) {
     const OpsAtT ops = ops_at(*x.sim, sl);
     for (unsigned n = 1; n <= 3; n++) {
         if (s.per[n].type == units::PT_ABSENT) continue;
-        o.wi("mask", n, s.mask[n]);
-        bool consume = false, mstore = false, pulse = false;
+        // (written below, once the ops of t are known)
+        bool consume = false, mstore = false, pulse = false, mflight = false;
         uint32_t cbits = 0, mval = 0, hdr = s.dma[n].hdr, addr = s.dma[n].addr;
         for (uint32_t i = 0; i < ops.n; i++) {
             const uint64_t op = ops.op[i];
             if (units::CoreOp::n(op) != n) continue;
             if (units::CoreOp::kind(op) == units::CoreOp::CONSUME) { consume = true; cbits = units::CoreOp::value(op); continue; }
             switch (units::CoreOp::word(op)) {
-            case 7: mstore = true; mval = units::CoreOp::value(op); break;
+            case 7: mflight = true; mval = units::CoreOp::value(op); break;   // executed at t: ref has applied it
             case 8: hdr = units::CoreOp::value(op); break;
             case 9: addr = units::CoreOp::value(op); break;
             case 4: pulse = units::CoreOp::value(op) & 1; break;   // SlotCore::dma_start, as ref applied it at t
             default: break;
             }
         }
+        o.wi("mask", n, mflight ? mval : s.mask[n]);
+        // ref's pending store: the one executed at t - 1 (noted by m3_note_before), shown at t
+        const M3Chip::MaskStore& ms = g_m3->mask_store[s.tile][n];
+        if (ms.seen && ms.at + 1 == x.cycle) { mstore = true; mval = ms.v; } else mstore = false;
         if (s.per[n].type == units::PT_TRACER) {                  // the peripherals with output queues (ref: the Tracer)
             const units::SlotCore::Dma& d = s.dma[n];
             const bool busy = pulse || d.busy;
@@ -72,8 +77,11 @@ void w_slot(const void* p, FpOut& o, const FpCtx& x) {
     }
 }
 
-// 6.8: W15's (asked); a placeholder until then.
-void w_rp(const void*, FpOut& o, const FpCtx&) { o.w("rp-not-yet", 0); }
+// 6.8: W15's PeriphSlot::fingerprint_replayer (the replayer's stream with the inputs still in the slot's links).
+void w_rp(const void* p, FpOut& o, const FpCtx& x) {
+    units::PeriphSlot& sl = const_cast<units::PeriphSlot&>(*static_cast<const units::PeriphSlot*>(p));
+    sl.fingerprint_replayer(*x.sim, 1, o, int64_t(x.cycle));
+}
 
 struct TrRef { const units::tracer::Tracer* tr; int unit; };
 TrRef g_tr[5];
@@ -248,7 +256,19 @@ void m3_attach(sim::Sim& s, M3Chip& c, const units::reqbus::ReqBusConfig& rc) {
     for (const char* u : {"cc1p", "cc.host", "reqbus", "cnc", "ep"}) c.names.push_back(u);
 }
 
+void m3_note_before(M3Chip& c, const sim::Sim& s, uint64_t label) {
+    for (unsigned k = 0; k < 67; k++) {
+        const OpsAtT ops = ops_at(s, *c.slot[k]);
+        for (uint32_t i = 0; i < ops.n; i++) {
+            const uint64_t op = ops.op[i];
+            if (units::CoreOp::kind(op) == units::CoreOp::STORE && units::CoreOp::word(op) == 7)
+                c.mask_store[k][units::CoreOp::n(op)] = {true, label, units::CoreOp::value(op)};
+        }
+    }
+}
+
 void m3_register(FpRegistry& r, M3Chip& c) {
+    g_m3 = &c;
     for (unsigned k = 0; k < 67; k++) {
         register_g1(r, c.g1[k]);
         register_g2_tile(r, c.g2[k]);

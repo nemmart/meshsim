@@ -68,7 +68,11 @@ void w_core(const void* p, FpOut& o, const FpCtx& x) {
     const uint64_t c = x.cycle;
     uint64_t mcycle = k.mcycle;
     uint32_t stall = k.stall;
-    if (k.stop != units::Stop::running) mcycle += c - k.stop_cycle;      // ref's halted core: mcycle++ every cycle
+    if (k.stop != units::Stop::running) {                               // ref's halted core: mcycle++ every cycle
+        // W16: as a sleeping one, under M3's cyc one less when ref's idle-skip has put it to sleep (a halted core can)
+        const bool asleep = x.label_shift && (!g.ref_asleep || g.ref_asleep(g.ref_asleep_ctx, g.tile, x));
+        mcycle += c - k.stop_cycle - (asleep ? x.label_shift : 0);
+    }
     else if (c > k.last) {                                              // asleep since `last`: in a WFI or a stall
         uint64_t gap = c - k.last;
         // ref's lag: cyc - countedTo, only for a unit its idle-skip put to sleep (W16: under M3's cyc, one less)

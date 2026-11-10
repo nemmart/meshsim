@@ -13,6 +13,7 @@
 #include "units/linkword.h"
 #include "units/periph_slot.h"
 #include "units/replayer.h"
+#include "statefp.h"
 #include "units/test_peripheral.h"
 
 using namespace units;
@@ -208,4 +209,30 @@ DEATH_TEST(slot_dma_naming_a_missing_queue, "output queue 3, which the periphera
     s.install(1, PT_TEST);
     s.write(1, 1, 8, (3u << 12) | 4u);   // DMA_HDR: queue 3 (the test peripheral has two), 4 words
     s.write(2, 1, 4, 1);
+}
+
+// The replayer's canonical fingerprint through the slot (AUDIT-M3 6.8) equals a twin replayer's driven directly as ref's
+// is (its inputs in its own lists): at the end of 13 a region write is still in S1 (put at 12) and the slot's helper
+// reads it from the link; at the end of 5 the PULSE_RUN of 5 is still in S2.
+TEST(slot_replayer_fingerprint_reads_the_links_inputs_as_refs_lists) {
+    const Stand::Ev ev[] = {
+        {3, Stand::STORE, 7, 0x1, 0, 0},
+        {5, Stand::STORE, 3, 1, 0, 0},
+        {8, Stand::CONSUME_MASKED, 0, 0, 0, 0},
+        {12, Stand::REGION, 0x04100000, 0, 0x1234, 0x5678},
+    };
+    PeriphSlotConfig pc;
+    pc.tile = 9; pc.type[1] = PT_REPLAYER;
+    Rig r(ev, sizeof ev / sizeof ev[0], pc, sim::Options{});
+    Replayer twin(9);
+    auto twin_fp = [&](int64_t c) { fp::FpOut f; twin.fingerprint(f, c); return f.done(); };
+    auto slot_fp = [&](int64_t c) { fp::FpOut f; r.slot().fingerprint_replayer(r.m, 1, f, c); return f.done(); };
+    for (int64_t t = 0; t <= 14; t++) {
+        if (t == 5) twin.run(5);
+        if (t == 12) twin.accept(12, 7, 0x100000, 2, 0x1234, 0x5678);
+        if (t == 9) twin.consume_events(1);   /* the consuming load of 8, applied at the end of 8 */
+        twin.step(t);
+        r.m.run_until(uint64_t(t));
+        if (t == 5 || t == 12 || t == 13 || t == 14) CHECK_EQ(slot_fp(t), twin_fp(t));
+    }
 }

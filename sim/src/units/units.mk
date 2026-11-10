@@ -48,9 +48,9 @@ $(B)/test_g1_replay: $(FP_OBJ) $(B)/tests/statefp_g1.o $(UNITS_LINK) $(GOLDEN_OB
 # WORKER15: the replayer (src/units/replayer.*), its tests and the conformance tool (tests/replayconf_main.cpp: a
 # ReplayConf script replayed on the C++ replayer; tests/ref/replayconf.sh writes ref's side).
 REPLAYER_LINK := $(B)/src/units/replayer.o
-$(B)/test_replayer $(B)/test_replayconf: $(REPLAYER_LINK)
+$(B)/test_replayer $(B)/test_replayconf: $(REPLAYER_LINK) $(B)/tests/statefp.o
 $(B)/test_replayer: $(B)/src/units/replay_tables.o
-$(B)/replayconf: $(B)/tests/replayconf_main.o $(REPLAYER_LINK) $(LIB_OBJ)
+$(B)/replayconf: $(B)/tests/replayconf_main.o $(REPLAYER_LINK) $(B)/tests/statefp.o $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 all: $(B)/replayconf
 # Stage A's C++ driver (tests/replay_delivery_main.cpp): a delivery's windows on the C++ replayer, ref's lines.
@@ -59,7 +59,7 @@ $(B)/replay_delivery: $(B)/tests/replay_delivery_main.o $(REPLAYER_LINK) $(B)/sr
 all: $(B)/replay_delivery
 # WORKER15: the peripheral slot (src/units/periph_slot.*), with the replayer and the test peripheral it dispatches to.
 SLOT_LINK := $(B)/src/units/periph_slot.o $(REPLAYER_LINK) $(TRACER_LINK)   # TRACER_LINK: tracer.mk, included first
-$(B)/test_slotconf $(B)/test_periph_slot: $(SLOT_LINK)
+$(B)/test_slotconf $(B)/test_periph_slot: $(SLOT_LINK) $(B)/tests/statefp.o
 $(B)/slotconf: $(B)/tests/slotconf_main.o $(SLOT_LINK) $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 all: $(B)/slotconf

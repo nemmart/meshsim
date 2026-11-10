@@ -73,3 +73,11 @@ kept: `FileStore.copy` clones every page and `nextFree`); `M3Seg` takes W13's sn
   landings (TracerT2.chip, as M3Inputs.sram's list); W13's two stream forms; the oracle's files; the manifest's
   windows with files; stream_values. `test_chain` (7 tests, synthetic inputs and the real replayer tables) passes on
   gcc and clang, debug and release. Equality with ref's landings and starts is for the runner (golden-chain).
+- 2026-11-10: **the chain driver** (`tests/chain_main.cpp`, `build/<cc>-<mode>/chain`): per segment the ownership
+  set, the start against the oracle, the landings (the tiles' and C&C 3's tables made once: setup 0.17 s), a fresh
+  one-domain chip with C&C 3's Tracer on the carried store through a fresh MemSystem (the store stays outside the
+  Tracer: no unit change), boot, CC_SEGMENT, the run in 250,000-cycle chunks under ref's stop rules, every check of
+  TracerT2.chip (state.bin, the three streams, exits, rows, clean) plus violations and lag_cycles, then the write-back
+  and T1's end checks; exit and end from `sim_exit_at`; `--dump S` writes W13's forms for the t2 tool. Built on clang
+  and gcc; on synthetic inputs (2 windows) a whole segment runs (status 1), clean under ASan/UBSan. The C++ task maker
+  (`tasks/mk_task.sh`, W16's with the replayer tables and golden-chain) and `chain10-body.sh`.

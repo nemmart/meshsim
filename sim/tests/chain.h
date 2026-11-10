@@ -76,6 +76,18 @@ constexpr uint32_t S_HDR = 0x00000, S_TABLES = 0x00040, S_INDEX = 0x00C40, S_REC
                    S_CODE = 0x08000, S_RLOG = 0x18000, S_WLOG = 0x38000, RL_MAGIC = 0x594C5052;
 struct MapInfo { int32_t mul = 0, step = 0, k = 0; };
 // Units 0-63 the tiles, 66 C&C 3; in (unit, chunk) order, zero words left out (as M3Inputs.sram lists them).
+// The tiles' landings and C&C 3's tables don't depend on the segment: a builder makes them once (as a dense image of
+// C&C 3's region and the tiles' list), and each segment adds C&C 3's record, advice, expected end state and header.
+class Landings {
+public:
+    Landings(const units::tracer::ReplayTables& tb, unsigned windows);
+    void build(const W26& w, const Seg& sg, const Seg* next, std::vector<t2::SramLanding>& out) const;
+private:
+    const units::tracer::ReplayTables& tb_;
+    unsigned windows_;
+    std::vector<uint32_t> cc3_;                 // C&C 3's chunks 0 .. end of the templates: the tables, index, templates
+    std::vector<t2::SramLanding> tiles_;        // units 0-63, in order
+};
 void landings(const units::tracer::ReplayTables& tb, const W26& w, const Seg& sg, const Seg* next, unsigned windows,
               std::vector<t2::SramLanding>& out);
 

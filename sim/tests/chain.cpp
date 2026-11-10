@@ -329,22 +329,49 @@ std::vector<uint8_t> write_segments(const std::vector<Seg>& segs, bool lru) {
 }
 
 // ---- the landings
-void landings(const units::tracer::ReplayTables& tb, const W26& w, const Seg& sg, const Seg* next, unsigned windows,
-              std::vector<t2::SramLanding>& out) {
-    std::map<std::pair<uint32_t, uint32_t>, uint32_t> m;   // (unit, chunk) -> value: later pokes win
-    auto poke = [&](uint32_t u, uint32_t c, uint32_t v) { m[{u, c & 0x1FFFFF}] = v; };
-    auto put_bytes = [&](uint32_t u, uint32_t c, const std::vector<uint8_t>& bytes) {   // TracerT2.putBytes, StageB.put
-        std::vector<uint8_t> x = bytes;
-        x.resize((x.size() + 15) & ~size_t(15), 0);
-        for (size_t i = 0; i < x.size() / 4; i++) poke(u, c + uint32_t(i), le32(x, 4 * i));
-    };
-    auto put_words = [&](uint32_t u, uint32_t c, const std::vector<uint64_t>& words) {     // TracerT2.put
-        for (size_t i = 0; i < words.size(); i++) { poke(u, c + 2 * uint32_t(i), uint32_t(words[i])); poke(u, c + 2 * uint32_t(i) + 1, uint32_t(words[i] >> 32)); }
-    };
-    std::vector<uint8_t> tables = tb.decode_bytes;
-    tables.insert(tables.end(), tb.rom_bytes.begin(), tb.rom_bytes.end());
-    const uint32_t U3 = 66;
-    put_bytes(U3, C_TABLES, tables); put_bytes(U3, C_INDEX, tb.index_bytes); put_bytes(U3, C_TEMPLATES, tb.template_bytes);
+namespace {
+// TracerT2.putBytes / StageB.put: the bytes padded to 16, one 32-bit word per chunk; TracerT2.put: lo, hi per long.
+template <class Poke> void put_bytes(Poke&& poke, uint32_t c, const std::vector<uint8_t>& bytes) {
+    std::vector<uint8_t> x = bytes;
+    x.resize((x.size() + 15) & ~size_t(15), 0);
+    for (size_t i = 0; i < x.size() / 4; i++) poke(c + uint32_t(i), le32(x, 4 * i));
+}
+template <class Poke> void put_words(Poke&& poke, uint32_t c, const std::vector<uint64_t>& words) {
+    for (size_t i = 0; i < words.size(); i++) { poke(c + 2 * uint32_t(i), uint32_t(words[i])); poke(c + 2 * uint32_t(i) + 1, uint32_t(words[i] >> 32)); }
+}
+std::vector<uint8_t> tables_bytes(const units::tracer::ReplayTables& tb) {
+    std::vector<uint8_t> t = tb.decode_bytes;
+    t.insert(t.end(), tb.rom_bytes.begin(), tb.rom_bytes.end());
+    return t;
+}
+}  // namespace
+
+Landings::Landings(const units::tracer::ReplayTables& tb, unsigned windows) : tb_(tb), windows_(windows) {
+    const std::vector<uint8_t> tables = tables_bytes(tb);
+    // C&C 3's static part, densely (later pokes win; the segment's parts go on top)
+    cc3_.assign(C_TEMPLATES + (tb.template_bytes.size() + 15) / 16 * 4, 0);
+    auto p3 = [&](uint32_t c, uint32_t v) { c &= 0x1FFFFF; if (c >= cc3_.size()) cc3_.resize(c + 1, 0); cc3_[c] = v; };
+    put_bytes(p3, C_TABLES, tables); put_bytes(p3, C_INDEX, tb.index_bytes); put_bytes(p3, C_TEMPLATES, tb.template_bytes);
+    // the tiles: the same image but for the header's words 13 and 15
+    const uint32_t rc = 65536 | units::Replayer::RC_STORE_LOG | units::Replayer::RC_RD_PREV;   // Replayer.runConfig(65536, true, true)
+    std::vector<uint32_t> img(S_TEMPLATES + (tb.template_bytes.size() + 15) / 16 * 4, 0);
+    auto pt = [&](uint32_t c, uint32_t v) { c &= 0x1FFFFF; if (c >= img.size()) img.resize(c + 1, 0); img[c] = v; };
+    put_bytes(pt, S_TABLES, tables); put_bytes(pt, S_INDEX, tb.index_bytes); put_bytes(pt, S_TEMPLATES, tb.template_bytes);
+    uint32_t th[16] = {};
+    th[0] = RL_MAGIC; th[1] = 5; th[2] = S_TABLES; th[3] = S_INDEX; th[4] = uint32_t(tb.index_bytes.size() / 16);
+    th[5] = S_TEMPLATES; th[6] = S_RECORD; th[7] = S_CODE; th[8] = ~0u; th[9] = S_RLOG; th[10] = ~0u; th[11] = S_WLOG;
+    th[12] = ~0u; th[14] = rc;
+    for (uint32_t i = 0; i < 16; i++) pt(S_HDR + i, th[i]);
+    for (uint32_t t = 0; t < 64; t++) {
+        img[S_HDR + 13] = t < windows ? 1 : 0;
+        img[S_HDR + 15] = t >= windows ? 1 : 2;
+        for (uint32_t c = 0; c < img.size(); c++) if (img[c]) tiles_.push_back({t, c, img[c]});
+    }
+}
+
+void Landings::build(const W26& w, const Seg& sg, const Seg* next, std::vector<t2::SramLanding>& out) const {
+    std::vector<uint32_t> c3 = cc3_;
+    auto p3 = [&](uint32_t c, uint32_t v) { c &= 0x1FFFFF; if (c >= c3.size()) c3.resize(c + 1, 0); c3[c] = v; };
     std::vector<uint64_t> rec(2 * 68, 0);
     rec[0] = sg.state[0];
     rec[1] = (sg.state[1] & 0xFFFFFFFFull) | (sg.state[2] & 0xFFFF) << 32;
@@ -353,34 +380,30 @@ void landings(const units::tracer::ReplayTables& tb, const W26& w, const Seg& sg
     uint64_t fw[2];
     units::tracer::Tracer::files_word(w.img.root, w.img.depth, w.map.root, w.map.depth, w.log2k, w.lowest, fw);
     rec[132] = fw[0]; rec[133] = fw[1];
-    put_words(U3, C_RECORD, rec);
+    put_words(p3, C_RECORD, rec);
     std::vector<uint64_t> adv = sg.advice;
     if (adv.size() & 1) adv.push_back(0);
-    put_words(U3, C_ADVICE, adv);
+    put_words(p3, C_ADVICE, adv);
     if (next) {
         std::vector<uint64_t> ex(2 * 66, 0);
         ex[0] = next->state[0];
         ex[1] = (next->state[1] & 0xFFFFFFFFull) | (next->state[2] & 0xFFFF) << 32;
         for (int i = 0; i < 128; i++) ex[4 + size_t(i)] = next->state[3 + i];
-        put_words(U3, C_EXPECT, ex);
+        put_words(p3, C_EXPECT, ex);
     }
     uint32_t h[32] = {};
-    h[0] = TL_MAGIC; h[1] = TL_VERSION; h[2] = C_TABLES; h[3] = C_INDEX; h[4] = uint32_t(tb.index_bytes.size() / 16);
-    h[5] = C_TEMPLATES; h[6] = C_RECORD; h[7] = C_OWN; h[8] = next && windows == 64 ? C_EXPECT : 0; h[9] = C_ADVICE;
+    h[0] = TL_MAGIC; h[1] = TL_VERSION; h[2] = C_TABLES; h[3] = C_INDEX; h[4] = uint32_t(tb_.index_bytes.size() / 16);
+    h[5] = C_TEMPLATES; h[6] = C_RECORD; h[7] = C_OWN; h[8] = next && windows_ == 64 ? C_EXPECT : 0; h[9] = C_ADVICE;
     h[10] = uint32_t(sg.advice.size()); h[11] = 65536 | 0; h[12] = uint32_t(w.hash_p1); h[13] = uint32_t(w.hash_p3);
-    h[14] = uint32_t(w.hash_k); h[15] = windows; h[16] = S_RECORD; h[17] = S_CODE; h[18] = S_RLOG; h[19] = S_WLOG; h[20] = 0;
-    for (uint32_t i = 0; i < 32; i++) poke(U3, C_HDR + i, h[i]);
-    const uint32_t rc = 65536 | units::Replayer::RC_STORE_LOG | units::Replayer::RC_RD_PREV;   // Replayer.runConfig(65536, true, true)
-    for (uint32_t t = 0; t < 64; t++) {
-        put_bytes(t, S_TABLES, tables); put_bytes(t, S_INDEX, tb.index_bytes); put_bytes(t, S_TEMPLATES, tb.template_bytes);
-        uint32_t th[16] = {};
-        th[0] = RL_MAGIC; th[1] = 5; th[2] = S_TABLES; th[3] = S_INDEX; th[4] = uint32_t(tb.index_bytes.size() / 16);
-        th[5] = S_TEMPLATES; th[6] = S_RECORD; th[7] = S_CODE; th[8] = ~0u; th[9] = S_RLOG; th[10] = ~0u; th[11] = S_WLOG;
-        th[12] = ~0u; th[13] = t < windows ? 1 : 0; th[14] = rc; th[15] = t >= windows ? 1 : 2;
-        for (uint32_t i = 0; i < 16; i++) poke(t, S_HDR + i, th[i]);
-    }
-    out.clear();
-    for (const auto& [k, v] : m) if (v != 0) out.push_back({k.first, k.second, v});
+    h[14] = uint32_t(w.hash_k); h[15] = windows_; h[16] = S_RECORD; h[17] = S_CODE; h[18] = S_RLOG; h[19] = S_WLOG; h[20] = 0;
+    for (uint32_t i = 0; i < 32; i++) p3(C_HDR + i, h[i]);
+    out = tiles_;
+    for (uint32_t c = 0; c < c3.size(); c++) if (c3[c]) out.push_back({66, c, c3[c]});
+}
+
+void landings(const units::tracer::ReplayTables& tb, const W26& w, const Seg& sg, const Seg* next, unsigned windows,
+              std::vector<t2::SramLanding>& out) {
+    Landings(tb, windows).build(w, sg, next, out);
 }
 
 // ---- W13's dump forms

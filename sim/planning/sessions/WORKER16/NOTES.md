@@ -284,3 +284,27 @@ receive queue with its controller; C&C c is in tile c's domain). Three points fo
   exit and the end at ref's cycles; the rows equal to rows.bin on all 64 tiles; every tile exited 1; tr_results status
   1, 64 windows; lag_cycles 0. Each run with every point about 3 minutes here.
 - 2026-11-10: make check on 3cf39ef, build by build: 57 test binaries pass on clang and gcc, debug and release; `make tsan-one` on clang (nine binaries) and gcc (the same nine: eight in the make call, test_t2_harness run on its own when the call reached the tool's limit), and TSan `test_chip form2` on both: no race.
+- 2026-11-10: Quest 170 (the runner: the split checked, the first timing): the t2 tool's `--time` (setup and boot apart, the segment in one run to the known end), `--units` (calibrate: by kind, C&C 3's domain alone), `--thread-times`; checked runs in chunks with `--hint-exit`/`--hint-end` (a split run's per-cycle calls each cost a barrier; the hints checked to fall exactly). The split's first 30 points equal here (one core, slow); the kit (`WORKER16/tasks/mk_task.sh`, `t2-body.sh`) builds and boots from a clean extract.
+- 2026-11-10: **Quest 170 (the runner, sim-w16 4a38467; Intel Core i5-14400F, 6 P cores at up to 4.7 GHz, governor
+  powersave, clang 18.1.3 release): ALL PASS.**
+  - **Checked, both programs, one domain and the 6-domain split (mode 3): every point equal** (evm 241 of 241, cyclone
+    285 of 285, every unit and the chip line), C&C 3's exit and the end at ref's cycles, rows 64 of 64 equal to
+    rows.bin, every tile exited 1, **lag_cycles 0 on the split**.
+  - **Timing** (segment only: CC_SEGMENT to the end; setup and boot apart, as W13's baseline; 3 in-process repetitions):
+
+    | run | one thread (1 P core) | µs/cycle | split (6 P cores) | µs/cycle | ref | ×, one thread | ×, split |
+    |---|---|---|---|---|---|---|---|
+    | evm-zone-29 10 (23,933,484 cycles) | 24.30 s (24.29-24.31) | 1.015 | 20.95 s (20.93-20.98) | 0.875 | 46.23 s | 1.90 | 2.21 |
+    | cyclone-29 10 (28,312,353 cycles) | 26.56 s (26.46-26.64) | 0.938 | 24.07 s (24.01-24.11) | 0.850 | 50.90 s | 1.92 | 2.12 |
+
+    Boot 0.006 s (one thread), 0.037 s (split); setup 0.03-0.08 s (the dumps parsed once, outside).
+  - **C&C 3's domain alone** (tile 2 and C&C 3, Options::calibrate, one thread): 15.79 s of evm's 25.96 s, 18.59 s of
+    cyclone's 27.89 s: the split's floor. The split's threads: compute 0.23, **imbalance 0.71**, drain 0.04, publish
+    0.01, barrier wait 0.01 (both runs alike).
+  - **Where the time goes** (calibrate, one thread): units' steps 94.4% / 94.2% of the segment and boot, the rest the
+    framework and harness (with calibrate's own clock reads). By kind (evm / cyclone): the controllers' slots (C&C 3's
+    Tracer) 58.5% / 64.4%; the tiles' slots (the replayers) 31.4% / 25.1%; the controllers' blocks 3.9% / 4.3%; the
+    routers 1.5% / 1.6%; the tiles' blocks 1.4%; every other kind 1.2% or less. **perf** (evm, one thread):
+    SlotCore::peek 34.8% and PeriphSlot::publish 24.1% (the slot's window, republished every step: ~59%),
+    Tracer::word 10.3%, Tracer::settle 2.4%, Replayer::word 3.7%, Replayer::settle 2.1%, TileCtl::step 2.5%, the
+    engine's run_until 1.1%. No optimisation: the owner decides.

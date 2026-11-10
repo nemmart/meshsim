@@ -272,3 +272,14 @@ receive queue with its controller; C&C c is in tile c's domain). Three points fo
 - 2026-11-10: **T2's acceptance check, the rows (Quest 169: rows.bin's count and the replayer's sink hash per window of
   segment 10, computed on the runner): evm-zone-29 and cyclone-29, 64 of 64 tiles equal to rows.bin, count and hash,
   on both runs**; every tile exited 1; tr_results status 1, 64 windows (14,162 and 15,716 transfers); lag_cycles 0.
+- 2026-11-10: merged main (W14's `fingerprint_tracer`): `tr` from it; the PULSE_DMA point (6,300,000) equal, no unit
+  skipped any more.
+- 2026-11-10: the last differences, all the writer's: (1) a consuming EVENTS load: ref records it pending a cycle after
+  it ran (consumeT = s + 1, like the mask store) with its effect applied at s: the writer shows the one noted before
+  the point, and an in-flight one's DMA-done clear as applied; (2) the sleep judgment: a word on its way into the router
+  put after the tile went idle doesn't keep it awake (ref wakes it on arrival); a core halted in the cycle just run
+  isn't asleep yet (ref's idleAt == t).
+- 2026-11-10: **both runs, one domain, mode 3: every point equal, every unit and the chip line: evm-zone-29 241 of 241,
+  cyclone-29 285 of 285** (every 100,000 cycles, C&C 3's exit, the end; the boot's end 1,214 of 1,214 on both); C&C 3's
+  exit and the end at ref's cycles; the rows equal to rows.bin on all 64 tiles; every tile exited 1; tr_results status
+  1, 64 windows; lag_cycles 0. Each run with every point about 3 minutes here.

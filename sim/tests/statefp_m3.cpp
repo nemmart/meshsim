@@ -44,12 +44,15 @@ void w_slot(const void* p, FpOut& o, const FpCtx& x) {
     for (unsigned n = 1; n <= 3; n++) {
         if (s.per[n].type == units::PT_ABSENT) continue;
         // (written below, once the ops of t are known)
-        bool consume = false, mstore = false, pulse = false, mflight = false;
+        bool consume = false, mstore = false, pulse = false, mflight = false, done_cleared = false;
         uint32_t cbits = 0, mval = 0, hdr = s.dma[n].hdr, addr = s.dma[n].addr;
         for (uint32_t i = 0; i < ops.n; i++) {
             const uint64_t op = ops.op[i];
             if (units::CoreOp::n(op) != n) continue;
-            if (units::CoreOp::kind(op) == units::CoreOp::CONSUME) continue;   // executed at t: ref's consumeT is t + 1
+            if (units::CoreOp::kind(op) == units::CoreOp::CONSUME) {         // executed at t: ref's consumeT is t + 1,
+                if (units::CoreOp::value(op) & 2) done_cleared = true;         // its effect already applied (the DMA's done)
+                continue;
+            }
             switch (units::CoreOp::word(op)) {
             case 7: mflight = true; mval = units::CoreOp::value(op); break;   // executed at t: ref has applied it
             case 8: hdr = units::CoreOp::value(op); break;
@@ -70,7 +73,7 @@ void w_slot(const void* p, FpOut& o, const FpCtx& x) {
             const int64_t left = pulse ? int64_t(hdr & 0xFFF) : d.left;
             const int q = pulse ? int((hdr >> 12) & 3) : d.q;
             if (pulse) g_dma_pulse_at_point = true;            // the peripheral's out_start of t isn't in its stream
-            o.w("dma.hdr", hdr); o.w("dma.addr", addr); o.w("dma.done", d.done);
+            o.w("dma.hdr", hdr); o.w("dma.addr", addr); o.w("dma.done", done_cleared ? 0 : d.done);
             o.w("dma.busy", busy); o.w("dma.left", uint64_t(left)); o.w("dma.q", uint64_t(int64_t(q)));
         }
         if (consume) { o.w("consume", 1); o.w("consume.bits", cbits); } else o.w("consume", 0);

@@ -26,7 +26,9 @@
 //            and the sink hash), the replayer clean; no violation; the request bus's lag_cycles 0;
 //   carry    the dirty lines written back (untimed, T1's), then every cell of the update list and every cell updated
 //            so far (the cumulative shadow) against the memory (T1's end checks).
-// The exit and end cycles are the register blocks' sim_exit_at (C&C 3's; the latest of C&C 3's and the tiles').
+// The exit and end cycles are W16's labels (t2's points): the register blocks' sim_exit_at - 1 (C&C 3's; the latest of
+// C&C 3's and the tiles'), equal to t2's on segment 10 of both workloads (Quest 173). A segment's cycles are W16's
+// (the end's label less the boot's end); its time is the run from CC_SEGMENT, which ends within 10,000 cycles of the end.
 #include <algorithm>
 #include <cstdarg>
 #include <chrono>
@@ -101,7 +103,7 @@ struct Opts {
 struct Totals {
     unsigned segments = 0, failed = 0;
     double setup = 0, boot = 0, segment = 0, checks = 0, carry = 0;
-    uint64_t cycles = 0, rows = 0;
+    uint64_t cycles = 0, ran = 0, rows = 0;
 };
 
 // TracerT2.getWords: n128 128-bit words from chunk on (two longs each, a 32-bit word per chunk).
@@ -249,7 +251,7 @@ int main(int argc, char** argv) {
             uint64_t prog = ~uint64_t(0), prog_at = sm.now();
             int64_t cc3_seen = -1;
             for (;;) {
-                sm.run(o.chunk);
+                sm.run(cc3_seen < 0 ? o.chunk : std::min<uint64_t>(o.chunk, 10000));   // finer once C&C 3 has exited
                 const uint64_t c = sm.now();
                 if (tr.stopped()) { why = "the Tracer stopped"; break; }
                 uint64_t p = uint64_t(tr.rows) + slot3.s.dma[1].packets;
@@ -271,8 +273,11 @@ int main(int argc, char** argv) {
         if (why) bad.push_back(fmt("STOPPED: %s (cycle %llu)", why, (unsigned long long)sm.now()));
         // ---- the checks (TracerT2.chip's)
         const units::TileCtl& ctl3 = sm.unit<units::TileCtl>("cc3.ctl");
+        // W16's labels (t2's points; ref's c.cycle - 1): a register block's sim_exit_at is the label + 1 (Quest 173)
         uint64_t end_at = ctl3.s.sim_exit_at;
         for (unsigned k = 0; k < 64; k++) end_at = std::max(end_at, sm.unit<units::TileCtl>(units::tile_unit(k, "ctl")).s.sim_exit_at);
+        const uint64_t exit_label = ctl3.s.sim_exit_at ? ctl3.s.sim_exit_at - 1 : 0, end_label = end_at ? end_at - 1 : 0;
+        const uint64_t seg_cycles = boot_end >= 0 && end_label > uint64_t(boot_end) ? end_label - uint64_t(boot_end) : 0;   // as W16's timing
         const uint32_t* d3 = m->dmem(66);
         const uint32_t R = cc3.at("tr_results") / 4;
         const uint32_t status = d3[R], wins = d3[R + 1], transfers = d3[R + 4], terr = d3[R + 6], left = d3[R + 7], diff = d3[R + 8];
@@ -337,7 +342,7 @@ int main(int argc, char** argv) {
         const auto t4 = Clock::now();
         // ---- T1's harness at the segment's end: the dirty lines written back; the update list and the shadow
         const int dirty = tr.write_back_dirty_untimed();
-        const uint64_t cc3_exit = ctl3.s.sim_exit_at, packets = slot3.s.dma[1].packets;
+        const uint64_t packets = slot3.s.dma[1].packets;
         const long long run_cycles = (long long)tr.run_cycles, drain_cycles = (long long)tr.drain_cycles;
         tr.mem = nullptr;
         m.reset();
@@ -362,22 +367,22 @@ int main(int argc, char** argv) {
         const bool ok = bad.empty();
         tot.segments++; if (!ok) tot.failed++;
         tot.setup += secs(t0, t1); tot.boot += secs(t1, t2_); tot.segment += secs(t2_, t3); tot.checks += secs(t3, t4); tot.carry += secs(t4, t5);
-        tot.cycles += ran; tot.rows += rows;
-        std::printf("%s segment %u: %s  start %s, landings %s; boot-end %lld; C&C 3 exit %llu, end %llu (sim_exit_at); ran %llu cycles; "
+        tot.cycles += seg_cycles; tot.ran += ran; tot.rows += rows;
+        std::printf("%s segment %u: %s  start %s, landings %s; boot-end %lld; C&C 3 exit %llu, end %llu; segment %llu cycles (ran %llu); "
                     "tr_results status %u windows %u transfers %u; DMA packets %llu; trace rows %lld, drain %lld cycles; replay max %llu; "
                     "states %u, streams %u of %u, exits %u, rows %u (%llu rows), clean %u; lag 0; owned %zu (created %d), dirty %d, cells %zu (shadow %zu); "
                     "setup %.3f s, boot %.3f s, segment %.3f s (%.4f us/cycle), checks %.3f s, carry %.3f s\n",
                     o.program.c_str(), s, ok ? "OK" : "FAIL", start_v.c_str(), sram_v.c_str(), (long long)boot_end,
-                    (unsigned long long)cc3_exit, (unsigned long long)end_at, (unsigned long long)ran, status, wins, transfers,
+                    (unsigned long long)exit_label, (unsigned long long)end_label, (unsigned long long)seg_cycles, (unsigned long long)ran, status, wins, transfers,
                     (unsigned long long)packets, run_cycles, drain_cycles, (unsigned long long)replay_max,
                     states_ok, streams_ok, streams_n, exits, rows_ok, (unsigned long long)rows, clean, written.size(), created, dirty,
-                    sg.updates.size(), shadow.size(), secs(t0, t1), secs(t1, t2_), secs(t2_, t3), ran ? 1e6 * secs(t2_, t3) / double(ran) : 0.0,
+                    sg.updates.size(), shadow.size(), secs(t0, t1), secs(t1, t2_), secs(t2_, t3), seg_cycles ? 1e6 * secs(t2_, t3) / double(seg_cycles) : 0.0,
                     secs(t3, t4), secs(t4, t5));
         for (const std::string& x : bad) std::printf("    %s\n", x.c_str());
         std::fflush(stdout);
     }
-    std::printf("%s: segments %u-%u: %u of %u OK; %llu cycles, %llu rows; setup %.2f s, boot %.2f s, segment %.2f s (%.4f us/cycle), checks %.2f s, carry %.2f s; "
-                "total %.2f s\n", o.program.c_str(), o.s0, o.s1, tot.segments - tot.failed, tot.segments, (unsigned long long)tot.cycles,
+    std::printf("%s: segments %u-%u: %u of %u OK; %llu segment cycles (ran %llu), %llu rows; setup %.2f s, boot %.2f s, segment %.2f s (%.4f us/cycle), checks %.2f s, carry %.2f s; "
+                "total %.2f s\n", o.program.c_str(), o.s0, o.s1, tot.segments - tot.failed, tot.segments, (unsigned long long)tot.cycles, (unsigned long long)tot.ran,
                 (unsigned long long)tot.rows, tot.setup, tot.boot, tot.segment, tot.cycles ? 1e6 * tot.segment / double(tot.cycles) : 0.0,
                 tot.checks, tot.carry, secs(t_load, Clock::now()));
     return tot.failed ? 1 : 0;

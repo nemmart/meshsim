@@ -1,5 +1,12 @@
 # Milestone 3: v1.3 as it runs: the Tracer and the replayers
 
+**Reached 2026-11-10.** T2, v1.3's segment test, runs on the new framework **exactly as `ref`**: evm-zone-29 and
+cyclone-29 segment 10 equal at every point (241 and 285), every unit and the chip line, on one thread and on T2's 6-domain
+split; T2's acceptance check passes (rows equal `rows.bin` on all 64 tiles, every tile exits 1, C&C 3's 64 windows).
+**After D35 (Quest 171): evm's segment in 7.10 s and cyclone's in 7.81 s on one thread, 6.5× `ref`'s 46.2 s / 50.9 s**
+(and ~150× v1.3's acceptance run's ~18 min without idle-skip). The split no longer helps (within 2%): T2 is serial on
+C&C 3's Tracer, whose domain alone is ~two thirds of the segment. One deliberate difference (D33).
+
 Draft, 2026-11-09, from the owner's target; refined when W13's audit lands. Decisions are in `DECISIONS.md` (D32 for
 this milestone); M2's close-out and what it carried here are in `PLAN-M2.md`.
 

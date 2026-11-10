@@ -283,3 +283,4 @@ receive queue with its controller; C&C c is in tile c's domain). Three points fo
   cyclone-29 285 of 285** (every 100,000 cycles, C&C 3's exit, the end; the boot's end 1,214 of 1,214 on both); C&C 3's
   exit and the end at ref's cycles; the rows equal to rows.bin on all 64 tiles; every tile exited 1; tr_results status
   1, 64 windows; lag_cycles 0. Each run with every point about 3 minutes here.
+- 2026-11-10: make check on 3cf39ef, build by build: 57 test binaries pass on clang and gcc, debug and release; `make tsan-one` on clang (nine binaries) and gcc (the same nine: eight in the make call, test_t2_harness run on its own when the call reached the tool's limit), and TSan `test_chip form2` on both: no race.

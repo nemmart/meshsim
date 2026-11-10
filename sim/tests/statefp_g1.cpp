@@ -63,14 +63,22 @@ G1Tile g1_tile(sim::Sim& s, unsigned k) {
 }
 
 void w_core(const void* p, FpOut& o, const FpCtx& x) {
-    const units::Rv32& k = *tile(p).core;
+    const G1Tile& g = tile(p);
+    const units::Rv32& k = *g.core;
     const uint64_t c = x.cycle;
     uint64_t mcycle = k.mcycle;
     uint32_t stall = k.stall;
-    if (k.stop != units::Stop::running) mcycle += c - k.stop_cycle;      // ref's halted core: mcycle++ every cycle
+    if (k.stop != units::Stop::running) {                               // ref's halted core: mcycle++ every cycle
+        // W16: as a sleeping one, under M3's cyc one less when ref's idle-skip has put it to sleep (a halted core can)
+        // (ref's idleAt == t: a core halted in the cycle just run hasn't been idle for a whole cycle yet)
+        const bool asleep = x.label_shift && c > k.stop_cycle + 1 && (!g.ref_asleep || g.ref_asleep(g.ref_asleep_ctx, g.tile, x));
+        mcycle += c - k.stop_cycle - (asleep ? x.label_shift : 0);
+    }
     else if (c > k.last) {                                              // asleep since `last`: in a WFI or a stall
         uint64_t gap = c - k.last;
-        mcycle += gap - (k.in_wfi ? x.label_shift : 0);                 // ref's lag: cyc - countedTo (W16: M3's cyc)
+        // ref's lag: cyc - countedTo, only for a unit its idle-skip put to sleep (W16: under M3's cyc, one less)
+        const bool asleep = x.label_shift && k.in_wfi && (!g.ref_asleep || g.ref_asleep(g.ref_asleep_ctx, g.tile, x));
+        mcycle += gap - (asleep ? x.label_shift : 0);
         if (!k.in_wfi) stall -= uint32_t(gap);
     }
     o.w("pc", k.pc);
@@ -155,7 +163,7 @@ void w_dir(const void* p, FpOut& o, const FpCtx& x) {
     uint64_t due[kMax], ctr[kMax];
     if (g.sim && g.uctl)                                                 // the K-line: decrements due after c
         for (uint32_t i = 0, m = entries(g, g.uctl->kline, e); i < m; i++)
-            if (e[i].at > x.cycle + 1 - x.label_shift) { due[n] = e[i].at - 1; ctr[n] = e[i].w[0]; n++; }   // ref: due > cyc
+            if (e[i].at > x.cycle + 1) { due[n] = e[i].at - 1; ctr[n] = e[i].w[0]; n++; }
     o.w("line.n", n);
     for (uint32_t i = 0; i < n; i++) { o.w("line.due", due[i]); o.w("line.ctr", ctr[i]); }
     BusEntry be[kMax];

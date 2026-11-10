@@ -11,6 +11,10 @@
 #include "units/tracer.h"
 
 namespace fp {
+
+thread_local bool g_dma_pulse_at_point = false;
+const M3Chip* g_m3 = nullptr;
+
 namespace {
 
 LineEdge line_edge_m3(const void* ctx, unsigned k, uint64_t c) {
@@ -39,42 +43,57 @@ void w_slot(const void* p, FpOut& o, const FpCtx& x) {
     const OpsAtT ops = ops_at(*x.sim, sl);
     for (unsigned n = 1; n <= 3; n++) {
         if (s.per[n].type == units::PT_ABSENT) continue;
-        o.wi("mask", n, s.mask[n]);
-        bool consume = false, mstore = false;
+        // (written below, once the ops of t are known)
+        bool consume = false, mstore = false, pulse = false, mflight = false, done_cleared = false;
         uint32_t cbits = 0, mval = 0, hdr = s.dma[n].hdr, addr = s.dma[n].addr;
         for (uint32_t i = 0; i < ops.n; i++) {
             const uint64_t op = ops.op[i];
             if (units::CoreOp::n(op) != n) continue;
-            if (units::CoreOp::kind(op) == units::CoreOp::CONSUME) { consume = true; cbits = units::CoreOp::value(op); continue; }
+            if (units::CoreOp::kind(op) == units::CoreOp::CONSUME) {         // executed at t: ref's consumeT is t + 1,
+                if (units::CoreOp::value(op) & 2) done_cleared = true;         // its effect already applied (the DMA's done)
+                continue;
+            }
             switch (units::CoreOp::word(op)) {
-            case 7: mstore = true; mval = units::CoreOp::value(op); break;
+            case 7: mflight = true; mval = units::CoreOp::value(op); break;   // executed at t: ref has applied it
             case 8: hdr = units::CoreOp::value(op); break;
             case 9: addr = units::CoreOp::value(op); break;
-            case 4:
-                std::fprintf(stderr, "statefp_m3: slot of unit %u: PULSE_DMA stored at the point's cycle %llu (not representable)\n",
-                             s.tile, (unsigned long long)x.cycle);
-                std::abort();
+            case 4: pulse = units::CoreOp::value(op) & 1; break;   // SlotCore::dma_start, as ref applied it at t
             default: break;
             }
         }
+        o.wi("mask", n, mflight ? mval : s.mask[n]);
+        // ref's pending store: the one executed at t - 1 (noted by m3_note_before), shown at t
+        const M3Chip::MaskStore& ms = g_m3->mask_store[s.tile][n];
+        if (ms.seen && ms.at + 1 == x.cycle) { mstore = true; mval = ms.v; } else mstore = false;
+        const M3Chip::MaskStore& cs = g_m3->consume[s.tile][n];
+        if (cs.seen && cs.at + 1 == x.cycle) { consume = true; cbits = cs.v; }
         if (s.per[n].type == units::PT_TRACER) {                  // the peripherals with output queues (ref: the Tracer)
             const units::SlotCore::Dma& d = s.dma[n];
-            o.w("dma.hdr", hdr); o.w("dma.addr", addr); o.w("dma.done", d.done);
-            o.w("dma.busy", d.busy); o.w("dma.left", uint64_t(d.left)); o.w("dma.q", uint64_t(int64_t(d.q)));
+            const bool busy = pulse || d.busy;
+            const int64_t left = pulse ? int64_t(hdr & 0xFFF) : d.left;
+            const int q = pulse ? int((hdr >> 12) & 3) : d.q;
+            if (pulse) g_dma_pulse_at_point = true;            // the peripheral's out_start of t isn't in its stream
+            o.w("dma.hdr", hdr); o.w("dma.addr", addr); o.w("dma.done", done_cleared ? 0 : d.done);
+            o.w("dma.busy", busy); o.w("dma.left", uint64_t(left)); o.w("dma.q", uint64_t(int64_t(q)));
         }
         if (consume) { o.w("consume", 1); o.w("consume.bits", cbits); } else o.w("consume", 0);
         if (mstore) { o.w("maskStore", 1); o.w("maskStore.v", mval); } else o.w("maskStore", 0);
     }
 }
 
-// 6.8: W15's (asked); a placeholder until then.
-void w_rp(const void*, FpOut& o, const FpCtx&) { o.w("rp-not-yet", 0); }
+// 6.8: W15's PeriphSlot::fingerprint_replayer (the replayer's stream with the inputs still in the slot's links).
+void w_rp(const void* p, FpOut& o, const FpCtx& x) {
+    units::PeriphSlot& sl = const_cast<units::PeriphSlot&>(*static_cast<const units::PeriphSlot*>(p));
+    sl.fingerprint_replayer(*x.sim, 1, o, int64_t(x.cycle));
+}
 
-struct TrRef { const units::tracer::Tracer* tr; int unit; };
+// The Tracer's five (6.6): W14's PeriphSlot::fingerprint_tracer, which adds what is still in the slot's links (the
+// PULSE_DMA start, region packets accepted at c - 2 .. c, a PULSE_RUN or window store of c, a consuming EVENTS load of c).
+struct TrRef { const units::PeriphSlot* slot; int unit; };
 TrRef g_tr[5];
 void w_tr(const void* p, FpOut& o, const FpCtx& x) {
     const TrRef& r = *static_cast<const TrRef*>(p);
-    r.tr->fingerprint(r.unit, o, int64_t(x.cycle));
+    const_cast<units::PeriphSlot&>(*r.slot).fingerprint_tracer(*x.sim, 1, r.unit, o, int64_t(x.cycle));
 }
 
 // 6.9 cc1p: C&C 1's peripheral. READY per tile (0 none or cleared, 1 visible at t, else its arrival), expect, the error
@@ -186,6 +205,39 @@ void w_cnc_idle(const void* p, FpOut& o, const FpCtx& x) {
 void w_ep_idle(const void*, FpOut& o, const FpCtx&) { fifo_empty(o, "memsub.rx"); fifo_empty(o, "cc3.rx"); }
 
 
+// ref's idle-skip sleep at the end of t (Chip.asleep: Tile.canSleep held), judged on the framework's state: the core is
+// in a WFI (the writer's caller checks), and nothing of the tile is in motion: no router FIFO occupied, no word on its
+// way into the router, the director's K-line or the send hold, nothing on the slot's core Link, the slot idle.
+bool ref_asleep_m3(const void* ctx, unsigned k, const FpCtx& x) {
+    const M3Chip& c = *static_cast<const M3Chip*>(ctx);
+    const sim::Sim& s = *x.sim;
+    sim::PortEntry e[64];
+    const units::Router& r = *c.g2[k].router;
+    const uint64_t last = c.g1[k].core->last;                   // the core's last step (framework)
+    // a word on its way in blocks the sleep only if it was put while the tile was still active (ref's pendingIn at the
+    // cycle it would have gone to sleep); one put after that wakes it on arrival, not before
+    auto blocks = [&](const sim::PortView& v, uint64_t latency) {
+        for (uint32_t i = 0; i < v.n; i++) if (e[i].at - latency <= last) return true;
+        return false;
+    };
+    if (r.occ) return false;
+    if (r.cc) {
+        if (blocks(s.observe(r.in[units::Router::CC_LINK_IN], e, 64), c.cc_link_latency) || s.observe(r.host, e, 64).n) return false;
+        if (r.has_dma && s.observe(r.dma, e, 64).n) return false;
+    } else {
+        for (unsigned d = 0; d < 4; d++) if (blocks(s.observe(r.in[d], e, 64), c.link_latency)) return false;
+        if (r.attached && r.fifth_link && blocks(s.observe(r.from_cc, e, 64), c.cc_link_latency)) return false;
+    }
+    if (s.observe(r.inj, e, 64).n) return false;
+    if (s.observe(c.g1[k].uctl->kline, e, 64).n) return false;
+    const sim::PortView hv = s.observe(c.g2[k].inj->send, e, 4);
+    if (hv.valid || hv.put) return false;
+    const units::PeriphSlot& sl = *c.slot[k];
+    if (s.observe(sl.core, e, 8).n) return false;
+    if (!const_cast<units::SlotCore&>(sl.s).idle(int64_t(x.cycle - x.label_shift))) return false;
+    return true;
+}
+
 }  // namespace
 
 void m3_attach(sim::Sim& s, M3Chip& c, const units::reqbus::ReqBusConfig& rc) {
@@ -205,6 +257,7 @@ void m3_attach(sim::Sim& s, M3Chip& c, const units::reqbus::ReqBusConfig& rc) {
     const units::Cnc1Peripheral& cp = *static_cast<const units::Cnc1Peripheral*>(s1.s.per[1].p);
     c.gc.cc_rows = s1.own.link_in + cp.row0;
     c.gc.edge = line_edge_m3; c.gc.edge_ctx = c.g1;
+    for (unsigned k = 0; k < 67; k++) { c.g1[k].ref_asleep = ref_asleep_m3; c.g1[k].ref_asleep_ctx = &c; }
     c.tr = c.slot[66]->s.per[1].type == units::PT_TRACER ? static_cast<const units::tracer::Tracer*>(c.slot[66]->s.per[1].p) : nullptr;
     c.names.clear();
     for (unsigned k = 0; k < 67; k++) {
@@ -216,7 +269,21 @@ void m3_attach(sim::Sim& s, M3Chip& c, const units::reqbus::ReqBusConfig& rc) {
     for (const char* u : {"cc1p", "cc.host", "reqbus", "cnc", "ep"}) c.names.push_back(u);
 }
 
+void m3_note_before(M3Chip& c, const sim::Sim& s, uint64_t label) {
+    for (unsigned k = 0; k < 67; k++) {
+        const OpsAtT ops = ops_at(s, *c.slot[k]);
+        for (uint32_t i = 0; i < ops.n; i++) {
+            const uint64_t op = ops.op[i];
+            if (units::CoreOp::kind(op) == units::CoreOp::STORE && units::CoreOp::word(op) == 7)
+                c.mask_store[k][units::CoreOp::n(op)] = {true, label, units::CoreOp::value(op)};
+            if (units::CoreOp::kind(op) == units::CoreOp::CONSUME)
+                c.consume[k][units::CoreOp::n(op)] = {true, label, units::CoreOp::value(op)};
+        }
+    }
+}
+
 void m3_register(FpRegistry& r, M3Chip& c) {
+    g_m3 = &c;
     for (unsigned k = 0; k < 67; k++) {
         register_g1(r, c.g1[k]);
         register_g2_tile(r, c.g2[k]);
@@ -225,7 +292,7 @@ void m3_register(FpRegistry& r, M3Chip& c) {
     }
     if (c.tr) {
         static const char* kTr[5] = {"tr", "tr.ic", "tr.dc", "tr.mem", "tr.files"};
-        for (int u = 0; u < 5; u++) { g_tr[u] = {c.tr, u}; r.add(kTr[u], w_tr, &g_tr[u]); }
+        for (int u = 0; u < 5; u++) { g_tr[u] = {c.slot[66], u}; r.add(kTr[u], w_tr, &g_tr[u]); }
     }
     g_cc1p.c = &c;
     r.add("cc1p", w_cc1p_m3, &g_cc1p);
@@ -246,7 +313,9 @@ void m3_point(const FpRegistry& r, const M3Chip& c, const FpCtx& x, std::vector<
     for (const std::string& n : c.names) {
         FpCtx y = x;
         if (!m3_own_writer(n)) { y.cycle += m2_offset; y.label_shift = m2_offset; }
+        g_hide_last_put = y.label_shift != 0;
         const uint64_t h = r.hash(n, y);
+        g_hide_last_put = false;
         hs.push_back(h);
         std::snprintf(b, sizeof b, "%llu %s %016llx", (unsigned long long)x.cycle, n.c_str(), (unsigned long long)h);
         out.push_back(b);

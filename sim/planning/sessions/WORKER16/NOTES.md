@@ -228,3 +228,59 @@ receive queue with its controller; C&C c is in tile c's domain). Three points fo
     a stall or awake, not), to be checked at every 100,000-cycle point in the segment.
   - The Tracer's memory: `t2::attach_store` (Tracer::own_memory, M3Seg's MemorySystem over the carried store).
 - 2026-11-09: make check build by build after the M3 fingerprint: 54 test binaries pass on clang and gcc, debug and release (test_chip's wfi, regs, a2a and test_sort's 16K sort against golden-m2 unchanged: label_shift 0); `make tsan-one` on both compilers (nine binaries, no race).
+- 2026-11-09: **the segment** (the t2 tool's `--segment`: CC_SEGMENT as M3Seg sends it, then M3Seg's run: points every
+  100,000 cycles, C&C 3's exit, the end when every tile has exited). On one domain, mode 3: **evm-zone-29 segment 10:
+  C&C 3 exits at 23,694,305 and the run ends at 23,940,706; cyclone-29 segment 10: 28,106,741 and 28,319,575: all four
+  equal to ref's** (golden-m3's `# cc3-exit`, `# end`); `lag_cycles` 0 on both. About 50 s for evm's 24 M cycles on this
+  container's one core. The split (6 domains) is too slow here (one core, a barrier every 3 cycles): it goes to the
+  runner. Every point's units against the references' unit lines: Quest 168 (fpchip.gz) claimed and pushed.
+- 2026-11-09: **the segment's points** (Quest 168: the references' unit lines; a local ref oracle, `tests/ref/M3Local.java`:
+  ref's T2 chip from W13's two dumps, run to point T, StateFpM3.dump of named units: 5-60 s): evm-zone-29, every
+  100,000-cycle point from 100,000 to 15,100,000 compared (rp and chip left out): **all units equal at every point but
+  three** after these fixes:
+  - **the "asleep" approximation misjudged first** (t1.core's mcycle at 400,000: ref awake, the writer had taken a WFI
+    core not stepped for asleep): now `ref_asleep_m3` (statefp_m3), Tile.canSleep's conditions on the framework's state
+    (in a WFI, no router FIFO occupied, nothing on its way into the router, the K-line or the send hold, the slot idle
+    with nothing on its core Link), through a hook in G1Tile (null: M2's behaviour).
+  - **a put made in the cycle that just ran** is not yet in ref's lazily settled bus under M3's labelling (ref's lastT =
+    cyc + 1): left out by fifo()/hold() (`g_hide_last_put`, set by m3_point around M2's writers) and by the router's
+    fp_own (`put_at > cyc`); the director's K-line keeps M2's filter (my label shift there was wrong: reverted).
+  - **PULSE_DMA of t in flight** at a point: the slot's DMA written as ref applied it (busy, left, q from DMA_HDR).
+  Remaining: (1) `tr` at 6,300,000: the same PULSE_DMA's out_start in the Tracer (ref applied it at t): needs an overlay
+  in W14's Tracer::fingerprint (asked through the owner); (2) `cc3.slot` at 10,800,000 and 11,500,000: ref writes an
+  EVENTS_MASK store pending at the point (pendMaskT == t) where the framework's store was a cycle earlier (C&C 3's pc
+  equal at both points; mask 0x43 then 0x7c3): under investigation (possibly a question for W15: the slot's store
+  timing); (3) the background run stopped at 15,100,000 without an error (this container; to rerun).
+- 2026-11-10: merged main (W15's `PeriphSlot::fingerprint_replayer`): `rp` from it on tiles 0-63; **every unit at the
+  boot's end equal on both runs, 1,214 of 1,214, the chip line included.**
+- 2026-11-10: **the silent stop at 15,100,000 was a crash**, not the tool: the router's fp_own counted a put of cyc
+  followed by a take in the last cycle (a FIFO emptied: count - 1 underflowed). ref settles a pending put on any access,
+  so such a put is an entry like the others: `took_after_put` (set by a take, cleared by a put) in the router's FIFOs.
+  The whole evm run with every point takes about 3 minutes here, inside the tool's limit.
+- 2026-11-10: **cc3.slot's EVENTS_MASK at 10,800,000: the writer's labelling.** ref records a store executed at s as
+  pending at s + 1 (pendMaskT = s + 1) with the mask already applied at s (C&C 3 executes `sw EVENTS_MASK` at pc
+  0x1000da0 in cycle s in both). The writer: a store in flight (executed at t) shows the new mask, no pending store; a
+  store executed at t - 1 (`m3_note_before`, run at the cycle before each point) shows as ref's pending store.
+- 2026-11-10: **halted cores** are judged like sleeping ones for the mcycle lag (a halted core can be put to sleep):
+  the tiles' halted cores at the end needed the shift, C&C 3's (still busy) didn't.
+- 2026-11-10: **evm-zone-29 segment 10, to the end, one domain, mode 3**: 241 points checked (every 100,000 cycles, C&C
+  3's exit, the end), every unit and the chip line: **237 equal; 4 with one unit each**: cc3.slot at 11,500,000 and
+  18,100,000 (a variant of the mask store, to pin down), t4.core at 22,900,000 and t19.core at the end (tile 19 halted
+  in the last cycle: the halted/asleep judgment); `tr` skipped at 6,300,000 (W14's overlay). tr_results status 1,
+  64 windows, 14,162 transfers; all 64 tiles exited 1; lag_cycles 0. The rows: Quest 169 (rows.bin's count and sink hash
+  per window) claimed and pushed, not back yet.
+- 2026-11-10: **T2's acceptance check, the rows (Quest 169: rows.bin's count and the replayer's sink hash per window of
+  segment 10, computed on the runner): evm-zone-29 and cyclone-29, 64 of 64 tiles equal to rows.bin, count and hash,
+  on both runs**; every tile exited 1; tr_results status 1, 64 windows (14,162 and 15,716 transfers); lag_cycles 0.
+- 2026-11-10: merged main (W14's `fingerprint_tracer`): `tr` from it; the PULSE_DMA point (6,300,000) equal, no unit
+  skipped any more.
+- 2026-11-10: the last differences, all the writer's: (1) a consuming EVENTS load: ref records it pending a cycle after
+  it ran (consumeT = s + 1, like the mask store) with its effect applied at s: the writer shows the one noted before
+  the point, and an in-flight one's DMA-done clear as applied; (2) the sleep judgment: a word on its way into the router
+  put after the tile went idle doesn't keep it awake (ref wakes it on arrival); a core halted in the cycle just run
+  isn't asleep yet (ref's idleAt == t).
+- 2026-11-10: **both runs, one domain, mode 3: every point equal, every unit and the chip line: evm-zone-29 241 of 241,
+  cyclone-29 285 of 285** (every 100,000 cycles, C&C 3's exit, the end; the boot's end 1,214 of 1,214 on both); C&C 3's
+  exit and the end at ref's cycles; the rows equal to rows.bin on all 64 tiles; every tile exited 1; tr_results status
+  1, 64 windows; lag_cycles 0. Each run with every point about 3 minutes here.
+- 2026-11-10: make check on 3cf39ef, build by build: 57 test binaries pass on clang and gcc, debug and release; `make tsan-one` on clang (nine binaries) and gcc (the same nine: eight in the make call, test_t2_harness run on its own when the call reached the tool's limit), and TSan `test_chip form2` on both: no race.

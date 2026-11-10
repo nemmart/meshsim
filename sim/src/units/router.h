@@ -75,6 +75,7 @@ struct Router {
         uint16_t base = 0;            // its first entry in `store`
         uint8_t cap = 0, head = 0, count = 0;
         uint8_t put_kept = 0;         // the last put was pushed (else dropped: an overflow)
+        uint8_t took_after_put = 0;   // W16: a take since the last put (M3's labelling: ref's take settles a pending put)
         uint64_t put_at = 0;          // the cycle of the last put (0: none)
         uint64_t put_w[3] = {};
         uint64_t overflows = 0, first_overflow = 0;
@@ -172,6 +173,7 @@ inline bool Router::select(unsigned o, uint32_t m, Sel& s, uint32_t& taken) {
         s.w[0] = e[0]; s.w[1] = e[1]; s.w[2] = e[2]; s.slot = f;
         q.head = uint8_t(q.head + 1 == q.cap ? 0 : q.head + 1);
         if (--q.count == 0) occ &= ~(1u << (base + f));
+        q.took_after_put = 1;
         taken |= 1u << (base + f);
         if (o != EJECT || f != slot_of[EJECT][LOOPBACK]) rr[o] = uint8_t(f);
         return true;
@@ -186,7 +188,7 @@ inline void Router::push(sim::Ctx& c, unsigned o, unsigned port, const uint64_t*
     const unsigned i = first[o] + f;
     Fifo& q = this->q[i];
     const uint64_t t = c.now();
-    q.put_at = t; q.put_w[0] = w[0]; q.put_w[1] = w[1]; q.put_w[2] = w[2];
+    q.put_at = t; q.put_w[0] = w[0]; q.put_w[1] = w[1]; q.put_w[2] = w[2]; q.took_after_put = 0;
     if (q.count + (taken >> i & 1) >= q.cap) {
         q.put_kept = 0;
         if (q.overflows++ == 0) q.first_overflow = t;
@@ -327,8 +329,12 @@ void Router::fp_own(Out& o, uint64_t cyc) const {
     for (unsigned k = 0; k < kOut; k++) o.w("rr", rr[k]);
     for (unsigned i = 0; i < n_fifos; i++) {
         const Fifo& f = q[i];
-        const bool now = f.put_at == cyc && cyc != 0;
-        const unsigned n = now && f.put_kept ? f.count - 1u : f.count;   // a put of cyc is listed apart
+        // A put of cyc is listed apart (ref's pending put, lastT == cyc). W16, M3's labelling (cyc the cycle before the
+        // last one run): a put after cyc (ref's lastT = cyc + 1) isn't in ref's FIFO yet; a put of cyc followed by a take
+        // in the last cycle was settled by it (ref commits a pending put on an access): an entry like the others.
+        const bool later = f.put_at > cyc;
+        const bool now = !later && f.put_at == cyc && cyc != 0 && !f.took_after_put;
+        const unsigned n = (now || later) && f.put_kept ? f.count - 1u : f.count;
         o.w("n", n);
         for (unsigned k = 0; k < n; k++) {
             unsigned j = f.head + k; if (j >= f.cap) j -= f.cap;

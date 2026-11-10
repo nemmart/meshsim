@@ -159,7 +159,7 @@ void hold_port(FpOut& o, const char* nm, const sim::Sim* s, const sim::HoldIn& p
 void w_router(const void* p, FpOut& o, const FpCtx& x) {
     const G2Tile& g = *static_cast<const G2Tile*>(p);
     const units::Router& r = *g.router;
-    r.fp_own(o, x.cycle);
+    r.fp_own(o, x.cycle - x.label_shift);                             // W16: ref's cyc (M3: puts of c + 1 not yet in)
     static const char* const kLink[4] = {"link0", "link1", "link2", "link3"};
     if (r.cc) {                                                       // W16: a controller's router (FEEDERS_CC)
         link_port(o, kLink[0], x.sim, r.in[units::Router::CC_LINK_IN]);

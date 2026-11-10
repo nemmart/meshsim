@@ -53,6 +53,10 @@ struct G1Tile {
     const units::AddrGen* uag = nullptr;          // G4 (W12)
     const units::Gather* ugather = nullptr;       // G4 (W12)
     const units::reqbus::ReqLeaf* uleaf = nullptr;   // W14: the request port's leaf (null: no bus, the idle stream)
+    // W16 (M3): ref's idle-skip sleep (Chip.asleep, Tile.canSleep), which the framework doesn't model, as the M3 chip's
+    // writer judges it (a sleeping core's mcycle under M3's labelling); null: a core in a WFI not stepped at c
+    bool (*ref_asleep)(const void* ctx, unsigned k, const FpCtx& x) = nullptr;
+    const void* ref_asleep_ctx = nullptr;
     const units::Core* m1core = nullptr;          // W5's M1 core: the bench's port-B words on `memw`
     const units::RegBlock* m1ctl = nullptr;       // W5's M1 block: its inputs in flight (bus, GO, landed, freed)
 };

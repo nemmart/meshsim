@@ -29,7 +29,7 @@ namespace {
 
 // The golden's unit lines by point: label -> name -> hash (fpchip.gz: "c name hash" lines, `#` lines skipped).
 using Points = std::map<uint64_t, std::map<std::string, std::string>>;
-unsigned g_tr_skipped = 0;
+unsigned g_dma_points = 0;      // points with a PULSE_DMA of t in flight (all units compared: W14's overlay)
 bool load_points(const std::string& path, Points& p, std::string& err) {
     std::vector<uint8_t> raw;
     if (!t2::read_gz(path, raw, err)) return false;
@@ -47,8 +47,7 @@ bool load_points(const std::string& path, Points& p, std::string& err) {
     return true;
 }
 
-// One point: every unit and the chip line against the golden's (the chip and tr skipped, and counted, at a point with
-// a PULSE_DMA of t in flight: the Tracer's out_start isn't in its stream yet, W14). Returns the differing
+// One point: every unit and the chip line against the golden's. Returns the differing
 // units' count; prints the first few.
 unsigned check_point(const fp::FpRegistry& reg, const fp::M3Chip& mc, sim::Sim& s, uint64_t t, const Points& gold, unsigned m2_off,
                      const char* tag) {
@@ -57,15 +56,13 @@ unsigned check_point(const fp::FpRegistry& reg, const fp::M3Chip& mc, sim::Sim& 
     std::vector<std::string> lines;
     fp::g_dma_pulse_at_point = false;
     fp::m3_point(reg, mc, fp::FpCtx{t, &s}, lines, m2_off);
-    const bool pulse = fp::g_dma_pulse_at_point;
+    if (fp::g_dma_pulse_at_point) g_dma_points++;
     unsigned bad = 0, shown = 0, eq = 0;
     for (const std::string& l : lines) {
         const size_t a = l.find(' '), b = l.rfind(' ');
         const std::string n = l.substr(a + 1, b - a - 1), h = l.substr(b + 1);
-        if (n == "chip" && pulse) continue;                    // it hashes the skipped tr
         auto g = it->second.find(n);
         if (g != it->second.end() && g->second == h) { eq++; continue; }
-        if (pulse && n == "tr") { g_tr_skipped++; std::printf("  point %llu (%s): tr not compared (a PULSE_DMA of t in flight: the Tracer's out_start)\n", (unsigned long long)t, tag); continue; }
         bad++;
         if (shown++ < 8) std::printf("  point %llu (%s): %s differs\n", (unsigned long long)t, tag, n.c_str());
     }
@@ -126,7 +123,7 @@ int run_segment(t2::Machine& mach, sim::Sim& s, const std::string& fp_points, co
     const uint64_t t_end = s.now() - 2;
     std::printf("end: %s at cycle %llu (ref's c.cycle %llu)\n", why, (unsigned long long)t_end, (unsigned long long)(s.now() - 1));
     if (!gold.empty()) { points++; if (check_point(reg, mc, s, t_end, gold, m2_off, "end")) bad_points++; }
-    std::printf("points: %u checked, %u with a difference, tr skipped at %u; request bus lag_cycles %llu; parts %u\n", points, bad_points, g_tr_skipped,
+    std::printf("points: %u checked, %u with a difference, a PULSE_DMA in flight at %u; request bus lag_cycles %llu; parts %u\n", points, bad_points, g_dma_points,
                 (unsigned long long)mc.rbu.root->lag_cycles(), parts);
     // M3Seg's checks at the end: C&C 3's tr_results; every tile's exit value and its rows (count and sink hash against
     // rows.bin's, Quest 169). Two more cycles first: a SIM_EXIT stored in the last cycle reaches the block then.

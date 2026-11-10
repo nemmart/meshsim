@@ -83,11 +83,13 @@ void w_rp(const void* p, FpOut& o, const FpCtx& x) {
     sl.fingerprint_replayer(*x.sim, 1, o, int64_t(x.cycle));
 }
 
-struct TrRef { const units::tracer::Tracer* tr; int unit; };
+// The Tracer's five (6.6): W14's PeriphSlot::fingerprint_tracer, which adds what is still in the slot's links (the
+// PULSE_DMA start, region packets accepted at c - 2 .. c, a PULSE_RUN or window store of c, a consuming EVENTS load of c).
+struct TrRef { const units::PeriphSlot* slot; int unit; };
 TrRef g_tr[5];
 void w_tr(const void* p, FpOut& o, const FpCtx& x) {
     const TrRef& r = *static_cast<const TrRef*>(p);
-    r.tr->fingerprint(r.unit, o, int64_t(x.cycle));
+    const_cast<units::PeriphSlot&>(*r.slot).fingerprint_tracer(*x.sim, 1, r.unit, o, int64_t(x.cycle));
 }
 
 // 6.9 cc1p: C&C 1's peripheral. READY per tile (0 none or cleared, 1 visible at t, else its arrival), expect, the error
@@ -277,7 +279,7 @@ void m3_register(FpRegistry& r, M3Chip& c) {
     }
     if (c.tr) {
         static const char* kTr[5] = {"tr", "tr.ic", "tr.dc", "tr.mem", "tr.files"};
-        for (int u = 0; u < 5; u++) { g_tr[u] = {c.tr, u}; r.add(kTr[u], w_tr, &g_tr[u]); }
+        for (int u = 0; u < 5; u++) { g_tr[u] = {c.slot[66], u}; r.add(kTr[u], w_tr, &g_tr[u]); }
     }
     g_cc1p.c = &c;
     r.add("cc1p", w_cc1p_m3, &g_cc1p);

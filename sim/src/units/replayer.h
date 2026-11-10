@@ -21,6 +21,7 @@
 
 #include "base/fatal.h"
 #include "units/event_counts.h"
+#include "units/memsum.h"
 #include "units/peripheral.h"
 #include "units/replayer_alu.h"
 #include "units/row_core.h"
@@ -300,6 +301,7 @@ public:
 
 private:
     struct Instr {
+        uint64_t id = 0;                 // which instruction (ref's object identity, for the fingerprint's inflight.instr)
         uint32_t w = 0;
         unsigned kind = 0, start = 0, offset = 0, rd0 = 0, next_row = 0, first_row = 0;
         bool last_started = false, ctrl_first_seen = false;
@@ -310,7 +312,8 @@ private:
         int rd_reg = -1;
         uint64_t rd_val = 0, new_pc = 0;
         uint32_t new_idx = 0;
-        bool last_of_instr = false;
+        bool last_of_instr = false, hold = false;
+        uint64_t instr_id = 0;           // the Instr it belongs to (ref's p.instr)
         int64_t code_end = 0;
         uint64_t rec[REC_LONGS] = {};
     };
@@ -394,6 +397,113 @@ private:
     uint64_t fact_counts_[64] = {};
 
     rowcore::Decoded dec_;
+    uint64_t next_instr_id_ = 1;
+
+public:
+    // The inputs ref's replayer holds at the end of cycle c that, in the framework, are still in the slot's links
+    // (6.8 item 6): landings (accepted at c - 2 .. c: e = accept + 2, src, word address, size, lo, hi) and inputs (a
+    // PULSE_RUN or RUN_CONFIG store of c: e, kind 2 or 3, value). PeriphSlot::fingerprint_replayer builds it.
+    struct FpPending {
+        unsigned n_land = 0, n_in = 0;
+        struct Land { int64_t e; unsigned src; uint32_t addr, size; uint64_t lo, hi; } land[4];
+        struct In { int64_t e; unsigned kind; uint32_t value; } in[2];
+    };
+    // The canonical fingerprint (AUDIT-M3 6.8; ref's side StateFpM3.replayer): unit `rp`, at the end of cycle c, in 6.8's
+    // order, ref's values (Java's ints sign-extended, booleans 0/1). Out: FpOut (tests/statefp.h), or any sink with
+    // w(name, v) and wi(name, i, v). `pending`: the inputs still in the slot's links (in a chip; their own lists are
+    // then empty); null for a replayer driven directly (its lists are ref's).
+    template <class Out> void fingerprint(Out& o, int64_t c, const FpPending* pending = nullptr) const;
 };
+
+template <class Out>
+void Replayer::fingerprint(Out& o, int64_t c, const FpPending* pending) const {
+    auto sx = [](int64_t v) { return uint64_t(v); };
+    auto i32 = [](uint32_t v) { return uint64_t(int64_t(int32_t(v))); };
+    auto mx = [c](int64_t v) { return uint64_t(v > c ? v : c); };
+    auto term64 = [](uint64_t region, uint64_t index, uint64_t v) { return fmix64(fmix64(region << 56 ^ index) ^ v); };   // StateFpM3.term64
+    // 1. part 0, the decode table and the ROM as memory sums (regions 12, 13), RUN_CONFIG
+    for (unsigned k = 0; k < 2 * PART0_WORDS; k++) o.wi("region0.", k, region0[k]);
+    uint64_t sd = 0, sr = 0;
+    for (unsigned k = 0; k < 2048; k++) if (decode_table[k]) sd += term64(12, k, decode_table[k]);
+    o.w("decodeTable", sd);
+    for (unsigned j = 0; j < 512; j++) {
+        if (rom_lo[j]) sr += term64(13, 2 * uint64_t(j), rom_lo[j]);
+        if (rom_hi[j]) sr += term64(13, 2 * uint64_t(j) + 1, rom_hi[j]);
+    }
+    o.w("rom", sr);
+    o.w("runConfig", i32(run_config_));
+    // 2. the queues
+    for (const ReplayerStream* q : {&code, &rlog, &wlog}) {
+        o.w("q.occ", q->occ);
+        for (unsigned k = 0; k < q->occ; k++) { const unsigned i = (q->head + k) % q->cap; o.w("q.lo", q->lo[i]); o.w("q.hi", q->hi[i]); }
+        o.w("q.pend", q->pend); o.w("q.poppedSince", q->popped_since); o.w("q.base", sx(q->base)); o.w("q.consumed", sx(q->consumed));
+        o.w("q.words", q->words); o.w("q.valuesOut", q->values_out); o.w("q.limit", sx(q->limit)); o.w("q.taken", q->taken);
+        o.w("q.endBits", sx(q->end_bits)); o.w("q.landedEntries", q->landed_entries); o.w("q.comp", q->comp ? 1 : 0);
+        for (unsigned k = 0; k < 16; k++) o.w("q.E", q->E[k]);
+        o.w("q.popsAtC", q->pop_cycle == c ? q->pops : 0);
+    }
+    o.w("exp.occ", exp.occ);
+    for (unsigned k = 0; k < exp.occ; k++) { const unsigned i = (exp.head + k) % EXP_CAP; o.w("exp.lo", exp.lo[i]); o.w("exp.hi", exp.hi[i]); }
+    o.w("exp.pend", exp.pend); o.w("exp.poppedSince", exp.popped_since); o.w("exp.newestValid", exp.newest_valid ? 1 : 0);
+    o.w("exp.newestSeq", exp.newest_seq); o.w("exp.popsAtC", exp.pop_cycle == c ? exp.pops : 0);
+    // 3. the core
+    o.w("running", running_); o.w("pc", pc_); o.w("instrIdx", i32(instr_idx_)); o.w("startOffset", start_offset_);
+    o.w("rowsPerPass", rows_per_pass_); o.w("fStore", f_store_); o.w("fRdPrev", f_rd_prev_); o.w("stateWritten", state_written_);
+    o.w("copyDoneAt", mx(copy_done_at_));
+    o.w("rowsStarted", rows_started_); o.w("rowsDone", rows_done_); o.w("firstInstr", first_instr_);
+    o.w("busyUntil", mx(busy_until_));
+    o.w("presented", i32(presented_)); o.w("expDiscard", exp_discard_); o.w("codeEnded", code_ended_); o.w("stoppedOffset", stopped_offset_);
+    for (unsigned k = 0; k < 4; k++) o.w("srcOf", sx(src_of_[k]));
+    auto instr = [&](const char* name, bool has, const Instr& in) {
+        if (!has) { o.w(name, 0); return; }
+        o.w(name, 1);
+        o.w("w", i32(in.w)); o.w("kind", in.kind); o.w("start", in.start); o.w("offset", in.offset); o.w("rd0", in.rd0);
+        o.w("nextRow", in.next_row); o.w("lastStarted", in.last_started); o.w("firstRow", in.first_row);
+        o.w("ctrlFirstSeen", in.ctrl_first_seen); o.w("codeEnd", sx(in.code_end));
+    };
+    instr("cur", has_cur_, cur_);
+    instr("nxt", has_nxt_, nxt_);
+    if (!has_inflight_) o.w("inflight", 0);
+    else {
+        const Pending& p = inflight_;
+        o.w("inflight", 1);
+        o.w("inflight.rdReg", sx(p.rd_reg)); o.w("inflight.rdVal", p.rd_val); o.w("inflight.newPc", p.new_pc);
+        o.w("inflight.newIdx", i32(p.new_idx)); o.w("inflight.hold", p.hold); o.w("inflight.lastOfInstr", p.last_of_instr);
+        o.w("inflight.instr", has_cur_ && p.instr_id == cur_.id ? 0 : has_nxt_ && p.instr_id == nxt_.id ? 1 : 2);
+        for (unsigned k = 0; k < REC_LONGS; k++) o.w("inflight.rec", p.rec[k]);
+    }
+    // 4. the events' counts, ERRORS
+    for (unsigned b = 0; b < ev.n; b++) o.wi("ev", b, ev.count_of(b));
+    uint64_t err = 0;
+    for (unsigned k = 0; k < N_ERR; k++) if (cond_events_[k] > 0) err |= uint64_t(1) << k;
+    o.w("errors", err);
+    // 5. the output queue, oldest first
+    o.w("outQ.n", outq_n_);
+    for (unsigned k = 0; k < outq_n_; k++) {
+        const unsigned i = (outq_h_ + k) % OUTQ_ROWS;
+        o.w("out.at", mx(outq_at_[i]));
+        for (unsigned j = 0; j < REC_LONGS; j++) o.w("out", outq_[i][j]);
+    }
+    // 6. inputs not yet in effect: its own lists, then (in a chip) the slot's links'
+    if (pending && (land_n_ || in_n_)) FATAL("replayer %u: fingerprint: inputs both in its lists and in the slot's links", me);
+    const unsigned nl = land_n_ + (pending ? pending->n_land : 0), ni = in_n_ + (pending ? pending->n_in : 0);
+    o.w("landing.n", nl);
+    for (unsigned k = 0; k < land_n_; k++) {
+        const Input& x = landing_[(land_h_ + k) % RING];
+        o.w("e", sx(x.t)); o.w("src", x.kind); o.w("addr", i32(x.a)); o.w("size", i32(x.b)); o.w("lo", x.lo); o.w("hi", x.hi);
+    }
+    if (pending)
+        for (unsigned k = 0; k < pending->n_land; k++) {
+            const FpPending::Land& x = pending->land[k];
+            o.w("e", sx(x.e)); o.w("src", x.src); o.w("addr", i32(x.addr)); o.w("size", i32(x.size)); o.w("lo", x.lo); o.w("hi", x.hi);
+        }
+    o.w("inputs.n", ni);
+    for (unsigned k = 0; k < in_n_; k++) {
+        const Input& x = inputs_[(in_h_ + k) % RING];
+        o.w("e", sx(x.t)); o.w("kind", x.kind); o.w("value", x.kind == IN_CONFIG ? x.a : 0);
+    }
+    if (pending)
+        for (unsigned k = 0; k < pending->n_in; k++) { o.w("e", sx(pending->in[k].e)); o.w("kind", pending->in[k].kind); o.w("value", pending->in[k].value); }
+}
 
 }  // namespace units

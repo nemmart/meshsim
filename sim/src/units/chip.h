@@ -58,7 +58,7 @@ struct ControlIO {
     PeriphSlot* slot = nullptr;   // W16: the slot unit as staged (configuration only: its OwnPorts for C&C 1's chip
                                   // lines, wired by build_chip); null without one
 };
-// W14's ReqIO, ControlIO's request side (sessions/WORKER14/NOTES.md section 14), wired by units::reqbus::wire_sender.
+// W14's ReqIO, ControlIO's request side (sessions/WORKER14-NOTES.md section 14), wired by units::reqbus::wire_sender.
 // ReqIO is defined before ControlIO (above).
 // Adds tile `k`'s control units (names prefixed "t<k>."), wires them inside, returns the ports above. `ctx` is the
 // builder's own (images, configuration).

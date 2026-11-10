@@ -1,6 +1,6 @@
 // periph_slot.h: a unit's peripherals (spec 4.17; sim/ref/meshsim/src/PeripheralSlot.java; AUDIT-M3 3.1), WORKER15.
 // DECLARATIONS: the ports, the window's register layout and the dispatch are the agreed interface (W14, W16; sessions/
-// WORKER15/NOTES.md); the step comes with the implementation.
+// WORKER15-NOTES.md); the step comes with the implementation.
 //
 // One framework unit per tile (mesh tile or controller): up to three peripherals at regions 0x04-0x06 and windows
 // 0xFFFFFA00 + 0x200 (n - 1), owned by the slot (created at configuration from PeriphSlotConfig) and called synchronously

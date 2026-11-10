@@ -163,3 +163,5 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   is the slot republishing its whole register window every step: W15 makes it publish only the registers that changed
   (as W12 did for the register block, D31), with a debug guard and every point unchanged. Then measure again; further
   speed work only if the owner asks.
+- **D36. M3 closes; the new framework running v1.3 is v1.35's first step** (owner, 2026-11-10). T2 is exact at every
+  point on both reference runs and 6.5× `ref` (Quest 171). Further work is v1.35's, as the owner defines it.

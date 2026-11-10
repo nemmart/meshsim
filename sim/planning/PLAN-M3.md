@@ -1,6 +1,6 @@
 # Milestone 3: v1.3 as it runs: the Tracer and the replayers
 
-**Reached 2026-11-10.** T2, v1.3's segment test, runs on the new framework **exactly as `ref`**: evm-zone-29 and
+**Closed 2026-11-10.** T2, v1.3's segment test, runs on the new framework **exactly as `ref`**: evm-zone-29 and
 cyclone-29 segment 10 equal at every point (241 and 285), every unit and the chip line, on one thread and on T2's 6-domain
 split; T2's acceptance check passes (rows equal `rows.bin` on all 64 tiles, every tile exits 1, C&C 3's 64 windows).
 **After D35 (Quest 171): evm's segment in 7.10 s and cyclone's in 7.81 s on one thread, 6.5× `ref`'s 46.2 s / 50.9 s**
@@ -61,6 +61,13 @@ exercised. The Tracer's and replayer's own suites (`TracerTest`, `TracerRig`, `T
 | worker | state |
 |---|---|
 | W13 | **done**, closed 2026-11-09 (`sessions/WORKER13-REPORT.md`): the reference runs, AUDIT-M3, golden-m3, the baseline |
-| W14 | the Tracer: equal to `ref` every cycle on TracerTest, 178 seeded logs and **T1 on real segments 0-3 of both programs** (172 M cycles, Quest 163); wired into W15's slot; **speed (Quest 166): 34 ns per Tracer cycle, 1.1-1.2× `ref`'s Tracer** (segment 10's 23.7 M Tracer cycles ≈ 0.8 s of C&C 3's work); not optimised (D31's spirit) |
-| W15 | the replayer: equal to `ref` on its suites and ReplayConf; **Stage A on every window of both programs** (20,480, Quest 164); the slot unit on main (SlotConf equal call for call); next the tile's paths, PeripheralSlotTest |
-| W16 | G7 and T2: **both reference segments exact at every point, T2's acceptance check passing** (merged 2026-11-10); next the split on the runner, then the first timing |
+| W14 | **done**, closed 2026-11-10 (`sessions/WORKER14-REPORT.md`): the Tracer, the request bus |
+| W15 | **done**, closed 2026-11-10 (`sessions/WORKER15-REPORT.md`): the replayer, the slot, D35 |
+| W16 | **done**, closed 2026-11-10 (`sessions/WORKER16-REPORT.md`): the C&C cores, the chip, T2 exact and timed |
+
+## Carried to v1.35's next steps
+
+- Speed, if wanted: the slot's publish (still ~19.5%), the Tracer's own work (W14's three candidates), C&C 3's register
+  block; T2 is serial on C&C 3's Tracer, so the split doesn't help it (Quest 171).
+- The request bus is built in full (D34) for the file system work.
+- Findings in `ref`'s test tools (W15: SyntheticDelivery not reproducible run to run; ReplayerTest's dead check).

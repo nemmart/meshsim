@@ -71,7 +71,7 @@ Now C&C 3's domain (4.4-5.1 s) is about two thirds of the segment. The split's o
   `BootStage.java`, `CcPing.java`.
 - **Images**: `tests/m3-images` (cc1, cc23, tracer_ctl, replay_ctl, byte-identical to 110u's; `build.sh --check`).
 - Quest tasks 165 (the boot-end lines), 167 (files dumps), 168 (unit lines), 169 (the rows' reference), 170 (T2 on
-  the runner), 171 (the same after D35); `WORKER16/tasks/mk_task.sh`, `t2-body.sh`.
+  the runner), 171 (the same after D35); `WORKER16-tasks/mk_task.sh`, `t2-body.sh`.
 
 ## Findings
 

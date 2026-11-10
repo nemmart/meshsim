@@ -43,7 +43,7 @@ the integrator, W15, W16 and the rest of M3 need.
 | `tests/test_tracer.cpp`, `tests/ref/TracerConf.java`, `tracerconf.sh`, `tests/tracerconf/` | TracerConf (section 4) and its replay; `TRACERCONF_STREAM` (a FIFO) and `TRACERCONF_LONG` (a directory) for the runner |
 | `tests/test_tracer_slot.cpp` | the Tracer in the slot unit against SlotCore driven directly |
 | `bench/w14/tracer_play.cpp`, `TracerPlay.java`, `w14.mk` | the speed measurement (section 6) |
-| `planning/sessions/WORKER14/tasks/` | `mk_task.sh` (a kit: sim/ to build on the runner, `ref`'s and the drivers' classes precompiled), `t1-body.sh` (Quest 163), `speed-body.sh` (Quest 166) |
+| `planning/sessions/WORKER14-tasks/` | `mk_task.sh` (a kit: sim/ to build on the runner, `ref`'s and the drivers' classes precompiled), `t1-body.sh` (Quest 163), `speed-body.sh` (Quest 166) |
 
 Fixtures: 1.0 MB (tracerparts) and 3.1 MB (tracerconf).
 

@@ -16,7 +16,7 @@ namespace {
 
 
 // One pending line word: visible at `vis`, tile k, its READY bit and its error level.
-struct Pending { uint64_t vis; unsigned k; bool ready, level; };
+using Pending = PendingLine;
 
 // Every line word on its way to C&C at the end of x.cycle, in ref's insertion order (visible cycle, then tile).
 std::vector<Pending> pending(const G2Chip& g, const FpCtx& x) {
@@ -24,7 +24,7 @@ std::vector<Pending> pending(const G2Chip& g, const FpCtx& x) {
     if (!x.sim) { std::fprintf(stderr, "statefp_g2: no machine to observe\n"); std::abort(); }
     sim::PortEntry e[64];
     for (unsigned r = 0; r < 8; r++) {
-        sim::PortView v = x.sim->observe(g.cnc->rows[r], e, 64);     // collector -> C&C: arrival = visible
+        sim::PortView v = x.sim->observe(g.cnc ? g.cnc->rows[r] : g.cc_rows[r], e, 64);   // collector -> C&C: arrival = visible
         for (uint32_t i = 0; i < v.n; i++)
             for (unsigned b = 0; b < 8; b++)
                 if (e[i].w[0] >> (units::RowCollector::kPresent + b) & 1)
@@ -54,6 +54,8 @@ void fifo_port(FpOut& o, const char* nm, const sim::Sim* s, const sim::FifoIn& p
 }
 
 }  // namespace
+
+std::vector<PendingLine> pending_lines(const G2Chip& g, const FpCtx& x) { return pending(g, x); }
 
 // StateFp "cnc": steps, lastGoAt, lastCommandWord, the parity bits, the receive FIFO, the error bit, the OR'd line as
 // seen and as last recorded with its pending changes, then the endpoint's receive bus.
@@ -159,9 +161,18 @@ void w_router(const void* p, FpOut& o, const FpCtx& x) {
     const units::Router& r = *g.router;
     r.fp_own(o, x.cycle);
     static const char* const kLink[4] = {"link0", "link1", "link2", "link3"};
+    if (r.cc) {                                                       // W16: a controller's router (FEEDERS_CC)
+        link_port(o, kLink[0], x.sim, r.in[units::Router::CC_LINK_IN]);
+        fifo_port(o, kLink[1], x.sim, r.host);
+        if (r.has_dma) fifo_port(o, kLink[2], x.sim, r.dma); else none(o, kLink[2]);
+        none(o, kLink[3]);
+        link_port(o, "inj", x.sim, r.inj);                           // ref's fromCnc is null on a controller
+        return;
+    }
     for (unsigned d = 0; d < 4; d++) link_port(o, kLink[d], x.sim, r.in[d]);
     link_port(o, "inj", x.sim, r.inj);
-    if (r.attached) hold_port(o, "fromCnc", x.sim, r.from_cnc);
+    if (r.attached && r.fifth_link) link_port(o, "fromCnc", x.sim, r.from_cc);   // W16: C&C as cores
+    else if (r.attached) hold_port(o, "fromCnc", x.sim, r.from_cnc);
 }
 
 // StateFp "inj": the read-return holding register (W11: the read queue's, inside the unit: empty at the end of c, the

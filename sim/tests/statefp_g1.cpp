@@ -8,6 +8,7 @@
 #include <string>
 
 #include "units/ag.h"
+#include "units/chip.h"
 #include "units/gather.h"
 #include "units/write_engine.h"
 
@@ -49,7 +50,7 @@ struct Overlay {
 }  // namespace
 
 G1Tile g1_tile(sim::Sim& s, unsigned k) {
-    const std::string t = "t" + std::to_string(k) + ".";
+    const std::string t = units::unit_prefix(k);           // W16: "t<k>." or, for units 64-66, "cc1." .. "cc3."
     G1Tile g;
     g.tile = k; g.sim = &s;
     g.ucore = &s.unit<units::TileCore>(t + "core"); g.uctl = &s.unit<units::TileCtl>(t + "ctl");
@@ -69,7 +70,7 @@ void w_core(const void* p, FpOut& o, const FpCtx& x) {
     if (k.stop != units::Stop::running) mcycle += c - k.stop_cycle;      // ref's halted core: mcycle++ every cycle
     else if (c > k.last) {                                              // asleep since `last`: in a WFI or a stall
         uint64_t gap = c - k.last;
-        mcycle += gap;
+        mcycle += gap - (k.in_wfi ? x.label_shift : 0);                 // ref's lag: cyc - countedTo (W16: M3's cyc)
         if (!k.in_wfi) stall -= uint32_t(gap);
     }
     o.w("pc", k.pc);
@@ -80,8 +81,8 @@ void w_core(const void* p, FpOut& o, const FpCtx& x) {
     o.w("halt", uint64_t(int64_t(k.halt)));
     o.w("inWfi", k.in_wfi); o.w("inHandler", k.in_handler);
     o.w("stall", stall);
-    o.w("sendRetry", k.pending_t == c);                                  // a send awaiting its acceptance at c + 1
-    bool lw = k.load_wait_t == c;
+    o.w("sendRetry", k.pending_t == c - x.label_shift);                  // a send awaiting its acceptance at c + 1
+    bool lw = k.load_wait_t == c - x.label_shift;
     o.w("regLoad", lw);
     if (lw) o.w("regLoadPc", k.load_wait_pc);
 }
@@ -154,7 +155,7 @@ void w_dir(const void* p, FpOut& o, const FpCtx& x) {
     uint64_t due[kMax], ctr[kMax];
     if (g.sim && g.uctl)                                                 // the K-line: decrements due after c
         for (uint32_t i = 0, m = entries(g, g.uctl->kline, e); i < m; i++)
-            if (e[i].at > x.cycle + 1) { due[n] = e[i].at - 1; ctr[n] = e[i].w[0]; n++; }
+            if (e[i].at > x.cycle + 1 - x.label_shift) { due[n] = e[i].at - 1; ctr[n] = e[i].w[0]; n++; }   // ref: due > cyc
     o.w("line.n", n);
     for (uint32_t i = 0; i < n; i++) { o.w("line.due", due[i]); o.w("line.ctr", ctr[i]); }
     BusEntry be[kMax];
@@ -360,7 +361,7 @@ void attach_reqbus(sim::Sim& s, G1Tile* g1, unsigned n_tiles, G2Chip& gc, units:
 }
 
 void register_g1(FpRegistry& r, const G1Tile& g) {
-    const std::string t = "t" + std::to_string(g.tile) + ".";
+    const std::string t = units::unit_prefix(g.tile);      // W16: the controllers' "cc1." .. "cc3."
     if (g.core) { r.add(t + "core", w_core, &g); r.add(t + "cmem", w_cmem, &g); }
     r.add(t + "ctl", w_ctl, &g);
     r.add(t + "dir", w_dir, &g);

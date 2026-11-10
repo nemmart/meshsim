@@ -11,6 +11,7 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 
 #include "statefp.h"
 #include "units/cnc.h"
@@ -34,7 +35,14 @@ struct G2Chip {
     LineEdgeFn edge = nullptr;                // null: no edge pending at the end of any cycle
     const void* edge_ctx = nullptr;
     const units::reqbus::ReqBusUnits* reqbus = nullptr;   // W14: the request bus (null: idle, its reset stream)
+    // W16 (M3, C&C as cores): no `cnc`; the row collectors feed C&C 1's peripheral through these (its slot's own
+    // ports), read by pending_lines.
+    const sim::LinkIn* cc_rows = nullptr;     // 8 entries
 };
+// W16: every tile's line word on its way to C&C (M2's Cnc or M3's C&C 1 peripheral) at the end of x.cycle, in ref's
+// insertion order (visible cycle, then tile): the collectors' Links, the blocks' Links, the blocks' endCycle(c) (edge).
+struct PendingLine { uint64_t vis; unsigned k; bool ready, level; };
+std::vector<PendingLine> pending_lines(const G2Chip& g, const FpCtx& x);
 
 // A tile's G2 units.
 struct G2Tile {

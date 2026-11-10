@@ -168,3 +168,7 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
 - **D37. The name** (owner, 2026-11-10): **meshsim is the simulator, whatever the implementation underneath.** The C++
   framework in `sim/` is **meshsim v1.35**; the frozen Java copy in `sim/ref` is meshsim v1.3, the exactness oracle. No
   new product name.
+- **D38. v1.35's scope** (owner, 2026-11-10): **v1.35 freezes the fast simulator** (`sim/`), with no other improvements
+  than updating all its docs and build scripts and cleanup. **No Java in v1.35**, provided it has an equivalent for
+  everything v1.3's Java meshsim had (the Java stays available as v1.3). `sim/` is v1.35's work-in-progress folder; at
+  the freeze it is copied, without `sim/ref`, to a frozen `v1.35/`. The plan is `PLAN-V135.md`.

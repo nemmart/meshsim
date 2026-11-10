@@ -32,7 +32,6 @@ OpsAtT ops_at(const sim::Sim& s, const units::PeriphSlot& sl) {
     sim::PortEntry e[8];
     sim::PortView v = s.observe(sl.core, e, 8);
     for (uint32_t i = 0; i < v.n && r.n < 8; i++) if (e[i].at == s.now()) r.op[r.n++] = e[i].w[0];
-    if (std::getenv("W16_OPS")) for (uint32_t i = 0; i < v.n; i++) std::fprintf(stderr, "ops: at %llu now %llu op %llx\n", (unsigned long long)e[i].at, (unsigned long long)s.now(), (unsigned long long)e[i].w[0]);
     return r;
 }
 
@@ -50,7 +49,7 @@ void w_slot(const void* p, FpOut& o, const FpCtx& x) {
         for (uint32_t i = 0; i < ops.n; i++) {
             const uint64_t op = ops.op[i];
             if (units::CoreOp::n(op) != n) continue;
-            if (units::CoreOp::kind(op) == units::CoreOp::CONSUME) { consume = true; cbits = units::CoreOp::value(op); continue; }
+            if (units::CoreOp::kind(op) == units::CoreOp::CONSUME) continue;   // executed at t: ref's consumeT is t + 1
             switch (units::CoreOp::word(op)) {
             case 7: mflight = true; mval = units::CoreOp::value(op); break;   // executed at t: ref has applied it
             case 8: hdr = units::CoreOp::value(op); break;
@@ -63,6 +62,8 @@ void w_slot(const void* p, FpOut& o, const FpCtx& x) {
         // ref's pending store: the one executed at t - 1 (noted by m3_note_before), shown at t
         const M3Chip::MaskStore& ms = g_m3->mask_store[s.tile][n];
         if (ms.seen && ms.at + 1 == x.cycle) { mstore = true; mval = ms.v; } else mstore = false;
+        const M3Chip::MaskStore& cs = g_m3->consume[s.tile][n];
+        if (cs.seen && cs.at + 1 == x.cycle) { consume = true; cbits = cs.v; }
         if (s.per[n].type == units::PT_TRACER) {                  // the peripherals with output queues (ref: the Tracer)
             const units::SlotCore::Dma& d = s.dma[n];
             const bool busy = pulse || d.busy;
@@ -209,13 +210,20 @@ bool ref_asleep_m3(const void* ctx, unsigned k, const FpCtx& x) {
     const sim::Sim& s = *x.sim;
     sim::PortEntry e[64];
     const units::Router& r = *c.g2[k].router;
+    const uint64_t last = c.g1[k].core->last;                   // the core's last step (framework)
+    // a word on its way in blocks the sleep only if it was put while the tile was still active (ref's pendingIn at the
+    // cycle it would have gone to sleep); one put after that wakes it on arrival, not before
+    auto blocks = [&](const sim::PortView& v, uint64_t latency) {
+        for (uint32_t i = 0; i < v.n; i++) if (e[i].at - latency <= last) return true;
+        return false;
+    };
     if (r.occ) return false;
     if (r.cc) {
-        if (s.observe(r.in[units::Router::CC_LINK_IN], e, 64).n || s.observe(r.host, e, 64).n) return false;
+        if (blocks(s.observe(r.in[units::Router::CC_LINK_IN], e, 64), c.cc_link_latency) || s.observe(r.host, e, 64).n) return false;
         if (r.has_dma && s.observe(r.dma, e, 64).n) return false;
     } else {
-        for (unsigned d = 0; d < 4; d++) if (s.observe(r.in[d], e, 64).n) return false;
-        if (r.attached && r.fifth_link && s.observe(r.from_cc, e, 64).n) return false;
+        for (unsigned d = 0; d < 4; d++) if (blocks(s.observe(r.in[d], e, 64), c.link_latency)) return false;
+        if (r.attached && r.fifth_link && blocks(s.observe(r.from_cc, e, 64), c.cc_link_latency)) return false;
     }
     if (s.observe(r.inj, e, 64).n) return false;
     if (s.observe(c.g1[k].uctl->kline, e, 64).n) return false;
@@ -265,6 +273,8 @@ void m3_note_before(M3Chip& c, const sim::Sim& s, uint64_t label) {
             const uint64_t op = ops.op[i];
             if (units::CoreOp::kind(op) == units::CoreOp::STORE && units::CoreOp::word(op) == 7)
                 c.mask_store[k][units::CoreOp::n(op)] = {true, label, units::CoreOp::value(op)};
+            if (units::CoreOp::kind(op) == units::CoreOp::CONSUME)
+                c.consume[k][units::CoreOp::n(op)] = {true, label, units::CoreOp::value(op)};
         }
     }
 }

@@ -42,11 +42,13 @@ struct M3Chip {
     const units::PeriphSlot* slot[67] = {};
     const units::HostPort* host[3] = {};
     const units::tracer::Tracer* tr = nullptr;     // C&C 3's peripheral 1, or null
+    unsigned link_latency = units::NetConfig{}.link_latency, cc_link_latency = units::NetConfig{}.cc_link_latency;   // the sleep judgment's
     std::vector<std::string> names;                // every unit, in StateFpM3.write's order
     // EVENTS_MASK stores in flight one cycle before a point (m3_note_before): ref records a store executed at s as
     // pending at s + 1 (pendMaskT = s + 1, the mask already applied at s); the framework's has been applied by then.
     struct MaskStore { bool seen = false; uint64_t at = 0; uint32_t v = 0; };
     MaskStore mask_store[67][4];
+    MaskStore consume[67][4];                      // the same for a consuming EVENTS load (ref's consumeT = s + 1)
 };
 
 // Resolve every unit of the cores chip `s` (t2::build_machine's), and the reqbus with `rc`.

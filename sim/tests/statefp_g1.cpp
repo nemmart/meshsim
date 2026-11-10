@@ -70,7 +70,8 @@ void w_core(const void* p, FpOut& o, const FpCtx& x) {
     uint32_t stall = k.stall;
     if (k.stop != units::Stop::running) {                               // ref's halted core: mcycle++ every cycle
         // W16: as a sleeping one, under M3's cyc one less when ref's idle-skip has put it to sleep (a halted core can)
-        const bool asleep = x.label_shift && (!g.ref_asleep || g.ref_asleep(g.ref_asleep_ctx, g.tile, x));
+        // (ref's idleAt == t: a core halted in the cycle just run hasn't been idle for a whole cycle yet)
+        const bool asleep = x.label_shift && c > k.stop_cycle + 1 && (!g.ref_asleep || g.ref_asleep(g.ref_asleep_ctx, g.tile, x));
         mcycle += c - k.stop_cycle - (asleep ? x.label_shift : 0);
     }
     else if (c > k.last) {                                              // asleep since `last`: in a WFI or a stall

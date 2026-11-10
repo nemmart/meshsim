@@ -309,3 +309,10 @@ receive queue with its controller; C&C c is in tile c's domain). Three points fo
     Tracer::word 10.3%, Tracer::settle 2.4%, Replayer::word 3.7%, Replayer::settle 2.1%, TileCtl::step 2.5%, the
     engine's run_until 1.1%. No optimisation: the owner decides.
 - 2026-11-10: merged main (D35: W15 makes the slot publish only the registers that changed); REPORT.md so far. Next: time both runs again on the runner after D35 lands, every point checked once more.
+- 2026-11-10: merged main (W15's D35, b486dae). **Quest 171** (the same task after D35; ALL PASS): every point equal on
+  both runs, one domain and the split (evm 241, cyclone 285), rows 64 of 64, exits 64 of 64, lag_cycles 0. Timing
+  (segment, 3 repetitions): evm 7.10 s one thread (0.296 µs/cycle, 6.52× ref), 7.02 s split (6.58×); cyclone 7.81 s
+  (0.276, 6.52×), 7.98 s split (6.38×). One thread 3.4× faster than Quest 170; the split now within 2% of one thread.
+  C&C 3's domain alone 4.39 s / 5.09 s (was 15.79 / 18.59). Units' steps 83% of the time: controllers' slots 47-49%,
+  tiles' slots 15-18%, controllers' blocks 14%. perf: PeriphSlot::publish 19.5%, TileCtl::step 8.2%, Tracer::word
+  7.5%, Tracer::settle 6.4%. Split's threads: imbalance 0.61, drain 0.12-0.13, publish 0.03. REPORT.md updated.

@@ -6,8 +6,8 @@ The replayer and the peripheral slot. Branch `sim-w15`. Prompt: `PROMPT.md`.
 
 **Go-ahead 2026-11-09** (owner): the plan as written; answers to Q1-Q4 below. Steps 1-2 done: the ALU and the replayer equal to `ref` (ReplayConf every cycle; ReplayerUnitTests ported, 1,456
 checks). The slot's header published; the owner settled the round (W14: violation_count and the late accept; W16: its two
-classes and `visit` cases, the ports/begin/end hooks). Stage A passed (Quest 164: every window of both programs). The slot's SlotCore equal to ref call for call (SlotConf); the unit working under the engine. The tile's paths written (WIP:
-gcc debug's tests pass; the paths themselves untested); next a tile-level test and PeripheralSlotTest's port.
+classes and `visit` cases, the ports/begin/end hooks). Stage A passed (Quest 164: every window of both programs). The slot's SlotCore equal to ref call for call (SlotConf); the unit working under the engine. The tile's paths tested at the tile level (test_tile_slot) and against ref's exact cycles (TileSlotConf: PeripheralSlotTest's
+groups). Merged to main (85a8140). Replayer::fingerprint (6.8) for W16's boot-end comparison, equal to ref every cycle.
 
 ## The owner's answers (2026-11-09)
 
@@ -397,3 +397,67 @@ ports (READY rows, the error lines, GO) couldn't be declared from its heap-alloc
 - **Acceptance:** `cnc1_periph_through_the_slot_conformance_with_ref` (your s1-s3 fixtures, plain, shuffled and
   step-all) passes in all four builds; with `test_cnc1_periph`'s other tests, `test_cc_units`, `test_periph_slot`,
   `test_slotconf`, `test_tracer_slot`.
+
+### The DMA record on mesh tiles, and the tile-level test (2026-11-09)
+
+- **DMA record:** a mesh tile's slot has no DMA port; its peripherals' DMA packets are recorded (`PeriphSlot::
+  dma_record`, a ring of 16, every packet counted in `dma_recorded`), as ref's slot keeps them in `dmaOut` (its
+  `dmaPort` is null there), instead of FATAL.
+- `G1Config::periph1` (default the replayer): peripheral 1's type in a tile's slot (tests: the test peripheral).
+- **`tests/test_tile_slot.cpp`**: a tile from `add_g1` with `periph_slot` on, the test peripheral as peripheral 1, a
+  program in the boot ROM through the core's real paths: PARAMS; a store and load of a read/write word; PULSE_RUN and
+  STATUS right after it (running); the slot's EVENTS_MASK and the block's (EVENTS [13]) and a **WFI woken by the run's
+  end through the live bit** (11 cycles after PULSE_RUN, ref's run_length + 1, to 4 more for the wake's path); the
+  peek and **consuming** EVENTS loads (consumed by the next peek); a reserved word (reads 0, flagged by the core); a DMA
+  transfer of two words (recorded); the block's EVENTS [13] down (DMA done not under the slot's mask); a store to a
+  read-only word: **a store access fault at once** (mcause 7, mtval its address), the scratch word unchanged. And a
+  region-0x04 write put by the router's stand-in, accepted by the test peripheral. Plain, step-all and shuffled; the
+  debug builds' missed-wake detector on; all four builds.
+- Exact cycles against ref come with PeripheralSlotTest's port (next).
+
+### PeripheralSlotTest as conformance: TileSlotConf (2026-11-09; owner: approved as planned)
+
+- `tests/ref/tileslotconf_progs.py` writes `tests/tileslotconf/<group>.prog`: the window, events, region writes
+  ("landing"), the DMA and the replayer's window, each a boot-ROM program doing the group's loads and stores from the
+  core (a prelude sends every other tile to a WFI loop), storing results and mcycle stamps to data memory; pokes on the
+  test peripheral between cycles (post, credit, the live level, fault); region writes into the tile.
+- `tests/ref/TileSlotConf.java` runs a .prog on ref: the program as `Controller.bootRom`, `Config.machine()`, the test
+  peripheral as the tile's peripheral 1 (or its replayer), the pokes before their cycles, the injects with `Net.at`;
+  writes the data-memory image, the director's accepted region writes ("dir": their cycles), bad packets, the test
+  peripheral's accepts, the slot's DMA packets (`<group>.obs`, committed).
+- `tests/test_tileslotconf.cpp` runs it on a tile from `add_g1` with the slot: the pokes at the same cycles (between runs,
+  the slot woken with `Sim::wake`), each region write put in the eject one cycle before ref's director accepted it.
+  **All five groups equal ref exactly** (the data-memory images with every mcycle stamp, the accepts and their landing
+  cycles, the bad packet, the seven DMA packets with their cycles), plain, step-all and shuffled, in all four builds.
+  Two planted timing bugs fail it (S1 as Link(4): the landings a cycle late; the core's stores applied a cycle late:
+  seven words of the images).
+- `tests/ref/tileslotconf.sh --fixtures | --check` regenerates the programs and reruns ref (`--check`: equal).
+- PeripheralSlotTest's two UB stops (PULSE_DMA while a transfer runs; a transfer naming a missing queue): death tests
+  in `test_periph_slot` (the FATALs name them, as `T.ub` expects). Not ported here: the C&C 1 group (W16's acceptance
+  test covers it through the slot).
+
+### TSan on main (2026-11-09)
+
+clang `tsan-chip` and `tsan-units` (`test_controllers`) on gcc and clang: all pass, no warnings.
+
+### Replayer::fingerprint (AUDIT-M3 6.8), for W16's boot-end comparison (2026-11-09)
+
+- **`Replayer::fingerprint(Out& o, int64_t c, const FpPending* pending = nullptr)`** (`replayer.h`, a template like
+  W14's `Tracer::fingerprint`): unit `rp`, 6.8's stream in its order with ref's values (Java's ints sign-extended,
+  booleans 0/1): part 0, the decode-table and ROM sums (regions 12, 13), RUN_CONFIG; the three streams and the expansion
+  queue (pops at c); the core, `cur`/`nxt`, the row in flight (its instruction by identity: the replayer now numbers its
+  instructions, and keeps a row's `hold`); the events' counts, ERRORS; the output queue; the inputs not yet in effect.
+- **Checked against ref:** ReplayConf's observation now carries the fingerprint at the end of every cycle (ref's side
+  `StateFpM3.replayer`, compiled with ReplayConf; before the observation's reads settle t + 1). **All 13 traces equal
+  every cycle** (up to 25,857 fingerprint changes in a trace), in all four builds; the fixtures' observations were
+  regenerated by ref from the committed scripts (`replayconf.sh --check`: equal). Planted bugs (the pops at c
+  unconditioned; the input count off by one) fail it. (`inflight.instr` is always 0 in practice: a row in flight
+  always belongs to `cur`, since the next instruction only becomes `cur` after the row finishes.)
+- **In a chip, the inputs are in the slot's links.** At the end of c, ref's replayer still holds in its own lists the
+  region writes its director accepted at c - 2 .. c and a PULSE_RUN or RUN_CONFIG store of c; ours has applied
+  everything older and those are in S1 (Link(3)) and S2 (Link(1)). **`PeriphSlot::fingerprint_replayer(sim, n, o, c)`**
+  reads them with the port observer (`Sim::observe`) and writes them as ref's (landing e = arrival - 1, word address,
+  size, lo, hi; inputs e = arrival - 1, kind 2 or 3, value). `test_periph_slot`: a slot's replayer at the end of 5 (a
+  PULSE_RUN of 5 in S2) and of 12-14 (a region write in S1) equals a twin replayer driven directly, as ref's is.
+- **For W16:** call `slot.fingerprint_replayer(sim, 1, out, c)` for unit `rp` of tiles 0-63 from the M3 chip line (not
+  `replayer(1).fingerprint` directly: that would miss the inputs in flight).

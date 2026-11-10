@@ -1,0 +1,34 @@
+# tileslotconf observations v1: window.prog
+dmem 100 78500001
+dmem 104 30f
+dmem 108 0
+dmem 10c 15
+dmem 110 1
+dmem 114 1
+dmem 118 abc
+dmem 11c 0
+dmem 120 0
+dmem 124 0
+dmem 128 0
+dmem 12c 8c
+dmem 130 0
+dmem 134 194
+dmem 138 1
+dmem 13c 800
+dmem 140 0
+dmem 144 0
+dmem 148 0
+dmem 14c 0
+dmem 150 0
+dmem 154 0
+dmem 158 0
+dmem 15c 0
+dmem 160 0
+dmem 164 0
+dmem 168 0
+dmem 16c 0
+dmem 170 0
+dmem 174 0
+dmem 178 0
+dmem 17c 0
+bad 0

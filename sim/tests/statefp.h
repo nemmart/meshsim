@@ -99,6 +99,11 @@ inline void hold_empty(FpOut& o, const char* nm) { hold(o, nm, nullptr, nullptr)
 struct FpCtx {
     uint64_t cycle;
     const sim::Sim* sim;
+    // W16: the label's convention. `cycle` is always the end of the framework's cycle (M2's: ref's c.cycle, between
+    // cycles now() - 1). ref's writers compare event cycles with their `cyc`: M2's StateFp.write passes c.cycle (shift
+    // 0); M3's StateFpM3.write passes c.cycle - 1 (shift 1, AUDIT-M3 7). A writer whose stream compares an event cycle
+    // with cyc (a sleeping core's mcycle, sendRetry, regLoad, the director's K-line) uses cycle - label_shift there.
+    uint64_t label_shift = 0;
 };
 using FpWriter = void (*)(const void* unit, FpOut& o, const FpCtx& x);
 

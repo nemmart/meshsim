@@ -30,9 +30,12 @@
 
 #include <cstdint>
 
+#include "config.h"
 #include "sim.h"
 #include "base/fatal.h"
+#include "units/linkword.h"
 #include "units/peripheral.h"
+#include "units/replayer.h"
 
 namespace units {
 
@@ -199,6 +202,11 @@ struct PeriphSlot {
     SlotCore s;
     OwnPorts own;                         // the peripherals' own ports (peripheral.h, OWN PORTS), declared for them
     uint32_t published[Win::REGS] = {};   // the RegFile as last written (only changed registers are written)
+    // A mesh tile has no DMA port: its peripherals' DMA packets are recorded, as ref's slot keeps them in dmaOut (its
+    // dmaPort is null there): every one counted, the last DMA_RECORD kept (a ring, oldest first from dma_recorded).
+    static constexpr unsigned DMA_RECORD = 16;
+    DmaPacket dma_record[DMA_RECORD] = {};
+    uint64_t dma_recorded = 0;
     bool first = true;
 
     PeriphSlot(sim::Ports& p, const PeriphSlotConfig& c);
@@ -209,8 +217,37 @@ struct PeriphSlot {
     sim::Wake step(sim::Ctx& c);
     uint64_t digest() const { return const_cast<SlotCore&>(s).digest() ^ uint64_t(first); }
 
+    // The replayer at n's canonical fingerprint (AUDIT-M3 6.8) at the end of cycle c, between runs: ref's replayer then
+    // still holds the inputs that here are in the slot's links (S1: region-0x04 writes the director accepted at c - 2 ..
+    // c; S2: the core's PULSE_RUN or RUN_CONFIG store of c), so they are read with the port observer and written as
+    // ref's. Out: FpOut or any sink with w(name, v), wi(name, i, v).
+    template <class Out> void fingerprint_replayer(const sim::Sim& m, unsigned n, Out& o, int64_t c);
+
 private:
     void publish(sim::Ctx& c, int64_t t);
 };
+
+template <class Out>
+void PeriphSlot::fingerprint_replayer(const sim::Sim& m, unsigned n, Out& o, int64_t c) {
+    Replayer::FpPending p;
+    sim::PortEntry e[8];
+    const sim::PortView v1 = m.observe(region, e, 8);
+    for (uint32_t k = 0; k < v1.n; k++) {
+        const uint64_t h = e[k].w[1];
+        if (lw::region(lw::addr(h)) != 0x03 + n) continue;
+        if (p.n_land == 4) FATAL("slot %u: more than 4 landings in flight", cfg.tile);
+        p.land[p.n_land++] = {int64_t(e[k].at) - 1, unsigned(lw::src(h)), lw::offset(lw::addr(h)) >> 2, unsigned(lw::size(h)), e[k].w[0], e[k].w[2]};
+    }
+    const sim::PortView v2 = m.observe(core, e, 8);
+    for (uint32_t k = 0; k < v2.n; k++) {
+        const uint64_t x = e[k].w[0];
+        if (CoreOp::kind(x) != CoreOp::STORE || CoreOp::n(x) != n) continue;
+        const unsigned w = CoreOp::word(x);
+        const int64_t t = int64_t(e[k].at) - 1;
+        if (w == 3 && (CoreOp::value(x) & 1)) p.in[p.n_in++] = {t, 2, 0};
+        else if (w == Replayer::W_RUN_CONFIG) p.in[p.n_in++] = {t, 3, CoreOp::value(x)};
+    }
+    s.replayer(n).fingerprint(o, c, &p);
+}
 
 }  // namespace units

@@ -9,8 +9,9 @@ this milestone); M2's close-out and what it carried here are in `PLAN-M2.md`.
 241 points; C&C 3 exits at 23,694,305, the run ends at 23,940,706) and cyclone-29 segment 10 (285 of 285; 28,106,741 /
 28,319,575), all 1,214 units at boot end; **T2's acceptance check passes**: every tile's rows equal `rows.bin` (64 of 64,
 both runs), every tile exits 1, C&C 3's results status 1 with 64 windows; `lag_cycles` 0 (W16, merged 2026-11-10). One
-deliberate difference (D33). Next: the 6-domain split on the runner, then the first timing against `ref`'s 46.2 s and
-50.9 s per segment.
+deliberate difference (D33). Also exact on the 6-domain split (Quest 170). **First timing** (i5-14400F): evm 24.3 s on one thread, 21.0 s split;
+cyclone 26.6 s / 24.1 s; against `ref`'s 46.2 s / 50.9 s (1.9-2.2×), and v1.3's acceptance run's ~18 min without
+idle-skip. ~59% of the time is the slot republishing its window every step (D35: W15 fixes it next).
 
 ## The target (owner, D32)
 

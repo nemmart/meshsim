@@ -157,3 +157,9 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   beats and credits over Link(3), splittable), **the default**. Mode 3 equals `ref` until some node's 8-beat buffer fills;
   it **counts** the cycles where the two would differ, and references avoid them (T2's two boot requests never reach it).
   The mode is never derived from the partition, so results stay identical across thread counts and partitions.
+- **D35. M3's speed work: one cheap, general fix first** (owner, 2026-11-10). T2 is exact on one thread and on the
+  6-domain split (Quest 170); its segment takes 24.3 s / 26.6 s on one thread and 21.0 s / 24.1 s on the split, against
+  `ref`'s 46.2 s / 50.9 s with idle-skip (and v1.3's acceptance run's ~18 min without it). About 59% of one thread's time
+  is the slot republishing its whole register window every step: W15 makes it publish only the registers that changed
+  (as W12 did for the register block, D31), with a debug guard and every point unchanged. Then measure again; further
+  speed work only if the owner asks.

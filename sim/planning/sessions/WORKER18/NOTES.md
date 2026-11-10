@@ -1,6 +1,6 @@
 # WORKER18 notes (v1.35: the inventory)
 
-Branch `sim-w18`. Prompt: `PROMPT.md`. **Plan proposed 2026-11-10, waiting for the owner's go-ahead.** Documents only.
+Branch `sim-w18`. Prompt: `PROMPT.md`. **Plan agreed with the owner 2026-11-10** (go-ahead, Q1-Q3 answered below). Documents only.
 
 ## What I read so far
 
@@ -44,3 +44,15 @@ kits (`kit/`, `verify/`, `acceptance/`), tools (`tools/`, `KeyGen`, `ConvertDeli
 - **Q3. The Java drivers in `sim/tests/ref/`** (RouterConf, M2Sort, M3Seg, StateFp, ...) are how the C++ is checked
   against v1.3. With "no Java in v1.35", I'd treat them as part of the oracle (they stay with `sim/ref`, outside the
   freeze), not as gaps. Agreed?
+
+## The owner's answers (2026-11-10)
+
+- **Q1:** the folders outside `meshsim/` get a short separate group, one row each (what it does, who uses it), default
+  "point to v1.3". Enough to rule on; not a full inventory.
+- **Q2:** no row for ReplayBench; a one-line note that it lived only on `sim-step-cost` and that T2 and the chain
+  timings supersede it.
+- **Q3:** the drivers in `sim/tests/ref/` are the oracle, left out of v1.35, not gaps. **What follows:** frozen v1.35
+  has no `sim/ref` and no Java, so its build, `make check`, and every suite and tool a user runs must work without
+  either. **A further group**: everything in `sim/` today that needs Java or `sim/ref` to build, test or run (the
+  `--check` regenerators, fixtures generated at build time such as TracerConfRig, kits that embed `ref`), each with a
+  disposition: committed fixture, moved out of v1.35, or a gap.

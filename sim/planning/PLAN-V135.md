@@ -21,5 +21,5 @@ everything v1.3's Java meshsim had. The Java stays available as v1.3 (`v1.3/`, a
 
 | worker | state |
 |---|---|
-| W17 | all 128 segments back to back (segments 0-10 exact on both workloads; the full runs next): part of the freeze check |
+| W17 | **done**, closed 2026-11-10 (`sessions/WORKER17-REPORT.md`): all 128 segments of both workloads pass, back to back (Quest 174: evm 878.5 s, cyclone 849.7 s of simulation, 0.30 µs per cycle); part of the freeze check |
 | W18 | the inventory: prompt written 2026-11-10 (`sessions/WORKER18/PROMPT.md`) |

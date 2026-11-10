@@ -76,4 +76,4 @@ exercised. The Tracer's and replayer's own suites (`TracerTest`, `TracerRig`, `T
 
 - **All 128 segments of each workload, back to back**, the memory carried from each segment to the next as `ref`'s T1
   does: v1.3's acceptance check on every segment, segment 10's start equal to W13's snapshot, the cycles and timing.
-  W17: prompt written 2026-11-10 (`sessions/WORKER17/PROMPT.md`).
+  W17: prompt written 2026-11-10 (`sessions/WORKER17-PROMPT.md`).

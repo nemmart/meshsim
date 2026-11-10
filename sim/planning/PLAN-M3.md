@@ -71,3 +71,9 @@ exercised. The Tracer's and replayer's own suites (`TracerTest`, `TracerRig`, `T
   block; T2 is serial on C&C 3's Tracer, so the split doesn't help it (Quest 171).
 - The request bus is built in full (D34) for the file system work.
 - Findings in `ref`'s test tools (W15: SyntheticDelivery not reproducible run to run; ReplayerTest's dead check).
+
+## v1.35, next (owner, 2026-11-10)
+
+- **All 128 segments of each workload, back to back**, the memory carried from each segment to the next as `ref`'s T1
+  does: v1.3's acceptance check on every segment, segment 10's start equal to W13's snapshot, the cycles and timing.
+  W17: prompt written 2026-11-10 (`sessions/WORKER17/PROMPT.md`).

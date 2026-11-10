@@ -269,3 +269,6 @@ receive queue with its controller; C&C c is in tile c's domain). Three points fo
   in the last cycle: the halted/asleep judgment); `tr` skipped at 6,300,000 (W14's overlay). tr_results status 1,
   64 windows, 14,162 transfers; all 64 tiles exited 1; lag_cycles 0. The rows: Quest 169 (rows.bin's count and sink hash
   per window) claimed and pushed, not back yet.
+- 2026-11-10: **T2's acceptance check, the rows (Quest 169: rows.bin's count and the replayer's sink hash per window of
+  segment 10, computed on the runner): evm-zone-29 and cyclone-29, 64 of 64 tiles equal to rows.bin, count and hash,
+  on both runs**; every tile exited 1; tr_results status 1, 64 windows (14,162 and 15,716 transfers); lag_cycles 0.

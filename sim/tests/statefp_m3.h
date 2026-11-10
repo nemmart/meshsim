@@ -55,5 +55,9 @@ void m3_register(FpRegistry& r, M3Chip& c);
 // called with t + m2_offset.
 void m3_point(const FpRegistry& r, const M3Chip& c, const FpCtx& x, std::vector<std::string>& out, unsigned m2_offset = 1);
 bool m3_own_writer(const std::string& name);   // M3's writers (cycle t), not M2's
+// Set by the slot's writer when a PULSE_DMA stored at the point's cycle is in flight to the slot (ref applied it at t,
+// including the peripheral's out_start): the slot's stream is written as applied, the peripheral's (the Tracer's) isn't
+// (asked of W14: an out_start overlay). The caller clears it before a point and reads it after.
+extern thread_local bool g_dma_pulse_at_point;
 
 }  // namespace fp

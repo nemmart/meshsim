@@ -39,13 +39,17 @@ void link(FpOut& o, const char* nm, const BusEntry* e, unsigned n) {
         o.wp(nm, ".at", e[k].at); o.wp(nm, ".a", e[k].a); o.wp(nm, ".b", e[k].b); o.wp(nm, ".c", e[k].c);
     }
 }
+thread_local bool g_hide_last_put = false;
+
 void fifo(FpOut& o, const char* nm, const BusEntry* e, unsigned n, const BusEntry* put) {
+    if (g_hide_last_put) put = nullptr;
     o.wp(nm, ".n", n);
     for (unsigned k = 0; k < n; k++) { o.wp(nm, ".a", e[k].a); o.wp(nm, ".b", e[k].b); o.wp(nm, ".c", e[k].c); }
     o.wp(nm, ".put", put ? 1 : 0);
     if (put) { o.wp(nm, ".pa", put->a); o.wp(nm, ".pb", put->b); o.wp(nm, ".pc", put->c); }
 }
 void hold(FpOut& o, const char* nm, const BusEntry* held, const BusEntry* put) {
+    if (g_hide_last_put) put = nullptr;
     o.wp(nm, ".occ", held ? 1 : 0);
     if (held) { o.wp(nm, ".a", held->a); o.wp(nm, ".b", held->b); o.wp(nm, ".c", held->c); }
     o.wp(nm, ".put", put ? 1 : 0);

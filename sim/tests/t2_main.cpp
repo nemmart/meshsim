@@ -51,7 +51,9 @@ unsigned check_point(const fp::FpRegistry& reg, const fp::M3Chip& mc, sim::Sim& 
     auto it = gold.find(t);
     if (it == gold.end()) { std::printf("point %llu (%s): not in the golden\n", (unsigned long long)t, tag); return 1; }
     std::vector<std::string> lines;
+    fp::g_dma_pulse_at_point = false;
     fp::m3_point(reg, mc, fp::FpCtx{t, &s}, lines, m2_off);
+    const bool pulse = fp::g_dma_pulse_at_point;
     unsigned bad = 0, shown = 0, eq = 0;
     for (const std::string& l : lines) {
         const size_t a = l.find(' '), b = l.rfind(' ');
@@ -59,6 +61,7 @@ unsigned check_point(const fp::FpRegistry& reg, const fp::M3Chip& mc, sim::Sim& 
         if (n == "chip" || (n.size() > 3 && n.compare(n.size() - 3, 3, ".rp") == 0)) continue;
         auto g = it->second.find(n);
         if (g != it->second.end() && g->second == h) { eq++; continue; }
+        if (pulse && n == "tr") { std::printf("  point %llu (%s): tr not compared (a PULSE_DMA of t in flight: the Tracer's out_start)\n", (unsigned long long)t, tag); continue; }
         bad++;
         if (shown++ < 8) std::printf("  point %llu (%s): %s differs\n", (unsigned long long)t, tag, n.c_str());
     }
@@ -91,7 +94,9 @@ int run_segment(t2::Machine&, sim::Sim& s, const std::string& fp_points, const s
             for (const std::string& u : dumps) {
                 fp::FpCtx y{t, &s};
                 if (!fp::m3_own_writer(u)) { y.cycle += m2_off; y.label_shift = m2_off; }
+                fp::g_hide_last_put = y.label_shift != 0;
                 reg.dump(u, y, stdout);
+                fp::g_hide_last_put = false;
             }
             return 0;
         }

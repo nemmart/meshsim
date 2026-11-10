@@ -234,3 +234,20 @@ receive queue with its controller; C&C c is in tile c's domain). Three points fo
   equal to ref's** (golden-m3's `# cc3-exit`, `# end`); `lag_cycles` 0 on both. About 50 s for evm's 24 M cycles on this
   container's one core. The split (6 domains) is too slow here (one core, a barrier every 3 cycles): it goes to the
   runner. Every point's units against the references' unit lines: Quest 168 (fpchip.gz) claimed and pushed.
+- 2026-11-09: **the segment's points** (Quest 168: the references' unit lines; a local ref oracle, `tests/ref/M3Local.java`:
+  ref's T2 chip from W13's two dumps, run to point T, StateFpM3.dump of named units: 5-60 s): evm-zone-29, every
+  100,000-cycle point from 100,000 to 15,100,000 compared (rp and chip left out): **all units equal at every point but
+  three** after these fixes:
+  - **the "asleep" approximation misjudged first** (t1.core's mcycle at 400,000: ref awake, the writer had taken a WFI
+    core not stepped for asleep): now `ref_asleep_m3` (statefp_m3), Tile.canSleep's conditions on the framework's state
+    (in a WFI, no router FIFO occupied, nothing on its way into the router, the K-line or the send hold, the slot idle
+    with nothing on its core Link), through a hook in G1Tile (null: M2's behaviour).
+  - **a put made in the cycle that just ran** is not yet in ref's lazily settled bus under M3's labelling (ref's lastT =
+    cyc + 1): left out by fifo()/hold() (`g_hide_last_put`, set by m3_point around M2's writers) and by the router's
+    fp_own (`put_at > cyc`); the director's K-line keeps M2's filter (my label shift there was wrong: reverted).
+  - **PULSE_DMA of t in flight** at a point: the slot's DMA written as ref applied it (busy, left, q from DMA_HDR).
+  Remaining: (1) `tr` at 6,300,000: the same PULSE_DMA's out_start in the Tracer (ref applied it at t): needs an overlay
+  in W14's Tracer::fingerprint (asked through the owner); (2) `cc3.slot` at 10,800,000 and 11,500,000: ref writes an
+  EVENTS_MASK store pending at the point (pendMaskT == t) where the framework's store was a cycle earlier (C&C 3's pc
+  equal at both points; mask 0x43 then 0x7c3): under investigation (possibly a question for W15: the slot's store
+  timing); (3) the background run stopped at 15,100,000 without an error (this container; to rerun).

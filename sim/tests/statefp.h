@@ -87,6 +87,10 @@ struct BusEntry { uint64_t at; uint64_t a, b, c; };
 void link(FpOut& o, const char* nm, const BusEntry* e, unsigned n);
 void fifo(FpOut& o, const char* nm, const BusEntry* e, unsigned n, const BusEntry* put);
 void hold(FpOut& o, const char* nm, const BusEntry* held, const BusEntry* put);
+// W16: under M3's labelling (StateFpM3: cyc = c.cycle - 1) a put made in the cycle that just ran (ref's lastT = cyc + 1)
+// is not yet in ref's lazily settled bus: fifo() and hold() leave it out while this is set (statefp_m3's m3_point sets
+// it around M2's writers; M2's labelling lists it as the put judged at c + 1).
+extern thread_local bool g_hide_last_put;
 inline void none(FpOut& o, const char* nm) { o.wp(nm, ".none", 0); }
 // Empty buses (the stubs until the port observer lands, and units not built yet).
 inline void link_empty(FpOut& o, const char* nm) { link(o, nm, nullptr, 0); }

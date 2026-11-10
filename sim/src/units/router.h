@@ -327,8 +327,10 @@ void Router::fp_own(Out& o, uint64_t cyc) const {
     for (unsigned k = 0; k < kOut; k++) o.w("rr", rr[k]);
     for (unsigned i = 0; i < n_fifos; i++) {
         const Fifo& f = q[i];
-        const bool now = f.put_at == cyc && cyc != 0;
-        const unsigned n = now && f.put_kept ? f.count - 1u : f.count;   // a put of cyc is listed apart
+        // a put of cyc is listed apart; W16: one after cyc (M3's labelling, ref's lastT = cyc + 1) is not in ref's FIFO yet
+        const bool later = f.put_at > cyc;
+        const bool now = !later && f.put_at == cyc && cyc != 0;
+        const unsigned n = (now || later) && f.put_kept ? f.count - 1u : f.count;
         o.w("n", n);
         for (unsigned k = 0; k < n; k++) {
             unsigned j = f.head + k; if (j >= f.cap) j -= f.cap;

@@ -36,6 +36,7 @@
 #include "units/linkword.h"
 #include "units/peripheral.h"
 #include "units/replayer.h"
+#include "units/tracer.h"
 
 namespace units {
 
@@ -222,6 +223,11 @@ struct PeriphSlot {
     // c; S2: the core's PULSE_RUN or RUN_CONFIG store of c), so they are read with the port observer and written as
     // ref's. Out: FpOut or any sink with w(name, v), wi(name, i, v).
     template <class Out> void fingerprint_replayer(const sim::Sim& m, unsigned n, Out& o, int64_t c);
+    // W14: the Tracer at n's fingerprint unit `unit` (Tracer::FP_NAMES; AUDIT-M3 6.6) at the end of cycle c, between
+    // runs, the same way: the landings of c - 2 .. c and the core's PULSE_RUN or window store of c read from the links,
+    // a PULSE_DMA of c applied as ref's slot does at once (out_start with DMA_HDR's queue and length), and a consuming
+    // EVENTS load of c as ref's slot applies it at c's end.
+    template <class Out> void fingerprint_tracer(const sim::Sim& m, unsigned n, int unit, Out& o, int64_t c);
 
 private:
     void publish(sim::Ctx& c, int64_t t);
@@ -248,6 +254,39 @@ void PeriphSlot::fingerprint_replayer(const sim::Sim& m, unsigned n, Out& o, int
         else if (w == Replayer::W_RUN_CONFIG) p.in[p.n_in++] = {t, 3, CoreOp::value(x)};
     }
     s.replayer(n).fingerprint(o, c, &p);
+}
+
+template <class Out>
+void PeriphSlot::fingerprint_tracer(const sim::Sim& m, unsigned n, int unit, Out& o, int64_t c) {
+    tracer::Tracer& tr = s.tracer(n);
+    tracer::Tracer::FpPending p;
+    sim::PortEntry e[8];
+    const sim::PortView v1 = m.observe(region, e, 8);
+    for (uint32_t k = 0; k < v1.n; k++) {
+        const uint64_t h = e[k].w[1];
+        if (lw::region(lw::addr(h)) != 0x03 + n) continue;
+        if (p.n_land == 4) FATAL("slot %u: more than 4 landings in flight", cfg.tile);
+        // ref's Tracer.accept(t): e = t + 2, the packet's src, offset, size (lo, hi); t = the arrival - 3 (S1, Link(3))
+        p.land[p.n_land++] = {int64_t(e[k].at) - 3 + tracer::Tracer::RP_LATENCY, int(lw::src(h)), lw::offset(lw::addr(h)),
+                              int(lw::size(h)), e[k].w[0], e[k].w[2]};
+    }
+    const sim::PortView v2 = m.observe(core, e, 8);
+    for (uint32_t k = 0; k < v2.n; k++) {
+        const uint64_t x = e[k].w[0];
+        if (CoreOp::n(x) != n) continue;
+        if (CoreOp::kind(x) == CoreOp::CONSUME) { p.consume |= CoreOp::value(x) & ~2u; continue; }   // applied at c's end in ref
+        if (CoreOp::kind(x) != CoreOp::STORE) continue;
+        const unsigned w = CoreOp::word(x);
+        const uint32_t v = CoreOp::value(x);
+        const int64_t t = int64_t(e[k].at) - 1;   // S2, Link(1): the store's cycle
+        if (w == 3 && (v & 1)) p.in[p.n_in++] = {t, tracer::Tracer::FP_IN_RUN, 0, 0};
+        else if (w >= 32 && tr.writable(int(w))) p.in[p.n_in++] = {t, tracer::Tracer::FP_IN_WORD, int(w), v};
+        else if (w == 4 && (v & 1) && tr.out_queues() > 0) {   // PULSE_DMA: ref's slot.dmaStart at once
+            const uint32_t hdr = s.dma[n].hdr;
+            if ((hdr & 0xFFF) > 0) { p.start = true; p.start_q = int((hdr >> 12) & 3); p.start_words = int64_t(hdr & 0xFFF); }
+        }
+    }
+    tr.fingerprint(unit, o, c, &p);
 }
 
 }  // namespace units

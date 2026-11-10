@@ -180,7 +180,22 @@ public:
     // 4 `tr.files`, at the end of cycle c. Out: FpOut (tests/statefp.h) or any sink with w(name, v) and wi(name, i, v).
     static constexpr int FP_UNITS = 5;
     static constexpr const char* FP_NAMES[FP_UNITS] = {"tr", "tr.ic", "tr.dc", "tr.mem", "tr.files"};
-    template <class Out> void fingerprint(int unit, Out& o, int64_t c) const;
+    // In a chip, ref's Tracer at the end of cycle c already holds what here is still in the slot's links (AUDIT-M3 6.6
+    // part 11, as W15's Replayer::FpPending): the region packets the director accepted at c - 2 .. c (landings, e =
+    // accept + 2), the core's PULSE_RUN or window store of c (inputs, e = c), and a PULSE_DMA of c (ref's slot starts
+    // the transfer at once: out_start(c, q, words)). PeriphSlot::fingerprint_tracer builds it; null for a Tracer driven
+    // directly (its lists are ref's).
+    static constexpr int FP_IN_RUN = 1, FP_IN_WORD = 2;   // FpPending::In::kind (the inputs' own kinds)
+    struct FpPending {
+        unsigned n_land = 0, n_in = 0;
+        struct Land { int64_t e; int src; uint32_t offset; int size; uint64_t lo, hi; } land[4];
+        struct In { int64_t e; int kind, word; uint32_t value; } in[2];   // kind IN_RUN (1) or IN_WORD (2)
+        bool start = false;                                               // a PULSE_DMA of c: xfer_queue / xfer_left
+        int start_q = 0;
+        int64_t start_words = 0;
+        uint32_t consume = 0;   // a consuming EVENTS load of c (ref's slot consumes at the end of c): the bits, DMA done's out
+    };
+    template <class Out> void fingerprint(int unit, Out& o, int64_t c, const FpPending* pending = nullptr) const;
 
     // ---- the FIFOs (4.21.6)
     uint32_t* code_fifo = nullptr;  // MAX_ROWS each
@@ -366,7 +381,7 @@ private:
 };
 
 template <class Out>
-void Tracer::fingerprint(int unit, Out& o, int64_t c) const {
+void Tracer::fingerprint(int unit, Out& o, int64_t c, const FpPending* pending) const {
     auto mx = [c](int64_t v) { return uint64_t(v > c ? v : c); };
     const uint64_t NONE = ~uint64_t(0);
     auto cache = [&o](const LruIndex& ix, const Line* lines) {
@@ -423,8 +438,14 @@ void Tracer::fingerprint(int unit, Out& o, int64_t c) const {
         o.w("cur.fetched", cur_.fetched); o.w("cur.presented", cur_.presented);
         o.w("cur.codeThisRun", cur_.code_run == run_id_ ? 1 : 0);
     }
-    // 6. the events' counts
-    for (unsigned b = 0; b < EV_BITS; b++) o.wi("ev", b, ev.count_of(b));
+    // 6. the events' counts (with a consume of c still in the slot's link applied, as ref's slot did at c's end)
+    if (pending && pending->consume) {
+        EventCounts after = ev;
+        after.consume(pending->consume);
+        for (unsigned b = 0; b < EV_BITS; b++) o.wi("ev", b, after.count_of(b));
+    } else {
+        for (unsigned b = 0; b < EV_BITS; b++) o.wi("ev", b, ev.count_of(b));
+    }
     // 7. the statistics counters
     for (int k = 0; k < STAT_N; k++) o.wi("stat", unsigned(k), stat[k]);
     // 8. the jump LRU, eldest to newest
@@ -441,7 +462,9 @@ void Tracer::fingerprint(int unit, Out& o, int64_t c) const {
     o.w("q0ptr", uint64_t(q0ptr_)); o.w("scanStart", mx(scan_start_));
     o.w("scansDone", scans_done_); o.w("codeScan", uint64_t(code_scan_)); o.w("logScan", uint64_t(log_scan_));
     o.w("comp0", comp0_); o.w("comp1", comp1_); o.w("comp2", comp2_); o.w("codeEnded", code_ended_); o.w("logEnded", log_ended_);
-    o.w("xferQueue", uint64_t(xfer_queue_)); o.w("xferLeft", uint64_t(xfer_left_));
+    const bool st = pending && pending->start;   // a PULSE_DMA of c: ref's slot called out_start at once
+    o.w("xferQueue", uint64_t(st ? int64_t(pending->start_q) : xfer_queue_));
+    o.w("xferLeft", uint64_t(st ? pending->start_words : xfer_left_));
     for (const LruCoder* k : {&set2_code_, &set2_rlog_, &set2_wlog_}) coder(*k);
     for (const Bits* b : {&pk_code_, &pk_rlog_, &pk_wlog_}) {
         if (!pk_made_) { o.w("pk", 0); continue; }
@@ -456,17 +479,28 @@ void Tracer::fingerprint(int unit, Out& o, int64_t c) const {
         o.w("oq.ended", x.ended ? 1 : 0);
     }
     // 11. inputs not yet in effect
-    o.w("landing.n", uint64_t(landing_.n));
+    const unsigned pl = pending ? pending->n_land : 0, pi = pending ? pending->n_in : 0;
+    o.w("landing.n", uint64_t(landing_.n) + pl);
     for (int k = 0; k < landing_.n; k++) {
         const Input& x = landing_.e[(landing_.head + k) % INPUTS];
         o.w("e", uint64_t(x.t)); o.w("src", uint64_t(int64_t(x.kind))); o.w("offset", uint64_t(int64_t(x.a)));
         o.w("size", uint64_t(int64_t(x.b))); o.w("lo", x.lo); o.w("hi", x.hi);
     }
-    o.w("inputs.n", uint64_t(inputs_.n));
+    for (unsigned k = 0; k < pl; k++) {
+        const FpPending::Land& x = pending->land[k];
+        o.w("e", uint64_t(x.e)); o.w("src", uint64_t(int64_t(x.src))); o.w("offset", uint64_t(int64_t(int32_t(x.offset))));
+        o.w("size", uint64_t(int64_t(x.size))); o.w("lo", x.lo); o.w("hi", x.hi);
+    }
+    o.w("inputs.n", uint64_t(inputs_.n) + pi);
     for (int k = 0; k < inputs_.n; k++) {
         const Input& x = inputs_.e[(inputs_.head + k) % INPUTS];
         o.w("e", uint64_t(x.t)); o.w("kind", uint64_t(int64_t(x.kind))); o.w("word", uint64_t(int64_t(x.a)));
         o.w("value", uint64_t(uint32_t(x.b)));
+    }
+    for (unsigned k = 0; k < pi; k++) {
+        const FpPending::In& x = pending->in[k];
+        o.w("e", uint64_t(x.e)); o.w("kind", uint64_t(int64_t(x.kind))); o.w("word", uint64_t(int64_t(x.word)));
+        o.w("value", uint64_t(x.value));
     }
 }
 

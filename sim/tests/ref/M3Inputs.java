@@ -18,16 +18,18 @@ final class M3Inputs {
     static void i(DataOutputStream d, int v) throws Exception { d.writeInt(Integer.reverseBytes(v)); }
     static void l(DataOutputStream d, long v) throws Exception { d.writeLong(Long.reverseBytes(v)); }
 
+    static void files(FileStore fs, Path p) throws Exception { try (DataOutputStream d = out(p)) { files(fs, d); } }
+    // The same stream into any output (W17: T1Carry hashes it uncompressed).
     @SuppressWarnings("unchecked")
-    static void files(FileStore fs, Path p) throws Exception {
+    static void files(FileStore fs, DataOutputStream d) throws Exception {
         Map<Integer, long[]> pages = new TreeMap<>((Map<Integer, long[]>) StateFp.o(fs, "pages"));
-        try (DataOutputStream d = out(p)) {
-            d.writeBytes("M3FILES1"); i(d, (int) StateFp.l(fs, "nextFree")); i(d, pages.size());
-            for (var e : pages.entrySet()) { i(d, e.getKey()); for (long x : e.getValue()) l(d, x); }
-        }
+        d.writeBytes("M3FILES1"); i(d, (int) StateFp.l(fs, "nextFree")); i(d, pages.size());
+        for (var e : pages.entrySet()) { i(d, e.getKey()); for (long x : e.getValue()) l(d, x); }
+        d.flush();
     }
-    static void sram(Chip ch, Path p) throws Exception {
-        try (DataOutputStream d = out(p)) {
+    static void sram(Chip ch, Path p) throws Exception { try (DataOutputStream d = out(p)) { sram(ch, d); } }
+    static void sram(Chip ch, DataOutputStream d) throws Exception {
+        {
             d.writeBytes("M3SRAM01");
             for (int u = 0; u < 67; u++) {
                 BigSRAM s = u < 64 ? ch.tiles[u].sram : ch.cores.unit(u - 64).sram;
@@ -37,6 +39,7 @@ final class M3Inputs {
                 i(d, u); i(d, n);
                 for (int a = 0; a < data.length; a++) if (data[a] != null) for (int k = 0; k < data[a].length; k++) if (data[a][k] != 0) { i(d, (a << 17) | k); i(d, data[a][k]); }
             }
+            d.flush();
         }
     }
 }

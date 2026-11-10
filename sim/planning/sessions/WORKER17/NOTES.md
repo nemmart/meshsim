@@ -67,3 +67,9 @@ kept: `FileStore.copy` clones every page and `nextFree`); `M3Seg` takes W13's sn
 - 2026-11-10: owner: go ahead in this order (172 into notes, C++ inputs and landings with synthetic tests, the
   driver, the 0-10 run, the full runs); exit and end from `sim_exit_at`, confirmed against W16's segment 10 first;
   the store kept outside the Tracer (no unit change).
+- 2026-11-10: **the chain's inputs and landings in C++** (`tests/chain.h/.cpp`, `tests/chain.mk`, one `include` line
+  in `sim/Makefile`): a minimal JSON reader; `load_w26` (ref's allocation order: the image create(2) and its pages,
+  then the map; loadW26's checks); `read_segments` (frames 2-5, frame 5's LRU coding) and a writer for tests; the
+  landings (TracerT2.chip, as M3Inputs.sram's list); W13's two stream forms; the oracle's files; the manifest's
+  windows with files; stream_values. `test_chain` (7 tests, synthetic inputs and the real replayer tables) passes on
+  gcc and clang, debug and release. Equality with ref's landings and starts is for the runner (golden-chain).

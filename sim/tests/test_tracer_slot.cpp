@@ -10,6 +10,7 @@
 // (the unit's a cycle later, through the Fifo), and leave the Tracer with the same fingerprint (AUDIT-M3 6.6, all five
 // units). Plain, step-all and shuffled; the debug builds' missed-wake detector on throughout.
 #include <algorithm>
+#include <cstdlib>
 #include <cstdio>
 #include <memory>
 #include <string>
@@ -249,7 +250,11 @@ struct DirectRun {
         Image im = image();
         ctl.record(im);
         sc.tracer(1).own_memory(std::move(im.fs));
-        for (int64_t t = 0; t < cycles; t++) {
+        for (int64_t t = 0; t < cycles; t++) cycle(t);
+    }
+    // One cycle t at ref's timing (the slot's calls at once).
+    void cycle(int64_t t) {
+        {
             if (ctl.phase != 2 && t >= 1) {   // the framework steps units from cycle 1 (the stand's first decision)
                 Ctl::View v;
                 sc.peek(t, 1, 1, v.status);
@@ -345,4 +350,61 @@ DEATH_TEST(tracer_in_the_slot_without_memory_is_fatal, "without a memory system"
     sc.install(1, PT_TRACER);
     sc.write(1, 1, 3, 1);   // PULSE_RUN at 1
     for (int64_t t = 0; t < 4; t++) { sc.run_cycle(t); sc.end_cycle(t); }
+}
+
+// The Tracer's fingerprint in the slot unit at every cycle's end equals its twin's, driven directly at ref's timing
+// (W16's segment run: a PULSE_DMA store of the point's own cycle starts a transfer in ref at once, here a cycle later
+// through the slot's core link): PeriphSlot::fingerprint_tracer overlays what the links still hold (landings, the core's
+// PULSE_RUN or window store, the PULSE_DMA's start), all five units. The plain Tracer::fingerprint misses them: checked.
+TEST(tracer_fingerprint_in_the_slot_equals_its_twin_every_cycle) {
+    const int rows = 400;
+    const int64_t cycles = 6000;
+    sim::Options o;
+    o.observe_arrivals = true;
+    FwRun r(rows, o);
+    DirectRun d(rows, 0);
+    PeriphSlot& slot = r.m.unit<PeriphSlot>("slot");
+    uint64_t compared = 0, overlaid = 0, starts = 0, starts_missed_plain = 0;
+    for (int64_t t = 0; t < cycles; t++) {
+        d.cycle(t);
+        if (int64_t(r.m.now()) < t + 1) r.m.run(uint64_t(t + 1) - r.m.now());   // the framework between cycles t and t + 1
+        for (int u = 0; u < Tracer::FP_UNITS; u++) {
+            fp::FpOut a, b, plain;
+            d.sc.tracer(1).fingerprint(u, a, t);
+            slot.fingerprint_tracer(r.m, 1, u, b, t);
+            if (a.done() != b.done()) {
+                if (std::getenv("TRACER_FP_DEBUG")) {   // localising: both streams, named, to diff
+                    FILE* fa = std::fopen("/tmp/fp_twin.txt", "w"); FILE* fb = std::fopen("/tmp/fp_slot.txt", "w");
+                    fp::FpOut da(fa, "tr"), db(fb, "tr");
+                    d.sc.tracer(1).fingerprint(u, da, t);
+                    slot.fingerprint_tracer(r.m, 1, u, db, t);
+                    std::fclose(fa); std::fclose(fb);
+                }
+                ::test::fail(__FILE__, __LINE__, "after cycle %lld: unit %s: in the slot %016llx, its twin %016llx", (long long)t,
+                             Tracer::FP_NAMES[u], (unsigned long long)b.done(), (unsigned long long)a.done());
+                return;
+            }
+            if (u == 0) {
+                r.tracer().fingerprint(0, plain, t);
+                if (plain.done() != a.done()) overlaid++;
+            }
+            compared++;
+        }
+        // the cycles whose core store is a PULSE_DMA (the case W16 met): the plain fingerprint misses it there
+        sim::PortEntry e[8];
+        const sim::PortView v = r.m.observe(slot.core, e, 8);
+        for (uint32_t k = 0; k < v.n; k++)
+            if (CoreOp::kind(e[k].w[0]) == CoreOp::STORE && CoreOp::word(e[k].w[0]) == 4) {
+                starts++;
+                fp::FpOut a, plain;
+                d.sc.tracer(1).fingerprint(0, a, t);
+                r.tracer().fingerprint(0, plain, t);
+                if (a.done() != plain.done()) starts_missed_plain++;
+            }
+    }
+    std::printf("  %llu unit fingerprints equal to the twin's; the overlay mattered at %llu cycles, %llu of them a PULSE_DMA's\n",
+                (unsigned long long)compared, (unsigned long long)overlaid, (unsigned long long)starts);
+    CHECK(starts >= 4);       // queue 0 and the three streams' transfers
+    CHECK_EQ(starts_missed_plain, starts);   // without the overlay, every one of them differs
+    CHECK(overlaid >= starts);
 }

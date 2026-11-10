@@ -1,7 +1,8 @@
 # WORKER16 report: the C&C cores and the chip's integration, T2 end to end (M3, G7)
 
-Status 2026-11-10: **T2 exact on the framework, on one domain and on T2's 6-domain split**; the first timing done;
-waiting for W15's D35 fix (the slot publishes only the registers that changed) to time again. On main at fb5f845.
+Status 2026-11-10: **T2 exact on the framework, on one domain and on T2's 6-domain split**, before and after D35 (W15:
+the slot publishes only the window registers that changed); **after D35, about 6.5× ref's speed on one thread**
+(Quest 171).
 
 ## What T2 shows
 
@@ -19,20 +20,39 @@ big-SRAM landings):
   169); every tile exits 1; C&C 3's `tr_results` status 1, 64 windows (14,162 and 15,716 transfers); the request bus's
   `lag_cycles` 0 (D34: mode 3 equals ref here).
 
-## The first timing (Quest 170; i5-14400F, P core at up to 4.7 GHz, clang 18.1.3 release)
+## Timing (the runner: Intel Core i5-14400F, P cores up to 4.7 GHz, governor powersave, clang 18.1.3 release)
 
-The segment only (CC_SEGMENT to the end), setup and boot apart as W13's baseline; 3 in-process repetitions:
+The segment only (CC_SEGMENT to the end), setup and boot apart as W13's baseline; 3 in-process repetitions each
+(spread under 0.5%); every point checked again on both runs, one domain and the split, in the same task. Quest 170
+before D35, Quest 171 after:
 
-| run | one thread | µs/cycle | split, 6 P cores | µs/cycle | ref | ×, one thread | ×, split |
+| run | | one thread | µs/cycle | × ref | split, 6 P cores | µs/cycle | × ref |
 |---|---|---|---|---|---|---|---|
-| evm-zone-29 10 | 24.30 s | 1.015 | 20.95 s | 0.875 | 46.23 s | 1.90 | 2.21 |
-| cyclone-29 10 | 26.56 s | 0.938 | 24.07 s | 0.850 | 50.90 s | 1.92 | 2.12 |
+| evm-zone-29 10 (23,933,484 cycles; ref 46.23 s) | Quest 170 | 24.30 s | 1.015 | 1.90 | 20.95 s | 0.875 | 2.21 |
+| | **Quest 171 (D35)** | **7.10 s** | **0.296** | **6.52** | **7.02 s** | **0.293** | **6.58** |
+| cyclone-29 10 (28,312,353 cycles; ref 50.90 s) | Quest 170 | 26.56 s | 0.938 | 1.92 | 24.07 s | 0.850 | 2.12 |
+| | **Quest 171 (D35)** | **7.81 s** | **0.276** | **6.52** | **7.98 s** | **0.282** | **6.38** |
 
-C&C 3's domain alone (tile 2 and C&C 3): 15.79 s and 18.59 s, the split's floor; the split's threads idle on imbalance
-0.71 of their time. Where the time goes (one thread, Options::calibrate): the units' steps 94%; the controllers' slots
-(C&C 3's Tracer) 58-64%, the tiles' slots (the replayers) 25-31%, everything else a few percent. perf: the slot
-republishing its window every step (`SlotCore::peek`, `PeriphSlot::publish`) about 59%; the Tracer's own work about
-13%, the replayers' about 6%; the engine about 1%. The owner's choice: D35 (W15).
+D35 made one thread 3.4× faster. The split no longer helps: it is within 2% of one thread either way.
+
+| | Quest 170 (evm / cyclone) | Quest 171 (evm / cyclone) |
+|---|---|---|
+| C&C 3's domain alone (tile 2, C&C 3; calibrate) | 15.79 s / 18.59 s | 4.39 s / 5.09 s |
+| the units' steps, share of the segment and boot | 94.4% / 94.2% | 82.8% / 82.6% |
+| the controllers' slots (C&C 3's Tracer) | 58.5% / 64.4% | 46.9% / 49.3% |
+| the tiles' slots (the replayers) | 31.4% / 25.1% | 18.0% / 15.0% |
+| the controllers' blocks (`cc:ctl`) | 3.9% / 4.3% | 13.6% / 14.5% |
+| the routers; the tiles' blocks; the controllers' cores | 1.5; 1.4; 1.1% | 4.9; 5.0; 3.7% (evm) |
+| the split's threads: compute; imbalance; drain; publish | 0.23; 0.71; 0.04; 0.01 | 0.21; 0.61; 0.12-0.13; 0.03 |
+
+(The unit shares are of the units' step time; after D35 the framework and harness take the other 17%.)
+
+perf (evm, one thread), after D35: `PeriphSlot::publish` 19.5% (was ~59% with `SlotCore::peek`), `TileCtl::step` 8.2%,
+`Tracer::word` 7.5%, `Tracer::settle` 6.4%, `PeriphSlot::step` 4.3%, `RegBlockState::end_cycle` 3.4%, the engine's
+`run_until` 3.2% and `run_form<PeriphSlot>` 2.8%, `Router::step` 2.8%; the rest under 2.5% each.
+
+Now C&C 3's domain (4.4-5.1 s) is about two thirds of the segment. The split's other domains idle on it (imbalance
+0.61), while the split's own costs (drain 0.12, publish 0.03) about cancel what the other domains take off one thread.
 
 ## Delivered
 
@@ -51,7 +71,7 @@ republishing its window every step (`SlotCore::peek`, `PeriphSlot::publish`) abo
   `BootStage.java`, `CcPing.java`.
 - **Images**: `tests/m3-images` (cc1, cc23, tracer_ctl, replay_ctl, byte-identical to 110u's; `build.sh --check`).
 - Quest tasks 165 (the boot-end lines), 167 (files dumps), 168 (unit lines), 169 (the rows' reference), 170 (T2 on
-  the runner); `WORKER16/tasks/mk_task.sh`, `t2-body.sh`.
+  the runner), 171 (the same after D35); `WORKER16/tasks/mk_task.sh`, `t2-body.sh`.
 
 ## Findings
 
@@ -73,7 +93,6 @@ republishing its window every step (`SlotCore::peek`, `PeriphSlot::publish`) abo
 
 ## Open
 
-- Time both runs again after W15's D35 fix, against Quest 170, with every point checked once more.
 - `--fp-boot` and the segment's checks need the runner's dumps (Quest 165, 167, 168, 169 results), so they aren't in
   `make check`; the boot's trace and the harness's pieces are.
 - C&C 1's own error line reaches the toast pin two cycles after ref's (no run reaches an error); UART RX has no source

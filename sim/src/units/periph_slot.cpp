@@ -346,39 +346,116 @@ PeriphSlot::PeriphSlot(sim::Ports& p, const PeriphSlotConfig& c) : cfg(c) {
     for (unsigned n = 1; n <= 3; n++) if (s.per[n].type != PT_ABSENT) s.visit(n, [&](auto& q) { q.ports(decl); });
 }
 
-void PeriphSlot::publish(sim::Ctx& c, int64_t t) {
-    auto put = [&](unsigned i, uint32_t v) {
-        if (first || published[i] != v) { c.write(window, i, v); published[i] = v; }
-    };
+// Every register of the window as ref's reads at t give it, computed the plain way (per word, through the slot's peek):
+// the debug guard's recompute (D35), and the first publish's full write.
+void PeriphSlot::full_values(int64_t t, uint32_t* out) {
+    for (unsigned i = 0; i < Win::REGS; i++) out[i] = 0;
     for (unsigned n = 1; n <= 3; n++) {
         if (s.per[n].type == PT_ABSENT) continue;
         uint32_t v;
-        for (unsigned w = 0; w < Win::STD; w++) { s.peek(t, n, w, v); put(Win::reg(n, Win::R_STD + w), v); }
-        uint32_t def[3] = {}, stall[3] = {};
+        for (unsigned w = 0; w < Win::STD; w++) { s.peek(t, n, w, v); out[Win::reg(n, Win::R_STD + w)] = v; }
+        uint32_t def[3] = {}, stall[3] = {}, wr[3] = {};
         for (unsigned w = Win::OWN0; w < Win::WORDS; w++) {
             const unsigned k = w - Win::OWN0;
             if (s.peek(t, n, w, v)) def[k / 32] |= 1u << (k % 32);
             else v = 0;
-            put(Win::reg(n, Win::R_OWN + k), v);
+            out[Win::reg(n, Win::R_OWN + k)] = v;
             if (s.store_stalls(t, n, w)) stall[k / 32] |= 1u << (k % 32);
         }
-        for (unsigned k = 0; k < 3; k++) { put(Win::reg(n, Win::R_DEFINED + k), def[k]); put(Win::reg(n, Win::R_STALL + k), stall[k]); }
-        if (first) {                                       // static: which defined words a store writes
-            uint32_t wr[3] = {};
-            s.visit(n, [&](auto& q) {
-                for (unsigned w = Win::OWN0; w < Win::WORDS; w++) {
-                    const unsigned k = w - Win::OWN0;
-                    bool yes;
-                    if constexpr (requires { q.writable(0); }) yes = q.writable(int(w));
-                    else yes = (def[k / 32] >> (k % 32)) & 1;
-                    if (yes) wr[k / 32] |= 1u << (k % 32);
-                }
-            });
-            for (unsigned k = 0; k < 3; k++) put(Win::reg(n, Win::R_WRITABLE + k), wr[k]);
+        s.visit(n, [&](auto& q) {
+            for (unsigned w = Win::OWN0; w < Win::WORDS; w++) {
+                const unsigned k = w - Win::OWN0;
+                bool yes;
+                if constexpr (requires { q.writable(0); }) yes = q.writable(int(w));
+                else yes = (def[k / 32] >> (k % 32)) & 1;
+                if (yes) wr[k / 32] |= 1u << (k % 32);
+            }
+        });
+        for (unsigned k = 0; k < 3; k++) {
+            out[Win::reg(n, Win::R_DEFINED + k)] = def[k]; out[Win::reg(n, Win::R_STALL + k)] = stall[k];
+            out[Win::reg(n, Win::R_WRITABLE + k)] = wr[k];
         }
     }
-    put(Win::R_LIVE, s.live_events(t) | s.live_errors(t) << 3);
-    first = false;
+    out[Win::R_LIVE] = s.live_events(t) | s.live_errors(t) << 3;
+}
+
+namespace {
+// A peripheral type with its own store_stalls (C&C 1's UART_TX), rather than PeripheralBase's (never).
+template <class P>
+constexpr bool kOwnStoreStalls = !std::is_same_v<decltype(&P::store_stalls), decltype(&PeripheralBase<P>::store_stalls)>;
+}  // namespace
+
+// D35: only the registers that changed are written, their values computed straight from each peripheral, once per
+// peripheral (one dispatch, not one a word): the standard words, its defined own words only (a static list made at the
+// first publish), its store stalls only if the type has them, the live bits from the values just computed. The first
+// publish writes every register (the static ones: PARAMS' type, R_DEFINED, R_WRITABLE, the undefined words' zeros). The
+// debug builds check every register against full_values after each publish (fatal, naming it).
+void PeriphSlot::publish(sim::Ctx& c, int64_t t) {
+    auto put = [&](unsigned i, uint32_t v) {
+        if (published[i] != v) { c.write(window, i, v); published[i] = v; }
+    };
+    if (first) {
+        uint32_t all[Win::REGS];
+        full_values(t, all);
+        for (unsigned i = 0; i < Win::REGS; i++) { c.write(window, i, all[i]); published[i] = all[i]; }
+        for (unsigned n = 1; n <= 3; n++) {
+            own_words_n[n] = 0;
+            if (s.per[n].type == PT_ABSENT) continue;
+            for (unsigned k = 0; k < Win::WORDS - Win::OWN0; k++)
+                if (all[Win::reg(n, Win::R_DEFINED + k / 32)] >> (k % 32) & 1) own_words[n][own_words_n[n]++] = uint8_t(k);
+        }
+        first = false;
+        return;
+    }
+    uint32_t live = 0;
+    for (unsigned n = 1; n <= 3; n++) {
+        if (s.per[n].type == PT_ABSENT) continue;
+        s.visit(n, [&](auto& p) {
+            using P = std::remove_reference_t<decltype(p)>;
+            const SlotCore::Dma& d = s.dma[n];
+            const unsigned base = Win::reg(n, 0);
+            const uint32_t status = (p.running(t) ? 1u : 0u) | (d.busy_at(t) ? 2u : 0u) | (p.status_bits(t) & ~3u);
+            const uint32_t err = uint32_t(p.errors(t));
+            p.sync(t);
+            const uint32_t ev = p.events().value(t) | d.done_bit(t);
+            put(base + Win::R_STD + 1, status);
+            put(base + Win::R_STD + 2, err);
+            put(base + Win::R_STD + 5, ev);
+            put(base + Win::R_STD + 6, ev);
+            put(base + Win::R_STD + 7, s.mask[n]);
+            if (p.out_queues() > 0) { put(base + Win::R_STD + 8, d.hdr); put(base + Win::R_STD + 9, d.addr); }
+            for (unsigned i = 0; i < own_words_n[n]; i++) {
+                const unsigned k = own_words[n][i];
+                uint32_t v = 0;
+                p.word(t, int(Win::OWN0 + k), v);
+                put(base + Win::R_OWN + k, v);
+            }
+            if constexpr (kOwnStoreStalls<P>) {
+                uint32_t stall[3] = {};
+                for (unsigned i = 0; i < own_words_n[n]; i++) {
+                    const unsigned k = own_words[n][i];
+                    if (p.store_stalls(t, int(Win::OWN0 + k))) stall[k / 32] |= 1u << (k % 32);
+                }
+                for (unsigned k = 0; k < 3; k++) put(base + Win::R_STALL + k, stall[k]);
+            }
+            if (ev & s.mask[n]) live |= 1u << (n - 1);
+            if (err != 0) live |= 1u << (n + 2);
+        });
+    }
+    put(Win::R_LIVE, live);
+    if constexpr (sim::kDebug) {
+        uint32_t all[Win::REGS];
+        full_values(t, all);
+        for (unsigned i = 0; i < Win::REGS; i++) {
+            if (all[i] == published[i]) continue;
+            const unsigned n = i / Win::PER + 1, r = i % Win::PER;
+            const char* what = i == Win::R_LIVE ? "the live bits" : r < Win::R_OWN ? "standard word" : r < Win::R_DEFINED ? "own word"
+                             : r < Win::R_STALL ? "R_DEFINED" : r < Win::R_WRITABLE ? "R_STALL" : "R_WRITABLE";
+            const unsigned word = r < Win::R_OWN ? r : r < Win::R_DEFINED ? Win::OWN0 + r - Win::R_OWN : r;
+            FATAL("slot %u at %lld: window register %u (peripheral %u, %s %u) is 0x%x, published 0x%x (PeriphSlot::publish misses it)",
+                  cfg.tile, (long long)t, i, i == Win::R_LIVE ? 0u : n, what, word, all[i], published[i]);
+        }
+    }
 }
 
 sim::Wake PeriphSlot::step(sim::Ctx& c) {

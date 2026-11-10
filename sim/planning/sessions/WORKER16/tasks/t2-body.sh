@@ -1,7 +1,8 @@
 # t2-body.sh (WORKER16): T2 on the framework's chip on the runner (AUDIT-M3 0, 5, 7).
 # 1. Checked runs, both programs (evm-zone-29, cyclone-29 segment 10): one domain and T2's 6-domain split (mode 3),
 #    every point against the references' unit lines (fpchip.gz), the rows against rows.bin (Quest 169's counts and sink
-#    hashes, in the kit), every tile's exit, tr_results, lag_cycles 0. Not timing (the four in parallel).
+#    hashes, in the kit), every tile's exit, tr_results, lag_cycles 0. Not timing (the four in parallel). In chunks to
+#    the next label that matters (--hint-exit, --hint-end: ref's exit and end, checked to fall exactly there).
 # 2. Timing, alone and sequential: per program, one thread (one P core) and the split (6 threads on 6 P cores), REPS
 #    in-process repetitions each, setup and boot apart (W13's baseline: ref's segment 46.23 s and 50.90 s).
 # 3. Where the time goes: Options::calibrate (each unit's steps: by kind, C&C 3's domain alone, the framework's share),
@@ -24,12 +25,12 @@ dcf71fc01b5596c0aea3eb8366942376243eadabfb52ff3d5177639143490d24  evm.files.gz
 a228f9c394514c92365e2e2bd3c1b1b363f510d9b04b86ca77786bc7b30d6f61  cyclone.sram.gz
 H
 (cd "$G" && sha256sum -c --quiet "$W/h") && verdict inputs PASS || { verdict inputs FAIL; exit 1; }
-declare -A PROG=([evm]=evm-zone-29 [cyclone]=cyclone-29) END=([evm]=23940706 [cyclone]=28319575)
+declare -A PROG=([evm]=evm-zone-29 [cyclone]=cyclone-29) END=([evm]=23940706 [cyclone]=28319575) EXIT=([evm]=23694305 [cyclone]=28106741)
 args() { echo "--sram $G/$1.sram.gz --files $G/$1.files.gz"; }
 sec "1. checked runs: one domain and the 6-domain split, every point, the rows (parallel)"
 PIDS=""
 for S in evm cyclone; do for N in 1 6; do
-  ( cd "$KS" && "$T2" $(args $S) --segment --parts $N --fp-points "$G/$S.fpchip.gz" --rows-ref "$W/kit/run/rows.txt" --program "${PROG[$S]}" ) \
+  ( cd "$KS" && "$T2" $(args $S) --segment --parts $N --fp-points "$G/$S.fpchip.gz" --rows-ref "$W/kit/run/rows.txt" --program "${PROG[$S]}" --hint-exit ${EXIT[$S]} --hint-end ${END[$S]} ) \
     > "$RES/check-$S-$N.log" 2>&1 & PIDS="$PIDS $!:$S-$N"
 done; done
 for X in $PIDS; do wait ${X%%:*}; R=$?; L=$RES/check-${X#*:}.log

@@ -77,7 +77,7 @@ unsigned check_point(const fp::FpRegistry& reg, const fp::M3Chip& mc, sim::Sim& 
 // exit with every tile exited; points every 100,000 cycles, at C&C 3's exit and at the end (labels as M3Seg's).
 int run_segment(t2::Machine& mach, sim::Sim& s, const std::string& fp_points, const std::vector<std::string>& dumps, int64_t dump_at,
                 uint64_t cap, unsigned m2_off, unsigned parts, uint64_t check_from, const std::string& rows_ref,
-                const std::string& program, const t2::Image& cc3img) {
+                const std::string& program, const t2::Image& cc3img, uint64_t hint_exit, uint64_t hint_end) {
     Points gold;
     std::string err;
     if (!fp_points.empty() && !load_points(fp_points, gold, err)) { std::fprintf(stderr, "t2: %s\n", err.c_str()); return 1; }
@@ -108,6 +108,7 @@ int run_segment(t2::Machine& mach, sim::Sim& s, const std::string& fp_points, co
         if (!gold.empty() && t > 0 && t % 100000 == 0 && s.now() > start && t >= check_from) { points++; if (check_point(reg, mc, s, t, gold, m2_off, "")) bad_points++; }
         if (tr && tr->stopped()) { why = "the Tracer stopped"; break; }
         if (u3.rv.halt != units::Rv32::RUN) {
+            if (cc3_exit < 0 && hint_exit && t != hint_exit) { std::printf("C&C 3 exited at %llu, not at the hint %llu\n", (unsigned long long)t, (unsigned long long)hint_exit); bad_points++; }
             if (cc3_exit < 0) {
                 cc3_exit = int64_t(c);
                 std::printf("C&C 3 exited (point %llu)\n", (unsigned long long)t);
@@ -119,7 +120,17 @@ int run_segment(t2::Machine& mach, sim::Sim& s, const std::string& fp_points, co
             if (c - uint64_t(cc3_exit) >= 1'000'000) { why = "a tile not exited 1 M cycles after C&C 3"; break; }
         }
         if (s.now() - start > cap) break;
-        s.run(1);
+        // with hints (a split run's checked points: per-cycle calls cost a barrier each), run to the next label that
+        // matters: a point and the cycle before it, the hinted exit and end and the cycles before them, --dump-at
+        uint64_t step = 1;
+        if (hint_exit && hint_end) {
+            uint64_t n = (t / 100000 + 1) * 100000 - 1;              // the next point's cycle before
+            if (n == t) n = t + 1;
+            for (uint64_t h : {hint_exit - 1, hint_exit, hint_end - 1, hint_end, uint64_t(dump_at - 1), uint64_t(dump_at)})
+                if (h > t && h < n && h != ~uint64_t(0)) n = h;
+            step = n - t;
+        }
+        s.run(step);
         if ((s.now() - start) % 1'000'000 == 0) { std::printf("... cycle %llu\n", (unsigned long long)(s.now() - 1)); std::fflush(stdout); }
     }
     const uint64_t t_end = s.now() - 2;
@@ -244,6 +255,7 @@ int main(int argc, char** argv) {
     std::string sram, files;
     unsigned reps = 0;                        // --time REPS (with --end T): the timing
     uint64_t end_t = 0;
+    uint64_t hint_exit = 0, hint_end = 0;     // --hint-exit T --hint-end T: a checked run in chunks (the exact labels known)
     bool units_prof = false, thread_times = false;   // --units, --thread-times
     unsigned parts = 1;
     uint64_t cap = 2'000'000;
@@ -278,6 +290,8 @@ int main(int argc, char** argv) {
         else if (a == "--program") program = next();
         else if (a == "--time") reps = unsigned(std::atoi(next()));
         else if (a == "--end") end_t = std::strtoull(next(), nullptr, 10);
+        else if (a == "--hint-exit") hint_exit = std::strtoull(next(), nullptr, 10);
+        else if (a == "--hint-end") hint_end = std::strtoull(next(), nullptr, 10);
         else if (a == "--units") units_prof = true;
         else if (a == "--thread-times") thread_times = true;
         else { std::fprintf(stderr, "t2: unknown argument %s\n", a.c_str()); return 2; }
@@ -351,7 +365,7 @@ int main(int argc, char** argv) {
         std::printf("fp-boot: %u units equal, %u differ\n", good, bad);
         for (auto& [k, n] : bad_kind) std::printf("  %-14s %u\n", k.c_str(), n);
     }
-    if (segment) return run_segment(*m, s, fp_points, dumps, dump_at, seg_cap, m2_off, parts, check_from, rows_ref, program, cc3);
+    if (segment) return run_segment(*m, s, fp_points, dumps, dump_at, seg_cap, m2_off, parts, check_from, rows_ref, program, cc3, hint_exit, hint_end);
     if (!dumps.empty()) {
         fp::M3Chip mc;
         fp::m3_attach(s, mc, units::reqbus::ReqBusConfig{});

@@ -1,5 +1,5 @@
 // chain.h (WORKER17, v1.35): T2's segments back to back on the framework's chip, the memory carried from each segment
-// to the next as `ref`'s T1 carries it (TracerT2.main, M3Seg's loop; sim/planning/sessions/WORKER17/NOTES.md). The
+// to the next as `ref`'s T1 carries it (TracerT2.main, M3Seg's loop; sim/planning/sessions/WORKER17-NOTES.md). The
 // inputs come from WORKER26's files and the delivery directly, not from `ref`'s dumps. Configuration and between-cycle
 // code only (D6 doesn't apply here).
 //

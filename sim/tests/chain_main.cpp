@@ -1,5 +1,5 @@
 // chain (WORKER17, v1.35; build/<cc>-<mode>/chain): T2's segments back to back on the framework's chip, one workload,
-// the memory carried from each segment to the next as `ref`'s T1 carries it (sim/planning/sessions/WORKER17/NOTES.md).
+// the memory carried from each segment to the next as `ref`'s T1 carries it (sim/planning/sessions/WORKER17-NOTES.md).
 // Run from sim/ (the hops, the boot ROM, the images in tests/m3-images, the replayer tables).
 //
 //   chain --w26 DIR --delivery DIR --program NAME --segments A-B [--oracle FILE] [--windows N] [--chunk N]

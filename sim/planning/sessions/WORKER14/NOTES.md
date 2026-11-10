@@ -453,3 +453,15 @@ debug, tsan).
   TileCtl's `sim_exit_at` (AUDIT-M3 7's mapping inside both). Mode 3, one domain and T2's split (4 domains): the same
   words; `lag_cycles` 1,026, 42 of the 601 cycle figures differ from `ref`'s (exit still at 24,702); the split equal to
   one domain in every figure. Clang release and gcc debug.
+- 2026-11-09: REPORT.md with the request bus (section 8). Paused (the owner): W16 builds the M3 fingerprint writers
+  (calling `reqbus` / `req`); T2's questions come back through the owner.
+- 2026-11-09: **W16's request** (evm's point 6,300,000: a PULSE_DMA store of the point's own cycle; ref's slot starts
+  the transfer at once, ours a cycle later through the slot's core link). `Tracer::fingerprint` takes a
+  `Tracer::FpPending` (as W15's `Replayer::FpPending`): the landings of c - 2 .. c, the core's PULSE_RUN or window store
+  of c, a PULSE_DMA of c (xferQueue / xferLeft as `out_start` with DMA_HDR's queue and length) and a consuming EVENTS
+  load of c (the event counts after ref's end-of-cycle consume). **`PeriphSlot::fingerprint_tracer(m, n, unit, o, c)`**
+  (W15's `periph_slot.h`, beside `fingerprint_replayer`, noted) builds it from the port observer; W16 calls it in the
+  M3 chip line for C&C 3's Tracer. Test (`test_tracer_slot`): the slot unit's Tracer against its twin driven directly
+  at ref's timing, all five units after **every** cycle of a 6,000-cycle run (30,000 fingerprints equal); the overlay
+  mattered at 845 cycles; at each of the 4 PULSE_DMA cycles the plain fingerprint differs (checked). Clang release and
+  gcc debug; test_tracer, test_periph_slot and test_slotconf unchanged.

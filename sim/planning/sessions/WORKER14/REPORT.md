@@ -1,9 +1,10 @@
-# WORKER14 report: M3's G5 (the Tracer, its memory system and its memory)
+# WORKER14 report: M3's G5 (the Tracer, its memory system and its memory) and the request bus
 
-**So far: done up to the chip.** The Tracer is built, equal to `ref` every cycle, wired into W15's slot, and timed. What
-remains waits for W16's chip assembly (T2's exactness may bring Tracer questions back through the owner).
+**So far: done.** The Tracer is built, equal to `ref` every cycle, wired into W15's slot, and timed. The request bus
+(taken over from W16's plan, D34) is built, equal to `ref` every cycle in mode 0, wired into both chips, and equal to
+`ref` end to end on T2's machine (section 8). T2's exactness may bring Tracer or bus questions back through the owner.
 
-Branch `sim-w14`, merged into `main` piece by piece (last a2009dc). Day-by-day detail is in `NOTES.md`; this is what
+Branch `sim-w14`, merged into `main` piece by piece (last f68be7e). Day-by-day detail is in `NOTES.md`; this is what
 the integrator, W15, W16 and the rest of M3 need.
 
 **State at hand-off.**
@@ -19,9 +20,11 @@ the integrator, W15, W16 and the rest of M3 need.
   plain, step-all and shuffled runs (`test_tracer_slot`).
 - **Speed** (Quest 166, one P core): 33.9 / 33.5 ns per Tracer cycle, 1.23x / 1.11x `ref`'s Tracer. Not optimised
   (the owner decides after T2's first timing).
-- **My binaries** (`test_tracer_parts`, `test_tracer`, `test_tracer_slot`) pass in all four builds (gcc and clang,
-  debug and release), and W15's `test_periph_slot` and `test_slotconf` still pass with the Tracer case in the slot. I
-  did not run the tsan builds; the owner reported clang release clean at a2009dc.
+- **The request bus** (section 8): mode 0 equal to `ref` every cycle on ReqConf's five fixtures; on T2's machine a
+  tile's REQUEST_SEND into C&C 1's REQUEST_RECEIVE equal to `ref` in every figure (`test_cc_req`); mode 3 as D34 says.
+- **make check** on the merged tree (16b8822, before `test_cc_req`): gcc and clang, debug and release, all 54
+  binaries; TSan on both compilers, the thread tests and `test_reqbus`'s split run, no races. `test_cc_req` then in
+  clang release and gcc debug; the owner's clang release at f68be7e: 56 binaries clean.
 
 ## 1. Files
 
@@ -140,7 +143,85 @@ Candidates, cheapest first, for the owner's decision after T2's first timing:
 ## 7. What's left
 
 - **T2 on the chip** (W16 assembles it with the slot): the harness gives the Tracer its memory (`own_memory` with the
-  segment-10 snapshot); the Tracer's five fingerprint units are ready for the M3 references (W13's `golden-m3`).
-  Tracer questions from T2's exactness come back to me through the owner.
+  segment-10 snapshot); the Tracer's five fingerprint units and the bus's `reqbus` and ports' `req` writers are ready
+  for the M3 references (W13's `golden-m3`; W16 calls them in the M3 chip line). T2 runs the bus in mode 3 and needs
+  `lag_cycles` 0 (D34), mode 0 on one domain as its cross-check. Questions from T2's exactness come back to me through
+  the owner.
 - **Speed work**, if the owner asks after T2's first timing (section 6).
 - **T1 beyond segment 3**: not needed so far (T2 starts from W13's segment-10 snapshot); `t1-body.sh` takes `SEGS`.
+
+## 8. The request bus (D34)
+
+Taken over from W16's plan (its step 3), 2026-11-09. `ref`: `RequestBus.java`, `RequestPort.java`, the paths in
+`TileControl` and `Controller`.
+
+**D34** (the owner): one implementation, its credit latency an explicit configuration key (`ChipSpec::reqbus`), never
+derived from the partition. **Mode 0** is exact as `ref`: every sender in the bus's domain, a split refused at build.
+**Mode 3** is the spec under D29 and the default: each port's leaf in its tile, beats and credits over Link(3),
+splittable; it counts the cycles where it would differ from `ref` (`lag_cycles`), and every run reports the count.
+T2 runs mode 3 and requires `lag_cycles` 0, with mode 0 on one domain as its cross-check.
+
+**The units** (`src/units/reqbus.h`; `ref`'s structure, forced by the framework's 64 inputs a unit):
+- `ReqLeaf` (one per sender, in its domain): the port's FIFO and leaf link; `push` from the core (Link(1)), `freed`
+  (Wire: canPush's free of t), `freed_ev` (Link(1) to the register block).
+- `ReqNode` × 8 (row nodes) and `ReqRoot` (its own type, for levels): round-robin, wormhole, the requestor stamped, the
+  root's credits and drops.
+- `ReqRecv` × 3 (in each controller's domain): the delivery over Link(3), the head published in a RegFile as a load
+  at t sees it, the pop over Link(1); the core returns the root's credit (Link(1) in mode 0, Link(3) in mode 3).
+- Room in mode 0: each node publishes its forwards per input in a RegFile written first in its step (levels root <
+  rows < leaves < cores). In mode 3: credits over Link(3), and the D29 count settled retroactively as they arrive.
+- Event-driven (D23; AUDIT-M2 section 4's first case): a unit steps while a beat, request or free is in it; an idle bus
+  costs nothing.
+- `add_reqbus`, `wire_sender`, `ReqBusPlacement`, `resolve`, `lag_cycles`; `tie_off` for a lone tile's tests.
+
+**How it is checked:**
+- **ReqConf** (`tests/ref/ReqConf.java`, `reqconf.sh`, `tests/reqconf/`): `ref`'s bus and its 67 ports driven
+  directly by seeded traffic, every call's result and the canonical state (StateFp's `reqbus` and every port's `req`,
+  hashed) after each cycle. Five fixtures (1 MB): mix, calm (one request at a time), full (queues full, the root out of
+  credit, HOL blocking, a FIFO refusing pushes), fanin, drop.
+- **`test_reqbus`**:
+  - mode 0 equal to `ref` every cycle on all five, plain, step-all and shuffled;
+  - mode 3 equal on calm with `lag_cycles` 0, and 993-2,098 on the others;
+  - mode 3 split over five domains equal to one domain;
+  - mode 0 split refused at build.
+  - Teeth: the root's credit check and the leaf's room check each fail when planted.
+  - `REQBUS_DEBUG` and ReqConf's dump argument, off by default, for localising.
+- **The fingerprint writers** (`tests/reqbus_fp.h`): `reqbus` and each port's `req` as `ref` holds them, with the
+  beats, pops and deliveries in flight read off the Links. Registered (`statefp_g1` `req`, `statefp_g2` `reqbus`,
+  `attach_reqbus`). wfi, regs, a2a, the 16K sort and M1's 67 goldens unchanged on the real streams.
+- **`test_cc_req`** (end to end, on T2's machine with C&C 1's slot):
+  - The programs: `tests/m3-images/cc_req.c` (C&C 1) and `tile_req.c` (tile 5), built by `build_req.sh`; `ref`'s
+    figures from `tests/ref/CcReq.java` and `ccreq.sh`.
+  - C&C 1 starts tile 5, lets its queue fill (the root runs out of credit, tile 5's FIFO fills, its sends stall: the
+    same-cycle free), then receives 300 requests.
+  - **Mode 0 on one domain equals `ref` in every figure**: exit at 24,702, 600 send and receive cycles, every word, the
+    empty receive's ERRORS [14], 2,400 beats at the root; plain, step-all, shuffled.
+  - Mode 3, one domain and T2's split: the same words, `lag_cycles` 1,026, 42 of 601 cycle figures differ; the split
+    equal to one domain.
+
+**The wiring and the edits to closed workers' files** (each marked `W14` in the file):
+- **W5's `rv32.h`**: the receive loads and EVENTS / EVENTS_PEEK's live bit [12], only where the Env offers them (M1's
+  `Core` unchanged).
+- **`regmap.h`**: `COND_RECV_UNDERFLOW` (14).
+- **W8's `tile_ctl.h` / `.cpp`**:
+  - `TileCore`'s `req_push`, `req_freed`, and a controller's `recv`, `recv_pop`, `recv_credit`.
+  - The Env's `can_push`, `post` (the push), `req_get` / `req_receive` / `live_events`, and `wake` with the live bit.
+  - `TileCtl`'s `req_freed_ev`.
+  - `add_g1` fills `ControlIO::req`.
+- **W9's `chip.h` / `.cpp`**:
+  - `ReqIO` in `ControlIO`, `TileIO` and W16's `CcIO`, and `ChipSpec::reqbus`.
+  - `add_request_bus` serves M2's chip (the tiles) and W16's `cc_cores` chip (the tiles and controllers).
+- **W4's `threads.mk`**: `test_reqbus` under TSan.
+- **Tests**:
+  - W9's `test_chip`, W8's `test_g1_tile` and `test_g1_replay` (`tie_off`).
+  - W12's `test_sort` and the `statefp_g1` / `g2` writers (the real streams).
+  - W16's `t2::build_machine` (an optional bus configuration).
+- **The merge** with W15's tile paths and W16's harness was resolved once: W15's slot paths behind
+  `G1Config::periph_slot`, the request side in `ControlIO` and the tile builder.
+
+**Surprises:**
+- The framework's 64 inputs a unit and its levels per type shaped the units (`ref`'s own tree; the root its own type).
+- "Calm" traffic must mean one request in the bus at a time: any contention at a node can fill a buffer, and mode 3
+  then differs.
+- A tile's boot ROM jumps only on GO, so the end-to-end test waited for C&C 1's slot.
+- Background jobs die with the call that started them: long checks run in the foreground, a binary at a time, resumable.

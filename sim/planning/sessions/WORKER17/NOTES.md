@@ -81,3 +81,22 @@ kept: `FileStore.copy` clones every page and `nextFree`); `M3Seg` takes W13's sn
   and T1's end checks; exit and end from `sim_exit_at`; `--dump S` writes W13's forms for the t2 tool. Built on clang
   and gcc; on synthetic inputs (2 windows) a whole segment runs (status 1), clean under ASan/UBSan. The C++ task maker
   (`tasks/mk_task.sh`, W16's with the replayer tables and golden-chain) and `chain10-body.sh`.
+- 2026-11-10, **Quest 173** (sim-w17 85001fb; all 18 verdicts PASS, one attempt; not timing, the two chains in
+  parallel): **the chain on segments 0-10 of both workloads, every segment OK**: every start memory equal to ref's
+  (golden-chain), the landings of 0, 1, 10 equal to ref's; every TracerT2 check (states, streams, exits, rows 64 of 64,
+  clean 64, status 1, no violation, lag 0) and T1's end checks. **Segment 10's start and landings equal W13's dumps
+  byte for byte**, and **W16's t2 on the chain's own segment-10 inputs equals golden-m3 at every point** (evm 241 of
+  241, cyclone 285 of 285; one domain and the 6-domain split; C&C 3's exit and the end at W16's labels). Segment 10's
+  figures equal Quest 159's (ref): transfers 14,162 / 15,716, DMA packets, trace rows, drain, replay max.
+  **The mapping:** a register block's `sim_exit_at` is W16's label + 1, for the exit and the end on both workloads.
+  Indicative: 0.29-0.30 us/cycle, 6.2-7.8 s a segment (two chains on the machine at once).
+- 2026-11-10: owner (merged to main, 59 binaries clean): go ahead with the full runs. The driver now prints C&C 3's
+  exit and the end as W16's labels (`sim_exit_at - 1`) and the segment's cycles as W16's (end - boot end), timed
+  against them; after C&C 3's exit it runs in 10,000-cycle chunks, so the timed run ends within 10,000 cycles of the
+  end (it overshot by up to 250,000 idle cycles before). `chain128-body.sh`: both workloads side by side, each pinned to
+  its own physical P core (machine.sh's P_ONE), segment 10 checked against 173's figures, a CSV per workload.
+- 2026-11-10, **Quest 174** (sim-w17 af8348d; all 7 verdicts PASS, one attempt; timing, the two chains side by side on
+  CPUs 0 and 2): **all 128 segments of both workloads OK, every start memory equal to ref's**; evm-zone-29
+  2,941,623,679 segment cycles in 878.5 s (0.2987 us/cycle), cyclone-29 2,817,819,737 in 849.7 s (0.3015); totals
+  with setup, checks and carry 950.6 s / 914.5 s; segment 10 as Quest 173. Results kept in `quest174/` (CSV per
+  workload, the logs, the machine). REPORT.md written.

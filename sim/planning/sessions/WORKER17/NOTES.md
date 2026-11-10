@@ -57,3 +57,13 @@ kept: `FileStore.copy` clones every page and `nextFree`); `M3Seg` takes W13's sn
 ## Log
 
 - 2026-11-10: plan agreed; branch `sim-w17` from `main` at 1ebe9ab.
+- 2026-11-10: **`T1Carry`** (`sim/tests/ref`; M3Inputs' dumps into any stream) and the ref task maker. **Quest 172**
+  (eb09b0f, all PASS, one attempt): T1's carry through all 128 segments of both workloads (111 s / 100 s, not timing);
+  T1's end state equal to every next frame 2 and `seg/NNN.pages` to every update list; **segment 10's start and
+  landings equal W13's `*.files.gz` and `*.sram.gz` byte for byte** (so the oracle's form is W13's). Committed as
+  `sim/tests/golden-chain/` (every start; the landings of 0, 1, 10, 126, 127). Figures: evm-zone-29 image 496 pages,
+  map 2^13 lines, log2 K 23, nextFree 26,016 at 0 to 28,736 at 127; cyclone-29 1,519 pages, log2 K 24. Segment 127
+  writes nothing (no updates, no owned pages) and has no next frame 2.
+- 2026-11-10: owner: go ahead in this order (172 into notes, C++ inputs and landings with synthetic tests, the
+  driver, the 0-10 run, the full runs); exit and end from `sim_exit_at`, confirmed against W16's segment 10 first;
+  the store kept outside the Tracer (no unit change).

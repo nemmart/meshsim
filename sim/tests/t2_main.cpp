@@ -11,6 +11,8 @@
 //
 // Prints the cycle the boot ends (Mach.coresBooted, read between cycles as ref's harness does), or where it stopped.
 // Next (the boot exact): every unit's fingerprint at the boot's end against tests/golden-m3/boot (step 5).
+#include <algorithm>
+#include <chrono>
 #include <cinttypes>
 #include <cstdio>
 #include <cstdlib>
@@ -159,8 +161,90 @@ int run_segment(t2::Machine& mach, sim::Sim& s, const std::string& fp_points, co
 
 }  // namespace
 
+// The timing (--time REPS --end T): per repetition a fresh machine (the setup: the build, the Tracer's memory, the
+// landings; timed apart, as W13's baseline), the boot to coresBooted (timed apart), then the segment: CC_SEGMENT and
+// one run to T + 1, the framework cycle after M3Seg's end point T (found by a checked run: --segment). Checked after
+// each: C&C 3 and every tile exited, tr_results status 1. With --units, the repetitions run with Options::calibrate
+// (each unit's step timed: the load by unit kind, C&C 3's domain (tile 2 and C&C 3) alone, the framework's share);
+// with --thread-times, Options::time_threads (a split run's phases per thread).
+using Clock = std::chrono::steady_clock;
+double secs(Clock::time_point a, Clock::time_point b) { return std::chrono::duration<double>(b - a).count(); }
+
+int run_timing(const std::string& files, const std::string& sram, unsigned parts, unsigned reps, uint64_t end_t, bool units,
+               bool thread_times) {
+    std::string err;
+    std::vector<t2::SramLanding> land;
+    if (!sram.empty() && !t2::load_sram(sram, land, err)) { std::fprintf(stderr, "t2: %s\n", err.c_str()); return 1; }
+    t2::Image cc1, cc23, tile, cc3;
+    for (auto [im, n] : {std::pair<t2::Image*, const char*>{&cc1, "cc1"}, {&cc23, "cc23"}, {&tile, "replay_ctl"}, {&cc3, "tracer_ctl"}})
+        if (!t2::load_image("tests/m3-images", n, *im, err)) { std::fprintf(stderr, "t2: %s\n", err.c_str()); return 1; }
+    uint8_t dom[64];
+    t2::partition(parts, dom);
+    int rc = 0;
+    for (unsigned r = 0; r < reps; r++) {
+        const auto t0 = Clock::now();
+        auto store = std::make_unique<units::tracer::FileStore>();
+        if (!files.empty() && !t2::load_files(files, *store, err)) { std::fprintf(stderr, "t2: %s\n", err.c_str()); return 1; }
+        sim::Options opt;
+        opt.threads = parts;
+        opt.calibrate = units;
+        opt.time_threads = thread_times && parts > 1;
+        auto m = t2::build_machine(parts > 1 ? dom : nullptr, opt, err);
+        if (!m) { std::fprintf(stderr, "t2: %s\n", err.c_str()); return 1; }
+        sim::Sim& s = *m->sim;
+        t2::attach_store(*m, std::move(store));
+        t2::poke_sram(s, land);
+        t2::boot_cores(s, cc1, cc23, tile, cc3, 8, 0);
+        const auto t1 = Clock::now();
+        const int64_t boot = t2::run_boot(*m, cc1, 2'000'000);
+        const auto t2_ = Clock::now();
+        t2::cc_segment(s);
+        const uint64_t first = s.now();
+        s.run_until(end_t + 1);
+        const auto t3 = Clock::now();
+        const uint64_t cycles = s.now() - first;
+        // the same run as the checked one: everyone exited, C&C 3's results
+        bool ok = s.unit<units::TileCore>("cc3.core").rv.halt != units::Rv32::RUN;
+        for (unsigned k = 0; k < 64; k++) if (s.unit<units::TileCore>(units::tile_unit(k, "core")).rv.halt == units::Rv32::RUN) ok = false;
+        const uint32_t* d3 = m->dmem(66);
+        if (d3[cc3.at("tr_results") / 4] != 1) ok = false;
+        const double seg = secs(t2_, t3);
+        std::printf("rep %u: parts %u%s, setup %.3f s, boot %.3f s (to %lld), segment %.3f s for %llu cycles, %.4f us per cycle%s\n", r, parts,
+                    units ? " (calibrate)" : "", secs(t0, t1), secs(t1, t2_), (long long)boot, seg, (unsigned long long)cycles,
+                    1e6 * seg / double(cycles), ok ? "" : " NOT OK (exits or tr_results)");
+        if (!ok) rc = 1;
+        if (opt.time_threads) std::printf("  threads: %s\n", s.thread_times().c_str());
+        if (units) {
+            const sim::LoadProfile lp = s.load_profile();
+            std::map<std::string, double> kind;
+            double total = 0, dom0 = 0;
+            for (size_t i = 0; i < lp.unit.size(); i++) {
+                const std::string& n = lp.unit[i];
+                const size_t d = n.find('.');
+                std::string k = d == std::string::npos ? n : n.substr(d + 1);
+                if (n.rfind("cc", 0) == 0 && d != std::string::npos) k = "cc:" + k;   // the controllers' apart
+                kind[k] += lp.load[i];
+                total += lp.load[i];
+                if (n.rfind("cc3.", 0) == 0 || n.rfind("t2.", 0) == 0) dom0 += lp.load[i];
+            }
+            const double ns = 1.0 / lp.ticks_per_ns;
+            std::printf("  units: %.3f s in steps (%.1f%% of the segment and boot); C&C 3's domain (tile 2, C&C 3) %.3f s\n",
+                        total * ns * 1e-9, 100.0 * total * ns * 1e-9 / (seg + secs(t1, t2_)), dom0 * ns * 1e-9);
+            std::vector<std::pair<double, std::string>> v;
+            for (auto& [k, x] : kind) v.push_back({x, k});
+            std::sort(v.rbegin(), v.rend());
+            for (auto& [x, k] : v) if (x * ns * 1e-9 >= 0.001) std::printf("    %-22s %8.3f s %5.1f%%\n", k.c_str(), x * ns * 1e-9, 100.0 * x / total);
+        }
+        std::fflush(stdout);
+    }
+    return rc;
+}
+
 int main(int argc, char** argv) {
     std::string sram, files;
+    unsigned reps = 0;                        // --time REPS (with --end T): the timing
+    uint64_t end_t = 0;
+    bool units_prof = false, thread_times = false;   // --units, --thread-times
     unsigned parts = 1;
     uint64_t cap = 2'000'000;
     bool trace = false;                       // --trace: the controllers' and tile 0's pc between cycles (BootStage trace)
@@ -192,7 +276,15 @@ int main(int argc, char** argv) {
         else if (a == "--check-from") check_from = std::strtoull(next(), nullptr, 10);
         else if (a == "--rows-ref") rows_ref = next();
         else if (a == "--program") program = next();
+        else if (a == "--time") reps = unsigned(std::atoi(next()));
+        else if (a == "--end") end_t = std::strtoull(next(), nullptr, 10);
+        else if (a == "--units") units_prof = true;
+        else if (a == "--thread-times") thread_times = true;
         else { std::fprintf(stderr, "t2: unknown argument %s\n", a.c_str()); return 2; }
+    }
+    if (reps) {
+        if (!end_t) { std::fprintf(stderr, "t2: --time needs --end T (the segment's end point, from a checked run)\n"); return 2; }
+        return run_timing(files, sram, parts, reps, end_t, units_prof, thread_times);
     }
     std::string err;
     auto store = std::make_unique<units::tracer::FileStore>();     // the Tracer's memory (empty without --files)

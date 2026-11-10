@@ -3,6 +3,15 @@
 Draft, 2026-11-09, from the owner's target; refined when W13's audit lands. Decisions are in `DECISIONS.md` (D32 for
 this milestone); M2's close-out and what it carried here are in `PLAN-M2.md`.
 
+## Where it stands (2026-11-10)
+
+**Exact:** T2 runs on the new framework **equal to `ref` at every point, every unit**: evm-zone-29 segment 10 (241 of
+241 points; C&C 3 exits at 23,694,305, the run ends at 23,940,706) and cyclone-29 segment 10 (285 of 285; 28,106,741 /
+28,319,575), all 1,214 units at boot end; **T2's acceptance check passes**: every tile's rows equal `rows.bin` (64 of 64,
+both runs), every tile exits 1, C&C 3's results status 1 with 64 windows; `lag_cycles` 0 (W16, merged 2026-11-10). One
+deliberate difference (D33). Next: the 6-domain split on the runner, then the first timing against `ref`'s 46.2 s and
+50.9 s per segment.
+
 ## The target (owner, D32)
 
 **Get the simulator as it exists in v1.3 running on the new framework: the Tracer and the replayers.** The workload that
@@ -46,4 +55,4 @@ exercised. The Tracer's and replayer's own suites (`TracerTest`, `TracerRig`, `T
 | W13 | **done**, closed 2026-11-09 (`sessions/WORKER13-REPORT.md`): the reference runs, AUDIT-M3, golden-m3, the baseline |
 | W14 | the Tracer: equal to `ref` every cycle on TracerTest, 178 seeded logs and **T1 on real segments 0-3 of both programs** (172 M cycles, Quest 163); wired into W15's slot; **speed (Quest 166): 34 ns per Tracer cycle, 1.1-1.2× `ref`'s Tracer** (segment 10's 23.7 M Tracer cycles ≈ 0.8 s of C&C 3's work); not optimised (D31's spirit) |
 | W15 | the replayer: equal to `ref` on its suites and ReplayConf; **Stage A on every window of both programs** (20,480, Quest 164); the slot unit on main (SlotConf equal call for call); next the tile's paths, PeripheralSlotTest |
-| W16 | G7: the controller router, units 64-66, C&C 1's peripheral and C&C 2's stub in the slot, the T2 harness; **the boot runs to `coresBooted` at 7,222 equal to `ref`** (program counters of C&C 1-3 and tile 0 every cycle, one domain and T2's 6-way split; merged 2026-11-09); next the M3 fingerprint writers and every unit at boot end |
+| W16 | G7 and T2: **both reference segments exact at every point, T2's acceptance check passing** (merged 2026-11-10); next the split on the runner, then the first timing |

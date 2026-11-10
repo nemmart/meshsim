@@ -308,3 +308,4 @@ receive queue with its controller; C&C c is in tile c's domain). Three points fo
     SlotCore::peek 34.8% and PeriphSlot::publish 24.1% (the slot's window, republished every step: ~59%),
     Tracer::word 10.3%, Tracer::settle 2.4%, Replayer::word 3.7%, Replayer::settle 2.1%, TileCtl::step 2.5%, the
     engine's run_until 1.1%. No optimisation: the owner decides.
+- 2026-11-10: merged main (D35: W15 makes the slot publish only the registers that changed); REPORT.md so far. Next: time both runs again on the runner after D35 lands, every point checked once more.

@@ -13,7 +13,7 @@ NP=$(count "$P_ONE"); NPC=$(count "$P_CPUS"); P1=$(take 1 "$P_ONE")
 cpus_for() { local t=$1; if [ "$t" -le "$NPC" ]; then echo "$P_CPUS"; else echo "$ALL_CPUS"; fi; }
 TS=; for t in 2 4 $NP 8 $NPC; do [ "$t" -le "$NPC" ] && [[ " $TS " != *" $t "* ]] && TS+="${TS:+ }$t"; done
 TS=$(echo $TS | tr ' ' '\n' | sort -n | paste -sd' ')
-# chip runs: from the kit's sim/ (it reads tests/golden-m2/images and ref/meshsim/hops.txt)
+# chip runs: from the kit's sim/ (it reads tests/golden-m2/images and data/hops.txt)
 crun() { local tag=$1 cpus=$2 k=$3; shift 3; ( cd "$W/kit/$k/sim" && run "$tag" "$cpus" ./build/clang-release/bench_chip "$@" ); }
 PARTS="tiles load profile0 profile20 profile60"
 pargs() { case $1 in profile0) echo "--partition profile --crossing-ns 0" ;; profile20) echo "--partition profile --crossing-ns 20" ;;

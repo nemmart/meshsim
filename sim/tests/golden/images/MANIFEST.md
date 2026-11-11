@@ -3,15 +3,17 @@
 Toolchain: `riscv64-unknown-elf-gcc (13.2.0-11ubuntu1+12) 13.2.0` (Ubuntu 24.04's gcc-riscv64-unknown-elf
 13.2.0-11ubuntu1+12), binutils `GNU objcopy (2.42-1ubuntu1+6) 2.42`.
 
-The M1 programs (`sim/fw/build.sh`), from `sim/fw`, for each `<n>.S`:
+Built by `sim/fw/build.sh` (v1.3's flags, start-up files and linker script):
 
-    riscv64-unknown-elf-gcc -march=rv32i_zicsr_zmmul -mabi=ilp32 -nostdlib -nostartfiles -static -Wl,--no-relax \
-        -I../ref/meshsim/sw -T ../ref/meshsim/sw/app.ld <n>.S -o <n>.elf
+- the M1 programs, from `sim/fw/m1/<n>.S`:
 
-`hello`, `faults`, `misalign_ld`, `misalign_st`, from `sim/ref/meshsim/sw` (as its `build.sh` builds them):
+      riscv64-unknown-elf-gcc -march=rv32i_zicsr_zmmul -mabi=ilp32 -nostdlib -nostartfiles -static -Wl,--no-relax \
+          -Iinclude -T app.ld m1/<n>.S -o <n>.elf
 
-    riscv64-unknown-elf-gcc -march=rv32i_zicsr_zmmul -mabi=ilp32 -std=gnu11 -ffreestanding -nostdlib -nostartfiles -static -fno-builtin -Wall -Wno-array-bounds -Wl,--no-relax -I. \
-        -Os -T app.ld crt0.S tests/<n>.c -o <n>.elf
+- `hello`, `faults`, `misalign_ld`, `misalign_st`, from `sim/fw/tests/<n>.c` (as v1.3's `sw/build.sh` built them):
+
+      riscv64-unknown-elf-gcc -march=rv32i_zicsr_zmmul -mabi=ilp32 -std=gnu11 -ffreestanding -nostdlib -nostartfiles \
+          -static -fno-builtin -Wall -Wno-array-bounds -Wl,--no-relax -Iinclude -Os -T app.ld crt0.S tests/<n>.c -o <n>.elf
 
 Then, for each: `objcopy -O binary --only-section=.text` to `<n>.code.bin`, `--only-section=.data` to
 `<n>.data.bin`, `nm` to `<n>.sym`.
@@ -51,7 +53,7 @@ ae746f5d1f3fc249c0178d9157668af63b9d22be3271af2031bcf24ea0b96482  wfi_cmd.sym
 ae746f5d1f3fc249c0178d9157668af63b9d22be3271af2031bcf24ea0b96482  wfi_go.sym
 ```
 
-The riscv-tests images, sim/ref's own (`sim/ref/meshsim/test/riscv/bin`):
+The riscv-tests images, v1.3's (`sim/fw/riscv-tests/bin`):
 
 ```
 1a6de2d05c63abefa9944432bb4a716381e81e5bf725162e2d60fe1e15633775  add.code.bin

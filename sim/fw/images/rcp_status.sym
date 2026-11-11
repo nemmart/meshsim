@@ -1,0 +1,17 @@
+000000f0 B __bss_end
+00000010 B __bss_start
+000000f0 B _bss_end
+00000010 B _bss_start
+00000010 D _data_start
+000000f0 B _end
+01000000 T _start
+00000018 B chunks_out
+00000010 B live_out
+01000294 T main
+0000001c B me_out
+01000290 t park
+00000014 B present_out
+0100031c T template_lookup
+000000e0 B tpl_n
+00000020 B tpl_tab
+01000034 T trap_handler

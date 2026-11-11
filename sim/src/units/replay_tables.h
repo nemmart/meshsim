@@ -1,7 +1,7 @@
 // replay_tables.h: the universal expansion tables as delivered (REPLAY-INPUT-REQUIREMENTS.md section 2, v1.25), ported
 // from `ref`'s test/ReplayTables.java (WORKER14; owned by W14, used read-only by W15). The decode table, the ROM, the
 // controller-fed template words and their index, keyed by the normalized template-index key (wip/tables/README.md,
-// DECISIONS-v1.25 s5). One set per jolt-cpp version: `sim/ref/tables/replayer/`, read in place.
+// DECISIONS-v1.25 s5). One set per jolt-cpp version: `sim/data/tables/replayer/`, read in place.
 //
 // Configuration phase only (D6): loading uses the STL. What a unit keeps (the decode table, the ROM) is plain arrays,
 // copied into its own state; the templates are for the controller's side (the ideal controller, the region image).
@@ -36,7 +36,7 @@ struct ReplayTables {
     // The template number serving presented word w, or -1 (a binary search: the index is sorted by key).
     int lookup(uint32_t w) const;
 
-    // The tables' place: $SIM_REPLAY_TABLES, else ref/tables/replayer (relative to sim/, where the tests run).
+    // The tables' place: $SIM_REPLAY_TABLES, else data/tables/replayer (relative to sim/, where the tests run).
     static std::string default_dir();
     // Loads decode_table.bin, rom.bin, templates.bin and template_index.bin from dir.
     static ReplayTables load(const std::string& dir);

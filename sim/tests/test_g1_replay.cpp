@@ -80,7 +80,7 @@ std::string replay(const char* name, uint64_t through, sim::Options opt) {
         return "refused (D12): the golden's configuration is not the one this replay builds";
     test::Images im; std::string err;
     std::vector<test::RunSpec> runs = test::read_runs();
-    if (!test::load_images(runs[0], im, err)) return err;                 // the boot ROM (sim/ref/meshsim/sw/bootrom.hex)
+    if (!test::load_images(runs[0], im, err)) return err;                 // the boot ROM (sim/fw/boot/bootrom.hex)
     TileConfig tc = test::tile_config(0);
     std::vector<uint32_t> mem(64 * 2 * MEM_WORDS, 0);
     G1Ctx gx;

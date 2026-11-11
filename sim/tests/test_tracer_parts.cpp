@@ -448,7 +448,7 @@ TEST(replay_tables_load_and_match_the_manifest) {
     ReplayTables t = ReplayTables::load(dir);
     CHECK(t.count() > 0);
     CHECK_EQ(t.words.size(), size_t(t.count()));
-    // every file's sha256 as ref/tables/manifest.json records it
+    // every file's sha256 as data/tables/manifest.json records it
     bool ok = false;
     const std::string manifest = portconf::read_command("cat " + dir + "/../manifest.json", &ok);
     CHECK(ok);

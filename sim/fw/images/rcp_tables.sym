@@ -1,0 +1,13 @@
+000000e0 B __bss_end
+00000010 B __bss_start
+000000e0 B _bss_end
+00000010 B _bss_start
+00000010 D _data_start
+000000e0 B _end
+01000000 T _start
+01000294 T main
+01000290 t park
+01000324 T template_lookup
+000000d0 B tpl_n
+00000010 B tpl_tab
+01000034 T trap_handler

@@ -82,7 +82,7 @@ any difference. Lines in this order:
 
 - `image`: the sha256 of the program-memory image (`.code.bin`, loaded from `0x01000000`) and the data-memory image
   (`.data.bin`, loaded at `data_at`); `entry` is the boot command's jump target (its slot 1).
-- `bootrom`: the sha256 of the boot ROM's words (`sim/ref/meshsim/sw/bootrom.hex`, little-endian bytes).
+- `bootrom`: the sha256 of the boot ROM's words (`sim/fw/boot/bootrom.hex`, little-endian bytes).
 - `config`: the values the controller's behaviour, or the cycles of what the test bench replays, depend on
   (`AUDIT-M1.md` says which matters how):
 

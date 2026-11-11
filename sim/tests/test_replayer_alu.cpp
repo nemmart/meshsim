@@ -1,7 +1,7 @@
 // test_replayer_alu: the replayer's ALU and row rules (WORKER15), against ref.
 //
-// 1. ReplayerTest.opcodeTable and .vectors, ported: the model's opcode set against sim/ref/tables/opcode_table.txt, and
-//    the 252 rows of sim/ref/meshsim/data/vec-821e1bd.tsv (the tracer's vectors, jolt-cpp 821e1bd), read in place. The
+// 1. ReplayerTest.opcodeTable and .vectors, ported: the model's opcode set against sim/data/tables/opcode_table.txt, and
+//    the 252 rows of sim/data/vec-821e1bd.tsv (the tracer's vectors, jolt-cpp 821e1bd), read in place. The
 //    report (summary lines and every flagged or n/a row) must equal ref's, line for line: tests/replayer/alu-report.txt
 //    is ReplayerTest's output, lines 1-29 (tests/ref/replayconf.sh --check regenerates it).
 // 2. A differential sweep (tests/replayer/alu-sweep.txt.gz, from ReplayConf alu): every opcode on 100 seeded inputs,
@@ -21,8 +21,8 @@ using namespace units;
 
 namespace {
 
-const std::string kVec = "ref/meshsim/data/vec-821e1bd.tsv";
-const std::string kOpTable = "ref/tables/opcode_table.txt";
+const std::string kVec = "data/vec-821e1bd.tsv";
+const std::string kOpTable = "data/tables/opcode_table.txt";
 const std::string kDir = "tests/replayer/";
 
 bool read_lines(const std::string& path, std::vector<std::string>& out) {

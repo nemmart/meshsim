@@ -54,7 +54,7 @@ int ReplayTables::lookup(uint32_t w) const {
 
 std::string ReplayTables::default_dir() {
     const char* p = std::getenv("SIM_REPLAY_TABLES");
-    return p ? p : "ref/tables/replayer";
+    return p ? p : "data/tables/replayer";
 }
 
 ReplayTables ReplayTables::load(const std::string& dir) {

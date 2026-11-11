@@ -84,7 +84,7 @@ struct SortChip {
     uint64_t B = 0;
     std::string err;
 
-    explicit SortChip(int fmt, const sim::Options& opt0, unsigned parts = 1) : hops(load_hops("ref/meshsim/hops.txt")) {
+    explicit SortChip(int fmt, const sim::Options& opt0, unsigned parts = 1) : hops(load_hops("data/hops.txt")) {
         test::RunSpec rs; rs.name = "sort"; rs.dir = kImages; rs.image = "sort";
         if (!test::load_images(rs, im, err)) return;
         // SortTest.Machine.boot

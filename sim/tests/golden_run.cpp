@@ -70,7 +70,7 @@ std::vector<RunSpec> read_runs(const char* runs_file) {
         if (f.size() < 4) continue;
         RunSpec r;
         r.name = f[0]; r.tile = unsigned(std::stoul(f[1]));
-        r.dir = f[2] == "riscv" ? "ref/meshsim/test/riscv/bin" : "tests/golden/images";
+        r.dir = f[2] == "riscv" ? "fw/riscv-tests/bin" : "tests/golden/images";
         r.image = f[3];
         if (f.size() > 4) r.schedule = f[4];
         runs.push_back(r);
@@ -147,13 +147,13 @@ bool load_images(const RunSpec& r, Images& im, std::string& err) {
         im.entry = s["_start"];
     }
     std::vector<std::string> rom;
-    if (!read_lines("ref/meshsim/sw/bootrom.hex", rom)) { err = "cannot read ref/meshsim/sw/bootrom.hex"; return false; }
+    if (!read_lines("fw/boot/bootrom.hex", rom)) { err = "cannot read fw/boot/bootrom.hex"; return false; }
     for (const std::string& l : rom) { auto f = fields(l); if (!f.empty()) im.bootrom.push_back(uint32_t(std::stoul(f[0], nullptr, 16))); }
     if (im.bootrom.size() > BOOTROM_MAX_WORDS) { err = "the boot ROM image is larger than 64 words"; return false; }
     im.bootrom_sha = words_sha(im.bootrom.data(), im.bootrom.size());
     if (!r.schedule.empty()) {
         std::vector<std::string> tb;
-        if (!read_lines("fw/" + r.schedule, tb)) { err = "cannot read fw/" + r.schedule; return false; }
+        if (!read_lines("fw/m1/" + r.schedule, tb)) { err = "cannot read fw/m1/" + r.schedule; return false; }
         for (std::string l : tb) {
             size_t h = l.find('#');
             if (h != std::string::npos) l = l.substr(0, h);

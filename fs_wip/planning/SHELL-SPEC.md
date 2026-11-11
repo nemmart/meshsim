@@ -1,4 +1,4 @@
-# SHELL-SPEC: the console shell (draft, 2026-11-10)
+# SHELL-SPEC: the console shell (draft, 2026-11-10; for v1.4, built in `fs_wip/`)
 
 A small shell on C&C 1, over its UART, for looking around the file system: normally, and above all in **recovery mode**
 after a shutdown and reset, to read the logs (`/syslog` first). This spec is for a worker session to build the shell
@@ -17,7 +17,7 @@ file-system client come later and replace the dummies without touching the shell
 
 ## 2. Deliverables
 
-A new directory **`fw/shell/`**:
+A new directory **`fs_wip/shell/`** (see `fs_wip/README.md`):
 
 | file | contents |
 |---|---|
@@ -39,8 +39,13 @@ returns; on the host it returns when the console reports end of input.
 
 ## 3. Build constraints
 
-- C99, **freestanding**: `-ffreestanding -nostdlib`, no libc, no malloc, no floats; all state in static buffers.
-- Target **RV32IMC**, ilp32: `-march=rv32imc -mabi=ilp32 -Os -ffunction-sections -fdata-sections -Wl,--gc-sections`.
+- C99, **freestanding**: `-ffreestanding -nostdlib`, linked with `-lgcc` only; no libc, no malloc, no floats; all state in
+  static buffers.
+- Target **RV32I + Zmmul**, ilp32, which is the controller as modelled today (spec 4.11): `-march=rv32i_zmmul -mabi=ilp32
+  -Os -ffunction-sections -fdata-sections -Wl,--gc-sections`. **C (compressed) is a build option**, `make rv32 C=1` for
+  `-march=rv32ic_zmmul`, for v1.4, which adds C to the controller; `make size` reports both.
+- **No divide instruction** (Zmmul): the compiler calls libgcc's `__udivsi3`/`__umodsi3` for 32-bit `/` and `%`, which is
+  fine (they are small and slow); keep them out of per-byte loops.
 - **Code budget: `.text` + `.rodata` ≤ 32 KB**, checked by `make size` (fails over budget). Expected well under (~15 KB).
 - **No 64-bit division from libgcc**: lengths and offsets are 64-bit, so decimal output uses its own divide-by-10;
   `make size` also fails if `__udivdi3`, `__umoddi3`, `__divdi3` or `__moddi3` appear in the link.
@@ -166,7 +171,7 @@ has several. Bad options or missing arguments print `usage: <usage line>`. An un
 | `cd` | `cd [dir]` | no argument: `/`. Checks with `fs_stat` that it is a directory (`not a directory` otherwise) |
 | `pwd` | `pwd` | the cwd |
 | `cat` | `cat file...` | the files' bytes, concatenated, as they are |
-| `more` | `more file` | pages of 23 lines (long lines wrap at 80 columns and count as several), then `--More-- (NN%)` (percent of bytes shown). Space: next page; Enter: next line; `q` or Ctrl-C: stop. The prompt is erased (`\r`, spaces, `\r`) before going on. Redirected: same as `cat` |
+| `more` | `more file` | pages of 23 lines (long lines wrap at 80 columns and count as several), then `--More-- (NN%)` (percent of bytes shown; both 64-bit values shifted right together until the length fits in 32 bits, then a 32-bit divide). Space: next page; Enter: next line; `q` or Ctrl-C: stop. The prompt is erased (`\r`, spaces, `\r`) before going on. Redirected: same as `cat` |
 | `head` | `head [-n N] file...` | the first N lines (default 10) |
 | `tail` | `tail [-n N] file...` | the last N lines (default 10), found by reading **backward from the last page** with `fs_read_page` and the length from `fs_stat`, never from the start. A last line without a newline counts as a line. With several files, each is preceded by `==> <path> <==` and separated by a blank line (also `head`) |
 | `grep` | `grep [-n] [-i] [-c] [-v] pattern file...` | lines matching the pattern (section 10). `-n`: prefix `N:` (line number, from 1). `-i`: ignore ASCII case. `-c`: only the count. `-v`: non-matching lines. Several files: each output line (or count) prefixed `<path>:` |
@@ -193,7 +198,7 @@ counted) as chunks of 1,024 bytes, noted in `help`. `-i` folds ASCII letters in 
 
 One internal formatter writing to the current sink (the console with `\n` → `\r\n`, or the redirect buffer): `%s`, `%c`,
 `%d`, `%u`, `%x`, `%llu`, `%llx`, `%%`; a width; `-` to left-align; `0` to zero-pad. 64-bit decimal by repeated
-divide-by-10 written with shifts and subtraction (no libgcc).
+divide-by-10 written with shifts and subtraction (no libgcc 64-bit division).
 
 ## 12. Tests
 

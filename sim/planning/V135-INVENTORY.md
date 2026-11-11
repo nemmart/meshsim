@@ -189,3 +189,72 @@ Every reference is generated once on the oracle side and **committed as a fixtur
 |---|---|---|
 | J1 | v1.35's `README.md`, `BUILDING.md` (prerequisites: clang and gcc versions, riscv64-unknown-elf-gcc and picolibc, the riscv-tests checkout, python3 if Q2 allows), how to run every suite, driver, tool and kit, the outputs and where they go | **M** · followed on a fresh machine (a Quest task) · everything |
 | J2 | stale paths and comments (`ref/...`, worker names in usage lines), leftover benchmarks (G4), `src/sketch/` | **S** · — |
+
+## The porting plan
+
+### Worker-sized pieces
+
+| piece | rows | size | starts | checks it delivers |
+|---|---|---|---|---|
+| **P1. The stand-alone tree** | A1-A13, I1, I2, I3 (the oracle folder), I5's `bench/` scripts, C26 | **M** (A11, the mesh.h generator, is the one M; the rest S) | **now** | `make check` in a tree with no `ref/`; every image, `mesh.h` and the REGISTERS.md tables byte-identical to v1.3's |
+| **P2. The machine harness, the checker and the outputs** | C1 (with B18), B19, B20, H1, H2, H3, H6, B25, C0's runner, C2 as its first suite | **L** | **now** (on `ref`'s data paths until P1 lands) | BusTest log-equal; PhaseLog's CSV byte-identical on AccountingTest's runs; the checker's messages on a provoked violation equal to `ref`'s |
+| **P3. The input tools** | F1, F2, F3, F4, C20's 17 checks | **M-L** | **now** (independent) | every key set, split set, converted delivery and synthetic window byte-identical |
+| **P4. The network, memory and engine suites** | C3, C4, C5, C6, C7, C11, C17, G1 | **L** | after P2's harness and checker | log-equal on every step, quick and full, and shuffled |
+| **P5. The control suites, programs and recipes** | C8, C10, C12, C13, C14, C15, C18, G2, G3 | **L** | after P1 and P2 | log-equal; RECIPES.md's snippet check; fp per program where a log doesn't localise |
+| **P6. The sort and its kit** | D1-D10, H4, H7 | **L** | after P1, P2 (H3) and P3 (F1, F2) | every path exact (fp at every GO), the kit's CSVs byte-identical on the smoke, SUMMARY byte-identical |
+| **P7. The Tracer and the replay** | C21, C22, C23, E2, E3, E4, E5 | **M-L** | **now** for C21-C23 (they need only A4); E3 after P2's harness, E5 after P3's F4 | the Tracer's assertions and calls; Stage B and the acceptance kit's results equal per window |
+| **P8. Docs, build, cleanup** (PLAN step 3) | J1, J2, G4, C0's final step list | **M** | last | a fresh-machine run of BUILDING (a Quest task) |
+| *P9. The input pipeline* (if Q1 says port) | F5 (gold, jumpmap, `inputs/`) | **L** | any time, independent; the runner for 2²⁹ | segment files, jump tables, images and pages byte-identical on both workloads at 2²⁹ |
+
+### Order
+
+1. **Wave 1, in parallel now:** P1, P2, P3, and P7's C21-C23. P1 is small and unblocks every later check of "nothing
+   reads `ref`"; P2 is the long pole (every Java-driven suite stands on its harness and checker).
+2. **Wave 2, once P2's harness and checker land:** P4, P5, P6, and the rest of P7. Four workers in parallel; they share
+   P2's harness, so P2's worker stays available to extend it.
+3. **Wave 3:** P8, then PLAN-V135 step 4, the freeze check, whose suite list is P8's `run_tests.sh`.
+
+P9 runs beside any wave if Q1 says so.
+
+### Summary: the gaps and the work
+
+- **Already equivalent and checked (move only):** the chip's units (B1-B17 bar the checking gaps below), the controller,
+  RiscvTest, PeripheralSlotTest, the replayer and Stage A, T2 and the chains, the retire trace, idle-skip, shuffling.
+  The checking gaps inside them (director corner cases, the read port's overflow, register-block paths beyond regs,
+  the UART's receive side, the Tracer's `reset()`) are closed by the suites that reach them (C3, C7, C8, C13, C15) or
+  recorded as unreached, as in v1.3.
+- **Gaps by size** (D39: all port): **L**: RecipeTest (C12), with NetTest and CtrlTest at M-L; the machine harness
+  (P2 as a whole); gold if Q1 says so. **M** (about 20): the mesh.h generator, the checker, reset, the coreless harness,
+  MemTest, EngineTest, AgTest, ReadPortGatherTest, CondTest, HooksTest, TracerRig, the sort driver, its paths, the kit,
+  Sweep, Stage B, the acceptance kit, KeyGen, SyntheticDelivery, `Config`'s missing fields, PhaseLog. **S** (about 35):
+  every data file and firmware source, the firmware build, the remaining suites and benches, the summaries, the
+  converters, the options.
+- **The work:** eight pieces (nine with P9), about four workers at a time; P2, P4, P5 and P6 are each a worker's full
+  milestone, P1, P3, P7 and P8 smaller.
+- **Prerequisites to document (J1):** clang and gcc; riscv64-unknown-elf-gcc and picolibc at the versions v1.3's
+  images were built with (the runner has no riscv toolchain, W1's probe: the images stay prebuilt and committed, and
+  `--check` runs where the toolchain is); the riscv-tests checkout at 3df703c; python3 if Q2 allows.
+
+## Questions for the owner
+
+- **Q1. The input pipeline's Java** (F5): `gold` (4.8 K lines, Jolt's tracer in Java: the segment files and frame 6),
+  `jumpmap` (0.7 K) and `inputs/`, which runs them with jolt-cpp and WORKER9's delivery writer. They make every input the
+  Tracer and the chains read. Port them into v1.35 (P9: L, checked byte-identical at 2²⁹ on the runner), or treat the
+  input pipeline like jolt-cpp, as an external, pinned prerequisite?
+- **Q2. Python as a prerequisite?** v1.3's own tools are partly Python (`make_jobs.py`, `header_diff.py`,
+  `recipes_sync.py`, the recipe book's `gen_book.py`, `check_book.py`, `regions.py`; `tracer/`, `replayer-opcodes/`).
+  If python3 is allowed, those copy unchanged and the mesh.h generator may be Python; if not, each becomes C++ (S each).
+  KeyGen goes to C++ either way (numpy isn't wanted as a prerequisite).
+- **Q3. The history tools** (D7, F9): SortCompare, PhaseNeutral, VerifySummary and the two verify kits compare older
+  simulator versions run by run (M7/M8, M11/M12, v1.0/M15); `logdiff.py`, `v12_conv_stream.py` and `merge-inputs/` are
+  the v1.2 port's and the M11 rename's. Port them (S each), or drop them as history?
+- **Q4. `Config` fields no suite, kit or sweep sets** (P2 lists them from every v1.3 driver): port as options anyway, or
+  only those something sets?
+- **Q5. The fingerprint** (B25): v1.35 offers the canonical state fingerprint (already equal to `ref`'s StateFp) in place
+  of `Chip.digest`'s per-chip digest, rather than reproducing the latter's definition?
+- **Q6. TracerT1** (E2): the chains check the same streams and rows on the full chip. Port T1 too (S once TracerRig is
+  ported), or count the chain as its equivalent?
+- **Q7. SyntheticDelivery's last window** isn't reproducible run to run (W15): port it bit-exact (checked on every other
+  window), or fix it in the port as a recorded deliberate difference?
+- **Q8. The oracle folder** (I3): everything that needs Java or `sim/ref` (`tests/ref`, the regenerators, `make
+  conformance`, TracerPlay.java) moved to `sim/oracle/`, left out of the freeze's copy with `sim/ref`. Agreed?

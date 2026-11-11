@@ -53,7 +53,7 @@ std::vector<uint32_t> words_of(const std::string& path) {   // Mach.words: littl
 
 std::vector<uint32_t> bootrom() {
     std::string rom;
-    const std::string p = data_path({"data/bootrom.hex", "fw/bootrom.hex", "ref/meshsim/sw/bootrom.hex"});
+    const std::string p = data_path({"fw/boot/bootrom.hex"});
     if (!read_file(p, rom)) FATAL("mach: cannot read %s", p.c_str());
     std::vector<uint32_t> w;
     for (size_t at = 0; at < rom.size();) {
@@ -120,7 +120,7 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     if (c.coreless) FATAL("mach: the coreless machine (MachConfig::defaults, Net) comes with W20's next commit");
     if (!c.start_skew.empty()) FATAL("mach: a per-tile start_skew comes with W20's step 3");
     if (c.cc3_tracer && !c.cc_cores) FATAL("mach: cc3_tracer needs cc_cores (ref's Config)");
-    m.hops = units::load_hops(data_path({"data/hops.txt", "ref/meshsim/hops.txt"}).c_str());
+    m.hops = units::load_hops(data_path({"data/hops.txt"}).c_str());
     m.rom = bootrom();
     m.nunits = c.cc_cores ? 67 : 64;
     m.mem.assign(size_t(m.nunits) * 2 * units::MEM_WORDS, 0);
@@ -403,7 +403,7 @@ Mach::Image Mach::Image::load(const std::string& name, const MachConfig& cfg) {
                 at = c + 1;
             }
         }
-        for (const char* d : {"fw/build", "tests/golden-m2/images", "tests/golden/images", "tests/m3-images"}) dirs.push_back(d);
+        for (const char* d : {"fw/images", "tests/golden-m2/images", "tests/golden/images", "tests/m3-images"}) dirs.push_back(d);
     }
     for (const std::string& d : dirs) if (exists(d + "/" + name + ".code.bin")) return load_dir(d, name);
     FATAL("mach: image %s not found (the search path: MachConfig::image_dirs, $SIM_IMAGES, then the defaults)", name.c_str());

@@ -48,8 +48,8 @@
 // no cost in the loop beyond the increment) by whoever ports the suite, or asked of W20.
 //
 // IMAGES. Mach::Image is ref's Mach.Image (DIR/NAME.code.bin, .data.bin, .sym). The directories searched, in order: the
-// MachConfig's `image_dirs`, else $SIM_IMAGES (':'-separated), else v1.35's built images (P1's tree, once it lands),
-// then tests/golden-m2/images and tests/m3-images.
+// MachConfig's `image_dirs`, else $SIM_IMAGES (':'-separated), else
+// fw/images (W19), then tests/golden-m2/images, tests/golden/images and tests/m3-images.
 //
 // SHUFFLING (B24, C25). ref's `shuffleSeed` >= 0 shuffles every child order every cycle; here it sets the framework's
 // debug shuffle (sim.h DEBUG CHECKS) with that seed. The seeds don't map to ref's orders (W3's generator), but a suite's

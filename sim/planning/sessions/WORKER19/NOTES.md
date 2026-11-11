@@ -137,3 +137,9 @@ W15's "the last window" was a particular case (deliveries whose inlines fell lat
   by v1.26.1's, whose "converted" key order varied run to run: compared on the records and as JSON).
 - `pipeline/inputs/` then calls `convert_delivery` (a path to the C++ tool) and reads `sim/data/tables`; `pipeline/`
   holds only self-contained Java.
+- **convert_delivery, done locally** (`tools/delivery/convert_delivery.cpp`, `json.h`: Java's reader and writer,
+  LinkedHashMap order, Long, Double printed as Double.toString; no exceptions, D4: a window's error is returned). Built
+  by make in every build (`tools/delivery/delivery.mk`). `oracle/convert_crosscheck.sh`: on three v1.25 deliveries made
+  by v1.25's own SyntheticDelivery (seeds 7, 11 in WORKER9's layout, 5; 39 records, 67 links), every record, every link
+  (name and target) and the manifest byte for byte equal to v1.3's ConvertDelivery, on the first build. Still to do:
+  the runner's real conversions (Quests 105-107, W15's Stage A), then synthetic_delivery.

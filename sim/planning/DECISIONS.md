@@ -202,3 +202,11 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   outputs must be byte-identical to v1.3's (SyntheticDelivery's last window, not reproducible run to run in v1.3, made
   reproducible per seed and the difference explained). `pipeline/` then holds only self-contained Java: `gold`, jumpmap,
   KeyGen, SplitSets and `inputs/`.
+- **D43. A deliberate difference in a test tool (D30, D42): SyntheticDelivery made reproducible** (integrator,
+  2026-11-11, W19). v1.3's SyntheticDelivery drew the inlines' advice from an unseeded `SplittableRandom`, so every
+  window from the first inline's advice on differed run to run, and its `Map.of` gave the manifest's small maps a
+  different order each run. The C++ `synthetic_delivery` seeds the advice with `SplittableRandom(seed ^ K)`, **K =
+  0xD42**, and writes the small maps in source order (`bytes`, `sha256`; `instructions`, `read_log_words`,
+  `write_log_words`, `padding_rows`). It is byte-identical to v1.3 patched in exactly those two places, on every seed
+  `ref`'s tests use (`oracle/synthetic_crosscheck.sh`); against unpatched v1.3 it is identical up to the first inline's
+  advice, and fully with no inlines. A test tool's difference, not the model's.

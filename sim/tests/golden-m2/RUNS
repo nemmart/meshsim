@@ -1,5 +1,5 @@
 # golden-m2 runs (sim/tests/golden-m2/README.md). One run per line: NAME WHERE KEEP COMMAND...
-#   WHERE  local: regen.sh runs it by default; runner: only with ALL=1 (the full-size sort: ~2 min a run plus hooks, 4 GB heap)
+#   WHERE  local: oracle/regen/golden-m2.sh runs it by default; runner: only with ALL=1 (the full-size sort: ~2 min a run plus hooks, 4 GB heap)
 #   KEEP   the run's files kept in git ("git") or recorded by sha256 in HASHES only ("hash"; regenerate to get them)
 #   COMMAND runs in the scratch copy of sim/ref/meshsim; @ is the run's output prefix (NAME), KEYS16K and KEYS64K the
 #           KeyGen key sets (uniform, 64 x 16,384 and 64 x 65,536). Stdout goes to @.out, "timing:" lines removed.

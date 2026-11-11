@@ -1,5 +1,5 @@
 #!/bin/bash
-# memconf.sh -- the memory path's conformance, ref's side (WORKER11; tests/ref/MemConf.java, tests/test_memconf.cpp).
+# memconf.sh -- the memory path's conformance, ref's side (WORKER11; oracle/ref/MemConf.java, tests/test_memconf.cpp).
 # Needs a JDK. Nothing in sim/ref is written: ref and the driver are compiled into a scratch directory.
 #
 #   memconf.sh --fixtures      (re)write tests/memconf/: per configuration below, NAME.script.gz and NAME.obs.gz (3,000
@@ -14,7 +14,7 @@ REFCOMMIT=$(git -C "$SIM" log -1 --format=%H -- ref 2>/dev/null || echo unknown)
 build() {
   rm -rf "$1"; mkdir -p "$1"
   javac -nowarn -d "$1" "$SIM"/ref/meshsim/src/*.java 2>&1 | grep -v '^Note:'
-  javac -nowarn -d "$1" -cp "$1" "$SIM"/tests/ref/StateFp.java "$SIM"/tests/ref/MemConf.java 2>&1 | grep -v '^Note:'
+  javac -nowarn -d "$1" -cp "$1" "$SIM"/oracle/ref/StateFp.java "$SIM"/oracle/ref/MemConf.java 2>&1 | grep -v '^Note:'
   [ -f "$1/MemConf.class" ] || { echo "memconf: the driver did not compile"; exit 2; }
 }
 one() {   # B DIR TILE SEED CYCLES NAME [comb]

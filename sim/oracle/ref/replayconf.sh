@@ -1,5 +1,5 @@
 #!/bin/bash
-# replayconf.sh -- the replayer's conformance, ref's side (WORKER15; tests/ref/ReplayConf.java, tests/test_replayer_*.cpp).
+# replayconf.sh -- the replayer's conformance, ref's side (WORKER15; oracle/ref/ReplayConf.java, tests/test_replayer_*.cpp).
 # Needs a JDK. Nothing in sim/ref is written: ref and the driver are compiled into a scratch directory.
 #
 #   replayconf.sh --fixtures   (re)write tests/replayer/: alu-report.txt (ReplayerTest's ALU report, lines 1-29) and
@@ -19,7 +19,7 @@ REFCOMMIT=$(git -C "$SIM" log -1 --format=%H -- ref 2>/dev/null || echo unknown)
 build() {
   rm -rf "$1"; mkdir -p "$1"
   javac --release 17 -nowarn -d "$1" "$SIM"/ref/meshsim/src/*.java "$SIM"/ref/meshsim/test/*.java 2>&1 | grep -v '^Note:'
-  javac --release 17 -nowarn -d "$1" -cp "$1" "$SIM"/tests/ref/ReplayConf.java "$SIM"/tests/ref/StateFp.java "$SIM"/tests/ref/StateFpM3.java 2>&1 | grep -v '^Note:'
+  javac --release 17 -nowarn -d "$1" -cp "$1" "$SIM"/oracle/ref/ReplayConf.java "$SIM"/oracle/ref/StateFp.java "$SIM"/oracle/ref/StateFpM3.java 2>&1 | grep -v '^Note:'
   [ -f "$1/ReplayConf.class" ] || { echo "replayconf: the driver did not compile"; exit 2; }
 }
 fixtures() {

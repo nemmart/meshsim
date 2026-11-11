@@ -3,7 +3,7 @@
 What each run is, and how to compare against it: `sim/tests/AUDIT-M2.md` sections 6-8. In short:
 
 - `RUNS`: every run (name, local or runner, kept in git or by hash, the driver command).
-- `regen.sh [--check] [PATTERN]`: rebuilds `sim/ref` and the drivers (`sim/tests/ref`) in a scratch copy of
+- `oracle/regen/golden-m2.sh [--check] [PATTERN]`: rebuilds `sim/ref` and the drivers (`sim/oracle/ref`) in a scratch copy of
   `sim/ref/meshsim` with `images/`, runs, and writes (or checks) every file's sha256 in `HASHES`. `ALL=1` adds the
   full-size sort (the runner: Quest 134 made it; its large files are under the runner's `$DATA/w7-golden-m2/`).
   `KEEP=DIR` keeps every file made, the hash-only ones included.

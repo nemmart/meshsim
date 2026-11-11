@@ -1,9 +1,9 @@
 #!/bin/bash
-# regen.sh [--check] -- tile 0's G1 boundary in ref for regs and wfi (sim/tests/ref/G1Trace.java: eject arrivals, GO
+# regen.sh [--check] -- tile 0's G1 boundary in ref for regs and wfi (sim/oracle/ref/G1Trace.java: eject arrivals, GO
 # scheduling, the send hold's takes), replayed by tests/test_g1_replay.cpp against golden-m2. Builds sim/ref and W7's
 # drivers in a scratch copy exactly as golden-m2/regen.sh does (its images). --check: compare with the committed files.
 set -u
-HERE=$(cd "$(dirname "$0")" && pwd); SIM=$(cd "$HERE/../.." && pwd); G=$SIM/tests/golden-m2
+HERE=$(cd "$(dirname "$0")/../../tests/g1-replay" && pwd); SIM=$(cd "$HERE/../.." && pwd); G=$SIM/tests/golden-m2
 CHECK=0; [ "${1:-}" = --check ] && CHECK=1
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
 mkdir -p "$W/m" "$W/cls"
@@ -15,7 +15,7 @@ done
 javac -nowarn -d "$W/cls" "$W/m"/src/*.java 2>&1 | grep -v '^Note' || true
 grep -v '^#' "$W/m/test/PENDING" | awk 'NF{print "'"$W/m"'/test/"$1}' > "$W/pending.txt"
 javac -nowarn -d "$W/cls" -cp "$W/cls" $(ls "$W/m"/test/*.java | grep -v -x -F -f "$W/pending.txt") 2>&1 | grep -v '^Note' || true
-javac -nowarn -d "$W/cls" -cp "$W/cls" "$SIM"/tests/ref/{TraceRun,StateFp,FpHooks,M2Prog,G1Trace}.java 2>&1 | grep -v '^Note' || true
+javac -nowarn -d "$W/cls" -cp "$W/cls" "$SIM"/oracle/ref/{TraceRun,StateFp,FpHooks,M2Prog,G1Trace}.java 2>&1 | grep -v '^Note' || true
 RC=0
 for p in regs wfi; do
   OUT=$HERE/$p.g1; [ $CHECK = 1 ] && OUT=$W/$p.g1

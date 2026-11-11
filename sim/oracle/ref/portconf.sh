@@ -24,7 +24,7 @@ MATRIX=(
 build() {   # DIR: ref (unchanged) and the two classes
   rm -rf "$1"; mkdir -p "$1"
   javac -d "$1" "$SIM"/ref/meshsim/src/*.java || exit 2
-  javac -d "$1" -cp "$1" "$SIM"/tests/ref/PortConfGen.java "$SIM"/tests/ref/PortConfDriver.java || exit 2
+  javac -d "$1" -cp "$1" "$SIM"/oracle/ref/PortConfGen.java "$SIM"/oracle/ref/PortConfDriver.java || exit 2
 }
 REFCOMMIT=$(git -C "$SIM" log -1 --format=%H -- ref 2>/dev/null || echo unknown)
 fixtures() {   # DIR: write the fixtures into DIR (gzip -n: no name or time, so the bytes are reproducible)

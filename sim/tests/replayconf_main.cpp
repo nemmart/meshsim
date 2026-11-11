@@ -1,4 +1,4 @@
-// replayconf: a ReplayConf script (tests/ref/ReplayConf.java) replayed on units::Replayer; the observations on stdout.
+// replayconf: a ReplayConf script (oracle/ref/ReplayConf.java) replayed on units::Replayer; the observations on stdout.
 //   replayconf SCRIPT [MAX_ROWS]      (SCRIPT plain or .gz)
 #include <cstdio>
 #include <cstdlib>

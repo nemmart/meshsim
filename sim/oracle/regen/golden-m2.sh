@@ -1,6 +1,6 @@
 #!/bin/bash
 # regen.sh [--check] [PATTERN] -- M2's references (sim/tests/golden-m2/README.md), from sim/ref through WORKER7's drivers
-# (sim/tests/ref: M2Sort, M2Prog, FpHooks, StateFp, TraceRun), one JVM per run (RUNS), P at a time (default nproc).
+# (sim/oracle/ref: M2Sort, M2Prog, FpHooks, StateFp, TraceRun), one JVM per run (RUNS), P at a time (default nproc).
 #   (no flag)  regenerate: the "git" runs' files into this directory, every file's sha256 into HASHES
 #   --check    regenerate into a scratch directory and compare every file's sha256 with HASHES: SAME, DIFF or MISSING per
 #              file; exits 1 on any difference
@@ -10,7 +10,7 @@
 # (checked against images/MANIFEST.md first). Needs a JDK (javac), not the riscv toolchain.
 set -u
 export LC_ALL=C   # one sort order for HASHES, whatever the machine's locale
-HERE=$(cd "$(dirname "$0")" && pwd); SIM=$(cd "$HERE/../.." && pwd); REF=$SIM/ref/meshsim
+HERE=$(cd "$(dirname "$0")/../../tests/golden-m2" && pwd); SIM=$(cd "$HERE/../.." && pwd); REF=$SIM/ref/meshsim
 CHECK=0; [ "${1:-}" = --check ] && { CHECK=1; shift; }
 PAT=${1:-.}
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
@@ -31,7 +31,7 @@ mkdir -p "$W/cls"
 javac -nowarn -d "$W/cls" "$W/m"/src/*.java || exit 2
 grep -v '^#' "$W/m/test/PENDING" | awk 'NF{print "'"$W/m"'/test/"$1}' > "$W/pending.txt"
 javac -nowarn -d "$W/cls" -cp "$W/cls" $(ls "$W/m"/test/*.java | grep -v -x -F -f "$W/pending.txt") 2>&1 | grep -v '^Note:'
-javac -nowarn -d "$W/cls" -cp "$W/cls" "$SIM"/tests/ref/{TraceRun,StateFp,FpHooks,M2Sort,M2Prog}.java 2>&1 | grep -v '^Note:'
+javac -nowarn -d "$W/cls" -cp "$W/cls" "$SIM"/oracle/ref/{TraceRun,StateFp,FpHooks,M2Sort,M2Prog}.java 2>&1 | grep -v '^Note:'
 [ -f "$W/cls/M2Sort.class" ] || { echo "regen: the drivers did not compile"; exit 2; }
 
 # 3. the runs to do, and the key sets they need (KeyGen, checked against HASHES)

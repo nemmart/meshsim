@@ -1,7 +1,7 @@
 // The T2 harness's pieces (WORKER16; tests/t2_harness.h), on what `make check` has without the runner's data:
 //   - the two dump formats (M3Inputs.java), written here in their format and read back; their refusals;
 //   - the boot's staging (Mach.bootCores): C&C 1's host queue and big SRAM equal to ref's (tests/m3-images/bootstage.ref,
-//     from tests/ref/bootstage.sh: counts and FNV-1a hashes), and C&C 1's image and descriptor landed through the host
+//     from oracle/ref/bootstage.sh: counts and FNV-1a hashes), and C&C 1's image and descriptor landed through the host
 //     port into its memories;
 //   - CC_SEGMENT's packets; the rows' reference (rows.bin's count and the replayer's sink hash); the partition.
 #include <cinttypes>

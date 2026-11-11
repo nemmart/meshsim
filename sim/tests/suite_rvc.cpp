@@ -1,12 +1,12 @@
 // suite_rvc.cpp (WORKER21; P7a, inventory C22): v1.3's RvcTest (sim/ref/meshsim/test/RvcTest.java) on the C++ RVC
 // decompressor (src/units/rvc.h), on W20's suite.h. Its output must equal v1.3's log of run_tests.sh's step `rvc`
-// (tests/tracersuites/rvc.log, from tests/ref/tracersuites.sh).
+// (tests/tracersuites/rvc.log, from oracle/ref/tracersuites.sh).
 //
 // The Tracer's RVC decompressor (spec 4.21.4 step 2) against gold's (gold.Decoder.uncompress, a16z's rules with D12) on
 // all 2^16 16-bit encodings, and the code-stream word's rules: bit 0 cleared as the compressed flag, 0 (an invalid
 // expansion) for the encodings with no 32-bit form and the reserved forms (c.unimp among them).
 // Gold stays Java in v1.35's pipeline/ (D40): its expansion of every compressed encoding is committed once as
-// tests/tracersuites/rvc-gold.txt.gz (tests/ref/GoldRvc.java). Without the file the comparison is PENDING, as v1.3's
+// tests/tracersuites/rvc-gold.txt.gz (oracle/ref/GoldRvc.java). Without the file the comparison is PENDING, as v1.3's
 // RvcTest without gold's classes.
 // Usage: suite_rvc (from sim/)
 #include <cstdint>

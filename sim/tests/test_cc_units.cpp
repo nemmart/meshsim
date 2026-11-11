@@ -8,7 +8,7 @@
 //     tile 0's fifth port and the mesh), to itself (the loopback ejected, with a token), and a broadcast (on the link,
 //     rooted at tile 0, into all 64 tiles and never back to C&C 1); then SIM_EXIT. On one domain and on row bands, and
 //     under the debug options (shuffle, both orders, step-all).
-//   - ref's cycles (tests/m3-images/cc_ping.ref, from tests/ref/ccping.sh): SIM_EXIT's cycle and cc_ping's stamps (mcycle at
+//   - ref's cycles (tests/m3-images/cc_ping.ref, from oracle/ref/ccping.sh): SIM_EXIT's cycle and cc_ping's stamps (mcycle at
 //     each send and when its STATUS poll sees send-busy clear). The first poll has nothing arriving at C&C 1: the
 //     register block must step again after the core's own send (W16's fix in TileCtl; the missed-wake detector can't
 //     see stale published state), else the poll never ends; ref's cycle is checked, not just the ending.

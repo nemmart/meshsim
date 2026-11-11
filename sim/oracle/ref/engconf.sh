@@ -1,5 +1,5 @@
 #!/bin/bash
-# engconf.sh -- the engines' conformance, ref's side (WORKER12; tests/ref/EngConf.java, tests/test_engconf.cpp).
+# engconf.sh -- the engines' conformance, ref's side (WORKER12; oracle/ref/EngConf.java, tests/test_engconf.cpp).
 # Needs a JDK. Nothing in sim/ref is written: ref and the driver are compiled into a scratch directory.
 #
 #   engconf.sh --fixtures      (re)write tests/engconf/: per configuration below, NAME.script.gz and NAME.obs.gz
@@ -14,7 +14,7 @@ REFCOMMIT=$(git -C "$SIM" log -1 --format=%H -- ref 2>/dev/null || echo unknown)
 build() {
   rm -rf "$1"; mkdir -p "$1"
   javac -nowarn -d "$1" "$SIM"/ref/meshsim/src/*.java 2>&1 | grep -v '^Note:'
-  javac -nowarn -d "$1" -cp "$1" "$SIM"/tests/ref/StateFp.java "$SIM"/tests/ref/EngConf.java 2>&1 | grep -v '^Note:'
+  javac -nowarn -d "$1" -cp "$1" "$SIM"/oracle/ref/StateFp.java "$SIM"/oracle/ref/EngConf.java 2>&1 | grep -v '^Note:'
   [ -f "$1/EngConf.class" ] || { echo "engconf: the driver did not compile"; exit 2; }
 }
 one() {   # B DIR TILE SEED CYCLES NAME: the script and ref's observations, gzipped with their provenance

@@ -2,7 +2,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * WORKER5: ref's speed on one program, booted exactly as TraceRun boots it (sim/tests/ref/TraceRun.java: the image poked
+ * WORKER5: ref's speed on one program, booted exactly as TraceRun boots it (sim/oracle/ref/TraceRun.java: the image poked
  * into the tile's program memory, C&C 1 expecting that tile alone, the boot command with entry 0x01000000, then GO; the
  * boot ROM jumps), with the observer OFF (run without -Dmeshsim.observe). For the framework-against-ref comparison of
  * sim/tests/bench_controller.cpp's loop. Compiled into sim/ref's default package (D5), run from sim/ref/meshsim:

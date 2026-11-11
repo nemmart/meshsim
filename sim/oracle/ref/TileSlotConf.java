@@ -5,7 +5,7 @@ import java.util.List;
 /**
  * PeripheralSlotTest's groups as conformance, ref's side (WORKER15; the C++ side is tests/test_tileslotconf.cpp).
  *
- *   java -cp REF:. TileSlotConf PROG       a .prog (tests/ref/tileslotconf_progs.py) run on ref's machine: its program as
+ *   java -cp REF:. TileSlotConf PROG       a .prog (oracle/ref/tileslotconf_progs.py) run on ref's machine: its program as
  *                                          every tile's boot ROM (Controller.bootRom), Config.machine(), the test
  *                                          peripheral as the tile's peripheral 1 if "periph test"; the pokes between
  *                                          cycles; the injects with Net.at. Writes the observations on stdout.

@@ -1,4 +1,4 @@
-# wfi_go's test bench (sim/tests/ref/TraceRun.java): after the boot's GO
+# wfi_go's test bench (sim/oracle/ref/TraceRun.java): after the boot's GO
 at 300
 go                         # A: GO while the core sleeps under the done gate
 at 600

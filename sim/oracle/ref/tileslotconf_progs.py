@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # tileslotconf_progs.py (WORKER15): writes tests/tileslotconf/*.prog, the programs of PeripheralSlotTest's groups as
-# TileSlotConf runs them (tests/ref/TileSlotConf.java on ref's tile, tests/test_tileslotconf.cpp on ours).
+# TileSlotConf runs them (oracle/ref/TileSlotConf.java on ref's tile, tests/test_tileslotconf.cpp on ours).
 #
 # A .prog: "tile K" (the tile under test), "periph test|replayer" (its peripheral 1), "cycles N", "rom W W ..." (the boot
 # ROM, every tile's: a prelude sends the other tiles to a WFI loop), "poke C OP" (between cycles: at C, before the cycle
@@ -111,7 +111,7 @@ for name, f in [("window", window), ("events", events), ("dma", dma), ("landing"
     tile, per, cycles, rom, pokes, injects, (a, n) = f()
     if len(rom) > 64: raise SystemExit(f"{name}: {len(rom)} words, the boot ROM holds 64")
     with open(os.path.join(out, name + ".prog"), "w") as fh:
-        fh.write(f"# tileslotconf program v1: {name} (PeripheralSlotTest's group), tests/ref/tileslotconf_progs.py\n")
+        fh.write(f"# tileslotconf program v1: {name} (PeripheralSlotTest's group), oracle/ref/tileslotconf_progs.py\n")
         fh.write(f"tile {tile}\nperiph {per}\ncycles {cycles}\nrom {' '.join('%08x' % w for w in rom)}\n")
         for c, op in pokes: fh.write(f"poke {c} {op}\n")
         for c, src, addr, lo, hi in injects: fh.write(f"inject {c} {src} {addr:x} {lo:x} {hi:x}\n")

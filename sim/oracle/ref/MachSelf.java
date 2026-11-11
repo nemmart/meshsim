@@ -1,7 +1,7 @@
 /**
  * MachSelf (WORKER20, P2): v1.3's Mach harness driven through its machine-as-specified paths, printing what a suite
  * reads back, for tests/mach.h's C++ harness to reproduce line for line (tests/test_mach.cpp; fixture
- * tests/mach/machself.out, written by tests/ref/machself.sh). Run in a scratch directory laid out as ref/meshsim is
+ * tests/mach/machself.out, written by oracle/ref/machself.sh). Run in a scratch directory laid out as ref/meshsim is
  * (hops.txt, sw/bootrom.hex, sw/build/ holding the C++ tree's committed images): machself.sh makes it.
  *
  *   java -cp REF_CLASSES:THIS MachSelf

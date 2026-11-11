@@ -1,9 +1,9 @@
 # The retire trace (M1)
 
 The format both sides write for one tile's controller: `sim/ref` through its observer (`sim/ref/meshsim/src/Observer.java`,
-driven by `sim/tests/ref/TraceRun.java`) and the C++ controller with its test bench. M1 is accepted when the two traces of a
+driven by `sim/oracle/ref/TraceRun.java`) and the C++ controller with its test bench. M1 is accepted when the two traces of a
 program are equal, line for line, from reset to the end (DECISIONS D3). The golden traces are in `sim/tests/golden/`
-(`regen.sh` makes and checks them).
+(`oracle/regen/golden.sh` makes and checks them).
 
 Plain text, one line per event, fields separated by one space. Numbers are hexadecimal, lowercase, 8 digits
 (`%08x`), except cycles, register numbers and access sizes, which are decimal. A trace has three parts: the header (`#`
@@ -115,7 +115,7 @@ any difference. Lines in this order:
 | `shuffle_seed` | `shuffleSeed` | -1 |
 
 `idle_skip` and `shuffle_seed` don't change a correct trace (every golden trace's body is the same with `idle_skip`
-false; `regen.sh` with `JOPTS=-Dmeshsim.skip=false`); they are recorded so that a difference can be told apart.
+false; `oracle/regen/golden.sh` with `JOPTS=-Dmeshsim.skip=false`); they are recorded so that a difference can be told apart.
 
 ## The closing block
 

@@ -1,4 +1,4 @@
-# tileslotconf program v1: events (PeripheralSlotTest's group), tests/ref/tileslotconf_progs.py
+# tileslotconf program v1: events (PeripheralSlotTest's group), oracle/ref/tileslotconf_progs.py
 tile 6
 periph test
 cycles 800

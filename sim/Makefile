@@ -5,7 +5,7 @@
 #   make check       the copies from v1.3 (tools/check_copies.sh), then every test, debug and release, with gcc and
 #                    clang (D18: both compilers in both builds)
 #   make run         every test of one build: make run CC_NAME=gcc MODE=debug
-#   make conformance the port-conformance matrix: ref's side (tests/ref/portconf.sh, needs a JDK) against the C++ ports
+#   (the port-conformance matrix against ref: oracle/conformance.sh, needs a JDK and sim/ref)
 #   make clean
 #
 # The allocation hook (src/base/alloc_guard.cpp) needs our own malloc calls wrapped: WRAP, on every link.
@@ -46,7 +46,7 @@ HARNESS  := $(B)/tests/harness.o
 # W3's stage 1 sketches: compiled in every build (they must build against the API), never linked or run.
 SKETCH   := $(patsubst %.cpp,$(B)/%.o,$(wildcard src/sketch/*.cpp))
 
-.PHONY: all debug run check conformance clean
+.PHONY: all debug run check clean
 .SECONDARY:
 all: $(TESTS) $(SKETCH)
 
@@ -73,19 +73,10 @@ check:
 	  echo "==== $$c $$m"; $(MAKE) --no-print-directory CC_NAME=$$c MODE=$$m run; done; done; \
 	echo "==== make check: all passed ($(COMPILERS); debug, release)"
 
-# The conformance tool (the C++ side of PORTS.md 10) and the full matrix: 10^5 cycles per configuration, three seeds,
-# ref's observations (tests/ref/portconf.sh, a JDK) against the framework's (clang release), file by file.
+# The conformance tool (the C++ side of PORTS.md 10): the matrix against ref is oracle/conformance.sh (W19: it needs
+# a JDK and sim/ref).
 $(B)/portconf: $(B)/tests/portconf_main.o $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
-
-conformance:
-	@$(MAKE) --no-print-directory CC_NAME=clang MODE=release build/clang-release/portconf
-	./tests/ref/portconf.sh 100000 build/portconf
-	@set -e; n=0; for s in build/portconf/*.script; do \
-	  case $$s in *rlink*) continue;; esac; \
-	  ./build/clang-release/portconf $$s | cmp -s - $${s%.script}.obs || { echo "DIFFERS from ref: $$s"; exit 1; }; \
-	  n=$$((n + 1)); done; \
-	echo "conformance: $$n scripts of 10^5 cycles equal to ref, line for line (the reserved link is M2's)"
 
 clean:
 	rm -rf build

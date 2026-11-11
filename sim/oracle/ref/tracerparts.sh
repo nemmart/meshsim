@@ -1,5 +1,5 @@
 #!/bin/bash
-# tracerparts.sh -- the Tracer's pure pieces, ref's side (WORKER14; tests/ref/TracerParts.java, tests/test_tracer_parts.cpp).
+# tracerparts.sh -- the Tracer's pure pieces, ref's side (WORKER14; oracle/ref/TracerParts.java, tests/test_tracer_parts.cpp).
 # Needs a JDK. Nothing in sim/ref is written: ref and the driver are compiled into a scratch directory.
 #
 #   tracerparts.sh --fixtures     (re)write tests/tracerparts/: rvc.txt.gz (every 16-bit encoding), lru-sN.txt.gz and
@@ -14,7 +14,7 @@ RUNS=("lru 1 20000" "lru 2 20000" "mem 1 8000" "mem 2 8000")
 build() {
   rm -rf "$1"; mkdir -p "$1"
   javac -nowarn -d "$1" "$SIM"/ref/meshsim/src/*.java 2>&1 | grep -v '^Note:'
-  javac -nowarn -d "$1" -cp "$1" "$SIM"/tests/ref/TracerParts.java 2>&1 | grep -v '^Note:'
+  javac -nowarn -d "$1" -cp "$1" "$SIM"/oracle/ref/TracerParts.java 2>&1 | grep -v '^Note:'
   [ -f "$1/TracerParts.class" ] || { echo "tracerparts: the driver did not compile"; exit 2; }
 }
 one() {   # B DIR NAME ARGS...: ref's output, gzipped with its provenance

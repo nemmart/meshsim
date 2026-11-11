@@ -1,4 +1,4 @@
-# G1 boundary of tile 0 in M2Prog regs (sim/tests/ref/G1Trace.java)
+# G1 boundary of tile 0 in M2Prog regs (sim/oracle/ref/G1Trace.java)
 E 4 bc01011300008137 400000203f40 830313ff000317
 E 5 12038393ff000397 400004203f40 3202300737863
 E 6 ff5ff06f00430313 400008203f40 10080e700000097

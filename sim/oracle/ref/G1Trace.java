@@ -48,7 +48,7 @@ final class G1Trace {
         }
         Tile p = m.c.tiles[tile];
         try (PrintWriter w = new PrintWriter(a[2])) {
-            w.println("# G1 boundary of tile " + tile + " in M2Prog " + prog + " (sim/tests/ref/G1Trace.java)");
+            w.println("# G1 boundary of tile " + tile + " in M2Prog " + prog + " (sim/oracle/ref/G1Trace.java)");
             long[] lastAt = { 0 }; Set<Long> gos = new HashSet<>(); boolean[] occPrev = { false };
             Runnable look = () -> {
                 long c = m.c.cycle;

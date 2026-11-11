@@ -1,5 +1,5 @@
 #!/bin/bash
-# routerconf.sh -- the router's conformance, ref's side (WORKER9; tests/ref/RouterConf.java, tests/test_router.cpp).
+# routerconf.sh -- the router's conformance, ref's side (WORKER9; oracle/ref/RouterConf.java, tests/test_router.cpp).
 # Needs a JDK. Nothing in sim/ref is written: ref and the driver are compiled into a scratch directory.
 #
 #   routerconf.sh --fixtures      (re)write tests/routerconf/: tables.txt (every router's routing decisions, hashed per
@@ -16,7 +16,7 @@ REFCOMMIT=$(git -C "$SIM" log -1 --format=%H -- ref 2>/dev/null || echo unknown)
 build() {
   rm -rf "$1"; mkdir -p "$1"
   javac -nowarn -d "$1" "$SIM"/ref/meshsim/src/*.java 2>&1 | grep -v '^Note:'
-  javac -nowarn -d "$1" -cp "$1" "$SIM"/tests/ref/StateFp.java "$SIM"/tests/ref/RouterConf.java 2>&1 | grep -v '^Note:'
+  javac -nowarn -d "$1" -cp "$1" "$SIM"/oracle/ref/StateFp.java "$SIM"/oracle/ref/RouterConf.java 2>&1 | grep -v '^Note:'
   [ -f "$1/RouterConf.class" ] || { echo "routerconf: the driver did not compile"; exit 2; }
 }
 one() {   # B DIR TILE SEED CYCLES NAME [send]: the script and ref's observations, gzipped with their provenance

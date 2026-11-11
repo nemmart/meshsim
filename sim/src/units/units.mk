@@ -46,7 +46,7 @@ $(B)/test_g1_tile $(B)/test_tile_slot $(B)/test_tileslotconf: $(UNITS_LINK)
 $(B)/test_g1_replay: $(FP_OBJ) $(B)/tests/statefp_g1.o $(UNITS_LINK) $(GOLDEN_OBJ)
 
 # WORKER15: the replayer (src/units/replayer.*), its tests and the conformance tool (tests/replayconf_main.cpp: a
-# ReplayConf script replayed on the C++ replayer; tests/ref/replayconf.sh writes ref's side).
+# ReplayConf script replayed on the C++ replayer; oracle/ref/replayconf.sh writes ref's side).
 REPLAYER_LINK := $(B)/src/units/replayer.o
 $(B)/test_replayer $(B)/test_replayconf: $(REPLAYER_LINK) $(B)/tests/statefp.o
 $(B)/test_replayer: $(B)/src/units/replay_tables.o

@@ -2,7 +2,7 @@
 
 *(WORKER7, 2026-11-07; draft while Quest 134 runs. The unit workers' specification for M2, as `AUDIT-M1.md` was W5's.)*
 References are to `sim/ref/meshsim/src` unless stated. Evidence comes from runs of `sim/ref` through WORKER7's drivers
-(`sim/tests/ref/M2Sort.java`, `M2Prog.java`, `FpHooks.java`, `StateFp.java`), which only read between cycles: with them on,
+(`sim/oracle/ref/M2Sort.java`, `M2Prog.java`, `FpHooks.java`, `StateFp.java`), which only read between cycles: with them on,
 ref's own digest and every result are unchanged (section 6.5).
 
 ## 0. The run
@@ -376,7 +376,7 @@ window costs about 6 ms a cycle (10,000 cycles: one minute).
 
 ## 7. The references (`sim/tests/golden-m2/`)
 
-`RUNS` lists every run; `regen.sh [--check]` rebuilds ref and the drivers in a scratch copy of `sim/ref/meshsim` with the
+`RUNS` lists every run; `oracle/regen/golden-m2.sh [--check]` rebuilds ref and the drivers in a scratch copy of `sim/ref/meshsim` with the
 committed images (`images/MANIFEST.md`), runs them and compares every file's sha256 with `HASHES` (all SAME locally:
 34 files of the small runs, the 16K set regenerated). In git: the small runs' files and the sort's facts, coverage and
 PhaseLog; by hash only: the whole-chip fingerprints, the 16K and full sort's fingerprints and traces (regenerable).

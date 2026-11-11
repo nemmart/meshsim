@@ -1,5 +1,5 @@
-// test_suite.cpp (WORKER20): suite.h's lines and counts equal v1.3's T on the same sequence (tests/ref/TSelf.java,
-// fixture tests/suite/tself.out from tests/ref/tself.sh), and its stops count only a FATAL.
+// test_suite.cpp (WORKER20): suite.h's lines and counts equal v1.3's T on the same sequence (oracle/ref/TSelf.java,
+// fixture tests/suite/tself.out from oracle/ref/tself.sh), and its stops count only a FATAL.
 #include <sys/wait.h>
 #include <unistd.h>
 

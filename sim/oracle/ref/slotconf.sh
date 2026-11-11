@@ -1,5 +1,5 @@
 #!/bin/bash
-# slotconf.sh -- the peripheral slot's conformance, ref's side (WORKER15; tests/ref/SlotConf.java, tests/test_slotconf.cpp).
+# slotconf.sh -- the peripheral slot's conformance, ref's side (WORKER15; oracle/ref/SlotConf.java, tests/test_slotconf.cpp).
 # Needs a JDK. Nothing in sim/ref is written: ref and the driver are compiled into a scratch directory.
 #   slotconf.sh --fixtures        write tests/slotconf/seedN.{script,obs}.gz (seeds 1-5, 3,000 cycles each)
 #   slotconf.sh --check           replay the committed scripts on ref; its observations must equal the committed ones
@@ -9,7 +9,7 @@ SIM=$(cd "$(dirname "$0")/../.." && pwd); FIX="$SIM/tests/slotconf"; SEEDS="1 2 
 build() {
   rm -rf "$1"; mkdir -p "$1"
   javac --release 17 -nowarn -d "$1" "$SIM"/ref/meshsim/src/*.java "$SIM"/ref/meshsim/test/*.java 2>&1 | grep -v '^Note:'
-  javac --release 17 -nowarn -d "$1" -cp "$1" "$SIM"/tests/ref/SlotConf.java 2>&1 | grep -v '^Note:'
+  javac --release 17 -nowarn -d "$1" -cp "$1" "$SIM"/oracle/ref/SlotConf.java 2>&1 | grep -v '^Note:'
   [ -f "$1/SlotConf.class" ] || { echo "slotconf: the driver did not compile"; exit 2; }
 }
 B=$(mktemp -d); build "$B"; R="$SIM/ref/meshsim"

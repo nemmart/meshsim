@@ -21,8 +21,8 @@ build() {
   rm -rf "$1"; mkdir -p "$1"
   javac -nowarn -d "$1" $(find "$SIM/ref/gold/src" -name '*.java') 2>&1 | grep -v '^Note:'
   javac -nowarn -d "$1" -cp "$1" -sourcepath "$REF/test" "$REF"/src/*.java "$REF/test/MemorySystemTest.java" \
-        "$REF/test/RvcTest.java" "$REF/test/TracerTest.java" "$SIM/tests/ref/GoldRvc.java" \
-        "$SIM/tests/ref/JavaHashOrder.java" 2>&1 | grep -v '^Note:'
+        "$REF/test/RvcTest.java" "$REF/test/TracerTest.java" "$SIM/oracle/ref/GoldRvc.java" \
+        "$SIM/oracle/ref/JavaHashOrder.java" 2>&1 | grep -v '^Note:'
   for c in gold/Decoder MemorySystemTest RvcTest TracerTest GoldRvc JavaHashOrder; do
     [ -f "$1/$c.class" ] || { echo "tracersuites: $c did not compile"; exit 2; }
   done
@@ -42,10 +42,10 @@ fixtures() {
   java -cp "$B" GoldRvc | gzip -n -9 > "$d/rvc-gold.txt.gz"
   [ "$(gzip -dc "$d/rvc-gold.txt.gz" | wc -l)" = 49152 ] || { echo "FAIL GoldRvc: not 49,152 lines"; exit 1; }
   java --add-opens java.base/java.util=ALL-UNNAMED -cp "$B" JavaHashOrder > "$d/hashorder.txt" || { echo "FAIL JavaHashOrder"; exit 1; }
-  { echo "tests/tracersuites: made by tests/ref/tracersuites.sh --fixtures from sim/ref at $REFCOMMIT"
+  { echo "tests/tracersuites: made by oracle/ref/tracersuites.sh --fixtures from sim/ref at $REFCOMMIT"
     echo "memsys.log, rvc.log, tracer.log: run_tests.sh's steps of the same names (MemorySystemTest, RvcTest with gold, TracerTest)"
-    echo "rvc-gold.txt.gz: gold.Decoder.uncompress on every compressed encoding (tests/ref/GoldRvc.java)"
-    echo "hashorder.txt: java.util.HashMap's iteration order for Long keys (tests/ref/JavaHashOrder.java)"
+    echo "rvc-gold.txt.gz: gold.Decoder.uncompress on every compressed encoding (oracle/ref/GoldRvc.java)"
+    echo "hashorder.txt: java.util.HashMap's iteration order for Long keys (oracle/ref/JavaHashOrder.java)"
     java -version 2>&1 | head -1; } > "$d/PROVENANCE"
   rm -rf "$B"
 }

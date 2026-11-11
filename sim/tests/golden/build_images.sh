@@ -1,7 +1,7 @@
 #!/bin/sh
 # Builds every image the golden traces are made from into sim/tests/golden/images/ and writes images/MANIFEST.md (the
 # toolchain, how they are built, each file's sha256). The golden traces are only meaningful against these exact bytes:
-# regen.sh checks them against the manifest before it runs anything.
+# oracle/regen/golden.sh checks them against the manifest before it runs anything.
 #   - the M1 programs, sim/fw/m1/*.S, and sw/tests' hello, faults, misalign_ld, misalign_st (sim/fw/tests/), as
 #     sim/fw/build.sh builds them (W19: v1.3's flags, crt0.S, app.ld and mesh.h; byte-identical to the images first
 #     built here from sim/ref by W2's scripts).

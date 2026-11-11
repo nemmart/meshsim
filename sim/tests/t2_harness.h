@@ -68,7 +68,7 @@ bool cores_booted(const uint32_t* cc1_dmem, const Image& cc1);
 // Runs to Mach.coresBooted (at most `cap` cycles), checked between cycles as ref's runUntil. Returns ref's boot-end point
 // (M3Seg: c.cycle - 1; the framework's cycle F is ref's F - 1, so between cycles now() is ref's c.cycle + 1), or -1.
 // With `trace`, appends "CYCLE pc1 pc2 pc3 pc_t0" (ref's c.cycle; C&C 1-3's and tile 0's pc, signed) whenever one
-// changes, as tests/ref/BootStage.java's trace (tests/m3-images/boottrace.ref.gz).
+// changes, as oracle/ref/BootStage.java's trace (tests/m3-images/boottrace.ref.gz).
 int64_t run_boot(Machine& m, const Image& cc1, uint64_t cap, std::string* trace = nullptr);
 
 // The replayer's sink hash over n records of ten words.

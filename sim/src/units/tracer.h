@@ -171,7 +171,7 @@ public:
     static void files_word(int32_t mem_root, int mem_depth, int32_t map_root, int map_depth, int log2k, int64_t lowest,
                            uint64_t out[2]);
 
-    // TracerConf's observation (tests/ref/TracerConf.java OBS, in its order): 16 private fields, 10 statistics, stat[8],
+    // TracerConf's observation (oracle/ref/TracerConf.java OBS, in its order): 16 private fields, 10 statistics, stat[8],
     // stalls[7], oq[1..3].occ and .pushed, the two fact counts, the record's hash, the 11 event counts.
     static constexpr int OBS_N = 16 + 10 + 8 + 7 + 6 + 2 + 1 + 11;
     void observe(int64_t out[OBS_N]) const;

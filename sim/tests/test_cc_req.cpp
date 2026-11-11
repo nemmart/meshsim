@@ -7,7 +7,7 @@
 //   with mcycle), one receive on the empty queue (reads 0, ERRORS [14]), SIM_EXIT.
 //   tests/m3-images/tile_req.c (tile 5, in its program memory before the boot): 300 REQUEST_SENDs back to back, mcycle
 //   after each.
-// ref's figures: tests/m3-images/cc_req.ref (tests/ref/ccreq.sh, CcReq.java). Every figure is a stamp the programs took
+// ref's figures: tests/m3-images/cc_req.ref (oracle/ref/ccreq.sh, CcReq.java). Every figure is a stamp the programs took
 // (mcycle) or ref's SIM_EXIT cycle (TileCtl's sim_exit_at, which counts as ref does: AUDIT-M3 7's mapping is inside it).
 //   - D34 mode 0 (exact) on one domain: every figure equal to ref's.
 //   - mode 3 (the spec, the default) on one domain and on T2's split: the same words (the requests as sent, stamped with

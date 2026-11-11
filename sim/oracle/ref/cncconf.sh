@@ -1,5 +1,5 @@
 #!/bin/bash
-# cncconf.sh -- C&C's conformance, ref's side (WORKER9; tests/ref/CncConf.java, tests/test_cnc.cpp). Needs a JDK.
+# cncconf.sh -- C&C's conformance, ref's side (WORKER9; oracle/ref/CncConf.java, tests/test_cnc.cpp). Needs a JDK.
 # Nothing in sim/ref is written: ref and the driver are compiled into a scratch directory.
 #
 #   cncconf.sh --fixtures      (re)write tests/cncconf/: sS.script.gz and sS.obs.gz for each seed below (6,000 cycles),
@@ -14,7 +14,7 @@ REFCOMMIT=$(git -C "$SIM" log -1 --format=%H -- ref 2>/dev/null || echo unknown)
 build() {
   rm -rf "$1"; mkdir -p "$1"
   javac -nowarn -d "$1" "$SIM"/ref/meshsim/src/*.java 2>&1 | grep -v '^Note:'
-  javac -nowarn -d "$1" -cp "$1" "$SIM"/tests/ref/StateFp.java "$SIM"/tests/ref/CncConf.java 2>&1 | grep -v '^Note:'
+  javac -nowarn -d "$1" -cp "$1" "$SIM"/oracle/ref/StateFp.java "$SIM"/oracle/ref/CncConf.java 2>&1 | grep -v '^Note:'
   [ -f "$1/CncConf.class" ] || { echo "cncconf: the driver did not compile"; exit 2; }
 }
 fixtures() {

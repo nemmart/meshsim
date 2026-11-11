@@ -1,6 +1,6 @@
 // Port conformance against ref (WORKER3; PORTS.md 10): every committed fixture (sim/tests/portconf, seed 1 of each
 // configuration at 2,000 cycles, ref's observations made by PortConfDriver) run on the framework's port of the same kind;
-// the observation lines must be identical. The full matrix (10^5 cycles, three seeds) is `make conformance`.
+// the observation lines must be identical. The full matrix (10^5 cycles, three seeds) is `oracle/conformance.sh`.
 #include <string>
 
 #include "harness.h"

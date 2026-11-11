@@ -1,5 +1,5 @@
 #!/bin/bash
-# tracerconf.sh -- the Tracer's conformance, ref's side (WORKER14; tests/ref/TracerConf.java, tests/test_tracer.cpp).
+# tracerconf.sh -- the Tracer's conformance, ref's side (WORKER14; oracle/ref/TracerConf.java, tests/test_tracer.cpp).
 # Needs a JDK. Nothing in sim/ref is written: ref, its test classes and the driver are compiled into a scratch directory.
 #
 # TracerTest's cases are recorded through copies of TracerTest and TracerRig made here, changed only so that the rig's
@@ -35,7 +35,7 @@ build() {
     grep -qF "$x" "$1/src/TracerConfT1.java" || { echo "tracerconf: TracerT1's edit '$x' was not recorded"; exit 2; }
   done
   javac -nowarn -d "$1" -sourcepath "$REF/test" "$REF"/src/*.java \
-        "$SIM"/tests/ref/StateFp.java "$SIM"/tests/ref/StateFpM3.java "$SIM"/tests/ref/TracerConf.java "$1"/src/*.java 2>&1 | grep -v '^Note:'
+        "$SIM"/oracle/ref/StateFp.java "$SIM"/oracle/ref/StateFpM3.java "$SIM"/oracle/ref/TracerConf.java "$1"/src/*.java 2>&1 | grep -v '^Note:'
   [ -f "$1/TracerConf.class" ] || { echo "tracerconf: the driver did not compile"; exit 2; }
 }
 cases() {   # B DIR: TracerTest's cases recorded

@@ -1,6 +1,6 @@
 /**
  * TSelf (WORKER20, P2): v1.3's suite harness T driven through every method, passing and failing, so its lines and
- * counts can be compared with tests/suite.h's (tests/test_suite.cpp runs the same sequence). tests/ref/tself.sh.
+ * counts can be compared with tests/suite.h's (tests/test_suite.cpp runs the same sequence). oracle/ref/tself.sh.
  */
 public final class TSelf {
     public static void main(String[] a) {

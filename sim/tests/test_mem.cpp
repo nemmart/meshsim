@@ -1,5 +1,5 @@
 // test_mem.cpp (WORKER11, G3): the memory path's units alone, hand-derived cases the M2 programs don't reach. Exactness
-// against ref is MemConf's (tests/ref/MemConf.java); these pin the rules: the overflow events (D29), the request FIFO's
+// against ref is MemConf's (oracle/ref/MemConf.java); these pin the rules: the overflow events (D29), the request FIFO's
 // judgment (PORTS.md 3), the big SRAM's room by the count before the pop (13a), write combining, the write engine's
 // stage and the SRAM Hold's refusal.
 #include <cstdint>

@@ -1,5 +1,5 @@
 #!/bin/bash
-# reqconf.sh -- the request bus's conformance, ref's side (WORKER14; tests/ref/ReqConf.java, tests/test_reqbus.cpp).
+# reqconf.sh -- the request bus's conformance, ref's side (WORKER14; oracle/ref/ReqConf.java, tests/test_reqbus.cpp).
 # Needs a JDK. Nothing in sim/ref is written: ref, StateFp and the driver are compiled into a scratch directory.
 #   reqconf.sh --fixtures   (re)write tests/reqconf/ (RUNS below), each opening with its provenance (the ref commit)
 #   reqconf.sh --check      regenerate into a scratch directory and compare with the committed fixtures
@@ -13,7 +13,7 @@ REFCOMMIT=$(git -C "$SIM" log -1 --format=%H -- ref 2>/dev/null || echo unknown)
 RUNS=("mix 1 6000" "calm 2 6000" "full 3 4000" "fanin 4 4000" "drop 5 4000")
 build() {
   rm -rf "$1"; mkdir -p "$1"
-  javac -nowarn -d "$1" -sourcepath "$REF/test" "$REF"/src/*.java "$SIM"/tests/ref/StateFp.java "$SIM"/tests/ref/ReqConf.java 2>&1 | grep -v '^Note:'
+  javac -nowarn -d "$1" -sourcepath "$REF/test" "$REF"/src/*.java "$SIM"/oracle/ref/StateFp.java "$SIM"/oracle/ref/ReqConf.java 2>&1 | grep -v '^Note:'
   [ -f "$1/ReqConf.class" ] || { echo "reqconf: the driver did not compile"; exit 2; }
 }
 one() {   # B DIR FAMILY SEED CYCLES

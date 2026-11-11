@@ -58,3 +58,14 @@ v1.3's, every copied file byte-identical to its `ref/` original (sha256).
   (`oracle/regs_crosscheck.sh`). `tests/test_regs` in make check: the two files are the generator's output, and the
   table agrees with `src/units/regmap.h` word by word (load and store sides, names, reserved words), plus the address
   map, event, status, error and PARAMS bits; a one-byte change to mesh.h fails it.
+- **Step 4, waiting for the owner's word before moving `tests/ref/`.** The sort (rule: needs Java or `sim/ref` to
+  run): `tests/ref/` whole (35 .java, 19 scripts, `tileslotconf_progs.py`) -> `oracle/ref/` (same depth, so each
+  script's `SIM=../..` holds; `tests/ref/` paths rewritten); the five `regen.sh` (golden, golden-m2, golden-m3, fp-m1,
+  g1-replay) -> `oracle/regen/<fixture>.sh`, pointing at their fixture folder; the Makefile's `conformance` target ->
+  `oracle/conformance.sh`; `bench/w14/TracerPlay.java` -> `oracle/bench/`. Stay (committed data make check reads):
+  every fixture, `tests/tracersuites/`, `tests/tracerconf/cases.log.gz`, `m3-images/*.ref*`. Comments naming
+  `tests/ref` (the .mk files, AUDIT-*, PORTS.md, READMEs) repointed; planning records left as written.
+- **Step 5, a question:** the four input tools' compile closure in v1.3's Java. KeyGen and SplitSets stand alone;
+  ConvertDelivery and SyntheticDelivery need ReplayDelivery, ReplayDriver, ReplayTables, ReplayWindow and the Java
+  `Replayer` (SyntheticDelivery instantiates it for its reference rows), and `Replayer` reaches `Bus` -> `Chip`, so
+  javac needs 49 of the simulator's 52 source files (57 files, 10.8 K lines; found by iterating javac to success).

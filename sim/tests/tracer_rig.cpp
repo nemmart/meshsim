@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cstdarg>
 #include <cstdio>
 #include <cstring>
 
@@ -128,13 +129,228 @@ void Pages::poke64(int64_t off, uint64_t v) {
     poke(off, bs);
 }
 
+// ================================================================ the call recorder
+std::FILE* RecTracer::log_ = nullptr;
+int RecTracer::next_id_ = 0;
+
+void RecTracer::open_log(std::FILE* f) {
+    log_ = f;
+    next_id_ = 0;
+}
+void RecTracer::close_log() {
+    if (log_) std::fflush(log_);
+    log_ = nullptr;
+}
+RecTracer::RecTracer(const FileStore* fs) : Tracer(66), fs_(fs), id_(next_id_++), rec_(log_ != nullptr) {}
+RecTracer::~RecTracer() {
+    if (rec_ && started_) flush_partial();  // Rec.close (the fingerprints aside)
+}
+
+void RecTracer::start() {
+    if (started_) return;
+    started_ = true;
+    std::fprintf(log_, "N %d 66 %d\n", id_, Tracer::CACHE_LINES);
+    dump();
+}
+// Rec.dump: the store's pages in address order, each "Z" (all zero) or "P" with its words.
+int RecTracer::dump() {
+    const int64_t next = fs_->next_free();
+    const int64_t first = next > fs_->first() ? fs_->first() : next;
+    const int k = dumps_++;
+    std::fprintf(log_, "F %d %d %lld %lld\n", id_, k, (long long)first, (long long)next);
+    for (int64_t a = first; a < next; a += FileStore::PAGE_UNITS) {
+        const uint64_t* p = fs_->raw_page(int32_t(a));
+        bool zero = true;
+        for (int w = 0; w < FileStore::PAGE_WORDS; w++) zero &= p[w] == 0;
+        if (zero) { std::fprintf(log_, "Z %d %lld\n", id_, (long long)a); continue; }
+        std::fprintf(log_, "P %d %lld", id_, (long long)a);
+        for (int w = 0; w < FileStore::PAGE_WORDS; w++) std::fprintf(log_, " %llx", (unsigned long long)p[w]);
+        std::fputc('\n', log_);
+    }
+    dumped_next_ = next;
+    return k;
+}
+void RecTracer::call(int64_t t, const char* fmt, ...) {
+    start();
+    if (n_tok_ == TOKS) FATAL("RecTracer: more than %d calls in a cycle", TOKS);
+    va_list ap;
+    va_start(ap, fmt);
+    const int n = std::vsnprintf(call_tok_[n_tok_], TOKLEN, fmt, ap);
+    va_end(ap);
+    if (n < 0 || n >= TOKLEN) FATAL("RecTracer: a token longer than %d", TOKLEN);
+    call_t_[n_tok_++] = t;
+}
+void RecTracer::app(const char* fmt, ...) {
+    char* tk = call_tok_[n_tok_ - 1];
+    const size_t len = std::strlen(tk);
+    va_list ap;
+    va_start(ap, fmt);
+    const int n = std::vsnprintf(tk + len, TOKLEN - len, fmt, ap);
+    va_end(ap);
+    if (n < 0 || size_t(n) >= TOKLEN - len) FATAL("RecTracer: a token longer than %d", TOKLEN);
+}
+int64_t RecTracer::anchor() const {
+    for (int i = 0; i < n_tok_; i++)
+        if (call_t_[i] != INT64_MIN) return call_t_[i];
+    return 0;
+}
+// Rec.sig: the cycle's tokens, ';'-separated; a call at another cycle than the anchor gets "@d" before its first ','
+// or '='.
+void RecTracer::make_sig(int64_t anc) {
+    size_t o = 0;
+    auto put = [&](const char* s, size_t n) {
+        if (o + n >= SIGLEN) FATAL("RecTracer: a cycle's calls longer than %d", SIGLEN);
+        std::memcpy(sig_ + o, s, n);
+        o += n;
+    };
+    for (int i = 0; i < n_tok_; i++) {
+        if (i > 0) put(";", 1);
+        const char* tk = call_tok_[i];
+        const size_t len = std::strlen(tk);
+        const int64_t t = call_t_[i];
+        if (t == INT64_MIN || t == anc) { put(tk, len); continue; }
+        size_t at = std::strcspn(tk, ",=");
+        put(tk, at);
+        char d[32];
+        const int n = std::snprintf(d, sizeof d, "@%lld", (long long)(t - anc));
+        put(d, size_t(n));
+        put(tk + at, len - at);
+    }
+    sig_[o] = 0;
+}
+void RecTracer::flush_group() {
+    if (!g_open_) return;
+    std::fprintf(log_, "c %d %lld %lld %s\n", id_, (long long)g_t0_, (long long)g_n_, g_sig_);
+    g_open_ = false;
+}
+void RecTracer::end_cycle(int64_t t) {
+    make_sig(t);
+    if (g_open_ && std::strcmp(sig_, g_sig_) == 0 && t == g_t0_ + g_n_) g_n_++;
+    else {
+        flush_group();
+        g_open_ = true;
+        std::strcpy(g_sig_, sig_);
+        g_t0_ = t;
+        g_n_ = 1;
+    }
+    n_tok_ = 0;
+}
+void RecTracer::flush_partial() {
+    flush_group();
+    if (n_tok_ == 0) return;
+    const int64_t a = anchor();
+    make_sig(a);
+    std::fprintf(log_, "c %d %lld 1 %s\n", id_, (long long)a, sig_);
+    n_tok_ = 0;
+}
+void RecTracer::mark_ub() {
+    if (!rec_) return;
+    start();
+    flush_partial();
+    std::fprintf(log_, "U %d\n", id_);
+}
+
+namespace {
+uint64_t store_hash(const FileStore& fs) {  // TracerConf.storeHash
+    uint64_t h = 17;
+    for (int64_t a = fs.first(); a < fs.next_free(); a += FileStore::PAGE_UNITS) {
+        h = h * 31 + uint64_t(a);
+        const uint64_t* p = fs.raw_page(int32_t(a));
+        for (int i = 0; i < FileStore::PAGE_WORDS; i++) h = h * 31 + p[i];
+    }
+    return h;
+}
+}  // namespace
+
+void RecTracer::accept(int64_t t, int src, uint32_t offset, int size, uint64_t lo, uint64_t hi) {
+    if (rec_) {
+        start();
+        if (offset == 0) {
+            if (fs_->next_free() != dumped_next_) {
+                const int k = dump();
+                call(t, "F,%d", k);
+            } else call(t, "H=%llx", (unsigned long long)store_hash(*fs_));
+        }
+        call(t, "a,%d,%x,%d,%llx,%llx", src, offset, size, (unsigned long long)lo, (unsigned long long)hi);
+    }
+    Tracer::accept(t, src, offset, size, lo, hi);
+}
+void RecTracer::run(int64_t t) {
+    if (rec_) call(t, "u");
+    Tracer::run(t);
+}
+int RecTracer::write_word(int64_t t, int w, uint32_t v) {
+    if (rec_) call(t, "ww,%d,%x", w, v);
+    const int r = Tracer::write_word(t, w, v);
+    if (rec_) app("=%d", r);
+    return r;
+}
+bool RecTracer::word(int64_t t, int w, uint32_t& v) {
+    if (rec_) call(t, "wr,%d", w);
+    const bool ok = Tracer::word(t, w, v);
+    if (rec_) { if (ok) app("=%x", v); else app("=-"); }
+    return ok;
+}
+bool RecTracer::running(int64_t t) {
+    if (rec_) call(t, "rn");
+    const bool r = Tracer::running(t);
+    if (rec_) app("=%d", r ? 1 : 0);
+    return r;
+}
+int RecTracer::errors(int64_t t) {
+    if (rec_) call(t, "er");
+    const int r = Tracer::errors(t);
+    if (rec_) app("=%x", unsigned(r));
+    return r;
+}
+void RecTracer::sync(int64_t t) {
+    if (rec_) call(t, "sy");
+    Tracer::sync(t);
+}
+bool RecTracer::rows_ended(int64_t t) {
+    if (rec_) call(t, "re");
+    const bool r = Tracer::rows_ended(t);
+    if (rec_) app("=%d", r ? 1 : 0);
+    return r;
+}
+void RecTracer::out_start(int64_t t, int q, int64_t words) {
+    if (rec_) call(t, "os,%d,%lld", q, (long long)words);
+    Tracer::out_start(t, q, words);
+}
+bool RecTracer::out_ready(int64_t t, int q) {
+    if (rec_) call(t, "or,%d", q);
+    const bool r = Tracer::out_ready(t, q);
+    if (rec_) app("=%d", r ? 1 : 0);
+    return r;
+}
+void RecTracer::out_take(int64_t t, int q, uint64_t w[2]) {
+    if (rec_) call(t, "ot,%d", q);
+    Tracer::out_take(t, q, w);
+    if (rec_) app("=%llx,%llx", (unsigned long long)w[0], (unsigned long long)w[1]);
+}
+void RecTracer::step(int64_t t) {
+    if (rec_) call(t, "st");
+    Tracer::step(t);
+    if (rec_) end_cycle(t);
+}
+uint32_t RecTracer::Ev::value(int64_t t) {
+    if (r.rec_) r.call(t, "ev");
+    const uint32_t v = r.Tracer::events().value(t);
+    if (r.rec_) r.app("=%x", v);
+    return v;
+}
+uint32_t RecTracer::Ev::consume(uint32_t bits) {
+    if (r.rec_) r.call(INT64_MIN, "co,%x", bits);
+    return r.Tracer::events().consume(bits);
+}
+
 // ================================================================ the rig
 const ReplayTables& Rig::shared_tables() {
     static const ReplayTables t = ReplayTables::load(ReplayTables::default_dir());
     return t;
 }
 
-Rig::Rig() : tables(shared_tables()) {
+Rig::Rig() : tables(shared_tables()) {  // tr (a RecTracer) took its id first, as Rec's in ref's rig
     tr.mem = &ms;
     tr.cold_mem_on_state_write = true;  // ref: tr.onStateWrite = ms::cold
     port_.cap = 1024;

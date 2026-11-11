@@ -12,4 +12,4 @@ $(B)/suite_tracer: $(B)/tests/suite_tracer.o $(B)/tests/tracer_rig.o $(B)/tests/
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 # the suites are run by test_tracer_suites (order-only: built with it, not linked into it)
 $(B)/test_tracer_suites: | $(TRACER_SUITES)
-$(B)/test_tracer_rig: $(B)/tests/tracer_rig.o $(TRACER_LINK)
+$(B)/test_tracer_rig: $(B)/tests/tracer_rig.o $(TRACER_LINK) | $(B)/suite_tracer

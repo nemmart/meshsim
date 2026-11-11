@@ -28,6 +28,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstdio>
 #include <string>
 #include <utility>
 #include <vector>
@@ -137,6 +138,75 @@ private:
     std::vector<uint64_t>& slot(int64_t key);
 };
 
+// ================================================================ the call recorder (TracerConf's format)
+// The Tracer as the rig and the suite see it: every call TracerConf.Rec records (tests/ref/TracerConf.java) goes through
+// here, and with a log open each is written as Rec writes it, so the rig's calls can be compared with `ref`'s rig's
+// (tests/tracerconf/cases.log.gz; test_tracer_rig). Hiding, not overriding: the Tracer's own code is untouched, and with
+// no log a call costs one test. Ids are given at construction, as Rec's (probes included). Lines: "N id 66 lines",
+// store dumps ("F id k first next" and a "P"/"Z" line per page), "c id t0 n sig" (consecutive equal cycles run
+// together; no observation, unlike Rec's), and "U id": the suite is about to run a UB check in a forked child, whose
+// calls (and the one that stops) are in `ref`'s log and not here. Fixed buffers only: nothing allocates while recording
+// (the window loop runs under the allocation hook).
+class RecTracer : public Tracer {
+public:
+    explicit RecTracer(const FileStore* fs);
+    ~RecTracer();
+    RecTracer(const RecTracer&) = delete;
+    RecTracer& operator=(const RecTracer&) = delete;
+
+    // The log (null: off), for every RecTracer made after it is set; ids from 0 again.
+    static void open_log(std::FILE* f);
+    static void close_log();
+    void mark_ub();  // before a UB check on this Tracer runs in a child
+
+    // ---- the recorded calls (Rec's list)
+    void accept(int64_t t, int src, uint32_t offset, int size, uint64_t lo, uint64_t hi);
+    void run(int64_t t);
+    int write_word(int64_t t, int w, uint32_t v);
+    bool word(int64_t t, int w, uint32_t& v);
+    bool running(int64_t t);
+    int errors(int64_t t);
+    void sync(int64_t t);
+    bool rows_ended(int64_t t);
+    void out_start(int64_t t, int q, int64_t words);
+    bool out_ready(int64_t t, int q);
+    void out_take(int64_t t, int q, uint64_t w[2]);
+    void step(int64_t t);  // ref's runCycle
+    struct Ev {
+        RecTracer& r;
+        uint32_t value(int64_t t);
+        uint32_t consume(uint32_t bits);
+    };
+    Ev events() { return Ev{*this}; }
+
+private:
+    static std::FILE* log_;
+    static int next_id_;
+    const FileStore* fs_;
+    const int id_;
+    bool rec_ = false, started_ = false;
+    int64_t dumped_next_ = -1;
+    int dumps_ = 0;
+    static constexpr int TOKS = 64, TOKLEN = 112, SIGLEN = 8192;
+    int64_t call_t_[TOKS] = {};
+    char call_tok_[TOKS][TOKLEN] = {};
+    int n_tok_ = 0;
+    bool g_open_ = false;
+    char g_sig_[SIGLEN] = {};
+    int64_t g_t0_ = 0, g_n_ = 0;
+    char sig_[SIGLEN] = {};
+
+    void start();
+    int dump();
+    void call(int64_t t, const char* fmt, ...) __attribute__((format(printf, 3, 4)));
+    void app(const char* fmt, ...) __attribute__((format(printf, 2, 3)));
+    void make_sig(int64_t anchor);
+    int64_t anchor() const;
+    void flush_group();
+    void end_cycle(int64_t t);
+    void flush_partial();
+};
+
 // ================================================================ the window's output
 struct WindowOut {
     std::vector<uint64_t> record, code, rlog, wlog;  // {lo, hi} per 128-bit word, as the DMA delivered them
@@ -147,8 +217,8 @@ struct WindowOut {
 class Rig {
 public:
     static constexpr int SRC = 66;  // C&C 3
-    Tracer tr{66};
     FileStore fs;
+    RecTracer tr{&fs};  // a Tracer(66), its calls recorded when a log is open
     MemSystem ms{&fs};
     const ReplayTables& tables;
     int64_t lowest = 0x7FF00000LL;

@@ -19,7 +19,8 @@
 //    value, Q7), the word-0 write's flag on unconsumed advice;
 //  - the caches' counts and the memory system's walk on a cold start.
 // Tracer::reset() is reached by no case (as in v1.3; inventory B16).
-// Usage: suite_tracer (from sim/)
+// Usage: suite_tracer [--calls FILE] (from sim/). --calls writes every Tracer call the rig and the cases make, in
+// TracerConf's format (RecTracer, tracer_rig.h), for test_tracer_rig to compare with ref's rig's (cases.log.gz).
 #include <array>
 #include <cstdint>
 #include <cstdio>
@@ -516,8 +517,10 @@ void output_path() {
     suite::check(big.tr.running(big.t), "nothing served: STATUS [0] stays 1 through the drain");
     suite::check((big.tr.events().value(big.t) & 0b1111u << Tracer::EV_SVC_STATE) != 0, "the service flags stay up");
     suite::eq(256, big.tr.oq[1].occ, "queue 1 full (two credits, 256 entries), its scan stalled");
+    big.tr.mark_ub();
     suite::ub([&] { big.tr.out_start(big.t, 1, 257); }, {"credits cover"},
               "a transfer from queue 1 for more than its credits cover");
+    big.tr.mark_ub();
     suite::ub([&] { big.tr.out_start(big.t, 0, 69); }, {"past word 67"}, "a transfer from queue 0 past word 67");
 }
 
@@ -599,6 +602,7 @@ void words() {
     suite::eq(0, z.sizes[0].values, "and writes no code value (Q7)");
     suite::eq(CODE, I(g.tr.rec[0]), "nothing traced");
     g.word(Tracer::W_RUN_CONFIG, 65537);
+    g.tr.mark_ub();
     suite::ub([&] { g.tr.run(g.t); g.step(); g.step(); }, {"65,536"}, "more than 65,536 rows");
     // the word-0 write with advice left: flagged
     RigP hp = rig(p, {});
@@ -693,7 +697,15 @@ void counters() {
 
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
+    std::FILE* calls = nullptr;
+    static char calls_buf[1 << 16];
+    if (argc == 3 && std::strcmp(argv[1], "--calls") == 0) {
+        calls = std::fopen(argv[2], "w");
+        if (!calls) FATAL("suite_tracer: can't write %s", argv[2]);
+        std::setvbuf(calls, calls_buf, _IOFBF, sizeof calls_buf);
+        RecTracer::open_log(calls);
+    } else if (argc != 1) FATAL("usage: suite_tracer [--calls FILE]");
     loop();
     cut();
     write_back();
@@ -704,5 +716,10 @@ int main() {
     errors();
     words();
     counters();
-    return suite::done("TracerTest");
+    const int r = suite::done("TracerTest");
+    if (calls) {
+        RecTracer::close_log();
+        std::fclose(calls);
+    }
+    return r;
 }

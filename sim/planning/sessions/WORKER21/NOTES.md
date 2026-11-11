@@ -108,3 +108,22 @@ Commits: (1) oracle script and fixtures, (2) `suite_t.h` + MemorySystemTest, (3)
   - All four builds (gcc, clang; debug with ASan/UBSan, release): `test_tracer_suites` 3/3, `test_tracer_rig` 2/2,
     about a second each. `make run` on clang release: all 62 binaries pass. TracerTest alone: 0.3 s release.
   - `tracersuites.sh --check`: the fixtures (now with `hashorder.txt`) equal `ref`'s regeneration.
+- **2026-11-11, merged into main** (731008c, owner). Go-ahead for step 7, the planted bugs, the report.
+- **Step 7 done: the rig's calls equal `ref`'s rig's.** `RecTracer` (tracer_rig.h) is the rig's Tracer: it hides (not
+  overrides) every call TracerConf.Rec records and, with a log open (`suite_tracer --calls FILE`), writes each as Rec
+  does: ids at construction (probes included), "N", the store dumps at the first call and at each word-0 packet with
+  new pages ("F,k"; else "H=" the store's hash), the cycles' tokens with Rec's "@d" offsets and results. Fixed buffers;
+  nothing allocates while recording (the window loop is under the allocation hook). `test_tracer_rig`'s
+  `rig_calls_equal_refs_rig` runs it and compares with `tests/tracerconf/cases.log.gz` Tracer by Tracer: **37 Tracers,
+  the same ids; every store dump identical (410 lines, every page by address: the page order now checked against
+  `ref`); 6,862,252 calls equal, token by token, cycle by cycle.**
+  - Both logs are expanded into one (cycle, call) stream per Tracer, so how each side runs equal cycles together
+    doesn't matter (Rec groups by observation too).
+  - The UB checks: `suite::ub` runs its function in a forked child, so the calls it makes are in `ref`'s log and not in
+    ours. The suite marks each with `tr.mark_ub()` ("U id"); the comparison skips `ref`'s calls from there to the one
+    that stopped ('!'): 5 calls, exactly the three checks' (`os,1,257!`, `os,0,69!`, and `u; st; st!` for the
+    65,536 rows), required to be 5.
+  - With W14's replay (`test_tracer`: the Tracer's state after every one of these calls equals `ref`'s), the C++ rig
+    is `ref`'s rig call for call, not only in outcome.
+  - All four builds: `test_tracer_rig` 3/3, `test_tracer_suites` 3/3; ~1 s each. The fixture is W14's `cases.log.gz`;
+    if W19 moves `tests/tracerconf/` into the oracle, this test goes with it (it reads `ref`'s recording).

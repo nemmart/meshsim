@@ -51,3 +51,10 @@ v1.3's, every copied file byte-identical to its `ref/` original (sha256).
 - `COPIES.sha256` extended to the firmware sources and docs: 323 files, every file under `fw/` but `build.sh`,
   `images/` and `m1/` (W2's own) a checked copy of `sim/ref`.
 - No `loader.S`/`loader.ld` exists in v1.3 (the inventory's A6 lists them): nothing to copy.
+- **Step 3: the mesh.h generator.** `tools/regs/regtable.h` (the table, from Registers.java, with LinkWord's and
+  Conditions' constants), `regs_gen.h` (MeshHeader and RegDoc ported; their fixed text taken from the Java text
+  blocks by a one-off script, escapes resolved and trailing spaces stripped as Java does), `gen_regs` (write or check).
+  Byte-identical on the first build to the committed files and to v1.3's generators run live
+  (`oracle/regs_crosscheck.sh`). `tests/test_regs` in make check: the two files are the generator's output, and the
+  table agrees with `src/units/regmap.h` word by word (load and store sides, names, reserved words), plus the address
+  map, event, status, error and PARAMS bits; a one-byte change to mesh.h fails it.

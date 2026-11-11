@@ -5,3 +5,7 @@
 $(B)/convert_delivery: $(B)/tools/delivery/convert_delivery.o $(B)/tests/sha256.o $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 all: $(B)/convert_delivery
+#   build/<cc>-<mode>/synthetic_delivery OUT [--program NAME] [--windows N] [--rows R] [--first K] [--seed S] ...
+$(B)/synthetic_delivery: $(B)/tools/delivery/synthetic_delivery.o $(B)/tests/sha256.o $(B)/src/units/replay_tables.o $(LIB_OBJ)
+	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
+all: $(B)/synthetic_delivery

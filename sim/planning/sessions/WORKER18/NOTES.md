@@ -56,3 +56,9 @@ kits (`kit/`, `verify/`, `acceptance/`), tools (`tools/`, `KeyGen`, `ConvertDeli
   either. **A further group**: everything in `sim/` today that needs Java or `sim/ref` to build, test or run (the
   `--check` regenerators, fixtures generated at build time such as TracerConfRig, kits that embed `ref`), each with a
   disposition: committed fixture, moved out of v1.35, or a gap.
+
+## Progress
+
+- 2026-11-10: the survey; `sim/` built and tested without `ref/` (48 of 63 pass, the 15 failures all data files from
+  `ref/`). D39 (owner): every gap is ported; the inventory becomes the porting plan.
+- 2026-11-10: `V135-INVENTORY.md` written: groups A-J, pieces P1-P9, the order, the summary, Q1-Q8. `REPORT.md`.

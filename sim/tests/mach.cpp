@@ -24,7 +24,7 @@ namespace {
 
 bool exists(const std::string& p) { struct stat st; return ::stat(p.c_str(), &st) == 0; }
 
-// A data file by v1.35's path (W19's tree, once it lands) or, until then, sim/ref's.
+// A data file by its path in v1.35 (W19's tree; nothing here reads sim/ref).
 std::string data_path(std::initializer_list<const char*> candidates) {
     for (const char* c : candidates) if (exists(c)) return c;
     std::string all;
@@ -53,7 +53,7 @@ std::vector<uint32_t> words_of(const std::string& path) {   // Mach.words: littl
 
 std::vector<uint32_t> bootrom() {
     std::string rom;
-    const std::string p = data_path({"data/bootrom.hex", "fw/bootrom.hex", "ref/meshsim/sw/bootrom.hex"});
+    const std::string p = data_path({"fw/boot/bootrom.hex"});
     if (!read_file(p, rom)) FATAL("mach: cannot read %s", p.c_str());
     std::vector<uint32_t> w;
     for (size_t at = 0; at < rom.size();) {
@@ -120,7 +120,7 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     if (c.coreless) FATAL("mach: the coreless machine (MachConfig::defaults, Net) comes with W20's next commit");
     if (!c.start_skew.empty()) FATAL("mach: a per-tile start_skew comes with W20's step 3");
     if (c.cc3_tracer && !c.cc_cores) FATAL("mach: cc3_tracer needs cc_cores (ref's Config)");
-    m.hops = units::load_hops(data_path({"data/hops.txt", "ref/meshsim/hops.txt"}).c_str());
+    m.hops = units::load_hops(data_path({"data/hops.txt"}).c_str());
     m.rom = bootrom();
     m.nunits = c.cc_cores ? 67 : 64;
     m.mem.assign(size_t(m.nunits) * 2 * units::MEM_WORDS, 0);

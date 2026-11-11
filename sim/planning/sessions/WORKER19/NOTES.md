@@ -37,3 +37,17 @@ v1.3's, every copied file byte-identical to its `ref/` original (sha256).
 
 ## Progress
 
+- **Step 1 (3f96e88): the data files.** 159 files copied (`COPIES.sha256`), every reader repointed. W18's
+  measurement before: 15 of 58 tests fail without `ref/`.
+- **Step 2 (51f9fef): the firmware sources.** `fw/build.sh` reproduces v1.3's build_cc, build_recipes, sw/build,
+  replay, tracer and sort builds. `oracle/fw_crosscheck.sh`: 157 image files byte-identical to v1.3's own build of a
+  scratch `sim/ref`. Fixture folders' scripts take their images from it (`--check` passes; golden's MANIFEST.md prose
+  only). Owner: the A13 docs sit at `fw/` top level beside `recipes/` (the recipe sources name `../RECIPES.md`,
+  `../mesh-v1.2-draft.h`), not `fw/docs/`.
+- **The split driver**: inherited dead code (owner): doesn't compile in v1.3, never built or run there. Recorded in
+  V135-INVENTORY's D9 row; source kept, not built.
+- **Proof so far, at 51f9fef in a copy without `ref/`**: clang and gcc, debug and release, all 58 tests pass
+  (each build in the foreground; `make run` per build is what `make check` runs).
+- `COPIES.sha256` extended to the firmware sources and docs: 323 files, every file under `fw/` but `build.sh`,
+  `images/` and `m1/` (W2's own) a checked copy of `sim/ref`.
+- No `loader.S`/`loader.ld` exists in v1.3 (the inventory's A6 lists them): nothing to copy.

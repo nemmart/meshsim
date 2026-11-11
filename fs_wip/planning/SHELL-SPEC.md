@@ -24,13 +24,14 @@ A new directory **`fs_wip/shell/`** (see `fs_wip/README.md`):
 | `console.h`, `fs.h` | the two integration points (sections 4 and 5), exactly as specified |
 | `shell.c` | `shell_main`, the line editor, the parser, redirection, paths |
 | `cmds.c` | the commands |
-| `fmt.c`, `str.c` | the printf subset, string helpers (no libc) |
+| `fmt.c`, `str.c` | the printf subset; string helpers and `memcpy`, `memset`, `memmove`, `memcmp` (no libc) |
+| `div.c` | the shell's own division (section 3) |
 | `grep.c` | the matcher |
 | `host/console_host.c` | the dummy console: raw terminal, or a script on stdin |
 | `host/fs_mem.c`, `host/fs_mem.h` | the dummy file system, in memory, plus seeding helpers for tests |
 | `host/main.c` | host entry: seeds the dummy FS (optional seed file), runs `shell_main` |
 | `rv32/crt0.S`, `rv32/link.ld`, `rv32/stubs.c` | a link-only RV32 build: stub console and fs, for the size check |
-| `Makefile` | `make host`, `make test`, `make rv32`, `make size` |
+| `Makefile` | `make host`, `make test`, `make rv32`, `make size`; each takes `CC=gcc` (the default) or `CC=clang` |
 | `tests/` | scripted sessions (section 12) |
 | `NOTES.md` | what was done, sizes per object, anything left open |
 
@@ -39,16 +40,26 @@ returns; on the host it returns when the console reports end of input.
 
 ## 3. Build constraints
 
-- C99, **freestanding**: `-ffreestanding -nostdlib`, linked with `-lgcc` only; no libc, no malloc, no floats; all state in
-  static buffers.
-- Target **RV32I + Zmmul**, ilp32, which is the controller as modelled today (spec 4.11): `-march=rv32i_zmmul -mabi=ilp32
-  -Os -ffunction-sections -fdata-sections -Wl,--gc-sections`. **C (compressed) is a build option**, `make rv32 C=1` for
-  `-march=rv32ic_zmmul`, for v1.4, which adds C to the controller; `make size` reports both.
-- **No divide instruction** (Zmmul): the compiler calls libgcc's `__udivsi3`/`__umodsi3` for 32-bit `/` and `%`, which is
-  fine (they are small and slow); keep them out of per-byte loops.
+- C99, **freestanding**: `-ffreestanding -nostdlib`, **no runtime library at all** (no libc, no libgcc, no compiler-rt), no
+  malloc, no floats; all state in static buffers. Compilers emit calls to `memcpy`, `memset`, `memmove` and `memcmp` even
+  when freestanding (struct copies, zeroing), so `str.c` provides them.
+- Target **RV32I + Zmmul**, ilp32, which is the controller as modelled today (spec 4.11), with `-Os -ffunction-sections
+  -fdata-sections -Wl,--gc-sections`. **C (compressed) is a build option**, `make rv32 C=1`, for v1.4, which adds C to the
+  controller; `make size` reports both.
+- **Two compilers, both required:** `CC=gcc` (the default: `riscv64-unknown-elf-gcc -march=rv32i_zmmul -mabi=ilp32`, GNU
+  ld) and `CC=clang` (`clang --target=riscv32-unknown-elf -march=rv32i_zmmul -mabi=ilp32 -fuse-ld=lld`, clang 16 or later
+  for `zmmul`). The same `CC=` picks the host compiler for `make host` and `make test`. Every target must build and pass
+  with both; `NOTES.md` records both sets of sizes.
+- **Our own division** (owner, 2026-11-10): the controller has no divide instruction, and we link no runtime library, so
+  the shell never relies on the compiler's division helpers. `div.c` provides `u32 udiv32(u32 n, u32 d, u32 *rem)` and
+  `u64 udiv64(u64 n, u64 d, u64 *rem)`, plain shift-and-subtract (**speed doesn't matter**: division is only used for
+  output: decimal printing, `df`'s MB, `more`'s percentage). Code uses them explicitly and never writes `/` or `%` on a
+  variable divisor or on a 64-bit value; unsigned `/` and `%` by a constant power of two (shifts and masks) are fine.
+  **A slip shows at link time:** with no runtime library, a compiler-generated `__udivsi3`, `__udivdi3` (or any other
+  helper) is an undefined symbol and `make rv32` fails, with both compilers. (64-bit adds, shifts and multiplies are
+  inline on RV32 + Zmmul with both; should either compiler call a helper for one anyway, the link names it, and `div.c`
+  may provide it.)
 - **Code budget: `.text` + `.rodata` ≤ 32 KB**, checked by `make size` (fails over budget). Expected well under (~15 KB).
-- **No 64-bit division from libgcc**: lengths and offsets are 64-bit, so decimal output uses its own divide-by-10;
-  `make size` also fails if `__udivdi3`, `__umoddi3`, `__divdi3` or `__moddi3` appear in the link.
 - **Data**: static buffers about 14 KB (line 1 KB, cwd 1 KB, two path scratches 2 KB, one page buffer 4 KB, the
   redirect buffer 4 KB, grep's line 1 KB); stack ≤ 2 KB. No unbounded recursion (the matcher's is bounded by the
   pattern's length, ≤ 128).
@@ -171,14 +182,14 @@ has several. Bad options or missing arguments print `usage: <usage line>`. An un
 | `cd` | `cd [dir]` | no argument: `/`. Checks with `fs_stat` that it is a directory (`not a directory` otherwise) |
 | `pwd` | `pwd` | the cwd |
 | `cat` | `cat file...` | the files' bytes, concatenated, as they are |
-| `more` | `more file` | pages of 23 lines (long lines wrap at 80 columns and count as several), then `--More-- (NN%)` (percent of bytes shown; both 64-bit values shifted right together until the length fits in 32 bits, then a 32-bit divide). Space: next page; Enter: next line; `q` or Ctrl-C: stop. The prompt is erased (`\r`, spaces, `\r`) before going on. Redirected: same as `cat` |
+| `more` | `more file` | pages of 23 lines (long lines wrap at 80 columns and count as several), then `--More-- (NN%)` (percent of bytes shown, by `udiv64`). Space: next page; Enter: next line; `q` or Ctrl-C: stop. The prompt is erased (`\r`, spaces, `\r`) before going on. Redirected: same as `cat` |
 | `head` | `head [-n N] file...` | the first N lines (default 10) |
 | `tail` | `tail [-n N] file...` | the last N lines (default 10), found by reading **backward from the last page** with `fs_read_page` and the length from `fs_stat`, never from the start. A last line without a newline counts as a line. With several files, each is preceded by `==> <path> <==` and separated by a blank line (also `head`) |
 | `grep` | `grep [-n] [-i] [-c] [-v] pattern file...` | lines matching the pattern (section 10). `-n`: prefix `N:` (line number, from 1). `-i`: ignore ASCII case. `-c`: only the count. `-v`: non-matching lines. Several files: each output line (or count) prefixed `<path>:` |
 | `wc` | `wc file...` | `<lines> <words> <bytes> <path>`, each number right-aligned in 8 columns; several files add a `total` line |
 | `hexdump` | `hexdump [-s off] [-n len] file` | 16 bytes per line: the offset as 8 hex digits (more if needed), two spaces, the bytes as `xx` separated by spaces with an extra space after the eighth, padded on the last line, two spaces, `\|<ascii>\|` (0x20-0x7E as is, others `.`); then a last line with the end offset. `-s` and `-n` take decimal or `0x` hex. Starts with `fs_read_page` at `-s`'s page |
 | `stat` | `stat path...` | `name: <path>`, `type: dir\|file\|<n>`, `length: <n>`, `pages: <n>`, `depth: <n>`, `flags: <frozen sparse, or none>`, `copies: <n>`, one per line; a blank line between paths |
-| `df` | `df` | `pages: <total> total, <used> used, <free> free` then `bytes: <total> total, <used> used, <free> free` (pages x 4096, in MB with one decimal, e.g. `4096.0 MB`, computed without floats) |
+| `df` | `df` | `pages: <total> total, <used> used, <free> free` then `bytes: <total> total, <used> used, <free> free` (pages x 4096, in MB with one decimal, e.g. `4096.0 MB`, by `udiv64`, no floats) |
 | `echo` | `echo [arg...]` | the arguments joined by single spaces, then a newline (with `>>`, a note into `/syslog`) |
 | `mkdir` | `mkdir dir...` | `fs_mkdir` each |
 | `rmdir` | `rmdir dir...` | each must be a directory (`not a directory` otherwise); `fs_remove` (so `directory not empty` from the FS) |
@@ -198,7 +209,7 @@ counted) as chunks of 1,024 bytes, noted in `help`. `-i` folds ASCII letters in 
 
 One internal formatter writing to the current sink (the console with `\n` → `\r\n`, or the redirect buffer): `%s`, `%c`,
 `%d`, `%u`, `%x`, `%llu`, `%llx`, `%%`; a width; `-` to left-align; `0` to zero-pad. 64-bit decimal by repeated
-divide-by-10 written with shifts and subtraction (no libgcc 64-bit division).
+`udiv64` by 10 (section 3).
 
 ## 12. Tests
 
@@ -218,8 +229,11 @@ divide-by-10 written with shifts and subtraction (no libgcc 64-bit division).
   files; `more` paging with Space, Enter and `q`; `grep` with each metacharacter, anchors, `\`, `-i -n -c -v`, an over-long
   line; `hexdump` with `-s`/`-n` across a page boundary; Ctrl-C interrupting `cat` of a 1 MB file; `df`; recovery mode's
   prompt.
-- `make rv32` links with the stubs and `make size` prints `.text`, `.rodata`, `.data`, `.bss` and per-object sizes, and
-  fails over the code budget or on a libgcc 64-bit division symbol. Record the sizes in `NOTES.md`.
+- `make rv32` links with the stubs (failing on any undefined symbol, section 3) and `make size` prints `.text`, `.rodata`,
+  `.data`, `.bss` and per-object sizes, and fails over the code budget; both with `CC=gcc` and `CC=clang`, and with and
+  without `C=1`. Record the sizes in `NOTES.md`.
+- `make test` passes with both `CC=gcc` and `CC=clang`; host tests also cover `udiv32`/`udiv64` against the host's own
+  division (edge cases: divisor 1, divisor larger than the dividend, the maximum values, powers of two).
 
 ## 13. Out of scope
 

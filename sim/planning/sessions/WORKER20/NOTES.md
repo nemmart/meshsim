@@ -56,3 +56,22 @@ Commit and push after each step; each step checked against `ref`.
   `tests/suite/tself.out`, written by `tests/ref/tself.sh --fixtures` from v1.3's own `T.java` (every method, passing
   and failing: 7 passed, 13 failed, exit 1). Equal on gcc and clang, debug and release. A suite links `tests/suite.o`
   (the Makefile's `test_suite` rule shows how). For W21: `throws`/`ub` run their function in a forked child.
+- **Step 1, the header published**: `tests/mach.h` (MachConfig, Chip, TileRef, Cc, Mach, Net, A2A, `fields`), with
+  `tests/test_mach.cpp` pinning `mach::fields` to the values ref's `Fields.java` prints. The body comes next.
+
+## What the body needs outside `sim/tests/` (additions only; the owner hears if any changes an existing operation)
+
+- **Framework:** `Sim::wake_all()` (ref's `wakeAll` at the start of `run`/`runUntil`; safe by the step-all rule: an
+  unasked step with nothing delivered changes nothing).
+- **Units** (no owner; optional parts, declared only on the harness's machines, nothing in the loop otherwise):
+  - `add_g1`: a coreless tile (ref's `core.enabled = !coreless`: the core never executes) and the GATHER engine as a
+    drain (`realResponder` off);
+  - the injection unit: a harness input into the read-return holding register (`Net.at`) and harness-fed read-queue
+    clients (`Net.rd`, `testReadClients`);
+  - the director: an arrival log sized at configuration (`dir.log`; fatal when exceeded);
+  - `TileCtl`: the harness's register writes (DMA_CONFIG, the record base, TILE_PULSE's start) applied in its level-0
+    step, so the engines see them in the next cycle as ref's direct pokes do.
+- **C&C's queue between cycles:** CncProgram's vectors reserved at build, steps appended between cycles behind a
+  release point (cnc.h's mechanism), `call` and `at_all_ready` run from `Cnc::call_at` after the cycle they ran in.
+- **Open for P5:** CnC's `waitUntil(predicate)` (a lambda evaluated inside C&C's step in ref) is not declared yet:
+  CondTest and RecipeTest use it; its form is settled with the first suite that needs it.

@@ -143,3 +143,13 @@ W15's "the last window" was a particular case (deliveries whose inlines fell lat
   by v1.25's own SyntheticDelivery (seeds 7, 11 in WORKER9's layout, 5; 39 records, 67 links), every record, every link
   (name and target) and the manifest byte for byte equal to v1.3's ConvertDelivery, on the first build. Still to do:
   the runner's real conversions (Quests 105-107, W15's Stage A), then synthetic_delivery.
+- **Java's decimal printing checked** (`tests/test_delivery_json`, make check): 9,939 doubles (edges, every power of
+  ten and its neighbours, random bits, random short decimals) through `json::java_double` equal JDK 21's
+  `Double.toString` (fixture `tests/delivery/java_doubles.txt` from `oracle/ref/JavaDoubles.java`). One fix: Java renders
+  at least two digits (4.9E-324, not 5.0E-324).
+- **Quest 175 (pushed, `tasks/175-w19-convert.sh`, copy in WORKER19/tasks/):** convert_delivery on W9's deliveries on
+  the runner. The references are the converted manifests' sha256 that 164 recorded with sim/ref's ConvertDelivery
+  (selected: evm 0a8c8f74, cyclone c003780b; full: evm 5bffa524, cyclone 2d5e368e), equal to 105's evm and 107's cyclone
+  (v1.26.1's, in the order that happened to come out; 106's evm and 105's cyclone came out in the other order). The
+  manifest holds every converted record's sha256 and size, so its hash is every record's bytes; the task also checks the
+  records on disk against it, and the links' targets and counts (57,348 per full program, as 164's logs).

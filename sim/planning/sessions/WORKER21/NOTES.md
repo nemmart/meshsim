@@ -127,3 +127,10 @@ Commits: (1) oracle script and fixtures, (2) `suite_t.h` + MemorySystemTest, (3)
     is `ref`'s rig call for call, not only in outcome.
   - All four builds: `test_tracer_rig` 3/3, `test_tracer_suites` 3/3; ~1 s each. The fixture is W14's `cases.log.gz`;
     if W19 moves `tests/tracerconf/` into the oracle, this test goes with it (it reads `ref`'s recording).
+- **The planted bugs** (`tests/tracer_teeth.sh`, 77 s, not in make check): nine bugs, one per area, each planted by
+  sed in a scratch copy, rebuilt, both tests run; **all caught** (table in REPORT.md 5). Two only by step 7's checks:
+  the rig's service order (TracerTest's outputs are the same in any order) and `computeIfAbsent` appending (the page
+  order). First run had script faults, not check faults: the FileStore bug tripped `-Werror` (unused variable;
+  replanted as "not owned reads as a hole"), the failure parser took the suite's own `FAIL [` lines, and the page-order
+  sed missed the line's spacing.
+- **REPORT.md written.** Done, pending the integrator's merge of steps 7 onward.

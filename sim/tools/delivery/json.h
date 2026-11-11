@@ -117,10 +117,16 @@ inline std::string java_double(double d) {
     char buf[64];
     auto r = std::to_chars(buf, buf + sizeof buf, d, std::chars_format::scientific);   // shortest digits, d.ddde[+-]xx
     std::string t(buf, r.ptr);
+    // Java (JDK 19 on) renders at least two digits: when the shortest is one digit, the two-digit decimal closest to d
+    if (t.find('e') == (t[0] == '-' ? 2u : 1u)) {
+        r = std::to_chars(buf, buf + sizeof buf, d, std::chars_format::scientific, 1);
+        t.assign(buf, r.ptr);
+    }
     std::string sign; if (t[0] == '-') { sign = "-"; t = t.substr(1); }
     const size_t e = t.find('e');
     const int exp = atoi(t.c_str() + e + 1);
     std::string digits = t.substr(0, 1) + (e > 2 ? t.substr(2, e - 2) : "");
+    while (digits.size() > 1 && digits.back() == '0') digits.pop_back();
     const double a = d < 0 ? -d : d;
     if (a >= 1e-3 && a < 1e7) {
         std::string o;

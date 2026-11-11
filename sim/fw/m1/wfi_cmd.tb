@@ -1,4 +1,4 @@
-# wfi_cmd's test bench (sim/tests/ref/TraceRun.java): after the boot's GO
+# wfi_cmd's test bench (sim/oracle/ref/TraceRun.java): after the boot's GO
 at 300
 cmd 4b000000 11111111      # A: lands while the core sleeps in WFI
 at 700

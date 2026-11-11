@@ -1,7 +1,7 @@
 // suite_tracer.cpp (WORKER21; P7a, inventory C23): v1.3's TracerTest (sim/ref/meshsim/test/TracerTest.java) on the
 // C++ Tracer through TracerRig (tests/tracer_rig.h), on W20's suite.h: every case, every assertion and printed line in
 // Java's order. Its output must equal v1.3's log of run_tests.sh's step `tracer` (tests/tracersuites/tracer.log, from
-// tests/ref/tracersuites.sh). Rigs are made where Java makes them (probes included), so a call recorder numbers the
+// oracle/ref/tracersuites.sh). Rigs are made where Java makes them (probes included), so a call recorder numbers the
 // Tracers as TracerConf does.
 //
 // The Tracer's directed tests (WORKER22, B1, milestone 1; spec 4.21), on hand-built guests:

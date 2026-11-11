@@ -1,4 +1,4 @@
-// The sort end to end (WORKER12, P5): the 64-tile chip running M2Sort's sequence, as M2Sort runs it (sim/tests/ref/
+// The sort end to end (WORKER12, P5): the 64-tile chip running M2Sort's sequence, as M2Sort runs it (sim/oracle/ref/
 // M2Sort.java, SortTest.Machine), checked against golden-m2's sort16k. This piece goes up to the input load:
 //   1. the boot (SortTest.Machine.boot: the image, CMD_JUMP, runWhenReady, without Mach's extra call), run cycle by
 //      cycle until C&C is idle and every core waits in WFI (ref's runUntil(!cc.busy() && allWaiting())): cycle B;
@@ -7,7 +7,7 @@
 //      after the load and the queueing).
 // make check runs (1) against sort16k.out's "boot N cycles". (2)-(3) need the key set and the hash-only golden:
 //   SORT_KEYS=keys-16384/uniform.keys SORT_FP=sort16k-fp.fp test_sort
-// (KeyGen's uniform set, checked against HASHES by its sha256; the golden from tests/golden-m2/regen.sh with KEEP=DIR).
+// (KeyGen's uniform set, checked against HASHES by its sha256; the golden from oracle/regen/golden-m2.sh with KEEP=DIR).
 #include <cinttypes>
 #include <cstdio>
 #include <cstdlib>

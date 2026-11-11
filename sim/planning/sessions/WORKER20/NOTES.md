@@ -8,7 +8,7 @@ Commit and push after each step; each step checked against `ref`.
 
 0. **`sim/tests/suite.h`, alone and first** (owner: W21 builds its Tracer suites on it now). Java's `T` in C++: `group`,
    `pending`, `check`, `eq`, `eqo`, `throws` (Java's `throwsISE`), `ub`, `done`, every line and count as Java's `T`
-   prints them. Checked by one driver on both sides (`tests/ref/TSelf.java` against `tests/test_suite.cpp`), its output
+   prints them. Checked by one driver on both sides (`oracle/ref/TSelf.java` against `tests/test_suite.cpp`), its output
    committed as a fixture.
 1. **The machine harness** (C1, B18), header `sim/tests/mach.h` published before its body, for P4-P6:
    - the full machine (`Config.machine()`): boot an image through C&C's model or through the cores (`Mach.boot`,
@@ -23,7 +23,7 @@ Commit and push after each step; each step checked against `ref`.
    every 16 cycles, `maxViolationMessages`, the per-check switches; the missing checks (disjoint buffers, S1, invariant 8
    strict, read-port overlap, overwritten command words, unexpected arrivals, ERRORS once per tile and bit). Chip reset
    (hard, soft): every port flushed, every unit to power-on, the memories kept. Checked by provoking each violation in
-   C++ and in a Java driver in `tests/ref/`, the messages compared.
+   C++ and in a Java driver in `oracle/ref/`, the messages compared.
 3. **`Config`** (H1, B25, H2): `MachConfig` with the fields some v1.3 driver, kit or sweep sets (D41 Q4), the rest
    listed as dropped; one `cfg.<field>=` front end; StateFp as every driver's fingerprint (D41 Q5); the H2 options.
 4. **The outputs**: PhaseLog's CSVs (H3) byte-identical on AccountingTest (quick here, full on the runner); the TRACE
@@ -38,7 +38,7 @@ Commit and push after each step; each step checked against `ref`.
 - **Q2.** The PhaseLog reference is regenerated from `sim/ref` and committed as the fixture (finding F1).
 - **Q3.** The reset flush and the violation list are framework additions; tell the owner if either changes an
   existing operation.
-- New Java drivers go in `sim/tests/ref/` (W19 moves them to `sim/oracle/`).
+- New Java drivers go in `sim/oracle/ref/` (W19 moves them to `sim/oracle/`).
 
 ## Findings
 
@@ -54,15 +54,15 @@ Commit and push after each step; each step checked against `ref`.
 ## Progress
 
 - **Step 0 done**: `tests/suite.h`, `suite.cpp`; `tests/test_suite.cpp` runs TSelf's sequence and compares with
-  `tests/suite/tself.out`, written by `tests/ref/tself.sh --fixtures` from v1.3's own `T.java` (every method, passing
+  `tests/suite/tself.out`, written by `oracle/ref/tself.sh --fixtures` from v1.3's own `T.java` (every method, passing
   and failing: 7 passed, 13 failed, exit 1). Equal on gcc and clang, debug and release. A suite links `tests/suite.o`
   (the Makefile's `test_suite` rule shows how). For W21: `throws`/`ub` run their function in a forked child.
 - **Step 1, the header published**: `tests/mach.h` (MachConfig, Chip, TileRef, Cc, Mach, Net, A2A, `fields`), with
   `tests/test_mach.cpp` pinning `mach::fields` to the values ref's `Fields.java` prints. The body comes next.
 
 - **Step 1, the machine as specified**: `tests/mach.cpp` (MachConfig, Chip, TileRef's memories and controller, Cc,
-  Mach with `boot` and `boot_cores`, A2A's data and `verify`), `tests/mach.mk`. Checked by `tests/ref/MachSelf.java`
-  (v1.3's own Mach, run in a scratch copy of ref/meshsim's layout with the committed images; `tests/ref/machself.sh`)
+  Mach with `boot` and `boot_cores`, A2A's data and `verify`), `tests/mach.mk`. Checked by `oracle/ref/MachSelf.java`
+  (v1.3's own Mach, run in a scratch copy of ref/meshsim's layout with the committed images; `oracle/ref/machself.sh`)
   against `test_mach`: regs, wfi (with a `run(n)` then `run_until`), a2a unshuffled and shuffled (seed 4), and the
   boot with C&C 1-3 as cores, line for line (`tests/mach/machself.out`), gcc and clang, debug and release. The owner's
   protected tests (test_chip, test_sort, test_t2_harness, test_cc_units, test_golden) unchanged, clang release and debug.

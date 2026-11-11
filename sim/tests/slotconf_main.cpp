@@ -1,4 +1,4 @@
-// slotconf: a SlotConf script (tests/ref/SlotConf.java) replayed on two units::SlotCore; the observations on stdout.
+// slotconf: a SlotConf script (oracle/ref/SlotConf.java) replayed on two units::SlotCore; the observations on stdout.
 #include "slotconf.h"
 #include "portconf.h"
 int main(int argc, char** a) {

@@ -135,7 +135,7 @@ struct LoadProfile {
 };
 
 // W10, the port observer (W8's request): one input port's contents at the end of cycle c, the last cycle run
-// (Sim::now() == c + 1), into the caller's buffer. ref's order (tests/ref/StateFp.java): a Link's entries in arrival
+// (Sim::now() == c + 1), into the caller's buffer. ref's order (oracle/ref/StateFp.java): a Link's entries in arrival
 // order, visible then in flight, each with its arrival cycle; a Fifo's visible entries; a Hold's word; a Reg's value; and
 // for a Fifo, credit Fifo, Hold or Reg the put made at c, judged at c + 1.
 struct PortEntry { Cycle at; Word w[3]; };    // at: a Link entry's arrival cycle (0 for the other kinds); w: its words

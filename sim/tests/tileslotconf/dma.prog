@@ -1,4 +1,4 @@
-# tileslotconf program v1: dma (PeripheralSlotTest's group), tests/ref/tileslotconf_progs.py
+# tileslotconf program v1: dma (PeripheralSlotTest's group), oracle/ref/tileslotconf_progs.py
 tile 10
 periph test
 cycles 600

@@ -1,10 +1,10 @@
 // C&C's model (WORKER9, stage 3) against ref's CnC, Cnc1Peripheral and C&C 1's endpoint, cycle by cycle:
-// tests/ref/CncConf.java runs them in a Chip whose tiles it plays (READY at boot and in answer to every GO, extra
+// oracle/ref/CncConf.java runs them in a Chip whose tiles it plays (READY at boot and in answer to every GO, extra
 // pulses, error lines up and down, packets into C&C's receive FIFO, tile 0's router stalling on C&C's send register);
 // here the same script drives the Cnc unit, the 8 row collectors and 64 stand-in tiles on the engine, and every cycle's
 // observations must be equal: the packet tile 0's router took, GO, the calls, and StateFp's "cnc" and "cc1p" streams
 // (statefp_g2: C&C's state plus the line words in flight). Also the endpoints' and the request bus's streams once.
-// Fixtures: tests/cncconf/, regenerated and checked by tests/ref/cncconf.sh --check.
+// Fixtures: tests/cncconf/, regenerated and checked by oracle/ref/cncconf.sh --check.
 #include <algorithm>
 #include <cinttypes>
 #include <cstdio>

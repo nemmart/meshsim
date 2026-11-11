@@ -1,4 +1,4 @@
-// portconf SCRIPT: the C++ side of port conformance as a tool (make conformance): writes the observation lines of a
+// portconf SCRIPT: the C++ side of port conformance as a tool (oracle/conformance.sh): writes the observation lines of a
 // PortConfGen script run on the framework's port, to compare with PortConfDriver's on ref (PORTS.md 10).
 #include <cstdio>
 #include <fstream>

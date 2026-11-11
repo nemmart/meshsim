@@ -30,7 +30,7 @@ namespace {
 
 bool exists(const std::string& p) { struct stat st; return ::stat(p.c_str(), &st) == 0; }
 
-// A data file by v1.35's path (W19's tree, once it lands) or, until then, sim/ref's.
+// A data file by its path in v1.35 (W19's tree; nothing here reads sim/ref).
 std::string data_path(std::initializer_list<const char*> candidates) {
     for (const char* c : candidates) if (exists(c)) return c;
     std::string all;

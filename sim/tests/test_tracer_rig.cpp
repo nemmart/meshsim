@@ -1,7 +1,7 @@
 // test_tracer_rig.cpp (WORKER21): TracerRig against ref's rig.
 //  - JavaLongHashMap, the order ref's rig hands its pages to FileStore in (which decides their addresses and so the
 //    caches' timing; tracer_rig.h), against java.util.HashMap on every case of tests/tracersuites/hashorder.txt
-//    (tests/ref/JavaHashOrder.java: put and computeIfAbsent, growth, a filling bin, high and negative keys, repeats,
+//    (oracle/ref/JavaHashOrder.java: put and computeIfAbsent, growth, a filling bin, high and negative keys, repeats,
 //    TracerTest's own page sets).
 //  - THE RIG'S CALLS: suite_tracer --calls records every Tracer call the C++ rig and TracerTest's cases make, in
 //    TracerConf's format (RecTracer); it must equal ref's rig's recording of the same cases (tests/tracerconf/

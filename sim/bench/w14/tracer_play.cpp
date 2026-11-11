@@ -1,6 +1,6 @@
 // tracer_play (WORKER14): the Tracer's speed alone, on the calls a real run makes.
 //
-//   tracer_play convert LOG OUT     a TracerConf log (tests/ref/TracerConf.java; a file, .gz or a FIFO) to a compact call
+//   tracer_play convert LOG OUT     a TracerConf log (oracle/ref/TracerConf.java; a file, .gz or a FIFO) to a compact call
 //                                   trace: the store as the run starts, then the calls grouped by cycle as the log
 //                                   groups them (identical cycles run-length coded), the results and observations left
 //                                   out. One Tracer (T1's rig).
@@ -9,7 +9,7 @@
 //                                   per segment (a segment starts at its ownership edit) and in all; then the same
 //                                   decoding with no Tracer call (the harness's own cost). No comparison: test_tracer
 //                                   has shown these calls equal to ref's, cycle by cycle (Quest 163).
-// ref's side is bench/w14/TracerPlay.java on the same trace file. Timing: clang release (D18), pinned, machine recorded
+// ref's side is oracle/bench/TracerPlay.java on the same trace file. Timing: clang release (D18), pinned, machine recorded
 // (D21; the task body).
 //
 // THE TRACE (little-endian; v = unsigned LEB128, z = zigzag LEB128, raw = 8 bytes):

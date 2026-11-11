@@ -2,7 +2,7 @@
 
 Built from `sim/ref` (frozen) with Ubuntu 24.04's riscv64-unknown-elf-gcc 13.2: regs, wfi, a2a by
 `sim/ref/meshsim/sw/build.sh`; the sort by `sw/ext/sort/build.sh` (byte-identical to Quest 118's image, the one behind
-1,229,687 cycles). Committed because the runner has no riscv toolchain (D4). `regen.sh` checks them against this list,
+1,229,687 cycles). Committed because the runner has no riscv toolchain (D4). `oracle/regen/golden-m2.sh` checks them against this list,
 then installs them into its scratch copy of `sim/ref/meshsim`. The boot ROM (`sw/bootrom.hex`) and `hops.txt` come
 from `sim/ref` itself.
 

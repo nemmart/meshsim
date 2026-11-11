@@ -323,3 +323,5 @@ f520113d1c7849dfeed643327c1d3b43fbbbc2b4d1f0eb3785329530337d1128  fw/sort/skew/s
 bfa9ba2f8fc54b0fc990dd7c6b4e1e5a150130ef9d4e71799f78742999a407b8  fw/riscv-tests/build.sh  meshsim/test/riscv/build.sh
 f5c4f11923063cea48df4f012e641c574d920d296a8c824ccc6c082802585a57  fw/riscv-tests/link.ld  meshsim/test/riscv/link.ld
 170c9475acb4e91b00e1cf2eced54794eaadc85abb486e1f27815e26b1b4b894  fw/riscv-tests/riscv_test.h  meshsim/test/riscv/riscv_test.h
+f442f9d68f53db6ea3a8740e78e506e514d9421393d34f158b16956961134841  pipeline/keys/KeyGen.java  meshsim/test/KeyGen.java
+cd18a0fd78f235f929dc5796d382d27711cf5f20696433a175a5796b25d34bab  pipeline/keys/SplitSets.java  meshsim/test/SplitSets.java

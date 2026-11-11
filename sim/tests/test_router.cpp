@@ -1,7 +1,7 @@
 // The router (WORKER9, stage 1) against ref's Router.java:
 //   - its routing decisions for every (tile, src, dst) and (tile, port, src), hashed per tile, equal to ref's
 //     (tests/routerconf/tables.txt, from `RouterConf table`);
-//   - its behaviour cycle by cycle: tests/ref/RouterConf.java drives one of ref's routers with a seeded script of
+//   - its behaviour cycle by cycle: oracle/ref/RouterConf.java drives one of ref's routers with a seeded script of
 //     arrivals and records every output word, every token freed, and the router's canonical stream (rr and every FIFO,
 //     AUDIT-M2 6.2) each cycle; here the same script drives the C++ router on the engine and must give the same lines,
 //     under the debug options too (shuffle, both orders, step-all).
@@ -10,7 +10,7 @@
 //     injection unit's stream (StateFp's "inj"), the tokens held, token waits, refusals and violations.
 //   - M3 (WORKER16): tiles 0-2 with the fifth port as the C&C links (Link(1) each way), and a controller's router
 //     (64-66: FEEDERS_CC, ccRoute; the C&C link, the host port's Fifo(4), C&C 3's DMA Fifo(4)).
-// The fixtures are regenerated and checked against ref by tests/ref/routerconf.sh --check.
+// The fixtures are regenerated and checked against ref by oracle/ref/routerconf.sh --check.
 #include <cinttypes>
 #include <cstdio>
 #include <cstdlib>
@@ -332,7 +332,7 @@ TEST(broadcast_tree_reaches_every_tile_once) {
 
 TEST(router_conformance_with_ref) { conformance({}); }
 
-// The long runs (tests/ref/routerconf.sh CYCLES DIR, plain files), when ROUTERCONF_LONG=DIR is set: every configuration,
+// The long runs (oracle/ref/routerconf.sh CYCLES DIR, plain files), when ROUTERCONF_LONG=DIR is set: every configuration,
 // seeds 1-3. Not in make check (minutes); run before a merge that touches the router.
 TEST(router_conformance_long_runs_when_asked) {
     const char* dir = std::getenv("ROUTERCONF_LONG");

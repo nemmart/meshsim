@@ -1,5 +1,5 @@
 // C&C 1's peripheral (WORKER16, G7; units/cnc1_periph.h) against ref's Cnc1Peripheral, driven by the same seeded script
-// (tests/ref/Cnc1Conf.java; fixtures tests/cnc1conf/, regenerated and checked by tests/ref/cnc1conf.sh --check):
+// (oracle/ref/Cnc1Conf.java; fixtures tests/cnc1conf/, regenerated and checked by oracle/ref/cnc1conf.sh --check):
 //   - the chip lines as the chip delivers them: READY pulses and tiles' error lines as row words (Link(ready_latency)),
 //     C&C 2's and 3's error lines (Link(error_latency)), C&C 1's own (Link(2): the register block's line word, put at
 //     level 0 of t + 1, latency 1);

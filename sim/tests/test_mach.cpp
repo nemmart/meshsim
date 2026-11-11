@@ -24,7 +24,7 @@ TEST(mach_fields_as_refs_Fields) {
     CHECK_EQ(hdr_bits(SIZE_128, 7, 7, 127), 0xFFFC0000u);
 }
 
-// ---- tests/ref/MachSelf.java's sequence, line for line (fixture tests/mach/machself.out, tests/ref/machself.sh) ----
+// ---- oracle/ref/MachSelf.java's sequence, line for line (fixture tests/mach/machself.out, oracle/ref/machself.sh) ----
 namespace {
 std::string out;
 void say(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
@@ -109,7 +109,7 @@ std::string file(const char* path) {
 }
 }  // namespace
 
-// ---- tests/ref/NetSelf.java's sequence (fixture tests/mach/netself.out, tests/ref/netself.sh) ----
+// ---- oracle/ref/NetSelf.java's sequence (fixture tests/mach/netself.out, oracle/ref/netself.sh) ----
 namespace {
 namespace lw = units::lw;
 using mach::Net;

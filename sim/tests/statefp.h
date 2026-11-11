@@ -1,5 +1,5 @@
 // statefp.h: the canonical state fingerprint, the C++ side (WORKER8; sim/tests/AUDIT-M2.md section 6; ref's side is
-// sim/tests/ref/StateFp.java, whose per-unit streams are normative).
+// sim/oracle/ref/StateFp.java, whose per-unit streams are normative).
 //
 // At the end of cycle c each unit writes a defined sequence of 64-bit words (its architectural state, its memories as
 // order-free sums, every bus delivering into it); its fingerprint is a hash of the stream:

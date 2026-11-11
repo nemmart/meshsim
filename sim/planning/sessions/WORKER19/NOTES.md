@@ -161,7 +161,7 @@ W15's "the last window" was a particular case (deliveries whose inlines fell lat
   byte on replayconf's syn1-syn4, WORKER9's layout and a shard (`--first 3`); (2) v1.3 itself: every file equal with
   `--inline-weight 0` and the manifest equal as JSON; with inlines, the first difference is exactly where two patched
   runs with K and K' first differ (syn1: window 0, rows.bin byte 15,337; syn2: window 3; syn3: window 2; syn4: window 0).
-  The calibration (seed 11, 128 x 65,536) with `--calibration`: running. Stage B's synthetic windows aren't
+  The calibration (seed 11, 128 windows of 65,536 rows) with `--calibration`: all 1,413 files byte for byte. Stage B's synthetic windows aren't
   SyntheticDelivery's (StageB builds them with ReplayWindow and ReplayerUnitTests.programWindow): nothing to check here.
 - **inputs/ on convert_delivery and data/tables** (D42): `pins.sh` drops TABLES_REL and MESHSIM_REL; `build.sh` takes
   TABLES (default v1.35's `data/tables/replayer`) and CONVERT_DELIVERY (default `../../build/clang-release/`), and

@@ -132,7 +132,7 @@ next (v1.26.1/ERRATA.md; fixed in wip). `build.sh` rewrites it in the fixed orde
 SHA-256 is stable; the acceptance tasks' logged SHA-256s (105–107) are in one order or the other.
 
 `compare_runner.sh RUN DATA` is the 2²⁹ comparison against the runner's persistent data; `manifest/runner-refs.txt` holds
-the runner's checksums as their tasks recorded them. `quest/make_task.sh` makes the Quest task (the runner has no javac:
+the runner's checksums as their tasks recorded them. `quest/make_task.sh` (in v1.35: `sim/oracle/quest/inputs_make_task.sh`) makes the Quest task (the runner has no javac:
 its kit carries compiled classes, the tracer at the pin and a libelf).
 
 ## Machine notes

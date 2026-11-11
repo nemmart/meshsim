@@ -100,3 +100,12 @@ v1.3's, every copied file byte-identical to its `ref/` original (sha256).
   checks the snapshots' hashes and builds them. Still reading the repository until the owner decides:
   `v1.26.1/meshsim` (ConvertDelivery, `MESHSIM_REL`) and `v1.26.1/tables` (`TABLES_REL`; equal to `sim/data/tables`);
   `quest/make_task.sh` (a Quest kit maker, reads `wip/planning/...`) not touched.
+- **Step 4 done (7717eb3)**, `step4.sh` run on main as merged (W20's three new drivers are on sim-w20 only: W20 moves
+  them itself). 33 renames, 99 files repointed. From their new places, with sim/ref: `oracle/regen/golden.sh --check`
+  (67 traces SAME), `fp-m1.sh --check` (67 SAME), `g1-replay.sh --check` (SAME), `oracle/ref/routerconf.sh`,
+  `tileslotconf.sh`, `tracersuites.sh --check` (equal ref's regeneration), `oracle/regs_crosscheck.sh`. A copy without
+  `ref/` and `oracle/`: clang release builds, 63 tests; `test_mach` (W20's, merged from main) failed there, looking for
+  the boot ROM at `data/bootrom.hex`, `fw/bootrom.hex` or `ref/`: repointed to `fw/boot/bootrom.hex` and `data/hops.txt`
+  (1e2a363), and then all 63 pass.
+- `pipeline/inputs/quest/make_task.sh` -> `oracle/quest/inputs_make_task.sh` (owner: Quest task infrastructure; inputs/
+  doesn't use it), its HERE and MESHSIM repointed; `pipeline/check.sh` still passes from a pipeline-only copy.

@@ -1,4 +1,6 @@
 #!/bin/bash
+# oracle/quest/inputs_make_task.sh (v1.3's inputs/quest/make_task.sh, moved by W19: Quest task infrastructure, not the
+# pipeline's function; it packs the repository's wip/ layout as v1.3 did and is kept as v1.3 left it, unchecked)
 # quest/make_task.sh NNN WORKLOAD JAP_DIR LIBELF_FROM > NNN-w27-inputs-RUN.sh: the 2^29 build of one workload as a Quest task.
 #   JAP_DIR      a jolt-asic-planning checkout at the pin (fetch.sh): its tracer/ is packed by git archive
 #   LIBELF_FROM  Quest's tasks/103-w20-regen-evm-zone-29.sh: its tarball's libelf (Ubuntu 24.04 debs), for a runner
@@ -9,8 +11,8 @@
 # (compare_runner.sh), records the manifest into results/, and deletes $DATA/w27-inputs when the comparison passes.
 set -eu
 N=$1; WL=$2; JAP=$(cd "$3" && pwd); L103=$4
-HERE=$(cd "$(dirname "$0")/.." && pwd); . "$HERE/pins.sh"
-MESHSIM=$(cd "$HERE/../.." && pwd)
+HERE=$(cd "$(dirname "$0")/../../pipeline/inputs" && pwd); . "$HERE/pins.sh"   # W19: moved from inputs/quest/
+MESHSIM=$(cd "$HERE/../../.." && pwd)
 RUN=$(run_name "$WL" 29); NAME=$N-w27-inputs-$RUN
 [ "$(git -C "$JAP" rev-parse HEAD)" = "$JAP_COMMIT" ] || { echo "$JAP is not at $JAP_COMMIT" >&2; exit 1; }
 [ -z "$(git -C "$MESHSIM" status --porcelain -- wip/inputs wip/gold wip/jumpmap v1.26.1)" ] || { echo "commit wip/inputs first: the kit records the commit" >&2; exit 1; }

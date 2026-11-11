@@ -1,5 +1,5 @@
 # Files copied from v1.3/ into pipeline/ (WORKER19, P1): sha256, the path in pipeline/, the path in the repository's v1.3/.
-# Not listed (edited): gold/check.sh (CUTS=test/cuts), inputs/lib/classes.sh, inputs/build.sh and inputs/README.md (one path) (the gold and jumpmap sources from inputs/src/, not git archive). Moved out: inputs/quest/make_task.sh (to sim/oracle/quest/). New: gold/test/cuts/ (listed, from v1.3/planning), inputs/src/ (SNAPSHOTS.sha256).
+# Not listed (edited): gold/check.sh (CUTS=test/cuts), inputs/lib/classes.sh, inputs/build.sh, inputs/pins.sh and inputs/README.md (the gold and jumpmap sources from inputs/src/, not git archive; D42: convert_delivery and data/tables, not v1.26.1). Moved out: inputs/quest/make_task.sh (to sim/oracle/quest/). New: gold/test/cuts/ (listed, from v1.3/planning), inputs/src/ (SNAPSHOTS.sha256), inputs/test/v125-small/.
 c7cd0fc55d4b88bc4ed87b1cdc33670d9046174ab762188a0f2ce10290bb56e0  gold/.gitignore  v1.3/gold/.gitignore
 9c10896fae21c5693616be80491708634a9b6aac11593c752f67d714bbe7007e  gold/README.md  v1.3/gold/README.md
 b6ee444ae8b33776e8904e25d7c6eb86ed5b53ba504a5ac69df61b13c19a2ae3  gold/build.sh  v1.3/gold/build.sh
@@ -331,5 +331,4 @@ d9749a3085445c2efc0d08dd5b774d1b21769c9f2ba0076adc20826c4bc77d32  inputs/check.s
 4d4a38cd232650b2ec1f59fd492bf2d6149385e30c629ab1b5bc639be1992dba  inputs/manifest/evm-zone-23.sha256  v1.3/inputs/manifest/evm-zone-23.sha256
 174e21b0fa91124579761575907377efd8bf9fda6410e82d06c715bcb66c1b9c  inputs/manifest/evm-zone-29.sha256  v1.3/inputs/manifest/evm-zone-29.sha256
 035477b7b7eb1b0ce1ba137033328d4c4b432c187863508401124a355290152c  inputs/manifest/runner-refs.txt  v1.3/inputs/manifest/runner-refs.txt
-2654478d21c01922e7e6ed261e41924bd5534dec9e08337668ac439ec08fc40a  inputs/pins.sh  v1.3/inputs/pins.sh
 8a63c6b31de4808c3dd12b5a6f4cc105555f5992e122df5f31c2123bd7065c52  inputs/record.sh  v1.3/inputs/record.sh

@@ -5,7 +5,10 @@
 #   - keys: keys/EXPECTED.sha256 (the uniform key sets at 16,384 and 65,536 per tile, every key and split set at 2,000);
 #   - gold and jumpmap: jumpmap's fixtures (test/fixtures.sh: gold's segment files and jumpmap's outputs for 11 guests)
 #     regenerated in a scratch copy, equal byte for byte to the committed jumpmap/out/ (v1.3's).
-#   - inputs: the pinned gold and jumpmap sources (inputs/src/) intact and building.
+#   - inputs: the pinned gold and jumpmap sources (inputs/src/) intact and building; v1.35's convert_delivery (the
+#     C++ tool inputs/ calls; CONVERT_DELIVERY, default ../build/clang-release/convert_delivery) on a small v1.25
+#     delivery (inputs/test/v125-small) equal to v1.3's ConvertDelivery: the converted manifest's sha256, which holds
+#     every converted record's.
 # gold/check.sh (the four segment files at 2^29 and the hard cuts) needs jolt-asic-planning and the reference files:
 # run it where they are.
 set -e
@@ -30,5 +33,11 @@ for d in d97ecde/gold d97ecde/jumpmap eeb64b5/gold; do
   [ -n "$(find "$T/c/$d" -name Main.class)" ] || { echo "pipeline/check.sh: inputs/src/$d doesn't build"; exit 1; }
 done
 echo "inputs: the pinned gold and jumpmap sources intact ($(grep -vc '^#' "$P/inputs/src/SNAPSHOTS.sha256") files) and building"
+CD=${CONVERT_DELIVERY:-$P/../build/clang-release/convert_delivery}
+[ -x "$CD" ] || { echo "pipeline/check.sh: no convert_delivery at $CD (build v1.35, or CONVERT_DELIVERY=)"; exit 1; }
+"$CD" "$P/inputs/test/v125-small" "$T/conv" evm-zone-29 > "$T/conv.log" || { cat "$T/conv.log"; echo "pipeline/check.sh: convert_delivery FAILED"; exit 1; }
+(cd "$T/conv" && grep -v '^#' "$P/inputs/test/v125-small/EXPECTED" | sha256sum -c --quiet -) || { echo "pipeline/check.sh: the conversion differs from v1.3's"; exit 1; }
+for f in "$T"/conv/evm-zone-29/window_*.bin; do [ -L "$f" ] && continue; grep -q "$(sha256sum < "$f" | cut -c1-64)" "$T/conv/evm-zone-29.manifest.json" || { echo "pipeline/check.sh: $f not as its manifest says"; exit 1; }; done
+echo "inputs: convert_delivery on a v1.25 delivery equal to v1.3's ConvertDelivery"
 echo "gold, jumpmap: the fixtures of $(ls -d "$P"/jumpmap/out/*/ | wc -l) guests equal to v1.3's"
 echo "pipeline/check.sh: all passed"

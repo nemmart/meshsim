@@ -6,7 +6,9 @@
 #   OUT=DIR          where everything goes (default ~/meshsim-inputs): src/, build/, logs/ and the outputs, laid out as the
 #                    runner's persistent data: w9-deliveries/, w9-deliveries-selected/, v1261/, gold/, w26-jumpmap/
 #   JAP_DIR=DIR      a jolt-asic-planning checkout at the pin (default: OUT/src/jolt-asic-planning, fetched by fetch.sh)
-#   CLASSES=DIR      prebuilt classes (gold/, jumpmap/, meshsim/), for a machine without javac (a Quest task's kit)
+#   CLASSES=DIR      prebuilt classes (gold/, jumpmap/), for a machine without javac (a Quest task's kit)
+#   TABLES=DIR       the universal tables (default: v1.35's data/tables/replayer)
+#   CONVERT_DELIVERY=FILE  v1.35's convert_delivery (default: its clang release build, ../../build/clang-release/)
 #   GOLD_COMMIT=H    recorded in proof.json (default: gold's last commit at GOLD_SRC, pins.sh; src/SNAPSHOTS.sh)
 #   GOLD_FORMAT=...  the segment files to write: v1.2 (default: what jumpmap, T1 and the runner's data use), v1.3 (also
 #                    gold-v1.3/RUN/: WORKER18's v1.3 file, frames 7, 1 and 6 added), or "v1.2 v1.3"
@@ -25,7 +27,8 @@ OUT=${OUT:-$HOME/meshsim-inputs}; mkdir -p "$OUT/logs"; OUT=$(cd "$OUT" && pwd)
 JAP=${JAP_DIR:-$OUT/src/jolt-asic-planning}; T=$JAP/tracer
 TB=$OUT/build/tracer; DW=$OUT/build/delivery_writer
 PREBUILT=${CLASSES:+1}; CLASSES=${CLASSES:-$OUT/build/classes}
-TAB=$MESHSIM/$TABLES_REL
+TAB=${TABLES:-$(cd "$HERE/../../data/tables/replayer" 2>/dev/null && pwd)}   # v1.35 (D42): v1.35's tables
+CONVERT=${CONVERT_DELIVERY:-$HERE/../../build/clang-release/convert_delivery}   # v1.35 (D42): the C++ ConvertDelivery
 GOLD_FORMAT=${GOLD_FORMAT:-v1.2}
 . "$HERE/src/SNAPSHOTS.sh"; GOLD_COMMIT=${GOLD_COMMIT:-${GOLD_LAST:0:7}}   # v1.35 (W19): from the snapshot, not git log
 JOBS=${JOBS:-$(nproc)}; HEAP=${JAVA_HEAP:-4g}
@@ -40,7 +43,7 @@ die() { say "FAILED: $*"; exit 1; }
 complete() { [ -z "${FORCE:-}" ] && [ -f "$1.COMPLETE" ] && [ -e "$2" ] && [ "$(cat "$1.COMPLETE")" = "$(sha256sum "$2" | cut -d' ' -f1)" ]; }
 mark() { sha256sum "$2" | cut -d' ' -f1 > "$1.COMPLETE"; }
 
-# ---- tools: jolt-cpp's tracer and WORKER9's delivery_writer (at the pin), gold, jumpmap, v1.26.1's ConvertDelivery ----
+# ---- tools: jolt-cpp's tracer and WORKER9's delivery_writer (at the pin), gold, jumpmap; v1.35's convert_delivery ----
 step_tools() {
   [ -d "$JAP/.git" ] || [ -n "${JAP_DIR:-}" ] || OUT=$OUT "$HERE/fetch.sh" "$JAP" || die "fetch"
   [ -f "$T/delivery/delivery_writer.cpp" ] || die "no tracer at $T"
@@ -59,12 +62,14 @@ step_tools() {
   if [ -z "$PREBUILT" ]; then
     local M; M=$(git -C "$MESHSIM" rev-parse HEAD):$GOLD_SRC:$GOLD_V13_SRC
     if [ -n "${FORCE:-}" ] || [ "$(cat "$CLASSES.stamp" 2>/dev/null)" != "$M" ]; then
-      say "classes: gold and jumpmap (meshsim ${GOLD_SRC:0:7}), gold v1.3 (${GOLD_V13_SRC:0:7}), ConvertDelivery ($MESHSIM_REL), javac --release 21"
+      say "classes: gold and jumpmap (meshsim ${GOLD_SRC:0:7}), gold v1.3 (${GOLD_V13_SRC:0:7}), javac --release 21"
       bash "$HERE/lib/classes.sh" "$MESHSIM" "$CLASSES" || die "javac"
       echo "$M" > "$CLASSES.stamp"
     fi
   fi
-  for c in gold/gold/Main.class jumpmap/jumpmap/Main.class meshsim/ConvertDelivery.class; do [ -f "$CLASSES/$c" ] || die "no $CLASSES/$c"; done
+  for c in gold/gold/Main.class jumpmap/jumpmap/Main.class; do [ -f "$CLASSES/$c" ] || die "no $CLASSES/$c"; done
+  [ -x "$CONVERT" ] || die "no convert_delivery at $CONVERT (make in v1.35, or CONVERT_DELIVERY=)"
+  [ -f "$TAB/decode_table.bin" ] || die "no tables at $TAB (TABLES=)"
   say "classes $CLASSES; gold $GOLD_COMMIT"
 }
 
@@ -95,13 +100,13 @@ step_deliveries() {
   say "selected windows: $S/$RUN.manifest.json $(cat "$S/$RUN.COMPLETE"); w9-selected-windows.tgz repacked"
 }
 
-# ---- convert: the v1.25 delivery to v1.26.1's records (ConvertDelivery, as tasks 105-107); every other file a link ----
+# ---- convert: the v1.25 delivery to v1.26.1's records (convert_delivery: v1.3's ConvertDelivery, as tasks 105-107); every other file a link ----
 step_convert() {
   local D=$OUT/w9-deliveries V=$OUT/v1261 ST=$OUT/v1261/.staging-$RUN
   complete "$D/$RUN" "$D/$RUN.manifest.json" || die "the delivery isn't complete: run the deliveries step"
   if complete "$V/$RUN" "$V/$RUN.manifest.json"; then say "v1.26.1 conversion: complete already"; else
     rm -rf "$ST"; mkdir -p "$ST"
-    java -Xmx2g -cp "$CLASSES/meshsim" ConvertDelivery "$D" "$ST" "$RUN" > "$OUT/logs/$RUN-convert.log" 2>&1 || { tail -5 "$OUT/logs/$RUN-convert.log"; die "ConvertDelivery"; }
+    "$CONVERT" "$D" "$ST" "$RUN" > "$OUT/logs/$RUN-convert.log" 2>&1 || { tail -5 "$OUT/logs/$RUN-convert.log"; die "convert_delivery"; }
     head -2 "$OUT/logs/$RUN-convert.log"
     $PY canon-converted "$ST/$RUN.manifest.json" > /dev/null || die "canonical manifest"
     rm -f "$V/$RUN.COMPLETE"; rm -rf "${V:?}/$RUN" "$V/$RUN.manifest.json"

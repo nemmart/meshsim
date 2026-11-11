@@ -153,3 +153,19 @@ W15's "the last window" was a particular case (deliveries whose inlines fell lat
   (v1.26.1's, in the order that happened to come out; 106's evm and 105's cyclone came out in the other order). The
   manifest holds every converted record's sha256 and size, so its hash is every record's bytes; the task also checks the
   records on disk against it, and the links' targets and counts (57,348 per full program, as 164's logs).
+- **synthetic_delivery, done** (`tools/delivery/synthetic_delivery.cpp`: SplittableRandom ported exactly (JDK 17-21),
+  the functional replay, the RV64 reference, the generator with every random draw in Java's left-to-right order, W15's
+  `ReplayWindow` for the streams). D42's difference: K = 0xD42, the inlines' advice from SplittableRandom(seed ^ K); the
+  manifest's maps in source order (header and DECISIONS). `oracle/synthetic_crosscheck.sh`, on the first build:
+  (1) v1.3 patched in exactly those two places (sed, checked to apply exactly): every file and the manifest byte for
+  byte on replayconf's syn1-syn4, WORKER9's layout and a shard (`--first 3`); (2) v1.3 itself: every file equal with
+  `--inline-weight 0` and the manifest equal as JSON; with inlines, the first difference is exactly where two patched
+  runs with K and K' first differ (syn1: window 0, rows.bin byte 15,337; syn2: window 3; syn3: window 2; syn4: window 0).
+  The calibration (seed 11, 128 windows of 65,536 rows) with `--calibration`: all 1,413 files byte for byte. Stage B's synthetic windows aren't
+  SyntheticDelivery's (StageB builds them with ReplayWindow and ReplayerUnitTests.programWindow): nothing to check here.
+- **inputs/ on convert_delivery and data/tables** (D42): `pins.sh` drops TABLES_REL and MESHSIM_REL; `build.sh` takes
+  TABLES (default v1.35's `data/tables/replayer`) and CONVERT_DELIVERY (default `../../build/clang-release/`), and
+  checks both; `lib/classes.sh` builds no meshsim/ classes. `pipeline/check.sh` needs the C++ `convert_delivery` and
+  converts a small committed v1.25 delivery (`inputs/test/v125-small`, from v1.25's generator) to v1.3's manifest
+  sha256 (b9e8ec4b...); from a copy holding only `pipeline/` and `build/clang-release/convert_delivery`: all passed.
+  Nothing in `pipeline/` reads the repository but comments.

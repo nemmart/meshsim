@@ -7,10 +7,10 @@ JAP_URL=https://github.com/Quarky93/jolt-asic-planning.git
 JAP_COMMIT=fa59d9a0e336088ee4940bb96a2c622ab362b3ea
 JAP_FALLBACK=8d546e3e218d0217b3bf799425895b344e1de03a   # the runner's deliveries' commit (tasks 103, 104), if fa59d9a's differ
 
-# The universal replayer tables: v1.26.1's (frozen), byte-identical to wip/tables/replayer and to what 103/104 used.
-TABLES_REL=v1.26.1/tables/replayer
-# ConvertDelivery and the acceptance kit: v1.26.1's meshsim (frozen), the RTL's target.
-MESHSIM_REL=v1.26.1/meshsim
+# v1.35 (W19, D42): the universal replayer tables are v1.35's data/tables/replayer (byte-identical to v1.26.1's, to
+# wip/tables/replayer and to what 103/104 used), and ConvertDelivery is v1.35's C++ convert_delivery (v1.3's, which writes
+# the manifest in one of v1.26.1's two key orders): build.sh's TABLES and CONVERT_DELIVERY. v1.3 read v1.26.1/tables and
+# v1.26.1/meshsim from the repository.
 
 # gold and jumpmap, pinned by meshsim commit (wip/ moves on; these are built from git archive, not the working tree):
 #   GOLD_SRC      gold 7ef9039 and jumpmap 4788e0e: the v1.2 segment file and jumpmap's outputs exactly as task 109 made

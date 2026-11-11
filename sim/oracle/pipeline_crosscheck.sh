@@ -24,5 +24,5 @@ grep -v '^#' "$SIM/pipeline/inputs/src/SNAPSHOTS.sha256" | while read -r h f o; 
 done
 bash "$TOP/v1.3/inputs/lib/classes.sh" "$TOP" "$T/cls-v13" > "$T/cls-v13.log" 2>&1 || { tail "$T/cls-v13.log"; exit 1; }
 bash "$SIM/pipeline/inputs/lib/classes.sh" "$TOP" "$T/cls-v135" > "$T/cls-v135.log" 2>&1 || { tail "$T/cls-v135.log"; exit 1; }
-diff -r "$T/cls-v13" "$T/cls-v135" > /dev/null || { echo "pipeline_crosscheck: inputs' classes differ from v1.3's git-archive build"; exit 1; }
+for d in gold jumpmap gold-v13 VERSION; do diff -r "$T/cls-v13/$d" "$T/cls-v135/$d" > /dev/null || { echo "pipeline_crosscheck: inputs' $d differs from v1.3's git-archive build"; exit 1; }; done   # meshsim/ (ConvertDelivery): C++ since D42
 echo "pipeline_crosscheck: inputs/src equal to the pins' git archive; the classes (gold, jumpmap, gold v1.3, VERSION) equal v1.3's build"

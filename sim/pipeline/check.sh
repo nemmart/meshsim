@@ -5,6 +5,7 @@
 #   - keys: keys/EXPECTED.sha256 (the uniform key sets at 16,384 and 65,536 per tile, every key and split set at 2,000);
 #   - gold and jumpmap: jumpmap's fixtures (test/fixtures.sh: gold's segment files and jumpmap's outputs for 11 guests)
 #     regenerated in a scratch copy, equal byte for byte to the committed jumpmap/out/ (v1.3's).
+#   - inputs: the pinned gold and jumpmap sources (inputs/src/) intact and building.
 # gold/check.sh (the four segment files at 2^29 and the hard cuts) needs jolt-asic-planning and the reference files:
 # run it where they are.
 set -e
@@ -22,5 +23,12 @@ echo "keys: $(grep -vc '^#' "$P/keys/EXPECTED.sha256") outputs equal to v1.3's"
 mkdir -p "$T/p"; cp -r "$P/gold" "$P/jumpmap" "$T/p/"
 (cd "$T/p/jumpmap" && sh test/fixtures.sh --write > "$T/fixtures.log" 2>&1) || { tail "$T/fixtures.log"; echo "pipeline/check.sh: jumpmap fixtures FAILED"; exit 1; }
 diff -r "$P/jumpmap/out" "$T/p/jumpmap/out" > /dev/null || { echo "pipeline/check.sh: jumpmap's fixtures differ from v1.3's"; exit 1; }
+(cd "$P/inputs/src" && grep -v '^#' SNAPSHOTS.sha256 | awk '{print $1 "  " $2}' | sha256sum -c --quiet -) || { echo "pipeline/check.sh: inputs/src differs from SNAPSHOTS.sha256"; exit 1; }
+for d in d97ecde/gold d97ecde/jumpmap eeb64b5/gold; do
+  cp=; [ $d = d97ecde/jumpmap ] && cp="-cp $T/c/d97ecde/gold"
+  mkdir -p "$T/c/$d"; javac --release 21 -nowarn -d "$T/c/$d" $cp $(find "$P/inputs/src/$d/src" -name '*.java') 2>&1 | grep -v '^Note:' || true
+  [ -n "$(find "$T/c/$d" -name Main.class)" ] || { echo "pipeline/check.sh: inputs/src/$d doesn't build"; exit 1; }
+done
+echo "inputs: the pinned gold and jumpmap sources intact ($(grep -vc '^#' "$P/inputs/src/SNAPSHOTS.sha256") files) and building"
 echo "gold, jumpmap: the fixtures of $(ls -d "$P"/jumpmap/out/*/ | wc -l) guests equal to v1.3's"
 echo "pipeline/check.sh: all passed"

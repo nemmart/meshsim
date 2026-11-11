@@ -90,3 +90,13 @@ v1.3's, every copied file byte-identical to its `ref/` original (sha256).
   files, jumpmap in 3; `GOLD_V13_SRC` eeb64b5: gold differs from v1.3's in 1 file), plus v1.26.1's ConvertDelivery and
   its tables (v1.26.1's tables equal `sim/data/tables`). Stand-alone, it needs those pinned snapshots committed into
   `pipeline/` (and ConvertDelivery, which waits).
+- **Step 5, part 3: `pipeline/inputs/`** (owner: commit the pinned snapshots). `inputs/src/d97ecde/{gold,jumpmap}/src`
+  and `inputs/src/eeb64b5/gold/src` (71 files) are `git archive` of `wip/` at `GOLD_SRC` and `GOLD_V13_SRC`, recorded
+  in `src/SNAPSHOTS.sha256` (each with its commit:path) and `src/SNAPSHOTS.sh` (the pins' last commits: gold 7ef9039,
+  jumpmap 4788e0e, gold v1.3 eeb64b5). Edited: `lib/classes.sh` compiles from `src/` instead of git archive, and
+  writes VERSION from SNAPSHOTS.sh; `build.sh`'s default GOLD_COMMIT is SNAPSHOTS.sh's (it was `git log` at the pin,
+  the same 7ef9039). Checked: the classes (gold, jumpmap, gold v1.3, ConvertDelivery's meshsim, VERSION) byte for
+  byte equal to v1.3's classes.sh (`oracle/pipeline_crosscheck.sh`); `pipeline/check.sh` from a pipeline-only copy
+  checks the snapshots' hashes and builds them. Still reading the repository until the owner decides:
+  `v1.26.1/meshsim` (ConvertDelivery, `MESHSIM_REL`) and `v1.26.1/tables` (`TABLES_REL`; equal to `sim/data/tables`);
+  `quest/make_task.sh` (a Quest kit maker, reads `wip/planning/...`) not touched.

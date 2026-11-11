@@ -18,3 +18,11 @@ grep -v '^#' "$SIM/pipeline/FROM-V1.3.sha256" | while read -r h p v; do
   [ "$(sha256sum < "$TOP/$v" | cut -c1-64)" = "$h" ] || { echo "pipeline_crosscheck: $v differs from FROM-V1.3.sha256"; exit 1; }
 done
 echo "pipeline_crosscheck: $(grep -vc '^#' "$SIM/pipeline/FROM-V1.3.sha256") files of v1.3/ equal to FROM-V1.3.sha256"
+# inputs/src/ against the repository's history, and the snapshot build against v1.3's git-archive build (classes.sh)
+grep -v '^#' "$SIM/pipeline/inputs/src/SNAPSHOTS.sha256" | while read -r h f o; do
+  [ "$(git -C "$TOP" show "$o" | sha256sum | cut -c1-64)" = "$h" ] || { echo "pipeline_crosscheck: inputs/src/$f differs from $o"; exit 1; }
+done
+bash "$TOP/v1.3/inputs/lib/classes.sh" "$TOP" "$T/cls-v13" > "$T/cls-v13.log" 2>&1 || { tail "$T/cls-v13.log"; exit 1; }
+bash "$SIM/pipeline/inputs/lib/classes.sh" "$TOP" "$T/cls-v135" > "$T/cls-v135.log" 2>&1 || { tail "$T/cls-v135.log"; exit 1; }
+diff -r "$T/cls-v13" "$T/cls-v135" > /dev/null || { echo "pipeline_crosscheck: inputs' classes differ from v1.3's git-archive build"; exit 1; }
+echo "pipeline_crosscheck: inputs/src equal to the pins' git archive; the classes (gold, jumpmap, gold v1.3, VERSION) equal v1.3's build"

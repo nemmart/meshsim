@@ -105,3 +105,87 @@ Every reference is generated once on the oracle side and **committed as a fixtur
 | C24 | SortTest `p1`, `sort`, `sort` seed 4, the BT runs (kv32, k128 at 16K) | see D | — | D1-D4 |
 | C25 | the shuffled-order steps (seeds 3, 4, 5, 8, 11) | order independence of every suite | — | each ported suite also run shuffled (B24) · output identical to the unshuffled run · its row |
 | C26 | the layout check (`tools/check_layout.sh`) | `sw/ext/` against `../sort/` | — | dropped with the duplicate (A10) |
+
+## D. The sort and its kit
+
+| # | capability | what it is; who | today | port: estimate · check · depends |
+|---|---|---|---|---|
+| D1 | **SortTest `run`**: `kind=<builtin>\|keys=FILE`, `n=`, `fmt=k128\|kv32`, `shaped`, `label=`, `ready=N`, `cfg.<field>=`, `csv=`, `phases=`, `force=bt`, the seed; `-Dsort.build`, `sort.watch`, `sort.prof`, `sort.profile`, `sort.phases`, `sort.maxcycles` | one sort, measured: the log (path, stage 2, TOTAL, the step table), the per-run CSV, the phases CSV; sw, reg | **partial**: `test_sort` (M2Sort's sequence, uniform k128 at 16K and 64K, `SORT_*` variables, fp against golden-m2) and `bench_sort` (timing); no user driver, no CSVs | **M**: a `sort` driver with SortTest's arguments and outputs · log-equal and bytes (the CSVs) per run; fp at intervals where a run differs · A10, D5, F1, H1, H3 |
+| D2 | the sort's other paths and forms: LB, TH, BT, PLAN, stage 2; kv32; shaped inputs; the oracle-split image | the sort as data drives it; sw | gap in checking (the units are those of the uniform sort; only uniform k128 has been compared) | **M**: one run per path at 64 × 2,000 and BT at 16K in both formats (`run_tests.sh`'s sort-bt steps) · fp at every GO + log-equal · D1, F1 |
+| D3 | SortTest `p1` | the local sorts L1, L2, the keys all-to-all stood in | gap | **S** · log-equal · D1 |
+| D4 | SortTest `sort [full] [only=]` | every built-in set at 64 × ≤ 2,000 (`run_tests.sh`), shuffled once | gap | **S** (on D1) · log-equal · D1, D2 |
+| D5 | `Inputs`: the `inputs:` line (SHA-256 of the simulator, images, hops, keys) and `HASHES` | DEV 100's guard: every run names its exact inputs; reg | gap | **S** · bytes (every hash but the simulator's own) · A10 |
+| D6 | SortSummary | the per-run CSVs → `SUMMARY.md` + `all.csv`, with the Inputs section | gap | **S** · bytes on v1.3's committed kit results and on fresh ones · D1, D5 |
+| D7 | SortCompare, PhaseNeutral, VerifySummary, the verify kits (`meshsim/verify/`, `v1.3/verify-v1.0/`) | comparisons between simulator versions run by run and phase by phase (M7/M8, v1.0/M15); dev | gap | **S** each · bytes on committed inputs · D1 (Q3) |
+| D8 | **the measurement kit** (`meshsim/kit/`: `assemble.sh`, `run.sh`, `jobs.txt`, `tools/make_jobs.py`, `runjob.sh`, `assemble_runner.sh`; built: `v1.3/kit/`; `v1.3/runner/` p4 and suites) | 92 runs (the 20-set catalogue in both formats, shuffled identities, a sweep), restartable, CSVs, SUMMARY; sw, reg | gap | **M**: the kit from C++ binaries (no jar), the same jobs and outputs · bytes (CSVs) on the `-n 2000` smoke against `sim/ref`'s kit run, then a full-size sample on the runner · D1, D6, F1 |
+| D9 | SplitRun + `splitdrv` | the split on the machine: 25 sets, the cuts, S, cycles per search step | gap | **S-M** · log-equal · A10, C1, F2 |
+| D10 | Sweep (`quick`, `full`; `results/sweep-*.csv`) | sensitivity of phase totals to the uncertain parameters | gap | **M** · bytes (the CSV) · C1, H1, H3 |
+
+## E. The Tracer and the replay
+
+| # | capability | what it is; who | today | port: estimate · check · depends |
+|---|---|---|---|---|
+| E1 | TracerT2 | a segment on the full chip, T2's acceptance; proof, RTL | **eq**: the `t2` tool (Quests 170-171, every point), the `chain` (all 128 segments of both workloads, Quest 174) | — (t2's `--sram`/`--files` come from W13's `ref` dumps; `chain --dump` makes the same forms: I7) |
+| E2 | TracerT1 | the Tracer with the ideal controller over a run's segments on one memory, against the delivery and Stage A | **partial**: checked by replaying `ref`'s recorded calls (Quest 163); the chain checks the same streams and rows on the full chip | **S** on C23's rig · the windows equal the delivery (as T1) · C23 (Q6) |
+| E3 | StageB (`synthetic`; a delivery's windows; the item-113 guests) | `replay_ctl.c` on one tile against a delivery, the Java loader landing the window per `replay_layout.h` | gap as a tool (replay_ctl runs on every tile in T2 and the chain, landed by C&C 3's DMA) | **M** · log-equal per window (rows, streams, end state, cycles) · A8, C1 |
+| E4 | ReplayDelivery (Stage A) | the replayer model with the ideal controller, window by window | **eq**: `replay_delivery`, ref's lines exactly; every window of both workloads (Quest 164); **but** its window list comes from `ref`'s ReplayConf | **S**: read the manifest itself · cmp with v1.3's lines · — |
+| E5 | **the acceptance kit**: ReplayShard, `acceptance/{run_shard,calibrate,make_kit,make_task,make_acceptance_task}.sh` | every window of a delivery, Stage A and B, the manifest's hashes, `results.csv`, `SUMMARY.txt`, `VERDICT.txt`; proof | gap | **M** · bytes (results.csv without wall time; VERDICT) on a synthetic delivery and a real range · E3, E4, F4 |
+| E6 | ReplayTables, ReplayWindow | the tables and windows as delivered | **eq**: `replay_tables.*`, `tests/replay_window.h` | — |
+
+## F. The input tools
+
+| # | capability | what it is; who | today | port: estimate · check · depends |
+|---|---|---|---|---|
+| F1 | KeyGen | the sort's key sets without Python, bit-exact with numpy 2.x (SeedSequence, PCG64, Lemire, choice ...): the 20-set catalogue, `.keys` files; sw, reg | gap (the C++ reads KeyGen's files, checked by hash) | **M** · bytes on every set at 2,000, 16,384 and 65,536 per tile · — |
+| F2 | SplitSets | the split's 25 data sets with the exact cuts | gap | **S** · bytes · F1 |
+| F3 | ConvertDelivery | a v1.25 delivery to v1.26.1 records, manifest rewritten; proof (the input pipeline's `convert` step) | gap | **S** · bytes on a delivery's every record and manifest · — |
+| F4 | SyntheticDelivery | a random RV64IMAC program expanded through the universal tables into a delivery with its own reference rows; tests and the acceptance kit's calibration | gap (W15: its last window isn't reproducible run to run) | **M** · bytes, window by window (the known window aside, Q7) · A4 |
+| F5 | **the input pipeline's Java**: `v1.3/gold` (Jolt's tracer in Java, 4.8 K lines; segment files, frame 6), `v1.3/jumpmap` (0.7 K; jump table, initial image, per-segment pages), `v1.3/inputs/` (the pinned build calling both, ConvertDelivery and jolt-cpp) | every input the Tracer and the chain read; proof | gap (outside meshsim/) | **L** (gold), **S-M** (jumpmap), **S** (inputs/ re-pointed) · bytes at 2²⁹ on both workloads (`inputs/check.sh`'s manifests) · F3 (Q1) |
+| F6 | `v1.3/tools/replayer-opcodes` (C++ harness against jolt-cpp, Python) | makes `vec.tsv` and the opcode tables (A4) | not Java: nothing to port | **S** (copy) · — · A4 |
+| F7 | `v1.3/tracer/` (Python, C++: the template generator, inline rows) | the Tracer's templates and tables | not Java | **S** (copy) · — · A4 |
+| F8 | `meshsim/guests/item113` | RV64 differential guests (built, to run through both tracers) | not Java | **S** (copy) · — · — |
+| F9 | `v1.3/merge-inputs` (two diffs), `tools/v12_conv_stream.py`, `tools/logdiff.py` | history: the v1.2 port's conversions, the M10→M11 rename | — | Q3 |
+
+## G. Benches
+
+| # | capability | what it is; who | today | port |
+|---|---|---|---|---|
+| G1 | AgBench | the AG's read-ahead: ag_lookahead, zero-length groups, start to first request | gap | **S-M** · log-equal · C1, C6 |
+| G2 | S1Bench | item S1: K's margin over the write path, L = 1-4, the table-window case | gap | **S** · log-equal · B19 (S1's measurement), A6 |
+| G3 | CcBench | C&C as cores against the Java model: the boot and a phase | gap | **S** · log-equal · C1, A7 |
+| G4 | the C++ project's own benches (`bench_controller`, `bench_threads`, `bench_chip`, `bench_sort`, `tracer_play`, `bench/w10`, `bench/quest`, `bench/w6`'s) | M1-M3's timings | v1.35's own | kept or cleaned up in PLAN step 3 (P8); `bench/w14/TracerPlay.java` moves out (I3) |
+
+**ReplayBench** has no row: it lived only on the `sim-step-cost` branch, never in v1.3; T2's and the chains' timings
+(Quests 171, 174) supersede it as the bar.
+
+## H. Options and outputs
+
+| # | capability | what it is; who | today | port: estimate · check · depends |
+|---|---|---|---|---|
+| H1 | **`Config`'s fields** (spec 10) | the machine's parameters; every suite, Sweep, `cfg.<field>=` | **in the C++ config structs** (`NetConfig`, `G1Config`, `SramConfig`, `ReqBusConfig`, `PeriphSlotConfig`): latencies (link, intra-tile, GO, READY, cm, rp, ts_engine, reg load, cc link), depths (queues, we input, gather, read port, area queues, tokens, loopback, cnc rx, request FIFO and queues, cc DMA), skew and its seed, K, ag_lookahead, mem_chunks, write combining, the FIFO rule, the loopback switches, done gate, cc cores, cc3 Tracer, peripheral 1; **refused at build**: error latency ≠ READY's, `cncGoSettle` off; **gap**: per-link latencies, per-tile start skew and peripheral types, stage_delay's staging (to verify: no v1.3 program stages), `testReadClients`, `counterStoreClearsLatch` off, the invariant switches (`strictReplies`, `checkDisjoint`, `checkReadPortOverlap`, `checkCommandRead`, `checkErrors`, `checkUnexpected`, `measureS1`, `maxViolationMessages`), `logTrace` | **M**: the gaps a suite, the kit or Sweep sets (Q4), and one `cfg.<field>=value` front end for every driver · through the suites and Sweep · B19, C1 |
+| H2 | the system properties: `meshsim.skip`, `.K`, `.loopbackLast`, `.loopbackTokens`, `.loopbackDepth`, `.trace`, `.digest`, `.observe`; `replay.tables`, `replay.build`, `sort.hashes`, `stageb.profile`, `diag.addr` | run options; dev | partial (`SIM_REPLAY_TABLES`, the debug options, test variables) | **S**: the same options on the C++ drivers · each used once in a suite or tool · H1 |
+| H3 | **PhaseLog** and the phases CSV (per C&C GO: cycles, the slowest tile, controller, engine, read-queue, utilisation, peak and C&C columns; `results/phases-*.csv`, SortTest `phases=`, the kit's `<id>.phases.csv`) | where a run's cycles went, phase by phase; sw, reg | **partial**: `test_sort` derives each phase's GO and end and checks them against `sort16k.phases.csv`; no other column | **M** · bytes (the CSV equal to v1.3's for the same run) · C1 |
+| H4 | SortTest's per-run CSV (steps, counters, peaks) | the kit's raw data | gap | with D1 · bytes |
+| H5 | `results/<step>.log` with PASS, FAIL, PENDING | the regression's record | gap | with C0 |
+| H6 | the TRACE store log (`meshsim.trace`, 8.15) | firmware's printf-like trace | **partial**: stores counted, not logged | **S** · log-equal on a program that stores TRACE · — |
+| H7 | profiles: tile 0's cycles per function (`sort.profile`, `sort.prof`), Stage B's (`stageb.profile`) | finding where firmware spends cycles; sw | gap | **S** · equal figures on one run · D1, E3 |
+| H8 | the fingerprint and retire trace as outputs | B22, B25 | — | B22, B25 |
+
+## I. What in `sim/` needs Java or `sim/ref` today (owner's Q3 group)
+
+| # | what | needs | disposition |
+|---|---|---|---|
+| I1 | 15 test binaries (`test_golden`, `test_controllers`, `test_chip`, `test_sort`, `test_router`, `test_cc_units`, `test_cc_req`, `test_chain`, `test_t2_harness`, `test_tracer_parts`, `test_tracer_slot`, `test_replayer_alu`, `test_g1_replay`, `test_statefp_core`, `test_broken_units`) and the tools `golden`, `t2`, `chain`, `bench_chip`, `bench_sort`, `replay_delivery`'s default tables | data files read at run time from `ref/` (hops, boot ROM, riscv-tests images, tables, opcode table, vectors) | **committed files** (A1-A4); the paths repointed. Check: make check passes in a tree without `ref/` (W18's test, repeated) |
+| I2 | `fw/build.sh`, `tests/golden/build_images.sh`, `tests/m3-images/build.sh`, `build_req.sh` | copy or read `ref`'s `sw/` | **repointed** to v1.35's own sources (A6-A8, A12) |
+| I3 | the regenerators and conformance makers: `tests/golden/regen.sh`, `golden-m2/regen.sh`, `golden-m3/regen.sh`, `fp-m1/regen.sh`, `g1-replay/regen.sh`, every `tests/ref/*.sh` (`--check`, including `tracerconf.sh`, which makes TracerConfRig and TracerConfCases from TracerRig and TracerTest by sed), `make conformance`, `bench/w14/TracerPlay.java` | a JDK and `sim/ref` | **moved out of v1.35**: one oracle folder in `sim/` (proposed `sim/oracle/`: `tests/ref` and these scripts), left out of the copy at the freeze with `sim/ref`; every fixture they write stays committed in v1.35. The Makefile's `conformance` target goes with them |
+| I4 | `sim/tests/ref/*.java` (the drivers: RouterConf, M2Sort, M3Seg, StateFp, ...) | Java | the oracle (owner's answer), with I3 |
+| I5 | Quest task makers that embed `sim/ref` (`bench/w10/mk_task.sh` carries `hops.txt`, `sw/`, `test/`) and the session task scripts | `sim/ref` | `bench/`'s repointed with A (P1); the sessions' scripts are records in `planning/`, not run from v1.35 |
+| I6 | the committed references (`tests/golden*`, `tests/*conf/`, `fp-m1`, `g1-replay`, `m3-images/*.ref*`) | made by `ref`, read by C++ | **committed fixtures**, kept; the large ones stay on the runner's data directory, named with their hashes (documented in P8) |
+| I7 | `t2 --sram/--files` | W13's dumps, made by `ref`'s M3Seg | `chain --dump` writes the same forms in C++: documented as their source |
+
+## J. Docs and build (PLAN-V135 step 3)
+
+| # | what | port |
+|---|---|---|
+| J1 | v1.35's `README.md`, `BUILDING.md` (prerequisites: clang and gcc versions, riscv64-unknown-elf-gcc and picolibc, the riscv-tests checkout, python3 if Q2 allows), how to run every suite, driver, tool and kit, the outputs and where they go | **M** · followed on a fresh machine (a Quest task) · everything |
+| J2 | stale paths and comments (`ref/...`, worker names in usage lines), leftover benchmarks (G4), `src/sketch/` | **S** · — |

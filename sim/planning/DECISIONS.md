@@ -184,7 +184,8 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   cross-compiler only). **Large, self-contained tools that produce the simulator's inputs, that everything else relies
   on for correctness, and that aren't part of the testing runs, stay Java**, inside v1.35 as a separate, self-contained
   `pipeline/` folder with its own build, a JDK as an optional prerequisite for regenerating inputs: `gold` (Jolt's
-  tracer in Java, ~5,200 lines, the golden model the segment files come from) and jumpmap. The rule of thumb: a few
-  hundred lines of Java get ported to C++; thousands of lines of correctness-critical, offline input tooling stay Java.
-  Each remaining Java tool is classified by size, use and whether testing runs need it. Python: avoided where possible
+  tracer in Java, ~5,200 lines, the golden model the segment files come from) and jumpmap. **Clarified by the owner:** with
+  a JDK needed for the pipeline anyway, porting smaller input tools gains nothing unless it affects performance, so
+  **every offline input tool stays Java in `pipeline/`, whatever its size** (KeyGen, SplitSets, ConvertDelivery,
+  SyntheticDelivery with `gold` and jumpmap). Only what the simulator's build, suites and testing runs need is ported. Python: avoided where possible
   (shell plus C++ for glue).

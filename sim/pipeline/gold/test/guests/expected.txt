@@ -1,0 +1,42 @@
+assert_eq_fail: ABORT at row 2: VirtualAssertEQ failed at VirtualAssertEQ 0 x10 x11 pc=0x80000008 rem=0
+assert_eq_pass: 4 rows, run hash 27584524c48d30dc, log2 K 4, lowest_address 0x7fffffe0
+c_unimp_executed: ABORT at row 1: executed an instruction Jolt can't prove: UNIMP 0x0000 at 0x80000004
+c_unimp_jump: ABORT at row 3: executed an instruction Jolt can't prove: UNIMP 0x0000 at 0x80000010
+d12_c_slli_x0: 5 rows, run hash d571a0f62e10b264, log2 K 4, lowest_address 0x7fffffe0
+d1_decodable_gap: 6 rows, run hash 25bc70a8d7d77c35, log2 K 4, lowest_address 0x7fffffe0
+d1_rodata_in_text: 4 rows, run hash 993017a79f84caeb, log2 K 4, lowest_address 0x7fffffe0
+ebreak: 2 rows, run hash fa4608b9a8ed4479, log2 K 4, lowest_address 0x7fffffe0
+end_c_j_0: 2 rows, run hash 55f0a437a71f520e, log2 K 3, lowest_address 0x7fffffe0
+end_jal_ra_0: 2 rows, run hash ec62d2972cff7d79, log2 K 3, lowest_address 0x7fffffe0
+fence: 5 rows, run hash ed27bc7a48e5952a, log2 K 4, lowest_address 0x7fffffe0
+inline_bigint_rd0: REJECTED: access at row 22 to 0x8 is outside (address - lowest_address) < 8K: below lowest_address 0x7fffffe0 (a16z's prover: RAM address precedes the memory layout)
+inline_sha256_rd0: 1905 rows, run hash 905a925209836a44, log2 K 17, lowest_address 0x7fffffe0
+jump_into_gap: ABORT at row 3: jump target 0x8000000a is not in the bytecode map
+keccak256: 3091 rows, run hash dc3bac76540e2d86, log2 K 17, lowest_address 0x7fffffe0
+legacy_raw_ecall: ABORT at row 8: jump target 0x0 is not in the bytecode map
+lr_d_x0_nonzero: 10 rows, run hash 3154d2c98b204fec, log2 K 17, lowest_address 0x7fffffe0
+lr_d_x0_zero: 8 rows, run hash 043e0488d016645f, log2 K 17, lowest_address 0x7fffffe0
+lr_w_x0_nonzero: 12 rows, run hash 6341862cef23632d, log2 K 17, lowest_address 0x7fffffe0
+misaligned_inline: ABORT at row 2: misaligned memory access: LD's floor address ea - (ea & 0) = 0x80080004 (ea 0x80080004) isn't a multiple of 8 (a16z floor_access.rs:66-75; DECISIONS-v1.3 section 25)
+misaligned_ld: ABORT at row 2: misaligned memory access: LD's floor address ea - (ea & 0) = 0x80080001 (ea 0x80080001) isn't a multiple of 8 (a16z floor_access.rs:66-75; DECISIONS-v1.3 section 25)
+misaligned_lw: ABORT at row 2: misaligned memory access: VirtualLoadW's floor address ea - (ea & 4) = 0x80080002 (ea 0x80080002) isn't a multiple of 8 (a16z floor_access.rs:66-75; DECISIONS-v1.3 section 25)
+range_above_top: REJECTED: K 2^20 exceeds a16z's max_ram_k 2^19 (heap_end 0x80200090): the access at row 2 to 0x80400000 is above the layout's top
+range_below_lowest: REJECTED: access at row 2 to 0x70000000 is outside (address - lowest_address) < 8K: below lowest_address 0x7fffffe0 (a16z's prover: RAM address precedes the memory layout)
+rd0_add: 4 rows, run hash 77c53666d3e73b90, log2 K 4, lowest_address 0x7fffffe0
+sc_d_x0: 22 rows, run hash 5dfeac5526190706, log2 K 17, lowest_address 0x7fffffe0
+sc_w_x0: 35 rows, run hash d24d582c6d37cc8b, log2 K 17, lowest_address 0x7fffffe0
+stack_canary_store: 6 rows, run hash cc8a36e0fd9c5eea, log2 K 4, lowest_address 0x7fffffe0
+store_into_code: REJECTED: the store at row 3 to 0x80000000 falls in the code (a Text section)
+unimp32_executed: REJECTED at load: 1 instruction(s) Jolt can't prove, first: undecodable 0xc0001073 at 0x80000004
+unimp32_unreached: REJECTED at load: 1 instruction(s) Jolt can't prove, first: undecodable 0xc0001073 at 0x80000008
+unimp_fence_i: REJECTED at load: 1 instruction(s) Jolt can't prove, first: UNIMP 0x0000100f at 0x80000004
+unimp_unreached: 2 rows, run hash b257df52692c4745, log2 K 3, lowest_address 0x7fffffe0
+unprovable_csr_mhartid: REJECTED at load: 1 instruction(s) Jolt can't prove, first: undecodable 0xf1402573 at 0x80000004
+unprovable_csrrc: REJECTED at load: 1 instruction(s) Jolt can't prove, first: UNIMP 0x3005b573 at 0x80000004
+unprovable_csrrci: REJECTED at load: 1 instruction(s) Jolt can't prove, first: UNIMP 0x3002f573 at 0x80000004
+unprovable_csrrsi: REJECTED at load: 1 instruction(s) Jolt can't prove, first: UNIMP 0x3002e573 at 0x80000004
+unprovable_csrrwi: REJECTED at load: 1 instruction(s) Jolt can't prove, first: UNIMP 0x3002d573 at 0x80000004
+unprovable_sfence_vma: REJECTED at load: 1 instruction(s) Jolt can't prove, first: undecodable 0x12000073 at 0x80000004
+unprovable_sret: REJECTED at load: 1 instruction(s) Jolt can't prove, first: undecodable 0x10200073 at 0x80000004
+unprovable_undecodable: REJECTED at load: 1 instruction(s) Jolt can't prove, first: undecodable 0x0000007f at 0x80000004
+unprovable_wfi: REJECTED at load: 1 instruction(s) Jolt can't prove, first: UNIMP 0x10500073 at 0x80000004

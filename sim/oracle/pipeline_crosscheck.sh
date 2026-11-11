@@ -1,6 +1,7 @@
 #!/bin/bash
 # oracle/pipeline_crosscheck.sh (WORKER19, P1): pipeline/keys/EXPECTED.sha256 against v1.3's tools run now (sim/ref's
 # KeyGen and SplitSets): every expected hash reproduced by v1.3, so pipeline/check.sh checks against v1.3's outputs.
+# Also pipeline/FROM-V1.3.sha256 against the repository's v1.3/ (gold, jumpmap, the hard-cut lists).
 set -eu
 SIM=$(cd "$(dirname "$0")/.." && pwd)
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
@@ -12,3 +13,8 @@ $J KeyGen "$T/n2000/keys" --n 2000 > /dev/null
 $J SplitSets "$T/n2000/split" --n 2000 > /dev/null
 (cd "$T" && grep -v '^#' "$SIM/pipeline/keys/EXPECTED.sha256" | sha256sum -c --quiet -) || { echo "pipeline_crosscheck: FAILED"; exit 1; }
 echo "pipeline_crosscheck: $(grep -vc '^#' "$SIM/pipeline/keys/EXPECTED.sha256") expected outputs reproduced by v1.3's KeyGen and SplitSets"
+TOP=$(cd "$SIM/.." && pwd)
+grep -v '^#' "$SIM/pipeline/FROM-V1.3.sha256" | while read -r h p v; do
+  [ "$(sha256sum < "$TOP/$v" | cut -c1-64)" = "$h" ] || { echo "pipeline_crosscheck: $v differs from FROM-V1.3.sha256"; exit 1; }
+done
+echo "pipeline_crosscheck: $(grep -vc '^#' "$SIM/pipeline/FROM-V1.3.sha256") files of v1.3/ equal to FROM-V1.3.sha256"

@@ -76,3 +76,35 @@ Commits: (1) oracle script and fixtures, (2) `suite_t.h` + MemorySystemTest, (3)
   TracerTest's loop case printed `ref`'s `loop:` line exactly (34 rows, 550 cycles, the stalls, the summary), clang
   release and debug (ASan/UBSan), gcc compiles it. Not yet in the build: the suites that link it wait for `suite.h`.
   Local tools: the container had neither a JDK nor clang; both from apt (JDK 21.0.13, clang 18.1.3, gcc 13.3).
+- **2026-11-11, merged main** (W20's `suite.h`, f615486). Owner: build the three suites on it; record the HashMap order.
+- **Java's page order sets the page addresses (recorded at the owner's request; also in `tracer_rig.h`'s header and
+  at `build_image`).** `ref`'s rig keeps the guest's pages in a `HashMap<Long, long[]>` (filled by `poke`'s
+  `computeIfAbsent` and by `put`) and the pages to pre-copy in a `HashSet<Long>`; `buildImage` hands them to FileStore
+  in iteration order, FileStore allocates in the order it is handed pages, so the order fixes every page's address, the
+  addresses fix the shared cache's sets, and the sets fix conflicts, evictions and timing. Another order builds a
+  different, equally valid machine whose timings need not be `ref`'s.
+  - **First version was wrong, and its check caught it.** `java_hash_order` modelled `put` only. A Java-side fixture
+    (`tests/ref/JavaHashOrder.java` → `tests/tracersuites/hashorder.txt`, 49 cases) showed `computeIfAbsent`
+    **prepends** a new key to its bin where `put` appends, grows the table before inserting where `put` grows after,
+    and treeifies one key earlier. In TracerTest's `rig()` that puts the **data page before the code page** (both poked
+    into bin 0); in the unaligned loop, page 0x1000 before page 0. Now `JavaLongHashMap` models both calls operation by
+    operation (Long.hashCode, the spread, resize's order-keeping split, treeifyBin's resize under 64 bins);
+    `test_tracer_rig` checks it on all 49 cases.
+  - **A limit, not a guess**: a bin Java treeifies (9 keys in one bin of a 64+ table, e.g. 11+ consecutive pages of one
+    64 KB block) iterates in an order that follows the red-black tree's root. Not modelled: the map records it and
+    `order()` is FATAL. The fixture has 3 such cases (Java reports them by reflection); the model flags exactly those.
+    TracerTest's guests have 6 pages at most.
+  - **TracerTest's own figures don't see the order**: the suite's output equalled `ref`'s log with the wrong order and
+    with the right one (its few lines never conflict in a set). The calls check (step 7) will: TracerConf's
+    `cases.log.gz` carries the store's pages by address.
+- **Steps 2-4 done, on `suite.h`.** `tests/suite_memsys.cpp` (56 passed), `suite_rvc.cpp` (49,157 passed; gold's
+  fixture), `suite_tracer.cpp` (180 passed, both printed lines): **each output equals `ref`'s log byte for byte on the
+  first run**. `tests/tracersuites.mk` (included by the Makefile) builds `suite_memsys`, `suite_rvc`, `suite_tracer`;
+  `test_tracer_suites` (make check) runs each as `run_tests.sh` runs a step (stdout and stderr together) and compares
+  with `tests/tracersuites/<step>.log`, exit 0 required. TracerTest's two UB stops run through `suite::ub` (a forked
+  child, FATAL naming "credits cover", "past word 67", "65,536"). Rigs are made where Java makes them, probes included,
+  so a recorder can number Tracers as TracerConf does. The Java-double helper `suite.h` mentions is in the rig
+  (`mem_summary`'s HALF_UP `%.2f`); W20 may lift it.
+  - All four builds (gcc, clang; debug with ASan/UBSan, release): `test_tracer_suites` 3/3, `test_tracer_rig` 2/2,
+    about a second each. `make run` on clang release: all 62 binaries pass. TracerTest alone: 0.3 s release.
+  - `tracersuites.sh --check`: the fixtures (now with `hashorder.txt`) equal `ref`'s regeneration.

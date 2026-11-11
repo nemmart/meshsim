@@ -31,49 +31,88 @@ std::vector<uint8_t> Prog::bytes() const {
 }
 
 // ================================================================ java.util.HashMap's order (Long keys)
-// HashMap: a table of 16 bins growing by doubling when size > 0.75 n, or when a bin reaches 9 entries while n < 64
-// (treeifyBin); a bin's entries in insertion order (put appends; a resize splits a bin keeping relative order). So the
-// order is the entries sorted by their bin in the final table, insertion order within a bin. A treeified bin (9 entries
-// at n >= 64) iterates otherwise: refused.
-std::vector<int64_t> java_hash_order(const std::vector<int64_t>& keys) {
-    std::vector<int64_t> in;
-    for (int64_t k : keys)
-        if (std::find(in.begin(), in.end(), k) == in.end()) in.push_back(k);
-    auto spread = [](int64_t k) {
-        const uint64_t v = uint64_t(k);
-        uint32_t h = uint32_t(v ^ (v >> 32));  // Long.hashCode
-        return h ^ (h >> 16);                  // HashMap.hash
-    };
-    size_t n = 16;
-    std::vector<int64_t> so_far;
-    for (int64_t k : in) {
-        // the bin's size with k appended, in the current table
-        size_t bin = 0;
-        for (int64_t x : so_far) bin += (spread(x) & (n - 1)) == (spread(k) & (n - 1));
-        so_far.push_back(k);
-        if (bin + 1 >= 9) {
-            if (n < 64) n *= 2;
-            else FATAL("java_hash_order: a HashMap bin of %zu entries is treeified (order not reproduced)", bin + 1);
-        }
-        if (so_far.size() > n * 3 / 4) n *= 2;
+// JDK 21's HashMap, structure only: DEFAULT_INITIAL_CAPACITY 16, load factor 0.75, TREEIFY_THRESHOLD 8,
+// MIN_TREEIFY_CAPACITY 64.
+uint32_t JavaLongHashMap::hash(int64_t key) {
+    const uint64_t v = uint64_t(key);
+    const uint32_t h = uint32_t(v ^ (v >> 32));  // Long.hashCode
+    return h ^ (h >> 16);                        // HashMap.hash
+}
+void JavaLongHashMap::resize() {
+    const size_t old_n = tab_.size();
+    if (old_n == 0) {
+        tab_.assign(16, {});
+        threshold_ = 12;
+        return;
     }
-    std::vector<int64_t> out = in;
-    std::stable_sort(out.begin(), out.end(),
-                     [&](int64_t a, int64_t c) { return (spread(a) & (n - 1)) < (spread(c) & (n - 1)); });
+    std::vector<std::vector<int64_t>> t(2 * old_n);
+    for (size_t j = 0; j < old_n; j++)  // split: lo stays at j, hi goes to j + old_n, each in order
+        for (int64_t k : tab_[j]) t[(hash(k) & old_n) ? j + old_n : j].push_back(k);
+    tab_ = std::move(t);
+    threshold_ *= 2;
+}
+void JavaLongHashMap::treeify_bin(size_t bin) {
+    (void)bin;
+    if (tab_.size() < 64) resize();
+    else treeified_ = true;  // Java builds a red-black tree there: its iteration order is not modelled
+}
+bool JavaLongHashMap::contains(int64_t key) const {
+    if (tab_.empty()) return false;
+    const auto& b = tab_[hash(key) & (tab_.size() - 1)];
+    return std::find(b.begin(), b.end(), key) != b.end();
+}
+void JavaLongHashMap::put(int64_t key) {  // putVal
+    if (tab_.empty()) resize();
+    const size_t i = hash(key) & (tab_.size() - 1);
+    auto& b = tab_[i];
+    if (std::find(b.begin(), b.end(), key) != b.end()) return;
+    b.push_back(key);
+    if (b.size() >= 9) treeify_bin(i);  // binCount >= TREEIFY_THRESHOLD - 1: the 9th node appended
+    if (++size_ > threshold_) resize();
+}
+void JavaLongHashMap::compute_if_absent(int64_t key) {
+    if (size_ > threshold_ || tab_.empty()) resize();
+    const size_t i = hash(key) & (tab_.size() - 1);
+    auto& b = tab_[i];
+    if (std::find(b.begin(), b.end(), key) != b.end()) return;
+    const size_t bin_count = b.size();  // every node traversed
+    b.insert(b.begin(), key);           // tab[i] = newNode(hash, key, v, first)
+    if (bin_count >= 7) treeify_bin(i);
+    ++size_;
+}
+std::vector<int64_t> JavaLongHashMap::order() const {
+    if (treeified_) FATAL("JavaLongHashMap: a treeified bin (9 keys in one bin of %zu): Java's order not reproduced", tab_.size());
+    std::vector<int64_t> out;
+    for (const auto& b : tab_) out.insert(out.end(), b.begin(), b.end());
     return out;
+}
+std::vector<int64_t> java_hash_order(const std::vector<int64_t>& keys) {
+    JavaLongHashMap m;
+    for (int64_t k : keys) m.put(k);
+    return m.order();
 }
 
 // ================================================================ Pages
-std::vector<uint64_t>& Pages::at(int64_t key) {
+std::vector<uint64_t>& Pages::slot(int64_t key) {
     for (size_t k = 0; k < keys.size(); k++)
         if (keys[k] == key) return pages[k];
     keys.push_back(key);
     pages.emplace_back(512, 0);
     return pages.back();
 }
+const std::vector<uint64_t>& Pages::page(int64_t key) const {
+    for (size_t k = 0; k < keys.size(); k++)
+        if (keys[k] == key) return pages[k];
+    FATAL("Pages: no page at 0x%llx", (unsigned long long)key);
+}
+std::vector<uint64_t>& Pages::at(int64_t key) {
+    map.compute_if_absent(key);
+    return slot(key);
+}
 void Pages::put(int64_t key, std::vector<uint64_t> page) {
     if (page.size() != 512) FATAL("Pages::put: a page of %zu words", page.size());
-    at(key) = std::move(page);
+    map.put(key);
+    slot(key) = std::move(page);
 }
 void Pages::poke(int64_t off, const std::vector<uint8_t>& bs) {
     for (size_t k = 0; k < bs.size(); k++) {
@@ -156,11 +195,9 @@ int Rig::expansion_length(uint32_t w) const {
 
 // ================================================================ the images
 void Rig::build_image(const Pages& pages, const std::vector<int64_t>& owned) {
+    // Java's iteration orders (see tracer_rig.h): they decide where FileStore puts each page, so the caches' timing
     image = fs.create(2);
-    for (int64_t key : java_hash_order(pages.keys)) {
-        const size_t k = size_t(std::find(pages.keys.begin(), pages.keys.end(), key) - pages.keys.begin());
-        fs.put_page(image, key / 4096, pages.pages[k].data());
-    }
+    for (int64_t key : pages.map.order()) fs.put_page(image, key / 4096, pages.page(key).data());
     copy = fs.cow_open(image);
     for (int64_t o : java_hash_order(owned)) fs.make_private(copy, o / 4096);
 }

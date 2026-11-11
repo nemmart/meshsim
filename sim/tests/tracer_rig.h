@@ -10,11 +10,21 @@
 // load_tables' queueing, load_record's queueing, collect) may use the STL. The per-cycle path (step, the window loop,
 // drain_port) uses fixed rings and preallocated buffers only, and runs under the allocation hook.
 //
-// JAVA'S ITERATION ORDERS. `ref`'s rig iterates a HashMap of pages and a HashSet of owned pages when it builds the
-// image, and the order decides where FileStore puts each page (so the caches' sets and every timing). `Pages` and
-// `java_hash_order` reproduce java.util.HashMap's order for Long keys exactly (buckets by Long.hashCode spread, the
-// table's growth, insertion order within a bin), and stop if a bin would be treeified (an order not reproduced; no
-// TracerTest case gets near it).
+// JAVA'S ITERATION ORDER SETS THE PAGE ADDRESSES. `ref`'s rig keeps the guest's pages in a HashMap<Long, long[]> (filled
+// by poke's computeIfAbsent and by put) and the pages to pre-copy in a HashSet<Long>, and build_image hands them to
+// FileStore in those collections' iteration order. FileStore allocates pages in the order it is handed them, so that
+// order decides every page's address, and the addresses decide the shared cache's sets (MemSystem: 512 sets by line
+// address), so its conflicts, evictions and every timing that follows. A rig that put the pages in another order (by
+// key, or by insertion) would build a different, equally valid machine whose timings need not be ref's.
+// `JavaLongHashMap` reproduces java.util.HashMap's order for Long keys operation by operation: Long.hashCode and
+// HashMap.hash's spread; put appending a new key to its bin and growing the table after inserting; computeIfAbsent
+// prepending it and growing before; each one's treeifyBin threshold (which resizes a table under 64 bins); a resize
+// splitting each bin in order. A bin that is treeified (9 keys in one bin of a table of 64 or more, e.g. 11 or more
+// consecutive pages of one 64 KB block) iterates in an order that follows its red-black tree: not modelled, so the order
+// is refused (FATAL), never guessed. No TracerTest guest gets near it (6 pages at most).
+// Checked against Java itself on 49 cases, 3 of them treeified (tests/tracersuites/hashorder.txt, JavaHashOrder.java;
+// test_tracer_rig). TracerTest's own guests show why it matters: in rig() the data page (computeIfAbsent second) comes
+// before the code page.
 #pragma once
 
 #include <cstdint>
@@ -91,17 +101,40 @@ struct Prog {
 };
 
 // ================================================================ Java's HashMap order for Long keys
-// The iteration order of a java.util.HashMap (or HashSet) of Long keys inserted in `keys`' order (repeats ignored).
+// A java.util.HashMap<Long, V> (or HashSet<Long>: add is put) as far as its iteration order goes: the keys only.
+class JavaLongHashMap {
+public:
+    void put(int64_t key);                 // HashMap.put, HashSet.add
+    void compute_if_absent(int64_t key);   // HashMap.computeIfAbsent
+    bool contains(int64_t key) const;
+    std::vector<int64_t> order() const;    // keySet()'s iteration order (FATAL if a bin was treeified)
+    bool treeified() const { return treeified_; }
+    size_t size() const { return size_; }
+
+private:
+    std::vector<std::vector<int64_t>> tab_;  // empty: Java's table not yet allocated
+    size_t size_ = 0, threshold_ = 0;
+    bool treeified_ = false;
+    static uint32_t hash(int64_t key);
+    void resize();
+    void treeify_bin(size_t bin);
+};
+// The iteration order of a HashSet<Long> after adding `keys` in order.
 std::vector<int64_t> java_hash_order(const std::vector<int64_t>& keys);
 
 // The rig's pages: offset in .pages (a multiple of 4096) -> 512 words, as ref's HashMap<Long, long[]>.
 struct Pages {
-    std::vector<int64_t> keys;                 // insertion order
+    JavaLongHashMap map;                       // the keys, for the order
+    std::vector<int64_t> keys;                 // storage: insertion order
     std::vector<std::vector<uint64_t>> pages;  // by keys' index
     std::vector<uint64_t>& at(int64_t key);    // computeIfAbsent(key, new long[512])
-    void put(int64_t key, std::vector<uint64_t> page);
+    void put(int64_t key, std::vector<uint64_t> page);  // put
     void poke(int64_t off, const std::vector<uint8_t>& b);
     void poke64(int64_t off, uint64_t v);
+    const std::vector<uint64_t>& page(int64_t key) const;
+
+private:
+    std::vector<uint64_t>& slot(int64_t key);
 };
 
 // ================================================================ the window's output
@@ -138,7 +171,8 @@ public:
     FileStore::File image, copy, map;
     int map_k = 5;
     uint32_t map_mul = 0x9E3779B1u, map_step = 0x00000B;  // 32 lines; the golden-ratio multiplier; a prime step
-    // The image: pages, the code pages shared, `owned` (a HashSet's keys, in insertion order) pre-copied in the copy.
+    // The image: pages (in their HashMap's order), the code pages shared, `owned` (a HashSet's keys, added in the order
+    // given) pre-copied in the copy, in that set's order.
     void build_image(const Pages& pages, const std::vector<int64_t>& owned);
     // The jump map (4.21.4): 2^map_k lines of 16 (key u32, base u32) entries, by the probe's own rule; depth 0 here.
     // `targets`: pc -> base, in the order ref's Map iterates them.

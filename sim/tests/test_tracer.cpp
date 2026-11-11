@@ -1,6 +1,6 @@
 // test_tracer.cpp (WORKER14): the C++ Tracer against `ref`'s, cycle by cycle.
 //
-// tests/tracerconf/*.log.gz come from tests/ref/TracerConf.java (tests/ref/tracerconf.sh --fixtures): `ref`'s Tracer
+// tests/tracerconf/*.log.gz come from oracle/ref/TracerConf.java (oracle/ref/tracerconf.sh --fixtures): `ref`'s Tracer
 // driven through its Peripheral interface, every call and its result recorded, and its state observed after every cycle.
 // This test replays the calls on the C++ Tracer (with its own FileStore and MemSystem, restored from the log's store
 // dumps) and requires every result, every store check and every observation to be equal. A call `ref` refused with

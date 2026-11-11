@@ -1,5 +1,5 @@
-// The engines' conformance, the C++ side (WORKER12; ref's side is tests/ref/EngConf.java, the fixtures tests/engconf/,
-// made by tests/ref/engconf.sh). The same script drives the AG (ag.h) and the gather engine (gather.h) among stand-ins:
+// The engines' conformance, the C++ side (WORKER12; ref's side is oracle/ref/EngConf.java, the fixtures tests/engconf/,
+// made by oracle/ref/engconf.sh). The same script drives the AG (ag.h) and the gather engine (gather.h) among stand-ins:
 // the block (the `dma` RegFile, the `start` Wire, endCycle's stores applied as ref's), the table store's STREAM and
 // GROUP paths (TableStore.java:121-137) with the PTR view, the read queue's two client Holds (one take a cycle, the
 // gather first), and the block's inputs. One observation line per cycle, in EngConf's format; equal to ref's, line for

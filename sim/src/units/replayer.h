@@ -2,7 +2,7 @@
 //
 // sim/ref/meshsim/src/Replayer.java as it runs in v1.3 (v1.26.1: RUN_CONFIG, the 68-word record, the flush at the state
 // word's write, part 0 as the working state, the underflow and leftover errors), with REPLAYER-NOTES' model choices
-// M1-M6 and N1-N12. Method for method, so the two can be compared every cycle (tests/ref/ReplayConf.java).
+// M1-M6 and N1-N12. Method for method, so the two can be compared every cycle (oracle/ref/ReplayConf.java).
 //
 // Timing, as ref (Peripheral.java): inputs (accept, run, write_word, a consumed event) take effect at the end of t; a
 // packet accepted at t lands at the end of t + 2; level reads at t see the end of t - 1. ref applies inputs lazily

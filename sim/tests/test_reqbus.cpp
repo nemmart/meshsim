@@ -1,6 +1,6 @@
 // test_reqbus (WORKER14): the C++ request bus (src/units/reqbus.h) against ref's, cycle by cycle (D34).
 //
-// tests/reqconf/*.txt.gz come from tests/ref/ReqConf.java (tests/ref/reqconf.sh): ref's RequestBus and the 67
+// tests/reqconf/*.txt.gz come from oracle/ref/ReqConf.java (oracle/ref/reqconf.sh): ref's RequestBus and the 67
 // RequestPorts driven by seeded traffic (fan-in, full queues and HOL blocking, a FIFO refusing pushes, drops, calm),
 // every call's result and the canonical state after each cycle (StateFp's `reqbus` and the ports' `req` streams,
 // hashed). Here the same calls are made on the framework's bus by stand-ins for the cores (a stand per row of tiles,

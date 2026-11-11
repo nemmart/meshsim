@@ -3,7 +3,7 @@
 // 1. ReplayerTest.opcodeTable and .vectors, ported: the model's opcode set against sim/data/tables/opcode_table.txt, and
 //    the 252 rows of sim/data/vec-821e1bd.tsv (the tracer's vectors, jolt-cpp 821e1bd), read in place. The
 //    report (summary lines and every flagged or n/a row) must equal ref's, line for line: tests/replayer/alu-report.txt
-//    is ReplayerTest's output, lines 1-29 (tests/ref/replayconf.sh --check regenerates it).
+//    is ReplayerTest's output, lines 1-29 (oracle/ref/replayconf.sh --check regenerates it).
 // 2. A differential sweep (tests/replayer/alu-sweep.txt.gz, from ReplayConf alu): every opcode on 100 seeded inputs,
 //    exec's rd, new pc and undefined flag equal to ReplayerAlu.exec's; the decode index, source immediates and immediate
 //    codes on seeded words equal RowCore's.
@@ -200,7 +200,7 @@ TEST(event_counts_follow_ref) {
 
 namespace {
 
-// ReplayConf.Rng and mix, mirrored (tests/ref/ReplayConf.java).
+// ReplayConf.Rng and mix, mirrored (oracle/ref/ReplayConf.java).
 struct SweepRng {
     test::Rng r;
     explicit SweepRng(uint64_t seed) : r(seed) {}

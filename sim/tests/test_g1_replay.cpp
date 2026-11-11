@@ -1,6 +1,6 @@
 // test_g1_replay.cpp: G1's units of tile 0 against golden-m2 (regs through fp::kRegsCheckedThrough, wfi to its end),
 // every unit every cycle, before the C++ network exists: what crosses tile 0's G1 boundary in ref (tests/g1-replay/
-// NAME.g1, from tests/ref/G1Trace.java: eject arrivals, GO scheduling, the send hold's takes) is replayed by a stand-in
+// NAME.g1, from oracle/ref/G1Trace.java: eject arrivals, GO scheduling, the send hold's takes) is replayed by a stand-in
 // for the network; the units' streams are compared with the golden's lines through the fingerprint library, the inputs in
 // flight read through the port observer. Under the debug options (ready-driven, step-all, a shuffle, instance-major).
 #include <algorithm>

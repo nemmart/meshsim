@@ -100,3 +100,46 @@ v1.3's, every copied file byte-identical to its `ref/` original (sha256).
   checks the snapshots' hashes and builds them. Still reading the repository until the owner decides:
   `v1.26.1/meshsim` (ConvertDelivery, `MESHSIM_REL`) and `v1.26.1/tables` (`TABLES_REL`; equal to `sim/data/tables`);
   `quest/make_task.sh` (a Quest kit maker, reads `wip/planning/...`) not touched.
+- **Step 4 done (7717eb3)**, `step4.sh` run on main as merged (W20's three new drivers are on sim-w20 only: W20 moves
+  them itself). 33 renames, 99 files repointed. From their new places, with sim/ref: `oracle/regen/golden.sh --check`
+  (67 traces SAME), `fp-m1.sh --check` (67 SAME), `g1-replay.sh --check` (SAME), `oracle/ref/routerconf.sh`,
+  `tileslotconf.sh`, `tracersuites.sh --check` (equal ref's regeneration), `oracle/regs_crosscheck.sh`. A copy without
+  `ref/` and `oracle/`: clang release builds, 63 tests; `test_mach` (W20's, merged from main) failed there, looking for
+  the boot ROM at `data/bootrom.hex`, `fw/bootrom.hex` or `ref/`: repointed to `fw/boot/bootrom.hex` and `data/hops.txt`
+  (1e2a363), and then all 63 pass.
+- `pipeline/inputs/quest/make_task.sh` -> `oracle/quest/inputs_make_task.sh` (owner: Quest task infrastructure; inputs/
+  doesn't use it), its HERE and MESHSIM repointed; `pipeline/check.sh` still passes from a pipeline-only copy.
+
+## D42: ConvertDelivery and SyntheticDelivery in C++ (owner, 2026-11-11)
+
+**SyntheticDelivery's nondeterminism, found** (sim/ref, JDK 21, seed 7, 3 windows of 2,048 rows, three runs):
+1. `final SplittableRandom rnd = new SplittableRandom();` (line 274) is **unseeded**: `Func.advice()` returns
+   `rnd.nextLong()` for every advice word that isn't a division's, i.e. the inlines'. That value goes into the read log
+   and the registers, so **every window from the first inline's advice on differs run to run**, not only the last:
+   with seed 7 window 0 already differs (rlog, wlog, rows, end.bin; state records from window 1). With
+   `--inline-weight 0` (no inlines) every window file is identical run to run.
+2. `Map.of(...)` (lines 440, 445, 460: each file's {bytes, sha256}, the counts) iterates in an order salted per JVM
+   run, so `manifest.json`'s key order differs run to run even when every file is identical.
+W15's "the last window" was a particular case (deliveries whose inlines fell late).
+
+**The plan for the C++ (`tools/delivery/`, built by make, both in make check's builds):**
+- `synthetic_delivery`: SyntheticDelivery's options and files; SplittableRandom ported exactly; the inlines' advice from
+  a seeded generator (the deliberate difference: `new SplittableRandom(seed ^ K)`, K fixed and recorded), the
+  manifest's maps in the source's order (bytes, sha256; instructions, read_log_words, write_log_words, padding_rows).
+  Checked (oracle side): (a) against a scratch copy of sim/ref's SyntheticDelivery patched only in those two places
+  (sed), byte for byte on every file of every window, for every seed ref's tests use (replayconf's syn1-syn4, the
+  calibration's seed 11 at 128 windows, StageB synthetic's); (b) against the unpatched Java: every file equal with
+  `--inline-weight 0`, and up to the first inline otherwise; the manifest equal as JSON (key order aside).
+- `convert_delivery`: v1.3's ConvertDelivery (its fixed "converted" key order), the JSON reader and writer as Java's
+  (LinkedHashMap order, Long and Double values printed as Java prints them). Checked: on v1.25 deliveries made locally
+  by v1.25's own SyntheticDelivery, against v1.3's ConvertDelivery (every record, every link, the manifest); then on the
+  runner, the conversions Quests 105-107 and W15's Stage A used (records byte for byte; their manifests were written
+  by v1.26.1's, whose "converted" key order varied run to run: compared on the records and as JSON).
+- `pipeline/inputs/` then calls `convert_delivery` (a path to the C++ tool) and reads `sim/data/tables`; `pipeline/`
+  holds only self-contained Java.
+- **convert_delivery, done locally** (`tools/delivery/convert_delivery.cpp`, `json.h`: Java's reader and writer,
+  LinkedHashMap order, Long, Double printed as Double.toString; no exceptions, D4: a window's error is returned). Built
+  by make in every build (`tools/delivery/delivery.mk`). `oracle/convert_crosscheck.sh`: on three v1.25 deliveries made
+  by v1.25's own SyntheticDelivery (seeds 7, 11 in WORKER9's layout, 5; 39 records, 67 links), every record, every link
+  (name and target) and the manifest byte for byte equal to v1.3's ConvertDelivery, on the first build. Still to do:
+  the runner's real conversions (Quests 105-107, W15's Stage A), then synthetic_delivery.

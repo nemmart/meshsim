@@ -139,7 +139,7 @@ private:
 };
 
 // ================================================================ the call recorder (TracerConf's format)
-// The Tracer as the rig and the suite see it: every call TracerConf.Rec records (tests/ref/TracerConf.java) goes through
+// The Tracer as the rig and the suite see it: every call TracerConf.Rec records (oracle/ref/TracerConf.java) goes through
 // here, and with a log open each is written as Rec writes it, so the rig's calls can be compared with `ref`'s rig's
 // (tests/tracerconf/cases.log.gz; test_tracer_rig). Hiding, not overriding: the Tracer's own code is untouched, and with
 // no log a call costs one test. Ids are given at construction, as Rec's (probes included). Lines: "N id 66 lines",

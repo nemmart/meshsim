@@ -6,7 +6,7 @@
 //     status, ready cycle, data hash, acknowledgement and statistic against `ref`'s (mem-sN.txt.gz);
 //   - MemorySystemTest's own cases, ported with their expected values;
 //   - the replay tables: sizes, the manifest's hashes, the index's keys.
-// The fixtures come from tests/ref/TracerParts.java (tests/ref/tracerparts.sh --fixtures; --check regenerates them).
+// The fixtures come from oracle/ref/TracerParts.java (oracle/ref/tracerparts.sh --fixtures; --check regenerates them).
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>

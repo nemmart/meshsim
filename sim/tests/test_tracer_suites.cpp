@@ -1,7 +1,7 @@
 // test_tracer_suites.cpp (WORKER21; P7a): v1.3's Tracer suites in make check. Each suite program (suite_memsys,
 // suite_rvc, suite_tracer, built beside this binary) runs as run_tests.sh runs a step, stdout and stderr together; its
 // output must equal ref's log of the same step byte for byte (tests/tracersuites/<step>.log, from
-// tests/ref/tracersuites.sh), and it must exit 0. Run from sim/.
+// oracle/ref/tracersuites.sh), and it must exit 0. Run from sim/.
 #include <unistd.h>
 
 #include <cstdio>

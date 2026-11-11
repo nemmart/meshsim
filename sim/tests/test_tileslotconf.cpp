@@ -1,8 +1,8 @@
 // test_tileslotconf: PeripheralSlotTest's groups (the window, events, region writes, the DMA, the replayer's window) as
-// conformance against ref (WORKER15; owner 2026-11-09). Each tests/tileslotconf/<group>.prog (tests/ref/
+// conformance against ref (WORKER15; owner 2026-11-09). Each tests/tileslotconf/<group>.prog (oracle/ref/
 // tileslotconf_progs.py) is a boot-ROM program doing the group's loads and stores from the core, storing its results and
 // mcycle stamps to data memory, with pokes on the test peripheral between cycles and region writes into the tile;
-// <group>.obs is ref's run of it (tests/ref/TileSlotConf.java: its tile in Config.machine()). Here: the same program on a
+// <group>.obs is ref's run of it (oracle/ref/TileSlotConf.java: its tile in Config.machine()). Here: the same program on a
 // tile from add_g1 with the slot (G1Config::periph_slot), the pokes at the same cycles (between runs, the slot woken with
 // Sim::wake), each region write put in the tile's eject one cycle before ref's director accepted it (its "dir" line).
 // The data-memory image, the test peripheral's accepts, the bad packets and the DMA's packets must equal ref's.

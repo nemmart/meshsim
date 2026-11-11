@@ -215,7 +215,7 @@ TEST(chip_a2a_every_10_cycles) {
 }
 
 // The hash-only goldens (every tile every 10 cycles), when CHIP_FP_DIR names a directory holding them
-// (tests/golden-m2/regen.sh with KEEP=DIR): not in make check (the files are not committed).
+// (oracle/regen/golden-m2.sh with KEEP=DIR): not in make check (the files are not committed).
 TEST(chip_every_tile_when_asked) {
     const char* dir = std::getenv("CHIP_FP_DIR");
     if (!dir) return;

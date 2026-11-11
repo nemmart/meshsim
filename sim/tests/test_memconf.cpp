@@ -1,4 +1,4 @@
-// test_memconf.cpp (WORKER11, P2d): the memory path against ref, cycle by cycle (tests/ref/MemConf.java). G3's units
+// test_memconf.cpp (WORKER11, P2d): the memory path against ref, cycle by cycle (oracle/ref/MemConf.java). G3's units
 // (the injection unit with its read queue, the big SRAM, the write engine, the table store, HIST) driven by the same
 // seeded script as ref's, with a stand playing the GATHER engine's and the AG's read holds, the read port's queue, the
 // director's we-in FIFO, the controller's window stores, the AG's STREAM/GROUP requests, the core's send hold and the
@@ -6,7 +6,7 @@
 // injected, the table returns, the free, and the canonical streams of srq, inj, sram, sram.data, we, ts and hist, each
 // line equal to ref's.
 //
-//   make check         the fixtures in tests/memconf/ (tests/ref/memconf.sh --fixtures), also under the debug options
+//   make check         the fixtures in tests/memconf/ (oracle/ref/memconf.sh --fixtures), also under the debug options
 //   MEMCONF_LONG=DIR   every DIR/*.script.gz against its .obs.gz (memconf.sh CYCLES DIR): the long runs
 #include <cinttypes>
 #include <cstdio>

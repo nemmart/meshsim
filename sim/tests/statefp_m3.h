@@ -1,5 +1,5 @@
 // statefp_m3.h (WORKER16, G7): the canonical fingerprint of the M3 chip (C&C 1-3 as cores; AUDIT-M3 6.6-6.9; ref's side
-// tests/ref/StateFpM3.java). Every unit's stream at the end of a point, then the chip line, in StateFpM3.write's order:
+// oracle/ref/StateFpM3.java). Every unit's stream at the end of a point, then the chip line, in StateFpM3.write's order:
 // tiles 0-63 (M2's 16 units, `slot`, `rp`), C&C 1-3 (M2's 16 as cc1.* .. cc3.*, `slot`), the Tracer's five (`tr`,
 // `tr.ic`, `tr.dc`, `tr.mem`, `tr.files`, when C&C 3's peripheral 1 is the Tracer), then `cc1p`, `cc.host`, `reqbus`,
 // `cnc`, `ep`.

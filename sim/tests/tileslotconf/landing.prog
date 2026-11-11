@@ -1,4 +1,4 @@
-# tileslotconf program v1: landing (PeripheralSlotTest's group), tests/ref/tileslotconf_progs.py
+# tileslotconf program v1: landing (PeripheralSlotTest's group), oracle/ref/tileslotconf_progs.py
 tile 7
 periph test
 cycles 500

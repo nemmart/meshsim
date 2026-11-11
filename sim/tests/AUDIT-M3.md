@@ -63,7 +63,7 @@ references' D12 header carries these values.
 
 ## 1. What a segment touches
 
-**The driver**: `sim/tests/ref/M3Seg.java` runs `TracerT2.chip` exactly (Quest 160: its figures equal 159's; with every
+**The driver**: `sim/oracle/ref/M3Seg.java` runs `TracerT2.chip` exactly (Quest 160: its figures equal 159's; with every
 hook on, the same figures and the same fingerprints as with none) and reads, between cycles, ref's own counters per
 unit group (the 64 tiles, C&C 1, 2, 3) at the boot's end, the segment's start, C&C 3's exit and the end, the new units'
 statistics, and every unit's pc each cycle. The references are `sim/tests/golden-m3/cover/` (`evm.cover.csv`,
@@ -105,7 +105,7 @@ statistics, and every unit's pc each cycle. The references are `sim/tests/golden
 | `cc1` | 864 | 358 | 358 | 358 | `trap_handler`, `cc1_toast`, `cc1_trap`, `park` |
 | `cc23` | 198 | 34 | 34 | 34 | `trap_handler`, `park` |
 
-**`ReplayBench`** (the D8/D15 bar, `sim-step-cost`; `sim/tests/ref/baseline.sh`): every tile replays a window preloaded
+**`ReplayBench`** (the D8/D15 bar, `sim-step-cost`; `sim/oracle/ref/baseline.sh`): every tile replays a window preloaded
 into its big SRAM in Stage B's layout (windows 0-63 of evm-zone-29, i.e. **segment 0**), the tiles booted by C&C's
 broadcast; **no Tracer, no C&C 3, no DMA, no C&C cores**. It is the replay phase of T2 only, on another segment, and
 since the tiles replay as their windows land, it is not a slice of T2's timeline either. Its numbers compare with
@@ -536,7 +536,7 @@ leaves, 880 pages in evm-zone, 3,584 in cyclone) and **the harness's big-SRAM la
 `tracer_layout.h` and every tile's `replay_layout.h`, as poked before the boot) are on the runner,
 `$DATA/w13-golden-m3/`, with their sha256 in `HASHES`. The framework's T2 harness loads those two dumps in place of
 T1's carry and the `poke`s; everything else (the boot, `CC_SEGMENT`, the checks against the delivery) it does as
-`M3Seg`. `regen.sh` regenerates and checks.
+`M3Seg`. `oracle/regen/golden-m3.sh` regenerates and checks.
 
 **The cycle numbering** (W16, 2026-11-09; every comparison depends on it): the framework's first cycle is 1, ref's is
 0, and the framework's cycle F does ref's cycle F - 1 (its units read ref's t as `now() - 1`). So between cycles the

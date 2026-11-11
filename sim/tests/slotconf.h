@@ -1,4 +1,4 @@
-// slotconf.h: the peripheral slot's conformance, the C++ side (WORKER15): a SlotConf script (tests/ref/SlotConf.java)
+// slotconf.h: the peripheral slot's conformance, the C++ side (WORKER15): a SlotConf script (oracle/ref/SlotConf.java)
 // replayed on two units::SlotCore (tile 5: the test peripheral; tile 6: the replayer), with SlotConf's observations,
 // character for character.
 #pragma once

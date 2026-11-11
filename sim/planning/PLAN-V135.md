@@ -4,6 +4,10 @@ Agreed with the owner, 2026-11-10 (D38). **v1.35 is meshsim's C++ implementation
 improvements, only its docs, build scripts and cleanup, and **no Java**, provided v1.35 has an equivalent for
 everything v1.3's Java meshsim had. The Java stays available as v1.3 (`v1.3/`, and `sim/ref` as the oracle).
 
+**Refined by D40-D41 (owner): the simulator and everything that runs it are off Java; the offline input tools
+(`gold`, jumpmap, KeyGen, SplitSets, ConvertDelivery, SyntheticDelivery) stay Java in v1.35's own `pipeline/` folder.
+So the inventory's P3 and P9 are dropped; the pieces are P1, P2, P4-P8.**
+
 **Refined by D39 (owner, 2026-11-10): everything off Java, even if it takes several workers, and v1.35 a stand-alone
 directory with all the source needed to build and run everything.** Every gap is ported (no "point to v1.3"); each port
 is checked against v1.3 as M1-M3's units were.
@@ -21,9 +25,22 @@ is checked against v1.3 as M1-M3's units were.
    W17's 128-segment chains. Then `sim/` is copied, without `sim/ref`, to a frozen `v1.35/`, with its row in the
    top-level README.
 
+## Pieces (from `V135-INVENTORY.md`, after D40-D41)
+
+| wave | piece | worker |
+|---|---|---|
+| 1 | P1, the stand-alone tree (data files, firmware sources and builds, the mesh.h generator, `pipeline/`, `sim/oracle/`) | W19 |
+| 1 | P2, the machine harness, the checker, reset, `Config`'s used fields, PhaseLog, the suite runner | W20 |
+| 1 | P7a, the Tracer's rig and directed cases, MemorySystemTest, RvcTest (C21-C23) | W21 |
+| 2 | P4 (network, memory, engine suites), P5 (control suites, programs, recipes), P6 (the sort and its kit), P7b (Stage B, the acceptance kit) | after P2 |
+| 3 | P8, docs, build, cleanup; then the freeze check | last |
+
 ## Status
 
 | worker | state |
 |---|---|
 | W17 | **done**, closed 2026-11-10 (`sessions/WORKER17-REPORT.md`): all 128 segments of both workloads pass, back to back (Quest 174: evm 878.5 s, cyclone 849.7 s of simulation, 0.30 µs per cycle); part of the freeze check |
-| W18 | the inventory: prompt written 2026-11-10 (`sessions/WORKER18/PROMPT.md`) |
+| W18 | the inventory and porting plan: `V135-INVENTORY.md` (merged); the owner's rulings D40-D41 |
+| W19 | P1: prompt written 2026-11-10 |
+| W20 | P2: prompt written 2026-11-10 |
+| W21 | P7a: prompt written 2026-11-10 |

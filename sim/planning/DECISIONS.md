@@ -189,3 +189,10 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   **every offline input tool stays Java in `pipeline/`, whatever its size** (KeyGen, SplitSets, ConvertDelivery,
   SyntheticDelivery with `gold` and jumpmap). Only what the simulator's build, suites and testing runs need is ported. Python: avoided where possible
   (shell plus C++ for glue).
+- **D41. The inventory's rulings** (owner, 2026-11-10; W18's questions). Q1 and Q2: D40 (`gold`, jumpmap and every
+  offline input tool stay Java in v1.35's `pipeline/`; Python avoided). **Q3:** port the generic run-comparison tools
+  (SortCompare, logdiff); drop the old version-specific verify kits. **Q4:** port only the `Config` fields some suite,
+  kit, sweep or documented option uses; list the dropped ones in the docs. **Q5:** `Chip.digest` is replaced by the
+  canonical state fingerprint. **Q6:** the 128-segment chain is TracerT1's equivalent. **Q7:** moot (SyntheticDelivery
+  stays Java, as it is). **Q8:** everything that needs Java or `sim/ref` moves into `sim/oracle/`, excluded at the
+  freeze.

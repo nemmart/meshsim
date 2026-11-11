@@ -172,3 +172,10 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   than updating all its docs and build scripts and cleanup. **No Java in v1.35**, provided it has an equivalent for
   everything v1.3's Java meshsim had (the Java stays available as v1.3). `sim/` is v1.35's work-in-progress folder; at
   the freeze it is copied, without `sim/ref`, to a frozen `v1.35/`. The plan is `PLAN-V135.md`.
+- **D39. v1.35 is entirely off Java, and stand-alone** (owner, 2026-11-10; refines D38). **Every capability of v1.3's
+  Java meshsim gets a non-Java equivalent in v1.35, even if that takes several workers**: no "point to v1.3". And
+  **v1.35 is a stand-alone directory with all the source needed to build and run everything**: the simulator, every
+  suite, driver and tool, the firmware sources (with prebuilt images), the data files, the input tools, the outputs
+  users read. External toolchains (a C++ compiler, the RISC-V cross-compiler) are documented prerequisites, not
+  copied. `sim/ref` and `v1.3/` stay outside v1.35 as the oracle the ports are checked against; nothing in v1.35 reads
+  them.

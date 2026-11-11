@@ -67,19 +67,33 @@ Commit and push after each step; each step checked against `ref`.
   boot with C&C 1-3 as cores, line for line (`tests/mach/machself.out`), gcc and clang, debug and release. The owner's
   protected tests (test_chip, test_sort, test_t2_harness, test_cc_units, test_golden) unchanged, clang release and debug.
 
+- **Step 1, the coreless machine and Net**: MachConfig::defaults (coreless, the GATHER engine a drain), TileRef's
+  set_*/pulse/remaining/mem_idle/ts_busy and the table and HIST pokes, Chip::quiescent, A2A::load and run, Net (at, rd
+  with the test read clients, the directors' logs, late, run_all, max_router_peak). Checked by `oracle/ref/NetSelf.java`
+  (`netself.sh`; fixture `tests/mach/netself.out`): fan-in, a stream, a broadcast, a self-send, the drain, the read
+  clients, the coreless a2a (seeds -1 and 4, gaps 0 and 8), line for line, gcc and clang, debug and release. The
+  protected tests the same as main's (e563634, a worktree) in clang release and debug; every clang-release test passes.
+  Two findings on the way: the register block's state between cycles is ref's end of the cycle before (its endCycle of
+  t runs at t + 1), so harness reads go through `block_at_end` and harness writes wait for that endCycle (TileCtl's
+  HostWrites); and the router's FIFOs are its own state, not ports, so `quiescent` reads them.
+- **Not yet:** Net::cnc_send (ref's cncSends), Cc::received and ready_bits, TileRef::quiescent (use Chip::quiescent).
+
 ## What the body needs outside `sim/tests/` (additions only; the owner hears if any changes an existing operation)
 
 - **Framework (done):** `Sim::wake_all()` and `Sim::in_flight()` (config.h, config.cpp, threads.h/.cpp; marked
   "W20 (harness-only)"). `wake_all` is ref's `wakeAll` at the start of `run`/`runUntil`; safe by the step-all rule: an
   unasked step with nothing delivered changes nothing); `in_flight` is the data-in-motion half of ref's `quiescent`.
-- **Units** (no owner; optional parts, declared only on the harness's machines, nothing in the loop otherwise):
+- **Units (done; approved 2026-11-10; each marked "W20 (harness-only)", off unless the harness sets it):**
   - `add_g1`: a coreless tile (ref's `core.enabled = !coreless`: the core never executes) and the GATHER engine as a
     drain (`realResponder` off);
   - the injection unit: a harness input into the read-return holding register (`Net.at`) and harness-fed read-queue
     clients (`Net.rd`, `testReadClients`);
   - the director: an arrival log sized at configuration (`dir.log`; fatal when exceeded);
-  - `TileCtl`: the harness's register writes (DMA_CONFIG, the record base, TILE_PULSE's start) applied in its level-0
-    step, so the engines see them in the next cycle as ref's direct pokes do.
+  - `TileCtl`: the harness's register writes (DMA_CONFIG, the record base, TILE_PULSE's start, the write counters)
+    applied in its step right after its endCycle, so the engines see them in the next cycle as ref's direct pokes do;
+  - `TableStore`, `HistStore`: a harness poke of PTR or HIST republished on `ptr_view` / `out` at the next step.
+- **Framework (done):** `Sim::in_flight(shifted)`: unit types whose Link words due at now() are ref's previous cycle
+  (the register block; the core's port B) aren't counted; with no types every word counts (the default).
 - **C&C's queue between cycles:** CncProgram's vectors reserved at build, steps appended between cycles behind a
   release point (cnc.h's mechanism), `call` and `at_all_ready` run from `Cnc::call_at` after the cycle they ran in.
 - **Open for P5:** CnC's `waitUntil(predicate)` (a lambda evaluated inside C&C's step in ref) is not declared yet:

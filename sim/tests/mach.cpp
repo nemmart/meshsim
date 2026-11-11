@@ -237,19 +237,22 @@ bool Chip::run_until(const std::function<bool()>& cond, uint64_t max) {
 }
 bool Chip::drain(uint64_t max) { return run_until([this] { return quiescent(); }, max); }
 // ref's Chip.quiescent: nothing in motion anywhere (the framework's ports: links, FIFOs, holds, the K line, the
-// endpoints), and every tile's units idle as ref's Tile.quiescent judges them (the AG, the table stores, the read
-// queue, big SRAM's area queues, the write engine's stage, the gather engine, the read port).
+// endpoints), and every tile's units idle as ref's Tile.quiescent judges them (the router's FIFOs, the AG, the table
+// stores, the read queue, big SRAM's area queues, the write engine's stage, the gather engine, the read port).
 bool Chip::quiescent() const {
     sim::Sim& s = *impl_->sim;
-    const bool dbg = std::getenv("MACH_QDEBUG") != nullptr;
-    if (s.in_flight(impl_->shifted)) { if (dbg) std::fprintf(stderr, "cycle %lld: in flight\n%s", (long long)cycle(), s.sleepers().c_str()); return false; }
+    if (s.in_flight(impl_->shifted)) return false;
     for (unsigned k = 0; k < 64; k++) {
         TileRef p = const_cast<Chip*>(this)->tile(k);
+        for (const auto& f : p.unit<units::Router>("router").q) if (f.count) return false;   // the router's own FIFOs
+        if (p.unit<units::AddrGen>("ag").running || p.ts_busy()) return false;
         const units::Injection& in = p.unit<units::Injection>("inj");
-        const char* why = p.unit<units::AddrGen>("ag").running ? "ag" : p.ts_busy() ? "ts" : (in.tok.reads || in.rs.nxt_v || in.rs.cur_v) ? "srq"
-            : p.unit<units::BigSram>("sram").busy ? "sram" : p.unit<units::WriteEngine>("we").count ? "we" : p.unit<units::Gather>("gather").left ? "gather"
-            : (!in.rs.feed || !in.rs.feed->clients) && p.unit<units::TileCore>("core").rp_stored != in.rs.rp_injected_n ? "rp" : nullptr;
-        if (why) { if (dbg) std::fprintf(stderr, "cycle %lld: tile %u %s\n", (long long)cycle(), k, why); return false; }
+        if (in.tok.reads || in.rs.nxt_v || in.rs.cur_v) return false;
+        if (p.unit<units::BigSram>("sram").busy) return false;
+        if (p.unit<units::WriteEngine>("we").count) return false;
+        if (p.unit<units::Gather>("gather").left) return false;
+        // the read port (ref's readPort.idle): its results stored and not yet injected (none under the test clients)
+        if ((!in.rs.feed || !in.rs.feed->clients) && p.unit<units::TileCore>("core").rp_stored != in.rs.rp_injected_n) return false;
     }
     return true;
 }

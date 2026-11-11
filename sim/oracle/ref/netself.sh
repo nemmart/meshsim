@@ -17,6 +17,6 @@ for d in "$SIM/tests/golden-m2/images" "$SIM/tests/m3-images"; do cp "$d"/*.bin 
 (cd "$B/run" && java -Xss16m -cp "$B/cls" NetSelf) > "$B/out" || { echo "netself: ref's run failed"; cat "$B/out"; exit 1; }
 case "${1:-}" in
   --fixtures) mkdir -p "$(dirname "$FIX")"; cp "$B/out" "$FIX"; echo "wrote $FIX"; cat "$FIX";;
-  --check) cmp "$B/out" "$FIX" && echo "netself: ref's Mach equals the committed fixture";;
+  --check) cmp "$B/out" "$FIX" && echo "netself: ref's Net equals the committed fixture";;
   *) echo "usage: netself.sh --fixtures|--check"; exit 2;;
 esac

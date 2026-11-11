@@ -56,3 +56,15 @@ Commits: (1) oracle script and fixtures, (2) `suite_t.h` + MemorySystemTest, (3)
 - **Q2 (W19/integrator).** MemorySystemTest's hand-ported CHECKs in `test_tracer_parts.cpp` duplicate the new suite.
   Remove them there (the suite is the stand-alone one), or leave W14's file alone and let W19's oracle move decide?
 - **Q3.** `Tracer::reset()` is reached by no v1.3 case (W14; inventory B16). I note it as unreached, not add a case.
+
+## Log
+
+- **2026-11-11, go-ahead** (owner): the plan as written. Q1: build on W20's `T` harness (`suite.h`), published first;
+  step 1 meanwhile; anything that doesn't fit goes to W20 through the owner. Q2: `test_tracer_parts.cpp` left as is;
+  duplicates go in P8. Q3: `Tracer::reset()` noted as unreached, as v1.3. Java-side scripts in `tests/ref/` (W19 moves
+  them to `sim/oracle/`).
+- **Step 1 done.** `tests/ref/tracersuites.sh` (`--fixtures`, `--check`) and `GoldRvc.java`; fixtures in
+  `tests/tracersuites/`: `memsys.log` (56 passed), `rvc.log` (49,157 passed; 49,152 compressed encodings, 2,472 with no
+  valid form), `tracer.log` (180 passed, the loop's and the output path's lines), `rvc-gold.txt.gz` (49,152 lines),
+  `PROVENANCE`. `--check` regenerates them identically. ~11 s. The container had a JRE only: the JDK (21.0.13) came
+  from apt; nothing about the version shows in the logs.

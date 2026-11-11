@@ -68,3 +68,11 @@ Commits: (1) oracle script and fixtures, (2) `suite_t.h` + MemorySystemTest, (3)
   valid form), `tracer.log` (180 passed, the loop's and the output path's lines), `rvc-gold.txt.gz` (49,152 lines),
   `PROVENANCE`. `--check` regenerates them identically. ~11 s. The container had a JRE only: the JDK (21.0.13) came
   from apt; nothing about the version shows in the logs.
+- **The rig** (`tests/tracer_rig.h`, `.cpp`), ahead of W20's `suite.h` (it doesn't need it). TracerRig.java member for
+  member; the window loop, `step` and `drain_port` under the allocation hook (fixed rings, preallocated DMA buffers);
+  `java_hash_order` reproduces HashMap/HashSet iteration for Long keys (the image's pages and the owned set are put in
+  that order, which decides FileStore's addresses and so the caches' sets); `mem_summary` reproduces
+  `MemorySystem.summary()` (Java's `%.2f` rounds HALF_UP on the decimal digits; done that way). A scratch driver of
+  TracerTest's loop case printed `ref`'s `loop:` line exactly (34 rows, 550 cycles, the stalls, the summary), clang
+  release and debug (ASan/UBSan), gcc compiles it. Not yet in the build: the suites that link it wait for `suite.h`.
+  Local tools: the container had neither a JDK nor clang; both from apt (JDK 21.0.13, clang 18.1.3, gcc 13.3).

@@ -249,9 +249,9 @@ void attach_store(Machine& m, std::unique_ptr<FileStore> store) {
 std::unique_ptr<Machine> build_machine(const uint8_t* domains, sim::Options opt, std::string& err,
                                        const units::reqbus::ReqBusConfig* reqbus) {
     auto m = std::make_unique<Machine>();
-    m->hops = units::load_hops("ref/meshsim/hops.txt");
+    m->hops = units::load_hops("data/hops.txt");
     std::string rom;
-    if (!read_file("ref/meshsim/sw/bootrom.hex", rom)) { err = "cannot read ref/meshsim/sw/bootrom.hex"; return nullptr; }
+    if (!read_file("fw/boot/bootrom.hex", rom)) { err = "cannot read fw/boot/bootrom.hex"; return nullptr; }
     for (size_t p = 0; p < rom.size();) {
         size_t e = rom.find('\n', p);
         if (e == std::string::npos) e = rom.size();

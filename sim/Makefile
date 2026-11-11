@@ -2,7 +2,8 @@
 #
 #   make             the release build with clang (build/clang-release/; D18: release and timing builds use clang -O2)
 #   make debug       the debug build with clang (ASan + UBSan)
-#   make check       every test, debug and release, with gcc and clang (D18: both compilers in both builds)
+#   make check       the copies from v1.3 (tools/check_copies.sh), then every test, debug and release, with gcc and
+#                    clang (D18: both compilers in both builds)
 #   make run         every test of one build: make run CC_NAME=gcc MODE=debug
 #   make conformance the port-conformance matrix: ref's side (tests/ref/portconf.sh, needs a JDK) against the C++ ports
 #   make clean
@@ -63,6 +64,7 @@ run: $(TESTS) $(SKETCH)
 	@set -e; for t in $(TESTS); do ./$$t; done
 
 check:
+	@sh tools/check_copies.sh
 	@set -e; for c in $(COMPILERS); do for m in debug release; do \
 	  echo "==== $$c $$m"; $(MAKE) --no-print-directory CC_NAME=$$c MODE=$$m run; done; done; \
 	echo "==== make check: all passed ($(COMPILERS); debug, release)"

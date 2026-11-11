@@ -56,7 +56,7 @@ Out run(unsigned parts, sim::Options opt) {
     test::RunSpec rs; rs.name = "cc_ping"; rs.dir = "tests/m3-images"; rs.image = "cc_ping";
     test::Images im;
     if (!test::load_images(rs, im, o.err)) return o;
-    const Hops hops = load_hops("ref/meshsim/hops.txt");
+    const Hops hops = load_hops("data/hops.txt");
     NetConfig nc;
     TileConfig tc = test::tile_config(0);
     std::vector<uint32_t> mem(67 * 2 * MEM_WORDS, 0);

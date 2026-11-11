@@ -88,7 +88,7 @@ std::string check(const char* name, uint64_t through, const Setup& su, const std
     test::RunSpec rs; rs.name = name; rs.dir = "tests/golden-m2/images"; rs.image = name;
     test::Images im; std::string err;
     if (!test::load_images(rs, im, err)) return err;
-    const Hops hops = load_hops("ref/meshsim/hops.txt");
+    const Hops hops = load_hops("data/hops.txt");
     // C&C's program: Mach.boot, then M2Prog's sequence
     NetConfig nc;
     CncProgram prog;
@@ -271,7 +271,7 @@ TEST(tile_router_overflow_steps_the_register_block) {
     test::RunSpec rs; rs.name = "wfi"; rs.dir = "tests/golden-m2/images"; rs.image = "wfi";
     test::Images im; std::string err;
     CHECK(test::load_images(rs, im, err));
-    const Hops hops = load_hops("ref/meshsim/hops.txt");
+    const Hops hops = load_hops("data/hops.txt");
     TileConfig tc = test::tile_config(0);
     std::vector<uint32_t> mem(64 * 2 * MEM_WORDS, 0);
     G1Ctx gx;
@@ -332,7 +332,7 @@ struct RpRun { uint32_t x4, x5, d0, d1, errors; uint64_t stored, dropped, accept
 RpRun read_port_run(unsigned depth) {
     static const uint32_t rom[] = {0x80000093, 0x20000113, 0x0820a023, 0x04000193, 0x0630ae23, 0x04400193, 0x0630ae23,
                                    0x07c0a203, 0x0800a283, 0x10500073, 0x0000006f};
-    const Hops hops = load_hops("ref/meshsim/hops.txt");
+    const Hops hops = load_hops("data/hops.txt");
     std::vector<uint32_t> mem(64 * 2 * MEM_WORDS, 0);
     SramBlocks blocks;
     G1Ctx gx;

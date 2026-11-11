@@ -72,7 +72,7 @@ struct SortRun {
     std::unique_ptr<sim::Sim> m;
     uint64_t B = 0;
 
-    SortRun(const Args& a, sim::Options opt, const std::string& part) : hops(load_hops("ref/meshsim/hops.txt")) {
+    SortRun(const Args& a, sim::Options opt, const std::string& part) : hops(load_hops("data/hops.txt")) {
         test::RunSpec rs; rs.name = "sort"; rs.dir = kImages; rs.image = "sort";
         std::string err;
         if (!test::load_images(rs, im, err)) FATAL("bench_sort: %s", err.c_str());

@@ -48,7 +48,7 @@ constexpr uint64_t mask_lo(uint64_t lo, unsigned size) { return size == SIZE_32 
 constexpr uint64_t mask_hi(uint64_t hi, unsigned size) { return size == SIZE_128 || size == SIZE_UNDEF ? hi : 0; }
 }  // namespace lw
 
-// The hops table (spec 4.6; ref's Hops.java): hops[k] = (b_k, a_k), supplied as configuration (sim/ref/meshsim/hops.txt),
+// The hops table (spec 4.6; ref's Hops.java): hops[k] = (b_k, a_k), supplied as configuration (sim/data/hops.txt),
 // validated as ref validates it (|b|, |a| <= 4; k = 8a + b mod 64; minimal).
 struct Hops {
     int8_t b[64] = {}, a[64] = {};

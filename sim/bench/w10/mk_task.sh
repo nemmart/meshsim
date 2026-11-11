@@ -1,9 +1,9 @@
 #!/bin/bash
 # mk_task.sh NNN-name BODY "header lines" NAME=REV [NAME=REV ...] > task.sh (WORKER10): a self-contained Quest task with an
 # embedded kit holding sim/ (Makefile, src, tests, bench, tools) at each named revision, unpacked to $W/kit/NAME/sim, so
-# a before/after pair is built and run in one task. It also carries what the tests and benches read from ref/
-# (hops.txt, sw/ with the boot ROM, test/ with the RISC-V test images) and sim/fw (the schedules), checked present, so
-# a golden verdict never fails for the kit (Quest 149). KIT_EXCLUDE (git pathspecs, e.g. ":(exclude)sim/tests/golden-m2") trims it, unchecked.
+# a before/after pair is built and run in one task. It also carries the data files the tests and benches read (from
+# W19's P1 on: sim/data, sim/fw with the boot ROM, the RISC-V test images and the schedules; at older revisions, ref/'s
+# hops.txt, sw/ and test/ with sim/fw), checked present, so a golden verdict never fails for the kit (Quest 149). KIT_EXCLUDE (git pathspecs, e.g. ":(exclude)sim/tests/golden-m2") trims it, unchecked.
 # The body (sourced) sees KITS ("NAME ..."), sec, verdict, run (common.inc)
 # and the machine (sim/tools/machine.sh of the last revision, D21). Run from inside the repo; commit first.
 set -eu
@@ -14,11 +14,17 @@ NAMES=; DESC=
 for nv in "$@"; do
   n=${nv%%=*}; r=$(cd "$TOP" && git rev-parse --short "${nv#*=}")
   mkdir -p "$KIT/k/$n"
-  ( cd "$TOP" && git archive --format=tar "$r" sim/Makefile sim/src sim/tests sim/bench sim/tools sim/ref/meshsim/hops.txt \
-      sim/ref/meshsim/sw sim/ref/meshsim/test sim/fw ${KIT_EXCLUDE:-} ) | tar -xf - -C "$KIT/k/$n"
+  if (cd "$TOP" && git cat-file -e "$r:sim/data/hops.txt" 2>/dev/null); then         # W19's stand-alone tree
+    DATA="sim/data sim/fw sim/COPIES.sha256"
+    NEED="sim/fw/riscv-tests/bin sim/fw/boot/bootrom.hex sim/data/hops.txt sim/data/tables"
+  else                                                                               # older revisions: ref/'s files
+    DATA="sim/ref/meshsim/hops.txt sim/ref/meshsim/sw sim/ref/meshsim/test sim/fw"
+    NEED="sim/ref/meshsim/test/riscv/bin sim/ref/meshsim/sw/bootrom.hex sim/ref/meshsim/hops.txt sim/fw/wfi_go.tb"
+  fi
+  ( cd "$TOP" && git archive --format=tar "$r" sim/Makefile sim/src sim/tests sim/bench sim/tools $DATA \
+      ${KIT_EXCLUDE:-} ) | tar -xf - -C "$KIT/k/$n"
   # every input a test or bench reads must be in the kit (a golden verdict must never fail for the kit): checked here
-  for need in sim/ref/meshsim/test/riscv/bin sim/ref/meshsim/sw/bootrom.hex sim/ref/meshsim/hops.txt sim/tests/golden/RUNS \
-              sim/tests/golden-m2/images sim/tests/golden-m2/wfi.fp sim/tests/portconf sim/fw/wfi_go.tb; do
+  for need in $NEED sim/tests/golden/RUNS sim/tests/golden-m2/images sim/tests/golden-m2/wfi.fp sim/tests/portconf; do
     [ -e "$KIT/k/$n/$need" ] || [ -n "${KIT_EXCLUDE:-}" ] || { echo "mk_task.sh: the kit for $n lacks $need" >&2; exit 1; }
   done
   NAMES+="${NAMES:+ }$n"; DESC+="${DESC:+, }$n $r"; LAST=$n

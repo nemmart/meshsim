@@ -34,7 +34,7 @@ namespace {
 
 const std::string kDir = "tests/routerconf/";
 
-Hops hops() { return load_hops("ref/meshsim/hops.txt"); }
+Hops hops() { return load_hops("data/hops.txt"); }
 
 // ---- the script ----------------------------------------------------------------------------------------------------
 struct Ev { uint64_t t; uint8_t port; Word w[3]; };   // port: 0-3 a link, 4 the injection, 5 C&C's hold, 6 a core send

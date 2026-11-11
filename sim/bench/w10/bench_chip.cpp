@@ -64,7 +64,7 @@ void prepare(World& w, const std::string& name) {
     test::RunSpec rs; rs.name = name; rs.dir = "tests/golden-m2/images"; rs.image = name;
     std::string err;
     if (!test::load_images(rs, w.im, err)) FATAL("bench_chip: %s", err.c_str());
-    w.hops = load_hops("ref/meshsim/hops.txt");
+    w.hops = load_hops("data/hops.txt");
     w.prog.load_words(lw::BROADCAST, 0x01000000, w.im.code.data(), w.im.code.size());
     w.prog.load_words(lw::BROADCAST, w.im.data_at, w.im.data.data(), w.im.data.size());
     const uint32_t entry = w.im.entry;

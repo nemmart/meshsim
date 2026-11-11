@@ -1,0 +1,16 @@
+FAIL [] a failure before any group
+FAIL [checks] fails at 42 with a value -7
+FAIL [eq] unequal: expected 5 got 6
+FAIL [eq] a word against -1: expected -1 got 4294967295
+FAIL [eq] the extremes: expected -9223372036854775808 got 9223372036854775807
+FAIL [eq] an int widened: expected -2147483648 got 2147483648
+FAIL [eqo] a list against the empty one: expected [0, 1] got []
+FAIL [eqo] strings: expected x got y
+FAIL [eqo] null against a string: expected null got z
+FAIL [stops] runs on: no exception
+FAIL [stops] ub runs on: ran on, no undefined-behavior stop
+FAIL [stops] names the wrong unit: the stop doesn't name 'gather': undefined behavior at cycle 9, tile 1, read port: a misaligned read (DECISIONS-v1.25 s8: meshsim stops; the hardware does nothing special)
+PENDING (phase 2): a part of this suite
+FAIL [] the empty group
+TSelf: 7 passed, 13 failed
+exit 1

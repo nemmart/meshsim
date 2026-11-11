@@ -60,6 +60,10 @@ $(B)/%.o: %.cpp
 $(B)/test_%: $(B)/tests/test_%.o $(HARNESS) $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 
+# W20: suite.h (Java's T for the ported suites): its own test links it.
+$(B)/test_suite: $(B)/tests/test_suite.o $(B)/tests/suite.o $(HARNESS) $(LIB_OBJ)
+	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
+
 run: $(TESTS) $(SKETCH)
 	@set -e; for t in $(TESTS); do ./$$t; done
 
@@ -98,3 +102,5 @@ include bench/w14/w14.mk
 -include $(shell find build -name '*.d' 2>/dev/null)
 include src/units/cc.mk
 include tests/chain.mk
+include tests/tracersuites.mk
+include tests/mach.mk

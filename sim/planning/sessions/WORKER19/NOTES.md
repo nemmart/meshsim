@@ -74,3 +74,7 @@ v1.3's, every copied file byte-identical to its `ref/` original (sha256).
   `pipeline/check.sh`: 47 outputs (uniform at 16,384 and 65,536, the hashes golden-m2/HASHES records for the sort's
   reference runs; every key and split set at 2,000) equal to v1.3's, run from a copy holding only `pipeline/`;
   `oracle/pipeline_crosscheck.sh` reproduces every expected hash with sim/ref's tools.
+- **Step 4 prepared, not run** (waiting for the owner's word that W20 has pushed): `WORKER19/step4.sh` does the whole
+  move mechanically (run from the repo top). Dry run on a scratch clone: 33 renames, 99 files repointed, no
+  `tests/ref` left outside `ref/` and `planning/`; from their new places `oracle/regen/fp-m1.sh --check` (67 SAME),
+  `oracle/regen/g1-replay.sh --check` (SAME) and `oracle/ref/routerconf.sh --check` pass.

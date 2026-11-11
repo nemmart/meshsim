@@ -372,6 +372,14 @@ public:
     // W10, the between-cycles wake (W9's driver): between runs only (fatal during one), the named unit is stepped at the
     // next cycle run, now(), exactly, in whichever domain it sits (as a timed wake due then; its own wakes are unchanged).
     void wake(const std::string& unit);
+    // W20 (harness-only; P2): every unit stepped at the next cycle run, as ref's Chip.wakeAll before run/runUntil (the
+    // harness may have changed any unit between cycles). Safe by the step-all rule (a step nobody asked for, with nothing
+    // delivered, changes nothing). Between runs only.
+    void wake_all();
+    // W20 (harness-only; P2): data in motion anywhere, between runs: an input holding data (a Link word visible, a Fifo
+    // not empty, a Hold occupied) or a put still on its way (a Link, Fifo, credit Fifo or Hold entry in a delivery
+    // bucket). Regs, Wires, RegFiles, Counts and credit returns are state, not motion. For ref's Chip.quiescent.
+    bool in_flight() const;
     // W10 (measurement): with Options::time_threads, a split machine's phases as shares of its threads' time over the runs
     // ("compute imbalance barrier drain publish clear end other"); "one domain" otherwise.
     std::string thread_times() const;

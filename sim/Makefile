@@ -101,3 +101,4 @@ include bench/w14/w14.mk
 include src/units/cc.mk
 include tests/chain.mk
 include tests/tracersuites.mk
+include tests/mach.mk

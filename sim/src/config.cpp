@@ -880,6 +880,24 @@ void Sim::wake(const std::string& name) {
     if (it == impl_->by_name.end()) FATAL("Sim::wake: no unit named '%s'", name.c_str());
     impl_->e.mark(it->second);       // ready for the next cycle's run phase (nothing clears it before)
 }
+// W20 (harness-only; P2): Sim::wake_all, Sim::in_flight (config.h).
+void Sim::wake_all() {
+    if (impl_->running) FATAL("Sim::wake_all during a run: between runs only");
+    if (impl_->threads) return impl_->threads->wake_all();
+    for (uint32_t k = 0; k < impl_->e.ninst; k++) impl_->e.mark(k);
+}
+bool Sim::in_flight() const {
+    if (impl_->running) FATAL("Sim::in_flight during a run: between runs only");
+    if (impl_->threads) return impl_->threads->in_flight();
+    const Engine& e = impl_->e;
+    for (uint32_t k = 0; k < e.ninst; k++) if (e.mask[k] & ~e.edges[k]) return true;
+    for (uint32_t wi = 0; wi < e.nwheels; wi++) {
+        const Wheel& wh = e.wheels[wi];
+        if (wh.kind != Kind::link && wh.kind != Kind::fifo && wh.kind != Kind::credit && wh.kind != Kind::hold) continue;
+        for (uint32_t b = 0; b <= wh.mask; b++) if (wh.buckets[b].count()) return true;
+    }
+    return false;
+}
 Cycle Sim::stop_cycle() const {
     if (!impl_->threads) return impl_->e.stop_at;
     Cycle c = kNoCycle;

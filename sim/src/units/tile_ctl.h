@@ -89,6 +89,22 @@ struct TileCtl {
     bool ovf_event = false;            // `ovf` declared: ROUTER_OVF arrives as an event (D29)
     bool g4 = false;                   // G4's inputs declared (the tile has the read side and G4's engines)
     bool slot = false;                 // W15: the peripheral slot's RegFile declared
+    // W20 (harness-only; P2): ref's Tile.set* and pulse from the harness, between cycles (sim/tests/mach.h). They take
+    // effect at the block's next step, after its endCycle of the cycle just run (ref's pokes follow that cycle's end),
+    // then publish as any change does. `host_on` is set by the harness only; `host.mask` says which fields are pending.
+    struct HostWrites {
+        enum : uint32_t { DMA_CONFIG = 1, RECORD_BASE = 2, STARTS = 4, REMAINING = 8 };   // REMAINING << c for counter c
+        uint32_t mask = 0, dma_config = 0, record_base = 0, starts = 0, remaining[8] = {};
+    };
+    bool host_on = false;
+    HostWrites host;
+    void apply_host() {
+        if (host.mask & HostWrites::DMA_CONFIG) s.dma_config = host.dma_config;
+        if (host.mask & HostWrites::RECORD_BASE) s.record_base = host.record_base;
+        if (host.mask & HostWrites::STARTS) s.dma_starts += host.starts;
+        for (unsigned k = 0; k < 8; k++) if (host.mask & HostWrites::REMAINING << k) s.remaining[k] = host.remaining[k];
+        host = HostWrites{};
+    }
 
     TileCtl(sim::Ports& p, const RegBlockState& initial, bool router_ovf_event = false, bool g4_ = false, bool slot_ = false)
         : s(initial), ovf_event(router_ovf_event), g4(g4_), slot(slot_) {
@@ -145,6 +161,7 @@ struct TileCtl {
         }
         if (slot) s.slot_live = c.read(slot_win, Win::R_LIVE);   // W15: liveEvents(t), liveErrors(t), as ref's view at t
         s.end_cycle(c.now() - 1, in);
+        if (host_on && host.mask) apply_host();                // W20 (harness-only)
         if (g4) c.drive(ag_start, s.dma_starts);
         // only the registers that changed (W12, D31): the same register file, without 33 writes a step
         for (uint64_t m = s.publish(pub); m; m &= m - 1) { const unsigned r = unsigned(__builtin_ctzll(m)); c.write(regs, r, pub[r]); }
@@ -263,6 +280,9 @@ struct TileCore {
     uint8_t rp_tile = 0;
     unsigned rp_depth = 64;
     uint64_t rp_stored = 0, rp_dropped = 0, rp_violations = 0;
+    // W20 (harness-only; P2): ref's coreless test machine (Config.coreless, `core.enabled = false`): the core never
+    // runs; port B's writes still land in its memories (ref's ControllerMemories does that apart from the core).
+    bool coreless = false;
 
     TileCore(sim::Ports& p, const Rv32& initial, unsigned tile = 0, unsigned read_port_depth = 64, bool slot_ = false,
              bool receiver_ = false, bool done_gate_ = true)
@@ -377,6 +397,7 @@ struct TileCore {
             if (rv.stop == Stop::running) apply_port_b(c.peek(port_b));
             c.take(port_b);
         }
+        if (coreless) return sim::Wake::none();              // W20 (harness-only)
         Env e{c, *this};
         uint64_t next = rv.step(e, c.now());
         return next == Rv32::kNever ? sim::Wake::none() : sim::Wake::at_cycle(next);

@@ -73,6 +73,7 @@
 #include "config.h"
 #include "sim.h"
 #include "units/chip.h"
+#include "units/regblock.h"
 
 namespace mach {
 
@@ -114,7 +115,7 @@ struct MachConfig {
     bool log_trace = false;            // the TRACE store log (8.15, H6) [step 4]
     // ---- the harness ----
     std::vector<std::string> image_dirs;   // Mach::Image's search path (empty: the default above)
-    uint32_t log_capacity = 1u << 16;      // Net: director-log entries per tile (fatal when exceeded, never grows)
+    uint32_t log_capacity = 1u << 14;      // Net: director-log entries per tile (fatal when exceeded, never grows)
     uint32_t host_capacity = 4096;         // each controller's host-port queue (packets)
     unsigned threads = 1, parts = 1;       // the framework's split (row bands); a suite's default is one thread
 
@@ -194,6 +195,8 @@ public:
     int64_t exit_value() const;                             // TileControl.simExitValue (SIM_EXIT, 8.15)
     std::string halt_report() const;                        // Controller.haltReport()
 
+    units::RegBlockState block() const;                     // the register block as ref has it now (mach.cpp)
+
 private:
     Chip* c_;
     unsigned k_;
@@ -272,6 +275,7 @@ public:
 
     struct Impl;                                            // mach.cpp: the machine, its memories, the harness units
     Impl& impl() { return *impl_; }
+    const Impl& impl_const() const { return *impl_; }
 private:
     MachConfig cfg_;
     std::unique_ptr<Impl> impl_;
@@ -336,7 +340,7 @@ public:
     explicit Net(const MachConfig& cfg);
     static MachConfig cfg(int64_t shuffle);                 // Net.cfg: defaults(), check_unexpected and check_errors off
     Chip c;
-    int64_t late = 0;                                       // packets taken later than scheduled (must stay 0)
+    int64_t late() const;                                   // packets taken later than scheduled (must stay 0)
 
     // Net.at: tile's packet for injection at cycle T (nondecreasing T per tile): 64 bits on counter 1, or in full
     void at(unsigned tile, int64_t T, unsigned dst, unsigned mode, uint32_t addr, uint64_t payload);

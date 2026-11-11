@@ -7,6 +7,8 @@
 #include "harness.h"
 #include "mach.h"
 #include "units/ag.h"
+#include "units/gather.h"
+#include "units/linkword.h"
 #include "units/tile_ctl.h"
 
 using namespace mach::fields;
@@ -106,6 +108,83 @@ std::string file(const char* path) {
     return s;
 }
 }  // namespace
+
+// ---- tests/ref/NetSelf.java's sequence (fixture tests/mach/netself.out, tests/ref/netself.sh) ----
+namespace {
+namespace lw = units::lw;
+using mach::Net;
+std::string hx(uint64_t v) { char b[24]; std::snprintf(b, sizeof b, "%llx", (unsigned long long)v); return b; }
+std::string w(Net& n, unsigned tile, uint32_t word) { return hx(n.c.tile(tile).peek_local(4 * word)); }
+void logs(Net& n, std::initializer_list<unsigned> tiles) {
+    for (unsigned k : tiles) {
+        const auto l = n.log(k);
+        std::string sb = "  tile " + std::to_string(k) + ": " + std::to_string(l.size()) + " arrivals";
+        for (size_t i = 0; i < std::min<size_t>(l.size(), 6); i++)
+            sb += " [" + std::to_string(l[i][0]) + " " + hx(l[i][1]) + " " + hx(l[i][2]) + " " + hx(l[i][3]) + "]";
+        say("%s\n", sb.c_str());
+    }
+}
+void packets(int64_t seed) {
+    Net n(Net::cfg(seed));
+    uint64_t seq = 0;
+    for (unsigned s = 0; s < 64; s += 7) n.at(s, 20, 9, lw::M_WRITE, Net::cm(0x800 + 2 * s), Net::tagged(seq++, 20));
+    for (int64_t T = 30; T < 40; T++) n.at(0, T, 63, lw::M_WRITE, Net::cm(0x900 + 2 * uint32_t(T - 30)), Net::tagged(seq++, T));
+    n.at(5, 50, lw::BROADCAST, lw::M_WRITE, 0, Net::cm(0x880), lw::SIZE_128, 0x1111222233334444ull, 0x5555666677778888ull);
+    n.at(9, 51, 9, lw::M_WRITE, 0, Net::cm(0x881), lw::SIZE_32, 0xABCD, 0);
+    for (unsigned i = 0; i < 3; i++) n.at(17, 60 + i, 17, lw::M_GATHER, 0, i, lw::SIZE_64, 0x40 + i, 0);
+    const bool ok = n.run_all(100000);
+    say("packets seed %lld: %s at cycle %lld; late %lld; router peak %u; t17 drained %llu; t9 dmem[0xe] %s dmem[0x80] %s; t63 dmem[0x10e] %s; "
+        "t40 dmem[0x80..0x83] %s %s %s %s\n", (long long)seed, ok ? "quiescent" : "NOT quiescent", (long long)n.c.cycle(),
+        (long long)n.late(), n.max_router_peak(), (unsigned long long)n.c.tile(17).unit<units::Gather>("gather").drained,
+        w(n, 9, 0xe).c_str(), w(n, 9, 0x80).c_str(), w(n, 63, 0x10e).c_str(), w(n, 40, 0x80).c_str(), w(n, 40, 0x81).c_str(),
+        w(n, 40, 0x82).c_str(), w(n, 40, 0x83).c_str());
+    logs(n, {9, 63, 40, 5, 17});
+}
+void reads() {
+    mach::MachConfig k = Net::cfg(-1);
+    k.test_read_clients = true;
+    Net n(k);
+    for (uint32_t i = 0; i < 16; i++) n.c.tile(3).sram_poke(0x2000 + i, 0x1000 * i + 3);
+    n.rd(3, 2, 10, 0x2000, lw::SIZE_64, lw::M_WRITE, 0, 12, Net::cm(0x8A0));
+    n.rd(3, 0, 10, 0x2004, lw::SIZE_128, lw::M_WRITE, 0, 12, Net::cm(0x8A4));
+    n.rd(3, 1, 11, 0x2008, lw::SIZE_32, lw::M_WRITE, 0, 3, Net::cm(0x8A8));
+    for (uint32_t i = 0; i < 70; i++) n.rd(3, 2, 12, 0x2000 + (i & 15), lw::SIZE_32, lw::M_WRITE, 0, 20 + (i & 7), Net::cm(0x8C0 + (i & 31)));
+    const bool ok = n.run_all(100000);
+    say("reads: %s at cycle %lld; late %lld; t12 dmem[0xa0..0xa7] %s %s %s %s %s %s; t3 dmem[0xa8] %s\n", ok ? "quiescent" : "NOT quiescent",
+        (long long)n.c.cycle(), (long long)n.late(), w(n, 12, 0xa0).c_str(), w(n, 12, 0xa1).c_str(), w(n, 12, 0xa4).c_str(),
+        w(n, 12, 0xa5).c_str(), w(n, 12, 0xa6).c_str(), w(n, 12, 0xa7).c_str(), w(n, 3, 0xa8).c_str());
+    logs(n, {12, 3, 21});
+}
+void a2a_net(int64_t seed, int gap) {
+    mach::MachConfig k = mach::MachConfig::defaults();
+    k.shuffle_seed = seed; k.check_errors = false;
+    Net n(k);
+    mach::A2A d(7, 2000);
+    d.load(n.c, gap);
+    const int64_t cyc = mach::A2A::run(n.c, 2000000);
+    mach::TileRef t5 = n.c.tile(5);
+    const units::AddrGen& ag = t5.unit<units::AddrGen>("ag");
+    say("a2a seed %lld gap %d: %lld cycles (at cycle %lld); misplaced %d; t5 ag requests %llu done %s; t5 remaining[1] %u memIdle %s; t5 ptr[9] %s\n",
+        (long long)seed, gap, (long long)cyc, (long long)n.c.cycle(), d.verify(n.c), (unsigned long long)ag.requests, tf(ag.done),
+        t5.remaining(1), tf(t5.mem_idle()), hx(t5.ptr(9)).c_str());
+    const bool ok = n.run_all(10000);
+    say("  then %s at cycle %lld; t5 gather drained %llu\n", ok ? "quiescent" : "NOT quiescent", (long long)n.c.cycle(),
+        (unsigned long long)t5.unit<units::Gather>("gather").drained);
+}
+void netself() {
+    out.clear();
+    packets(-1); packets(5);
+    reads();
+    a2a_net(-1, 0); a2a_net(4, 0); a2a_net(-1, 8);
+}
+}  // namespace
+
+TEST(mach_net_as_refs_Net) {
+    netself();
+    const std::string want = file("tests/mach/netself.out");
+    if (out != want) std::fprintf(stderr, "---- got\n%s---- want (tests/mach/netself.out)\n%s", out.c_str(), want.c_str());
+    CHECK(out == want);
+}
 
 TEST(mach_runs_as_refs_Mach) {
     machself();

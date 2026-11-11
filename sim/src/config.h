@@ -379,7 +379,10 @@ public:
     // W20 (harness-only; P2): data in motion anywhere, between runs: an input holding data (a Link word visible, a Fifo
     // not empty, a Hold occupied) or a put still on its way (a Link, Fifo, credit Fifo or Hold entry in a delivery
     // bucket). Regs, Wires, RegFiles, Counts and credit returns are state, not motion. For ref's Chip.quiescent.
-    bool in_flight() const;
+    // `shifted`: unit types (type_of) that apply a Link word at t + 1 that ref applied at the end of t (sim.h, THE
+    // SHIFTED END OF CYCLE; the core's port B): a Link word due at now() into such a unit is ref's own cycle now() - 1,
+    // done, so it isn't counted.
+    bool in_flight(const std::vector<uint16_t>& shifted = {}) const;
     // W10 (measurement): with Options::time_threads, a split machine's phases as shares of its threads' time over the runs
     // ("compute imbalance barrier drain publish clear end other"); "one domain" otherwise.
     std::string thread_times() const;

@@ -886,15 +886,26 @@ void Sim::wake_all() {
     if (impl_->threads) return impl_->threads->wake_all();
     for (uint32_t k = 0; k < impl_->e.ninst; k++) impl_->e.mark(k);
 }
-bool Sim::in_flight() const {
+bool Sim::in_flight(const std::vector<uint16_t>& shifted) const {
     if (impl_->running) FATAL("Sim::in_flight during a run: between runs only");
-    if (impl_->threads) return impl_->threads->in_flight();
+    if (impl_->threads) return impl_->threads->in_flight(shifted);
     const Engine& e = impl_->e;
     for (uint32_t k = 0; k < e.ninst; k++) if (e.mask[k] & ~e.edges[k]) return true;
     for (uint32_t wi = 0; wi < e.nwheels; wi++) {
         const Wheel& wh = e.wheels[wi];
         if (wh.kind != Kind::link && wh.kind != Kind::fifo && wh.kind != Kind::credit && wh.kind != Kind::hold) continue;
-        for (uint32_t b = 0; b <= wh.mask; b++) if (wh.buckets[b].count()) return true;
+        for (uint32_t b = 0; b <= wh.mask; b++) {
+            const Bucket& bk = wh.buckets[b];
+            if (!bk.count()) continue;
+            if (wh.kind != Kind::link || shifted.empty() || b != (e.now & wh.mask)) return true;
+            const Word* p = bk.begin();                  // a Link's bucket of now(): only words into a shifted unit
+            for (uint32_t m = bk.count(); m; m--, p += wh.width + 1) {
+                const uint16_t ty = impl_->inst[e.links[p[0]].owner].type;
+                bool sh = false;
+                for (uint16_t x : shifted) sh = sh || x == ty;
+                if (!sh) return true;
+            }
+        }
     }
     return false;
 }

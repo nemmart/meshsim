@@ -70,6 +70,10 @@ struct Gather {
     uint64_t ovf_seen = 0;     // the queue's overflows already reported
     // ---- statistics (GatherEngine: requests, reads = packets, stallCycles) ----
     uint64_t requests = 0, reads = 0, stall_cycles = 0, overflows = 0;
+    // W20 (harness-only; P2): ref's Drain in the GATHER engine's place (Config.realResponder off, the coreless test
+    // machine): one entry taken a cycle, counted (Drain.taken), nothing read. Set by the harness only.
+    bool drain = false;
+    uint64_t drained = 0;
 
     Gather() = default;
     Gather(sim::Ports& p, unsigned gather_depth, uint32_t tile = 0, bool wired_ = false) : me(tile), wired(wired_) {
@@ -90,6 +94,10 @@ struct Gather {
         }
         const uint64_t o = c.overflows(in);                  // the queue's overflow: an event to the block (D29)
         if (o != ovf_seen) { overflows += o - ovf_seen; ovf_seen = o; c.put(ovf); }
+        if (drain) {                                         // W20 (harness-only): ref's Drain
+            if (c.ready(in)) { c.take(in); drained++; }
+            return c.ready(in) ? c.next() : sim::Wake::none();
+        }
         bool put = false;
         if (c.refused(rd)) {                                 // 1. the retry: nothing advances
             c.put(rd, held[0], held[1]);

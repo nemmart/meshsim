@@ -63,6 +63,10 @@ struct Director {
     // W11: read-port results accepted (ReadPort.acceptedAt; the "rdport" fingerprint's outstanding = stores - this) and
     // packets accepted with results outstanding (TrafficDirector.readPortOverlaps: the software rule of 4.3, counted)
     uint64_t rp_accepted = 0, rp_overlaps = 0;
+    // W20 (harness-only; P2): ref's director log (TrafficDirector.log, tests): {t, payload [63:0], header, payload
+    // [127:64]} of every accepted packet, into the harness's array (null on every other machine; fatal when full).
+    uint64_t (*log)[4] = nullptr;
+    uint32_t log_cap = 0, log_n = 0;
 
     Director(sim::Ports& p, const DirectorConfig& c) : cfg(c) {
         p.in(in, "in", 3);
@@ -79,6 +83,11 @@ struct Director {
         const uint64_t d = w[0], h = w[1], hi = w[2];
         c.take(in);
         accepted++;
+        if (log) {                                             // W20 (harness-only)
+            if (log_n == log_cap) FATAL("director (tile %u): the harness's log is full (%u entries)", cfg.tile, log_cap);
+            uint64_t* e = log[log_n++];
+            e[0] = c.now(); e[1] = d; e[2] = h; e[3] = hi;
+        }
         const unsigned mode = lw::mode(h), ctr = lw::counter(h), size = lw::size(h);
         const uint32_t a = lw::addr(h);
         per_mode[mode]++;

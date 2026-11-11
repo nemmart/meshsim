@@ -31,7 +31,7 @@ is checked against v1.3 as M1-M3's units were.
 |---|---|---|
 | 1 | P1, the stand-alone tree (data files, firmware sources and builds, the mesh.h generator, `pipeline/`, `sim/oracle/`) | W19 |
 | 1 | P2, the machine harness, the checker, reset, `Config`'s used fields, PhaseLog, the suite runner | W20 |
-| 1 | P7a, the Tracer's rig and directed cases, MemorySystemTest, RvcTest (C21-C23) | W21 |
+| 1 | P7a, the Tracer's rig and directed cases, MemorySystemTest, RvcTest (C21-C23) | W21 | **done**, closed 2026-11-11 (`sessions/WORKER21-REPORT.md`): P7a, the Tracer's suites stand-alone |
 | 2 | P4 (network, memory, engine suites), P5 (control suites, programs, recipes), P6 (the sort and its kit), P7b (Stage B, the acceptance kit) | after P2 |
 | 3 | P8, docs, build, cleanup; then the freeze check | last |
 

@@ -153,7 +153,7 @@ bool load_images(const RunSpec& r, Images& im, std::string& err) {
     im.bootrom_sha = words_sha(im.bootrom.data(), im.bootrom.size());
     if (!r.schedule.empty()) {
         std::vector<std::string> tb;
-        if (!read_lines("fw/" + r.schedule, tb)) { err = "cannot read fw/" + r.schedule; return false; }
+        if (!read_lines("fw/m1/" + r.schedule, tb)) { err = "cannot read fw/m1/" + r.schedule; return false; }
         for (std::string l : tb) {
             size_t h = l.find('#');
             if (h != std::string::npos) l = l.substr(0, h);

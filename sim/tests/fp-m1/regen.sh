@@ -22,7 +22,7 @@ run() {
   set -- $1
   local n=$1 tile=$2 d=$3 img=$4 tb=${5:-}
   [ "$d" = riscv ] && d=$REF/test/riscv/bin || d=$G/images
-  (cd "$REF" && java -Xmx1g -cp "$W/ref:$W/tr" CoreFp "$OUT/$n.corefp" "$tile" "$d" "$img" ${tb:+"$SIM/fw/$tb"}) > "$W/$n.log" 2>&1 \
+  (cd "$REF" && java -Xmx1g -cp "$W/ref:$W/tr" CoreFp "$OUT/$n.corefp" "$tile" "$d" "$img" ${tb:+"$SIM/fw/m1/$tb"}) > "$W/$n.log" 2>&1 \
     || { echo "$n: CoreFp failed"; cat "$W/$n.log"; }
 }
 export -f run

@@ -28,7 +28,7 @@ struct RunSpec {
     unsigned tile = 0;
     std::string dir;        // the images' directory
     std::string image;      // IMAGE: DIR/IMAGE.code.bin, .data.bin, .sym
-    std::string schedule;   // sim/fw/SCHEDULE, or empty
+    std::string schedule;   // sim/fw/m1/SCHEDULE, or empty
 };
 std::vector<RunSpec> read_runs(const char* runs_file = "tests/golden/RUNS");
 const RunSpec* find_run(const std::vector<RunSpec>& runs, const std::string& name);

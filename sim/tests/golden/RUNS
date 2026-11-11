@@ -1,5 +1,5 @@
 # The golden traces: NAME TILE IMAGES IMAGE [SCHEDULE]. IMAGES: riscv = sim/fw/riscv-tests/bin, img = images/;
-# SCHEDULE: a test-bench schedule in sim/fw/ (sim/tests/ref/TraceRun.java). regen.sh runs each into NAME.trace.
+# SCHEDULE: a test-bench schedule in sim/fw/m1/ (sim/tests/ref/TraceRun.java). regen.sh runs each into NAME.trace.
 riscv-add 0 riscv add
 riscv-addi 0 riscv addi
 riscv-and 0 riscv and

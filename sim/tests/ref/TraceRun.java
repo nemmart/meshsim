@@ -19,7 +19,7 @@ import java.util.Map;
  *
  * IMAGE_DIR/NAME.code.bin goes to program memory from 0x01000000, NAME.data.bin to data memory: at NAME.sym's
  * _data_start with the boot command's entry _start, or, with no NAME.sym (the riscv-tests), at 0x10 with the entry
- * 0x01000000. The schedule (sim/fw/NAME.tb) has one step per line, run in order after the boot's GO:
+ * 0x01000000. The schedule (sim/fw/m1/NAME.tb) has one step per line, run in order after the boot's GO:
  *   at N              wait until cycle N (C&C's step runs at N)
  *   cmd WORD [ARG..]  C&C sends a command to the tile (WORD and ARGs hex): the arguments, then slot 0, through the mesh
  *   go                C&C clears READY and stores GO now, without waiting for READY

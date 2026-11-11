@@ -1,0 +1,15 @@
+00000100 B __bss_end
+00000010 B __bss_start
+00000100 B _bss_end
+00000010 B _bss_start
+00000010 D _data_start
+00000100 B _end
+01000000 T _start
+01000294 T main
+00000030 B ncmd
+01000290 t park
+00000010 B res
+01000354 T template_lookup
+000000f4 B tpl_n
+00000034 B tpl_tab
+01000034 T trap_handler

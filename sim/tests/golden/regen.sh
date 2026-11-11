@@ -36,7 +36,7 @@ run() {
   set -- $1
   local n=$1 tile=$2 d=$3 img=$4 tb=${5:-}
   [ "$d" = riscv ] && d=$REF/test/riscv/bin || d=$HERE/images
-  (cd "$REF" && java -Xmx1g ${JOPTS:-} -Dmeshsim.observe=on -cp "$W/ref:$W/tr" TraceRun "$OUT/$n.trace" "$tile" "$d" "$img" ${tb:+"$SIM/fw/$tb"}) > "$W/$n.log" 2>&1 \
+  (cd "$REF" && java -Xmx1g ${JOPTS:-} -Dmeshsim.observe=on -cp "$W/ref:$W/tr" TraceRun "$OUT/$n.trace" "$tile" "$d" "$img" ${tb:+"$SIM/fw/m1/$tb"}) > "$W/$n.log" 2>&1 \
     || { echo "$n: TraceRun failed"; cat "$W/$n.log"; }
 }
 export -f run

@@ -1,0 +1,10 @@
+regs: stopped at cycle 869; bootStart 0 runAt 108; allExited true allInWfi false; halts []; exit(0) 0 exit(63) 0
+  r[35] 0x23; tile 5 pc 0x1000034 x10 0
+wfi after run(1500): cycle 1500 runAt 77 busy true allInWfi false
+wfi: stopped at cycle 1616; bootStart 0 runAt 77; allExited true allInWfi false; halts []; exit(0) 0 exit(63) 0
+  r[1] 0x13
+a2a seed -1: stopped at cycle 7698; bootStart 0 runAt 98; allExited true allInWfi false; halts []; exit(0) 0 exit(63) 0
+  misplaced 0; lastGoAt 7661 lastAllReadyAt 7660; busy false; sram t9 0x40000 240000000000005d t50 0x40100 c8400000000001b3
+a2a seed 4: stopped at cycle 7698; bootStart 0 runAt 98; allExited true allInWfi false; halts []; exit(0) 0 exit(63) 0
+  misplaced 0; lastGoAt 7661 lastAllReadyAt 7660; busy false; sram t9 0x40000 240000000000005d t50 0x40100 c8400000000001b3
+cores: booted true at cycle 883; bootStart 0; mbox 0 852 867 2; tile 0 pc 0x2000064, cc1 pc 0x1000b38

@@ -635,6 +635,8 @@ void* Threads::unit_ptr(const std::string& name, const TypeInfo* type) const {
 }
 uint64_t Threads::steps(const std::string& name) const { return sims[dom_index(name)].steps(name); }
 void Threads::wake(const std::string& name) { sims[dom_index(name)].wake(name); }   // W10: in its own domain
+void Threads::wake_all() { for (auto& x : sims) x.wake_all(); }                                   // W20 (harness-only)
+bool Threads::in_flight() const { for (auto& x : sims) if (x.in_flight()) return true; return false; }   // W20
 std::string Threads::sleepers() const {
     std::string s;
     for (auto& x : sims) s += x.sleepers();

@@ -42,9 +42,10 @@ Commit and push after each step; each step checked against `ref`.
 
 ## Findings
 
-- **F1. `ref`'s committed `results/phases-a2a.csv` contradicts its own `results/accounting.log`**: the boot phase's GO
-  is at cycle 98 in the CSV (cycles 930) and at 91 in the log (cycles 916); the CSV is from an older run. It is not
-  used as a reference; the fixture is regenerated from `sim/ref`.
+- **F1. `ref`'s committed `results/phases-a2a.csv` and `results/accounting.log` disagree**: the boot phase's GO is at
+  cycle 98 in the CSV (cycles 930) and at 91 in the log (cycles 916). Today's `ref` puts the a2a boot's GO at 98
+  (MachSelf: `runAt 98`), so the **log** is the stale one, not the CSV (corrected 2026-11-10; first written the other way
+  round). Neither is used as a reference: the fixture is regenerated from `sim/ref`.
 
 ## Environment
 
@@ -59,10 +60,18 @@ Commit and push after each step; each step checked against `ref`.
 - **Step 1, the header published**: `tests/mach.h` (MachConfig, Chip, TileRef, Cc, Mach, Net, A2A, `fields`), with
   `tests/test_mach.cpp` pinning `mach::fields` to the values ref's `Fields.java` prints. The body comes next.
 
+- **Step 1, the machine as specified**: `tests/mach.cpp` (MachConfig, Chip, TileRef's memories and controller, Cc,
+  Mach with `boot` and `boot_cores`, A2A's data and `verify`), `tests/mach.mk`. Checked by `tests/ref/MachSelf.java`
+  (v1.3's own Mach, run in a scratch copy of ref/meshsim's layout with the committed images; `tests/ref/machself.sh`)
+  against `test_mach`: regs, wfi (with a `run(n)` then `run_until`), a2a unshuffled and shuffled (seed 4), and the
+  boot with C&C 1-3 as cores, line for line (`tests/mach/machself.out`), gcc and clang, debug and release. The owner's
+  protected tests (test_chip, test_sort, test_t2_harness, test_cc_units, test_golden) unchanged, clang release and debug.
+
 ## What the body needs outside `sim/tests/` (additions only; the owner hears if any changes an existing operation)
 
-- **Framework:** `Sim::wake_all()` (ref's `wakeAll` at the start of `run`/`runUntil`; safe by the step-all rule: an
-  unasked step with nothing delivered changes nothing).
+- **Framework (done):** `Sim::wake_all()` and `Sim::in_flight()` (config.h, config.cpp, threads.h/.cpp; marked
+  "W20 (harness-only)"). `wake_all` is ref's `wakeAll` at the start of `run`/`runUntil`; safe by the step-all rule: an
+  unasked step with nothing delivered changes nothing); `in_flight` is the data-in-motion half of ref's `quiescent`.
 - **Units** (no owner; optional parts, declared only on the harness's machines, nothing in the loop otherwise):
   - `add_g1`: a coreless tile (ref's `core.enabled = !coreless`: the core never executes) and the GATHER engine as a
     drain (`realResponder` off);

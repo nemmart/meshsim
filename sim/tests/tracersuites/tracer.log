@@ -1,0 +1,3 @@
+  loop: 34 rows, run 550 cycles, stalls [240, 92, 0, 82, 0, 0, 0]; reads 3, writes 0; index 4 (50.00% hit), data 3 (0.00% hit), LPDDR reads 5; walk 172 cycles, data 240; early evictions 0, write-allocates 0, read waits 0 (0 cycles)
+  output path: drain 3128 cycles, scan stalls 0, packets 1721
+TracerTest: 180 passed, 0 failed

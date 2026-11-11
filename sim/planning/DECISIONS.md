@@ -196,3 +196,9 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   canonical state fingerprint. **Q6:** the 128-segment chain is TracerT1's equivalent. **Q7:** moot (SyntheticDelivery
   stays Java, as it is). **Q8:** everything that needs Java or `sim/ref` moves into `sim/oracle/`, excluded at the
   freeze.
+- **D42. ConvertDelivery and SyntheticDelivery are ported to C++** (owner, 2026-11-11; refines D40). Both use v1.3's
+  Java replayer, which pulls in 49 of the Java simulator's 52 files; rather than carry those in `pipeline/`, the two tools
+  (~700 lines) are ported onto the C++ replayer, which already matches `ref` on every window of both workloads. Their
+  outputs must be byte-identical to v1.3's (SyntheticDelivery's last window, not reproducible run to run in v1.3, made
+  reproducible per seed and the difference explained). `pipeline/` then holds only self-contained Java: `gold`, jumpmap,
+  KeyGen, SplitSets and `inputs/`.

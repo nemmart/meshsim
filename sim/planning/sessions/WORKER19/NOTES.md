@@ -69,3 +69,8 @@ v1.3's, every copied file byte-identical to its `ref/` original (sha256).
   ConvertDelivery and SyntheticDelivery need ReplayDelivery, ReplayDriver, ReplayTables, ReplayWindow and the Java
   `Replayer` (SyntheticDelivery instantiates it for its reference rows), and `Replayer` reaches `Bus` -> `Chip`, so
   javac needs 49 of the simulator's 52 source files (57 files, 10.8 K lines; found by iterating javac to success).
+- **Step 5, part: `pipeline/keys/`** (owner: KeyGen and SplitSets now, the rest after the owner's decision on
+  ConvertDelivery and SyntheticDelivery). Copied unchanged (COPIES.sha256); `pipeline/build.sh` (a JDK only),
+  `pipeline/check.sh`: 47 outputs (uniform at 16,384 and 65,536, the hashes golden-m2/HASHES records for the sort's
+  reference runs; every key and split set at 2,000) equal to v1.3's, run from a copy holding only `pipeline/`;
+  `oracle/pipeline_crosscheck.sh` reproduces every expected hash with sim/ref's tools.

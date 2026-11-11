@@ -179,3 +179,12 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   users read. External toolchains (a C++ compiler, the RISC-V cross-compiler) are documented prerequisites, not
   copied. `sim/ref` and `v1.3/` stay outside v1.35 as the oracle the ports are checked against; nothing in v1.35 reads
   them.
+- **D40. Where Java stays** (owner, 2026-11-10; refines D39). **The simulator and everything that runs it are off
+  Java** (meshsim v1.35, its suites, drivers, kits and outputs build and run with a C++ compiler and the RISC-V
+  cross-compiler only). **Large, self-contained tools that produce the simulator's inputs, that everything else relies
+  on for correctness, and that aren't part of the testing runs, stay Java**, inside v1.35 as a separate, self-contained
+  `pipeline/` folder with its own build, a JDK as an optional prerequisite for regenerating inputs: `gold` (Jolt's
+  tracer in Java, ~5,200 lines, the golden model the segment files come from) and jumpmap. The rule of thumb: a few
+  hundred lines of Java get ported to C++; thousands of lines of correctness-critical, offline input tooling stay Java.
+  Each remaining Java tool is classified by size, use and whether testing runs need it. Python: avoided where possible
+  (shell plus C++ for glue).

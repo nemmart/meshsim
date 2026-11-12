@@ -183,3 +183,53 @@ the statistics); faults, invariants and the a2a's tables as W20's pieces land.
 - **The boot ROM's size check** (ref's Controller.checkBootRom): `units::check_bootrom` (rv32.h), FATAL above 64 words,
   called where a tile's core gets its ROM (tile_ctl.cpp). romSize's three checks pass.
 - Protected tests unchanged (clang release): test_golden, test_controllers, test_chip, test_cc_units, test_mach.
+
+## Item 3 done: the book's Python ported (owner's ruling 2026-11-12)
+
+- **gen_book** in C++: `fw/recipes/gen_book.cpp` with the region extractor in `fw/recipes/book.h` (regions.py's
+  `region()` and gen_book.py's template fill; RecipeTest's port will include the same header). `gen_book --check`
+  reproduces `fw/RECIPES.md` byte for byte (`tests/test_gen_book`, in make check, with `region()` on the cases
+  regions.py's patterns decide: the de-indent, trailing blank lines, the first marker with an END, absent names, the
+  template line's form; each checked against the Python before removal). `gen_book.py`, `check_book.py` and
+  `regions.py` removed from `fw/recipes/`, their lines from `COPIES.sha256` (check_copies: 322 files).
+  `fw/recipes/README.md` (a v1.3 copy) still names check_book.py: for P8's docs.
+- **What check_book.py checked, and where each check now lives:**
+  1. Every block in RECIPES.md marked `<!-- recipe: NAME (FILE) -->` followed by a fenced block equals, exactly, the
+     region NAME of FILE as regions.py extracts it: **test_gen_book** (the whole book equal to the template filled
+     from the sources, byte for byte: stronger, since it covers the text between blocks too); and RecipeTest's
+     snippet check (each block equals its region after RecipeTest's normalisation; in the port, `suite_recipes`).
+  2. The FILE a block names exists and has region NAME (else check_book stopped: "no region"): **test_gen_book**
+     (gen_book fails on a missing file or region); RecipeTest's "has a RECIPE region in the sources" and "the file
+     named is the one that holds it".
+  3. It counted the blocks ("N blocks checked, M differ"): RecipeTest's "snippets: N code blocks in RECIPES.md, N RECIPE
+     regions" line (in its log).
+  RecipeTest adds what check_book.py didn't: each region marked once, and every region quoted in the book.
+- The "47 vs 46" I noted earlier was v1.3's stale `results/recipes.log` (46); today's v1.3 run (our fixture) says 47
+  blocks and 47 regions, as check_book.py: nothing to explain.
+
+## header_diff.py ported (owner's ruling 2026-11-12)
+
+- `tools/regs/header_diff.sh`: v1.3's header_diff.py in bash, awk, sort and comm over the host gcc (sort/comm in code
+  point order; gcc keeps the caller's locale, as under Python). Byte-identical to the Python on mesh.h and the draft
+  (70 lines, 12 s) and on perturbed pairs reaching every kind of line (`oracle/ref/header_diff_crosscheck.sh`: values
+  differing, macros only in one header, members only in one, offsets differing; and a header that doesn't compile,
+  equal but for the temporary file's path in gcc's message). Its output depends on the host gcc (its predefined
+  macros, stdint.h), as the Python's; RegDocTest asserts only what must agree.
+
+## HooksTest and RegDocTest: what they need beyond TileRef::load/store (for W20, 2026-11-12)
+
+Read through both against main's `TileRef::load/store` and Net:
+1. **Net on the machine as specified** (HooksTest's `machine()`: `Config.machine()`, periph_type 0 or 4, wrapped in
+   Net; settled by `n.step()`): Net refuses a non-coreless config today. HooksTest uses on it: `step`, `at`, C&C 1's
+   send (`n.c.cnc.send(cycle, ...)`), `run_all`, and tile 7's director log (`r.dir.log`).
+2. **TileRef::load of a present peripheral's window** (HooksTest: window 1 on a tile with the replayer, word 0): today
+   FATAL ("this bench has no peripheral slot"; LoadEnv has no `window_load`). Absent windows already give the bus error.
+3. **TileRef::load with ref's side effects** (RegDocTest loads every register): EVENTS (consumes what it returned under
+   the mask), REQUEST_GET_W0-W2 on a mesh tile (0), REQUEST_RECEIVE on a mesh tile (0 and receive underflow, ERRORS
+   [14], seen two cycles later): today FATAL ("not modelled yet").
+4. **From the test, between cycles, after the block's endCycle** (HooksTest's loadLatency): set sticky EVENTS bits
+   (`p.ctl.events |= bits`, as request 9 for ERRORS), and schedule a GO for one tile at a given cycle
+   (`p.ctl.scheduleGo(t)`).
+What I do test-side or add myself: C&C 1's model's `expect` (Cnc's field, set between cycles), the director's
+`remaining` (TileRef::set_remaining), `sendsBySize` and `droppedBad` (counters, if a unit lacks them), the AG's UB
+(already a FATAL naming the tile and "a start while a run is running").

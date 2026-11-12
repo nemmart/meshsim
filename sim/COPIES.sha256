@@ -211,9 +211,7 @@ e6fb2016a4668df431a8490b3896f1288662691fa1c4e0fad566f2e38d9ee74e  fw/tracer/trac
 42dcc2e64e6d8394b25c2f021ec188ffccf4109e2cd89e4b6feea222af54e2d8  fw/recipes/RECIPES.tmpl.md  sw/recipes/RECIPES.tmpl.md
 30d29a47824d7dfc312b41c8a2c0da52a5ed459eb5d7a6a264a5165153964e97  fw/recipes/bootrom.S  sw/recipes/bootrom.S
 9f55b598996ae74f5622526a0f3d4448d78fd94377ada3577bc92eebe8fb83ab  fw/recipes/build.sh  sw/recipes/build.sh
-aa8bc9a9e45cf5cdd30ab4605906d40d644fcfb0103c22f86b1f005e2079443d  fw/recipes/check_book.py  sw/recipes/check_book.py
 07a4775a618279d4febce50bc1f0ed174262505459b01d3cf5d5a0322acc0f68  fw/recipes/crt0.S  sw/recipes/crt0.S
-51685b75669842697e5fdef05fc8300884a8a4ce71486f63126a44187a5baf4c  fw/recipes/gen_book.py  sw/recipes/gen_book.py
 12ed6eb0346ea4094f0efd30781b73ccc936586072725a7571fc9a9e65dda7c9  fw/recipes/handler.S  sw/recipes/handler.S
 047d4e4ae72472c01f1825a13021d92524954b9c1ee4d8dd0167cbe1dcea7460  fw/recipes/hdr.c  sw/recipes/hdr.c
 606eb24b0905ca2b55af31581f7ad0f592a48cb845aa10b29a5ad706dc082d3c  fw/recipes/rcp.h  sw/recipes/rcp.h
@@ -236,7 +234,6 @@ d535d1c66f2d366722d4016f1f32700b2743219f7298ab17255d52100374fd9b  fw/recipes/rcp
 0e4cb6519604a92548ec0143c4fc5e4d1022244c163e859f1ea838d6a528c654  fw/recipes/rcp_tables.c  sw/recipes/rcp_tables.c
 94ed57f28b542d6fc8446e05884216de5dabb06e15c2735278316f186b3c4e4b  fw/recipes/rcp_xchg.c  sw/recipes/rcp_xchg.c
 eaa30c364d72c37b02810924cab64092a57aaa5f6c25e5a93f5989945a477c42  fw/recipes/rcp_xvec.c  sw/recipes/rcp_xvec.c
-e81d0a3d172cf063f08c985b46d206fdb66369d4fa387e5a896bd51acadffcb3  fw/recipes/regions.py  sw/recipes/regions.py
 8f45a885829166dd35805fa2864049155fe19f78414087078387e9e0d6ad6e0d  fw/recipes/selftest.h  sw/recipes/selftest.h
 4a682bf2c7ec5c0ef7fe22eb6a45d66dc9bbb0bd95060fd10f390562e78ad6c1  fw/recipes/recipes.ld  meshsim/sw/recipes.ld
 642f7aff13785e3bbcab8c431d90c0c041810c3c03ed9f14815e97ec0390ddfd  fw/recipes/recipes_support.c  meshsim/sw/recipes_support.c

@@ -10,3 +10,7 @@ $(CTL_SUITES): $(B)/suite_%: $(B)/tests/ctl/suite_%.o $(MACH_LINK) $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 # the suites are run by test_ctl_suites (order-only: built with it, not linked into it)
 $(B)/test_ctl_suites: | $(CTL_SUITES)
+# gen_book (fw/recipes/gen_book.cpp, its region code in fw/recipes/book.h): v1.3's gen_book.py in C++ (D40); test_gen_book runs it with --check
+$(B)/gen_book: $(B)/fw/recipes/gen_book.o $(LIB_OBJ)
+	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
+$(B)/test_gen_book: | $(B)/gen_book

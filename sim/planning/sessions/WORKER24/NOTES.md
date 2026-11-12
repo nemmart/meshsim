@@ -107,3 +107,12 @@ Commit and push after each step; each step checked against `ref`.
   but the peak lines, the inputs lines equal under the mask.
 - **make check**: `test_sort_suites` runs sort_test: sort-p1's log against ref's (first field masked) with both p1
   fingerprints, and the direct (uniform-k128) and TH (reverse-kv32) runs at every reference point (17 s, clang release).
+- **The full pass** (2026-11-12, at c3d56dff, this container: 1 CPU, gcc 13.3.0, clang 18.1.3): make check's copies and
+  TSan stages pass; then every build with `make -k` and each of the 70 tests run separately: **gcc debug, clang debug,
+  gcc release, clang release all pass**, sort_test under ASan and UBSan included (test_sort_suites, both debug builds).
+  The one exception: W23's `test_ctl_suites.cpp` doesn't build on gcc 13 debug (std::regex, -Wmaybe-uninitialized; W23's,
+  told by the owner). sort_main.cpp's own gcc-debug failure (-Wdangling-reference on a TileRef temporary) fixed first.
+- **The kit on the C++ binaries** (`tests/sort/kit/`: assemble.sh, run.sh, tools/runjob.sh, v1.3's jobs.txt,
+  KEYS.sha256 = v1.3's kit's key hashes, README): assembled and run on the uniform jobs at -n 2000 (p4 both formats,
+  shuf): every run's CSV equal to Quest 178's but the peak columns; SUMMARY from sort_summary. Waiting: the peaks and
+  phases CSVs (W20's PhaseLog), the sweep's `cfg.*` (W20's Config, step 3).

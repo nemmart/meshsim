@@ -1,5 +1,6 @@
 // test_mach.cpp (WORKER20): the machine harness (mach.h). With the header only: mach::fields against ref's Fields.java
 // (the values printed by ref's own Fields.java, 2026-11-10), and the header compiling with the units it names.
+#include <algorithm>
 #include <cstdarg>
 #include <cstdio>
 #include <optional>
@@ -7,6 +8,7 @@
 
 #include "base/fatal.h"
 #include "harness.h"
+#include "java_random.h"
 #include "mach.h"
 #include "units/ag.h"
 #include "units/big_sram.h"
@@ -73,6 +75,10 @@ void a2a(int64_t seed, bool kit = false) {
     m.c.cc().command(units::lw::BROADCAST, 1u << 24).go().command(units::lw::BROADCAST, 2u << 24).go().command(units::lw::BROADCAST, 3u << 24).go();
     const bool ok = m.run([&] { return m.all_stopped(); }, 2000000);
     report("a2a seed " + std::to_string(seed) + (kit ? " kit" : ""), m, ok);
+    {
+        const std::string d = m.c.digest();                 // B25: its fp field, ref's StateFp of the chip
+        say("  fp %s\n", d.substr(d.find(" fp ") + 4).c_str());
+    }
     std::string pl = "  phaseLog";
     for (const auto& e : m.c.cc().phase_log()) pl += " [" + std::to_string(e[0]) + ", " + std::to_string(e[1]) + "]";
     say("%s\n", pl.c_str());
@@ -118,8 +124,36 @@ void phases(int64_t seed) {
     say("%s", m.c.phases().report().c_str());
     say("%s", m.c.phases().csv().c_str());
 }
+void trace_case() {                                          // H6: MachSelf.trace()
+    const int N = 4096;
+    Mach m(Mach::cfg(-1));
+    test::JavaRandom r(N);
+    for (unsigned p = 0; p < 64; p++) {
+        std::vector<int64_t> k(N);
+        for (int i = 0; i < N; i++) k[size_t(i)] = int64_t(uint32_t(r.next(32)));
+        std::sort(k.begin(), k.end());
+        for (int i = 0; i < N; i++) m.c.tile(p).sram_poke(uint32_t(i), uint32_t(k[size_t(i)]));
+        m.c.tile(p).sram_poke(0xF0000, N); m.c.tile(p).sram_poke(0xF0001, 0);
+        for (unsigned i = 0; i < 64; i++) m.c.tile(p).sram_poke(0xF0002 + i, i == 0 ? 0u : i == 1 ? 0xFFFFFFFFu : uint32_t(r.next(32)));
+    }
+    m.boot("search");
+    for (unsigned p = 0; p < 64; p++) m.c.tile(p).record_trace();
+    m.c.cc().command(units::lw::BROADCAST, 1u << 24 | 0u << 8 | 4u).go();
+    m.run([&] { return !m.c.cc().busy(); }, 5000000);
+    uint64_t d0[64];
+    for (unsigned p = 0; p < 64; p++) d0[p] = m.c.tile(p).block().dones;
+    const bool ok = m.run([&] { for (unsigned p = 0; p < 64; p++) if (m.c.tile(p).block().dones <= d0[p]) return false; return true; }, 5000000);
+    say("trace: %s at cycle %lld\n", ok ? "finished" : "NOT finished", (long long)m.c.cycle());
+    for (unsigned t : {0u, 7u, 63u}) {
+        const auto l = m.c.tile(t).trace_log();
+        std::string sb = "  tile " + std::to_string(t) + ": " + std::to_string(l.size()) + " TRACE stores";
+        for (const auto& e : l) { char b[48]; std::snprintf(b, sizeof b, " %lld:%llx", (long long)e[0], (unsigned long long)uint64_t(e[1])); sb += b; }
+        say("%s\n", sb.c_str());
+    }
+}
 void machself() {
     out.clear();
+    trace_case();
     if (sim::check::kOn) { phases(-1); phases(4); }        // (PhaseLog's FIFO peaks: the debug and suite builds)
     stageb(true);
     stageb(false);

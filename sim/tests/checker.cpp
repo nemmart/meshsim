@@ -146,6 +146,24 @@ std::string Checker::text(const Fact& f) const {
     case Kind::CMEM_REPLY_OVERWRITE:
         return fmt("a reply or read-port result overwrote an unread one at data word 0x%x (invariant 8, strict): ", unsigned(a[0])) + describe(a[1], a[2], 0);
     case Kind::CMEM_COMMAND_UNREAD: return "a command landed in command slot 0 before the core read the previous one (6.3): " + describe(a[1], a[2], a[3]);
+    // ---- AddressGenerator.checkEntry (W26) ----
+    case Kind::AG_SIZE_UNDEF: return "stream with read size 11, undefined (3.1, 4.2)";
+    case Kind::AG_AUG128: return "mode-3 stream with read size 128: its packets are bad packets (3.1, 4.2)";
+    case Kind::AG_DEST_ALIGN:
+        return fmt("mode-0 stream whose destination address 0x%x is not aligned to its read size: its packets are bad packets (3.1, 4.2; invariant 20)", unsigned(a[0]));
+    case Kind::AG_SRC_ALIGN:
+        return fmt("stream whose source chunk 0x%x is not aligned to its read size: its reads are not performed (4.1, 4.2; invariant 20)", unsigned(a[0]));
+    case Kind::AG_DEST_ENDPOINT: return fmt("stream with d = %u (4.2: 67-125 name no endpoint, 127 is invalid; invariant 17)", unsigned(a[0]));
+    case Kind::AG_BROADCAST_ON_TILE:
+        return fmt("stream with d = 126 (the broadcast) on mesh tile %u (4.2, D41 F14: only the controllers broadcast from streams; invariant 17)", unsigned(a[0]));
+    case Kind::AG_GATHER_DEST: return fmt("mode-4 stream with d = %u (4.2: a gather stream goes to the tile itself, d = 0; invariant 10)", unsigned(a[0]));
+    case Kind::AG_COUNT_CTR0: return "count-only stream on counter 0: it does nothing (3.1; invariant 21)";
+    // ---- ReadPort.store (W26) ----
+    case Kind::RP_SIZE_UNDEF: return "read-port read with the reserved size 11 (8.8): undefined";
+    case Kind::RP_QUEUE_FULL:
+        return fmt("SRAM_RD_ADDR_QUEUE store with no free entry: read of 0x%x dropped, ERRORS [7] (4.3; invariant 8)", unsigned(a[0]));
+    case Kind::RP_DEST_ALIGN:
+        return fmt("read-port destination 0x%x not aligned to its size: its result is a bad packet (4.3; invariant 20)", unsigned(a[0]));
     case Kind::WE_PAST_SRAM:
         return fmt("a big-SRAM write at chunk 0x%" PRIx64 ", at or past the end of big SRAM: undefined (4.1; invariant 19): ", a[0]) + describe(a[1], a[2], a[3]);
     case Kind::SLOT_VIOLATION: {                           // (W26) PeripheralSlot.violate's texts

@@ -185,6 +185,35 @@ final class CheckSelf {
             m.run(m::allStopped, 20000);
             System.out.print(m.c.violationReport());
         }
+        {   // the read port (ReadPort.store; W26): stores into a full queue (invariant 8; a misaligned destination is UB at the director)
+            Config k = Net.cfg(-1); k.readPortDepth = 2;
+            Net n = new Net(k);
+            while (n.c.cycle < 19) n.step();
+            for (int t = 20; t < 32; t++) {
+                if (t == 20) n.c.tiles[9].core.store(t, 0xFFFFF880, (1 << 17) | (2 << 19) | 0x100, -1);
+                else n.c.tiles[9].core.store(t, 0xFFFFF87C, 0x40 + 2 * t, -1);
+                n.step();
+            }
+            n.runAll(1000);
+            System.out.print(n.c.violationReport());
+        }
+        {   // the address generator's stream-entry checks (AddressGenerator.checkEntry; W26): eight streams of count 0 (each
+            // visited and checked, nothing issued) on tile 9: size 11, mode 3 at 128, a misaligned destination, a misaligned
+            // source, d = 70, the broadcast on a mesh tile, a gather to another unit, count-only on counter 0
+            Net n = new Net(Net.cfg(-1));
+            n.c.tiles[9].setStream(0, Fields.streamSrc(0x100, 0), 0x0, Fields.streamCount(0, 3, 1, 0, 9));
+            n.c.tiles[9].setStream(1, Fields.streamSrc(0x100, 0), 0x0, Fields.streamCount(0, 2, 1, 3, 9));
+            n.c.tiles[9].setStream(2, Fields.streamSrc(0x100, 0), 0x104, Fields.streamCount(0, 1, 1, 0, 9));
+            n.c.tiles[9].setStream(3, Fields.streamSrc(0x101, 0), 0x0, Fields.streamCount(0, 1, 1, 0, 9));
+            n.c.tiles[9].setStream(4, Fields.streamSrc(0x100, 0), 0x0, Fields.streamCount(0, 0, 1, 0, 70));
+            n.c.tiles[9].setStream(5, Fields.streamSrc(0x100, 0), 0x0, Fields.streamCount(0, 0, 1, 0, 126));
+            n.c.tiles[9].setStream(6, Fields.streamSrc(0x100, 0), 0x0, Fields.streamCount(0, 0, 1, 4, 5));
+            n.c.tiles[9].setStream(7, Fields.streamSrc(0x100, 0), 0x0, Fields.streamCount(0, 0, 0, 5, 9));
+            n.c.tiles[9].setMasterConfig(Fields.masterConfig(Fields.RUN_STREAMS, 0, 8, 0, 0, 1));
+            n.c.tiles[9].pulse(Fields.PULSE_START);
+            n.c.run(200);
+            System.out.print(n.c.violationReport());
+        }
         {   // the message cap (maxViolationMessages): the count goes on
             Config k = Net.cfg(-1); k.maxViolationMessages = 3;
             Net n = new Net(k);

@@ -125,11 +125,12 @@ Commit and push after each piece; each kind checked line for line against `ref` 
   `Net::step` puts them with `Sim::put_late` directly (and `Net::send` likewise), so their facts need one call to
   `units::endpoint_checks(c.cycle(), address, p)` there. Until then CheckSelf's endpoint sends are left out.
   Not checked against ref: the queue overflow (unreachable by design), a reserved mode (UB at the director).
-- **Kinds recorded but no case reaches yet** (check each when a suite does; likeliest W23's CtrlTest and RecipeTest,
-  W22's RequestBusTest): the command slot's CMEM_COMMAND_UNREAD; a port-B write as the core reads that word; a test's
-  load clearing invariant 8's bit (TileRef::load); HIST/PTR table-window busy met by an instruction; a test's HIST load
-  (no check yet); the slot's DMA_HDR/ADDR mid-transfer and full post; the C&C 1 and stub region writes; the Tracer's
-  violations; the full request push; the receive queue overflow; the endpoints' checks (after W20's call above).
+- **Kinds recorded but no case reaches yet** (kept up to date; check each when a suite does; likeliest W23's CtrlTest
+  and RecipeTest, W22's RequestBusTest): a port-B write as the core reads that word; a test's load clearing invariant 8's
+  bit (TileRef::load); HIST/PTR table-window busy met by an instruction; a test's HIST load (no check yet); the slot's
+  DMA_HDR/ADDR mid-transfer (a case planned) and full post; the C&C 1 and stub region writes; the Tracer's violations;
+  the full request push; the receive queue overflow; the endpoints' checks (after W20's call in Net's sends); the read
+  port's size 11 (the fatal cases) and misaligned destination (UB at the director).
 - **W22's F4 fixed (SearchBench's 3 extra command-slot violations)**: ref's TileControl.endCycle(t) at a GO clears
   `cmem.slot0Unread` when the core's pc is in the boot ROM (the ROM takes the boot command at GO; its own load of slot 0
   is incidental), so the first command queued behind the boot may land before the program reads slot 0. Here: a fourth
@@ -143,3 +144,17 @@ Commit and push after each piece; each kind checked line for line against `ref` 
 - **For 1d**: the same endCycle also calls `tile.sram.newPhase()` at every GO: the disjoint-buffer phases advance at each
   GO, besides the harness's `Chip.newPhase`. So BigSram::new_phase needs the GO too (a Link from the block, or the GO
   Wire above); to agree with W20 and the integrator before 1d.
+- **Side effect, kept noted**: `track.unread_commands` follows the boot-ROM rule (F4) only with the checker built (the
+  GO Wire is SIM_CHECKS-only); `overwritten_unread` doesn't depend on it. W20's `TileCore::overwrites` (8abebaed) is a
+  copy of `track_port_b`'s marking for PhaseLog: change both together.
+- **The integrator's order (2026-11-12)**: the read-port overflow, the AG kinds, invariants 3 and 6, invariant 17,
+  invariant 18, the fatal cases (size 11 and two stream cases stop, as ref), the DMA case, 1d (two triggers: the GO Wire
+  in the tile, W20's Chip::new_phase), S1 with invariant 24's overtaking read, BusTest. FINDINGS.md 9-12 (branch
+  v1.35-spec) for the spec's wording; invariant 8 strict to confirm against it.
+- **The read port** (ReadPort.store): `RP_SIZE_UNDEF`, `RP_QUEUE_FULL` (W22's ReadPortGatherTest: a store into a full
+  queue, invariant 8, ERRORS [7]), `RP_DEST_ALIGN`, at the store's cycle in the core's read-port path. CheckSelf: a
+  depth-2 read port fed by a test's stores (7 lines).
+- **The AG's stream-entry checks** (AddressGenerator.checkEntry, AgTest's 8): the eight facts at each visit. CheckSelf:
+  eight streams of count 0 on tile 9 (each checked, nothing issued). ref's startsWhileRunning and tableWraps are UB in
+  v1.3 (stops), never counted: no kinds. AgTest 206 passed, 0 failed (clang suite; its other groups wait on W22-15/16).
+  Both cases line for line (clang and gcc suite, clang debug); protected tests the same (clang release, suite).

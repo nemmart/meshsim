@@ -105,6 +105,9 @@ struct BigSram {
 
     // ---- statistics ----
     uint64_t reads_served = 0, writes_served = 0, combined = 0, read_stall_cycles = 0, write_stall_cycles = 0;
+    // W20 (the harness's Chip::new_phase; the agreed form, 2026-11-12): a new disjoint-buffer phase. W26 fills it in
+    // (the per-phase bits, the DISJOINT fact); until then it does nothing.
+    void new_phase() {}
 #ifdef SIM_CHECKS
     // W22 (P4; approved 2026-11-12; SIM_CHECKS only, the timing builds unchanged): ref's per-area reads, writes, combined
     // and queuePeak (the count after an enqueue), updated where BigSRAM updates them, for MemTest. Statistics.

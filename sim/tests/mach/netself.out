@@ -1,3 +1,4 @@
+test peripheral: PARAMS t7 78700001 t8 78800000; t7 window 1: 30f 0 0 0 0 0 0 0; t8 window 1 word 0 null
 hooks: peek 80 peek 80 EVENTS 80 then peek 0; GET0 0 RECV 0 ERRORS@208 0 ERRORS@209 4000 ERRORS@210 4000 ERRORS@211 4000 peek@212 0 peek@213 0 peek@214 0 peek@215 0 peek@216 0 peek@217 100 peek@218 100
   window 1: 4 0 0 0 0 0 0 0
   req: canPush true setW 0 pending at 217 head 1100c 99

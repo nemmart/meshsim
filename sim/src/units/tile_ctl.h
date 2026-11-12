@@ -644,6 +644,8 @@ struct G1Config {
     bool cc3_tracer = false;           // W16 (M3): C&C 3's peripheral 1 the Tracer (ref's cc3Tracer), else the stub
     unsigned replayer_log_entries = 256;   // the replayer's log queues (ref's -Dreplayer.logq; the kit's -q 512; W25)
     bool stray_check = false;          // W20 (harness-only): the director reads the counters (`regs`) for ref's stray check
+    int test_periph_tile = -1;         // W20 (harness-only): >= 0: this mesh tile's peripheral 1 is the test peripheral
+                                       //   (ref's Config.testPeripheral giving a TestPeripheral), with its slot
     int periph_only = -1;              // W20 (harness-only): >= 0: only this mesh tile has peripheral 1 (and the slot, if
                                        //   periph_slot); the other mesh tiles none (ref's periphType 0 + testPeripheral)
     unsigned K = 8, cm_latency = 2;    // the write counters' line, director -> port B

@@ -7,7 +7,7 @@
 //             [cfg.<Config field>=<value> ...] [csv=<file>] [phases=<file>] [force=bt (TEST ONLY)]
 //   seed: -1 the fixed order, >= 0 the framework's debug shuffle with that seed (mach.h: SHUFFLING).
 //   Options (SortTest's -Dsort.*): SORT_BUILD=<dir> (the image's directory; default the harness's search path),
-//   SORT_MAXCYCLES=<n>.
+//   SORT_MAXCYCLES=<n>; SORT_OPT=instance|stepall, a debug option (sim.h DEBUG CHECKS; the shuffle is the seed).
 //
 // C&C's sequence is queued on C&C 1's model between cycles, as SortTest queues it on CnC: the boot (the image broadcast,
 // CMD_JUMP, READY, GO), the input-load stand-in, then every step's command, all READY, GO. The harness's own work
@@ -32,6 +32,11 @@
 #include <vector>
 
 #include "mach.h"
+#include "sha256.h"
+#include "statefp.h"
+#include "statefp_g1.h"
+#include "statefp_g2.h"
+#include "units/reqbus.h"
 #include "sort_input.h"
 #include "sort_kit.h"
 #include "suite.h"
@@ -129,6 +134,12 @@ struct Opts {
     MachConfig config() const {
         MachConfig k = Mach::cfg(shuffle);
         if (ready_latency >= 0) k.ready_latency = unsigned(ready_latency);
+        if (const char* d = std::getenv("SORT_OPT")) {      // the debug options (sim.h DEBUG CHECKS) beside the shuffle
+            const std::string o = d;
+            if (o == "instance") k.instance_major = true;
+            else if (o == "stepall") k.step_all = true;
+            else if (!o.empty()) { std::fprintf(stderr, "sort_test: SORT_OPT=%s: instance or stepall\n", d); std::exit(2); }
+        }
         for (auto& e : cfg) {
             std::string err;
             if (!k.set(e.first, e.second, err)) { std::fprintf(stderr, "sort_test: %s\n", err.c_str()); std::exit(2); }
@@ -158,6 +169,70 @@ struct Syms {
     }
 };
 
+// ============================================================================================== the fingerprints
+// SORT_FP=<dir> (tests/sort/fp, SortFp's references; RUNS names them): each run against <dir>/<its name>.fpd, the name
+// as RUNS gives it (p1-<kind>-<fmt>, <kind>-<fmt>, shaped-<kind>-k128, a key file's run by its label); a run with no
+// file there is not checked. At every point the reference took (its GOs and all-READYs,
+// the boot's end, the run's end), the canonical state fingerprint's lines (the registry of M2's sort: every tile's 16
+// units, C&C, its peripheral, the request bus, the endpoints) digested as sortfp.sh's fp_digest does them: the
+// "unit hash" lines sorted bytewise, each ending in \n, their sha256. Read only, between cycles; the log is unchanged.
+struct FpCheck {
+    struct Pt { int64_t cycle; size_t lines; std::string sha; };
+    std::vector<Pt> pts; size_t next = 0; unsigned compared = 0; std::string first_diff;
+    std::vector<fp::G1Tile> g1; std::vector<fp::G2Tile> g2; fp::G2Chip gc; units::reqbus::ReqBusUnits rbu; fp::FpRegistry reg;
+    std::vector<unsigned> tiles;
+    sim::Sim* sim = nullptr;
+    static fp::LineEdge edge(const void* ctx, unsigned k, uint64_t c) {
+        const fp::G1Tile& g = static_cast<const fp::G1Tile*>(ctx)[k];
+        const units::LineEdge e = units::line_edge(*g.sim, *g.uctl, c);
+        fp::LineEdge le; le.put = e.put; le.ready = e.word & 1; le.level = e.word >> 1 & 1;
+        return le;
+    }
+    FpCheck(const std::string& path, mach::Chip& c) : g1(64), g2(64) {
+        for (const std::string& l : sortkit::read_lines(path)) {
+            if (l.empty() || l[0] == '#') continue;
+            std::vector<std::string> f = sortkit::split_ws(l);
+            if (f.size() == 3) pts.push_back({std::stoll(f[0]), size_t(std::stoull(f[1])), f[2]});
+        }
+        if (pts.empty()) { std::fprintf(stderr, "sort_test: SORT_FP=%s: no points\n", path.c_str()); std::exit(2); }
+        sim = &c.sim();
+        for (unsigned k = 0; k < 64; k++) {
+            g1[k] = fp::g1_tile(*sim, k); g1[k].uinj = &sim->unit<units::Injection>(units::tile_unit(k, "inj"));
+            g2[k] = fp::g2_tile(*sim, k);
+        }
+        gc.cnc = &sim->unit<units::Cnc>("cnc");
+        for (unsigned r = 0; r < 8; r++) gc.rows[r] = &sim->unit<units::RowCollector>("row" + std::to_string(r));
+        gc.ep[0] = &sim->unit<units::Endpoint>("ep2"); gc.ep[1] = &sim->unit<units::Endpoint>("ep3");
+        gc.ready_latency = c.cfg().ready_latency;
+        gc.edge = edge; gc.edge_ctx = g1.data();
+        fp::attach_reqbus(*sim, g1.data(), 64, gc, rbu, units::reqbus::ReqBusConfig{});
+        for (unsigned t = 0; t < 64; t++) { fp::register_g1(reg, g1[t]); fp::register_g2_tile(reg, g2[t]); tiles.push_back(t); }
+        fp::register_g2(reg, gc);
+    }
+    void at(int64_t cyc) {
+        while (next < pts.size() && pts[next].cycle < cyc) next++;     // (a point passed without a check: none expected)
+        if (next >= pts.size() || pts[next].cycle != cyc) return;
+        std::vector<std::string> lines;
+        reg.point(fp::FpCtx{uint64_t(cyc), sim}, tiles, true, lines);
+        std::vector<std::string> uh;
+        for (const std::string& l : lines) uh.push_back(l.substr(l.find(' ') + 1));
+        std::sort(uh.begin(), uh.end());
+        std::string all; for (const std::string& x : uh) all += x + "\n";
+        const std::string sha = test::sha256_hex(all.data(), all.size());
+        if (uh.size() != pts[next].lines || sha != pts[next].sha) {
+            if (first_diff.empty()) first_diff = "cycle " + std::to_string(cyc) + ": " + std::to_string(uh.size()) + " lines, sha " + sha.substr(0, 12) + "... (reference " + std::to_string(pts[next].lines) + ", " + pts[next].sha.substr(0, 12) + "...)";
+        } else compared++;
+        next++;
+    }
+    bool report(FILE* o) const {
+        if (!first_diff.empty()) { std::fprintf(o, "fp: DIFFERS at the first point that differs, %s (%u equal before)\n", first_diff.c_str(), compared); return false; }
+        if (compared != pts.size()) { std::fprintf(o, "fp: %u of %zu reference points reached, all equal\n", compared, pts.size()); return false; }
+        std::fprintf(o, "fp: all %u reference points equal\n", compared);
+        return true;
+    }
+};
+bool g_fp_ok = true;
+
 // ============================================================================================== a machine running the sort
 struct Machine {
     Mach m;
@@ -172,26 +247,34 @@ struct Machine {
     int64_t seen_go = -1, seen_ready = -1;
     void observe() {
         if (cc.last_go_at() != seen_go) { seen_go = cc.last_go_at(); if (seen_go >= 0) gos.push_back(seen_go); }
-        // C&C's last_all_ready_at is ref's c.cycle in C&C's step (t - 1); PhaseLog.onAllReady is called with t
-        if (cc.last_all_ready_at() != seen_ready) { seen_ready = cc.last_all_ready_at(); if (seen_ready >= 0) readies.push_back(seen_ready + 1); }
+        // C&C's last_all_ready_at: go()'s first all READY, the t PhaseLog.onAllReady is called with
+        if (cc.last_all_ready_at() != seen_ready) { seen_ready = cc.last_all_ready_at(); if (seen_ready >= 0) readies.push_back(seen_ready); }
     }
     // phase i: {GO, its end}: the first all READY after its GO (PhaseLog.onAllReady), else the next GO (onGo's close)
     std::vector<std::array<int64_t, 2>> phases() const {
         std::vector<std::array<int64_t, 2>> v;
         for (size_t i = 0; i < gos.size(); i++) {
             int64_t end = i + 1 < gos.size() ? gos[i + 1] : -1;
-            // strictly between its GO and the next (C&C's last_all_ready_at also moves at a GO: those aren't phase ends)
+            // strictly between its GO and the next
             for (int64_t r : readies) if (r > gos[i] && (i + 1 >= gos.size() || r < gos[i + 1])) { end = r; break; }
             v.push_back({gos[i], end});
         }
         return v;
     }
-    explicit Machine(const Opts& o) : m(o.config()), c(m.c), cc(m.c.cc()) {
+    std::unique_ptr<FpCheck> fpc;
+    Machine(const Opts& o, const std::string& fp_name) : m(o.config()), c(m.c), cc(m.c.cc()) {
+        if (const char* d = std::getenv("SORT_FP")) {
+            const std::string f = std::string(d) + "/" + fp_name + ".fpd";
+            if (sortkit::is_file(f)) { fpc = std::make_unique<FpCheck>(f, c); std::fprintf(stderr, "fp: %s against %s\n", fp_name.c_str(), f.c_str()); }
+            else std::fprintf(stderr, "fp: %s: no reference %s, not checked\n", fp_name.c_str(), f.c_str());
+        }
         im = Mach::Image::load_dir(image_dir(), "sort");
         syms.load(image_dir() + "/sort.sym");
         im.syms = syms.sym;
     }
     uint32_t sym(const std::string& s) const { return im.sym(s); }
+    // tile k's unit (through a named TileRef: gcc 13's -Wdangling-reference otherwise flags the chip's own unit)
+    template <class T> T& tunit(unsigned k, const char* n) { mach::TileRef p = c.tile(k); return p.unit<T>(n); }
     // SortTest.Machine.boot (spec 6.2): program memory, data memory from _data_start, CMD_JUMP to _start, GO when all are READY
     void boot() {
         cc.load_words(lw_broadcast(), 0x01000000u, im.code).load_words(lw_broadcast(), sym("_data_start"), im.data)
@@ -214,16 +297,22 @@ struct Machine {
     // the stack watch armed with every core's x2 now (ref's monitor starts with the sort's run)
     void arm_sp() {
         for (unsigned k = 0; k < 64; k++) {
-            units::Rv32& r = c.tile(k).unit<units::TileCore>("core").rv;
+            units::Rv32& r = tunit<units::TileCore>(k, "core").rv;
             r.min_sp_watch = true; r.min_sp = r.x[2] != 0 ? int32_t(r.x[2]) : INT32_MAX;
         }
     }
     int32_t min_sp() {
         int32_t m = INT32_MAX;
-        for (unsigned k = 0; k < 64; k++) m = std::min(m, c.tile(k).unit<units::TileCore>("core").rv.min_sp);
+        for (unsigned k = 0; k < 64; k++) m = std::min(m, tunit<units::TileCore>(k, "core").rv.min_sp);
         return m;
     }
-    bool finish(uint64_t max) { arm_sp(); return c.run_until([&] { observe(); return !cc.busy() && c.all_stopped(); }, max); }
+    bool finish(uint64_t max) {
+        arm_sp();
+        if (fpc) fpc->at(c.cycle());                  // the state after the input and the queue (FpHooks' first point)
+        const bool ok = c.run_until([&] { observe(); if (fpc) fpc->at(c.cycle()); return !cc.busy() && c.all_stopped(); }, max);
+        if (fpc) { fpc->at(c.cycle()); g_fp_ok = fpc->report(stderr) && g_fp_ok; }
+        return ok;
+    }
     std::string halt_summary() {
         std::string sb;
         for (unsigned k = 0; k < 64; k++) {
@@ -276,7 +365,7 @@ int mismatches(Machine& m, unsigned tile, uint32_t base, const std::vector<uint6
 void p1(const std::string& kind, int n, int fmt_, const Opts& op) {
     const std::string what = "P1 " + kind + " n=" + std::to_string(n) + (fmt_ == FMT_K128 ? " k=2 (augmented)" : " 32-bit values (copy)");
     suite::group(what);
-    Machine m(op);
+    Machine m(op, "p1-" + kind + (fmt_ == FMT_K128 ? "-k128" : "-kv32"));
     m.boot();
     Keys k = builtin_keys(kind, n, seed_of(kind, 11));
     std::vector<std::vector<uint64_t>> l1_expect(64), l2_expect(64);
@@ -360,13 +449,13 @@ void write_csv(const std::string& f, const std::string& label, int fmt_, int n, 
 }
 
 // SortTest.sortRun; false if the sequence didn't finish
-bool sort_run(const std::string& label, const Keys& k, int fmt_, bool shaped, const Opts& op) {
+bool sort_run(const std::string& label, const Keys& k, int fmt_, bool shaped, const Opts& op, const std::string& fp_name) {
     int n = 0; for (auto& x : k) n = std::max(n, int(x.size()));
     const std::string what = "sort " + label + (fmt_ == FMT_K128 ? " 128-bit values" : " 32-bit values") + (shaped ? " shaped" : "");
     suite::group(what);
     const int failed0 = int(suite::failed);
     Oracle o(k, fmt_, shaped);
-    Machine m(op);
+    Machine m(op, fp_name);
     m.boot();
     load_input(m, k, fmt_);
     if (m.im.syms.count("ORACLE")) { std::fprintf(stderr, "sort_test: an image with SortTest's oracle split is not supported (NOTES, Q5)\n"); std::exit(2); }
@@ -475,14 +564,14 @@ bool sort_run(const std::string& label, const Keys& k, int fmt_, bool shaped, co
         uint64_t rot_late = 0, max_rot = 0, grp_late = 0, max_grp = 0, stalls = 0; int late_tiles = 0, max_drift = 0, drift_group = -1;
         uint64_t z = 0, zg = 0, gs = 0;
         for (unsigned t = 0; t < 64; t++) {
-            const units::AddrGen& a = m.c.tile(t).unit<units::AddrGen>("ag");
+            const units::AddrGen& a = m.tunit<units::AddrGen>(t, "ag");
             rot_late += a.rotations_late; max_rot = std::max(max_rot, a.max_rot_late); grp_late += a.groups_late_prefetch;
             max_grp = std::max(max_grp, a.max_group_late); stalls += a.stall_cycles; if (a.rotations_late > 0) late_tiles++;
             z += a.cum_zero_groups + a.zero_groups; zg += a.cum_zero_groups_with_gap + a.zero_groups_with_gap; gs += a.cum_group_stall + a.group_stall_cycles;
         }
         for (unsigned g = 0; g < units::AddrGen::MAXGROUPS; g++) {
             int64_t lo = INT64_MAX, hi = INT64_MIN;
-            for (unsigned t = 0; t < 64; t++) { const int64_t v = m.c.tile(t).unit<units::AddrGen>("ag").group_start[g]; if (v < 0) continue; lo = std::min(lo, v); hi = std::max(hi, v); }
+            for (unsigned t = 0; t < 64; t++) { const int64_t v = m.tunit<units::AddrGen>(t, "ag").group_start[g]; if (v < 0) continue; lo = std::min(lo, v); hi = std::max(hi, v); }
             if (hi >= lo && hi - lo > max_drift) { max_drift = int(hi - lo); drift_group = int(g); }
         }
         out(fmt("    address generator: %" PRIu64 " request stall cycles; rotations late %" PRIu64 " on %d tiles (max %" PRIu64 " cycles); group starts waiting for read-ahead %" PRIu64 " (max %" PRIu64 ", timetable); drift between tiles at a group start %d%s",
@@ -555,9 +644,9 @@ int main(int argc, char** argv) {
         for (auto& x : sets) {
             const std::string nm = std::string(x.kind) + (x.fmt == FMT_KV32 ? "-kv32" : "-k128");
             if (only.empty() || only == nm)
-                sort_run(std::string(x.kind) + " n=" + std::to_string(x.n), builtin_keys(x.kind, x.n, seed_of(x.kind, 11)), x.fmt, false, op);
+                sort_run(std::string(x.kind) + " n=" + std::to_string(x.n), builtin_keys(x.kind, x.n, seed_of(x.kind, 11)), x.fmt, false, op, nm);
         }
-        if (only.empty() || only == "shaped") { const int sn = full ? 32768 : 1000; sort_run("ragged n=" + std::to_string(sn), builtin_keys("ragged", sn, seed_of("ragged", 11)), FMT_K128, true, op); }
+        if (only.empty() || only == "shaped") { const int sn = full ? 32768 : 1000; sort_run("ragged n=" + std::to_string(sn), builtin_keys("ragged", sn, seed_of("ragged", 11)), FMT_K128, true, op, "shaped-ragged-k128"); }
     }
     if (has("run")) {
         const int fmt_ = get("fmt") && *get("fmt") == "kv32" ? FMT_KV32 : FMT_K128;
@@ -573,7 +662,8 @@ int main(int argc, char** argv) {
             k = builtin_keys(kind, n, seed_of(kind, 11)); label = get("label") ? *get("label") : kind + " n=" + std::to_string(n);
         }
         op.label = label;
-        sort_run(label, k, fmt_, has("shaped"), op);
+        sort_run(label, k, fmt_, has("shaped"), op, label);
     }
-    return suite::done(std::string("SortTest") + (op.shuffle >= 0 ? " (shuffled, seed " + std::to_string(op.shuffle) + ")" : ""));
+    const int rc = suite::done(std::string("SortTest") + (op.shuffle >= 0 ? " (shuffled, seed " + std::to_string(op.shuffle) + ")" : ""));
+    return rc != 0 ? rc : g_fp_ok ? 0 : 1;
 }

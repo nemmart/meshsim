@@ -8,6 +8,7 @@
 #include "harness.h"
 #include "mach.h"
 #include "units/ag.h"
+#include "units/big_sram.h"
 #include "units/gather.h"
 #include "units/linkword.h"
 #include "units/tile_ctl.h"
@@ -86,8 +87,31 @@ void stageb(bool lone) {
         (unsigned long long)c.violations());
     say("%s", c.violation_report().c_str());
 }
+void phases(int64_t seed) {
+    Mach m(Mach::cfg(seed));
+    mach::A2A data(7, 2000);
+    for (unsigned s = 0; s < 64; s++) {
+        mach::TileRef p = m.c.tile(s);
+        for (size_t k = 0; k < data.rec[s].size(); k++) p.sram_poke64(mach::A2A::SRC + 2 * uint32_t(k), uint64_t(data.rec[s][k]));
+        for (unsigned d = 0; d < 64; d++) p.sram_poke(0xF0000 + d, uint32_t(data.cnt[s][d]));
+        for (unsigned src = 0; src < 64; src++) p.sram_poke(0xF0000 + 64 + src, uint32_t(data.cnt[src][s]));
+        for (unsigned g = 0; g < 16; g++) p.sram_poke(0xF0000 + 128 + g, uint32_t(data.R[g]));
+        p.sram_poke(0xF0000 + 144, 0);
+    }
+    m.c.phases().namer = [](int32_t w) -> std::string {
+        switch (uint32_t(w) >> 24) { case 1: return "configure"; case 2: return "start (a2a)"; case 3: return "exit"; case 0x4A: return "boot"; default: return "?"; }
+    };
+    m.boot("a2a");
+    m.c.cc().command(units::lw::BROADCAST, 1u << 24).go().command(units::lw::BROADCAST, 2u << 24).go().command(units::lw::BROADCAST, 3u << 24).go();
+    const bool ok = m.run([&] { return m.all_stopped(); }, 2000000);
+    m.c.phases().close();
+    say("phases seed %lld: %s at cycle %lld\n", (long long)seed, ok ? "stopped" : "NOT stopped", (long long)m.c.cycle());
+    say("%s", m.c.phases().report().c_str());
+    say("%s", m.c.phases().csv().c_str());
+}
 void machself() {
     out.clear();
+    if (sim::check::kOn) { phases(-1); phases(4); }        // (PhaseLog's FIFO peaks: the debug and suite builds)
     stageb(true);
     stageb(false);
     {
@@ -307,11 +331,15 @@ TEST(mach_net_as_refs_Net) {
 std::string without_violations(const std::string& x) {
     if (sim::check::kOn) return x;
     std::string r;
+    bool skip = false;
     for (size_t at = 0; at < x.size();) {
         size_t e = x.find('\n', at);
         if (e == std::string::npos) e = x.size();
         std::string l = x.substr(at, e - at);
         at = e + 1;
+        if (l.rfind("phases seed ", 0) == 0) skip = true;     // PhaseLog's sections: the debug and suite builds only
+        if (l.rfind("stageb ", 0) == 0) skip = false;
+        if (skip) continue;
         if (l.rfind("violations: ", 0) == 0 || l.rfind("  cycle ", 0) == 0) continue;
         const size_t v = l.find("; violations ");
         if (v != std::string::npos) l = l.substr(0, v);
@@ -456,4 +484,20 @@ TEST(mach_row_hook_destroyed_cleanly) {
         CHECK_EQ(rows, 0u);
     }
     CHECK(true);
+}
+
+// W22's F2: mem_idle reads an area queue as it wraps, at its configured depth (8), not at the array's (16): a write
+// queued in the slot after the wrap holds mem_idle low; a stale write past the depth doesn't.
+TEST(mach_mem_idle_sees_a_wrapped_queue) {
+    mach::Chip c(mach::MachConfig::defaults());
+    mach::TileRef p = c.tile(3);
+    units::BigSram& m = p.unit<units::BigSram>("sram");
+    CHECK_EQ(m.cfg.area_queue_depth, 8u);
+    CHECK(p.mem_idle());
+    m.head[5] = 7; m.count[5] = 2;                           // entries in slots 7 and 0
+    m.q[5][7].write = false; m.q[5][0].write = true; m.q[5][8].write = false;
+    CHECK(!p.mem_idle());                                    // the write in slot 0 (not slot 8)
+    m.q[5][0].write = false; m.q[5][8].write = true;         // a stale write past the depth
+    CHECK(p.mem_idle());
+    m.count[5] = 0;
 }

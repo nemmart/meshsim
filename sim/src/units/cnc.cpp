@@ -227,9 +227,8 @@ sim::Wake Cnc::sequence(sim::Ctx& c, int64_t t) {
             wait_until = -1;
             cur++;
             return after_step(c);
-        case CncStep::WAIT_READY:
-            if (!all_ready(t)) return sim::Wake::none();
-            last_all_ready_at = t;
+        case CncStep::WAIT_READY:                             // SortTest.atAllReady's waitUntil: C&C's own
+            if (!all_ready(t)) return sim::Wake::none();      //  lastAllReadyAt is go()'s alone in ref (W24, NOTES)
             cur++;
             return after_step(c);
         }

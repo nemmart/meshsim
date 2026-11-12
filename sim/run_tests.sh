@@ -44,6 +44,8 @@ SUITES="suite_memsys suite_rvc suite_tracer"
 EQUIVS="test_golden test_tileslotconf"
 SUITES="$SUITES suite_ccbench"                       # W23 (P5)
 SUITES="$SUITES suite_replayer stageb"               # W25 (P7b)
+SUITES="$SUITES suite_net"                           # W22 (P4)
+SUITES="$SUITES sort_test"                           # W24 (P6)
 
 if [ "$BUILD" = 1 ]; then
   echo "== building the suites (MODE=suite CC_NAME=$CC_NAME)"
@@ -94,9 +96,10 @@ echo "== the layout (v1.3: tools/check_layout.sh; v1.35: tools/check_copies.sh)"
 pending sw-build      "building the tile programs (sw/build.sh; regenerates sw/mesh.h)" "v1.35: fw/build.sh (W19)"
 pending sort-build    "building the sort program (sw/ext/sort/build.sh: one image, the split, the planner)" "v1.35: fw/build.sh (W19)"
 pending bus           "bus primitives" "W20, C2"
-pending net           "network, packets, director" "P4"
-pending net-shuf      "shuffled child order (seed 5)" "P4"
-pending net-shuf2     "shuffled child order (seed 11)" "P4"
+NETREF=tests/p4suites/net.log; [ "$MODE" = quick ] && NETREF=tests/p4suites/net-quick.log   # W22: v1.3's net step takes $Q
+step net       1 "network, packets, director" $NETREF -- $S/suite_net -1 $Q
+step net-shuf  1 "shuffled child order (seed 5)" tests/p4suites/net-shuf.log -- $S/suite_net 5 quick
+step net-shuf2 1 "shuffled child order (seed 11)" tests/p4suites/net-shuf2.log -- $S/suite_net 11 quick
 pending mem           "big SRAM, read and write queues" "P4"
 pending mem-shuf      "shuffled child order (seed 3)" "P4"
 pending mem-shuf2     "shuffled child order (seed 8)" "P4"
@@ -140,12 +143,12 @@ step replayer 1 "the replayer model (v1.25): the opcode table, the ALU against v
 step memsys 1 "the Tracer's memory system (v1.3, B1): FileStore's trees and statuses, the shared cache's timing" tests/tracersuites/memsys.log -- $S/suite_memsys
 step rvc    1 "the Tracer's RVC decompressor against gold's, every 16-bit encoding (v1.3, B1)" tests/tracersuites/rvc.log -- $S/suite_rvc
 step tracer 1 "the Tracer (v1.3, B1): execution, memory, the map, errors, cuts, controller-fed expansions, the output path" tests/tracersuites/tracer.log -- $S/suite_tracer
-pending sort-p1       "the sort's local sorts (L1, L2)" "P6"
-pending sort          "the sort, every built-in set at 64 x <= 2,000 (several minutes)" "P6"
-pending sort-shuf     "shuffled child order (seed 4)" "P6"
+step sort-p1 1 "the sort's local sorts (L1, L2)" tests/sort/ref/sort-p1.log -- $S/sort_test -1 p1
+pending sort          "the sort, every built-in set at 64 x <= 2,000 (several minutes)" "P6: equal but the peak lines, which wait for W20's PhaseLog"
+pending sort-shuf     "shuffled child order (seed 4)" "P6: equal but the peak lines, which wait for W20's PhaseLog"
 if [ "$MODE" != quick ]; then
-  pending sort-bt-kv32    "BT, forced, trace hot 10 / 10 % at 64 x 16,384, 32-bit values (a few minutes)" "P6"
-  pending sort-bt-k128    "the same, 128-bit values" "P6"
+  pending sort-bt-kv32    "BT, forced, trace hot 10 / 10 % at 64 x 16,384, 32-bit values (a few minutes)" "P6: equal but the peak lines (W20's PhaseLog)"
+  pending sort-bt-k128    "the same, 128-bit values" "P6: equal but the peak lines (W20's PhaseLog)"
   pending rdport-full     "gather 1 at full size (Java; the C parts PENDING (phase 2))" "P4"
   pending accounting-full "per-phase accounting, full-size all-to-all from C" "P5 (W23)"
   pending agbench         "read-ahead measurements: ag_lookahead, zero-length groups, start to first request (a few minutes)" "P4"
@@ -154,7 +157,7 @@ if [ "$MODE" != quick ]; then
   pending sweep-quick     "parameter sweep, quick (about 1 minute; 'java Sweep full' takes about 25)" "P6"
   pending ctrl-full       "the all-to-all from C on the four data sets" "P5"
   pending engine-full     "full-size all-to-alls (4 data sets) and radix sort (about 1.5 minutes)" "P4"
-  pending skewtable       "fan-in under 0/+1 skew, 40 skew patterns (several minutes)" "P4"
+  step skewtable 1 "fan-in under 0/+1 skew, 40 skew patterns (several minutes)" tests/p4suites/skewtable.log -- $S/suite_net -1 skewtable 40
 fi
 # ---- v1.3's summary ------------------------------------------------------------------------------------------------
 grep -h "PENDING" results/*.log | sort | uniq -c

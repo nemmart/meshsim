@@ -58,7 +58,36 @@ final class MachSelf {
         System.out.print(c.violationReport());
     }
 
+    /** PhaseLog (H3): the a2a's phases (AccountingTest's namer), its report and CSV, plain and shuffled. */
+    static void phases(long seed) {
+        Mach m = new Mach(Mach.cfg(seed));
+        A2A data = new A2A(7, 2000);
+        for (Tile p : m.c.tiles) {
+            int s = p.idx;
+            for (int k = 0; k < data.rec[s].length; k++) p.sram.poke64(A2A.SRC + 2 * k, data.rec[s][k]);
+            for (int d = 0; d < 64; d++) p.sram.poke(0xF0000 + d, data.cnt[s][d]);
+            for (int src = 0; src < 64; src++) p.sram.poke(0xF0000 + 64 + src, data.cnt[src][s]);
+            for (int g = 0; g < 16; g++) p.sram.poke(0xF0000 + 128 + g, data.R[g]);
+            p.sram.poke(0xF0000 + 144, 0);
+        }
+        m.c.phases.namer = w -> switch (w >>> 24) { case 1 -> "configure"; case 2 -> "start (a2a)"; case 3 -> "exit"; case Registers.CMD_JUMP -> "boot"; default -> "?"; };
+        m.boot("a2a");
+        m.c.cc.command(LinkWord.BROADCAST, 1 << 24).go().command(LinkWord.BROADCAST, 2 << 24).go().command(LinkWord.BROADCAST, 3 << 24).go();
+        boolean ok = m.run(m::allStopped, 2_000_000);
+        m.c.phases.close();
+        System.out.println("phases seed " + seed + ": " + (ok ? "stopped" : "NOT stopped") + " at cycle " + m.c.cycle);
+        System.out.print(m.c.phases.report());
+        try {
+            java.nio.file.Path f = java.nio.file.Files.createTempFile("phases", ".csv");
+            m.c.phases.csv(f);
+            System.out.print(java.nio.file.Files.readString(f));
+            java.nio.file.Files.delete(f);
+        } catch (java.io.IOException e) { throw new RuntimeException(e); }
+    }
+
     public static void main(String[] a) throws Exception {
+        phases(-1);
+        phases(4);
         stageb(true);
         stageb(false);
         {   // regs (CtrlTest's), run as M2Prog runs it

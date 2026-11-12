@@ -88,3 +88,31 @@ Commit and push after each step; each step checked against `ref`.
   C&C's `last_all_ready_at` also moves at a GO (not a phase end). Mach::Image reads only three-field .sym lines; the
   driver reads `nm -S`'s four-field ones as SortTest does. Not yet: shuffled and debug options, the BT steps,
   fingerprints at every GO, the CSVs against the kit, profile/watch (H7), the runner's steps.
+- **F4. C&C's model set `last_all_ready_at` at the harness's all-READY wait** (`CncStep::WAIT_READY`, SortTest's
+  `atAllReady` waitUntil) as well as at `go()`'s; in ref only `go()` sets `lastAllReadyAt` (CnC.java:193; SortTest's
+  waitUntil keeps its own `allReadyAt`). Fixed in the unowned C&C model (owner, 2026-11-12): WAIT_READY no longer
+  touches it. test_mach (MachSelf), test_sort, test_t2_harness, test_chain, test_chip, test_cc_units, test_cnc
+  unchanged (clang release); the driver's phases read go()'s value directly (no offset).
+- **Step 2, the paths exact** (clang release): `SORT_FP=tests/sort/fp sort_test ...` compares every run with its
+  SortFp reference at every point ref took (the boot's end, every GO and all-READY, the end): **every point of all 14
+  references equal**: p1 (both formats), the 10 runs of `sort` (direct, LB, TH, stage 2, shaped, both formats), both BT
+  runs (16K, forced), and uniform-k128 shuffled (seed 4). Logs, against v1.3's, equal but the peak lines (PhaseLog):
+  sort-p1 (also shuffled, instance-major, step-all), sort (plain, shuffled seed 4, instance-major, step-all: 104
+  passed each), sort-bt-kv32 and sort-bt-k128 (inputs line equal under the runner's mask). BT runs here: 19 s and 28 s.
+- **The runner**: `sort-p1` is a step (its log equal); sort, sort-shuf and the BT steps stay pending with the reason
+  (their peak lines) until PhaseLog lands. `tests/sort/keys.sh`: the BT key set prebuilt and checked by hash, made with
+  pipeline/keys only if missing and a JDK is present (Q4's rule, for the steps too).
+- **The per-run CSV (H4)**: `sort_test run ... csv=` against Quest 178's kit CSVs (`kit/n2000.tgz`): p4/uniform-k128,
+  few5-k128, trace10-10-kv32, zipf10-k128 equal in every column but the five peak columns (PhaseLog); their logs equal
+  but the peak lines, the inputs lines equal under the mask.
+- **make check**: `test_sort_suites` runs sort_test: sort-p1's log against ref's (first field masked) with both p1
+  fingerprints, and the direct (uniform-k128) and TH (reverse-kv32) runs at every reference point (17 s, clang release).
+- **The full pass** (2026-11-12, at c3d56dff, this container: 1 CPU, gcc 13.3.0, clang 18.1.3): make check's copies and
+  TSan stages pass; then every build with `make -k` and each of the 70 tests run separately: **gcc debug, clang debug,
+  gcc release, clang release all pass**, sort_test under ASan and UBSan included (test_sort_suites, both debug builds).
+  The one exception: W23's `test_ctl_suites.cpp` doesn't build on gcc 13 debug (std::regex, -Wmaybe-uninitialized; W23's,
+  told by the owner). sort_main.cpp's own gcc-debug failure (-Wdangling-reference on a TileRef temporary) fixed first.
+- **The kit on the C++ binaries** (`tests/sort/kit/`: assemble.sh, run.sh, tools/runjob.sh, v1.3's jobs.txt,
+  KEYS.sha256 = v1.3's kit's key hashes, README): assembled and run on the uniform jobs at -n 2000 (p4 both formats,
+  shuf): every run's CSV equal to Quest 178's but the peak columns; SUMMARY from sort_summary. Waiting: the peaks and
+  phases CSVs (W20's PhaseLog), the sweep's `cfg.*` (W20's Config, step 3).

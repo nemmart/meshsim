@@ -98,6 +98,20 @@ remaining kinds, interleaved as the suites ask.
 - **W25's F6 fixed**: the slot freed whatever row buffer the replayer pointed at (the row hook's vector, after
   `Chip::on_row`): a double free. The slot now frees only the buffer it allocated (`SlotCore::Ref::rows`).
   test_mach's `mach_row_hook_destroyed_cleanly` fails under ASan without the fix. W25 can drop stageb.cpp's workaround.
+- **W22's F2 fixed**: `TileRef::mem_idle` read big SRAM's area queues modulo the array's 16, not the configured
+  depth (8): after a wrap it read a stale slot. Now `BigSram::at(a, j)`; test_mach's `mach_mem_idle_sees_a_wrapped_queue`
+  fails with the old indexing.
+- **`tests/java_format.h`** (the owner: one shared helper): `jfmt::fixed` (Java's %.nf: the shortest digits, HALF_UP)
+  and `jfmt::grouped` (%,d), W24's code with W24's test values and W23's, W25's and PhaseLog's, each checked against Java
+  (`test_java_format`). W24, W25 (and W23's ctl.h) switch to it in P8's cleanup.
+- **PhaseLog (H3) done**: `tests/phase_log.{h,cpp}`, `Chip::phases()` (attached at the first call; runs cycle by cycle
+  then; the hooks after each cycle: the READY pulses (TileCtl's ready_pulse_at, W23's), C&C's all-READY and GO stores),
+  ref's counters (the cores' caught up as ref's syncCounters), peaks, report() and csv() (Java's formatting). New
+  statistics, counters only: the read queue's latency sum and count per client (under SIM_CHECKS, beside W22's latMax),
+  the table stores' request-FIFO peaks, the read port's peak. `unreadOverwrites` 0 until W26's tracking. The debug and
+  suite builds only (its FIFO peaks and latencies are kept there; FATAL otherwise). MachSelf's PhaseLog case (the a2a
+  with AccountingTest's namer: report and CSV, seeds -1 and 4) line for line, gcc and clang. accounting-full's CSV is
+  W23's step (AccountingTest) on the runner.
 - Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
   after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
 

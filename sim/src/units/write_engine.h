@@ -14,6 +14,7 @@
 #include <cstdio>
 
 #include "base/fatal.h"
+#include "units/s1.h"
 #include "check.h"
 #include "sim.h"
 #include "units/linkword.h"
@@ -72,6 +73,8 @@ struct WriteEngine {
                                         // write put to big SRAM (WriteEngine.java:81), for ReadPortGatherTest. A statistic.
     uint32_t stage_peak = 0;        // W22 (P4; approved 2026-11-12; SIM_CHECKS only): ref's stageHighWater, the stage's count
                                     // after a take (WriteEngine.java:109), for EngineTest. A statistic.
+    S1Tile* s1 = nullptr;           // W26: S1 (s1.h): each stage entry's acceptance (ref's stAcc), -1 none
+    int64_t st_acc[MAX_STAGE] = {};
 #endif
 
     WriteEngine(sim::Ports& p, unsigned we_in_depth, unsigned ts_engine_latency, uint32_t chunks) : mem_chunks(chunks) {
@@ -155,6 +158,7 @@ inline sim::Wake WriteEngine::step(sim::Ctx& c) {
             c.put(to_sram, last_put[0], lo, hi);
             written++;
 #ifdef SIM_CHECKS
+            if (s1 && s1->on && st_acc[head] >= 0) for (unsigned k = 0; k < n; k++) s1->sram_put(t, a + k, uint64_t(st_acc[head]));   // W26: S1
             written_by_size[__builtin_ctz(n)]++;                   // W22: WriteEngine.writtenBySize
 #endif
         }
@@ -172,14 +176,26 @@ inline sim::Wake WriteEngine::step(sim::Ctx& c) {
         }
         const unsigned i = (head + count) % cap, mode = lw::mode(h);
         st_d[i] = d; st_h[i] = h; st_c[i] = cw; count++;
+#ifdef SIM_CHECKS
+        const int64_t acc = s1 && s1->on ? s1->take_accept() : -1;   // W26: S1 (ref's acceptQ.poll)
+        st_acc[i] = acc;
+#endif
         if (mode == lw::M_WRITE) { st_ptr[i] = lw::offset(lw::addr(h)) >> 2; st_have[i] = 1; explicit_writes++; }
         else {
             const uint32_t cfgw = c.read(dma, DMA_R_CONFIG);
             const uint32_t idx = mode == lw::M_BUCKET ? digit(d, bucket_digit(cfgw)) : lw::src(h);
             const uint32_t stp = mode == lw::M_AUG ? 2 : 1u << lw::size(h);
             c.put(ts_req, mem::OP_ADD_RET, mem::IDX_PTR + idx, stp);
+#ifdef SIM_CHECKS
+            if (acc >= 0) s1->push(0, idx, uint64_t(acc));      // W26: S1 (ref's ptrAcc)
+#endif
             st_have[i] = 0; aw[(aw_head + aw_n) % cap] = uint8_t(i); aw_n++;
-            if (const uint32_t hd = hist_digit(cfgw)) c.put(hist_req, mem::OP_ADD_RET, digit(d, hd), 1);
+            if (const uint32_t hd = hist_digit(cfgw)) {
+                c.put(hist_req, mem::OP_ADD_RET, digit(d, hd), 1);
+#ifdef SIM_CHECKS
+                if (acc >= 0) s1->push(1, digit(d, hd), uint64_t(acc));   // W26: S1 (ref's histAcc)
+#endif
+            }
         }
 #ifdef SIM_CHECKS
         if (count > stage_peak) stage_peak = count;         // W22: WriteEngine.stageHighWater

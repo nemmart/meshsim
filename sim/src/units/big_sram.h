@@ -34,6 +34,7 @@
 #include "check.h"
 #include "sim.h"
 #include "units/memsum.h"
+#include "units/s1.h"
 
 namespace units {
 
@@ -126,6 +127,7 @@ struct BigSram {
     std::unique_ptr<uint64_t[]> rd_bits, wr_bits;
     uint32_t bit_words = 0, phase = 0;
     uint64_t disjoint_violations = 0;  // ref's BigSRAM.disjointViolations (MemTest reads it); check builds only
+    S1Tile* s1 = nullptr;              // W26: S1 (s1.h): the write's ordering point and its store
     bool phase_flagged = false;
     int ck_tile = -1;                  // the checker's tile (add_g1); -1 records nothing
     sim::Word go_last = 0;
@@ -212,6 +214,12 @@ struct BigSram {
                 c.take(wr);
                 if (merge) combine(a, mask, addr & 3, lo, hi);
                 else enqueue(a, true, row(addr), mask, 0, 0, lo, hi);
+#ifdef SIM_CHECKS
+                if (s1 && s1->on) for (unsigned k = 0; k < n; k++) {   // W26: S1's ordering point (BigSRAM.java:90)
+                    uint64_t acc;
+                    if (s1->sram_get(t, addr + k, acc)) s1->ordered(t, addr + k, t - acc);
+                }
+#endif
             } else write_stall_cycles++;
         }
         if (reads && c.ready(rd)) {
@@ -266,6 +274,8 @@ struct BigSram {
             for (unsigned j = 0; j < 4; j++) if (e.mask >> j & 1) {
 #ifdef SIM_CHECKS
                 mark(t, wr_bits.get(), rd_bits.get(), base + j, 1);   // W26: invariant 2
+                uint64_t acc;
+                if (s1 && s1->on && s1->sram_remove(t, base + j, acc)) s1->stored(t - acc);   // W26: S1 (BigSRAM.java:138)
 #endif
                 store(base + j, e.d[j]);
             }

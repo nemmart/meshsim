@@ -25,6 +25,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 
 #include "check.h"
 #include "sim.h"
@@ -32,6 +33,7 @@
 #include "units/linkword.h"
 #include "units/regmap.h"
 #include "units/rv32.h"
+#include "units/s1.h"
 
 namespace units {
 
@@ -62,6 +64,12 @@ struct Director {
                                // (rp_latency + 1: it lands at the end of t + 2, AUDIT-M3 3.1); when cfg.periph_slot
 
     DirectorConfig cfg;
+    std::unique_ptr<S1Tile> s1;        // W26: S1's measurement (s1.h), the tile's; SIM_CHECKS only (add_g1), null otherwise
+    void s1_accept([[maybe_unused]] uint64_t t) {
+#ifdef SIM_CHECKS
+        if (s1 && s1->on) s1->accept(t);
+#endif
+    }
     // statistics (not state: outside the fingerprint)
     uint64_t accepted = 0, per_mode[lw::N_MODES] = {}, count_only = 0, undefined_size = 0, violations = 0, bad_packets = 0;
     // W11: read-port results accepted (ReadPort.acceptedAt; the "rdport" fingerprint's outstanding = stores - this) and
@@ -173,12 +181,13 @@ struct Director {
                 if ((lw::offset(a) >> 2) + lw::chunks(size) > cfg.mem_chunks)   // W20: a fact only (invariant 19)
                     ck::record(c.now(), int(cfg.tile), ck::Kind::DIR_PAST_SRAM, lw::offset(a) >> 2, d, h, hi);
                 c.put(we_in, d, h, hi);
+                s1_accept(c.now());                             // W26: S1 (ref's acceptQ.add)
             }
             else if (cfg.periph_slot && r >= 0x04 && r <= 0x06) c.put(periph, d, h, hi);   /* W15: the slot (S1) */
             else FATAL("director (tile %u): a write to peripheral region 0x%x at cycle %llu: not modelled in M2", cfg.tile, r, (unsigned long long)c.now());
             break;
         }
-        case lw::M_SRC: case lw::M_BUCKET: case lw::M_AUG: c.put(we_in, d, h, hi); break;   // the write engine (G3, G4)
+        case lw::M_SRC: case lw::M_BUCKET: case lw::M_AUG: c.put(we_in, d, h, hi); s1_accept(c.now()); break;   // the write engine (G3, G4; W26: S1)
         case lw::M_GATHER:                                                                  // the gather engine (G4)
             c.put(gather, d, h, hi);
             if (cfg.g4) c.put(gather_put);

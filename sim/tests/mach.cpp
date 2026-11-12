@@ -382,6 +382,7 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     CheckSwitches sw;
     sw.errors = c.check_errors; sw.unexpected = c.check_unexpected; sw.read_port_overlap = c.check_read_port_overlap;
     sw.command_read = c.check_command_read; sw.strict_replies = c.strict_replies; sw.K = c.K;
+    sw.disjoint = c.check_disjoint;                       // W26's switch (ref's checkDisjoint)
     m.checker = std::make_unique<Checker>(sim::check::kOn ? c.check_capacity : 0, c.max_violation_messages, sw);
     for (unsigned k = 0; k < m.nunits; k++) {             // the units that record facts under their tile (src/check.h)
         units::TileCtl& b = m.sim->unit<units::TileCtl>(units::unit_prefix(k) + "ctl");

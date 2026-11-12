@@ -1021,6 +1021,25 @@ Cycle Sim::now() const { return impl_->threads ? impl_->threads->now() : impl_->
 const Sizes& Sim::sizes() const { return impl_->threads ? impl_->threads->sizes() : impl_->sizes; }
 std::string Sim::partition() const { return impl_->threads ? impl_->threads->partition() : std::string("one domain"); }
 
+void Sim::flush_ports() {                                      // W20 (harness-only; B20)
+    if (impl_->running) FATAL("Sim::flush_ports during a run: between runs only");
+    if (impl_->threads) FATAL("Sim::flush_ports: one domain only");
+    Engine& e = impl_->e;
+    for (uint32_t wi = 0; wi < e.nwheels; wi++)
+        for (uint32_t b = 0; b <= e.wheels[wi].mask; b++) e.wheels[wi].buckets[b].clear();
+    for (uint32_t i = 0; i < e.nlinks; i++) { e.links[i].ring.head = 0; e.links[i].ring.n = 0; e.links[i].inflight = 0; }
+    for (uint32_t i = 0; i < e.nfifos; i++) {
+        FifoPort& f = e.fifos[i];
+        f.ring.head = 0; f.ring.n = 0;
+        f.overflows = 0; f.first_overflow = kNoCycle;
+        if (f.ret != kNone) f.credits = f.depth;
+#ifdef SIM_CHECKS
+        f.peak = 0;
+#endif
+    }
+    for (uint32_t i = 0; i < e.nholds; i++) e.holds[i].occ = false;
+    for (uint32_t k = 0; k < e.ninst; k++) e.mask[k] = 0;   // the inputs' pending and level bits
+}
 uint32_t Sim::regfile_value(RegFileIn p, unsigned i) const {   // W20 (harness-only)
     if (impl_->running) FATAL("Sim::regfile_value during a run: between runs only");
     if (impl_->threads) FATAL("Sim::regfile_value: one domain only");

@@ -216,3 +216,16 @@ Commit and push after each piece; each kind checked line for line against `ref` 
   Not checked against ref: the core's HIST loads (no case loads HIST by instruction; TileRef::load's own path doesn't
   count them), and two same-cycle orders that only an acceptance mismatch reaches (a write-back with its index's queue
   empty, a take with the acceptance queue empty: we-in overflows).
+- **BusTest (C2)**: `tests/suite_bus.cpp` (rule `tests/bus.mk`): v1.3's BusTest on the framework's port kinds, a
+  one-unit rig owning both ends of the port (as tests/portconf.h), each cycle's calls one batch run in its step: Latch
+  and WordLatch on Reg, DelayLine and WordDelayLine on Link(L) (DelayLine(d1, 1, 2) a Link of capacity 2), the two
+  backpressure FIFOs on the credit Fifo, WordFIFO on Fifo(N) (overflows and peak from the Sim's observers), WordHold on
+  Hold; OverflowFIFO, WordBackpressureDelayLine (the reserved Link, never built), RegisterBlock and SRAMMacro as
+  test-only shims of ref's classes. throwsISE is suite::throws; every child's stop was read once and is the check meant
+  (the framework's messages, or the shims' ref texts). **The runner's `bus` step runs the debug build** (integrator,
+  2026-11-12): most of the framework's port-misuse checks are debug assertions; `make check` runs it too (gcc and
+  clang debug). **The rig's own checks** (no framework counterpart): Latch's "time backwards" (a unit acts only at the
+  current cycle) and WordHold's "retry without a refusal" (a Hold has no retry). Where ref judges a Link's capacity at
+  the commit and the framework at the put (PORTS.md 2), the child makes the puts that exceed it. WordFIFO's "the v1.0
+  rule is the default" is the framework's one Fifo rule (PORTS.md 3). Output equal to v1.3's results/bus.log, "BusTest:
+  154 passed, 0 failed", gcc and clang debug; the step off PENDING.

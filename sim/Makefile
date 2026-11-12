@@ -72,7 +72,8 @@ run: $(TESTS) $(SKETCH)
 check:
 	@sh tools/check_copies.sh
 	@set -e; for c in $(COMPILERS); do for m in debug release; do \
-	  echo "==== $$c $$m"; $(MAKE) --no-print-directory CC_NAME=$$c MODE=$$m run; done; done; \
+	  echo "==== $$c $$m"; $(MAKE) --no-print-directory CC_NAME=$$c MODE=$$m run; done; \
+	  $(MAKE) --no-print-directory CC_NAME=$$c MODE=debug build/$$c-debug/suite_bus && ./build/$$c-debug/suite_bus; done; \
 	echo "==== make check: all passed ($(COMPILERS); debug, release)"
 
 # The conformance tool (the C++ side of PORTS.md 10): the matrix against ref is oracle/conformance.sh (W19: it needs
@@ -103,3 +104,4 @@ include tools/regs/regs.mk
 include tools/delivery/delivery.mk
 include tests/p7b.mk
 include tests/sort.mk
+include tests/bus.mk

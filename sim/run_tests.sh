@@ -51,6 +51,9 @@ if [ "$BUILD" = 1 ]; then
   echo "== building the suites (MODE=suite CC_NAME=$CC_NAME)"
   make -s -j"${JOBS:-4}" MODE=suite CC_NAME="$CC_NAME" $(for x in $SUITES $EQUIVS; do echo "$S/$x"; done) > results/.build.log 2>&1 \
     || { cat results/.build.log; echo "== the build failed"; exit 1; }
+  # W26: BusTest's throws checks are the framework's debug assertions, so its step runs suite_bus's debug build (tiny)
+  make -s -j"${JOBS:-4}" MODE=debug CC_NAME="$CC_NAME" "build/$CC_NAME-debug/suite_bus" > results/.build-bus.log 2>&1 \
+    || { cat results/.build-bus.log; echo "== the build failed (suite_bus, MODE=debug)"; exit 1; }
 fi
 
 # Timing masked for --check: wall-clock figures (seconds, ms, rates) vary by machine; cycles never do.
@@ -95,7 +98,7 @@ V13=ref/meshsim/results                    # v1.3's committed logs (some stale: 
 echo "== the layout (v1.3: tools/check_layout.sh; v1.35: tools/check_copies.sh)"; sh tools/check_copies.sh > results/layout.log 2>&1 && tail -1 results/layout.log || { cat results/layout.log; echo "FAIL the layout"; }
 pending sw-build      "building the tile programs (sw/build.sh; regenerates sw/mesh.h)" "v1.35: fw/build.sh (W19)"
 pending sort-build    "building the sort program (sw/ext/sort/build.sh: one image, the split, the planner)" "v1.35: fw/build.sh (W19)"
-pending bus           "bus primitives" "W20, C2"
+step bus 1 "bus primitives (W26: on the framework's port kinds; the debug build, its throws checks being debug assertions)" $V13/bus.log -- build/$CC_NAME-debug/suite_bus
 NETREF=tests/p4suites/net.log; [ "$MODE" = quick ] && NETREF=tests/p4suites/net-quick.log   # W22: v1.3's net step takes $Q
 step net       1 "network, packets, director" $NETREF -- $S/suite_net -1 $Q
 step net-shuf  1 "shuffled child order (seed 5)" tests/p4suites/net-shuf.log -- $S/suite_net 5 quick

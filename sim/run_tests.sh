@@ -45,7 +45,7 @@ EQUIVS="test_golden test_tileslotconf"
 SUITES="$SUITES suite_ccbench"                       # W23 (P5)
 SUITES="$SUITES suite_replayer stageb"               # W25 (P7b)
 SUITES="$SUITES suite_net"                           # W22 (P4)
-SUITES="$SUITES sort_test"                           # W24 (P6)
+SUITES="$SUITES sort_test sweep"                     # W24 (P6)
 
 if [ "$BUILD" = 1 ]; then
   echo "== building the suites (MODE=suite CC_NAME=$CC_NAME)"
@@ -127,15 +127,14 @@ equiv periph          "the peripheral framework: the standard window, events, re
 pending periph-shuf   "shuffled child order (seed 4)" "P5 (test_tileslotconf has no shuffled run yet)"
 pending reqbus        "the request port, the request bus and the receive queues in the tree" "P4"
 pending reqbus-shuf   "shuffled child order (seed 4)" "P4"
-# cccores: log-equal (D44's mask) in the builds without the checker; this runner's suite build has it on, and the
-# error path's injected ERRORS count as a violation until W20's requests 9 and 10 replace W23's stand-ins (ctl.h).
-# Then these two lines replace the pending ones:
+# cccores: log-equal (D44's mask) once TileRef::set_errors reaches the controllers (W20: host_on is set on tiles 0-63
+# only, so C&C 2's ERRORS bit is dropped; with it set on cc1-cc3.ctl too, 77 passed, release and suite builds). Then:
 #   MASK_EXTRA=$D44_MASK step cccores      1 "C&C 1-3 as cores ..." tests/ctlsuites/cccores.log -- $S/suite_cccores -1
 #   MASK_EXTRA=$D44_MASK step cccores-shuf 1 "shuffled child order (seed 4)" tests/ctlsuites/cccores-shuf.log -- $S/suite_cccores 4
-pending cccores       "C&C 1-3 as cores (Config.ccCores, WORKER14): the boot ROM's controller branch, the link, the request tree" "P5: W20's requests 9 and 10 (the checker's build)"
-pending cccores-shuf  "shuffled child order (seed 4)" "P5: W20's requests 9 and 10 (the checker's build)"
+pending cccores       "C&C 1-3 as cores (Config.ccCores, WORKER14): the boot ROM's controller branch, the link, the request tree" "P5: W20, set_errors on a controller"
+pending cccores-shuf  "shuffled child order (seed 4)" "P5: W20, set_errors on a controller"
 step replay-build 1 "the replay controller (sw/replay/build.sh)" tests/stageb/replay-build.log -- tests/stageb/replay_build.sh
-pending stageb        "Stage B: replay_ctl.c on a tile against Stage A, synthetic windows" "P7b: equal to v1.3, but its CL4 line says FAIL by design and the summary greps FAIL (W25 F9, integrator)"
+step stageb 1 "Stage B: replay_ctl.c on a tile against Stage A, synthetic windows" tests/stageb/stageb.log -- $S/stageb synthetic
 if [ -n "${DELIVERY:-}" ]; then   # Stage B on a tracer delivery's guest windows: DELIVERY=<replay-inputs dir> (v1.3's; no such delivery on the runner: unrun, as in v1.3)
   for g in lrd_x0 scd_x0 nop_hint jalr_self jalr_zero; do step stageb-$g 1 "Stage B on the tile: $g" - -- $S/stageb "$DELIVERY" state $g; done
 fi
@@ -156,7 +155,9 @@ if [ "$MODE" != quick ]; then
   pending agbench         "read-ahead measurements: ag_lookahead, zero-length groups, start to first request (a few minutes)" "P4"
   pending s1bench         "item S1: K's margin over the write path, L = 1-4, and the table-window case (a few minutes)" "P5 (W23)"
   step ccbench 16 "C&C 1-3 as cores (WORKER14): the boot and a phase against the Java model" tests/ctlsuites/ccbench.log -- $S/suite_ccbench
-  pending sweep-quick     "parameter sweep, quick (about 1 minute; 'java Sweep full' takes about 25)" "P6"
+  # the sweep's CSV checked too (with --check): a difference prints a FAIL line into the step's log
+  sweep_quick() { $S/sweep quick || return 1; [ "$CHECK" = 0 ] || cmp -s results/sweep-quick.csv tests/sort/ref/sweep-quick.csv || echo "FAIL: results/sweep-quick.csv differs from tests/sort/ref/sweep-quick.csv"; }
+  step sweep-quick 4 "parameter sweep, quick (about 1 minute; 'java Sweep full' takes about 25)" tests/sort/ref/sweep-quick.log -- sweep_quick
   pending ctrl-full       "the all-to-all from C on the four data sets" "P5"
   pending engine-full     "full-size all-to-alls (4 data sets) and radix sort (about 1.5 minutes)" "P4"
   step skewtable 1 "fan-in under 0/+1 skew, 40 skew patterns (several minutes)" tests/p4suites/skewtable.log -- $S/suite_net -1 skewtable 40
@@ -164,6 +165,6 @@ fi
 # ---- v1.3's summary ------------------------------------------------------------------------------------------------
 grep -h "PENDING" results/*.log | sort | uniq -c
 FAILED=0
-grep -h "FAIL" results/*.log && FAILED=1
+grep -h "FAIL" results/*.log | grep -v "(CL4: must fail)" && FAILED=1   # D46: Stage B's must-fail window (v1.3's runner fails on it too)
 [ -s results/.differs ] && { cat results/.differs; FAILED=1; }
 [ "$FAILED" = 1 ] && { echo "== FAILURES"; exit 1; } || echo "== all passed (PENDING suites aside); logs in results/"

@@ -47,6 +47,12 @@ final class MachSelf {
         m.c.cc.command(LinkWord.BROADCAST, 1 << 24).go().command(LinkWord.BROADCAST, 2 << 24).go().command(LinkWord.BROADCAST, 3 << 24).go();
         boolean ok = m.run(m::allStopped, 2_000_000);
         report("a2a seed " + seed + (kit ? " kit" : ""), m, ok);
+        {   // the canonical state fingerprint of the chip at its last cycle (StateFp, as M2Prog prints it): B25's
+            StateFp.Out o; long all = 0x6A09E667F3BCC908L; int nn = 0;
+            for (Tile p : m.c.tiles) for (String u : StateFp.TILE_UNITS) { o = new StateFp.Out(); StateFp.unit(o, m.c, p, u, m.c.cycle); all = StateFp.fmix(all ^ o.done()); nn++; }
+            for (String u : StateFp.CHIP_UNITS) { o = new StateFp.Out(); StateFp.chipUnit(o, m.c, u, m.c.cycle); all = StateFp.fmix(all ^ o.done()); nn++; }
+            System.out.printf("  fp %016x%n", StateFp.fmix(all ^ nn));
+        }
         StringBuilder pl = new StringBuilder("  phaseLog");
         for (long[] e : m.c.cc.phaseLog) pl.append(' ').append(java.util.Arrays.toString(e));
         System.out.println(pl);
@@ -101,7 +107,49 @@ final class MachSelf {
         } catch (java.io.IOException e) { throw new RuntimeException(e); }
     }
 
+    /** H6: the TRACE stores of search.c (SearchBench's mark(), through TileControl.traceHook), N = 4096, one run. */
+    static void trace() throws Exception { trace(false); }
+    /** with rdpeak: at SRAM read latency 4, variant 1, PhaseLog's CSV (the read port's peak: a store and an injection in one cycle). */
+    static void trace(boolean rdpeak) throws Exception {
+        int N = 4096;
+        Config cfg = Mach.cfg(-1);
+        if (rdpeak) cfg.sramReadLatency = 4;
+        Mach m = new Mach(cfg);
+        java.util.Random r = new java.util.Random(N);
+        for (Tile p : m.c.tiles) {
+            long[] k = new long[N]; for (int i = 0; i < N; i++) k[i] = r.nextInt() & 0xFFFFFFFFL;
+            java.util.Arrays.sort(k);
+            for (int i = 0; i < N; i++) p.sram.poke(i, (int) k[i]);
+            p.sram.poke(0xF0000, N); p.sram.poke(0xF0001, 0);
+            for (int i = 0; i < 64; i++) p.sram.poke(0xF0002 + i, i == 0 ? 0 : i == 1 ? -1 : r.nextInt());
+        }
+        m.boot("search");
+        java.util.List<java.util.List<long[]>> marks = new java.util.ArrayList<>(); for (int i = 0; i < 64; i++) marks.add(new java.util.ArrayList<>());
+        for (Tile p : m.c.tiles) { final int i = p.idx; p.ctl.traceHook = (t, v) -> marks.get(i).add(new long[] { t, v }); }
+        m.c.cc.command(LinkWord.BROADCAST, 1 << 24 | (rdpeak ? 1 : 0) << 8 | 4).go();
+        m.run(() -> !m.c.cc.busy(), 5_000_000);
+        long[] d0 = new long[64]; for (Tile p : m.c.tiles) d0[p.idx] = p.ctl.dones;
+        boolean ok = m.run(() -> { for (Tile p : m.c.tiles) if (p.ctl.dones <= d0[p.idx]) return false; return true; }, 5_000_000);
+        if (rdpeak) {
+            m.c.phases.close();
+            java.nio.file.Path f = java.nio.file.Files.createTempFile("phases", ".csv");
+            m.c.phases.csv(f);
+            System.out.println("rdpeak: " + (ok ? "finished" : "NOT finished") + " at cycle " + m.c.cycle);
+            System.out.print(java.nio.file.Files.readString(f));
+            java.nio.file.Files.delete(f);
+            return;
+        }
+        System.out.println("trace: " + (ok ? "finished" : "NOT finished") + " at cycle " + m.c.cycle);
+        for (int t : new int[] { 0, 7, 63 }) {
+            StringBuilder sb = new StringBuilder("  tile " + t + ": " + marks.get(t).size() + " TRACE stores");
+            for (long[] e : marks.get(t)) sb.append(" ").append(e[0]).append(":").append(Long.toHexString(e[1]));
+            System.out.println(sb);
+        }
+    }
+
     public static void main(String[] a) throws Exception {
+        trace();
+        trace(true);
         phases(-1);
         phases(4);
         stageb(true);

@@ -145,7 +145,17 @@ struct TableStore {
                sim::hash_fields(pub, pub_idx, pub_val) * 13;
     }
 
-    explicit TableStore(sim::Ports& p, bool ag = false) : with_ag(ag) {
+    // W26 (the checker, SIM_CHECKS only): ref's ts.ptrBusy as the core's table-window check reads it (tile_ctl.h,
+    // TileCore::table_check): driven at the store's step at t when PTR is busy at t (a write-engine request arriving at
+    // t, one queued at the start of t, an RMW scheduled at t or t - 1; the store steps at every such cycle), t + 1, with
+    // bit 63 set when it was busy at t - 1 too (a test's store at t sees ref's flag as left by t - 1).
+    sim::WireOut busy_ptr;
+    bool busy_wire = false;
+    uint64_t busy_last = ~0ull;
+    explicit TableStore(sim::Ports& p, bool ag = false, bool busy_wire_ = false) : with_ag(ag), busy_wire(busy_wire_) {
+#ifdef SIM_CHECKS
+        if (busy_wire) p.out(busy_ptr, "busy_ptr");
+#endif
         p.in(window, "window", 2);
         p.in(req_we, "req_we", 3);
         p.out(ret_we, "ret_we", 3);
@@ -158,6 +168,7 @@ struct TableStore {
     }
     sim::Wake step(sim::Ctx& c) {
         const uint64_t t = c.now();
+        [[maybe_unused]] const bool wb_pending = pipe.valid;   // W26: an RMW scheduled at t - 1
         if (pub) { c.write(ptr_view, pub_idx, pub_val); pub = false; }   // the write-back of t - 1 (with_ag)
         if (host_poke) {                                       // W20 (harness-only): the harness's pokes
             for (unsigned w = 0; w < 4; w++)
@@ -189,6 +200,12 @@ struct TableStore {
             if (c.ready(req_stream)) { q_stream.put(t, c.peek(req_stream)); c.take(req_stream); }
             if (c.ready(req_group)) { q_group.put(t, c.peek(req_group)); c.take(req_group); }
         }
+#ifdef SIM_CHECKS
+        if (busy_wire && (c.ready(req_we) || q_we.n || wb_pending)) {                          // W26: ptrBusy at t
+            c.drive(busy_ptr, (t + 1) | (busy_last + 1 == t ? (uint64_t(1) << 63) : 0));
+            busy_last = t;
+        }
+#endif
         if (c.ready(req_we)) { q_we.put(t, c.peek(req_we)); c.take(req_we); }
         if (q_stream.n) {
             const uint64_t idx = q_stream.front()[1];
@@ -247,9 +264,21 @@ struct HistStore {
     void poke_host(uint32_t i, uint32_t v) { m.write(i, v); host_hist[(i & 255) >> 6] |= 1ull << (i & 63); }
     uint64_t digest() const { return m.s_hist.sum ^ q.digest() * 3 ^ pipe.digest() * 5 ^ uint64_t(hist_overflow); }
 
-    explicit HistStore(sim::Ports& p) { p.in(window, "window", 2); p.in(req, "req", 3); p.out(out, "hist", HIST_REGS); p.out(ovf_ev, "ovf_ev", 0); }
+    // W26 (the checker, SIM_CHECKS only): ref's hist.busy as the core's table-window check reads it, as TableStore's
+    // busy_ptr: t + 1 driven at the store's step at t when HIST is busy at t (a request arriving at t, one queued at the
+    // start of t, an RMW scheduled at t or t - 1), bit 63 set when it was busy at t - 1 too.
+    sim::WireOut busy_hist;
+    bool busy_wire = false;
+    uint64_t busy_last = ~0ull;
+    explicit HistStore(sim::Ports& p, bool busy_wire_ = false) : busy_wire(busy_wire_) {
+        p.in(window, "window", 2); p.in(req, "req", 3); p.out(out, "hist", HIST_REGS); p.out(ovf_ev, "ovf_ev", 0);
+#ifdef SIM_CHECKS
+        if (busy_wire) p.out(busy_hist, "busy_hist");
+#endif
+    }
     sim::Wake step(sim::Ctx& c) {
         const uint64_t t = c.now();
+        [[maybe_unused]] const bool wb_pending = pipe.valid;   // W26: an RMW scheduled at t - 1
         if (host_poke) {                                       // W20 (harness-only): the harness's pokes
             for (unsigned w = 0; w < 4; w++)
                 for (uint64_t b = host_hist[w]; b; b &= b - 1) { const unsigned i = 64 * w + unsigned(__builtin_ctzll(b)); c.write(out, i, m.hist[i]); }
@@ -271,6 +300,12 @@ struct HistStore {
             pipe.valid = false; pipe.last_wb = t;
         }
         if (q.commit(t)) c.put(ovf_ev);                        // judged at t (D29)
+#ifdef SIM_CHECKS
+        if (busy_wire && (c.ready(req) || q.n || wb_pending)) {                        // W26: hist.busy at t
+            c.drive(busy_hist, (t + 1) | (busy_last + 1 == t ? (uint64_t(1) << 63) : 0));
+            busy_last = t;
+        }
+#endif
         if (c.ready(req)) { q.put(t, c.peek(req)); c.take(req); }
         if (q.n) {
             const uint64_t* r = q.front();

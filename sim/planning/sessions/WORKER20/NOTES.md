@@ -134,6 +134,30 @@ remaining kinds, interleaved as the suites ask.
   counterStoreClearsLatch (rpLatency only in kMin): inert here too. Refused at build unless ref's default:
   errorLatency != readyLatency, logTrace (until H6). Checked: MachSelf's a2a with a kit job's ten cfg fields equal to
   ref's (SortTest's own setField on the Java side); test_mach's front-end test. The StateFp option (B25) comes next.
+- **B25 done**: `MESHSIM_DIGEST=FILE` (ref's -Dmeshsim.digest): every Chip appends at destruction (those alive at exit
+  too), in creation order, "chip N cycle C units U mcycle M wfi W instructions I violations V fp HASH" (ref's totals in
+  clear; HASH the whole chip's canonical state fingerprint, tests/statefp*, in place of ref's digest hash, D41 Q5);
+  `Chip::digest()`. MachSelf prints ref's StateFp of the chip (M2Prog's way) after each a2a, kit-configured included:
+  equal. The machine with C&C 1-3 as cores: not wired yet (statefp_m3's registry; FATAL, asking). errorLatency moved to
+  dropped() (the owner: no v1.3 driver sets it other than readyLatency).
+- **H6 done**: `TileRef::record_trace()` / `trace_log()` (every TRACE store's {cycle, value}: ref's TileControl.traceHook,
+  as SearchBench uses it; the register block writes it into the harness's array, harness-only, none in a preview; the
+  store of the cycle just run included, as ref has it), `MachConfig::log_trace` (ref's logTrace: every tile recorded,
+  its refusal lifted) and `Chip::log()` ("cycle T tile K: TRACE 0xV", the part of ref's Chip.log v1.35 keeps).
+  MachSelf's TRACE case (search.c, N = 4096, one run; SearchBench's data with java.util.Random: tiles 0, 7, 63's stores
+  and their cycles) equal to ref's. The scratch layout of machself.sh now has fw/images too.
+- **W24's F6 fixed**: PhaseLog's read-port peak by ref's rule (ReadPort.peak: in use right after a store, the same
+  cycle's injection counted out, ref's injection running before the core). PhaseLog keeps it itself, cycle by cycle,
+  from the core's stores and the read side's injections after each cycle (`PhaseLog::after_cycle`); the core's
+  `rp_peak` stays a plain statistic. MachSelf's rdpeak case (search.c at SRAM read latency 4, variant 1: PhaseLog's CSV,
+  peak_readPort 1 in ref) fails without the fix (2) and passes with it.
+- **W22-9 / W23's (a): Net on any machine** (Config.machine() included, as ref's; not with cc_cores). NetSelf's
+  machine case (HooksTest's and RequestBusTest's machine(): the tiles waiting in their boot ROMs, periphType 0 and 4:
+  data memory, big SRAM, a broadcast; the 74 violations they raise) equal to ref.
+- **PhaseLog's unreadOverwrites** now W26's `TileCore::track.overwritten_unread` summed over the tiles (ref's
+  cmem.overwrittenUnread), plus port B's write of the cycle just run (ref counts it at that cycle; the C++ core takes it
+  at its next step: `TileCore::overwrites` on a copy of the tracking, beside W26's track_port_b). The local fixtures
+  have only zeros there: W24's kit CSVs (4,417 nonzero rows in v1.3) are the check.
 - Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
   after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
 

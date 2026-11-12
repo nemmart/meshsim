@@ -179,7 +179,10 @@ constexpr unsigned kListCapacity = 4096;
 
 // ReplayDelivery.runWindow: one delivered window through the ideal controller. A record that isn't a v1.26 record is
 // FATAL, as ref's checkRecord throws (the kit checks every file's hash and size first).
-inline Result run_window(const units::tracer::ReplayTables& tables, const std::string& pd, const Entry& we, const std::string& variant) {
+// logq: the replayer's read-log and write-log queues (ref's -Dreplayer.logq, which reaches every replayer in its JVM,
+// Stage A's included; the kit's -q).
+inline Result run_window(const units::tracer::ReplayTables& tables, const std::string& pd, const Entry& we, const std::string& variant,
+                         unsigned logq = Replayer::LOG_QUEUE_ENTRIES) {
     Result res;
     res.index = we.index;
     const long long rows = we.rows;
@@ -204,7 +207,7 @@ inline Result run_window(const units::tracer::ReplayTables& tables, const std::s
     }
     res.summary = std::string("streams ") + (sz[0].compressed ? "C" : "r") + (sz[1].compressed ? "C" : "r") + (sz[2].compressed ? "C" : "r");
 
-    auto rp = std::make_unique<Replayer>(0, Replayer::LOG_QUEUE_ENTRIES, kListCapacity);
+    auto rp = std::make_unique<Replayer>(0, logq, kListCapacity);
     auto d = std::make_unique<rtest::ReplayDriver>(*w, uint64_t(rows) + 16, rp.get());
     d->load();
     d->pass(40 * rows + 100000);

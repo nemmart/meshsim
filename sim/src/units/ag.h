@@ -98,10 +98,18 @@ struct AddrGen {
     uint64_t violations() const { return size_violations + mode_violations + aug128_violations + dest_violations + align_violations; }
 
     AddrGen() = default;
-    explicit AddrGen(sim::Ports& p, uint32_t tile = 0, uint32_t ag_lookahead = 6, bool wired_ = false)
-        : me(tile), lookahead(ag_lookahead), wired(wired_) {
+    // W26 (the checker, SIM_CHECKS only): ref's `!ag.idle() || ag.runningForStatus()` as the core's table-window check
+    // reads it (ref's core runs after the AG, whose step consumes pStart): driven at a step at t that changes `running`
+    // (it changes only in a step): t << 2 | the value before << 1 | the value after (TileCore::table_check).
+    sim::WireOut running_out;
+    bool running_wire = false, running_driven = false;
+    explicit AddrGen(sim::Ports& p, uint32_t tile = 0, uint32_t ag_lookahead = 6, bool wired_ = false, bool running_wire_ = false)
+        : me(tile), lookahead(ag_lookahead), wired(wired_), running_wire(running_wire_) {
         p.in(dma, "dma");
         if (!wired) return;
+#ifdef SIM_CHECKS
+        if (running_wire) p.out(running_out, "running");
+#endif
         if (lookahead < 1 || lookahead > kMaxLookahead) FATAL("address generator: ag_lookahead %u (1-%u)", lookahead, kMaxLookahead);
         p.in(start, "start");
         p.out(rd, "rd", mem::kReadReqWidth);
@@ -166,6 +174,12 @@ struct AddrGen {
         stream_q_peak = std::max(stream_q_peak, sq_buf + sq_out); group_q_peak = std::max(group_q_peak, cq_buf + cq_out);
         const sim::Word st = (running ? sim::Word(ST_RUNNING) : 0) | (done ? sim::Word(ST_DONE) : 0);
         if (st != status_out) { c.put(status, st); status_out = st; }
+#ifdef SIM_CHECKS
+        if (running_wire && running != running_driven) {                 // W26
+            c.drive(running_out, sim::Word(t) << 2 | sim::Word(running_driven) << 1 | sim::Word(running));
+            running_driven = running;
+        }
+#endif
         return running ? c.next() : sim::Wake::none();
     }
 

@@ -45,6 +45,9 @@ namespace units {
 
 // ---- the program (configuration) ----------------------------------------------------------------------------------
 struct CncPacket { uint8_t dst, mode, counter, size; uint32_t addr; uint64_t lo, hi; };
+// W26: Endpoint.send's checks (invariants 5 and 21) as chip facts at the send's cycle t (cnc.cpp); for every path that
+// puts an endpoint's packet the way ref's Endpoint.send does (C&C 1's sends, the endpoints' harness sends)
+void endpoint_checks(uint64_t t, unsigned address, const CncPacket& p);
 struct CncStep {
     enum Kind : uint8_t {
         SEND,        // packets [a, b), one per cycle (Endpoint.send: src 64, the payload masked to its size)

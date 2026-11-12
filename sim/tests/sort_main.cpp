@@ -60,7 +60,7 @@ std::string fmt(const char* f, ...) {
     va_end(ap);
     return buf;
 }
-void out(const std::string& s) { std::fwrite(s.data(), 1, s.size(), stdout); std::fputc('\n', stdout); }
+void out(const std::string& s) { std::fwrite(s.data(), 1, s.size(), stdout); std::fputc('\n', stdout); std::fflush(stdout); }   // a stop keeps what was printed, as Java's System.out
 using sortkit::grouped;
 
 // java.lang.String.hashCode, java.util.Random's nextInt() and nextInt(bound)

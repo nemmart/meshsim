@@ -136,10 +136,6 @@ void boot() {
 }
 
 
-// The checker's count since a point (ref's `m.c.violations = 0; m.c.violationMessages.clear()`): the count is the
-// chip's minus the count at the reset point. (A test-side form of ref's zeroing, exact for every later reading.)
-struct Zeroed { uint64_t base = 0; };
-uint64_t violations_since(Chip& c, const Zeroed& z) { return c.violations() - z.base; }
 bool any_message(Chip& c, const char* needle) {
     for (const std::string& v : c.violation_messages()) if (v.find(needle) != std::string::npos) return true;
     return false;
@@ -220,11 +216,8 @@ void registers() {
               "the 384 violations: on every tile the three counter wraps, ROUTER_HDR's and WRITE_COUNTER_2's reserved bits (invariant 21) and the odd DMA_RECORD_BASE_ADDRESS (invariant 20), all on purpose");
     suite::check(any_message(m.c, "ROUTER_HDR stored with reserved bits") && any_message(m.c, "not aligned to a record"),
                  "the reserved bits and the record alignment are named");
-    Zeroed z{m.c.violations()}; m.c.clear_violation_messages();
-    {
-        const uint64_t v = violations_since(m.c, z);
-        suite::check(v == 0, "registers: no invariant violations%s", v == 0 ? "" : ("\n" + m.c.violation_report()).c_str());
-    }
+    m.c.clear_violations();
+    no_violations(m.c, "registers");
     out("registers [meas: CtrlTest registers]: the configuration registers read back, write-only ones read 0; counters 20 bits, writes add and wrap (flagged); HIST 17, PTR 21, the STREAM arrays and GROUP 32 bits a word through the window; the send port in modes 0 and 1 to the tile itself at 32, 64 and 128 bits, ROUTER_ADDR + 4/8/16 at mode 0 and fixed under no-increment, W0-W2 cleared per send; counters done after each; the events' registers at reset; STATUS and done readable the next cycle");
 }
 

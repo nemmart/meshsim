@@ -41,7 +41,7 @@ From `sim/`, committed first (the kit is HEAD's):
     tests/acceptance/make_kit.sh /tmp/kit.tgz
     tests/acceptance/make_task.sh /tmp/kit.tgz NNN-w25-calibrate './calibrate.sh $RES/calib' > quest/tasks/NNN-w25-calibrate.sh
 
-The task unpacks the kit, checks its HASHES, builds it with clang (`./build.sh`), records the machine
+The task unpacks the kit, checks its HASHES, builds it with clang (`./build.sh`: the suite build, release flags with the checker on, so the machine's violations reach the verdict as in v1.3), records the machine
 (`sim/tools/machine.sh`) and runs the command. `make_acceptance_task.sh` writes one program's whole acceptance.
 
 ## Differences from v1.3's kit

@@ -52,6 +52,8 @@ struct RegBlockState {
     uint64_t spurious_edges = 0;
     int64_t last_done_at = -1, last_landed_at = -1, ready_pulse_at = INT64_MIN;
     int ck_tile = -1;                  // W20: the checker's facts (src/check.h) under this tile; -1 none (a preview's copy)
+    int64_t (*tlog)[2] = nullptr;      // W20 (harness-only; H6): every TRACE store {t, value}, into the harness's array
+    uint32_t tlog_cap = 0, tlog_n = 0; //   (null otherwise, and in a preview's copy)
     uint32_t sim_exit_value = 0;
 
     // What reached the block during t (all of it from t's cycle; at most one bus operation, the core's).
@@ -204,7 +206,13 @@ struct RegBlockState {
             req_n++; sends++; set_w[0] = set_w[1] = set_w[2] = 0;
             break;
         case SIM_EXIT: sim_exit_at = t; sim_exit_value = v; break;
-        case TRACE: trace_stores++; break;
+        case TRACE:
+            trace_stores++;
+            if (tlog) {                                                  // W20 (harness-only): ref's traceHook / logTrace
+                if (tlog_n == tlog_cap) FATAL("register block: the harness's TRACE log is full (%u stores)", tlog_cap);
+                tlog[tlog_n][0] = int64_t(t); tlog[tlog_n][1] = int64_t(v); tlog_n++;
+            }
+            break;
         default:
             if (r >= WRITE_COUNTER_1 && r <= WRITE_COUNTER_7) {           // 4.12: a write adds; N > 0 arms; 0 does nothing
                 unsigned k = r - WRITE_COUNTER_1 + 1;

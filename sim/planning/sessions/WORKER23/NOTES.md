@@ -233,3 +233,24 @@ Read through both against main's `TileRef::load/store` and Net:
 What I do test-side or add myself: C&C 1's model's `expect` (Cnc's field, set between cycles), the director's
 `remaining` (TileRef::set_remaining), `sendsBySize` and `droppedBad` (counters, if a unit lacks them), the AG's UB
 (already a FATAL naming the tile and "a start while a run is running").
+
+## W20's requests 9 and 10 on main (2026-11-12)
+
+- Stand-ins removed from `tests/ctl/ctl.h`; CcCoresTest uses `TileRef::set_errors` and `Chip::set_check_errors`,
+  CtrlTest `Chip::clear_violations` (in place of the count-since-a-point).
+- **cccores is not matched yet, for a new reason**: `set_errors` reaches tiles 0-63 only. mach.cpp sets the block's
+  `host_on` (which applies `host_cond`) on `t<k>.ctl` for k < 64, not on `cc1-cc3.ctl`, so errorPath's C&C 2 error is
+  dropped (6 FAILs: ERROR_LINES_2 [1], 24 reports drained of 48, ...). **For W20: one line, `host_on = true` on
+  cc1-cc3.ctl too with cc_cores.** Tried locally (not committed): with it CcCoresTest is 77 passed, its log equal
+  (D44's mask), plain and shuffled, release and suite builds. Until then cccores stays PENDING in the runner (the two
+  step lines ready in a comment) and off in make check (`kSetErrorsOnControllers`).
+- `test_ctl_suites.cpp`: std::regex dropped (gcc 13's false -Wmaybe-uninitialized in the debug build); the D44 mask
+  by hand.
+
+## Step 6 started, RecipeTest (`tests/ctl/suite_recipes.cpp`, in progress)
+
+- Ported: snippets (Java's two patterns and `norm` by hand: "47 code blocks, 47 RECIPE regions"), copy, cmem, status,
+  rules, and the cycle table's printing; every line equal to a line of ref's log, plain and shuffled; 891 checks pass.
+- Waiting on W20's `Cc::phase_log` (still FATAL on main): cmdloop, bucket, aug, gather, xchg, xvec, a2a, rdport, sync,
+  boot, signal (goToReady, goToFirstRequest). `wait_until` (on main) is used by blocks, selftest, tables, cc1, which
+  come next with SelfTest.

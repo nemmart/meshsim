@@ -57,6 +57,28 @@ final class CheckSelf {
             n.runAll(2000);
             System.out.print(n.c.violationReport());
         }
+        {   // the core's checks through the register block (TileControl.violate; W26, 1a): the terminal traps that set no
+            // ERRORS bit (ecall, ebreak, a misaligned jump, a fetch outside the memories, a trap inside the handler), mret,
+            // an access past data memory (it aliases), a store into data memory's reserved first 16 bytes
+            Config k = Mach.cfg(-1); k.checkErrors = false; k.maxViolationMessages = 200;
+            Mach m = new Mach(k);
+            int P = Registers.PMEM_BASE, LOOP = 0x0000006F;
+            int[][] prog = {
+                { LOOP },                                              // 0: nothing
+                { 0x00000073 },                                        // 1: ecall
+                { 0x00100073 },                                        // 2: ebreak
+                { 0x30200073 },                                        // 3: mret (to mepc 0: then a fetch outside)
+                { 0x0020006F },                                        // 4: jal x0, +2: a misaligned jump
+                { 0x010000B7, 0x01008093, 0x30509073, 0, 0 },          // 5: mtvec = P + 16; an illegal one; another in the handler
+                { 0x00002223, LOOP },                                  // 6: sw x0, 4(x0): the reserved first 16 bytes
+                { 0x000080B7, 0x0000A103, 0x0020A023, LOOP },          // 7: lw x2, 0x8000; sw x2, 0x8000: past data memory
+            };
+            for (Tile p : m.c.tiles) { int[] w = prog[p.idx % prog.length]; for (int i = 0; i < w.length; i++) p.core.pokeLocal(P + 4 * i, w[i]); }
+            m.c.run(40);
+            m.c.cc.command(LinkWord.BROADCAST, Registers.CMD_JUMP << 24, P).runWhenReady();
+            m.c.run(400);
+            System.out.print(m.c.violationReport());
+        }
         {   // ERRORS from the test (ref's ctl.conditions |= bits) and the switches changed mid-run (W23's requests 9, 10)
             Config k = Net.cfg(-1); k.checkErrors = true;
             Net n = new Net(k);
@@ -75,6 +97,83 @@ final class CheckSelf {
             n.c.tiles[8].ctl.conditions |= 1 << 2;
             n.c.tiles[9].ctl.conditions |= 1 << 3;
             n.c.step();
+            System.out.print(n.c.violationReport());
+        }
+        {   // CtrlTest's inv program (W26, 1a): invariants 4, 9, the reserved register-block word, the table window while the
+            // address generator runs (tiles 2, 6, ...); invariant 8 counted, not reported (strictReplies off)
+            Config k = Mach.cfg(-1); k.checkErrors = false; k.maxViolationMessages = 1000;
+            Mach m = new Mach(k);
+            m.boot("inv");
+            m.run(m::allStopped, 10000);
+            System.out.print(m.c.violationReport());
+            long ow = 0, uc = 0; for (Tile p : m.c.tiles) { ow += p.cmem.overwrittenUnread; uc += p.cmem.unreadCommands; }
+            System.out.println("overwritten unread " + ow + ", unread commands " + uc);
+        }
+        {   // inv with invariant 8 strict (CtrlTest's invariants: strictReplies; W26, 1a)
+            Config k = Mach.cfg(-1); k.checkErrors = false; k.maxViolationMessages = 1000; k.strictReplies = true;
+            Mach m = new Mach(k);
+            m.boot("inv");
+            m.run(m::allStopped, 10000);
+            System.out.print(m.c.violationReport());
+        }
+        {   // the table window while count-on-arrival uses HIST and the write engine uses PTR (W26, 1a): a test's stores
+            // (ref's harness store runs between cycles: the flags as the cycle before left them)
+            Config k = Net.cfg(-1);
+            Net n = new Net(k);
+            n.c.tiles[9].setMasterConfig(Fields.masterConfig(0, 0, 0, 0, 1, 1));
+            n.c.tiles[9].dir.remaining[1] = 8;
+            for (int i = 0; i < 6; i++) n.at(12 + 2 * i, 10 + i, 9, LinkWord.M_SRC, 1, 0, LinkWord.SIZE_64, 0x0101L * (i + 1), 0);
+            while (n.c.cycle < 19) n.step();
+            for (int t = 20; t < 52; t++) {
+                int ea = 0xFFFF2000 + ((t & 1) != 0 ? 0x400 : 0) + 4 * (t % 5);
+                n.c.tiles[9].core.store(t, ea, t, -1);
+                n.step();
+            }
+            n.runAll(1000);
+            System.out.print(n.c.violationReport());
+        }
+        {   // the peripheral slot's own checks through the block (PeripheralSlot.violate; W26, 1a): a store to window 1's
+            // word 8 (no DMA on a mesh tile), a load of its reserved word 10, a store to its reserved word 22
+            Config k = Mach.cfg(-1); k.checkErrors = false; k.maxViolationMessages = 200;
+            Mach m = new Mach(k);
+            int P = Registers.PMEM_BASE, LOOP = 0x0000006F, X1 = 0x80000093;
+            int[][] prog = { { LOOP }, { X1, 0x2200A023, LOOP }, { X1, 0x2280A103, LOOP }, { X1, 0x2400AC23, LOOP } };
+            for (Tile p : m.c.tiles) { int[] w = prog[p.idx % prog.length]; for (int i = 0; i < w.length; i++) p.core.pokeLocal(P + 4 * i, w[i]); }
+            m.c.run(40);
+            m.c.cc.command(LinkWord.BROADCAST, Registers.CMD_JUMP << 24, P).runWhenReady();
+            m.c.run(300);
+            System.out.print(m.c.violationReport());
+        }
+        {   // a WFI woken by an event other than GO with done set, the done gate off (TileControl.takeWake; W26, 1a):
+            // EVENTS_MASK = run done, done pulsed, a run of count 0 started, WFI
+            Config k = Mach.cfg(-1); k.checkErrors = false; k.maxViolationMessages = 200; k.doneGate = false;
+            Mach m = new Mach(k);
+            int P = Registers.PMEM_BASE;
+            int[] w = { 0x80000093, 0x40000113, 0x0220A023, 0x00100193, 0x0030A623, 0x0030A823, 0x10500073, 0x0000006F };
+            for (Tile p : m.c.tiles) if (p.idx % 5 == 2) for (int i = 0; i < w.length; i++) p.core.pokeLocal(P + 4 * i, w[i]); else p.core.pokeLocal(P, 0x0000006F);
+            m.c.run(40);
+            m.c.cc.command(LinkWord.BROADCAST, Registers.CMD_JUMP << 24, P).runWhenReady();
+            m.c.run(300);
+            System.out.print(m.c.violationReport());
+        }
+        {   // the request bus's root drops a request for a reserved target or one without a receiver (W26, 1b; W22-13):
+            // REQUEST_SET_W0 = target << 7, REQUEST_SEND, from tiles 1, 2, 3 mod 4 to targets 3, 5, 7
+            Config k = Mach.cfg(-1); k.checkErrors = false; k.maxViolationMessages = 200;
+            Mach m = new Mach(k);
+            int P = Registers.PMEM_BASE, LOOP = 0x0000006F, X1 = 0x80000093;
+            int[][] prog = { { LOOP }, { X1, 0x18000113, 0x0420A423, 0x0400AA23, LOOP }, { X1, 0x28000113, 0x0420A423, 0x0400AA23, LOOP },
+                             { X1, 0x38000113, 0x0420A423, 0x0400AA23, LOOP } };
+            for (Tile p : m.c.tiles) { int[] w = prog[p.idx % prog.length]; for (int i = 0; i < w.length; i++) p.core.pokeLocal(P + 4 * i, w[i]); }
+            m.c.run(40);
+            m.c.cc.command(LinkWord.BROADCAST, Registers.CMD_JUMP << 24, P).runWhenReady();
+            m.c.run(800);
+            System.out.print(m.c.violationReport());
+        }
+        {   // C&C's receive FIFO full (W26, 1b; the endpoints' send checks wait for the harness's Net.step to call them)
+            Config k = Net.cfg(-1); k.cncRxDepth = 4;
+            Net n = new Net(k);
+            for (int i = 0; i < 8; i++) n.at(10 + i, 40 + i, LinkWord.CC1, LinkWord.M_WRITE, 0, 0x100, LinkWord.SIZE_32, i, 0);
+            n.runAll(2000);
             System.out.print(n.c.violationReport());
         }
         {   // the message cap (maxViolationMessages): the count goes on

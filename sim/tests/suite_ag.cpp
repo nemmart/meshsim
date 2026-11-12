@@ -5,8 +5,7 @@
 //
 //   suite_ag [seed] [--only=GROUP,...]      groups: worked computed bounds groupsize fig12 rulings
 //
-// STATUS. figure 12 (PTR and HIST, L = 1 and 3) waits on W22-16 (the write engine's RMW puts from the harness); the
-// stream-entry flags in `computed` and "dst 70" in `rulings` on W26's kinds.
+// STATUS. Every group; figure 12's six checks after a test's table-window store or load wait on W22-21 (W20).
 //
 // Test-side code (the configuration regime, D6).
 #include <algorithm>
@@ -24,6 +23,8 @@
 #include "suite.h"
 #include "units/ag.h"
 #include "units/linkword.h"
+#include "units/mem.h"
+#include "units/table_store.h"
 #include "units/write_engine.h"
 
 using namespace mach;
@@ -273,6 +274,91 @@ void group_size() {
     suite::ub([&] { run_local(m, 5); }, {"write engine", "not aligned to its 128-bit write"}, "a mix that misaligns its PTR stops meshsim");
 }
 
+
+// ================================================================ figure 12: PTR and HIST ports
+// Put an RMW request on the engine's line now (TileRef::we_ts_req / we_hist_req, ref's weTsReq.put / weHistReq.put);
+// return the cycle the memory takes it (port A's read)
+template <class Put, class Takes> int64_t rmw(Chip& c, Put put, Takes takes) {
+    const uint64_t before = takes();
+    put(c.cycle() + 1);
+    for (int i = 0; i < 50; i++) { c.step(); if (takes() > before) return c.cycle(); }
+    std::fprintf(stderr, "FATAL suite_ag: RMW never taken\n"); std::abort();
+}
+uint32_t ptr_addr(unsigned i) { return 0xFFFF2400u + 4 * i; }    // Registers.PTR_BASE
+// ref's core.store(t, PTR[i], v) at t = the cycle just run (rmw's return: the cycle port A read the entry): the store goes
+// through port B at that cycle, after the read (ref's TableStore.ctrlWrite at t, no write-back at t, so it lands). The
+// harness's store is for cycles to come (TileRef::store, t >= cycle() + 1); a store at the cycle just run is the table
+// write between cycles, TileRef::set_ptr (the increment's write-back, at t + 1, then overwrites it as in ref).
+void store_ptr_at_read(TileRef p, unsigned i, uint32_t v) { p.set_ptr(i, v); }
+uint32_t hist_addr(unsigned i) { return 0xFFFF2000u + 4 * i; }   // Registers.HIST_BASE
+
+void figure12_ptr(unsigned L) {
+    suite::group(suite::str("figure 12, PTR, ts_engine_latency %u", L));
+    MachConfig k = cfg(); k.with_ts_latency(L);
+    Chip c(p4::dbg(k)); TileRef p = c.tile(7);
+    const units::TableStore& ts = p.unit<units::TableStore>("ts");
+    auto put = [&](int64_t t) { p.we_ts_req(t, units::mem::OP_ADD_RET, units::mem::IDX_PTR + 9, 2); };
+    auto takes = [&] { return ts.rmws; };
+    p.set_ptr(9, 0x1000); p.set_ptr(5, 0x2000);
+    int64_t tr = rmw(c, put, takes);
+    const uint64_t v0 = c.violations();
+    p.store(tr + 1, ptr_addr(5), 0x7777);
+    c.step(); c.step();
+    eq(0x1002, p.ptr(9), "the increment's write-back lands (t + 1)");
+    eq(0x2000, p.ptr(5), "the controller's store on the write-back cycle is lost");
+    eq(1, int64_t(ts.pipe.ctrl_writes_lost), "one controller write lost");
+    check(c.violations() > v0 || p.block().violations > 0, "the window check still reports the access");
+    tr = rmw(c, put, takes);
+    check(!p.load(tr + 1, ptr_addr(5), 4).has_value(), "a controller load from PTR is a bus error (write-only)");
+    c.run(4);
+    tr = rmw(c, put, takes);
+    store_ptr_at_read(p, 5, 0x3000);                           // ref: p.core.store(tr, ptrAddr(5), 0x3000)
+    c.step(); c.step();
+    p.store(c.cycle() + 1, ptr_addr(5), 0x3004);
+    c.step();
+    eq(0x3004, p.ptr(5), "stores away from the write-back cycle land");
+    eq(0x1006, p.ptr(9), "PTR[9] = + 2 three times");
+    tr = rmw(c, put, takes);
+    store_ptr_at_read(p, 9, 0x5000);                           // ref: p.core.store(tr, ptrAddr(9), 0x5000)
+    c.step(); c.step();
+    eq(0x1008, p.ptr(9), "a store to the entry being incremented is overwritten by the write-back");
+    tr = rmw(c, put, takes);
+    const uint64_t lost = ts.pipe.ctrl_writes_lost;
+    c.step();
+    p.store(tr + 2, ptr_addr(5), 0x6000);
+    c.step(); c.step();
+    eq(int64_t(lost), int64_t(ts.pipe.ctrl_writes_lost), "t + 2 is past the write-back (ts_engine_latency %u)", L);
+    eq(0x6000, p.ptr(5), "and the store lands");
+    for (int i = 0; i < 6; i++) { put(c.cycle() + 1); c.step(); }
+    c.run(20 + 2 * L);
+    eq(0x100A + 12, p.ptr(9), "six back-to-back increments of one entry");
+}
+
+void figure12_hist(unsigned L) {
+    suite::group(suite::str("figure 12, HIST, ts_engine_latency %u", L));
+    MachConfig k = cfg(); k.with_ts_latency(L);
+    Chip c(p4::dbg(k)); TileRef p = c.tile(20);
+    const units::HistStore& h = p.unit<units::HistStore>("hist");
+    auto put = [&](int64_t t) { p.we_hist_req(t, 0, 3, 1); };
+    auto takes = [&] { return h.rmws; };
+    p.hist_poke(3, 100); p.hist_poke(4, 7);
+    int64_t tr = rmw(c, put, takes);
+    p.store(tr + 1, hist_addr(4), 55);
+    c.step(); c.step();
+    eq(101, p.hist_peek(3), "the count-on-arrival increment lands");
+    eq(7, p.hist_peek(4), "the controller's store on the write-back cycle is lost");
+    eq(1, int64_t(h.pipe.ctrl_writes_lost), "one controller write lost");
+    tr = rmw(c, put, takes);
+    const std::optional<uint32_t> got = p.load(tr + 1, hist_addr(4), 4);
+    eq(102, got ? int64_t(*got) : -1, "a controller load on the write-back cycle returns the engine's value (HIST[3] + 1)");
+    c.run(3);
+    const std::optional<uint32_t> away = p.load(c.cycle() + 1, hist_addr(4), 4);
+    eq(7, away ? int64_t(*away) : -1, "a load away from the write-back reads the entry");
+    c.step();
+    p.store(c.cycle() + 1, hist_addr(4), 55); c.step();
+    eq(55, p.hist_peek(4), "a store away from the write-back lands");
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -289,7 +375,7 @@ int main(int argc, char** argv) {
     if (want("computed")) computed_fields();
     if (want("bounds")) queue_bounds();
     if (want("groupsize")) group_size();
-    // fig12: figure 12's PTR and HIST ports, ts_engine_latency 1 and 3: W22-16 (the write engine's RMW puts)
+    if (want("fig12")) for (unsigned L : {1u, 3u}) { figure12_ptr(L); figure12_hist(L); }
     if (want("rulings")) rulings();
     return suite::done(std::string("AgTest") + (shuffle >= 0 ? " (shuffled, seed " + std::to_string(shuffle) + ")" : ""));
 }

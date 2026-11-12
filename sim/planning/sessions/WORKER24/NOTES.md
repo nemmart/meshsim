@@ -123,3 +123,9 @@ Commit and push after each step; each step checked against `ref`.
   `test_sort_suites` checks the first: all four builds pass. SORT_WATCH's clone lookup takes the first name of the
   .sym with the prefix where SortTest searches a HashMap (one candidate in every case here).
 - **Quest 181** (claimed after re-reading NUMBERS.md; pushed): the C++ kit and v1.3's side by side at 64 x 65,536 on `tests/sort/kit/jobs-sample.txt` (direct, LB, TH, BT, shuffled); compared CSVs and logs (peaks aside), sort_compare, uniform-k128 against sort64k's 1,229,687.
+- **Quest 181's result** (re-run after its first attempt failed in assemble.sh: make's targets named by absolute path,
+  fixed; task updated in place, the failed result removed): **all verdicts PASS** on the runner (i5-14400F, 16 CPUs).
+  The C++ kit and v1.3's at 64 x 65,536, five runs each (direct, LB, TH, BT, shuffled): every CSV equal but the peak
+  columns, every log equal but the peak lines and the simulator's field, every TOTAL line equal up to the GATHER peak;
+  uniform-k128's TOTAL 1,229,687 as sort64k. sort_compare lists every step of every run as differing: the peak columns
+  (0 here until PhaseLog), as expected. Wall times recorded, not timing (five runs at a time each side).

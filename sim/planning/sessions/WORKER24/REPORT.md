@@ -13,7 +13,7 @@ under "Open".
 | D5 | the inputs line | `sort_test` | equal but its first field (the simulator: `sort_test=<sha256>`, Q2; run_tests.sh masks it) |
 | D6 | SortSummary | `tests/sort_summary_main.cpp` → `sort_summary` | **SUMMARY.md and all.csv byte-identical** on v1.3's kit run at 64 × 2,000 (Quest 178) and on every edge case tried |
 | D7 | SortCompare (D41 Q3; PhaseNeutral, VerifySummary and the verify kits dropped) | `tests/sort_compare_main.cpp` → `sort_compare` | output byte-identical to v1.3's on every edge case tried |
-| D8 | the measurement kit on the C++ binaries | `tests/sort/kit/` (assemble.sh, run.sh, tools/runjob.sh, v1.3's jobs.txt) | p4 and shuffle runs at 2,000: CSVs equal to Quest 178's but the five peak columns; a full-size sample against v1.3's kit side by side: Quest 181 |
+| D8 | the measurement kit on the C++ binaries | `tests/sort/kit/` (assemble.sh, run.sh, tools/runjob.sh, v1.3's jobs.txt) | p4 and shuffle runs at 2,000: CSVs equal to Quest 178's but the five peak columns; **at full size (Quest 181), five runs (direct, LB, TH, BT, shuffled) side by side with v1.3's kit: CSVs, logs and TOTALs equal but the peaks**; uniform-k128 1,229,687 as sort64k |
 | D9 | SplitRun + splitdrv | — | **inherited dead code, not ported** (W19; owner's ruling): `splitdrv.c` doesn't compile in v1.3, no v1.3 build makes its image, `run_tests.sh` never runs SplitRun |
 | H4 | the per-run CSV | `sort_test csv=` | equal to v1.3's but the peak columns |
 | H7 | the profiles (sort.profile, sort.prof, sort.watch; the overlay-load column) | `SORT_PROFILE`, `SORT_PROF=lo-hi`, `SORT_WATCH=f,...` | equal on two runs (`tests/sort/ref/h7-*.log`), the second but its peak lines |
@@ -70,4 +70,3 @@ the Makefile's `include tests/sort.mk`, `run_tests.sh` (the sort-p1 step, `sort_
 - **W20's Config (step 3)**: `cfg.<field>=` for the kit's sweep jobs; **D10, Sweep** (`sweep quick|full`, its CSV) is not
   started: it needs the Config fields and PhaseLog.
 - **W20 / W26**: `Chip::new_phase` (SortTest's new phase at every core wake) for the disjoint-buffer check (invariant 2).
-- Quest 181's result (the full-size sample).

@@ -187,3 +187,14 @@ Commit and push after each piece; each kind checked line for line against `ref` 
   (`MachConfig::test_peripheral_tile`, W20; Config.testPeripheral in CheckSelf, TestPeripheral.java added to
   checkself.sh's compile), a 7-word transfer started, DMA_HDR and DMA_ADDR stored again while it runs: 2 lines, line for
   line (clang and gcc suite, clang debug). Tests only (no unit changed).
+- **W22's F6 (invariant 2's phases) and the access count**: ref starts a disjoint phase at the test's newPhase, every
+  GO, and every counters-done latch (TileControl.java:280: the local wake, set when not gated and not cleared in the
+  cycle). The block now counts the phases its endCycle(t) starts (`RegBlockState::new_phases`, 0-2: a GO and a latch in
+  one endCycle make two, as ref's two newPhase calls; not in the digest) and drives them on a second SIM_CHECKS-only
+  Wire, `t<k>.ctl.phases` ((t + 1) << 2 | n), which big SRAM reads (in place of the GO Wire; the core keeps `go_seen`
+  for F4). No level changes (the same producer). `BigSram::disjoint_violations` (SIM_CHECKS): ref's disjointViolations,
+  every offending access, not only the phase's first (MemTest's last assertion; W22 swaps out its -1 stand-in).
+  CheckSelf: tile 12 copies A -> B, its latch, B -> A (no violation), then one run reading and writing one buffer
+  (flagged, phase 2), and the access count (16), line for line (clang and gcc suite). ReadPortGatherTest's disjoint
+  group passes (W22's repro). Protected tests the same (clang suite, release); the order-independence set again: the
+  16K sort (plain, shuffle, step-all, instance) and T2's boot (with step-all for the run) and M1's goldens, both builds.

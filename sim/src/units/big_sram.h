@@ -111,10 +111,11 @@ struct BigSram {
     // W20 (the harness's Chip::new_phase; the agreed form, 2026-11-12): a new disjoint-buffer phase.
     // W26 (invariant 2; BigSRAM.newPhase, mark): every chunk read and every chunk written in a phase is marked; a chunk
     // both read and written in one phase is a violation, its DISJOINT fact recorded once a phase (ref reports the
-    // phase's first, once a tile and phase). Phases: the harness's Chip::new_phase, and every GO (ref's
-    // TileControl.endCycle(t) at a GO: the block's `go_seen` Wire, read at this unit's step at t + 1 before it serves).
+    // phase's first, once a tile and phase). Phases: the harness's Chip::new_phase, every GO and every counters-done latch
+    // (ref's TileControl.endCycle(t): sram.newPhase at both, so two at once when both: the block's `phase_out` Wire, here
+    // `go_seen`, read at this unit's step at t + 1 before it serves; W22's F6 added the latch).
     // SIM_CHECKS only (the bits, two per chunk, allocated at build); elsewhere new_phase does nothing.
-    sim::WireIn go_seen;               // TileCtl's GO (tile_ctl.h), declared under SIM_CHECKS only (`go_wire`)
+    sim::WireIn go_seen;               // TileCtl's phase_out (tile_ctl.h), declared under SIM_CHECKS only (`go_wire`)
     void new_phase() {
 #ifdef SIM_CHECKS
         if (rd_bits) { std::memset(rd_bits.get(), 0, bit_words * 8); std::memset(wr_bits.get(), 0, bit_words * 8); }
@@ -124,6 +125,7 @@ struct BigSram {
 #ifdef SIM_CHECKS
     std::unique_ptr<uint64_t[]> rd_bits, wr_bits;
     uint32_t bit_words = 0, phase = 0;
+    uint64_t disjoint_violations = 0;  // ref's BigSRAM.disjointViolations (MemTest reads it); check builds only
     bool phase_flagged = false;
     int ck_tile = -1;                  // the checker's tile (add_g1); -1 records nothing
     sim::Word go_last = 0;
@@ -131,7 +133,9 @@ struct BigSram {
     void mark(uint64_t t, uint64_t* mine, const uint64_t* other, uint32_t c, unsigned did) {
         if (c >= cfg.mem_chunks) return;
         mine[c >> 6] |= 1ull << (c & 63);
-        if ((other[c >> 6] >> (c & 63) & 1) && !phase_flagged) {
+        if (!(other[c >> 6] >> (c & 63) & 1)) return;
+        disjoint_violations++;                                    // ref's disjointViolations: every such access
+        if (!phase_flagged) {
             phase_flagged = true;
             if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::DISJOINT, c, did, did ^ 1, phase);
         }
@@ -186,7 +190,10 @@ struct BigSram {
     sim::Wake step(sim::Ctx& c) {
         const uint64_t t = c.now();
 #ifdef SIM_CHECKS
-        if (go_wire) { const sim::Word g = c.read(go_seen); if (g != go_last) { go_last = g; new_phase(); } }   // W26: the GO of t - 1
+        if (go_wire) {                                                // W26: the phases endCycle(t - 1) started
+            const sim::Word g = c.read(go_seen);
+            if (g != go_last) { go_last = g; for (unsigned k = 0; k < (g & 3); k++) new_phase(); }
+        }
 #endif
         uint8_t start[AREAS];
         for (unsigned a = 0; a < AREAS; a++) start[a] = count[a];

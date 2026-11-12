@@ -50,6 +50,9 @@ struct RegBlockState {
     // qualifying arrival (spuriousEdges), and the cycles of the last done, the last landed command and the last READY
     // pulse (lastDoneAt, lastLandedAt: -1 before any; readyPulseAt: INT64_MIN before any)
     uint64_t spurious_edges = 0;
+    // W26 (invariant 2; not in the digest): the disjoint-buffer phases this endCycle starts (ref's sram.newPhase at a GO and
+    // at the counters-done latch, TileControl.java:234, :280; 0-2), for big SRAM through TileCtl's `phase_out` Wire
+    uint8_t new_phases = 0;
     int64_t last_done_at = -1, last_landed_at = -1, ready_pulse_at = INT64_MIN;
     int64_t counter_write_at[8] = {-1, -1, -1, -1, -1, -1, -1, -1};   // each write counter's last store (counterWriteAt)
     uint64_t sends_by_size[3] = {};             // send stores by size: 32, 64, 128 bits (sendsBySize)
@@ -88,7 +91,8 @@ struct RegBlockState {
             else remaining[in.kline]--;
         }
         if (in.freed) { if (req_n == 0) violations++; else req_n--; }   // the bus freed the head at t, before the tile ran
-        if (in.go) { done = landed = gate = false; gos++; events |= 1u << EV_GO; }                    // 1.
+        new_phases = 0;                                                  // W26
+        if (in.go) { done = landed = gate = false; gos++; events |= 1u << EV_GO; new_phases++; }      // 1.
         uint32_t clears = 0;
         dma_pulse = false;
         if (in.op == BUS_STORE) clears = apply(t, in.arg, in.v, in.ag_running);                                     // 2.
@@ -143,7 +147,7 @@ struct RegBlockState {
         bool cond = counters_zero();
         if (cond && !cond_all_prev && q_all) {
             q_all = false;
-            if (!gated && !(clears >> EV_COUNTERS_DONE & 1)) events |= 1u << EV_COUNTERS_DONE;
+            if (!gated && !(clears >> EV_COUNTERS_DONE & 1)) { events |= 1u << EV_COUNTERS_DONE; new_phases++; }   // (W26: ref's newPhase)
         } else if (cond && !cond_all_prev) spurious_edges++;                                   // W23: statistics
         cond_all_prev = cond;
     }

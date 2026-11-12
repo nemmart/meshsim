@@ -90,7 +90,7 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
         cfg.connect(ts.busy_ptr, c.busy_ptr);
         cfg.connect(ag.running_out, c.ag_running);
         cfg.connect(b.go_out, c.go_seen);
-        cfg.connect(b.go_out, sr.go_seen);                // W26: invariant 2's phase at every GO
+        cfg.connect(b.phase_out, sr.go_seen);             // W26: invariant 2's phases (every GO, every counters-done latch)
     }
     // G3 (W11): the write engine's PTR RMWs, count-on-arrival, and its writes into the big SRAM
     cfg.link(we.ts_req, ts.req_we, g.cfg.ts_engine_latency);

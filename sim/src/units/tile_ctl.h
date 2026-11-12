@@ -120,12 +120,13 @@ struct TileCtl {
     // W26 (the checker, SIM_CHECKS only): a GO taken at endCycle(t), as t + 1, for the core's command-slot check (ref's
     // endCycle clears cmem.slot0Unread at a GO while the core is in the boot ROM: TileCore::step)
     sim::WireOut go_out;
+    sim::WireOut phase_out;            // W26: invariant 2's phases of endCycle(t): (t + 1) << 2 | how many (big_sram.h)
     bool go_wire = false;
     TileCtl(sim::Ports& p, const RegBlockState& initial, bool router_ovf_event = false, bool g4_ = false, bool slot_ = false,
             bool go_wire_ = false)
         : s(initial), ovf_event(router_ovf_event), g4(g4_), slot(slot_), go_wire(go_wire_) {
 #ifdef SIM_CHECKS
-        if (go_wire) p.out(go_out, "go_seen");
+        if (go_wire) { p.out(go_out, "go_seen"); p.out(phase_out, "phases"); }
 #endif
         if (slot) p.in(slot_win, "slot_win");
         if (ovf_event) p.in(ovf, "ovf", 0);
@@ -183,6 +184,7 @@ struct TileCtl {
         s.end_cycle(c.now() - 1, in);
 #ifdef SIM_CHECKS
         if (go_wire && in.go) c.drive(go_out, c.now());       // W26: the GO of endCycle(now - 1)
+        if (go_wire && s.new_phases) c.drive(phase_out, c.now() << 2 | s.new_phases);   // W26: its new disjoint phases
 #endif
         if (host_on && host.mask) apply_host();                // W20 (harness-only)
         if constexpr (sim::check::kOn) {                       // W20: the checker's facts (invariant 15)

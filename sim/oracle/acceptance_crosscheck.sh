@@ -14,6 +14,7 @@
 # --real NAME DELIVERY PROGRAM 'RUN_SHARD_ARGS' (repeatable): also both run_shard.sh on a real (v1.26) delivery, e.g.
 #   --real evm-sel /d/sel evm-zone-29 '-f 0 -n all -j 16 -s AB -x 1'
 # --small-only / --no-small: the synthetic cases only, or none (a runner task that only wants the real and calibration).
+# KEEP=DIR: every case's two output directories copied there before the scratch goes (a Quest task's results).
 # KIT135=kit.tgz: v1.35's kit as made elsewhere (tests/acceptance/make_kit.sh), for a tree without git (a Quest task).
 # Stages A, B and F; -q 512 waits for the machine's replayer log-queue field (W20's Config fields).
 set -u
@@ -130,5 +131,6 @@ if [ $CAL = 1 ]; then
   (cd "$T/v135" && ./calibrate.sh "$T/c135" "$T") > "$T/c135.out" 2>&1
   for j in 1 4 8 16; do cmp_dirs "calibration j$j" "$T/c13/j$j" "$T/c135/j$j" && echo "SAME   calibration j$j ($(tail -1 "$T/c135/j$j/VERDICT.txt"))" || { echo "DIFFER calibration j$j"; bad=1; }; done
 fi
+if [ -n "${KEEP:-}" ]; then mkdir -p "$KEEP"; for x in o13 o135 c13 c135; do [ -d "$T/$x" ] && cp -r "$T/$x" "$KEEP/"; done; cp "$T"/*.out "$KEEP/" 2>/dev/null; fi
 [ $bad = 0 ] && echo "acceptance_crosscheck: v1.35's kit equals v1.3's on every case" || echo "acceptance_crosscheck: DIFFERENCES"
 exit $bad

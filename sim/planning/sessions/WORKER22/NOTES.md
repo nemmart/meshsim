@@ -282,3 +282,8 @@ W22-17. **SearchBench needs the TRACE store log** (ref's `p.ctl.traceHook = (t, 
   W20's `phase_done`; `new_phase` is a local no-op until W20's Chip::new_phase lands (nothing records the
   disjoint-buffer check yet, W26, so it changes nothing meanwhile). The radix sort's Net sizes the directors' logs for
   its 5 passes (`log_capacity` 5N + 64: ref's log is a list). engine-full (4 data sets at full size): the runner, later.
+- **make check, the four builds on 6e0d9e2d (2026-11-12)**: copies 322 equal; clang debug 74 of 74, clang release 74 of
+  74, gcc release 74 of 74, gcc debug 73 of 73 (test_ctl_suites.cpp, W23's, doesn't compile in gcc debug: owner told
+  W23). gcc caught a `-Wdangling-reference` in suite_net and suite_engine (a TileRef temporary), fixed in 6e0d9e2d.
+  (test_suite_replayer failed once in gcc debug only because an interrupted build had deleted suite_replayer; rebuilt,
+  it passes.)

@@ -5,6 +5,7 @@
 #include "stageb.h"
 
 #include <algorithm>
+#include <charconv>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -151,11 +152,14 @@ std::vector<std::pair<int32_t, int64_t>> java_int_map_order(const std::vector<st
 }  // namespace
 
 std::string java_fixed(double v, int digits) {
+    // Java's Formatter rounds the shortest decimal that reads back as v (FloatingDecimal's digits), HALF_UP, not the
+    // binary value (12946 / 4000 = 3.2365 prints 3.237; printf gives 3.236): as W21's java_2f in tracer_rig.cpp.
     char b[512];
-    std::snprintf(b, sizeof b, "%.80f", v < 0 ? -v : v);   // the exact binary value's decimal expansion (glibc)
-    std::string s = b;
+    auto res = std::to_chars(b, b + sizeof b, v < 0 ? -v : v, std::chars_format::fixed);
+    std::string s(b, res.ptr);
     size_t dot = s.find('.');
-    std::string ip = s.substr(0, dot), fp = s.substr(dot + 1);
+    std::string ip = dot == std::string::npos ? s : s.substr(0, dot), fp = dot == std::string::npos ? "" : s.substr(dot + 1);
+    while (fp.size() < size_t(digits) + 1) fp += '0';
     bool up = fp[size_t(digits)] >= '5';                    // HALF_UP: the first dropped digit decides
     std::string keep = ip + fp.substr(0, size_t(digits));
     if (up) {

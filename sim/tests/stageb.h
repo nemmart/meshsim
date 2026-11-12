@@ -37,7 +37,7 @@ stagea::Result run_window(const mach::Mach::Image& im, const units::tracer::Repl
 // image_dir holds replay_ctl, oldmap_dir the old-queue-map controller (ref's sw/replay/build and build/oldmap).
 int synthetic(const std::string& image_dir, const std::string& oldmap_dir, const Options& o);
 
-// Java's String.format("%.Nf", v): the exact decimal value rounded HALF_UP (printf rounds half to even).
+// Java's String.format("%.Nf", v): the shortest decimal that reads back as v, rounded HALF_UP (printf rounds the binary value).
 std::string java_fixed(double v, int digits);
 
 }  // namespace stageb

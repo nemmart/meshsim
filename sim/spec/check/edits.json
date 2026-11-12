@@ -223,7 +223,7 @@
 2942,
 "sim",
 "**Every invariant is a meshsim check** (owner, 2026-10-28): meshsim stops with an error naming the access, unless the invariant says it reports. **The hardware checks none of them as such;** where it has an error bit for the same mistake, the invariant says so (**hardware:** `ERRORS` [*n*]), and every other rule here is software's alone (the preamble's split, 4.13). Numbers survive from v1.1 where the subject does; new invariants start at 19.",
-"**Every invariant is a meshsim check** (owner, 2026-10-28): v1.35's meshsim checks each in one of three ways (the preamble): undefined behaviour is fatal in every build, the silent traps (23) stop the core, and the rest are counted in every build and reported by name in the debug and suite builds. **The hardware checks none of them as such;** where it has an error bit for the same mistake, the invariant says so (**hardware:** `ERRORS` [*n*]), and every other rule here is software's alone (the preamble's split, 4.13). Numbers survive from v1.1 where the subject does; new invariants start at 19."
+"**Every invariant is a meshsim check** (owner, 2026-10-28): v1.35's meshsim checks each in one of three ways (the preamble): undefined behaviour is fatal in every build, the silent traps (23) stop the core, and the rest are counted in every build and reported by name in the debug and suite builds. **The exceptions** are checks neither v1.3's simulator nor v1.35's has, to be added in v1.4 (item 159; `spec/CHANGES-v1.3-to-v1.35.md`): invariant 17's limits on outstanding requests, its tag windows and its rule for reads during a group run, and invariant 18 for modes 1–3 into big SRAM, which are not checked; and a packet of size 11 and two stream cases (4.2), which are counted, not stopped. **The hardware checks none of them as such;** where it has an error bit for the same mistake, the invariant says so (**hardware:** `ERRORS` [*n*]), and every other rule here is software's alone (the preamble's split, 4.13). Numbers survive from v1.1 where the subject does; new invariants start at 19."
 ],
 [
 "machine-spec.md",
@@ -254,7 +254,7 @@
 ],
 [
 "machine-spec.md",
-2024,
+2025,
 "v1.3/spec/machine-spec.md",
 3464,
 "path",
@@ -263,7 +263,7 @@
 ],
 [
 "machine-spec.md",
-2028,
+2029,
 "v1.3/spec/machine-spec.md",
 3468,
 "path",
@@ -272,7 +272,7 @@
 ],
 [
 "machine-spec.md",
-2039,
+2040,
 "v1.3/spec/machine-spec.md",
 3479,
 "path",
@@ -281,7 +281,7 @@
 ],
 [
 "machine-spec.md",
-2048,
+2049,
 "v1.3/spec/machine-spec.md",
 3488,
 "path",
@@ -906,56 +906,61 @@
 [
 "machine-spec.md",
 2004,
-"| 118 | Decided: sending peripherals' src and port; deferred: the rest of the controllers' routing, the DMA port's flow control | 4.16, 4.17.9 | decided, part deferred |"
+"| 159 | The simulator checks to add in v1.4: invariant 17's request limits, tag windows and group-run rule; invariant 18 for big SRAM; size 11 and the two stream cases, stopped rather than counted | 9, 3.1, 4.2 | deferred (owner, 2026-11-12) |"
 ],
 [
 "machine-spec.md",
 2005,
-"| 17 | A direct path from the GATHER engine to the write side | 4.4 | later |"
+"| 118 | Decided: sending peripherals' src and port; deferred: the rest of the controllers' routing, the DMA port's flow control | 4.16, 4.17.9 | decided, part deferred |"
 ],
 [
 "machine-spec.md",
 2006,
-"| 18 | Fusing the local gather with the values all-to-all | 4.2, 4.4 | later |"
+"| 17 | A direct path from the GATHER engine to the write side | 4.4 | later |"
 ],
 [
 "machine-spec.md",
 2007,
-"| 19 | An arrival-order form of augmenting for mode 4 | 4.9 | later |"
+"| 18 | Fusing the local gather with the values all-to-all | 4.2, 4.4 | later |"
 ],
 [
 "machine-spec.md",
 2008,
-"| 20 | A search engine for the split | 4.3 | later |"
+"| 19 | An arrival-order form of augmenting for mode 4 | 4.9 | later |"
 ],
 [
 "machine-spec.md",
 2009,
-"| 21 | A port-B reader for bulk transfers from controller memory | 4.5 | later |"
+"| 20 | A search engine for the split | 4.3 | later |"
 ],
 [
 "machine-spec.md",
 2010,
-"| 22 | Whole-row fetches for 64-bit streams | 4.2 | later |"
+"| 21 | A port-B reader for bulk transfers from controller memory | 4.5 | later |"
 ],
 [
 "machine-spec.md",
 2011,
+"| 22 | Whole-row fetches for 64-bit streams | 4.2 | later |"
+],
+[
+"machine-spec.md",
+2012,
 "| 125 | Signed counters | 4.12, 6.2 | later |"
 ],
 [
 "machine-spec.md",
-2013,
+2014,
 "**The index:** where each item lives; *closed* means settled, its record in the history file."
 ],
 [
 "machine-spec.md",
-2015,
-"1 here; 2 here; 3 here; 4 here; 5 here; 6 here; 7 here; 8 here; 9 closed; 10 here; 11 closed; 12 closed; 13 here; 14 closed; 15 here; 16 closed; 17 here; 18 here; 19 here; 20 here; 21 here; 22 here; 23 closed; 24 here; 25 closed; 26 closed; 27 here; 28 here; 29 closed; 30 closed; 31 closed; 32 closed; 33 closed; 34 closed; 35 `spec/jolt/replayer.md`; 36 `spec/jolt/replayer.md`; 37 closed; 38 `spec/jolt/replayer.md`; 39 `spec/jolt/replayer.md`; 40 closed; 41 closed; 42 `spec/jolt/replayer.md`; 43 closed; 44 closed; 45 closed; 46 closed; 47 closed; 48 here; 49 closed; 50 closed; 51 closed; 52 closed; 53 closed; 54 closed; 55 closed; 56 `spec/jolt/replayer.md`; 57 `spec/jolt/replayer.md`; 58 closed; 59 `spec/jolt/replayer.md`; 60 here; 61 here; 62 here; 63 here; 64 here; 65 closed; 66 closed; 67 here; 68 closed; 69 closed; 70 here; 71 closed; 72 closed; 73 closed; 74 closed; 75 closed; 76 closed; 77 closed; 78 closed; 79 closed; 80 closed; 81 closed; 82 here; 83 here; 84 here; 85 closed; 86 closed; 87 closed; 88 closed; 89 closed; 90 closed; 91 closed; 92 closed; 93 closed; 94 closed; 95 closed; 96 closed; 97 closed; 98 closed; 99 closed; 100 closed; 101 closed; 102 closed; 103 closed (owner, 2026-11-12); 104 closed; 105 closed; 106 closed; 107 here; 108 closed; 109 closed; 110 closed; 111 closed; 112 closed; 113 `spec/jolt/replayer.md`; 114 closed; 115 `spec/jolt/replayer.md`; 116 here; 117 here; 118 here; 119 here; 120 here; 121 here; 122 here; 123 `spec/jolt/replayer.md`; 124 here; 125 here; 126 here; 127 closed; 128 here; 129 here; 130 here; 131 closed; 132 closed; 133 here; 134 closed; 135 closed; 136 closed; 137 `spec/jolt/replayer.md`; 138 closed; 139 `spec/jolt/replayer.md`; 140 `spec/jolt/replayer.md`; 141 closed; 142 here; 143 closed; 144 closed; 145 closed; 146 closed; 147 `spec/jolt/tracer.md`; 148 `spec/jolt/tracer.md`; 149 closed; 150 closed; 151 closed; 152 closed; 153 `spec/jolt/tracer.md`; 154 closed; 155 closed; 156 closed; 157 closed; 158 `spec/jolt/replayer.md`."
+2016,
+"1 here; 2 here; 3 here; 4 here; 5 here; 6 here; 7 here; 8 here; 9 closed; 10 here; 11 closed; 12 closed; 13 here; 14 closed; 15 here; 16 closed; 17 here; 18 here; 19 here; 20 here; 21 here; 22 here; 23 closed; 24 here; 25 closed; 26 closed; 27 here; 28 here; 29 closed; 30 closed; 31 closed; 32 closed; 33 closed; 34 closed; 35 `spec/jolt/replayer.md`; 36 `spec/jolt/replayer.md`; 37 closed; 38 `spec/jolt/replayer.md`; 39 `spec/jolt/replayer.md`; 40 closed; 41 closed; 42 `spec/jolt/replayer.md`; 43 closed; 44 closed; 45 closed; 46 closed; 47 closed; 48 here; 49 closed; 50 closed; 51 closed; 52 closed; 53 closed; 54 closed; 55 closed; 56 `spec/jolt/replayer.md`; 57 `spec/jolt/replayer.md`; 58 closed; 59 `spec/jolt/replayer.md`; 60 here; 61 here; 62 here; 63 here; 64 here; 65 closed; 66 closed; 67 here; 68 closed; 69 closed; 70 here; 71 closed; 72 closed; 73 closed; 74 closed; 75 closed; 76 closed; 77 closed; 78 closed; 79 closed; 80 closed; 81 closed; 82 here; 83 here; 84 here; 85 closed; 86 closed; 87 closed; 88 closed; 89 closed; 90 closed; 91 closed; 92 closed; 93 closed; 94 closed; 95 closed; 96 closed; 97 closed; 98 closed; 99 closed; 100 closed; 101 closed; 102 closed; 103 closed (owner, 2026-11-12); 104 closed; 105 closed; 106 closed; 107 here; 108 closed; 109 closed; 110 closed; 111 closed; 112 closed; 113 `spec/jolt/replayer.md`; 114 closed; 115 `spec/jolt/replayer.md`; 116 here; 117 here; 118 here; 119 here; 120 here; 121 here; 122 here; 123 `spec/jolt/replayer.md`; 124 here; 125 here; 126 here; 127 closed; 128 here; 129 here; 130 here; 131 closed; 132 closed; 133 here; 134 closed; 135 closed; 136 closed; 137 `spec/jolt/replayer.md`; 138 closed; 139 `spec/jolt/replayer.md`; 140 `spec/jolt/replayer.md`; 141 closed; 142 here; 143 closed; 144 closed; 145 closed; 146 closed; 147 `spec/jolt/tracer.md`; 148 `spec/jolt/tracer.md`; 149 closed; 150 closed; 151 closed; 152 closed; 153 `spec/jolt/tracer.md`; 154 closed; 155 closed; 156 closed; 157 closed; 158 `spec/jolt/replayer.md`; 159 here."
 ],
 [
 "machine-spec.md",
-2017,
+2018,
 "**Closed since v1.3:** 103, the split run log: a pass that runs without the store log never feeds the write log, so only store rows draw from it; the sizing was settled by item 143's measurement (owner, 2026-11-12)."
 ],
 [
@@ -1296,96 +1301,111 @@
 [
 "CHANGES-v1.3-to-v1.35.md",
 36,
-"## Where v1.35's checks differ from the rule"
+"## Checks the spec promises that neither simulator has"
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
 38,
-"The machine specification's preamble gives the rule: undefined behaviour is fatal, the silent traps stop the core, and every other invariant is counted and, in the debug and suite builds, reported. As of 2026-11-12 these cases differ:"
+"Gaps between the spec and the simulator inherited from v1.3: v1.3's simulator doesn't have these checks either, and v1.35 ports v1.3's checks without adding to them (D48). Each is to be added in v1.4 (item 159, owner, 2026-11-12):"
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
 40,
-"- **Counted, not fatal:** a packet of size 11 (3.1, undefined); a stream with a misaligned source or destination, or with *d* = 126 from a mesh tile (4.2), which are also not reported."
+"- **Invariant 17's request limits:** at most 1, 3 and 1 requests outstanding to C&C 1, 2 and 3; not checked."
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
 41,
-"- **Counted but not reported:** a late rotation (invariant 3) and a `HIST` count past 17 bits (invariant 6). **Reported but not counted** in the release build: uncounted traffic other than mode 0 (invariant 22)."
+"- **Invariant 17's tag windows** and **its rule for reads during a group run:** not checked."
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
 42,
-"- **Not checked:** a buffer both read and written in one run (invariant 2); `DMA_HDR` or `DMA_ADDR` changed mid-transfer (4.17.9); the 1, 3 and 1 requests outstanding, the tag windows and reads during a group run (invariant 17); one source per destination for modes 1–3 into big SRAM (invariant 18); the overtaking read (invariant 24), which only the harness's S1 measurement covers; a Tracer transfer asking for more than its credits cover (4.21)."
+"- **Invariant 18 for big SRAM:** one source per order-placed destination, for modes 1–3 into big SRAM; not checked (the replayer's queue ports are)."
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+43,
+"- **A packet of size 11** (3.1, undefined): counted, flagged and dropped, not stopped."
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
 44,
-"## The drivers the spec's measurements name"
+"- **Two stream cases** (4.2): a stream with a misaligned source or destination, and one with *d* = 126 from a mesh tile; counted, not stopped."
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
 46,
-"The `[meas: …]` labels name v1.3's Java tests and drivers (Markers). What replaces each in v1.35:"
+"Invariant 24 is not a gap: K's check at startup and S1's measurement cover it."
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
 48,
-"| v1.3 (Java) | v1.35 |"
-],
-[
-"CHANGES-v1.3-to-v1.35.md",
-49,
-"|---|---|"
+"## The drivers the spec's measurements name"
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
 50,
-"| NetTest (fan-in, `skewtable`) | `tests/suite_net.cpp` |"
-],
-[
-"CHANGES-v1.3-to-v1.35.md",
-51,
-"| MemTest | `tests/suite_mem.cpp` |"
+"The `[meas: …]` labels name v1.3's Java tests and drivers (Markers). What replaces each in v1.35:"
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
 52,
-"| EngineTest | `tests/suite_engine.cpp` |"
+"| v1.3 (Java) | v1.35 |"
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
 53,
-"| Stage B | `tests/stageb.cpp` |"
+"|---|---|"
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
 54,
-"| AllToAllTest (`measure`), an older name: in v1.3 the all-to-all is EngineTest with the A2A helper | ported: `tests/suite_engine.cpp`, with `A2A` in `tests/mach.h` |"
+"| NetTest (fan-in, `skewtable`) | `tests/suite_net.cpp` |"
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
 55,
-"| ReadPortGatherTest | being ported: `tests/suite_rdport.cpp` |"
+"| MemTest | `tests/suite_mem.cpp` |"
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
 56,
-"| SearchBench | ported: `tests/suite_search.cpp` (56 of 56 assertions, `tests/p4suites/searchbench.log`) |"
+"| EngineTest | `tests/suite_engine.cpp` |"
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
 57,
-"| CondTest | being ported |"
+"| Stage B | `tests/stageb.cpp` |"
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
 58,
-"| S1Bench | being ported; `measure_s1` (`tests/mach.h`) is the harness side of its measurement |"
+"| AllToAllTest (`measure`), an older name: in v1.3 the all-to-all is EngineTest with the A2A helper | ported: `tests/suite_engine.cpp`, with `A2A` in `tests/mach.h` |"
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
 59,
+"| ReadPortGatherTest | being ported: `tests/suite_rdport.cpp` |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+60,
+"| SearchBench | ported: `tests/suite_search.cpp` (56 of 56 assertions, `tests/p4suites/searchbench.log`) |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+61,
+"| CondTest | being ported |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+62,
+"| S1Bench | being ported; `measure_s1` (`tests/mach.h`) is the harness side of its measurement |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+63,
 "| SplitRun | not carried: its driver doesn't build in v1.3 |"
 ],
 [
@@ -1456,7 +1476,7 @@
 [
 "check/README.md",
 11,
-"**At the freeze:** rerun `MECHANISMS.md` against `main`; bring the drivers' table of `spec/CHANGES-v1.3-to-v1.35.md` up to date; the section \"Where v1.35's checks differ from the rule\" should then be empty, and is removed; rebuild and rerun `check_move.py`."
+"**At the freeze:** rerun `MECHANISMS.md` against `main`; bring the drivers' table of `spec/CHANGES-v1.3-to-v1.35.md` up to date; the section \"Checks the spec promises that neither simulator has\" stays, matching item 159; every other check `MECHANISMS.md` finds missing or unreported (invariants 2, 3, 6 and 22, `DMA_HDR` mid-transfer, the Tracer's oversized transfer) should by then be ported, and any that isn't goes to the owner; rebuild and rerun `check_move.py`."
 ]
 ]
 }

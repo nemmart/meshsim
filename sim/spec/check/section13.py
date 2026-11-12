@@ -67,6 +67,7 @@ I = {
 148:('decided, part deferred','T','4.21.5, 4.21.8','the fill bus\'s statuses, to revisit with the memory system\'s design','L3445 "to revisit with the memory system\'s design"'),
 153:('open','T','4.21.9','the Tracer\'s timing: measured in meshsim; the RTL\'s values are to replace it','L3450; (owner, 2026-11-12)'),
 158:('decided, not yet done','R','4.19.4','rebuild the universal tables to a16z\'s rule for D13 and D14','L3456 "rebuilt right after v1.3\'s freeze"; not done: `replayer/rom.bin` identical in v1.3, `sim/data/`, `wip/` (owner, 2026-11-12)'),
+159:('deferred','P','9, 3.1, 4.2','the simulator checks to add in v1.4: invariant 17\'s request limits, tag windows and group-run rule; invariant 18 for big SRAM; size 11 and the two stream cases, stopped rather than counted','D48; (owner, 2026-11-12)'),
 }
 INF = {23:'L3249: what remains is items 33–59, each tracked on its own', 32:'v1.2 table L3168 "kept…(4.17.8)"',
        33:'v1.3 table L3102: the Tracer writes the run log (4.21.4, 4.21.6)', 41:'v1.26 table L3129 (DECISIONS-v1.26 item 12)',
@@ -74,5 +75,5 @@ INF = {23:'L3249: what remains is items 33–59, each tracked on its own', 32:'v
 I[158]=('decided, not yet done','R','4.19.4',"rebuild the universal tables to a16z's rule for LR/SC with rd = x0 and the NOP rows' virtual flag; scheduled for v1.4, v1.35 keeping v1.3's tables unchanged",'L3456; not done: `replayer/rom.bin` identical in v1.3, `sim/data/`, `wip/` (owner, 2026-11-12); scheduled for v1.4 (owner, 2026-11-12)')
 
 # the owner's rulings of 2026-11-12 (shown with each item's status)
-OWNER = {8, 137, 153, 158}
+OWNER = {8, 137, 153, 158, 159}
 CLOSED_OWNER = {103: "the split run log: a pass that runs without the store log never feeds the write log, so only store rows draw from it; the sizing was settled by item 143's measurement"}

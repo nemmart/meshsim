@@ -93,7 +93,7 @@ edit('ms', 2542, '- **In meshsim v1.2,** C&C 1 is a behavioural model driving th
      '- **In meshsim,** C&C 1 is by default a behavioural model driving these registers from the harness, and so are C&C 2 and C&C 3; as an option all three are cores (6.2).', 'sim')
 edit('ms', 2821, " and the replayer's", '', 'heading')
 edit('ms', 2942, 'meshsim stops with an error naming the access, unless the invariant says it reports.',
-     "v1.35's meshsim checks each in one of three ways (the preamble): undefined behaviour is fatal in every build, the silent traps (23) stop the core, and the rest are counted in every build and reported by name in the debug and suite builds.", 'sim')
+     "v1.35's meshsim checks each in one of three ways (the preamble): undefined behaviour is fatal in every build, the silent traps (23) stop the core, and the rest are counted in every build and reported by name in the debug and suite builds. **The exceptions** are checks neither v1.3's simulator nor v1.35's has, to be added in v1.4 (item 159; `spec/CHANGES-v1.3-to-v1.35.md`): invariant 17's limits on outstanding requests, its tag windows and its rule for reads during a group run, and invariant 18 for modes 1–3 into big SRAM, which are not checked; and a packet of size 11 and two stream cases (4.2), which are counted, not stopped.", 'sim')
 edit('ms', 2951, "meshsim's `Config.strictReplies`", "meshsim's `strict_replies` (`tests/mach.h`)", 'sim')
 edit('ms', 2957, "meshsim's `Config.checkReadPortOverlap`, on by default", "meshsim's `check_read_port_overlap` (`tests/mach.h`), on by default", 'sim')
 edit('ms', 2762, 'ignored while a run is running (meshsim flags it)',
@@ -134,7 +134,7 @@ def where(n):
 NEW13 = ['## 13. Open items', '',
          "What is open, proposed or deferred in v1.35's design, each with the section it affects; possible later additions are marked *later*. The replayer's and the Tracer's items are in `spec/jolt/replayer.md` and `spec/jolt/tracer.md`. Numbers are never reused. Every item's history (its text as first written and each version's change of status) is `spec/history/machine-spec-v1.3-section-13.md`; the decisions are in `spec/history/`. The logic budget (section 11) is unreviewed; v1.2 rescaled it for the 256-bit link word and the 32 KB controller memories (item 127).",
          ''] + sec13_table('P') + ['', "**The index:** where each item lives; *closed* means settled, its record in the history file.", '',
-         '; '.join(f'{n} {where(n)}' for n in range(1, 159)) + '.', '',
+         '; '.join(f'{n} {where(n)}' for n in range(1, 160)) + '.', '',
          '**Closed since v1.3:** ' + '; '.join(f'{n}, {t} (owner, 2026-11-12)' for n, t in sorted(S13.CLOSED_OWNER.items())) + '.', '']
 OPEN = lambda u: ['', "## Open items (section 13's numbering)", '', "Settled items are listed in `spec/machine-spec.md` section 13's index; their record is `spec/history/machine-spec-v1.3-section-13.md`.", ''] + sec13_table(u)
 
@@ -212,11 +212,14 @@ A['changes'] = ['# v1.3 to v1.35', '',
     "- **A second READY pulse while the first is still visible** (D29). v1.35 keeps the spec's sticky bit and counts the case (`ready_repulses`); v1.3's read 0 at C&C 1 until the new pulse landed. Likewise an overflow that feeds `ERRORS` reaches the register block as an event, counted at t + 1. No reference program reaches either.",
     "- **C&C 1's peripheral applies a store one cycle later** (D33, D44): at t + 1, as every peripheral slot does, where v1.3's applied it within the store's cycle. C&C 1's own work (the watchdog's first count, a UART byte's start) runs a cycle later; one suite's printed figure differs by one cycle and is masked in its comparison.",
     "- **The request bus's credit latency is a setting** (D34): 0 is exact as v1.3's (every sender in the bus's domain); 3, the default, is the spec's, each port's leaf in its tile. They differ only when a node's 8-beat buffer fills, which is counted; the reference runs never reach it.", '',
-    "## Where v1.35's checks differ from the rule", '',
-    "The machine specification's preamble gives the rule: undefined behaviour is fatal, the silent traps stop the core, and every other invariant is counted and, in the debug and suite builds, reported. As of 2026-11-12 these cases differ:", '',
-    "- **Counted, not fatal:** a packet of size 11 (3.1, undefined); a stream with a misaligned source or destination, or with *d* = 126 from a mesh tile (4.2), which are also not reported.",
-    "- **Counted but not reported:** a late rotation (invariant 3) and a `HIST` count past 17 bits (invariant 6). **Reported but not counted** in the release build: uncounted traffic other than mode 0 (invariant 22).",
-    "- **Not checked:** a buffer both read and written in one run (invariant 2); `DMA_HDR` or `DMA_ADDR` changed mid-transfer (4.17.9); the 1, 3 and 1 requests outstanding, the tag windows and reads during a group run (invariant 17); one source per destination for modes 1–3 into big SRAM (invariant 18); the overtaking read (invariant 24), which only the harness's S1 measurement covers; a Tracer transfer asking for more than its credits cover (4.21).", '',
+    "## Checks the spec promises that neither simulator has", '',
+    "Gaps between the spec and the simulator inherited from v1.3: v1.3's simulator doesn't have these checks either, and v1.35 ports v1.3's checks without adding to them (D48). Each is to be added in v1.4 (item 159, owner, 2026-11-12):", '',
+    "- **Invariant 17's request limits:** at most 1, 3 and 1 requests outstanding to C&C 1, 2 and 3; not checked.",
+    "- **Invariant 17's tag windows** and **its rule for reads during a group run:** not checked.",
+    "- **Invariant 18 for big SRAM:** one source per order-placed destination, for modes 1–3 into big SRAM; not checked (the replayer's queue ports are).",
+    "- **A packet of size 11** (3.1, undefined): counted, flagged and dropped, not stopped.",
+    "- **Two stream cases** (4.2): a stream with a misaligned source or destination, and one with *d* = 126 from a mesh tile; counted, not stopped.", '',
+    "Invariant 24 is not a gap: K's check at startup and S1's measurement cover it.", '',
     "## The drivers the spec's measurements name", '',
     "The `[meas: …]` labels name v1.3's Java tests and drivers (Markers). What replaces each in v1.35:", '',
     '| v1.3 (Java) | v1.35 |', '|---|---|',
@@ -243,7 +246,7 @@ A['check_readme'] = ['# spec/check', '',
     '- `check_move.py`: the proof (run from the repository root): every source line in exactly one destination, unchanged and in order, or an edit; every destination line a source line, an edit or added; every section number a heading; every path present.',
     "- `inventory.py`, `section13.py`: the source's units, and section 13's statuses with their evidence.",
     "- `MECHANISMS.md`: what v1.35's meshsim does for each check the spec promises; `FINDINGS.md`: what looks wrong, for the owner.", '',
-    "**At the freeze:** rerun `MECHANISMS.md` against `main`; bring the drivers' table of `spec/CHANGES-v1.3-to-v1.35.md` up to date; the section \"Where v1.35's checks differ from the rule\" should then be empty, and is removed; rebuild and rerun `check_move.py`."]
+    "**At the freeze:** rerun `MECHANISMS.md` against `main`; bring the drivers' table of `spec/CHANGES-v1.3-to-v1.35.md` up to date; the section \"Checks the spec promises that neither simulator has\" stays, matching item 159; every other check `MECHANISMS.md` finds missing or unreported (invariants 2, 3, 6 and 22, `DMA_HDR` mid-transfer, the Tracer's oversized transfer) should by then be ported, and any that isn't goes to the owner; rebuild and rerun `check_move.py`."]
 D['CHANGES-v1.3-to-v1.35.md'] = [('a', 'changes')]
 D['history/README.md'] = [('a', 'hist_readme')]
 D['jolt/README.md'] = [('a', 'jolt_readme')]

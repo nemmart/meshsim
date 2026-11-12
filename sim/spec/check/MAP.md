@@ -706,3 +706,5 @@ The owner approved stage 1 with corrections; the move follows them. `map.tsv` is
   `tests/suite_engine.cpp` and `A2A` in `tests/mach.h`; SearchBench ported, 56 of 56 (`tests/p4suites/searchbench.log`);
   ReadPortGatherTest (`tests/suite_rdport.cpp`), CondTest and S1Bench being ported. At the freeze, `check/README.md` says
   what to rerun.
+- **After D48** (owner, 2026-11-12): `CHANGES-v1.3-to-v1.35.md`'s checks section lists the gaps inherited from v1.3
+  for v1.4; section 9's opening (the edit at line 2942) names them; section 13 gains item 159.

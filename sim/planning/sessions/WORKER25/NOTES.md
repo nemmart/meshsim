@@ -255,3 +255,17 @@ the `-q` estimate, the guest delivery's whereabouts.
   ref's committed stageb.log is from before CL4 (F1). Proposal (a deliberate difference in the runner's summary, the
   integrator's to approve, D30): the summary ignores lines naming "(CL4: must fail)" (e.g. `grep -h FAIL results/*.log
   | grep -v '(CL4: must fail)'`), or judges a step by its last line. Until then `stageb` stays PENDING with that reason.
+- **D46 (integrator, 2026-11-12; F9): the runner's FAIL grep skips lines containing "(CL4: must fail)"**, a deliberate
+  difference in the runner: Stage B prints that window's FAIL by design, and v1.3's own run_tests.sh, run today, fails
+  the same way. One line in run_tests.sh's summary. **The step `stageb` is live**: `./run_tests.sh quick --check`
+  passes with it (its log equal to v1.3's, the CL4 seconds masked by the runner).
+- **`-q 512` done** on the machine's `replayer_log_entries` (W20's Config fields): Stage B's replayer, and Stage A's
+  too (ref's `-Dreplayer.logq` is JVM-wide: ReplayShard's Stage A replayers take it as well). The crosscheck's case
+  abf-q512 (AB with F every 4th, `-q 512`): equal to v1.3's kit.
+- **The kit now builds with the checker on** (`./build.sh`: MODE=suite, release flags plus the checker): in the release
+  build the machine's violations never reached Stage B's detail lines, so a violation would have gone unseen by the
+  verdict (v1.3's StageB fails a window on any). **F7 withdrawn**: with the checker on, the planted-fault case's
+  "meshsim: violations: 1; ... ERRORS [100000000000] set: peripheral 1 (invariant 15)" line is ours too; the
+  difference came from the release build, not a missing kind. The crosscheck: **all 15 cases equal**, ab-faults
+  included. Quest 180's real windows had no violations on either side (all PASS), so its equality stands; a rerun with
+  the suite-built kit makes it hold with the checker on.

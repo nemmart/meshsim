@@ -425,6 +425,29 @@ void checkself() {
         n.c.step();
         say("%s", n.c.violation_report().c_str());
     }
+    {   // W26 (1a): CtrlTest's inv program: invariants 4, 9, the reserved word, the table window while the AG runs
+        mach::MachConfig k = Mach::cfg(-1);
+        k.check_errors = false; k.max_violation_messages = 1000;
+        Mach m(k);
+        m.boot("inv");
+        m.c.run_until([&] { return m.c.all_stopped(); }, 10000);
+        say("%s", m.c.violation_report().c_str());
+    }
+    {   // W26 (1a): the table window while count-on-arrival uses HIST and the write engine uses PTR (a test's stores)
+        mach::MachConfig k = Net::cfg(-1);
+        Net n(k);
+        n.c.tile(9).set_master_config(master_config(0, 0, 0, 0, 1, 1));
+        n.c.tile(9).set_remaining(1, 8);
+        for (unsigned i = 0; i < 6; i++) n.at(12 + 2 * i, 10 + i, 9, lw::M_SRC, 1, 0, lw::SIZE_64, 0x0101ull * (i + 1), 0);
+        while (n.c.cycle() < 19) n.step();
+        for (int64_t t = 20; t < 52; t++) {
+            const uint32_t a = 0xFFFF2000u + ((t & 1) ? 0x400u : 0u) + 4 * uint32_t(t % 5);
+            n.c.tile(9).store(t, a, uint32_t(t));
+            n.step();
+        }
+        n.run_all(1000);
+        say("%s", n.c.violation_report().c_str());
+    }
     {
         mach::MachConfig k = Net::cfg(-1);
         k.max_violation_messages = 3;

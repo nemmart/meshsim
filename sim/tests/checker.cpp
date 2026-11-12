@@ -133,6 +133,12 @@ std::string Checker::text(const Fact& f) const {
     case Kind::CTL_ALIAS:
         return fmt("access at 0x%x, past the end of %s memory: the high offset bits are ignored and it aliases (2.2; invariant 19)",
                    unsigned(a[0]), lw::region(uint32_t(a[0])) == lw::R_DMEM ? "data" : "program");
+    case Kind::CTL_TABLE_BUSY: {
+        static const char* const kTbl[4] = {"STREAM_SRC", "STREAM_DEST", "STREAM_COUNT", "GROUP"};
+        if (a[0] == 5) return fmt("table window: HIST[%u] accessed while count-on-arrival is using HIST (4.10)", unsigned(a[1]));
+        if (a[0] == 4) return fmt("table window: PTR[%u] accessed while the write engine is using PTR (4.10)", unsigned(a[1]));
+        return fmt("table window: %s accessed while the address generator is running, its lead-in included (4.10)", kTbl[a[0] & 3]);
+    }
     case Kind::CTL_DMEM_RESERVED: return fmt("core store into data memory's reserved first 16 bytes, at 0x%x (2.2; invariant 22; W4-02)", unsigned(a[0]));
     case Kind::WE_PAST_SRAM:
         return fmt("a big-SRAM write at chunk 0x%" PRIx64 ", at or past the end of big SRAM: undefined (4.1; invariant 19): ", a[0]) + describe(a[1], a[2], a[3]);
@@ -232,10 +238,13 @@ void Checker::process(int64_t now, bool scan, bool final) {
     std::stable_sort(fs.begin(), fs.end(), [&](const Fact& a, const Fact& b) {
         const int64_t ta = at(a), tb = at(b);
         if (ta != tb) return ta < tb;
+        // ref's checkInvariants walks the tiles, each tile's checks in turn (W26: tile-major within the per-tile slots)
+        auto major = [](int r) { return r >= int(Slot::EJECT) && r <= int(Slot::REFUSAL) ? int(Slot::EJECT) : r; };
         const int ra = rank(a), rb = rank(b);
-        if (ra != rb) return ra < rb;
+        if (major(ra) != major(rb)) return major(ra) < major(rb);
         if (a.kind == Kind::FIFO_OVERFLOW && b.kind == Kind::FIFO_OVERFLOW) return a.a[0] < b.a[0];   // ref's scan order
         if (a.tile != b.tile) return a.tile < b.tile;          // (the tiles', then C&C's FIFOs)
+        if (ra != rb) return ra < rb;
         return false;                                        // recording order kept within (cycle, slot, tile)
     });
     for (size_t i = 0; i < fs.size();) {

@@ -112,6 +112,8 @@ enum class Kind : uint16_t {
     CTL_MRET,                   // (no arguments)
     CTL_ALIAS,                  // a0 the (word) address past the end of data or program memory
     CTL_DMEM_RESERVED,          // a0 the store's address (into data memory's first 16 bytes)
+    CTL_TABLE_BUSY,             // a0 the table (table_store.h: STREAM_SRC 0, DEST 1, COUNT 2, GROUP 3, PTR 4, HIST 5), a1 the
+                                //   word index: the window accessed while its engine uses it (Controller.window, 4.10)
     PERIPH_VIOLATION,           // a peripheral's violation through its slot to the block (ref's Peripheral.Host.violate):
                                 //   the replayer's (F2): a0 its code, a1-a3 its arguments (units/replayer.h)
     // ---- the controller's memories (ControllerMemories) ----

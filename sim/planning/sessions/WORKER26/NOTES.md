@@ -61,3 +61,19 @@ Commit and push after each piece; each kind checked line for line against `ref` 
   `checkself.out` regenerated from ref; test_mach line for line (clang and gcc suite).
 - **The table-window checks: exactness (integrator, 2026-11-12)**: the stores and the AG publish their busy state on
   same-cycle Wires the core reads, only under SIM_CHECKS; the outputs and their cycles proposed before touching the units.
+- **1a, the table window (Controller.window, 4.10)**: `CTL_TABLE_BUSY`, judged by the core on three same-cycle Wires,
+  declared and wired only under SIM_CHECKS (add_g1): `t<k>.hist.busy_hist` and `t<k>.ts.busy_ptr` (t + 1 driven at the
+  store's step at t when busy at t, bit 63 when busy at t - 1 too), `t<k>.ag.running` (t << 2 | before << 1 | after,
+  driven at a step that changes `running`). An instruction at t is judged on t; a test's store (TileRef::store) on t - 1,
+  as ref's harness store between cycles sees the flags. CheckSelf: CtrlTest's `inv` (the AG case, by instructions) and a
+  Net case of a test's HIST and PTR stores during count-on-arrival (14 lines), line for line (clang and gcc suite, clang
+  debug). Not covered against ref: HIST/PTR busy met by an instruction (same Wires, the t + 1 test), and a test's HIST
+  load (TileRef::load's own path: no check yet).
+  **Levels: the core moves from level 2 to 3** (t<k>.core and cc<n>.core; every other unit's level unchanged): before,
+  it shared level 2 with the AG, the director, the write engine and the gather, run first among them (add order); now it
+  runs after them. **Waiting for the integrator's ruling** (the go-ahead said to bring a reordering back). The five
+  protected tests are the same as the merged main's, clang suite and clang release.
+- **The checker's report order fixed** (W20's sort was slot-major): ref's checkInvariants is tile-major within the
+  per-tile checks (tile 7's director message before tile 10's register-block message, cycle 150 of `inv`).
+- Found for W20: ref's `Net.at` packets are fed only by `Net.step`/`runAll` (`c.run` doesn't feed them); the C++ Net
+  feeds them under `c.run` too. CheckSelf's case uses `step` on both sides.

@@ -99,6 +99,30 @@ final class CheckSelf {
             n.c.step();
             System.out.print(n.c.violationReport());
         }
+        {   // CtrlTest's inv program (W26, 1a): invariants 4, 9, the reserved register-block word, the table window while the
+            // address generator runs (tiles 2, 6, ...); invariant 8 counted, not reported (strictReplies off)
+            Config k = Mach.cfg(-1); k.checkErrors = false; k.maxViolationMessages = 1000;
+            Mach m = new Mach(k);
+            m.boot("inv");
+            m.run(m::allStopped, 10000);
+            System.out.print(m.c.violationReport());
+        }
+        {   // the table window while count-on-arrival uses HIST and the write engine uses PTR (W26, 1a): a test's stores
+            // (ref's harness store runs between cycles: the flags as the cycle before left them)
+            Config k = Net.cfg(-1);
+            Net n = new Net(k);
+            n.c.tiles[9].setMasterConfig(Fields.masterConfig(0, 0, 0, 0, 1, 1));
+            n.c.tiles[9].dir.remaining[1] = 8;
+            for (int i = 0; i < 6; i++) n.at(12 + 2 * i, 10 + i, 9, LinkWord.M_SRC, 1, 0, LinkWord.SIZE_64, 0x0101L * (i + 1), 0);
+            while (n.c.cycle < 19) n.step();
+            for (int t = 20; t < 52; t++) {
+                int ea = 0xFFFF2000 + ((t & 1) != 0 ? 0x400 : 0) + 4 * (t % 5);
+                n.c.tiles[9].core.store(t, ea, t, -1);
+                n.step();
+            }
+            n.runAll(1000);
+            System.out.print(n.c.violationReport());
+        }
         {   // the message cap (maxViolationMessages): the count goes on
             Config k = Net.cfg(-1); k.maxViolationMessages = 3;
             Net n = new Net(k);

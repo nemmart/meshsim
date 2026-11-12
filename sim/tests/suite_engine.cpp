@@ -284,7 +284,8 @@ void one_word_exchange() {
         uint64_t ag_reads = 0; uint32_t ptr_q = 0;
         unsigned link = 0, ej = 0;
         for (unsigned k = 0; k < 64; k++) {
-            const units::TableStore& ts = n.c.tile(k).unit<units::TableStore>("ts");
+            const TileRef tr = n.c.tile(k);
+            const units::TableStore& ts = tr.unit<units::TableStore>("ts");
             ag_reads = std::max(ag_reads, ts.table_reads); ptr_q = std::max(ptr_q, ts.q_we.peak);
             const units::Router& r = router(n.c.tile(k));
             for (unsigned o = 0; o < 4; o++) for (unsigned f = 0; f < units::Router::kNFeeders[o]; f++) link = std::max(link, unsigned(r.q[r.fifo_index(o, f)].peak));

@@ -395,7 +395,8 @@ enum : unsigned { COND_BAD = 1, COND_UNEXPECTED = 2 };                          
 // arriving at the next cycle landed at ref's end of this one): the port-B half of W20's TileRef::phase_done (W22-15).
 bool cm_idle(Chip& c, unsigned k) {
     sim::PortEntry e[64];
-    const units::TileCore& core = c.tile(k).unit<units::TileCore>("core");
+    const TileRef tr = c.tile(k);
+    const units::TileCore& core = tr.unit<units::TileCore>("core");
     const uint32_t n = c.sim().observe(core.port_b, e, 64).n;
     for (uint32_t i = 0; i < n; i++) if (e[i].at > uint64_t(c.cycle()) + 1) return false;
     return true;

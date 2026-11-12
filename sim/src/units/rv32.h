@@ -98,6 +98,11 @@ struct Rv32 {
     uint64_t instructions = 0, cycles_stalled = 0, stall_branch = 0, stall_mul = 0, stall_reg_load = 0,
              stall_request = 0, cycles_wfi = 0, traps = 0, bus_errors = 0, illegals = 0, violations = 0,
              alias_accesses = 0, reserved_accesses = 0, trace_stores = 0, stall_send = 0, sends = 0;
+    // W23 (P5; statistics the control suites read, ref's Controller fields; not in the digest, not in the trace):
+    // the last trap's cycle and cause (trapAt, trapCause: -1 before any), the first fetch from program memory since
+    // the reset (firstImageAt: the image running; -1 before). A reset (W20) sets them back to -1, as ref's reset.
+    int64_t trap_at = -1, first_image_at = -1;
+    int32_t trap_cause = -1;
 
     // ================================================================ the cycle
     // Controller.runCycle(t), after catching up the cycles slept since `last`. Returns the next cycle the core needs
@@ -172,7 +177,7 @@ struct Rv32 {
     // ================================================================ traps and halts
     void trap(uint64_t t, uint32_t cause, uint32_t tval, uint32_t at, uint32_t resume) {
         if (in_handler && cause != CAUSE_EXTERNAL) { stop_loudly(t, HALT_TRAP2, at); return; }
-        traps++;
+        traps++; trap_at = int64_t(t); trap_cause = int32_t(cause);
         mepc = cause == CAUSE_EXTERNAL ? resume : at; mcause = cause; mtval = tval;
         mstatus = (mstatus & ~(MSTATUS_MIE | MSTATUS_MPIE)) | ((mstatus & MSTATUS_MIE) ? uint32_t(MSTATUS_MPIE) : 0u);
         in_handler = true; pc = mtvec & ~3u; stall = 0;
@@ -204,7 +209,7 @@ struct Rv32 {
     template <class Env>
     UNITS_NOINLINE void fetch_execute(Env& e, uint64_t t) {
         uint32_t ipc = pc, ins;
-        if ((ipc & 3) == 0 && region(ipc) == R_PMEM) ins = imem[mem_word(ipc)];
+        if ((ipc & 3) == 0 && region(ipc) == R_PMEM) { ins = imem[mem_word(ipc)]; if (first_image_at < 0) first_image_at = int64_t(t); }
         else if ((ipc & 3) == 0 && region(ipc) == R_BOOTROM && offset(ipc) >> 2 < bootrom_words) ins = bootrom[offset(ipc) >> 2];
         else { stop_loudly(t, HALT_FETCH, ipc); return; }
         execute(e, t, ins, ipc);

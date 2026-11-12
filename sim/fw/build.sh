@@ -15,6 +15,10 @@
 # images were built with; patch(1). The runner has none: the images stay committed.
 set -eu
 FW=$(cd "$(dirname "$0")" && pwd); SIM=$(cd "$FW/.." && pwd)
+# PARTS="boot tests m1 m3 cc recipes replay tracer sort riscv" (W23): build (and check) only those parts; empty: all.
+# run_tests.sh's steps cc-build and recipes-build are PARTS=cc and PARTS=recipes with --check (v1.3's build_cc.sh and
+# build_recipes.sh steps).
+part() { [ -z "${PARTS:-}" ] || [[ " $PARTS " == *" $1 "* ]]; }
 MODE=write; case "${1:-}" in --check) MODE=check;; --build-only) MODE=build;; esac
 command -v riscv64-unknown-elf-gcc >/dev/null || { echo "fw/build.sh: needs riscv64-unknown-elf-gcc (apt install gcc-riscv64-unknown-elf)"; exit 1; }
 OUT=${OUT:-$FW/build/out}; rm -rf "$OUT"; mkdir -p "$OUT"; OUT=$(cd "$OUT" && pwd)
@@ -39,37 +43,50 @@ sizes() { echo "$1: code $(stat -c %s "$OUT/$1.code.bin") B, data $(stat -c %s "
 nodiv() { if $NM "$1" | grep -qE "$2"; then echo "ERROR: $(basename "$1" .elf): software division or library arithmetic"; exit 1; fi; }
 
 # ---- the boot ROM (meshsim/sw/build.sh): bootrom.hex, one 32-bit word per line
+if part boot; then
 cd "$FW/boot"
 $SWCC -T bootrom.ld bootrom.S -o "$T/bootrom.elf"
 $OC -O binary "$T/bootrom.elf" "$T/bootrom.bin"
 od -An -v -tx4 -w4 "$T/bootrom.bin" | sed 's/^ *//' > "$OUT/bootrom.hex"
 echo "boot ROM: $(wc -l < "$OUT/bootrom.hex") words"
 cd "$FW"
+fi  # boot
+cd "$FW"
 
 # ---- sw/tests' programs (meshsim/sw/build.sh): every tests/*.c but the v1.1 recipes (rcp_*); a line
 # "// build: <flags>" in a source replaces -Os; software division refused
+if part tests; then
 for src in tests/*.c; do
   n=$(basename "$src" .c); case $n in rcp_*) continue;; esac
   OPT=$(sed -n 's|^// build: ||p' "$src" | head -1); [ -n "$OPT" ] || OPT=-Os
   $SWCC $OPT -T app.ld crt0.S "$src" -o "$T/$n.elf"
   nodiv "$T/$n.elf" "$SOFTDIV"; img "$T/$n.elf" $n; sizes $n
 done
+fi  # tests
+cd "$FW"
 
 # ---- the M1 programs (m1/*.S; W2's former fw/build.sh)
+if part m1; then
 for src in m1/*.S; do
   n=$(basename "$src" .S)
   $RV -nostdlib -nostartfiles -static -Wl,--no-relax -I"$FW/include" -T app.ld "$src" -o "$T/$n.elf"
   img "$T/$n.elf" $n; sizes $n
 done
+fi  # m1
+cd "$FW"
 
 # ---- the test programs kept beside their fixtures in tests/m3-images (cc_ping: W16; cc_req, tile_req: W14), built
 # as sw/tests' programs are (crt0.S, app.ld, -Os)
+if part m3; then
 for n in cc_ping cc_req tile_req; do
   $SWCC -Os -T app.ld crt0.S "$SIM/tests/m3-images/$n.c" -o "$T/$n.elf"
   img "$T/$n.elf" $n; sizes $n
 done
+fi  # m3
+cd "$FW"
 
 # ---- the controllers' firmware (meshsim/sw/build_cc.sh): cc1, cc23, cc_rcp, cc_bad; -Werror; the size limits
+if part cc; then
 for n in cc1 cc23 cc_rcp cc_bad; do
   $RCC -Werror -T recipes/recipes.ld recipes/crt0.S recipes/handler.S cc/$n.c -o "$T/$n.elf"
   img "$T/$n.elf" $n
@@ -80,8 +97,11 @@ for n in cc1 cc23 cc_rcp cc_bad; do
   fi
   sizes $n
 done
+fi  # cc
+cd "$FW"
 
 # ---- the v1.2 recipes (meshsim/sw/build_recipes.sh): every recipes/rcp_*.c with recipes_support.c
+if part recipes; then
 nr=0
 for src in recipes/rcp_*.c; do
   n=$(basename "$src" .c)
@@ -89,23 +109,32 @@ for src in recipes/rcp_*.c; do
   img "$T/$n.elf" $n; nr=$((nr + 1))
 done
 echo "recipes: $nr built"
+fi  # recipes
+cd "$FW"
 
 # ---- the replay controller (meshsim/sw/replay/build.sh): replay_ctl, its 8 KB-log control (log8k/) and the old queue
 # map (oldmap/, test only)
+if part replay; then
 cd "$FW/replay"
 $CTLCC -T ../app.ld ../crt0.S replay_ctl.c -o "$T/replay_ctl.elf"
 nodiv "$T/replay_ctl.elf" "$SOFTDIV"; img "$T/replay_ctl.elf" replay_ctl; sizes replay_ctl
 $CTLCC -DHALF_LOG=256 -T ../app.ld ../crt0.S replay_ctl.c -o "$T/log8k.elf"; img "$T/log8k.elf" log8k/replay_ctl
 $CTLCC -T ../app.ld ../crt0.S replay_ctl_oldmap.c -o "$T/oldmap.elf"; img "$T/oldmap.elf" oldmap/replay_ctl
+fi  # replay
+cd "$FW"
 
 # ---- C&C 3's Tracer firmware (meshsim/sw/tracer/build.sh)
+if part tracer; then
 cd "$FW/tracer"
 $CTLCC -T ../app.ld ../crt0.S tracer_ctl.c -o "$T/tracer_ctl.elf"
 nodiv "$T/tracer_ctl.elf" "$SOFTDIV"; img "$T/tracer_ctl.elf" tracer_ctl; sizes tracer_ctl
 cd "$FW"
+fi  # tracer
+cd "$FW"
 
 # ---- the sort program (meshsim/sw/ext/sort/build.sh, the same as sort/program/build.sh): sort/program/sw, with the
 # planner and the split as patched for the sort (sort/program/patches, applied as v1.3's tools/check_layout.sh did); -O2
+if part sort; then
 mkdir -p "$T/p/sort/skew" "$T/p/sort/split"
 cp -r sort/skew/planner "$T/p/sort/skew/"; cp sort/split/split.c sort/split/split.h sort/split/split_regs.h "$T/p/sort/split/"
 patch -s -p0 -d "$T/p" < sort/program/patches/planner.patch
@@ -122,17 +151,22 @@ $SCC $SOPT -ffunction-sections -fdata-sections -DSPLIT_BARRIER=sort_barrier -I"$
 OBJS="$OBJS $T/split_bisect.o"
 $SCC -T "$PS/sort.ld" -Wl,--gc-sections -Wl,--orphan-handling=warn -Wl,--build-id=none crt0.S $OBJS -o "$T/sort.elf"
 nodiv "$T/sort.elf" ' (__udivsi3|__umodsi3|__divsi3|__modsi3|__mulsi3|__muldi3)$'; img "$T/sort.elf" sort -S; sizes sort
+fi  # sort
+cd "$FW"
 
 # ---- not built: the split on its own (sort/split/splitdrv.c; v1.3's meshsim/sw/ext/split-bisect/build.sh, for
 # SplitRun). It doesn't compile against mesh.h 1.2 in v1.3 either (it names v1.1's registers), and run_tests.sh never
 # built it: the source is kept as it was.
 
 # ---- the riscv-tests images (meshsim/test/riscv/build.sh), only with a checkout
+if part riscv; then
 if [ -n "${RISCV_TESTS:-}" ]; then
   sh riscv-tests/build.sh "$RISCV_TESTS" "$T/riscv" > /dev/null
   mkdir -p "$OUT/riscv-tests"; cp "$T"/riscv/*.bin "$OUT/riscv-tests/"
   echo "riscv-tests: $(ls "$OUT"/riscv-tests/*.code.bin | wc -l) programs"
 fi
+fi  # riscv
+cd "$FW"
 
 [ $MODE = build ] && { echo "fw/build.sh: built into $OUT"; exit 0; }
 

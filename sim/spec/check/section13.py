@@ -33,11 +33,9 @@ I = {
 59:('decided, part open','R','4.19.12','decided: the output row\'s layout; open: the consumer side, its width and rate, the placement against the materializer','L3297 "*(Open)*, with the materializer"; no later entry'),
 60:('deferred','P','6.7, 7','the memory system\'s side, with the file system (119)','L3301; v1.2 table L3177 "deferred"'),
 61:('open','P','3.3, 12','the request tree\'s physical design: node placement, `reqbus_latency`','L3302; v1.2 table L3178 "stay open"'),
-62:('open','P','4.5, 4.7, 6.7','simulating the new paths: eject priority, loopback token waits, drift','L3303 (under "v1.1 request bus: open", L3299); no later entry'),
 63:('proposed','P','3.3','each node wormhole-routes whole requests, round-robin','L3307 "Still proposed"; no later entry'),
 64:('proposed','P','4.18','the request port\'s FIFO and its stall rule','L3308 (under "proposed", L3305); v1.2 table L3179 changes it, no ruling'),
 67:('proposed','P','6.7','a read\'s data: 128-bit packets in ascending address order','L3311; v1.2 table L3181 "still proposed"'),
-70:('open','P','4.7','the eject loopback priority (decided), to be confirmed in simulation','L3314 *(Open)*, "To be confirmed in simulation"; no later entry'),
 82:('decided, part open','P','2, 2.1','partly settled; left: the request receivers\' attachment, the engines\' type numbers; 65 as C&C 2 still proposed','L3332; v1.2 table L3190 "partly settled… left: …"; the ports went to 118'),
 83:('proposed, part deferred','P','3.3','the target numbering; target 3 deferred with the file system (119)','L3333 *(Proposed)*; v1.2 table L3191'),
 84:('decided, part proposed','P','3.3, 4.18','decided: the request; still proposed: beat order, the row node writing the requestor, 16 requests per target queue','L3334 "*(Proposed:)*"; no later entry'),
@@ -67,6 +65,7 @@ I = {
 148:('decided, part deferred','T','4.21.5, 4.21.8','the fill bus\'s statuses, to revisit with the memory system\'s design','L3445 "to revisit with the memory system\'s design"'),
 153:('open','T','4.21.9','the Tracer\'s timing: measured in meshsim; the RTL\'s values are to replace it','L3450; (owner, 2026-11-12)'),
 158:('decided, not yet done','R','4.19.4','rebuild the universal tables to a16z\'s rule for D13 and D14','L3456 "rebuilt right after v1.3\'s freeze"; not done: `replayer/rom.bin` identical in v1.3, `sim/data/`, `wip/` (owner, 2026-11-12)'),
+159:('deferred','P','9, 3.1, 4.2','the simulator checks to add in v1.4: invariant 17\'s request limits, tag windows and group-run rule; invariant 18 for big SRAM; size 11 and the two stream cases, stopped rather than counted','D48; (owner, 2026-11-12)'),
 }
 INF = {23:'L3249: what remains is items 33–59, each tracked on its own', 32:'v1.2 table L3168 "kept…(4.17.8)"',
        33:'v1.3 table L3102: the Tracer writes the run log (4.21.4, 4.21.6)', 41:'v1.26 table L3129 (DECISIONS-v1.26 item 12)',
@@ -74,5 +73,8 @@ INF = {23:'L3249: what remains is items 33–59, each tracked on its own', 32:'v
 I[158]=('decided, not yet done','R','4.19.4',"rebuild the universal tables to a16z's rule for LR/SC with rd = x0 and the NOP rows' virtual flag; scheduled for v1.4, v1.35 keeping v1.3's tables unchanged",'L3456; not done: `replayer/rom.bin` identical in v1.3, `sim/data/`, `wip/` (owner, 2026-11-12); scheduled for v1.4 (owner, 2026-11-12)')
 
 # the owner's rulings of 2026-11-12 (shown with each item's status)
-OWNER = {8, 137, 153, 158}
-CLOSED_OWNER = {103: "the split run log: a pass that runs without the store log never feeds the write log, so only store rows draw from it; the sizing was settled by item 143's measurement"}
+OWNER = {8, 137, 153, 158, 159}
+CLOSED_OWNER = {
+62: "simulating the new paths: confirmed and measured with `tests/p4_drift.cpp` on the full-size all-to-alls (uniform, zipfraw, trace and one99, each at group gaps 0, 4 and 8) and the radix sort: 0 cycles of loopback reads waiting for a token, as the schedule predicts, since a tile's stream to itself has its own slot in the all-to-all and its eject has room for it; loopback reads can wait only against traffic outside a schedule, file delivery, which comes with the file system (item 119)",
+70: "the eject loopback priority: confirmed on the same runs: with the eject output serving its loopback last, no drift, 0 tiles with `ERRORS` [3] and 0 drift events; the deliberate-drift control (tile 7, 158 events) shows the detector works",
+103: "the split run log: a pass that runs without the store log never feeds the write log, so only store rows draw from it; the sizing was settled by item 143's measurement"}

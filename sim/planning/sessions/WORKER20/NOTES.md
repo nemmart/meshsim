@@ -73,6 +73,9 @@ remaining kinds, interleaved as the suites ask.
      blocks (11, 22), past data/program memory and past big SRAM (19), the command after overlays of the other kind
      (25); the write engine's write past big SRAM (19). CheckSelf's director case line for line.
   8. `MachConfig::step_all`, `instance_major`.
+- **The runner's riscv and periph steps**: `equiv LOG "what" "equivalent" -- $S/test_x` (pass or fail, the log names
+  the equivalent): riscv by test_golden (every program's retire trace equal to ref's), periph by test_tileslotconf
+  (W15's TileSlotConf). periph-shuf stays PENDING (no shuffled run of TileSlotConf yet).
 - Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
   after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
 

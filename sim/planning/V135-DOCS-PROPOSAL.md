@@ -51,7 +51,7 @@ no spec**: v1.35 would be a simulator with nothing saying what it simulates.
 | document | contents | made from | when |
 |---|---|---|---|
 | `README.md` | what v1.35 is; the reader's map (section 2); the layout; status; the glossary. One page | new | P8 |
-| `BUILDING.md` | prerequisites; the three builds and what each is for (**release has the spec's checks compiled out; suite and debug have them**); one command per thing built | J1 | P8 |
+| `BUILDING.md` | prerequisites; the three builds and what each is for (**undefined behaviour is fatal and the silent traps stop the core in every build; the other invariants are counted in every build and reported by name only in the debug and suite builds**, `src/check.h`); one command per thing built | J1 | P8 |
 | `RUNNING.md` | every suite, driver, tool and kit: the command, the time, the outputs, the reference it is checked against. Its table checked against `run_tests.sh --list` (a small new option) | J1; `run_tests.sh`'s header; `tests/*/README` | P8 |
 | `CHANGES-v1.35.md` | **for the RTL:** no hardware change; the deliberate differences from v1.3's simulator (D27–D29, D33/D44, D34). **For users:** each v1.3 command and its v1.35 equivalent; the `Config` fields dropped (D41 Q4); the tools that changed (D42, D43) | DECISIONS; the inventory's "equivalent" column | P8 |
 | `spec/OVERVIEW.md` | the goal, the system, one proof's flow, platform against Jolt-specific, status. Two pages | new; **drafted, branch `v1.35-spec`** | now |

@@ -2,7 +2,7 @@
 # mk_acceptance_xcheck.sh NNN-name > task.sh (WORKER25, P7b): a Quest task running oracle/acceptance_crosscheck.sh on
 # the runner, v1.35's acceptance kit against v1.3's on the same inputs: the 128-window calibration (seed 11, both
 # calibrate.sh) and real deliveries: W9's selected windows of evm-zone-29 and cyclone-29 (every one, AB, F on each),
-# and evm-zone-29 windows 0-127 (AB, F every 32nd), converted to v1.26.1 in scratch by v1.35's convert_delivery (as
+# evm-zone-29 windows 0-127 (AB, F every 32nd) and the selected evm-zone-29 windows with -q 512, converted to v1.26.1 in scratch by v1.35's convert_delivery (as
 # Quest 175 checked it equal to v1.3's ConvertDelivery). Embedded: v1.35's kit (tests/acceptance/make_kit.sh, HEAD)
 # and the oracle side (sim/ref, sim/oracle, the data and images it reads), both from HEAD. Run from sim/, committed.
 set -eu
@@ -24,7 +24,8 @@ cat <<HEAD
 # runner (oracle/acceptance_crosscheck.sh): (1) the calibration, both calibrate.sh (128 synthetic windows of 65,536
 # rows, seed 11; v1.3's SyntheticDelivery patched as D43), every run's results compared; (2) real deliveries, converted
 # to v1.26.1 in scratch by v1.35's convert_delivery: W9's selected windows of evm-zone-29 and cyclone-29 (AB, F on
-# every window) and evm-zone-29 windows 0-127 (AB, F every 32nd). Compared: results.csv (the wall-time column masked),
+# every window), evm-zone-29 windows 0-127 (AB, F every 32nd), and evm-zone-29's selected windows with -q 512 (the
+# 8 KB-log control). v1.35's kit built with the checker on (MODE=suite). Compared: results.csv (the wall-time column masked),
 # VERDICT.txt, SUMMARY.txt's non-timing lines, exit codes, every per-process log. Not a timing task (SUMMARY's rates are
 # recorded with the machine, D21, not claimed). Writes only results/$NAME/; scratch in /tmp, removed first and at the
 # end; the deliveries are only read. Safe to re-run from the start.
@@ -78,7 +79,8 @@ J=\$(( \$(nproc) < 16 ? \$(nproc) : 16 ))
 KEEP="\$RES/cases" KIT135="\$B/kit135.tgz" TMPDIR=/tmp bash "\$B/sim/oracle/acceptance_crosscheck.sh" --no-small --calibration \\
   --real evm-sel "\$W/sel" evm-zone-29 "-f 0 -n all -j \$J -s AB -x 1" \\
   --real cyclone-sel "\$W/sel" cyclone-29 "-f 0 -n all -j \$J -s AB -x 1" \\
-  --real evm-0-127 "\$W/full" evm-zone-29 "-f 0 -n 128 -j \$J -s AB -x 32" 2>&1 | tee "\$RES/crosscheck.log"
+  --real evm-0-127 "\$W/full" evm-zone-29 "-f 0 -n 128 -j \$J -s AB -x 32" \\
+  --real evm-sel-q512 "\$W/sel" evm-zone-29 "-f 0 -n all -j \$J -s AB -x 4 -q 512" 2>&1 | tee "\$RES/crosscheck.log"
 [ "\${PIPESTATUS[0]}" = 0 ] && verdict crosscheck PASS || verdict crosscheck FAIL
 find "\$RES/cases" -name 'jvm-*.log.gz' -size +2M -delete 2>/dev/null
 echo; cat "\$RES/VERDICTS"; [ \$FAIL = 0 ] && echo "ALL PASS" | tee "\$RES/ALL_PASS"

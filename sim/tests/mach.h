@@ -199,6 +199,9 @@ public:
     std::vector<std::array<uint64_t, 4>> writer_log() const;
     void record_gather();
     std::vector<std::array<uint64_t, 4>> gather_log() const;
+    // ref's `ctl.conditions |= bits` from a test (W23's request 9): ERRORS from the next cycle on (its view, its error
+    // line and the checker at that cycle's end), as ref's set between cycles
+    void set_errors(uint32_t bits);
     uint32_t remaining(unsigned ctr) const;                 // the director's write counters (dir.remaining[ctr])
     void set_remaining(unsigned ctr, uint32_t v);
     bool mem_idle() const;                                  // mem_idle (4.1)
@@ -222,7 +225,7 @@ public:
     int64_t exit_value() const;                             // TileControl.simExitValue (SIM_EXIT, 8.15)
     std::string halt_report() const;                        // Controller.haltReport()
 
-    units::RegBlockState block() const;                     // the register block as ref has it now (mach.cpp)
+    units::RegBlockState block(bool with_cond = true) const;   // the register block as ref has it now (mach.cpp)
 
 private:
     Chip* c_;
@@ -301,6 +304,12 @@ public:
     uint64_t violations() const;                            // ref's Chip.violations
     const std::vector<std::string>& violation_messages() const;   // the first max_violation_messages, ref's text
     void clear_violation_messages();
+    // ref's Config switches changed mid-run (W23's request 10, CtrlTest): from the next cycle on, as ref reads them each
+    // cycle (the report through the cycle just run is made first); and ref's `violations = 0` with the messages cleared
+    void set_check_errors(bool on);
+    void set_strict_replies(bool on);
+    void set_max_violation_messages(unsigned n);
+    void clear_violations();
     std::string violation_report();                         // ref's violationReport() (scans the overflows first)
     void scan_overflows();                                  // ref's scanOverflows
     void finalize_checks() const;                           // the checker's report through the cycle just run

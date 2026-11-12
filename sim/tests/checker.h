@@ -31,6 +31,9 @@ public:
     uint64_t violations() const { return violations_; }
     const std::vector<std::string>& messages() const { return messages_; }
     void clear_messages() { messages_.clear(); }
+    void clear_count() { violations_ = 0; }
+    CheckSwitches& switches() { return sw_; }
+    void set_max_messages(unsigned n) { max_messages_ = n; }
     uint32_t facts() const { return sink_.n.load(); }
 
 private:

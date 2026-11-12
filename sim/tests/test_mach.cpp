@@ -29,10 +29,13 @@ namespace {
 std::string out;
 void say(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 void say(const char* fmt, ...) {
-    char b[1024];
-    va_list ap;
+    va_list ap, ap2;
     va_start(ap, fmt);
-    std::vsnprintf(b, sizeof b, fmt, ap);
+    va_copy(ap2, ap);
+    const int n = std::vsnprintf(nullptr, 0, fmt, ap2);
+    va_end(ap2);
+    std::string b(size_t(n > 0 ? n : 0), '\0');
+    std::vsnprintf(b.data(), b.size() + 1, fmt, ap);
     va_end(ap);
     out += b;
 }
@@ -245,5 +248,41 @@ TEST(mach_runs_as_refs_Mach) {
     machself();
     const std::string want = file("tests/mach/machself.out");
     if (out != want) std::fprintf(stderr, "---- got\n%s---- want (tests/mach/machself.out)\n%s", out.c_str(), want.c_str());
+    CHECK(out == want);
+}
+
+// ---- oracle/ref/CheckSelf.java's sequence (fixture tests/mach/checkself.out, oracle/ref/checkself.sh): the checker ----
+namespace {
+void checkself() {
+    out.clear();
+    {
+        Net n(Net::cfg(-1));
+        n.at(3, 10, 9, lw::M_WRITE, 0, 0xFF000000u, lw::SIZE_32, 0x11, 0);
+        n.at(4, 11, 9, lw::M_WRITE, 0, Net::cm(0x900), lw::SIZE_UNDEF, 0x22, 0);
+        n.at(5, 12, 9, lw::M_COUNT, 0, 0, lw::SIZE_32, 0x33, 0);
+        n.at(6, 13, 9, lw::M_GATHER, 0, 0, lw::SIZE_64, 0x44, 0);
+        n.at(7, 14, 9, lw::M_COUNT, 0, 0, lw::SIZE_UNDEF, 0x55, 0);
+        n.at(8, 14, 9, lw::M_AUG, 1, 0, lw::SIZE_128, 0x66, 0x77);
+        n.at(3, 40, 9, lw::M_WRITE, 0, 0xFF000000u, lw::SIZE_64, 0x88, 0);
+        const bool ok = n.run_all(1000);
+        say("packets: %s at cycle %lld\n", ok ? "drained" : "NOT drained", (long long)n.c.cycle());
+        say("%s", n.c.violation_report().c_str());
+    }
+    {
+        mach::MachConfig k = Net::cfg(-1);
+        k.max_violation_messages = 3;
+        Net n(k);
+        for (unsigned i = 0; i < 6; i++) n.at(10 + i, 10 + i, 20, lw::M_COUNT, 0, 0, lw::SIZE_32, i, 0);
+        n.run_all(1000);
+        say("%s", n.c.violation_report().c_str());
+    }
+}
+}  // namespace
+
+TEST(mach_checker_as_refs) {
+    if (!sim::check::kOn) { std::printf("  (the checker's facts are off in this build: MODE=debug or MODE=suite)\n"); return; }
+    checkself();
+    const std::string want = file("tests/mach/checkself.out");
+    if (out != want) std::fprintf(stderr, "---- got\n%s---- want (tests/mach/checkself.out)\n%s", out.c_str(), want.c_str());
     CHECK(out == want);
 }

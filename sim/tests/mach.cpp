@@ -10,6 +10,7 @@
 #include <optional>
 
 #include "base/fatal.h"
+#include "checker.h"
 #include "units/ag.h"
 #include "units/big_sram.h"
 #include "units/director.h"
@@ -108,6 +109,7 @@ struct Chip::Impl {
     unsigned nunits = 64;
     uint8_t skew[64] = {};
     std::unique_ptr<Cc> cc;
+    std::unique_ptr<Checker> checker;                    // ref's violations (src/check.h; on with SIM_CHECKS)
     int64_t last_run_at = -1;
     // C&C's CALL steps run between cycles (Cc::call): id -> the harness's function, run after the cycle it ran in
     struct Call { uint32_t id; std::function<void(int64_t)> fn; };
@@ -199,12 +201,13 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     }
     m.shifted = {m.sim->type_of(units::tile_unit(0, "ctl")), m.sim->type_of(units::tile_unit(0, "core"))};
     if (!c.cc_cores) m.lines = {m.sim->type_of("row0"), m.sim->type_of("cnc")};
+    m.checker = std::make_unique<Checker>(sim::check::kOn ? c.check_capacity : 0, c.max_violation_messages);
     m.has_cnc = !c.cc_cores;
     if (!c.cc_cores) m.cc = std::make_unique<Cc>(*this);
     for (uint32_t id = units::CncProgram::kCalls; id-- > 0;) m.free_ids.push_back(id);
 }
 
-Chip::~Chip() = default;
+Chip::~Chip() { if (impl_ && impl_->checker) impl_->checker->uninstall(); }
 
 sim::Sim& Chip::sim() { return *impl_->sim; }
 void Chip::touched(const std::string& name) { impl_->sim->wake(name); }
@@ -225,12 +228,14 @@ void Chip::Impl::run_calls() {
 }
 
 void Chip::step() {
+    impl_->checker->install();
     impl_->sim->run(1);
+    impl_->checker->process(cycle(), false);
     impl_->run_calls();
 }
 void Chip::run(uint64_t n) {
     impl_->sim->wake_all();
-    if (impl_->calls.empty()) impl_->sim->run(n);
+    if (impl_->calls.empty()) { impl_->checker->install(); impl_->sim->run(n); impl_->checker->process(cycle(), false); }
     else for (uint64_t i = 0; i < n; i++) step();
     scan_overflows();
 }
@@ -296,12 +301,17 @@ void Chip::host_command(unsigned c, uint32_t word, const std::vector<uint32_t>& 
     impl_->sim->wake(n);
 }
 
-// ---- the checker and reset: W20's step 2. Until then a run reports no violations; the calls that need it stop. ----
-uint64_t Chip::violations() const { return 0; }
-const std::vector<std::string>& Chip::violation_messages() const { static const std::vector<std::string> none; return none; }
-void Chip::clear_violation_messages() {}
-std::string Chip::violation_report() { FATAL("mach: violation_report comes with W20's step 2 (the checker)"); }
-void Chip::scan_overflows() {}
+// ---- the checker (checker.cpp): ref's Chip.violations, violationMessages, violationReport, scanOverflows ----
+uint64_t Chip::violations() const { return impl_->checker->violations(); }
+const std::vector<std::string>& Chip::violation_messages() const { return impl_->checker->messages(); }
+void Chip::clear_violation_messages() { impl_->checker->clear_messages(); }
+void Chip::scan_overflows() { impl_->checker->process(cycle(), true); }
+std::string Chip::violation_report() {
+    scan_overflows();
+    std::string sb = "violations: " + std::to_string(violations()) + "\n";
+    for (const std::string& s : violation_messages()) sb += "  " + s + "\n";
+    return sb;
+}
 void Chip::reset(bool) { FATAL("mach: reset comes with W20's step 2"); }
 uint64_t Chip::resets() const { return 0; }
 int64_t Chip::last_reset_at() const { return -1; }

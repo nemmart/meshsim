@@ -113,6 +113,7 @@ struct MachConfig {
     bool strict_replies = false, check_read_port_overlap = true, check_command_read = true, check_disjoint = true;
     bool measure_s1 = true, check_errors = true, check_unexpected = true;
     bool log_trace = false;            // the TRACE store log (8.15, H6) [step 4]
+    uint32_t check_capacity = 1u << 18;   // the checker's facts (src/check.h) per machine (fatal when full)
     // ---- the harness ----
     std::vector<std::string> image_dirs;   // Mach::Image's search path (empty: the default above)
     uint32_t log_capacity = 1u << 14;      // Net: director-log entries per tile (fatal when exceeded, never grows)

@@ -30,7 +30,8 @@ uint64_t InjReadSide::digest() const {
 
 // InjectionPath's invariants 5, 17, 10, 21 (judged against peripheral 1 alone, which every unit has; LinkWord.whyBad
 // with periphPresent 1, size 11), counted: meshsim's checks, the packet is injected anyway.
-void Injection::check(uint64_t h) {
+void Injection::check(uint64_t t, uint64_t dw, uint64_t h, uint64_t hi) {
+    namespace ck = sim::check;
     const unsigned m = lw::mode(h), s = lw::size(h), d = lw::dst(h);
     const uint32_t a = lw::addr(h);
     bool bad = false;
@@ -43,12 +44,13 @@ void Injection::check(uint64_t h) {
         else if (r >= lw::R_PERIPH1 && r <= lw::R_PERIPH3) bad = ((1u >> (r - lw::R_PERIPH1)) & 1) == 0;
         else bad = true;
     }
-    if (bad) violations++;
-    if (s == lw::SIZE_UNDEF) violations++;
-    if ((d > lw::CC3 && d < lw::BROADCAST) || d == lw::NONE) violations++;
-    if (m == lw::M_GATHER && d != me) violations++;
-    if (lw::reserved_mode(m)) violations++;
-    if (m == lw::M_COUNT && lw::counter(h) == 0) violations++;
+    // W20: each counted violation also a fact for the checker (src/check.h; nothing unless the harness installs a sink)
+    if (bad) { violations++; ck::record(t, int(me), ck::Kind::INJ_BAD_PACKET, 0, dw, h, hi); }
+    if (s == lw::SIZE_UNDEF) { violations++; ck::record(t, int(me), ck::Kind::INJ_SIZE_UNDEF, 0, dw, h, hi); }
+    if ((d > lw::CC3 && d < lw::BROADCAST) || d == lw::NONE) { violations++; ck::record(t, int(me), ck::Kind::INJ_NO_ENDPOINT, 0, dw, h, hi); }
+    if (m == lw::M_GATHER && d != me) { violations++; ck::record(t, int(me), ck::Kind::INJ_GATHER_ELSEWHERE, 0, dw, h, hi); }
+    if (lw::reserved_mode(m)) { violations++; ck::record(t, int(me), ck::Kind::INJ_RESERVED_MODE, 0, dw, h, hi); }
+    if (m == lw::M_COUNT && lw::counter(h) == 0) { violations++; ck::record(t, int(me), ck::Kind::INJ_COUNT_CTR0, 0, dw, h, hi); }
 }
 
 uint64_t Injection::digest() const {

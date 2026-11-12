@@ -29,8 +29,10 @@ ifeq ($(MODE),debug)
 FLAGS := $(COMMON) $(DEBUG)
 else ifeq ($(MODE),release)
 FLAGS := $(COMMON) $(RELEASE)
+else ifeq ($(MODE),suite)
+FLAGS := $(COMMON) $(RELEASE) -DSIM_CHECKS   # W20: the suite build, release with the checker's facts (src/check.h)
 else
-$(error MODE must be debug or release)
+$(error MODE must be debug, release or suite)
 endif
 CXX := $(CXX_$(CC_NAME))
 ifeq ($(CXX),)

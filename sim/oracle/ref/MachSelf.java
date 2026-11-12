@@ -47,6 +47,12 @@ final class MachSelf {
         m.c.cc.command(LinkWord.BROADCAST, 1 << 24).go().command(LinkWord.BROADCAST, 2 << 24).go().command(LinkWord.BROADCAST, 3 << 24).go();
         boolean ok = m.run(m::allStopped, 2_000_000);
         report("a2a seed " + seed + (kit ? " kit" : ""), m, ok);
+        {   // the canonical state fingerprint of the chip at its last cycle (StateFp, as M2Prog prints it): B25's
+            StateFp.Out o; long all = 0x6A09E667F3BCC908L; int nn = 0;
+            for (Tile p : m.c.tiles) for (String u : StateFp.TILE_UNITS) { o = new StateFp.Out(); StateFp.unit(o, m.c, p, u, m.c.cycle); all = StateFp.fmix(all ^ o.done()); nn++; }
+            for (String u : StateFp.CHIP_UNITS) { o = new StateFp.Out(); StateFp.chipUnit(o, m.c, u, m.c.cycle); all = StateFp.fmix(all ^ o.done()); nn++; }
+            System.out.printf("  fp %016x%n", StateFp.fmix(all ^ nn));
+        }
         StringBuilder pl = new StringBuilder("  phaseLog");
         for (long[] e : m.c.cc.phaseLog) pl.append(' ').append(java.util.Arrays.toString(e));
         System.out.println(pl);

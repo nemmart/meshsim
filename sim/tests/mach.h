@@ -333,6 +333,12 @@ public:
     std::string violation_report();                         // ref's violationReport() (scans the overflows first)
     void scan_overflows();                                  // ref's scanOverflows
     void finalize_checks() const;                           // the checker's report through the cycle just run
+    // ---- the fingerprint (B25; D41 Q5: in place of ref's -Dmeshsim.digest=FILE) ----
+    // With MESHSIM_DIGEST=FILE in the environment, every Chip appends, when destroyed (and those still alive at exit),
+    // one line in creation order: "chip N cycle C units U mcycle M wfi W instructions I violations V fp HASH", the totals
+    // as ref's digest prints them and HASH the canonical state fingerprint (tests/statefp.h, equal to ref's StateFp) of
+    // the whole chip at its last cycle, in place of ref's digest hash. digest() is that line's text after "chip N ".
+    std::string digest() const;
     // ---- reset (6.1) [step 2] ----
     void reset(bool hard);                                  // takes effect at the end of the current cycle
     uint64_t resets() const;

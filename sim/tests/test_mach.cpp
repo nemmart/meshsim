@@ -73,6 +73,10 @@ void a2a(int64_t seed, bool kit = false) {
     m.c.cc().command(units::lw::BROADCAST, 1u << 24).go().command(units::lw::BROADCAST, 2u << 24).go().command(units::lw::BROADCAST, 3u << 24).go();
     const bool ok = m.run([&] { return m.all_stopped(); }, 2000000);
     report("a2a seed " + std::to_string(seed) + (kit ? " kit" : ""), m, ok);
+    {
+        const std::string d = m.c.digest();                 // B25: its fp field, ref's StateFp of the chip
+        say("  fp %s\n", d.substr(d.find(" fp ") + 4).c_str());
+    }
     std::string pl = "  phaseLog";
     for (const auto& e : m.c.cc().phase_log()) pl += " [" + std::to_string(e[0]) + ", " + std::to_string(e[1]) + "]";
     say("%s\n", pl.c_str());

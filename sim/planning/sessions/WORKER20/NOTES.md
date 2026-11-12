@@ -134,6 +134,12 @@ remaining kinds, interleaved as the suites ask.
   counterStoreClearsLatch (rpLatency only in kMin): inert here too. Refused at build unless ref's default:
   errorLatency != readyLatency, logTrace (until H6). Checked: MachSelf's a2a with a kit job's ten cfg fields equal to
   ref's (SortTest's own setField on the Java side); test_mach's front-end test. The StateFp option (B25) comes next.
+- **B25 done**: `MESHSIM_DIGEST=FILE` (ref's -Dmeshsim.digest): every Chip appends at destruction (those alive at exit
+  too), in creation order, "chip N cycle C units U mcycle M wfi W instructions I violations V fp HASH" (ref's totals in
+  clear; HASH the whole chip's canonical state fingerprint, tests/statefp*, in place of ref's digest hash, D41 Q5);
+  `Chip::digest()`. MachSelf prints ref's StateFp of the chip (M2Prog's way) after each a2a, kit-configured included:
+  equal. The machine with C&C 1-3 as cores: not wired yet (statefp_m3's registry; FATAL, asking). errorLatency moved to
+  dropped() (the owner: no v1.3 driver sets it other than readyLatency).
 - Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
   after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
 

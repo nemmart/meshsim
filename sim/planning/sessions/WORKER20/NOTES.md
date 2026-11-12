@@ -95,6 +95,9 @@ remaining kinds, interleaved as the suites ask.
   `set_strict_replies`, `set_max_violation_messages` (from the next cycle on, the report through the cycle just run made
   first) and `clear_violations` (ref's `violations = 0` and the messages cleared). CheckSelf's case line for line.
   W23's stand-ins in tests/ctl/ctl.h can go.
+- **W25's F6 fixed**: the slot freed whatever row buffer the replayer pointed at (the row hook's vector, after
+  `Chip::on_row`): a double free. The slot now frees only the buffer it allocated (`SlotCore::Ref::rows`).
+  test_mach's `mach_row_hook_destroyed_cleanly` fails under ASan without the fix. W25 can drop stageb.cpp's workaround.
 - Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
   after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
 

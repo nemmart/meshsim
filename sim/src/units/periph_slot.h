@@ -106,8 +106,10 @@ struct SlotCore {
     struct Ref {
         PeriphType type = PT_ABSENT;
         void* p = nullptr;
+        uint64_t* rows = nullptr;      // W20 (F6): the replayer's row buffer this slot allocated (freed here, whatever
+                                       //   buffer the replayer points at by then: the harness's row hook swaps it)
         Ref() = default;
-        Ref(Ref&& o) noexcept : type(o.type), p(o.p) { o.p = nullptr; o.type = PT_ABSENT; }
+        Ref(Ref&& o) noexcept : type(o.type), p(o.p), rows(o.rows) { o.p = nullptr; o.type = PT_ABSENT; o.rows = nullptr; }
         Ref& operator=(Ref&& o) noexcept;
         Ref(const Ref&) = delete;
         Ref& operator=(const Ref&) = delete;

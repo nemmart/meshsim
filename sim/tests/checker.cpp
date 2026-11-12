@@ -7,11 +7,13 @@
 #include <algorithm>
 #include <cinttypes>
 #include <cstdarg>
+#include <cstring>
 #include <cstdio>
 
 #include "base/fatal.h"
 #include "units/linkword.h"
 #include "units/regmap.h"
+#include "units/replayer.h"
 
 namespace mach {
 
@@ -120,6 +122,12 @@ std::string Checker::text(const Fact& f) const {
     }
     case Kind::WE_PAST_SRAM:
         return fmt("a big-SRAM write at chunk 0x%" PRIx64 ", at or past the end of big SRAM: undefined (4.1; invariant 19): ", a[0]) + describe(a[1], a[2], a[3]);
+    case Kind::PERIPH_VIOLATION: {                         // (W20, F2) the replayer's text, without its list's "t<me> @<t>: "
+        char b[300];
+        units::Replayer::violation_text(unsigned(f.tile), int64_t(f.cycle), uint16_t(a[0]), a[1], a[2], a[3], b, sizeof b);
+        const char* m = std::strstr(b, ": ");
+        return m ? m + 2 : b;
+    }
     case Kind::HIST_OVERFLOW: return "a counter exceeded 17 bits (invariant 6)";
     case Kind::ROTATION_LATE: return "address generator: a rotation started late (invariant 3; drift, see agReport)";
     case Kind::READ_RETURN_REFUSED: return "SIMULATOR: a read return was refused by the injection point";

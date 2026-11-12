@@ -106,6 +106,8 @@ enum class Kind : uint16_t {
     CTL_DONE_GO_MASKED,         // (no arguments)
     CTL_COUNTER_WRAP,           // a0 the counter
     CTL_DONE_EARLY,             // a0 a mask of counters still expecting arrivals, a1-a3 their counts (checker.cpp)
+    PERIPH_VIOLATION,           // a peripheral's violation through its slot to the block (ref's Peripheral.Host.violate):
+                                //   the replayer's (F2): a0 its code, a1-a3 its arguments (units/replayer.h)
     // ---- the controller's memories (ControllerMemories) ----
     CMEM_COMMAND_UNREAD,        // a1 d, a2 h, a3 hi (cfg.checkCommandRead)
     CMEM_REPLY_OVERWRITE,       // a0 the data word, a1 d, a2 h, a3 hi (cfg.strictReplies)
@@ -163,7 +165,7 @@ constexpr Slot slot_of(Kind k) {
     }
     if (k >= Kind::INJ_BAD_PACKET && k <= Kind::INJ_COUNT_CTR0) return Slot::INJ;
     if (k >= Kind::DIR_READPORT_OVERLAP && k <= Kind::DIR_COMMAND_KIND) return Slot::DIR;
-    if (k >= Kind::CTL_WFI_WOKEN && k <= Kind::CTL_DONE_EARLY) return Slot::CTL;
+    if (k >= Kind::CTL_WFI_WOKEN && k <= Kind::PERIPH_VIOLATION) return Slot::CTL;   // (a peripheral's: the block's, ref's)
     if (k >= Kind::AG_SIZE_UNDEF && k <= Kind::AG_TABLE_WRAP) return Slot::AG;
     return Slot::COUNT;
 }

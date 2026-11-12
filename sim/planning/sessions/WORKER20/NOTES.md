@@ -84,6 +84,11 @@ remaining kinds, interleaved as the suites ask.
   fact after the same packet's later facts (the command block, past memory), and ref reports the last one per cycle, so
   the whole packet's facts would have to wait with it. Recorded; the owner hears when a suite's log reaches it (then
   fixed, or a D30 case).
+- **W25's F2, the chip side**: the replayer's violations (ref's `violate(t, m)`: its list and the slot's `host.violate`,
+  which ref sends to the tile's register block) recorded as chip facts, `Kind::PERIPH_VIOLATION` in slot CTL; the text is
+  the replayer's own (`Replayer::violation_text`, factored out of W25's `list_add`, the list's "t<me> @<t>: " left off).
+  One case line in checker.cpp (W26 owns the kinds' texts from 2026-11-12: told). Not yet checked against ref: no
+  replay window here; W25's StageB lines (`meshsim: violations ...`) are the check. The runner's quick --check equal.
 - Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
   after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
 

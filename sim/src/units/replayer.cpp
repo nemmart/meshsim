@@ -1,6 +1,8 @@
 // replayer.cpp: the replayer's cycle (WORKER15): sim/ref/meshsim/src/Replayer.java, method for method.
 #include "units/replayer.h"
 
+#include "check.h"
+
 #include <cstdio>
 
 #include "units/stream_word.h"
@@ -37,7 +39,10 @@ void Replayer::record(int64_t t, uint16_t c, uint64_t a, uint64_t b, uint64_t x)
     if (fact_shown_ < FACT_RING) fact_shown_++;
     fact_counts_[c]++;
 }
-void Replayer::violate(int64_t t, uint16_t c, uint64_t a, uint64_t b, uint64_t x) { record(t, c, a, b, x); }
+void Replayer::violate(int64_t t, uint16_t c, uint64_t a, uint64_t b, uint64_t x) {
+    record(t, c, a, b, x);
+    sim::check::record(uint64_t(t), int(me), sim::check::Kind::PERIPH_VIOLATION, c, a, b, x);   // W20 (F2): ref's host.violate
+}
 
 void Replayer::fact_text(const ReplayerFact& f, char* buf, size_t n) {
     const unsigned long long a = f.a, b = f.b;
@@ -75,16 +80,12 @@ const char* op_name(uint64_t op, char* tmp, size_t n) {   // ReplayerAlu.name: t
 const char* stream_name(unsigned s) { return s == 0 ? "code" : s == 1 ? "read log" : "write log"; }
 }  // namespace
 
-void Replayer::list_add(int64_t t, uint16_t c, uint64_t a, uint64_t b, uint64_t x) {
-    unsigned l = c < N_VIOLATION ? L_VIOLATIONS : c == F_INVALID ? L_INVALID : c == F_OVERRUN ? L_OVERRUNS
-               : c == F_UNDERFLOW ? L_UNDERFLOWS : c == F_LEFTOVER ? L_LEFTOVER : N_LISTS;
-    if (l == N_LISTS) return;
-    uint64_t k = list_n_[l]++;
-    if (k >= list_cap_) return;
-    char* o = &list_text_[(size_t(l) * list_cap_ + k) * LIST_TEXT];
-    const size_t n = LIST_TEXT;
+// W20 (F2): ref's text of a violation (`violate(t, m)`'s list entry, "t<me> @<t>: <m>"), for the replayer's list and the
+// checker (ref's slot passes m to the tile's register block: a chip violation). Codes below N_VIOLATION only.
+void Replayer::violation_text(unsigned me, int64_t t, uint16_t c, uint64_t a, uint64_t b, uint64_t x, char* o, size_t n) {
     const long long T = t;
     char nb[24];
+    (void)x;
     switch (c) {
         case V_NO_FLUSH: std::snprintf(o, n, "t%u @%lld: a pass started without a write to the state word since the last pass: its queues weren't flushed (DECISIONS-v1.26 item 4)", me, T); break;
         case V_TWO_SOURCES: std::snprintf(o, n, "t%u @%lld: two sources feed one queue port in a pass (invariant 18): %d and %d", me, T, int(a), int(b)); break;
@@ -96,6 +97,23 @@ void Replayer::list_add(int64_t t, uint16_t c, uint64_t a, uint64_t b, uint64_t 
         case V_END_WORD: std::snprintf(o, n, "t%u @%lld: the program-end row's log word is %lld, not 0", me, T, (long long)a); break;
         case V_NO_NFV: std::snprintf(o, n, "t%u @%lld: a control transfer from a row without next_from_value (%s): the read log is popped anyway", me, T, op_name(a, nb, sizeof nb)); break;
         case V_MISALIGNED: std::snprintf(o, n, "t%u @%lld: a misaligned %s at 0x%llx (jolt-cpp aborts the trace; checked_memory_address)", me, T, op_name(a, nb, sizeof nb), (unsigned long long)b); break;
+        default: std::snprintf(o, n, "t%u @%lld: violation %u", me, T, unsigned(c)); break;
+    }
+}
+
+void Replayer::list_add(int64_t t, uint16_t c, uint64_t a, uint64_t b, uint64_t x) {
+    unsigned l = c < N_VIOLATION ? L_VIOLATIONS : c == F_INVALID ? L_INVALID : c == F_OVERRUN ? L_OVERRUNS
+               : c == F_UNDERFLOW ? L_UNDERFLOWS : c == F_LEFTOVER ? L_LEFTOVER : N_LISTS;
+    if (l == N_LISTS) return;
+    uint64_t k = list_n_[l]++;
+    if (k >= list_cap_) return;
+    char* o = &list_text_[(size_t(l) * list_cap_ + k) * LIST_TEXT];
+    const size_t n = LIST_TEXT;
+    const long long T = t;
+    char nb[24];
+    switch (c) {
+        case V_NO_FLUSH: case V_TWO_SOURCES: case V_FOREIGN_SRC: case V_CREDIT: case V_OFFSET_IMM: case V_LOG_AND_NFV:
+        case V_UNDEFINED: case V_END_WORD: case V_NO_NFV: case V_MISALIGNED: violation_text(me, t, c, a, b, x, o, n); break;
         case F_OVERRUN: std::snprintf(o, n, "@%lld queue %d", T, int(a)); break;
         case F_INVALID:
             if (a == INV_CLASS3) std::snprintf(o, n, "@%lld decode-table class 3 for instruction 0x%x", T, unsigned(uint32_t(b)));

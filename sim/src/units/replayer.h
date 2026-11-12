@@ -263,6 +263,7 @@ public:
     const ReplayerFact& fact(unsigned i) const { return facts_[(fact_n_ - fact_shown_ + i) % FACT_RING]; }
     unsigned fact_shown() const { return fact_shown_; }
     static void fact_text(const ReplayerFact& f, char* buf, size_t n);
+    static void violation_text(unsigned me, int64_t t, uint16_t c, uint64_t a, uint64_t b, uint64_t x, char* o, size_t n);   // W20 (F2)
     // ref's lists (above): how many entries list l has had, how many are kept, and kept entry i's text.
     uint64_t list_count(unsigned l) const { return list_n_[l]; }
     uint32_t list_capacity() const { return list_cap_; }

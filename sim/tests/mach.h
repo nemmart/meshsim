@@ -412,8 +412,9 @@ public:
     std::string halt_summary() const;                       // Mach.haltSummary, ref's text
 };
 
-// ================================================================================ the coreless machine fed (Net)
-// ref's Net: per-tile packet queues fed through each tile's read-return holding register (the injection point's top
+// ===================================================================== a machine fed from the harness (Net)
+// ref's Net, on any machine (the coreless one or Config.machine(), as ref's; not with cc_cores): per-tile packet queues
+// fed through each tile's read-return holding register (the injection point's top
 // priority: a packet scheduled for cycle T is taken by the injection point at T), per-tile read-queue client requests,
 // C&C's sends, and per-tile arrival logs at the director. The feeding is ref's `feed()`, run between cycles before each
 // cycle, so it sees exactly what ref's harness saw. The harness's ports into the injection unit and the director's

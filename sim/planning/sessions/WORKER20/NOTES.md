@@ -151,6 +151,9 @@ remaining kinds, interleaved as the suites ask.
   from the core's stores and the read side's injections after each cycle (`PhaseLog::after_cycle`); the core's
   `rp_peak` stays a plain statistic. MachSelf's rdpeak case (search.c at SRAM read latency 4, variant 1: PhaseLog's CSV,
   peak_readPort 1 in ref) fails without the fix (2) and passes with it.
+- **W22-9 / W23's (a): Net on any machine** (Config.machine() included, as ref's; not with cc_cores). NetSelf's
+  machine case (HooksTest's and RequestBusTest's machine(): the tiles waiting in their boot ROMs, periphType 0 and 4:
+  data memory, big SRAM, a broadcast; the 74 violations they raise) equal to ref.
 - Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
   after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
 

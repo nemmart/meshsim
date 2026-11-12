@@ -201,7 +201,27 @@ final class NetSelf {
         System.out.println(sb);
     }
 
+    /** Net on the machine as specified (HooksTest's and RequestBusTest's machine(): controllers on, the tiles waiting in
+     *  their boot ROMs), periphType 0 and 4: packets into data memory and big SRAM, a broadcast (W22-9). */
+    static void onMachine(int periph) {
+        Config k = Config.machine(); k.periphType = periph;
+        Net n = new Net(k);
+        n.c.run(200);                                              // the boot ROMs reach their WFI
+        long T0 = n.c.cycle + 2;
+        for (int s = 0; s < 64; s += 9) n.at(s, T0, 9, LinkWord.M_WRITE, 0, Net.cm(0x900 + 2 * s), LinkWord.SIZE_64, Net.tagged(s, T0), 0);
+        n.at(5, T0 + 1, LinkWord.BROADCAST, LinkWord.M_WRITE, 0, Net.cm(0x880), LinkWord.SIZE_32, 0xBEEF, 0);
+        n.at(6, T0 + 2, 30, LinkWord.M_WRITE, 1, LinkWord.R_SRAM << 24 | 0x40, LinkWord.SIZE_64, 0x1234, 0);
+        boolean ok = n.runAll(2000);
+        StringBuilder sb = new StringBuilder("machine periph " + periph + ": " + (ok ? "quiescent" : "NOT quiescent") + " at " + n.c.cycle + "; late " + n.late);
+        sb.append("; t9 dmem[0x112] ").append(w(n, 9, 0x112)).append(" t40 dmem[0x80] ").append(w(n, 40, 0x80)).append(" t30 sram 0x10 ").append(hex(n.c.tiles[30].sram.peek(0x10)));
+        sb.append("; violations ").append(n.c.violations);
+        System.out.println(sb);
+        logs(n, 9, 30);
+    }
+
     public static void main(String[] a) {
+        onMachine(0);
+        onMachine(4);
         feedOnlyInNet();
         core();
         phaseDoneProbe(-1);

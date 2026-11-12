@@ -1396,10 +1396,7 @@ MachConfig Net::cfg(int64_t shuffle) {
     k.shuffle_seed = shuffle; k.check_unexpected = false; k.check_errors = false;
     return k;
 }
-Net::Net(const MachConfig& cfg) : c(cfg) {
-    if (!cfg.coreless) FATAL("Net: the coreless test machine only (MachConfig::defaults or Net::cfg)");
-    c.impl().enable_net(cfg);
-}
+Net::Net(const MachConfig& cfg) : c(cfg) { c.impl().enable_net(cfg); }   // any machine, as ref's (W22-9: Config.machine())
 void Net::at(unsigned tile, int64_t T, unsigned dst, unsigned mode, uint32_t addr, uint64_t payload) {
     at(tile, T, dst, mode, 1, addr, units::lw::SIZE_64, payload, 0);
 }

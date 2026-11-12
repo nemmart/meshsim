@@ -409,8 +409,27 @@ void feed_only_in_net() {
     sb += " t12"; for (const auto& e : n.log(12)) sb += " @" + std::to_string(e[0]);
     say("%s\n", sb.c_str());
 }
+void on_machine(int periph) {
+    mach::MachConfig k = mach::MachConfig::machine();
+    k.periph_type = periph;
+    Net n(k);
+    n.c.run(200);
+    const int64_t T0 = n.c.cycle() + 2;
+    for (unsigned s = 0; s < 64; s += 9) n.at(s, T0, 9, lw::M_WRITE, 0, Net::cm(0x900 + 2 * s), lw::SIZE_64, Net::tagged(s, T0), 0);
+    n.at(5, T0 + 1, lw::BROADCAST, lw::M_WRITE, 0, Net::cm(0x880), lw::SIZE_32, 0xBEEF, 0);
+    n.at(6, T0 + 2, 30, lw::M_WRITE, 1, uint32_t(lw::R_SRAM) << 24 | 0x40, lw::SIZE_64, 0x1234, 0);
+    const bool ok = n.run_all(2000);
+    std::string sb = "machine periph " + std::to_string(periph) + ": " + (ok ? "quiescent" : "NOT quiescent") + " at " + std::to_string(n.c.cycle()) +
+                     "; late " + std::to_string(n.late());
+    sb += "; t9 dmem[0x112] " + w(n, 9, 0x112) + " t40 dmem[0x80] " + w(n, 40, 0x80) + " t30 sram 0x10 " + hx(n.c.tile(30).sram_peek(0x10));
+    sb += "; violations " + std::to_string(n.c.violations());
+    say("%s\n", sb.c_str());
+    logs(n, {9, 30});
+}
 void netself() {
     out.clear();
+    on_machine(0);
+    on_machine(4);
     feed_only_in_net();
     core();
     phase_done_probe(-1);

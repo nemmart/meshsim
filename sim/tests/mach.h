@@ -66,6 +66,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <map>
 #include <string>
 #include <vector>
@@ -188,6 +189,15 @@ public:
     bool ts_busy() const;                                   // ts_busy (4.15)
     bool quiescent() const;                                 // Tile.quiescent
 
+    // ---- a test's loads and stores through the core (ref's Controller.load(t, ea, width), store(t, ea, v, mask)) ----
+    // load: what a load at t = cycle() + 1 returns (the memories, the boot ROM, HIST, the registers as the core sees
+    // them at t); nullopt is ref's null (a bus error). Loads with a side effect (EVENTS, REQUEST_RECEIVE) and the
+    // peripheral windows aren't modelled here yet (fatal: ask W20).
+    std::optional<uint32_t> load(int64_t t, uint32_t ea, unsigned width) const;
+    // store: ref's bus-error reason ("" for none, ref's null); a store that isn't a bus error is made by the core in its
+    // step at t (t >= cycle() + 1), through the instruction's path. `mask` as ref's (-1 a whole word).
+    std::string store(int64_t t, uint32_t ea, uint32_t v, uint32_t mask = 0xFFFFFFFFu);
+
     // ---- the controller (the machine as specified) ----
     uint32_t pc() const;
     uint32_t x(unsigned r) const;
@@ -219,6 +229,9 @@ public:
     Cc& wait_cycles(uint32_t n);                            // CnC.waitCycles
     Cc& call(std::function<void(int64_t)> fn);              // CnC.call: fn(the cycle it ran), run between cycles right
                                                             //  after that cycle (ref's lambdas record cycles and state)
+    // CnC.waitUntil(cond) in W23's form (approved): C&C waits at this step; the harness checks cond between cycles once
+    // C&C has reached it, and C&C moves on in the next cycle. Runs go cycle by cycle while one is pending.
+    Cc& wait_until(std::function<bool()> cond);
     bool busy() const;                                      // CnC.busy(): steps left in its queue
     int64_t last_go_at() const, last_all_ready_at() const, last_run_at() const;
     // CnC.phaseLog: {all READY seen, GO store} per GO

@@ -54,6 +54,8 @@ struct CncStep {
         WAIT,        // a cycles (waitCycles)
         WAIT_READY,  // until all READY (SortTest.atAllReady's waitUntil; records allReadyAt)
         CALL,        // instant: harness bookkeeping, id a (the driver reads the cycle it ran)
+        WAIT_HOST,   // W20 (harness-only): ref's waitUntil in W23's form: until the harness, checking its condition between
+                     // cycles, releases it (host_released); instant once released, so C&C moves on the next cycle
     };
     Kind kind;
     uint32_t a = 0, b = 0;
@@ -71,6 +73,7 @@ public:
     CncProgram& at_all_ready(uint32_t call_id);           // SortTest.Machine.atAllReady
     CncProgram& wait_cycles(uint32_t n);
     CncProgram& call(uint32_t id);
+    CncProgram& wait_host();                              // W20 (harness-only): WAIT_HOST
     CncProgram& release();                                // the harness queues the next steps here (between cycles)
 
     CncProgram();
@@ -142,6 +145,7 @@ struct Cnc {
     uint8_t pending_retry = 0;        // a refused send is presented again
     uint64_t retry_w[3] = {};
     HarnessSends* hs = nullptr;       // W20 (harness-only): ref's Net harness's sends and receive trace; null otherwise
+    uint32_t host_released = 0, host_waits = 0;   // W20 (harness-only): WAIT_HOST steps released by the harness, passed
     // the receive FIFO (6.6): {payload [63:0], src, arrival, payload [127:64], size}
     uint64_t rxq[kRx][5] = {};
     uint32_t rx_head = 0, rx_count = 0;

@@ -119,6 +119,9 @@ struct Chip::Impl {
     struct Call { uint32_t id; std::function<void(int64_t)> fn; };
     std::vector<Call> calls;
     std::vector<uint32_t> free_ids;
+    struct Wait { uint32_t step; std::function<bool()> cond; };   // Cc::wait_until's, in order
+    std::vector<Wait> waits;
+    void check_waits();
     // Net (the coreless machine fed from the harness): each tile's feed (inject.h's HarnessFeed, harness-only) and the
     // rings' storage (grown between cycles, the feed's pointers refreshed), and the directors' logs (fixed size)
     using E4 = std::array<uint64_t, 4>;
@@ -273,16 +276,27 @@ void Chip::Impl::run_calls() {
     }
 }
 
+// Cc::wait_until: the first pending wait, once C&C is at its step, released when its condition holds (between cycles)
+void Chip::Impl::check_waits() {
+    if (waits.empty()) return;
+    units::Cnc* c = cnc();
+    if (!c || c->cur != waits.front().step || !waits.front().cond()) return;
+    c->host_released++;
+    waits.erase(waits.begin());
+    sim->wake("cnc");
+}
+
 void Chip::step() {
     impl_->checker->install();
     impl_->sim->run(1);
     impl_->collect_overflows();
     impl_->checker->process(cycle(), false);
     impl_->run_calls();
+    impl_->check_waits();
 }
 void Chip::run(uint64_t n) {
     impl_->sim->wake_all();
-    if (impl_->calls.empty()) {
+    if (impl_->calls.empty() && impl_->waits.empty()) {
         impl_->checker->install();
         impl_->sim->run(n);
         impl_->collect_overflows();
@@ -406,11 +420,29 @@ uint32_t* local(Chip::Impl& m, unsigned k, uint32_t a) {
     return (region == 1 ? m.imem(k) : m.dmem(k)) + off;
 }
 }  // namespace
-uint32_t TileRef::peek_local(uint32_t a) const { return *local(c_->impl(), k_, a); }
+// A word of the controller's memory as ref has it at the end of the cycle just run: port B's write of that cycle
+// reaches the C++ core at its next step (Link(cm_latency + 1)), so it is applied here over what the memory holds.
+uint32_t TileRef::peek_local(uint32_t a) const {
+    uint32_t v = *local(c_->impl(), k_, a);
+    const units::TileCore& core = unit<units::TileCore>("core");
+    if (core.rv.stop != units::Stop::running) return v;
+    sim::PortEntry e[8];
+    const uint32_t n = c_->sim().observe(core.port_b, e, 8).n;
+    for (uint32_t i = 0; i < n; i++) {
+        if (e[i].at != uint64_t(c_->cycle()) + 1) continue;
+        const uint64_t h = e[i].w[1];
+        const uint32_t pa = units::lw::addr(h), cnt = units::lw::chunks(units::lw::size(h));
+        if ((units::lw::region(pa) == units::lw::R_DMEM) != ((a >> 24) == 0)) continue;
+        const uint32_t w0 = (units::lw::offset(pa) & (units::MEM_BYTES - 1)) >> 2, w = (a & 0xFFFFFF) >> 2;
+        for (uint32_t j = 0; j < cnt; j++)
+            if (((w0 + j) & (units::MEM_WORDS - 1)) == w) v = uint32_t((j < 2 ? e[i].w[0] : e[i].w[2]) >> (32 * (j & 1)));
+    }
+    return v;
+}
 void TileRef::poke_local(uint32_t a, uint32_t v) { *local(c_->impl(), k_, a) = v; c_->touched(un(k_, "core")); }
 uint32_t TileRef::dmem(uint32_t w) const {
     if (w >= units::MEM_WORDS) FATAL("mach: tile %u: dmem[%u] past its %u words", k_, w, units::MEM_WORDS);
-    return c_->impl().dmem(k_)[w];
+    return peek_local(4 * w);
 }
 
 uint32_t TileRef::pc() const { return c_->unit<units::TileCore>(un(k_, "core")).rv.pc; }
@@ -426,6 +458,56 @@ std::string TileRef::halt_report() const {
     char b[160];
     std::snprintf(b, sizeof b, "tile %u: %s at pc=0x%x", k_, r.halt >= 0 && r.halt <= 8 ? kName[r.halt] : "?", r.pc);
     return b;   // ref's report adds the halting instruction (and a bus error's address): not kept by the C++ core yet
+}
+
+// ---- a test's loads and stores through the core (ref's Controller.load, store) ----
+namespace {
+// The Env Rv32::load reads through, between cycles: the registers as the block publishes them for t (its end of
+// t - 1, block_at_end), HIST as stored.
+struct LoadEnv {
+    const units::RegBlockState& b;
+    const units::HistStore& h;
+    uint32_t reg(unsigned r) const { return b.reg(r); }
+    uint32_t hist(uint32_t i) const { return h.m.hist[i & 255]; }
+    void post(uint32_t, uint32_t, uint32_t) const {
+        FATAL("mach: a test's load with a side effect (EVENTS, REQUEST_RECEIVE): not modelled yet (ask W20)");
+    }
+};
+}  // namespace
+std::optional<uint32_t> TileRef::load(int64_t t, uint32_t ea, unsigned width) const {
+    if (t != c_->cycle() + 1) FATAL("mach: tile %u: a test's load at cycle %lld, not the next (%lld)", k_, (long long)t, (long long)c_->cycle() + 1);
+    const uint32_t region = units::lw::region(ea & ~3u);
+    if (region == units::lw::R_DMEM || region == units::lw::R_PMEM)   // the memories as ref has them (port B's last write)
+        return peek_local(region << 24 | (((units::lw::offset(ea & ~3u)) & (units::MEM_BYTES - 1))));
+    units::TileCore& core = unit<units::TileCore>("core");
+    const units::RegBlockState b = block();
+    LoadEnv e{b, unit<units::HistStore>("hist")};
+    uint32_t v = 0;
+    if (!core.rv.load(e, ea, width, v)) return std::nullopt;
+    return v;
+}
+std::string TileRef::store(int64_t t, uint32_t ea, uint32_t v, uint32_t mask) {
+    namespace lw = units::lw;
+    if (t <= c_->cycle()) FATAL("mach: tile %u: a test's store at cycle %lld, already run", k_, (long long)t);
+    units::TileCore& core = unit<units::TileCore>("core");
+    const units::Rv32& r = core.rv;
+    const uint32_t a = ea & ~3u;                            // ref's reasons, in ref's order (Controller.store)
+    const unsigned region = lw::region(a);
+    if (region == lw::R_PMEM) return "store to program memory";
+    if (region == lw::R_BOOTROM) return "store to the boot ROM";
+    if (units::in_tables(a) && mask != 0xFFFFFFFFu) return "sub-word store to the table window";
+    if (units::in_regs(a)) {
+        if (mask != 0xFFFFFFFFu) return "sub-word store to a register";
+        if (const unsigned n = units::window_of(a)) { if (!r.window_present(n)) return "store to an absent peripheral's window"; }
+        else {
+            const units::RegInfo& ri = units::reg_info((a - units::REG_BASE) >> 2);
+            if (ri.store == units::A_NONE && ri.load != units::A_NONE) return "store to a read-only register";
+        }
+    } else if (region != lw::R_DMEM && !units::in_tables(a)) return "store to an unmapped address";
+    if (core.host_n == units::TileCore::kHostStores) FATAL("mach: tile %u: more than %u test stores pending", k_, units::TileCore::kHostStores);
+    core.host_st[core.host_n++] = {uint64_t(t), ea, v, mask};
+    c_->touched(un(k_, "core"));
+    return "";
 }
 
 // ---- the table stores (back doors: ref's TableStore.poke / peek in its index spaces, HIST's) ----
@@ -576,6 +658,14 @@ Cc& Cc::call(std::function<void(int64_t)> fn) {
     m.prog.call(id);
     m.calls.push_back({id, std::move(fn)});
     publish(*c_);
+    return *this;
+}
+Cc& Cc::wait_until(std::function<bool()> cond) {
+    Chip::Impl& m = c_->impl();
+    m.waits.push_back({uint32_t(m.prog.steps.size()), std::move(cond)});
+    m.prog.wait_host();
+    publish(*c_);
+    c_->impl().check_waits();                              // C&C may be there already (between cycles: ref checks at once)
     return *this;
 }
 Cc& Cc::at_all_ready(std::function<void(int64_t)> fn) {

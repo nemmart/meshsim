@@ -42,6 +42,16 @@ remaining kinds, interleaved as the suites ask.
 - **C0 done**: `sim/run_tests.sh [all|quick] [--check] [--no-build]`: v1.3's steps, logs and summary; the suites built
   with MODE=suite; `step LOG TAIL "what" REF -- cmd` and `pending LOG "what" "who"` for each worker's lines; --check
   compares each log with its reference, timing masked. W21's memsys, rvc and tracer run (equal under --check).
+- **wait_until and a test's loads and stores done**: `Cc::wait_until(cond)` (W23's form: CncStep::WAIT_HOST, harness-
+  only, released between cycles; C&C moves on the next cycle; test_mach checks the form); `TileRef::load(t, ea, width)`
+  (synchronous, as ref's: the memories with port B's write of the cycle just run applied, the registers as the block
+  publishes them for t, HIST) and `TileRef::store(t, ea, v, mask)` (ref's bus-error reasons synchronously; the store
+  made by the core in its step at t through the instruction's path: TileCore's host stores, harness-only). NetSelf's
+  core case (memory, PARAMS, STATUS, ERRORS, a counter, the boot ROM, the bus errors, a counter store through the bus,
+  a send through ROUTER_*) line for line. Not yet: loads with a side effect (EVENTS, REQUEST_RECEIVE), the peripheral
+  windows (fatal, asking).
+- Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
+  after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
 
 ## The owner's answers (2026-11-10)
 

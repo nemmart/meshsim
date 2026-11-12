@@ -33,9 +33,14 @@ no spec**: v1.35 would be a simulator with nothing saying what it simulates.
    Named documents (`PORTS.md`, `REGISTERS.md`) are for one subject each.
 3. **A reference document is complete without `planning/`.** It may cite a decision or a report as the reason
    (`(D26)`); it may not need it to be understood. No worker names, no `ref/` or `wip/` paths, no "to come".
-4. **Code comments keep their provenance** (`ref`'s class, the worker, the decision): rewriting 1,500 of them would
-   lose information and risk errors. `README` carries a short glossary instead (`ref`, W*n*, D*n*, Quest *n*).
-   Usage lines, error messages and logs are cleaned (J2).
+4. **In code comments, worker names and ticket codes go; references to `ref` stay.** About 1,100 comment lines name
+   a worker or a planning code ("(WORKER20, P2, rows B19/B20)", "W20 (F6):"): attribution, which git and the
+   reports keep, and nothing a reader needs. About 1,200 name the `ref` class a piece reproduces ("ref's
+   Router.java"): that is meaning, and v1.3 stays in the repository to look it up; `README` gets one glossary line
+   for `ref`. **The strip is one script, run once at P8 after the workers finish, and proved:** every source file's
+   preprocessed output is byte-identical before and after (comments only), and `make check` passes. It needs
+   care: some things that look like tags are code (`#define W0`). From now on, new comments carry no worker names.
+   Usage lines, error messages and logs are cleaned the same way (J2).
 5. **The headers are the API reference** (`sim.h`, `config.h`, `check.h`, `mach.h` already are). Documents explain and
    point; they don't restate what a header says.
 6. **Paths are relative to the version's root**, so the copy to `v1.35/` needs no edits.
@@ -83,6 +88,7 @@ no spec**: v1.35 would be a simulator with nothing saying what it simulates.
 
 - **`tools/doccheck.sh`, in `make check`:** every path a document cites exists; no `sim/`, `ref/`, `oracle/`, `wip/`
   path outside `planning/`; every folder has a README; every document named in a code comment is in the tree.
+- **The comment strip changes no code:** preprocessed output identical before and after, file by file.
 - **BUILDING followed on a fresh machine** (a Quest task; already P8's check).
 - **A fresh-reader test:** a new session, given only the frozen folder, answers a fixed set of questions per reader
   of section 2 (for example: which build do I use to check a firmware change, and why). Wrong answers are doc bugs.
@@ -96,7 +102,7 @@ no spec**: v1.35 would be a simulator with nothing saying what it simulates.
 **Now, in parallel with the ports** (new files only, in `spec/`, on `v1.35-spec`): the overview (drafted), the
 guidelines, then the spec's restructuring with its edit table and its proof. **At P8:** everything else, by P8's
 worker from sections 3 to 5, `RUNNING.md` last, when the step list is final. **The freeze's gate for docs:** section
-6's five checks, the restructured spec among them.
+6's checks, the restructured spec among them.
 
 ## 8. The owner's rulings (2026-11-12)
 

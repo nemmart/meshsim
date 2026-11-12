@@ -6,7 +6,8 @@
 #   suite_engine EngineTest (steps engine, eng-shuf, engine-full)
 #   suite_search SearchBench (step searchbench)
 #   suite_ag    AgTest (steps agtest, agtest-shuf)
-P4_SUITES := $(B)/suite_net $(B)/suite_mem $(B)/suite_engine $(B)/suite_search $(B)/suite_ag
+#   suite_rdport ReadPortGatherTest (steps rdport, rdport-shuf, rdport-full)
+P4_SUITES := $(B)/suite_net $(B)/suite_mem $(B)/suite_engine $(B)/suite_search $(B)/suite_ag $(B)/suite_rdport
 $(B)/suite_net: $(B)/tests/suite_net.o $(MACH_LINK) $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 $(B)/suite_mem: $(B)/tests/suite_mem.o $(MACH_LINK) $(LIB_OBJ)
@@ -16,6 +17,8 @@ $(B)/suite_engine: $(B)/tests/suite_engine.o $(MACH_LINK) $(LIB_OBJ)
 $(B)/suite_search: $(B)/tests/suite_search.o $(B)/tests/p4_java.o $(MACH_LINK) $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 $(B)/suite_ag: $(B)/tests/suite_ag.o $(MACH_LINK) $(LIB_OBJ)
+	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
+$(B)/suite_rdport: $(B)/tests/suite_rdport.o $(B)/tests/p4_java.o $(MACH_LINK) $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 # the suites are run by test_p4suites (order-only: built with it, not linked into it)
 $(B)/test_p4suites: | $(P4_SUITES)

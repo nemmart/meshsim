@@ -28,8 +28,9 @@ units::RegBlockState block_end(const G1Tile& g, uint64_t c) {
     if (g.sim && g.m1ctl) return units::block_at_end(*g.sim, *g.m1ctl, c);
     return g.ctl ? *g.ctl : units::RegBlockState{};
 }
-uint32_t dma_config(const G1Tile& g, uint64_t c) { return block_end(g, c).dma_config; }
-uint32_t record_base(const G1Tile& g, uint64_t c) { return block_end(g, c).record_base; }
+// the engines' copies (W20: equal to the registers until a reset clears only those; ref's engines keep theirs)
+uint32_t dma_config(const G1Tile& g, uint64_t c) { return block_end(g, c).dma_master; }
+uint32_t record_base(const G1Tile& g, uint64_t c) { return block_end(g, c).record_master; }
 
 // A memory's sum with the writes landing at c + 1 overlaid (ref committed them at the end of c).
 struct Overlay {

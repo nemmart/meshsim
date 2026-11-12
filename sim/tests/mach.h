@@ -319,6 +319,9 @@ public:
     // CnC.waitUntil(cond) in W23's form (approved): C&C waits at this step; the harness checks cond between cycles once
     // C&C has reached it, and C&C moves on in the next cycle. Runs go cycle by cycle while one is pending.
     Cc& wait_until(std::function<bool()> cond);
+    // ref's CnC.reset(hard) (B20): a step taking its cycle whose end resets the chip (Chip::reset), two waiting cycles,
+    // then READY_EXPECT for all 64 tiles (the model's firmware)
+    Cc& reset(bool hard);
     void set_expect(uint64_t tiles);                        // ref's cc1p.expect (READY_EXPECT_0-1): the tiles GO waits for
     // ref's drainReports (C&C 1's request service, modelled; needs MachConfig::reqbus_host): from now on, one request a
     // cycle from target 0's queue: REQ_OP_REPORT into reports(), anything else into requests(), REQ_OP_RESULT also into
@@ -402,6 +405,8 @@ public:
     // as ref's digest prints them and HASH the canonical state fingerprint (tests/statefp.h, equal to ref's StateFp) of
     // the whole chip at its last cycle, in place of ref's digest hash. digest() is that line's text after "chip N ".
     std::string digest() const;
+    std::vector<std::string> fingerprint_lines() const;     // the StateFp point's lines ("cycle unit hash"), for diffing
+    void fingerprint_dump(const std::string& unit, FILE* out) const;   // one unit's words (StateFp's fpdump), for diffing
     // ref's Chip.log as far as v1.35 keeps it: with log_trace, "cycle T tile K: TRACE 0xV" for every TRACE store, in
     // cycle order (tiles in order within a cycle)
     std::vector<std::string> log() const;
@@ -420,6 +425,7 @@ public:
     const Impl& impl_const() const { return *impl_; }
 private:
     MachConfig cfg_;
+    std::string digest_impl(std::vector<std::string>* lines_out, const std::string* dump_unit = nullptr, FILE* dump_out = nullptr) const;
     std::unique_ptr<Impl> impl_;
 };
 

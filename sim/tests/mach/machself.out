@@ -1,3 +1,7 @@
+reset seed -1: at 5201 fp 486a8801b15d983c; next fp 2515f8d58c14a16d; queue done at 5204 fp f906437726fdb936; rerun NOT stopped at 25204 fp a4f457b6e9c8cd25 violations 0
+  cycle 5201: reset (soft): every unit to the boot ROM
+reset seed 4: at 5201 fp 486a8801b15d983c; next fp 2515f8d58c14a16d; queue done at 5204 fp f906437726fdb936; rerun NOT stopped at 25204 fp a4f457b6e9c8cd25 violations 0
+  cycle 5201: reset (soft): every unit to the boot ROM
 trace: finished at cycle 4311
   tile 0: 14 TRACE stores 1943:5ea4 2128:5ea4 2314:5ea4 2500:5ea4 2686:5ea4 2872:5ea4 3059:5ea4 3246:5ea4 3432:5ea4 3618:5ea4 3805:5ea4 3991:5ea4 4174:5ea4 4246:5ea4
   tile 7: 14 TRACE stores 1943:5ea4 2128:5ea4 2314:5ea4 2500:5ea4 2686:5ea4 2873:5ea4 3059:5ea4 3245:5ea4 3431:5ea4 3616:5ea4 3801:5ea4 3986:5ea4 4169:5ea4 4241:5ea4

@@ -61,6 +61,14 @@ suites set is in `MachConfig` already. ref's shuffled logs differ from the unshu
   test_chip and test_sort's outputs identical before and after; every rebuilt release object's code identical
   (disassembly, addresses masked) except config.o, whose only differences are the two new functions, the functions'
   shifted addresses and FATAL's line numbers. Used by NetTest's queue peaks ("write-engine input").
+- **MemTest's statistics (approved 2026-11-12)**, under SIM_CHECKS only, each where ref updates it: BigSram's
+  `reads_a[16]`, `writes_a[16]`, `combined_a[16]` (at the serve and the merge) and `queue_peak[16]` (the count after an
+  enqueue) (src/units/big_sram.h; ref's BigSRAM.reads, writes, combined, queuePeak); the SRAM read queue's
+  `lat_max[3]` (issue to injection, at the injection) and `first_issue_t[3]`, `last_issue_t[3]` (at the issue)
+  (src/units/inject.h; ref's SRAMReadQueue.latMax, firstIssueT, lastIssueT). **Timing builds unchanged**: clang
+  release, test_chip and test_sort's outputs identical; of the rebuilt release objects, the normalized code (addresses,
+  jump targets masked) differs only in 6 objects and only in `mov $imm,%esi`: FATAL's `__LINE__` argument to
+  `fatal_at` (e.g. 0x117 -> 0x11d, the 6 lines inserted above it in inject.h).
 
 ## Asks of W20 (through the integrator; named W22-n, so they don't collide with other workers' numbers)
 
@@ -118,9 +126,9 @@ its unit level (ref's `U`: BigSRAM alone at its holds) is test-side code here. W
   `queuePeak[16]` (C++ keeps only the totals); the SRAM read queue's per-client `latMax[3]`, `firstIssueT[3]`,
   `lastIssueT[3]`. Proposed as the Fifo peak was: under SIM_CHECKS only, updated where ref updates them, the timing
   builds unchanged (shown as for W22-7).
-W22-14. **Chip::new_phase and the disjoint check recorded** (ref's `Chip.newPhase`, BigSRAM's phase and
+W22-14. (owner: `new_phase` to W20, big SRAM's recording to W26) **Chip::new_phase and the disjoint check recorded** (ref's `Chip.newPhase`, BigSRAM's phase and
     `disjointViolations`; the DISJOINT kind is declared and formatted, not yet recorded by big SRAM): disjoint.
-- W22-4 (the write engine's arrival log) again: priority.
+- W22-4 (the write engine's arrival log): on main (`record_writer`, `writer_log`).
 - Chip.memReport: suite-side formatting from the counters above (no ask).
 
 ## Progress
@@ -164,3 +172,4 @@ W22-14. **Chip::new_phase and the disjoint check recorded** (ref's `Chip.newPhas
 - **For the integrator**: main's `run_tests.sh` marks `searchbench` and `agbench` PENDING "P6" and `reqbus`,
   `reqbus-shuf` "P5"; they are P4's (C11, G1, C17).
 - **MemTest**: gap map done (above): per-area and per-client statistics (owner's call), W22-14, W22-4.
+- **run_tests.sh**: searchbench, agbench, reqbus, reqbus-shuf relabelled P4 (pushed to main's file, owner told).

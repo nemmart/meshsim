@@ -50,9 +50,12 @@ Before P1: 15 of 58 tests failed without `ref/` (W18's measurement, reproduced).
 - **convert_delivery**: byte-identical to v1.3's ConvertDelivery on three v1.25 deliveries from v1.25's own generator
   (every record, link and manifest) and on `pipeline/inputs/test/v125-small`. Its JSON writer prints doubles as JDK 21's
   `Double.toString` (9,939 values, `tests/test_delivery_json`; Java renders at least two digits: 4.9E-324).
-  **On the runner (Quest 175: pending, the runner idle when this was written)**: W9's deliveries, the selected windows
-  and every window of both programs, each converted manifest's sha256 against the one Quest 164 recorded with v1.3's
-  ConvertDelivery (the manifest holds every converted record's sha256), the records on disk, the links.
+  **On the runner, Quest 175: ALL PASS** (godspeed, kit sim-w19 11e9173, clang 18.1.3, no Java): W9's deliveries, the
+  selected windows (evm-zone-29 12 windows, cyclone-29 13) and every window of both programs (8,192 each, 32,768
+  records and 57,348 links each, 7 s per program): each converted manifest's sha256 **equal to the one Quest 164
+  recorded with v1.3's ConvertDelivery** (selected 0a8c8f74 and c003780b, full 5bffa524 and 2d5e368e; the manifest holds
+  every converted record's sha256 and size), every record on disk listed in it, every link's target the source file
+  of its name. 14 verdicts, all PASS (`results/175-w19-convert/`).
 - **synthetic_delivery**: the cause of v1.3's irreproducibility found: an **unseeded SplittableRandom** gives every
   inline's advice (so every window from the first inline on differs run to run, not only the last), and **Map.of's
   salted order** shuffles the manifest's small maps. D43: K = 0xD42, the advice from SplittableRandom(seed ^ K), the maps
@@ -73,7 +76,6 @@ Before P1: 15 of 58 tests failed without `ref/` (W18's measurement, reproduced).
 
 ## Left for later
 
-- **Quest 175's result** (pending; the runner idle). Its verdicts land in `results/175-w19-convert/VERDICTS`.
 - Python still in the tree: the recipe book's three scripts (beside `fw/recipes/`, unchanged; P5 decides) and
   `pipeline/inputs/lib/inputs.py` (v1.3's, unchanged).
 - The image folders: the fixtures' and `fw/images/` (owner: P8 consolidates).

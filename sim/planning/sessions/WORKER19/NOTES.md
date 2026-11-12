@@ -176,3 +176,5 @@ W15's "the last window" was a particular case (deliveries whose inlines fell lat
   proof's `convert_delivery`: all passed. The sort benches (`bench/w10/sort64k*-body.sh`) take KeyGen from
   `pipeline/keys` (fallback for older kits), and `mk_task.sh` carries `sim/pipeline/keys`. REPORT.md written; Quest 175
   pending (the runner idle).
+- **Quest 175: ALL PASS** (results 2026-11-12, godspeed): the four converted manifests equal 164's (v1.3's), every
+  record and link checked; 14 verdicts. REPORT.md updated. P1 closed.

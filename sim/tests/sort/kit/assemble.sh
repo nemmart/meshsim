@@ -14,7 +14,7 @@ set -eu
 SIM=$(cd "$(dirname "$0")/../../.." && pwd); HERE=$SIM/tests/sort/kit
 O=${1:?usage: assemble.sh OUTDIR [KEYDIR]}; KD=${2:-}
 B=$SIM/build/clang-release
-(cd "$SIM" && make -s CC_NAME=clang MODE=release "$B/sort_test" "$B/sort_summary")
+(cd "$SIM" && make -s CC_NAME=clang MODE=release build/clang-release/sort_test build/clang-release/sort_summary)   # the rules' targets are relative
 mkdir -p "$O/tools" "$O/image" "$O/sw" "$O/fw/boot" "$O/data" "$O/pipeline/keys"
 cp "$B/sort_test" "$B/sort_summary" "$O/"
 cp "$HERE/run.sh" "$HERE/README.md" "$HERE/jobs.txt" "$O/"; cp "$HERE/tools/runjob.sh" "$O/tools/"

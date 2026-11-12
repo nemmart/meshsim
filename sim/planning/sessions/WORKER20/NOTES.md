@@ -112,6 +112,14 @@ remaining kinds, interleaved as the suites ask.
   suite builds only (its FIFO peaks and latencies are kept there; FATAL otherwise). MachSelf's PhaseLog case (the a2a
   with AccountingTest's namer: report and CSV, seeds -1 and 4) line for line, gcc and clang. accounting-full's CSV is
   W23's step (AccountingTest) on the runner.
+- **Two fixes**: the register blocks of C&C 1-3 as cores take the test's writes too (`host_on`; W23's errorPath, C&C 2's
+  ERRORS bit); a peripheral's violation is reported at t + 1, as v1.3's (W25's F8: ref's slot passes it to the block,
+  whose counter the checker sees at the next cycle's end). (The text has no cycle: checker.cpp unchanged.)
+- **`Cc::phase_log`** (ref's CnC.phaseLog: {all READY seen, GO} per GO; the Cnc unit writes it into the harness's
+  array, harness-only) and `phases_logged()` (its size, for run conditions). MachSelf's a2a prints it, equal to ref's.
+- **W22-15 `TileRef::phase_done()`**: ref's EngineTest.phaseDone (the AG over, every counter 0 in the block's end-of-cycle
+  view, no word on the delay line or port B arriving after the next cycle, mem_idle, the table stores quiet). NetSelf's
+  probe (the coreless a2a stepped by hand: the first phase-done cycle of four tiles and of all 64, two seeds) equal to ref.
 - Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
   after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
 

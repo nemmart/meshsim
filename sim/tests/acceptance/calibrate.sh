@@ -8,7 +8,7 @@
 #   ./calibrate.sh OUTDIR [SCRATCH]
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd); OUT=${1:?usage: calibrate.sh OUTDIR [SCRATCH]}; SCR=${2:-/tmp}/w25-calib.$$
-BIN=$HERE/sim/build/clang-release
+BIN=$HERE/sim/build/clang-suite
 [ -x "$BIN/synthetic_delivery" ] || { echo "the kit isn't built: run $HERE/build.sh"; exit 2; }
 mkdir -p "$OUT"; trap 'rm -rf "$SCR"' EXIT
 T0=$(date +%s)

@@ -86,8 +86,7 @@ struct Rig {
         k.step_all = o.step_all;
         k.instance_major = o.instance_major;
         if (lone) for (int t = 1; t < 64; t++) k.parked.push_back(t);
-        if (o.logq != Replayer::LOG_QUEUE_ENTRIES)
-            FATAL("stageb: log queues of %u entries need the machine's replayer log-queue field (W20's Config fields; not on main yet)", o.logq);
+        k.replayer_log_entries = o.logq;
         c = std::make_unique<mach::Chip>(k);
         r = &c->unit<units::PeriphSlot>(units::tile_unit(0, "slot")).s.replayer(1);
         norow = o.norow;

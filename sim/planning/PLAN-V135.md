@@ -34,7 +34,7 @@ is checked against v1.3 as M1-M3's units were.
 | 1 | P7a, the Tracer's rig and directed cases, MemorySystemTest, RvcTest (C21-C23) | W21 | **done**, closed 2026-11-11 (`sessions/WORKER21-REPORT.md`): P7a, the Tracer's suites stand-alone |
 | W22 | P4, the network, memory and engine suites: prompt written 2026-11-11 |
 | W23 | P5, the control suites, programs and recipes: prompt written 2026-11-11 |
-| W24 | P6, the sort and its kit: prompt written 2026-11-11 |
+| W24 | **done**, closed 2026-11-12 (`sessions/WORKER24-REPORT.md`): P6, the sort and its kit byte-identical to v1.3 |
 | W25 | **done**, closed 2026-11-12 (`sessions/WORKER25-REPORT.md`): P7b, Stage B and the acceptance kit equal to v1.3's (Quests 180, 182) |
 | W26 | P2's second half (split from W20): the checker's remaining kinds, S1, BusTest; prompt written 2026-11-12 |
 | 2 | P4 (network, memory, engine suites), P5 (control suites, programs, recipes), P6 (the sort and its kit), P7b (Stage B, the acceptance kit) | after P2 |

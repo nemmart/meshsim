@@ -147,6 +147,8 @@ struct Cnc {
     uint64_t retry_w[3] = {};
     HarnessSends* hs = nullptr;       // W20 (harness-only): ref's Net harness's sends and receive trace; null otherwise
     uint32_t host_released = 0, host_waits = 0;   // W20 (harness-only): WAIT_HOST steps released by the harness, passed
+    int64_t (*plog)[2] = nullptr;      // W20 (harness-only): ref's CnC.phaseLog, {all READY seen, GO} per GO, into the
+    uint32_t plog_cap = 0, plog_n = 0; //   harness's array (null otherwise; fatal when full)
     // the receive FIFO (6.6): {payload [63:0], src, arrival, payload [127:64], size}
     uint64_t rxq[kRx][5] = {};
     uint32_t rx_head = 0, rx_count = 0;

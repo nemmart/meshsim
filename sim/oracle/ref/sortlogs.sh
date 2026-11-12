@@ -7,7 +7,8 @@
 #
 #   sortlogs.sh --fixtures [STEP...]   (re)write tests/sort/ref/<step>.log (and sweep-quick.csv)
 #   sortlogs.sh --check [STEP...]      regenerate and compare with the committed files
-# STEP: sort-p1 sort sort-shuf sort-bt-kv32 sort-bt-k128 sweep-quick (default: all). The BT steps' key set
+# STEP: sort-p1 sort sort-shuf sort-bt-kv32 sort-bt-k128 sweep-quick (default: all), or H7's h7-uniform-kv32,
+# h7-reverse-k128 (SortTest's profiles on one run each; not v1.3 steps). The BT steps' key set
 # (keys-16384/trace10-10.keys, pipeline/keys' KeyGen) is checked against tests/sort/ref/KEYS.sha256 when it lists it.
 set -u
 export LC_ALL=C
@@ -51,6 +52,9 @@ for s in $STEPS; do
       f=${s#sort-bt-}
       step $s $J SortTest -1 run label=bt16k-$f keys=build/keys-16384/trace10-10.keys fmt=$f ready=8 force=bt;;
     sweep-quick) step sweep-quick $J Sweep quick; cp "$W/m/results/sweep-quick.csv" "$OUT/";;
+    # H7's references (not v1.3 steps): SortTest's profiles (-Dsort.profile, sort.prof, sort.watch) on one run each
+    h7-uniform-kv32) step h7-uniform-kv32 $J -Dsort.profile -Dsort.prof=010045ac-0100556c -Dsort.watch=split_get_cuts,step_loop,main SortTest -1 run kind=uniform n=2000 fmt=kv32;;
+    h7-reverse-k128) step h7-reverse-k128 $J -Dsort.profile -Dsort.prof=01002304-0100261c -Dsort.watch=th_build,bt_sweep,th_hop2 SortTest -1 run kind=reverse n=2000 fmt=k128;;
     *) echo "sortlogs: no step $s"; exit 2;;
   esac
 done

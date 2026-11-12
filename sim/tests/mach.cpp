@@ -128,6 +128,11 @@ struct Chip::Impl {
     struct RowHook { unsigned tile; units::Replayer* r; std::vector<uint64_t> buf; std::function<void(const uint64_t*, int64_t)> fn; };
     std::vector<RowHook> row_hooks;
     void drain_rows(int64_t cycle);
+    // PhaseLog's hooks: C&C's GO stores and all-READY, the tiles' READY pulses, seen after each cycle
+    std::unique_ptr<PhaseLog> phases;
+    uint64_t seen_gos = 0;
+    int64_t seen_all_ready = -1, seen_ready[64] = {};
+    void phase_events();
     // Net (the coreless machine fed from the harness): each tile's feed (inject.h's HarnessFeed, harness-only) and the
     // rings' storage (grown between cycles, the feed's pointers refreshed), and the directors' logs (fixed size)
     using E4 = std::array<uint64_t, 4>;
@@ -137,6 +142,7 @@ struct Chip::Impl {
     std::vector<E4> writer_logs[64], gather_logs[64];     // TileRef::record_writer, record_gather
     // the endpoints' harness parts (cnc.h's HarnessSends): C&C 1 (the Java model), C&C 2, C&C 3
     units::HarnessSends sends[3];
+    std::vector<std::array<int64_t, 2>> plog;             // C&C's phase log (Cc::phase_log)
     std::vector<units::HarnessSends::E> send_store[3];
     std::vector<E4> recv[3];
     void push_send(unsigned cc, const units::HarnessSends::E& e);
@@ -224,6 +230,8 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
         m.sim->unit<units::HistStore>(units::tile_unit(k, "hist")).host_poke = true;
         m.sim->unit<units::TileCtl>(units::tile_unit(k, "ctl")).host_on = true;
     }
+    for (unsigned k = 64; k < m.nunits; k++)              // C&C 1-3 as cores: their blocks take the test's writes too (W23)
+        m.sim->unit<units::TileCtl>(units::unit_prefix(k) + "ctl").host_on = true;
     m.shifted = {m.sim->type_of(units::tile_unit(0, "ctl")), m.sim->type_of(units::tile_unit(0, "core"))};
     if (!c.cc_cores) m.lines = {m.sim->type_of("row0"), m.sim->type_of("cnc")};
     CheckSwitches sw;
@@ -259,6 +267,11 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
         }
     }
     m.has_cnc = !c.cc_cores;
+    if (!c.cc_cores) {                                    // ref's CnC.phaseLog
+        m.plog.assign(c.phase_log_capacity, {});
+        units::Cnc& cn = m.sim->unit<units::Cnc>("cnc");
+        cn.plog = reinterpret_cast<int64_t(*)[2]>(m.plog.data()); cn.plog_cap = c.phase_log_capacity;
+    }
     if (!c.cc_cores)                                      // the endpoints' receive traces (ref's received), every machine
         for (unsigned k = 0; k < 3; k++) {
             m.recv[k].assign(c.log_capacity, {});
@@ -317,6 +330,35 @@ void Chip::Impl::check_waits() {
     sim->wake("cnc");
 }
 
+// ref's hooks into PhaseLog, in ref's order for a cycle t: a tile's READY pulse of t - 1 (the register block records it
+// at its next step, the end of t - 1 in ref's view), then C&C's all-READY and GO store of t.
+void Chip::Impl::phase_events() {
+    if (!phases || !has_cnc) return;
+    for (unsigned k = 0; k < 64; k++) {
+        const int64_t r = sim->unit<units::TileCtl>(units::tile_unit(k, "ctl")).s.ready_pulse_at;
+        if (r != seen_ready[k]) { seen_ready[k] = r; if (r >= 0) phases->on_ready(k, r); }
+    }
+    const units::Cnc& c = *cnc();
+    if (c.seen >= 0 && c.seen != seen_all_ready) { seen_all_ready = c.seen; phases->on_all_ready(c.seen); }
+    if (c.gos != seen_gos) {
+        if (c.last_all_ready_at > seen_all_ready && c.last_all_ready_at <= c.last_go_at) {   // seen and gone in one cycle
+            seen_all_ready = c.last_all_ready_at;
+            phases->on_all_ready(c.last_all_ready_at);
+        }
+        seen_gos = c.gos;
+        phases->on_go(c.last_go_at, int32_t(c.last_command_word));
+    }
+}
+PhaseLog& Chip::phases() {
+    if (!impl_->phases) {
+        if (!impl_->has_cnc) FATAL("mach: phases(): C&C 1's model only (not with cc_cores)");
+        impl_->phases = std::make_unique<PhaseLog>(*this);
+        impl_->seen_gos = unit<units::Cnc>("cnc").gos;
+        for (unsigned k = 0; k < 64; k++) impl_->seen_ready[k] = unit<units::TileCtl>(units::tile_unit(k, "ctl")).s.ready_pulse_at;
+    }
+    return *impl_->phases;
+}
+
 void Chip::Impl::drain_rows(int64_t cycle) {
     for (RowHook& h : row_hooks) {
         const uint64_t n = h.r->rows_sunk() - h.r->row_base();
@@ -355,10 +397,11 @@ void Chip::step() {
     impl_->run_calls();
     impl_->check_waits();
     impl_->drain_rows(cycle());
+    impl_->phase_events();
 }
 void Chip::run(uint64_t n) {
     impl_->sim->wake_all();
-    if (impl_->calls.empty() && impl_->waits.empty() && impl_->row_hooks.empty()) {
+    if (impl_->calls.empty() && impl_->waits.empty() && impl_->row_hooks.empty() && !impl_->phases) {
         impl_->checker->install();
         impl_->sim->run(n);
         impl_->collect_overflows();
@@ -746,7 +789,7 @@ bool TileRef::mem_idle() const {
     const units::BigSram& m = unit<units::BigSram>("sram");
     if (!port_empty(s, m.wr)) return false;
     for (unsigned a = 0; a < units::BigSram::AREAS; a++)
-        for (unsigned j = 0; j < m.count[a]; j++) if (m.q[a][(m.head[a] + j) % units::BigSram::MAX_DEPTH].write) return false;
+        for (unsigned j = 0; j < m.count[a]; j++) if (m.at(a, j).write) return false;   // (the queue wraps at its depth: W22's F2)
     return true;
 }
 // ts_busy (4.15): either store's pipeline or request FIFOs busy; requests and returns on their way are in the ports
@@ -755,6 +798,26 @@ bool TileRef::ts_busy() const {
     const units::HistStore& h = unit<units::HistStore>("hist");
     return t.pipe.valid || t.pub || t.q_stream.n || t.q_group.n || t.q_we.n || t.q_stream.pend || t.q_group.pend || t.q_we.pend ||
            h.pipe.valid || h.q.n || h.q.pend;
+}
+namespace {
+uint32_t link_after(sim::Sim& s, const sim::LinkIn& p, uint64_t c) {   // a Link's words arriving after c (still in flight)
+    sim::PortEntry e[64];
+    const uint32_t n = s.observe(p, e, 64).n;
+    uint32_t k = 0;
+    for (uint32_t i = 0; i < n; i++) if (e[i].at > c) k++;
+    return k;
+}
+}  // namespace
+bool TileRef::phase_done() const {
+    if (unit<units::AddrGen>("ag").running) return false;
+    const units::RegBlockState b = block();
+    for (unsigned k = 1; k <= 7; k++) if (b.remaining[k]) return false;
+    sim::Sim& s = c_->sim();
+    const uint64_t next = uint64_t(c_->cycle()) + 1;      // a word arriving at the next cycle landed at ref's end of this one
+    if (link_after(s, unit<units::TileCtl>("ctl").kline, next)) return false;
+    if (!mem_idle()) return false;
+    if (link_after(s, unit<units::TileCore>("core").port_b, next)) return false;
+    return !ts_busy();
 }
 bool TileRef::quiescent() const { FATAL("mach: TileRef::quiescent: use Chip::quiescent (the chip's ports are judged together)"); }
 
@@ -829,7 +892,12 @@ bool Cc::busy() const { const units::Cnc& c = c_->unit<units::Cnc>("cnc"); retur
 int64_t Cc::last_go_at() const { return c_->unit<units::Cnc>("cnc").last_go_at; }
 int64_t Cc::last_all_ready_at() const { return c_->unit<units::Cnc>("cnc").last_all_ready_at; }
 int64_t Cc::last_run_at() const { return c_->impl().last_run_at; }
-std::vector<std::array<int64_t, 2>> Cc::phase_log() const { FATAL("mach: Cc::phase_log comes with W20's step 4 (PhaseLog)"); }
+std::vector<std::array<int64_t, 2>> Cc::phase_log() const {   // ref's CnC.phaseLog: {all READY seen, GO} per GO
+    const Chip::Impl& m = c_->impl_const();
+    const units::Cnc& cn = const_cast<Chip*>(c_)->unit<units::Cnc>("cnc");
+    return std::vector<std::array<int64_t, 2>>(m.plog.begin(), m.plog.begin() + cn.plog_n);
+}
+size_t Cc::phases_logged() const { return const_cast<Chip*>(c_)->unit<units::Cnc>("cnc").plog_n; }
 std::vector<std::array<uint64_t, 4>> Cc::received() const { return c_->received(0); }
 uint64_t Cc::ready_bits() const { FATAL("mach: Cc::ready_bits comes with the coreless machine"); }
 

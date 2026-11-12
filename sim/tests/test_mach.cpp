@@ -592,6 +592,36 @@ void checkself() {
         n.run_all(1000);
         say("%s", n.c.violation_report().c_str());
     }
+    {   // W26 (1a): the peripheral slot's own checks (window 1: word 8 stored, word 10 loaded, word 22 stored)
+        mach::MachConfig k = Mach::cfg(-1);
+        k.check_errors = false; k.max_violation_messages = 200;
+        Mach m(k);
+        const uint32_t P = 0x01000000, LOOP = 0x0000006F, X1 = 0x80000093;
+        const std::vector<std::vector<uint32_t>> prog = {{LOOP}, {X1, 0x2200A023, LOOP}, {X1, 0x2280A103, LOOP}, {X1, 0x2400AC23, LOOP}};
+        for (unsigned t = 0; t < 64; t++) {
+            const auto& w = prog[t % prog.size()];
+            for (size_t i = 0; i < w.size(); i++) m.c.tile(t).poke_local(P + 4 * uint32_t(i), w[i]);
+        }
+        m.c.run(40);
+        m.c.cc().command(lw::BROADCAST, 0x4Au << 24, {P}).run_when_ready();
+        m.c.run(300);
+        say("%s", m.c.violation_report().c_str());
+    }
+    {   // W26 (1a): a WFI woken by another event than GO with done set, the done gate off
+        mach::MachConfig k = Mach::cfg(-1);
+        k.check_errors = false; k.max_violation_messages = 200; k.done_gate = false;
+        Mach m(k);
+        const uint32_t P = 0x01000000;
+        const uint32_t w[8] = {0x80000093, 0x40000113, 0x0220A023, 0x00100193, 0x0030A623, 0x0030A823, 0x10500073, 0x0000006F};
+        for (unsigned t = 0; t < 64; t++) {
+            if (t % 5 == 2) for (uint32_t i = 0; i < 8; i++) m.c.tile(t).poke_local(P + 4 * i, w[i]);
+            else m.c.tile(t).poke_local(P, 0x0000006F);
+        }
+        m.c.run(40);
+        m.c.cc().command(lw::BROADCAST, 0x4Au << 24, {P}).run_when_ready();
+        m.c.run(300);
+        say("%s", m.c.violation_report().c_str());
+    }
     {
         mach::MachConfig k = Net::cfg(-1);
         k.max_violation_messages = 3;

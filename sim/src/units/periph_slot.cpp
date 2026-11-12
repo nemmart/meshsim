@@ -4,6 +4,7 @@
 
 #include <type_traits>
 
+#include "check.h"
 #include "units/cnc1_periph.h"
 #include "units/linkword.h"
 #include "units/replayer.h"
@@ -119,6 +120,10 @@ void SlotCore::violate(int64_t t, uint16_t code, uint32_t a, uint32_t b) {
     violations++;
     facts[n_facts % FACTS] = Fact{t, code, a, b};
     n_facts++;
+    // W26: ref's slot.violate goes to the register block's (tile.ctl.violate): a chip fact (the full post's depth with it)
+    uint32_t depth = 0;
+    if (code == F_FULL_POST) visit(a, [&](auto& p) { depth = p.events().depth[b]; });
+    sim::check::record(uint64_t(t), int(tile), sim::check::Kind::SLOT_VIOLATION, code, a, b, depth);
 }
 
 uint32_t SlotCore::present() const {
@@ -132,6 +137,10 @@ void SlotCore::accept(int64_t t, unsigned n, uint64_t lo, uint64_t h, uint64_t h
     accepted++;
     if (per[n].type == PT_ABSENT) return;
     visit(n, [&](auto& p) { p.accept(t, int(lw::src(h)), lw::offset(lw::addr(h)), int(lw::size(h)), lo, hi); });
+    // W26: C&C 1's peripheral and the stub engines flag a write into their region (ref's host.violate): a chip fact
+    if (per[n].type == PT_CNC1 || per[n].type == PT_CC_STUB)
+        sim::check::record(uint64_t(t), int(tile), sim::check::Kind::SLOT_VIOLATION, F_PERIPHERAL, n,
+                           uint32_t(visit(n, [&](auto& p) { return p.type(); })));
 }
 
 // ---------------------------------------------------------------- the window (4.17.4)

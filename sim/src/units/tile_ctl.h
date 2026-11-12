@@ -355,6 +355,7 @@ struct TileCore {
             return (e & m & ~q) != 0 || (q != 0 && (e & q) == q);
         }
         bool irq() const { return c.read(u.irq) != 0; }
+        bool done_gate() const { return u.done_gate; }   // W26: the WFI-woken check
         // RequestPort.canPush(t): room at the end of t - 1 (STATUS [6], request busy), or the head freed at t
         bool can_push() const { return !(reg(STATUS) >> ST_REQUEST_BUSY & 1) || c.read(u.req_freed) != 0; }
         void post(uint32_t op, uint32_t arg, uint32_t v) {

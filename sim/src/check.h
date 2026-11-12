@@ -112,8 +112,13 @@ enum class Kind : uint16_t {
     CTL_MRET,                   // (no arguments)
     CTL_ALIAS,                  // a0 the (word) address past the end of data or program memory
     CTL_DMEM_RESERVED,          // a0 the store's address (into data memory's first 16 bytes)
+    CTL_REQ_FULL,               // (no arguments) a request pushed into a full request FIFO (RequestPort.send; harness only)
     CTL_TABLE_BUSY,             // a0 the table (table_store.h: STREAM_SRC 0, DEST 1, COUNT 2, GROUP 3, PTR 4, HIST 5), a1 the
                                 //   word index: the window accessed while its engine uses it (Controller.window, 4.10)
+    SLOT_VIOLATION,             // the peripheral slot's own (PeripheralSlot.violate, W26): a0 its code (periph_slot.h F_*),
+                                //   a1, a2 its arguments, a3 a full post's depth; F_PERIPHERAL: a1 n, a2 the peripheral's type
+    TRACER_VIOLATION,           // the Tracer's (Tracer.violate through its slot, W26): a0 its code (tracer.h V_*), a1, a2 its
+                                //   arguments (V_UNDEFINED: a2 the ALU's text, a static string)
     PERIPH_VIOLATION,           // a peripheral's violation through its slot to the block (ref's Peripheral.Host.violate):
                                 //   the replayer's (F2): a0 its code, a1-a3 its arguments (units/replayer.h)
     // ---- the controller's memories (ControllerMemories) ----

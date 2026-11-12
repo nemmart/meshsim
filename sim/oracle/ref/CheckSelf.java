@@ -18,6 +18,16 @@ final class CheckSelf {
             System.out.println("packets: " + (ok ? "drained" : "NOT drained") + " at cycle " + n.c.cycle);
             System.out.print(n.c.violationReport());
         }
+        {   // ERRORS (invariant 15): reported once per bit while any error line is high
+            Config k = Net.cfg(-1); k.checkErrors = true;
+            Net n = new Net(k);
+            n.at(3, 10, 9, LinkWord.M_WRITE, 0, 0xFF000000, LinkWord.SIZE_32, 0x11, 0);        // ERRORS [1] at tile 9
+            n.at(4, 12, 12, LinkWord.M_WRITE, 0, 0xFE000000, LinkWord.SIZE_32, 0x22, 0);       // ERRORS [1] at tile 12
+            n.at(5, 30, 9, LinkWord.M_COUNT, 1, 0, LinkWord.SIZE_32, 0x33, 0);                 // unexpected: ERRORS [2] at 9
+            n.at(6, 31, 9, LinkWord.M_WRITE, 0, 0xFF000000, LinkWord.SIZE_32, 0x44, 0);        // bit 1 again: not reported
+            n.runAll(1000);
+            System.out.print(n.c.violationReport());
+        }
         {   // the message cap (maxViolationMessages): the count goes on
             Config k = Net.cfg(-1); k.maxViolationMessages = 3;
             Net n = new Net(k);

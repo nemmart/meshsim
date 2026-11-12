@@ -80,13 +80,17 @@ std::string Checker::text(const Fact& f) const {
     case Kind::DIR_COUNT_CTR0: return "count-only packet on counter 0: it does nothing (3.1, invariant 21): " + describe(a[1], a[2], a[3]);
     case Kind::DIR_PAST_SRAM:
         return fmt("mode-0 write at or past the end of big SRAM (chunk 0x%" PRIx64 "): undefined (2.2; invariant 19): ", a[0]) + describe(a[1], a[2], a[3]);
+    case Kind::HIST_OVERFLOW: return "a counter exceeded 17 bits (invariant 6)";
+    case Kind::ROTATION_LATE: return "address generator: a rotation started late (invariant 3; drift, see agReport)";
+    case Kind::READ_RETURN_REFUSED: return "SIMULATOR: a read return was refused by the injection point";
+    case Kind::CNC_RX_LOST: return "C&C's receive FIFO was full: a packet for C&C was lost (6.6)";
     default: break;
     }
     FATAL("checker: no text for fact kind %u yet (W20's step 2 adds them as the units record them)", unsigned(f.kind));
 }
 
 // ---- the report ------------------------------------------------------------------------------------------------------
-Checker::Checker(uint32_t capacity, unsigned max_messages) : facts_(capacity), max_messages_(max_messages) {
+Checker::Checker(uint32_t capacity, unsigned max_messages, const CheckSwitches& sw) : facts_(capacity), max_messages_(max_messages), sw_(sw) {
     sink_.f = facts_.data();
     sink_.cap = capacity;
 }
@@ -107,11 +111,54 @@ int rank(const Fact& f) { return f.tile >= 64 && sim::check::slot_of(f.kind) >= 
 
 // The facts recorded since the last call, through the cycle just run (`now`): ref's checkInvariants of each cycle in
 // turn, in its order. `scan` (ref's explicit scanOverflows, at the end of a run): the overflows not yet reported.
-void Checker::process(int64_t now, bool scan) {
+// ref's Config switches (the unit counted it; ref reports only when its switch is on)
+bool Checker::enabled(Kind k) const {
+    switch (k) {
+    case Kind::DIR_READPORT_OVERLAP: return sw_.read_port_overlap;
+    case Kind::DIR_UNEXPECTED: return sw_.unexpected;
+    case Kind::CMEM_COMMAND_UNREAD: return sw_.command_read;
+    case Kind::CMEM_REPLY_OVERWRITE: return sw_.strict_replies;
+    default: return true;
+    }
+}
+
+namespace {
+const char* const kCondName[15] = {"router overflow", "bad packet", "unexpected arrival", "drift", "write-engine input overflow",
+                                   "table request overflow", "GATHER queue overflow", "read-port error", "done early", "bus error",
+                                   "illegal instruction", "peripheral 1", "peripheral 2", "peripheral 3", "receive underflow"};
+std::string cond_names(uint32_t bits) {                 // Conditions.names
+    std::string sb;
+    for (unsigned i = 0; i < 15; i++) if (bits >> i & 1) sb += (sb.empty() ? "" : ", ") + std::string(kCondName[i]);
+    return sb.empty() ? "none" : sb;
+}
+std::string binary(uint32_t v) {                         // Integer.toBinaryString
+    std::string s;
+    do { s.insert(s.begin(), char('0' + (v & 1))); v >>= 1; } while (v);
+    return s;
+}
+}  // namespace
+
+// Chip.runCycle, invariant 15: while any tile's error line is high, each tile's ERRORS bits not yet seen are reported
+// (and remembered); when every line is low, the remembered bits are forgotten.
+void Checker::errors_at(int64_t t) {
+    bool err = false;
+    for (unsigned k = 0; k < 64; k++) err = err || u_[k].line;
+    if (!err) { for (unsigned k = 0; k < 64; k++) u_[k].cond_seen = 0; return; }
+    for (unsigned k = 0; k < 64; k++) {
+        const uint32_t nw = u_[k].errors & ~u_[k].cond_seen;
+        if (!nw) continue;
+        u_[k].cond_seen |= nw;
+        if (sw_.errors) report(t, int(k), "ERRORS [" + binary(nw) + "] set: " + cond_names(nw) + " (invariant 15)");
+    }
+}
+
+// The facts recorded since the last call, through the cycle just run (`now`): ref's report of each cycle in turn, in
+// its order. `scan` (ref's explicit scanOverflows, at the end of a run): the overflows not yet reported.
+void Checker::process(int64_t now, bool scan, bool final) {
     const uint32_t n = std::min(sink_.n.load(std::memory_order_relaxed), sink_.cap);
     std::vector<Fact> fs;
     fs.swap(pending_);
-    for (uint32_t i = done_; i < n; i++) fs.push_back(facts_[i]);
+    for (uint32_t i = done_; i < n; i++) if (enabled(facts_[i].kind)) fs.push_back(facts_[i]);
     done_ = n;
     // ref's report cycle of a fact: its own, except an overflow's: the 16-cycle scan that sees it, else the explicit
     // scan at the end of a run (`scan`), else a later call's
@@ -128,12 +175,36 @@ void Checker::process(int64_t now, bool scan) {
         return a.tile < b.tile;                              // recording order kept within (cycle, slot, tile)
     });
     for (size_t i = 0; i < fs.size();) {
-        size_t j = i + 1;                                    // a group: one cycle, one slot, one tile
-        while (j < fs.size() && at(fs[j]) == at(fs[i]) && rank(fs[j]) == rank(fs[i]) && fs[j].tile == fs[i].tile) j++;
         const int64_t t = at(fs[i]);
-        if (t > now && !scan) { pending_.insert(pending_.end(), fs.begin() + long(i), fs.begin() + long(j)); i = j; continue; }
-        // ref: one message per changed counter per cycle, the unit's last text (the special slots come with their units)
-        report(fs[i].kind == Kind::FIFO_OVERFLOW ? int64_t(fs[i].cycle) : t, fs[i].tile, text(fs[j - 1]));
+        if ((t > now && !scan) || (t == now && !final && fs[i].kind != Kind::FIFO_OVERFLOW)) {   // a later call's
+            pending_.insert(pending_.end(), fs.begin() + long(i), fs.end());
+            break;
+        }
+        if (rank(fs[i]) == int(Slot::ERRORS)) {              // the cycle's ERRORS facts together, then ref's loop
+            size_t j = i;
+            for (; j < fs.size() && at(fs[j]) == t && rank(fs[j]) == int(Slot::ERRORS); j++) {
+                const Fact& f = fs[j];
+                if (f.tile < 0 || f.tile >= 64) continue;   // the cores' ERRORS: CcCores.check (with the cores' slots)
+                if (f.kind == Kind::ERRORS_SET) u_[f.tile].errors = uint32_t(f.a[0]);
+                else u_[f.tile].line = f.a[0] != 0;
+            }
+            errors_at(t);
+            i = j;
+            continue;
+        }
+        size_t j = i + 1;                                    // a group: one cycle, one slot, one tile
+        while (j < fs.size() && at(fs[j]) == t && rank(fs[j]) == rank(fs[i]) && fs[j].tile == fs[i].tile) j++;
+        const Fact& last = fs[j - 1];
+        Unit* u = fs[i].tile >= 0 && fs[i].tile < 67 ? &u_[fs[i].tile] : nullptr;
+        bool say = true;                                     // ref's once-only rules (Chip.checkInvariants)
+        switch (sim::check::slot_of(last.kind)) {
+        case Slot::HIST17: if (u) { say = !u->hist; u->hist = true; } break;
+        case Slot::ROTATION: if (u) { say = !u->rotation; u->rotation = true; } break;
+        case Slot::REFUSAL: if (u) { say = !u->refusal; u->refusal = true; } break;
+        case Slot::DISJOINT: if (u) { say = u->disjoint_phase != int64_t(last.a[3]); u->disjoint_phase = int64_t(last.a[3]); } break;
+        default: break;
+        }
+        if (say) report(last.kind == Kind::FIFO_OVERFLOW ? int64_t(last.cycle) : (t > now ? now : t), fs[i].tile, text(last));
         i = j;
     }
 }

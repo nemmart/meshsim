@@ -177,3 +177,9 @@ Commit and push after each step; each step checked against `ref`.
   byte-identical before. v1.3 reports nothing there. The sort's runs aren't affected (their first command comes after
   the cores wait in WFI; the 92 kit runs passed after the merge). For W26 through the integrator; then `sweep full`
   again (its fixtures are in place).
+- **All three byte-identical** (2026-11-12, main 554a99a2 with W26's 6532b75c, F7's fix (W22's F4), and W20's
+  8abebaed, PhaseLog's unreadOverwrites; suite build, this container):
+  - `sweep quick`: log and CSV byte-identical to v1.3's (the sweep-quick step);
+  - `sweep full` (543 s here): log and CSV byte-identical to Quest 183's fixtures (v1.3's Sweep full);
+  - the kit at 2,000, all 92 jobs: **84 run CSVs, 84 phases CSVs and 84 logs byte-identical to Quest 178's** (logs but
+    the simulator's field); the other 8 refused as expected (F3's six as v1.3, D47's two).

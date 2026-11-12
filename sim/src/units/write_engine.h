@@ -13,6 +13,7 @@
 #include <cstdint>
 
 #include "base/fatal.h"
+#include "check.h"
 #include "sim.h"
 #include "units/linkword.h"
 #include "units/mem.h"
@@ -57,6 +58,9 @@ struct WriteEngine {
     uint64_t ovf_seen = 0;               // we-in's overflows reported so far
 
     // ---- statistics and ref's checks ----
+    int ck_tile = -1;               // W20: the checker's facts under this tile (src/check.h); -1 none
+    uint64_t (*log)[4] = nullptr;   // W20 (harness-only): ref's writer.record()/log: {t, payload lo, header, payload hi}
+    uint32_t log_cap = 0, log_n = 0;
     uint64_t taken = 0, written = 0, stall_cycles = 0, augmented = 0, explicit_writes = 0, out_of_range = 0;
 
     WriteEngine(sim::Ports& p, unsigned we_in_depth, unsigned ts_engine_latency, uint32_t chunks) : mem_chunks(chunks) {
@@ -118,7 +122,10 @@ inline sim::Wake WriteEngine::step(sim::Ctx& c) {
         if (a & (n - 1))
             FATAL("write engine: tile %u, cycle %llu: a write through PTR = chunk 0x%x, not aligned to its %u-bit write "
                   "(undefined behaviour, v1.25 s8b): header 0x%llx", lw::dst(h), (unsigned long long)t, a, 32 * n, (unsigned long long)h);
-        if (a + n > mem_chunks) out_of_range++;                  // undefined (4.1, invariant 19): dropped
+        if (a + n > mem_chunks) {                               // undefined (4.1, invariant 19): dropped
+            out_of_range++;
+            if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::WE_PAST_SRAM, a, st_d[head], h, st_c[head]);   // W20
+        }
         else {
             last_put[0] = uint64_t(a & 0x1FFFFF) | uint64_t(n) << 21; last_put[1] = lo; last_put[2] = hi;
             c.put(to_sram, last_put[0], lo, hi);
@@ -131,6 +138,11 @@ inline sim::Wake WriteEngine::step(sim::Ctx& c) {
         const uint64_t d = w[0], h = w[1], cw = w[2];
         c.take(in);
         taken++;
+        if (log) {                                             // W20 (harness-only): ref's writer.log
+            if (log_n == log_cap) FATAL("write engine: the harness's log is full (%u entries)", log_cap);
+            uint64_t* e = log[log_n++];
+            e[0] = c.now(); e[1] = d; e[2] = h; e[3] = cw;
+        }
         const unsigned i = (head + count) % cap, mode = lw::mode(h);
         st_d[i] = d; st_h[i] = h; st_c[i] = cw; count++;
         if (mode == lw::M_WRITE) { st_ptr[i] = lw::offset(lw::addr(h)) >> 2; st_have[i] = 1; explicit_writes++; }

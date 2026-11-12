@@ -40,6 +40,7 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     dc.tile = k; dc.periph_present = periph_present; dc.mem_chunks = g.cfg.mem_chunks;
     dc.g4 = true;                                         // W12: G4's engines are in every M2 tile
     dc.periph_slot = periph_slot;
+    dc.K = g.cfg.K; dc.stray_check = g.cfg.stray_check;   // W20 (harness-only)
     const unsigned lookahead = g.cfg.ag_lookahead ? g.cfg.ag_lookahead : 2 * g.cfg.ts_engine_latency + 2;
 
     // W15: the slot's paths behind periph_slot; W14: a controller (64-66) has a receive side (its target's queue), every
@@ -60,6 +61,7 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
 
     cfg.link(c.bus, b.bus, 1);
     cfg.connect(b.regs, c.regs);
+    if (g.cfg.stray_check) cfg.connect(b.regs, d.regs);   // W20 (harness-only): the director's stray check
     cfg.connect(b.wake, c.wake);
     cfg.connect(b.irq, c.irq);
     cfg.link(d.port_b, c.port_b, g.cfg.cm_latency + 1);

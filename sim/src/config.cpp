@@ -901,6 +901,10 @@ bool Sim::in_flight_into(const std::string& prefix) const {
     }
     return false;
 }
+uint64_t Sim::hold_refusals(HoldIn p) const {
+    if (impl_->threads) FATAL("Sim::hold_refusals: one domain only (the harness's machines run one thread)");
+    return impl_->e.holds[p.idx].refusals;
+}
 uint64_t Sim::fifo_overflows(FifoIn p, Cycle* first) const {
     if (impl_->threads) FATAL("Sim::fifo_overflows: one domain only (the harness's machines run one thread)");
     const auto& f = impl_->e.fifos[p.idx];

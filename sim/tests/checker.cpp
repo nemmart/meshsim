@@ -82,6 +82,24 @@ std::string Checker::text(const Fact& f) const {
     case Kind::DIR_PAST_SRAM:
         return fmt("mode-0 write at or past the end of big SRAM (chunk 0x%" PRIx64 "): undefined (2.2; invariant 19): ", a[0]) + describe(a[1], a[2], a[3]);
     case Kind::FIFO_OVERFLOW: return "FIFO overflow " + fifo_names.at(size_t(a[0])) + " (invariant 1)";
+    case Kind::DIR_UNEXPECTED:
+        return fmt("unexpected arrival (a stray, at acceptance): WRITE_COUNTER_%" PRIu64 " has nothing armed for it (invariant 9; the error follows at its decrement, K = %u cycles later): ", a[0], sw_.K) + describe(a[1], a[2], a[3]);
+    case Kind::DIR_UNCOUNTED_MODE:
+        return fmt("uncounted mode-%u packet: modes 1-3 are always counted (3.1, invariant 22): ", unsigned(lw::mode(a[2]))) + describe(a[1], a[2], a[3]);
+    case Kind::DIR_UNCOUNTED_REGION:
+        return fmt("uncounted write to region 0x%" PRIx64 ": big-SRAM data and peripheral writes are always counted (3.1, 6.2; invariant 22): ", a[0]) + describe(a[1], a[2], a[3]);
+    case Kind::DIR_UNCOUNTED_SRC:
+        return fmt("uncounted write into controller memory from unit %" PRIu64 ": only commands and boot overlays, from C&C 1-3, are uncounted (3.1; invariant 22): ", a[0]) + describe(a[1], a[2], a[3]);
+    case Kind::DIR_OVERLAY_AFTER_COMMAND:
+        return "an overlay write landed after the unit's command and before its start (6.2: the overlays and the first command are of one kind, the command last): " + describe(a[1], a[2], a[3]);
+    case Kind::DIR_PAST_CMEM:
+        return std::string("write past the end of ") + (a[0] == 0 ? "data" : "program") + " memory: the high offset bits are ignored and it aliases (2.2; invariant 19): " + describe(a[1], a[2], a[3]);
+    case Kind::DIR_RESERVED_BYTES: return "write into data memory's reserved first 16 bytes (2.2; invariant 22): " + describe(a[1], a[2], a[3]);
+    case Kind::DIR_COMMAND_BLOCK: return "write into the command block other than an uncounted one from C&C 1-3 inside it (4.12; invariant 11): " + describe(a[1], a[2], a[3]);
+    case Kind::DIR_REPLY_BLOCK:
+        return "write into the reply block other than a 32- or 64-bit reply at the sender's own pair, REPLY + 8 x " + std::to_string(lw::src(a[2])) + " (4.12; invariant 11): " + describe(a[1], a[2], a[3]);
+    case Kind::DIR_COMMAND_KIND:
+        return std::string("a command (") + (a[0] == 2 ? "broadcast" : "unicast") + ") after overlays of the other kind: the mesh orders packets only within a kind (6.2; invariant 25): " + describe(a[1], a[2], a[3]);
     // ---- TileControl.violate (the register block; its store checks happen at the core's store in C++) ----
     case Kind::CTL_WFI_WOKEN:
         return "a WFI woken by an event other than GO with done set (wait_for_command()): only GO wakes the core between done and GO (the done gate, spec 4.12)";
@@ -100,6 +118,8 @@ std::string Checker::text(const Fact& f) const {
             if (a[0] >> c & 1) b += fmt(" WRITE_COUNTER_%u %u", c, unsigned(a[1 + (c - 1) / 3] >> (20 * ((c - 1) % 3)) & 0xFFFFF));
         return "done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]):" + b;
     }
+    case Kind::WE_PAST_SRAM:
+        return fmt("a big-SRAM write at chunk 0x%" PRIx64 ", at or past the end of big SRAM: undefined (4.1; invariant 19): ", a[0]) + describe(a[1], a[2], a[3]);
     case Kind::HIST_OVERFLOW: return "a counter exceeded 17 bits (invariant 6)";
     case Kind::ROTATION_LATE: return "address generator: a rotation started late (invariant 3; drift, see agReport)";
     case Kind::READ_RETURN_REFUSED: return "SIMULATOR: a read return was refused by the injection point";

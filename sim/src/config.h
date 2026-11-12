@@ -384,6 +384,8 @@ public:
     // W20 (harness-only; P2): a Fifo's overflows so far and the put cycle of its first (kNoCycle if none), between runs
     // (ref's WordFIFO.overflow, overflowCycle: the checker's invariant 1). One domain only (fatal on a split machine).
     uint64_t fifo_overflows(FifoIn p, Cycle* first) const;
+    // W20 (harness-only; P2): a Hold's refusals so far (ref's WordHold.refusals), between runs. One domain only.
+    uint64_t hold_refusals(HoldIn p) const;
     // W20 (harness-only; P2): data in motion anywhere, between runs: an input holding data (a Link word visible, a Fifo
     // not empty, a Hold occupied) or a put still on its way (a Link, Fifo, credit Fifo or Hold entry in a delivery
     // bucket). Regs, Wires, RegFiles, Counts and credit returns are state, not motion. For ref's Chip.quiescent.

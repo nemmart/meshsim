@@ -6,9 +6,11 @@
 // per cycle, expansion words first. The rows come out through the replayer's sink (its row buffer).
 #pragma once
 
+#include <cstdio>
 #include <cstdint>
 #include <deque>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "replay_window.h"
@@ -32,6 +34,7 @@ struct ReplayDriver {
     bool done = false;
     int64_t run_at = 0, done_at = 0;
     uint64_t missing_templates = 0;
+    std::vector<std::string> log;                // ref's ReplayDriver.log: one line per missing template (W25)
     int64_t run_config = -1;                     // -1: the window's
     uint32_t last_config = 0;
     uint64_t config_stores = 0;
@@ -116,7 +119,12 @@ struct ReplayDriver {
                     uint32_t key = units::tracer::ReplayTables::key_of(st1);
                     auto it = w.templates.find(key);
                     std::vector<uint64_t> tpl;
-                    if (it == w.templates.end()) missing_templates++;
+                    if (it == w.templates.end()) {
+                        missing_templates++;
+                        char m[96];
+                        std::snprintf(m, sizeof m, "@%lld no template for 0x%x (key 0x%x)", (long long)t, st1, key);
+                        log.push_back(m);
+                    }
                     else tpl = it->second;
                     r->word(t, units::Replayer::W_EXP_OFFSET, off);
                     auto ir = w.template_rd0.find(key);

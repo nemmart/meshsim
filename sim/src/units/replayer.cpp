@@ -15,25 +15,29 @@ uint64_t mix(uint64_t z) {
 }
 }  // namespace
 
-Replayer::Replayer(unsigned m) : me(m) {
+Replayer::Replayer(unsigned m, unsigned log_entries, unsigned list_capacity) : me(m) {
+    list_cap_ = list_capacity;
+    list_text_.reset(new char[size_t(N_LISTS) * list_cap_ * LIST_TEXT + 1]());
+    if (log_entries < 2 || log_entries > ReplayerStream::MAX_CAP) FATAL("replayer %u: log queues of %u entries (2-%u)", m, log_entries, ReplayerStream::MAX_CAP);
     const uint8_t depth[] = {1, 0, 2, 2, 2, 2, 1};
     const bool flags[] = {false, false, true, true, true, true, false};
     ev.init(7, depth, flags);
     code.init(0, 256, 32, false);
-    rlog.init(1, LOG_QUEUE_ENTRIES, 64, false);
-    wlog.init(2, LOG_QUEUE_ENTRIES, 64, true);
+    rlog.init(1, log_entries, 64, false);
+    wlog.init(2, log_entries, 64, true);
     code.credit = EV_CODE; rlog.credit = EV_RLOG; wlog.credit = EV_WLOG;
 }
 
 // ================================================================ facts (D24)
-void Replayer::record(int64_t t, uint16_t c, uint64_t a, uint64_t b) {
+void Replayer::record(int64_t t, uint16_t c, uint64_t a, uint64_t b, uint64_t x) {
+    list_add(t, c, a, b, x);
     ReplayerFact& f = facts_[fact_n_ % FACT_RING];
     f.t = t; f.code = c; f.a = a; f.b = b;
     fact_n_++;
     if (fact_shown_ < FACT_RING) fact_shown_++;
     fact_counts_[c]++;
 }
-void Replayer::violate(int64_t t, uint16_t c, uint64_t a, uint64_t b) { record(t, c, a, b); }
+void Replayer::violate(int64_t t, uint16_t c, uint64_t a, uint64_t b, uint64_t x) { record(t, c, a, b, x); }
 
 void Replayer::fact_text(const ReplayerFact& f, char* buf, size_t n) {
     const unsigned long long a = f.a, b = f.b;
@@ -54,6 +58,82 @@ void Replayer::fact_text(const ReplayerFact& f, char* buf, size_t n) {
         case F_UNDERFLOW: std::snprintf(buf, n, "@%lld underflow of stream %llu, cause %llu", t, a, b); break;
         case F_LEFTOVER: std::snprintf(buf, n, "@%lld input left over: streams 0x%llx", t, a); break;
         default: std::snprintf(buf, n, "@%lld fact %u", t, unsigned(f.code)); break;
+    }
+}
+
+// ================================================================ ref's error lists (W25)
+// Each entry is ref's text exactly (Replayer.violate, invalid, underflow, checkLeftover, the overrun), formatted when
+// recorded into the buffer allocated at construction (D24: snprintf, no allocation); beyond the kept entries only the
+// count grows. Error paths only: nothing here runs in a clean pass.
+namespace {
+const char* op_name(uint64_t op, char* tmp, size_t n) {   // ReplayerAlu.name: the name, or "op" + op
+    const char* nm = op < 256 ? alu::name_or_null(unsigned(op)) : nullptr;
+    if (nm) return nm;
+    std::snprintf(tmp, n, "op%lld", (long long)int32_t(uint32_t(op)));
+    return tmp;
+}
+const char* stream_name(unsigned s) { return s == 0 ? "code" : s == 1 ? "read log" : "write log"; }
+}  // namespace
+
+void Replayer::list_add(int64_t t, uint16_t c, uint64_t a, uint64_t b, uint64_t x) {
+    unsigned l = c < N_VIOLATION ? L_VIOLATIONS : c == F_INVALID ? L_INVALID : c == F_OVERRUN ? L_OVERRUNS
+               : c == F_UNDERFLOW ? L_UNDERFLOWS : c == F_LEFTOVER ? L_LEFTOVER : N_LISTS;
+    if (l == N_LISTS) return;
+    uint64_t k = list_n_[l]++;
+    if (k >= list_cap_) return;
+    char* o = &list_text_[(size_t(l) * list_cap_ + k) * LIST_TEXT];
+    const size_t n = LIST_TEXT;
+    const long long T = t;
+    char nb[24];
+    switch (c) {
+        case V_NO_FLUSH: std::snprintf(o, n, "t%u @%lld: a pass started without a write to the state word since the last pass: its queues weren't flushed (DECISIONS-v1.26 item 4)", me, T); break;
+        case V_TWO_SOURCES: std::snprintf(o, n, "t%u @%lld: two sources feed one queue port in a pass (invariant 18): %d and %d", me, T, int(a), int(b)); break;
+        case V_FOREIGN_SRC: std::snprintf(o, n, "t%u @%lld: unit %d wrote the replayer's queue %d during a pass: only the tile itself refills it (4.19.13; invariant 16)", me, T, int(a), int(b)); break;
+        case V_CREDIT: std::snprintf(o, n, "t%u @%lld: queue %d pushed past the credits taken for it: %d entries, %d credits (4.19.8; invariant 16)", me, T, int(a), int(b), int(x)); break;
+        case V_OFFSET_IMM: std::snprintf(o, n, "t%u @%lld: offset_imm set on a %s row (only ShiftData reads shift_offset; WORKER11 Q3)", me, T, op_name(a, nb, sizeof nb)); break;
+        case V_LOG_AND_NFV: std::snprintf(o, n, "t%u @%lld: a row with both from_log and next_from_value (two read-log words)", me, T); break;
+        case V_UNDEFINED: std::snprintf(o, n, "t%u @%lld: undefined result (invariant 16): %s in %s", me, T, reinterpret_cast<const char*>(uintptr_t(b)), op_name(a, nb, sizeof nb)); break;
+        case V_END_WORD: std::snprintf(o, n, "t%u @%lld: the program-end row's log word is %lld, not 0", me, T, (long long)a); break;
+        case V_NO_NFV: std::snprintf(o, n, "t%u @%lld: a control transfer from a row without next_from_value (%s): the read log is popped anyway", me, T, op_name(a, nb, sizeof nb)); break;
+        case V_MISALIGNED: std::snprintf(o, n, "t%u @%lld: a misaligned %s at 0x%llx (jolt-cpp aborts the trace; checked_memory_address)", me, T, op_name(a, nb, sizeof nb), (unsigned long long)b); break;
+        case F_OVERRUN: std::snprintf(o, n, "@%lld queue %d", T, int(a)); break;
+        case F_INVALID:
+            if (a == INV_CLASS3) std::snprintf(o, n, "@%lld decode-table class 3 for instruction 0x%x", T, unsigned(uint32_t(b)));
+            else if (a == INV_ROM_END) std::snprintf(o, n, "@%lld a template runs past ROM word 511 (start %d, row %d)", T, int(b >> 16), int(b & 0xFFFF));
+            else if (b == rowcore::INV_OPCODE) std::snprintf(o, n, "@%lld opcode %d (%s) is not executed by the replayer", T, int(rowcore::op(x)), op_name(rowcore::op(x), nb, sizeof nb));
+            else if (b == rowcore::INV_OPERAND) std::snprintf(o, n, "@%lld a reserved operand code (146-255)", T);
+            else std::snprintf(o, n, "@%lld format %d", T, int(rowcore::format(x)));
+            break;
+        case F_UNDERFLOW: {
+            const ReplayerStream& st = stream(unsigned(a));
+            switch (b) {
+                case UF_CODE_OVER_DECODE: std::snprintf(o, n, "@%lld the code stream's next value runs past its %u words", T, code.words); break;
+                case UF_CODE_PAST_VALUES: std::snprintf(o, n, "@%lld an instruction past the code stream's %u values", T, code.values_out); break;
+                case UF_LOG_END: std::snprintf(o, n, "@%lld a pop past the %s's %u values", T, stream_name(unsigned(a)), st.values_out); break;
+                case UF_LOG_OVER: std::snprintf(o, n, "@%lld the %s's next value runs past its %u words", T, stream_name(unsigned(a)), st.words); break;
+                case UF_NFV_OVER: std::snprintf(o, n, "@%lld the read log's next value runs past its %u words", T, rlog.words); break;
+                case UF_TRANSFER_END: std::snprintf(o, n, "@%lld a pop past the read log's %u values (a control transfer's next instr_idx)", T, rlog.values_out); break;
+                default: std::snprintf(o, n, "@%lld a pop past the read log's %u words (a control transfer's next instr_idx)", T, rlog.words); break;
+            }
+            break;
+        }
+        case F_LEFTOVER: {   // checkLeftover: each stream's leftover(), joined with "; "
+            size_t at = size_t(std::snprintf(o, n, "@%lld ", T));
+            bool first = true;
+            for (unsigned si = 0; si < 3 && at < n; si++) {
+                if (!(a >> si & 1)) continue;
+                const ReplayerStream& st = stream(si);
+                uint64_t cnt;
+                unsigned kind = st.leftover(cnt);
+                const char* sep = first ? "" : "; ";
+                first = false;
+                if (kind == 1) at += size_t(std::snprintf(o + at, n - at, "%s%s: %llu of %u values not popped", sep, stream_name(si), (unsigned long long)cnt, st.values_out));
+                else if (kind == 2) at += size_t(std::snprintf(o + at, n - at, "%s%s: %llu of %u words after its last value", sep, stream_name(si), (unsigned long long)cnt, st.words));
+                else at += size_t(std::snprintf(o + at, n - at, "%s%s: %llu entries pushed past its %u words", sep, stream_name(si), (unsigned long long)cnt, st.words));
+            }
+            break;
+        }
+        default: std::snprintf(o, n, "@%lld fact %u", T, unsigned(c)); break;
     }
 }
 
@@ -236,7 +316,7 @@ void Replayer::land(int64_t t, unsigned src, uint32_t addr, unsigned size, uint6
         if (src_of_[qi] >= 0 && src_of_[qi] != int(src)) violate(t, V_TWO_SOURCES, uint64_t(src_of_[qi]), src);
         src_of_[qi] = int(src);
         if (src != me) violate(t, V_FOREIGN_SRC, src, qi);
-        if (++pushed_[qi] > allowance_[qi]) violate(t, V_CREDIT, qi, pushed_[qi]);
+        if (++pushed_[qi] > allowance_[qi]) violate(t, V_CREDIT, qi, pushed_[qi], allowance_[qi] / half(qi));
     }
     bool ok = qi == 3 ? exp.push(t, lo, hi) : stream(qi).push(t, lo, hi);
     if (!ok) { cond_events_[ERR_OVERRUN]++; record(t, F_OVERRUN, qi, 0); }
@@ -349,7 +429,7 @@ void Replayer::start_row(int64_t T) {
     if (reserved(lo) != 0)
         FATAL("replayer %u: undefined behavior at %lld: an expansion word with reserved bits [61:55] = 0x%x (%s): lo 0x%016llx", me,
               (long long)T, reserved(lo), in.kind == K_CTRL ? "controller-fed" : "ROM", (unsigned long long)lo);
-    if (unsigned why = invalid_word(lo)) { invalid(T, INV_WORD, why); return; }
+    if (unsigned why = invalid_word(lo)) { invalid(T, INV_WORD, why, lo); return; }
     // N3: the rd = x0 policy applies to every word; for a controller-fed expansion it is read from the first word delivered
     if (in.kind == K_CTRL && !in.ctrl_first_seen) {
         in.ctrl_first_seen = true;
@@ -408,7 +488,7 @@ void Replayer::start_row(int64_t T) {
         uint64_t m = v_rs2 >> alu::tz(v_rs2);
         if ((m & (m + 1)) != 0) pext_non_contiguous++;
     }
-    if (o.undefined) violate(T, V_UNDEFINED, op);
+    if (o.undefined) violate(T, V_UNDEFINED, op, uint64_t(reinterpret_cast<uintptr_t>(o.undefined)));
     Pending p;
     p.code_end = in.code_end; p.last_of_instr = last; p.instr_id = in.id;
     const bool writes = r_rd >= 0 && op != alu::NOP;
@@ -457,7 +537,7 @@ void Replayer::start_row(int64_t T) {
 
 uint64_t Replayer::pop_transfer(int64_t T) {
     int s = rlog.peek();
-    if (s != ReplayerStream::AVAIL) { underflow(T, 1, UF_TRANSFER); return 0; }
+    if (s != ReplayerStream::AVAIL) { underflow(T, 1, s == ReplayerStream::END ? UF_TRANSFER_END : UF_TRANSFER); return 0; }
     uint64_t v = rlog.peek_value; rlog.commit(); rlog.release_consumed(ev);
     return v;
 }
@@ -494,9 +574,9 @@ void Replayer::underflow(int64_t T, unsigned s, uint64_t cause) {
     stop_core(T, true);
 }
 
-void Replayer::invalid(int64_t T, uint64_t cause, uint64_t detail) {
+void Replayer::invalid(int64_t T, uint64_t cause, uint64_t detail, uint64_t c) {
     cond_events_[ERR_INVALID]++;
-    record(T, F_INVALID, cause, detail);
+    record(T, F_INVALID, cause, detail, c);
     stop_core(T, true);
 }
 

@@ -74,7 +74,7 @@ void SlotCore::install(unsigned n, PeriphType type, const PeriphSlotConfig& c) {
     switch (type) {
         case PT_ABSENT: return;
         case PT_REPLAYER: {
-            auto* r = new Replayer(tile);
+            auto* r = new Replayer(tile, c.replayer_log_entries);
             if (c.replayer_row_buffer) r->set_row_buffer(new uint64_t[c.replayer_row_buffer * Replayer::REC_LONGS], c.replayer_row_buffer);
             per[n].p = r;
             break;

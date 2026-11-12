@@ -16,3 +16,8 @@ $(B)/test_shard_summary: | $(B)/shard_summary
 $(B)/suite_replayer: $(B)/tests/suite_replayer.o $(B)/tests/sha256.o $(B)/tests/statefp.o $(REPLAYER_LINK) $(B)/src/units/replay_tables.o $(LIB_OBJ) | $(B)/convert_delivery
 	$(CXX) $(FLAGS) $(filter-out $(B)/convert_delivery,$^) -o $@ $(WRAP)
 $(B)/test_suite_replayer: | $(B)/suite_replayer
+# Stage B (ref's StageB): tests/stageb.cpp on W20's harness (tests/mach.mk's MACH_LINK); the driver stageb.
+$(B)/stageb: $(B)/tests/stageb_main.o $(B)/tests/stageb.o $(B)/tests/sha256.o $(B)/tests/statefp.o $(MACH_LINK) $(B)/src/units/replay_tables.o $(LIB_OBJ)
+	$(CXX) $(FLAGS) $(sort $^) -o $@ $(WRAP)
+all: $(B)/stageb
+$(B)/test_stageb: | $(B)/stageb

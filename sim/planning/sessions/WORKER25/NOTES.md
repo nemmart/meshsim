@@ -179,3 +179,23 @@ the `-q` estimate, the guest delivery's whereabouts.
 - **Quest 177** (the runner's data listed): **no item-113 guest delivery** anywhere under `$DATA`, the queue's data or
   `/tmp` (no name matching item113, a guest's name, replay-inputs or guest). v1.3's `stageb-<guest>` steps
   (`DELIVERY=`) have no input on the runner: making one needs the guests traced (jolt-cpp) into a delivery. To the owner.
+- **Owner (2026-11-11), Quest 177**: the item-113 guest steps stay unrun, as in v1.3 (optional there, only with
+  DELIVERY=; no input on the runner; tracing new guests is beyond a freeze). The runner keeps them, running when
+  DELIVERY= is given, as v1.3's do (for REPORT.md too).
+- **Stage B's driver** (E3; `tests/stageb.{h,cpp}`, `stageb_main.cpp`; binary `stageb`): StageB.java line for line on
+  W20's harness: the loader, C&C 1's boot of replay_ctl with only tile 0 expected, the run with the CL4 watch (and the
+  profile's sampling) in the condition, the rows, streams, end state, the replayer's lists (F2's texts, `head`),
+  violations, the stop and starvation reports, parked tiles, rp_results; the window's line (Java's HALF_UP `%.3f`:
+  `java_fixed`) and `out.summary` for replay_shard; `synthetic` (ReplayerUnitTests.programWindow and r() from W15's
+  port, compiled in as in suite_replayer; the controller-fed windows; CL4 with the old map); `--profile` (Java's
+  HashMap<Integer, Long> order for ties). **`stageb synthetic` equals v1.3's log line for line but for the CL4
+  case's "meshsim: violations" line** (W20's recording of the replayer's violations, pending), in clang release and
+  debug, and in the debug build plain, shuffled (seeds 3, 4), step-all and instance-major (ASan, UBSan, the missed-wake
+  detector): all the same. `test_stageb` (make check) compares with the meshsim line left out while ours has none and
+  says PENDING; strict once W20's recording lands. The runner's step `stageb` stays PENDING until then (it would
+  differ by that line).
+- **F6. A double free in W20's harness** (for W20): `Chip::on_row` sets the replayer's row buffer to the hook's
+  vector, and `SlotCore::Ref::~Ref` deletes the replayer's row buffer (`delete[] r->row_buffer()`), so a machine with a
+  row hook frees it twice at destruction (ASan: the hook's vector, then the slot). Worked around in `stageb.cpp`
+  (the buffer detached before the machine is destroyed); the fix is W20's (mach.cpp, or the slot owning only buffers
+  it allocated).

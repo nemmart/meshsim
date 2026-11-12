@@ -328,6 +328,7 @@ struct TileCore {
     // t as ref's core sees them (table_store.h, ag.h: busy_hist, busy_ptr, running), same-cycle Wires
     // An instruction at t is judged on the state at t; a test's store (TileRef::store, made here at t) on ref's flags as
     // the cycle before left them (ref's harness store runs between cycles: the stores' and the AG's flags of t - 1).
+    S1Tile* s1 = nullptr;              // W26: S1 (s1.h), SIM_CHECKS only (add_g1)
     sim::WireIn busy_hist, busy_ptr, ag_running, go_seen;   // (go_seen: TileCtl's GO, the command-slot check below)
     sim::Word go_last = 0;
     bool table_busy = false, host_now = false;
@@ -468,6 +469,12 @@ struct TileCore {
         }
         uint32_t hist(uint32_t i) const {                // RmwPipe.ctrlRead: on a write-back cycle, the engine's value
             u.table_check(c, TBL_HIST, i);               // W26: the window's check (Controller.window)
+#ifdef SIM_CHECKS
+            if (u.s1 && u.s1->on) {                      // W26: S1's table-window case (the last write-back; ref's -1 none)
+                const uint32_t at = c.read(u.hist, HIST_WB_AT);
+                u.s1->hist_load(int64_t(c.now()) - (at ? int64_t(at) - 1 : -1));
+            }
+#endif
             if (c.read(u.hist, HIST_WB_AT) == uint32_t(c.now() + 1)) return c.read(u.hist, HIST_WB_VAL);
             return c.read(u.hist, i);
         }

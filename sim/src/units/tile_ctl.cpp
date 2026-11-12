@@ -63,6 +63,9 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     auto& sr = cfg.add<BigSram>(t + "sram", sc, g.sram->block(k, g.cfg.mem_chunks), true, sim::check::kOn);   // W26: the GO Wire
 #ifdef SIM_CHECKS
     sr.ck_tile = int(k);                                  // W26: invariant 2's facts
+    d.s1 = std::make_unique<S1Tile>();                    // W26: S1's measurement (s1.h): the director owns it
+    d.s1->tile = int(k); d.s1->K = g.cfg.K;
+    we.s1 = ts.s1 = hs.s1 = sr.s1 = c.s1 = d.s1.get();
 #endif
 
     cfg.link(c.bus, b.bus, 1);

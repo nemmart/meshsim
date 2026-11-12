@@ -23,7 +23,7 @@ violations: 9
   cycle 31 tile 6: bad packet sent (region 0xff not reachable by a packet; 3.1, invariant 5): src=0 dst=9 mode=0(write@addr) ctr=0 addr=0xff000000 size=32 payload=0x00000044
   cycle 46 tile 9: bad packet dropped, uncounted, ERRORS [1] (region 0xff not reachable by a packet; 3.1, invariant 5): src=6 dst=9 mode=0(write@addr) ctr=0 addr=0xff000000 size=32 payload=0x00000044
   cycle 57 tile 9: ERRORS [100] set: unexpected arrival (invariant 15)
-violations: 9
+violations: 13
   cycle 22 tile 9: FIFO overflow t9.we-in (invariant 1)
   cycle 26 tile 17: FIFO overflow t17.to-up<from-right (invariant 1)
   cycle 25 tile 17: FIFO overflow t17.to-up<from-down (invariant 1)
@@ -33,6 +33,11 @@ violations: 9
   cycle 18 tile 33: FIFO overflow t33.to-up<from-left (invariant 1)
   cycle 17 tile 33: FIFO overflow t33.to-up<from-right (invariant 1)
   cycle 26 tile 33: FIFO overflow t33.to-up<from-down (invariant 1)
+  cycle 44: tile 9: big SRAM chunk 0x1d1 in its area's queue 13 cycles after acceptance, past K + 4 = 12 (invariant 24)
+  cycle 46: tile 9: big SRAM chunk 0x1d7 in its area's queue 14 cycles after acceptance, past K + 4 = 12 (invariant 24)
+  cycle 48: tile 9: big SRAM chunk 0x1e7 in its area's queue 15 cycles after acceptance, past K + 4 = 12 (invariant 24)
+  cycle 50: tile 9: big SRAM chunk 0x257 in its area's queue 16 cycles after acceptance, past K + 4 = 12 (invariant 24)
+S1: accept -> complete, the largest: big SRAM 17 (28 writes; in its area's queue by 16), PTR 0 (0 updates), HIST 0 (0 updates); K = 8: margin -9 before the controller's reaction (+4); 8 LATE
 violations: 13
   cycle 18 tile 12: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_1 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=4 dst=12 mode=0(write@addr) ctr=1 addr=0x03000208 size=64 payload=0x0000000000000003
   cycle 24 tile 21: uncounted write to region 0x3: big-SRAM data and peripheral writes are always counted (3.1, 6.2; invariant 22): src=5 dst=21 mode=0(write@addr) ctr=0 addr=0x03000300 size=64 payload=0x0000000000000005
@@ -288,6 +293,7 @@ violations: 14
   cycle 41 tile 9: table window: PTR[1] accessed while the write engine is using PTR (4.10)
   cycle 42 tile 9: table window: HIST[2] accessed while count-on-arrival is using HIST (4.10)
   cycle 43 tile 9: table window: PTR[3] accessed while the write engine is using PTR (4.10)
+S1: accept -> complete, the largest: big SRAM 6 (10 writes; in its area's queue by 5), PTR 4 (6 updates), HIST 4 (6 updates); K = 8: margin 2 before the controller's reaction (+4)
 violations: 48
   cycle 112 tile 1: store to peripheral 1's reserved or undefined window word 8: reads 0, stores ignored (4.17.4)
   cycle 112 tile 3: store to peripheral 1's reserved or undefined window word 22: reads 0, stores ignored (4.17.4)

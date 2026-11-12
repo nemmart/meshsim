@@ -700,12 +700,19 @@ void checkself() {
     }
     {
         mach::MachConfig k = Net::cfg(-1);
-        k.queue_depth = 2; k.we_in_depth = 1; k.measure_s1 = false;
+        k.queue_depth = 2; k.we_in_depth = 1;   // W26: S1 on again
         Net n(k);
         for (unsigned s = 20; s < 40; s++) for (unsigned i = 0; i < 4; i++)
             n.at(s, 10 + i, 9, lw::M_WRITE, 1, uint32_t(lw::R_SRAM) << 24 | (s * 16 + 2 * i) << 2, lw::SIZE_64, s * 100 + i, 0);
         n.run_all(2000);
         say("%s", n.c.violation_report().c_str());
+#ifdef SIM_CHECKS
+        {   // W26: S1.report (s1.h)
+            const units::S1Tile* t[64];
+            for (unsigned x = 0; x < 64; x++) t[x] = n.c.tile(x).unit<units::Director>("dir").s1.get();
+            say("%s\n", units::s1_report(t, 64, k.K).c_str());
+        }
+#endif
     }
     {
         mach::MachConfig k = Net::cfg(-1);
@@ -803,6 +810,13 @@ void checkself() {
         }
         n.run_all(1000);
         say("%s", n.c.violation_report().c_str());
+#ifdef SIM_CHECKS
+        {   // W26: S1's PTR and HIST paths
+            const units::S1Tile* s1t[64];
+            for (unsigned x = 0; x < 64; x++) s1t[x] = n.c.tile(x).unit<units::Director>("dir").s1.get();
+            say("%s\n", units::s1_report(s1t, 64, k.K).c_str());
+        }
+#endif
     }
     {   // W26 (1a): the peripheral slot's own checks (window 1: word 8 stored, word 10 loaded, word 22 stored)
         mach::MachConfig k = Mach::cfg(-1);

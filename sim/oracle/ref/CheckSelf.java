@@ -29,12 +29,13 @@ final class CheckSelf {
             System.out.print(n.c.violationReport());
         }
         {   // invariant 1: FIFO overflows, scanned every 16 cycles and at the end of a run, once per FIFO, at their own cycle
-            Config k = Net.cfg(-1); k.queueDepth = 2; k.weInDepth = 1; k.measureS1 = false;   // S1: its own case, later
+            Config k = Net.cfg(-1); k.queueDepth = 2; k.weInDepth = 1;   // S1 on again (W26): its measurement and report
             Net n = new Net(k);
             for (int s = 20; s < 40; s++) for (int i = 0; i < 4; i++)
                 n.at(s, 10 + i, 9, LinkWord.M_WRITE, 1, (LinkWord.R_SRAM << 24) | ((s * 16 + 2 * i) << 2), LinkWord.SIZE_64, s * 100 + i, 0);
             n.runAll(2000);
             System.out.print(n.c.violationReport());
+            System.out.println(n.c.s1.report(k.K));
         }
         {   // the director's invariants 9 (strays), 11, 19, 22, 25
             Config k = Net.cfg(-1); k.checkUnexpected = true;
@@ -131,6 +132,7 @@ final class CheckSelf {
             }
             n.runAll(1000);
             System.out.print(n.c.violationReport());
+            System.out.println(n.c.s1.report(k.K));          // W26: S1's PTR and HIST paths
         }
         {   // the peripheral slot's own checks through the block (PeripheralSlot.violate; W26, 1a): a store to window 1's
             // word 8 (no DMA on a mesh tile), a load of its reserved word 10, a store to its reserved word 22

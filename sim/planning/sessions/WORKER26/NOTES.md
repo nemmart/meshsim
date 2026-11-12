@@ -198,3 +198,21 @@ Commit and push after each piece; each kind checked line for line against `ref` 
   (flagged, phase 2), and the access count (16), line for line (clang and gcc suite). ReadPortGatherTest's disjoint
   group passes (W22's repro). Protected tests the same (clang suite, release); the order-independence set again: the
   16K sort (plain, shuffle, step-all, instance) and T2's boot (with step-all for the run) and M1's goldens, both builds.
+- **S1 (invariant 24's measurement, as ref has it)**: `src/units/s1.h`, one `S1Tile` per tile (fixed sizes, made in
+  add_g1 under SIM_CHECKS, owned by the director; the write engine, big SRAM, the table and HIST stores and the core hold
+  its pointer): the director's acceptances in we-in order (ref's acceptQ), the write engine's stage acceptances (stAcc),
+  chunk -> acceptance for big-SRAM writes (sramAcc: open addressing, a put replaces; **staged with its cycle and
+  applied at the next use in a later cycle**, because ref's tile runs big SRAM before the write engine, so a put of t
+  follows big SRAM's removes of t), PTR's and HIST's acceptances per index (pooled FIFOs), and the measurement (S1's
+  fields). Big SRAM checks a write's chunks as it enters its area's queue (BigSRAM.s1Ordered: later than K + 4 is an
+  `S1_LATE` fact) and counts the store; the table and HIST stores at each write-back; the core's HIST loads (the
+  table-window case, from HIST_WB_AT; ref's -1 when none yet). The checker reports one S1 message a cycle, the last in
+  ref's child order (tile by tile; big SRAM, PTR, HIST). `units::s1_report` is S1.report(K) over the tiles. W20's
+  overflow case runs with S1 on again (both sides): 4 late lines and the report; the table-window case prints the
+  report (PTR and HIST paths): line for line, clang and gcc suite, clang debug. Protected tests the same (clang suite,
+  release); the 16K sort passes in the suite build with S1 on.
+  **For W20:** `MachConfig::measure_s1 = false` sets each tile's `unit<Director>("dir").s1->on = false` (ref's
+  measureS1); a `Chip::s1_report()` (or S1Bench's port) can sum the tiles with `units::s1_report`.
+  Not checked against ref: the core's HIST loads (no case loads HIST by instruction; TileRef::load's own path doesn't
+  count them), and two same-cycle orders that only an acceptance mismatch reaches (a write-back with its index's queue
+  empty, a take with the acceptance queue empty: we-in overflows).

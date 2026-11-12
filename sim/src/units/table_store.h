@@ -20,6 +20,7 @@
 #include "sim.h"
 #include "units/mem.h"
 #include "units/memsum.h"
+#include "units/s1.h"
 
 namespace units {
 
@@ -151,6 +152,7 @@ struct TableStore {
     // bit 63 set when it was busy at t - 1 too (a test's store at t sees ref's flag as left by t - 1).
     sim::WireOut busy_ptr;
     bool busy_wire = false;
+    S1Tile* s1 = nullptr;              // W26: S1 (s1.h), SIM_CHECKS only (add_g1)
     uint64_t busy_last = ~0ull;
     explicit TableStore(sim::Ports& p, bool ag = false, bool busy_wire_ = false) : with_ag(ag), busy_wire(busy_wire_) {
 #ifdef SIM_CHECKS
@@ -192,6 +194,9 @@ struct TableStore {
             if (pipe.due != t) FATAL("table store: PTR's write-back due at %llu done at %llu", (unsigned long long)pipe.due, (unsigned long long)t);
             m.write(TBL_PTR, pipe.idx, pipe.val);
             pipe.valid = false; pipe.last_wb = t;
+#ifdef SIM_CHECKS
+            if (s1 && s1->on) s1->written_back(0, t, pipe.idx);   // W26: S1 (TableStore.java:116)
+#endif
             if (with_ag) { pub = true; pub_idx = pipe.idx; pub_val = pipe.val; }
         }
         const bool o1 = q_stream.commit(t), o2 = q_group.commit(t), o3 = q_we.commit(t);
@@ -270,6 +275,7 @@ struct HistStore {
     // start of t, an RMW scheduled at t or t - 1), bit 63 set when it was busy at t - 1 too.
     sim::WireOut busy_hist;
     bool busy_wire = false;
+    S1Tile* s1 = nullptr;              // W26: S1 (s1.h), SIM_CHECKS only (add_g1)
     uint64_t busy_last = ~0ull;
     explicit HistStore(sim::Ports& p, bool busy_wire_ = false) : busy_wire(busy_wire_) {
         p.in(window, "window", 2); p.in(req, "req", 3); p.out(out, "hist", HIST_REGS); p.out(ovf_ev, "ovf_ev", 0);
@@ -299,6 +305,9 @@ struct HistStore {
             c.write(out, HIST_WB_AT, uint32_t(t + 1));
             c.write(out, HIST_WB_VAL, pipe.val);
             pipe.valid = false; pipe.last_wb = t;
+#ifdef SIM_CHECKS
+            if (s1 && s1->on) s1->written_back(1, t, pipe.idx);   // W26: S1 (TableStore.java:181)
+#endif
         }
         if (q.commit(t)) c.put(ovf_ev);                        // judged at t (D29)
 #ifdef SIM_CHECKS

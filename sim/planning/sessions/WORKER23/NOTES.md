@@ -254,3 +254,19 @@ What I do test-side or add myself: C&C 1's model's `expect` (Cnc's field, set be
 - Waiting on W20's `Cc::phase_log` (still FATAL on main): cmdloop, bucket, aug, gather, xchg, xvec, a2a, rdport, sync,
   boot, signal (goToReady, goToFirstRequest). `wait_until` (on main) is used by blocks, selftest, tables, cc1, which
   come next with SelfTest.
+
+## 2026-11-12, later
+
+- **Pushed 860aee67** (11c8b7ba, a1b47088 and main merged at 7b790887's successor): make check's four builds, every
+  test passing (74 of 74 in gcc debug, gcc release, clang debug, clang release), check_copies clean. On the way:
+  test_stageb (W25's) failed on the branch before that merge (a replayer violation's cycle one earlier) and passes on
+  main and after the merge: the branch's lag, not my units.
+- **RecipeTest on W20's phase_log**: cmdloop, bucket, aug, gather, xchg, xvec, a2a (with goToFirstRequest), rdport,
+  blocks (with SelfTest: selftest.h's constants read from fw/tests/selftest.h as SelfTest.java does) ported: every
+  line in ref's log, plain and shuffled; 1,967 checks pass (ref: 2,056). Left: sync, boot, signal (the phase log;
+  next), selftest.
+- **selftest's needs from C&C 1's model, for W20** (the C++ Cnc has neither): `drainReports` (C&C 1's model drains
+  target 0's requests and answers each, as ref's CnC with drainReports = true) and `results` (the requests it drained:
+  {t, requestor, w2, w3} as ref's cc.results). ref's `then((c, t) -> ...)` step (wait for the tiles idle, then poke
+  one record, in one step) I will try as `wait_until(...).call(...)` against ref's selftest figures once the two above
+  exist (only its figures can tell whether the call's step costs C&C a cycle there); asked for only if they differ.

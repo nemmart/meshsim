@@ -176,6 +176,15 @@ final class CheckSelf {
             n.runAll(2000);
             System.out.print(n.c.violationReport());
         }
+        {   // the command slot after the boot (W26, W22's F4): the boot ROM takes the boot command at GO, so the first command
+            // after it may land before the program reads slot 0 (TileControl.endCycle), queued right behind the boot
+            Config k = Mach.cfg(-1); k.maxViolationMessages = 200;
+            Mach m = new Mach(k);
+            m.boot("search");
+            m.c.cc.command(LinkWord.BROADCAST, 2 << 24).go();
+            m.run(m::allStopped, 20000);
+            System.out.print(m.c.violationReport());
+        }
         {   // the message cap (maxViolationMessages): the count goes on
             Config k = Net.cfg(-1); k.maxViolationMessages = 3;
             Net n = new Net(k);

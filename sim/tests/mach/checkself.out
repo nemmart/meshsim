@@ -418,6 +418,7 @@ violations: 4
   cycle 63: C&C's receive FIFO was full: a packet for C&C was lost (6.6)
   cycle 65: C&C's receive FIFO was full: a packet for C&C was lost (6.6)
   cycle 66: C&C's receive FIFO was full: a packet for C&C was lost (6.6)
+violations: 0
 violations: 12
   cycle 10 tile 10: count-only packet on counter 0 sent: it does nothing (3.1, invariant 21): src=0 dst=20 mode=5(count-only) ctr=0 addr=0x00000000 size=32 payload=0x00000000
   cycle 11 tile 11: count-only packet on counter 0 sent: it does nothing (3.1, invariant 21): src=0 dst=20 mode=5(count-only) ctr=0 addr=0x00000000 size=32 payload=0x00000001

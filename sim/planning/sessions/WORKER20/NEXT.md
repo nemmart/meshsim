@@ -21,3 +21,8 @@ From W23 (the control suites and recipes):
 
 All four workers add steps to your runner, so landing sim/run_tests.sh early helps everyone. Each worker adds its own
 steps and Makefile include line, telling me; I resolve any conflicts at merge.
+
+One more, from W25 (F2): Stage B's detail lines and the kit's results.csv print "meshsim: violations ..." for the
+replayer, which needs the replayer's violations recorded as chip violations through the checker. That's yours (the
+replayer is an existing unit). W25 ports the replayer's own message texts and lists (its rp_results detail); you record
+the chip-level facts. Agree the boundary with W25 through me if it's unclear.

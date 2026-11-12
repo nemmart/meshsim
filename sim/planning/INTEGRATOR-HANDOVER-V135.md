@@ -61,7 +61,7 @@ PROMPT.md, fix paths that cite the old names, add its row to `sessions/README.md
 |---|---|---|
 | W19, W21, W24, W25 | closed (reports in `sessions/`) | W24 may get P8's tooling (message below), on a fresh branch |
 | W20 (the harness) | paused, queue empty, REPORT written | **one bug** (below): CondTest's reset |
-| W22 (P4) | finishing AgTest (W22-21 is on main); then the freeze check's runner task, whose maker (`tests/freeze/make_task.sh`, 83013b2) is pushed but **not yet merged** | merge sim-w22 when it reports |
+| W22 (P4) | AgTest at 234 of 240: **W22-21 is on main (401534eb) but W22 doesn't know yet** (message below). The freeze check's task maker (`tests/freeze/`) is merged; its rehearsal, Quest 186, passed everything except the sort on 6 domains (below) | the message below |
 | W23 (P5) | the longest tail: RecipeTest's `boot`, CtrlTest's `faults`, `invariants` and all-to-all, then `ctrl-full` and `accounting-full` on the runner. CondTest is ported locally (b30e95df, 152 of 153) waiting for W20's fix | tell it when W20's fix lands |
 | W26 (the checker) | paused; its queue is complete (REPORT written) | whatever CtrlTest's `invariants` group needs, from W23 |
 | docs session | writing a docs-writing session's prompt; reviews P8's documents, the fresh-reader answers, its own freeze-time rerun of the mechanisms table, and the S1 result | the limits below, and the S1 line below |
@@ -75,6 +75,15 @@ every other tile is clear, and the other eleven resets clear everything. W23's g
 or the FIFO's overflow record) survives the reset; v1.3's reset empties the router FIFOs and their overflow state. Fix
 it against ref with a MachSelf case. Also: W26 changed your two endpoint_checks calls in tests/mach.cpp to pass
 cycle() + 1, because ref reports a send made between cycles at the next cycle's check (e55b5d72, matching ref)."
+
+**W22**: "Quest 186's rehearsal (I read its VERDICTS): every item PASS (the sort on one thread, T2 on both workloads at
+1 and 6 domains, both chains, the calibration, run_tests all --check with 18 steps PENDING, the machine) except
+sort-split6, which stopped at once with 'FATAL src/units/chip.cpp:260: row_bands: 6 parts (1, 2, 4 or 8)'. Use the
+partition Quests 157/158 used for the sort's 6 threads (placement by load), not row bands, and fix TIMES's chains line.
+Also: W22-21 is on main (W20, 401534eb): TileRef::ptr and hist_peek show a table store made in the cycle just run; HIST's
+load on the write-back cycle returns the written value; TileRef::store takes the cycle just run for table stores. So
+finish AgTest (240 of 240), switch it on, put both steps in make check, finalise REPORT.md, then regenerate the freeze
+task and rehearse again."
 
 **W23**: "Merged (1c9243f9): cccores on, S1Bench equal. CondTest's reset difference is with W20; push b30e95df when it
 passes. Then boot, CtrlTest's last groups, and tell me what invariants needs for W26."

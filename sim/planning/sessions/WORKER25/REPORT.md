@@ -42,8 +42,15 @@ converted to v1.26.1 in scratch by v1.35's convert_delivery (the selected manife
 | evm-zone-29 windows 0-127 | 128 (8,388,608 rows) | AB, F every 32nd | equal | PASS |
 
 SUMMARY's rates, for the record only (not a timing claim): evm-zone-29 0-127 at 16 processes, Stage B 0.14 s per
-window (v1.3: 1.37), Stage A 0.02 (0.16). Quest 180's kit was the release build; **Quest 182** reruns the same cases
-with the kit built with the checker on, plus the selected evm-zone-29 windows with `-q 512` (see Open).
+window (v1.3: 1.37), Stage A 0.02 (0.16). Quest 180's kit was the release build.
+
+**Quest 182: ALL PASS**, the same cases with the kit as it now ships (built with the checker on, so the machine's
+violations reach the verdict as in v1.3), plus W9's selected evm-zone-29 windows with `-q 512` (the 8 KB-log
+control; AB, F every 4th): every case equal to v1.3's kit, every window PASS in both. With the checker on, Stage B
+costs about what v1.3's did (evm-zone-29 0-127: 1.36 s per window, v1.3 1.37; Stage A 0.02): the checker's per-cycle
+recording dominates Stage B's tile. A full program's acceptance at 16 processes is then about 8,192 x 1.36 / 16, some
+12 minutes of Stage B per program on this runner: affordable; the release kit (0.14 s) remains a build option if
+speed is wanted without the violation check.
 
 ## Findings
 
@@ -72,7 +79,8 @@ with the kit built with the checker on, plus the selected evm-zone-29 windows wi
 - Java's `%.3f` rounds the shortest decimal half-up (12,946 / 4,000 = 3.2365 prints 3.237; printf 3.236): found by the
   crosscheck, reproduced.
 - Quest 180 ran `tools/machine.sh` with `sh` (it is a bash script), so its machine.txt holds only the error; the run
-  log names the host, CPUs, memory and versions. Fixed for later tasks.
+  log names the host, CPUs, memory and versions. Quest 182 then ran it without its `record` argument (usage only).
+  Both fixed for later tasks (`bash tools/machine.sh record`); both tasks' run logs name the machine.
 
 ## Deliberate differences and rulings
 
@@ -98,6 +106,5 @@ with the kit built with the checker on, plus the selected evm-zone-29 windows wi
 
 ## Open
 
-- **Quest 182** (the kit with the checker on, Quest 180's cases plus `-q 512` on real windows): the result to record.
 - The F2 texts no fixture reaches (above): the kit's planted-fault runs reach the underflow, row and end-state paths;
   the others remain checked by reading.

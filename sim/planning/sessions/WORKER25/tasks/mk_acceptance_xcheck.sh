@@ -57,7 +57,7 @@ done
 
 sec "the machine (sim/tools/machine.sh, D21) and v1.35's convert_delivery (the kit's sources, clang release)"
 mkdir -p "\$W/k" && tar -xzf "\$B/kit135.tgz" -C "\$W/k"
-bash "\$W/k/w25-kit/sim/tools/machine.sh" > "\$RES/machine.txt" 2>&1 || true; head -20 "\$RES/machine.txt"
+bash "\$W/k/w25-kit/sim/tools/machine.sh" record > "\$RES/machine.txt" 2>&1 || true; head -20 "\$RES/machine.txt"
 make -s -C "\$W/k/w25-kit/sim" -j"\$(nproc)" MODE=release CC_NAME=clang build/clang-release/convert_delivery > "\$RES/build.log" 2>&1 \\
   && verdict build PASS || { tail -20 "\$RES/build.log"; verdict build FAIL; exit 1; }
 CD=\$W/k/w25-kit/sim/build/clang-release/convert_delivery

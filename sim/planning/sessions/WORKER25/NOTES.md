@@ -269,3 +269,6 @@ the `-q` estimate, the guest delivery's whereabouts.
   difference came from the release build, not a missing kind. The crosscheck: **all 15 cases equal**, ab-faults
   included. Quest 180's real windows had no violations on either side (all PASS), so its equality stands; a rerun with
   the suite-built kit makes it hold with the checker on.
+- **Quest 182: ALL PASS** (the kit built with the checker on): Quest 180's cases plus W9's selected evm-zone-29 windows
+  with `-q 512`, all equal to v1.3's kit, every window PASS. With the checker on, Stage B is about v1.3's speed (1.36 s
+  per window on evm-zone-29 0-127, v1.3 1.37; the release kit 0.14). machine.sh needs `record`: fixed in the makers.

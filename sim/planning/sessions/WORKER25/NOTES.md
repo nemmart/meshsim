@@ -69,6 +69,8 @@ the `-q` estimate, the guest delivery's whereabouts.
   capacity set at configuration, with the counts): about 200-250 lines in W15's replayer (unowned). Brought to the
   owner (beyond `-q`'s scope). The `meshsim: violations ...` part of the same lines is the checker's: the replayer's
   violations as chip violations (W20).
+  **Owner (2026-11-11): go ahead**, in scope (it is the acceptance check); the replayer's tests, ReplayConf and T2
+  unchanged. Boundary: W25 the replayer's own messages and lists; W20 the replayer's violations as chip violations.
 
 ## Environment
 
@@ -85,3 +87,22 @@ the `-q` estimate, the guest delivery's whereabouts.
   `periph_slot.cpp`. ReplayerUnitTests' 8 KB half of queueSizes now ported (2 checks: 1,458 of ref's 1,473; 15 left).
   test_replayer, the slot tests (clang debug, gcc release), test_t2_harness, test_g1_replay, test_chain,
   test_tracer_slot (clang release): pass.
+- **F2 done: ref's lists in the replayer** (a change in W15's unowned replayer: `replayer.h`, `replayer.cpp`).
+  `Replayer(me, log_entries, list_capacity = 4)`: five lists (ref's violations, invalids, overruns, underflows,
+  leftovers; badWrites is always empty, a bad write being FATAL), each entry ref's text, formatted when recorded by
+  `snprintf` into a buffer allocated at construction (N_LISTS x capacity x 256 bytes; D24), the first `list_capacity`
+  kept and every entry counted (`list_count`, `list_entry`). The fact codes, counts and ring (ReplayConf's
+  observations, `fact_text`) are unchanged. Two recording details: V_CREDIT carries ref's credits (allowance / half)
+  as a third argument, V_UNDEFINED the ALU's reason; the control transfer's underflow past the read log's values is a
+  new cause, UF_TRANSFER_END (ref's text differs from the words case). `tests/replay_report.h`: `list_string`,
+  `head` (StageB.head), `error_report` (Replayer.errorReport).
+  **Checked against ref**: `oracle/ref/ReplayLists.java` + `replaylists.sh` replay every committed ReplayConf script
+  on ref's Replayer and print every list whole (`tests/replayer/lists.txt`); `tests/test_replay_lists` does the same on
+  the C++ replayer: equal (13 scripts: 240 credit violations, 340 overruns, 4 underflow kinds' texts, an invalid
+  class 3, 4 leftovers across the three streams), and the kept-entries limit. **Not yet reached by a fixture**: the
+  other violations (no flush, two sources, foreign source, offset_imm, log and nfv, undefined, end word, no nfv,
+  misaligned), the ROM-end and invalid-word texts, the over-words underflows, leftover kinds 2 and 3: ported from
+  ref's source line by line; a script provoking each would close it (to do if the budget allows).
+  The replayer's tests, the slot tests, ReplayConf (gcc and clang, debug and release), test_t2_harness, test_g1_replay,
+  test_chain, test_tracer_slot (clang release): pass, unchanged.
+- **Shared file**: one line in the Makefile, `include tests/p7b.mk` (P7b's rules). Tell the integrator.

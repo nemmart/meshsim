@@ -18,6 +18,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 
 #include "base/fatal.h"
 #include "units/event_counts.h"
@@ -199,10 +200,16 @@ public:
     };
     enum : uint64_t { INV_CLASS3 = 1, INV_ROM_END = 2, INV_WORD = 3 };   // b: the instruction / start<<16|row / rowcore cause
     enum : uint64_t { UF_CODE_OVER_DECODE = 1, UF_CODE_PAST_VALUES = 2, UF_LOG_END = 3, UF_LOG_OVER = 4, UF_NFV_OVER = 5,
-                      UF_TRANSFER = 6 };
+                      UF_TRANSFER = 6, UF_TRANSFER_END = 7 };   // 6: past the read log's words, 7: past its values (W25)
     static constexpr unsigned FACT_RING = 64;
+    // ref's error lists (W25): Replayer.violations, invalids, overruns, underflows, leftovers, each entry ref's text. The
+    // first `list_capacity` entries of each are kept, formatted when recorded (snprintf into a buffer allocated at
+    // construction; D24), and every entry is counted; nothing is allocated in the run. ref's badWrites is always empty
+    // (a bad write is FATAL here, UndefinedBehavior in ref).
+    enum : unsigned { L_VIOLATIONS = 0, L_INVALID, L_OVERRUNS, L_UNDERFLOWS, L_LEFTOVER, N_LISTS };
+    static constexpr unsigned LIST_CAPACITY = 4, LIST_TEXT = 256;
 
-    explicit Replayer(unsigned me = 0, unsigned log_entries = LOG_QUEUE_ENTRIES);
+    explicit Replayer(unsigned me = 0, unsigned log_entries = LOG_QUEUE_ENTRIES, unsigned list_capacity = LIST_CAPACITY);
     Replayer(const Replayer&) = delete;
     Replayer& operator=(const Replayer&) = delete;
 
@@ -256,6 +263,10 @@ public:
     const ReplayerFact& fact(unsigned i) const { return facts_[(fact_n_ - fact_shown_ + i) % FACT_RING]; }
     unsigned fact_shown() const { return fact_shown_; }
     static void fact_text(const ReplayerFact& f, char* buf, size_t n);
+    // ref's lists (above): how many entries list l has had, how many are kept, and kept entry i's text.
+    uint64_t list_count(unsigned l) const { return list_n_[l]; }
+    uint32_t list_capacity() const { return list_cap_; }
+    const char* list_entry(unsigned l, uint32_t i) const { return &list_text_[(size_t(l) * list_cap_ + i) * LIST_TEXT]; }
 
     // The sink (4.19.12): one row every sink_interval cycles; a running hash of every record (h = mix(h ^ word), word 0
     // first), and the records into `buf` if given (capacity in rows; FATAL beyond it).
@@ -326,8 +337,9 @@ private:
     };
     static constexpr unsigned IN_RUN = 2, IN_CONFIG = 3, RING = 16;
 
-    void violate(int64_t t, uint16_t code, uint64_t a = 0, uint64_t b = 0);
-    void record(int64_t t, uint16_t code, uint64_t a, uint64_t b);
+    void violate(int64_t t, uint16_t code, uint64_t a = 0, uint64_t b = 0, uint64_t c = 0);
+    void record(int64_t t, uint16_t code, uint64_t a, uint64_t b, uint64_t c = 0);
+    void list_add(int64_t t, uint16_t code, uint64_t a, uint64_t b, uint64_t c);   // ref's text into its list (W25)
     void note_input(int64_t t);
     void settle(int64_t T);
     unsigned next_offset() const;
@@ -343,7 +355,7 @@ private:
     void finish_row(int64_t T);
     void check_leftover(int64_t T);
     void underflow(int64_t T, unsigned stream, uint64_t cause);
-    void invalid(int64_t T, uint64_t cause, uint64_t detail);
+    void invalid(int64_t T, uint64_t cause, uint64_t detail, uint64_t c = 0);
     void exp_pop();
     void exp_new_expansion();
     ReplayerStream& stream(unsigned i) { return i == 0 ? code : i == 1 ? rlog : wlog; }
@@ -394,6 +406,9 @@ private:
 
     // facts
     ReplayerFact facts_[FACT_RING] = {};
+    std::unique_ptr<char[]> list_text_;   // N_LISTS x list_cap_ entries of LIST_TEXT bytes (W25)
+    uint32_t list_cap_ = 0;
+    uint64_t list_n_[N_LISTS] = {};
     unsigned fact_n_ = 0, fact_shown_ = 0;
     uint64_t fact_counts_[64] = {};
 

@@ -47,11 +47,11 @@ no spec**: v1.35 would be a simulator with nothing saying what it simulates.
 |---|---|---|---|
 | `README.md` | what v1.35 is; the reader's map (section 2); the layout; status; the glossary. One page | new | P8 |
 | `BUILDING.md` | prerequisites; the three builds and what each is for (**release has the spec's checks compiled out; suite and debug have them**); one command per thing built | J1 | P8 |
-| `RUNNING.md` | every suite, driver, tool and kit: the command, the time, the outputs, the reference it is checked against. Its table checked against `run_tests.sh --list` | J1; `run_tests.sh`'s header; `tests/*/README` | P8 |
+| `RUNNING.md` | every suite, driver, tool and kit: the command, the time, the outputs, the reference it is checked against. Its table checked against `run_tests.sh --list` (a small new option) | J1; `run_tests.sh`'s header; `tests/*/README` | P8 |
 | `CHANGES-v1.35.md` | **for the RTL:** no hardware change; the deliberate differences from v1.3's simulator (D27–D29, D33/D44, D34). **For users:** each v1.3 command and its v1.35 equivalent; the `Config` fields dropped (D41 Q4); the tools that changed (D42, D43) | DECISIONS; the inventory's "equivalent" column | P8 |
 | `spec/OVERVIEW.md` | the goal, the system, one proof's flow, platform against Jolt-specific, status. Two pages | new; **drafted, branch `v1.35-spec`** | now |
 | `spec/GUIDELINES.md` | the rules the design follows (checked or UB; terminal errors; the mesh's regimes; what spec, meshsim and RTL must agree on) | the spec's preamble; the owner's rulings | now |
-| `spec/machine-spec.md`, `replayer-opcodes.md`, `schedule.md` | v1.3's, hardware and section numbers unchanged; every statement about the simulator made true of v1.35 (about 40 edits, listed in a table) | `v1.3/spec/` | now |
+| `spec/machine-spec.md`, `replayer-opcodes.md`, `schedule.md` | v1.3's, hardware and section numbers unchanged; every statement about the simulator, and every path, made true of v1.35 (under a hundred edits, listed in a table) | `v1.3/spec/` | now |
 | `spec/history/` | the older `CHANGES-*` guides and the four `DECISIONS-v1.x` logs the spec cites, unchanged | `v1.3/spec/`, `v1.3/planning/` | now |
 | `src/README.md` | how the simulator works: the cycle and its levels, wakes, sizing at startup, threads and the partition, the two coding regimes, determinism and its checks; then **adding a unit**: a checklist, one worked example, the tests required | `README.md`'s brief; D6, D16, D20, D23, D24, D26, D30; `sim.h` | P8 |
 | `src/PORTS.md` | the port kinds' rules, stated on their own; the `ref` class and line of each moves to an appendix | today's, restructured | P8 |

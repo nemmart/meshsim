@@ -18,8 +18,9 @@
 //     (`meshsim.jar=...`): tooling metadata, not the model (owner, Q2); run_tests.sh's --check masks it;
 //   - the ORACLE image (SortTest's simulator-only oracle split) isn't ported: no v1.3 build makes it (owner, Q5);
 //   - the stack headroom comes from the controller's diagnostic lowest stack pointer (owner, Q3), not a per-cycle scan.
-// PENDING (W20's PhaseLog, H3): the per-phase peaks (the "peaks in" lines, the GATHER queue peak, the CSV's peak
-// columns) and the phases CSV; until then the phases are C&C's own log (GO and all READY per GO) and the peaks 0.
+// THE PHASES are W20's PhaseLog (tests/phase_log.h, ref's line for line), attached at the machine's construction; its
+// write-engine input and GATHER queue peaks exist in the debug and suite builds only: run_tests.sh and the kit build
+// sort_test with MODE=suite.
 #include <algorithm>
 #include <cinttypes>
 #include <cstdarg>
@@ -31,6 +32,7 @@
 #include <unistd.h>
 #include <vector>
 
+#include "check.h"
 #include "mach.h"
 #include "sha256.h"
 #include "statefp.h"
@@ -278,15 +280,6 @@ struct Machine {
     Mach::Image im;
     Syms syms;
     int64_t all_ready_at = -1;
-    // C&C's GOs and all-READYs as they happen (ref's PhaseLog.onGo / onAllReady), read between cycles from C&C's
-    // last_go_at and last_all_ready_at (W20's PhaseLog, H3, will take this over)
-    std::vector<int64_t> gos, readies;
-    int64_t seen_go = -1, seen_ready = -1;
-    void observe() {
-        if (cc.last_go_at() != seen_go) { seen_go = cc.last_go_at(); if (seen_go >= 0) gos.push_back(seen_go); }
-        // C&C's last_all_ready_at: go()'s first all READY, the t PhaseLog.onAllReady is called with
-        if (cc.last_all_ready_at() != seen_ready) { seen_ready = cc.last_all_ready_at(); if (seen_ready >= 0) readies.push_back(seen_ready); }
-    }
     Profile pf;
     // sort.prof (Controller.runCycle): before each cycle the core runs, tile 0 in RUN with pc in [lo, hi)
     bool prof_sample() {
@@ -298,7 +291,7 @@ struct Machine {
     }
     // SortTest.Machine.monitor's profiles (its stack watch is the core's own, Q3)
     void monitor() {
-        const size_t ph = gos.empty() ? size_t(-1) : gos.size() - 1;   // PhaseLog's phases.size() - 1
+        const size_t ph = c.phases().phases.size() - 1;                 // PhaseLog's phases.size() - 1 (-1: none yet)
         if (!pf.watch.empty()) {
             auto& w = pf.watch_by_phase[ph];
             if (w.empty()) w.assign(pf.watch.size(), std::array<int64_t, 64>{});
@@ -313,17 +306,6 @@ struct Machine {
             Profile::add(pf.prof, f); Profile::add(pf.by_phase[ph], f);
         }
     }
-    // phase i: {GO, its end}: the first all READY after its GO (PhaseLog.onAllReady), else the next GO (onGo's close)
-    std::vector<std::array<int64_t, 2>> phases() const {
-        std::vector<std::array<int64_t, 2>> v;
-        for (size_t i = 0; i < gos.size(); i++) {
-            int64_t end = i + 1 < gos.size() ? gos[i + 1] : -1;
-            // strictly between its GO and the next
-            for (int64_t r : readies) if (r > gos[i] && (i + 1 >= gos.size() || r < gos[i + 1])) { end = r; break; }
-            v.push_back({gos[i], end});
-        }
-        return v;
-    }
     std::unique_ptr<FpCheck> fpc;
     Machine(const Opts& o, const std::string& fp_name) : m(o.config()), c(m.c), cc(m.c.cc()) {
         if (const char* d = std::getenv("SORT_FP")) {
@@ -331,6 +313,7 @@ struct Machine {
             if (sortkit::is_file(f)) { fpc = std::make_unique<FpCheck>(f, c); std::fprintf(stderr, "fp: %s against %s\n", fp_name.c_str(), f.c_str()); }
             else std::fprintf(stderr, "fp: %s: no reference %s, not checked\n", fp_name.c_str(), f.c_str());
         }
+        c.phases();                                   // ref's Chip.phases (W20's PhaseLog), there from the start
         im = Mach::Image::load_dir(image_dir(), "sort");
         syms.load(image_dir() + "/sort.sym");
         im.syms = syms.sym;
@@ -356,7 +339,7 @@ struct Machine {
         cc.load_words(lw_broadcast(), 0x01000000u, im.code).load_words(lw_broadcast(), sym("_data_start"), im.data)
           .command(lw_broadcast(), 0x4Au << 24, {sym("_start")}).run_when_ready();
         const bool ok = c.run_until([&] {
-            observe(); const bool counted = prof_sample();
+            const bool counted = prof_sample();
             const bool done = !cc.busy() && all_waiting();
             if (done && counted) pf.prof_cycles--;     // the last check: no cycle follows it
             return done;
@@ -391,7 +374,7 @@ struct Machine {
         arm_sp();
         if (fpc) fpc->at(c.cycle());                  // the state after the input and the queue (FpHooks' first point)
         const bool ok = c.run_until([&] {
-            observe(); monitor(); const bool counted = prof_sample(); if (fpc) fpc->at(c.cycle());
+            monitor(); const bool counted = prof_sample(); if (fpc) fpc->at(c.cycle());
             const bool done = !cc.busy() && c.all_stopped();
             if (done && counted) pf.prof_cycles--;     // the last check: no cycle follows it
             return done;
@@ -427,7 +410,7 @@ struct Machine {
                 if (c.tile(k).hist_peek(t) != 0) { suite::check(false, "%s: HIST clear at the end (tile %u)", what.c_str(), k); t = 256; break; }
     }
     void dump_state() {                             // SortTest.Machine.dumpState (in part: a failed run's state)
-        out(fmt("    state at cycle %" PRId64 " (C&C at phase %zu), violations %" PRIu64 ":", c.cycle(), gos.size(), c.violations()));
+        out(fmt("    state at cycle %" PRId64 " (C&C at phase %zu), violations %" PRIu64 ":", c.cycle(), cc.phases_logged(), c.violations()));
         std::map<std::string, std::vector<unsigned>> st;
         for (unsigned k = 0; k < 64; k++) {
             mach::TileRef p = c.tile(k);
@@ -467,7 +450,7 @@ void p1(const std::string& kind, int n, int fmt_, const Opts& op) {
     }
     Keys k2 = builtin_keys(kind, n, seed_of(kind, 77));
     int l1_bad = 0;
-    const size_t base = m.gos.size();
+    const size_t base = m.cc.phases_logged();
     m.cc.command(Machine::lw_broadcast(), CMD_L1 << 24 | uint32_t(fmt_)).go().command(Machine::lw_broadcast(), CMD_L2 << 24);
     int64_t l1_ready = 0, l2_ready = 0;
     m.at_all_ready([&] {
@@ -492,7 +475,7 @@ void p1(const std::string& kind, int n, int fmt_, const Opts& op) {
     m.hist_clear(what);
     m.check_end(what);
     out(fmt("%s: L1 GO -> all READY %s; L2 GO -> all READY %s  [meas: SortTest p1]", what.c_str(),
-            grouped(l1_ready - m.gos[base]).c_str(), grouped(l2_ready - m.gos[base + 1]).c_str()));
+            grouped(l1_ready - m.cc.phase_log()[base][1]).c_str(), grouped(l2_ready - m.cc.phase_log()[base + 1][1]).c_str()));
 }
 
 // ============================================================================================== the sort, end to end
@@ -509,12 +492,9 @@ void load_input(Machine& m, const Keys& k, int fmt_) {
     }
 }
 
-// PhaseLog's phases, from C&C's own log until W20's PhaseLog lands: phase i is GO i (its command word, its GO), ending at
-// the first all READY C&C sees after it (the next GO's wait), as PhaseLog.onGo / onAllReady close it.
-struct Phase { std::string name; uint32_t word = 0; int64_t go_at = 0, end_at = -1; int64_t cycles() const { return end_at - go_at; } };
 struct Step {
     std::string name; int64_t cycles = 0, go_ready = 0, ov_load = 0; int phases = 0;
-    std::map<std::string, int> peak;               // PENDING (W20's PhaseLog): link, eject, weIn, gatherQ, area
+    std::map<std::string, int> peak;               // PhaseLog's peaks, the maximum over the step's phases
     int pk(const char* k) const { auto it = peak.find(k); return it == peak.end() ? 0 : it->second; }
 };
 struct Result { std::string path; bool stage2 = false, bt_wanted = false; int64_t total = 0, oracle = 0; std::vector<Step> steps; int checks_failed = 0; };
@@ -542,6 +522,7 @@ bool sort_run(const std::string& label, const Keys& k, int fmt_, bool shaped, co
     const int failed0 = int(suite::failed);
     Oracle o(k, fmt_, shaped);
     Machine m(op, fp_name);
+    m.c.phases().namer = [](int32_t w) { return phase_name(w); };
     m.boot();
     load_input(m, k, fmt_);
     if (m.im.syms.count("ORACLE")) { std::fprintf(stderr, "sort_test: an image with SortTest's oracle split is not supported (NOTES, Q5)\n"); std::exit(2); }
@@ -557,20 +538,20 @@ bool sort_run(const std::string& label, const Keys& k, int fmt_, bool shaped, co
     }
     cmd.push_back(CMD_L2 << 24);
     const int barriers = shaped ? 65 : 66;         // the split's own barriers (BINDING.md)
-    std::vector<uint32_t> words = {0x4Au << 24};   // every GO's command word, in order (the boot's first)
-    m.cc.command(Machine::lw_broadcast(), cmd[0]).go(); words.push_back(cmd[0]);
+    m.cc.command(Machine::lw_broadcast(), cmd[0]).go();
     for (size_t i = 1; i <= cmd.size(); i++) {
         if (cmd[i - 1] >> 24 == CMD_SPLIT)
-            for (int b = 0; b < barriers; b++) { m.cc.command(Machine::lw_broadcast(), CMD_BARRIER << 24); m.at_all_ready(nullptr).go(); words.push_back(CMD_BARRIER << 24); }
+            for (int b = 0; b < barriers; b++) { m.cc.command(Machine::lw_broadcast(), CMD_BARRIER << 24); m.at_all_ready(nullptr).go(); }
         const uint32_t w = i < cmd.size() ? cmd[i] : CMD_EXIT << 24;
         m.cc.command(Machine::lw_broadcast(), w);
-        m.at_all_ready(nullptr).go(); words.push_back(w);
+        m.at_all_ready(nullptr).go();
     }
     uint64_t maxc = 400000000ull;
     if (const char* e = std::getenv("SORT_MAXCYCLES")) maxc = std::strtoull(e, nullptr, 10);
     const bool ok = m.finish(maxc);
     suite::check(ok, "%s: the sequence ran to its end", what.c_str());
     if (!ok) { m.dump_state(); return false; }
+    m.c.phases().close();
 
     // ---- verification
     int bad = 0, size_bad = 0, r_bad = 0, v_bad = 0;
@@ -602,26 +583,24 @@ bool sort_run(const std::string& label, const Keys& k, int fmt_, bool shaped, co
     m.hist_clear(what);
     m.check_end(what);
 
-    // ---- measurement: the phases (C&C's log; PhaseLog's when W20's lands), steps in sequence order
-    const auto pl = m.phases();
-    std::vector<Phase> ph(pl.size());
-    for (size_t i = 0; i < pl.size(); i++) {
-        ph[i].word = i < words.size() ? words[i] : 0;
-        ph[i].name = phase_name(int64_t(ph[i].word));
-        ph[i].go_at = pl[i][0];
-        ph[i].end_at = pl[i][1];
-    }
+    // ---- measurement (PhaseLog): steps in sequence order, the split's barrier phases inside SPLIT
+    const std::vector<mach::PhaseLog::Phase>& ph = m.c.phases().phases;
     std::vector<Step> steps;
     int last_sort = int(ph.size()) - 1;
     while (last_sort >= 0 && ph[size_t(last_sort)].name != "L2") last_sort--;
     int first_sort = 0;
     while (first_sort < last_sort && ph[size_t(first_sort)].name != "L1") first_sort++;
     for (int i = first_sort; i <= last_sort; i++) {
-        const Phase& p = ph[size_t(i)];
+        const mach::PhaseLog::Phase& p = ph[size_t(i)];
         if (steps.empty() || steps.back().name != p.name) { steps.push_back(Step{}); steps.back().name = p.name; }
         Step& cur = steps.back();
         const int64_t next = i < last_sort ? ph[size_t(i) + 1].go_at : p.end_at;
         cur.cycles += next - p.go_at; cur.go_ready += p.cycles(); cur.phases++;
+        for (int q = 0; q < mach::PhaseLog::NP; q++) {
+            auto it = cur.peak.find(mach::PhaseLog::PEAKS[q]);
+            if (it == cur.peak.end()) cur.peak[mach::PhaseLog::PEAKS[q]] = int(p.peak[q]);
+            else it->second = std::max(it->second, int(p.peak[q]));
+        }
         auto bp = m.pf.by_phase.find(size_t(i));
         if (bp != m.pf.by_phase.end()) cur.ov_load += Profile::get(bp->second, "ov_load");
     }
@@ -691,11 +670,15 @@ bool sort_run(const std::string& label, const Keys& k, int fmt_, bool shaped, co
             out(b);
         }
     }
+    if (std::getenv("SORT_PHASES")) out(m.c.phases().report());
     if (const char* pr = std::getenv("SORT_PROF")) out(std::string("    sort.prof ") + pr + ": tile 0 cycles " + std::to_string(m.pf.prof_cycles));
     Result res;
     res.path = PATHS[path0 < 5 ? path0 : 0]; res.stage2 = plan0 != 0; res.bt_wanted = bt0 != 0; res.total = total - oracle_cyc; res.oracle = oracle_cyc;
     res.steps = steps; res.checks_failed = int(suite::failed) - failed0;
-    if (!op.phases_csv.empty()) std::fprintf(stderr, "sort_test: phases=%s: PENDING (W20's PhaseLog, H3); not written\n", op.phases_csv.c_str());
+    if (!op.phases_csv.empty()) {
+        std::string err;
+        if (!m.c.phases().csv(op.phases_csv, err)) { std::fprintf(stderr, "sort_test: %s\n", err.c_str()); std::exit(1); }
+    }
     if (!op.csv.empty()) write_csv(op.csv, label, fmt_, n, op, m.c.cfg().ready_latency, res);
     return true;
 }
@@ -726,6 +709,10 @@ std::string inputs_line(const std::string& keys) {
 }  // namespace
 
 int main(int argc, char** argv) {
+    if (!sim::check::kOn) {                         // PhaseLog (the measurement) is kept in these builds only
+        std::fprintf(stderr, "sort_test: build it with MODE=suite (or debug): W20's PhaseLog runs only there\n");
+        return 2;
+    }
     std::vector<std::string> args(argv + 1, argv + argc);
     Opts op;
     auto is_int = [](const std::string& s) { size_t i = s[0] == '-' ? 1 : 0; if (i == s.size()) return false; for (; i < s.size(); i++) if (s[i] < '0' || s[i] > '9') return false; return true; };

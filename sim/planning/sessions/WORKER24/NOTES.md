@@ -129,3 +129,15 @@ Commit and push after each step; each step checked against `ref`.
   columns, every log equal but the peak lines and the simulator's field, every TOTAL line equal up to the GATHER peak;
   uniform-k128's TOTAL 1,229,687 as sort64k. sort_compare lists every step of every run as differing: the peak columns
   (0 here until PhaseLog), as expected. Wall times recorded, not timing (five runs at a time each side).
+- **PhaseLog (W20, main 0de4a23c) in**: sort_test attaches `Chip::phases()` at construction (SortTest's namer before the
+  boot; p1 the default), closes it after the run, takes its phases and peaks; my stand-in (C&C's GO and all-READY times)
+  is gone. PhaseLog runs in the debug and suite builds only: sort_test refuses a release build with a message; the kit
+  (assemble.sh) and run_tests.sh build MODE=suite; test_sort_suites passes without running in release builds.
+  **Every log now equal to v1.3's line for line** (the inputs line's first field aside): sort-p1, sort, sort-shuf,
+  sort-bt-kv32, sort-bt-k128, H7's two. **run_tests.sh: sort, sort-shuf and both BT steps live** (the BT key set by
+  tests/sort/keys.sh); `--check` clean on all five sort steps.
+- **The kit at 2,000 against Quest 178** (suite build; p4 and shuffle, 46 runs): **every run's CSV byte-identical**, every
+  log equal (first field aside), every phases CSV equal but one column, `unreadOverwrites` (invariant 8 as a statistic:
+  0 until W26's tracking lands, phase_log.h; 64 in some of v1.3's SPLIT phases). The sweep group waits for the Config
+  fields (W20's next item).
+- **Checks of this change** (2026-11-12): sort_test, test_sort_suites and test_sort_kit built and run in all six builds (clang and gcc: suite, release, debug): all pass, the release builds' sort_test checks passing without running (PhaseLog). The runner's five sort steps with `--check`: no log differs.

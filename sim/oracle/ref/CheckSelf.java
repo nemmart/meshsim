@@ -156,6 +156,26 @@ final class CheckSelf {
             m.c.run(300);
             System.out.print(m.c.violationReport());
         }
+        {   // the request bus's root drops a request for a reserved target or one without a receiver (W26, 1b; W22-13):
+            // REQUEST_SET_W0 = target << 7, REQUEST_SEND, from tiles 1, 2, 3 mod 4 to targets 3, 5, 7
+            Config k = Mach.cfg(-1); k.checkErrors = false; k.maxViolationMessages = 200;
+            Mach m = new Mach(k);
+            int P = Registers.PMEM_BASE, LOOP = 0x0000006F, X1 = 0x80000093;
+            int[][] prog = { { LOOP }, { X1, 0x18000113, 0x0420A423, 0x0400AA23, LOOP }, { X1, 0x28000113, 0x0420A423, 0x0400AA23, LOOP },
+                             { X1, 0x38000113, 0x0420A423, 0x0400AA23, LOOP } };
+            for (Tile p : m.c.tiles) { int[] w = prog[p.idx % prog.length]; for (int i = 0; i < w.length; i++) p.core.pokeLocal(P + 4 * i, w[i]); }
+            m.c.run(40);
+            m.c.cc.command(LinkWord.BROADCAST, Registers.CMD_JUMP << 24, P).runWhenReady();
+            m.c.run(800);
+            System.out.print(m.c.violationReport());
+        }
+        {   // C&C's receive FIFO full (W26, 1b; the endpoints' send checks wait for the harness's Net.step to call them)
+            Config k = Net.cfg(-1); k.cncRxDepth = 4;
+            Net n = new Net(k);
+            for (int i = 0; i < 8; i++) n.at(10 + i, 40 + i, LinkWord.CC1, LinkWord.M_WRITE, 0, 0x100, LinkWord.SIZE_32, i, 0);
+            n.runAll(2000);
+            System.out.print(n.c.violationReport());
+        }
         {   // the message cap (maxViolationMessages): the count goes on
             Config k = Net.cfg(-1); k.maxViolationMessages = 3;
             Net n = new Net(k);

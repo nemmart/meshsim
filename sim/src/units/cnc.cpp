@@ -5,6 +5,8 @@
 #include <cstring>
 
 #include "base/fatal.h"
+#include "check.h"
+#include "units/linkword.h"
 
 namespace units {
 
@@ -118,10 +120,19 @@ bool Cnc::all_ready(int64_t t) const {
     return true;
 }
 
+// W26: Endpoint.send's checks (invariants 5 and 21) as chip facts, at the send's cycle
+void endpoint_checks(uint64_t t, unsigned address, const CncPacket& p) {
+    const uint64_t h = lw::hdr(address, p.dst, p.mode, p.counter, p.addr, p.size);
+    if (lw::bad_packet(p.mode, p.size, p.addr, 1)) sim::check::record(t, -1, sim::check::Kind::EP_BAD_PACKET, h, address);
+    if (p.size == lw::SIZE_UNDEF) sim::check::record(t, -1, sim::check::Kind::EP_SIZE_UNDEF, 0, address);
+    if (lw::reserved_mode(p.mode)) sim::check::record(t, -1, sim::check::Kind::EP_RESERVED_MODE, p.mode, address);
+}
+
 // Endpoint.send: src 64, the payload masked to the size; invariants 5 and 21 counted.
 void Cnc::send_packet(sim::Ctx& c, const CncPacket& p) {
     const uint64_t h = lw::hdr(lw::CC1, p.dst, p.mode, p.counter, p.addr, p.size);
     if (p.size == lw::SIZE_UNDEF || lw::reserved_mode(p.mode)) violations++;
+    endpoint_checks(c.now(), lw::CC1, p);              // W26 (ref counts the bad packet too; this counter, as before, doesn't)
     retry_w[0] = lw::mask_lo(p.lo, p.size); retry_w[1] = h; retry_w[2] = lw::mask_hi(p.hi, p.size);
     c.put(send, retry_w[0], retry_w[1], retry_w[2]);
     packets_sent++;
@@ -159,7 +170,7 @@ sim::Wake Cnc::step(sim::Ctx& c) {
         const uint64_t d = w[0], h = w[1], hi = w[2];
         if (hs) hs->record(uint64_t(t), w, 64);              // W20 (harness-only): Endpoint.received
         c.take(rx);
-        if (rx_count >= rx_depth) { rx_overflow = true; rx_lost++; }
+        if (rx_count >= rx_depth) { rx_overflow = true; rx_lost++; sim::check::record(uint64_t(t), -1, sim::check::Kind::CNC_RX_LOST); }   // (W26: the fact)
         else {
             uint64_t* e = rxq[(rx_head + rx_count) % kRx];
             e[0] = d; e[1] = lw::src(h); e[2] = uint64_t(t); e[3] = hi; e[4] = lw::size(h);
@@ -282,6 +293,7 @@ sim::Wake Endpoint::step(sim::Ctx& c) {
             pending_retry = 0;
             if (hs->due(t)) {                                 // Endpoint.send: src its address, the payload masked
                 const CncPacket& p = hs->pop();
+                endpoint_checks(uint64_t(t), address, p);     // W26: Endpoint.send's checks as chip facts
                 retry_w[0] = lw::mask_lo(p.lo, p.size); retry_w[1] = lw::hdr(address, p.dst, p.mode, p.counter, p.addr, p.size);
                 retry_w[2] = lw::mask_hi(p.hi, p.size);
                 c.put(send, retry_w[0], retry_w[1], retry_w[2]);

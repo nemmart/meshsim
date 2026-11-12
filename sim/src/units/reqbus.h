@@ -370,7 +370,10 @@ struct ReqNode {
             if (cur >= 0) {
                 const unsigned tg = buf[cur].head_req()->target();
                 dropping = tg >= TARGETS;
-                if (dropping) violations++;
+                if (dropping) {
+                    violations++;
+                    sim::check::record(uint64_t(t), -1, sim::check::Kind::REQBUS_NO_RECEIVER, buf[cur].head_req()->src, tg);   // W26
+                }
                 else credits[tg]--;
             }
         }
@@ -460,7 +463,10 @@ struct ReqRecv {
         // deliveries arriving at t (ref's toReceiver drained at the start of runCycle(t)): visible from t + 1
         while (c.ready(deliver)) {
             const sim::Word* w = c.peek(deliver);
-            if (qn >= depth) violations++;   // ref: "the root's credits should prevent it"
+            if (qn >= depth) {               // ref: "the root's credits should prevent it"
+                violations++;
+                sim::check::record(uint64_t(t), -1, sim::check::Kind::REQBUS_QUEUE_OVERFLOW, target);   // W26
+            }
             else {
                 Entry& e = q[(qh + qn) % depth];
                 e.w[0] = uint32_t(w[1]); e.w[1] = uint32_t(w[1] >> 32); e.w[2] = uint32_t(w[2]); e.w[3] = uint32_t(w[2] >> 32);

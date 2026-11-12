@@ -159,13 +159,50 @@ std::string image_dir() {
 // SortTest.Image's symbols: nm -S lines, "addr [size] type name", the first of a name kept (Mach.Image reads only
 // three-field lines)
 struct Syms {
-    std::map<std::string, uint32_t> sym;
+    std::map<std::string, uint32_t> sym, sizes;
+    std::vector<std::string> order;                // the names in the file's order (SortTest's HashMap is searched by
+                                                   //  sort.watch for a clone: the first of a unique prefix here)
+    std::map<uint32_t, std::string> funcs;         // program-memory functions (T, t) by address, the first kept
     void load(const std::string& path) {          // nm -S: addr [size] type name
         for (const std::string& l : sortkit::read_lines(path)) {
             std::vector<std::string> f = sortkit::split_ws(l);
             if (f.size() < 3) continue;
-            sym.emplace(f.back(), uint32_t(std::stoul(f[0], nullptr, 16)));
+            const uint32_t a = uint32_t(std::stoul(f[0], nullptr, 16)), size = f.size() == 4 ? uint32_t(std::stoul(f[1], nullptr, 16)) : 0;
+            const std::string& type = f[f.size() - 2]; const std::string& name = f.back();
+            if (sym.emplace(name, a).second) order.push_back(name);
+            if (size > 0) sizes.emplace(name, size);
+            if ((type == "T" || type == "t") && a >= 0x01000000u && a < 0x01008000u) funcs.emplace(a, name);
         }
+    }
+    // SortTest.Machine.monitor's name for a pc: "bootrom" in the boot ROM, else the function at or below it, "?" if none
+    std::string func_at(uint32_t pc) const {
+        if (pc >= 0x02000000u && pc < 0x03000000u) return "bootrom";
+        auto it = funcs.upper_bound(pc);
+        if (it == funcs.begin()) return "?";
+        return std::prev(it)->second;
+    }
+};
+
+// SortTest's profiles (H7), SortTest's -D options as environment variables:
+//   SORT_PROFILE (set)         tile 0's cycles per function over the run, awake or in WFI (a WFI's cycles go to the
+//                              function waiting in it): "tile 0 cycles per function: {f=n, ...}" (Java's Map.toString)
+//   SORT_PROF=lo-hi            tile 0's cycles with pc in [lo, hi) (hex), the boot included (Controller.profCycles)
+//   SORT_WATCH=f1,f2,...       every tile's cycles with its pc inside each function (a name, or GCC's clone of it:
+//                              name.constprop.0), per step: mean and max over the tiles
+// Sampled between cycles, as ref's monitor and runCycle do (run_until checks its condition before every cycle).
+struct Profile {
+    std::vector<std::pair<std::string, int64_t>> prof;                 // tile 0, over the run, in first-seen order
+    std::map<size_t, std::vector<std::pair<std::string, int64_t>>> by_phase;   // tile 0, per phase index
+    bool prof_on = false; uint32_t prof_lo = 0, prof_hi = 0; int64_t prof_cycles = 0;
+    std::vector<std::string> watch; std::vector<uint32_t> w_lo, w_hi;
+    std::map<size_t, std::vector<std::array<int64_t, 64>>> watch_by_phase;   // phase -> [function][tile]
+    static void add(std::vector<std::pair<std::string, int64_t>>& v, const std::string& f) {
+        for (auto& e : v) if (e.first == f) { e.second++; return; }
+        v.emplace_back(f, 1);
+    }
+    static int64_t get(const std::vector<std::pair<std::string, int64_t>>& v, const std::string& f) {
+        for (auto& e : v) if (e.first == f) return e.second;
+        return 0;
     }
 };
 
@@ -250,6 +287,32 @@ struct Machine {
         // C&C's last_all_ready_at: go()'s first all READY, the t PhaseLog.onAllReady is called with
         if (cc.last_all_ready_at() != seen_ready) { seen_ready = cc.last_all_ready_at(); if (seen_ready >= 0) readies.push_back(seen_ready); }
     }
+    Profile pf;
+    // sort.prof (Controller.runCycle): before each cycle the core runs, tile 0 in RUN with pc in [lo, hi)
+    bool prof_sample() {
+        mach::TileRef p = c.tile(0);
+        if (!pf.prof_on || p.halt() != units::Rv32::RUN) return false;
+        const uint32_t pc = p.pc();
+        if (pc >= pf.prof_lo && pc < pf.prof_hi) { pf.prof_cycles++; return true; }
+        return false;
+    }
+    // SortTest.Machine.monitor's profiles (its stack watch is the core's own, Q3)
+    void monitor() {
+        const size_t ph = gos.empty() ? size_t(-1) : gos.size() - 1;   // PhaseLog's phases.size() - 1
+        if (!pf.watch.empty()) {
+            auto& w = pf.watch_by_phase[ph];
+            if (w.empty()) w.assign(pf.watch.size(), std::array<int64_t, 64>{});
+            for (unsigned i = 0; i < 64; i++) {
+                const uint32_t pc = c.tile(i).pc();
+                for (size_t f = 0; f < pf.watch.size(); f++) if (pc >= pf.w_lo[f] && pc < pf.w_hi[f]) w[f][i]++;
+            }
+        }
+        mach::TileRef p = c.tile(0);
+        if (p.halt() == units::Rv32::RUN) {
+            const std::string f = syms.func_at(p.pc());
+            Profile::add(pf.prof, f); Profile::add(pf.by_phase[ph], f);
+        }
+    }
     // phase i: {GO, its end}: the first all READY after its GO (PhaseLog.onAllReady), else the next GO (onGo's close)
     std::vector<std::array<int64_t, 2>> phases() const {
         std::vector<std::array<int64_t, 2>> v;
@@ -271,6 +334,19 @@ struct Machine {
         im = Mach::Image::load_dir(image_dir(), "sort");
         syms.load(image_dir() + "/sort.sym");
         im.syms = syms.sym;
+        if (const char* pr = std::getenv("SORT_PROF")) {
+            const std::string v = pr; const size_t d = v.find('-');
+            pf.prof_on = true; pf.prof_lo = uint32_t(std::stoul(v.substr(0, d), nullptr, 16)); pf.prof_hi = uint32_t(std::stoul(v.substr(d + 1), nullptr, 16));
+        }
+        if (const char* w = std::getenv("SORT_WATCH"); w && *w) {
+            for (const std::string& n0 : sortkit::split_all(w, ',')) {
+                std::string nm = n0;
+                if (!syms.sym.count(nm)) for (const std::string& k : syms.order) if (k.rfind(n0 + ".", 0) == 0) { nm = k; break; }
+                pf.watch.push_back(n0);
+                pf.w_lo.push_back(sym(nm));
+                pf.w_hi.push_back(pf.w_lo.back() + (syms.sizes.count(nm) ? syms.sizes.at(nm) : 0));
+            }
+        }
     }
     uint32_t sym(const std::string& s) const { return im.sym(s); }
     // tile k's unit (through a named TileRef: gcc 13's -Wdangling-reference otherwise flags the chip's own unit)
@@ -279,7 +355,12 @@ struct Machine {
     void boot() {
         cc.load_words(lw_broadcast(), 0x01000000u, im.code).load_words(lw_broadcast(), sym("_data_start"), im.data)
           .command(lw_broadcast(), 0x4Au << 24, {sym("_start")}).run_when_ready();
-        const bool ok = c.run_until([&] { observe(); return !cc.busy() && all_waiting(); }, 100000);
+        const bool ok = c.run_until([&] {
+            observe(); const bool counted = prof_sample();
+            const bool done = !cc.busy() && all_waiting();
+            if (done && counted) pf.prof_cycles--;     // the last check: no cycle follows it
+            return done;
+        }, 100000);
         suite::check(ok, "boot: every tile waits for its first command");
     }
     static unsigned lw_broadcast() { return 126; }   // LinkWord.BROADCAST (units/net.h)
@@ -309,7 +390,12 @@ struct Machine {
     bool finish(uint64_t max) {
         arm_sp();
         if (fpc) fpc->at(c.cycle());                  // the state after the input and the queue (FpHooks' first point)
-        const bool ok = c.run_until([&] { observe(); if (fpc) fpc->at(c.cycle()); return !cc.busy() && c.all_stopped(); }, max);
+        const bool ok = c.run_until([&] {
+            observe(); monitor(); const bool counted = prof_sample(); if (fpc) fpc->at(c.cycle());
+            const bool done = !cc.busy() && c.all_stopped();
+            if (done && counted) pf.prof_cycles--;     // the last check: no cycle follows it
+            return done;
+        }, max);
         if (fpc) { fpc->at(c.cycle()); g_fp_ok = fpc->report(stderr) && g_fp_ok; }
         return ok;
     }
@@ -536,6 +622,8 @@ bool sort_run(const std::string& label, const Keys& k, int fmt_, bool shaped, co
         Step& cur = steps.back();
         const int64_t next = i < last_sort ? ph[size_t(i) + 1].go_at : p.end_at;
         cur.cycles += next - p.go_at; cur.go_ready += p.cycles(); cur.phases++;
+        auto bp = m.pf.by_phase.find(size_t(i));
+        if (bp != m.pf.by_phase.end()) cur.ov_load += Profile::get(bp->second, "ov_load");
     }
     const int64_t total = ph[size_t(last_sort)].end_at - ph[size_t(first_sort)].go_at;
     const int64_t oracle_cyc = 0;                  // the oracle split isn't ported (Q5)
@@ -578,6 +666,32 @@ bool sort_run(const std::string& label, const Keys& k, int fmt_, bool shaped, co
                 stalls, rot_late, late_tiles, max_rot, grp_late, max_grp, max_drift, drift_group >= 0 ? fmt(" (group %d)", drift_group).c_str() : ""));
         out(fmt("    M14: zero-length groups %" PRIu64 " (summed over tiles), of which with a gap %" PRIu64 " (1 + gap since 10 October); group-run stall cycles %" PRIu64 " (drift)", z, zg, gs));
     }
+    if (std::getenv("SORT_PROFILE")) {             // Java's Map.toString
+        std::string l = "    tile 0 cycles per function: {";
+        for (size_t i = 0; i < m.pf.prof.size(); i++) l += (i ? ", " : "") + m.pf.prof[i].first + "=" + std::to_string(m.pf.prof[i].second);
+        out(l + "}");
+    }
+    if (!m.pf.watch.empty()) {                     // per step: the phases of one name together, in first-seen order
+        std::vector<std::pair<std::string, std::vector<std::array<int64_t, 64>>>> by_step;
+        for (int i = 0; i <= last_sort; i++) {
+            auto w = m.pf.watch_by_phase.find(size_t(i));
+            if (w == m.pf.watch_by_phase.end()) continue;
+            const std::string& nm = ph[size_t(i)].name;
+            size_t at = by_step.size();
+            for (size_t j = 0; j < by_step.size(); j++) if (by_step[j].first == nm) at = j;
+            if (at == by_step.size()) by_step.emplace_back(nm, std::vector<std::array<int64_t, 64>>(m.pf.watch.size(), std::array<int64_t, 64>{}));
+            for (size_t f = 0; f < w->second.size(); f++) for (unsigned t = 0; t < 64; t++) by_step[at].second[f][t] += w->second[f][t];
+        }
+        for (auto& e : by_step) {
+            std::string b = "    watch in " + e.first + " (cycles per tile: mean / max):";
+            for (size_t f = 0; f < m.pf.watch.size(); f++) {
+                int64_t sum = 0, mx = 0; for (int64_t v : e.second[f]) { sum += v; mx = std::max(mx, v); }
+                if (mx > 0) b += " " + m.pf.watch[f] + " " + grouped(sum / 64) + " / " + grouped(mx) + ";";
+            }
+            out(b);
+        }
+    }
+    if (const char* pr = std::getenv("SORT_PROF")) out(std::string("    sort.prof ") + pr + ": tile 0 cycles " + std::to_string(m.pf.prof_cycles));
     Result res;
     res.path = PATHS[path0 < 5 ? path0 : 0]; res.stage2 = plan0 != 0; res.bt_wanted = bt0 != 0; res.total = total - oracle_cyc; res.oracle = oracle_cyc;
     res.steps = steps; res.checks_failed = int(suite::failed) - failed0;

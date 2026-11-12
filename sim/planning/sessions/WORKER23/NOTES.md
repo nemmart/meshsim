@@ -292,3 +292,11 @@ What I do test-side or add myself: C&C 1's model's `expect` (Cnc's field, set be
   W19's generators, header_diff.sh, the loads) is ready to port; RegDoc's rows need W19's table exposed from
   `tools/regs/regs_gen.h` (today a local static in `registers_md()`): I'll move it to namespace scope (output unchanged,
   test_regs checks).
+- **tools/regs/regs_gen.h** (W19's, closed; approved by the integrator): RegDoc's rows moved from a local static in
+  `registers_md()` to namespace scope (`regs::rd::ROWS`), for RegDocTest; the generated files unchanged (test_regs and
+  `gen_regs check` pass).
+- **RegDocTest** (`tests/ctl/suite_regdoc.cpp`): equal to ref's log (269 passed), clang release. **Matched with a
+  stand-in**: its 94 reserved-word stores at one cycle go through TileRef::store and are taken back off the core's
+  queue once their reason is known (only the reason is checked), until W20's store that returns the reason without
+  queuing. In make check (it guards the rest); PENDING in the runner until then. The documents are checked through
+  W19's generators (`regs::registers_md`, `regs::mesh_h`), the draft through `tools/regs/header_diff.sh`.

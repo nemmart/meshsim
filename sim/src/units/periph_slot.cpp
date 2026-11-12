@@ -29,9 +29,8 @@ SlotCore::Ref::~Ref() {
     if (!p) return;
     switch (type) {
         case PT_REPLAYER: {
-            auto* r = static_cast<Replayer*>(p);
-            delete[] r->row_buffer();
-            delete r;
+            delete[] rows;                                      // W20 (F6): the slot's own buffer, not the replayer's now
+            delete static_cast<Replayer*>(p);
             break;
         }
         case PT_TEST: delete static_cast<TestPeripheral*>(p); break;
@@ -42,7 +41,7 @@ SlotCore::Ref::~Ref() {
     }
 }
 SlotCore::Ref& SlotCore::Ref::operator=(Ref&& o) noexcept {
-    if (this != &o) { this->~Ref(); type = o.type; p = o.p; o.p = nullptr; o.type = PT_ABSENT; }
+    if (this != &o) { this->~Ref(); type = o.type; p = o.p; rows = o.rows; o.p = nullptr; o.type = PT_ABSENT; o.rows = nullptr; }
     return *this;
 }
 
@@ -75,7 +74,10 @@ void SlotCore::install(unsigned n, PeriphType type, const PeriphSlotConfig& c) {
         case PT_ABSENT: return;
         case PT_REPLAYER: {
             auto* r = new Replayer(tile, c.replayer_log_entries);
-            if (c.replayer_row_buffer) r->set_row_buffer(new uint64_t[c.replayer_row_buffer * Replayer::REC_LONGS], c.replayer_row_buffer);
+            if (c.replayer_row_buffer) {
+                per[n].rows = new uint64_t[c.replayer_row_buffer * Replayer::REC_LONGS];
+                r->set_row_buffer(per[n].rows, c.replayer_row_buffer);
+            }
             per[n].p = r;
             break;
         }

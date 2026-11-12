@@ -102,3 +102,8 @@ Commit and push after each step; each step checked against `ref`.
 - **The runner**: `sort-p1` is a step (its log equal); sort, sort-shuf and the BT steps stay pending with the reason
   (their peak lines) until PhaseLog lands. `tests/sort/keys.sh`: the BT key set prebuilt and checked by hash, made with
   pipeline/keys only if missing and a JDK is present (Q4's rule, for the steps too).
+- **The per-run CSV (H4)**: `sort_test run ... csv=` against Quest 178's kit CSVs (`kit/n2000.tgz`): p4/uniform-k128,
+  few5-k128, trace10-10-kv32, zipf10-k128 equal in every column but the five peak columns (PhaseLog); their logs equal
+  but the peak lines, the inputs lines equal under the mask.
+- **make check**: `test_sort_suites` runs sort_test: sort-p1's log against ref's (first field masked) with both p1
+  fingerprints, and the direct (uniform-k128) and TH (reverse-kv32) runs at every reference point (17 s, clang release).

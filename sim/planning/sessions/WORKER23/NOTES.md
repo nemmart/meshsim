@@ -300,3 +300,7 @@ What I do test-side or add myself: C&C 1's model's `expect` (Cnc's field, set be
   queue once their reason is known (only the reason is checked), until W20's store that returns the reason without
   queuing. In make check (it guards the rest); PENDING in the runner until then. The documents are checked through
   W19's generators (`regs::registers_md`, `regs::mesh_h`), the draft through `tools/regs/header_diff.sh`.
+- **RegDocTest matched** (2026-11-12, W20's 1afa1973: the test-store queue at 128, each store's violation recorded as
+  ref's): the stand-in dropped; the 94 reserved-word stores go through TileRef::store as they are; log equal (269
+  passed), clang release and the suite build; `regdoc` a runner step (run_tests.sh quick --check passes) and in make
+  check.

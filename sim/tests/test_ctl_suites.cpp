@@ -71,6 +71,4 @@ TEST(cccores_shuf_equals_ref_log) { if (kSetErrorsOnControllers) run_step("cccor
 TEST(ccbench_equals_ref_log) { run_step("ccbench", "suite_ccbench", ""); }
 TEST(hooks_equals_ref_log) { run_step("hooks", "suite_hooks", "-1"); }
 TEST(hooks_shuf_equals_ref_log) { run_step("hooks-shuf", "suite_hooks", "4"); }
-// regdoc: equal to ref's log; its reserved-word stores go through a stand-in (suite_regdoc.cpp) until W20's store
-// that returns its reason without queuing lands: not yet counted as matched (NOTES.md)
 TEST(regdoc_equals_ref_log) { run_step("regdoc", "suite_regdoc", ""); }

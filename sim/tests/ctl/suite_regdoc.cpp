@@ -8,9 +8,6 @@
 //  3. tools/regs/header_diff.sh (v1.3's header_diff.py, D40): every macro and struct offset the generated header shares
 //     with the draft the recipes compile against (fw/mesh-v1.2-draft.h) agrees (needs gcc; skipped without it);
 //  4. the simulator behaves as the document's register table says.
-// STAND-IN (NOTES.md): ref's `core.store(t, reserved word)` returns at once; TileRef::store queues (16 at most), so the
-// suite takes each reserved store back off the queue after its reason is known (only the reason is checked) until
-// W20's store that returns the reason without queuing lands.
 #include <unistd.h>
 
 #include <cstdio>
@@ -22,7 +19,6 @@
 #include "base/fatal.h"
 #include "../../tools/regs/regs_gen.h"
 #include "../mach.h"
-#include "units/tile_ctl.h"
 
 namespace {
 int pass = 0, fail = 0;
@@ -48,12 +44,6 @@ const regs::Reg& reg(const char* n) { for (const regs::Reg& g : regs::ALL) if (s
 uint32_t reg_addr(const regs::Reg& g) { return regs::REG_BASE + 4u * uint32_t(g.index); }
 constexpr int COND_RECV_UNDERFLOW = 14, ST_DONE = 4;
 
-// STAND-IN (above): the store's reason, the queued store taken back
-std::string store_reason(mach::Chip& c, unsigned k, int64_t t, uint32_t a, uint32_t v) {
-    const std::string e = c.tile(k).store(t, a, v);
-    if (e.empty()) { units::TileCore& core = c.unit<units::TileCore>(units::unit_prefix(k) + "core"); if (core.host_n) core.host_n--; }
-    return e;
-}
 }  // namespace
 
 int main() {
@@ -110,7 +100,7 @@ int main() {
         if (regs::reserved_word(i)) {
             const uint32_t a = regs::REG_BASE + 4u * uint32_t(i);
             check(c.tile(k).load(t, a, 4) == std::optional<uint32_t>(0), "reserved word 0x" + hex(0x800 + 4 * uint32_t(i)) + " reads 0");
-            check(store_reason(c, k, t, a, 1).empty(), "and a store there is ignored, not a bus error");
+            check(c.tile(k).store(t, a, 1).empty(), "and a store there is ignored, not a bus error");
         }
     check(c.tile(k).load(t, reg_addr(reg("REQUEST_RECEIVE")), 4) == std::optional<uint32_t>(0), "REQUEST_RECEIVE on a mesh tile reads 0 (an empty queue)");
     c.step(); c.step();

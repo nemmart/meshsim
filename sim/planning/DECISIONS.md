@@ -226,3 +226,14 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   carried**. For the workers now: **new code comments carry no worker names or ticket codes** (rule 4; the existing ones
   are stripped by one script at P8, proved by byte-identical preprocessed output), while references to `ref`'s classes
   stay.
+- **D46. A deliberate difference in the runner: Stage B's must-fail window** (integrator, 2026-11-12, W25's F9). Stage B
+  prints "old queue map (CL4: must fail) FAIL ..." on purpose (that window must fail), and the runner's summary, copied
+  from v1.3, greps every log for "FAIL". v1.3's own run_tests.sh would fail the same way today; it never showed because
+  ref's committed stageb.log predates the CL4 case. The runner's FAIL grep skips lines containing "(CL4: must fail)".
+- **D47. READY latencies below 3 are refused: a deliberate difference** (integrator, 2026-11-12, W24's F5; D29 and D30
+  applied). Since M2, the READY lines are Links of `ready_latency - 2` cycles from each register block to its row
+  collector (the shifted end of cycle plus the collector's own Link(1)), so `ready_latency` 1 and 2 can't be built
+  without news faster than a Link carries, or a rewiring of the chip's READY path. The physical default is 8 (D27's
+  Config defaults); v1.3's only use of 1 is the kit sweep's `ready-1` point in both sets. **The chip builder refuses
+  `ready_latency` below 3 with a message naming the field, and those two sweep runs end with no result in v1.35**, listed
+  under "Runs with no result" like v1.3's own refused points (W24's F3). Sweep's own ready points (4 and 8) are unaffected.

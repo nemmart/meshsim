@@ -204,7 +204,7 @@ struct Rv32 {
 
     // ================================================================ traps and halts
     void trap(uint64_t t, uint32_t cause, uint32_t tval, uint32_t at, uint32_t resume) {
-        if (in_handler && cause != CAUSE_EXTERNAL) { stop_loudly(t, HALT_TRAP2, at); return; }
+        if (in_handler && cause != CAUSE_EXTERNAL) { stop_loudly(t, HALT_TRAP2, at, cause); return; }
         traps++; trap_at = int64_t(t); trap_cause = int32_t(cause);
         mepc = cause == CAUSE_EXTERNAL ? resume : at; mcause = cause; mtval = tval;
         mstatus = (mstatus & ~(MSTATUS_MIE | MSTATUS_MPIE)) | ((mstatus & MSTATUS_MIE) ? uint32_t(MSTATUS_MPIE) : 0u);
@@ -212,7 +212,12 @@ struct Rv32 {
         if (log) log->add(t, T_TRAP, 0, mcause, mepc, mtval, pc);
     }
     // ecall, ebreak, a fetch fault, a misaligned jump, a trap inside the handler: ref stops loudly (and counts a violation).
-    void stop_loudly(uint64_t t, int why, uint32_t at) { violations++; halt_with(t, why, at); }
+    // (`detail`: the checker's text, as ref's stopLoudly message: the fetch's pc, the jump's target, the trap's cause)
+    void stop_loudly(uint64_t t, int why, uint32_t at, uint32_t detail = 0) {
+        violations++;
+        if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::CTL_HALT, uint64_t(why), detail);   // W26
+        halt_with(t, why, at);
+    }
     void halt_with(uint64_t t, int why, uint32_t at) {
         halt = why;
         if (log) log->add(t, T_HALT, 0, uint32_t(why), at);
@@ -239,7 +244,7 @@ struct Rv32 {
         uint32_t ipc = pc, ins;
         if ((ipc & 3) == 0 && region(ipc) == R_PMEM) { ins = imem[mem_word(ipc)]; if (first_image_at < 0) first_image_at = int64_t(t); }
         else if ((ipc & 3) == 0 && region(ipc) == R_BOOTROM && offset(ipc) >> 2 < bootrom_words) ins = bootrom[offset(ipc) >> 2];
-        else { stop_loudly(t, HALT_FETCH, ipc); return; }
+        else { stop_loudly(t, HALT_FETCH, ipc, ipc); return; }
         execute(e, t, ins, ipc);
     }
 
@@ -258,7 +263,7 @@ struct Rv32 {
         case 0x6F: {                                                                            // jal
             uint32_t imm = uint32_t(sins >> 31) << 20 | (ins & 0xFF000) | ((ins >> 20) & 1) << 11 | ((ins >> 21) & 0x3FF) << 1;
             res = next; wr = true; next = ipc + imm; stall += timing.branch_penalty; stall_branch += timing.branch_penalty;
-            if (next & 3) { stop_loudly(t, HALT_JUMP, ipc); return; }
+            if (next & 3) { stop_loudly(t, HALT_JUMP, ipc, next); return; }
             if (next == ipc && in_handler) parked = true;                                       // the handler's park loop
             break;
         }
@@ -266,7 +271,7 @@ struct Rv32 {
             if (f3 != 0) { illegal(e, t, ipc, ins); return; }
             res = next; wr = true; next = (a + uint32_t(sins >> 20)) & ~1u;
             stall += timing.branch_penalty; stall_branch += timing.branch_penalty;
-            if (next & 3) { stop_loudly(t, HALT_JUMP, ipc); return; }
+            if (next & 3) { stop_loudly(t, HALT_JUMP, ipc, next); return; }
             break;
         case 0x63: {                                                                            // branches
             uint32_t imm = uint32_t(sins >> 31) << 12 | ((ins >> 7) & 1) << 11 | ((ins >> 25) & 0x3F) << 5 | ((ins >> 8) & 0xF) << 1;
@@ -384,6 +389,7 @@ struct Rv32 {
                 else took_wake(e.reg(EVENTS) >> EV_GO & 1, int64_t(t), t, region(ipc) == R_BOOTROM);   // falls through
             } else if (ins == 0x30200073) {                   // mret: legal, flagged (every trap is terminal)
                 violations++;
+                if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::CTL_MRET);   // W26
                 next = mepc;
                 mstatus = (mstatus & ~MSTATUS_MIE) | ((mstatus & MSTATUS_MPIE) ? uint32_t(MSTATUS_MIE) : 0u) | MSTATUS_MPIE;
             } else if (f3 != 0 && f3 != 4) {                  // the CSR instructions
@@ -450,7 +456,10 @@ struct Rv32 {
     // A data- or program-memory word: the offset's high bits are ignored (it aliases; ref flags it).
     uint32_t mem_word(uint32_t a) {
         uint32_t off = offset(a);
-        if (off >= MEM_BYTES) { alias_accesses++; violations++; }
+        if (off >= MEM_BYTES) {
+            alias_accesses++; violations++;
+            if (ck_tile >= 0) sim::check::record(ck_t, ck_tile, sim::check::Kind::CTL_ALIAS, a);   // W26 (ck_t: this step's)
+        }
         return (off & (MEM_BYTES - 1)) >> 2;
     }
     bool window_present(unsigned n) const { return n >= 1 && n <= 3 && (periph_present >> (n - 1) & 1); }
@@ -562,7 +571,10 @@ struct Rv32 {
         uint32_t a = ea & ~3u;
         if (region(a) == R_DMEM) {
             uint32_t w = mem_word(a);
-            if (offset(a) < DMEM_FIRST) violations++;
+            if (offset(a) < DMEM_FIRST) {
+                violations++;
+                if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::CTL_DMEM_RESERVED, ea);   // W26
+            }
             dmem[w] = (dmem[w] & ~mask) | (v & mask);
             return true;
         }

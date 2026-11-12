@@ -118,6 +118,8 @@ struct MachConfig {
     int periph_type = 4;               // every mesh tile's peripheral 1: 4 the replayer, 0 none
     int test_periph_tile = -1;         // ref's testPeripheral (StageB, W25): the replayer on this mesh tile only, the
                                        //   others none (with periph_type 0)
+    int test_peripheral_tile = -1;     // ref's testPeripheral giving a TestPeripheral (W26): that mesh tile's peripheral 1
+                                       //   is the test peripheral, the other tiles' as periph_type says
     std::vector<int> parked;           // ref's Chip.parked (StageB's -Dstageb.lone): tiles nothing must reach. Here they are
                                        //   simulated all the same (asleep, they cost little); Chip::parked_untouched is ref's check
     // ---- the simulator and its checks (spec 9) [step 2] ----
@@ -377,7 +379,10 @@ public:
     void set_max_violation_messages(unsigned n);
     void clear_violations();
     std::string violation_report();                         // ref's violationReport() (scans the overflows first)
-    void scan_overflows();                                  // ref's scanOverflows
+    void scan_overflows();
+    // ref's Chip.newPhase (the agreed form): between cycles, a new disjoint-buffer phase on every tile (BigSram::new_phase,
+    // W26's), each woken. (Every GO starts one too, inside the tile: W26's.)
+    void new_phase();                                  // ref's scanOverflows
     void finalize_checks() const;                           // the checker's report through the cycle just run
     // ---- the fingerprint (B25; D41 Q5: in place of ref's -Dmeshsim.digest=FILE) ----
     // With MESHSIM_DIGEST=FILE in the environment, every Chip appends, when destroyed (and those still alive at exit),

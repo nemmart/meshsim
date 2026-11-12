@@ -178,6 +178,11 @@ remaining kinds, interleaved as the suites ask.
   `schedule_go(t)` (TileCtl's host GO at its endCycle(t); the preview includes it). NetSelf's hooks case (sticky EVENTS,
   EVENTS consumed, GET/RECEIVE and ERRORS [14]'s timing, a scheduled GO, window 1 with the replayer, the request port,
   the host queue's idle/all-accepted cycles and its results) equal to ref.
+- **`Chip::new_phase()`** (the agreed form): BigSram::new_phase() on every tile, each woken; `BigSram::new_phase()` is an
+  empty placeholder (every build) for W26 to fill in. **`MachConfig::test_peripheral_tile`** (W26's): that mesh tile's
+  peripheral 1 is the test peripheral, with its slot, the others as periph_type says (`G1Config::test_periph_tile`,
+  harness-only). NetSelf's case (Config.testPeripheral on tile 7, periphType 0: PARAMS, its window, a tile without one)
+  equal to ref.
 - Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
   after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
 

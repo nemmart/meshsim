@@ -303,6 +303,10 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     g.periph_slot = c.periph_type != 0 || c.cc_cores;     // ref: every tile's slot holds its peripheral 1 (type 4)
     if (c.periph_type != 0 && c.periph_type != 4) FATAL("mach: periph_type %d (4 the replayer, or 0)", c.periph_type);
     if (c.test_periph_tile >= 64) FATAL("mach: test_periph_tile %d (a mesh tile)", c.test_periph_tile);
+    if (c.test_peripheral_tile >= 64) FATAL("mach: test_peripheral_tile %d (a mesh tile)", c.test_peripheral_tile);
+    if (c.test_peripheral_tile >= 0 && c.test_peripheral_tile == c.test_periph_tile)
+        FATAL("mach: tile %d: the replayer and the test peripheral on one tile", c.test_peripheral_tile);
+    g.test_periph_tile = c.test_peripheral_tile;
     if (c.test_periph_tile >= 0) {                        // ref's testPeripheral: the replayer on that tile only
         if (c.periph_type != 0) FATAL("mach: test_periph_tile needs periph_type 0 (ref's StageB: periphType 0)");
         g.periph_present = 1; g.periph_slot = true; g.periph_only = c.test_periph_tile;
@@ -755,6 +759,12 @@ void Chip::set_check_errors(bool on) { finalize_checks(); impl_->checker->switch
 void Chip::set_strict_replies(bool on) { finalize_checks(); impl_->checker->switches().strict_replies = on; cfg_.strict_replies = on; }
 void Chip::set_max_violation_messages(unsigned n) { finalize_checks(); impl_->checker->set_max_messages(n); cfg_.max_violation_messages = n; }
 void Chip::clear_violations() { finalize_checks(); impl_->checker->clear_count(); impl_->checker->clear_messages(); }
+void Chip::new_phase() {
+    for (unsigned k = 0; k < 64; k++) {
+        unit<units::BigSram>(units::tile_unit(k, "sram")).new_phase();
+        touched(units::tile_unit(k, "sram"));
+    }
+}
 void Chip::scan_overflows() { impl_->collect_overflows(); impl_->checker->process(cycle(), true); }
 std::string Chip::violation_report() {
     scan_overflows();

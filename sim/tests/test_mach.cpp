@@ -524,8 +524,21 @@ void hooks_case() {
         say("%s\n", sb.c_str());
     }
 }
+void test_peripheral_case() {
+    mach::MachConfig k = mach::MachConfig::machine();
+    k.periph_type = 0; k.test_peripheral_tile = 7;
+    Net n(k);
+    n.c.run(200);
+    const uint32_t REG = 0xFFFFF800u;
+    std::string sb = "test peripheral: PARAMS t7 " + hxo(n.c.tile(7).load(n.c.cycle() + 1, REG, 4)) + " t8 " + hxo(n.c.tile(8).load(n.c.cycle() + 1, REG, 4)) +
+                     "; t7 window 1:";
+    for (uint32_t w = 0; w < 8; w++) sb += " " + hxo(n.c.tile(7).load(n.c.cycle() + 1, REG + 0x200 + 4 * w, 4));
+    sb += "; t8 window 1 word 0 " + hxo(n.c.tile(8).load(n.c.cycle() + 1, REG + 0x200, 4));
+    say("%s\n", sb.c_str());
+}
 void netself() {
     out.clear();
+    test_peripheral_case();
     hooks_case();
     reqbus_case();
     on_machine(0);

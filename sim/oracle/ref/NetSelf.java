@@ -316,7 +316,22 @@ final class NetSelf {
         }
     }
 
+    /** W26's: ref's test peripheral on one tile (Config.testPeripheral), the others none: its window from the core. */
+    static void testPeripheral() {
+        Config k = Config.machine(); k.periphType = 0;
+        k.testPeripheral = tile -> tile == 7 ? new TestPeripheral() : null;
+        Net n = new Net(k);
+        n.c.run(200);
+        final int REG = 0xFFFFF800;
+        StringBuilder sb = new StringBuilder("test peripheral: PARAMS t7 ").append(hx(n.c.tiles[7].core.load(n.c.cycle + 1, REG, 4)))
+            .append(" t8 ").append(hx(n.c.tiles[8].core.load(n.c.cycle + 1, REG, 4))).append("; t7 window 1:");
+        for (int w = 0; w < 8; w++) sb.append(" ").append(hx(n.c.tiles[7].core.load(n.c.cycle + 1, REG + 0x200 + 4 * w, 4)));
+        sb.append("; t8 window 1 word 0 ").append(hx(n.c.tiles[8].core.load(n.c.cycle + 1, REG + 0x200, 4)));
+        System.out.println(sb);
+    }
+
     public static void main(String[] a) {
+        testPeripheral();
         hooks();
         reqbus();
         onMachine(0);

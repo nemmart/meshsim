@@ -76,6 +76,14 @@ remaining kinds, interleaved as the suites ask.
 - **The runner's riscv and periph steps**: `equiv LOG "what" "equivalent" -- $S/test_x` (pass or fail, the log names
   the equivalent): riscv by test_golden (every program's retire trace equal to ref's), periph by test_tileslotconf
   (W15's TileSlotConf). periph-shuf stays PENDING (no shuffled run of TileSlotConf yet).
+- `Chip::reset_stats` restarts the framework FIFOs' peaks too (the write-engine input, the GATHER queue: W22's
+  `Sim::fifo_restart_peak`, under SIM_CHECKS). The runner's mask: an `inputs:` line's first field (W24, approved).
+- **Known gap, the stray check (invariant 9): a counter store of the same cycle as the acceptance** (ref's
+  `ctl.pendingAdd(c, t)`) isn't seen: the core's store reaches the register block a cycle later, so the director's view
+  lacks it and reports a stray ref doesn't. Not cheap: judging a cycle later (when the view has it) moves the stray's
+  fact after the same packet's later facts (the command block, past memory), and ref reports the last one per cycle, so
+  the whole packet's facts would have to wait with it. Recorded; the owner hears when a suite's log reaches it (then
+  fixed, or a D30 case).
 - Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
   after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
 

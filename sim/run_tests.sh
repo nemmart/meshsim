@@ -51,7 +51,8 @@ if [ "$BUILD" = 1 ]; then
 fi
 
 # Timing masked for --check: wall-clock figures (seconds, ms, rates) vary by machine; cycles never do.
-mask() { sed -E 's/[0-9]+(\.[0-9]+)? ?(ms|s|sec|seconds|us|µs|ns)\b/<time>/g; s/[0-9.]+ ?[kKMG]?(cycles|instructions|packets|steps)\/s/<rate>/g'${MASK_EXTRA:+; $MASK_EXTRA}; }
+# W24 (approved): an `inputs:` line's first field names the simulator (v1.3's meshsim.jar=(classes)): metadata, masked.
+mask() { sed -E 's/[0-9]+(\.[0-9]+)? ?(ms|s|sec|seconds|us|µs|ns)\b/<time>/g; s/[0-9.]+ ?[kKMG]?(cycles|instructions|packets|steps)\/s/<rate>/g; s/^(inputs: )[^ ]+/\1<simulator>/'${MASK_EXTRA:+; $MASK_EXTRA}; }
 # A step's own approved mask (MASK_EXTRA, a sed expression, set for that step only): a recorded deliberate difference.
 # D44 (D33 reached): CcCoresTest's error path prints C&C 1's UART dump end, one cycle later here (C&C 1's peripheral
 # applies stores at t + 1); that one figure is masked.

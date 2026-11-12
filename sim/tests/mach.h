@@ -308,9 +308,10 @@ public:
     void reset(bool hard);                                  // takes effect at the end of the current cycle
     uint64_t resets() const;
     int64_t last_reset_at() const;
-    void reset_stats();                                     // ref's resetStats: the units' statistics to 0, the router
-                                                            //   FIFOs' peaks to their occupancy (the framework's FIFOs
-                                                            //   keep no peak: W22's ask 7, the owner's call)
+    void reset_stats();                                     // ref's resetStats: the units' statistics to 0, every FIFO's
+                                                            //   peak to its occupancy (the framework FIFOs' peaks, the
+                                                            //   write-engine input's and the GATHER queue's, exist under
+                                                            //   SIM_CHECKS only: Sim::fifo_peak)
     std::vector<std::array<uint64_t, 4>> received(unsigned cc) const;   // ref's ccs[cc].received (C&C cc + 1; no cc_cores)
 
     struct Impl;                                            // mach.cpp: the machine, its memories, the harness units

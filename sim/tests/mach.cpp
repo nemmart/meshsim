@@ -477,6 +477,10 @@ void Chip::reset_stats() {
         we.taken = we.written = we.stall_cycles = 0;
         units::TableStore& ts = p.unit<units::TableStore>("ts");
         ts.table_reads = ts.rmws = 0;
+        if (sim::check::kOn) {                            // the framework FIFOs' peaks (kept under SIM_CHECKS: W22's)
+            impl_->sim->fifo_restart_peak(we.in);
+            impl_->sim->fifo_restart_peak(p.unit<units::Gather>("gather").in);
+        }
     }
 }
 

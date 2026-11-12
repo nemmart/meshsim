@@ -2,3 +2,7 @@
 # `include` line in the Makefile).
 # The replayer's error lists against ref's (tests/replayer/lists.txt; oracle/ref/replaylists.sh).
 $(B)/test_replay_lists: $(REPLAYER_LINK) $(B)/tests/statefp.o
+# The acceptance kit's replayer (ref's ReplayShard): tests/replay_shard_main.cpp.
+$(B)/replay_shard: $(B)/tests/replay_shard_main.o $(B)/tests/sha256.o $(REPLAYER_LINK) $(B)/src/units/replay_tables.o $(LIB_OBJ)
+	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
+all: $(B)/replay_shard

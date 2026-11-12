@@ -117,3 +117,11 @@ the `-q` estimate, the guest delivery's whereabouts.
   (a flipped row byte with a diag.bin, a changed end-state register, a truncated rows.bin, the manifest's rows +10
   and -10: an underflow and a row count) under --keep-going and stopping: equal, clang release and gcc debug. (The
   kit's crosscheck script will carry this check.)
+- **`replay_shard`, stage A** (`tests/replay_shard_main.cpp`; ref's ReplayShard): the tables against their manifest
+  (`tables` FAIL line), every file a replay reads against the window entry (CORRUPT: missing, no SHA-256, a hash,
+  rows_sha256, a record not v1.26), the range, stride and phase, the variant (state-pick if present), `--full-every`,
+  the CSV line (ref's but for wall_ms) and Stage A's stdout line. Stages B and F stop with a FATAL until Stage B lands.
+  Checked locally against ref's ReplayShard (scratch build): the 6-window delivery (plain; state-lru over a strided
+  range), the planted-fault delivery with the manifest's hashes refreshed (5 FAIL lines with ref's details), and a
+  corrupted copy (a tables FAIL line, each CORRUPT kind, a hash given as a bare string): CSV with wall_ms masked, stdout
+  and exit code all equal.

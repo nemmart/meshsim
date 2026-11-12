@@ -47,6 +47,12 @@ violations: 13
   cycle 44 tile 27: a big-SRAM write at chunk 0x100000, at or past the end of big SRAM: undefined (4.1; invariant 19): src=8 dst=27 mode=0(write@addr) ctr=1 addr=0x03400000 size=64 payload=0x000000000000000c
   cycle 48 tile 25: an overlay write landed after the unit's command and before its start (6.2: the overlays and the first command are of one kind, the command last): src=64 dst=126 mode=0(write@addr) ctr=0 addr=0x00000200 size=32 payload=0x0000000d
   cycle 57 tile 30: a command (unicast) after overlays of the other kind: the mesh orders packets only within a kind (6.2; invariant 25): src=64 dst=30 mode=0(write@addr) ctr=0 addr=0x00007fc0 size=32 payload=0x0000000e
+after tile 5's bits: 1 at cycle 30
+violations: 2
+  cycle 21 tile 5: ERRORS [1000000000] set: bus error (invariant 15)
+  cycle 41 tile 7: ERRORS [10] set: bad packet (invariant 15)
+violations: 2
+  cycle 42 tile 8: ERRORS [100] set: unexpected arrival (invariant 15)
 violations: 12
   cycle 10 tile 10: count-only packet on counter 0 sent: it does nothing (3.1, invariant 21): src=0 dst=20 mode=5(count-only) ctr=0 addr=0x00000000 size=32 payload=0x00000000
   cycle 11 tile 11: count-only packet on counter 0 sent: it does nothing (3.1, invariant 21): src=0 dst=20 mode=5(count-only) ctr=0 addr=0x00000000 size=32 payload=0x00000001

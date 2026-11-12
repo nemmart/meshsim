@@ -23,5 +23,8 @@ $(B)/suite_rdport: $(B)/tests/suite_rdport.o $(B)/tests/p4_java.o $(MACH_LINK) $
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 $(B)/suite_agbench: $(B)/tests/suite_agbench.o $(MACH_LINK) $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
+# p4_drift: the drift and token-wait measurement over engine-full's data sets (spec items 62, 70; not a suite)
+$(B)/p4_drift: $(B)/tests/p4_drift.o $(B)/tests/p4_java.o $(MACH_LINK) $(LIB_OBJ)
+	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 # the suites are run by test_p4suites (order-only: built with it, not linked into it)
 $(B)/test_p4suites: | $(P4_SUITES)

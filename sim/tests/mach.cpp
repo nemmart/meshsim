@@ -928,12 +928,50 @@ namespace {
 // The Env Rv32::load reads through, between cycles: the registers as the block publishes them for t (its end of
 // t - 1, block_at_end), HIST as stored.
 struct LoadEnv {
+    sim::Sim& s;
+    units::TileCore& u;
     const units::RegBlockState& b;
     const units::HistStore& h;
+    uint64_t t;
+    unsigned k;
     uint32_t reg(unsigned r) const { return b.reg(r); }
     uint32_t hist(uint32_t i) const { return h.m.hist[i & 255]; }
-    void post(uint32_t, uint32_t, uint32_t) const {
-        FATAL("mach: a test's load with a side effect (EVENTS, REQUEST_RECEIVE): not modelled yet (ask W20)");
+    void post(uint32_t op, uint32_t arg, uint32_t v) const {          // made by the core at t (ref: the load's side effect)
+        if (u.host_post_n == units::TileCore::kHostPosts) FATAL("mach: too many test loads' side effects pending");
+        u.host_post[u.host_post_n++] = {t, 0, uint64_t(op) << 32 | arg, uint64_t(v)};
+    }
+    uint32_t live_events() const {
+        if (!u.receiver) return 0;
+        return s.regfile_value(u.recv, units::reqbus::ReqRecv::R_PENDING) ? 1u << units::EV_REQUEST_PENDING : 0;
+    }
+    uint32_t req_get(unsigned i) const { return u.receiver ? s.regfile_value(u.recv, units::reqbus::ReqRecv::R_W0 + i) : 0; }
+    uint32_t req_receive(bool& ok) const {
+        if (u.receiver) FATAL("mach: a test's REQUEST_RECEIVE on a controller: not modelled yet (ask W20)");
+        ok = false;
+        return 0;
+    }
+    uint32_t rp_free() const {
+        return uint32_t(int64_t(u.rp_depth) - int64_t(u.rp_stored - s.unit<units::Injection>(units::unit_prefix(k) + "inj").rs.rp_injected_n));
+    }
+    int window_load(unsigned n, unsigned w, uint32_t& v) const {      // the core's Env::window_load, from the slot's RegFile
+        using units::Win;
+        if (!u.slot) FATAL("mach: a test's load from peripheral %u's window: the tile has no peripheral slot", n);
+        if (w == 5) {
+            v = s.regfile_value(u.win, Win::reg(n, Win::R_STD + 5));
+            const uint32_t m = s.regfile_value(u.win, Win::reg(n, Win::R_STD + 7));
+            if (v & m) {
+                if (u.host_post_n == units::TileCore::kHostPosts) FATAL("mach: too many test loads' side effects pending");
+                u.host_post[u.host_post_n++] = {t, 1, uint64_t(units::CoreOp::consume(n, v & m)), 0};
+            }
+            return 1;
+        }
+        if (w < Win::STD) { v = s.regfile_value(u.win, Win::reg(n, Win::R_STD + w)); return 1; }
+        v = 0;
+        if (w < Win::OWN0) return 2;
+        const unsigned k = w - Win::OWN0;
+        if (!(s.regfile_value(u.win, Win::reg(n, Win::R_DEFINED + k / 32)) >> (k % 32) & 1)) return 2;
+        v = s.regfile_value(u.win, Win::reg(n, Win::R_OWN + k));
+        return 1;
     }
 };
 }  // namespace
@@ -944,10 +982,69 @@ std::optional<uint32_t> TileRef::load(int64_t t, uint32_t ea, unsigned width) co
         return peek_local(region << 24 | (((units::lw::offset(ea & ~3u)) & (units::MEM_BYTES - 1))));
     units::TileCore& core = unit<units::TileCore>("core");
     const units::RegBlockState b = block();
-    LoadEnv e{b, unit<units::HistStore>("hist")};
+    LoadEnv e{c_->sim(), core, b, unit<units::HistStore>("hist"), uint64_t(t), k_};
     uint32_t v = 0;
+    const uint32_t posts = core.host_post_n;
     if (!core.rv.load(e, ea, width, v)) return std::nullopt;
+    if (core.host_post_n != posts) c_->touched(un(k_, "core"));   // its side effects: the core steps at t
     return v;
+}
+
+// ---- the request port from a test (W22-11) ----
+void TileRef::req_set_w(unsigned i, uint32_t v) {
+    if (i > 2) FATAL("mach: req_set_w(%u): W0-W2", i);
+    unit<units::TileCore>("core").req_set_w[i] = v;          // the core's copy (what a REQUEST_SEND pushes)
+    unit<units::TileCtl>("ctl").s.set_w[i] = v;              // the block's (its view)
+}
+uint32_t TileRef::req_w(unsigned i) const { return unit<units::TileCore>("core").req_set_w[i % 3]; }
+void TileRef::req_send(int64_t t, uint32_t w3) {           // RequestPort.send(t, w3) at the cycle just run
+    if (t != c_->cycle()) FATAL("mach: tile %u: req_send at cycle %lld: the cycle just run only (%lld)", k_, (long long)t, (long long)c_->cycle());
+    units::TileCore& core = unit<units::TileCore>("core");
+    const sim::Word w[2] = {sim::Word(core.req_set_w[0]) | sim::Word(core.req_set_w[1]) << 32, sim::Word(core.req_set_w[2]) | sim::Word(w3) << 32};
+    c_->sim().put_late(un(k_, "core"), core.req_push, w, 2);
+    core.req_set_w[0] = core.req_set_w[1] = core.req_set_w[2] = 0;
+    units::RegBlockState& s = unit<units::TileCtl>("ctl").s;
+    s.req_n++; s.sends++; s.set_w[0] = s.set_w[1] = s.set_w[2] = 0;   // the block's FIFO count, as a REQUEST_SEND at t
+    c_->touched(un(k_, "ctl"));
+}
+bool TileRef::req_can_push(int64_t t) const {               // fifo.size() < depth (the bus frees nothing before t runs)
+    if (t != c_->cycle() + 1) FATAL("mach: tile %u: req_can_push(%lld): the next cycle only", k_, (long long)t);
+    const units::reqbus::ReqLeaf& l = c_->unit<units::reqbus::ReqLeaf>("t" + std::to_string(k_) + ".reqleaf");
+    sim::PortEntry e[4];
+    const uint32_t n = c_->sim().observe(l.push, e, 4).n;    // a push of the cycle just run is in the FIFO for ref
+    uint32_t pending = 0;
+    for (uint32_t i = 0; i < n; i++) if (e[i].at <= uint64_t(t)) pending++;
+    return l.n + pending < l.depth;
+}
+
+// ---- the read port's host queue (W22-18) ----
+void TileRef::rp_host_queue(uint32_t addr, uint32_t dest) {
+    units::TileCore& core = unit<units::TileCore>("core");
+    if (core.host_rd_n == units::TileCore::kHostReads) FATAL("mach: tile %u: more than %u host reads queued", k_, units::TileCore::kHostReads);
+    uint32_t* r = core.host_rd[(core.host_rd_head + core.host_rd_n) % units::TileCore::kHostReads];
+    r[0] = addr; r[1] = dest;
+    core.host_rd_n++;
+    c_->touched(un(k_, "core"));
+}
+bool TileRef::rp_idle() const {                             // ref's free(t) == depth: a return injected at t frees its entry at t + 1
+    const units::TileCore& core = unit<units::TileCore>("core");
+    const units::InjReadSide& rs = unit<units::Injection>("inj").rs;
+    const uint64_t freed = rs.rp_injected_n - (rs.rp_inj_t == uint64_t(c_->cycle()) ? rs.rp_inj_now : 0);
+    return core.host_rd_n == 0 && core.rp_stored == freed;
+}
+bool TileRef::rp_all_accepted() const {
+    const units::TileCore& core = unit<units::TileCore>("core");
+    return core.host_rd_n == 0 && core.rp_stored == unit<units::Director>("dir").rp_accepted;
+}
+
+// ---- the register block from a test (W23's (d)) ----
+void TileRef::set_events(uint32_t bits) { unit<units::TileCtl>("ctl").host_events |= bits; c_->touched(un(k_, "ctl")); }
+void TileRef::schedule_go(int64_t t) {
+    units::TileCtl& b = unit<units::TileCtl>("ctl");
+    if (t <= c_->cycle()) FATAL("mach: tile %u: schedule_go(%lld): a cycle not yet run", k_, (long long)t);
+    if (b.host_go_at >= 0) FATAL("mach: tile %u: a second GO scheduled", k_);
+    b.host_go_at = t;
+    c_->touched(un(k_, "ctl"));
 }
 std::string TileRef::store(int64_t t, uint32_t ea, uint32_t v, uint32_t mask) {
     namespace lw = units::lw;
@@ -1046,8 +1143,8 @@ void TileRef::pulse(uint32_t bits) {                       // TILE_PULSE's start
 // tile_ctl.h's block_at_end), with the harness's writes still pending over it.
 units::RegBlockState TileRef::block(bool with_cond) const {
     const units::TileCtl& b = unit<units::TileCtl>("ctl");
-    units::RegBlockState r = units::block_at_end(c_->sim(), b, uint64_t(c_->cycle()));
-    if (with_cond) r.conditions |= b.host_cond;            // set from the test (request 9): ref's ctl has them now
+    units::RegBlockState r = units::block_at_end(c_->sim(), b, uint64_t(c_->cycle()), b.host_go_at == c_->cycle());   // (a test's GO)
+    if (with_cond) { r.conditions |= b.host_cond; r.events |= b.host_events; }   // set from the test: ref's ctl has them now
     if (b.host.mask & units::TileCtl::HostWrites::DMA_CONFIG) r.dma_config = b.host.dma_config;
     if (b.host.mask & units::TileCtl::HostWrites::RECORD_BASE) r.record_base = b.host.record_base;
     if (b.host.mask & units::TileCtl::HostWrites::STARTS) r.dma_starts += b.host.starts;

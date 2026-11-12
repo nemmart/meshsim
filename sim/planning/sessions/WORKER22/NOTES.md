@@ -335,3 +335,8 @@ W22-18. **The read port's host queue (for W20)**: ref's `readPort.hostQueue(addr
   gather from C's \"no invariant violations\": the same 3 command-slot violations as F4 (cycle 77 on tile 0, 81 on 8
   and 56; payload 0x01801000), W26's invariant-8 command check.
 - W22-14: the disjoint-buffer group.
+- **run_tests.sh** (shared; owner told): the P4 steps still PENDING now name what each waits on (W22-14, W22-16,
+  W22-18, W22-9 to W22-13, W26's kinds; agbench: not yet ported). Only NetTest is byte for byte, so it stays the only
+  P4 suite in the runner and in make check (test_p4suites); each other suite joins both when its log is equal.
+- **Quest 184** (claimed after re-reading NUMBERS.md, pushed): engine-full and rdport-full's ported groups on the C++
+  against v1.3's logs (printed lines; the FAIL lines, W26's, listed). Task copy in `tasks/`.

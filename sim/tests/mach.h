@@ -101,6 +101,8 @@ struct MachConfig {
     unsigned area_queue_depth = 8, sram_read_latency = 2, read_tokens = 64;
     bool write_combining = false, fifo_count_before_pop = true;
     bool test_read_clients = false;    // the read queue's AG client a harness-fed FIFO (Net::rd), no AG
+    bool reqbus_host = false;          // the request bus driven from the test (Chip::reqbus(), W22-10): its receive queues and
+                                       //   controller inputs on the machine with C&C's model (ref's RequestBus there)
     // ---- C&C, the lines (6) ----
     unsigned go_latency = 8, run_latency = 1, ready_latency = 8, cnc_reaction = 1, stage_delay = 64;
     unsigned cnc_rx_depth = 64, cc_dma_depth = 4, cc_link_latency = 1;
@@ -175,6 +177,31 @@ constexpr uint32_t master_config(uint32_t kind, uint32_t start, uint32_t count, 
 }  // namespace fields
 
 class Chip;
+
+// ======================================================================= the request bus from a test (ref's RequestBus)
+// On the machine with C&C's Java model and MachConfig::reqbus_host (RequestBusTest's Net(Config.machine())): ref's
+// RequestBus as a test drives it, between cycles. t is the cycle the call stands for (ref's: the next, cycle() + 1, for
+// the receivers' side; the cycle just run for controller_send); the reads are as ref has them at the end of the cycle
+// just run, the test's own pops already counted out.
+class ReqBus {
+public:
+    explicit ReqBus(Chip& c) : c_(&c) {}
+    bool pending(unsigned target, int64_t t) const;                  // ref's pending(target, t)
+    uint32_t get(unsigned target, int64_t t, unsigned i) const;      // ref's get(target, t, i): word i of the head, 0 if none
+    uint32_t receive(unsigned target, int64_t t);                   // ref's receive: pops the head at t (its credit back at
+                                                                     //   t + 1), returns its word 3; an underflow (0) if none
+    bool peek_request(unsigned target, int64_t t, uint32_t w[4]) const;   // ref's peekRequest (false: none)
+    void controller_send(int64_t t, unsigned cc, uint32_t w0, uint32_t w1, uint32_t w2, uint32_t w3);   // ref's controllerSend
+    size_t queue_size(unsigned target) const;                        // ref's queue[target].size()
+    int64_t credits(unsigned target) const;                          // ref's credits[target]
+    uint64_t underflows() const { return underflows_; }              // ref's underflows (the test's receives)
+    uint64_t dropped() const;                                        // ref's dropped.size()
+    uint64_t delivered() const;                                      // ref's delivered.size()
+private:
+    Chip* c_;
+    uint64_t underflows_ = 0, popped_[3] = {};
+    bool head(unsigned target, int64_t t, uint32_t w[4]) const;
+};
 
 // ================================================================================================ a tile (ref's Tile)
 class TileRef {
@@ -312,6 +339,7 @@ public:
     TileRef tile(unsigned k) { return TileRef(*this, k); }  // 0-63; 64-66 the controllers with cc_cores
     Cc& cc();                                               // C&C 1's model (not with cc_cores)
     PhaseLog& phases();                                     // ref's Chip.phases, attached at the first call (phase_log.h)
+    ReqBus& reqbus();                                       // ref's Chip.reqBus from a test (MachConfig::reqbus_host)
     bool all_stopped() const;                               // no tile's core in RUN
     bool all_exited() const;                                // every tile ended through SIM_EXIT
     bool all_in_wfi() const;

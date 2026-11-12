@@ -426,8 +426,39 @@ void on_machine(int periph) {
     say("%s\n", sb.c_str());
     logs(n, {9, 30});
 }
+void reqbus_case() {
+    mach::MachConfig k = mach::MachConfig::machine();
+    k.periph_type = 0; k.reqbus_host = true;
+    Net n(k);
+    n.c.run(200);
+    mach::TileRef p = n.c.tile(5);
+    const uint32_t REG = 0xFFFFF800u;
+    const uint32_t st[4][2] = {{18, (0u << 7) | (0x21u << 10)}, {19, 0x1111}, {20, 0x2222}, {21, 0x3333}};
+    for (const auto& x : st) { p.store(n.c.cycle() + 1, REG + 4 * x[0], x[1]); n.step(); }
+    mach::ReqBus& b = n.c.reqbus();
+    b.controller_send(n.c.cycle(), 1, (0u << 7) | (0x55u << 10), 1, 2, 3);
+    std::string sb = "reqbus:";
+    int64_t first = -1;
+    for (int i = 0; i < 200 && b.queue_size(0) < 2; i++) { n.step(); if (first < 0 && b.pending(0, n.c.cycle() + 1)) first = n.c.cycle(); }
+    sb += " first pending at " + std::to_string(first) + ", two queued at " + std::to_string(n.c.cycle());
+    sb += "; head " + hx(b.get(0, n.c.cycle() + 1, 0)) + " " + hx(b.get(0, n.c.cycle() + 1, 3));
+    sb += "; credits " + std::to_string(b.credits(0));
+    { const uint32_t r = b.receive(0, n.c.cycle() + 1); sb += "; receive " + hx(r) + " size " + std::to_string(b.queue_size(0)) + " credits " + std::to_string(b.credits(0)); }
+    n.step();
+    sb += "; then credits " + std::to_string(b.credits(0)) + " head " + hx(b.get(0, n.c.cycle() + 1, 0));
+    sb += "; receive " + hx(b.receive(0, n.c.cycle() + 1)); n.step();
+    { const uint32_t r = b.receive(0, n.c.cycle() + 1); sb += "; receive on empty " + std::to_string(r) + " underflows " + std::to_string(b.underflows()); }
+    const uint32_t st2[4][2] = {{18, (3u << 7) | (0x31u << 10)}, {21, 0x77}, {18, (5u << 7) | (0x32u << 10)}, {21, 0x78}};
+    for (const auto& x : st2) { p.store(n.c.cycle() + 1, REG + 4 * x[0], x[1]); n.step(); }
+    n.run_all(500);
+    sb += "; dropped " + std::to_string(b.dropped()) + " delivered " + std::to_string(b.delivered()) + " credits " + std::to_string(b.credits(0)) +
+          " at " + std::to_string(n.c.cycle());
+    sb += "; violations " + std::to_string(n.c.violations());
+    say("%s\n", sb.c_str());
+}
 void netself() {
     out.clear();
+    reqbus_case();
     on_machine(0);
     on_machine(4);
     feed_only_in_net();

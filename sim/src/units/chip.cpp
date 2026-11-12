@@ -219,7 +219,21 @@ void build_chip(sim::Config& cfg, const ChipSpec& spec) {
         }
         return;
     }
-    add_request_bus(cfg, spec, io, nullptr);              // W14 (D34): the tiles' ports (M2's chip: no controllers)
+    if (spec.reqbus_host) {                               // W20 (harness-only): the queues and controller inputs, ReqHost
+        uint64_t tiles = 0;
+        for (unsigned k = 0; k < 64; k++) if (io[k].req.present) tiles |= uint64_t(1) << k;
+        if (spec.domain) FATAL("build_chip: the request bus's harness host on a split machine");
+        const units::reqbus::ReqBusIO rb = units::reqbus::add_reqbus(cfg, spec.reqbus, tiles, 7, nullptr, false);
+        for (unsigned k = 0; k < 64; k++) if (io[k].req.present) units::reqbus::wire_sender(cfg, rb, k, io[k].req);
+        auto& h = cfg.add<units::reqbus::ReqHost>("reqbus.host", spec.reqbus);
+        for (unsigned c = 0; c < 3; c++) {
+            cfg.link(h.beat[c], rb.root->in[8 + c], spec.reqbus.hop_latency);
+            if (spec.reqbus.credit_latency != 0) cfg.link(rb.root->credit_out[8 + c], h.credit[c], spec.reqbus.credit_latency);
+            cfg.link(h.pop[c], rb.recv[c]->pop, 1);
+            cfg.connect(rb.recv[c]->head, h.head[c]);
+            cfg.link(h.qcredit[c], rb.root->qcredit[c], rb.queue_credit_latency());
+        }
+    } else add_request_bus(cfg, spec, io, nullptr);       // W14 (D34): the tiles' ports (M2's chip: no controllers)
     // C&C and the collectors with tile 0 (C&C's send is a Hold into tile 0's router), C&C 2 and 3 with tiles 1 and 2
     if (spec.domain) cfg.domain(spec.domain[0]);
     auto& cc = cfg.add<Cnc>("cnc", nc, *spec.program);

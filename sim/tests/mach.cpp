@@ -24,6 +24,7 @@
 #include "units/inject.h"
 #include "units/periph_slot.h"
 #include "units/replayer.h"
+#include "units/reqbus.h"
 #include "units/router.h"
 #include "units/write_engine.h"
 #include "units/cnc.h"
@@ -226,6 +227,7 @@ struct Chip::Impl {
     unsigned nunits = 64;
     uint8_t skew[64] = {};
     std::unique_ptr<Cc> cc;
+    std::unique_ptr<ReqBus> reqbus;
     std::unique_ptr<Checker> checker;                    // ref's violations (src/check.h; on with SIM_CHECKS)
     // ref's hardware FIFOs for invariant 1 (Tile.hardwareFifos, then C&C's receive FIFOs), in ref's scan order
     int digest_seq = -1;                                 // MESHSIM_DIGEST: this chip's place in creation order
@@ -343,6 +345,11 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     spec.domain = c.parts > 1 ? dom : nullptr;
     spec.cc_cores = c.cc_cores; spec.cc3_dma = c.cc3_tracer; spec.host_capacity = c.host_capacity;
     spec.reqbus.fifo_depth = c.request_fifo_depth; spec.reqbus.hop_latency = c.req_hop_latency;
+    spec.reqbus_host = c.reqbus_host && !c.cc_cores;
+    if (c.reqbus_host) {
+        if (c.cc_cores) FATAL("mach: reqbus_host: the machine with C&C's model (C&C 1-3 as cores have their own ports)");
+        spec.reqbus.credit_latency = 0;                   // D34: exact as ref (one domain)
+    }
     for (unsigned q = 0; q < 3; q++) spec.reqbus.queue_depth[q] = c.receive_queue_depth[q];
     if (!c.cc_cores) spec.program = &m.prog;
     units::build_chip(sc, spec);
@@ -360,6 +367,10 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
         m.sim->unit<units::TileCtl>(units::unit_prefix(k) + "ctl").host_on = true;
     m.shifted = {m.sim->type_of(units::tile_unit(0, "ctl")), m.sim->type_of(units::tile_unit(0, "core"))};
     if (!c.cc_cores) m.lines = {m.sim->type_of("row0"), m.sim->type_of("cnc")};
+    // ref's quiescent leaves the request bus out (Tile.quiescent, Chip.quiescent: no request port, node or queue)
+    if (c.threads <= 1)
+        for (const char* u : {"t0.reqleaf", "reqbus.row0", "reqbus.root", "cc1.reqrecv", "reqbus.host"})
+            if (m.sim->has_unit(u)) m.lines.push_back(m.sim->type_of(u));
     CheckSwitches sw;
     sw.errors = c.check_errors; sw.unexpected = c.check_unexpected; sw.read_port_overlap = c.check_read_port_overlap;
     sw.command_read = c.check_command_read; sw.strict_replies = c.strict_replies; sw.K = c.K;
@@ -538,6 +549,63 @@ void Chip::Impl::phase_events() {
         phases->on_go(c.last_go_at, int32_t(c.last_command_word));
     }
 }
+ReqBus& Chip::reqbus() {
+    if (!cfg_.reqbus_host) FATAL("mach: reqbus(): MachConfig::reqbus_host (the request bus driven from the test)");
+    if (!impl_->reqbus) impl_->reqbus = std::make_unique<ReqBus>(*this);
+    return *impl_->reqbus;
+}
+
+// ---- ref's RequestBus from a test ----
+namespace {
+units::reqbus::ReqRecv& recv_of(Chip& c, unsigned target) {
+    static const char* kRecv[3] = {"cc1.reqrecv", "cc2.reqrecv", "cc3.reqrecv"};
+    if (target > 2) FATAL("mach: reqbus: target %u has no receive queue (0-2)", target);
+    return c.unit<units::reqbus::ReqRecv>(kRecv[target]);
+}
+}  // namespace
+bool ReqBus::head(unsigned target, int64_t t, uint32_t w[4]) const {   // ref's head(target, t): delivered before t
+    const units::reqbus::ReqRecv& r = recv_of(*c_, target);
+    const uint64_t skip = popped_[target] - r.received;                 // the test's pops not yet made
+    if (skip >= r.qn) return false;
+    const auto& e = r.q[(r.qh + skip) % r.depth];
+    if (e.delivered_t >= t) return false;
+    for (unsigned i = 0; i < 4; i++) w[i] = e.w[i];
+    return true;
+}
+bool ReqBus::pending(unsigned target, int64_t t) const { uint32_t w[4]; return head(target, t, w); }
+uint32_t ReqBus::get(unsigned target, int64_t t, unsigned i) const { uint32_t w[4]; return head(target, t, w) ? w[i & 3] : 0; }
+bool ReqBus::peek_request(unsigned target, int64_t t, uint32_t w[4]) const { return head(target, t, w); }
+uint32_t ReqBus::receive(unsigned target, int64_t t) {
+    uint32_t w[4];
+    if (!head(target, t, w)) { underflows_++; return 0; }
+    if (t != c_->cycle() + 1) FATAL("mach: reqbus.receive at cycle %lld: the next cycle only (%lld)", (long long)t, (long long)c_->cycle() + 1);
+    units::reqbus::ReqHost& h = c_->unit<units::reqbus::ReqHost>("reqbus.host");
+    if (h.pop_at[target] >= 0) FATAL("mach: reqbus.receive: a second pop of target %u in cycle %lld", target, (long long)t);
+    h.pop_at[target] = t;
+    popped_[target]++;
+    c_->touched("reqbus.host");
+    return w[3];
+}
+void ReqBus::controller_send(int64_t t, unsigned cc, uint32_t w0, uint32_t w1, uint32_t w2, uint32_t w3) {
+    if (t != c_->cycle()) FATAL("mach: reqbus.controller_send at cycle %lld: the cycle just run only (%lld)", (long long)t, (long long)c_->cycle());
+    if (cc > 2) FATAL("mach: reqbus.controller_send: C&C %u (0-2)", cc + 1);
+    units::reqbus::ReqHost& h = c_->unit<units::reqbus::ReqHost>("reqbus.host");
+    auto& s = h.send[cc];
+    if (s.on) FATAL("mach: reqbus.controller_send: C&C %u's previous request still entering the root (ref's beats overlap: not modelled)", cc + 1);
+    s.w[0] = (w0 & ~0x7Fu) | (64 + cc); s.w[1] = w1; s.w[2] = w2; s.w[3] = w3;
+    s.store_t = t; s.next = 1; s.on = true;
+    const sim::Word b[3] = {units::reqbus::beat_w0(0, 64 + cc, t), sim::Word(s.w[0]) | sim::Word(s.w[1]) << 32, sim::Word(s.w[2]) | sim::Word(s.w[3]) << 32};
+    c_->sim().put_late("reqbus.host", h.beat[cc], b, 3);     // beat 0 as of t: arriving at t + hop, as ref's
+    c_->touched("reqbus.host");
+}
+size_t ReqBus::queue_size(unsigned target) const {
+    const units::reqbus::ReqRecv& r = recv_of(*c_, target);
+    return r.qn - (popped_[target] - r.received);
+}
+int64_t ReqBus::credits(unsigned target) const { return c_->unit<units::reqbus::ReqRoot>("reqbus.root").credits[target & 7]; }
+uint64_t ReqBus::dropped() const { return c_->unit<units::reqbus::ReqRoot>("reqbus.root").dropped; }
+uint64_t ReqBus::delivered() const { return c_->unit<units::reqbus::ReqRoot>("reqbus.root").delivered; }
+
 PhaseLog& Chip::phases() {
     if (!impl_->phases) {
         if (!impl_->has_cnc) FATAL("mach: phases(): C&C 1's model only (not with cc_cores)");

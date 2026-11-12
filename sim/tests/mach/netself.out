@@ -1,3 +1,4 @@
+reqbus: first pending at 217, two queued at 225; head 15441 3; credits 126; receive 3 size 1 credits 126; then credits 126 head 8405; receive 3333; receive on empty 0 underflows 1; dropped 0 delivered 2 credits 128 at 231; violations 0
 machine periph 0: quiescent at 240; late 0; t9 dmem[0x112] ca t40 dmem[0x80] beef t30 sram 0x10 1234; violations 74
   tile 9: 9 arrivals [205 9000000ca 112100489 0] [213 ca 100100480 0] [214 12000000ca 124100492 0] [217 3f000000ca 17e1004bf 0] [221 1b000000ca 13610049b 0] [222 beef 80003f05 0]
   tile 30: 2 arrivals [219 1234 c00010120f06 0] [222 beef 80003f05 0]

@@ -158,6 +158,16 @@ remaining kinds, interleaved as the suites ask.
   cmem.overwrittenUnread), plus port B's write of the cycle just run (ref counts it at that cycle; the C++ core takes it
   at its next step: `TileCore::overwrites` on a copy of the tracking, beside W26's track_port_b). The local fixtures
   have only zeros there: W24's kit CSVs (4,417 nonzero rows in v1.3) are the check.
+- **W22-10 done**: `MachConfig::reqbus_host` and `Chip::reqbus()` (ref's RequestBus from a test on the machine with
+  C&C's model: pending, get, peek_request, receive with its underflows, controller_send, queue sizes, credits, dropped,
+  delivered; reads as ref has them at the end of the cycle, the test's pops counted out). Units: `ReqHost` (reqbus.h,
+  harness-only: controllerSend's eight beats straight into the root's input 8 + c from t + hop, beat 0 as of the cycle
+  just run; the pops and their credits), the receive queues and controller inputs built without leaves
+  (`add_reqbus(..., cc_leaves = false)`, `ChipSpec::reqbus_host`); the bus exact (D34's credit latency 0) on that machine.
+  Framework: `Sim::put_late` on a Link, `Sim::has_unit` (harness-only). Found: ref's quiescent leaves the request bus out
+  (Tile.quiescent, Chip.quiescent), so `Chip::quiescent` now ignores the bus's units too. NetSelf's reqbus case (a
+  tile's request through its core's stores, a controllerSend, pending/get/receive/underflow, credits, the root's drops
+  of targets 3 and 5) equal to ref.
 - Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
   after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
 

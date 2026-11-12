@@ -531,6 +531,63 @@ void rules() {
 
 
 
+
+// ================================================================ 14 the synchronised start by identical code
+int n_sync(unsigned t) { return 16 + int((t * 5) & 15); }
+void sync_() {   // ref's sync() (unistd.h has a sync)
+    suite::group("sync");
+    Mach m(cfg());
+    m.boot("rcp_sync");
+    for (unsigned t = 0; t < 64; t++) {
+        for (int i = 0; i < n_sync(t); i++) poke64(m.c, t, 2 * uint32_t(i), rec(int32_t(t << 16 | unsigned(i)), int32_t(0xC0DE0000u | unsigned(i))));
+        m.c.tile(t).sram_poke(0x20000, uint32_t(n_sync(t))); m.c.tile(t).sram_poke(0x20001, uint32_t(n_sync((t + 63) & 63)));
+    }
+    m.c.cc().command(BROADCAST, 1 << 24).go().command(BROADCAST, 2 << 24).go();
+    suite::check(m.run([&] { return idle(m); }, 40000), "every tile ran the set-up and the start");
+    std::set<int64_t> starts;
+    const int64_t go_at = m.c.cc().last_go_at();
+    const std::vector<int> skew = m.c.start_skew();
+    for (unsigned t = 0; t < 64; t++) {
+        starts.insert(m.c.unit<units::AddrGen>(unit_name(t, "ag")).started_at - skew[t]);
+        const unsigned l = (t + 63) & 63; int bad = 0;
+        for (int i = 0; i < n_sync(l); i++) if (rec(m.c, t, 0x40000 + 2 * uint32_t(i)) != rec(int32_t(l << 16 | unsigned(i)), int32_t(0xC0DE0000u | unsigned(i)))) bad++;
+        suite::eq(0, bad, "tile %u: the left neighbour's %d records arrived", t, n_sync(l));
+    }
+    suite::eq(1, int64_t(starts.size()), "all 64 tiles started on the same cycle (after their 0/+1 skew)");
+    const int64_t s0 = *starts.begin();
+    finish(m, "sync", 10000);
+    no_violations(m.c, "sync");
+    meas("sync", "set-up command (per-tile lengths): GO -> all READY", go_to_ready(m, 0));
+    meas("sync", "start command: GO -> the start taking effect (tile 0, after its skew)", s0 - go_at);
+    {
+        int64_t lo = INT64_MAX, hi = 0;
+        for (unsigned t = 0; t < 64; t++) for (int64_t w : m.c.tile(t).block().counter_write_at) if (w >= go_at) { lo = std::min(lo, w - go_at); hi = std::max(hi, w - go_at); }
+        out(suite::str("  sync: the shortest start path's counter store, from C&C's GO store: cycle +%lld..+%lld over the 64 tiles [meas: RecipeTest sync]", (long long)lo, (long long)hi));
+    }
+    meas("sync", "start command: GO -> all READY", go_to_ready(m, 1));
+    go_to_first_request(m, 1, "sync", "start (a stream run)");
+}
+
+// ================================================================ 28 a signal between tiles: the ring pipeline
+void signal() {
+    suite::group("signal");
+    Mach m(cfg());
+    const Mach::Image im = m.boot("rcp_signal");
+    const uint32_t vecs = im.sym("vecs"), gots = im.sym("gots");
+    m.c.cc().wait_until([&] { return tiles_idle(m); }).call([&](int64_t) {   // after crt0 has zeroed .bss
+        for (unsigned t = 0; t < 64; t++) for (unsigned st = 0; st < 4; st++) for (unsigned i = 0; i < 8; i++) m.c.tile(t).poke_local(vecs + 4 * (8 * st + i), t << 16 | st << 8 | i); });
+    m.c.cc().command(BROADCAST, 1 << 24).go();
+    finish(m, "signal", 40000);
+    int bad = 0;
+    for (unsigned t = 0; t < 64; t++) {
+        const unsigned l = (t + 63) & 63;
+        for (unsigned st = 0; st < 4; st++) for (unsigned i = 0; i < 8; i++) if (m.word(t, gots + 4 * (8 * st + i)) != (l << 16 | st << 8 | i)) bad++;
+    }
+    suite::eq(0, bad, "four steps of the ring: every tile got its left neighbour's vectors, each send released by a count-only signal");
+    no_violations(m.c, "signal");
+    meas("signal", "a 4-step ring of 8-word vectors, released by signals: GO -> all READY", go_to_ready(m, 0));
+}
+
 // ================================================================ SelfTest: the Java side of fw/tests/selftest.h
 // Every constant read from the header itself (its ST_ #defines), the algorithm the header's (SelfTest.java).
 struct SelfTest {
@@ -755,9 +812,9 @@ int main(int argc, char** argv) {
     if (shuffle >= 0) std::printf("shuffled child order, seed %lld\n", (long long)shuffle);
     snippets();
     cmdloop(); copy(); cmem(); bucket(); aug(); gather(); xchg(); xvec(); a2a(); rdport(); status(); rules();
-    // sync(): next
-    blocks();
-    // selftest(): W20 (C&C 1's model: drainReports, results); boot(), signal(): next
+    sync_(); blocks();
+    // selftest(), boot(): W20 (C&C 1's model: drainReports, results, reportsOf; Cc::reset)
+    signal();
     tables(); replay(); cc1();
     out("recipe cycles [meas: RecipeTest; tile 0 unless stated]:");
     for (const std::string& s : table) out(s);

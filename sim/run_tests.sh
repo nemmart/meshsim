@@ -135,7 +135,7 @@ pending reqbus-shuf   "shuffled child order (seed 4)" "P4"
 pending cccores       "C&C 1-3 as cores (Config.ccCores, WORKER14): the boot ROM's controller branch, the link, the request tree" "P5: W20's requests 9 and 10 (the checker's build)"
 pending cccores-shuf  "shuffled child order (seed 4)" "P5: W20's requests 9 and 10 (the checker's build)"
 step replay-build 1 "the replay controller (sw/replay/build.sh)" tests/stageb/replay-build.log -- tests/stageb/replay_build.sh
-pending stageb        "Stage B: replay_ctl.c on a tile against Stage A, synthetic windows" "P7b: equal to v1.3, but its CL4 line says FAIL by design and the summary greps FAIL (W25 F9, integrator)"
+step stageb 1 "Stage B: replay_ctl.c on a tile against Stage A, synthetic windows" tests/stageb/stageb.log -- $S/stageb synthetic
 if [ -n "${DELIVERY:-}" ]; then   # Stage B on a tracer delivery's guest windows: DELIVERY=<replay-inputs dir> (v1.3's; no such delivery on the runner: unrun, as in v1.3)
   for g in lrd_x0 scd_x0 nop_hint jalr_self jalr_zero; do step stageb-$g 1 "Stage B on the tile: $g" - -- $S/stageb "$DELIVERY" state $g; done
 fi
@@ -164,6 +164,6 @@ fi
 # ---- v1.3's summary ------------------------------------------------------------------------------------------------
 grep -h "PENDING" results/*.log | sort | uniq -c
 FAILED=0
-grep -h "FAIL" results/*.log && FAILED=1
+grep -h "FAIL" results/*.log | grep -v "(CL4: must fail)" && FAILED=1   # D46: Stage B's must-fail window (v1.3's runner fails on it too)
 [ -s results/.differs ] && { cat results/.differs; FAILED=1; }
 [ "$FAILED" = 1 ] && { echo "== FAILURES"; exit 1; } || echo "== all passed (PENDING suites aside); logs in results/"

@@ -126,6 +126,7 @@ struct MachConfig {
     std::vector<std::string> image_dirs;   // Mach::Image's search path (empty: the default above)
     uint32_t log_capacity = 1u << 14;      // Net: director-log entries per tile (fatal when exceeded, never grows)
     uint32_t host_capacity = 4096;         // each controller's host-port queue (packets)
+    uint32_t phase_log_capacity = 1u << 16;   // C&C's phase log (GOs; fatal when exceeded)
     unsigned threads = 1, parts = 1;       // the framework's split (row bands); a suite's default is one thread
 
     static MachConfig machine();       // ref's Config.machine()
@@ -257,6 +258,7 @@ public:
     int64_t last_go_at() const, last_all_ready_at() const, last_run_at() const;
     // CnC.phaseLog: {all READY seen, GO store} per GO
     std::vector<std::array<int64_t, 2>> phase_log() const;
+    size_t phases_logged() const;                           // phaseLog.size(), without the copy (for run conditions)
     std::vector<std::array<uint64_t, 4>> received() const;  // Endpoint.received: {t, payload lo, header, payload hi}
     uint64_t ready_bits() const;                            // the READY bits as C&C sees them
     // (received: ref's cnc.received, on either machine without cc_cores: {t, payload [63:0], header, payload [127:64]})

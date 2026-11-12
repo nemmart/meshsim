@@ -142,6 +142,7 @@ struct Chip::Impl {
     std::vector<E4> writer_logs[64], gather_logs[64];     // TileRef::record_writer, record_gather
     // the endpoints' harness parts (cnc.h's HarnessSends): C&C 1 (the Java model), C&C 2, C&C 3
     units::HarnessSends sends[3];
+    std::vector<std::array<int64_t, 2>> plog;             // C&C's phase log (Cc::phase_log)
     std::vector<units::HarnessSends::E> send_store[3];
     std::vector<E4> recv[3];
     void push_send(unsigned cc, const units::HarnessSends::E& e);
@@ -266,6 +267,11 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
         }
     }
     m.has_cnc = !c.cc_cores;
+    if (!c.cc_cores) {                                    // ref's CnC.phaseLog
+        m.plog.assign(c.phase_log_capacity, {});
+        units::Cnc& cn = m.sim->unit<units::Cnc>("cnc");
+        cn.plog = reinterpret_cast<int64_t(*)[2]>(m.plog.data()); cn.plog_cap = c.phase_log_capacity;
+    }
     if (!c.cc_cores)                                      // the endpoints' receive traces (ref's received), every machine
         for (unsigned k = 0; k < 3; k++) {
             m.recv[k].assign(c.log_capacity, {});
@@ -866,7 +872,12 @@ bool Cc::busy() const { const units::Cnc& c = c_->unit<units::Cnc>("cnc"); retur
 int64_t Cc::last_go_at() const { return c_->unit<units::Cnc>("cnc").last_go_at; }
 int64_t Cc::last_all_ready_at() const { return c_->unit<units::Cnc>("cnc").last_all_ready_at; }
 int64_t Cc::last_run_at() const { return c_->impl().last_run_at; }
-std::vector<std::array<int64_t, 2>> Cc::phase_log() const { FATAL("mach: Cc::phase_log comes with CtrlTest's list (W20)"); }
+std::vector<std::array<int64_t, 2>> Cc::phase_log() const {   // ref's CnC.phaseLog: {all READY seen, GO} per GO
+    const Chip::Impl& m = c_->impl_const();
+    const units::Cnc& cn = const_cast<Chip*>(c_)->unit<units::Cnc>("cnc");
+    return std::vector<std::array<int64_t, 2>>(m.plog.begin(), m.plog.begin() + cn.plog_n);
+}
+size_t Cc::phases_logged() const { return const_cast<Chip*>(c_)->unit<units::Cnc>("cnc").plog_n; }
 std::vector<std::array<uint64_t, 4>> Cc::received() const { return c_->received(0); }
 uint64_t Cc::ready_bits() const { FATAL("mach: Cc::ready_bits comes with the coreless machine"); }
 

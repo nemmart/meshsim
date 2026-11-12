@@ -67,6 +67,9 @@ void a2a(int64_t seed) {
     m.c.cc().command(units::lw::BROADCAST, 1u << 24).go().command(units::lw::BROADCAST, 2u << 24).go().command(units::lw::BROADCAST, 3u << 24).go();
     const bool ok = m.run([&] { return m.all_stopped(); }, 2000000);
     report("a2a seed " + std::to_string(seed), m, ok);
+    std::string pl = "  phaseLog";
+    for (const auto& e : m.c.cc().phase_log()) pl += " [" + std::to_string(e[0]) + ", " + std::to_string(e[1]) + "]";
+    say("%s\n", pl.c_str());
     say("  misplaced %d; lastGoAt %lld lastAllReadyAt %lld; busy %s; sram t9 0x40000 %016llx t50 0x40100 %016llx\n", data.verify(m.c),
         (long long)m.c.cc().last_go_at(), (long long)m.c.cc().last_all_ready_at(), tf(m.c.cc().busy()),
         (unsigned long long)m.c.tile(9).sram_peek64(0x40000), (unsigned long long)m.c.tile(50).sram_peek64(0x40100));

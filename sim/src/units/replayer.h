@@ -273,6 +273,10 @@ public:
     void set_row_buffer(uint64_t* buf, uint64_t capacity_rows) { row_buf_ = buf; row_cap_ = capacity_rows; }
     uint64_t* row_buffer() const { return row_buf_; }
     uint64_t rows_sunk() const { return rows_sunk_; }
+    // W20 (harness-only; P2): the harness's row hook (sim/tests/mach.h) drains the buffer between cycles: the rows from
+    // row_base() on are in it, from its start; drained() moves the base to rows_sunk() (0 and unused otherwise).
+    uint64_t row_base() const { return row_base_; }
+    void drained() { row_base_ = rows_sunk_; }
     uint64_t row_hash() const { return row_hash_; }
     unsigned sink_interval = 1;
 
@@ -402,7 +406,7 @@ private:
     unsigned outq_h_ = 0, outq_n_ = 0;
     int64_t last_sink_ = INT64_MIN / 2;
     uint64_t* row_buf_ = nullptr;
-    uint64_t row_cap_ = 0, rows_sunk_ = 0, row_hash_ = 0;
+    uint64_t row_cap_ = 0, rows_sunk_ = 0, row_hash_ = 0, row_base_ = 0;
 
     // facts
     ReplayerFact facts_[FACT_RING] = {};

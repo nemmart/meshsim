@@ -393,6 +393,9 @@ public:
     // error lines into C&C's row collectors and C&C: wires with a delay in ref, not buses). With no types (the default)
     // every input and every Link word counts, as before the parameters were added.
     bool in_flight(const std::vector<uint16_t>& shifted = {}, const std::vector<uint16_t>& ignored = {}) const;
+    // W20 (harness-only; P2): data in motion into the units whose names start with `prefix` (in_flight's rules, no
+    // types excepted): ref's parkedUntouched. One domain only.
+    bool in_flight_into(const std::string& prefix) const;
     // W10 (measurement): with Options::time_threads, a split machine's phases as shares of its threads' time over the runs
     // ("compute imbalance barrier drain publish clear end other"); "one domain" otherwise.
     std::string thread_times() const;

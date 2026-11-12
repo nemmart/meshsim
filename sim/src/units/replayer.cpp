@@ -347,9 +347,9 @@ void Replayer::drain(int64_t T) {
     outq_h_ = (outq_h_ + 1) % OUTQ_ROWS; outq_n_--;
     last_sink_ = T;
     for (unsigned i = 0; i < REC_LONGS; i++) row_hash_ = mix(row_hash_ ^ r[i]);
-    if (row_buf_) {
-        if (rows_sunk_ >= row_cap_) FATAL("replayer %u: the row buffer is full: %llu rows", me, (unsigned long long)row_cap_);
-        for (unsigned i = 0; i < REC_LONGS; i++) row_buf_[rows_sunk_ * REC_LONGS + i] = r[i];
+    if (row_buf_) {                                       // W20: from row_base_ (0 unless the harness drains it)
+        if (rows_sunk_ - row_base_ >= row_cap_) FATAL("replayer %u: the row buffer is full: %llu rows", me, (unsigned long long)row_cap_);
+        for (unsigned i = 0; i < REC_LONGS; i++) row_buf_[(rows_sunk_ - row_base_) * REC_LONGS + i] = r[i];
     }
     rows_sunk_++;
 }

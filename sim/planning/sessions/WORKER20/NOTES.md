@@ -50,6 +50,14 @@ remaining kinds, interleaved as the suites ask.
   core case (memory, PARAMS, STATUS, ERRORS, a counter, the boot ROM, the bus errors, a counter store through the bus,
   a send through ROUTER_*) line for line. Not yet: loads with a side effect (EVENTS, REQUEST_RECEIVE), the peripheral
   windows (fatal, asking).
+- **W25's machine done**: `MachConfig::test_periph_tile` (ref's testPeripheral: the replayer on that tile only, periph_type
+  0 elsewhere; `G1Config::periph_only`, harness-only, in add_g1), `Cc::set_expect` (cc1p.expect), `MachConfig::parked` and
+  `Chip::parked_untouched` (ref's check; the parked tiles are simulated all the same: asleep in their ROMs they cost
+  little, and the check says whether anything reached them; `Sim::in_flight_into`, harness-only), `Chip::on_row` (ref's
+  rowListener: the replayer's row buffer drained between cycles, `Replayer::row_base`/`drained`, harness-only). MachSelf's
+  StageB machine (lone and full) line for line, its six register-block violations included (the first CTL facts: reserved
+  bits, record base, counter wraps; also done early, done with GO masked, reserved accesses, SRAM_RD_DEST size). The row
+  hook is unchecked against ref yet (it needs a replay window): W25's StageB will.
 - Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
   after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
 

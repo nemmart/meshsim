@@ -16,6 +16,8 @@
 #include "units/director.h"
 #include "units/gather.h"
 #include "units/inject.h"
+#include "units/periph_slot.h"
+#include "units/replayer.h"
 #include "units/router.h"
 #include "units/write_engine.h"
 #include "units/cnc.h"
@@ -122,6 +124,10 @@ struct Chip::Impl {
     struct Wait { uint32_t step; std::function<bool()> cond; };   // Cc::wait_until's, in order
     std::vector<Wait> waits;
     void check_waits();
+    // Chip::on_row's hooks: tile, its replayer, the buffer it sinks into, the function
+    struct RowHook { unsigned tile; units::Replayer* r; std::vector<uint64_t> buf; std::function<void(const uint64_t*, int64_t)> fn; };
+    std::vector<RowHook> row_hooks;
+    void drain_rows(int64_t cycle);
     // Net (the coreless machine fed from the harness): each tile's feed (inject.h's HarnessFeed, harness-only) and the
     // rings' storage (grown between cycles, the feed's pointers refreshed), and the directors' logs (fixed size)
     using E4 = std::array<uint64_t, 4>;
@@ -163,6 +169,11 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     g.periph_present = c.periph_type != 0 ? 1 : 0;
     g.periph_slot = c.periph_type != 0 || c.cc_cores;     // ref: every tile's slot holds its peripheral 1 (type 4)
     if (c.periph_type != 0 && c.periph_type != 4) FATAL("mach: periph_type %d (4 the replayer, or 0)", c.periph_type);
+    if (c.test_periph_tile >= 64) FATAL("mach: test_periph_tile %d (a mesh tile)", c.test_periph_tile);
+    if (c.test_periph_tile >= 0) {                        // ref's testPeripheral: the replayer on that tile only
+        if (c.periph_type != 0) FATAL("mach: test_periph_tile needs periph_type 0 (ref's StageB: periphType 0)");
+        g.periph_present = 1; g.periph_slot = true; g.periph_only = c.test_periph_tile;
+    }
     g.cc3_tracer = c.cc3_tracer;
     g.K = c.K; g.cm_latency = c.cm_latency;
     g.ts_engine_latency = c.ts_engine_latency;
@@ -212,7 +223,11 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     sw.errors = c.check_errors; sw.unexpected = c.check_unexpected; sw.read_port_overlap = c.check_read_port_overlap;
     sw.command_read = c.check_command_read; sw.strict_replies = c.strict_replies; sw.K = c.K;
     m.checker = std::make_unique<Checker>(sim::check::kOn ? c.check_capacity : 0, c.max_violation_messages, sw);
-    for (unsigned k = 0; k < m.nunits; k++) m.sim->unit<units::TileCtl>(units::unit_prefix(k) + "ctl").ck_tile = int(k);
+    for (unsigned k = 0; k < m.nunits; k++) {             // the units that record facts under their tile (src/check.h)
+        units::TileCtl& b = m.sim->unit<units::TileCtl>(units::unit_prefix(k) + "ctl");
+        b.ck_tile = int(k); b.s.ck_tile = int(k);
+        m.sim->unit<units::TileCore>(units::unit_prefix(k) + "core").rv.ck_tile = int(k);
+    }
     if (sim::check::kOn) {                                // ref's FIFO names (Router, Tile, Endpoint)
         static const char* const kOutName[6] = {"to-right", "to-left", "to-down", "to-up", "eject", "to-cnc"};
         static const char* const kPortName[6] = {"from-left", "from-right", "from-up", "from-down", "loopback", "from-cnc"};
@@ -286,6 +301,36 @@ void Chip::Impl::check_waits() {
     sim->wake("cnc");
 }
 
+void Chip::Impl::drain_rows(int64_t cycle) {
+    for (RowHook& h : row_hooks) {
+        const uint64_t n = h.r->rows_sunk() - h.r->row_base();
+        for (uint64_t i = 0; i < n; i++) h.fn(h.buf.data() + i * units::Replayer::REC_LONGS, cycle);
+        h.r->drained();
+    }
+}
+void Chip::on_row(unsigned tile, std::function<void(const uint64_t*, int64_t)> fn) {
+    units::PeriphSlot& sl = unit<units::PeriphSlot>(units::tile_unit(tile, "slot"));
+    Impl::RowHook h{tile, &sl.s.replayer(1), std::vector<uint64_t>(size_t(64) * units::Replayer::REC_LONGS), std::move(fn)};
+    impl_->row_hooks.push_back(std::move(h));
+    Impl::RowHook& r = impl_->row_hooks.back();
+    r.r->drained();
+    r.r->set_row_buffer(r.buf.data(), 64);                 // at most one row a cycle leaves (the sink): 64 is plenty
+}
+bool Chip::parked_untouched() const {                      // ref's: each parked tile quiescent, no link into or out of it busy
+    if (cfg_.parked.empty()) return true;
+    for (int k : cfg_.parked) {
+        TileRef p = const_cast<Chip*>(this)->tile(unsigned(k));
+        for (const auto& f : p.unit<units::Router>("router").q) if (f.count) return false;
+        const units::Injection& in = p.unit<units::Injection>("inj");
+        if (p.unit<units::AddrGen>("ag").running || p.ts_busy() || in.tok.reads || in.rs.nxt_v || in.rs.cur_v ||
+            p.unit<units::BigSram>("sram").busy || p.unit<units::WriteEngine>("we").count || p.unit<units::Gather>("gather").left)
+            return false;
+        if (impl_->sim->in_flight_into(units::unit_prefix(unsigned(k)))) return false;   // its ports (the links into it)
+    }
+    for (unsigned k = 0; k < 64; k++) if (impl_->sim->in_flight_into(units::tile_unit(k, "router"))) return false;
+    return true;
+}
+
 void Chip::step() {
     impl_->checker->install();
     impl_->sim->run(1);
@@ -293,10 +338,11 @@ void Chip::step() {
     impl_->checker->process(cycle(), false);
     impl_->run_calls();
     impl_->check_waits();
+    impl_->drain_rows(cycle());
 }
 void Chip::run(uint64_t n) {
     impl_->sim->wake_all();
-    if (impl_->calls.empty() && impl_->waits.empty()) {
+    if (impl_->calls.empty() && impl_->waits.empty() && impl_->row_hooks.empty()) {
         impl_->checker->install();
         impl_->sim->run(n);
         impl_->collect_overflows();
@@ -660,6 +706,7 @@ Cc& Cc::call(std::function<void(int64_t)> fn) {
     publish(*c_);
     return *this;
 }
+void Cc::set_expect(uint64_t tiles) { c_->unit<units::Cnc>("cnc").expect = tiles; c_->touched("cnc"); }
 Cc& Cc::wait_until(std::function<bool()> cond) {
     Chip::Impl& m = c_->impl();
     m.waits.push_back({uint32_t(m.prog.steps.size()), std::move(cond)});

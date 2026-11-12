@@ -881,6 +881,26 @@ void Sim::wake(const std::string& name) {
     impl_->e.mark(it->second);       // ready for the next cycle's run phase (nothing clears it before)
 }
 // W20 (harness-only; P2): Sim::wake_all, Sim::in_flight (config.h).
+bool Sim::in_flight_into(const std::string& prefix) const {
+    if (impl_->running) FATAL("Sim::in_flight_into during a run: between runs only");
+    if (impl_->threads) FATAL("Sim::in_flight_into: one domain only (the harness's machines run one thread)");
+    const Engine& e = impl_->e;
+    auto ours = [&](uint32_t k) { return impl_->inst[k].name.compare(0, prefix.size(), prefix) == 0; };
+    for (uint32_t k = 0; k < e.ninst; k++) if ((e.mask[k] & ~e.edges[k]) && ours(k)) return true;
+    for (uint32_t wi = 0; wi < e.nwheels; wi++) {
+        const Wheel& wh = e.wheels[wi];
+        if (wh.kind != Kind::link && wh.kind != Kind::fifo && wh.kind != Kind::hold) continue;   // (credit returns: state)
+        for (uint32_t b = 0; b <= wh.mask; b++) {
+            const Bucket& bk = wh.buckets[b];
+            const Word* p = bk.begin();
+            for (uint32_t m = bk.count(); m; m--, p += wh.width + 1) {
+                const uint32_t o = wh.kind == Kind::link ? e.links[p[0]].owner : wh.kind == Kind::fifo ? e.fifos[p[0]].owner : e.holds[p[0]].owner;
+                if (ours(o)) return true;
+            }
+        }
+    }
+    return false;
+}
 uint64_t Sim::fifo_overflows(FifoIn p, Cycle* first) const {
     if (impl_->threads) FATAL("Sim::fifo_overflows: one domain only (the harness's machines run one thread)");
     const auto& f = impl_->e.fifos[p.idx];

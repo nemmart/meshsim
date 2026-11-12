@@ -38,7 +38,29 @@ final class MachSelf {
                 m.c.cc.lastGoAt, m.c.cc.lastAllReadyAt, m.c.cc.busy(), m.c.tiles[9].sram.peek64(0x40000), m.c.tiles[50].sram.peek64(0x40100));
     }
 
-    public static void main(String[] a) {
+    /** StageB's machine (W25): the replayer on tile 0 only (testPeripheral, periphType 0), C&C waiting for tile 0's READY
+     *  only (cc1p.expect = 1), tiles 1-63 parked; an image booted on tile 0 alone. */
+    static void stageb(boolean lone) throws Exception {
+        Config k = Config.machine(); k.periphType = 0;
+        k.testPeripheral = tile -> tile == 0 ? new Replayer(0) : null;
+        Chip c = new Chip(k);
+        if (lone) { c.parked = new boolean[64]; java.util.Arrays.fill(c.parked, 1, 64, true); }
+        Mach.Image im = new Mach.Image(java.nio.file.Path.of("sw/build"), "regs");
+        c.cc1p.expect = 1;
+        c.cc.loadWords(0, Registers.PMEM_BASE, im.code);
+        c.cc.loadWords(0, im.sym("_data_start"), im.data);
+        c.cc.command(0, Registers.CMD_JUMP << 24, im.sym("_start")).go();
+        Tile p = c.tiles[0];
+        boolean ok = c.runUntil(() -> p.core.halt != Controller.RUN && p.core.halt != 0, 100000);
+        System.out.printf("stageb lone %b: %s at cycle %d; tile 0 halt %d pc 0x%x exit %d; PARAMS t0 %x t1 %x; parkedUntouched %b; violations %d%n",
+                lone, ok ? "stopped" : "NOT stopped", c.cycle, p.core.halt, p.core.pc, p.ctl.simExitValue,
+                p.core.load(c.cycle + 1, 0xFFFFF800, 4), c.tiles[1].core.load(c.cycle + 1, 0xFFFFF800, 4), c.parkedUntouched(), c.violations);
+        System.out.print(c.violationReport());
+    }
+
+    public static void main(String[] a) throws Exception {
+        stageb(true);
+        stageb(false);
         {   // regs (CtrlTest's), run as M2Prog runs it
             Mach m = new Mach(Mach.cfg(-1));
             Mach.Image im = m.boot("regs");

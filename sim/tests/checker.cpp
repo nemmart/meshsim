@@ -11,6 +11,7 @@
 
 #include "base/fatal.h"
 #include "units/linkword.h"
+#include "units/regmap.h"
 
 namespace mach {
 
@@ -81,6 +82,24 @@ std::string Checker::text(const Fact& f) const {
     case Kind::DIR_PAST_SRAM:
         return fmt("mode-0 write at or past the end of big SRAM (chunk 0x%" PRIx64 "): undefined (2.2; invariant 19): ", a[0]) + describe(a[1], a[2], a[3]);
     case Kind::FIFO_OVERFLOW: return "FIFO overflow " + fifo_names.at(size_t(a[0])) + " (invariant 1)";
+    // ---- TileControl.violate (the register block; its store checks happen at the core's store in C++) ----
+    case Kind::CTL_WFI_WOKEN:
+        return "a WFI woken by an event other than GO with done set (wait_for_command()): only GO wakes the core between done and GO (the done gate, spec 4.12)";
+    case Kind::CTL_RESERVED_BITS:
+        return fmt("%s stored with reserved bits set (0x%" PRIx64 "): ignored, read 0 (8.1; invariant 21)", units::reg_info(unsigned(a[0])).name, a[1]);
+    case Kind::CTL_RECORD_BASE_ODD: return fmt("DMA_RECORD_BASE_ADDRESS 0x%" PRIx64 " not aligned to a record (two chunks; 8.7; invariant 20)", a[0]);
+    case Kind::CTL_RD_DEST_SIZE: return "SRAM_RD_DEST_ADDR with the reserved size 11 (8.8; invariant 21)";
+    case Kind::CTL_RESERVED_ACCESS:
+        return fmt("%s the reserved register-block word 0x%" PRIx64 ": reads 0, stores ignored (8.1)", a[0] ? "store to" : "load of", a[1]);
+    case Kind::CTL_DONE_GO_MASKED:
+        return "done pulsed (wait_for_command()) with GO clear in EVENTS_MASK: the GO it waits for would not be consumed (4.12)";
+    case Kind::CTL_COUNTER_WRAP: return fmt("WRITE_COUNTER_%" PRIu64 " written past 2^20 - 1: the count wraps (4.12)", a[0]);
+    case Kind::CTL_DONE_EARLY: {
+        std::string b;
+        for (unsigned c = 1; c <= 7; c++)
+            if (a[0] >> c & 1) b += fmt(" WRITE_COUNTER_%u %u", c, unsigned(a[1 + (c - 1) / 3] >> (20 * ((c - 1) % 3)) & 0xFFFFF));
+        return "done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]):" + b;
+    }
     case Kind::HIST_OVERFLOW: return "a counter exceeded 17 bits (invariant 6)";
     case Kind::ROTATION_LATE: return "address generator: a rotation started late (invariant 3; drift, see agReport)";
     case Kind::READ_RETURN_REFUSED: return "SIMULATOR: a read return was refused by the injection point";

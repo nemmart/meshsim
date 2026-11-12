@@ -108,6 +108,10 @@ struct MachConfig {
     unsigned request_fifo_depth = 128, req_hop_latency = 3;
     std::array<unsigned, 3> receive_queue_depth = {128, 256, 128};
     int periph_type = 4;               // every mesh tile's peripheral 1: 4 the replayer, 0 none
+    int test_periph_tile = -1;         // ref's testPeripheral (StageB, W25): the replayer on this mesh tile only, the
+                                       //   others none (with periph_type 0)
+    std::vector<int> parked;           // ref's Chip.parked (StageB's -Dstageb.lone): tiles nothing must reach. Here they are
+                                       //   simulated all the same (asleep, they cost little); Chip::parked_untouched is ref's check
     // ---- the simulator and its checks (spec 9) [step 2] ----
     int64_t shuffle_seed = -1;         // >= 0: the debug shuffle with this seed
     unsigned max_violation_messages = 50;
@@ -232,6 +236,7 @@ public:
     // CnC.waitUntil(cond) in W23's form (approved): C&C waits at this step; the harness checks cond between cycles once
     // C&C has reached it, and C&C moves on in the next cycle. Runs go cycle by cycle while one is pending.
     Cc& wait_until(std::function<bool()> cond);
+    void set_expect(uint64_t tiles);                        // ref's cc1p.expect (READY_EXPECT_0-1): the tiles GO waits for
     bool busy() const;                                      // CnC.busy(): steps left in its queue
     int64_t last_go_at() const, last_all_ready_at() const, last_run_at() const;
     // CnC.phaseLog: {all READY seen, GO store} per GO
@@ -270,6 +275,10 @@ public:
     bool all_stopped() const;                               // no tile's core in RUN
     bool all_exited() const;                                // every tile ended through SIM_EXIT
     bool all_in_wfi() const;
+    bool parked_untouched() const;                          // ref's parkedUntouched (MachConfig::parked; true if none)
+    // ref's Replayer.rowListener on tile k's replayer (peripheral 1): fn(the record, REC_LONGS words; the cycle it left)
+    // for every row the replayer sinks, called between cycles after the cycle it left in (runs go cycle by cycle then)
+    void on_row(unsigned tile, std::function<void(const uint64_t* rec, int64_t cycle)> fn);
 
     // ---- the cores (cc_cores; ref's CcCores) ----
     void host_load(unsigned cc, uint32_t byte_addr, const std::vector<uint32_t>& words);       // CcCores.hostLoad

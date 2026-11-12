@@ -70,8 +70,26 @@ void a2a(int64_t seed) {
         (long long)m.c.cc().last_go_at(), (long long)m.c.cc().last_all_ready_at(), tf(m.c.cc().busy()),
         (unsigned long long)m.c.tile(9).sram_peek64(0x40000), (unsigned long long)m.c.tile(50).sram_peek64(0x40100));
 }
+void stageb(bool lone) {
+    mach::MachConfig k = mach::MachConfig::machine();
+    k.periph_type = 0; k.test_periph_tile = 0;
+    if (lone) for (int t = 1; t < 64; t++) k.parked.push_back(t);
+    mach::Chip c(k);
+    const Mach::Image im = Mach::Image::load("regs", k);
+    c.cc().set_expect(1);
+    c.cc().load_words(0, 0x01000000, im.code).load_words(0, im.sym("_data_start"), im.data).command(0, 0x4Au << 24, {im.sym("_start")}).go();
+    mach::TileRef p = c.tile(0);
+    const bool ok = c.run_until([&] { return p.halt() != units::Rv32::RUN && p.halt() != 0; }, 100000);
+    say("stageb lone %s: %s at cycle %lld; tile 0 halt %d pc 0x%x exit %lld; PARAMS t0 %x t1 %x; parkedUntouched %s; violations %llu\n",
+        tf(lone), ok ? "stopped" : "NOT stopped", (long long)c.cycle(), p.halt(), p.pc(), (long long)p.exit_value(),
+        *p.load(c.cycle() + 1, 0xFFFFF800u, 4), *c.tile(1).load(c.cycle() + 1, 0xFFFFF800u, 4), tf(c.parked_untouched()),
+        (unsigned long long)c.violations());
+    say("%s", c.violation_report().c_str());
+}
 void machself() {
     out.clear();
+    stageb(true);
+    stageb(false);
     {
         Mach m(Mach::cfg(-1));
         Mach::Image im = m.boot("regs");
@@ -285,9 +303,27 @@ TEST(mach_net_as_refs_Net) {
     CHECK(out == want);
 }
 
+// Without the checker's facts (the release builds) the violation counts and reports are left out of both sides.
+std::string without_violations(const std::string& x) {
+    if (sim::check::kOn) return x;
+    std::string r;
+    for (size_t at = 0; at < x.size();) {
+        size_t e = x.find('\n', at);
+        if (e == std::string::npos) e = x.size();
+        std::string l = x.substr(at, e - at);
+        at = e + 1;
+        if (l.rfind("violations: ", 0) == 0 || l.rfind("  cycle ", 0) == 0) continue;
+        const size_t v = l.find("; violations ");
+        if (v != std::string::npos) l = l.substr(0, v);
+        r += l + "\n";
+    }
+    return r;
+}
+
 TEST(mach_runs_as_refs_Mach) {
     machself();
-    const std::string want = file("tests/mach/machself.out");
+    out = without_violations(out);
+    const std::string want = without_violations(file("tests/mach/machself.out"));
     if (out != want) std::fprintf(stderr, "---- got\n%s---- want (tests/mach/machself.out)\n%s", out.c_str(), want.c_str());
     CHECK(out == want);
 }

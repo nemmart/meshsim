@@ -22,26 +22,30 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     if (g.cfg.K + 1 > 63 || g.cfg.cm_latency + 1 > 63) FATAL("add_g1: K %u or cm_latency %u past the wheel", g.cfg.K, g.cfg.cm_latency);
     if (k >= g.units) FATAL("add_g1: unit %u, but the context's memories hold %u units", k, g.units);
     const std::string t = unit_prefix(k);
+    // W20 (harness-only): ref's testPeripheral on one tile (G1Config::periph_only): the others have no peripheral
+    const bool has_periph = k >= 64 || g.cfg.periph_only < 0 || int(k) == g.cfg.periph_only;
+    const uint32_t periph_present = has_periph ? g.cfg.periph_present : 0;
+    const bool periph_slot = has_periph && g.cfg.periph_slot;
 
     Rv32 core;
     core.timing = g.cfg.timing;
-    core.periph_present = g.cfg.periph_present;
+    core.periph_present = periph_present;
     core.dmem = g.mem + size_t(k) * 2 * MEM_WORDS;
     core.imem = core.dmem + MEM_WORDS;
     core.bootrom = g.bootrom; core.bootrom_words = g.bootrom_words;
     RegBlockState block;
-    block.params = params_value(g.cfg.periph_present, k, g.cfg.mem_chunks);
+    block.params = params_value(periph_present, k, g.cfg.mem_chunks);
     block.done_gate = g.cfg.done_gate;
     DirectorConfig dc;
-    dc.tile = k; dc.periph_present = g.cfg.periph_present; dc.mem_chunks = g.cfg.mem_chunks;
+    dc.tile = k; dc.periph_present = periph_present; dc.mem_chunks = g.cfg.mem_chunks;
     dc.g4 = true;                                         // W12: G4's engines are in every M2 tile
-    dc.periph_slot = g.cfg.periph_slot;
+    dc.periph_slot = periph_slot;
     const unsigned lookahead = g.cfg.ag_lookahead ? g.cfg.ag_lookahead : 2 * g.cfg.ts_engine_latency + 2;
 
     // W15: the slot's paths behind periph_slot; W14: a controller (64-66) has a receive side (its target's queue), every
     // core the request port's send side
-    auto& c = cfg.add<TileCore>(t + "core", core, k, g.cfg.read_port_depth, g.cfg.periph_slot, k >= 64, g.cfg.done_gate);
-    auto& b = cfg.add<TileCtl>(t + "ctl", block, kHasOvfEvent<ControlIO>, true, g.cfg.periph_slot);
+    auto& c = cfg.add<TileCore>(t + "core", core, k, g.cfg.read_port_depth, periph_slot, k >= 64, g.cfg.done_gate);
+    auto& b = cfg.add<TileCtl>(t + "ctl", block, kHasOvfEvent<ControlIO>, true, periph_slot);
     auto& d = cfg.add<Director>(t + "dir", dc);
     auto& we = cfg.add<WriteEngine>(t + "we", g.we_in_depth, g.cfg.ts_engine_latency, g.cfg.mem_chunks);
     auto& ag = cfg.add<AddrGen>(t + "ag", k, lookahead, true);
@@ -105,8 +109,8 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     // Ingress/Egress and UART (type 1), C&C 2's stub, C&C 3's Tracer (cc3_tracer) or stub; the chip wires C&C 1's own
     // ports (the chip lines) and the DMA through `io.slot` and `io.dma`.
     PeriphSlot* slot = nullptr;
-    if (g.cfg.periph_slot) {
-        if ((g.cfg.periph_present & 7) != 1) FATAL("add_g1: tile %u: the slot's tile has peripheral 1 only (PARAMS [2:0] = %u)", k, g.cfg.periph_present);
+    if (periph_slot) {
+        if ((periph_present & 7) != 1) FATAL("add_g1: tile %u: the slot's tile has peripheral 1 only (PARAMS [2:0] = %u)", k, periph_present);
         PeriphSlotConfig pc;
         pc.tile = k;
         if (k < 64) pc.type[1] = g.cfg.periph1;          // W15: a mesh tile's peripheral 1, the replayer by default

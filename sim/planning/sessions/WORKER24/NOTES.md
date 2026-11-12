@@ -88,3 +88,8 @@ Commit and push after each step; each step checked against `ref`.
   C&C's `last_all_ready_at` also moves at a GO (not a phase end). Mach::Image reads only three-field .sym lines; the
   driver reads `nm -S`'s four-field ones as SortTest does. Not yet: shuffled and debug options, the BT steps,
   fingerprints at every GO, the CSVs against the kit, profile/watch (H7), the runner's steps.
+- **F4. C&C's model set `last_all_ready_at` at the harness's all-READY wait** (`CncStep::WAIT_READY`, SortTest's
+  `atAllReady` waitUntil) as well as at `go()`'s; in ref only `go()` sets `lastAllReadyAt` (CnC.java:193; SortTest's
+  waitUntil keeps its own `allReadyAt`). Fixed in the unowned C&C model (owner, 2026-11-12): WAIT_READY no longer
+  touches it. test_mach (MachSelf), test_sort, test_t2_harness, test_chain, test_chip, test_cc_units, test_cnc
+  unchanged (clang release); the driver's phases read go()'s value directly (no offset).

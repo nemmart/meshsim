@@ -172,15 +172,15 @@ struct Machine {
     int64_t seen_go = -1, seen_ready = -1;
     void observe() {
         if (cc.last_go_at() != seen_go) { seen_go = cc.last_go_at(); if (seen_go >= 0) gos.push_back(seen_go); }
-        // C&C's last_all_ready_at is ref's c.cycle in C&C's step (t - 1); PhaseLog.onAllReady is called with t
-        if (cc.last_all_ready_at() != seen_ready) { seen_ready = cc.last_all_ready_at(); if (seen_ready >= 0) readies.push_back(seen_ready + 1); }
+        // C&C's last_all_ready_at: go()'s first all READY, the t PhaseLog.onAllReady is called with
+        if (cc.last_all_ready_at() != seen_ready) { seen_ready = cc.last_all_ready_at(); if (seen_ready >= 0) readies.push_back(seen_ready); }
     }
     // phase i: {GO, its end}: the first all READY after its GO (PhaseLog.onAllReady), else the next GO (onGo's close)
     std::vector<std::array<int64_t, 2>> phases() const {
         std::vector<std::array<int64_t, 2>> v;
         for (size_t i = 0; i < gos.size(); i++) {
             int64_t end = i + 1 < gos.size() ? gos[i + 1] : -1;
-            // strictly between its GO and the next (C&C's last_all_ready_at also moves at a GO: those aren't phase ends)
+            // strictly between its GO and the next
             for (int64_t r : readies) if (r > gos[i] && (i + 1 >= gos.size() || r < gos[i + 1])) { end = r; break; }
             v.push_back({gos[i], end});
         }

@@ -140,6 +140,10 @@ std::string Checker::text(const Fact& f) const {
         return fmt("table window: %s accessed while the address generator is running, its lead-in included (4.10)", kTbl[a[0] & 3]);
     }
     case Kind::CTL_DMEM_RESERVED: return fmt("core store into data memory's reserved first 16 bytes, at 0x%x (2.2; invariant 22; W4-02)", unsigned(a[0]));
+    // ---- ControllerMemories (W26: invariant 8 strict, the command slot) ----
+    case Kind::CMEM_REPLY_OVERWRITE:
+        return fmt("a reply or read-port result overwrote an unread one at data word 0x%x (invariant 8, strict): ", unsigned(a[0])) + describe(a[1], a[2], 0);
+    case Kind::CMEM_COMMAND_UNREAD: return "a command landed in command slot 0 before the core read the previous one (6.3): " + describe(a[1], a[2], a[3]);
     case Kind::WE_PAST_SRAM:
         return fmt("a big-SRAM write at chunk 0x%" PRIx64 ", at or past the end of big SRAM: undefined (4.1; invariant 19): ", a[0]) + describe(a[1], a[2], a[3]);
     case Kind::PERIPH_VIOLATION: {                         // (W20, F2) the replayer's text, without its list's "t<me> @<t>: "

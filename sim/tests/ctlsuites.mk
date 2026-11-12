@@ -3,7 +3,8 @@
 # (tests/ctlsuites/, from oracle/ref/ctlsuites.sh). The programs are named by v1.3's suites; run_tests.sh's steps
 # call them with v1.3's arguments.
 #   suite_cccores   CcCoresTest (steps cccores, cccores-shuf)
-CTL_SUITES := $(B)/suite_cccores
+#   suite_ccbench   CcBench (step ccbench)
+CTL_SUITES := $(B)/suite_cccores $(B)/suite_ccbench
 $(CTL_SUITES): $(B)/suite_%: $(B)/tests/ctl/suite_%.o $(MACH_LINK) $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 # the suites are run by test_ctl_suites (order-only: built with it, not linked into it)

@@ -6,11 +6,13 @@
 // (each marked STAND-IN, with the W20 request it waits for; none edits W20's files).
 #pragma once
 
+#include <charconv>
 #include <cstdint>
 #include <string>
 
 #include "../mach.h"
 #include "units/chip.h"
+#include "units/cnc.h"
 #include "units/cnc1_periph.h"
 #include "units/linkword.h"
 #include "units/periph_slot.h"
@@ -53,6 +55,28 @@ inline uint64_t req_received(mach::Chip& c, unsigned target) {
 }
 // ref's tile.ctl.simExitValue (an int)
 inline int64_t sim_exit_value(mach::Chip& c, unsigned k) { return c.tile(k).exit_value(); }
+
+// ref's chip.cc1p.gos on the Java model's machine: C&C 1's model drives PULSE_GO, counted in the same cycle as CnC.gos
+inline uint64_t model_gos(mach::Chip& c) { return c.unit<units::Cnc>("cnc").gos; }
+
+// Java's String.format("%.<n>f", x): the double's shortest round-trip decimal (Java's FormattedFloatingDecimal), then
+// rounded HALF_UP to n places (printf rounds the exact binary value instead: 129.25 -> "129.2", Java "129.3").
+inline std::string java_fixed(double x, unsigned n) {
+    char buf[400];
+    auto res = std::to_chars(buf, buf + sizeof buf, x < 0 ? -x : x, std::chars_format::fixed);
+    std::string s(buf, res.ptr);
+    const size_t dot = s.find('.');
+    std::string ip = dot == std::string::npos ? s : s.substr(0, dot), fp = dot == std::string::npos ? "" : s.substr(dot + 1);
+    while (fp.size() < n + 1) fp += '0';
+    std::string digits = ip + fp.substr(0, n);
+    if (fp[n] >= '5') {
+        int k = int(digits.size()) - 1;
+        while (k >= 0) { if (digits[size_t(k)] == '9') { digits[size_t(k)] = '0'; k--; } else { digits[size_t(k)]++; break; } }
+        if (k < 0) digits.insert(digits.begin(), '1');
+    }
+    std::string r = n ? digits.substr(0, digits.size() - n) + "." + digits.substr(digits.size() - n) : digits;
+    return (x < 0 ? "-" : "") + r;
+}
 
 // ---- STAND-INS for harness operations W20 hasn't added yet (requests through the integrator; NOTES.md) ----
 // W20 request 9: ref's `tile.ctl.conditions |= bits` between cycles (CcCoresTest's errorPath, CondTest's injected

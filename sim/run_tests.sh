@@ -37,6 +37,7 @@ mkdir -p results
 
 # The suite programs the steps run (each worker adds its own; targets of sim/Makefile).
 SUITES="suite_memsys suite_rvc suite_tracer"
+SUITES="$SUITES suite_ccbench"                       # W23 (P5)
 
 if [ "$BUILD" = 1 ]; then
   echo "== building the suites (MODE=suite CC_NAME=$CC_NAME)"
@@ -123,7 +124,7 @@ if [ "$MODE" != quick ]; then
   pending accounting-full "per-phase accounting, full-size all-to-all from C" "P5 (W23)"
   pending agbench         "read-ahead measurements: ag_lookahead, zero-length groups, start to first request (a few minutes)" "P6"
   pending s1bench         "item S1: K's margin over the write path, L = 1-4, and the table-window case (a few minutes)" "P5 (W23)"
-  pending ccbench         "C&C 1-3 as cores (WORKER14): the boot and a phase against the Java model" "P5 (W23)"
+  step ccbench 16 "C&C 1-3 as cores (WORKER14): the boot and a phase against the Java model" tests/ctlsuites/ccbench.log -- $S/suite_ccbench
   pending sweep-quick     "parameter sweep, quick (about 1 minute; 'java Sweep full' takes about 25)" "P6"
   pending ctrl-full       "the all-to-all from C on the four data sets" "P5"
   pending engine-full     "full-size all-to-alls (4 data sets) and radix sort (about 1.5 minutes)" "P4"

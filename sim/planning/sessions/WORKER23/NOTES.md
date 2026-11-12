@@ -120,3 +120,10 @@ lines).
   "skipped" (no FAIL, no PENDING). The logs have no reference (toolchain output). accounting, accounting-full, s1bench
   and ccbench were labelled P6 in the runner's PENDING lines: relabelled P5 (W23), my rows (C10, G2, G3).
 - Not in my rows but labelled P5 in the runner: riscv (C9), periph (C16), reqbus (C17, P4's list). Left as they are.
+- **Step 1, CcBench matched** (`tests/ctl/suite_ccbench.cpp`): log-equal to ref's, clang release and the suite build
+  (the checker on). Its GO cycle is ref's: ref counts PULSE_GO in the store's cycle; C&C 1's peripheral here applies
+  the store at t + 1 (D33) and keeps the store's cycle as `last_go_store`, which the suite reads (the model's
+  `last_go_at` likewise). Polling `gos` instead shows GO a cycle late (+21/+23 for ref's +20/+24) while the tiles start
+  at ref's cycle: D33 again, in a statistic only. In the runner (step `ccbench`, full mode) and in make check (fast).
+- CcCoresTest in the suite build: errorPath counts the injected ERRORS as a violation (tile 9's, invariant 15; C&C 2's
+  isn't reported), as expected while request 10's stand-in does nothing.

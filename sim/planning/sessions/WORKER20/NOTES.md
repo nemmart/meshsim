@@ -168,6 +168,16 @@ remaining kinds, interleaved as the suites ask.
   (Tile.quiescent, Chip.quiescent), so `Chip::quiescent` now ignores the bus's units too. NetSelf's reqbus case (a
   tile's request through its core's stores, a controllerSend, pending/get/receive/underflow, credits, the root's drops
   of targets 3 and 5) equal to ref.
+- **W22-11, W22-12, W22-18 and W23's (b)-(d) done**: `TileRef::req_set_w`, `req_send` (as of the cycle just run, put_late
+  on the core's push; the block's count and W0-W2 as ref's send leaves them), `req_can_push`, `req_w`; the core's data
+  port through `load`/`store` (W22-12), loads now with ref's side effects (EVENTS consumed under the mask, a window's
+  consuming word, REQUEST_GET on a mesh tile 0, REQUEST_RECEIVE 0 with receive underflow), made by the core in its step at
+  t (TileCore's host posts, harness-only), and from a present peripheral's window (`Sim::regfile_value`, harness-only);
+  `rp_host_queue`, `rp_idle` (ref's rule: a return injected at t frees its entry at t + 1; InjReadSide's injNow
+  statistic), `rp_all_accepted` (TileCore's host reads, harness-only); `set_events` (sticky, as `set_errors`) and
+  `schedule_go(t)` (TileCtl's host GO at its endCycle(t); the preview includes it). NetSelf's hooks case (sticky EVENTS,
+  EVENTS consumed, GET/RECEIVE and ERRORS [14]'s timing, a scheduled GO, window 1 with the replayer, the request port,
+  the host queue's idle/all-accepted cycles and its results) equal to ref.
 - Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
   after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
 

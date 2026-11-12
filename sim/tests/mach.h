@@ -259,12 +259,26 @@ public:
 
     // ---- a test's loads and stores through the core (ref's Controller.load(t, ea, width), store(t, ea, v, mask)) ----
     // load: what a load at t = cycle() + 1 returns (the memories, the boot ROM, HIST, the registers as the core sees
-    // them at t); nullopt is ref's null (a bus error). Loads with a side effect (EVENTS, REQUEST_RECEIVE) and the
-    // peripheral windows aren't modelled here yet (fatal: ask W20).
+    // them at t, a present peripheral's window); nullopt is ref's null (a bus error). Its side effects are ref's, made
+    // by the core in its step at t: EVENTS consumes what it returned under the mask, a window's consuming word likewise,
+    // REQUEST_RECEIVE on a mesh tile reads 0 and sets receive underflow (ERRORS [14], visible two cycles later).
     std::optional<uint32_t> load(int64_t t, uint32_t ea, unsigned width) const;
     // store: ref's bus-error reason ("" for none, ref's null); a store that isn't a bus error is made by the core in its
     // step at t (t >= cycle() + 1), through the instruction's path. `mask` as ref's (-1 a whole word).
     std::string store(int64_t t, uint32_t ea, uint32_t v, uint32_t mask = 0xFFFFFFFFu);
+
+    // ---- the request port from a test (W22-11; ref's req.setW, req.send, req.canPush, req.setW[]) ----
+    void req_set_w(unsigned i, uint32_t v);                 // ref's req.setW(i, v): REQUEST_SET_W<i> without a store
+    void req_send(int64_t t, uint32_t w3);                  // ref's req.send(t, w3), t the cycle just run: pushed as of t
+    bool req_can_push(int64_t t) const;                     // ref's req.canPush(t), t = cycle() + 1
+    uint32_t req_w(unsigned i) const;                       // ref's req.setW[i]
+    // ---- the read port's host queue (W22-18; ref's ReadPort.hostQueue, idle, allAccepted) ----
+    void rp_host_queue(uint32_t addr, uint32_t dest);       // a 32-bit read on counter 2 to dest, one a cycle from the next
+    bool rp_idle() const;                                   // every entry free and nothing queued from the host
+    bool rp_all_accepted() const;                           // every result issued accepted by the director, none queued
+    // ---- the register block from a test (W23's (d)) ----
+    void set_events(uint32_t bits);                         // ref's ctl.events |= bits (sticky; from the next cycle on)
+    void schedule_go(int64_t t);                            // ref's ctl.scheduleGo(t): GO seen at t (this tile only)
 
     // ---- the controller (the machine as specified) ----
     uint32_t pc() const;

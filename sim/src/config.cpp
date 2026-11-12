@@ -1021,6 +1021,13 @@ Cycle Sim::now() const { return impl_->threads ? impl_->threads->now() : impl_->
 const Sizes& Sim::sizes() const { return impl_->threads ? impl_->threads->sizes() : impl_->sizes; }
 std::string Sim::partition() const { return impl_->threads ? impl_->threads->partition() : std::string("one domain"); }
 
+uint32_t Sim::regfile_value(RegFileIn p, unsigned i) const {   // W20 (harness-only)
+    if (impl_->running) FATAL("Sim::regfile_value during a run: between runs only");
+    if (impl_->threads) FATAL("Sim::regfile_value: one domain only");
+    const RegFilePort& r = impl_->e.regfiles[p.idx];
+    if (i >= r.n) FATAL("Sim::regfile_value: register %u of %u", i, r.n);
+    return r.regs[i];
+}
 bool Sim::has_unit(const std::string& name) const {      // W20 (harness-only)
     if (impl_->threads) FATAL("Sim::has_unit: one domain only");
     return impl_->by_name.count(name) != 0;

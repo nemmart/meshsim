@@ -456,8 +456,77 @@ void reqbus_case() {
     sb += "; violations " + std::to_string(n.c.violations());
     say("%s\n", sb.c_str());
 }
+void hooks_case() {
+    const uint32_t REG = 0xFFFFF800u, EVENTS = REG + 4 * 6, PEEK = REG + 4 * 7, ERRORS = REG + 8, GET0 = REG + 4 * 18, RECV = REG + 4 * 21;
+    {
+        mach::MachConfig k = mach::MachConfig::machine();
+        k.periph_type = 0;
+        Net n(k);
+        n.c.run(200);
+        mach::TileRef p = n.c.tile(3);
+        std::string sb = "hooks:";
+        const uint32_t c9 = 1u << units::EV_COUNTERS_DONE;
+        p.set_events(c9);
+        sb += " peek " + hxo(p.load(n.c.cycle() + 1, PEEK, 4));
+        n.step();
+        sb += " peek " + hxo(p.load(n.c.cycle() + 1, PEEK, 4));
+        p.store(n.c.cycle() + 1, REG + 4 * 8, c9); n.step(); n.step(); n.step();
+        sb += " EVENTS " + hxo(p.load(n.c.cycle() + 1, EVENTS, 4));
+        n.step(); n.step(); n.step();
+        sb += " then peek " + hxo(p.load(n.c.cycle() + 1, PEEK, 4));
+        sb += "; GET0 " + hxo(p.load(n.c.cycle() + 1, GET0, 4));
+        sb += " RECV " + hxo(p.load(n.c.cycle() + 1, RECV, 4));
+        for (int i = 0; i < 4; i++) { sb += " ERRORS@" + std::to_string(n.c.cycle() + 1) + " " + hxo(p.load(n.c.cycle() + 1, ERRORS, 4)); n.step(); }
+        const int64_t T = n.c.cycle() + 5;
+        p.schedule_go(T);
+        while (n.c.cycle() < T + 2) { sb += " peek@" + std::to_string(n.c.cycle() + 1) + " " + hxo(p.load(n.c.cycle() + 1, PEEK, 4)); n.step(); }
+        say("%s\n", sb.c_str());
+    }
+    {
+        mach::MachConfig k = mach::MachConfig::machine();
+        k.periph_type = 4;
+        Net n(k);
+        n.c.run(200);
+        mach::TileRef p = n.c.tile(9);
+        std::string sb = "  window 1:";
+        for (uint32_t w = 0; w < 8; w++) sb += " " + hxo(p.load(n.c.cycle() + 1, REG + 0x200 + 4 * w, 4));
+        say("%s\n", sb.c_str());
+    }
+    {
+        mach::MachConfig k = mach::MachConfig::machine();
+        k.periph_type = 0; k.reqbus_host = true;
+        Net n(k);
+        n.c.run(200);
+        mach::TileRef s = n.c.tile(12);
+        std::string sb = "  req:";
+        s.req_set_w(0, (0u << 7) | (0x44u << 10)); s.req_set_w(1, 0x44);
+        sb += std::string(" canPush ") + tf(s.req_can_push(n.c.cycle() + 1));
+        s.req_send(n.c.cycle(), 0x99);
+        sb += " setW " + std::to_string(s.req_w(0) | s.req_w(1) | s.req_w(2));
+        int64_t first = -1;
+        for (int i = 0; i < 100 && first < 0; i++) { n.step(); if (n.c.reqbus().pending(0, n.c.cycle() + 1)) first = n.c.cycle(); }
+        sb += " pending at " + std::to_string(first) + " head " + hx(n.c.reqbus().get(0, n.c.cycle() + 1, 0)) + " " + hx(n.c.reqbus().get(0, n.c.cycle() + 1, 3));
+        say("%s\n", sb.c_str());
+    }
+    {
+        Net n(Net::cfg(-1));
+        mach::TileRef p = n.c.tile(6);
+        for (uint32_t i = 0; i < 16; i++) p.sram_poke(0x1000 + i, 0x500 + i);
+        std::string sb = std::string("  rdport: idle ") + tf(p.rp_idle()) + " all " + tf(p.rp_all_accepted());
+        for (uint32_t i = 0; i < 10; i++) p.rp_host_queue(0x1000 + i, Net::cm(0x900 + i));
+        sb += std::string("; queued: idle ") + tf(p.rp_idle()) + " all " + tf(p.rp_all_accepted());
+        int64_t idle_at = -1, acc_at = -1;
+        for (int i = 0; i < 200 && acc_at < 0; i++) { n.step(); if (idle_at < 0 && p.rp_idle()) idle_at = n.c.cycle(); if (p.rp_all_accepted()) acc_at = n.c.cycle(); }
+        sb += "; idle at " + std::to_string(idle_at) + ", all accepted at " + std::to_string(acc_at);
+        n.run_all(500);
+        sb += "; dmem[0x100..0x109]";
+        for (uint32_t i = 0; i < 10; i++) sb += " " + w(n, 6, 0x100 + i);
+        say("%s\n", sb.c_str());
+    }
+}
 void netself() {
     out.clear();
+    hooks_case();
     reqbus_case();
     on_machine(0);
     on_machine(4);

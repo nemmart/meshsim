@@ -376,3 +376,187 @@ total includes the replayer. 12's line stays: it places the replayer by the isla
 | 11 | 3058 | / replayer (4.19.14), peripheral 1 on tiles 0–63: ALU and comparator, 128 × 64-bit true du | stays | the owner, 2026-11-12 |
 | 11 | 3059 | / **total per tile** / / **≈ 0.52–0.61 mm²** with the replayer and the fifth port, about 3 | stays | the owner, 2026-11-12 |
 | 12 | 3089 | - **Paths that cross the gap:** engine table accesses, and the traffic director's port-B w | stays | the default: a row stays with its table |
+
+## 6. The new section 13
+
+**How each status is read.** From the item's own text and the five status tables (v1.2 to v1.3), the latest word
+winning: *closed* when the record says closed, superseded, decided, accepted or required; *open*, *proposed*,
+*deferred* or *later* (a possible later addition) as the record says; *decided, part …* when the record decides the
+item and names a part still open, proposed or deferred; *unclear* where the record doesn't settle it (question 1).
+Nothing since v1.3's freeze changes an item: no later decision (`sim/planning/DECISIONS.md` D1–D46, `wip/`) cites
+one. Six items are closed by inference, as the owner accepted on 2026-11-12, each on its settling line:
+
+| item | settling line |
+|---|---|
+| 23 | L3249: what remains is items 33–59, each tracked on its own |
+| 32 | v1.2 table L3168 "kept…(4.17.8)" |
+| 33 | v1.3 table L3102: the Tracer writes the run log (4.21.4, 4.21.6) |
+| 41 | v1.26 table L3129 (DECISIONS-v1.26 item 12) |
+| 58 | v1.25 table L3147: the harness is v1.25's acceptance |
+| 114 | v1.25 table L3151: 75 at `821e1bd` |
+
+**Every item not closed**, with its evidence (line numbers in `v1.3/spec/machine-spec.md`):
+
+| item | status today | lives in | section | what is to be settled | evidence |
+|---|---|---|---|---|---|
+| 1 | open | machine-spec.md | 4.1 | memory-compiler numbers for a big-SRAM area macro: latency, density, arrangement | L3218 (under "Open: to be settled for the hardware", L3216); no later entry |
+| 2 | open | machine-spec.md | 4.1 | the area request-queue depth in hardware (8 in meshsim) | L3219; no later entry |
+| 3 | open | machine-spec.md | 4.1, 4.9 | write combining: whether narrow writes to one row combine into one access | L3220; v1.2 table L3158 "open" |
+| 4 | open | machine-spec.md | 4.1, 4.2 | the bound on area queueing a phase may cause, and the placement rules that keep it | L3221; no later entry |
+| 5 | open | machine-spec.md | 4.10 | `PTR`/`HIST` macros: a write must land intact while port A reads the same address | L3222; no later entry |
+| 6 | open | machine-spec.md | 4.4 | the GATHER request queue's in-flight bound under heavier read-queue load | L3223; no later entry |
+| 7 | open | machine-spec.md | 4.2 | gapless one-word exchanges: simulate them, then tighten the gap if queues stay low | L3224; no later entry |
+| 8 | open | machine-spec.md | 10 | the physical `ready_latency` (8 for now) | L3225; section 10 L3015 "the physical value is *(Open)*" |
+| 10 | open | machine-spec.md | 2 | above the chip: cards, FPGAs, links and each chip's DRAM are not specified | L3227; no later entry |
+| 13 | open | machine-spec.md | 14 | the sort's output format (keys carry the receive-buffer ordinal) | L3230; no later entry |
+| 15 | proposed | machine-spec.md | 8.14 | a status bit with READY, for per-owner completion | L3235 (under "Proposed", L3232); v1.2 table L3163 "open; unchanged" |
+| 17 | later | machine-spec.md | 4.4 | a direct path from the GATHER engine to the write side | L3240 (under "Possible later additions", L3238); v1.25 table L3138 changes only its gain |
+| 18 | later | machine-spec.md | 4.2, 4.4 | fusing the local gather with the values all-to-all | L3241 |
+| 19 | later | machine-spec.md | 4.9 | an arrival-order form of augmenting for mode 4 | L3242 |
+| 20 | later | machine-spec.md | 4.3 | a search engine for the split | L3243 |
+| 21 | later | machine-spec.md | 4.5 | a port-B reader for bulk transfers from controller memory | L3244 |
+| 22 | later | machine-spec.md | 4.2 | whole-row fetches for 64-bit streams | L3245 |
+| 24 | open | machine-spec.md | all | re-measurement: labels in this document and in `schedule.md` still say "to be re-measured" | L3250; v1.2 table L3164 "changed"; the labels (owner, 2026-11-12) |
+| 27 | proposed | machine-spec.md | 4.2 | drop the one-read-size-per-group rule | L3256 (under "v1.1: proposed", L3253); no later entry |
+| 28 | proposed | machine-spec.md | 6.2 | 128-bit staging from C&C | L3257; v1.2 table L3166 "still proposed" |
+| 35 | proposed | jolt/replayer.md | 4.19.3, 4.19.4 | the `virt` bit stored per word; the NOP row's virtual flag (pending the upstream check, 113) | L3267 *(Proposed)*; no later entry |
+| 36 | decided, part proposed | jolt/replayer.md | 4.19.4, 4.19.7 | decided: what the replayer executes; still proposed: it doesn't check that temporaries stay in 40–47 | L3268 "*(Still Proposed:)*"; v1.25 table L3141 changes only the opcode count |
+| 38 | proposed | jolt/replayer.md | 4.19.5 | the decode index's special groups (AMO, custom-0, SYSTEM) | L3270 *(Proposed)*; no later entry |
+| 39 | proposed | jolt/replayer.md | 4.19.6 | the padding and shared NOP rows at ROM words 0 and 1 | L3271 *(Proposed)*; no later entry |
+| 42 | proposed | jolt/replayer.md | 4.19.7 | fetch and decode overlap the previous row | L3274 *(Proposed)*; no later entry |
+| 48 | decided, part proposed | machine-spec.md | 4.17.5, 10 | decided: a peripheral's fixed landing latency; still proposed: its value, `rp_latency` = 2 | L3280; v1.2 table L3171 "the value of `rp_latency` is still proposed"; section 10 L3033 *(Proposed)* |
+| 56 | proposed | jolt/replayer.md | 4.19.3, 4.19.4, 4.19.7 | Jolt's conventions kept as table data | L3288 *(Proposed)*; v1.25 table L3146 adds two fields, no ruling |
+| 57 | proposed | jolt/replayer.md | 4.19.7 | the replayer's hardwired Jolt behaviour (two rules pending the upstream check, 113) | L3289 *(Proposed)*; v1.3 table L3103 changes the pc-0 case, no ruling |
+| 59 | decided, part open | jolt/replayer.md | 4.19.12 | decided: the output row's layout; open: the consumer side, its width and rate, the placement against the materializer | L3297 "*(Open)*, with the materializer"; no later entry |
+| 60 | deferred | machine-spec.md | 6.7, 7 | the memory system's side, with the file system (119) | L3301; v1.2 table L3177 "deferred" |
+| 61 | open | machine-spec.md | 3.3, 12 | the request tree's physical design: node placement, `reqbus_latency` | L3302; v1.2 table L3178 "stay open" |
+| 62 | open | machine-spec.md | 4.5, 4.7, 6.7 | simulating the new paths: eject priority, loopback token waits, drift | L3303 (under "v1.1 request bus: open", L3299); no later entry |
+| 63 | proposed | machine-spec.md | 3.3 | each node wormhole-routes whole requests, round-robin | L3307 "Still proposed"; no later entry |
+| 64 | proposed | machine-spec.md | 4.18 | the request port's FIFO and its stall rule | L3308 (under "proposed", L3305); v1.2 table L3179 changes it, no ruling |
+| 67 | proposed | machine-spec.md | 6.7 | a read's data: 128-bit packets in ascending address order | L3311; v1.2 table L3181 "still proposed" |
+| 70 | open | machine-spec.md | 4.7 | the eject loopback priority (decided), to be confirmed in simulation | L3314 *(Open)*, "To be confirmed in simulation"; no later entry |
+| 82 | decided, part open | machine-spec.md | 2, 2.1 | partly settled; left: the request receivers' attachment, the engines' type numbers; 65 as C&C 2 still proposed | L3332; v1.2 table L3190 "partly settled… left: …"; the ports went to 118 |
+| 83 | proposed, part deferred | machine-spec.md | 3.3 | the target numbering; target 3 deferred with the file system (119) | L3333 *(Proposed)*; v1.2 table L3191 |
+| 84 | decided, part proposed | machine-spec.md | 3.3, 4.18 | decided: the request; still proposed: beat order, the row node writing the requestor, 16 requests per target queue | L3334 "*(Proposed:)*"; no later entry |
+| 103 | unclear | jolt/replayer.md | 4.19.2, 4.19.8 | still proposed in its text: SD rows take the write log; open: measure the read/write split | L3361; v1.2 table L3209; v1.26 table L3126 makes both log queues 4 KB |
+| 107 | open | machine-spec.md | 4.1 | 4.25 MB of big SRAM per tile, a tentative working figure | L3365 *(Open)*; v1.2 table L3210 changes only its representation |
+| 113 | decided, part open | jolt/replayer.md | 4.19, 4.19.12 | decided: the ground truth (a16z, `7189216`); open: each case tagged "pending the upstream check", until gold settles it | L3384, L3395 "*(Open: the plan…)*"; v1.3 table L3104 "the tags stay until gold settles each case" |
+| 115 | decided, part proposed | jolt/replayer.md | 4.19.2, 4.19.13 | decided: C&C 3 broadcasts the used set; still proposed: the size-first command | v1.3 table L3105 "*(Proposed, as before:)*" |
+| 116 | open | machine-spec.md | 4.3, 9 | read-port reads overlapping incoming traffic: revisit the rule and invariant 14 | L3402 *(Open, a candidate)*; no later entry |
+| 117 | open | machine-spec.md | 3.1 | storing the reserved link bits (power) | L3406 *(Open…)* |
+| 118 | decided, part deferred | machine-spec.md | 4.16, 4.17.9 | decided: sending peripherals' src and port; deferred: the rest of the controllers' routing, the DMA port's flow control | v1.3 table L3106 "Still deferred" |
+| 119 | deferred | machine-spec.md | 3.3, 6.1, 6.7, 7 | the file system and the RW engine, with their design (the Tracer's side is specified) | L3408 *(Deferred…)*; v1.3 table L3107 "the rest stays deferred" |
+| 120 | proposed | machine-spec.md | 4.10, 8.9 | the table window's address | L3409 *(Proposed)*; 8.1 L2619 |
+| 121 | open | machine-spec.md | 4.11, 6.1 | the core's CSRs beyond the trap CSRs, `mcycle` and `mtime`, and their reset values | L3410 *(Open, with Tony…)* |
+| 122 | deferred | machine-spec.md | 4.13 | the handler's report header, with C&C 1's request format | L3411 *(Deferred…)*; v1.25 table L3152 decides only the dump's numbers |
+| 123 | decided, part proposed | jolt/replayer.md | 8.11, 4.19.9, 4.19.11 | decided: the status words; still proposed: the event and error bits | L3412; v1.26 L3131 and v1.26.1 L3118 change it, no ruling; 8.11 L2842 *(Proposed, item 123…)* |
+| 124 | open | machine-spec.md | 6.1 | the soft reset's keep list | L3413 *(Open, with Tony)* |
+| 125 | later | machine-spec.md | 4.12, 6.2 | signed counters | L3414 *(Possible later addition)*; v1.3 table L3109 "unchanged" |
+| 126 | open | machine-spec.md | 3.3, 6.7 | whether hardware records a request dropped at the root | L3415 *(Open)*; 6.7 L2585 |
+| 128 | open | machine-spec.md | 4.1, 4.8, 4.10 | K's margin, validated across workloads | L3417 *(Open…)* |
+| 129 | open | machine-spec.md | 4.2 | whether `STREAM_SRC` stays a chunk address | L3418 *(Open…)* |
+| 130 | deferred | machine-spec.md | 2, 4.2, 4.6 | a 1×4 test chip; mesh size as a parameter | L3419 *(Deferred…)* |
+| 133 | decided, part proposed | machine-spec.md | 4.13 | still proposed: the handler parks in a plain loop | L3422 "Still proposed" |
+| 137 | unclear | jolt/replayer.md | 4.19 | re-cite the `4f36b3d` file:line references at `821e1bd` | L3430 *(Open)*; v1.3 table L3108 says the `821e1bd` citations stand, not the others |
+| 139 | decided, part later | jolt/replayer.md | 4.19.6, 4.19.9 | possible later addition: a SYSTEM-group decode putting the CSR templates in the ROM | L3432 "*(Possible later addition:)*" |
+| 140 | decided, part open | jolt/replayer.md | 4.19.7 | open, with Tony: the PEXT method, and so a non-contiguous mask's cycles | L3433 "*(Open, with Tony:)*" |
+| 142 | deferred | machine-spec.md | 3.1, 4.13 | the region-decode check, to the RTL | L3435 *(Deferred to Tony's RTL…)* |
+| 147 | decided, part open | jolt/tracer.md | 4.21.5 | to measure: the local caches' sizes, by gold replaying both workloads | L3444 "*(To measure…)*" |
+| 148 | decided, part deferred | jolt/tracer.md | 4.21.5, 4.21.8 | the fill bus's statuses, to revisit with the memory system's design | L3445 "to revisit with the memory system's design" |
+| 153 | unclear | jolt/tracer.md | 4.21.9 | the Tracer's timing: measured in meshsim; the RTL's values to replace it | L3450; no status word |
+| 158 | decided, not yet done | jolt/replayer.md | 4.19.4 | rebuild the universal tables to a16z's rule for LR/SC with rd = x0 and the NOP rows' virtual flag | L3456 "rebuilt right after v1.3's freeze"; not done: `replayer/rom.bin` identical in v1.3, `sim/data/`, `wip/` (owner, 2026-11-12) |
+
+That is 66 items: 47 in the platform, 16 the replayer's, 3 the Tracer's. The other 92 are closed.
+
+### The text, as it will stand in `machine-spec.md`
+
+> ## 13. Open items
+>
+> What is open, proposed or deferred in v1.35's design, each with the section it affects; possible later additions
+> are listed last. The replayer's and the Tracer's items are in `spec/jolt/replayer.md` and `spec/jolt/tracer.md`.
+> Numbers are never reused. Every item's history (its text as first written and each version's change of status) is
+> `spec/history/machine-spec-v1.3-section-13.md`; the decisions are in `spec/history/`. The logic budget (section 11)
+> is unreviewed; v1.2 rescaled it for the 256-bit link word and the 32 KB controller memories (item 127).
+>
+> | item | what is to be settled | section | status |
+> |---|---|---|---|
+> | 1 | Memory-compiler numbers for a big-SRAM area macro: latency, density, arrangement | 4.1 | open |
+> | 2 | The area request-queue depth in hardware (8 in meshsim) | 4.1 | open |
+> | 3 | Write combining: whether narrow writes to one row combine into one access | 4.1, 4.9 | open |
+> | 4 | The bound on area queueing a phase may cause, and the placement rules that keep it | 4.1, 4.2 | open |
+> | 5 | `PTR`/`HIST` macros: a write must land intact while port A reads the same address | 4.10 | open |
+> | 6 | The GATHER request queue's in-flight bound under heavier read-queue load | 4.4 | open |
+> | 7 | Gapless one-word exchanges: simulate them, then tighten the gap if queues stay low | 4.2 | open |
+> | 8 | The physical `ready_latency` (8 for now) | 10 | open |
+> | 10 | Above the chip: cards, FPGAs, links and each chip's DRAM are not specified | 2 | open |
+> | 13 | The sort's output format (keys carry the receive-buffer ordinal) | 14 | open |
+> | 24 | Re-measurement: labels in this document and in `schedule.md` still say "to be re-measured" | all | open |
+> | 61 | The request tree's physical design: node placement, `reqbus_latency` | 3.3, 12 | open |
+> | 62 | Simulating the new paths: eject priority, loopback token waits, drift | 4.5, 4.7, 6.7 | open |
+> | 70 | The eject loopback priority (decided), to be confirmed in simulation | 4.7 | open |
+> | 107 | 4.25 MB of big SRAM per tile, a tentative working figure | 4.1 | open |
+> | 116 | Read-port reads overlapping incoming traffic: revisit the rule and invariant 14 | 4.3, 9 | open |
+> | 117 | Storing the reserved link bits (power) | 3.1 | open |
+> | 121 | The core's CSRs beyond the trap CSRs, `mcycle` and `mtime`, and their reset values | 4.11, 6.1 | open |
+> | 124 | The soft reset's keep list | 6.1 | open |
+> | 126 | Whether hardware records a request dropped at the root | 3.3, 6.7 | open |
+> | 128 | K's margin, validated across workloads | 4.1, 4.8, 4.10 | open |
+> | 129 | Whether `STREAM_SRC` stays a chunk address | 4.2 | open |
+> | 82 | Partly settled; left: the request receivers' attachment, the engines' type numbers; 65 as C&C 2 still proposed | 2, 2.1 | decided, part open |
+> | 15 | A status bit with READY, for per-owner completion | 8.14 | proposed |
+> | 27 | Drop the one-read-size-per-group rule | 4.2 | proposed |
+> | 28 | 128-bit staging from C&C | 6.2 | proposed |
+> | 63 | Each node wormhole-routes whole requests, round-robin | 3.3 | proposed |
+> | 64 | The request port's FIFO and its stall rule | 4.18 | proposed |
+> | 67 | A read's data: 128-bit packets in ascending address order | 6.7 | proposed |
+> | 120 | The table window's address | 4.10, 8.9 | proposed |
+> | 48 | Decided: a peripheral's fixed landing latency; still proposed: its value, `rp_latency` = 2 | 4.17.5, 10 | decided, part proposed |
+> | 84 | Decided: the request; still proposed: beat order, the row node writing the requestor, 16 requests per target queue | 3.3, 4.18 | decided, part proposed |
+> | 133 | Still proposed: the handler parks in a plain loop | 4.13 | decided, part proposed |
+> | 83 | The target numbering; target 3 deferred with the file system (119) | 3.3 | proposed, part deferred |
+> | 60 | The memory system's side, with the file system (119) | 6.7, 7 | deferred |
+> | 119 | The file system and the RW engine, with their design (the Tracer's side is specified) | 3.3, 6.1, 6.7, 7 | deferred |
+> | 122 | The handler's report header, with C&C 1's request format | 4.13 | deferred |
+> | 130 | A 1×4 test chip; mesh size as a parameter | 2, 4.2, 4.6 | deferred |
+> | 142 | The region-decode check, to the RTL | 3.1, 4.13 | deferred |
+> | 118 | Decided: sending peripherals' src and port; deferred: the rest of the controllers' routing, the DMA port's flow control | 4.16, 4.17.9 | decided, part deferred |
+> | 17 | A direct path from the GATHER engine to the write side | 4.4 | later |
+> | 18 | Fusing the local gather with the values all-to-all | 4.2, 4.4 | later |
+> | 19 | An arrival-order form of augmenting for mode 4 | 4.9 | later |
+> | 20 | A search engine for the split | 4.3 | later |
+> | 21 | A port-B reader for bulk transfers from controller memory | 4.5 | later |
+> | 22 | Whole-row fetches for 64-bit streams | 4.2 | later |
+> | 125 | Signed counters | 4.12, 6.2 | later |
+>
+> **The index.** Where each item lives; "closed" means settled, with its record in the history file.
+>
+> 1 here; 2 here; 3 here; 4 here; 5 here; 6 here; 7 here; 8 here; 9 closed; 10 here; 11 closed; 12 closed; 13 here; 14 closed; 15 here; 16 closed; 17 here; 18 here; 19 here; 20 here; 21 here; 22 here; 23 closed; 24 here; 25 closed; 26 closed; 27 here; 28 here; 29 closed; 30 closed; 31 closed; 32 closed; 33 closed; 34 closed; 35 `jolt/replayer.md`; 36 `jolt/replayer.md`; 37 closed; 38 `jolt/replayer.md`; 39 `jolt/replayer.md`; 40 closed; 41 closed; 42 `jolt/replayer.md`; 43 closed; 44 closed; 45 closed; 46 closed; 47 closed; 48 here; 49 closed; 50 closed; 51 closed; 52 closed; 53 closed; 54 closed; 55 closed; 56 `jolt/replayer.md`; 57 `jolt/replayer.md`; 58 closed; 59 `jolt/replayer.md`; 60 here; 61 here; 62 here; 63 here; 64 here; 65 closed; 66 closed; 67 here; 68 closed; 69 closed; 70 here; 71 closed; 72 closed; 73 closed; 74 closed; 75 closed; 76 closed; 77 closed; 78 closed; 79 closed; 80 closed; 81 closed; 82 here; 83 here; 84 here; 85 closed; 86 closed; 87 closed; 88 closed; 89 closed; 90 closed; 91 closed; 92 closed; 93 closed; 94 closed; 95 closed; 96 closed; 97 closed; 98 closed; 99 closed; 100 closed; 101 closed; 102 closed; 103 `jolt/replayer.md`; 104 closed; 105 closed; 106 closed; 107 here; 108 closed; 109 closed; 110 closed; 111 closed; 112 closed; 113 `jolt/replayer.md`; 114 closed; 115 `jolt/replayer.md`; 116 here; 117 here; 118 here; 119 here; 120 here; 121 here; 122 here; 123 `jolt/replayer.md`; 124 here; 125 here; 126 here; 127 closed; 128 here; 129 here; 130 here; 131 closed; 132 closed; 133 here; 134 closed; 135 closed; 136 closed; 137 `jolt/replayer.md`; 138 closed; 139 `jolt/replayer.md`; 140 `jolt/replayer.md`; 141 closed; 142 here; 143 closed; 144 closed; 145 closed; 146 closed; 147 `jolt/tracer.md`; 148 `jolt/tracer.md`; 149 closed; 150 closed; 151 closed; 152 closed; 153 `jolt/tracer.md`; 154 closed; 155 closed; 156 closed; 157 closed; 158 `jolt/replayer.md`.
+
+### `jolt/replayer.md`, "Open items (section 13's numbering)"
+
+> | item | what is to be settled | section | status |
+> |---|---|---|---|
+> | 59 | Decided: the output row's layout; open: the consumer side, its width and rate, the placement against the materializer | 4.19.12 | decided, part open |
+> | 113 | Decided: the ground truth (a16z, `7189216`); open: each case tagged "pending the upstream check", until gold settles it | 4.19, 4.19.12 | decided, part open |
+> | 140 | Open, with Tony: the PEXT method, and so a non-contiguous mask's cycles | 4.19.7 | decided, part open |
+> | 35 | The `virt` bit stored per word; the NOP row's virtual flag (pending the upstream check, 113) | 4.19.3, 4.19.4 | proposed |
+> | 38 | The decode index's special groups (AMO, custom-0, SYSTEM) | 4.19.5 | proposed |
+> | 39 | The padding and shared NOP rows at ROM words 0 and 1 | 4.19.6 | proposed |
+> | 42 | Fetch and decode overlap the previous row | 4.19.7 | proposed |
+> | 56 | Jolt's conventions kept as table data | 4.19.3, 4.19.4, 4.19.7 | proposed |
+> | 57 | The replayer's hardwired Jolt behaviour (two rules pending the upstream check, 113) | 4.19.7 | proposed |
+> | 36 | Decided: what the replayer executes; still proposed: it doesn't check that temporaries stay in 40–47 | 4.19.4, 4.19.7 | decided, part proposed |
+> | 115 | Decided: C&C 3 broadcasts the used set; still proposed: the size-first command | 4.19.2, 4.19.13 | decided, part proposed |
+> | 123 | Decided: the status words; still proposed: the event and error bits | 8.11, 4.19.9, 4.19.11 | decided, part proposed |
+> | 103 | Still proposed in its text: SD rows take the write log; open: measure the read/write split | 4.19.2, 4.19.8 | unclear |
+> | 137 | Re-cite the `4f36b3d` file:line references at `821e1bd` | 4.19 | unclear |
+> | 158 | Rebuild the universal tables to a16z's rule for LR/SC with rd = x0 and the NOP rows' virtual flag | 4.19.4 | decided, not yet done |
+> | 139 | Possible later addition: a SYSTEM-group decode putting the CSR templates in the ROM | 4.19.6, 4.19.9 | decided, part later |
+
+### `jolt/tracer.md`, "Open items (section 13's numbering)"
+
+> | item | what is to be settled | section | status |
+> |---|---|---|---|
+> | 147 | To measure: the local caches' sizes, by gold replaying both workloads | 4.21.5 | decided, part open |
+> | 153 | The Tracer's timing: measured in meshsim; the RTL's values to replace it | 4.21.9 | unclear |
+> | 148 | The fill bus's statuses, to revisit with the memory system's design | 4.21.5, 4.21.8 | decided, part deferred |

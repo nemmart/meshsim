@@ -107,7 +107,7 @@ pending ctrl-shuf     "shuffled child order (seed 4)" "P5"
 equiv riscv           "riscv-tests rv32ui/rv32um on the controller" "test_golden (every program's retire trace equal to ref's)" -- $S/test_golden
 pending rdport        "read port, GATHER (Java; the C parts PENDING (phase 2))" "P4"
 pending accounting    "per-phase accounting (from C)" "P5 (W23)"
-pending searchbench   "search steps through the read port (microbenchmark, from C)" "P6"
+pending searchbench   "search steps through the read port (microbenchmark, from C)" "P4"
 pending rdport-shuf   "shuffled child order (seed 4)" "P4"
 pending agtest        "address generator read-ahead, figure 12's PTR/HIST ports" "P4"
 pending agtest-shuf   "shuffled child order (seed 4)" "P4"
@@ -122,8 +122,8 @@ pending hooks         "the register map, the send port, the pulses (from Java)" 
 pending hooks-shuf    "shuffled child order (seed 4)" "P5"
 equiv periph          "the peripheral framework: the standard window, events, region writes, the DMA" "test_tileslotconf (W15's TileSlotConf: PeripheralSlotTest's groups on a real tile, against ref)" -- $S/test_tileslotconf
 pending periph-shuf   "shuffled child order (seed 4)" "P5 (test_tileslotconf has no shuffled run yet)"
-pending reqbus        "the request port, the request bus and the receive queues in the tree" "P5"
-pending reqbus-shuf   "shuffled child order (seed 4)" "P5"
+pending reqbus        "the request port, the request bus and the receive queues in the tree" "P4"
+pending reqbus-shuf   "shuffled child order (seed 4)" "P4"
 # cccores: log-equal (D44's mask) in the builds without the checker; this runner's suite build has it on, and the
 # error path's injected ERRORS count as a violation until W20's requests 9 and 10 replace W23's stand-ins (ctl.h).
 # Then these two lines replace the pending ones:
@@ -145,7 +145,7 @@ if [ "$MODE" != quick ]; then
   pending sort-bt-k128    "the same, 128-bit values" "P6"
   pending rdport-full     "gather 1 at full size (Java; the C parts PENDING (phase 2))" "P4"
   pending accounting-full "per-phase accounting, full-size all-to-all from C" "P5 (W23)"
-  pending agbench         "read-ahead measurements: ag_lookahead, zero-length groups, start to first request (a few minutes)" "P6"
+  pending agbench         "read-ahead measurements: ag_lookahead, zero-length groups, start to first request (a few minutes)" "P4"
   pending s1bench         "item S1: K's margin over the write path, L = 1-4, and the table-window case (a few minutes)" "P5 (W23)"
   step ccbench 16 "C&C 1-3 as cores (WORKER14): the boot and a phase against the Java model" tests/ctlsuites/ccbench.log -- $S/suite_ccbench
   pending sweep-quick     "parameter sweep, quick (about 1 minute; 'java Sweep full' takes about 25)" "P6"

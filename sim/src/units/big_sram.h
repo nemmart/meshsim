@@ -105,6 +105,12 @@ struct BigSram {
 
     // ---- statistics ----
     uint64_t reads_served = 0, writes_served = 0, combined = 0, read_stall_cycles = 0, write_stall_cycles = 0;
+#ifdef SIM_CHECKS
+    // W22 (P4; approved 2026-11-12; SIM_CHECKS only, the timing builds unchanged): ref's per-area reads, writes, combined
+    // and queuePeak (the count after an enqueue), updated where BigSRAM updates them, for MemTest. Statistics.
+    uint64_t reads_a[AREAS] = {}, writes_a[AREAS] = {}, combined_a[AREAS] = {};
+    uint32_t queue_peak[AREAS] = {};
+#endif
 
     BigSram(sim::Ports& p, const SramConfig& c, uint32_t* block, bool with_reads) : cfg(c), reads(with_reads), data(block) {
         if (!block) FATAL("big SRAM: no block");
@@ -181,6 +187,9 @@ struct BigSram {
             for (int j = 0; j < 4; j++) e.d[j] = (mask >> j & 1) ? chunk_of(lo, hi, j - o) : 0;
         } else e.d[0] = e.d[1] = e.d[2] = e.d[3] = 0;
         count[a]++;
+#ifdef SIM_CHECKS
+        if (count[a] > queue_peak[a]) queue_peak[a] = count[a];   // W22: BigSRAM.queuePeak
+#endif
         busy |= 1u << a;
     }
     bool can_combine(unsigned a, uint32_t rw, unsigned mask) const {
@@ -193,15 +202,24 @@ struct BigSram {
         for (int j = 0; j < 4; j++) if (mask >> j & 1) e.d[j] = chunk_of(lo, hi, j - int(o));
         e.mask = uint8_t(e.mask | mask);
         combined++;
+#ifdef SIM_CHECKS
+        combined_a[a]++;                                          // W22: BigSRAM.combined[a]
+#endif
     }
     void serve(sim::Ctx& c, unsigned a, uint64_t) {
         const Entry& e = q[a][head[a]];
         const uint32_t base = a * AREA_CHUNKS + e.row * 4;
         if (e.write) {
             writes_served++;
+#ifdef SIM_CHECKS
+            writes_a[a]++;                                        // W22: BigSRAM.writes[a]
+#endif
             for (unsigned j = 0; j < 4; j++) if (e.mask >> j & 1) store(base + j, e.d[j]);
         } else {
             reads_served++;
+#ifdef SIM_CHECKS
+            reads_a[a]++;                                         // W22: BigSRAM.reads[a]
+#endif
             const uint64_t lo = uint64_t(load(base)) | uint64_t(load(base + 1)) << 32;
             const uint64_t hi = uint64_t(load(base + 2)) | uint64_t(load(base + 3)) << 32;
             c.put(ret[a], uint64_t(e.token) | uint64_t(e.part) << 16, lo, hi);

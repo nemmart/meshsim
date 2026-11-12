@@ -53,7 +53,7 @@ if [ -n "${KIT135:-}" ]; then cp "$KIT135" "$T/kit.tgz"; else "$SIM/tests/accept
 tar -xzf "$T/kit.tgz" -C "$T" && mv "$T/w25-kit" "$T/v135" \
   && "$T/v135/build.sh" > "$T/build.log" 2>&1 || { cat "$T/build.log"; echo "acceptance_crosscheck: v1.35's kit did not build"; exit 2; }
 # ---- the deliveries
-SD=$T/v135/sim/build/clang-release/synthetic_delivery; TB=$SIM/data/tables/replayer
+SD=$T/v135/sim/build/clang-suite/synthetic_delivery; TB=$SIM/data/tables/replayer
 "$SD" "$T/d" --program syn --windows 9 --rows 4000 --seed 11 --tables "$TB" > /dev/null
 cp -r "$T/d" "$T/df"; cp -r "$T/d" "$T/dc"
 python3 - "$T" <<'PY'

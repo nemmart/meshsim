@@ -415,3 +415,21 @@ W22-20. **(for W20) `TileRef::req_send` takes one push a cycle** (a `Sim::put_la
   (171 of 171), rdport, rdport-shuf (587 of 587), rdport-full (594 of 594, 18 s) byte for byte; the same under
   step-all and instance-major. Live in run_tests.sh (rdport-full in the all block); the five quick ones in make check
   (test_p4suites: 15 tests, 169 s in clang debug). agtest's PENDING reason now W22-16 alone.
+- **AgTest's figure 12** (W22-16 on main: `we_ts_req`, `we_hist_req`): ported; AgTest 234 of 240. The RMW puts are
+  right (every lost-write and write-back check passes); the 6 left are the harness's view of a test's own table-window
+  access:
+W22-21. **(for W20) a test's table-window store and load, as ref's core.store / core.load see them:**
+    (a) **a store's effect right after its cycle**: the core's table-window store of t reaches the table store over its
+        `window` Link(1) and is applied at t + 1 (table_store.h: before any reader of t + 1, so the machine is right);
+        ref writes at t, and AgTest peeks right after (`store(cycle + 1, PTR[5], 0x3004); step; ptr(5)`: 0x3000 here).
+        `TileRef::ptr` and `hist_peek` should apply a store in flight on `window`, as `peek_local` applies port B's
+        write of the cycle just run. Checks: PTR \"stores away from the write-back cycle land\" (L = 1, 3), HIST \"a
+        store away from the write-back lands\" (L = 1, 3).
+    (b) **a load on the write-back cycle**: ref's `ctrlRead` returns the engine's written value when the increment
+        writes back that cycle (TableStore.java, `wbSlotAt(t)`); `TileRef::load` of HIST at the write-back cycle
+        returns the entry (7, ref 102). Checks: HIST \"a controller load on the write-back cycle returns the engine's
+        value\" (L = 1, 3).
+    (c) **a store at the cycle just run** (ref's `core.store(tr, ...)`, tr = the cycle port A read the entry):
+        `TileRef::store` takes t >= cycle() + 1 (FATAL otherwise). The suite writes it as the table write between
+        cycles, `set_ptr` (port B at the read cycle lands, and the write-back at t + 1 overwrites it, as in ref; both
+        checks pass); W20 may prefer the harness to take t = cycle() itself.

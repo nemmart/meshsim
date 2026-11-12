@@ -24,6 +24,7 @@
 
 #include "sha256.h"
 #include "stage_a.h"
+#include "stageb.h"
 
 namespace {
 
@@ -113,7 +114,7 @@ int main(int argc, char** argv) {
                              "                    [--full-every K] [--tables DIR] [--replay-build DIR] [--norow N] [--logq Q]\n");
         return 2;
     }
-    std::string dir = argv[1], prog = argv[2], csv = argv[3], stages = "AB", variant, manifest, build = "fw/images";
+    std::string dir = argv[1], prog = argv[2], csv = argv[3], stages = "AB", variant, manifest, build = "tests/m3-images";
     long long stride = 1, phase = 0, first_w = 0, count_w = INT64_MAX, full_every = 0, norow = 50000, logq = 256;
     for (int i = 4; i < argc; i++) {
         std::string a = argv[i];
@@ -132,7 +133,6 @@ int main(int argc, char** argv) {
         else if (a == "--logq") logq = std::atoll(next().c_str());
         else FATAL("replay_shard: unknown argument %s", a.c_str());
     }
-    (void)build; (void)norow; (void)logq;
     if (manifest.empty()) manifest = stagea::exists(dir + "/manifest.json") ? dir + "/manifest.json" : dir + "/" + prog + ".manifest.json";
     std::vector<stagea::Program> progs;
     std::string err;
@@ -142,7 +142,11 @@ int main(int argc, char** argv) {
     auto tb = std::make_unique<units::tracer::ReplayTables>(units::tracer::ReplayTables::load(tdir));
     std::vector<std::string> bad_tables = check_tables(tdir, units::tracer::ReplayTables::default_dir() + "/../manifest.json");
     const bool want_b = stages.find('B') != std::string::npos || stages.find('F') != std::string::npos || full_every > 0;
-    if (want_b) FATAL("replay_shard: stages B and F (Stage B on a tile) are not ported yet (WORKER25: they wait for W20's harness)");
+    std::unique_ptr<mach::Mach::Image> im;
+    if (want_b) im = std::make_unique<mach::Mach::Image>(stageb::image(build));
+    stageb::Options bo;
+    bo.norow = norow;
+    bo.logq = unsigned(logq);
 
     FILE* out = std::fopen(csv.c_str(), "a");
     if (!out) FATAL("replay_shard: cannot append to %s", csv.c_str());
@@ -169,8 +173,10 @@ int main(int argc, char** argv) {
             for (char st : these) {
                 long long t0 = now_ns();
                 stagea::Result r;
+                // B: Stage B on tile 0 alone (the 63 idle tiles parked, checked untouched); F: Stage B on the full chip
+                bo.lone = st == 'B';
                 if (st == 'A') r = stagea::run_window(*tb, pd, we, v);
-                else FATAL("replay_shard: stage %c is not ported yet", st);
+                else r = stageb::run_window(*im, *tb, pd, we, v, prog, bo);
                 long long ms = (now_ns() - t0) / 1000000;
                 if (st == 'A') std::printf("%s\n", r.line(prog, v).c_str());
                 std::string detail;

@@ -52,3 +52,5 @@ TEST(net_quick_equals_ref_log) { run_step("suite_net -1 quick", "net-quick.log")
 TEST(net_shuf_equals_ref_log) { run_step("suite_net 5 quick", "net-shuf.log"); }
 TEST(net_shuf2_equals_ref_log) { run_step("suite_net 11 quick", "net-shuf2.log"); }
 TEST(searchbench_equals_ref_log) { run_step("suite_search", "searchbench.log"); }
+TEST(engine_equals_ref_log) { run_step("suite_engine -1", "engine.log"); }
+TEST(eng_shuf_equals_ref_log) { run_step("suite_engine 4", "eng-shuf.log"); }

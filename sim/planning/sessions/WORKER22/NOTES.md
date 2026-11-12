@@ -360,3 +360,16 @@ W22-18. **The read port's host queue (for W20)**: ref's `readPort.hostQueue(addr
   run, and the read side's window-full cycles 0: these runs send nothing through the send port (every packet is an AG
   read return), and no read ever waited for a token. Run cycles equal engine-full.log's (71,238 ... 82,025). Attempt 1
   printed the whole table (exit 0) but its last check matched the table's padding wrongly; fixed for the retry.
+- **On main (2026-11-12): W22-9, W22-10 (W20), W22-13 and invariants 3, 6, 8, the AG stream checks (W26).**
+  - **EngineTest complete**: engine, eng-shuf and engine-full byte for byte (365 of 365; engine-full 92 s locally).
+    Live in run_tests.sh (engine-full in the all block); engine and eng-shuf in make check.
+  - AgTest 206 of 206 ported (figure 12: W22-16). ReadPortGatherTest from C 516 of 516. MemTest: W22-14.
+  - **RequestBusTest** (`tests/suite_reqbus.cpp`, on W20's ReqBus): from C (req.c, C&C 2 draining from the test) 6 of
+    6. The rest needs:
+W22-11. **A tile's request port from the test** (still open): ref's `req.setW(i, v)`, `req.send(t, w3)` (a REQUEST_SEND
+    without the core, \"as a store at the current cycle would\") and `req.canPush(t)`: fairness, credits,
+    back-pressure, the receive side, drops.
+W22-19. **The delivered requests' records** (new): ref's `RequestBus.delivered` list, each with `deliveredAt` and
+    `srcTile` (ReqBus::delivered() is the count): basics (the unloaded latency, `q.deliveredAt - ts`), fairness (the
+    span of deliveredAt), credits (srcTile 10, 20).
+- Quest 185's three attempts ran before the check's fix: its results removed for a re-run (Quest's commit 70b44a3).

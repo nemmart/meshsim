@@ -44,7 +44,7 @@ SUITES="suite_memsys suite_rvc suite_tracer"
 EQUIVS="test_golden test_tileslotconf"
 SUITES="$SUITES suite_ccbench"                       # W23 (P5)
 SUITES="$SUITES suite_replayer stageb"               # W25 (P7b)
-SUITES="$SUITES suite_net suite_search suite_agbench"   # W22 (P4)
+SUITES="$SUITES suite_net suite_search suite_agbench suite_engine"   # W22 (P4)
 SUITES="$SUITES sort_test sweep"                     # W24 (P6)
 
 if [ "$BUILD" = 1 ]; then
@@ -103,8 +103,8 @@ step net-shuf2 1 "shuffled child order (seed 11)" tests/p4suites/net-shuf2.log -
 pending mem           "big SRAM, read and write queues" "P4: W22-14, the disjoint check"
 pending mem-shuf      "shuffled child order (seed 3)" "P4: W22-14, the disjoint check"
 pending mem-shuf2     "shuffled child order (seed 8)" "P4: W22-14, the disjoint check"
-pending engine        "address generator, write engine, all-to-all (small)" "P4: W26's invariants 3 and 6"
-pending eng-shuf      "shuffled child order (seed 4)" "P4: W26's invariants 3 and 6"
+step engine 1 "address generator, write engine, all-to-all (small)" tests/p4suites/engine.log -- $S/suite_engine -1
+step eng-shuf 1 "shuffled child order (seed 4)" tests/p4suites/eng-shuf.log -- $S/suite_engine 4
 pending ctrl          "control and the controller (from C)" "P5"
 pending ctrl-shuf     "shuffled child order (seed 4)" "P5"
 equiv riscv           "riscv-tests rv32ui/rv32um on the controller" "test_golden (every program's retire trace equal to ref's)" -- $S/test_golden
@@ -159,7 +159,7 @@ if [ "$MODE" != quick ]; then
   sweep_quick() { $S/sweep quick || return 1; [ "$CHECK" = 0 ] || cmp -s results/sweep-quick.csv tests/sort/ref/sweep-quick.csv || echo "FAIL: results/sweep-quick.csv differs from tests/sort/ref/sweep-quick.csv"; }
   step sweep-quick 4 "parameter sweep, quick (about 1 minute; 'java Sweep full' takes about 25)" tests/sort/ref/sweep-quick.log -- sweep_quick
   pending ctrl-full       "the all-to-all from C on the four data sets" "P5"
-  pending engine-full     "full-size all-to-alls (4 data sets) and radix sort (about 1.5 minutes)" "P4: W26's invariants 3 and 6"
+  step engine-full 1 "full-size all-to-alls (4 data sets) and radix sort (about 1.5 minutes)" tests/p4suites/engine-full.log -- $S/suite_engine -1 full
   step skewtable 1 "fan-in under 0/+1 skew, 40 skew patterns (several minutes)" tests/p4suites/skewtable.log -- $S/suite_net -1 skewtable 40
 fi
 # ---- v1.3's summary ------------------------------------------------------------------------------------------------

@@ -75,8 +75,9 @@ current answer, not a proof: anyone may reopen one with a reason [owner].*
 ## 7. The simulator's part
 
 - **All firmware runs in simulation before it runs on hardware,** so catching software bugs is the simulators' job
-  (preamble). **Every invariant of spec 9 is a meshsim check.** In v1.35 the checks are compiled into the debug and
-  suite builds, not the release build.
+  (preamble). **Every invariant of spec 9 is a meshsim check.** In v1.35, undefined
+  behaviour stops the run in every build; the other invariants are counted in every build and reported by name in
+  the debug and suite builds only.
 - **meshsim's values are the model's, not promises:** where the spec says "in meshsim", the RTL's measured value
   replaces it and comes back (4.8, 10).
 - **Between simulator versions: identical results, cycle counts very close.** A deliberate difference is proposed,

@@ -101,10 +101,11 @@ struct HarnessSends {
     uint32_t cap = 0, head = 0, n = 0;
     uint64_t (*log)[4] = nullptr;
     uint32_t log_cap = 0, log_n = 0;
-    bool due(int64_t t) const { return n && e[head].T <= t + 1; }
+    bool on = false;                   // ref feeds only in Net.step / runAll (not under Chip.run): set by the harness then
+    bool due(int64_t t) const { return on && n && e[head].T <= t + 1; }
     const CncPacket& pop() { const CncPacket& p = e[head].p; head = (head + 1) % cap; n--; return p; }
     sim::Wake wake(sim::Ctx& c) const {                       // the step that puts the next send
-        if (!n) return sim::Wake::none();
+        if (!n || !on) return sim::Wake::none();
         const int64_t at = e[head].T - 1, t = int64_t(c.now());
         return at <= t + 1 ? c.next() : sim::Wake::at_cycle(uint64_t(at));
     }

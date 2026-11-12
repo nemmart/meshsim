@@ -120,6 +120,12 @@ remaining kinds, interleaved as the suites ask.
 - **W22-15 `TileRef::phase_done()`**: ref's EngineTest.phaseDone (the AG over, every counter 0 in the block's end-of-cycle
   view, no word on the delay line or port B arriving after the next cycle, mem_idle, the table stores quiet). NetSelf's
   probe (the coreless a2a stepped by hand: the first phase-done cycle of four tiles and of all 64, two seeds) equal to ref.
+- **W26's: Net's schedules fed only by Net.step and run_all**, as ref's (Chip::run and step leave Net.at, Net.rd and
+  cncSends alone; a client FIFO's requests already in it are served under any run, as ref's srq does). Net.at's and
+  Net.rd's feeds are switched on for Net::step's cycle (HarnessFeed::on); cncSends are now put by Net::step itself,
+  ref's feed() exactly: between cycles, at the cycle just run, the head when T <= t + 1 and C&C's send register is empty
+  (Sim::put_late; the Cnc unit's own path for them is unused). NetSelf's feed case (Chip.run(40) between Net.steps, then
+  runAll: nothing fed under the run, the late packets after) equal to ref; the controllers' cases unchanged.
 - Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
   after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
 

@@ -89,6 +89,7 @@ struct HarnessFeed {
     };
     Ring ret, cl[3];
     bool clients = false;          // ref's testReadClients: the FIFOs above are the read queue's three clients
+    bool on = false;               // ref feeds only in Net.step / runAll (not under Chip.run): set by the harness then
     uint64_t late = 0;
     bool pending() const { return ret.n || cl[0].n || cl[1].n || cl[2].n; }
 };
@@ -400,11 +401,11 @@ inline sim::Wake InjReadSide::wake(sim::Ctx& c, const Tokens& tok) const {
     const uint64_t t = c.now();
     if (nxt_v) return c.next();
     uint64_t hat = ~0ull;                                      // W20 (harness-only): the harness's next feed or issue
-    if (feed && feed->pending()) {
-        if (feed->ret.n) hat = feed->ret.at(0)[0];
+    if (feed && feed->pending()) {                             // (off: only the client FIFOs' visible entries, which
+        if (feed->on && feed->ret.n) hat = feed->ret.at(0)[0];   //  the read queue takes under any run, as ref's)
         for (unsigned k = 0; k < 3; k++) {
             const HarnessFeed::Ring& r = feed->cl[k];
-            const uint64_t a = r.vis ? (tok.reads + tok.loop_held < cap ? t + 1 : ~0ull) : r.n ? r.at(0)[0] : ~0ull;
+            const uint64_t a = r.vis ? (tok.reads + tok.loop_held < cap ? t + 1 : ~0ull) : feed->on && r.n ? r.at(0)[0] : ~0ull;
             hat = a < hat ? a : hat;
         }
         if (hat <= t + 1) return c.next();
@@ -423,6 +424,7 @@ inline sim::Wake InjReadSide::wake(sim::Ctx& c, const Tokens& tok) const {
 // ---- W20 (harness-only; P2): ref's Net harness's feed, on the coreless Net machine only (feed != null) --------------
 inline void InjReadSide::harness_feed(uint64_t t) {
     HarnessFeed& f = *feed;
+    if (!f.on) return;                                         // a cycle run outside Net's step: nothing fed (ref)
     if (f.ret.n && f.ret.at(0)[0] <= t) {
         const uint64_t* e = f.ret.at(0);
         if (cur_v) FATAL("Net harness: tile %u, cycle %llu: a packet fed into the read-return register the cycle the read "

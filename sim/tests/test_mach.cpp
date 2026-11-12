@@ -336,8 +336,31 @@ void phase_done_probe(int64_t seed) {
     say("phaseDone seed %lld: tiles 0 5 40 63 first at +%lld +%lld +%lld +%lld; all at +%lld\n", (long long)seed, (long long)first[0],
         (long long)first[1], (long long)first[2], (long long)first[3], (long long)all);
 }
+void feed_only_in_net() {
+    mach::MachConfig k = Net::cfg(-1);
+    k.test_read_clients = true;
+    Net n(k);
+    for (uint32_t i = 0; i < 16; i++) n.c.tile(3).sram_poke(0x2000 + i, 0x100 * i + 7);
+    for (int64_t T = 10; T < 15; T++) n.at(4, T, 9, lw::M_WRITE, Net::cm(0x900 + 2 * uint32_t(T - 10)), Net::tagged(uint64_t(T), T));
+    n.cnc_send({12, 20, lw::M_WRITE, 0x200, 0x77, lw::SIZE_32, 0, 0});
+    n.rd(3, 0, 2, 0x2000, lw::SIZE_64, lw::M_WRITE, 0, 12, Net::cm(0x8A0));
+    n.rd(3, 1, 30, 0x2004, lw::SIZE_32, lw::M_WRITE, 0, 12, Net::cm(0x8A4));
+    n.step(); n.step(); n.step();
+    n.c.run(40);
+    std::string sb = "feed: after Chip.run(40) at " + std::to_string(n.c.cycle()) + ": t9 " + std::to_string(n.log(9).size()) + " t20 " +
+                     std::to_string(n.log(20).size()) + " t12";
+    for (const auto& e : n.log(12)) sb += " @" + std::to_string(e[0]);
+    sb += "; late " + std::to_string(n.late()) + "; pending " + tf(n.pending());
+    const bool ok = n.run_all(500);
+    sb += std::string("; then runAll ") + (ok ? "drained" : "NOT drained") + " at " + std::to_string(n.c.cycle()) + ": late " + std::to_string(n.late()) + " t9";
+    for (const auto& e : n.log(9)) sb += " @" + std::to_string(e[0]);
+    sb += " t20"; for (const auto& e : n.log(20)) sb += " @" + std::to_string(e[0]);
+    sb += " t12"; for (const auto& e : n.log(12)) sb += " @" + std::to_string(e[0]);
+    say("%s\n", sb.c_str());
+}
 void netself() {
     out.clear();
+    feed_only_in_net();
     core();
     phase_done_probe(-1);
     phase_done_probe(4);

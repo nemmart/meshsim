@@ -1229,7 +1229,30 @@ bool Net::pending() const {
     for (const auto& h : m.sends) if (h.n) return true;
     return false;
 }
-void Net::step() { c.step(); }
+// ref's Net.step: feed() then the cycle. Only here (and in run_all) are Net's schedules fed: Chip::run and step leave
+// them alone, as ref's Chip.run does (W26). The units with something to feed are woken for this cycle.
+void Net::step() {
+    Chip::Impl& m = c.impl();
+    for (unsigned k = 0; k < 64; k++) {
+        m.feeds[k].on = true;
+        if (m.feeds[k].pending()) m.sim->wake(units::tile_unit(k, "inj"));
+    }
+    // C&C 1's cncSends, as ref's feed(): between cycles, at the cycle just run, the head when T <= t + 1 and C&C's send
+    // holding register is empty then (a put as of t: Sim::put_late, delivered at t + 1 as ref's)
+    units::HarnessSends& h = m.sends[0];
+    if (h.n && h.e[h.head].T <= c.cycle() + 1) {
+        sim::PortEntry e[1];
+        const sim::PortView v = m.sim->observe(c.unit<units::Router>(units::tile_unit(0, "router")).from_cnc, e, 1);
+        if (!v.valid && !v.put && v.n == 0) {
+            namespace lw = units::lw;
+            const units::CncPacket& p = h.pop();
+            const sim::Word w[3] = {lw::mask_lo(p.lo, p.size), lw::hdr(lw::CC1, p.dst, p.mode, p.counter, p.addr, p.size), lw::mask_hi(p.hi, p.size)};
+            m.sim->put_late("cnc", c.unit<units::Cnc>("cnc").send, w, 3);
+        }
+    }
+    c.step();
+    for (auto& f : m.feeds) f.on = false;
+}
 bool Net::run_all(uint64_t max) {
     for (uint64_t i = 0; i < max; i++) {
         if (!pending() && c.quiescent()) { c.scan_overflows(); return true; }

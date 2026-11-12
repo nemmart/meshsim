@@ -456,6 +456,15 @@ violations: 2
 violations: 1
   cycle 1313 tile 12: chunk 0x20070 read after being written in the same phase (invariant 2, phase 2)
 disjoint-buffer accesses counted: 16
+violations: 8
+  cycle 20: bad packet (region 0xff not reachable by a packet) sent by 64 (3.1, invariant 5)
+  cycle 22: packet with size 11, undefined, sent by 64 (3.1, invariant 5)
+  cycle 30 tile 9: bad packet dropped, uncounted, ERRORS [1] (region 0xff not reachable by a packet; 3.1, invariant 5): src=64 dst=9 mode=0(write@addr) ctr=0 addr=0xff000000 size=32 payload=0x00000001
+  cycle 31: packet in the reserved mode 6 sent by 65 (3.1, invariant 21)
+  cycle 32 tile 9: packet with size 11 (undefined, 3.1; invariant 5) arrived and was dropped: src=64 dst=9 mode=0(write@addr) ctr=0 addr=0x00000900 size=11(undefined) payload=0x0000000000000000_0000000000000002
+  cycle 32: packet with size 11, undefined, sent by 66 (3.1, invariant 5)
+  cycle 40: packet with size 11, undefined, sent by 66 (3.1, invariant 5)
+  cycle 50 tile 9: bad packet dropped, uncounted, ERRORS [1] (mode 3 at 128 bits; 3.1, invariant 5): src=64 dst=9 mode=3(augmented) ctr=0 addr=0x00000000 size=128 payload=0x0000000000000005_0000000000000004
 violations: 12
   cycle 10 tile 10: count-only packet on counter 0 sent: it does nothing (3.1, invariant 21): src=0 dst=20 mode=5(count-only) ctr=0 addr=0x00000000 size=32 payload=0x00000000
   cycle 11 tile 11: count-only packet on counter 0 sent: it does nothing (3.1, invariant 21): src=0 dst=20 mode=5(count-only) ctr=0 addr=0x00000000 size=32 payload=0x00000001

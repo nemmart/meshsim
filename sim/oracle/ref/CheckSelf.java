@@ -311,6 +311,21 @@ final class CheckSelf {
             System.out.print(n.c.violationReport());
             System.out.println("disjoint-buffer accesses counted: " + p.sram.disjointViolations);
         }
+        {   // the endpoints' send checks (Endpoint.send: invariants 5 and 21; W26 with W20's c884c9b4): C&C 1's cncSends (a bad
+            // region, size 11, mode 3 at 128) and direct sends (C&C 2: a reserved mode to C&C 3's endpoint; C&C 3: size 11
+            // to C&C 2's), reported with ref's text rule (the last of the highest endpoint that ever had one)
+            Net n = new Net(Net.cfg(-1));
+            n.cncSends.add(new long[] { 20, 9, LinkWord.M_WRITE, 0xFF000000L, 1, LinkWord.SIZE_32, 0, 0 });
+            n.cncSends.add(new long[] { 22, 9, LinkWord.M_WRITE, 0x900, 2, LinkWord.SIZE_UNDEF, 0, 0 });
+            while (n.c.cycle < 30) n.step();
+            n.c.ccs[1].send(n.c.cycle, 66, LinkWord.M_RSVD6, 2, 0x100, LinkWord.SIZE_32, 0x55, 0);
+            n.step();
+            n.c.ccs[2].send(n.c.cycle, 65, LinkWord.M_WRITE, 2, 0x104, LinkWord.SIZE_UNDEF, 0x56, 0);
+            n.step();
+            n.cncSends.add(new long[] { 40, 9, LinkWord.M_AUG, 0, 4, LinkWord.SIZE_128, 5, 0 });
+            n.runAll(1000);
+            System.out.print(n.c.violationReport());
+        }
         {   // the message cap (maxViolationMessages): the count goes on
             Config k = Net.cfg(-1); k.maxViolationMessages = 3;
             Net n = new Net(k);

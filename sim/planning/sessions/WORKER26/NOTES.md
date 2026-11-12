@@ -129,7 +129,7 @@ Commit and push after each piece; each kind checked line for line against `ref` 
   and RecipeTest, W22's RequestBusTest): a port-B write as the core reads that word; a test's load clearing invariant 8's
   bit (TileRef::load); HIST/PTR table-window busy met by an instruction; a test's HIST load (no check yet); the slot's
   full post; the C&C 1 and stub region writes; the Tracer's violations;
-  the full request push; the receive queue overflow; the endpoints' checks (after W20's call in Net's sends); the read
+  the full request push; the receive queue overflow; the read
   port's size 11 and misaligned destination (UB at the director); a late rotation (invariant 3: AgTest's
   pending groups may reach it).
 - **W22's F4 fixed (SearchBench's 3 extra command-slot violations)**: ref's TileControl.endCycle(t) at a GO clears
@@ -229,3 +229,9 @@ Commit and push after each piece; each kind checked line for line against `ref` 
   the commit and the framework at the put (PORTS.md 2), the child makes the puts that exceed it. WordFIFO's "the v1.0
   rule is the default" is the framework's one Fifo rule (PORTS.md 3). Output equal to v1.3's results/bus.log, "BusTest:
   154 passed, 0 failed", gcc and clang debug; the step off PENDING.
+- **The endpoints' sends in CheckSelf** (W20's c884c9b4: `units::endpoint_checks` in Net::step's cncSends and
+  Net::send): C&C 1's bad region and size 11, C&C 2's reserved mode to C&C 3's endpoint, C&C 3's size 11 to C&C 2's,
+  then C&C 1's mode 3 at 128 (reported with 66's text: ref's rule). **One fix in W20's two calls** (tests/mach.cpp):
+  the fact's cycle is `cycle() + 1`, not `cycle()`: ref counts a harness send between cycles and its checkInvariants
+  reports it at the next cycle run (every line was one cycle early). Line for line (clang and gcc suite, clang debug);
+  NetTest (quick) and RequestBusTest equal to their fixtures.

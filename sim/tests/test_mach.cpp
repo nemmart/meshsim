@@ -1101,6 +1101,19 @@ void checkself() {
         say("disjoint-buffer accesses counted: %llu\n", (unsigned long long)p.unit<units::BigSram>("sram").disjoint_violations);
 #endif
     }
+    {   // W26: the endpoints' send checks (C&C 1's cncSends; C&C 2's and C&C 3's direct sends; ref's text rule)
+        Net n(Net::cfg(-1));
+        n.cnc_send({20, 9, lw::M_WRITE, 0xFF000000u, 1, lw::SIZE_32, 0, 0});
+        n.cnc_send({22, 9, lw::M_WRITE, 0x900, 2, lw::SIZE_UNDEF, 0, 0});
+        while (n.c.cycle() < 30) n.step();
+        n.send(1, 66, 6, 2, 0x100, lw::SIZE_32, 0x55, 0);
+        n.step();
+        n.send(2, 65, lw::M_WRITE, 2, 0x104, lw::SIZE_UNDEF, 0x56, 0);
+        n.step();
+        n.cnc_send({40, 9, lw::M_AUG, 0, 4, lw::SIZE_128, 5, 0});
+        n.run_all(1000);
+        say("%s", n.c.violation_report().c_str());
+    }
     {
         mach::MachConfig k = Net::cfg(-1);
         k.max_violation_messages = 3;

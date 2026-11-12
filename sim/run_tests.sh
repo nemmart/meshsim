@@ -42,9 +42,9 @@ mkdir -p results
 SUITES="suite_memsys suite_rvc suite_tracer"
 # The make-check tests standing for a v1.3 suite (equiv steps)
 EQUIVS="test_golden test_tileslotconf"
-SUITES="$SUITES suite_ccbench"                       # W23 (P5)
+SUITES="$SUITES suite_ccbench suite_hooks suite_regdoc"                       # W23 (P5)
 SUITES="$SUITES suite_replayer stageb"               # W25 (P7b)
-SUITES="$SUITES suite_net suite_search suite_agbench suite_engine"   # W22 (P4)
+SUITES="$SUITES suite_net suite_search suite_agbench suite_engine suite_reqbus"   # W22 (P4)
 SUITES="$SUITES sort_test sweep"                     # W24 (P6)
 
 if [ "$BUILD" = 1 ]; then
@@ -120,13 +120,13 @@ pending recipes       "the v1.2 recipes as suites, and the book's code blocks ag
 pending recipes-shuf  "shuffled child order (seed 4)" "P5"
 pending cond          "the errors end to end: ERRORS, the handler's reports, the error lines, the toast pin, the reset" "P5"
 pending cond-shuf     "shuffled child order (seed 4)" "P5"
-pending regdoc        "REGISTERS.md and mesh.h against their generators, the draft header and the simulator" "P5"
-pending hooks         "the register map, the send port, the pulses (from Java)" "P5"
-pending hooks-shuf    "shuffled child order (seed 4)" "P5"
+step regdoc 1 "REGISTERS.md and mesh.h against their generators, the draft header and the simulator" tests/ctlsuites/regdoc.log -- $S/suite_regdoc
+step hooks      1 "the register map, the send port, the pulses (from Java)" tests/ctlsuites/hooks.log -- $S/suite_hooks -1
+step hooks-shuf 1 "shuffled child order (seed 4)" tests/ctlsuites/hooks-shuf.log -- $S/suite_hooks 4
 equiv periph          "the peripheral framework: the standard window, events, region writes, the DMA" "test_tileslotconf (W15's TileSlotConf: PeripheralSlotTest's groups on a real tile, against ref)" -- $S/test_tileslotconf
 pending periph-shuf   "shuffled child order (seed 4)" "P5 (test_tileslotconf has no shuffled run yet)"
-pending reqbus        "the request port, the request bus and the receive queues in the tree" "P4: W22-9 to W22-13"
-pending reqbus-shuf   "shuffled child order (seed 4)" "P4: W22-9 to W22-13"
+step reqbus 2 "the request port, the request bus and the receive queues in the tree" tests/p4suites/reqbus.log -- $S/suite_reqbus -1
+step reqbus-shuf 1 "shuffled child order (seed 4)" tests/p4suites/reqbus-shuf.log -- $S/suite_reqbus 4
 # cccores: log-equal (D44's mask) once TileRef::set_errors reaches the controllers (W20: host_on is set on tiles 0-63
 # only, so C&C 2's ERRORS bit is dropped; with it set on cc1-cc3.ctl too, 77 passed, release and suite builds). Then:
 #   MASK_EXTRA=$D44_MASK step cccores      1 "C&C 1-3 as cores ..." tests/ctlsuites/cccores.log -- $S/suite_cccores -1

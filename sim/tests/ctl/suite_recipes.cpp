@@ -633,7 +633,7 @@ struct SelfTest {
 };
 
 // ================================================================ 17-20: write a block, fill, hash
-constexpr uint32_t B_SRC = 0x00000, B_WB = 0x80000;   // rcp_selftest.c's SRC, WB (DST 0x40000: selftest, next)
+constexpr uint32_t B_SRC = 0x00000, B_DST = 0x40000, B_WB = 0x80000;   // rcp_selftest.c's SRC, DST, WB
 std::vector<int64_t> sram_recs(Chip& c, unsigned k, uint32_t chunk, int n) { std::vector<int64_t> v(static_cast<size_t>(n)); for (int i = 0; i < n; i++) v[size_t(i)] = rec(c, k, chunk + 2 * uint32_t(i)); return v; }
 std::string per_rec(int64_t c1, int64_t c2, int n1, int n2) { return java_fixed(double(c2 - c1) / (n2 - n1), 2); }
 std::map<std::string, std::string> per_record;              // ref's perRecord (LinkedHashMap; read by key)
@@ -700,6 +700,64 @@ void blocks() {
         java_fixed(double(w2) / 256.0, 2) + " (256 records, not marginal), fill " + per_rec(f1, f2, F1, F2) + ", hash " + per_rec(h1, h2, F1, F2) + " (" +
         java_fixed(double(h2 - h1) / (2 * (F2 - F1)), 2) + " per 32-bit word read)");
     per_record["write_block"] = java_fixed(double(w2) / 256.0, 1); per_record["fill"] = per_rec(f1, f2, F1, F2); per_record["hash"] = per_rec(h1, h2, F1, F2);
+}
+
+
+// The self-test: seed and fill, a uniform all-to-all, hash, and the signature to C&C; the simulator computes every
+// tile's expected signature from the generator and the all-to-all's permutation alone. Round 1 corrupts one record of
+// tile 17's block after the fill: exactly the tile that receives it reports a different signature.
+void selftest() {
+    suite::group("selftest");
+    const SelfTest ST = SelfTest::load();
+    const int N = 1024, M = N / 64;
+    const int64_t BASE = 0x5EED5EED00C0FFEELL;
+    std::vector<int64_t> want[64];
+    for (int me = 0; me < 64; me++) want[me] = ST.fill(ST.tile_seed(me, BASE), N);
+    int64_t expect[64];
+    for (int t = 0; t < 64; t++) {
+        std::vector<int64_t> in(static_cast<size_t>(N));
+        for (int s2 = 0; s2 < 64; s2++) for (int i = 0; i < M; i++) in[size_t(s2 * M + i)] = want[s2][size_t(t * M + i)];   // s's block t lands in t's slot s
+        expect[t] = ST.hash(in, 0, N);
+    }
+    for (int round = 0; round < 2; round++) {
+        mach::MachConfig k = cfg(); k.reqbus_host = true;          // C&C 1's request service (drain_reports)
+        Mach m(k);
+        m.boot("rcp_selftest");
+        mach::Cc& cc = m.c.cc();
+        cc.drain_reports(true);                                    // v1.2: the signatures are requests to C&C 1, which answers each
+        const int CORRUPT = 17, REC = 22 * M + 3;                  // tile 17's block for tile 22: a record of it
+        cc.command(BROADCAST, 2 << 24, {uint32_t(BASE), uint32_t(uint64_t(BASE) >> 32), uint32_t(N)}).go();
+        // ref's then((c, t) -> ...): after the fill, before configure (the block at rest), waiting and poking in one
+        // step; here wait_until then call (round 1 prints no figures: only which signatures match)
+        if (round == 1) cc.wait_until([&] { return tiles_idle(m); }).call([&](int64_t) { poke64(m.c, CORRUPT, B_SRC + 2 * uint32_t(REC), 0xBAD); });
+        cc.command(BROADCAST, 3 << 24).go()
+            .command(BROADCAST, 4 << 24).go()
+            .command(BROADCAST, 5 << 24, {B_DST, uint32_t(N)}).go()
+            .command(BROADCAST, 6 << 24).go();
+        finish(m, round == 0 ? "selftest round 0" : "selftest round 1", 400000);
+        const auto sigs = cc.results();
+        int64_t got[64]; for (int64_t& g : got) g = -1;
+        for (const auto& e : sigs) got[e[1]] = int64_t(uint64_t(e[3]) << 32 | (uint64_t(e[2]) & 0xFFFFFFFFull));
+        int match = 0;
+        for (int t = 0; t < 64; t++) if (got[t] == expect[t]) match++;
+        if (round == 0) {
+            suite::eq(64, int64_t(sigs.size()), "round 0: 64 signatures reached C&C 1 as requests (and each was answered)");
+            suite::eq(64, match, "round 0: every tile's signature equals the one the simulator computed");
+            const int64_t first = sigs.at(0)[0], last = sigs.at(sigs.size() - 1)[0];
+            no_violations(m.c, "selftest round 0");
+            meas("selftest", "fill (" + std::to_string(N) + " records, index seed): GO -> all READY", go_to_ready(m, 0));
+            meas("selftest", "configure: GO -> all READY", go_to_ready(m, 1));
+            meas("selftest", "start (timetable 16 x 4 x " + std::to_string(M) + " = " + std::to_string(64 * M) + "): GO -> all READY", go_to_ready(m, 2));
+            meas("selftest", "hash of the received " + std::to_string(N) + " records: GO -> all READY", go_to_ready(m, 3));
+            meas("selftest", "signatures to C&C 1 over the request bus, answered: GO -> all READY", go_to_ready(m, 4));
+            meas("selftest", "signatures at C&C 1: first to last", last - first);
+        } else {
+            suite::eq(63, match, "round 1 (tile %d's record %d corrupted): 63 signatures still match", CORRUPT, REC);
+            suite::check(got[22] != expect[22], "round 1: the one that differs is tile 22's, which received the record");
+            no_violations(m.c, "selftest round 1");
+        }
+    }
+    out(suite::str("selftest [meas: RecipeTest selftest]: fill from the index seed, a uniform all-to-all (%d records per pair), hash, signatures to C&C 1 as requests (answered): all 64 equal the simulator's; one corrupted record changes exactly its receiver's", M));
 }
 
 // ================================================================ tables (recipe 21)
@@ -813,7 +871,8 @@ int main(int argc, char** argv) {
     snippets();
     cmdloop(); copy(); cmem(); bucket(); aug(); gather(); xchg(); xvec(); a2a(); rdport(); status(); rules();
     sync_(); blocks();
-    // selftest(), boot(): W20 (C&C 1's model: drainReports, results, reportsOf; Cc::reset)
+    selftest();
+    // boot(): W20 (the whole-chip reset)
     signal();
     tables(); replay(); cc1();
     out("recipe cycles [meas: RecipeTest; tile 0 unless stated]:");

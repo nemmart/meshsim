@@ -12,7 +12,7 @@
 // The statistics MemTest reads that the timing builds don't keep (big SRAM per area, the read queue per client, the
 // Fifo peaks) exist under SIM_CHECKS: run the suite and debug builds.
 //
-// STATUS. Every group but `disjoint` (Chip::new_phase and big SRAM's disjoint-buffer facts: W22-14, W20 and W26).
+// STATUS. Every group; disjoint's count of every offending access (ref's sram.disjointViolations) asked of the owner.
 //
 // Test-side code (the configuration regime, D6); the unit level's driver keeps its returns in a fixed array (nothing
 // allocates in the cycle loop).
@@ -442,6 +442,35 @@ void token_window() {
                    max_in, (unsigned long long)srq(p).window_full_cycles));
 }
 
+void disjoint() {
+    suite::group("disjoint-buffer check");
+    Net n(p4::dbg(cfg())); TileRef p = n.c.tile(50); fill(p, 0, 0x2000);
+    p.set_ptr(49, 0x40000);
+    for (int j = 0; j < 100; j++) { n.rd(50, AG, 2 + j, 2 * uint32_t(j), lw::SIZE_64, lw::M_SRC, 1, 51, 0); n.at(49, 2 + j, 50, lw::M_SRC, 0, uint64_t(j)); }
+    n.run_all(2000);
+    eq(0, int64_t(n.c.violations()), "ping-pong phase: no violation");
+    n.c.new_phase();
+    p.set_ptr(49, 0x60000);
+    for (int j = 0; j < 100; j++) n.rd(50, AG, n.c.cycle() + 2 + j, 0x40000 + 2 * uint32_t(j), lw::SIZE_64, lw::M_SRC, 1, 51, 0);
+    for (int j = 0; j < 100; j++) n.at(49, n.c.cycle() + 2 + j, 50, lw::M_SRC, 0, uint64_t(j));
+    n.run_all(2000);
+    eq(0, int64_t(n.c.violations()), "reading last phase's output, writing a disjoint buffer: no violation");
+    n.c.new_phase();
+    p.set_ptr(49, 0x40000);
+    for (int j = 0; j < 100; j++) n.rd(50, AG, n.c.cycle() + 2 + 2LL * j, 0x40000 + 2 * uint32_t(j), lw::SIZE_64, lw::M_SRC, 1, 51, 0);
+    for (int j = 0; j < 100; j++) n.at(49, n.c.cycle() + 31 + 2LL * j, 50, lw::M_SRC, 0, uint64_t(j));
+    n.run_all(2000);
+    eq(1, int64_t(n.c.violations()), "bad program: one violation reported for the tile and phase");
+    const auto& vm = n.c.violation_messages();
+    const std::string m0 = vm.empty() ? std::string("null") : vm[0];
+    check(m0.find("invariant 2") != std::string::npos, "it is invariant 2: %s", m0.c_str());
+    const int64_t dv = -1;   // ref's sram.disjointViolations (every offending access): not kept by the C++ big SRAM (asked of the owner)
+    check(dv > 1, "every offending chunk access is counted (%lld)", (long long)dv);
+    std::string shown = m0;
+    if (shown.rfind("cycle ", 0) == 0) { const size_t sp = shown.find(' ', 6); if (sp != std::string::npos) shown = shown.substr(sp + 1); }   // replaceAll("^cycle \\d+ ", "")
+    out("disjoint-buffer check: a phase that reads one buffer while another tile's writes land in it is reported once per tile and phase, e.g. \"" + shown + "\" [meas: MemTest disjoint-buffer check]");
+}
+
 void mem_idle() {
     suite::group("mem_idle");
     Net n(p4::dbg(cfg())); TileRef p = n.c.tile(60); p.set_ptr(59, 0x20000);
@@ -535,7 +564,7 @@ int main(int argc, char** argv) {
     if (want("packets")) packets();
     if (want("returnorder")) return_order();
     if (want("tokenwindow")) token_window();
-    // disjoint: W22-14 (Chip::new_phase: W20; big SRAM's disjoint-buffer facts: W26)
+    if (want("disjoint")) disjoint();
     if (want("memidle")) mem_idle();
     if (want("oversubscription")) oversubscription();
     std::fputs(report.c_str(), stdout);

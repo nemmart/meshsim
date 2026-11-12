@@ -356,6 +356,11 @@ public:
     uint64_t steps(const std::string& unit_name) const;   // how many times an instance was stepped (idle-unit tests)
     uint16_t type_of(const std::string& unit_name) const; // the unit's type id in this machine (first-add order, E1)
     bool has_unit(const std::string& unit_name) const;    // W20 (harness-only): whether the machine has a unit of that name
+    // W20 (harness-only; B20, ref's Chip.doReset: every bus flushed): between runs, every word in flight or visible on a
+    // Link, Fifo (and credit Fifo: its credits back to its depth; its overflow record cleared, as ref's flush) and Hold
+    // is dropped, with the inputs' pending bits. Registers, Wires, RegFiles and Counts keep their values (their
+    // producers republish), and so do the units' own states (the caller resets them). One domain only.
+    void flush_ports();
     // W20 (harness-only): a RegFile's register i as its readers see it now, between runs (what was last written). One domain.
     uint32_t regfile_value(RegFileIn p, unsigned i) const;
     std::string sleepers() const;      // the end-of-run report: units asleep with data waiting, their ports, since when

@@ -391,3 +391,23 @@ W22-20. **(for W20) `TileRef::req_send` takes one push a cycle** (a `Sim::put_la
   rdport (-1, 4), searchbench, reqbus, agbench; the finished quick logs (net-quick, net-shuf, searchbench, engine,
   eng-shuf) byte for byte under both. In make check: net-quick under step-all and engine under instance-major
   (clang debug: 31 s and 10 s), beside the plain six.
+- **Fixed (main's break, owner 2026-11-12)**: with W26's disjoint check live (f43894ca), EngineTest's radix sort reported
+  64 \"read after being written in the same phase\" violations (eng-shuf differed): my suites still called a local
+  no-op `new_phase`. Now W20's `Chip::new_phase()` wherever ref calls newPhase (EngineTest's radix sort and late
+  groups, AgTest's rulings; p4_drift's radix sort too). engine, eng-shuf, engine-full byte for byte again; AgTest 206 of
+  206; `run_tests.sh quick --check`: no LOG DIFFERS.
+- **RequestBusTest complete** (W22-19 delivered_log, W22-20 req_send): basics (the unloaded latency line), fairness,
+  credits, back-pressure ported; reqbus and reqbus-shuf byte for byte (50 of 50), also under step-all and
+  instance-major. Live in run_tests.sh; both in make check.
+- **MemTest's disjoint group** (on W20's new_phase and W26's tracking): its line equal (\"tile 50: chunk 0x40000 written
+  after being read in the same phase (invariant 2, phase 2)\"); MemTest 170 of 171. The one left reads ref's
+  `sram.disjointViolations` (every offending chunk access counted; BigSRAM.java:154, in mark()): the C++ big SRAM
+  records the phase's first only (W26's `phase_flagged`). **The owner's call**: a statistic in W26's mark(), under
+  SIM_CHECKS (where the bits are), `disjoint_violations++` whenever the other bit is set. A placeholder fails it.
+- **ReadPortGatherTest's disjoint group**: the flagged run passes; the legal one fails: **finding F6 (for W26)**: ref
+  starts a disjoint phase at three points, the harness's newPhase, every GO (TileControl.java:235) and **every
+  counters-done latch** (TileControl.java:280: `events |= 1 << EV_COUNTERS_DONE; ... tile.sram.newPhase()`, the local
+  wake); the C++ starts one at the first two only. A copy A -> B, its local wake (counters done), then B -> A with no GO
+  between: ref sees two phases, the C++ one, and reports \"chunk 0x40000 read after being written in the same phase\"
+  (cycle 91, tile 12). Reproduce: `build/clang-suite/suite_rdport -1 --only=disjoint`. Everything else in rdport and
+  rdport-shuf equal.

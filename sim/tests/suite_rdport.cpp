@@ -7,7 +7,7 @@
 //   suite_rdport [seed] [full] [--only=GROUP,...]
 //     groups: fromc traffic tolerance overlap disjoint reserved gather counting gatherc
 //
-// STATUS. Every group but disjoint (W22-14: Chip::new_phase, big SRAM's disjoint facts).
+// STATUS. Every group.
 //
 // Test-side code (the configuration regime, D6).
 #include <algorithm>
@@ -29,6 +29,7 @@
 #include "units/gather.h"
 #include "units/inject.h"
 #include "units/linkword.h"
+#include "units/regmap.h"
 #include "units/router.h"
 #include "units/tile_ctl.h"
 #include "units/write_engine.h"
@@ -276,6 +277,41 @@ void overlap_check() {
     out("overlap check [meas: ReadPortGatherTest read-port overlap check]: an outside packet accepted while read-port results are outstanding is a violation (Config.checkReadPortOverlap, default on); C&C 1's command writes are exempt, its other packets are not; results first and the stream after: none");
 }
 
+// ================================================================ the disjoint-buffer checker per engine run (local wake)
+void disjoint_per_run() {
+    suite::group("disjoint buffers per engine run");
+    const uint32_t A = 0x20000, B = 0x40000, N = 64;
+    {
+        Chip c(p4::dbg(cfg()));
+        TileRef p = c.tile(12);
+        for (uint32_t i = 0; i < N; i++) p.sram_poke64(A + 2 * i, 0xA000ull + i);
+        p.set_stream(0, fields::stream_src(A), 0, fields::stream_count(N, fields::SIZE_64, 1, lw::M_SRC, 0));
+        p.set_ptr(12, B); p.set_remaining(1, N);
+        stream_run(p, 0, 1);
+        p.pulse(fields::PULSE_START);
+        auto counters_done_pending = [&] { return (p.block().events & (1u << units::EV_COUNTERS_DONE)) != 0; };   // ctl.countersDonePending
+        c.run_until(counters_done_pending, 2000);
+        check(counters_done_pending(), "run 1 ended with counters done");
+        p.set_stream(1, fields::stream_src(B), 0, fields::stream_count(N, fields::SIZE_64, 1, lw::M_SRC, 0));
+        p.set_ptr(12, A); p.set_remaining(1, N);
+        stream_run(p, 1, 1);
+        p.pulse(fields::PULSE_START);
+        c.run_until([&] { return p.phase_done(); }, 2000);
+        eq(int64_t(0xA000 + 5), int64_t(p.sram_peek64(A + 10)), "the data came back");
+        eq(0, int64_t(c.violations()), "A -> B, local wake, B -> A: no disjoint-buffer violation %s", c.violation_report().c_str());
+    }
+    Chip d(p4::dbg(cfg()));
+    TileRef q = d.tile(12);
+    q.set_stream(0, fields::stream_src(A), 0, fields::stream_count(N, fields::SIZE_64, 1, lw::M_SRC, 0));
+    q.set_ptr(12, A + 2 * N - 16); q.set_remaining(1, N);
+    stream_run(q, 0, 1);
+    q.pulse(fields::PULSE_START);
+    d.run_until([&] { return q.phase_done(); }, 2000);
+    bool flagged = false; for (const auto& v : d.violation_messages()) if (v.find("invariant 2") != std::string::npos) flagged = true;
+    check(flagged, "a run that reads and writes one buffer is flagged (invariant 2)");
+    out("disjoint buffers [meas: ReadPortGatherTest disjoint buffers per engine run]: a copy A -> B, then B -> A after its local wake with no GO between, passes; one run reading and writing one buffer is flagged");
+}
+
 // ================================================================ reserved streams
 void reserved_streams() {
     suite::group("reserved streams");
@@ -439,7 +475,7 @@ int main(int argc, char** argv) {
     if (want("traffic")) read_port_under_traffic();
     if (want("tolerance")) read_port_tolerance();
     if (want("overlap")) overlap_check();
-    // disjoint: W22-14 (Chip::new_phase; big SRAM's disjoint tracking, W26)
+    if (want("disjoint")) disjoint_per_run();
     if (want("reserved")) reserved_streams();
     if (want("gather")) gather();
     if (want("counting")) gather_counting_and_alignment();

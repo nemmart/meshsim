@@ -107,6 +107,10 @@ inline std::vector<std::string> read_lines(const std::string& path) {
     if (!cur.empty()) v.push_back(cur);
     return v;
 }
+inline std::string read_file_all(const std::string& path) {
+    std::ifstream f(path, std::ios::binary);
+    return std::string((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+}
 inline bool write_file(const std::string& path, const std::string& s) {
     FILE* f = std::fopen(path.c_str(), "wb");
     if (!f) return false;

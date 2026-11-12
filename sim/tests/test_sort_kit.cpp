@@ -1,8 +1,17 @@
 // The sort kit's helpers (WORKER24, P6; tests/sort_kit.h) against Java's own outputs: String.format's %,d, %+,d and
 // %+.2f (HALF_UP on the shortest digits; every expected value printed by JDK 21 itself), Path.of(...).toString(), Inputs' parser and
-// HASHES reader.
+// HASHES reader. Then the tools on v1.3's kit run at -n 2000 (Quest 178, tests/sort/kit/n2000.tgz): sort_summary's
+// SUMMARY.md and all.csv equal v1.3's SortSummary's, sort_compare's self-comparison equal v1.3's SortCompare's.
+#include <fcntl.h>
+#include <unistd.h>
+
 #include "harness.h"
 #include "sort_kit.h"
+
+// the two tools' mains, linked into this test
+#define SORT_KIT_NO_MAIN
+#include "sort_compare_main.cpp"
+#include "sort_summary_main.cpp"
 
 using namespace sortkit;
 
@@ -63,4 +72,35 @@ TEST(inputs_line_and_hashes) {
     CHECK_EQ(d.size(), size_t(1));
     CHECK(d[0] == "hops.txt: cccccccccccc... (reference aaaaaaaaaaaa...)");
     std::remove(path.c_str());
+}
+
+TEST(the_kit_tools_on_v13s_n2000_run) {
+    char cwd[4096]; CHECK(getcwd(cwd, sizeof cwd) != nullptr);
+    const std::string here = cwd, tgz = here + "/tests/sort/kit/n2000.tgz";
+    CHECK(is_file(tgz));
+    char tmpl[] = "/tmp/test_sort_kit_XXXXXX";
+    const char* d = mkdtemp(tmpl); CHECK(d != nullptr);
+    const std::string dir = d;
+    CHECK_EQ(std::system(("tar xzf " + tgz + " -C " + dir).c_str()), 0);
+    CHECK(chdir(dir.c_str()) == 0);
+    std::rename("results/SUMMARY.md", "ref.md"); std::rename("results/all.csv", "ref.csv");
+    char a0[] = "sort_summary", a1[] = "results";
+    char* sargv[] = {a0, a1, nullptr};
+    char c0[] = "sort_compare", c2[] = "self.md";
+    char* cargv[] = {c0, a1, a1, c2, nullptr};
+    std::fflush(stdout);                                    // the tools' stdout to /dev/null, then back
+    const int saved = dup(1), null = open("/dev/null", O_WRONLY);
+    dup2(null, 1); close(null);
+    const int rs = sort_summary_main(2, sargv);
+    const int rc = sort_compare_main(4, cargv);
+    std::fflush(stdout); dup2(saved, 1); close(saved);
+    const std::string got_md = read_file_all("results/SUMMARY.md"), want_md = read_file_all("ref.md");
+    const std::string got_csv = read_file_all("results/all.csv"), want_csv = read_file_all("ref.csv");
+    const std::string got_cmp = read_file_all("self.md"), want_cmp = read_file_all(here + "/tests/sort/kit/n2000-compare-self.out");
+    CHECK(chdir(here.c_str()) == 0);
+    CHECK_EQ(std::system(("rm -rf " + dir).c_str()), 0);
+    CHECK_EQ(rs, 0); CHECK_EQ(rc, 0);
+    CHECK(!want_md.empty() && got_md == want_md);
+    CHECK(!want_csv.empty() && got_csv == want_csv);
+    CHECK(!want_cmp.empty() && got_cmp == want_cmp);
 }

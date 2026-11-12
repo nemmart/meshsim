@@ -11,3 +11,6 @@ v1.35 regenerates it.
   full `.fp` regenerated with `KEEP=DIR` to localise a difference, its sha256 in `HASHES`) and its facts (`<name>.out`).
 
 v1.3's committed `results/` logs of these steps are older than v1.3's own image and boot ROM (NOTES, F1): not used.
+- `kit/`: v1.3's kit (`oracle/ref/sortkit.sh`, with F2's two fixes) at `-n 2000` on the runner (Quest 178; the machine
+  in `n2000-machine.txt`): `n2000.tgz` (every run's CSV, phases CSV and log, SUMMARY.md, all.csv, HASHES; six sweep
+  points refused as v1.3 refuses them, F3). `n2000-compare-self.out`: v1.3's SortCompare of that run against itself.

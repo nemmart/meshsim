@@ -92,7 +92,7 @@ int inputs(const std::string& dir, const std::vector<Run>& runs, const std::stri
 
 }  // namespace
 
-int main(int argc, char** argv) {
+int sort_summary_main(int argc, char** argv) {
     std::vector<std::string> a;
     std::string hf = "HASHES";
     for (int i = 1; i < argc; i++) {
@@ -201,3 +201,7 @@ int main(int argc, char** argv) {
                 flagged == 0 ? "" : ("; WARNING: " + std::to_string(flagged) + " runs flagged under Inputs").c_str());
     return 0;
 }
+
+#ifndef SORT_KIT_NO_MAIN
+int main(int argc, char** argv) { return sort_summary_main(argc, argv); }
+#endif

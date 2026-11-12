@@ -45,7 +45,7 @@ bool parse_long(const std::string& s, int64_t& v) {
 
 }  // namespace
 
-int main(int argc, char** argv) {
+int sort_compare_main(int argc, char** argv) {
     if (argc < 3) { std::fprintf(stderr, "usage: sort_compare NEW_DIR REF_DIR [out.md]\n"); return 2; }
     const std::string n = java_path(argv[1]), r = java_path(argv[2]);
     std::string sum, det;
@@ -104,3 +104,7 @@ int main(int argc, char** argv) {
     if (argc > 3 && !write_file(argv[3], sum)) { std::fprintf(stderr, "sort_compare: cannot write %s\n", argv[3]); return 1; }
     return 0;
 }
+
+#ifndef SORT_KIT_NO_MAIN
+int main(int argc, char** argv) { return sort_compare_main(argc, argv); }
+#endif

@@ -1,3 +1,7 @@
+trace: finished at cycle 4311
+  tile 0: 14 TRACE stores 1943:5ea4 2128:5ea4 2314:5ea4 2500:5ea4 2686:5ea4 2872:5ea4 3059:5ea4 3246:5ea4 3432:5ea4 3618:5ea4 3805:5ea4 3991:5ea4 4174:5ea4 4246:5ea4
+  tile 7: 14 TRACE stores 1943:5ea4 2128:5ea4 2314:5ea4 2500:5ea4 2686:5ea4 2873:5ea4 3059:5ea4 3245:5ea4 3431:5ea4 3616:5ea4 3801:5ea4 3986:5ea4 4169:5ea4 4241:5ea4
+  tile 63: 14 TRACE stores 1942:5ea4 2128:5ea4 2313:5ea4 2500:5ea4 2687:5ea4 2873:5ea4 3059:5ea4 3245:5ea4 3431:5ea4 3616:5ea4 3803:5ea4 3988:5ea4 4172:5ea4 4244:5ea4
 phases seed -1: stopped at cycle 7698
   #  phase              GO at    cycles  READY spread (slowest)  instr/tile  WFI%   AG req/tile  late  gather/tile  rd-port/tile  AG read lat (max)  inj%  ej%   peaks: link ej toCnC weIn gQ area ptr hist rdPort  C&C
   0  boot                   98       930       0 (t0 )               668    12           73     0            0             0       5.0 (   5)     8    8           1  1     0    0  0    1   0   0      0  1
@@ -44,9 +48,15 @@ wfi after run(1500): cycle 1500 runAt 77 busy true allInWfi false
 wfi: stopped at cycle 1616; bootStart 0 runAt 77; allExited true allInWfi false; halts []; exit(0) 0 exit(63) 0
   r[1] 0x13
 a2a seed -1: stopped at cycle 7698; bootStart 0 runAt 98; allExited true allInWfi false; halts []; exit(0) 0 exit(63) 0
+  fp 032cb3291ab35a73
   phaseLog [97, 98] [1028, 1029] [4506, 4507] [7660, 7661]
   misplaced 0; lastGoAt 7661 lastAllReadyAt 7660; busy false; sram t9 0x40000 240000000000005d t50 0x40100 c8400000000001b3
 a2a seed 4: stopped at cycle 7698; bootStart 0 runAt 98; allExited true allInWfi false; halts []; exit(0) 0 exit(63) 0
+  fp 032cb3291ab35a73
   phaseLog [97, 98] [1028, 1029] [4506, 4507] [7660, 7661]
   misplaced 0; lastGoAt 7661 lastAllReadyAt 7660; busy false; sram t9 0x40000 240000000000005d t50 0x40100 c8400000000001b3
+a2a seed -1 kit: stopped at cycle 7704; bootStart 0 runAt 108; allExited true allInWfi false; halts []; exit(0) 0 exit(63) 0
+  fp f62b3ed6d2a77d7f
+  phaseLog [107, 108] [1037, 1038] [4511, 4512] [7670, 7671]
+  misplaced 0; lastGoAt 7671 lastAllReadyAt 7670; busy false; sram t9 0x40000 240000000000005d t50 0x40100 c8400000000001b3
 cores: booted true at cycle 883; bootStart 0; mbox 0 852 867 2; tile 0 pc 0x2000064, cc1 pc 0x1000b38

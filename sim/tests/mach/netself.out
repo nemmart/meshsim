@@ -1,3 +1,4 @@
+feed: after Chip.run(40) at 43: t9 0 t20 0 t12 @18; late 0; pending true; then runAll drained at 75: late 5 t9 @63 @64 @65 @66 @67 t20 @70 t12 @18 @60
 core: store dmem null; load dmem beef; PARAMS 78d00001 STATUS 0 ERRORS 0; WRITE_COUNTER_2 7; boot ROM [1] 7828293; halfword STATUS null; PTR null
   stores: STATUS store to a read-only register; byte ROUTER_SET_W1 sub-word store to a register; program store to program memory; boot ROM store to the boot ROM; unmapped store to an unmapped address
   WRITE_COUNTER_3 after the store 5; a send drained t40@28:1234:e000140d dmem[0xe0] 1234

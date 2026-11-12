@@ -104,7 +104,12 @@ struct MachConfig {
     // ---- C&C, the lines (6) ----
     unsigned go_latency = 8, run_latency = 1, ready_latency = 8, cnc_reaction = 1, stage_delay = 64;
     unsigned cnc_rx_depth = 64, cc_dma_depth = 4, cc_link_latency = 1;
-    bool done_gate = true;
+    bool done_gate = true, cnc_go_settle = true;
+    int error_latency = -1;            // -1: ready_latency (the C++ machine requires it so: one line per tile)
+    bool loopback_last = true, loopback_tokens = true;
+    int loopback_depth = -1;           // -1: read_tokens
+    unsigned replayer_log_entries = 256;   // the replayer's log queues (ref's -Dreplayer.logq; the kit's -q 512)
+    bool counter_store_clears_latch = true;   // (inert in ref: no unit reads it; likewise run_latency, stage_delay)
     // ---- the request bus (3.3, 4.18), the peripheral slot (4.17) ----
     unsigned request_fifo_depth = 128, req_hop_latency = 3;
     std::array<unsigned, 3> receive_queue_depth = {128, 256, 128};
@@ -120,7 +125,8 @@ struct MachConfig {
     unsigned max_violation_messages = 50;
     bool strict_replies = false, check_read_port_overlap = true, check_command_read = true, check_disjoint = true;
     bool measure_s1 = true, check_errors = true, check_unexpected = true;
-    bool log_trace = false;            // the TRACE store log (8.15, H6) [step 4]
+    bool log_trace = false;            // ref's logTrace (8.15, H6): every tile's TRACE stores recorded; Chip::log()'s lines
+    uint32_t trace_capacity = 1u << 14;   // TRACE stores kept per tile (fatal when exceeded)
     uint32_t check_capacity = 1u << 18;   // the checker's facts (src/check.h) per machine (fatal when full)
     // ---- the harness ----
     std::vector<std::string> image_dirs;   // Mach::Image's search path (empty: the default above)
@@ -134,8 +140,15 @@ struct MachConfig {
     unsigned ag_lookahead_used() const { return ag_lookahead > 0 ? unsigned(ag_lookahead) : 2 * ts_engine_latency + 2; }
     unsigned k_min() const;            // ref's kMin(): max(2L + 4, L + 4, cm_latency, rp_latency), L = ts_engine_latency
     MachConfig& with_ts_latency(unsigned L);   // ref's withTsLatency
-    // [step 3] ref's field by name ("cfg.<field>=value", ref's spelling): false and `err` for an unknown or dropped field
+    // ref's field by name (SortTest's `cfg.<field>=value`, ref's spelling and types: int, long, boolean as Java parses
+    // them): false and `err` for an unknown field, a dropped one (dropped() says why) or a bad value. Fields no unit of
+    // ref reads (runLatency, stageDelay, counterStoreClearsLatch; rpLatency only in kMin) are inert here too; errorLatency
+    // other than readyLatency and logTrace (until H6) stop the build, naming them: never silently ignored.
     bool set(const std::string& field, const std::string& value, std::string& err);
+    // Every `cfg.<field>=value` among args, in order (others left alone); false and `err` at the first bad one.
+    bool set_args(const std::vector<std::string>& args, std::string& err);
+    // The fields of ref's Config no v1.35 driver, kit, sweep or documented option sets (D41 Q4), each with its reason.
+    static const std::vector<std::pair<std::string, std::string>>& dropped();
 };
 
 // ============================================================================================ Fields (ref's Fields.java)
@@ -199,6 +212,9 @@ public:
     // ref's writer.record()/log and gatherStub.record()/log: {t, payload [63:0], header, payload [127:64]} from now on
     void record_writer();
     std::vector<std::array<uint64_t, 4>> writer_log() const;
+    // H6: every TRACE store's {cycle, value} (ref's TileControl.traceHook; logTrace's lines), from now on
+    void record_trace();
+    std::vector<std::array<int64_t, 2>> trace_log() const;
     void record_gather();
     std::vector<std::array<uint64_t, 4>> gather_log() const;
     // ref's `ctl.conditions |= bits` from a test (W23's request 9): ERRORS from the next cycle on (its view, its error
@@ -321,6 +337,15 @@ public:
     std::string violation_report();                         // ref's violationReport() (scans the overflows first)
     void scan_overflows();                                  // ref's scanOverflows
     void finalize_checks() const;                           // the checker's report through the cycle just run
+    // ---- the fingerprint (B25; D41 Q5: in place of ref's -Dmeshsim.digest=FILE) ----
+    // With MESHSIM_DIGEST=FILE in the environment, every Chip appends, when destroyed (and those still alive at exit),
+    // one line in creation order: "chip N cycle C units U mcycle M wfi W instructions I violations V fp HASH", the totals
+    // as ref's digest prints them and HASH the canonical state fingerprint (tests/statefp.h, equal to ref's StateFp) of
+    // the whole chip at its last cycle, in place of ref's digest hash. digest() is that line's text after "chip N ".
+    std::string digest() const;
+    // ref's Chip.log as far as v1.35 keeps it: with log_trace, "cycle T tile K: TRACE 0xV" for every TRACE store, in
+    // cycle order (tiles in order within a cycle)
+    std::vector<std::string> log() const;
     // ---- reset (6.1) [step 2] ----
     void reset(bool hard);                                  // takes effect at the end of the current cycle
     uint64_t resets() const;

@@ -175,7 +175,7 @@ int main(int argc, char** argv) {
                 stagea::Result r;
                 // B: Stage B on tile 0 alone (the 63 idle tiles parked, checked untouched); F: Stage B on the full chip
                 bo.lone = st == 'B';
-                if (st == 'A') r = stagea::run_window(*tb, pd, we, v);
+                if (st == 'A') r = stagea::run_window(*tb, pd, we, v, unsigned(logq));
                 else r = stageb::run_window(*im, *tb, pd, we, v, prog, bo);
                 long long ms = (now_ns() - t0) / 1000000;
                 if (st == 'A') std::printf("%s\n", r.line(prog, v).c_str());

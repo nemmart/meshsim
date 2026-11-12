@@ -47,12 +47,247 @@ violations: 13
   cycle 44 tile 27: a big-SRAM write at chunk 0x100000, at or past the end of big SRAM: undefined (4.1; invariant 19): src=8 dst=27 mode=0(write@addr) ctr=1 addr=0x03400000 size=64 payload=0x000000000000000c
   cycle 48 tile 25: an overlay write landed after the unit's command and before its start (6.2: the overlays and the first command are of one kind, the command last): src=64 dst=126 mode=0(write@addr) ctr=0 addr=0x00000200 size=32 payload=0x0000000d
   cycle 57 tile 30: a command (unicast) after overlays of the other kind: the mesh orders packets only within a kind (6.2; invariant 25): src=64 dst=30 mode=0(write@addr) ctr=0 addr=0x00007fc0 size=32 payload=0x0000000e
+violations: 72
+  cycle 111 tile 1: tile 1: ecall: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 111 tile 2: tile 2: ebreak: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 111 tile 3: tile 3: mret: every trap is terminal, the handler never returns (4.13)
+  cycle 111 tile 4: tile 4: misaligned jump target, to 0x1000002: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 111 tile 6: core store into data memory's reserved first 16 bytes, at 0x4 (2.2; invariant 22; W4-02)
+  cycle 111 tile 10: tile 10: ebreak: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 111 tile 11: tile 11: mret: every trap is terminal, the handler never returns (4.13)
+  cycle 111 tile 19: tile 19: mret: every trap is terminal, the handler never returns (4.13)
+  cycle 111 tile 20: tile 20: misaligned jump target, to 0x1000002: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 111 tile 22: core store into data memory's reserved first 16 bytes, at 0x4 (2.2; invariant 22; W4-02)
+  cycle 111 tile 25: tile 25: ecall: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 111 tile 28: tile 28: misaligned jump target, to 0x1000002: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 111 tile 33: tile 33: ecall: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 111 tile 34: tile 34: ebreak: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 111 tile 36: tile 36: misaligned jump target, to 0x1000002: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 111 tile 38: core store into data memory's reserved first 16 bytes, at 0x4 (2.2; invariant 22; W4-02)
+  cycle 111 tile 41: tile 41: ecall: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 111 tile 43: tile 43: mret: every trap is terminal, the handler never returns (4.13)
+  cycle 111 tile 44: tile 44: misaligned jump target, to 0x1000002: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 111 tile 50: tile 50: ebreak: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 111 tile 51: tile 51: mret: every trap is terminal, the handler never returns (4.13)
+  cycle 111 tile 52: tile 52: misaligned jump target, to 0x1000002: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 111 tile 58: tile 58: ebreak: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 111 tile 59: tile 59: mret: every trap is terminal, the handler never returns (4.13)
+  cycle 111 tile 62: core store into data memory's reserved first 16 bytes, at 0x4 (2.2; invariant 22; W4-02)
+  cycle 112 tile 3: tile 3: fetch outside program memory and the boot ROM, fetch at 0x0: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 112 tile 9: tile 9: ecall: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 112 tile 11: tile 11: fetch outside program memory and the boot ROM, fetch at 0x0: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 112 tile 12: tile 12: misaligned jump target, to 0x1000002: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 112 tile 14: core store into data memory's reserved first 16 bytes, at 0x4 (2.2; invariant 22; W4-02)
+  cycle 112 tile 17: tile 17: ecall: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 112 tile 18: tile 18: ebreak: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 112 tile 19: tile 19: fetch outside program memory and the boot ROM, fetch at 0x0: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 112 tile 23: access at 0x8000, past the end of data memory: the high offset bits are ignored and it aliases (2.2; invariant 19)
+  cycle 112 tile 26: tile 26: ebreak: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 112 tile 27: tile 27: mret: every trap is terminal, the handler never returns (4.13)
+  cycle 112 tile 30: core store into data memory's reserved first 16 bytes, at 0x4 (2.2; invariant 22; W4-02)
+  cycle 112 tile 35: tile 35: mret: every trap is terminal, the handler never returns (4.13)
+  cycle 112 tile 42: tile 42: ebreak: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 112 tile 43: tile 43: fetch outside program memory and the boot ROM, fetch at 0x0: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 112 tile 46: core store into data memory's reserved first 16 bytes, at 0x4 (2.2; invariant 22; W4-02)
+  cycle 112 tile 47: access at 0x8000, past the end of data memory: the high offset bits are ignored and it aliases (2.2; invariant 19)
+  cycle 112 tile 49: tile 49: ecall: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 112 tile 51: tile 51: fetch outside program memory and the boot ROM, fetch at 0x0: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 112 tile 54: core store into data memory's reserved first 16 bytes, at 0x4 (2.2; invariant 22; W4-02)
+  cycle 112 tile 57: tile 57: ecall: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 112 tile 59: tile 59: fetch outside program memory and the boot ROM, fetch at 0x0: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 112 tile 60: tile 60: misaligned jump target, to 0x1000002: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 112 tile 63: access at 0x8000, past the end of data memory: the high offset bits are ignored and it aliases (2.2; invariant 19)
+  cycle 113 tile 7: access at 0x8000, past the end of data memory: the high offset bits are ignored and it aliases (2.2; invariant 19)
+  cycle 113 tile 15: access at 0x8000, past the end of data memory: the high offset bits are ignored and it aliases (2.2; invariant 19)
+  cycle 113 tile 23: access at 0x8000, past the end of data memory: the high offset bits are ignored and it aliases (2.2; invariant 19)
+  cycle 113 tile 27: tile 27: fetch outside program memory and the boot ROM, fetch at 0x0: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 113 tile 31: access at 0x8000, past the end of data memory: the high offset bits are ignored and it aliases (2.2; invariant 19)
+  cycle 113 tile 35: tile 35: fetch outside program memory and the boot ROM, fetch at 0x0: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 113 tile 39: access at 0x8000, past the end of data memory: the high offset bits are ignored and it aliases (2.2; invariant 19)
+  cycle 113 tile 47: access at 0x8000, past the end of data memory: the high offset bits are ignored and it aliases (2.2; invariant 19)
+  cycle 113 tile 55: access at 0x8000, past the end of data memory: the high offset bits are ignored and it aliases (2.2; invariant 19)
+  cycle 113 tile 63: access at 0x8000, past the end of data memory: the high offset bits are ignored and it aliases (2.2; invariant 19)
+  cycle 114 tile 7: access at 0x8000, past the end of data memory: the high offset bits are ignored and it aliases (2.2; invariant 19)
+  cycle 114 tile 15: access at 0x8000, past the end of data memory: the high offset bits are ignored and it aliases (2.2; invariant 19)
+  cycle 114 tile 31: access at 0x8000, past the end of data memory: the high offset bits are ignored and it aliases (2.2; invariant 19)
+  cycle 114 tile 39: access at 0x8000, past the end of data memory: the high offset bits are ignored and it aliases (2.2; invariant 19)
+  cycle 114 tile 55: access at 0x8000, past the end of data memory: the high offset bits are ignored and it aliases (2.2; invariant 19)
+  cycle 115 tile 5: tile 5: a trap inside the handler, cause 2 inside the handler: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 115 tile 13: tile 13: a trap inside the handler, cause 2 inside the handler: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 115 tile 53: tile 53: a trap inside the handler, cause 2 inside the handler: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 115 tile 61: tile 61: a trap inside the handler, cause 2 inside the handler: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 116 tile 21: tile 21: a trap inside the handler, cause 2 inside the handler: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 116 tile 29: tile 29: a trap inside the handler, cause 2 inside the handler: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 116 tile 37: tile 37: a trap inside the handler, cause 2 inside the handler: a trap that sets no ERRORS bit; meshsim stops (4.13)
+  cycle 116 tile 45: tile 45: a trap inside the handler, cause 2 inside the handler: a trap that sets no ERRORS bit; meshsim stops (4.13)
 after tile 5's bits: 1 at cycle 30
 violations: 2
   cycle 21 tile 5: ERRORS [1000000000] set: bus error (invariant 15)
   cycle 41 tile 7: ERRORS [10] set: bad packet (invariant 15)
 violations: 2
   cycle 42 tile 8: ERRORS [100] set: unexpected arrival (invariant 15)
+violations: 64
+  cycle 135 tile 4: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 135 tile 20: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 135 tile 24: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 135 tile 28: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 135 tile 36: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 135 tile 44: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 135 tile 52: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 136 tile 0: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 136 tile 8: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 136 tile 12: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 136 tile 16: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 136 tile 32: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 136 tile 40: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 136 tile 48: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 136 tile 56: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 136 tile 60: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 149 tile 3: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=3 dst=3 mode=0(write@addr) ctr=3 addr=0x00007bd8 size=32 payload=0x00000005
+  cycle 149 tile 11: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=11 dst=11 mode=0(write@addr) ctr=3 addr=0x00007c18 size=32 payload=0x00000005
+  cycle 149 tile 19: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=19 dst=19 mode=0(write@addr) ctr=3 addr=0x00007c58 size=32 payload=0x00000005
+  cycle 149 tile 23: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=23 dst=23 mode=0(write@addr) ctr=3 addr=0x00007c78 size=32 payload=0x00000005
+  cycle 149 tile 43: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=43 dst=43 mode=0(write@addr) ctr=3 addr=0x00007d18 size=32 payload=0x00000005
+  cycle 149 tile 47: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=47 dst=47 mode=0(write@addr) ctr=3 addr=0x00007d38 size=32 payload=0x00000005
+  cycle 149 tile 51: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=51 dst=51 mode=0(write@addr) ctr=3 addr=0x00007d58 size=32 payload=0x00000005
+  cycle 149 tile 59: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=59 dst=59 mode=0(write@addr) ctr=3 addr=0x00007d98 size=32 payload=0x00000005
+  cycle 149 tile 63: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=63 dst=63 mode=0(write@addr) ctr=3 addr=0x00007db8 size=32 payload=0x00000005
+  cycle 150 tile 2: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 150 tile 6: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 150 tile 7: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=7 dst=7 mode=0(write@addr) ctr=3 addr=0x00007bf8 size=32 payload=0x00000005
+  cycle 150 tile 10: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 150 tile 15: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=15 dst=15 mode=0(write@addr) ctr=3 addr=0x00007c38 size=32 payload=0x00000005
+  cycle 150 tile 22: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 150 tile 27: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=27 dst=27 mode=0(write@addr) ctr=3 addr=0x00007c98 size=32 payload=0x00000005
+  cycle 150 tile 31: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=31 dst=31 mode=0(write@addr) ctr=3 addr=0x00007cb8 size=32 payload=0x00000005
+  cycle 150 tile 34: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 150 tile 35: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=35 dst=35 mode=0(write@addr) ctr=3 addr=0x00007cd8 size=32 payload=0x00000005
+  cycle 150 tile 38: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 150 tile 39: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=39 dst=39 mode=0(write@addr) ctr=3 addr=0x00007cf8 size=32 payload=0x00000005
+  cycle 150 tile 50: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 150 tile 55: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=55 dst=55 mode=0(write@addr) ctr=3 addr=0x00007d78 size=32 payload=0x00000005
+  cycle 150 tile 58: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 150 tile 62: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 151 tile 14: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 151 tile 18: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 151 tile 26: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 151 tile 30: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 151 tile 42: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 151 tile 46: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 151 tile 54: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 288 tile 3: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+  cycle 288 tile 11: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+  cycle 288 tile 19: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+  cycle 288 tile 23: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+  cycle 288 tile 43: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+  cycle 288 tile 47: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+  cycle 288 tile 51: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+  cycle 288 tile 59: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+  cycle 288 tile 63: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+  cycle 289 tile 7: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+  cycle 289 tile 15: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+  cycle 289 tile 27: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+  cycle 289 tile 31: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+  cycle 289 tile 35: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+  cycle 289 tile 39: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+  cycle 289 tile 55: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+overwritten unread 16, unread commands 0
+violations: 80
+  cycle 135 tile 4: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 135 tile 20: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 135 tile 24: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 135 tile 28: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 135 tile 36: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 135 tile 44: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 135 tile 52: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 136 tile 0: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 136 tile 8: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 136 tile 12: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 136 tile 16: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 136 tile 32: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 136 tile 40: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 136 tile 48: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 136 tile 56: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 136 tile 60: done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]): WRITE_COUNTER_1 1
+  cycle 149 tile 3: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=3 dst=3 mode=0(write@addr) ctr=3 addr=0x00007bd8 size=32 payload=0x00000005
+  cycle 149 tile 11: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=11 dst=11 mode=0(write@addr) ctr=3 addr=0x00007c18 size=32 payload=0x00000005
+  cycle 149 tile 19: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=19 dst=19 mode=0(write@addr) ctr=3 addr=0x00007c58 size=32 payload=0x00000005
+  cycle 149 tile 23: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=23 dst=23 mode=0(write@addr) ctr=3 addr=0x00007c78 size=32 payload=0x00000005
+  cycle 149 tile 43: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=43 dst=43 mode=0(write@addr) ctr=3 addr=0x00007d18 size=32 payload=0x00000005
+  cycle 149 tile 47: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=47 dst=47 mode=0(write@addr) ctr=3 addr=0x00007d38 size=32 payload=0x00000005
+  cycle 149 tile 51: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=51 dst=51 mode=0(write@addr) ctr=3 addr=0x00007d58 size=32 payload=0x00000005
+  cycle 149 tile 59: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=59 dst=59 mode=0(write@addr) ctr=3 addr=0x00007d98 size=32 payload=0x00000005
+  cycle 149 tile 63: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=63 dst=63 mode=0(write@addr) ctr=3 addr=0x00007db8 size=32 payload=0x00000005
+  cycle 150 tile 2: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 150 tile 6: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 150 tile 7: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=7 dst=7 mode=0(write@addr) ctr=3 addr=0x00007bf8 size=32 payload=0x00000005
+  cycle 150 tile 10: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 150 tile 15: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=15 dst=15 mode=0(write@addr) ctr=3 addr=0x00007c38 size=32 payload=0x00000005
+  cycle 150 tile 22: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 150 tile 27: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=27 dst=27 mode=0(write@addr) ctr=3 addr=0x00007c98 size=32 payload=0x00000005
+  cycle 150 tile 31: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=31 dst=31 mode=0(write@addr) ctr=3 addr=0x00007cb8 size=32 payload=0x00000005
+  cycle 150 tile 34: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 150 tile 35: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=35 dst=35 mode=0(write@addr) ctr=3 addr=0x00007cd8 size=32 payload=0x00000005
+  cycle 150 tile 38: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 150 tile 39: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=39 dst=39 mode=0(write@addr) ctr=3 addr=0x00007cf8 size=32 payload=0x00000005
+  cycle 150 tile 50: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 150 tile 55: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_3 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=55 dst=55 mode=0(write@addr) ctr=3 addr=0x00007d78 size=32 payload=0x00000005
+  cycle 150 tile 58: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 150 tile 62: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 151 tile 1: a reply or read-port result overwrote an unread one at data word 0x1ef2 (invariant 8, strict): src=1 dst=1 mode=0(write@addr) ctr=3 addr=0x00007bc8 size=32 payload=0x00000002
+  cycle 151 tile 5: a reply or read-port result overwrote an unread one at data word 0x1efa (invariant 8, strict): src=5 dst=5 mode=0(write@addr) ctr=3 addr=0x00007be8 size=32 payload=0x00000002
+  cycle 151 tile 13: a reply or read-port result overwrote an unread one at data word 0x1f0a (invariant 8, strict): src=13 dst=13 mode=0(write@addr) ctr=3 addr=0x00007c28 size=32 payload=0x00000002
+  cycle 151 tile 14: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 151 tile 18: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 151 tile 25: a reply or read-port result overwrote an unread one at data word 0x1f22 (invariant 8, strict): src=25 dst=25 mode=0(write@addr) ctr=3 addr=0x00007c88 size=32 payload=0x00000002
+  cycle 151 tile 26: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 151 tile 30: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 151 tile 33: a reply or read-port result overwrote an unread one at data word 0x1f32 (invariant 8, strict): src=33 dst=33 mode=0(write@addr) ctr=3 addr=0x00007cc8 size=32 payload=0x00000002
+  cycle 151 tile 41: a reply or read-port result overwrote an unread one at data word 0x1f42 (invariant 8, strict): src=41 dst=41 mode=0(write@addr) ctr=3 addr=0x00007d08 size=32 payload=0x00000002
+  cycle 151 tile 42: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 151 tile 46: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 151 tile 53: a reply or read-port result overwrote an unread one at data word 0x1f5a (invariant 8, strict): src=53 dst=53 mode=0(write@addr) ctr=3 addr=0x00007d68 size=32 payload=0x00000002
+  cycle 151 tile 54: table window: STREAM_SRC accessed while the address generator is running, its lead-in included (4.10)
+  cycle 151 tile 61: a reply or read-port result overwrote an unread one at data word 0x1f6a (invariant 8, strict): src=61 dst=61 mode=0(write@addr) ctr=3 addr=0x00007da8 size=32 payload=0x00000002
+  cycle 152 tile 9: a reply or read-port result overwrote an unread one at data word 0x1f02 (invariant 8, strict): src=9 dst=9 mode=0(write@addr) ctr=3 addr=0x00007c08 size=32 payload=0x00000002
+  cycle 152 tile 17: a reply or read-port result overwrote an unread one at data word 0x1f12 (invariant 8, strict): src=17 dst=17 mode=0(write@addr) ctr=3 addr=0x00007c48 size=32 payload=0x00000002
+  cycle 152 tile 21: a reply or read-port result overwrote an unread one at data word 0x1f1a (invariant 8, strict): src=21 dst=21 mode=0(write@addr) ctr=3 addr=0x00007c68 size=32 payload=0x00000002
+  cycle 152 tile 29: a reply or read-port result overwrote an unread one at data word 0x1f2a (invariant 8, strict): src=29 dst=29 mode=0(write@addr) ctr=3 addr=0x00007ca8 size=32 payload=0x00000002
+  cycle 152 tile 37: a reply or read-port result overwrote an unread one at data word 0x1f3a (invariant 8, strict): src=37 dst=37 mode=0(write@addr) ctr=3 addr=0x00007ce8 size=32 payload=0x00000002
+  cycle 152 tile 45: a reply or read-port result overwrote an unread one at data word 0x1f4a (invariant 8, strict): src=45 dst=45 mode=0(write@addr) ctr=3 addr=0x00007d28 size=32 payload=0x00000002
+  cycle 152 tile 49: a reply or read-port result overwrote an unread one at data word 0x1f52 (invariant 8, strict): src=49 dst=49 mode=0(write@addr) ctr=3 addr=0x00007d48 size=32 payload=0x00000002
+  cycle 152 tile 57: a reply or read-port result overwrote an unread one at data word 0x1f62 (invariant 8, strict): src=57 dst=57 mode=0(write@addr) ctr=3 addr=0x00007d88 size=32 payload=0x00000002
+  cycle 288 tile 3: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+  cycle 288 tile 11: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+  cycle 288 tile 19: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+  cycle 288 tile 23: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+  cycle 288 tile 43: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+  cycle 288 tile 47: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+  cycle 288 tile 51: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+  cycle 288 tile 59: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+  cycle 288 tile 63: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+  cycle 289 tile 7: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+  cycle 289 tile 15: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+  cycle 289 tile 27: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+  cycle 289 tile 31: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+  cycle 289 tile 35: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+  cycle 289 tile 39: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+  cycle 289 tile 55: load of the reserved register-block word 0x8a0: reads 0, stores ignored (8.1)
+violations: 14
+  cycle 26 tile 9: table window: HIST[1] accessed while count-on-arrival is using HIST (4.10)
+  cycle 27 tile 9: table window: PTR[2] accessed while the write engine is using PTR (4.10)
+  cycle 28 tile 9: table window: HIST[3] accessed while count-on-arrival is using HIST (4.10)
+  cycle 29 tile 9: table window: PTR[4] accessed while the write engine is using PTR (4.10)
+  cycle 30 tile 9: table window: HIST[0] accessed while count-on-arrival is using HIST (4.10)
+  cycle 33 tile 9: table window: PTR[3] accessed while the write engine is using PTR (4.10)
+  cycle 34 tile 9: table window: HIST[4] accessed while count-on-arrival is using HIST (4.10)
+  cycle 35 tile 9: table window: PTR[0] accessed while the write engine is using PTR (4.10)
+  cycle 36 tile 9: table window: HIST[1] accessed while count-on-arrival is using HIST (4.10)
+  cycle 37 tile 9: table window: PTR[2] accessed while the write engine is using PTR (4.10)
+  cycle 38 tile 9: table window: HIST[3] accessed while count-on-arrival is using HIST (4.10)
+  cycle 41 tile 9: table window: PTR[1] accessed while the write engine is using PTR (4.10)
+  cycle 42 tile 9: table window: HIST[2] accessed while count-on-arrival is using HIST (4.10)
+  cycle 43 tile 9: table window: PTR[3] accessed while the write engine is using PTR (4.10)
 violations: 12
   cycle 10 tile 10: count-only packet on counter 0 sent: it does nothing (3.1, invariant 21): src=0 dst=20 mode=5(count-only) ctr=0 addr=0x00000000 size=32 payload=0x00000000
   cycle 11 tile 11: count-only packet on counter 0 sent: it does nothing (3.1, invariant 21): src=0 dst=20 mode=5(count-only) ctr=0 addr=0x00000000 size=32 payload=0x00000001

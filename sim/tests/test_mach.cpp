@@ -1,11 +1,14 @@
 // test_mach.cpp (WORKER20): the machine harness (mach.h). With the header only: mach::fields against ref's Fields.java
 // (the values printed by ref's own Fields.java, 2026-11-10), and the header compiling with the units it names.
+#include <algorithm>
 #include <cstdarg>
 #include <cstdio>
 #include <optional>
 #include <string>
 
+#include "base/fatal.h"
 #include "harness.h"
+#include "java_random.h"
 #include "mach.h"
 #include "units/ag.h"
 #include "units/big_sram.h"
@@ -52,8 +55,13 @@ void report(const std::string& name, Mach& m, bool ok) {
         name.c_str(), ok ? "stopped" : "NOT stopped", (long long)m.c.cycle(), (long long)m.boot_start, (long long)m.run_at,
         tf(m.all_exited()), tf(m.all_in_wfi()), m.halt_summary().c_str(), (long long)m.exit_value(0), (long long)m.exit_value(63));
 }
-void a2a(int64_t seed) {
-    Mach m(Mach::cfg(seed));
+const std::vector<std::string> kKit = {"cfg.linkLatency=4", "cfg.cmLatency=4", "cfg.goLatency=4", "cfg.runLatency=8", "cfg.areaQueueDepth=4",
+                                       "cfg.sramReadLatency=3", "cfg.tsEngineLatency=2", "cfg.skewSeed=5", "cfg.checkDisjoint=false", "cfg.skew=true"};
+void a2a(int64_t seed, bool kit = false) {
+    mach::MachConfig cfg = Mach::cfg(seed);
+    std::string err;
+    if (kit && !cfg.set_args(kKit, err)) FATAL("%s", err.c_str());
+    Mach m(cfg);
     mach::A2A data(7, 2000);
     for (unsigned s = 0; s < 64; s++) {
         mach::TileRef p = m.c.tile(s);
@@ -66,7 +74,11 @@ void a2a(int64_t seed) {
     m.boot("a2a");
     m.c.cc().command(units::lw::BROADCAST, 1u << 24).go().command(units::lw::BROADCAST, 2u << 24).go().command(units::lw::BROADCAST, 3u << 24).go();
     const bool ok = m.run([&] { return m.all_stopped(); }, 2000000);
-    report("a2a seed " + std::to_string(seed), m, ok);
+    report("a2a seed " + std::to_string(seed) + (kit ? " kit" : ""), m, ok);
+    {
+        const std::string d = m.c.digest();                 // B25: its fp field, ref's StateFp of the chip
+        say("  fp %s\n", d.substr(d.find(" fp ") + 4).c_str());
+    }
     std::string pl = "  phaseLog";
     for (const auto& e : m.c.cc().phase_log()) pl += " [" + std::to_string(e[0]) + ", " + std::to_string(e[1]) + "]";
     say("%s\n", pl.c_str());
@@ -112,8 +124,36 @@ void phases(int64_t seed) {
     say("%s", m.c.phases().report().c_str());
     say("%s", m.c.phases().csv().c_str());
 }
+void trace_case() {                                          // H6: MachSelf.trace()
+    const int N = 4096;
+    Mach m(Mach::cfg(-1));
+    test::JavaRandom r(N);
+    for (unsigned p = 0; p < 64; p++) {
+        std::vector<int64_t> k(N);
+        for (int i = 0; i < N; i++) k[size_t(i)] = int64_t(uint32_t(r.next(32)));
+        std::sort(k.begin(), k.end());
+        for (int i = 0; i < N; i++) m.c.tile(p).sram_poke(uint32_t(i), uint32_t(k[size_t(i)]));
+        m.c.tile(p).sram_poke(0xF0000, N); m.c.tile(p).sram_poke(0xF0001, 0);
+        for (unsigned i = 0; i < 64; i++) m.c.tile(p).sram_poke(0xF0002 + i, i == 0 ? 0u : i == 1 ? 0xFFFFFFFFu : uint32_t(r.next(32)));
+    }
+    m.boot("search");
+    for (unsigned p = 0; p < 64; p++) m.c.tile(p).record_trace();
+    m.c.cc().command(units::lw::BROADCAST, 1u << 24 | 0u << 8 | 4u).go();
+    m.run([&] { return !m.c.cc().busy(); }, 5000000);
+    uint64_t d0[64];
+    for (unsigned p = 0; p < 64; p++) d0[p] = m.c.tile(p).block().dones;
+    const bool ok = m.run([&] { for (unsigned p = 0; p < 64; p++) if (m.c.tile(p).block().dones <= d0[p]) return false; return true; }, 5000000);
+    say("trace: %s at cycle %lld\n", ok ? "finished" : "NOT finished", (long long)m.c.cycle());
+    for (unsigned t : {0u, 7u, 63u}) {
+        const auto l = m.c.tile(t).trace_log();
+        std::string sb = "  tile " + std::to_string(t) + ": " + std::to_string(l.size()) + " TRACE stores";
+        for (const auto& e : l) { char b[48]; std::snprintf(b, sizeof b, " %lld:%llx", (long long)e[0], (unsigned long long)uint64_t(e[1])); sb += b; }
+        say("%s\n", sb.c_str());
+    }
+}
 void machself() {
     out.clear();
+    trace_case();
     if (sim::check::kOn) { phases(-1); phases(4); }        // (PhaseLog's FIFO peaks: the debug and suite builds)
     stageb(true);
     stageb(false);
@@ -138,6 +178,7 @@ void machself() {
     }
     a2a(-1);
     a2a(4);
+    a2a(-1, true);
     {
         Mach m(Mach::cores_cfg(-1));
         m.boot_cores("wfi");
@@ -336,8 +377,31 @@ void phase_done_probe(int64_t seed) {
     say("phaseDone seed %lld: tiles 0 5 40 63 first at +%lld +%lld +%lld +%lld; all at +%lld\n", (long long)seed, (long long)first[0],
         (long long)first[1], (long long)first[2], (long long)first[3], (long long)all);
 }
+void feed_only_in_net() {
+    mach::MachConfig k = Net::cfg(-1);
+    k.test_read_clients = true;
+    Net n(k);
+    for (uint32_t i = 0; i < 16; i++) n.c.tile(3).sram_poke(0x2000 + i, 0x100 * i + 7);
+    for (int64_t T = 10; T < 15; T++) n.at(4, T, 9, lw::M_WRITE, Net::cm(0x900 + 2 * uint32_t(T - 10)), Net::tagged(uint64_t(T), T));
+    n.cnc_send({12, 20, lw::M_WRITE, 0x200, 0x77, lw::SIZE_32, 0, 0});
+    n.rd(3, 0, 2, 0x2000, lw::SIZE_64, lw::M_WRITE, 0, 12, Net::cm(0x8A0));
+    n.rd(3, 1, 30, 0x2004, lw::SIZE_32, lw::M_WRITE, 0, 12, Net::cm(0x8A4));
+    n.step(); n.step(); n.step();
+    n.c.run(40);
+    std::string sb = "feed: after Chip.run(40) at " + std::to_string(n.c.cycle()) + ": t9 " + std::to_string(n.log(9).size()) + " t20 " +
+                     std::to_string(n.log(20).size()) + " t12";
+    for (const auto& e : n.log(12)) sb += " @" + std::to_string(e[0]);
+    sb += "; late " + std::to_string(n.late()) + "; pending " + tf(n.pending());
+    const bool ok = n.run_all(500);
+    sb += std::string("; then runAll ") + (ok ? "drained" : "NOT drained") + " at " + std::to_string(n.c.cycle()) + ": late " + std::to_string(n.late()) + " t9";
+    for (const auto& e : n.log(9)) sb += " @" + std::to_string(e[0]);
+    sb += " t20"; for (const auto& e : n.log(20)) sb += " @" + std::to_string(e[0]);
+    sb += " t12"; for (const auto& e : n.log(12)) sb += " @" + std::to_string(e[0]);
+    say("%s\n", sb.c_str());
+}
 void netself() {
     out.clear();
+    feed_only_in_net();
     core();
     phase_done_probe(-1);
     phase_done_probe(4);
@@ -443,6 +507,23 @@ void checkself() {
         n.run_all(2000);
         say("%s", n.c.violation_report().c_str());
     }
+    {   // W26 (1a): the core's checks through the block: terminal traps without an ERRORS bit, mret, aliasing, reserved bytes
+        mach::MachConfig k = Mach::cfg(-1);
+        k.check_errors = false; k.max_violation_messages = 200;
+        Mach m(k);
+        const uint32_t P = 0x01000000, LOOP = 0x0000006F;
+        const std::vector<std::vector<uint32_t>> prog = {
+            {LOOP}, {0x00000073}, {0x00100073}, {0x30200073}, {0x0020006F},
+            {0x010000B7, 0x01008093, 0x30509073, 0, 0}, {0x00002223, LOOP}, {0x000080B7, 0x0000A103, 0x0020A023, LOOP}};
+        for (unsigned t = 0; t < 64; t++) {
+            const auto& w = prog[t % prog.size()];
+            for (size_t i = 0; i < w.size(); i++) m.c.tile(t).poke_local(P + 4 * uint32_t(i), w[i]);
+        }
+        m.c.run(40);
+        m.c.cc().command(lw::BROADCAST, 0x4Au << 24, {P}).run_when_ready();
+        m.c.run(400);
+        say("%s", m.c.violation_report().c_str());
+    }
     {
         mach::MachConfig k = Net::cfg(-1);
         k.check_errors = true;
@@ -462,6 +543,43 @@ void checkself() {
         n.c.tile(8).set_errors(1u << 2);
         n.c.tile(9).set_errors(1u << 3);
         n.c.step();
+        say("%s", n.c.violation_report().c_str());
+    }
+    {   // W26 (1a): CtrlTest's inv program: invariants 4, 9, the reserved word, the table window while the AG runs
+        mach::MachConfig k = Mach::cfg(-1);
+        k.check_errors = false; k.max_violation_messages = 1000;
+        Mach m(k);
+        m.boot("inv");
+        m.c.run_until([&] { return m.c.all_stopped(); }, 10000);
+        say("%s", m.c.violation_report().c_str());
+        uint64_t ow = 0, uc = 0;
+        for (unsigned t = 0; t < 64; t++) {
+            const auto& tr = m.c.tile(t).unit<units::TileCore>("core").track;
+            ow += tr.overwritten_unread; uc += tr.unread_commands;
+        }
+        say("overwritten unread %llu, unread commands %llu\n", (unsigned long long)ow, (unsigned long long)uc);
+    }
+    {   // W26 (1a): inv with invariant 8 strict
+        mach::MachConfig k = Mach::cfg(-1);
+        k.check_errors = false; k.max_violation_messages = 1000; k.strict_replies = true;
+        Mach m(k);
+        m.boot("inv");
+        m.c.run_until([&] { return m.c.all_stopped(); }, 10000);
+        say("%s", m.c.violation_report().c_str());
+    }
+    {   // W26 (1a): the table window while count-on-arrival uses HIST and the write engine uses PTR (a test's stores)
+        mach::MachConfig k = Net::cfg(-1);
+        Net n(k);
+        n.c.tile(9).set_master_config(master_config(0, 0, 0, 0, 1, 1));
+        n.c.tile(9).set_remaining(1, 8);
+        for (unsigned i = 0; i < 6; i++) n.at(12 + 2 * i, 10 + i, 9, lw::M_SRC, 1, 0, lw::SIZE_64, 0x0101ull * (i + 1), 0);
+        while (n.c.cycle() < 19) n.step();
+        for (int64_t t = 20; t < 52; t++) {
+            const uint32_t a = 0xFFFF2000u + ((t & 1) ? 0x400u : 0u) + 4 * uint32_t(t % 5);
+            n.c.tile(9).store(t, a, uint32_t(t));
+            n.step();
+        }
+        n.run_all(1000);
         say("%s", n.c.violation_report().c_str());
     }
     {
@@ -528,4 +646,22 @@ TEST(mach_mem_idle_sees_a_wrapped_queue) {
     m.q[5][0].write = false; m.q[5][8].write = true;         // a stale write past the depth
     CHECK(p.mem_idle());
     m.count[5] = 0;
+}
+
+// MachConfig's front end (ref's cfg.<field>=value): ref's names and types, the dropped fields, the errors.
+TEST(mach_config_front_end) {
+    mach::MachConfig k = mach::MachConfig::machine();
+    std::string err;
+    CHECK(k.set_args({"--x", "cfg.goLatency=10", "cfg.skewSeed=-3", "cfg.writeCombining=true", "cfg.replayerLogEntries=512"}, err));
+    CHECK_EQ(k.go_latency, 10u);
+    CHECK_EQ(k.skew_seed, -3);
+    CHECK(k.write_combining);
+    CHECK_EQ(k.replayer_log_entries, 512u);
+    CHECK(k.set("checkDisjoint", "TRUE", err) && k.check_disjoint);   // Boolean.parseBoolean: case-insensitive
+    CHECK(k.set("checkDisjoint", "yes", err) && !k.check_disjoint);
+    CHECK(!k.set("noSuchField", "1", err) && err == "no Config field noSuchField");
+    CHECK(!k.set("idleSkip", "false", err) && err.find("dropped") != std::string::npos);
+    CHECK(!k.set("K", "eight", err) && err.find("not a number") != std::string::npos);
+    CHECK(!k.set_args({"cfg.K"}, err));
+    CHECK(!mach::MachConfig::dropped().empty());
 }

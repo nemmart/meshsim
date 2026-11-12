@@ -70,6 +70,28 @@ struct Rv32Timing {
 // How a core's run ended (TRACE-FORMAT's END): it runs until one of these, then nothing (TraceRun's chip stops there).
 enum class Stop : uint8_t { running, halt, parked, ub };
 
+// W26 (invariant 8, ControllerMemories' read tracking; a statistic in every build, out of the digests): the data words
+// holding a reply or a read-port result the core hasn't loaded or stored yet, and command slot 0 not yet loaded. The
+// port-B side (marking) is the tile core's (tile_ctl.h, TileCore::track_port_b); the core's side is `loaded`/`stored`
+// (ref's cm.loaded, cm.stored), which also remember the last few accesses with their cycle: a port-B write reaches the
+// core a cycle after ref's memory has it, so a word the core touched in that cycle ends up read, as in ref.
+struct CmemTrack {
+    static constexpr uint32_t CMD_DWORD = 0x7FC0 >> 2;
+    uint64_t unread[MEM_WORDS / 64] = {};
+    bool slot0_unread = false;
+    uint64_t overwritten_unread = 0, unread_commands = 0;   // ref's cmem.overwrittenUnread, unreadCommands
+    struct Touch { uint64_t t = ~0ull; uint32_t w = 0; bool load = false; };
+    Touch touch[4] = {};
+    uint8_t touch_n = 0;
+    void touched(uint32_t w, uint64_t t, bool load) { touch[touch_n++ & 3] = Touch{t, w, load}; }
+    void loaded(uint32_t w, uint64_t t) { unread[w >> 6] &= ~(1ull << (w & 63)); if (w == CMD_DWORD) slot0_unread = false; touched(w, t, true); }
+    void stored(uint32_t w, uint64_t t) { unread[w >> 6] &= ~(1ull << (w & 63)); touched(w, t, false); }
+    bool touched_at(uint32_t w, uint64_t t, bool load_only) const {
+        for (const Touch& x : touch) if (x.t == t && x.w == w && (x.load || !load_only)) return true;
+        return false;
+    }
+};
+
 struct Rv32 {
     enum : int { RUN = 0, HALT_ECALL = 2, HALT_EBREAK = 3, HALT_EXIT = 5, HALT_FETCH = 6, HALT_JUMP = 7, HALT_TRAP2 = 8 };
     enum : uint32_t {
@@ -92,6 +114,7 @@ struct Rv32 {
     uint64_t load_wait_t = kNever; uint32_t load_wait_pc = 0;
     uint64_t pending_t = kNever; uint64_t send_w[3] = {};   // M2: a send store's packet awaiting acceptance (ref's pendingT)
     int ck_tile = -1; uint64_t ck_t = 0;   // W20: the checker's facts (src/check.h) under this tile, -1 none; the step's cycle
+    CmemTrack* cm = nullptr;               // W26: invariant 8's read tracking (the tile core's; null: none)
     // W24 (diagnostic only; owner's Q3, 2026-11-11): the lowest nonzero stack pointer, SortTest's "stack headroom"
     // (ref's monitor reads every core's x[2] after every cycle; here taken at the writes to x2, the only place it
     // changes, so idle-skipped cycles need nothing). Off by default: the harness arms it (min_sp_watch) with the current
@@ -204,7 +227,7 @@ struct Rv32 {
 
     // ================================================================ traps and halts
     void trap(uint64_t t, uint32_t cause, uint32_t tval, uint32_t at, uint32_t resume) {
-        if (in_handler && cause != CAUSE_EXTERNAL) { stop_loudly(t, HALT_TRAP2, at); return; }
+        if (in_handler && cause != CAUSE_EXTERNAL) { stop_loudly(t, HALT_TRAP2, at, cause); return; }
         traps++; trap_at = int64_t(t); trap_cause = int32_t(cause);
         mepc = cause == CAUSE_EXTERNAL ? resume : at; mcause = cause; mtval = tval;
         mstatus = (mstatus & ~(MSTATUS_MIE | MSTATUS_MPIE)) | ((mstatus & MSTATUS_MIE) ? uint32_t(MSTATUS_MPIE) : 0u);
@@ -212,7 +235,12 @@ struct Rv32 {
         if (log) log->add(t, T_TRAP, 0, mcause, mepc, mtval, pc);
     }
     // ecall, ebreak, a fetch fault, a misaligned jump, a trap inside the handler: ref stops loudly (and counts a violation).
-    void stop_loudly(uint64_t t, int why, uint32_t at) { violations++; halt_with(t, why, at); }
+    // (`detail`: the checker's text, as ref's stopLoudly message: the fetch's pc, the jump's target, the trap's cause)
+    void stop_loudly(uint64_t t, int why, uint32_t at, uint32_t detail = 0) {
+        violations++;
+        if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::CTL_HALT, uint64_t(why), detail);   // W26
+        halt_with(t, why, at);
+    }
     void halt_with(uint64_t t, int why, uint32_t at) {
         halt = why;
         if (log) log->add(t, T_HALT, 0, uint32_t(why), at);
@@ -239,7 +267,7 @@ struct Rv32 {
         uint32_t ipc = pc, ins;
         if ((ipc & 3) == 0 && region(ipc) == R_PMEM) { ins = imem[mem_word(ipc)]; if (first_image_at < 0) first_image_at = int64_t(t); }
         else if ((ipc & 3) == 0 && region(ipc) == R_BOOTROM && offset(ipc) >> 2 < bootrom_words) ins = bootrom[offset(ipc) >> 2];
-        else { stop_loudly(t, HALT_FETCH, ipc); return; }
+        else { stop_loudly(t, HALT_FETCH, ipc, ipc); return; }
         execute(e, t, ins, ipc);
     }
 
@@ -258,7 +286,7 @@ struct Rv32 {
         case 0x6F: {                                                                            // jal
             uint32_t imm = uint32_t(sins >> 31) << 20 | (ins & 0xFF000) | ((ins >> 20) & 1) << 11 | ((ins >> 21) & 0x3FF) << 1;
             res = next; wr = true; next = ipc + imm; stall += timing.branch_penalty; stall_branch += timing.branch_penalty;
-            if (next & 3) { stop_loudly(t, HALT_JUMP, ipc); return; }
+            if (next & 3) { stop_loudly(t, HALT_JUMP, ipc, next); return; }
             if (next == ipc && in_handler) parked = true;                                       // the handler's park loop
             break;
         }
@@ -266,7 +294,7 @@ struct Rv32 {
             if (f3 != 0) { illegal(e, t, ipc, ins); return; }
             res = next; wr = true; next = (a + uint32_t(sins >> 20)) & ~1u;
             stall += timing.branch_penalty; stall_branch += timing.branch_penalty;
-            if (next & 3) { stop_loudly(t, HALT_JUMP, ipc); return; }
+            if (next & 3) { stop_loudly(t, HALT_JUMP, ipc, next); return; }
             break;
         case 0x63: {                                                                            // branches
             uint32_t imm = uint32_t(sins >> 31) << 12 | ((ins >> 7) & 1) << 11 | ((ins >> 25) & 0x3F) << 5 | ((ins >> 8) & 0xF) << 1;
@@ -384,6 +412,7 @@ struct Rv32 {
                 else took_wake(e.reg(EVENTS) >> EV_GO & 1, int64_t(t), t, region(ipc) == R_BOOTROM);   // falls through
             } else if (ins == 0x30200073) {                   // mret: legal, flagged (every trap is terminal)
                 violations++;
+                if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::CTL_MRET);   // W26
                 next = mepc;
                 mstatus = (mstatus & ~MSTATUS_MIE) | ((mstatus & MSTATUS_MPIE) ? uint32_t(MSTATUS_MIE) : 0u) | MSTATUS_MPIE;
             } else if (f3 != 0 && f3 != 4) {                  // the CSR instructions
@@ -450,7 +479,10 @@ struct Rv32 {
     // A data- or program-memory word: the offset's high bits are ignored (it aliases; ref flags it).
     uint32_t mem_word(uint32_t a) {
         uint32_t off = offset(a);
-        if (off >= MEM_BYTES) { alias_accesses++; violations++; }
+        if (off >= MEM_BYTES) {
+            alias_accesses++; violations++;
+            if (ck_tile >= 0) sim::check::record(ck_t, ck_tile, sim::check::Kind::CTL_ALIAS, a);   // W26 (ck_t: this step's)
+        }
         return (off & (MEM_BYTES - 1)) >> 2;
     }
     bool window_present(unsigned n) const { return n >= 1 && n <= 3 && (periph_present >> (n - 1) & 1); }
@@ -459,7 +491,7 @@ struct Rv32 {
     template <class Env>
     bool load(Env& e, uint32_t ea, uint32_t width, uint32_t& v) {   // (ck_t: the load's cycle for the checker's facts)
         uint32_t a = ea & ~3u;
-        if (region(a) == R_DMEM) { v = dmem[mem_word(a)]; return true; }
+        if (region(a) == R_DMEM) { const uint32_t w = mem_word(a); if (cm) cm->loaded(w, ck_t); v = dmem[w]; return true; }   // (W26: cm)
         if (region(a) == R_PMEM) { v = imem[mem_word(a)]; return true; }
         if (region(a) == R_BOOTROM) {
             if (offset(a) >> 2 >= bootrom_words) return false;
@@ -562,7 +594,11 @@ struct Rv32 {
         uint32_t a = ea & ~3u;
         if (region(a) == R_DMEM) {
             uint32_t w = mem_word(a);
-            if (offset(a) < DMEM_FIRST) violations++;
+            if (cm) cm->stored(w, t);                                 // W26: invariant 8's read tracking
+            if (offset(a) < DMEM_FIRST) {
+                violations++;
+                if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::CTL_DMEM_RESERVED, ea);   // W26
+            }
             dmem[w] = (dmem[w] & ~mask) | (v & mask);
             return true;
         }

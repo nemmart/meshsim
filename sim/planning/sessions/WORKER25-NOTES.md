@@ -240,3 +240,35 @@ the `-q` estimate, the guest delivery's whereabouts.
   One slip: the task ran `sh tools/machine.sh` (a bash script: "redirection unexpected"), so machine.txt is empty
   apart from the error; the run log names the host, CPUs, memory and versions. Fixed for later tasks (`bash`, in the
   maker and in the kit's make_task.sh).
+- **F6 fixed by W20** (4dd260a9: the slot frees only its own row buffer): the workaround in `stageb.cpp` removed;
+  `test_stageb` and a delivery run clean under ASan (clang debug).
+- **F8 fixed by W20 (85453fb0): Stage B equal to v1.3's log in full.** With the checker on (suite and debug builds),
+  `stageb synthetic` is byte for byte v1.3's `stageb.log` (the CL4 seconds masked), the meshsim line included: the
+  count (256) and every message the line shows (ref cuts it at 600 characters; its report holds the first 50,
+  maxViolationMessages), each at ref's cycle (23808 for the replayer's @23807). `test_stageb` is now strict on that
+  line where the checker is built (debug, suite) and checks there is none in release: passes on gcc and clang, debug
+  and release, and the suite build.
+- **F9 (for the integrator): the step `stageb` can't go live as is.** The runner's `--check` finds no difference, but
+  its summary (v1.3's own: `grep -h FAIL results/*.log`) counts the CL4 case's line, "synthetic old queue map (CL4:
+  must fail) FAIL ...", which v1.26.1's StageB prints by design (the window must fail, starved; the step's last line
+  is "19 windows, 0 failed"). v1.3's run_tests.sh, run today, ends "== FAILURES" the same way; it never did because
+  ref's committed stageb.log is from before CL4 (F1). Proposal (a deliberate difference in the runner's summary, the
+  integrator's to approve, D30): the summary ignores lines naming "(CL4: must fail)" (e.g. `grep -h FAIL results/*.log
+  | grep -v '(CL4: must fail)'`), or judges a step by its last line. Until then `stageb` stays PENDING with that reason.
+- **D46 (integrator, 2026-11-12; F9): the runner's FAIL grep skips lines containing "(CL4: must fail)"**, a deliberate
+  difference in the runner: Stage B prints that window's FAIL by design, and v1.3's own run_tests.sh, run today, fails
+  the same way. One line in run_tests.sh's summary. **The step `stageb` is live**: `./run_tests.sh quick --check`
+  passes with it (its log equal to v1.3's, the CL4 seconds masked by the runner).
+- **`-q 512` done** on the machine's `replayer_log_entries` (W20's Config fields): Stage B's replayer, and Stage A's
+  too (ref's `-Dreplayer.logq` is JVM-wide: ReplayShard's Stage A replayers take it as well). The crosscheck's case
+  abf-q512 (AB with F every 4th, `-q 512`): equal to v1.3's kit.
+- **The kit now builds with the checker on** (`./build.sh`: MODE=suite, release flags plus the checker): in the release
+  build the machine's violations never reached Stage B's detail lines, so a violation would have gone unseen by the
+  verdict (v1.3's StageB fails a window on any). **F7 withdrawn**: with the checker on, the planted-fault case's
+  "meshsim: violations: 1; ... ERRORS [100000000000] set: peripheral 1 (invariant 15)" line is ours too; the
+  difference came from the release build, not a missing kind. The crosscheck: **all 15 cases equal**, ab-faults
+  included. Quest 180's real windows had no violations on either side (all PASS), so its equality stands; a rerun with
+  the suite-built kit makes it hold with the checker on.
+- **Quest 182: ALL PASS** (the kit built with the checker on): Quest 180's cases plus W9's selected evm-zone-29 windows
+  with `-q 512`, all equal to v1.3's kit, every window PASS. With the checker on, Stage B is about v1.3's speed (1.36 s
+  per window on evm-zone-29 0-127, v1.3 1.37; the release kit 0.14). machine.sh needs `record`: fixed in the makers.

@@ -86,8 +86,7 @@ struct Rig {
         k.step_all = o.step_all;
         k.instance_major = o.instance_major;
         if (lone) for (int t = 1; t < 64; t++) k.parked.push_back(t);
-        if (o.logq != Replayer::LOG_QUEUE_ENTRIES)
-            FATAL("stageb: log queues of %u entries need the machine's replayer log-queue field (W20's Config fields; not on main yet)", o.logq);
+        k.replayer_log_entries = o.logq;
         c = std::make_unique<mach::Chip>(k);
         r = &c->unit<units::PeriphSlot>(units::tile_unit(0, "slot")).s.replayer(1);
         norow = o.norow;
@@ -96,10 +95,6 @@ struct Rig {
             row(cycle);
         });
     }
-    // W20's Chip::on_row points the replayer's row buffer at the hook's vector, and the slot frees the replayer's
-    // buffer at destruction (it allocated it in every other use): a double free. Until W20's fix, the buffer is
-    // detached before the machine goes (W25 NOTES, F6).
-    ~Rig() { if (r) r->set_row_buffer(nullptr, 0); c.reset(); }
     Rig(const Rig&) = delete;
     Rig& operator=(const Rig&) = delete;
     void row(int64_t now) { max_gap = std::max(max_gap, now - (last_row < r->pass_start_at ? r->pass_start_at : last_row)); last_row = now; }

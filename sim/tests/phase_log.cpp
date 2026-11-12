@@ -76,7 +76,14 @@ std::array<int64_t, PhaseLog::NC> PhaseLog::counters() const {
         v[13] += int64_t(in.rs.lat_sum[RS::AG]); v[14] += int64_t(in.rs.lat_n[RS::AG]);
         v[15] += int64_t(in.rs.lat_sum[RS::READPORT]); v[16] += int64_t(in.rs.lat_n[RS::READPORT]);
 #endif
-        v[17] += 0;                                          // unreadOverwrites: W26's invariant 8 tracking (pending)
+        v[17] += int64_t(core.track.overwritten_unread);       // unreadOverwrites: W26's invariant 8 tracking (cmem.overwrittenUnread),
+        if (core.rv.stop == units::Stop::running) {            //  with port B's write of the cycle just run, which ref has
+            sim::PortEntry e[8];                               //  counted by now and the core takes at its next step
+            const uint32_t n = c_->sim().observe(core.port_b, e, 8).n;
+            units::CmemTrack tr = core.track;
+            for (uint32_t i = 0; i < n; i++)
+                if (e[i].at == uint64_t(c_->cycle()) + 1) v[17] += int64_t(units::TileCore::overwrites(tr, uint64_t(c_->cycle()), e[i].w));
+        }
     }
     return v;
 }

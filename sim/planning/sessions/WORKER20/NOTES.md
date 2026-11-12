@@ -154,6 +154,10 @@ remaining kinds, interleaved as the suites ask.
 - **W22-9 / W23's (a): Net on any machine** (Config.machine() included, as ref's; not with cc_cores). NetSelf's
   machine case (HooksTest's and RequestBusTest's machine(): the tiles waiting in their boot ROMs, periphType 0 and 4:
   data memory, big SRAM, a broadcast; the 74 violations they raise) equal to ref.
+- **PhaseLog's unreadOverwrites** now W26's `TileCore::track.overwritten_unread` summed over the tiles (ref's
+  cmem.overwrittenUnread), plus port B's write of the cycle just run (ref counts it at that cycle; the C++ core takes it
+  at its next step: `TileCore::overwrites` on a copy of the tracking, beside W26's track_port_b). The local fixtures
+  have only zeros there: W24's kit CSVs (4,417 nonzero rows in v1.3) are the check.
 - Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
   after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
 

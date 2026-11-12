@@ -197,6 +197,11 @@ remaining kinds, interleaved as the suites ask.
   once, drained one a cycle) equal to ref. Note: ref doesn't report a push into a full FIFO while its tile sleeps (idle
   skip: the block's counter is looked at only when the tile steps); ours records it at t. RequestBusTest never pushes
   into a full FIFO, so it doesn't show; a test that does would differ there (and only there).
+- **B20 (the reset) in progress**: `sw.disjoint = c.check_disjoint` (W26's switch); `Sim::flush_ports()` (harness-only:
+  every Link, Fifo, credit Fifo and Hold emptied with the inputs' pending bits, Fifo overflow records cleared as ref's
+  flush; registers, wires, RegFiles, Counts kept). Next: Chip::reset (the end-of-cycle effects of the register block and
+  port B, the flush, every unit field for field from ref's resets: Tile.reset's list, the request bus, C&C 1's
+  peripheral, C&C's model; the checker's ERRORS state; a wake), Cc::reset(hard), NetSelf's case with StateFp.
 - Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
   after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
 

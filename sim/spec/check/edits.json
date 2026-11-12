@@ -92,6 +92,15 @@
 ],
 [
 "machine-spec.md",
+613,
+"v1.3/spec/machine-spec.md",
+655,
+"ruling",
+"- **So the loopback FIFO cannot overflow,** whatever arrives from the links: at most 64 packets are ever on their way into it or in it, and it is at least 64 deep (4.7). When the eject output is busy with incoming traffic, the tile's own loopback reads wait for tokens instead. In a group run that wait is a refusal like any other (drift, 4.2), so the all-to-alls, which send little to the tile itself, are unaffected in a correct program. **This exists only because the mesh has no flow control** (3.2); with flow control it would be revisited.",
+"- **So the loopback FIFO cannot overflow,** whatever arrives from the links: at most 64 packets are ever on their way into it or in it, and it is at least 64 deep (4.7). When the eject output is busy with incoming traffic, the tile's own loopback reads wait for tokens instead. In a group run that wait is a refusal like any other (drift, 4.2), so the all-to-alls are unaffected in a correct program: a tile's stream to itself has its own slot in the schedule (`spec/schedule.md`), which leaves its eject room for it (measured: no token waits, item 62). **This exists only because the mesh has no flow control** (3.2); with flow control it would be revisited."
+],
+[
+"machine-spec.md",
 711,
 "v1.3/spec/machine-spec.md",
 753,
@@ -254,7 +263,7 @@
 ],
 [
 "machine-spec.md",
-2025,
+2023,
 "v1.3/spec/machine-spec.md",
 3464,
 "path",
@@ -263,7 +272,7 @@
 ],
 [
 "machine-spec.md",
-2029,
+2027,
 "v1.3/spec/machine-spec.md",
 3468,
 "path",
@@ -272,7 +281,7 @@
 ],
 [
 "machine-spec.md",
-2040,
+2038,
 "v1.3/spec/machine-spec.md",
 3479,
 "path",
@@ -281,7 +290,7 @@
 ],
 [
 "machine-spec.md",
-2049,
+2047,
 "v1.3/spec/machine-spec.md",
 3488,
 "path",
@@ -771,197 +780,187 @@
 [
 "machine-spec.md",
 1977,
-"| 62 | Simulating the new paths: eject priority, loopback token waits, drift | 4.5, 4.7, 6.7 | open |"
-],
-[
-"machine-spec.md",
-1978,
-"| 70 | The eject loopback priority (decided), to be confirmed in simulation | 4.7 | open |"
-],
-[
-"machine-spec.md",
-1979,
 "| 107 | 4.25 MB of big SRAM per tile, a tentative working figure | 4.1 | open |"
 ],
 [
 "machine-spec.md",
-1980,
+1978,
 "| 116 | Read-port reads overlapping incoming traffic: revisit the rule and invariant 14 | 4.3, 9 | open |"
 ],
 [
 "machine-spec.md",
-1981,
+1979,
 "| 117 | Storing the reserved link bits (power) | 3.1 | open |"
 ],
 [
 "machine-spec.md",
-1982,
+1980,
 "| 121 | The core's CSRs beyond the trap CSRs, `mcycle` and `mtime`, and their reset values | 4.11, 6.1 | open |"
 ],
 [
 "machine-spec.md",
-1983,
+1981,
 "| 124 | The soft reset's keep list | 6.1 | open |"
 ],
 [
 "machine-spec.md",
-1984,
+1982,
 "| 126 | Whether hardware records a request dropped at the root | 3.3, 6.7 | open |"
 ],
 [
 "machine-spec.md",
-1985,
+1983,
 "| 128 | K's margin, validated across workloads | 4.1, 4.8, 4.10 | open |"
 ],
 [
 "machine-spec.md",
-1986,
+1984,
 "| 129 | Whether `STREAM_SRC` stays a chunk address | 4.2 | open |"
 ],
 [
 "machine-spec.md",
-1987,
+1985,
 "| 82 | Partly settled; left: the request receivers' attachment, the engines' type numbers; 65 as C&C 2 still proposed | 2, 2.1 | decided, part open |"
 ],
 [
 "machine-spec.md",
-1988,
+1986,
 "| 15 | A status bit with READY, for per-owner completion | 8.14 | proposed |"
 ],
 [
 "machine-spec.md",
-1989,
+1987,
 "| 27 | Drop the one-read-size-per-group rule | 4.2 | proposed |"
 ],
 [
 "machine-spec.md",
-1990,
+1988,
 "| 28 | 128-bit staging from C&C | 6.2 | proposed |"
 ],
 [
 "machine-spec.md",
-1991,
+1989,
 "| 63 | Each node wormhole-routes whole requests, round-robin | 3.3 | proposed |"
 ],
 [
 "machine-spec.md",
-1992,
+1990,
 "| 64 | The request port's FIFO and its stall rule | 4.18 | proposed |"
 ],
 [
 "machine-spec.md",
-1993,
+1991,
 "| 67 | A read's data: 128-bit packets in ascending address order | 6.7 | proposed |"
 ],
 [
 "machine-spec.md",
-1994,
+1992,
 "| 120 | The table window's address | 4.10, 8.9 | proposed |"
 ],
 [
 "machine-spec.md",
-1995,
+1993,
 "| 48 | Decided: a peripheral's fixed landing latency; still proposed: its value, `rp_latency` = 2 | 4.17.5, 10 | decided, part proposed |"
 ],
 [
 "machine-spec.md",
-1996,
+1994,
 "| 84 | Decided: the request; still proposed: beat order, the row node writing the requestor, 16 requests per target queue | 3.3, 4.18 | decided, part proposed |"
 ],
 [
 "machine-spec.md",
-1997,
+1995,
 "| 133 | Still proposed: the handler parks in a plain loop | 4.13 | decided, part proposed |"
 ],
 [
 "machine-spec.md",
-1998,
+1996,
 "| 83 | The target numbering; target 3 deferred with the file system (119) | 3.3 | proposed, part deferred |"
 ],
 [
 "machine-spec.md",
-1999,
+1997,
 "| 60 | The memory system's side, with the file system (119) | 6.7, 7 | deferred |"
 ],
 [
 "machine-spec.md",
-2000,
+1998,
 "| 119 | The file system and the RW engine, with their design (the Tracer's side is specified) | 3.3, 6.1, 6.7, 7 | deferred |"
 ],
 [
 "machine-spec.md",
-2001,
+1999,
 "| 122 | The handler's report header, with C&C 1's request format | 4.13 | deferred |"
 ],
 [
 "machine-spec.md",
-2002,
+2000,
 "| 130 | A 1×4 test chip; mesh size as a parameter | 2, 4.2, 4.6 | deferred |"
 ],
 [
 "machine-spec.md",
-2003,
+2001,
 "| 142 | The region-decode check, to the RTL | 3.1, 4.13 | deferred |"
 ],
 [
 "machine-spec.md",
-2004,
+2002,
 "| 159 | The simulator checks to add in v1.4: invariant 17's request limits, tag windows and group-run rule; invariant 18 for big SRAM; size 11 and the two stream cases, stopped rather than counted | 9, 3.1, 4.2 | deferred (owner, 2026-11-12) |"
 ],
 [
 "machine-spec.md",
-2005,
+2003,
 "| 118 | Decided: sending peripherals' src and port; deferred: the rest of the controllers' routing, the DMA port's flow control | 4.16, 4.17.9 | decided, part deferred |"
 ],
 [
 "machine-spec.md",
-2006,
+2004,
 "| 17 | A direct path from the GATHER engine to the write side | 4.4 | later |"
 ],
 [
 "machine-spec.md",
-2007,
+2005,
 "| 18 | Fusing the local gather with the values all-to-all | 4.2, 4.4 | later |"
 ],
 [
 "machine-spec.md",
-2008,
+2006,
 "| 19 | An arrival-order form of augmenting for mode 4 | 4.9 | later |"
 ],
 [
 "machine-spec.md",
-2009,
+2007,
 "| 20 | A search engine for the split | 4.3 | later |"
 ],
 [
 "machine-spec.md",
-2010,
+2008,
 "| 21 | A port-B reader for bulk transfers from controller memory | 4.5 | later |"
 ],
 [
 "machine-spec.md",
-2011,
+2009,
 "| 22 | Whole-row fetches for 64-bit streams | 4.2 | later |"
 ],
 [
 "machine-spec.md",
-2012,
+2010,
 "| 125 | Signed counters | 4.12, 6.2 | later |"
 ],
 [
 "machine-spec.md",
-2014,
+2012,
 "**The index:** where each item lives; *closed* means settled, its record in the history file."
 ],
 [
 "machine-spec.md",
-2016,
-"1 here; 2 here; 3 here; 4 here; 5 here; 6 here; 7 here; 8 here; 9 closed; 10 here; 11 closed; 12 closed; 13 here; 14 closed; 15 here; 16 closed; 17 here; 18 here; 19 here; 20 here; 21 here; 22 here; 23 closed; 24 here; 25 closed; 26 closed; 27 here; 28 here; 29 closed; 30 closed; 31 closed; 32 closed; 33 closed; 34 closed; 35 `spec/jolt/replayer.md`; 36 `spec/jolt/replayer.md`; 37 closed; 38 `spec/jolt/replayer.md`; 39 `spec/jolt/replayer.md`; 40 closed; 41 closed; 42 `spec/jolt/replayer.md`; 43 closed; 44 closed; 45 closed; 46 closed; 47 closed; 48 here; 49 closed; 50 closed; 51 closed; 52 closed; 53 closed; 54 closed; 55 closed; 56 `spec/jolt/replayer.md`; 57 `spec/jolt/replayer.md`; 58 closed; 59 `spec/jolt/replayer.md`; 60 here; 61 here; 62 here; 63 here; 64 here; 65 closed; 66 closed; 67 here; 68 closed; 69 closed; 70 here; 71 closed; 72 closed; 73 closed; 74 closed; 75 closed; 76 closed; 77 closed; 78 closed; 79 closed; 80 closed; 81 closed; 82 here; 83 here; 84 here; 85 closed; 86 closed; 87 closed; 88 closed; 89 closed; 90 closed; 91 closed; 92 closed; 93 closed; 94 closed; 95 closed; 96 closed; 97 closed; 98 closed; 99 closed; 100 closed; 101 closed; 102 closed; 103 closed (owner, 2026-11-12); 104 closed; 105 closed; 106 closed; 107 here; 108 closed; 109 closed; 110 closed; 111 closed; 112 closed; 113 `spec/jolt/replayer.md`; 114 closed; 115 `spec/jolt/replayer.md`; 116 here; 117 here; 118 here; 119 here; 120 here; 121 here; 122 here; 123 `spec/jolt/replayer.md`; 124 here; 125 here; 126 here; 127 closed; 128 here; 129 here; 130 here; 131 closed; 132 closed; 133 here; 134 closed; 135 closed; 136 closed; 137 `spec/jolt/replayer.md`; 138 closed; 139 `spec/jolt/replayer.md`; 140 `spec/jolt/replayer.md`; 141 closed; 142 here; 143 closed; 144 closed; 145 closed; 146 closed; 147 `spec/jolt/tracer.md`; 148 `spec/jolt/tracer.md`; 149 closed; 150 closed; 151 closed; 152 closed; 153 `spec/jolt/tracer.md`; 154 closed; 155 closed; 156 closed; 157 closed; 158 `spec/jolt/replayer.md`; 159 here."
+2014,
+"1 here; 2 here; 3 here; 4 here; 5 here; 6 here; 7 here; 8 here; 9 closed; 10 here; 11 closed; 12 closed; 13 here; 14 closed; 15 here; 16 closed; 17 here; 18 here; 19 here; 20 here; 21 here; 22 here; 23 closed; 24 here; 25 closed; 26 closed; 27 here; 28 here; 29 closed; 30 closed; 31 closed; 32 closed; 33 closed; 34 closed; 35 `spec/jolt/replayer.md`; 36 `spec/jolt/replayer.md`; 37 closed; 38 `spec/jolt/replayer.md`; 39 `spec/jolt/replayer.md`; 40 closed; 41 closed; 42 `spec/jolt/replayer.md`; 43 closed; 44 closed; 45 closed; 46 closed; 47 closed; 48 here; 49 closed; 50 closed; 51 closed; 52 closed; 53 closed; 54 closed; 55 closed; 56 `spec/jolt/replayer.md`; 57 `spec/jolt/replayer.md`; 58 closed; 59 `spec/jolt/replayer.md`; 60 here; 61 here; 62 closed (owner, 2026-11-12); 63 here; 64 here; 65 closed; 66 closed; 67 here; 68 closed; 69 closed; 70 closed (owner, 2026-11-12); 71 closed; 72 closed; 73 closed; 74 closed; 75 closed; 76 closed; 77 closed; 78 closed; 79 closed; 80 closed; 81 closed; 82 here; 83 here; 84 here; 85 closed; 86 closed; 87 closed; 88 closed; 89 closed; 90 closed; 91 closed; 92 closed; 93 closed; 94 closed; 95 closed; 96 closed; 97 closed; 98 closed; 99 closed; 100 closed; 101 closed; 102 closed; 103 closed (owner, 2026-11-12); 104 closed; 105 closed; 106 closed; 107 here; 108 closed; 109 closed; 110 closed; 111 closed; 112 closed; 113 `spec/jolt/replayer.md`; 114 closed; 115 `spec/jolt/replayer.md`; 116 here; 117 here; 118 here; 119 here; 120 here; 121 here; 122 here; 123 `spec/jolt/replayer.md`; 124 here; 125 here; 126 here; 127 closed; 128 here; 129 here; 130 here; 131 closed; 132 closed; 133 here; 134 closed; 135 closed; 136 closed; 137 `spec/jolt/replayer.md`; 138 closed; 139 `spec/jolt/replayer.md`; 140 `spec/jolt/replayer.md`; 141 closed; 142 here; 143 closed; 144 closed; 145 closed; 146 closed; 147 `spec/jolt/tracer.md`; 148 `spec/jolt/tracer.md`; 149 closed; 150 closed; 151 closed; 152 closed; 153 `spec/jolt/tracer.md`; 154 closed; 155 closed; 156 closed; 157 closed; 158 `spec/jolt/replayer.md`; 159 here."
 ],
 [
 "machine-spec.md",
-2018,
-"**Closed since v1.3:** 103, the split run log: a pass that runs without the store log never feeds the write log, so only store rows draw from it; the sizing was settled by item 143's measurement (owner, 2026-11-12)."
+2016,
+"**Closed since v1.3:** 62, simulating the new paths: confirmed and measured with `tests/p4_drift.cpp` on the full-size all-to-alls (uniform, zipfraw, trace and one99, each at group gaps 0, 4 and 8) and the radix sort: 0 cycles of loopback reads waiting for a token, as the schedule predicts, since a tile's stream to itself has its own slot in the all-to-all and its eject has room for it; loopback reads can wait only against traffic outside a schedule, file delivery, which comes with the file system (item 119) (owner, 2026-11-12); 70, the eject loopback priority: confirmed on the same runs: with the eject output serving its loopback last, no drift, 0 tiles with `ERRORS` [3] and 0 drift events; the deliberate-drift control (tile 7, 158 events) shows the detector works (owner, 2026-11-12); 103, the split run log: a pass that runs without the store log never feeds the write log, so only store rows draw from it; the sizing was settled by item 143's measurement (owner, 2026-11-12)."
 ],
 [
 "jolt/replayer.md",

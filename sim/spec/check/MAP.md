@@ -708,3 +708,5 @@ The owner approved stage 1 with corrections; the move follows them. `map.tsv` is
   what to rerun.
 - **After D48** (owner, 2026-11-12): `CHANGES-v1.3-to-v1.35.md`'s checks section lists the gaps inherited from v1.3
   for v1.4; section 9's opening (the edit at line 2942) names them; section 13 gains item 159.
+- **Items 62 and 70 closed** (owner, 2026-11-12), on the measurement of `tests/p4_drift.cpp`; 4.5's bullet on the
+  loopback FIFO (v1.3 line 655) gets the ruled reason, an edit of kind *ruling*.

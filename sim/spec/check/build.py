@@ -100,6 +100,8 @@ edit('ms', 2762, 'ignored while a run is running (meshsim flags it)',
      'a start while a run is running is undefined behaviour (invariant 26; meshsim stops)', 'ruling')
 edit('ms', 1839, 'a run while the replayer runs is ignored (meshsim flags it, 4.13).',
      "a run while the replayer runs is undefined behaviour (4.13; owner, 2026-11-01: a pulse while a peripheral is busy is UB; meshsim stops).", 'ruling')
+edit('ms', 655, 'so the all-to-alls, which send little to the tile itself, are unaffected in a correct program.',
+     "so the all-to-alls are unaffected in a correct program: a tile's stream to itself has its own slot in the schedule (`spec/schedule.md`), which leaves its eject room for it (measured: no token waits, item 62).", 'ruling')
 edit('ro', 3, 'the machine specification, v1.25, linked from `machine-spec.md` 4.19',
      'the machine specification, v1.35, linked from `spec/jolt/replayer.md` 4.19', 'version')
 
@@ -257,7 +259,7 @@ def write_edits_md(edits, added):
     from collections import Counter
     c = Counter(e[4] for e in edits)
     L = ['# The edits: every line the restructuring changed or added', '',
-         f"*Written by `build.py`. {len(edits)} edited lines ({', '.join(f'{k} {v}' for k, v in sorted(c.items()))}) and {len(added)} added lines. Kinds: **sim**, a statement about the simulator made true of v1.35; **path**, a path made true of v1.35's tree; **version**, the two version headers; **heading**, 8.11's heading, which would otherwise be false. **ruling**, a wording the owner ruled (owner, 2026-11-12): 8.6's `PULSE_DMA` row and 4.19.11's run pulse, undefined behaviour rather than \"ignored (meshsim flags it)\". Section 13's new text is among the added lines. Line numbers: the destination's (under `sim/spec/`) and the source's.*", '',
+         f"*Written by `build.py`. {len(edits)} edited lines ({', '.join(f'{k} {v}' for k, v in sorted(c.items()))}) and {len(added)} added lines. Kinds: **sim**, a statement about the simulator made true of v1.35; **path**, a path made true of v1.35's tree; **version**, the two version headers; **heading**, 8.11's heading, which would otherwise be false. **ruling**, a wording the owner ruled (owner, 2026-11-12): 8.6's `PULSE_DMA` row and 4.19.11's run pulse, undefined behaviour rather than \"ignored (meshsim flags it)\"; 4.5's reason the all-to-alls are unaffected by loopback token waits. Section 13's new text is among the added lines. Line numbers: the destination's (under `sim/spec/`) and the source's.*", '',
          '## Edited lines', '']
     for dest, dl, src, sl, k, old, new in edits:
         L += [f'### `{dest}` {dl} ← `{src}` {sl} ({k})', '', '- old: ' + old, '- new: ' + new, '']

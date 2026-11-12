@@ -12,3 +12,7 @@ $(B)/shard_summary: $(B)/tests/acceptance/shard_summary.o $(LIB_OBJ)
 all: $(B)/shard_summary
 # The summary step against v1.3's (tests/acceptance/summary/, oracle/ref/shardsummary.sh): needs shard_summary built.
 $(B)/test_shard_summary: | $(B)/shard_summary
+# v1.3's ReplayerTest (run_tests.sh's step replayer): W15's ported parts and ConvertDelivery's groups on convert_delivery.
+$(B)/suite_replayer: $(B)/tests/suite_replayer.o $(B)/tests/sha256.o $(B)/tests/statefp.o $(REPLAYER_LINK) $(B)/src/units/replay_tables.o $(LIB_OBJ) | $(B)/convert_delivery
+	$(CXX) $(FLAGS) $(filter-out $(B)/convert_delivery,$^) -o $@ $(WRAP)
+$(B)/test_suite_replayer: | $(B)/suite_replayer

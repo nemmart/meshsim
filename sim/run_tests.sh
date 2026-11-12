@@ -38,6 +38,7 @@ mkdir -p results
 # The suite programs the steps run (each worker adds its own; targets of sim/Makefile).
 SUITES="suite_memsys suite_rvc suite_tracer"
 SUITES="$SUITES suite_ccbench"                       # W23 (P5)
+SUITES="$SUITES suite_replayer"                      # W25 (P7b)
 
 if [ "$BUILD" = 1 ]; then
   echo "== building the suites (MODE=suite CC_NAME=$CC_NAME)"
@@ -110,7 +111,7 @@ pending cccores       "C&C 1-3 as cores (Config.ccCores, WORKER14): the boot ROM
 pending cccores-shuf  "shuffled child order (seed 4)" "P5: W23's suite_cccores, as cccores"
 step replay-build 1 "the replay controller (sw/replay/build.sh)" tests/stageb/replay-build.log -- tests/stageb/replay_build.sh
 pending stageb        "Stage B: replay_ctl.c on a tile against Stage A, synthetic windows" "P7b"
-pending replayer      "the replayer model (v1.25): the opcode table, the ALU against vec.tsv at 821e1bd, the unit tests" "P7b"
+step replayer 1 "the replayer model (v1.25): the opcode table, the ALU against vec.tsv at 821e1bd, the unit tests" tests/replayer/replayer.log -- $S/suite_replayer
 step memsys 1 "the Tracer's memory system (v1.3, B1): FileStore's trees and statuses, the shared cache's timing" tests/tracersuites/memsys.log -- $S/suite_memsys
 step rvc    1 "the Tracer's RVC decompressor against gold's, every 16-bit encoding (v1.3, B1)" tests/tracersuites/rvc.log -- $S/suite_rvc
 step tracer 1 "the Tracer (v1.3, B1): execution, memory, the map, errors, cuts, controller-fed expansions, the output path" tests/tracersuites/tracer.log -- $S/suite_tracer

@@ -69,11 +69,13 @@ constexpr uint64_t PC = 0x80000100ull;
 // vec.cpp (821e1bd) sets ShiftData's shift_offset per vector without printing it: its S(...) calls, in order.
 constexpr int64_t SHIFT_OFFSETS[] = {0, 7, -2, 0, 2, -4, 0, 4, -4};
 
-// ReplayerTest.opcodeTable and .vectors; appends the report lines; returns the number of failed checks.
-int alu_report(std::vector<std::string>& report) {
+// ReplayerTest.opcodeTable and .vectors; appends the report lines; returns the number of failed checks (and, if
+// `passed` is given, adds the passing ones to it: W25's suite_replayer counts as ref's T does).
+int alu_report(std::vector<std::string>& report, int* passed = nullptr) {
     int failed = 0;
     auto check = [&](bool ok, const std::string& what) {
         if (!ok) { failed++; std::fprintf(stderr, "  FAIL %s\n", what.c_str()); }
+        else if (passed) (*passed)++;
     };
     std::vector<std::string> lines;
     if (!read_lines(kOpTable, lines)) { std::fprintf(stderr, "cannot read %s\n", kOpTable.c_str()); return 1; }
@@ -149,8 +151,10 @@ int alu_report(std::vector<std::string>& report) {
     }
     // ref meant this check (ReplayerTest.java line 105; its append is lost in a comment): every executed opcode but NOP
     // (the padding row, unit-tested) has a matching vector
+    // As ref counts it (W25: suite_replayer's total equals ref's): ref's lost append makes its T.check the loop's body,
+    // run once per uncovered opcode, so a passing run counts no check here; this one fails for each uncovered opcode.
     for (unsigned i = 1; i < 256; i++)
-        if (alu::executes(i)) check(covered[i], std::string("no matching vector for ") + alu::name_or_null(i));
+        if (alu::executes(i) && !covered[i]) check(false, std::string("no matching vector for ") + alu::name_or_null(i));
     std::snprintf(buf, sizeof buf,
                   "ALU vectors: %zu rows; %d match the tracer; %d undefined for the replayer and flagged (invariant 16); %d not applicable",
                   lines.size(), pass, flagged, na);

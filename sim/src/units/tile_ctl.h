@@ -299,6 +299,7 @@ struct TileCore {
     uint8_t rp_tile = 0;
     unsigned rp_depth = 64;
     uint64_t rp_stored = 0, rp_dropped = 0, rp_violations = 0;
+    uint64_t rp_peak = 0;              // W20 (P2): ref's ReadPort.peak, entries in use (PhaseLog; statistics only)
     // W20 (harness-only; P2): ref's coreless test machine (Config.coreless, `core.enabled = false`): the core never
     // runs; port B's writes still land in its memories (ref's ControllerMemories does that apart from the core).
     bool coreless = false;
@@ -370,6 +371,7 @@ struct TileCore {
             c.put(u.rd_port, mem::req_a(chunk, size, lw::M_WRITE, ctr, u.rp_tile), mem::req_b(a));
             u.rp_stored++;
             c.inc(u.rp_stores);
+            if (const uint64_t used = u.rp_stored - c.through_last(u.rp_injected); used > u.rp_peak) u.rp_peak = used;   // W20
             return true;
         }
         // W15 (M3): PeripheralSlot.read / storeStalls / write as the core meets them (AUDIT-M3 3.1 S2-S4, S8)

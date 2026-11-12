@@ -72,6 +72,7 @@
 #include <vector>
 
 #include "config.h"
+#include "phase_log.h"
 #include "sim.h"
 #include "units/chip.h"
 #include "units/regblock.h"
@@ -288,6 +289,7 @@ public:
     // ---- the parts ----
     TileRef tile(unsigned k) { return TileRef(*this, k); }  // 0-63; 64-66 the controllers with cc_cores
     Cc& cc();                                               // C&C 1's model (not with cc_cores)
+    PhaseLog& phases();                                     // ref's Chip.phases, attached at the first call (phase_log.h)
     bool all_stopped() const;                               // no tile's core in RUN
     bool all_exited() const;                                // every tile ended through SIM_EXIT
     bool all_in_wfi() const;

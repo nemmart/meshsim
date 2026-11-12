@@ -87,8 +87,31 @@ void stageb(bool lone) {
         (unsigned long long)c.violations());
     say("%s", c.violation_report().c_str());
 }
+void phases(int64_t seed) {
+    Mach m(Mach::cfg(seed));
+    mach::A2A data(7, 2000);
+    for (unsigned s = 0; s < 64; s++) {
+        mach::TileRef p = m.c.tile(s);
+        for (size_t k = 0; k < data.rec[s].size(); k++) p.sram_poke64(mach::A2A::SRC + 2 * uint32_t(k), uint64_t(data.rec[s][k]));
+        for (unsigned d = 0; d < 64; d++) p.sram_poke(0xF0000 + d, uint32_t(data.cnt[s][d]));
+        for (unsigned src = 0; src < 64; src++) p.sram_poke(0xF0000 + 64 + src, uint32_t(data.cnt[src][s]));
+        for (unsigned g = 0; g < 16; g++) p.sram_poke(0xF0000 + 128 + g, uint32_t(data.R[g]));
+        p.sram_poke(0xF0000 + 144, 0);
+    }
+    m.c.phases().namer = [](int32_t w) -> std::string {
+        switch (uint32_t(w) >> 24) { case 1: return "configure"; case 2: return "start (a2a)"; case 3: return "exit"; case 0x4A: return "boot"; default: return "?"; }
+    };
+    m.boot("a2a");
+    m.c.cc().command(units::lw::BROADCAST, 1u << 24).go().command(units::lw::BROADCAST, 2u << 24).go().command(units::lw::BROADCAST, 3u << 24).go();
+    const bool ok = m.run([&] { return m.all_stopped(); }, 2000000);
+    m.c.phases().close();
+    say("phases seed %lld: %s at cycle %lld\n", (long long)seed, ok ? "stopped" : "NOT stopped", (long long)m.c.cycle());
+    say("%s", m.c.phases().report().c_str());
+    say("%s", m.c.phases().csv().c_str());
+}
 void machself() {
     out.clear();
+    if (sim::check::kOn) { phases(-1); phases(4); }        // (PhaseLog's FIFO peaks: the debug and suite builds)
     stageb(true);
     stageb(false);
     {
@@ -308,11 +331,15 @@ TEST(mach_net_as_refs_Net) {
 std::string without_violations(const std::string& x) {
     if (sim::check::kOn) return x;
     std::string r;
+    bool skip = false;
     for (size_t at = 0; at < x.size();) {
         size_t e = x.find('\n', at);
         if (e == std::string::npos) e = x.size();
         std::string l = x.substr(at, e - at);
         at = e + 1;
+        if (l.rfind("phases seed ", 0) == 0) skip = true;     // PhaseLog's sections: the debug and suite builds only
+        if (l.rfind("stageb ", 0) == 0) skip = false;
+        if (skip) continue;
         if (l.rfind("violations: ", 0) == 0 || l.rfind("  cycle ", 0) == 0) continue;
         const size_t v = l.find("; violations ");
         if (v != std::string::npos) l = l.substr(0, v);

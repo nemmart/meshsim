@@ -83,6 +83,11 @@ Commit and push after each step; each step checked against `ref`.
   and release; the protected tests the same as main's; all 63 clang-release tests pass.
 - **Not yet:** Cc::received and ready_bits (C&C 1 on the machine as specified), TileRef::quiescent (use Chip::quiescent).
 
+- **Step 2, the checker: its fact interface published** (`src/check.h`, `src/check.cpp`; MODE=suite in the Makefile):
+  the units record fixed-size facts (Kind, cycle, tile, four arguments) into the harness's list; the harness formats
+  them into ref's strings, in ref's report order (check.h's Slot), between cycles. The formatter (tests/checker.cpp)
+  and the units' record calls come next.
+
 ## What the body needs outside `sim/tests/` (additions only; the owner hears if any changes an existing operation)
 
 - **Framework (done):** `Sim::wake_all()` and `Sim::in_flight()` (config.h, config.cpp, threads.h/.cpp; marked

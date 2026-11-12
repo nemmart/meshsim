@@ -304,3 +304,10 @@ What I do test-side or add myself: C&C 1's model's `expect` (Cnc's field, set be
   ref's): the stand-in dropped; the 94 reserved-word stores go through TileRef::store as they are; log equal (269
   passed), clang release and the suite build; `regdoc` a runner step (run_tests.sh quick --check passes) and in make
   check.
+- **Pushed acbf5ff4** (HooksTest, RegDocTest, a merge of main): gcc debug and clang release, 74 of 74 each (the
+  integrator's new rule: those two per push, the four builds every two or three pushes).
+- **RecipeTest's selftest** on W20's drain_reports/results (with MachConfig::reqbus_host): every line in ref's log,
+  plain and shuffled, its six figures included; 2,048 of ref's 2,056 checks (boot's 8 left, on W20's whole-chip
+  reset). ref's `then` step (round 1: wait for the tiles idle, poke a record, in one step) is `wait_until` then `call`
+  here; round 1 prints no figures, only which signatures match, so the log can't tell the two apart, and both pass:
+  nothing to ask of W20.

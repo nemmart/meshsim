@@ -64,11 +64,9 @@ void run_step(const char* step, const char* program, const char* args, bool d44 
 
 }  // namespace
 
-// cccores: one figure masked (D44: D33's UART cycle in errorPath's printed line). Off until TileRef::set_errors reaches
-// the controllers (W20: host_on on tiles 0-63 only; errorPath sets C&C 2's ERRORS). Checked equal with that fixed.
-constexpr bool kSetErrorsOnControllers = false;
-TEST(cccores_equals_ref_log) { if (kSetErrorsOnControllers) run_step("cccores", "suite_cccores", "-1", true); }
-TEST(cccores_shuf_equals_ref_log) { if (kSetErrorsOnControllers) run_step("cccores-shuf", "suite_cccores", "4", true); }
+// cccores: one figure masked (D44: D33's UART cycle in errorPath's printed line)
+TEST(cccores_equals_ref_log) { run_step("cccores", "suite_cccores", "-1", true); }
+TEST(cccores_shuf_equals_ref_log) { run_step("cccores-shuf", "suite_cccores", "4", true); }
 TEST(ccbench_equals_ref_log) { run_step("ccbench", "suite_ccbench", ""); }
 TEST(hooks_equals_ref_log) { run_step("hooks", "suite_hooks", "-1"); }
 TEST(hooks_shuf_equals_ref_log) { run_step("hooks-shuf", "suite_hooks", "4"); }
@@ -81,3 +79,5 @@ TEST(accounting_equals_ref_log_and_csv) {
     run_step("accounting", "suite_accounting", "-1");
     CHECK_EQ(std::system("cmp -s results/phases-a2a.csv tests/ctlsuites/phases-a2a.csv"), 0);
 }
+// s1bench: S1 is measured in the checker's builds only (src/units/s1.h)
+TEST(s1bench_equals_ref_log) { if (sim::check::kOn) run_step("s1bench", "suite_s1bench", ""); }

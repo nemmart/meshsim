@@ -42,7 +42,7 @@ mkdir -p results
 SUITES="suite_memsys suite_rvc suite_tracer"
 # The make-check tests standing for a v1.3 suite (equiv steps)
 EQUIVS="test_golden test_tileslotconf"
-SUITES="$SUITES suite_ccbench suite_hooks suite_regdoc suite_accounting"                       # W23 (P5)
+SUITES="$SUITES suite_ccbench suite_cccores suite_hooks suite_regdoc suite_accounting suite_s1bench"                       # W23 (P5)
 SUITES="$SUITES suite_replayer stageb"               # W25 (P7b)
 SUITES="$SUITES suite_net suite_search suite_agbench suite_engine suite_reqbus suite_mem suite_rdport"   # W22 (P4)
 SUITES="$SUITES sort_test sweep"                     # W24 (P6)
@@ -130,12 +130,8 @@ equiv periph          "the peripheral framework: the standard window, events, re
 pending periph-shuf   "shuffled child order (seed 4)" "P5 (test_tileslotconf has no shuffled run yet)"
 step reqbus 2 "the request port, the request bus and the receive queues in the tree" tests/p4suites/reqbus.log -- $S/suite_reqbus -1
 step reqbus-shuf 1 "shuffled child order (seed 4)" tests/p4suites/reqbus-shuf.log -- $S/suite_reqbus 4
-# cccores: log-equal (D44's mask) once TileRef::set_errors reaches the controllers (W20: host_on is set on tiles 0-63
-# only, so C&C 2's ERRORS bit is dropped; with it set on cc1-cc3.ctl too, 77 passed, release and suite builds). Then:
-#   MASK_EXTRA=$D44_MASK step cccores      1 "C&C 1-3 as cores ..." tests/ctlsuites/cccores.log -- $S/suite_cccores -1
-#   MASK_EXTRA=$D44_MASK step cccores-shuf 1 "shuffled child order (seed 4)" tests/ctlsuites/cccores-shuf.log -- $S/suite_cccores 4
-pending cccores       "C&C 1-3 as cores (Config.ccCores, WORKER14): the boot ROM's controller branch, the link, the request tree" "P5: W20, set_errors on a controller"
-pending cccores-shuf  "shuffled child order (seed 4)" "P5: W20, set_errors on a controller"
+MASK_EXTRA=$D44_MASK step cccores      1 "C&C 1-3 as cores (Config.ccCores, WORKER14): the boot ROM's controller branch, the link, the request tree" tests/ctlsuites/cccores.log -- $S/suite_cccores -1
+MASK_EXTRA=$D44_MASK step cccores-shuf 1 "shuffled child order (seed 4)" tests/ctlsuites/cccores-shuf.log -- $S/suite_cccores 4
 step replay-build 1 "the replay controller (sw/replay/build.sh)" tests/stageb/replay-build.log -- tests/stageb/replay_build.sh
 step stageb 1 "Stage B: replay_ctl.c on a tile against Stage A, synthetic windows" tests/stageb/stageb.log -- $S/stageb synthetic
 if [ -n "${DELIVERY:-}" ]; then   # Stage B on a tracer delivery's guest windows: DELIVERY=<replay-inputs dir> (v1.3's; no such delivery on the runner: unrun, as in v1.3)
@@ -156,7 +152,7 @@ if [ "$MODE" != quick ]; then
   step rdport-full 1 "gather 1 at full size (Java; the C parts PENDING (phase 2))" tests/p4suites/rdport-full.log -- $S/suite_rdport -1 full
   step accounting-full 1 "per-phase accounting, full-size all-to-all from C" tests/ctlsuites/accounting-full.log -- bash -c "$S/suite_accounting -1 full && { cmp -s results/phases-a2a-full.csv tests/ctlsuites/phases-a2a-full.csv || echo 'FAIL results/phases-a2a-full.csv differs from v1.3s'; }"
   step agbench 3 "read-ahead measurements: ag_lookahead, zero-length groups, start to first request (a few minutes)" tests/p4suites/agbench.log -- $S/suite_agbench
-  pending s1bench         "item S1: K's margin over the write path, L = 1-4, and the table-window case (a few minutes)" "P5 (W23)"
+  step s1bench 8 "item S1: K's margin over the write path, L = 1-4, and the table-window case (a few minutes)" tests/ctlsuites/s1bench.log -- $S/suite_s1bench
   step ccbench 16 "C&C 1-3 as cores (WORKER14): the boot and a phase against the Java model" tests/ctlsuites/ccbench.log -- $S/suite_ccbench
   # the sweep's CSV checked too (with --check): a difference prints a FAIL line into the step's log
   sweep_quick() { $S/sweep quick || return 1; [ "$CHECK" = 0 ] || cmp -s results/sweep-quick.csv tests/sort/ref/sweep-quick.csv || echo "FAIL: results/sweep-quick.csv differs from tests/sort/ref/sweep-quick.csv"; }

@@ -242,3 +242,16 @@ the `-q` estimate, the guest delivery's whereabouts.
   maker and in the kit's make_task.sh).
 - **F6 fixed by W20** (4dd260a9: the slot frees only its own row buffer): the workaround in `stageb.cpp` removed;
   `test_stageb` and a delivery run clean under ASan (clang debug).
+- **F8 fixed by W20 (85453fb0): Stage B equal to v1.3's log in full.** With the checker on (suite and debug builds),
+  `stageb synthetic` is byte for byte v1.3's `stageb.log` (the CL4 seconds masked), the meshsim line included: the
+  count (256) and every message the line shows (ref cuts it at 600 characters; its report holds the first 50,
+  maxViolationMessages), each at ref's cycle (23808 for the replayer's @23807). `test_stageb` is now strict on that
+  line where the checker is built (debug, suite) and checks there is none in release: passes on gcc and clang, debug
+  and release, and the suite build.
+- **F9 (for the integrator): the step `stageb` can't go live as is.** The runner's `--check` finds no difference, but
+  its summary (v1.3's own: `grep -h FAIL results/*.log`) counts the CL4 case's line, "synthetic old queue map (CL4:
+  must fail) FAIL ...", which v1.26.1's StageB prints by design (the window must fail, starved; the step's last line
+  is "19 windows, 0 failed"). v1.3's run_tests.sh, run today, ends "== FAILURES" the same way; it never did because
+  ref's committed stageb.log is from before CL4 (F1). Proposal (a deliberate difference in the runner's summary, the
+  integrator's to approve, D30): the summary ignores lines naming "(CL4: must fail)" (e.g. `grep -h FAIL results/*.log
+  | grep -v '(CL4: must fail)'`), or judges a step by its last line. Until then `stageb` stays PENDING with that reason.

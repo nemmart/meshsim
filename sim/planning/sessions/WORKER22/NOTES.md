@@ -70,6 +70,18 @@ suites set is in `MachConfig` already. ref's shuffled logs differ from the unshu
   jump targets masked) differs only in 6 objects and only in `mov $imm,%esi`: FATAL's `__LINE__` argument to
   `fatal_at` (e.g. 0x117 -> 0x11d, the 6 lines inserted above it in inject.h).
 
+## Changes to units I don't own (approved by the owner)
+
+- **F1, the read queue's `window_full_cycles` (owner 2026-11-12: fix, in every build; v1.3 parity)**:
+  src/units/inject.h (W11's read side, W20's harness path alike). `InjReadSide::wf_from` and `window_waiting`: at the
+  end of Injection's step, if no token will be free at t + 1 and a client has a request (a client hold or the read-port
+  FIFO ready; on the harness's machine a visible ring entry), the wait is counted from t + 1; the read side's next step
+  adds the cycles asleep (`window_full_cycles += t - wf_from`) before counting its own cycle as before. Injection's
+  `token_wait_cycles` / `wait_from` pattern; no wake added, no timing changed. **Checked**: MemTest's token window
+  line now ref's (80 cycles; seeds -1, 8); test_chip, test_sort and test_memconf (which compares
+  `window_full_cycles` with ref's MemConf fixtures) print the same before and after (clang release); test_mem,
+  test_memconf, MemTest's groups in clang debug; NetTest's ported groups unchanged.
+
 ## Asks of W20 (through the integrator; named W22-n, so they don't collide with other workers' numbers)
 
 From NetTest's gap map (2026-11-11). NetTest's other groups (structure, unicast's packets, routes, the controllers'
@@ -193,3 +205,4 @@ W22-14. (owner: `new_phase` to W20, big SRAM's recording to W26) **Chip::new_pha
   is printed by MemTest. Fix proposed (the owner's call: it changes a unit): account the wait lazily, as Injection's
   `token_wait_cycles` / `wait_from` already does: the cycle the wait began, the span added when the unit next steps.
   Under SIM_CHECKS only, or in every build (the existing counter is wrong in every build).
+- **F1 fixed** (above): MemTest equal on every printed line but the disjoint group's (W22-14).

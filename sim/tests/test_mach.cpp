@@ -387,6 +387,23 @@ void checkself() {
         n.run_all(2000);
         say("%s", n.c.violation_report().c_str());
     }
+    {   // W26 (1a): the core's checks through the block: terminal traps without an ERRORS bit, mret, aliasing, reserved bytes
+        mach::MachConfig k = Mach::cfg(-1);
+        k.check_errors = false; k.max_violation_messages = 200;
+        Mach m(k);
+        const uint32_t P = 0x01000000, LOOP = 0x0000006F;
+        const std::vector<std::vector<uint32_t>> prog = {
+            {LOOP}, {0x00000073}, {0x00100073}, {0x30200073}, {0x0020006F},
+            {0x010000B7, 0x01008093, 0x30509073, 0, 0}, {0x00002223, LOOP}, {0x000080B7, 0x0000A103, 0x0020A023, LOOP}};
+        for (unsigned t = 0; t < 64; t++) {
+            const auto& w = prog[t % prog.size()];
+            for (size_t i = 0; i < w.size(); i++) m.c.tile(t).poke_local(P + 4 * uint32_t(i), w[i]);
+        }
+        m.c.run(40);
+        m.c.cc().command(lw::BROADCAST, 0x4Au << 24, {P}).run_when_ready();
+        m.c.run(400);
+        say("%s", m.c.violation_report().c_str());
+    }
     {
         mach::MachConfig k = Net::cfg(-1);
         k.max_violation_messages = 3;

@@ -120,6 +120,20 @@ std::string Checker::text(const Fact& f) const {
             if (a[0] >> c & 1) b += fmt(" WRITE_COUNTER_%u %u", c, unsigned(a[1 + (c - 1) / 3] >> (20 * ((c - 1) % 3)) & 0xFFFFF));
         return "done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]):" + b;
     }
+    // ---- the core's checks through the block (Controller.java: stopLoudly, mret, memWord, store; W26) ----
+    case Kind::CTL_HALT: {
+        static const char* const kHalt[9] = {"running", "illegal instruction", "ecall", "ebreak", "bus error", "SIM_EXIT",
+                                             "fetch outside program memory and the boot ROM", "misaligned jump target", "a trap inside the handler"};
+        const unsigned why = unsigned(a[0]);
+        const std::string m = why == 6 ? fmt(", fetch at 0x%x", unsigned(a[1])) : why == 7 ? fmt(", to 0x%x", unsigned(a[1]))
+                             : why == 8 ? fmt(", cause %d inside the handler", int(int32_t(a[1]))) : std::string();
+        return fmt("tile %d: %s", f.tile, kHalt[why < 9 ? why : 0]) + m + ": a trap that sets no ERRORS bit; meshsim stops (4.13)";
+    }
+    case Kind::CTL_MRET: return fmt("tile %d: mret: every trap is terminal, the handler never returns (4.13)", f.tile);
+    case Kind::CTL_ALIAS:
+        return fmt("access at 0x%x, past the end of %s memory: the high offset bits are ignored and it aliases (2.2; invariant 19)",
+                   unsigned(a[0]), lw::region(uint32_t(a[0])) == lw::R_DMEM ? "data" : "program");
+    case Kind::CTL_DMEM_RESERVED: return fmt("core store into data memory's reserved first 16 bytes, at 0x%x (2.2; invariant 22; W4-02)", unsigned(a[0]));
     case Kind::WE_PAST_SRAM:
         return fmt("a big-SRAM write at chunk 0x%" PRIx64 ", at or past the end of big SRAM: undefined (4.1; invariant 19): ", a[0]) + describe(a[1], a[2], a[3]);
     case Kind::PERIPH_VIOLATION: {                         // (W20, F2) the replayer's text, without its list's "t<me> @<t>: "

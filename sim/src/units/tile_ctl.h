@@ -431,7 +431,7 @@ struct TileCore {
             for (uint32_t i = 0; i < host_n; i++) {
                 const HostStore& h = host_st[i];
                 if (h.t < c.now()) FATAL("tile core: a test's store for cycle %llu not made (the core wasn't stepped)", (unsigned long long)h.t);
-                if (h.t == c.now()) rv.store(e, h.t, h.ea, h.v, h.mask, rv.pc);
+                if (h.t == c.now()) { rv.ck_t = h.t; rv.store(e, h.t, h.ea, h.v, h.mask, rv.pc); }   // (W26: ck_t, the facts' cycle)
                 else host_st[k++] = h;
             }
             host_n = k;

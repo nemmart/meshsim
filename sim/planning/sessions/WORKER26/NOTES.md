@@ -50,3 +50,9 @@ Commit and push after each piece; each kind checked line for line against `ref` 
   javac 21.0.13).
 
 ## Progress
+- **1a, the core's own checks** (Controller.java's `ctl.violate` through the block): `CTL_HALT` (ecall, ebreak, a fetch
+  outside the memories, a misaligned jump, a trap inside the handler; rv32's `stop_loudly` takes the text's detail),
+  `CTL_MRET`, `CTL_ALIAS` (memWord: past data or program memory), `CTL_DMEM_RESERVED`. A test's host store
+  (TileCore's harness-only path) sets the core's `ck_t` first, so its facts carry its own cycle. CheckSelf: the core
+  case (a program per tile, poked, then C&C's CMD_JUMP and GO), 72 violations line for line (gcc and clang suite, clang
+  debug). The five protected tests the same as main's (clang suite).

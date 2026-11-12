@@ -411,7 +411,55 @@ final class NetSelf {
         catch (UndefinedBehavior e) { System.out.println("ub: " + e.getMessage()); }
     }
 
+    /** W22-21: AgTest's figure-12 checks as values: a store's effect right after its cycle (PTR and HIST peeks), a HIST
+     *  load on the write-back cycle, a store at the read cycle (the cycle just run). */
+    static long rmw(Chip c, WordDelayLine line, long op, int idx, int add, java.util.function.LongSupplier takes) {
+        long before = takes.getAsLong();
+        line.put(c.cycle + 1, op, idx, add);
+        for (int i = 0; i < 50; i++) { c.step(); if (takes.getAsLong() > before) return c.cycle; }
+        throw new IllegalStateException("RMW never taken");
+    }
+    static void fig12b(int L) {
+        final int PTRB = Registers.PTR_BASE, HISTB = Registers.HIST_BASE;
+        Config k = Net.cfg(-1); k.withTsLatency(L);
+        StringBuilder sb = new StringBuilder("figure 12 values, L = " + L + ":");
+        {
+            Chip c = new Chip(k); Tile p = c.tiles[7];
+            p.setPtr(9, 0x1000); p.setPtr(5, 0x2000);
+            long tr = rmw(c, p.weTsReq, TableStore.OP_ADD_RET, TableStore.PTR + 9, 2, () -> p.ts.rmws);
+            p.core.store(tr + 1, PTRB + 4 * 5, 0x7777, -1); c.step(); c.step();
+            sb.append(" lost ").append(hx(p.ptr(5))).append("/").append(p.ts.pipe.ctrlWritesLost);
+            c.run(4);
+            tr = rmw(c, p.weTsReq, TableStore.OP_ADD_RET, TableStore.PTR + 9, 2, () -> p.ts.rmws);
+            p.core.store(tr, PTRB + 4 * 5, 0x3000, -1);             // the read cycle: the cycle just run
+            c.step(); c.step();
+            sb.append(" read-cycle ").append(hx(p.ptr(5)));
+            p.core.store(c.cycle + 1, PTRB + 4 * 5, 0x3004, -1); c.step();
+            sb.append(" peek ").append(hx(p.ptr(5))).append(" ptr9 ").append(hx(p.ptr(9)));
+            tr = rmw(c, p.weTsReq, TableStore.OP_ADD_RET, TableStore.PTR + 9, 2, () -> p.ts.rmws);
+            p.core.store(tr, PTRB + 4 * 9, 0x5000, -1); c.step(); c.step();
+            sb.append(" same-entry ").append(hx(p.ptr(9)));
+        }
+        {
+            Chip c = new Chip(k); Tile p = c.tiles[20];
+            p.hist.poke(3, 100); p.hist.poke(4, 7);
+            long tr = rmw(c, p.weHistReq, 0, 3, 1, () -> p.hist.rmws);
+            p.core.store(tr + 1, HISTB + 4 * 4, 55, -1); c.step(); c.step();
+            sb.append("; hist ").append(p.hist.peek(3)).append(" ").append(p.hist.peek(4)).append("/").append(p.hist.pipe.ctrlWritesLost);
+            tr = rmw(c, p.weHistReq, 0, 3, 1, () -> p.hist.rmws);
+            sb.append(" wb-load ").append(p.core.load(tr + 1, HISTB + 4 * 4, 4));
+            c.run(3);
+            sb.append(" later ").append(p.core.load(c.cycle + 1, HISTB + 4 * 4, 4));
+            c.step();
+            p.core.store(c.cycle + 1, HISTB + 4 * 4, 55, -1); c.step();
+            sb.append(" peek ").append(p.hist.peek(4));
+        }
+        System.out.println(sb);
+    }
+
     public static void main(String[] a) {
+        fig12b(1);
+        fig12b(3);
         ubStop();
         figure12(1);
         figure12(3);

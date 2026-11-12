@@ -965,14 +965,17 @@ void Sim::put_late(const std::string& unit, LinkOut p, const Word* w, unsigned n
     if (e.now == 0) FATAL("Sim::put_late('%s'): before the machine's first cycle", unit.c_str());
     Route& r = e.routes[p.route];
 #ifdef SIM_DEBUG
-    if (r.owner != it->second) FATAL("Sim::put_late: the Hold isn't '%s''s", unit.c_str());
+    if (r.owner != it->second) FATAL("Sim::put_late: the Link isn't '%s''s", unit.c_str());
 #endif
     if (r.kind != Kind::link || r.cls != kNoClass || r.width != n)
         FATAL("Sim::put_late('%s'): a Link of width %u by value (this one: width %u)", unit.c_str(), n, unsigned(r.width));
     const Cycle t = e.now - 1;                          // the cycle just run: the put is that cycle's
-    if (r.last_put == t) FATAL("Sim::put_late('%s'): the unit put on this Hold in cycle %llu already (two puts)", unit.c_str(),
+    if (r.last_put == t) FATAL("Sim::put_late('%s'): the unit put on this Link in cycle %llu already (two puts)", unit.c_str(),
                                (unsigned long long)t);
     r.last_put = t;
+    LinkPort& lp = e.links[r.dest];                     // as a put's: the port's in-flight count (Ctx::put's check)
+    if (lp.ring.count() + lp.inflight >= lp.cap) FATAL("Sim::put_late('%s'): the Link is full", unit.c_str());
+    lp.inflight++;
     const Wheel& wh = e.wheels[r.wheel];
     const Cycle at = t + r.latency;
     Bucket& b = wh.buckets[at & wh.mask];

@@ -124,6 +124,20 @@ Each was found by a twin's comparison and is now equal to ref:
 - Two `controller_send`s to one controller within 8 cycles stop with a FATAL: their beats would overlap in one Link.
 - The AG report is checked only on the a2a, where its figures are 0; EngineTest's drift line is the real check.
 
+## After the report (W26's S1, W22-21)
+
+- `MachConfig::measure_s1` wired to every tile's S1 (W26's, the check builds), and `Chip::s1_report()`: ref's
+  `S1.report(K)` summed over the tiles (`units::s1_report`). Equal to ref on the a2a (plain, shuffled, kit-configured)
+  and with S1 off.
+- W22-21 (AgTest's last six): `TileRef::ptr` and `hist_peek` show a table-window store of the cycle just run, as ref
+  writes at once (lost if a write-back took the port that cycle); a HIST load on the write-back cycle returns the
+  engine's written value (ref's ctrlRead); `TileRef::store` takes the cycle just run for the table window (a full
+  word; put as of t). NetSelf's "figure 12 values" case, at ts_engine_latency 1 and 3, equal to ref.
+- Found: `Sim::put_late` on a Link didn't count the word in flight (the port's count wrapped at its delivery); fixed.
+  It only mattered for a second `controller_send` on one controller, or an observe in between.
+- Note for the machine (not changed): a core's own HIST load on a write-back cycle reads the entry, where ref returns
+  the engine's written value. The harness's load follows ref; a program doing it would differ.
+
 ## What's left
 
 - the reset and the fingerprint option on the machine with C&C 1-3 as cores (both FATAL today; `CcCores.reset`,

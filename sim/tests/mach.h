@@ -415,6 +415,7 @@ public:
     // cycle order (tiles in order within a cycle)
     std::vector<std::string> log() const;
     std::string ag_report() const;                          // ref's Chip.agReport (one line, ref's text)
+    std::string s1_report() const;                          // ref's S1.report(K) over the tiles (the debug and suite builds)
     // ---- reset (6.1) [step 2] ----
     void reset(bool hard);                                  // takes effect at the end of the current cycle
     uint64_t resets() const;

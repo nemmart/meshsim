@@ -1,3 +1,5 @@
+figure 12 values, L = 1: lost 2000/1 read-cycle 3000 peek 3004 ptr9 1004 same-entry 1006; hist 101 7/1 wb-load 102 later 7 peek 55
+figure 12 values, L = 3: lost 2000/1 read-cycle 3000 peek 3004 ptr9 1004 same-entry 1006; hist 101 7/1 wb-load 102 later 7 peek 55
 ub: undefined behavior at cycle 48, tile 9, controller: a misaligned 4-byte load from 0x1 at pc 0x1000000 (DECISIONS-v1.25 s8: meshsim stops; the hardware does nothing special)
 figure 12, L = 1: ptr@3 1002 ptr@8 1004 ptr@13 1006; hist@18 101
 figure 12, L = 3: ptr@5 1002 ptr@12 1004 ptr@19 1006; hist@26 101

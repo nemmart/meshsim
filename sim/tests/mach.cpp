@@ -393,6 +393,8 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
         m.sim->unit<units::TileCore>(units::unit_prefix(k) + "core").rv.ck_tile = int(k);
         m.sim->unit<units::TileCore>(units::unit_prefix(k) + "core").rv.ub_fatal_tile = int(k);   // ref's UndefinedBehavior stop
         if (k < 64) m.sim->unit<units::WriteEngine>(units::tile_unit(k, "we")).ck_tile = int(k);
+        if (k < 64)                                       // ref's measureS1 (W26's S1; the check builds only)
+            if (auto& s1 = m.sim->unit<units::Director>(units::tile_unit(k, "dir")).s1) s1->on = c.measure_s1;
     }
     if (sim::check::kOn) {                                // ref's FIFO names (Router, Tile, Endpoint)
         static const char* const kOutName[6] = {"to-right", "to-left", "to-down", "to-up", "eject", "to-cnc"};
@@ -1087,6 +1089,16 @@ std::vector<std::array<int64_t, 2>> TileRef::trace_log() const {   // as ref has
             r.push_back({c_->cycle(), int64_t(uint32_t(e[i].w[1]))});
     return r;
 }
+std::string Chip::s1_report() const {                     // ref's S1.report(K), summed over the tiles (units::s1_report)
+    if (!sim::check::kOn) FATAL("mach: s1_report: S1 is measured in the debug and suite builds only");
+    const units::S1Tile* t[64];
+    for (unsigned k = 0; k < 64; k++) {
+        const auto& s1 = const_cast<Chip*>(this)->unit<units::Director>(units::tile_unit(k, "dir")).s1;
+        if (!s1) FATAL("mach: s1_report: tile %u has no S1", k);
+        t[k] = s1.get();
+    }
+    return units::s1_report(t, 64, cfg_.K);
+}
 std::string Chip::ag_report() const {                       // ref's Chip.agReport
     uint64_t rot_late = 0, max_rot = 0, grp_late = 0, max_grp = 0, stalls = 0;
     int late_tiles = 0, max_drift = 0, drift_group = -1;
@@ -1153,7 +1165,8 @@ struct LoadEnv {
     uint64_t t;
     unsigned k;
     uint32_t reg(unsigned r) const { return b.reg(r); }
-    uint32_t hist(uint32_t i) const { return h.m.hist[i & 255]; }
+    // ref's ctrlRead: on the write-back cycle the port's read returns the engine's written value (W22-21 (b))
+    uint32_t hist(uint32_t i) const { return h.pipe.valid && h.pipe.due == t ? h.pipe.val : h.m.hist[i & 255]; }
     void post(uint32_t op, uint32_t arg, uint32_t v) const {          // made by the core at t (ref: the load's side effect)
         if (u.host_post_n == units::TileCore::kHostPosts) FATAL("mach: too many test loads' side effects pending");
         u.host_post[u.host_post_n++] = {t, 0, uint64_t(op) << 32 | arg, uint64_t(v)};
@@ -1291,8 +1304,22 @@ void TileRef::schedule_go(int64_t t) {
 }
 std::string TileRef::store(int64_t t, uint32_t ea, uint32_t v, uint32_t mask) {
     namespace lw = units::lw;
-    if (t <= c_->cycle()) FATAL("mach: tile %u: a test's store at cycle %lld, already run", k_, (long long)t);
+    if (t < c_->cycle()) FATAL("mach: tile %u: a test's store at cycle %lld, already run", k_, (long long)t);
     units::TileCore& core = unit<units::TileCore>("core");
+    if (t == c_->cycle()) {                                // ref's core.store(tr, ...) at the cycle just run (W22-21 (c))
+        if (!units::in_tables(ea & ~3u) || mask != 0xFFFFFFFFu)
+            FATAL("mach: tile %u: a test's store at the cycle just run: the table window only (a full word)", k_);
+        const units::TableAddr ta = units::table_addr(ea & ~3u);
+        const uint32_t val = v & units::table_mask(ta.table);   // as of t: the table store applies it at t + 1, as the core's
+        if (ta.table == units::TBL_HIST) {
+            const sim::Word w[2] = {sim::Word(ta.index), sim::Word(val)};
+            c_->sim().put_late(un(k_, "core"), core.hist_w, w, 2);
+        } else {
+            const sim::Word w[2] = {sim::Word(ta.table) << 32 | ta.index, sim::Word(val)};
+            c_->sim().put_late(un(k_, "core"), core.tables, w, 2);
+        }
+        return "";
+    }
     const units::Rv32& r = core.rv;
     const uint32_t a = ea & ~3u;                            // ref's reasons, in ref's order (Controller.store)
     const unsigned region = lw::region(a);
@@ -1340,13 +1367,32 @@ void TileRef::ts_poke(uint32_t idx, uint32_t v) {
     unit<units::TableStore>("ts").poke_host(table, i, v);
     c_->touched(un(k_, "ts"));
 }
+// A table-window store of the cycle just run (the core's, on `window`, applied by the table store at t + 1) is in
+// ref's table at t, unless a write-back took the port at t (figure 12: then it's lost). W22-21 (a).
 uint32_t TileRef::ts_peek(uint32_t idx) const {
     uint32_t table, i;
     table_of(idx, table, i);
-    return table_read(unit<units::TableStore>("ts").m, table, i);
+    const units::TableStore& ts = unit<units::TableStore>("ts");
+    uint32_t v = table_read(ts.m, table, i);
+    sim::PortEntry e[2];
+    const uint32_t n = c_->sim().observe(ts.window, e, 2).n;
+    for (uint32_t k = 0; k < n; k++)
+        if (e[k].at == uint64_t(c_->cycle()) + 1 && uint32_t(e[k].w[0] >> 32) == table && (uint32_t(e[k].w[0]) & 255) == (i & 255) &&
+            !(table == units::TBL_PTR && ts.pipe.last_wb == uint64_t(c_->cycle())))
+            v = uint32_t(e[k].w[1]);
+    return v;
 }
 void TileRef::hist_poke(uint32_t i, uint32_t v) { unit<units::HistStore>("hist").poke_host(i, v); c_->touched(un(k_, "hist")); }
-uint32_t TileRef::hist_peek(uint32_t i) const { return unit<units::HistStore>("hist").m.hist[i & 255]; }
+uint32_t TileRef::hist_peek(uint32_t i) const {           // (with the window store of the cycle just run: ts_peek's rule)
+    const units::HistStore& h = unit<units::HistStore>("hist");
+    uint32_t v = h.m.hist[i & 255];
+    sim::PortEntry e[2];
+    const uint32_t n = c_->sim().observe(h.window, e, 2).n;
+    for (uint32_t k = 0; k < n; k++)
+        if (e[k].at == uint64_t(c_->cycle()) + 1 && (uint32_t(e[k].w[0]) & 255) == (i & 255) && h.pipe.last_wb != uint64_t(c_->cycle()))
+            v = uint32_t(e[k].w[1]);
+    return v;
+}
 
 // ---- Tile's own operations (ref's Tile.set*): the register block's state, published at its next step ----
 void TileRef::set_master_config(uint32_t v) {

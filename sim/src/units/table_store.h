@@ -69,6 +69,7 @@ struct ReqFifo {
     uint64_t put_at = 0, pw[3] = {};
     uint64_t last_take = ~0ull;
     uint64_t overflows = 0, first_overflow = 0;
+    uint32_t peak = 0;                 // W20 (P2): ref's highWater (PhaseLog's ptrReq/histReq/agTable; statistics only)
     // Judge a put made before t; true if it overflowed (dropped).
     bool commit(uint64_t t) {
         if (!pend || put_at >= t) return false;
@@ -76,6 +77,7 @@ struct ReqFifo {
         if (n + (last_take == put_at ? 1u : 0u) >= N) { if (!overflows++) first_overflow = put_at; return true; }
         uint64_t* d = e[(head + n) % N];
         d[0] = pw[0]; d[1] = pw[1]; d[2] = pw[2]; n++;
+        if (n > peak) peak = n;
         return false;
     }
     void put(uint64_t t, const sim::Word* w) { pend = true; put_at = t; pw[0] = w[0]; pw[1] = w[1]; pw[2] = w[2]; }

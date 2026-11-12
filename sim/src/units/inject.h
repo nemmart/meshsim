@@ -144,6 +144,7 @@ struct InjReadSide {
     // W22 (P4; approved 2026-11-12; SIM_CHECKS only, the timing builds unchanged): ref's per-client latMax (issue to
     // injection, updated at the injection) and firstIssueT / lastIssueT (at the issue), for MemTest. Statistics.
     uint64_t lat_max[3] = {};
+    uint64_t lat_sum[3] = {}, lat_n[3] = {};   // W20 (P2): ref's SRAMReadQueue.latSum, latN (statistics only)
     int64_t first_issue_t[3] = {-1, -1, -1}, last_issue_t[3] = {-1, -1, -1};
 #endif
 
@@ -379,6 +380,7 @@ inline void InjReadSide::injected(sim::Ctx& c, uint64_t h, Tokens& tok) {
     tok.reads--; in_flight[cl[t_]]--;
 #ifdef SIM_CHECKS
     if (c.now() - issueT[t_] > lat_max[cl[t_]]) lat_max[cl[t_]] = c.now() - issueT[t_];   // W22: SRAMReadQueue.latMax
+    lat_sum[cl[t_]] += c.now() - issueT[t_]; lat_n[cl[t_]]++;                             // W20: latSum, latN (PhaseLog)
 #endif
     if (tokens_on && loops(lw::dst(h))) tok.loop_held++;   // the token moves to the loopback packet: still held
     free_q[(free_head + free_n) % MAX] = uint8_t(t_); free_n++;

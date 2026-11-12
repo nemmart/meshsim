@@ -1,0 +1,52 @@
+# WORKER26 notes (P2's second half: the checker's remaining kinds, S1, BusTest)
+
+Branch `sim-w26`, from main d5cd16c7. Rows: B19 (with B20's ERRORS side as W20 left it), C2.
+
+## The plan (go-ahead from the integrator, 2026-11-12)
+
+Commit and push after each piece; each kind checked line for line against `ref` through `oracle/ref/CheckSelf.java`
+(fixture `tests/mach/checkself.out`), gcc and clang, debug and suite builds. Before and after each change: `test_chip`,
+`test_sort`, `test_t2_harness`, `test_cc_units`, `test_golden` unchanged.
+
+0. **Baseline.** Debug and suite builds, gcc and clang; the five protected tests' output kept as the reference.
+1. **The remaining kinds.** Each: the fact recorded where `ref` counts it (counters unchanged; D24), its text in
+   `tests/checker.cpp`, a CheckSelf case. Order (the integrator's: the waiting suites first):
+   - **1a. The CTL slot, finished (W23's CtrlTest `registers`, `invariants`).** The core's own `ctl.violate` sites
+     (Controller.java: terminal traps that set no ERRORS bit, the ecalls among them; mret; an access past data/program
+     memory; a store into the reserved first 16 bytes; the table window: HIST, PTR, the AG running), the WFI woken by
+     other than GO, the request port's push into a full FIFO, PeripheralSlot's four (reserved window word, DMA_HDR and
+     DMA_ADDR mid-transfer, full posts: invariant 16), the Tracer's violations as chip violations (W14's texts, as W20 did
+     the replayer's: `PERIPH_VIOLATION`), and the counter wraps and invariants 20/21 checked against CtrlTest's 384.
+   - **1b. The request bus (W22's W22-13), the endpoints, C&C's lost receive.** The root's drop at a reserved or
+     deferred target, the receive queue's overflow; the endpoints' bad packet, size 11, reserved mode; `rxLost`.
+   - **1c. The per-tile engines.** The AG (checkEntry's eight, starts while running, table wraps), the read port (size
+     11, queue full, destination alignment), the read queue (past big SRAM), the controller memories (command unread,
+     reply overwrite strict), the read-return refusal (once per tile), HIST over 17 bits (once), late rotations (once).
+   - **1d. Big SRAM's disjoint buffers (invariant 2).** `BigSram::new_phase()` (the read and write bits cleared, the phase
+     advanced), the tracking and the DISJOINT fact; W20 adds `Chip::new_phase()` between cycles (calls it on every tile,
+     wakes it). If the unit side's name changes, W20 hears through the integrator.
+   - **1e. C&C 1's peripheral and the cores.** cc1p's messages (slot CC1_PERIPH), CcCores.check (tiles 64-66, slot
+     CORES, the ERRORS-on-change rule), the cores' FIFOs in the overflow scan.
+2. **S1 (invariant 24).** ref's HashMap and ArrayDeques replaced by fixed per-tile structures sized at configuration
+   (approved): the director's acceptances to the write engine (a ring), chunk -> acceptance until big SRAM's area takes
+   it (a small table, Java's last-put-wins), one FIFO per PTR and HIST index (pooled). Active only under SIM_CHECKS with
+   `measure_s1`. Then W20's overflow case runs with `measureS1` back on, on both sides.
+3. **BusTest (C2).** On `suite.h`, ref's check names kept, log-equal ("BusTest: 154 passed, 0 failed"); `throwsISE`
+   as `suite::throws`. Each Java primitive group mapped onto the framework's port kind; **OverflowFIFO, RegisterBlock
+   and SRAMMacro, with no C++ counterpart, as small test-only shims reproducing ref's classes** (integrator). The
+   runner's `bus` step off PENDING. Then `REPORT.md`.
+
+## The integrator's answers (2026-11-12)
+
+- The replayer's violations as chip violations: done by W20 (6c746b30, `PERIPH_VIOLATION`); its line in `checker.cpp`
+  is mine now. The Tracer's: mine, W14's texts the same way.
+- BusTest's three primitives without a counterpart: test-only shims (above).
+- 1a and 1b first.
+- `Chip::new_phase`: W20's form (above). S1's design: approved.
+
+## Environment
+
+- The container had no clang and no javac: installed `clang lld openjdk-21-jdk-headless` (clang 18.1.3, gcc 13.3.0,
+  javac 21.0.13).
+
+## Progress

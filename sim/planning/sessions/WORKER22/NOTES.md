@@ -296,3 +296,14 @@ W22-17. **SearchBench needs the TRACE store log** (ref's `p.ctl.traceHook = (t, 
   W20's). The machine's timing is ref's (every measured figure equal), so the check's bookkeeping of the boot ROM's
   slot-0 read differs from ControllerMemories': the three tiles nearest C&C 1, where the command lands soonest after
   the boot. Reproduce: `build/clang-suite/suite_search` (MODE=suite).
+- **AgTest** (`tests/suite_ag.cpp`; ref's runLocal on `phase_done`; rd_running and rd_done read through STATUS with
+  `TileRef::load`): worked example 26, queue bounds 64, mixed sizes 8, rulings 13 (\"dst 70\" included): all pass;
+  computed fields 86 of 95. 197 of the 206 ported pass (seeds -1 and 4); figure 12's 34 wait on W22-16. The 9 left:
+  - W26: the AG's stream-entry flags (read size 11, d = 70, d = 126, mode-4, mode-3 at 128, the misaligned
+    destination and source, counter 0): 8 checks;
+  - **finding F5 (the owner's call, as F3)**: the director's UB stops say \"director (tile N): ...\"
+    (src/units/director.h:124, 136); ref names the unit \"traffic director\" (TrafficDirector.java:88, 98), and AgTest's
+    `ub` requires it. Text only, in the FATAL path: \"traffic director (tile N): ...\".
+  - In `computed`, a UB stop runs in suite::ub's forked child, while ref keeps the facts recorded before its stop in
+    the machine; the parent runs to the cycle before the stop's (named in its message) so the flags checked after it
+    can be there.

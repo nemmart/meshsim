@@ -405,14 +405,37 @@ struct TileCore {
             return c.read(u.hist, i);
         }
     };
+    // W20 (harness-only; P2): ref's Controller.store(t, ...) from a test (sim/tests/mach.h, TileRef::store): a store
+    // made in the core's step at t, before its own instruction, through the same path as an instruction's.
+    struct HostStore { uint64_t t; uint32_t ea, v, mask; };
+    static constexpr unsigned kHostStores = 16;
+    HostStore host_st[kHostStores] = {};
+    uint32_t host_n = 0;
     sim::Wake step(sim::Ctx& c) {
         if (c.ready(port_b)) {
             if (rv.stop == Stop::running) apply_port_b(c.peek(port_b));
             c.take(port_b);
         }
+        if (host_n) {                                         // W20 (harness-only)
+            Env e{c, *this};
+            uint32_t k = 0;
+            for (uint32_t i = 0; i < host_n; i++) {
+                const HostStore& h = host_st[i];
+                if (h.t < c.now()) FATAL("tile core: a test's store for cycle %llu not made (the core wasn't stepped)", (unsigned long long)h.t);
+                if (h.t == c.now()) rv.store(e, h.t, h.ea, h.v, h.mask, rv.pc);
+                else host_st[k++] = h;
+            }
+            host_n = k;
+            if (host_n) {                                     // the next one's cycle
+                uint64_t at = host_st[0].t;
+                for (uint32_t i = 1; i < host_n; i++) at = host_st[i].t < at ? host_st[i].t : at;
+                if (coreless) return sim::Wake::at_cycle(at);
+            }
+        }
         if (coreless) return sim::Wake::none();              // W20 (harness-only)
         Env e{c, *this};
         uint64_t next = rv.step(e, c.now());
+        for (uint32_t i = 0; i < host_n; i++) if (host_st[i].t < next) next = host_st[i].t;   // W20 (harness-only)
         return next == Rv32::kNever ? sim::Wake::none() : sim::Wake::at_cycle(next);
     }
     uint64_t digest() const { return digest_mix(rv.digest(), rv.pending_t ^ rv.send_w[0] ^ rv.send_w[1] << 1 ^ rv.send_w[2] << 2); }

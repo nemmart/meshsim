@@ -52,6 +52,7 @@ struct RegBlockState {
     uint64_t spurious_edges = 0;
     int64_t last_done_at = -1, last_landed_at = -1, ready_pulse_at = INT64_MIN;
     int64_t counter_write_at[8] = {-1, -1, -1, -1, -1, -1, -1, -1};   // each write counter's last store (counterWriteAt)
+    uint64_t sends_by_size[3] = {};             // send stores by size: 32, 64, 128 bits (sendsBySize)
     int ck_tile = -1;                  // W20: the checker's facts (src/check.h) under this tile; -1 none (a preview's copy)
     int64_t (*tlog)[2] = nullptr;      // W20 (harness-only; H6): every TRACE store {t, value}, into the harness's array
     uint32_t tlog_cap = 0, tlog_n = 0; //   (null otherwise, and in a preview's copy)
@@ -188,7 +189,7 @@ struct RegBlockState {
         case ROUTER_ADDR: router_addr = v; break;
         case ROUTER_SET_W0: case ROUTER_SET_W1: case ROUTER_SET_W2: router_w[r - ROUTER_SET_W0] = v; break;
         case ROUTER_SEND_32: case ROUTER_SEND_64: case ROUTER_SEND_128:  // captured at t (8.4) by the core
-            router_sends++;
+            router_sends++; sends_by_size[r - ROUTER_SEND_32]++;     // W23: statistics (sendsBySize)
             if ((router_hdr >> 22 & 7) == 0 && !(router_hdr & 1)) router_addr += 4u << (r - ROUTER_SEND_32);
             router_w[0] = router_w[1] = router_w[2] = 0;
             break;

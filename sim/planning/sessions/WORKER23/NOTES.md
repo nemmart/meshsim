@@ -278,3 +278,17 @@ What I do test-side or add myself: C&C 1's model's `expect` (Cnc's field, set be
   `writes_cmd`, `landed_at` (ref's cmem.writesCmd, landedAt; statistics, set in track_port_b, which sees port B's
   write of t at t + 1: the suite uses the recorded cycle, ref's `m.c.cycle` when its predicate saw the write). The
   four FAILs left in the release build: registers' violation count and names (W26), misaligned's UB stops (W20's 11).
+- **Pushed 8aa9580f** after the four-build check (74 of 74 each).
+- **HooksTest matched** (`tests/ctl/suite_hooks.cpp`, on W20's TileRef::load/store, set_events, schedule_go and Net on
+  the machine as specified): log-equal to ref's, plain and shuffled, clang release and the suite build (checker on).
+  In the runner (steps hooks, hooks-shuf) and make check. One adaptation, in the suite's header: ref's
+  `core.store(t, ...)` from Java applies at once; TileRef::store applies in the core's step at t, so where ref counts
+  a store's effect before its next cycle (the reserved words' "both flagged") the suite steps that cycle first.
+  RegBlockState gains `sends_by_size[3]` (ref's sendsBySize; statistics).
+- **RegDocTest needs one more thing (for W20)**: it stores to every reserved register-block word (93 of them, 0x884-0x9F4
+  and 0x814) and to the read-only ones in one cycle t (ref's `core.store(t, ...)` returns at once); TileRef::store
+  queues each on the core (`kHostStores` = 16: FATAL past that). Either a larger queue (about 100 at one cycle) or a
+  form of the store that returns the bus-error reason without queuing. The rest of RegDocTest (the documents through
+  W19's generators, header_diff.sh, the loads) is ready to port; RegDoc's rows need W19's table exposed from
+  `tools/regs/regs_gen.h` (today a local static in `registers_md()`): I'll move it to namespace scope (output unchanged,
+  test_regs checks).

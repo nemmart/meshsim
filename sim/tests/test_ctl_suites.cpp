@@ -69,3 +69,5 @@ constexpr bool kSetErrorsOnControllers = false;
 TEST(cccores_equals_ref_log) { if (kSetErrorsOnControllers) run_step("cccores", "suite_cccores", "-1", true); }
 TEST(cccores_shuf_equals_ref_log) { if (kSetErrorsOnControllers) run_step("cccores-shuf", "suite_cccores", "4", true); }
 TEST(ccbench_equals_ref_log) { run_step("ccbench", "suite_ccbench", ""); }
+TEST(hooks_equals_ref_log) { run_step("hooks", "suite_hooks", "-1"); }
+TEST(hooks_shuf_equals_ref_log) { run_step("hooks-shuf", "suite_hooks", "4"); }

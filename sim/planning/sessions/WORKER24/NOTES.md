@@ -80,3 +80,11 @@ Commit and push after each step; each step checked against `ref`.
 ## Requests
 
 - **W20 (runner)**: `mask()` to mask the `inputs:` line's first field (the simulator's hash; Q2). Owner: with W20.
+- **Step 2, the driver** (`tests/sort_main.cpp` → `sort_test`, on W20's `Mach`; `sort_input.h`'s Oracle gains `shaped`
+  and R): SortTest's arguments and output. **sort-p1 log-equal; sort: every line equal but the peaks** (the GATHER queue
+  peak and the "peaks in" lines, which wait for W20's PhaseLog, H3), 104 passed, as v1.3. Until PhaseLog lands the
+  phases come from C&C's `last_go_at`/`last_all_ready_at`, read between cycles; two offsets found and documented in the
+  code: SortTest's `allReadyAt` is ref's `c.cycle` inside C&C's step (the harness's t - 1), PhaseLog's end is t; and
+  C&C's `last_all_ready_at` also moves at a GO (not a phase end). Mach::Image reads only three-field .sym lines; the
+  driver reads `nm -S`'s four-field ones as SortTest does. Not yet: shuffled and debug options, the BT steps,
+  fingerprints at every GO, the CSVs against the kit, profile/watch (H7), the runner's steps.

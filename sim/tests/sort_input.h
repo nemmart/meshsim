@@ -65,18 +65,24 @@ void load_input(const Keys& k, int fmt, uint32_t s_addr, SramPoke sram_poke, Dme
     }
 }
 
-// SortTest.Oracle (shaped = false: M2Sort's).
+// SortTest.G4: the direct path's schedule-4 groups (each group's four offsets q - p).
+inline constexpr unsigned G4[16][4] = {{1, 29, 35, 63}, {2, 30, 34, 62}, {3, 31, 33, 61}, {5, 23, 41, 59}, {6, 22, 42, 58},
+    {7, 21, 43, 57}, {8, 28, 36, 56}, {9, 27, 37, 55}, {10, 26, 38, 54}, {11, 25, 39, 53}, {12, 24, 40, 52},
+    {13, 15, 49, 51}, {14, 18, 46, 50}, {16, 20, 44, 48}, {17, 19, 45, 47}, {0, 4, 32, 60}};
+// SortTest.Oracle (shaped = false: M2Sort's; W24 added `shaped`, the targets R_q = the input's own sizes, and R, the
+// direct path's group maxima).
 struct Oracle {
     std::vector<uint64_t> expect[64], source[64];
     uint64_t N = 0;
-    Oracle(const Keys& k, int fmt) {
+    uint32_t R[16] = {};
+    Oracle(const Keys& k, int fmt, bool shaped = false) {
         for (auto& t : k) N += t.size();
         std::vector<uint64_t> g; g.reserve(N);
         for (uint32_t p = 0; p < 64; p++)
             for (uint32_t j = 0; j < k[p].size(); j++) g.push_back(uint64_t(k[p][j]) << 32 | uint64_t(p) << 26 | j);
         std::sort(g.begin(), g.end());                     // (key unsigned, tile, position): Java's key ^ 0x80000000 order
         uint64_t Rq[65];
-        for (unsigned q = 0; q <= 64; q++) Rq[q] = q * N / 64;
+        for (unsigned q = 0; q <= 64; q++) Rq[q] = shaped ? (q == 0 ? 0 : Rq[q - 1] + k[q - 1].size()) : q * N / 64;
         static uint32_t cnt[64][64], c[64][65], prefix[64][64];
         for (auto& r : cnt) for (auto& x : r) x = 0;
         unsigned q = 0;
@@ -94,6 +100,9 @@ struct Oracle {
             expect[q][r - r0] = key | hi << 32;
             source[q][r - r0] = uint64_t(p) << 32 | j;
         }
+        for (unsigned gi = 0; gi < 16; gi++)
+            for (unsigned p = 0; p < 64; p++)
+                for (unsigned i = 0; i < 4; i++) R[gi] = std::max(R[gi], cnt[p][(p + G4[gi][i]) & 63]);
     }
 };
 

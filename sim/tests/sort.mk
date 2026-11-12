@@ -7,3 +7,6 @@ $(B)/sort_compare: $(B)/tests/sort_compare_main.o $(B)/tests/sha256.o $(LIB_OBJ)
 $(B)/test_sort_kit: $(B)/tests/test_sort_kit.o $(B)/tests/sha256.o $(HARNESS) $(LIB_OBJ)   # the tools' mains included (SORT_KIT_NO_MAIN)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 all: $(B)/sort_summary $(B)/sort_compare
+# the sort driver (tests/sort_main.cpp: v1.3's SortTest) on W20's machine harness
+$(B)/sort_test: $(B)/tests/sort_main.o $(B)/tests/sha256.o $(MACH_LINK) $(LIB_OBJ)
+	$(CXX) $(FLAGS) $(sort $^) -o $@ $(WRAP)

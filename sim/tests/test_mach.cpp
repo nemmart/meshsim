@@ -959,6 +959,35 @@ void checkself() {
         m.c.run(200);
         say("%s", m.c.violation_report().c_str());
     }
+    {   // W26: the slot's DMA_HDR and DMA_ADDR changed mid-transfer (ref's test peripheral on tile 7)
+        mach::MachConfig k = mach::MachConfig::machine();
+        k.periph_type = 0; k.test_peripheral_tile = 7;
+        Net n(k);
+        n.c.run(200);
+        const uint32_t W1 = 0xFFFFF800u + 0x200, hdr = 7u | 1u << 12 | 65u << 25 | 5u << 19;
+        const uint32_t st[5][2] = {{W1 + 32, hdr}, {W1 + 36, 0x400}, {W1 + 16, 1}, {W1 + 32, hdr}, {W1 + 36, 0x500}};
+        for (const auto& s : st) { n.c.tile(7).store(n.c.cycle() + 1, s[0], s[1]); n.step(); }
+        for (int i = 0; i < 40; i++) n.step();
+        say("%s", n.c.violation_report().c_str());
+    }
+    {   // W26 (W22's F6): invariant 2's phases at the counters-done latch: A -> B, latch, B -> A; then one run on one buffer
+        Net n(Net::cfg(-1));
+        mach::TileRef p = n.c.tile(12);
+        const uint32_t A = 0x20000, B = 0x40000, N = 64;
+        for (uint32_t i = 0; i < N; i++) p.sram_poke64(A + 2 * i, 0xA000ull + i);
+        const uint32_t runs[3][2] = {{A, B}, {B, A}, {A, A + 2 * N - 16}};
+        for (uint32_t r = 0; r < 3; r++) {
+            p.set_stream(r, stream_src(runs[r][0]), 0, stream_count(N, SIZE_64, 1, lw::M_SRC, 0));
+            p.set_ptr(12, runs[r][1]); p.set_remaining(1, N);
+            p.set_master_config(master_config(RUN_STREAMS, r, 1, 0, 0, 1));
+            p.pulse(PULSE_START);
+            n.c.run(600);
+        }
+        say("%s", n.c.violation_report().c_str());
+#ifdef SIM_CHECKS
+        say("disjoint-buffer accesses counted: %llu\n", (unsigned long long)p.unit<units::BigSram>("sram").disjoint_violations);
+#endif
+    }
     {
         mach::MachConfig k = Net::cfg(-1);
         k.max_violation_messages = 3;

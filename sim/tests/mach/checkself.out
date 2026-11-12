@@ -444,6 +444,12 @@ violations: 2
 violations: 0
 violations: 1
   cycle 611 tile 5: uncounted write to region 0x3: big-SRAM data and peripheral writes are always counted (3.1, 6.2; invariant 22): src=64 dst=5 mode=0(write@addr) ctr=0 addr=0x03000100 size=64 payload=0x0000000000000077
+violations: 2
+  cycle 204 tile 7: peripheral 1's DMA_HDR changed mid-transfer: undefined (4.17.9)
+  cycle 205 tile 7: peripheral 1's DMA_ADDR changed mid-transfer: undefined (4.17.9)
+violations: 1
+  cycle 1313 tile 12: chunk 0x20070 read after being written in the same phase (invariant 2, phase 2)
+disjoint-buffer accesses counted: 16
 violations: 12
   cycle 10 tile 10: count-only packet on counter 0 sent: it does nothing (3.1, invariant 21): src=0 dst=20 mode=5(count-only) ctr=0 addr=0x00000000 size=32 payload=0x00000000
   cycle 11 tile 11: count-only packet on counter 0 sent: it does nothing (3.1, invariant 21): src=0 dst=20 mode=5(count-only) ctr=0 addr=0x00000000 size=32 payload=0x00000001

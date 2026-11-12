@@ -279,6 +279,36 @@ final class CheckSelf {
             m.c.run(200);
             System.out.print(m.c.violationReport());
         }
+        {   // the slot's DMA_HDR and DMA_ADDR changed mid-transfer (PeripheralSlot.setHdr, setAddr; 4.17.9; W26): ref's test
+            // peripheral on tile 7 (Config.testPeripheral), a 7-word transfer started, both words stored again while it runs
+            Config k = Config.machine(); k.periphType = 0;
+            k.testPeripheral = tile -> tile == 7 ? new TestPeripheral() : null;
+            Net n = new Net(k);
+            n.c.run(200);
+            int W1 = 0xFFFFF800 + 0x200, hdr = 7 | 1 << 12 | 65 << 25 | 5 << 19;
+            int[][] st = { { W1 + 32, hdr }, { W1 + 36, 0x400 }, { W1 + 16, 1 }, { W1 + 32, hdr }, { W1 + 36, 0x500 } };
+            for (int[] s : st) { n.c.tiles[7].core.store(n.c.cycle + 1, s[0], s[1], -1); n.step(); }
+            for (int i = 0; i < 40; i++) n.step();
+            System.out.print(n.c.violationReport());
+        }
+        {   // invariant 2's phases at the counters-done latch (TileControl.java:280, sram.newPhase; W22's F6; W26): on tile 12,
+            // a run copies A -> B, its counters done (a new phase), a run copies B -> A: no violation; a third run reads and
+            // writes one buffer: flagged, with its phase number
+            Net n = new Net(Net.cfg(-1));
+            Tile p = n.c.tiles[12];
+            final int A = 0x20000, B = 0x40000, N = 64;
+            for (int i = 0; i < N; i++) p.sram.poke64(A + 2 * i, 0xA000L + i);
+            int[][] runs = { { A, B }, { B, A }, { A, A + 2 * N - 16 } };
+            for (int r = 0; r < 3; r++) {
+                p.setStream(r, Fields.streamSrc(runs[r][0]), 0, Fields.streamCount(N, Fields.SIZE_64, 1, LinkWord.M_SRC, 0));
+                p.setPtr(12, runs[r][1]); p.dir.remaining[1] = N;
+                p.setMasterConfig(Fields.masterConfig(Fields.RUN_STREAMS, r, 1, 0, 0, 1));
+                p.pulse(Fields.PULSE_START);
+                n.c.run(600);
+            }
+            System.out.print(n.c.violationReport());
+            System.out.println("disjoint-buffer accesses counted: " + p.sram.disjointViolations);
+        }
         {   // the message cap (maxViolationMessages): the count goes on
             Config k = Net.cfg(-1); k.maxViolationMessages = 3;
             Net n = new Net(k);

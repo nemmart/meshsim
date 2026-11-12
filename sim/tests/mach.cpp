@@ -229,6 +229,8 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
         m.sim->unit<units::HistStore>(units::tile_unit(k, "hist")).host_poke = true;
         m.sim->unit<units::TileCtl>(units::tile_unit(k, "ctl")).host_on = true;
     }
+    for (unsigned k = 64; k < m.nunits; k++)              // C&C 1-3 as cores: their blocks take the test's writes too (W23)
+        m.sim->unit<units::TileCtl>(units::unit_prefix(k) + "ctl").host_on = true;
     m.shifted = {m.sim->type_of(units::tile_unit(0, "ctl")), m.sim->type_of(units::tile_unit(0, "core"))};
     if (!c.cc_cores) m.lines = {m.sim->type_of("row0"), m.sim->type_of("cnc")};
     CheckSwitches sw;

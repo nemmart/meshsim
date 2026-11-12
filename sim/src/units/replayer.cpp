@@ -41,7 +41,9 @@ void Replayer::record(int64_t t, uint16_t c, uint64_t a, uint64_t b, uint64_t x)
 }
 void Replayer::violate(int64_t t, uint16_t c, uint64_t a, uint64_t b, uint64_t x) {
     record(t, c, a, b, x);
-    sim::check::record(uint64_t(t), int(me), sim::check::Kind::PERIPH_VIOLATION, c, a, b, x);   // W20 (F2): ref's host.violate
+    // W20 (F2): ref's host.violate; reported at t + 1 (W25's F8: ref's slot passes it to the block, whose counter the
+    // checker sees at the end of the next cycle: v1.3 reports 23808 for a violation at 23807)
+    sim::check::record(uint64_t(t) + 1, int(me), sim::check::Kind::PERIPH_VIOLATION, c, a, b, x);
 }
 
 void Replayer::fact_text(const ReplayerFact& f, char* buf, size_t n) {

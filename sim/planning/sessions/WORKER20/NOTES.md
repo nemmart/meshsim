@@ -112,6 +112,9 @@ remaining kinds, interleaved as the suites ask.
   suite builds only (its FIFO peaks and latencies are kept there; FATAL otherwise). MachSelf's PhaseLog case (the a2a
   with AccountingTest's namer: report and CSV, seeds -1 and 4) line for line, gcc and clang. accounting-full's CSV is
   W23's step (AccountingTest) on the runner.
+- **Two fixes**: the register blocks of C&C 1-3 as cores take the test's writes too (`host_on`; W23's errorPath, C&C 2's
+  ERRORS bit); a peripheral's violation is reported at t + 1, as v1.3's (W25's F8: ref's slot passes it to the block,
+  whose counter the checker sees at the next cycle's end). (The text has no cycle: checker.cpp unchanged.)
 - Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
   after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
 

@@ -2,7 +2,7 @@
 
 *For the edits to the preamble (line 28) and section 9 (line 2942). Line numbers are `v1.3/spec/machine-spec.md`'s
 (`ops` = `replayer-opcodes.md`); code paths are under `sim/`. Searched: `src/units/`, `src/check.h`, `tests/mach.cpp`,
-`tests/checker.cpp`, 2026-11-12. A "not found" means that search found no check; it is a finding, to confirm.*
+`tests/checker.cpp`, 2026-11-12, again after merging `main` the same day (invariant 8's strict mode and the Tracer's facts landed then). A "not found" means that search found no check; it is a finding, to confirm.*
 
 **The mechanisms.**
 - **F**: FATAL, every build: the run aborts with a message naming the access (`src/base/fatal.h`).
@@ -24,7 +24,7 @@
 | 4 | expected arrivals land first (done early) | C+R | `CTL_DONE_EARLY`, `regblock.h:158` |
 | 5 | no bad packets | C+R; misaligned F | `DIR_BAD_PACKET` `director.h:127`, `INJ_*` `inject.cpp:48–53`; misaligned mode 0 `director.h:124` |
 | 6 | no `HIST` count past 17 bits | C | the overflow link `hist_ovf` (`tile_ctl.h:64`); `HIST_OVERFLOW` has no record site |
-| 8 | overwritten-unread results counted; strict mode | **not found** for the strict mode: `CMEM_REPLY_OVERWRITE` is gated on `strict_replies` (`tests/checker.cpp:168`) but has no record site; the read-port queue full: C (`tile_ctl.h:368`) |
+| 8 | overwritten-unread results counted; strict mode | C+R | `CMEM_REPLY_OVERWRITE` `tile_ctl.h:531`, reported under `strict_replies`; `CMEM_COMMAND_UNREAD` `:539`; the read-port queue full: C (`tile_ctl.h:368`) |
 | 9 | no unexpected arrival | C+R | `DIR_UNEXPECTED`, `director.h:161` |
 | 10 | gathers are local | C+R | `INJ_GATHER_ELSEWHERE` `inject.cpp:51`; `ag.h:332` (C) |
 | 11 | controller-memory writes keep to their places | C+R | `DIR_COMMAND_BLOCK`, `DIR_REPLY_BLOCK`, `DIR_PAST_CMEM`, `DIR_COMMAND_KIND` (`director.h:154–208`) |
@@ -37,7 +37,7 @@
 | 16, the replayer's | bad write; `RUN_CONFIG` while running; reserved expansion bits | F | `replayer.cpp:252`, `:312–331`, `:450` |
 | 16, the replayer's | the rest (two sources, …) | C+R | `PERIPH_VIOLATION`, `replayer.cpp:46` |
 | 16, the Tracer's | its undefined behaviour | F | `tracer.cpp:106` |
-| 16, the Tracer's | word 0 mid-segment, and its other flags | C | `tracer.cpp:45`, `:93` |
+| 16, the Tracer's | word 0 mid-segment, and its other flags | C+R | `TRACER_VIOLATION`, `tracer.cpp:97` |
 | 17 | a request names its counters; arrives armed | C+R | `DIR_UNEXPECTED` |
 | 17 | at most 1, 3 and 1 requests outstanding | **not found** | |
 | 17 | tag windows written as the file system directs; none during a group run | **not found** (the file system is deferred, item 119) | |
@@ -74,20 +74,21 @@
 | 1162 | a peripheral crediting a full counter | C | `event_counts.h:26` |
 | 1249 | `DMA_HDR` or `DMA_ADDR` changed mid-transfer | **not found** | |
 | 1430 | an expansion word with a reserved bit (UB) | F | `replayer.cpp:450` |
-| 1433, 1602, 1631; ops 10, 325, 339 | the replayer's per-row flags (an ignored field, a zero shift mask) | **not established** in this pass | |
+| 1433 | `shift_offset` set on a row other than `VirtualShiftData…` | C+R | `V_OFFSET_IMM`, `replayer.h:189`, through `PERIPH_VIOLATION` (`replayer.cpp:46`) |
+| 1602; ops 325 | a misaligned memory row | C+R | `V_MISALIGNED`, `replayer.h:194` |
+| 1631; ops 10, 339 | a zero shift mask | C+R | `V_UNDEFINED`, `replayer_alu.h:167–168`, `replayer.cpp:511` |
 | 1739, 1799, 1818 | the replayer's bad writes (UB) | F | `replayer.cpp:252, 312–331` |
-| 1839 | a pass with no state write since; a run while running | not established; F | `replayer.cpp:272` |
-| 2183 | an inline expansion with no `EXPANSION_TEMPLATE` store | **not established** | |
-| 2270 | a Tracer DMA waiting for data that never comes | **not established** | |
+| 1839 | a pass with no state write since the last | C+R | `V_NO_FLUSH`, `replayer.h:185` |
+| 1839 | a run while the replayer runs ("ignored, flagged") | F, **not ignored** | `replayer.cpp:272` |
+| 2183 | an inline expansion with no `EXPANSION_TEMPLATE` store | C+R | `V_INLINE_NO_TEMPLATE`, `tracer.cpp:516` |
+| 2270 | a Tracer transfer asking for more than its credits cover (UB) | **not found** (searched `tracer.cpp`, `periph_slot.cpp`) | |
 | 2455 | staging before arming | C+R | `DIR_UNEXPECTED` |
 | 2762 | `PULSE_DMA` while a run runs ("ignored, flagged") | F | `ag.h:145` |
 | 2775 | a counter sum past 2²⁰ − 1 | C+R | `CTL_COUNTER_WRAP`, `regblock.h:216` |
-| 2962 | the Tracer's word 0 mid-segment | C | `tracer.cpp:45` |
-| ops 254 | a non-contiguous PEXT mask, a statistic | not established | |
+| 2962 | the Tracer's word 0 mid-segment | C+R | `V_ADVICE_UNCONSUMED`, `TRACER_VIOLATION` (`tracer.cpp:97`) |
+| ops 254 | a non-contiguous PEXT mask, a statistic, not a check | counted | `pext_non_contiguous`, `replayer.cpp:509` |
 
 ## What follows for the edits
 
-The owner's three mechanisms hold as the rule: undefined behaviour F, the silent traps S, the other invariants
-counted and, in the debug and suite builds, reported. The exceptions above (size 11 counted, not fatal; misaligned
-stream addresses counted; invariants 3 and 6 counted with no fact; 22 a fact with no count; the checks not found) are
-in `FINDINGS.md`.
+Line 28 states the owner's three mechanisms as the rule. The cases that differ (`FINDINGS.md` 9–13) are listed in
+`spec/CHANGES-v1.3-to-v1.35.md`, as they stand; the list is to be brought to the freeze.

@@ -1,6 +1,6 @@
 # The edits: every line the restructuring changed or added
 
-*Written by `build.py`. 67 edited lines (heading 1, path 53, path+sim 2, path+version 1, sim 9, version 1) and 160 added lines. Kinds: **sim**, a statement about the simulator made true of v1.35; **path**, a path made true of v1.35's tree; **version**, the two version headers; **heading**, 8.11's heading, which would otherwise be false. Section 13's new text is among the added lines. Line numbers: the destination's (under `sim/spec/`) and the source's.*
+*Written by `build.py`. 67 edited lines (heading 1, path 53, path+sim 2, path+version 1, sim 9, version 1) and 166 added lines. Kinds: **sim**, a statement about the simulator made true of v1.35; **path**, a path made true of v1.35's tree; **version**, the two version headers; **heading**, 8.11's heading, which would otherwise be false. Section 13's new text is among the added lines. Line numbers: the destination's (under `sim/spec/`) and the source's.*
 
 ## Edited lines
 
@@ -477,29 +477,35 @@
 | `CHANGES-v1.3-to-v1.35.md` | 32 | - **A second READY pulse while the first is still visible** (D29). v1.35 keeps the spec's sticky bit and counts the case (`ready_repulses`); v1.3's read 0 at C&C 1 until the new pulse landed. Likewise an overflow that feeds `ERRORS` reaches the register block as an event, counted at t + 1. No reference program reaches either. |
 | `CHANGES-v1.3-to-v1.35.md` | 33 | - **C&C 1's peripheral applies a store one cycle later** (D33, D44): at t + 1, as every peripheral slot does, where v1.3's applied it within the store's cycle. C&C 1's own work (the watchdog's first count, a UART byte's start) runs a cycle later; one suite's printed figure differs by one cycle and is masked in its comparison. |
 | `CHANGES-v1.3-to-v1.35.md` | 34 | - **The request bus's credit latency is a setting** (D34): 0 is exact as v1.3's (every sender in the bus's domain); 3, the default, is the spec's, each port's leaf in its tile. They differ only when a node's 8-beat buffer fills, which is counted; the reference runs never reach it. |
-| `CHANGES-v1.3-to-v1.35.md` | 36 | ## The drivers the spec's measurements name |
-| `CHANGES-v1.3-to-v1.35.md` | 38 | The `[meas: …]` labels name v1.3's Java tests and drivers (Markers). What replaces each in v1.35: |
-| `CHANGES-v1.3-to-v1.35.md` | 40 | \\| v1.3 (Java) \\| v1.35 \\| |
-| `CHANGES-v1.3-to-v1.35.md` | 41 | \\|---\\|---\\| |
-| `CHANGES-v1.3-to-v1.35.md` | 42 | \\| NetTest (fan-in, `skewtable`) \\| `tests/suite_net.cpp` \\| |
-| `CHANGES-v1.3-to-v1.35.md` | 43 | \\| MemTest \\| `tests/suite_mem.cpp` \\| |
-| `CHANGES-v1.3-to-v1.35.md` | 44 | \\| Stage B \\| `tests/stageb.cpp` \\| |
-| `CHANGES-v1.3-to-v1.35.md` | 45 | \\| AllToAllTest (`measure`) \\| not yet ported (2026-11-12) \\| |
-| `CHANGES-v1.3-to-v1.35.md` | 46 | \\| ReadPortGatherTest \\| not yet ported (2026-11-12) \\| |
-| `CHANGES-v1.3-to-v1.35.md` | 47 | \\| SearchBench \\| not yet ported (2026-11-12) \\| |
-| `CHANGES-v1.3-to-v1.35.md` | 48 | \\| CondTest \\| not yet ported (2026-11-12) \\| |
-| `CHANGES-v1.3-to-v1.35.md` | 49 | \\| S1Bench \\| not yet ported (2026-11-12); `measure_s1` (`tests/mach.h`) is the harness side of its measurement \\| |
-| `CHANGES-v1.3-to-v1.35.md` | 50 | \\| SplitRun \\| not carried: its driver doesn't build in v1.3 \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 36 | ## Where v1.35's checks differ from the rule |
+| `CHANGES-v1.3-to-v1.35.md` | 38 | The machine specification's preamble gives the rule: undefined behaviour is fatal, the silent traps stop the core, and every other invariant is counted and, in the debug and suite builds, reported. As of 2026-11-12 these cases differ: |
+| `CHANGES-v1.3-to-v1.35.md` | 40 | - **Counted, not fatal:** a packet of size 11 (3.1, undefined); a stream with a misaligned source or destination, or with *d* = 126 from a mesh tile (4.2), which are also not reported. |
+| `CHANGES-v1.3-to-v1.35.md` | 41 | - **Counted but not reported:** a late rotation (invariant 3) and a `HIST` count past 17 bits (invariant 6). **Reported but not counted** in the release build: uncounted traffic other than mode 0 (invariant 22). |
+| `CHANGES-v1.3-to-v1.35.md` | 42 | - **Fatal, where the spec says ignored and flagged:** a run started while the replayer runs (4.19.9), and `PULSE_DMA` while a run is running (8.6); invariant 26 and 4.17.2 make both undefined. |
+| `CHANGES-v1.3-to-v1.35.md` | 43 | - **Not checked:** a buffer both read and written in one run (invariant 2); `DMA_HDR` or `DMA_ADDR` changed mid-transfer (4.17.9); the 1, 3 and 1 requests outstanding, the tag windows and reads during a group run (invariant 17); one source per destination for modes 1–3 into big SRAM (invariant 18); the overtaking read (invariant 24), which only the harness's S1 measurement covers; a Tracer transfer asking for more than its credits cover (4.21). |
+| `CHANGES-v1.3-to-v1.35.md` | 45 | ## The drivers the spec's measurements name |
+| `CHANGES-v1.3-to-v1.35.md` | 47 | The `[meas: …]` labels name v1.3's Java tests and drivers (Markers). What replaces each in v1.35: |
+| `CHANGES-v1.3-to-v1.35.md` | 49 | \\| v1.3 (Java) \\| v1.35 \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 50 | \\|---\\|---\\| |
+| `CHANGES-v1.3-to-v1.35.md` | 51 | \\| NetTest (fan-in, `skewtable`) \\| `tests/suite_net.cpp` \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 52 | \\| MemTest \\| `tests/suite_mem.cpp` \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 53 | \\| Stage B \\| `tests/stageb.cpp` \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 54 | \\| AllToAllTest (`measure`) \\| not yet ported (2026-11-12) \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 55 | \\| ReadPortGatherTest \\| not yet ported (2026-11-12) \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 56 | \\| SearchBench \\| not yet ported (2026-11-12) \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 57 | \\| CondTest \\| not yet ported (2026-11-12) \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 58 | \\| S1Bench \\| not yet ported (2026-11-12); `measure_s1` (`tests/mach.h`) is the harness side of its measurement \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 59 | \\| SplitRun \\| not carried: its driver doesn't build in v1.3 \\| |
 | `history/README.md` | 1 | # spec/history |
 | `history/README.md` | 3 | What v1.35's restructuring took out of v1.3's spec, moved whole and unchanged: each version's `CHANGES-*` guide, the four decisions logs the spec cites (`DECISIONS-v1.2.md` to `DECISIONS-v1.3.md`), the preamble's "in brief" blocks and history companions (`machine-spec-v1.3-preamble.md`), and section 13 as it stood (`machine-spec-v1.3-section-13.md`). |
 | `history/README.md` | 5 | These are history: their paths and line numbers are v1.3's, and nothing here is kept true of v1.35. Where a log and `spec/machine-spec.md` differ, the spec is the authority. Carried text, here and in the spec, keeps its worker names and session codes: the restructuring moves text and doesn't rewrite it. |
-| `history/README.md` | 7 | `EDITS.md` lists every line the restructuring changed or added (it moves here from `spec/check/` at the end). |
+| `history/README.md` | 7 | `EDITS.md` lists every line the restructuring changed or added, with the old and new text of each edit. |
 | `jolt/README.md` | 1 | # spec/jolt |
 | `jolt/README.md` | 3 | The Jolt-specific units, plugged into the platform's peripheral slot (4.17): `replayer.md` (4.19, with its part of 8.11, its invariant and parameters), `tracer.md` (4.21, 8.16, its invariant and parameters) and the replayer's opcode appendix, `replayer-opcodes.md`. Section numbers are the machine specification's; `spec/machine-spec.md` keeps a stub under each, and its section 13 indexes the items listed here. |
 | `check/README.md` | 1 | # spec/check |
-| `check/README.md` | 3 | The tools that restructured v1.3's spec as v1.35's and prove it a move. They read `v1.3/`, so this folder is left out of the frozen copy; at the end `EDITS.md` moves to `spec/history/`. |
+| `check/README.md` | 3 | The tools that restructured v1.3's spec as v1.35's and prove it a move. They read `v1.3/`, so this folder is left out of the frozen copy; the record of every edit is `spec/history/EDITS.md`. |
 | `check/README.md` | 5 | - `MAP.md`: the plan (where each unit went, the new section 13, the edits), reviewed before the move; `map.tsv`, its line ranges. |
-| `check/README.md` | 6 | - `build.py`: builds the destinations from `v1.3/` by line range, applies the edits, writes `map.tsv`, `edits.json` and `EDITS.md`. |
+| `check/README.md` | 6 | - `build.py`: builds the destinations from `v1.3/` by line range, applies the edits, writes `map.tsv`, `edits.json` and `spec/history/EDITS.md`. |
 | `check/README.md` | 7 | - `check_move.py`: the proof (run from the repository root): every source line in exactly one destination, unchanged and in order, or an edit; every destination line a source line, an edit or added; every section number a heading; every path present. |
 | `check/README.md` | 8 | - `inventory.py`, `section13.py`: the source's units, and section 13's statuses with their evidence. |
 | `check/README.md` | 9 | - `MECHANISMS.md`: what v1.35's meshsim does for each check the spec promises; `FINDINGS.md`: what looks wrong, for the owner. |

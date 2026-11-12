@@ -1154,6 +1154,256 @@
 "history/machine-spec-v1.3-section-13.md",
 3,
 "*Moved whole from `v1.3/spec/machine-spec.md` (lines 3094–3458) in v1.35, unchanged; its paths and line references are v1.3's. Today's open items are `spec/machine-spec.md` section 13.*"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+1,
+"# v1.3 to v1.35"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+3,
+"*What v1.35 changes against v1.3. The hardware is v1.3's; the simulator is v1.3's rewritten in C++ (`src/`); the spec is v1.3's, restructured.*"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+5,
+"## For the RTL"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+7,
+"**Nothing changes.** v1.35's hardware is v1.3's, unit for unit: every normative statement, register, number and parameter of v1.3's spec stands. The guide from v1.26.1 is still `spec/history/CHANGES-v1.26.1-to-v1.3.md`."
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+9,
+"## Where v1.3's spec went"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+11,
+"Every section keeps its number; a section that moved leaves a one-line stub under its number in `spec/machine-spec.md`."
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+13,
+"| v1.3 | v1.35 |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+14,
+"|---|---|"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+15,
+"| `machine-spec.md`, all but what follows | `spec/machine-spec.md`, the platform |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+16,
+"| 4.19, the replayer; 8.11's replayer window; its invariant (9, 16) and parameters (10) | `spec/jolt/replayer.md` |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+17,
+"| 4.21, the Tracer; 8.16, its window; its invariant (9, 16) and parameters (10) | `spec/jolt/tracer.md` |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+18,
+"| `replayer-opcodes.md`, the appendix | `spec/jolt/replayer-opcodes.md` |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+19,
+"| `schedule.md` | `spec/schedule.md` |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+20,
+"| the preamble's \"in brief\" blocks and its companions for the history documents | `spec/history/machine-spec-v1.3-preamble.md` |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+21,
+"| section 13 as it stood | `spec/history/machine-spec-v1.3-section-13.md`; the new section 13 lists what is open today |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+22,
+"| the `CHANGES-*` files; `planning/DECISIONS-v1.2.md` to `-v1.3.md` | `spec/history/`, names unchanged |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+24,
+"Every statement about the simulator and every path was made true of v1.35; nothing else in the text changed."
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+26,
+"## The simulator's deliberate differences from v1.3's"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+28,
+"v1.35's meshsim matches v1.3's results exactly, and its cycle counts exactly except in these cases, each approved and recorded (the decision in brackets):"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+30,
+"- **A counter store and a decrement in the same cycle** (D27). The traffic director judges a due decrement without the core's counter store of the same cycle, which reaches the register block a cycle later; v1.3's simulator did the same through its fixed step order. No reference program reaches the case."
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+31,
+"- **A router FIFO's overflow is counted at t + 1** (D28), with its `ERRORS` bit. v1.3's counted it whenever the FIFO was next touched, a variable number of cycles late. No reference program overflows one."
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+32,
+"- **A second READY pulse while the first is still visible** (D29). v1.35 keeps the spec's sticky bit and counts the case (`ready_repulses`); v1.3's read 0 at C&C 1 until the new pulse landed. Likewise an overflow that feeds `ERRORS` reaches the register block as an event, counted at t + 1. No reference program reaches either."
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+33,
+"- **C&C 1's peripheral applies a store one cycle later** (D33, D44): at t + 1, as every peripheral slot does, where v1.3's applied it within the store's cycle. C&C 1's own work (the watchdog's first count, a UART byte's start) runs a cycle later; one suite's printed figure differs by one cycle and is masked in its comparison."
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+34,
+"- **The request bus's credit latency is a setting** (D34): 0 is exact as v1.3's (every sender in the bus's domain); 3, the default, is the spec's, each port's leaf in its tile. They differ only when a node's 8-beat buffer fills, which is counted; the reference runs never reach it."
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+36,
+"## The drivers the spec's measurements name"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+38,
+"The `[meas: …]` labels name v1.3's Java tests and drivers (Markers). What replaces each in v1.35:"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+40,
+"| v1.3 (Java) | v1.35 |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+41,
+"|---|---|"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+42,
+"| NetTest (fan-in, `skewtable`) | `tests/suite_net.cpp` |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+43,
+"| MemTest | `tests/suite_mem.cpp` |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+44,
+"| Stage B | `tests/stageb.cpp` |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+45,
+"| AllToAllTest (`measure`) | not yet ported (2026-11-12) |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+46,
+"| ReadPortGatherTest | not yet ported (2026-11-12) |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+47,
+"| SearchBench | not yet ported (2026-11-12) |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+48,
+"| CondTest | not yet ported (2026-11-12) |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+49,
+"| S1Bench | not yet ported (2026-11-12); `measure_s1` (`tests/mach.h`) is the harness side of its measurement |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+50,
+"| SplitRun | not carried: its driver doesn't build in v1.3 |"
+],
+[
+"history/README.md",
+1,
+"# spec/history"
+],
+[
+"history/README.md",
+3,
+"What v1.35's restructuring took out of v1.3's spec, moved whole and unchanged: each version's `CHANGES-*` guide, the four decisions logs the spec cites (`DECISIONS-v1.2.md` to `DECISIONS-v1.3.md`), the preamble's \"in brief\" blocks and history companions (`machine-spec-v1.3-preamble.md`), and section 13 as it stood (`machine-spec-v1.3-section-13.md`)."
+],
+[
+"history/README.md",
+5,
+"These are history: their paths and line numbers are v1.3's, and nothing here is kept true of v1.35. Where a log and `spec/machine-spec.md` differ, the spec is the authority. Carried text, here and in the spec, keeps its worker names and session codes: the restructuring moves text and doesn't rewrite it."
+],
+[
+"history/README.md",
+7,
+"`EDITS.md` lists every line the restructuring changed or added (it moves here from `spec/check/` at the end)."
+],
+[
+"jolt/README.md",
+1,
+"# spec/jolt"
+],
+[
+"jolt/README.md",
+3,
+"The Jolt-specific units, plugged into the platform's peripheral slot (4.17): `replayer.md` (4.19, with its part of 8.11, its invariant and parameters), `tracer.md` (4.21, 8.16, its invariant and parameters) and the replayer's opcode appendix, `replayer-opcodes.md`. Section numbers are the machine specification's; `spec/machine-spec.md` keeps a stub under each, and its section 13 indexes the items listed here."
+],
+[
+"check/README.md",
+1,
+"# spec/check"
+],
+[
+"check/README.md",
+3,
+"The tools that restructured v1.3's spec as v1.35's and prove it a move. They read `v1.3/`, so this folder is left out of the frozen copy; at the end `EDITS.md` moves to `spec/history/`."
+],
+[
+"check/README.md",
+5,
+"- `MAP.md`: the plan (where each unit went, the new section 13, the edits), reviewed before the move; `map.tsv`, its line ranges."
+],
+[
+"check/README.md",
+6,
+"- `build.py`: builds the destinations from `v1.3/` by line range, applies the edits, writes `map.tsv`, `edits.json` and `EDITS.md`."
+],
+[
+"check/README.md",
+7,
+"- `check_move.py`: the proof (run from the repository root): every source line in exactly one destination, unchanged and in order, or an edit; every destination line a source line, an edit or added; every section number a heading; every path present."
+],
+[
+"check/README.md",
+8,
+"- `inventory.py`, `section13.py`: the source's units, and section 13's statuses with their evidence."
+],
+[
+"check/README.md",
+9,
+"- `MECHANISMS.md`: what v1.35's meshsim does for each check the spec promises; `FINDINGS.md`: what looks wrong, for the owner."
 ]
 ]
 }

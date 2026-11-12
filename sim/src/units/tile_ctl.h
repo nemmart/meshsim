@@ -495,6 +495,26 @@ struct TileCore {
     // it reaches this step at t + 1), its reply and result words marked unread (one already unread: overwritten, the
     // strict fact), a write covering command slot 0 while it's unread (the fact); a word the core touched at t is read.
     CmemTrack track;
+    // W20 (PhaseLog): the overwrites track_port_b will count for port B's write of t when it reaches the next step, on a
+    // copy (ref counts them at t: a phase's counters taken right after t include them). Keep in step with track_port_b.
+    static uint64_t overwrites(CmemTrack& tr, uint64_t t, const sim::Word* w) {
+        const uint64_t h = w[1];
+        const uint32_t a = lw::addr(h), n = lw::chunks(lw::size(h));
+        if (lw::region(a) != lw::R_DMEM) return 0;
+        const uint32_t w0 = (lw::offset(a) & (MEM_BYTES - 1)) >> 2;
+        const bool result = lw::read_port_tag(h);
+        uint64_t k = 0;
+        for (uint32_t i = 0; i < n; i++) {
+            const uint32_t x = (w0 + i) & (MEM_WORDS - 1);
+            if (!(result || (x << 2 >= 0x7BC0 && x << 2 < 0x7BC0 + 1024))) continue;
+            uint64_t& b = tr.unread[x >> 6];
+            const uint64_t bit = 1ull << (x & 63);
+            if (b & bit) k++;
+            b |= bit;
+            if (tr.touched_at(x, t, false)) b &= ~bit;
+        }
+        return k;
+    }
     void track_port_b(uint64_t t, const sim::Word* w) {
         const uint64_t h = w[1];
         const uint32_t a = lw::addr(h), n = lw::chunks(lw::size(h));

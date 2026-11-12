@@ -199,3 +199,19 @@ the `-q` estimate, the guest delivery's whereabouts.
   row hook frees it twice at destruction (ASan: the hook's vector, then the slot). Worked around in `stageb.cpp`
   (the buffer detached before the machine is destroyed); the fix is W20's (mach.cpp, or the slot owning only buffers
   it allocated).
+- **`replay_shard`'s stages B and F** (Stage B on tile 0 alone with tiles 1-63 parked, and on the full chip; `--norow`;
+  the image from `--replay-build`). **The kit crosscheck's Stage B cases** (`oracle/acceptance_crosscheck.sh`, 9 windows
+  of 4,000 rows): AB at -j 1 (with -m) and -j 3, ABF, AB with -x 3, B with -n all, AB on the corrupted delivery: **all
+  equal to v1.3's kit** (results.csv with wall masked, VERDICT, SUMMARY's non-timing lines including the stage-B/F stall
+  lines, exit codes, every jvm log). AB on the planted-fault delivery: equal but for one line, F7.
+- Java's `%.3f` rounds the shortest decimal HALF_UP (12,946 / 4,000 = 3.2365 prints 3.237; printf gives 3.236): found
+  by the crosscheck, `java_fixed` now as W21's `java_2f`.
+- **F7 (for W20): a peripheral's ERRORS bit isn't a chip violation yet.** In the planted-fault window 5 (the manifest's
+  rows + 10: the replayer underflows), v1.3's StageB adds "meshsim: violations: 1;   cycle 43074 tile 0: ERRORS
+  [100000000000] set: peripheral 1 (invariant 15); " (the slot's ERRORS [11], the replayer's condition); ours has
+  no meshsim line. W20's invariant-15 recording covers the register block's bits, not the slot's peripheral bits. Like
+  F2's replayer violations, it is W20's (the boundary the owner set).
+- **The runner**: `stageb` added to SUITES; the step `stageb` stays PENDING (the CL4 line, W20's); v1.3's guest steps
+  kept as v1.3 has them (`DELIVERY=`: `stageb-<guest>`, `$S/stageb $DELIVERY state <guest>`, no reference log: none
+  exists), unrun on the runner (owner's ruling). The guest step's command smoke-tested on a stand-in synthetic delivery
+  named lrd_x0. `./run_tests.sh quick --check`: passes.

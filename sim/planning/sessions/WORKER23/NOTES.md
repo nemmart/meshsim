@@ -270,3 +270,11 @@ What I do test-side or add myself: C&C 1's model's `expect` (Cnc's field, set be
   {t, requestor, w2, w3} as ref's cc.results). ref's `then((c, t) -> ...)` step (wait for the tiles idle, then poke
   one record, in one step) I will try as `wait_until(...).call(...)` against ref's selftest figures once the two above
   exist (only its figures can tell whether the call's step costs C&C a cycle there); asked for only if they differ.
+- **Pushed 0b00a47e** after the four-build check (74 of 74 in each build).
+- **RecipeTest: sync and signal** ported (every line in ref's log, plain and shuffled; 2,040 of ref's 2,056 checks).
+  Left: selftest and boot, both on C&C 1's model's drainReports/results (boot also `reportsOf(9)` and `cc.reset(false)`):
+  W20's queue. RegBlockState gains `counter_write_at[8]` (ref's counterWriteAt; statistics).
+- **CtrlTest: commands** ported; its block of lines equal to ref's, plain and shuffled. CmemTrack (W26's, rv32.h) gains
+  `writes_cmd`, `landed_at` (ref's cmem.writesCmd, landedAt; statistics, set in track_port_b, which sees port B's
+  write of t at t + 1: the suite uses the recorded cycle, ref's `m.c.cycle` when its predicate saw the write). The
+  four FAILs left in the release build: registers' violation count and names (W26), misaligned's UB stops (W20's 11).

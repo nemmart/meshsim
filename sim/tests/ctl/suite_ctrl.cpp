@@ -4,7 +4,7 @@
 //
 // Control and the controller (spec 4.10-4.13, 6, 8). Programs are C (fw/tests/), prebuilt images.
 //
-// IN PROGRESS (NOTES.md, step 2): ported so far: fields, boot, registers, wfi, misaligned, romSize, blockCopy. The groups that need W20's pieces (phase_log, reset,
+// IN PROGRESS (NOTES.md, step 2): ported so far: fields, boot, registers, commands, wfi, misaligned, romSize, blockCopy. The groups that need W20's pieces (phase_log, reset,
 // the request bus, the checker's kinds, mid-run switches) come as those land; until then main() stops after the
 // groups ported, so the output is a prefix of ref's log.
 #include <cstdio>
@@ -221,6 +221,79 @@ void registers() {
     out("registers [meas: CtrlTest registers]: the configuration registers read back, write-only ones read 0; counters 20 bits, writes add and wrap (flagged); HIST 17, PTR 21, the STREAM arrays and GROUP 32 bits a word through the window; the send port in modes 0 and 1 to the tile itself at 32, 64 and 128 bits, ROUTER_ADDR + 4/8/16 at mode 0 and fixed under no-increment, W0-W2 cleared per send; counters done after each; the events' registers at reset; STATUS and done readable the next cycle");
 }
 
+
+// ================================================================ one- and two-command phases (6.3)
+void commands() {
+    suite::group("commands");
+    Mach m(Mach::cfg(shuffle));
+    const Mach::Image im = m.boot("cmd");
+    const unsigned N = 512;
+    for (unsigned k = 0; k < 64; k++) for (unsigned j = 0; j < N; j++) m.c.tile(k).sram_poke64(2 * j, uint64_t(k) << 32 | j);
+    // the next command goes out right after each GO (I-8)
+    m.c.cc().command(BROADCAST, 1 << 24 | 10, {5}).go()             // one-command phase: sum += 10 + 5
+        .command(BROADCAST, 1 << 24 | 20, {7}).go()                  // and again: sum += 27
+        .command(BROADCAST, 2 << 24).go()                            // configure
+        .command(BROADCAST, 3 << 24).go()                            // start
+        .command(BROADCAST, 4 << 24).go();                           // exit
+    // per GO and tile: the GO cycle as the tile saw it, and when its address generator started
+    int64_t go_seen[8][64] = {}, start_at[64] = {}, w5[64] = {}, l0[64], margin = INT64_MAX, margin0 = INT64_MAX;
+    uint64_t gos_at[64]; int gos_seen[64] = {}; int margin_tile = -1;
+    for (unsigned k = 0; k < 64; k++) { l0[k] = -1; gos_at[k] = m.c.tile(k).block().gos; }
+    // ref's predicate reads the controller memories' write counts and landedAt (here the core's port-B tracking: a
+    // write of t reaches it at t + 1, so the cycle is the recorded one, ref's `m.c.cycle` when its predicate saw it) and
+    // goVisible(cycle) (here the block's GO count as ref has it at the end of the cycle)
+    const bool ok = m.run([&] {
+        for (unsigned k = 0; k < 64; k++) {
+            const units::CmemTrack& tr = m.c.unit<units::TileCore>(unit_name(k, "core")).track;
+            if (int64_t(tr.writes_cmd) != w5[k]) {                    // a command write: how long after this tile's last GO?
+                w5[k] = int64_t(tr.writes_cmd);
+                const int g = gos_seen[k] - 1;
+                if (g >= 0 && tr.landed_at - go_seen[g][k] < margin) { margin = tr.landed_at - go_seen[g][k]; margin_tile = int(k); }
+            }
+            if (tr.landed_at != l0[k]) {                              // slot 0 written: how long after this tile's last GO?
+                l0[k] = tr.landed_at;
+                const int g = gos_seen[k] - 1;
+                if (g >= 0) margin0 = std::min(margin0, tr.landed_at - go_seen[g][k]);
+            }
+            const uint64_t gs = m.c.tile(k).block().gos;
+            if (gs != gos_at[k]) { gos_at[k] = gs; if (gos_seen[k] < 8) go_seen[gos_seen[k]++][k] = m.c.cycle(); }
+            const int64_t sa = m.c.unit<units::AddrGen>(unit_name(k, "ag")).started_at;
+            if (sa >= 0) start_at[k] = sa;
+        }
+        return m.all_stopped();
+    }, 100000);
+    suite::check(ok && m.all_exited(), "every tile ran the command loop to its exit: %s", m.halt_summary().c_str());
+    for (unsigned i = 0; i < 64; i++) {
+        suite::eq(42, core(m.c, i).x[10], "tile %u: sum of the two one-command phases", i);
+        suite::eq(5, m.word(i, im, "phases", 0), "tile %u: five commands taken", i);
+        suite::eq(5, m.word(i, im, "arg1s", 0), "tile %u: phase 0's argument (read before the next command landed)", i);
+        suite::eq(7, m.word(i, im, "arg1s", 1), "tile %u: phase 1's argument", i);
+        bool copy = true; for (unsigned j = 0; j < N; j++) if (m.c.tile(i).sram_peek64(0x20000 + 2 * j) != (uint64_t(i) << 32 | j)) copy = false;
+        suite::check(copy, "tile %u: the two-command phase's local copy landed", i);
+        suite::eq(6, int64_t(m.c.tile(i).block().gos), "tile %u: six GOs (the boot's and five phases')", i);
+    }
+    // the start store lies at the same distance from GO on every tile (identical code from WFI)
+    const std::vector<int> skew = m.c.start_skew();
+    const int64_t d0 = start_at[0] - go_seen[3][0]; bool same = true; int64_t skew_ok = 0;
+    for (unsigned i = 0; i < 64; i++) { if (start_at[i] - go_seen[3][i] != d0) same = false; if (go_seen[3][i] - go_seen[3][0] == skew[i] - skew[0]) skew_ok++; }
+    suite::check(same, "the address generator starts the same number of cycles after GO on every tile");
+    suite::eq(64, skew_ok, "GO reaches each tile with its 0/+1 skew");
+    no_violations(m.c, "commands");
+    // round trips
+    std::string sb = "command phases [meas: CtrlTest commands]: per GO, all-READY -> GO store (C&C) and READY round trip\n";
+    const auto ph = m.c.cc().phase_log();
+    for (size_t g = 0; g < ph.size(); g++)
+        sb += suite::str("  GO %zu: all READY at %lld, GO stored at %lld, seen by tiles at %lld-%lld\n", g, (long long)ph[g][0], (long long)ph[g][1],
+                         (long long)(go_seen[g][0] - skew[0]), (long long)(go_seen[g][0] - skew[0] + 1));
+    sb += suite::str("  two-command phase: start store %lld cycles after GO on every tile; local copy of %u records, start -> READY %lld cycles\n",
+                     (long long)d0, N, (long long)(ph.at(4)[0] - start_at[0]));
+    sb += suite::str("  the next command, sent right after GO: its first mailbox write lands %lld cycles after the tile saw GO at the earliest (tile %d), into the other argument block;\n"
+                     "  its slot 0 (zero-argument commands) %lld cycles after GO at the earliest, after the woken tile read the previous command word (the simulator checks every slot-0 landing)\n",
+                     (long long)margin, margin_tile, (long long)margin0);
+    while (!sb.empty() && (sb.back() == '\n' || sb.back() == ' ')) sb.pop_back();
+    out(sb);
+}
+
 // ================================================================ WFI and the local wake (4.12, 6.3)
 uint64_t spurious_sum(Chip& c) { uint64_t s = 0; for (unsigned k = 0; k < 64; k++) s += c.tile(k).block().spurious_edges; return s; }
 void wfi() {
@@ -324,7 +397,7 @@ int main(int argc, char** argv) {
     fields();
     boot();
     registers();
-    // commands(): W20 (Cc::phase_log)
+    commands();
     wfi();
     // faults(): W20 (reset, the request bus, check_errors mid-run)
     misaligned();

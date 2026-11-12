@@ -512,6 +512,7 @@ struct TileCore {
             if (track.touched_at(x, t, false)) b &= ~bit;
         }
         if (w0 <= CmemTrack::CMD_DWORD && w0 + n > CmemTrack::CMD_DWORD) {
+            track.writes_cmd++; track.landed_at = int64_t(t);         // W23: statistics (writesCmd, landedAt)
             if (track.slot0_unread) {
                 track.unread_commands++;
                 if (rv.ck_tile >= 0) sim::check::record(t, rv.ck_tile, sim::check::Kind::CMEM_COMMAND_UNREAD, 0, w[0], h, w[2]);

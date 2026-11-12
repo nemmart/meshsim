@@ -124,9 +124,12 @@ void phases(int64_t seed) {
     say("%s", m.c.phases().report().c_str());
     say("%s", m.c.phases().csv().c_str());
 }
-void trace_case() {                                          // H6: MachSelf.trace()
+void trace_case(bool rdpeak = false) {                       // H6: MachSelf.trace(); rdpeak: W24's F6 (PhaseLog's read-port peak)
     const int N = 4096;
-    Mach m(Mach::cfg(-1));
+    mach::MachConfig cfg = Mach::cfg(-1);
+    if (rdpeak) cfg.sram_read_latency = 4;
+    Mach m(cfg);
+    if (rdpeak) m.c.phases();
     test::JavaRandom r(N);
     for (unsigned p = 0; p < 64; p++) {
         std::vector<int64_t> k(N);
@@ -138,11 +141,17 @@ void trace_case() {                                          // H6: MachSelf.tra
     }
     m.boot("search");
     for (unsigned p = 0; p < 64; p++) m.c.tile(p).record_trace();
-    m.c.cc().command(units::lw::BROADCAST, 1u << 24 | 0u << 8 | 4u).go();
+    m.c.cc().command(units::lw::BROADCAST, 1u << 24 | (rdpeak ? 1u : 0u) << 8 | 4u).go();
     m.run([&] { return !m.c.cc().busy(); }, 5000000);
     uint64_t d0[64];
     for (unsigned p = 0; p < 64; p++) d0[p] = m.c.tile(p).block().dones;
     const bool ok = m.run([&] { for (unsigned p = 0; p < 64; p++) if (m.c.tile(p).block().dones <= d0[p]) return false; return true; }, 5000000);
+    if (rdpeak) {
+        m.c.phases().close();
+        say("rdpeak: %s at cycle %lld\n", ok ? "finished" : "NOT finished", (long long)m.c.cycle());
+        say("%s", m.c.phases().csv().c_str());
+        return;
+    }
     say("trace: %s at cycle %lld\n", ok ? "finished" : "NOT finished", (long long)m.c.cycle());
     for (unsigned t : {0u, 7u, 63u}) {
         const auto l = m.c.tile(t).trace_log();
@@ -154,6 +163,7 @@ void trace_case() {                                          // H6: MachSelf.tra
 void machself() {
     out.clear();
     trace_case();
+    if (sim::check::kOn) trace_case(true);                 // (PhaseLog: the debug and suite builds)
     if (sim::check::kOn) { phases(-1); phases(4); }        // (PhaseLog's FIFO peaks: the debug and suite builds)
     stageb(true);
     stageb(false);
@@ -429,8 +439,8 @@ std::string without_violations(const std::string& x) {
         if (e == std::string::npos) e = x.size();
         std::string l = x.substr(at, e - at);
         at = e + 1;
-        if (l.rfind("phases seed ", 0) == 0) skip = true;     // PhaseLog's sections: the debug and suite builds only
-        if (l.rfind("stageb ", 0) == 0) skip = false;
+        if (l.rfind("phases seed ", 0) == 0 || l.rfind("rdpeak: ", 0) == 0) skip = true;   // PhaseLog's: debug and suite only
+        if (l.rfind("stageb ", 0) == 0 || (skip && l.rfind("phases seed ", 0) != 0 && l.rfind("a2a ", 0) == 0)) skip = false;
         if (skip) continue;
         if (l.rfind("violations: ", 0) == 0 || l.rfind("  cycle ", 0) == 0) continue;
         const size_t v = l.find("; violations ");

@@ -98,7 +98,7 @@ std::array<int64_t, PhaseLog::NP> PhaseLog::peaks() const {   // (the debug and 
         const units::TableStore& ts = p.unit<units::TableStore>("ts");
         mx(pk[6], ts.q_we.peak); mx(pk[7], p.unit<units::HistStore>("hist").q.peak);
         mx(pk[8], ts.q_stream.peak); mx(pk[8], ts.q_group.peak);
-        mx(pk[9], int64_t(p.unit<units::TileCore>("core").rp_peak));
+        mx(pk[9], rp_peak_[k]);
     }
 #endif
     return pk;
@@ -119,12 +119,24 @@ void PhaseLog::reset_peaks() {
         h.q.peak = h.q.n;
         units::BigSram& m = p.unit<units::BigSram>("sram");
         for (unsigned a = 0; a < units::BigSram::AREAS; a++) m.queue_peak[a] = m.count[a];
-        units::TileCore& core = p.unit<units::TileCore>("core");
-        core.rp_peak = core.rp_stored - p.unit<units::Injection>("inj").rs.rp_injected_n;
+        const units::TileCore& core = p.unit<units::TileCore>("core");
+        rp_peak_[k] = int64_t(core.rp_stored - p.unit<units::Injection>("inj").rs.rp_injected_n);   // ref's peak = inUse()
+        rp_seen_[k] = core.rp_stored;
         units::Injection& in = p.unit<units::Injection>("inj");
         in.rs.lat_max[0] = in.rs.lat_max[1] = in.rs.lat_max[2] = 0;
     }
 #endif
+}
+
+void PhaseLog::after_cycle() {
+    for (unsigned k = 0; k < 64; k++) {
+        const TileRef p = c_->tile(k);
+        const units::TileCore& core = p.unit<units::TileCore>("core");
+        if (core.rp_stored == rp_seen_[k]) continue;
+        rp_seen_[k] = core.rp_stored;
+        const int64_t used = int64_t(core.rp_stored - p.unit<units::Injection>("inj").rs.rp_injected_n);
+        if (used > rp_peak_[k]) rp_peak_[k] = used;
+    }
 }
 
 void PhaseLog::on_go(int64_t t, int32_t word) {

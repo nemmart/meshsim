@@ -299,7 +299,8 @@ struct TileCore {
     uint8_t rp_tile = 0;
     unsigned rp_depth = 64;
     uint64_t rp_stored = 0, rp_dropped = 0, rp_violations = 0;
-    uint64_t rp_peak = 0;              // W20 (P2): ref's ReadPort.peak, entries in use (PhaseLog; statistics only)
+    uint64_t rp_peak = 0;              // W20 (P2): entries in use after a store, counted here (a statistic; PhaseLog keeps
+                                       //   ref's own rule, the same cycle's injection counted out: phase_log.h)
     // W20 (harness-only; P2): ref's coreless test machine (Config.coreless, `core.enabled = false`): the core never
     // runs; port B's writes still land in its memories (ref's ControllerMemories does that apart from the core).
     bool coreless = false;

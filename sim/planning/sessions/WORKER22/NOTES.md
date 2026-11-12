@@ -287,3 +287,12 @@ W22-17. **SearchBench needs the TRACE store log** (ref's `p.ctl.traceHook = (t, 
   W23). gcc caught a `-Wdangling-reference` in suite_net and suite_engine (a TileRef temporary), fixed in 6e0d9e2d.
   (test_suite_replayer failed once in gcc debug only because an interrupted build had deleted suite_replayer; rebuilt,
   it passes.)
+- **SearchBench** (`tests/suite_search.cpp`; Java's `%.Nf` and `%,d` in `tests/p4_java.cpp`): on W20's TRACE log
+  (record_trace). **Every printed line equal to searchbench.log** (both N, every cycles-per-step row, both fits, the
+  63-search totals): 54 of 56 assertions. The 2 left are \"no violations\" for each N: **finding F4 (for W20)**: the C++
+  checker reports 3 violations ref doesn't: \"a command landed in command slot 0 before the core read the previous
+  one (6.3)\" at cycle 139 on tile 0 and 143 on tiles 8 and 56, src 64, dst 126, payload 0x01800001 (the first
+  broadcast command after the boot). Recorded by TileCore's port-B tracking (src/units/tile_ctl.h, CMEM_COMMAND_UNREAD;
+  W20's). The machine's timing is ref's (every measured figure equal), so the check's bookkeeping of the boot ROM's
+  slot-0 read differs from ControllerMemories': the three tiles nearest C&C 1, where the command lands soonest after
+  the boot. Reproduce: `build/clang-suite/suite_search` (MODE=suite).

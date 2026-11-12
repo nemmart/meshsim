@@ -11,7 +11,7 @@
 # exit codes, and every jvm-K.log. The deliveries: synthetic_delivery's (seed 11; equal to v1.3 patched as D43, W19),
 # a planted-fault copy (rows, end state, the manifest's rows; hashes refreshed) and a corrupted copy (CORRUPT kinds).
 # --calibration: also both calibrate.sh (128 windows of 65,536 rows: the runner), each run's directory compared.
-# STATUS: stage A only until Stage B lands (B and F wait for W20's harness); then the cases add AB, ABF, -x, -q 512.
+# Stages A, B and F; -q 512 waits for the machine's replayer log-queue field (W20's Config fields).
 set -u
 SIM=$(cd "$(dirname "$0")/.." && pwd); M=$SIM/ref/meshsim
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
@@ -96,6 +96,13 @@ run_case a-all       "$T/d"  -p syn -f 0 -n all -j 4 -s A
 run_case a-past-end  "$T/d"  -p syn -f 5 -n 8 -j 2 -s A
 run_case a-faults    "$T/df" -p syn -f 0 -n 9 -j 3 -s A
 run_case a-corrupt   "$T/dc" -p syn -f 0 -n 9 -j 2 -s A
+run_case ab-j1       "$T/d"  -p syn -f 0 -n 9 -j 1 -s AB -m "$MS"
+run_case ab-j3       "$T/d"  -p syn -f 0 -n 9 -j 3 -s AB
+run_case abf         "$T/d"  -p syn -f 0 -n 4 -j 2 -s ABF
+run_case ab-x3       "$T/d"  -p syn -f 0 -n 9 -j 2 -s AB -x 3
+run_case b-all       "$T/d"  -p syn -f 0 -n all -j 3 -s B
+run_case ab-faults   "$T/df" -p syn -f 0 -n 9 -j 3 -s AB
+run_case ab-corrupt  "$T/dc" -p syn -f 0 -n 9 -j 2 -s AB
 if [ "${1:-}" = --calibration ]; then
   (cd "$T/v13" && ./calibrate.sh "$T/c13" "$T") > "$T/c13.out" 2>&1
   (cd "$T/v135" && ./calibrate.sh "$T/c135" "$T") > "$T/c135.out" 2>&1

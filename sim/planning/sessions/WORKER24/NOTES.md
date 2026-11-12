@@ -167,3 +167,13 @@ Commit and push after each step; each step checked against `ref`.
   still 0 in every phase** (v1.3: nonzero in 4,417 rows of these 84 files): W26 counts it
   (`TileCore::track.overwritten_unread`, rv32.h) but PhaseLog doesn't read it yet (tests/phase_log.cpp:79,
   `v[17] += 0`, "pending"). For W20 through the integrator; then the phases CSVs again.
+- **Quest 183** (claimed after re-reading NUMBERS.md; pushed): v1.3's `Sweep full` (sortlogs.sh's new sweep-full step) and the C++ `sweep full` side by side on the runner, the log and CSV byte for byte; v1.3's become the fixtures.
+- **Quest 183's result** (runner, i5-14400F; C++ 423 s, v1.3 905 s, side by side, not timing): v1.3's `Sweep full`
+  committed as `tests/sort/ref/sweep-full.{log,csv}`. The C++ `sweep full` equals it in every cycle count, delta and peak
+  (the CSV but its violations column), **but reports 3 violations in every point** (and so no band): "a command landed
+  in command slot 0 before the core read the previous one (6.3)", tile 0, at the first command after the boot (cycles
+  77-139). **F7, a regression on main from W26's invariant 8 (020519bd, CMEM_COMMAND_UNREAD)**: the build of 183 had
+  merged it; `sweep quick` on today's main fails the same way (the sweep-quick step: LOG DIFFERS), while it was
+  byte-identical before. v1.3 reports nothing there. The sort's runs aren't affected (their first command comes after
+  the cores wait in WFI; the 92 kit runs passed after the merge). For W26 through the integrator; then `sweep full`
+  again (its fixtures are in place).

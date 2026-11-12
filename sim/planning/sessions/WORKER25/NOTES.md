@@ -106,3 +106,14 @@ the `-q` estimate, the guest delivery's whereabouts.
   The replayer's tests, the slot tests, ReplayConf (gcc and clang, debug and release), test_t2_harness, test_g1_replay,
   test_chain, test_tracer_slot (clang release): pass, unchanged.
 - **Shared file**: one line in the Makefile, `include tests/p7b.mk` (P7b's rules). Tell the integrator.
+- **E4 done: Stage A from the manifest.** `tests/stage_a.h` (shared with `replay_shard` and Stage B): ref's
+  ReplayDelivery.runWindow line for line (the line, the summary, every detail line of a failing window: the row
+  count, the first mismatching row with ref's fields, describe and diag.bin lines and the two rows before it, the
+  streams' consumption, the end state, `errorReport()` from F2's lists, the missing-template log), `tablesFor`, the
+  manifest's delivered windows, `consumedExactly`. `replay_delivery DELIVERY VARIANT [PROGRAM ...] [--keep-going]`
+  is ref's `java ReplayDelivery` (STOPPED line included); W15's list form is kept, its lines unchanged for passing
+  windows (its failure details are now ref's). Checked locally against ref's ReplayDelivery (scratch build): a
+  6-window seed-11 synthetic delivery (3,000 rows), all three variants, `cmp` equal; and the same with planted faults
+  (a flipped row byte with a diag.bin, a changed end-state register, a truncated rows.bin, the manifest's rows +10
+  and -10: an underflow and a row count) under --keep-going and stopping: equal, clang release and gcc debug. (The
+  kit's crosscheck script will carry this check.)

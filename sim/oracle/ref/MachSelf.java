@@ -19,8 +19,21 @@ final class MachSelf {
                 m.haltSummary(), m.exitValue(0), m.exitValue(63));
     }
 
-    static void a2a(long seed) {
-        Mach m = new Mach(Mach.cfg(seed));
+    /** SortTest's cfg.<field>=value (Options.setField), ref's own. */
+    static void setField(Config k, String f, String v) throws Exception {
+        var fld = Config.class.getDeclaredField(f); fld.setAccessible(true);
+        Class<?> t = fld.getType();
+        if (t == int.class) fld.setInt(k, Integer.parseInt(v));
+        else if (t == long.class) fld.setLong(k, Long.parseLong(v));
+        else if (t == boolean.class) fld.setBoolean(k, Boolean.parseBoolean(v));
+    }
+    static final String[] KIT = { "cfg.linkLatency=4", "cfg.cmLatency=4", "cfg.goLatency=4", "cfg.runLatency=8", "cfg.areaQueueDepth=4",
+            "cfg.sramReadLatency=3", "cfg.tsEngineLatency=2", "cfg.skewSeed=5", "cfg.checkDisjoint=false", "cfg.skew=true" };
+    static void a2a(long seed) { a2a(seed, false); }
+    static void a2a(long seed, boolean kit) {
+        Config cfg = Mach.cfg(seed);
+        if (kit) for (String a : KIT) { int eq = a.indexOf('='); try { setField(cfg, a.substring(4, eq), a.substring(eq + 1)); } catch (Exception e) { throw new RuntimeException(e); } }
+        Mach m = new Mach(cfg);
         A2A data = new A2A(7, 2000);
         for (Tile p : m.c.tiles) {
             int s = p.idx;
@@ -33,7 +46,7 @@ final class MachSelf {
         m.boot("a2a");
         m.c.cc.command(LinkWord.BROADCAST, 1 << 24).go().command(LinkWord.BROADCAST, 2 << 24).go().command(LinkWord.BROADCAST, 3 << 24).go();
         boolean ok = m.run(m::allStopped, 2_000_000);
-        report("a2a seed " + seed, m, ok);
+        report("a2a seed " + seed + (kit ? " kit" : ""), m, ok);
         StringBuilder pl = new StringBuilder("  phaseLog");
         for (long[] e : m.c.cc.phaseLog) pl.append(' ').append(java.util.Arrays.toString(e));
         System.out.println(pl);
@@ -113,6 +126,7 @@ final class MachSelf {
         }
         a2a(-1);
         a2a(4);
+        a2a(-1, true);
         {   // C&C 1-3 as cores: the boot through the host port, until C&C 1 reports the tiles running
             Mach m = new Mach(Mach.coresCfg(-1));
             m.bootCores("wfi");

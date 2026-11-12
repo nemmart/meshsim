@@ -7,7 +7,8 @@
 //     their SortFp references equal, and every check passing.
 //   - H7: SortTest's profiles (tile 0's per function, a pc range, the per-step watch) on a kv32 run: the output equal to
 //     ref's (tests/sort/ref/h7-uniform-kv32.log, first field aside).
-// The `sort` step's whole log waits for W20's PhaseLog (its peak lines); run_tests.sh has the long steps.
+// sort_test needs W20's PhaseLog, which runs in the debug and suite builds only: in a release build these tests pass
+// without running (a line says so); run_tests.sh has the long steps (MODE=suite).
 #include <unistd.h>
 
 #include <cstdio>
@@ -15,6 +16,7 @@
 #include <sstream>
 #include <string>
 
+#include "check.h"
 #include "harness.h"
 
 namespace {
@@ -27,6 +29,11 @@ std::string self_dir() {
     return p.substr(0, p.rfind('/'));
 }
 // the program's stdout and, apart, its stderr; its exit status
+bool release_skip() {
+    if (sim::check::kOn) return false;
+    std::fprintf(stderr, "test_sort_suites: a release build: sort_test runs in the debug and suite builds only (PhaseLog)\n");
+    return true;
+}
 int run(const std::string& args, std::string& out, std::string& err, const std::string& env = "") {
     char tmpl[] = "/tmp/test_sort_suites_XXXXXX";
     const int fd = mkstemp(tmpl);
@@ -54,6 +61,7 @@ size_t count(const std::string& s, const std::string& x) { size_t n = 0; for (si
 }  // namespace
 
 TEST(sort_p1_equals_refs_log_and_fingerprints) {
+    if (release_skip()) return;
     std::string out, err;
     const int st = run("-1 p1", out, err);
     std::ifstream f("tests/sort/ref/sort-p1.log", std::ios::binary);
@@ -69,6 +77,7 @@ TEST(sort_p1_equals_refs_log_and_fingerprints) {
 }
 
 TEST(sort_direct_and_th_paths_equal_refs_at_every_point) {
+    if (release_skip()) return;
     for (const char* only : {"uniform-k128", "reverse-kv32"}) {
         std::string out, err;
         const int st = run(std::string("-1 sort only=") + only, out, err);
@@ -79,6 +88,7 @@ TEST(sort_direct_and_th_paths_equal_refs_at_every_point) {
 }
 
 TEST(sort_profiles_equal_refs) {
+    if (release_skip()) return;
     std::string out, err;
     const int st = run("-1 run kind=uniform n=2000 fmt=kv32", out, err,
                        "SORT_PROFILE=1 SORT_PROF=010045ac-0100556c SORT_WATCH=split_get_cuts,step_loop,main");

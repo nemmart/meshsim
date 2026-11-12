@@ -104,7 +104,12 @@ struct MachConfig {
     // ---- C&C, the lines (6) ----
     unsigned go_latency = 8, run_latency = 1, ready_latency = 8, cnc_reaction = 1, stage_delay = 64;
     unsigned cnc_rx_depth = 64, cc_dma_depth = 4, cc_link_latency = 1;
-    bool done_gate = true;
+    bool done_gate = true, cnc_go_settle = true;
+    int error_latency = -1;            // -1: ready_latency (the C++ machine requires it so: one line per tile)
+    bool loopback_last = true, loopback_tokens = true;
+    int loopback_depth = -1;           // -1: read_tokens
+    unsigned replayer_log_entries = 256;   // the replayer's log queues (ref's -Dreplayer.logq; the kit's -q 512)
+    bool counter_store_clears_latch = true;   // (inert in ref: no unit reads it; likewise run_latency, stage_delay)
     // ---- the request bus (3.3, 4.18), the peripheral slot (4.17) ----
     unsigned request_fifo_depth = 128, req_hop_latency = 3;
     std::array<unsigned, 3> receive_queue_depth = {128, 256, 128};
@@ -134,8 +139,15 @@ struct MachConfig {
     unsigned ag_lookahead_used() const { return ag_lookahead > 0 ? unsigned(ag_lookahead) : 2 * ts_engine_latency + 2; }
     unsigned k_min() const;            // ref's kMin(): max(2L + 4, L + 4, cm_latency, rp_latency), L = ts_engine_latency
     MachConfig& with_ts_latency(unsigned L);   // ref's withTsLatency
-    // [step 3] ref's field by name ("cfg.<field>=value", ref's spelling): false and `err` for an unknown or dropped field
+    // ref's field by name (SortTest's `cfg.<field>=value`, ref's spelling and types: int, long, boolean as Java parses
+    // them): false and `err` for an unknown field, a dropped one (dropped() says why) or a bad value. Fields no unit of
+    // ref reads (runLatency, stageDelay, counterStoreClearsLatch; rpLatency only in kMin) are inert here too; errorLatency
+    // other than readyLatency and logTrace (until H6) stop the build, naming them: never silently ignored.
     bool set(const std::string& field, const std::string& value, std::string& err);
+    // Every `cfg.<field>=value` among args, in order (others left alone); false and `err` at the first bad one.
+    bool set_args(const std::vector<std::string>& args, std::string& err);
+    // The fields of ref's Config no v1.35 driver, kit, sweep or documented option sets (D41 Q4), each with its reason.
+    static const std::vector<std::pair<std::string, std::string>>& dropped();
 };
 
 // ============================================================================================ Fields (ref's Fields.java)

@@ -51,6 +51,39 @@ suites set is in `MachConfig` already. ref's shuffled logs differ from the unshu
 
 (none yet)
 
+### RequestBusTest's needs (2026-11-11): blocked on the harness
+
+RequestBusTest drives ref's `RequestBus` from Java as C&C's model would, on `Net(Config.machine())` (cores booted into
+the boot ROM's WFI). The C++ machine without `cc_cores` builds **no receive queues** (chip.cpp `add_request_bus`: they
+come only with the controller cores, which pop them over `pop`), and `mach::Net` is coreless only. So:
+
+9. **The machine as specified under Net** (ref's `new Net(Config.machine())` and `settle`), or the same through Mach.
+10. **The receive queues on the Java-C&C machine, popped from the harness** (ref's `RequestBus.get(target, t, word)`,
+    `pending`, `receive` (a pop, its credit returned to the root), `queue[target].size()`, `credits[]`, `underflows`,
+    `delivered` (with `deliveredAt`, `srcTile`), `dropped`), and **`controllerSend`** (a controller's request entering at
+    the root). Some are read-only (credits, sizes, counts) and could be accessors; the queues themselves, the pops and
+    the delivered log are new harness units or state.
+11. **A tile's request port from the harness** (ref's `req.setW(i, v)`, `req.send(t, w3)`: a REQUEST_SEND without the
+    core), and `req.canPush(t)` (the core's `can_push` exists).
+12. **The core's data port from the harness** (ref's `core.store(t, addr, v)`, `core.load(t, addr, 4)` on a tile
+    waiting in the boot ROM's WFI: REQUEST_SET_W0-2, REQUEST_SEND, EVENTS_MASK, EVENTS, STATUS, EVENTS_PEEK,
+    REQUEST_GET_W0, REQUEST_RECEIVE).
+13. **The request bus's checker kinds**: a reserved target and target 3 ("reserved", "no receiver"), dropped at the
+    root.
+The C program part (`fromC`: `req` on the machine as specified, C&C 2 draining its queue from the harness every 64
+cycles) needs 10 too. `stall_request` (rv32.h) and the ERRORS bits exist.
+
+## Framework additions (approved by the owner)
+
+- **The Fifo peak (ask 7, approved 2026-11-11)**: `FifoPort::peak` (src/engine.h), updated after each delivery into a
+  Fifo or credit Fifo (ref's WordFIFO.highWater: the count after the commit at t + 1), and `Sim::fifo_peak`,
+  `Sim::fifo_restart_peak` (src/config.h, .cpp; ref's resetStats: peak = count), all **under SIM_CHECKS only** (the
+  debug and suite builds; engine.h turns SIM_CHECKS on under SIM_DEBUG as check.h does); in the timing builds the
+  member and its update don't exist and the accessors FATAL. **The timing builds are unchanged**: clang release,
+  test_chip and test_sort's outputs identical before and after; every rebuilt release object's code identical
+  (disassembly, addresses masked) except config.o, whose only differences are the two new functions, the functions'
+  shifted addresses and FATAL's line numbers. Used by NetTest's queue peaks ("write-engine input").
+
 ## Asks of W20 (through the integrator)
 
 From NetTest's gap map (2026-11-11). NetTest's other groups (structure, unicast's packets, routes, the controllers'
@@ -70,7 +103,7 @@ sends, in-order, fan-in, the queue peaks) port onto what `mach.h` has now.
    director's invariants 10, 11, 19, 21, 22 (W20's "next in step 2").
 7. **The write engine's input peak** (ref's `weIn.highWater`, the last line of NetTest's queue peaks): the framework's
    Fifo (`src/engine.h` FifoPort) keeps no peak. Adds state to a framework structure, so **the owner's call** (a
-   statistic updated at the put, as the router's own `Fifo.peak`); the line is missing until then.
+   statistic updated at the put, as the router's own `Fifo.peak`). **Approved and done** (below).
 8. **The debug options on the harness** (W20): `MachConfig` passes only the shuffle seed into `sim::Options`; step-all
    and the instance-major order (both orders) need fields there too, for the suites' debug runs.
 
@@ -104,3 +137,9 @@ sends, in-order, fan-in, the queue peaks) port onto what `mach.h` has now.
   | skewtable, 1 seed (ad hoc, ref run locally) | 15 | equal; 40 seeds (24 s a seed here): runner |
   Fan-in's "safe" covers every hardware FIFO as ref's: the router FIFOs directly, the others by their ERRORS bits
   (a non-router overflow first would be FATAL until W20's overflow scan names it; none occurs).
+- **Ask 7 done**: the queue peaks' 21 lines equal (net, net-shuf), the write-engine line included.
+- **RequestBusTest**: gap map done (asks 9-13 above): it needs the receive queues on the machine without controller
+  cores, popped from the harness, and the core's and request port's harness sides; nothing of it ports onto today's
+  harness alone. Next instead: MemTest (coreless, Net.rd and the engines' setters: what mach.h has).
+- **Quest 179** (claimed, pushed): skewtable 40 on the C++ against v1.3's log, and the ported groups against the four
+  net logs, on the runner.

@@ -384,6 +384,11 @@ public:
     // W20 (harness-only; P2): a Fifo's overflows so far and the put cycle of its first (kNoCycle if none), between runs
     // (ref's WordFIFO.overflow, overflowCycle: the checker's invariant 1). One domain only (fatal on a split machine).
     uint64_t fifo_overflows(FifoIn p, Cycle* first) const;
+    // W22 (P4; approved 2026-11-11): a Fifo's peak occupancy (ref's WordFIFO.highWater), between runs, and its restart at
+    // the occupancy now (ref's resetStats: highWater = count). Kept only under SIM_CHECKS (the debug and suite builds);
+    // fatal in the timing builds, which don't keep it. One domain only.
+    uint32_t fifo_peak(FifoIn p) const;
+    void fifo_restart_peak(FifoIn p);
     // W20 (harness-only; P2): data in motion anywhere, between runs: an input holding data (a Link word visible, a Fifo
     // not empty, a Hold occupied) or a put still on its way (a Link, Fifo, credit Fifo or Hold entry in a delivery
     // bucket). Regs, Wires, RegFiles, Counts and credit returns are state, not motion. For ref's Chip.quiescent.

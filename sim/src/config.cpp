@@ -907,6 +907,25 @@ uint64_t Sim::fifo_overflows(FifoIn p, Cycle* first) const {
     if (first) *first = f.first_overflow;
     return f.overflows;
 }
+uint32_t Sim::fifo_peak(FifoIn p) const {
+#ifdef SIM_CHECKS
+    if (impl_->threads) FATAL("Sim::fifo_peak: one domain only (the harness's machines run one thread)");
+    return impl_->e.fifos[p.idx].peak;
+#else
+    (void)p;
+    FATAL("Sim::fifo_peak: Fifo peaks are kept only under SIM_CHECKS (the debug and suite builds)");
+#endif
+}
+void Sim::fifo_restart_peak(FifoIn p) {
+#ifdef SIM_CHECKS
+    if (impl_->threads) FATAL("Sim::fifo_restart_peak: one domain only (the harness's machines run one thread)");
+    auto& f = impl_->e.fifos[p.idx];
+    f.peak = f.ring.count();
+#else
+    (void)p;
+    FATAL("Sim::fifo_restart_peak: Fifo peaks are kept only under SIM_CHECKS (the debug and suite builds)");
+#endif
+}
 void Sim::put_late(const std::string& unit, HoldOut p, const Word* w, unsigned n) {
     if (impl_->running) FATAL("Sim::put_late('%s') during a run: between runs only", unit.c_str());
     if (impl_->threads) FATAL("Sim::put_late('%s'): one domain only (the harness's machines run one thread)", unit.c_str());

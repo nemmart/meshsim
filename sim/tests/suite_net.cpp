@@ -8,6 +8,9 @@
 // --only (not Java's) runs the named groups alone, for checking a group's lines against the fixture before the whole
 // suite is ported: structure unicast broadcast routes cncport random fullrate director injection loopback fanin.
 //
+// The queue peaks' write-engine line reads the framework Fifo's peak, kept only under SIM_CHECKS: run the suite and
+// debug builds (the release build FATALs there).
+//
 // STATUS. Ported: structure, unicast, routes, random (in-order random, the queue peaks), fullrate, fanin, skewtable.
 // Waiting on W20 (sessions/WORKER22/NOTES.md, asks 1-6): broadcast, cncport, director, injection, loopback. Until
 // they land, a full run's counts and lines are short of the fixture's.
@@ -31,6 +34,7 @@
 #include "units/linkword.h"
 #include "units/regblock.h"
 #include "units/router.h"
+#include "units/write_engine.h"
 
 using namespace mach;
 namespace lw = units::lw;
@@ -242,7 +246,13 @@ std::string queue_peaks(Chip& c) {
         }
         if (best > 0) sb += suite::str("    %-22s %3lld  (t%d)\n", (std::string(OUT_NAME[o]) + "<" + PORT_NAME[port]).c_str(), (long long)best, at);
     }
-    // the write engine's input peak (ref's weIn.highWater): the framework's Fifo keeps no peak yet (NOTES: ask 7)
+    // the write engine's input (ref's weIn.highWater): the framework Fifo's peak, kept under SIM_CHECKS (ask 7)
+    uint32_t b = 0; int at = -1;
+    for (unsigned p = 0; p < 64; p++) {
+        const uint32_t pk = c.sim().fifo_peak(c.tile(p).unit<units::WriteEngine>("we").in);
+        if (pk > b) { b = pk; at = int(p); }
+    }
+    if (b > 0) sb += suite::str("    %-22s %3u  (t%d)\n", "write-engine input", b, at);
     return sb;
 }
 

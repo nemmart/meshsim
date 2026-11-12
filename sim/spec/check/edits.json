@@ -1338,36 +1338,41 @@
 [
 "CHANGES-v1.3-to-v1.35.md",
 53,
-"| Stage B | `tests/stageb.cpp` |"
+"| EngineTest | `tests/suite_engine.cpp` |"
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
 54,
-"| AllToAllTest (`measure`) | not yet ported (2026-11-12) |"
+"| Stage B | `tests/stageb.cpp` |"
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
 55,
-"| ReadPortGatherTest | not yet ported (2026-11-12) |"
+"| AllToAllTest (`measure`), an older name: in v1.3 the all-to-all is EngineTest with the A2A helper | ported: `tests/suite_engine.cpp`, with `A2A` in `tests/mach.h` |"
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
 56,
-"| SearchBench | not yet ported (2026-11-12) |"
+"| ReadPortGatherTest | being ported: `tests/suite_rdport.cpp` |"
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
 57,
-"| CondTest | not yet ported (2026-11-12) |"
+"| SearchBench | ported: `tests/suite_search.cpp` (56 of 56 assertions, `tests/p4suites/searchbench.log`) |"
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
 58,
-"| S1Bench | not yet ported (2026-11-12); `measure_s1` (`tests/mach.h`) is the harness side of its measurement |"
+"| CondTest | being ported |"
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
 59,
+"| S1Bench | being ported; `measure_s1` (`tests/mach.h`) is the harness side of its measurement |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+60,
 "| SplitRun | not carried: its driver doesn't build in v1.3 |"
 ],
 [
@@ -1434,6 +1439,11 @@
 "check/README.md",
 9,
 "- `MECHANISMS.md`: what v1.35's meshsim does for each check the spec promises; `FINDINGS.md`: what looks wrong, for the owner."
+],
+[
+"check/README.md",
+11,
+"**At the freeze:** rerun `MECHANISMS.md` against `main`; bring the drivers' table of `spec/CHANGES-v1.3-to-v1.35.md` up to date; the section \"Where v1.35's checks differ from the rule\" should then be empty, and is removed; rebuild and rerun `check_move.py`."
 ]
 ]
 }

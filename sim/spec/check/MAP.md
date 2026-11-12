@@ -701,3 +701,8 @@ The owner approved stage 1 with corrections; the move follows them. `map.tsv` is
   not yet done, scheduled for v1.4, v1.35 keeping v1.3's tables; 8 widened to all three control lines' physical
   latencies (finding 4). No item is *unclear*. `section13.py` holds the current statuses; section 6 above is the
   stage-1 record.
+- **The drivers' table** (the integrator, 2026-11-12, each established in the repository): AllToAllTest is an older
+  name (`v1.3/meshsim/test/A2A.java`'s comments); the all-to-all is EngineTest with A2A, ported as
+  `tests/suite_engine.cpp` and `A2A` in `tests/mach.h`; SearchBench ported, 56 of 56 (`tests/p4suites/searchbench.log`);
+  ReadPortGatherTest (`tests/suite_rdport.cpp`), CondTest and S1Bench being ported. At the freeze, `check/README.md` says
+  what to rerun.

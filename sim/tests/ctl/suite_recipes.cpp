@@ -7,7 +7,7 @@
 // snippet check makes every code block in RECIPES.md equal to the RECIPE ... END region it names, so the book can't
 // drift from the code that runs.
 //
-// IN PROGRESS (NOTES.md): ported so far: snippets, copy, cmem, status, rules. The groups that read C&C's phase log
+// IN PROGRESS (NOTES.md): ported so far: snippets, copy, cmem, status, rules, tables, replay, cc1. The groups that read C&C's phase log
 // (goToReady, goToFirstRequest: W20's Cc::phase_log) and the cores' come next; until then main() runs the groups
 // ported, so the output is ref's lines for those groups.
 #include <algorithm>
@@ -21,7 +21,9 @@
 #include <string>
 #include <vector>
 
+#include "base/fatal.h"
 #include "units/ag.h"
+#include "units/replayer.h"
 #include "../suite.h"
 #include "ctl.h"
 
@@ -285,6 +287,110 @@ void rules() {
     out("rules: the right form of each rule (rule_wait, rule_disjoint, rule_start, rule_align) runs clean on every tile");
 }
 
+
+// ================================================================ tables (recipe 21)
+void tables() {
+    suite::group("tables");
+    // the program's `expected` is 0 (never set: gcc folds it), so command 1 is a run that writes nothing here and
+    // a2a_finish waits for DMA run done alone; the run (a 40-record stream to the right-hand tile's... none: count 0
+    // streams would end at once) is set up from the test as 8 streams of 0 records, whose run still reads the tables
+    namespace F = mach::fields;
+    Mach m(cfg());
+    m.boot("rcp_tables");
+    m.c.cc().wait_until([&] { return tiles_idle(m); }).call([&](int64_t) {
+        for (unsigned k = 0; k < 64; k++) {
+            mach::TileRef p = m.c.tile(k);
+            for (unsigned i = 0; i < 8; i++) p.set_stream(i, F::stream_src(0), 0, F::stream_count(0, F::SIZE_64, 1, units::lw::M_SRC, 0));
+            p.set_master_config(F::master_config(F::RUN_STREAMS, 0, 8, 0, 0, 1));   // ref sets ctl.dmaConfig and the AG's alike
+        } });
+    m.c.cc().command(BROADCAST, 1 << 24).go().command(BROADCAST, 2 << 24).go();
+    finish(m, "tables", 40000);
+    int woke = 0;
+    for (unsigned k = 0; k < 64; k++) {
+        const int64_t done_at = m.c.tile(k).unit<units::AddrGen>("ag").done_at;
+        if (done_at > 0 && m.c.tile(k).block().last_done_at > done_at) woke++;
+    }
+    suite::eq(64, woke, "a2a_finish: done followed the run's end (DMA run done), and tables_free_unknown returned, on every tile");
+    no_violations(m.c, "tables");
+}
+
+// ================================================================ 26 the replayer's refill loop
+void replay() {
+    suite::group("replay");
+    // rcp_replay.c's state[] is never written (gcc folds it to zeros), so the pass it starts has an empty code stream:
+    // the loop's shape runs (the state load into part 0, PULSE_RUN, the credits, the masks, run done) but no rows. The
+    // replayer's real check is StageB synthetic (fw/replay/replay_ctl.c, row for row against Stage A).
+    Mach m(cfg());
+    m.c.set_check_errors(false);                                   // the empty code stream's underflow, checked below
+    m.boot("rcp_replay");
+    units::Replayer& r = slot(m.c, 0).replayer(1);
+    m.c.cc().wait_until([&] { return tiles_idle(m); }).call([&](int64_t) {
+        m.c.unit<units::Cnc>("cnc").expect = 1;                    // ref's cc1p.expect = 1: C&C 1's model waits for tile 0
+        m.c.touched("cnc"); });
+    m.c.cc().command(0, 1 << 24).go();                             // tile 0 only
+    suite::check(m.run([&] { return !m.c.cc().busy() && m.c.tile(0).block().last_done_at > m.c.cc().last_go_at() && core(m.c, 0).in_wfi; }, 400000),
+                 "tile 0 ran recipe 26's pass and came back to wait_for_command()");
+    suite::eq(1, int64_t(r.passes), "one pass");
+    suite::check(!r.is_running() && r.region0[0] == 0 && r.region0[1] == 0, "it ended; part 0 holds the recipe's (zero) state word");
+    suite::eq(0, int64_t(slot(m.c, 0).mask[1]), "the loop cleared the replayer's EVENTS_MASK at the end");
+    suite::eq(units::EVENTS_MASK_RESET, int64_t(m.c.tile(0).block().mask), "and restored the tile's");
+    suite::eq(1 << units::Replayer::ERR_CODE_UNDER, r.errors(m.c.cycle()),
+              "the replayer's only error: code-stream underflow (v1.26 ERRORS [3]), an instruction past the (empty) code stream, as the zero state makes it");
+    // ref's badWrites is never written (Replayer.java): the overruns are what this check can see
+    suite::check(r.overruns() == 0, "no overrun and no bad write: the loop's refills kept to their credits");
+    suite::eq(1 << 11, int32_t(m.c.tile(0).block().conditions | (slot(m.c, 0).live_errors(m.c.cycle()) << 11 & ~0x7FFu)),
+              "the tile's ERRORS [11] (peripheral 1), and nothing else");
+    no_violations(m.c, "replay");
+}
+
+// ================================================================ recipes 22 and 27, C&C 1's side, on C&C 1 as a core
+// The harness plays the host: it stages the units' image (fw/cc/cc_rcp.c: C&C 2, C&C 3 and the tiles in one) at
+// rcp_cc1.c's chunks 0x10000 (64 rows) and 0x11000 (16), and 256 rows of data at 0x20000, then lands rcp_cc1 and its
+// CMD_JUMP through the host port. rcp_cc1.c's main puts the units' command at 0x12000, boots C&C 2 and C&C 3, waits for
+// their "started", boots the tiles, runs boot part 2 (CMD_STAGE, the data broadcast to every tile's big SRAM at chunk
+// 0x30000), boots C&C 3 again by recipe fence, then runs phases.
+void cc1() {
+    suite::group("rcp_cc1.c on C&C 1 as a core: recipes 22 and 27, C&C 1's side");
+    Mach m(Mach::cores_cfg(shuffle));
+    const Mach::Image u = Mach::Image::load("cc_rcp", m.c.cfg()), c1 = Mach::Image::load("rcp_cc1", m.c.cfg());
+    m.stage_cc1(0x10000, u.code, 64);
+    m.stage_cc1(0x11000, u.data, 16);
+    std::vector<uint32_t> data(256 * 4);
+    for (uint32_t i = 0; i < data.size(); i++) data[i] = 0x5EED0000u ^ i * 0x9E3779B1u;
+    m.stage_cc1(0x20000, data, 256);
+    m.host_boot(c1, c1.data);
+    auto running = [&]() -> int64_t { int64_t r = 0; for (unsigned k = 0; k < 64; k++) { const int64_t f = core(m.c, k).first_image_at; if (f < 0) return -1; r = std::max(r, f); } return r; };
+    suite::check(m.run([&] { return running() >= 0; }, 200000), "every tile runs the image (C&C 1 booted C&C 2, C&C 3 and the tiles)");
+    suite::check(core(m.c, 65).first_image_at > 0 && core(m.c, 66).first_image_at > 0, "C&C 2 and C&C 3 run the image");
+    suite::eq(2, int64_t(req_received(m.c, 0)), "C&C 1 popped two requests: both \"started\"");
+    const uint32_t commands = u.sym("commands");
+    suite::check(m.run([&] { for (unsigned k = 0; k < 64; k++) if (int32_t(m.c.tile(k).peek_local(commands)) < 1) return false; return true; }, 200000),
+                 "every tile ran CMD_STAGE");
+    int bad = 0;
+    for (unsigned k = 0; k < 64; k++) for (uint32_t i = 0; i < data.size(); i++) if (m.c.tile(k).sram_peek(0x30000 + i) != data[i]) { bad++; break; }
+    suite::eq(0, bad, "boot part 2: the 256 rows in every tile's big SRAM at chunk 0x30000");
+    const uint32_t COMMAND = 0x7FC0, ARGS_ODD = 8;
+    suite::check(m.run([&] { return m.c.tile(66).peek_local(COMMAND) == (CMD_JUMP << 24 | 1u << 23); }, 200000),
+                 "recipe fence: C&C 3's second command, CMD_JUMP (odd)");
+    suite::eq(0x01000000, m.c.tile(66).peek_local(COMMAND + 4 * ARGS_ODD), "its entry in the odd block");
+    // the GOs: ref's cc1p.gos counts a PULSE_GO in its store's cycle; here the peripheral applies it at t + 1 (D33) and
+    // keeps the store's cycle (last_go_store), ref's cycle (as CcBench)
+    uint64_t g = cc1p(m.c).gos; int64_t at[8] = {}; int ng = 0;
+    while (ng < 8 && m.c.cycle() < 400000) {
+        m.c.step();
+        if (cc1p(m.c).gos > g + 1) FATAL("recipes: two GOs in one cycle");
+        if (cc1p(m.c).gos > g && ng < 8) { g++; at[ng++] = int64_t(cc1p(m.c).last_go_store); }
+    }
+    const bool phases = ng == 8;
+    suite::check(phases, "eight phases after the boot (C&C 1's phase loop)");
+    if (phases) meas("rcp_cc1", "a phase on C&C 1 as a core (command type 1, nothing to do): GO to GO", at[7] - at[6]);
+    if (!phases)
+        std::printf("  stopped: C&C 1 pc %08x%s, GOs %llu, READY bits %016llx, tiles' commands %u\n", core(m.c, 64).pc, core(m.c, 64).in_wfi ? " (WFI)" : "",
+                    (unsigned long long)cc1p(m.c).gos, (unsigned long long)cc1p(m.c).ready_bits(m.c.cycle()), m.c.tile(0).peek_local(commands));
+    suite::eq(0, int64_t(m.c.violations()), "violations");
+    if (m.c.violations() != 0) std::fputs(m.c.violation_report().c_str(), stdout);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -295,7 +401,8 @@ int main(int argc, char** argv) {
     copy(); cmem();
     // bucket(), aug(), gather(), xchg(), xvec(), a2a(), rdport(): W20 (Cc::phase_log)
     status(); rules();
-    // sync(), blocks(), selftest(), boot(), signal(), tables(), replay(), cc1(): next (the phase log, wait_until, the cores)
+    // sync(), blocks(), selftest(), boot(), signal(): W20 (Cc::phase_log)
+    tables(); replay(); cc1();
     out("recipe cycles [meas: RecipeTest; tile 0 unless stated]:");
     for (const std::string& s : table) out(s);
     return suite::done(shuffle >= 0 ? "RecipeTest (shuffled, seed " + std::to_string(shuffle) + ")" : "RecipeTest");

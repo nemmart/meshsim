@@ -84,4 +84,15 @@ Commit and push after each piece; each kind checked line for line against `ref` 
   - T2's boot (test_t2_harness: one domain, the 6-domain split, shuffle seed 3, instance-major, and step-all added for
     this run only, not committed): equal to ref's boot trace in every case;
   - M1's goldens (test_golden: direct, engine, and shuffle seeds 1-3, instance-major, step-all): equal.
-  So the table-window commit (47c... "NOT FOR MERGE") is ready to merge.
+  So the table-window commit (94f1e9a9, "NOT FOR MERGE") is ready to merge; merged by the integrator with 09753248.
+- **1a, invariant 8 and `unreadOverwrites`** (ControllerMemories' read tracking): `CmemTrack` (rv32.h), owned by the
+  tile core (`TileCore::track`, every build, out of the digests): the unread-reply bitmap (1 KB), command slot 0's
+  unread flag, **`track.overwritten_unread`** (ref's `cmem.overwrittenUnread`, PhaseLog's `unreadOverwrites`: W20/W24
+  read it per tile) and `track.unread_commands`. Marked at the core's step from port B's write of t (`track_port_b`,
+  ref's cycle: the write reaches the core at t + 1), whatever the core's state (ref's cmem writes after a halt too); the
+  core's loads and stores clear (`loaded`, `stored`), and a word it touched at t ends up read, as ref's same-cycle order.
+  Facts `CMEM_REPLY_OVERWRITE` (reported under strict_replies) and `CMEM_COMMAND_UNREAD` (check_command_read), the
+  checker applying the switches. CheckSelf: inv's 16 overwritten-unread replies, and inv with strictReplies (16
+  messages), line for line (clang and gcc suite, clang debug). Protected tests the same as merged main's (clang release
+  and suite); the 16K sort equal (clang release). Not covered against ref yet: the command slot's fact, the same-cycle
+  touch; a test's load (TileRef::load) doesn't clear yet (when a suite needs it).

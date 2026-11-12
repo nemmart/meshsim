@@ -552,6 +552,20 @@ void checkself() {
         m.boot("inv");
         m.c.run_until([&] { return m.c.all_stopped(); }, 10000);
         say("%s", m.c.violation_report().c_str());
+        uint64_t ow = 0, uc = 0;
+        for (unsigned t = 0; t < 64; t++) {
+            const auto& tr = m.c.tile(t).unit<units::TileCore>("core").track;
+            ow += tr.overwritten_unread; uc += tr.unread_commands;
+        }
+        say("overwritten unread %llu, unread commands %llu\n", (unsigned long long)ow, (unsigned long long)uc);
+    }
+    {   // W26 (1a): inv with invariant 8 strict
+        mach::MachConfig k = Mach::cfg(-1);
+        k.check_errors = false; k.max_violation_messages = 1000; k.strict_replies = true;
+        Mach m(k);
+        m.boot("inv");
+        m.c.run_until([&] { return m.c.all_stopped(); }, 10000);
+        say("%s", m.c.violation_report().c_str());
     }
     {   // W26 (1a): the table window while count-on-arrival uses HIST and the write engine uses PTR (a test's stores)
         mach::MachConfig k = Net::cfg(-1);

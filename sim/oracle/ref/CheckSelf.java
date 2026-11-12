@@ -106,6 +106,15 @@ final class CheckSelf {
             m.boot("inv");
             m.run(m::allStopped, 10000);
             System.out.print(m.c.violationReport());
+            long ow = 0, uc = 0; for (Tile p : m.c.tiles) { ow += p.cmem.overwrittenUnread; uc += p.cmem.unreadCommands; }
+            System.out.println("overwritten unread " + ow + ", unread commands " + uc);
+        }
+        {   // inv with invariant 8 strict (CtrlTest's invariants: strictReplies; W26, 1a)
+            Config k = Mach.cfg(-1); k.checkErrors = false; k.maxViolationMessages = 1000; k.strictReplies = true;
+            Mach m = new Mach(k);
+            m.boot("inv");
+            m.run(m::allStopped, 10000);
+            System.out.print(m.c.violationReport());
         }
         {   // the table window while count-on-arrival uses HIST and the write engine uses PTR (W26, 1a): a test's stores
             // (ref's harness store runs between cycles: the flags as the cycle before left them)

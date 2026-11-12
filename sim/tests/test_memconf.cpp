@@ -207,7 +207,7 @@ std::string run(const Script& s, sim::Options opt) {
     }
     for (uint32_t w = 0; w < 128; w++) tsu.m.write(TBL_GROUP, w, init(0x70000 + w));
     // the canonical streams (the writers G1's and G2's chip uses)
-    RegBlockState ctl; ctl.dma_config = s.dma; ctl.record_base = s.base;
+    RegBlockState ctl; ctl.dma_config = ctl.dma_master = s.dma; ctl.record_base = ctl.record_master = s.base;
     fp::G1Tile g1;
     g1.tile = s.tile; g1.sim = &m; g1.ctl = &ctl;
     g1.uwe = &m.unit<WriteEngine>(t + "we"); g1.usram = &bs; g1.uts = &tsu; g1.ts = &tsu.m;

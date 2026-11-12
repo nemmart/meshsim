@@ -44,10 +44,10 @@ TEST(regs_configuration_and_table_writes_equal_refs) {
         }
     };
     check(506, {"we", "ag", "gather", "ts", "hist"});
-    ctl.dma_config = 0x00BCDEF;
+    ctl.dma_config = ctl.dma_master = 0x00BCDEF;
     check(507, {"we", "ag", "gather"});
     check(509, {"we", "ag", "gather"});
-    ctl.record_base = 0x54321;
+    ctl.record_base = ctl.record_master = 0x54321;
     check(510, {"we", "ag", "gather"});
     hist.write(5, 0x1FFFF);
     check(591, {"hist"});

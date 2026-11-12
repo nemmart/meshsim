@@ -229,6 +229,9 @@ struct Chip::Impl {
     std::unique_ptr<Cc> cc;
     std::unique_ptr<ReqBus> reqbus;
     bool drain = false;                                   // Cc::drain_reports
+    uint64_t resets = 0;                                  // Chip::reset (B20)
+    int64_t last_reset_at = -1;
+    std::vector<std::string> reset_log;                   // ref's Chip.log's reset lines
     std::vector<std::array<int64_t, 6>> dlog[3];          // ReqBus::delivered_log
     std::vector<std::array<int64_t, 5>> reports, requests;
     std::vector<std::array<int64_t, 4>> results;
@@ -444,7 +447,10 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
 }
 
 
-std::string Chip::digest() const {
+std::string Chip::digest() const { return digest_impl(nullptr); }
+std::vector<std::string> Chip::fingerprint_lines() const { std::vector<std::string> l; digest_impl(&l); return l; }
+void Chip::fingerprint_dump(const std::string& unit, FILE* out) const { digest_impl(nullptr, &unit, out); }
+std::string Chip::digest_impl(std::vector<std::string>* lines_out, const std::string* dump_unit, FILE* dump_out) const {
     if (cfg_.cc_cores) FATAL("mach: digest(): the machine with C&C's model (C&C 1-3 as cores: statefp_m3's registry, not wired yet)");
     sim::Sim& m = const_cast<Chip*>(this)->sim();
     std::vector<fp::G1Tile> g1(64);
@@ -471,6 +477,8 @@ std::string Chip::digest() const {
     fp::register_g2(reg, gc);
     std::vector<std::string> lines;
     reg.point(fp::FpCtx{uint64_t(cycle()), &m}, tiles, true, lines);
+    if (lines_out) *lines_out = lines;
+    if (dump_unit) reg.dump(*dump_unit, fp::FpCtx{uint64_t(cycle()), &m}, dump_out);
     std::string fp = "?";
     for (const std::string& l : lines) {                 // "cycle chip hash"
         const size_t a = l.find(" chip ");
@@ -793,9 +801,157 @@ std::string Chip::violation_report() {
     for (const std::string& s : violation_messages()) sb += "  " + s + "\n";
     return sb;
 }
-void Chip::reset(bool) { FATAL("mach: reset comes with W20's step 2"); }
-uint64_t Chip::resets() const { return 0; }
-int64_t Chip::last_reset_at() const { return -1; }
+// ---- the reset (B20; ref's Chip.doReset, 6.1), at the end of the cycle just run ----
+// First what ref has done by the end of t and the C++ units do a cycle later (the register block's end of cycle, port
+// B's write of t), then every port emptied (ref's buses flushed), then every unit as ref's resets leave it (Tile.reset's
+// list, the request bus, C&C 1's peripheral, C&C's model), then the checker's error lines, and every unit woken.
+// Memories, the tables and HIST are kept, as ref's. Hard and soft are the same here, as in ref (its log line says which).
+void Chip::reset(bool hard) {
+    if (cfg_.cc_cores) FATAL("mach: reset on the machine with C&C 1-3 as cores: comes later (W20)");
+    sim::Sim& s = sim();
+    const int64_t t = cycle();
+    Impl& m = *impl_;
+    // 1. the end of t as ref has it
+    for (unsigned k = 0; k < m.nunits; k++) {
+        units::TileCtl& b = unit<units::TileCtl>(units::unit_prefix(k) + "ctl");
+        units::RegBlockState x = units::block_at_end(s, b, uint64_t(t), b.host_go_at == t);
+        x.ck_tile = b.s.ck_tile; x.tlog = b.s.tlog;
+        b.s = x;
+        units::TileCore& core = unit<units::TileCore>(units::unit_prefix(k) + "core");
+        sim::PortEntry e[8];
+        const uint32_t n = s.observe(core.port_b, e, 8).n;
+        for (uint32_t i = 0; i < n; i++) {                // port B's write of t (ref's cmem at t)
+            if (e[i].at != uint64_t(t) + 1) continue;
+            namespace lw = units::lw;
+            const uint64_t h = e[i].w[1];
+            const uint32_t a = lw::addr(h);
+            uint32_t* mem = lw::region(a) == lw::R_DMEM ? core.rv.dmem : lw::region(a) == lw::R_PMEM ? core.rv.imem : nullptr;
+            if (!mem) continue;
+            const unsigned sz = lw::size(h);
+            const uint32_t w0 = (lw::offset(a) & (units::MEM_BYTES - 1)) >> 2;
+            const uint64_t v[4] = {e[i].w[0] & 0xFFFFFFFFu, e[i].w[0] >> 32, e[i].w[2] & 0xFFFFFFFFu, e[i].w[2] >> 32};
+            for (unsigned j = 0; j < (1u << sz) && j < 4; j++) mem[(w0 + j) & (units::MEM_WORDS - 1)] = uint32_t(v[j]);
+        }
+    }
+    // 2. every bus flushed
+    s.flush_ports();
+    // 3. every unit (ref's Tile.reset: ag, gather, read port, srq, writer, router, sram, ts, hist, slot, req, cmem, ctl, core)
+    for (unsigned k = 0; k < 64; k++) {
+        TileRef p = tile(k);
+        units::AddrGen& ag = p.unit<units::AddrGen>("ag");
+        ag.starts_seen = p.unit<units::TileCtl>("ctl").s.dma_starts;   // pStart = false
+        if (ag.running) {
+            ag.running = false; ag.lead_in = false; ag.finished_issuing = false;
+            ag.stream_discard += ag.sq_out; ag.group_discard += ag.cq_out;
+            ag.sq_buf = ag.sq_head = ag.sq_out = 0; ag.cq_buf = ag.cq_head = ag.cq_out = 0;
+        }
+        ag.refused_now = false; ag.put_this_cycle = false;
+        units::Gather& ga = p.unit<units::Gather>("gather");
+        ga.left = 0;
+        units::Injection& in = p.unit<units::Injection>("inj");
+        units::InjReadSide& rs = in.rs;
+        rs.ord_n[0] = rs.ord_n[1] = 0; rs.ord_head[0] = rs.ord_head[1] = 0; rs.rp_n = 0;
+        rs.free_head = 0; rs.free_n = uint8_t(rs.cap);
+        for (unsigned i = 0; i < rs.cap; i++) { rs.free_q[i] = uint8_t(i); rs.held_slot[i] = 0; }
+        rs.in_flight[0] = rs.in_flight[1] = rs.in_flight[2] = 0;
+        rs.cur_v = rs.nxt_v = false;
+        in.tok.reads = 0; in.tok.loop_held = 0;
+        units::TileCore& core = p.unit<units::TileCore>("core");
+        core.rp_stored = rs.rp_injected_n;                // ReadPort.haltReset: stores = injected = accepted
+        p.unit<units::Director>("dir").rp_accepted = rs.rp_injected_n;
+        core.host_rd_n = 0; core.host_rd_head = 0;
+        units::WriteEngine& we = p.unit<units::WriteEngine>("we");
+        we.head = 0; we.count = 0; we.aw_head = 0; we.aw_n = 0;
+        for (auto& x : we.st_have) x = 0;
+        units::Router& r = p.unit<units::Router>("router");
+        for (auto& x : r.rr) x = 0;
+        r.loopback_last = true;
+        for (auto& f : r.q) { f.head = 0; f.count = 0; f.put_at = 0; }
+        r.occ = 0;
+        units::BigSram& m2 = p.unit<units::BigSram>("sram");
+        for (unsigned a = 0; a < units::BigSram::AREAS; a++) { m2.head[a] = 0; m2.count[a] = 0; }
+        m2.busy = 0;
+        units::TableStore& ts = p.unit<units::TableStore>("ts");
+        ts.pipe.valid = false;
+        for (units::ReqFifo* f : {&ts.q_stream, &ts.q_group, &ts.q_we}) { f->n = 0; f->head = 0; f->pend = false; }
+        units::HistStore& hs = p.unit<units::HistStore>("hist");
+        hs.pipe.valid = false; hs.q.n = 0; hs.q.head = 0; hs.q.pend = false;
+        if (s.has_unit(units::tile_unit(k, "slot"))) p.unit<units::PeriphSlot>("slot").s.reset(t);
+        const std::string leaf = "t" + std::to_string(k) + ".reqleaf";
+        if (s.has_unit(leaf)) {
+            units::reqbus::ReqLeaf& l = unit<units::reqbus::ReqLeaf>(leaf);
+            l.head = 0; l.n = 0; l.beats_sent = 0; l.freed_on = false; l.freed_at = INT64_MIN;
+            l.fwd_known = l.sent_total;
+        }
+        core.req_set_w[0] = core.req_set_w[1] = core.req_set_w[2] = 0;
+        core.track.slot0_unread = false;
+        // TileControl.reset
+        units::TileCtl& b = p.unit<units::TileCtl>("ctl");
+        units::RegBlockState& x = b.s;
+        x.done = x.landed = x.gate = false; x.events = 0; x.q_all = false;
+        for (auto& q : x.q_one) q = false;
+        x.cond_all_prev = true;
+        for (auto& q : x.cond_one_prev) q = true;
+        x.ready_level = false; x.rd_done_prev = false; x.request_busy_prev = false;
+        x.mask = units::EVENTS_MASK_RESET; x.required = 0; x.conditions = 0;
+        x.router_hdr = x.router_addr = x.dma_config = x.record_base = x.rd_setup = 0;
+        x.set_w[0] = x.set_w[1] = x.set_w[2] = 0; x.req_n = 0; x.sim_exit_at = 0;
+        for (auto& rem : x.remaining) rem = 0;            // dir.resetCounters
+        x.dma_pulse = false; x.ready_pulse = false; x.error_line = false;
+        b.error_out = false; b.ck_errors = 0; b.ck_line = false; b.host_go_at = -1;
+        units::Director& d = p.unit<units::Director>("dir");
+        d.line_n = 0; d.overlay_kinds = 0;
+        // Controller.reset
+        units::Rv32& v = core.rv;
+        for (auto& reg : v.x) reg = 0;
+        v.pc = units::BOOTROM_BASE; v.halt = units::Rv32::RUN; v.in_wfi = false; v.stall = 0; v.pending_t = units::Rv32::kNever;
+        v.mstatus = v.mie = v.mtvec = v.mscratch = v.mepc = v.mcause = v.mtval = 0; v.mcycle = 0;
+        v.in_handler = false; v.parked = false; v.ub = false; v.trap_cause = -1; v.trap_at = -1; v.first_image_at = -1;
+        v.load_wait_t = units::Rv32::kNever; v.stop = units::Stop::running; v.stop_cycle = 0; v.last = uint64_t(t);
+    }
+    // the request bus (RequestBus.reset)
+    if (s.has_unit("reqbus.root")) {
+        auto reset_node = [&](units::reqbus::ReqNode& n, bool root) {
+            for (auto& bf : n.buf) { bf.n = 0; bf.head = 0; }
+            n.cur = -1; n.rr = root ? units::reqbus::ROOT_INPUTS - 1 : 7; n.dropping = false;
+            if (root) for (int q = 0; q < units::reqbus::TARGETS; q++) n.credits[q] = n.queue_depth[q];
+            n.out_fwd_known = n.out_sent;
+        };
+        auto& root = unit<units::reqbus::ReqRoot>("reqbus.root");
+        reset_node(root, true);
+        for (unsigned rw = 0; rw < 8; rw++) {
+            auto& row = unit<units::reqbus::ReqNode>("reqbus.row" + std::to_string(rw));
+            reset_node(row, false);
+            for (unsigned c = 0; c < 8; c++) {                // the inputs' counts: everything sent is forwarded
+                const std::string leaf = "t" + std::to_string(8 * rw + c) + ".reqleaf";
+                if (s.has_unit(leaf)) row.buf[c].arrived_total = row.buf[c].fwd_total = unit<units::reqbus::ReqLeaf>(leaf).sent_total;
+            }
+            root.buf[rw].arrived_total = root.buf[rw].fwd_total = row.out_sent;
+        }
+        for (unsigned c = 0; c < 3; c++) root.buf[8 + c].fwd_total = root.buf[8 + c].arrived_total;
+        static const char* kRecv[3] = {"cc1.reqrecv", "cc2.reqrecv", "cc3.reqrecv"};
+        for (unsigned q = 0; q < 3; q++)
+            if (s.has_unit(kRecv[q])) { auto& rv = unit<units::reqbus::ReqRecv>(kRecv[q]); rv.qn = 0; rv.qh = 0; }
+        if (s.has_unit("reqbus.host")) {
+            auto& h = unit<units::reqbus::ReqHost>("reqbus.host");
+            for (unsigned q = 0; q < 3; q++) { h.send[q].on = false; h.pop_at[q] = -1; }
+        }
+    }
+    // C&C's model (CnC.resetModel): its receive FIFO and its error bit
+    units::Cnc& cn = unit<units::Cnc>("cnc");
+    cn.rx_count = 0; cn.rx_head = 0; cn.err_line = 0; cn.err_line_seen = false; cn.error_bit = false; cn.error_set_at = -1;
+    cn.reply_n = 0; cn.reply_h = 0; cn.pending_retry = 0;
+    // C&C 1's peripheral (Cnc1Peripheral.reset; its READY side lives in the model here): READY_EXPECT 0, no READY seen
+    cn.expect = 0; cn.cleared_at = INT64_MIN;
+    for (auto& r : cn.ready_at) r = INT64_MIN;
+    // 4. the checker (ref's errSeen), the log, a wake
+    m.checker->on_reset();
+    m.reset_log.push_back("cycle " + std::to_string(t) + ": reset (" + (hard ? "hard" : "soft") + "): every unit to the boot ROM");
+    m.resets++; m.last_reset_at = t;
+    s.wake_all();
+}
+uint64_t Chip::resets() const { return impl_->resets; }
+int64_t Chip::last_reset_at() const { return impl_->last_reset_at; }
 // ref's Chip.resetStats (Tile.resetStats, the units' own): statistics only, never state the machine runs on
 void Chip::reset_stats() {
     for (unsigned k = 0; k < 64; k++) {
@@ -938,6 +1094,12 @@ std::vector<std::string> Chip::log() const {
     std::vector<std::string> r;
     char b[96];
     for (const auto& e : all) { std::snprintf(b, sizeof b, "cycle %lld tile %lld: TRACE 0x%x", (long long)e[0], (long long)e[1], uint32_t(e[2])); r.push_back(b); }
+    if (!impl_->reset_log.empty()) {                      // ref's reset lines, in cycle order with the rest
+        r.insert(r.end(), impl_->reset_log.begin(), impl_->reset_log.end());
+        std::stable_sort(r.begin(), r.end(), [](const std::string& a, const std::string& c) {
+            return std::strtoll(a.c_str() + 6, nullptr, 10) < std::strtoll(c.c_str() + 6, nullptr, 10);
+        });
+    }
     return r;
 }
 void TileRef::record_gather() {
@@ -1187,8 +1349,8 @@ units::RegBlockState TileRef::block(bool with_cond) const {
     const units::TileCtl& b = unit<units::TileCtl>("ctl");
     units::RegBlockState r = units::block_at_end(c_->sim(), b, uint64_t(c_->cycle()), b.host_go_at == c_->cycle());   // (a test's GO)
     if (with_cond) { r.conditions |= b.host_cond; r.events |= b.host_events; }   // set from the test: ref's ctl has them now
-    if (b.host.mask & units::TileCtl::HostWrites::DMA_CONFIG) r.dma_config = b.host.dma_config;
-    if (b.host.mask & units::TileCtl::HostWrites::RECORD_BASE) r.record_base = b.host.record_base;
+    if (b.host.mask & units::TileCtl::HostWrites::DMA_CONFIG) r.dma_config = r.dma_master = b.host.dma_config;
+    if (b.host.mask & units::TileCtl::HostWrites::RECORD_BASE) r.record_base = r.record_master = b.host.record_base;
     if (b.host.mask & units::TileCtl::HostWrites::STARTS) r.dma_starts += b.host.starts;
     for (unsigned k = 0; k < 8; k++) if (b.host.mask & units::TileCtl::HostWrites::REMAINING << k) r.remaining[k] = b.host.remaining[k];
     return r;
@@ -1280,6 +1442,13 @@ Cc& Cc::send(unsigned dst, unsigned mode, unsigned counter, uint32_t addr, unsig
 }
 Cc& Cc::go() { c_->impl().prog.go(); publish(*c_); return *this; }
 Cc& Cc::wait_cycles(uint32_t n) { c_->impl().prog.wait_cycles(n); publish(*c_); return *this; }
+Cc& Cc::reset(bool hard) {                                 // ref's step (one register action: the reset at its end),
+    Chip* chip = c_;                                       //  then waitCycles(2), then the expect step: the call is instant
+    call([chip, hard](int64_t) { chip->reset(hard); });    //  here, so the wait covers the reset's own cycle too (3)
+    wait_cycles(3);
+    call([chip](int64_t) { chip->cc().set_expect(~uint64_t(0)); });
+    return *this;
+}
 Cc& Cc::call(std::function<void(int64_t)> fn) {
     Chip::Impl& m = c_->impl();
     const uint32_t id = take_id(m);

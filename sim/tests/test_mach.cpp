@@ -160,8 +160,39 @@ void trace_case(bool rdpeak = false) {                       // H6: MachSelf.tra
         say("%s\n", sb.c_str());
     }
 }
+std::string fp_of(const Mach& m) { const std::string d = m.c.digest(); return d.substr(d.find(" fp ") + 4); }
+void reset_case(int64_t seed) {                               // B20: MachSelf.resetCase
+    Mach m(Mach::cfg(seed));
+    mach::A2A data(7, 2000);
+    for (unsigned s = 0; s < 64; s++) {
+        mach::TileRef p = m.c.tile(s);
+        for (size_t k = 0; k < data.rec[s].size(); k++) p.sram_poke64(mach::A2A::SRC + 2 * uint32_t(k), uint64_t(data.rec[s][k]));
+        for (unsigned d = 0; d < 64; d++) p.sram_poke(0xF0000 + d, uint32_t(data.cnt[s][d]));
+        for (unsigned src = 0; src < 64; src++) p.sram_poke(0xF0000 + 64 + src, uint32_t(data.cnt[src][s]));
+        for (unsigned g = 0; g < 16; g++) p.sram_poke(0xF0000 + 128 + g, uint32_t(data.R[g]));
+        p.sram_poke(0xF0000 + 144, 0);
+    }
+    m.boot("a2a");
+    m.c.cc().command(units::lw::BROADCAST, 1u << 24).go().command(units::lw::BROADCAST, 2u << 24).go();
+    m.run([&] { return m.c.cycle() >= 5200; }, 100000);
+    m.c.cc().reset(false);
+    m.run([&] { return m.c.resets() == 1; }, 100000);
+    std::string sb = "reset seed " + std::to_string(seed) + ": at " + std::to_string(m.c.last_reset_at()) + " fp " + fp_of(m);
+    m.c.step(); sb += "; next fp " + fp_of(m);
+    m.run([&] { return !m.c.cc().busy(); }, 100000);
+    sb += "; queue done at " + std::to_string(m.c.cycle()) + " fp " + fp_of(m);
+    m.boot("a2a");
+    m.c.cc().command(units::lw::BROADCAST, 1u << 24).go().command(units::lw::BROADCAST, 2u << 24).go().command(units::lw::BROADCAST, 3u << 24).go();
+    const bool ok = m.run([&] { return m.all_stopped(); }, 20000);
+    sb += std::string("; rerun ") + (ok ? "stopped" : "NOT stopped") + " at " + std::to_string(m.c.cycle()) + " fp " + fp_of(m) +
+          " violations " + std::to_string(m.c.violations());
+    say("%s\n", sb.c_str());
+    for (const std::string& l : m.c.log()) if (l.find("reset") != std::string::npos) say("  %s\n", l.c_str());
+}
 void machself() {
     out.clear();
+    reset_case(-1);
+    reset_case(4);
     trace_case();
     if (sim::check::kOn) trace_case(true);                 // (PhaseLog: the debug and suite builds)
     if (sim::check::kOn) { phases(-1); phases(4); }        // (PhaseLog's FIFO peaks: the debug and suite builds)
@@ -1011,3 +1042,4 @@ TEST(mach_config_front_end) {
     CHECK(!k.set_args({"cfg.K"}, err));
     CHECK(!mach::MachConfig::dropped().empty());
 }
+

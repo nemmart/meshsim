@@ -33,6 +33,8 @@ public:
     const std::vector<std::string>& messages() const { return messages_; }
     void clear_messages() { messages_.clear(); }
     void clear_count() { violations_ = 0; }
+    // ref's Chip.doReset: every tile's error line seen as low again (errSeen); the ERRORS seen (condSeen) are kept
+    void on_reset() { for (Unit& u : u_) { u.line = false; u.errors = 0; } }
     CheckSwitches& switches() { return sw_; }
     void set_max_messages(unsigned n) { max_messages_ = n; }
     uint32_t facts() const { return sink_.n.load(); }

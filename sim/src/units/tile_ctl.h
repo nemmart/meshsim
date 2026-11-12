@@ -110,8 +110,8 @@ struct TileCtl {
     uint32_t ck_errors = 0;
     bool ck_line = false;
     void apply_host() {
-        if (host.mask & HostWrites::DMA_CONFIG) s.dma_config = host.dma_config;
-        if (host.mask & HostWrites::RECORD_BASE) s.record_base = host.record_base;
+        if (host.mask & HostWrites::DMA_CONFIG) s.dma_config = s.dma_master = host.dma_config;
+        if (host.mask & HostWrites::RECORD_BASE) s.record_base = s.record_master = host.record_base;
         if (host.mask & HostWrites::STARTS) s.dma_starts += host.starts;
         for (unsigned k = 0; k < 8; k++) if (host.mask & HostWrites::REMAINING << k) s.remaining[k] = host.remaining[k];
         host = HostWrites{};
@@ -200,8 +200,8 @@ struct TileCtl {
         if constexpr (sim::kDebug)
             for (unsigned r = 0; r < kRegs; r++)
                 if (pub[r] != s.reg(r)) FATAL("register block: register %u is 0x%x, published 0x%x (RegBlockState::publish misses it)", r, s.reg(r), pub[r]);
-        if (s.dma_config != pub_dma[0]) { pub_dma[0] = s.dma_config; c.write(dma, DMA_R_CONFIG, s.dma_config); }
-        if (s.record_base != pub_dma[1]) { pub_dma[1] = s.record_base; c.write(dma, DMA_R_RECORD_BASE, s.record_base); }
+        if (s.dma_master != pub_dma[0]) { pub_dma[0] = s.dma_master; c.write(dma, DMA_R_CONFIG, s.dma_master); }
+        if (s.record_master != pub_dma[1]) { pub_dma[1] = s.record_master; c.write(dma, DMA_R_RECORD_BASE, s.record_master); }
         c.drive(wake, s.wake());
         c.drive(irq, s.irq());
         if (s.ready_pulse || s.error_line != error_out) {

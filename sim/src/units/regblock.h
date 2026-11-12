@@ -28,6 +28,9 @@ struct RegBlockState {
     uint32_t req_n = 0, set_w[3] = {};          // the request port's FIFO count and REQUEST_SET_W0-W2
     // ---- M2 (W8): TileControl's registers and qualifiers ----
     uint32_t router_hdr = 0, router_addr = 0, router_w[3] = {}, dma_config = 0, record_base = 0, rd_setup = 0;
+    // W20 (B20): the engines' copies (ref's Tile.setMasterConfig, setRecordBase: set with the registers, but a reset
+    // clears only the registers, so they differ only after one); published to the engines through `dma`
+    uint32_t dma_master = 0, record_master = 0;
     uint64_t rp_errors = 0;            // W11: read-port stores dropped (ReadPort.errors: ERRORS [7], READ_PORT)
     // W15 (M3): the peripheral slot's live bits at t (its window RegFile's Win::R_LIVE, set by TileCtl before end_cycle):
     // [2:0] EVENTS [15:13] ((events | DMA done) & EVENTS_MASK != 0 per peripheral), [5:3] ERRORS [13:11] (ERRORS != 0)
@@ -181,9 +184,9 @@ struct RegBlockState {
         case DMA_CONFIG:
             if ((v >> 18 & 7) > 4 || (v >> 21 & 7) > 4)
                 FATAL("register block: DMA_CONFIG 0x%x at cycle %llu: a reserved digit selector (5-7: UB, spec 4.15)", v, (unsigned long long)t);
-            dma_config = v;
+            dma_config = v; dma_master = v;
             break;
-        case DMA_RECORD_BASE_ADDRESS: record_base = v & 0x1FFFFF; break;
+        case DMA_RECORD_BASE_ADDRESS: record_base = v & 0x1FFFFF; record_master = record_base; break;
         case ROUTER_HDR: router_hdr = v & ~(3u << 17) & ~0x1FFFEu; break;   // size and spare: stores ignored, read 0
         case ROUTER_ADDR: router_addr = v; break;
         case ROUTER_SET_W0: case ROUTER_SET_W1: case ROUTER_SET_W2: router_w[r - ROUTER_SET_W0] = v; break;

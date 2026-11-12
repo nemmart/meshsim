@@ -107,6 +107,22 @@ W22-13. **The request bus's checker kinds**: a reserved target and target 3 ("re
 The C program part (`fromC`: `req` on the machine as specified, C&C 2 draining its queue from the harness every 64
 cycles) needs 10 too. `stall_request` (rv32.h) and the ERRORS bits exist.
 
+### MemTest's needs (2026-11-12)
+
+MemTest maps onto `mach.h` (Net.rd, Net.at, set_ptr, the SRAM pokes, set_remaining, mem_idle, dmem) and the units'
+existing counters (the read queue's `issued[3]`, `stall_cycles`, `window_full_cycles`, `in_flight`; the write engine's
+`taken`, `stall_cycles`; BigSram's aggregate `read_stall_cycles`, `write_stall_cycles`; the Fifo peak and overflows), and
+its unit level (ref's `U`: BigSRAM alone at its holds) is test-side code here. What it reads that no unit keeps:
+
+- **Statistics, new state (the owner's call)**: BigSram's per-area `reads[16]`, `writes[16]`, `combined[16]`,
+  `queuePeak[16]` (C++ keeps only the totals); the SRAM read queue's per-client `latMax[3]`, `firstIssueT[3]`,
+  `lastIssueT[3]`. Proposed as the Fifo peak was: under SIM_CHECKS only, updated where ref updates them, the timing
+  builds unchanged (shown as for W22-7).
+W22-14. **Chip::new_phase and the disjoint check recorded** (ref's `Chip.newPhase`, BigSRAM's phase and
+    `disjointViolations`; the DISJOINT kind is declared and formatted, not yet recorded by big SRAM): disjoint.
+- W22-4 (the write engine's arrival log) again: priority.
+- Chip.memReport: suite-side formatting from the counters above (no ask).
+
 ## Progress
 
 - 2026-11-11: plan agreed; branch made. Toolchain: clang 18.1.3, gcc 13.3.0, JDK 21.0.13 (apt). clang release on
@@ -147,3 +163,4 @@ cycles) needs 10 too. `stall_request` (rv32.h) and the ERRORS bits exist.
   clang suite build), and the ported groups against net, net-quick, net-shuf and net-shuf2.
 - **For the integrator**: main's `run_tests.sh` marks `searchbench` and `agbench` PENDING "P6" and `reqbus`,
   `reqbus-shuf` "P5"; they are P4's (C11, G1, C17).
+- **MemTest**: gap map done (above): per-area and per-client statistics (owner's call), W22-14, W22-4.

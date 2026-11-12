@@ -27,8 +27,11 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <memory>
 
 #include "base/fatal.h"
+#include "check.h"
 #include "sim.h"
 #include "units/memsum.h"
 
@@ -105,9 +108,35 @@ struct BigSram {
 
     // ---- statistics ----
     uint64_t reads_served = 0, writes_served = 0, combined = 0, read_stall_cycles = 0, write_stall_cycles = 0;
-    // W20 (the harness's Chip::new_phase; the agreed form, 2026-11-12): a new disjoint-buffer phase. W26 fills it in
-    // (the per-phase bits, the DISJOINT fact); until then it does nothing.
-    void new_phase() {}
+    // W20 (the harness's Chip::new_phase; the agreed form, 2026-11-12): a new disjoint-buffer phase.
+    // W26 (invariant 2; BigSRAM.newPhase, mark): every chunk read and every chunk written in a phase is marked; a chunk
+    // both read and written in one phase is a violation, its DISJOINT fact recorded once a phase (ref reports the
+    // phase's first, once a tile and phase). Phases: the harness's Chip::new_phase, and every GO (ref's
+    // TileControl.endCycle(t) at a GO: the block's `go_seen` Wire, read at this unit's step at t + 1 before it serves).
+    // SIM_CHECKS only (the bits, two per chunk, allocated at build); elsewhere new_phase does nothing.
+    sim::WireIn go_seen;               // TileCtl's GO (tile_ctl.h), declared under SIM_CHECKS only (`go_wire`)
+    void new_phase() {
+#ifdef SIM_CHECKS
+        if (rd_bits) { std::memset(rd_bits.get(), 0, bit_words * 8); std::memset(wr_bits.get(), 0, bit_words * 8); }
+        phase++; phase_flagged = false;
+#endif
+    }
+#ifdef SIM_CHECKS
+    std::unique_ptr<uint64_t[]> rd_bits, wr_bits;
+    uint32_t bit_words = 0, phase = 0;
+    bool phase_flagged = false;
+    int ck_tile = -1;                  // the checker's tile (add_g1); -1 records nothing
+    sim::Word go_last = 0;
+    bool go_wire = false;
+    void mark(uint64_t t, uint64_t* mine, const uint64_t* other, uint32_t c, unsigned did) {
+        if (c >= cfg.mem_chunks) return;
+        mine[c >> 6] |= 1ull << (c & 63);
+        if ((other[c >> 6] >> (c & 63) & 1) && !phase_flagged) {
+            phase_flagged = true;
+            if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::DISJOINT, c, did, did ^ 1, phase);
+        }
+    }
+#endif
 #ifdef SIM_CHECKS
     // W22 (P4; approved 2026-11-12; SIM_CHECKS only, the timing builds unchanged): ref's per-area reads, writes, combined
     // and queuePeak (the count after an enqueue), updated where BigSRAM updates them, for MemTest. Statistics.
@@ -115,11 +144,18 @@ struct BigSram {
     uint32_t queue_peak[AREAS] = {};
 #endif
 
-    BigSram(sim::Ports& p, const SramConfig& c, uint32_t* block, bool with_reads) : cfg(c), reads(with_reads), data(block) {
+    BigSram(sim::Ports& p, const SramConfig& c, uint32_t* block, bool with_reads, [[maybe_unused]] bool go_wire_ = false)
+        : cfg(c), reads(with_reads), data(block) {
         if (!block) FATAL("big SRAM: no block");
         if (c.area_queue_depth < 1 || c.area_queue_depth > MAX_DEPTH) FATAL("big SRAM: area_queue_depth %u (1-%u)", c.area_queue_depth, MAX_DEPTH);
         if (c.mem_chunks < 1u << 16 || c.mem_chunks > 1u << 21 || c.mem_chunks % (1u << 16)) FATAL("big SRAM: mem_chunks %u (a multiple of 65,536 up to 2^21)", c.mem_chunks);
         p.in(wr, "wr", 3);
+#ifdef SIM_CHECKS
+        go_wire = go_wire_;
+        if (go_wire) p.in(go_seen, "go_seen");
+        bit_words = (c.mem_chunks + 63) / 64;
+        rd_bits.reset(new uint64_t[bit_words]()); wr_bits.reset(new uint64_t[bit_words]());   // configuration: once
+#endif
         if (reads) {
             p.in(rd, "rd", 1);
             for (unsigned a = 0; a < AREAS; a++) p.out(ret[a], "ret", 3);
@@ -149,6 +185,9 @@ struct BigSram {
 
     sim::Wake step(sim::Ctx& c) {
         const uint64_t t = c.now();
+#ifdef SIM_CHECKS
+        if (go_wire) { const sim::Word g = c.read(go_seen); if (g != go_last) { go_last = g; new_phase(); } }   // W26: the GO of t - 1
+#endif
         uint8_t start[AREAS];
         for (unsigned a = 0; a < AREAS; a++) start[a] = count[a];
         // 1. every area serves its head (as at the start of the cycle)
@@ -209,7 +248,7 @@ struct BigSram {
         combined_a[a]++;                                          // W22: BigSRAM.combined[a]
 #endif
     }
-    void serve(sim::Ctx& c, unsigned a, uint64_t) {
+    void serve(sim::Ctx& c, unsigned a, [[maybe_unused]] uint64_t t) {
         const Entry& e = q[a][head[a]];
         const uint32_t base = a * AREA_CHUNKS + e.row * 4;
         if (e.write) {
@@ -217,11 +256,19 @@ struct BigSram {
 #ifdef SIM_CHECKS
             writes_a[a]++;                                        // W22: BigSRAM.writes[a]
 #endif
-            for (unsigned j = 0; j < 4; j++) if (e.mask >> j & 1) store(base + j, e.d[j]);
+            for (unsigned j = 0; j < 4; j++) if (e.mask >> j & 1) {
+#ifdef SIM_CHECKS
+                mark(t, wr_bits.get(), rd_bits.get(), base + j, 1);   // W26: invariant 2
+#endif
+                store(base + j, e.d[j]);
+            }
         } else {
             reads_served++;
 #ifdef SIM_CHECKS
             reads_a[a]++;                                         // W22: BigSRAM.reads[a]
+#endif
+#ifdef SIM_CHECKS
+            for (unsigned j = 0; j < 4; j++) if (e.mask >> j & 1) mark(t, rd_bits.get(), wr_bits.get(), base + j, 0);   // W26
 #endif
             const uint64_t lo = uint64_t(load(base)) | uint64_t(load(base + 1)) << 32;
             const uint64_t hi = uint64_t(load(base + 2)) | uint64_t(load(base + 3)) << 32;

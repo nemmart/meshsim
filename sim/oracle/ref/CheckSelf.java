@@ -223,6 +223,62 @@ final class CheckSelf {
             n.runAll(1000);
             System.out.print(n.c.violationReport());
         }
+        {   // invariant 2, the disjoint buffers (BigSRAM.mark; W26, 1d): phase 0, chunk 0x40 written by a packet then read by the
+            // read port; Chip.newPhase; phase 1, chunk 0x80 read then written; reported once a tile and phase
+            Net n = new Net(Net.cfg(-1));
+            int SR = LinkWord.R_SRAM << 24;
+            n.c.tiles[9].dir.remaining[1] = 2; n.c.tiles[9].dir.remaining[2] = 4;
+            n.at(12, 10, 9, LinkWord.M_WRITE, 1, SR | (0x40 << 2), LinkWord.SIZE_64, 0x11, 0);
+            n.at(12, 11, 9, LinkWord.M_WRITE, 1, SR | (0x41 << 2), LinkWord.SIZE_32, 0x12, 0);
+            while (n.c.cycle < 39) n.step();
+            n.c.tiles[9].core.store(40, 0xFFFFF880, (1 << 17) | (2 << 19) | 0x100, -1); n.step();
+            n.c.tiles[9].core.store(41, 0xFFFFF87C, 0x40, -1); n.step();
+            n.c.tiles[9].core.store(42, 0xFFFFF87C, 0x40, -1); n.step();
+            n.runAll(500);
+            n.c.newPhase();
+            long T = n.c.cycle + 5;
+            while (n.c.cycle < T - 1) n.step();
+            n.c.tiles[9].core.store(T, 0xFFFFF87C, 0x80, -1); n.step();
+            n.at(13, T + 20, 9, LinkWord.M_WRITE, 1, SR | (0x80 << 2), LinkWord.SIZE_64, 0x13, 0);
+            n.runAll(500);
+            System.out.print(n.c.violationReport());
+        }
+        {   // invariant 2 across GOs (W26, 1d): the a2a, whose phases (each GO a new one) read and write the same buffers
+            Mach m = new Mach(Mach.cfg(-1));
+            A2A data = new A2A(7, 2000);
+            for (Tile p : m.c.tiles) {
+                int s = p.idx;
+                for (int k = 0; k < data.rec[s].length; k++) p.sram.poke64(A2A.SRC + 2 * k, data.rec[s][k]);
+                for (int d = 0; d < 64; d++) p.sram.poke(0xF0000 + d, data.cnt[s][d]);
+                for (int src = 0; src < 64; src++) p.sram.poke(0xF0000 + 64 + src, data.cnt[src][s]);
+                for (int g = 0; g < 16; g++) p.sram.poke(0xF0000 + 128 + g, data.R[g]);
+                p.sram.poke(0xF0000 + 144, 0);
+            }
+            m.boot("a2a");
+            m.c.cc.command(LinkWord.BROADCAST, 1 << 24).go().command(LinkWord.BROADCAST, 2 << 24).go().command(LinkWord.BROADCAST, 3 << 24).go();
+            m.run(m::allStopped, 2_000_000);
+            System.out.print(m.c.violationReport());
+        }
+        {   // invariant 2's phases at GO (TileControl.endCycle: sram.newPhase at every GO; W26, 1d): tile 5 reads chunk 0x40 (a
+            // test's read-port stores), GO, then C&C writes the chunk: another phase, no violation
+            Config k = Mach.cfg(-1); k.checkErrors = false;
+            Mach m = new Mach(k);
+            int P = Registers.PMEM_BASE;
+            int[] w = { 0x80000093, 0x00100193, 0x0030A623, 0x10500073, 0xFF9FF06F };   // done, WFI, again
+            for (Tile p : m.c.tiles) for (int i = 0; i < w.length; i++) p.core.pokeLocal(P + 4 * i, w[i]);
+            m.c.run(40);
+            m.c.cc.command(LinkWord.BROADCAST, Registers.CMD_JUMP << 24, P).runWhenReady();
+            m.c.run(300);
+            m.c.tiles[5].dir.remaining[2] = 1;
+            long T = m.c.cycle + 1;
+            m.c.tiles[5].core.store(T, 0xFFFFF880, (1 << 17) | (2 << 19) | 0x100, -1); m.c.run(1);
+            m.c.tiles[5].core.store(T + 1, 0xFFFFF87C, 0x40, -1); m.c.run(100);
+            m.c.cc.command(LinkWord.BROADCAST, 1 << 24).go();   // READY is done and a command landed
+            m.c.run(150);
+            m.c.cc.send(5, LinkWord.M_WRITE, (LinkWord.R_SRAM << 24) | (0x40 << 2), LinkWord.SIZE_64, 0x77, 0);
+            m.c.run(200);
+            System.out.print(m.c.violationReport());
+        }
         {   // the message cap (maxViolationMessages): the count goes on
             Config k = Net.cfg(-1); k.maxViolationMessages = 3;
             Net n = new Net(k);

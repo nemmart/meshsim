@@ -60,7 +60,10 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     sc.mem_chunks = g.cfg.mem_chunks; sc.area_queue_depth = g.cfg.area_queue_depth;
     sc.write_combining = g.cfg.write_combining; sc.fifo_count_before_pop = g.cfg.fifo_count_before_pop;
     sc.running_sum = g.cfg.sram_running_sum;
-    auto& sr = cfg.add<BigSram>(t + "sram", sc, g.sram->block(k, g.cfg.mem_chunks), true);
+    auto& sr = cfg.add<BigSram>(t + "sram", sc, g.sram->block(k, g.cfg.mem_chunks), true, sim::check::kOn);   // W26: the GO Wire
+#ifdef SIM_CHECKS
+    sr.ck_tile = int(k);                                  // W26: invariant 2's facts
+#endif
 
     cfg.link(c.bus, b.bus, 1);
     cfg.connect(b.regs, c.regs);
@@ -87,6 +90,7 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
         cfg.connect(ts.busy_ptr, c.busy_ptr);
         cfg.connect(ag.running_out, c.ag_running);
         cfg.connect(b.go_out, c.go_seen);
+        cfg.connect(b.go_out, sr.go_seen);                // W26: invariant 2's phase at every GO
     }
     // G3 (W11): the write engine's PTR RMWs, count-on-arrival, and its writes into the big SRAM
     cfg.link(we.ts_req, ts.req_we, g.cfg.ts_engine_latency);

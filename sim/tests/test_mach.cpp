@@ -873,6 +873,61 @@ void checkself() {
         n.run_all(1000);
         say("%s", n.c.violation_report().c_str());
     }
+    {   // W26 (1d): invariant 2, the disjoint buffers: written then read (phase 0), new_phase, read then written (phase 1)
+        Net n(Net::cfg(-1));
+        const uint32_t SR = uint32_t(lw::R_SRAM) << 24;
+        n.c.tile(9).set_remaining(1, 2); n.c.tile(9).set_remaining(2, 4);
+        n.at(12, 10, 9, lw::M_WRITE, 1, SR | (0x40u << 2), lw::SIZE_64, 0x11, 0);
+        n.at(12, 11, 9, lw::M_WRITE, 1, SR | (0x41u << 2), lw::SIZE_32, 0x12, 0);
+        while (n.c.cycle() < 39) n.step();
+        n.c.tile(9).store(40, 0xFFFFF880u, (1u << 17) | (2u << 19) | 0x100); n.step();
+        n.c.tile(9).store(41, 0xFFFFF87Cu, 0x40); n.step();
+        n.c.tile(9).store(42, 0xFFFFF87Cu, 0x40); n.step();
+        n.run_all(500);
+        n.c.new_phase();
+        const int64_t T = n.c.cycle() + 5;
+        while (n.c.cycle() < T - 1) n.step();
+        n.c.tile(9).store(T, 0xFFFFF87Cu, 0x80); n.step();
+        n.at(13, T + 20, 9, lw::M_WRITE, 1, SR | (0x80u << 2), lw::SIZE_64, 0x13, 0);
+        n.run_all(500);
+        say("%s", n.c.violation_report().c_str());
+    }
+    {   // W26 (1d): invariant 2 across GOs: the a2a
+        Mach m(Mach::cfg(-1));
+        mach::A2A data(7, 2000);
+        for (unsigned s = 0; s < 64; s++) {
+            mach::TileRef p = m.c.tile(s);
+            for (size_t k = 0; k < data.rec[s].size(); k++) p.sram_poke64(mach::A2A::SRC + 2 * uint32_t(k), uint64_t(data.rec[s][k]));
+            for (unsigned d = 0; d < 64; d++) p.sram_poke(0xF0000 + d, uint32_t(data.cnt[s][d]));
+            for (unsigned src = 0; src < 64; src++) p.sram_poke(0xF0000 + 64 + src, uint32_t(data.cnt[src][s]));
+            for (unsigned g = 0; g < 16; g++) p.sram_poke(0xF0000 + 128 + g, uint32_t(data.R[g]));
+            p.sram_poke(0xF0000 + 144, 0);
+        }
+        m.boot("a2a");
+        m.c.cc().command(lw::BROADCAST, 1u << 24).go().command(lw::BROADCAST, 2u << 24).go().command(lw::BROADCAST, 3u << 24).go();
+        m.run([&] { return m.all_stopped(); }, 2000000);
+        say("%s", m.c.violation_report().c_str());
+    }
+    {   // W26 (1d): invariant 2's phases at GO: tile 5 reads chunk 0x40, GO, C&C writes it (another phase)
+        mach::MachConfig k = Mach::cfg(-1);
+        k.check_errors = false;
+        Mach m(k);
+        const uint32_t P = 0x01000000;
+        const uint32_t w[5] = {0x80000093, 0x00100193, 0x0030A623, 0x10500073, 0xFF9FF06F};
+        for (unsigned t = 0; t < 64; t++) for (uint32_t i = 0; i < 5; i++) m.c.tile(t).poke_local(P + 4 * i, w[i]);
+        m.c.run(40);
+        m.c.cc().command(lw::BROADCAST, 0x4Au << 24, {P}).run_when_ready();
+        m.c.run(300);
+        m.c.tile(5).set_remaining(2, 1);
+        const int64_t T = m.c.cycle() + 1;
+        m.c.tile(5).store(T, 0xFFFFF880u, (1u << 17) | (2u << 19) | 0x100); m.c.run(1);
+        m.c.tile(5).store(T + 1, 0xFFFFF87Cu, 0x40); m.c.run(100);
+        m.c.cc().command(lw::BROADCAST, 1u << 24).go();
+        m.c.run(150);
+        m.c.cc().send(5, lw::M_WRITE, 0, uint32_t(lw::R_SRAM) << 24 | 0x40u << 2, lw::SIZE_64, 0x77);
+        m.c.run(200);
+        say("%s", m.c.violation_report().c_str());
+    }
     {
         mach::MachConfig k = Net::cfg(-1);
         k.max_violation_messages = 3;

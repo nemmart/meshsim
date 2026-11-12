@@ -396,3 +396,6 @@ W22-20. **(for W20) `TileRef::req_send` takes one push a cycle** (a `Sim::put_la
   no-op `new_phase`. Now W20's `Chip::new_phase()` wherever ref calls newPhase (EngineTest's radix sort and late
   groups, AgTest's rulings; p4_drift's radix sort too). engine, eng-shuf, engine-full byte for byte again; AgTest 206 of
   206; `run_tests.sh quick --check`: no LOG DIFFERS.
+- **RequestBusTest complete** (W22-19 delivered_log, W22-20 req_send): basics (the unloaded latency line), fairness,
+  credits, back-pressure ported; reqbus and reqbus-shuf byte for byte (50 of 50), also under step-all and
+  instance-major. Live in run_tests.sh; both in make check.

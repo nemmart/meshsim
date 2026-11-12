@@ -276,3 +276,9 @@ W22-17. **SearchBench needs the TRACE store log** (ref's `p.ctl.traceHook = (t, 
   `Sim::observe` exactly as W20's `phase_done` does (nothing arriving after the next cycle). Probed: low at the accept
   and the cycle after, idle from accept + cm_latency (ref: written at t + cm_latency); net.log still byte for byte.
 - **EngineTest's write engine group equal** (stage peak, F3).
+- **EngineTest: every printed line equal to engine.log and eng-shuf.log** (clang suite build): write engine, local copy
+  (8 lines), stream runs, one-word exchange (5), radix sort, late groups (2), all-to-all (5), fence; drift's line too.
+  363 of 365 assertions: the 2 left are W26's kinds ("invariant 3", "invariant 6"). The six runLocal groups on
+  W20's `phase_done`; `new_phase` is a local no-op until W20's Chip::new_phase lands (nothing records the
+  disjoint-buffer check yet, W26, so it changes nothing meanwhile). The radix sort's Net sizes the directors' logs for
+  its 5 passes (`log_capacity` 5N + 64: ref's log is a list). engine-full (4 data sets at full size): the runner, later.

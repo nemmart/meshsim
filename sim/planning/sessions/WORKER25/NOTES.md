@@ -125,3 +125,10 @@ the `-q` estimate, the guest delivery's whereabouts.
   range), the planted-fault delivery with the manifest's hashes refreshed (5 FAIL lines with ref's details), and a
   corrupted copy (a tables FAIL line, each CORRUPT kind, a hash given as a bare string): CSV with wall_ms masked, stdout
   and exit code all equal.
+- **`shard_summary`** (`tests/acceptance/shard_summary.cpp`): v1.3's `run_shard.sh` inline Python in C++ (D40),
+  writing SUMMARY.txt and VERDICT.txt and the exit code. Checked against v1.3's own Python, taken verbatim from
+  `sim/ref/meshsim/acceptance/run_shard.sh` by `oracle/ref/shardsummary.sh` (python3 on the oracle side only), on six
+  cases in `tests/acceptance/summary/` (OK lines of A, B, F with stall counts; a B/F cycle disagreement; FAIL,
+  CORRUPT, tables and malformed lines; a blank line; a range; "all" from a manifest; -x adding F; an empty file; a
+  passing shard): `test_shard_summary` (make check) equal on gcc and clang, debug and release; a planted difference in
+  a fixture fails it.

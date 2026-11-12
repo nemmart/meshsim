@@ -1,0 +1,8 @@
+FAIL stage A: 6 of 8 windows matched; first missing [6, 7]
+FAIL stage B: 5 of 8 windows matched; first missing [3, 6, 7]
+FAIL window 7: - CORRUPT window_00007.rlog.bin: missing; 
+FAIL window -: tables FAIL tables differ: [x]
+FAIL window ?: malformed line bad,line
+FAIL window ?: malformed line 
+FAIL window 2: B:state FAIL first mismatching row 3 | end state, ok
+FAIL: syn windows 0..7

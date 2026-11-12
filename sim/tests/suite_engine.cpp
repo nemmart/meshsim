@@ -459,7 +459,9 @@ void all_to_all() {
     } else sets.push_back({"uniform (Data(7, 2000))", A2A(7, 2000), {4, 0}});
     for (const Set& st : sets) {
         for (int gap : st.gaps) {
-            Net n(cfg(true));
+            // ref's `new Net(cfg(true))`, of which only the chip is used: its directors' logs are lists in ref, fixed
+            // here, and the full-size data sets (65,536 records a tile and more) don't need them, so the plain chip
+            struct { Chip c; } n{Chip(cfg(true))};
             st.d.load(n.c, gap);
             const int64_t cyc = A2A::run(n.c, 20000000);
             const int bad = st.d.verify(n.c);

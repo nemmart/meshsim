@@ -127,3 +127,28 @@ lines).
   at ref's cycle: D33 again, in a statistic only. In the runner (step `ccbench`, full mode) and in make check (fast).
 - CcCoresTest in the suite build: errorPath counts the injected ERRORS as a violation (tile 9's, invariant 15; C&C 2's
   isn't reported), as expected while request 10's stand-in does nothing.
+- Checks so far: test_ctl_suites, suite_cccores, suite_ccbench on clang and gcc release and the clang suite build; the
+  protected test_golden, test_controllers, test_chip pass with the rv32 statistics (clang release). The debug builds
+  (ASan, UBSan, the debug checks) are run with the next full make check.
+
+## Step 2, CtrlTest: what it needs (read through, 2026-11-12)
+
+CtrlTest is the widest of my suites. Beyond main today it needs, from W20 (through the integrator):
+- **Cc::phase_log** (CnC.phaseLog: {all READY, GO store} per GO; FATAL in mach.cpp "with step 4"): commands, the a2a.
+- **reset**, soft and hard, as C&C steps (`cc.reset(false)`, `.reset(true)`), `resets`, `last_reset_at` (faults, the
+  hard reset with a packet in flight); **requests 6, 7**.
+- **the request bus from the harness** (target 0's pending, get(word), receive, idle; a tile leaf's idle): faults;
+  request 6.
+- **config switches mid-run**: check_errors (request 10), strict_replies, max_violation_messages; and clearing the
+  violation count and messages (`m.c.violations = 0`; only `clear_violation_messages` exists).
+- **the checker's kinds** CtrlTest provokes: invariants 4, 5, 8 (strict), 9, 20, 21 (ROUTER_HDR's and WRITE_COUNTER_2's
+  reserved bits), 25, the reserved register-block word, "address generator is running", the overlay after the first
+  command, the counter wraps, the eight ecalls; with ref's texts.
+- **Cc::send** (exists) and `Chip::quiescent` (exists); **chip.agReport()** (ref's per-run AG report, the a2a's lines).
+- **the boot ROM's size check** (Controller.checkBootRom: a 65-word image refused, `throws`): a C++ equivalent.
+Statistics I add to units myself (counters only, as rv32's), unless W20 prefers to: TileCtl `gos`, `readies`,
+`event_wakes`, `spurious_edges`, `counter_wraps` (exists), `last_done_at`, `last_landed_at`, `ready_pulse_at`,
+`go_visible(t)`; the controller memories' `writes_cmd`, `landed_at`, `overwritten_unread`; the AG's `started_at`;
+the core's WFI log (`wfiLog`: {enter, leave, cause} per WFI; a fixed array of the first 8, D24).
+Order inside CtrlTest: fields, boot, registers, commands, wfi, blockCopy and the ROM size first (on what exists plus
+the statistics); faults, invariants and the a2a's tables as W20's pieces land.

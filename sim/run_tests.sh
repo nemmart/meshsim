@@ -46,7 +46,11 @@ if [ "$BUILD" = 1 ]; then
 fi
 
 # Timing masked for --check: wall-clock figures (seconds, ms, rates) vary by machine; cycles never do.
-mask() { sed -E 's/[0-9]+(\.[0-9]+)? ?(ms|s|sec|seconds|us|µs|ns)\b/<time>/g; s/[0-9.]+ ?[kKMG]?(cycles|instructions|packets|steps)\/s/<rate>/g'; }
+mask() { sed -E 's/[0-9]+(\.[0-9]+)? ?(ms|s|sec|seconds|us|µs|ns)\b/<time>/g; s/[0-9.]+ ?[kKMG]?(cycles|instructions|packets|steps)\/s/<rate>/g'${MASK_EXTRA:+; $MASK_EXTRA}; }
+# A step's own approved mask (MASK_EXTRA, a sed expression, set for that step only): a recorded deliberate difference.
+# D44 (D33 reached): CcCoresTest's error path prints C&C 1's UART dump end, one cycle later here (C&C 1's peripheral
+# applies stores at t + 1); that one figure is masked.
+D44_MASK='s/dump done at \+[0-9]+/dump done at +<D44>/'
 
 step() {
   local log=$1 tail=$2 what=$3 ref=$4; shift 4
@@ -106,8 +110,13 @@ pending periph        "the peripheral framework: the standard window, events, re
 pending periph-shuf   "shuffled child order (seed 4)" "P5"
 pending reqbus        "the request port, the request bus and the receive queues in the tree" "P5"
 pending reqbus-shuf   "shuffled child order (seed 4)" "P5"
-pending cccores       "C&C 1-3 as cores (Config.ccCores, WORKER14): the boot ROM's controller branch, the link, the request tree" "P5: W23's suite_cccores, one figure off (D33; W20's ERRORS from a test)"
-pending cccores-shuf  "shuffled child order (seed 4)" "P5: W23's suite_cccores, as cccores"
+# cccores: log-equal (D44's mask) in the builds without the checker; this runner's suite build has it on, and the
+# error path's injected ERRORS count as a violation until W20's requests 9 and 10 replace W23's stand-ins (ctl.h).
+# Then these two lines replace the pending ones:
+#   MASK_EXTRA=$D44_MASK step cccores      1 "C&C 1-3 as cores ..." tests/ctlsuites/cccores.log -- $S/suite_cccores -1
+#   MASK_EXTRA=$D44_MASK step cccores-shuf 1 "shuffled child order (seed 4)" tests/ctlsuites/cccores-shuf.log -- $S/suite_cccores 4
+pending cccores       "C&C 1-3 as cores (Config.ccCores, WORKER14): the boot ROM's controller branch, the link, the request tree" "P5: W20's requests 9 and 10 (the checker's build)"
+pending cccores-shuf  "shuffled child order (seed 4)" "P5: W20's requests 9 and 10 (the checker's build)"
 step replay-build 1 "the replay controller (sw/replay/build.sh)" tests/stageb/replay-build.log -- tests/stageb/replay_build.sh
 pending stageb        "Stage B: replay_ctl.c on a tile against Stage A, synthetic windows" "P7b"
 pending replayer      "the replayer model (v1.25): the opcode table, the ALU against vec.tsv at 821e1bd, the unit tests" "P7b"

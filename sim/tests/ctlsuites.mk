@@ -4,7 +4,8 @@
 # call them with v1.3's arguments.
 #   suite_cccores   CcCoresTest (steps cccores, cccores-shuf)
 #   suite_ccbench   CcBench (step ccbench)
-CTL_SUITES := $(B)/suite_cccores $(B)/suite_ccbench
+#   suite_ctrl      CtrlTest (steps ctrl, ctrl-shuf, ctrl-full; in progress)
+CTL_SUITES := $(B)/suite_cccores $(B)/suite_ccbench $(B)/suite_ctrl
 $(CTL_SUITES): $(B)/suite_%: $(B)/tests/ctl/suite_%.o $(MACH_LINK) $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 # the suites are run by test_ctl_suites (order-only: built with it, not linked into it)

@@ -58,6 +58,12 @@ inline int64_t sim_exit_value(mach::Chip& c, unsigned k) { return c.tile(k).exit
 
 // ref's chip.cc1p.gos on the Java model's machine: C&C 1's model drives PULSE_GO, counted in the same cycle as CnC.gos
 inline uint64_t model_gos(mach::Chip& c) { return c.unit<units::Cnc>("cnc").gos; }
+// ref's chip.cc.readyBits(t) on the Java model's machine (C&C 1's model keeps the READY arrivals, cnc.h)
+inline uint64_t model_ready_bits(mach::Chip& c, int64_t t) {
+    const units::Cnc& n = c.unit<units::Cnc>("cnc");
+    uint64_t b = 0; for (unsigned k = 0; k < 64; k++) if (n.ready(k, t)) b |= 1ull << k;
+    return b;
+}
 
 // Java's String.format("%.<n>f", x): the double's shortest round-trip decimal (Java's FormattedFloatingDecimal), then
 // rounded HALF_UP to n places (printf rounds the exact binary value instead: 129.25 -> "129.2", Java "129.3").

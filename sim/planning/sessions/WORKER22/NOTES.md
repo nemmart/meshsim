@@ -143,6 +143,31 @@ W22-14. (owner: `new_phase` to W20, big SRAM's recording to W26) **Chip::new_pha
 - W22-4 (the write engine's arrival log): on main (`record_writer`, `writer_log`).
 - Chip.memReport: suite-side formatting from the counters above (no ask).
 
+### AgTest's needs (2026-11-12)
+
+AgTest prints no lines (its log is the summary: 240 assertions). On today's main it uses W20's new `TileRef::store`,
+`load`, `send_put`, the AG's statistics (`stream_reads`, `group_reads`, `requests`, the queue peaks), TableStore's and
+the HIST store's `rmws` and `pipe.ctrl_writes_lost`. What's missing:
+
+W22-15. **ref's `EngineTest.phaseDone` / `runLocal`** (AgTest's four engine groups and every EngineTest group stop on
+    it): `!ag.running && ctl.countersZero() && dir.inFlight() == 0 && memIdle(t) && dir.cmIdle(t) && !tsBusy(t)`. The
+    C++ director forwards each counted packet's counter over its `kline` Link(K + 1) and mode-0 writes over `port_b`, so
+    `inFlight` (accepted, not yet decremented) and `cmIdle` (nothing on port B's link) are words in flight on those
+    ports: a harness accessor (e.g. `TileRef::phase_done()`, or `dir_in_flight()` and `cm_idle()`).
+W22-16. **The write engine's RMW requests from the harness** (figure 12: ref's `p.weTsReq.put(t, op, idx, add)` and
+    `p.weHistReq.put(t, 0, idx, add)`, an RMW on the TableStore's or HIST's request line as the write engine would put
+    it, so the test can aim a controller store or load at its write-back cycle).
+- W22-14 (`new_phase`): rulings. W26: the AG's stream-entry checks ("stream", read size 11, d = 70, d = 126, mode-4,
+  mode-3 at 128, counter 0) and the injection's "dst 70".
+- ref's `ag.runningForStatus()` / `doneForStatus()` (rulings): the AG's `status` Reg as the block reads it at t + 1;
+  read through `TileRef::block()` or an accessor (to settle when that group is written).
+
+**Finding F2 (for W20): `TileRef::mem_idle` indexes the area queues modulo `MAX_DEPTH`** (tests/mach.cpp:739,
+`m.q[a][(m.head[a] + j) % units::BigSram::MAX_DEPTH]`), while BigSram wraps them modulo `cfg.area_queue_depth`
+(big_sram.h `at`, `enqueue`, `serve`). With the default depth 8, once head + j reaches 8 it reads a stale slot, so a
+queued write can be missed (mem_idle true too early) or a served one seen. `m.at(a, j)` is the fix. MemTest's mem_idle
+group passes either way (its queues never wrap while it asks).
+
 ## Progress
 
 - 2026-11-11: plan agreed; branch made. Toolchain: clang 18.1.3, gcc 13.3.0, JDK 21.0.13 (apt). clang release on
@@ -206,3 +231,4 @@ W22-14. (owner: `new_phase` to W20, big SRAM's recording to W26) **Chip::new_pha
   `token_wait_cycles` / `wait_from` already does: the cycle the wait began, the span added when the unit next steps.
   Under SIM_CHECKS only, or in every build (the existing counter is wrong in every build).
 - **F1 fixed** (above): MemTest equal on every printed line but the disjoint group's (W22-14).
+- **AgTest**: gap map (W22-15, W22-16 above); finding F2 (mem_idle's queue index) for W20.

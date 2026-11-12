@@ -138,6 +138,9 @@ Each was found by a twin's comparison and is now equal to ref:
 - Note for the machine (not changed): a core's own HIST load on a write-back cycle reads the entry, where ref returns
   the engine's written value. The harness's load follows ref; a program doing it would differ.
 
+- Net's C&C sends (`Net::step`'s cncSends, `Net::send`) now go through `units::endpoint_checks` at their cycle, as ref's
+  Endpoint.send checks them (W26's facts: bad packet, size 11, reserved mode); CheckSelf's endpoint cases are W26's.
+
 ## What's left
 
 - the reset and the fingerprint option on the machine with C&C 1-3 as cores (both FATAL today; `CcCores.reset`,

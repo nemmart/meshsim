@@ -88,8 +88,8 @@ own parts (GATHER, augmenting, the histogram tables) sit in the tile's core.
 
 The owner works on the architecture, the algorithms and the high-level simulation; Tony on the RTL and the
 low-level design [owner]. **The spec and meshsim are the high-level design; the RTL owns what is buildable and
-the exact timing.** They may differ by a cycle, and must agree on results and on behaviour at the level of this
-page (DECISIONS D30). There is no PDK yet, so macro shapes and physical latencies are guesses.
+the exact timing.** The RTL may diverge from them here and there, hopefully by little; the two must agree on
+results and on behaviour at the level of this page (DECISIONS D30). There is no PDK yet, so macro shapes and physical latencies are guesses.
 
 **meshsim** is the cycle-level simulator every change is checked on. v1.3's is Java; **v1.35 is its rewrite in
 C++**, checked unit by unit against v1.3: the full-size sort about 18× faster on six threads, a traced segment
@@ -104,4 +104,4 @@ any RTL exists.
 4. The two mesh regimes, the per-tile flag, and backpressure reaching the address generator only.
 5. The two control waits stay in software; no ECC, with the host verifying every proof.
 6. Retargetable: a platform with a plug-in slot for peripherals.
-7. The split of responsibilities; the RTL may differ from the spec by a cycle.
+7. The split of responsibilities; the RTL may diverge from the spec here and there, hopefully by little.

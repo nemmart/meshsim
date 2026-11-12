@@ -3,8 +3,14 @@
 # folder) in ref, a state fingerprint at every GO and all-READY. Needs a JDK. sim/ref is only read: as sortlogs.sh, a
 # scratch copy with the C++ tree's committed images. One JVM per run, P at a time (default 1).
 #
-#   sortfp.sh --fixtures [PATTERN]   (re)write tests/sort/fp/<name>.out and <name>.fp.gz, and HASHES
-#   sortfp.sh --check [PATTERN]      regenerate and compare every file's sha256 with HASHES (the .fp uncompressed)
+#   sortfp.sh --fixtures [PATTERN]   (re)write tests/sort/fp/<name>.out and <name>.fpd, and their lines in HASHES
+#   sortfp.sh --check [PATTERN]      regenerate and compare every file's sha256 with HASHES
+#   KEEP=DIR                         also keep the full fingerprints (<name>.fp, ~1 MB gzipped each) in DIR
+#
+# The committed form is the digest, <name>.fpd (fp_digest below): the .fp's header lines, then one line per point,
+# "cycle lines sha256", the sha256 over the point's "unit hash" lines sorted bytewise (LC_ALL=C), each ending in \n. The
+# C++ side digests its own lines the same way. The full .fp (every unit's hash at every point, to localise a
+# difference) is regenerated with KEEP=DIR; its sha256 is in HASHES.
 set -u
 export LC_ALL=C
 SIM=$(cd "$(dirname "$0")/../.." && pwd); REF=$SIM/ref/meshsim; FIX=$SIM/tests/sort/fp
@@ -42,12 +48,20 @@ one() {
 export -f one
 tr '\n' '\0' < "$W/runs" | xargs -0 -P "${P:-1}" -I{} bash -c 'one "$@"' _ {}
 
-(cd "$OUT" && sha256sum *.out *.fp) > "$W/hashes"
+fp_digest() {   # FP > FPD
+  local t; t=$(mktemp -d)
+  grep '^#' "$1"
+  grep -v '^#' "$1" | awk -v d="$t" '{ f = d "/" $1; print $2 " " $3 > f; if (!($1 in s)) { s[$1] = 1; o[++n] = $1 } } END { for (i = 1; i <= n; i++) print o[i] > d "/ORDER" }'
+  while read -r c; do printf '%s %s %s\n' "$c" "$(wc -l < "$t/$c")" "$(LC_ALL=C sort "$t/$c" | sha256sum | cut -c1-64)"; done < "$t/ORDER"
+  rm -rf "$t"
+}
+for f in "$OUT"/*.fp; do fp_digest "$f" > "${f%.fp}.fpd"; done
+[ -n "${KEEP:-}" ] && { mkdir -p "$KEEP"; cp "$OUT"/*.fp "$KEEP/"; }
+(cd "$OUT" && sha256sum *.out *.fp *.fpd) > "$W/hashes"
 if [ "$MODE" = --fixtures ]; then
-  for f in "$OUT"/*.out; do cp "$f" "$FIX/"; done
-  for f in "$OUT"/*.fp; do gzip -9n < "$f" > "$FIX/$(basename "$f").gz"; done
+  cp "$OUT"/*.out "$OUT"/*.fpd "$FIX/"
   if [ -f "$FIX/HASHES" ]; then awk 'NR==FNR{n[$2]=1; next} !($2 in n)' "$W/hashes" "$FIX/HASHES" > "$W/keep"; else : > "$W/keep"; fi
-  sort -k2 "$W/keep" "$W/hashes" > "$FIX/HASHES"; echo "wrote $(wc -l < "$W/hashes") files into $FIX"
+  sort -k2 "$W/keep" "$W/hashes" > "$FIX/HASHES"; echo "wrote $(ls "$OUT"/*.out | wc -l) runs into $FIX"
 else
   bad=0
   while read -r h f; do

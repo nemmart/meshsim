@@ -19,7 +19,7 @@ Every section keeps its number; a section that moved leaves a one-line stub unde
 | `schedule.md` | `spec/schedule.md` |
 | the preamble's "in brief" blocks and its companions for the history documents | `spec/history/machine-spec-v1.3-preamble.md` |
 | section 13 as it stood | `spec/history/machine-spec-v1.3-section-13.md`; the new section 13 lists what is open today |
-| the `CHANGES-*` files; `planning/DECISIONS-v1.2.md` to `-v1.3.md` | `spec/history/`, names unchanged |
+| the `CHANGES-*` files; `v1.3/planning/DECISIONS-v1.2.md` to `-v1.3.md` | `spec/history/`, names unchanged |
 
 Every statement about the simulator and every path was made true of v1.35; nothing else in the text changed.
 

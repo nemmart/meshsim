@@ -468,7 +468,7 @@
 | `CHANGES-v1.3-to-v1.35.md` | 19 | \\| `schedule.md` \\| `spec/schedule.md` \\| |
 | `CHANGES-v1.3-to-v1.35.md` | 20 | \\| the preamble's "in brief" blocks and its companions for the history documents \\| `spec/history/machine-spec-v1.3-preamble.md` \\| |
 | `CHANGES-v1.3-to-v1.35.md` | 21 | \\| section 13 as it stood \\| `spec/history/machine-spec-v1.3-section-13.md`; the new section 13 lists what is open today \\| |
-| `CHANGES-v1.3-to-v1.35.md` | 22 | \\| the `CHANGES-*` files; `planning/DECISIONS-v1.2.md` to `-v1.3.md` \\| `spec/history/`, names unchanged \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 22 | \\| the `CHANGES-*` files; `v1.3/planning/DECISIONS-v1.2.md` to `-v1.3.md` \\| `spec/history/`, names unchanged \\| |
 | `CHANGES-v1.3-to-v1.35.md` | 24 | Every statement about the simulator and every path was made true of v1.35; nothing else in the text changed. |
 | `CHANGES-v1.3-to-v1.35.md` | 26 | ## The simulator's deliberate differences from v1.3's |
 | `CHANGES-v1.3-to-v1.35.md` | 28 | v1.35's meshsim matches v1.3's results exactly, and its cycle counts exactly except in these cases, each approved and recorded (the decision in brackets): |

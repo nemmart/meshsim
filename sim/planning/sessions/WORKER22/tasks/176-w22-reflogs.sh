@@ -4,7 +4,9 @@
 # (a scratch copy of ref/meshsim's layout with fw/images): skewtable (NetTest -1 skewtable 40), engine-full
 # (EngineTest -1 full), rdport-full (ReadPortGatherTest -1 full), agbench (AgBench). Their logs come back as P4's
 # fixtures. Also: the 16 quick steps regenerated here and compared with the committed fixtures (p4suites.sh --check),
-# so the fixtures don't depend on the container's JDK. Needs a JDK. Not timing. From an embedded kit. Writes only
+# so the fixtures don't depend on the container's JDK.
+# (Attempt 1 ran --check over all 20 steps, the 4 long ones having no committed fixture yet: only those 4 "differed";
+# the 16 were equal. The check is now limited to the 16.) Needs a JDK. Not timing. From an embedded kit. Writes only
 # results/176-w22-reflogs/. Scratch in /tmp, removed first and at the end. Safe to re-run from the start.
 set -u
 cd "$(dirname "$0")/.."
@@ -23,7 +25,7 @@ verdict() { echo "VERDICT $1: $2"; echo "$1 $2" >> "$RES/VERDICTS"; [ "$2" = PAS
 echo "kit: $(cat $W/kit/VERSION); host $(hostname); $(nproc) CPUs; $(java -version 2>&1 | head -1)"
 mkdir -p "$W/new"
 # the 16 quick steps against the committed fixtures, and the 4 long steps, side by side (each its own scratch build)
-bash "$P4" --check > "$RES/check.out" 2>&1 & pc=$!
+bash "$P4" --check net-quick net net-shuf net-shuf2 mem mem-shuf mem-shuf2 engine eng-shuf agtest agtest-shuf rdport rdport-shuf searchbench reqbus reqbus-shuf > "$RES/check.out" 2>&1 & pc=$!
 pids=""
 for s in skewtable engine-full rdport-full agbench; do
   ( D=$W/one-$s; mkdir -p "$D"; cp -r "$KS" "$D/sim"; bash "$D/sim/oracle/ref/p4suites.sh" --fixtures $s > "$RES/$s.out" 2>&1; rc=$?

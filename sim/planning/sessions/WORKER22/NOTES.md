@@ -68,6 +68,11 @@ sends, in-order, fan-in, the queue peaks) port onto what `mach.h` has now.
 6. **The checker kinds NetTest provokes, recorded**: the injection path's no-endpoint (a packet for 70), size 11 at
    the sender and the director, bad packets at both (7 in the director group), DIR_UNEXPECTED ("stray"), and the
    director's invariants 10, 11, 19, 21, 22 (W20's "next in step 2").
+7. **The write engine's input peak** (ref's `weIn.highWater`, the last line of NetTest's queue peaks): the framework's
+   Fifo (`src/engine.h` FifoPort) keeps no peak. Adds state to a framework structure, so **the owner's call** (a
+   statistic updated at the put, as the router's own `Fifo.peak`); the line is missing until then.
+8. **The debug options on the harness** (W20): `MachConfig` passes only the shuffle seed into `sim::Options`; step-all
+   and the instance-major order (both orders) need fields there too, for the suites' debug runs.
 
 ## Progress
 
@@ -79,5 +84,23 @@ sends, in-order, fan-in, the queue peaks) port onto what `mach.h` has now.
   run's output (`random*3` column `-`), not the all run's. Neither is used: the fixtures are ref's regeneration.
 - **Quest 176** (claimed, pushed): the four long steps (skewtable, engine-full, rdport-full, agbench) on the runner, and
   the 16 local steps regenerated there and compared (the runner's JDK). Task copy in `tasks/`.
+- **Quest 176 result** (attempt 1): the four long logs made (skewtable 187 s, engine-full 322 s, rdport-full 45 s,
+  agbench 30 s on the runner), committed as fixtures (sha256 equal to the task's SHA256SUMS). Its check-16 verdict
+  FAILED only because `--check` with no steps compared all 20, and the 4 long ones had no committed fixture yet; none
+  of the 16 differed (the runner's JDK gives the same logs). Task fixed to check the 16 (for the runner's retry).
 - **NetTest's gap map**: the asks above; everything else maps onto `mach.h` and the units' existing state (router
   FIFOs' peaks and overflows, `routed`, `injected`, the director's counters, the route tables).
+- **NetTest, the first groups** (`tests/suite_net.cpp`, `tests/p4_java.h` (Random, shuffle), `tests/p4suites.mk`,
+  `tests/p4_lines.sh` (a partial run's lines as one block of a fixture)). Each group's lines against the fixture, clang
+  suite build, seeds -1, 5, 11 (`net`, `net-quick`, `net-shuf`, `net-shuf2`) and clang debug (ASan, UBSan):
+  | group | lines | |
+  |---|---|---|
+  | structure | 1 | equal |
+  | unicast | 1 | equal (reset_stats a no-op meanwhile: ask 2; the one check reading the peaks has the same outcome) |
+  | routes | 1 | equal |
+  | in-order random + queue peaks | 20 | equal but the last peak line (ask 7) |
+  | in-order full rate | 10 | equal |
+  | fan-in (quick; all, with random*3 and 40 seeds) | 9 | equal |
+  | skewtable, 1 seed (ad hoc, ref run locally) | 15 | equal; 40 seeds (24 s a seed here): runner |
+  Fan-in's "safe" covers every hardware FIFO as ref's: the router FIFOs directly, the others by their ERRORS bits
+  (a non-router overflow first would be FATAL until W20's overflow scan names it; none occurs).

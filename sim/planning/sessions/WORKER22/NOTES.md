@@ -232,3 +232,15 @@ group passes either way (its queues never wrap while it asks).
   Under SIM_CHECKS only, or in every build (the existing counter is wrong in every build).
 - **F1 fixed** (above): MemTest equal on every printed line but the disjoint group's (W22-14).
 - **AgTest**: gap map (W22-15, W22-16 above); finding F2 (mem_idle's queue index) for W20.
+- **NetTest complete** (W20's reset_stats, Cc::received, send_put/send_empty/send_refusals, record_writer/gather, the
+  K check; the checker's kinds already recorded): broadcast, C&C 1-3 ports, director, injection, loopback added. **The
+  whole suite byte for byte equal to all four logs**: net (all), net-quick, net-shuf (5), net-shuf2 (11), clang suite
+  build; skewtable by Quest 179. **One interim**: the director group's `cm_idle` (ref's `dir.cmIdle(t)`, W22-15) reads
+  "never idle" until W20's accessor lands, so its one check ("cm_idle low while the write is in the port-B pipe")
+  passes without testing anything; replaced when W22-15 is on main.
+- **run_tests.sh** (shared; owner told): `suite_net` in SUITES; steps net (ref net-quick.log in quick mode, net.log in
+  all), net-shuf, net-shuf2, skewtable (all only). `./run_tests.sh quick --check --no-build`: the three net steps pass
+  with no LOG DIFFERS.
+- **make check**: `tests/test_p4suites.cpp` runs net-quick, net-shuf, net-shuf2 byte for byte (debug builds; skipped in
+  release, where the Fifo peaks aren't kept); clang debug 48 s, all pass. `suite_mem` builds in the timing builds as a
+  stub that says it needs SIM_CHECKS (its statistics don't exist there).

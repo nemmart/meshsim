@@ -152,3 +152,13 @@ Statistics I add to units myself (counters only, as rv32's), unless W20 prefers 
 the core's WFI log (`wfiLog`: {enter, leave, cause} per WFI; a fixed array of the first 8, D24).
 Order inside CtrlTest: fields, boot, registers, commands, wfi, blockCopy and the ROM size first (on what exists plus
 the statistics); faults, invariants and the a2a's tables as W20's pieces land.
+
+## D44 (2026-11-12)
+
+- D33's UART cycle in CcCoresTest accepted (D44): the fixture keeps v1.3's line; `test_ctl_suites` and the runner
+  mask "dump done at +N" (run_tests.sh's `MASK_EXTRA`, `D44_MASK`; a step's own approved mask).
+- **cccores, matched with a stand-in**: log-equal (D44's mask) in the release builds, plain and shuffled; its make-check
+  tests are on there. With the checker on (debug, the suite build) errorPath's injected ERRORS count as a violation
+  until W20's requests 9 and 10 replace the stand-ins: the make-check comparison is skipped in those builds and the
+  runner's steps stay PENDING ("W20's requests 9 and 10"), the two step lines ready in a comment.
+- CcBench's `last_go_store` approved. Runner labels: riscv and periph are W20's, reqbus W22's.

@@ -304,9 +304,34 @@ struct TileCore {
     // runs; port B's writes still land in its memories (ref's ControllerMemories does that apart from the core).
     bool coreless = false;
 
+    // W26 (the checker, SIM_CHECKS only): the table window's check (Controller.window, 4.10): HIST, PTR and the AG busy at
+    // t as ref's core sees them (table_store.h, ag.h: busy_hist, busy_ptr, running), same-cycle Wires
+    // An instruction at t is judged on the state at t; a test's store (TileRef::store, made here at t) on ref's flags as
+    // the cycle before left them (ref's harness store runs between cycles: the stores' and the AG's flags of t - 1).
+    sim::WireIn busy_hist, busy_ptr, ag_running;
+    bool table_busy = false, host_now = false;
+    void table_check([[maybe_unused]] sim::Ctx& c, [[maybe_unused]] uint32_t table, [[maybe_unused]] uint32_t i) const {
+#ifdef SIM_CHECKS
+        if (!table_busy || rv.ck_tile < 0) return;
+        const uint64_t t = c.now();
+        bool busy;
+        if (table == TBL_HIST || table == TBL_PTR) {
+            const sim::Word v = c.read(table == TBL_HIST ? busy_hist : busy_ptr), at = v & ~(sim::Word(1) << 63);
+            busy = !host_now ? at == t + 1 : at == t || (at == t + 1 && v >> 63);
+        } else {
+            const sim::Word v = c.read(ag_running);
+            busy = host_now && v >> 2 == t ? (v >> 1 & 1) : (v & 1);
+        }
+        if (busy) sim::check::record(t, rv.ck_tile, sim::check::Kind::CTL_TABLE_BUSY, table, i);
+#endif
+    }
+
     TileCore(sim::Ports& p, const Rv32& initial, unsigned tile = 0, unsigned read_port_depth = 64, bool slot_ = false,
-             bool receiver_ = false, bool done_gate_ = true)
-        : slot(slot_), receiver(receiver_), done_gate(done_gate_), rv(initial), rp_tile(uint8_t(tile)), rp_depth(read_port_depth) {
+             bool receiver_ = false, bool done_gate_ = true, bool table_busy_ = false)
+        : slot(slot_), receiver(receiver_), done_gate(done_gate_), rv(initial), rp_tile(uint8_t(tile)), rp_depth(read_port_depth), table_busy(table_busy_) {
+#ifdef SIM_CHECKS
+        if (table_busy) { p.in(busy_hist, "busy_hist"); p.in(busy_ptr, "busy_ptr"); p.in(ag_running, "ag_running"); }
+#endif
         if (slot) { p.in(win, "win"); p.out(periph, "periph", 1); }
         // W14: the request port's send side (every core) and a controller's receive side
         p.out(req_push, "req_push", 2); p.in(req_freed, "req_freed");
@@ -355,6 +380,7 @@ struct TileCore {
         void send(uint64_t lo, uint64_t hdr, uint64_t hi) { c.put(u.send, lo, hdr, hi); }
         bool send_refused() const { return c.refused(u.send); }
         void table_store(uint32_t table, uint32_t i, uint32_t v) {
+            u.table_check(c, table, i);                  // W26: the window's check (Controller.window), before the write
             if (table == TBL_HIST) c.put(u.hist_w, sim::Word(i), sim::Word(v));
             else c.put(u.tables, sim::Word(table) << 32 | i, sim::Word(v));
         }
@@ -409,6 +435,7 @@ struct TileCore {
             return true;
         }
         uint32_t hist(uint32_t i) const {                // RmwPipe.ctrlRead: on a write-back cycle, the engine's value
+            u.table_check(c, TBL_HIST, i);               // W26: the window's check (Controller.window)
             if (c.read(u.hist, HIST_WB_AT) == uint32_t(c.now() + 1)) return c.read(u.hist, HIST_WB_VAL);
             return c.read(u.hist, i);
         }
@@ -438,7 +465,11 @@ struct TileCore {
             for (uint32_t i = 0; i < host_n; i++) {
                 const HostStore& h = host_st[i];
                 if (h.t < c.now()) FATAL("tile core: a test's store for cycle %llu not made (the core wasn't stepped)", (unsigned long long)h.t);
-                if (h.t == c.now()) rv.store(e, h.t, h.ea, h.v, h.mask, rv.pc);
+                if (h.t == c.now()) {                     // (W26: ck_t, the facts' cycle; host_now, the window's check)
+                    rv.ck_t = h.t; host_now = true;
+                    rv.store(e, h.t, h.ea, h.v, h.mask, rv.pc);
+                    host_now = false;
+                }
                 else host_st[k++] = h;
             }
             host_n = k;

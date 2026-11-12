@@ -120,6 +120,26 @@ std::string Checker::text(const Fact& f) const {
             if (a[0] >> c & 1) b += fmt(" WRITE_COUNTER_%u %u", c, unsigned(a[1 + (c - 1) / 3] >> (20 * ((c - 1) % 3)) & 0xFFFFF));
         return "done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]):" + b;
     }
+    // ---- the core's checks through the block (Controller.java: stopLoudly, mret, memWord, store; W26) ----
+    case Kind::CTL_HALT: {
+        static const char* const kHalt[9] = {"running", "illegal instruction", "ecall", "ebreak", "bus error", "SIM_EXIT",
+                                             "fetch outside program memory and the boot ROM", "misaligned jump target", "a trap inside the handler"};
+        const unsigned why = unsigned(a[0]);
+        const std::string m = why == 6 ? fmt(", fetch at 0x%x", unsigned(a[1])) : why == 7 ? fmt(", to 0x%x", unsigned(a[1]))
+                             : why == 8 ? fmt(", cause %d inside the handler", int(int32_t(a[1]))) : std::string();
+        return fmt("tile %d: %s", f.tile, kHalt[why < 9 ? why : 0]) + m + ": a trap that sets no ERRORS bit; meshsim stops (4.13)";
+    }
+    case Kind::CTL_MRET: return fmt("tile %d: mret: every trap is terminal, the handler never returns (4.13)", f.tile);
+    case Kind::CTL_ALIAS:
+        return fmt("access at 0x%x, past the end of %s memory: the high offset bits are ignored and it aliases (2.2; invariant 19)",
+                   unsigned(a[0]), lw::region(uint32_t(a[0])) == lw::R_DMEM ? "data" : "program");
+    case Kind::CTL_TABLE_BUSY: {
+        static const char* const kTbl[4] = {"STREAM_SRC", "STREAM_DEST", "STREAM_COUNT", "GROUP"};
+        if (a[0] == 5) return fmt("table window: HIST[%u] accessed while count-on-arrival is using HIST (4.10)", unsigned(a[1]));
+        if (a[0] == 4) return fmt("table window: PTR[%u] accessed while the write engine is using PTR (4.10)", unsigned(a[1]));
+        return fmt("table window: %s accessed while the address generator is running, its lead-in included (4.10)", kTbl[a[0] & 3]);
+    }
+    case Kind::CTL_DMEM_RESERVED: return fmt("core store into data memory's reserved first 16 bytes, at 0x%x (2.2; invariant 22; W4-02)", unsigned(a[0]));
     case Kind::WE_PAST_SRAM:
         return fmt("a big-SRAM write at chunk 0x%" PRIx64 ", at or past the end of big SRAM: undefined (4.1; invariant 19): ", a[0]) + describe(a[1], a[2], a[3]);
     case Kind::PERIPH_VIOLATION: {                         // (W20, F2) the replayer's text, without its list's "t<me> @<t>: "
@@ -218,10 +238,13 @@ void Checker::process(int64_t now, bool scan, bool final) {
     std::stable_sort(fs.begin(), fs.end(), [&](const Fact& a, const Fact& b) {
         const int64_t ta = at(a), tb = at(b);
         if (ta != tb) return ta < tb;
+        // ref's checkInvariants walks the tiles, each tile's checks in turn (W26: tile-major within the per-tile slots)
+        auto major = [](int r) { return r >= int(Slot::EJECT) && r <= int(Slot::REFUSAL) ? int(Slot::EJECT) : r; };
         const int ra = rank(a), rb = rank(b);
-        if (ra != rb) return ra < rb;
+        if (major(ra) != major(rb)) return major(ra) < major(rb);
         if (a.kind == Kind::FIFO_OVERFLOW && b.kind == Kind::FIFO_OVERFLOW) return a.a[0] < b.a[0];   // ref's scan order
         if (a.tile != b.tile) return a.tile < b.tile;          // (the tiles', then C&C's FIFOs)
+        if (ra != rb) return ra < rb;
         return false;                                        // recording order kept within (cycle, slot, tile)
     });
     for (size_t i = 0; i < fs.size();) {

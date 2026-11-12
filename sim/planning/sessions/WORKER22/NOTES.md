@@ -373,3 +373,14 @@ W22-19. **The delivered requests' records** (new): ref's `RequestBus.delivered` 
     `srcTile` (ReqBus::delivered() is the count): basics (the unloaded latency, `q.deliveredAt - ts`), fairness (the
     span of deliveredAt), credits (srcTile 10, 20).
 - Quest 185's three attempts ran before the check's fix: its results removed for a re-run (Quest's commit 70b44a3).
+- **On main (18617c56): W22-11, W22-12, W22-18 (W20).**
+  - **ReadPortGatherTest**: traffic (3 lines: 3,120 both ways, the 9,527 overlaps), tolerance (quick 1 line; full's
+    23-line table), overlap check (1 line) all equal, seeds -1 and 4; `rp_host_queue`, `rp_idle`,
+    `rp_all_accepted`; overlap's C&C 1 sends through `Net::send` (ref's c.cnc.send at the cycle just run). Every group
+    now but disjoint (W22-14).
+  - **RequestBusTest**: the receive side 8 of 8, drops 4 of 4 (W26's root drops). Back-pressure **aborts**:
+W22-20. **(for W20) `TileRef::req_send` takes one push a cycle** (a `Sim::put_late` on the core's `req_push` Link):
+    ref's `RequestPort.send(t, w3)` appends to the FIFO directly, any number between two cycles (and flags \"a request
+    pushed into a full request FIFO\" past its depth). RequestBusTest pushes 128 at once (back-pressure), 100 and 29
+    (credits), 4 per tile (fairness); the second push of a cycle is FATAL (\"the unit put on this Hold in cycle 12
+    already\"). Basics, fairness and credits wait on W22-19 too.

@@ -7,8 +7,7 @@
 //   suite_rdport [seed] [full] [--only=GROUP,...]
 //     groups: fromc traffic tolerance overlap disjoint reserved gather counting gatherc
 //
-// STATUS. Ported: fromc, reserved, gather, counting, gatherc. Waiting: traffic, tolerance, overlap (the read port's host queue from the harness,
-// ref's readPort.hostQueue / idle / allAccepted: W22-18), disjoint (W22-14: Chip::new_phase, big SRAM's disjoint facts).
+// STATUS. Every group but disjoint (W22-14: Chip::new_phase, big SRAM's disjoint facts).
 //
 // Test-side code (the configuration regime, D6).
 #include <algorithm>
@@ -30,6 +29,7 @@
 #include "units/inject.h"
 #include "units/linkword.h"
 #include "units/router.h"
+#include "units/tile_ctl.h"
 #include "units/write_engine.h"
 
 #ifdef SIM_CHECKS
@@ -103,6 +103,176 @@ void read_port_from_c() {
     int bad = 0; for (unsigned i = 0; i < 64; i++) if (m.word(7, im, "res", i) != (7u << 20 | (0x1000 + i))) bad++;
     eq(0, bad, "tile 7: the 64 queued reads all landed");
     out("read port from C [meas: ReadPortGatherTest read port from C]: 40 32-bit, 8 64-bit and 4 128-bit reads land at the setup register's destination + the size in bytes per read, counting on their counter; the free count reads 64, then less, then 64 after counters done; a 65th store into a full queue is dropped with the read-port error");
+}
+
+// ref's TrafficDirector.cmIdle(t): nothing on its way to port B (as W20's phase_done reads it)
+bool cm_idle(Chip& c, unsigned k) {
+    sim::PortEntry e[64];
+    const TileRef tr = c.tile(k);
+    const units::TileCore& core = tr.unit<units::TileCore>("core");
+    const uint32_t n = c.sim().observe(core.port_b, e, 64).n;
+    for (uint32_t i = 0; i < n; i++) if (e[i].at > uint64_t(c.cycle()) + 1) return false;
+    return true;
+}
+uint64_t router_overflows(Chip& c, unsigned k, int only_out = -1, bool skip_out = false) {
+    const TileRef tr = c.tile(k);
+    const units::Router& r = tr.unit<units::Router>("router");
+    uint64_t n = 0;
+    for (unsigned o = 0; o < units::Router::kOut; o++) {
+        if (only_out >= 0 && ((int(o) == only_out) == skip_out)) continue;
+        for (unsigned f = 0; f < units::Router::kNFeeders[o]; f++) n += r.q[r.fifo_index(o, f)].overflows;
+    }
+    return n;
+}
+
+// ================================================================ the read port under an all-to-all (lowest priority)
+void read_port_under_traffic() {
+    suite::group("read port under an all-to-all");
+    std::string sb = "the 16-group all-to-all (uniform, Data(7, 2000), gap 0) with every tile's read port holding 64 queued reads from the start, against 4.3's rule [meas: ReadPortGatherTest read port under an all-to-all]:\n";
+    int64_t cyc[2] = {}, late[2] = {}; uint64_t last_lat = 0, overlaps = 0, ovf = 0; int64_t lost_rec = 0;
+    for (int with_reads = 0; with_reads < 2; with_reads++) {
+        A2A a(7, 2000);
+        MachConfig cf = cfg(); cf.check_read_port_overlap = false;
+        Chip c(cf);
+        a.load(c, 0);
+        if (with_reads == 1) for (unsigned p = 0; p < 64; p++) {
+            c.tile(p).set_remaining(2, 64);
+            for (uint32_t i = 0; i < 64; i++) c.tile(p).rp_host_queue(0xE0000 + 2 * i, Net::cm(0x900 + i));
+        }
+        cyc[with_reads] = A2A::run(c, 3000000);
+        c.run_until([&] { for (unsigned p = 0; p < 64; p++) if (!c.tile(p).rp_idle()) return false; return true; }, 100000);
+        c.run(200);
+        for (unsigned p = 0; p < 64; p++) late[with_reads] += int64_t(ag(c.tile(p)).rotations_late + ag(c.tile(p)).groups_late_prefetch);
+        if (with_reads == 0) {
+            eq(0, a.verify(c), "without read-port traffic: every record landed");
+            no_violations(c, "all-to-all without read-port traffic");
+        } else {
+            lost_rec = a.verify(c);
+            for (unsigned p = 0; p < 64; p++) {
+                last_lat = std::max(last_lat, c.tile(p).unit<units::Injection>("inj").rs.lat_max[2]);
+                overlaps += c.tile(p).unit<units::Director>("dir").rp_overlaps;
+                ovf += router_overflows(c, p);
+            }
+        }
+    }
+    eq(cyc[0], cyc[1], "the all-to-all's length is unchanged by waiting read-port reads (lowest priority)");
+    eq(0, late[1], "the address generator is never late with read-port reads waiting");
+    eq(0, int64_t(ovf), "with the loopback token-protected and served last (4.5, 4.7), results looping back during the exchange overflow nothing (v1.0: they overflowed an eject FIFO; re-measured, items 24, 70)");
+    eq(0, lost_rec, "and every record of the exchange landed");
+    sb += suite::str("  without: %lld cycles; with: %lld cycles (%+lld); late rotations or groups: %lld; the longest read-port read waited %llu cycles in the SRAM read queue\n",
+                     (long long)cyc[0], (long long)cyc[1], (long long)(cyc[1] - cyc[0]), (long long)late[1], (unsigned long long)last_lat);
+    sb += "  with: " + p4::jgroup(int64_t(overlaps)) + " packets accepted with results outstanding; " + p4::jgroup(int64_t(ovf)) +
+          suite::str(" packets lost to FIFO overflows (eject<loopback); records failing the all-to-all's check: %lld\n", (long long)lost_rec);
+    out(strip_trailing(sb));
+}
+
+// ================================================================ tolerance: read-port results against an incoming stream
+std::array<int64_t, 4> tolerance_run(uint32_t gap, int reads, int delay) {
+    MachConfig cf = cfg(); cf.check_read_port_overlap = false;
+    Chip c(cf);
+    TileRef x = c.tile(20), p = c.tile(21);
+    const int pk = 256;
+    for (int i = 0; i < pk; i++) p.sram_poke64(2 * uint32_t(i), uint64_t(21) << 32 | uint32_t(i));
+    for (int j = 0; j < pk; j++) p.set_stream(uint32_t(j & 255), fields::stream_src(2 * uint32_t(j), gap), Net::cm(0x800 + 2 * uint32_t(j & 127)), fields::stream_count(1, fields::SIZE_64, 2, lw::M_WRITE, 63));
+    x.set_remaining(2, uint32_t(pk + reads));
+    stream_run(p, 0, pk);
+    p.pulse(fields::PULSE_START);
+    for (int i = 0; i < delay; i++) c.step();
+    for (int i = 0; i < reads; i++) x.rp_host_queue(0x1000 + uint32_t(i), 0xD00 + 4 * uint32_t(i & 0x3F));
+    c.run_until([&] { return x.remaining(2) == 0 && cm_idle(c, 20); }, 100000);
+    c.scan_overflows();
+    int64_t lb = 0, lk = 0; uint64_t ovf = 0;
+    const units::Router& r = x.unit<units::Router>("router");
+    const unsigned lb_slot = r.slot_of[units::Router::EJECT][units::Router::LOOPBACK];
+    for (unsigned f = 0; f < units::Router::kNFeeders[units::Router::EJECT]; f++) {
+        const auto& q = r.q[r.fifo_index(units::Router::EJECT, f)];
+        ovf += q.overflows;
+        if (f == lb_slot) lb = q.peak; else lk = std::max<int64_t>(lk, q.peak);
+    }
+    for (unsigned k = 0; k < 64; k++) ovf += k == 20 ? router_overflows(c, k, units::Router::EJECT, true) : router_overflows(c, k);
+    return {lb, lk, int64_t(ovf), int64_t(x.unit<units::Director>("dir").rp_overlaps)};
+}
+const int TOL_DELAYS[] = {0, 4, 8, 12, 16, 24};
+std::array<int64_t, 4> tolerance_worst(uint32_t gap, int reads) {
+    std::array<int64_t, 4> w = {};
+    for (int d : TOL_DELAYS) {
+        const auto r = tolerance_run(gap, reads, d);
+        w[0] = std::max(w[0], r[0]); w[1] = std::max(w[1], r[1]); if (r[2] > 0) w[2]++; w[3] = std::max(w[3], r[3]);
+    }
+    return w;
+}
+void read_port_tolerance() {
+    suite::group("read-port tolerance");
+    if (!full) {
+        check(tolerance_worst(0, 8)[2] == 0, "full-rate stream, 8 results: no overflow at any offset");
+        check(tolerance_worst(0, 32)[2] == 0, "full-rate stream, 32 results: no overflow (the loopback waits on tokens; v1.0 overflowed)");
+        out("read-port tolerance (quick): 8 and 32 results against a full-rate mode-6 stream never overflow (the token-protected loopback, served last, 4.5, 4.7); 'ReadPortGatherTest -1 full' measures the table");
+        return;
+    }
+    std::string sb = "read-port results against an incoming stream [meas: ReadPortGatherTest read-port tolerance]: tile 20 receives a 256-packet mode-5 stream from tile 21 while R read-port reads are issued one per cycle, starting 0-24 cycles after the stream's start store (worst over 6 offsets). Results return as mode-7 packets through tile 20's loopback (4.3, M10). Eject FIFO peaks, of 16:\n";
+    for (uint32_t gap : {0u, 1u}) {
+        int safe = 0, bad = -1;
+        for (int reads : {0, 8, 16, 20, 24, 28, 32, 40, 48, 64}) {
+            const auto w = tolerance_worst(gap, reads);
+            if (reads <= 8) check(w[2] == 0, "gap %u, %d results: no overflow at any offset", gap, reads);
+            if (w[2] == 0 && bad < 0) safe = reads;
+            if (w[2] > 0 && bad < 0) bad = reads;
+            sb += suite::str("  stream at %-19s R = %2d: loopback peak %2lld, link peak %2lld%s\n", gap == 0 ? "full rate (1/cycle)," : "half rate,", reads, (long long)w[0], (long long)w[1],
+                             w[2] > 0 ? suite::str("  -> OVERFLOW at %lld of 6 offsets", (long long)w[2]).c_str() : "");
+        }
+        if (bad > 0) {
+            while (bad - safe > 1) { const int mid = (safe + bad) / 2; if (tolerance_worst(gap, mid)[2] > 0) bad = mid; else safe = mid; }
+            sb += suite::str("  stream at %s: the largest R with no overflow at any offset is %d (first overflow at %d)\n", gap == 0 ? "full rate" : "half rate", safe, bad);
+        } else sb += suite::str("  stream at %s: no overflow up to R = 64\n", gap == 0 ? "full rate" : "half rate");
+        if (gap == 0) check(safe >= 8, "full rate: at least 8 results tolerated (largest safe R = %d)", safe);
+    }
+    out(strip_trailing(sb));
+}
+
+// ================================================================ the overlap check (spec 4.3's software rule)
+void overlap_check() {
+    suite::group("read-port overlap check");
+    {
+        Chip c(cfg());
+        TileRef x = c.tile(20), p = c.tile(21);
+        for (uint32_t j = 0; j < 4; j++) p.set_stream(j, fields::stream_src(2 * j), Net::cm(0x810 + 2 * j), fields::stream_count(1, fields::SIZE_64, 2, lw::M_WRITE, 63));
+        x.set_remaining(2, 4 + 8);
+        stream_run(p, 0, 4);
+        p.pulse(fields::PULSE_START);
+        for (uint32_t i = 0; i < 8; i++) x.rp_host_queue(0x1000 + i, Net::cm(0xE00 + i));
+        c.run_until([&] { return x.remaining(2) == 0 && cm_idle(c, 20); }, 10000);
+        const uint64_t ov = x.unit<units::Director>("dir").rp_overlaps;
+        check(ov > 0 && c.violations() > 0 && c.violation_report().find("read-port overlap") != std::string::npos, "4 mode-5 packets arriving with 8 results outstanding: flagged (%llu packets)", (unsigned long long)ov);
+    }
+    {
+        Chip c(cfg());
+        TileRef x = c.tile(20), p = c.tile(21);
+        for (uint32_t j = 0; j < 4; j++) p.set_stream(j, fields::stream_src(2 * j), Net::cm(0x810 + 2 * j), fields::stream_count(1, fields::SIZE_64, 2, lw::M_WRITE, 63));
+        x.set_remaining(2, 8);
+        for (uint32_t i = 0; i < 8; i++) x.rp_host_queue(0x1000 + i, Net::cm(0xE00 + i));
+        c.run_until([&] { return x.remaining(2) == 0 && cm_idle(c, 20) && x.rp_all_accepted(); }, 10000);
+        x.set_remaining(2, 4);
+        stream_run(p, 0, 4);
+        p.pulse(fields::PULSE_START);
+        c.run_until([&] { return x.remaining(2) == 0 && cm_idle(c, 20); }, 10000);
+        eq(0, int64_t(x.unit<units::Director>("dir").rp_overlaps), "results first, then the stream: no overlap");
+        no_violations(c, "results first, then the stream");
+    }
+    for (int cmd = 1; cmd >= 0; cmd--) {
+        Net n(cfg());                                        // ref's Chip; Net for c.cnc.send(c.cycle, ...) (Net::send)
+        Chip& c = n.c;
+        TileRef x = c.tile(20);
+        x.set_remaining(2, uint32_t(32 + (cmd == 0 ? 1 : 0)));
+        for (uint32_t i = 0; i < 32; i++) x.rp_host_queue(0x1000 + i, Net::cm(0xE00 + i));
+        c.run(4);
+        if (cmd == 1) n.send(0, 20, lw::M_WRITE, 0, 0x7FC0 + 4, lw::SIZE_32, 0x1234, 0);   // ControllerMemories.COMMAND + 4
+        else n.send(0, 20, lw::M_WRITE, 2, 0x400, lw::SIZE_32, 0x1234, 0);
+        c.run_until([&] { return x.remaining(2) == 0 && cm_idle(c, 20) && c.quiescent(); }, 10000);
+        const uint64_t ov = x.unit<units::Director>("dir").rp_overlaps;
+        if (cmd == 1) { eq(0, int64_t(ov), "C&C 1's command write during the results: exempt"); no_violations(c, "C&C 1's command write"); }
+        else check(ov == 1 && c.violations() > 0, "C&C 1's data-memory write during the results: flagged");
+    }
+    out("overlap check [meas: ReadPortGatherTest read-port overlap check]: an outside packet accepted while read-port results are outstanding is a violation (Config.checkReadPortOverlap, default on); C&C 1's command writes are exempt, its other packets are not; results first and the stream after: none");
 }
 
 // ================================================================ reserved streams
@@ -264,7 +434,10 @@ int main(int argc, char** argv) {
     full = a.size() > 1 && a[1] == "full";
     if (shuffle >= 0) out(suite::str("shuffled child order, seed %lld", (long long)shuffle));
     if (want("fromc")) read_port_from_c();
-    // traffic, tolerance, overlap: W22-18 (the read port's host queue); disjoint: W22-14
+    if (want("traffic")) read_port_under_traffic();
+    if (want("tolerance")) read_port_tolerance();
+    if (want("overlap")) overlap_check();
+    // disjoint: W22-14 (Chip::new_phase; big SRAM's disjoint tracking, W26)
     if (want("reserved")) reserved_streams();
     if (want("gather")) gather();
     if (want("counting")) gather_counting_and_alignment();

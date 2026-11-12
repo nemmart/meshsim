@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 
+#include "base/fatal.h"
 #include "harness.h"
 #include "mach.h"
 #include "units/ag.h"
@@ -52,8 +53,13 @@ void report(const std::string& name, Mach& m, bool ok) {
         name.c_str(), ok ? "stopped" : "NOT stopped", (long long)m.c.cycle(), (long long)m.boot_start, (long long)m.run_at,
         tf(m.all_exited()), tf(m.all_in_wfi()), m.halt_summary().c_str(), (long long)m.exit_value(0), (long long)m.exit_value(63));
 }
-void a2a(int64_t seed) {
-    Mach m(Mach::cfg(seed));
+const std::vector<std::string> kKit = {"cfg.linkLatency=4", "cfg.cmLatency=4", "cfg.goLatency=4", "cfg.runLatency=8", "cfg.areaQueueDepth=4",
+                                       "cfg.sramReadLatency=3", "cfg.tsEngineLatency=2", "cfg.skewSeed=5", "cfg.checkDisjoint=false", "cfg.skew=true"};
+void a2a(int64_t seed, bool kit = false) {
+    mach::MachConfig cfg = Mach::cfg(seed);
+    std::string err;
+    if (kit && !cfg.set_args(kKit, err)) FATAL("%s", err.c_str());
+    Mach m(cfg);
     mach::A2A data(7, 2000);
     for (unsigned s = 0; s < 64; s++) {
         mach::TileRef p = m.c.tile(s);
@@ -66,7 +72,7 @@ void a2a(int64_t seed) {
     m.boot("a2a");
     m.c.cc().command(units::lw::BROADCAST, 1u << 24).go().command(units::lw::BROADCAST, 2u << 24).go().command(units::lw::BROADCAST, 3u << 24).go();
     const bool ok = m.run([&] { return m.all_stopped(); }, 2000000);
-    report("a2a seed " + std::to_string(seed), m, ok);
+    report("a2a seed " + std::to_string(seed) + (kit ? " kit" : ""), m, ok);
     std::string pl = "  phaseLog";
     for (const auto& e : m.c.cc().phase_log()) pl += " [" + std::to_string(e[0]) + ", " + std::to_string(e[1]) + "]";
     say("%s\n", pl.c_str());
@@ -138,6 +144,7 @@ void machself() {
     }
     a2a(-1);
     a2a(4);
+    a2a(-1, true);
     {
         Mach m(Mach::cores_cfg(-1));
         m.boot_cores("wfi");
@@ -336,8 +343,31 @@ void phase_done_probe(int64_t seed) {
     say("phaseDone seed %lld: tiles 0 5 40 63 first at +%lld +%lld +%lld +%lld; all at +%lld\n", (long long)seed, (long long)first[0],
         (long long)first[1], (long long)first[2], (long long)first[3], (long long)all);
 }
+void feed_only_in_net() {
+    mach::MachConfig k = Net::cfg(-1);
+    k.test_read_clients = true;
+    Net n(k);
+    for (uint32_t i = 0; i < 16; i++) n.c.tile(3).sram_poke(0x2000 + i, 0x100 * i + 7);
+    for (int64_t T = 10; T < 15; T++) n.at(4, T, 9, lw::M_WRITE, Net::cm(0x900 + 2 * uint32_t(T - 10)), Net::tagged(uint64_t(T), T));
+    n.cnc_send({12, 20, lw::M_WRITE, 0x200, 0x77, lw::SIZE_32, 0, 0});
+    n.rd(3, 0, 2, 0x2000, lw::SIZE_64, lw::M_WRITE, 0, 12, Net::cm(0x8A0));
+    n.rd(3, 1, 30, 0x2004, lw::SIZE_32, lw::M_WRITE, 0, 12, Net::cm(0x8A4));
+    n.step(); n.step(); n.step();
+    n.c.run(40);
+    std::string sb = "feed: after Chip.run(40) at " + std::to_string(n.c.cycle()) + ": t9 " + std::to_string(n.log(9).size()) + " t20 " +
+                     std::to_string(n.log(20).size()) + " t12";
+    for (const auto& e : n.log(12)) sb += " @" + std::to_string(e[0]);
+    sb += "; late " + std::to_string(n.late()) + "; pending " + tf(n.pending());
+    const bool ok = n.run_all(500);
+    sb += std::string("; then runAll ") + (ok ? "drained" : "NOT drained") + " at " + std::to_string(n.c.cycle()) + ": late " + std::to_string(n.late()) + " t9";
+    for (const auto& e : n.log(9)) sb += " @" + std::to_string(e[0]);
+    sb += " t20"; for (const auto& e : n.log(20)) sb += " @" + std::to_string(e[0]);
+    sb += " t12"; for (const auto& e : n.log(12)) sb += " @" + std::to_string(e[0]);
+    say("%s\n", sb.c_str());
+}
 void netself() {
     out.clear();
+    feed_only_in_net();
     core();
     phase_done_probe(-1);
     phase_done_probe(4);
@@ -528,4 +558,22 @@ TEST(mach_mem_idle_sees_a_wrapped_queue) {
     m.q[5][0].write = false; m.q[5][8].write = true;         // a stale write past the depth
     CHECK(p.mem_idle());
     m.count[5] = 0;
+}
+
+// MachConfig's front end (ref's cfg.<field>=value): ref's names and types, the dropped fields, the errors.
+TEST(mach_config_front_end) {
+    mach::MachConfig k = mach::MachConfig::machine();
+    std::string err;
+    CHECK(k.set_args({"--x", "cfg.goLatency=10", "cfg.skewSeed=-3", "cfg.writeCombining=true", "cfg.replayerLogEntries=512"}, err));
+    CHECK_EQ(k.go_latency, 10u);
+    CHECK_EQ(k.skew_seed, -3);
+    CHECK(k.write_combining);
+    CHECK_EQ(k.replayer_log_entries, 512u);
+    CHECK(k.set("checkDisjoint", "TRUE", err) && k.check_disjoint);   // Boolean.parseBoolean: case-insensitive
+    CHECK(k.set("checkDisjoint", "yes", err) && !k.check_disjoint);
+    CHECK(!k.set("noSuchField", "1", err) && err == "no Config field noSuchField");
+    CHECK(!k.set("idleSkip", "false", err) && err.find("dropped") != std::string::npos);
+    CHECK(!k.set("K", "eight", err) && err.find("not a number") != std::string::npos);
+    CHECK(!k.set_args({"cfg.K"}, err));
+    CHECK(!mach::MachConfig::dropped().empty());
 }

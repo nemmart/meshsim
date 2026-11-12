@@ -179,7 +179,30 @@ final class NetSelf {
         System.out.println(sb);
     }
 
+    /** Net's schedules are fed by Net.step and runAll only, not by Chip.run (W26). */
+    static void feedOnlyInNet() {
+        Config k = Net.cfg(-1); k.testReadClients = true;
+        Net n = new Net(k);
+        for (int i = 0; i < 16; i++) n.c.tiles[3].sram.poke(0x2000 + i, 0x100 * i + 7);
+        for (int T = 10; T < 15; T++) n.at(4, T, 9, LinkWord.M_WRITE, Net.cm(0x900 + 2 * (T - 10)), Net.tagged(T, T));
+        n.cncSends.add(new long[] { 12, 20, LinkWord.M_WRITE, 0x200, 0x77, LinkWord.SIZE_32, 0, 0 });
+        n.rd(3, 0, 2, 0x2000, LinkWord.SIZE_64, LinkWord.M_WRITE, 0, 12, Net.cm(0x8A0));
+        n.rd(3, 1, 30, 0x2004, LinkWord.SIZE_32, LinkWord.M_WRITE, 0, 12, Net.cm(0x8A4));
+        n.step(); n.step(); n.step();                          // the first read request into its client FIFO
+        n.c.run(40);                                           // Chip.run: nothing more fed; the FIFO's request is served
+        StringBuilder sb = new StringBuilder("feed: after Chip.run(40) at " + n.c.cycle + ": t9 " + n.log(9).size() + " t20 " + n.log(20).size() + " t12");
+        for (long[] e : n.log(12)) sb.append(" @").append(e[0]);
+        sb.append("; late ").append(n.late).append("; pending ").append(n.pending());
+        boolean ok = n.runAll(500);
+        sb.append("; then runAll ").append(ok ? "drained" : "NOT drained").append(" at ").append(n.c.cycle).append(": late ").append(n.late).append(" t9");
+        for (long[] e : n.log(9)) sb.append(" @").append(e[0]);
+        sb.append(" t20"); for (long[] e : n.log(20)) sb.append(" @").append(e[0]);
+        sb.append(" t12"); for (long[] e : n.log(12)) sb.append(" @").append(e[0]);
+        System.out.println(sb);
+    }
+
     public static void main(String[] a) {
+        feedOnlyInNet();
         core();
         phaseDoneProbe(-1);
         phaseDoneProbe(4);

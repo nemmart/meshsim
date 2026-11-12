@@ -155,3 +155,27 @@ the `-q` estimate, the guest delivery's whereabouts.
   jvm-K.log. **Stage A, all equal** (9 windows of 4,000 rows, seed 11): -j 1 with -m, -j 3, a range, -n all, a range
   past the manifest's end, a planted-fault delivery (FAIL details), a corrupted one (CORRUPT kinds). Stage B's cases
   (AB, ABF, -x, -q 512) and `--calibration` (the runner: 128 x 65,536 rows) come with Stage B.
+- **The step `replayer`** (inventory C20, P3's row, the owner's 2026-11-11): `suite_replayer` is v1.3's ReplayerTest
+  as run_tests.sh runs it, its output **byte-identical to v1.3's log** (2,187 checks; `tests/replayer/replayer.log`,
+  from `oracle/ref/replayertest.sh`): W15's ALU report (`test_replayer_alu`'s alu_report) and ReplayerUnitTests groups
+  (`test_replayer`), compiled in unchanged, each in a namespace of its own, plus the two ConvertDelivery groups W15
+  left out (15 checks), here on D42's C++ converter (its record conversion in-process; the manifest's determinism over
+  two processes and this one). In the runner (`--check`: equal) and in make check (`test_suite_replayer`; gcc and
+  clang, debug and release). Changes in others' files: `test_replayer_alu`'s alu_report counts its passing checks
+  (an optional out parameter) and counts the opcode-coverage check as ref does (F5); `convert_delivery.cpp` silences
+  gcc 13's false `-Wmaybe-uninitialized` inside std::regex in the debug build (it failed to build there; make check
+  never built it before).
+- **F4. `ref`'s committed `results/replayer.log` is stale** (242 vector rows, 1,188 checks; v1.3 today: 252 rows, 2,187).
+- **F5. ReplayerTest's coverage check runs once per uncovered opcode** (its `missing.append` lost in a comment makes the
+  T.check the loop's body, as W15 found): a passing run counts none. W15's port checked every executed opcode (87
+  more checks); it now fails once per uncovered opcode and counts none when all are covered, so the totals agree.
+- **Stage B's harness (W20, on main): enough to start.** MachConfig `test_periph_tile` and `periph_type 0`
+  (testPeripheral), `parked` and `Chip::parked_untouched`, `Cc::set_expect`, `Chip::on_row`; the replayer itself through
+  `unit<PeriphSlot>("slot").s.replayer(1)` (stalls, passes, pass start and end, queues, lists, pc, registers);
+  `Cc::load_words`, `command`, `go`; `run_until`; `violations()`, `violation_report()`. **Still to ask W20**: (a) the
+  replayer's violations as chip violations (the CL4 case's "meshsim: violations: 256; ..." part; not recorded yet), (b)
+  a MachConfig field for the replayer's log-queue depth (`-q 512`; PeriphSlotConfig has it, MachConfig doesn't pass it).
+  Neither blocks the driver's start: the CL4 line and `-q 512` wait for them.
+- **Quest 177** (the runner's data listed): **no item-113 guest delivery** anywhere under `$DATA`, the queue's data or
+  `/tmp` (no name matching item113, a guest's name, replay-inputs or guest). v1.3's `stageb-<guest>` steps
+  (`DELIVERY=`) have no input on the runner: making one needs the guests traced (jolt-cpp) into a delivery. To the owner.

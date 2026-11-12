@@ -12,6 +12,11 @@
 // raw record (state.bin): code bits / 32, log bits / 64; the advice field 0. end.bin gets a zero stream word.
 //
 //   convert_delivery SRC DST PROGRAM [--manifest M]   (M: default SRC/PROGRAM.manifest.json, else SRC/manifest.json)
+// gcc 13's debug build (-O1, sanitizers) warns falsely inside libstdc++'s std::regex (std::function members "may be
+// used uninitialized"; W25: found when suite_replayer brought this tool into make check's gcc debug build).
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
 #include <chrono>
 #include <cstdio>
 #include <cstring>

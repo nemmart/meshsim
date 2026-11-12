@@ -210,3 +210,9 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   `write_log_words`, `padding_rows`). It is byte-identical to v1.3 patched in exactly those two places, on every seed
   `ref`'s tests use (`oracle/synthetic_crosscheck.sh`); against unpatched v1.3 it is identical up to the first inline's
   advice, and fully with no inlines. A test tool's difference, not the model's.
+- **D44. D33 reaches a suite: accepted** (integrator, 2026-11-11, W23). CcCoresTest's error path makes C&C 1 send UART
+  bytes, so D33's one-cycle-later store (a UART byte's start) shows as one printed figure: "dump done at +770026"
+  against v1.3's +770025, plain and shuffled. All 77 checks pass. Accepted as D33's recorded difference: the fixture
+  keeps v1.3's line, and the comparison masks that one figure with a comment citing D33/D44 (no fixture edit).
+  Likewise CcBench reads the cycle the peripheral records for a GO store (`last_go_store`, v1.3's cycle) rather than
+  the counter that D33 shifts.

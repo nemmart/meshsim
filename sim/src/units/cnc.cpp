@@ -191,6 +191,12 @@ sim::Wake Cnc::sequence(sim::Ctx& c, int64_t t) {
         return c.next();
     }
     pending_retry = 0;
+    if (reply_n) {                                            // W20 (harness-only): ref's replies first (drainReports)
+        send_packet(c, reply_q[reply_h]);
+        reply_h = (reply_h + 1) % 16; reply_n--;
+        pending_retry = 1;
+        return c.next();
+    }
     if (hs && hs->due(t)) {                                   // W20 (harness-only): ref's Net.cncSends
         if (cur < released) FATAL("C&C 1: the harness's send (Net.cncSends) while C&C's queue runs: not modelled");
         send_packet(c, hs->pop());

@@ -473,7 +473,7 @@ struct TileCore {
     // W20 (harness-only; P2): ref's Controller.store(t, ...) from a test (sim/tests/mach.h, TileRef::store): a store
     // made in the core's step at t, before its own instruction, through the same path as an instruction's.
     struct HostStore { uint64_t t; uint32_t ea, v, mask; };
-    static constexpr unsigned kHostStores = 16;
+    static constexpr unsigned kHostStores = 128;   // (W23's RegDocTest: every reserved word and read-only register in one cycle)
     HostStore host_st[kHostStores] = {};
     uint32_t host_n = 0;
     // W20 (harness-only): ref's Tile.sendHold.put(t, ...) from a test for a later cycle: put on the send Hold in the

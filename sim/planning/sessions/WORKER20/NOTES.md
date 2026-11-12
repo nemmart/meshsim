@@ -183,6 +183,15 @@ remaining kinds, interleaved as the suites ask.
   peripheral 1 is the test peripheral, with its slot, the others as periph_type says (`G1Config::test_periph_tile`,
   harness-only). NetSelf's case (Config.testPeripheral on tile 7, periphType 0: PARAMS, its window, a tile without one)
   equal to ref.
+- **drainReports, results, reportsOf done** (W23's RecipeTest): `Cc::drain_reports(on)` (ref's CnC drain, one request a
+  cycle from target 0 through `Chip::reqbus()`: REPORT -> reports(), others -> requests(), RESULT also -> results() and
+  answered by C&C 1's 32-bit write before its steps: the Cnc unit's reply queue, harness-only), `reports_of(id)`. Needs
+  reqbus_host; runs go cycle by cycle while on. **W22-19**: `ReqBus::delivered_log()` (ref's delivered list:
+  {deliveredAt, srcTile, w0-w3}; the receive queues log into the harness's vectors, harness-only). **W23's RegDocTest**:
+  TileCore's host store queue 16 -> 128 (every reserved word and read-only register in one cycle). NetSelf's drain case
+  (a report, a result answered, another request, a second report; reportsOf; the delivery records) equal to ref.
+- **C&C's queued soft reset: not done** — ref's `cc.reset(false)` is `Chip.reset`: every bus flushed, every tile's
+  reset (6.1), the request bus's, C&C 1's peripheral's and the model's (B20, CtrlTest's list). Sized ~1.5-2 sessions.
 - Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
   after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
 

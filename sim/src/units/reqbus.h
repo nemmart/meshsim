@@ -36,7 +36,9 @@
 // queue credit (the core's, width 1): the pop's cycle.
 #pragma once
 
+#include <array>
 #include <cstdint>
+#include <vector>
 #include <string>
 
 #include "base/fatal.h"
@@ -431,6 +433,8 @@ struct ReqRecv {
     unsigned qh = 0, qn = 0;
     uint32_t pub[REGS] = {};
     uint64_t received = 0, violations = 0;
+    std::vector<std::array<int64_t, 6>>* dlog = nullptr;   // W20 (harness-only): the deliveries, into the harness's vector
+                                                          //   (reserved at configuration: no allocation in the run)
 
     ReqRecv(sim::Ports& p, unsigned target_, const ReqBusConfig& rc) : target(target_), depth(rc.queue_depth[target_]) {
         p.in(deliver, "deliver", 3);
@@ -445,7 +449,7 @@ struct ReqRecv {
         if (this != &o) {
             deliver = o.deliver; pop = o.pop; head = o.head; target = o.target; depth = o.depth;
             delete[] q; q = o.q; o.q = nullptr;
-            qh = o.qh; qn = o.qn; received = o.received; violations = o.violations;
+            qh = o.qh; qn = o.qn; received = o.received; violations = o.violations; dlog = o.dlog;
             for (unsigned i = 0; i < REGS; i++) pub[i] = o.pub[i];
         }
         return *this;
@@ -463,6 +467,10 @@ struct ReqRecv {
         // deliveries arriving at t (ref's toReceiver drained at the start of runCycle(t)): visible from t + 1
         while (c.ready(deliver)) {
             const sim::Word* w = c.peek(deliver);
+            if (dlog) {                      // W20 (harness-only; W22-19): ref's delivered list, {deliveredAt, srcTile, w0..w3}
+                if (dlog->size() == dlog->capacity()) FATAL("reqbus: the harness's delivery log is full (%zu)", dlog->size());
+                dlog->push_back({t, int64_t(beat_src(w[0])), int64_t(uint32_t(w[1])), int64_t(w[1] >> 32), int64_t(uint32_t(w[2])), int64_t(w[2] >> 32)});
+            }
             if (qn >= depth) {               // ref: "the root's credits should prevent it"
                 violations++;
                 sim::check::record(uint64_t(t), -1, sim::check::Kind::REQBUS_QUEUE_OVERFLOW, target);   // W26

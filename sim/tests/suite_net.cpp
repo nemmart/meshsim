@@ -12,7 +12,7 @@
 // debug builds (the release build FATALs there).
 //
 // STATUS. Ported: structure, unicast, routes, random (in-order random, the queue peaks), fullrate, fanin, skewtable.
-// Waiting on W20 (sessions/WORKER22/NOTES.md, asks 1-6): broadcast, cncport, director, injection, loopback. Until
+// Waiting on W20 (sessions/WORKER22/NOTES.md, W22-1 to W22-6): broadcast, cncport, director, injection, loopback. Until
 // they land, a full run's counts and lines are short of the fixture's.
 //
 // Test-side code (the configuration regime, D6).
@@ -112,7 +112,7 @@ void structure() {
 
 // ------------------------------------------------------------------ unicast, every offset
 void reset_stats(Chip& c) {
-    (void)c;   // W20 ask 2 (Chip::reset_stats, FATAL today): only allPermPeaks1 reads the peaks, and a running maximum
+    (void)c;   // W22-2 (Chip::reset_stats, FATAL today): only allPermPeaks1 reads the peaks, and a running maximum
                // over offsets is <= 1 exactly when every offset's is, so the check's outcome is the same meanwhile
 }
 
@@ -246,7 +246,7 @@ std::string queue_peaks(Chip& c) {
         }
         if (best > 0) sb += suite::str("    %-22s %3lld  (t%d)\n", (std::string(OUT_NAME[o]) + "<" + PORT_NAME[port]).c_str(), (long long)best, at);
     }
-    // the write engine's input (ref's weIn.highWater): the framework Fifo's peak, kept under SIM_CHECKS (ask 7)
+    // the write engine's input (ref's weIn.highWater): the framework Fifo's peak, kept under SIM_CHECKS (W22-7)
     uint32_t b = 0; int at = -1;
     for (unsigned p = 0; p < 64; p++) {
         const uint32_t pk = c.sim().fifo_peak(c.tile(p).unit<units::WriteEngine>("we").in);
@@ -427,12 +427,12 @@ int main(int argc, char** argv) {
     const bool quick = a.size() > 1 && a[1] == "quick";
     if (want("structure")) structure();
     if (want("unicast")) unicast();
-    // broadcast: W20 asks 1, 2
+    // broadcast: W22-1, W22-2
     if (want("routes")) route_comparison();
-    // cncPort: W20 asks 1, 6
+    // cncPort: W22-1, W22-6
     if (want("random")) in_order_random();
     if (want("fullrate")) in_order_full_rate();
-    // director: W20 asks 4, 5, 6; injection, loopback: W20 ask 3
+    // director: W22-4, W22-5, W22-6; injection, loopback: W22-3
     if (want("fanin")) fan_in(quick);
     std::fputs(report.c_str(), stdout);
     return suite::done(std::string("NetTest") + (shuffle >= 0 ? " (shuffled, seed " + std::to_string(shuffle) + ")" : ""));

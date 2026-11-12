@@ -191,6 +191,15 @@
 ],
 [
 "machine-spec.md",
+1673,
+"v1.3/spec/machine-spec.md",
+2762,
+"ruling",
+"| `PULSE_DMA` | `TILE_PULSE` [1] | start: load the run in `DMA_CONFIG` and begin it (4.2), clearing DMA run done (`EVENTS` [10]); ignored while a run is running (meshsim flags it) |",
+"| `PULSE_DMA` | `TILE_PULSE` [1] | start: load the run in `DMA_CONFIG` and begin it (4.2), clearing DMA run done (`EVENTS` [10]); a start while a run is running is undefined behaviour (invariant 26; meshsim stops) |"
+],
+[
+"machine-spec.md",
 1732,
 "v1.3/spec/machine-spec.md",
 2821,
@@ -458,6 +467,15 @@
 "path",
 "**Controller-fed expansions** are only **the inlines (custom-0) and the CSR instructions, CSRRW and CSRRS** (DECISIONS-v1.25 section 6: \"the controller feeds the inlines, the advice generators and the CSR instructions, and nothing else\"; the advice generators are the Tracer's, v1.3). The CSR instructions are the one deliberate exception to the ROM goal (4.19.6): their expansion depends on which CSR and on the register pattern, which a single decode entry can't see, and they are rare in guest code. **At v1.25** [meas: v1.25's acceptance runs, Quest 083 and 084: meshsim's Stage B on every window of both workloads at 2²⁹, `WORKER11/REPORT.md` section 5]: **Cyclone** averages 6.6 controller-fed expansions per window of real rows (1,154 of its 5,670 such windows have any, at most 176), and their stalls average 812 cycles a window, 0.26 % of a pass; **EVM Zone** has 665 in all, in 4 windows (at most 230), 11 stall cycles a window on average. v1.1 measured about 13 per window on Cyclone, about 0.4 % of a pass, with ECALL, EBREAK and MRET still among them [meas: design notes]. **The controller-fed set reaches the tiles by broadcast** (DECISIONS-v1.3 section 25; v1.3). C&C 3 holds all of it, since the Tracer can meet any template, and ORs each window's template bitmap (the record's word 67, set by the Tracer for the inlines only, 4.21.4) into the segment's used set. **When the proving stages start**, once the segment is traced, it broadcasts **all 60 CSR templates** (102 words, always) **and the inlines the segment used**, with their index entries, to every tile once; **each tile keeps the CSR templates and the inlines its own record's bitmap names**, with every word any of those numbers references, in big SRAM (4.19.13). So every tile has its templates before its replayer runs. *(The broadcast's mechanics, a size-first command so each tile arms its counter, item 115.)* (v1.26.1: every tile preloaded the whole set.)",
 "**Controller-fed expansions** are only **the inlines (custom-0) and the CSR instructions, CSRRW and CSRRS** (DECISIONS-v1.25 section 6: \"the controller feeds the inlines, the advice generators and the CSR instructions, and nothing else\"; the advice generators are the Tracer's, v1.3). The CSR instructions are the one deliberate exception to the ROM goal (4.19.6): their expansion depends on which CSR and on the register pattern, which a single decode entry can't see, and they are rare in guest code. **At v1.25** [meas: v1.25's acceptance runs, Quest 083 and 084: meshsim's Stage B on every window of both workloads at 2²⁹, `v1.3/planning/sessions/WORKER11-REPORT.md` section 5]: **Cyclone** averages 6.6 controller-fed expansions per window of real rows (1,154 of its 5,670 such windows have any, at most 176), and their stalls average 812 cycles a window, 0.26 % of a pass; **EVM Zone** has 665 in all, in 4 windows (at most 230), 11 stall cycles a window on average. v1.1 measured about 13 per window on Cyclone, about 0.4 % of a pass, with ECALL, EBREAK and MRET still among them [meas: design notes]. **The controller-fed set reaches the tiles by broadcast** (DECISIONS-v1.3 section 25; v1.3). C&C 3 holds all of it, since the Tracer can meet any template, and ORs each window's template bitmap (the record's word 67, set by the Tracer for the inlines only, 4.21.4) into the segment's used set. **When the proving stages start**, once the segment is traced, it broadcasts **all 60 CSR templates** (102 words, always) **and the inlines the segment used**, with their index entries, to every tile once; **each tile keeps the CSR templates and the inlines its own record's bitmap names**, with every word any of those numbers references, in big SRAM (4.19.13). So every tile has its templates before its replayer runs. *(The broadcast's mechanics, a size-first command so each tile arms its counter, item 115.)* (v1.26.1: every tile preloaded the whole set.)"
+],
+[
+"jolt/replayer.md",
+559,
+"v1.3/spec/machine-spec.md",
+1839,
+"ruling",
+"**`PULSE_RUN`: a pass** (4.17.2). Sets `STATUS` [0], giving the replayer its single-ported memories until it finishes, clears the rows-run count, and **runs from the working state as it is** (4.19.2): pc, `instr_idx` and the offset in the state word, the registers in the image, the sizes read from part 0, and **the row count and flags from `RUN_CONFIG`** (4.19.9; v1.26.1). **It does nothing else** (DECISIONS-v1.26 items 10 and 12): it copies nothing (part 0 is the working state), and the pass's resets (the queues flushed, the credits set to 2, the size counters cleared, the decompressors reset) were done by the state word's write (4.19.8). The first row starts at once; **with a row count of 0 there is none**, and the pass ends in the next cycle (4.19.9). Every pass of the same window starts identically because the controller reloads words 0–65 before it (4.19.10); a run without that reload would carry on from the last pass's end state, with its queues, credits and counters as they were: a violation (invariant 16), and **meshsim flags a pass started with no state write since the previous pass**. *(v1.25: the run emptied the queues, set the credits, reset the decompressors, copied the state word into working registers, latched the flags and lengths and copied the image into the working file, 64 cycles.)* **Run only, no resume,** as for every engine: a run while the replayer runs is ignored (meshsim flags it, 4.13).",
+"**`PULSE_RUN`: a pass** (4.17.2). Sets `STATUS` [0], giving the replayer its single-ported memories until it finishes, clears the rows-run count, and **runs from the working state as it is** (4.19.2): pc, `instr_idx` and the offset in the state word, the registers in the image, the sizes read from part 0, and **the row count and flags from `RUN_CONFIG`** (4.19.9; v1.26.1). **It does nothing else** (DECISIONS-v1.26 items 10 and 12): it copies nothing (part 0 is the working state), and the pass's resets (the queues flushed, the credits set to 2, the size counters cleared, the decompressors reset) were done by the state word's write (4.19.8). The first row starts at once; **with a row count of 0 there is none**, and the pass ends in the next cycle (4.19.9). Every pass of the same window starts identically because the controller reloads words 0–65 before it (4.19.10); a run without that reload would carry on from the last pass's end state, with its queues, credits and counters as they were: a violation (invariant 16), and **meshsim flags a pass started with no state write since the previous pass**. *(v1.25: the run emptied the queues, set the credits, reset the decompressors, copied the state word into working registers, latched the flags and lengths and copied the image into the working file, 64 cycles.)* **Run only, no resume,** as for every engine: a run while the replayer runs is undefined behaviour (4.13; owner, 2026-11-01: a pulse while a peripheral is busy is UB; meshsim stops)."
 ],
 [
 "jolt/replayer.md",
@@ -1298,81 +1316,76 @@
 [
 "CHANGES-v1.3-to-v1.35.md",
 42,
-"- **Fatal, where the spec says ignored and flagged:** a run started while the replayer runs (4.19.9), and `PULSE_DMA` while a run is running (8.6); invariant 26 and 4.17.2 make both undefined."
-],
-[
-"CHANGES-v1.3-to-v1.35.md",
-43,
 "- **Not checked:** a buffer both read and written in one run (invariant 2); `DMA_HDR` or `DMA_ADDR` changed mid-transfer (4.17.9); the 1, 3 and 1 requests outstanding, the tag windows and reads during a group run (invariant 17); one source per destination for modes 1–3 into big SRAM (invariant 18); the overtaking read (invariant 24), which only the harness's S1 measurement covers; a Tracer transfer asking for more than its credits cover (4.21)."
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
-45,
+44,
 "## The drivers the spec's measurements name"
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
-47,
+46,
 "The `[meas: …]` labels name v1.3's Java tests and drivers (Markers). What replaces each in v1.35:"
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
-49,
+48,
 "| v1.3 (Java) | v1.35 |"
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
-50,
+49,
 "|---|---|"
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
-51,
+50,
 "| NetTest (fan-in, `skewtable`) | `tests/suite_net.cpp` |"
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
-52,
+51,
 "| MemTest | `tests/suite_mem.cpp` |"
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
-53,
+52,
 "| EngineTest | `tests/suite_engine.cpp` |"
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
-54,
+53,
 "| Stage B | `tests/stageb.cpp` |"
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
-55,
+54,
 "| AllToAllTest (`measure`), an older name: in v1.3 the all-to-all is EngineTest with the A2A helper | ported: `tests/suite_engine.cpp`, with `A2A` in `tests/mach.h` |"
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
-56,
+55,
 "| ReadPortGatherTest | being ported: `tests/suite_rdport.cpp` |"
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
-57,
+56,
 "| SearchBench | ported: `tests/suite_search.cpp` (56 of 56 assertions, `tests/p4suites/searchbench.log`) |"
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
-58,
+57,
 "| CondTest | being ported |"
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
-59,
+58,
 "| S1Bench | being ported; `measure_s1` (`tests/mach.h`) is the harness side of its measurement |"
 ],
 [
 "CHANGES-v1.3-to-v1.35.md",
-60,
+59,
 "| SplitRun | not carried: its driver doesn't build in v1.3 |"
 ],
 [

@@ -79,11 +79,11 @@
 | 1631; ops 10, 339 | a zero shift mask | C+R | `V_UNDEFINED`, `replayer_alu.h:167–168`, `replayer.cpp:511` |
 | 1739, 1799, 1818 | the replayer's bad writes (UB) | F | `replayer.cpp:252, 312–331` |
 | 1839 | a pass with no state write since the last | C+R | `V_NO_FLUSH`, `replayer.h:185` |
-| 1839 | a run while the replayer runs ("ignored, flagged") | F, **not ignored** | `replayer.cpp:272` |
+| 1839 | a run while the replayer runs (undefined; ruled, owner, 2026-11-12) | F | `replayer.cpp:272` |
 | 2183 | an inline expansion with no `EXPANSION_TEMPLATE` store | C+R | `V_INLINE_NO_TEMPLATE`, `tracer.cpp:516` |
 | 2270 | a Tracer transfer asking for more than its credits cover (UB) | **not found** (searched `tracer.cpp`, `periph_slot.cpp`) | |
 | 2455 | staging before arming | C+R | `DIR_UNEXPECTED` |
-| 2762 | `PULSE_DMA` while a run runs ("ignored, flagged") | F | `ag.h:145` |
+| 2762 | `PULSE_DMA` while a run runs (undefined; ruled, owner, 2026-11-12) | F | `ag.h:145` |
 | 2775 | a counter sum past 2²⁰ − 1 | C+R | `CTL_COUNTER_WRAP`, `regblock.h:216` |
 | 2962 | the Tracer's word 0 mid-segment | C+R | `V_ADVICE_UNCONSUMED`, `TRACER_VIOLATION` (`tracer.cpp:97`) |
 | ops 254 | a non-contiguous PEXT mask, a statistic, not a check | counted | `pext_non_contiguous`, `replayer.cpp:509` |

@@ -96,6 +96,10 @@ edit('ms', 2942, 'meshsim stops with an error naming the access, unless the inva
      "v1.35's meshsim checks each in one of three ways (the preamble): undefined behaviour is fatal in every build, the silent traps (23) stop the core, and the rest are counted in every build and reported by name in the debug and suite builds.", 'sim')
 edit('ms', 2951, "meshsim's `Config.strictReplies`", "meshsim's `strict_replies` (`tests/mach.h`)", 'sim')
 edit('ms', 2957, "meshsim's `Config.checkReadPortOverlap`, on by default", "meshsim's `check_read_port_overlap` (`tests/mach.h`), on by default", 'sim')
+edit('ms', 2762, 'ignored while a run is running (meshsim flags it)',
+     'a start while a run is running is undefined behaviour (invariant 26; meshsim stops)', 'ruling')
+edit('ms', 1839, 'a run while the replayer runs is ignored (meshsim flags it, 4.13).',
+     "a run while the replayer runs is undefined behaviour (4.13; owner, 2026-11-01: a pulse while a peripheral is busy is UB; meshsim stops).", 'ruling')
 edit('ro', 3, 'the machine specification, v1.25, linked from `machine-spec.md` 4.19',
      'the machine specification, v1.35, linked from `spec/jolt/replayer.md` 4.19', 'version')
 
@@ -212,7 +216,6 @@ A['changes'] = ['# v1.3 to v1.35', '',
     "The machine specification's preamble gives the rule: undefined behaviour is fatal, the silent traps stop the core, and every other invariant is counted and, in the debug and suite builds, reported. As of 2026-11-12 these cases differ:", '',
     "- **Counted, not fatal:** a packet of size 11 (3.1, undefined); a stream with a misaligned source or destination, or with *d* = 126 from a mesh tile (4.2), which are also not reported.",
     "- **Counted but not reported:** a late rotation (invariant 3) and a `HIST` count past 17 bits (invariant 6). **Reported but not counted** in the release build: uncounted traffic other than mode 0 (invariant 22).",
-    "- **Fatal, where the spec says ignored and flagged:** a run started while the replayer runs (4.19.9), and `PULSE_DMA` while a run is running (8.6); invariant 26 and 4.17.2 make both undefined.",
     "- **Not checked:** a buffer both read and written in one run (invariant 2); `DMA_HDR` or `DMA_ADDR` changed mid-transfer (4.17.9); the 1, 3 and 1 requests outstanding, the tag windows and reads during a group run (invariant 17); one source per destination for modes 1–3 into big SRAM (invariant 18); the overtaking read (invariant 24), which only the harness's S1 measurement covers; a Tracer transfer asking for more than its credits cover (4.21).", '',
     "## The drivers the spec's measurements name", '',
     "The `[meas: …]` labels name v1.3's Java tests and drivers (Markers). What replaces each in v1.35:", '',
@@ -251,7 +254,7 @@ def write_edits_md(edits, added):
     from collections import Counter
     c = Counter(e[4] for e in edits)
     L = ['# The edits: every line the restructuring changed or added', '',
-         f"*Written by `build.py`. {len(edits)} edited lines ({', '.join(f'{k} {v}' for k, v in sorted(c.items()))}) and {len(added)} added lines. Kinds: **sim**, a statement about the simulator made true of v1.35; **path**, a path made true of v1.35's tree; **version**, the two version headers; **heading**, 8.11's heading, which would otherwise be false. Section 13's new text is among the added lines. Line numbers: the destination's (under `sim/spec/`) and the source's.*", '',
+         f"*Written by `build.py`. {len(edits)} edited lines ({', '.join(f'{k} {v}' for k, v in sorted(c.items()))}) and {len(added)} added lines. Kinds: **sim**, a statement about the simulator made true of v1.35; **path**, a path made true of v1.35's tree; **version**, the two version headers; **heading**, 8.11's heading, which would otherwise be false. **ruling**, a wording the owner ruled (owner, 2026-11-12): 8.6's `PULSE_DMA` row and 4.19.11's run pulse, undefined behaviour rather than \"ignored (meshsim flags it)\". Section 13's new text is among the added lines. Line numbers: the destination's (under `sim/spec/`) and the source's.*", '',
          '## Edited lines', '']
     for dest, dl, src, sl, k, old, new in edits:
         L += [f'### `{dest}` {dl} ← `{src}` {sl} ({k})', '', '- old: ' + old, '- new: ' + new, '']

@@ -33,7 +33,7 @@ grep -q "t7@" "$RES/quick.txt" && grep -q " 3180$" "$RES/quick.txt" && grep -q "
   && verdict smoke PASS || verdict smoke FAIL
 t0=$(date +%s); build/clang-suite/p4_drift > "$RES/drift.txt" 2>&1; rc=$?; echo "full: exit $rc in $(( $(date +%s) - t0 )) s"
 cat "$RES/drift.txt"
-[ $rc = 0 ] && grep -q "radix sort (16384 keys)     total" "$RES/drift.txt" && verdict full PASS || verdict full FAIL
+[ $rc = 0 ] && grep -Eq "radix sort \(16384 keys\) +total" "$RES/drift.txt" && verdict full PASS || verdict full FAIL
 echo; cat "$RES/VERDICTS"
 [ $FAIL = 0 ] && { echo DONE; exit 0; } || { echo FAILED; exit 1; }
 __KIT_BEGIN__

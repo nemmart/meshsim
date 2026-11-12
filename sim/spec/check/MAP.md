@@ -568,7 +568,7 @@ Three kinds, as the prompt allows, plus the two version headers the prompt asks 
 added lines (stubs, pointers, the new companion bullets, the jolt files' headers, the READMEs,
 `CHANGES-v1.3-to-v1.35.md`) are listed as added, not here.
 
-### 7.1 Statements about the simulator, made true of v1.35 (12 lines)
+### 7.1 Statements about the simulator, made true of v1.35 (11 lines)
 
 Each fact is from the repository: the checker from `src/check.h` and `tests/mach.h` (the switch, the owner's ruling
 of 2026-11-10), K's check from `tests/mach.cpp`, the controllers from `tests/mach.h` and `src/units/cnc.h`, the drivers
@@ -646,7 +646,7 @@ name files in the tree and stay. In the appendix, line 3 also changes "`machine-
 
 ### 7.4 Counts so far
 
-Edited lines: 12 simulator, 55 path (some lines in both), 2 version; section 13 rewritten (added). Final counts come
+Edited lines: 11 simulator, 55 path (some lines in both), 2 version; section 13 rewritten (added). Final counts come
 with stage 2.
 
 ## 8. Questions for the owner

@@ -95,6 +95,31 @@ remaining kinds, interleaved as the suites ask.
   `set_strict_replies`, `set_max_violation_messages` (from the next cycle on, the report through the cycle just run made
   first) and `clear_violations` (ref's `violations = 0` and the messages cleared). CheckSelf's case line for line.
   W23's stand-ins in tests/ctl/ctl.h can go.
+- **W25's F6 fixed**: the slot freed whatever row buffer the replayer pointed at (the row hook's vector, after
+  `Chip::on_row`): a double free. The slot now frees only the buffer it allocated (`SlotCore::Ref::rows`).
+  test_mach's `mach_row_hook_destroyed_cleanly` fails under ASan without the fix. W25 can drop stageb.cpp's workaround.
+- **W22's F2 fixed**: `TileRef::mem_idle` read big SRAM's area queues modulo the array's 16, not the configured
+  depth (8): after a wrap it read a stale slot. Now `BigSram::at(a, j)`; test_mach's `mach_mem_idle_sees_a_wrapped_queue`
+  fails with the old indexing.
+- **`tests/java_format.h`** (the owner: one shared helper): `jfmt::fixed` (Java's %.nf: the shortest digits, HALF_UP)
+  and `jfmt::grouped` (%,d), W24's code with W24's test values and W23's, W25's and PhaseLog's, each checked against Java
+  (`test_java_format`). W24, W25 (and W23's ctl.h) switch to it in P8's cleanup.
+- **PhaseLog (H3) done**: `tests/phase_log.{h,cpp}`, `Chip::phases()` (attached at the first call; runs cycle by cycle
+  then; the hooks after each cycle: the READY pulses (TileCtl's ready_pulse_at, W23's), C&C's all-READY and GO stores),
+  ref's counters (the cores' caught up as ref's syncCounters), peaks, report() and csv() (Java's formatting). New
+  statistics, counters only: the read queue's latency sum and count per client (under SIM_CHECKS, beside W22's latMax),
+  the table stores' request-FIFO peaks, the read port's peak. `unreadOverwrites` 0 until W26's tracking. The debug and
+  suite builds only (its FIFO peaks and latencies are kept there; FATAL otherwise). MachSelf's PhaseLog case (the a2a
+  with AccountingTest's namer: report and CSV, seeds -1 and 4) line for line, gcc and clang. accounting-full's CSV is
+  W23's step (AccountingTest) on the runner.
+- **Two fixes**: the register blocks of C&C 1-3 as cores take the test's writes too (`host_on`; W23's errorPath, C&C 2's
+  ERRORS bit); a peripheral's violation is reported at t + 1, as v1.3's (W25's F8: ref's slot passes it to the block,
+  whose counter the checker sees at the next cycle's end). (The text has no cycle: checker.cpp unchanged.)
+- **`Cc::phase_log`** (ref's CnC.phaseLog: {all READY seen, GO} per GO; the Cnc unit writes it into the harness's
+  array, harness-only) and `phases_logged()` (its size, for run conditions). MachSelf's a2a prints it, equal to ref's.
+- **W22-15 `TileRef::phase_done()`**: ref's EngineTest.phaseDone (the AG over, every counter 0 in the block's end-of-cycle
+  view, no word on the delay line or port B arriving after the next cycle, mem_idle, the table stores quiet). NetSelf's
+  probe (the coreless a2a stepped by hand: the first phase-done cycle of four tiles and of all 64, two seeds) equal to ref.
 - Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
   after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
 

@@ -8,6 +8,7 @@
 #include "harness.h"
 #include "mach.h"
 #include "units/ag.h"
+#include "units/big_sram.h"
 #include "units/gather.h"
 #include "units/linkword.h"
 #include "units/tile_ctl.h"
@@ -66,6 +67,9 @@ void a2a(int64_t seed) {
     m.c.cc().command(units::lw::BROADCAST, 1u << 24).go().command(units::lw::BROADCAST, 2u << 24).go().command(units::lw::BROADCAST, 3u << 24).go();
     const bool ok = m.run([&] { return m.all_stopped(); }, 2000000);
     report("a2a seed " + std::to_string(seed), m, ok);
+    std::string pl = "  phaseLog";
+    for (const auto& e : m.c.cc().phase_log()) pl += " [" + std::to_string(e[0]) + ", " + std::to_string(e[1]) + "]";
+    say("%s\n", pl.c_str());
     say("  misplaced %d; lastGoAt %lld lastAllReadyAt %lld; busy %s; sram t9 0x40000 %016llx t50 0x40100 %016llx\n", data.verify(m.c),
         (long long)m.c.cc().last_go_at(), (long long)m.c.cc().last_all_ready_at(), tf(m.c.cc().busy()),
         (unsigned long long)m.c.tile(9).sram_peek64(0x40000), (unsigned long long)m.c.tile(50).sram_peek64(0x40100));
@@ -86,8 +90,31 @@ void stageb(bool lone) {
         (unsigned long long)c.violations());
     say("%s", c.violation_report().c_str());
 }
+void phases(int64_t seed) {
+    Mach m(Mach::cfg(seed));
+    mach::A2A data(7, 2000);
+    for (unsigned s = 0; s < 64; s++) {
+        mach::TileRef p = m.c.tile(s);
+        for (size_t k = 0; k < data.rec[s].size(); k++) p.sram_poke64(mach::A2A::SRC + 2 * uint32_t(k), uint64_t(data.rec[s][k]));
+        for (unsigned d = 0; d < 64; d++) p.sram_poke(0xF0000 + d, uint32_t(data.cnt[s][d]));
+        for (unsigned src = 0; src < 64; src++) p.sram_poke(0xF0000 + 64 + src, uint32_t(data.cnt[src][s]));
+        for (unsigned g = 0; g < 16; g++) p.sram_poke(0xF0000 + 128 + g, uint32_t(data.R[g]));
+        p.sram_poke(0xF0000 + 144, 0);
+    }
+    m.c.phases().namer = [](int32_t w) -> std::string {
+        switch (uint32_t(w) >> 24) { case 1: return "configure"; case 2: return "start (a2a)"; case 3: return "exit"; case 0x4A: return "boot"; default: return "?"; }
+    };
+    m.boot("a2a");
+    m.c.cc().command(units::lw::BROADCAST, 1u << 24).go().command(units::lw::BROADCAST, 2u << 24).go().command(units::lw::BROADCAST, 3u << 24).go();
+    const bool ok = m.run([&] { return m.all_stopped(); }, 2000000);
+    m.c.phases().close();
+    say("phases seed %lld: %s at cycle %lld\n", (long long)seed, ok ? "stopped" : "NOT stopped", (long long)m.c.cycle());
+    say("%s", m.c.phases().report().c_str());
+    say("%s", m.c.phases().csv().c_str());
+}
 void machself() {
     out.clear();
+    if (sim::check::kOn) { phases(-1); phases(4); }        // (PhaseLog's FIFO peaks: the debug and suite builds)
     stageb(true);
     stageb(false);
     {
@@ -286,9 +313,34 @@ void core() {
     sb += " dmem[0xe0] " + w(n, 40, 0xe0);
     say("%s\n", sb.c_str());
 }
+void phase_done_probe(int64_t seed) {
+    mach::MachConfig k = mach::MachConfig::defaults();
+    k.shuffle_seed = seed; k.check_errors = false;
+    Net n(k);
+    mach::A2A d(7, 600);
+    d.load(n.c, 0);
+    const int64_t t0 = n.c.cycle();
+    const std::vector<int> skew = n.c.start_skew();
+    bool started[64] = {};
+    int64_t first[4] = {-1, -1, -1, -1}, all = -1;
+    const unsigned watch[4] = {0, 5, 40, 63};
+    for (int i = 0; i < 100000 && all < 0; i++) {
+        for (unsigned p = 0; p < 64; p++) if (!started[p] && n.c.cycle() >= t0 + skew[p]) { n.c.tile(p).pulse(mach::fields::PULSE_START); started[p] = true; }
+        n.c.step();
+        if (n.c.cycle() < t0 + 3) continue;
+        for (int j = 0; j < 4; j++) if (first[j] < 0 && n.c.tile(watch[j]).phase_done()) first[j] = n.c.cycle() - t0;
+        bool a = true;
+        for (unsigned p = 0; p < 64 && a; p++) a = n.c.tile(p).phase_done();
+        if (a) all = n.c.cycle() - t0;
+    }
+    say("phaseDone seed %lld: tiles 0 5 40 63 first at +%lld +%lld +%lld +%lld; all at +%lld\n", (long long)seed, (long long)first[0],
+        (long long)first[1], (long long)first[2], (long long)first[3], (long long)all);
+}
 void netself() {
     out.clear();
     core();
+    phase_done_probe(-1);
+    phase_done_probe(4);
     controllers(-1); controllers(3);
     packets(-1); packets(5);
     reads();
@@ -307,11 +359,15 @@ TEST(mach_net_as_refs_Net) {
 std::string without_violations(const std::string& x) {
     if (sim::check::kOn) return x;
     std::string r;
+    bool skip = false;
     for (size_t at = 0; at < x.size();) {
         size_t e = x.find('\n', at);
         if (e == std::string::npos) e = x.size();
         std::string l = x.substr(at, e - at);
         at = e + 1;
+        if (l.rfind("phases seed ", 0) == 0) skip = true;     // PhaseLog's sections: the debug and suite builds only
+        if (l.rfind("stageb ", 0) == 0) skip = false;
+        if (skip) continue;
         if (l.rfind("violations: ", 0) == 0 || l.rfind("  cycle ", 0) == 0) continue;
         const size_t v = l.find("; violations ");
         if (v != std::string::npos) l = l.substr(0, v);
@@ -442,4 +498,34 @@ TEST(mach_wait_until_releases_the_next_cycle) {
     CHECK(m.c.run_until([&] { return ran >= 0; }, 20000));
     CHECK(first_true > m.run_at);                             // checked only once C&C reached it (after the boot's GO)
     CHECK_EQ(ran, first_true + 1);
+}
+
+// W25's F6: a row hook attached, the machine destroyed: the slot frees only the buffer it allocated (ASan in debug).
+TEST(mach_row_hook_destroyed_cleanly) {
+    mach::MachConfig k = mach::MachConfig::machine();
+    k.periph_type = 0; k.test_periph_tile = 0;
+    {
+        mach::Chip c(k);
+        uint64_t rows = 0;
+        c.on_row(0, [&](const uint64_t*, int64_t) { rows++; });
+        c.run(10);
+        CHECK_EQ(rows, 0u);
+    }
+    CHECK(true);
+}
+
+// W22's F2: mem_idle reads an area queue as it wraps, at its configured depth (8), not at the array's (16): a write
+// queued in the slot after the wrap holds mem_idle low; a stale write past the depth doesn't.
+TEST(mach_mem_idle_sees_a_wrapped_queue) {
+    mach::Chip c(mach::MachConfig::defaults());
+    mach::TileRef p = c.tile(3);
+    units::BigSram& m = p.unit<units::BigSram>("sram");
+    CHECK_EQ(m.cfg.area_queue_depth, 8u);
+    CHECK(p.mem_idle());
+    m.head[5] = 7; m.count[5] = 2;                           // entries in slots 7 and 0
+    m.q[5][7].write = false; m.q[5][0].write = true; m.q[5][8].write = false;
+    CHECK(!p.mem_idle());                                    // the write in slot 0 (not slot 8)
+    m.q[5][0].write = false; m.q[5][8].write = true;         // a stale write past the depth
+    CHECK(p.mem_idle());
+    m.count[5] = 0;
 }

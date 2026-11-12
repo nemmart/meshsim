@@ -11,8 +11,22 @@
 # exit codes, and every jvm-K.log. The deliveries: synthetic_delivery's (seed 11; equal to v1.3 patched as D43, W19),
 # a planted-fault copy (rows, end state, the manifest's rows; hashes refreshed) and a corrupted copy (CORRUPT kinds).
 # --calibration: also both calibrate.sh (128 windows of 65,536 rows: the runner), each run's directory compared.
+# --real NAME DELIVERY PROGRAM 'RUN_SHARD_ARGS' (repeatable): also both run_shard.sh on a real (v1.26) delivery, e.g.
+#   --real evm-sel /d/sel evm-zone-29 '-f 0 -n all -j 16 -s AB -x 1'
+# --small-only / --no-small: the synthetic cases only, or none (a runner task that only wants the real and calibration).
+# KEEP=DIR: every case's two output directories copied there before the scratch goes (a Quest task's results).
+# KIT135=kit.tgz: v1.35's kit as made elsewhere (tests/acceptance/make_kit.sh), for a tree without git (a Quest task).
 # Stages A, B and F; -q 512 waits for the machine's replayer log-queue field (W20's Config fields).
 set -u
+CAL=0 SMALL=1; REAL=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --calibration) CAL=1;;
+    --no-small) SMALL=0;;
+    --real) REAL+=("$2|$3|$4|$5"); shift 4;;
+    *) echo "usage: acceptance_crosscheck.sh [--calibration] [--no-small] [--real NAME DELIVERY PROGRAM ARGS]..."; exit 2;;
+  esac; shift
+done
 SIM=$(cd "$(dirname "$0")/.." && pwd); M=$SIM/ref/meshsim
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 bad=0
@@ -35,7 +49,8 @@ cp "$SIM"/tests/m3-images/replay_ctl.{code.bin,data.bin,sym} "$T/v13/replay/"; c
 cp "$SIM/data/tables/manifest.json" "$T/v13/tables/"; cp "$SIM"/data/tables/replayer/{decode_table,rom,templates,template_index}.bin "$T/v13/tables/replayer/"
 cp "$M"/acceptance/run_shard.sh "$M"/acceptance/calibrate.sh "$T/v13/"
 # ---- v1.35's kit
-"$SIM/tests/acceptance/make_kit.sh" "$T/kit.tgz" > /dev/null && tar -xzf "$T/kit.tgz" -C "$T" && mv "$T/w25-kit" "$T/v135" \
+if [ -n "${KIT135:-}" ]; then cp "$KIT135" "$T/kit.tgz"; else "$SIM/tests/acceptance/make_kit.sh" "$T/kit.tgz" > /dev/null; fi
+tar -xzf "$T/kit.tgz" -C "$T" && mv "$T/w25-kit" "$T/v135" \
   && "$T/v135/build.sh" > "$T/build.log" 2>&1 || { cat "$T/build.log"; echo "acceptance_crosscheck: v1.35's kit did not build"; exit 2; }
 # ---- the deliveries
 SD=$T/v135/sim/build/clang-release/synthetic_delivery; TB=$SIM/data/tables/replayer
@@ -89,6 +104,7 @@ run_case() {   # run_case NAME DELIVERY run_shard-args...
   else echo "DIFFER $n (exit $r13 v1.3, $r135 v1.35)"; bad=1; fi
 }
 MS=$(sha256sum "$T/d/manifest.json" | cut -d' ' -f1)
+if [ $SMALL = 1 ]; then
 run_case a-j1        "$T/d"  -p syn -f 0 -n 9 -j 1 -s A -m "$MS"
 run_case a-j3        "$T/d"  -p syn -f 0 -n 9 -j 3 -s A
 run_case a-range     "$T/d"  -p syn -f 2 -n 5 -j 2 -s A
@@ -103,10 +119,18 @@ run_case ab-x3       "$T/d"  -p syn -f 0 -n 9 -j 2 -s AB -x 3
 run_case b-all       "$T/d"  -p syn -f 0 -n all -j 3 -s B
 run_case ab-faults   "$T/df" -p syn -f 0 -n 9 -j 3 -s AB
 run_case ab-corrupt  "$T/dc" -p syn -f 0 -n 9 -j 2 -s AB
-if [ "${1:-}" = --calibration ]; then
+fi
+for r in "${REAL[@]}"; do
+  IFS='|' read -r n d p a <<< "$r"
+  mf=$d/$p.manifest.json; [ -f "$mf" ] || mf=$d/manifest.json
+  # shellcheck disable=SC2086
+  run_case "$n" "$d" -p "$p" -M "$mf" $a
+done
+if [ $CAL = 1 ]; then
   (cd "$T/v13" && ./calibrate.sh "$T/c13" "$T") > "$T/c13.out" 2>&1
   (cd "$T/v135" && ./calibrate.sh "$T/c135" "$T") > "$T/c135.out" 2>&1
   for j in 1 4 8 16; do cmp_dirs "calibration j$j" "$T/c13/j$j" "$T/c135/j$j" && echo "SAME   calibration j$j ($(tail -1 "$T/c135/j$j/VERDICT.txt"))" || { echo "DIFFER calibration j$j"; bad=1; }; done
 fi
+if [ -n "${KEEP:-}" ]; then mkdir -p "$KEEP"; for x in o13 o135 c13 c135; do [ -d "$T/$x" ] && cp -r "$T/$x" "$KEEP/"; done; cp "$T"/*.out "$KEEP/" 2>/dev/null; fi
 [ $bad = 0 ] && echo "acceptance_crosscheck: v1.35's kit equals v1.3's on every case" || echo "acceptance_crosscheck: DIFFERENCES"
 exit $bad

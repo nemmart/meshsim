@@ -48,6 +48,31 @@ final class NetSelf {
         logs(n, 12, 3, 21);
     }
 
+    /** EngineTest.phaseDone, ref's own (W22-15). */
+    static boolean phaseDone(Chip c, Tile p) {
+        long t = c.cycle;
+        return !p.ag.running && p.ctl.countersZero() && p.dir.inFlight() == 0 && p.memIdle(t) && p.dir.cmIdle(t) && !p.tsBusy(t);
+    }
+    /** The a2a coreless, stepped by hand: the first cycle tiles 0, 5, 40 and 63 are phase-done, and all 64. */
+    static void phaseDoneProbe(long seed) {
+        Config k = Config.defaults(); k.shuffleSeed = seed; k.checkErrors = false;
+        Net n = new Net(k);
+        A2A d = new A2A(7, 600);
+        d.load(n.c, 0);
+        long t0 = n.c.cycle;
+        boolean[] started = new boolean[64];
+        long[] first = { -1, -1, -1, -1 }; int[] watch = { 0, 5, 40, 63 }; long all = -1;
+        for (int i = 0; i < 100000 && all < 0; i++) {
+            for (Tile p : n.c.tiles) if (!started[p.idx] && n.c.cycle >= t0 + n.c.startSkew[p.idx]) { p.pulse(Fields.PULSE_START); started[p.idx] = true; }
+            n.c.step();
+            if (n.c.cycle < t0 + 3) continue;
+            for (int j = 0; j < 4; j++) if (first[j] < 0 && phaseDone(n.c, n.c.tiles[watch[j]])) first[j] = n.c.cycle - t0;
+            boolean a = true; for (Tile p : n.c.tiles) a &= phaseDone(n.c, p);
+            if (a) all = n.c.cycle - t0;
+        }
+        System.out.printf("phaseDone seed %d: tiles 0 5 40 63 first at +%d +%d +%d +%d; all at +%d%n", seed, first[0], first[1], first[2], first[3], all);
+    }
+
     static void a2a(long seed, int gap) {
         Config k = Config.defaults(); k.shuffleSeed = seed; k.checkErrors = false;
         Net n = new Net(k);
@@ -156,6 +181,8 @@ final class NetSelf {
 
     public static void main(String[] a) {
         core();
+        phaseDoneProbe(-1);
+        phaseDoneProbe(4);
         controllers(-1);
         controllers(3);
         packets(-1);

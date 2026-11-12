@@ -29,7 +29,7 @@ tar -xzf "\$W/kit.tgz" -C "\$W" || exit 2
 cd "\$W/w25-kit" || exit 2
 sha256sum -c --quiet HASHES || { echo "kit files differ from HASHES"; exit 2; }
 echo "start \$(date -u) on \$(hostname), \$(nproc) threads; kit \$(cat VERSION)"; free -g | head -2
-sh sim/tools/machine.sh > "\$RES/machine.txt" 2>&1 || true
+bash sim/tools/machine.sh > "\$RES/machine.txt" 2>&1 || true
 ./build.sh > "\$RES/build.log" 2>&1 || { cat "\$RES/build.log"; echo "the kit did not build"; exit 2; }
 tail -1 "\$RES/build.log"
 HDR

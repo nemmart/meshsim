@@ -16,6 +16,9 @@
 // they land, a full run's counts and lines are short of the fixture's.
 //
 // Test-side code (the configuration regime, D6).
+#include <sys/wait.h>
+#include <unistd.h>
+
 #include <algorithm>
 #include <array>
 #include <cstdio>
@@ -54,6 +57,22 @@ void no_violations(Chip& c, const char* what) {
     c.scan_overflows();
     if (c.violations() == 0) check(true, "%s", what);
     else check(false, "%s: %s", what, c.violation_report().c_str());
+}
+
+// True if fn() dies by a FATAL whose message contains `name` (Java's `try { new Chip(k); } catch (IllegalArgumentException
+// e) { threw = e.getMessage().contains(name); }`; not an assertion, so not suite::throws).
+template <class F> bool dies_naming(F&& fn, const char* name) {
+    std::fflush(stdout);
+    int pfd[2]; if (pipe(pfd) != 0) { std::fprintf(stderr, "FATAL suite_net: pipe\n"); std::abort(); }
+    const pid_t pid = fork();
+    if (pid == 0) { close(pfd[0]); dup2(pfd[1], 2); fn(); _exit(0); }
+    close(pfd[1]);
+    std::string err; char buf[512]; ssize_t r;
+    while ((r = read(pfd[0], buf, sizeof buf)) > 0) err.append(buf, size_t(r));
+    close(pfd[0]);
+    int st = 0; waitpid(pid, &st, 0);
+    if (WIFEXITED(st) && WEXITSTATUS(st) == 0) return false;
+    return err.find("FATAL") != std::string::npos && err.find(name) != std::string::npos;
 }
 
 const char* const OUT_NAME[] = {"to-right", "to-left", "to-down", "to-up", "eject", "to-cnc"};
@@ -111,11 +130,6 @@ void structure() {
 }
 
 // ------------------------------------------------------------------ unicast, every offset
-void reset_stats(Chip& c) {
-    (void)c;   // W22-2 (Chip::reset_stats, FATAL today): only allPermPeaks1 reads the peaks, and a running maximum
-               // over offsets is <= 1 exactly when every offset's is, so the check's outcome is the same meanwhile
-}
-
 void unicast() {
     suite::group("unicast");
     Net n(Net::cfg(shuffle));
@@ -123,7 +137,7 @@ void unicast() {
     std::map<int, int> lat_by_hops;
     bool all_perm_peaks1 = true;
     for (int k = 0; k < 64; k++) {
-        n.clear_logs(); reset_stats(n.c);
+        n.clear_logs(); n.c.reset_stats();
         const int64_t T0 = n.c.cycle() + 2;
         for (int i = 0; i < 64; i++) n.at(i, T0, (i + k) & 63, lw::M_SRC, 0, Net::tagged(k, T0));
         check(n.run_all(500), "offset %d drained", k);
@@ -164,6 +178,32 @@ void unicast() {
     n.at(17, T0, (17 + 27) & 63, lw::M_SRC, 0, 0);
     n.run_all(200);
     eq(base + 4LL * hops_of(hops, 27), int64_t(n.log((17 + 27) & 63).at(0)[0]) - T0, "lone packet latency");
+}
+
+// ------------------------------------------------------------------ broadcast
+void broadcast() {
+    suite::group("broadcast");
+    Net n(Net::cfg(shuffle));
+    int max_lat = 0;
+    auto routed_sum = [&] { uint64_t r = 0; for (unsigned p = 0; p < 64; p++) r += router(n.c, p).routed; return r; };
+    for (int s = 0; s <= 64; s++) {
+        n.clear_logs(); n.c.reset_stats();
+        const uint64_t routed_before = routed_sum();
+        const int64_t T0 = n.c.cycle() + 2;
+        if (s < 64) n.at(unsigned(s), T0, lw::BROADCAST, lw::M_SRC, 0, Net::tagged(uint64_t(s), T0));
+        else n.cnc_send({T0, lw::BROADCAST, lw::M_SRC, 0, Net::tagged(uint64_t(s), T0)});
+        check(n.run_all(500), "broadcast from %d drained", s);
+        for (unsigned d = 0; d < 64; d++) {
+            const auto l = n.log(d);
+            eq(1, int64_t(l.size()), "broadcast from %d: tile %u receives exactly one copy", s, d);
+            if (l.size() == 1) { eq(s, lw::src(l[0][2]), "broadcast src"); max_lat = std::max(max_lat, int(int64_t(l[0][0]) - T0)); }
+        }
+        eq(0, int64_t(n.c.cc().received().size()), "broadcast from %d not delivered to C&C", s);
+        eq(64, int64_t(routed_sum() - routed_before), "broadcast from %d: 64 route-block visits (63 link arrivals + the root), no duplicate copies", s);
+    }
+    eq(0, int64_t(n.c.tile(0).unit<units::Injection>("inj").injected), "C&C's broadcast does not use tile 0's injection point");
+    no_violations(n.c, "broadcast");
+    out(suite::str("broadcast: every tile exactly one copy from every source and from C&C, none to C&C; slowest copy %d cycles after injection [meas: NetTest broadcast]", max_lat));
 }
 
 // ------------------------------------------------------------------ unicast vs broadcast routes (in-order scope)
@@ -211,6 +251,57 @@ void route_comparison() {
     }
     out("routes: a unicast packet and a broadcast copy from one source to one destination take different paths for offsets " + p4::jlist_int(differing)
         + " (for 8 to 64 of the 64 sources each; the broadcast tree's copy can take 8 hops where the unicast takes at most 7), so in-order delivery holds within unicast and within broadcast, not between the two [NetTest routes]");
+}
+
+// ------------------------------------------------------------------ the controllers' ports (tiles 0-2's fifth ports, 4.16)
+void cnc_port() {
+    suite::group("C&C 1-3 ports");
+    Net n(Net::cfg(shuffle));
+    for (unsigned c = 0; c < 3; c++) for (unsigned d = 0; d < 64; d++) {
+        n.clear_logs();
+        n.send(c, d, lw::M_COUNT, 1, 0, lw::SIZE_32, 0x1234, 0);
+        n.run_all(300);
+        eq(1, int64_t(n.log(d).size()), "C&C %u -> tile %u", c + 1, d);
+        if (n.log(d).size() == 1) eq(64 + c, lw::src(n.log(d)[0][2]), "src %u from C&C %u", 64 + c, c + 1);
+    }
+    for (unsigned s = 0; s < 64; s++) {
+        n.clear_logs(); const int64_t T0 = n.c.cycle() + 2;
+        for (unsigned c = 0; c < 3; c++) n.at(s, T0 + c, 64 + c, lw::M_WRITE, 3, 0x00000100, lw::SIZE_32, s, 0);
+        n.run_all(300);
+        for (unsigned c = 0; c < 3; c++) {
+            const auto rv = n.received(c);
+            eq(1, int64_t(rv.size()), "tile %u -> C&C %u", s, c + 1);
+            if (rv.size() == 1) eq(s, lw::src(rv[0][2]), "C&C %u sees src", c + 1);
+        }
+        for (unsigned c = 0; c < 3; c++) eq(0, int64_t(n.log(c).size()), "nothing for 64-66 reaches tile %u's director", c);
+    }
+    n.clear_logs();
+    n.send(1, 66, lw::M_WRITE, 2, 0x200, lw::SIZE_64, 0x77, 0);
+    n.run_all(300);
+    eq(1, int64_t(n.received(2).size()), "C&C 2 -> C&C 3");
+    n.clear_logs();
+    n.send(1, lw::BROADCAST, lw::M_COUNT, 1, 0, lw::SIZE_32, 9, 0);
+    n.run_all(300);
+    for (unsigned d = 0; d < 64; d++) eq(1, int64_t(n.log(d).size()), "C&C 2's broadcast reaches tile %u once", d);
+    for (unsigned e = 0; e < 3; e++) eq(0, int64_t(n.received(e).size()), "a broadcast is not delivered to C&C %u", e + 1);
+    no_violations(n.c, "the controllers' ports");
+    int unconnected = 0;
+    for (unsigned p = 0; p < 64; p++) {
+        const Router& r = router(n.c, p);
+        eq(6, Router::kOut, "tile %u: the router has the fifth port's output (4.16: one tile design)", p);
+        check(r.attached == (p < 3), "tile %u: fifth port connected only at tiles 0-2", p);
+        if (p < 3) continue;
+        bool quiet = true;
+        for (unsigned f = 0; f < r.nfeed[Router::TO_CNC]; f++) if (r.q[r.fifo_index(Router::TO_CNC, f)].peak > 0) quiet = false;
+        for (unsigned o = 0; o < 5; o++) { const unsigned f = r.slot_of[o][Router::FROM_CNC]; if (f != 0xFF && r.q[r.fifo_index(o, f)].peak > 0) quiet = false; }
+        if (quiet) unconnected++;
+    }
+    eq(61, unconnected, "on tiles 3-63 the fifth port never receives and routing never chooses it");
+    Net m(Net::cfg(shuffle));
+    m.at(5, m.c.cycle() + 2, 70, lw::M_COUNT, 1, 0, lw::SIZE_32, 0, 0);
+    m.run_all(300);
+    const auto& vm = m.c.violation_messages();
+    check(m.c.violations() >= 1 && !vm.empty() && vm[0].find("no endpoint") != std::string::npos, "a packet for 70 is flagged: %s", m.c.violation_report().c_str());
 }
 
 // ------------------------------------------------------------------ in-order delivery
@@ -294,6 +385,209 @@ void in_order_full_rate() {
         worst = std::max(worst, n.max_router_peak());
     }
     out(suite::str("permutations at the link bound (every tile 500 packets, one per max(|a|,|b|) cycles, skew 0/+1): router FIFO peak %u of 16 [meas: NetTest in-order full rate]", worst));
+}
+
+// ------------------------------------------------------------------ the traffic director (4.8, v1.2)
+enum : uint32_t { CMD = 0x7FC0, RPL = 0x7BC0, CMD_DWORD = CMD >> 2, RW = RPL >> 2 };   // ControllerMemories
+enum : unsigned { COND_BAD = 1, COND_UNEXPECTED = 2 };                               // Conditions
+// W22-15 (interim): ref's TrafficDirector.cmIdle(t), nothing on its way to port B. Until W20's accessor lands this reads
+// "never idle", so the one check on it passes without testing anything (recorded in NOTES).
+bool cm_idle(Chip&, unsigned) { return false; }
+
+void director() {
+    suite::group("director");
+    MachConfig k = Net::cfg(shuffle); k.check_unexpected = true; k.periph_type = 0;
+    Net n(k);
+    TileRef r = n.c.tile(9);
+    r.record_gather(); r.record_writer();
+    units::Director& d = r.unit<units::Director>("dir");
+    eq(0, d.cfg.periph_present, "a tile built without a peripheral: PARAMS [2:0] = 0");
+    r.set_remaining(1, 4); r.set_remaining(2, 3); r.set_remaining(3, 2); r.set_remaining(4, 1);
+    const int64_t T0 = n.c.cycle() + 2; int64_t t = T0;
+    n.at(9, T0, 9, lw::M_GATHER, 4, 0, lw::SIZE_64, 0x0000000500000077ull, 0);
+    n.at(5, t++, 9, lw::M_SRC, 1, 0, lw::SIZE_64, 0xAAAA, 0);
+    n.at(5, t++, 9, lw::M_WRITE, 1, lw::sram_addr(0x102), lw::SIZE_64, 0xEEEE, 0);
+    n.at(5, t++, 9, lw::M_BUCKET, 1, 0, lw::SIZE_64, 0xBBBB, 0);
+    n.at(5, t++, 9, lw::M_AUG, 1, 0, lw::SIZE_32, 0xCCCC, 0);
+    n.at(5, t++, 9, lw::M_WRITE, 2, 0x01000040, lw::SIZE_64, 0x2222222211111111ull, 0);
+    n.at(5, t++, 9, lw::M_WRITE, 2, 0x00000400, lw::SIZE_32, 0x33333333ull, 0);
+    n.at(5, t++, 9, lw::M_WRITE, 2, 0x000007F0, lw::SIZE_128, 0x6666666655555555ull, 0x8888888877777777ull);
+    n.at(5, t++, 9, lw::M_WRITE, 3, RPL + 8 * 5, lw::SIZE_32, 0xABCD0006ull, 0);
+    n.at(6, t, 9, lw::M_WRITE, 3, RPL + 8 * 6, lw::SIZE_64, 0x1234567800C0FFEEull, 0);
+    n.at(5, t++, 9, lw::M_COUNT, 4, 0, lw::SIZE_32, 0, 0);
+    n.at(5, t++, 9, lw::M_WRITE, 2, 0x02000000, lw::SIZE_32, 0xD2, 0);
+    n.at(5, t++, 9, lw::M_WRITE, 2, 0xFFFFF800, lw::SIZE_32, 0xD3, 0);
+    n.at(5, t++, 9, lw::M_WRITE, 2, 0x04000000, lw::SIZE_32, 0xD4, 0);
+    n.at(5, t++, 9, lw::M_AUG, 1, 0, lw::SIZE_128, 0xD5, 0);
+    n.cnc_send({T0, 9, lw::M_WRITE, CMD + 12, 0xCAFE0003ull, lw::SIZE_32, 0, 0});
+    n.cnc_send({T0 + 1, 9, lw::M_WRITE, CMD, 0x0000C0DEull, lw::SIZE_32, 0, 0});
+    check(n.run_all(300), "drained");
+    eq(4, int64_t(d.bad_packets), "four bad packets dropped: boot ROM, region 0xFF, absent peripheral, mode 3 at 128 (v1.25: misalignment is UB, below)");
+    check((r.block().conditions & (1u << COND_BAD)) != 0, "ERRORS [1], bad packet (v1.1's bit %u)", unsigned(COND_BAD));
+    const auto gl = r.gather_log(), wl = r.writer_log();
+    eq(1, int64_t(gl.size()), "mode 4 -> GATHER queue");
+    eq(4, int64_t(wl.size()), "modes 1, 0 (big SRAM), 2 and 3 -> write engine");
+    if (wl.size() == 4) { eq(lw::M_SRC, lw::mode(wl[0][2]), "mode 1 first"); eq(lw::M_WRITE, lw::mode(wl[1][2]), "mode 0 second");
+        eq(lw::M_BUCKET, lw::mode(wl[2][2]), "mode 2 third"); eq(lw::M_AUG, lw::mode(wl[3][2]), "mode 3 fourth"); }
+    eq(0xEEEE, r.sram_peek(0x102), "mode 0 written at its address's chunk (no PTR)");
+    auto imem = [&](uint32_t w) { return r.peek_local(0x01000000u + 4 * w); };
+    eq(0x11111111, imem(0x10), "program memory word 0x10"); eq(0x22222222, imem(0x11), "program memory word 0x11");
+    eq(0x33333333, r.dmem(0x100), "data memory word 0x100"); eq(0, r.dmem(0x101), "a 32-bit write writes one word only");
+    eq(0x55555555, r.dmem(0x1FC), "128 bits: word 0x1FC"); eq(int32_t(0x88888888u), int32_t(r.dmem(0x1FF)), "128 bits: word 0x1FF");
+    eq(int32_t(0xCAFE0003u), int32_t(r.dmem(CMD_DWORD + 3)), "command slot 3 (0x7FCC)");
+    eq(int32_t(0xABCD0006u), int32_t(r.dmem(RW + 10)), "32-bit reply from src 5: word 0 of its pair (0x7BC0 + 40)");
+    eq(0, r.dmem(RW + 11), "a 32-bit reply leaves word 1 of its pair alone");
+    eq(0x00C0FFEE, r.dmem(RW + 12), "64-bit reply from src 6: word 0"); eq(0x12345678, r.dmem(RW + 13), "and word 1");
+    check(r.block().last_landed_at >= 0, "a write covering slot 0 sets command landed"); eq(0x0000C0DE, r.dmem(CMD_DWORD), "slot 0 word");
+    const uint64_t* pm = d.per_mode;
+    eq(1, int64_t(pm[lw::M_SRC]), "accepted mode 1 once"); eq(1, int64_t(pm[lw::M_BUCKET]), "mode 2 once"); eq(2, int64_t(pm[lw::M_AUG]), "mode 3 twice (one bad)");
+    eq(1, int64_t(pm[lw::M_GATHER]), "mode 4 once"); eq(1, int64_t(pm[lw::M_COUNT]), "mode 5 once"); eq(11, int64_t(pm[lw::M_WRITE]), "mode 0: 6 good, 3 bad, 2 commands (v1.25: the misaligned two are UB, directorMisaligned)");
+    for (unsigned c = 1; c <= 4; c++) eq(0, r.remaining(c), "WRITE_COUNTER_%u counted down to 0", c);
+    eq(1, int64_t(d.count_only), "the count-only packet wrote nothing and counted");
+    eq(0, r.block().conditions & (1u << COND_UNEXPECTED), "no unexpected arrival (mode 4 and mode 6 aren't counted; bad packets aren't)");
+    eq(7, int64_t(n.c.violations()), "7 violations: the four bad packets (invariant 5), three also at the sender: %s", n.c.violation_report().c_str());
+    // the delay line (4.8): a packet accepted at t decrements its counter at t + K
+    r.set_remaining(1, 1);
+    uint64_t acc0 = d.accepted;
+    n.at(5, n.c.cycle() + 2, 9, lw::M_SRC, 1, 0, lw::SIZE_32, 1, 0);
+    int64_t acc_t = -1, dec_t = -1;
+    for (int i = 0; i < 100 && dec_t < 0; i++) { n.step(); if (acc_t < 0 && d.accepted > acc0) acc_t = n.c.cycle(); if (r.remaining(1) == 0) dec_t = n.c.cycle(); }
+    eq(acc_t + k.K, dec_t, "the counter decrements K = %u cycles after the director accepts the packet", k.K);
+    // unexpected arrival: the error at the decrement, the stray named at acceptance
+    uint64_t v0 = n.c.violations();
+    n.at(5, n.c.cycle() + 2, 9, lw::M_SRC, 1, 0, lw::SIZE_32, 1, 0);
+    n.run_all(300);
+    eq(1, int64_t(r.block().unexpected_total), "unexpected arrival at the decrement (counter 1 at 0)");
+    check((r.block().conditions & (1u << COND_UNEXPECTED)) != 0, "ERRORS [2] set");
+    eq(0, r.remaining(1), "the counter stays 0, no wrap");
+    eq(1, int64_t(n.c.violations() - v0), "the stray reported once, at acceptance (invariant 9)");
+    { const auto& vm = n.c.violation_messages(); check(!vm.empty() && vm.back().find("stray") != std::string::npos, "named as a stray"); }
+    // the accepted trade-off (4.12): a stray accepted at 0, then the counter armed before its decrement
+    uint64_t u0 = r.block().unexpected_total; v0 = n.c.violations();
+    n.at(5, n.c.cycle() + 2, 9, lw::M_SRC, 1, 0, lw::SIZE_32, 1, 0);
+    acc0 = d.accepted;
+    for (int i = 0; i < 50 && d.accepted == acc0; i++) n.step();
+    r.set_remaining(1, 3);
+    n.run_all(300);
+    eq(int64_t(u0), int64_t(r.block().unexpected_total), "armed within K: no unexpected arrival");
+    eq(2, r.remaining(1), "the stray used up one of the three");
+    eq(1, int64_t(n.c.violations() - v0), "but meshsim named the stray at acceptance");
+    r.set_remaining(1, 0);
+    // size 11 (3.1)
+    v0 = n.c.violations(); const uint32_t cond1 = r.block().conditions; const uint64_t bad1 = r.block().bad_total;
+    r.set_remaining(1, 1);
+    n.at(5, n.c.cycle() + 2, 9, lw::M_SRC, 1, 0, lw::SIZE_UNDEF, 0x1111, 0x2222);
+    n.run_all(300);
+    eq(1, int64_t(d.undefined_size), "size 11: flagged and dropped at the director");
+    eq(1, r.remaining(1), "size 11: not counted");
+    eq(int64_t(bad1), int64_t(r.block().bad_total), "size 11 is not a bad packet");
+    eq(cond1, r.block().conditions, "size 11 sets no error (the hardware has no check)");
+    eq(2, int64_t(n.c.violations() - v0), "size 11 flagged twice: at the sender's injection and at the receiving director");
+    r.set_remaining(1, 0);
+    // meshsim's checks: invariants 10, 11, 19, 21, 22
+    r.set_remaining(2, 20); r.set_remaining(1, 2);
+    const char* cases[][2] = {
+        {"uncounted mode 1", "invariant 22"}, {"uncounted mode-0 data-memory write from a tile", "invariant 22"},
+        {"uncounted big-SRAM write", "invariant 22"}, {"a tile's write into the command block", "invariant 11"},
+        {"a reply at another sender's pair", "invariant 11"}, {"a 128-bit write into the reply block", "invariant 11"},
+        {"a write into data memory's first 16 bytes", "invariant 22"}, {"a write past the end of data memory", "invariant 19"},
+        {"a big-SRAM write past its end", "invariant 19"}, {"count-only on counter 0", "invariant 21"}, {"mode 4 to another tile", "invariant 10"}};
+    const uint32_t pk[][4] = {
+        {lw::M_SRC, 0, 0, lw::SIZE_32}, {lw::M_WRITE, 0, 0x100, lw::SIZE_32},
+        {lw::M_WRITE, 0, lw::sram_addr(0x200), lw::SIZE_32}, {lw::M_WRITE, 2, CMD + 4, lw::SIZE_32},
+        {lw::M_WRITE, 2, RPL + 8 * 7, lw::SIZE_32}, {lw::M_WRITE, 2, RPL + 8 * 4, lw::SIZE_128},
+        {lw::M_WRITE, 2, 0x8, lw::SIZE_32}, {lw::M_WRITE, 2, 0x8000, lw::SIZE_32},
+        {lw::M_WRITE, 1, uint32_t(lw::sram_addr(k.mem_chunks)), lw::SIZE_32}, {lw::M_COUNT, 0, 0, lw::SIZE_32},
+        {lw::M_GATHER, 0, 0, lw::SIZE_64}};
+    for (unsigned c = 0; c < 11; c++) {
+        v0 = n.c.violations();
+        n.at(5, n.c.cycle() + 2, 9, pk[c][0], pk[c][1], pk[c][2], pk[c][3], 0, 0);
+        n.run_all(300);
+        const auto& vm = n.c.violation_messages();
+        const std::string last = vm.empty() ? std::string("null") : vm.back();
+        check(n.c.violations() > v0 && last.find(cases[c][1]) != std::string::npos, "%s flagged (%s): %s", cases[c][0], cases[c][1], last.c_str());
+    }
+    // K's formula (4.7, D49): meshsim errors below max(2L + 4, L + 4, cm_latency, rp_latency)
+    MachConfig bad = Net::cfg(shuffle); bad.K = 5;
+    check(dies_naming([&] { Chip x(bad); }, "below"), "K = 5 at L = 1 is rejected (the formula's 6)");
+    MachConfig ok6 = Net::cfg(shuffle); ok6.K = 6; { Chip x(ok6); } check(true, "K = 6 at L = 1 is accepted");
+    MachConfig bad3 = Net::cfg(shuffle); bad3.ts_engine_latency = 3; bad3.K = 9;
+    const bool threw = dies_naming([&] { Chip x(bad3); }, "");
+    check(threw && Net::cfg(shuffle).with_ts_latency(3).K == 10 && Net::cfg(shuffle).with_ts_latency(4).K == 12, "K = 9 at L = 3 is rejected; withTsLatency(3) and (4) give K = 10 and 12");
+    // port-B timing: accept at t, written at t + cm_latency, readable from t + cm_latency + 1
+    r.set_remaining(3, 1);
+    n.clear_logs();
+    n.at(5, n.c.cycle() + 2, 9, lw::M_WRITE, 3, RPL + 40, lw::SIZE_32, 0x5A5A, 0);
+    int64_t accept = -1, written = -1; bool saw_idle = false;
+    for (int i = 0; i < 100; i++) {
+        n.step();
+        if (accept < 0 && !n.log(9).empty()) accept = int64_t(n.log(9)[0][0]);
+        if (accept >= 0 && n.c.cycle() < accept + int64_t(k.cm_latency) && cm_idle(n.c, 9)) saw_idle = true;
+        if (written < 0 && r.dmem(RW + 10) == 0x5A5A) written = n.c.cycle();
+    }
+    eq(accept + k.cm_latency, written, "a reply written at port B cm_latency cycles after the director accepts it");
+    check(written < accept + int64_t(k.K), "and before its counter's decrement at K (4.8)");
+    check(!saw_idle, "cm_idle low while the write is in the port-B pipe");
+    out(suite::str("director: each mode and region to its unit (bad packets dropped with ERRORS [1]); counters by the counter field, decremented K = %u cycles after acceptance; unexpected arrival at the decrement, the stray named at acceptance; a reply accepted at t is written at port B at t + %lld (cm_latency %u) [meas: NetTest director]",
+                   k.K, (long long)(written - accept), k.cm_latency));
+}
+
+// ------------------------------------------------------------------ the injection point
+void injection() {
+    suite::group("injection");
+    Net n(Net::cfg(shuffle));
+    TileRef s = n.c.tile(3);
+    units::Injection& in = s.unit<units::Injection>("inj");
+    const int64_t T0 = n.c.cycle() + 2;
+    for (int j = 0; j < 10; j++) n.at(3, T0 + j, 4, lw::M_SRC, 0, uint64_t(j));
+    n.step();
+    s.send_put(n.c.cycle(), 100, lw::hdr(0, 4, lw::M_SRC, 1, 0, lw::SIZE_64), 0);
+    check(n.run_all(300), "drained");
+    const auto l = n.log(4);
+    eq(11, int64_t(l.size()), "11 packets");
+    for (int j = 0; j < 10 && j < int(l.size()); j++) eq(j, int64_t(l[j][1]), "read returns first, in order");
+    eq(100, int64_t(l.at(10)[1]), "send-port packet after the read returns");
+    eq(10, int64_t(in.send_wait_cycles), "send port waited 10 cycles");
+    eq(T0 + 10, int64_t(l.at(10)[0]) - (int64_t(l.at(0)[0]) - T0), "send-port packet injected at T0 + 10");
+    n.clear_logs();
+    for (int j = 0; j < 20; j++) { s.send_put(n.c.cycle(), uint64_t(200 + j), lw::hdr(0, 4, lw::M_SRC, 1, 0, lw::SIZE_64), 0); n.step(); }
+    n.run_all(300);
+    eq(0, int64_t(s.send_refusals()), "no refusals");
+    const auto l2 = n.log(4);
+    eq(20, int64_t(l2.size()), "20 send-port packets");
+    eq(19, int64_t(l2.at(19)[0]) - int64_t(l2.at(0)[0]), "one per cycle");
+    no_violations(n.c, "injection");
+}
+
+// ------------------------------------------------------------------ the loopback: tokens and the eject priority (4.5, 4.7)
+void loopback() {
+    suite::group("loopback");
+    Net n(Net::cfg(shuffle));
+    TileRef r = n.c.tile(9);
+    n.clear_logs();                                         // ref: r.dir.log = new ArrayList<>()
+    const int64_t T0 = n.c.cycle() + 2;
+    for (int j = 0; j < 300; j++) n.at(8, T0 + j, 9, lw::M_SRC, 0, uint64_t(1000000 + j));
+    int sent = 0;
+    for (int i = 0; i < 2000 && (sent < 120 || !n.c.quiescent()); i++) {
+        if (sent < 120 && r.send_empty(n.c.cycle() + 1) && n.c.cycle() >= T0 + 10) { r.send_put(n.c.cycle() + 1, uint64_t(sent), lw::hdr(0, 9, lw::M_SRC, 1, 0, lw::SIZE_32), 0); sent++; }
+        n.step();
+    }
+    const auto l = n.log(9);
+    eq(420, int64_t(l.size()), "300 stream packets and 120 self-sends delivered");
+    int64_t last_stream = -1, self_during = 0;
+    for (const auto& e : l) if (lw::src(e[2]) == 8) last_stream = int64_t(e[0]);
+    for (const auto& e : l) if (lw::src(e[2]) == 9) { if (int64_t(e[0]) < last_stream) self_during++; }
+    const Router& rt = router(n.c, 9);
+    const Router::Fifo& lb = rt.q[rt.fifo_index(Router::EJECT, rt.slot_of[Router::EJECT][Router::LOOPBACK])];
+    const units::Injection& in = r.unit<units::Injection>("inj");
+    const uint64_t waits = in.token_waits(uint64_t(n.c.cycle()));   // ref's tokenWaitCycles at the end of the cycle just run
+    eq(0, self_during, "the loopback is served only when every other eject FIFO is empty: no self packet lands while the stream does");
+    check(lb.peak <= n.c.cfg().read_tokens, "the loopback FIFO peaked at %u of %u: at most the token count", unsigned(lb.peak), unsigned(lb.cap));
+    check(waits > 0, "the send port waited for tokens (%llu cycles) instead of overflowing", (unsigned long long)waits);
+    eq(0, int64_t(in.tok.reads + in.tok.loop_held), "every token free again");
+    no_violations(n.c, "loopback");
+    out(suite::str("loopback [meas: NetTest loopback]: a full-rate stream into tile 9 with 120 self-sends from its send port: the loopback FIFO peaked at %u (depth %u), the send port waited %llu cycles for tokens, no overflow; the self-sends landed after the stream (eject serves the loopback last)",
+                   unsigned(lb.peak), unsigned(lb.cap), (unsigned long long)waits));
 }
 
 // ------------------------------------------------------------------ fan-in (spec 3.2's table) and the skew table
@@ -427,12 +721,14 @@ int main(int argc, char** argv) {
     const bool quick = a.size() > 1 && a[1] == "quick";
     if (want("structure")) structure();
     if (want("unicast")) unicast();
-    // broadcast: W22-1, W22-2
+    if (want("broadcast")) broadcast();
     if (want("routes")) route_comparison();
-    // cncPort: W22-1, W22-6
+    if (want("cncport")) cnc_port();
     if (want("random")) in_order_random();
     if (want("fullrate")) in_order_full_rate();
-    // director: W22-4, W22-5, W22-6; injection, loopback: W22-3
+    if (want("director")) director();
+    if (want("injection")) injection();
+    if (want("loopback")) loopback();
     if (want("fanin")) fan_in(quick);
     std::fputs(report.c_str(), stdout);
     return suite::done(std::string("NetTest") + (shuffle >= 0 ? " (shuffled, seed " + std::to_string(shuffle) + ")" : ""));

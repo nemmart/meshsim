@@ -48,7 +48,7 @@ confirm. A ruling is the current answer, not a proof: anyone may reopen one with
 - **Natural alignment everywhere.** A misaligned access is UB; only a misaligned jump target traps (1, 4.1).
 - **Registers are one word, one `lw` or `sw`.** Reserved words read 0 and ignore stores; a pulse register acts on a
   store of 1; configuration registers are static during a phase and undefined at reset (8.1).
-- **Programs wait on events, never by polling status.** `STATUS` is diagnostic only (4.12, 4.13).
+- **Programs wait on events.** `STATUS` is diagnostic only: no program needs to poll it (4.12, 4.13).
 
 ## 5. Traffic
 

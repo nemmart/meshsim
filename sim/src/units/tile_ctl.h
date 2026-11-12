@@ -299,7 +299,8 @@ struct TileCore {
     uint8_t rp_tile = 0;
     unsigned rp_depth = 64;
     uint64_t rp_stored = 0, rp_dropped = 0, rp_violations = 0;
-    uint64_t rp_peak = 0;              // W20 (P2): ref's ReadPort.peak, entries in use (PhaseLog; statistics only)
+    uint64_t rp_peak = 0;              // W20 (P2): entries in use after a store, counted here (a statistic; PhaseLog keeps
+                                       //   ref's own rule, the same cycle's injection counted out: phase_log.h)
     // W20 (harness-only; P2): ref's coreless test machine (Config.coreless, `core.enabled = false`): the core never
     // runs; port B's writes still land in its memories (ref's ControllerMemories does that apart from the core).
     bool coreless = false;
@@ -451,7 +452,9 @@ struct TileCore {
     uint64_t host_send_t = 0, host_send_w[3] = {};
     bool host_send = false;
     sim::Wake step(sim::Ctx& c) {
+        rv.cm = &track;                                       // W26 (the unit's own tracker, wherever it lives)
         if (c.ready(port_b)) {
+            track_port_b(c.now() - 1, c.peek(port_b));        // W26: ref's cmem marks whatever the core's state
             if (rv.stop == Stop::running) apply_port_b(c.peek(port_b));
             c.take(port_b);
         }
@@ -487,6 +490,36 @@ struct TileCore {
         return next == Rv32::kNever ? sim::Wake::none() : sim::Wake::at_cycle(next);
     }
     uint64_t digest() const { return digest_mix(rv.digest(), rv.pending_t ^ rv.send_w[0] ^ rv.send_w[1] << 1 ^ rv.send_w[2] << 2); }
+    // W26 (invariant 8; ControllerMemories.runCycle's markReply and command-landed): port B's write of t (ref's cmem at t;
+    // it reaches this step at t + 1), its reply and result words marked unread (one already unread: overwritten, the
+    // strict fact), a write covering command slot 0 while it's unread (the fact); a word the core touched at t is read.
+    CmemTrack track;
+    void track_port_b(uint64_t t, const sim::Word* w) {
+        const uint64_t h = w[1];
+        const uint32_t a = lw::addr(h), n = lw::chunks(lw::size(h));
+        if (lw::region(a) != lw::R_DMEM) return;
+        const uint32_t w0 = (lw::offset(a) & (MEM_BYTES - 1)) >> 2;
+        const bool result = lw::read_port_tag(h);
+        for (uint32_t i = 0; i < n; i++) {
+            const uint32_t x = (w0 + i) & (MEM_WORDS - 1);
+            if (!(result || (x << 2 >= 0x7BC0 && x << 2 < 0x7BC0 + 1024))) continue;
+            uint64_t& b = track.unread[x >> 6];
+            const uint64_t bit = 1ull << (x & 63);
+            if (b & bit) {
+                track.overwritten_unread++;
+                if (rv.ck_tile >= 0) sim::check::record(t, rv.ck_tile, sim::check::Kind::CMEM_REPLY_OVERWRITE, x, w[0], h, w[2]);
+            }
+            b |= bit;
+            if (track.touched_at(x, t, false)) b &= ~bit;
+        }
+        if (w0 <= CmemTrack::CMD_DWORD && w0 + n > CmemTrack::CMD_DWORD) {
+            if (track.slot0_unread) {
+                track.unread_commands++;
+                if (rv.ck_tile >= 0) sim::check::record(t, rv.ck_tile, sim::check::Kind::CMEM_COMMAND_UNREAD, 0, w[0], h, w[2]);
+            }
+            track.slot0_unread = !track.touched_at(CmemTrack::CMD_DWORD, t, true);
+        }
+    }
     // ControllerMemories.runCycle: one naturally aligned 32-, 64- or 128-bit write at its offset (high bits ignored).
     void apply_port_b(const sim::Word* w) {
         uint64_t h = w[1];

@@ -82,6 +82,13 @@ suites set is in `MachConfig` already. ref's shuffled logs differ from the unshu
   `window_full_cycles` with ref's MemConf fixtures) print the same before and after (clang release); test_mem,
   test_memconf, MemTest's groups in clang debug; NetTest's ported groups unchanged.
 
+- **The write engine's stage peak (approved 2026-11-12)**: `WriteEngine::stage_peak` (src/units/write_engine.h), under
+  SIM_CHECKS only, the stage's count after a take (ref's stageHighWater, WriteEngine.java:109).
+- **F3, the write engine's UB stop names the PTR (approved 2026-11-12)**: "a write through PTR[src N] = chunk 0x..."
+  (`PTR[digit]` for mode 2), as ref's; text only, in the FATAL path (behaviour unchanged).
+  Both checked: test_chip and test_sort print the same before and after (clang release); EngineTest's write engine
+  group equal to ref's (its line, peaks 3, 5, 7, 9; its `ub` names "PTR[src 9]").
+
 ## Asks of W20 (through the integrator; named W22-n, so they don't collide with other workers' numbers)
 
 From NetTest's gap map (2026-11-11). NetTest's other groups (structure, unicast's packets, routes, the controllers'
@@ -168,6 +175,24 @@ W22-16. **The write engine's RMW requests from the harness** (figure 12: ref's `
 queued write can be missed (mem_idle true too early) or a served one seen. `m.at(a, j)` is the fix. MemTest's mem_idle
 group passes either way (its queues never wrap while it asks).
 
+### SearchBench and EngineTest (2026-11-12)
+
+W22-17. **SearchBench needs the TRACE store log** (ref's `p.ctl.traceHook = (t, v) -> ...`: the cycle of every TRACE
+    store per tile, search.c's `mark()`), W20's step 4 (H6, `MachConfig::log_trace`, not on main yet). Everything else
+    it uses is there (Mach::boot, Cc's command/go/busy, run, word by symbol, halt_summary, the block's `dones`, the read
+    port's FIFO overflows through `Sim::fifo_overflows`); Java's `%,d`, `%.1f`, `%.2f` (HALF_UP on the shortest
+    digits, as W21's `java_2f`) are suite-side.
+- **EngineTest**: writeengine, alltoall, drift, inv6 ported (`tests/suite_engine.cpp`); localcopy, streamruns, exchange,
+  radix, lategroups and fence stop on ref's `runLocal` (W22-15). Against engine.log: **all-to-all equal** (5 lines:
+  the table, the bound, the queue peaks, agReport's late/drift figures); the rest wait on:
+  - **the write engine's stage peak** (ref's `writer.stageHighWater`, the count after a take, WriteEngine.java:109;
+    printed by the write engine group's line): a statistic the C++ write engine doesn't keep: **the owner's call**
+    (proposed as the others: under SIM_CHECKS, where ref updates it);
+  - **finding F3: the write engine's UB stop doesn't name the PTR** (src/units/write_engine.h:123): ref says "a write
+    through PTR[src 9] = chunk 0x50009 ..." (or `PTR[digit]` for mode 2), the C++ "a write through PTR = chunk
+    0x50009". EngineTest's `ub` requires "PTR[src 9]". Diagnostic text only (the FATAL path): **the owner's call**;
+  - W26: drift's "invariant 3" (AG drift) and inv6's "invariant 6" (HIST over 17 bits) aren't recorded yet.
+
 ## Progress
 
 - 2026-11-11: plan agreed; branch made. Toolchain: clang 18.1.3, gcc 13.3.0, JDK 21.0.13 (apt). clang release on
@@ -244,3 +269,21 @@ group passes either way (its queues never wrap while it asks).
 - **make check**: `tests/test_p4suites.cpp` runs net-quick, net-shuf, net-shuf2 byte for byte (debug builds; skipped in
   release, where the Fifo peaks aren't kept); clang debug 48 s, all pass. `suite_mem` builds in the timing builds as a
   stub that says it needs SIM_CHECKS (its statistics don't exist there).
+- **make check (partial, 2026-11-12)**: copies 322 equal; gcc debug 72 of 72 run tests pass (test_ctl_suites.cpp, W23's,
+  doesn't compile in gcc debug: -Werror=maybe-uninitialized inside std::function; owner told W23); gcc release 73 of
+  73; clang debug and release not finished. EngineTest pushed as work in progress (owner: nothing only in the tree).
+- **NetTest's port-B placeholder replaced** (W22-15 on main): `cm_idle` reads the core's `port_b` Link through
+  `Sim::observe` exactly as W20's `phase_done` does (nothing arriving after the next cycle). Probed: low at the accept
+  and the cycle after, idle from accept + cm_latency (ref: written at t + cm_latency); net.log still byte for byte.
+- **EngineTest's write engine group equal** (stage peak, F3).
+- **EngineTest: every printed line equal to engine.log and eng-shuf.log** (clang suite build): write engine, local copy
+  (8 lines), stream runs, one-word exchange (5), radix sort, late groups (2), all-to-all (5), fence; drift's line too.
+  363 of 365 assertions: the 2 left are W26's kinds ("invariant 3", "invariant 6"). The six runLocal groups on
+  W20's `phase_done`; `new_phase` is a local no-op until W20's Chip::new_phase lands (nothing records the
+  disjoint-buffer check yet, W26, so it changes nothing meanwhile). The radix sort's Net sizes the directors' logs for
+  its 5 passes (`log_capacity` 5N + 64: ref's log is a list). engine-full (4 data sets at full size): the runner, later.
+- **make check, the four builds on 6e0d9e2d (2026-11-12)**: copies 322 equal; clang debug 74 of 74, clang release 74 of
+  74, gcc release 74 of 74, gcc debug 73 of 73 (test_ctl_suites.cpp, W23's, doesn't compile in gcc debug: owner told
+  W23). gcc caught a `-Wdangling-reference` in suite_net and suite_engine (a TileRef temporary), fixed in 6e0d9e2d.
+  (test_suite_replayer failed once in gcc debug only because an interrupted build had deleted suite_replayer; rebuilt,
+  it passes.)

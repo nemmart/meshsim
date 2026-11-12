@@ -108,9 +108,13 @@ final class MachSelf {
     }
 
     /** H6: the TRACE stores of search.c (SearchBench's mark(), through TileControl.traceHook), N = 4096, one run. */
-    static void trace() {
+    static void trace() throws Exception { trace(false); }
+    /** with rdpeak: at SRAM read latency 4, variant 1, PhaseLog's CSV (the read port's peak: a store and an injection in one cycle). */
+    static void trace(boolean rdpeak) throws Exception {
         int N = 4096;
-        Mach m = new Mach(Mach.cfg(-1));
+        Config cfg = Mach.cfg(-1);
+        if (rdpeak) cfg.sramReadLatency = 4;
+        Mach m = new Mach(cfg);
         java.util.Random r = new java.util.Random(N);
         for (Tile p : m.c.tiles) {
             long[] k = new long[N]; for (int i = 0; i < N; i++) k[i] = r.nextInt() & 0xFFFFFFFFL;
@@ -122,10 +126,19 @@ final class MachSelf {
         m.boot("search");
         java.util.List<java.util.List<long[]>> marks = new java.util.ArrayList<>(); for (int i = 0; i < 64; i++) marks.add(new java.util.ArrayList<>());
         for (Tile p : m.c.tiles) { final int i = p.idx; p.ctl.traceHook = (t, v) -> marks.get(i).add(new long[] { t, v }); }
-        m.c.cc.command(LinkWord.BROADCAST, 1 << 24 | 0 << 8 | 4).go();
+        m.c.cc.command(LinkWord.BROADCAST, 1 << 24 | (rdpeak ? 1 : 0) << 8 | 4).go();
         m.run(() -> !m.c.cc.busy(), 5_000_000);
         long[] d0 = new long[64]; for (Tile p : m.c.tiles) d0[p.idx] = p.ctl.dones;
         boolean ok = m.run(() -> { for (Tile p : m.c.tiles) if (p.ctl.dones <= d0[p.idx]) return false; return true; }, 5_000_000);
+        if (rdpeak) {
+            m.c.phases.close();
+            java.nio.file.Path f = java.nio.file.Files.createTempFile("phases", ".csv");
+            m.c.phases.csv(f);
+            System.out.println("rdpeak: " + (ok ? "finished" : "NOT finished") + " at cycle " + m.c.cycle);
+            System.out.print(java.nio.file.Files.readString(f));
+            java.nio.file.Files.delete(f);
+            return;
+        }
         System.out.println("trace: " + (ok ? "finished" : "NOT finished") + " at cycle " + m.c.cycle);
         for (int t : new int[] { 0, 7, 63 }) {
             StringBuilder sb = new StringBuilder("  tile " + t + ": " + marks.get(t).size() + " TRACE stores");
@@ -136,6 +149,7 @@ final class MachSelf {
 
     public static void main(String[] a) throws Exception {
         trace();
+        trace(true);
         phases(-1);
         phases(4);
         stageb(true);

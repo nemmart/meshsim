@@ -16,7 +16,7 @@
 # --small-only / --no-small: the synthetic cases only, or none (a runner task that only wants the real and calibration).
 # KEEP=DIR: every case's two output directories copied there before the scratch goes (a Quest task's results).
 # KIT135=kit.tgz: v1.35's kit as made elsewhere (tests/acceptance/make_kit.sh), for a tree without git (a Quest task).
-# Stages A, B and F; -q 512 waits for the machine's replayer log-queue field (W20's Config fields).
+# Stages A, B and F, and -q 512 (the 8 KB-log control: the log8k controller, 512-entry log queues).
 set -u
 CAL=0 SMALL=1; REAL=()
 while [ $# -gt 0 ]; do
@@ -53,7 +53,7 @@ if [ -n "${KIT135:-}" ]; then cp "$KIT135" "$T/kit.tgz"; else "$SIM/tests/accept
 tar -xzf "$T/kit.tgz" -C "$T" && mv "$T/w25-kit" "$T/v135" \
   && "$T/v135/build.sh" > "$T/build.log" 2>&1 || { cat "$T/build.log"; echo "acceptance_crosscheck: v1.35's kit did not build"; exit 2; }
 # ---- the deliveries
-SD=$T/v135/sim/build/clang-release/synthetic_delivery; TB=$SIM/data/tables/replayer
+SD=$T/v135/sim/build/clang-suite/synthetic_delivery; TB=$SIM/data/tables/replayer
 "$SD" "$T/d" --program syn --windows 9 --rows 4000 --seed 11 --tables "$TB" > /dev/null
 cp -r "$T/d" "$T/df"; cp -r "$T/d" "$T/dc"
 python3 - "$T" <<'PY'
@@ -119,6 +119,7 @@ run_case ab-x3       "$T/d"  -p syn -f 0 -n 9 -j 2 -s AB -x 3
 run_case b-all       "$T/d"  -p syn -f 0 -n all -j 3 -s B
 run_case ab-faults   "$T/df" -p syn -f 0 -n 9 -j 3 -s AB
 run_case ab-corrupt  "$T/dc" -p syn -f 0 -n 9 -j 2 -s AB
+run_case abf-q512    "$T/d"  -p syn -f 0 -n 9 -j 3 -s AB -x 4 -q 512
 fi
 for r in "${REAL[@]}"; do
   IFS='|' read -r n d p a <<< "$r"

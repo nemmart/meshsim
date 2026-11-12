@@ -51,6 +51,7 @@ public:
     void on_go(int64_t t, int32_t word);
     void on_all_ready(int64_t t);
     void on_ready(unsigned tile, int64_t t);
+    void after_cycle();                 // every cycle: the read port's peak, by ref's rule (below)
 
 private:
     Chip* c_;
@@ -58,6 +59,11 @@ private:
     std::array<int64_t, NC> base_ = {};
     int64_t base_instr_[64] = {}, base_busy_[64] = {};
     int64_t last_all_ready_seen_ = -1;
+    // ref's ReadPort.peak: the entries in use right after a store, the same cycle's injection already counted out (ref's
+    // injection runs before the core in a cycle; W24's F6). Kept here, cycle by cycle, from the core's stores and the
+    // read side's injections as they stand after each cycle.
+    uint64_t rp_seen_[64] = {};
+    int64_t rp_peak_[64] = {};
     void finish(Phase& p, int64_t end);
     std::array<int64_t, NC> counters() const;
     std::array<int64_t, NP> peaks() const;

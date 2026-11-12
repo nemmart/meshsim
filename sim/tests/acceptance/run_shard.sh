@@ -25,7 +25,7 @@
 # manifest and matched in every stage.
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
-BIN=$HERE/sim/build/clang-release
+BIN=$HERE/sim/build/clang-suite
 D=; P=; F=; N=; J=$(nproc); S=AB; MS=; X=0; MF=; G=50000; Q=256
 while getopts d:p:f:n:j:s:m:x:M:g:q: o; do case $o in d) D=$OPTARG;; p) P=$OPTARG;; f) F=$OPTARG;; n) N=$OPTARG;; j) J=$OPTARG;;
   s) S=$OPTARG;; m) MS=$OPTARG;; x) X=$OPTARG;; M) MF=$OPTARG;; g) G=$OPTARG;; q) Q=$OPTARG;; *) sed -n '7,27p' "$0"; exit 2;; esac; done

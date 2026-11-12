@@ -5,7 +5,8 @@
 #   suite_cccores   CcCoresTest (steps cccores, cccores-shuf)
 #   suite_ccbench   CcBench (step ccbench)
 #   suite_ctrl      CtrlTest (steps ctrl, ctrl-shuf, ctrl-full; in progress)
-CTL_SUITES := $(B)/suite_cccores $(B)/suite_ccbench $(B)/suite_ctrl
+#   suite_recipes   RecipeTest (steps recipes, recipes-shuf; in progress)
+CTL_SUITES := $(B)/suite_cccores $(B)/suite_ccbench $(B)/suite_ctrl $(B)/suite_recipes
 $(CTL_SUITES): $(B)/suite_%: $(B)/tests/ctl/suite_%.o $(MACH_LINK) $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 # the suites are run by test_ctl_suites (order-only: built with it, not linked into it)

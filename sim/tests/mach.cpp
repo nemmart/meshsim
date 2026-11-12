@@ -526,6 +526,7 @@ void Chip::Impl::phase_events() {
         const int64_t r = sim->unit<units::TileCtl>(units::tile_unit(k, "ctl")).s.ready_pulse_at;
         if (r != seen_ready[k]) { seen_ready[k] = r; if (r >= 0) phases->on_ready(k, r); }
     }
+    phases->after_cycle();
     const units::Cnc& c = *cnc();
     if (c.seen >= 0 && c.seen != seen_all_ready) { seen_all_ready = c.seen; phases->on_all_ready(c.seen); }
     if (c.gos != seen_gos) {
@@ -541,6 +542,7 @@ PhaseLog& Chip::phases() {
     if (!impl_->phases) {
         if (!impl_->has_cnc) FATAL("mach: phases(): C&C 1's model only (not with cc_cores)");
         impl_->phases = std::make_unique<PhaseLog>(*this);
+        impl_->phases->after_cycle();                     // (the read port's counts as they stand now)
         impl_->seen_gos = unit<units::Cnc>("cnc").gos;
         for (unsigned k = 0; k < 64; k++) impl_->seen_ready[k] = unit<units::TileCtl>(units::tile_unit(k, "ctl")).s.ready_pulse_at;
     }

@@ -84,18 +84,4 @@ inline std::string java_fixed(double x, unsigned n) {
     return (x < 0 ? "-" : "") + r;
 }
 
-// ---- STAND-INS for harness operations W20 hasn't added yet (requests through the integrator; NOTES.md) ----
-// W20 request 9: ref's `tile.ctl.conditions |= bits` between cycles (CcCoresTest's errorPath, CondTest's injected
-// errors). W20's form: a HostWrites field applied right after the block's endCycle of the cycle just run (as ref's poke
-// follows that cycle's end). This stand-in ORs the bits into the block's state directly, so its endCycle of that cycle
-// already sees them: possibly a cycle early. Replaced when W20's operation lands.
-inline void inject_errors(mach::Chip& c, unsigned k, uint32_t bits) {
-    const std::string n = unit_name(k, "ctl");
-    c.unit<units::TileCtl>(n).s.conditions |= bits;
-    c.touched(n);
-}
-// W20 request 10: ref's `chip.cfg.checkErrors = false` between cycles (invariant 15 off from then on). This stand-in
-// does nothing: the release builds (no checker) are unaffected; the checker's builds count the injected errors.
-inline void set_check_errors(mach::Chip&, bool) {}
-
 }  // namespace ctl

@@ -1,0 +1,8 @@
+inputs: meshsim.jar=(classes) sw/bootrom.hex=b2165425aef54cb357cf2c1a82e3a5bc7965392c60a4e0c2b92b7f9f060855af image/sort.code.bin=2ab3c746aa6bf2f8d41a637a5ee4bda514754ea54fc3445beab59a50e5762f99 image/sort.data.bin=412d9f3fa18dac9d629472b3935d12acd529a0725f39f848ae270d71fc5c31f7 image/sort.sym=4a742353a535f95a0e2c501743393b55955fed701a12c2edf3f60c006b943a90 hops.txt=a3b90f3c2fbc64f1a93c8c0ff916cfbaf40823aae38c4540811482873741d3da
+P1 uniform n=2000 k=2 (augmented): L1 GO -> all READY 20,779; L2 GO -> all READY 18,265  [meas: SortTest p1]
+P1 uniform n=2000 32-bit values (copy): L1 GO -> all READY 16,708; L2 GO -> all READY 14,196  [meas: SortTest p1]
+P1 few n=1000 k=2 (augmented): L1 GO -> all READY 13,779; L2 GO -> all READY 12,265  [meas: SortTest p1]
+P1 ragged n=1000 32-bit values (copy): L1 GO -> all READY 16,708; L2 GO -> all READY 14,196  [meas: SortTest p1]
+P1 sorted n=500 k=2 (augmented): L1 GO -> all READY 10,279; L2 GO -> all READY 9,265  [meas: SortTest p1]
+P1 equal n=500 32-bit values (copy): L1 GO -> all READY 9,208; L2 GO -> all READY 8,196  [meas: SortTest p1]
+SortTest: 42 passed, 0 failed

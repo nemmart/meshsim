@@ -2,7 +2,7 @@
 
 *The docs session, 2026-11-12, at the integrator's request; for P8's plan (inventory J1, J2). A proposal: nothing
 in `sim/` is edited by it. The owner has said the docs session owns the documentation, so the choices below are made,
-not offered, except the four marked **for the owner** at the end. Paths are relative to `sim/` (the future `v1.35/`).*
+not offered; the four points put to the owner were ruled on the same day (section 8). Paths are relative to `sim/` (the future `v1.35/`).*
 
 ## 1. What is wrong today, in one paragraph
 
@@ -51,8 +51,9 @@ no spec**: v1.35 would be a simulator with nothing saying what it simulates.
 | `CHANGES-v1.35.md` | **for the RTL:** no hardware change; the deliberate differences from v1.3's simulator (D27–D29, D33/D44, D34). **For users:** each v1.3 command and its v1.35 equivalent; the `Config` fields dropped (D41 Q4); the tools that changed (D42, D43) | DECISIONS; the inventory's "equivalent" column | P8 |
 | `spec/OVERVIEW.md` | the goal, the system, one proof's flow, platform against Jolt-specific, status. Two pages | new; **drafted, branch `v1.35-spec`** | now |
 | `spec/GUIDELINES.md` | the rules the design follows (checked or UB; terminal errors; the mesh's regimes; what spec, meshsim and RTL must agree on) | the spec's preamble; the owner's rulings | now |
-| `spec/machine-spec.md`, `replayer-opcodes.md`, `schedule.md` | v1.3's, hardware and section numbers unchanged; every statement about the simulator, and every path, made true of v1.35 (under a hundred edits, listed in a table) | `v1.3/spec/` | now |
-| `spec/history/` | the older `CHANGES-*` guides and the four `DECISIONS-v1.x` logs the spec cites, unchanged | `v1.3/spec/`, `v1.3/planning/` | now |
+| `spec/machine-spec.md`, `schedule.md` | **the platform**: v1.3's text with hardware and section numbers unchanged; every statement about the simulator, and every path, made true of v1.35; the version-by-version history moved out; section 13 reduced to what is open today | `v1.3/spec/` | now |
+| `spec/jolt/` | **the Jolt-specific units**: the replayer (4.19), the Tracer (4.21), their windows and invariants, the opcode appendix. Each section keeps its number and leaves a one-line stub in `machine-spec.md` | `v1.3/spec/` | now |
+| `spec/history/` | what the restructuring takes out, unchanged: the "in brief" blocks, section 13's layered record, the older `CHANGES-*` guides, and the four `DECISIONS-v1.x` logs the spec cites | `v1.3/spec/`, `v1.3/planning/` | now |
 | `src/README.md` | how the simulator works: the cycle and its levels, wakes, sizing at startup, threads and the partition, the two coding regimes, determinism and its checks; then **adding a unit**: a checklist, one worked example, the tests required | `README.md`'s brief; D6, D16, D20, D23, D24, D26, D30; `sim.h` | P8 |
 | `src/PORTS.md` | the port kinds' rules, stated on their own; the `ref` class and line of each moves to an appendix | today's, restructured | P8 |
 | `src/units/README.md` | the model: unit ↔ file ↔ spec section; `MachConfig`'s fields ↔ spec 10; the checker's kinds ↔ the invariants of spec 9; the simulator-only words | new, mostly tables | P8 |
@@ -85,19 +86,24 @@ no spec**: v1.35 would be a simulator with nothing saying what it simulates.
 - **BUILDING followed on a fresh machine** (a Quest task; already P8's check).
 - **A fresh-reader test:** a new session, given only the frozen folder, answers a fixed set of questions per reader
   of section 2 (for example: which build do I use to check a firmware change, and why). Wrong answers are doc bugs.
-- **The spec's edits:** a script shows every line of `machine-spec.md` is v1.3's, or is in the table of edits.
+- **The spec's restructuring is a move, proved:** a script shows every line of v1.3's spec is in exactly one of
+  `machine-spec.md`, `spec/jolt/` or `spec/history/`, unchanged, or is in the table of edits. The owner reads the
+  table, not the spec.
 - **The owner reads `spec/OVERVIEW.md`**, and each new document's list of statements that are his to confirm.
 
 ## 7. Order of work
 
 **Now, in parallel with the ports** (new files only, in `spec/`, on `v1.35-spec`): the overview (drafted), the
-guidelines, the corrected spec with its edit table. **At P8:** everything else, by P8's worker from sections 3 to 5,
-`RUNNING.md` last, when the step list is final. **The freeze's gate for docs:** section 6's five checks.
+guidelines, then the spec's restructuring with its edit table and its proof. **At P8:** everything else, by P8's
+worker from sections 3 to 5, `RUNNING.md` last, when the step list is final. **The freeze's gate for docs:** section
+6's five checks, the restructured spec among them.
 
-## 8. For the owner
+## 8. The owner's rulings (2026-11-12)
 
-1. **A spec in v1.35.** This widens D38 ("only docs, build scripts and cleanup") by one folder; no hardware changes.
-2. **The spec's restructuring** (platform against Jolt-specific, history moved out) **is not a gate for the freeze.**
-   It lands before it if ready, otherwise as v1.4's first commit; either way as a move checked line for line.
-3. **Session notes and prompts left out** of the frozen copy (v1.3 kept its notes).
-4. **v1.3's figures and introduction are not carried.** Redrawing them is its own piece of work, not v1.35's.
+1. **A spec in v1.35: yes.** It widens D38 by one folder; no hardware changes. "Docs are important."
+2. **The restructured spec goes into v1.35**, not after it: "we need something there; it might as well be the right
+   ones." (The proposal had it outside the freeze's gate.)
+3. **The workers' material is stripped from the frozen copy:** session notes, prompts, parked messages and task
+   folders. Reports and the index stay.
+4. **v1.3's figures and introduction are not carried.** A later task can update some of them; their use is as a
+   shortcut to a shared understanding of the design between engineers.

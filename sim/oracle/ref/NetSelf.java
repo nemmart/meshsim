@@ -330,7 +330,36 @@ final class NetSelf {
         System.out.println(sb);
     }
 
+    /** ref's drainReports: C&C 1 drains target 0's queue, a report, a result (answered) and another request. */
+    static void drain() {
+        Config k = Config.machine(); k.periphType = 0;
+        Net n = new Net(k);
+        n.c.run(200);
+        final int REG = 0xFFFFF800;
+        n.c.tiles[6].core.store(n.c.cycle + 1, 0x900, 0x5555, -1); n.step();
+        n.c.cc.drainReports = true;
+        int[][] rq = { { 5, (1 << 10), 0x11, 0x12, 0x13 }, { 6, (3 << 10) | (0 << 18), 0x900, 0x22, 0x23 }, { 7, (2 << 10), 0x31, 0x32, 0x33 }, { 5, (1 << 10), 0x41, 0x42, 0x43 } };
+        for (int[] r : rq) {
+            Tile p = n.c.tiles[r[0]];
+            p.core.store(n.c.cycle + 1, REG + 4 * 18, r[1], -1); n.step();
+            p.core.store(n.c.cycle + 1, REG + 4 * 19, r[2], -1); n.step();
+            p.core.store(n.c.cycle + 1, REG + 4 * 20, r[3], -1); n.step();
+            p.core.store(n.c.cycle + 1, REG + 4 * 21, r[4], -1); n.step();
+        }
+        for (int i = 0; i < 300; i++) n.step();
+        StringBuilder sb = new StringBuilder("drain:");
+        for (long[] e : n.c.cc.reports) sb.append(" report@").append(e[0]).append(" ").append(hex(e[1])).append(" ").append(hex(e[4]));
+        for (long[] e : n.c.cc.requests) sb.append(" request@").append(e[0]).append(" ").append(hex(e[1]));
+        for (long[] e : n.c.cc.results) sb.append(" result@").append(e[0]).append(" src ").append(e[1]).append(" ").append(hex(e[2])).append(" ").append(hex(e[3]));
+        sb.append("; reportsOf(5) ").append(n.c.cc.reportsOf(5).size()).append(" reportsOf(9) ").append(n.c.cc.reportsOf(9).size());
+        sb.append("; t6 dmem[0x900] ").append(hx(n.c.tiles[6].core.load(n.c.cycle + 1, 0x900, 4))).append(" at ").append(n.c.cycle);
+        sb.append("; delivered");
+        for (RequestBus.Req q : n.c.reqBus.delivered) sb.append(" ").append(q.deliveredAt).append(":").append(q.srcTile).append(":").append(hex(q.w[0])).append(":").append(hex(q.w[3]));
+        System.out.println(sb);
+    }
+
     public static void main(String[] a) {
+        drain();
         testPeripheral();
         hooks();
         reqbus();

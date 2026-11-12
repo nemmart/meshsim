@@ -199,6 +199,9 @@ public:
     uint64_t underflows() const { return underflows_; }              // ref's underflows (the test's receives)
     uint64_t dropped() const;                                        // ref's dropped.size()
     uint64_t delivered() const;                                      // ref's delivered.size()
+    // ref's delivered list (W22-19): every request delivered to a receive queue, {deliveredAt, srcTile, w0, w1, w2, w3},
+    // in delivery order (all targets)
+    std::vector<std::array<int64_t, 6>> delivered_log() const;
 private:
     Chip* c_;
     uint64_t underflows_ = 0, popped_[3] = {};
@@ -317,6 +320,15 @@ public:
     // C&C has reached it, and C&C moves on in the next cycle. Runs go cycle by cycle while one is pending.
     Cc& wait_until(std::function<bool()> cond);
     void set_expect(uint64_t tiles);                        // ref's cc1p.expect (READY_EXPECT_0-1): the tiles GO waits for
+    // ref's drainReports (C&C 1's request service, modelled; needs MachConfig::reqbus_host): from now on, one request a
+    // cycle from target 0's queue: REQ_OP_REPORT into reports(), anything else into requests(), REQ_OP_RESULT also into
+    // results() ({t, requestor, w2, w3}) and answered by C&C 1 with a 32-bit mode-0 write to the address in W1 on the
+    // request's reply counter, before its own steps. Runs go cycle by cycle while on.
+    void drain_reports(bool on);
+    std::vector<std::array<int64_t, 5>> reports() const;            // {t, w0, w1, w2, w3}, in arrival order
+    std::vector<std::array<int64_t, 5>> reports_of(unsigned id) const;   // ref's reportsOf(id): a unit's reports
+    std::vector<std::array<int64_t, 5>> requests() const;
+    std::vector<std::array<int64_t, 4>> results() const;            // {t, requestor, w2, w3}
     bool busy() const;                                      // CnC.busy(): steps left in its queue
     int64_t last_go_at() const, last_all_ready_at() const, last_run_at() const;
     // CnC.phaseLog: {all READY seen, GO store} per GO

@@ -228,6 +228,10 @@ struct Chip::Impl {
     uint8_t skew[64] = {};
     std::unique_ptr<Cc> cc;
     std::unique_ptr<ReqBus> reqbus;
+    bool drain = false;                                   // Cc::drain_reports
+    std::vector<std::array<int64_t, 6>> dlog[3];          // ReqBus::delivered_log
+    std::vector<std::array<int64_t, 5>> reports, requests;
+    std::vector<std::array<int64_t, 4>> results;
     std::unique_ptr<Checker> checker;                    // ref's violations (src/check.h; on with SIM_CHECKS)
     // ref's hardware FIFOs for invariant 1 (Tile.hardwareFifos, then C&C's receive FIFOs), in ref's scan order
     int digest_seq = -1;                                 // MESHSIM_DIGEST: this chip's place in creation order
@@ -409,6 +413,12 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     }
     m.has_cnc = !c.cc_cores;
     if (c.log_trace) for (unsigned k = 0; k < 64; k++) tile(k).record_trace();   // ref's logTrace: every tile's TRACE stores
+    if (c.reqbus_host && !c.cc_cores)                     // the receive queues' delivery logs (ReqBus::delivered_log)
+        for (unsigned q = 0; q < 3; q++) {
+            static const char* kRecv[3] = {"cc1.reqrecv", "cc2.reqrecv", "cc3.reqrecv"};
+            m.dlog[q].reserve(c.log_capacity);
+            m.sim->unit<units::reqbus::ReqRecv>(kRecv[q]).dlog = &m.dlog[q];
+        }
     if (digest_file() && !c.cc_cores) {                  // MESHSIM_DIGEST (B25)
         Digests& d = digests();
         m.digest_seq = d.next++;
@@ -608,6 +618,13 @@ size_t ReqBus::queue_size(unsigned target) const {
 }
 int64_t ReqBus::credits(unsigned target) const { return c_->unit<units::reqbus::ReqRoot>("reqbus.root").credits[target & 7]; }
 uint64_t ReqBus::dropped() const { return c_->unit<units::reqbus::ReqRoot>("reqbus.root").dropped; }
+std::vector<std::array<int64_t, 6>> ReqBus::delivered_log() const {
+    const Chip::Impl& m = c_->impl_const();
+    std::vector<std::array<int64_t, 6>> r;
+    for (unsigned q = 0; q < 3; q++) r.insert(r.end(), m.dlog[q].begin(), m.dlog[q].end());
+    std::stable_sort(r.begin(), r.end(), [](const auto& a, const auto& b) { return a[0] < b[0]; });   // (one delivery a cycle)
+    return r;
+}
 uint64_t ReqBus::delivered() const { return c_->unit<units::reqbus::ReqRoot>("reqbus.root").delivered; }
 
 PhaseLog& Chip::phases() {
@@ -651,6 +668,7 @@ bool Chip::parked_untouched() const {                      // ref's: each parked
     return true;
 }
 
+void drain_next(Chip& c);   // ref's CnC drain (Cc::drain_reports, below)
 void Chip::step() {
     impl_->checker->install();
     impl_->sim->run(1);
@@ -660,10 +678,11 @@ void Chip::step() {
     impl_->check_waits();
     impl_->drain_rows(cycle());
     impl_->phase_events();
+    drain_next(*this);
 }
 void Chip::run(uint64_t n) {
     impl_->sim->wake_all();
-    if (impl_->calls.empty() && impl_->waits.empty() && impl_->row_hooks.empty() && !impl_->phases) {
+    if (impl_->calls.empty() && impl_->waits.empty() && impl_->row_hooks.empty() && !impl_->phases && !impl_->drain) {
         impl_->checker->install();
         impl_->sim->run(n);
         impl_->collect_overflows();
@@ -1255,6 +1274,43 @@ Cc& Cc::call(std::function<void(int64_t)> fn) {
     m.calls.push_back({id, std::move(fn)});
     publish(*c_);
     return *this;
+}
+// ref's CnC.runCycle's drain, for cycle t = cycle() + 1 (between cycles: the receive pops at t, the reply goes at t)
+void drain_next(Chip& c) {
+    Chip::Impl& m = c.impl();
+    if (!m.drain) return;
+    const int64_t t = c.cycle() + 1;
+    ReqBus& b = c.reqbus();
+    uint32_t w[4];
+    if (!b.peek_request(0, t, w)) return;
+    b.receive(0, t);
+    const std::array<int64_t, 5> e = {t, int64_t(w[0]), int64_t(w[1]), int64_t(w[2]), int64_t(w[3])};
+    const unsigned op = w[0] >> 10 & 0xFF, src = w[0] & 0x7F;
+    if (op == 1) { m.reports.push_back(e); return; }        // REQ_OP_REPORT
+    m.requests.push_back(e);
+    if (op != 3) return;                                  // REQ_OP_RESULT: recorded and answered
+    m.results.push_back({t, int64_t(src), int64_t(w[2]), int64_t(w[3])});
+    units::Cnc& cn = c.unit<units::Cnc>("cnc");
+    if (cn.reply_n == 16) FATAL("mach: C&C 1's replies: more than 16 pending");
+    units::CncPacket& p = cn.reply_q[(cn.reply_h + cn.reply_n) % 16];
+    p = units::CncPacket{};
+    p.dst = uint8_t(src); p.mode = units::lw::M_WRITE; p.counter = uint8_t(w[0] >> 18 & 7); p.size = units::lw::SIZE_32; p.addr = w[1];
+    cn.reply_n++;
+    m.sim->wake("cnc");                                     // it answers at t
+}
+void Cc::drain_reports(bool on) {
+    Chip::Impl& m = c_->impl();
+    if (on && !c_->cfg().reqbus_host) FATAL("mach: drain_reports: MachConfig::reqbus_host (target 0's queue)");
+    m.drain = on;
+    if (on) drain_next(*c_);                               // the next cycle's, as ref's CnC at its runCycle
+}
+std::vector<std::array<int64_t, 5>> Cc::reports() const { return c_->impl_const().reports; }
+std::vector<std::array<int64_t, 5>> Cc::requests() const { return c_->impl_const().requests; }
+std::vector<std::array<int64_t, 4>> Cc::results() const { return c_->impl_const().results; }
+std::vector<std::array<int64_t, 5>> Cc::reports_of(unsigned id) const {
+    std::vector<std::array<int64_t, 5>> r;
+    for (const auto& e : c_->impl_const().reports) if ((e[1] & 0x7F) == int64_t(id)) r.push_back(e);
+    return r;
 }
 void Cc::set_expect(uint64_t tiles) { c_->unit<units::Cnc>("cnc").expect = tiles; c_->touched("cnc"); }
 Cc& Cc::wait_until(std::function<bool()> cond) {

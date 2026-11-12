@@ -50,6 +50,8 @@ private:
     // ref's per-tile report state (Chip.seen, s2, condSeen, refusalReported; 67 units)
     struct Unit { uint32_t errors = 0, cond_seen = 0; bool line = false, hist = false, rotation = false, refusal = false; int64_t disjoint_phase = -1; };
     Unit u_[67];
+    sim::check::Fact ep_last_[3] = {};  // W26: each endpoint's last violation (Chip.checkInvariants' `el`)
+    bool ep_has_[3] = {};
     void errors_at(int64_t t);          // invariant 15 at the end of cycle t (Chip.runCycle's loop)
     bool enabled(sim::check::Kind k) const;
 };

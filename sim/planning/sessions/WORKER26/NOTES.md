@@ -111,3 +111,22 @@ Commit and push after each piece; each kind checked line for line against `ref` 
   and the full post (controllers' DMA, credits), the C&C 1 and stub region writes (cc_cores), the Tracer's, the full
   request push. Protected tests the same (clang release, suite); the 16K sort equal; the slot, request-bus and Tracer
   tests pass (clang suite).
+- **1b, the request bus, the endpoints, C&C's lost receive** (W22-13):
+  - `REQBUS_NO_RECEIVER` (the root drops a request for target 3, "no receiver: deferred", or 4-7, "reserved"; at the
+    root's choice), `REQBUS_QUEUE_OVERFLOW` (a receive queue past its depth: the root's credits prevent it), both chip
+    facts (tile -1) with ref's texts.
+  - `EP_BAD_PACKET`, `EP_SIZE_UNDEF`, `EP_RESERVED_MODE` (Endpoint.send): `units::endpoint_checks(t, address, packet)`
+    (cnc.h), called by C&C 1's sends (Cnc::send_packet) and the endpoints' harness sends (Endpoint::step). The checker
+    takes ref's text rule (the last violation of the highest endpoint that ever had one: Chip.checkInvariants' `el`).
+  - `CNC_RX_LOST` (C&C's receive FIFO full).
+  CheckSelf: the root's drops (programs sending to targets 3, 5, 7: 48 lines) and C&C's receive FIFO full (depth 4),
+  line for line (clang and gcc suite, clang debug). Protected tests the same (clang release, suite); test_reqbus passes.
+  **For W20 (the harness):** ref's Net feeds `cncSends` through `cnc.send`, i.e. Endpoint.send's checks; W20's
+  `Net::step` puts them with `Sim::put_late` directly (and `Net::send` likewise), so their facts need one call to
+  `units::endpoint_checks(c.cycle(), address, p)` there. Until then CheckSelf's endpoint sends are left out.
+  Not checked against ref: the queue overflow (unreachable by design), a reserved mode (UB at the director).
+- **Kinds recorded but no case reaches yet** (check each when a suite does; likeliest W23's CtrlTest and RecipeTest,
+  W22's RequestBusTest): the command slot's CMEM_COMMAND_UNREAD; a port-B write as the core reads that word; a test's
+  load clearing invariant 8's bit (TileRef::load); HIST/PTR table-window busy met by an instruction; a test's HIST load
+  (no check yet); the slot's DMA_HDR/ADDR mid-transfer and full post; the C&C 1 and stub region writes; the Tracer's
+  violations; the full request push; the receive queue overflow; the endpoints' checks (after W20's call above).

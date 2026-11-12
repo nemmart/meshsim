@@ -643,6 +643,30 @@ void checkself() {
         m.c.run(300);
         say("%s", m.c.violation_report().c_str());
     }
+    {   // W26 (1b): the request bus's root drops requests for targets 3, 5, 7 (W22-13)
+        mach::MachConfig k = Mach::cfg(-1);
+        k.check_errors = false; k.max_violation_messages = 200;
+        Mach m(k);
+        const uint32_t P = 0x01000000, LOOP = 0x0000006F, X1 = 0x80000093;
+        const std::vector<std::vector<uint32_t>> prog = {{LOOP}, {X1, 0x18000113, 0x0420A423, 0x0400AA23, LOOP},
+                                                         {X1, 0x28000113, 0x0420A423, 0x0400AA23, LOOP}, {X1, 0x38000113, 0x0420A423, 0x0400AA23, LOOP}};
+        for (unsigned t = 0; t < 64; t++) {
+            const auto& w = prog[t % prog.size()];
+            for (size_t i = 0; i < w.size(); i++) m.c.tile(t).poke_local(P + 4 * uint32_t(i), w[i]);
+        }
+        m.c.run(40);
+        m.c.cc().command(lw::BROADCAST, 0x4Au << 24, {P}).run_when_ready();
+        m.c.run(800);
+        say("%s", m.c.violation_report().c_str());
+    }
+    {   // W26 (1b): C&C's receive FIFO full
+        mach::MachConfig k = Net::cfg(-1);
+        k.cnc_rx_depth = 4;
+        Net n(k);
+        for (unsigned i = 0; i < 8; i++) n.at(10 + i, 40 + i, lw::CC1, lw::M_WRITE, 0, 0x100, lw::SIZE_32, i, 0);
+        n.run_all(2000);
+        say("%s", n.c.violation_report().c_str());
+    }
     {
         mach::MachConfig k = Net::cfg(-1);
         k.max_violation_messages = 3;

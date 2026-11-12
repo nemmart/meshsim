@@ -147,7 +147,7 @@ enum class Kind : uint16_t {
     REQBUS_QUEUE_OVERFLOW,      // a0 the target
     REQBUS_NO_RECEIVER,         // a0 the source unit, a1 the target
     CNC_RX_LOST,                // (no arguments)
-    EP_BAD_PACKET,              // a0 the reason's index, a1 the sender's address
+    EP_BAD_PACKET,              // a0 the header (LinkWord.whyBad's reason from it), a1 the sender's address
     EP_SIZE_UNDEF,              // a1 the sender's address
     EP_RESERVED_MODE,           // a0 the mode, a1 the sender's address
     // ---- the cores' own checks (CcCores.check: the same per-unit kinds, reported in slot CORES at tile 64-66) ----

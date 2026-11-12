@@ -46,6 +46,20 @@ freeze, `spec/CHANGES-v1.3-to-v1.35.md`'s section "Where v1.35's checks differ f
 removed: every check in the spec session's findings 9-12 is ported by then (W26's queue), and the spec session reruns its
 mechanisms table to confirm.
 
+## Where it stands (end of 2026-11-12)
+
+**Done:** P1 (the stand-alone tree), P6 (the sort and its kit), P7a and P7b (the Tracer's suites, Stage B and the
+acceptance kit); W20's harness queue (empty, REPORT written); W26's checker queue except CheckSelf's endpoint case and
+whatever CtrlTest's invariants group needs; the restructured spec (`sim/spec/`, merged). `main`: 75 test binaries, and
+`./run_tests.sh quick --check` passing with no log differences.
+**In flight:** W22: AgTest (234 of 240 until W20's W22-21, now on main), then the freeze check's runner task (a
+rehearsal on today's main). W23: cccores off PENDING, S1Bench, CondTest, RecipeTest's boot, CtrlTest's faults,
+invariants and all-to-all, then ctrl-full and accounting-full on the runner. W26: CheckSelf's endpoint case.
+**Next:** P8: v1.35's documents (a docs-writing session on `v1.35-docs`, under the docs session; RUNNING.md last), W24's
+tooling (the docs check, the freeze's copy script, the comment-strip script run once at the end, the helper switch);
+then the freeze check (every step live, none PENDING; the full-size sort, T2, the chains, the kit's calibration; the
+docs session's gate) and the copy into `v1.35/`.
+
 ## Status
 
 | worker | state |

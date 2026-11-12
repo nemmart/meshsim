@@ -42,7 +42,7 @@ mkdir -p results
 SUITES="suite_memsys suite_rvc suite_tracer"
 # The make-check tests standing for a v1.3 suite (equiv steps)
 EQUIVS="test_golden test_tileslotconf"
-SUITES="$SUITES suite_ccbench suite_hooks suite_regdoc"                       # W23 (P5)
+SUITES="$SUITES suite_ccbench suite_hooks suite_regdoc suite_accounting"                       # W23 (P5)
 SUITES="$SUITES suite_replayer stageb"               # W25 (P7b)
 SUITES="$SUITES suite_net suite_search suite_agbench suite_engine suite_reqbus suite_mem suite_rdport"   # W22 (P4)
 SUITES="$SUITES sort_test sweep"                     # W24 (P6)
@@ -109,7 +109,7 @@ pending ctrl          "control and the controller (from C)" "P5"
 pending ctrl-shuf     "shuffled child order (seed 4)" "P5"
 equiv riscv           "riscv-tests rv32ui/rv32um on the controller" "test_golden (every program's retire trace equal to ref's)" -- $S/test_golden
 step rdport 1 "read port, GATHER (Java; the C parts PENDING (phase 2))" tests/p4suites/rdport.log -- $S/suite_rdport -1
-pending accounting    "per-phase accounting (from C)" "P5 (W23)"
+step accounting 1 "per-phase accounting (from C)" tests/ctlsuites/accounting.log -- bash -c "$S/suite_accounting -1 && { cmp -s results/phases-a2a.csv tests/ctlsuites/phases-a2a.csv || echo 'FAIL results/phases-a2a.csv differs from v1.3s'; }"
 step searchbench 3 "search steps through the read port (microbenchmark, from C)" tests/p4suites/searchbench.log -- $S/suite_search
 step rdport-shuf 1 "shuffled child order (seed 4)" tests/p4suites/rdport-shuf.log -- $S/suite_rdport 4
 pending agtest        "address generator read-ahead, figure 12's PTR/HIST ports" "P4: W22-16 (figure 12)"
@@ -151,7 +151,7 @@ if [ "$MODE" != quick ]; then
   step sort-bt-kv32 2 "BT, forced, trace hot 10 / 10 % at 64 x 16,384, 32-bit values (a few minutes)" tests/sort/ref/sort-bt-kv32.log -- sort_bt kv32
   step sort-bt-k128 2 "the same, 128-bit values" tests/sort/ref/sort-bt-k128.log -- sort_bt k128
   step rdport-full 1 "gather 1 at full size (Java; the C parts PENDING (phase 2))" tests/p4suites/rdport-full.log -- $S/suite_rdport -1 full
-  pending accounting-full "per-phase accounting, full-size all-to-all from C" "P5 (W23)"
+  step accounting-full 1 "per-phase accounting, full-size all-to-all from C" tests/ctlsuites/accounting-full.log -- bash -c "$S/suite_accounting -1 full && { cmp -s results/phases-a2a-full.csv tests/ctlsuites/phases-a2a-full.csv || echo 'FAIL results/phases-a2a-full.csv differs from v1.3s'; }"
   step agbench 3 "read-ahead measurements: ag_lookahead, zero-length groups, start to first request (a few minutes)" tests/p4suites/agbench.log -- $S/suite_agbench
   pending s1bench         "item S1: K's margin over the write path, L = 1-4, and the table-window case (a few minutes)" "P5 (W23)"
   step ccbench 16 "C&C 1-3 as cores (WORKER14): the boot and a phase against the Java model" tests/ctlsuites/ccbench.log -- $S/suite_ccbench

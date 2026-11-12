@@ -5,6 +5,7 @@
 #include <unistd.h>
 
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -72,3 +73,11 @@ TEST(ccbench_equals_ref_log) { run_step("ccbench", "suite_ccbench", ""); }
 TEST(hooks_equals_ref_log) { run_step("hooks", "suite_hooks", "-1"); }
 TEST(hooks_shuf_equals_ref_log) { run_step("hooks-shuf", "suite_hooks", "4"); }
 TEST(regdoc_equals_ref_log) { run_step("regdoc", "suite_regdoc", ""); }
+// accounting: the log and results/phases-a2a.csv equal to ref's; the CSV's write-engine and GATHER peaks exist with the
+// checker's builds only (phase_log.h), so in the debug build (the release build has no peaks to compare)
+#include "check.h"
+TEST(accounting_equals_ref_log_and_csv) {
+    if (!sim::check::kOn) return;
+    run_step("accounting", "suite_accounting", "-1");
+    CHECK_EQ(std::system("cmp -s results/phases-a2a.csv tests/ctlsuites/phases-a2a.csv"), 0);
+}

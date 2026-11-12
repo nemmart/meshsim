@@ -311,3 +311,8 @@ What I do test-side or add myself: C&C 1's model's `expect` (Cnc's field, set be
   reset). ref's `then` step (round 1: wait for the tiles idle, poke a record, in one step) is `wait_until` then `call`
   here; round 1 prints no figures, only which signatures match, so the log can't tell the two apart, and both pass:
   nothing to ask of W20.
+- **AccountingTest matched** (`tests/ctl/suite_accounting.cpp`, on W20's PhaseLog): the log and
+  `results/phases-a2a.csv` byte-identical to ref's at 2,000 records, and `accounting-full` (65,536: 6 s here, no runner
+  task needed) log and `phases-a2a-full.csv` too, in the suite build. Runner steps accounting and accounting-full (each
+  with its CSV compared: a FAIL line if it differs); make check compares the log and the CSV in the debug builds (the
+  CSV's write-engine and GATHER peaks exist only with the checker's builds, phase_log.h).

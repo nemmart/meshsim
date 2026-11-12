@@ -116,3 +116,9 @@ Commit and push after each step; each step checked against `ref`.
   KEYS.sha256 = v1.3's kit's key hashes, README): assembled and run on the uniform jobs at -n 2000 (p4 both formats,
   shuf): every run's CSV equal to Quest 178's but the peak columns; SUMMARY from sort_summary. Waiting: the peaks and
   phases CSVs (W20's PhaseLog), the sweep's `cfg.*` (W20's Config, step 3).
+- **H7, the profiles** (SortTest's -Dsort.profile, sort.prof, sort.watch as SORT_PROFILE, SORT_PROF=lo-hi,
+  SORT_WATCH=f,...; the overlay-load column from tile 0's profile): references `tests/sort/ref/h7-uniform-kv32.log`
+  and `h7-reverse-k128.log` (sortlogs.sh; not v1.3 steps). Both equal, the second but its peak lines. Sampled between
+  cycles as ref's monitor and Controller.runCycle do (sort.prof counts the boot's cycles too, not the final check).
+  `test_sort_suites` checks the first: all four builds pass. SORT_WATCH's clone lookup takes the first name of the
+  .sym with the prefix where SortTest searches a HashMap (one candidate in every case here).

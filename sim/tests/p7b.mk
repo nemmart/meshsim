@@ -6,3 +6,9 @@ $(B)/test_replay_lists: $(REPLAYER_LINK) $(B)/tests/statefp.o
 $(B)/replay_shard: $(B)/tests/replay_shard_main.o $(B)/tests/sha256.o $(REPLAYER_LINK) $(B)/src/units/replay_tables.o $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 all: $(B)/replay_shard
+# The acceptance kit's summary step (run_shard.sh's Python in v1.3): tests/acceptance/shard_summary.cpp.
+$(B)/shard_summary: $(B)/tests/acceptance/shard_summary.o $(LIB_OBJ)
+	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
+all: $(B)/shard_summary
+# The summary step against v1.3's (tests/acceptance/summary/, oracle/ref/shardsummary.sh): needs shard_summary built.
+$(B)/test_shard_summary: | $(B)/shard_summary

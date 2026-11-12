@@ -125,3 +125,33 @@ the `-q` estimate, the guest delivery's whereabouts.
   range), the planted-fault delivery with the manifest's hashes refreshed (5 FAIL lines with ref's details), and a
   corrupted copy (a tables FAIL line, each CORRUPT kind, a hash given as a bare string): CSV with wall_ms masked, stdout
   and exit code all equal.
+- **`shard_summary`** (`tests/acceptance/shard_summary.cpp`): v1.3's `run_shard.sh` inline Python in C++ (D40),
+  writing SUMMARY.txt and VERDICT.txt and the exit code. Checked against v1.3's own Python, taken verbatim from
+  `sim/ref/meshsim/acceptance/run_shard.sh` by `oracle/ref/shardsummary.sh` (python3 on the oracle side only), on six
+  cases in `tests/acceptance/summary/` (OK lines of A, B, F with stall counts; a B/F cycle disagreement; FAIL,
+  CORRUPT, tables and malformed lines; a blank line; a range; "all" from a manifest; -x adding F; an empty file; a
+  passing shard): `test_shard_summary` (make check) equal on gcc and clang, debug and release; a planted difference in
+  a fixture fails it.
+- **The step replay-build** (`run_tests.sh`; `tests/stageb/replay_build.sh`): with the RISC-V toolchain, the three
+  replay-controller images rebuilt from `fw/replay` with v1.3's commands and compared with the committed ones;
+  without it, the committed images against their MANIFESTs; either way v1.3's line from the committed image. Its
+  reference `tests/stageb/replay-build.log` is v1.3's own `sw/replay/build.sh` output (oracle/ref/stageb.sh, now
+  also writing it; the toolchain installed here: gcc-riscv64-unknown-elf 13.2.0-11ubuntu1+12, fw/build.sh's).
+  Both paths and a planted image difference (exit 1) tried; `./run_tests.sh quick --check`: no log differs.
+- **F3. `ref`'s committed `results/replay-build.log` is stale too** (code 3256 B, end 0x11dc; v1.3's build today: 3728
+  B, 0x29ec, the committed images'). Not used.
+- **Q for the owner:** W20's runner lists the step `replayer` (ReplayerTest: the opcode table, the ALU against vec.tsv,
+  ReplayerUnitTests) as pending P7b. It is inventory row C20 (P3's, dropped with D40-D41), not one of E2-E5.
+- **The kit** (`tests/acceptance/`: run_shard.sh, calibrate.sh, build.sh, make_kit.sh, make_task.sh,
+  make_acceptance_task.sh, README.md): v1.3's scripts on the C++ binaries (`replay_shard`, `shard_summary`,
+  `synthetic_delivery`); processes in place of JVMs (v1.3's file names and SUMMARY wording kept, so its outputs compare);
+  the kit is HEAD's sim/ sources (Makefile, src, tools, tests' top-level sources and makefiles, bench's makefiles), the
+  tables, the boot ROM, hops and the replay controllers' images, 0.8 MB, built on the runner by `./build.sh` (clang;
+  35 s here) after HASHES; the task records the machine (`tools/machine.sh`, D21). Differences from v1.3's kit in the
+  README (no jar, Java or Python; D43's synthetic delivery; calibrate.sh's exit code is tail's, as in v1.3).
+- **`oracle/acceptance_crosscheck.sh`**: v1.3's kit built in scratch (ref's classes in a jar, SyntheticDelivery patched
+  as D43, v1.3's run_shard.sh and calibrate.sh unchanged) against v1.35's (made from HEAD and built), the same delivery
+  through both: results.csv (wall column masked), VERDICT.txt, SUMMARY.txt's non-timing lines, the exit code and every
+  jvm-K.log. **Stage A, all equal** (9 windows of 4,000 rows, seed 11): -j 1 with -m, -j 3, a range, -n all, a range
+  past the manifest's end, a planted-fault delivery (FAIL details), a corrupted one (CORRUPT kinds). Stage B's cases
+  (AB, ABF, -x, -q 512) and `--calibration` (the runner: 128 x 65,536 rows) come with Stage B.

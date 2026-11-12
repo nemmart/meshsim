@@ -108,7 +108,7 @@ pending reqbus        "the request port, the request bus and the receive queues 
 pending reqbus-shuf   "shuffled child order (seed 4)" "P5"
 pending cccores       "C&C 1-3 as cores (Config.ccCores, WORKER14): the boot ROM's controller branch, the link, the request tree" "P5: W23's suite_cccores, one figure off (D33; W20's ERRORS from a test)"
 pending cccores-shuf  "shuffled child order (seed 4)" "P5: W23's suite_cccores, as cccores"
-pending replay-build  "the replay controller (sw/replay/build.sh)" "v1.35: fw/build.sh (W19)"
+step replay-build 1 "the replay controller (sw/replay/build.sh)" tests/stageb/replay-build.log -- tests/stageb/replay_build.sh
 pending stageb        "Stage B: replay_ctl.c on a tile against Stage A, synthetic windows" "P7b"
 pending replayer      "the replayer model (v1.25): the opcode table, the ALU against vec.tsv at 821e1bd, the unit tests" "P7b"
 step memsys 1 "the Tracer's memory system (v1.3, B1): FileStore's trees and statuses, the shared cache's timing" tests/tracersuites/memsys.log -- $S/suite_memsys

@@ -64,6 +64,8 @@ struct WriteEngine {
     uint32_t log_cap = 0, log_n = 0;
     uint64_t taken = 0, written = 0, stall_cycles = 0, augmented = 0, explicit_writes = 0, out_of_range = 0;
 #ifdef SIM_CHECKS
+    uint64_t written_by_size[3] = {};   // W22 (P4; approved 2026-11-12; SIM_CHECKS only): ref's writtenBySize[log2 chunks], a
+                                        // write put to big SRAM (WriteEngine.java:81), for ReadPortGatherTest. A statistic.
     uint32_t stage_peak = 0;        // W22 (P4; approved 2026-11-12; SIM_CHECKS only): ref's stageHighWater, the stage's count
                                     // after a take (WriteEngine.java:109), for EngineTest. A statistic.
 #endif
@@ -139,6 +141,9 @@ inline sim::Wake WriteEngine::step(sim::Ctx& c) {
             last_put[0] = uint64_t(a & 0x1FFFFF) | uint64_t(n) << 21; last_put[1] = lo; last_put[2] = hi;
             c.put(to_sram, last_put[0], lo, hi);
             written++;
+#ifdef SIM_CHECKS
+            written_by_size[__builtin_ctz(n)]++;                   // W22: WriteEngine.writtenBySize
+#endif
         }
         st_have[head] = 0; head = uint8_t((head + 1) % cap); count--;
     }

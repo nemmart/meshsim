@@ -102,3 +102,4 @@ include tests/ctlsuites.mk
 include tools/regs/regs.mk
 include tools/delivery/delivery.mk
 include tests/p7b.mk
+include tests/sort.mk

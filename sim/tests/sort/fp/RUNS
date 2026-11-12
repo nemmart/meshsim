@@ -1,0 +1,17 @@
+# The sort's fingerprint references (oracle/ref/sortfp.sh; SortFp's arguments): one line per run, its name first.
+# Every run of the sort suite (SortTest -1 sort: direct, LB, TH, stage 2, shaped, both formats), the BT runs of
+# run_tests.sh's sort-bt steps (forced, 64 x 16,384, ready 8), and p1's two formats. No v1.3 run takes PLAN (NOTES, Q6).
+p1-uniform-k128     p1 kind=uniform n=2000 fmt=k128
+p1-uniform-kv32     p1 kind=uniform n=2000 fmt=kv32
+uniform-k128        sort kind=uniform n=2000 fmt=k128
+uniform-kv32        sort kind=uniform n=2000 fmt=kv32
+few-k128            sort kind=few n=1000 fmt=k128
+ragged-kv32         sort kind=ragged n=1000 fmt=kv32
+sorted-k128         sort kind=sorted n=2000 fmt=k128
+equal-kv32          sort kind=equal n=2000 fmt=kv32
+equal-k128          sort kind=equal n=2000 fmt=k128
+reverse-k128        sort kind=reverse n=2000 fmt=k128
+reverse-kv32        sort kind=reverse n=2000 fmt=kv32
+shaped-ragged-k128  sort kind=ragged n=1000 fmt=k128 shaped
+bt16k-kv32          sort keys=keys-16384/trace10-10.keys label=bt16k-kv32 fmt=kv32 ready=8 force=bt
+bt16k-k128          sort keys=keys-16384/trace10-10.keys label=bt16k-k128 fmt=k128 ready=8 force=bt

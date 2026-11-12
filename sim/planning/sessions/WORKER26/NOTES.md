@@ -15,7 +15,8 @@ Commit and push after each piece; each kind checked line for line against `ref` 
      (Controller.java: terminal traps that set no ERRORS bit, the ecalls among them; mret; an access past data/program
      memory; a store into the reserved first 16 bytes; the table window: HIST, PTR, the AG running), the WFI woken by
      other than GO, the request port's push into a full FIFO, PeripheralSlot's four (reserved window word, DMA_HDR and
-     DMA_ADDR mid-transfer, full posts: invariant 16), the Tracer's violations as chip violations (W14's texts, as W20 did
+     DMA_ADDR mid-transfer, full posts: invariant 16), a peripheral's live ERRORS bits [13:11] in invariant 15 (W25's
+     F7: Stage B's planted fault, "ERRORS [100000000000] set: peripheral 1"), the Tracer's violations as chip violations (W14's texts, as W20 did
      the replayer's: `PERIPH_VIOLATION`), and the counter wraps and invariants 20/21 checked against CtrlTest's 384.
    - **1b. The request bus (W22's W22-13), the endpoints, C&C's lost receive.** The root's drop at a reserved or
      deferred target, the receive queue's overflow; the endpoints' bad packet, size 11, reserved mode; `rxLost`.
@@ -56,3 +57,7 @@ Commit and push after each piece; each kind checked line for line against `ref` 
   (TileCore's harness-only path) sets the core's `ck_t` first, so its facts carry its own cycle. CheckSelf: the core
   case (a program per tile, poked, then C&C's CMD_JUMP and GO), 72 violations line for line (gcc and clang suite, clang
   debug). The five protected tests the same as main's (clang suite).
+- Merged main (W20's requests 9 and 10): both cases kept in CheckSelf.java (mine first, as test_mach's merge put them),
+  `checkself.out` regenerated from ref; test_mach line for line (clang and gcc suite).
+- **The table-window checks: exactness (integrator, 2026-11-12)**: the stores and the AG publish their busy state on
+  same-cycle Wires the core reads, only under SIM_CHECKS; the outputs and their cycles proposed before touching the units.
